@@ -1,9 +1,8 @@
 defmodule WardrikChannel.Inbound do
   @moduledoc """
   A message someone posted in a room, as an adapter hands it to
-  `WardrikChannel.received/2`.
+  `WardrikChannel.received/2`, with the workspace it was posted in.
 
-    * `:channel` - the channel's name
     * `:room` - the room it was posted in, as the channel names it
     * `:thread` - the thread it replies in, or `nil` for a message posted in
       the room itself, which starts a thread of its own
@@ -15,11 +14,10 @@ defmodule WardrikChannel.Inbound do
     * `:mentioned?` - whether it mentions the bot
   """
 
-  @enforce_keys [:channel, :room, :id, :sender, :text]
-  defstruct [:channel, :room, :thread, :id, :sender, :text, mentioned?: false]
+  @enforce_keys [:room, :id, :sender, :text]
+  defstruct [:room, :thread, :id, :sender, :text, mentioned?: false]
 
   @type t() :: %__MODULE__{
-          channel: String.t(),
           room: String.t(),
           thread: String.t() | nil,
           id: String.t(),

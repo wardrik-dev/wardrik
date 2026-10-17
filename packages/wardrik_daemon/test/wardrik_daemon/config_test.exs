@@ -2,7 +2,7 @@ defmodule WardrikDaemon.ConfigTest do
   use ExUnit.Case, async: false
 
   alias Wardrik.AgentID.Prefix
-  alias WardrikDaemon.Approvers.Named
+  alias WardrikChannel.Approvers.Named
   alias WardrikDaemon.Config
 
   @moduletag :tmp_dir
@@ -545,9 +545,12 @@ defmodule WardrikDaemon.ConfigTest do
                    orgs: orgs,
                    creates: _creates,
                    approvers: approvers,
-                   admins: admins
+                   admins: admins,
+                   installations: %WardrikChannel.Installations.Config{installations: none}
                  ]}
               ]} = read(yaml, context)
+
+      assert none == %{}
 
       assert Enum.sort(channels) == [
                chat: {WardrikDaemon.Test.Channel, [room_prefix: "wardrik-"]},
@@ -566,7 +569,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:ok, [{WardrikChannel, settings}]} =
                read("channels:\n  chat: {type: test, approvers: anyone}\n", context)
 
-      assert settings[:approvers] == [chat: %WardrikDaemon.Approvers.Anyone{}]
+      assert settings[:approvers] == [chat: %WardrikChannel.Approvers.Anyone{}]
 
       assert {:error, message} =
                read("channels:\n  chat: {type: test, approvers: maria}\n", context)
@@ -601,6 +604,33 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:error, message} = read("channels:\n  chat: {type: test, create: maybe}\n", context)
       assert message =~ "channels.chat.create is true or false"
 
+      yaml = """
+      channels:
+        chat: {type: test, token: xoxb-1}
+        acme: {type: test, token: xoxb-2}
+        all: {type: test, token: xoxb-3}
+      orgs:
+        acme: {channels: [acme]}
+        "*": {channels: [all]}
+      """
+
+      assert {:ok, [{WardrikChannel, settings}]} = read(yaml, context)
+      installations = settings[:installations]
+      assert {:ok, chat} = WardrikChannel.Installations.fetch(installations, "chat", "T1")
+
+      assert %WardrikChannel.Installation{channel: "chat", workspace: "chat", token: "xoxb-1"} =
+               chat
+
+      assert to_string(chat.owner) == "default/"
+      assert {:ok, acme} = WardrikChannel.Installations.fetch(installations, "acme", "T1")
+      assert to_string(acme.owner) == "acme/"
+      assert {:ok, all} = WardrikChannel.Installations.fetch(installations, "all", "T1")
+      assert all.owner == Prefix.all()
+      refute Keyword.has_key?(settings[:channels][:chat] |> elem(1), :token)
+
+      assert {:error, message} = read("channels:\n  chat: {type: test, token: 1}\n", context)
+      assert message =~ "channels.chat.token is the token the channel acts with"
+
       assert {:error, message} = read("channels:\n  chat: {type: pigeon}\n", context)
       assert message =~ "channels.chat.type is the kind of channel: test"
 
@@ -611,7 +641,7 @@ defmodule WardrikDaemon.ConfigTest do
     test "notify names targets, each a room in a channel or a webhook", context do
       yaml = """
       channels:
-        chat: {type: test}
+        chat: {type: test, token: xoxb-1}
       notify:
         ops:
           channel: chat
@@ -625,18 +655,24 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:ok, sections} = read(yaml, context)
       notify = sections[WardrikNotify]
 
-      assert Enum.sort(notify[:targets]) == [
+      assert [
                audit:
                  {WardrikNotify.Webhook,
                   [url: "https://hooks.example.com/wardrik", orgs: ["default"]]},
-               ops:
-                 {WardrikChannel.Notices,
-                  [
-                    channel: {WardrikDaemon.Test.Channel, []},
-                    room: "#ops",
-                    approvers: ["@maria"],
-                    orgs: ["default"]
-                  ]}
+               ops: {WardrikChannel.Notices, ops}
+             ] = Enum.sort(notify[:targets])
+
+      assert Enum.sort(ops) == [
+               approvers: ["@maria"],
+               channel: {WardrikDaemon.Test.Channel, []},
+               installation: %WardrikChannel.Installation{
+                 channel: "chat",
+                 workspace: "chat",
+                 owner: Prefix.new!(org: "default"),
+                 token: "xoxb-1"
+               },
+               orgs: ["default"],
+               room: "#ops"
              ]
     end
 
@@ -646,6 +682,10 @@ defmodule WardrikDaemon.ConfigTest do
 
       assert {:error, message} = read("notify:\n  ops: {channel: chat, room: x}\n", context)
       assert message =~ "notify.ops.channel is chat, which config.yaml's channels does not name"
+
+      untokened = "channels:\n  chat: {type: test}\nnotify:\n  ops: {channel: chat, room: x}\n"
+      assert {:error, message} = read(untokened, context)
+      assert message =~ "notify.ops.channel is chat, which names no token to post with"
 
       assert {:error, message} = read("notify:\n  ops: {channel: chat}\n", context)
       assert message =~ "notify.ops.room is required"

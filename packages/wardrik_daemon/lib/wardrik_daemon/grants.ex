@@ -67,12 +67,24 @@ defmodule WardrikDaemon.Grants do
   end
 
   defp granted(:channel, principal, %__MODULE__{agents: agents}) do
-    {channel, user} = WardrikChannel.person(principal)
+    {channel, _workspace, user} = WardrikChannel.person(principal)
+
+    case Agents.installation(agents, channel) do
+      {:ok, installation} -> member(agents, WardrikChannel.Member.new(installation, user))
+      :error -> []
+    end
+  end
+
+  defp granted(_type, _principal, _grants), do: []
+
+  # Someone in the workspace of a channel's installation, by their id there.
+  defp member(agents, %WardrikChannel.Member{installation: installation} = member) do
+    channel = installation.channel
 
     {can, ceiling} =
       cond do
-        among?(agents, channel, user, Agents.admins(agents, channel)) -> admin(agents)
-        decides?(agents, channel, user) -> {@deciders, []}
+        include?(agents, Agents.admins(agents, channel), member) -> admin(agents)
+        decides?(agents, member) -> {@deciders, []}
         true -> {@everyone, []}
       end
 
@@ -81,8 +93,6 @@ defmodule WardrikDaemon.Grants do
       grant
     end
   end
-
-  defp granted(_type, _principal, _grants), do: []
 
   # An admin defines only under a policy the deployment names for it.
   defp admin(agents) do
@@ -94,18 +104,20 @@ defmodule WardrikDaemon.Grants do
     end
   end
 
-  defp decides?(agents, channel, user) do
-    among = &among?(agents, channel, user, &1)
+  defp decides?(agents, %WardrikChannel.Member{installation: installation} = member) do
+    include? = &include?(agents, &1, member)
 
-    WardrikDaemon.Approvers.decides?(Agents.approvers(agents, channel), among) or
-      among.(notifying(agents, channel))
+    WardrikChannel.Approvers.decides?(Agents.approvers(agents, installation), include?) or
+      include?.(notifying(agents, installation.channel))
   end
 
   # As the channel's adapter knows people, from the channel's settings; never
   # in a channel config.yaml does not name.
-  defp among?(agents, channel, user, names) do
-    case Enum.find(channels(agents), fn {name, _configured} -> Atom.to_string(name) == channel end) do
-      {_name, configured} -> WardrikChannel.among?(configured, user, names)
+  defp include?(agents, names, %WardrikChannel.Member{installation: installation} = member) do
+    case Enum.find(channels(agents), fn {name, _configured} ->
+           Atom.to_string(name) == installation.channel
+         end) do
+      {_name, configured} -> WardrikChannel.include?(configured, names, member)
       nil -> false
     end
   end

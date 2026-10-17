@@ -18,9 +18,9 @@ defmodule WardrikSlack.Approvers do
   @spec members([String.t()], keyword()) :: [{String.t(), {:ok, String.t()} | :error}]
   def members(approvers, opts), do: Enum.map(approvers, &{&1, member(&1, opts)})
 
-  @doc "Whether the member `user` is one `names` names. `opts` are the channel's."
-  @spec among?(String.t(), [String.t()], keyword()) :: boolean()
-  def among?(user, names, opts), do: Enum.any?(names, &(member(&1, opts) == {:ok, user}))
+  @doc "Whether `names` include the member `id`. `opts` are as `members/2` takes them."
+  @spec include?([String.t()], String.t(), keyword()) :: boolean()
+  def include?(names, id, opts), do: Enum.any?(names, &(member(&1, opts) == {:ok, id}))
 
   @doc ~S"""
   The approvers named in a sentence, `@maria or @jon`, as `config.yaml`

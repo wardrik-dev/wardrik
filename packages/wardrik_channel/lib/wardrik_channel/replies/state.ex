@@ -3,14 +3,14 @@ defmodule WardrikChannel.Replies.State do
   What one room's `WardrikChannel.Replies` keeps: each thread it answers in,
   the agent answering there, the last event of that agent's log it has
   posted, and the messages each run under way answers. `retries` counts the
-  attempts at each thread's next post, and `posting` is the channel it posts
-  through, its adapter, options and context; neither is kept.
+  attempts at each thread's next post, and `posting` is the
+  `WardrikChannel.Channel` it posts through; neither is kept.
   """
 
   alias Wardrik.AgentID
 
-  @enforce_keys [:channel, :room]
-  defstruct [:channel, :room, :posting, threads: %{}, retries: %{}]
+  @enforce_keys [:channel, :workspace, :room]
+  defstruct [:channel, :workspace, :room, :posting, threads: %{}, retries: %{}]
 
   @typedoc "A thread followed: its agent, how far its log is posted, and its runs under way."
   @type thread() :: %{
@@ -21,8 +21,9 @@ defmodule WardrikChannel.Replies.State do
 
   @type t() :: %__MODULE__{
           channel: String.t(),
+          workspace: String.t(),
           room: String.t(),
-          posting: {module(), keyword(), WardrikChannel.Context.t()} | nil,
+          posting: WardrikChannel.Channel.t() | nil,
           threads: %{String.t() => thread()},
           retries: %{String.t() => pos_integer()}
         }
@@ -41,11 +42,12 @@ defmodule WardrikChannel.Replies.State do
           | {:decided, String.t()}
           | :none
 
-  @spec new(String.t(), String.t()) :: t()
-  def new(channel, room), do: %__MODULE__{channel: channel, room: room}
+  @spec new(String.t(), String.t(), String.t()) :: t()
+  def new(channel, workspace, room),
+    do: %__MODULE__{channel: channel, workspace: workspace, room: room}
 
-  @doc "The same room, posting through `channel`: its adapter, options and context."
-  @spec posting(t(), {module(), keyword(), WardrikChannel.Context.t()}) :: t()
+  @doc "The same room, posting through `channel`."
+  @spec posting(t(), WardrikChannel.Channel.t()) :: t()
   def posting(%__MODULE__{} = state, channel), do: %{state | posting: channel}
 
   @doc """

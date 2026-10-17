@@ -3,8 +3,9 @@
 # The root part of deploy/single/up.sh, run on the server: the user the daemon
 # runs as, let in by the keys root's login was, with a systemd of its own from
 # boot; and Caddy, ending TLS for the domain given and passing /oauth/ on to the
-# daemon's callback listener and /v1/hooks/ to its webhook triggers, and nothing
-# else of its HTTP API. Run again, it changes only what differs.
+# daemon's callback listener, /v1/hooks/ to its webhook triggers and
+# /v1/channels/ to its channels, and nothing else of its HTTP API. Run again, it
+# changes only what differs.
 #
 #   bash server.sh agents.example.com
 set -euo pipefail
@@ -66,6 +67,10 @@ $domain {
 	}
 
 	handle /v1/hooks/* {
+		reverse_proxy 127.0.0.1:4747
+	}
+
+	handle /v1/channels/* {
 		reverse_proxy 127.0.0.1:4747
 	}
 

@@ -20,8 +20,8 @@ agent to them:
 channels:
   slack:
     type: slack
-    token: ${SLACK_BOT_TOKEN}       # the Slack app's bot token
-    app_token: ${SLACK_APP_TOKEN}   # Socket Mode, for Approve and Deny buttons
+    token: ${SLACK_BOT_TOKEN}                 # the Slack app's bot token
+    signing_secret: ${SLACK_SIGNING_SECRET}   # for Approve and Deny buttons
 
 notify:
   ops:

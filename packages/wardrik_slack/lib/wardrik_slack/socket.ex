@@ -1,19 +1,16 @@
 defmodule WardrikSlack.Socket do
   @moduledoc """
-  A Socket Mode connection out to Slack, for one channel's app-level token.
+  A Socket Mode connection out to Slack, for one channel's app-level token:
+  for testing, without a public address. Slack has an app take its events
+  over HTTP once it is in use; see `WardrikSlack.HTTP`.
 
-  It finds the bot it posts as, and its workspace, asks Slack for a
-  connection URL, connects, and acknowledges every envelope Slack sends. A
-  button press goes to `WardrikSlack.Rooms` where it binds a room, and to
-  `WardrikSlack.Answers` otherwise; a message posted in a Slack channel to
-  `WardrikSlack.Threads`; any other event, such as the bot being invited into
-  a room, to `WardrikSlack.Rooms`. Each is handled in a task of its own, with
-  the channel's `:token`, `:context` and `:req_options`, the bot's user id as
-  `:bot`, its workspace's id as `:team`, and `:people`, the table the names
-  of those who post are kept in while the connection stays open. A message
-  is acknowledged once its agent has been asked, so one lost to a crash
+  It asks Slack for a connection URL, connects, and acknowledges every
+  envelope Slack sends, handing what each carries to `WardrikSlack.Dispatch`
+  in a task of its own, with the channel's `:context` and `:req_options`. A
+  message is acknowledged once it has been handled, so one lost to a crash
   before then is sent again by Slack, and asked once. It starts nothing for
   a channel with no app-level token.
+
   When Slack closes the connection, as it does every few hours, or the
   network drops it, it connects again, waiting longer after each failure up
   to a minute.
@@ -30,18 +27,21 @@ defmodule WardrikSlack.Socket do
 
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts),
-    do: %{id: {__MODULE__, opts[:name]}, start: {__MODULE__, :start_link, [opts]}}
+    do: %{
+      id: {__MODULE__, opts[:name]},
+      start: {__MODULE__, :start_link, [Keyword.take(opts, [:app_token, :context, :req_options])]}
+    }
 
   @spec start_link(keyword()) :: GenServer.on_start() | :ignore
   def start_link(opts) do
-    opts = Keyword.validate!(opts, [:name, :app_token, :token, :context, req_options: []])
+    opts = Keyword.validate!(opts, [:app_token, :context, req_options: []])
     if opts[:app_token], do: GenServer.start_link(__MODULE__, opts), else: :ignore
   end
 
   @doc """
   What a text frame from Slack asks for: `:hello`, `:disconnect`, an
-  envelope to acknowledge with what it carries, a message to acknowledge
-  once it has been handled, or `:ignore`.
+  envelope to acknowledge with what it carries, a message's event callback
+  to acknowledge once it has been handled, or `:ignore`.
   """
   @spec envelope(String.t()) ::
           :hello
@@ -64,12 +64,17 @@ defmodule WardrikSlack.Socket do
        %{
          "envelope_id" => id,
          "type" => "events_api",
-         "payload" => %{"event" => %{"type" => "message"} = message}
+         "payload" => %{"event" => %{"type" => "message"}} = callback
        }} ->
-        {:ack_after, id, {:message, message}}
+        {:ack_after, id, {:message, callback}}
 
-      {:ok, %{"envelope_id" => id, "type" => "events_api", "payload" => %{"event" => event}}} ->
-        {:ack, id, {:event, event}}
+      {:ok,
+       %{
+         "envelope_id" => id,
+         "type" => "events_api",
+         "payload" => %{"event" => _event} = callback
+       }} ->
+        {:ack, id, {:event, callback}}
 
       {:ok, %{"envelope_id" => id}} ->
         {:ack, id, :ignore}
@@ -82,12 +87,11 @@ defmodule WardrikSlack.Socket do
   @impl true
   def init(opts) do
     Process.flag(:trap_exit, true)
-    people = :ets.new(__MODULE__, [:public, read_concurrency: true])
 
     {:ok,
      %{
        token: opts[:app_token],
-       answer: [people: people] ++ Keyword.take(opts, [:name, :token, :context, :req_options]),
+       answer: Keyword.take(opts, [:context, :req_options]),
        connection: nil,
        backoff: @first_backoff
      }, {:continue, :connect}}
@@ -102,31 +106,25 @@ defmodule WardrikSlack.Socket do
   def handle_info(:hello, state), do: {:noreply, %{state | backoff: @first_backoff}}
 
   def handle_info({:interactive, payload}, state) do
-    handler =
-      case payload do
-        %{"actions" => [%{"action_id" => "wardrik_room" <> _} | _]} -> WardrikSlack.Rooms
-        _other -> WardrikSlack.Answers
-      end
-
     Task.Supervisor.start_child(WardrikChannel.tasks(), fn ->
-      handler.answer(payload, state.answer)
+      WardrikSlack.Dispatch.interactive(payload, state.answer)
     end)
 
     {:noreply, state}
   end
 
-  def handle_info({:message, message, {connection, id}}, state) do
+  def handle_info({:message, callback, {connection, id}}, state) do
     Task.Supervisor.start_child(WardrikChannel.tasks(), fn ->
-      WardrikSlack.Threads.message(message, state.answer)
+      WardrikSlack.Dispatch.event(callback, state.answer)
       Connection.ack(connection, id)
     end)
 
     {:noreply, state}
   end
 
-  def handle_info({:event, event}, state) do
+  def handle_info({:event, callback}, state) do
     Task.Supervisor.start_child(WardrikChannel.tasks(), fn ->
-      WardrikSlack.Rooms.event(event, state.answer)
+      WardrikSlack.Dispatch.event(callback, state.answer)
     end)
 
     {:noreply, state}
@@ -137,26 +135,7 @@ defmodule WardrikSlack.Socket do
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  # The bot's own user id and workspace are found once, before the first
-  # connection.
   defp connect(state) do
-    if Keyword.has_key?(state.answer, :bot), do: open(state), else: find_bot(state)
-  end
-
-  defp find_bot(state) do
-    req_options = Keyword.get(state.answer, :req_options, [])
-
-    case WardrikSlack.post("auth.test", state.answer[:token], %{}, req_options) do
-      {:ok, %{"user_id" => bot} = found} ->
-        open(%{state | answer: [bot: bot, team: found["team_id"]] ++ state.answer})
-
-      error ->
-        Logger.warning("Slack did not say which bot this channel posts as: #{inspect(error)}")
-        retry(state)
-    end
-  end
-
-  defp open(state) do
     with {:ok, %{"url" => url}} <-
            WardrikSlack.post(
              "apps.connections.open",

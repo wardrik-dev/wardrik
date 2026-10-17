@@ -11,15 +11,17 @@ end
 ```
 
 A *channel* is one configured instance of an adapter, under a name of the
-deployment's own, and a *room* is a place in it. In the daemon, `config.yaml`
-names them, and the rest of each channel's settings are its adapter's:
+deployment's own, such as one Slack app, installed in one workspace or many,
+and a *room* is a place in a workspace. In the daemon, `config.yaml` names
+them, a channel's `token` installs it in the workspace it reaches, and the
+rest of each channel's settings are its adapter's:
 
 ```yaml
 channels:
   slack:
     type: slack
     token: ${SLACK_BOT_TOKEN}
-    app_token: ${SLACK_APP_TOKEN}
+    signing_secret: ${SLACK_SIGNING_SECRET}
   globex-slack:
     type: slack
     token: ${GLOBEX_SLACK_BOT_TOKEN}
@@ -39,4 +41,7 @@ environment, so a release that holds it finds it by its type:
 def application, do: [env: [wardrik_channels: [teams: MyTeams]]]
 ```
 
-See `WardrikChannel` for the callbacks.
+A host keeps the workspaces each channel is installed in, with their
+tokens, as its `WardrikChannel.Installations` say, and serves what each
+medium sends over HTTP by handing it to `WardrikChannel.request/2`. See
+`WardrikChannel` for the callbacks.

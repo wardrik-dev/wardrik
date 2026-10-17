@@ -14,8 +14,9 @@ defmodule WardrikHTTP.Router do
   may not act on so, `403`. A stream of events, and a worker's socket, hold
   the caller's credential, and end when it is revoked.
 
-  Its options are the `WardrikHTTP.Listener`'s `:host` and `:authenticator`,
-  assigned to each request as `:options`: every session is on that host.
+  Its options are the `WardrikHTTP.Listener`'s `:host`, `:authenticator`,
+  `:workers` and `:channels`, assigned to each request as `:options`: every
+  session is on that host.
   """
 
   use Plug.Router, copy_opts_to_assign: :options
@@ -42,9 +43,9 @@ defmodule WardrikHTTP.Router do
 
   @parsers Plug.Parsers.init(parsers: [:json], json_decoder: JSON, pass: ["*/*"])
 
-  # The most of a request to a trigger read, which its signature is checked
-  # against whole.
-  @hook_body 1_048_576
+  # The most of a request from outside, to a trigger or a channel, read,
+  # which its signature is checked against whole.
+  @outside_body 1_048_576
 
   @default_limit 100
   @max_limit 500
@@ -258,6 +259,13 @@ defmodule WardrikHTTP.Router do
 
   # An agent is /v1/agents/{org}/{name}, or /v1/agents/{org}/@{user}/{name}
   # for a user's, and what follows its ID is what is asked of it.
+  # A request a chat channel's medium sends, such as Slack's events, at
+  # /v1/channels/{channel}/{path}: it holds no credential of this server's,
+  # and the channel checks it as it answers it.
+  post "/v1/channels/:channel/*rest" do
+    channel(conn, channel, rest)
+  end
+
   match "/v1/agents/:org/*rest" do
     with {segments, rest} <- agent_path([org | rest]),
          route when route != nil <- route(conn.method, rest, conn) do
@@ -274,13 +282,49 @@ defmodule WardrikHTTP.Router do
   # A request to a trigger is checked against its body as it was sent, so it
   # is read whole rather than parsed.
   defp parse(%Plug.Conn{path_info: ["v1", "hooks" | _rest]} = conn, _opts), do: conn
+  defp parse(%Plug.Conn{path_info: ["v1", "channels" | _rest]} = conn, _opts), do: conn
   defp parse(conn, _opts), do: Plug.Parsers.call(conn, @parsers)
+
+  defp channel(conn, name, path) do
+    with {:ok, {module, function, args}} <- Map.fetch(conn.assigns.options[:channels], name),
+         {:ok, body, conn} <- read_body(conn, length: @outside_body) do
+      conn = fetch_query_params(conn)
+
+      %{status: status, headers: headers, body: answer} =
+        apply(
+          module,
+          function,
+          args ++
+            [
+              %{
+                method: conn.method,
+                path: path,
+                query: conn.query_params,
+                headers: conn.req_headers,
+                body: body
+              }
+            ]
+        )
+
+      conn |> merge_resp_headers(headers) |> send_resp(status, answer)
+    else
+      :error ->
+        json(conn, 404, Resource.error("not_found", "No channel #{name} takes requests here."))
+
+      {:more, _read, conn} ->
+        json(
+          conn,
+          413,
+          Resource.error("invalid_request", "A request to a channel is at most 1 MB.")
+        )
+    end
+  end
 
   # A secret in the path is the request's credential, as a bearer token is.
   defp bearer(conn, secret), do: put_req_header(conn, "authorization", "Bearer " <> secret)
 
   defp hook(conn, agent, trigger) do
-    case read_body(conn, length: @hook_body) do
+    case read_body(conn, length: @outside_body) do
       {:ok, body, conn} ->
         {:ok, grant} = Grant.new(Prefix.of(agent), [:message])
         id = "#{agent}//#{trigger}"

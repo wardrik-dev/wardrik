@@ -12,22 +12,24 @@ channels:
   slack:
     type: slack
     token: ${SLACK_BOT_TOKEN}
-    app_token: ${SLACK_APP_TOKEN}
+    signing_secret: ${SLACK_SIGNING_SECRET}
 ```
 
-Each Slack workspace is its own [channel](/channels/), with its own app.
+Slack sends the app's events to the daemon over HTTPS, so the daemon needs a
+[public address](/run/public-address/). To try it without one, use
+[Socket Mode](#testing-with-socket-mode).
 
 ## A Slack app
 
-Give the daemon its own app; Slack splits button presses across every connection an app has.
+Give the daemon its own app.
 
 1. At [api.slack.com/apps](https://api.slack.com/apps), choose **Create New App**, **From a
    manifest**, pick your workspace, and paste the manifest below. Change `Wardrik` to the name your
-   team will see.
+   team will see, and `agents.example.com` to the daemon's address.
 2. **Install to Workspace**, then copy the **Bot User OAuth Token** (`xoxb-...`) from **OAuth &
    Permissions**. This is `token`.
-3. Under **Basic Information › App-Level Tokens**, make a token with the scope `connections:write`
-   (`xapp-...`). This is `app_token`.
+3. Under **Basic Information › App Credentials**, copy the **Signing Secret**. This is
+   `signing_secret`.
 
 ```yaml title="Slack app manifest"
 display_information:
@@ -54,29 +56,54 @@ oauth_config:
       - users:read.email
 settings:
   event_subscriptions:
+    request_url: https://agents.example.com/v1/channels/slack/events
     bot_events:
+      - app_uninstalled
       - channel_left
       - group_left
       - member_joined_channel
       - message.channels
       - message.groups
+      - tokens_revoked
   interactivity:
     is_enabled: true
+    request_url: https://agents.example.com/v1/channels/slack/actions
   org_deploy_enabled: false
-  socket_mode_enabled: true
+  socket_mode_enabled: false
   token_rotation_enabled: false
 ```
 
-Seal both tokens in the vault and restart the daemon:
+`slack` in each URL is the channel's name in `config.yaml`. Slack checks the events URL as you save
+the manifest, so the daemon must be running and reachable at that address first.
+
+Seal both secrets in the vault and restart the daemon:
 
 ```sh
-wardrik vault put SLACK_BOT_TOKEN    # xoxb-...
-wardrik vault put SLACK_APP_TOKEN    # xapp-...
+wardrik vault put SLACK_BOT_TOKEN        # xoxb-...
+wardrik vault put SLACK_SIGNING_SECRET
 systemctl --user restart wardrik
 ```
 
 Invite the app into a Slack channel with `/invite @yourapp`. It always replies; if it doesn't, see
 [The app says nothing](#the-app-says-nothing).
+
+### Testing with Socket Mode
+
+Slack's Socket Mode is for testing: events arrive over a connection the daemon opens to Slack, so it
+needs no public address. In the manifest, set `socket_mode_enabled: true` and drop both
+`request_url` lines. Under **Basic Information › App-Level Tokens**, make a token with the scope
+`connections:write` (`xapp-...`), and name it `app_token` in place of `signing_secret`:
+
+```yaml
+channels:
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}
+    app_token: ${SLACK_APP_TOKEN}
+```
+
+Give each daemon its own app here: Slack splits an app's Socket Mode events and button presses
+across every connection it has.
 
 ## An agent in a Slack channel
 
@@ -145,10 +172,12 @@ can always answer. Without approvers, only they can, and a trigger's turn is ans
 
 ### What the manifest asks for
 
-- **Socket Mode and interactivity:** events arrive over a connection the daemon opens to Slack, so
-  it needs no public address or open port.
+- **Event Subscriptions and Interactivity:** Slack sends events to `/events` and button presses to
+  `/actions`, under `/v1/channels/slack/`, each signed with the signing secret. The daemon refuses
+  any request Slack didn't sign, or signed more than five minutes before.
 - **Bot events:** `member_joined_channel`, `channel_left` and `group_left` report invites and
-  removals; `message.channels` and `message.groups` carry posts.
+  removals; `message.channels` and `message.groups` carry posts; `app_uninstalled` and
+  `tokens_revoked` say the app was taken out.
 - **Bot scopes:** read and post, mark messages, and find people by `@handle`. `users:read.email` is
   only needed for approvers named by email.
 - **Messages Tab:** where approvers are asked. Direct messages to the app aren't answered.
@@ -159,7 +188,7 @@ No user scopes are needed; the app acts as itself. A new scope means installing 
 
 The daemon binds a channel when it hears the app arrive. If it was invited while the daemon was down,
 or before events were on, `/remove @yourapp` and invite it again. Otherwise check the bot events
-above, and the daemon's log for a Socket Mode error.
+above, that **Event Subscriptions** shows the request URL verified, and the daemon's log.
 
 ### Messages and accounts
 
@@ -178,5 +207,14 @@ asks in the thread. `admins` and [notice target](/build/notices/) approvers may 
 
 ### Without buttons
 
-Without `app_token`, a parked notice says which `wardrik approve` or `wardrik deny` to run. The bot
-token alone can post.
+Without `signing_secret` or `app_token`, a parked notice says which `wardrik approve` or
+`wardrik deny` to run. The bot token alone can post.
+
+### One app in many workspaces
+
+The daemon runs one app in the one workspace its `token` reaches. An app [embedded](/build/embed/)
+in your own service can be installed in many, one for each org: give the channel `client_id` and
+`client_secret` from **Basic Information › App Credentials** in place of `token`, set the app's
+**Redirect URL** to your install route, and send each org's admin to
+`WardrikChannel.install_url/3`. Your route hands Slack's redirect to `WardrikChannel.install/3` for
+the org they act for, and your `WardrikChannel.Installations` keeps each workspace's token.

@@ -21,7 +21,7 @@ defmodule WardrikDaemon.Doctor do
       runs is on this machine, and that the host an HTTP server is reached at
       answers
     * `channel NAME` - for each channel, who decides what its agents wait
-      on, as its `approvers` say; see `WardrikDaemon.Approvers`
+      on, as its `approvers` say; see `WardrikChannel.Approvers`
     * `agents` - that every agent file and policy reads, as the daemon reads
       them, a line for each that does not
 
@@ -402,7 +402,7 @@ defmodule WardrikDaemon.Doctor do
   defp channels(settings) do
     for {name, approvers} <-
           settings |> Keyword.get(WardrikChannel, []) |> Keyword.get(:approvers, []),
-        do: {:ok, "channel #{name}", WardrikDaemon.Approvers.described(approvers)}
+        do: {:ok, "channel #{name}", WardrikChannel.Approvers.described(approvers)}
   end
 
   # -- agents ------------------------------------------------------------------

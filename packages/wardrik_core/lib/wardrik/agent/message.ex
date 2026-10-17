@@ -23,7 +23,7 @@ defmodule Wardrik.Agent.Message do
   carries it, so the agent's log says who said what, and the model reads it
   ahead of the text, so it can tell several people apart:
 
-      From Maria Chen (channel slack/U024BE7LH):
+      From Maria Chen (channel slack/T0123/U024BE7LH):
       Reconcile last week's deposits.
 
   A message with no sender is read as its text alone.

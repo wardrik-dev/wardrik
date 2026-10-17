@@ -17,8 +17,8 @@ defmodule WardrikSlack.AnswersTest do
 
     def grants(_host, principal) do
       case Wardrik.Principal.id(principal) do
-        "slack/U1" -> [grant([:read, :message, :decide])]
-        "slack/U2" -> [grant([:read, :message])]
+        "slack/T1/U1" -> [grant([:read, :message, :decide])]
+        "slack/T1/U2" -> [grant([:read, :message])]
         _anyone -> []
       end
     end
@@ -55,10 +55,16 @@ defmodule WardrikSlack.AnswersTest do
   defp answering do
     context = %WardrikChannel.Context{
       channel: "slack",
-      host: Wardrik.Host.new(store: Wardrik.Test.store(), grants: %Held{})
+      host: Wardrik.Host.new(store: Wardrik.Test.store(), grants: %Held{}),
+      installations: WardrikChannel.Installations.Config.new([])
     }
 
-    [name: :slack, token: "xoxb-test", context: context, req_options: @req_options]
+    workspace = %WardrikChannel.Workspace{
+      context: context,
+      installation: WardrikSlack.Test.installation()
+    }
+
+    [workspace: workspace, token: "xoxb-test", req_options: @req_options]
   end
 
   describe "Show link" do
@@ -129,7 +135,12 @@ defmodule WardrikSlack.AnswersTest do
 
       on_exit(fn -> Fleet.forget(key) end)
       :ok = Event.Bus.subscribe(key, level: :lifecycle)
-      asker = WardrikChannel.principal(:slack, "U2", "maria")
+
+      asker =
+        WardrikSlack.Test.installation()
+        |> WardrikChannel.Member.new("U2")
+        |> WardrikChannel.principal(name: "maria")
+
       :ok = Agent.ask(key, "Ship it.", sender: asker)
       assert_receive %Event{payload: %Event.TurnParked{}}
 
@@ -189,7 +200,7 @@ defmodule WardrikSlack.AnswersTest do
 
       assert_receive {:resumed, %{"call_1" => :approve}}
 
-      jon = Wardrik.Principal.new(:channel, "slack/U1", name: "jon")
+      jon = Wardrik.Principal.new(:channel, "slack/T1/U1", name: "jon")
 
       assert_receive %Event{
         payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: ^jon}

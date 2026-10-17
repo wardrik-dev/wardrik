@@ -1,20 +1,29 @@
 defmodule WardrikSlack do
   @moduledoc """
   The Slack adapter of `WardrikChannel`: a channel that is one Slack app,
-  `type: slack` in `config.yaml`.
+  `type: slack` in `config.yaml`, in each workspace it is installed in.
 
       channels:
         slack:
           type: slack
           token: ${SLACK_BOT_TOKEN}
-          app_token: ${SLACK_APP_TOKEN}
+          signing_secret: ${SLACK_SIGNING_SECRET}
 
-  `token` is the app's bot token, `xoxb-…`, which posts. `app_token` is an
-  app-level token, `xapp-…`, with `connections:write`, for Socket Mode: a
-  connection the node opens out to Slack, so it needs no public address and no
-  open port. Without it, nothing posted can be answered from Slack.
-  `WardrikSlack.Socket` holds the connection, and `WardrikSlack.Answers`
-  answers each button press.
+  Slack sends the app what happens over HTTP, `WardrikSlack.HTTP`, to the
+  Request URL the app names: its events under `events`, and its buttons
+  under `actions`, each signed with the app's `signing_secret`, under
+  **Basic Information**. For testing without a public address,
+  `app_token`, an app-level token, `xapp-…`, with `connections:write`, has
+  `WardrikSlack.Socket` take them over Socket Mode instead, a connection the
+  node opens out to Slack. Without either, nothing posted can be answered
+  from Slack.
+
+  `token`, the app's bot token, `xoxb-…`, installs it in the one workspace
+  that token reaches. An app installed in many, one for each owner, names
+  its `client_id` and `client_secret`, under **Basic Information**: the
+  host sends someone to `WardrikChannel.install_url/3` to add it to a
+  workspace of theirs, and hands Slack sending them back, to the app's
+  Redirect URL, to `WardrikChannel.install/3`; see `WardrikSlack.Install`.
 
   A room is a Slack channel, by its name, `#ops`, or its id, and a thread one
   under a message there. A notice reads as `WardrikSlack.Notices` lays it
@@ -27,53 +36,123 @@ defmodule WardrikSlack do
   on. `WardrikSlack.Approvers` finds each as a member. Where none can be
   reached, the calls are asked in the thread.
 
-  Each workspace is a channel of its own, with an app of its own. The app
-  should be Wardrik's alone: Slack spreads an app's Socket Mode envelopes
-  across every connection open for it, and each is acknowledged where it
-  lands, so an app another service also connects with loses envelopes to
-  Wardrik, and Wardrik's button presses to the service.
+  Over Socket Mode, the app should be Wardrik's alone: Slack spreads an
+  app's Socket Mode envelopes across every connection open for it, and each
+  is acknowledged where it lands, so an app another service also connects
+  with loses envelopes to Wardrik, and Wardrik's button presses to the
+  service.
   """
 
   @behaviour WardrikChannel
 
   require Logger
 
+  alias WardrikChannel.Installation
+  alias WardrikChannel.Member
   alias WardrikChannel.Outbound
 
   @api "https://slack.com/api/"
   @max_markdown 12_000
 
+  # Each setting, the option it is, and what it is.
+  @settings %{
+    "app_token" => {:app_token, "the app's app-level token, xapp-…"},
+    "signing_secret" => {:signing_secret, "the app's signing secret"},
+    "client_id" => {:client_id, "the app's client ID"},
+    "client_secret" => {:client_secret, "the app's client secret"}
+  }
+
   @impl WardrikChannel
   def config(settings) do
-    case Map.keys(settings) -- ~w(token app_token) do
-      [] -> tokens(settings)
-      [key | _] -> {:error, [key], "is not a setting; expected token or app_token"}
+    with :ok <- known(Map.keys(settings) -- Map.keys(@settings)),
+         :ok <- texts(settings),
+         do: paired(Map.new(settings, fn {key, value} -> {option(key), value} end))
+  end
+
+  defp option(key), do: elem(Map.fetch!(@settings, key), 0)
+  defp what(key), do: elem(Map.fetch!(@settings, key), 1)
+
+  defp known([]), do: :ok
+
+  defp known([key | _]),
+    do:
+      {:error, [key],
+       "is not a setting; expected app_token, signing_secret, client_id or client_secret"}
+
+  defp texts(settings) do
+    case Enum.find(settings, fn {_key, value} -> not is_binary(value) or value == "" end) do
+      nil -> :ok
+      {key, _value} -> {:error, [key], "is #{what(key)}"}
     end
   end
 
-  defp tokens(%{"token" => token} = settings) when is_binary(token) and token != "" do
-    case settings["app_token"] do
-      nil -> {:ok, [token: token]}
-      app_token when is_binary(app_token) -> {:ok, [token: token, app_token: app_token]}
-      _other -> {:error, ["app_token"], "is the app's app-level token, xapp-…"}
-    end
-  end
+  defp paired(%{client_id: _id, client_secret: _secret} = options),
+    do: {:ok, Keyword.new(options)}
 
-  defp tokens(_settings), do: {:error, ["token"], "is required: the app's bot token, xoxb-…"}
+  defp paired(%{client_id: _id}),
+    do: {:error, ["client_secret"], "is required with client_id: #{what("client_secret")}"}
+
+  defp paired(%{client_secret: _secret}),
+    do: {:error, ["client_id"], "is required with client_secret: #{what("client_id")}"}
+
+  defp paired(options), do: {:ok, Keyword.new(options)}
 
   @impl WardrikChannel
   def child_spec(opts), do: WardrikSlack.Socket.child_spec(opts)
 
   @doc """
-  Whether the member `user` is one of `names`, each a `@handle`, an email
-  address or a member id, as `WardrikSlack.Approvers` finds them.
+  Whether `names`, each a `@handle`, an email address or a member id,
+  include `member`, as `WardrikSlack.Approvers` finds them in its
+  workspace.
   """
   @impl WardrikChannel
-  def among?(user, names, opts), do: WardrikSlack.Approvers.among?(user, names, opts)
+  def include?(names, %Member{installation: installation, id: id}, opts),
+    do:
+      WardrikSlack.Approvers.include?(names, id,
+        token: installation.token,
+        req_options: req_options(opts)
+      )
 
   @impl WardrikChannel
-  def deliver(%Outbound{to: :approvers, approvers: [_ | _], thread: thread} = outbound, opts)
-      when is_binary(thread) do
+  def request(request, opts), do: WardrikSlack.HTTP.request(request, opts)
+
+  @impl WardrikChannel
+  def install_url(owner, opts), do: WardrikSlack.Install.url(owner, opts)
+
+  @impl WardrikChannel
+  def install(owner, request, opts), do: WardrikSlack.Install.installed(owner, request, opts)
+
+  @doc """
+  The user id of the bot the installation posts as, asked of Slack once
+  for each workspace while the node runs.
+  """
+  @spec bot(Installation.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def bot(%Installation{} = installation, req_options) do
+    key = {__MODULE__, :bot, installation.channel, installation.workspace}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        with {:ok, %{"user_id" => bot}} <- post("auth.test", installation.token, %{}, req_options) do
+          :persistent_term.put(key, bot)
+          {:ok, bot}
+        end
+
+      bot ->
+        {:ok, bot}
+    end
+  end
+
+  @doc "Whether what is posted can be answered from Slack, over HTTP or Socket Mode."
+  @spec answered?(keyword()) :: boolean()
+  def answered?(opts),
+    do: Keyword.has_key?(opts, :signing_secret) or Keyword.has_key?(opts, :app_token)
+
+  @impl WardrikChannel
+  def deliver(%Outbound{installation: installation} = outbound, opts),
+    do: post_out(outbound, [token: installation.token] ++ opts)
+
+  defp post_out(%Outbound{to: :approvers, approvers: [_ | _], thread: thread} = outbound, opts)
+       when is_binary(thread) do
     {:notice, notice} = outbound.body
     members = WardrikSlack.Approvers.members(outbound.approvers, opts)
     from = from(outbound, opts)
@@ -85,20 +164,20 @@ defmodule WardrikSlack do
             "so what they are asked is posted in #{outbound.room}"
         )
 
-        deliver(%{outbound | to: :room}, opts)
+        post_out(%{outbound | to: :room}, opts)
 
       _asked ->
         posted(%{text: waiting(outbound.approvers, notice)}, outbound, opts)
     end
   end
 
-  def deliver(%Outbound{body: {:notice, notice}} = outbound, opts) do
+  defp post_out(%Outbound{body: {:notice, notice}} = outbound, opts) do
     notice
-    |> WardrikSlack.Notices.message(buttons: opts[:app_token] != nil)
+    |> WardrikSlack.Notices.message(buttons: answered?(opts))
     |> posted(outbound, opts)
   end
 
-  def deliver(%Outbound{room: room, body: {:reply, text, answering}} = outbound, opts) do
+  defp post_out(%Outbound{room: room, body: {:reply, text, answering}} = outbound, opts) do
     with {:ok, posted} <- posted(reply(text), outbound, opts) do
       :ok = WardrikSlack.Threads.answered(room, answering, opts)
       {:ok, posted}
@@ -112,7 +191,7 @@ defmodule WardrikSlack do
 
   defp asked?({approver, {:ok, member}}, notice, from, _outbound, opts) do
     %{text: text, blocks: [heading | rest]} =
-      WardrikSlack.Notices.message(notice, buttons: opts[:app_token] != nil)
+      WardrikSlack.Notices.message(notice, buttons: answered?(opts))
 
     message = %{text: text, blocks: [heading, from | rest], channel: member}
 
@@ -232,7 +311,12 @@ defmodule WardrikSlack do
     call(method, Keyword.merge([form: form, auth: {:bearer, token}], req_options))
   end
 
-  defp call(method, options) do
+  @doc """
+  Calls the Web API's `method` with `options` as Req takes them, such as
+  a form, answering Slack's reply.
+  """
+  @spec call(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def call(method, options) do
     case Req.post(@api <> method, options) do
       {:ok, %Req.Response{status: 200, body: %{"ok" => true} = reply}} -> {:ok, reply}
       {:ok, %Req.Response{body: %{"error" => error}}} -> {:error, error}

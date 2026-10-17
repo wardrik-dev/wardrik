@@ -1,6 +1,6 @@
 ---
 title: A public address
-description: "Give the daemon an HTTPS address, with Caddy in front, so people connect accounts from any browser."
+description: "Give the daemon an HTTPS address, with Caddy in front, so people connect accounts from any browser and Slack reaches it."
 sidebar:
   order: 3
 ---
@@ -30,6 +30,10 @@ so Caddy can get a certificate.
    		reverse_proxy 127.0.0.1:4747
    	}
 
+   	handle /v1/channels/* {
+   		reverse_proxy 127.0.0.1:4747
+   	}
+
    	handle {
    		respond 404
    	}
@@ -37,8 +41,8 @@ so Caddy can get a certificate.
    ```
 
    `/oauth/` reaches the account callback. `/v1/hooks/` reaches
-   [webhook triggers](/build/triggers/#receiving-a-webhook). The rest of the HTTP API stays on the
-   machine.
+   [webhook triggers](/build/triggers/#receiving-a-webhook), and `/v1/channels/` what
+   [Slack](/channels/slack/) sends. The rest of the HTTP API stays on the machine.
 
 2. Tell the daemon its address:
 

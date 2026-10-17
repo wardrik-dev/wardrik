@@ -4,7 +4,10 @@ defmodule WardrikSlack.RoomsTest do
   alias Wardrik.AgentID
   alias Wardrik.Test.Audit
   alias WardrikChannel.Context
+  alias WardrikChannel.Installations
   alias WardrikChannel.Offer
+  alias WardrikChannel.Room
+  alias WardrikChannel.Workspace
   alias WardrikSlack.Rooms
 
   @req_options [plug: {Req.Test, WardrikSlack.Stub}]
@@ -32,20 +35,34 @@ defmodule WardrikSlack.RoomsTest do
   def creatable(answer, _channel), do: answer
 
   @doc false
-  def creating(_channel, name, _by),
+  def creating(_installation, name, _by),
     do: {:ok, %Offer{agent: AgentID.new!(name, org: "acme"), description: "Answers in ##{name}."}}
 
   defp opts(offers, create? \\ false) do
+    channel = "slack-#{System.unique_integer([:positive])}"
+
     context = %Context{
       host: Wardrik.Host.new(store: Wardrik.Test.store()),
-      channel: "slack-#{System.unique_integer([:positive])}",
+      channel: channel,
+      installations: Installations.Config.new([]),
       offered: {__MODULE__, :offering, [offers]},
       creatable: {__MODULE__, :creatable, [create?]},
       create: {__MODULE__, :creating, []}
     }
 
-    [context: context, name: :slack, bot: "UBOT", token: "xoxb-test", req_options: @req_options]
+    workspace = %Workspace{
+      context: context,
+      installation: %{WardrikSlack.Test.installation() | channel: channel}
+    }
+
+    [workspace: workspace, bot: "UBOT", token: "xoxb-test", req_options: @req_options]
   end
+
+  defp channel(opts), do: opts[:workspace].context.channel
+  defp person(opts, user), do: "#{channel(opts)}/T1/#{user}"
+
+  defp with_context(opts, change),
+    do: Keyword.update!(opts, :workspace, &%{&1 | context: change.(&1.context)})
 
   defp books, do: %Offer{agent: AgentID.parse!("acme/books"), description: "Keeps the books."}
   defp triage, do: %Offer{agent: AgentID.parse!("acme/triage")}
@@ -103,18 +120,19 @@ defmodule WardrikSlack.RoomsTest do
     assert text =~ "waits here for someone to approve it."
     assert buttons(message) == ["everything", "wardrik_room_more"]
 
-    assert Audit.about("rooms/#{opts[:context].channel}/C1") ==
-             [{"room.bound", %{"type" => "channel", "id" => "slack/U1"}}]
+    assert Audit.about("rooms/#{channel(opts)}/C1") ==
+             [{"room.bound", %{"type" => "channel", "id" => person(opts, "U1")}}]
   end
 
   @doc false
-  def approving(approvers, _channel), do: approvers
+  def approving(approvers, _installation),
+    do: %WardrikChannel.Approvers.Named{names: approvers}
 
   test "says who approves, where the channel names approvers" do
     opts = opts([books()])
-    context = %{opts[:context] | approvers: {__MODULE__, :approving, [["@maria", "U5"]]}}
+    opts = with_context(opts, &%{&1 | approvers: {__MODULE__, :approving, [["@maria", "U5"]]}})
 
-    assert :ok = Rooms.event(joined("C1"), Keyword.put(opts, :context, context))
+    assert :ok = Rooms.event(joined("C1"), opts)
 
     assert JSON.encode!(posted()["blocks"]) =~
              "A call that needs approval is sent to @maria or <@U5> to approve"
@@ -135,10 +153,12 @@ defmodule WardrikSlack.RoomsTest do
     assert %{"replace_original" => true, "text" => ":wave: *acme/triage* answers here now."} =
              replaced()
 
-    assert WardrikChannel.Rooms.get(opts[:context], "C1").agent == triage().agent
+    assert WardrikChannel.Rooms.get(Room.new(opts[:workspace], "C1")).agent == triage().agent
 
-    assert [{"room.bound", %{"id" => "slack/U2", "name" => "jon"}}] =
-             Audit.about("rooms/#{opts[:context].channel}/C1")
+    jon = person(opts, "U2")
+
+    assert [{"room.bound", %{"id" => ^jon, "name" => "jon"}}] =
+             Audit.about("rooms/#{channel(opts)}/C1")
   end
 
   test "offers a menu, with what each is for, where there are many" do
@@ -161,7 +181,7 @@ defmodule WardrikSlack.RoomsTest do
     message = posted()
     assert message["text"] == "No agent answers in Slack here yet."
     assert buttons(message) == ["books"]
-    assert JSON.encode!(message["blocks"]) =~ "channels: [#{opts[:context].channel}]"
+    assert JSON.encode!(message["blocks"]) =~ "channels: [#{channel(opts)}]"
 
     assert :ok = Rooms.answer(press("C1", "wardrik_room_create", "books"), opts)
     assert %{"text" => ":wave: *acme/books* answers here now."} = replaced()
@@ -186,7 +206,9 @@ defmodule WardrikSlack.RoomsTest do
 
   test "switches between every message and mentions, offers another agent, and stops" do
     opts = opts([books(), triage()])
-    {:ok, _room, _offer} = WardrikChannel.Rooms.chose(opts[:context], "C1", books().agent, nil)
+
+    {:ok, _room, _offer} =
+      WardrikChannel.Rooms.chose(Room.new(opts[:workspace], "C1"), books().agent)
 
     assert :ok = Rooms.answer(press("C1", "wardrik_room_answers", "everything"), opts)
     message = replaced()
@@ -198,7 +220,7 @@ defmodule WardrikSlack.RoomsTest do
 
     assert :ok = Rooms.answer(choose("C1", "wardrik_room_more", "stop"), opts)
     assert %{"text" => "No agent answers here now."} = replaced()
-    assert WardrikChannel.Rooms.get(opts[:context], "C1") == nil
+    assert WardrikChannel.Rooms.get(Room.new(opts[:workspace], "C1")) == nil
 
     assert :ok = Rooms.answer(press("C1", "wardrik_room_answers", "mentions"), opts)
     assert %{"text" => "Which agent should answer here?" <> _} = replaced()
@@ -225,7 +247,7 @@ defmodule WardrikSlack.RoomsTest do
     assert :ok =
              Rooms.event(%{"type" => "channel_left", "channel" => "C1", "actor_id" => "U3"}, opts)
 
-    assert WardrikChannel.Rooms.get(opts[:context], "C1") == nil
+    assert WardrikChannel.Rooms.get(Room.new(opts[:workspace], "C1")) == nil
 
     assert Rooms.event(%{"type" => "reaction_added"}, opts) == :ignored
     assert Rooms.answer(%{"actions" => []}, opts) == :ignored

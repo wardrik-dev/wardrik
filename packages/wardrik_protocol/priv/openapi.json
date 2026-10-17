@@ -3,7 +3,7 @@
   "info": {
     "title": "Wardrik",
     "version": "1",
-    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. Every request presents a bearer token; an agent outside its scope is answered as one that does not exist, 404, and one inside it the token may not act on so, 403. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
+    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token; an agent outside its scope is answered as one that does not exist, 404, and one inside it the token may not act on so, 403. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -49,6 +49,10 @@
     {
       "name": "Workers",
       "description": "Tools offered from a process of the caller's own."
+    },
+    {
+      "name": "Channels",
+      "description": "What a chat channel's medium, such as Slack, sends the channel."
     }
   ],
   "paths": {
@@ -1925,6 +1929,73 @@
         ]
       }
     },
+    "/v1/channels/{channel}/{path}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/channel"
+        },
+        {
+          "$ref": "#/components/parameters/channel_path"
+        }
+      ],
+      "post": {
+        "operationId": "channel_request",
+        "summary": "Deliver what a chat channel's medium sends",
+        "description": "A request from the medium, such as Slack's events and button presses, handed to the channel as it was sent: the channel checks it, as by its signature, and answers it as the medium expects.",
+        "tags": [
+          "Channels"
+        ],
+        "requestBody": {
+          "required": false,
+          "description": "What the medium sent, checked whole.",
+          "content": {
+            "*/*": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the channel answers the medium.",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Not what the medium sends.",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "The medium did not sign it, or signed it too long ago.",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "No channel of that name takes requests here, or it takes none there.",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/v1/exports/{export}": {
       "parameters": [
         {
@@ -2882,7 +2953,7 @@
         }
       },
       "TooLarge": {
-        "description": "A request to a trigger is at most 1 MB: invalid_request.",
+        "description": "A request from outside, to a trigger or a channel, is at most 1 MB: invalid_request.",
         "content": {
           "application/json": {
             "schema": {
@@ -3066,6 +3137,24 @@
         "in": "header",
         "description": "The last sequence a stream read, in place of starting_after.",
         "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "channel": {
+        "name": "channel",
+        "in": "path",
+        "description": "The chat channel's name, as the deployment's config gives it.",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "channel_path": {
+        "name": "path",
+        "in": "path",
+        "description": "Where under the channel the medium sends it, such as Slack's events or actions.",
+        "required": true,
         "schema": {
           "type": "string"
         }

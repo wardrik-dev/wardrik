@@ -647,6 +647,15 @@ defmodule WardrikDaemon.AgentsTest do
     assert [_member] = Fleet.list(Prefix.parse!(org <> "/"))
   end
 
+  # The installation of the channel `channel`, as a room's events find it.
+  defp in_channel(channel),
+    do: %WardrikChannel.Installation{
+      channel: channel,
+      workspace: channel,
+      owner: Prefix.all(),
+      token: "token"
+    }
+
   test "offers in a channel the agents whose files name it, of the orgs it serves",
        %{org: org} = context do
     Host.put_section(WardrikChannel, orgs: [slack: [org], everyone: :all])
@@ -658,16 +667,16 @@ defmodule WardrikDaemon.AgentsTest do
     # Answered once the files have been read.
     _files = Agents.files(Host.agents())
 
-    assert Enum.map(Agents.offered(Host.agents(), "slack"), & &1.agent) ==
+    assert Enum.map(Agents.offered(Host.agents(), in_channel("slack")), & &1.agent) ==
              [AgentID.parse!("#{org}/books"), AgentID.parse!("#{org}/triage")]
 
-    everyone = Enum.map(Agents.offered(Host.agents(), "everyone"), & &1.agent)
+    everyone = Enum.map(Agents.offered(Host.agents(), in_channel("everyone")), & &1.agent)
     assert AgentID.parse!("#{org}/triage") in everyone
     refute AgentID.parse!("#{org}/books") in everyone
 
     Host.put_section(WardrikChannel, orgs: [slack: ["elsewhere"]])
-    assert Agents.offered(Host.agents(), "slack") == []
-    assert Agents.offered(Host.agents(), "nowhere") == []
+    assert Agents.offered(Host.agents(), in_channel("slack")) == []
+    assert Agents.offered(Host.agents(), in_channel("nowhere")) == []
   end
 
   test "creates an agent for a room from the defaults, where they name a policy and the channel lets it",
@@ -684,47 +693,47 @@ defmodule WardrikDaemon.AgentsTest do
     write_policy(context, "careful", "deny: [run_lua]\n")
     Host.start_agents(context.dir)
     _files = Agents.files(Host.agents())
-    maria = Wardrik.Principal.new(:channel, "slack/U1", name: "maria")
+    maria = Wardrik.Principal.new(:channel, "slack/T1/U1", name: "maria")
 
-    refute Agents.creatable?(Host.agents(), "slack")
+    refute Agents.creatable?(Host.agents(), in_channel("slack"))
 
     assert {:error, "Agents are not created from here" <> _} =
-             Agents.create_in(Host.agents(), "slack", room: "books", by: maria)
+             Agents.create_in(Host.agents(), in_channel("slack"), "books", maria)
 
     Host.put_section(Agents,
       defaults: %{"model" => "anthropic:claude-sonnet-5", "policy" => "careful"}
     )
 
-    assert Agents.creatable?(Host.agents(), "slack")
-    refute Agents.creatable?(Host.agents(), "closed")
+    assert Agents.creatable?(Host.agents(), in_channel("slack"))
+    refute Agents.creatable?(Host.agents(), in_channel("closed"))
 
     assert {:ok, %WardrikChannel.Offer{agent: id, description: "Answers in #Books & Bills."}} =
-             Agents.create_in(Host.agents(), "slack", room: "Books & Bills", by: maria)
+             Agents.create_in(Host.agents(), in_channel("slack"), "Books & Bills", maria)
 
     assert id == AgentID.parse!("#{org}/books-bills")
     assert Fleet.lookup(id)
-    assert id in Enum.map(Agents.offered(Host.agents(), "slack"), & &1.agent)
+    assert id in Enum.map(Agents.offered(Host.agents(), in_channel("slack")), & &1.agent)
 
     assert Wardrik.Test.Audit.about("agents/#{id}") ==
-             [{"agent.defined", %{"type" => "channel", "id" => "slack/U1", "name" => "maria"}}]
+             [{"agent.defined", %{"type" => "channel", "id" => "slack/T1/U1", "name" => "maria"}}]
 
     assert {:error, message} =
-             Agents.create_in(Host.agents(), "slack", room: "books-bills", by: maria)
+             Agents.create_in(Host.agents(), in_channel("slack"), "books-bills", maria)
 
     assert message =~ "#{org}/books-bills is there already"
 
     assert {:error, "Agents are not created from here" <> _} =
-             Agents.create_in(Host.agents(), "closed", room: "x", by: maria)
+             Agents.create_in(Host.agents(), in_channel("closed"), "x", maria)
 
     assert {:error, ~s("!!!" makes no agent's name.)} =
-             Agents.create_in(Host.agents(), "slack", room: "!!!", by: maria)
+             Agents.create_in(Host.agents(), in_channel("slack"), "!!!", maria)
   end
 
   test "starts the agent of a room's thread on its definition, and names the channel's approvers",
        %{org: org} = context do
     Host.put_section(WardrikChannel,
       orgs: [slack: [org]],
-      approvers: [slack: %WardrikDaemon.Approvers.Named{names: ["@maria"]}]
+      approvers: [slack: %WardrikChannel.Approvers.Named{names: ["@maria"]}]
     )
 
     write(context, "books", "channels: [slack]\ndescription: Keeps the books.\n")
@@ -732,20 +741,24 @@ defmodule WardrikDaemon.AgentsTest do
     _files = Agents.files(Host.agents())
 
     thread = AgentID.put_external_id(AgentID.parse!("#{org}/books"), "C1-1.1")
-    assert {:ok, pid} = Agents.start(Host.agents(), "slack", thread)
+    assert {:ok, pid} = Agents.start(Host.agents(), in_channel("slack"), thread)
     assert Fleet.whereis(thread) == pid
-    assert Agents.start(Host.agents(), "slack", thread) == {:ok, pid}
+    assert Agents.start(Host.agents(), in_channel("slack"), thread) == {:ok, pid}
     assert Agent.status(thread).model == Agent.status(AgentID.parse!("#{org}/books")).model
 
-    assert Agents.asked(Host.agents(), "slack") == ["@maria"]
-    assert Agents.asked(Host.agents(), "other") == []
+    assert Agents.approvers(Host.agents(), in_channel("slack")) ==
+             %WardrikChannel.Approvers.Named{names: ["@maria"]}
+
+    assert Agents.approvers(Host.agents(), in_channel("other")) ==
+             %WardrikChannel.Approvers.Named{names: []}
 
     Host.put_section(WardrikChannel,
       orgs: [slack: [org]],
-      approvers: [slack: %WardrikDaemon.Approvers.Anyone{}]
+      approvers: [slack: %WardrikChannel.Approvers.Anyone{}]
     )
 
-    assert Agents.asked(Host.agents(), "slack") == []
+    assert Agents.approvers(Host.agents(), in_channel("slack")) ==
+             %WardrikChannel.Approvers.Anyone{}
   end
 
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do

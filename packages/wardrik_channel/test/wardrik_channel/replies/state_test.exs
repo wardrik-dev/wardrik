@@ -6,7 +6,8 @@ defmodule WardrikChannel.Replies.StateTest do
 
   @agent AgentID.parse!("acme/books/C1-1.1")
 
-  defp followed(through \\ 0), do: State.follow(State.new("chat", "C1"), "1.1", @agent, through)
+  defp followed(through \\ 0),
+    do: State.follow(State.new("chat", "T1", "C1"), "1.1", @agent, through)
 
   defp event(sequence, type, data),
     do: %{

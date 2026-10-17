@@ -2,14 +2,19 @@ defmodule WardrikChannel.RoomsTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Principal
   alias Wardrik.Test.Audit
+  alias WardrikChannel.Binding
   alias WardrikChannel.Context
+  alias WardrikChannel.Installation
+  alias WardrikChannel.Installations
   alias WardrikChannel.Offer
   alias WardrikChannel.Room
   alias WardrikChannel.Rooms
+  alias WardrikChannel.Workspace
 
-  @maria Principal.new(:channel, "slack/U1", name: "maria")
+  @maria Principal.new(:channel, "slack/T1/U1", name: "maria")
 
   @doc false
   def offering(offers, _channel), do: offers
@@ -18,21 +23,29 @@ defmodule WardrikChannel.RoomsTest do
   def creatable(answer, _channel), do: answer
 
   @doc false
-  def creating(test, channel, name, by) do
-    send(test, {:created, channel, name, by})
+  def creating(test, installation, name, by) do
+    send(test, {:created, installation, name, by})
     {:ok, %Offer{agent: AgentID.new!(name, org: "acme"), description: "Answers in ##{name}."}}
   end
 
-  # A channel of its own per test, offering `offers`, and creating agents
-  # where `create?`.
+  # A workspace of a channel of its own per test, offering `offers`, and
+  # creating agents where `create?`.
   defp context(offers, create? \\ false) do
-    %Context{
+    channel = "chat-#{System.unique_integer([:positive])}"
+
+    workspace(%Context{
       host: Wardrik.Host.new(store: Wardrik.Test.store()),
-      channel: "chat-#{System.unique_integer([:positive])}",
+      channel: channel,
+      installations: Installations.Config.new([{channel, "token", Prefix.all()}]),
       offered: {__MODULE__, :offering, [offers]},
       creatable: {__MODULE__, :creatable, [create?]},
       create: {__MODULE__, :creating, [self()]}
-    }
+    })
+  end
+
+  defp workspace(context) do
+    {:ok, workspace} = Workspace.new(context, "T1")
+    workspace
   end
 
   defp books, do: %Offer{agent: AgentID.parse!("acme/books"), description: "Keeps the books."}
@@ -41,81 +54,136 @@ defmodule WardrikChannel.RoomsTest do
   test "binds a room to the one agent the channel offers, as the bot is invited" do
     context = context([books()])
 
-    assert {:bound, %Room{agent: agent, answers: :mentions}, offer} =
-             Rooms.joined(context, "C1", "books", @maria)
+    assert {:bound, %Binding{agent: agent, answers: :mentions}, offer} =
+             Rooms.joined(Room.new(context, "C1"), name: "books", by: @maria)
 
     assert agent == books().agent
     assert offer == books()
-    assert %Room{room: "C1"} = Rooms.get(context, "C1")
+    channel = context.installation.channel
 
-    assert Audit.about("rooms/#{context.channel}/C1") ==
-             [{"room.bound", %{"type" => "channel", "id" => "slack/U1", "name" => "maria"}}]
+    assert %Binding{channel: ^channel, workspace: ^channel, room: "C1"} =
+             Rooms.get(Room.new(context, "C1"))
+
+    assert Audit.about("rooms/#{channel}/C1") ==
+             [{"room.bound", %{"type" => "channel", "id" => "slack/T1/U1", "name" => "maria"}}]
   end
 
   test "answers the agents to choose among, and binds the one chosen" do
     context = context([books(), triage()])
 
-    assert Rooms.joined(context, "C1", "ops", @maria) == {:choose, [books(), triage()]}
-    assert Rooms.get(context, "C1") == nil
+    assert Rooms.joined(Room.new(context, "C1"), name: "ops", by: @maria) ==
+             {:choose, [books(), triage()]}
 
-    assert {:ok, %Room{agent: agent}, offer} = Rooms.chose(context, "C1", triage().agent, @maria)
+    assert Rooms.get(Room.new(context, "C1")) == nil
+
+    assert {:ok, %Binding{agent: agent}, offer} =
+             Rooms.chose(Room.new(context, "C1"), triage().agent, by: @maria)
+
     assert agent == triage().agent
     assert offer == triage()
 
-    assert Rooms.chose(context, "C1", AgentID.parse!("acme/other"), @maria) ==
+    assert Rooms.chose(Room.new(context, "C1"), AgentID.parse!("acme/other"), by: @maria) ==
              {:error, :not_offered}
 
-    assert Rooms.choices(context, "ops") == {:choose, [books(), triage()]}
+    assert Rooms.choices(Room.new(context, "C1"), name: "ops") == {:choose, [books(), triage()]}
   end
 
   test "offers to create an agent where none is offered and one may be, and creates it" do
     context = context([], true)
 
-    assert Rooms.joined(context, "C1", "books", @maria) == {:create, "books"}
-    assert Rooms.choices(context, "books") == {:create, "books"}
+    assert Rooms.joined(Room.new(context, "C1"), name: "books", by: @maria) == {:create, "books"}
+    assert Rooms.choices(Room.new(context, "C1"), name: "books") == {:create, "books"}
 
-    assert {:ok, %Room{agent: agent}, %Offer{description: "Answers in #books."}} =
-             Rooms.create(context, "C1", "books", @maria)
+    assert {:ok, %Binding{agent: agent}, %Offer{description: "Answers in #books."}} =
+             Rooms.create(Room.new(context, "C1"), "books", by: @maria)
 
     assert agent == AgentID.parse!("acme/books")
-    channel = context.channel
-    assert_received {:created, ^channel, "books", @maria}
+    installation = context.installation
+    assert_received {:created, ^installation, "books", @maria}
   end
 
   test "says there is nothing to offer where none is and none may be created" do
     context = context([])
 
-    assert Rooms.joined(context, "C1", "books", @maria) == :none
+    assert Rooms.joined(Room.new(context, "C1"), name: "books", by: @maria) == :none
 
     assert {:error, "Agents are not created from here" <> _} =
-             Rooms.create(context, "C1", "books", @maria)
+             Rooms.create(Room.new(context, "C1"), "books", by: @maria)
 
     refute_received {:created, _channel, _name, _by}
   end
 
   test "changes when the agent answers, and forgets the room as the bot leaves it" do
     context = context([books()])
-    {:bound, _room, _offer} = Rooms.joined(context, "C1", "books", @maria)
+    {:bound, _room, _offer} = Rooms.joined(Room.new(context, "C1"), name: "books", by: @maria)
 
-    assert {:ok, %Room{answers: :everything}, offer} =
-             Rooms.answers(context, "C1", :everything, @maria)
+    assert {:ok, %Binding{answers: :everything}, offer} =
+             Rooms.answers(Room.new(context, "C1"), :everything, by: @maria)
 
     assert offer == books()
-    assert Rooms.answers(context, "C2", :everything, @maria) == {:error, :not_bound}
 
-    assert :ok = Rooms.left(context, "C1", nil)
-    assert Rooms.get(context, "C1") == nil
-    assert :ok = Rooms.left(context, "C1", nil)
+    assert Rooms.answers(Room.new(context, "C2"), :everything, by: @maria) ==
+             {:error, :not_bound}
 
-    assert Enum.map(Audit.about("rooms/#{context.channel}/C1"), &elem(&1, 0)) ==
+    assert :ok = Rooms.left(Room.new(context, "C1"))
+    assert Rooms.get(Room.new(context, "C1")) == nil
+    assert :ok = Rooms.left(Room.new(context, "C1"))
+
+    assert Enum.map(Audit.about("rooms/#{context.installation.channel}/C1"), &elem(&1, 0)) ==
              ["room.bound", "room.bound", "room.unbound"]
   end
 
-  test "offers none, and creates none, where the host says nothing of either" do
-    context = %Context{host: Wardrik.Host.new(store: Wardrik.Test.store()), channel: "chat"}
+  test "offers none, creates none, and names no approvers where the host says nothing" do
+    workspace = %Workspace{
+      context: %Context{
+        host: Wardrik.Host.new(store: Wardrik.Test.store()),
+        channel: "chat",
+        installations: Installations.Config.new([])
+      },
+      installation: %Installation{
+        channel: "chat",
+        workspace: "T1",
+        owner: Prefix.all(),
+        token: "token"
+      }
+    }
 
-    assert Context.offered(context) == []
-    refute Context.creatable?(context)
-    assert {:error, _message} = Context.create(context, "books", nil)
+    assert Workspace.offered(workspace) == []
+    refute Workspace.creatable?(workspace)
+    assert {:error, _message} = Workspace.create(workspace, "books")
+    assert Workspace.approvers(workspace) == %WardrikChannel.Approvers.Named{names: []}
+  end
+
+  test "keeps a room of each workspace apart, of the same id" do
+    channel = "chat-#{System.unique_integer([:positive])}"
+
+    installations = %WardrikChannel.Test.Installations{
+      agent: start_supervised!({Agent, fn -> %{} end})
+    }
+
+    for workspace <- ["T1", "T2"] do
+      :ok =
+        Installations.put(installations, %Installation{
+          channel: channel,
+          workspace: workspace,
+          owner: Prefix.all(),
+          token: "token-" <> workspace
+        })
+    end
+
+    context = %Context{
+      host: Wardrik.Host.new(store: Wardrik.Test.store()),
+      channel: channel,
+      installations: installations,
+      offered: {__MODULE__, :offering, [[books()]]}
+    }
+
+    {:ok, one} = Workspace.new(context, "T1")
+    {:ok, two} = Workspace.new(context, "T2")
+    assert :error = Workspace.new(context, "T3")
+
+    {:bound, _room, _offer} = Rooms.joined(Room.new(one, "C1"), name: "books", by: @maria)
+    assert %Binding{workspace: "T1"} = Rooms.get(Room.new(one, "C1"))
+    assert Rooms.get(Room.new(two, "C1")) == nil
   end
 end

@@ -4,14 +4,16 @@ defmodule WardrikChannel.Notices do
   channel's adapter.
 
       ops: {WardrikChannel.Notices,
-        channel: {WardrikSlack, token: "xoxb-…", app_token: "xapp-…"},
+        channel: {WardrikSlack, app_token: "xapp-…"},
+        installation: installation,
         room: "#ops",
         approvers: ["@maria"]}
 
   `:channel` is the channel, as its adapter and the options its `config/1`
-  answered; the daemon finds it by the name `config.yaml` gives it. `:room` is
-  where in it, and `:approvers` whom a notice asks, as the channel names
-  people. Who may answer it is what the host's `Wardrik.Grants` says.
+  answered; the daemon finds it by the name `config.yaml` gives it.
+  `:installation` is the `WardrikChannel.Installation` of the workspace to
+  post in, `:room` where in it, and `:approvers` whom a notice asks, as the
+  channel names people. Who may answer it is what the host's `Wardrik.Grants` says.
   """
 
   @behaviour WardrikNotify
@@ -23,6 +25,7 @@ defmodule WardrikChannel.Notices do
     {adapter, channel} = Keyword.fetch!(opts, :channel)
 
     outbound = %Outbound{
+      installation: Keyword.fetch!(opts, :installation),
       room: Keyword.fetch!(opts, :room),
       body: {:notice, notice},
       approvers: Keyword.get(opts, :approvers, [])

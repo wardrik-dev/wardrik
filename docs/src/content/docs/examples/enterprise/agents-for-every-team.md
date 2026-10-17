@@ -37,12 +37,12 @@ channels:
   payments-slack:
     type: slack
     token: ${PAYMENTS_SLACK_BOT_TOKEN}
-    app_token: ${PAYMENTS_SLACK_APP_TOKEN}
+    signing_secret: ${PAYMENTS_SLACK_SIGNING_SECRET}
     approvers: ["@payments-lead"]
   growth-slack:
     type: slack
     token: ${GROWTH_SLACK_BOT_TOKEN}
-    app_token: ${GROWTH_SLACK_APP_TOKEN}
+    signing_secret: ${GROWTH_SLACK_SIGNING_SECRET}
     approvers: ["@growth-lead"]
 
 orgs:

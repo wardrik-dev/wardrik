@@ -5,9 +5,11 @@ defmodule WardrikSlack.ThreadsTest do
   alias Wardrik.Fleet
   alias Wardrik.Test.AgentRunners
   alias WardrikChannel.Context
+  alias WardrikChannel.Installations
   alias WardrikChannel.Offer
   alias WardrikChannel.Replies
   alias WardrikChannel.Rooms
+  alias WardrikChannel.Workspace
   alias WardrikSlack.Threads
 
   @req_options [plug: {Req.Test, WardrikSlack.Stub}]
@@ -64,11 +66,12 @@ defmodule WardrikSlack.ThreadsTest do
     agent = Wardrik.Test.Fleet.id("books")
     name = "slack-#{System.unique_integer([:positive])}"
     replies = :"replies-#{name}"
-    channel = [token: "xoxb-test", req_options: @req_options]
 
     channels =
-      WardrikChannel.channels([{name, {WardrikSlack, channel}}],
+      WardrikChannel.channels([{name, {WardrikSlack, req_options: @req_options}}],
         host: Wardrik.Host.new(store: Wardrik.Test.store(), grants: %Everyone{}),
+        installations:
+          Installations.Config.new([{name, "xoxb-test", Wardrik.AgentID.Prefix.all()}]),
         offered: {__MODULE__, :offering, [agent]},
         start: {__MODULE__, :starting, [runner]},
         replies: replies
@@ -76,12 +79,26 @@ defmodule WardrikSlack.ThreadsTest do
 
     start_supervised!({Replies, name: replies, channels: channels, store: Wardrik.Test.store()})
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
-    {_adapter, _options, context} = channels[name]
-    {:bound, _room, _offer} = Rooms.joined(context, "C1", "books", nil)
+    {:ok, workspace} = Workspace.new(channels[name].context, "T1")
+
+    {:bound, _room, _offer} =
+      Rooms.joined(WardrikChannel.Room.new(workspace, "C1"), name: "books")
+
     on_exit(fn -> Fleet.forget_under(AgentID.Prefix.of(agent)) end)
 
-    people = :ets.new(:people, [:public])
-    [context: context, name: :slack, bot: "UBOT", team: "T1", people: people] ++ channel
+    [
+      workspace: workspace,
+      token: "xoxb-test",
+      bot: "UBOT",
+      team: "T1",
+      req_options: @req_options
+    ]
+  end
+
+  # How the agent reads the sender, of the test's channel.
+  defp from(opts) do
+    %{channel: channel, workspace: workspace} = opts[:workspace].installation
+    "channel #{channel}/#{workspace}/U1"
   end
 
   defp message(fields) do
@@ -107,7 +124,7 @@ defmodule WardrikSlack.ThreadsTest do
   test "asks the Slack channel's agent, and answers in the thread, marking what it answered" do
     opts = bound({AgentRunners, :echo, [self(), "Two **cases**."]})
 
-    assert {:asked, agent} = Threads.message(message(%{}), opts)
+    assert {:asked, agent} = Threads.event(message(%{}), opts)
     assert agent.external_id == "C1-1.1"
 
     assert %{"user" => "U1"} = called("/api/users.info")
@@ -116,7 +133,7 @@ defmodule WardrikSlack.ThreadsTest do
              %{"channel" => "C1", "timestamp" => "1.1", "name" => "eyes"}
 
     assert_receive {:turn, turn}
-    assert {:user, "From maria (channel slack/U1):\nHow much Barolo is left?"} in turn
+    assert {:user, "From maria (#{from(opts)}):\nHow much Barolo is left?"} in turn
 
     assert %{
              "channel" => "C1",
@@ -129,7 +146,7 @@ defmodule WardrikSlack.ThreadsTest do
     assert %{"name" => "white_check_mark", "timestamp" => "1.1"} = called("/api/reactions.add")
 
     reply = message(%{"ts" => "1.2", "thread_ts" => "1.1", "text" => "And Nebbiolo?"})
-    assert Threads.message(reply, opts) == {:asked, agent}
+    assert Threads.event(reply, opts) == {:asked, agent}
     refute_received {:slack, "/api/users.info", _body}
     assert %{"timestamp" => "1.2", "name" => "eyes"} = called("/api/reactions.add")
     assert %{"thread_ts" => "1.1"} = called("/api/chat.postMessage")
@@ -148,7 +165,7 @@ defmodule WardrikSlack.ThreadsTest do
           %{"type" => "message", "subtype" => "message_deleted", "channel" => "C1"},
           %{"type" => "reaction_added"}
         ] do
-      assert Threads.message(passed, opts) == :ignored
+      assert Threads.event(passed, opts) == :ignored
     end
 
     refute_received {:slack, _path, _body}
@@ -156,9 +173,13 @@ defmodule WardrikSlack.ThreadsTest do
 
   test "says in the thread why its agent could not be asked" do
     opts = bound({AgentRunners, :echo, [self(), "Here."]})
-    opts = Keyword.update!(opts, :context, &%{&1 | start: {Context, :unstarted, []}})
 
-    assert {:error, message} = Threads.message(message(%{}), opts)
+    opts =
+      Keyword.update!(opts, :workspace, fn workspace ->
+        %{workspace | context: %{workspace.context | start: {Context, :unstarted, []}}}
+      end)
+
+    assert {:error, message} = Threads.event(message(%{}), opts)
 
     assert %{"thread_ts" => "1.1", "text" => ":warning: " <> ^message} =
              called("/api/chat.postMessage")
@@ -170,8 +191,8 @@ defmodule WardrikSlack.ThreadsTest do
     Req.Test.stub(WardrikSlack.Stub, &Req.Test.json(&1, %{ok: false, error: "user_not_found"}))
 
     opts = bound({AgentRunners, :echo, [self(), "Here."]})
-    assert {:asked, _agent} = Threads.message(message(%{}), opts)
+    assert {:asked, _agent} = Threads.event(message(%{}), opts)
     assert_receive {:turn, turn}
-    assert {:user, "From channel slack/U1:\nHow much Barolo is left?"} in turn
+    assert {:user, "From #{from(opts)}:\nHow much Barolo is left?"} in turn
   end
 end

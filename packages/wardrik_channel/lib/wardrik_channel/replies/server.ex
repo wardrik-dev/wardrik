@@ -4,10 +4,10 @@ defmodule WardrikChannel.Replies.Server do
   the log of each thread's agent, and posts what each new event asks for,
   writing down how far it has posted.
 
-  Started by `WardrikChannel.Replies.follow/4` under the supervisor
+  Started by `WardrikChannel.Replies.follow/3` under the supervisor
   `WardrikChannel.Replies` runs, which hands it the channels as it starts:
-  it keeps its own channel's adapter, options and context in memory, and
-  writes none of them down. A room whose channel is not among them does not
+  it keeps its own `WardrikChannel.Channel` in memory, and writes none of it
+  down. A room whose channel is not among them does not
   start.
   """
 
@@ -19,9 +19,10 @@ defmodule WardrikChannel.Replies.Server do
   alias Wardrik.AgentID
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
-  alias WardrikChannel.Context
+  alias WardrikChannel.Channel
   alias WardrikChannel.Outbound
   alias WardrikChannel.Replies.State
+  alias WardrikChannel.Workspace
   alias WardrikNotify.Notice
 
   @first_backoff 1_000
@@ -113,8 +114,7 @@ defmodule WardrikChannel.Replies.Server do
   end
 
   # The logs are in the store of the host the room's channel runs on.
-  defp store(%State{posting: {_adapter, _options, %Context{host: host}}}),
-    do: Wardrik.Host.store(host)
+  defp store(%State{posting: %Channel{context: context}}), do: Wardrik.Host.store(context.host)
 
   defp posted(state, thread, []), do: advance(state, thread)
 
@@ -175,17 +175,29 @@ defmodule WardrikChannel.Replies.Server do
   defp waiting?(_parked, :all), do: true
   defp waiting?({call, _prompt}, ids), do: call.id in ids
 
-  defp deliver(%State{posting: {adapter, options, context}} = state, thread, body, to \\ :room) do
-    approvers = Context.approvers(context)
+  # The workspace's installation is found as each post is made, so one taken
+  # out is posted in no more.
+  defp deliver(%State{posting: %Channel{} = channel} = state, thread, body, to \\ :room) do
+    with {:ok, workspace} <- workspace(channel, state) do
+      approvers = workspace |> Workspace.approvers() |> WardrikChannel.Approvers.asked()
 
-    outbound = %Outbound{
-      room: state.room,
-      thread: thread,
-      body: body,
-      approvers: approvers,
-      to: if(approvers == [], do: :room, else: to)
-    }
+      outbound = %Outbound{
+        installation: workspace.installation,
+        room: state.room,
+        thread: thread,
+        body: body,
+        approvers: approvers,
+        to: if(approvers == [], do: :room, else: to)
+      }
 
-    with {:ok, _posted} <- adapter.deliver(outbound, options), do: :ok
+      with {:ok, _posted} <- channel.adapter.deliver(outbound, channel.options), do: :ok
+    end
+  end
+
+  defp workspace(%Channel{context: context}, %State{workspace: workspace}) do
+    case Workspace.new(context, workspace) do
+      {:ok, workspace} -> {:ok, workspace}
+      :error -> {:error, :not_installed}
+    end
   end
 end

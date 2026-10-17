@@ -875,52 +875,71 @@ defmodule WardrikDaemon.Config do
 
   # Each channel, and the orgs whose agents it may offer.
   defp channels(channels, owners, adapters) do
-    read =
-      Enum.map(channels, fn {name, channel} ->
-        path = ["channels", name]
-        {type, settings} = Map.pop(table!(channel, path), "type")
-        {creates, settings} = Map.pop(settings, "create", true)
-        {approvers, settings} = Map.pop(settings, "approvers", [])
-        approvers = approvers(approvers, path ++ ["approvers"])
-        {admins, settings} = Map.pop(settings, "admins", [])
-        adapter = adapter!(type, path ++ ["type"], adapters)
-
-        unless is_boolean(creates),
-          do: invalid!(path ++ ["create"], "is true or false")
-
-        approvers!(admins, path ++ ["admins"])
-
-        case adapter.config(settings) do
-          {:ok, options} ->
-            {name(name),
-             %{
-               channel: {adapter, options},
-               orgs: owners("channels", name, owners),
-               creates: creates,
-               approvers: approvers,
-               admins: admins
-             }}
-
-          {:error, at, message} ->
-            invalid!(path ++ at, message)
-        end
-      end)
+    read = Enum.map(channels, fn {name, channel} -> channel(name, channel, owners, adapters) end)
 
     [
       channels: for({name, channel} <- read, do: {name, channel.channel}),
       orgs: for({name, channel} <- read, do: {name, channel.orgs}),
       creates: for({name, channel} <- read, do: {name, channel.creates}),
       approvers: for({name, channel} <- read, do: {name, channel.approvers}),
-      admins: for({name, channel} <- read, do: {name, channel.admins})
+      admins: for({name, channel} <- read, do: {name, channel.admins}),
+      installations:
+        WardrikChannel.Installations.Config.new(
+          for {name, %{token: token} = channel} <- read,
+              token != nil,
+              do: {name, token, owner(channel.orgs)}
+        )
     ]
   end
 
+  defp channel(name, channel, owners, adapters) do
+    path = ["channels", name]
+    {type, settings} = Map.pop(table!(channel, path), "type")
+    {token, settings} = Map.pop(settings, "token")
+    {creates, settings} = Map.pop(settings, "create", true)
+    {approvers, settings} = Map.pop(settings, "approvers", [])
+    approvers = approvers(approvers, path ++ ["approvers"])
+    {admins, settings} = Map.pop(settings, "admins", [])
+    adapter = adapter!(type, path ++ ["type"], adapters)
+
+    unless is_boolean(creates),
+      do: invalid!(path ++ ["create"], "is true or false")
+
+    token!(token, path ++ ["token"])
+    approvers!(admins, path ++ ["admins"])
+
+    case adapter.config(settings) do
+      {:ok, options} ->
+        {name(name),
+         %{
+           channel: {adapter, options},
+           token: token,
+           orgs: owners("channels", name, owners),
+           creates: creates,
+           approvers: approvers,
+           admins: admins
+         }}
+
+      {:error, at, message} ->
+        invalid!(path ++ at, message)
+    end
+  end
+
+  defp token!(token, path) do
+    unless is_nil(token) or (is_binary(token) and token != ""),
+      do: invalid!(path, "is the token the channel acts with, such as a bot's")
+  end
+
+  # Whom a channel's token is installed for: its one org, or every org.
+  defp owner([org]), do: Prefix.new!(org: org)
+  defp owner(_orgs), do: Prefix.all()
+
   # Who decides in a channel: anyone in it, or the people it names.
-  defp approvers("anyone", _path), do: %WardrikDaemon.Approvers.Anyone{}
+  defp approvers("anyone", _path), do: %WardrikChannel.Approvers.Anyone{}
 
   defp approvers(names, path) do
     if is_list(names) and Enum.all?(names, &is_binary/1),
-      do: %WardrikDaemon.Approvers.Named{names: names},
+      do: %WardrikChannel.Approvers.Named{names: names},
       else: invalid!(path, "is anyone, or a list of who may answer, as the channel names them")
   end
 
@@ -942,9 +961,10 @@ defmodule WardrikDaemon.Config do
     end
   end
 
-  # A notify target in a channel posts through it, as `channels` holds it.
+  # A notify target in a channel posts through it, as `channels` holds it,
+  # in the workspace its token reaches.
   defp through_channels(sections) do
-    channels = sections |> Keyword.get(WardrikChannel, []) |> Keyword.get(:channels, [])
+    channels = Keyword.get(sections, WardrikChannel, [])
 
     Enum.map(sections, fn
       {WardrikNotify, notify} ->
@@ -958,20 +978,32 @@ defmodule WardrikDaemon.Config do
 
   defp through({name, {WardrikChannel.Notices, options}}, channels) do
     named = options[:channel]
+    path = ["notify", Atom.to_string(name), "channel"]
 
-    case Enum.find(channels, fn {channel, _adapter} -> Atom.to_string(channel) == named end) do
+    case Enum.find(
+           Keyword.get(channels, :channels, []),
+           fn {channel, _adapter} -> Atom.to_string(channel) == named end
+         ) do
       {_name, channel} ->
-        {name, {WardrikChannel.Notices, Keyword.put(options, :channel, channel)}}
+        installation = installation!(channels[:installations], named, path)
+
+        {name,
+         {WardrikChannel.Notices,
+          Keyword.merge(options, channel: channel, installation: installation)}}
 
       nil ->
-        invalid!(
-          ["notify", Atom.to_string(name), "channel"],
-          "is #{named}, which config.yaml's channels does not name"
-        )
+        invalid!(path, "is #{named}, which config.yaml's channels does not name")
     end
   end
 
   defp through(target, _channels), do: target
+
+  defp installation!(installations, channel, path) do
+    case WardrikChannel.Installations.fetch(installations, channel, channel) do
+      {:ok, installation} -> installation
+      :error -> invalid!(path, "is #{channel}, which names no token to post with")
+    end
+  end
 
   # -- cluster ---------------------------------------------------------------
 

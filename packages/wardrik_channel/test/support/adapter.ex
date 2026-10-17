@@ -2,8 +2,13 @@ defmodule WardrikChannel.Test.Adapter do
   @moduledoc """
   A channel that tells the test process what it was asked to post. It
   refuses a post in `#nowhere`, and, given `:refusals`, an `Agent` holding a
-  count, refuses that many posts first.
+  count, refuses that many posts first. It answers a request with what it
+  was sent, and installs in the workspace a request's `workspace` names.
   """
+
+  alias WardrikChannel.Installation
+  alias WardrikChannel.Installations
+  alias WardrikChannel.Response
   @behaviour WardrikChannel
 
   @impl WardrikChannel
@@ -25,7 +30,34 @@ defmodule WardrikChannel.Test.Adapter do
   end
 
   @impl WardrikChannel
-  def among?(user, names, _opts), do: user in names
+  def include?(names, %WardrikChannel.Member{id: id}, _opts), do: id in names
+
+  @impl WardrikChannel
+  def request(request, opts) do
+    send(opts[:test], {:request, request, opts})
+    Response.json(200, %{path: request.path, body: request.body})
+  end
+
+  @impl WardrikChannel
+  def install_url(owner, opts),
+    do: {:ok, "https://chat.example/install?owner=#{owner}&return_to=#{opts[:return_to]}"}
+
+  @impl WardrikChannel
+  def install(owner, request, opts) do
+    context = Keyword.fetch!(opts, :context)
+
+    installation = %Installation{
+      channel: context.channel,
+      workspace: request.query["workspace"],
+      owner: owner,
+      token: "token-" <> request.query["workspace"]
+    }
+
+    case Installations.put(context.installations, installation) do
+      :ok -> Response.redirect("https://host.example/installed")
+      {:error, message} -> Response.text(409, message)
+    end
+  end
 
   defp refused?(nil), do: false
 

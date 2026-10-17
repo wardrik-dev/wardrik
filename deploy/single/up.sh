@@ -18,8 +18,9 @@
 #
 #   WARDRIK_HOST           the server, as ssh names it: root@203.0.113.7
 #   WARDRIK_DOMAIN         the customer's subdomain, which Caddy gets a certificate for
-#   WARDRIK_ENV_FILE       the customer's env file: SLACK_BOT_TOKEN, SLACK_APP_TOKEN and
-#                          the model's key. It replaces the server's on every run.
+#   WARDRIK_ENV_FILE       the customer's env file: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET
+#                          (or SLACK_APP_TOKEN, for an app on Socket Mode) and the
+#                          model's key. It replaces the server's on every run.
 #   WARDRIK_TARBALL        a release tarball to install, rather than building one
 #   WARDRIK_SSH_OPTS       more options for ssh and scp, as -o options both take:
 #                          "-o Port=2200 -o IdentityFile=~/.ssh/acme"
@@ -55,9 +56,17 @@ approvers=${WARDRIK_APPROVERS:-}
 [ -n "$domain" ] || die "set WARDRIK_DOMAIN to the name pointing at the server"
 [ -n "$env_file" ] || die "set WARDRIK_ENV_FILE to the customer's env file"
 [ -f "$env_file" ] || die "there is no env file at $env_file"
-for name in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
-  grep -q "^$name=." "$env_file" || die "$env_file has no $name; see the Slack app in docs/src/content/docs/channels/slack.md"
-done
+slack_app="see the Slack app in docs/src/content/docs/channels/slack.md"
+grep -q "^SLACK_BOT_TOKEN=." "$env_file" || die "$env_file has no SLACK_BOT_TOKEN; $slack_app"
+# Slack sends its events over HTTP, signed with the app's signing secret; an
+# app on Socket Mode, for testing, has an app-level token instead.
+if grep -q "^SLACK_SIGNING_SECRET=." "$env_file"; then
+  slack_receives='signing_secret: ${SLACK_SIGNING_SECRET}'
+elif grep -q "^SLACK_APP_TOKEN=." "$env_file"; then
+  slack_receives='app_token: ${SLACK_APP_TOKEN}'
+else
+  die "$env_file has no SLACK_SIGNING_SECRET; $slack_app"
+fi
 [ -z "$tarball" ] || [ -f "$tarball" ] || die "there is no tarball at $tarball"
 
 for command in ssh scp sha256sum; do
@@ -131,8 +140,9 @@ defaults:
   policy: careful
 
 # Where people and services reach the daemon, through Caddy: a browser comes
-# back to $domain/oauth/ when someone connects an account, and a webhook
-# trigger is sent requests under $domain/v1/hooks/.
+# back to $domain/oauth/ when someone connects an account, a webhook trigger is
+# sent requests under $domain/v1/hooks/, and a channel under
+# $domain/v1/channels/.
 base_url: https://$domain
 
 # The daemon listens for the browser once a provider is named: each account
@@ -146,7 +156,7 @@ channels:
   slack:
     type: slack
     token: \${SLACK_BOT_TOKEN}
-    app_token: \${SLACK_APP_TOKEN}
+    $slack_receives
 EOF
   if [ "$approvers" = anyone ]; then
     printf '    approvers: anyone\n'
@@ -177,7 +187,8 @@ remote "wardrik@$server" bash -s -- "$name" <"$here/user.sh"
 cat <<EOF
 
 The daemon runs on $server, as wardrik, behind https://$domain: /oauth/ for accounts
-connected through a browser, and /v1/hooks/ for webhook triggers.
+connected through a browser, /v1/hooks/ for webhook triggers, and /v1/channels/ for
+what Slack sends over HTTP.
 
   ssh wardrik@$server .local/bin/wardrik status     what runs
   ssh wardrik@$server .local/bin/wardrik doctor     what it reads, and whether $domain reaches it

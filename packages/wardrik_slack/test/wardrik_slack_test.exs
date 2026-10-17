@@ -7,26 +7,53 @@ defmodule WardrikSlackTest do
     assert WardrikChannel.discover()["slack"] == WardrikSlack
   end
 
-  test "reads a channel's tokens, and says which does not read" do
-    assert WardrikSlack.config(%{"token" => "xoxb-1"}) == {:ok, [token: "xoxb-1"]}
+  test "reads a channel's settings, and says which does not read" do
+    assert WardrikSlack.config(%{}) == {:ok, []}
+    assert WardrikSlack.config(%{"app_token" => "xapp-1"}) == {:ok, [app_token: "xapp-1"]}
 
-    assert WardrikSlack.config(%{"token" => "xoxb-1", "app_token" => "xapp-1"}) ==
-             {:ok, [token: "xoxb-1", app_token: "xapp-1"]}
+    assert {:ok, options} =
+             WardrikSlack.config(%{
+               "signing_secret" => "s",
+               "client_id" => "1.2",
+               "client_secret" => "c"
+             })
 
-    assert {:error, ["token"], "is required" <> _} = WardrikSlack.config(%{})
+    assert Enum.sort(options) == [client_id: "1.2", client_secret: "c", signing_secret: "s"]
 
-    assert {:error, ["app_token"], _why} =
-             WardrikSlack.config(%{"token" => "x", "app_token" => 1})
+    assert {:error, ["app_token"], "is the app's app-level token" <> _} =
+             WardrikSlack.config(%{"app_token" => 1})
+
+    assert {:error, ["client_secret"], "is required with client_id" <> _} =
+             WardrikSlack.config(%{"client_id" => "1.2"})
+
+    assert {:error, ["client_id"], "is required with client_secret" <> _} =
+             WardrikSlack.config(%{"client_secret" => "c"})
 
     assert {:error, ["channel"], "is not a setting" <> _} =
-             WardrikSlack.config(%{"token" => "x", "channel" => "#ops"})
+             WardrikSlack.config(%{"channel" => "#ops"})
   end
 
   test "connects only a channel with an app-level token" do
     assert %{id: {WardrikSlack.Socket, :slack}} =
-             WardrikSlack.child_spec(name: :slack, token: "x")
+             WardrikSlack.child_spec(name: :slack, signing_secret: "s")
 
-    assert WardrikSlack.Socket.start_link(name: :slack, token: "x") == :ignore
+    assert WardrikSlack.Socket.start_link([]) == :ignore
+  end
+
+  test "asks Slack once which bot a workspace's installation posts as" do
+    test = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(test, {:slack, conn.request_path})
+      Req.Test.json(conn, %{ok: true, user_id: "UBOT"})
+    end)
+
+    installation = %{WardrikSlack.Test.installation() | workspace: "T#{System.unique_integer()}"}
+
+    assert WardrikSlack.bot(installation, @req_options) == {:ok, "UBOT"}
+    assert_receive {:slack, "/api/auth.test"}
+    assert WardrikSlack.bot(installation, @req_options) == {:ok, "UBOT"}
+    refute_receive {:slack, _path}
   end
 
   test "answers Slack's reply, or why the call failed" do
@@ -59,12 +86,16 @@ defmodule WardrikSlackTest do
       Req.Test.json(conn, %{ok: true, ts: "9.9"})
     end)
 
-    [token: "xoxb-1", req_options: @req_options]
+    [req_options: @req_options]
   end
+
+  defp outbound(fields),
+    do:
+      struct!(WardrikChannel.Outbound, [installation: WardrikSlack.Test.installation()] ++ fields)
 
   test "posts an answer in its thread, saying so where it answered nothing, and clipped to fit" do
     opts = posting()
-    nothing = %WardrikChannel.Outbound{room: "C1", thread: "1.1", body: {:reply, "", []}}
+    nothing = outbound(room: "C1", thread: "1.1", body: {:reply, "", []})
 
     assert {:ok, _posted} = WardrikSlack.deliver(nothing, opts)
 
@@ -91,7 +122,7 @@ defmodule WardrikSlackTest do
       reason: "x"
     }
 
-    failed = %WardrikChannel.Outbound{room: "C1", thread: "1.1", body: {:notice, notice}}
+    failed = outbound(room: "C1", thread: "1.1", body: {:notice, notice})
 
     assert {:ok, _posted} = WardrikSlack.deliver(failed, opts)
 

@@ -6,18 +6,21 @@ sidebar:
   label: Overview
 ---
 
-A *channel* is a chat app your agents are reached through, such as one Slack workspace. A *room* is a
-place in it, such as a Slack channel. Invite the bot into a room, and an agent answers there.
+A *channel* is a chat app your agents are reached through, such as a Slack app in your workspace. A
+*room* is a place in it, such as a Slack channel. Invite the bot into a room, and an agent answers
+there.
 
 ```yaml title="~/.config/wardrik/config.yaml"
 channels:
   slack:
     type: slack
     token: ${SLACK_BOT_TOKEN}
-    app_token: ${SLACK_APP_TOKEN}
+    signing_secret: ${SLACK_SIGNING_SECRET}
 ```
 
 The name, `slack`, is yours. `type` is the kind of channel; today that's [Slack](/channels/slack/).
+`token` is what it acts with in your workspace. What the chat app sends reaches the daemon at
+`/v1/channels/slack/`, so the daemon needs a [public address](/run/public-address/).
 Every key is in [config.yaml › channels](/reference/config/#channels).
 
 ## Which agents a channel offers
@@ -34,7 +37,7 @@ agents, list it under that org in `orgs`, or under `"*"` for every org:
 
 ```yaml
 channels:
-  globex-slack: {type: slack, token: "${GLOBEX_SLACK_BOT_TOKEN}", app_token: "${GLOBEX_SLACK_APP_TOKEN}"}
+  globex-slack: {type: slack, token: "${GLOBEX_SLACK_BOT_TOKEN}", signing_secret: "${GLOBEX_SLACK_SIGNING_SECRET}"}
 
 orgs:
   globex:

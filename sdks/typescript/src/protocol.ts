@@ -88,7 +88,7 @@ export interface Cost {
  */
 export interface Principal {
   /**
-   * shell, ssh, terminal, channel, oauth, token, webhook, agent or user. A channel's id is the channel's name and the id it knows them by, as slack/U024BE7LH.
+   * shell, ssh, terminal, channel, oauth, token, webhook, agent or user. A channel's id is the channel's name, its workspace and the id it knows them by there, as slack/T0123/U024BE7LH.
    */
   type: string;
   id: string;

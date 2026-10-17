@@ -86,6 +86,7 @@ defmodule WardrikDaemon.Agents do
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.Fleet
+  alias WardrikChannel.Installation
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.PolicyFile
   alias WardrikDefinition.Kept
@@ -170,13 +171,13 @@ defmodule WardrikDaemon.Agents do
   def defaults(%__MODULE__{context: context}), do: context.defaults
 
   @doc """
-  The agents offered in the rooms of the channel `channel`, as
-  `WardrikChannel.Context` asks: those whose definitions name the channel,
-  of the orgs `config.yaml` has the channel serve, each with its
-  `description`. Sorted by ID.
+  The agents offered in the rooms of the channel installed as
+  `installation`, as `WardrikChannel.Context` asks: those whose definitions
+  name the channel, of the orgs `config.yaml` has the channel serve, each
+  with its `description`. Sorted by ID.
   """
-  @spec offered(t(), String.t()) :: [WardrikChannel.Offer.t()]
-  def offered(%__MODULE__{store: store} = agents, channel) when is_binary(channel) do
+  @spec offered(t(), Installation.t()) :: [WardrikChannel.Offer.t()]
+  def offered(%__MODULE__{store: store} = agents, %Installation{channel: channel}) do
     orgs = channel_setting(agents, :orgs, channel, [])
 
     for %Record{id: id, fields: fields} <- Record.all(store),
@@ -188,35 +189,40 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  Whether someone in a room of the channel `channel` may create an agent to
-  answer there: where the channel's `create` is not `false`, and
-  `config.yaml`'s `defaults`, which such an agent starts from, name a policy
-  its calls are held to.
+  Whether someone in a room of the channel installed as `installation` may
+  create an agent to answer there: where the channel's `create` is not
+  `false`, and `config.yaml`'s `defaults`, which such an agent starts from,
+  name a policy its calls are held to.
   """
-  @spec creatable?(t(), String.t()) :: boolean()
-  def creatable?(agents, channel) when is_binary(channel),
+  @spec creatable?(t(), Installation.t()) :: boolean()
+  def creatable?(agents, %Installation{channel: channel}),
     do:
       channel_setting(agents, :creates, channel, true) and is_map_key(defaults(agents), "policy")
 
   @doc """
-  Creates an agent for the `:room` of the channel `channel`, as `:by`
-  asked: named after the room, in the channel's org, from `config.yaml`'s
-  `defaults`, offered in the channel. It is kept as a definition the HTTP API
-  sent is, and recorded in `Wardrik.Audit` as defined by `:by`.
+  Creates an agent for the room `room` of the channel installed as
+  `installation`, as `by` asked: named after the room, in the channel's
+  org, from `config.yaml`'s `defaults`, offered in the channel. It is kept
+  as a definition the HTTP API sent is, and recorded in `Wardrik.Audit` as
+  defined by `by`.
   """
-  @spec create_in(t(), String.t(), room: String.t(), by: Wardrik.Principal.t() | nil) ::
+  @spec create_in(t(), Installation.t(), String.t(), Wardrik.Principal.t() | nil) ::
           {:ok, WardrikChannel.Offer.t()} | {:error, String.t()}
-  def create_in(%__MODULE__{store: store} = agents, channel, opts) when is_binary(channel) do
-    room = Keyword.fetch!(opts, :room)
+  def create_in(
+        %__MODULE__{store: store} = agents,
+        %Installation{channel: channel} = installation,
+        room,
+        by
+      ) do
     description = "Answers in ##{room}."
     fields = Map.merge(defaults(agents), %{"channels" => [channel], "description" => description})
 
-    with :ok <- creates(agents, channel),
+    with :ok <- creates(agents, installation),
          {:ok, id} <- created_id(agents, room, channel),
          :ok <- unkept(store, id, channel),
          {:ok, spec} <- defined(agents, id, fields, :defaults),
          {:ok, _pid} <- Fleet.put(spec) do
-      :ok = Wardrik.Audit.record(agents.audit, {:agent_defined, id}, by: opts[:by])
+      :ok = Wardrik.Audit.record(agents.audit, {:agent_defined, id}, by: by)
       {:ok, %WardrikChannel.Offer{agent: id, description: description}}
     else
       {:error, :conflict, message} -> {:error, message}
@@ -226,11 +232,12 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  Starts `agent`, which answers in a thread of the channel `channel`, on the
-  spec its definition writes, where it is not running.
+  Starts `agent`, which answers in a thread of the channel installed as
+  `installation`, on the spec its definition writes, where it is not
+  running.
   """
-  @spec start(t(), String.t(), AgentID.t()) :: {:ok, pid()} | {:error, String.t()}
-  def start(agents, channel, %AgentID{} = agent) when is_binary(channel) do
+  @spec start(t(), Installation.t(), AgentID.t()) :: {:ok, pid()} | {:error, String.t()}
+  def start(agents, %Installation{}, %AgentID{} = agent) do
     with {:ok, options} <- options(agents, agent) do
       case Fleet.spawn(agent, options) do
         {:ok, pid} -> {:ok, pid}
@@ -239,15 +246,22 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  @doc "Who decides what agents wait on in the channel `channel`, as its `approvers` say."
-  @spec approvers(t(), String.t()) :: WardrikDaemon.Approvers.t()
-  def approvers(agents, channel) when is_binary(channel),
-    do: channel_setting(agents, :approvers, channel, %WardrikDaemon.Approvers.Named{names: []})
+  @doc """
+  Who decides what agents wait on in the channel installed as
+  `installation`, as its `approvers` say.
+  """
+  @spec approvers(t(), Installation.t()) :: WardrikChannel.Approvers.t()
+  def approvers(agents, %Installation{channel: channel}),
+    do: channel_setting(agents, :approvers, channel, %WardrikChannel.Approvers.Named{names: []})
 
-  @doc "Whom to ask directly what an agent asks in the channel `channel`'s threads, as it names people."
-  @spec asked(t(), String.t()) :: [String.t()]
-  def asked(agents, channel) when is_binary(channel),
-    do: WardrikDaemon.Approvers.asked(approvers(agents, channel))
+  @doc "The installation of the channel `channel`, in the workspace its token reaches."
+  @spec installation(t(), String.t()) :: {:ok, Installation.t()} | :error
+  def installation(agents, channel) when is_binary(channel) do
+    agents.config
+    |> WardrikDaemon.Config.section(WardrikChannel)
+    |> Keyword.fetch!(:installations)
+    |> WardrikChannel.Installations.fetch(channel, channel)
+  end
 
   @doc "Who may change the agents of the channel `channel`'s orgs, as it names people."
   @spec admins(t(), String.t()) :: [String.t()]
@@ -269,8 +283,8 @@ defmodule WardrikDaemon.Agents do
          do: {:ok, WardrikPolicy.hooks(%{policy | name: "ceiling/" <> name})}
   end
 
-  defp creates(agents, channel) do
-    if creatable?(agents, channel),
+  defp creates(agents, installation) do
+    if creatable?(agents, installation),
       do: :ok,
       else: {:error, "Agents are not created from here; whoever runs Wardrik can offer one."}
   end

@@ -7,7 +7,7 @@ defmodule WardrikSlack.NoticesTest do
   alias WardrikNotify.Notice
 
   @req_options [plug: {Req.Test, WardrikSlack.Stub}]
-  @channel [token: "xoxb-test", app_token: "xapp-test", req_options: @req_options]
+  @channel [app_token: "xapp-test", req_options: @req_options]
 
   setup do
     test = self()
@@ -24,7 +24,12 @@ defmodule WardrikSlack.NoticesTest do
   defp post(notice, channel \\ @channel, approvers \\ []),
     do:
       WardrikSlack.deliver(
-        %Outbound{room: "#ops", body: {:notice, notice}, approvers: approvers},
+        %Outbound{
+          installation: WardrikSlack.Test.installation(),
+          room: "#ops",
+          body: {:notice, notice},
+          approvers: approvers
+        },
         channel
       )
 
@@ -86,8 +91,8 @@ defmodule WardrikSlack.NoticesTest do
                "It has read content from outside and content labelled books"
     end
 
-    test "says how to answer from a shell when there is no app token" do
-      assert {:ok, _reply} = post(parked_notice(), token: "xoxb-test", req_options: @req_options)
+    test "says how to answer from a shell where nothing posted can be answered from Slack" do
+      assert {:ok, _reply} = post(parked_notice(), req_options: @req_options)
 
       assert_receive {:slack, _host, "/api/chat.postMessage", message}
       refute Enum.any?(message["blocks"], &(&1["type"] in ["actions", "input"]))
@@ -154,9 +159,9 @@ defmodule WardrikSlack.NoticesTest do
       refute Enum.any?(message["blocks"], &(&1["type"] == "input"))
     end
 
-    test "says to find the link with wardrik parked where there is no app token" do
+    test "says to find the link with wardrik parked where nothing can be answered from Slack" do
       assert {:ok, _reply} =
-               post(connecting_notice(), token: "xoxb-test", req_options: @req_options)
+               post(connecting_notice(), req_options: @req_options)
 
       assert_receive {:slack, _host, _path, message}
       assert JSON.encode!(message) =~ "Find the link with `wardrik parked`"

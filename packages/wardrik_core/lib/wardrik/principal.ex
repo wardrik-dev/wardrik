@@ -3,7 +3,7 @@ defmodule Wardrik.Principal do
   Who did something, and how they were known: the person or system behind a
   decision.
 
-      Wardrik.Principal.new(:channel, "slack/U024BE7LH", name: "jon")
+      Wardrik.Principal.new(:channel, "slack/T0123/U024BE7LH", name: "jon")
 
   A principal is built here and read with `type/1`, `id/1` and `name/1`, and
   what it is made of is its own business: a surface that knows its callers
@@ -14,9 +14,9 @@ defmodule Wardrik.Principal do
     * `:shell` - an operating system account on the node, through `bin/wardrik`
     * `:ssh` - an SSH session to the TUI, by the name the client connected as
     * `:terminal` - a TUI started in a terminal on the node
-    * `:channel` - someone in a chat channel, by the channel's name and the
-      id the channel knows them by, as `slack/U024BE7LH`; see
-      `WardrikChannel.principal/3`
+    * `:channel` - someone in a chat channel, by the channel's name, the
+      workspace it is installed in, and the id the channel knows them by
+      there, as `slack/T0123/U024BE7LH`; see `WardrikChannel.principal/3`
     * `:oauth` - an authorization flow that finished, by the provider it was
       for: whoever completed it is not known
     * `:token` - a caller of the HTTP API, by the id of the token it presented

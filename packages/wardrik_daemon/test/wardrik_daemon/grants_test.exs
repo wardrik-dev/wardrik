@@ -18,16 +18,29 @@ defmodule WardrikDaemon.GrantsTest do
   # The daemon's grants, read under the sections the test has put.
   defp grants, do: Wardrik.Host.grants(Host.host(Host.agents()))
 
-  # The test channel knows people by their id alone.
+  # The test channel knows people by their id alone, in the one workspace
+  # its token reaches.
   defp channel(settings) do
     Host.put_section(
       WardrikChannel,
-      Keyword.merge([channels: [chat: {WardrikDaemon.Test.Channel, []}]], settings)
+      Keyword.merge(
+        [
+          channels: [chat: {WardrikDaemon.Test.Channel, []}],
+          installations: WardrikChannel.Installations.Config.new([{:chat, "token", Prefix.all()}])
+        ],
+        settings
+      )
     )
   end
 
-  defp in_chat(user),
-    do: Grants.grants(grants(), WardrikChannel.principal(:chat, user, nil))
+  defp in_chat(user) do
+    {:ok, installation} = Agents.installation(Host.agents(), "chat")
+
+    Grants.grants(
+      grants(),
+      WardrikChannel.principal(WardrikChannel.Member.new(installation, user))
+    )
+  end
 
   defp can(grants), do: Enum.map(grants, &{to_string(&1.scope), &1.can})
 
@@ -66,13 +79,13 @@ defmodule WardrikDaemon.GrantsTest do
              {"globex/", [:read, :message]}
            ]
 
-    channel(orgs: [chat: :all], approvers: [chat: %WardrikDaemon.Approvers.Named{names: ["U2"]}])
+    channel(orgs: [chat: :all], approvers: [chat: %WardrikChannel.Approvers.Named{names: ["U2"]}])
     assert can(in_chat("U1")) == [{"", [:read, :message]}]
     assert can(in_chat("U2")) == [{"", [:read, :message, :decide]}]
   end
 
   test "with approvers: anyone, everyone in the channel decides" do
-    channel(orgs: [chat: ["acme"]], approvers: [chat: %WardrikDaemon.Approvers.Anyone{}])
+    channel(orgs: [chat: ["acme"]], approvers: [chat: %WardrikChannel.Approvers.Anyone{}])
     assert can(in_chat("U1")) == [{"acme/", [:read, :message, :decide]}]
   end
 
@@ -106,7 +119,7 @@ defmodule WardrikDaemon.GrantsTest do
   test "an admin defines only under the policy the defaults name", %{dir: dir} do
     channel(
       orgs: [chat: ["acme"]],
-      approvers: [chat: %WardrikDaemon.Approvers.Named{names: ["U2"]}],
+      approvers: [chat: %WardrikChannel.Approvers.Named{names: ["U2"]}],
       admins: [chat: ["U1"]]
     )
 
