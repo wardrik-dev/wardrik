@@ -173,7 +173,10 @@ defmodule WardrikSlack do
 
   defp post_out(%Outbound{body: {:notice, notice}} = outbound, opts) do
     notice
-    |> WardrikSlack.Notices.message(buttons: answered?(opts))
+    |> WardrikSlack.Notices.message(
+      buttons: answered?(opts),
+      installation: outbound.installation
+    )
     |> posted(outbound, opts)
   end
 
@@ -189,9 +192,12 @@ defmodule WardrikSlack do
     false
   end
 
-  defp asked?({approver, {:ok, member}}, notice, from, _outbound, opts) do
+  defp asked?({approver, {:ok, member}}, notice, from, outbound, opts) do
     %{text: text, blocks: [heading | rest]} =
-      WardrikSlack.Notices.message(notice, buttons: answered?(opts))
+      WardrikSlack.Notices.message(notice,
+        buttons: answered?(opts),
+        installation: outbound.installation
+      )
 
     message = %{text: text, blocks: [heading, from | rest], channel: member}
 

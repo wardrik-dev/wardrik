@@ -161,6 +161,23 @@ defmodule WardrikSlack.RoomsTest do
              Audit.about("rooms/#{channel(opts)}/C1")
   end
 
+  test "names each agent as a workspace installed for an org reads it, its value whole" do
+    org =
+      Keyword.update!(
+        opts([books(), triage()]),
+        :workspace,
+        &put_in(&1.installation.owner, Wardrik.AgentID.Prefix.new!(org: "acme"))
+      )
+
+    assert :ok = Rooms.event(joined("C1"), org)
+    [_question, first | _] = posted()["blocks"]
+    assert first["text"]["text"] == "*books*\nKeeps the books."
+    assert first["accessory"]["value"] == "acme/books"
+
+    assert :ok = Rooms.answer(press("C1", "wardrik_room_agent", "acme/triage"), org)
+    assert %{"text" => ":wave: *triage* answers here now."} = replaced()
+  end
+
   test "offers a menu, with what each is for, where there are many" do
     offers =
       for n <- 1..6, do: %Offer{agent: AgentID.parse!("acme/agent#{n}"), description: "No. #{n}"}

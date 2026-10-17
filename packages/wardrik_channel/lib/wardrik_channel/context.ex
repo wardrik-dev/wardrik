@@ -87,7 +87,8 @@ defmodule WardrikChannel.Context do
 
   @doc false
   @spec unstarted(Installation.t(), AgentID.t()) :: {:error, String.t()}
-  def unstarted(_installation, agent), do: {:error, "#{agent} is not running."}
+  def unstarted(installation, agent),
+    do: {:error, "#{Installation.shown(installation, agent)} is not running."}
 
   @doc false
   @spec nobody(Installation.t()) :: Approvers.Named.t()

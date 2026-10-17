@@ -21,6 +21,7 @@ defmodule WardrikSlack.Rooms do
 
   alias Wardrik.AgentID
   alias WardrikChannel.Binding
+  alias WardrikChannel.Installation
   alias WardrikChannel.Member
   alias WardrikChannel.Offer
   alias WardrikChannel.Room
@@ -129,7 +130,7 @@ defmodule WardrikSlack.Rooms do
   @spec message(WardrikChannel.Rooms.shown() | :stopped, Workspace.t(), keyword()) ::
           %{text: String.t(), blocks: [map()]}
   def message({:bound, %Binding{agent: agent, answers: answers}, offer}, workspace, opts) do
-    text = ":wave: *#{agent}* answers here now."
+    text = ":wave: *#{Installation.shown(workspace.installation, agent)}* answers here now."
 
     {how, toggle} =
       if answers == :everything,
@@ -152,9 +153,9 @@ defmodule WardrikSlack.Rooms do
     }
   end
 
-  def message({:choose, offers}, _workspace, _opts) do
+  def message({:choose, offers}, workspace, _opts) do
     text = "Which agent should answer here? It answers when mentioned; you can change that after."
-    %{text: text, blocks: [section(text) | choose(offers)]}
+    %{text: text, blocks: [section(text) | choose(offers, workspace.installation)]}
   end
 
   def message({:create, name}, workspace, _opts) do
@@ -193,17 +194,24 @@ defmodule WardrikSlack.Rooms do
 
   defp described(_offer), do: []
 
-  defp choose(offers) when length(offers) <= @max_buttons do
+  # Each agent is written as the workspace reads it, and its button or
+  # option carries its whole ID.
+  defp choose(offers, installation) when length(offers) <= @max_buttons do
     for %Offer{agent: agent, description: description} <- offers do
-      line = if description, do: "*#{agent}*\n#{description}", else: "*#{agent}*"
+      name = Installation.shown(installation, agent)
+      line = if description, do: "*#{name}*\n#{description}", else: "*#{name}*"
       Map.put(section(line), :accessory, button("Use", "wardrik_room_agent", to_string(agent)))
     end
   end
 
-  defp choose(offers) do
+  defp choose(offers, installation) do
     options =
       for %Offer{agent: agent, description: description} <- offers do
-        option = %{text: plain(to_string(agent)), value: to_string(agent)}
+        option = %{
+          text: plain(Installation.shown(installation, agent)),
+          value: to_string(agent)
+        }
+
         if description, do: Map.put(option, :description, plain(clip(description))), else: option
       end
 
