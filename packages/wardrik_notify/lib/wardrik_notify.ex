@@ -27,7 +27,9 @@ defmodule WardrikNotify do
 
       {WardrikNotify.Supervisor,
        targets: [
-         ops: {WardrikChannel.Notices, channel: {WardrikSlack, token: "xoxb-…"}, room: "#ops"},
+         ops:
+           {WardrikChannel.Notices,
+            channel: {WardrikSlack, []}, installation: installation, room: "#ops"},
          pager: {MyApp.Pager, opts}
        ]}
 

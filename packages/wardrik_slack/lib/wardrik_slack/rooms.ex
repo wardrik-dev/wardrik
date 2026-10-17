@@ -16,31 +16,29 @@ defmodule WardrikSlack.Rooms do
 
   Taking the bot out of the Slack channel unbinds it. Whoever invited the
   bot, chose, or pressed is who each change is recorded as made by, as a
-  `:slack` principal.
+  principal of the workspace.
   """
 
   alias Wardrik.AgentID
-  alias WardrikChannel.Context
   alias WardrikChannel.Offer
   alias WardrikChannel.Room
+  alias WardrikChannel.Workspace
 
   @max_buttons 5
 
   @doc """
   Acts on an event Slack sent: the bot invited into a Slack channel, or taken
-  out of one. Others are passed over.
-
-  `opts` are the channel's: `:context`, `:bot`, the bot's user id, `:token`
-  and `:req_options`.
+  out of one. Others are passed over. `opts` are as `WardrikSlack.Dispatch`
+  hands them on.
   """
   @spec event(map(), keyword()) :: :ok | :ignored | {:error, term()}
   def event(%{"type" => "member_joined_channel", "user" => bot, "channel" => room} = event, opts) do
     if bot == opts[:bot] do
-      context = Keyword.fetch!(opts, :context)
+      workspace = Keyword.fetch!(opts, :workspace)
 
-      context
+      workspace
       |> WardrikChannel.Rooms.joined(room, name(room, opts), sender(event["inviter"], opts))
-      |> message(context, opts)
+      |> message(workspace, opts)
       |> post(room, opts)
     else
       :ignored
@@ -50,7 +48,7 @@ defmodule WardrikSlack.Rooms do
   def event(%{"type" => type, "channel" => room} = event, opts)
       when type in ["channel_left", "group_left"] do
     WardrikChannel.Rooms.left(
-      Keyword.fetch!(opts, :context),
+      Keyword.fetch!(opts, :workspace),
       room,
       sender(event["actor_id"], opts)
     )
@@ -68,16 +66,16 @@ defmodule WardrikSlack.Rooms do
         opts
       )
       when action in ["agent", "answers", "create", "more"] do
-    context = Keyword.fetch!(opts, :context)
+    workspace = Keyword.fetch!(opts, :workspace)
     %{"id" => room} = channel = Map.get(payload, "channel", %{})
     user = Map.get(payload, "user", %{})
     by = sender(user["id"], opts, user["username"] || user["name"])
     name = channel["name"] || room
 
     reply =
-      case act(action, value(pressed), context, {room, name}, by) do
+      case act(action, value(pressed), workspace, {room, name}, by) do
         {:error, message} when is_binary(message) -> WardrikSlack.ephemeral(message)
-        shown -> Map.put(message(shown, context, opts), :replace_original, true)
+        shown -> Map.put(message(shown, workspace, opts), :replace_original, true)
       end
 
     WardrikSlack.respond(payload["response_url"], reply, Keyword.get(opts, :req_options, []))
@@ -85,9 +83,9 @@ defmodule WardrikSlack.Rooms do
 
   def answer(_payload, _opts), do: :ignored
 
-  defp act("agent", text, context, {room, _name}, by) do
+  defp act("agent", text, workspace, {room, _name}, by) do
     with {:ok, agent} <- AgentID.parse(to_string(text)),
-         {:ok, bound, offer} <- WardrikChannel.Rooms.chose(context, room, agent, by) do
+         {:ok, bound, offer} <- WardrikChannel.Rooms.chose(workspace, room, agent, by) do
       {:bound, bound, offer}
     else
       {:error, :not_offered} -> {:error, "That agent is no longer offered here."}
@@ -95,27 +93,28 @@ defmodule WardrikSlack.Rooms do
     end
   end
 
-  defp act("answers", answers, context, {room, name}, by) do
+  defp act("answers", answers, workspace, {room, name}, by) do
     answers = if answers == "everything", do: :everything, else: :mentions
 
-    case WardrikChannel.Rooms.answers(context, room, answers, by) do
+    case WardrikChannel.Rooms.answers(workspace, room, answers, by) do
       {:ok, bound, offer} -> {:bound, bound, offer}
-      {:error, :not_bound} -> WardrikChannel.Rooms.choices(context, name)
+      {:error, :not_bound} -> WardrikChannel.Rooms.choices(workspace, name)
     end
   end
 
-  defp act("create", name, context, {room, _name}, by) do
-    with {:ok, bound, offer} <- WardrikChannel.Rooms.create(context, room, to_string(name), by),
+  defp act("create", name, workspace, {room, _name}, by) do
+    with {:ok, bound, offer} <-
+           WardrikChannel.Rooms.create(workspace, room, to_string(name), by),
          do: {:bound, bound, offer}
   end
 
-  defp act("more", "stop", context, {room, _name}, by) do
-    :ok = WardrikChannel.Rooms.left(context, room, by)
+  defp act("more", "stop", workspace, {room, _name}, by) do
+    :ok = WardrikChannel.Rooms.left(workspace, room, by)
     :stopped
   end
 
-  defp act("more", _choose, context, {_room, name}, _by),
-    do: WardrikChannel.Rooms.choices(context, name)
+  defp act("more", _choose, workspace, {_room, name}, _by),
+    do: WardrikChannel.Rooms.choices(workspace, name)
 
   # A button carries its value; a menu, the option chosen.
   defp value(%{"value" => value}), do: value
@@ -125,9 +124,9 @@ defmodule WardrikSlack.Rooms do
   # -- messages --------------------------------------------------------------
 
   @doc false
-  @spec message(WardrikChannel.Rooms.shown() | :stopped, WardrikChannel.Context.t(), keyword()) ::
+  @spec message(WardrikChannel.Rooms.shown() | :stopped, Workspace.t(), keyword()) ::
           %{text: String.t(), blocks: [map()]}
-  def message({:bound, %Room{agent: agent, answers: answers}, offer}, context, opts) do
+  def message({:bound, %Room{agent: agent, answers: answers}, offer}, workspace, opts) do
     text = ":wave: *#{agent}* answers here now."
 
     {how, toggle} =
@@ -145,18 +144,18 @@ defmodule WardrikSlack.Rooms do
         [section(text)] ++
           described(offer) ++
           [
-            section(how <> " " <> approving(Context.approvers(context))),
+            section(how <> " " <> approving(asked(workspace))),
             WardrikSlack.actions("wardrik_room", [toggle, more()])
           ]
     }
   end
 
-  def message({:choose, offers}, _context, _opts) do
+  def message({:choose, offers}, _workspace, _opts) do
     text = "Which agent should answer here? It answers when mentioned; you can change that after."
     %{text: text, blocks: [section(text) | choose(offers)]}
   end
 
-  def message({:create, name}, context, _opts) do
+  def message({:create, name}, workspace, _opts) do
     text = "No agent answers in Slack here yet."
 
     %{
@@ -169,22 +168,22 @@ defmodule WardrikSlack.Rooms do
         context_line(
           "It starts from this deployment's defaults, and answers when mentioned. Whoever runs " <>
             "Wardrik can change what it does later, or offer an agent they have here by adding " <>
-            "`channels: [#{context.channel}]` to its file."
+            "`channels: [#{workspace.context.channel}]` to its file."
         )
       ]
     }
   end
 
-  def message(:none, context, _opts) do
+  def message(:none, workspace, _opts) do
     text =
       "No agent answers in Slack here yet. Whoever runs Wardrik can offer one by adding " <>
-        "`channels: [#{context.channel}]` to its agent file."
+        "`channels: [#{workspace.context.channel}]` to its agent file."
 
     look_again = button("Look again", "wardrik_room_more", "choose")
     %{text: text, blocks: [section(text), WardrikSlack.actions("wardrik_room", [look_again])]}
   end
 
-  def message(:stopped, _context, _opts) do
+  def message(:stopped, _workspace, _opts) do
     text = "No agent answers here now."
     choose = button("Choose an agent", "wardrik_room_more", "choose")
     %{text: text, blocks: [section(text), WardrikSlack.actions("wardrik_room", [choose])]}
@@ -273,7 +272,12 @@ defmodule WardrikSlack.Rooms do
 
   defp sender(id, opts, name \\ nil)
   defp sender(nil, _opts, _name), do: nil
-  defp sender(id, opts, name), do: WardrikChannel.principal(Keyword.fetch!(opts, :name), id, name)
+
+  defp sender(id, opts, name),
+    do: WardrikChannel.principal(Keyword.fetch!(opts, :workspace).installation, id, name)
+
+  defp asked(workspace),
+    do: workspace |> Workspace.approvers() |> WardrikChannel.Approvers.asked()
 
   defp approving([]), do: "A call that needs approval waits here for someone to approve it."
 

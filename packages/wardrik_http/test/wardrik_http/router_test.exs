@@ -1788,6 +1788,40 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
+  describe "a chat channel's requests" do
+    @doc false
+    def answering(test, request) do
+      send(test, {:channel, request})
+      %{status: 200, headers: [{"content-type", "text/plain"}], body: "taken"}
+    end
+
+    test "hands what the medium sends to its channel, as it was sent, and sends back its answer",
+         %{api: api} do
+      api = listener(api, channels: %{"chat" => {__MODULE__, :answering, [self()]}})
+
+      assert {:ok, %{status: 200, body: "taken"}} =
+               Req.post(Req.merge(api, auth: nil),
+                 url: "/v1/channels/chat/events?retry=1",
+                 headers: [{"x-signature", "v0=abc"}, {"content-type", "application/json"}],
+                 body: ~s({"a": 1})
+               )
+
+      assert_received {:channel, request}
+
+      assert %{method: "POST", path: ["events"], query: %{"retry" => "1"}, body: ~s({"a": 1})} =
+               request
+
+      assert {"x-signature", "v0=abc"} in request.headers
+    end
+
+    test "answers 404 for a channel that takes no requests here", %{api: api} do
+      assert {:ok, %{status: 404, body: %{"error" => %{"message" => message}}}} =
+               Req.post(Req.merge(api, auth: nil), url: "/v1/channels/elsewhere/events", body: "")
+
+      assert message =~ "No channel elsewhere"
+    end
+  end
+
   describe "openapi.json" do
     @values %{
       "org" => "test",
@@ -1798,7 +1832,9 @@ defmodule WardrikHTTP.RouterTest do
       "secret" => "s",
       "export" => "openapi",
       "provider" => "github",
-      "server" => "docs"
+      "server" => "docs",
+      "channel" => "chat",
+      "path" => "events"
     }
 
     # As a token over an org of its own, whose export reads no other test's

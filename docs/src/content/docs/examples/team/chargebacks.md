@@ -39,7 +39,7 @@ channels:
   slack:
     type: slack
     token: ${SLACK_BOT_TOKEN}
-    app_token: ${SLACK_APP_TOKEN}
+    signing_secret: ${SLACK_SIGNING_SECRET}
 
 notify:
   disputes:

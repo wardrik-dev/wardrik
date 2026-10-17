@@ -6,7 +6,7 @@ defmodule WardrikSlack.ConnectionTest do
 
   @state %{
     token: "xapp-test",
-    answer: [name: :slack, token: "xoxb-test", req_options: [plug: {Req.Test, WardrikSlack.Stub}]],
+    answer: [req_options: [plug: {Req.Test, WardrikSlack.Stub}]],
     connection: nil,
     backoff: 1_000
   }
@@ -42,7 +42,7 @@ defmodule WardrikSlack.ConnectionTest do
         })
 
       assert {:ok, _owner} = Connection.handle_frame({:text, message}, self())
-      assert_received {:message, %{"type" => "message"}, {connection, "e-3"}}
+      assert_received {:message, %{"event" => %{"type" => "message"}}, {connection, "e-3"}}
       assert connection == self()
 
       test = self()
@@ -78,27 +78,16 @@ defmodule WardrikSlack.ConnectionTest do
                Socket.handle_info(:connect, %{@state | backoff: 60_000})
     end
 
-    test "finds the bot it posts as once, and tries again when the connection cannot be reached" do
+    test "tries again when the connection Slack opens cannot be reached" do
       test = self()
 
       Req.Test.stub(WardrikSlack.Stub, fn conn ->
         send(test, {:asked, conn.request_path})
-
-        case conn.request_path do
-          "/api/auth.test" -> Req.Test.json(conn, %{ok: true, user_id: "UBOT", team_id: "T1"})
-          _open -> Req.Test.json(conn, %{ok: true, url: "ws://127.0.0.1:1/"})
-        end
+        Req.Test.json(conn, %{ok: true, url: "ws://127.0.0.1:1/"})
       end)
 
-      assert {:noreply, %{connection: nil, backoff: 2_000} = state} =
-               Socket.handle_info(:connect, @state)
-
-      assert state.answer[:bot] == "UBOT"
-      assert state.answer[:team] == "T1"
-      assert_received {:asked, "/api/auth.test"}
-
-      assert {:noreply, _state} = Socket.handle_info(:connect, state)
-      refute_received {:asked, "/api/auth.test"}
+      assert {:noreply, %{connection: nil, backoff: 2_000}} = Socket.handle_info(:connect, @state)
+      assert_received {:asked, "/api/apps.connections.open"}
     end
 
     test "starts over after a hello, and reconnects when its connection ends" do
@@ -123,7 +112,7 @@ defmodule WardrikSlack.ConnectionTest do
       assert {:noreply, @state} = Socket.handle_info({:interactive, room_press}, @state)
 
       assert {:noreply, @state} =
-               Socket.handle_info({:event, %{"type" => "reaction_added"}}, @state)
+               Socket.handle_info({:event, %{"event" => %{"type" => "reaction_added"}}}, @state)
 
       test = self()
 
@@ -137,7 +126,10 @@ defmodule WardrikSlack.ConnectionTest do
         end)
 
       assert {:noreply, @state} =
-               Socket.handle_info({:message, %{"type" => "message"}, {fake, "e-5"}}, @state)
+               Socket.handle_info(
+                 {:message, %{"event" => %{"type" => "message"}}, {fake, "e-5"}},
+                 @state
+               )
 
       assert_receive {:sent, {:text, ~s({"envelope_id":"e-5"})}}
     end

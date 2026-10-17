@@ -15,7 +15,7 @@ Its prompt has no warnings; its calls are decided outside the model.
   [Quickstart](/getting-started/quickstart/#1-install);
 - a public repository, and a fine-grained GitHub token for it alone that can read and write its
   issues and nothing else, so a mistaken approval can reach no further;
-- a [Slack app](/channels/slack/#a-slack-app) with a bot token and an app-level token.
+- a [Slack app](/channels/slack/#a-slack-app) with a bot token and a signing secret.
 
 ## The files
 
@@ -34,7 +34,7 @@ channels:
   slack:
     type: slack
     token: ${SLACK_BOT_TOKEN}
-    app_token: ${SLACK_APP_TOKEN}
+    signing_secret: ${SLACK_SIGNING_SECRET}
 
 notify:
   triage:

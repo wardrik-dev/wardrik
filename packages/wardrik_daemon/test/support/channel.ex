@@ -14,5 +14,14 @@ defmodule WardrikDaemon.Test.Channel do
   def deliver(_outbound, _opts), do: {:ok, :posted}
 
   @impl WardrikChannel
-  def among?(user, names, _opts), do: user in names
+  def among?(_installation, user, names, _opts), do: user in names
+
+  @impl WardrikChannel
+  def request(_request, _opts), do: WardrikChannel.Response.text(200, "")
+
+  @impl WardrikChannel
+  def install_url(_owner, _opts), do: {:error, "This channel installs nowhere."}
+
+  @impl WardrikChannel
+  def install(_owner, _request, _opts), do: WardrikChannel.Response.text(404, "")
 end

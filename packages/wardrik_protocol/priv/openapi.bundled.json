@@ -1,6 +1,24 @@
 {
   "components": {
     "parameters": {
+      "channel": {
+        "description": "The chat channel's name, as the deployment's config gives it.",
+        "in": "path",
+        "name": "channel",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "channel_path": {
+        "description": "Where under the channel the medium sends it, such as Slack's events or actions.",
+        "in": "path",
+        "name": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
       "export": {
         "description": "The export's name: no / or whitespace, and not beginning with @ or _.",
         "in": "path",
@@ -218,7 +236,7 @@
             }
           }
         },
-        "description": "A request to a trigger is at most 1 MB: invalid_request."
+        "description": "A request from outside, to a trigger or a channel, is at most 1 MB: invalid_request."
       },
       "Unauthorized": {
         "content": {
@@ -1438,7 +1456,7 @@
                 "type": "string"
               },
               "type": {
-                "description": "shell, ssh, terminal, channel, oauth, token, webhook, agent or user. A channel's id is the channel's name and the id it knows them by, as slack/U024BE7LH.",
+                "description": "shell, ssh, terminal, channel, oauth, token, webhook, agent or user. A channel's id is the channel's name, its workspace and the id it knows them by there, as slack/T0123/U024BE7LH.",
                 "type": "string"
               }
             },
@@ -2394,7 +2412,7 @@
     }
   },
   "info": {
-    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. Every request presents a bearer token; an agent outside its scope is answered as one that does not exist, 404, and one inside it the token may not act on so, 403. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
+    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token; an agent outside its scope is answered as one that does not exist, 404, and one inside it the token may not act on so, 403. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
     "license": {
       "identifier": "Apache-2.0",
       "name": "Apache-2.0"
@@ -3995,6 +4013,73 @@
         "x-wardrik-function": "agent_trigger_set"
       }
     },
+    "/v1/channels/{channel}/{path}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/channel"
+        },
+        {
+          "$ref": "#/components/parameters/channel_path"
+        }
+      ],
+      "post": {
+        "description": "A request from the medium, such as Slack's events and button presses, handed to the channel as it was sent: the channel checks it, as by its signature, and answers it as the medium expects.",
+        "operationId": "channel_request",
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {}
+            }
+          },
+          "description": "What the medium sent, checked whole.",
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            },
+            "description": "What the channel answers the medium."
+          },
+          "400": {
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            },
+            "description": "Not what the medium sends."
+          },
+          "401": {
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            },
+            "description": "The medium did not sign it, or signed it too long ago."
+          },
+          "404": {
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            },
+            "description": "No channel of that name takes requests here, or it takes none there."
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Deliver what a chat channel's medium sends",
+        "tags": [
+          "Channels"
+        ]
+      }
+    },
     "/v1/connections": {
       "get": {
         "operationId": "connections_list",
@@ -4813,6 +4898,10 @@
     {
       "description": "Tools offered from a process of the caller's own.",
       "name": "Workers"
+    },
+    {
+      "description": "What a chat channel's medium, such as Slack, sends the channel.",
+      "name": "Channels"
     }
   ]
 }

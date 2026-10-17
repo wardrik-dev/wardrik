@@ -3,9 +3,9 @@ defmodule WardrikSlack.Answers do
   What a press of a button `WardrikSlack.Notices` posted does.
 
   The person pressing is the principal `WardrikChannel.principal/3` makes of
-  them, and may do what the host's `Wardrik.Grants` says, as
-  `Wardrik.Host.caller/2` answers it on the host the channel's context
-  carries: they decide a call with `Wardrik.agent_approve/4` or
+  them, in the workspace they pressed it in, and may do what the host's
+  `Wardrik.Grants` says, as `Wardrik.Host.caller/2` answers it on the host
+  the channel's context carries: they decide a call with `Wardrik.agent_approve/4` or
   `Wardrik.agent_deny/4`, so where their grant allows `:decide` on the
   agent, or where they asked for the turn that waits; and they are shown
   where to connect an account where their grant allows `:decide`.
@@ -18,14 +18,11 @@ defmodule WardrikSlack.Answers do
              "wardrik approve answers it from the server."
 
   @doc """
-  Answers a button press, from the `block_actions` payload Slack sends over
-  Socket Mode: decides the call, and replaces the message's buttons with who
-  decided it; or, for Show link, tells the person pressing alone where to
-  connect the account; or tells them why nothing happened.
-
-  `opts` are the channel's: its `:name`, which names the person pressing,
-  its `:context`, whose host they act on, and `:req_options`, merged into
-  each request.
+  Answers a button press, from the `block_actions` payload Slack sends:
+  decides the call, and replaces the message's buttons with who decided it;
+  or, for Show link, tells the person pressing alone where to connect the
+  account; or tells them why nothing happened. `opts` are as
+  `WardrikSlack.Dispatch` hands them on.
   """
   @spec answer(map(), keyword()) :: :ok | :ignored
   def answer(payload, opts \\ [])
@@ -36,15 +33,11 @@ defmodule WardrikSlack.Answers do
 
     with {:ok, %{"a" => text, "c" => call, "n" => name}} <- JSON.decode(value),
          {:ok, agent} <- Wardrik.AgentID.parse(text) do
-      by =
-        WardrikChannel.principal(
-          Keyword.fetch!(opts, :name),
-          user["id"],
-          user["username"] || user["name"]
-        )
+      %{context: context, installation: installation} = Keyword.fetch!(opts, :workspace)
+      by = WardrikChannel.principal(installation, user["id"], user["username"] || user["name"])
 
       reply =
-        case Wardrik.Host.caller(Keyword.fetch!(opts, :context).host,
+        case Wardrik.Host.caller(context.host,
                principal: by,
                subject: agent
              ) do

@@ -15,6 +15,13 @@ defmodule WardrikHTTP.Listener do
       required
     * `:authenticator` - the `WardrikHTTP.Authenticator` every request is
       known by; `%WardrikHTTP.Tokens{}` over the host's store by default
+    * `:channels` - what answers the requests each chat channel's medium
+      sends, under `/v1/channels/{channel}/`, by the channel's name: a
+      `{module, function, args}` given the request, as a map of its
+      `:method`, `:path` below the channel's, `:query`, `:headers` and
+      `:body` as it was sent, and answering a map of the `:status`,
+      `:headers` and `:body` to send back, as `WardrikChannel.request/2`
+      does; none by default
     * `:retry` - milliseconds between tries, 5000 by default
     * `:name` - the process's name, `WardrikHTTP.Listener` by default
   """
@@ -54,7 +61,8 @@ defmodule WardrikHTTP.Listener do
       router: [
         host: host,
         authenticator: authenticator,
-        workers: Keyword.get(opts, :workers, [])
+        workers: Keyword.get(opts, :workers, []),
+        channels: Keyword.get(opts, :channels, %{})
       ],
       retry: Keyword.get(opts, :retry, @retry),
       server: nil

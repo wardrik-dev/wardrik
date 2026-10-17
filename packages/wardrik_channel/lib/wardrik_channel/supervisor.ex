@@ -6,9 +6,9 @@ defmodule WardrikChannel.Supervisor do
   before it, with the same channels:
 
       channels =
-        WardrikChannel.channels(
-          [slack: {WardrikSlack, token: "xoxb-…", app_token: "xapp-…"}],
-          host: host
+        WardrikChannel.channels([slack: {WardrikSlack, app_token: "xapp-…"}],
+          host: host,
+          installations: installations
         )
 
       children = [
@@ -34,8 +34,8 @@ defmodule WardrikChannel.Supervisor do
     opts = Keyword.validate!(opts, [:channels])
 
     channels =
-      for {name, {adapter, options, context}} <- Keyword.fetch!(opts, :channels) do
-        spec = adapter.child_spec([name: name, context: context] ++ options)
+      for {name, %WardrikChannel.Channel{} = channel} <- Keyword.fetch!(opts, :channels) do
+        spec = channel.adapter.child_spec(WardrikChannel.Channel.options(channel))
         Supervisor.child_spec(spec, id: {:channel, name})
       end
 

@@ -1,8 +1,8 @@
-defmodule WardrikDaemon.Approvers.Named do
+defmodule WardrikChannel.Approvers.Named do
   @moduledoc """
   The people a channel's `approvers` name, each as the channel names people,
   such as by handle or email address; none where it names nobody. See
-  `WardrikDaemon.Approvers`.
+  `WardrikChannel.Approvers`.
   """
 
   @enforce_keys [:names]
@@ -10,7 +10,7 @@ defmodule WardrikDaemon.Approvers.Named do
 
   @type t() :: %__MODULE__{names: [String.t()]}
 
-  defimpl WardrikDaemon.Approvers do
+  defimpl WardrikChannel.Approvers do
     def decides?(%{names: names}, among), do: among.(names)
 
     def asked(%{names: names}), do: names

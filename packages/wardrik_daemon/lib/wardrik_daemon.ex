@@ -22,12 +22,14 @@ defmodule WardrikDaemon do
       what each channel's adapter runs, such as its connection to the medium,
       after `WardrikChannel.Replies`, which posts what agents answer in its
       rooms' threads. Both are handed the channels `WardrikChannel.channels/2`
-      makes once from the channels' settings, on the host.
+      makes once from the channels' settings, on the host, each installed in
+      the workspace its `token` reaches.
     * `WardrikDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
       in the config directory lets anyone in.
     * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, or where
       `http` says, to callers holding a token that `wardrik token create`
-      made, on the host.
+      made, on the host; and, under `/v1/channels/`, what each channel's
+      medium sends it, such as Slack's events, answered by the channel.
 
   `:host` and `:config` are required.
 
@@ -74,14 +76,16 @@ defmodule WardrikDaemon do
     store = Wardrik.Host.store(host)
     agents = Wardrik.Host.definitions(host)
 
+    channels = channels(config, host, agents)
+
     children =
       mcp(config, store) ++
         oauth(host) ++
         [{Agents, agents: agents}] ++
-        channels(config, host, agents) ++
+        running(channels, host) ++
         notify(config, agents) ++
         WardrikDaemon.SSH.children(config, host: host) ++
-        [{WardrikHTTP.Listener, [host: host] ++ listener(config)}]
+        [{WardrikHTTP.Listener, [host: host, channels: served(channels)] ++ listener(config)}]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -156,28 +160,37 @@ defmodule WardrikDaemon do
       else: []
   end
 
+  # The channels config.yaml names, each installed in the workspace its
+  # token reaches, if it names one.
   defp channels(config, host, agents) do
-    case Keyword.get(Config.section(config, WardrikChannel), :channels, []) do
+    case Config.section(config, WardrikChannel) do
       [] ->
-        []
+        %{}
 
-      configured ->
-        channels =
-          WardrikChannel.channels(configured,
-            host: host,
-            offered: {Agents, :offered, [agents]},
-            creatable: {Agents, :creatable?, [agents]},
-            create: {Agents, :create_in, [agents]},
-            start: {Agents, :start, [agents]},
-            approvers: {Agents, :asked, [agents]}
-          )
-
-        [
-          {WardrikChannel.Replies, channels: channels, store: Wardrik.Host.store(host)},
-          {WardrikChannel.Supervisor, channels: channels}
-        ]
+      settings ->
+        WardrikChannel.channels(Keyword.fetch!(settings, :channels),
+          host: host,
+          installations: Keyword.fetch!(settings, :installations),
+          offered: {Agents, :offered, [agents]},
+          creatable: {Agents, :creatable?, [agents]},
+          create: {Agents, :create_in, [agents]},
+          start: {Agents, :start, [agents]},
+          approvers: {Agents, :approvers, [agents]}
+        )
     end
   end
+
+  defp running(channels, _host) when channels == %{}, do: []
+
+  defp running(channels, host),
+    do: [
+      {WardrikChannel.Replies, channels: channels, store: Wardrik.Host.store(host)},
+      {WardrikChannel.Supervisor, channels: channels}
+    ]
+
+  # What Slack, say, sends each channel over HTTP is answered by the channel.
+  defp served(channels),
+    do: Map.new(channels, fn {name, channel} -> {name, {WardrikChannel, :request, [channel]}} end)
 
   # Tool workers' answers are the deployment's own where `http` trusts them.
   defp listener(config) do

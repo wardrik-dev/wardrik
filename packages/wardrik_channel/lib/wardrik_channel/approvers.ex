@@ -1,8 +1,9 @@
-defprotocol WardrikDaemon.Approvers do
+defprotocol WardrikChannel.Approvers do
   @moduledoc """
-  Who in a channel may decide what its agents wait on, as its `approvers`
-  in `config.yaml` say: the people it names, `WardrikDaemon.Approvers.Named`,
-  or anyone in the channel, `WardrikDaemon.Approvers.Anyone`.
+  Who in a channel may decide what its agents wait on: the people it
+  names, `WardrikChannel.Approvers.Named`, or anyone in the channel,
+  `WardrikChannel.Approvers.Anyone`. A host reads them from its own
+  settings, as the daemon reads a channel's `approvers` in `config.yaml`:
 
       channels:
         slack:
@@ -10,9 +11,10 @@ defprotocol WardrikDaemon.Approvers do
           approvers: ["@maria", "ana@example.com"]   # these people
           # approvers: anyone                        # anyone in the channel
 
-  A channel that sets none names nobody: whoever asked for a turn decides
-  what it waits on, and a turn nobody asked for, such as a trigger's, is
-  decided from a shell.
+  and its `Wardrik.Grants` asks `decides?/2` whether someone decides, with
+  whether they are among names as the channel's adapter says, through
+  `WardrikChannel.among?/4`. Naming nobody, a channel's approvers leave
+  who decides to the host.
   """
 
   @doc """
@@ -26,7 +28,7 @@ defprotocol WardrikDaemon.Approvers do
   @spec asked(t()) :: [String.t()]
   def asked(approvers)
 
-  @doc "What `wardrik doctor` says of who decides."
+  @doc "What is said of who decides, such as by `wardrik doctor`."
   @spec described(t()) :: String.t()
   def described(approvers)
 end

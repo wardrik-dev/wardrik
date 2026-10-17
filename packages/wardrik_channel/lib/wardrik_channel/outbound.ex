@@ -2,6 +2,8 @@ defmodule WardrikChannel.Outbound do
   @moduledoc """
   What a channel is asked to post: where, and what.
 
+    * `:installation` - the `WardrikChannel.Installation` of the workspace
+      to post in, whose token it is posted with
     * `:room` - the room, as the channel names it, such as `"#ops"` or a
       Slack channel's id
     * `:thread` - the thread in the room to post in, or `nil` for the room
@@ -16,12 +18,13 @@ defmodule WardrikChannel.Outbound do
       a channel that cannot reach a person directly posts it in the room
   """
 
-  @enforce_keys [:room, :body]
-  defstruct [:room, :thread, :body, approvers: [], to: :room]
+  @enforce_keys [:installation, :room, :body]
+  defstruct [:installation, :room, :thread, :body, approvers: [], to: :room]
 
   @type body() :: {:notice, WardrikNotify.Notice.t()} | {:reply, String.t(), [String.t()]}
 
   @type t() :: %__MODULE__{
+          installation: WardrikChannel.Installation.t(),
           room: String.t(),
           thread: String.t() | nil,
           body: body(),

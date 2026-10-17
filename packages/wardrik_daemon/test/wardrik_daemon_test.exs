@@ -111,6 +111,7 @@ defmodule WardrikDaemonTest do
     channels:
       chat:
         type: test
+        token: xoxb-1
     notify:
       audit:
         webhook:
@@ -130,6 +131,15 @@ defmodule WardrikDaemonTest do
              Enum.sort(Config.section(config, WardrikNotify)[:targets])
 
     assert ops[:channel] == {WardrikDaemon.Test.Channel, []}
+
+    # What a channel's medium sends it over HTTP is answered by the channel.
+    {:ok, port} = WardrikHTTP.Listener.port()
+
+    assert {:ok, %{status: 200}} =
+             Req.post("http://127.0.0.1:#{port}/v1/channels/chat/events", body: "", retry: false)
+
+    assert {:ok, %{status: 404}} =
+             Req.post("http://127.0.0.1:#{port}/v1/channels/other/events", body: "", retry: false)
   end
 
   test "reads config.yml where that is the file there", %{tmp_dir: dir} do

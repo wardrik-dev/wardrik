@@ -12,8 +12,8 @@ defmodule WardrikSlack.Threads do
   message, a bot's message, the app's own, a direct message, and a message
   from someone in another workspace, in a channel shared with it.
 
-  Its sender is named as a `:slack` principal, with the name Slack shows for
-  them, looked up once for each person while the connection stays open.
+  Its sender is named as a principal of the workspace, with the name Slack
+  shows for them, looked up once for each person while the node runs.
   """
 
   alias WardrikChannel.Inbound
@@ -24,19 +24,15 @@ defmodule WardrikSlack.Threads do
 
   @doc """
   Acts on a `message` event: asks the agent of its thread, or passes it
-  over.
-
-  `opts` are the channel's: `:context`, `:bot`, the bot's user id, `:team`,
-  its workspace's id, `:people`, the table names are kept in, `:token` and
-  `:req_options`.
+  over. `opts` are as `WardrikSlack.Dispatch` hands them on.
   """
-  @spec message(map(), keyword()) :: {:asked, Wardrik.AgentID.t()} | :ignored | {:error, term()}
-  def message(%{"type" => "message", "user" => user, "channel" => room, "ts" => ts} = event, opts)
+  @spec event(map(), keyword()) :: {:asked, Wardrik.AgentID.t()} | :ignored | {:error, term()}
+  def event(%{"type" => "message", "user" => user, "channel" => room, "ts" => ts} = event, opts)
       when is_binary(user) do
     if posted?(event, opts), do: ask(event, user, room, ts, opts), else: :ignored
   end
 
-  def message(_event, _opts), do: :ignored
+  def event(_event, _opts), do: :ignored
 
   defp posted?(event, opts) do
     event["subtype"] in @posted and is_nil(event["bot_id"]) and event["user"] != opts[:bot] and
@@ -45,12 +41,11 @@ defmodule WardrikSlack.Threads do
   end
 
   defp ask(event, user, room, ts, opts) do
-    context = Keyword.fetch!(opts, :context)
+    workspace = Keyword.fetch!(opts, :workspace)
     mention = "<@#{opts[:bot]}>"
     text = Map.get(event, "text", "")
 
     inbound = %Inbound{
-      channel: context.channel,
       room: room,
       thread: thread(event["thread_ts"], ts),
       id: ts,
@@ -59,7 +54,7 @@ defmodule WardrikSlack.Threads do
       mentioned?: String.contains?(text, mention)
     }
 
-    case WardrikChannel.received(context, inbound) do
+    case WardrikChannel.received(workspace, inbound) do
       {:asked, agent} ->
         react("reactions.add", room, ts, "eyes", opts)
         {:asked, agent}
@@ -103,15 +98,21 @@ defmodule WardrikSlack.Threads do
   end
 
   defp sender(user, opts) do
-    case :ets.lookup(Keyword.fetch!(opts, :people), user) do
-      [{^user, name}] ->
-        WardrikChannel.principal(Keyword.fetch!(opts, :name), user, name)
+    %{installation: installation} = Keyword.fetch!(opts, :workspace)
+    key = {__MODULE__, installation.channel, installation.workspace, user}
 
-      [] ->
-        name = named(user, opts)
-        :ets.insert(Keyword.fetch!(opts, :people), {user, name})
-        WardrikChannel.principal(Keyword.fetch!(opts, :name), user, name)
-    end
+    name =
+      case :persistent_term.get(key, :unknown) do
+        :unknown ->
+          name = named(user, opts)
+          :persistent_term.put(key, name)
+          name
+
+        name ->
+          name
+      end
+
+    WardrikChannel.principal(installation, user, name)
   end
 
   # The name Slack shows for someone: the one they chose, their full name,

@@ -48,7 +48,7 @@ channels:
   globex-slack:
     type: slack
     token: ${GLOBEX_SLACK_BOT_TOKEN}
-    app_token: ${GLOBEX_SLACK_APP_TOKEN}
+    signing_secret: ${GLOBEX_SLACK_SIGNING_SECRET}
 
 notify:
   globex-ops:

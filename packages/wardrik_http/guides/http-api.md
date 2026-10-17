@@ -17,7 +17,8 @@ TypeScript SDK for a client.
 ## Tokens
 
 Every request presents a token, as `Authorization: Bearer wardrik_…`, except a webhook's to
-`/v1/hooks/`, which its trigger checks instead. Tokens are made from a shell on the server, never
+`/v1/hooks/`, which its trigger checks instead, and a chat app's to `/v1/channels/`, which its
+channel checks. Tokens are made from a shell on the server, never
 over the API:
 
 ```sh
@@ -87,6 +88,7 @@ answers an agent with is its key.
 | `PUT /v1/agents/{key}/triggers/{trigger}` | sets or changes a trigger, and answers it; `404` where no definition is kept, `409` where an agent file declares the agent |
 | `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, and answers it as it was |
 | `POST /v1/hooks/{key}/{trigger}`, or `.../{trigger}/{secret}` | delivers a service's request to a webhook trigger; see [Webhooks](#webhooks) |
+| `POST /v1/channels/{channel}/{path}` | delivers what a chat app, such as Slack, sends a channel; see [Channels](#channels) |
 | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
 | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
 | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
@@ -198,6 +200,14 @@ A service's request to `/v1/hooks/{key}/{trigger}` carries no token, but the tri
 the agent has no such trigger or the signature doesn't match, so a sender learns nothing of the
 triggers it can't sign for; and `503` where it can't be delivered now, so a sender that tries again
 delivers it later.
+
+### Channels
+
+A chat app's request to `/v1/channels/{channel}/{path}`, such as Slack's events at
+`/v1/channels/slack/events` and button presses at `.../actions`, carries no token. The daemon
+hands it, as it was sent, to the channel `config.yaml` names, which checks it by its signature and
+answers as the chat app expects; `404` where no channel of that name takes requests. See
+[Slack](https://docs.wardrik.dev/channels/slack/).
 
 ### Connections
 

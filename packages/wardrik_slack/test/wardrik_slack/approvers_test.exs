@@ -74,8 +74,9 @@ defmodule WardrikSlack.ApproversTest do
     }
   end
 
-  defp asking(approvers) do
+  defp asking(approvers, opts) do
     %Outbound{
+      installation: WardrikSlack.Test.installation(opts[:token]),
       room: "C1",
       thread: "1.1",
       body: {:notice, parked()},
@@ -111,10 +112,13 @@ defmodule WardrikSlack.ApproversTest do
   test "knows a member among those named by id, email address or handle" do
     opts = slack()
 
-    assert WardrikSlack.among?("U1", ["U7", "maria@example.com"], opts)
-    assert WardrikSlack.among?("U2", ["@nobody", "@jon"], opts)
-    assert WardrikSlack.among?("U7", ["U7"], opts)
-    refute WardrikSlack.among?("U2", ["U7", "maria@example.com"], opts)
+    installation = WardrikSlack.Test.installation(opts[:token])
+    opts = Keyword.delete(opts, :token)
+
+    assert WardrikSlack.among?(installation, "U1", ["U7", "maria@example.com"], opts)
+    assert WardrikSlack.among?(installation, "U2", ["@nobody", "@jon"], opts)
+    assert WardrikSlack.among?(installation, "U7", ["U7"], opts)
+    refute WardrikSlack.among?(installation, "U2", ["U7", "maria@example.com"], opts)
   end
 
   test "names the approvers in a sentence, a member id as Slack shows one" do
@@ -126,7 +130,7 @@ defmodule WardrikSlack.ApproversTest do
   test "asks each approver directly, from a link to the thread, and says so in the thread" do
     opts = slack() ++ [app_token: "xapp-1"]
 
-    assert {:ok, _posted} = WardrikSlack.deliver(asking(["@maria", "U5", "@nobody"]), opts)
+    assert {:ok, _posted} = WardrikSlack.deliver(asking(["@maria", "U5", "@nobody"], opts), opts)
 
     for member <- ["U1", "U5"] do
       assert_receive {:slack, "/api/chat.postMessage", %{"channel" => ^member} = asked}
@@ -153,7 +157,7 @@ defmodule WardrikSlack.ApproversTest do
   test "asks in the thread where it reaches none of the approvers" do
     opts = slack(["U1"]) ++ [app_token: "xapp-1"]
 
-    assert {:ok, _posted} = WardrikSlack.deliver(asking(["@maria", "@nobody"]), opts)
+    assert {:ok, _posted} = WardrikSlack.deliver(asking(["@maria", "@nobody"], opts), opts)
 
     assert_receive {:slack, "/api/chat.postMessage", %{"channel" => "U1"}}
 

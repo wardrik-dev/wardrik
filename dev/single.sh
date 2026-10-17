@@ -3,7 +3,8 @@
 #
 # Runs deploy/single/up.sh against a container standing in for a customer's
 # server, and checks what it leaves: the daemon running as wardrik under
-# systemd, Caddy passing /oauth/ on to it, config.yaml as up.sh writes it, the
+# systemd, Caddy passing /oauth/ and /v1/channels/ on to it, config.yaml as
+# up.sh writes it, the
 # vault's key; then, run again, that it keeps the config, the key and the
 # vault's secrets, and runs again after the server restarts.
 #
@@ -54,7 +55,7 @@ on_server() { ssh "${opts[@]}" "wardrik@127.0.0.1" "$@"; }
 
 cat > "$work/env" << 'ENV'
 SLACK_BOT_TOKEN=xoxb-not-a-token
-SLACK_APP_TOKEN=xapp-not-a-token
+SLACK_SIGNING_SECRET=not-a-secret
 ENV
 
 up() {
@@ -77,13 +78,15 @@ on_server 'systemctl --user is-active --quiet wardrik.service' || die "the daemo
 on_server '.local/bin/wardrik status' | grep -q "acme/assistant" || die "the example agent does not run"
 on_server 'grep -qxF "    approvers: [\"@maria\", \"jon@example.com\"]" .config/wardrik/config.yaml' ||
   die "config.yaml does not name the approvers"
-on_server 'grep -qxF "    url: https://localhost/oauth" .config/wardrik/config.yaml' ||
-  die "config.yaml does not give the callback's address"
+on_server 'grep -qxF "base_url: https://localhost" .config/wardrik/config.yaml' ||
+  die "config.yaml does not give the daemon's address"
+on_server 'grep -qxF "    signing_secret: \${SLACK_SIGNING_SECRET}" .config/wardrik/config.yaml' ||
+  die "config.yaml does not have Slack sign what it sends"
 on_server '[ "$(stat -c %a .local/share/wardrik/vault_key)" = 600 ] && [ "$(stat -c %a .config/wardrik/env)" = 600 ]' ||
   die "the vault's key or the env file can be read by others"
 
-say "serves the callback, and nothing else, through Caddy, once a provider is named"
-on_server 'sed -i "s/^  # providers:/  providers:/; s/^  #   shop:/    shop:/; s|^  #     resource:|      resource:|" .config/wardrik/config.yaml'
+say "serves the callback and what Slack sends, and nothing else, through Caddy"
+on_server 'sed -i "s/^# oauth:/oauth:/; s/^#   providers:/  providers:/; s/^#     shop:/    shop:/; s|^#       resource:|      resource:|" .config/wardrik/config.yaml'
 on_server 'systemctl --user restart wardrik.service'
 answers
 docker exec "$box" sh -c 'for _ in $(seq 30); do
@@ -91,6 +94,8 @@ docker exec "$box" sh -c 'for _ in $(seq 30); do
   done; exit 1' || die "https://localhost/oauth/check did not reach the daemon"
 status=$(docker exec "$box" curl -sSk -o /dev/null -w '%{http_code}' https://localhost/)
 [ "$status" = 404 ] || die "https://localhost/ answered $status, not 404"
+status=$(docker exec "$box" curl -sSk -o /dev/null -w '%{http_code}' -X POST https://localhost/v1/channels/slack/events)
+[ "$status" = 401 ] || die "what Slack sends answered $status, not 401 for an unsigned request"
 
 say "keeps the config, the vault's key and its secrets when run again"
 key=$(on_server 'cat .local/share/wardrik/vault_key')
