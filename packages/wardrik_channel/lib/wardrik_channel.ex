@@ -267,8 +267,9 @@ defmodule WardrikChannel do
   by its name, whose `WardrikChannel.Context` `opts` fill in.
 
   Options are the context's: `:host` and `:installations`, required, and
-  `:offered`, `:creatable`, `:create`, `:start`, `:approvers` and
-  `:replies`, each as `WardrikChannel.Context` describes it.
+  `:offered`, `:creatable`, `:create`, `:start`, `:approvers`,
+  `:offering`, `:deciding` and `:replies`, each as `WardrikChannel.Context`
+  describes it.
   """
   @spec channels([{atom() | String.t(), channel()}], keyword()) :: channels()
   def channels(configured, opts) do
@@ -281,6 +282,8 @@ defmodule WardrikChannel do
         :create,
         :start,
         :approvers,
+        :offering,
+        :deciding,
         :replies
       ])
 

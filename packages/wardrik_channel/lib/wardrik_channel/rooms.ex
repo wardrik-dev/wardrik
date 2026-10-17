@@ -112,7 +112,7 @@ defmodule WardrikChannel.Rooms do
       with {:ok, %Offer{} = offer} <- Workspace.create(workspace, name, by: opts[:by]),
            do: {:ok, bind(room, offer.agent, :mentions, opts[:by]), offer}
     else
-      {:error, "Agents are not created from here; whoever runs Wardrik can offer one."}
+      {:error, "Agents are not created from here. " <> Workspace.offering(workspace)}
     end
   end
 

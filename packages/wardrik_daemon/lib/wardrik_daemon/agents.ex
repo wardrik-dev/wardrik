@@ -254,6 +254,20 @@ defmodule WardrikDaemon.Agents do
   def approvers(agents, %Installation{channel: channel}),
     do: channel_setting(agents, :approvers, channel, %WardrikChannel.Approvers.Named{names: []})
 
+  @doc "How an agent comes to answer in the rooms of the channel installed as `installation`."
+  @spec offering(Installation.t()) :: String.t()
+  def offering(%Installation{channel: channel}),
+    do:
+      "Whoever runs Wardrik can offer an agent here by adding `channels: [#{channel}]` " <>
+        "to its agent file."
+
+  @doc "Who else may decide what agents ask in the channel installed as `installation`."
+  @spec deciding(Installation.t()) :: String.t()
+  def deciding(%Installation{}),
+    do:
+      "The channel's approvers in config.yaml name who else may, and wardrik approve " <>
+        "answers it from the server."
+
   @doc "The installation of the channel `channel`, in the workspace its token reaches."
   @spec installation(t(), String.t()) :: {:ok, Installation.t()} | :error
   def installation(agents, channel) when is_binary(channel) do

@@ -729,6 +729,13 @@ defmodule WardrikDaemon.AgentsTest do
              Agents.create_in(Host.agents(), in_channel("slack"), "!!!", maria)
   end
 
+  test "says in a channel how an agent is offered there, and who else decides" do
+    assert Agents.offering(in_channel("slack")) ==
+             "Whoever runs Wardrik can offer an agent here by adding `channels: [slack]` to its agent file."
+
+    assert Agents.deciding(in_channel("slack")) =~ "approvers in config.yaml"
+  end
+
   test "starts the agent of a room's thread on its definition, and names the channel's approvers",
        %{org: org} = context do
     Host.put_section(WardrikChannel,

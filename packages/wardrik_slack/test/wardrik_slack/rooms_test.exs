@@ -181,7 +181,7 @@ defmodule WardrikSlack.RoomsTest do
     message = posted()
     assert message["text"] == "No agent answers in Slack here yet."
     assert buttons(message) == ["books"]
-    assert JSON.encode!(message["blocks"]) =~ "channels: [#{channel(opts)}]"
+    assert JSON.encode!(message["blocks"]) =~ "Whoever runs Wardrik can offer an agent here."
 
     assert :ok = Rooms.answer(press("C1", "wardrik_room_create", "books"), opts)
     assert %{"text" => ":wave: *acme/books* answers here now."} = replaced()
@@ -192,7 +192,10 @@ defmodule WardrikSlack.RoomsTest do
     assert :ok = Rooms.event(joined("C1"), opts)
 
     message = posted()
-    assert message["text"] =~ "Whoever runs Wardrik can offer one by adding"
+
+    assert message["text"] ==
+             "No agent answers in Slack here yet. Whoever runs Wardrik can offer an agent here."
+
     assert buttons(message) == ["choose"]
 
     assert :ok = Rooms.answer(press("C1", "wardrik_room_more", "choose"), opts)
@@ -202,6 +205,18 @@ defmodule WardrikSlack.RoomsTest do
 
     assert %{"response_type" => "ephemeral", "text" => "Agents are not created from here" <> _} =
              replaced()
+  end
+
+  @doc false
+  def offering(installation),
+    do: "Turn on Answers in Slack for an agent of #{installation.channel}."
+
+  test "says how an agent is offered as the host words it" do
+    opts = with_context(opts([]), &%{&1 | offering: {__MODULE__, :offering, []}})
+    assert :ok = Rooms.event(joined("C1"), opts)
+
+    assert posted()["text"] ==
+             "No agent answers in Slack here yet. Turn on Answers in Slack for an agent of #{channel(opts)}."
   end
 
   test "switches between every message and mentions, offers another agent, and stops" do
