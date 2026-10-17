@@ -16,7 +16,7 @@ is refused, and the model is told why.
 allow: [web_search, linear/*]
 ask:
   github/create_*: This opens an issue on GitHub.
-deny: [run_lua]
+deny: [shell/*]
 default: allow
 ```
 
@@ -37,7 +37,7 @@ for how to choose them.
 | `judge` | a judge | questions a model answers about each call; see [Judges](#judges) |
 
 A message is what the person is asked, or what the model is told it may not do. Without one, an ask
-says "github/create_issue needs your approval." and a deny "run_lua is not allowed for this agent."
+says "github/create_issue needs your approval." and a deny "shell/exec is not allowed for this agent."
 
 ## Patterns
 

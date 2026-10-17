@@ -13,7 +13,7 @@ refused, and the model is told why. A policy is the file that says which.
 allow: [web_search, linear/*]
 ask:
   github/create_*: This opens an issue on GitHub.
-deny: [run_lua]
+deny: [shell/*]
 ```
 
 An agent names the file, or writes its rules in place:
@@ -25,7 +25,7 @@ policy: careful
 ```yaml
 policy:
   ask: [github/*]
-  deny: [run_lua]
+  deny: [shell/*]
 ```
 
 `wardrik reload` reads policy files again, with the agent files.

@@ -6,7 +6,17 @@
 .home-hero {
 	position: relative;
 	isolation: isolate;
-	padding-block: clamp(3rem, 6vw, 5.5rem) 2rem;
+	display: flex;
+	flex-direction: column;
+	padding-block-start: clamp(3rem, 6vw, 5.5rem);
+}
+
+/* On a wide screen the hero fills the first screen, the content panel's top padding aside: the
+ * headline and the replay centred, the audience links at its foot, and the next section below.
+ * On a taller screen than a 1080p one it stops at 64rem, and the next section shows beneath it. */
+@media (min-width: 52rem) {
+	.home-hero { min-height: min(calc(100svh - var(--sl-nav-height) - 1.5rem), 64rem); box-sizing: border-box; }
+	.home-hero .hero { flex: 1; align-content: center; }
 }
 
 .home-hero::before,
@@ -58,23 +68,9 @@
 	text-wrap: pretty;
 }
 
-.home-meta {
-	color: var(--sl-color-gray-3);
-	font-family: var(--sl-font-mono);
-	font-size: 0.6875rem;
-	line-height: 1.6;
-}
+/* The wordmark, as the hero's eyebrow. */
+.home-brand { margin: 0; color: var(--sl-color-white); font-size: 1.75rem; font-weight: 600; letter-spacing: -0.035em; line-height: 1; }
 
-.home-brand { display: flex; flex-direction: column; gap: 0.75rem; margin: 0 0 0.5rem; }
-.home-brand-primary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.625rem 1.25rem; }
-.home-brand .wordmark { color: var(--sl-color-white); font-size: 2rem; font-weight: 600; letter-spacing: -0.035em; line-height: 1; }
-.home-brand-primary > span:last-child { color: var(--sl-color-gray-2); font-size: 0.875rem; }
-.home-brand-cli { margin: 0; color: var(--sl-color-gray-3); font-size: 0.75rem; line-height: 1.6; }
-.home-brand-cli a { color: var(--home-link-color); text-decoration: none; }
-.home-brand-cli a:hover { color: var(--sl-color-text-accent); text-decoration: underline; text-underline-offset: 3px; }
-.home-brand-cli code { font-family: var(--sl-font-mono); font-size: 0.9375em; }
-.home-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0; }
-.home-meta span + span::before { content: '·'; margin-inline-end: 1.25rem; color: var(--sl-color-gray-4); }
 .home-hero .hero > .hero-html { width: 100%; max-width: 30rem; }
 
 .home-hero .sl-link-button,
@@ -85,100 +81,105 @@
 .home-hero .sl-link-button.primary:hover,
 .home-section .sl-link-button.primary:hover { color: var(--sl-color-black); }
 
-/* Audience links form one navigation row, rather than four separate cards. */
-.sl-markdown-content .home-audiences {
+/* Audience links form one navigation row at the hero's foot, rather than four separate cards. */
+.home-audiences {
 	margin: 1.5rem 0 0;
 	padding-block: 1.75rem 2.5rem;
 	border-top: 1px solid var(--sl-color-gray-5);
 }
 .audience-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2rem; }
-.sl-markdown-content .audience-grid > a { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; margin: 0; color: var(--sl-color-text); text-decoration: none; }
+.audience-grid > a { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; margin: 0; color: var(--sl-color-text); text-decoration: none; }
 .audience-label { display: flex; justify-content: space-between; gap: 0.5rem; color: var(--sl-color-white); font-size: 0.8125rem; font-weight: 500; }
 .audience-label > span { color: var(--sl-color-gray-4); font-weight: 400; transition: color 150ms; }
-.sl-markdown-content .audience-grid p { margin: 0; color: var(--sl-color-gray-3); font-size: 0.8125rem; text-wrap: pretty; }
+.audience-grid p { margin: 0; color: var(--sl-color-gray-3); font-size: 0.8125rem; text-wrap: pretty; }
 .audience-grid > a:hover .audience-label,
 .audience-grid > a:hover .audience-label > span { color: var(--sl-color-text-accent); }
 
 /* Alternating surfaces retain the page's natural reading order. */
-.sl-markdown-content .home-section,
-.sl-markdown-content .home-band { margin-top: 0; }
-.sl-markdown-content :is(.home-section, .home-band) .sl-heading-wrapper { display: contents; }
-.sl-markdown-content :is(.home-section, .home-band) .sl-anchor-link { display: none; }
-.home-section,
-.home-band { padding-block: clamp(4rem, 7vw, 6.5rem); }
-.home-band,
+.sl-markdown-content .home-section { margin-top: 0; }
+.sl-markdown-content .home-section .sl-heading-wrapper { display: contents; }
+.sl-markdown-content .home-section .sl-anchor-link { display: none; }
+.home-section { padding-block: clamp(4rem, 7vw, 6.5rem); }
 .home-tint { background: var(--sl-color-gray-6); box-shadow: 0 0 0 100vmax var(--sl-color-gray-6); clip-path: inset(0 -100vmax); }
-.sl-markdown-content .home-eyebrow { margin: 0 0 1rem; color: var(--sl-color-gray-3); font-family: var(--sl-font-mono); font-size: 0.625rem; font-weight: 400; letter-spacing: 0.1em; text-transform: uppercase; }
-.sl-markdown-content .home-section h2,
-.sl-markdown-content .home-band h2 { display: block; max-width: 26ch; margin: 0 0 1.25rem; font-size: clamp(1.875rem, 2.8vw, 2.625rem); font-weight: 500; letter-spacing: -0.04em; line-height: 1.15; text-wrap: balance; }
-.sl-markdown-content .home-band h2,
-.sl-markdown-content .home-operators h2 { font-size: clamp(2rem, 3.4vw, 3rem); }
-.sl-markdown-content .home-operators .operator-title { display: flex; align-items: baseline; gap: 0.75rem; }
-.operator-title-label { color: var(--sl-color-gray-2); font-size: 0.625em; font-weight: 400; letter-spacing: -0.025em; }
+.sl-markdown-content .home-section h2 { display: block; max-width: 26ch; margin: 0 0 1.25rem; font-size: clamp(1.875rem, 2.8vw, 2.625rem); font-weight: 500; letter-spacing: -0.04em; line-height: 1.15; text-wrap: balance; }
+.sl-markdown-content .home-feature h2 { font-size: clamp(2rem, 3.4vw, 3rem); }
 .sl-markdown-content .home-lead { max-width: 42rem; margin: 0 0 2.5rem; color: var(--sl-color-gray-2); font-size: 1.0625rem; line-height: 1.7; text-wrap: pretty; }
-.home-section > p,
-.home-band > p { text-wrap: pretty; }
-.sl-markdown-content :is(.home-section, .home-band) a:not(.sl-link-button, [role='tab'], .sl-anchor-link) { color: var(--home-link-color); text-underline-offset: 4px; text-decoration-color: color-mix(in srgb, var(--home-link-color) 40%, transparent); }
-.sl-markdown-content :is(.home-section, .home-band) a:not(.sl-link-button, [role='tab'], .sl-anchor-link):hover { color: var(--sl-color-text-accent); text-decoration-color: currentColor; }
-.home-section > p:last-child,
-.home-band > p:last-child { color: var(--sl-color-gray-3); font-size: 0.875rem; }
+.home-section > p { text-wrap: pretty; }
+.sl-markdown-content .home-section a:not(.sl-link-button, [role='tab'], .sl-anchor-link, .also-list a) { color: var(--home-link-color); text-underline-offset: 4px; text-decoration-color: color-mix(in srgb, var(--home-link-color) 40%, transparent); }
+.sl-markdown-content .home-section a:not(.sl-link-button, [role='tab'], .sl-anchor-link, .also-list a):hover { color: var(--sl-color-text-accent); text-decoration-color: currentColor; }
+.home-section > p:last-child { color: var(--sl-color-gray-3); font-size: 0.875rem; }
+.sl-markdown-content .home-section > :last-child { margin-bottom: 0; }
 
-/* Policy is the first substantial product demonstration. */
-.decisions { margin-block: 2.5rem 1.5rem; overflow: hidden; border: 1px solid var(--sl-color-gray-5); border-radius: 10px; background: var(--sl-color-black); }
-.decisions-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 9rem; gap: 1.5rem; align-items: center; margin: 0; padding: 1.125rem 1.5rem; border-top: 1px solid var(--sl-color-gray-5); }
+/* Three pillars: a small picture of each claim, then the claim. */
+.pillars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; margin-top: 3rem; }
+.pillar { display: flex; flex-direction: column; min-width: 0; padding: 1.75rem; border: 1px solid var(--sl-color-gray-5); border-radius: 14px; background: var(--sl-color-black); }
+.pillar p { margin: 0; }
+.pillar h3 { margin: 1.75rem 0 0.5rem; color: var(--sl-color-white); font-size: 1.25rem; font-weight: 500; letter-spacing: -0.02em; line-height: 1.4; }
+.pillar > p { color: var(--sl-color-gray-2); font-size: 0.9375rem; line-height: 1.7; text-wrap: pretty; }
+.pillar > .pillar-links { margin-top: auto; padding-top: 1.25rem; font-size: 0.875rem; }
+.pillar-art { display: flex; flex-direction: column; justify-content: center; gap: 0.5rem; height: 8.25rem; color: var(--sl-color-gray-2); font-size: 0.75rem; }
+.pillar-art code { font-family: var(--sl-font-mono); font-size: 0.75rem; }
+.pillar-call { display: flex; align-items: center; gap: 0.625rem; }
+.pillar-call code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pillar-meter { display: flex; justify-content: space-between; color: var(--sl-color-white); }
+.pillar-meter > span > span,
+.pillar-event > span { color: var(--sl-color-gray-3); }
+.pillar-art .meter { height: 6px; margin-bottom: 0.5rem; border-radius: 3px; background: var(--sl-color-gray-5); }
+.meter > span { display: block; width: 12%; height: 100%; border-radius: inherit; background: var(--sl-color-gray-2); }
+.pillar-event { display: flex; gap: 0.625rem; font-family: var(--sl-font-mono); }
+/* A turn moving off a lost node: box3 is gone, box2 carries on. */
+.pillar-art.failover { flex-direction: row; align-items: flex-start; justify-content: center; gap: 0.875rem; padding-top: 1.25rem; box-sizing: border-box; color: var(--sl-color-gray-3); }
+.failover svg { flex-shrink: 0; }
+.node { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; font-family: var(--sl-font-mono); font-size: 0.6875rem; }
+.node > span { display: grid; place-items: center; width: 4rem; height: 4rem; box-sizing: border-box; border: 1px solid var(--sl-color-gray-5); border-radius: 12px; }
+.node > span::after { content: ''; width: 0.625rem; height: 0.625rem; border-radius: 50%; }
+.node-lost { color: var(--sl-color-red); }
+.node-lost > span { border: 1px dashed color-mix(in srgb, var(--sl-color-red) 45%, transparent); }
+.node-lost > span::after { background: var(--sl-color-red); opacity: 0.5; }
+.node-live { color: var(--sl-color-green); }
+.node-live > span { border-color: color-mix(in srgb, var(--sl-color-green) 35%, transparent); background: var(--sl-color-green-low); }
+.node-live > span::after { background: var(--sl-color-green); }
+
+/* Each rule names the call one way; the table says which. */
+.decisions { margin-block: 2.5rem 1.5rem; overflow: hidden; border: 1px solid var(--sl-color-gray-5); border-radius: 10px; background: var(--sl-color-gray-6); }
+.decisions-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 8.5rem; gap: 1.5rem; align-items: center; margin: 0; padding: 1.125rem 1.5rem; border-top: 1px solid var(--sl-color-gray-5); }
 .decisions-head { border-top: 0; color: var(--sl-color-gray-3); font-size: 0.6875rem; font-weight: 400; }
 .sl-markdown-content .decisions code { justify-self: start; padding: 0; border: 0; background: none; font-size: 0.75rem; overflow-wrap: anywhere; }
+.rule-by { display: block; margin-top: 0.25rem; color: var(--sl-color-gray-3); font-size: 0.6875rem; }
 .outcome { justify-self: start; display: inline-flex; align-items: center; gap: 0.4375rem; padding: 0.25rem 0.625rem; border-radius: 5px; font-size: 0.75rem; font-weight: 500; white-space: nowrap; }
 .outcome::before { content: ''; width: 0.3125rem; height: 0.3125rem; flex-shrink: 0; border-radius: 50%; background: currentColor; }
 .outcome-runs { background: var(--sl-color-green-low); color: var(--sl-color-green); }
 .outcome-waits { background: var(--sl-color-accent-low); color: var(--sl-color-text-accent); }
 .outcome-refused { background: var(--sl-color-red-low); color: var(--sl-color-red); }
 
-/* Runtime evidence: shared baselines, readable descriptions, and real output. */
-.home-proofs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3rem; }
-.sl-markdown-content .home-proofs > div { display: grid; grid-row: span 4; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); min-width: 0; row-gap: 0; margin: 0; padding-top: 1.5rem; border-top: 1px solid var(--sl-color-gray-5); }
-.sl-markdown-content .home-proofs > div > * { margin: 0 0 1.25rem; }
-.sl-markdown-content .home-proofs > div > :last-child { margin-bottom: 0; }
-.sl-markdown-content .home-proofs h3 { font-size: 1.25rem; font-weight: 500; line-height: 1.4; letter-spacing: -0.025em; text-wrap: balance; }
-.home-proofs > div > p { color: var(--sl-color-gray-2); font-size: 0.9375rem; line-height: 1.75; text-wrap: pretty; }
-.home-proofs > div > p:last-child { font-size: 0.8125rem; }
-.sl-markdown-content .home-proofs :is(.expressive-code, .cli-transcript),
-.sl-markdown-content .proof-example .expressive-code { display: flex; flex-direction: column; }
-.home-proofs .expressive-code .frame { display: flex; flex: 1; flex-direction: column; }
-.home-proofs :is(.expressive-code, .cli-transcript) pre { flex: 1; }
-.proof-example { display: flex; flex-direction: column; gap: 0.75rem; }
-.sl-markdown-content .proof-example > * { margin: 0; }
-.sl-markdown-content .proof-example .expressive-code { flex: 1; }
-.hijack { display: flex; flex-direction: column; gap: 0.75rem; }
-.sl-markdown-content .hijack p { margin: 0; }
-.hijack-issue { padding: 1rem; border: 1px solid var(--sl-color-gray-5); border-radius: 8px; color: var(--sl-color-gray-2); font-size: 0.8125rem; line-height: 1.75; }
-.hijack-issue span { display: block; margin-bottom: 0.5rem; color: var(--sl-color-gray-3); font-family: var(--sl-font-mono); font-size: 0.625rem; }
-.hijack-call { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 1rem; border-radius: 8px; background: var(--sl-color-gray-6); }
-.sl-markdown-content .hijack-rule { padding-inline: 1rem; color: var(--sl-color-gray-3); font-size: 0.75rem; }
-.sl-markdown-content :is(.hijack-rule, .hijack-call) code { padding: 0; border: 0; background: none; overflow-wrap: anywhere; }
+/* Words beside a picture: approvals, then the tools in your app. */
+.approval-layout,
+.tools-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3rem 4.5rem; align-items: center; }
+.sl-markdown-content :is(.approval-layout, .tools-layout) > * { min-width: 0; margin: 0; }
+.sl-markdown-content .approval-layout > div > p:last-child { margin: 0; font-size: 0.875rem; }
+.sl-markdown-content .tools-layout { margin-block: 0 2rem; }
+.tool-flow { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.flow-step { padding: 1.125rem 1.25rem; border: 1px solid var(--sl-color-gray-5); border-radius: 12px; background: var(--sl-color-gray-6); }
+.flow-step p { margin: 0; }
+.flow-step code { font-family: var(--sl-font-mono); font-size: 0.8125rem; color: var(--sl-color-white); overflow-wrap: anywhere; }
+.flow-step .flow-label { display: flex; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem; color: var(--sl-color-gray-3); font-size: 0.75rem; }
+.flow-label code { color: var(--sl-color-gray-3); font-size: 0.75rem; }
+.flow-decide { border-color: color-mix(in srgb, var(--sl-color-accent) 35%, var(--sl-color-gray-5)); }
+.flow-outcome { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; color: var(--sl-color-green); font-size: 0.8125rem; }
+.flow-run { border-color: color-mix(in srgb, var(--sl-color-green) 35%, var(--sl-color-gray-5)); }
+.flow-step .flow-key { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding: 0.5rem 0.625rem; border-radius: 6px; background: var(--sl-color-green-low); color: var(--sl-color-gray-2); font-size: 0.75rem; }
+.flow-key svg { color: var(--sl-color-green); }
+.flow-key code { color: var(--sl-color-green); font-size: 0.75rem; }
+.flow-link { display: flex; align-items: center; justify-content: center; gap: 0.75rem; min-height: 1.75rem; color: var(--sl-color-gray-3); font-size: 0.75rem; }
+.flow-link::before { content: ''; align-self: stretch; width: 1px; background: var(--sl-color-gray-4); }
+.flow-link:has(span) { min-height: 2.75rem; }
 
-/* Give every supporting example room to read without an extra click. */
-.team { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem 3rem; margin-top: 2.5rem; }
-.sl-markdown-content .team > div { display: flex; flex-direction: column; min-width: 0; margin: 0; padding-top: 1.25rem; border-top: 1px solid var(--sl-color-gray-5); }
-.sl-markdown-content .team h3 { margin: 0 0 0.625rem; font-size: 1rem; font-weight: 500; line-height: 1.4; }
-.sl-markdown-content .team p { margin: 0 0 1rem; color: var(--sl-color-gray-2); font-size: 0.875rem; line-height: 1.75; text-wrap: pretty; }
-.sl-markdown-content .team .expressive-code { display: flex; flex-direction: column; flex: 1; margin: 0; }
-.team .expressive-code .frame { display: flex; flex-direction: column; flex: 1; }
-.team .expressive-code pre { flex: 1; }
-.sl-markdown-content .team > div > :last-child { margin: 0.75rem 0 0; font-size: 0.75rem; }
-
-/* Configuration notes share the same type hierarchy as the operator examples. */
-.agent-file { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; gap: 2rem 3rem; margin-top: 2.5rem; }
-.sl-markdown-content .agent-file > * { margin: 0; }
-.sl-markdown-content .agent-notes > div { margin: 0; padding-block: 1.125rem; border-top: 1px solid var(--sl-color-gray-5); }
-.sl-markdown-content .agent-notes > div:first-child { padding-top: 0; border-top: 0; }
-.agent-notes dt { color: var(--sl-color-white); font-size: 0.8125rem; font-weight: 500; }
-.sl-markdown-content .agent-notes dt code { padding: 0; border: 0; background: none; font-size: 0.75rem; }
-.sl-markdown-content .agent-notes dd { margin: 0.5rem 0 0; padding: 0; color: var(--sl-color-gray-2); font-size: 0.9375rem; line-height: 1.7; text-wrap: pretty; }
-.sl-markdown-content .operator-footer { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--sl-color-gray-5); }
-.sl-markdown-content .operator-utilities { margin: 0; max-width: 60rem; color: var(--sl-color-gray-2); font-size: 0.9375rem; line-height: 1.75; }
-.sl-markdown-content .operator-footer > p:last-child { margin: 0.75rem 0 0; font-size: 0.875rem; }
-.operator-utilities a { color: inherit; }
+/* Everything else, one line each. */
+.also-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 2rem; margin: 2rem 0 0; padding: 0; list-style: none; }
+.also-list li { min-width: 0; padding-block: 1rem; border-top: 1px solid var(--sl-color-gray-5); }
+.also-list a { color: var(--sl-color-white); font-size: 0.9375rem; font-weight: 500; text-decoration: none; }
+.also-list a:hover { color: var(--sl-color-text-accent); }
+.also-list p { margin: 0.25rem 0 0; color: var(--sl-color-gray-3); font-size: 0.875rem; line-height: 1.6; text-wrap: pretty; }
 
 /* The final invitation is a composed section, followed by a quiet dark footer. */
 .install-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2.5rem 4rem; align-items: center; }
@@ -195,8 +196,9 @@
 .sl-markdown-content .home-footer a:hover { color: var(--sl-color-white); }
 
 @media (max-width: 65rem) {
-	.audience-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-	.team { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.audience-grid,
+	.also-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.pillars { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 52rem) {
@@ -204,10 +206,8 @@
 	.home-hero .hero { grid-template-columns: minmax(0, 1fr); gap: 3rem; }
 	.home-hero .hero > .hero-html { order: 2; }
 	.home-hero .hero h1 { font-size: clamp(2rem, 12.5cqi, 4rem); }
-	.home-meta { justify-content: center; }
-	.home-brand-primary { justify-content: center; }
 	.home-hero .tagline { margin-inline: auto; }
-	.home-proofs, .agent-file, .install-layout { grid-template-columns: minmax(0, 1fr); }
+	.approval-layout, .tools-layout, .install-layout { grid-template-columns: minmax(0, 1fr); }
 	.decisions-head { display: none; }
 	.decisions-row { grid-template-columns: minmax(0, 1fr); gap: 0.625rem; padding: 1.25rem; }
 	.decisions-row:nth-child(2) { border-top: 0; }
@@ -216,11 +216,9 @@
 
 @media (max-width: 30rem) {
 	.home-hero { padding-top: 2.5rem; }
-	.home-meta { gap: 0.5rem 0.75rem; font-size: 0.625rem; }
-	.home-meta span + span::before { margin-inline-end: 0.75rem; }
 	.audience-grid { gap: 1.5rem 1.25rem; }
-	.team { grid-template-columns: minmax(0, 1fr); }
-	.home-section, .home-band { padding-block: 3.5rem; }
+	.also-list { grid-template-columns: minmax(0, 1fr); }
+	.home-section { padding-block: 3.5rem; }
 	.home-footer { align-items: start; flex-direction: column; }
 	.home-footer nav { margin-inline-start: 0; }
 }
