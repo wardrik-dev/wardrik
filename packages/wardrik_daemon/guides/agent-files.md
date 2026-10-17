@@ -135,7 +135,7 @@ written in place:
 ```yaml
 policy:
   ask: [github/*]
-  deny: [run_lua]
+  deny: [shell/*]
 ```
 
 Without one, every call the agent's tools allow may run, apart from a gated tool's, which waits on a

@@ -198,7 +198,7 @@ h1#_top,
 	text-underline-offset: 3px;
 }
 
-.sl-markdown-content code:not(pre code) {
+.sl-markdown-content code:not(pre code, :where(.not-content) code) {
 	padding: 0.125em 0.3125em;
 	border: 1px solid var(--sl-color-gray-5);
 	border-radius: 4px;

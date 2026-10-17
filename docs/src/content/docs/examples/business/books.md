@@ -7,8 +7,8 @@ sidebar:
 
 This agent does the bookkeeping a small business falls behind on. Each weekday morning it
 reconciles yesterday's transactions, enters the bills that came in, and asks in Slack about anything
-it isn't sure of. Small bills post on their own. Bills over $1,000 wait for an accountant. Payroll
-is never touched.
+it isn't sure of. Small bills post on their own. A bill with a line of $1,000 or more waits for an
+accountant. Payroll is never touched.
 
 ## What it takes
 
@@ -29,6 +29,7 @@ mcp:
   quickbooks:
     command: node
     args: [/opt/quickbooks-online-mcp-server/dist/index.js]
+    trusted: true
     env:
       QUICKBOOKS_CLIENT_ID: ${QUICKBOOKS_CLIENT_ID}
       QUICKBOOKS_CLIENT_SECRET: ${QUICKBOOKS_CLIENT_SECRET}
@@ -51,6 +52,9 @@ notify:
 
 - The server runs on the daemon's machine and talks to QuickBooks with your app's keys. Its
   `npm run auth` gets the refresh token once.
+- `trusted: true` says what the server answers is your own books, not
+  [content from outside](/concepts/outside-content/). Without it, the agent's first QuickBooks
+  search would make every bill wait for a person, however small.
 - `approvers` are the accountants, who may press Approve and Deny.
 
 Seal the keys and restart:
@@ -72,7 +76,7 @@ allow:
   - quickbooks/read_*
   - quickbooks/create-bill(params.bill.Line.Amount < 1000)
 ask:
-  quickbooks/create-bill(params.bill.Line.Amount >= 1000): A bill with a line over $1,000.
+  quickbooks/create-bill(params.bill.Line.Amount >= 1000): A bill with a line of $1,000 or more.
   quickbooks/create_invoice: This creates a customer invoice.
   quickbooks/create_payment: This records a customer's payment.
 deny:

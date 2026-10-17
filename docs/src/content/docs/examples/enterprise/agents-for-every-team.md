@@ -85,7 +85,7 @@ A ceiling is a policy every agent of the org is held to, ahead of its own, howev
 ```yaml title="~/.config/wardrik/policies/payments-ceiling.yaml"
 ask:
   stripe/stripe_api_write: This changes money in Stripe.
-deny: [run_lua]
+deny: [shell/*]
 budget:
   usd: 20.00
   per: day
