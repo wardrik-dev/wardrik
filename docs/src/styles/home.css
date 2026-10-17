@@ -12,9 +12,10 @@
 }
 
 /* On a wide screen the hero fills the first screen, the content panel's top padding aside: the
- * headline and the replay centred, the audience links at its foot, and the next section below. */
+ * headline and the replay centred, the audience links at its foot, and the next section below.
+ * On a tall screen it stops at 56rem, and the next section shows beneath it. */
 @media (min-width: 52rem) {
-	.home-hero { min-height: calc(100svh - var(--sl-nav-height) - 1.5rem); box-sizing: border-box; }
+	.home-hero { min-height: min(calc(100svh - var(--sl-nav-height) - 1.5rem), 56rem); box-sizing: border-box; }
 	.home-hero .hero { flex: 1; align-content: center; }
 }
 
