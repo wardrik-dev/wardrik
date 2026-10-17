@@ -137,6 +137,43 @@ defmodule WardrikMCP.ServersTest do
 
   def no_metadata(conn), do: Plug.Conn.send_resp(conn, 404, "")
 
+  # An authorization server that publishes its metadata, at an issuer a host
+  # names, behind a resource that publishes none.
+  def issuer_metadata(
+        %{host: "issuer.example", request_path: "/.well-known/oauth-authorization-server"} = conn
+      ),
+      do:
+        Req.Test.json(conn, %{
+          issuer: "https://issuer.example",
+          authorization_endpoint: "https://issuer.example/authorize",
+          token_endpoint: "https://issuer.example/token",
+          code_challenge_methods_supported: ["S256"]
+        })
+
+  def issuer_metadata(conn), do: Plug.Conn.send_resp(conn, 404, "")
+
+  # A host's providers: the servers owners add, each with the owner's own
+  # client and issuer.
+  defmodule OwnClient do
+    @moduledoc false
+    defstruct [:store]
+
+    defimpl WardrikOAuth.Providers do
+      def fetch(%{store: store}, name, opts) do
+        with {:ok, provider} <-
+               WardrikOAuth.Providers.fetch(
+                 %WardrikMCP.Servers.Providers{store: store},
+                 name,
+                 opts
+               ),
+             do: {:ok, %{provider | issuer: "https://issuer.example", client_id: "own-client"}}
+      end
+
+      def names(%{store: store}),
+        do: WardrikOAuth.Providers.names(%WardrikMCP.Servers.Providers{store: store})
+    end
+  end
+
   defp keep(%{key: key}, url, auth) do
     :ok = Remote.put(Wardrik.Test.store(), %Remote{key: key, url: url, auth: auth, filters: []})
   end
@@ -192,6 +229,34 @@ defmodule WardrikMCP.ServersTest do
 
       assert {:error, %Error{type: :not_found}} =
                Wardrik.Servers.remove(servers(), owner, name: name, by: nil)
+    end
+
+    test "starts the sign-in with the provider the host's :added finds for it",
+         %{name: name, owner: owner} do
+      store = Wardrik.Test.store()
+
+      oauth =
+        WardrikOAuth.new(
+          added: %OwnClient{store: store},
+          redirect: [url: "https://wardrik.example/oauth", open: false],
+          req_options: [plug: &__MODULE__.issuer_metadata/1],
+          resolve: fn _host -> {:ok, [{93, 184, 216, 34}]} end
+        )
+
+      vault = WardrikVault.new(store: store, keys: [@key], grants: oauth)
+      servers = %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault, check: @reachable}
+      start_supervised!({WardrikOAuth.Supervisor, oauth: oauth, callback: false})
+
+      # The server publishes no metadata of its own; the host names its issuer.
+      assert {:ok, %{url: url}} =
+               Wardrik.Servers.add(servers, owner,
+                 name: name,
+                 fields: %{"url" => "https://mcp.example.com/mcp", "auth" => %{"oauth" => %{}}},
+                 by: nil
+               )
+
+      assert String.starts_with?(url, "https://issuer.example/authorize?")
+      assert url =~ "client_id=own-client"
     end
 
     test "refuses what it cannot keep", %{name: name, owner: owner} do

@@ -140,11 +140,21 @@ defmodule WardrikMCP.Servers do
   end
 
   # One its owner signs in to starts the sign-in, and answers where; one
-  # whose sign-in cannot start is not kept.
+  # whose sign-in cannot start is not kept. It starts with the provider
+  # every later sign-in to it is found by, `:oauth`'s for its name and
+  # owner, which a host's `:added` may tell more of than the server does,
+  # such as the owner's own client; the server's own where it holds none.
   defp signed_in(servers, remote, by) do
     case Remote.provider(remote) do
-      {:ok, provider} -> started(servers, remote, provider, by)
+      {:ok, provider} -> started(servers, remote, found(servers, remote, provider), by)
       :none -> {:ok, :connected}
+    end
+  end
+
+  defp found(%__MODULE__{oauth: oauth}, %Remote{key: key}, provider) do
+    case WardrikOAuth.Provider.fetch(oauth, key.name, holder(key.owner)) do
+      {:ok, found} -> found
+      :error -> provider
     end
   end
 
