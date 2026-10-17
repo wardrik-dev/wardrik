@@ -9,7 +9,7 @@ defmodule WardrikChannel.Approvers.Anyone do
   @type t() :: %__MODULE__{}
 
   defimpl WardrikChannel.Approvers do
-    def decides?(_anyone, _among), do: true
+    def decides?(_anyone, _include?), do: true
     def asked(_anyone), do: []
     def described(_anyone), do: "anyone in it decides"
   end

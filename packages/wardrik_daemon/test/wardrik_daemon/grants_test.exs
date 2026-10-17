@@ -35,7 +35,11 @@ defmodule WardrikDaemon.GrantsTest do
 
   defp in_chat(user) do
     {:ok, installation} = Agents.installation(Host.agents(), "chat")
-    Grants.grants(grants(), WardrikChannel.principal(installation, user, nil))
+
+    Grants.grants(
+      grants(),
+      WardrikChannel.principal(WardrikChannel.Member.new(installation, user))
+    )
   end
 
   defp can(grants), do: Enum.map(grants, &{to_string(&1.scope), &1.can})

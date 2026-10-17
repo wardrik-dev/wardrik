@@ -14,7 +14,7 @@ defmodule WardrikDaemon.Test.Channel do
   def deliver(_outbound, _opts), do: {:ok, :posted}
 
   @impl WardrikChannel
-  def among?(_installation, user, names, _opts), do: user in names
+  def include?(names, %WardrikChannel.Member{id: id}, _opts), do: id in names
 
   @impl WardrikChannel
   def request(_request, _opts), do: WardrikChannel.Response.text(200, "")

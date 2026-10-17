@@ -11,7 +11,7 @@ defmodule WardrikChannel.Approvers.Named do
   @type t() :: %__MODULE__{names: [String.t()]}
 
   defimpl WardrikChannel.Approvers do
-    def decides?(%{names: names}, among), do: among.(names)
+    def decides?(%{names: names}, include?), do: include?.(names)
 
     def asked(%{names: names}), do: names
 

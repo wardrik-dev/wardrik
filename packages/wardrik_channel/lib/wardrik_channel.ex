@@ -58,8 +58,8 @@ defmodule WardrikChannel do
       medium, started by `WardrikChannel.Supervisor` with the channel's
       options, its `:name`, and its `WardrikChannel.Context`.
     * `deliver/2` posts a `WardrikChannel.Outbound` in a room.
-    * `among?/4` says whether someone it knows is one of those
-      `config.yaml` names, as `approvers` name them, in its own terms.
+    * `include?/3` says whether names `config.yaml` gives, as `approvers`
+      name people, include someone it knows, in its own terms.
     * `request/2` answers what the medium sends over HTTP, such as the
       events of every workspace it is installed in.
     * `install_url/2` is where someone is sent to install it in a
@@ -90,7 +90,8 @@ defmodule WardrikChannel do
   ## People
 
   Someone writing in a room, or pressing a button, is the
-  `Wardrik.Principal` `principal/3` makes, of their workspace, and may do
+  `Wardrik.Principal` `principal/2` makes of them, a `WardrikChannel.Member`
+  of their workspace, and may do
   what the host's
   `Wardrik.Grants` says that principal may, such as message the agent a
   room answers with, or decide what an agent asks: `Wardrik.Host.caller/2`,
@@ -98,7 +99,7 @@ defmodule WardrikChannel do
   `Wardrik` as a `Wardrik.Session` holding it. A host whose grants
   give someone nothing has every room ignore what they post, saying why. A
   host that grants by what `config.yaml` names people, as a channel's
-  approvers, asks `among?/4` with the channel's adapter and options, and
+  approvers, asks `include?/3` with the channel's adapter and options, and
   `WardrikChannel.Approvers` whether they decide.
 
   ## Starting channels
@@ -151,7 +152,7 @@ defmodule WardrikChannel do
   alias WardrikChannel.Channel
   alias WardrikChannel.Context
   alias WardrikChannel.Inbound
-  alias WardrikChannel.Installation
+  alias WardrikChannel.Member
   alias WardrikChannel.Outbound
   alias WardrikChannel.Replies
   alias WardrikChannel.Request
@@ -184,13 +185,11 @@ defmodule WardrikChannel do
   @callback deliver(Outbound.t(), keyword()) :: {:ok, term()} | {:error, term()}
 
   @doc """
-  Whether the person the channel knows as `user` in the workspace of
-  `installation` is one of `names`, as `config.yaml` names people in it,
-  such as by handle or email address, as the channel whose options these
-  are.
+  Whether `names`, as `config.yaml` names people in the channel, such as by
+  handle or email address, include `member`, as the channel whose options
+  these are.
   """
-  @callback among?(Installation.t(), user :: String.t(), names :: [String.t()], keyword()) ::
-              boolean()
+  @callback include?(names :: [String.t()], Member.t(), keyword()) :: boolean()
 
   @doc """
   Answers what the medium sent the channel over HTTP, given its options,
@@ -232,24 +231,28 @@ defmodule WardrikChannel do
   def tasks, do: WardrikChannel.TaskSupervisor
 
   @doc """
-  The `Wardrik.Principal` of someone a channel knows as `user` in the
-  workspace of `installation`: of type `:channel`, known as
-  `channel/workspace/user`, so the same id in two channels, or two
+  The `Wardrik.Principal` of `member`: of type `:channel`, known as
+  `channel/workspace/id`, so the same id in two channels, or two
   workspaces, are two people, and every channel names its people alike.
+  Options: `:name`, the name the channel shows for them.
 
-      WardrikChannel.principal(installation, "U024BE7LH", "jon")
+      WardrikChannel.principal(member, name: "jon")
       #=> a principal of type :channel, known as "slack/T0123/U024BE7LH", by name "jon"
   """
-  @spec principal(Installation.t(), String.t(), String.t() | nil) :: Wardrik.Principal.t()
-  def principal(%Installation{channel: channel, workspace: workspace}, user, name)
-      when is_binary(user),
-      do: Wardrik.Principal.new(:channel, "#{channel}/#{workspace}/#{user}", name: name)
+  @spec principal(Member.t(), keyword()) :: Wardrik.Principal.t()
+  def principal(%Member{installation: installation, id: id}, opts \\ []) do
+    opts = Keyword.validate!(opts, [:name])
+
+    Wardrik.Principal.new(:channel, "#{installation.channel}/#{installation.workspace}/#{id}",
+      name: opts[:name]
+    )
+  end
 
   @doc """
-  The channel, the workspace and the user id of someone `principal/3` made
-  a principal of.
+  The channel, the workspace and the id of someone `principal/2` made a
+  principal of.
 
-      WardrikChannel.person(WardrikChannel.principal(installation, "U024BE7LH", "jon"))
+      WardrikChannel.person(WardrikChannel.principal(member))
       #=> {"slack", "T0123", "U024BE7LH"}
   """
   @spec person(Wardrik.Principal.t()) :: {String.t(), String.t(), String.t()}
@@ -289,16 +292,15 @@ defmodule WardrikChannel do
   end
 
   @doc """
-  Whether the person `channel` knows as `user`, in the workspace of
-  `installation`, is one of `names`, as `config.yaml` names people in it,
-  as its adapter's `among?/4` says, with its options; never for `[]`.
+  Whether `names`, as `config.yaml` names people in `channel`, include
+  `member`, as its adapter's `include?/3` says, with its options; never
+  for `[]`.
   """
-  @spec among?(channel(), Installation.t(), String.t(), [String.t()]) :: boolean()
-  def among?(_channel, _installation, _user, []), do: false
+  @spec include?(channel(), [String.t()], Member.t()) :: boolean()
+  def include?(_channel, [], %Member{}), do: false
 
-  def among?({adapter, options}, %Installation{} = installation, user, names)
-      when is_binary(user) and is_list(names),
-      do: adapter.among?(installation, user, names, options)
+  def include?({adapter, options}, names, %Member{} = member) when is_list(names),
+    do: adapter.include?(names, member, options)
 
   @doc """
   Answers `request`, which the medium sent `channel` over HTTP, as a map of

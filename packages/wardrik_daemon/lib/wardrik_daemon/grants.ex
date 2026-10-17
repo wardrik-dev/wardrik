@@ -70,7 +70,7 @@ defmodule WardrikDaemon.Grants do
     {channel, _workspace, user} = WardrikChannel.person(principal)
 
     case Agents.installation(agents, channel) do
-      {:ok, installation} -> member(agents, installation, user)
+      {:ok, installation} -> member(agents, WardrikChannel.Member.new(installation, user))
       :error -> []
     end
   end
@@ -78,13 +78,13 @@ defmodule WardrikDaemon.Grants do
   defp granted(_type, _principal, _grants), do: []
 
   # Someone in the workspace of a channel's installation, by their id there.
-  defp member(agents, installation, user) do
+  defp member(agents, %WardrikChannel.Member{installation: installation} = member) do
     channel = installation.channel
 
     {can, ceiling} =
       cond do
-        among?(agents, installation, user, Agents.admins(agents, channel)) -> admin(agents)
-        decides?(agents, installation, user) -> {@deciders, []}
+        include?(agents, Agents.admins(agents, channel), member) -> admin(agents)
+        decides?(agents, member) -> {@deciders, []}
         true -> {@everyone, []}
       end
 
@@ -104,20 +104,20 @@ defmodule WardrikDaemon.Grants do
     end
   end
 
-  defp decides?(agents, installation, user) do
-    among = &among?(agents, installation, user, &1)
+  defp decides?(agents, %WardrikChannel.Member{installation: installation} = member) do
+    include? = &include?(agents, &1, member)
 
-    WardrikChannel.Approvers.decides?(Agents.approvers(agents, installation), among) or
-      among.(notifying(agents, installation.channel))
+    WardrikChannel.Approvers.decides?(Agents.approvers(agents, installation), include?) or
+      include?.(notifying(agents, installation.channel))
   end
 
   # As the channel's adapter knows people, from the channel's settings; never
   # in a channel config.yaml does not name.
-  defp among?(agents, installation, user, names) do
+  defp include?(agents, names, %WardrikChannel.Member{installation: installation} = member) do
     case Enum.find(channels(agents), fn {name, _configured} ->
            Atom.to_string(name) == installation.channel
          end) do
-      {_name, configured} -> WardrikChannel.among?(configured, installation, user, names)
+      {_name, configured} -> WardrikChannel.include?(configured, names, member)
       nil -> false
     end
   end

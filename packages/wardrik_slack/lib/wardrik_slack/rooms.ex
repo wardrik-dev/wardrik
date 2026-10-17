@@ -21,6 +21,7 @@ defmodule WardrikSlack.Rooms do
 
   alias Wardrik.AgentID
   alias WardrikChannel.Binding
+  alias WardrikChannel.Member
   alias WardrikChannel.Offer
   alias WardrikChannel.Room
   alias WardrikChannel.Workspace
@@ -275,7 +276,12 @@ defmodule WardrikSlack.Rooms do
   defp sender(nil, _opts, _name), do: nil
 
   defp sender(id, opts, name),
-    do: WardrikChannel.principal(Keyword.fetch!(opts, :workspace).installation, id, name)
+    do:
+      opts
+      |> Keyword.fetch!(:workspace)
+      |> Map.fetch!(:installation)
+      |> Member.new(id)
+      |> WardrikChannel.principal(name: name)
 
   defp asked(workspace),
     do: workspace |> Workspace.approvers() |> WardrikChannel.Approvers.asked()

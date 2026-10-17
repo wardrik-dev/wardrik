@@ -30,7 +30,7 @@ defmodule WardrikChannel.Test.Adapter do
   end
 
   @impl WardrikChannel
-  def among?(%Installation{}, user, names, _opts), do: user in names
+  def include?(names, %WardrikChannel.Member{id: id}, _opts), do: id in names
 
   @impl WardrikChannel
   def request(request, opts) do

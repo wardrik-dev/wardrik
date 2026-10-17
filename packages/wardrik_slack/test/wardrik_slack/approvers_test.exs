@@ -109,16 +109,31 @@ defmodule WardrikSlack.ApproversTest do
     refute_receive {:slack, "/api/users.list", _again}
   end
 
-  test "knows a member among those named by id, email address or handle" do
+  test "knows whether names include a member, by id, email address or handle" do
     opts = slack()
 
     installation = WardrikSlack.Test.installation(opts[:token])
     opts = Keyword.delete(opts, :token)
 
-    assert WardrikSlack.among?(installation, "U1", ["U7", "maria@example.com"], opts)
-    assert WardrikSlack.among?(installation, "U2", ["@nobody", "@jon"], opts)
-    assert WardrikSlack.among?(installation, "U7", ["U7"], opts)
-    refute WardrikSlack.among?(installation, "U2", ["U7", "maria@example.com"], opts)
+    assert WardrikSlack.include?(
+             ["U7", "maria@example.com"],
+             WardrikChannel.Member.new(installation, "U1"),
+             opts
+           )
+
+    assert WardrikSlack.include?(
+             ["@nobody", "@jon"],
+             WardrikChannel.Member.new(installation, "U2"),
+             opts
+           )
+
+    assert WardrikSlack.include?(["U7"], WardrikChannel.Member.new(installation, "U7"), opts)
+
+    refute WardrikSlack.include?(
+             ["U7", "maria@example.com"],
+             WardrikChannel.Member.new(installation, "U2"),
+             opts
+           )
   end
 
   test "names the approvers in a sentence, a member id as Slack shows one" do

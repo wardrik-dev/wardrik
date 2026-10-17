@@ -135,7 +135,12 @@ defmodule WardrikSlack.AnswersTest do
 
       on_exit(fn -> Fleet.forget(key) end)
       :ok = Event.Bus.subscribe(key, level: :lifecycle)
-      asker = WardrikChannel.principal(WardrikSlack.Test.installation(), "U2", "maria")
+
+      asker =
+        WardrikSlack.Test.installation()
+        |> WardrikChannel.Member.new("U2")
+        |> WardrikChannel.principal(name: "maria")
+
       :ok = Agent.ask(key, "Ship it.", sender: asker)
       assert_receive %Event{payload: %Event.TurnParked{}}
 

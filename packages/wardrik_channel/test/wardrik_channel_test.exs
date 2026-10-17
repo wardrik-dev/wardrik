@@ -79,14 +79,16 @@ defmodule WardrikChannelTest do
 
   test "knows someone by the channel, the workspace and the id it knows them by" do
     named = {WardrikChannel.Test.Adapter, test: self()}
-    maria = WardrikChannel.principal(installation(), "U1", "maria")
+    member = WardrikChannel.Member.new(installation(), "U1")
+    maria = WardrikChannel.principal(member, name: "maria")
 
     assert Wardrik.Principal.id(maria) == "named/T1/U1"
     assert WardrikChannel.person(maria) == {"named", "T1", "U1"}
 
-    assert WardrikChannel.among?(named, installation(), "U1", ["U2", "U1"])
-    refute WardrikChannel.among?(named, installation(), "U1", ["U2"])
-    refute WardrikChannel.among?(named, installation(), "U1", [])
+    assert Wardrik.Principal.name(maria) == "maria"
+    assert WardrikChannel.include?(named, ["U2", "U1"], member)
+    refute WardrikChannel.include?(named, ["U2"], member)
+    refute WardrikChannel.include?(named, [], member)
   end
 
   test "makes each channel once, its context from the host's answers" do

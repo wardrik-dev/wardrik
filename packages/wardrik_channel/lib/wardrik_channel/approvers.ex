@@ -12,17 +12,17 @@ defprotocol WardrikChannel.Approvers do
           # approvers: anyone                        # anyone in the channel
 
   and its `Wardrik.Grants` asks `decides?/2` whether someone decides, with
-  whether they are among names as the channel's adapter says, through
-  `WardrikChannel.among?/4`. Naming nobody, a channel's approvers leave
+  whether names include them, as the channel's adapter says, through
+  `WardrikChannel.include?/3`. Naming nobody, a channel's approvers leave
   who decides to the host.
   """
 
   @doc """
-  Whether someone decides, where `among` answers whether they are one of a
-  list of names, as the channel names people.
+  Whether someone decides, where `include?` answers whether a list of
+  names, as the channel names people, includes them.
   """
   @spec decides?(t(), ([String.t()] -> boolean())) :: boolean()
-  def decides?(approvers, among)
+  def decides?(approvers, include?)
 
   @doc "Whom the channel asks directly what an agent waits on, as it names them."
   @spec asked(t()) :: [String.t()]

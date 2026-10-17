@@ -112,7 +112,7 @@ defmodule WardrikSlack.Threads do
           name
       end
 
-    WardrikChannel.principal(installation, user, name)
+    installation |> WardrikChannel.Member.new(user) |> WardrikChannel.principal(name: name)
   end
 
   # The name Slack shows for someone: the one they chose, their full name,

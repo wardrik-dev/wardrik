@@ -48,6 +48,7 @@ defmodule WardrikSlack do
   require Logger
 
   alias WardrikChannel.Installation
+  alias WardrikChannel.Member
   alias WardrikChannel.Outbound
 
   @api "https://slack.com/api/"
@@ -100,13 +101,17 @@ defmodule WardrikSlack do
   def child_spec(opts), do: WardrikSlack.Socket.child_spec(opts)
 
   @doc """
-  Whether the member `user` is one of `names`, each a `@handle`, an email
-  address or a member id, as `WardrikSlack.Approvers` finds them in the
-  installation's workspace.
+  Whether `names`, each a `@handle`, an email address or a member id,
+  include `member`, as `WardrikSlack.Approvers` finds them in its
+  workspace.
   """
   @impl WardrikChannel
-  def among?(%Installation{token: token}, user, names, opts),
-    do: WardrikSlack.Approvers.among?(user, names, token: token, req_options: req_options(opts))
+  def include?(names, %Member{installation: installation, id: id}, opts),
+    do:
+      WardrikSlack.Approvers.include?(names, id,
+        token: installation.token,
+        req_options: req_options(opts)
+      )
 
   @impl WardrikChannel
   def request(request, opts), do: WardrikSlack.HTTP.request(request, opts)

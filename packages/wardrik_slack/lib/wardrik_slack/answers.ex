@@ -34,7 +34,11 @@ defmodule WardrikSlack.Answers do
     with {:ok, %{"a" => text, "c" => call, "n" => name}} <- JSON.decode(value),
          {:ok, agent} <- Wardrik.AgentID.parse(text) do
       %{context: context, installation: installation} = Keyword.fetch!(opts, :workspace)
-      by = WardrikChannel.principal(installation, user["id"], user["username"] || user["name"])
+
+      by =
+        installation
+        |> WardrikChannel.Member.new(user["id"])
+        |> WardrikChannel.principal(name: user["username"] || user["name"])
 
       reply =
         case Wardrik.Host.caller(context.host,
