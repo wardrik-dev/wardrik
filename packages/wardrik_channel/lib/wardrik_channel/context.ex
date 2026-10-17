@@ -26,6 +26,12 @@ defmodule WardrikChannel.Context do
       in its threads, as `WardrikChannel.Approvers`; nobody named by
       default. They are asked directly, and the room where it names nobody;
       who may answer is what the host's `Wardrik.Grants` says
+    * `:offering` - given the installation, how an agent comes to answer in
+      its rooms, as said where none does: `Whoever runs Wardrik can offer
+      an agent here.` by default
+    * `:deciding` - given the installation, who else may decide what an
+      agent asks, as said to someone refused: `Whoever runs Wardrik names
+      who else may.` by default
     * `:replies` - the name of the `WardrikChannel.Replies` that posts what
       agents answer in its threads; `WardrikChannel.Replies.supervisor/0`
       by default
@@ -46,6 +52,8 @@ defmodule WardrikChannel.Context do
     create: {__MODULE__, :refuse, []},
     start: {__MODULE__, :unstarted, []},
     approvers: {__MODULE__, :nobody, []},
+    offering: {__MODULE__, :offered_by_whoever_runs_it, []},
+    deciding: {__MODULE__, :named_by_whoever_runs_it, []},
     replies: WardrikChannel.Replies.Rooms
   ]
 
@@ -60,6 +68,8 @@ defmodule WardrikChannel.Context do
           create: host(),
           start: host(),
           approvers: host(),
+          offering: host(),
+          deciding: host(),
           replies: atom()
         }
 
@@ -82,4 +92,13 @@ defmodule WardrikChannel.Context do
   @doc false
   @spec nobody(Installation.t()) :: Approvers.Named.t()
   def nobody(_installation), do: %Approvers.Named{names: []}
+
+  @doc false
+  @spec offered_by_whoever_runs_it(Installation.t()) :: String.t()
+  def offered_by_whoever_runs_it(_installation),
+    do: "Whoever runs Wardrik can offer an agent here."
+
+  @doc false
+  @spec named_by_whoever_runs_it(Installation.t()) :: String.t()
+  def named_by_whoever_runs_it(_installation), do: "Whoever runs Wardrik names who else may."
 end

@@ -12,10 +12,9 @@ defmodule WardrikSlack.Answers do
   """
 
   alias Wardrik.Error
+  alias WardrikChannel.Workspace
 
-  @refused "Only whoever asked, or this channel's approvers, can answer that. " <>
-             "The channel's approvers in config.yaml name who else may, and " <>
-             "wardrik approve answers it from the server."
+  @refused "Only whoever asked, or the approvers here, can answer that. "
 
   @doc """
   Answers a button press, from the `block_actions` payload Slack sends:
@@ -33,7 +32,8 @@ defmodule WardrikSlack.Answers do
 
     with {:ok, %{"a" => text, "c" => call, "n" => name}} <- JSON.decode(value),
          {:ok, agent} <- Wardrik.AgentID.parse(text) do
-      %{context: context, installation: installation} = Keyword.fetch!(opts, :workspace)
+      %{context: context, installation: installation} =
+        workspace = Keyword.fetch!(opts, :workspace)
 
       by =
         installation
@@ -46,8 +46,9 @@ defmodule WardrikSlack.Answers do
                subject: agent
              ) do
           {:ok, caller} -> pressed(action, payload, {user, caller}, agent, call, name)
-          {:error, _unreached} -> WardrikSlack.ephemeral(@refused)
+          {:error, _unreached} -> :refused
         end
+        |> refused(workspace)
 
       WardrikSlack.respond(payload["response_url"], reply, Keyword.get(opts, :req_options, []))
     else
@@ -57,10 +58,16 @@ defmodule WardrikSlack.Answers do
 
   def answer(_payload, _opts), do: :ignored
 
+  # A press refused says who else may answer, as the host says.
+  defp refused(:refused, workspace),
+    do: WardrikSlack.ephemeral(@refused <> Workspace.deciding(workspace))
+
+  defp refused(reply, _workspace), do: reply
+
   defp pressed("wardrik_link", _payload, {_user, caller}, agent, call, _name) do
     if Wardrik.Grant.allows?(caller.grant, :decide, agent),
       do: WardrikSlack.ephemeral(link(agent, call)),
-      else: WardrikSlack.ephemeral(@refused)
+      else: :refused
   end
 
   defp pressed(action, payload, {user, caller}, agent, call, name) do
@@ -78,7 +85,7 @@ defmodule WardrikSlack.Answers do
            user["username"] || user["name"] || user["id"]
          ) do
       {:ok, _decided} -> decided(payload, action, note, user, call, name)
-      {:error, %Error{type: :forbidden}} -> WardrikSlack.ephemeral(@refused)
+      {:error, %Error{type: :forbidden}} -> :refused
       {:error, %Error{type: :not_found}} -> WardrikSlack.ephemeral("#{agent} is not running.")
       {:error, %Error{type: :conflict}} -> WardrikSlack.ephemeral("That was already answered.")
       {:error, %Error{message: message}} -> WardrikSlack.ephemeral(message)

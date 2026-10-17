@@ -175,7 +175,9 @@ defmodule WardrikDaemon do
           creatable: {Agents, :creatable?, [agents]},
           create: {Agents, :create_in, [agents]},
           start: {Agents, :start, [agents]},
-          approvers: {Agents, :approvers, [agents]}
+          approvers: {Agents, :approvers, [agents]},
+          offering: {Agents, :offering, []},
+          deciding: {Agents, :deciding, []}
         )
     end
   end

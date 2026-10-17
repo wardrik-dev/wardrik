@@ -168,18 +168,15 @@ defmodule WardrikSlack.Rooms do
           button("Create an agent for ##{name}", "wardrik_room_create", name, "primary")
         ]),
         context_line(
-          "It starts from this deployment's defaults, and answers when mentioned. Whoever runs " <>
-            "Wardrik can change what it does later, or offer an agent they have here by adding " <>
-            "`channels: [#{workspace.context.channel}]` to its file."
+          "It starts from this deployment's defaults, and answers when mentioned. " <>
+            Workspace.offering(workspace)
         )
       ]
     }
   end
 
   def message(:none, workspace, _opts) do
-    text =
-      "No agent answers in Slack here yet. Whoever runs Wardrik can offer one by adding " <>
-        "`channels: [#{workspace.context.channel}]` to its agent file."
+    text = "No agent answers in Slack here yet. " <> Workspace.offering(workspace)
 
     look_again = button("Look again", "wardrik_room_more", "choose")
     %{text: text, blocks: [section(text), WardrikSlack.actions("wardrik_room", [look_again])]}

@@ -54,6 +54,14 @@ defmodule WardrikChannel.Workspace do
   def start(%__MODULE__{context: context} = workspace, %AgentID{} = agent),
     do: call(context.start, workspace, [agent])
 
+  @doc "How an agent comes to answer in the workspace's rooms, as said where none does."
+  @spec offering(t()) :: String.t()
+  def offering(%__MODULE__{context: context} = workspace), do: call(context.offering, workspace)
+
+  @doc "Who else may decide what an agent asks there, as said to someone refused."
+  @spec deciding(t()) :: String.t()
+  def deciding(%__MODULE__{context: context} = workspace), do: call(context.deciding, workspace)
+
   @doc "Who decides what an agent asks in the workspace's threads."
   @spec approvers(t()) :: WardrikChannel.Approvers.t()
   def approvers(%__MODULE__{context: context} = workspace),
