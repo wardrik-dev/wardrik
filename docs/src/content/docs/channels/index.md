@@ -85,5 +85,3 @@ A [notice target](/build/notices/) can post into a room too, with its own approv
   `wardrik.room.unbound` and `wardrik.agent.defined` [events](/reference/events/).
 - **New kinds of channel** are packages that name themselves in their application's environment, as
   `wardrik_slack` names `type: slack`.
-- **People** are known by the channel, the workspace and the id the channel knows them by, so the
-  same person in two channels is two people.
