@@ -6,7 +6,16 @@
 .home-hero {
 	position: relative;
 	isolation: isolate;
-	padding-block: clamp(3rem, 6vw, 5.5rem) 2rem;
+	display: flex;
+	flex-direction: column;
+	padding-block-start: clamp(3rem, 6vw, 5.5rem);
+}
+
+/* On a wide screen the hero fills the first screen, the content panel's top padding aside: the
+ * headline and the replay centred, the audience links at its foot, and the next section below. */
+@media (min-width: 52rem) {
+	.home-hero { min-height: calc(100svh - var(--sl-nav-height) - 1.5rem); box-sizing: border-box; }
+	.home-hero .hero { flex: 1; align-content: center; }
 }
 
 .home-hero::before,
@@ -71,17 +80,17 @@
 .home-hero .sl-link-button.primary:hover,
 .home-section .sl-link-button.primary:hover { color: var(--sl-color-black); }
 
-/* Audience links form one navigation row, rather than four separate cards. */
-.sl-markdown-content .home-audiences {
+/* Audience links form one navigation row at the hero's foot, rather than four separate cards. */
+.home-audiences {
 	margin: 1.5rem 0 0;
 	padding-block: 1.75rem 2.5rem;
 	border-top: 1px solid var(--sl-color-gray-5);
 }
 .audience-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2rem; }
-.sl-markdown-content .audience-grid > a { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; margin: 0; color: var(--sl-color-text); text-decoration: none; }
+.audience-grid > a { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; margin: 0; color: var(--sl-color-text); text-decoration: none; }
 .audience-label { display: flex; justify-content: space-between; gap: 0.5rem; color: var(--sl-color-white); font-size: 0.8125rem; font-weight: 500; }
 .audience-label > span { color: var(--sl-color-gray-4); font-weight: 400; transition: color 150ms; }
-.sl-markdown-content .audience-grid p { margin: 0; color: var(--sl-color-gray-3); font-size: 0.8125rem; text-wrap: pretty; }
+.audience-grid p { margin: 0; color: var(--sl-color-gray-3); font-size: 0.8125rem; text-wrap: pretty; }
 .audience-grid > a:hover .audience-label,
 .audience-grid > a:hover .audience-label > span { color: var(--sl-color-text-accent); }
 

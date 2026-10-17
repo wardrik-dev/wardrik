@@ -29,6 +29,12 @@ const { title = data.title, tagline, actions = [] } = data.hero || {};
 			</div>
 			<div class="hero-html"><TurnReplay /></div>
 		</div>
+		<nav class="audience-grid home-audiences" aria-label="Explore Wardrik for your work">
+		<a href="/examples/enterprise/agents-for-every-team/"><span class="audience-label">Platform teams <span aria-hidden="true">↗</span></span><p>Give teams agents under a shared policy.</p></a>
+		<a href="/build/tool-workers/"><span class="audience-label">Developers <span aria-hidden="true">↗</span></span><p>Connect MCP servers or tools in your app.</p></a>
+		<a href="/examples/enterprise/access-requests/"><span class="audience-label">Enterprise teams <span aria-hidden="true">↗</span></span><p>Scope credentials and approvals. Export audit events.</p></a>
+		<a href="/examples/you/home-lab/"><span class="audience-label">Individuals <span aria-hidden="true">↗</span></span><p>Watch your inbox, feeds, and home lab.</p></a>
+		</nav>
 	</section>
 ) : <Hero />}
 
