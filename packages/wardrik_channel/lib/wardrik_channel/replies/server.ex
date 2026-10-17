@@ -4,7 +4,7 @@ defmodule WardrikChannel.Replies.Server do
   the log of each thread's agent, and posts what each new event asks for,
   writing down how far it has posted.
 
-  Started by `WardrikChannel.Replies.follow/4` under the supervisor
+  Started by `WardrikChannel.Replies.follow/3` under the supervisor
   `WardrikChannel.Replies` runs, which hands it the channels as it starts:
   it keeps its own `WardrikChannel.Channel` in memory, and writes none of it
   down. A room whose channel is not among them does not

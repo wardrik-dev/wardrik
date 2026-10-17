@@ -6,6 +6,7 @@ defmodule WardrikSlack.RoomsTest do
   alias WardrikChannel.Context
   alias WardrikChannel.Installations
   alias WardrikChannel.Offer
+  alias WardrikChannel.Place
   alias WardrikChannel.Workspace
   alias WardrikSlack.Rooms
 
@@ -152,7 +153,7 @@ defmodule WardrikSlack.RoomsTest do
     assert %{"replace_original" => true, "text" => ":wave: *acme/triage* answers here now."} =
              replaced()
 
-    assert WardrikChannel.Rooms.get(opts[:workspace], "C1").agent == triage().agent
+    assert WardrikChannel.Rooms.get(Place.new(opts[:workspace], "C1")).agent == triage().agent
 
     jon = person(opts, "U2")
 
@@ -205,7 +206,9 @@ defmodule WardrikSlack.RoomsTest do
 
   test "switches between every message and mentions, offers another agent, and stops" do
     opts = opts([books(), triage()])
-    {:ok, _room, _offer} = WardrikChannel.Rooms.chose(opts[:workspace], "C1", books().agent, nil)
+
+    {:ok, _room, _offer} =
+      WardrikChannel.Rooms.chose(Place.new(opts[:workspace], "C1"), books().agent)
 
     assert :ok = Rooms.answer(press("C1", "wardrik_room_answers", "everything"), opts)
     message = replaced()
@@ -217,7 +220,7 @@ defmodule WardrikSlack.RoomsTest do
 
     assert :ok = Rooms.answer(choose("C1", "wardrik_room_more", "stop"), opts)
     assert %{"text" => "No agent answers here now."} = replaced()
-    assert WardrikChannel.Rooms.get(opts[:workspace], "C1") == nil
+    assert WardrikChannel.Rooms.get(Place.new(opts[:workspace], "C1")) == nil
 
     assert :ok = Rooms.answer(press("C1", "wardrik_room_answers", "mentions"), opts)
     assert %{"text" => "Which agent should answer here?" <> _} = replaced()
@@ -244,7 +247,7 @@ defmodule WardrikSlack.RoomsTest do
     assert :ok =
              Rooms.event(%{"type" => "channel_left", "channel" => "C1", "actor_id" => "U3"}, opts)
 
-    assert WardrikChannel.Rooms.get(opts[:workspace], "C1") == nil
+    assert WardrikChannel.Rooms.get(Place.new(opts[:workspace], "C1")) == nil
 
     assert Rooms.event(%{"type" => "reaction_added"}, opts) == :ignored
     assert Rooms.answer(%{"actions" => []}, opts) == :ignored

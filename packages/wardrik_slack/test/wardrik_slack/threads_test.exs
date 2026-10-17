@@ -80,7 +80,10 @@ defmodule WardrikSlack.ThreadsTest do
     start_supervised!({Replies, name: replies, channels: channels, store: Wardrik.Test.store()})
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
     {:ok, workspace} = Workspace.new(channels[name].context, "T1")
-    {:bound, _room, _offer} = Rooms.joined(workspace, "C1", "books", nil)
+
+    {:bound, _room, _offer} =
+      Rooms.joined(WardrikChannel.Place.new(workspace, "C1"), name: "books")
+
     on_exit(fn -> Fleet.forget_under(AgentID.Prefix.of(agent)) end)
 
     [

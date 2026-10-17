@@ -12,6 +12,7 @@ defmodule WardrikChannel.ThreadsTest do
   alias WardrikChannel.Installations
   alias WardrikChannel.Offer
   alias WardrikChannel.Outbound
+  alias WardrikChannel.Place
   alias WardrikChannel.Replies
   alias WardrikChannel.Room
   alias WardrikChannel.Rooms
@@ -55,7 +56,7 @@ defmodule WardrikChannel.ThreadsTest do
     start_supervised!({Replies, name: replies, channels: channels, store: Wardrik.Test.store()})
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
     {:ok, workspace} = Workspace.new(channels[name].context, "T1")
-    {:bound, room, _offer} = Rooms.joined(workspace, "C1", "books", @maria)
+    {:bound, room, _offer} = Rooms.joined(Place.new(workspace, "C1"), name: "books", by: @maria)
     on_exit(fn -> Fleet.forget_under(AgentID.Prefix.of(agent)) end)
 
     {workspace, room}
@@ -112,7 +113,7 @@ defmodule WardrikChannel.ThreadsTest do
     refute Fleet.stored?(WardrikChannel.conversation(room, "2.2"))
 
     {:ok, %Room{answers: :everything}, _offer} =
-      Rooms.answers(context, "C1", :everything, @maria)
+      Rooms.answers(Place.new(context, "C1"), :everything, by: @maria)
 
     assert {:asked, _agent} = WardrikChannel.received(context, unmentioned)
     assert_receive {:delivered, %Outbound{thread: "2.2", body: {:reply, "Here.", ["2.2"]}}, _}
@@ -176,13 +177,13 @@ defmodule WardrikChannel.ThreadsTest do
         "T1"
       )
 
-    assert Replies.remind(nowhere, "C1", "1.1") == :ok
+    assert Replies.remind(Place.new(nowhere, "C1"), "1.1") == :ok
 
     {context, _room} = bound({AgentRunners, :echo, [self(), "Here."]})
     {:asked, _agent} = WardrikChannel.received(context, inbound(context, id: "8.1", text: "Hi."))
     assert_receive {:delivered, %Outbound{body: {:reply, "Here.", ["8.1"]}}, _channel}
 
-    assert Replies.remind(context, "C1", "9.9") == :ok
+    assert Replies.remind(Place.new(context, "C1"), "9.9") == :ok
     refute_receive {:delivered, _outbound, _channel}, 200
   end
 
@@ -307,7 +308,8 @@ defmodule WardrikChannel.ThreadsTest do
     assert_receive {:turn, _context}
     refute_receive {:delivered, _outbound, _channel}, 200
 
-    :ok = Replies.follow(context, "C1", "7.1", WardrikChannel.conversation(room, "7.1"))
+    :ok =
+      Replies.follow(Place.new(context, "C1"), "7.1", WardrikChannel.conversation(room, "7.1"))
 
     assert_receive {:delivered, %Outbound{thread: "7.1", body: {:reply, "Counted.", ["7.2"]}},
                     _channel}

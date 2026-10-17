@@ -3,7 +3,8 @@ defmodule WardrikChannel.Workspace do
   A channel as it acts in one workspace it is installed in: the channel's
   `WardrikChannel.Context` and the `WardrikChannel.Installation`. An
   adapter makes one for each thing it hears, with `new/2`, and hands it to
-  `WardrikChannel.received/2` and `WardrikChannel.Rooms`.
+  `WardrikChannel.received/2`, and a room of it, a `WardrikChannel.Place`,
+  to `WardrikChannel.Rooms`.
 
   The host's answers in the context are each given the installation, so a
   host that serves many owners answers for the one it was installed for.
@@ -40,10 +41,13 @@ defmodule WardrikChannel.Workspace do
   def creatable?(%__MODULE__{context: context} = workspace),
     do: call(context.creatable, workspace)
 
-  @doc "Creates an agent for the room `name`, as `by` asked."
-  @spec create(t(), String.t(), Principal.t() | nil) :: {:ok, Offer.t()} | {:error, String.t()}
-  def create(%__MODULE__{context: context} = workspace, name, by),
-    do: call(context.create, workspace, [name, by])
+  @doc "Creates an agent for the room `name`. Options: `:by`, who asked."
+  @spec create(t(), String.t(), by: Principal.t() | nil) ::
+          {:ok, Offer.t()} | {:error, String.t()}
+  def create(%__MODULE__{context: context} = workspace, name, opts \\ []) do
+    opts = Keyword.validate!(opts, [:by])
+    call(context.create, workspace, [name, opts[:by]])
+  end
 
   @doc "Starts `agent`, which answers in a thread of the workspace's, where it is not running."
   @spec start(t(), AgentID.t()) :: {:ok, pid()} | {:error, String.t()}

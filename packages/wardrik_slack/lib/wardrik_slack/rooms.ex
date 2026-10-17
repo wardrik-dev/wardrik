@@ -21,6 +21,7 @@ defmodule WardrikSlack.Rooms do
 
   alias Wardrik.AgentID
   alias WardrikChannel.Offer
+  alias WardrikChannel.Place
   alias WardrikChannel.Room
   alias WardrikChannel.Workspace
 
@@ -37,7 +38,8 @@ defmodule WardrikSlack.Rooms do
       workspace = Keyword.fetch!(opts, :workspace)
 
       workspace
-      |> WardrikChannel.Rooms.joined(room, name(room, opts), sender(event["inviter"], opts))
+      |> Place.new(room)
+      |> WardrikChannel.Rooms.joined(name: name(room, opts), by: sender(event["inviter"], opts))
       |> message(workspace, opts)
       |> post(room, opts)
     else
@@ -47,11 +49,10 @@ defmodule WardrikSlack.Rooms do
 
   def event(%{"type" => type, "channel" => room} = event, opts)
       when type in ["channel_left", "group_left"] do
-    WardrikChannel.Rooms.left(
-      Keyword.fetch!(opts, :workspace),
-      room,
-      sender(event["actor_id"], opts)
-    )
+    opts
+    |> Keyword.fetch!(:workspace)
+    |> Place.new(room)
+    |> WardrikChannel.Rooms.left(by: sender(event["actor_id"], opts))
   end
 
   def event(_event, _opts), do: :ignored
@@ -70,10 +71,10 @@ defmodule WardrikSlack.Rooms do
     %{"id" => room} = channel = Map.get(payload, "channel", %{})
     user = Map.get(payload, "user", %{})
     by = sender(user["id"], opts, user["username"] || user["name"])
-    name = channel["name"] || room
+    place = Place.new(workspace, room)
 
     reply =
-      case act(action, value(pressed), workspace, {room, name}, by) do
+      case act(action, value(pressed), place, name: channel["name"], by: by) do
         {:error, message} when is_binary(message) -> WardrikSlack.ephemeral(message)
         shown -> Map.put(message(shown, workspace, opts), :replace_original, true)
       end
@@ -83,9 +84,9 @@ defmodule WardrikSlack.Rooms do
 
   def answer(_payload, _opts), do: :ignored
 
-  defp act("agent", text, workspace, {room, _name}, by) do
+  defp act("agent", text, place, opts) do
     with {:ok, agent} <- AgentID.parse(to_string(text)),
-         {:ok, bound, offer} <- WardrikChannel.Rooms.chose(workspace, room, agent, by) do
+         {:ok, bound, offer} <- WardrikChannel.Rooms.chose(place, agent, by: opts[:by]) do
       {:bound, bound, offer}
     else
       {:error, :not_offered} -> {:error, "That agent is no longer offered here."}
@@ -93,28 +94,28 @@ defmodule WardrikSlack.Rooms do
     end
   end
 
-  defp act("answers", answers, workspace, {room, name}, by) do
+  defp act("answers", answers, place, opts) do
     answers = if answers == "everything", do: :everything, else: :mentions
 
-    case WardrikChannel.Rooms.answers(workspace, room, answers, by) do
+    case WardrikChannel.Rooms.answers(place, answers, by: opts[:by]) do
       {:ok, bound, offer} -> {:bound, bound, offer}
-      {:error, :not_bound} -> WardrikChannel.Rooms.choices(workspace, name)
+      {:error, :not_bound} -> WardrikChannel.Rooms.choices(place, name: opts[:name])
     end
   end
 
-  defp act("create", name, workspace, {room, _name}, by) do
+  defp act("create", name, place, opts) do
     with {:ok, bound, offer} <-
-           WardrikChannel.Rooms.create(workspace, room, to_string(name), by),
+           WardrikChannel.Rooms.create(place, to_string(name), by: opts[:by]),
          do: {:bound, bound, offer}
   end
 
-  defp act("more", "stop", workspace, {room, _name}, by) do
-    :ok = WardrikChannel.Rooms.left(workspace, room, by)
+  defp act("more", "stop", place, opts) do
+    :ok = WardrikChannel.Rooms.left(place, by: opts[:by])
     :stopped
   end
 
-  defp act("more", _choose, workspace, {_room, name}, _by),
-    do: WardrikChannel.Rooms.choices(workspace, name)
+  defp act("more", _choose, place, opts),
+    do: WardrikChannel.Rooms.choices(place, name: opts[:name])
 
   # A button carries its value; a menu, the option chosen.
   defp value(%{"value" => value}), do: value

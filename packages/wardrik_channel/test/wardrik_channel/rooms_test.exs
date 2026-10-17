@@ -9,6 +9,7 @@ defmodule WardrikChannel.RoomsTest do
   alias WardrikChannel.Installation
   alias WardrikChannel.Installations
   alias WardrikChannel.Offer
+  alias WardrikChannel.Place
   alias WardrikChannel.Room
   alias WardrikChannel.Rooms
   alias WardrikChannel.Workspace
@@ -54,12 +55,14 @@ defmodule WardrikChannel.RoomsTest do
     context = context([books()])
 
     assert {:bound, %Room{agent: agent, answers: :mentions}, offer} =
-             Rooms.joined(context, "C1", "books", @maria)
+             Rooms.joined(Place.new(context, "C1"), name: "books", by: @maria)
 
     assert agent == books().agent
     assert offer == books()
     channel = context.installation.channel
-    assert %Room{channel: ^channel, workspace: ^channel, room: "C1"} = Rooms.get(context, "C1")
+
+    assert %Room{channel: ^channel, workspace: ^channel, room: "C1"} =
+             Rooms.get(Place.new(context, "C1"))
 
     assert Audit.about("rooms/#{channel}/C1") ==
              [{"room.bound", %{"type" => "channel", "id" => "slack/T1/U1", "name" => "maria"}}]
@@ -68,27 +71,31 @@ defmodule WardrikChannel.RoomsTest do
   test "answers the agents to choose among, and binds the one chosen" do
     context = context([books(), triage()])
 
-    assert Rooms.joined(context, "C1", "ops", @maria) == {:choose, [books(), triage()]}
-    assert Rooms.get(context, "C1") == nil
+    assert Rooms.joined(Place.new(context, "C1"), name: "ops", by: @maria) ==
+             {:choose, [books(), triage()]}
 
-    assert {:ok, %Room{agent: agent}, offer} = Rooms.chose(context, "C1", triage().agent, @maria)
+    assert Rooms.get(Place.new(context, "C1")) == nil
+
+    assert {:ok, %Room{agent: agent}, offer} =
+             Rooms.chose(Place.new(context, "C1"), triage().agent, by: @maria)
+
     assert agent == triage().agent
     assert offer == triage()
 
-    assert Rooms.chose(context, "C1", AgentID.parse!("acme/other"), @maria) ==
+    assert Rooms.chose(Place.new(context, "C1"), AgentID.parse!("acme/other"), by: @maria) ==
              {:error, :not_offered}
 
-    assert Rooms.choices(context, "ops") == {:choose, [books(), triage()]}
+    assert Rooms.choices(Place.new(context, "C1"), name: "ops") == {:choose, [books(), triage()]}
   end
 
   test "offers to create an agent where none is offered and one may be, and creates it" do
     context = context([], true)
 
-    assert Rooms.joined(context, "C1", "books", @maria) == {:create, "books"}
-    assert Rooms.choices(context, "books") == {:create, "books"}
+    assert Rooms.joined(Place.new(context, "C1"), name: "books", by: @maria) == {:create, "books"}
+    assert Rooms.choices(Place.new(context, "C1"), name: "books") == {:create, "books"}
 
     assert {:ok, %Room{agent: agent}, %Offer{description: "Answers in #books."}} =
-             Rooms.create(context, "C1", "books", @maria)
+             Rooms.create(Place.new(context, "C1"), "books", by: @maria)
 
     assert agent == AgentID.parse!("acme/books")
     installation = context.installation
@@ -98,27 +105,29 @@ defmodule WardrikChannel.RoomsTest do
   test "says there is nothing to offer where none is and none may be created" do
     context = context([])
 
-    assert Rooms.joined(context, "C1", "books", @maria) == :none
+    assert Rooms.joined(Place.new(context, "C1"), name: "books", by: @maria) == :none
 
     assert {:error, "Agents are not created from here" <> _} =
-             Rooms.create(context, "C1", "books", @maria)
+             Rooms.create(Place.new(context, "C1"), "books", by: @maria)
 
     refute_received {:created, _channel, _name, _by}
   end
 
   test "changes when the agent answers, and forgets the room as the bot leaves it" do
     context = context([books()])
-    {:bound, _room, _offer} = Rooms.joined(context, "C1", "books", @maria)
+    {:bound, _room, _offer} = Rooms.joined(Place.new(context, "C1"), name: "books", by: @maria)
 
     assert {:ok, %Room{answers: :everything}, offer} =
-             Rooms.answers(context, "C1", :everything, @maria)
+             Rooms.answers(Place.new(context, "C1"), :everything, by: @maria)
 
     assert offer == books()
-    assert Rooms.answers(context, "C2", :everything, @maria) == {:error, :not_bound}
 
-    assert :ok = Rooms.left(context, "C1", nil)
-    assert Rooms.get(context, "C1") == nil
-    assert :ok = Rooms.left(context, "C1", nil)
+    assert Rooms.answers(Place.new(context, "C2"), :everything, by: @maria) ==
+             {:error, :not_bound}
+
+    assert :ok = Rooms.left(Place.new(context, "C1"))
+    assert Rooms.get(Place.new(context, "C1")) == nil
+    assert :ok = Rooms.left(Place.new(context, "C1"))
 
     assert Enum.map(Audit.about("rooms/#{context.installation.channel}/C1"), &elem(&1, 0)) ==
              ["room.bound", "room.bound", "room.unbound"]
@@ -141,7 +150,7 @@ defmodule WardrikChannel.RoomsTest do
 
     assert Workspace.offered(workspace) == []
     refute Workspace.creatable?(workspace)
-    assert {:error, _message} = Workspace.create(workspace, "books", nil)
+    assert {:error, _message} = Workspace.create(workspace, "books")
     assert Workspace.approvers(workspace) == %WardrikChannel.Approvers.Named{names: []}
   end
 
@@ -173,8 +182,8 @@ defmodule WardrikChannel.RoomsTest do
     {:ok, two} = Workspace.new(context, "T2")
     assert :error = Workspace.new(context, "T3")
 
-    {:bound, _room, _offer} = Rooms.joined(one, "C1", "books", @maria)
-    assert %Room{workspace: "T1"} = Rooms.get(one, "C1")
-    assert Rooms.get(two, "C1") == nil
+    {:bound, _room, _offer} = Rooms.joined(Place.new(one, "C1"), name: "books", by: @maria)
+    assert %Room{workspace: "T1"} = Rooms.get(Place.new(one, "C1"))
+    assert Rooms.get(Place.new(two, "C1")) == nil
   end
 end
