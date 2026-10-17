@@ -86,7 +86,7 @@ defmodule WardrikSlack.Answers do
          ) do
       {:ok, _decided} -> decided(payload, action, note, user, call, name)
       {:error, %Error{type: :forbidden}} -> :refused
-      {:error, %Error{type: :not_found}} -> WardrikSlack.ephemeral("#{agent} is not running.")
+      {:error, %Error{type: :not_found}} -> WardrikSlack.ephemeral("That agent is not running.")
       {:error, %Error{type: :conflict}} -> WardrikSlack.ephemeral("That was already answered.")
       {:error, %Error{message: message}} -> WardrikSlack.ephemeral(message)
     end
@@ -96,7 +96,7 @@ defmodule WardrikSlack.Answers do
   # anyone else can see.
   defp link(agent, call) do
     case Wardrik.Agent.parked(agent) do
-      {:error, :not_found} -> "#{agent} is not running."
+      {:error, :not_found} -> "That agent is not running."
       calls -> calls |> Enum.find(fn {parked, _prompt} -> parked.id == call end) |> link_text()
     end
   end

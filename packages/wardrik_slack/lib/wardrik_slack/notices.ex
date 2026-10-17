@@ -18,7 +18,9 @@ defmodule WardrikSlack.Notices do
   pressing, and no one else, with the link and any code to enter there, read
   from the agent as they press it; the channel's history never holds it.
 
-  An agent answering in a thread is named as the agent the thread is under.
+  An agent answering in a thread is named as the agent the thread is under,
+  and, given the `:installation` it is posted through, as its workspace reads
+  it (`WardrikChannel.Installation.shown/2`).
   Each button carries the agent and the call it answers, which
   `WardrikSlack.Answers` reads back: Slack hands back a button as the bot
   posted it, and nobody else can change a bot's message.
@@ -32,11 +34,12 @@ defmodule WardrikSlack.Notices do
 
   @doc """
   The message that posts `notice`: its text and its blocks. `:buttons`
-  says whether a press can reach the channel.
+  says whether a press can reach the channel, and `:installation` which
+  workspace it is posted in, to name its agent as the workspace reads it.
   """
   @spec message(Notice.t(), keyword()) :: %{text: String.t(), blocks: [map()]}
   def message(%Notice{} = notice, opts),
-    do: %{text: summary(notice), blocks: blocks(notice, opts)}
+    do: %{text: summary(notice, opts), blocks: blocks(notice, opts)}
 
   @doc "The id of the box a note on a parked call's decision is written in."
   @spec note_block(String.t()) :: String.t()
@@ -44,31 +47,34 @@ defmodule WardrikSlack.Notices do
 
   # -- messages --------------------------------------------------------------
 
-  defp summary(%Notice{kind: :parked} = notice),
+  defp summary(%Notice{kind: :parked} = notice, opts),
     do:
-      "#{shown(notice.agent)} is waiting on you: " <> Enum.map_join(notice.calls, ", ", & &1.name)
+      "#{shown(notice.agent, opts)} is waiting on you: " <>
+        Enum.map_join(notice.calls, ", ", & &1.name)
 
-  defp summary(%Notice{kind: :failed} = notice), do: "#{shown(notice.agent)} failed"
-  defp summary(%Notice{kind: :finished} = notice), do: "#{shown(notice.agent)} answered"
+  defp summary(%Notice{kind: :failed} = notice, opts), do: "#{shown(notice.agent, opts)} failed"
+
+  defp summary(%Notice{kind: :finished} = notice, opts),
+    do: "#{shown(notice.agent, opts)} answered"
 
   @doc false
   @spec blocks(Notice.t(), keyword()) :: [map()]
   def blocks(%Notice{kind: :parked} = notice, opts) do
-    [section("*#{shown(notice.agent)}* is waiting on you.")] ++
+    [section("*#{shown(notice.agent, opts)}* is waiting on you.")] ++
       Enum.flat_map(notice.calls, &call_blocks(&1, notice.agent, opts))
   end
 
-  def blocks(%Notice{kind: :failed} = notice, _opts) do
+  def blocks(%Notice{kind: :failed} = notice, opts) do
     [
       section(
-        "*#{shown(notice.agent)}* failed:\n```#{clip(Notice.reason_text(notice.reason), @max_text)}```"
+        "*#{shown(notice.agent, opts)}* failed:\n```#{clip(Notice.reason_text(notice.reason), @max_text)}```"
       )
     ]
   end
 
-  def blocks(%Notice{kind: :finished} = notice, _opts) do
+  def blocks(%Notice{kind: :finished} = notice, opts) do
     [
-      section("*#{shown(notice.agent)}* answered:"),
+      section("*#{shown(notice.agent, opts)}* answered:"),
       WardrikSlack.markdown(notice.text || "(nothing)")
     ]
   end
@@ -126,9 +132,16 @@ defmodule WardrikSlack.Notices do
   defp from_a_shell(call, agent),
     do: "Answer with `wardrik approve #{agent} #{call.id}` or `wardrik deny #{agent} #{call.id}`."
 
-  # An agent answering in a thread is named as the one the thread is under;
-  # its buttons and commands carry the thread's own.
-  defp shown(agent), do: Wardrik.AgentID.put_external_id(agent, nil)
+  # An agent answering in a thread is named as the one the thread is under,
+  # as the workspace reads it; its buttons and commands carry the thread's own.
+  defp shown(agent, opts) do
+    agent = Wardrik.AgentID.put_external_id(agent, nil)
+
+    case opts[:installation] do
+      nil -> to_string(agent)
+      installation -> WardrikChannel.Installation.shown(installation, agent)
+    end
+  end
 
   defp section(text), do: %{type: "section", text: %{type: "mrkdwn", text: text}}
 

@@ -33,6 +33,23 @@ defmodule WardrikSlack.NoticesTest do
         channel
       )
 
+  test "names the agent as the workspace it is posted in reads it" do
+    org = %{WardrikSlack.Test.installation() | owner: Wardrik.AgentID.Prefix.new!(org: "acme")}
+
+    {:ok, _posted} =
+      WardrikSlack.deliver(
+        %Outbound{installation: org, room: "#ops", body: {:notice, parked_notice()}},
+        @channel
+      )
+
+    assert_received {:slack, _host, "/api/chat.postMessage",
+                     %{"text" => text, "blocks" => blocks}}
+
+    assert text == "triage is waiting on you: deploy"
+    assert JSON.encode!(blocks) =~ "*triage* is waiting on you."
+    refute JSON.encode!(blocks) =~ "*acme/triage*"
+  end
+
   defp parked_notice do
     %Notice{
       agent: ~A"acme/triage",
