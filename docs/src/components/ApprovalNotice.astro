@@ -1,0 +1,35 @@
+---
+// A waiting call as Slack shows it: the tool, the policy's question, the
+// arguments, and the buttons, as WardrikSlack.Notices posts it.
+---
+
+<figure class="approval-notice not-content" aria-label="A waiting call in Slack">
+	<span class="notice-avatar" aria-hidden="true">r<span class="wordmark-i">i</span>k</span>
+	<div class="notice-body">
+		<p class="notice-meta"><strong>Wardrik</strong> <span>#accounting · 7:04 AM</span></p>
+		<p class="notice-call"><strong>acme/books</strong> is waiting on you.</p>
+		<p class="notice-question"><code>quickbooks/create-bill</code>  A line of $1,000 or more.</p>
+		<pre class="notice-args"><code>{'{"params": {"bill": {"Line": [{"Amount": 9400, …}], …}}}'}</code></pre>
+		<p class="notice-note">A note for the agent, sent with either button</p>
+		<p class="notice-actions" aria-hidden="true"><span class="notice-approve">Approve</span><span>Deny</span></p>
+	</div>
+</figure>
+
+<style>
+	.approval-notice { display: flex; gap: 0.75rem; margin: 0; padding: 1.25rem; border: 1px solid var(--sl-color-gray-5); border-radius: 12px; background: var(--sl-color-black); font-size: 0.875rem; line-height: 1.6; }
+	.notice-avatar { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; box-sizing: border-box; border: 1px solid var(--sl-color-gray-5); border-radius: 8px; background: var(--sl-color-gray-6); color: var(--sl-color-white); font-size: 0.875rem; font-weight: 600; letter-spacing: -0.035em; line-height: 1; }
+	.notice-body { flex: 1; min-width: 0; }
+	.notice-body p { margin: 0; }
+	.notice-meta strong { color: var(--sl-color-white); font-weight: 600; }
+	.notice-meta span { color: var(--sl-color-gray-3); font-size: 0.75rem; }
+	.notice-body .notice-call { margin-top: 0.25rem; color: var(--sl-color-text); }
+	.notice-call strong { color: var(--sl-color-white); font-weight: 600; }
+	.notice-body .notice-question { margin-top: 0.5rem; color: var(--sl-color-white); font-weight: 500; }
+	.approval-notice code { font-family: var(--sl-font-mono); font-size: 0.8125rem; }
+	.notice-args { margin: 0.75rem 0 0; padding: 0.75rem 0.875rem; overflow-x: auto; border-inline-start: 3px solid var(--sl-color-accent); border-radius: 4px; background: var(--sl-color-gray-6); color: var(--sl-color-gray-2); }
+	.notice-args code { font-size: 0.75rem; }
+	.notice-body .notice-note { margin-top: 0.75rem; padding: 0.5rem 0.75rem; border: 1px solid var(--sl-color-gray-5); border-radius: 6px; color: var(--sl-color-gray-3); font-size: 0.8125rem; }
+	.notice-body .notice-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+	.notice-actions span { padding: 0.375rem 0.875rem; border: 1px solid var(--sl-color-gray-4); border-radius: 6px; color: var(--sl-color-white); font-size: 0.8125rem; font-weight: 500; }
+	.notice-actions .notice-approve { border-color: var(--sl-color-white); background: var(--sl-color-white); color: var(--sl-color-black); }
+</style>

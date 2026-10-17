@@ -47,7 +47,7 @@ orgs:
 ```yaml title="~/.config/wardrik/policies/payments-ceiling.yaml"
 ask:
   stripe/stripe_api_write: This changes money in Stripe.
-deny: [run_lua]
+deny: [shell/*]
 budget:
   usd: 20.00
   per: day

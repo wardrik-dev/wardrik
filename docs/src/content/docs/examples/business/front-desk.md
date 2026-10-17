@@ -93,6 +93,12 @@ deny:
   square/make_api_request(service = refunds): Refunds are for people.
   square/make_api_request(service = payments): Payments are for people.
   gmail/trash_*: Deleting mail is for people.
+judge:
+  model: typesafe:jev-latest
+  questions:
+    - question: Does this draft promise the customer a refund?
+      tools: [gmail/create_draft]
+      ask: 0.5
 ```
 
 - **Every email is outside content**, so after reading one, only what `allow_after` names runs on its
@@ -101,6 +107,9 @@ deny:
 - **Moving or cancelling waits** for your staff in Slack.
 - **Money is refused.** No email, however it's worded, gets a refund or a payment made.
 - **Replies are drafts.** Google's Gmail server has no send tool; your staff send what it drafts.
+- **A draft that promises a refund waits.** The prompt says never to; a [judge](/concepts/judges/)
+  checks each draft anyway, and one it judges likely to promise a refund waits for your staff. Seal
+  its model's key with `wardrik vault put TYPESAFE_API_KEY`.
 
 ### The agent
 
@@ -140,6 +149,7 @@ Booking, the appointment is in Square, and a reply waits in Drafts for someone t
 - **Argument rules on one generic tool.** Square's single tool is ruled by service and method.
 - **A hard line on money**, however an email is worded.
 - **People stay the sender.** Drafts in, replies out by hand.
+- **A second opinion on what's written.** A judge reads each draft for what a name can't show.
 
 ## Details
 

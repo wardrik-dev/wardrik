@@ -8,7 +8,7 @@ defmodule WardrikDaemon.PolicyFile do
       allow: [web_search, linear/*]
       ask:
         github/create_*: This opens an issue on GitHub.
-      deny: [run_lua]
+      deny: [shell/*]
       default: allow
       budget:
         usd: 5.00

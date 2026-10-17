@@ -1,8 +1,8 @@
 ---
 import Hero from '@astrojs/starlight/components/Hero.astro';
 import { LinkButton } from '@astrojs/starlight/components';
+import TurnReplay from './TurnReplay.astro';
 import Wordmark from './Wordmark.astro';
-import ScenarioDeck from './ScenarioDeck.astro';
 
 const isHome = Astro.url.pathname === '/';
 const { data } = Astro.locals.starlightRoute.entry;
@@ -14,10 +14,7 @@ const { title = data.title, tagline, actions = [] } = data.hero || {};
 		<div class="hero">
 			<div class="stack">
 				<div class="copy">
-					<div class="home-brand">
-						<div class="home-brand-primary"><Wordmark withCli /><span>Agents, governed.</span></div>
-						<p class="home-brand-cli">In your terminal: <a href="/reference/cli/"><code>rik</code> is short for <code>wardrik</code></a>.</p>
-					</div>
+					<p class="home-brand"><Wordmark /></p>
 					<h1 id="_top" data-page-title>{title.split(/<br\s*\/?>/i).map((line) => <span class="hero-headline-line" set:html={line} />)}</h1>
 					{tagline && <div class="tagline" set:html={tagline} />}
 				</div>
@@ -29,9 +26,8 @@ const { title = data.title, tagline, actions = [] } = data.hero || {};
 						</LinkButton>
 					))}
 				</div>
-				<p class="home-meta"><span>Open source</span><span>Apache-2.0</span><span>Built on OTP</span></p>
 			</div>
-			<div class="hero-html"><ScenarioDeck /></div>
+			<div class="hero-html"><TurnReplay /></div>
 		</div>
 	</section>
 ) : <Hero />}
