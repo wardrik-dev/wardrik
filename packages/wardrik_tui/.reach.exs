@@ -4,7 +4,12 @@
 # internals, which only core calls.
 [
   layers: [
-    tui: ["WardrikTUI", "WardrikTUI.*"]
+    tui: ["WardrikTUI", "WardrikTUI.*"],
+    console: ["WardrikConsole", "WardrikConsole.*"]
+  ],
+  # The console prints for the CLI too, and knows nothing of the TUI.
+  deps: [
+    forbidden: [{:console, :tui}]
   ],
   boundaries: [
     public: [

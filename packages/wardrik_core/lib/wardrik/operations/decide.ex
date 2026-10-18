@@ -8,7 +8,7 @@ defmodule Wardrik.Operations.Decide do
   `:decide` on it, or who asked for the turn that waits, and answers anyone
   else `:forbidden`. See `Wardrik.Agent.decide/3`.
 
-  `new/2` reads decisions as `wardrik_protocol`'s `decisions.json` describes
+  `new/2` reads decisions as `WardrikProtocol`'s `decisions.json` describes
   them: each the `id` of a call, `approve` with a `note` for the agent where
   one is given, or `reject` with a `reason`. The answer is the decisions
   taken, by call ID.

@@ -1,7 +1,7 @@
 defprotocol Wardrik.Workspace do
   @moduledoc """
   Where agents' files are kept: each tree a set of files under paths, each
-  file with a version of its own, as `wardrik_workspace`'s file tools read
+  file with a version of its own, as `WardrikWorkspace`'s file tools read
   and write them.
 
   A host names the value once, as the `:workspace` of its `Wardrik.Host`,

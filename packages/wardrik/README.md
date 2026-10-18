@@ -34,10 +34,10 @@ end
 ```
 
 `{Wardrik, wardrik}` starts the store, [core](../wardrik_core), the meters
-[budgets](../wardrik_policy) count in, and [triggers](../wardrik_trigger), in
-that order. Each agent's definition is kept in the store, read by
-[wardrik_definition](../wardrik_definition) against what `context:` lets it
-name, and so are the files it works on. `Wardrik.context/1` makes one context
+[budgets](guides/policy.md) count in, and [triggers](guides/triggers.md), in
+that order. Each agent's definition is kept in the store, read as
+[definitions](guides/definition.md) are against what `context:` lets it
+name, and so are [the files](guides/workspace.md) it works on. `Wardrik.context/1` makes one context
 for every agent; a value of your own implementing `WardrikDefinition.Contexts`
 gives each agent its own.
 
@@ -47,3 +47,13 @@ an S3 bucket (`bucket:`), or on each node's disk (`data_dir:`, with
 
 The [embedding guide](https://docs.wardrik.dev/build/embed/) builds a Phoenix
 app on it, with the HTTP API and accounts people connect.
+
+## Guides
+
+What it holds beside the `Wardrik` API, each with a guide of its own:
+[definitions](guides/definition.md), [policies](guides/policy.md) and the
+rules they write ([reference](guides/policies.md)),
+[triggers](guides/triggers.md), [files](guides/workspace.md),
+[the vault](guides/vault.md), [notices](guides/notify.md), stores in
+[Postgres](guides/postgres.md) and [S3](guides/s3.md),
+[workflows](guides/workflow.md) and [deep research](guides/research.md).

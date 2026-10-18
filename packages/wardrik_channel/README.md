@@ -2,7 +2,7 @@
 
 Chat media [Wardrik](../wardrik) agents are reached through, such as Slack:
 the behaviour each one's adapter implements, and a
-[wardrik_notify](../wardrik_notify) target that posts notices in a room of one.
+[notify](../wardrik/guides/notify.md) target that posts notices in a room of one.
 
 ```elixir
 def deps do

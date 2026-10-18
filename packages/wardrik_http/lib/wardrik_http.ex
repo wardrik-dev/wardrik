@@ -24,7 +24,7 @@ defmodule WardrikHTTP do
   ## What answers
 
   Each route calls a function of `Wardrik`, and `Wardrik.Resource` shows
-  what it answers. `wardrik_protocol`'s `openapi.json` is every route, what
+  what it answers. `WardrikProtocol`'s `openapi.json` is every route, what
   it takes and answers, and that function, each resource a JSON Schema
   beside the events'. `WardrikHTTP.EventStream`
   serves an agent's log, `Wardrik.Event.Export` an export, and

@@ -1,6 +1,6 @@
 defmodule Wardrik.Operations.SetTrigger do
   @moduledoc """
-  Sets one of an agent's triggers, as `wardrik_protocol`'s
+  Sets one of an agent's triggers, as `WardrikProtocol`'s
   `trigger_definition.json` describes it. A trigger is part of the agent's
   definition, so the host's `Wardrik.Definition` sets it; the answer is the
   trigger, `:created` where the agent had none of that name.

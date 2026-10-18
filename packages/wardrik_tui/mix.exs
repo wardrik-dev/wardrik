@@ -12,6 +12,7 @@ defmodule WardrikTUI.MixProject do
       description: "A terminal UI for Wardrik agents, in a terminal or over SSH.",
       source_url: @source_url,
       package: [licenses: ["Apache-2.0"], links: %{"GitHub" => @source_url}],
+      docs: [main: "readme", extras: ["README.md", "guides/console.md"]],
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],
@@ -35,7 +36,6 @@ defmodule WardrikTUI.MixProject do
     [
       sibling(:wardrik_core),
       sibling(:wardrik),
-      sibling(:wardrik_console),
       # Pinned: pre-1.0.
       {:breeze, "0.5.1"},
       {:termite_ssh, "~> 0.1.2"},

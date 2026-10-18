@@ -4,8 +4,6 @@ defmodule Wardrik.RunningTest do
   alias Wardrik.AgentID
 
   setup_all do
-    dir = Path.join(System.tmp_dir!(), "wardrik-#{System.unique_integer([:positive])}")
-
     # Each org's agents read their definitions against a context of the org's own.
     context = %Wardrik.ByOrg{
       contexts: %{"acme" => Wardrik.context(tools: [Wardrik.RunningTest.Search])}
@@ -13,15 +11,11 @@ defmodule Wardrik.RunningTest do
 
     wardrik =
       Wardrik.new(
-        store: Wardrik.store(data_dir: dir),
+        store: Wardrik.Test.store(),
         grants: %Wardrik.OrgGrants{org: "acme"},
         context: context
       )
 
-    start_supervised!({Wardrik, wardrik})
-    :ok = DurableServer.Supervisor.wait_until_ready(Wardrik.Fleet, timeout: 10_000)
-
-    on_exit(fn -> File.rm_rf(dir) end)
     %{wardrik: wardrik}
   end
 

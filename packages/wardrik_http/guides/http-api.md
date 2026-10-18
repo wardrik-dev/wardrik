@@ -108,7 +108,7 @@ The `/v1/deployment` routes are for a token over every agent alone.
 A cancel under a prefix answers `{"cancelled": [...]}`, and a removal
 `{"forgotten": [...], "kept": [{"id": ..., "why": ...}], "failed": [...]}`.
 
-`wardrik_protocol`'s `priv/openapi.json` is every route in OpenAPI 3.1: what each takes and
+wardrik_core's `priv/openapi.json` is every route in OpenAPI 3.1: what each takes and
 answers, and the function of `Wardrik` it calls. A client generator in any language reads
 `priv/openapi.bundled.json`, the same with every schema in it.
 

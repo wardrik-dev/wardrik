@@ -1,10 +1,24 @@
 # Architecture policy for `mix reach.check --arch`.
 #
-# Core is `Wardrik.*`, and each package under packages/ depends on it. The
-# modules below are core's own: only core calls them.
+# Core is `Wardrik.*`, with the store it keeps everything in, `WardrikStore.*`,
+# and the JSON Schemas of what it says, `WardrikProtocol.*`. Each package under
+# packages/ depends on it. The modules below are core's own: only core calls
+# them.
 [
   layers: [
-    core: ["Wardrik", "Wardrik.*"]
+    core: ["Wardrik", "Wardrik.*"],
+    store: ["WardrikStore", "WardrikStore.*"],
+    protocol: ["WardrikProtocol", "WardrikProtocol.*", "Mix.Tasks.WardrikProtocol.Bundle"]
+  ],
+  # The store and the schemas stand on their own: core reads both, and
+  # neither reads core or the other.
+  deps: [
+    forbidden: [
+      {:store, :core},
+      {:store, :protocol},
+      {:protocol, :core},
+      {:protocol, :store}
+    ]
   ],
   boundaries: [
     internal: [

@@ -106,7 +106,7 @@ defmodule WardrikTest do
     assert opts[:host] == Wardrik.host(wardrik)
   end
 
-  test "makes and drops the store's table in Postgres, as wardrik_ecto does" do
+  test "makes and drops the store's table in Postgres, as WardrikEcto does" do
     expect(WardrikEcto.Migration, :up, fn [version: 1] -> :ok end)
     expect(WardrikEcto.Migration, :down, fn [version: 1] -> :ok end)
 

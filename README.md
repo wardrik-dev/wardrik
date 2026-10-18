@@ -117,12 +117,10 @@ tools that run in your own process.
 
 | Package | Description |
 | --- | --- |
-| [wardrik](packages/wardrik) | Wardrik inside your application: core and what it runs with, started as one child of your tree |
-| [wardrik_core](packages/wardrik_core) | The agent runtime: agents, the fleet, turns, tools, hooks, stores and events |
-| [wardrik_protocol](packages/wardrik_protocol) | The JSON Schemas of events and the HTTP API, which every client is checked or generated against |
-| [wardrik_definition](packages/wardrik_definition) | An agent's definition, from an agent file, the HTTP API or a host's own store, read into the spec it runs on |
-| [wardrik_store](packages/wardrik_store) | Where agents and their records are kept: the store behaviour, its EKV and in-memory adapters, and the suite an adapter passes |
-| [wardrik_sdk](packages/wardrik_sdk) | Every package below in one dependency, and `mix wardrik` for trying agents in a terminal |
+| [wardrik](packages/wardrik) | Wardrik inside your application, started as one child of your tree: definitions, policies and budgets, triggers, files, the vault, notices, stores in Postgres or S3, workflows and deep research |
+| [wardrik_core](packages/wardrik_core) | The agent runtime: agents, the fleet, turns, tools, hooks and events, the store behaviour with its EKV and in-memory adapters, and the JSON Schemas every client is checked or generated against |
+
+Core keeps agents on each node's disk with EKV where no other store is configured.
 
 ### Tools
 
@@ -130,34 +128,13 @@ tools that run in your own process.
 | --- | --- |
 | [wardrik_brave](packages/wardrik_brave) | Web search through Brave's LLM Context API, returning page content rather than links |
 | [wardrik_mcp](packages/wardrik_mcp) | The tools of any MCP server, over stdio or HTTP, per user where the server needs it |
-| [wardrik_research](packages/wardrik_research) | Deep research: a topic split across angles, a delegate each, and what they found combined |
 | [wardrik_lua](packages/wardrik_lua) | Lua 5.3 in a sandbox, for code an agent writes and runs |
-| [wardrik_workspace](packages/wardrik_workspace) | Files: a workspace of each agent's own, trees agents share, and what they remember between turns |
 
-### Running agents
-
-| Package | Description |
-| --- | --- |
-| [wardrik_trigger](packages/wardrik_trigger) | A prompt an agent is asked on a clock, or when a source it watches finds something new, owned by one node of the cluster and carried on by another |
-| [wardrik_workflow](packages/wardrik_workflow) | Steps run many at once or in order, each under a span of its own, and offered to an agent as a tool |
-
-### Stores
+### Accounts and channels
 
 | Package | Description |
 | --- | --- |
-| [wardrik_ecto](packages/wardrik_ecto) | Keeps agents in Postgres, through an Ecto repo your application owns |
-| [wardrik_s3](packages/wardrik_s3) | Keeps agents in an S3 bucket: AWS, R2, MinIO or anything that speaks S3 |
-
-Core keeps them on each node's disk with EKV where neither is configured.
-
-### Credentials and policy
-
-| Package | Description |
-| --- | --- |
-| [wardrik_vault](packages/wardrik_vault) | Credentials sealed with a key you hold, kept per user, per org or for everyone |
 | [wardrik_oauth](packages/wardrik_oauth) | Accounts a user connects by authorizing, in a browser or on another device, renewed as they expire |
-| [wardrik_policy](packages/wardrik_policy) | Policies written as data: what an agent may call, what asks a person first, and what it may spend |
-| [wardrik_notify](packages/wardrik_notify) | Tells people when an agent waits on them, fails or answers, on a webhook or in a channel |
 | [wardrik_channel](packages/wardrik_channel) | Chat media agents are reached through, such as Slack: the adapter behaviour, and notices posted in a room |
 | [wardrik_slack](packages/wardrik_slack) | The Slack channel: notices in a room, with buttons that answer the calls an agent waits on |
 
@@ -166,9 +143,8 @@ Core keeps them on each node's disk with EKV where neither is configured.
 | Package | Description |
 | --- | --- |
 | [wardrik_http](packages/wardrik_http) | A versioned JSON API, each agent's events as server-sent events, and tool workers over a socket |
-| [wardrik_tui](packages/wardrik_tui) | A terminal UI for agents, in a terminal or over SSH |
-| [wardrik_console](packages/wardrik_console) | An agent's events written to a plain terminal, a line at a time |
-| [wardrik_daemon](packages/wardrik_daemon) | The daemon and the `wardrik` command: agent files, policies, `config.yaml` and a cluster of nodes |
+| [wardrik_tui](packages/wardrik_tui) | A terminal UI for agents, in a terminal or over SSH, and the console the `wardrik` command writes with |
+| [wardrik_daemon](packages/wardrik_daemon) | The daemon and the `wardrik` command: agent files, policies, `config.yaml`, a cluster of nodes, and `mix wardrik` for trying agents in a terminal |
 
 ### SDKs
 
@@ -203,15 +179,14 @@ mix precommit   # formatting, credo, the architecture checks, tests with coverag
 
 ### Adding a package
 
-A package is one of five kinds, and each kind is set up the same way:
+A package is one of four kinds, and each kind is set up the same way:
 
 | Kind | For example | Depends on | Implements | Its tests |
 | --- | --- | --- | --- | --- |
-| Plugin | `wardrik_brave`, `wardrik_mcp`, `wardrik_policy`, `wardrik_vault` | core, and the library it wraps | a core behaviour, such as `Wardrik.Tool`, `Wardrik.Hook` or `Wardrik.Credential` | call its callbacks, with core's `Wardrik.Test` helpers |
-| Store | `wardrik_ecto`, `wardrik_s3` | `wardrik_store`, and its client | `WardrikStore` | run `WardrikStore.Conformance` and `WardrikStore.Test.Durable` against the real service |
+| Plugin | `wardrik_brave`, `wardrik_mcp`, `wardrik_lua` | core, and the library it wraps | a core behaviour, such as `Wardrik.Tool`, `Wardrik.Hook` or `Wardrik.Credential` | call its callbacks, with core's `Wardrik.Test` helpers |
+| Channel | `wardrik_slack` | `wardrik_channel`, and its client | `WardrikChannel` | deliver to and receive from a stubbed medium |
 | Surface | `wardrik_http`, `wardrik_tui`, `wardrik_daemon` | core, and the packages it puts in front of people | nothing; it calls core | drive agents in the fleet |
-| Assembly | `wardrik_sdk`, `release` | the packages it gathers | nothing | — |
-| Protocol | `wardrik_protocol` | nothing here | JSON Schemas, which the other packages and the SDKs read | check the schemas themselves |
+| Assembly | `release` | the packages it ships | nothing | — |
 
 In every one that builds on core:
 

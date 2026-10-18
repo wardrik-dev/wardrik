@@ -36,8 +36,6 @@ defmodule WardrikChannel.MixProject do
     [
       sibling(:wardrik_core),
       sibling(:wardrik),
-      sibling(:wardrik_notify),
-      sibling(:wardrik_store),
       {:durable_server, "~> 0.1.5"},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

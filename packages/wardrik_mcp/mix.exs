@@ -36,7 +36,7 @@ defmodule WardrikMCP.MixProject do
     [
       sibling(:wardrik_core),
       sibling(:wardrik_oauth),
-      sibling(:wardrik_vault),
+      sibling(:wardrik),
       {:anubis_mcp, "~> 2.0"},
       # Its HTTP transport expects a Finch pool it does not start, which
       # WardrikMCP.Supervisor starts.

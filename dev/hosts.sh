@@ -63,8 +63,7 @@ package() {
   quietly mix local.hex --force
   rm -rf "$WARDRIK_PACKAGES"
 
-  for package in wardrik_protocol wardrik_store wardrik_core wardrik_ecto wardrik_s3 wardrik_policy \
-    wardrik_trigger wardrik_workspace wardrik_notify wardrik_definition wardrik; do
+  for package in wardrik_core wardrik; do
     (cd "$repo/packages/$package" &&
       quietly env WARDRIK_HEX=1 mix hex.build --unpack --output "$WARDRIK_PACKAGES/$package")
   done
@@ -92,7 +91,7 @@ phoenix() {
     --no-live --no-mailer --no-install >/dev/null)
 
   cd "$dir/host"
-  WARDRIK_REPO=$repo perl -0pi -e 's/(\{:phoenix, )/join("", map { "{:$_, path: \"$ENV{WARDRIK_REPO}\/packages\/$_\"},\n      " } qw(wardrik wardrik_http wardrik_vault wardrik_oauth wardrik_mcp)) . $1/e' mix.exs
+  WARDRIK_REPO=$repo perl -0pi -e 's/(\{:phoenix, )/join("", map { "{:$_, path: \"$ENV{WARDRIK_REPO}\/packages\/$_\"},\n      " } qw(wardrik wardrik_http wardrik_oauth wardrik_mcp)) . $1/e' mix.exs
 
   # The guide's own code, as dev/hosts/phoenix keeps it, named for this app.
   (cd "$repo/dev/hosts/phoenix" && find lib -name '*.ex') | while read -r file; do

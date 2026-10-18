@@ -154,7 +154,7 @@ tools:
     price: 0.001
 ```
 
-A tool is named as a [policy](`e:wardrik_policy:policies.html`) names one. A name given whole wins
+A tool is named as a [policy](`e:wardrik:policies.html`) names one. A name given whole wins
 over a pattern, and a longer pattern over a shorter.
 
 ## mcp

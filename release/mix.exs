@@ -21,7 +21,10 @@ defmodule Wardrikd.MixProject do
 
   defp deps do
     [
-      {:wardrik_sdk, path: "../packages/wardrik_sdk"},
+      # The daemon, and what it ships that its own code never names: the
+      # channels config.yaml may set up.
+      {:wardrik_daemon, path: "../packages/wardrik_daemon"},
+      {:wardrik_slack, path: "../packages/wardrik_slack"},
       {:wardrik_precommit, path: "../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

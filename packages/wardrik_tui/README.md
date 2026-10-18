@@ -17,6 +17,9 @@ lists a key, and each connection is a session of its own:
 ssh -p 2222 jon@localhost      # or: wardrik attach
 ```
 
-In a project of your own, `mix wardrik` from [wardrik_sdk](../wardrik_sdk)
+In this repository, `mix wardrik` in [wardrik_daemon](../wardrik_daemon)
 starts an agent and attaches the TUI to it. `WardrikTUI.SSH` is the session
 an SSH server of your own runs.
+
+`WardrikConsole` writes an agent's events to a plain terminal a line at a
+time, as the `wardrik` command does; see [the console](guides/console.md).

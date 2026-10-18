@@ -1,6 +1,6 @@
 # Compiled only where the application has :ecto_sql and :postgrex, which are
 # optional.
-if Code.ensure_loaded?(WardrikEcto.Migration) do
+if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
   defmodule Wardrik.Migration do
     @moduledoc """
     Wardrik's table in an application's Postgres, `wardrik_records`, which a

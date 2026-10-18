@@ -5,7 +5,11 @@
 [
   layers: [
     daemon: ["WardrikDaemon", "WardrikDaemon.*", "Wardrik.Definition.WardrikDaemon.Agents", "Wardrik.Grants.WardrikDaemon.Grants"],
-    docs: "Mix.Tasks.Wardrik.Docs"
+    docs: "Mix.Tasks.Wardrik.Docs",
+    # `mix wardrik`, an agent and the TUI on this node, and the tools it is
+    # tried with, compiled in dev alone.
+    launcher: ["Mix.Tasks.Wardrik", "Mix.Tasks.Wardrik.Created", "Wardrik.Definition.Mix.Tasks.Wardrik.Created"],
+    demo: ["WardrikDemo", "WardrikDemo.*"]
   ],
   boundaries: [
     public: [
