@@ -318,7 +318,14 @@ defmodule Wardrik.Agent do
   which is the only way to get rid of one without answering it.
   """
   @spec interrupt(agent()) :: :ok | {:error, :not_found}
-  def interrupt(agent), do: cast(agent, :interrupt, wake: false)
+  def interrupt(pid) when is_pid(pid), do: GenServer.cast(pid, :interrupt)
+
+  def interrupt(%Wardrik.AgentID{} = id) do
+    case Fleet.held_pid(id, wake: false) do
+      nil -> {:error, :not_found}
+      pid -> interrupt(pid)
+    end
+  end
 
   @doc """
   Answers the calls a parked turn stopped on and carries it on.
@@ -333,7 +340,7 @@ defmodule Wardrik.Agent do
   grant, so it is for code that already holds the agent, never for a
   surface people decide through. `:host` is as `ask/3` takes it.
 
-      Wardrik.Agent.resume(~A"acme/@jon/researcher", %{"call_abc" => :approve})
+      Wardrik.Agent.resume(~A"acme/@jon/researcher", %{"call_abc" => :approve}, host: host)
       Wardrik.Agent.resume(pid, %{"call_abc" => {:approve, "Only to staging."}})
       Wardrik.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """

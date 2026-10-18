@@ -51,9 +51,9 @@ on another node when its own is lost.
 ```elixir
 id = Wardrik.AgentID.new!("assistant", org: current_org, user: current_user)
 
-{:ok, _pid} = Wardrik.Fleet.spawn(id, config: Wardrik.LLM.Config.new(system: "You answer briefly."))
+{:ok, pid} = Wardrik.Fleet.spawn(id, config: Wardrik.LLM.Config.new(system: "You answer briefly."))
 :ok = Wardrik.Event.Bus.subscribe(id)
-:ok = Wardrik.Agent.ask(id, "What changed this week?")
+:ok = Wardrik.Agent.ask(pid, "What changed this week?")
 ```
 
 An ID is `acme/assistant` for an org's own agent, `acme/@jon/assistant` for
@@ -70,7 +70,7 @@ Where several people talk to one agent, as in a chat room, each message names
 who sent it, and the model reads that ahead of the text:
 
 ```elixir
-:ok = Wardrik.Agent.ask(id, "Reconcile last week.", sender: Wardrik.Principal.new(:channel, "slack/U024BE7LH", name: "Maria Chen"))
+:ok = Wardrik.Agent.ask(pid, "Reconcile last week.", sender: Wardrik.Principal.new(:channel, "slack/U024BE7LH", name: "Maria Chen"))
 ```
 
 ## Tools

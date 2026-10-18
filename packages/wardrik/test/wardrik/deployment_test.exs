@@ -22,7 +22,7 @@ defmodule Wardrik.DeploymentTest do
     defstruct []
     def put(_definitions, _id, _opts), do: {:error, "keeps none"}
 
-    def reload(_definitions) do
+    def reload(_definitions, _opts) do
       send(:persistent_term.get({__MODULE__, :test}), :reloaded)
       :ok
     end
@@ -33,7 +33,7 @@ defmodule Wardrik.DeploymentTest do
   defimpl Wardrik.Definition, for: Reloads do
     use Wardrik.Definition.None
     defdelegate put(a0, a1, a2), to: Reloads
-    defdelegate reload(a0), to: Reloads
+    defdelegate reload(a0, a1), to: Reloads
     defdelegate reloading(a0), to: Reloads
   end
 

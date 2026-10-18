@@ -50,17 +50,19 @@ defmodule Wardrik.Fleet.DefinedTest do
     {^key, _pid} =
       Wardrik.Test.Fleet.start_agent([runner: {AgentRunners, :echo, [self(), "ok"]}], key)
 
-    :ok = Agent.ask(key, "hello")
+    :ok = Agent.ask(key, "hello", host: Wardrik.Test.host())
     assert_receive {:turn, _messages}
     :ok = Fleet.stop(key)
     :ok = written_earlier(key)
 
     Definitions.keep(key, Spec.new(id: key, config: Config.new(model_spec: "test:kept")))
 
-    assert capture_log(fn -> assert %{model: "test:kept"} = Agent.status(key) end) =~
+    assert capture_log(fn ->
+             assert %{model: "test:kept"} = Agent.status(key, host: Wardrik.Test.host())
+           end) =~
              "#{key} kept a state this release cannot read"
 
-    assert Agent.snapshot(key).context.messages == []
+    assert Agent.snapshot(key, host: Wardrik.Test.host()).context.messages == []
   end
 
   test "an agent whose state does not read, and that nothing defines, is not found", %{

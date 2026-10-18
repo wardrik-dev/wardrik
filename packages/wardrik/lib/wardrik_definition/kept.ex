@@ -28,7 +28,7 @@ defmodule WardrikDefinition.Kept do
   | `current/2` | the spec the definition kept writes now, as an agent starts or wakes |
   | `defined/2` | the agents a definition is kept for, read from the store's keys |
   | `create/2` | `:unsupported`: an agent nothing defines is not found |
-  | `reload/1` | builds every agent awake again |
+  | `reload/2` | builds every agent awake on the host given again |
   | `reloading/1` | this node: the records are in the store every node shares |
 
   A definition's `triggers` are its agent's, brought to what it lists as it
@@ -166,16 +166,20 @@ defmodule WardrikDefinition.Kept do
     do: for(id <- Record.ids(store), Prefix.covers?(prefix, id), do: id)
 
   @doc """
-  Builds every agent awake again from the definition it runs on, and puts
-  the routes again. Why an agent does not build is logged.
+  Builds every agent awake on `:host` again from the definition it runs on,
+  and puts the routes again. Why an agent does not build is logged.
   """
-  @spec reload(t()) :: :ok
-  def reload(%__MODULE__{} = kept) do
-    for message <- rebuild(kept, only: fn _record, _id -> true end), do: Logger.error(message)
+  @spec reload(t(), host: Wardrik.Host.t()) :: :ok
+  def reload(%__MODULE__{} = kept, opts) do
+    only = fn _record, _id -> true end
+
+    for message <- rebuild(kept, host: Keyword.fetch!(opts, :host), only: only),
+        do: Logger.error(message)
+
     route(kept)
   end
 
-  @doc "This node, whose `reload/1` reads the records every node shares."
+  @doc "This node, whose `reload/2` reads the records every node shares."
   @spec reloading(t()) :: [node()]
   def reloading(%__MODULE__{}), do: [node()]
 
@@ -191,16 +195,18 @@ defmodule WardrikDefinition.Kept do
   end
 
   @doc """
-  Builds every agent awake that `:only` picks again, given the record it
-  runs on and its ID, from the definition kept; why each that does not
-  build does not, a message each. One asleep takes its definition as it
-  wakes.
+  Builds every agent awake on `:host` that `:only` picks again, given the
+  record it runs on and its ID, from the definition kept; why each that
+  does not build does not, a message each. One asleep takes its definition
+  as it wakes.
   """
-  @spec rebuild(t(), only: (Record.t(), AgentID.t() -> boolean())) :: [String.t()]
+  @spec rebuild(t(), host: Wardrik.Host.t(), only: (Record.t(), AgentID.t() -> boolean())) ::
+          [String.t()]
   def rebuild(%__MODULE__{store: store} = kept, opts) do
+    host = Keyword.fetch!(opts, :host)
     only = Keyword.fetch!(opts, :only)
 
-    for %{id: id, asleep: false} <- Fleet.held(Prefix.all()),
+    for %{id: id, asleep: false} <- Fleet.list(Prefix.all(), host: host),
         {:ok, record} <- [Record.of(store, id)],
         only.(record, id),
         message <- rebuilt(kept, record, id),
@@ -276,6 +282,6 @@ defimpl Wardrik.Definition, for: WardrikDefinition.Kept do
   defdelegate delete_trigger(kept, id, name), to: WardrikDefinition.Kept
   defdelegate current(kept, id), to: WardrikDefinition.Kept
   defdelegate defined(kept, prefix), to: WardrikDefinition.Kept
-  defdelegate reload(kept), to: WardrikDefinition.Kept
+  defdelegate reload(kept, opts), to: WardrikDefinition.Kept
   defdelegate reloading(kept), to: WardrikDefinition.Kept
 end

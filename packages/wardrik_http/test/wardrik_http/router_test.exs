@@ -853,7 +853,7 @@ defmodule WardrikHTTP.RouterTest do
                define(api, key, %{"model" => "openai:gpt-5"})
 
       assert snapshot["request"]["model"] == "gpt-5"
-      assert Agent.status(key).model == "openai:gpt-5"
+      assert Agent.status(key, host: Wardrik.Test.host()).model == "openai:gpt-5"
 
       assert Audit.about("agents/#{key}") ==
                [{"agent.defined", actor(token)}, {"agent.defined", actor(token)}]
@@ -1191,7 +1191,7 @@ defmodule WardrikHTTP.RouterTest do
       key = sleeping_agent()
 
       stream = open(api, key, [])
-      :ok = Agent.ask(key, "again")
+      :ok = Agent.ask(key, "again", host: Wardrik.Test.host())
 
       assert {[{_id, "wardrik.message.created"} | _rest], stream} = frames(stream, 3)
       Req.cancel_async_response(stream.response)
@@ -1206,7 +1206,7 @@ defmodule WardrikHTTP.RouterTest do
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     Agent.ask(agent, "hi")
     assert_receive %Event{payload: %Event.AgentStopped{reason: :idle}}, 2_000
-    assert Fleet.await_update(fn -> Wardrik.Fleet.whereis(key, wake: false) == nil end)
+    assert Fleet.await_update(fn -> Wardrik.Fleet.held_pid(key, wake: false) == nil end)
     key
   end
 

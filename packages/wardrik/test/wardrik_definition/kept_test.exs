@@ -235,15 +235,17 @@ defmodule WardrikDefinition.KeptTest do
     {:ok, spec} = put(kept, id, %{"policy" => "careful"})
     {:ok, _pid} = Fleet.put(spec)
 
-    assert Definition.reload(kept) == :ok
+    assert Definition.reload(kept, host: Wardrik.Test.host()) == :ok
 
     without = kept(%{test.context | policies: %{}})
 
-    assert capture_log(fn -> assert Definition.reload(without) == :ok end) =~
+    assert capture_log(fn ->
+             assert Definition.reload(without, host: Wardrik.Test.host()) == :ok
+           end) =~
              "#{id} does not build from its definition: policy names careful"
 
     :ok = Fleet.forget(id)
-    assert Definition.reload(kept) == :ok
+    assert Definition.reload(kept, host: Wardrik.Test.host()) == :ok
     assert {:ok, _definition} = Definition.get(kept, id)
   end
 

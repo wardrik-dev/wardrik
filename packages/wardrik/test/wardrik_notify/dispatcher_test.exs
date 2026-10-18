@@ -31,7 +31,7 @@ defmodule WardrikNotify.DispatcherTest do
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
 
-    :ok = Agent.ask(key, "Ship it.")
+    :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
 
     assert_receive {:notice, %{"event" => "turn_parked", "agent" => agent, "calls" => [call]}}
     assert agent == to_string(key)
@@ -42,12 +42,12 @@ defmodule WardrikNotify.DispatcherTest do
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "All quiet."]})
 
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
-    :ok = Agent.ask(key, "Anything?")
+    :ok = Agent.ask(key, "Anything?", host: Wardrik.Test.host())
     assert_receive {:turn, _context}
     refute_receive {:notice, _notice}
 
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit], on: [:finished]}})
-    :ok = Agent.ask(key, "Anything now?")
+    :ok = Agent.ask(key, "Anything now?", host: Wardrik.Test.host())
 
     assert_receive {:notice, %{"event" => "turn_finished", "text" => "All quiet."}}
   end
@@ -57,7 +57,7 @@ defmodule WardrikNotify.DispatcherTest do
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
     :ok = WardrikNotify.put_routes(%{})
 
-    :ok = Agent.ask(key, "Ship it.")
+    :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
     assert_receive :asked
     refute_receive {:notice, _notice}
   end
@@ -75,7 +75,7 @@ defmodule WardrikNotify.DispatcherTest do
 
     log =
       capture_log(fn ->
-        :ok = Agent.ask(key, "Ship it.")
+        :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
         assert_receive :refused
         wait_for_deliveries()
       end)
@@ -98,7 +98,7 @@ defmodule WardrikNotify.DispatcherTest do
 
     log =
       capture_log(fn ->
-        :ok = Agent.ask(key, "Ship it.")
+        :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
         assert_receive :refused
         wait_for_deliveries()
       end)
@@ -127,7 +127,7 @@ defmodule WardrikNotify.DispatcherTest do
 
     log =
       capture_log(fn ->
-        :ok = Agent.ask(key, "Ship it.")
+        :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
         assert_receive {:notice, %{"event" => "turn_parked"}}
         wait_for_deliveries()
       end)
@@ -145,7 +145,7 @@ defmodule WardrikNotify.DispatcherTest do
 
     log =
       capture_log(fn ->
-        :ok = Agent.ask(key, "Ship it.")
+        :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
         assert_receive {:notice, %{"event" => "turn_parked", "agent" => agent}}
         assert agent == to_string(key)
         wait_for_deliveries()
@@ -164,7 +164,7 @@ defmodule WardrikNotify.DispatcherTest do
     )
 
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
-    :ok = Agent.ask(key, "Ship it.")
+    :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
 
     assert_receive {:notice, %{"event" => "turn_parked"}}
   end

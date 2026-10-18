@@ -31,7 +31,7 @@ defmodule Wardrik.FleetTest do
       pid = start(key, runner: runner(self()))
 
       assert Fleet.whereis(key, host: Wardrik.Test.host()) == pid
-      assert :ok = Agent.ask(key, "hello")
+      assert :ok = Agent.ask(key, "hello", host: Wardrik.Test.host())
       assert_receive {:turn, [{:user, "hello"}]}
     end
 
@@ -209,7 +209,7 @@ defmodule Wardrik.FleetTest do
       assert_receive %Event{payload: %Event.TurnFinished{}}
 
       :ok = Fleet.stop(key)
-      assert Fleet.whereis(key, wake: false) == nil
+      assert Fleet.held_pid(key, wake: false) == nil
       assert Fleet.stored?(key)
       {:ok, restarted} = Fleet.spawn(key, [])
 
@@ -278,7 +278,10 @@ defmodule Wardrik.FleetTest do
   end
 
   defp roles(agent) do
-    agent |> Agent.get_context() |> Context.to_list() |> Enum.map(& &1.role)
+    agent
+    |> Agent.get_context(host: Wardrik.Test.host())
+    |> Context.to_list()
+    |> Enum.map(& &1.role)
   end
 
   describe "put/1" do
@@ -293,12 +296,12 @@ defmodule Wardrik.FleetTest do
       on_exit(fn -> Fleet.forget(key) end)
 
       assert {:ok, pid} = Fleet.put(spec)
-      assert Agent.status(key).model == "anthropic:claude-sonnet-5"
+      assert Agent.status(key, host: Wardrik.Test.host()).model == "anthropic:claude-sonnet-5"
 
       assert {:ok, ^pid} =
                Fleet.put(%{spec | config: Config.new(model_spec: "openai:gpt-5")})
 
-      assert Agent.status(key).model == "openai:gpt-5"
+      assert Agent.status(key, host: Wardrik.Test.host()).model == "openai:gpt-5"
     end
   end
 end

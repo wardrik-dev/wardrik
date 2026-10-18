@@ -80,7 +80,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   defp parked(org, name) do
     key = agent(org, name, runner: {AgentRunners, :parking, [self(), "call_1"]})
     :ok = Event.Bus.subscribe(key)
-    :ok = Agent.ask(key, "ship it")
+    :ok = Agent.ask(key, "ship it", host: Host.host())
     assert_receive %Event{payload: %Event.TurnParked{}}
     assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :parked end)
     key
@@ -170,7 +170,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                {"Started #{key} on #{here}, as agents/helper.md declares it.\n", 0}
 
       loose = agent(org, "loose", runner: {AgentRunners, :echo, [self(), "hello back"]})
-      :ok = Agent.ask(loose, "hello")
+      :ok = Agent.ask(loose, "hello", host: Host.host())
       assert_receive {:turn, [{:user, "hello"}]}
       assert Wardrik.Test.Fleet.await_update(fn -> status(loose) == :idle end)
 
@@ -182,7 +182,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                {"Started #{loose} on #{here} again, with its conversation.\n", 0}
 
       refute File.exists?(Path.join(dir, "agents/loose.md"))
-      assert [_hello, _back] = loose |> Agent.get_context() |> ReqLLM.Context.to_list()
+
+      assert [_hello, _back] =
+               loose |> Agent.get_context(host: Host.host()) |> ReqLLM.Context.to_list()
 
       assert command(["agent", "stop", "nobody/here"]) ==
                {"No agent runs under nobody/here.\n", 1}
@@ -240,7 +242,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "cancel", org <> "/"]) ==
                {"No agent under #{org}/ is taking a turn.\n", 0}
 
-      :ok = Agent.ask(key, "ship it again")
+      :ok = Agent.ask(key, "ship it again", host: Host.host())
       assert_receive %Event{payload: %Event.TurnParked{}}
       assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :parked end)
 
@@ -446,7 +448,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
     test "says a running turn ends, and why a move failed", %{org: org} do
       key = agent(org, "busy", runner: {AgentRunners, :blocking, [self(), "done"]})
-      :ok = Agent.ask(key, "work")
+      :ok = Agent.ask(key, "work", host: Host.host())
       assert_receive {:turn, _messages, runner}
       assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :running end)
       expect(Fleet, :move, fn ^key, :wardrik_b@localhost -> {:error, :no_capacity} end)

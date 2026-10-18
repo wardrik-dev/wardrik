@@ -76,7 +76,7 @@ defmodule WardrikDaemon.CLITest do
       )
 
     :ok = Event.Bus.subscribe(key)
-    Agent.ask(agent, "ship it")
+    Agent.ask(agent, "ship it", host: Host.host())
     assert_receive %Event{payload: %Event.TurnParked{}}
 
     await_parked(key)
@@ -101,7 +101,7 @@ defmodule WardrikDaemon.CLITest do
       )
 
     :ok = Event.Bus.subscribe(key)
-    Agent.ask(agent, "open an issue")
+    Agent.ask(agent, "open an issue", host: Host.host())
     assert_receive %Event{payload: %Event.TurnParked{}}
 
     await_parked(key)
@@ -464,7 +464,7 @@ defmodule WardrikDaemon.CLITest do
     assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
 
     :ok = Event.Bus.subscribe(key)
-    Agent.ask(agent, "hello")
+    Agent.ask(agent, "hello", host: Host.host())
     assert_receive %Event{payload: %Event.TurnFinished{}}
 
     assert command(["history", key]) == {"user: hello\n\nassistant: hello back\n", 0}
@@ -475,7 +475,7 @@ defmodule WardrikDaemon.CLITest do
       Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "hello back"]})
 
     :ok = Event.Bus.subscribe(key)
-    Agent.ask(agent, "hello")
+    Agent.ask(agent, "hello", host: Host.host())
     assert_receive %Event{payload: %Event.TurnFinished{}}
 
     assert command(["clear", key]) == {"Cleared #{key}'s conversation.\n", 0}

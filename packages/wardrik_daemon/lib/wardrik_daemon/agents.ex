@@ -139,17 +139,24 @@ defmodule WardrikDaemon.Agents do
     }
   end
 
-  @doc "Starts it, reading the files under the config directory of `:agents`."
-  @spec start_link(agents: t()) :: GenServer.on_start()
+  @doc """
+  Starts it, reading the files under the config directory of `:agents`, and
+  bringing the agents awake on `:host` to them.
+  """
+  @spec start_link(agents: t(), host: Wardrik.Host.t()) :: GenServer.on_start()
   def start_link(opts) do
-    GenServer.start_link(__MODULE__, Keyword.fetch!(opts, :agents), name: __MODULE__)
+    init = {Keyword.fetch!(opts, :agents), Keyword.fetch!(opts, :host)}
+    GenServer.start_link(__MODULE__, init, name: __MODULE__)
   end
 
   @doc "Reads every file again and brings the fleet to what they say."
   @spec reload(t()) :: :ok
   def reload(_agents), do: GenServer.call(__MODULE__, :reload, :timer.minutes(1))
 
-  @doc "Every node that runs a daemon, each of which reads its files again on `reload/1`."
+  @doc """
+  Every node that runs a daemon, each of which reads its files again on
+  `reload/1`, with the host its process was started with.
+  """
   @spec reloading(t()) :: [node()]
   def reloading(_agents), do: WardrikDaemon.daemons()
 
@@ -417,7 +424,9 @@ defmodule WardrikDaemon.Agents do
     with :ok <- untaken(agents, path),
          {:ok, _options} <- created(agents, key),
          :ok <- write(path, AgentFile.text(created_fields(agents, key))) do
-      :ok = Wardrik.Definitions.reload_on(agents, reloading(agents))
+      for node <- reloading(agents),
+          do: :ok = :erpc.call(node, __MODULE__, :reload, [agents], :timer.minutes(1))
+
       written(agents, path)
     end
   end
@@ -639,12 +648,20 @@ defmodule WardrikDaemon.Agents do
   end
 
   @impl true
-  def init(%__MODULE__{} = agents) do
+  def init({%__MODULE__{} = agents, host}) do
     # A reading of a process before this one is not this one's: until its
     # first is done, the process is asked, and answers once it is.
     true = :ets.delete(agents.table, :loaded)
 
-    state = %{agents: agents, store: agents.store, nodes: agents.nodes, files: [], problems: []}
+    state = %{
+      agents: agents,
+      host: host,
+      store: agents.store,
+      nodes: agents.nodes,
+      files: [],
+      problems: []
+    }
+
     {:ok, state, {:continue, :load}}
   end
 
@@ -713,7 +730,10 @@ defmodule WardrikDaemon.Agents do
     put = MapSet.new(for {_path, {:ok, spec}} <- agent_files, do: spec.id)
 
     problems =
-      Kept.rebuild(kept(agents, policies_of(state)), only: &rebuilt?(&1, &2, put))
+      Kept.rebuild(kept(agents, policies_of(state)),
+        host: state.host,
+        only: &rebuilt?(&1, &2, put)
+      )
 
     :ok = Kept.route(kept(agents))
 
@@ -809,7 +829,7 @@ defmodule WardrikDaemon.Agents do
   defp put(agents, {:ok, definition, spec}) do
     :ok = Kept.keep(kept(agents), definition)
 
-    if Fleet.whereis(spec.id, wake: false) == nil and Fleet.stored?(spec.id),
+    if Fleet.held_pid(spec.id, wake: false) == nil and Fleet.stored?(spec.id),
       do: {:ok, spec},
       else: started(spec)
   end
@@ -834,6 +854,6 @@ defimpl Wardrik.Definition, for: WardrikDaemon.Agents do
   defdelegate current(agents, id), to: WardrikDaemon.Agents
   defdelegate defined(agents, prefix), to: WardrikDaemon.Agents
   defdelegate create(agents, id), to: WardrikDaemon.Agents
-  defdelegate reload(agents), to: WardrikDaemon.Agents
+  def reload(agents, _opts), do: WardrikDaemon.Agents.reload(agents)
   defdelegate reloading(agents), to: WardrikDaemon.Agents
 end

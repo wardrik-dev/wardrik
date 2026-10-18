@@ -31,7 +31,7 @@ defprotocol Wardrik.Definition do
   | `current/2` | `agent_spawn/3`, `Wardrik.Fleet.whereis/2`, and an agent starting or waking | an agent starts and wakes as it was stored |
   | `defined/2` | `Wardrik.Fleet.list/2`, for agents not yet started | none |
   | `create/2` | `agent_spawn/3`, for an agent nothing defines | `:unsupported`: such an agent is not found |
-  | `reloading/1`, `reload/1` | `deployment_reload/1`, on every node `reloading/1` names | no node, so `:unsupported` |
+  | `reloading/1`, `reload/2` | `deployment_reload/1`, on every node `reloading/1` names | no node, so `:unsupported` |
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads
   an agent file, keeps it, and refuses the agents its files declare. An
@@ -142,15 +142,15 @@ defprotocol Wardrik.Definition do
 
   @doc """
   Reads every definition this node keeps again, and brings the agents it
-  runs to what they say now. Asked on each node `reloading/1` names, with
-  the value of the node asking, so what names this node's own is found by
-  name there.
+  runs on `:host` to what they say now. Asked on each node `reloading/1`
+  names, with the value and host of the node asking, so what names this
+  node's own is found by name there.
   """
-  @spec reload(t()) :: :ok
-  def reload(definitions)
+  @spec reload(t(), host: Wardrik.Host.t()) :: :ok
+  def reload(definitions, opts)
 
   @doc """
-  The nodes whose definitions are read again on `reload/1`: every node of
+  The nodes whose definitions are read again on `reload/2`: every node of
   the deployment running what reads them, as each daemon's does. `[]` where
   nothing does, which leaves `Wardrik.deployment_reload/1` `:unsupported`.
   """

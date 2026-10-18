@@ -140,12 +140,10 @@ defmodule Wardrik.Credential do
     end)
   end
 
-  # Only an agent the store holds is woken here, which asks no host's
-  # definitions: a credential's resolver holds no host.
   defp wake_awaiting(id, %Available{ref: ref, owner: owner} = word) do
     with {:ok, dumped} <- Fleet.written(id),
          [_ | _] <- Wardrik.Agent.State.Stored.awaiting(dumped, ref, owner),
-         pid when is_pid(pid) <- Fleet.whereis(id, []) do
+         pid when is_pid(pid) <- Fleet.held_pid(id) do
       send(pid, word)
     end
 

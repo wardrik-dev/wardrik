@@ -7,15 +7,13 @@ defmodule Wardrik.Definitions do
   alias Wardrik.Definition
 
   @doc """
-  Reads every definition again on each of `nodes`, through `definitions`,
-  one after another.
+  Reads every definition again on each of `nodes`, through the definitions
+  of `host`, one after another.
   """
-  @spec reload_on(Definition.t(), [node()]) :: :ok
-  def reload_on(definitions, nodes) when is_list(nodes) do
-    Enum.each(
-      nodes,
-      &(:ok = :erpc.call(&1, Definition, :reload, [definitions], :timer.minutes(1)))
-    )
+  @spec reload_on(Wardrik.Host.t(), [node()]) :: :ok
+  def reload_on(host, nodes) when is_list(nodes) do
+    args = [Wardrik.Host.definitions(host), [host: host]]
+    Enum.each(nodes, &(:ok = :erpc.call(&1, Definition, :reload, args, :timer.minutes(1))))
   end
 
   @doc "Whether the definitions of `host` keep one of the agent `id`."

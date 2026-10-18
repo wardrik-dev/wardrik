@@ -81,7 +81,7 @@ defmodule WardrikDaemon do
     children =
       mcp(config, store) ++
         oauth(host) ++
-        [{Agents, agents: agents}] ++
+        [{Agents, agents: agents, host: host}] ++
         running(channels, host) ++
         notify(config, agents) ++
         WardrikDaemon.SSH.children(config, host: host) ++

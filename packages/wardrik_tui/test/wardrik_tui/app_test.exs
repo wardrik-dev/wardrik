@@ -24,6 +24,11 @@ defmodule WardrikTUI.AppTest do
       id, opts -> call_original(Fleet, :whereis, [id, opts])
     end)
 
+    stub(Fleet, :held_pid, fn
+      ^agent_id, _opts -> agent
+      id, opts -> call_original(Fleet, :held_pid, [id, opts])
+    end)
+
     stub(Fleet, :lookup, fn
       ^agent_id, _opts ->
         %Fleet.Member{

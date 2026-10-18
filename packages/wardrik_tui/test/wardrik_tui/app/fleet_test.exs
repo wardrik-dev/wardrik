@@ -231,7 +231,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     submit(session, "/spawn helper")
     assert screen(session) =~ "spawned and connected to #{key}"
-    assert Agent.status(key).model == "test:model"
+    assert Agent.status(key, host: Wardrik.Test.host()).model == "test:model"
 
     submit(session, "/spawn refused")
     assert screen(session) =~ "✗ the defaults name no such tool"
@@ -331,7 +331,7 @@ defmodule WardrikTUI.App.FleetTest do
     refute screen(session) =~ "hello from here"
 
     # The first agent carries on without this client watching.
-    Agent.ask(agent_id, "while you were out")
+    Agent.ask(agent_id, "while you were out", host: Wardrik.Test.host())
     assert_receive %Event{payload: %Event.TurnFinished{}}
     :ok = Bus.unsubscribe(agent_id)
 
@@ -364,7 +364,7 @@ defmodule WardrikTUI.App.FleetTest do
     text = screen(session)
     assert text =~ "connected to #{dozer}"
     assert text =~ "› remember this"
-    assert Fleet.whereis(dozer, wake: false)
+    assert Fleet.held_pid(dozer, wake: false)
   end
 
   test "the palette picks an agent for /connect, and types the rest of /spawn", ctx do
@@ -1116,7 +1116,7 @@ defmodule WardrikTUI.App.FleetTest do
     text = screen(session)
     assert text =~ "shut down #{key}"
     assert text =~ "its conversation is kept"
-    assert Fleet.whereis(key, wake: false) == nil
+    assert Fleet.held_pid(key, wake: false) == nil
     assert Audit.about("agents/#{key}") == [{"agent.stopped", @ops}]
 
     submit(session, "/spawn sleeper")
@@ -1149,7 +1149,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/shutdown watched")
 
     assert screen(session) =~ "shut down #{agent_id}"
-    assert Fleet.whereis(agent_id, wake: false) == nil
+    assert Fleet.held_pid(agent_id, wake: false) == nil
 
     submit(session, "hello again")
     assert_receive {:turn, [{:user, "From ssh ops:\nhello again"}]}, 2_000

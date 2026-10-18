@@ -12,6 +12,7 @@ defmodule Wardrik.Fleet do
   | `forget/1`, `forget_under/1` | remove an agent, or every agent under a prefix, and its store |
   | `move/2` | restart an agent on another node, as it was |
   | `whereis/2` | the pid behind an ID, on whatever node holds it, waking it where it sleeps or starting it from its definition |
+  | `held_pid/2` | the same for an agent already started, without a host |
   | `stored?/1` | whether the store holds an agent, running or stopped |
 
   An agent is addressed by its `Wardrik.AgentID`, and the fleet is sliced by
@@ -187,36 +188,45 @@ defmodule Wardrik.Fleet do
 
   @doc """
   The pid behind an ID, wherever in the cluster it is, or `nil` where neither
-  the store nor the host's definitions hold an agent under it.
+  the fleet nor the definitions of the `:host` given hold an agent under it.
 
   An agent asleep is started from the store first, as it was, and one the
   store does not hold from its definition. Callers racing to wake one agent,
   on any node, start one process between them.
 
-    * `:host` - the `Wardrik.Host` whose definitions an agent the store does
-      not hold is started from. A caller that may reach such an agent passes
-      it
-    * `:wake` - `false` answers `nil` for an agent asleep, for a caller with
-      nothing to ask of it
-
       pid = Wardrik.Fleet.whereis(id, host: host)
   """
-  @spec whereis(AgentID.t(), host: Wardrik.Host.t(), wake: boolean()) :: pid() | nil
+  @spec whereis(AgentID.t(), host: Wardrik.Host.t()) :: pid() | nil
   def whereis(%AgentID{} = id, opts) do
-    case DurableServer.Supervisor.lookup(@name, to_string(id)) do
-      {pid, _meta} -> pid
-      nil -> if Keyword.get(opts, :wake, true), do: wake(id, opts)
+    definitions = definitions(opts)
+
+    case held_pid(id) do
+      nil -> if defined?(id, definitions), do: wake(id)
+      pid -> pid
     end
   end
 
-  # The checks spare a start for an ID nothing holds; `:wake_only` keeps one
-  # forgotten since from coming back empty.
-  defp wake(id, opts) do
-    with true <- stored?(id) or defined?(id, opts),
-         {:ok, {pid, meta}} when not is_map_key(meta, :gone) <-
-           id |> child(wake_only: true) |> start(nil) do
-      pid
-    else
+  @doc """
+  The pid of an agent the fleet holds under `id`: running, or asleep in the
+  store and woken. `nil` where it holds none. It reads no definitions, so it
+  takes no host, for a caller that reaches only agents already started, as a
+  credential coming available reaches the agents parked on it. With
+  `wake: false` an agent asleep answers `nil`, for a caller with nothing to
+  ask of it.
+  """
+  @spec held_pid(AgentID.t(), wake: boolean()) :: pid() | nil
+  def held_pid(%AgentID{} = id, opts \\ []) do
+    case DurableServer.Supervisor.lookup(@name, to_string(id)) do
+      {pid, _meta} -> pid
+      nil -> if Keyword.get(opts, :wake, true) and stored?(id), do: wake(id)
+    end
+  end
+
+  # The checks before it spare a start for an ID nothing holds; `:wake_only`
+  # keeps one forgotten since from coming back empty.
+  defp wake(id) do
+    case id |> child(wake_only: true) |> start(nil) do
+      {:ok, {pid, meta}} when not is_map_key(meta, :gone) -> pid
       _gone -> nil
     end
   end
@@ -227,21 +237,23 @@ defmodule Wardrik.Fleet do
   """
   @spec lookup(AgentID.t(), host: Wardrik.Host.t()) :: Member.t() | nil
   def lookup(%AgentID{} = id, opts) do
+    definitions = definitions(opts)
+
     case DurableServer.Supervisor.lookup(@name, to_string(id)) do
       {pid, meta} -> Member.new(id, pid, meta)
-      nil -> asleep(id, opts)
+      nil -> asleep(id, definitions)
     end
   end
 
-  defp asleep(id, opts) do
+  defp asleep(id, definitions) do
     case written(id) do
       {:ok, dumped} -> Member.asleep(id, dumped)
-      {:error, :not_found} -> if defined?(id, opts), do: Member.asleep(id)
+      {:error, :not_found} -> if defined?(id, definitions), do: Member.asleep(id)
     end
   end
 
-  defp defined?(id, opts),
-    do: match?({:ok, _spec}, Wardrik.Definition.current(definitions(opts), id))
+  defp defined?(id, definitions),
+    do: match?({:ok, _spec}, Wardrik.Definition.current(definitions, id))
 
   defp definitions(opts), do: opts |> Keyword.fetch!(:host) |> Wardrik.Host.definitions()
 
@@ -256,11 +268,12 @@ defmodule Wardrik.Fleet do
   """
   @spec list(Prefix.t(), host: Wardrik.Host.t()) :: [Member.t()]
   def list(prefix, opts) do
+    definitions = definitions(opts)
     held = held(prefix)
     started = MapSet.new(held, & &1.id)
 
     defined =
-      for id <- Wardrik.Definition.defined(definitions(opts), prefix),
+      for id <- Wardrik.Definition.defined(definitions, prefix),
           not MapSet.member?(started, id),
           do: Member.asleep(id)
 

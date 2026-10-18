@@ -79,7 +79,7 @@ defmodule Wardrik.HostTest do
     assert Wardrik.Definition.delete(definitions, id) == {:error, :not_found}
     assert Wardrik.Definition.create(definitions, id) == :unsupported
     assert Wardrik.Definition.reloading(definitions) == []
-    assert Wardrik.Definition.reload(definitions) == :ok
+    assert Wardrik.Definition.reload(definitions, host: host) == :ok
   end
 
   test "a principal is a caller holding the grant that reaches what they act on" do

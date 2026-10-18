@@ -183,12 +183,12 @@ defmodule Wardrik.LifecycleTest do
       id = defined_id()
 
       assert {:ok, %Snapshot{agent: ^id}} = Wardrik.agent_define(session(), id, %{})
-      assert Agent.status(id).model == "anthropic:claude-sonnet-5"
+      assert Agent.status(id, host: Wardrik.Test.host()).model == "anthropic:claude-sonnet-5"
 
       assert {:ok, %Snapshot{}} =
                Wardrik.agent_define(session(), id, %{"model" => "openai:gpt-5"})
 
-      assert Agent.status(id).model == "openai:gpt-5"
+      assert Agent.status(id, host: Wardrik.Test.host()).model == "openai:gpt-5"
 
       assert {:ok, %Wardrik.Definition.Read{fields: %{"model" => "openai:gpt-5"}}} =
                Wardrik.agent_definition_read(session(), id)
@@ -433,7 +433,7 @@ defmodule Wardrik.LifecycleTest do
       assert {:ok, %Spawned{from: :definition, member: %Member{id: ^id}}} =
                Wardrik.agent_spawn(session(), id)
 
-      assert Agent.status(id).model == "openai:gpt-5"
+      assert Agent.status(id, host: Wardrik.Test.host()).model == "openai:gpt-5"
 
       fresh = defined_id("fresh")
       assert {:ok, %Spawned{from: :new}} = Wardrik.agent_spawn(session(), fresh)

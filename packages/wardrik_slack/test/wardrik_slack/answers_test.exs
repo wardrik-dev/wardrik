@@ -83,7 +83,7 @@ defmodule WardrikSlack.AnswersTest do
 
       on_exit(fn -> Fleet.forget(key) end)
       :ok = Event.Bus.subscribe(key, level: :lifecycle)
-      :ok = Agent.ask(key, "Open an issue.")
+      :ok = Agent.ask(key, "Open an issue.", host: Wardrik.Test.host())
       assert_receive %Event{payload: %Event.TurnParked{}}
 
       %{key: key}
@@ -96,7 +96,7 @@ defmodule WardrikSlack.AnswersTest do
       assert reply["response_type"] == "ephemeral"
       assert reply["replace_original"] == false
       assert reply["text"] == "Enter `WDJB-MJHT` at https://github.com/login/device"
-      assert [{%{id: "call_1"}, _prompt}] = Agent.parked(key)
+      assert [{%{id: "call_1"}, _prompt}] = Agent.parked(key, host: Wardrik.Test.host())
     end
 
     test "is refused to someone who may not decide, saying who else may as the host words it",
@@ -158,7 +158,7 @@ defmodule WardrikSlack.AnswersTest do
         |> WardrikChannel.Member.new("U2")
         |> WardrikChannel.principal(name: "maria")
 
-      :ok = Agent.ask(key, "Ship it.", sender: asker)
+      :ok = Agent.ask(key, "Ship it.", sender: asker, host: Wardrik.Test.host())
       assert_receive %Event{payload: %Event.TurnParked{}}
 
       %{key: key}
@@ -182,7 +182,7 @@ defmodule WardrikSlack.AnswersTest do
 
       on_exit(fn -> Fleet.forget(key) end)
       :ok = Event.Bus.subscribe(key, level: :lifecycle)
-      :ok = Agent.ask(key, "Ship it.")
+      :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
       assert_receive %Event{payload: %Event.TurnParked{}}
 
       %{key: key}
@@ -282,7 +282,7 @@ defmodule WardrikSlack.AnswersTest do
         assert text =~ "approvers"
       end
 
-      assert [{%{id: "call_1"}, _prompt}] = Agent.parked(key)
+      assert [{%{id: "call_1"}, _prompt}] = Agent.parked(key, host: Wardrik.Test.host())
     end
 
     test "says a second press finds the question answered", %{key: key} do

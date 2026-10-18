@@ -965,7 +965,7 @@ defmodule Wardrik do
 
   # The node `agent` runs on, whose tool runner holds its calls.
   defp awake(agent) do
-    case Fleet.whereis(agent, wake: false) do
+    case Fleet.held_pid(agent, wake: false) do
       nil -> {:error, Error.no_agent(agent)}
       pid -> {:ok, node(pid)}
     end
@@ -1371,7 +1371,7 @@ defmodule Wardrik do
           {:error, Error.new(:unsupported, "This deployment reads no definitions again.")}
 
         nodes ->
-          :ok = Definitions.reload_on(definitions, nodes)
+          :ok = Definitions.reload_on(caller.host, nodes)
           audited(caller, [{:agents_reloaded, nodes}], nodes)
       end
     end

@@ -221,7 +221,12 @@ defmodule Wardrik.CatalogTest do
       front = echoing(acme("front"), "Noted.")
       reconciler = echoing(acme("reconciler"), "Two are open.")
 
-      :ok = Wardrik.Agent.ask(reconciler, "Read this page.", labels: ["outside"])
+      :ok =
+        Wardrik.Agent.ask(reconciler, "Read this page.",
+          labels: ["outside"],
+          host: Wardrik.Test.host()
+        )
+
       assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^reconciler}}
 
       run = run(front, Agents, allowing(["agent_ask"]))
@@ -258,7 +263,12 @@ defmodule Wardrik.CatalogTest do
       front = acme("front")
       reconciler = echoing(acme("reconciler"), "Read.")
 
-      :ok = Wardrik.Agent.ask(reconciler, "Read this page.", labels: ["outside"])
+      :ok =
+        Wardrik.Agent.ask(reconciler, "Read this page.",
+          labels: ["outside"],
+          host: Wardrik.Test.host()
+        )
+
       assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^reconciler}}
 
       assert %Call{state: :done, labels: ["outside"], result: {:ok, %{"labels" => ["outside"]}}} =

@@ -31,7 +31,7 @@ defmodule Wardrik.Definition.None do
       def current(_definitions, _id), do: :none
       def defined(_definitions, _prefix), do: []
       def create(_definitions, _id), do: :unsupported
-      def reload(_definitions), do: :ok
+      def reload(_definitions, _opts), do: :ok
       def reloading(_definitions), do: []
 
       defoverridable put: 3,
@@ -43,7 +43,7 @@ defmodule Wardrik.Definition.None do
                      current: 2,
                      defined: 2,
                      create: 2,
-                     reload: 1,
+                     reload: 2,
                      reloading: 1
     end
   end

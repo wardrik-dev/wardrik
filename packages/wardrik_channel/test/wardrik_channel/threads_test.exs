@@ -304,7 +304,7 @@ defmodule WardrikChannel.ThreadsTest do
     key = "#{channel}/#{channel}/C1"
     :ok = DurableServer.Supervisor.terminate_child_permanent(context.context.replies, key)
 
-    :ok = Wardrik.Agent.ask(agent, "Again.", id: "7.2")
+    :ok = Wardrik.Agent.ask(agent, "Again.", id: "7.2", host: Wardrik.Test.host())
     assert_receive {:turn, _context}
     refute_receive {:delivered, _outbound, _channel}, 200
 
