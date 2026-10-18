@@ -35,4 +35,18 @@ defmodule Wardrik.Error do
   @spec new(type(), String.t(), map()) :: t()
   def new(type, message, details \\ %{}) when is_atom(type) and is_binary(message),
     do: %__MODULE__{type: type, message: message, details: details}
+
+  @doc "The error for the agent `id`, where none runs, or none the caller reaches."
+  @spec no_agent(Wardrik.AgentID.t()) :: t()
+  def no_agent(id), do: new(:not_found, "No agent runs under #{id}.")
+
+  @doc "The error for events asked for before `oldest`, the first a log still keeps."
+  @spec gap(pos_integer()) :: t()
+  def gap(oldest) do
+    new(
+      :gap,
+      "Events before #{oldest} have been dropped; read the snapshot and follow from its sequence.",
+      %{"oldest" => oldest}
+    )
+  end
 end

@@ -1,7 +1,7 @@
 defmodule Wardrik.Deployment.Nodes do
   @moduledoc """
   The deployment's nodes, each with how many agents run on it, in the order
-  `Wardrik.Deployment.nodes/0` gives them, and how many agents sleep, on
+  `Wardrik.Fleet.nodes/0` gives them, and how many agents sleep, on
   none.
   """
 

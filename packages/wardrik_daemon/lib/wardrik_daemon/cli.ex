@@ -28,9 +28,6 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.Error
   alias Wardrik.Fleet
   alias Wardrik.Host
-  alias Wardrik.Operations.ReadAgent
-  alias Wardrik.Operations.ReadAudit
-  alias Wardrik.Operations.ReadNodes
   alias Wardrik.Resource
   alias Wardrik.Session
   alias WardrikConsole.Nodes
@@ -378,7 +375,6 @@ defmodule WardrikDaemon.CLI do
     opts =
       Keyword.merge(opts,
         by: by,
-        caller: Host.root(host, principal: by),
         session: Session.root(host: host, principal: by),
         config: WardrikDaemon.Host.config()
       )
@@ -582,16 +578,16 @@ defmodule WardrikDaemon.CLI do
   # waits for.
   defp waiting, do: Cluster.waiting(Boot.cluster(), Boot.store())
 
-  defp status(_words, opts), do: {:ok, WardrikDaemon.status(opts[:caller].host, opts[:config])}
+  defp status(_words, opts), do: {:ok, WardrikDaemon.status(opts[:session].host, opts[:config])}
 
   defp nodes(_words, opts) do
     with {:ok, nodes} <- Wardrik.deployment_nodes(opts[:session]),
-         do: {:ok, ReadNodes.render(nodes)}
+         do: {:ok, Resource.nodes(nodes)}
   end
 
   defp reload(_words, opts) do
     with {:ok, _reloaded} <- Wardrik.deployment_reload(opts[:session]),
-         do: {:ok, WardrikDaemon.status(opts[:caller].host, opts[:config])}
+         do: {:ok, WardrikDaemon.status(opts[:session].host, opts[:config])}
   end
 
   defp audit_page(_words, opts) do
@@ -602,7 +598,7 @@ defmodule WardrikDaemon.CLI do
         with(
           {:ok, read} <-
             Wardrik.deployment_audit(opts[:session], after: opts[:after] || 0, limit: limit),
-          do: {:ok, ReadAudit.render(read)}
+          do: {:ok, %{"changes" => Enum.map(read, & &1.event)}}
         ),
       else: {:error, "--limit is a number from 1 to 500"}
   end
@@ -708,7 +704,7 @@ defmodule WardrikDaemon.CLI do
 
   defp snapshot([key], opts) do
     with {:ok, snapshot} <- Wardrik.agent_read(opts[:session], key),
-         do: {:ok, ReadAgent.render(snapshot)}
+         do: {:ok, Resource.snapshot(snapshot)}
   end
 
   defp clear([key], opts) do

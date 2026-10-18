@@ -789,6 +789,24 @@ export interface AgentsReloadedData {
   actor?: Principal;
 }
 /**
+ * Someone stopped a tool call an agent was running; the model is answered with an error, and the turn goes on.
+ */
+export interface CallKilledData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  call: {
+    /**
+     * The tool call's id.
+     */
+    id: string;
+  };
+  actor?: Principal;
+}
+/**
  * The conversation was emptied, and with it the mark of content from outside it held.
  */
 export interface ConversationClearedData {
@@ -1192,6 +1210,7 @@ export interface EventData {
   "wardrik.agent.started": AgentStartedData;
   "wardrik.agent.stopped": AgentStoppedData;
   "wardrik.agents.reloaded": AgentsReloadedData;
+  "wardrik.call.killed": CallKilledData;
   "wardrik.conversation.cleared": ConversationClearedData;
   "wardrik.conversation.compacted": ConversationCompactedData;
   "wardrik.interrupt.resolved": InterruptResolvedData;

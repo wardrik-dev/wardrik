@@ -1,6 +1,6 @@
 defmodule Wardrik.Definitions do
   @moduledoc """
-  What operations do with a host's `Wardrik.Definition` beyond one call:
+  What `Wardrik` does with a host's `Wardrik.Definition` beyond one call:
   read every node's again, ask whether one is kept, and forget one.
   """
 

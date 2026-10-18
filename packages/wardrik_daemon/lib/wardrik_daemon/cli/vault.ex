@@ -171,8 +171,8 @@ defmodule WardrikDaemon.CLI.Vault do
   # The audit names who sealed it, in the log of the host they reached.
   defp seal(vault, pairs, {kind, owner}, notes, opts) do
     by = opts[:by]
-    audit = Wardrik.Host.audit(opts[:caller].host)
-    live? = WardrikVault.ready?(Wardrik.Host.credentials(opts[:caller].host))
+    audit = Wardrik.Host.audit(opts[:session].host)
+    live? = WardrikVault.ready?(Wardrik.Host.credentials(opts[:session].host))
 
     pairs
     |> Enum.reduce_while(Enum.reverse(notes), fn {name, value}, lines ->
@@ -219,7 +219,7 @@ defmodule WardrikDaemon.CLI.Vault do
   # where it has a key, else one with the key file's key, made where there is
   # none; :live where asking to make one needs a terminal.
   defp key(opts, terminal) do
-    vault = Wardrik.Host.credentials(opts[:caller].host)
+    vault = Wardrik.Host.credentials(opts[:session].host)
     data_dir = opts[:config].data_dir
 
     cond do
@@ -373,7 +373,7 @@ defmodule WardrikDaemon.CLI.Vault do
 
         :ok =
           Audit.record(
-            Wardrik.Host.audit(opts[:caller].host),
+            Wardrik.Host.audit(opts[:session].host),
             {:secret_removed, name, prefix(owner)},
             by: opts[:by]
           )
@@ -387,7 +387,7 @@ defmodule WardrikDaemon.CLI.Vault do
 
   defp removed(vault, _kind, name, owner), do: WardrikVault.forget(vault, name, owner)
 
-  defp vault(opts), do: Wardrik.Host.credentials(opts[:caller].host)
+  defp vault(opts), do: Wardrik.Host.credentials(opts[:session].host)
 
   # -- owners ------------------------------------------------------------------
 

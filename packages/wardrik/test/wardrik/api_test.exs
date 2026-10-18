@@ -8,7 +8,10 @@ defmodule Wardrik.APITest do
   alias Wardrik.Error
   alias Wardrik.Event.Log.Entry
   alias Wardrik.Fleet.Member
+  alias Wardrik.Forgetting
+  alias Wardrik.Moving
   alias Wardrik.Servers.Server
+  alias Wardrik.Spawned
   alias Wardrik.Test.AgentRunners
 
   setup_all do
@@ -149,12 +152,24 @@ defmodule Wardrik.APITest do
     agent = start({AgentRunners, :echo, [self(), "ok"]})
 
     assert {:ok, %Member{id: ^agent, asleep: true}} = Wardrik.agent_stop(session, agent)
-    assert {:ok, %Member{id: ^agent, asleep: false}} = Wardrik.agent_spawn(session, agent)
+
+    assert {:ok, %Spawned{member: %Member{id: ^agent, asleep: false}, from: :store}} =
+             Wardrik.agent_spawn(session, agent)
+
     assert :ok = Wardrik.agent_cancel(session, agent)
     assert {:ok, []} = Wardrik.agents_cancel(session, Prefix.of(agent))
-    assert {:ok, %Member{node: node}} = Wardrik.agent_spawn(root, agent, node: node())
+
+    assert {:ok, %Spawned{member: %Member{node: node}, from: :running}} =
+             Wardrik.agent_spawn(root, agent, node: node())
+
     assert node == node()
+    assert {:ok, %Moving{from: ^node, to: ^node}} = Wardrik.agent_move_preview(root, agent, node)
     assert {:ok, %Member{id: ^agent}} = Wardrik.agent_move(root, agent, node())
+    assert {:ok, []} = Wardrik.agent_calls(session, agent)
+
+    assert {:ok, %Forgetting{agents: [^agent]}} =
+             Wardrik.agents_forget_preview(session, Prefix.of(agent))
+
     assert {:ok, %{^agent => :forgotten}} = Wardrik.agents_forget(session, Prefix.of(agent))
   end
 
@@ -222,8 +237,12 @@ defmodule Wardrik.APITest do
     assert :ok = Wardrik.agent_cancel!(session, agent)
     assert [] = Wardrik.agents_cancel!(session, Prefix.of(agent))
     assert %Member{asleep: true} = Wardrik.agent_stop!(session, agent)
-    assert %Member{} = Wardrik.agent_spawn!(session, agent)
+    assert %Spawned{} = Wardrik.agent_spawn!(session, agent)
+    assert %Moving{} = Wardrik.agent_move_preview!(root, agent, node())
     assert %Member{} = Wardrik.agent_move!(root, agent, node())
+    assert [] = Wardrik.agent_calls!(session, agent)
+    assert %Forgetting{} = Wardrik.agent_forget_preview!(session, agent)
+    assert %Forgetting{} = Wardrik.agents_forget_preview!(session, Prefix.of(agent))
     assert %Wardrik.Deployment.Nodes{} = Wardrik.deployment_nodes!(root)
     assert is_list(Wardrik.deployment_audit!(root))
     assert [_node] = Wardrik.deployment_reload!(root)
@@ -244,6 +263,7 @@ defmodule Wardrik.APITest do
 
     for raising <- [
           fn -> Wardrik.agent_authorization_read!(session, echo, "call_1") end,
+          fn -> Wardrik.agent_call_kill!(session, echo, "call_1") end,
           fn -> Wardrik.servers_list!(session, owner) end,
           fn ->
             Wardrik.servers_add!(session, owner, %Server{name: "d", url: "u", auth: "none"})

@@ -18,7 +18,7 @@ defmodule WardrikTUI.SSH do
   without one; see `WardrikTUI.App.server_opts/1`.
 
   An agent a session starts, that assistant or one `/spawn` names, starts as
-  `Wardrik.Operations.Spawn` starts any: on the definition the host keeps of
+  `Wardrik.agent_spawn/3` starts any: on the definition the host keeps of
   it, or one the host's `Wardrik.Definition` creates, so every surface starts
   the same agent. Whoever connected holds the node, as a shell on it does,
   on the `Wardrik.Host` the entrypoint's `:host` names.

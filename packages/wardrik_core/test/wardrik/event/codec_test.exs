@@ -173,6 +173,7 @@ defmodule Wardrik.Event.CodecTest do
       {:agent_cancelled, id},
       {:agent_cancelled, id, prefix},
       {:agent_cleared, id},
+      {:call_killed, id, "call_1"},
       {:trigger_set, id, "sweep"},
       {:trigger_removed, id, "sweep"},
       {:agents_reloaded, [:wardrik_a@localhost, :wardrik_b@localhost]},

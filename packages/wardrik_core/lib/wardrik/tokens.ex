@@ -4,21 +4,20 @@ defprotocol Wardrik.Tokens do
   `Wardrik.Grant`: making one, listing them, and revoking one.
 
   A host names the value once, as the `:tokens` of its `Wardrik.Host`, and
-  the operations on tokens ask it. The value carries what its
+  the functions of `Wardrik` on tokens ask it. The value carries what its
   implementation needs, such as the store it keeps them in:
 
       Wardrik.Host.new(tokens: %WardrikHTTP.Tokens{store: store})
 
-  | Operation | Function |
+  | `Wardrik` | Function |
   | --- | --- |
-  | `Wardrik.Operations.CreateToken` | `create/3` |
-  | `Wardrik.Operations.ListTokens` | `list/1` |
-  | `Wardrik.Operations.RevokeToken` | `revoke/2` |
+  | `tokens_create/4` | `create/3` |
+  | `tokens_list/1` | `list/1` |
+  | `tokens_revoke/2` | `revoke/2` |
 
   A host that makes none has `Wardrik.Tokens.None`, whose functions answer
-  `:unsupported`, and so does each operation. They act on the
-  deployment, so only a caller whose grant reaches every agent takes them;
-  see `Wardrik.Deployment`.
+  `:unsupported`, and so does each of those. They act on the deployment,
+  so only a caller whose grant reaches every agent takes them.
   """
 
   alias Wardrik.Grant

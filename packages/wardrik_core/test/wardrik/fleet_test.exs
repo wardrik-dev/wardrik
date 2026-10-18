@@ -18,7 +18,6 @@ defmodule Wardrik.FleetTest do
   defp runner(test_pid, reply \\ "ok"), do: {AgentRunners, :echo, [test_pid, reply]}
   defp parking_runner(test_pid), do: {AgentRunners, :parking, [test_pid, "call_1"]}
   defp blocking_runner(test_pid), do: {AgentRunners, :blocking, [test_pid, "ok"]}
-  defp streaming_runner(test_pid), do: {AgentRunners, :streaming, [test_pid]}
 
   defp start(key, opts) do
     {:ok, pid} = Fleet.spawn(key, opts)
@@ -168,37 +167,8 @@ defmodule Wardrik.FleetTest do
     end
   end
 
-  describe "kill/1" do
-    test "interrupts everything under a prefix and says how many" do
-      org = "org#{System.unique_integer([:positive])}"
-      one = AgentID.new!("one", org: org)
-      two = AgentID.new!("two", org: org)
-      start(one, runner: streaming_runner(self()))
-      start(two, runner: streaming_runner(self()))
-      Event.Bus.subscribe(one)
-      Event.Bus.subscribe(two)
-
-      Agent.ask(one, "go")
-      Agent.ask(two, "go")
-      assert_receive {:running, _pid_one}
-      assert_receive {:running, _pid_two}
-
-      assert Fleet.kill(Prefix.new!(org: org)) == 2
-
-      assert_receive %Event{payload: %Event.TurnInterrupted{stats: %{resolution: :stopped}}},
-                     1_000
-
-      assert_receive %Event{payload: %Event.TurnInterrupted{stats: %{resolution: :stopped}}},
-                     1_000
-    end
-
-    test "leaves agents outside the prefix alone" do
-      key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: runner(self()))
-
-      assert Fleet.kill(Prefix.new!(org: "nothing-under-here")) == 0
-      assert Process.alive?(pid)
-    end
+  test "nodes/0 is this node, and every one connected to it" do
+    assert Fleet.nodes() == [node() | Node.list()]
   end
 
   describe "watch/1" do

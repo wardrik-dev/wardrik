@@ -44,8 +44,8 @@ answered as one that doesn't exist, `404`, and an action it wasn't given is refu
 
 | Action | Routes |
 | --- | --- |
-| `read` | listing agents, snapshots, definitions, events, connections and servers; the deployment's nodes and audit |
-| `message` | messages, cancelling, and clearing the conversation |
+| `read` | listing agents, snapshots, definitions, events, the tool calls an agent is running, connections and servers; the deployment's nodes and audit |
+| `message` | messages, cancelling, stopping a tool call, and clearing the conversation |
 | `decide` | decisions, and authorization links |
 | `define` | putting and deleting agents and triggers, connecting accounts, adding and removing servers, and reloading the deployment |
 | `serve` | `/v1/workers` |
@@ -89,6 +89,8 @@ answers an agent with is its key.
 | `POST /v1/agents/{key}/decisions` | approves or rejects calls the agent is waiting on, together |
 | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization` |
 | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
+| `GET /v1/agents/{key}/calls` | the tool calls the agent is running, each with how long it has run; `404` while it sleeps |
+| `DELETE /v1/agents/{key}/calls/{call}` | stops one tool call the agent is running, `204`: the model is answered with an error, and the turn goes on |
 | `POST /v1/agents/{key}/spawn` | starts the agent; with `{"node": ...}`, on that node, to a token over every agent |
 | `POST /v1/agents/{key}/stop` | stops the agent, keeping its conversation, so it sleeps until something asks it; answers it, asleep |
 | `POST /v1/agents/{key}/move` | starts the agent again on `{"node": ...}`, with its conversation, to a token over every agent |

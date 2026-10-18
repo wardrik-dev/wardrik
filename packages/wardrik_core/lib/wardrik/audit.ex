@@ -57,6 +57,8 @@ defmodule Wardrik.Audit do
       were dropped; `{:agent_cancelled, id, prefix}` where it was one of the
       agents under `prefix` someone cancelled at once
     * `{:agent_cleared, id}` - its conversation was emptied
+    * `{:call_killed, id, call_id}` - the tool call `call_id` it was
+      running was stopped, and the model answered with an error
     * `{:trigger_set, id, name}`, `{:trigger_removed, id, name}`
     * `{:agents_reloaded, nodes}` - the files that declare agents were read
       again on `nodes`
@@ -93,6 +95,7 @@ defmodule Wardrik.Audit do
           | {:agent_cancelled, AgentID.t()}
           | {:agent_cancelled, AgentID.t(), Prefix.t()}
           | {:agent_cleared, AgentID.t()}
+          | {:call_killed, AgentID.t(), String.t()}
           | {:trigger_set, AgentID.t(), String.t()}
           | {:trigger_removed, AgentID.t(), String.t()}
           | {:agents_reloaded, [node()]}

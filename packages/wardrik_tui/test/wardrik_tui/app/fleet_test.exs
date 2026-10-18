@@ -44,7 +44,7 @@ defmodule WardrikTUI.App.FleetTest do
       name, nodes -> call_original(WardrikConsole.Nodes, :find, [name, nodes])
     end)
 
-    stub(Wardrik.Deployment, :node, fn _node -> :ok end)
+    stub(Fleet, :nodes, fn -> [node(), :wardrik_b@localhost] end)
   end
 
   setup do

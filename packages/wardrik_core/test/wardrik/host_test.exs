@@ -122,7 +122,10 @@ defmodule Wardrik.HostTest do
     jon = Principal.new(:terminal, "jon")
 
     host = host()
-    assert %Caller{principal: ^jon, host: ^host, grant: grant} = Host.root(host, principal: jon)
+
+    assert %Caller{principal: ^jon, host: ^host, grant: grant} =
+             Caller.root(principal: jon, host: host)
+
     assert grant.scope == Prefix.all()
   end
 end

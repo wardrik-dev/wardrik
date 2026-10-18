@@ -39,7 +39,7 @@ defmodule Wardrik.Agent.Message do
   ## Where its turn is in the log
 
   `sequence` is the last event the agent's log had written as the message
-  was sent, where its sender read it first, as `Wardrik.Operations.Ask`
+  was sent, where its sender read it first, as `Wardrik.agent_ask/4`
   does, and `nil` otherwise. The turn that answers it is written after it,
   so a client follows the log from there to read that turn.
   """
@@ -80,6 +80,29 @@ defmodule Wardrik.Agent.Message do
   end
 
   defp sender!(sender) when is_struct(sender, Principal) or is_nil(sender), do: sender
+
+  @doc """
+  The text and id of `message`, as `WardrikProtocol` describes one: its
+  text parts joined, or its `content`, and the `id` of the sender's
+  choosing, `nil` where it gives none; or why it does not read.
+
+      Wardrik.Agent.Message.read(%{"content" => "Where is order 1001?", "id" => "m1"})
+      #=> {:ok, "Where is order 1001?", "m1"}
+  """
+  @spec read(map()) :: {:ok, String.t(), String.t() | nil} | {:error, Wardrik.Error.t()}
+  def read(%{"parts" => parts} = message) when is_list(parts) do
+    texts = for %{"type" => "text", "content" => text} when is_binary(text) <- parts, do: text
+    identified(message, Enum.join(texts, "\n"))
+  end
+
+  def read(%{"content" => text} = message) when is_binary(text), do: identified(message, text)
+  def read(_message), do: invalid("A message has text parts, or content")
+
+  defp identified(%{"id" => id}, text) when is_binary(id), do: {:ok, text, id}
+  defp identified(%{"id" => _id}, _text), do: invalid("A message's id is text")
+  defp identified(_message, text), do: {:ok, text, nil}
+
+  defp invalid(message), do: {:error, Wardrik.Error.new(:invalid, message)}
 
   @doc "What the model reads: the text, after a line naming the sender where there is one."
   @spec content(t()) :: String.t()

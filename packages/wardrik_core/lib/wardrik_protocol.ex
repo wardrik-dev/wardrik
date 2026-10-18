@@ -10,8 +10,8 @@ defmodule WardrikProtocol do
       `wardrik.<noun>.<verb>`, and its `dataschema`
     * `cloudevent.json` - the envelope every event travels in
     * `defs.json` - the types events and resources share, under `$defs`
-    * `input_<operation>.json` - what an operation of `Wardrik.Catalog` takes,
-      by its name with `_` for `.`, such as `input_agent_trigger_set.json`
+    * `input_<name>.json` - what a tool of `Wardrik.Catalog` takes, by its
+      name with `_` for `.`, such as `input_agent_trigger_set.json`
     * the rest - one per HTTP API resource, such as `agent.json`
 
   Beside them, `priv/openapi.json` is the HTTP API whole, in OpenAPI 3.1:

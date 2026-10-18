@@ -56,6 +56,9 @@ defmodule Wardrik do
     * a removal answers what it removed, as it was, as an Ecto delete does
     * a change whose outcome nothing can answer at once answers `:ok`, as
       `agent_cancel/2` and `agent_forget/2` do
+    * a preview, as `agent_move_preview/3`, makes the same check as its
+      change and answers what the change would do, recording nothing, so a
+      surface can show it and ask first; the change works it out again
 
   Each answers `{:ok, value}`, `:ok` or `{:error, %Wardrik.Error{}}`, and
   has a variant ending in `!` that answers the value or raises the error.
@@ -76,20 +79,37 @@ defmodule Wardrik do
 
   use Supervisor
 
+  require Logger
+
+  alias Wardrik.Agent
+  alias Wardrik.Agent.Message
+  alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Command
+  alias Wardrik.Audit
+  alias Wardrik.Connections
   alias Wardrik.Connections.Connection
+  alias Wardrik.Connections.Owner
+  alias Wardrik.Definition
+  alias Wardrik.Definitions
+  alias Wardrik.Deployment.Nodes
   alias Wardrik.Error
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
+  alias Wardrik.Fleet
+  alias Wardrik.Fleet.Member
+  alias Wardrik.Forgetting
+  alias Wardrik.Grant
   alias Wardrik.Host
-  alias Wardrik.Operations
-  alias Wardrik.Operations.Ask
+  alias Wardrik.LLM.ToolRunner
+  alias Wardrik.Moving
   alias Wardrik.Principal
-  alias Wardrik.Query
+  alias Wardrik.Servers
+  alias Wardrik.Servers.Key
   alias Wardrik.Servers.Server
   alias Wardrik.Session
+  alias Wardrik.Spawned
+  alias Wardrik.Tokens
   alias Wardrik.Tokens.Token
   alias WardrikDefinition.Context
 
@@ -97,6 +117,12 @@ defmodule Wardrik do
   defstruct [:host, fleet: []]
 
   @type t() :: %__MODULE__{host: Wardrik.Host.t(), fleet: keyword()}
+
+  @typedoc "A decision on a call an agent waits on."
+  @type decision() :: :approve | {:approve, String.t()} | {:deny, String.t()}
+
+  @typedoc "What became of an agent a forget reached: removed, kept with why, or not removed with why."
+  @type outcome() :: :forgotten | {:kept, String.t()} | {:failed, String.t()}
 
   @seams [:grants, :credentials, :connections, :servers, :tokens, :triggers, :dispatch]
 
@@ -214,7 +240,7 @@ defmodule Wardrik do
       session = Wardrik.as(wardrik, maria)
   """
   @doc group: "Sessions"
-  @spec as(t(), Principal.t() | nil, grant: Wardrik.Grant.t()) :: Session.t()
+  @spec as(t(), Principal.t() | nil, grant: Grant.t()) :: Session.t()
   def as(%__MODULE__{host: host}, principal, opts \\ []) do
     opts = Keyword.validate!(opts, [:grant])
     Session.new(host: host, principal: principal, grant: opts[:grant])
@@ -224,7 +250,7 @@ defmodule Wardrik do
 
   @ask_opts NimbleOptions.new!(
               id: [
-                type: :string,
+                type: {:or, [:string, nil]},
                 doc: "the message's id, which the agent takes once; a new UUIDv7 by default"
               ]
             )
@@ -233,7 +259,8 @@ defmodule Wardrik do
   Sends `agent` `text` from the session's principal, which it answers in a
   turn of its own. Acknowledged with the `Wardrik.Agent.Message` queued,
   whose `sequence` is where the agent's log stood: the turn that answers it
-  is written after it, so `agent_stream/3` from there reads it.
+  is written after it, so `agent_stream/3` from there reads it. A session of
+  an agent's own, as `Wardrik.Session.agent/1` makes, is answered back.
 
   ## Options
 
@@ -241,13 +268,29 @@ defmodule Wardrik do
   """
   @doc group: "Talking to an agent"
   @spec agent_ask(Session.t(), AgentID.t(), String.t(), keyword()) ::
-          {:ok, Wardrik.Agent.Message.t()} | {:error, Error.t()}
-  def agent_ask(%Session{} = session, %AgentID{} = agent, text, opts \\ []) do
+          {:ok, Message.t()} | {:error, Error.t()}
+  def agent_ask(%Session{} = session, %AgentID{} = agent, text, opts \\ [])
+      when is_binary(text) do
     opts = NimbleOptions.validate!(opts, @ask_opts)
-    message = Map.reject(%{"content" => text, "id" => opts[:id]}, &is_nil(elem(&1, 1)))
 
-    with {:ok, request} <- Ask.new(agent, message), do: change(session, request)
+    with :ok <- said(text, opts[:id]),
+         {:ok, _caller} <- on_agent(session, agent, :message),
+         {:ok, %Snapshot{sequence: sequence}} <- agent_snapshot(agent) do
+      message =
+        Message.new(text, opts[:id], sender: session.principal, reply_to: session.reply_to)
+
+      message = %{message | sequence: sequence}
+
+      case Agent.queue(agent, message) do
+        :ok -> {:ok, message}
+        {:error, :not_found} -> {:error, Error.no_agent(agent)}
+      end
+    end
   end
+
+  defp said("", _id), do: {:error, Error.new(:invalid, "A message has text to send")}
+  defp said(_text, ""), do: {:error, Error.new(:invalid, "A message's id is text")}
+  defp said(_text, _id), do: :ok
 
   @doc """
   Sends this process every entry `agent`'s log writes from now on, as
@@ -256,7 +299,7 @@ defmodule Wardrik do
   @doc group: "Talking to an agent"
   @spec agent_subscribe(Session.t(), AgentID.t()) :: :ok | {:error, Error.t()}
   def agent_subscribe(%Session{} = session, %AgentID{} = agent) do
-    with :ok <- readable(session, agent), do: Log.subscribe(agent)
+    with {:ok, _caller} <- on_agent(session, agent, :read), do: Log.subscribe(agent)
   end
 
   @stream_opts NimbleOptions.new!(
@@ -288,7 +331,7 @@ defmodule Wardrik do
   def agent_stream(%Session{} = session, %AgentID{} = agent, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @stream_opts)
 
-    with :ok <- readable(session, agent),
+    with {:ok, _caller} <- on_agent(session, agent, :read),
          do: {:ok, Wardrik.Stream.new(Host.store(session.host), agent, opts[:after])}
   end
 
@@ -310,12 +353,15 @@ defmodule Wardrik do
           {:ok, [Entry.t()]} | {:error, Error.t()}
   def agent_events(%Session{} = session, %AgentID{} = agent, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @page_opts)
+    with {:ok, caller} <- on_agent(session, agent, :read), do: page(caller, agent, opts)
+  end
 
-    read(session, %Operations.ReadEvents{
-      agent: agent,
-      starting_after: opts[:after],
-      limit: opts[:limit]
-    })
+  # A page of the log `log`, an agent's or the audit, as `opts` ask for it.
+  defp page(caller, log, opts) do
+    case Log.read(Host.store(caller.host), log, starting_after: opts[:after], limit: opts[:limit]) do
+      {:ok, events} -> {:ok, Entry.numbered(events, opts[:after])}
+      {:gap, oldest} -> {:error, Error.gap(oldest)}
+    end
   end
 
   @approve_opts NimbleOptions.new!(note: [type: :string, doc: "what the agent is told with it"])
@@ -331,7 +377,7 @@ defmodule Wardrik do
   """
   @doc group: "Talking to an agent"
   @spec agent_approve(Session.t(), AgentID.t(), String.t() | [String.t()], keyword()) ::
-          {:ok, %{String.t() => Operations.Decide.decision()}} | {:error, Error.t()}
+          {:ok, %{String.t() => decision()}} | {:error, Error.t()}
   def agent_approve(%Session{} = session, %AgentID{} = agent, calls, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @approve_opts)
     decide(session, agent, calls, if(opts[:note], do: {:approve, opts[:note]}, else: :approve))
@@ -355,7 +401,7 @@ defmodule Wardrik do
   """
   @doc group: "Talking to an agent"
   @spec agent_deny(Session.t(), AgentID.t(), String.t() | [String.t()], keyword()) ::
-          {:ok, %{String.t() => Operations.Decide.decision()}} | {:error, Error.t()}
+          {:ok, %{String.t() => decision()}} | {:error, Error.t()}
   def agent_deny(%Session{} = session, %AgentID{} = agent, calls, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @deny_opts)
     decide(session, agent, calls, {:deny, opts[:reason]})
@@ -369,45 +415,123 @@ defmodule Wardrik do
   `:approve`, `{:approve, note}` or `{:deny, reason}`, as `agent_approve/4`
   and `agent_deny/4` decide one kind. Acknowledged with the decisions taken;
   calls left out stay waiting.
+
+  A session that may read the agent may ask; the agent takes the decisions
+  from one whose grant allows `:decide` on it, or who asked for the turn
+  that waits, and answers anyone else `:forbidden`.
   """
   @doc group: "Talking to an agent"
-  @spec agent_decide(Session.t(), AgentID.t(), %{String.t() => Operations.Decide.decision()}) ::
-          {:ok, %{String.t() => Operations.Decide.decision()}} | {:error, Error.t()}
-  def agent_decide(%Session{} = session, %AgentID{} = agent, decisions) when is_map(decisions),
-    do: change(session, %Operations.Decide{agent: agent, decisions: decisions})
+  @spec agent_decide(Session.t(), AgentID.t(), %{String.t() => decision()}) ::
+          {:ok, %{String.t() => decision()}} | {:error, Error.t()}
+  def agent_decide(%Session{} = session, %AgentID{} = agent, decisions) when is_map(decisions) do
+    with {:ok, caller} <- on_agent(session, agent, :read) do
+      case Agent.decide(agent, decisions, caller) do
+        :ok -> {:ok, decisions}
+        {:error, reason} -> {:error, undecided(reason, agent, decisions)}
+      end
+    end
+  end
+
+  defp undecided(:not_found, agent, _decisions), do: Error.no_agent(agent)
+
+  defp undecided(:not_parked, agent, _decisions),
+    do: Error.new(:conflict, "#{agent} is not waiting on anything.")
+
+  defp undecided(:stale_decision, agent, decisions),
+    do: Error.new(:conflict, "#{agent} is not waiting on #{named(decisions)}.")
+
+  defp undecided(:forbidden, agent, _decisions) do
+    Error.new(
+      :forbidden,
+      "This caller may not decide the calls of #{agent}, and did not ask for the turn that waits."
+    )
+  end
+
+  defp undecided(:unrecorded, agent, _decisions),
+    do: Error.new(:unavailable, "#{agent} could not record the decision, so it was not taken.")
+
+  defp named(decisions) do
+    case decisions |> Map.keys() |> Enum.sort() do
+      [only] -> only
+      ids -> "#{Enum.join(Enum.drop(ids, -1), ", ")} and #{List.last(ids)}"
+    end
+  end
 
   @doc """
   Where a person authorizes the call `call` that `agent` waits on: the page,
-  and the code to enter where one is needed.
+  and the code to enter where one is needed. The link is kept out of every
+  event, so only a session that may decide the call reads it.
   """
   @doc group: "Talking to an agent"
   @spec agent_authorization_read(Session.t(), AgentID.t(), String.t()) ::
           {:ok, Wardrik.Call.Ask.link()} | {:error, Error.t()}
-  def agent_authorization_read(%Session{} = session, %AgentID{} = agent, call),
-    do: read(session, %Operations.ReadAuthorization{agent: agent, interrupt: call})
+  def agent_authorization_read(%Session{} = session, %AgentID{} = agent, call) do
+    with {:ok, _caller} <- on_agent(session, agent, :decide),
+         {:ok, calls} <- parked(agent),
+         do: authorization(Enum.find(calls, &(elem(&1, 0).id == call)), agent, call)
+  end
+
+  defp authorization({%{link: %{url: _url} = link}, _prompt}, _agent, _call), do: {:ok, link}
+
+  defp authorization({_waiting, _prompt}, _agent, call),
+    do: {:error, Error.new(:not_found, "#{call} waits on no authorization.")}
+
+  defp authorization(nil, agent, call),
+    do: {:error, Error.new(:not_found, "#{agent} is not waiting on #{call}.")}
+
+  defp parked(agent) do
+    case Agent.parked(agent) do
+      {:error, :not_found} -> {:error, Error.no_agent(agent)}
+      calls -> {:ok, calls}
+    end
+  end
 
   @doc "`agent`'s snapshot: what it is doing, what it waits on, and its conversation."
   @doc group: "Talking to an agent"
-  @spec agent_read(Session.t(), AgentID.t()) ::
-          {:ok, Wardrik.Agent.Snapshot.t()} | {:error, Error.t()}
-  def agent_read(%Session{} = session, %AgentID{} = agent),
-    do: read(session, %Operations.ReadAgent{agent: agent})
-
-  @doc "Empties `agent`'s conversation, and the labels of what it read, and answers its snapshot."
-  @doc group: "Talking to an agent"
-  @spec agent_clear(Session.t(), AgentID.t()) ::
-          {:ok, Wardrik.Agent.Snapshot.t()} | {:error, Error.t()}
-  def agent_clear(%Session{} = session, %AgentID{} = agent) do
-    with {:ok, nil} <- change(session, %Operations.Clear{agent: agent}),
-         do: agent_read(session, agent)
+  @spec agent_read(Session.t(), AgentID.t()) :: {:ok, Snapshot.t()} | {:error, Error.t()}
+  def agent_read(%Session{} = session, %AgentID{} = agent) do
+    with {:ok, _caller} <- on_agent(session, agent, :read), do: agent_snapshot(agent)
   end
 
-  @doc "Every agent under `prefix`, awake or asleep, as the fleet lists each."
+  defp agent_snapshot(agent) do
+    case Agent.snapshot(agent) do
+      {:error, :not_found} -> {:error, Error.no_agent(agent)}
+      snapshot -> {:ok, snapshot}
+    end
+  end
+
+  @doc """
+  Empties `agent`'s conversation, and the labels of what it read, and
+  answers its snapshot. Its files, triggers and config stay. Refused while
+  it runs a turn or waits on a person.
+  """
   @doc group: "Talking to an agent"
-  @spec agents_list(Session.t(), Prefix.t()) ::
-          {:ok, [Wardrik.Fleet.Member.t()]} | {:error, Error.t()}
-  def agents_list(%Session{} = session, %Prefix{} = prefix),
-    do: read(session, %Operations.ListAgents{prefix: prefix})
+  @spec agent_clear(Session.t(), AgentID.t()) :: {:ok, Snapshot.t()} | {:error, Error.t()}
+  def agent_clear(%Session{} = session, %AgentID{} = agent) do
+    with {:ok, caller} <- on_agent(session, agent, :message),
+         :ok <- cleared(Agent.clear(agent), agent) do
+      audit(caller, [{:agent_cleared, agent}])
+      agent_read(session, agent)
+    end
+  end
+
+  defp cleared(:ok, _agent), do: :ok
+  defp cleared({:error, :not_found}, agent), do: {:error, Error.no_agent(agent)}
+
+  defp cleared({:error, :busy}, agent) do
+    {:error,
+     Error.new(
+       :conflict,
+       "#{agent} is running a turn, or waiting on a person; cancel it, or wait"
+     )}
+  end
+
+  @doc "Every agent under `prefix`, awake or asleep, as the fleet lists each, sorted by ID."
+  @doc group: "Talking to an agent"
+  @spec agents_list(Session.t(), Prefix.t()) :: {:ok, [Member.t()]} | {:error, Error.t()}
+  def agents_list(%Session{} = session, prefix) do
+    with {:ok, _caller} <- under(session, prefix, :read), do: {:ok, Fleet.list(prefix)}
+  end
 
   @doc """
   Every call an agent under `prefix` waits on a person for, with the agent
@@ -416,8 +540,17 @@ defmodule Wardrik do
   @doc group: "Talking to an agent"
   @spec agents_parked(Session.t(), Prefix.t()) ::
           {:ok, [{AgentID.t(), {Wardrik.Tool.call(), String.t()}}]} | {:error, Error.t()}
-  def agents_parked(%Session{} = session, %Prefix{} = prefix),
-    do: read(session, %Operations.ListParked{prefix: prefix})
+  def agents_parked(%Session{} = session, prefix) do
+    with {:ok, _caller} <- under(session, prefix, :read) do
+      {:ok,
+       for(
+         %Member{status: :parked, id: id} <- Fleet.list(prefix),
+         {:ok, calls} <- [parked(id)],
+         waiting <- calls,
+         do: {id, waiting}
+       )}
+    end
+  end
 
   # -- agent lifecycle ----------------------------------------------------------
 
@@ -427,17 +560,61 @@ defmodule Wardrik do
   hooks.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_define(Session.t(), AgentID.t(), map()) ::
-          {:ok, Wardrik.Agent.Snapshot.t()} | {:error, Error.t()}
-  def agent_define(%Session{} = session, %AgentID{} = agent, definition) when is_map(definition),
-    do: change(session, %Operations.Define{agent: agent, definition: definition})
+  @spec agent_define(Session.t(), AgentID.t(), map()) :: {:ok, Snapshot.t()} | {:error, Error.t()}
+  def agent_define(%Session{} = session, %AgentID{} = agent, definition)
+      when is_map(definition) do
+    with {:ok, caller} <- on_agent(session, agent, :define),
+         {:ok, spec} <- defined(caller, agent, definition),
+         {:ok, _pid} <-
+           started(Fleet.put(%{spec | hooks: Grant.held(caller.grant, spec.hooks)}), agent) do
+      audit(caller, [{:agent_defined, agent}])
+      agent_snapshot(agent)
+    end
+  end
+
+  defp defined(caller, agent, fields) do
+    case Definition.put(Host.definitions(caller.host), agent,
+           definition: fields,
+           grant: caller.grant
+         ) do
+      {:ok, %{id: ^agent} = spec} ->
+        {:ok, spec}
+
+      {:ok, spec} ->
+        raise ArgumentError, "the host's definitions wrote a spec for #{spec.id}, not #{agent}"
+
+      :unsupported ->
+        {:error, Error.new(:unsupported, "This server does not define agents.")}
+
+      refused ->
+        refused(refused)
+    end
+  end
+
+  # A refusal of the host's definitions, as an error of its kind.
+  defp refused({:error, :conflict, message}), do: {:error, Error.new(:conflict, message)}
+  defp refused({:error, message}), do: {:error, Error.new(:invalid, message)}
 
   @doc "`agent`'s definition as it was last put, and the tools it names that offer nothing yet."
   @doc group: "Agent lifecycle"
   @spec agent_definition_read(Session.t(), AgentID.t()) ::
           {:ok, Wardrik.Definition.Read.t()} | {:error, Error.t()}
-  def agent_definition_read(%Session{} = session, %AgentID{} = agent),
-    do: read(session, %Operations.ReadDefinition{agent: agent})
+  def agent_definition_read(%Session{} = session, %AgentID{} = agent) do
+    with {:ok, caller} <- on_agent(session, agent, :read) do
+      case Definition.get(Host.definitions(caller.host), agent) do
+        {:ok, read} ->
+          {:ok, read}
+
+        {:error, :not_found} ->
+          {:error, undefined(agent)}
+
+        :unsupported ->
+          {:error, Error.new(:unsupported, "This server does not keep agents' definitions.")}
+      end
+    end
+  end
+
+  defp undefined(agent), do: Error.new(:not_found, "#{agent} has no definition kept.")
 
   @spawn_opts NimbleOptions.new!(
                 node: [
@@ -447,8 +624,10 @@ defmodule Wardrik do
               )
 
   @doc """
-  Starts `agent` and answers it as the fleet lists it: one asleep wakes, one
-  the host defines starts on its definition, and one running already runs on.
+  Starts `agent`, and answers it as the fleet lists it, with what it started
+  from: one running already runs on, one asleep wakes, one the host defines
+  starts on its definition, and one nothing defines yet is defined as the
+  host's `c:Wardrik.Definition.create/2` says.
 
   ## Options
 
@@ -456,94 +635,394 @@ defmodule Wardrik do
   """
   @doc group: "Agent lifecycle"
   @spec agent_spawn(Session.t(), AgentID.t(), keyword()) ::
-          {:ok, Wardrik.Fleet.Member.t()} | {:error, Error.t()}
+          {:ok, Spawned.t()} | {:error, Error.t()}
   def agent_spawn(%Session{} = session, %AgentID{} = agent, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @spawn_opts)
 
-    case opts[:node] do
-      nil -> change(session, %Operations.Spawn{agent: agent})
-      node -> change(session, %Operations.SpawnOn{agent: agent, node: node})
+    with {:ok, caller} <- spawning(session, agent, opts[:node]),
+         {from, spec} = from(caller, agent),
+         {:ok, actions} <- spawn(caller, agent, {from, spec}, opts[:node]) do
+      audit(caller, actions)
+      {:ok, %Spawned{member: Fleet.lookup(agent), from: from}}
     end
+  end
+
+  # Where an agent starts is the deployment's to say, so only a grant over
+  # every agent names a node.
+  defp spawning(session, agent, nil), do: on_agent(session, agent, :define)
+
+  defp spawning(session, _agent, node) do
+    with {:ok, caller} <- on_deployment(session, :define),
+         :ok <- deployed(node),
+         do: {:ok, caller}
+  end
+
+  defp deployed(node) do
+    if node in Fleet.nodes(),
+      do: :ok,
+      else: {:error, Error.new(:invalid, "#{node} is not a node of this deployment.")}
+  end
+
+  defp from(caller, agent) do
+    case {Fleet.lookup(agent), Definition.current(Host.definitions(caller.host), agent)} do
+      {%Member{asleep: false}, _current} -> {:running, nil}
+      {_member, {:ok, spec}} -> {:definition, spec}
+      {%Member{asleep: true}, :none} -> {:store, nil}
+      {nil, :none} -> {:new, nil}
+    end
+  end
+
+  # Starts the agent as it was found, on `node`, or wherever the fleet puts
+  # it where `nil`: what the audit records of it.
+  defp spawn(_caller, _agent, {:running, nil}, _node), do: {:ok, []}
+
+  defp spawn(_caller, agent, {:store, nil}, node),
+    do: agent |> Fleet.spawn(if(node, do: [node: node], else: [])) |> spawned(agent)
+
+  defp spawn(_caller, agent, {:definition, spec}, node), do: spec |> put(node) |> spawned(agent)
+
+  defp spawn(caller, agent, {:new, nil}, node) do
+    case Definition.create(Host.definitions(caller.host), agent) do
+      {:ok, spec} -> spec |> put(node) |> spawned(agent)
+      :unsupported -> {:error, Error.no_agent(agent)}
+      refused -> refused(refused)
+    end
+  end
+
+  # An agent bound for a node is started there first, then given its spec.
+  defp put(spec, nil), do: Fleet.put(spec)
+
+  defp put(spec, node) do
+    with {:ok, _pid} <- Fleet.spawn(spec.id, Wardrik.Agent.Spec.options(spec) ++ [node: node]),
+         do: Fleet.put(spec)
+  end
+
+  defp spawned({:ok, pid}, agent), do: {:ok, [{:agent_spawned, agent, node(pid)}]}
+
+  defp spawned({:error, reason}, agent),
+    do: {:error, Error.new(:unavailable, "#{agent} did not start: #{inspect(reason)}")}
+
+  defp started({:ok, pid}, _agent), do: {:ok, pid}
+
+  defp started({:error, reason}, agent) do
+    Logger.warning("#{agent} did not start: #{inspect(reason)}")
+    {:error, Error.new(:unavailable, "#{agent} did not start.")}
   end
 
   @doc """
   Starts `agent` again on `node`, with what it had, and answers it as the
-  fleet lists it. Only a grant over every agent may move one.
+  fleet lists it. What it is doing is interrupted. Only a grant over every
+  agent may move one, since where an agent runs is the deployment's to say.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_move(Session.t(), AgentID.t(), node()) ::
-          {:ok, Wardrik.Fleet.Member.t()} | {:error, Error.t()}
-  def agent_move(%Session{} = session, %AgentID{} = agent, node) when is_atom(node),
-    do: change(session, %Operations.Move{agent: agent, node: node})
+  @spec agent_move(Session.t(), AgentID.t(), node()) :: {:ok, Member.t()} | {:error, Error.t()}
+  def agent_move(%Session{} = session, %AgentID{} = agent, node) when is_atom(node) do
+    with {:ok, caller, moving} <- moving(session, agent, node),
+         {:ok, actions} <- moved(moving) do
+      audit(caller, actions)
+      member(agent)
+    end
+  end
 
-  @doc "Ends the turn `agent` is taking, and what is queued behind it. It keeps running."
+  @doc """
+  What `agent_move/3` would do, checked as it checks: where the agent runs,
+  where it goes, and what it is doing, which a move interrupts.
+  """
+  @doc group: "Agent lifecycle"
+  @spec agent_move_preview(Session.t(), AgentID.t(), node()) ::
+          {:ok, Moving.t()} | {:error, Error.t()}
+  def agent_move_preview(%Session{} = session, %AgentID{} = agent, node) when is_atom(node) do
+    with {:ok, _caller, moving} <- moving(session, agent, node), do: {:ok, moving}
+  end
+
+  defp moving(session, agent, node) do
+    with {:ok, caller} <- on_deployment(session, :define),
+         :ok <- deployed(node),
+         {:ok, member} <- member(agent) do
+      from = if member.asleep, do: :asleep, else: member.node
+      {:ok, caller, %Moving{agent: agent, from: from, to: node, status: member.status}}
+    end
+  end
+
+  defp moved(%Moving{from: to, to: to}), do: {:ok, []}
+
+  defp moved(%Moving{agent: agent, to: to}) do
+    case Fleet.move(agent, to) do
+      {:ok, _pid} ->
+        {:ok, [{:agent_moved, agent, to}]}
+
+      {:error, reason} ->
+        {:error, Error.new(:unavailable, "#{agent} did not move to #{to}: #{inspect(reason)}")}
+    end
+  end
+
+  defp member(agent) do
+    case Fleet.lookup(agent) do
+      nil -> {:error, Error.no_agent(agent)}
+      member -> {:ok, member}
+    end
+  end
+
+  @doc """
+  Ends the turn `agent` is taking, or the calls it waits on a person for,
+  and what is queued behind it. It keeps running; one taking no turn is
+  left as it is.
+  """
   @doc group: "Agent lifecycle"
   @spec agent_cancel(Session.t(), AgentID.t()) :: :ok | {:error, Error.t()}
-  def agent_cancel(%Session{} = session, %AgentID{} = agent),
-    do: session |> change(%Operations.Cancel{agent: agent}) |> acknowledged()
+  def agent_cancel(%Session{} = session, %AgentID{} = agent) do
+    with {:ok, caller} <- on_agent(session, agent, :message),
+         {:ok, member} <- member(agent),
+         do: audit(caller, for(id <- cancelled([member]), do: {:agent_cancelled, id}))
+  end
 
   @doc "Ends the turn of every agent under `prefix`, and answers those it ended."
   @doc group: "Agent lifecycle"
   @spec agents_cancel(Session.t(), Prefix.t()) :: {:ok, [AgentID.t()]} | {:error, Error.t()}
-  def agents_cancel(%Session{} = session, %Prefix{} = prefix),
-    do: change(session, %Operations.CancelAgents{prefix: prefix})
+  def agents_cancel(%Session{} = session, prefix) do
+    with {:ok, caller} <- under(session, prefix, :message) do
+      cancelled = cancelled(Fleet.list(prefix))
+      audit(caller, for(id <- cancelled, do: {:agent_cancelled, id, prefix}))
+      {:ok, cancelled}
+    end
+  end
+
+  # Interrupts each of `members` taking a turn, or waiting on a person, and
+  # answers those it interrupted.
+  defp cancelled(members) do
+    for %Member{id: id, status: status} <- members,
+        status != :idle,
+        Agent.interrupt(id) == :ok,
+        do: id
+  end
 
   @doc """
   Stops `agent` now, keeping its conversation, and answers it as the fleet
-  lists it, asleep: it wakes when something asks it.
+  lists it, asleep: it wakes when something asks it. One asleep already is
+  left as it is.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_stop(Session.t(), AgentID.t()) ::
-          {:ok, Wardrik.Fleet.Member.t()} | {:error, Error.t()}
+  @spec agent_stop(Session.t(), AgentID.t()) :: {:ok, Member.t()} | {:error, Error.t()}
   def agent_stop(%Session{} = session, %AgentID{} = agent) do
-    with {:ok, _stopped} <- change(session, %Operations.Stop{agent: agent}) do
-      case Wardrik.Fleet.lookup(agent) do
-        nil -> {:error, Wardrik.AgentOperation.not_found(agent)}
-        member -> {:ok, member}
+    with {:ok, caller} <- on_agent(session, agent, :define),
+         {:ok, member} <- member(agent) do
+      :ok = stopped(caller, member)
+      member(agent)
+    end
+  end
+
+  # One asleep already has nothing to stop, and nothing is recorded; nor for
+  # one that went to sleep since it was looked up.
+  defp stopped(_caller, %Member{asleep: true}), do: :ok
+
+  defp stopped(caller, %Member{id: agent}) do
+    case Fleet.stop(agent) do
+      :ok -> audit(caller, [{:agent_stopped, agent}])
+      {:error, :noproc} -> :ok
+    end
+  end
+
+  @doc """
+  Removes `agent`, with everything it had, and the definition the host
+  keeps of it, which may refuse. It is forgotten where it is kept, awake or
+  asleep, or a definition of it is.
+  """
+  @doc group: "Agent lifecycle"
+  @spec agent_forget(Session.t(), AgentID.t()) :: :ok | {:error, Error.t()}
+  def agent_forget(%Session{} = session, %AgentID{} = agent) do
+    with {:ok, caller, _forgetting} <- forgetting(session, agent) do
+      case Definitions.forget(caller.host, agent) do
+        {:ok, kept} -> forgotten(caller, agent, kept)
+        {:error, :conflict, why} -> {:error, Error.new(:conflict, why)}
       end
     end
   end
 
-  @doc "Removes `agent`, with everything it had, and the definition the host keeps of it."
+  defp forgotten(caller, agent, kept) do
+    running = Fleet.lookup(agent) != nil
+    if running, do: :ok = Fleet.forget(agent)
+
+    if running or kept,
+      do: audit(caller, [{:agent_forgotten, agent}]),
+      else: {:error, Error.no_agent(agent)}
+  end
+
+  @doc "What `agent_forget/2` would do, checked as it checks."
   @doc group: "Agent lifecycle"
-  @spec agent_forget(Session.t(), AgentID.t()) :: :ok | {:error, Error.t()}
-  def agent_forget(%Session{} = session, %AgentID{} = agent),
-    do: session |> change(%Operations.Forget{agent: agent}) |> acknowledged()
+  @spec agent_forget_preview(Session.t(), AgentID.t()) ::
+          {:ok, Forgetting.t()} | {:error, Error.t()}
+  def agent_forget_preview(%Session{} = session, %AgentID{} = agent) do
+    with {:ok, _caller, forgetting} <- forgetting(session, agent), do: {:ok, forgetting}
+  end
+
+  defp forgetting(session, agent) do
+    with {:ok, caller} <- on_agent(session, agent, :define),
+         :ok <- kept(caller.host, agent) do
+      case Definition.editable(Host.definitions(caller.host), agent) do
+        :ok -> {:ok, caller, %Forgetting{agents: [agent], kept: []}}
+        {:error, :conflict, why} -> {:error, Error.new(:conflict, why)}
+      end
+    end
+  end
+
+  defp kept(host, agent) do
+    if Fleet.stored?(agent) or Definitions.kept?(host, agent),
+      do: :ok,
+      else: {:error, Error.no_agent(agent)}
+  end
 
   @doc """
   Removes every agent under `prefix` but those the host keeps, and answers
-  what became of each: `:forgotten`, `{:kept, why}` or `{:failed, why}`.
+  what became of each. A prefix with nothing under it is not found, and one
+  whose every agent is kept is a conflict saying why.
   """
   @doc group: "Agent lifecycle"
   @spec agents_forget(Session.t(), Prefix.t()) ::
-          {:ok, %{AgentID.t() => Operations.Forgetting.outcome()}} | {:error, Error.t()}
-  def agents_forget(%Session{} = session, %Prefix{} = prefix),
-    do: change(session, %Operations.ForgetAgents{prefix: prefix})
+          {:ok, %{AgentID.t() => outcome()}} | {:error, Error.t()}
+  def agents_forget(%Session{} = session, prefix) do
+    with {:ok, caller, %Forgetting{agents: agents, kept: kept}} <-
+           forgetting_under(session, prefix) do
+      outcomes = Map.new(agents, &{&1, forget(caller.host, &1)})
+      audit(caller, for({id, :forgotten} <- outcomes, do: {:agent_forgotten, id, prefix}))
+      {:ok, Map.merge(outcomes, Map.new(kept, fn {id, why} -> {id, {:kept, why}} end))}
+    end
+  end
+
+  defp forget(host, agent) do
+    with {:ok, _kept} <- Definitions.forget(host, agent),
+         :ok <- Fleet.forget(agent) do
+      :forgotten
+    else
+      {:error, :conflict, why} -> {:kept, why}
+      {:error, reason} -> {:failed, inspect(reason)}
+    end
+  end
+
+  @doc "What `agents_forget/2` would do, checked as it checks."
+  @doc group: "Agent lifecycle"
+  @spec agents_forget_preview(Session.t(), Prefix.t()) ::
+          {:ok, Forgetting.t()} | {:error, Error.t()}
+  def agents_forget_preview(%Session{} = session, prefix) do
+    with {:ok, _caller, forgetting} <- forgetting_under(session, prefix), do: {:ok, forgetting}
+  end
+
+  defp forgetting_under(session, prefix) do
+    with {:ok, caller} <- under(session, prefix, :define) do
+      definitions = Host.definitions(caller.host)
+
+      checked =
+        for %Member{id: id} <- Fleet.list(prefix), do: {id, Definition.editable(definitions, id)}
+
+      case {for({id, :ok} <- checked, do: id),
+            for({id, {:error, :conflict, why}} <- checked, do: {id, why})} do
+        {[], []} -> {:error, Error.new(:not_found, "Nothing runs under #{prefix}.")}
+        {[], kept} -> {:error, Error.new(:conflict, Enum.map_join(kept, "\n", &elem(&1, 1)))}
+        {agents, kept} -> {:ok, caller, %Forgetting{agents: agents, kept: kept}}
+      end
+    end
+  end
+
+  @doc """
+  The tool calls `agent` is running now, each with its id, the tool's name,
+  and how long it has run. An agent asleep runs none, and is not found.
+  """
+  @doc group: "Agent lifecycle"
+  @spec agent_calls(Session.t(), AgentID.t()) ::
+          {:ok, [%{call_id: String.t(), name: String.t(), elapsed_ms: non_neg_integer()}]}
+          | {:error, Error.t()}
+  def agent_calls(%Session{} = session, %AgentID{} = agent) do
+    with {:ok, _caller} <- on_agent(session, agent, :read),
+         {:ok, node} <- awake(agent) do
+      calls = :erpc.call(node, ToolRunner, :in_flight, [agent])
+      {:ok, Enum.map(calls, &Map.take(&1, [:call_id, :name, :elapsed_ms]))}
+    end
+  end
+
+  @doc """
+  Stops the tool call `call_id` that `agent` is running: the model is
+  answered with an error, and the rest of the turn goes on. A call the agent
+  is not running, or an agent asleep, is not found.
+  """
+  @doc group: "Agent lifecycle"
+  @spec agent_call_kill(Session.t(), AgentID.t(), String.t()) :: :ok | {:error, Error.t()}
+  def agent_call_kill(%Session{} = session, %AgentID{} = agent, call_id)
+      when is_binary(call_id) do
+    with {:ok, caller} <- on_agent(session, agent, :message),
+         {:ok, node} <- awake(agent) do
+      case :erpc.call(node, ToolRunner, :kill_call, [agent, call_id]) do
+        :ok ->
+          audit(caller, [{:call_killed, agent, call_id}])
+
+        {:error, :not_found} ->
+          {:error, Error.new(:not_found, "#{agent} is not running #{call_id}.")}
+      end
+    end
+  end
+
+  # The node `agent` runs on, whose tool runner holds its calls.
+  defp awake(agent) do
+    case Fleet.lookup(agent) do
+      %Member{asleep: false, node: node} -> {:ok, node}
+      _asleep_or_none -> {:error, Error.no_agent(agent)}
+    end
+  end
 
   # -- triggers -------------------------------------------------------------------
 
   @doc """
   Sets `agent`'s trigger `name` to `fields`, as `WardrikProtocol`'s
-  `trigger_definition.json` describes one, and answers the trigger.
+  `trigger_definition.json` describes one, and answers the trigger. A
+  trigger is part of the agent's definition, so the host's definitions set
+  it.
   """
   @doc group: "Triggers"
   @spec agent_trigger_set(Session.t(), AgentID.t(), String.t(), map()) ::
           {:ok, map()} | {:error, Error.t()}
   def agent_trigger_set(%Session{} = session, %AgentID{} = agent, name, fields)
-      when is_binary(name) and is_map(fields),
-      do: change(session, %Operations.SetTrigger{agent: agent, name: name, fields: fields})
+      when is_binary(name) and is_map(fields) do
+    with {:ok, caller} <- on_agent(session, agent, :define),
+         {:ok, trigger} <- trigger_set(caller, agent, name, fields),
+         do: audited(caller, [{:trigger_set, agent, name}], trigger)
+  end
+
+  defp trigger_set(caller, agent, name, fields) do
+    case Definition.put_trigger(Host.definitions(caller.host), agent, name, fields: fields) do
+      {:ok, _created_or_changed, trigger} -> {:ok, trigger}
+      {:error, :not_found} -> {:error, undefined(agent)}
+      :unsupported -> {:error, Error.new(:unsupported, "This server keeps no triggers.")}
+      refused -> refused(refused)
+    end
+  end
 
   @doc "Removes `agent`'s trigger `name`, and answers it as `agent_trigger_set/4` would."
   @doc group: "Triggers"
   @spec agent_trigger_remove(Session.t(), AgentID.t(), String.t()) ::
           {:ok, map()} | {:error, Error.t()}
-  def agent_trigger_remove(%Session{} = session, %AgentID{} = agent, name) when is_binary(name),
-    do: change(session, %Operations.RemoveTrigger{agent: agent, name: name})
+  def agent_trigger_remove(%Session{} = session, %AgentID{} = agent, name) when is_binary(name) do
+    with {:ok, caller} <- on_agent(session, agent, :define),
+         {:ok, trigger} <- trigger_removed(caller, agent, name),
+         do: audited(caller, [{:trigger_removed, agent, name}], trigger)
+  end
+
+  defp trigger_removed(caller, agent, name) do
+    case Definition.delete_trigger(Host.definitions(caller.host), agent, name) do
+      {:ok, trigger} -> {:ok, trigger}
+      {:error, :not_found} -> {:error, Error.new(:not_found, "#{agent} has no trigger #{name}.")}
+      {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
+      :unsupported -> {:error, Error.new(:unsupported, "This server keeps no triggers.")}
+    end
+  end
 
   @doc """
   Hands `agent`'s trigger `trigger` a request from outside, its `:headers`
   and `:body`, which the trigger checks. Acknowledged with `:asked`, or
   `:seen` where it was handed the same request before.
+
+  The session must be able to message the agent, so a surface that takes
+  such requests from anyone grants just that, on just that agent; the
+  trigger decides whether the request is the sender's. One that is not is
+  answered as one to no such trigger, so a request tells its sender nothing
+  of the triggers another org's agents have.
   """
   @doc group: "Triggers"
   @spec agent_trigger_deliver(Session.t(), AgentID.t(), String.t(), %{
@@ -555,22 +1034,47 @@ defmodule Wardrik do
         %AgentID{} = agent,
         trigger,
         %{headers: headers, body: body}
-      ),
-      do:
-        change(session, %Operations.Deliver{
-          agent: agent,
-          trigger: trigger,
-          headers: headers,
-          body: body
-        })
+      ) do
+    with {:ok, caller} <- on_agent(session, agent, :message) do
+      request = %{headers: headers, body: body}
+
+      case Wardrik.Triggers.deliver(Host.triggers(caller.host), agent, trigger, request: request) do
+        {:ok, status} ->
+          {:ok, status}
+
+        {:error, :not_found} ->
+          {:error, no_trigger(agent, trigger)}
+
+        {:error, :forbidden, _message} ->
+          {:error, no_trigger(agent, trigger)}
+
+        {:error, :unavailable, message} ->
+          {:error, Error.new(:unavailable, message)}
+
+        :unsupported ->
+          {:error, Error.new(:unsupported, "This server takes no requests for triggers.")}
+      end
+    end
+  end
+
+  defp no_trigger(agent, trigger),
+    do: Error.new(:not_found, "#{agent} has no trigger #{trigger} to deliver to.")
 
   # -- servers and connections ------------------------------------------------------
 
   @doc "The MCP servers `owner`, a person's or an org's agents, added."
   @doc group: "Servers and connections"
   @spec servers_list(Session.t(), Prefix.t()) :: {:ok, [Server.t()]} | {:error, Error.t()}
-  def servers_list(%Session{} = session, %Prefix{} = owner),
-    do: read(session, %Operations.ReadServers{owner: owner})
+  def servers_list(%Session{} = session, owner) do
+    with {:ok, caller} <- under(session, owner, :read), do: servers(caller, owner)
+  end
+
+  defp servers(caller, owner) do
+    case Servers.list(Host.servers(caller.host), owner) do
+      :unsupported -> {:error, Wardrik.Servers.None.unsupported()}
+      servers -> {:ok, servers}
+    end
+  end
 
   @doc """
   Adds `server` for `owner`'s agents, by its name, URL, how they sign in to
@@ -580,7 +1084,31 @@ defmodule Wardrik do
   @doc group: "Servers and connections"
   @spec servers_add(Session.t(), Prefix.t(), Server.t()) ::
           {:ok, Server.t()} | {:error, Error.t()}
-  def servers_add(%Session{} = session, %Prefix{} = owner, %Server{} = server) do
+  def servers_add(%Session{} = session, owner, %Server{} = server) do
+    with {:ok, caller} <- under(session, owner, :define) do
+      case Servers.add(Host.servers(caller.host), owner,
+             name: server.name,
+             fields: fields(server),
+             by: caller.principal
+           ) do
+        {:ok, added} ->
+          audited(caller, [{:server_added, Key.new(owner, server.name), server.url}], %{
+            server
+            | authorization: if(added == :connected, do: nil, else: added)
+          })
+
+        {:error, %Error{} = error} ->
+          {:error, error}
+
+        :unsupported ->
+          {:error, Wardrik.Servers.None.unsupported()}
+      end
+    end
+  end
+
+  # The fields `server` is added with, as `WardrikProtocol`'s
+  # `input_servers_add.json` describes them.
+  defp fields(server) do
     how =
       case server.auth do
         "secret" -> given(name: server.secret, header: server.header, scheme: server.scheme)
@@ -588,57 +1116,137 @@ defmodule Wardrik do
         _none -> %{}
       end
 
-    fields =
-      Map.merge(
-        %{"url" => server.url, "auth" => %{server.auth => how}},
-        given(only: server.only, except: server.except)
-      )
-
-    change(session, %Operations.AddServer{owner: owner, name: server.name, fields: fields})
+    Map.merge(
+      %{"url" => server.url, "auth" => %{server.auth => how}},
+      given(only: server.only, except: server.except)
+    )
   end
 
   # The fields of `pairs` that are given, by their names as text.
   defp given(pairs),
     do: for({key, value} <- pairs, value != nil, into: %{}, do: {"#{key}", value})
 
-  @doc "Removes the MCP server `name` `owner` added, and answers it."
+  @doc """
+  Removes the MCP server `name` `owner` added, and answers it as it was:
+  its agents lose its tools on their next turn.
+  """
   @doc group: "Servers and connections"
   @spec servers_remove(Session.t(), Prefix.t(), String.t()) ::
           {:ok, Server.t()} | {:error, Error.t()}
-  def servers_remove(%Session{} = session, %Prefix{} = owner, name) when is_binary(name),
-    do: change(session, %Operations.RemoveServer{owner: owner, name: name})
+  def servers_remove(%Session{} = session, owner, name) when is_binary(name) do
+    with {:ok, caller} <- under(session, owner, :define),
+         {:ok, servers} <- servers(caller, owner),
+         :ok <- Servers.remove(Host.servers(caller.host), owner, name: name, by: caller.principal) do
+      audited(
+        caller,
+        [{:server_removed, Key.new(owner, name)}],
+        Enum.find(servers, &(&1.name == name))
+      )
+    end
+  end
 
-  @doc "The accounts the deployment offers `owner`, and who holds each."
+  @doc "The accounts the deployment offers `owner`, and who holds each; never a value."
   @doc group: "Servers and connections"
   @spec connections_list(Session.t(), Prefix.t()) :: {:ok, [Connection.t()]} | {:error, Error.t()}
-  def connections_list(%Session{} = session, %Prefix{} = owner),
-    do: read(session, %Operations.ReadConnections{owner: owner})
+  def connections_list(%Session{} = session, owner) do
+    with {:ok, caller} <- under(session, owner, :read), do: connections(caller, owner)
+  end
+
+  defp connections(caller, owner) do
+    case Connections.list(Host.connections(caller.host), Owner.owner_of(owner)) do
+      :unsupported -> {:error, Wardrik.Connections.None.unsupported()}
+      connections -> {:ok, connections}
+    end
+  end
 
   @doc """
   Connects `owner`'s account at `provider` before any agent asks for it, and
   answers the connection, with where to authorize it where it is not held.
+  Nothing parks on it.
   """
   @doc group: "Servers and connections"
   @spec connections_connect(Session.t(), Prefix.t(), String.t()) ::
           {:ok, Connection.t()} | {:error, Error.t()}
-  def connections_connect(%Session{} = session, %Prefix{} = owner, provider)
-      when is_binary(provider),
-      do: change(session, %Operations.Connect{owner: owner, provider: provider})
+  def connections_connect(%Session{} = session, owner, provider)
+      when is_binary(provider) do
+    with {:ok, caller} <- under(session, owner, :define),
+         {:ok, link} <- connect(caller, owner, provider),
+         {:ok, connections} <- connections(caller, owner) do
+      {:ok, %{Enum.find(connections, &(&1.provider == provider)) | authorization: link}}
+    end
+  end
 
-  @doc "Forgets `owner`'s account at `provider`, and answers the connection as it was."
+  defp connect(caller, owner, provider) do
+    connections = Host.connections(caller.host)
+
+    case Connections.connect(connections, provider, Owner.owner_of(owner), by: caller.principal) do
+      {:ok, :held} ->
+        {:ok, nil}
+
+      {:ok, link} ->
+        {:ok, link}
+
+      {:error, :not_found} ->
+        {:error, Error.new(:not_found, "No account named #{provider} is offered.")}
+
+      {:error, _reason} ->
+        {:error, Error.new(:unavailable, "#{provider} could not start a sign-in now.")}
+
+      :unsupported ->
+        {:error, Wardrik.Connections.None.unsupported()}
+    end
+  end
+
+  @doc """
+  Forgets `owner`'s account at `provider`, so the next call that needs it
+  asks them to connect again, and answers the connection as it was.
+  """
   @doc group: "Servers and connections"
   @spec connections_disconnect(Session.t(), Prefix.t(), String.t()) ::
           {:ok, Connection.t()} | {:error, Error.t()}
-  def connections_disconnect(%Session{} = session, %Prefix{} = owner, provider)
-      when is_binary(provider),
-      do: change(session, %Operations.Disconnect{owner: owner, provider: provider})
+  def connections_disconnect(%Session{} = session, owner, provider)
+      when is_binary(provider) do
+    with {:ok, caller} <- under(session, owner, :define) do
+      whose = Owner.owner_of(owner)
+
+      case Connections.disconnect(Host.connections(caller.host), provider, whose) do
+        :ok ->
+          audited(caller, [{:secret_removed, provider, owner}], %Connection{
+            provider: provider,
+            held_by: held_by(whose)
+          })
+
+        {:error, :not_found} ->
+          {:error, Error.new(:not_found, "#{owner} holds no #{provider}.")}
+
+        {:error, _reason} ->
+          {:error, Error.new(:unavailable, "#{provider} could not be forgotten now.")}
+
+        :unsupported ->
+          {:error, Wardrik.Connections.None.unsupported()}
+      end
+    end
+  end
+
+  # An owner forgets only an account of their own.
+  defp held_by({_org, _user}), do: :person
+  defp held_by(_org), do: :org
 
   # -- tokens -----------------------------------------------------------------------
 
   @doc "Every token the host keeps, oldest first; never a secret."
   @doc group: "Tokens"
   @spec tokens_list(Session.t()) :: {:ok, [Token.t()]} | {:error, Error.t()}
-  def tokens_list(%Session{} = session), do: read(session, %Operations.ListTokens{})
+  def tokens_list(%Session{} = session) do
+    with {:ok, caller} <- on_deployment(session, :read), do: tokens(caller)
+  end
+
+  defp tokens(caller) do
+    case Tokens.list(Host.tokens(caller.host)) do
+      :unsupported -> {:error, Wardrik.Tokens.None.unsupported()}
+      tokens -> {:ok, tokens}
+    end
+  end
 
   @create_token_opts NimbleOptions.new!(
                        for: [
@@ -649,38 +1257,119 @@ defmodule Wardrik do
 
   @doc """
   Makes a token named `name` carrying `grant`, and answers it with its
-  secret, given this once.
+  secret, given this once; the audit records the token, never the secret.
+  A token for a person whose scope names another person's agents,
+  `acme/@maria/` for `jon`, is refused: it would act as one on what is the
+  other's.
 
   ## Options
 
   #{NimbleOptions.docs(@create_token_opts)}
   """
   @doc group: "Tokens"
-  @spec tokens_create(Session.t(), String.t(), Wardrik.Grant.t(), keyword()) ::
+  @spec tokens_create(Session.t(), String.t(), Grant.t(), keyword()) ::
           {:ok, Token.t()} | {:error, Error.t()}
-  def tokens_create(%Session{} = session, name, %Wardrik.Grant{} = grant, opts \\ [])
+  def tokens_create(%Session{} = session, name, %Grant{} = grant, opts \\ [])
       when is_binary(name) do
     opts = NimbleOptions.validate!(opts, @create_token_opts)
-    change(session, %Operations.CreateToken{name: name, grant: grant, for: opts[:for]})
+
+    with {:ok, caller} <- on_deployment(session, :define),
+         :ok <- issued(grant, opts[:for]) do
+      case Tokens.create(Host.tokens(caller.host), name, grant: grant, for: opts[:for]) do
+        {:ok, token} ->
+          audited(
+            caller,
+            [{:token_created, token.id, token.name, token.grant, token.principal}],
+            token
+          )
+
+        {:error, message} ->
+          {:error, Error.new(:invalid, message)}
+
+        :unsupported ->
+          {:error, Wardrik.Tokens.None.unsupported()}
+      end
+    end
   end
 
-  @doc "Stops the token `id` working, and answers it, without its secret."
+  defp issued(_grant, nil), do: :ok
+
+  defp issued(grant, for) do
+    case Prefix.user(grant.scope) do
+      nil ->
+        :ok
+
+      user ->
+        if user == Principal.id(for),
+          do: :ok,
+          else:
+            {:error,
+             Error.new(
+               :invalid,
+               "A token for #{Principal.id(for)} cannot reach #{grant.scope}, which is #{user}'s."
+             )}
+    end
+  end
+
+  @doc """
+  Stops the token `id` working, ends what is open on it, and answers it,
+  without its secret.
+  """
   @doc group: "Tokens"
   @spec tokens_revoke(Session.t(), String.t()) :: {:ok, Token.t()} | {:error, Error.t()}
-  def tokens_revoke(%Session{} = session, id) when is_binary(id),
-    do: change(session, %Operations.RevokeToken{id: id})
+  def tokens_revoke(%Session{} = session, id) when is_binary(id) do
+    with {:ok, caller} <- on_deployment(session, :define),
+         {:ok, tokens} <- tokens(caller),
+         {:ok, token} <- token(tokens, id) do
+      case Tokens.revoke(Host.tokens(caller.host), id) do
+        :ok -> audited(caller, [{:token_revoked, id}], token)
+        {:error, :not_found} -> token([], id)
+      end
+    end
+  end
+
+  defp token(tokens, id) do
+    case Enum.find(tokens, &(&1.id == id)) do
+      nil -> {:error, Error.new(:not_found, "No token has the id #{id}.")}
+      token -> {:ok, token}
+    end
+  end
 
   # -- the deployment ---------------------------------------------------------------
 
   @doc "The deployment's nodes, each with how many agents run on it, and how many sleep."
   @doc group: "Deployment"
-  @spec deployment_nodes(Session.t()) :: {:ok, Wardrik.Deployment.Nodes.t()} | {:error, Error.t()}
-  def deployment_nodes(%Session{} = session), do: read(session, %Operations.ReadNodes{})
+  @spec deployment_nodes(Session.t()) :: {:ok, Nodes.t()} | {:error, Error.t()}
+  def deployment_nodes(%Session{} = session) do
+    with {:ok, _caller} <- on_deployment(session, :read) do
+      {asleep, running} = Enum.split_with(Fleet.list(), & &1.asleep)
+      counts = Enum.frequencies_by(running, & &1.node)
+      nodes = for node <- Fleet.nodes(), do: {node, Map.get(counts, node, 0)}
+      {:ok, %Nodes{nodes: nodes, asleep: length(asleep)}}
+    end
+  end
 
-  @doc "Has every node read its agents' definitions again, and answers those that did."
+  @doc """
+  Has every node the host's definitions name in
+  `c:Wardrik.Definition.reloading/1` read its agents' definitions again, and
+  answers those nodes.
+  """
   @doc group: "Deployment"
   @spec deployment_reload(Session.t()) :: {:ok, [node()]} | {:error, Error.t()}
-  def deployment_reload(%Session{} = session), do: change(session, %Operations.Reload{})
+  def deployment_reload(%Session{} = session) do
+    with {:ok, caller} <- on_deployment(session, :define) do
+      definitions = Host.definitions(caller.host)
+
+      case Definition.reloading(definitions) do
+        [] ->
+          {:error, Error.new(:unsupported, "This deployment reads no definitions again.")}
+
+        nodes ->
+          :ok = Definitions.reload_on(definitions, nodes)
+          audited(caller, [{:agents_reloaded, nodes}], nodes)
+      end
+    end
+  end
 
   @doc """
   A page of the audit, what people changed across the deployment, as
@@ -694,35 +1383,51 @@ defmodule Wardrik do
   @spec deployment_audit(Session.t(), keyword()) :: {:ok, [Entry.t()]} | {:error, Error.t()}
   def deployment_audit(%Session{} = session, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @page_opts)
-    read(session, %Operations.ReadAudit{starting_after: opts[:after], limit: opts[:limit]})
+    with {:ok, caller} <- on_deployment(session, :read), do: page(caller, :audit, opts)
   end
 
-  # -- running operations -----------------------------------------------------------
+  # -- checking and recording -------------------------------------------------------
 
-  defp read(session, %module{} = request) do
-    with {:ok, caller} <- Session.caller(session, module.subject(request)),
-         do: Query.run(request, caller)
-  end
-
-  defp change(session, %module{} = request) do
-    with {:ok, caller} <- Session.caller(session, module.subject(request)),
-         {made, answer} when made in [:ok, :created] <- Command.run(request, caller),
-         do: {:ok, answer}
-  end
-
-  defp acknowledged({:ok, _answer}), do: :ok
-  defp acknowledged({:error, _error} = error), do: error
-
-  defp readable(session, agent) do
+  # The caller `session` is to `agent`, where its grant allows `action` on it.
+  defp on_agent(session, agent, action) do
     with {:ok, caller} <- Session.caller(session, agent),
-         do: Wardrik.Subject.authorize(agent, caller.grant, :read)
+         :ok <- Grant.authorize(caller.grant, action, agent),
+         do: {:ok, caller}
+  end
+
+  defp under(session, prefix, action) do
+    with {:ok, caller} <- Session.caller(session, prefix),
+         :ok <- Grant.authorize_under(caller.grant, action, prefix),
+         do: {:ok, caller}
+  end
+
+  # The deployment is acted on by a grant over every agent alone, so a
+  # caller held to an org or a person never learns, nor changes, where any
+  # agent runs.
+  defp on_deployment(session, action) do
+    case under(session, Prefix.all(), action) do
+      {:ok, caller} ->
+        {:ok, caller}
+
+      {:error, _error} ->
+        {:error, Error.new(:forbidden, "This caller may not act on the deployment.")}
+    end
+  end
+
+  # Records `actions`, one change, as the caller's.
+  defp audit(caller, actions),
+    do: Audit.record_all(Host.audit(caller.host), actions, by: caller.principal)
+
+  defp audited(caller, actions, answer) do
+    :ok = audit(caller, actions)
+    {:ok, answer}
   end
 
   # -- raising --------------------------------------------------------------------
 
   @doc "As `agent_ask/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_ask!(Session.t(), AgentID.t(), String.t(), keyword()) :: Wardrik.Agent.Message.t()
+  @spec agent_ask!(Session.t(), AgentID.t(), String.t(), keyword()) :: Message.t()
   def agent_ask!(session, agent, text, opts \\ []),
     do: unwrap(agent_ask(session, agent, text, opts))
 
@@ -744,7 +1449,7 @@ defmodule Wardrik do
   @doc "As `agent_approve/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
   @spec agent_approve!(Session.t(), AgentID.t(), String.t() | [String.t()], keyword()) :: %{
-          String.t() => Operations.Decide.decision()
+          String.t() => decision()
         }
   def agent_approve!(session, agent, calls, opts \\ []),
     do: unwrap(agent_approve(session, agent, calls, opts))
@@ -752,15 +1457,15 @@ defmodule Wardrik do
   @doc "As `agent_deny/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
   @spec agent_deny!(Session.t(), AgentID.t(), String.t() | [String.t()], keyword()) :: %{
-          String.t() => Operations.Decide.decision()
+          String.t() => decision()
         }
   def agent_deny!(session, agent, calls, opts \\ []),
     do: unwrap(agent_deny(session, agent, calls, opts))
 
   @doc "As `agent_decide/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_decide!(Session.t(), AgentID.t(), %{String.t() => Operations.Decide.decision()}) ::
-          %{String.t() => Operations.Decide.decision()}
+  @spec agent_decide!(Session.t(), AgentID.t(), %{String.t() => decision()}) ::
+          %{String.t() => decision()}
   def agent_decide!(session, agent, decisions),
     do: unwrap(agent_decide(session, agent, decisions))
 
@@ -772,17 +1477,17 @@ defmodule Wardrik do
 
   @doc "As `agent_read/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_read!(Session.t(), AgentID.t()) :: Wardrik.Agent.Snapshot.t()
+  @spec agent_read!(Session.t(), AgentID.t()) :: Snapshot.t()
   def agent_read!(session, agent), do: unwrap(agent_read(session, agent))
 
   @doc "As `agent_clear/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_clear!(Session.t(), AgentID.t()) :: Wardrik.Agent.Snapshot.t()
+  @spec agent_clear!(Session.t(), AgentID.t()) :: Snapshot.t()
   def agent_clear!(session, agent), do: unwrap(agent_clear(session, agent))
 
   @doc "As `agents_list/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agents_list!(Session.t(), Prefix.t()) :: [Wardrik.Fleet.Member.t()]
+  @spec agents_list!(Session.t(), Prefix.t()) :: [Member.t()]
   def agents_list!(session, prefix), do: unwrap(agents_list(session, prefix))
 
   @doc "As `agents_parked/2`, answering the value, or raising the `Wardrik.Error`."
@@ -794,7 +1499,7 @@ defmodule Wardrik do
 
   @doc "As `agent_define/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_define!(Session.t(), AgentID.t(), map()) :: Wardrik.Agent.Snapshot.t()
+  @spec agent_define!(Session.t(), AgentID.t(), map()) :: Snapshot.t()
   def agent_define!(session, agent, definition),
     do: unwrap(agent_define(session, agent, definition))
 
@@ -805,13 +1510,19 @@ defmodule Wardrik do
 
   @doc "As `agent_spawn/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_spawn!(Session.t(), AgentID.t(), keyword()) :: Wardrik.Fleet.Member.t()
+  @spec agent_spawn!(Session.t(), AgentID.t(), keyword()) :: Spawned.t()
   def agent_spawn!(session, agent, opts \\ []), do: unwrap(agent_spawn(session, agent, opts))
 
   @doc "As `agent_move/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_move!(Session.t(), AgentID.t(), node()) :: Wardrik.Fleet.Member.t()
+  @spec agent_move!(Session.t(), AgentID.t(), node()) :: Member.t()
   def agent_move!(session, agent, node), do: unwrap(agent_move(session, agent, node))
+
+  @doc "As `agent_move_preview/3`, answering the value, or raising the `Wardrik.Error`."
+  @doc group: "Agent lifecycle"
+  @spec agent_move_preview!(Session.t(), AgentID.t(), node()) :: Moving.t()
+  def agent_move_preview!(session, agent, node),
+    do: unwrap(agent_move_preview(session, agent, node))
 
   @doc "As `agent_cancel/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
@@ -825,7 +1536,7 @@ defmodule Wardrik do
 
   @doc "As `agent_stop/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_stop!(Session.t(), AgentID.t()) :: Wardrik.Fleet.Member.t()
+  @spec agent_stop!(Session.t(), AgentID.t()) :: Member.t()
   def agent_stop!(session, agent), do: unwrap(agent_stop(session, agent))
 
   @doc "As `agent_forget/2`, answering the value, or raising the `Wardrik.Error`."
@@ -835,10 +1546,32 @@ defmodule Wardrik do
 
   @doc "As `agents_forget/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agents_forget!(Session.t(), Prefix.t()) :: %{
-          AgentID.t() => Operations.Forgetting.outcome()
-        }
+  @spec agents_forget!(Session.t(), Prefix.t()) :: %{AgentID.t() => outcome()}
   def agents_forget!(session, prefix), do: unwrap(agents_forget(session, prefix))
+
+  @doc "As `agent_forget_preview/2`, answering the value, or raising the `Wardrik.Error`."
+  @doc group: "Agent lifecycle"
+  @spec agent_forget_preview!(Session.t(), AgentID.t()) :: Forgetting.t()
+  def agent_forget_preview!(session, agent), do: unwrap(agent_forget_preview(session, agent))
+
+  @doc "As `agents_forget_preview/2`, answering the value, or raising the `Wardrik.Error`."
+  @doc group: "Agent lifecycle"
+  @spec agents_forget_preview!(Session.t(), Prefix.t()) :: Forgetting.t()
+  def agents_forget_preview!(session, prefix),
+    do: unwrap(agents_forget_preview(session, prefix))
+
+  @doc "As `agent_calls/2`, answering the value, or raising the `Wardrik.Error`."
+  @doc group: "Agent lifecycle"
+  @spec agent_calls!(Session.t(), AgentID.t()) :: [
+          %{call_id: String.t(), name: String.t(), elapsed_ms: non_neg_integer()}
+        ]
+  def agent_calls!(session, agent), do: unwrap(agent_calls(session, agent))
+
+  @doc "As `agent_call_kill/3`, answering the value, or raising the `Wardrik.Error`."
+  @doc group: "Agent lifecycle"
+  @spec agent_call_kill!(Session.t(), AgentID.t(), String.t()) :: :ok
+  def agent_call_kill!(session, agent, call_id),
+    do: unwrap(agent_call_kill(session, agent, call_id))
 
   @doc "As `agent_trigger_set/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Triggers"
@@ -897,7 +1630,7 @@ defmodule Wardrik do
 
   @doc "As `tokens_create/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Tokens"
-  @spec tokens_create!(Session.t(), String.t(), Wardrik.Grant.t(), keyword()) :: Token.t()
+  @spec tokens_create!(Session.t(), String.t(), Grant.t(), keyword()) :: Token.t()
   def tokens_create!(session, name, grant, opts \\ []),
     do: unwrap(tokens_create(session, name, grant, opts))
 
@@ -908,7 +1641,7 @@ defmodule Wardrik do
 
   @doc "As `deployment_nodes/1`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Deployment"
-  @spec deployment_nodes!(Session.t()) :: Wardrik.Deployment.Nodes.t()
+  @spec deployment_nodes!(Session.t()) :: Nodes.t()
   def deployment_nodes!(session), do: unwrap(deployment_nodes(session))
 
   @doc "As `deployment_reload/1`, answering the value, or raising the `Wardrik.Error`."

@@ -15,7 +15,6 @@ defmodule Wardrik.Stream do
   alias Wardrik.AgentID
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
-  alias Wardrik.Operations.ReadEvents
 
   @page 500
 
@@ -36,7 +35,7 @@ defmodule Wardrik.Stream do
     case Log.read(store, agent, starting_after: last, limit: @page) do
       {:ok, []} -> next(store, agent, {:following, last})
       {:ok, events} -> read(events, last)
-      {:gap, oldest} -> raise ReadEvents.gap(oldest)
+      {:gap, oldest} -> raise Wardrik.Error.gap(oldest)
     end
   end
 

@@ -6,14 +6,10 @@ defmodule WardrikTUI.App.Commands do
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Change
-  alias Wardrik.Command, as: Operation
   alias Wardrik.Error
   alias Wardrik.Fleet
-  alias Wardrik.Host
-  alias Wardrik.Operations.Move
-  alias Wardrik.Operations.Spawn
-  alias Wardrik.Operations.SpawnOn
+  alias Wardrik.Moving
+  alias Wardrik.Spawned
   alias WardrikConsole.Nodes
   alias WardrikTUI.App.Connection
   alias WardrikTUI.App.Display
@@ -111,11 +107,10 @@ defmodule WardrikTUI.App.Commands do
   # started again, or, in the background, left alone and named.
   defp spawn_agent(term, id, name, options, prompt, mode) do
     with {:ok, placement} <- placement(options),
-         {:ok, change} <- Operation.plan(spawning(id, placement), caller(term)),
-         {:ok, _agent} <- Operation.make(change, caller(term)) do
+         {:ok, %Spawned{from: from}} <- Wardrik.agent_spawn(term.assigns.session, id, placement) do
       pid = Fleet.whereis(id)
 
-      if match?(%{"spawning" => %{"from" => "running"}}, Operation.preview(change)),
+      if from == :running,
         do: existing_agent(term, id, name, pid, prompt, mode),
         else: started(term, id, name, pid, prompt, mode)
     else
@@ -123,9 +118,6 @@ defmodule WardrikTUI.App.Commands do
       {:error, reason} -> Display.append(term, placement_error(reason, "/spawn"))
     end
   end
-
-  defp spawning(id, []), do: %Spawn{agent: id}
-  defp spawning(id, node: node), do: %SpawnOn{agent: id, node: node}
 
   defp started(term, id, _name, pid, prompt, :attach),
     do: term |> Connection.switch(pid, id) |> Display.append(View.spawned(id)) |> ask_if(prompt)
@@ -173,18 +165,18 @@ defmodule WardrikTUI.App.Commands do
   # after what the move would interrupt has been shown.
   defp move_agent(term, id, options) do
     with {:ok, [node: node]} <- placement(options),
-         {:ok, change} <- Operation.plan(%Move{agent: id, node: node}, caller(term)) do
-      case Operation.preview(change) do
-        %{"moving" => %{"from" => here, "to" => here}} ->
+         {:ok, moving} <- Wardrik.agent_move_preview(term.assigns.session, id, node) do
+      case moving do
+        %Moving{from: here, to: here} ->
           Display.append(term, View.already_on(id, node))
 
-        %{"moving" => %{"interrupting" => doing}} ->
-          term
-          |> assign(confirm: {:move, change})
-          |> Display.append(View.move_preview(id, node, interrupted(doing)))
+        %Moving{status: :idle} ->
+          move_now(term, moving)
 
-        _nothing_to_interrupt ->
-          move_now(term, change)
+        %Moving{status: doing} ->
+          term
+          |> assign(confirm: {:move, moving})
+          |> Display.append(View.move_preview(id, node, doing))
       end
     else
       {:error, %Error{type: :not_found}} -> Display.append(term, View.no_such_agent(id))
@@ -193,11 +185,8 @@ defmodule WardrikTUI.App.Commands do
     end
   end
 
-  defp interrupted("turn"), do: :running
-  defp interrupted("calls"), do: :parked
-
-  defp move_now(term, %Change{request: %Move{agent: id, node: node}} = change) do
-    case Operation.make(change, caller(term)) do
+  defp move_now(term, %Moving{agent: id, to: node}) do
+    case Wardrik.agent_move(term.assigns.session, id, node) do
       {:ok, _answer} ->
         term
         |> adopt(id, Fleet.whereis(id))
@@ -369,8 +358,8 @@ defmodule WardrikTUI.App.Commands do
     term |> assign(confirm: nil) |> forget_all(ids)
   end
 
-  defp confirm(%{assigns: %{confirm: {:move, change}}} = term) do
-    term |> assign(confirm: nil) |> move_now(change)
+  defp confirm(%{assigns: %{confirm: {:move, moving}}} = term) do
+    term |> assign(confirm: nil) |> move_now(moving)
   end
 
   defp confirm(term), do: Interaction.flash(term, View.nothing_to_confirm())
@@ -491,8 +480,4 @@ defmodule WardrikTUI.App.Commands do
   end
 
   defp asked(term, id, text), do: Wardrik.agent_ask(term.assigns.session, id, text)
-
-  # The session's principal, as the caller a planned change is made by.
-  defp caller(%{assigns: %{session: session}}),
-    do: Host.root(session.host, principal: session.principal)
 end

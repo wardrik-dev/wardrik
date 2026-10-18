@@ -380,7 +380,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     # A second node, which Wardrik.Fleet.move/2 is stubbed to reach.
     setup do
       stub(WardrikDaemon, :daemons, fn -> [node(), :wardrik_b@localhost] end)
-      stub(Wardrik.Deployment, :node, fn _node -> :ok end)
+      stub(Fleet, :nodes, fn -> [node(), :wardrik_b@localhost] end)
       :ok
     end
 
@@ -468,6 +468,43 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       assert live(["agent", "move", key]) ==
                {"#{here} is the only node, so there is nowhere to move #{key} to.\n", 1}
+    end
+  end
+
+  describe "calls" do
+    test "lists the tool calls an agent runs, and stops one", %{org: org} do
+      key = agent(org, "caller")
+      test = self()
+
+      hang =
+        ReqLLM.Tool.new!(
+          name: "hang",
+          description: "Waits.",
+          callback: fn _input ->
+            send(test, :started)
+            receive do: (:never -> {:ok, %{}})
+          end
+        )
+
+      run = Wardrik.Test.run(id: key, tools: [hang])
+      spawn(fn -> Wardrik.Test.call(run, "hang", %{}, id: "call_1") end)
+      assert_receive :started
+
+      assert {listed, 0} = command(["agent", "calls", key])
+      assert listed =~ ~r"\A#{key} is running:\n  call_1  hang  \d+s\n\z"
+
+      assert {~s({"calls":[{"elapsed_ms":) <> _rest, 0} =
+               command(["agent", "calls", key, "--json"])
+
+      assert command(["agent", "kill-call", key, "call_1"]) ==
+               {"Stopped call_1. #{key} is told it failed, and its turn goes on.\n", 0}
+
+      assert command(["agent", "calls", key]) == {"#{key} is running no tool call.\n", 0}
+
+      assert command(["agent", "kill-call", key, "call_1"]) ==
+               {"#{key} is not running call_1.\n", 1}
+
+      assert Audit.about("agents/#{key}") == [{"call.killed", @ops}]
     end
   end
 

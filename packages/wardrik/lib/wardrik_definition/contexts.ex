@@ -15,7 +15,7 @@ defprotocol WardrikDefinition.Contexts do
       end
 
   An agent built from a context keeps the spec it was given until it is
-  built again, as `Wardrik.Operations.Reload` does for every agent awake, and
+  built again, as `Wardrik.deployment_reload/1` does for every agent awake, and
   as an agent asleep is when it wakes.
   """
 

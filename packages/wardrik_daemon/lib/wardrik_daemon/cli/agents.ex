@@ -71,7 +71,7 @@ defmodule WardrikDaemon.CLI.Agents do
       case members do
         [] when words == [] -> {:ok, "No agents."}
         [] -> {:ok, "No agent matches #{Enum.join(words, " ")}."}
-        members -> {:ok, table(Wardrik.Host.store(opts[:caller].host), members)}
+        members -> {:ok, table(Wardrik.Host.store(opts[:session].host), members)}
       end
     end
   end
@@ -169,7 +169,7 @@ defmodule WardrikDaemon.CLI.Agents do
   # writes none, and the tools it names that offer nothing yet, or `nil`
   # where none is kept.
   defp defined(opts, key) do
-    case Record.of(Wardrik.Host.store(opts[:caller].host), key) do
+    case Record.of(Wardrik.Host.store(opts[:session].host), key) do
       {:ok, definition} ->
         agents = WardrikDaemon.Host.agents()
         {:ok, read} = Wardrik.Definition.get(agents, definition.id)

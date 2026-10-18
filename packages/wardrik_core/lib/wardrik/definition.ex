@@ -6,37 +6,37 @@ defprotocol Wardrik.Definition do
   an agent's spec comes from as it is defined, created, started or woken.
 
   A host names the value once, as the `:definitions` of its
-  `Wardrik.Host`, and every operation asks it, whichever surface it came
-  from, as does every agent as it starts or wakes. The value carries what
+  `Wardrik.Host`, and every function of `Wardrik` on agents asks it,
+  whichever surface it came from, as does every agent as it starts or wakes. The value carries what
   its implementation needs, such as the store it keeps definitions in:
 
       host = Wardrik.Host.new(definitions: %MyApp.Definitions{store: store})
       children = [{Wardrik.Core, host: host}]
 
   The implementation decides what a definition may say, the seams its agent
-  is given, whether it is kept, and who owns an agent. The operation checks
+  is given, whether it is kept, and who owns an agent. `Wardrik` checks
   the caller's grant first, runs the spec `put/3` answers with
   `Wardrik.Fleet.put/1`, and puts the grant's ceiling ahead of the spec's
   own hooks, so no implementation lets a definition loosen it; see
   `Wardrik.Grant`.
 
-  | Function | Operation | `Wardrik.Definition.None` |
+  | Function | `Wardrik` | `Wardrik.Definition.None` |
   | --- | --- | --- |
-  | `put/3` | `Wardrik.Operations.Define` | `:unsupported` |
-  | `get/2` | `Wardrik.Operations.ReadDefinition` | `:unsupported` |
-  | `delete/2` | `Wardrik.Operations.Forget`, `ForgetAgents` | the agent is forgotten, and no definition with it |
-  | `put_trigger/4` | `Wardrik.Operations.SetTrigger` | `:unsupported` |
-  | `delete_trigger/3` | `Wardrik.Operations.RemoveTrigger` | `:unsupported` |
-  | `editable/2` | `Wardrik.Operations.Forget`, `ForgetAgents`, which keep what it refuses | every agent may be forgotten |
-  | `current/2` | `Wardrik.Operations.Spawn`, `SpawnOn`, and an agent starting or waking | an agent starts and wakes as it was stored |
-  | `create/2` | `Wardrik.Operations.Spawn`, `SpawnOn`, for an agent nothing defines | `:unsupported`: such an agent is not found |
-  | `reloading/1`, `reload/1` | `Wardrik.Operations.Reload`, on every node `reloading/1` names | no node, so `:unsupported` |
+  | `put/3` | `agent_define/3` | `:unsupported` |
+  | `get/2` | `agent_definition_read/2` | `:unsupported` |
+  | `delete/2` | `agent_forget/2`, `agents_forget/2` | the agent is forgotten, and no definition with it |
+  | `put_trigger/4` | `agent_trigger_set/4` | `:unsupported` |
+  | `delete_trigger/3` | `agent_trigger_remove/3` | `:unsupported` |
+  | `editable/2` | `agent_forget/2`, `agents_forget/2`, which keep what it refuses | every agent may be forgotten |
+  | `current/2` | `agent_spawn/3`, and an agent starting or waking | an agent starts and wakes as it was stored |
+  | `create/2` | `agent_spawn/3`, for an agent nothing defines | `:unsupported`: such an agent is not found |
+  | `reloading/1`, `reload/1` | `deployment_reload/1`, on every node `reloading/1` names | no node, so `:unsupported` |
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads
   an agent file, keeps it, and refuses the agents its files declare. An
   implementation that keeps some of them uses `Wardrik.Definition.None` in
   its `defimpl`, and answers the rest as it does. `Wardrik.Definitions`
-  holds what operations do with a host's definitions beyond one call.
+  holds what `Wardrik` does with a host's definitions beyond one call.
   """
 
   @doc """
@@ -143,7 +143,7 @@ defprotocol Wardrik.Definition do
   @doc """
   The nodes whose definitions are read again on `reload/1`: every node of
   the deployment running what reads them, as each daemon's does. `[]` where
-  nothing does, which leaves `Wardrik.Operations.Reload` `:unsupported`.
+  nothing does, which leaves `Wardrik.deployment_reload/1` `:unsupported`.
   """
   @spec reloading(t()) :: [node()]
   def reloading(definitions)

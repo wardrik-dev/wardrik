@@ -1,6 +1,15 @@
 {
   "components": {
     "parameters": {
+      "call": {
+        "description": "The id of a tool call the agent is running.",
+        "in": "path",
+        "name": "call",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
       "channel": {
         "description": "The chat channel's name, as the deployment's config gives it.",
         "in": "path",
@@ -920,6 +929,43 @@
           "url"
         ],
         "title": "An authorization",
+        "type": "object"
+      },
+      "Calls": {
+        "additionalProperties": false,
+        "description": "The tool calls an agent is running.",
+        "properties": {
+          "calls": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "elapsed_ms": {
+                  "description": "How long it has run, in milliseconds.",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "The call's id.",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "The tool it calls.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "elapsed_ms"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "calls"
+        ],
         "type": "object"
       },
       "Cancelled": {
@@ -2678,6 +2724,95 @@
         "x-wardrik-function": "agent_define"
       }
     },
+    "/v1/agents/{org}/@{user}/{name}/calls": {
+      "get": {
+        "operationId": "user_agent_calls",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Calls"
+                }
+              }
+            },
+            "description": "Each call the agent is running now, with how long it has run. An agent asleep runs none, and is not found."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "The tool calls an agent is running",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_calls"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/@{user}/{name}/calls/{call}": {
+      "delete": {
+        "description": "Stops one call the agent is running: the model is answered with an error, and the rest of the turn goes on.",
+        "operationId": "user_agent_call_kill",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/call"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Stopped."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Stop a tool call",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_call_kill"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
     "/v1/agents/{org}/@{user}/{name}/cancel": {
       "parameters": [
         {
@@ -3429,6 +3564,89 @@
         ],
         "x-wardrik-function": "agent_define"
       }
+    },
+    "/v1/agents/{org}/{name}/calls": {
+      "get": {
+        "operationId": "agent_calls",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Calls"
+                }
+              }
+            },
+            "description": "Each call the agent is running now, with how long it has run. An agent asleep runs none, and is not found."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "The tool calls an agent is running",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_calls"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/{name}/calls/{call}": {
+      "delete": {
+        "description": "Stops one call the agent is running: the model is answered with an error, and the rest of the turn goes on.",
+        "operationId": "agent_call_kill",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/call"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Stopped."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Stop a tool call",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_call_kill"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
     },
     "/v1/agents/{org}/{name}/cancel": {
       "parameters": [
