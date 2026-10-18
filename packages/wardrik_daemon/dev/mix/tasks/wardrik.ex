@@ -128,7 +128,14 @@ defmodule Mix.Tasks.Wardrik do
     distribute(opts)
     Enum.each(Keyword.get_values(opts, :connect), &Node.connect(:"#{&1}"))
 
-    Mix.Task.run("app.start")
+    # What the daemon depends on, and Logger again on dev's configuration, but
+    # not the daemon's own application, the release's tree, which reads
+    # config.yaml: the task is the host here.
+    Mix.Task.run("app.start", ["--no-start"])
+    :ok = Application.stop(:logger)
+
+    {:ok, _started} =
+      Application.ensure_all_started(Application.spec(:wardrik_daemon, :applications))
 
     store = WardrikStore.new(settings(WardrikStore))
     oauth = WardrikOAuth.new(settings(WardrikOAuth))
@@ -153,7 +160,7 @@ defmodule Mix.Tasks.Wardrik do
     start_mcp(opts, store)
     start_oauth(oauth)
 
-    # After app.start, not before: starting the :logger application installs
+    # After the applications start, not before: starting :logger installs
     # the default handler, so removing it earlier is undone.
     silence_console_logging()
     redirect_logging(opts[:log] || System.get_env("WARDRIK_LOG"))

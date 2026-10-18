@@ -1,3 +1,10 @@
+# `mix test --no-start` starts no application: not this one, the release's
+# tree, and not Logger again on the suite's configuration, as starting one
+# does. Logger and what the daemon depends on start here, and the trees the
+# suite needs below.
+:ok = Application.stop(:logger)
+{:ok, _started} = Application.ensure_all_started(Application.spec(:wardrik_daemon, :applications))
+
 Mimic.copy(WardrikDaemon.AgentFile)
 Mimic.copy(WardrikDaemon.CLI)
 Mimic.copy(WardrikDaemon)

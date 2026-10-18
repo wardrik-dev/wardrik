@@ -18,11 +18,11 @@
 # checks everything.
 #
 # The release is built and booted where what it ships changed, and on arm64
-# as well where how it is built did: the Dockerfile, the release project,
-# whose lockfile is where a native dependency arrives, or what installs and
-# runs it. The host apps are made where core or its Postgres or S3 store
-# changed, the TypeScript SDK is checked where it or the protocol's schemas
-# did, and the docs site is built where it did.
+# as well where how it is built did: the Dockerfile, the daemon's mix.exs,
+# configuration, rel/ and lockfile, where a native dependency arrives, or what
+# installs and runs it. The host apps are made where core or its Postgres or
+# S3 store changed, the TypeScript SDK is checked where it or the protocol's
+# schemas did, and the docs site is built where it did.
 #
 #   dev/affected.sh origin/main     what changed since this branch left main
 #   dev/affected.sh --all           everything
@@ -30,7 +30,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-projects=(packages/* release)
+projects=(packages/*)
 
 if [ "${1:-}" = --all ]; then
   all=1
@@ -44,7 +44,7 @@ fi
 
 # The packages a project's mix.exs depends on, by their directories.
 siblings() {
-  grep -oE 'sibling\(:wardrik[a-z0-9_]*|path: "\.\./packages/wardrik[a-z0-9_]*' "$1/mix.exs" |
+  grep -oE 'sibling\(:wardrik[a-z0-9_]*' "$1/mix.exs" |
     sed -E 's#.*(wardrik[a-z0-9_]*)$#packages/\1#' | sort -u
 }
 
@@ -95,8 +95,10 @@ job() {
   if [ "$all" = 1 ] || grep -qE "$1" <<<"$changed"; then echo true; else echo false; fi
 }
 
-echo "release=$(job '^(packages/[^/]+/(lib/|priv/|mix\.exs$)|release/|Dockerfile$|\.dockerignore$|deploy/|dev/(distros|service|failover|services)\.sh$)')"
-echo "arm=$(job '^(Dockerfile$|\.dockerignore$|release/|deploy/|dev/(distros|service|failover)\.sh$)')"
+build='packages/wardrik_daemon/(mix\.(exs|lock)$|config/(config|prod|runtime)\.exs$|rel/)'
+
+echo "release=$(job "^(packages/[^/]+/(lib/|priv/|mix\.exs$)|$build|Dockerfile$|\.dockerignore$|deploy/|dev/(distros|service|failover|services)\.sh$)")"
+echo "arm=$(job "^(Dockerfile$|\.dockerignore$|$build|deploy/|dev/(distros|service|failover)\.sh$)")"
 echo "hosts=$(job '^(packages/(wardrik|wardrik_core)/(lib/|priv/|mix\.exs$)|dev/hosts|dev/services\.sh$)')"
 echo "sdk=$(job '^(sdks/typescript/|packages/wardrik_core/priv/)')"
 echo "docs=$(job '^docs/')"

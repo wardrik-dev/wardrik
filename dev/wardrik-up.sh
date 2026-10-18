@@ -27,7 +27,7 @@ if [ "${1:-}" = --build ] || [ ! -x "$release/bin/wardrik" ]; then
   fi
 
   (
-    cd "$root/release" &&
+    cd "$root/packages/wardrik_daemon" &&
       MIX_ENV=prod mix deps.get --only prod >/dev/null &&
       MIX_ENV=prod mix release --path "$release" --overwrite --quiet >/dev/null
   )

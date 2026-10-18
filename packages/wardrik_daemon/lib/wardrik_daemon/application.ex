@@ -1,10 +1,10 @@
-defmodule Wardrikd.Application do
+defmodule WardrikDaemon.Application do
   @moduledoc """
   The release's tree, started once every package's application is running.
 
   The store starts here, once the applications of a store kept elsewhere,
-  such as Postgres through wardrik_ecto, have started: the release's
-  application depends on all of them, so it starts last.
+  such as Postgres through wardrik_ecto, have started: this application
+  depends on all of them, so it starts last.
 
   What `config/runtime.exs` read of `config.yaml` as the node booted, the
   store, the cluster and the HTTP API's settings, and what the release's
@@ -43,6 +43,6 @@ defmodule Wardrikd.Application do
        triggers: WardrikTrigger.Offered.discover()}
     ]
 
-    Supervisor.start_link(children, strategy: :rest_for_one, name: Wardrikd.Supervisor)
+    Supervisor.start_link(children, strategy: :rest_for_one, name: WardrikDaemon.Supervisor)
   end
 end

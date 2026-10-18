@@ -12,10 +12,10 @@
 #                                   new home, from nothing but the same config.yaml,
 #                                   takes the agent and the API token made on the first
 #
-# ROOT is the unpacked release, release/_build/prod/rel/wardrikd after
-# MIX_ENV=prod mix release. The agent is spawned rather than read from an agent
-# file, so only the store can bring it back, and the MEMORY.md written in its
-# tree before the kill is read back after it.
+# ROOT is the unpacked release, packages/wardrik_daemon/_build/prod/rel/wardrikd
+# after MIX_ENV=prod mix release there. The agent is spawned rather than read
+# from an agent file, so only the store can bring it back, and the MEMORY.md
+# written in its tree before the kill is read back after it.
 #
 # The database is WARDRIK_FAILOVER_DATABASE_URL, and the bucket is reached
 # through the WARDRIK_TEST_S3_* variables the suite reads, each by default what
@@ -34,7 +34,7 @@ case "$mode" in
   postgres | s3) ;;
   *) echo "usage: dev/failover.sh postgres|s3 ROOT" >&2; exit 64 ;;
 esac
-[ -x "$root/bin/wardrik" ] || die "$root is not an unpacked release; MIX_ENV=prod mix release in release/ makes release/_build/prod/rel/wardrikd"
+[ -x "$root/bin/wardrik" ] || die "$root is not an unpacked release; MIX_ENV=prod mix release in packages/wardrik_daemon makes packages/wardrik_daemon/_build/prod/rel/wardrikd"
 root=$(cd "$root" && pwd -P)
 
 export WARDRIK_TEST_S3_ENDPOINT=${WARDRIK_TEST_S3_ENDPOINT:-http://127.0.0.1:59000}

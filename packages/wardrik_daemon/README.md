@@ -101,31 +101,28 @@ node, so listen beyond loopback only on a network you trust. See
 
 ## In an application of your own
 
-The daemon is `WardrikDaemon`, started after Wardrik in your tree, beside the
-budget meters, the triggers, the tokens' grants and the tool workers' group,
-and handed the same `Wardrik.Host` as Wardrik:
+The daemon is an application: a project that depends on it starts it, as
+`WardrikDaemon.Application`. An application of your own runs agents through
+[wardrik](../wardrik) instead, started as one child of its tree.
 
-```elixir
-host =
-  Wardrik.Host.new(
-    definitions: WardrikDaemon.Agents,
-    connections: WardrikOAuth.Connections,
-    tokens: WardrikHTTP.Tokens,
-    triggers: WardrikTrigger,
-    grants: WardrikDaemon.Grants
-  )
+## The release
 
-children = [
-  {Wardrik.Core, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum], host: host},
-  WardrikPolicy.Supervisor,
-  WardrikTrigger,
-  WardrikHTTP.Access,
-  WardrikHTTP.Workers,
-  {WardrikDaemon, host: host}
-]
+`wardrikd`: this package and every package it ships, with its own ERTS, as one
+directory and a tarball. `bin/wardrik` is the command a person runs and
+`bin/wardrikd` the node's own script.
 
-Supervisor.start_link(children, strategy: :rest_for_one)
+```sh
+MIX_ENV=prod mix release
+_build/prod/rel/wardrikd/bin/wardrik init
 ```
 
-The [release](../../release) does exactly this, and builds the binary and the
-image.
+`WardrikDaemon.Application` is the release's tree. `config/` is what it boots
+with: `config.exs` and `prod.exs` when it is built, and `runtime.exs` each time
+it starts, which reads `config.yaml`'s storage, cluster and http. `rel/` is the
+script that gives each install a cookie of its own and keeps distribution on
+loopback, and the `wardrik` command. The tests and `mix wardrik` start what the
+daemon depends on, and not that tree.
+
+The `Dockerfile` at the root of the repository builds the image and the
+tarball the install script installs, on Ubuntu 22.04, so the tarball runs on
+any Linux with glibc 2.35 and OpenSSL 3.
