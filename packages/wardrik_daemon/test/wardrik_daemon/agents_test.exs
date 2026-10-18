@@ -413,7 +413,36 @@ defmodule WardrikDaemon.AgentsTest do
     Agents.reload(Host.agents())
 
     assert Agents.problems(Host.agents()) == []
-    assert Agents.get(Host.agents(), defined) == {:error, :not_found}
+    assert {:ok, _definition} = Agents.get(Host.agents(), defined)
+  end
+
+  @tag :capture_log
+  test "an agent the HTTP API defined starts from its definition once the store holds none",
+       %{org: org} = context do
+    Host.start_agents(context.dir)
+    defined = AgentID.parse!("#{org}/defined")
+    {:ok, spec} = Agents.put(Host.agents(), defined, definition: %{}, grant: grant(org))
+    {:ok, _pid} = Fleet.put(spec)
+
+    # The store loses the agent, as a wiped one would, and keeps its definition.
+    :ok = Fleet.forget(defined)
+    Agents.reload(Host.agents())
+
+    assert {:ok, _definition} = Agents.get(Host.agents(), defined)
+    assert [%Fleet.Member{asleep: true}] = Fleet.list(Prefix.of(defined))
+
+    stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :offline} end)
+    :ok = Event.Bus.subscribe(defined, level: :lifecycle)
+
+    {:ok, _pid} =
+      WardrikTrigger.put(defined, "tick",
+        every: %WardrikTrigger.Interval{ms: 50},
+        prompt: "Look."
+      )
+
+    assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :asked}}, 2_000
+    assert_receive %Event{payload: %Event.TurnFailed{}}, 2_000
+    assert %Fleet.Member{asleep: false} = Fleet.lookup(defined)
   end
 
   test "an agent starts with its file's options, or the defaults where no file declares it",

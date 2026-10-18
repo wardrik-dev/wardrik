@@ -214,7 +214,7 @@ defmodule WardrikDaemonTest do
     {{:ok, _pid}, config, host} = daemon(dir)
 
     Wardrik.Test.Fleet.await_update(fn ->
-      Enum.any?(Wardrik.Fleet.list(Prefix.parse!(org <> "/")))
+      Enum.any?(Wardrik.Fleet.list(Prefix.parse!(org <> "/")), &(not &1.asleep))
     end)
 
     assert WardrikDaemon.status(host, config) =~

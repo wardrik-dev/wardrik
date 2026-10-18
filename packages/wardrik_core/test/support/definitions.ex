@@ -13,14 +13,25 @@ defmodule Wardrik.Test.Definitions do
     end
   end
 
+  def defined(_host, prefix) do
+    for key <- WardrikStore.keys(Wardrik.Test.store(), @ns),
+        id = Wardrik.AgentID.parse!(key),
+        Wardrik.AgentID.Prefix.covers?(prefix, id),
+        do: id
+  end
+
   @spec keep(Wardrik.AgentID.t(), Wardrik.Agent.Spec.t()) :: :ok
   def keep(id, spec) do
     {:ok, _vsn} = WardrikStore.put(Wardrik.Test.store(), @ns, to_string(id), spec)
-    :ok
+    ExUnit.Callbacks.on_exit(fn -> forget(id) end)
   end
+
+  @spec forget(Wardrik.AgentID.t()) :: :ok
+  def forget(id), do: WardrikStore.delete(Wardrik.Test.store(), @ns, to_string(id))
 end
 
 defimpl Wardrik.Definition, for: Wardrik.Test.Definitions do
   use Wardrik.Definition.None
   defdelegate current(a0, a1), to: Wardrik.Test.Definitions
+  defdelegate defined(a0, a1), to: Wardrik.Test.Definitions
 end

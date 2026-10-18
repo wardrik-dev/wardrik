@@ -229,7 +229,7 @@ defmodule WardrikDefinition.KeptTest do
              "workspace shared team: #{org} belongs to #{org}/, which #{id} does not cover"
   end
 
-  test "reload builds every agent awake again, and forgets the definitions of agents gone",
+  test "reload builds every agent awake again, and keeps the definitions of agents not stored",
        %{org: org, kept: kept} = test do
     id = AgentID.parse!("#{org}/defined")
     {:ok, spec} = put(kept, id, %{"policy" => "careful"})
@@ -244,6 +244,18 @@ defmodule WardrikDefinition.KeptTest do
 
     :ok = Fleet.forget(id)
     assert Definition.reload(kept) == :ok
-    assert Definition.get(kept, id) == {:error, :not_found}
+    assert {:ok, _definition} = Definition.get(kept, id)
+  end
+
+  test "names the agents it keeps a definition for under a prefix", %{org: org, kept: kept} do
+    one = AgentID.parse!("#{org}/one")
+    other = AgentID.parse!("#{org}/@jon/other")
+    {:ok, _spec} = put(kept, one, %{})
+    {:ok, _spec} = put(kept, other, %{})
+
+    assert Enum.sort_by(Definition.defined(kept, Prefix.parse!(org <> "/*")), &to_string/1) ==
+             [other, one]
+
+    assert Definition.defined(kept, Prefix.of(other)) == [other]
   end
 end

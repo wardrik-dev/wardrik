@@ -11,7 +11,7 @@ defmodule Wardrik.Fleet do
   | `kill/1` | interrupt everything under a prefix |
   | `forget/1`, `forget_under/1` | remove an agent, or every agent under a prefix, and its store |
   | `move/2` | restart an agent on another node, as it was |
-  | `whereis/2` | the pid behind an ID, on whatever node holds it, waking it where it sleeps |
+  | `whereis/2` | the pid behind an ID, on whatever node holds it, waking it where it sleeps or starting it from its definition |
   | `stored?/1` | whether the store holds an agent, running or stopped |
 
   An agent is addressed by its `Wardrik.AgentID`, and the fleet is sliced by
@@ -25,7 +25,10 @@ defmodule Wardrik.Fleet do
   Agents publish what they are doing as registry metadata when it changes, and
   the registry replicates between nodes, so `watch/1` needs no polling. An
   agent that has gone to sleep, as `Wardrik.Agent` describes, is in no
-  registry: `list/1` reads it from the store, as it wrote itself down.
+  registry: `list/1` reads it from the store, as it wrote itself down. One
+  the host defines that has not started, or whose state this release cannot
+  read, is listed asleep and idle, from the host's
+  `c:Wardrik.Definition.defined/2`.
 
   ## Waking
 
@@ -37,8 +40,15 @@ defmodule Wardrik.Fleet do
   definitions leaves every agent to wake as it slept, and `put/1` is how a
   sleeping agent is given a new definition.
 
+  An agent the store does not hold, but the host defines, starts from its
+  definition the same way. So does one whose state this release cannot
+  read, as after a change to what an agent writes down: a warning names it,
+  and it starts with an empty history, its log kept and any turn it parked
+  on a person lost. One with neither is not found.
+
   The host is the one `Wardrik.Core` was started with, which the fleet's
-  supervisor hands every agent; nothing here takes one.
+  supervisor hands every agent, and where the fleet reads it too; nothing
+  here takes one.
 
   ## Durability
 
@@ -178,13 +188,13 @@ defmodule Wardrik.Fleet do
   end
 
   @doc """
-  The pid behind an ID, wherever in the cluster it is, or `nil` where the
-  store holds no agent under it.
+  The pid behind an ID, wherever in the cluster it is, or `nil` where neither
+  the store nor the host's definitions hold an agent under it.
 
-  An agent asleep is started from the store first, as it was. Callers racing
-  to wake one agent, on any node, start one process between them. With
-  `wake: false` a sleeping agent answers `nil` instead, for a caller with
-  nothing to ask of it.
+  An agent asleep is started from the store first, as it was, and one the
+  store does not hold from its definition. Callers racing to wake one agent,
+  on any node, start one process between them. With `wake: false` a sleeping
+  agent answers `nil` instead, for a caller with nothing to ask of it.
   """
   @spec whereis(AgentID.t(), keyword()) :: pid() | nil
   def whereis(%AgentID{} = id, opts \\ []) do
@@ -194,10 +204,10 @@ defmodule Wardrik.Fleet do
     end
   end
 
-  # The stored check spares a start for an ID nothing holds; `:wake_only`
-  # keeps one forgotten since from coming back empty.
+  # The checks spare a start for an ID nothing holds; `:wake_only` keeps one
+  # forgotten since from coming back empty.
   defp wake(id) do
-    with true <- stored?(id),
+    with true <- stored?(id) or defined?(id),
          {:ok, {pid, meta}} when not is_map_key(meta, :gone) <-
            id |> child(wake_only: true) |> start(nil) do
       pid
@@ -206,7 +216,10 @@ defmodule Wardrik.Fleet do
     end
   end
 
-  @doc "One agent as the fleet sees it, awake or asleep, or `nil` when nothing holds that ID."
+  @doc """
+  One agent as the fleet sees it, awake or asleep, or `nil` when neither the
+  fleet nor the host's definitions hold that ID.
+  """
   @spec lookup(AgentID.t()) :: Member.t() | nil
   def lookup(%AgentID{} = id) do
     case DurableServer.Supervisor.lookup(@name, to_string(id)) do
@@ -218,9 +231,16 @@ defmodule Wardrik.Fleet do
   defp asleep(id) do
     case written(id) do
       {:ok, dumped} -> Member.asleep(id, dumped)
-      {:error, :not_found} -> nil
+      {:error, :not_found} -> if defined?(id), do: Member.asleep(id)
     end
   end
+
+  defp defined?(id), do: match?({:ok, _spec}, Wardrik.Definition.current(definitions(), id))
+
+  # DurableServer keeps the `:init_info` it hands every agent in its
+  # supervisor's config, so the host is read where the fleet was given it.
+  defp definitions,
+    do: Wardrik.Host.definitions(DurableServer.Supervisor.__get_config__(@name).init_info.host)
 
   # -- the fleet -------------------------------------------------------------
 
@@ -228,9 +248,10 @@ defmodule Wardrik.Fleet do
   Every agent under `prefix`, across the cluster, awake or asleep, sorted by
   ID.
 
-  Reads each node's registry for the agents awake, and the store for those
-  asleep, so it reads every agent the store holds. `watch/1` is the cheaper
-  way to keep a view of the agents awake up to date.
+  Reads each node's registry for the agents awake, the store for those
+  asleep, so it reads every agent the store holds, and the host's
+  definitions for those not yet started. `watch/1` is the cheaper way to
+  keep a view of the agents awake up to date.
   """
   @spec list(Prefix.t()) :: [Member.t()]
   def list(prefix \\ Prefix.all()) do
@@ -240,15 +261,21 @@ defmodule Wardrik.Fleet do
           into: %{},
           do: {key, Member.new(id, pid, meta.user_meta)}
 
-    asleep =
+    held =
       for info <- DurableServer.Supervisor.stream_all_server_info(@name),
           not info.running,
           info.status != :deleting,
           not Map.has_key?(awake, info.key),
           id <- under(prefix, info.key),
-          do: Member.asleep(id, info.user_state)
+          into: awake,
+          do: {info.key, Member.asleep(id, info.user_state)}
 
-    Enum.sort_by(Map.values(awake) ++ asleep, &to_string(&1.id))
+    defined =
+      for id <- Wardrik.Definition.defined(definitions(), prefix),
+          not Map.has_key?(held, to_string(id)),
+          do: Member.asleep(id)
+
+    Enum.sort_by(Map.values(held) ++ defined, &to_string(&1.id))
   end
 
   defp under(prefix, key) do

@@ -183,6 +183,17 @@ defmodule Wardrik.AgentSleepTest do
     refute Fleet.stored?(key)
   end
 
+  test "an agent forgotten after its definition was found does not come back empty" do
+    key = Wardrik.Test.Fleet.id()
+
+    # The definition answers once, for the check, and is gone by the start.
+    expect(WardrikStore, :get, fn _store, :test_definitions, _key -> Spec.new(id: key) end)
+
+    assert Fleet.whereis(key) == nil
+    assert Wardrik.Test.Fleet.await_update(fn -> Fleet.whereis(key, wake: false) == nil end)
+    refute Fleet.stored?(key)
+  end
+
   test "an agent wakes with the definition the host answers for it now" do
     key = start_agent(runner: runner(self()), config: Config.new(model_spec: "test:before"))
     asleep(key)

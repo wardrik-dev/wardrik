@@ -40,9 +40,9 @@ defmodule Wardrik.Agent do
   person does not keep it awake.
 
   Given its ID, every function here but `interrupt/1` reaches the agent
-  through `Wardrik.Fleet.whereis/2`, which wakes a sleeping one from the store;
-  `interrupt/1` has nothing to stop in one asleep. Each call, cast and
-  finished turn counts as something done.
+  through `Wardrik.Fleet.whereis/2`, which wakes a sleeping one from the
+  store, or starts one from its definition; `interrupt/1` has nothing to stop
+  in one asleep. Each call, cast and finished turn counts as something done.
 
   ## Interrupting
 
@@ -220,8 +220,9 @@ defmodule Wardrik.Agent do
 
   `:idle_timeout` is how long the agent may have nothing to do before it
   sleeps, in milliseconds or `:infinity`; see "Sleeping" above. `:wake_only`
-  starts nothing new: the agent comes up only from what the store holds, and
-  one the store does not hold deletes itself as it starts.
+  starts nothing the host does not hold: the agent comes up from what the
+  store holds, or else from its definition, and one with neither deletes
+  itself as it starts.
 
   `:grace` is how long an interrupted turn is given to answer before it is
   killed, #{State.default_grace()}ms by default. `:runner` and `:resumer` are
@@ -366,19 +367,41 @@ defmodule Wardrik.Agent do
   def dump_state(%State{} = state), do: Stored.dump(state)
 
   # A state read from the store has a version; one with none is the state the
-  # caller handed over, for an agent the store did not hold.
+  # caller handed over, for an agent the store did not hold. One this release
+  # cannot read, as after a change to what an agent writes down, is rescued
+  # rather than left to crash every start: the agent starts as one the store
+  # does not hold.
   @impl DurableServer
   def load_state(nil, dumped), do: Stored.load(dumped)
-  def load_state(_old_vsn, dumped), do: %{Stored.load(dumped) | wake_only: false}
+
+  def load_state(_old_vsn, dumped) do
+    %{Stored.load(dumped) | wake_only: false}
+  rescue
+    error in [ArgumentError, KeyError, FunctionClauseError] ->
+      Logger.warning(
+        "#{dumped.agent_id} kept a state this release cannot read (#{inspect(error.__struct__)}); " <>
+          "it starts from its definition, where it has one"
+      )
+
+      State.new([wake_only: true], dumped.agent_id)
+  end
 
   # DurableServer's callback type leaves out the continue its server takes
-  # from `init`.
+  # from `init`. One the store held nothing of asks for its definition here,
+  # not in a continue: the meta `init` answers tells `Wardrik.Fleet.whereis/2`
+  # whether it is gone.
   @dialyzer {:nowarn_function, init: 2}
   @impl DurableServer
-  def init(%State{wake_only: true} = state, %{host: host}),
-    do:
-      {:ok, State.hosted(state, host), {:continue, :gone},
-       meta: Map.put(View.meta(state), :gone, true)}
+  def init(%State{wake_only: true} = state, %{host: host} = info) do
+    case Wardrik.Definition.current(Host.definitions(host), state.agent_id) do
+      {:ok, _spec} ->
+        init(%{state | wake_only: false}, info)
+
+      :none ->
+        {:ok, State.hosted(state, host), {:continue, :gone},
+         meta: Map.put(View.meta(state), :gone, true)}
+    end
+  end
 
   def init(%State{} = state, %{host: host}) do
     {:ok, State.hosted(state, host), {:continue, :open},

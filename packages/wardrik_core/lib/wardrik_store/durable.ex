@@ -27,6 +27,13 @@ defmodule WardrikStore.Durable do
   decode is left out of listings, through the caller's error handler, and
   answered as an error, so it stops no other object being read.
 
+  A server's state is kept as a binary too, which this backend decodes with
+  `[:safe]`, so one a release cannot read, such as one naming a field it no
+  longer has, leaves the object's version readable. Such an object is taken
+  as absent: a read answers it is not found, a listing leaves it out, and a
+  claim writes over it with a warning naming its key, so the server starts
+  as one never written.
+
   | Option | Default | |
   | --- | --- | --- |
   | `:store` | required | the `WardrikStore` |
@@ -39,6 +46,8 @@ defmodule WardrikStore.Durable do
   """
 
   @behaviour DurableServer.StorageBackend
+
+  require Logger
 
   alias DurableServer.StoredState
 
@@ -76,7 +85,7 @@ defmodule WardrikStore.Durable do
     case read(state, key) do
       nil -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
-      {value, vsn} -> object(value, vsn)
+      {value, vsn} -> with {:error, :unreadable} <- object(value, vsn), do: {:error, :not_found}
     end
   end
 
@@ -162,8 +171,19 @@ defmodule WardrikStore.Durable do
   def try_claim(state, key, body) do
     case WardrikStore.put(state.store, state.ns, key, term(body), if_vsn: nil) do
       {:ok, vsn} -> {:ok, {:claimed, etag(vsn)}}
-      {:error, :conflict} -> {:error, :already_claimed}
+      {:error, :conflict} -> claim_unreadable(state, key, body)
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp claim_unreadable(state, key, body) do
+    with {value, vsn} <- read(state, key),
+         {:error, :unreadable} <- body(value),
+         {:ok, vsn} <- WardrikStore.put(state.store, state.ns, key, term(body), if_vsn: vsn) do
+      Logger.warning("#{key} held a state this release cannot read; it is claimed as new")
+      {:ok, {:claimed, etag(vsn)}}
+    else
+      _held -> {:error, :already_claimed}
     end
   end
 
@@ -222,13 +242,26 @@ defmodule WardrikStore.Durable do
   end
 
   defp body(value) do
-    with :not_stored_state <- StoredState.from_object_store_term(value),
+    with :not_stored_state <- stored_state(value),
          :not_stored_state <- StoredState.from_storage_term(value) do
       {:ok, value}
     end
   end
 
-  defp term(%StoredState{} = stored_state), do: StoredState.to_object_store_term(stored_state)
+  defp stored_state(value) do
+    with {:ok, stored_state} <- StoredState.from_object_store_term(value),
+         do: {:ok, %{stored_state | state: :erlang.binary_to_term(stored_state.state, [:safe])}}
+  rescue
+    ArgumentError -> {:error, :unreadable}
+  end
+
+  defp term(%StoredState{} = stored_state) do
+    %{
+      StoredState.to_object_store_term(stored_state)
+      | "state" => :erlang.term_to_binary(stored_state.state)
+    }
+  end
+
   defp term(data), do: data
 
   defp etag(vsn), do: vsn |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)

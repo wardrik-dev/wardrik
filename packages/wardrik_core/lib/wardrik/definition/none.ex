@@ -29,6 +29,7 @@ defmodule Wardrik.Definition.None do
       def delete_trigger(_definitions, _id, _name), do: :unsupported
       def editable(_definitions, _id), do: :ok
       def current(_definitions, _id), do: :none
+      def defined(_definitions, _prefix), do: []
       def create(_definitions, _id), do: :unsupported
       def reload(_definitions), do: :ok
       def reloading(_definitions), do: []
@@ -40,6 +41,7 @@ defmodule Wardrik.Definition.None do
                      delete_trigger: 3,
                      editable: 2,
                      current: 2,
+                     defined: 2,
                      create: 2,
                      reload: 1,
                      reloading: 1

@@ -26,8 +26,9 @@ defmodule WardrikDefinition.Kept do
   | `put_trigger/4`, `delete_trigger/3` | change one trigger of the definition kept |
   | `editable/2` | every agent may be changed or forgotten |
   | `current/2` | the spec the definition kept writes now, as an agent starts or wakes |
+  | `defined/2` | the agents a definition is kept for, read from the store's keys |
   | `create/2` | `:unsupported`: an agent nothing defines is not found |
-  | `reload/1` | builds every agent awake again, and forgets the definitions of agents gone |
+  | `reload/1` | builds every agent awake again |
   | `reloading/1` | this node: the records are in the store every node shares |
 
   A definition's `triggers` are its agent's, brought to what it lists as it
@@ -42,6 +43,7 @@ defmodule WardrikDefinition.Kept do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Fleet
   alias Wardrik.Grant
   alias WardrikDefinition.Contexts
@@ -158,15 +160,18 @@ defmodule WardrikDefinition.Kept do
     end
   end
 
+  @doc "The agents under `prefix` a definition is kept for, read from the store's keys alone."
+  @spec defined(t(), Prefix.t()) :: [AgentID.t()]
+  def defined(%__MODULE__{store: store}, prefix),
+    do: for(id <- Record.ids(store), Prefix.covers?(prefix, id), do: id)
+
   @doc """
-  Builds every agent awake again from the definition it runs on, forgets
-  the definitions of agents the store no longer holds, and puts the routes
-  again. Why an agent does not build is logged.
+  Builds every agent awake again from the definition it runs on, and puts
+  the routes again. Why an agent does not build is logged.
   """
   @spec reload(t()) :: :ok
   def reload(%__MODULE__{} = kept) do
     for message <- rebuild(kept, only: fn _record, _id -> true end), do: Logger.error(message)
-    :ok = forget_removed(kept)
     route(kept)
   end
 
@@ -213,20 +218,6 @@ defmodule WardrikDefinition.Kept do
       {:error, reason} ->
         ["#{id} did not start: #{inspect(reason)}"]
     end
-  end
-
-  @doc """
-  Forgets each definition no agent file wrote whose agent the store no
-  longer holds, which something other than an operation removed.
-  """
-  @spec forget_removed(t()) :: :ok
-  def forget_removed(%__MODULE__{store: store} = kept) do
-    for %Record{id: id} = record <- Record.all(store),
-        not match?(%Record{source: {:file, _name}}, record),
-        not Fleet.stored?(id),
-        do: :ok = drop(kept, id)
-
-    :ok
   end
 
   @doc """
@@ -284,6 +275,7 @@ defimpl Wardrik.Definition, for: WardrikDefinition.Kept do
   defdelegate put_trigger(kept, id, name, opts), to: WardrikDefinition.Kept
   defdelegate delete_trigger(kept, id, name), to: WardrikDefinition.Kept
   defdelegate current(kept, id), to: WardrikDefinition.Kept
+  defdelegate defined(kept, prefix), to: WardrikDefinition.Kept
   defdelegate reload(kept), to: WardrikDefinition.Kept
   defdelegate reloading(kept), to: WardrikDefinition.Kept
 end

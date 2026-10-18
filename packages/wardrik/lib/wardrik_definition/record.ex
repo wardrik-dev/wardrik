@@ -112,6 +112,10 @@ defmodule WardrikDefinition.Record do
   @spec of(WardrikStore.t(), AgentID.t()) :: {:ok, t()} | {:error, :not_found}
   def of(store, %AgentID{} = id), do: get(store, AgentID.put_external_id(id, nil))
 
+  @doc "The ID of every agent a record is kept for, read from the keys alone."
+  @spec ids(WardrikStore.t()) :: [AgentID.t()]
+  def ids(store), do: store |> WardrikStore.keys(@ns) |> Enum.map(&AgentID.parse!/1)
+
   @doc "Every record kept."
   @spec all(WardrikStore.t()) :: [t()]
   def all(store) do

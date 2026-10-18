@@ -66,9 +66,7 @@ defmodule WardrikDaemon.Agents do
   and the conversations of an agent a file that read declares, to what their
   definitions say under the policies read then and the ceiling of the token
   that sent them, and `problems/0` says why one does not build. Those of a
-  file that does not read are left as they were, as its agent is. It forgets the definitions the
-  API sent for agents the store no longer holds, which something other than
-  the API removed, as the TUI does.
+  file that does not read are left as they were, as its agent is.
 
   ## Defaults
 
@@ -394,6 +392,9 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
+  @doc "The agents under `prefix` a definition is kept for, by a file or the HTTP API."
+  def defined(%__MODULE__{} = agents, prefix), do: Kept.defined(kept(agents), prefix)
+
   defp read_policies(%__MODULE__{table: table}) do
     case :ets.lookup(table, :loaded) do
       [{:loaded, loaded}] -> {:ok, loaded.policies}
@@ -714,9 +715,7 @@ defmodule WardrikDaemon.Agents do
     problems =
       Kept.rebuild(kept(agents, policies_of(state)), only: &rebuilt?(&1, &2, put))
 
-    kept = kept(agents)
-    :ok = Kept.forget_removed(kept)
-    :ok = Kept.route(kept)
+    :ok = Kept.route(kept(agents))
 
     for {_path, {:error, message}} <- state.files, do: Logger.error(message)
     for message <- problems, do: Logger.error(message)
@@ -805,15 +804,14 @@ defmodule WardrikDaemon.Agents do
   end
 
   # The definition is kept before the agent starts, so whatever finds the
-  # agent finds what it is. An agent asleep is left asleep, and takes the
-  # definition as it wakes.
+  # agent finds what it is. An agent the store holds asleep is left asleep,
+  # and takes the definition as it wakes.
   defp put(agents, {:ok, definition, spec}) do
     :ok = Kept.keep(kept(agents), definition)
 
-    case Fleet.lookup(spec.id) do
-      %{asleep: true} -> {:ok, spec}
-      _awake_or_new -> started(spec)
-    end
+    if Fleet.whereis(spec.id, wake: false) == nil and Fleet.stored?(spec.id),
+      do: {:ok, spec},
+      else: started(spec)
   end
 
   defp put(_agents, {:error, _message} = error), do: error
@@ -834,6 +832,7 @@ defimpl Wardrik.Definition, for: WardrikDaemon.Agents do
   defdelegate delete_trigger(agents, id, name), to: WardrikDaemon.Agents
   defdelegate editable(agents, id), to: WardrikDaemon.Agents
   defdelegate current(agents, id), to: WardrikDaemon.Agents
+  defdelegate defined(agents, prefix), to: WardrikDaemon.Agents
   defdelegate create(agents, id), to: WardrikDaemon.Agents
   defdelegate reload(agents), to: WardrikDaemon.Agents
   defdelegate reloading(agents), to: WardrikDaemon.Agents
