@@ -7,7 +7,7 @@ defmodule Wardrik.Failure do
   dead conversation. This classifies the reason so the decision is made once,
   from the error itself, rather than guessed at every call site.
 
-      case scope |> Wardrik.LLM.Turn.new(context) |> Wardrik.LLM.Turn.run() do
+      case run |> Wardrik.LLM.Turn.new(context) |> Wardrik.LLM.Turn.run() do
         %Wardrik.LLM.Turn{state: :failed, error: reason} ->
           case Wardrik.Failure.classify(reason) do
             :transient -> retry(...)

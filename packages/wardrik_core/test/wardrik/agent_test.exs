@@ -131,7 +131,7 @@ defmodule Wardrik.AgentTest do
     def tools(_argument), do: []
 
     @impl true
-    def context(_argument, _scope), do: raise("the store is down")
+    def context(_argument, _run), do: raise("the store is down")
   end
 
   test "a tool that raises saying what goes first fails that turn, and the agent goes on" do
@@ -245,15 +245,15 @@ defmodule Wardrik.AgentTest do
     end)
   end
 
-  test "the turn is handed a scope addressed to the agent" do
+  test "the turn is handed a run addressed to the agent" do
     {key, agent} = Wardrik.Test.Fleet.start_agent(runner: reporting_runner(self()))
 
     Agent.ask(agent, "hello")
 
-    assert_receive {:scope, scope}
-    assert scope.source.agent_id == key
-    assert scope.config == Config.new()
-    assert Wardrik.Trace.root?(scope.source.trace)
+    assert_receive {:run, run}
+    assert run.source.agent_id == key
+    assert run.config == Config.new()
+    assert Wardrik.Trace.root?(run.source.trace)
   end
 
   describe "messages from abandoned or unknown senders" do
@@ -649,7 +649,7 @@ defmodule Wardrik.AgentTest do
   end
 
   describe "what a host supplies" do
-    test "the scope every turn runs under carries the seams the agent was started with" do
+    test "the run every turn runs under carries the seams the agent was started with" do
       test_pid = self()
 
       agent =
@@ -667,10 +667,10 @@ defmodule Wardrik.AgentTest do
 
       Agent.ask(agent, "hi")
 
-      assert_receive {:scope, scope}
-      assert %Wardrik.AgentID{org: "acme", user: "7"} = Wardrik.Scope.agent_id(scope)
-      assert scope.hooks == [%Wardrik.Hook{name: "some", module: SomeHook}]
-      assert Wardrik.Scope.remaining_ms(scope) > 55_000
+      assert_receive {:run, run}
+      assert %Wardrik.AgentID{org: "acme", user: "7"} = Wardrik.Run.agent_id(run)
+      assert run.hooks == [%Wardrik.Hook{name: "some", module: SomeHook}]
+      assert Wardrik.Run.remaining_ms(run) > 55_000
     end
 
     test "configure/2 gives the turns after it a new config and new seams" do
@@ -699,9 +699,9 @@ defmodule Wardrik.AgentTest do
 
       Agent.ask(agent, "hi")
 
-      assert_receive {:scope, scope}
-      assert scope.hooks == [%Wardrik.Hook{name: "other", module: OtherHook}]
-      assert %Wardrik.AgentID{org: "acme", user: "7"} = Wardrik.Scope.agent_id(scope)
+      assert_receive {:run, run}
+      assert run.hooks == [%Wardrik.Hook{name: "other", module: OtherHook}]
+      assert %Wardrik.AgentID{org: "acme", user: "7"} = Wardrik.Run.agent_id(run)
       assert Agent.status(agent).model == "anthropic:claude-sonnet-5"
     end
 
@@ -709,17 +709,17 @@ defmodule Wardrik.AgentTest do
       assert {:error, :not_found} = Agent.configure(Wardrik.AgentID.parse!("nobody/here"), [])
     end
 
-    test "an agent started with none of them runs under an inert scope" do
+    test "an agent started with none of them has an inert run" do
       test_pid = self()
 
       agent = start_agent(runner: reporting_runner(test_pid))
       Agent.ask(agent, "hi")
 
-      assert_receive {:scope, scope}
-      assert %Wardrik.AgentID{org: "test", user: nil} = Wardrik.Scope.agent_id(scope)
-      assert scope.hooks == []
-      assert Wardrik.Host.dispatch(scope.host) == %Wardrik.LLM.Dispatch.Direct{}
-      assert Wardrik.Scope.remaining_ms(scope) == :infinity
+      assert_receive {:run, run}
+      assert %Wardrik.AgentID{org: "test", user: nil} = Wardrik.Run.agent_id(run)
+      assert run.hooks == []
+      assert Wardrik.Host.dispatch(run.host) == %Wardrik.LLM.Dispatch.Direct{}
+      assert Wardrik.Run.remaining_ms(run) == :infinity
     end
   end
 end

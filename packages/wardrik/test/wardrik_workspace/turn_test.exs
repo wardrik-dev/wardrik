@@ -6,7 +6,7 @@ defmodule WardrikWorkspace.TurnTest do
 
   alias ReqLLM.Context
   alias Wardrik.LLM
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.LLMStub
   alias WardrikWorkspace.Backend.Store
 
@@ -37,14 +37,14 @@ defmodule WardrikWorkspace.TurnTest do
 
     rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
-    scope =
+    run =
       [tools: [{WardrikWorkspace, spec}, Wardrik.Test.Tools.Deploy]]
       |> LLM.Config.new()
-      |> Scope.root(key, name: "turn", host: Workspace.host(), hooks: rules)
+      |> Run.root(key, name: "turn", host: Workspace.host(), hooks: rules)
 
     assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
              parked =
-             scope |> LLM.Turn.new(Context.new([Context.user("Any news?")])) |> LLM.Turn.run()
+             run |> LLM.Turn.new(Context.new([Context.user("Any news?")])) |> LLM.Turn.run()
 
     assert [{%{id: "call_2", name: "deploy", labels: ["outside"]}, prompt} = waiting] =
              LLM.Turn.waiting(parked)
@@ -88,13 +88,13 @@ defmodule WardrikWorkspace.TurnTest do
       )
     ]
 
-    scope =
+    run =
       [tools: [{WardrikWorkspace, spec}]]
       |> LLM.Config.new()
-      |> Scope.root(key, name: "turn", host: Workspace.host(), hooks: rules)
+      |> Run.root(key, name: "turn", host: Workspace.host(), hooks: rules)
 
     assert %LLM.Turn{state: :done, labels: ["outside"]} =
-             scope |> LLM.Turn.new(Context.new([Context.user("Summarise.")])) |> LLM.Turn.run()
+             run |> LLM.Turn.new(Context.new([Context.user("Summarise.")])) |> LLM.Turn.run()
 
     assert {:ok, %WardrikWorkspace.File{labels: ["outside"]}, _version} =
              Store.read(
@@ -130,17 +130,17 @@ defmodule WardrikWorkspace.TurnTest do
 
     rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
-    scope =
+    run =
       [
         system: "You watch production.",
         tools: [{WardrikWorkspace, spec}, Wardrik.Test.Tools.Deploy]
       ]
       |> LLM.Config.new()
-      |> Scope.root(key, name: "turn", host: Workspace.host(), hooks: rules)
+      |> Run.root(key, name: "turn", host: Workspace.host(), hooks: rules)
 
     assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
              parked =
-             scope |> LLM.Turn.new(Context.new([Context.user("Anything?")])) |> LLM.Turn.run()
+             run |> LLM.Turn.new(Context.new([Context.user("Anything?")])) |> LLM.Turn.run()
 
     assert_receive {:system, "You watch production.\n\n# Your workspace" <> _rest = system}
     assert system =~ ~s(<file path="MEMORY.md")

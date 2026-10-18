@@ -27,7 +27,7 @@ defmodule Wardrik.HookTest do
   defp hook(name, script), do: Hook.new(name, Scripted, script)
 
   defp check(hooks, name \\ "echo"),
-    do: Wardrik.Test.check(Wardrik.Test.scope(hooks: hooks), name)
+    do: Wardrik.Test.check(Wardrik.Test.run(hooks: hooks), name)
 
   describe "check/1" do
     test "no hooks allow everything, so a deployment without one configures nothing" do
@@ -84,8 +84,8 @@ defmodule Wardrik.HookTest do
 
   describe "a gated tool's call" do
     defp gated(hooks, labels \\ []) do
-      scope = %{Wardrik.Test.scope(tools: [Deploy], hooks: hooks) | labels: labels}
-      Wardrik.Test.check(scope, "deploy", %{"target" => "prod"})
+      run = %{Wardrik.Test.run(tools: [Deploy], hooks: hooks) | labels: labels}
+      Wardrik.Test.check(run, "deploy", %{"target" => "prod"})
     end
 
     test "waits on its tool where no hook allows it by name, under no hooks or quiet ones" do
@@ -114,9 +114,9 @@ defmodule Wardrik.HookTest do
     end
 
     test "is not what an ungated call is: that goes ahead without an allow, whatever was read" do
-      scope = %{Wardrik.Test.scope(hooks: [hook("quiet", :pass)]) | labels: ["outside"]}
+      run = %{Wardrik.Test.run(hooks: [hook("quiet", :pass)]) | labels: ["outside"]}
 
-      assert %Call{state: :allowed, allowed: []} = Wardrik.Test.check(scope, "echo")
+      assert %Call{state: :allowed, allowed: []} = Wardrik.Test.check(run, "echo")
     end
   end
 
@@ -131,10 +131,10 @@ defmodule Wardrik.HookTest do
       refute_received {:approved, _id, _memo, _script}
     end
 
-    test "skips a hook the scope no longer has" do
+    test "skips a hook the run no longer has" do
       waiting = check([hook("gone", {:ask, "Sure?"})])
 
-      :ok = waiting |> Call.approve() |> Call.under(Wardrik.Test.scope()) |> Hook.approved()
+      :ok = waiting |> Call.approve() |> Call.under(Wardrik.Test.run()) |> Hook.approved()
       refute_received {:approved, _id, _memo, _script}
     end
 

@@ -4,23 +4,23 @@ defmodule WardrikMCP.RobustnessTest do
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias WardrikMCP.Connection
 
   setup %{key: key} do
     agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
 
-    scope = Config.new(tools: [{WardrikMCP, key}]) |> Scope.root(agent_id, name: "turn")
+    run = Config.new(tools: [{WardrikMCP, key}]) |> Run.root(agent_id, name: "turn")
 
-    %{agent_id: agent_id, scope: scope}
+    %{agent_id: agent_id, run: run}
   end
 
   describe "a caller that stops waiting" do
     test "cancels the request the server is still working on", context do
-      %{key: key, agent_id: agent_id, scope: scope} = context
+      %{key: key, agent_id: agent_id, run: run} = context
 
-      batch = start_call(scope, "call_slow", "#{key}__slow")
+      batch = start_call(run, "call_slow", "#{key}__slow")
       await_reached_server("call_slow")
 
       assert :ok = ToolRunner.kill_call(agent_id, "call_slow")
@@ -30,9 +30,9 @@ defmodule WardrikMCP.RobustnessTest do
     end
 
     test "leaves the calls of other callers alone", context do
-      %{key: key, agent_id: agent_id, scope: scope} = context
+      %{key: key, agent_id: agent_id, run: run} = context
 
-      batch = start_call(scope, "call_slow", "#{key}__slow")
+      batch = start_call(run, "call_slow", "#{key}__slow")
       await_reached_server("call_slow")
 
       answering =
@@ -61,11 +61,11 @@ defmodule WardrikMCP.RobustnessTest do
 
   describe "progress" do
     test "a server's progress lands on the turn's event stream", context do
-      %{key: key, scope: scope} = context
+      %{key: key, run: run} = context
       name = "#{key}__noisy"
       call = %{id: "call_noisy", name: name, arguments: %{"steps" => 3}}
 
-      assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, scope)
+      assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, run)
 
       assert_receive %Event{
                        payload: %Event.ToolProgress{
@@ -129,10 +129,10 @@ defmodule WardrikMCP.RobustnessTest do
 
   # The batch runs the call in a task of the runner's own, which is the process
   # `kill_call/2` stops; awaiting the batch itself would wait for that kill.
-  defp start_call(scope, id, name) do
+  defp start_call(run, id, name) do
     call = %{id: id, name: name, arguments: %{}}
 
-    Task.async(fn -> ToolRunner.execute_many_async([call], scope) end)
+    Task.async(fn -> ToolRunner.execute_many_async([call], run) end)
   end
 
   # `slow` answers nothing and reports progress once, so its progress event is

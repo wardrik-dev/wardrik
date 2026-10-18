@@ -12,7 +12,7 @@ defmodule Wardrik.Call.PipelineTest do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   # A hook that answers every call one way, and tells the test what it hears.
   defmodule Saying do
@@ -40,7 +40,7 @@ defmodule Wardrik.Call.PipelineTest do
        |> Request.put_opts(api_key: "key")}
     end
 
-    def settle(_routing, _request, outcome: outcome, scope: _scope) do
+    def settle(_routing, _request, outcome: outcome, run: _run) do
       send(self(), {:dispatch_settled, outcome})
       :ok
     end
@@ -122,10 +122,10 @@ defmodule Wardrik.Call.PipelineTest do
     {:ok, agent_id: agent_id}
   end
 
-  defp scope(agent_id, opts) do
+  defp run(agent_id, opts) do
     {tools, opts} = Keyword.pop(opts, :tools, [])
     {host, opts} = Keyword.pop_lazy(opts, :host, &host/0)
-    Config.new(tools: tools) |> Scope.root(agent_id, [name: "turn", host: host] ++ opts)
+    Config.new(tools: tools) |> Run.root(agent_id, [name: "turn", host: host] ++ opts)
   end
 
   defp saying(answer), do: [Wardrik.Hook.new("saying", Saying, answer)]
@@ -146,7 +146,7 @@ defmodule Wardrik.Call.PipelineTest do
     )
   end
 
-  defp call(scope, id, name), do: Call.tool(%{id: id, name: name, arguments: %{}}, scope)
+  defp call(run, id, name), do: Call.tool(%{id: id, name: name, arguments: %{}}, run)
 
   defp request, do: Request.new(Config.new(), Context.new())
 
@@ -163,15 +163,15 @@ defmodule Wardrik.Call.PipelineTest do
   describe "a model call" do
     test "is decided by the hooks before the dispatch, which a call that waits never reaches",
          %{agent_id: agent_id} do
-      scope =
-        scope(agent_id,
+      run =
+        run(agent_id,
           hooks: saying({:ask, "Over budget.", :day}),
           host: host(dispatch: %Routing{})
         )
 
-      assert %Call{state: :waiting, scope: %Scope{}, private: private} =
+      assert %Call{state: :waiting, run: %Run{}, private: private} =
                waiting =
-               request() |> Pipeline.model(scope) |> Pipeline.run(answering({:ok, nil}))
+               request() |> Pipeline.model(run) |> Pipeline.run(answering({:ok, nil}))
 
       assert [%Call.Ask{by: "saying", prompt: "Over budget.", memo: :day}] = waiting.asks
       assert private == %{}
@@ -180,21 +180,21 @@ defmodule Wardrik.Call.PipelineTest do
     end
 
     test "a hook refuses before the dispatch", %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying({:deny, "No."}), host: host(dispatch: %Routing{}))
+      run = run(agent_id, hooks: saying({:deny, "No."}), host: host(dispatch: %Routing{}))
 
       assert %Call{state: :denied, denied: %Call.Denial{by: "saying", reason: "No."}} =
-               request() |> Pipeline.model(scope) |> Pipeline.run(answering({:ok, nil}))
+               request() |> Pipeline.model(run) |> Pipeline.run(answering({:ok, nil}))
 
       refute_received {:invoked, _request}
     end
 
     test "a person approved goes ahead without the hooks, admitted by the dispatch",
          %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying({:ask, "Spend?"}), host: host(dispatch: %Routing{}))
-      waiting = request() |> Pipeline.model(scope) |> Pipeline.decide()
+      run = run(agent_id, hooks: saying({:ask, "Spend?"}), host: host(dispatch: %Routing{}))
+      waiting = request() |> Pipeline.model(run) |> Pipeline.decide()
 
       approved = Pipeline.answer(waiting, :approve)
-      denying = %{scope | hooks: saying({:deny, "No."})}
+      denying = %{run | hooks: saying({:deny, "No."})}
 
       assert %Call{state: :done} =
                request()
@@ -208,10 +208,10 @@ defmodule Wardrik.Call.PipelineTest do
 
     test "is heard by the dispatch and the hooks, with the model as it was made",
          %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying(:pass), host: host(dispatch: %Routing{}))
+      run = run(agent_id, hooks: saying(:pass), host: host(dispatch: %Routing{}))
       outcome = {:ok, response(%{input_tokens: 3, output_tokens: 4})}
 
-      request() |> Pipeline.model(scope) |> Pipeline.run(answering(outcome))
+      request() |> Pipeline.model(run) |> Pipeline.run(answering(outcome))
 
       assert_received {:dispatch_settled, ^outcome}
 
@@ -227,10 +227,10 @@ defmodule Wardrik.Call.PipelineTest do
     end
 
     test "the dispatch refuses is answered with why, and never made", %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying(:pass), host: host(dispatch: %Refusing{}))
+      run = run(agent_id, hooks: saying(:pass), host: host(dispatch: %Refusing{}))
 
       assert %Call{state: :done, result: {:error, :over_budget}} =
-               request() |> Pipeline.model(scope) |> Pipeline.run(answering({:ok, nil}))
+               request() |> Pipeline.model(run) |> Pipeline.run(answering({:ok, nil}))
 
       refute_received {:invoked, _request}
       refute_received {:settled, _call}
@@ -238,13 +238,13 @@ defmodule Wardrik.Call.PipelineTest do
 
     test "keeps its answer, and counts it, when the dispatch cannot settle it",
          %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying(:pass), host: host(dispatch: %Unbooked{}))
+      run = run(agent_id, hooks: saying(:pass), host: host(dispatch: %Unbooked{}))
       outcome = {:ok, response(%{input_tokens: 3, output_tokens: 4})}
 
       log =
         capture_log(fn ->
           assert %Call{state: :done, result: ^outcome} =
-                   request() |> Pipeline.model(scope) |> Pipeline.run(answering(outcome))
+                   request() |> Pipeline.model(run) |> Pipeline.run(answering(outcome))
         end)
 
       assert log =~ ":ledger_down"
@@ -253,9 +253,9 @@ defmodule Wardrik.Call.PipelineTest do
 
     test "that failed before it was answered is heard by the dispatch alone",
          %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying(:pass), host: host(dispatch: %Routing{}))
+      run = run(agent_id, hooks: saying(:pass), host: host(dispatch: %Routing{}))
 
-      request() |> Pipeline.model(scope) |> Pipeline.run(answering({:error, :closed}))
+      request() |> Pipeline.model(run) |> Pipeline.run(answering({:error, :closed}))
 
       assert_received {:dispatch_settled, {:error, :closed}}
       refute_received {:settled, _call}
@@ -264,10 +264,10 @@ defmodule Wardrik.Call.PipelineTest do
 
   describe "a tool call" do
     test "is heard by every hook once its tool answers it", %{agent_id: agent_id} do
-      scope =
-        scope(agent_id, hooks: saying(:pass), tools: [tool("echo", fn _ -> {:ok, "hi"} end)])
+      run =
+        run(agent_id, hooks: saying(:pass), tools: [tool("echo", fn _ -> {:ok, "hi"} end)])
 
-      assert %Call{state: :done} = scope |> call("call_1", "echo") |> Pipeline.run()
+      assert %Call{state: :done} = run |> call("call_1", "echo") |> Pipeline.run()
 
       assert_received {:settled,
                        %Call{state: :done, result: {:ok, "hi"}, target: %Call.Tool{name: "echo"}}}
@@ -276,11 +276,11 @@ defmodule Wardrik.Call.PipelineTest do
     test "refused, or answered from the ledger, is heard by no hook", %{agent_id: agent_id} do
       echo = tool("echo", fn _ -> {:ok, "hi"} end)
 
-      scope(agent_id, hooks: saying({:deny, "No."}), tools: [echo])
+      run(agent_id, hooks: saying({:deny, "No."}), tools: [echo])
       |> call("call_1", "echo")
       |> Pipeline.run()
 
-      ledgered = scope(agent_id, tools: [echo], ledger: %Ledger.Store{})
+      ledgered = run(agent_id, tools: [echo], ledger: %Ledger.Store{})
       ledgered |> call("call_2", "echo") |> Pipeline.run()
 
       ledgered = %{ledgered | hooks: saying(:pass)}
@@ -296,7 +296,7 @@ defmodule Wardrik.Call.PipelineTest do
     test "names who decided it, and what answered it", %{agent_id: agent_id} do
       served = tool("echo", fn _ -> {:ok, "hi", served_by: %{id: "w1", name: "echoes"}} end)
 
-      scope(agent_id, hooks: saying(:allow), tools: [served])
+      run(agent_id, hooks: saying(:allow), tools: [served])
       |> call("call_1", "echo")
       |> Pipeline.run()
 
@@ -318,7 +318,7 @@ defmodule Wardrik.Call.PipelineTest do
         }
       }
 
-      scope(agent_id, tools: [served]) |> call("call_2", "echo") |> Pipeline.run()
+      run(agent_id, tools: [served]) |> call("call_2", "echo") |> Pipeline.run()
 
       assert_received %Event{
         payload: %Event.ToolStarted{
@@ -329,7 +329,7 @@ defmodule Wardrik.Call.PipelineTest do
         }
       }
 
-      scope(agent_id, hooks: saying({:deny, "No."}), tools: [served])
+      run(agent_id, hooks: saying({:deny, "No."}), tools: [served])
       |> call("call_3", "echo")
       |> Pipeline.run()
 
@@ -347,8 +347,8 @@ defmodule Wardrik.Call.PipelineTest do
   describe "a tool call in doubt" do
     test "waits on a person, and keeps its claim so a replay asks too", %{agent_id: agent_id} do
       quiet = tool("refund", fn _ -> {:in_doubt, "The worker went away before it answered."} end)
-      scope = scope(agent_id, tools: [quiet], ledger: %Ledger.Store{})
-      call = call(scope, "call_1", "refund")
+      run = run(agent_id, tools: [quiet], ledger: %Ledger.Store{})
+      call = call(run, "call_1", "refund")
 
       assert %Call{state: :waiting, asks: [%Call.Ask{by: :doubt, prompt: prompt}]} =
                waiting = Pipeline.run(call)
@@ -362,7 +362,7 @@ defmodule Wardrik.Call.PipelineTest do
       }
 
       assert {:ok, %Ledger.Entry{result: nil}} =
-               Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(scope, Call.to_map(call)),
+               Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(run, Call.to_map(call)),
                  store: Wardrik.Test.store()
                )
 
@@ -370,8 +370,8 @@ defmodule Wardrik.Call.PipelineTest do
     end
 
     test "runs once more under the same key where its tool says it may", %{agent_id: agent_id} do
-      scope = scope(agent_id, tools: [Refund], ledger: %Ledger.Store{})
-      call = call(scope, "call_1", "refund")
+      run = run(agent_id, tools: [Refund], ledger: %Ledger.Store{})
+      call = call(run, "call_1", "refund")
 
       assert %Call{state: :done, result: {:ok, %{"refunded" => true}}} = Pipeline.run(call)
 
@@ -388,16 +388,16 @@ defmodule Wardrik.Call.PipelineTest do
       }
 
       assert {:ok, %Ledger.Entry{result: {:ok, %{"refunded" => true}}}} =
-               Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(scope, Call.to_map(call)),
+               Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(run, Call.to_map(call)),
                  store: Wardrik.Test.store()
                )
     end
 
     test "again waits on a person", %{agent_id: agent_id} do
-      scope = scope(agent_id, tools: [Lost])
+      run = run(agent_id, tools: [Lost])
 
       assert %Call{state: :waiting, asks: [%Call.Ask{by: :doubt, prompt: prompt}]} =
-               scope |> call("call_1", "refund") |> Pipeline.run()
+               run |> call("call_1", "refund") |> Pipeline.run()
 
       assert prompt =~ "No worker answered."
       assert_received {:ran, false}
@@ -411,11 +411,11 @@ defmodule Wardrik.Call.PipelineTest do
           _first -> {:in_doubt, "No worker answered."}
         end)
 
-      scope = scope(agent_id, tools: [quiet])
-      waiting = scope |> call("call_1", "refund") |> Pipeline.run()
+      run = run(agent_id, tools: [quiet])
+      waiting = run |> call("call_1", "refund") |> Pipeline.run()
 
       assert %Call{state: :done, result: {:ok, %{"refunded" => true}}} =
-               waiting |> Call.under(scope) |> Pipeline.answer(:approve) |> Pipeline.run()
+               waiting |> Call.under(run) |> Pipeline.answer(:approve) |> Pipeline.run()
 
       assert_received {:ran, "refund", false}
       assert_received {:ran, "refund", true}
@@ -433,10 +433,10 @@ defmodule Wardrik.Call.PipelineTest do
       agent_id: agent_id
     } do
       quiet = tool("refund", fn _ -> {:in_doubt, "No worker answered."} end)
-      scope = scope(agent_id, tools: [quiet])
-      waiting = scope |> call("call_1", "refund") |> Pipeline.run()
+      run = run(agent_id, tools: [quiet])
+      waiting = run |> call("call_1", "refund") |> Pipeline.run()
 
-      waiting |> Call.under(scope) |> Pipeline.answer({:deny, "Leave it."}) |> Pipeline.run()
+      waiting |> Call.under(run) |> Pipeline.answer({:deny, "Leave it."}) |> Pipeline.run()
 
       assert_received %Event{
         payload: %Event.ToolDenied{

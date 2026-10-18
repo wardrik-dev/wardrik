@@ -10,7 +10,7 @@ defmodule WardrikHTTP.WorkerTest do
   alias Wardrik.Ledger
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias WardrikHTTP.Listener
   alias WardrikHTTP.Token
   alias WardrikHTTP.Workers
@@ -189,7 +189,7 @@ defmodule WardrikHTTP.WorkerTest do
   defp annotations(agent, name), do: Wardrik.Tool.annotations({Workers, agent}, name)
 
   # The context a call to a worker's tool is handed, for the agent under `key`.
-  defp handed(id), do: Wardrik.Test.context(Wardrik.Test.scope(id: id))
+  defp handed(id), do: Wardrik.Test.context(Wardrik.Test.run(id: id))
 
   # A worker's tool is gated unless it is read-only, so a call to echo runs
   # where a rule allows it by name.
@@ -216,10 +216,10 @@ defmodule WardrikHTTP.WorkerTest do
        context do
     connect(context, [tool("echo")])
 
-    scope =
+    run =
       [tools: [{Workers, context.agent}]]
       |> Config.new()
-      |> Scope.root(context.agent,
+      |> Run.root(context.agent,
         name: "turn",
         ledger: %Ledger.Store{},
         hooks: allowing_echo(),
@@ -228,10 +228,10 @@ defmodule WardrikHTTP.WorkerTest do
 
     call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
 
-    assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, scope)
+    assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, run)
 
-    key = Ledger.Key.idempotency(scope, call)
-    run = scope.source.trace.trace_id
+    key = Ledger.Key.idempotency(run, call)
+    trace_id = run.source.trace.trace_id
     agent = to_string(context.agent)
     name = context.agent.name
 
@@ -241,7 +241,7 @@ defmodule WardrikHTTP.WorkerTest do
                       "arguments" => %{"order" => "o_1"},
                       "_meta" => %{
                         "agent" => %{"key" => ^agent, "org" => "test", "name" => ^name} = whose,
-                        "run" => ^run,
+                        "run" => ^trace_id,
                         "idempotencyKey" => ^key
                       }
                     }}
@@ -249,9 +249,7 @@ defmodule WardrikHTTP.WorkerTest do
     refute Map.has_key?(whose, "user")
 
     assert {:ok, %Ledger.Entry{result: {:ok, %{"ok" => true, "result" => %{"order" => "o_1"}}}}} =
-             Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(scope, call),
-               store: Wardrik.Test.store()
-             )
+             Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(run, call), store: Wardrik.Test.store())
   end
 
   test "a call is answered with what its worker said it cost", context do
@@ -353,10 +351,10 @@ defmodule WardrikHTTP.WorkerTest do
        context do
     connect(context, [tool("leave")])
 
-    scope =
+    run =
       [tools: [{Workers, context.agent}]]
       |> Config.new()
-      |> Scope.root(context.agent,
+      |> Run.root(context.agent,
         name: "turn",
         ledger: %Ledger.Store{},
         host: Wardrik.Test.host(),
@@ -366,15 +364,13 @@ defmodule WardrikHTTP.WorkerTest do
     call = %{id: "call_1", name: "workers__leave", arguments: %{}}
 
     assert %Wardrik.Call{state: :waiting, asks: [%Wardrik.Call.Ask{by: :doubt, prompt: prompt}]} =
-             ToolRunner.execute(call, scope)
+             ToolRunner.execute(call, run)
 
     assert prompt =~ "workers__leave may already have done what it does."
     assert prompt =~ "The worker running leave went away before it answered."
 
     assert {:ok, %Ledger.Entry{result: nil}} =
-             Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(scope, call),
-               store: Wardrik.Test.store()
-             )
+             Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(run, call), store: Wardrik.Test.store())
   end
 
   test "a call run again in doubt with no worker to run it stays in doubt", context do
@@ -478,10 +474,10 @@ defmodule WardrikHTTP.WorkerTest do
        context do
     connect(context, [tool("echo", %{"idempotentHint" => true})])
 
-    scope =
+    run =
       [tools: [{Workers, context.agent}]]
       |> Config.new()
-      |> Scope.root(context.agent,
+      |> Run.root(context.agent,
         name: "turn",
         ledger: %Ledger.Store{},
         hooks: allowing_echo(),
@@ -491,14 +487,14 @@ defmodule WardrikHTTP.WorkerTest do
     call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
 
     :ok =
-      Ledger.claim(%Ledger.Store{}, Ledger.Key.of(scope, call),
+      Ledger.claim(%Ledger.Store{}, Ledger.Key.of(run, call),
         call: call,
         store: Wardrik.Test.store()
       )
 
-    assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, scope)
+    assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, run)
 
-    key = Ledger.Key.idempotency(scope, call)
+    key = Ledger.Key.idempotency(run, call)
     assert_receive {:called, %{"_meta" => %{"idempotencyKey" => ^key}}}
   end
 

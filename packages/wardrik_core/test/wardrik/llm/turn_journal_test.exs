@@ -8,17 +8,17 @@ defmodule Wardrik.LLM.TurnJournalTest do
   alias Wardrik.Event
   alias Wardrik.Ledger
   alias Wardrik.LLM
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.LLMStub
 
   # A turn run, resumed or replayed through its token, as a turn under
-  # `scope` is.
-  defp run(scope, context), do: scope |> LLM.Turn.new(context) |> LLM.Turn.run()
+  # `run` is.
+  defp turn(run, context), do: run |> LLM.Turn.new(context) |> LLM.Turn.run()
 
-  defp resume(scope, turn, decisions),
-    do: turn |> LLM.Turn.under(scope) |> LLM.Turn.resume(decisions)
+  defp resume(run, turn, decisions),
+    do: turn |> LLM.Turn.under(run) |> LLM.Turn.resume(decisions)
 
-  defp replay(scope, turn), do: turn |> LLM.Turn.under(scope) |> LLM.Turn.replay()
+  defp replay(run, turn), do: turn |> LLM.Turn.under(run) |> LLM.Turn.replay()
 
   setup :verify_on_exit!
 
@@ -40,18 +40,18 @@ defmodule Wardrik.LLM.TurnJournalTest do
     )
   end
 
-  defp scope(agent_id, opts) do
+  defp run(agent_id, opts) do
     LLM.Config.new(tools: [refund_tool(self())])
-    |> Scope.root(agent_id, [name: "turn", ledger: %Ledger.Store{}, host: host()] ++ opts)
+    |> Run.root(agent_id, [name: "turn", ledger: %Ledger.Store{}, host: host()] ++ opts)
   end
 
-  defp run_async(scope) do
-    Task.async(fn -> run(scope, Context.new([Context.user("refund it")])) end)
+  defp run_async(run) do
+    Task.async(fn -> turn(run, Context.new([Context.user("refund it")])) end)
   end
 
   test "hands the journal each batch before any of it runs", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.tool_call("call_1", "refund", %{}), LLMStub.final_answer("done")])
-    task = run_async(scope(agent_id, journal: self()))
+    task = run_async(run(agent_id, journal: self()))
 
     assert_receive {:"$gen_call", from, {:checkpoint, %LLM.Turn{} = checkpoint}}
     assert LLM.Turn.call_ids(checkpoint) == ["call_1"]
@@ -74,13 +74,13 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
     rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
-    scope =
+    run =
       [tools: [Wardrik.Test.Tools.Fetch, Wardrik.Test.Tools.Deploy]]
       |> LLM.Config.new()
-      |> Scope.root(agent_id, name: "turn", ledger: %Ledger.Store{}, hooks: rules, host: host())
+      |> Run.root(agent_id, name: "turn", ledger: %Ledger.Store{}, hooks: rules, host: host())
 
-    journaled = %{scope | journal: self()}
-    task = Task.async(fn -> run(journaled, Context.new()) end)
+    journaled = %{run | journal: self()}
+    task = Task.async(fn -> turn(journaled, Context.new()) end)
 
     assert_receive {:"$gen_call", from, {:checkpoint, %LLM.Turn{labels: []}}}
     GenServer.reply(from, :ok)
@@ -91,14 +91,14 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
     Task.shutdown(task, :brutal_kill)
 
-    assert %LLM.Turn{state: :waiting} = replayed = replay(scope, checkpoint)
+    assert %LLM.Turn{state: :waiting} = replayed = replay(run, checkpoint)
     assert [{%{id: "call_2"}, prompt}] = LLM.Turn.waiting(replayed)
     assert prompt =~ "this run has read content from outside"
   end
 
   test "a journal that does not answer ends the turn before anything runs", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.tool_call("call_1", "refund", %{})])
-    task = run_async(scope(agent_id, journal: self()))
+    task = run_async(run(agent_id, journal: self()))
 
     assert_receive {:"$gen_call", from, {:checkpoint, _checkpoint}}
     GenServer.reply(from, {:error, :disk_full})
@@ -109,7 +109,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
   test "a final answer is not handed to the journal", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.final_answer("done")])
-    task = run_async(scope(agent_id, journal: self()))
+    task = run_async(run(agent_id, journal: self()))
 
     assert %LLM.Turn{state: :done, messages: _messages} = Task.await(task)
     refute_received {:"$gen_call", _from, {:checkpoint, _checkpoint}}
@@ -118,10 +118,10 @@ defmodule Wardrik.LLM.TurnJournalTest do
   test "replay/2 answers a call that already ran from the ledger, and goes on", %{
     agent_id: agent_id
   } do
-    scope = scope(agent_id, [])
+    run = run(agent_id, [])
     response = LLMStub.tool_call("call_1", "refund", %{})
     [call] = ReqLLM.Response.classify(response).tool_calls
-    key = Ledger.Key.of(Scope.batch(scope, 0), call)
+    key = Ledger.Key.of(Run.batch(run, 0), call)
     :ok = Ledger.claim(%Ledger.Store{}, key, call: call, store: Wardrik.Test.store())
 
     :ok =
@@ -138,7 +138,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
       remaining: 5
     }
 
-    assert %LLM.Turn{state: :done, messages: messages} = replay(scope, checkpoint)
+    assert %LLM.Turn{state: :done, messages: messages} = replay(run, checkpoint)
     refute_received :refunded
 
     assert_received %Event{
@@ -151,14 +151,14 @@ defmodule Wardrik.LLM.TurnJournalTest do
   test "a call a policy asked about, and found to have begun since, is asked about again", %{
     agent_id: agent_id
   } do
-    scope = scope(agent_id, [])
+    run = run(agent_id, [])
     response = LLMStub.tool_call("call_1", "refund", %{})
     [call] = ReqLLM.Response.classify(response).tool_calls
 
     :ok =
       Ledger.claim(
         %Ledger.Store{},
-        Ledger.Key.of(Scope.batch(scope, 0), call),
+        Ledger.Key.of(Run.batch(run, 0), call),
         call: call,
         store: Wardrik.Test.store()
       )
@@ -172,7 +172,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
       state: :waiting
     }
 
-    assert %LLM.Turn{state: :waiting} = again = resume(scope, parked, %{"call_1" => :approve})
+    assert %LLM.Turn{state: :waiting} = again = resume(run, parked, %{"call_1" => :approve})
     assert [{%{id: "call_1"}, prompt}] = LLM.Turn.waiting(again)
     assert prompt =~ "may already have done what it does"
     refute_received :refunded
@@ -180,7 +180,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
     LLMStub.stream([LLMStub.final_answer("Refunded.")])
 
     assert %LLM.Turn{state: :done, messages: messages} =
-             resume(scope, again, %{"call_1" => :approve})
+             resume(run, again, %{"call_1" => :approve})
 
     assert_received :refunded
     assert List.last(messages).role == :assistant
@@ -194,7 +194,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
     ])
 
     assert %LLM.Turn{state: :done, messages: _messages} =
-             run(scope(agent_id, []), Context.new([Context.user("refund both")]))
+             turn(run(agent_id, []), Context.new([Context.user("refund both")]))
 
     assert_received :refunded
     assert_received :refunded
@@ -211,7 +211,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
         description: "Hands the work to a delegate.",
         parameter_schema: [],
         run: fn _input, context ->
-          {:ok, answer} = Wardrik.Subagent.run(context.scope, "refund it")
+          {:ok, answer} = Wardrik.Subagent.run(context.run, "refund it")
           {:ok, %{"answer" => answer}}
         end
       )
@@ -223,17 +223,17 @@ defmodule Wardrik.LLM.TurnJournalTest do
       LLMStub.final_answer("Done.")
     ])
 
-    scope =
+    run =
       LLM.Config.new(tools: [research, refund_tool(test_pid)])
-      |> Scope.root(agent_id, name: "turn", ledger: %Ledger.Store{}, host: host())
+      |> Run.root(agent_id, name: "turn", ledger: %Ledger.Store{}, host: host())
 
     assert %LLM.Turn{state: :done, messages: _messages} =
-             run(scope, Context.new([Context.user("look into it")]))
+             turn(run, Context.new([Context.user("look into it")]))
 
     assert_received :refunded
   end
 
-  test "a delegation's scope has no journal", %{agent_id: agent_id} do
-    assert Scope.child(scope(agent_id, journal: self())).journal == nil
+  test "a delegation's run has no journal", %{agent_id: agent_id} do
+    assert Run.child(run(agent_id, journal: self())).journal == nil
   end
 end

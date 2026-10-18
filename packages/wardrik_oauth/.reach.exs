@@ -52,7 +52,7 @@
       "Wardrik.Ledger.None",
       "Wardrik.Ledger.Store",
       "Wardrik.Principal",
-      "Wardrik.Scope",
+      "Wardrik.Run",
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",

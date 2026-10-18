@@ -65,8 +65,8 @@ defmodule Wardrik.Test.AgentRunners do
   Delegates one task named `name`, announcing it as `Wardrik.Subagent` would,
   and holds it until released; then answers.
   """
-  def delegating(test_pid, name, %Turn{scope: scope} = turn) do
-    Wardrik.Scope.span(scope, name, fn branch ->
+  def delegating(test_pid, name, %Turn{run: run} = turn) do
+    Wardrik.Run.span(run, name, fn branch ->
       Wardrik.Event.emit(branch.source, %Event.DelegationStarted{prompt: "look into #{name}"})
       send(test_pid, {:delegating, self()})
       receive do: (:release -> :ok)
@@ -85,22 +85,22 @@ defmodule Wardrik.Test.AgentRunners do
   @doc "Fails every turn with `reason`."
   def failing(reason, %Turn{} = turn), do: Turn.fail(turn, reason)
 
-  @doc "Emits on the scope it was given before answering."
-  def emitting(text, %Turn{scope: scope} = turn) do
-    Wardrik.Event.emit(scope.source, %Event.Result{text: text})
+  @doc "Emits on the run it was given before answering."
+  def emitting(text, %Turn{run: run} = turn) do
+    Wardrik.Event.emit(run.source, %Event.Result{text: text})
     Turn.done(turn, [Context.assistant("ok")])
   end
 
-  @doc "Reports the scope it was given, then answers."
-  def reporting(test_pid, %Turn{scope: scope} = turn) do
-    send(test_pid, {:scope, scope})
+  @doc "Reports the run it was given, then answers."
+  def reporting(test_pid, %Turn{run: run} = turn) do
+    send(test_pid, {:run, run})
     Turn.done(turn, [Context.assistant("ok")])
   end
 
   @doc "Waits on a single call, so the waiting path runs without a hook."
-  def parking(test_pid, call_id, %Turn{scope: scope}) do
+  def parking(test_pid, call_id, %Turn{run: run}) do
     send(test_pid, :asked)
-    Turn.under(parked_turn(call_id), scope)
+    Turn.under(parked_turn(call_id), run)
   end
 
   @doc """
@@ -112,12 +112,12 @@ defmodule Wardrik.Test.AgentRunners do
   def connecting(test_pid, call_id, link, %Turn{} = turn),
     do: connecting(test_pid, call_id, link, nil, turn)
 
-  def connecting(test_pid, call_id, link, credential, %Turn{scope: scope}) do
+  def connecting(test_pid, call_id, link, credential, %Turn{run: run}) do
     send(test_pid, :asked)
     %Turn{calls: [waiting]} = turn = parked_turn(call_id)
     prompt = "To connect github, open its authorization link."
     parked = Wardrik.Call.park(%{waiting | asks: []}, prompt, link: link, credential: credential)
-    Turn.under(%{turn | calls: [parked]}, scope)
+    Turn.under(%{turn | calls: [parked]}, run)
   end
 
   @doc """
@@ -140,8 +140,8 @@ defmodule Wardrik.Test.AgentRunners do
   end
 
   @doc "Hands the agent the turn before a batch, as a turn does, tells the test, and blocks."
-  def checkpointing(test_pid, %Turn{scope: scope, context: context} = turn) do
-    :ok = GenServer.call(scope.journal, {:checkpoint, checkpoint(context)})
+  def checkpointing(test_pid, %Turn{run: run, context: context} = turn) do
+    :ok = GenServer.call(run.journal, {:checkpoint, checkpoint(context)})
     send(test_pid, {:checkpointed, self()})
 
     receive do
@@ -157,7 +157,7 @@ defmodule Wardrik.Test.AgentRunners do
 
   defp came_to(turn, {:ok, messages}), do: Turn.done(%{turn | state: :running}, messages)
   defp came_to(turn, {:error, reason}), do: Turn.fail(turn, reason)
-  defp came_to(turn, {:parked, %Turn{} = parked}), do: Turn.under(parked, turn.scope)
+  defp came_to(turn, {:parked, %Turn{} = parked}), do: Turn.under(parked, turn.run)
 
   @doc "A turn written down before a batch asking for one call to `deploy`."
   def checkpoint(context \\ Context.new()) do

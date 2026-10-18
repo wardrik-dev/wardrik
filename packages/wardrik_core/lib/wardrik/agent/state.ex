@@ -16,12 +16,12 @@ defmodule Wardrik.Agent.State do
 
       %State{mode: :idle}
       %State{mode: %Due{recovery: :owed, source: nil, sender: maria}}
-      %State{mode: %Running{task: task, scope: scope, started_at: at, stopping: nil, recovery: :owed}}
+      %State{mode: %Running{task: task, run: run, started_at: at, stopping: nil, recovery: :owed}}
       %State{mode: %Waiting{turn: parked, source: source, sender: maria, started_at: at}}
 
   Because the data lives inside the mode rather than beside it, a whole class
   of states cannot be written down. There is no way to be running and waiting
-  at once, to be stopping while idle, or to hold a scope with no turn under it.
+  at once, to be stopping while idle, or to hold a run with no turn under it.
   Nothing has to check for those, because nothing can produce them.
 
   ## Written down
@@ -47,8 +47,8 @@ defmodule Wardrik.Agent.State do
 
   ## One sender a turn
 
-  A turn answers the messages of one sender, and runs under a scope naming
-  them as `Wardrik.Scope`'s `:sender`, so what it does for someone is done
+  A turn answers the messages of one sender, and its run names them as
+  `Wardrik.Run`'s `:sender`, so what it does for someone is done
   as them: `take/1` takes the oldest queued message and those after it from
   the same sender, and leaves the rest for the turns after. A message from
   the running turn's sender joins that turn; one from anybody else waits for
@@ -101,7 +101,7 @@ defmodule Wardrik.Agent.State do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
   alias Wardrik.Principal
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Trace
 
   defmodule Stopping do
@@ -117,8 +117,8 @@ defmodule Wardrik.Agent.State do
   defmodule Running do
     @moduledoc "A turn in flight, and everything that belongs to it."
 
-    @enforce_keys [:task, :scope, :started_at, :recovery]
-    defstruct [:task, :scope, :started_at, :stopping, :recovery]
+    @enforce_keys [:task, :run, :started_at, :recovery]
+    defstruct [:task, :run, :started_at, :stopping, :recovery]
 
     @typedoc """
     What the turn comes back as if it is lost: `:owed`, run again against
@@ -132,12 +132,12 @@ defmodule Wardrik.Agent.State do
             | {:resuming, Turn.t(), %{String.t() => Turn.decision()}}
 
     @typedoc """
-    The task running the turn, the scope it runs under, whether it is
+    The task running the turn, the run it is under, whether it is
     stopping, and what it comes back as.
     """
     @type t() :: %__MODULE__{
             task: Task.t(),
-            scope: Wardrik.Scope.t(),
+            run: Wardrik.Run.t(),
             started_at: integer(),
             stopping: Wardrik.Agent.State.Stopping.t() | nil,
             recovery: recovery()
@@ -189,7 +189,7 @@ defmodule Wardrik.Agent.State do
 
   @default_idle_timeout :timer.minutes(15)
 
-  @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :scope_opts, :log, :host]
+  @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :run_opts, :log, :host]
   defstruct [
     :generation,
     :agent_id,
@@ -199,7 +199,7 @@ defmodule Wardrik.Agent.State do
     :context,
     :runner,
     :resumer,
-    :scope_opts,
+    :run_opts,
     replayer: {Turn, :replay, []},
     grace: @default_grace,
     idle_timeout: @default_idle_timeout,
@@ -243,7 +243,7 @@ defmodule Wardrik.Agent.State do
   @typedoc """
   Finishes a waiting turn once its calls have been answered.
 
-  Called with the turn, under the scope it resumes in, and the decisions
+  Called with the turn, under the run it resumes in, and the decisions
   appended to `args`.
   """
   @type resumer() :: {module(), atom(), list()}
@@ -257,7 +257,7 @@ defmodule Wardrik.Agent.State do
           context: Context.t(),
           runner: runner(),
           resumer: resumer(),
-          scope_opts: keyword(),
+          run_opts: keyword(),
           grace: pos_integer(),
           idle_timeout: timeout(),
           active_at: integer() | nil,
@@ -287,7 +287,7 @@ defmodule Wardrik.Agent.State do
       `task_ref` names after `ms`, then record it with `arm/3`
     * `{:cancel_kill, timer}` - a turn answered before its kill was needed
     * `{:shutdown, task}` - the kill fired; end the task now
-    * `{:close_turn, scope}` - a turn has ended for good: its ledger claims
+    * `{:close_turn, run}` - a turn has ended for good: its ledger claims
       will never be read again, and the log can drop what has aged out
     * `{:send, id, message}` - send the agent `id` a message: what a turn
       answered to an agent that asked it
@@ -299,7 +299,7 @@ defmodule Wardrik.Agent.State do
           | {:arm_kill, reference(), pos_integer(), non_neg_integer()}
           | {:cancel_kill, reference()}
           | {:shutdown, Task.t()}
-          | {:close_turn, Scope.t()}
+          | {:close_turn, Run.t()}
           | {:send, Wardrik.AgentID.t(), Message.t()}
 
   @typedoc "What an interrupt stopped."
@@ -328,7 +328,7 @@ defmodule Wardrik.Agent.State do
       runner: mfa!(Keyword.get(opts, :runner, {Turn, :run, []}), :runner),
       resumer: mfa!(Keyword.get(opts, :resumer, {Turn, :resume, []}), :resumer),
       replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :replay, []}), :replayer),
-      scope_opts: Keyword.take(opts, Scope.seams()),
+      run_opts: Keyword.take(opts, Run.seams()),
       grace: Keyword.get(opts, :grace, @default_grace),
       idle_timeout: idle_timeout!(Keyword.get(opts, :idle_timeout, @default_idle_timeout)),
       wake_only: Keyword.get(opts, :wake_only, false)
@@ -344,11 +344,11 @@ defmodule Wardrik.Agent.State do
 
   @doc """
   The same agent with the config and seams in `opts`, for the turns it starts
-  from now on. A turn already running keeps the scope it began under, and a
+  from now on. A turn already running keeps the run it began under, and a
   parked one is resumed under the new seams.
 
   `:config` and `:idle_timeout` replace the agent's when given. The seams in
-  `opts`, of `Wardrik.Scope.seams/0`, replace every seam the agent had, so one
+  `opts`, of `Wardrik.Run.seams/0`, replace every seam the agent had, so one
   left out is one the agent no longer has. Who the work is for stays with the
   agent's ID.
   """
@@ -358,7 +358,7 @@ defmodule Wardrik.Agent.State do
       state
       | config: Keyword.get(opts, :config, state.config),
         idle_timeout: idle_timeout!(Keyword.get(opts, :idle_timeout, state.idle_timeout)),
-        scope_opts: Keyword.take(opts, Scope.seams())
+        run_opts: Keyword.take(opts, Run.seams())
     }
   end
 
@@ -414,30 +414,30 @@ defmodule Wardrik.Agent.State do
   end
 
   @doc "Runs a turn with the runner this agent was given."
-  @spec apply_runner(t(), Scope.t(), Context.t()) :: Turn.t()
-  def apply_runner(%__MODULE__{runner: {module, function, args}}, %Scope{} = scope, context) do
-    apply(module, function, args ++ [Turn.new(scope, context)])
+  @spec apply_runner(t(), Run.t(), Context.t()) :: Turn.t()
+  def apply_runner(%__MODULE__{runner: {module, function, args}}, %Run{} = run, context) do
+    apply(module, function, args ++ [Turn.new(run, context)])
   end
 
   @doc "Finishes a parked turn with the resumer this agent was given."
-  @spec apply_resumer(t(), Scope.t(), Turn.t(), map()) :: Turn.t()
+  @spec apply_resumer(t(), Run.t(), Turn.t(), map()) :: Turn.t()
   def apply_resumer(
         %__MODULE__{resumer: {module, function, args}},
-        %Scope{} = scope,
+        %Run{} = run,
         turn,
         decisions
       ) do
-    apply(module, function, args ++ [Turn.under(turn, scope), decisions])
+    apply(module, function, args ++ [Turn.under(turn, run), decisions])
   end
 
   @doc "Carries on a lost turn from where its journal last had it, with the replayer this agent was given."
-  @spec apply_replayer(t(), Scope.t(), Turn.t()) :: Turn.t()
+  @spec apply_replayer(t(), Run.t(), Turn.t()) :: Turn.t()
   def apply_replayer(
         %__MODULE__{replayer: {module, function, args}},
-        %Scope{} = scope,
+        %Run{} = run,
         checkpoint
       ) do
-    apply(module, function, args ++ [Turn.under(checkpoint, scope)])
+    apply(module, function, args ++ [Turn.under(checkpoint, run)])
   end
 
   @doc """
@@ -446,18 +446,18 @@ defmodule Wardrik.Agent.State do
   """
   @spec stale?(t()) :: boolean()
   def stale?(%__MODULE__{mode: %Waiting{turn: %Turn{revision: revision}}} = state),
-    do: revision != Hook.revision(Keyword.get(state.scope_opts, :hooks) || [])
+    do: revision != Hook.revision(Keyword.get(state.run_opts, :hooks) || [])
 
   def stale?(%__MODULE__{}), do: false
 
   @doc """
-  The scope a turn for this agent runs under, asked for by `sender`, carrying
+  The run a turn for this agent runs under, asked for by `sender`, carrying
   what its history holds.
   """
-  @spec turn_scope(t(), Wardrik.Principal.t() | nil) :: Scope.t()
-  def turn_scope(%__MODULE__{} = state, sender) do
-    opts = [name: "turn", sender: sender, host: state.host] ++ state.scope_opts
-    %{Scope.root(state.config, state.agent_id, opts) | labels: state.labels}
+  @spec turn_run(t(), Wardrik.Principal.t() | nil) :: Run.t()
+  def turn_run(%__MODULE__{} = state, sender) do
+    opts = [name: "turn", sender: sender, host: state.host] ++ state.run_opts
+    %{Run.root(state.config, state.agent_id, opts) | labels: state.labels}
   end
 
   @doc "Records how far this agent's log has got."
@@ -504,8 +504,8 @@ defmodule Wardrik.Agent.State do
     end
   end
 
-  defp nudge(%Running{task: %Task{pid: pid}, scope: scope}, message) do
-    if from?(message, scope.sender), do: [{:ask_to_stop, pid}], else: []
+  defp nudge(%Running{task: %Task{pid: pid}, run: run}, message) do
+    if from?(message, run.sender), do: [{:ask_to_stop, pid}], else: []
   end
 
   defp nudge(_mode, _message), do: []
@@ -515,9 +515,9 @@ defmodule Wardrik.Agent.State do
   defp from?(%Message{sender: sender}, other), do: Principal.same?(sender, other)
 
   @doc """
-  The messages a new turn should answer, the scope it runs under, and the
+  The messages a new turn should answer, the run it is under, and the
   state with them taken: the oldest queued message, and those after it from
-  the same sender, whom the scope names.
+  the same sender, whom the run names.
 
   `:none` when a turn is already in flight, when one is waiting on a person, or
   when nothing is queued. A waiting turn is still the current turn: anything
@@ -526,21 +526,21 @@ defmodule Wardrik.Agent.State do
   An agent owed a turn runs one for the sender it was running it for, with
   only their queued messages ahead, against the context that already holds
   the question it was answering. One due to replay a turn
-  answers `{:replay, scope, checkpoint, state}`: the turn goes on from its
+  answers `{:replay, run, checkpoint, state}`: the turn goes on from its
   checkpoint, under the trace it began on. One due to resume a parked turn
-  answers `{:resume, scope, turn, decisions, state}`: the turn goes on with
+  answers `{:resume, run, turn, decisions, state}`: the turn goes on with
   the decisions it was given, under the trace that parked.
   """
   @spec take(t()) ::
-          {:run, Scope.t(), [Message.t()], t()}
-          | {:replay, Scope.t(), Turn.t(), t()}
-          | {:resume, Scope.t(), Turn.t(), %{String.t() => Turn.decision()}, t()}
+          {:run, Run.t(), [Message.t()], t()}
+          | {:replay, Run.t(), Turn.t(), t()}
+          | {:resume, Run.t(), Turn.t(), %{String.t() => Turn.decision()}, t()}
           | :none
   def take(%__MODULE__{mode: %Due{recovery: {:replaying, checkpoint}} = due} = state),
-    do: {:replay, %{turn_scope(state, due.sender) | source: due.source}, checkpoint, state}
+    do: {:replay, %{turn_run(state, due.sender) | source: due.source}, checkpoint, state}
 
   def take(%__MODULE__{mode: %Due{recovery: {:resuming, turn, decisions}} = due} = state),
-    do: {:resume, %{turn_scope(state, due.sender) | source: due.source}, turn, decisions, state}
+    do: {:resume, %{turn_run(state, due.sender) | source: due.source}, turn, decisions, state}
 
   def take(%__MODULE__{mode: %Due{recovery: :owed, sender: sender}} = state),
     do: taken(state, sender)
@@ -552,7 +552,7 @@ defmodule Wardrik.Agent.State do
   defp taken(state, sender) do
     {asked, later} = state.pending |> Enum.reverse() |> Enum.split_while(&from?(&1, sender))
 
-    {:run, turn_scope(state, sender), asked,
+    {:run, turn_run(state, sender), asked,
      %{
        state
        | pending: Enum.reverse(later),
@@ -565,24 +565,24 @@ defmodule Wardrik.Agent.State do
     do: for(%Message{id: id, reply_to: to} <- messages, agent <- to, do: {agent, id})
 
   @doc "Records the turn a `take/1` led to, and the context it was given."
-  @spec started(t(), Task.t(), Scope.t(), Context.t(), integer()) :: t()
-  def started(%__MODULE__{} = state, task, %Scope{} = scope, %Context{} = context, started_at) do
+  @spec started(t(), Task.t(), Run.t(), Context.t(), integer()) :: t()
+  def started(%__MODULE__{} = state, task, %Run{} = run, %Context{} = context, started_at) do
     %{
       state
       | context: context,
-        labels: Wardrik.Label.union(state.labels, scope.labels),
-        mode: %Running{task: task, scope: scope, started_at: started_at, recovery: :owed}
+        labels: Wardrik.Label.union(state.labels, run.labels),
+        mode: %Running{task: task, run: run, started_at: started_at, recovery: :owed}
     }
   end
 
   @doc "Records the turn a `{:replay, ...}` from `take/1` led to."
-  @spec replayed(t(), Task.t(), Scope.t(), Turn.t(), integer()) :: t()
-  def replayed(%__MODULE__{} = state, task, %Scope{} = scope, checkpoint, started_at) do
+  @spec replayed(t(), Task.t(), Run.t(), Turn.t(), integer()) :: t()
+  def replayed(%__MODULE__{} = state, task, %Run{} = run, checkpoint, started_at) do
     %{
       state
       | mode: %Running{
           task: task,
-          scope: scope,
+          run: run,
           started_at: started_at,
           recovery: {:replaying, checkpoint}
         }
@@ -644,7 +644,7 @@ defmodule Wardrik.Agent.State do
     }
 
     {idle(state),
-     [{:emit, running.scope.source, finish(running, messages)}, close(running.scope)] ++
+     [{:emit, running.run.source, finish(running, messages)}, close(running.run)] ++
        disarm(running) ++ reply(running, state, messages, labels)}
   end
 
@@ -681,12 +681,12 @@ defmodule Wardrik.Agent.State do
   def parked(%__MODULE__{mode: %Running{} = running} = state, turn) do
     waiting = %Waiting{
       turn: turn,
-      source: running.scope.source,
-      sender: running.scope.sender,
+      source: running.run.source,
+      sender: running.run.sender,
       started_at: running.started_at
     }
 
-    announcement = {:emit, running.scope.source, %Event.TurnParked{calls: Turn.waiting(turn)}}
+    announcement = {:emit, running.run.source, %Event.TurnParked{calls: Turn.waiting(turn)}}
 
     {%{state | mode: waiting}, [announcement | disarm(running)]}
   end
@@ -695,7 +695,7 @@ defmodule Wardrik.Agent.State do
   @spec failed(t(), term()) :: {t(), [effect()]}
   def failed(%__MODULE__{mode: %Running{} = running} = state, reason) do
     {idle(%{state | outcome: :failed}),
-     [{:emit, running.scope.source, %Event.TurnFailed{reason: reason}}, close(running.scope)] ++
+     [{:emit, running.run.source, %Event.TurnFailed{reason: reason}}, close(running.run)] ++
        disarm(running) ++ answer(state, state.answering, &failed/1, [])}
   end
 
@@ -731,7 +731,7 @@ defmodule Wardrik.Agent.State do
     {idle(%{drained | outcome: :interrupted}),
      [
        {:emit, source, %Event.TurnInterrupted{stats: stats(nil, dropped, 0, :abandoned)}},
-       close(%{turn_scope(state, due.sender) | source: source})
+       close(%{turn_run(state, due.sender) | source: source})
        | unanswered(state)
      ]}
   end
@@ -743,7 +743,7 @@ defmodule Wardrik.Agent.State do
     {idle(%{drained | outcome: :interrupted}),
      [
        {:emit, waiting.source, %Event.TurnInterrupted{stats: stats}},
-       close(%{turn_scope(state, waiting.sender) | source: waiting.source})
+       close(%{turn_run(state, waiting.sender) | source: waiting.source})
        | unanswered(state)
      ]}
   end
@@ -788,8 +788,8 @@ defmodule Wardrik.Agent.State do
     {:kill, idle(%{state | outcome: :interrupted}),
      [
        {:shutdown, running.task},
-       {:emit, running.scope.source, %Event.TurnInterrupted{stats: stats}},
-       close(running.scope)
+       {:emit, running.run.source, %Event.TurnInterrupted{stats: stats}},
+       close(running.run)
        | answer(state, state.answering, &stopped/1, [])
      ]}
   end
@@ -797,16 +797,16 @@ defmodule Wardrik.Agent.State do
   def kill(%__MODULE__{}, _tag), do: :stale
 
   @doc """
-  The turn a waiting agent should carry on with, and the scope to run it under:
+  The turn a waiting agent should carry on with, and the run it carries on under:
   this node's tools, a fresh budget, and the source that parked.
 
   `:none` when nothing is waiting.
   """
-  @spec resume(t()) :: {:resume, Scope.t(), Turn.t(), integer()} | :none
+  @spec resume(t()) :: {:resume, Run.t(), Turn.t(), integer()} | :none
   def resume(%__MODULE__{mode: %Waiting{} = waiting} = state) do
-    scope = %{turn_scope(state, waiting.sender) | source: waiting.source}
+    run = %{turn_run(state, waiting.sender) | source: waiting.source}
 
-    {:resume, scope, waiting.turn, waiting.started_at}
+    {:resume, run, waiting.turn, waiting.started_at}
   end
 
   def resume(%__MODULE__{}), do: :none
@@ -827,12 +827,12 @@ defmodule Wardrik.Agent.State do
   Records the turn a `resume/1`, or a `{:resume, ...}` from `take/1`, led to:
   the park it came from and the decisions it was resumed with.
   """
-  @spec resumed(t(), Task.t(), Scope.t(), Turn.t(), %{String.t() => Turn.decision()}, integer()) ::
+  @spec resumed(t(), Task.t(), Run.t(), Turn.t(), %{String.t() => Turn.decision()}, integer()) ::
           t()
-  def resumed(%__MODULE__{} = state, task, %Scope{} = scope, turn, decisions, started_at) do
+  def resumed(%__MODULE__{} = state, task, %Run{} = run, turn, decisions, started_at) do
     running = %Running{
       task: task,
-      scope: scope,
+      run: run,
       started_at: started_at,
       recovery: {:resuming, turn, decisions}
     }
@@ -860,7 +860,7 @@ defmodule Wardrik.Agent.State do
   defp failed(id), do: "Could not answer your message #{id}: the turn that took it failed."
   defp stopped(id), do: "Stopped before answering your message #{id}."
 
-  defp close(%Scope{} = scope), do: {:close_turn, scope}
+  defp close(%Run{} = run), do: {:close_turn, run}
 
   # A turn that never started has no clock to read, so it reports no time.
   defp stats(started_at, dropped, kept, resolution) do

@@ -116,7 +116,7 @@ specific.
 `Wardrik.Subagent.run/3` delegates one bounded task to another agent and
 returns its answer. It takes `:name`, `:system`, `:tools`, `:except_tools`,
 `:model` and `:config`, so a tool says who does the work it hands off, and
-what they can use, without reaching into a scope or a config. Its events land
+what they can use, without reaching into a run or a config. Its events land
 in the caller's stream, under a span of their own.
 
 A persona is the config's `:system`. It is put before every turn rather than
@@ -129,7 +129,7 @@ Core runs agents. Who an agent works for, which of its calls may run, and
 which model a call lands on and who pays for it are seams your application
 fills in. Each is inert until you give it something, so an application that
 needs none of them configures none of them. Who the work is for is the
-agent's ID, which every `Wardrik.Scope` names: it appears in every event and
+agent's ID, which every `Wardrik.Run` names: it appears in every event and
 store key, so give a user as an id rather than an email address.
 
 ```elixir
@@ -271,7 +271,7 @@ and the agent writes the batch to the store first. A turn whose node is lost
 comes back replaying from that batch, with the same calls, rather than asking
 the model again.
 
-With a `Wardrik.Ledger` on the scope, each call is claimed before it runs and
+With a `Wardrik.Ledger` on the run, each call is claimed before it runs and
 settled after. A replay then answers a call that already ran with what it
 returned, and parks one that began and never finished for a person to decide,
 as it does a call whose tool answers `{:in_doubt, reason}` because it cannot
@@ -335,7 +335,7 @@ without notice.
 
 | | Modules |
 | --- | --- |
-| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Connections.Owner`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Grants`, `Wardrik.Servers` and the `None` of each, `Wardrik.Grants` and the `None` of each, `Wardrik.Servers.Key`, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Token`, `Wardrik.Catalog`, `Wardrik.Catalog.Entry`, `Wardrik.Catalog.Tools`, `Wardrik.Catalog.Self`, `Wardrik.Catalog.Agents`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store` |
+| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Connections.Owner`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Grants`, `Wardrik.Servers` and the `None` of each, `Wardrik.Grants` and the `None` of each, `Wardrik.Servers.Key`, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Token`, `Wardrik.Catalog`, `Wardrik.Catalog.Entry`, `Wardrik.Catalog.Tools`, `Wardrik.Catalog.Self`, `Wardrik.Catalog.Agents`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store` |
 | Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.History`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | What people changed | `Wardrik.Audit` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
@@ -346,13 +346,13 @@ without notice.
 
 Core ships what a suite built on it needs, under `Wardrik.Test`.
 `Wardrik.Test.start/1` starts ExUnit once the runtime is ready, so a
-`test_helper.exs` is one line. `Wardrik.Test.scope/1` builds the scope a turn
+`test_helper.exs` is one line. `Wardrik.Test.run/1` builds the run a turn
 runs under, and `Wardrik.Test.call/4` runs one tool call through the steps a
 turn runs it, hooks and ledger included:
 
 ```elixir
-scope = Wardrik.Test.scope(tools: [MyApp.Tools.Ping], hooks: hooks)
-assert %Wardrik.Call{state: :done, result: {:ok, _}} = Wardrik.Test.call(scope, "ping", %{host: "a"})
+run = Wardrik.Test.run(tools: [MyApp.Tools.Ping], hooks: hooks)
+assert %Wardrik.Call{state: :done, result: {:ok, _}} = Wardrik.Test.call(run, "ping", %{host: "a"})
 ```
 
 `Wardrik.Test.Fleet` starts an agent under an ID of each test's own and

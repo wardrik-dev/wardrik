@@ -63,19 +63,19 @@ defmodule Wardrik.Test.Tools.Rules do
   @behaviour Wardrik.Hook
 
   alias Wardrik.Call
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   @impl true
   def init(rules), do: Map.new(rules)
 
   @impl true
-  def call(%Call{target: %Call.Tool{name: name} = tool, scope: scope}, rules) do
+  def call(%Call{target: %Call.Tool{name: name} = tool, run: run}, rules) do
     allow_after = Map.get(rules, :allow_after, %{})
 
     cond do
       names?(rules[:deny], name) -> {:deny, "#{name} is refused here."}
       names?(rules[:ask], name) -> {:ask, "#{name} needs a person."}
-      allows?(rules[:allow], allow_after, name) -> held(tool, scope, allow_after)
+      allows?(rules[:allow], allow_after, name) -> held(tool, run, allow_after)
       true -> :pass
     end
   end
@@ -86,7 +86,7 @@ defmodule Wardrik.Test.Tools.Rules do
     do:
       names?(allow, name) or Enum.any?(allow_after, fn {_label, names} -> names?(names, name) end)
 
-  defp held(%Call.Tool{gated: true, name: name}, %Scope{labels: labels}, allow_after) do
+  defp held(%Call.Tool{gated: true, name: name}, %Run{labels: labels}, allow_after) do
     holding = ["outside" | Map.keys(allow_after)]
 
     case Enum.find(labels, &(&1 in holding and not names?(allow_after[&1], name))) do
@@ -98,7 +98,7 @@ defmodule Wardrik.Test.Tools.Rules do
     end
   end
 
-  defp held(_tool, _scope, _allow_after), do: :allow
+  defp held(_tool, _run, _allow_after), do: :allow
 
   defp names?(:all, _name), do: true
   defp names?(names, name) when is_list(names), do: name in names

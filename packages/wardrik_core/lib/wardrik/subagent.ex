@@ -7,7 +7,7 @@ defmodule Wardrik.Subagent do
   runs as the caller does, with the same model and the same tools, and its
   events publish to the caller's agent.
 
-      Wardrik.Subagent.run(scope, "Summarise what changed this week")
+      Wardrik.Subagent.run(run, "Summarise what changed this week")
 
   ## Changing what the delegate can do
 
@@ -21,21 +21,21 @@ defmodule Wardrik.Subagent do
   | `:generation` | replace the generation options, such as a reasoning budget |
   | `:config` | replace the whole config, ignoring the five above |
 
-      Wardrik.Subagent.run(scope, prompt, system: "You are a researcher.", except_tools: ["x"])
-      Wardrik.Subagent.run(scope, prompt, name: "synthesis", tools: [])
+      Wardrik.Subagent.run(run, prompt, system: "You are a researcher.", except_tools: ["x"])
+      Wardrik.Subagent.run(run, prompt, name: "synthesis", tools: [])
 
   `:tools` and `:except_tools` compose: the set is replaced, then narrowed.
 
-  Each call gets its own span, inheriting the scope's name unless `:name` is
+  Each call gets its own span, inheriting the run's name unless `:name` is
   supplied.
-  This keeps repeated and concurrent delegations on the same scope distinct.
+  This keeps repeated and concurrent delegations on the same run distinct.
 
   Returns the delegate's final assistant text. For work that should outlive the
   call and hold a conversation, start a `Wardrik.Agent` instead.
 
   ## What a delegate read
 
-  A delegate begins with the labels `scope` carries (see `Wardrik.Label`), and
+  A delegate begins with the labels `run` carries (see `Wardrik.Label`), and
   marks the process that ran it with the labels its turn ended with, since
   its answer may carry what it read. The tool call whose work ran it is
   labelled with them, as one that read the content itself is (see
@@ -57,19 +57,19 @@ defmodule Wardrik.Subagent do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Message
   alias Wardrik.LLM.Turn
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Tool
   alias Wardrik.Trace
 
   @read :wardrik_read_labels
 
-  @doc "Runs `prompt` as one turn under `scope`."
-  @spec run(Scope.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def run(%Scope{} = scope, prompt, opts \\ []) when is_binary(prompt) do
-    config = config(scope.config, opts)
+  @doc "Runs `prompt` as one turn under `run`."
+  @spec run(Run.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def run(%Run{} = run, prompt, opts \\ []) when is_binary(prompt) do
+    config = config(run.config, opts)
 
-    name = Keyword.get(opts, :name) || scope.source.trace.name || "delegate"
-    Scope.span(scope, name, &delegate(%{&1 | config: config}, prompt))
+    name = Keyword.get(opts, :name) || run.source.trace.name || "delegate"
+    Run.span(run, name, &delegate(%{&1 | config: config}, prompt))
   end
 
   defp delegate(delegate, prompt) do

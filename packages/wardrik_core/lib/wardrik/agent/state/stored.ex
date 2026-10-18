@@ -31,7 +31,7 @@ defmodule Wardrik.Agent.State.Stored do
           sequence: non_neg_integer(),
           config: Config.dumped(),
           context: Context.t(),
-          scope_opts: keyword(),
+          run_opts: keyword(),
           grace: pos_integer(),
           pending: [Message.t()],
           recent: [String.t()],
@@ -58,11 +58,11 @@ defmodule Wardrik.Agent.State.Stored do
   defp at_rest(%Waiting{turn: turn, source: source, sender: sender}),
     do: {:waiting, turn, source, sender}
 
-  defp at_rest(%Running{recovery: :owed, scope: scope}),
-    do: %Due{recovery: :owed, sender: scope.sender}
+  defp at_rest(%Running{recovery: :owed, run: run}),
+    do: %Due{recovery: :owed, sender: run.sender}
 
-  defp at_rest(%Running{recovery: recovery, scope: scope}),
-    do: %Due{recovery: recovery, source: scope.source, sender: scope.sender}
+  defp at_rest(%Running{recovery: recovery, run: run}),
+    do: %Due{recovery: recovery, source: run.source, sender: run.sender}
 
   defp at_rest(mode), do: mode
 

@@ -12,8 +12,8 @@ defmodule WardrikWorkflow.Test.Steps do
     @behaviour WardrikWorkflow.Step
 
     @impl true
-    def run(input, _scope, []), do: {:ok, input}
-    def run(input, _scope, opts), do: {:ok, {input, opts}}
+    def run(input, _run, []), do: {:ok, input}
+    def run(input, _run, opts), do: {:ok, {input, opts}}
   end
 
   defmodule Named do
@@ -22,7 +22,7 @@ defmodule WardrikWorkflow.Test.Steps do
     @behaviour WardrikWorkflow.Step
 
     @impl true
-    def run(_input, scope, _opts), do: {:ok, scope.source.trace.name}
+    def run(_input, run, _opts), do: {:ok, run.source.trace.name}
   end
 
   defmodule Boom do
@@ -31,7 +31,7 @@ defmodule WardrikWorkflow.Test.Steps do
     @behaviour WardrikWorkflow.Step
 
     @impl true
-    def run(_input, _scope, _opts), do: {:error, :boom}
+    def run(_input, _run, _opts), do: {:error, :boom}
   end
 
   defmodule Nonsense do
@@ -41,6 +41,6 @@ defmodule WardrikWorkflow.Test.Steps do
 
     @dialyzer {:nowarn_function, run: 3}
     @impl true
-    def run(_input, _scope, _opts), do: :whatever
+    def run(_input, _run, _opts), do: :whatever
   end
 end

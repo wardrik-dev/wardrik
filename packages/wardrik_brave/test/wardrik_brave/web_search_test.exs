@@ -74,8 +74,8 @@ defmodule WardrikBrave.WebSearchTest do
     end
 
     test "a call searches with the key its credential resolved, and an empty one is none" do
-      scope = Wardrik.Test.scope(tools: [WebSearch])
-      context = Wardrik.Test.context(scope, credentials: %{"BRAVE_API_KEY" => secret("")})
+      run = Wardrik.Test.run(tools: [WebSearch])
+      context = Wardrik.Test.context(run, credentials: %{"BRAVE_API_KEY" => secret("")})
 
       assert {:ok, %{"ok" => false, "error" => error}} = WebSearch.run(%{query: "x"}, context)
       assert error["code"] == "missing_brave_api_key"
@@ -83,17 +83,17 @@ defmodule WardrikBrave.WebSearchTest do
     end
 
     test "a call with no key resolved reports the missing key" do
-      context = Wardrik.Test.context(Wardrik.Test.scope(tools: [WebSearch]))
+      context = Wardrik.Test.context(Wardrik.Test.run(tools: [WebSearch]))
 
       assert {:ok, %{"ok" => false, "error" => error}} = WebSearch.run(%{query: "x"}, context)
       assert error["code"] == "missing_brave_api_key"
     end
 
-    test "a scope that resolves no credentials is told why, and nothing runs" do
-      scope = Wardrik.Test.scope(tools: [WebSearch])
+    test "a run that resolves no credentials is told why, and nothing runs" do
+      run = Wardrik.Test.run(tools: [WebSearch])
 
       assert %Wardrik.Call{state: :done, result: {:ok, %{"ok" => false, "error" => error}}} =
-               Wardrik.Test.call(scope, "web_search", %{"query" => "x"})
+               Wardrik.Test.call(run, "web_search", %{"query" => "x"})
 
       assert error["message"] =~ "BRAVE_API_KEY"
       refute_received {:req, _conn, _body}

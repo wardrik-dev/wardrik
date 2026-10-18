@@ -6,7 +6,7 @@ defmodule Wardrik.CompactionTest do
   alias Wardrik.Compaction
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Tokens
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.LLMStub
 
   setup :verify_on_exit!
@@ -104,7 +104,7 @@ defmodule Wardrik.CompactionTest do
   end
 
   describe "prepare/3" do
-    defp scope, do: Scope.root(Config.new(), Wardrik.Test.Fleet.id(), name: "compaction")
+    defp run, do: Run.root(Config.new(), Wardrik.Test.Fleet.id(), name: "compaction")
 
     test "replaces the older part with the model's summary, and keeps the recent part word for word" do
       test_pid = self()
@@ -115,7 +115,7 @@ defmodule Wardrik.CompactionTest do
       end)
 
       assert {:ok, compacted, stats} =
-               Wardrik.History.prepare({Compaction, roomy()}, history(), scope())
+               Wardrik.History.prepare({Compaction, roomy()}, history(), run())
 
       assert [summary, acknowledgement, second_question, second_answer] =
                Context.to_list(compacted)
@@ -145,7 +145,7 @@ defmodule Wardrik.CompactionTest do
         {:ok, LLMStub.final_answer("summary #{n}")}
       end)
 
-      assert {:ok, compacted} = Compaction.prepare(history(), scope(), small())
+      assert {:ok, compacted} = Compaction.prepare(history(), run(), small())
 
       assert_received {:asked, 1, [first]}
       assert_received {:asked, 2, [second]}
@@ -166,7 +166,7 @@ defmodule Wardrik.CompactionTest do
         {:ok, LLMStub.final_answer("They asked about lookups.")}
       end)
 
-      {:ok, compacted} = Compaction.prepare(history(), scope(), roomy())
+      {:ok, compacted} = Compaction.prepare(history(), run(), roomy())
       [summary, acknowledgement | _recent] = Context.to_list(compacted)
 
       outgrown =
@@ -177,7 +177,7 @@ defmodule Wardrik.CompactionTest do
 
     test "is nothing to do for a history that has not outgrown its window" do
       reject(&ReqLLM.generate_text/3)
-      assert :keep = Compaction.prepare(history(), scope(), Compaction.new())
+      assert :keep = Compaction.prepare(history(), run(), Compaction.new())
     end
 
     test "leaves the history as it was when the summary cannot be made" do
@@ -185,10 +185,10 @@ defmodule Wardrik.CompactionTest do
         {:ok, LLMStub.final_answer("   ")}
       end)
 
-      assert {:error, :empty_summary} = Compaction.prepare(history(), scope(), roomy())
+      assert {:error, :empty_summary} = Compaction.prepare(history(), run(), roomy())
 
       stub(ReqLLM, :generate_text, fn _model, _context, _opts -> {:error, :timeout} end)
-      assert {:error, :timeout} = Compaction.prepare(history(), scope(), roomy())
+      assert {:error, :timeout} = Compaction.prepare(history(), run(), roomy())
     end
   end
 end

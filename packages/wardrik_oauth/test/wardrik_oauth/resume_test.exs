@@ -6,7 +6,7 @@ defmodule WardrikOAuth.ResumeTest do
   alias Wardrik.Credential
   alias Wardrik.Event
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Calls
   alias Wardrik.Test.Fleet
@@ -20,9 +20,9 @@ defmodule WardrikOAuth.ResumeTest do
     :ok
   end
 
-  defp scope(owner) do
+  defp run(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, host: host())
+    Config.new() |> Run.root(id, host: host())
   end
 
   # Whoever finishes a flow is recorded as the flow: the provider's authorization.
@@ -32,7 +32,7 @@ defmodule WardrikOAuth.ResumeTest do
   # runtime parks one whose tool names it, and the link it was sent to.
   defp park(owner) do
     {:error, {:authorization_required, link, whose}} =
-      Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
+      Credential.resolve(Calls.tool("tool", %{}, run(owner)), "github")
 
     assert whose == {"acme", owner}
 

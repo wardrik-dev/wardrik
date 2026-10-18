@@ -155,7 +155,7 @@ defmodule Wardrik.Event.SpanFinished do
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
-          outcome: Wardrik.Scope.outcome(),
+          outcome: Wardrik.Run.outcome(),
           duration_ms: non_neg_integer()
         }
 end

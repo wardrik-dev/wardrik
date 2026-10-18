@@ -580,7 +580,7 @@ defmodule Wardrik.OperationsTest do
                )
 
       %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(id))
-      assert [%Wardrik.Hook{name: "ceiling"}] = Keyword.fetch!(state.scope_opts, :hooks)
+      assert [%Wardrik.Hook{name: "ceiling"}] = Keyword.fetch!(state.run_opts, :hooks)
     end
   end
 

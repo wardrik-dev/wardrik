@@ -9,15 +9,15 @@ defmodule Wardrik.LLM.TurnTest do
   alias Wardrik.Call
   alias Wardrik.Event
   alias Wardrik.LLM
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.LLMStub
   alias Wardrik.Tool.Result
 
-  # A turn run or resumed through its token, as a turn under `scope` is.
-  defp run(scope, context), do: scope |> LLM.Turn.new(context) |> LLM.Turn.run()
+  # A turn run or resumed through its token, as a turn under `run` is.
+  defp turn(run, context), do: run |> LLM.Turn.new(context) |> LLM.Turn.run()
 
-  defp resume(scope, turn, decisions),
-    do: turn |> LLM.Turn.under(scope) |> LLM.Turn.resume(decisions)
+  defp resume(run, turn, decisions),
+    do: turn |> LLM.Turn.under(run) |> LLM.Turn.resume(decisions)
 
   setup :verify_on_exit!
 
@@ -27,8 +27,8 @@ defmodule Wardrik.LLM.TurnTest do
     {:ok, agent_id: agent_id}
   end
 
-  defp scope(agent_id, tools \\ []) do
-    LLM.Config.new(tools: tools) |> Scope.root(agent_id, name: "turn")
+  defp run(agent_id, tools \\ []) do
+    LLM.Config.new(tools: tools) |> Run.root(agent_id, name: "turn")
   end
 
   defmodule Failover do
@@ -53,13 +53,13 @@ defmodule Wardrik.LLM.TurnTest do
         {:ok, LLMStub.final_answer("done")}
       end)
 
-      scope =
+      run =
         [system: "You answer briefly."]
         |> LLM.Config.new()
-        |> Scope.root(agent_id, name: "turn")
+        |> Run.root(agent_id, name: "turn")
 
       assert %LLM.Turn{state: :done, messages: messages} =
-               run(scope, Context.new([Context.user("hi")]))
+               turn(run, Context.new([Context.user("hi")]))
 
       assert_receive {:asked, %{system: "You answer briefly."}}
       refute Enum.any?(messages, &(&1.role == :system))
@@ -73,7 +73,7 @@ defmodule Wardrik.LLM.TurnTest do
         {:ok, LLMStub.final_answer("done")}
       end)
 
-      assert %LLM.Turn{state: :done, messages: _messages} = run(scope(agent_id), Context.new())
+      assert %LLM.Turn{state: :done, messages: _messages} = turn(run(agent_id), Context.new())
 
       assert_receive {:asked, %{system: nil}}
     end
@@ -84,7 +84,7 @@ defmodule Wardrik.LLM.TurnTest do
   } do
     LLMStub.stream([LLMStub.final_answer("hello")])
 
-    assert %LLM.Turn{state: :done, messages: [message]} = run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: [message]} = turn(run(agent_id), Context.new())
     assert message.role == :assistant
   end
 
@@ -98,7 +98,7 @@ defmodule Wardrik.LLM.TurnTest do
 
     context = Context.new([Context.user("hi")])
 
-    assert %LLM.Turn{state: :done, messages: messages} = run(scope(agent_id, [tool]), context)
+    assert %LLM.Turn{state: :done, messages: messages} = turn(run(agent_id, [tool]), context)
 
     # assistant(tool_use) -> tool(result) -> assistant(final), in order, and the
     # pre-existing user message is NOT re-reported: this is a delta.
@@ -119,7 +119,7 @@ defmodule Wardrik.LLM.TurnTest do
     :ok = Event.Bus.subscribe(agent_id, level: :raw)
     LLMStub.stream([LLMStub.final_answer("hello")])
 
-    assert %LLM.Turn{state: :done, messages: _messages} = run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: _messages} = turn(run(agent_id), Context.new())
 
     assert_receive %Event{payload: %Event.Chunk{chunk: "chunk"}}
     assert_receive %Event{payload: %Event.Meta{chunk: %{tokens: 1}}}
@@ -131,7 +131,7 @@ defmodule Wardrik.LLM.TurnTest do
   test "the model request announces both ends", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.final_answer("hello")])
 
-    assert %LLM.Turn{state: :done, messages: _messages} = run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: _messages} = turn(run(agent_id), Context.new())
 
     assert_receive %Event{payload: %Event.ModelStarted{}}
     assert_receive %Event{payload: %Event.ModelFinished{outcome: :ok}}
@@ -140,17 +140,17 @@ defmodule Wardrik.LLM.TurnTest do
   describe "what a call cost" do
     defp used(response, usage), do: %{response | usage: usage}
 
-    defp priced_scope(agent_id, model_spec, tools \\ []) do
+    defp priced_run(agent_id, model_spec, tools \\ []) do
       [model_spec: model_spec, tools: tools]
       |> LLM.Config.new()
-      |> Scope.root(agent_id, name: "turn")
+      |> Run.root(agent_id, name: "turn")
     end
 
     test "is the provider's figure where it reports one", %{agent_id: agent_id} do
       usage = %{input_tokens: 10, output_tokens: 5, total_cost: 0.0123}
       LLMStub.stream([used(LLMStub.final_answer("hi"), usage)])
 
-      run(scope(agent_id), Context.new())
+      turn(run(agent_id), Context.new())
 
       assert_receive %Event{
         payload: %Event.ModelFinished{outcome: :ok, cost: %{micro_usd: 12_300, source: :provider}}
@@ -162,7 +162,7 @@ defmodule Wardrik.LLM.TurnTest do
       usage = %{input_tokens: 10_000, output_tokens: 2_000}
       LLMStub.stream([used(LLMStub.final_answer("hi"), usage)])
 
-      run(priced_scope(agent_id, spec), Context.new())
+      turn(priced_run(agent_id, spec), Context.new())
 
       micro_usd = LLM.Cost.micro(LLM.Cost.of(spec, usage))
       assert micro_usd > 0
@@ -178,7 +178,7 @@ defmodule Wardrik.LLM.TurnTest do
     test "is nil for a model nobody prices", %{agent_id: agent_id} do
       LLMStub.stream([used(LLMStub.final_answer("hi"), %{input_tokens: 10, output_tokens: 5})])
 
-      capture_log(fn -> run(priced_scope(agent_id, "nowhere:no-such-model"), Context.new()) end)
+      capture_log(fn -> turn(priced_run(agent_id, "nowhere:no-such-model"), Context.new()) end)
 
       assert_receive %Event{
         payload: %Event.ModelFinished{outcome: :ok, response: %ReqLLM.Response{}, cost: nil}
@@ -211,8 +211,8 @@ defmodule Wardrik.LLM.TurnTest do
 
       [tools: tools, tool_prices: %{"listed" => 0.01, "fail*" => 0.003, "*" => 0.5}]
       |> LLM.Config.new()
-      |> Scope.root(agent_id, name: "turn")
-      |> run(Context.new())
+      |> Run.root(agent_id, name: "turn")
+      |> turn(Context.new())
 
       assert_receive %Event{
         payload: %Event.ToolFinished{call_id: "call_1", cost: %{micro_usd: 10_000}}
@@ -242,7 +242,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       LLMStub.stream([LLMStub.tool_call("call_1", "charge", %{}), LLMStub.final_answer("done")])
 
-      run(scope(agent_id, [tool]), Context.new())
+      turn(run(agent_id, [tool]), Context.new())
 
       assert_receive %Event{
         payload: %Event.ToolFinished{
@@ -269,7 +269,7 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("done")
       ])
 
-      run(scope(agent_id, [tool]), Context.new())
+      turn(run(agent_id, [tool]), Context.new())
 
       assert_receive %Event{
         payload: %Event.ToolFinished{
@@ -287,7 +287,7 @@ defmodule Wardrik.LLM.TurnTest do
     Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
     {_result, _log} =
-      ExUnit.CaptureLog.with_log(fn -> run(scope(agent_id), Context.new()) end)
+      ExUnit.CaptureLog.with_log(fn -> turn(run(agent_id), Context.new()) end)
 
     assert_receive %Event{payload: %Event.ModelStarted{}}
 
@@ -300,7 +300,7 @@ defmodule Wardrik.LLM.TurnTest do
     defp retrying(agent_id, retries, opts \\ []) do
       [retries: retries]
       |> LLM.Config.new()
-      |> Scope.root(agent_id, Keyword.put(opts, :name, "turn"))
+      |> Run.root(agent_id, Keyword.put(opts, :name, "turn"))
     end
 
     defp answering do
@@ -318,7 +318,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       capture_log(fn ->
         assert %LLM.Turn{state: :done, messages: [%{role: :assistant}]} =
-                 run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+                 turn(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
       end)
 
       assert_receive %Event{payload: %Event.ModelStarted{}}
@@ -337,7 +337,7 @@ defmodule Wardrik.LLM.TurnTest do
       log =
         capture_log(fn ->
           assert %LLM.Turn{state: :failed, error: :timeout} =
-                   run(retrying(agent_id, [0, 0]), Context.new([Context.user("hi")]))
+                   turn(retrying(agent_id, [0, 0]), Context.new([Context.user("hi")]))
         end)
 
       assert log =~ "Model call failed, asking again in 0ms"
@@ -348,7 +348,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       capture_log(fn ->
         assert %LLM.Turn{state: :failed, error: :rate_limited} =
-                 run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+                 turn(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
       end)
     end
 
@@ -369,7 +369,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       capture_log(fn ->
         assert %LLM.Turn{state: :done, messages: [%{role: :assistant}]} =
-                 run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+                 turn(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
       end)
 
       assert_receive %Event{payload: %Event.ModelStarted{message_id: first}}
@@ -379,7 +379,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert second == first <> ".2"
     end
 
-    test "asks the scope's retry, with the tries that failed", %{agent_id: agent_id} do
+    test "asks the run's retry, with the tries that failed", %{agent_id: agent_id} do
       expect(ReqLLM, :stream_text, 2, fn _model, _context, _opts -> {:error, :rate_limited} end)
       expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
 
@@ -387,10 +387,10 @@ defmodule Wardrik.LLM.TurnTest do
         {:ok, LLMStub.final_answer("done")}
       end)
 
-      scope = retrying(agent_id, [], retry: {__MODULE__.Twice, self()})
+      run = retrying(agent_id, [], retry: {__MODULE__.Twice, self()})
 
       capture_log(fn ->
-        assert %LLM.Turn{state: :done} = run(scope, Context.new([Context.user("hi")]))
+        assert %LLM.Turn{state: :done} = turn(run, Context.new([Context.user("hi")]))
       end)
 
       assert_receive {:again, [%LLM.Attempt{reason: :rate_limited, answered?: false}]}
@@ -410,10 +410,10 @@ defmodule Wardrik.LLM.TurnTest do
         {:ok, LLMStub.final_answer("done")}
       end)
 
-      scope = retrying(agent_id, [0], host: Wardrik.Host.new(dispatch: %Failover{}))
+      run = retrying(agent_id, [0], host: Wardrik.Host.new(dispatch: %Failover{}))
 
       capture_log(fn ->
-        assert %LLM.Turn{state: :done} = run(scope, Context.new([Context.user("hi")]))
+        assert %LLM.Turn{state: :done} = turn(run, Context.new([Context.user("hi")]))
       end)
 
       assert_receive {:model, first}
@@ -427,7 +427,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       capture_log(fn ->
         assert %LLM.Turn{state: :done, messages: []} =
-                 run(
+                 turn(
                    retrying(agent_id, [:timer.minutes(10)]),
                    Context.new([Context.user("hi")])
                  )
@@ -452,7 +452,7 @@ defmodule Wardrik.LLM.TurnTest do
         generation: [max_tokens: 8_000, provider_options: [thinking: %{type: "disabled"}]]
       )
 
-    run(Scope.root(config, agent_id, name: "turn"), Context.new())
+    turn(Run.root(config, agent_id, name: "turn"), Context.new())
 
     assert_receive {:opts, opts}
     assert opts[:max_tokens] == 8_000
@@ -478,7 +478,7 @@ defmodule Wardrik.LLM.TurnTest do
         generation: [tools: [], system_prompt: "an impostor"]
       )
 
-    run(Scope.root(config, agent_id, name: "turn"), Context.new())
+    turn(Run.root(config, agent_id, name: "turn"), Context.new())
 
     assert_receive {:opts, opts}
     assert opts[:system_prompt] == "the real persona"
@@ -489,7 +489,7 @@ defmodule Wardrik.LLM.TurnTest do
     LLMStub.stream([LLMStub.final_answer("hello")])
 
     assert %LLM.Turn{state: :done, messages: _messages} =
-             run(scope(Wardrik.Test.Fleet.id()), Context.new())
+             turn(run(Wardrik.Test.Fleet.id()), Context.new())
 
     refute_receive %Event{}
     assert Event.Bus.subscribers(agent_id) == [self()]
@@ -499,7 +499,7 @@ defmodule Wardrik.LLM.TurnTest do
     stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
     assert %LLM.Turn{state: :failed, error: :rate_limited} =
-             capture(fn -> run(scope(agent_id), Context.new()) end)
+             capture(fn -> turn(run(agent_id), Context.new()) end)
   end
 
   test "a response with no assistant message falls back to the classified text", %{
@@ -507,7 +507,7 @@ defmodule Wardrik.LLM.TurnTest do
   } do
     LLMStub.stream([LLMStub.response(nil, :stop)])
 
-    assert %LLM.Turn{state: :done, messages: [message]} = run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: [message]} = turn(run(agent_id), Context.new())
     assert message.role == :assistant
   end
 
@@ -517,7 +517,7 @@ defmodule Wardrik.LLM.TurnTest do
 
     LLMStub.stream([LLMStub.response(Context.assistant("", tool_calls: [builtin]), :tool_calls)])
 
-    assert %LLM.Turn{state: :done, messages: [message]} = run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: [message]} = turn(run(agent_id), Context.new())
     assert message.role == :assistant
     refute_receive %Event{payload: %Event.ToolStarted{}}
   end
@@ -530,7 +530,7 @@ defmodule Wardrik.LLM.TurnTest do
     LLMStub.stream([LLMStub.tool_call("", "echo", %{})])
 
     assert %LLM.Turn{state: :failed, error: _reason} =
-             capture(fn -> run(scope(agent_id, [tool]), Context.new()) end)
+             capture(fn -> turn(run(agent_id, [tool]), Context.new()) end)
   end
 
   test "the iteration cap ends a model that never stops calling tools with an answer", %{
@@ -547,7 +547,7 @@ defmodule Wardrik.LLM.TurnTest do
     end)
 
     assert %LLM.Turn{state: :done, messages: messages} =
-             capture(fn -> run(looping_scope(agent_id, 3), Context.new()) end)
+             capture(fn -> turn(looping_run(agent_id, 3), Context.new()) end)
 
     # Three rounds, each an assistant message and its tool result, then the answer.
     assert Enum.count(messages) == 7
@@ -570,11 +570,11 @@ defmodule Wardrik.LLM.TurnTest do
         else: {:ok, LLMStub.tool_call("call_1", "echo", %{})}
     end)
 
-    scope = looping_scope(agent_id, 1)
-    scope = %{scope | config: %{scope.config | system: "You are terse."}}
+    run = looping_run(agent_id, 1)
+    run = %{run | config: %{run.config | system: "You are terse."}}
 
     assert %LLM.Turn{state: :done, messages: _messages} =
-             capture(fn -> run(scope, Context.new()) end)
+             capture(fn -> turn(run, Context.new()) end)
 
     asked = for {:asked, asked} <- flush(), do: asked
     assert List.last(asked).system =~ "You are terse."
@@ -585,7 +585,7 @@ defmodule Wardrik.LLM.TurnTest do
     LLMStub.stream(List.duplicate(LLMStub.tool_call("call_1", "echo", %{}), 30))
 
     assert %LLM.Turn{state: :done, messages: messages} =
-             capture(fn -> run(looping_scope(agent_id, 3), Context.new()) end)
+             capture(fn -> turn(looping_run(agent_id, 3), Context.new()) end)
 
     # Three rounds of tools; the closing call had nothing to say.
     assert Enum.count(messages) == 6
@@ -599,7 +599,7 @@ defmodule Wardrik.LLM.TurnTest do
     )
 
     assert %LLM.Turn{state: :done, messages: messages} =
-             run(looping_scope(agent_id, :infinity), Context.new())
+             turn(looping_run(agent_id, :infinity), Context.new())
 
     # Four rounds of tools, then the answer — none of it cut short.
     assert Enum.count(messages) == 9
@@ -612,7 +612,7 @@ defmodule Wardrik.LLM.TurnTest do
       :ok = LLM.Turn.yield(self())
 
       assert %LLM.Turn{state: :done, messages: messages} =
-               run(looping_scope(agent_id, :infinity), Context.new())
+               turn(looping_run(agent_id, :infinity), Context.new())
 
       # One round only: the assistant's tool call and its result.
       assert Enum.count(messages) == 2
@@ -624,7 +624,7 @@ defmodule Wardrik.LLM.TurnTest do
       :ok = LLM.Turn.yield(self())
 
       %LLM.Turn{state: :done, messages: messages} =
-        run(looping_scope(agent_id, :infinity), Context.new())
+        turn(looping_run(agent_id, :infinity), Context.new())
 
       assert Enum.map(messages, & &1.role) == [:assistant, :tool]
     end
@@ -634,7 +634,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       :ok = LLM.Turn.yield(self())
 
-      assert %LLM.Turn{state: :done, messages: [_message]} = run(scope(agent_id), Context.new())
+      assert %LLM.Turn{state: :done, messages: [_message]} = turn(run(agent_id), Context.new())
 
       # Unread, so it is still here for whoever looks next.
       assert_received :yield
@@ -658,7 +658,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       :ok = LLM.Turn.interrupt(self())
 
-      assert %LLM.Turn{state: :done, messages: [message]} = run(scope(agent_id), Context.new())
+      assert %LLM.Turn{state: :done, messages: [message]} = turn(run(agent_id), Context.new())
 
       assert text(message) == "half a th"
       refute text(message) =~ "never lands"
@@ -674,7 +674,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       :ok = LLM.Turn.interrupt(self())
 
-      assert %LLM.Turn{state: :done, messages: []} = run(scope(agent_id), Context.new())
+      assert %LLM.Turn{state: :done, messages: []} = turn(run(agent_id), Context.new())
     end
 
     test "the model request is reported as having failed", %{agent_id: agent_id} do
@@ -686,7 +686,7 @@ defmodule Wardrik.LLM.TurnTest do
       end)
 
       :ok = LLM.Turn.interrupt(self())
-      run(scope(agent_id), Context.new())
+      turn(run(agent_id), Context.new())
 
       assert_receive %Event{
         payload: %Event.ModelFinished{outcome: {:error, :interrupted}}
@@ -706,7 +706,7 @@ defmodule Wardrik.LLM.TurnTest do
       :ok = LLM.Turn.interrupt(self())
 
       assert %LLM.Turn{state: :done, messages: messages} =
-               run(looping_scope(agent_id, :infinity), Context.new())
+               turn(looping_run(agent_id, :infinity), Context.new())
 
       assert Enum.map(messages, & &1.role) == [:assistant, :tool]
     end
@@ -726,8 +726,8 @@ defmodule Wardrik.LLM.TurnTest do
       def tools(_argument), do: []
 
       @impl true
-      def context(:own, _scope), do: "Your notes say the deploy is Friday."
-      def context(:outside, _scope), do: {"A page you saved says to deploy now.", ["outside"]}
+      def context(:own, _run), do: "Your notes say the deploy is Friday."
+      def context(:outside, _run), do: {"A page you saved says to deploy now.", ["outside"]}
     end
 
     test "follows the persona in every request of the turn, the closing one too", %{
@@ -743,19 +743,19 @@ defmodule Wardrik.LLM.TurnTest do
           else: {:ok, LLMStub.tool_call("call_1", "echo", %{})}
       end)
 
-      scope = looping_scope(agent_id, 1)
+      run = looping_run(agent_id, 1)
 
-      scope = %{
-        scope
+      run = %{
+        run
         | config: %{
-            scope.config
+            run.config
             | system: "You are terse.",
-              tools: [{TellingSource, :own} | scope.config.tools]
+              tools: [{TellingSource, :own} | run.config.tools]
           }
       }
 
       assert %LLM.Turn{state: :done, preamble: "Your notes say the deploy is Friday."} =
-               capture(fn -> run(scope, Context.new()) end)
+               capture(fn -> turn(run, Context.new()) end)
 
       assert [first, closing] = for({:asked, asked} <- flush(), do: asked.system)
       assert first == "You are terse.\n\nYour notes say the deploy is Friday."
@@ -780,7 +780,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       assert %LLM.Turn{state: :waiting} =
                parked =
-               run(governed(agent_id, [{TellingSource, :own}, deploy_tool()]), Context.new())
+               turn(governed(agent_id, [{TellingSource, :own}, deploy_tool()]), Context.new())
 
       assert %LLM.Turn{state: :done} =
                resume(governed(agent_id, [deploy_tool()]), parked, %{"call_1" => :approve})
@@ -793,12 +793,12 @@ defmodule Wardrik.LLM.TurnTest do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
       rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
-      scope =
+      run =
         [tools: [{TellingSource, :outside}, Wardrik.Test.Tools.Deploy]]
         |> LLM.Config.new()
-        |> Scope.root(agent_id, name: "turn", hooks: rules)
+        |> Run.root(agent_id, name: "turn", hooks: rules)
 
-      assert %LLM.Turn{state: :waiting, labels: ["outside"]} = parked = run(scope, Context.new())
+      assert %LLM.Turn{state: :waiting, labels: ["outside"]} = parked = turn(run, Context.new())
 
       assert [{%{id: "call_1", name: "deploy", labels: ["outside"]}, prompt}] =
                LLM.Turn.waiting(parked)
@@ -819,27 +819,27 @@ defmodule Wardrik.LLM.TurnTest do
         )
       ]
 
-      scope =
+      run =
         [tools: [{TellingSource, :outside}, Wardrik.Test.Tools.Deploy]]
         |> LLM.Config.new()
-        |> Scope.root(agent_id, name: "turn", hooks: rules)
+        |> Run.root(agent_id, name: "turn", hooks: rules)
 
-      assert %LLM.Turn{state: :done, labels: ["outside"]} = run(scope, Context.new())
+      assert %LLM.Turn{state: :done, labels: ["outside"]} = turn(run, Context.new())
     end
 
-    test "carries from the start the labels of a scope that carries some already",
+    test "carries from the start the labels of a run that carries some already",
          %{agent_id: agent_id} do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
 
       rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
-      scope =
+      run =
         [tools: [Wardrik.Test.Tools.Deploy]]
         |> LLM.Config.new()
-        |> Scope.root(agent_id, name: "turn", hooks: rules)
+        |> Run.root(agent_id, name: "turn", hooks: rules)
 
       assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
-               parked = run(%{scope | labels: ["outside"]}, Context.new())
+               parked = turn(%{run | labels: ["outside"]}, Context.new())
 
       assert [{%{id: "call_1"}, prompt}] = LLM.Turn.waiting(parked)
       assert prompt =~ "this run has read content from outside"
@@ -854,12 +854,12 @@ defmodule Wardrik.LLM.TurnTest do
     end
   end
 
-  defp looping_scope(agent_id, max_iterations) do
+  defp looping_run(agent_id, max_iterations) do
     tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
 
     [tools: [tool], max_iterations: max_iterations]
     |> LLM.Config.new()
-    |> Scope.root(agent_id, name: "turn")
+    |> Run.root(agent_id, name: "turn")
   end
 
   defp capture(fun) do
@@ -960,7 +960,7 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   defp governed(agent_id, tools, hooks \\ [Wardrik.Hook.new("asking", AskingHook)]) do
-    LLM.Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", hooks: hooks)
+    LLM.Config.new(tools: tools) |> Run.root(agent_id, name: "turn", hooks: hooks)
   end
 
   describe "the dispatch seam" do
@@ -972,15 +972,15 @@ defmodule Wardrik.LLM.TurnTest do
         {:ok, LLMStub.final_answer("done")}
       end)
 
-      scope =
+      run =
         LLM.Config.new(model_spec: {:openai, model: "configured"})
-        |> Scope.root(agent_id,
+        |> Run.root(agent_id,
           name: "turn",
           host: Wardrik.Host.new(dispatch: %Routing{test: self()})
         )
 
       assert %LLM.Turn{state: :done, messages: _messages} =
-               run(scope, Context.new([Context.user("hi")]))
+               turn(run, Context.new([Context.user("hi")]))
 
       assert_receive {:asked, %{model: {:anthropic, model: "routed"}}}
     end
@@ -988,15 +988,15 @@ defmodule Wardrik.LLM.TurnTest do
     test "every admitted call is reported once it has been made", %{agent_id: agent_id} do
       LLMStub.stream([LLMStub.final_answer("done")])
 
-      scope =
+      run =
         LLM.Config.new()
-        |> Scope.root(agent_id,
+        |> Run.root(agent_id,
           name: "turn",
           host: Wardrik.Host.new(dispatch: %Routing{test: self()})
         )
 
       assert %LLM.Turn{state: :done, messages: _messages} =
-               run(scope, Context.new([Context.user("hi")]))
+               turn(run, Context.new([Context.user("hi")]))
 
       assert_receive {:settled, :ok}
     end
@@ -1011,16 +1011,16 @@ defmodule Wardrik.LLM.TurnTest do
         {:error, :closed}
       end)
 
-      scope =
+      run =
         LLM.Config.new()
-        |> Scope.root(agent_id,
+        |> Run.root(agent_id,
           name: "turn",
           host: Wardrik.Host.new(dispatch: %Recording{test: self()})
         )
 
       capture_log(fn ->
         assert %LLM.Turn{state: :failed, error: :closed} =
-                 run(scope, Context.new([Context.user("hi")]))
+                 turn(run, Context.new([Context.user("hi")]))
       end)
 
       assert_receive {:settled, {:error, :closed, "half an ans"}}
@@ -1031,16 +1031,16 @@ defmodule Wardrik.LLM.TurnTest do
     } do
       Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
-      scope =
+      run =
         LLM.Config.new()
-        |> Scope.root(agent_id,
+        |> Run.root(agent_id,
           name: "turn",
           host: Wardrik.Host.new(dispatch: %Recording{test: self()})
         )
 
       capture_log(fn ->
         assert %LLM.Turn{state: :failed, error: :rate_limited} =
-                 run(scope, Context.new([Context.user("hi")]))
+                 turn(run, Context.new([Context.user("hi")]))
       end)
 
       assert_receive {:settled, {:error, :rate_limited}}
@@ -1049,14 +1049,14 @@ defmodule Wardrik.LLM.TurnTest do
     test "a refused call fails the turn without reaching the provider", %{agent_id: agent_id} do
       reject(&ReqLLM.stream_text/3)
 
-      scope =
+      run =
         LLM.Config.new()
-        |> Scope.root(agent_id, name: "turn", host: Wardrik.Host.new(dispatch: %Refusing{}))
+        |> Run.root(agent_id, name: "turn", host: Wardrik.Host.new(dispatch: %Refusing{}))
 
       log =
         capture_log(fn ->
           assert %LLM.Turn{state: :failed, error: :over_budget} =
-                   run(scope, Context.new([Context.user("hi")]))
+                   turn(run, Context.new([Context.user("hi")]))
         end)
 
       assert log =~ "over_budget"
@@ -1071,13 +1071,13 @@ defmodule Wardrik.LLM.TurnTest do
     setup %{agent_id: agent_id} do
       {:ok, gate} = Agent.start_link(fn -> nil end)
       hooks = [Wardrik.Hook.new("gate", Gate, gate)]
-      %{scope: LLM.Config.new() |> Scope.root(agent_id, name: "turn", hooks: hooks), gate: gate}
+      %{run: LLM.Config.new() |> Run.root(agent_id, name: "turn", hooks: hooks), gate: gate}
     end
 
-    test "stops the turn before the call, with the model call waiting", %{scope: scope} do
+    test "stops the turn before the call, with the model call waiting", %{run: run} do
       reject(&ReqLLM.stream_text/3)
 
-      assert %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
+      assert %LLM.Turn{state: :waiting} = parked = turn(run, Context.new([Context.user("hi")]))
 
       assert LLM.Turn.model?(parked)
 
@@ -1088,16 +1088,16 @@ defmodule Wardrik.LLM.TurnTest do
     end
 
     test "approving it makes the call, and tells the hook with its memo", %{
-      scope: scope,
+      run: run,
       gate: gate
     } do
       LLMStub.stream([LLMStub.final_answer("done")])
 
-      %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
+      %LLM.Turn{state: :waiting} = parked = turn(run, Context.new([Context.user("hi")]))
       [{call, _prompt}] = LLM.Turn.waiting(parked)
 
       assert %LLM.Turn{state: :done, messages: [answer]} =
-               resume(scope, parked, %{call.id => :approve})
+               resume(run, parked, %{call.id => :approve})
 
       assert answer.role == :assistant
       assert Agent.get(gate, & &1) == :day
@@ -1106,34 +1106,34 @@ defmodule Wardrik.LLM.TurnTest do
     test "an approved call is made without the hooks being asked again", %{agent_id: agent_id} do
       LLMStub.stream([LLMStub.final_answer("done")])
 
-      scope = governed(agent_id, [], [Wardrik.Hook.new("asker", ModelAsker)])
+      run = governed(agent_id, [], [Wardrik.Hook.new("asker", ModelAsker)])
 
-      %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
+      %LLM.Turn{state: :waiting} = parked = turn(run, Context.new([Context.user("hi")]))
       [{call, _prompt}] = LLM.Turn.waiting(parked)
 
       assert %LLM.Turn{state: :done, messages: [answer]} =
-               resume(scope, parked, %{call.id => :approve})
+               resume(run, parked, %{call.id => :approve})
 
       assert answer.role == :assistant
     end
 
-    test "denying it ends the turn as a refusal", %{scope: scope} do
+    test "denying it ends the turn as a refusal", %{run: run} do
       reject(&ReqLLM.stream_text/3)
 
-      %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
+      %LLM.Turn{state: :waiting} = parked = turn(run, Context.new([Context.user("hi")]))
       [{call, _prompt}] = LLM.Turn.waiting(parked)
 
       assert %LLM.Turn{state: :failed, error: {:policy_denied, "Not today."}} =
-               resume(scope, parked, %{call.id => {:deny, "Not today."}})
+               resume(run, parked, %{call.id => {:deny, "Not today."}})
 
       assert Wardrik.Failure.classify({:policy_denied, "Not today."}) == :ceiling
     end
 
-    test "with no decision for it, stays parked", %{scope: scope} do
-      %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
+    test "with no decision for it, stays parked", %{run: run} do
+      %LLM.Turn{state: :waiting} = parked = turn(run, Context.new([Context.user("hi")]))
 
       assert %LLM.Turn{state: :waiting} =
-               ^parked = resume(scope, parked, %{"call_other" => :approve})
+               ^parked = resume(run, parked, %{"call_other" => :approve})
     end
   end
 
@@ -1141,12 +1141,12 @@ defmodule Wardrik.LLM.TurnTest do
     test "a turn out of time stops without asking the model again", %{agent_id: agent_id} do
       reject(&ReqLLM.stream_text/3)
 
-      scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", timeout: 0)
+      run = LLM.Config.new() |> Run.root(agent_id, name: "turn", timeout: 0)
 
       log =
         capture_log(fn ->
           assert %LLM.Turn{state: :done, messages: []} =
-                   run(scope, Context.new([Context.user("hi")]))
+                   turn(run, Context.new([Context.user("hi")]))
         end)
 
       assert log =~ "deadline"
@@ -1160,10 +1160,10 @@ defmodule Wardrik.LLM.TurnTest do
     } do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{})])
 
-      scope = governed(agent_id, [deploy_tool()])
+      run = governed(agent_id, [deploy_tool()])
 
       assert %LLM.Turn{state: :waiting} =
-               parked = run(scope, Context.new([Context.user("ship it")]))
+               parked = turn(run, Context.new([Context.user("ship it")]))
 
       assert [{%{id: "call_1", name: "deploy"}, "This ships to production."}] =
                LLM.Turn.waiting(parked)
@@ -1177,13 +1177,13 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("shipped")
       ])
 
-      scope = governed(agent_id, [deploy_tool()])
+      run = governed(agent_id, [deploy_tool()])
 
       assert %LLM.Turn{state: :waiting} =
-               parked = run(scope, Context.new([Context.user("ship it")]))
+               parked = turn(run, Context.new([Context.user("ship it")]))
 
       assert %LLM.Turn{state: :done, messages: messages} =
-               resume(scope, parked, %{"call_1" => :approve})
+               resume(run, parked, %{"call_1" => :approve})
 
       assert Enum.any?(messages, &(&1.role == :tool))
       assert List.last(messages).role == :assistant
@@ -1200,13 +1200,13 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("shipped")
       ])
 
-      scope = governed(agent_id, [deploy_tool()])
+      run = governed(agent_id, [deploy_tool()])
 
       assert %LLM.Turn{state: :waiting} =
-               parked = run(scope, Context.new([Context.user("ship it twice")]))
+               parked = turn(run, Context.new([Context.user("ship it twice")]))
 
       assert %LLM.Turn{state: :done, messages: messages} =
-               resume(scope, parked, %{
+               resume(run, parked, %{
                  "call_1" => {:approve, " Only to staging. "},
                  "call_2" => {:approve, "  "}
                })
@@ -1224,13 +1224,13 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("understood")
       ])
 
-      scope = governed(agent_id, [deploy_tool()])
+      run = governed(agent_id, [deploy_tool()])
 
       assert %LLM.Turn{state: :waiting} =
-               parked = run(scope, Context.new([Context.user("ship it")]))
+               parked = turn(run, Context.new([Context.user("ship it")]))
 
       assert %LLM.Turn{state: :done, messages: messages} =
-               resume(scope, parked, %{"call_1" => {:deny, "Not this quarter."}})
+               resume(run, parked, %{"call_1" => {:deny, "Not this quarter."}})
 
       result = Enum.find(messages, &(&1.role == :tool))
       [part] = result.content
@@ -1242,12 +1242,12 @@ defmodule Wardrik.LLM.TurnTest do
     } do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{})])
 
-      scope = governed(agent_id, [deploy_tool()])
+      run = governed(agent_id, [deploy_tool()])
 
       assert %LLM.Turn{state: :waiting} =
-               parked = run(scope, Context.new([Context.user("ship it")]))
+               parked = turn(run, Context.new([Context.user("ship it")]))
 
-      assert %LLM.Turn{state: :waiting} = still = resume(scope, parked, %{})
+      assert %LLM.Turn{state: :waiting} = still = resume(run, parked, %{})
       assert still.state == :waiting
     end
 
@@ -1257,13 +1257,13 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("understood")
       ])
 
-      scope = governed(agent_id, [deploy_tool()])
+      run = governed(agent_id, [deploy_tool()])
 
       assert %LLM.Turn{state: :waiting} =
-               parked = run(scope, Context.new([Context.user("ship it")]))
+               parked = turn(run, Context.new([Context.user("ship it")]))
 
       assert %LLM.Turn{state: :done, messages: _messages} =
-               resume(scope, parked, %{"call_1" => :perhaps})
+               resume(run, parked, %{"call_1" => :perhaps})
 
       assert_receive %Event{
         payload: %Event.ToolDenied{call_id: "call_1", name: "deploy", reason: reason}
@@ -1282,7 +1282,7 @@ defmodule Wardrik.LLM.TurnTest do
     defp allowing_deploy(agent_id, rules \\ [allow: ["deploy"]]) do
       [tools: [Fetch, Deploy]]
       |> LLM.Config.new()
-      |> Scope.root(agent_id, name: "turn", hooks: [Wardrik.Hook.new("rules", Rules, rules)])
+      |> Run.root(agent_id, name: "turn", hooks: [Wardrik.Hook.new("rules", Rules, rules)])
     end
 
     test "a gated call a rule allows runs in a turn that has read nothing from outside", %{
@@ -1294,7 +1294,7 @@ defmodule Wardrik.LLM.TurnTest do
       ])
 
       assert %LLM.Turn{state: :done, labels: []} =
-               run(allowing_deploy(agent_id), Context.new([Context.user("deploy")]))
+               turn(allowing_deploy(agent_id), Context.new([Context.user("deploy")]))
 
       assert_receive %Event{payload: %Event.ToolFinished{call_id: "call_1", name: "deploy"}}
     end
@@ -1308,7 +1308,7 @@ defmodule Wardrik.LLM.TurnTest do
       ])
 
       assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
-               parked = run(allowing_deploy(agent_id), Context.new([Context.user("read it")]))
+               parked = turn(allowing_deploy(agent_id), Context.new([Context.user("read it")]))
 
       assert [{%{id: "call_2", name: "deploy"}, prompt}] = LLM.Turn.waiting(parked)
       assert prompt =~ "this run has read content from outside"
@@ -1325,10 +1325,10 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("deployed")
       ])
 
-      scope = allowing_deploy(agent_id, allow_after: %{"outside" => ["deploy"]})
+      run = allowing_deploy(agent_id, allow_after: %{"outside" => ["deploy"]})
 
       assert %LLM.Turn{state: :done, labels: ["outside"]} =
-               run(scope, Context.new([Context.user("read it")]))
+               turn(run, Context.new([Context.user("read it")]))
 
       assert_receive %Event{payload: %Event.ToolFinished{call_id: "call_2", name: "deploy"}}
     end
@@ -1343,7 +1343,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       %LLM.Turn{state: :waiting} =
         parked =
-        run(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
+        turn(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
 
       loosened = governed(agent_id, [deploy_tool()], [])
 
@@ -1361,7 +1361,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       %LLM.Turn{state: :waiting} =
         parked =
-        run(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
+        turn(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
 
       frozen =
         governed(agent_id, [deploy_tool()], [Wardrik.Hook.new("freeze", DenyingHook)])
@@ -1384,14 +1384,14 @@ defmodule Wardrik.LLM.TurnTest do
 
       %LLM.Turn{state: :waiting} =
         parked =
-        run(
+        turn(
           governed(agent_id, [deploy_tool()], old),
           Context.new([Context.user("ship")])
         )
 
-      scope = governed(agent_id, [deploy_tool()], new)
+      run = governed(agent_id, [deploy_tool()], new)
 
-      assert %LLM.Turn{state: :waiting} = again = resume(scope, parked, %{"call_1" => :approve})
+      assert %LLM.Turn{state: :waiting} = again = resume(run, parked, %{"call_1" => :approve})
       assert again.revision == Wardrik.Hook.revision(new)
       assert [{%{id: "call_1"}, "This ships to production."}] = LLM.Turn.waiting(again)
       refute_received %Event{payload: %Event.ToolFinished{call_id: "call_1", name: "deploy"}}
@@ -1401,7 +1401,7 @@ defmodule Wardrik.LLM.TurnTest do
       LLMStub.stream([LLMStub.final_answer("done")])
 
       asking = governed(agent_id, [], [Wardrik.Hook.new("asker", ModelAsker)])
-      %LLM.Turn{state: :waiting} = parked = run(asking, Context.new([Context.user("hi")]))
+      %LLM.Turn{state: :waiting} = parked = turn(asking, Context.new([Context.user("hi")]))
       [{call, _prompt}] = LLM.Turn.waiting(parked)
 
       assert %LLM.Turn{state: :done, messages: [answer]} =
@@ -1416,7 +1416,7 @@ defmodule Wardrik.LLM.TurnTest do
     @behaviour Wardrik.LLM.Retry
 
     @impl true
-    def again(%LLM.Request{attempts: attempts}, _scope, test_pid) do
+    def again(%LLM.Request{attempts: attempts}, _run, test_pid) do
       send(test_pid, {:again, attempts})
 
       case attempts do

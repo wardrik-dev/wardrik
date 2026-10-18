@@ -7,15 +7,15 @@ defmodule Wardrik.Test do
 
       Wardrik.Test.start()
 
-  `scope/1` builds the scope a turn runs under, and `call/4` runs one tool
+  `run/1` builds the run a turn runs under, and `call/4` runs one tool
   call through the same steps a turn runs it: what its tool declares, the
   hooks, the ledger, the credentials, the tool, and what its answer says of
   the run. A call that comes back waiting on a person is run on with
   `resume/2`, as a turn runs it once they approve. `check/3` stops at the
   hooks, and `context/2` hands a tool its arguments directly.
 
-      scope = Wardrik.Test.scope(tools: [MyPack.Tools], hooks: hooks)
-      call = Wardrik.Test.call(scope, "search", %{"query" => "otp"})
+      run = Wardrik.Test.run(tools: [MyPack.Tools], hooks: hooks)
+      call = Wardrik.Test.call(run, "search", %{"query" => "otp"})
       assert %Wardrik.Call{state: :done, result: {:ok, _found}} = call
 
   The runtime keeps everything in a `WardrikStore.Memory` store, unless the
@@ -39,7 +39,7 @@ defmodule Wardrik.Test do
   alias Wardrik.Call
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   @doc """
   Starts ExUnit once the runtime is ready.
@@ -128,56 +128,56 @@ defmodule Wardrik.Test do
   end
 
   @doc """
-  The scope a turn would run under, for an agent of this test's own.
+  The run a turn would run under, for an agent of this test's own.
 
   `tools:` names the tools, as `Wardrik.LLM.Config` takes them, or `config:`
   gives the whole config; `id:` names the agent, in place of one no other
-  test uses. The rest is what `Wardrik.Scope.root/3` takes: the hooks, the
+  test uses. The rest is what `Wardrik.Run.root/3` takes: the hooks, the
   ledger, and the host, `host/1` unless given.
   """
-  @spec scope(keyword()) :: Scope.t()
-  def scope(opts \\ []) do
+  @spec run(keyword()) :: Run.t()
+  def run(opts \\ []) do
     {tools, opts} = Keyword.pop(opts, :tools, [])
     {config, opts} = Keyword.pop_lazy(opts, :config, fn -> Config.new(tools: tools) end)
     {id, opts} = Keyword.pop_lazy(opts, :id, &Wardrik.Test.Fleet.id/0)
-    Scope.root(config, id, Keyword.put_new_lazy(opts, :host, &host/0))
+    Run.root(config, id, Keyword.put_new_lazy(opts, :host, &host/0))
   end
 
   @doc """
-  Runs one call to the tool `name` with `arguments`, under `scope`, through
+  Runs one call to the tool `name` with `arguments`, under `run`, through
   the steps a turn runs it, and hands back the call as it came out: `:done`
   with its `:result`, or `:waiting` on a person. `id:` is the call's id, in
   place of one of its own.
   """
-  @spec call(Scope.t(), String.t(), map(), keyword()) :: Call.t()
-  def call(%Scope{} = scope, name, arguments \\ %{}, opts \\ []) when is_binary(name),
-    do: scope |> proposed(name, arguments, opts) |> ToolRunner.execute(scope)
+  @spec call(Run.t(), String.t(), map(), keyword()) :: Call.t()
+  def call(%Run{} = run, name, arguments \\ %{}, opts \\ []) when is_binary(name),
+    do: run |> proposed(name, arguments, opts) |> ToolRunner.execute(run)
 
   @doc """
-  What the scope's hooks say of one call to the tool `name` with `arguments`,
+  What the run's hooks say of one call to the tool `name` with `arguments`,
   with what its tool declares written on it first and nothing run: the call
   as `:allowed`, `:denied` or `:waiting`.
   """
-  @spec check(Scope.t(), String.t(), map()) :: Call.t()
-  def check(%Scope{} = scope, name, arguments \\ %{}) when is_binary(name),
-    do: scope |> proposed(name, arguments, []) |> Wardrik.Call.Pipeline.decide()
+  @spec check(Run.t(), String.t(), map()) :: Call.t()
+  def check(%Run{} = run, name, arguments \\ %{}) when is_binary(name),
+    do: run |> proposed(name, arguments, []) |> Wardrik.Call.Pipeline.decide()
 
   @doc """
   The context a tool built with `Wardrik.Tool.new!/1` is handed for one call
-  under `scope`, for a test that hands a tool its arguments directly.
+  under `run`, for a test that hands a tool its arguments directly.
   `credentials:` are what the runtime would have resolved for it, by name,
   `name:` the tool's name and `id:` the call's.
   """
-  @spec context(Scope.t(), keyword()) :: Wardrik.Tool.Context.t()
-  def context(%Scope{} = scope, opts \\ []) do
+  @spec context(Run.t(), keyword()) :: Wardrik.Tool.Context.t()
+  def context(%Run{} = run, opts \\ []) do
     {credentials, opts} = Keyword.pop(opts, :credentials, %{})
     {name, opts} = Keyword.pop(opts, :name, "tool")
-    Wardrik.Tool.Context.new(proposed(scope, name, %{}, opts), credentials)
+    Wardrik.Tool.Context.new(proposed(run, name, %{}, opts), credentials)
   end
 
-  defp proposed(scope, name, arguments, opts) do
+  defp proposed(run, name, arguments, opts) do
     id = Keyword.get_lazy(opts, :id, fn -> "call_#{System.unique_integer([:positive])}" end)
-    %Call{id: id, target: %Call.Tool{name: name, arguments: arguments}, scope: scope}
+    %Call{id: id, target: %Call.Tool{name: name, arguments: arguments}, run: run}
   end
 
   @doc """
@@ -185,7 +185,7 @@ defmodule Wardrik.Test do
   approves it: the hooks are not asked again, and the tool runs, or is
   handed the call again where it parked.
   """
-  @spec resume(Scope.t(), Call.t()) :: Call.t()
-  def resume(%Scope{} = scope, %Call{state: :waiting} = call),
-    do: call |> Call.approve() |> ToolRunner.execute(scope)
+  @spec resume(Run.t(), Call.t()) :: Call.t()
+  def resume(%Run{} = run, %Call{state: :waiting} = call),
+    do: call |> Call.approve() |> ToolRunner.execute(run)
 end

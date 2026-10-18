@@ -12,18 +12,18 @@ defmodule Wardrik.Agent.StateTest do
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   defp state, do: State.new([config: Config.new()], Wardrik.AgentID.parse!("acme/@jon/assistant"))
 
-  defp scope,
-    do: Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), name: "turn")
+  defp run,
+    do: Run.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), name: "turn")
 
   # A task nobody runs. The state never touches the process, only its ref.
   defp task, do: %Task{pid: self(), ref: make_ref(), owner: self(), mfa: {__MODULE__, :none, 0}}
 
   defp running(state \\ state()) do
-    State.started(state, task(), scope(), Context.new(), System.monotonic_time())
+    State.started(state, task(), run(), Context.new(), System.monotonic_time())
   end
 
   defp parked_turn do
@@ -116,7 +116,7 @@ defmodule Wardrik.Agent.StateTest do
       {once, _effects} = State.queue(state(), message)
 
       assert {^once, []} = State.queue(once, message)
-      assert {:run, _scope, [^message], _state} = State.take(once)
+      assert {:run, _run, [^message], _state} = State.take(once)
     end
 
     test "a message arriving mid-turn asks that turn to wrap up" do
@@ -131,7 +131,7 @@ defmodule Wardrik.Agent.StateTest do
       {running, _} = State.queue(running(), Message.new("hello"))
       {waiting, _} = State.queue(waiting(), Message.new("hello"))
 
-      assert {:run, _scope, [%Message{text: "hello"}], drained} = State.take(idle)
+      assert {:run, _run, [%Message{text: "hello"}], drained} = State.take(idle)
       assert View.status(drained).pending == 0
       assert State.take(running) == :none
       assert State.take(waiting) == :none
@@ -152,10 +152,10 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     defp asked_by(sender) do
-      scope =
-        Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), sender: sender)
+      run =
+        Run.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), sender: sender)
 
-      State.started(state(), task(), scope, Context.new(), System.monotonic_time())
+      State.started(state(), task(), run, Context.new(), System.monotonic_time())
     end
 
     defp decider(principal, can) do
@@ -167,18 +167,18 @@ defmodule Wardrik.Agent.StateTest do
       state = state() |> from(maria(), "a") |> from(maria(), "b") |> from(jon(), "c")
       state = from(state, maria(), "d")
 
-      assert {:run, scope, [%Message{text: "a"}, %Message{text: "b"}], next} = State.take(state)
-      assert Wardrik.Principal.same?(scope.sender, maria())
+      assert {:run, run, [%Message{text: "a"}, %Message{text: "b"}], next} = State.take(state)
+      assert Wardrik.Principal.same?(run.sender, maria())
       assert [%Message{text: "c"}, %Message{text: "d"}] = Enum.reverse(next.pending)
 
-      assert {:run, scope, [%Message{text: "c"}], _next} = State.take(next)
-      assert Wardrik.Principal.same?(scope.sender, jon())
+      assert {:run, run, [%Message{text: "c"}], _next} = State.take(next)
+      assert Wardrik.Principal.same?(run.sender, jon())
     end
 
     test "messages nobody sent are answered together, as nobody's" do
       state = state() |> from(nil, "a") |> from(nil, "b")
 
-      assert {:run, %Scope{sender: nil}, [_a, _b], _next} = State.take(state)
+      assert {:run, %Run{sender: nil}, [_a, _b], _next} = State.take(state)
     end
 
     test "a message mid-turn joins it only from the turn's sender" do
@@ -194,7 +194,7 @@ defmodule Wardrik.Agent.StateTest do
 
       assert %Waiting{sender: sender} = waiting.mode
       assert Wardrik.Principal.same?(sender, maria())
-      assert {:resume, %Scope{sender: ^sender}, _turn, _at} = State.resume(waiting)
+      assert {:resume, %Run{sender: ^sender}, _turn, _at} = State.resume(waiting)
     end
 
     test "the asker, or a grant to decide, decides the calls a turn waits on" do
@@ -245,12 +245,12 @@ defmodule Wardrik.Agent.StateTest do
     test "a waiting turn is abandoned outright" do
       {state, effects} = State.interrupt(waiting())
 
-      assert [{:emit, source, %Event.TurnInterrupted{stats: stats}}, {:close_turn, scope}] =
+      assert [{:emit, source, %Event.TurnInterrupted{stats: stats}}, {:close_turn, run}] =
                effects
 
       assert stats.resolution == :abandoned
       assert state.mode == :idle
-      assert scope.source == source
+      assert run.source == source
     end
 
     test "an idle agent says there was nothing to stop" do
@@ -275,7 +275,7 @@ defmodule Wardrik.Agent.StateTest do
       assert [
                {:shutdown, _task},
                {:emit, _source, %Event.TurnInterrupted{stats: stats}},
-               {:close_turn, _scope}
+               {:close_turn, _run}
              ] = effects
 
       assert stats.resolution == :killed
@@ -324,11 +324,11 @@ defmodule Wardrik.Agent.StateTest do
     test "a turn that answered normally reports what it produced" do
       messages = [Context.assistant("done")]
 
-      {state, [{:emit, source, event}, {:close_turn, scope}]} =
+      {state, [{:emit, source, event}, {:close_turn, run}]} =
         State.settled(running(), messages, [])
 
       assert event == %Event.TurnFinished{messages: messages}
-      assert scope.source == source
+      assert run.source == source
       assert Context.to_list(state.context) |> length() == 1
     end
 
@@ -338,7 +338,7 @@ defmodule Wardrik.Agent.StateTest do
 
       assert [
                {:emit, _source, %Event.TurnInterrupted{stats: stats}},
-               {:close_turn, _scope},
+               {:close_turn, _run},
                {:cancel_kill, _timer}
              ] = effects
 
@@ -361,11 +361,11 @@ defmodule Wardrik.Agent.StateTest do
     test "a turn leaves the labels of what it read on the history, and on every turn after" do
       {state, _effects} = State.settled(running(), [Context.assistant("read it")], ["outside"])
       assert state.labels == ["outside"]
-      assert State.turn_scope(state, nil).labels == ["outside"]
+      assert State.turn_run(state, nil).labels == ["outside"]
 
       {state, _effects} = State.settled(running(state), [Context.assistant("still")], ["books"])
       assert state.labels == ["books", "outside"]
-      assert State.turn_scope(state(), nil).labels == []
+      assert State.turn_run(state(), nil).labels == []
     end
 
     test "parking announces the calls a person has to answer" do
@@ -386,9 +386,9 @@ defmodule Wardrik.Agent.StateTest do
     test "a waiting agent hands back the turn it parked, under the source that parked" do
       %State{mode: %Waiting{source: source}} = state = waiting()
 
-      assert {:resume, scope, turn, started_at} = State.resume(state)
-      assert scope.source == source
-      assert scope.config == Config.new()
+      assert {:resume, run, turn, started_at} = State.resume(state)
+      assert run.source == source
+      assert run.config == Config.new()
       assert %Turn{state: :waiting} = turn
       assert is_integer(started_at)
     end
@@ -419,7 +419,7 @@ defmodule Wardrik.Agent.StateTest do
 
     defp asking(state \\ state(), id \\ "ask-1") do
       {state, _effects} = State.queue(state, Message.new("Which?", id, reply_to: [@asker]))
-      {:run, _scope, _messages, state} = State.take(state)
+      {:run, _run, _messages, state} = State.take(state)
       running(state)
     end
 
@@ -450,7 +450,7 @@ defmodule Wardrik.Agent.StateTest do
       {state, _effects} = State.queue(state(), Message.new("First?", "a", reply_to: [@asker]))
       {state, _effects} = State.queue(state, Message.new("Aside."))
       {state, _effects} = State.queue(state, Message.new("Second?", "b", reply_to: [@asker]))
-      {:run, _scope, _messages, state} = State.take(state)
+      {:run, _run, _messages, state} = State.take(state)
 
       {_state, effects} = State.settled(running(state), [Context.assistant("Both.")], [])
 
@@ -507,7 +507,7 @@ defmodule Wardrik.Agent.StateTest do
       state = asking() |> Stored.dump() |> Stored.load()
       assert state.answering == [{@asker, "ask-1"}]
 
-      {:run, _scope, [], state} = State.take(state)
+      {:run, _run, [], state} = State.take(state)
       {_state, effects} = State.settled(running(state), [Context.assistant("Done.")], [])
       assert [{@asker, %Message{id: "answer:ask-1"}}] = sent(effects)
     end
@@ -517,8 +517,8 @@ defmodule Wardrik.Agent.StateTest do
     defp reload(state), do: state |> Stored.dump() |> Stored.load()
 
     defp resumed do
-      {:resume, scope, turn, started_at} = State.resume(waiting())
-      State.resumed(waiting(), task(), scope, turn, %{"call_1" => {:deny, "No."}}, started_at)
+      {:resume, run, turn, started_at} = State.resume(waiting())
+      State.resumed(waiting(), task(), run, turn, %{"call_1" => {:deny, "No."}}, started_at)
     end
 
     # Pids, references, ports and functions, wherever they sit in a term.
@@ -546,7 +546,7 @@ defmodule Wardrik.Agent.StateTest do
 
       assert state.mode == %Due{recovery: :owed}
       assert %{state: :running} = View.status(state)
-      assert {:run, _scope, [], %State{mode: :idle}} = State.take(state)
+      assert {:run, _run, [], %State{mode: :idle}} = State.take(state)
     end
 
     test "an agent still owed a turn stays owed" do
@@ -571,14 +571,14 @@ defmodule Wardrik.Agent.StateTest do
     test "a turn keeps who asked for it, in flight, owed or parked" do
       maria = Wardrik.Principal.new(:channel, "slack/U1", name: "Maria")
 
-      scope =
-        Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), sender: maria)
+      run =
+        Run.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), sender: maria)
 
-      running = State.started(state(), task(), scope, Context.new(), System.monotonic_time())
+      running = State.started(state(), task(), run, Context.new(), System.monotonic_time())
       {waiting, _effects} = State.parked(running, parked_turn())
 
       assert %State{mode: %Due{recovery: :owed, sender: ^maria}} = owed = reload(running)
-      assert {:run, %Scope{sender: ^maria}, [], _state} = State.take(owed)
+      assert {:run, %Run{sender: ^maria}, [], _state} = State.take(owed)
       assert %State{mode: %Waiting{sender: ^maria}} = reload(waiting)
     end
 
@@ -590,7 +590,7 @@ defmodule Wardrik.Agent.StateTest do
 
     test "a turn resumed from a park comes back resuming, with the decisions it was given" do
       state = resumed()
-      source = state.mode.scope.source
+      source = state.mode.run.source
 
       assert %State{
                mode: %Due{
@@ -602,10 +602,10 @@ defmodule Wardrik.Agent.StateTest do
       assert %{state: :running} = View.status(reopened)
       assert State.waiting_on(reopened) == []
 
-      assert {:resume, scope, %Turn{state: :waiting}, %{"call_1" => {:deny, "No."}}, _state} =
+      assert {:resume, run, %Turn{state: :waiting}, %{"call_1" => {:deny, "No."}}, _state} =
                State.take(reopened)
 
-      assert scope.source == source
+      assert run.source == source
       assert reload(reopened).mode == reopened.mode
     end
 
@@ -613,14 +613,14 @@ defmodule Wardrik.Agent.StateTest do
       assert {%State{mode: :idle, outcome: :interrupted},
               [
                 {:emit, _source, %Event.TurnInterrupted{stats: %{resolution: :abandoned}}},
-                {:close_turn, _scope}
+                {:close_turn, _run}
               ]} =
                State.interrupt(reload(resumed()))
     end
 
     test "a turn that handed over a batch comes back replaying it, under its own trace" do
       state = running()
-      source = state.mode.scope.source
+      source = state.mode.run.source
       {:ok, state} = State.checkpointed(state, self(), checkpoint())
 
       assert %State{
@@ -628,8 +628,8 @@ defmodule Wardrik.Agent.StateTest do
              } = reopened = reload(state)
 
       assert %{state: :running} = View.status(reopened)
-      assert {:replay, scope, %Turn{}, _state} = State.take(reopened)
-      assert scope.source == source
+      assert {:replay, run, %Turn{}, _state} = State.take(reopened)
+      assert run.source == source
       assert reload(reopened).mode == reopened.mode
     end
 
@@ -644,7 +644,7 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "a replay started is running, with the checkpoint it began from" do
-      state = State.replayed(state(), task(), scope(), checkpoint(), System.monotonic_time())
+      state = State.replayed(state(), task(), run(), checkpoint(), System.monotonic_time())
       assert %State{mode: %Running{recovery: {:replaying, %Turn{}}}} = state
       assert %State{mode: %Due{recovery: {:replaying, %Turn{}}}} = reload(state)
     end
@@ -655,7 +655,7 @@ defmodule Wardrik.Agent.StateTest do
       assert {%State{mode: :idle, outcome: :interrupted},
               [
                 {:emit, _source, %Event.TurnInterrupted{stats: %{resolution: :abandoned}}},
-                {:close_turn, _scope}
+                {:close_turn, _run}
               ]} =
                State.interrupt(reload(state))
     end
@@ -665,7 +665,7 @@ defmodule Wardrik.Agent.StateTest do
       state = State.new([], id)
 
       assert state.agent_id == id
-      assert state.scope_opts == []
+      assert state.run_opts == []
     end
 
     test "the runner and resumer travel" do
@@ -688,19 +688,19 @@ defmodule Wardrik.Agent.StateTest do
       assert Stored.dump(stopping()).mode == %Due{recovery: :owed}
     end
 
-    test "the host it runs on is never written, and every turn's scope carries it" do
+    test "the host it runs on is never written, and every turn's run carries it" do
       host = Wardrik.Host.new(definitions: %Wardrik.Test.Definitions{})
       state = State.hosted(state(), host)
 
       refute Map.has_key?(Stored.dump(state), :host)
       assert reload(state).host == Wardrik.Host.new()
-      assert State.turn_scope(state, nil).host == host
+      assert State.turn_run(state, nil).host == host
     end
 
     test "a runner that is not an MFA is refused when the state is built" do
       assert_raise ArgumentError, ~r/must be \{module, function, args\}/, fn ->
         State.new(
-          [runner: fn _scope, _context -> :ok end],
+          [runner: fn _run, _context -> :ok end],
           Wardrik.AgentID.parse!("acme/@jon/assistant")
         )
       end

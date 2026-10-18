@@ -3,12 +3,12 @@ defmodule WardrikTUI.App.ContextTest do
   alias Wardrik.{Agent, Event, Fleet}
   alias WardrikTUI.App
 
-  def park_two(%Wardrik.LLM.Turn{scope: scope}) do
+  def park_two(%Wardrik.LLM.Turn{run: run}) do
     parked = Wardrik.Test.AgentRunners.parked_turn("first")
     second = %{id: "second", name: "second", arguments: %{}}
     calls = parked.calls ++ [Wardrik.Test.AgentRunners.waiting(second, "Second?")]
 
-    %{parked | calls: calls, scope: scope}
+    %{parked | calls: calls, run: run}
   end
 
   def resume_blocked(owner, %Wardrik.LLM.Turn{} = parked, decisions) do

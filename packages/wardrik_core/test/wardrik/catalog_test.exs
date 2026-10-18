@@ -86,9 +86,9 @@ defmodule Wardrik.CatalogTest do
     "prompt" => "Look."
   }
 
-  defp scope(agent, source, opts \\ []),
+  defp run(agent, source, opts \\ []),
     do:
-      Wardrik.Test.scope(
+      Wardrik.Test.run(
         Keyword.merge(
           [tools: [{source, agent}], id: agent, host: Host.new(definitions: %Kept{})],
           opts
@@ -128,16 +128,16 @@ defmodule Wardrik.CatalogTest do
     end
 
     test "a change waits on a person, then runs as the agent itself", %{agent: agent} do
-      scope = scope(agent, Self)
+      run = run(agent, Self)
 
       waiting =
-        Wardrik.Test.call(scope, "self_trigger_set", %{"name" => "rivals", "trigger" => @trigger})
+        Wardrik.Test.call(run, "self_trigger_set", %{"name" => "rivals", "trigger" => @trigger})
 
       assert %Call{state: :waiting} = waiting
       refute_received {:put_trigger, _id, _name, _fields}
 
       assert %Call{state: :done, result: {:ok, %{"trigger" => %{"name" => "rivals"}}}} =
-               Wardrik.Test.resume(scope, waiting)
+               Wardrik.Test.resume(run, waiting)
 
       assert_received {:put_trigger, ^agent, "rivals", @trigger}
 
@@ -150,7 +150,7 @@ defmodule Wardrik.CatalogTest do
 
       assert %Call{state: :done, result: {:ok, "done"}} =
                conversation
-               |> scope(Self, allowing(["self_trigger_remove"]))
+               |> run(Self, allowing(["self_trigger_remove"]))
                |> Wardrik.Test.call("self_trigger_remove", %{"name" => "rivals"})
 
       assert_received {:delete_trigger, ^agent, "rivals"}
@@ -160,21 +160,21 @@ defmodule Wardrik.CatalogTest do
       assert %Call{
                state: :done,
                result: {:ok, %{"definition" => %{"description" => "Watches."}, "missing" => []}}
-             } = agent |> scope(Self) |> Wardrik.Test.call("self_definition_read", %{})
+             } = agent |> run(Self) |> Wardrik.Test.call("self_definition_read", %{})
     end
 
     test "answers what does not read, or what another surface declares, as it would there",
          %{agent: agent} do
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "invalid_request"}}}} =
                agent
-               |> scope(Self, allowing(["self_trigger_set"]))
+               |> run(Self, allowing(["self_trigger_set"]))
                |> Wardrik.Test.call("self_trigger_set", %{"name" => "x"})
 
       filed = AgentID.parse!("acme/filed")
 
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "conflict"}}}} =
                filed
-               |> scope(Self, allowing(["self_trigger_set"]))
+               |> run(Self, allowing(["self_trigger_set"]))
                |> Wardrik.Test.call("self_trigger_set", %{
                  "name" => "rivals",
                  "trigger" => @trigger
@@ -223,10 +223,10 @@ defmodule Wardrik.CatalogTest do
       :ok = Wardrik.Agent.ask(reconciler, "Read this page.", labels: ["outside"])
       assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^reconciler}}
 
-      scope = scope(front, Agents, allowing(["agent_ask"]))
+      run = run(front, Agents, allowing(["agent_ask"]))
 
       assert %Call{state: :done, result: {:ok, %{"message" => %{"id" => id}}}} =
-               Wardrik.Test.call(scope, "agent_ask", %{
+               Wardrik.Test.call(run, "agent_ask", %{
                  "agent" => reconciler.name,
                  "content" => "Which deposits are open?"
                })
@@ -262,7 +262,7 @@ defmodule Wardrik.CatalogTest do
 
       assert %Call{state: :done, labels: ["outside"], result: {:ok, %{"labels" => ["outside"]}}} =
                front
-               |> scope(Agents)
+               |> run(Agents)
                |> Wardrik.Test.call("agent_read", %{"agent" => reconciler.name})
 
       assert %Call{
@@ -271,7 +271,7 @@ defmodule Wardrik.CatalogTest do
                result: {:ok, %{"definition" => %{"description" => "Watches."}}}
              } =
                front
-               |> scope(Agents)
+               |> run(Agents)
                |> Wardrik.Test.call("agent_definition_read", %{"agent" => reconciler.name})
     end
 
@@ -281,10 +281,10 @@ defmodule Wardrik.CatalogTest do
       on_exit(fn -> Wardrik.Fleet.forget(worker) end)
 
       hooks = [Wardrik.Hook.new("front", Rules, allow: ["agent_define"])]
-      scope = scope(front, Agents, hooks: hooks)
+      run = run(front, Agents, hooks: hooks)
 
       assert %Call{state: :done, result: {:ok, %{"agent" => %{"id" => id}}}} =
-               Wardrik.Test.call(scope, "agent_define", %{
+               Wardrik.Test.call(run, "agent_define", %{
                  "agent" => worker.name,
                  "definition" => %{"instructions" => "Reconcile."}
                })
@@ -297,7 +297,7 @@ defmodule Wardrik.CatalogTest do
       refute Grant.covers?(grant, AgentID.parse!("other/anyone"))
 
       %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(worker))
-      assert Keyword.fetch!(state.scope_opts, :hooks) == hooks
+      assert Keyword.fetch!(state.run_opts, :hooks) == hooks
 
       assert Wardrik.Test.Audit.about("agents/#{worker}") |> List.last() ==
                {"agent.defined", %{"type" => "agent", "id" => to_string(front)}}
@@ -311,7 +311,7 @@ defmodule Wardrik.CatalogTest do
         echoing(AgentID.parse!("other/outside-#{System.unique_integer([:positive])}"), "ok")
 
       assert %Call{state: :done, result: {:ok, %{"agents" => agents}}} =
-               front |> scope(Agents) |> Wardrik.Test.call("agents_list", %{})
+               front |> run(Agents) |> Wardrik.Test.call("agents_list", %{})
 
       ids = Enum.map(agents, & &1["id"])
       assert to_string(inside) in ids
@@ -319,15 +319,15 @@ defmodule Wardrik.CatalogTest do
 
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
                front
-               |> scope(Agents)
+               |> run(Agents)
                |> Wardrik.Test.call("agent_read", %{"agent" => to_string(outside)})
 
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "invalid_request"}}}} =
-               front |> scope(Agents) |> Wardrik.Test.call("agent_read", %{})
+               front |> run(Agents) |> Wardrik.Test.call("agent_read", %{})
 
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "invalid_request"}}}} =
                front
-               |> scope(Agents)
+               |> run(Agents)
                |> Wardrik.Test.call("agent_read", %{"agent" => "a/b/c/d/e"})
     end
 
@@ -339,21 +339,21 @@ defmodule Wardrik.CatalogTest do
       on_exit(fn -> Wardrik.Fleet.forget(worker) end)
       {:ok, one} = Grant.new(Prefix.of(inside), [:read, :message])
 
-      scope =
-        scope(front, Agents,
+      run =
+        run(front, Agents,
           host: Host.new(definitions: %Kept{}, grants: %Granted{grants: [one]}),
           sender: Principal.new(:channel, "chat/U1"),
           hooks: [Wardrik.Hook.new("front", Rules, allow: ["agent_define"])]
         )
 
       assert %Call{state: :done, result: {:ok, _snapshot}} =
-               Wardrik.Test.call(scope, "agent_read", %{"agent" => inside.name})
+               Wardrik.Test.call(run, "agent_read", %{"agent" => inside.name})
 
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
-               Wardrik.Test.call(scope, "agent_read", %{"agent" => outside.name})
+               Wardrik.Test.call(run, "agent_read", %{"agent" => outside.name})
 
       assert %Call{state: :done, result: {:ok, %{"agent" => %{"id" => id}}}} =
-               Wardrik.Test.call(scope, "agent_define", %{
+               Wardrik.Test.call(run, "agent_define", %{
                  "agent" => worker.name,
                  "definition" => %{"instructions" => "Reconcile."}
                })
@@ -372,13 +372,13 @@ defmodule Wardrik.CatalogTest do
           "ok"
         )
 
-      scope = scope(front, Agents, sender: Principal.new(:agent, to_string(asking)))
+      run = run(front, Agents, sender: Principal.new(:agent, to_string(asking)))
 
       assert %Call{state: :done, result: {:ok, _snapshot}} =
-               Wardrik.Test.call(scope, "agent_read", %{"agent" => inside.name})
+               Wardrik.Test.call(run, "agent_read", %{"agent" => inside.name})
 
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
-               Wardrik.Test.call(scope, "agent_read", %{"agent" => "@jon/" <> jons.name})
+               Wardrik.Test.call(run, "agent_read", %{"agent" => "@jon/" <> jons.name})
     end
 
     test "reaches none of its org's users' agents, and a user's agent none of the org's" do
@@ -392,18 +392,18 @@ defmodule Wardrik.CatalogTest do
         )
 
       assert %Call{state: :done, result: {:ok, %{"agents" => agents}}} =
-               front |> scope(Agents) |> Wardrik.Test.call("agents_list", %{})
+               front |> run(Agents) |> Wardrik.Test.call("agents_list", %{})
 
       refute to_string(jons) in Enum.map(agents, & &1["id"])
 
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
                front
-               |> scope(Agents)
+               |> run(Agents)
                |> Wardrik.Test.call("agent_read", %{"agent" => "@jon/" <> jons.name})
 
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
                jons
-               |> scope(Agents)
+               |> run(Agents)
                |> Wardrik.Test.call("agent_read", %{"agent" => front.name})
     end
   end

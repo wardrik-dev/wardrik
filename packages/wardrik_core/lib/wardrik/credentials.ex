@@ -15,7 +15,7 @@ defprotocol Wardrik.Credentials do
   """
 
   @doc """
-  Resolves one reference for the principal the call's scope names.
+  Resolves one reference for the principal the call's run names.
 
   Called in the process making the call, as often as the call is made. An
   implementation that caches is free to; core asks every time.

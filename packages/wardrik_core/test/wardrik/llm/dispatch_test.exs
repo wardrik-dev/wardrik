@@ -5,22 +5,22 @@ defmodule Wardrik.LLM.DispatchTest do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Dispatch
   alias Wardrik.LLM.Request
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   defmodule Routing do
     defstruct [:model]
   end
 
   defimpl Wardrik.LLM.Dispatch, for: Routing do
-    def admit(routing, request, scope: scope) do
+    def admit(routing, request, run: run) do
       {:ok,
        request
        |> Request.put_model(routing.model)
-       |> Request.put_opts(api_key: "key-for-#{Scope.agent_id(scope).org}")}
+       |> Request.put_opts(api_key: "key-for-#{Run.agent_id(run).org}")}
     end
 
-    def settle(_routing, request, outcome: outcome, scope: scope) do
-      send(self(), {:settled, request, outcome, Scope.agent_id(scope).org})
+    def settle(_routing, request, outcome: outcome, run: run) do
+      send(self(), {:settled, request, outcome, Run.agent_id(run).org})
       :ok
     end
   end
@@ -38,15 +38,15 @@ defmodule Wardrik.LLM.DispatchTest do
     end
   end
 
-  defp scope, do: Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/assistant"))
+  defp run, do: Run.root(Config.new(), Wardrik.AgentID.parse!("acme/assistant"))
   defp request, do: Request.new(Config.new(), Context.new())
 
   describe "Direct" do
     test "admits a request as it stands and is told nothing" do
       direct = %Dispatch.Direct{}
 
-      assert Dispatch.admit(direct, request(), scope: scope()) == {:ok, request()}
-      assert Dispatch.settle(direct, request(), outcome: {:error, :nope}, scope: scope()) == :ok
+      assert Dispatch.admit(direct, request(), run: run()) == {:ok, request()}
+      assert Dispatch.settle(direct, request(), outcome: {:error, :nope}, run: run()) == :ok
     end
 
     test "is a host's dispatch where it names none" do
@@ -58,21 +58,21 @@ defmodule Wardrik.LLM.DispatchTest do
     test "reroutes the call and supplies the key it runs under, from its own settings" do
       routing = %Routing{model: {:anthropic, model: "claude-sonnet-5"}}
 
-      assert {:ok, admitted} = Dispatch.admit(routing, request(), scope: scope())
+      assert {:ok, admitted} = Dispatch.admit(routing, request(), run: run())
       assert admitted.model_spec == {:anthropic, model: "claude-sonnet-5"}
       assert admitted.opts[:api_key] == "key-for-acme"
 
-      assert :ok = Dispatch.settle(routing, admitted, outcome: {:error, :nope}, scope: scope())
+      assert :ok = Dispatch.settle(routing, admitted, outcome: {:error, :nope}, run: run())
       assert_received {:settled, ^admitted, {:error, :nope}, "acme"}
     end
 
     test "can hold another, which decides where the call goes" do
       metered = %Metered{inner: %Routing{model: {:anthropic, model: "claude-sonnet-5"}}}
 
-      assert {:ok, admitted} = Dispatch.admit(metered, request(), scope: scope())
+      assert {:ok, admitted} = Dispatch.admit(metered, request(), run: run())
       assert admitted.model_spec == {:anthropic, model: "claude-sonnet-5"}
 
-      assert :ok = Dispatch.settle(metered, admitted, outcome: {:error, :boom}, scope: scope())
+      assert :ok = Dispatch.settle(metered, admitted, outcome: {:error, :boom}, run: run())
       assert_received {:metered, {:error, :boom}}
       assert_received {:settled, ^admitted, {:error, :boom}, "acme"}
     end

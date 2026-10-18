@@ -1,6 +1,6 @@
 defmodule WardrikWorkflow.Step do
   @moduledoc """
-  A unit of work: given an input and a scope, produce a result.
+  A unit of work: given an input and a run, produce a result.
 
   Everything in the workflow layer is a step. A function is a step, a module is
   a step, a fan-out is a step, and a workflow is a step exposed to an agent as
@@ -11,8 +11,8 @@ defmodule WardrikWorkflow.Step do
         @behaviour WardrikWorkflow.Step
 
         @impl true
-        def run(text, scope, opts) do
-          Wardrik.Subagent.run(scope, opts[:config], "Summarise this: \#{text}")
+        def run(text, run, opts) do
+          Wardrik.Subagent.run(run, opts[:config], "Summarise this: \#{text}")
         end
       end
 
@@ -22,7 +22,7 @@ defmodule WardrikWorkflow.Step do
 
   | Form | Use it for |
   | --- | --- |
-  | `fn input, scope -> ... end` | local control flow inside a `run/3` |
+  | `fn input, run -> ... end` | local control flow inside a `run/3` |
   | `MyStep` | a reusable step |
   | `{MyStep, config}` | a reusable step that needs parameterising |
 
@@ -38,13 +38,13 @@ defmodule WardrikWorkflow.Step do
   another workflow is just a step calling a step.
   """
 
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   @typedoc "What a step reports."
   @type result() :: {:ok, term()} | {:error, term()}
 
   @typedoc "A step: a function, a module, or a module with options."
-  @type t() :: (term(), Scope.t() -> result()) | module() | {module(), term()}
+  @type t() :: (term(), Run.t() -> result()) | module() | {module(), term()}
 
   @doc """
   Does the work.
@@ -52,17 +52,17 @@ defmodule WardrikWorkflow.Step do
   `opts` is whatever the step was named with, or `[]` when it was named as a
   bare module.
   """
-  @callback run(input :: term(), scope :: Scope.t(), opts :: term()) :: result()
+  @callback run(input :: term(), run :: Run.t(), opts :: term()) :: result()
 
   @doc """
-  Runs `step` on `input` under `scope`.
+  Runs `step` on `input` under `run`.
 
   Anything other than an ok or error tuple is reported as an error, so callers
   never have to check the shape.
   """
-  @spec invoke(t(), term(), Scope.t()) :: result()
-  def invoke(step, input, %Scope{} = scope) do
-    step |> dispatch(input, scope) |> normalize()
+  @spec invoke(t(), term(), Run.t()) :: result()
+  def invoke(step, input, %Run{} = run) do
+    step |> dispatch(input, run) |> normalize()
   end
 
   @doc """
@@ -79,9 +79,9 @@ defmodule WardrikWorkflow.Step do
 
   def name(_step, index), do: "step_#{index}"
 
-  defp dispatch(fun, input, scope) when is_function(fun, 2), do: fun.(input, scope)
-  defp dispatch({module, opts}, input, scope), do: module.run(input, scope, opts)
-  defp dispatch(module, input, scope) when is_atom(module), do: module.run(input, scope, [])
+  defp dispatch(fun, input, run) when is_function(fun, 2), do: fun.(input, run)
+  defp dispatch({module, opts}, input, run), do: module.run(input, run, opts)
+  defp dispatch(module, input, run) when is_atom(module), do: module.run(input, run, [])
 
   defp normalize({:ok, _value} = result), do: result
   defp normalize({:error, _reason} = result), do: result

@@ -9,7 +9,7 @@ defmodule WardrikResearch.Deep do
   `WardrikWorkflow.Step`, so a deployment can run it directly or use it inside a
   larger workflow:
 
-      WardrikResearch.Deep.run(%{topic: "the WASM component model"}, scope, [])
+      WardrikResearch.Deep.run(%{topic: "the WASM component model"}, run, [])
 
   ## Angles of your own
 
@@ -123,8 +123,8 @@ defmodule WardrikResearch.Deep do
   Options are those of `tool/1`.
   """
   @impl WardrikWorkflow.Step
-  def run(%{topic: topic} = args, scope, opts) do
-    scope
+  def run(%{topic: topic} = args, run, opts) do
+    run
     |> WardrikWorkflow.fan_out(
       briefs(args, opts),
       fn brief, branch ->
@@ -137,7 +137,7 @@ defmodule WardrikResearch.Deep do
       max_concurrency: Keyword.get(opts, :max_concurrency, 5),
       timeout: Keyword.get(opts, :timeout, @branch_timeout)
     )
-    |> synthesise(topic, scope)
+    |> synthesise(topic, run)
   end
 
   # A researcher runs under the caller's config with its own iteration cap.
@@ -146,7 +146,7 @@ defmodule WardrikResearch.Deep do
     %{branch | config: %{branch.config | max_iterations: iterations}}
   end
 
-  defp synthesise(outcomes, topic, scope) do
+  defp synthesise(outcomes, topic, run) do
     case WardrikWorkflow.split(outcomes) do
       {[], gaps} ->
         {:error, {:no_findings, describe(gaps)}}
@@ -155,7 +155,7 @@ defmodule WardrikResearch.Deep do
         # Synthesis reads what the researchers found. Anything it looked up
         # itself would be a sixth opinion nobody asked for.
         with {:ok, report} <-
-               Subagent.run(scope, findings_prompt(topic, findings),
+               Subagent.run(run, findings_prompt(topic, findings),
                  name: "synthesis",
                  system: synthesist_persona(),
                  tools: []

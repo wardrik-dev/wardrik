@@ -42,7 +42,7 @@ defprotocol Wardrik.Ledger do
 
   ## In a turn
 
-  A scope's `:ledger` has `Wardrik.Call.Pipeline` claim every call the policy
+  A run's `:ledger` has `Wardrik.Call.Pipeline` claim every call the policy
   allows before running it, under `Wardrik.Ledger.Key.of/2`, and settle it
   once it has. A turn a `Wardrik.Agent` runs hands each batch of calls to its
   agent before they run, so a turn lost part way is replayed from that batch
@@ -64,7 +64,7 @@ defprotocol Wardrik.Ledger do
 
   ## Claiming without a ledger
 
-  A scope that names none has `%Wardrik.Ledger.None{}`, which claims nothing
+  A run that names none has `%Wardrik.Ledger.None{}`, which claims nothing
   and answers `:ok`, so the default costs nothing and no branch anywhere has
   to handle a missing one. It also keeps no guarantee: a turn that runs twice
   does its work twice.

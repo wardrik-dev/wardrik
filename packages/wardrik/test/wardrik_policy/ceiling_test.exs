@@ -8,7 +8,7 @@ defmodule WardrikPolicy.CeilingTest do
   alias Wardrik.Hook
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Request
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.LLMStub
   alias WardrikPolicy.Budget
   alias WardrikPolicy.Ceiling
@@ -34,7 +34,7 @@ defmodule WardrikPolicy.CeilingTest do
   end
 
   defp agent(org, name, hooks),
-    do: Scope.root(Config.new(), AgentID.parse!("#{org}/#{name}"), hooks: hooks)
+    do: Run.root(Config.new(), AgentID.parse!("#{org}/#{name}"), hooks: hooks)
 
   defp costing(usd),
     do: %{
@@ -42,15 +42,15 @@ defmodule WardrikPolicy.CeilingTest do
       | usage: %{input_tokens: 10, output_tokens: 5, total_cost: usd}
     }
 
-  defp decide(scope, request), do: request |> Pipeline.model(scope) |> Pipeline.decide()
+  defp decide(run, request), do: request |> Pipeline.model(run) |> Pipeline.decide()
 
-  defp spend(scope, request, usd) do
-    %{Pipeline.model(request, scope) | state: :allowed}
+  defp spend(run, request, usd) do
+    %{Pipeline.model(request, run) | state: :allowed}
     |> Pipeline.run(&Call.answer(&1, {:ok, costing(usd)}))
   end
 
-  defp approve(waiting, scope),
-    do: waiting |> Call.approve() |> Call.under(scope) |> Hook.approved()
+  defp approve(waiting, run),
+    do: waiting |> Call.approve() |> Call.under(run) |> Hook.approved()
 
   test "is the policy's hooks with its budget as the org's", %{org: org, team: team} do
     assert [%Hook{name: "orgs/" <> _, module: WardrikPolicy}, %Hook{module: Ceiling} = hook] =

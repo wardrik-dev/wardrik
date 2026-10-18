@@ -210,10 +210,10 @@ defmodule WardrikHTTP.Workers do
     end
   end
 
-  defp meta(id, %Wardrik.Tool.Context{scope: scope, idempotency_key: idempotency_key}) do
+  defp meta(id, %Wardrik.Tool.Context{run: run, idempotency_key: idempotency_key}) do
     %{
       "agent" => agent(id),
-      "run" => scope.source.trace.trace_id,
+      "run" => run.source.trace.trace_id,
       "idempotencyKey" => idempotency_key
     }
   end

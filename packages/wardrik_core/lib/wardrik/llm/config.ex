@@ -69,12 +69,12 @@ defmodule Wardrik.LLM.Config do
   fails for a reason `Wardrik.Failure` calls transient, one wait for each try:
   a second after the first failure and five after the second, by default.
   `[]` never asks again. They are the waits of `Wardrik.LLM.Retry.Backoff`, the
-  retry of a scope that names none; see `Wardrik.LLM.Retry`.
+  retry of a run that names none; see `Wardrik.LLM.Retry`.
 
       Wardrik.LLM.Config.new(retries: [2_000, 10_000, 30_000])
 
   The runtime wiring a turn also needs, such as who its events are published
-  to, lives on `Wardrik.Scope`.
+  to, lives on `Wardrik.Run`.
 
   ## Travelling
 

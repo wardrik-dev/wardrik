@@ -6,7 +6,7 @@ defmodule WardrikWorkspace.ToolsTest do
   alias Wardrik.Call
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias WardrikWorkspace.Backend.Store
   alias WardrikWorkspace.Spec
 
@@ -15,11 +15,11 @@ defmodule WardrikWorkspace.ToolsTest do
     key = Wardrik.AgentID.parse!("ws#{System.unique_integer([:positive])}/agent")
     {:ok, spec} = Spec.new(key, shared)
 
-    scope =
+    run =
       Config.new(tools: [{WardrikWorkspace, spec}])
-      |> Scope.root(key, name: "turn", host: Workspace.host(), hooks: hooks)
+      |> Run.root(key, name: "turn", host: Workspace.host(), hooks: hooks)
 
-    %{key: key, spec: spec, scope: scope}
+    %{key: key, spec: spec, run: run}
   end
 
   # The call made, and what it answered: `{:ok, result}` or `{:error, message}`.
@@ -27,7 +27,7 @@ defmodule WardrikWorkspace.ToolsTest do
     id = id || "call_#{System.unique_integer([:positive])}"
 
     [%Call{state: :done} = call] =
-      ToolRunner.execute_many_async([%{id: id, name: tool, arguments: arguments}], agent.scope)
+      ToolRunner.execute_many_async([%{id: id, name: tool, arguments: arguments}], agent.run)
 
     {call, answer(call)}
   end
@@ -338,11 +338,11 @@ defmodule WardrikWorkspace.ToolsTest do
       {:ok, spec} =
         Spec.new(key, %{"runbooks" => %{"tree" => tree <> "/runbooks", "mode" => "read"}})
 
-      scope =
+      run =
         Config.new(tools: [{WardrikWorkspace, spec}])
-        |> Scope.root(key, name: "turn", host: Workspace.host())
+        |> Run.root(key, name: "turn", host: Workspace.host())
 
-      reader = %{key: key, spec: spec, scope: scope}
+      reader = %{key: key, spec: spec, run: run}
 
       assert {:error, "shared/runbooks is shared with you to read, not to change"} =
                answered(reader, "write_file", %{
@@ -390,7 +390,7 @@ defmodule WardrikWorkspace.ToolsTest do
       tree = "ws#{System.unique_integer([:positive])}"
       writer = agent_under(tree, "writer")
       reader = agent_under(tree, "reader")
-      labelled = %{writer | scope: %{writer.scope | labels: ["outside"]}}
+      labelled = %{writer | run: %{writer.run | labels: ["outside"]}}
 
       {:ok, _written} =
         answered(labelled, "write_file", %{
@@ -422,7 +422,7 @@ defmodule WardrikWorkspace.ToolsTest do
     test "an append or an edit keeps the mark the file had, and replacing it takes the writer's" do
       tree = "ws#{System.unique_integer([:positive])}"
       clean = agent_under(tree, "writer")
-      labelled = %{clean | scope: %{clean.scope | labels: ["outside"]}}
+      labelled = %{clean | run: %{clean.run | labels: ["outside"]}}
       path = "shared/team/finding.md"
 
       {:ok, _written} =
@@ -508,10 +508,10 @@ defmodule WardrikWorkspace.ToolsTest do
     key = Wardrik.AgentID.parse!(text)
     {:ok, spec} = Spec.new(key, shared)
 
-    scope =
+    run =
       Config.new(tools: [{WardrikWorkspace, spec}])
-      |> Scope.root(key, name: "turn", host: Workspace.host())
+      |> Run.root(key, name: "turn", host: Workspace.host())
 
-    %{key: key, spec: spec, scope: scope}
+    %{key: key, spec: spec, run: run}
   end
 end

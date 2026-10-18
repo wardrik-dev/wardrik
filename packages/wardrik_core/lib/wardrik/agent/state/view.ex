@@ -98,7 +98,7 @@ defmodule Wardrik.Agent.State.View do
     }
   end
 
-  defp trace_id(%Running{scope: scope}), do: scope.source.trace.trace_id
+  defp trace_id(%Running{run: run}), do: run.source.trace.trace_id
   defp trace_id(%Waiting{source: source}), do: source.trace.trace_id
   defp trace_id(%Due{source: %{trace: trace}}), do: trace.trace_id
   defp trace_id(_mode), do: nil

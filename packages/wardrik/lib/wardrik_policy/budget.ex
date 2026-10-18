@@ -164,8 +164,8 @@ defmodule WardrikPolicy.Budget do
   end
 
   @impl Wardrik.Hook
-  def call(%Call{scope: scope} = call, %__MODULE__{} = budget),
-    do: check(budget, call, key: spend_key(scope, budget), spender: "This agent has spent")
+  def call(%Call{run: run} = call, %__MODULE__{} = budget),
+    do: check(budget, call, key: spend_key(run, budget), spender: "This agent has spent")
 
   @doc """
   What `budget` says of `call` when what it may still spend is counted under
@@ -206,13 +206,13 @@ defmodule WardrikPolicy.Budget do
   end
 
   @impl Wardrik.Hook
-  def approved(%Call{target: %Call.Model{}, scope: scope}, key, %__MODULE__{} = budget)
+  def approved(%Call{target: %Call.Model{}, run: run}, key, %__MODULE__{} = budget)
       when is_binary(key) do
     {micro_usd, tokens} = grant(budget)
 
     with {:error, reason} <- Meter.grant(key, micro_usd, tokens) do
       Logger.error(
-        "#{scope.source.agent_id} was granted more budget that was not recorded: #{inspect(reason)}"
+        "#{run.source.agent_id} was granted more budget that was not recorded: #{inspect(reason)}"
       )
     end
   end
@@ -220,8 +220,8 @@ defmodule WardrikPolicy.Budget do
   def approved(%Call{}, _memo, %__MODULE__{}), do: :ok
 
   @impl Wardrik.Hook
-  def settle(%Call{scope: scope} = call, %__MODULE__{} = budget),
-    do: record(budget, call, key: spend_key(scope, budget))
+  def settle(%Call{run: run} = call, %__MODULE__{} = budget),
+    do: record(budget, call, key: spend_key(run, budget))
 
   @doc """
   Counts what `call` spent against `budget` under the meter `key`: a model
@@ -237,12 +237,12 @@ defmodule WardrikPolicy.Budget do
 
   def record(%__MODULE__{}, %Call{}, _opts), do: :ok
 
-  defp spend(%Call{scope: scope} = call, key, tokens) do
+  defp spend(%Call{run: run} = call, key, tokens) do
     micro_usd = if call.cost, do: call.cost.micro_usd, else: 0
 
     with {:error, reason} <- Meter.spend(key, micro_usd, tokens) do
       Logger.error(
-        "#{scope.source.agent_id} spent #{dollars(micro_usd)} and #{tokens} tokens that were not recorded: #{inspect(reason)}"
+        "#{run.source.agent_id} spent #{dollars(micro_usd)} and #{tokens} tokens that were not recorded: #{inspect(reason)}"
       )
     end
 
@@ -250,16 +250,16 @@ defmodule WardrikPolicy.Budget do
   end
 
   @doc """
-  What an agent has spent in `budget`'s period now, given the scope of one of
+  What an agent has spent in `budget`'s period now, given the run of one of
   its turns, or its ID for a budget that is not per turn.
   """
-  @spec spent(t(), Wardrik.Scope.t() | Wardrik.AgentID.t()) :: Spend.t() | nil
+  @spec spent(t(), Wardrik.Run.t() | Wardrik.AgentID.t()) :: Spend.t() | nil
   def spent(%__MODULE__{per: :turn}, %Wardrik.AgentID{}), do: nil
 
   def spent(%__MODULE__{} = budget, %Wardrik.AgentID{} = agent),
     do: agent |> Spend.key(budget.meter, window(budget, "", DateTime.utc_now())) |> read()
 
-  def spent(%__MODULE__{} = budget, scope), do: scope |> spend_key(budget) |> read()
+  def spent(%__MODULE__{} = budget, run), do: run |> spend_key(budget) |> read()
 
   @doc """
   What has been spent against `budget` under the meter `key`, or `nil` where
@@ -290,7 +290,7 @@ defmodule WardrikPolicy.Budget do
   def said(%__MODULE__{} = budget, %Spend{} = spend),
     do: "#{amounts(budget, spend)} #{period_words(budget)}"
 
-  defp spend_key(%Wardrik.Scope{source: source}, budget) do
+  defp spend_key(%Wardrik.Run{source: source}, budget) do
     Spend.key(
       source.agent_id,
       budget.meter,

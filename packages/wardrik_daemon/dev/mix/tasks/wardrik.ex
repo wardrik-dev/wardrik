@@ -134,7 +134,7 @@ defmodule Mix.Tasks.Wardrik do
     oauth = WardrikOAuth.new(settings(WardrikOAuth))
     vault = WardrikVault.new([store: store, grants: oauth] ++ settings(WardrikVault))
     config = config(opts)
-    created = struct!(Mix.Tasks.Wardrik.Created, fields: [config: config] ++ scope_opts(opts))
+    created = struct!(Mix.Tasks.Wardrik.Created, fields: [config: config] ++ run_opts(opts))
 
     host =
       Wardrik.Host.new(
@@ -219,7 +219,7 @@ defmodule Mix.Tasks.Wardrik do
 
   # Only what was actually given: an agent started with no policy and no
   # deadline should look exactly as it did before either existed.
-  defp scope_opts(opts) do
+  defp run_opts(opts) do
     []
     |> put_new_option(
       :hooks,

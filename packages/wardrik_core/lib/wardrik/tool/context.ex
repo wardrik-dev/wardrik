@@ -3,10 +3,10 @@ defmodule Wardrik.Tool.Context do
   What a tool built with `Wardrik.Tool.new!/1` is handed with a call's
   arguments: the run the call is part of, and what the runtime did for it.
 
-    * `:scope` - the `Wardrik.Scope` the call runs under: whose work it is,
+    * `:run` - the `Wardrik.Run` the call runs under: whose work it is,
       what it may do, and whether the run has read content from outside
     * `:sender` - the `Wardrik.Principal` who asked for the turn the call is
-      part of, or `nil` where nobody did, as a trigger's; see `Wardrik.Scope`.
+      part of, or `nil` where nobody did, as a trigger's; see `Wardrik.Run`.
       A tool that acts for that person asks `Wardrik.Grants` what they may do
     * `:call_id` - the id the model gave the call
     * `:idempotency_key` - what names this call to the systems it reaches,
@@ -27,11 +27,11 @@ defmodule Wardrik.Tool.Context do
 
   alias Wardrik.Call
   alias Wardrik.Event
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
-  @enforce_keys [:scope, :call_id, :idempotency_key, :progress]
+  @enforce_keys [:run, :call_id, :idempotency_key, :progress]
   defstruct [
-    :scope,
+    :run,
     :sender,
     :call_id,
     :idempotency_key,
@@ -41,7 +41,7 @@ defmodule Wardrik.Tool.Context do
   ]
 
   @type t() :: %__MODULE__{
-          scope: Scope.t(),
+          run: Run.t(),
           sender: Wardrik.Principal.t() | nil,
           call_id: String.t(),
           idempotency_key: String.t(),
@@ -52,12 +52,12 @@ defmodule Wardrik.Tool.Context do
 
   @doc false
   @spec new(Call.t(), %{Wardrik.Credential.ref() => Wardrik.Credential.t()}, keyword()) :: t()
-  def new(%Call{id: id, scope: %Scope{source: source} = scope} = call, credentials, opts \\ []) do
+  def new(%Call{id: id, run: %Run{source: source} = run} = call, credentials, opts \\ []) do
     name = Call.name(call)
 
     %__MODULE__{
-      scope: scope,
-      sender: scope.sender,
+      run: run,
+      sender: run.sender,
       call_id: id,
       idempotency_key: Wardrik.Ledger.Key.idempotency(call),
       credentials: credentials,
