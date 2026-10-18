@@ -8,11 +8,10 @@ defmodule WardrikTUI.Activity do
       activity = Enum.reduce(events, WardrikTUI.Activity.new(), &WardrikTUI.Activity.fold(&2, &1))
 
       WardrikTUI.Activity.depth(activity, span_id)
-      WardrikTUI.Activity.running(activity)
 
-  A span opens on `Wardrik.Event.SpanStarted` and closes on `Wardrik.Event.SpanFinished`; a turn opens and closes on its own events. Anything else
-  updates what the span is currently doing. A span first seen mid-flight is
-  opened where it was seen, so a client attaching late still draws a tree.
+  A span opens on `Wardrik.Event.SpanStarted` and closes on `Wardrik.Event.SpanFinished`; a turn opens and closes on its own events. A span first
+  seen mid-flight is opened where it was seen, so a client attaching late still
+  draws a tree.
 
   Closing is first-wins, because a branch reaped by its parent may also have
   closed itself.
@@ -26,13 +25,12 @@ defmodule WardrikTUI.Activity do
   @typedoc "Whether a span is still going, and how it went if not."
   @type status() :: :running | :ok | :error | :parked
 
-  @typedoc "One span, and what it is doing."
+  @typedoc "One span, and how it went."
   @type span() :: %{
           span_id: String.t(),
           parent_span_id: String.t() | nil,
           name: String.t() | nil,
           status: status(),
-          doing: String.t() | nil,
           error: term(),
           started_at: integer(),
           duration_ms: non_neg_integer() | nil
@@ -68,23 +66,6 @@ defmodule WardrikTUI.Activity do
   @spec fetch(t(), String.t()) :: span() | nil
   def fetch(%__MODULE__{spans: spans}, span_id), do: Map.get(spans, span_id)
 
-  @doc "Spans still going, in the order they were first seen."
-  @spec running(t()) :: [span()]
-  def running(activity), do: activity |> spans() |> Enum.filter(&(&1.status == :running))
-
-  @doc """
-  The deepest span still going, or `nil` when nothing is.
-
-  What the status line names: the innermost work is the most specific answer to
-  "what is it doing".
-  """
-  @spec innermost(t()) :: span() | nil
-  def innermost(%__MODULE__{} = activity) do
-    activity
-    |> running()
-    |> Enum.max_by(&depth(activity, &1.span_id), fn -> nil end)
-  end
-
   @doc """
   How far `span_id` sits below the root of the tree.
 
@@ -116,7 +97,6 @@ defmodule WardrikTUI.Activity do
         parent_span_id: trace.parent_span_id,
         name: trace.name,
         status: :running,
-        doing: nil,
         error: nil,
         started_at: now,
         duration_ms: nil
@@ -150,26 +130,14 @@ defmodule WardrikTUI.Activity do
     close(activity, span_id, {:error, reason}, since(activity, span_id, now))
   end
 
-  defp absorb(activity, span_id, payload, _now) do
-    case doing(payload) do
-      :keep -> activity
-      doing -> update(activity, span_id, &%{&1 | doing: doing})
-    end
-  end
-
-  defp doing(%Event.ModelStarted{}), do: "waiting on the model"
-  defp doing(%Event.ModelFinished{}), do: nil
-  defp doing(%Event.Thinking{}), do: "thinking"
-  defp doing(%Event.Result{}), do: "answering"
-  defp doing(%Event.ToolStarted{name: name}), do: name
-  defp doing(_payload), do: :keep
+  defp absorb(activity, _span_id, _payload, _now), do: activity
 
   defp close(activity, span_id, outcome, ms) do
     {status, error} = resolution(outcome)
 
     update(activity, span_id, fn
       %{status: :running} = span ->
-        %{span | status: status, doing: nil, error: error, duration_ms: ms}
+        %{span | status: status, error: error, duration_ms: ms}
 
       settled ->
         settled

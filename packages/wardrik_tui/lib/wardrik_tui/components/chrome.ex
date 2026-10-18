@@ -1,7 +1,9 @@
 defmodule WardrikTUI.Components.Chrome do
   @moduledoc "Header, activity hints, prompt hints, and usage footer."
   use Breeze.Component
-  alias WardrikTUI.{Activity, Render, Text, Usage, View}
+  alias Wardrik.Agent.Activity.Presenter
+  alias Wardrik.Event
+  alias WardrikTUI.{Render, Text, Usage, View}
   @faint [:faint, :light_black]
 
   # The gutter before the spinner, and the spinner's own column.
@@ -22,7 +24,8 @@ defmodule WardrikTUI.Components.Chrome do
   attr :width, :integer, required: true
 
   @doc """
-  The activity row.
+  The activity row: what the agent is doing, in the words of the session's
+  `Wardrik.Agent.Activity.Presenter`.
 
   While a turn runs the row opens with `WardrikTUI.Spinner` and closes with
   `WardrikTUI.Elapsed`. Breeze animates both as decorations: the glyph and the
@@ -75,19 +78,10 @@ defmodule WardrikTUI.Components.Chrome do
   defp spinning?(_state), do: false
 
   attr :usage, :any, required: true
-  attr :queued, :integer, required: true
-  attr :running, :boolean, default: false
   attr :width, :integer, required: true
 
   def meta(assigns) do
-    assigns =
-      assign(assigns,
-        text:
-          meta_text(
-            %{usage: assigns.usage, queued: assigns.queued, running?: assigns.running},
-            assigns.width
-          )
-      )
+    assigns = assign(assigns, text: meta_text(assigns.usage, assigns.width))
 
     ~H'<box class="block w-full h-1 overflow-hidden">{@text}</box>'
   end
@@ -138,32 +132,31 @@ defmodule WardrikTUI.Components.Chrome do
   end
 
   defp status_text(%{running?: false, parked: [_ | _] = parked} = assigns, width) do
-    names = Enum.map_join(parked, ", ", fn {call, _prompt} -> call.name end)
-    left = Text.tag(" ? waiting on #{names} · #{decision_keys(parked)}", [:bright, :yellow])
+    left = Text.tag([" ? ", label(assigns), " · ", decision_keys(parked)], [:bright, :yellow])
     Render.line(Render.justify(left, right(assigns), width))
   end
 
   defp status_text(%{running?: false} = assigns, width) do
-    left = Text.tag(" idle · type a prompt and press Enter", @faint)
+    left = Text.tag([" ", label(assigns), " · type a prompt and press Enter"], @faint)
     Render.line(Render.justify(left, right(assigns), width))
   end
 
   defp status_text(%{leader: {_ref, _origin}} = assigns, width) do
-    span = Activity.innermost(assigns.activity)
-    head = [" ", label(span)]
+    head = [" ", Text.tag(label(assigns), :cyan)]
     Render.line(Render.justify(head, right(assigns), width))
   end
 
   defp status_text(assigns, width) do
-    span = Activity.innermost(assigns.activity)
     right = [below(assigns), Text.tag(chars(assigns.chars), @faint)]
-    label = Text.truncate(label(span), max(div(width, 3), 20))
-    head = [" ", label]
+    head = [" ", Text.tag(label(assigns), :cyan)]
     room = width - Text.length(right) - Text.length(head) - 4
-    left = [head, doing(span, assigns.thinking, room)]
+    left = [head, reasoning(assigns.agent_activity.doing, assigns.thinking, room)]
 
     Render.line(Render.justify(left, right, width))
   end
+
+  defp label(%{presenter: presenter, agent_activity: activity}),
+    do: Presenter.label(presenter, activity)
 
   # The keys that matter where focus is, with word of output below the rows
   # shown when there is some.
@@ -230,20 +223,13 @@ defmodule WardrikTUI.Components.Chrome do
   defp decision_keys([_only]), do: "y approve · n deny"
   defp decision_keys(_several), do: "/approve N · /deny N · /approve all"
 
-  defp label(nil), do: Text.tag("working", @faint)
-  defp label(%{name: nil}), do: Text.tag("working", @faint)
-  defp label(%{name: name}), do: Text.tag(name, :cyan)
-
-  # The newest words of the reasoning, in the room left on the row.
-  defp doing(%{doing: "thinking"}, thinking, room) when thinking != "" do
+  # The newest words of the reasoning while the model is asked, in the room
+  # left on the row.
+  defp reasoning(%Event.ModelStarted{}, thinking, room) when thinking != "" do
     Text.tag([" · ", Text.tag(newest(thinking, max(room, 8)), :italic)], @faint)
   end
 
-  defp doing(%{doing: doing}, _thinking, _room) when is_binary(doing) do
-    Text.tag(" · #{doing}", @faint)
-  end
-
-  defp doing(_span, _thinking, _room), do: []
+  defp reasoning(_doing, _thinking, _room), do: []
 
   # The last `room` columns of `text`, cut at a word and marked as a cut.
   defp newest(text, room) do
@@ -265,15 +251,9 @@ defmodule WardrikTUI.Components.Chrome do
   defp chars(0), do: ""
   defp chars(n), do: "#{Usage.count(n)} chars"
 
-  defp meta_text(assigns, width) do
-    usage = Usage.summary(assigns.usage)
+  defp meta_text(usage, width) do
+    usage = Usage.summary(usage)
     left = Text.tag(if(usage == "", do: "", else: " observed here · " <> usage), @faint)
-    Render.line(Render.justify(left, Text.tag(queued(assigns), @faint), width))
+    Render.line(Render.justify(left, "", width))
   end
-
-  defp queued(%{queued: 0}), do: ""
-  defp queued(%{queued: 1, running?: true}), do: "1 message steering the turn "
-  defp queued(%{queued: n, running?: true}), do: "#{n} messages steering the turn "
-  defp queued(%{queued: 1}), do: "1 message queued behind the parked turn "
-  defp queued(%{queued: n}), do: "#{n} messages queued behind the parked turn "
 end

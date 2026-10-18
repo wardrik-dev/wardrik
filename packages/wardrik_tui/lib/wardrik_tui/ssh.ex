@@ -15,7 +15,8 @@ defmodule WardrikTUI.SSH do
   it starts an assistant for whoever connected, `<org>/@<username>/assistant`
   in `:org`; for a user name that cannot be an ID's segment, the org's own
   `<org>/assistant`. `:org` is also the org of an agent a person names
-  without one; see `WardrikTUI.App.server_opts/1`.
+  without one, and `:presenter` words what the agent is doing; see
+  `WardrikTUI.App.server_opts/1`.
 
   An agent a session starts, that assistant or one `/spawn` names, starts as
   `Wardrik.agent_spawn/3` starts any: on the definition the host keeps of
@@ -59,7 +60,7 @@ defmodule WardrikTUI.SSH do
 
       Breeze.Server.start_link(
         [terminal_opts: Termite.SSH.Session.terminal_opts(session)] ++
-          WardrikTUI.App.server_opts(start_opts)
+          WardrikTUI.App.server_opts(start_opts ++ Keyword.take(opts, [:presenter]))
       )
     end
   end

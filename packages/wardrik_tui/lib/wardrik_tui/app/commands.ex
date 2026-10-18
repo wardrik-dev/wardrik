@@ -475,11 +475,7 @@ defmodule WardrikTUI.App.Commands do
     end
   end
 
-  defp steer(term, text, how) do
-    term
-    |> assign(queued: term.assigns.queued + 1)
-    |> Display.append_lines(["", View.steered(text, how)])
-  end
+  defp steer(term, text, how), do: Display.append_lines(term, ["", View.steered(text, how)])
 
   def interrupt(%{assigns: %{agent_id: id}} = term) do
     case Wardrik.agent_cancel(WardrikTUI.App.scope(term), id) do

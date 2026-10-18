@@ -65,7 +65,9 @@ defmodule WardrikTUI.App do
   `:principal` is who uses it, the terminal's user by default.
   `:org` is the org of an agent a person names without one, as
   `/spawn triage` or `/connect @jon/triage` do. Without it, a name gives
-  its org: `/spawn acme/triage`.
+  its org: `/spawn acme/triage`. `:presenter` is the
+  `Wardrik.Agent.Activity.Presenter` that words what the agent is doing,
+  `Wardrik.Agent.Activity.English` unless given another.
   """
   @spec server_opts(keyword()) :: keyword()
   def server_opts(start_opts) do
@@ -409,6 +411,7 @@ defmodule WardrikTUI.App do
         unseen: %{},
         filter: Filter.none(),
         model: Keyword.get(opts, :model, ""),
+        presenter: Keyword.get(opts, :presenter, %Wardrik.Agent.Activity.English{}),
         verbose?: Keyword.get(opts, :verbose, false),
         editor: Keyword.get(opts, :editor, &WardrikTUI.Editor.edit/2),
         clipboard: Keyword.get(opts, :clipboard, &WardrikTUI.Clipboard.copy/1),
@@ -491,7 +494,8 @@ defmodule WardrikTUI.App do
             :running?,
             :parked,
             :leader,
-            :activity,
+            :agent_activity,
+            :presenter,
             :unread,
             :chars,
             :started_at,
@@ -569,7 +573,7 @@ defmodule WardrikTUI.App do
         textarea-submit-on-enter={true}
         class={@prompt_class}
       />
-      <.meta usage={@usage} queued={@queued} running={@running?} width={@width}/>
+      <.meta usage={@usage} width={@width}/>
       <.inspector
         :if={@inspecting != nil}
         inspecting={@inspecting}
@@ -671,6 +675,13 @@ defmodule WardrikTUI.App do
   def handle_event(_name, _event, term), do: {:noreply, term}
 
   @impl Breeze.View
+  def handle_info(
+        %Event{source: %{agent_id: id}, payload: %Event.ActivityChanged{activity: activity}},
+        %{assigns: %{agent_id: id}} = term
+      ) do
+    {:noreply, term |> assign(agent_activity: activity) |> Frames.frame_due(), invalidate: false}
+  end
+
   def handle_info(%Event{source: %{agent_id: id}} = event, %{assigns: %{agent_id: id}} = term) do
     {:noreply, term |> Display.apply_event(event) |> Frames.frame_due(), invalidate: false}
   end

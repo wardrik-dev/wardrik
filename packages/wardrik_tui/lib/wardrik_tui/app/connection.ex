@@ -135,7 +135,7 @@ defmodule WardrikTUI.App.Connection do
 
   defp attach_snapshot(term, agent, agent_id, snapshot) do
     %{
-      status: %{state: state, pending: pending, model: model},
+      status: %{state: state, model: model, activity: activity},
       history: %{messages: messages},
       parked: parked,
       generation: generation,
@@ -153,7 +153,7 @@ defmodule WardrikTUI.App.Connection do
         trace_id: trace_id,
         activity: Activity.new(),
         running?: state == :running,
-        queued: pending,
+        agent_activity: activity,
         available?: true,
         confirm: nil
       )
