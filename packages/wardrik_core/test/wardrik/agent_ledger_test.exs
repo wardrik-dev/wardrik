@@ -21,11 +21,11 @@ defmodule Wardrik.AgentLedgerTest do
     @impl true
     def tools({name, test_pid}) do
       [
-        ReqLLM.Tool.new!(
+        Wardrik.Tool.new!(
           name: name,
           description: "Has an effect outside Wardrik.",
-          parameter_schema: [],
-          callback: fn _args ->
+          schema: [],
+          run: fn _args, _context ->
             send(test_pid, {:began, name, self()})
 
             receive do

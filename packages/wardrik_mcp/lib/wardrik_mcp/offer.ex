@@ -17,7 +17,7 @@ defmodule WardrikMCP.Offer do
   @typedoc "A server, the tools it last reported, and those it marked read-only."
   @type t() :: %__MODULE__{
           server: Server.t(),
-          tools: [ReqLLM.Tool.t()],
+          tools: [Wardrik.Tool.t()],
           read_only: [String.t()]
         }
 end

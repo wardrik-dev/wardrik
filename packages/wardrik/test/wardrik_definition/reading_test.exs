@@ -24,7 +24,12 @@ defmodule WardrikDefinition.ReadingTest do
 
     @impl Wardrik.Tool
     def tool,
-      do: ReqLLM.Tool.new!(name: "web_search", description: "Searches.", callback: &{:ok, &1})
+      do:
+        Wardrik.Tool.new!(
+          name: "web_search",
+          description: "Searches.",
+          run: fn input, _context -> {:ok, input} end
+        )
   end
 
   defmodule Lua do
@@ -32,7 +37,12 @@ defmodule WardrikDefinition.ReadingTest do
 
     @impl Wardrik.Tool
     def tool,
-      do: ReqLLM.Tool.new!(name: "run_lua", description: "Runs Lua.", callback: &{:ok, &1})
+      do:
+        Wardrik.Tool.new!(
+          name: "run_lua",
+          description: "Runs Lua.",
+          run: fn input, _context -> {:ok, input} end
+        )
   end
 
   defmodule Source do

@@ -33,7 +33,7 @@ defmodule WardrikMCP.ToolTest do
         })
 
       assert tool.name == "stub__search"
-      assert tool.parameter_schema == schema
+      assert tool.schema == schema
       assert tool.description =~ "Find"
     end
 
@@ -41,7 +41,7 @@ defmodule WardrikMCP.ToolTest do
       tool = Tool.build(server(), %{"name" => "bare"})
 
       assert tool.description =~ "bare"
-      assert tool.parameter_schema == %{"type" => "object", "properties" => %{}}
+      assert tool.schema == %{"type" => "object", "properties" => %{}}
     end
 
     test "falls back to a title where there is no description" do

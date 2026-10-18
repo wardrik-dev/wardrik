@@ -52,21 +52,21 @@ defmodule WardrikLua.Run do
 
   Options are `:limits`, a `t:WardrikLua.Sandbox.Limits.t/0`.
   """
-  @spec tool(keyword()) :: ReqLLM.Tool.t()
+  @spec tool(keyword()) :: Wardrik.Tool.t()
   def tool(opts) do
     limits = Keyword.get_lazy(opts, :limits, &Limits.new/0)
 
-    ReqLLM.Tool.new!(
+    Wardrik.Tool.new!(
       name: "run_lua",
       description: @description,
-      parameter_schema: [code: [type: :string, required: true, doc: @code_doc]],
-      callback: {__MODULE__, :run, [limits]}
+      schema: [code: [type: :string, required: true, doc: @code_doc]],
+      run: {__MODULE__, :run, [limits]}
     )
   end
 
   @doc "Runs one chunk and reports the outcome to the model."
-  @spec run(Limits.t(), map() | keyword()) :: Result.t()
-  def run(%Limits{} = limits, params) do
+  @spec run(Limits.t(), map() | keyword(), Wardrik.Tool.Context.t()) :: Result.t()
+  def run(%Limits{} = limits, params, _context) do
     code = params |> Map.new() |> Map.fetch!(:code)
 
     code |> Sandbox.run(limits) |> answer()

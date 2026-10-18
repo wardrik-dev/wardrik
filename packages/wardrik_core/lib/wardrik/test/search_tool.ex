@@ -25,19 +25,19 @@ defmodule Wardrik.Test.SearchTool do
 
   @impl true
   def tool do
-    ReqLLM.Tool.new!(
+    Wardrik.Tool.new!(
       name: "web_search",
       description: "Search the web and get back passages from the pages found.",
-      parameter_schema: [
+      schema: [
         query: [type: :string, required: true, doc: "What you want to know"]
       ],
-      callback: {__MODULE__, :run}
+      run: {__MODULE__, :run, []}
     )
   end
 
   @doc "Answers any query with the same passages."
-  @spec run(map() | keyword()) :: Result.t()
-  def run(params) do
+  @spec run(map() | keyword(), Wardrik.Tool.Context.t()) :: Result.t()
+  def run(params, _context) do
     params = Map.new(params)
 
     Result.ok(%{"query" => Map.get(params, :query), "passages" => @passages})

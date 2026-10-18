@@ -77,6 +77,7 @@ defmodule Wardrik.Call.Pipeline do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Dispatch
   alias Wardrik.LLM.Request
+  alias Wardrik.LLM.Tools
   alias Wardrik.LLM.Usage
   alias Wardrik.Run
   alias Wardrik.Subagent
@@ -442,31 +443,30 @@ defmodule Wardrik.Call.Pipeline do
 
   defp listed(call), do: call
 
-  defp tool(%Call{target: %Tool{name: name, arguments: args}} = call, retry) do
+  defp tool(%Call{target: %Tool{name: name}} = call, retry) do
     case offered(call) do
-      nil ->
-        Call.answer(call, {:error, "Unknown tool: #{name}"})
-
-      %ReqLLM.Tool{callback: {Wardrik.Tool, :invoke, [handler]}} = tool ->
-        handler(call, tool, handler, retry)
-
-      tool ->
-        answered(call, ReqLLM.Tool.execute(tool, args))
+      nil -> Call.answer(call, {:error, "Unknown tool: #{name}"})
+      tool -> validated(call, tool, retry)
     end
   end
 
-  # A tool built with `Wardrik.Tool.new!/1` is handed its arguments and its
-  # context, and what it answers is read as `t:Wardrik.Tool.answer/0`.
-  defp handler(%Call{target: target} = call, tool, handler, retry) do
-    case ReqLLM.Tool.validate_input(tool, target.arguments) do
+  # A tool is handed its arguments and its context, and what it answers is
+  # read as `t:Wardrik.Tool.answer/0`.
+  defp validated(%Call{target: target} = call, tool, retry) do
+    case Tools.validate(tool, target.arguments) do
       {:ok, input} ->
         context = Wardrik.Tool.Context.new(call, credentials(call), in_doubt: in_doubt?(call))
-        handler |> Wardrik.Tool.hand(input, context) |> took(call, retry)
+        tool |> ran(input, context) |> took(call, retry)
 
       {:error, reason} ->
         Call.answer(call, {:error, reason})
     end
   end
+
+  defp ran(%Wardrik.Tool{run: {module, function, args}}, input, context),
+    do: apply(module, function, args ++ [input, context])
+
+  defp ran(%Wardrik.Tool{run: run}, input, context), do: run.(input, context)
 
   defp took({:ok, output, opts}, call, _retry) when is_list(opts) do
     call

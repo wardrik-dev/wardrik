@@ -51,7 +51,7 @@ defmodule WardrikBrave.WebSearch do
     Wardrik.Tool.new!(
       name: "web_search",
       description: @description,
-      parameter_schema: [
+      schema: [
         query: [
           type: :string,
           required: true,
@@ -78,7 +78,7 @@ defmodule WardrikBrave.WebSearch do
             "Approximate token budget for the whole result. Defaults to #{@default_max_tokens}. Raise it only for research."
         ]
       ],
-      run: {__MODULE__, :run}
+      run: {__MODULE__, :run, []}
     )
   end
 

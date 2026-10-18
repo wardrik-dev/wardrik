@@ -111,7 +111,8 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   test "tool calls loop once, then terminate on the final answer", %{agent_id: agent_id} do
-    tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
+    tool =
+      Wardrik.Tool.new!(name: "echo", description: "echo", run: fn i, _context -> {:ok, i} end)
 
     LLMStub.stream([
       LLMStub.tool_call("call_1", "echo", %{"input" => "hi"}),
@@ -213,7 +214,7 @@ defmodule Wardrik.LLM.TurnTest do
         Wardrik.Tool.new!(
           name: name,
           description: "Does something.",
-          parameter_schema: [],
+          schema: [],
           run: fn _input, _context -> answer end
         )
       end
@@ -258,7 +259,7 @@ defmodule Wardrik.LLM.TurnTest do
         Wardrik.Tool.new!(
           name: "charge",
           description: "Fails, and is charged.",
-          parameter_schema: [],
+          schema: [],
           run: fn _input, _context -> {:error, "Declined.", cost: 0.25} end
         )
 
@@ -282,7 +283,7 @@ defmodule Wardrik.LLM.TurnTest do
         Wardrik.Tool.new!(
           name: "search",
           description: "Searches, at a price.",
-          parameter_schema: [q: [type: :string]],
+          schema: [q: [type: :string]],
           run: fn _input, _context -> Result.ok(%{"hits" => 1}, cost: 0.004) end
         )
 
@@ -682,7 +683,8 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   test "an unpairable tool exchange aborts rather than looping", %{agent_id: agent_id} do
-    tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
+    tool =
+      Wardrik.Tool.new!(name: "echo", description: "echo", run: fn i, _context -> {:ok, i} end)
 
     # An empty call id fails ToolExchange's `valid_call?/1`, so results can
     # never be matched back to the assistant message.
@@ -1014,7 +1016,8 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   defp looping_run(agent_id, max_iterations) do
-    tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
+    tool =
+      Wardrik.Tool.new!(name: "echo", description: "echo", run: fn i, _context -> {:ok, i} end)
 
     [tools: [tool], max_iterations: max_iterations]
     |> LLM.Config.new()
@@ -1110,11 +1113,11 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   defp deploy_tool do
-    ReqLLM.Tool.new!(
+    Wardrik.Tool.new!(
       name: "deploy",
       description: "Ship it.",
-      parameter_schema: [],
-      callback: fn _args -> {:ok, %{"shipped" => true}} end
+      schema: [],
+      run: fn _args, _context -> {:ok, %{"shipped" => true}} end
     )
   end
 

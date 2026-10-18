@@ -39,11 +39,11 @@ defmodule Wardrik.LLM.TokensTest do
 
   test "a request counts its messages, its system prompt and its tools" do
     tool =
-      ReqLLM.Tool.new!(
+      Wardrik.Tool.new!(
         name: "lookup",
         description: chars("d", 400),
-        parameter_schema: [],
-        callback: fn _args -> {:ok, %{}} end
+        schema: [],
+        run: fn _args, _context -> {:ok, %{}} end
       )
 
     context = Context.new([Context.user(chars("q", 400))])

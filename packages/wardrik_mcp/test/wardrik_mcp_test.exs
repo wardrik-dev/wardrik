@@ -23,7 +23,7 @@ defmodule WardrikMCPTest do
 
       assert echo.description =~ "Hands the value back."
       assert echo.description =~ "MCP server"
-      assert echo.parameter_schema["required"] == ["value"]
+      assert echo.schema["required"] == ["value"]
     end
 
     test "a key nothing is connected under offers nothing" do

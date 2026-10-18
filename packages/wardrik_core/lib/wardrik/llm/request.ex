@@ -15,6 +15,7 @@ defmodule Wardrik.LLM.Request do
 
   alias Wardrik.LLM.Attempt
   alias Wardrik.LLM.Config
+  alias Wardrik.LLM.Tools
 
   @enforce_keys [:model_spec, :context, :opts]
   defstruct [:model_spec, :context, :opts, attempts: []]
@@ -44,7 +45,7 @@ defmodule Wardrik.LLM.Request do
 
   defp opts(%Config{} = config) do
     config.generation
-    |> Keyword.put(:tools, Config.tools(config))
+    |> Keyword.put(:tools, config |> Config.tools() |> Enum.map(&Tools.to_req_llm/1))
     |> put_system(config.system)
   end
 

@@ -5,13 +5,13 @@ defmodule Wardrik.Test.EchoTool do
 
   @impl true
   def tool do
-    ReqLLM.Tool.new!(
+    Wardrik.Tool.new!(
       name: "echo",
       description: "Echo the value back.",
-      parameter_schema: [value: [type: :any, required: true, doc: "Anything"]],
-      callback: {__MODULE__, :run}
+      schema: [value: [type: :any, required: true, doc: "Anything"]],
+      run: {__MODULE__, :run, []}
     )
   end
 
-  def run(params), do: {:ok, params}
+  def run(params, _context), do: {:ok, params}
 end

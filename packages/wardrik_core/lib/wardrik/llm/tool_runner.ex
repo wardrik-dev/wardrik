@@ -9,10 +9,10 @@ defmodule Wardrik.LLM.ToolRunner do
   what `ReqLLM.Context.append_tool_exchange/3` requires.
 
   Each call runs under its own child span, so its events are attributed to
-  that call rather than to the turn as a whole. A tool built with
-  `Wardrik.Tool.new!/1` is handed a `Wardrik.Tool.Context` under that run,
-  which is how a tool that delegates finds its place in the tree and how a
-  tool with an outside effect finds an idempotency key.
+  that call rather than to the turn as a whole. A tool is handed a
+  `Wardrik.Tool.Context` under that run, which is how a tool that delegates
+  finds its place in the tree and how a tool with an outside effect finds an
+  idempotency key.
 
   Spans are opened by the caller and closed inside the task; a call killed at
   the timeout is closed by the caller instead.

@@ -25,15 +25,15 @@ defmodule Wardrik.RunningTest do
 
     @impl true
     def tool do
-      ReqLLM.Tool.new!(
+      Wardrik.Tool.new!(
         name: "search",
         description: "Searches.",
-        parameter_schema: [],
-        callback: {__MODULE__, :run}
+        schema: [],
+        run: {__MODULE__, :run, []}
       )
     end
 
-    def run(_input), do: {:ok, "nothing"}
+    def run(_input, _context), do: {:ok, "nothing"}
   end
 
   defp maria, do: Wardrik.Principal.new(:user, "maria")

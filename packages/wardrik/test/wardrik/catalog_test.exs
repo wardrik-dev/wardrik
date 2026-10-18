@@ -123,7 +123,7 @@ defmodule Wardrik.CatalogTest do
       set = Enum.find(tools, &(&1.name == "self_trigger_set"))
       entry = Enum.find(Catalog.agent(), &(&1.name == "agent.trigger.set"))
       assert set.description == entry.summary
-      assert set.parameter_schema == Entry.input(entry)
+      assert set.schema == Entry.input(entry)
 
       assert Self.annotations(agent, "self_trigger_set") == %{gated: true}
       assert Self.annotations(agent, "self_definition_read") == %{}
@@ -201,17 +201,17 @@ defmodule Wardrik.CatalogTest do
 
       for tool <- tools, tool.name != "agents_list" do
         assert %{"required" => ["agent" | _rest], "properties" => %{"agent" => _agent}} =
-                 tool.parameter_schema
+                 tool.schema
 
-        root = JSV.build!(tool.parameter_schema)
+        root = JSV.build!(tool.schema)
 
-        for example <- tool.parameter_schema["examples"],
+        for example <- tool.schema["examples"],
             do: assert({:ok, _valid} = JSV.validate(example, root))
       end
 
       list = Enum.find(tools, &(&1.name == "agents_list"))
       assert [%Entry{name: "agents.list"} = listing] = Catalog.fleet()
-      assert list.parameter_schema == Entry.input(listing)
+      assert list.schema == Entry.input(listing)
       assert Agents.annotations(agent, "agent_ask") == %{gated: true}
       assert Agents.annotations(agent, "agent_define") == %{gated: true}
       assert Agents.annotations(agent, "agents_list") == %{}

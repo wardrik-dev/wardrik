@@ -29,11 +29,11 @@ defmodule Wardrik.LLM.TurnJournalTest do
   end
 
   defp refund_tool(test_pid) do
-    ReqLLM.Tool.new!(
+    Wardrik.Tool.new!(
       name: "refund",
       description: "Refunds an order.",
-      parameter_schema: [],
-      callback: fn _args ->
+      schema: [],
+      run: fn _args, _context ->
         send(test_pid, :refunded)
         {:ok, %{"refunded" => true}}
       end
@@ -209,7 +209,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
       Wardrik.Tool.new!(
         name: "research",
         description: "Hands the work to a delegate.",
-        parameter_schema: [],
+        schema: [],
         run: fn _input, context ->
           {:ok, answer} = Wardrik.Subagent.run(context.run, "refund it")
           {:ok, %{"answer" => answer}}

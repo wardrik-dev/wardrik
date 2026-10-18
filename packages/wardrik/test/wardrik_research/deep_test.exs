@@ -372,11 +372,10 @@ defmodule WardrikResearch.DeepTest do
 
       assert tool.name == "deep_research"
 
-      assert {Wardrik.Tool, :invoke, [{WardrikWorkflow, :handle, [{Deep, _opts}]}]} =
-               tool.callback
+      assert {WardrikWorkflow, :handle, [{Deep, _opts}]} = tool.run
 
-      assert Keyword.fetch!(tool.parameter_schema, :topic)[:required]
-      refute Keyword.fetch!(tool.parameter_schema, :angles)[:required]
+      assert Keyword.fetch!(tool.schema, :topic)[:required]
+      refute Keyword.fetch!(tool.schema, :angles)[:required]
     end
 
     test "a config naming the module resolves it like any other tool" do

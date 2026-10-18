@@ -228,7 +228,8 @@ defmodule WardrikMCP.ServerTest do
       name = Server.local_name(server(), String.duplicate("a", 100))
 
       assert String.length(name) == 64
-      assert ReqLLM.Tool.valid_name?(name)
+      tool = Wardrik.Tool.new!(name: name, description: "d", run: fn _, _ -> {:ok, %{}} end)
+      assert tool.name == name
     end
   end
 end

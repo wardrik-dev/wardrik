@@ -145,7 +145,7 @@ defmodule WardrikMCP.Connection do
   end
 
   @doc "The tools a server last reported."
-  @spec tools(Key.t()) :: [ReqLLM.Tool.t()]
+  @spec tools(Key.t()) :: [Wardrik.Tool.t()]
   def tools(key) do
     case offer(key) do
       %Offer{tools: tools} -> tools
@@ -235,7 +235,7 @@ defmodule WardrikMCP.Connection do
   Returns `{:error, :timeout}` when it has not answered in time, which a server
   that is down never will.
   """
-  @spec await(Key.t(), term(), timeout()) :: {:ok, [ReqLLM.Tool.t()]} | {:error, :timeout}
+  @spec await(Key.t(), term(), timeout()) :: {:ok, [Wardrik.Tool.t()]} | {:error, :timeout}
   def await(key, principal \\ :deployment, timeout \\ :timer.seconds(30)) do
     GenServer.call(name(key, principal), :await, timeout)
   catch

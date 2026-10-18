@@ -14,13 +14,13 @@ defmodule Wardrik.Test.CountingSource do
   def annotations(_count, _name), do: %{timeout: :timer.seconds(90)}
 
   defp tool(name) do
-    ReqLLM.Tool.new!(
+    Wardrik.Tool.new!(
       name: name,
       description: "Counted tool #{name}.",
-      parameter_schema: [value: [type: :any, required: false, doc: "Anything"]],
-      callback: {__MODULE__, :run, [name]}
+      schema: [value: [type: :any, required: false, doc: "Anything"]],
+      run: {__MODULE__, :run, [name]}
     )
   end
 
-  def run(name, params), do: {:ok, Map.put(Map.new(params), :from, name)}
+  def run(name, params, _context), do: {:ok, Map.put(Map.new(params), :from, name)}
 end

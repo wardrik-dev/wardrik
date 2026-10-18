@@ -15,11 +15,16 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     {:ok, agent_id: agent_id}
   end
 
-  defp tool!(name, callback) do
-    ReqLLM.Tool.new!(name: name, description: "test tool", callback: callback)
+  # A tool that answers from its input alone.
+  defp tool!(name, answer) do
+    Wardrik.Tool.new!(
+      name: name,
+      description: "test tool",
+      run: fn input, _context -> answer.(input) end
+    )
   end
 
-  # A tool handed its context, as `Wardrik.Tool.new!/1` builds one.
+  # A tool that reads its context too.
   defp handed!(name, handler) do
     Wardrik.Tool.new!(name: name, description: "test tool", run: handler)
   end
@@ -192,11 +197,11 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
     test "a schema violation tells the model what was expected", %{agent_id: agent_id} do
       tools = [
-        ReqLLM.Tool.new!(
+        Wardrik.Tool.new!(
           name: "pick",
           description: "test tool",
-          parameter_schema: [colour: [type: {:in, ["red", "blue"]}]],
-          callback: fn input -> {:ok, input} end
+          schema: [colour: [type: {:in, ["red", "blue"]}]],
+          run: fn input, _context -> {:ok, input} end
         )
       ]
 
@@ -291,7 +296,14 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       @impl true
       def tools(test) do
         send(test, :resolved)
-        [ReqLLM.Tool.new!(name: "counted", description: "test tool", callback: &{:ok, &1})]
+
+        [
+          Wardrik.Tool.new!(
+            name: "counted",
+            description: "test tool",
+            run: fn input, _context -> {:ok, input} end
+          )
+        ]
       end
     end
 
@@ -750,8 +762,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         Wardrik.Tool.new!(
           name: "issues",
           description: "Searches issues.",
-          parameter_schema: [],
-          run: {__MODULE__, :run}
+          schema: [],
+          run: {__MODULE__, :run, []}
         )
       end
 

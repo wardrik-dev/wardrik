@@ -51,14 +51,14 @@ defmodule Wardrik.Catalog.Tools do
   `{module, function, args}`, answers.
   """
   @spec tool(Entry.t(), name: String.t(), schema: map(), run: {module(), atom(), list()}) ::
-          ReqLLM.Tool.t()
+          Wardrik.Tool.t()
   def tool(%Entry{summary: summary}, opts) do
     opts = Keyword.validate!(opts, [:name, :schema, :run])
 
     Wardrik.Tool.new!(
       name: Keyword.fetch!(opts, :name),
       description: summary,
-      parameter_schema: Keyword.fetch!(opts, :schema),
+      schema: Keyword.fetch!(opts, :schema),
       run: Keyword.fetch!(opts, :run)
     )
   end

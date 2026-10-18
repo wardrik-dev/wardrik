@@ -26,9 +26,8 @@ defmodule WardrikWorkflow.Step do
   | `MyStep` | a reusable step |
   | `{MyStep, config}` | a reusable step that needs parameterising |
 
-  A function is fine here even though a tool callback should be an MFA. The
-  rule about MFAs is for callbacks stored in a config that may cross a node
-  boundary; a step function is built and consumed inside one invocation.
+  A function is fine here: a step is built and consumed inside one
+  invocation.
 
   ## Composing them
 

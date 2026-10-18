@@ -83,7 +83,7 @@ defmodule WardrikMCP do
   next turn, and one that disconnects takes its own away.
   """
   @impl Wardrik.Tool
-  @spec tools(Key.t() | :*) :: [ReqLLM.Tool.t()]
+  @spec tools(Key.t() | :*) :: [Tool.t()]
   def tools(source), do: source |> keys() |> Enum.flat_map(&offered/1)
 
   @doc """
@@ -120,7 +120,7 @@ defmodule WardrikMCP do
   defp offering(source, name) do
     Enum.find_value(keys(source), fn key ->
       with %Offer{server: server, tools: tools, read_only: read_only} <- offer(key),
-           %ReqLLM.Tool{callback: {Tool, :invoke, [{__MODULE__, function, args}]}} <-
+           %Tool{run: {__MODULE__, function, args}} <-
              Enum.find(tools, &(&1.name == name)) do
         offered(server, read_only, function, args)
       else

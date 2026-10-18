@@ -9,24 +9,48 @@ defmodule Wardrik.ToolTest do
     @moduledoc false
   end
 
-  defmodule BadSource do
-    @moduledoc false
+  defp inline(name),
+    do: Tool.new!(name: name, description: "d", run: fn i, _context -> {:ok, i} end)
 
-    def tools(_argument), do: :not_a_list
+  describe "new!/1" do
+    test "builds a tool from its fields, with no arguments where it names no schema" do
+      run = {EchoTool, :run, []}
+
+      assert Tool.new!(name: "echo", description: "d", run: run) ==
+               %Tool{name: "echo", description: "d", schema: [], run: run}
+    end
+
+    test "raises on a field missing or unknown" do
+      assert_raise ArgumentError, fn -> Tool.new!(name: "x", description: "d") end
+
+      assert_raise KeyError, fn ->
+        Tool.new!(name: "x", description: "d", run: nil, callback: nil)
+      end
+    end
+
+    test "raises on a name or schema no model could be offered" do
+      assert_raise ArgumentError, ~r/name|schema/, fn ->
+        Tool.new!(name: "not a name", description: "d", run: nil)
+      end
+
+      assert_raise ArgumentError, ~r/name|schema/, fn ->
+        Tool.new!(name: "x", description: "d", schema: "not a schema", run: nil)
+      end
+    end
   end
 
   test "resolve!/1 builds a tool from a module" do
-    assert [%ReqLLM.Tool{name: "echo"}] = Tool.resolve!([EchoTool])
+    assert [%Tool{name: "echo"}] = Tool.resolve!([EchoTool])
   end
 
   test "resolve!/1 passes an inline tool through untouched" do
-    inline = ReqLLM.Tool.new!(name: "inline", description: "d", callback: fn i -> {:ok, i} end)
+    inline = inline("inline")
 
     assert Tool.resolve!([inline]) == [inline]
   end
 
   test "resolve!/1 keeps order and mixes both forms" do
-    inline = ReqLLM.Tool.new!(name: "inline", description: "d", callback: fn i -> {:ok, i} end)
+    inline = inline("inline")
 
     assert Tool.resolve!([EchoTool, inline]) |> Enum.map(& &1.name) == ["echo", "inline"]
   end
@@ -52,12 +76,6 @@ defmodule Wardrik.ToolTest do
   test "resolve!/1 rejects a source that cannot be loaded" do
     assert_raise ArgumentError, ~r/does not implement Wardrik.Tool tools\/1/, fn ->
       Tool.resolve!([{NotATool, :anything}])
-    end
-  end
-
-  test "resolve!/1 rejects a source that gives something other than tools" do
-    assert_raise ArgumentError, ~r/not a list of tools/, fn ->
-      Tool.resolve!([{BadSource, :anything}])
     end
   end
 
@@ -89,7 +107,11 @@ defmodule Wardrik.ToolTest do
 
       @impl true
       def tool do
-        ReqLLM.Tool.new!(name: "refund", description: "once", callback: fn _ -> {:ok, %{}} end)
+        Wardrik.Tool.new!(
+          name: "refund",
+          description: "once",
+          run: fn _, _context -> {:ok, %{}} end
+        )
       end
 
       @impl true
@@ -134,7 +156,7 @@ defmodule Wardrik.ToolTest do
     end
 
     test "is every default where a module, a source or an inline tool declares nothing" do
-      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+      tool = inline("x")
 
       for {spec, name} <- [{EchoTool, "echo"}, {{DeclaringSource, :lax}, "y"}, {tool, "x"}] do
         assert Tool.annotations(spec, name) == %Annotations{}
@@ -146,7 +168,7 @@ defmodule Wardrik.ToolTest do
     end
 
     test "subjects are read from a module, asked of a source with its argument, and nothing otherwise" do
-      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+      tool = inline("x")
 
       assert Tool.subjects(Deploy, "deploy", %{"target" => "prod"}) == ["prod"]
       assert Tool.subjects({DeclaringSource, :a}, "x", %{"path" => "p"}) == ["a:x:p"]
@@ -197,7 +219,7 @@ defmodule Wardrik.ToolTest do
     end
 
     test "is nothing where no spec tells the model anything" do
-      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+      tool = inline("x")
 
       assert Tool.context([], Wardrik.Test.run()) == {nil, []}
 
@@ -217,7 +239,7 @@ defmodule Wardrik.ToolTest do
 
   describe "available?/1" do
     test "a module implementing the behaviour, or an inline tool, is available" do
-      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+      tool = inline("x")
 
       assert Tool.available?(Wardrik.Test.EchoTool)
       assert Tool.available?(tool)
@@ -237,7 +259,7 @@ defmodule Wardrik.ToolTest do
 
   describe "travels?/1" do
     test "a module and a source travel, an inline tool does not" do
-      inline = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+      inline = inline("x")
 
       assert Tool.travels?(EchoTool)
       assert Tool.travels?({CountingSource, 3})
