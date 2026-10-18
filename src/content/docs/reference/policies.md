@@ -1,12 +1,12 @@
 ---
 title: "Policies"
 description: "A policy decides each tool call an agent makes before it runs: the call runs, waits on a person, or is refused, and the model is told why."
-editUrl: "https://github.com/wardrik-dev/wardrik/edit/main/packages/wardrik_policy/guides/policies.md"
+editUrl: "https://github.com/wardrik-dev/wardrik/edit/main/packages/wardrik/guides/policies.md"
 sidebar:
   order: 4
 ---
 
-<!-- Written by mix wardrik.docs from packages/wardrik_policy/guides/policies.md. Edit it there, not here. -->
+<!-- Written by mix wardrik.docs from packages/wardrik/guides/policies.md. Edit it there, not here. -->
 
 A policy decides each tool call an agent makes before it runs: the call runs, waits on a person, or
 is refused, and the model is told why.
