@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:input_tokens_create",
+  "title": "tokens.create",
+  "description": "What making an API token takes: its name, the agents it reaches, and the roles it holds there. It acts for whoever makes it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "scope",
+    "roles"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "What it is listed as."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The agents it reaches, by their prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', an agent's ID, or empty for every agent."
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "reader",
+          "messenger",
+          "approver",
+          "definer",
+          "worker",
+          "owner"
+        ]
+      },
+      "minItems": 1,
+      "description": "What it may do there, each a named set of actions."
+    },
+    "expires_in": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "How many seconds it works for; the server's own lifetime for API tokens, 90 days unless set, where left out."
+    }
+  },
+  "examples": [
+    {
+      "name": "ci",
+      "scope": "acme/",
+      "roles": [
+        "reader",
+        "messenger"
+      ],
+      "expires_in": 2592000
+    }
+  ]
+}

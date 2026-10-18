@@ -149,7 +149,7 @@ defmodule WardrikDaemon.Config do
 
   @doc """
   The policy of `policies/` each org's agents are held to, ahead of their
-  own, by org, with `*`'s holding every org's.
+  own, by org, with `*`'s holding every org's: `orgs.<org>.policy`.
   """
   @spec ceilings(t()) :: %{String.t() => String.t()}
   def ceilings(%__MODULE__{} = config),
@@ -414,11 +414,14 @@ defmodule WardrikDaemon.Config do
       {"workspace", workspace} ->
         {WardrikWorkspace, workspace(table!(workspace, ["workspace"]), orgs)}
 
+      {"tokens", tokens} ->
+        {Wardrik.Tokens, tokens(table!(tokens, ["tokens"]))}
+
       {section, _value} ->
         invalid!(
           [section],
           "is not a section; expected org, orgs, tools, defaults, mcp, oauth, vault, ssh, http, " <>
-            "channels, notify, workspace, cluster or storage"
+            "channels, notify, workspace, tokens, cluster or storage"
         )
     end)
   end
@@ -505,23 +508,23 @@ defmodule WardrikDaemon.Config do
       unless owner == "*" or Wardrik.AgentID.segment?(owner),
         do: invalid!(path, "is not an org, or * for every org; #{@segment}")
 
-      {ceiling, used} = Map.pop(table!(used, path), "ceiling")
-      known!(used, ["ceiling" | @uses], path)
+      {policy, used} = Map.pop(table!(used, path), "policy")
+      known!(used, ["policy" | @uses], path)
 
       {owner,
        used
        |> Map.new(fn {section, names} -> {section, used!(names, section, document, path)} end)
-       |> Map.put("ceiling", ceiling!(ceiling, path ++ ["ceiling"]))}
+       |> Map.put("policy", policy!(policy, path ++ ["policy"]))}
     end)
   end
 
-  defp ceiling!(nil, _path), do: nil
-  defp ceiling!(name, _path) when is_binary(name) and name != "", do: name
-  defp ceiling!(_name, path), do: invalid!(path, "is the name of a policy in policies/")
+  defp policy!(nil, _path), do: nil
+  defp policy!(name, _path) when is_binary(name) and name != "", do: name
+  defp policy!(_name, path), do: invalid!(path, "is the name of a policy in policies/")
 
-  # The ceiling policy each org is held to, `*`'s holding every org.
+  # The policy each org is held to, `*`'s holding every org.
   defp ceilings_of(uses) do
-    for {owner, %{"ceiling" => name}} <- uses, name != nil, into: %{}, do: {owner, name}
+    for {owner, %{"policy" => name}} <- uses, name != nil, into: %{}, do: {owner, name}
   end
 
   defp used!(names, section, document, path) do
@@ -639,6 +642,38 @@ defmodule WardrikDaemon.Config do
   end
 
   defp credential(_name, path), do: invalid!(path ++ ["credential"], "is #{@credential}")
+
+  # -- tokens ----------------------------------------------------------------
+
+  # How long the tokens the deployment makes last, by their kind.
+  defp tokens(tokens) do
+    known!(tokens, ["expires"], ["tokens"])
+    path = ["tokens", "expires"]
+    expires = table!(tokens["expires"], path)
+    known!(expires, ["api"], path)
+
+    for {"api", text} <- expires do
+      case seconds(text) do
+        {:ok, seconds} -> {:expires, [api: seconds]}
+        :error -> invalid!(path ++ ["api"], "is a duration, as 90d, 12h, 30m or 45s")
+      end
+    end
+  end
+
+  @units %{"d" => 86_400, "h" => 3_600, "m" => 60, "s" => 1}
+
+  @doc "The seconds a duration such as `90d`, `12h`, `30m` or `45s` is, or `:error`."
+  @spec seconds(term()) :: {:ok, pos_integer()} | :error
+  def seconds(text) when is_binary(text) do
+    with [_, n, unit] <- Regex.run(~r/^(\d+)([dhms])$/, String.trim(text)),
+         seconds when seconds > 0 <- String.to_integer(n) * Map.fetch!(@units, unit) do
+      {:ok, seconds}
+    else
+      _other -> :error
+    end
+  end
+
+  def seconds(_text), do: :error
 
   # -- defaults --------------------------------------------------------------
 
@@ -1146,7 +1181,7 @@ defmodule WardrikDaemon.Config do
       invalid!(
         ["the file"],
         "is a set of sections: org, tools, defaults, mcp, oauth, vault, ssh, http, " <>
-          "channels, notify, workspace, cluster, storage"
+          "channels, notify, workspace, tokens, cluster, storage"
       )
 
   defp table!(_value, path), do: invalid!(path, "is a set of keys")

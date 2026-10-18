@@ -33,8 +33,8 @@ defmodule WardrikDefinition.Record do
   @doc """
   The record the definition `:fields` writes for the agent `id`, written by
   `:source`. What its settings say is checked as `spec/3` builds a spec from
-  it, the trees its workspace shares against the scope of a grant that sent
-  it among them.
+  it, the trees its workspace shares against what the token that sent it
+  reaches, where one did.
   """
   @spec define(Context.t(), AgentID.t(), fields: map(), source: WardrikDefinition.source()) ::
           {:ok, t()} | {:error, String.t()}

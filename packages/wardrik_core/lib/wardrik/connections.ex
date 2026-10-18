@@ -24,7 +24,7 @@ defprotocol Wardrik.Connections do
   `Wardrik.Credential` resolves credentials for them: a person's call takes
   their own, then their org's, then the deployment's. The operations name
   an owner by the `Wardrik.AgentID.Prefix` of the agents it owns, so a
-  grant reaches a person's connections where it reaches their agents;
+  token reaches a person's connections where it reaches their agents;
   `Wardrik.Connections.Owner` finds it.
   """
 

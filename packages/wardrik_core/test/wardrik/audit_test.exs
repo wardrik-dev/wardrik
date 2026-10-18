@@ -54,7 +54,8 @@ defmodule Wardrik.AuditTest do
   end
 
   test "numbers each change, says who made it, and tells those following", %{by: by, id: id} do
-    assert :ok = Audit.record(Wardrik.Audit, {:agent_forgotten, id}, by: by)
+    agent = Wardrik.Principal.new(:agent, "acme/front")
+    assert :ok = Audit.record(Wardrik.Audit, {:agent_forgotten, id}, by: by, assumed_by: [agent])
     assert :ok = Audit.record(Wardrik.Audit, {:agent_cleared, id}, by: nil)
 
     assert {:ok,
@@ -62,12 +63,16 @@ defmodule Wardrik.AuditTest do
               %{
                 "type" => "wardrik.agent.forgotten",
                 "sequence" => "000000000001",
-                "data" => %{"actor" => %{"type" => "shell", "id" => "jon"}}
+                "data" => %{
+                  "actor" => %{"type" => "shell", "id" => "jon"},
+                  "assumed_by" => [%{"type" => "agent", "id" => "acme/front"}]
+                }
               },
               %{"type" => "wardrik.agent.cleared", "sequence" => "000000000002", "data" => data}
             ]} = Log.read(store(), :audit)
 
     refute Map.has_key?(data, "actor")
+    refute Map.has_key?(data, "assumed_by")
 
     assert_receive %Entry{sequence: 1, follows: 0, event: %{"type" => "wardrik.agent.forgotten"}}
     assert_receive %Entry{sequence: 2, follows: 1, event: %{"type" => "wardrik.agent.cleared"}}

@@ -1,18 +1,18 @@
 import type { Http } from "./http.ts";
 import type { Connecting, Connections as ConnectionList } from "./protocol.ts";
 
-/** Whose connections: the token's person's own, or with `"org"` their org's. */
+/** What a request about connections takes beside its owner. */
 export interface ConnectionOptions {
-  owner?: "org";
   signal?: AbortSignal;
 }
 
 /**
- * The accounts a token's person, or their org, connects: a sign-in an
- * agent's tools use, connected before any agent asks for it.
+ * The accounts an owner's agents act with: a sign-in an agent's tools use,
+ * connected before any agent asks for it. The owner is named by the prefix
+ * of their agents, `acme/` for an org's or `acme/@jon/` for a person's.
  *
- *     const { connections } = await wardrik.connections.list();
- *     const linear = await wardrik.connections.connect("linear");
+ *     const { connections } = await wardrik.connections.list("acme/@jon/");
+ *     const linear = await wardrik.connections.connect("acme/@jon/", "linear");
  *     if (!linear.connected) console.log("Authorize at", linear.authorization?.url);
  */
 export class Connections {
@@ -23,22 +23,22 @@ export class Connections {
     this.#http = http;
   }
 
-  /** The accounts offered, and whether the person, the org or the deployment holds each. */
-  list(options: ConnectionOptions = {}): Promise<ConnectionList> {
-    return this.#http.json("GET", "/v1/connections", request(options));
+  /** The accounts offered `owner`, and whether the person, the org or the deployment holds each. */
+  list(owner: string, options: ConnectionOptions = {}): Promise<ConnectionList> {
+    return this.#http.json("GET", "/v1/connections", request(owner, options));
   }
 
-  /** Connects `provider`: where to authorize it, or that it is held already. */
-  connect(provider: string, options: ConnectionOptions = {}): Promise<Connecting> {
-    return this.#http.json("POST", path(provider), request(options));
+  /** Connects `owner`'s account at `provider`: where to authorize it, or that it is held already. */
+  connect(owner: string, provider: string, options: ConnectionOptions = {}): Promise<Connecting> {
+    return this.#http.json("POST", path(provider), request(owner, options));
   }
 
-  /** Forgets `provider`, so the next call that needs it asks again. */
-  async disconnect(provider: string, options: ConnectionOptions = {}): Promise<void> {
-    await this.#http.send("DELETE", path(provider), request(options));
+  /** Forgets `owner`'s account at `provider`, so the next call that needs it asks again. */
+  async disconnect(owner: string, provider: string, options: ConnectionOptions = {}): Promise<void> {
+    await this.#http.send("DELETE", path(provider), request(owner, options));
   }
 }
 
 const path = (provider: string): string => `/v1/connections/${encodeURIComponent(provider)}`;
 
-const request = ({ owner, signal }: ConnectionOptions) => ({ query: { owner }, signal });
+const request = (owner: string, { signal }: ConnectionOptions) => ({ query: { prefix: owner }, signal });

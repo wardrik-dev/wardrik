@@ -65,7 +65,7 @@ set them.
 | Key | What it configures |
 | --- | --- |
 | [`org`](#org) | the deployment's org |
-| [`orgs`](#orgs) | the other orgs, what each uses, and the ceiling each is held to |
+| [`orgs`](#orgs) | the other orgs, what each uses, and the policy each is held to |
 | [`base_url`](#base_url) | the address people and services reach the daemon at |
 | [`defaults`](#defaults) | what an agent is given where nothing else says |
 | [`tools`](#tools) | what calls to a tool cost |
@@ -74,6 +74,7 @@ set them.
 | [`channels`](#channels) | chat media agents are reached through, such as Slack |
 | [`notify`](#notify) | where agents' notices go |
 | [`workspace`](#workspace) | the trees of files agents beyond their owners may share |
+| [`tokens`](#tokens) | how long the HTTP API's tokens last |
 | [`vault`](#vault) | the vault's keys, and the secrets every agent may read |
 | [`storage`](#storage) | the store everything is kept in |
 | [`cluster`](#cluster) | the other daemons this one runs with |
@@ -88,7 +89,7 @@ it is named without an org. `default` unless set.
 ## orgs
 
 The orgs beside the deployment's own, each with the servers, channels and notify targets its agents
-use, and the ceiling they are held to. Each server, channel and target is defined once, under `mcp`,
+use, and the policy they are held to. Each server, channel and target is defined once, under `mcp`,
 `channels` or `notify`, and an org lists it by name.
 
 ```yaml
@@ -106,11 +107,11 @@ channels:
 orgs:
   "*":
     mcp: [search]
-    ceiling: base
+    policy: base
   payments:
     mcp: [stripe, github]
     channels: [payments-slack]
-    ceiling: payments-ceiling
+    policy: payments-strict
   growth:
     mcp: [github]
     channels: [growth-slack]
@@ -119,13 +120,13 @@ vault:
   shared: [SEARCH_API_KEY]
 ```
 
-- An org's entry takes `mcp`, `channels` and `notify`, each a list of names, and `ceiling`. An
+- An org's entry takes `mcp`, `channels` and `notify`, each a list of names, and `policy`. An
   entry may be empty, `growth: {}`.
-- `ceiling` names a policy in `policies/` that every agent of the org is held to, ahead of its own,
+- `policy` names a policy in `policies/` that every agent of the org is held to, ahead of its own,
   whether a file, the HTTP API or a channel defined it. A definition can narrow it, never widen it.
   Its budget is the org's: all of the org's agents spend from it together.
-  An org whose ceiling `policies/` doesn't hold runs none of its agents.
-- `"*"` lists what every org uses, and its `ceiling` holds every org, beside the org's own; each
+  An org whose policy `policies/` doesn't hold runs none of its agents.
+- `"*"` lists what every org uses, and its `policy` holds every org, beside the org's own; each
   org spends its budget apart.
 - A server, channel or target no entry lists is the deployment's own org's.
 - An agent, a secret, a token's scope or a shared tree in an org that is neither `org` nor in
@@ -239,14 +240,18 @@ Chat media agents are reached through, each by a name of the deployment's own.
 | `type` | the kind of channel, such as `slack` |
 | `token` | the token it acts with in the one workspace it reaches, such as a Slack bot token; without one, nothing is posted |
 | `approvers` | who decides what an agent waits on in its rooms: the people named, or `anyone` in the channel; where none are named, whoever asked for the turn decides, and a shell decides the rest |
-| `admins` | who may change its orgs' agents |
+| `admins` | who may change its orgs' agents, where `defaults` name a policy, which holds every agent they define |
 | `create` | `false` stops people creating an agent in a room that has none; where `defaults` name a policy, one is made from them unless set |
 
 The rest of a channel's keys are its kind's, such as Slack's `signing_secret` and `app_token`. What
 its medium sends it over HTTP reaches the daemon at `/v1/channels/NAME/`; see [`http`](#http). A
 channel
 offers the agents of the orgs that [`orgs`](#orgs) lists it for. An agent is offered in a channel's
-rooms where its file lists the channel. See
+rooms where its file lists the channel.
+
+Everyone in a channel holds the roles `reader` and `messenger` on the agents of its orgs: they read
+them and send them messages. Its approvers hold `approver` too, and its admins `approver` and
+`definer`. A role is a named set of actions; see [`tokens`](#tokens). See
 [Channels](/channels/) and
 [Slack](/channels/slack/).
 
@@ -297,6 +302,30 @@ data home, which the first `wardrik vault put` offers to make.
 ```yaml
 vault:
   shared: [SEARCH_API_KEY]
+```
+
+## tokens
+
+A token says who acts and what they may do. Each of its statements allows some actions, such as
+`agent.ask`, on the agents under a prefix, and anything none allows is denied. A role is a named set
+of actions: `reader`, `messenger`, `approver`, `definer`, `worker` and `owner`, which is every
+action. A shell on the server holds `owner` on every agent. `wardrik token create` makes a token for
+the HTTP API, which acts for whoever made it:
+
+```sh
+wardrik token create ci --scope acme/ --role reader,messenger --expires 30d
+```
+
+A token may name a policy of `policies/`, with `--policy`: every agent it defines runs under it,
+ahead of its own. It is what IAM calls a permissions boundary.
+
+`expires.api` is how long a token for the HTTP API lasts where `--expires` doesn't say, as `90d`,
+`12h`, `30m` or `45s`. `90d` unless set. An expired token is refused.
+
+```yaml
+tokens:
+  expires:
+    api: 30d
 ```
 
 ## storage

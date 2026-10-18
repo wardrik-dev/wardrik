@@ -33,7 +33,7 @@ wardrik agent move triage b       # start it again on node b, as it was
 wardrik agent cancel triage       # stop what it is doing, and leave it running
 wardrik reload                    # read the agent and policy files again
 wardrik vault put LINEAR_TOKEN    # seal a secret, asking for its value
-wardrik token create ci --scope acme/ --policy careful
+wardrik token create ci --scope acme/ --role reader,messenger
 wardrik doctor                    # whether config.yaml, the store, the vault and each agent file will do
 wardrik service install           # run it under your user's systemd
 wardrik stop
@@ -46,7 +46,10 @@ agents running.
 
 A command that changes something, and the same change made in the TUI or over
 the HTTP API, is recorded in `Wardrik.Audit` with who made it: the account
-that ran `wardrik`, the SSH user, or the token or the person it was made for.
+that ran `wardrik`, the SSH user, or whoever made the token. Each acts with a
+token whose roles say what they may do: a shell or the TUI holds `owner` on
+every agent, someone in a channel what [`channels`](guides/config.md#channels)
+says, and an API token what `wardrik token create` gave it.
 
 ## Where it keeps things
 

@@ -2,7 +2,7 @@
 // back, each call it waits on comes with Approve and Deny, /stop stops its
 // turn, and message_me lets it write to you first.
 //
-//   wardrik token create telegram --scope default/@jon/ --can read,message,decide,serve
+//   wardrik token create telegram --scope default/@jon/ --role reader,messenger,approver,worker
 //   WARDRIK_TOKEN=wardrik_… TELEGRAM_BOT_TOKEN=… TELEGRAM_CHAT_ID=… node telegram.ts
 
 import { setTimeout as sleep } from "node:timers/promises";

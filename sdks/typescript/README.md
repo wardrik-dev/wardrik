@@ -15,13 +15,13 @@ import { Wardrik } from "@wardrik/sdk";
 const wardrik = new Wardrik(); // WARDRIK_URL, else http://127.0.0.1:4747; WARDRIK_TOKEN
 ```
 
-A token comes from the daemon: `wardrik token create NAME --scope acme/
---unlimited`. It reaches the agents whose keys start with its scope, and takes
-the actions it was made with, all of them unless `--can` names fewer. A token
-that can define agents is made with `--policy NAME`, a policy the daemon holds
-that every agent it defines is held to, or with `--unlimited`. An action it was not
-granted throws a `WardrikError` of type `forbidden`, and a revoked token closes
-its streams and workers.
+A token comes from the daemon, `wardrik token create NAME --scope acme/ --role
+reader,messenger`, or from `wardrik.tokens.create` with a token owning every
+agent. It acts for whoever made it, on the agents under its scope, holding the
+roles it was made with: each a named set of actions, from `reader` to `owner`.
+An action it does not allow throws a `WardrikError` of type `forbidden`, an
+expired token one of type `unauthorized`, and a revoked token closes its
+streams and workers.
 
 ## Agents
 
@@ -79,10 +79,27 @@ what the agent is doing. When the log no
 longer holds what comes after the cursor, the stream throws a `WardrikError` of
 type `gap`: read `agent.snapshot()` and follow from its `sequence`.
 
+## Owners
+
+The accounts an owner's agents act with, and the MCP servers they add, are
+named by the prefix of the owner's agents: `acme/` for an org's, `acme/@jon/`
+for a person's.
+
+```ts
+const linear = await wardrik.connections.connect("acme/@jon/", "linear");
+if (!linear.connected) console.log("Authorize at", linear.authorization?.url);
+
+await wardrik.servers.add("acme/", {
+  name: "crm",
+  url: "https://mcp.crm.example/mcp",
+  auth: { secret: { name: "crm-key" } },
+});
+```
+
 ## Exports
 
 An export reads every log the token may read, each agent's and, for a token
-that reaches every agent, the audit of what people changed, on from a cursor
+owning every agent, the audit of what people changed, on from a cursor
 the server keeps under a name of the token's own. A page leaves the cursor
 where it is until `advance` moves it, so each event arrives at least once:
 

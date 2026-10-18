@@ -10,7 +10,7 @@
 // `http: {trusted_workers: true}`, or each call after the first waits on a
 // person, since a worker's answer is otherwise content from outside.
 //
-//   wardrik token create it --scope default/ --unlimited
+//   wardrik token create it --scope default/ --role owner
 //   WARDRIK_TOKEN=wardrik_… node examples/onboarding.ts
 
 import { setTimeout as sleep } from "node:timers/promises";

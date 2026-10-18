@@ -15,14 +15,14 @@ defprotocol Wardrik.Definition do
 
   The implementation decides what a definition may say, the seams its agent
   is given, whether it is kept, and who owns an agent. `Wardrik` checks
-  the caller's grant first, runs the spec `put/3` answers with
-  `Wardrik.Fleet.put/1`, and puts the grant's ceiling ahead of the spec's
+  the caller's token first, runs the spec `put/3` answers with
+  `Wardrik.Fleet.put/1`, and puts the token's policy ahead of the spec's
   own hooks, so no implementation lets a definition loosen it; see
-  `Wardrik.Grant`.
+  `Wardrik.Token`.
 
   | Function | `Wardrik` | `Wardrik.Definition.None` |
   | --- | --- | --- |
-  | `put/3` | `agent_define/3` | `:unsupported` |
+  | `put/3` | `agent_define/4` | `:unsupported` |
   | `get/2` | `agent_definition_read/2` | `:unsupported` |
   | `delete/2` | `agent_forget/2`, `agents_forget/2` | the agent is forgotten, and no definition with it |
   | `put_trigger/4` | `agent_trigger_set/4` | `:unsupported` |
@@ -46,14 +46,15 @@ defprotocol Wardrik.Definition do
   agent the implementation does not let anyone define.
 
     * `:definition` - its fields, as sent
-    * `:grant` - the caller's `Wardrik.Grant`
+    * `:token` - the caller's `Wardrik.Token`, with any hooks the caller
+      holds the agent to beside its policy
 
-  The grant decides what the definition may reach, such as the trees
-  an agent shares, is the implementation's to check against its scope, and
-  one that builds the spec again later holds it under the same ceiling. The
-  spec is for `id` and no other.
+  What the definition may reach, such as the trees an agent shares, is the
+  implementation's to check against the token's scope, and one that builds
+  the spec again later holds it under the same policy. The spec is for `id`
+  and no other.
   """
-  @spec put(t(), Wardrik.AgentID.t(), definition: map(), grant: Wardrik.Grant.t()) ::
+  @spec put(t(), Wardrik.AgentID.t(), definition: map(), token: Wardrik.Token.t()) ::
           {:ok, Wardrik.Agent.Spec.t()}
           | {:error, String.t()}
           | {:error, :conflict, String.t()}

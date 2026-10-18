@@ -46,8 +46,8 @@ defmodule Wardrik.Run do
   An agent's ID says whose the work is; `:sender` says who asked for it.
   A turn answers the messages of one sender at a time, and its run names
   them, so a tool can act as the person who asked rather than
-  as the agent's owner: with the `Wardrik.Grant` `Wardrik.Grants` answers
-  for them, say. `nil` is a turn nobody asked for, as one a trigger starts.
+  as the agent's owner: with the `Wardrik.Token` the host's
+  `Wardrik.Issuer` issues them, say. `nil` is a turn nobody asked for, as one a trigger starts.
   Work the turn spawns keeps its sender.
 
       run = Wardrik.Run.root(config, ~A"acme/assistant", sender: maria)

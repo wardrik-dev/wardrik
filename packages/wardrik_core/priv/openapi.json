@@ -3,7 +3,7 @@
   "info": {
     "title": "Wardrik",
     "version": "1",
-    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token; an agent outside its scope is answered as one that does not exist, 404, and one inside it the token may not act on so, 403. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
+    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token, whose statements each allow some actions on the agents under a prefix; an agent none reaches is answered as one that does not exist, 404, and one reached without the action, 403. An expired token is answered 401. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -45,6 +45,10 @@
     {
       "name": "Deployment",
       "description": "The deployment itself, to a token over every agent."
+    },
+    {
+      "name": "Tokens",
+      "description": "The API's tokens, to a token over every agent."
     },
     {
       "name": "Workers",
@@ -2282,7 +2286,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -2305,6 +2309,9 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "501": {
             "$ref": "#/components/responses/NotSupported"
           }
@@ -2326,7 +2333,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -2366,7 +2373,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -2411,7 +2418,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -2434,6 +2441,9 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "501": {
             "$ref": "#/components/responses/NotSupported"
           }
@@ -2448,7 +2458,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "requestBody": {
@@ -2481,6 +2491,9 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
@@ -2505,7 +2518,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -2634,6 +2647,118 @@
           },
           "410": {
             "$ref": "#/components/responses/Gone"
+          }
+        }
+      }
+    },
+    "/v1/tokens": {
+      "get": {
+        "operationId": "tokens_list",
+        "summary": "The API's tokens",
+        "x-wardrik-function": "tokens_list",
+        "tags": [
+          "Tokens"
+        ],
+        "responses": {
+          "200": {
+            "description": "Every token, oldest first, never a secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "v1/tokens.json"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        }
+      },
+      "post": {
+        "operationId": "tokens_create",
+        "summary": "Make a token",
+        "x-wardrik-function": "tokens_create",
+        "tags": [
+          "Tokens"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "v1/input_tokens_create.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The token, and its secret, given this once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "v1/token_issued.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        }
+      }
+    },
+    "/v1/tokens/{token}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/token"
+        }
+      ],
+      "delete": {
+        "operationId": "tokens_revoke",
+        "summary": "Revoke a token",
+        "x-wardrik-function": "tokens_revoke",
+        "tags": [
+          "Tokens"
+        ],
+        "responses": {
+          "200": {
+            "description": "The token, as it was; what was open on it is ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenAnswer"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
           }
         }
       }
@@ -3098,6 +3223,19 @@
             "description": "A page's next."
           }
         }
+      },
+      "TokenAnswer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "$ref": "v1/token.json"
+          }
+        },
+        "description": "One token, as it was."
       }
     },
     "responses": {
@@ -3112,7 +3250,7 @@
         }
       },
       "Unauthorized": {
-        "description": "No credential, or one that is not known or was revoked: unauthorized.",
+        "description": "No credential, or one that is not known, was revoked or has expired: unauthorized.",
         "content": {
           "application/json": {
             "schema": {
@@ -3316,16 +3454,13 @@
         },
         "allowEmptyValue": true
       },
-      "owner": {
-        "name": "owner",
+      "owner_prefix": {
+        "name": "prefix",
         "in": "query",
-        "description": "org for the caller's org's; the caller's own where left out.",
-        "required": false,
+        "description": "The owner's agents, as acme/ for an org's or acme/@jon/ for a person's.",
+        "required": true,
         "schema": {
-          "type": "string",
-          "enum": [
-            "org"
-          ]
+          "type": "string"
         }
       },
       "starting_after": {
@@ -3372,6 +3507,15 @@
         "name": "path",
         "in": "path",
         "description": "Where under the channel the medium sends it, such as Slack's events or actions.",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "token": {
+        "name": "token",
+        "in": "path",
+        "description": "A token's id, as listing them shows it.",
         "required": true,
         "schema": {
           "type": "string"

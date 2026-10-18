@@ -3,10 +3,11 @@ defmodule WardrikOAuth.ConnectionsTest do
 
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
-  alias Wardrik.Grant
   alias Wardrik.Principal
-  alias Wardrik.Session
+  alias Wardrik.Role
+  alias Wardrik.Scope
   alias Wardrik.Test.Audit
+  alias Wardrik.Token
 
   setup %{owner: owner} do
     start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), callback: false})
@@ -21,21 +22,23 @@ defmodule WardrikOAuth.ConnectionsTest do
     )
 
     org = "acme#{owner}"
-    {:ok, grant} = Grant.new(Prefix.tenant!(org))
 
     jon =
-      Session.new(host: host(), principal: Principal.new(:user, owner, name: "Jon"), grant: grant)
+      Scope.new(host(), %Token{
+        principal: Principal.new(:user, owner, name: "Jon"),
+        scope: [Role.bind([:owner], Prefix.tenant!(org))]
+      })
 
     %{org: org, jon: jon, mine: Prefix.new!(org: org, user: owner)}
   end
 
-  defp list(session, mine) do
-    {:ok, connections} = Wardrik.connections_list(session, mine)
+  defp list(scope, mine) do
+    {:ok, connections} = Wardrik.connections_list(scope, mine)
     Map.new(connections, &{&1.provider, &1.held_by})
   end
 
-  defp authorize(session, mine, provider) do
-    {:ok, %{authorization: %{url: url}}} = Wardrik.connections_connect(session, mine, provider)
+  defp authorize(scope, mine, provider) do
+    {:ok, %{authorization: %{url: url}}} = Wardrik.connections_connect(scope, mine, provider)
     {:ok, ^provider} = WardrikOAuth.finish(state_of(url), "the-code")
   end
 

@@ -5,6 +5,7 @@ defmodule Wardrik.Error do
 
   | Type | Means | HTTP |
   | --- | --- | --- |
+  | `:unauthorized` | the caller's token has expired | `401` |
   | `:not_found` | no such thing, or none the caller reaches | `404` |
   | `:forbidden` | the caller reaches it, and may not do that to it | `403` |
   | `:invalid` | what was asked for does not read | `400` |
@@ -22,7 +23,14 @@ defmodule Wardrik.Error do
   defexception [:type, :message, details: %{}]
 
   @type type() ::
-          :not_found | :forbidden | :invalid | :conflict | :gap | :unsupported | :unavailable
+          :unauthorized
+          | :not_found
+          | :forbidden
+          | :invalid
+          | :conflict
+          | :gap
+          | :unsupported
+          | :unavailable
 
   @type t() :: %__MODULE__{
           __exception__: true,

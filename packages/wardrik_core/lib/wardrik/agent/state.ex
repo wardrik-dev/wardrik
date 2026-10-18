@@ -833,16 +833,20 @@ defmodule Wardrik.Agent.State do
   def resume(%__MODULE__{}), do: :none
 
   @doc """
-  Whether `caller` may decide the calls this agent waits on: where their
-  grant allows `:decide` on it, or they asked for the turn that waits.
+  Whether `token` may decide the calls this agent waits on: where it allows
+  `agent.decide` on it, or its principal asked for the turn that waits and
+  acts with it directly, assumed by nobody.
   """
-  @spec decides?(t(), Wardrik.Caller.t()) :: boolean()
-  def decides?(%__MODULE__{mode: %Waiting{sender: sender}} = state, %Wardrik.Caller{} = caller),
-    do: granted?(state, caller) or Principal.same?(caller.principal, sender)
+  @spec decides?(t(), Wardrik.Token.t()) :: boolean()
+  def decides?(%__MODULE__{mode: %Waiting{sender: sender}} = state, %Wardrik.Token{} = token),
+    do:
+      allowed?(state, token) or
+        (token.assumed_by == [] and Principal.same?(token.principal, sender))
 
-  def decides?(%__MODULE__{} = state, %Wardrik.Caller{} = caller), do: granted?(state, caller)
+  def decides?(%__MODULE__{} = state, %Wardrik.Token{} = token), do: allowed?(state, token)
 
-  defp granted?(state, caller), do: Wardrik.Grant.allows?(caller.grant, :decide, state.agent_id)
+  defp allowed?(state, token),
+    do: Wardrik.Token.authorize(token, "agent.decide", state.agent_id) == :ok
 
   @doc """
   Records the turn a `resume/1`, or a `{:resume, ...}` from `take/1`, led to:

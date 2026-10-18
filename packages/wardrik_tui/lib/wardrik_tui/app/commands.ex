@@ -107,8 +107,9 @@ defmodule WardrikTUI.App.Commands do
   # started again, or, in the background, left alone and named.
   defp spawn_agent(term, id, name, options, prompt, mode) do
     with {:ok, placement} <- placement(options),
-         {:ok, %Spawned{from: from}} <- Wardrik.agent_spawn(term.assigns.session, id, placement) do
-      pid = Fleet.whereis(id, host: term.assigns.session.host)
+         {:ok, %Spawned{from: from}} <-
+           Wardrik.agent_spawn(WardrikTUI.App.scope(term), id, placement) do
+      pid = Fleet.whereis(id, host: term.assigns.host)
 
       if from == :running,
         do: existing_agent(term, id, name, pid, prompt, mode),
@@ -165,7 +166,7 @@ defmodule WardrikTUI.App.Commands do
   # after what the move would interrupt has been shown.
   defp move_agent(term, id, options) do
     with {:ok, [node: node]} <- placement(options),
-         {:ok, moving} <- Wardrik.agent_move_preview(term.assigns.session, id, node) do
+         {:ok, moving} <- Wardrik.agent_move_preview(WardrikTUI.App.scope(term), id, node) do
       case moving do
         %Moving{from: here, to: here} ->
           Display.append(term, View.already_on(id, node))
@@ -186,10 +187,10 @@ defmodule WardrikTUI.App.Commands do
   end
 
   defp move_now(term, %Moving{agent: id, to: node}) do
-    case Wardrik.agent_move(term.assigns.session, id, node) do
+    case Wardrik.agent_move(WardrikTUI.App.scope(term), id, node) do
       {:ok, _answer} ->
         term
-        |> adopt(id, Fleet.whereis(id, host: term.assigns.session.host))
+        |> adopt(id, Fleet.whereis(id, host: term.assigns.host))
         |> Connection.refresh_fleet()
         |> Display.append(View.moved(id, node))
 
@@ -226,7 +227,7 @@ defmodule WardrikTUI.App.Commands do
     case id(term, name) do
       {:ok, id} ->
         if id == term.assigns.agent_id or
-             Fleet.whereis(id, host: term.assigns.session.host) != nil,
+             Fleet.whereis(id, host: term.assigns.host) != nil,
            do: Connection.connect_id(term, id),
            else: search(term, name, View.no_such_agent(id))
 
@@ -247,7 +248,7 @@ defmodule WardrikTUI.App.Commands do
 
   defp matching(term, name) do
     text = name |> String.trim_leading("/") |> String.downcase()
-    {:ok, fleet} = Wardrik.agents_list(term.assigns.session, Prefix.all())
+    {:ok, fleet} = Wardrik.agents_list(WardrikTUI.App.scope(term), Prefix.all())
     Enum.filter(fleet, &String.contains?(String.downcase(to_string(&1.id)), text))
   end
 
@@ -279,7 +280,7 @@ defmodule WardrikTUI.App.Commands do
   defp stop_under(term, target) do
     case Prefix.expand(target, term.assigns.org) do
       {:ok, prefix} ->
-        {:ok, cancelled} = Wardrik.agents_cancel(term.assigns.session, prefix)
+        {:ok, cancelled} = Wardrik.agents_cancel(WardrikTUI.App.scope(term), prefix)
 
         Display.append(term, View.stopped_under(prefix, length(cancelled)))
 
@@ -295,7 +296,7 @@ defmodule WardrikTUI.App.Commands do
   defp stop_attached(term), do: interrupt(term)
 
   defp stop_one(term, id) do
-    case Wardrik.agent_cancel(term.assigns.session, id) do
+    case Wardrik.agent_cancel(WardrikTUI.App.scope(term), id) do
       :ok -> Display.append(term, View.stopped(id))
       {:error, %Error{type: :not_found}} -> Display.append(term, View.no_such_agent(id))
     end
@@ -304,7 +305,7 @@ defmodule WardrikTUI.App.Commands do
   # Stops an agent and keeps its store, so `/spawn` brings it back as it was.
   # The attached agent may be shut down; the status row then says so.
   defp shutdown(term, id, name) do
-    case Wardrik.agent_stop(term.assigns.session, id) do
+    case Wardrik.agent_stop(WardrikTUI.App.scope(term), id) do
       {:ok, _member} ->
         term |> Connection.refresh_fleet() |> Display.append(View.shut_down(id, name))
 
@@ -326,7 +327,7 @@ defmodule WardrikTUI.App.Commands do
   defp remove_under(%{assigns: %{agent_id: attached}} = term, target) do
     case Prefix.expand(target, term.assigns.org) do
       {:ok, prefix} ->
-        {:ok, members} = Wardrik.agents_list(term.assigns.session, prefix)
+        {:ok, members} = Wardrik.agents_list(WardrikTUI.App.scope(term), prefix)
         ids = Enum.map(members, & &1.id)
 
         case {List.delete(ids, attached), if(attached in ids, do: attached)} do
@@ -345,7 +346,7 @@ defmodule WardrikTUI.App.Commands do
       id == attached ->
         Display.append(term, View.attached(attached))
 
-      Fleet.whereis(id, host: term.assigns.session.host) == nil ->
+      Fleet.whereis(id, host: term.assigns.host) == nil ->
         Display.append(term, View.no_such_agent(id))
 
       confirmed? ->
@@ -376,7 +377,7 @@ defmodule WardrikTUI.App.Commands do
     {removed, failed} =
       Enum.split_with(
         ids,
-        &(Wardrik.agent_forget(term.assigns.session, &1) == :ok)
+        &(Wardrik.agent_forget(WardrikTUI.App.scope(term), &1) == :ok)
       )
 
     term = assign(term, views: Map.drop(term.assigns.views, removed))
@@ -413,7 +414,7 @@ defmodule WardrikTUI.App.Commands do
   defp accept_decision(term, chosen, decision) do
     decisions = decisions(chosen, decision)
 
-    case Wardrik.agent_decide(term.assigns.session, term.assigns.agent_id, decisions) do
+    case Wardrik.agent_decide(WardrikTUI.App.scope(term), term.assigns.agent_id, decisions) do
       {:ok, _decided} ->
         remaining = term.assigns.parked -- chosen
 
@@ -481,11 +482,11 @@ defmodule WardrikTUI.App.Commands do
   end
 
   def interrupt(%{assigns: %{agent_id: id}} = term) do
-    case Wardrik.agent_cancel(term.assigns.session, id) do
+    case Wardrik.agent_cancel(WardrikTUI.App.scope(term), id) do
       :ok -> term
       {:error, %Error{type: :not_found}} -> Display.append(term, View.no_such_agent(id))
     end
   end
 
-  defp asked(term, id, text), do: Wardrik.agent_ask(term.assigns.session, id, text)
+  defp asked(term, id, text), do: Wardrik.agent_ask(WardrikTUI.App.scope(term), id, text)
 end

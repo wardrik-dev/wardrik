@@ -23,7 +23,7 @@ defmodule WardrikTUI.App.EditorTest do
         size: {70, 14},
         start_opts: [
           agent: agent,
-          host: Wardrik.Host.new(store: Wardrik.Test.store()),
+          host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %WardrikTUI.Test.Root{}),
           agent_id: Wardrik.Test.Fleet.id(),
           model: "test:model",
           sidebar: false,

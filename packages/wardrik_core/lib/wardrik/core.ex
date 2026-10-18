@@ -31,8 +31,8 @@ defmodule Wardrik.Core do
       ]
 
   Nothing of the host, its store included, is kept where a node finds it:
-  it travels in the options of what is started with it, and in each
-  `Wardrik.Caller`.
+  it travels in the options of what is started with it, and in each scope
+  a surface acts in.
 
   A node runs one: core's own processes, as the event bus, the event log and
   the tool runner, are registered under their module names. To run several

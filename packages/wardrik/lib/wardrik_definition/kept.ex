@@ -15,8 +15,8 @@ defmodule WardrikDefinition.Kept do
 
   Each definition is read under the `WardrikDefinition.Context` its
   `:contexts` give the agent that owns it (see `WardrikDefinition.Contexts`),
-  and kept as a `WardrikDefinition.Record` with the grant of whoever sent
-  it, whose ceiling holds the agent each time its spec is built.
+  and kept as a `WardrikDefinition.Record` with the token of whoever sent
+  it, whose policy holds the agent each time its spec is built.
 
   | Callback | What it does |
   | --- | --- |
@@ -45,7 +45,6 @@ defmodule WardrikDefinition.Kept do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Fleet
-  alias Wardrik.Grant
   alias WardrikDefinition.Contexts
   alias WardrikDefinition.Record
 
@@ -63,22 +62,22 @@ defmodule WardrikDefinition.Kept do
         }
 
   @doc """
-  Reads the definition `:definition` of the agent `id`, sent by a caller
-  holding `:grant`, keeps it, and answers the spec it writes.
+  Reads the definition `:definition` of the agent `id`, sent with the
+  `:token` given, keeps it, and answers the spec it writes.
   """
-  @spec put(t(), AgentID.t(), definition: map(), grant: Grant.t()) ::
+  @spec put(t(), AgentID.t(), definition: map(), token: Wardrik.Token.t()) ::
           {:ok, Spec.t()} | {:error, String.t()}
   def put(%__MODULE__{} = kept, %AgentID{} = id, opts) do
     define(kept, id,
       fields: Keyword.fetch!(opts, :definition),
-      source: {:api, Keyword.fetch!(opts, :grant)}
+      source: {:api, Keyword.fetch!(opts, :token)}
     )
   end
 
   @doc """
   Reads the definition `:fields` of the agent `id`, written by `:source`,
   keeps it, routes its notices, and answers the spec it writes, not yet held
-  to a grant's ceiling.
+  to a token's policy.
   """
   @spec define(t(), AgentID.t(), fields: map(), source: WardrikDefinition.source()) ::
           {:ok, Spec.t()} | {:error, String.t()}
@@ -185,8 +184,8 @@ defmodule WardrikDefinition.Kept do
 
   @doc """
   The spec `record` writes for the agent `id`, its own or one of its
-  conversations, under the context of its owner, held to the ceiling of the
-  grant that sent it where one did.
+  conversations, under the context of its owner, held to the policy of the
+  token that sent it where one did.
   """
   @spec build(t(), Record.t(), AgentID.t()) :: {:ok, Spec.t()} | {:error, String.t()}
   def build(%__MODULE__{} = kept, %Record{} = record, %AgentID{} = id) do
@@ -268,7 +267,9 @@ defmodule WardrikDefinition.Kept do
   defp context(%__MODULE__{contexts: contexts}, id),
     do: Contexts.context(contexts, AgentID.put_external_id(id, nil))
 
-  defp held(spec, {:api, %Grant{} = grant}), do: %{spec | hooks: Grant.held(grant, spec.hooks)}
+  defp held(spec, {:api, %Wardrik.Token{policy: policy}}),
+    do: %{spec | hooks: policy ++ List.wrap(spec.hooks)}
+
   defp held(spec, _source), do: spec
 end
 

@@ -24,10 +24,11 @@ defmodule WardrikDefinition do
 
     * `{:file, name}` - an agent file the host's operator wrote, which may
       name modules as tools and policies
-    * `{:api, grant}` - a definition a token holding `grant` sent. It names
-      no modules, writes no policy that holds after a label, and shares only
-      the trees the grant's scope covers. The grant's ceiling is the host's
-      to hold it under, as `Wardrik.Grant.held/2` does
+    * `{:api, token}` - a definition sent with the `Wardrik.Token`
+      `token`. It names no modules, writes no policy that holds after a
+      label, and shares only the trees whose owners' agents the token
+      reaches. The token's policy is the host's to hold it under, ahead of
+      its own hooks
     * `:defaults` - one the host wrote from its defaults, which no token
       sent. It names no modules and writes no policy that holds after a
       label
@@ -64,7 +65,7 @@ defmodule WardrikDefinition do
   }
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
-  @type source() :: {:file, String.t()} | {:api, Wardrik.Grant.t()} | :defaults
+  @type source() :: {:file, String.t()} | {:api, Wardrik.Token.t()} | :defaults
   @type fields() :: %{String.t() => term()}
 
   @doc "The keys a definition takes, in the order its schema lists them."
@@ -306,11 +307,11 @@ defmodule WardrikDefinition do
 
   defp owner(id), do: AgentID.put_external_id(id, nil)
 
-  # A definition a token sent shares only the trees the token's scope covers,
-  # or that the deployment shares with the agent.
-  defp within!(%Spec{config: config}, owner, context, {:api, %Wardrik.Grant{scope: scope}}) do
+  # A definition a token sent shares only the trees the token reaches, or
+  # that the deployment shares with the agent.
+  defp within!(%Spec{config: config}, owner, context, {:api, %Wardrik.Token{} = token}) do
     for {WardrikWorkspace, workspace} <- config.tools,
-        do: ok!(WardrikWorkspace.Spec.within(workspace, scope, id: owner, shares: context.shares))
+        do: ok!(WardrikWorkspace.Spec.within(workspace, token, id: owner, shares: context.shares))
   end
 
   defp within!(_spec, _owner, _context, _source), do: :ok
@@ -328,7 +329,7 @@ defmodule WardrikDefinition do
   defp ok!(:ok), do: :ok
   defp ok!({:error, message}), do: invalid!("workspace " <> message)
 
-  # A rule that holds after a label loosens what a token's ceiling holds, so
+  # A rule that holds after a label loosens what a token's policy holds, so
   # only a policy the operator writes may say one.
   defp held_after!(%{"allow_after" => _rules}, context),
     do:
@@ -803,7 +804,7 @@ defmodule WardrikDefinition do
 
         :error ->
           invalid!(
-            "#{context.names.config} holds #{org}'s agents to the ceiling #{name}, " <>
+            "#{context.names.config} holds #{org}'s agents to the policy #{name}, " <>
               "which is not a policy in #{context.names.policies}"
           )
       end

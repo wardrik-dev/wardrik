@@ -49,8 +49,7 @@ defmodule WardrikVaultTest do
   defp run(opts) do
     {user, opts} = Keyword.pop(opts, :user)
     {org, opts} = Keyword.pop(opts, :org, "acme")
-    {grants, opts} = Keyword.pop(opts, :grants, %Wardrik.Grants.None{})
-    host = Wardrik.Test.host(credentials: vault(), grants: grants)
+    host = Wardrik.Test.host(credentials: vault())
     opts = Keyword.put_new(opts, :host, host)
     Run.root(Config.new(), Wardrik.AgentID.new!("assistant", org: org, user: user), opts)
   end

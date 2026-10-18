@@ -9,7 +9,7 @@ The platform team runs one Wardrik deployment. Payments and Growth each get an o
 their own agents, credentials, Slack app and spend limits. Each team builds its agents over the API,
 but only inside a policy the platform team sets. Security reads one audit trail for all of it.
 
-This example is the setup, not one agent: `config.yaml`, a ceiling policy per team, and the tokens
+This example is the setup, not one agent: `config.yaml`, a policy per team, and the tokens
 that tie them together.
 
 ## What it takes
@@ -49,17 +49,17 @@ orgs:
   payments:
     mcp: [stripe, github]
     channels: [payments-slack]
-    ceiling: payments-ceiling
+    policy: payments-limits
   growth:
     mcp: [github]
     channels: [growth-slack]
-    ceiling: growth-ceiling
+    policy: growth-limits
 
 vault:
   shared: [SEARCH_API_KEY]
 ```
 
-- **Each team is declared once,** under `orgs`, with what it uses and the ceiling it's held to. A
+- **Each team is declared once,** under `orgs`, with what it uses and the policy it's held to. A
   misspelt org or server is refused at startup, with the nearest name.
 - **Servers are defined once.** Stripe serves Payments alone; GitHub serves both, each with its own
   token.
@@ -78,11 +78,11 @@ wardrik vault put SEARCH_API_KEY
 
 See [Orgs](/run/orgs/) for everything an org keeps apart.
 
-### A ceiling per team
+### A policy per team
 
-A ceiling is a policy every agent of the org is held to, ahead of its own, however it was defined:
+An org's policy holds every agent of the org, ahead of its own, however it was defined:
 
-```yaml title="~/.config/wardrik/policies/payments-ceiling.yaml"
+```yaml title="~/.config/wardrik/policies/payments-limits.yaml"
 ask:
   stripe/stripe_api_write: This changes money in Stripe.
 deny: [shell/*]
@@ -95,19 +95,18 @@ budget:
 - **Stripe writes always wait,** whatever a team's own definition says.
 - **The team is capped** at $20 a day, all of its agents together. An agent's own definition can
   set itself a lower limit beside it.
-- `growth-ceiling.yaml` is Growth's, written the same way.
+- `growth-limits.yaml` is Growth's, written the same way.
 
 ### A token per team
 
 ```sh
-wardrik token create payments-platform --scope payments/ --can read,define,message --unlimited
-wardrik token create growth-platform --scope growth/ --can read,define,message --unlimited
+wardrik token create payments-platform --scope payments/ --role reader,messenger,definer
+wardrik token create growth-platform --scope growth/ --role reader,messenger,definer
 ```
 
 - `--scope` keeps each token to its team's own agents; another team's are answered as if they
   didn't exist.
-- `--unlimited` adds no ceiling of the token's own. The org's holds every agent it defines. See
-  [Tokens](/run/tokens/).
+- The org's policy holds every agent each token defines. See [Tokens](/run/tokens/).
 
 ## Try it
 
@@ -125,13 +124,13 @@ curl -s -X PUT -H "authorization: Bearer $PAYMENTS_TOKEN" -H "content-type: appl
 ```
 
 The agent reads Stripe with Payments' key. A refund it proposes waits for an approver, because the
-ceiling asks about every Stripe write. The same token can't reach Growth's agents, and Growth's
+policy asks about every Stripe write. The same token can't reach Growth's agents, and Growth's
 agents can't reach Stripe at all.
 
 ## What it shows
 
 - **Isolation by org.** Agents, credentials, tokens and channels stay inside their team.
-- **Self-service within limits.** Teams build their own agents; the platform team's ceiling holds
+- **Self-service within limits.** Teams build their own agents; the platform team's policy holds
   every one, from the API, files or Slack.
 - **Spend limits per agent,** set once for a whole team.
 - **One audit trail.** Every change people make, and every call and decision agents make, is on
@@ -141,11 +140,10 @@ agents can't reach Stripe at all.
 
 ### Feeding a SIEM
 
-A token over every agent can read one export across every team's logs, and the audit of what
-people changed:
+A reader over every agent can read one export across every team's logs:
 
 ```sh
-wardrik token create siem --all --can read
+wardrik token create siem --all --role reader
 ```
 
 ```http
@@ -156,18 +154,19 @@ POST /v1/exports/siem
 ```
 
 Each page answers the events after the export's cursor; posting the page's `next` moves it on once
-they're stored. See [Exports](/reference/http-api/#exports). From a shell, `wardrik audit` lists
-what people changed.
+they're stored. See [Exports](/reference/http-api/#exports). The audit of what people changed is
+the deployment's: an `owner` token over every agent reads it too, and `wardrik audit` lists it from
+a shell.
 
 ### People's own agents
 
 An agent that works for one person is keyed under them, `payments/@jon/assistant`, and reads only
 that person's credentials. A token for them is scoped the same way:
-`wardrik token create jon-laptop --scope payments/@jon/ --can read,message,decide --for jon`.
+`wardrik token create jon-laptop --scope payments/@jon/ --role reader,messenger,approver`.
 
 ### Taking it further
 
-- Give a third team an entry under `orgs`, with a Slack app and a ceiling: no other change is
+- Give a third team an entry under `orgs`, with a Slack app and a policy: no other change is
   needed.
 - Let a team's agents read a shared runbook tree with `workspace.shared`. See
   [Sharing trees](/concepts/files-and-memory/#sharing-trees).

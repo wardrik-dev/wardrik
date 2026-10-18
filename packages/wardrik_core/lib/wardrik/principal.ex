@@ -19,15 +19,14 @@ defmodule Wardrik.Principal do
       there, as `slack/T0123/U024BE7LH`; see `WardrikChannel.principal/3`
     * `:oauth` - an authorization flow that finished, by the provider it was
       for: whoever completed it is not known
-    * `:token` - a caller of the HTTP API, by the id of the token it presented
     * `:agent` - an agent acting through its tools, on itself or on another
       agent, and an agent answering one that asked it something, by its ID;
       see `Wardrik.Catalog.Tools`
     * `:webhook` - a request from outside to one of an agent's triggers, by
       the trigger it was sent to, as `org/name//trigger`: whoever sent it is
       known only by the secret its signature was made with
-    * `:user` - a person named where a credential was issued to them, as a
-      token made for them, or known by a sign-in
+    * `:user` - a person known by a sign-in, as an application embedding
+      Wardrik knows its users
   """
 
   @enforce_keys [:type, :id]
@@ -40,7 +39,6 @@ defmodule Wardrik.Principal do
           | :terminal
           | :channel
           | :oauth
-          | :token
           | :webhook
           | :agent
           | :user

@@ -170,23 +170,25 @@ defmodule WardrikWorkspace.Spec do
   end
 
   @doc """
-  `:ok` where every tree `spec` shares is reachable only by agents under
-  `prefix`, or is one `:shares` lets the agent `:id` mount as it does, or a
-  message naming one that is neither: what a definition sent by a token
-  whose scope is `prefix` may share.
+  `:ok` where every tree `spec` shares belongs to agents `token` reaches,
+  or is one `:shares` lets the agent `:id` mount as it does, or a message
+  naming one that is neither: what a definition sent with `token` may
+  share.
   """
-  @spec within(t(), Prefix.t(), id: AgentID.t(), shares: [Share.t()]) ::
+  @spec within(t(), Wardrik.Token.t(), id: AgentID.t(), shares: [Share.t()]) ::
           :ok | {:error, String.t()}
-  def within(%__MODULE__{shared: shared}, prefix, opts) do
+  def within(%__MODULE__{shared: shared}, token, opts) do
     opts = Keyword.validate!(opts, [:id, shares: []])
     {id, shares} = {Keyword.fetch!(opts, :id), opts[:shares]}
 
     Enum.find_value(shared, :ok, fn %Mount{name: name, tree: "shared/" <> tree, mode: mode} ->
       owners = owners(tree)
 
-      if not (Prefix.covers?(prefix, owners) or allowed?(Share.mode(shares, tree, id), mode)),
-        do:
-          {:error, "shared #{name}: #{tree} belongs to #{owners}, which #{prefix} does not cover"}
+      if not (Wardrik.Token.reaches?(token, owners) or
+                allowed?(Share.mode(shares, tree, id), mode)),
+         do:
+           {:error,
+            "shared #{name}: #{tree} belongs to #{owners}, which the token does not reach"}
     end)
   end
 

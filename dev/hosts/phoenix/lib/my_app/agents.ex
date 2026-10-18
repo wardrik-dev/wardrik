@@ -10,7 +10,7 @@ defmodule MyApp.Agents do
 
     Wardrik.new(
       store: store(),
-      grants: %MyApp.Grants{},
+      issuer: %MyApp.Issuer{},
       credentials: vault,
       connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault},
       context: Wardrik.context(servers: [github: [orgs: :all]], mcp: WardrikMCP)
@@ -67,17 +67,17 @@ defmodule MyApp.Agents do
 
   def define(user, name, definition) do
     agent = AgentID.new!(name, org: user.org, user: to_string(user.id))
-    Wardrik.agent_define(session(user), agent, definition)
+    Wardrik.agent_define(scope(user), agent, definition)
   end
 
-  def ask(user, agent, text), do: Wardrik.agent_ask(session(user), agent, text)
+  def ask(user, agent, text), do: Wardrik.agent_ask(scope(user), agent, text)
 
-  def subscribe(user, agent), do: Wardrik.agent_subscribe(session(user), agent)
+  def subscribe(user, agent), do: Wardrik.agent_subscribe(scope(user), agent)
 
   def connect(user, provider),
-    do: Wardrik.connections_connect(session(user), MyApp.Grants.own(user), provider)
+    do: Wardrik.connections_connect(scope(user), MyApp.Issuer.own(user), provider)
 
-  def connections(user), do: Wardrik.connections_list(session(user), MyApp.Grants.own(user))
+  def connections(user), do: Wardrik.connections_list(scope(user), MyApp.Issuer.own(user))
 
-  defp session(user), do: Wardrik.as(wardrik(), MyApp.Grants.principal(user))
+  defp scope(user), do: Wardrik.as(wardrik(), MyApp.Issuer.principal(user))
 end

@@ -174,7 +174,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "description": "shell, ssh, terminal, channel, oauth, token, webhook, agent or user. A channel's id is the channel's name, its workspace and the id it knows them by there, as slack/T0123/U024BE7LH."
+          "description": "shell, ssh, terminal, channel, oauth, webhook, agent or user. A channel's id is the channel's name, its workspace and the id it knows them by there, as slack/T0123/U024BE7LH."
         },
         "id": {
           "type": "string"
@@ -189,6 +189,38 @@
         "id"
       ],
       "description": "Who did something, and how they were known."
+    },
+    "assumed_by": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+      },
+      "description": "Who acted for the actor, first to last, as an agent acting for the person who asked it something. Absent where the actor acted themselves."
+    },
+    "statement": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "What it allows, as agent.ask or agents.list; agent.* is every action on one agent, and * every action."
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The agents it allows them on, each by its prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "actions",
+        "resources"
+      ],
+      "description": "What a token allows, on what."
     },
     "decided": {
       "type": "object",

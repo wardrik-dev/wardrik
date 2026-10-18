@@ -1,9 +1,8 @@
 import type { Http } from "./http.ts";
 import type { ServerAdded, Servers as ServerList } from "./protocol.ts";
 
-/** Whose servers: the token's person's own, or with `"org"` their org's. */
+/** What a request about servers takes beside its owner. */
 export interface ServerOptions {
-  owner?: "org";
   signal?: AbortSignal;
 }
 
@@ -23,12 +22,13 @@ export interface ServerFields {
 }
 
 /**
- * The MCP servers a token's person, or their org, adds for their own
- * agents, reached over Streamable HTTP.
+ * The MCP servers an owner adds for their own agents, reached over
+ * Streamable HTTP. The owner is named by the prefix of their agents,
+ * `acme/` for an org's or `acme/@jon/` for a person's.
  *
- *     await wardrik.servers.add({ name: "crm", url: "https://mcp.crm.example/mcp",
- *                                 auth: { secret: { name: "crm-key" } } });
- *     const { servers } = await wardrik.servers.list();
+ *     await wardrik.servers.add("acme/", { name: "crm", url: "https://mcp.crm.example/mcp",
+ *                                          auth: { secret: { name: "crm-key" } } });
+ *     const { servers } = await wardrik.servers.list("acme/");
  */
 export class Servers {
   readonly #http: Http;
@@ -38,20 +38,24 @@ export class Servers {
     this.#http = http;
   }
 
-  /** The servers added, each by its name, URL and how its agents sign in. */
-  list(options: ServerOptions = {}): Promise<ServerList> {
-    return this.#http.json("GET", "/v1/servers", request(options));
+  /** The servers `owner` added, each by its name, URL and how its agents sign in. */
+  list(owner: string, options: ServerOptions = {}): Promise<ServerList> {
+    return this.#http.json("GET", "/v1/servers", request(owner, options));
   }
 
-  /** Adds a server: that its agents can call it now, or where to sign in to it first. */
-  add(fields: ServerFields, options: ServerOptions = {}): Promise<ServerAdded> {
-    return this.#http.json("POST", "/v1/servers", { ...request(options), body: fields });
+  /** Adds a server for `owner`: that its agents can call it now, or where to sign in to it first. */
+  add(owner: string, fields: ServerFields, options: ServerOptions = {}): Promise<ServerAdded> {
+    return this.#http.json("POST", "/v1/servers", { ...request(owner, options), body: fields });
   }
 
-  /** Removes the server `name`, so the owner's agents can no longer call it. */
-  async remove(name: string, options: ServerOptions = {}): Promise<void> {
-    await this.#http.send("DELETE", `/v1/servers/${encodeURIComponent(name)}`, request(options));
+  /** Removes the server `name` `owner` added, so their agents can no longer call it. */
+  async remove(owner: string, name: string, options: ServerOptions = {}): Promise<void> {
+    await this.#http.send(
+      "DELETE",
+      `/v1/servers/${encodeURIComponent(name)}`,
+      request(owner, options),
+    );
   }
 }
 
-const request = ({ owner, signal }: ServerOptions) => ({ query: { owner }, signal });
+const request = (owner: string, { signal }: ServerOptions) => ({ query: { prefix: owner }, signal });

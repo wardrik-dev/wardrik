@@ -15,22 +15,23 @@ defmodule WardrikSlack.AnswersTest do
     @moduledoc false
     defstruct []
 
-    def grants(_host, principal) do
-      case Wardrik.Principal.id(principal) do
-        "slack/T1/U1" -> [grant([:read, :message, :decide])]
-        "slack/T1/U2" -> [grant([:read, :message])]
-        _anyone -> []
-      end
-    end
+    def issue(_host, principal, _opts) do
+      roles =
+        case Wardrik.Principal.id(principal) do
+          "slack/T1/U1" -> [[:reader, :messenger, :approver]]
+          "slack/T1/U2" -> [[:reader, :messenger]]
+          _anyone -> []
+        end
 
-    defp grant(can) do
-      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.all(), can)
-      grant
+      %Wardrik.Token{
+        principal: principal,
+        scope: for(held <- roles, do: Wardrik.Role.bind(held, Wardrik.AgentID.Prefix.all()))
+      }
     end
   end
 
-  defimpl Wardrik.Grants, for: Held do
-    defdelegate grants(a0, a1), to: Held
+  defimpl Wardrik.Issuer, for: Held do
+    defdelegate issue(a0, a1, a2), to: Held
   end
 
   setup do
@@ -58,7 +59,7 @@ defmodule WardrikSlack.AnswersTest do
   defp answering do
     context = %WardrikChannel.Context{
       channel: "slack",
-      host: Wardrik.Host.new(store: Wardrik.Test.store(), grants: %Held{}),
+      host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %Held{}),
       installations: WardrikChannel.Installations.Config.new([])
     }
 
@@ -126,10 +127,7 @@ defmodule WardrikSlack.AnswersTest do
         Agent.decide(
           key,
           %{"call_1" => {:deny, "Not now."}},
-          Wardrik.Caller.root(
-            principal: Wardrik.Principal.new(:shell, "t"),
-            host: Wardrik.Host.new(store: Wardrik.Test.store())
-          )
+          Wardrik.Token.root(Wardrik.Principal.new(:shell, "t"))
         )
 
       assert_receive {:resumed, %{"call_1" => {:deny, "Not now."}}}

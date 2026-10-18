@@ -7,7 +7,8 @@ defmodule Wardrik.Tool.Context do
       what it may do, and whether the run has read content from outside
     * `:sender` - the `Wardrik.Principal` who asked for the turn the call is
       part of, or `nil` where nobody did, as a trigger's; see `Wardrik.Run`.
-      A tool that acts for that person asks `Wardrik.Grants` what they may do
+      A tool that acts for that person asks the host's `Wardrik.Issuer` for
+      the token they act with
     * `:call_id` - the id the model gave the call
     * `:idempotency_key` - what names this call to the systems it reaches,
       the same when its turn is replayed; see `Wardrik.Ledger.Key.idempotency/2`

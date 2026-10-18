@@ -19,7 +19,6 @@ defmodule WardrikTUI.App do
   alias Wardrik.Delegation
   alias Wardrik.Event
   alias Wardrik.Fleet
-  alias Wardrik.Session
   alias WardrikConsole.Filter
   alias WardrikTUI.App.Commands
   alias WardrikTUI.App.Connection
@@ -62,7 +61,8 @@ defmodule WardrikTUI.App do
   is given. The terminal launcher and every SSH session run it the same way.
 
   `:host` in `start_opts` is the `Wardrik.Host` every operation the session
-  runs is called on, as a caller who holds the node; it is required.
+  runs is called on, in a scope `scope/1` makes for each; it is required.
+  `:principal` is who uses it, the terminal's user by default.
   `:org` is the org of an agent a person names without one, as
   `/spawn triage` or `/connect @jon/triage` do. Without it, a name gives
   its org: `/spawn acme/triage`.
@@ -370,6 +370,13 @@ defmodule WardrikTUI.App do
   # Who decides from a TUI started in a terminal here: the account running it.
   defp terminal, do: Wardrik.Principal.new(:terminal, System.get_env("USER") || "unknown")
 
+  @doc """
+  The scope a command acts in, made for each: whoever uses this client, with
+  the token the host's `Wardrik.Issuer` issues them now.
+  """
+  @spec scope(map()) :: Wardrik.Scope.t()
+  def scope(term), do: Wardrik.as(term.assigns.host, term.assigns.principal)
+
   @impl Breeze.View
   def mount(opts, term) do
     agent = Keyword.fetch!(opts, :agent)
@@ -393,12 +400,8 @@ defmodule WardrikTUI.App do
       term
       |> assign(
         org: Keyword.get(opts, :org),
-        # Whoever uses this client holds the node, as a shell on it does.
-        session:
-          Session.root(
-            host: Keyword.fetch!(opts, :host),
-            principal: Keyword.get_lazy(opts, :principal, &terminal/0)
-          ),
+        host: Keyword.fetch!(opts, :host),
+        principal: Keyword.get_lazy(opts, :principal, &terminal/0),
         fleet: [],
         fleet_due?: false,
         sidebar?: Keyword.get(opts, :sidebar, true),

@@ -16,9 +16,9 @@ export interface AuditOptions {
 }
 
 /**
- * The deployment itself, for a token over every agent: its nodes, reading
- * its definitions again, and what people changed across it. Tokens are made
- * from a shell on the server, never here.
+ * The deployment itself, for a token owning every agent: its nodes, reading
+ * its definitions again, and what people changed across it. Its tokens are
+ * `wardrik.tokens`.
  *
  *     const { nodes, asleep } = await wardrik.deployment.nodes();
  *     const { changes } = await wardrik.deployment.audit({ startingAfter: 120 });

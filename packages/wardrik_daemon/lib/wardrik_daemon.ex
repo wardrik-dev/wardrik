@@ -95,8 +95,9 @@ defmodule WardrikDaemon do
   `store`: its definitions, `WardrikDaemon.Agents`; the vault the config's
   keys unseal, as its credentials, granting through `WardrikOAuth` with the
   config's `oauth`; the accounts people connect through both; the HTTP API's
-  tokens; webhooks checked with the vault's secrets for each agent, else the
-  environment's; `WardrikDaemon.Grants`; agents' files kept in the store;
+  tokens, lasting as long as `config.yaml`'s `tokens.expires.api` says;
+  webhooks checked with the vault's secrets for each agent, else the
+  environment's; `WardrikDaemon.Issuer`; agents' files kept in the store;
   and the MCP servers orgs and people add, kept there too.
   """
   @spec host(Config.t(), store: WardrikStore.t()) :: Wardrik.Host.t()
@@ -111,19 +112,21 @@ defmodule WardrikDaemon do
     agents = Agents.new(store: store, config: config, audit: audit, servers: servers)
 
     Wardrik.Host.new(
-      store: store,
-      audit: audit,
-      definitions: agents,
-      connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
-      servers: servers,
-      credentials: vault,
-      tokens: %WardrikHTTP.Tokens{store: store},
-      triggers: %WardrikTrigger.Deliveries{
-        secrets: &Secrets.for_agent(vault, &1, &2),
-        verifiers: config.triggers.verifiers
-      },
-      grants: %WardrikDaemon.Grants{store: store, agents: agents},
-      workspace: %WardrikWorkspace.Backend.Store{store: store}
+      [
+        store: store,
+        audit: audit,
+        definitions: agents,
+        connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
+        servers: servers,
+        credentials: vault,
+        tokens: %WardrikHTTP.Tokens{store: store},
+        triggers: %WardrikTrigger.Deliveries{
+          secrets: &Secrets.for_agent(vault, &1, &2),
+          verifiers: config.triggers.verifiers
+        },
+        issuer: %WardrikDaemon.Issuer{agents: agents},
+        workspace: %WardrikWorkspace.Backend.Store{store: store}
+      ] ++ Keyword.take(Config.section(config, Wardrik.Tokens), [:expires])
     )
   end
 
@@ -284,7 +287,7 @@ defmodule WardrikDaemon do
   @doc """
   What the agent `key` has spent of each budget `spec` gives it, as its
   budgets say it, each named for its policy where it has more than one. An
-  org's ceiling says what all of the org's agents have spent together.
+  org's policy says what all of the org's agents have spent together.
   """
   @spec spent_by(Wardrik.Agent.Spec.t() | nil, Wardrik.AgentID.t()) :: [String.t()]
   def spent_by(%Wardrik.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do

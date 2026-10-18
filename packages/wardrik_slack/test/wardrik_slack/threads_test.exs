@@ -41,16 +41,19 @@ defmodule WardrikSlack.ThreadsTest do
   defp set_req_test_to_shared(context), do: Req.Test.set_req_test_to_shared(context)
 
   # Everyone in the workspace may read and message every agent, as the
-  # daemon's grants give the people of a channel its orgs' agents.
+  # daemon's issuer lets the people of a channel read and message its orgs'
+  # agents.
   defmodule Everyone do
     @moduledoc false
     defstruct []
   end
 
-  defimpl Wardrik.Grants, for: Everyone do
-    def grants(_everyone, _principal) do
-      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.all(), [:read, :message])
-      [grant]
+  defimpl Wardrik.Issuer, for: Everyone do
+    def issue(_everyone, principal, _opts) do
+      %Wardrik.Token{
+        principal: principal,
+        scope: [Wardrik.Role.bind([:reader, :messenger], Wardrik.AgentID.Prefix.all())]
+      }
     end
   end
 
@@ -69,7 +72,7 @@ defmodule WardrikSlack.ThreadsTest do
 
     channels =
       WardrikChannel.channels([{name, {WardrikSlack, req_options: @req_options}}],
-        host: Wardrik.Host.new(store: Wardrik.Test.store(), grants: %Everyone{}),
+        host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %Everyone{}),
         installations:
           Installations.Config.new([{name, "xoxb-test", Wardrik.AgentID.Prefix.all()}]),
         offered: {__MODULE__, :offering, [agent]},

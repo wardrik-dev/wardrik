@@ -1,8 +1,8 @@
 defmodule Wardrik.Catalog.Entry do
   @moduledoc """
   A function of `Wardrik` as an agent is offered it: its `name`, such as
-  `agent.trigger.set`, what it does in a line, the `Wardrik.Grant` action it
-  takes, and `run`, which acts on what the tool names with the tool's
+  `agent.trigger.set`, the action a token must allow for it, what it does
+  in a line, and `run`, which acts on what the tool names with the tool's
   input.
 
   The tool supplies the subject, the agent or the prefix it acts on: the
@@ -11,19 +11,19 @@ defmodule Wardrik.Catalog.Entry do
   see `input/1`. `run` answers the output, as `JSON.encode!/1` takes it,
   and the `Wardrik.Label`s of what it holds, or the `Wardrik.Error` it met.
 
-  An entry whose action is not `:read` changes something.
+  An entry the `reader` role does not name changes something; see
+  `Wardrik.Role`.
   """
 
-  @enforce_keys [:name, :summary, :action, :run]
-  defstruct [:name, :summary, :action, :run]
+  @enforce_keys [:name, :summary, :run]
+  defstruct [:name, :summary, :run]
 
   @type subject() :: Wardrik.AgentID.t() | Wardrik.AgentID.Prefix.t()
 
   @type t() :: %__MODULE__{
           name: String.t(),
           summary: String.t(),
-          action: Wardrik.Grant.action(),
-          run: (Wardrik.Session.t(), subject(), map() ->
+          run: (Wardrik.Scope.t(), subject(), map() ->
                   {:ok, term(), [Wardrik.Label.t()]} | {:error, Wardrik.Error.t()})
         }
 

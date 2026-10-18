@@ -512,7 +512,7 @@ defmodule Wardrik.AgentTest do
         Agent.decide(
           agent,
           %{"call_1" => {:deny, "Not today."}},
-          Wardrik.Caller.root(principal: by, host: Wardrik.Host.new())
+          Wardrik.Token.root(by)
         )
 
       assert_receive %Event{
@@ -669,7 +669,7 @@ defmodule Wardrik.AgentTest do
         Agent.decide(
           agent,
           decisions,
-          Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+          Wardrik.Token.root(Wardrik.Principal.new(:shell, "root"))
         )
 
       assert_receive {:holding, ^decisions, _lost}

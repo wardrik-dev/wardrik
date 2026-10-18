@@ -113,7 +113,7 @@ defmodule Wardrik.AgentSleepTest do
       Agent.decide(
         key,
         %{"call_1" => :approve},
-        Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+        Wardrik.Token.root(Wardrik.Principal.new(:shell, "root"))
       )
 
     assert_receive {:resumed, %{"call_1" => :approve}}

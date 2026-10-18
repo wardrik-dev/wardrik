@@ -100,7 +100,7 @@ defmodule Wardrik.AgentLogTest do
              Agent.decide(
                agent,
                %{"call_1" => :approve},
-               Wardrik.Caller.root(principal: by, host: Wardrik.Host.new())
+               Wardrik.Token.root(by)
              )
 
     assert_receive %Entry{event: %{"type" => "wardrik.run.completed"}}
@@ -126,7 +126,7 @@ defmodule Wardrik.AgentLogTest do
              Agent.decide(
                agent,
                %{"call_1" => :approve},
-               Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+               Wardrik.Token.root(Wardrik.Principal.new(:shell, "root"))
              )
 
     Agent.resume(agent, %{"call_1" => :approve})

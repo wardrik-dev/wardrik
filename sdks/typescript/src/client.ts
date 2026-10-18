@@ -4,6 +4,7 @@ import { Connections } from "./connections.ts";
 import { Servers } from "./servers.ts";
 import { Deployment } from "./deployment.ts";
 import { Export } from "./export.ts";
+import { Tokens } from "./tokens.ts";
 import { agentPath, Http } from "./http.ts";
 import type { AgentDefinition, AgentSummary, Interrupt } from "./protocol.ts";
 import { Worker, type ToolDefinition, type WorkOptions } from "./worker.ts";
@@ -40,12 +41,14 @@ const env = (name: string): string | undefined =>
  */
 export class Wardrik {
   readonly agents: Agents;
-  /** The accounts the token's person, or their org, connects. */
+  /** The accounts an owner's agents act with. */
   readonly connections: Connections;
-  /** The deployment itself, for a token over every agent. */
+  /** The deployment itself, for a token owning every agent. */
   readonly deployment: Deployment;
-  /** The MCP servers the token's person, or their org, adds for their own agents. */
+  /** The MCP servers an owner adds for their own agents. */
   readonly servers: Servers;
+  /** The API's tokens, for a token owning every agent. */
+  readonly tokens: Tokens;
 
   readonly #http: Http;
   readonly #worker: Worker;
@@ -61,6 +64,7 @@ export class Wardrik {
     this.connections = new Connections(this.#http);
     this.deployment = new Deployment(this.#http);
     this.servers = new Servers(this.#http);
+    this.tokens = new Tokens(this.#http);
   }
 
   /** The agent under `key`, `org/name` or `org/@user/name`. */

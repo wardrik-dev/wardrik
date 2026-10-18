@@ -32,14 +32,12 @@ defmodule Wardrik.Catalog do
         summary:
           "Read the agent's snapshot: whether it is running, idle or waiting on a person, what " <>
             "it waits on, how its last turn ended, and its conversation.",
-        action: :read,
         run: &__MODULE__.read/3
       },
       %Entry{
         name: "agent.definition.read",
         summary:
           "Read the agent's definition as it was last put: its instructions, tools and triggers.",
-        action: :read,
         run: &__MODULE__.definition_read/3
       },
       %Entry{
@@ -47,7 +45,6 @@ defmodule Wardrik.Catalog do
         summary:
           "Send the agent a message, which it answers in a turn of its own. An agent that sends " <>
             "it is sent the answer back, later, as a message from the agent it asked.",
-        action: :message,
         run: &__MODULE__.ask/3
       },
       %Entry{
@@ -56,7 +53,6 @@ defmodule Wardrik.Catalog do
           "Define the agent with a whole definition: what it is for, its instructions, model, " <>
             "tools and triggers. An agent defined already is given the new definition in place " <>
             "of its old one, and one that does not run yet starts.",
-        action: :define,
         run: &__MODULE__.define/3
       },
       %Entry{
@@ -64,13 +60,11 @@ defmodule Wardrik.Catalog do
         summary:
           "Set one of the agent's triggers, by name: when it is asked something, on a clock, " <>
             "from a feed, or by a webhook. A trigger of that name is replaced.",
-        action: :define,
         run: &__MODULE__.trigger_set/3
       },
       %Entry{
         name: "agent.trigger.remove",
         summary: "Remove one of the agent's triggers, by name.",
-        action: :define,
         run: &__MODULE__.trigger_remove/3
       }
     ]
@@ -83,7 +77,6 @@ defmodule Wardrik.Catalog do
       %Entry{
         name: "agents.list",
         summary: "List the agents within reach, awake or asleep, with what each is doing.",
-        action: :read,
         run: &__MODULE__.list/3
       }
     ]

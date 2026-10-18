@@ -1,10 +1,11 @@
-defmodule MyApp.Grants do
+defmodule MyApp.Issuer do
   @moduledoc """
-  What each signed-in user may do with agents: read and message their org's,
-  and everything with their own.
+  The token each signed-in user acts with: reader and messenger on their
+  org's agents, and owner of their own.
   """
 
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Role
 
   defstruct []
 
@@ -16,18 +17,19 @@ defmodule MyApp.Grants do
   def own(%MyApp.Accounts.User{} = user), do: Prefix.new!(org: user.org, user: to_string(user.id))
 
   @doc "What the user `id` of `org` may do."
-  def of(org, id) do
-    {:ok, org_agents} = Wardrik.Grant.new(Prefix.new!(org: org), [:read, :message])
-    {:ok, own_agents} = Wardrik.Grant.new(Prefix.new!(org: org, user: id))
-    [org_agents, own_agents]
+  def scope(org, id) do
+    [
+      Role.bind([:reader, :messenger], Prefix.new!(org: org)),
+      Role.bind([:owner], Prefix.new!(org: org, user: id))
+    ]
   end
 end
 
-defimpl Wardrik.Grants, for: MyApp.Grants do
-  def grants(_grants, principal) do
+defimpl Wardrik.Issuer, for: MyApp.Issuer do
+  def issue(_issuer, principal, _opts) do
     case {Wardrik.Principal.type(principal), String.split(Wardrik.Principal.id(principal), "/")} do
-      {:user, [org, id]} -> MyApp.Grants.of(org, id)
-      _other -> []
+      {:user, [org, id]} -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.scope(org, id)}
+      _other -> %Wardrik.Token{principal: principal}
     end
   end
 end

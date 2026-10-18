@@ -121,10 +121,10 @@ export async function answer(customerId: string, text: string, reply: (delta: st
 Make the app's token so it can define these agents only under the policy, and serve them tools:
 
 ```sh
-wardrik token create shop --scope 'shop/*' --can read,message,define,serve --policy support
+wardrik token create shop --scope 'shop/*' --role reader,messenger,definer,worker --policy support
 ```
 
-`--policy` is the token's ceiling: no agent it defines can do more than `support.yaml` allows. See
+`--policy` is the token's policy: no agent it defines can do more than `support.yaml` allows. See
 [Tokens](/run/tokens/).
 
 ## Try it
@@ -140,7 +140,7 @@ for a $20 refund and it's done. Ask for $200 and it says a person will look; the
   [Lifecycle](/concepts/agent-lifecycle/#sleeping).
 - **Data isolation in code.** Tools answer for the agent's own customer, from its key.
 - **Refund limits as policy**, with big ones waiting for a person.
-- **A token ceiling.** Your app can't define a looser agent than the policy allows.
+- **A token's policy.** Your app can't define a looser agent than the policy allows.
 
 ## Details
 

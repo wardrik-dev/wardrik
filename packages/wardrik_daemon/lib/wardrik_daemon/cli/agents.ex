@@ -71,7 +71,7 @@ defmodule WardrikDaemon.CLI.Agents do
       case members do
         [] when words == [] -> {:ok, "No agents."}
         [] -> {:ok, "No agent matches #{Enum.join(words, " ")}."}
-        members -> {:ok, table(Wardrik.Host.store(opts[:session].host), members)}
+        members -> {:ok, table(Wardrik.Host.store(opts[:as].host), members)}
       end
     end
   end
@@ -172,7 +172,7 @@ defmodule WardrikDaemon.CLI.Agents do
   # writes none, and the tools it names that offer nothing yet, or `nil`
   # where none is kept.
   defp defined(opts, key) do
-    case Record.of(Wardrik.Host.store(opts[:session].host), key) do
+    case Record.of(Wardrik.Host.store(opts[:as].host), key) do
       {:ok, definition} ->
         agents = WardrikDaemon.Host.agents()
         {:ok, read} = Wardrik.Definition.get(agents, definition.id)
@@ -327,7 +327,7 @@ defmodule WardrikDaemon.CLI.Agents do
     end
   end
 
-  defp source(_owner, {:api, _grant}),
+  defp source(_owner, {:api, _token}),
     do: Owl.Data.tag("none; it was defined over the HTTP API", @faint)
 
   defp source(_owner, :defaults),

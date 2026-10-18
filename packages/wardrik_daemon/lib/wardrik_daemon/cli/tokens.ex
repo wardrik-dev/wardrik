@@ -1,26 +1,25 @@
 defmodule WardrikDaemon.CLI.Tokens do
   @moduledoc """
   `wardrik token`: the HTTP API's tokens, made, listed and revoked on the
-  daemon, as `Wardrik.tokens_create/4`, `tokens_list/1` and `tokens_revoke/2`.
-  They are made from a shell on the server alone, never over the API.
+  daemon, as `Wardrik.tokens_create/4`, `tokens_list/1` and `tokens_revoke/2`
+  do over the API at `/v1/tokens`. A token acts for whoever made it.
 
-  `token create NAME` makes a token printed once. `--scope PREFIX` is the
-  agents it reaches: `org/`, the org's own, none of its users'; `org/@user/`,
+  `token create NAME` makes a token printed once. It allows its roles, each a
+  named set of actions (see `Wardrik.Role`), on the agents under its scope:
+  `--scope PREFIX` is `org/`, the org's own, none of its users'; `org/@user/`,
   a user's; `org/*`, the org and every one of its users'; or a key,
-  `org/name` or `org/@user/name`. `--all` reaches every agent. `--can ACTIONS` limits
-  it to some of `read,message,decide,define,serve`. A token that can define
-  agents holds them to a ceiling: `--policy NAME`, a policy `policies/`
-  holds, which every agent it defines is held to ahead of its own, or
-  `--unlimited`, which adds none beyond their org's. `--for NAME`
-  is the person it is issued to, whom a decision made with it is recorded
-  as made by; without it, the token itself. A scope naming a person's agents
-  names theirs.
+  `org/name` or `org/@user/name`. `--all` is every agent. `--policy NAME`, a
+  policy `policies/` holds, is its policy: every agent it defines runs under
+  it, ahead of its own. `--expires` is how long it works, `30d` or `12h`;
+  `config.yaml`'s `tokens.expires.api` where left out.
   """
 
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Grant
   alias Wardrik.Resource
+  alias Wardrik.Role
   alias WardrikDaemon.CLI.Command
+
+  @roles ~w(reader messenger approver definer worker owner)a
 
   @doc "The token commands, for `WardrikDaemon.CLI.commands/0`."
   @spec commands() :: [Command.t()]
@@ -30,25 +29,22 @@ defmodule WardrikDaemon.CLI.Tokens do
         name: "token create",
         group: "Tokens and secrets",
         arguments: "NAME",
-        options:
-          "(--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited] [--for NAME]",
+        options: "(--scope PREFIX | --all) --role ROLES [--policy NAME] [--expires 30d]",
         summary: "a token for the HTTP API, printed once",
         details: [
           "--scope PREFIX is the agents it reaches: org/ (the org's own), org/@user/ (a user's),",
           "org/* (the org and all its users'), or a key, org/name or org/@user/name.",
-          "--can ACTIONS limits it to some of read,message,decide,define,serve.",
-          "A token that can define holds the agents it defines to --policy NAME, one of",
-          "policies/, or to none beyond their org's with --unlimited.",
-          "--for NAME is the person it is issued to, whom its decisions are recorded as made by;",
-          "a scope naming a person's agents names theirs."
+          "--role ROLES is what it may do there, some of #{Enum.join(@roles, ",")}.",
+          "--policy NAME, one of policies/, holds every agent it defines.",
+          "--expires is how long it works, as 30d or 12h; tokens.expires.api by default.",
+          "It acts for whoever made it."
         ],
         switches: [
           scope: :string,
           all: :boolean,
-          can: :string,
+          role: :string,
           policy: :string,
-          unlimited: :boolean,
-          for: :string
+          expires: :string
         ],
         count: {1, 1},
         run: &create/2
@@ -71,12 +67,17 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp create([name], opts) do
-    can = if opts[:can], do: String.split(opts[:can], ",", trim: true), else: Grant.actions()
-
     with {:ok, scope} <- scope(opts),
-         {:ok, ceiling} <- ceiling(opts, can),
-         {:ok, grant} <- Grant.new(scope, can, ceiling),
-         {:ok, issued} <- Wardrik.tokens_create(opts[:session], name, grant, issued(opts[:for])) do
+         {:ok, roles} <- roles(opts[:role]),
+         {:ok, policy} <- policy(opts[:policy]),
+         {:ok, expires} <- expires(opts[:expires]),
+         {:ok, issued} <-
+           Wardrik.tokens_create(
+             opts[:as],
+             name,
+             [Role.bind(roles, scope)],
+             [policy: policy] ++ expires
+           ) do
       token = Resource.token(issued)
 
       {:ok,
@@ -84,16 +85,13 @@ defmodule WardrikDaemon.CLI.Tokens do
          [
            issued.secret,
            "",
-           "#{token["name"]} (#{token["id"]})#{issued_to(token)} reaches #{reach(token)}. " <>
+           "#{token["name"]} (#{token["id"]}) allows #{allows(token)}. " <>
              "This is the only time it is shown."
          ],
          "\n"
        )}
     end
   end
-
-  defp issued(nil), do: []
-  defp issued(person), do: [for: Wardrik.Principal.new(:user, person)]
 
   # One of --scope and --all.
   defp scope(opts) do
@@ -116,36 +114,20 @@ defmodule WardrikDaemon.CLI.Tokens do
   defp declared(:ok, scope), do: {:ok, scope}
   defp declared({:error, message}, _scope), do: {:error, "--scope: " <> message}
 
-  # What a token that can define holds its agents to: a policy of policies/,
-  # or, said outright, nothing but their own.
-  defp ceiling(opts, can) do
-    defines? = Enum.any?(can, &(&1 in [:define, "define"]))
+  defp roles(nil), do: {:error, :usage}
 
-    case {opts[:policy], opts[:unlimited]} do
-      {nil, true} ->
-        {:ok, []}
-
-      {name, nil} when is_binary(name) and defines? ->
-        policy_ceiling(name)
-
-      {name, nil} when is_binary(name) ->
-        {:error, "--policy holds the agents a token defines, and this one cannot define"}
-
-      {nil, nil} when defines? ->
-        {:error,
-         "A token that can define agents holds them to a policy: add --policy NAME, " <>
-           "one of policies/, or --unlimited to add none beyond their org's"}
-
-      {nil, nil} ->
-        {:ok, []}
-
-      _both ->
-        {:error, :usage}
+  defp roles(names) do
+    case Role.parse(String.split(names, ",", trim: true)) do
+      {:ok, []} -> {:error, :usage}
+      {:ok, roles} -> {:ok, roles}
+      {:error, message} -> {:error, "--role: " <> message}
     end
   end
 
-  defp policy_ceiling(name) do
-    with :error <- WardrikDaemon.Agents.ceiling(WardrikDaemon.Host.agents(), name) do
+  defp policy(nil), do: {:ok, []}
+
+  defp policy(name) do
+    with :error <- WardrikDaemon.Agents.policy(WardrikDaemon.Host.agents(), name) do
       policies =
         for {_path, {:ok, %WardrikPolicy{} = policy}} <-
               WardrikDaemon.Agents.files(WardrikDaemon.Host.agents()),
@@ -158,20 +140,28 @@ defmodule WardrikDaemon.CLI.Tokens do
   defp policy_names([]), do: ""
   defp policy_names(policies), do: "; it has " <> Enum.map_join(policies, ", ", & &1.name)
 
+  defp expires(nil), do: {:ok, []}
+
+  defp expires(text) do
+    case WardrikDaemon.Config.seconds(text) do
+      {:ok, seconds} -> {:ok, [expires_in: seconds]}
+      :error -> {:error, "--expires is how long it works, as 30d, 12h, 30m or 45s"}
+    end
+  end
+
   defp list(_words, opts) do
-    with {:ok, tokens} <- Wardrik.tokens_list(opts[:session]),
+    with {:ok, tokens} <- Wardrik.tokens_list(opts[:as]),
          do: {:ok, listed(Enum.map(tokens, &Resource.token/1))}
   end
 
   defp listed(tokens) do
     rows =
       for token <- tokens,
-          do:
-            "  #{token["id"]}  #{token["name"]}#{issued_to(token)}  #{reach(token)}  made #{token["created_at"]}"
+          do: "  #{token["id"]}  #{token["name"]}  #{allows(token)}  made #{token["created_at"]}"
 
     case rows do
       [] ->
-        "No tokens. Make one with: wardrik token create NAME --scope PREFIX (--policy NAME | --unlimited)"
+        "No tokens. Make one with: wardrik token create NAME --scope PREFIX --role ROLES"
 
       [_row] ->
         Enum.join(["1 token:" | rows], "\n")
@@ -182,41 +172,40 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp revoke([id], opts) do
-    with {:ok, _token} <- Wardrik.tokens_revoke(opts[:session], id),
+    with {:ok, _token} <- Wardrik.tokens_revoke(opts[:as], id),
          do: {:ok, "Revoked #{id}."}
   end
 
-  defp issued_to(%{"for" => person}), do: ", for #{person},"
-  defp issued_to(_token), do: ""
-
-  defp reach(%{"scope" => scope, "can" => can} = token) do
-    agents =
-      if scope == to_string(Prefix.all()), do: "every agent", else: "the agents under #{scope}"
-
-    agents <> actions(can) <> held(token)
+  # What a token allows, on what, under which policy, until when.
+  defp allows(token) do
+    Enum.map_join(token["statements"], "; ", &statement/1) <>
+      held(token["policy"]) <> until(token["expires"])
   end
 
-  defp held(%{"ceiling" => []}), do: ", with no ceiling"
-  defp held(%{"ceiling" => ceiling}), do: ", under the ceiling #{ceiling_names(ceiling)}"
-  defp held(_token), do: ""
+  defp statement(%{"actions" => actions, "resources" => resources}),
+    do: "#{named(actions)} on " <> Enum.map_join(resources, ", ", &agents/1)
 
-  # The policies a ceiling is, by name, and not the judges and budgets each
-  # holds beside its rules.
-  defp ceiling_names(ceiling) do
-    Enum.map_join(
-      for("ceiling/" <> name <- ceiling, not String.contains?(name, "/"), do: name),
-      ", ",
-      & &1
-    )
+  defp agents(""), do: "every agent"
+  defp agents(prefix), do: prefix
+
+  # The roles whose actions these are, where they are, else the actions.
+  defp named(actions) do
+    roles = for role <- @roles, Enum.all?(Role.actions(role), &(&1 in actions)), do: role
+
+    if roles != [] and actions -- Enum.flat_map(roles, &Role.actions/1) == [],
+      do: Enum.join(roles, ", "),
+      else: Enum.join(actions, ", ")
   end
 
-  defp actions(can) do
-    {names, [last]} = Enum.split(can, -1)
-
-    cond do
-      can == Enum.map(Grant.actions(), &Atom.to_string/1) -> ", for every action"
-      names == [] -> ", to #{last}"
-      true -> ", to #{Enum.join(names, ", ")} and #{last}"
+  # The policies a token's policy is, by name, and not the judges and
+  # budgets each holds beside its rules.
+  defp held(hooks) do
+    case for("policy/" <> name <- hooks, not String.contains?(name, "/"), do: name) do
+      [] -> ""
+      names -> ", under the policy #{Enum.join(names, ", ")}"
     end
   end
+
+  defp until(nil), do: ""
+  defp until(expires), do: ", until #{expires}"
 end
