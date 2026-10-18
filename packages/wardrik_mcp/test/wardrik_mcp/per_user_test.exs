@@ -5,7 +5,7 @@ defmodule WardrikMCP.PerUserTest do
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias WardrikMCP.Connection
 
   # Resolves stub as a vault would: each connected user's own, and an org's
@@ -14,7 +14,7 @@ defmodule WardrikMCP.PerUserTest do
     @moduledoc false
     defstruct []
 
-    def resolve("stub", %Wardrik.Call{scope: scope}), do: stub(Scope.agent_id(scope))
+    def resolve("stub", %Wardrik.Call{run: run}), do: stub(Run.agent_id(run))
 
     defp stub(%AgentID{org: org, user: nil}),
       do: {:ok, Credential.secret("token-for-#{org}", owner: org)}
@@ -47,9 +47,9 @@ defmodule WardrikMCP.PerUserTest do
 
   @moduletag server_opts: [credential: "stub", credential_env: "DEMO_TOKEN"]
 
-  defp scope(key, org, user) do
+  defp run_for(key, org, user) do
     Config.new(tools: [{WardrikMCP, key}])
-    |> Scope.root(AgentID.new!("assistant", org: org, user: user),
+    |> Run.root(AgentID.new!("assistant", org: org, user: user),
       host: Wardrik.Test.host(credentials: %Vault{})
     )
   end
@@ -59,7 +59,7 @@ defmodule WardrikMCP.PerUserTest do
   defp run(key, org, user, tool, arguments) do
     call = %{id: "call_1", name: "#{key}__#{tool}", arguments: arguments}
 
-    ToolRunner.execute(call, scope(key, org, user))
+    ToolRunner.execute(call, run_for(key, org, user))
   end
 
   defp text(call) do

@@ -15,7 +15,7 @@ defprotocol Wardrik.Grants do
 
   A chat channel knows the person pressing a button by their principal, and
   a tool acting for the person who asked for its turn knows them as
-  `Wardrik.Tool.Context`'s `:sender`, on the host its scope carries. Where
+  `Wardrik.Tool.Context`'s `:sender`, on the host its run carries. Where
   a host answers who someone is in one place, every surface holds them to
   the same grants. A surface that holds a grant itself, as the HTTP API does
   in its tokens, need not ask.

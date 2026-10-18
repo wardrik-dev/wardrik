@@ -4,11 +4,11 @@ defmodule Wardrik.LLM.Turn do
   and loops until the model produces a final answer.
 
   A turn is a token, the way a `Plug.Conn` is. `new/2` builds one from a
-  scope and the conversation as it stands, `run/1` takes it and hands it
+  run and the conversation as it stands, `run/1` takes it and hands it
   back, and it is the same value whether it is running, waiting on a person,
   or done:
 
-      turn = scope |> Wardrik.LLM.Turn.new(context) |> Wardrik.LLM.Turn.run()
+      turn = run |> Wardrik.LLM.Turn.new(context) |> Wardrik.LLM.Turn.run()
 
       case turn do
         %Wardrik.LLM.Turn{state: :done, messages: messages} -> append(messages)
@@ -18,12 +18,12 @@ defmodule Wardrik.LLM.Turn do
 
   `:messages` is what the turn added, a delta rather than a snapshot, so the
   caller remains the single writer of context. Stream and tool progress go out
-  through the scope's event source, which means a turn needs no subscriber pid
+  through the run's event source, which means a turn needs no subscriber pid
   and does not care how many listeners there are.
 
   ## Fields
 
-    * `:scope` - the `Wardrik.Scope` it runs under, `nil` while it is written down
+    * `:run` - the `Wardrik.Run` it runs under, `nil` while it is written down
     * `:context` - the conversation as it stands, what it added included
     * `:messages` - what it added, in order
     * `:remaining` - how many rounds of tool use it has left
@@ -40,7 +40,7 @@ defmodule Wardrik.LLM.Turn do
   ## Where a model call actually goes
 
   Every request is a `Wardrik.Call` through `Wardrik.Call.Pipeline`, as every
-  tool call is: the scope's hooks decide it, and its `Wardrik.LLM.Dispatch`
+  tool call is: the run's hooks decide it, and its `Wardrik.LLM.Dispatch`
   can route it, supply the key it runs under, or refuse it, and can book what
   it cost when it returns. Without a dispatch the request is made exactly as
   configured.
@@ -57,7 +57,7 @@ defmodule Wardrik.LLM.Turn do
       also stops a response that is still arriving. Whatever text had streamed
       is added as the assistant's message, verbatim.
 
-    * an expired deadline on the scope stops the turn at a boundary, the way
+    * an expired deadline on the run stops the turn at a boundary, the way
       `:yield` does. It takes effect without a closing request, because
       spending more time is the one thing a deadline forbids.
 
@@ -77,8 +77,8 @@ defmodule Wardrik.LLM.Turn do
   a person answers it the way they answer any other. Approving it makes the
   call; denying it fails the turn as `{:policy_denied, reason}`.
 
-  A turn that waits is written down with no scope, so it holds no
-  credentials and runs no processes, and `under/2` gives it the scope it
+  A turn that waits is written down with no run, so it holds no
+  credentials and runs no processes, and `under/2` gives it the run it
   resumes under.
 
   ## What the tools say first
@@ -92,20 +92,20 @@ defmodule Wardrik.LLM.Turn do
   ## What the turn has read
 
   Once a call the turn made answers with something labelled (see
-  `Wardrik.Call.label/2`), the turn carries the labels, and every batch after
-  it runs under a scope that says so, for its hooks to weigh:
+  `Wardrik.Call.label/2`), the turn carries the labels, and the run of every
+  batch after it says so, for its hooks to weigh:
   `WardrikPolicy` holds a gated tool's call for a person after content from
   outside, since what the turn read may be what asked for it. A turn written
   down carries its labels, so one carried on after a lost node carries them
   still.
 
   What the turn read stays in the history it leaves, so a turn begun under a
-  scope that carries labels already, as `Wardrik.Agent` begins one on a
+  run that carries labels already, as `Wardrik.Agent` begins one on a
   history that holds labelled content, carries them from the start.
 
   ## Surviving a lost node
 
-  A scope with a journal, as `Wardrik.Agent` gives each turn it runs, is handed
+  A run with a journal, as `Wardrik.Agent` gives each turn it runs, is handed
   the turn, written down, before every batch of tool calls, and the batch runs
   only once the journal has answered `:ok`. A journal that does not answer
   ends the turn before anything runs. `replay/1` carries such a turn on, with
@@ -114,7 +114,7 @@ defmodule Wardrik.LLM.Turn do
 
   ## A model call that fails
 
-  A call that fails is handed to the scope's `Wardrik.LLM.Retry`, with the
+  A call that fails is handed to the run's `Wardrik.LLM.Retry`, with the
   failed try added to the request's attempts, which decides whether to ask
   again and after how long: by default after each wait the config's
   `:retries` lists, for a reason `Wardrik.Failure` calls transient, such as a
@@ -145,13 +145,13 @@ defmodule Wardrik.LLM.Turn do
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Retry
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Tool
   alias Wardrik.Trace
 
   @enforce_keys [:context]
   defstruct [
-    :scope,
+    :run,
     :context,
     :response,
     :revision,
@@ -167,7 +167,7 @@ defmodule Wardrik.LLM.Turn do
   @type state() :: :running | :waiting | :done | :failed
 
   @type t() :: %__MODULE__{
-          scope: Scope.t() | nil,
+          run: Run.t() | nil,
           context: Context.t(),
           response: ReqLLM.Response.t() | nil,
           revision: String.t() | nil,
@@ -189,29 +189,29 @@ defmodule Wardrik.LLM.Turn do
   @closing "You have used every tool call available for this turn. Answer now from what you have, and say plainly what you could not verify."
 
   @doc """
-  A turn to answer `context` under `scope`, with the rounds its config allows,
+  A turn to answer `context` under `run`, with the rounds its config allows,
   and what its tools tell the model first.
   """
-  @spec new(Scope.t(), Context.t()) :: t()
-  def new(%Scope{config: config} = scope, %Context{} = context) do
-    {preamble, labels} = Tool.context(config.tools, scope)
+  @spec new(Run.t(), Context.t()) :: t()
+  def new(%Run{config: config} = run, %Context{} = context) do
+    {preamble, labels} = Tool.context(config.tools, run)
 
     %__MODULE__{
-      scope: scope,
+      run: run,
       context: context,
       remaining: config.max_iterations,
       preamble: preamble,
-      labels: Wardrik.Label.union(scope.labels, labels)
+      labels: Wardrik.Label.union(run.labels, labels)
     }
   end
 
   @doc "Runs `turn` until it is done, waits on a person, or fails."
   @spec run(t()) :: t()
-  def run(%__MODULE__{state: :running, scope: %Scope{}} = turn), do: loop(turn)
+  def run(%__MODULE__{state: :running, run: %Run{}} = turn), do: loop(turn)
 
-  @doc "The turn under `scope`, or under none for one that is written down."
-  @spec under(t(), Scope.t() | nil) :: t()
-  def under(%__MODULE__{} = turn, scope), do: %{turn | scope: scope}
+  @doc "The turn under `run`, or under none for one that is written down."
+  @spec under(t(), Run.t() | nil) :: t()
+  def under(%__MODULE__{} = turn, run), do: %{turn | run: run}
 
   @doc "The turn done, having added `messages` besides what it already had."
   @spec done(t(), [ReqLLM.Message.t()]) :: t()
@@ -271,8 +271,8 @@ defmodule Wardrik.LLM.Turn do
   the model reads and can act on. A call with no decision stays waiting, so a
   person can answer them one at a time.
 
-  A turn that parked under hooks other than its scope's, by
-  `Wardrik.Hook.revision/1`, has the scope's hooks asked about every call a hook
+  A turn that parked under hooks other than its run's, by
+  `Wardrik.Hook.revision/1`, has the run's hooks asked about every call a hook
   was waiting on before any decision is applied, and a decision about such a
   call is set aside: the call goes ahead, is refused, or waits again on what
   the hooks ask now. A call waiting on its tool or the ledger keeps its
@@ -289,7 +289,7 @@ defmodule Wardrik.LLM.Turn do
         turn |> running() |> loop()
 
       decision ->
-        case call |> Call.under(turn.scope) |> Pipeline.answer(decision) do
+        case call |> Call.under(turn.run) |> Pipeline.answer(decision) do
           %Call{state: :approved} = approved -> turn |> running() |> loop(approved: approved)
           %Call{denied: denied} -> fail(turn, {:policy_denied, denied.reason})
         end
@@ -302,28 +302,28 @@ defmodule Wardrik.LLM.Turn do
     resumed = read(%{turn | calls: calls}, calls)
 
     if Enum.any?(resumed.calls, &Call.waiting?/1),
-      do: %{resumed | revision: revision(turn.scope)},
+      do: %{resumed | revision: revision(turn.run)},
       else: finish(%{resumed | state: :running, revision: nil})
   end
 
   defp running(turn), do: %{turn | state: :running, calls: [], revision: nil}
 
-  defp stale?(%__MODULE__{revision: revision, scope: scope}), do: revision != revision(scope)
+  defp stale?(%__MODULE__{revision: revision, run: run}), do: revision != revision(run)
 
-  defp revision(%Scope{hooks: hooks}), do: Hook.revision(hooks)
+  defp revision(%Run{hooks: hooks}), do: Hook.revision(hooks)
 
-  defp decide(%Call{state: :waiting} = call, decisions, scope, stale?) do
+  defp decide(%Call{state: :waiting} = call, decisions, run, stale?) do
     if stale? and Call.asked_by_hook?(call),
-      do: call |> Call.reset() |> ToolRunner.execute(scope),
-      else: decided(call, Map.get(decisions, call.id), scope)
+      do: call |> Call.reset() |> ToolRunner.execute(run),
+      else: decided(call, Map.get(decisions, call.id), run)
   end
 
-  defp decide(%Call{} = call, _decisions, _scope, _stale?), do: call
+  defp decide(%Call{} = call, _decisions, _run, _stale?), do: call
 
-  defp decided(call, nil, _scope), do: call
+  defp decided(call, nil, _run), do: call
 
-  defp decided(call, decision, scope),
-    do: call |> Call.under(scope) |> Pipeline.answer(decision) |> ToolRunner.execute(scope)
+  defp decided(call, decision, run),
+    do: call |> Call.under(run) |> Pipeline.answer(decision) |> ToolRunner.execute(run)
 
   # A batch every call of which has been answered is appended, and the turn
   # goes on.
@@ -340,7 +340,7 @@ defmodule Wardrik.LLM.Turn do
   on from there.
   """
   @spec replay(t()) :: t()
-  def replay(%__MODULE__{state: :running, scope: %Scope{}, response: %ReqLLM.Response{}} = turn),
+  def replay(%__MODULE__{state: :running, run: %Run{}, response: %ReqLLM.Response{}} = turn),
     do: advance(turn)
 
   @doc "Asks the process running a turn to stop iterating once it reaches a boundary."
@@ -358,9 +358,9 @@ defmodule Wardrik.LLM.Turn do
   end
 
   # `opts` apply to the next model call alone.
-  defp loop(%__MODULE__{scope: scope} = turn, opts \\ []) do
+  defp loop(%__MODULE__{run: run} = turn, opts \\ []) do
     cond do
-      Scope.expired?(scope) -> out_of_time(turn)
+      Run.expired?(run) -> out_of_time(turn)
       turn.remaining == 0 -> wrap_up(turn, opts)
       true -> iterate(turn, opts)
     end
@@ -368,12 +368,12 @@ defmodule Wardrik.LLM.Turn do
 
   defp out_of_time(turn) do
     Logger.warning("Turn reached its deadline, stopping with what it has")
-    Event.emit(turn.scope.source, %Event.DeadlineReached{message_count: length(turn.messages)})
+    Event.emit(turn.run.source, %Event.DeadlineReached{message_count: length(turn.messages)})
     done(turn)
   end
 
   defp iterate(turn, opts) do
-    case request(turn, turn.scope, opts) do
+    case request(turn, turn.run, opts) do
       {:ok, response} ->
         advance(%{turn | response: response})
 
@@ -394,10 +394,10 @@ defmodule Wardrik.LLM.Turn do
 
   # One last request without tools. Any tool call the model asks for anyway
   # is dropped, so the conversation never ends on an unanswered call.
-  defp wrap_up(%__MODULE__{scope: scope} = turn, opts) do
+  defp wrap_up(%__MODULE__{run: run} = turn, opts) do
     Logger.warning("Turn hit its iteration cap, answering without tools")
 
-    case request(turn, %{scope | config: %{scope.config | tools: []}}, opts, true) do
+    case request(turn, %{run | config: %{run.config | tools: []}}, opts, true) do
       {:ok, response} ->
         %{text: text} = ReqLLM.Response.classify(response)
         done(turn, partial(text))
@@ -420,7 +420,7 @@ defmodule Wardrik.LLM.Turn do
       | state: :waiting,
         response: nil,
         calls: [Call.under(waiting, nil)],
-        revision: revision(turn.scope)
+        revision: revision(turn.run)
     }
   end
 
@@ -447,9 +447,9 @@ defmodule Wardrik.LLM.Turn do
   # A batch of tool calls is handed to the journal, as the turn written down,
   # before any of it runs. A final answer changes nothing the journal needs,
   # and is not.
-  defp journal(%__MODULE__{scope: %Scope{journal: nil}}), do: :ok
+  defp journal(%__MODULE__{run: %Run{journal: nil}}), do: :ok
 
-  defp journal(%__MODULE__{scope: %Scope{journal: journal}, response: response} = turn) do
+  defp journal(%__MODULE__{run: %Run{journal: journal}, response: response} = turn) do
     case ReqLLM.Response.classify(response) do
       %{type: :tool_calls} ->
         case GenServer.call(journal, {:checkpoint, under(turn, nil)}, :timer.seconds(30)) do
@@ -475,16 +475,16 @@ defmodule Wardrik.LLM.Turn do
         turn |> read(calls) |> continue(context, messages)
 
       {:waiting, calls} ->
-        %{read(turn, calls) | state: :waiting, calls: calls, revision: revision(turn.scope)}
+        %{read(turn, calls) | state: :waiting, calls: calls, revision: revision(turn.run)}
 
       {:error, reason} ->
         fail(turn, reason)
     end
   end
 
-  # The scope a batch runs under: the turn's, for this round, carrying what
+  # The run a batch runs under: the turn's, for this round, carrying what
   # the turn has read.
-  defp batch(turn), do: %{Scope.batch(turn.scope, rounds(turn)) | labels: turn.labels}
+  defp batch(turn), do: %{Run.batch(turn.run, rounds(turn)) | labels: turn.labels}
 
   # The turn, carrying what `calls` answered with.
   defp read(%__MODULE__{} = turn, calls),
@@ -530,20 +530,20 @@ defmodule Wardrik.LLM.Turn do
 
   # The message a model call answers with is named by where the turn is: its
   # span and its round, so a turn replayed names it as it did the first time.
-  defp message_id(%__MODULE__{scope: %Scope{source: source}} = turn),
+  defp message_id(%__MODULE__{run: %Run{source: source}} = turn),
     do: "#{source.trace.span_id}.m#{rounds(turn)}"
 
   # A call a hook parks is never made, so it has no model events. `opts` hold
-  # the call a person approved, which every try goes ahead as. `scope` is the
+  # the call a person approved, which every try goes ahead as. `run` is the
   # turn's, or one whose config is narrowed for the last request of a turn at
   # its cap.
-  defp request(%__MODULE__{} = turn, %Scope{config: config} = scope, opts, closing? \\ false) do
+  defp request(%__MODULE__{} = turn, %Run{config: config} = run, opts, closing? \\ false) do
     config = %{config | system: system(config.system, turn, closing?)}
-    asked(%{scope | config: config}, Request.new(config, turn.context), message_id(turn), opts)
+    asked(%{run | config: config}, Request.new(config, turn.context), message_id(turn), opts)
   end
 
-  defp asked(%Scope{} = scope, %Request{} = request, message_id, opts) do
-    case request |> Pipeline.model(scope, opts[:approved]) |> Pipeline.decide() do
+  defp asked(%Run{} = run, %Request{} = request, message_id, opts) do
+    case request |> Pipeline.model(run, opts[:approved]) |> Pipeline.decide() do
       %Call{state: :waiting} = waiting ->
         {:park, waiting}
 
@@ -553,25 +553,25 @@ defmodule Wardrik.LLM.Turn do
       call ->
         call
         |> make(tried_id(message_id, request))
-        |> again(scope, request, message_id, opts)
+        |> again(run, request, message_id, opts)
     end
   end
 
   defp tried_id(message_id, %Request{attempts: []}), do: message_id
   defp tried_id(message_id, %Request{attempts: tried}), do: "#{message_id}.#{length(tried) + 1}"
 
-  defp again({{:error, reason} = failed, model_spec}, scope, request, message_id, opts) do
+  defp again({{:error, reason} = failed, model_spec}, run, request, message_id, opts) do
     attempt = %Attempt{model_spec: model_spec, reason: reason, answered?: Process.get(@answered)}
     tried = Request.failed(request, attempt)
 
-    case if(Scope.expired?(scope), do: :stop, else: Retry.again(scope, tried)) do
+    case if(Run.expired?(run), do: :stop, else: Retry.again(run, tried)) do
       {:again, wait} ->
         Logger.warning("Model call failed, asking again in #{wait}ms: #{inspect(reason)}")
 
         receive do
           :interrupt -> {:interrupted, ""}
         after
-          wait -> asked(scope, tried, message_id, opts)
+          wait -> asked(run, tried, message_id, opts)
         end
 
       :stop ->
@@ -579,11 +579,11 @@ defmodule Wardrik.LLM.Turn do
     end
   end
 
-  defp again({result, _model_spec}, _scope, _request, _message_id, _opts), do: result
+  defp again({result, _model_spec}, _run, _request, _message_id, _opts), do: result
 
   # What a try came to, with the model it went to once the dispatch had
   # admitted it.
-  defp make(%Call{scope: %Scope{source: source}} = call, message_id) do
+  defp make(%Call{run: %Run{source: source}} = call, message_id) do
     started_at = System.monotonic_time()
 
     Event.emit(
@@ -615,8 +615,8 @@ defmodule Wardrik.LLM.Turn do
     {result, made.target.model_spec}
   end
 
-  defp streamed(%Call{scope: scope} = call),
-    do: Call.answer(call, call |> Pipeline.request() |> stream(scope) |> settled())
+  defp streamed(%Call{run: run} = call),
+    do: Call.answer(call, call |> Pipeline.request() |> stream(run) |> settled())
 
   defp unsettled(%Call{result: {:error, reason, _text}}), do: {:error, reason}
   defp unsettled(%Call{result: result}), do: result
@@ -634,9 +634,9 @@ defmodule Wardrik.LLM.Turn do
 
   defp settled(result), do: result
 
-  defp stream(%Request{} = request, %Scope{} = scope) do
+  defp stream(%Request{} = request, %Run{} = run) do
     with {:ok, streamed} <- ReqLLM.stream_text(request.model_spec, request.context, request.opts) do
-      process_stream(streamed, scope)
+      process_stream(streamed, run)
     end
   catch
     :interrupt -> {:interrupted, streamed_text()}
@@ -648,7 +648,7 @@ defmodule Wardrik.LLM.Turn do
 
   defp streamed_text, do: @streamed |> Process.get([]) |> Enum.reverse() |> IO.iodata_to_binary()
 
-  defp handle_response(scope, context, %ReqLLM.Response{} = response) do
+  defp handle_response(run, context, %ReqLLM.Response{} = response) do
     case ReqLLM.Response.classify(response) do
       %{type: :final_answer, text: text} ->
         {:done, [assistant_message(response, text)]}
@@ -656,13 +656,13 @@ defmodule Wardrik.LLM.Turn do
       %{type: :tool_calls, tool_calls: tool_calls, text: text} ->
         case Enum.reject(tool_calls, &ReqLLM.ToolCall.flagged_builtin?/1) do
           [] -> {:done, [assistant_message(response, text)]}
-          calls -> settle_calls(scope, context, response, calls)
+          calls -> settle_calls(run, context, response, calls)
         end
     end
   end
 
-  defp settle_calls(scope, context, response, calls) do
-    outcomes = ToolRunner.execute_many_async(calls, scope)
+  defp settle_calls(run, context, response, calls) do
+    outcomes = ToolRunner.execute_many_async(calls, run)
 
     if ToolRunner.parked(outcomes) != [] do
       {:waiting, outcomes}
@@ -694,7 +694,7 @@ defmodule Wardrik.LLM.Turn do
   # The callbacks run in this process, so `:interrupt` is read from the same
   # mailbox the boundary reads. A throw escapes `process_stream/2`, which
   # catches only exits, leaving what streamed so far recoverable.
-  defp process_stream(streamed, %Scope{source: source}) do
+  defp process_stream(streamed, %Run{source: source}) do
     streamed
     |> ReqLLM.StreamResponse.process_stream(
       on_chunk: fn chunk ->

@@ -7,7 +7,7 @@ defmodule WardrikMCP.ServersTest do
   alias Wardrik.Error
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Servers.Key
   alias Wardrik.Servers.Server
   alias WardrikMCP.Auth
@@ -84,8 +84,8 @@ defmodule WardrikMCP.ServersTest do
     @moduledoc false
     defstruct []
 
-    def resolve("stub-key", %Wardrik.Call{scope: scope}) do
-      %AgentID{org: org} = Scope.agent_id(scope)
+    def resolve("stub-key", %Wardrik.Call{run: run}) do
+      %AgentID{org: org} = Run.agent_id(run)
       {:ok, Credential.secret("key-for-#{org}", owner: org)}
     end
   end
@@ -178,16 +178,16 @@ defmodule WardrikMCP.ServersTest do
     :ok = Remote.put(Wardrik.Test.store(), %Remote{key: key, url: url, auth: auth, filters: []})
   end
 
-  defp scope(key, org) do
+  defp run_for(key, org) do
     Config.new(tools: [{WardrikMCP, key}])
-    |> Scope.root(AgentID.new!("assistant", org: org),
+    |> Run.root(AgentID.new!("assistant", org: org),
       host: Wardrik.Test.host(credentials: %Vault{})
     )
   end
 
   defp run(key, org, tool, arguments) do
     call = %{id: "call_1", name: "#{key.name}__#{tool}", arguments: arguments}
-    [message] = ToolRunner.messages([ToolRunner.execute(call, scope(key, org))])
+    [message] = ToolRunner.messages([ToolRunner.execute(call, run_for(key, org))])
     [part] = message.content
     part.text
   end

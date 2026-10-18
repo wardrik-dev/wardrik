@@ -5,7 +5,7 @@ defmodule Wardrik.SubagentTest do
 
   alias Wardrik.Event
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Subagent
   alias Wardrik.Test.EchoTool
   alias Wardrik.Test.LLMStub
@@ -19,7 +19,7 @@ defmodule Wardrik.SubagentTest do
 
     config = Config.new(tools: [EchoTool, SearchTool])
 
-    {:ok, agent_id: agent_id, scope: Scope.root(config, agent_id, name: "turn")}
+    {:ok, agent_id: agent_id, run: Run.root(config, agent_id, name: "turn")}
   end
 
   # Every turn reports what it was asked with, then answers `text`.
@@ -37,72 +37,72 @@ defmodule Wardrik.SubagentTest do
     asked
   end
 
-  test "returns the delegate's final answer", %{scope: scope} do
+  test "returns the delegate's final answer", %{run: run} do
     stub_llm("competitors charge $20/mo")
 
-    assert Subagent.run(scope, "pricing?") == {:ok, "competitors charge $20/mo"}
+    assert Subagent.run(run, "pricing?") == {:ok, "competitors charge $20/mo"}
   end
 
-  test "the prompt is the delegate's whole conversation", %{scope: scope} do
+  test "the prompt is the delegate's whole conversation", %{run: run} do
     stub_llm()
 
-    {:ok, _text} = Subagent.run(scope, "pricing?")
+    {:ok, _text} = Subagent.run(run, "pricing?")
 
     assert asked().prompt == "pricing?"
   end
 
-  test "runs under its own child span", %{scope: scope} do
+  test "runs under its own child span", %{run: run} do
     stub_llm()
 
-    {:ok, _text} = Subagent.run(scope, "pricing?")
+    {:ok, _text} = Subagent.run(run, "pricing?")
 
     assert_receive %Event{payload: %Event.Result{}} = event
-    assert event.source.trace.parent_span_id == scope.source.trace.span_id
+    assert event.source.trace.parent_span_id == run.source.trace.span_id
     refute Event.root?(event)
   end
 
   describe "what a delegate read" do
     test "a delegate that read content marks the process that ran it with its labels",
-         %{scope: scope} do
+         %{run: run} do
       LLMStub.stream([
         LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
         LLMStub.final_answer("It says to deploy.")
       ])
 
-      scope = %{scope | config: Config.new(tools: [Wardrik.Test.Tools.Fetch])}
+      run = %{run | config: Config.new(tools: [Wardrik.Test.Tools.Fetch])}
 
       assert {{:ok, "It says to deploy."}, ["outside"]} =
-               Subagent.watching(fn -> Subagent.run(scope, "Read it.") end)
+               Subagent.watching(fn -> Subagent.run(run, "Read it.") end)
 
       stub_llm()
-      assert {{:ok, "done"}, []} = Subagent.watching(fn -> Subagent.run(scope, "Again.") end)
+      assert {{:ok, "done"}, []} = Subagent.watching(fn -> Subagent.run(run, "Again.") end)
     end
 
     test "a delegate keeps what its tools declare, so a gated one waits on a person",
-         %{scope: scope} do
+         %{run: run} do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
-      scope = %{scope | config: Config.new(tools: [Wardrik.Test.Tools.Deploy, EchoTool])}
+      run = %{run | config: Config.new(tools: [Wardrik.Test.Tools.Deploy, EchoTool])}
 
-      assert Subagent.run(scope, "Ship it.", except_tools: ["echo"]) ==
+      assert Subagent.run(run, "Ship it.", except_tools: ["echo"]) ==
                {:error, :approval_required}
 
       refute_received %Event{payload: %Event.ToolStarted{call_id: "call_1"}}
     end
 
-    test "a delegate begins with the labels of its scope", %{scope: scope} do
+    test "a delegate begins with the labels of its run", %{run: run} do
       stub_llm()
 
       assert {{:ok, "done"}, ["books"]} =
-               Subagent.watching(fn -> Subagent.run(%{scope | labels: ["books"]}, "Go.") end)
+               Subagent.watching(fn -> Subagent.run(%{run | labels: ["books"]}, "Go.") end)
     end
 
-    test "read/1 marks this process with labels a delegate read in another", %{scope: scope} do
+    test "read/1 marks this process with labels a delegate read in another", %{run: run} do
       stub_llm()
 
       {{:ok, "done"}, labels} =
         Task.await(
           Task.async(fn ->
-            Subagent.watching(fn -> Subagent.run(%{scope | labels: ["outside"]}, "Go.") end)
+            Subagent.watching(fn -> Subagent.run(%{run | labels: ["outside"]}, "Go.") end)
           end)
         )
 
@@ -111,10 +111,10 @@ defmodule Wardrik.SubagentTest do
   end
 
   describe "events" do
-    test "a named delegation announces itself on its own span", %{scope: scope} do
+    test "a named delegation announces itself on its own span", %{run: run} do
       stub_llm("about $20")
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", name: "pricing")
+      {:ok, _text} = Subagent.run(run, "pricing?", name: "pricing")
 
       assert_receive %Event{payload: %Event.SpanStarted{name: "pricing"}} = opened
       assert_receive %Event{payload: %Event.DelegationStarted{prompt: "pricing?"}} = started
@@ -134,15 +134,15 @@ defmodule Wardrik.SubagentTest do
       assert Event.level(:delegation_started) == :lifecycle
     end
 
-    test "repeated unnamed delegations have distinct identities", %{scope: scope} do
+    test "repeated unnamed delegations have distinct identities", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?")
-      {:ok, _text} = Subagent.run(scope, "competitors?")
+      {:ok, _text} = Subagent.run(run, "pricing?")
+      {:ok, _text} = Subagent.run(run, "competitors?")
 
       assert_receive %Event{payload: %Event.DelegationStarted{prompt: "pricing?"}} = started
       assert_receive %Event{payload: %Event.DelegationStarted{prompt: "competitors?"}} = second
-      assert started.source.trace.parent_span_id == scope.source.trace.span_id
+      assert started.source.trace.parent_span_id == run.source.trace.span_id
       refute started.source.trace.span_id == second.source.trace.span_id
     end
   end
@@ -156,10 +156,10 @@ defmodule Wardrik.SubagentTest do
     def call(_call, _value), do: :pass
   end
 
-  test "a parked delegation reports an error that observers can fold", %{scope: scope} do
+  test "a parked delegation reports an error that observers can fold", %{run: run} do
     LLMStub.stream([LLMStub.tool_call("blocked", "echo", %{"text" => "hello"})])
 
-    assert Subagent.run(%{scope | hooks: [Wardrik.Hook.new("ask", AskHook)]}, "echo") ==
+    assert Subagent.run(%{run | hooks: [Wardrik.Hook.new("ask", AskHook)]}, "echo") ==
              {:error, :approval_required}
 
     assert_receive %Event{payload: %Event.DelegationStarted{prompt: "echo"}} = started
@@ -180,133 +180,133 @@ defmodule Wardrik.SubagentTest do
   end
 
   describe "with a config of its own" do
-    test "inherits the caller's model and tools by default", %{scope: scope} do
+    test "inherits the caller's model and tools by default", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?")
+      {:ok, _text} = Subagent.run(run, "pricing?")
 
       asked = asked()
       assert asked.tools == ["echo", "web_search"]
-      assert asked.model == scope.config.model_spec
+      assert asked.model == run.config.model_spec
     end
 
-    test "tools replaces the inherited set", %{scope: scope} do
+    test "tools replaces the inherited set", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", tools: [EchoTool])
+      {:ok, _text} = Subagent.run(run, "pricing?", tools: [EchoTool])
 
       assert asked().tools == ["echo"]
     end
 
-    test "tools can be emptied, for work given everything it needs", %{scope: scope} do
+    test "tools can be emptied, for work given everything it needs", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", tools: [])
+      {:ok, _text} = Subagent.run(run, "pricing?", tools: [])
 
       assert asked().tools == []
     end
 
-    test "except_tools drops named tools from the inherited set", %{scope: scope} do
+    test "except_tools drops named tools from the inherited set", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", except_tools: ["echo"])
+      {:ok, _text} = Subagent.run(run, "pricing?", except_tools: ["echo"])
 
       assert asked().tools == ["web_search"]
     end
 
-    test "a name that matches nothing drops nothing", %{scope: scope} do
+    test "a name that matches nothing drops nothing", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", except_tools: ["nope"])
+      {:ok, _text} = Subagent.run(run, "pricing?", except_tools: ["nope"])
 
       assert asked().tools == ["echo", "web_search"]
     end
 
-    test "tools and except_tools compose: replaced, then narrowed", %{scope: scope} do
+    test "tools and except_tools compose: replaced, then narrowed", %{run: run} do
       stub_llm()
 
       {:ok, _text} =
-        Subagent.run(scope, "pricing?", tools: [EchoTool, SearchTool], except_tools: ["echo"])
+        Subagent.run(run, "pricing?", tools: [EchoTool, SearchTool], except_tools: ["echo"])
 
       assert asked().tools == ["web_search"]
     end
 
-    test "system replaces the caller's persona", %{scope: scope} do
+    test "system replaces the caller's persona", %{run: run} do
       stub_llm()
-      caller = %{scope | config: %{scope.config | system: "You are Jon's assistant."}}
+      caller = %{run | config: %{run.config | system: "You are Jon's assistant."}}
 
       {:ok, _text} = Subagent.run(caller, "pricing?", system: "You are a researcher.")
 
       assert asked().system == "You are a researcher."
     end
 
-    test "the caller's persona is inherited when none is given", %{scope: scope} do
+    test "the caller's persona is inherited when none is given", %{run: run} do
       stub_llm()
-      caller = %{scope | config: %{scope.config | system: "You are Jon's assistant."}}
+      caller = %{run | config: %{run.config | system: "You are Jon's assistant."}}
 
       {:ok, _text} = Subagent.run(caller, "pricing?")
 
       assert asked().system == "You are Jon's assistant."
     end
 
-    test "model replaces the model and leaves the tools alone", %{scope: scope} do
+    test "model replaces the model and leaves the tools alone", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", model: {:test, model: "cheap"})
+      {:ok, _text} = Subagent.run(run, "pricing?", model: {:test, model: "cheap"})
 
       asked = asked()
       assert asked.model == {:test, model: "cheap"}
       assert asked.tools == ["echo", "web_search"]
     end
 
-    test "generation options can be set for the delegate alone", %{scope: scope} do
+    test "generation options can be set for the delegate alone", %{run: run} do
       stub_llm()
 
       {:ok, _text} =
-        Subagent.run(scope, "pricing?", generation: [reasoning_token_budget: 500])
+        Subagent.run(run, "pricing?", generation: [reasoning_token_budget: 500])
 
-      assert scope.config.generation == []
+      assert run.config.generation == []
     end
 
-    test "config replaces the lot", %{scope: scope} do
+    test "config replaces the lot", %{run: run} do
       stub_llm()
       researcher = Config.new(model_spec: {:test, model: "m"}, tools: [SearchTool])
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", config: researcher)
+      {:ok, _text} = Subagent.run(run, "pricing?", config: researcher)
 
       asked = asked()
       assert asked.tools == ["web_search"]
       assert asked.model == {:test, model: "m"}
     end
 
-    test "the caller's own scope is left untouched", %{scope: scope} do
+    test "the caller's own run is left untouched", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", tools: [])
+      {:ok, _text} = Subagent.run(run, "pricing?", tools: [])
 
-      assert scope.config |> Config.tools() |> Enum.map(& &1.name) == ["echo", "web_search"]
+      assert run.config |> Config.tools() |> Enum.map(& &1.name) == ["echo", "web_search"]
     end
   end
 
   describe "name" do
-    test "puts the turn under a child span", %{scope: scope} do
+    test "puts the turn under a child span", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", name: "researcher")
+      {:ok, _text} = Subagent.run(run, "pricing?", name: "researcher")
 
       assert_receive %Event{payload: %Event.Result{}} = event
 
       refute Event.root?(event)
-      assert event.source.agent_id == scope.source.agent_id
-      assert event.source.trace.trace_id == scope.source.trace.trace_id
-      assert event.source.trace.parent_span_id == scope.source.trace.span_id
+      assert event.source.agent_id == run.source.agent_id
+      assert event.source.trace.trace_id == run.source.trace.trace_id
+      assert event.source.trace.parent_span_id == run.source.trace.span_id
       assert event.source.trace.name == "researcher"
     end
 
-    test "announces both ends of that span", %{scope: scope} do
+    test "announces both ends of that span", %{run: run} do
       stub_llm()
 
-      {:ok, _text} = Subagent.run(scope, "pricing?", name: "researcher")
+      {:ok, _text} = Subagent.run(run, "pricing?", name: "researcher")
 
       assert_receive %Event{payload: %Event.SpanStarted{name: "researcher"}} = started
       assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}} = finished
@@ -314,35 +314,35 @@ defmodule Wardrik.SubagentTest do
       assert started.source.trace.span_id == finished.source.trace.span_id
     end
 
-    test "a failed delegation closes its span as a failure", %{scope: scope} do
+    test "a failed delegation closes its span as a failure", %{run: run} do
       stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
-      ExUnit.CaptureLog.with_log(fn -> Subagent.run(scope, "pricing?", name: "researcher") end)
+      ExUnit.CaptureLog.with_log(fn -> Subagent.run(run, "pricing?", name: "researcher") end)
 
       assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :rate_limited}}}
     end
   end
 
-  test "an unnamed delegation inherits the scope's name on a distinct span", %{scope: scope} do
+  test "an unnamed delegation inherits the run's name on a distinct span", %{run: run} do
     stub_llm()
 
-    {:ok, _text} = Subagent.run(scope, "pricing?")
+    {:ok, _text} = Subagent.run(run, "pricing?")
 
     assert_receive %Event{payload: %Event.SpanStarted{name: "turn"}} = event
-    refute event.source.trace.span_id == scope.source.trace.span_id
+    refute event.source.trace.span_id == run.source.trace.span_id
   end
 
-  test "a failed turn is reported to the caller", %{scope: scope} do
+  test "a failed turn is reported to the caller", %{run: run} do
     stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
-    {result, _log} = ExUnit.CaptureLog.with_log(fn -> Subagent.run(scope, "pricing?") end)
+    {result, _log} = ExUnit.CaptureLog.with_log(fn -> Subagent.run(run, "pricing?") end)
 
     assert result == {:error, :rate_limited}
   end
 
-  test "a turn that produced no text answers empty rather than failing", %{scope: scope} do
+  test "a turn that produced no text answers empty rather than failing", %{run: run} do
     stub_llm("")
 
-    assert Subagent.run(scope, "pricing?") == {:ok, ""}
+    assert Subagent.run(run, "pricing?") == {:ok, ""}
   end
 end

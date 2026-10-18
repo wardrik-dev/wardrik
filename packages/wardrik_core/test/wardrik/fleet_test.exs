@@ -10,7 +10,7 @@ defmodule Wardrik.FleetTest do
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.AgentRunners
 
   import Wardrik.AgentID, only: [sigil_A: 2]
@@ -43,14 +43,14 @@ defmodule Wardrik.FleetTest do
       assert {:ok, ^pid} = Fleet.spawn(key, runner: runner(self()))
     end
 
-    test "the scope names the agent it runs for" do
+    test "the run names the agent it runs for" do
       key = AgentID.new!("planner", org: "acme", user: 42)
       pid = start(key, runner: {AgentRunners, :reporting, [self()]})
 
       Agent.ask(pid, "hi")
 
-      assert_receive {:scope, scope}
-      assert %AgentID{org: "acme", user: "42"} = Scope.agent_id(scope)
+      assert_receive {:run, run}
+      assert %AgentID{org: "acme", user: "42"} = Run.agent_id(run)
       assert %{id: %AgentID{org: "acme", user: "42", name: "planner"}} = Fleet.lookup(key)
     end
 

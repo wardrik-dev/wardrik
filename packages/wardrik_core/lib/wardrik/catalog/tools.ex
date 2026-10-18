@@ -11,7 +11,7 @@ defmodule Wardrik.Catalog.Tools do
   Each tool is described by its operation's summary, and takes its input. A
   call builds the operation's request and runs it through `Wardrik.Query` or
   `Wardrik.Command`, as every surface does, as the calling agent, a caller
-  made with `Wardrik.Caller.agent/1` on the host the call's scope carries:
+  made with `Wardrik.Caller.agent/1` on the host the call's run carries:
   the audit records the agent as who made
   a change, an agent another surface declares, as a file does, answers as it
   would there, and an agent it sends a message answers it back with a
@@ -40,7 +40,7 @@ defmodule Wardrik.Catalog.Tools do
   alias Wardrik.Host
   alias Wardrik.Query
   alias Wardrik.Resource
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   @doc """
   The catalog's operations on an agent, offered to an agent reaching
@@ -93,7 +93,7 @@ defmodule Wardrik.Catalog.Tools do
   what it holds.
 
   The agent may read, send messages to and define the agents its reach
-  covers, under its own hooks as ceiling, on the host the call's scope
+  covers, under its own hooks as ceiling, on the host the call's run
   carries. A read or a message is the asker's as well: where someone asked
   for the turn, it reaches only what both the agent and they may, as the
   host's `Wardrik.Grants` say of them, so an agent never reads or messages
@@ -118,11 +118,11 @@ defmodule Wardrik.Catalog.Tools do
   end
 
   defp caller(%Offering{module: module, reach: reach}, subject, context) do
-    %Wardrik.Tool.Context{scope: scope, sender: sender} = context
-    {:ok, own} = Grant.new(reach, [:read, :message, :define], scope.hooks)
+    %Wardrik.Tool.Context{run: run, sender: sender} = context
+    {:ok, own} = Grant.new(reach, [:read, :message, :define], run.hooks)
 
-    with {:ok, grant} <- asked(own, sender, subject, module.action(), scope.host),
-         do: {:ok, Caller.agent(id: Scope.agent_id(scope), grant: grant, host: scope.host)}
+    with {:ok, grant} <- asked(own, sender, subject, module.action(), run.host),
+         do: {:ok, Caller.agent(id: Run.agent_id(run), grant: grant, host: run.host)}
   end
 
   # A turn nobody asked for is the agent's own.

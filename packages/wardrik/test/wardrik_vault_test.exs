@@ -5,7 +5,7 @@ defmodule WardrikVaultTest do
 
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.Calls
   alias WardrikVault.Sealed
 
@@ -44,15 +44,15 @@ defmodule WardrikVaultTest do
   defp grants(grants), do: Process.put(:vault, %{vault() | grants: grants})
   defp keys(list), do: Process.put(:vault, %{vault() | keys: list})
 
-  defp call(scope_opts), do: Calls.tool("tool", %{}, scope(scope_opts))
+  defp call(run_opts), do: Calls.tool("tool", %{}, run(run_opts))
 
-  defp scope(opts) do
+  defp run(opts) do
     {user, opts} = Keyword.pop(opts, :user)
     {org, opts} = Keyword.pop(opts, :org, "acme")
     {grants, opts} = Keyword.pop(opts, :grants, %Wardrik.Grants.None{})
     host = Wardrik.Test.host(credentials: vault(), grants: grants)
     opts = Keyword.put_new(opts, :host, host)
-    Scope.root(Config.new(), Wardrik.AgentID.new!("assistant", org: org, user: user), opts)
+    Run.root(Config.new(), Wardrik.AgentID.new!("assistant", org: org, user: user), opts)
   end
 
   defp environment_variable(value) do

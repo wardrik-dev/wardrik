@@ -37,7 +37,7 @@ defmodule Wardrik.Compaction do
   alias Wardrik.LLM.Message
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Tokens
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   defstruct at: 0.6, keep: 0.25, window: nil
 
@@ -153,10 +153,10 @@ defmodule Wardrik.Compaction do
   defp summary?(_older), do: false
 
   @doc """
-  Compacts `context` under `scope`, if `compaction` says it is due.
+  Compacts `context` under `run`, if `compaction` says it is due.
 
   The older part is summarised by the agent's own model, through
-  `Wardrik.Call.Pipeline`, so the scope's hooks decide and count the call like
+  `Wardrik.Call.Pipeline`, so the run's hooks decide and count the call like
   any other, and its `Wardrik.LLM.Dispatch` admits it. The summary and an
   acknowledgement take the older part's place, and the recent part follows
   word for word. `:keep` where nothing is due; `{:error, reason}` where the
@@ -168,13 +168,13 @@ defmodule Wardrik.Compaction do
   request outgrows the model.
   """
   @impl Wardrik.History
-  @spec prepare(Context.t(), Scope.t(), t() | nil) ::
+  @spec prepare(Context.t(), Run.t(), t() | nil) ::
           {:ok, Context.t()} | :keep | {:error, term()}
-  def prepare(%Context{} = context, %Scope{config: config} = scope, compaction) do
+  def prepare(%Context{} = context, %Run{config: config} = run, compaction) do
     compaction = compaction || %__MODULE__{}
 
     with {:ok, older, recent} <- split(compaction, context, config.model_spec),
-         {:ok, summary} <- summarise(scope, compaction, older) do
+         {:ok, summary} <- summarise(run, compaction, older) do
       {:ok,
        Context.new([
          Context.user(@summary_intro <> summary),
@@ -183,21 +183,21 @@ defmodule Wardrik.Compaction do
     end
   end
 
-  defp summarise(%Scope{config: config} = scope, compaction, older) do
+  defp summarise(%Run{config: config} = run, compaction, older) do
     budget = trunc(@request_share * window(compaction, config.model_spec))
 
     if Tokens.messages(older) <= budget do
-      ask(scope, older ++ [Context.user(@ask)])
+      ask(run, older ++ [Context.user(@ask)])
     else
       older
       |> parts(budget)
-      |> Enum.reduce_while({:ok, nil}, &summarise_part(scope, &1, &2))
+      |> Enum.reduce_while({:ok, nil}, &summarise_part(run, &1, &2))
       |> summarised()
     end
   end
 
-  defp summarise_part(scope, part, {:ok, summary}) do
-    case ask(scope, [Context.user(continued(summary, part))]) do
+  defp summarise_part(run, part, {:ok, summary}) do
+    case ask(run, [Context.user(continued(summary, part))]) do
       {:ok, summary} -> {:cont, {:ok, summary}}
       error -> {:halt, error}
     end
@@ -263,10 +263,10 @@ defmodule Wardrik.Compaction do
 
   defp joined(lines), do: lines |> Enum.reverse() |> Enum.join("\n\n")
 
-  defp ask(scope, messages) do
-    request = Request.new(%{scope.config | tools: [], system: @summarise}, Context.new(messages))
+  defp ask(run, messages) do
+    request = Request.new(%{run.config | tools: [], system: @summarise}, Context.new(messages))
 
-    case request |> Pipeline.model(scope) |> Pipeline.run(&generate/1) do
+    case request |> Pipeline.model(run) |> Pipeline.run(&generate/1) do
       %Call{state: :waiting} = waiting -> {:error, {:parked, Call.prompt(waiting)}}
       %Call{state: :denied, denied: denied} -> {:error, {:policy_denied, denied.reason}}
       %Call{result: result} -> text(result)

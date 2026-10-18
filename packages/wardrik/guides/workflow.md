@@ -22,8 +22,8 @@ defmodule MyApp.Nightly do
   end
 
   @impl WardrikWorkflow.Step
-  def run(%{since: since}, scope, _opts) do
-    scope
+  def run(%{since: since}, run, _opts) do
+    run
     |> WardrikWorkflow.fan_out(repos(), fn repo, branch ->
       Wardrik.Subagent.run(branch, "What changed in #{repo} since #{since}?", except_tools: ["nightly"])
     end)

@@ -7,7 +7,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
@@ -24,8 +24,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     Wardrik.Tool.new!(name: name, description: "test tool", run: handler)
   end
 
-  defp scope(agent_id, tools) do
-    Config.new(tools: tools) |> Scope.root(agent_id, name: "turn")
+  defp run(agent_id, tools) do
+    Config.new(tools: tools) |> Run.root(agent_id, name: "turn")
   end
 
   # The shape `ReqLLM.Response.classify/1` actually produces: `:arguments`,
@@ -41,12 +41,12 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         handed!("connect", fn _input, _context -> {:park, "Authorize at https://example.com"} end)
       ]
 
-      scope = scope(agent_id, tools)
+      run = run(agent_id, tools)
 
       assert %Call{
                state: :waiting,
                asks: [%Call.Ask{by: :tool, prompt: "Authorize at https://example.com"}]
-             } = ToolRunner.execute(call("call_1", "connect", %{}), scope)
+             } = ToolRunner.execute(call("call_1", "connect", %{}), run)
     end
 
     test "keeps where to authorize apart from the prompt", %{agent_id: agent_id} do
@@ -56,7 +56,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         handed!("connect", fn _input, _context -> {:park, "Connect it first", link: link} end)
       ]
 
-      parked = ToolRunner.execute(call("call_1", "connect", %{}), scope(agent_id, tools))
+      parked = ToolRunner.execute(call("call_1", "connect", %{}), run(agent_id, tools))
 
       assert Call.prompt(parked) == "Connect it first"
       assert Call.link(parked) == link
@@ -72,7 +72,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     test "is announced as parked, not as finished", %{agent_id: agent_id} do
       tools = [handed!("connect", fn _input, _context -> {:park, "Authorize first"} end)]
 
-      ToolRunner.execute(call("call_1", "connect", %{}), scope(agent_id, tools))
+      ToolRunner.execute(call("call_1", "connect", %{}), run(agent_id, tools))
 
       assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "connect"}}
 
@@ -96,14 +96,14 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         end
       end
 
-      scope = scope(agent_id, [handed!("connect", handler)])
+      run = run(agent_id, [handed!("connect", handler)])
       call = call("call_1", "connect", %{})
 
-      assert %Call{id: "call_1", state: :waiting} = waiting = ToolRunner.execute(call, scope)
+      assert %Call{id: "call_1", state: :waiting} = waiting = ToolRunner.execute(call, run)
       assert_receive :parked_once
 
       assert %Call{state: :done, result: {:ok, %{"done" => true}}} =
-               waiting |> Call.approve() |> ToolRunner.execute(scope)
+               waiting |> Call.approve() |> ToolRunner.execute(run)
     end
 
     test "a park without a prompt is a bug in the tool, and the model is told", %{
@@ -111,7 +111,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     } do
       tools = [tool!("odd", fn _input -> {:park, :not_a_prompt} end)]
 
-      done = ToolRunner.execute(call("call_1", "odd", %{}), scope(agent_id, tools))
+      done = ToolRunner.execute(call("call_1", "odd", %{}), run(agent_id, tools))
 
       [part] = message(done).content
       assert part.text =~ "Tool answered with"
@@ -131,7 +131,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       ]
 
       messages =
-        calls |> ToolRunner.execute_many_async(scope(agent_id, tools)) |> ToolRunner.messages()
+        calls |> ToolRunner.execute_many_async(run(agent_id, tools)) |> ToolRunner.messages()
 
       assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}}
 
@@ -161,7 +161,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       assert [message] =
                calls
-               |> ToolRunner.execute_many_async(scope(agent_id, []))
+               |> ToolRunner.execute_many_async(run(agent_id, []))
                |> ToolRunner.messages()
 
       assert_receive %Event{
@@ -182,7 +182,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       {[message], _log} =
         with_log(fn ->
-          calls |> ToolRunner.execute_many_async(scope(agent_id, tools)) |> ToolRunner.messages()
+          calls |> ToolRunner.execute_many_async(run(agent_id, tools)) |> ToolRunner.messages()
         end)
 
       assert message.tool_call_id == "call_1"
@@ -202,7 +202,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       [message] =
         [call("call_1", "pick", %{"colour" => "green"})]
-        |> ToolRunner.execute_many_async(scope(agent_id, tools))
+        |> ToolRunner.execute_many_async(run(agent_id, tools))
         |> ToolRunner.messages()
 
       [part] = message.content
@@ -218,7 +218,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       assert [message] =
                [call("call_1", "boom", %{})]
-               |> ToolRunner.execute_many_async(scope(agent_id, tools))
+               |> ToolRunner.execute_many_async(run(agent_id, tools))
                |> ToolRunner.messages()
 
       assert message.tool_call_id == "call_1"
@@ -245,7 +245,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       task =
         Task.async(fn ->
-          calls |> ToolRunner.execute_many_async(scope(agent_id, tools)) |> ToolRunner.messages()
+          calls |> ToolRunner.execute_many_async(run(agent_id, tools)) |> ToolRunner.messages()
         end)
 
       # call_2's tool completes first; call_1's is still blocked. Any ordering
@@ -275,7 +275,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert [_, _] = Event.Bus.subscribers(agent_id)
 
       tools = [tool!("echo", fn input -> {:ok, input} end)]
-      ToolRunner.execute_many_async([call("call_1", "echo", %{})], scope(agent_id, tools))
+      ToolRunner.execute_many_async([call("call_1", "echo", %{})], run(agent_id, tools))
 
       assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}}
 
@@ -295,14 +295,14 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       end
     end
 
-    test "builds its scope's tools once for every call in it", %{agent_id: agent_id} do
-      scope = scope(agent_id, [{Resolving, self()}])
+    test "builds its run's tools once for every call in it", %{agent_id: agent_id} do
+      run = run(agent_id, [{Resolving, self()}])
       assert_received :resolved
 
       calls = for n <- 1..3, do: call("c#{n}", "counted", %{})
 
       assert [%Call{state: :done}, %Call{state: :done}, %Call{state: :done}] =
-               ToolRunner.execute_many_async(calls, scope)
+               ToolRunner.execute_many_async(calls, run)
 
       assert_received :resolved
       refute_received :resolved
@@ -311,9 +311,9 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
   describe "timeout/2" do
     test "defaults when no tool declares one", %{agent_id: agent_id} do
-      scope = scope(agent_id, [tool!("echo", fn i -> {:ok, i} end)])
+      run = run(agent_id, [tool!("echo", fn i -> {:ok, i} end)])
 
-      assert ToolRunner.timeout([call("c1", "echo", %{})], scope) == :timer.seconds(60)
+      assert ToolRunner.timeout([call("c1", "echo", %{})], run) == :timer.seconds(60)
     end
 
     test "takes what the config declares for a named tool", %{agent_id: agent_id} do
@@ -323,9 +323,9 @@ defmodule Wardrik.LLM.ToolRunnerTest do
           tool_timeouts: %{"slow" => :timer.minutes(10)}
         )
 
-      scope = Scope.root(config, agent_id, name: "turn")
+      run = Run.root(config, agent_id, name: "turn")
 
-      assert ToolRunner.timeout([call("c1", "slow", %{})], scope) == :timer.minutes(10)
+      assert ToolRunner.timeout([call("c1", "slow", %{})], run) == :timer.minutes(10)
     end
 
     test "a batch runs under the longest of its calls", %{agent_id: agent_id} do
@@ -335,14 +335,14 @@ defmodule Wardrik.LLM.ToolRunnerTest do
           tool_timeouts: %{"slow" => :timer.minutes(10)}
         )
 
-      scope = Scope.root(config, agent_id, name: "turn")
+      run = Run.root(config, agent_id, name: "turn")
       calls = [call("c1", "echo", %{}), call("c2", "slow", %{})]
 
-      assert ToolRunner.timeout(calls, scope) == :timer.minutes(10)
+      assert ToolRunner.timeout(calls, run) == :timer.minutes(10)
     end
 
     test "an empty batch still has one", %{agent_id: agent_id} do
-      assert ToolRunner.timeout([], scope(agent_id, [])) == :timer.seconds(60)
+      assert ToolRunner.timeout([], run(agent_id, [])) == :timer.seconds(60)
     end
   end
 
@@ -351,7 +351,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
 
       calls = [call("call_1", "echo", %{}), call("call_2", "echo", %{})]
-      turn = scope(agent_id, tools)
+      turn = run(agent_id, tools)
 
       ToolRunner.execute_many_async(calls, turn)
 
@@ -371,7 +371,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     test "a call's start and finish share one span", %{agent_id: agent_id} do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
 
-      ToolRunner.execute(call("call_1", "echo", %{}), scope(agent_id, tools))
+      ToolRunner.execute(call("call_1", "echo", %{}), run(agent_id, tools))
 
       assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}} =
                        started
@@ -384,7 +384,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
     test "a call announces both ends of its span", %{agent_id: agent_id} do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
-      turn = scope(agent_id, tools)
+      turn = run(agent_id, tools)
 
       ToolRunner.execute(call("call_1", "echo", %{}), turn)
 
@@ -398,7 +398,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     test "a failing tool closes its span as a failure", %{agent_id: agent_id} do
       tools = [tool!("boom", fn _input -> {:error, :nope} end)]
 
-      ToolRunner.execute(call("call_1", "boom", %{}), scope(agent_id, tools))
+      ToolRunner.execute(call("call_1", "boom", %{}), run(agent_id, tools))
 
       assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :nope}}}
     end
@@ -408,7 +408,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     } do
       tools = [tool!("search", fn _input -> Wardrik.Tool.Result.error(:missing_api_key) end)]
 
-      done = ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
+      done = ToolRunner.execute(call("call_1", "search", %{}), run(agent_id, tools))
 
       assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, _reason}}}
 
@@ -419,7 +419,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     test "a tool that succeeds closes its span as a success", %{agent_id: agent_id} do
       tools = [tool!("search", fn input -> Wardrik.Tool.Result.ok(input) end)]
 
-      ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
+      ToolRunner.execute(call("call_1", "search", %{}), run(agent_id, tools))
 
       assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
     end
@@ -429,7 +429,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       with_log(fn ->
         [call("call_1", "boom", %{})]
-        |> ToolRunner.execute_many_async(scope(agent_id, tools))
+        |> ToolRunner.execute_many_async(run(agent_id, tools))
         |> ToolRunner.messages()
       end)
 
@@ -446,7 +446,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       message =
         call("call_1", "echo", %{"a" => 1})
-        |> ToolRunner.execute(scope(agent_id, tools))
+        |> ToolRunner.execute(run(agent_id, tools))
         |> message()
 
       assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}}
@@ -477,7 +477,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
   defp governed(agent_id, tools) do
     Config.new(tools: tools)
-    |> Scope.root(agent_id, name: "turn", hooks: [Wardrik.Hook.new("asking", AskingHook)])
+    |> Run.root(agent_id, name: "turn", hooks: [Wardrik.Hook.new("asking", AskingHook)])
   end
 
   describe "governance" do
@@ -528,7 +528,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       refute_receive :ran
       assert parked_call.id == "call_1"
-      assert parked_call.scope == nil
+      assert parked_call.run == nil
       assert_receive %Event{payload: %Event.ToolParked{call_id: "call_1", name: "deploy"}}
     end
 
@@ -603,12 +603,12 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     end
 
     defp under(agent_id, tools, hooks),
-      do: Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", hooks: hooks)
+      do: Config.new(tools: tools) |> Run.root(agent_id, name: "turn", hooks: hooks)
 
     test "is on the call before any hook reads it", %{agent_id: agent_id} do
-      scope = under(agent_id, [Deploy], [Wardrik.Hook.new("reporting", Reporting, self())])
+      run = under(agent_id, [Deploy], [Wardrik.Hook.new("reporting", Reporting, self())])
 
-      ToolRunner.execute_many_async([call("call_1", "deploy", %{"target" => "prod"})], scope)
+      ToolRunner.execute_many_async([call("call_1", "deploy", %{"target" => "prod"})], run)
 
       assert_receive {:hooked, %Call.Tool{gated: true, subjects: ["prod"]}}
     end
@@ -630,15 +630,15 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     test "an answer from outside labels its call, and a refused call is not", %{
       agent_id: agent_id
     } do
-      scope = under(agent_id, [Fetch, Deploy], [])
+      run = under(agent_id, [Fetch, Deploy], [])
 
       assert [%Call{state: :done, labels: ["outside"]}, %Call{state: :waiting, labels: []}] =
                ToolRunner.execute_many_async(
                  [call("call_1", "fetch", %{}), call("call_2", "deploy", %{})],
-                 scope
+                 run
                )
 
-      refused = %{scope | hooks: [Wardrik.Hook.new("no", Refusing)]}
+      refused = %{run | hooks: [Wardrik.Hook.new("no", Refusing)]}
 
       assert [%Call{state: :done, labels: []}] =
                ToolRunner.execute_many_async([call("call_3", "fetch", %{})], refused)
@@ -653,7 +653,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert [%Call{state: :done, labels: ["outside"]}] =
                ToolRunner.execute_many_async(
                  [call("call_1", "read_inbox", %{})],
-                 scope(agent_id, [tool])
+                 run(agent_id, [tool])
                )
     end
   end
@@ -666,19 +666,19 @@ defmodule Wardrik.LLM.ToolRunnerTest do
            %{
              "id" => context.call_id,
              "key" => context.idempotency_key,
-             "user" => Wardrik.Scope.agent_id(context.scope).user
+             "user" => Wardrik.Run.agent_id(context.run).user
            }}
         end)
 
-      scope = scope(Wardrik.AgentID.new!("whoami", org: "test", user: "jon"), [tool])
+      run = run(Wardrik.AgentID.new!("whoami", org: "test", user: "jon"), [tool])
       call = call("call_1", "whoami", %{})
-      key = Wardrik.Ledger.Key.idempotency(scope, call)
+      key = Wardrik.Ledger.Key.idempotency(run, call)
 
       assert %Call{
                state: :done,
                result: {:ok, %{"id" => "call_1", "key" => ^key, "user" => "jon"}}
              } =
-               ToolRunner.execute(call, scope)
+               ToolRunner.execute(call, run)
     end
   end
 
@@ -687,17 +687,17 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       defstruct []
 
       def resolve("github", %Call{
-            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "jon"}}}
+            run: %Run{source: %{agent_id: %Wardrik.AgentID{user: "jon"}}}
           }),
           do: {:ok, Wardrik.Credential.secret("ghp_x", owner: "jon")}
 
       def resolve("github", %Call{
-            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "new"}}}
+            run: %Run{source: %{agent_id: %Wardrik.AgentID{user: "new"}}}
           }),
           do: {:error, {:authorization_required, %{url: "https://example.com/authorize"}, "new"}}
 
       def resolve("github", %Call{
-            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "device"}}}
+            run: %Run{source: %{agent_id: %Wardrik.AgentID{user: "device"}}}
           }),
           do:
             {:error,
@@ -705,7 +705,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
               "device"}}
 
       def resolve("github", %Call{
-            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "later"}}}
+            run: %Run{source: %{agent_id: %Wardrik.AgentID{user: "later"}}}
           }) do
         if Process.get(:authorized),
           do: {:ok, Wardrik.Credential.secret("ghp_later", owner: "later")},
@@ -714,21 +714,21 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       end
 
       def resolve("github", %Call{
-            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "stale"}}}
+            run: %Run{source: %{agent_id: %Wardrik.AgentID{user: "stale"}}}
           }) do
         token = if Process.get(:refreshed), do: "ghp_fresh", else: "ghp_stale"
         {:ok, Wardrik.Credential.secret(token, owner: "stale")}
       end
 
       def resolve("github", %Call{
-            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "revoked"}}}
+            run: %Run{source: %{agent_id: %Wardrik.AgentID{user: "revoked"}}}
           }),
           do: {:ok, Wardrik.Credential.secret("ghp_stale", owner: "revoked")}
 
       def resolve(_ref, _call), do: {:error, :denied}
 
       def refused("github", %Call{
-            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: user}}}
+            run: %Run{source: %{agent_id: %Wardrik.AgentID{user: user}}}
           }) do
         send(self(), {:refused, user})
         Process.put(:refreshed, true)
@@ -770,7 +770,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       id = Wardrik.AgentID.new!(agent_id.name, org: agent_id.org, user: user)
       :ok = Wardrik.Event.Bus.subscribe(id)
 
-      Scope.root(Config.new(tools: [Needing]), id,
+      Run.root(Config.new(tools: [Needing]), id,
         name: "turn",
         host: Wardrik.Host.new(credentials: %Vault{})
       )
@@ -811,15 +811,15 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       agent_id: agent_id
     } do
       Process.delete(:authorized)
-      scope = needing(agent_id, "later")
+      run = needing(agent_id, "later")
 
       assert %Call{state: :waiting} =
-               parked = ToolRunner.execute(call("call_1", "issues", %{}), scope)
+               parked = ToolRunner.execute(call("call_1", "issues", %{}), run)
 
       Process.put(:authorized, true)
 
       assert %Call{state: :done, result: {:ok, %{"token" => "ghp_later"}}} =
-               parked |> Call.approve() |> ToolRunner.execute(scope)
+               parked |> Call.approve() |> ToolRunner.execute(run)
     end
 
     test "is answered with why where none can be resolved", %{agent_id: agent_id} do
@@ -858,10 +858,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
   describe "refuse/3" do
     test "answers the model the way a policy denial does", %{agent_id: agent_id} do
-      scope = scope(agent_id, [])
+      run = run(agent_id, [])
 
       assert %Call{state: :done, denied: %Call.Denial{by: :person}} =
-               done = ToolRunner.refuse(call("call_1", "deploy", %{}), scope, "Not this quarter.")
+               done = ToolRunner.refuse(call("call_1", "deploy", %{}), run, "Not this quarter.")
 
       assert_receive %Event{
         payload: %Event.ToolDenied{call_id: "call_1", name: "deploy", reason: "Not this quarter."}
@@ -889,7 +889,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       ]
 
       calls = [call("call_1", "hang", %{}), call("call_2", "echo", %{"a" => 1})]
-      task = Task.async(fn -> ToolRunner.execute_many_async(calls, scope(agent_id, tools)) end)
+      task = Task.async(fn -> ToolRunner.execute_many_async(calls, run(agent_id, tools)) end)
 
       assert_receive :started, 1_000
       assert ToolRunner.kill_call(agent_id, "call_1") == :ok
@@ -916,7 +916,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       task =
         Task.async(fn ->
-          ToolRunner.execute_many_async([call("call_1", "hang", %{})], scope(agent_id, tools))
+          ToolRunner.execute_many_async([call("call_1", "hang", %{})], run(agent_id, tools))
         end)
 
       assert_receive :started, 1_000
@@ -931,28 +931,28 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     test "nothing is in flight once a batch has settled", %{agent_id: agent_id} do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
 
-      ToolRunner.execute_many_async([call("call_1", "echo", %{})], scope(agent_id, tools))
+      ToolRunner.execute_many_async([call("call_1", "echo", %{})], run(agent_id, tools))
 
       assert ToolRunner.in_flight(agent_id) == []
     end
   end
 
   describe "timeout/2 against a deadline" do
-    test "never gives a batch longer than its scope has left", %{agent_id: agent_id} do
+    test "never gives a batch longer than its run has left", %{agent_id: agent_id} do
       calls = [call("call_1", "echo", %{})]
 
-      scope =
+      run =
         Config.new(tools: [], tool_timeouts: %{"echo" => :timer.minutes(10)})
-        |> Scope.root(agent_id, name: "turn", timeout: 1_000)
+        |> Run.root(agent_id, name: "turn", timeout: 1_000)
 
-      assert ToolRunner.timeout(calls, scope) <= 1_000
+      assert ToolRunner.timeout(calls, run) <= 1_000
     end
 
     test "a batch admitted with nothing left still gets a moment to answer", %{agent_id: agent_id} do
       calls = [call("call_1", "echo", %{})]
-      scope = Config.new() |> Scope.root(agent_id, name: "turn", timeout: 0)
+      run = Config.new() |> Run.root(agent_id, name: "turn", timeout: 0)
 
-      assert ToolRunner.timeout(calls, scope) == 1
+      assert ToolRunner.timeout(calls, run) == 1
     end
   end
 end

@@ -930,10 +930,10 @@ defmodule WardrikHTTP.RouterTest do
     # The hooks the agent under `key` runs its calls past.
     defp hooks(key) do
       %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(key))
-      Keyword.fetch!(state.scope_opts, :hooks)
+      Keyword.fetch!(state.run_opts, :hooks)
     end
 
-    defp checked(hooks, tool), do: Wardrik.Test.check(Wardrik.Test.scope(hooks: hooks), tool)
+    defp checked(hooks, tool), do: Wardrik.Test.check(Wardrik.Test.run(hooks: hooks), tool)
 
     test "holds every agent the token defines, ahead of the definition's own", %{api: api} do
       careful =

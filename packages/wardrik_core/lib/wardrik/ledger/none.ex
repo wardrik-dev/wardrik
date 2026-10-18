@@ -1,6 +1,6 @@
 defmodule Wardrik.Ledger.None do
   @moduledoc """
-  The `Wardrik.Ledger` of a scope that names none: every claim is `:ok`,
+  The `Wardrik.Ledger` of a run that names none: every claim is `:ok`,
   nothing is recorded, and no entry is ever found. A turn under it that runs
   twice does its work twice.
   """

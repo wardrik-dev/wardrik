@@ -74,10 +74,10 @@ defmodule WardrikPolicy.Judge do
   def init(%__MODULE__{} = judge), do: judge
 
   @impl Wardrik.Hook
-  def call(%Call{target: %Call.Tool{name: name, arguments: arguments}, scope: scope}, judge) do
+  def call(%Call{target: %Call.Tool{name: name, arguments: arguments}, run: run}, judge) do
     case asked(judge, name) do
       [] -> :pass
-      asked -> asked |> judged(evaluate(judge.model, name, arguments, asked)) |> held(scope)
+      asked -> asked |> judged(evaluate(judge.model, name, arguments, asked)) |> held(run)
     end
   end
 
@@ -159,12 +159,12 @@ defmodule WardrikPolicy.Judge do
   defp said({question, probability}),
     do: "Judged #{round(probability * 100)}% likely: #{question.question}"
 
-  defp held({:allow, :judged}, scope),
-    do: if(@outside in labels(scope), do: :pass, else: :allow)
+  defp held({:allow, :judged}, run),
+    do: if(@outside in labels(run), do: :pass, else: :allow)
 
-  defp held(decision, _scope), do: decision
+  defp held(decision, _run), do: decision
 
-  defp labels(%Wardrik.Scope{labels: labels}), do: labels
+  defp labels(%Wardrik.Run{labels: labels}), do: labels
   defp labels(nil), do: []
 
   # -- written down ------------------------------------------------------------

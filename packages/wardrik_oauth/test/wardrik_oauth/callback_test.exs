@@ -4,7 +4,7 @@ defmodule WardrikOAuth.CallbackTest do
   alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.Calls
   alias WardrikOAuth.Callback
   alias WardrikOAuth.Pending
@@ -28,12 +28,12 @@ defmodule WardrikOAuth.CallbackTest do
     if redirect != [], do: serve(port, redirect)
 
     id = AgentID.new!("a", org: "acme", user: owner)
-    scope = Config.new() |> Scope.root(id, host: host())
+    run = Config.new() |> Run.root(id, host: host())
 
     {:error, {:authorization_required, %{url: url}, _owner}} =
-      Credential.resolve(Calls.tool("tool", %{}, scope), "github")
+      Credential.resolve(Calls.tool("tool", %{}, run), "github")
 
-    %{scope: scope, url: url, state: state_of(url)}
+    %{run: run, url: url, state: state_of(url)}
   end
 
   # The callback answers under the settings it was started with, so it is
@@ -73,7 +73,7 @@ defmodule WardrikOAuth.CallbackTest do
 
   test "a browser coming back with a code finishes the flow, at the provider's own path",
        context do
-    %{url: url, state: state, scope: scope} = flow(context)
+    %{url: url, state: state, run: run} = flow(context)
     assert params_of(url)["redirect_uri"] == "http://127.0.0.1:#{context.port}/callback/github"
 
     response = get(context.port, "/callback/github?code=the-code&state=#{state}")
@@ -82,7 +82,7 @@ defmodule WardrikOAuth.CallbackTest do
     assert response =~ "github is connected"
 
     assert {:ok, credential} =
-             Credential.resolve(Calls.tool("tool", %{}, scope), "github")
+             Credential.resolve(Calls.tool("tool", %{}, run), "github")
 
     assert Credential.reveal(credential) == "at_first"
   end

@@ -4,7 +4,7 @@ defmodule WardrikMCP.ExpiryTest do
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias WardrikMCP.Connection
   alias WardrikMCP.Server
 
@@ -12,13 +12,13 @@ defmodule WardrikMCP.ExpiryTest do
     @moduledoc false
     defstruct []
 
-    def resolve("stub", %Wardrik.Call{scope: scope}) do
-      user = Scope.agent_id(scope).user
+    def resolve("stub", %Wardrik.Call{run: run}) do
+      user = Run.agent_id(run).user
       {:ok, Credential.secret("token-#{user}", owner: user)}
     end
 
-    def refused(key, %Wardrik.Call{scope: scope}) do
-      user = Scope.agent_id(scope).user
+    def refused(key, %Wardrik.Call{run: run}) do
+      user = Run.agent_id(run).user
       if pid = Process.whereis(WardrikMCP.ExpiryTest), do: send(pid, {:refused, key, user})
       :ok
     end
@@ -45,9 +45,9 @@ defmodule WardrikMCP.ExpiryTest do
     :ok
   end
 
-  defp scope(key, user) do
+  defp run(key, user) do
     Config.new(tools: [{WardrikMCP, key}])
-    |> Scope.root(Wardrik.AgentID.new!("a", org: "acme", user: user),
+    |> Run.root(Wardrik.AgentID.new!("a", org: "acme", user: user),
       host: Wardrik.Test.host(credentials: %Vault{})
     )
   end
@@ -83,7 +83,7 @@ defmodule WardrikMCP.ExpiryTest do
       call = %{id: "c1", name: "#{key}__refuses_once", arguments: %{}}
 
       assert [message] =
-               Wardrik.LLM.ToolRunner.messages([ToolRunner.execute(call, scope(key, "jon"))])
+               Wardrik.LLM.ToolRunner.messages([ToolRunner.execute(call, run(key, "jon"))])
 
       [part] = message.content
       assert part.text =~ "accepted this time"
@@ -100,7 +100,7 @@ defmodule WardrikMCP.ExpiryTest do
       call = %{id: "c1", name: "#{key}__refuses_once", arguments: %{}}
 
       assert [message] =
-               Wardrik.LLM.ToolRunner.messages([ToolRunner.execute(call, scope(key, "jon"))])
+               Wardrik.LLM.ToolRunner.messages([ToolRunner.execute(call, run(key, "jon"))])
 
       [part] = message.content
       assert part.text =~ "no longer valid"

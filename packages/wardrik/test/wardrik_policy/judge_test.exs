@@ -30,8 +30,8 @@ defmodule WardrikPolicy.JudgeTest do
   end
 
   defp checked(policy, labels \\ []) do
-    scope = %{
-      Wardrik.Test.scope(
+    run = %{
+      Wardrik.Test.run(
         tools: [Deploy],
         id: Wardrik.AgentID.parse!("acme/books"),
         hooks: WardrikPolicy.hooks(policy)
@@ -39,7 +39,7 @@ defmodule WardrikPolicy.JudgeTest do
       | labels: labels
     }
 
-    Wardrik.Test.check(scope, "deploy", %{"target" => "prod"})
+    Wardrik.Test.check(run, "deploy", %{"target" => "prod"})
   end
 
   test "asks the questions naming a call together, with its tool and arguments" do

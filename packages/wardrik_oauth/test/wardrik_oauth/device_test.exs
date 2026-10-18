@@ -6,7 +6,7 @@ defmodule WardrikOAuth.DeviceTest do
   alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.Calls
   alias WardrikOAuth.Device
   alias WardrikOAuth.Pending
@@ -44,9 +44,9 @@ defmodule WardrikOAuth.DeviceTest do
   defp registered,
     do: %{client_id: "wardrik-client", client_secret: nil, redirect_uri: nil, how: :static}
 
-  defp scope(owner) do
+  defp run(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, host: host())
+    Config.new() |> Run.root(id, host: host())
   end
 
   defp provider(opts), do: [github: [resource: resource(), scopes: ~w(repo)] ++ opts]
@@ -156,7 +156,7 @@ defmodule WardrikOAuth.DeviceTest do
               {:authorization_required,
                %{url: "https://auth.example.com/activate", code: "WDJB-MJHT"}, {"acme", ^owner}}} =
                Credential.resolve(
-                 Calls.tool("tool", %{}, scope(owner)),
+                 Calls.tool("tool", %{}, run(owner)),
                  "github"
                )
 
@@ -168,7 +168,7 @@ defmodule WardrikOAuth.DeviceTest do
 
       assert {:ok, credential} =
                Credential.resolve(
-                 Calls.tool("tool", %{}, scope(owner)),
+                 Calls.tool("tool", %{}, run(owner)),
                  "github"
                )
 
@@ -180,12 +180,12 @@ defmodule WardrikOAuth.DeviceTest do
       configure(providers: provider(flow: :device))
 
       first =
-        Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
+        Credential.resolve(Calls.tool("tool", %{}, run(owner)), "github")
 
       assert {:error, {:authorization_required, %{code: "WDJB-MJHT"}, _owner}} = first
 
       assert Credential.resolve(
-               Calls.tool("tool", %{}, scope(owner)),
+               Calls.tool("tool", %{}, run(owner)),
                "github"
              ) == first
     end
@@ -197,7 +197,7 @@ defmodule WardrikOAuth.DeviceTest do
       log =
         capture_log(fn ->
           {:error, {:authorization_required, _link, _owner}} =
-            Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
+            Credential.resolve(Calls.tool("tool", %{}, run(owner)), "github")
 
           assert_receive {:device_done, %{outcome: :access_denied}}
         end)
@@ -212,7 +212,7 @@ defmodule WardrikOAuth.DeviceTest do
       configure(providers: provider(flow: :device))
 
       {:error, {:authorization_required, _link, _owner}} =
-        Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
+        Credential.resolve(Calls.tool("tool", %{}, run(owner)), "github")
 
       assert_receive {:oauth, "POST", "/token", _polled}
       flow = flow_of({"acme", owner})
@@ -233,7 +233,7 @@ defmodule WardrikOAuth.DeviceTest do
       configure(providers: provider(flow: :device))
 
       assert Credential.resolve(
-               Calls.tool("tool", %{}, scope(owner)),
+               Calls.tool("tool", %{}, run(owner)),
                "github"
              ) ==
                {:error, {:no_device_flow, "https://auth.example.com"}}
@@ -246,7 +246,7 @@ defmodule WardrikOAuth.DeviceTest do
       configure(providers: provider(flow: :device), client: [name: "Wardrik"])
 
       {:error, {:authorization_required, _link, _owner}} =
-        Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
+        Credential.resolve(Calls.tool("tool", %{}, run(owner)), "github")
 
       assert_received {:oauth, "POST", "/register", body}
       assert @grant in JSON.decode!(body)["grant_types"]
@@ -257,7 +257,7 @@ defmodule WardrikOAuth.DeviceTest do
     defp resolve(owner, redirect) do
       stub_server(cimd: true, device: @unhurried)
       configure(providers: provider([]), redirect: redirect)
-      Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
+      Credential.resolve(Calls.tool("tool", %{}, run(owner)), "github")
     end
 
     test "is on another device where the redirect comes back here and there is no browser", %{
@@ -284,7 +284,7 @@ defmodule WardrikOAuth.DeviceTest do
 
       assert {:error, {:authorization_required, %{url: url}, _owner}} =
                Credential.resolve(
-                 Calls.tool("tool", %{}, scope(owner)),
+                 Calls.tool("tool", %{}, run(owner)),
                  "github"
                )
 

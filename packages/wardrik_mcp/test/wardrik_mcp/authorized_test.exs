@@ -20,24 +20,24 @@ defmodule WardrikMCP.AuthorizedTest do
     configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
     start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), loopback: false})
 
-    scope =
-      Wardrik.Test.scope(
+    run =
+      Wardrik.Test.run(
         tools: [{WardrikMCP, key}],
         id: Wardrik.AgentID.parse!("acme/@#{owner}/assistant"),
         host: host()
       )
 
-    %{scope: scope}
+    %{run: run}
   end
 
-  defp secret(key, scope),
-    do: Wardrik.Test.call(scope, "#{key.name}__secret", %{"name" => "DEMO_TOKEN"})
+  defp secret(key, run),
+    do: Wardrik.Test.call(run, "#{key.name}__secret", %{"name" => "DEMO_TOKEN"})
 
   test "parks on a link, then runs once the user has followed it", context do
-    %{key: key, scope: scope, owner: owner} = context
+    %{key: key, run: run, owner: owner} = context
 
     assert %Call{state: :waiting, asks: [%{prompt: prompt, link: %{url: url}}]} =
-             call = secret(key, scope)
+             call = secret(key, run)
 
     assert url =~ "https://auth.example.com/authorize"
     refute prompt =~ "https://"
@@ -46,19 +46,19 @@ defmodule WardrikMCP.AuthorizedTest do
     assert WardrikOAuth.connected?(vault(), "github", {"acme", owner})
 
     assert %Call{state: :done, result: {:ok, %{"result" => %{"content" => content}}}} =
-             Wardrik.Test.resume(scope, call)
+             Wardrik.Test.resume(run, call)
 
     assert content =~ "at_first"
   end
 
   test "the token the server sees is the one the flow produced", context do
-    %{key: key, scope: scope} = context
+    %{key: key, run: run} = context
 
-    %Call{asks: [%{link: %{url: url}}]} = call = secret(key, scope)
+    %Call{asks: [%{link: %{url: url}}]} = call = secret(key, run)
     {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
     assert %Call{result: {:ok, %{"result" => %{"content" => content}}}} =
-             Wardrik.Test.resume(scope, call)
+             Wardrik.Test.resume(run, call)
 
     refute content =~ "rt_first"
   end

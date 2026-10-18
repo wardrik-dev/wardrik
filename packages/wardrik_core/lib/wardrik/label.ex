@@ -5,9 +5,9 @@ defmodule Wardrik.Label do
   it until the history is cleared.
 
   Core carries labels and decides nothing from them. A `Wardrik.Hook` reads
-  the labels of the run a call belongs to from its scope (`Wardrik.Scope`'s
-  `:labels`) and decides what they mean; `WardrikPolicy` holds a gated
-  tool's calls for a person after some of them.
+  the labels of the run a call belongs to (`Wardrik.Run`'s `:labels`) and
+  decides what they mean; `WardrikPolicy` holds a gated tool's calls for a
+  person after some of them.
 
   `"outside"` is content nobody on the agent's side wrote, such as a web
   page, an issue, or a message from a stranger: what the run read may be what

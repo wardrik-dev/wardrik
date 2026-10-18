@@ -45,7 +45,7 @@ defmodule Wardrik.Hook do
   A hook says `:allow` where a rule of its own names the call and lets it go
   ahead, which is what a gated tool's call waits for; see `Wardrik.Call`.
   `:pass` lets an ungated call go ahead and a gated one wait. What the run
-  has read is on the call's scope, as `Wardrik.Label`s, for a hook to weigh.
+  has read is on the call's run, as `Wardrik.Label`s, for a hook to weigh.
 
   A hook reads the call and answers; it changes nothing. One that raises,
   throws or exits, or answers with anything else, refuses the call: a check
@@ -79,7 +79,7 @@ defmodule Wardrik.Hook do
   require Logger
 
   alias Wardrik.Call
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   @enforce_keys [:name, :module]
   defstruct [:name, :module, :value]
@@ -123,12 +123,12 @@ defmodule Wardrik.Hook do
     do: %__MODULE__{name: name, module: module, value: module.init(opts)}
 
   @doc """
-  Hands an unchecked call to every hook on its scope, writes what each says
+  Hands an unchecked call to every hook on its run, writes what each says
   on it, and sets its state to what they came to: `:denied`, `:waiting` or
   `:allowed`. A call no hook is asked about is allowed.
   """
   @spec check(Call.t()) :: Call.t()
-  def check(%Call{state: :unchecked, scope: %Scope{hooks: hooks}} = call) do
+  def check(%Call{state: :unchecked, run: %Run{hooks: hooks}} = call) do
     hooks
     |> Enum.reduce_while(call, fn hook, call ->
       case decision(hook, call) do
@@ -167,11 +167,11 @@ defmodule Wardrik.Hook do
 
   @doc """
   Tells each hook that asked about an approved call that a person approved
-  it, with the memo it asked with. A hook no longer on the call's scope is
+  it, with the memo it asked with. A hook no longer on the call's run is
   not told.
   """
   @spec approved(Call.t()) :: :ok
-  def approved(%Call{state: :approved, scope: %Scope{hooks: hooks}} = call) do
+  def approved(%Call{state: :approved, run: %Run{hooks: hooks}} = call) do
     for %Call.Ask{by: name, memo: memo} <- call.asks,
         %__MODULE__{} = hook <- [Enum.find(hooks, &(&1.name == name))] do
       optional(hook, :approved, [call, memo])
@@ -180,9 +180,9 @@ defmodule Wardrik.Hook do
     :ok
   end
 
-  @doc "Tells every hook on its scope what a call did once it was made."
+  @doc "Tells every hook on its run what a call did once it was made."
   @spec settle(Call.t()) :: :ok
-  def settle(%Call{state: :done, scope: %Scope{hooks: hooks}} = call) do
+  def settle(%Call{state: :done, run: %Run{hooks: hooks}} = call) do
     Enum.each(hooks, &optional(&1, :settle, [call]))
   end
 

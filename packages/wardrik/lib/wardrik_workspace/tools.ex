@@ -368,17 +368,17 @@ defmodule WardrikWorkspace.Tools do
   defp put(mount, path, content, context, version),
     do: write(mount, path, content, context, version, [])
 
-  defp write(mount, path, content, %Wardrik.Tool.Context{scope: scope} = context, version, kept) do
+  defp write(mount, path, content, %Wardrik.Tool.Context{run: run} = context, version, kept) do
     file = %File{
       content: content,
-      by: to_string(scope.source.agent_id),
-      run: scope.source.trace.trace_id,
+      by: to_string(run.source.agent_id),
+      run: run.source.trace.trace_id,
       call: context.idempotency_key,
-      labels: Wardrik.Label.union(scope.labels, kept),
+      labels: Wardrik.Label.union(run.labels, kept),
       at: DateTime.utc_now()
     }
 
-    workspace = Wardrik.Host.workspace(scope.host)
+    workspace = Wardrik.Host.workspace(run.host)
 
     case Wardrik.Workspace.write(workspace, mount.tree, path, file: file, version: version) do
       {:ok, version} -> {:ok, written(mount, path, version)}
@@ -421,7 +421,7 @@ defmodule WardrikWorkspace.Tools do
     end
   end
 
-  defp host(%Wardrik.Tool.Context{scope: scope}), do: scope.host
+  defp host(%Wardrik.Tool.Context{run: run}), do: run.host
 
   defp read(host, %Mount{tree: tree}, path),
     do: Wardrik.Workspace.read(Wardrik.Host.workspace(host), tree, path)

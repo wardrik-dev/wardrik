@@ -86,13 +86,13 @@ defmodule WardrikMCPTest do
     test "a server serves the agents under the prefixes it names, and refuses another's", %{
       key: key
     } do
-      scope = fn org -> Wardrik.Test.scope(id: Wardrik.AgentID.new!("x", org: org)) end
+      run = fn org -> Wardrik.Test.run(id: Wardrik.AgentID.new!("x", org: org)) end
 
       assert {:ok, %{"ok" => true}} =
-               WardrikMCP.call(key, "echo", %{value: "hi"}, context(scope.("acme")))
+               WardrikMCP.call(key, "echo", %{value: "hi"}, context(run.("acme")))
 
       assert {:ok, %{"ok" => false, "error" => error}} =
-               WardrikMCP.call(key, "echo", %{value: "hi"}, context(scope.("globex")))
+               WardrikMCP.call(key, "echo", %{value: "hi"}, context(run.("globex")))
 
       assert error["message"] =~ "#{key} does not serve globex/x"
     end
@@ -106,10 +106,10 @@ defmodule WardrikMCPTest do
 
     test "a call to the server's tool runs through to it", %{key: key} do
       [echo | _rest] = WardrikMCP.tools(key)
-      scope = Wardrik.Test.scope(tools: [{WardrikMCP, key}])
+      run = Wardrik.Test.run(tools: [{WardrikMCP, key}])
 
       assert {:ok, %{"result" => %{"content" => "through"}}} =
-               scope |> Wardrik.Test.call(echo.name, %{"value" => "through"}) |> Calls.result()
+               run |> Wardrik.Test.call(echo.name, %{"value" => "through"}) |> Calls.result()
     end
   end
 

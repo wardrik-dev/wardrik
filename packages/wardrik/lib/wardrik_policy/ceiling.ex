@@ -31,9 +31,9 @@ defmodule WardrikPolicy.Ceiling do
   def init(%__MODULE__{} = ceiling), do: ceiling
 
   @impl Wardrik.Hook
-  def call(%Call{scope: scope} = call, %__MODULE__{} = ceiling) do
+  def call(%Call{run: run} = call, %__MODULE__{} = ceiling) do
     Budget.check(ceiling.budget, call,
-      key: key(ceiling, scope.source.trace.trace_id),
+      key: key(ceiling, run.source.trace.trace_id),
       spender: "#{Prefix.org(ceiling.org)}'s agents have spent"
     )
   end
@@ -43,8 +43,8 @@ defmodule WardrikPolicy.Ceiling do
     do: Budget.approved(call, memo, ceiling.budget)
 
   @impl Wardrik.Hook
-  def settle(%Call{scope: scope} = call, %__MODULE__{} = ceiling),
-    do: Budget.record(ceiling.budget, call, key: key(ceiling, scope.source.trace.trace_id))
+  def settle(%Call{run: run} = call, %__MODULE__{} = ceiling),
+    do: Budget.record(ceiling.budget, call, key: key(ceiling, run.source.trace.trace_id))
 
   @doc """
   What the org's agents have spent together in the ceiling's period now, or

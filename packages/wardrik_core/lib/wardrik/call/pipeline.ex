@@ -4,12 +4,12 @@ defmodule Wardrik.Call.Pipeline do
   alike, the way a `Plug.Conn` passes through a pipeline.
 
     1. **Decide.** An unchecked call has what its tool declares written on it
-       (see `Wardrik.Tool.declared/2`), and the scope's `Wardrik.Hook`s allow
+       (see `Wardrik.Tool.declared/2`), and the run's `Wardrik.Hook`s allow
        it, refuse it, or ask a person about it. `answer/2` writes on a call
        that waited what a person decided.
-    2. **Before.** A tool call that may go ahead is claimed in the scope's
+    2. **Before.** A tool call that may go ahead is claimed in the run's
        `Wardrik.Ledger`, and the credentials its tool's annotations name are
-       resolved; a model call is admitted by the scope's
+       resolved; a model call is admitted by the run's
        `Wardrik.LLM.Dispatch`. A refused tool call is answered with why.
     3. **Invoke.** A tool call is handed to its tool with a
        `Wardrik.Tool.Context`. A model call is made by the function the caller
@@ -78,7 +78,7 @@ defmodule Wardrik.Call.Pipeline do
   alias Wardrik.LLM.Dispatch
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Usage
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Subagent
   alias Wardrik.Tool.Result
 
@@ -99,18 +99,18 @@ defmodule Wardrik.Call.Pipeline do
   @type decision() :: :approve | {:approve, String.t()} | {:deny, String.t()}
 
   @doc """
-  The call `request` makes under `scope`, holding the request until `run/2`
+  The call `request` makes under `run`, holding the request until `run/2`
   has made it. Given `approved`, the model call a person approved, it goes
   ahead as that call, without the hooks being asked again.
   """
-  @spec model(Request.t(), Scope.t(), Call.t() | nil) :: Call.t()
-  def model(request, scope, approved \\ nil)
+  @spec model(Request.t(), Run.t(), Call.t() | nil) :: Call.t()
+  def model(request, run, approved \\ nil)
 
-  def model(%Request{} = request, %Scope{} = scope, nil),
-    do: request |> Call.model(scope) |> Call.put_private(@request, request)
+  def model(%Request{} = request, %Run{} = run, nil),
+    do: request |> Call.model(run) |> Call.put_private(@request, request)
 
-  def model(%Request{} = request, %Scope{} = scope, %Call{state: :approved} = approved) do
-    %{approved | scope: scope, target: Model.new(request)}
+  def model(%Request{} = request, %Run{} = run, %Call{state: :approved} = approved) do
+    %{approved | run: run, target: Model.new(request)}
     |> Call.put_private(@request, request)
   end
 
@@ -119,9 +119,9 @@ defmodule Wardrik.Call.Pipeline do
   def request(%Call{target: %Model{}, private: %{@request => %Request{} = request}}), do: request
 
   @doc """
-  Carries `index`, `Wardrik.LLM.Config.tool_index/1` of the call's scope's
+  Carries `index`, `Wardrik.LLM.Config.tool_index/1` of the call's run's
   config, with a tool call, so its steps look its tool up there rather than
-  build the scope's tools again. A caller running many calls under one scope
+  build the run's tools again. A caller running many calls under one run
   builds it once for them all; a call run without one has it built as it
   begins. `run/2` drops it as it ends.
   """
@@ -194,7 +194,7 @@ defmodule Wardrik.Call.Pipeline do
   how it ended (see `Wardrik.Call.answer/2`).
   """
   @spec run(Call.t(), invoke() | nil) :: Call.t()
-  def run(%Call{scope: %Scope{}} = call, invoke \\ nil) do
+  def run(%Call{run: %Run{}} = call, invoke \\ nil) do
     call
     |> indexed()
     |> checked()
@@ -212,12 +212,12 @@ defmodule Wardrik.Call.Pipeline do
   defp credentials(%Call{private: private}), do: Map.get(private, @credentials) || %{}
 
   defp index(%Call{private: %{@tools => index}}), do: index
-  defp index(%Call{scope: scope}), do: Config.tool_index(scope.config)
+  defp index(%Call{run: run}), do: Config.tool_index(run.config)
 
   defp indexed(%Call{target: %Tool{}} = call), do: indexed(call, index(call))
   defp indexed(call), do: call
 
-  # The call's tool as its scope's config offers it, `nil` where it leaves it
+  # The call's tool as its run's config offers it, `nil` where it leaves it
   # out, and the spec that builds it; `nil` for a tool the config does not
   # name.
   defp indexed_tool(%Call{target: %Tool{name: name}} = call), do: Map.get(index(call), name)
@@ -246,11 +246,11 @@ defmodule Wardrik.Call.Pipeline do
 
   # A call is claimed before it runs, so a replay knows it began, and settled
   # after, so a replay knows what it returned.
-  defp claim(%Call{state: state, target: %Tool{}, scope: %Scope{ledger: ledger} = scope} = call)
+  defp claim(%Call{state: state, target: %Tool{}, run: %Run{ledger: ledger} = run} = call)
        when state in [:allowed, :approved] do
-    key = Key.of(scope, Call.to_map(call))
+    key = Key.of(run, Call.to_map(call))
 
-    case Guarded.claim(ledger, key, call: Call.to_map(call), store: Host.store(scope.host)) do
+    case Guarded.claim(ledger, key, call: Call.to_map(call), store: Host.store(run.host)) do
       :ok ->
         Call.put_private(call, @claim, key)
 
@@ -273,8 +273,8 @@ defmodule Wardrik.Call.Pipeline do
 
   defp claim(call), do: call
 
-  defp rerun?(%Call{target: %Tool{name: name}, scope: scope} = call),
-    do: Config.tool_in_doubt(scope.config, name, index(call)) == :rerun
+  defp rerun?(%Call{target: %Tool{name: name}, run: run} = call),
+    do: Config.tool_in_doubt(run.config, name, index(call)) == :rerun
 
   # A refused tool call is answered with why, as an ordinary tool result. A
   # model call refused is the caller's to report.
@@ -315,8 +315,8 @@ defmodule Wardrik.Call.Pipeline do
 
   defp held(call), do: call
 
-  defp fetched(%Call{scope: %Scope{ledger: ledger} = scope} = call),
-    do: Guarded.fetch(ledger, Key.of(scope, Call.to_map(call)), store: Host.store(scope.host))
+  defp fetched(%Call{run: %Run{ledger: ledger} = run} = call),
+    do: Guarded.fetch(ledger, Key.of(run, Call.to_map(call)), store: Host.store(run.host))
 
   defp not_run_again(call, reason) do
     "#{Call.name(call)} was not run again, and may already have done what it does. #{reason}"
@@ -380,9 +380,9 @@ defmodule Wardrik.Call.Pipeline do
   # made.
   defp admitted(%Call{state: state, target: %Model{}} = call)
        when state in [:allowed, :approved] do
-    case Dispatch.admit(Host.dispatch(call.scope.host), request(call), scope: call.scope) do
+    case Dispatch.admit(Host.dispatch(call.run.host), request(call), run: call.run) do
       {:ok, admitted} ->
-        admitted = Wardrik.LLM.Key.put(admitted, call.scope.host)
+        admitted = Wardrik.LLM.Key.put(admitted, call.run.host)
         %{call | target: Model.new(admitted)} |> Call.put_private(@request, admitted)
 
       {:error, reason} ->
@@ -437,8 +437,8 @@ defmodule Wardrik.Call.Pipeline do
 
   # A call its tool answered without saying what it cost costs what the
   # config lists for the tool, if anything.
-  defp listed(%Call{cost: nil, target: %Tool{name: name}, scope: scope} = call),
-    do: Call.priced(call, Config.tool_price(scope.config, name))
+  defp listed(%Call{cost: nil, target: %Tool{name: name}, run: run} = call),
+    do: Call.priced(call, Config.tool_price(run.config, name))
 
   defp listed(call), do: call
 
@@ -525,7 +525,7 @@ defmodule Wardrik.Call.Pipeline do
   # A claimed call is settled with what it answered. One whose tool stopped to
   # ask before doing anything gives its claim back; one in doubt keeps it, so
   # a replay asks too.
-  defp recorded(%Call{private: %{@claim => key}, scope: %Scope{ledger: ledger}} = call)
+  defp recorded(%Call{private: %{@claim => key}, run: %Run{ledger: ledger}} = call)
        when key != nil do
     case call.state do
       :done ->
@@ -533,7 +533,7 @@ defmodule Wardrik.Call.Pipeline do
 
       :waiting ->
         if Call.asked_by?(call, :tool),
-          do: _ = Guarded.release(ledger, key, store: Host.store(call.scope.host))
+          do: _ = Guarded.release(ledger, key, store: Host.store(call.run.host))
     end
 
     Call.put_private(call, @claim, nil)
@@ -543,7 +543,7 @@ defmodule Wardrik.Call.Pipeline do
 
   defp settle(call, ledger, key) do
     with {:error, reason} <-
-           Guarded.settle(ledger, key, result: call.result, store: Host.store(call.scope.host)) do
+           Guarded.settle(ledger, key, result: call.result, store: Host.store(call.run.host)) do
       Logger.warning(
         "#{Call.name(call)} ran, but what it returned was not recorded: #{inspect(reason)}"
       )
@@ -570,9 +570,9 @@ defmodule Wardrik.Call.Pipeline do
         usage -> call |> Call.used(usage, request.model_spec) |> tap(&Hook.settle/1)
       end
 
-    dispatch = Host.dispatch(call.scope.host)
+    dispatch = Host.dispatch(call.run.host)
 
-    case Dispatch.settle(dispatch, request, outcome: call.result, scope: call.scope) do
+    case Dispatch.settle(dispatch, request, outcome: call.result, run: call.run) do
       :ok ->
         call
 
@@ -626,5 +626,5 @@ defmodule Wardrik.Call.Pipeline do
 
   defp announced(call), do: call
 
-  defp emit(%Call{scope: %Scope{source: source}}, payload), do: Event.emit(source, payload)
+  defp emit(%Call{run: %Run{source: source}}, payload), do: Event.emit(source, payload)
 end

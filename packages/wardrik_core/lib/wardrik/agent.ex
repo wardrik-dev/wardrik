@@ -11,7 +11,7 @@ defmodule Wardrik.Agent do
   inside `ReqLLM` or a tool cannot take the agent down.
 
   Stream and tool events do not pass through this process at all. The turn
-  publishes them through its scope, and any number of listeners on any node can
+  publishes them through its run, and any number of listeners on any node can
   subscribe with `Wardrik.Event.Bus.subscribe/1`. See `WardrikConsole` for one
   that prints to a terminal.
 
@@ -95,7 +95,7 @@ defmodule Wardrik.Agent do
   Each turn hands the agent every batch of tool calls before running it, and
   the agent writes the batch to the store before the calls run. A turn lost
   after that comes back replaying from its last batch, with the same calls, and
-  a `Wardrik.Ledger` on the scope answers for any that already ran. See
+  a `Wardrik.Ledger` on the run answers for any that already ran. See
   `Wardrik.LLM.Turn`.
 
   A turn is tethered to its agent, and each tool call to its turn, so an agent
@@ -105,7 +105,7 @@ defmodule Wardrik.Agent do
 
   ## What a host supplies
 
-  Beyond `:config`, an agent takes the seams every scope it roots is built
+  Beyond `:config`, an agent takes the seams every run it roots is built
   with: `:hooks` decide whether a tool call may run and a model call be made,
   `:retry` whether one that failed is asked again, and `:timeout` bounds the whole turn. Each is optional and inert by default. Who the work is
   for is read from the agent's ID. What a model call actually is, and who
@@ -125,7 +125,7 @@ defmodule Wardrik.Agent do
   spec it runs on now, `c:Wardrik.Definition.current/1`, and takes its
   config, seams and idle timeout as `configure/2` gives them, so a
   definition changed while it slept is the one it wakes with; `:none`
-  leaves it as it was. Every turn's scope carries the host, for the tools
+  leaves it as it was. Every turn's run carries the host, for the tools
   that call operations as the agent, as `Wardrik.Catalog.Tools` does.
 
   The agent adds events of its own so subscribers can follow its state
@@ -216,7 +216,7 @@ defmodule Wardrik.Agent do
   The state an agent starts life with, for `Wardrik.Fleet.spawn/2` to hand over.
 
   Options: `:config`, `:context`, `:runner`, `:resumer`, `:grace`,
-  `:idle_timeout`, `:wake_only`, and the scope's `Wardrik.Scope.seams/0`.
+  `:idle_timeout`, `:wake_only`, and the run's `Wardrik.Run.seams/0`.
 
   `:idle_timeout` is how long the agent may have nothing to do before it
   sleeps, in milliseconds or `:infinity`; see "Sleeping" above. `:wake_only`
@@ -482,20 +482,20 @@ defmodule Wardrik.Agent do
 
   defp resume_turn(state, decisions, by) do
     case State.resume(state) do
-      {:resume, scope, turn, started_at} ->
-        resume_parked(state, journaled(scope), turn, started_at, decisions, by)
+      {:resume, run, turn, started_at} ->
+        resume_parked(state, journaled(run), turn, started_at, decisions, by)
 
       :none ->
         {:ok, state}
     end
   end
 
-  defp resume_parked(state, scope, turn, started_at, decisions, by) do
+  defp resume_parked(state, run, turn, started_at, decisions, by) do
     decided =
       for {call, _prompt} <- Turn.waiting(turn),
           Map.has_key?(decisions, call.id),
           do:
-            Event.new(scope.source, %Event.CallDecided{
+            Event.new(run.source, %Event.CallDecided{
               call_id: call.id,
               decision: decisions[call.id],
               by: by
@@ -503,15 +503,15 @@ defmodule Wardrik.Agent do
 
     with {:ok, state} <- log_ahead(state, decided) do
       Enum.each(decided, &Bus.publish/1)
-      {:ok, carry_on(state, scope, turn, decisions, started_at)}
+      {:ok, carry_on(state, run, turn, decisions, started_at)}
     end
   end
 
-  defp carry_on(state, scope, turn, decisions, started_at) do
-    Event.emit(scope.source, %Event.TurnResumed{decisions: decisions})
-    task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
+  defp carry_on(state, run, turn, decisions, started_at) do
+    Event.emit(run.source, %Event.TurnResumed{decisions: decisions})
+    task = tethered(fn -> State.apply_resumer(state, run, turn, decisions) end)
 
-    State.resumed(state, task, scope, turn, decisions, started_at)
+    State.resumed(state, task, run, turn, decisions, started_at)
   end
 
   # Decisions are written to the log before they take effect, so none takes
@@ -558,14 +558,14 @@ defmodule Wardrik.Agent do
 
   def handle_continue(:maybe_run, state) do
     case State.take(state) do
-      {:run, scope, messages, state} ->
-        stay(start(state, scope, messages))
+      {:run, run, messages, state} ->
+        stay(start(state, run, messages))
 
-      {:replay, scope, checkpoint, state} ->
-        stay(replay(state, scope, checkpoint))
+      {:replay, run, checkpoint, state} ->
+        stay(replay(state, run, checkpoint))
 
-      {:resume, scope, turn, decisions, state} ->
-        stay(resume_again(state, scope, turn, decisions))
+      {:resume, run, turn, decisions, state} ->
+        stay(resume_again(state, run, turn, decisions))
 
       :none ->
         stay(state)
@@ -698,27 +698,27 @@ defmodule Wardrik.Agent do
 
   # -- turns -----------------------------------------------------------------
 
-  defp start(state, scope, messages) do
-    scope = scope |> journaled() |> heard(messages)
+  defp start(state, run, messages) do
+    run = run |> journaled() |> heard(messages)
 
-    Event.emit(scope.source, %Event.TurnStarted{messages: messages})
-    task = run(fn -> State.apply_runner(state, scope, kept(state, scope, messages)) end)
+    Event.emit(run.source, %Event.TurnStarted{messages: messages})
+    task = tethered(fn -> State.apply_runner(state, run, kept(state, run, messages)) end)
 
-    State.started(state, task, scope, asked(state.context, messages), System.monotonic_time())
+    State.started(state, task, run, asked(state.context, messages), System.monotonic_time())
   end
 
   # What the agent's history keeps of itself, with the turn's messages after
   # it, word for word. A history rewritten is handed to this agent to keep, as
   # a batch is, before the turn runs on it.
-  defp kept(state, scope, messages) do
-    case History.prepare(state.config.history, state.context, scope) do
+  defp kept(state, run, messages) do
+    case History.prepare(state.config.history, state.context, run) do
       :keep ->
         asked(state.context, messages)
 
       {:ok, history, stats} ->
         context = asked(history, messages)
-        :ok = GenServer.call(scope.journal, {:kept, context}, :timer.seconds(30))
-        Event.emit(scope.source, %Event.ContextCompacted{stats: stats})
+        :ok = GenServer.call(run.journal, {:kept, context}, :timer.seconds(30))
+        Event.emit(run.source, %Event.ContextCompacted{stats: stats})
         context
     end
   end
@@ -726,32 +726,32 @@ defmodule Wardrik.Agent do
   defp asked(context, messages),
     do: Enum.reduce(messages, context, &Context.append(&2, Context.user(Message.content(&1))))
 
-  defp replay(state, scope, checkpoint) do
-    scope = journaled(scope)
-    Event.emit(scope.source, %Event.TurnStarted{messages: []})
-    task = run(fn -> State.apply_replayer(state, scope, checkpoint) end)
+  defp replay(state, run, checkpoint) do
+    run = journaled(run)
+    Event.emit(run.source, %Event.TurnStarted{messages: []})
+    task = tethered(fn -> State.apply_replayer(state, run, checkpoint) end)
 
-    State.replayed(state, task, scope, checkpoint, System.monotonic_time())
+    State.replayed(state, task, run, checkpoint, System.monotonic_time())
   end
 
   # Its decisions were logged when they were taken.
-  defp resume_again(state, scope, turn, decisions),
-    do: carry_on(state, journaled(scope), turn, decisions, System.monotonic_time())
+  defp resume_again(state, run, turn, decisions),
+    do: carry_on(state, journaled(run), turn, decisions, System.monotonic_time())
 
   # Each turn hands its batches of tool calls to this process before running
   # them, which writes them down.
-  defp journaled(scope), do: %{scope | journal: self()}
+  defp journaled(run), do: %{run | journal: self()}
 
-  defp heard(scope, messages),
+  defp heard(run, messages),
     do: %{
-      scope
-      | labels: Enum.reduce(messages, scope.labels, &Wardrik.Label.union(&2, &1.labels))
+      run
+      | labels: Enum.reduce(messages, run.labels, &Wardrik.Label.union(&2, &1.labels))
     }
 
   # A turn belongs to the agent that started it: one whose agent stopped, or
   # moved to another node, is killed rather than running a batch its successor
   # is replaying.
-  defp run(fun) do
+  defp tethered(fun) do
     agent = self()
 
     Task.Supervisor.async_nolink(Wardrik.Tasks.supervisor(), fn ->
@@ -763,7 +763,7 @@ defmodule Wardrik.Agent do
   defp answered(state, %Turn{state: :done, messages: messages} = turn),
     do: settle(state, State.settled(state, messages, turn.labels))
 
-  # A waiting turn is held as it is written down, with no scope.
+  # A waiting turn is held as it is written down, with no run.
   defp answered(state, %Turn{state: :waiting} = turn),
     do: settle(state, State.parked(state, Turn.under(turn, nil)))
 
@@ -819,17 +819,17 @@ defmodule Wardrik.Agent do
     state
   end
 
-  defp apply_effect({:close_turn, scope}, state) do
+  defp apply_effect({:close_turn, run}, state) do
     %{agent_id: agent_id, log: %{head: through}} = state
     cutoff = DateTime.add(DateTime.utc_now(), -Log.retention_days(), :day)
 
     Task.Supervisor.start_child(Wardrik.Tasks.supervisor(), fn ->
-      Wardrik.Ledger.Guarded.forget(scope.ledger, agent_id,
-        trace: scope.source.trace.trace_id,
-        store: Host.store(scope.host)
+      Wardrik.Ledger.Guarded.forget(run.ledger, agent_id,
+        trace: run.source.trace.trace_id,
+        store: Host.store(run.host)
       )
 
-      Log.trim(Host.store(scope.host), agent_id, through: through, before: cutoff)
+      Log.trim(Host.store(run.host), agent_id, through: through, before: cutoff)
     end)
 
     state

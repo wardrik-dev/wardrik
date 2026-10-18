@@ -37,7 +37,7 @@ defmodule Wardrik.Tool do
 
   A tool that needs to know who it works for, which call it is answering, or
   a credential, is built with `new!/1` and `:run` in place of `:callback`. It
-  is handed its arguments, validated, and a `Wardrik.Tool.Context`: the scope
+  is handed its arguments, validated, and a `Wardrik.Tool.Context`: the run
   the call runs under, the call's id and idempotency key, the credentials its
   annotations named, and a way to report progress. It answers the same way,
   and in four more ways; see `t:answer/0`:
@@ -198,16 +198,16 @@ defmodule Wardrik.Tool do
 
   @doc """
   What the tool tells the model as each turn begins, put after the system
-  prompt of every request the turn makes, asked with the turn's scope, whose
+  prompt of every request the turn makes, asked with the turn's run, whose
   host holds the store it reads from. Optional. It is asked once, when the
   turn is built, so it reads what it needs then. One that raises fails that
   turn, which runs supervised, and the agent goes on to its next. A source
   answers with `c:context/2`.
   """
-  @callback context(Wardrik.Scope.t()) :: context()
+  @callback context(Wardrik.Run.t()) :: context()
 
   @doc "`c:context/1` for a source, asked with the argument the spec named it with first."
-  @callback context(argument :: term(), Wardrik.Scope.t()) :: context()
+  @callback context(argument :: term(), Wardrik.Run.t()) :: context()
 
   @optional_callbacks tool: 0,
                       tools: 1,
@@ -293,13 +293,13 @@ defmodule Wardrik.Tool do
   end
 
   @doc """
-  What `specs` tell the model before a turn under `scope`, joined in the
+  What `specs` tell the model before a turn under `run`, joined in the
   order they are named, or `nil` where none tells it anything, and the labels
   of what they tell it.
   """
-  @spec context([spec()], Wardrik.Scope.t()) :: {String.t() | nil, [Wardrik.Label.t()]}
-  def context(specs, %Wardrik.Scope{} = scope) when is_list(specs) do
-    told = for spec <- specs, told = told(spec, scope), do: told
+  @spec context([spec()], Wardrik.Run.t()) :: {String.t() | nil, [Wardrik.Label.t()]}
+  def context(specs, %Wardrik.Run{} = run) when is_list(specs) do
+    told = for spec <- specs, told = told(spec, run), do: told
 
     case Enum.map_join(told, "\n\n", &elem(&1, 0)) do
       "" -> {nil, []}
@@ -307,8 +307,8 @@ defmodule Wardrik.Tool do
     end
   end
 
-  defp told(spec, scope) do
-    case declared(spec, :context, [scope]) do
+  defp told(spec, run) do
+    case declared(spec, :context, [run]) do
       {text, labels} when is_binary(text) and text != "" and is_list(labels) -> {text, labels}
       text when is_binary(text) and text != "" -> {text, []}
       _nothing -> nil
@@ -331,7 +331,7 @@ defmodule Wardrik.Tool do
   @doc """
   The call with what `spec`, the spec that builds its tool, declares written
   on it, before any hook reads it: whether it is gated, and what it acts on.
-  A call to a tool its scope's config does not name, `nil`, is left as it is.
+  A call to a tool its run's config does not name, `nil`, is left as it is.
   """
   @spec declared(Wardrik.Call.t(), spec() | nil) :: Wardrik.Call.t()
   def declared(%Wardrik.Call{} = call, nil), do: call

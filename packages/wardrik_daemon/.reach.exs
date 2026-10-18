@@ -73,7 +73,7 @@
       "Wardrik.Principal",
       "Wardrik.Query",
       "Wardrik.Resource",
-      "Wardrik.Scope",
+      "Wardrik.Run",
       "Wardrik.Servers",
       "Wardrik.Servers.Key",
       "Wardrik.Servers.Server",

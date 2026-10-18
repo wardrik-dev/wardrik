@@ -73,7 +73,7 @@ defmodule Wardrik.Credential do
 
   alias Wardrik.Call
   alias Wardrik.Fleet
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   defmodule Available do
     @moduledoc """
@@ -194,7 +194,7 @@ defmodule Wardrik.Credential do
   def reveal(%__MODULE__{value: value}), do: value
 
   @doc """
-  Asks the `Wardrik.Credentials` of the host `call`'s scope runs on for
+  Asks the `Wardrik.Credentials` of the host `call` runs on for
   `ref`.
 
   Answers `{:error, :no_resolver}` where the host holds none, and
@@ -202,19 +202,19 @@ defmodule Wardrik.Credential do
   that break must not take the turn with them.
   """
   @spec resolve(Call.t(), ref()) :: outcome()
-  def resolve(%Call{scope: %Scope{host: host}} = call, ref) do
+  def resolve(%Call{run: %Run{host: host}} = call, ref) do
     Wardrik.Credentials.resolve(Wardrik.Host.credentials(host), ref, call)
   catch
     kind, reason -> {:error, {:resolver_failed, Exception.format(kind, reason)}}
   end
 
   @doc """
-  Tells the `Wardrik.Credentials` of the host `call`'s scope runs on that the
+  Tells the `Wardrik.Credentials` of the host `call` runs on that the
   credential they resolved for `ref` was refused. Credentials that raise are
   passed over.
   """
   @spec refused(Call.t(), ref()) :: :ok
-  def refused(%Call{scope: %Scope{host: host}} = call, ref) do
+  def refused(%Call{run: %Run{host: host}} = call, ref) do
     :ok = Wardrik.Credentials.refused(Wardrik.Host.credentials(host), ref, call)
   catch
     _kind, _reason -> :ok

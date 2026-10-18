@@ -6,7 +6,7 @@ defmodule WardrikOAuth.RenewTest do
   alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Test.Calls
 
   setup do
@@ -26,12 +26,12 @@ defmodule WardrikOAuth.RenewTest do
     on_exit(fn -> :telemetry.detach(handler) end)
   end
 
-  defp scope(owner) do
+  defp run(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, host: host())
+    Config.new() |> Run.root(id, host: host())
   end
 
-  defp call(owner), do: Calls.tool("tool", %{}, scope(owner))
+  defp call(owner), do: Calls.tool("tool", %{}, run(owner))
 
   defp resolve(owner), do: Credential.resolve(call(owner), "github")
 

@@ -19,7 +19,7 @@ defmodule WardrikWorkflow do
   crashes, or runs over time all arrive the same way, so a dead branch is a gap
   the caller decides about rather than the end of the run.
 
-      scope
+      run
       |> WardrikWorkflow.fan_out(angles, fn angle, branch ->
         Wardrik.Subagent.run(branch, config, prompt(angle))
       end)
@@ -32,14 +32,14 @@ defmodule WardrikWorkflow do
   `sequence/3` feeds each step the previous step's result and stops at the
   first error, because a stage whose input never arrived has nothing to do.
 
-      WardrikWorkflow.sequence(scope, input, [Fetch, {Summarise, config: config}, Publish])
+      WardrikWorkflow.sequence(run, input, [Fetch, {Summarise, config: config}, Publish])
 
   For work that depends on more than one earlier result, write it out. The
   call graph is the dependency graph:
 
-      with {:ok, a} <- Step.invoke(Recon, args, scope),
-           {:ok, b} <- Step.invoke(Baseline, args, scope) do
-        Step.invoke(Compare, %{recon: a, baseline: b}, scope)
+      with {:ok, a} <- Step.invoke(Recon, args, run),
+           {:ok, b} <- Step.invoke(Baseline, args, run) do
+        Step.invoke(Compare, %{recon: a, baseline: b}, run)
       end
 
   ## Spans
@@ -50,7 +50,7 @@ defmodule WardrikWorkflow do
   subscription to the agent sees every level of it.
   """
 
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Subagent
   alias Wardrik.Tool.Result
   alias WardrikWorkflow.Step
@@ -91,14 +91,14 @@ defmodule WardrikWorkflow do
   Runs `step` for a call to the tool `as_tool/2` built, with the call's
   `input` and `context`.
 
-  The step runs under the context's scope, so everything it spawns is
+  The step runs under the context's run, so everything it spawns is
   attributed to the agent that asked for it. It answers with a
   `Wardrik.Tool.Result`, so a workflow that fails reports the failure to the
   model instead of failing the turn.
   """
   @spec handle(Step.t(), map() | keyword(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.Result.t()
-  def handle(step, input, %Wardrik.Tool.Context{scope: %Scope{} = scope}),
-    do: step |> Step.invoke(Map.new(input), scope) |> to_result()
+  def handle(step, input, %Wardrik.Tool.Context{run: %Run{} = run}),
+    do: step |> Step.invoke(Map.new(input), run) |> to_result()
 
   @doc """
   Runs `step` over every input at once and reports what each one did.
@@ -114,18 +114,18 @@ defmodule WardrikWorkflow do
   Without `:name`, an input that is a string or an atom names its own span and
   anything else falls back to its position.
   """
-  @spec fan_out(Scope.t(), Enumerable.t(), Step.t(), keyword()) :: [outcome()]
-  def fan_out(%Scope{} = scope, inputs, step, opts \\ []) do
+  @spec fan_out(Run.t(), Enumerable.t(), Step.t(), keyword()) :: [outcome()]
+  def fan_out(%Run{} = run, inputs, step, opts \\ []) do
     name = Keyword.get(opts, :name)
     {:ok, supervisor} = Task.Supervisor.start_link()
 
     outcomes =
       supervisor
       |> Task.Supervisor.async_stream_nolink(
-        branches(scope, inputs, name),
+        branches(run, inputs, name),
         fn {input, branch} ->
           Subagent.watching(fn ->
-            {input, Scope.closing(branch, &Step.invoke(step, input, &1))}
+            {input, Run.closing(branch, &Step.invoke(step, input, &1))}
           end)
         end,
         ordered: true,
@@ -150,16 +150,16 @@ defmodule WardrikWorkflow do
     outcome
   end
 
-  defp branches(scope, inputs, name) do
+  defp branches(run, inputs, name) do
     inputs
     |> Enum.with_index()
     |> Enum.map(fn {input, index} ->
-      {input, Scope.open(scope, branch_name(name, input, index))}
+      {input, Run.open(run, branch_name(name, input, index))}
     end)
   end
 
   defp reap(input, branch, reason) do
-    Scope.close(branch, {:error, reason})
+    Run.close(branch, {:error, reason})
     {input, {:error, reason}}
   end
 
@@ -169,12 +169,12 @@ defmodule WardrikWorkflow do
 
   Each step runs under its own child span, named after its module.
   """
-  @spec sequence(Scope.t(), term(), [Step.t()]) :: Step.result()
-  def sequence(%Scope{} = scope, input, steps) when is_list(steps) do
+  @spec sequence(Run.t(), term(), [Step.t()]) :: Step.result()
+  def sequence(%Run{} = run, input, steps) when is_list(steps) do
     steps
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, input}, fn {step, index}, {:ok, input} ->
-      case Scope.span(scope, Step.name(step, index), &Step.invoke(step, input, &1)) do
+      case Run.span(run, Step.name(step, index), &Step.invoke(step, input, &1)) do
         {:ok, output} -> {:cont, {:ok, output}}
         {:error, reason} -> {:halt, {:error, reason}}
       end

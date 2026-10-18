@@ -9,7 +9,7 @@ defmodule WardrikLua.Run do
   string it would otherwise have to write out by hand.
 
   The code runs in `WardrikLua.Sandbox`, which reaches nothing outside its VM.
-  Nothing of the agent's — its tools, its scope, its conversation — is
+  Nothing of the agent's — its tools, its run, its conversation — is
   reachable from the code either.
 
   `tool/1` builds the same tool under limits of its own:

@@ -26,16 +26,16 @@ defmodule Wardrik.Agent.Spec do
   | `:description` | what it is for, in words a person reads |
   | `:config` | a `Wardrik.LLM.Config` |
   | `:idle_timeout` | how long it may have nothing to do before it sleeps, in milliseconds or `:infinity`; see `Wardrik.Agent` |
-  | `:hooks`, `:retry`, `:ledger`, `:timeout` | the seams of `Wardrik.Scope.seams/0` |
+  | `:hooks`, `:retry`, `:ledger`, `:timeout` | the seams of `Wardrik.Run.seams/0` |
   """
 
   alias Wardrik.AgentID
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   @enforce_keys [:id, :config]
   defstruct [:id, :description, :config, idle_timeout: Wardrik.Agent.State.default_idle_timeout()] ++
-              Scope.seams()
+              Run.seams()
 
   @type t() :: %__MODULE__{
           id: AgentID.t(),
@@ -64,7 +64,7 @@ defmodule Wardrik.Agent.Spec do
   @spec options(t()) :: keyword()
   def options(%__MODULE__{} = spec) do
     seams =
-      Enum.flat_map(Scope.seams(), fn seam ->
+      Enum.flat_map(Run.seams(), fn seam ->
         case Map.fetch!(spec, seam) do
           nil -> []
           value -> [{seam, value}]

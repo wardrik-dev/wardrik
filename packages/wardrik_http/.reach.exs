@@ -66,7 +66,7 @@
       "Wardrik.Principal",
       "Wardrik.Query",
       "Wardrik.Resource",
-      "Wardrik.Scope",
+      "Wardrik.Run",
       "Wardrik.Subagent",
       "Wardrik.Subject",
       "Wardrik.Test",

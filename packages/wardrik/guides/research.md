@@ -29,5 +29,5 @@ It is also a `WardrikWorkflow.Step`, so you can run it yourself, or inside a
 larger workflow:
 
 ```elixir
-WardrikResearch.Deep.run(%{topic: "the WASM component model"}, scope, [])
+WardrikResearch.Deep.run(%{topic: "the WASM component model"}, run, [])
 ```

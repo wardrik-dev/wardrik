@@ -1,26 +1,26 @@
-defmodule Wardrik.Scope do
+defmodule Wardrik.Run do
   @moduledoc """
   Everything one run needs that nobody configures.
 
   `Wardrik.LLM.Config` is supplied by the caller and says what an agent is;
-  a scope is what the system builds around it to actually run a turn, and says
-  what this particular run may do. The split is the point: a config can be
-  written down, shared and reused, while a scope belongs to one run and carries
-  the things that change per run.
+  a run is what the system builds around it to actually take a turn, and
+  says what this particular run may do. The split is the point: a config can
+  be written down, shared and reused, while a run happens once and carries
+  the things that change each time.
 
-      scope = Wardrik.Scope.root(config, ~A"acme/@jon/assistant", name: "turn")
-      Wardrik.Event.emit(scope.source, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hello")]})
+      run = Wardrik.Run.root(config, ~A"acme/@jon/assistant", name: "turn")
+      Wardrik.Event.emit(run.source, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hello")]})
 
-  Work the turn spawns takes a child scope, so its events land in the same
+  Work the turn spawns takes a child run, so its events land in the same
   stream under a child span and it inherits the same authority:
 
-      branch = Wardrik.Scope.child(scope, name: "web_search")
+      branch = Wardrik.Run.child(run, name: "web_search")
 
   Work that should run under a different model or tool set takes that config
   where it is used, such as `Wardrik.Subagent.run/3`, rather than carrying it on
-  a scope of its own.
+  a run of its own.
 
-  ## What a scope carries
+  ## What a run carries
 
   | Field | What it decides |
   | --- | --- |
@@ -44,14 +44,14 @@ defmodule Wardrik.Scope do
   ## Who asked
 
   An agent's ID says whose the work is; `:sender` says who asked for it.
-  A turn answers the messages of one sender at a time, and runs under a
-  scope naming them, so a tool can act as the person who asked rather than
+  A turn answers the messages of one sender at a time, and its run names
+  them, so a tool can act as the person who asked rather than
   as the agent's owner: with the `Wardrik.Grant` `Wardrik.Grants` answers
   for them, say. `nil` is a turn nobody asked for, as one a trigger starts.
   Work the turn spawns keeps its sender.
 
-      scope = Wardrik.Scope.root(config, ~A"acme/assistant", sender: maria)
-      Wardrik.Scope.child(scope).sender == maria
+      run = Wardrik.Run.root(config, ~A"acme/assistant", sender: maria)
+      Wardrik.Run.child(run).sender == maria
 
   ## Deadlines
 
@@ -59,8 +59,8 @@ defmodule Wardrik.Scope do
   through however many layers of delegation without anyone recomputing it.
   Give one as a duration and it is resolved once:
 
-      scope = Wardrik.Scope.root(config, ~A"acme/@jon/assistant", timeout: :timer.minutes(10))
-      Wardrik.Scope.remaining_ms(scope)
+      run = Wardrik.Run.root(config, ~A"acme/@jon/assistant", timeout: :timer.minutes(10))
+      Wardrik.Run.remaining_ms(run)
 
   `with_timeout/2` only ever narrows. Work cannot award itself more time than
   it was given, which is what makes a deadline worth setting at the top.
@@ -70,7 +70,7 @@ defmodule Wardrik.Scope do
   `span/3` runs work in a child span and announces both ends, so a subscriber
   can build the tree and close every node:
 
-      Wardrik.Scope.span(scope, "web_search", fn branch ->
+      Wardrik.Run.span(run, "web_search", fn branch ->
         Search.run(query, branch)
       end)
 
@@ -81,9 +81,9 @@ defmodule Wardrik.Scope do
   `open/2` and `close/2` are the same two ends apart, for a combinator whose
   branches may be killed before they can report anything:
 
-      branches = Enum.map(inputs, &{&1, Wardrik.Scope.open(scope, name(&1))})
-      # in each task:   Wardrik.Scope.closing(branch, &run(input, &1))
-      # in the parent:  Wardrik.Scope.close(branch, {:error, reason})
+      branches = Enum.map(inputs, &{&1, Wardrik.Run.open(run, name(&1))})
+      # in each task:   Wardrik.Run.closing(branch, &run(input, &1))
+      # in the parent:  Wardrik.Run.close(branch, {:error, reason})
 
   A span starts when the work is admitted, which under a bounded fan-out is
   before a concurrency slot frees: twenty queued branches announce themselves
@@ -115,7 +115,7 @@ defmodule Wardrik.Scope do
   ]
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
-  # each turn's scope is built.
+  # each turn's run is built.
   @seams [:hooks, :retry, :ledger, :timeout]
 
   @typedoc "The config a run was given, where its events go, and what it may do."
@@ -145,7 +145,7 @@ defmodule Wardrik.Scope do
   def seams, do: @seams
 
   @doc """
-  A scope at the root of a new trace.
+  A run at the root of a new trace.
 
   Options:
 
@@ -163,7 +163,7 @@ defmodule Wardrik.Scope do
       again after the waits the config's `:retries` lists
     * `:ledger` - a `Wardrik.Ledger` module, which records each tool call before
       it runs, or `nil` to record none
-    * `:journal` - the process a turn under this scope hands each batch of
+    * `:journal` - the process a turn under this run hands each batch of
       tool calls to before running it, so a turn lost part way can be
       replayed from there. `Wardrik.Agent` is one. Not inherited by `child/2`
   """
@@ -184,7 +184,7 @@ defmodule Wardrik.Scope do
   end
 
   @doc """
-  A scope for work that `scope` spawned: same authority and topic, a child span.
+  A run for work that `run` spawned: same authority and topic, a child span.
 
   Mints the span without announcing it; `span/3` is what announces one.
 
@@ -195,43 +195,43 @@ defmodule Wardrik.Scope do
   included, is replayed as the one call of that turn it belongs to.
   """
   @spec child(t(), keyword()) :: t()
-  def child(%__MODULE__{} = scope, opts \\ []) do
-    %{scope | source: Source.child(scope.source, opts), journal: nil}
+  def child(%__MODULE__{} = run, opts \\ []) do
+    %{run | source: Source.child(run.source, opts), journal: nil}
     |> with_timeout(Keyword.get(opts, :timeout, :infinity))
   end
 
   @doc """
-  The scope a turn running under `scope` runs its `round`th batch of tool
-  calls under, `0` for the first.
+  The run for the `round`th batch of tool calls of a turn under `run`, `0`
+  for the first.
 
-  The batch is named by the turn's own span and the round, and every scope
+  The batch is named by the turn's own span and the round, and every run
   under it keeps that name, so the calls of each round of a turn, and those of
   each delegation's own turn, are named apart. A turn resumed or replayed
   keeps its span, and names each batch as it did the first time.
   """
   @spec batch(t(), non_neg_integer()) :: t()
-  def batch(%__MODULE__{source: source} = scope, round) when is_integer(round) and round >= 0,
-    do: %{scope | batch: source.trace.span_id <> "/" <> Integer.to_string(round)}
+  def batch(%__MODULE__{source: source} = run, round) when is_integer(round) and round >= 0,
+    do: %{run | batch: source.trace.span_id <> "/" <> Integer.to_string(round)}
 
   @doc """
   The agent the work is for. Its org and user say who the work is done for.
 
-      %Wardrik.AgentID{org: org, user: user} = Wardrik.Scope.agent_id(scope)
+      %Wardrik.AgentID{org: org, user: user} = Wardrik.Run.agent_id(run)
   """
   @spec agent_id(t()) :: Bus.agent_id()
   def agent_id(%__MODULE__{source: source}), do: source.agent_id
 
   @doc """
-  Narrows this scope's deadline to at most `ms` from now.
+  Narrows this run's deadline to at most `ms` from now.
 
   Never widens one: work handed a deadline cannot give itself more time, so a
-  caller can hand a scope to code it did not write and still know when it ends.
+  caller can hand a run to code it did not write and still know when it ends.
   """
   @spec with_timeout(t(), timeout()) :: t()
-  def with_timeout(%__MODULE__{} = scope, :infinity), do: scope
+  def with_timeout(%__MODULE__{} = run, :infinity), do: run
 
-  def with_timeout(%__MODULE__{} = scope, ms) when is_integer(ms) and ms >= 0 do
-    %{scope | deadline: earliest(scope.deadline, instant(ms))}
+  def with_timeout(%__MODULE__{} = run, ms) when is_integer(ms) and ms >= 0 do
+    %{run | deadline: earliest(run.deadline, instant(ms))}
   end
 
   defp earliest(nil, proposed), do: proposed
@@ -242,7 +242,7 @@ defmodule Wardrik.Scope do
   end
 
   @doc """
-  How long this scope has left, or `:infinity` when it has no deadline.
+  How long this run has left, or `:infinity` when it has no deadline.
 
   Zero once the deadline has passed, so a caller can pass it straight to
   anything taking a timeout without checking for a negative.
@@ -257,21 +257,21 @@ defmodule Wardrik.Scope do
     |> max(0)
   end
 
-  @doc "Whether this scope's deadline has passed."
+  @doc "Whether this run's deadline has passed."
   @spec expired?(t()) :: boolean()
-  def expired?(%__MODULE__{} = scope), do: remaining_ms(scope) == 0
+  def expired?(%__MODULE__{} = run), do: remaining_ms(run) == 0
 
   @doc """
   Runs `fun` in a child span named `name`, announcing both ends.
 
-  `fun` receives the branch scope, and its return value is passed straight
+  `fun` receives the branch run, and its return value is passed straight
   back. An `{:error, reason}` return closes the span as a failure, anything
   else as a success. A raise, throw or exit closes it as a failure and is
   re-raised unchanged.
   """
   @spec span(t(), String.t(), (t() -> result)) :: result when result: term()
-  def span(%__MODULE__{} = scope, name, fun) when is_function(fun, 1) do
-    scope |> open(name) |> closing(fun)
+  def span(%__MODULE__{} = run, name, fun) when is_function(fun, 1) do
+    run |> open(name) |> closing(fun)
   end
 
   @doc """
@@ -281,8 +281,8 @@ defmodule Wardrik.Scope do
   reporting on its behalf.
   """
   @spec open(t(), String.t()) :: t()
-  def open(%__MODULE__{} = scope, name) do
-    branch = child(scope, name: name)
+  def open(%__MODULE__{} = run, name) do
+    branch = child(run, name: name)
     Event.emit(branch.source, %Event.SpanStarted{name: name})
     branch
   end

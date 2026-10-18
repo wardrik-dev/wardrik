@@ -33,9 +33,8 @@ defmodule WardrikDemo do
     def init(_opts), do: nil
 
     @impl true
-    def call(%Wardrik.Call{target: %Tool{name: "deploy", arguments: args}, scope: scope}, _value),
-      do:
-        {:ask, "Deploy #{args["service"]} to #{args["environment"]}, asked for by #{who(scope)}?"}
+    def call(%Wardrik.Call{target: %Tool{name: "deploy", arguments: args}, run: run}, _value),
+      do: {:ask, "Deploy #{args["service"]} to #{args["environment"]}, asked for by #{who(run)}?"}
 
     def call(%Wardrik.Call{target: %Tool{name: "drop_table", arguments: args}}, _value),
       do: {:deny, "Dropping #{args["table"]} is not something an agent may do. Ask a DBA."}

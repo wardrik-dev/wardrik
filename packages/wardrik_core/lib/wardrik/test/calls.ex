@@ -9,13 +9,13 @@ defmodule Wardrik.Test.Calls do
 
   alias Wardrik.Call
 
-  @doc "An allowed call to the tool `name`, under `scope`, as a tool is handed it."
-  @spec tool(String.t(), map(), Wardrik.Scope.t() | nil) :: Call.t()
-  def tool(name, arguments \\ %{}, scope \\ nil) do
+  @doc "An allowed call to the tool `name`, under `run`, as a tool is handed it."
+  @spec tool(String.t(), map(), Wardrik.Run.t() | nil) :: Call.t()
+  def tool(name, arguments \\ %{}, run \\ nil) do
     %Call{
       id: "call_1",
       target: %Call.Tool{name: name, arguments: arguments},
-      scope: scope,
+      run: run,
       state: :allowed
     }
   end

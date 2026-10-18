@@ -10,7 +10,7 @@ defmodule WardrikMCP.BootstrapTest do
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias WardrikMCP.Connection
   alias WardrikMCP.Server
 
@@ -18,7 +18,7 @@ defmodule WardrikMCP.BootstrapTest do
     @moduledoc false
     defstruct []
 
-    def resolve("locked", %Wardrik.Call{scope: scope}), do: locked(Scope.agent_id(scope))
+    def resolve("locked", %Wardrik.Call{run: run}), do: locked(Run.agent_id(run))
 
     defp locked(%AgentID{org: org, user: "connected"}),
       do: {:ok, Credential.secret("a-token", owner: {org, "connected"})}
@@ -42,15 +42,15 @@ defmodule WardrikMCP.BootstrapTest do
                transport_opts: [env: %{"STUB_REQUIRE_TOKEN" => "1"}]
              ]
 
-  defp scope(key, user) do
+  defp run(key, user) do
     Config.new(tools: [{WardrikMCP, key}])
-    |> Scope.root(AgentID.new!("a", org: "acme", user: user),
+    |> Run.root(AgentID.new!("a", org: "acme", user: user),
       host: Wardrik.Test.host(credentials: %Vault{})
     )
   end
 
   defp call(key, user, tool) do
-    ToolRunner.execute(%{id: "c1", name: "#{key}__#{tool}", arguments: %{}}, scope(key, user))
+    ToolRunner.execute(%{id: "c1", name: "#{key}__#{tool}", arguments: %{}}, run(key, user))
   end
 
   setup %{key: key} do
@@ -106,7 +106,7 @@ defmodule WardrikMCP.BootstrapTest do
 
     assert [message] =
              Wardrik.LLM.ToolRunner.messages([
-               ToolRunner.execute(secret, scope(key, "connected"))
+               ToolRunner.execute(secret, run(key, "connected"))
              ])
 
     [part] = message.content
@@ -152,7 +152,7 @@ defmodule WardrikMCP.BootstrapTest do
 
       assert [message] =
                Wardrik.LLM.ToolRunner.messages([
-                 ToolRunner.execute(secret, scope(key, "connected"))
+                 ToolRunner.execute(secret, run(key, "connected"))
                ])
 
       [part] = message.content
@@ -165,7 +165,7 @@ defmodule WardrikMCP.BootstrapTest do
       echo = %{id: "c2", name: "#{key}__echo", arguments: %{"value" => "hello"}}
 
       assert %Wardrik.Call{state: :waiting, asks: [%{link: %{url: url}}]} =
-               ToolRunner.execute(echo, scope(key, "someone"))
+               ToolRunner.execute(echo, run(key, "someone"))
 
       assert url =~ "https://example.com/authorize"
     end

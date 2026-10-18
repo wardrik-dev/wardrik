@@ -87,7 +87,7 @@ defmodule WardrikVault do
   require Logger
 
   alias Wardrik.Credential
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias WardrikVault.Grants
   alias WardrikVault.Sealed
 
@@ -138,9 +138,9 @@ defmodule WardrikVault do
   end
 
   @doc false
-  def resolve(%__MODULE__{} = vault, name, %Wardrik.Call{scope: %Scope{} = scope})
+  def resolve(%__MODULE__{} = vault, name, %Wardrik.Call{run: %Run{} = run})
       when is_binary(name) do
-    owner = owner(scope)
+    owner = owner(run)
 
     case lookup(vault, name, owner) do
       {:ok, :secret, secret} ->
@@ -193,9 +193,9 @@ defmodule WardrikVault do
   end
 
   @doc false
-  def refused(%__MODULE__{} = vault, name, %Wardrik.Call{scope: %Scope{} = scope})
+  def refused(%__MODULE__{} = vault, name, %Wardrik.Call{run: %Run{} = run})
       when is_binary(name) do
-    owner = owner(scope)
+    owner = owner(run)
 
     case lookup(vault, name, owner) do
       {:ok, :grant, _grant} -> Grants.refused(vault.grants, name, owner, vault: vault)
@@ -211,9 +211,9 @@ defmodule WardrikVault do
     end
   end
 
-  # The owner of the agent a scope runs for.
-  defp owner(%Scope{} = scope) do
-    case Scope.agent_id(scope) do
+  # The owner of the agent a run is for.
+  defp owner(%Run{} = run) do
+    case Run.agent_id(run) do
       %Wardrik.AgentID{org: org, user: nil} -> org
       %Wardrik.AgentID{org: org, user: user} -> {org, user}
     end

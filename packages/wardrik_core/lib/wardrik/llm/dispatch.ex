@@ -25,16 +25,16 @@ defprotocol Wardrik.LLM.Dispatch do
       end
 
       defimpl Wardrik.LLM.Dispatch, for: MyApp.Gateway do
-        def admit(gateway, request, scope: scope) do
-          org = Wardrik.Scope.agent_id(scope).org
+        def admit(gateway, request, run: run) do
+          org = Wardrik.Run.agent_id(run).org
 
           with {:ok, key, model} <- MyApp.Keys.for(gateway.keys, org, request.model_spec) do
             {:ok, request |> Request.put_model(model) |> Request.put_opts(api_key: key)}
           end
         end
 
-        def settle(_gateway, request, outcome: {:ok, response}, scope: scope),
-          do: MyApp.Billing.record(Wardrik.Scope.agent_id(scope).org, request.model_spec, response.usage)
+        def settle(_gateway, request, outcome: {:ok, response}, run: run),
+          do: MyApp.Billing.record(Wardrik.Run.agent_id(run).org, request.model_spec, response.usage)
 
         def settle(_gateway, _request, _opts), do: :ok
       end
@@ -57,7 +57,7 @@ defprotocol Wardrik.LLM.Dispatch do
         def admit(metered, request, opts), do: Wardrik.LLM.Dispatch.admit(metered.inner, request, opts)
 
         def settle(metered, request, opts) do
-          :ok = MyApp.Costs.record(request, opts[:outcome], opts[:scope])
+          :ok = MyApp.Costs.record(request, opts[:outcome], opts[:run])
           Wardrik.LLM.Dispatch.settle(metered.inner, request, opts)
         end
       end
@@ -66,7 +66,7 @@ defprotocol Wardrik.LLM.Dispatch do
 
   ## Hooks first
 
-  Before the dispatch sees a request, the scope's `Wardrik.Hook`s are handed it
+  Before the dispatch sees a request, the run's `Wardrik.Hook`s are handed it
   as a `Wardrik.Call` to a `Wardrik.Call.Model`; see `Wardrik.Call.Pipeline`. A
   deny fails the turn as `{:policy_denied, reason}` and an ask parks it, and
   in neither case is the dispatch asked. Every hook hears what an admitted
@@ -108,7 +108,7 @@ defprotocol Wardrik.LLM.Dispatch do
 
   @doc """
   Decides what a call actually is, immediately before it is made, under the
-  `:scope` of the turn making it.
+  `:run` of the turn making it.
 
   Return the request to make, which may be the one given. Returning an error
   fails the turn without reaching the provider.
@@ -117,7 +117,7 @@ defprotocol Wardrik.LLM.Dispatch do
   def admit(dispatch, request, opts)
 
   @doc """
-  Reports how a call went, as its `:outcome`, under the `:scope` of the turn
+  Reports how a call went, as its `:outcome`, under the `:run` of the turn
   that made it.
 
   Called for every admitted request, including ones that failed or were

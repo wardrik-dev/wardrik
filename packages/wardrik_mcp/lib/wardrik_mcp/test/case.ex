@@ -33,11 +33,11 @@ defmodule WardrikMCP.Test.Case do
   end
 
   @doc """
-  The context a call to a server's tool is handed under `scope`, for a test
+  The context a call to a server's tool is handed under `run`, for a test
   that calls `WardrikMCP.call/4` directly.
   """
-  @spec context(Wardrik.Scope.t()) :: Wardrik.Tool.Context.t()
-  def context(scope \\ Wardrik.Test.scope()), do: Wardrik.Test.context(scope)
+  @spec context(Wardrik.Run.t()) :: Wardrik.Tool.Context.t()
+  def context(run \\ Wardrik.Test.run()), do: Wardrik.Test.context(run)
 
   @doc "A name no other test is using, so servers started in one test do not reach another."
   @spec fresh_name() :: atom()

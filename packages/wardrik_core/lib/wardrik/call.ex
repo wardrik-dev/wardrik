@@ -29,7 +29,7 @@ defmodule Wardrik.Call do
     * `:id` - the provider's id for a tool call; `model_` and a random suffix
       for a model call
     * `:target` - the `Wardrik.Call.Tool` or `Wardrik.Call.Model` it goes to
-    * `:scope` - the `Wardrik.Scope` it runs under, `nil` while it waits
+    * `:run` - the `Wardrik.Run` it runs under, `nil` while it waits
 
   What was said about it, written with `decided/3`:
 
@@ -77,7 +77,7 @@ defmodule Wardrik.Call do
   a hook allowed it by name, with `:allow`, and waits on its tool otherwise.
   A deny still refuses it and an ask still asks. A call to a tool that is not
   gated goes ahead as the hooks said, allowed by name or not. What the run it
-  belongs to has read, its scope's `:labels`, is for the hooks to weigh;
+  belongs to has read, its run's `:labels`, is for the hooks to weigh;
   `WardrikPolicy` holds a gated call after content from outside.
   """
 
@@ -87,13 +87,13 @@ defmodule Wardrik.Call do
   alias Wardrik.Call.Tool
   alias Wardrik.LLM.Cost
   alias Wardrik.LLM.Request
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   @enforce_keys [:id, :target]
   defstruct [
     :id,
     :target,
-    :scope,
+    :run,
     :denied,
     :result,
     :served_by,
@@ -133,7 +133,7 @@ defmodule Wardrik.Call do
   @type t() :: %__MODULE__{
           id: String.t(),
           target: Tool.t() | Model.t(),
-          scope: Scope.t() | nil,
+          run: Run.t() | nil,
           state: state(),
           denied: Denial.t() | nil,
           asks: [Ask.t()],
@@ -149,17 +149,17 @@ defmodule Wardrik.Call do
   # -- building ----------------------------------------------------------------
 
   @doc "The call a model asked for, as `ReqLLM.Response.classify/1` gives it."
-  @spec tool(Wardrik.Tool.call(), Scope.t() | nil) :: t()
-  def tool(%{id: id, name: name, arguments: arguments}, scope \\ nil),
-    do: %__MODULE__{id: id, target: %Tool{name: name, arguments: arguments}, scope: scope}
+  @spec tool(Wardrik.Tool.call(), Run.t() | nil) :: t()
+  def tool(%{id: id, name: name, arguments: arguments}, run \\ nil),
+    do: %__MODULE__{id: id, target: %Tool{name: name, arguments: arguments}, run: run}
 
   @doc "The model call `request` makes."
-  @spec model(Request.t(), Scope.t() | nil) :: t()
-  def model(%Request{} = request, scope \\ nil) do
+  @spec model(Request.t(), Run.t() | nil) :: t()
+  def model(%Request{} = request, run \\ nil) do
     %__MODULE__{
       id: "model_" <> Base.encode16(:crypto.strong_rand_bytes(6), case: :lower),
       target: Model.new(request),
-      scope: scope
+      run: run
     }
   end
 
@@ -340,9 +340,9 @@ defmodule Wardrik.Call do
   @spec served(t(), served() | nil) :: t()
   def served(%__MODULE__{} = call, served_by), do: %{call | served_by: served_by}
 
-  @doc "The call under `scope`, or under none for one that is written down."
-  @spec under(t(), Scope.t() | nil) :: t()
-  def under(%__MODULE__{} = call, scope), do: %{call | scope: scope}
+  @doc "The call under `run`, or under none for one that is written down."
+  @spec under(t(), Run.t() | nil) :: t()
+  def under(%__MODULE__{} = call, run), do: %{call | run: run}
 
   # -- reading -----------------------------------------------------------------
 

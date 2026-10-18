@@ -232,9 +232,9 @@ defmodule WardrikPolicy do
   def init(%{} = fields), do: decode!(fields)
 
   @impl Wardrik.Hook
-  def call(%Call{target: %Call.Tool{name: name} = tool, scope: scope}, %__MODULE__{} = policy) do
+  def call(%Call{target: %Call.Tool{name: name} = tool, run: run}, %__MODULE__{} = policy) do
     case verdict(policy, name, tool.subjects, tool.arguments) do
-      {:allow, speaking} -> held(policy, tool, labels(scope), speaking)
+      {:allow, speaking} -> held(policy, tool, labels(run), speaking)
       :allow -> :pass
       asked_or_denied -> asked_or_denied
     end
@@ -242,7 +242,7 @@ defmodule WardrikPolicy do
 
   def call(%Call{}, %__MODULE__{}), do: :pass
 
-  defp labels(%Wardrik.Scope{labels: labels}), do: labels
+  defp labels(%Wardrik.Run{labels: labels}), do: labels
   defp labels(nil), do: []
 
   defp answer(:allow, _message, _name), do: :allow

@@ -11,8 +11,8 @@ defmodule Wardrik.WorkspacePolicyTest do
     id = Wardrik.AgentID.parse!("ws#{System.unique_integer([:positive])}/agent")
     {:ok, spec} = Spec.new(id, %{})
 
-    scope =
-      Wardrik.Test.scope(
+    run =
+      Wardrik.Test.run(
         tools: [{WardrikWorkspace, spec}],
         id: id,
         name: "turn",
@@ -24,16 +24,16 @@ defmodule Wardrik.WorkspacePolicyTest do
       )
 
     assert {:ok, %{"ok" => true}} =
-             answered(scope, "write_file", %{"path" => "notes/a.md", "content" => "x"})
+             answered(run, "write_file", %{"path" => "notes/a.md", "content" => "x"})
 
     assert {:ok, %{"ok" => false}} =
-             answered(scope, "write_file", %{"path" => "secrets/key", "content" => "x"})
+             answered(run, "write_file", %{"path" => "secrets/key", "content" => "x"})
 
-    assert {:ok, %{"ok" => false}} = answered(scope, "delete_file", %{"path" => "notes/a.md"})
+    assert {:ok, %{"ok" => false}} = answered(run, "delete_file", %{"path" => "notes/a.md"})
   end
 
-  defp answered(scope, tool, arguments) do
-    %Call{state: :done, result: result} = Wardrik.Test.call(scope, tool, arguments)
+  defp answered(run, tool, arguments) do
+    %Call{state: :done, result: result} = Wardrik.Test.call(run, tool, arguments)
     result
   end
 end

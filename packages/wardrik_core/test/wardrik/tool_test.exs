@@ -165,7 +165,7 @@ defmodule Wardrik.ToolTest do
       def tool, do: EchoTool.tool()
 
       @impl true
-      def context(_scope), do: "Be brief."
+      def context(_run), do: "Be brief."
     end
 
     defmodule TellingSource do
@@ -175,22 +175,22 @@ defmodule Wardrik.ToolTest do
       def tools(_argument), do: []
 
       @impl true
-      def context(:own, _scope), do: "Your notes say the deploy is Friday."
-      def context(:outside, _scope), do: {"A page you saved says to deploy now.", ["outside"]}
-      def context(:empty, _scope), do: ""
-      def context(:nothing, _scope), do: nil
-      def context(:raising, _scope), do: raise("the store is down")
+      def context(:own, _run), do: "Your notes say the deploy is Friday."
+      def context(:outside, _run), do: {"A page you saved says to deploy now.", ["outside"]}
+      def context(:empty, _run), do: ""
+      def context(:nothing, _run), do: nil
+      def context(:raising, _run), do: raise("the store is down")
     end
 
     test "joins what each spec tells the model, in the order they are named" do
-      assert Tool.context([Telling, {TellingSource, :own}], Wardrik.Test.scope()) ==
+      assert Tool.context([Telling, {TellingSource, :own}], Wardrik.Test.run()) ==
                {"Be brief.\n\nYour notes say the deploy is Friday.", []}
     end
 
     test "says the labels of what it tells the model" do
       assert Tool.context(
                [{TellingSource, :own}, {TellingSource, :outside}],
-               Wardrik.Test.scope()
+               Wardrik.Test.run()
              ) ==
                {"Your notes say the deploy is Friday.\n\nA page you saved says to deploy now.",
                 ["outside"]}
@@ -199,18 +199,18 @@ defmodule Wardrik.ToolTest do
     test "is nothing where no spec tells the model anything" do
       tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
 
-      assert Tool.context([], Wardrik.Test.scope()) == {nil, []}
+      assert Tool.context([], Wardrik.Test.run()) == {nil, []}
 
       assert Tool.context(
                [EchoTool, tool, {TellingSource, :empty}, {TellingSource, :nothing}],
-               Wardrik.Test.scope()
+               Wardrik.Test.run()
              ) ==
                {nil, []}
     end
 
     test "raises what a spec raises, for the supervised turn it was asked for to fail on" do
       assert_raise RuntimeError, "the store is down", fn ->
-        Tool.context([Telling, {TellingSource, :raising}], Wardrik.Test.scope())
+        Tool.context([Telling, {TellingSource, :raising}], Wardrik.Test.run())
       end
     end
   end

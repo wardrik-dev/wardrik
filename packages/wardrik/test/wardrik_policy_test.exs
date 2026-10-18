@@ -2,7 +2,7 @@ defmodule WardrikPolicyTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
 
   @written %{
     "allow" => ["web_search", "linear/*"],
@@ -185,8 +185,8 @@ defmodule WardrikPolicyTest do
     defp checked(policy, target \\ "prod", labels \\ []) do
       hooks = WardrikPolicy.hooks(policy)
 
-      scope = %{
-        Wardrik.Test.scope(
+      run = %{
+        Wardrik.Test.run(
           tools: [Deploy],
           id: Wardrik.AgentID.parse!("acme/triage"),
           hooks: hooks
@@ -194,7 +194,7 @@ defmodule WardrikPolicyTest do
         | labels: labels
       }
 
-      Wardrik.Test.check(scope, "deploy", %{"target" => target})
+      Wardrik.Test.check(run, "deploy", %{"target" => target})
     end
 
     test "is what an allow rule naming the call does, whole or by its subjects" do
@@ -252,15 +252,15 @@ defmodule WardrikPolicyTest do
     test "holds only a gated call: an ungated one goes ahead whatever the run has read" do
       policy = WardrikPolicy.decode!(%{"allow" => ["echo"]})
 
-      scope = %{
-        Wardrik.Test.scope(
+      run = %{
+        Wardrik.Test.run(
           hooks: WardrikPolicy.hooks(policy),
           id: Wardrik.AgentID.parse!("acme/t")
         )
         | labels: ["outside"]
       }
 
-      assert %Wardrik.Call{state: :allowed} = Wardrik.Test.check(scope, "echo")
+      assert %Wardrik.Call{state: :allowed} = Wardrik.Test.check(run, "echo")
     end
 
     test "is not what default: allow does, so a gated tool asks under it as under nothing" do
@@ -277,12 +277,12 @@ defmodule WardrikPolicyTest do
     test "decides tool calls through the seam, and allows every model call" do
       policy = WardrikPolicy.decode!(%{"deny" => ["run_lua"], "ask" => ["deploy"]})
 
-      scope =
-        Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/triage"),
+      run =
+        Run.root(Config.new(), Wardrik.AgentID.parse!("acme/triage"),
           hooks: WardrikPolicy.hooks(policy)
         )
 
-      check = &(&1 |> Wardrik.Call.tool(scope) |> Wardrik.Hook.check())
+      check = &(&1 |> Wardrik.Call.tool(run) |> Wardrik.Hook.check())
       tool = &%{id: "c1", name: &1, arguments: %{}}
 
       assert %Wardrik.Call{state: :denied, denied: %{by: "policy"}} = check.(tool.("run_lua"))
@@ -291,21 +291,21 @@ defmodule WardrikPolicyTest do
 
       policy = WardrikPolicy.decode!(%{"deny" => ["books/pay(amount > 1000)"]})
 
-      scope =
-        Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/triage"),
+      run =
+        Run.root(Config.new(), Wardrik.AgentID.parse!("acme/triage"),
           hooks: WardrikPolicy.hooks(policy)
         )
 
       pay = &%{id: "c2", name: "books__pay", arguments: %{"amount" => &1}}
 
       assert %Wardrik.Call{state: :denied} =
-               pay.(5000) |> Wardrik.Call.tool(scope) |> Wardrik.Hook.check()
+               pay.(5000) |> Wardrik.Call.tool(run) |> Wardrik.Hook.check()
 
       assert %Wardrik.Call{state: :allowed} =
-               pay.(50) |> Wardrik.Call.tool(scope) |> Wardrik.Hook.check()
+               pay.(50) |> Wardrik.Call.tool(run) |> Wardrik.Hook.check()
 
       model =
-        Wardrik.Call.model(Wardrik.LLM.Request.new(Config.new(), ReqLLM.Context.new()), scope)
+        Wardrik.Call.model(Wardrik.LLM.Request.new(Config.new(), ReqLLM.Context.new()), run)
 
       assert %Wardrik.Call{state: :allowed} = Wardrik.Hook.check(model)
     end

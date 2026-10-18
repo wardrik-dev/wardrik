@@ -10,7 +10,7 @@ defmodule Wardrik.LLM.ToolRunner do
 
   Each call runs under its own child span, so its events are attributed to
   that call rather than to the turn as a whole. A tool built with
-  `Wardrik.Tool.new!/1` is handed a `Wardrik.Tool.Context` under that scope,
+  `Wardrik.Tool.new!/1` is handed a `Wardrik.Tool.Context` under that run,
   which is how a tool that delegates finds its place in the tree and how a
   tool with an outside effect finds an idempotency key.
 
@@ -18,18 +18,18 @@ defmodule Wardrik.LLM.ToolRunner do
   the timeout is closed by the caller instead.
 
   A batch runs under the longest timeout any tool in it declares, narrowed by
-  whatever its scope has left. See `Wardrik.Tool.Annotations` and
-  `Wardrik.Scope.remaining_ms/1`.
+  whatever its run has left. See `Wardrik.Tool.Annotations` and
+  `Wardrik.Run.remaining_ms/1`.
 
   Each call is a `Wardrik.Call` to a `Wardrik.Call.Tool`, built from the normalized
   shape `ReqLLM.Response.classify/1` produces (see `t:Wardrik.Tool.call/0`), and
   each comes back as one: `:done`, with its `:result`, or `:waiting` on a
-  person. A call that comes back holds no scope, and `messages/1` gives what
+  person. A call that comes back holds no run, and `messages/1` gives what
   the model reads of a batch.
 
   ## Steps
 
-  Every call passes through `Wardrik.Call.Pipeline`: the scope's hooks decide
+  Every call passes through `Wardrik.Call.Pipeline`: the run's hooks decide
   it, the ledger claims it and the credentials its tool needs are resolved,
   its tool runs it, and the ledger records what it answered. A refusal is an
   answer, so the turn carries on; a call that asks a person **parks**,
@@ -54,7 +54,7 @@ defmodule Wardrik.LLM.ToolRunner do
   alias Wardrik.Call.Tool
   alias Wardrik.Event
   alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Tool.Result
 
   @registry __MODULE__.Registry
@@ -85,22 +85,22 @@ defmodule Wardrik.LLM.ToolRunner do
   Returns one `Wardrik.Call` per call. Use `messages/1` when nothing can park,
   and `parked/1` to find the calls waiting on a person.
   """
-  @spec execute_many_async([Call.t() | Wardrik.Tool.call()], Scope.t()) :: [Call.t()]
-  def execute_many_async(tool_calls, %Scope{} = scope) do
+  @spec execute_many_async([Call.t() | Wardrik.Tool.call()], Run.t()) :: [Call.t()]
+  def execute_many_async(tool_calls, %Run{} = run) do
     turn = self()
-    index = Config.tool_index(scope.config)
+    index = Config.tool_index(run.config)
     calls = Enum.map(tool_calls, &token/1)
 
     Wardrik.Tasks.supervisor()
     |> Task.Supervisor.async_stream_nolink(
-      Enum.map(calls, &{&1, Scope.open(scope, Call.name(&1))}),
+      Enum.map(calls, &{&1, Run.open(run, Call.name(&1))}),
       fn {call, span} ->
         Wardrik.Tether.to(turn)
         call |> Pipeline.indexed(index) |> in_span(span)
       end,
       ordered: true,
       max_concurrency: @max_concurrency,
-      timeout: timeout(calls, scope, index),
+      timeout: timeout(calls, run, index),
       on_timeout: :kill_task,
       zip_input_on_exit: true
     )
@@ -157,17 +157,17 @@ defmodule Wardrik.LLM.ToolRunner do
   @doc """
   The longest any of `tool_calls` may take.
 
-  The longest timeout any of them declares, never more than the scope has left.
+  The longest timeout any of them declares, never more than the run has left.
   """
-  @spec timeout([Call.t() | Wardrik.Tool.call()], Scope.t()) :: timeout()
-  def timeout(tool_calls, %Scope{config: config} = scope),
-    do: timeout(tool_calls, scope, Config.tool_index(config))
+  @spec timeout([Call.t() | Wardrik.Tool.call()], Run.t()) :: timeout()
+  def timeout(tool_calls, %Run{config: config} = run),
+    do: timeout(tool_calls, run, Config.tool_index(config))
 
-  defp timeout(tool_calls, %Scope{config: config} = scope, index) do
+  defp timeout(tool_calls, %Run{config: config} = run, index) do
     tool_calls
     |> Enum.map(&(Config.tool_timeout(config, tool_name(&1), index) || @tool_timeout))
     |> Enum.max(fn -> @tool_timeout end)
-    |> within(Scope.remaining_ms(scope))
+    |> within(Run.remaining_ms(run))
   end
 
   # A batch admitted with nothing left still gets a moment to answer, so a call
@@ -181,15 +181,15 @@ defmodule Wardrik.LLM.ToolRunner do
   @doc """
   Runs one call and reports what it did.
 
-  An unchecked call is handed to the scope's hooks first. An approved one is
+  An unchecked call is handed to the run's hooks first. An approved one is
   not, since the decision has been made and asking again would park it
   forever, and one approved because it may already have run runs again. A
   refused one is answered with why.
   """
-  @spec execute(Call.t() | Wardrik.Tool.call(), Scope.t()) :: Call.t()
-  def execute(call, %Scope{} = scope) do
+  @spec execute(Call.t() | Wardrik.Tool.call(), Run.t()) :: Call.t()
+  def execute(call, %Run{} = run) do
     call = token(call)
-    in_span(call, Scope.open(scope, Call.name(call)))
+    in_span(call, Run.open(run, Call.name(call)))
   end
 
   @doc """
@@ -198,9 +198,9 @@ defmodule Wardrik.LLM.ToolRunner do
   person reaches the model in the same shape as one made by a hook. See
   `Wardrik.Call.Pipeline` for a call the ledger holds.
   """
-  @spec refuse(Call.t() | Wardrik.Tool.call(), Scope.t(), String.t()) :: Call.t()
-  def refuse(call, %Scope{} = scope, reason) when is_binary(reason),
-    do: call |> token() |> Call.refuse(reason) |> execute(scope)
+  @spec refuse(Call.t() | Wardrik.Tool.call(), Run.t(), String.t()) :: Call.t()
+  def refuse(call, %Run{} = run, reason) when is_binary(reason),
+    do: call |> token() |> Call.refuse(reason) |> execute(run)
 
   @doc """
   Stops one tool call that is in flight.
@@ -235,7 +235,7 @@ defmodule Wardrik.LLM.ToolRunner do
 
   defp in_span(call, span) do
     span
-    |> Scope.closing(&run(call, &1), &outcome/1)
+    |> Run.closing(&run(call, &1), &outcome/1)
     |> Call.under(nil)
   end
 
@@ -251,13 +251,13 @@ defmodule Wardrik.LLM.ToolRunner do
 
   defp outcome(%Call{}), do: :ok
 
-  defp run(call, scope) do
-    agent_id = scope.source.agent_id
+  defp run(call, branch) do
+    agent_id = branch.source.agent_id
     meta = %{call_id: call.id, name: Call.name(call), started_at: System.monotonic_time()}
     {:ok, _owner} = Registry.register(@registry, agent_id, meta)
 
     try do
-      call |> Call.under(scope) |> Pipeline.run()
+      call |> Call.under(branch) |> Pipeline.run()
     after
       Registry.unregister_match(@registry, agent_id, %{call_id: call.id})
     end
@@ -278,7 +278,7 @@ defmodule Wardrik.LLM.ToolRunner do
   defp noted(output, note), do: %{"result" => output, "note" => note}
 
   defp reap(call, span, reason) do
-    Scope.close(span, {:error, reason})
+    Run.close(span, {:error, reason})
     Call.answer(call, {:error, "Tool crashed: #{inspect(reason)}"})
   end
 

@@ -58,7 +58,7 @@
       "Wardrik.Ledger.Store",
       "Wardrik.Operations.Ask",
       "Wardrik.Principal",
-      "Wardrik.Scope",
+      "Wardrik.Run",
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",

@@ -59,7 +59,7 @@ defmodule WardrikMCP do
   @behaviour Wardrik.Tool
 
   alias Wardrik.Credential
-  alias Wardrik.Scope
+  alias Wardrik.Run
   alias Wardrik.Servers.Key
   alias Wardrik.Tool
   alias Wardrik.Tool.Result
@@ -172,7 +172,7 @@ defmodule WardrikMCP do
   @spec call(Key.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
   def call(%Key{} = key, name, input, %Wardrik.Tool.Context{} = context) do
     with %Offer{server: server} <- offer(key),
-         :ok <- serves(server, context.scope),
+         :ok <- serves(server, context.run),
          {:ok, principal} <- connected(server, context.credentials[server.credential]) do
       :ok = Connection.watch(key, principal)
       answer = key |> Connection.client(principal) |> request(server, name, input, context)
@@ -214,7 +214,7 @@ defmodule WardrikMCP do
   @spec authorize(Key.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
   def authorize(%Key{} = key, _input, %Wardrik.Tool.Context{} = context) do
     with %Offer{server: server} <- offer(key),
-         :ok <- serves(server, context.scope),
+         :ok <- serves(server, context.run),
          {:ok, _principal} <- connected(server, context.credentials[server.credential]) do
       Result.ok(%{"connected" => true, "server" => to_string(key)})
     else
@@ -259,8 +259,8 @@ defmodule WardrikMCP do
       {:error, Anubis.MCP.Error.transport(:timeout, %{server: to_string(server.key)})}
   end
 
-  defp serves(%Server{} = server, %Scope{} = scope) do
-    id = Scope.agent_id(scope)
+  defp serves(%Server{} = server, %Run{} = run) do
+    id = Run.agent_id(run)
 
     if Server.serves?(server, id),
       do: :ok,
