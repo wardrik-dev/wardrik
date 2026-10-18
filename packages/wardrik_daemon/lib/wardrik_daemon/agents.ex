@@ -66,9 +66,7 @@ defmodule WardrikDaemon.Agents do
   and the conversations of an agent a file that read declares, to what their
   definitions say under the policies read then and the ceiling of the token
   that sent them, and `problems/0` says why one does not build. Those of a
-  file that does not read are left as they were, as its agent is. It forgets the definitions the
-  API sent for agents the store no longer holds, which something other than
-  the API removed, as the TUI does.
+  file that does not read are left as they were, as its agent is.
 
   ## Defaults
 
@@ -141,17 +139,24 @@ defmodule WardrikDaemon.Agents do
     }
   end
 
-  @doc "Starts it, reading the files under the config directory of `:agents`."
-  @spec start_link(agents: t()) :: GenServer.on_start()
+  @doc """
+  Starts it, reading the files under the config directory of `:agents`, and
+  bringing the agents awake on `:host` to them.
+  """
+  @spec start_link(agents: t(), host: Wardrik.Host.t()) :: GenServer.on_start()
   def start_link(opts) do
-    GenServer.start_link(__MODULE__, Keyword.fetch!(opts, :agents), name: __MODULE__)
+    init = {Keyword.fetch!(opts, :agents), Keyword.fetch!(opts, :host)}
+    GenServer.start_link(__MODULE__, init, name: __MODULE__)
   end
 
   @doc "Reads every file again and brings the fleet to what they say."
   @spec reload(t()) :: :ok
   def reload(_agents), do: GenServer.call(__MODULE__, :reload, :timer.minutes(1))
 
-  @doc "Every node that runs a daemon, each of which reads its files again on `reload/1`."
+  @doc """
+  Every node that runs a daemon, each of which reads its files again on
+  `reload/1`, with the host its process was started with.
+  """
   @spec reloading(t()) :: [node()]
   def reloading(_agents), do: WardrikDaemon.daemons()
 
@@ -394,6 +399,9 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
+  @doc "The agents under `prefix` a definition is kept for, by a file or the HTTP API."
+  def defined(%__MODULE__{} = agents, prefix), do: Kept.defined(kept(agents), prefix)
+
   defp read_policies(%__MODULE__{table: table}) do
     case :ets.lookup(table, :loaded) do
       [{:loaded, loaded}] -> {:ok, loaded.policies}
@@ -416,7 +424,9 @@ defmodule WardrikDaemon.Agents do
     with :ok <- untaken(agents, path),
          {:ok, _options} <- created(agents, key),
          :ok <- write(path, AgentFile.text(created_fields(agents, key))) do
-      :ok = Wardrik.Definitions.reload_on(agents, reloading(agents))
+      for node <- reloading(agents),
+          do: :ok = :erpc.call(node, __MODULE__, :reload, [agents], :timer.minutes(1))
+
       written(agents, path)
     end
   end
@@ -638,12 +648,20 @@ defmodule WardrikDaemon.Agents do
   end
 
   @impl true
-  def init(%__MODULE__{} = agents) do
+  def init({%__MODULE__{} = agents, host}) do
     # A reading of a process before this one is not this one's: until its
     # first is done, the process is asked, and answers once it is.
     true = :ets.delete(agents.table, :loaded)
 
-    state = %{agents: agents, store: agents.store, nodes: agents.nodes, files: [], problems: []}
+    state = %{
+      agents: agents,
+      host: host,
+      store: agents.store,
+      nodes: agents.nodes,
+      files: [],
+      problems: []
+    }
+
     {:ok, state, {:continue, :load}}
   end
 
@@ -712,11 +730,12 @@ defmodule WardrikDaemon.Agents do
     put = MapSet.new(for {_path, {:ok, spec}} <- agent_files, do: spec.id)
 
     problems =
-      Kept.rebuild(kept(agents, policies_of(state)), only: &rebuilt?(&1, &2, put))
+      Kept.rebuild(kept(agents, policies_of(state)),
+        host: state.host,
+        only: &rebuilt?(&1, &2, put)
+      )
 
-    kept = kept(agents)
-    :ok = Kept.forget_removed(kept)
-    :ok = Kept.route(kept)
+    :ok = Kept.route(kept(agents))
 
     for {_path, {:error, message}} <- state.files, do: Logger.error(message)
     for message <- problems, do: Logger.error(message)
@@ -805,15 +824,14 @@ defmodule WardrikDaemon.Agents do
   end
 
   # The definition is kept before the agent starts, so whatever finds the
-  # agent finds what it is. An agent asleep is left asleep, and takes the
-  # definition as it wakes.
+  # agent finds what it is. An agent the store holds asleep is left asleep,
+  # and takes the definition as it wakes.
   defp put(agents, {:ok, definition, spec}) do
     :ok = Kept.keep(kept(agents), definition)
 
-    case Fleet.lookup(spec.id) do
-      %{asleep: true} -> {:ok, spec}
-      _awake_or_new -> started(spec)
-    end
+    if Fleet.held_pid(spec.id, wake: false) == nil and Fleet.stored?(spec.id),
+      do: {:ok, spec},
+      else: started(spec)
   end
 
   defp put(_agents, {:error, _message} = error), do: error
@@ -834,7 +852,8 @@ defimpl Wardrik.Definition, for: WardrikDaemon.Agents do
   defdelegate delete_trigger(agents, id, name), to: WardrikDaemon.Agents
   defdelegate editable(agents, id), to: WardrikDaemon.Agents
   defdelegate current(agents, id), to: WardrikDaemon.Agents
+  defdelegate defined(agents, prefix), to: WardrikDaemon.Agents
   defdelegate create(agents, id), to: WardrikDaemon.Agents
-  defdelegate reload(agents), to: WardrikDaemon.Agents
+  def reload(agents, _opts), do: WardrikDaemon.Agents.reload(agents)
   defdelegate reloading(agents), to: WardrikDaemon.Agents
 end

@@ -14,6 +14,7 @@ Wardrik.Test.start(
         {WardrikPolicy.Supervisor, store: Wardrik.Test.store()},
         {WardrikTrigger,
          store: Wardrik.Test.store(),
+         host: Wardrik.Test.host(),
          settings: %{
            WardrikTrigger.Feed => [
              req_options: [plug: {Req.Test, WardrikTrigger.Feed}, retry: false]

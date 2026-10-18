@@ -49,7 +49,11 @@ defmodule Wardrik.APITest do
 
     {:ok, _message} = Wardrik.agent_ask(session, id, "ship it")
     assert_receive :asked, 5_000
-    assert Wardrik.Test.Fleet.await_update(fn -> Wardrik.Fleet.lookup(id).status == :parked end)
+
+    assert Wardrik.Test.Fleet.await_update(fn ->
+             Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()).status == :parked
+           end)
+
     id
   end
 

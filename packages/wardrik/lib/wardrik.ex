@@ -227,7 +227,7 @@ defmodule Wardrik do
       {WardrikStore, store},
       {Wardrik.Core, host: host, fleet: fleet},
       {WardrikPolicy.Supervisor, store: store},
-      {WardrikTrigger, store: store}
+      {WardrikTrigger, store: store, host: host}
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)
@@ -275,13 +275,13 @@ defmodule Wardrik do
 
     with :ok <- said(text, opts[:id]),
          {:ok, _caller} <- on_agent(session, agent, :message),
-         {:ok, %Snapshot{sequence: sequence}} <- agent_snapshot(agent) do
+         {:ok, %Snapshot{sequence: sequence}} <- agent_snapshot(agent, session.host) do
       message =
         Message.new(text, opts[:id], sender: session.principal, reply_to: session.reply_to)
 
       message = %{message | sequence: sequence}
 
-      case Agent.queue(agent, message) do
+      case Agent.queue(agent, message, host: session.host) do
         :ok -> {:ok, message}
         {:error, :not_found} -> {:error, Error.no_agent(agent)}
       end
@@ -467,7 +467,7 @@ defmodule Wardrik do
           {:ok, Wardrik.Call.Ask.link()} | {:error, Error.t()}
   def agent_authorization_read(%Session{} = session, %AgentID{} = agent, call) do
     with {:ok, _caller} <- on_agent(session, agent, :decide),
-         {:ok, calls} <- parked(agent),
+         {:ok, calls} <- parked(agent, session.host),
          do: authorization(Enum.find(calls, &(elem(&1, 0).id == call)), agent, call)
   end
 
@@ -479,8 +479,8 @@ defmodule Wardrik do
   defp authorization(nil, agent, call),
     do: {:error, Error.new(:not_found, "#{agent} is not waiting on #{call}.")}
 
-  defp parked(agent) do
-    case Agent.parked(agent) do
+  defp parked(agent, host) do
+    case Agent.parked(agent, host: host) do
       {:error, :not_found} -> {:error, Error.no_agent(agent)}
       calls -> {:ok, calls}
     end
@@ -490,11 +490,12 @@ defmodule Wardrik do
   @doc group: "Talking to an agent"
   @spec agent_read(Session.t(), AgentID.t()) :: {:ok, Snapshot.t()} | {:error, Error.t()}
   def agent_read(%Session{} = session, %AgentID{} = agent) do
-    with {:ok, _caller} <- on_agent(session, agent, :read), do: agent_snapshot(agent)
+    with {:ok, _caller} <- on_agent(session, agent, :read),
+         do: agent_snapshot(agent, session.host)
   end
 
-  defp agent_snapshot(agent) do
-    case Agent.snapshot(agent) do
+  defp agent_snapshot(agent, host) do
+    case Agent.snapshot(agent, host: host) do
       {:error, :not_found} -> {:error, Error.no_agent(agent)}
       snapshot -> {:ok, snapshot}
     end
@@ -509,7 +510,7 @@ defmodule Wardrik do
   @spec agent_clear(Session.t(), AgentID.t()) :: {:ok, Snapshot.t()} | {:error, Error.t()}
   def agent_clear(%Session{} = session, %AgentID{} = agent) do
     with {:ok, caller} <- on_agent(session, agent, :message),
-         :ok <- cleared(Agent.clear(agent), agent) do
+         :ok <- cleared(Agent.clear(agent, host: caller.host), agent) do
       audit(caller, [{:agent_cleared, agent}])
       agent_read(session, agent)
     end
@@ -530,7 +531,8 @@ defmodule Wardrik do
   @doc group: "Talking to an agent"
   @spec agents_list(Session.t(), Prefix.t()) :: {:ok, [Member.t()]} | {:error, Error.t()}
   def agents_list(%Session{} = session, prefix) do
-    with {:ok, _caller} <- under(session, prefix, :read), do: {:ok, Fleet.list(prefix)}
+    with {:ok, _caller} <- under(session, prefix, :read),
+         do: {:ok, Fleet.list(prefix, host: session.host)}
   end
 
   @doc """
@@ -544,8 +546,8 @@ defmodule Wardrik do
     with {:ok, _caller} <- under(session, prefix, :read) do
       {:ok,
        for(
-         %Member{status: :parked, id: id} <- Fleet.list(prefix),
-         {:ok, calls} <- [parked(id)],
+         %Member{status: :parked, id: id} <- Fleet.list(prefix, host: session.host),
+         {:ok, calls} <- [parked(id, session.host)],
          waiting <- calls,
          do: {id, waiting}
        )}
@@ -568,7 +570,7 @@ defmodule Wardrik do
          {:ok, _pid} <-
            started(Fleet.put(%{spec | hooks: Grant.held(caller.grant, spec.hooks)}), agent) do
       audit(caller, [{:agent_defined, agent}])
-      agent_snapshot(agent)
+      agent_snapshot(agent, caller.host)
     end
   end
 
@@ -643,7 +645,7 @@ defmodule Wardrik do
          {from, spec} = from(caller, agent),
          {:ok, actions} <- spawn(caller, agent, {from, spec}, opts[:node]) do
       audit(caller, actions)
-      {:ok, %Spawned{member: Fleet.lookup(agent), from: from}}
+      {:ok, %Spawned{member: Fleet.lookup(agent, host: caller.host), from: from}}
     end
   end
 
@@ -664,7 +666,8 @@ defmodule Wardrik do
   end
 
   defp from(caller, agent) do
-    case {Fleet.lookup(agent), Definition.current(Host.definitions(caller.host), agent)} do
+    case {Fleet.lookup(agent, host: caller.host),
+          Definition.current(Host.definitions(caller.host), agent)} do
       {%Member{asleep: false}, _current} -> {:running, nil}
       {_member, {:ok, spec}} -> {:definition, spec}
       {%Member{asleep: true}, :none} -> {:store, nil}
@@ -720,7 +723,7 @@ defmodule Wardrik do
     with {:ok, caller, moving} <- moving(session, agent, node),
          {:ok, actions} <- moved(moving) do
       audit(caller, actions)
-      member(agent)
+      member(agent, session.host)
     end
   end
 
@@ -738,7 +741,7 @@ defmodule Wardrik do
   defp moving(session, agent, node) do
     with {:ok, caller} <- on_deployment(session, :define),
          :ok <- deployed(node),
-         {:ok, member} <- member(agent) do
+         {:ok, member} <- member(agent, session.host) do
       from = if member.asleep, do: :asleep, else: member.node
       {:ok, caller, %Moving{agent: agent, from: from, to: node, status: member.status}}
     end
@@ -756,8 +759,8 @@ defmodule Wardrik do
     end
   end
 
-  defp member(agent) do
-    case Fleet.lookup(agent) do
+  defp member(agent, host) do
+    case Fleet.lookup(agent, host: host) do
       nil -> {:error, Error.no_agent(agent)}
       member -> {:ok, member}
     end
@@ -772,7 +775,7 @@ defmodule Wardrik do
   @spec agent_cancel(Session.t(), AgentID.t()) :: :ok | {:error, Error.t()}
   def agent_cancel(%Session{} = session, %AgentID{} = agent) do
     with {:ok, caller} <- on_agent(session, agent, :message),
-         {:ok, member} <- member(agent),
+         {:ok, member} <- member(agent, session.host),
          do: audit(caller, for(id <- cancelled([member]), do: {:agent_cancelled, id}))
   end
 
@@ -781,7 +784,7 @@ defmodule Wardrik do
   @spec agents_cancel(Session.t(), Prefix.t()) :: {:ok, [AgentID.t()]} | {:error, Error.t()}
   def agents_cancel(%Session{} = session, prefix) do
     with {:ok, caller} <- under(session, prefix, :message) do
-      cancelled = cancelled(Fleet.list(prefix))
+      cancelled = cancelled(Fleet.list(prefix, host: session.host))
       audit(caller, for(id <- cancelled, do: {:agent_cancelled, id, prefix}))
       {:ok, cancelled}
     end
@@ -805,9 +808,9 @@ defmodule Wardrik do
   @spec agent_stop(Session.t(), AgentID.t()) :: {:ok, Member.t()} | {:error, Error.t()}
   def agent_stop(%Session{} = session, %AgentID{} = agent) do
     with {:ok, caller} <- on_agent(session, agent, :define),
-         {:ok, member} <- member(agent) do
+         {:ok, member} <- member(agent, session.host) do
       :ok = stopped(caller, member)
-      member(agent)
+      member(agent, session.host)
     end
   end
 
@@ -839,10 +842,10 @@ defmodule Wardrik do
   end
 
   defp forgotten(caller, agent, kept) do
-    running = Fleet.lookup(agent) != nil
-    if running, do: :ok = Fleet.forget(agent)
+    stored = Fleet.stored?(agent)
+    if stored, do: :ok = Fleet.forget(agent)
 
-    if running or kept,
+    if stored or kept,
       do: audit(caller, [{:agent_forgotten, agent}]),
       else: {:error, Error.no_agent(agent)}
   end
@@ -911,7 +914,8 @@ defmodule Wardrik do
       definitions = Host.definitions(caller.host)
 
       checked =
-        for %Member{id: id} <- Fleet.list(prefix), do: {id, Definition.editable(definitions, id)}
+        for %Member{id: id} <- Fleet.list(prefix, host: caller.host),
+            do: {id, Definition.editable(definitions, id)}
 
       case {for({id, :ok} <- checked, do: id),
             for({id, {:error, :conflict, why}} <- checked, do: {id, why})} do
@@ -961,9 +965,9 @@ defmodule Wardrik do
 
   # The node `agent` runs on, whose tool runner holds its calls.
   defp awake(agent) do
-    case Fleet.lookup(agent) do
-      %Member{asleep: false, node: node} -> {:ok, node}
-      _asleep_or_none -> {:error, Error.no_agent(agent)}
+    case Fleet.held_pid(agent, wake: false) do
+      nil -> {:error, Error.no_agent(agent)}
+      pid -> {:ok, node(pid)}
     end
   end
 
@@ -1342,7 +1346,9 @@ defmodule Wardrik do
   @spec deployment_nodes(Session.t()) :: {:ok, Nodes.t()} | {:error, Error.t()}
   def deployment_nodes(%Session{} = session) do
     with {:ok, _caller} <- on_deployment(session, :read) do
-      {asleep, running} = Enum.split_with(Fleet.list(), & &1.asleep)
+      {asleep, running} =
+        Enum.split_with(Fleet.list(Prefix.all(), host: session.host), & &1.asleep)
+
       counts = Enum.frequencies_by(running, & &1.node)
       nodes = for node <- Fleet.nodes(), do: {node, Map.get(counts, node, 0)}
       {:ok, %Nodes{nodes: nodes, asleep: length(asleep)}}
@@ -1365,7 +1371,7 @@ defmodule Wardrik do
           {:error, Error.new(:unsupported, "This deployment reads no definitions again.")}
 
         nodes ->
-          :ok = Definitions.reload_on(definitions, nodes)
+          :ok = Definitions.reload_on(caller.host, nodes)
           audited(caller, [{:agents_reloaded, nodes}], nodes)
       end
     end

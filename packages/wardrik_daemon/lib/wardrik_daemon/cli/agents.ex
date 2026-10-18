@@ -67,7 +67,7 @@ defmodule WardrikDaemon.CLI.Agents do
   # -- ls -----------------------------------------------------------------------
 
   defp ls(words, opts) do
-    with {:ok, members} <- picked(words) do
+    with {:ok, members} <- picked(words, opts) do
       case members do
         [] when words == [] -> {:ok, "No agents."}
         [] -> {:ok, "No agent matches #{Enum.join(words, " ")}."}
@@ -76,15 +76,16 @@ defmodule WardrikDaemon.CLI.Agents do
     end
   end
 
-  defp listed(words, _opts) do
-    with {:ok, members} <- picked(words),
+  defp listed(words, opts) do
+    with {:ok, members} <- picked(words, opts),
          do: {:ok, %{"agents" => Enum.map(members, &Resource.agent/1)}}
   end
 
-  defp picked(words) do
+  defp picked(words, opts) do
     case Filter.parse(Enum.join(words, " ")) do
       {:ok, filter} ->
-        {:ok, Enum.filter(Fleet.list(), &Filter.match?(filter, &1, &1.status == :parked))}
+        members = Fleet.list(Wardrik.AgentID.Prefix.all(), host: opts[:session].host)
+        {:ok, Enum.filter(members, &Filter.match?(filter, &1, &1.status == :parked))}
 
       {:error, word} ->
         {:error,
@@ -159,9 +160,11 @@ defmodule WardrikDaemon.CLI.Agents do
 
   # The snapshot wakes an agent asleep, so the fleet then shows it awake.
   defp show([key], opts) do
-    case Agent.snapshot(key) do
+    host = opts[:session].host
+
+    case Agent.snapshot(key, host: host) do
       {:error, :not_found} -> {:error, "No agent runs under #{key}."}
-      snapshot -> {:ok, &shown(Fleet.lookup(key), snapshot, defined(opts, key), &1)}
+      snapshot -> {:ok, &shown(Fleet.lookup(key, host: host), snapshot, defined(opts, key), &1)}
     end
   end
 

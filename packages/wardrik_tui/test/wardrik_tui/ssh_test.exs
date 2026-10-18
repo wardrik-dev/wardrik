@@ -53,9 +53,15 @@ defmodule WardrikTUI.SSHTest do
     id = AgentID.new!("first", org: org)
     {:ok, _pid} = Fleet.spawn(id)
     on_exit(fn -> Fleet.forget_under(AgentID.Prefix.new!(org: org)) end)
-    Wardrik.Test.Fleet.await_update(fn -> Enum.any?(Fleet.list(), &(&1.id == id)) end)
 
-    [first | _rest] = Fleet.list()
+    Wardrik.Test.Fleet.await_update(fn ->
+      Enum.any?(
+        Fleet.list(Wardrik.AgentID.Prefix.all(), host: Wardrik.Test.host()),
+        &(&1.id == id)
+      )
+    end)
+
+    [first | _rest] = Fleet.list(Wardrik.AgentID.Prefix.all(), host: Wardrik.Test.host())
 
     {:ok, pid} =
       WardrikTUI.SSH.start_link(

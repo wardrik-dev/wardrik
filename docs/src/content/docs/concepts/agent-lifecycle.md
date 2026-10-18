@@ -77,6 +77,9 @@ a node with room for it. When a node is lost, its agents start again on the othe
   `agent.stopped` with the reason `idle`.
 - **Reload and sleep.** `wardrik reload` wakes no agent; a sleeping one takes its file or
   definition as it stands when it next wakes.
+- **Nothing stored.** An agent with a file or definition, but nothing in the store, is listed as
+  asleep, and starts from its definition when asked. So does one a new release can't read; see
+  [Upgrade and back up](/run/upgrade-and-back-up/#details).
 - **`idle_timeout`** goes in an agent file or a definition, or in `config.yaml`'s `defaults` for
   every agent that sets none.
 - **Clusters.** Each node reads its own `agents/`, and an agent stops only once no node's files

@@ -27,9 +27,11 @@ defmodule Wardrik.Agent do
   when its node is lost. Start one with `Wardrik.Fleet.spawn/2`.
 
   Every function here takes a pid or a `Wardrik.AgentID`, and an ID nothing
-  holds answers `{:error, :not_found}`.
+  holds answers `{:error, :not_found}`. Given an ID, each takes the
+  `Wardrik.Host` whose definitions start an agent the store does not hold,
+  as `:host`; see `Wardrik.Fleet.whereis/2`.
 
-      Wardrik.Agent.ask(~A"acme/@jon/researcher", "What changed this week?")
+      Wardrik.Agent.ask(~A"acme/@jon/researcher", "What changed this week?", host: host)
 
   ## Sleeping
 
@@ -40,9 +42,9 @@ defmodule Wardrik.Agent do
   person does not keep it awake.
 
   Given its ID, every function here but `interrupt/1` reaches the agent
-  through `Wardrik.Fleet.whereis/2`, which wakes a sleeping one from the store;
-  `interrupt/1` has nothing to stop in one asleep. Each call, cast and
-  finished turn counts as something done.
+  through `Wardrik.Fleet.whereis/2`, which wakes a sleeping one from the
+  store, or starts one from its definition; `interrupt/1` has nothing to stop
+  in one asleep. Each call, cast and finished turn counts as something done.
 
   ## Interrupting
 
@@ -225,8 +227,9 @@ defmodule Wardrik.Agent do
 
   `:idle_timeout` is how long the agent may have nothing to do before it
   sleeps, in milliseconds or `:infinity`; see "Sleeping" above. `:wake_only`
-  starts nothing new: the agent comes up only from what the store holds, and
-  one the store does not hold deletes itself as it starts.
+  starts nothing the host does not hold: the agent comes up from what the
+  store holds, or else from its definition, and one with neither deletes
+  itself as it starts.
 
   `:grace` is how long an interrupted turn is given to answer before it is
   killed, #{State.default_grace()}ms by default. `:runner` and `:resumer` are
@@ -243,10 +246,13 @@ defmodule Wardrik.Agent do
   resumed with no decisions, so its new hooks decide the calls it waits on:
   each goes ahead, is refused, or waits again on what the new hooks ask.
 
-      Wardrik.Agent.configure(~A"acme/@jon/researcher", config: config, hooks: hooks)
+      Wardrik.Agent.configure(~A"acme/@jon/researcher", config: config, hooks: hooks, host: host)
   """
   @spec configure(agent(), keyword()) :: :ok | {:error, :not_found}
-  def configure(agent, opts) when is_list(opts), do: call(agent, {:configure, opts})
+  def configure(agent, opts) when is_list(opts) do
+    {whereis, opts} = Keyword.split(opts, [:host])
+    call(agent, {:configure, opts}, whereis)
+  end
 
   @doc """
   Queues a message for the agent to answer.
@@ -258,7 +264,7 @@ defmodule Wardrik.Agent do
   `:labels` are what the message holds, as `Wardrik.Label`s, which its turn
   carries from its start: `["outside"]` for a message from someone who is not
   the agent's own. `:reply_to` lists the agents its answer goes to, besides
-  the log; see "Answering another agent" above.
+  the log; see "Answering another agent" above. `:host` is as above.
   """
   @spec ask(agent(), String.t(), keyword()) :: :ok | {:error, :not_found}
   def ask(agent, question, opts \\ []) when is_binary(question) and is_list(opts) do
@@ -269,22 +275,22 @@ defmodule Wardrik.Agent do
         reply_to: Keyword.get(opts, :reply_to, [])
       )
 
-    queue(agent, message)
+    queue(agent, message, Keyword.take(opts, [:host]))
   end
 
   @doc "Queues `message` for the agent to answer, as `ask/3` does with the message it makes."
-  @spec queue(agent(), Message.t()) :: :ok | {:error, :not_found}
-  def queue(agent, %Message{} = message), do: cast(agent, {:ask, message})
+  @spec queue(agent(), Message.t(), host: Wardrik.Host.t()) :: :ok | {:error, :not_found}
+  def queue(agent, %Message{} = message, opts \\ []), do: cast(agent, {:ask, message}, opts)
 
-  @spec get_context(agent()) :: Context.t() | {:error, :not_found}
-  def get_context(agent), do: call(agent, :get_context)
+  @spec get_context(agent(), host: Wardrik.Host.t()) :: Context.t() | {:error, :not_found}
+  def get_context(agent, opts \\ []), do: call(agent, :get_context, opts)
 
-  @spec status(agent()) :: status() | {:error, :not_found}
-  def status(agent), do: call(agent, :status)
+  @spec status(agent(), host: Wardrik.Host.t()) :: status() | {:error, :not_found}
+  def status(agent, opts \\ []), do: call(agent, :status, opts)
 
   @doc "Reads conversation, lifecycle state, and durable identity in one call."
-  @spec snapshot(agent()) :: Snapshot.t() | {:error, :not_found}
-  def snapshot(agent), do: call(agent, :snapshot)
+  @spec snapshot(agent(), host: Wardrik.Host.t()) :: Snapshot.t() | {:error, :not_found}
+  def snapshot(agent, opts \\ []), do: call(agent, :snapshot, opts)
 
   @doc """
   Accepts decisions only while their calls are parked, and only from a
@@ -301,14 +307,14 @@ defmodule Wardrik.Agent do
   @spec decide(agent(), map(), Caller.t()) ::
           :ok | {:error, :not_found | :not_parked | :stale_decision | :forbidden | :unrecorded}
   def decide(agent, decisions, %Caller{} = caller) when is_map(decisions),
-    do: call(agent, {:decide, decisions, caller})
+    do: call(agent, {:decide, decisions, caller}, host: caller.host)
 
   @doc """
   Empties this agent's history, keeping its config and queue.
   `{:error, :busy}` unless it is idle.
   """
-  @spec clear(agent()) :: :ok | {:error, :not_found | :busy}
-  def clear(agent), do: call(agent, :clear)
+  @spec clear(agent(), host: Wardrik.Host.t()) :: :ok | {:error, :not_found | :busy}
+  def clear(agent, opts \\ []), do: call(agent, :clear, opts)
 
   @doc """
   Stops whatever this agent is doing and discards whatever is queued.
@@ -317,7 +323,14 @@ defmodule Wardrik.Agent do
   which is the only way to get rid of one without answering it.
   """
   @spec interrupt(agent()) :: :ok | {:error, :not_found}
-  def interrupt(agent), do: cast(agent, :interrupt, wake: false)
+  def interrupt(pid) when is_pid(pid), do: GenServer.cast(pid, :interrupt)
+
+  def interrupt(%Wardrik.AgentID{} = id) do
+    case Fleet.held_pid(id, wake: false) do
+      nil -> {:error, :not_found}
+      pid -> interrupt(pid)
+    end
+  end
 
   @doc """
   Answers the calls a parked turn stopped on and carries it on.
@@ -330,33 +343,34 @@ defmodule Wardrik.Agent do
   names the `Wardrik.Principal` deciding, carried on each
   `Wardrik.Event.CallDecided` event. Unlike `decide/3`, it asks nobody's
   grant, so it is for code that already holds the agent, never for a
-  surface people decide through.
+  surface people decide through. `:host` is as `ask/3` takes it.
 
-      Wardrik.Agent.resume(~A"acme/@jon/researcher", %{"call_abc" => :approve})
+      Wardrik.Agent.resume(~A"acme/@jon/researcher", %{"call_abc" => :approve}, host: host)
       Wardrik.Agent.resume(pid, %{"call_abc" => {:approve, "Only to staging."}})
       Wardrik.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """
   @spec resume(agent(), %{String.t() => Turn.decision()}, keyword()) ::
           :ok | {:error, :not_found}
   def resume(agent, decisions, opts \\ []) when is_map(decisions) and is_list(opts),
-    do: cast(agent, {:resume, decisions, Keyword.get(opts, :by)})
+    do: cast(agent, {:resume, decisions, Keyword.get(opts, :by)}, Keyword.take(opts, [:host]))
 
   @doc """
   What this agent is waiting on, as `{call, prompt}` pairs, or `[]` when it is
   not parked.
   """
-  @spec parked(agent()) :: [{Wardrik.Tool.call(), String.t()}] | {:error, :not_found}
-  def parked(agent), do: call(agent, :parked)
+  @spec parked(agent(), host: Wardrik.Host.t()) ::
+          [{Wardrik.Tool.call(), String.t()}] | {:error, :not_found}
+  def parked(agent, opts \\ []), do: call(agent, :parked, opts)
 
-  defp cast(agent, message, opts \\ []) do
+  defp cast(agent, message, opts) do
     case resolve(agent, opts) do
       nil -> {:error, :not_found}
       pid -> GenServer.cast(pid, message)
     end
   end
 
-  defp call(agent, message) do
-    case resolve(agent, []) do
+  defp call(agent, message, opts) do
+    case resolve(agent, opts) do
       nil -> {:error, :not_found}
       pid -> GenServer.call(pid, message)
     end
@@ -371,19 +385,41 @@ defmodule Wardrik.Agent do
   def dump_state(%State{} = state), do: Stored.dump(state)
 
   # A state read from the store has a version; one with none is the state the
-  # caller handed over, for an agent the store did not hold.
+  # caller handed over, for an agent the store did not hold. One this release
+  # cannot read, as after a change to what an agent writes down, is rescued
+  # rather than left to crash every start: the agent starts as one the store
+  # does not hold.
   @impl DurableServer
   def load_state(nil, dumped), do: Stored.load(dumped)
-  def load_state(_old_vsn, dumped), do: %{Stored.load(dumped) | wake_only: false}
+
+  def load_state(_old_vsn, dumped) do
+    %{Stored.load(dumped) | wake_only: false}
+  rescue
+    error in [ArgumentError, KeyError, FunctionClauseError] ->
+      Logger.warning(
+        "#{dumped.agent_id} kept a state this release cannot read (#{inspect(error.__struct__)}); " <>
+          "it starts from its definition, where it has one"
+      )
+
+      State.new([wake_only: true], dumped.agent_id)
+  end
 
   # DurableServer's callback type leaves out the continue its server takes
-  # from `init`.
+  # from `init`. One the store held nothing of asks for its definition here,
+  # not in a continue: the meta `init` answers tells `Wardrik.Fleet.whereis/2`
+  # whether it is gone.
   @dialyzer {:nowarn_function, init: 2}
   @impl DurableServer
-  def init(%State{wake_only: true} = state, %{host: host}),
-    do:
-      {:ok, State.hosted(state, host), {:continue, :gone},
-       meta: Map.put(View.meta(state), :gone, true)}
+  def init(%State{wake_only: true} = state, %{host: host} = info) do
+    case Wardrik.Definition.current(Host.definitions(host), state.agent_id) do
+      {:ok, _spec} ->
+        init(%{state | wake_only: false}, info)
+
+      :none ->
+        {:ok, State.hosted(state, host), {:continue, :gone},
+         meta: Map.put(View.meta(state), :gone, true)}
+    end
+  end
 
   def init(%State{} = state, %{host: host}) do
     {:ok, State.hosted(state, host), {:continue, :open},
@@ -820,7 +856,7 @@ defmodule Wardrik.Agent do
   # Sent from a task, so an asker woken from the store holds up nothing here.
   defp apply_effect({:send, agent, message}, state) do
     Task.Supervisor.start_child(Wardrik.Tasks.supervisor(), fn ->
-      with {:error, :not_found} <- cast(agent, {:ask, message}),
+      with {:error, :not_found} <- cast(agent, {:ask, message}, host: state.host),
            do: Logger.info("#{agent} is gone, so #{message.id} was not sent to it")
     end)
 

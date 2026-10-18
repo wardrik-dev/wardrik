@@ -31,7 +31,10 @@ defmodule Wardrik.AgentTest do
   end
 
   defp roles(agent) do
-    agent |> Agent.get_context() |> Context.to_list() |> Enum.map(& &1.role)
+    agent
+    |> Agent.get_context(host: Wardrik.Test.host())
+    |> Context.to_list()
+    |> Enum.map(& &1.role)
   end
 
   # A synchronous call is a barrier: when it returns, every cast this process
@@ -680,7 +683,7 @@ defmodule Wardrik.AgentTest do
       send(resumed, :release)
 
       assert_receive %Event{payload: %Event.TurnFinished{}}
-      assert Agent.parked(key) == []
+      assert Agent.parked(key, host: Wardrik.Test.host()) == []
       assert roles(key) == [:user, :assistant]
     end
 
@@ -750,7 +753,8 @@ defmodule Wardrik.AgentTest do
     end
 
     test "configure/2 on an ID nothing holds says so" do
-      assert {:error, :not_found} = Agent.configure(Wardrik.AgentID.parse!("nobody/here"), [])
+      assert {:error, :not_found} =
+               Agent.configure(Wardrik.AgentID.parse!("nobody/here"), host: Wardrik.Test.host())
     end
 
     test "an agent started with none of them has an inert run" do

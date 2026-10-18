@@ -221,7 +221,12 @@ defmodule Wardrik.CatalogTest do
       front = echoing(acme("front"), "Noted.")
       reconciler = echoing(acme("reconciler"), "Two are open.")
 
-      :ok = Wardrik.Agent.ask(reconciler, "Read this page.", labels: ["outside"])
+      :ok =
+        Wardrik.Agent.ask(reconciler, "Read this page.",
+          labels: ["outside"],
+          host: Wardrik.Test.host()
+        )
+
       assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^reconciler}}
 
       run = run(front, Agents, allowing(["agent_ask"]))
@@ -258,7 +263,12 @@ defmodule Wardrik.CatalogTest do
       front = acme("front")
       reconciler = echoing(acme("reconciler"), "Read.")
 
-      :ok = Wardrik.Agent.ask(reconciler, "Read this page.", labels: ["outside"])
+      :ok =
+        Wardrik.Agent.ask(reconciler, "Read this page.",
+          labels: ["outside"],
+          host: Wardrik.Test.host()
+        )
+
       assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^reconciler}}
 
       assert %Call{state: :done, labels: ["outside"], result: {:ok, %{"labels" => ["outside"]}}} =
@@ -297,7 +307,9 @@ defmodule Wardrik.CatalogTest do
       assert Grant.covers?(grant, AgentID.parse!("acme/anyone"))
       refute Grant.covers?(grant, AgentID.parse!("other/anyone"))
 
-      %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(worker))
+      %{user_state: state} =
+        :sys.get_state(Wardrik.Fleet.whereis(worker, host: Wardrik.Test.host()))
+
       assert Keyword.fetch!(state.run_opts, :hooks) == hooks
 
       assert Wardrik.Test.Audit.about("agents/#{worker}") |> List.last() ==

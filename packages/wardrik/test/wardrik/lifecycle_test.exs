@@ -170,7 +170,11 @@ defmodule Wardrik.LifecycleTest do
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "wait")
     assert_receive {:turn, _messages, turn}
-    Fleet.await_update(fn -> Wardrik.Fleet.lookup(id).status != :idle end)
+
+    Fleet.await_update(fn ->
+      Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()).status != :idle
+    end)
+
     {id, turn}
   end
 
@@ -179,12 +183,12 @@ defmodule Wardrik.LifecycleTest do
       id = defined_id()
 
       assert {:ok, %Snapshot{agent: ^id}} = Wardrik.agent_define(session(), id, %{})
-      assert Agent.status(id).model == "anthropic:claude-sonnet-5"
+      assert Agent.status(id, host: Wardrik.Test.host()).model == "anthropic:claude-sonnet-5"
 
       assert {:ok, %Snapshot{}} =
                Wardrik.agent_define(session(), id, %{"model" => "openai:gpt-5"})
 
-      assert Agent.status(id).model == "openai:gpt-5"
+      assert Agent.status(id, host: Wardrik.Test.host()).model == "openai:gpt-5"
 
       assert {:ok, %Wardrik.Definition.Read{fields: %{"model" => "openai:gpt-5"}}} =
                Wardrik.agent_definition_read(session(), id)
@@ -200,8 +204,8 @@ defmodule Wardrik.LifecycleTest do
 
       owned = defined_id("kept-owned")
       assert {:error, %Error{type: :conflict}} = Wardrik.agent_define(session(), owned, %{})
-      assert Wardrik.Fleet.lookup(id) == nil
-      assert Wardrik.Fleet.lookup(owned) == nil
+      assert Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()) == nil
+      assert Wardrik.Fleet.lookup(owned, host: Wardrik.Test.host()) == nil
     end
 
     test "never starts another agent than the one defined" do
@@ -211,7 +215,7 @@ defmodule Wardrik.LifecycleTest do
         Wardrik.agent_define(session(), id, %{"elsewhere" => true})
       end
 
-      assert Wardrik.Fleet.lookup(Kept.elsewhere()) == nil
+      assert Wardrik.Fleet.lookup(Kept.elsewhere(), host: Wardrik.Test.host()) == nil
     end
 
     test "holds the agent to the session's ceiling ahead of its own hooks" do
@@ -226,7 +230,7 @@ defmodule Wardrik.LifecycleTest do
                  %{}
                )
 
-      %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(id))
+      %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(id, host: Wardrik.Test.host()))
       assert [%Wardrik.Hook{name: "ceiling"}] = Keyword.fetch!(state.run_opts, :hooks)
     end
   end
@@ -293,7 +297,7 @@ defmodule Wardrik.LifecycleTest do
 
       assert Audit.about("agents/#{id}") == [{"agent.defined", @jon}]
       assert :ok = Wardrik.agent_forget(session(), id)
-      assert Wardrik.Fleet.lookup(id) == nil
+      assert Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()) == nil
       assert List.last(Audit.about("agents/#{id}")) == {"agent.forgotten", @jon}
 
       assert {:error, %Error{type: :not_found}} = Wardrik.agent_definition_read(session(), id)
@@ -304,7 +308,7 @@ defmodule Wardrik.LifecycleTest do
     test "removes an agent the host kept no definition for, unless the host keeps it" do
       {id, _agent} = Fleet.start_agent()
       assert :ok = Wardrik.agent_forget(session(), id)
-      assert Wardrik.Fleet.lookup(id) == nil
+      assert Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()) == nil
 
       {owned, _agent} = Fleet.start_agent([], Fleet.id("kept-owned"))
 
@@ -313,7 +317,7 @@ defmodule Wardrik.LifecycleTest do
 
       assert message == "#{owned} belongs to a file."
       assert {:error, %Error{type: :conflict}} = Wardrik.agent_forget(session(), owned)
-      assert Wardrik.Fleet.lookup(owned)
+      assert Wardrik.Fleet.lookup(owned, host: Wardrik.Test.host())
     end
 
     test "under a prefix removes what the host lets go, says why it keeps the rest" do
@@ -331,8 +335,8 @@ defmodule Wardrik.LifecycleTest do
       assert {:ok, %{^gone => :forgotten, ^owned => {:kept, ^why}}} =
                Wardrik.agents_forget(session, prefix)
 
-      assert Wardrik.Fleet.lookup(gone) == nil
-      assert Wardrik.Fleet.lookup(owned)
+      assert Wardrik.Fleet.lookup(gone, host: Wardrik.Test.host()) == nil
+      assert Wardrik.Fleet.lookup(owned, host: Wardrik.Test.host())
 
       assert [%{"data" => %{"under" => under}}] =
                for(e <- Audit.all(), e["subject"] == "agents/#{gone}", do: e)
@@ -429,7 +433,7 @@ defmodule Wardrik.LifecycleTest do
       assert {:ok, %Spawned{from: :definition, member: %Member{id: ^id}}} =
                Wardrik.agent_spawn(session(), id)
 
-      assert Agent.status(id).model == "openai:gpt-5"
+      assert Agent.status(id, host: Wardrik.Test.host()).model == "openai:gpt-5"
 
       fresh = defined_id("fresh")
       assert {:ok, %Spawned{from: :new}} = Wardrik.agent_spawn(session(), fresh)
@@ -505,9 +509,9 @@ defmodule Wardrik.LifecycleTest do
 
     none = session("test/", Grant.actions(), Host.new())
     assert {:error, %Error{type: :unsupported}} = Wardrik.agent_define(none, id, %{})
-    assert Wardrik.Fleet.lookup(id)
+    assert Wardrik.Fleet.lookup(id, host: Wardrik.Test.host())
 
     assert :ok = Wardrik.agent_forget(none, id)
-    assert Wardrik.Fleet.lookup(id) == nil
+    assert Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()) == nil
   end
 end

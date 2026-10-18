@@ -6,7 +6,8 @@ defmodule Wardrik.Fleet.Member do
   An agent awake is read from the cluster registry, so `status`, `pending`,
   `waiting_on` and `outcome` are what it last published through
   `Wardrik.Agent.State.View.meta/1`. One `asleep` is read from what it wrote
-  down as it stopped, and has no `pid` or `node`; it was idle or parked.
+  down as it stopped, and has no `pid` or `node`; it was idle or parked. One
+  its definition will start, which has written nothing, is asleep and idle.
   """
 
   @enforce_keys [:id, :pid, :node, :status, :pending, :waiting_on]
@@ -70,6 +71,19 @@ defmodule Wardrik.Fleet.Member do
       outcome: Map.get(meta, :outcome)
     }
   end
+
+  @doc false
+  @spec asleep(Wardrik.AgentID.t()) :: t()
+  def asleep(%Wardrik.AgentID{} = id),
+    do: %__MODULE__{
+      id: id,
+      pid: nil,
+      node: nil,
+      asleep: true,
+      status: :idle,
+      pending: 0,
+      waiting_on: []
+    }
 
   @doc false
   @spec asleep(Wardrik.AgentID.t(), Wardrik.Agent.State.Stored.t()) :: t()

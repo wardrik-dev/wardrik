@@ -73,7 +73,7 @@ defmodule WardrikDaemon.Test.Host do
   # Starts the daemon's definitions reading `dir`, as the test's own.
   def start_agents(dir) do
     Process.put(@agents, dir)
-    ExUnit.Callbacks.start_supervised!({Agents, agents: agents(dir)})
+    ExUnit.Callbacks.start_supervised!({Agents, agents: agents(dir), host: host()})
     agents(dir)
   end
 

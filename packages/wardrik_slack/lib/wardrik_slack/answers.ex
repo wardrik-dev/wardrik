@@ -66,7 +66,7 @@ defmodule WardrikSlack.Answers do
 
   defp pressed("wardrik_link", _payload, {_user, caller}, agent, call, _name) do
     if Wardrik.Grant.allows?(caller.grant, :decide, agent),
-      do: WardrikSlack.ephemeral(link(agent, call)),
+      do: WardrikSlack.ephemeral(link(agent, call, caller.host)),
       else: :refused
   end
 
@@ -94,8 +94,8 @@ defmodule WardrikSlack.Answers do
 
   # Read from the agent as the person presses, so it is never in a message
   # anyone else can see.
-  defp link(agent, call) do
-    case Wardrik.Agent.parked(agent) do
+  defp link(agent, call, host) do
+    case Wardrik.Agent.parked(agent, host: host) do
       {:error, :not_found} -> "That agent is not running."
       calls -> calls |> Enum.find(fn {parked, _prompt} -> parked.id == call end) |> link_text()
     end

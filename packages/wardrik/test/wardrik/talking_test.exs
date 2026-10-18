@@ -55,7 +55,10 @@ defmodule Wardrik.TalkingTest do
 
     # The runner hears of the turn before the agent's status reaches the
     # fleet, which is what a cancel reads.
-    Fleet.await_update(fn -> Wardrik.Fleet.lookup(id).status != :idle end)
+    Fleet.await_update(fn ->
+      Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()).status != :idle
+    end)
+
     {id, turn}
   end
 
@@ -241,7 +244,10 @@ defmodule Wardrik.TalkingTest do
 
     test "answers each call waiting on a person, with its agent" do
       id = parked_agent()
-      assert Fleet.await_update(fn -> Wardrik.Fleet.lookup(id).status == :parked end)
+
+      assert Fleet.await_update(fn ->
+               Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()).status == :parked
+             end)
 
       assert {:ok, [{^id, {%{id: "call_1"}, _prompt}}]} =
                Wardrik.agents_parked(session(), Prefix.of(id))

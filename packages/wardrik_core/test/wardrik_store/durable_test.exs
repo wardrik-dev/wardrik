@@ -1,6 +1,8 @@
 defmodule WardrikStore.DurableTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias DurableServer.Meta
   alias DurableServer.StoredState
   alias WardrikStore.Adapter.WardrikStore.Memory, as: Impl
@@ -173,15 +175,15 @@ defmodule WardrikStore.DurableTest do
     assert {:error, %ArgumentError{}} = Durable.get_object(state, key, [])
   end
 
-  test "keeps a server's metadata as an encoded binary, and reads it back", %{
+  test "keeps a server's metadata and state as encoded binaries, and reads them back", %{
     state: state,
     store: store
   } do
     key = unique()
     {:ok, _object} = Durable.put_object(state, key, stored(self()), [])
 
-    assert {%{"meta" => meta}, _vsn} = WardrikStore.lookup(store, :durable, key)
-    assert is_binary(meta)
+    assert {%{"meta" => meta, "state" => kept}, _vsn} = WardrikStore.lookup(store, :durable, key)
+    assert is_binary(meta) and is_binary(kept)
 
     assert {:ok, %{body: %StoredState{state: %{"turns" => 1}, meta: %Meta{pid: pid}}}} =
              Durable.get_object(state, key, [])
@@ -227,6 +229,33 @@ defmodule WardrikStore.DurableTest do
     assert unreadable == prefix <> "unreadable"
     assert {:error, %ArgumentError{}} = Durable.get_object(state, unreadable, [])
     assert {:error, %ArgumentError{}} = Durable.delete_object(state, unreadable)
+  end
+
+  test "takes an object whose state it cannot read as absent, and claims over it", %{
+    state: state,
+    store: store
+  } do
+    key = unique()
+    {:ok, _object} = Durable.put_object(state, key, stored(self()), [])
+
+    # A state naming an atom this node has never made, as one naming a field
+    # this release does not have would.
+    name = "unmade_#{System.unique_integer([:positive])}"
+    {value, _vsn} = WardrikStore.lookup(store, :durable, key)
+    unreadable = %{value | "state" => <<131, 119, byte_size(name), name::binary>>}
+    {:ok, _vsn} = WardrikStore.put(store, :durable, key, unreadable)
+
+    assert {:error, :not_found} = Durable.get_object(state, key, [])
+    assert [] = Enum.to_list(Durable.list_all_objects_stream(state, key, include_objects: true))
+
+    assert capture_log(fn ->
+             assert {:ok, {:claimed, _etag}} = Durable.try_claim(state, key, stored(self()))
+           end) =~ "#{key} held a state this release cannot read"
+
+    assert {:ok, %{body: %StoredState{state: %{"turns" => 1}}}} =
+             Durable.get_object(state, key, [])
+
+    assert {:error, :already_claimed} = Durable.try_claim(state, key, stored(self()))
   end
 
   test "passes through data that is no stored state", %{state: state} do

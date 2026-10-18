@@ -62,9 +62,11 @@ runs it, and how it is written as text, so `put/2`, `sync/2` and the listings
 take every kind alike, and a new kind is a struct, a server and that protocol.
 
 ```elixir
+host = Wardrik.Host.new(store: store, triggers: WardrikTrigger)
+
 children = [
-  {Wardrik.Core, host: Wardrik.Host.new(triggers: WardrikTrigger)},
-  {WardrikTrigger, secrets: &MyApp.Vault.secret/2}
+  {Wardrik.Core, host: host},
+  {WardrikTrigger, store: store, host: host, secrets: &MyApp.Vault.secret/2}
 ]
 
 WardrikTrigger.put(~A"acme/triage", WardrikTrigger.Webhook.new("issues",

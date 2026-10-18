@@ -118,14 +118,14 @@ defmodule WardrikTUI.App.Connection do
     # `:raw` delivers `Wardrik.Event.ToolCall` with its arguments.
     :ok = Bus.subscribe(agent_id, level: :raw)
 
-    case snapshot(agent) do
+    case snapshot(agent, term.assigns.session.host) do
       {:ok, snapshot} -> attach_snapshot(term, agent, agent_id, snapshot)
       {:error, _reason} -> assign(term, available?: false)
     end
   end
 
-  defp snapshot(agent) do
-    case Agent.snapshot(agent) do
+  defp snapshot(agent, host) do
+    case Agent.snapshot(agent, host: host) do
       {:error, reason} -> {:error, reason}
       snapshot -> {:ok, snapshot}
     end
@@ -233,8 +233,8 @@ defmodule WardrikTUI.App.Connection do
 
   # How many messages the conversation holds now, or the count last known when
   # the agent cannot be asked.
-  defp seen(%{assigns: %{agent: agent, seen: seen}}) do
-    case Agent.get_context(agent) do
+  defp seen(%{assigns: %{agent: agent, seen: seen, session: session}}) do
+    case Agent.get_context(agent, host: session.host) do
       %ReqLLM.Context{messages: messages} -> length(messages)
       {:error, :not_found} -> seen
     end
@@ -246,7 +246,7 @@ defmodule WardrikTUI.App.Connection do
     do: Display.append(term, View.connected(id))
 
   def connect_id(term, id) do
-    case Fleet.whereis(id) do
+    case Fleet.whereis(id, host: term.assigns.session.host) do
       nil ->
         Display.append(term, View.no_such_agent(id))
 

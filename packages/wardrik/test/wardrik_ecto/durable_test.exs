@@ -25,7 +25,7 @@ defmodule WardrikEcto.DurableTest do
     key = unique()
     gone = "gone#{System.unique_integer([:positive])}@nohost"
     meta = stored().meta |> Meta.encode_to_binary() |> Base.decode64!() |> elsewhere(gone)
-    body = %{"vsn" => 1, "state" => %{}, "meta" => Base.encode64(meta)}
+    body = %{"vsn" => 1, "state" => :erlang.term_to_binary(%{}), "meta" => Base.encode64(meta)}
 
     {:ok, _object} = Durable.put_object(state, key, body, [])
 

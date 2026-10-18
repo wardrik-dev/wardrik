@@ -13,6 +13,7 @@ defmodule WardrikDaemon.CLITest do
 
   alias ReqLLM.Context
   alias Wardrik.Agent
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Event
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Audit
@@ -57,7 +58,10 @@ defmodule WardrikDaemon.CLITest do
   # as parked, and `parked` reads the fleet.
   defp await_parked(key) do
     Wardrik.Test.Fleet.await_update(fn ->
-      Enum.any?(Wardrik.Fleet.list(), &(&1.id == key and &1.status == :parked))
+      Enum.any?(
+        Wardrik.Fleet.list(Prefix.all(), host: Host.host()),
+        &(&1.id == key and &1.status == :parked)
+      )
     end)
   end
 
@@ -72,7 +76,7 @@ defmodule WardrikDaemon.CLITest do
       )
 
     :ok = Event.Bus.subscribe(key)
-    Agent.ask(agent, "ship it")
+    Agent.ask(agent, "ship it", host: Host.host())
     assert_receive %Event{payload: %Event.TurnParked{}}
 
     await_parked(key)
@@ -97,7 +101,7 @@ defmodule WardrikDaemon.CLITest do
       )
 
     :ok = Event.Bus.subscribe(key)
-    Agent.ask(agent, "open an issue")
+    Agent.ask(agent, "open an issue", host: Host.host())
     assert_receive %Event{payload: %Event.TurnParked{}}
 
     await_parked(key)
@@ -460,7 +464,7 @@ defmodule WardrikDaemon.CLITest do
     assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
 
     :ok = Event.Bus.subscribe(key)
-    Agent.ask(agent, "hello")
+    Agent.ask(agent, "hello", host: Host.host())
     assert_receive %Event{payload: %Event.TurnFinished{}}
 
     assert command(["history", key]) == {"user: hello\n\nassistant: hello back\n", 0}
@@ -471,7 +475,7 @@ defmodule WardrikDaemon.CLITest do
       Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "hello back"]})
 
     :ok = Event.Bus.subscribe(key)
-    Agent.ask(agent, "hello")
+    Agent.ask(agent, "hello", host: Host.host())
     assert_receive %Event{payload: %Event.TurnFinished{}}
 
     assert command(["clear", key]) == {"Cleared #{key}'s conversation.\n", 0}
@@ -576,7 +580,7 @@ defmodule WardrikDaemon.CLITest do
     org = "show-#{System.unique_integer([:positive])}"
     Host.declare(["acme", org])
     on_exit(fn -> File.rm_rf!(dir) end)
-    on_exit(fn -> Wardrik.Fleet.forget_under(Wardrik.AgentID.Prefix.parse!(org <> "/")) end)
+    on_exit(fn -> Wardrik.Fleet.forget_under(Prefix.parse!(org <> "/")) end)
     File.mkdir_p!(Path.join(dir, "agents"))
 
     File.write!(Path.join([dir, "agents", "counter.md"]), """
@@ -597,7 +601,10 @@ defmodule WardrikDaemon.CLITest do
 
     Host.start_agents(dir)
     key = Wardrik.AgentID.parse!("#{org}/counter")
-    Wardrik.Test.Fleet.await_update(fn -> Wardrik.Fleet.lookup(key) != nil end)
+
+    Wardrik.Test.Fleet.await_update(fn ->
+      Wardrik.Fleet.lookup(key, host: Host.host()) != nil
+    end)
 
     {output, 0} = command(["show", key])
     assert output =~ "╭─#{key}"
@@ -618,7 +625,7 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ ~r"tools +web_search"
 
     defined = Wardrik.AgentID.parse!("#{org}/defined")
-    {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(defined))
+    {:ok, grant} = Wardrik.Grant.new(Prefix.of(defined))
 
     {:ok, spec} =
       WardrikDaemon.Agents.put(Host.agents(), defined,

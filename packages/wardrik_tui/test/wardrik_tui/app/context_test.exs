@@ -134,9 +134,9 @@ defmodule WardrikTUI.App.ContextTest do
     submit(s, "/rm #{org}/ --yes")
     assert screen(s) =~ to_string(b)
     assert screen(s) =~ "/confirm goes ahead"
-    assert Fleet.whereis(b)
+    assert Fleet.whereis(b, host: Wardrik.Test.host())
     submit(s, "/confirm")
-    refute Fleet.whereis(b)
+    refute Fleet.whereis(b, host: Wardrik.Test.host())
   end
 
   test "snapshot identity survives shutdown but changes after deletion" do
