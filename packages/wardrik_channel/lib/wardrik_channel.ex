@@ -57,7 +57,8 @@ defmodule WardrikChannel do
     * `child_spec/1` is what a channel runs, such as its connection to the
       medium, started by `WardrikChannel.Supervisor` with the channel's
       options, its `:name`, and its `WardrikChannel.Context`.
-    * `deliver/2` posts a `WardrikChannel.Outbound` in a room.
+    * `deliver/2` posts a `WardrikChannel.Outbound` in a room, or shows
+      there what a thread's agent is doing.
     * `include?/3` says whether names `config.yaml` gives, as `approvers`
       name people, include someone it knows, in its own terms.
     * `request/2` answers what the medium sends over HTTP, such as the

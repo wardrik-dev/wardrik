@@ -8,9 +8,14 @@ defmodule WardrikChannel.Outbound do
       Slack channel's id
     * `:thread` - the thread in the room to post in, or `nil` for the room
       itself
-    * `:body` - `{:notice, notice}`, a `WardrikNotify.Notice`, or
+    * `:body` - `{:notice, notice}`, a `WardrikNotify.Notice`;
       `{:reply, text, answering}`, what is said in a thread, such as what
-      an agent answered, and the ids of the messages it answers, if any
+      an agent answered, and the ids of the messages it answers, if any;
+      `{:status, label}`, what the thread's agent is doing, in a few words,
+      shown until what is posted next in the thread takes it away, or `""`
+      clears it; or `{:stopped, answering}`, that a run in the thread
+      stopped before it answered the messages `answering`, which clears
+      its status. A channel with no status to show passes these two over
     * `:approvers` - whom it asks, as the channel names people; who may
       answer is what the token the host's `Wardrik.Issuer` issues them
       allows
@@ -22,7 +27,11 @@ defmodule WardrikChannel.Outbound do
   @enforce_keys [:installation, :room, :body]
   defstruct [:installation, :room, :thread, :body, approvers: [], to: :room]
 
-  @type body() :: {:notice, WardrikNotify.Notice.t()} | {:reply, String.t(), [String.t()]}
+  @type body() ::
+          {:notice, WardrikNotify.Notice.t()}
+          | {:reply, String.t(), [String.t()]}
+          | {:status, String.t()}
+          | {:stopped, [String.t()]}
 
   @type t() :: %__MODULE__{
           installation: WardrikChannel.Installation.t(),

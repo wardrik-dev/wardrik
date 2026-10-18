@@ -1,9 +1,12 @@
 defmodule WardrikChannel.ThreadsTest do
   use ExUnit.Case, async: true
 
+  alias ReqLLM.Context, as: Said
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Event.ToolStarted
   alias Wardrik.Fleet
+  alias Wardrik.LLM.Turn
   alias Wardrik.Principal
   alias Wardrik.Test.AgentRunners
   alias WardrikChannel.Approvers
@@ -30,6 +33,34 @@ defmodule WardrikChannel.ThreadsTest do
   @doc false
   def approving(approvers, _channel), do: %Approvers.Named{names: approvers}
 
+  @doc false
+  def working(test, %Turn{} = turn) do
+    send(test, {:working, self()})
+    work(turn)
+  end
+
+  # Starts each call it is told to, until it is released or interrupted.
+  defp work(turn) do
+    receive do
+      {:call, name} ->
+        Wardrik.Event.emit(turn.run.source, %ToolStarted{
+          call_id: name,
+          name: name,
+          arguments: %{},
+          idempotency_key: name,
+          decided_by: %{by: :default, hooks: []}
+        })
+
+        work(turn)
+
+      :release ->
+        Turn.done(turn, [Said.assistant("Done.")])
+
+      :interrupt ->
+        Turn.done(turn, [])
+    end
+  end
+
   # A channel of its own, delivering to the test, posted in by a
   # WardrikChannel.Replies of its own started with it, with a room bound to
   # an agent whose threads run on `runner`, and resume on `:resumer`.
@@ -40,7 +71,11 @@ defmodule WardrikChannel.ThreadsTest do
 
     channels =
       WardrikChannel.channels(
-        [{name, {WardrikChannel.Test.Adapter, test: self(), refusals: opts[:refusals]}}],
+        [
+          {name,
+           {WardrikChannel.Test.Adapter,
+            test: self(), refusals: opts[:refusals], unshown: opts[:unshown]}}
+        ],
         host:
           Wardrik.Host.new(
             store: Wardrik.Test.store(),
@@ -53,7 +88,12 @@ defmodule WardrikChannel.ThreadsTest do
         replies: replies
       )
 
-    start_supervised!({Replies, name: replies, channels: channels, store: Wardrik.Test.store()})
+    start_supervised!(
+      {Replies,
+       [name: replies, channels: channels, store: Wardrik.Test.store()] ++
+         Keyword.take(opts, [:throttle, :refresh])}
+    )
+
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
     {:ok, workspace} = Workspace.new(channels[name].context, "T1")
     {:bound, binding, _offer} = Rooms.joined(Room.new(workspace, "C1"), name: "books", by: @maria)
@@ -64,6 +104,16 @@ defmodule WardrikChannel.ThreadsTest do
 
   defp inbound(_workspace, fields),
     do: struct!(Inbound, [room: "C1", sender: @maria, mentioned?: true] ++ fields)
+
+  # What is posted next in `thread`, past the statuses shown there before it.
+  defp posted(thread) do
+    receive do
+      {:status, ^thread, _label} -> posted(thread)
+      {:delivered, %Outbound{thread: ^thread, body: body}, _channel} -> body
+    after
+      1_000 -> flunk("nothing was posted in #{thread}")
+    end
+  end
 
   test "asks the room's agent in a thread of its own, and posts there what it answers" do
     {context, binding} = bound({AgentRunners, :echo, [self(), "Two cases of Barolo."]})
@@ -316,5 +366,99 @@ defmodule WardrikChannel.ThreadsTest do
                     _channel}
 
     refute_receive {:delivered, %Outbound{body: {:reply, _text, ["7.1"]}}, _channel}, 200
+  end
+
+  test "shows what a thread's agent is doing, and the latest change once it may change" do
+    {context, _binding} = bound({__MODULE__, :working, [self()]}, throttle: 500)
+
+    assert {:asked, _agent} =
+             WardrikChannel.received(context, inbound(context, id: "10.1", text: "Look."))
+
+    assert_receive {:working, turn}
+    assert_receive {:status, "10.1", "thinking"}
+
+    send(turn, {:call, "web_search"})
+    send(turn, {:call, "fetch_page"})
+    assert_receive {:status, "10.1", "running web_search and fetch_page"}
+    refute_received {:status, "10.1", "running web_search"}
+
+    send(turn, :release)
+    assert posted("10.1") == {:reply, "Done.", ["10.1"]}
+  end
+
+  test "shows a status again while it stands, and nothing once the agent is idle" do
+    {context, _binding} = bound({__MODULE__, :working, [self()]}, throttle: 50, refresh: 150)
+
+    assert {:asked, _agent} =
+             WardrikChannel.received(context, inbound(context, id: "11.1", text: "Look."))
+
+    assert_receive {:working, turn}
+
+    for _shown <- 1..3, do: assert_receive({:status, "11.1", "thinking"})
+
+    send(turn, :release)
+    assert posted("11.1") == {:reply, "Done.", ["11.1"]}
+    refute_receive {:status, "11.1", _label}, 400
+  end
+
+  test "shows a status again once what is posted in the thread takes it away" do
+    {context, _binding} = bound({__MODULE__, :working, [self()]}, throttle: 300)
+
+    assert {:asked, _agent} =
+             WardrikChannel.received(context, inbound(context, id: "12.1", text: "Look."))
+
+    assert_receive {:working, first}
+    assert_receive {:status, "12.1", "thinking"}
+
+    more = inbound(context, thread: "12.1", id: "12.2", text: "And this.", mentioned?: false)
+    assert {:asked, _agent} = WardrikChannel.received(context, more)
+    send(first, :release)
+    assert posted("12.1") == {:reply, "Done.", ["12.1"]}
+
+    assert_receive {:working, second}
+    assert_receive {:status, "12.1", "thinking"}
+    send(second, :release)
+    assert posted("12.1") == {:reply, "Done.", ["12.2"]}
+  end
+
+  test "shows nothing while the agent waits on a person" do
+    {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]}, throttle: 50)
+
+    assert {:asked, _agent} =
+             WardrikChannel.received(context, inbound(context, id: "13.1", text: "Ship it."))
+
+    assert {:notice, %Notice{kind: :parked}} = posted("13.1")
+    refute_receive {:status, "13.1", _label}, 200
+  end
+
+  test "says a stopped run stopped, and shows nothing more" do
+    {context, _binding} = bound({__MODULE__, :working, [self()]}, throttle: 50)
+
+    assert {:asked, agent} =
+             WardrikChannel.received(context, inbound(context, id: "14.1", text: "Look."))
+
+    assert_receive {:working, _turn}
+    assert_receive {:status, "14.1", "thinking"}
+
+    :ok = Wardrik.Agent.interrupt(agent)
+    assert posted("14.1") == {:stopped, ["14.1"]}
+    refute_receive {:status, "14.1", _label}, 200
+  end
+
+  test "passes over a status the channel refuses, and shows the next change" do
+    {context, _binding} = bound({__MODULE__, :working, [self()]}, unshown: true, throttle: 50)
+
+    assert {:asked, _agent} =
+             WardrikChannel.received(context, inbound(context, id: "15.1", text: "Look."))
+
+    assert_receive {:working, turn}
+    assert_receive {:status, "15.1", "thinking"}
+    refute_receive {:status, "15.1", "thinking"}, 200
+
+    send(turn, {:call, "web_search"})
+    assert_receive {:status, "15.1", "running web_search"}
+
+    send(turn, :release)
+    assert_receive {:delivered, %Outbound{body: {:reply, "Done.", ["15.1"]}}, _channel}, 500
   end
 end

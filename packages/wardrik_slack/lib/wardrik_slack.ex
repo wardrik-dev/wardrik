@@ -30,6 +30,13 @@ defmodule WardrikSlack do
   out; what an agent answers in a thread is posted as Markdown, which Slack
   renders, and `WardrikSlack.Threads` marks the messages it answers.
 
+  While the agent works, the thread shows what it is doing as the app's
+  status, "Wardrik is running web_search…", set with
+  `assistant.threads.setStatus`, which the bot token's `chat:write` allows.
+  The next reply takes it away; a run stopped clears it, and takes :eyes:
+  from what it would have answered. Slack drops a status left two minutes,
+  and `WardrikChannel.Replies` shows it again before then.
+
   The calls a thread's agent waits on are asked of the channel's approvers
   directly, where it names any: each is sent them in the app's own messages
   with them, with a link to the thread, and the thread says who it waits
@@ -151,6 +158,16 @@ defmodule WardrikSlack do
   def deliver(%Outbound{installation: installation} = outbound, opts),
     do: post_out(outbound, [token: installation.token] ++ opts)
 
+  defp post_out(%Outbound{room: room, thread: thread, body: {:status, label}}, opts) do
+    status = %{channel_id: room, thread_ts: thread, status: status(label)}
+    post("assistant.threads.setStatus", Keyword.fetch!(opts, :token), status, req_options(opts))
+  end
+
+  defp post_out(%Outbound{room: room, body: {:stopped, answering}} = outbound, opts) do
+    :ok = WardrikSlack.Threads.stopped(room, answering, opts)
+    post_out(%{outbound | body: {:status, ""}}, opts)
+  end
+
   defp post_out(%Outbound{to: :approvers, approvers: [_ | _], thread: thread} = outbound, opts)
        when is_binary(thread) do
     {:notice, notice} = outbound.body
@@ -242,6 +259,10 @@ defmodule WardrikSlack do
   end
 
   defp req_options(opts), do: Keyword.get(opts, :req_options, [])
+
+  # Slack shows a status after the app's name.
+  defp status(""), do: ""
+  defp status(label), do: "is #{label}…"
 
   defp reply(""), do: %{text: "_It answered nothing._"}
 

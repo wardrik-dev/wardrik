@@ -134,4 +134,46 @@ defmodule WardrikSlackTest do
     assert_receive {:slack, "/api/chat.postMessage", posted}
     refute Map.has_key?(posted, "thread_ts")
   end
+
+  test "shows what a thread's agent is doing as the app's status, and clears it" do
+    opts = posting()
+    working = outbound(room: "C1", thread: "1.1", body: {:status, "running web_search"})
+
+    assert {:ok, _shown} = WardrikSlack.deliver(working, opts)
+
+    assert_receive {:slack, "/api/assistant.threads.setStatus",
+                    %{
+                      "channel_id" => "C1",
+                      "thread_ts" => "1.1",
+                      "status" => "is running web_search…"
+                    }}
+
+    assert {:ok, _cleared} = WardrikSlack.deliver(%{working | body: {:status, ""}}, opts)
+    assert_receive {:slack, "/api/assistant.threads.setStatus", %{"status" => ""}}
+  end
+
+  test "takes :eyes: from what a stopped run would have answered, and clears its status" do
+    opts = posting()
+    stopped = outbound(room: "C1", thread: "1.1", body: {:stopped, ["1.2"]})
+
+    assert {:ok, _cleared} = WardrikSlack.deliver(stopped, opts)
+
+    assert_receive {:slack, "/api/reactions.remove",
+                    %{"channel" => "C1", "timestamp" => "1.2", "name" => "eyes"}}
+
+    assert_receive {:slack, "/api/assistant.threads.setStatus",
+                    %{"thread_ts" => "1.1", "status" => ""}}
+
+    refute_received {:slack, "/api/reactions.add", _body}
+  end
+
+  test "answers why Slack refused a status, such as one rate limited" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      conn |> Plug.Conn.put_status(429) |> Req.Test.json(%{ok: false, error: "ratelimited"})
+    end)
+
+    working = outbound(room: "C1", thread: "1.1", body: {:status, "thinking"})
+
+    assert WardrikSlack.deliver(working, req_options: @req_options) == {:error, "ratelimited"}
+  end
 end
