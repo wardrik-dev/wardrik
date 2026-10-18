@@ -30,6 +30,14 @@ Every event is a CloudEvent: the envelope below, with the event's own data under
 
 ## Events
 
+### `wardrik.activity.changed`
+
+What the agent is doing changed, on the span of the event that changed it. Live: never stored.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `activity` | [activity](#activity) | yes |  |
+
 ### `wardrik.agent.cancelled`
 
 Someone dropped the turn an agent was taking, and what was queued behind it.
@@ -664,3 +672,32 @@ A call a run waits on a person for.
 | `tool_call_id` | string |  |  |
 | `name` | string |  | The tool the call is for, as the agent names it; none for a model's approval. |
 | `labels` | array of string |  | The labels of what the run had read, which may be what asked for the call: outside for content nobody on the agent's side wrote. |
+
+### `doing`
+
+One thing an agent is doing, as the type of the event that set it, with what that event names of it.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | string | yes | The type of the event that set it. One of `wardrik.run.started`, `wardrik.run.resumed`, `wardrik.run.interrupted`, `wardrik.message.started`, `wardrik.message.retrying`, `wardrik.step.started`, `wardrik.tool_call.started`, `wardrik.tool_call.completed`, `wardrik.tool_call.denied`. |
+| `message` | [message_ref](#message_ref) |  |  |
+| `attempt` | integer |  | Which try after the first comes next. |
+| `attempts` | integer |  | How many tries after the first there may be. |
+| `wait_ms` | [duration_ms](#duration_ms) |  |  |
+| `step` | object |  |  |
+| `step.name` | string | yes |  |
+| `tool` | object |  |  |
+| `tool.name` | string | yes |  |
+| `tool.call` | object | yes |  |
+| `tool.call.id` | string | yes |  |
+| `interrupts` | array of [interrupt](#interrupt) |  |  |
+
+### `activity`
+
+What an agent is doing now.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `doing` | array of [doing](#doing) | yes | Every tool call running, oldest first, or the one thing it is doing otherwise; none when it is idle. |
+| `since` | string (date-time) | yes | When it began what it is doing. |
+| `pending` | integer | yes | How many messages wait behind it. |
