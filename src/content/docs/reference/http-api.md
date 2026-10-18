@@ -359,6 +359,7 @@ The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event
 | `conversation.id` | string | yes | The key and generation; it changes when the agent is forgotten and started again. |
 | `status` | string | yes | One of `idle`, `running`, `parked`. |
 | `pending` | integer | yes |  |
+| `activity` | [activity](/reference/events/#activity) | yes |  |
 | `request` | object | yes |  |
 | `request.model` | string | yes |  |
 | `provider` | object |  |  |

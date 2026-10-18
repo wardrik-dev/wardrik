@@ -62,15 +62,16 @@ Each event is a [CloudEvent](https://cloudevents.io), with what it's about under
 | `conversation.compacted`, `conversation.cleared` | the history was summarised, or emptied |
 | `trigger.fired` | a trigger came round, and what came of it |
 | `agent.started` | the agent started on a node |
+| `activity.changed` | what the agent is doing now: thinking, running tools, retrying, waiting on a person |
 
 `run.interrupted` means a turn is waiting on a person; `run.cancelled` means it was stopped.
 
 ## Kept, and live
 
 Most events are kept for 30 days, each with a `sequence` that starts at 1 for each agent and goes up
-by one, with no gaps. Three are live only, with no sequence: `message.delta`, `reasoning.delta` and
-`tool_call.progress`. A client that wasn't connected misses them, but each reply is kept whole in
-`message.completed`.
+by one, with no gaps. Four are live only, with no sequence: `message.delta`, `reasoning.delta`,
+`tool_call.progress` and `activity.changed`. A client that wasn't connected misses them, but each
+reply is kept whole in `message.completed`, and the agent's snapshot says what it is doing.
 
 ## Following over HTTP
 
