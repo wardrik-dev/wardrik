@@ -76,7 +76,7 @@ defmodule WardrikDaemon.CLI.Tokens do
              opts[:as],
              name,
              [Role.bind(roles, scope)],
-             [policy: policy] ++ expires
+             policy ++ expires
            ) do
       token = Resource.token(issued)
 
@@ -127,18 +127,18 @@ defmodule WardrikDaemon.CLI.Tokens do
   defp policy(nil), do: {:ok, []}
 
   defp policy(name) do
-    with :error <- WardrikDaemon.Agents.policy(WardrikDaemon.Host.agents(), name) do
-      policies =
-        for {_path, {:ok, %WardrikPolicy{} = policy}} <-
-              WardrikDaemon.Agents.files(WardrikDaemon.Host.agents()),
-            do: policy
+    names =
+      for {_path, {:ok, %WardrikPolicy{name: held}}} <-
+            WardrikDaemon.Agents.files(WardrikDaemon.Host.agents()),
+          do: held
 
-      {:error, "policies/ has no policy #{name}" <> policy_names(policies)}
-    end
+    if name in names,
+      do: {:ok, [policy: name]},
+      else: {:error, "policies/ has no policy #{name}" <> policy_names(names)}
   end
 
   defp policy_names([]), do: ""
-  defp policy_names(policies), do: "; it has " <> Enum.map_join(policies, ", ", & &1.name)
+  defp policy_names(names), do: "; it has #{Enum.join(names, ", ")}"
 
   defp expires(nil), do: {:ok, []}
 
@@ -197,14 +197,8 @@ defmodule WardrikDaemon.CLI.Tokens do
       else: Enum.join(actions, ", ")
   end
 
-  # The policies a token's policy is, by name, and not the judges and
-  # budgets each holds beside its rules.
-  defp held(hooks) do
-    case for("policy/" <> name <- hooks, not String.contains?(name, "/"), do: name) do
-      [] -> ""
-      names -> ", under the policy #{Enum.join(names, ", ")}"
-    end
-  end
+  defp held(nil), do: ""
+  defp held(policy), do: ", under the policy #{policy}"
 
   defp until(nil), do: ""
   defp until(expires), do: ", until #{expires}"

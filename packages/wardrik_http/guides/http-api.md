@@ -49,9 +49,10 @@ days, or as long as `--expires` or `expires_in` says, and an expired token is re
 revoked token is refused, and the streams and worker sockets open on it are closed, at once on
 every node the revocation reaches and within 15 seconds on one it doesn't.
 
-A token's policy holds every agent it defines, ahead of the definition's own, so a definition can
-narrow what it allows and never widen it: what IAM calls a permissions boundary. It is made with
-`--policy`.
+A token's policy names a policy every agent it defines runs under, ahead of the definition's own,
+so a definition can narrow what it allows and never widen it: what IAM calls a permissions boundary.
+It is read by its name each time such an agent starts. It is made with `--policy`, or `policy` over
+the API, and is the maker's own where neither names one.
 
 ## Keys in paths
 
@@ -107,7 +108,7 @@ answers an agent with is its key.
 | `GET /v1/deployment/nodes` | the deployment's nodes, each with how many agents run on it, and how many sleep |
 | `GET /v1/deployment/audit` | a page of what people changed across the deployment, after `?starting_after=` |
 | `GET /v1/tokens` | every token, oldest first, never a secret |
-| `POST /v1/tokens` | makes a token from its `name`, `scope`, `roles` and `expires_in`, `201`, with its `secret`, given this once |
+| `POST /v1/tokens` | makes a token from its `name`, `scope`, `roles`, `policy` and `expires_in`, `201`, with its `secret`, given this once |
 | `DELETE /v1/tokens/{id}` | revokes the token, and answers it as it was |
 | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 

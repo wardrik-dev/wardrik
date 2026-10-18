@@ -21,8 +21,8 @@ defmodule WardrikDaemon.Issuer do
   `Wardrik.AgentID.Prefix`. Someone its `approvers` name, or the
   `approvers` of a `notify` target that posts in it, holds `approver` too;
   with `approvers: anyone`, everyone in it does. Someone its `admins` name
-  holds `approver`, and `definer` where `defaults` names a policy of
-  `policies/`, which becomes the token's policy, holding every agent they
+  holds `approver`, and `definer` where `defaults` names a policy, which
+  the token names as its policy, holding every agent they
   define. Whoever asked for a turn may decide what it waits on in any case
   (see `Wardrik.Agent.decide/3`), and a turn nobody asked for, such as a
   trigger's, is decided by those the channel names, or from a shell.
@@ -84,8 +84,8 @@ defmodule WardrikDaemon.Issuer do
     {roles, policy} =
       cond do
         include?(agents, Agents.admins(agents, channel), member) -> admin(agents)
-        decides?(agents, member) -> {@deciders, []}
-        true -> {@everyone, []}
+        decides?(agents, member) -> {@deciders, :none}
+        true -> {@everyone, :none}
       end
 
     %Token{
@@ -97,11 +97,9 @@ defmodule WardrikDaemon.Issuer do
 
   # An admin defines only under a policy the deployment names for it.
   defp admin(agents) do
-    with %{"policy" => name} when is_binary(name) <- Agents.defaults(agents),
-         {:ok, policy} <- Agents.policy(agents, name) do
-      {@deciders ++ [:definer], policy}
-    else
-      _none -> {@deciders, []}
+    case Agents.defaults(agents) do
+      %{"policy" => name} when is_binary(name) -> {@deciders ++ [:definer], name}
+      _none -> {@deciders, :none}
     end
   end
 

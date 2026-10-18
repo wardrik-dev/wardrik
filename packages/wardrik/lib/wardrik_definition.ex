@@ -27,8 +27,7 @@ defmodule WardrikDefinition do
     * `{:api, token}` - a definition sent with the `Wardrik.Token`
       `token`. It names no modules, writes no policy that holds after a
       label, and shares only the trees whose owners' agents the token
-      reaches. The token's policy is the host's to hold it under, ahead of
-      its own hooks
+      reaches. The policy the token names holds it, ahead of its own
     * `:defaults` - one the host wrote from its defaults, which no token
       sent. It names no modules and writes no policy that holds after a
       label
@@ -201,7 +200,7 @@ defmodule WardrikDefinition do
     spec = build(fields, system, context, file?, owner)
     within!(spec, owner, context, source)
 
-    {:ok, %{spec | id: id}}
+    {:ok, %{spec | id: id, hooks: bounded(source, context) ++ spec.hooks}}
   rescue
     error in [ArgumentError] -> {:error, Exception.message(error)}
   catch
@@ -315,6 +314,25 @@ defmodule WardrikDefinition do
   end
 
   defp within!(_spec, _owner, _context, _source), do: :ok
+
+  # The policy the token that sent a definition names, read each time its
+  # agent is built, as the policy a definition names is.
+  defp bounded({:api, %Wardrik.Token{policy: :none}}, _context), do: []
+
+  defp bounded({:api, %Wardrik.Token{policy: name}}, context) do
+    case Map.fetch(context.policies, name) do
+      {:ok, policy} ->
+        WardrikPolicy.hooks(%{policy | name: "policy/" <> name})
+
+      :error ->
+        invalid!(
+          "the token that defined it names the policy #{name}, which is not a policy in " <>
+            context.names.policies
+        )
+    end
+  end
+
+  defp bounded(_source, _context), do: []
 
   defp declared!(_org, %Context{orgs: :any}), do: :ok
 

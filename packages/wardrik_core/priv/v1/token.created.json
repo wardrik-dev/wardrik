@@ -32,11 +32,8 @@
       "description": "What it allows, on what; anything none states is denied."
     },
     "policy": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "The names of the hooks every agent it defines runs under, ahead of the agent's own."
+      "type": "string",
+      "description": "The policy every agent it defines runs under, ahead of the agent's own, by its name: what IAM calls a permissions boundary. Absent where it names none."
     },
     "expires": {
       "type": "string",
@@ -54,7 +51,6 @@
   "required": [
     "token",
     "principal",
-    "statements",
-    "policy"
+    "statements"
   ]
 }

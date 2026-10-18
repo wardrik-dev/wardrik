@@ -3,7 +3,7 @@ defmodule Wardrik.Catalog.Entry do
   A function of `Wardrik` as an agent is offered it: its `name`, such as
   `agent.trigger.set`, the action a token must allow for it, what it does
   in a line, and `run`, which acts on what the tool names with the tool's
-  input.
+  input and the call's `Wardrik.Tool.Context`.
 
   The tool supplies the subject, the agent or the prefix it acts on: the
   calling agent, or one it names. The input is the rest, as
@@ -23,7 +23,7 @@ defmodule Wardrik.Catalog.Entry do
   @type t() :: %__MODULE__{
           name: String.t(),
           summary: String.t(),
-          run: (Wardrik.Scope.t(), subject(), map() ->
+          run: (Wardrik.Scope.t(), subject(), map(), Wardrik.Tool.Context.t() ->
                   {:ok, term(), [Wardrik.Label.t()]} | {:error, Wardrik.Error.t()})
         }
 

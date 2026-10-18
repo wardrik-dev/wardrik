@@ -37,13 +37,13 @@ defmodule Wardrik.LifecycleTest do
     @ns :lifecycle_test_definitions
     @triggers :lifecycle_test_triggers
 
-    def put(_definitions, _id, definition: %{"refuse" => message}, token: _token),
+    def put(_definitions, _id, definition: %{"refuse" => message}, token: _token, held: _held),
       do: {:error, message}
 
-    def put(_definitions, _id, definition: %{"elsewhere" => true}, token: _token),
+    def put(_definitions, _id, definition: %{"elsewhere" => true}, token: _token, held: _held),
       do: {:ok, Spec.new(id: elsewhere())}
 
-    def put(host, id, definition: fields, token: _token) do
+    def put(host, id, definition: fields, token: _token, held: _held) do
       with :ok <- editable(host, id) do
         {:ok, _vsn} = WardrikStore.put(store(), @ns, to_string(id), fields)
         {:ok, spec(id, fields)}
@@ -100,7 +100,8 @@ defmodule Wardrik.LifecycleTest do
     end
 
     def create(host, id) do
-      with {:ok, _spec} <- put(host, id, definition: %{"model" => "openai:gpt-5"}, token: nil),
+      with {:ok, _spec} <-
+             put(host, id, definition: %{"model" => "openai:gpt-5"}, token: nil, held: []),
            do: {:ok, spec(id, %{"model" => "openai:gpt-5"})}
     end
 
@@ -214,21 +215,15 @@ defmodule Wardrik.LifecycleTest do
       assert Wardrik.Fleet.lookup(Kept.elsewhere(), host: Wardrik.Test.host()) == nil
     end
 
-    test "holds the agent to the token's policy, then the hooks held, ahead of its own" do
+    test "holds the agent to the hooks held, ahead of its own" do
       id = defined_id()
-      policy = [Wardrik.Hook.new("policy", Wardrik.Test.Tools.Rules, allow: [])]
       held = [Wardrik.Hook.new("held", Wardrik.Test.Tools.Rules, allow: [])]
-      scope = scope("test/", [:definer, :reader])
 
       assert {:ok, _snapshot} =
-               Wardrik.agent_define(%{scope | token: %{scope.token | policy: policy}}, id, %{},
-                 held: held
-               )
+               Wardrik.agent_define(scope("test/", [:definer, :reader]), id, %{}, held: held)
 
       %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(id, host: Wardrik.Test.host()))
-
-      assert [%Wardrik.Hook{name: "policy"}, %Wardrik.Hook{name: "held"}] =
-               Keyword.fetch!(state.run_opts, :hooks)
+      assert [%Wardrik.Hook{name: "held"}] = Keyword.fetch!(state.run_opts, :hooks)
     end
   end
 

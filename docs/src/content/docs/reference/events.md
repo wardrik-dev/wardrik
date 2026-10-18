@@ -462,7 +462,7 @@ Someone made an API token, which acts for whoever made it.
 | `token.name` | string | yes |  |
 | `principal` | [principal](#principal) | yes |  |
 | `statements` | array of [statement](#statement) | yes | What it allows, on what; anything none states is denied. |
-| `policy` | array of string | yes | The names of the hooks every agent it defines runs under, ahead of the agent's own. |
+| `policy` | string |  | The policy every agent it defines runs under, ahead of the agent's own, by its name: what IAM calls a permissions boundary. Absent where it names none. |
 | `expires` | string (date-time) |  | When it stops working. |
 | `actor` | [principal](#principal) |  |  |
 | `assumed_by` | [assumed_by](#assumed_by) |  |  |

@@ -103,8 +103,8 @@ defmodule Wardrik.Resource do
 
   @doc """
   A token as `Wardrik.Tokens` keeps it, never its secret: its id and name,
-  whom it acts for, what it allows on what, the names of the hooks of its
-  policy, when it was made, and when it expires.
+  whom it acts for, what it allows on what, the policy it names, when it
+  was made, and when it expires.
   """
   @spec token(Entry.t()) :: map()
   def token(%Entry{} = entry) do

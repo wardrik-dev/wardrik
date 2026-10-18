@@ -225,7 +225,7 @@ defmodule WardrikDaemon.Agents do
     with :ok <- creates(agents, installation),
          {:ok, id} <- created_id(agents, room, channel),
          :ok <- unkept(store, id, channel),
-         {:ok, spec} <- defined(agents, id, fields, :defaults),
+         {:ok, spec} <- defined(agents, id, fields, source: :defaults),
          {:ok, _pid} <- Fleet.put(spec) do
       :ok = Wardrik.Audit.record(agents.audit, {:agent_defined, id}, by: by)
       {:ok, %WardrikChannel.Offer{agent: id, description: description}}
@@ -291,16 +291,6 @@ defmodule WardrikDaemon.Agents do
   @spec orgs(t(), String.t()) :: [String.t()] | :all
   def orgs(agents, channel) when is_binary(channel),
     do: channel_setting(agents, :orgs, channel, [])
-
-  @doc """
-  The hooks of the policy `policies/` holds as `name`, as a token's policy
-  over the agents it defines, or `:error` where it holds none.
-  """
-  @spec policy(t(), String.t()) :: {:ok, [Wardrik.Hook.t()]} | :error
-  def policy(agents, name) when is_binary(name) do
-    with {:ok, policy} <- Map.fetch(policies(agents), name),
-         do: {:ok, WardrikPolicy.hooks(%{policy | name: "policy/" <> name})}
-  end
 
   defp creates(agents, installation) do
     if creatable?(agents, installation),
@@ -529,8 +519,9 @@ defmodule WardrikDaemon.Agents do
 
   @doc """
   The spec a definition sent to the HTTP API writes for the agent `key`, sent
-  with the `:token` given, which it keeps, routing its notices as it says;
-  or a conflict where an agent file declares it.
+  with the `:token` given, which it keeps with the hooks it is `:held` to,
+  routing its notices as it says; or a conflict where an agent file
+  declares it.
   """
   def put(%__MODULE__{} = agents, key, opts),
     do:
@@ -538,12 +529,12 @@ defmodule WardrikDaemon.Agents do
         agents,
         key,
         Keyword.fetch!(opts, :definition),
-        {:api, Keyword.fetch!(opts, :token)}
+        [source: {:api, Keyword.fetch!(opts, :token)}] ++ Keyword.take(opts, [:held])
       )
 
-  defp defined(%__MODULE__{} = agents, key, fields, source) do
+  defp defined(%__MODULE__{} = agents, key, fields, opts) do
     with {:ok, kept} <- editable_kept(agents, key),
-         do: Kept.define(kept, key, fields: fields, source: source)
+         do: Kept.define(kept, key, [fields: fields] ++ opts)
   end
 
   @doc "The definition kept for the agent `key`, as the HTTP API writes one."

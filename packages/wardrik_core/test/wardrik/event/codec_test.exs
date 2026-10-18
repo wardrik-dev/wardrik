@@ -178,7 +178,7 @@ defmodule Wardrik.Event.CodecTest do
     token = %Wardrik.Token{
       principal: Principal.new(:user, "jon"),
       scope: [Wardrik.Role.bind([:reader, :definer], prefix)],
-      policy: [Wardrik.Hook.new("policy/careful", Wardrik.Test.Tools.Rules, allow: [])],
+      policy: "careful",
       expires: ~U[2026-12-01 00:00:00Z]
     }
 
@@ -323,7 +323,7 @@ defmodule Wardrik.Event.CodecTest do
                    "resources" => ["acme/"]
                  }
                ],
-               "policy" => ["policy/careful"],
+               "policy" => "careful",
                "expires" => "2026-12-01T00:00:00Z"
              }
     end

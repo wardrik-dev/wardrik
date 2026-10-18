@@ -398,7 +398,7 @@ describe("tokens", () => {
       name: "ci",
       principal: { type: "user", id: "jon" },
       statements: [{ actions: ["agent.read"], resources: ["acme/"] }],
-      policy: [],
+      policy: "careful",
       created_at: "2026-10-18T00:00:00Z",
     };
     server.on("GET", "/v1/tokens", (_request, response) => json(response, 200, { tokens: [token] }));
@@ -410,7 +410,13 @@ describe("tokens", () => {
     assert.deepEqual(await wardrik.tokens.list(), { tokens: [token] });
 
     assert.deepEqual(
-      await wardrik.tokens.create({ name: "ci", scope: "acme/", roles: ["reader"], expiresIn: 3600 }),
+      await wardrik.tokens.create({
+        name: "ci",
+        scope: "acme/",
+        roles: ["reader"],
+        policy: "careful",
+        expiresIn: 3600,
+      }),
       { token, secret: "wardrik_new" },
     );
 
@@ -420,7 +426,11 @@ describe("tokens", () => {
       server.received.map((request) => [request.method, request.path, request.body]),
       [
         ["GET", "/v1/tokens", undefined],
-        ["POST", "/v1/tokens", { name: "ci", scope: "acme/", roles: ["reader"], expires_in: 3600 }],
+        [
+          "POST",
+          "/v1/tokens",
+          { name: "ci", scope: "acme/", roles: ["reader"], policy: "careful", expires_in: 3600 },
+        ],
         ["DELETE", "/v1/tokens/0123456789ab", undefined],
       ],
     );

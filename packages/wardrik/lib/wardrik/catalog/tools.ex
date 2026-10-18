@@ -17,10 +17,10 @@ defmodule Wardrik.Catalog.Tools do
 
   The agent's own token is the `:agent` principal of its ID, holding
   `reader`, `messenger` and `definer` on what its source reaches, and never
-  more, under its own hooks as policy: an agent it defines is held to every
-  policy and budget that holds the agent that defined it, ahead of its own,
-  and so is never looser. A change runs with that token, and the audit
-  records the agent as who made it. A read or a message is the asker's as
+  more. A change runs with that token, and the audit records the agent as
+  who made it. An agent it defines is held to the calling agent's own
+  hooks, every policy and budget that holds it, ahead of its own, and so is
+  never looser. A read or a message is the asker's as
   well: it runs with the token the host's `Wardrik.Issuer` issues whoever
   asked for the turn, assumed by the agent and narrowed to what its own
   allows, so an agent never reads or messages for someone what they could
@@ -85,18 +85,17 @@ defmodule Wardrik.Catalog.Tools do
         ) :: Wardrik.Tool.answer()
   def run(%Entry{} = entry, subject, opts) do
     opts = Keyword.validate!(opts, [:reach, :input, :context])
-    %Wardrik.Tool.Context{run: run, sender: sender} = Keyword.fetch!(opts, :context)
+    %Wardrik.Tool.Context{run: run, sender: sender} = context = Keyword.fetch!(opts, :context)
     id = Run.agent_id(run)
 
     own = %Token{
       principal: Principal.new(:agent, to_string(id)),
-      scope: [Role.bind([:reader, :messenger, :definer], Keyword.fetch!(opts, :reach))],
-      policy: run.hooks
+      scope: [Role.bind([:reader, :messenger, :definer], Keyword.fetch!(opts, :reach))]
     }
 
     scope = Scope.agent(Scope.new(run.host, token(entry, own, sender, run.host)), id)
 
-    case entry.run.(scope, subject, Keyword.fetch!(opts, :input)) do
+    case entry.run.(scope, subject, Keyword.fetch!(opts, :input), context) do
       {:ok, output, labels} -> {:ok, output, labels: labels}
       {:error, %Error{} = error} -> {:error, Resource.error(error)}
     end

@@ -2195,6 +2195,10 @@
             "description": "What it is listed as.",
             "type": "string"
           },
+          "policy": {
+            "description": "The policy every agent it defines runs under, ahead of the agent's own, by the name the server holds it under: what IAM calls a permissions boundary. The token making it names its own where this is left out.",
+            "type": "string"
+          },
           "roles": {
             "description": "What it may do there, each a named set of actions.",
             "items": {
@@ -2566,11 +2570,8 @@
             "type": "string"
           },
           "policy": {
-            "description": "The names of the hooks every agent it defines runs under, ahead of the agent's own.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
+            "description": "The policy every agent it defines runs under, ahead of the agent's own, by its name: what IAM calls a permissions boundary. Absent where it names none.",
+            "type": "string"
           },
           "principal": {
             "$ref": "#/components/schemas/Defs/$defs/principal",
@@ -2589,7 +2590,6 @@
           "name",
           "principal",
           "statements",
-          "policy",
           "created_at"
         ],
         "title": "Token",

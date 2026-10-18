@@ -12,7 +12,7 @@ defmodule Wardrik.Definition.None do
       defimpl Wardrik.Definition, for: MyApp.Definitions do
         use Wardrik.Definition.None
 
-        def put(definitions, id, definition: fields, token: token), do: ...
+        def put(definitions, id, definition: fields, token: token, held: hooks), do: ...
       end
   """
 

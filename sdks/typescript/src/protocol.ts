@@ -677,9 +677,9 @@ export interface Token {
    */
   statements: Statement[];
   /**
-   * The names of the hooks every agent it defines runs under, ahead of the agent's own.
+   * The policy every agent it defines runs under, ahead of the agent's own, by its name: what IAM calls a permissions boundary. Absent where it names none.
    */
-  policy: string[];
+  policy?: string;
   /**
    * When it stops working.
    */
@@ -1245,9 +1245,9 @@ export interface TokenCreatedData {
    */
   statements: Statement[];
   /**
-   * The names of the hooks every agent it defines runs under, ahead of the agent's own.
+   * The policy every agent it defines runs under, ahead of the agent's own, by its name: what IAM calls a permissions boundary. Absent where it names none.
    */
-  policy: string[];
+  policy?: string;
   /**
    * When it stops working.
    */

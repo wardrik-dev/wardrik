@@ -132,6 +132,19 @@ defmodule Wardrik.TokenTest do
                []
     end
 
+    test "keeps the policy it names, unless the actor names another" do
+      agent = Principal.new(:agent, "acme/front")
+      careful = %{Token.root(@maria) | policy: "careful"}
+
+      assert Token.assume(careful, agent, scope: careful.scope).policy == "careful"
+      assert Token.assume(careful, agent, scope: careful.scope, policy: :none).policy == "careful"
+
+      assert Token.assume(careful, agent, scope: careful.scope, policy: "strict").policy ==
+               "strict"
+
+      assert Token.assume(Token.root(@maria), agent, scope: []).policy == :none
+    end
+
     test "keeps the earlier expiry" do
       soon = DateTime.add(DateTime.utc_now(:second), 60)
       later = DateTime.add(soon, 60)
@@ -147,7 +160,7 @@ defmodule Wardrik.TokenTest do
   test "an issuer that names none issues a token allowing nothing" do
     token = Wardrik.Issuer.issue(%Wardrik.Issuer.None{}, @maria, [])
 
-    assert %Token{principal: @maria, scope: [], policy: [], assumed_by: [], expires: :infinity} =
+    assert %Token{principal: @maria, scope: [], policy: :none, assumed_by: [], expires: :infinity} =
              token
   end
 end

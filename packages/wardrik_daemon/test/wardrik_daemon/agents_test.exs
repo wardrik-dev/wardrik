@@ -337,24 +337,29 @@ defmodule WardrikDaemon.AgentsTest do
              "workspace shared team: #{org} belongs to #{org}/, which #{defined} is not under"
   end
 
-  test "an agent the HTTP API defined is held to the policy of the token that sent it",
+  test "an agent the HTTP API defined is held to the policy its token names, which must be one",
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")
+    write_policy(context, "strict", "deny: [\"*\"]\n")
     Host.start_agents(context.dir)
     defined = AgentID.parse!("#{org}/defined")
-
-    policy = [
-      Wardrik.Hook.new("strict", WardrikPolicy, WardrikPolicy.decode!(%{"deny" => ["*"]}))
-    ]
 
     {:ok, _spec} =
       Agents.put(Host.agents(), defined,
         definition: %{"policy" => "careful"},
-        token: %{token(org) | policy: policy}
+        token: %{token(org) | policy: "strict"}
       )
 
     assert {:ok, spec} = Agents.spec(Host.agents(), defined)
-    assert [%{name: "strict"}, %{name: "careful"}] = spec.hooks
+    assert [%{name: "policy/strict"}, %{name: "careful"}] = spec.hooks
+
+    assert {:error, message} =
+             Agents.put(Host.agents(), defined,
+               definition: %{},
+               token: %{token(org) | policy: "missing"}
+             )
+
+    assert message =~ "names the policy missing, which is not a policy in policies/"
   end
 
   test "a conversation runs on the definition of its agent, in the agent's tree",

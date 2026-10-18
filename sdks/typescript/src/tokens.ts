@@ -8,6 +8,11 @@ export interface TokenFields {
   scope: string;
   /** Each a named set of actions: reader, messenger, approver, definer, worker or owner. */
   roles: string[];
+  /**
+   * The policy every agent it defines runs under, ahead of the agent's own, by the name the
+   * server holds it under: what IAM calls a permissions boundary. The maker's where left out.
+   */
+  policy?: string;
   /** How many seconds it works for; the server's own lifetime for API tokens where left out. */
   expiresIn?: number;
 }
@@ -34,9 +39,9 @@ export class Tokens {
   }
 
   /** Makes a token: it, and the secret that presents it. */
-  create({ name, scope, roles, expiresIn }: TokenFields): Promise<TokenIssued> {
+  create({ name, scope, roles, policy, expiresIn }: TokenFields): Promise<TokenIssued> {
     return this.#http.json("POST", "/v1/tokens", {
-      body: { name, scope, roles, ...(expiresIn === undefined ? {} : { expires_in: expiresIn }) },
+      body: { name, scope, roles, policy, expires_in: expiresIn },
     });
   }
 

@@ -261,8 +261,7 @@ defmodule Wardrik.Event.Codec.Value do
 
   @doc """
   `token`, never a secret: whom it acts for, what each of its statements
-  allows on what, the names of the hooks of its policy, and when it
-  expires, where it does.
+  allows on what, the policy it names, and when it expires, where it does.
   """
   @spec token(Wardrik.Token.t()) :: map()
   def token(%Wardrik.Token{} = token) do
@@ -275,9 +274,9 @@ defmodule Wardrik.Event.Codec.Value do
             "actions" => statement.actions,
             "resources" => Enum.map(statement.resources, &to_string/1)
           }
-        ),
-      "policy" => Enum.map(token.policy, & &1.name)
+        )
     }
+    |> put("policy", if(token.policy != :none, do: token.policy))
     |> put("expires", expires(token.expires))
   end
 

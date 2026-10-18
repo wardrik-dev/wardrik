@@ -23,8 +23,8 @@ defmodule Wardrik.CatalogTest do
     @moduledoc false
     defstruct []
 
-    def put(_definitions, id, definition: definition, token: token) do
-      tell({:put, id, definition, token})
+    def put(_definitions, id, definition: definition, token: token, held: held) do
+      tell({:put, id, definition, token, held})
 
       if String.contains?(id.name, "filed"),
         do: {:error, :conflict, "#{id} belongs to a file."},
@@ -314,8 +314,8 @@ defmodule Wardrik.CatalogTest do
                })
 
       assert id == to_string(worker)
-      assert_received {:put, ^worker, %{"instructions" => "Reconcile."}, token}
-      assert token.policy == hooks
+      assert_received {:put, ^worker, %{"instructions" => "Reconcile."}, token, ^hooks}
+      assert token.policy == :none
       assert token.principal == Principal.new(:agent, to_string(front))
 
       assert token.scope == [

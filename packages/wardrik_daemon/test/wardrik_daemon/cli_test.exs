@@ -196,7 +196,6 @@ defmodule WardrikDaemon.CLITest do
              "token" => %{"name" => ^name},
              "principal" => @ops,
              "statements" => [%{"actions" => ["*"], "resources" => ["acme/"]}],
-             "policy" => [],
              "actor" => @ops
            } = created
 
@@ -275,8 +274,7 @@ defmodule WardrikDaemon.CLITest do
     assert line =~ ") allows definer on acme/, under the policy careful, until "
 
     assert {:ok, token} = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
-    [{_path, {:ok, careful}}] = WardrikDaemon.Agents.files(Host.agents())
-    assert token.token.policy == WardrikPolicy.hooks(%{careful | name: "policy/careful"})
+    assert token.token.policy == "careful"
 
     {list, 0} = command(["token", "list"])
     assert list =~ "  #{token.id}  ci  definer on acme/, under the policy careful, until "

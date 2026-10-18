@@ -543,8 +543,9 @@ defmodule WardrikHTTP.Router do
        when is_binary(name) and is_binary(scope) and is_list(names) do
     with {:ok, prefix} <- prefixed(scope),
          {:ok, roles} <- roles(names),
-         {:ok, opts} <- expires_in(body["expires_in"]),
-         do: {:ok, name, Role.bind(roles, prefix), opts}
+         {:ok, expires_in} <- expires_in(body["expires_in"]),
+         {:ok, policy} <- policy(body["policy"]),
+         do: {:ok, name, Role.bind(roles, prefix), expires_in ++ policy}
   end
 
   defp token(_body),
@@ -564,6 +565,10 @@ defmodule WardrikHTTP.Router do
 
   defp expires_in(_seconds),
     do: {:error, Error.new(:invalid, "expires_in is a number of seconds")}
+
+  defp policy(nil), do: {:ok, []}
+  defp policy(name) when is_binary(name) and name != "", do: {:ok, [policy: name]}
+  defp policy(_name), do: {:error, Error.new(:invalid, "policy is the name of a policy")}
 
   # The server a request adds, as `input_servers_add.json` describes it.
   defp server(%{"name" => name, "auth" => %{} = auth} = fields)

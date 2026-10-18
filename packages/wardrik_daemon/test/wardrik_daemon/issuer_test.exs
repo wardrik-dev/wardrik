@@ -110,7 +110,7 @@ defmodule WardrikDaemon.IssuerTest do
       admins: [chat: ["U1"]]
     )
 
-    assert %Token{policy: []} = token = in_chat("U1")
+    assert %Token{policy: :none} = token = in_chat("U1")
     assert roles(token) == [{"acme/", bound([:reader, :messenger, :approver])}]
 
     File.mkdir_p!(Path.join(dir, "policies"))
@@ -119,7 +119,7 @@ defmodule WardrikDaemon.IssuerTest do
     Host.start_agents(dir)
     _files = Agents.files(Host.agents())
 
-    assert %Token{policy: [_ | _]} = token = in_chat("U1")
+    assert %Token{policy: "careful"} = token = in_chat("U1")
     assert roles(token) == [{"acme/", bound([:reader, :messenger, :approver, :definer])}]
   end
 

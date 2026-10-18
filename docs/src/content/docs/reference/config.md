@@ -317,7 +317,8 @@ wardrik token create ci --scope acme/ --role reader,messenger --expires 30d
 ```
 
 A token may name a policy of `policies/`, with `--policy`: every agent it defines runs under it,
-ahead of its own. It is what IAM calls a permissions boundary.
+ahead of its own, read by its name each time the agent starts. It is what IAM calls a permissions
+boundary.
 
 `expires.api` is how long a token for the HTTP API lasts where `--expires` doesn't say, as `90d`,
 `12h`, `30m` or `45s`. `90d` unless set. An expired token is refused.

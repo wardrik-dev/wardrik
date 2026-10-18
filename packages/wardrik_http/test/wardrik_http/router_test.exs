@@ -31,6 +31,12 @@ defmodule WardrikHTTP.RouterTest do
     def put(_host, _key, %{"elsewhere" => true}, _token),
       do: {:ok, Spec.new(id: Wardrik.AgentID.parse!("test/elsewhere"))}
 
+    # Holds the agent to a hook named for the policy its token names.
+    def put(_host, key, %{"bounded" => true}, token) do
+      bounded = [Wardrik.Hook.new(token.policy, Wardrik.Test.Tools.Rules, deny: :all)]
+      {:ok, Spec.new(id: key, hooks: bounded)}
+    end
+
     def put(_host, key, %{"allow" => names}, _token) do
       own = [Wardrik.Hook.new("own", Wardrik.Test.Tools.Rules, allow: names)]
       {:ok, Spec.new(id: key, hooks: own)}
@@ -914,48 +920,20 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "a token's policy" do
-    # A client of the same listener holding a token that defines under `policy`.
-    defp held(api, policy) do
-      {:ok, secret, _token} = token("held", Prefix.parse!("test/"), [:definer], policy: policy)
-      Req.merge(api, auth: {:bearer, secret})
-    end
-
     # The hooks the agent under `key` runs its calls past.
     defp hooks(key) do
       %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(key, host: Wardrik.Test.host()))
       Keyword.fetch!(state.run_opts, :hooks)
     end
 
-    defp checked(hooks, tool), do: Wardrik.Test.check(Wardrik.Test.run(hooks: hooks), tool)
-
-    test "holds every agent the token defines, ahead of the definition's own", %{api: api} do
-      careful =
-        Wardrik.Hook.new("policy/careful", Wardrik.Test.Tools.Rules, ask: ["github__issue_write"])
-
+    test "goes by its name to the host's definitions, which hold the agent to it", %{api: api} do
+      {:ok, secret, _token} = token("held", Prefix.parse!("test/"), [:definer], policy: "strict")
       key = defined_key()
 
       assert {:ok, %{status: 200}} =
-               define(held(api, [careful]), key, %{"allow" => ["web_search"]})
+               define(Req.merge(api, auth: {:bearer, secret}), key, %{"bounded" => true})
 
-      assert [%Wardrik.Hook{name: "policy/careful"}, %Wardrik.Hook{name: "own"}] = hooks(key)
-
-      assert %Wardrik.Call{asks: [%Wardrik.Call.Ask{by: "policy/careful"}]} =
-               checked(hooks(key), "github__issue_write")
-
-      assert %Wardrik.Call{state: :allowed, asks: []} = checked(hooks(key), "web_search")
-    end
-
-    test "is the one an agent was last defined under, and none where that token has none",
-         %{api: api} do
-      policy = [Wardrik.Hook.new("policy/strict", Wardrik.Test.Tools.Rules, deny: :all)]
-      key = defined_key()
-
-      {:ok, %{status: 200}} = define(held(api, policy), key, %{})
-      assert [%Wardrik.Hook{name: "policy/strict"}] = hooks(key)
-      assert %Wardrik.Call{state: :denied} = checked(hooks(key), "web_search")
-
-      {:ok, %{status: 200}} = define(api, key, %{})
-      assert hooks(key) == []
+      assert [%Wardrik.Hook{name: "strict"}] = hooks(key)
     end
   end
 
@@ -1736,6 +1714,7 @@ defmodule WardrikHTTP.RouterTest do
       "name" => "ci",
       "scope" => "test/",
       "roles" => ["reader", "messenger"],
+      "policy" => "careful",
       "expires_in" => 3600
     }
 
@@ -1755,6 +1734,7 @@ defmodule WardrikHTTP.RouterTest do
 
       conforms(issued, "token_issued")
       assert made["principal"] == %{"type" => "user", "id" => "ci", "name" => "root"}
+      assert made["policy"] == "careful"
 
       assert made["statements"] == [
                %{
@@ -1789,7 +1769,8 @@ defmodule WardrikHTTP.RouterTest do
             %{@made | "roles" => ["boss"]},
             %{@made | "roles" => "reader"},
             %{@made | "scope" => "not a prefix"},
-            %{@made | "expires_in" => 0}
+            %{@made | "expires_in" => 0},
+            %{@made | "policy" => ["careful"]}
           ] do
         assert {:ok, %{status: 400, body: %{"error" => %{"type" => "invalid_request"}}}} =
                  Req.post(root, url: "/v1/tokens", json: body)

@@ -575,9 +575,9 @@ defmodule Wardrik do
 
   @doc """
   Defines `agent` with `definition`, or defines it again, and answers its
-  snapshot. It runs under the token's policy and the `:held` hooks, ahead
-  of its own, and the host's definitions keep both with it, so it runs
-  under them each time it starts.
+  snapshot. It runs under the `:held` hooks, then the policy the token
+  names, ahead of its own; the host's definitions read that policy by its
+  name, and keep both with it, so it runs under them each time it starts.
 
   ## Options
 
@@ -589,21 +589,21 @@ defmodule Wardrik do
   def agent_define(%Scope{} = scope, %AgentID{} = agent, definition, opts \\ [])
       when is_map(definition) do
     opts = NimbleOptions.validate!(opts, @define_opts)
-    held = %{scope.token | policy: scope.token.policy ++ opts[:held]}
 
     with :ok <- authorize(scope, "agent.define", agent),
-         {:ok, spec} <- defined(%{scope | token: held}, agent, definition),
+         {:ok, spec} <- defined(scope, agent, definition, opts[:held]),
          {:ok, _pid} <-
-           started(Fleet.put(%{spec | hooks: held.policy ++ List.wrap(spec.hooks)}), agent) do
+           started(Fleet.put(%{spec | hooks: opts[:held] ++ List.wrap(spec.hooks)}), agent) do
       audit(scope, [{:agent_defined, agent}])
       agent_snapshot(agent, scope.host)
     end
   end
 
-  defp defined(scope, agent, fields) do
+  defp defined(scope, agent, fields, held) do
     case Definition.put(Host.definitions(scope.host), agent,
            definition: fields,
-           token: scope.token
+           token: scope.token,
+           held: held
          ) do
       {:ok, %{id: ^agent} = spec} ->
         {:ok, spec}
@@ -1283,9 +1283,10 @@ defmodule Wardrik do
 
   @create_token_opts NimbleOptions.new!(
                        policy: [
-                         type: {:list, {:struct, Wardrik.Hook}},
-                         default: [],
-                         doc: "hooks every agent it defines runs under, beside the scope's policy"
+                         type: :string,
+                         doc:
+                           "the name of the policy every agent it defines runs under; " <>
+                             "the scope's own where left out"
                        ],
                        expires_in: [
                          type: :pos_integer,
@@ -1297,7 +1298,9 @@ defmodule Wardrik do
   Makes a token named `name`, allowing what `statements` state, and answers
   it with its secret, given this once; the audit records the token, never
   the secret. It acts for the scope's principal, who made it, and every
-  agent it defines runs under the scope's policy as well as `:policy`.
+  agent it defines runs under the policy `:policy` names, or the one the
+  scope's token names: a policy only ever narrows what an agent's own
+  allows.
 
   ## Options
 
@@ -1314,7 +1317,7 @@ defmodule Wardrik do
     token = %Token{
       principal: scope.token.principal,
       scope: statements,
-      policy: scope.token.policy ++ opts[:policy],
+      policy: Keyword.get(opts, :policy, scope.token.policy),
       expires: DateTime.add(DateTime.utc_now(:second), seconds)
     }
 

@@ -16,7 +16,8 @@ defmodule WardrikDefinition.Kept do
   Each definition is read under the `WardrikDefinition.Context` its
   `:contexts` give the agent that owns it (see `WardrikDefinition.Contexts`),
   and kept as a `WardrikDefinition.Record` with the token of whoever sent
-  it, whose policy holds the agent each time its spec is built.
+  it, whose policy holds the agent each time its spec is built, and the
+  hooks they held it to.
 
   | Callback | What it does |
   | --- | --- |
@@ -63,24 +64,33 @@ defmodule WardrikDefinition.Kept do
 
   @doc """
   Reads the definition `:definition` of the agent `id`, sent with the
-  `:token` given, keeps it, and answers the spec it writes.
+  `:token` given, keeps it with the hooks it is `:held` to, none unless
+  given, and answers the spec it writes, not yet held to them.
   """
-  @spec put(t(), AgentID.t(), definition: map(), token: Wardrik.Token.t()) ::
-          {:ok, Spec.t()} | {:error, String.t()}
+  @spec put(t(), AgentID.t(),
+          definition: map(),
+          token: Wardrik.Token.t(),
+          held: [Wardrik.Hook.t()]
+        ) :: {:ok, Spec.t()} | {:error, String.t()}
   def put(%__MODULE__{} = kept, %AgentID{} = id, opts) do
-    define(kept, id,
-      fields: Keyword.fetch!(opts, :definition),
-      source: {:api, Keyword.fetch!(opts, :token)}
+    define(
+      kept,
+      id,
+      [fields: Keyword.fetch!(opts, :definition), source: {:api, Keyword.fetch!(opts, :token)}] ++
+        Keyword.take(opts, [:held])
     )
   end
 
   @doc """
   Reads the definition `:fields` of the agent `id`, written by `:source`,
-  keeps it, routes its notices, and answers the spec it writes, not yet held
-  to a token's policy.
+  keeps it with the hooks it is `:held` to, none unless given, routes its
+  notices, and answers the spec it writes, not yet held to them.
   """
-  @spec define(t(), AgentID.t(), fields: map(), source: WardrikDefinition.source()) ::
-          {:ok, Spec.t()} | {:error, String.t()}
+  @spec define(t(), AgentID.t(),
+          fields: map(),
+          source: WardrikDefinition.source(),
+          held: [Wardrik.Hook.t()]
+        ) :: {:ok, Spec.t()} | {:error, String.t()}
   def define(%__MODULE__{} = kept, %AgentID{} = id, opts) do
     context = context(kept, id)
 
@@ -184,13 +194,13 @@ defmodule WardrikDefinition.Kept do
 
   @doc """
   The spec `record` writes for the agent `id`, its own or one of its
-  conversations, under the context of its owner, held to the policy of the
-  token that sent it where one did.
+  conversations, under the context of its owner, held to the hooks it was
+  defined under and the policy of the token that sent it, where one did.
   """
   @spec build(t(), Record.t(), AgentID.t()) :: {:ok, Spec.t()} | {:error, String.t()}
   def build(%__MODULE__{} = kept, %Record{} = record, %AgentID{} = id) do
     with {:ok, spec} <- Record.spec(record, id, context: context(kept, record.id)),
-         do: {:ok, held(spec, record.source)}
+         do: {:ok, %{spec | hooks: record.held ++ List.wrap(spec.hooks)}}
   end
 
   @doc """
@@ -266,11 +276,6 @@ defmodule WardrikDefinition.Kept do
 
   defp context(%__MODULE__{contexts: contexts}, id),
     do: Contexts.context(contexts, AgentID.put_external_id(id, nil))
-
-  defp held(spec, {:api, %Wardrik.Token{policy: policy}}),
-    do: %{spec | hooks: policy ++ List.wrap(spec.hooks)}
-
-  defp held(spec, _source), do: spec
 end
 
 defimpl Wardrik.Definition, for: WardrikDefinition.Kept do

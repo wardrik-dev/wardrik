@@ -157,18 +157,20 @@ defmodule Wardrik.DeploymentTest do
       assert {:error, %Error{type: :forbidden}} = Wardrik.tokens_list(scope())
     end
 
-    test "act for whoever made them, under their policy too, until they expire" do
-      careful = [Wardrik.Hook.new("careful", Wardrik.Test.Tools.Rules, allow: [])]
-      own = [Wardrik.Hook.new("own", Wardrik.Test.Tools.Rules, allow: [])]
+    test "act for whoever made them, under the policy they name or the maker's, until they expire" do
       jon = root()
-      maker = %{jon | token: %{jon.token | policy: careful}}
+      maker = %{jon | token: %{jon.token | policy: "careful"}}
 
       assert {:ok, %Wardrik.Tokens.Entry{token: token}} =
-               Wardrik.tokens_create(maker, "ci", reader(), policy: own)
+               Wardrik.tokens_create(maker, "ci", reader(), policy: "strict")
 
       assert token.principal == jon.token.principal
       assert token.scope == reader()
-      assert token.policy == careful ++ own
+      assert token.policy == "strict"
+
+      assert {:ok, %Wardrik.Tokens.Entry{token: %{policy: "careful"}}} =
+               Wardrik.tokens_create(maker, "same", reader())
+
       assert_in_delta DateTime.diff(token.expires, DateTime.utc_now()), 90 * 86_400, 5
 
       assert {:ok, %Wardrik.Tokens.Entry{token: brief}} =

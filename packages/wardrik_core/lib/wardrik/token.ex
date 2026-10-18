@@ -8,11 +8,12 @@ defmodule Wardrik.Token do
       records as having made each change
     * `scope` - what it allows, as `Wardrik.Statement`s; anything none of
       them states is denied
-    * `policy` - the hooks every agent it defines runs under, ahead of the
-      agent's own, as `Wardrik.Hook`s: what IAM calls a permissions
-      boundary. The strictest hook decides a call, so a definition can
-      narrow its policy and never loosen it; `[]` holds them to nothing
-      more
+    * `policy` - the name of the policy every agent it defines runs under,
+      ahead of the agent's own: what IAM calls a permissions boundary. The
+      host's definitions read it by its name each time such an agent starts,
+      as they read the policy a definition names, and the strictest hook
+      decides a call, so a definition can narrow it and never loosen it.
+      `:none` holds them to nothing more
     * `assumed_by` - who acts with it for the principal, first to last, as
       an agent acting for the person who asked it something; `[]` where the
       principal acts themselves
@@ -41,12 +42,12 @@ defmodule Wardrik.Token do
   alias Wardrik.Statement
 
   @enforce_keys [:principal]
-  defstruct [:principal, scope: [], policy: [], assumed_by: [], expires: :infinity]
+  defstruct [:principal, scope: [], policy: :none, assumed_by: [], expires: :infinity]
 
   @type t() :: %__MODULE__{
           principal: Principal.t(),
           scope: [Statement.t()],
-          policy: [Wardrik.Hook.t()],
+          policy: String.t() | :none,
           assumed_by: [Principal.t()],
           expires: DateTime.t() | :infinity
         }
@@ -117,11 +118,18 @@ defmodule Wardrik.Token do
   `token` and the `:scope` given allow, names `actor` last of its
   `assumed_by`, and expires at the earlier of when it did and `:expires`,
   where that is given. It never allows more than `token`.
+
+  It keeps `token`'s policy unless `:policy` names another, which takes
+  its place: a policy only ever narrows what an agent's own allows, and
+  the one the actor names is the one it acts under.
   """
-  @spec assume(t(), Principal.t(), scope: [Statement.t()], expires: DateTime.t() | :infinity) ::
-          t()
+  @spec assume(t(), Principal.t(),
+          scope: [Statement.t()],
+          expires: DateTime.t() | :infinity,
+          policy: String.t() | :none
+        ) :: t()
   def assume(%__MODULE__{} = token, actor, opts) do
-    opts = Keyword.validate!(opts, [:scope, expires: :infinity])
+    opts = Keyword.validate!(opts, [:scope, expires: :infinity, policy: :none])
 
     %{
       token
@@ -133,9 +141,13 @@ defmodule Wardrik.Token do
             do: both
           ),
         assumed_by: token.assumed_by ++ [actor],
-        expires: earlier(token.expires, opts[:expires])
+        expires: earlier(token.expires, opts[:expires]),
+        policy: named(token.policy, opts[:policy])
     }
   end
+
+  defp named(policy, :none), do: policy
+  defp named(_policy, name), do: name
 
   defp earlier(:infinity, other), do: other
   defp earlier(expires, :infinity), do: expires

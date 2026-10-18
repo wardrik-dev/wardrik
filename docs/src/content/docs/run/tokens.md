@@ -61,9 +61,12 @@ The nodes, the audit, reloading, moving an agent and tokens themselves are the d
 
 ## What agents it defines may do
 
-`--policy NAME` holds every agent the token defines to a policy in `policies/`, ahead of the
+`--policy NAME` names a policy in `policies/` that holds every agent the token defines, ahead of the
 definition's own. This is what IAM calls a permissions boundary. A definition can narrow it, never
-widen it. Your own policy, if you have one, holds them too.
+widen it. Without `--policy`, the token names yours, if you have one.
+
+The agent reads the policy by its name each time it starts, so a change to the policy reaches it on
+`wardrik reload`. An agent whose token names a policy `policies/` no longer holds doesn't start.
 
 Their org's [policy](/run/orgs/#hold-an-org-to-a-policy) and their own policies hold them either way.
 

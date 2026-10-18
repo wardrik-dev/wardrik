@@ -49,16 +49,14 @@ defmodule WardrikHTTP.TokenTest do
   end
 
   test "keeps the token's statements and policy as they were made" do
-    policy = [Wardrik.Hook.new("careful", Wardrik.Test.Tools.Rules, ask: :all)]
-
     {:ok, secret, kept} =
-      Token.create(store(), "careful", token: token([:definer], policy: policy))
+      Token.create(store(), "careful", token: token([:definer], policy: "careful"))
 
-    assert {:ok, %Token{token: %Wardrik.Token{policy: ^policy, scope: [statement]}}} =
+    assert {:ok, %Token{token: %Wardrik.Token{policy: "careful", scope: [statement]}}} =
              Token.verify(store(), secret)
 
     assert statement == Role.bind([:definer], Prefix.parse!("acme/"))
-    assert kept.token.policy == policy
+    assert kept.token.policy == "careful"
   end
 
   test "an expired token stops working" do
