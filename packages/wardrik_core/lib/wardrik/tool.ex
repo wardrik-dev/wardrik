@@ -2,8 +2,9 @@ defmodule Wardrik.Tool do
   @moduledoc """
   A module that produces a tool an agent may call.
 
-  Wardrik ships no tools of its own but the catalog's operations, offered
-  to an agent by `Wardrik.Catalog.Self` and `Wardrik.Catalog.Agents`. Implement this behaviour in your own
+  Wardrik ships no tools of its own but the catalog's, which offer an agent
+  `Wardrik`'s functions on itself and on the agents of its owner, through
+  `Wardrik.Catalog.Self` and `Wardrik.Catalog.Agents`. Implement this behaviour in your own
   application or in a tool package, then name the module in a config:
 
       Wardrik.LLM.Config.new(tools: [MyApp.Tools.Ping])

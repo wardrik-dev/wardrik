@@ -28,6 +28,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   ends a turn it is taking, and abandons what it waits on a person for, so
   `move` asks first; `--yes` moves it without asking.
 
+  `agent calls KEY` lists the tool calls an agent is running, and
+  `agent kill-call KEY CALL_ID` stops one: the model is answered with an
+  error, and the rest of the turn goes on.
+
   `agent edit KEY` opens the file that declares the agent in `$VISUAL`, or
   `$EDITOR`, then reads the files again. `bin/wardrik` runs the editor
   itself, at the terminal the command was typed in, and asks the daemon
@@ -36,22 +40,21 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Command, as: Operation
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
-  alias Wardrik.Operations.Forget
-  alias Wardrik.Operations.ForgetAgents
-  alias Wardrik.Operations.Move
-  alias Wardrik.Operations.ReadAgent
-  alias Wardrik.Operations.Spawn
-  alias Wardrik.Operations.SpawnOn
+  alias Wardrik.Forgetting
+  alias Wardrik.Moving
+  alias Wardrik.Spawned
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
 
   @faint [:faint, :light_black]
 
-  @doc "The commands that start, stop and move agents, for `WardrikDaemon.CLI.commands/0`."
+  @doc """
+  The commands that start, stop and move agents, and stop their tool calls,
+  for `WardrikDaemon.CLI.commands/0`.
+  """
   @spec commands() :: [Command.t()]
   def commands do
     [
@@ -130,6 +133,28 @@ defmodule WardrikDaemon.CLI.Lifecycle do
         live: &move_asked/3
       },
       %Command{
+        name: "agent calls",
+        group: "Manage agents",
+        arguments: "KEY",
+        summary: "the tool calls an agent is running, and how long each has run",
+        details: ["With --json, the calls as GET /v1/agents/KEY/calls answers them."],
+        count: {1, 1},
+        run: &calls/2,
+        json: &calls_json/2
+      },
+      %Command{
+        name: "agent kill-call",
+        group: "Manage agents",
+        arguments: "KEY CALL_ID",
+        summary: "stop one tool call an agent is running; the rest of its turn goes on",
+        details: [
+          "The model is answered with an error, as if the tool had failed. wardrik agent",
+          "calls lists the calls; wardrik agent cancel ends the whole turn instead."
+        ],
+        count: {2, 2},
+        run: &kill_call/2
+      },
+      %Command{
         name: "agent edit",
         group: "Manage agents",
         arguments: "KEY",
@@ -145,15 +170,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp spawn_agent([name], opts) do
     with {:ok, key} <- key(name, opts),
          {:ok, node} <- named_node(opts[:on]),
-         {:ok, change} <- Operation.plan(spawning(key, node), opts[:caller]),
-         {:ok, agent} <- Operation.make(change, opts[:caller]) do
-      %{"spawning" => %{"from" => from}} = Operation.preview(change)
-      {:ok, spawned(from, agent, key, opts[:session])}
-    end
+         {:ok, %Spawned{member: agent, from: from}} <-
+           Wardrik.agent_spawn(opts[:session], key, if(node, do: [node: node], else: [])),
+         do: {:ok, spawned(from, agent, key, opts[:session])}
   end
-
-  defp spawning(key, nil), do: %Spawn{agent: key}
-  defp spawning(key, node), do: %SpawnOn{agent: key, node: node}
 
   defp key(name, opts) do
     named = [
@@ -178,22 +198,22 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp spawned("running", agent, key, _session),
+  defp spawned(:running, agent, key, _session),
     do: "#{key} runs already, on #{on(agent)}."
 
-  defp spawned("store", agent, key, _session),
+  defp spawned(:store, agent, key, _session),
     do: "Started #{key} on #{on(agent)} again, with its conversation."
 
-  defp spawned("definition", agent, key, _session) do
+  defp spawned(:definition, agent, key, _session) do
     case WardrikDaemon.Host.declared()[key] do
       {path, _spec} -> "Started #{key} on #{on(agent)}, as #{shown(path)} declares it."
       nil -> "Started #{key} on #{on(agent)}, on the definition kept for it."
     end
   end
 
-  defp spawned("new", agent, key, session) do
+  defp spawned(:new, agent, key, session) do
     {:ok, snapshot} = Wardrik.agent_read(session, key)
-    snapshot = ReadAgent.render(snapshot)
+    snapshot = Wardrik.Resource.snapshot(snapshot)
     {path, _spec} = WardrikDaemon.Host.declared()[key]
 
     [
@@ -293,55 +313,61 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   # -- rm -----------------------------------------------------------------------
 
   defp rm([target], opts) do
-    with {:ok, change} <- Operation.plan(forgetting(target), opts[:caller]) do
-      if opts[:yes], do: removed(change, opts[:caller]), else: :live
+    with {:ok, _forgetting} <- forgetting(target, opts[:session]) do
+      if opts[:yes], do: removed(target, opts[:session]), else: :live
     end
   end
 
   defp rm_asked([target], opts, terminal) do
-    with {:ok, change} <- Operation.plan(forgetting(target), opts[:caller]) do
-      preview = Operation.preview(change)
-
+    with {:ok, forgetting} <- forgetting(target, opts[:session]) do
       if terminal.input?,
-        do: rm_confirmed(change, preview, terminal, opts[:caller]),
+        do: rm_confirmed(target, forgetting, terminal, opts[:session]),
         else:
           {:error,
            [
-             removing(preview),
+             removing(forgetting),
              "\nwardrik agent rm asks first only where someone can answer; ",
              "wardrik agent rm #{target} --yes removes without asking."
            ]}
     end
   end
 
-  defp forgetting(%Prefix{} = prefix), do: %ForgetAgents{prefix: prefix}
-  defp forgetting(key), do: %Forget{agent: key}
+  defp forgetting(%AgentID{} = key, session), do: Wardrik.agent_forget_preview(session, key)
+  defp forgetting(prefix, session), do: Wardrik.agents_forget_preview(session, prefix)
 
-  defp rm_confirmed(change, preview, terminal, caller) do
-    Terminal.puts(terminal, removing(preview))
+  defp rm_confirmed(target, forgetting, terminal, session) do
+    Terminal.puts(terminal, removing(forgetting))
 
-    if Owl.IO.confirm(message: "Remove #{them(preview["forgetting"])}?", default: false),
-      do: removed(change, caller),
+    if Owl.IO.confirm(message: "Remove #{them(forgetting.agents)}?", default: false),
+      do: removed(target, session),
       else: {:ok, "Nothing was removed."}
   end
 
-  defp removing(%{"forgetting" => [key], "keeping" => kept}),
+  defp removing(%Forgetting{agents: [key], kept: kept}),
     do: ["This removes #{key}, its conversation and its triggers, for good." | left(kept)]
 
-  defp removing(%{"forgetting" => keys, "keeping" => kept}) do
+  defp removing(%Forgetting{agents: keys, kept: kept}) do
     [
       "This removes #{length(keys)} agents, their conversations and their triggers, for good:"
       | Enum.map(keys, &"\n  #{&1}")
     ] ++ left(kept)
   end
 
-  defp left(kept), do: for(%{"why" => why} <- kept, do: ["\n", why])
+  defp left(kept), do: for({_key, why} <- kept, do: ["\n", why])
 
   defp them([_one]), do: "it"
   defp them(_keys), do: "them"
 
-  defp removed(change, caller) do
-    with {:ok, outcomes} <- Operation.make(change, caller) do
+  # An agent is removed on its own, answered with what became of it as one
+  # under a prefix is.
+  defp forget(%AgentID{} = key, session) do
+    with :ok <- Wardrik.agent_forget(session, key), do: {:ok, %{key => :forgotten}}
+  end
+
+  defp forget(prefix, session), do: Wardrik.agents_forget(session, prefix)
+
+  defp removed(target, session) do
+    with {:ok, outcomes} <- forget(target, session) do
       outcomes = Enum.sort_by(outcomes, fn {key, _outcome} -> to_string(key) end)
       gone = for {key, :forgotten} <- outcomes, do: key
       failed = for {key, {:failed, why}} <- outcomes, do: "#{key} was not removed: #{why}"
@@ -358,35 +384,35 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp move([key | named], opts) do
     with {:ok, node} <- destination(key, named, nil, opts[:session]),
-         {:ok, change} <- Operation.plan(%Move{agent: key, node: node}, opts[:caller]),
-         do: moving(change, opts, nil)
+         {:ok, moving} <- Wardrik.agent_move_preview(opts[:session], key, node),
+         do: moving(moving, opts, nil)
   end
 
   defp move_asked([key | named], opts, terminal) do
     with {:ok, node} <- destination(key, named, terminal, opts[:session]),
-         {:ok, change} <- Operation.plan(%Move{agent: key, node: node}, opts[:caller]),
-         do: moving(change, opts, terminal)
+         {:ok, moving} <- Wardrik.agent_move_preview(opts[:session], key, node),
+         do: moving(moving, opts, terminal)
   end
 
   # Moving an agent that is doing nothing goes ahead; one taking a turn, or
   # waiting on a person, is moved only once someone agrees, or with --yes.
-  defp moving(change, opts, terminal) do
-    %{"moving" => %{"agent" => key, "to" => to} = moving} = Operation.preview(change)
+  defp moving(%Moving{agent: key, from: to, to: to}, _opts, _terminal),
+    do: {:ok, "#{key} runs on #{shown_node(to)} already."}
 
+  defp moving(%Moving{agent: key, to: to} = moving, opts, terminal) do
     cond do
-      moving["from"] == to -> {:ok, "#{key} runs on #{shown_node(to)} already."}
-      not is_map_key(moving, "interrupting") or opts[:yes] -> moved(change, opts[:caller])
+      moving.status == :idle or opts[:yes] -> moved(moving, opts[:session])
       terminal == nil -> :live
-      terminal.input? -> confirmed(change, moving, terminal, opts[:caller])
+      terminal.input? -> confirmed(moving, terminal, opts[:session])
       true -> {:error, "#{interrupting(moving)} #{move_line(key, to)} --yes moves it anyway."}
     end
   end
 
-  defp confirmed(change, %{"to" => to} = moving, terminal, caller) do
+  defp confirmed(%Moving{to: to} = moving, terminal, session) do
     Terminal.puts(terminal, interrupting(moving))
 
     if Owl.IO.confirm(message: "Move it to #{shown_node(to)}?", default: false),
-      do: moved(change, caller),
+      do: moved(moving, session),
       else: {:ok, "Nothing was moved."}
   end
 
@@ -427,17 +453,41 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp interrupting(%{"agent" => key, "interrupting" => "turn"}),
+  defp interrupting(%Moving{agent: key, status: :running}),
     do: "#{key} is taking a turn, which moving it ends; what it has said so far is kept."
 
-  defp interrupting(%{"agent" => key}),
+  defp interrupting(%Moving{agent: key}),
     do: "#{key} is waiting on a person, and moving it abandons what it waits for."
 
-  defp moved(change, caller) do
-    %{"moving" => %{"agent" => key, "to" => to}} = Operation.preview(change)
-
-    with {:ok, _answer} <- Operation.make(change, caller),
+  defp moved(%Moving{agent: key, to: to}, session) do
+    with {:ok, _member} <- Wardrik.agent_move(session, key, to),
          do: {:ok, "Moved #{key} to #{shown_node(to)}, with its conversation."}
+  end
+
+  # -- tool calls ---------------------------------------------------------------
+
+  defp calls([key], opts) do
+    with {:ok, calls} <- Wardrik.agent_calls(opts[:session], key), do: {:ok, running(key, calls)}
+  end
+
+  defp running(key, []), do: "#{key} is running no tool call."
+
+  defp running(key, calls) do
+    rows =
+      for call <- calls,
+          do: "  #{call.call_id}  #{call.name}  #{WardrikDaemon.duration(call.elapsed_ms)}"
+
+    Enum.join(["#{key} is running:" | rows], "\n")
+  end
+
+  defp calls_json([key], opts) do
+    with {:ok, calls} <- Wardrik.agent_calls(opts[:session], key),
+         do: {:ok, Wardrik.Resource.calls(calls)}
+  end
+
+  defp kill_call([key, call_id], opts) do
+    with :ok <- Wardrik.agent_call_kill(opts[:session], key, call_id),
+         do: {:ok, "Stopped #{call_id}. #{key} is told it failed, and its turn goes on."}
   end
 
   # -- edit ---------------------------------------------------------------------
@@ -478,15 +528,8 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp nodes(daemons), do: daemons |> Enum.map(&Nodes.display/1) |> listed()
 
-  # A node an answer names, as a person reads it.
-  defp shown_node(node) when is_atom(node), do: Nodes.display(node)
-
-  defp shown_node(name) when is_binary(name) do
-    case Nodes.find(name, WardrikDaemon.daemons()) do
-      nil -> name
-      node -> Nodes.display(node)
-    end
-  end
+  # A node, as a person reads it.
+  defp shown_node(node), do: Nodes.display(node)
 
   defp prefix?(target), do: match?(%Prefix{}, target)
 

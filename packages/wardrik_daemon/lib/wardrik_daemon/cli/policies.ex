@@ -195,5 +195,5 @@ defmodule WardrikDaemon.CLI.Policies do
   defp judged_document({:allow, :judged}), do: %{"decision" => "allow"}
   defp judged_document(:pass), do: %{"decision" => "none"}
 
-  defp store(opts), do: Wardrik.Host.store(opts[:caller].host)
+  defp store(opts), do: Wardrik.Host.store(opts[:session].host)
 end

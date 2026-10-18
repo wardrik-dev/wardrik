@@ -1685,6 +1685,178 @@
         }
       }
     },
+    "/v1/agents/{org}/{name}/calls": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "get": {
+        "operationId": "agent_calls",
+        "summary": "The tool calls an agent is running",
+        "x-wardrik-function": "agent_calls",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Each call the agent is running now, with how long it has run. An agent asleep runs none, and is not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Calls"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}/calls": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "get": {
+        "operationId": "user_agent_calls",
+        "summary": "The tool calls an agent is running",
+        "x-wardrik-function": "agent_calls",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Each call the agent is running now, with how long it has run. An agent asleep runs none, and is not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Calls"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/agents/{org}/{name}/calls/{call}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "delete": {
+        "operationId": "agent_call_kill",
+        "summary": "Stop a tool call",
+        "description": "Stops one call the agent is running: the model is answered with an error, and the rest of the turn goes on.",
+        "x-wardrik-function": "agent_call_kill",
+        "tags": [
+          "Agents"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/call"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Stopped."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}/calls/{call}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "delete": {
+        "operationId": "user_agent_call_kill",
+        "summary": "Stop a tool call",
+        "description": "Stops one call the agent is running: the model is answered with an error, and the rest of the turn goes on.",
+        "x-wardrik-function": "agent_call_kill",
+        "tags": [
+          "Agents"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/call"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Stopped."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/hooks/{org}/{name}/{trigger}": {
       "parameters": [
         {
@@ -2539,6 +2711,43 @@
           }
         }
       },
+      "Calls": {
+        "type": "object",
+        "description": "The tool calls an agent is running.",
+        "additionalProperties": false,
+        "required": [
+          "calls"
+        ],
+        "properties": {
+          "calls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name",
+                "elapsed_ms"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The call's id."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The tool it calls."
+                },
+                "elapsed_ms": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "How long it has run, in milliseconds."
+                }
+              }
+            }
+          }
+        }
+      },
       "Forgotten": {
         "type": "object",
         "description": "What a removal did: the IDs removed, those an agent file keeps with why, and those not removed with why.",
@@ -3037,6 +3246,15 @@
         "name": "trigger",
         "in": "path",
         "description": "The trigger's name.",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "call": {
+        "name": "call",
+        "in": "path",
+        "description": "The id of a tool call the agent is running.",
         "required": true,
         "schema": {
           "type": "string"

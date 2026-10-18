@@ -19,6 +19,17 @@ defmodule Wardrik.Agent.MessageTest do
              "From channel slack/U024BE7LH:\nWhat changed?"
   end
 
+  test "is read from its text parts, or its content, with the id its sender chose" do
+    parts = [%{"type" => "text", "content" => "a"}, %{"type" => "text", "content" => "b"}]
+
+    assert Message.read(%{"id" => "m1", "parts" => parts}) == {:ok, "a\nb", "m1"}
+    assert Message.read(%{"content" => "hi"}) == {:ok, "hi", nil}
+
+    for message <- [%{}, %{"content" => 7}, %{"content" => "hi", "id" => 7}] do
+      assert {:error, %Wardrik.Error{type: :invalid}} = Message.read(message)
+    end
+  end
+
   test "takes a principal as its sender, and nothing else" do
     assert_raise FunctionClauseError, fn -> Message.new("Hi.", nil, sender: "maria") end
   end

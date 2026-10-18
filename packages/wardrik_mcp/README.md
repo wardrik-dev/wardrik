@@ -71,7 +71,7 @@ offers only `github__connect`, which asks them to authorize; see
 ## Servers owners add
 
 An org or a person adds a server of their own as the deployment runs,
-through the `Wardrik.Servers` operations every surface offers: over HTTP,
+through `Wardrik.servers_add/3`, which every surface offers: over HTTP,
 `POST /v1/servers`. `WardrikMCP.Servers` keeps each in the store, and serves
 it to its owner's agents alone:
 

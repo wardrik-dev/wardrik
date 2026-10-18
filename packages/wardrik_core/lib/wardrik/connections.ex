@@ -5,20 +5,20 @@ defprotocol Wardrik.Connections do
   one before any agent asks for it.
 
   A host names the value once, as the `:connections` of its
-  `Wardrik.Host`, and the operations on connections ask it, whichever
-  surface they came from. The value carries what its implementation needs,
+  `Wardrik.Host`, and the functions of `Wardrik` on connections ask it,
+  whichever surface they came from. The value carries what its implementation needs,
   such as the vault it keeps accounts in:
 
       Wardrik.Host.new(connections: WardrikOAuth.connections(oauth, vault))
 
-  | Operation | Function |
+  | `Wardrik` | Function |
   | --- | --- |
-  | `Wardrik.Operations.ReadConnections` | `list/2` |
-  | `Wardrik.Operations.Connect` | `connect/4` |
-  | `Wardrik.Operations.Disconnect` | `disconnect/3` |
+  | `connections_list/2` | `list/2` |
+  | `connections_connect/3` | `connect/4` |
+  | `connections_disconnect/3` | `disconnect/3` |
 
   A host that offers none has `Wardrik.Connections.None`, whose functions
-  answer `:unsupported`, and so does each operation.
+  answer `:unsupported`, and so does each of those.
 
   An owner is a person in their org, `{org, user}`, or an org, as
   `Wardrik.Credential` resolves credentials for them: a person's call takes

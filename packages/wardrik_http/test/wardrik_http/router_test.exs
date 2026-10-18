@@ -1647,6 +1647,32 @@ defmodule WardrikHTTP.RouterTest do
                  json: %{"node" => "nowhere@nohost"}
                )
     end
+
+    test "lists the tool calls it runs, and stops one", %{api: api} do
+      {key, _agent} = echo_agent()
+      test = self()
+
+      hang =
+        ReqLLM.Tool.new!(
+          name: "hang",
+          description: "Waits.",
+          callback: fn _input ->
+            send(test, :started)
+            receive do: (:never -> {:ok, %{}})
+          end
+        )
+
+      run = Wardrik.Test.run(id: key, tools: [hang])
+      spawn(fn -> Wardrik.Test.call(run, "hang", %{}, id: "call_1") end)
+      assert_receive :started
+
+      assert {:ok, %{status: 200, body: %{"calls" => [%{"id" => "call_1", "name" => "hang"}]}}} =
+               Req.get(api, url: "/v1/agents/#{key}/calls")
+
+      assert {:ok, %{status: 204}} = Req.delete(api, url: "/v1/agents/#{key}/calls/call_1")
+      assert {:ok, %{status: 404}} = Req.delete(api, url: "/v1/agents/#{key}/calls/call_1")
+      assert [{"call.killed", _by}] = Audit.about("agents/#{key}")
+    end
   end
 
   describe "the deployment" do
@@ -1828,6 +1854,7 @@ defmodule WardrikHTTP.RouterTest do
       "user" => "jon",
       "name" => "nobody-openapi",
       "interrupt" => "call_1",
+      "call" => "call_1",
       "trigger" => "sweep",
       "secret" => "s",
       "export" => "openapi",

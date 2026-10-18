@@ -169,7 +169,7 @@ defmodule WardrikHTTP.Access do
   def authorize(%Grant{} = grant, action, id), do: authorize([grant], action, id)
 
   def authorize(grants, action, %Wardrik.AgentID{} = id) when is_list(grants) do
-    answers = Enum.map(grants, &Wardrik.Subject.authorize(id, &1, action))
+    answers = Enum.map(grants, &Grant.authorize(&1, action, id))
 
     cond do
       :ok in answers -> :ok

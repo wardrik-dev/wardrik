@@ -5,7 +5,7 @@ defprotocol Wardrik.Triggers do
   and asks the agent.
 
   A host names the value once, as the `:triggers` of its `Wardrik.Host`,
-  and `Wardrik.Operations.Deliver` hands it each request, whichever surface
+  and `Wardrik.agent_trigger_deliver/4` hands it each request, whichever surface
   it came from. The value carries what its implementation needs, such as
   where each trigger's secret is found:
 

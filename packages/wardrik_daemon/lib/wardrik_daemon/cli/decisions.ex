@@ -19,7 +19,6 @@ defmodule WardrikDaemon.CLI.Decisions do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Event.Codec.Value
-  alias Wardrik.Operations.ListParked
   alias WardrikConsole.Ansi
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
@@ -76,7 +75,7 @@ defmodule WardrikDaemon.CLI.Decisions do
 
   defp interrupts(_words, opts) do
     with {:ok, parked} <- Wardrik.agents_parked(opts[:session], Prefix.all()),
-         do: {:ok, ListParked.render(parked)}
+         do: {:ok, Wardrik.Resource.interrupts(parked)}
   end
 
   defp row_of(key, %{"id" => id, "message" => prompt} = interrupt),

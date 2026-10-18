@@ -111,7 +111,7 @@ defmodule WardrikDaemon.CLI.Completion do
   # The name its usage gives the word at `index`, the last again for a
   # command that takes any number, and none past the most it takes.
   defp placeholder(%Command{arguments: arguments, count: {_fewest, most}}, index) do
-    names = ~r/[A-Z]+/ |> Regex.scan(arguments) |> List.flatten()
+    names = ~r/[A-Z_]+/ |> Regex.scan(arguments) |> List.flatten()
 
     cond do
       most != :any and index >= most -> nil
@@ -138,7 +138,7 @@ defmodule WardrikDaemon.CLI.Completion do
   defp values(_name, _command, _positional, _known), do: []
 
   defp key_index(%Command{arguments: arguments}) do
-    ~r/[A-Z]+/ |> Regex.scan(arguments) |> List.flatten() |> Enum.find_index(&(&1 == "KEY"))
+    ~r/[A-Z_]+/ |> Regex.scan(arguments) |> List.flatten() |> Enum.find_index(&(&1 == "KEY"))
   end
 
   @doc "The completion script for `shell`, one of `shells/0`."

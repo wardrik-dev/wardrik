@@ -423,6 +423,9 @@ defmodule Wardrik.Event.Codec do
 
   defp change({:agent_cleared, id}), do: agent_change("agent.cleared", id, %{})
 
+  defp change({:call_killed, id, call_id}),
+    do: agent_change("call.killed", id, %{"call" => %{"id" => call_id}})
+
   defp change({:trigger_set, id, name}),
     do: agent_change("trigger.set", id, %{"trigger" => %{"name" => name}})
 

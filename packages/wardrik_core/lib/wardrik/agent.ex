@@ -52,7 +52,6 @@ defmodule Wardrik.Agent do
   Either way the agent settles idle and reports what it stopped as
   `Wardrik.Event.TurnInterrupted`.
 
-  `Wardrik.Fleet.kill/1` does the same across a prefix.
   `Wardrik.LLM.ToolRunner.kill_call/2` stops one tool call rather than the turn.
 
   ## Waiting for a person
@@ -127,7 +126,7 @@ defmodule Wardrik.Agent do
   config, seams and idle timeout as `configure/2` gives them, so a
   definition changed while it slept is the one it wakes with; `:none`
   leaves it as it was. Every turn's run carries the host, for the tools
-  that call operations as the agent, as `Wardrik.Catalog.Tools` does.
+  that act on the agents as the agent, as `Wardrik.Catalog.Tools` does.
 
   The agent adds events of its own so subscribers can follow its state
   without polling: `Wardrik.Event.TurnStarted`, `Wardrik.Event.TurnFinished`,

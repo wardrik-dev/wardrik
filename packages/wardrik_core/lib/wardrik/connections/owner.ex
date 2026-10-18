@@ -1,6 +1,6 @@
 defmodule Wardrik.Connections.Owner do
   @moduledoc """
-  Whose connections an operation on `Wardrik.Connections` is about: the
+  Whose connections a call to `Wardrik.Connections` is about: the
   prefix of the agents an owner owns, as a caller's grant names it, and the
   owner it is to the host.
   """
@@ -43,17 +43,6 @@ defmodule Wardrik.Connections.Owner do
             {:ok, Prefix.new!(org: org, user: user)}
         end
     end
-  end
-
-  @doc """
-  The operation `module` asks for, about the owner `caller` asks about, as
-  `owner/2` finds it, with `fields` beside.
-  """
-  @spec request(module(), Caller.t(), :person | :org, keyword()) ::
-          {:ok, struct()} | {:error, Error.t()}
-  def request(module, caller, whose, fields \\ []) do
-    with {:ok, owner} <- owner(caller, whose),
-         do: {:ok, struct!(module, [owner: owner] ++ fields)}
   end
 
   defp user(nil), do: nil

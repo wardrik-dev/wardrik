@@ -6,7 +6,17 @@
 # which only core calls.
 [
   layers: [
-    wardrik: ["Wardrik", "Wardrik.Migration", "Wardrik.Session", "Wardrik.Stream"],
+    wardrik: [
+      "Wardrik",
+      "Wardrik.Catalog",
+      "Wardrik.Catalog.*",
+      "Wardrik.Forgetting",
+      "Wardrik.Migration",
+      "Wardrik.Moving",
+      "Wardrik.Session",
+      "Wardrik.Spawned",
+      "Wardrik.Stream"
+    ],
     definition: ["WardrikDefinition", "WardrikDefinition.*", "Wardrik.Definition.WardrikDefinition.Kept"],
     policy: ["WardrikPolicy", "WardrikPolicy.*"],
     triggers: ["WardrikTrigger", "WardrikTrigger.*", "Wardrik.Triggers.WardrikTrigger.Deliveries"],
@@ -132,11 +142,10 @@
       "Wardrik.Call",
       "Wardrik.Call.Ask",
       "Wardrik.Caller",
-      "Wardrik.Catalog.Agents",
-      "Wardrik.Catalog.Self",
       "Wardrik.Compaction",
       "Wardrik.Connections",
       "Wardrik.Connections.Connection",
+      "Wardrik.Connections.None",
       "Wardrik.Connections.Owner",
       "Wardrik.Core",
       "Wardrik.Credential",
@@ -183,6 +192,7 @@
       "Wardrik.Test.*",
       "Wardrik.TimeZone",
       "Wardrik.Tokens",
+      "Wardrik.Tokens.None",
       "Wardrik.Tokens.Token",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",

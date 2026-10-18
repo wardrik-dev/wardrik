@@ -4,22 +4,23 @@ defprotocol Wardrik.Servers do
   which ones an owner has, adding one, and removing one.
 
   A host names the value once, as the `:servers` of its `Wardrik.Host`, and
-  the operations on servers ask it, whichever surface they came from:
+  the functions of `Wardrik` on servers ask it, whichever surface they came
+  from:
 
       Wardrik.Host.new(servers: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault})
 
-  | Operation | Function |
+  | `Wardrik` | Function |
   | --- | --- |
-  | `Wardrik.Operations.ReadServers` | `list/2` |
-  | `Wardrik.Operations.AddServer` | `add/3` |
-  | `Wardrik.Operations.RemoveServer` | `remove/3` |
+  | `servers_list/2` | `list/2` |
+  | `servers_add/3` | `add/3` |
+  | `servers_remove/3` | `remove/3` |
 
   An owner is the `Wardrik.AgentID.Prefix` of the agents a server serves: an
   org's own, `acme/`, or a person's, `acme/@jon/`. A server one owner adds
   is named by a `Wardrik.Servers.Key` and serves that owner's agents alone.
 
   A host that offers none has `Wardrik.Servers.None`, whose functions answer
-  `:unsupported`, and so does each operation.
+  `:unsupported`, and so does each of those.
   """
 
   alias Wardrik.AgentID.Prefix

@@ -11,6 +11,15 @@ defmodule Wardrik.Session do
   knows a token's, makes one with it:
 
       session = Wardrik.Session.new(host: host, principal: principal, grant: grant)
+
+  ## An agent's session
+
+  An agent acting through its tools has a session too, made with
+  `agent/1`: the `:agent` principal of its ID, whose `reply_to` names it, so
+  a message it sends another agent with `Wardrik.agent_ask/4` is answered
+  back to it as a message of its own; see "Answering another agent" in
+  `Wardrik.Agent`. Other sessions follow the agent's log for its answer, and
+  name no agent there.
   """
 
   alias Wardrik.AgentID
@@ -18,12 +27,13 @@ defmodule Wardrik.Session do
   alias Wardrik.Caller
 
   @enforce_keys [:host, :principal]
-  defstruct [:host, :principal, :grant]
+  defstruct [:host, :principal, :grant, reply_to: []]
 
   @type t() :: %__MODULE__{
           host: Wardrik.Host.t(),
           principal: Wardrik.Principal.t() | nil,
-          grant: Wardrik.Grant.t() | nil
+          grant: Wardrik.Grant.t() | nil,
+          reply_to: [AgentID.t()]
         }
 
   @doc """
@@ -59,19 +69,30 @@ defmodule Wardrik.Session do
   end
 
   @doc """
-  The caller `session` is to an operation on `subject`: with its own grant,
-  or with the first the host gives its principal that reaches `subject`.
-  The deployment itself is reached by a grant over every agent, which a
-  principal without one may not act on.
+  The session of the agent `:id`, acting through its tools with `:grant`, on
+  `:host`: known as the `:agent` principal of its ID, and answered back where
+  it asks another agent something.
   """
-  @spec caller(t(), AgentID.t() | Prefix.t() | Wardrik.Deployment.t()) ::
-          {:ok, Caller.t()} | {:error, Wardrik.Error.t()}
-  def caller(%__MODULE__{grant: nil} = session, %Wardrik.Deployment{}) do
-    with {:error, _none} <-
-           Wardrik.Host.caller(session.host, principal: session.principal, subject: Prefix.all()),
-         do: {:error, Wardrik.Error.new(:forbidden, "This caller may not act on the deployment.")}
+  @spec agent(id: AgentID.t(), grant: Wardrik.Grant.t(), host: Wardrik.Host.t()) :: t()
+  def agent(opts) do
+    opts = Keyword.validate!(opts, [:id, :grant, :host])
+    id = Keyword.fetch!(opts, :id)
+
+    %{
+      new(
+        host: Keyword.fetch!(opts, :host),
+        principal: Wardrik.Principal.new(:agent, to_string(id)),
+        grant: Keyword.fetch!(opts, :grant)
+      )
+      | reply_to: [id]
+    }
   end
 
+  @doc """
+  The caller `session` is to what it acts on, `subject`: with its own grant,
+  or with the first the host gives its principal that reaches `subject`.
+  """
+  @spec caller(t(), AgentID.t() | Prefix.t()) :: {:ok, Caller.t()} | {:error, Wardrik.Error.t()}
   def caller(%__MODULE__{grant: nil} = session, subject),
     do: Wardrik.Host.caller(session.host, principal: session.principal, subject: subject)
 

@@ -2,6 +2,7 @@ defmodule Wardrik.GrantTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Error
   alias Wardrik.Grant
   alias Wardrik.Hook
 
@@ -74,6 +75,31 @@ defmodule Wardrik.GrantTest do
 
     {:ok, decider} = Grant.new(@acme, [:decide])
     assert Grant.within(org, decider) == :error
+  end
+
+  test "authorizes an action on an agent it reaches, and finds none it does not" do
+    {:ok, grant} = Grant.new(@acme, [:read])
+    triage = Wardrik.AgentID.parse!("acme/triage")
+
+    assert Grant.authorize(grant, :read, triage) == :ok
+
+    assert {:error, %Error{type: :forbidden, message: "This caller may not define acme/triage."}} =
+             Grant.authorize(grant, :define, triage)
+
+    assert {:error, %Error{type: :not_found, message: "No agent runs under globex/triage."}} =
+             Grant.authorize(grant, :read, Wardrik.AgentID.parse!("globex/triage"))
+  end
+
+  test "authorizes an action under a prefix it reaches whole" do
+    {:ok, grant} = Grant.new(@acme, [:read])
+
+    assert Grant.authorize_under(grant, :read, Prefix.parse!("acme/triage")) == :ok
+
+    assert {:error,
+            %Error{type: :forbidden, message: "This caller may not change what is under acme/."}} =
+             Grant.authorize_under(grant, :define, @acme)
+
+    assert {:error, %Error{type: :not_found}} = Grant.authorize_under(grant, :read, Prefix.all())
   end
 
   describe "a ceiling" do

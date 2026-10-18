@@ -19,7 +19,7 @@
 #
 #   Wardrik.Fleet.list()
 #   Wardrik.Fleet.spawn(Wardrik.AgentID.new!("analyst", org: "acme", user: "jon"))
-#   Wardrik.Fleet.kill(Wardrik.AgentID.Prefix.new!(org: "acme"))
+#   Wardrik.Fleet.stop(Wardrik.AgentID.new!("analyst", org: "acme", user: "jon"))
 #
 # Killing a node, from outside the session, leaves its agents to be restarted
 # on another with the state they had, which takes about twenty seconds:

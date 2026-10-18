@@ -284,17 +284,7 @@ defmodule Wardrik.Fleet do
     Enum.each(Prefix.patterns(prefix), &(:ok = Group.demonitor(@name, &1)))
   end
 
-  @doc """
-  Interrupts every agent awake under `prefix`, and returns how many were told
-  to stop. One asleep has nothing to stop.
-
-  Each agent's turn is interrupted and its queue discarded; the agents stay up.
-  Use `stop/1` or `forget/1` to be rid of one.
-  """
-  @spec kill(Prefix.t()) :: non_neg_integer()
-  def kill(prefix \\ Prefix.all()) do
-    members = for %Member{asleep: false} = member <- list(prefix), do: member
-    Enum.each(members, &Agent.interrupt(&1.pid))
-    length(members)
-  end
+  @doc "The nodes agents run on: this one, and every one connected to it."
+  @spec nodes() :: [node()]
+  def nodes, do: [Node.self() | Node.list()]
 end

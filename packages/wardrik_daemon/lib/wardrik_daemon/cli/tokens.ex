@@ -19,8 +19,7 @@ defmodule WardrikDaemon.CLI.Tokens do
 
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Grant
-  alias Wardrik.Operations.CreateToken
-  alias Wardrik.Operations.ListTokens
+  alias Wardrik.Resource
   alias WardrikDaemon.CLI.Command
 
   @doc "The token commands, for `WardrikDaemon.CLI.commands/0`."
@@ -78,12 +77,12 @@ defmodule WardrikDaemon.CLI.Tokens do
          {:ok, ceiling} <- ceiling(opts, can),
          {:ok, grant} <- Grant.new(scope, can, ceiling),
          {:ok, issued} <- Wardrik.tokens_create(opts[:session], name, grant, issued(opts[:for])) do
-      %{"secret" => secret, "token" => token} = CreateToken.render(issued)
+      token = Resource.token(issued)
 
       {:ok,
        Enum.join(
          [
-           secret,
+           issued.secret,
            "",
            "#{token["name"]} (#{token["id"]})#{issued_to(token)} reaches #{reach(token)}. " <>
              "This is the only time it is shown."
@@ -161,7 +160,7 @@ defmodule WardrikDaemon.CLI.Tokens do
 
   defp list(_words, opts) do
     with {:ok, tokens} <- Wardrik.tokens_list(opts[:session]),
-         do: {:ok, listed(ListTokens.render(tokens)["tokens"])}
+         do: {:ok, listed(Enum.map(tokens, &Resource.token/1))}
   end
 
   defp listed(tokens) do

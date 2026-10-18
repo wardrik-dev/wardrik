@@ -53,18 +53,17 @@ defmodule Wardrik.Host do
   there is one.
 
   The host travels with the work, never with what is stored: each
-  `Wardrik.Caller` carries it to the operation it calls, and each agent is
+  `Wardrik.Caller` carries it to what it acts on, and each agent is
   handed it as it starts, wakes or restarts on another node (see
   `Wardrik.Agent`). A node runs one `Wardrik.Core`, so one host; see `Wardrik.Core`.
 
   A caller is made here for someone known by a principal, holding the grant
-  the host's `Wardrik.Grants` gives them, or for someone who holds the node:
+  the host's `Wardrik.Grants` gives them:
 
       {:ok, caller} = Wardrik.Host.caller(host, principal: maria, subject: ~A"acme/triage")
-      caller = Wardrik.Host.root(host, principal: Wardrik.Principal.new(:terminal, "jon"))
 
-  The accessors answer each seam's value, so code that runs an operation's
-  work names the field, never an implementation.
+  The accessors answer each seam's value, so code that acts on the agents
+  names the field, never an implementation.
   """
 
   alias Wardrik.AgentID
@@ -125,7 +124,7 @@ defmodule Wardrik.Host do
   end
 
   @doc """
-  The person or system `:principal` names as a caller of an operation on
+  The person or system `:principal` names as a caller acting on
   `:subject`, an agent or the agents under a prefix: holding the first grant
   the host's `Wardrik.Grants` gives them whose scope reaches it. `:not_found`
   where none does, or where nobody is known, a `nil` principal, as for a
@@ -138,7 +137,7 @@ defmodule Wardrik.Host do
   reads and messages for it what it could itself.
 
       {:ok, caller} = Wardrik.Host.caller(host, principal: maria, subject: ~A"acme/triage")
-      Wardrik.Command.run(%Wardrik.Operations.Decide{agent: ~A"acme/triage", decisions: decisions}, caller)
+      :ok = Wardrik.Agent.decide(~A"acme/triage", decisions, caller)
   """
   @spec caller(t(), keyword()) :: {:ok, Caller.t()} | {:error, Error.t()}
   def caller(%__MODULE__{} = host, opts) do
@@ -169,17 +168,6 @@ defmodule Wardrik.Host do
   end
 
   defp own(_type, _principal), do: []
-
-  @doc """
-  A caller known as `:principal` who may do anything to every agent: one who
-  holds the node itself, as a shell on it, or the terminal client. See
-  `Wardrik.Caller.root/1`.
-  """
-  @spec root(t(), keyword()) :: Caller.t()
-  def root(%__MODULE__{} = host, opts) do
-    opts = Keyword.validate!(opts, [:principal])
-    Caller.root(principal: Keyword.fetch!(opts, :principal), host: host)
-  end
 
   @doc "The `WardrikStore` everything is kept in."
   @spec store(t()) :: WardrikStore.t()

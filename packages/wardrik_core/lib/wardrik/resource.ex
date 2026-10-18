@@ -1,8 +1,7 @@
 defmodule Wardrik.Resource do
   @moduledoc """
-  What operations' answers are as JSON, as maps `JSON.encode!/1` takes: the
-  shapes every surface answers in, as the HTTP API does. Each operation's
-  `render/1` makes its answer one of these.
+  What `Wardrik`'s functions answer, as JSON, as maps `JSON.encode!/1`
+  takes: the shapes every surface answers in, as the HTTP API does.
 
   Names follow the event data's: OpenTelemetry's attribute names without
   their `gen_ai.` prefix, as nested objects, and messages and interrupts in
@@ -168,7 +167,9 @@ defmodule Wardrik.Resource do
   What a forget did, as `%{id => outcome}`: the agents removed, those kept
   with why, and those not removed with why, each by ID.
   """
-  @spec forgotten(%{Wardrik.AgentID.t() => Wardrik.Operations.Forgetting.outcome()}) :: map()
+  @spec forgotten(%{
+          Wardrik.AgentID.t() => :forgotten | {:kept, String.t()} | {:failed, String.t()}
+        }) :: map()
   def forgotten(outcomes) do
     sorted = Enum.sort_by(outcomes, fn {id, _outcome} -> to_string(id) end)
 
@@ -179,17 +180,42 @@ defmodule Wardrik.Resource do
     }
   end
 
-  @doc "Agents, each with why, as `[{id, why}]` holds them."
-  @spec reasons([{Wardrik.AgentID.t(), String.t()}]) :: [map()]
-  def reasons(pairs), do: for({id, why} <- pairs, do: %{"id" => to_string(id), "why" => why})
+  defp reasons(pairs), do: for({id, why} <- pairs, do: %{"id" => to_string(id), "why" => why})
+
+  @doc """
+  The decisions taken on the calls an agent waits on, each by its id:
+  `approved` or `rejected`.
+  """
+  @spec decisions(%{String.t() => :approve | {:approve | :deny, String.t()}}) :: map()
+  def decisions(decisions) do
+    %{
+      "decisions" =>
+        for(
+          {id, decision} <- Enum.sort(decisions),
+          do: %{"id" => id, "decision" => verdict(decision)}
+        )
+    }
+  end
+
+  defp verdict({:deny, _reason}), do: "rejected"
+  defp verdict(_approved), do: "approved"
+
+  @doc "The tool calls an agent is running, each with how long it has run."
+  @spec calls([%{call_id: String.t(), name: String.t(), elapsed_ms: non_neg_integer()}]) ::
+          map()
+  def calls(calls) do
+    %{
+      "calls" =>
+        for(
+          call <- calls,
+          do: %{"id" => call.call_id, "name" => call.name, "elapsed_ms" => call.elapsed_ms}
+        )
+    }
+  end
 
   @doc "The agents a cancel stopped."
   @spec cancelled([Wardrik.AgentID.t()]) :: map()
   def cancelled(ids), do: %{"cancelled" => Enum.map(ids, &to_string/1)}
-
-  @doc "The agents a stop put to sleep."
-  @spec stopped([Wardrik.AgentID.t()]) :: map()
-  def stopped(ids), do: %{"stopped" => Enum.map(ids, &to_string/1)}
 
   @doc """
   A page of an export: its events, the `next` that moves the export past

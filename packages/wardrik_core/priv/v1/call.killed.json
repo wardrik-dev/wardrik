@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:call.killed",
+  "title": "wardrik.call.killed",
+  "description": "Someone stopped a tool call an agent was running; the model is answered with an error, and the turn goes on.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The agent's ID."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "call": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The tool call's id."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "agent",
+    "call"
+  ]
+}

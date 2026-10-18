@@ -11,7 +11,7 @@ defprotocol Wardrik.Grants do
       host = Wardrik.Host.new(grants: %MyApp.Grants{admins: admins})
 
       {:ok, caller} = Wardrik.Host.caller(host, principal: principal, subject: ~A"acme/triage")
-      Wardrik.Command.run(%Wardrik.Operations.Decide{agent: ~A"acme/triage", decisions: decisions}, caller)
+      :ok = Wardrik.Agent.decide(~A"acme/triage", decisions, caller)
 
   A chat channel knows the person pressing a button by their principal, and
   a tool acting for the person who asked for its turn knows them as

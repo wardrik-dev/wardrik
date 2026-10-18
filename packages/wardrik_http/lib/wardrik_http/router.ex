@@ -24,16 +24,13 @@ defmodule WardrikHTTP.Router do
 
   require Logger
 
+  alias Wardrik.Agent.Message
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.AgentOperation
   alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Event.Export
   alias Wardrik.Grant
-  alias Wardrik.Operations.Ask
-  alias Wardrik.Operations.Decide
-  alias Wardrik.Operations.ReadEvents
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Servers.Server
@@ -392,7 +389,7 @@ defmodule WardrikHTTP.Router do
   defp route("POST", ["messages"], conn) do
     {202,
      &with(
-       {:ok, %Ask{id: id, text: text}} <- Ask.new(&2, conn.body_params),
+       {:ok, text, id} <- Message.read(conn.body_params),
        do: Wardrik.agent_ask(&1, &2, text, id: id)
      ), &%{"message" => %{"id" => &1.id}}}
   end
@@ -400,9 +397,9 @@ defmodule WardrikHTTP.Router do
   defp route("POST", ["decisions"], conn) do
     {200,
      &with(
-       {:ok, %Decide{decisions: decisions}} <- Decide.new(&2, conn.body_params),
+       {:ok, decisions} <- decisions(conn.body_params),
        do: Wardrik.agent_decide(&1, &2, decisions)
-     ), &Decide.render/1}
+     ), &Resource.decisions/1}
   end
 
   defp route("GET", ["interrupts", id, "authorization"], _conn),
@@ -413,7 +410,7 @@ defmodule WardrikHTTP.Router do
   defp route("DELETE", ["conversation"], _conn),
     do: {200, &Wardrik.agent_clear/2, &Resource.snapshot/1}
 
-  defp route("POST", ["spawn"], conn), do: {200, &spawned(conn, &1, &2), &agent/1}
+  defp route("POST", ["spawn"], conn), do: {200, &spawned(conn, &1, &2), &agent(&1.member)}
   defp route("POST", ["stop"], _conn), do: {200, &Wardrik.agent_stop/2, &agent/1}
 
   defp route("POST", ["move"], conn),
@@ -434,6 +431,11 @@ defmodule WardrikHTTP.Router do
 
   defp route("DELETE", ["triggers", name], _conn),
     do: {200, &Wardrik.agent_trigger_remove(&1, &2, name), &trigger/1}
+
+  defp route("GET", ["calls"], _conn), do: {200, &Wardrik.agent_calls/2, &Resource.calls/1}
+
+  defp route("DELETE", ["calls", id], _conn),
+    do: {204, &Wardrik.agent_call_kill(&1, &2, id), nil}
 
   defp route(_method, _rest, _conn), do: nil
 
@@ -561,13 +563,45 @@ defmodule WardrikHTTP.Router do
 
   # A node the deployment has, by its name: never an atom made from a request.
   defp named(name) when is_binary(name) do
-    case Enum.find([Node.self() | Node.list()], &(Atom.to_string(&1) == name)) do
+    case Enum.find(Wardrik.Fleet.nodes(), &(Atom.to_string(&1) == name)) do
       nil -> {:error, Error.new(:invalid, "#{name} is not a node of this deployment.")}
       node -> {:ok, node}
     end
   end
 
   defp named(_name), do: {:error, Error.new(:invalid, "node is a node's name, as wardrik@host")}
+
+  # The decisions a request takes, as `WardrikProtocol`'s `decisions.json`
+  # describes them: each the id of a call, approve with a note for the agent
+  # where one is given, or reject with a reason.
+  defp decisions(%{"decisions" => [_ | _] = decisions}) do
+    Enum.reduce_while(decisions, {:ok, %{}}, fn decision, {:ok, read} ->
+      case decision(decision) do
+        {:ok, id, decided} -> {:cont, {:ok, Map.put(read, id, decided)}}
+        {:error, error} -> {:halt, {:error, error}}
+      end
+    end)
+  end
+
+  defp decisions(_body),
+    do: {:error, Error.new(:invalid, "decisions is a list of a call's id and its decision")}
+
+  defp decision(%{"id" => id, "decision" => "approve"} = decision) when is_binary(id) do
+    case decision["note"] do
+      note when is_binary(note) and note != "" -> {:ok, id, {:approve, note}}
+      _none -> {:ok, id, :approve}
+    end
+  end
+
+  defp decision(%{"id" => id, "decision" => "reject"} = decision) when is_binary(id) do
+    case decision["reason"] do
+      reason when is_binary(reason) and reason != "" -> {:ok, id, {:deny, reason}}
+      _none -> {:ok, id, {:deny, "A person refused this call."}}
+    end
+  end
+
+  defp decision(_decision),
+    do: {:error, Error.new(:invalid, "Each decision is a call's id, and approve or reject")}
 
   # Plug.Parsers keeps a body that is not an object under "_json".
   defp object(%{"_json" => _value}),
@@ -616,7 +650,7 @@ defmodule WardrikHTTP.Router do
   end
 
   defp streamed(conn, key, cursor) do
-    case Wardrik.Subject.authorize(key, conn.assigns.caller.grant, :read) do
+    case Grant.authorize(conn.assigns.caller.grant, :read, key) do
       :ok -> stream(conn, key, cursor)
       {:error, error} -> error(conn, error)
     end
@@ -664,10 +698,10 @@ defmodule WardrikHTTP.Router do
         conn
 
       {:gap, oldest} ->
-        error(conn, ReadEvents.gap(oldest))
+        error(conn, Error.gap(oldest))
 
       :not_found ->
-        error(conn, AgentOperation.not_found(key))
+        error(conn, Error.no_agent(key))
 
       {:error, :not_found} ->
         json(conn, 401, Resource.error("unauthorized", "The credential was revoked."))

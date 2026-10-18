@@ -45,6 +45,7 @@ defmodule Wardrik.Grant do
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Error
   alias Wardrik.Hook
 
   @actions [:read, :message, :decide, :define, :serve]
@@ -146,4 +147,60 @@ defmodule Wardrik.Grant do
   @spec allows?(t(), action(), AgentID.t()) :: boolean()
   def allows?(%__MODULE__{can: can} = grant, action, %AgentID{} = id),
     do: action in can and covers?(grant, id)
+
+  @verbs %{
+    read: "read",
+    message: "send messages to",
+    decide: "decide the calls of",
+    define: "define",
+    serve: "offer tools to"
+  }
+
+  @doc """
+  `:ok` where `grant` lets its holder take `action` on the agent `id`, or
+  why not: an agent it does not reach is `:not_found`, as if none ran, so
+  its holder learns nothing outside its scope, and one it reaches without
+  the action is `:forbidden`.
+  """
+  @spec authorize(t(), action(), AgentID.t()) :: :ok | {:error, Error.t()}
+  def authorize(%__MODULE__{} = grant, action, %AgentID{} = id) do
+    cond do
+      not covers?(grant, id) ->
+        {:error, Error.no_agent(id)}
+
+      allows?(grant, action, id) ->
+        :ok
+
+      true ->
+        {:error,
+         Error.new(:forbidden, "This caller may not #{Map.fetch!(@verbs, action)} #{id}.")}
+    end
+  end
+
+  @under %{
+    read: "read what is under",
+    message: "send messages to the agents under",
+    decide: "decide the calls of the agents under",
+    define: "change what is under",
+    serve: "offer tools to the agents under"
+  }
+
+  @doc """
+  `:ok` where `grant` reaches every agent under `prefix` and lets its holder
+  take `action` on them, or why not, as `authorize/3` answers for one agent.
+  """
+  @spec authorize_under(t(), action(), Prefix.t()) :: :ok | {:error, Error.t()}
+  def authorize_under(%__MODULE__{scope: scope, can: can}, action, prefix) do
+    cond do
+      not Prefix.covers?(scope, prefix) ->
+        {:error, Error.new(:not_found, "Nothing under #{prefix} is within this caller's reach.")}
+
+      action in can ->
+        :ok
+
+      true ->
+        {:error,
+         Error.new(:forbidden, "This caller may not #{Map.fetch!(@under, action)} #{prefix}.")}
+    end
+  end
 end
