@@ -76,6 +76,11 @@ or the bucket's versioning or replication.
   It points `current`, and so `wardrik`, at the new release, keeps the one before, and removes older
   ones unless a node still runs from them.
 - The service runs `current`, so a restart starts the new release.
+- A release can change how it writes agents down, and needs no cleanup when it does. An agent the
+  new release can't read starts again from its file or definition. Its conversation starts empty,
+  its log is kept, and a turn it had parked on a person is lost.
+- Two releases running at once, as in a blue-green deploy, can't read each other's agents. For the
+  minute both run, each treats the other's agents as absent.
 - `~/.config/wardrik` holds only what a person writes, so it can live in a dotfiles repository.
   Leave `env` out: it holds keys.
 - In a cluster, every node holds everything. A copy of one stopped node's store is a copy of the
