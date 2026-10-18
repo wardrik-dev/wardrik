@@ -129,6 +129,18 @@ Someone had the files that declare agents read again.
 | `nodes` | array of string | yes | The nodes that read them. |
 | `actor` | [principal](#principal) |  |  |
 
+### `wardrik.call.killed`
+
+Someone stopped a tool call an agent was running; the model is answered with an error, and the turn goes on.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `call` | object | yes |  |
+| `call.id` | string | yes | The tool call's id. |
+| `actor` | [principal](#principal) |  |  |
+
 ### `wardrik.conversation.cleared`
 
 The conversation was emptied, and with it the mark of content from outside it held.
