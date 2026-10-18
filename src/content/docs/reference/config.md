@@ -20,7 +20,7 @@ defaults:
   model: anthropic:claude-sonnet-5
   tools: [web_search]
   policy: careful
-  retries: [1, 5, 30]
+  retries: {attempts: 3, on_exhausted: fail}
 
 mcp:
   linear:
@@ -146,8 +146,9 @@ says otherwise. Without it the deployment is this machine's loopback.
 
 What an agent is given where its file says nothing, and what `wardrik agent spawn` writes into a new
 one. It takes `model`, `tools`, `policy`, `timeout`, `idle_timeout`, `max_iterations`, `retries` and
-`compaction`, as an [agent file](/reference/agent-files/) does. `idle_timeout` is 900 seconds and `retries`
-`[1, 5]` where neither sets them. `wardrik init` writes `model`.
+`compaction`, as an [agent file](/reference/agent-files/) does. Where neither sets them, `idle_timeout` is
+900 seconds, and [`retries`](/reference/agent-files/#retries) tries a failed model call six more times,
+waiting at most a minute between tries, then asks a person. `wardrik init` writes `model`.
 
 ## tools
 
