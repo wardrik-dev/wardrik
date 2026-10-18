@@ -2,10 +2,6 @@ import Config
 
 config :logger, level: :debug
 
-# The TUI `mix wardrik` attaches sizes its render cache from :os_mon when it
-# can; cap it anyway.
-config :back_breeze, render_cache_max_memory_bytes: 256 * 1_024 * 1_024
-
 # The search key every agent `mix wardrik` starts may read.
 config :wardrik_daemon, WardrikVault, shared: ["BRAVE_API_KEY"]
 

@@ -632,7 +632,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "channels.chat.token is the token the channel acts with"
 
       assert {:error, message} = read("channels:\n  chat: {type: pigeon}\n", context)
-      assert message =~ "channels.chat.type is the kind of channel: test"
+      assert message =~ "channels.chat.type is the kind of channel: slack, test"
 
       assert {:error, message} = read("channels:\n  chat: {type: test, colour: red}\n", context)
       assert message =~ "channels.chat.room_prefix is the only setting"

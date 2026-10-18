@@ -110,7 +110,7 @@ remote "wardrik@$server" true 2>/dev/null ||
 
 # -- the release --------------------------------------------------------------
 
-version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' "$root/release/mix.exs")
+version=$(sed -n 's/^ *@version "\(.*\)"$/\1/p' "$root/packages/wardrik_daemon/mix.exs")
 name="wardrik-$version-linux-$arch.tar.gz"
 
 if [ -n "$tarball" ]; then

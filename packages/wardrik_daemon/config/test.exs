@@ -30,9 +30,6 @@ config :anubis_mcp, log: false
 # A daemon started by a test serves the HTTP API on whatever port is free.
 config :wardrik_daemon, WardrikHTTP, port: 0
 
-# What the daemon serves over SSH, as a release that carries the TUI names it.
-config :wardrik_daemon, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
-
 config :req_llm,
   load_dotenv: false,
   zai_api_key: "test-zai-api-key",

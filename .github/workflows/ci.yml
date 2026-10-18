@@ -223,7 +223,7 @@ jobs:
       - name: Name the tarball
         id: tarball
         run: |
-          version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' release/mix.exs)
+          version=$(sed -n 's/^ *@version "\(.*\)"$/\1/p' packages/wardrik_daemon/mix.exs)
           name="wardrik-$version-linux-${{ matrix.arch }}.tar.gz"
           mv "dist/wardrikd-$version.tar.gz" "$name"
           mkdir unpacked && tar -xzf "$name" -C unpacked
@@ -482,7 +482,7 @@ jobs:
             refs/heads/main) tags+=(-t "$IMAGE:main") ;;
             refs/tags/v*)
               if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
-                echo "tag $GITHUB_REF_NAME does not match release/mix.exs version $VERSION" >&2
+                echo "tag $GITHUB_REF_NAME does not match packages/wardrik_daemon/mix.exs version $VERSION" >&2
                 exit 1
               fi
               tags+=(-t "$IMAGE:$VERSION")
@@ -537,7 +537,7 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
-            echo "tag $GITHUB_REF_NAME does not match release/mix.exs version $VERSION" >&2
+            echo "tag $GITHUB_REF_NAME does not match packages/wardrik_daemon/mix.exs version $VERSION" >&2
             exit 1
           fi
           case "$VERSION" in *-*) prerelease=--prerelease ;; *) prerelease= ;; esac

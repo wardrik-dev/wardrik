@@ -34,25 +34,22 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential \
   && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /src/release
+WORKDIR /src/packages/wardrik_daemon
 ENV MIX_ENV=prod LANG=C.UTF-8
 
 RUN mix local.hex --force && mix local.rebar --force
 
 # Dependencies first, so a change to Wardrik alone reuses their layer.
 COPY --from=manifests /src/packages /src/packages
-COPY release/mix.exs release/mix.lock ./
-COPY release/config/config.exs release/config/prod.exs config/
+COPY packages/wardrik_daemon/mix.lock ./
+COPY packages/wardrik_daemon/config/config.exs packages/wardrik_daemon/config/prod.exs config/
 RUN mix deps.get --only prod && mix deps.compile
 
 COPY packages /src/packages
-COPY release/lib lib
-COPY release/rel rel
-COPY release/config/runtime.exs config/
 RUN mix release --overwrite
 
 FROM scratch AS tarball
-COPY --from=build /src/release/_build/prod/wardrikd-*.tar.gz /
+COPY --from=build /src/packages/wardrik_daemon/_build/prod/wardrikd-*.tar.gz /
 
 FROM ubuntu:${UBUNTU} AS image
 
@@ -68,7 +65,7 @@ RUN useradd --create-home --uid 1000 --user-group wardrik \
   && install -d -o wardrik -g wardrik -m 755 /config \
   && install -d -o wardrik -g wardrik -m 700 /data /state
 
-COPY --from=build /src/release/_build/prod/rel/wardrikd /opt/wardrik
+COPY --from=build /src/packages/wardrik_daemon/_build/prod/rel/wardrikd /opt/wardrik
 RUN ln -s wardrik /opt/wardrik/bin/rik
 
 # /config is what a person writes: config.yaml, agents/ and policies/, and

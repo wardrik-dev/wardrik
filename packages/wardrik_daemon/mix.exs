@@ -10,7 +10,7 @@ defmodule WardrikDaemon.MixProject do
       version: @version,
       elixir: "~> 1.20",
       description:
-        "The Wardrik daemon: agent files, config.yaml, the wardrik command, and what a release runs beside core.",
+        "The Wardrik daemon: agent files, config.yaml, the wardrik command, and the release that runs them.",
       source_url: @source_url,
       package: [licenses: ["Apache-2.0"], links: %{"GitHub" => @source_url}],
       docs: docs(),
@@ -24,6 +24,10 @@ defmodule WardrikDaemon.MixProject do
       # Tests implement the host's seams in their own modules.
       consolidate_protocols: Mix.env() != :test,
       deps: deps(),
+      releases: releases(),
+      # The application is the release's tree, which reads config.yaml. The
+      # suite starts what it depends on, and the trees it needs, itself.
+      aliases: [test: "test --no-start"],
       test_coverage: [summary: [threshold: 89]],
       precommit: [
         # The docs site's reference pages, written from this package's code
@@ -34,7 +38,7 @@ defmodule WardrikDaemon.MixProject do
     ]
   end
 
-  def application, do: [extra_applications: [:logger]]
+  def application, do: [extra_applications: [:logger], mod: {WardrikDaemon.Application, []}]
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(:dev), do: ["lib", "dev"]
@@ -75,8 +79,24 @@ defmodule WardrikDaemon.MixProject do
       # The console the CLI prints with, and the TUI the SSH tests serve, as a
       # release that carries it does.
       sibling(:wardrik_tui),
+      # What the release ships that the daemon's own code never names: the
+      # channels config.yaml may set up.
+      sibling(:wardrik_slack),
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  # One release carrying its own ERTS. `bin/wardrikd` is the node's own script
+  # and `bin/wardrik`, from rel/overlays, the command a person runs.
+  # `rel/env.sh.eex` gives each install a cookie of its own and keeps
+  # distribution on loopback.
+  defp releases do
+    [
+      wardrikd: [
+        include_executables_for: [:unix],
+        steps: [:assemble, :tar]
+      ]
     ]
   end
 

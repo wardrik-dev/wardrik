@@ -61,10 +61,14 @@ pane_a=$(tmux list-panes -t "$window" -F '#{pane_id}' | head -1)
 pane_b=$(tmux split-window -h -P -F '#{pane_id}' -t "$pane_a")
 pane_c=$(tmux split-window -v -P -F '#{pane_id}' -t "$pane_b")
 
+# What the daemon depends on, and not its own application, the release's tree,
+# which reads ~/.config/wardrik.
+deps="mix run --no-start -e 'Application.ensure_all_started(Application.spec(:wardrik_daemon, :applications))'"
+
 tmux send-keys -t "$pane_a" \
-  "$run iex --sname wardrik_a --cookie $cookie --erl \"$(peers wardrik_b)\" -S mix" C-m
+  "$run iex --sname wardrik_a --cookie $cookie --erl \"$(peers wardrik_b)\" -S $deps" C-m
 tmux send-keys -t "$pane_b" \
-  "$run iex --sname wardrik_b --cookie $cookie --erl \"$(peers wardrik_a)\" -S mix" C-m
+  "$run iex --sname wardrik_b --cookie $cookie --erl \"$(peers wardrik_a)\" -S $deps" C-m
 tmux send-keys -t "$pane_c" \
   "$run mix wardrik --sname wardrik_c --cookie $cookie --connect wardrik_a@$host --connect wardrik_b@$host" C-m
 

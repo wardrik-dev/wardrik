@@ -1,6 +1,6 @@
-# What each Mix project under packages/, release/ and tools/ writes beside
-# itself: compiled artifacts, dependency sources, coverage, generated docs and
-# the dialyzer PLTs CI caches.
+# What each Mix project under packages/ and tools/ writes beside itself:
+# compiled artifacts, dependency sources, coverage, generated docs and the
+# dialyzer PLTs CI caches.
 _build/
 deps/
 cover/

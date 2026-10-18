@@ -104,9 +104,9 @@ together behind one child, `{Wardrik, Wardrik.new(...)}`, kept in the
 application's own store.
 
 **The daemon** (`wardrik_daemon`) puts them together behind the `wardrik`
-command, reading agents, policies and settings from files. The
-[release](release) builds it into one self-contained binary and the Docker
-image.
+command, reading agents, policies and settings from files. It builds into one
+self-contained binary, the [release](packages/wardrik_daemon#the-release), and
+the Docker image.
 
 **SDKs** drive agents from other languages over the HTTP API, and offer them
 tools that run in your own process.
@@ -168,7 +168,6 @@ mix precommit   # formatting, credo, the architecture checks, tests with coverag
 | Directory | What it holds |
 | --- | --- |
 | `packages/` | the Elixir packages |
-| `release/` | the daemon's release, and the configuration it boots with |
 | `sdks/` | the SDKs for other languages |
 | `docs/` | the docs site, whose reference pages `mix wardrik.docs` writes from the code |
 | `tools/precommit` | `mix precommit` and the checks every package shares |
@@ -179,14 +178,13 @@ mix precommit   # formatting, credo, the architecture checks, tests with coverag
 
 ### Adding a package
 
-A package is one of four kinds, and each kind is set up the same way:
+A package is one of three kinds, and each kind is set up the same way:
 
 | Kind | For example | Depends on | Implements | Its tests |
 | --- | --- | --- | --- | --- |
 | Plugin | `wardrik_brave`, `wardrik_mcp`, `wardrik_lua` | core, and the library it wraps | a core behaviour, such as `Wardrik.Tool`, `Wardrik.Hook` or `Wardrik.Credential` | call its callbacks, with core's `Wardrik.Test` helpers |
 | Channel | `wardrik_slack` | `wardrik_channel`, and its client | `WardrikChannel` | deliver to and receive from a stubbed medium |
 | Surface | `wardrik_http`, `wardrik_tui`, `wardrik_daemon` | core, and the packages it puts in front of people | nothing; it calls core | drive agents in the fleet |
-| Assembly | `release` | the packages it ships | nothing | — |
 
 In every one that builds on core:
 
@@ -194,8 +192,8 @@ In every one that builds on core:
   path here and a version on Hex.
 - It reads no application environment. Its settings come as the options of
   what the host starts, `{WardrikMCP.Supervisor, servers: [...]}`, or with
-  the data the host plugs in; the daemon and the release are the hosts here,
-  and read `config.yaml` for them.
+  the data the host plugs in; the daemon is the host here, and reads
+  `config.yaml` for them.
 - Its tests boot core with nothing to set up, on the store core keeps in
   memory:
 
@@ -207,7 +205,7 @@ In every one that builds on core:
 To build the daemon:
 
 ```sh
-cd release
+cd packages/wardrik_daemon
 MIX_ENV=prod mix release
 _build/prod/rel/wardrikd/bin/wardrik init
 ```

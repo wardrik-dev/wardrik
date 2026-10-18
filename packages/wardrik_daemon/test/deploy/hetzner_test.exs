@@ -5,7 +5,7 @@ defmodule Deploy.HetznerTest do
 
   # The files deploy/hetzner/cloud-init.yaml writes onto the box, read as the
   # daemon there reads them, so a file the box would refuse fails here first.
-  @cloud_init Path.expand("../../../deploy/hetzner/cloud-init.yaml", __DIR__)
+  @cloud_init Path.expand("../../../../deploy/hetzner/cloud-init.yaml", __DIR__)
 
   defp written(path) do
     {:ok, cloud_init} = YamlElixir.read_from_file(@cloud_init)
