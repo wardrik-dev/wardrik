@@ -434,7 +434,7 @@ defmodule WardrikDaemon.AgentsTest do
     Host.start_agents(context.dir)
     defined = AgentID.parse!("#{org}/defined")
     fails = %{"retries" => %{"attempts" => 0, "on_exhausted" => "fail"}}
-    {:ok, spec} = Agents.put(Host.agents(), defined, definition: fails, grant: grant(org))
+    {:ok, spec} = Agents.put(Host.agents(), defined, definition: fails, token: token(org))
     {:ok, _pid} = Fleet.put(spec)
 
     # The store loses the agent, as a wiped one would, and keeps its definition.

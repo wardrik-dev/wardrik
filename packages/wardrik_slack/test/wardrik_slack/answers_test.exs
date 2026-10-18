@@ -127,7 +127,8 @@ defmodule WardrikSlack.AnswersTest do
         Agent.decide(
           key,
           %{"call_1" => {:deny, "Not now."}},
-          Wardrik.Token.root(Wardrik.Principal.new(:shell, "t"))
+          Wardrik.Token.root(Wardrik.Principal.new(:shell, "t")),
+          host: Wardrik.Host.new(store: Wardrik.Test.store())
         )
 
       assert_receive {:resumed, %{"call_1" => {:deny, "Not now."}}}

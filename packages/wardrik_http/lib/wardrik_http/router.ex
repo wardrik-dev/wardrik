@@ -735,7 +735,7 @@ defmodule WardrikHTTP.Router do
 
     store
     |> Access.holding(conn.assigns.caller.ref, fn ->
-      EventStream.serve(conn, key, store: store, host: session(conn).host, after: cursor)
+      EventStream.serve(conn, key, store: store, host: scope(conn).host, after: cursor)
     end)
     |> case do
       %Plug.Conn{} = conn ->

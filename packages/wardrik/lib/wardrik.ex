@@ -539,7 +539,8 @@ defmodule Wardrik do
   @doc group: "Talking to an agent"
   @spec agents_list(Scope.t(), Prefix.t()) :: {:ok, [Member.t()]} | {:error, Error.t()}
   def agents_list(%Scope{} = scope, prefix) do
-    with :ok <- authorize(scope, "agents.list", prefix), do: {:ok, Fleet.list(prefix, host: scope.host)}
+    with :ok <- authorize(scope, "agents.list", prefix),
+         do: {:ok, Fleet.list(prefix, host: scope.host)}
   end
 
   @doc """

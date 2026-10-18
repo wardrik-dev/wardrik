@@ -171,7 +171,11 @@ defmodule Wardrik.LifecycleTest do
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "wait")
     assert_receive {:turn, _messages, turn}
-    Fleet.await_update(fn -> Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()).status != :idle end)
+
+    Fleet.await_update(fn ->
+      Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()).status != :idle
+    end)
+
     {id, turn}
   end
 

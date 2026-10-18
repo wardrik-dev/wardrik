@@ -650,7 +650,7 @@ defmodule WardrikDaemon.CLI do
   defp asking(key, words, scope), do: Wardrik.agent_ask(scope, key, Enum.join(words, " "))
 
   defp answer_followed([key | words], opts, terminal) do
-    if match?(%{state: :parked}, Agent.status(key, host: opts[:session].host)) do
+    if match?(%{state: :parked}, Agent.status(key, host: opts[:as].host)) do
       Terminal.puts(
         terminal,
         Owl.Data.tag("#{key} is waiting on a person, so this waits behind it.", @faint)
@@ -669,7 +669,7 @@ defmodule WardrikDaemon.CLI do
   defp sent({:error, error}), do: {:error, error}
 
   defp watch([key], opts, terminal) do
-    case {Fleet.lookup(key, host: opts[:session].host), opts[:json]} do
+    case {Fleet.lookup(key, host: opts[:as].host), opts[:json]} do
       {nil, _json?} ->
         {:error, no_agent(key)}
 
