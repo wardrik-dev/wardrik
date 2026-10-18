@@ -102,7 +102,7 @@ await wardrik.work();
 Start it with a token that serves acme's agents:
 
 ```sh
-wardrik token create disputes --scope acme/ --can serve
+wardrik token create disputes --scope acme/ --role worker
 WARDRIK_TOKEN=wardrik_... node disputes.ts
 ```
 

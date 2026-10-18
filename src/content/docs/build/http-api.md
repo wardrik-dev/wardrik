@@ -14,14 +14,14 @@ lists every route.
 Make a token with only what it needs, and send it as `authorization: Bearer`:
 
 ```sh
-wardrik token create app --scope acme/ --policy careful
+wardrik token create app --scope acme/ --role reader,messenger,approver,definer --policy careful
 export TOKEN=wardrik_...
 curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents
 ```
 
 The token is printed once. `--scope acme/` reaches acme's own agents; `acme/@jon/` reaches jon's,
-and `acme/*` every agent of acme and its users. Agents the token defines are held to `careful`,
-ahead of their own policy. See [Tokens](/run/tokens/).
+and `acme/*` every agent of acme and its users. `--role` says what it may do there. Agents the
+token defines are held to `careful`, ahead of their own policy. See [Tokens](/run/tokens/).
 
 ## Define an agent
 
@@ -74,7 +74,7 @@ Open the stream before sending the message, or follow from a snapshot's `sequenc
 ## Decide what it waits on
 
 A call that waits arrives as `run.interrupted`. Each interrupt has an `id`, a `reason`, the
-`message` a person is asked, and `labels` such as `["outside"]`. With a token that can `decide`:
+`message` a person is asked, and `labels` such as `["outside"]`. With a token holding `approver`:
 
 ```sh
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
@@ -88,13 +88,13 @@ is read by the model beside the answer and never changes the call; see
 
 ## Connect accounts
 
-A token made `--for` a person connects their accounts before any agent asks:
+A token that reaches a person's agents connects their accounts before any agent asks:
 
 ```sh
-curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections
+curl -s -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections?prefix=acme/@jon/"
 # {"connections": [{"provider": "github", "held_by": "person"}, {"provider": "linear"}]}
 
-curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections/linear
+curl -s -X POST -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections/linear?prefix=acme/@jon/"
 # {"provider": "linear", "connected": false, "authorization": {"url": "https://…"}}
 ```
 
@@ -132,7 +132,7 @@ also runs tools in your app; see [Tools in your app](/build/tool-workers/).
 ### Definitions
 
 - A definition names tools and policies the daemon ships or configures, never a module.
-- It shares only the trees its token's scope covers, and can't trust outside content.
+- It shares only the trees whose owners' agents its token reaches, and can't trust outside content.
 - A key an agent file declares belongs to the file, and is refused with `409`.
 - `notify` works as in an agent file; see [Send notices](/build/notices/).
 - `GET /v1/agents/acme/triage` answers the snapshot: status, what it waits on, its messages, and
@@ -144,9 +144,9 @@ also runs tools in your app; see [Tools in your app](/build/tool-workers/).
   `GET .../interrupts/{id}/authorization` answers where, as `{"url": ..., "code": ...}`.
 - `held_by` is `person`, `org` or `deployment`, whichever a call of theirs would use, and absent where
   nobody holds it.
-- The person is the user the token's scope names, else the one it was made `--for`. A token for no
-  person, or one that may `define` under the org, uses `?owner=org` for the org's.
-- Listing needs `read`; connecting and forgetting (`DELETE /v1/connections/linear`) need `define`.
+- `prefix` names whose accounts: a person's, `acme/@jon/`, or an org's, `acme/`.
+- Listing needs the `reader` role; connecting and forgetting (`DELETE /v1/connections/linear`) need
+  `definer`.
 
 ### Stop, clear and remove
 
@@ -168,15 +168,15 @@ curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/age
 - `POST .../stop` puts an agent to sleep with its conversation, and answers it. `POST .../spawn`
   starts it again, starts one the server defines, or has the server define one as
   `wardrik agent spawn` does.
-- `POST .../move` with `{"node": "wardrik@box2"}`, or `spawn` with a node, takes a token over every
-  agent.
+- `POST .../move` with `{"node": "wardrik@box2"}`, or `spawn` with a node, takes an `owner` token
+  over every agent.
 - Triggers are set and removed at `/triggers/{name}`; see
   [Trigger an agent](/build/triggers/#over-http). Webhooks reach `POST /v1/hooks/{key}/{name}` with
   no token; see [Receiving a webhook](/build/triggers/#receiving-a-webhook).
 
 ### The deployment
 
-A token made with `wardrik token create NAME --all` also reaches the deployment:
+A token made with `wardrik token create NAME --all --role owner` also reaches the deployment:
 
 ```sh
 curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/deployment/nodes
@@ -185,8 +185,16 @@ curl -s -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/deployment/a
 ```
 
 `nodes` counts agents running on each node and those asleep. `reload` reads the agent and policy
-files on every node. `audit` pages what people changed, as `wardrik audit` does. Tokens are made from
-a shell on the server, never over the API.
+files on every node. `audit` pages what people changed, as `wardrik audit` does. `/v1/tokens` makes,
+lists and revokes tokens:
+
+```sh
+curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  http://127.0.0.1:4747/v1/tokens \
+  -d '{"name": "ci", "scope": "acme/", "roles": ["reader", "messenger"], "expires_in": 2592000}'
+```
+
+It answers the token and its `secret`, given this once. The new token acts for whoever made it.
 
 ### Errors
 
@@ -195,9 +203,9 @@ An error answers with its status and `{"error": {"type": ..., "message": ...}}`:
 | Status | `type` | |
 | --- | --- | --- |
 | 400 | `invalid_request` | the request doesn't read |
-| 401 | `unauthorized` | no token, or one that doesn't work |
-| 403 | `forbidden` | the token may not do this |
-| 404 | `not_found` | no such agent, or one outside the token's scope |
+| 401 | `unauthorized` | no token, or one that doesn't work or has expired |
+| 403 | `forbidden` | the token reaches the agent, and doesn't allow this |
+| 404 | `not_found` | no such agent, or one the token doesn't reach |
 | 409 | `conflict` | the agent isn't waiting on that call, or a file declares it |
 | 410 | `gap` | an event stream position older than what is kept |
 | 503 | `unavailable` | the store can't answer now, as in a cluster without a quorum |
