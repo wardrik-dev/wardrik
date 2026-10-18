@@ -105,6 +105,20 @@ defmodule Wardrik.Event.AgentStopped do
         }
 end
 
+defmodule Wardrik.Event.ActivityChanged do
+  @moduledoc """
+  What the agent is doing changed, as `Wardrik.Agent.Activity` says, on the
+  span of the event that changed it. Live: folded from the events before it,
+  and never kept.
+  """
+  @enforce_keys ~w(activity)a
+  defstruct @enforce_keys
+
+  @type t() :: %__MODULE__{
+          activity: Wardrik.Agent.Activity.t()
+        }
+end
+
 defmodule Wardrik.Event.ContextCompacted do
   @moduledoc "The agent's history was rewritten before a turn, as `Wardrik.History` reports it."
   @enforce_keys ~w(stats)a

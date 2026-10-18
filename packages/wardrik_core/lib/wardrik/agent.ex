@@ -135,8 +135,13 @@ defmodule Wardrik.Agent do
   on the turn's root span, so a subscriber can tell them from events the
   turn's own work produced; and `Wardrik.Event.MessageQueued` as a message
   arrives and `Wardrik.Event.AgentStarted` each time the agent is loaded,
-  on the root of a trace of their own. A client attaching mid-turn can catch
-  up with `status/1` or `snapshot/1`.
+  on the root of a trace of their own.
+
+  It folds its own events into what it is doing now, a
+  `Wardrik.Agent.Activity`, and announces each change as
+  `Wardrik.Event.ActivityChanged`, live, on the span of the event that
+  changed it. A client attaching mid-turn can catch up with `status/1` or
+  `snapshot/1`, which carry it.
 
   ## Answering another agent
 
@@ -622,9 +627,12 @@ defmodule Wardrik.Agent do
 
   def handle_info({:idle, _tag}, state), do: stay(state)
 
-  # The agent's own events, which it writes to its log.
-  def handle_info(%Event{source: %{agent_id: id}} = event, %State{agent_id: id} = state),
-    do: {:noreply, log(state, event)}
+  # The agent's own events, which it writes to its log and folds into what it
+  # is doing.
+  def handle_info(%Event{source: %{agent_id: id}} = event, %State{agent_id: id} = state) do
+    {state, effects} = state |> log(event) |> State.heard(event)
+    {:noreply, perform(state, effects)}
+  end
 
   def handle_info(%Event{}, state), do: {:noreply, state}
 

@@ -47,5 +47,11 @@ defmodule Wardrik.Test.FakeAgent do
     {:noreply, owner}
   end
 
-  defp status, do: %{state: :idle, pending: 0, model: "test:model"}
+  defp status,
+    do: %{
+      state: :idle,
+      pending: 0,
+      model: "test:model",
+      activity: %Wardrik.Agent.Activity{doing: :idle, since: System.system_time(:microsecond)}
+    }
 end

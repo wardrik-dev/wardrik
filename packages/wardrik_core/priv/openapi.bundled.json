@@ -711,6 +711,23 @@
         "description": "The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.",
         "examples": [
           {
+            "activity": {
+              "doing": [
+                {
+                  "interrupts": [
+                    {
+                      "id": "toolu_01",
+                      "message": "Open an issue?",
+                      "reason": "tool_approval",
+                      "tool_call_id": "toolu_01"
+                    }
+                  ],
+                  "type": "wardrik.run.interrupted"
+                }
+              ],
+              "pending": 0,
+              "since": "2026-10-18T12:00:00.000000Z"
+            },
             "agent": {
               "id": "acme/triage",
               "name": "triage"
@@ -754,6 +771,9 @@
           }
         ],
         "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Defs/$defs/activity"
+          },
           "agent": {
             "additionalProperties": false,
             "properties": {
@@ -876,6 +896,7 @@
           "conversation",
           "status",
           "pending",
+          "activity",
           "request",
           "run",
           "interrupts",
@@ -1305,6 +1326,35 @@
       },
       "Defs": {
         "$defs": {
+          "activity": {
+            "additionalProperties": false,
+            "description": "What an agent is doing now.",
+            "properties": {
+              "doing": {
+                "description": "Every tool call running, oldest first, or the one thing it is doing otherwise; none when it is idle.",
+                "items": {
+                  "$ref": "#/components/schemas/Defs/$defs/doing"
+                },
+                "type": "array"
+              },
+              "pending": {
+                "description": "How many messages wait behind it.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "since": {
+                "description": "When it began what it is doing.",
+                "format": "date-time",
+                "type": "string"
+              }
+            },
+            "required": [
+              "doing",
+              "since",
+              "pending"
+            ],
+            "type": "object"
+          },
           "cost": {
             "additionalProperties": false,
             "description": "What a call cost, the same figure a budget counts.",
@@ -1354,6 +1404,90 @@
             },
             "required": [
               "by"
+            ],
+            "type": "object"
+          },
+          "doing": {
+            "additionalProperties": false,
+            "description": "One thing an agent is doing, as the type of the event that set it, with what that event names of it.",
+            "properties": {
+              "attempt": {
+                "description": "Which try after the first comes next.",
+                "minimum": 1,
+                "type": "integer"
+              },
+              "attempts": {
+                "description": "How many tries after the first there may be.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "interrupts": {
+                "items": {
+                  "$ref": "#/components/schemas/Defs/$defs/interrupt"
+                },
+                "type": "array"
+              },
+              "message": {
+                "$ref": "#/components/schemas/Defs/$defs/message_ref"
+              },
+              "step": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "tool": {
+                "additionalProperties": false,
+                "properties": {
+                  "call": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "call"
+                ],
+                "type": "object"
+              },
+              "type": {
+                "description": "The type of the event that set it.",
+                "enum": [
+                  "wardrik.run.started",
+                  "wardrik.run.resumed",
+                  "wardrik.run.interrupted",
+                  "wardrik.message.started",
+                  "wardrik.message.retrying",
+                  "wardrik.step.started",
+                  "wardrik.tool_call.started",
+                  "wardrik.tool_call.completed",
+                  "wardrik.tool_call.denied"
+                ],
+                "type": "string"
+              },
+              "wait_ms": {
+                "$ref": "#/components/schemas/Defs/$defs/duration_ms"
+              }
+            },
+            "required": [
+              "type"
             ],
             "type": "object"
           },

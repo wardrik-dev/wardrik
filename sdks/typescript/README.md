@@ -72,8 +72,10 @@ for await (const event of events) {
 A stream reconnects after any drop, a `kill -9` of the node included, and
 resumes after the last durable event it gave, `events.sequence`. Left without
 `after`, it starts after the last event the agent had written. Live events
-(text and reasoning deltas, tool progress) are not sent again after a
-reconnect; `wardrik.message.completed` carries the whole text. When the log no
+(text and reasoning deltas, tool progress, and `wardrik.activity.changed`,
+what the agent is doing now) are not sent again after a reconnect;
+`wardrik.message.completed` carries the whole text, and `agent.snapshot()`
+what the agent is doing. When the log no
 longer holds what comes after the cursor, the stream throws a `WardrikError` of
 type `gap`: read `agent.snapshot()` and follow from its `sequence`.
 

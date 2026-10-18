@@ -63,7 +63,10 @@ watched and stopped by `Wardrik.AgentID.Prefix`.
 
 `ask/2` returns at once. The agent takes its messages one turn at a time, and
 what it does arrives as `Wardrik.Event`s: the text as it streams, each tool
-call, and how each turn ended. `Wardrik.Agent.snapshot/1` gives a client that
+call, and how each turn ended. `Wardrik.Event.ActivityChanged` says what it
+is doing now, a `Wardrik.Agent.Activity`, each time that changes, and a
+`Wardrik.Agent.Activity.Presenter` puts it in words, such as `running
+web_search and fetch_page`. `Wardrik.Agent.snapshot/1` gives a client that
 attaches mid-turn what it missed.
 
 Where several people talk to one agent, as in a chat room, each message names
@@ -340,7 +343,7 @@ without notice.
 | Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | Who acts, and what `Wardrik` answers them | `Wardrik.Caller`, `Wardrik.Error`, `Wardrik.Resource`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |
-| Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
+| Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |
 

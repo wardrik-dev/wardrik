@@ -160,6 +160,61 @@ export interface Interrupt {
   labels?: string[];
 }
 /**
+ * One thing an agent is doing, as the type of the event that set it, with what that event names of it.
+ */
+export interface Doing {
+  /**
+   * The type of the event that set it.
+   */
+  type:
+    | "wardrik.run.started"
+    | "wardrik.run.resumed"
+    | "wardrik.run.interrupted"
+    | "wardrik.message.started"
+    | "wardrik.message.retrying"
+    | "wardrik.step.started"
+    | "wardrik.tool_call.started"
+    | "wardrik.tool_call.completed"
+    | "wardrik.tool_call.denied";
+  message?: MessageRef;
+  /**
+   * Which try after the first comes next.
+   */
+  attempt?: number;
+  /**
+   * How many tries after the first there may be.
+   */
+  attempts?: number;
+  wait_ms?: DurationMs;
+  step?: {
+    name: string;
+  };
+  tool?: {
+    name: string;
+    call: {
+      id: string;
+    };
+  };
+  interrupts?: Interrupt[];
+}
+/**
+ * What an agent is doing now.
+ */
+export interface Activity {
+  /**
+   * Every tool call running, oldest first, or the one thing it is doing otherwise; none when it is idle.
+   */
+  doing: Doing[];
+  /**
+   * When it began what it is doing.
+   */
+  since: string;
+  /**
+   * How many messages wait behind it.
+   */
+  pending: number;
+}
+/**
  * One entry of GET /v1/agents.
  */
 export interface AgentSummary {
@@ -349,6 +404,7 @@ export interface AgentSnapshot {
   };
   status: "idle" | "running" | "parked";
   pending: number;
+  activity: Activity;
   request: {
     model: string;
   };
@@ -653,6 +709,12 @@ export interface TriggerDefinition {
    */
   jitter?: number;
   [k: string]: unknown;
+}
+/**
+ * What the agent is doing changed, on the span of the event that changed it. Live: never stored.
+ */
+export interface ActivityChangedData {
+  activity: Activity;
 }
 /**
  * Someone dropped the turn an agent was taking, and what was queued behind it.
@@ -1201,6 +1263,7 @@ export interface TriggerSetData {
 
 /** Each event type, and the data its events carry. */
 export interface EventData {
+  "wardrik.activity.changed": ActivityChangedData;
   "wardrik.agent.cancelled": AgentCancelledData;
   "wardrik.agent.cleared": AgentClearedData;
   "wardrik.agent.defined": AgentDefinedData;

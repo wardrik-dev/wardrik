@@ -9,10 +9,12 @@ defmodule Wardrik.Agent.State.Stored do
   keeps who asked for it. How far
   the agent's `Wardrik.Event.Log` has got is written as a sequence number,
   from which the next owner looks for the head. The `Wardrik.Host` it runs
-  on is never written: whichever node loads it next hands it its own.
+  on is never written: whichever node loads it next hands it its own. Nor is
+  its `Wardrik.Agent.Activity`, which is read back from what it waits on.
   """
 
   alias ReqLLM.Context
+  alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Due
@@ -47,7 +49,7 @@ defmodule Wardrik.Agent.State.Stored do
   def dump(%State{} = state) do
     state
     |> Map.from_struct()
-    |> Map.drop([:log, :host, :active_at, :idle_timer])
+    |> Map.drop([:log, :host, :active_at, :idle_timer, :activity])
     |> Map.merge(%{
       config: Config.dump(state.config),
       mode: at_rest(state.mode),
@@ -77,10 +79,20 @@ defmodule Wardrik.Agent.State.Stored do
       Map.merge(dumped, %{
         config: Config.load(config),
         mode: reopen(mode),
-        host: Wardrik.Host.new()
+        host: Wardrik.Host.new(),
+        activity: %Activity{
+          doing: doing(mode),
+          since: System.system_time(:microsecond),
+          pending: length(dumped.pending)
+        }
       })
     )
   end
+
+  # What it is doing as it is read back: waiting on a person, or nothing
+  # until a turn starts.
+  defp doing({:waiting, turn, _source, _sender}), do: %Event.TurnParked{calls: Turn.waiting(turn)}
+  defp doing(_mode), do: :idle
 
   @doc """
   What an agent written down waits on, as `{call, prompt}` pairs, or `[]`

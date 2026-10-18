@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:activity.changed",
+  "title": "wardrik.activity.changed",
+  "description": "What the agent is doing changed, on the span of the event that changed it. Live: never stored.",
+  "type": "object",
+  "properties": {
+    "activity": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/activity"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "activity"
+  ]
+}

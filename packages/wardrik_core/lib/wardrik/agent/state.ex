@@ -93,6 +93,7 @@ defmodule Wardrik.Agent.State do
   """
 
   alias ReqLLM.Context
+  alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
@@ -200,6 +201,7 @@ defmodule Wardrik.Agent.State do
     :runner,
     :resumer,
     :run_opts,
+    :activity,
     replayer: {Turn, :replay, []},
     grace: @default_grace,
     idle_timeout: @default_idle_timeout,
@@ -258,6 +260,7 @@ defmodule Wardrik.Agent.State do
           runner: runner(),
           resumer: resumer(),
           run_opts: keyword(),
+          activity: Activity.t(),
           grace: pos_integer(),
           idle_timeout: timeout(),
           active_at: integer() | nil,
@@ -329,6 +332,7 @@ defmodule Wardrik.Agent.State do
       resumer: mfa!(Keyword.get(opts, :resumer, {Turn, :resume, []}), :resumer),
       replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :replay, []}), :replayer),
       run_opts: Keyword.take(opts, Run.seams()),
+      activity: %Activity{doing: :idle, since: System.system_time(:microsecond)},
       grace: Keyword.get(opts, :grace, @default_grace),
       idle_timeout: idle_timeout!(Keyword.get(opts, :idle_timeout, @default_idle_timeout)),
       wake_only: Keyword.get(opts, :wake_only, false)
@@ -458,6 +462,23 @@ defmodule Wardrik.Agent.State do
   def turn_run(%__MODULE__{} = state, sender) do
     opts = [name: "turn", sender: sender, host: state.host] ++ state.run_opts
     %{Run.root(state.config, state.agent_id, opts) | labels: state.labels}
+  end
+
+  @doc """
+  Folds one of the agent's own events into what it is doing, and announces
+  what it is doing now, on the event's span, where that changed. See
+  `Wardrik.Agent.Activity`.
+  """
+  @spec heard(t(), Event.t()) :: {t(), [effect()]}
+  def heard(%__MODULE__{activity: activity} = state, %Event{} = event) do
+    case Activity.fold(activity, event) do
+      ^activity ->
+        {state, []}
+
+      changed ->
+        {%{state | activity: changed},
+         [{:emit, event.source, %Event.ActivityChanged{activity: changed}}]}
+    end
   end
 
   @doc "Records how far this agent's log has got."

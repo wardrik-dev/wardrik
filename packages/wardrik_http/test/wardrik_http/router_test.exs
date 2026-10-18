@@ -1158,7 +1158,7 @@ defmodule WardrikHTTP.RouterTest do
                 {"000000000005", "wardrik.message.created"},
                 {"000000000006", "wardrik.run.started"},
                 {"000000000007", "wardrik.run.completed"}
-              ], stream} = frames(stream, 3)
+              ], stream} = kept(stream, 3)
 
       Req.cancel_async_response(stream.response)
     end
@@ -1234,6 +1234,21 @@ defmodule WardrikHTTP.RouterTest do
         assert_receive {^ref, _part} = message
         {:ok, [data: data]} = Req.parse_message(stream.response, message)
         frames(%{stream | buffer: stream.buffer <> data}, count, frames)
+    end
+  end
+
+  # The next `count` frames the log keeps, passing over live ones, such as
+  # what the agent is doing.
+  defp kept(stream, 0), do: {[], stream}
+
+  defp kept(stream, count) do
+    case frames(stream, 1) do
+      {[{nil, _type}], stream} ->
+        kept(stream, count)
+
+      {[frame], stream} ->
+        {frames, stream} = kept(stream, count - 1)
+        {[frame | frames], stream}
     end
   end
 

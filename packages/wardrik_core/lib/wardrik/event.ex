@@ -35,6 +35,8 @@ defmodule Wardrik.Event do
       `Wardrik.Event.MessageQueued`, `Wardrik.Event.AgentStarted`,
       `Wardrik.Event.AgentStopped`, `Wardrik.Event.ContextCleared`,
       `Wardrik.Event.TriggerFired`.
+    * What the agent is doing, on the span of the event that changed it:
+      `Wardrik.Event.ActivityChanged`.
     * Spans and delegations, on their own span: `Wardrik.Event.SpanStarted`,
       `Wardrik.Event.SpanFinished`, `Wardrik.Event.DelegationStarted`,
       `Wardrik.Event.DelegationFinished`.
@@ -62,6 +64,7 @@ defmodule Wardrik.Event do
           | __MODULE__.ContextCompacted.t()
           | __MODULE__.ContextCleared.t()
           | __MODULE__.TriggerFired.t()
+          | __MODULE__.ActivityChanged.t()
           | __MODULE__.SpanStarted.t()
           | __MODULE__.SpanFinished.t()
           | __MODULE__.DelegationStarted.t()
@@ -129,6 +132,7 @@ defmodule Wardrik.Event do
     __MODULE__.ContextCompacted => :context_compacted,
     __MODULE__.ContextCleared => :context_cleared,
     __MODULE__.TriggerFired => :trigger_fired,
+    __MODULE__.ActivityChanged => :activity_changed,
     __MODULE__.SpanStarted => :span_started,
     __MODULE__.SpanFinished => :span_finished,
     __MODULE__.DelegationStarted => :delegation_started,
@@ -158,7 +162,8 @@ defmodule Wardrik.Event do
   How much of an agent's stream to take.
 
     * `:lifecycle` - the shape of the work: turns starting and ending, spans
-      opening and closing, and delegations starting and ending
+      opening and closing, and delegations starting and ending, with what the
+      agent is doing now as `Wardrik.Event.ActivityChanged`
     * `:activity` - what the agent is doing inside that shape: model requests,
       tool calls, answer text and reasoning
     * `:raw` - everything, including the provider's own stream records
@@ -179,6 +184,7 @@ defmodule Wardrik.Event do
     :agent_started,
     :agent_stopped,
     :trigger_fired,
+    :activity_changed,
     :span_started,
     :span_finished,
     :delegation_started,
