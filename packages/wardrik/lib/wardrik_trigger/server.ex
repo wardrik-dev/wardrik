@@ -20,7 +20,8 @@ defmodule WardrikTrigger.Server do
   @max_sleep :timer.hours(1)
 
   @impl DurableServer
-  def dump_state(%State{} = state), do: state |> Map.from_struct() |> Map.delete(:settings)
+  def dump_state(%State{} = state),
+    do: state |> Map.from_struct() |> Map.drop([:host, :settings])
 
   @impl DurableServer
   def load_state(_old_vsn, dumped), do: struct!(State, dumped)
@@ -29,8 +30,8 @@ defmodule WardrikTrigger.Server do
   # from `init`.
   @dialyzer {:nowarn_function, init: 2}
   @impl DurableServer
-  def init(%State{} = state, %{settings: settings}) do
-    state = %{state | settings: settings}
+  def init(%State{} = state, %{host: host, settings: settings}) do
+    state = %{state | host: host, settings: settings}
     :ok = WardrikTrigger.join(state.agent, state.trigger)
     {:ok, state, {:continue, :wake}, meta: State.meta(state), permanent: true}
   end
@@ -94,13 +95,13 @@ defmodule WardrikTrigger.Server do
   # The source is checked before the agent is looked up, so a source with
   # nothing new wakes no sleeping agent; and its cursor is kept only once the
   # agent is asked, so what an agent that was busy missed is found again.
-  defp check(%State{agent: agent, trigger: trigger, cursor: cursor, settings: settings}) do
+  defp check(%State{agent: agent, trigger: trigger, cursor: cursor, settings: settings} = state) do
     case WardrikTrigger.check(trigger, cursor, agent: agent, settings: settings) do
       {:ok, [], next} ->
         {:nothing_new, next}
 
       {:ok, items, next} ->
-        case Delivery.ready(agent, trigger.overlap) do
+        case Delivery.ready(agent, trigger.overlap, host: state.host) do
           {:ok, pid} -> {:ask, pid, items, next}
           outcome -> {outcome, cursor}
         end

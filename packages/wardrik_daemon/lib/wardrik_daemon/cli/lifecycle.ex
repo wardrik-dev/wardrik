@@ -494,11 +494,13 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   @doc """
   Where the file that declares the agent under `key` is, for `bin/wardrik` to
-  open in an editor, or why there is none.
+  open in an editor, or why there is none, asking the definitions of the
+  `:host` given for one no file declares.
   """
-  @spec file(Wardrik.AgentID.t()) :: {:ok, Path.t()} | {:error, String.t()}
-  def file(key) do
-    case {WardrikDaemon.Host.declared()[key], Fleet.lookup(key)} do
+  @spec file(Wardrik.AgentID.t(), host: Wardrik.Host.t()) ::
+          {:ok, Path.t()} | {:error, String.t()}
+  def file(key, opts) do
+    case {WardrikDaemon.Host.declared()[key], Fleet.lookup(key, opts)} do
       {{path, _spec}, _member} ->
         {:ok, path}
 

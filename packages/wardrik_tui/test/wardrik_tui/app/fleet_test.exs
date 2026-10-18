@@ -218,7 +218,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/spawn helper")
 
     assert screen(session) =~ "spawned and connected to #{key}"
-    assert Fleet.whereis(key)
+    assert Fleet.whereis(key, host: Wardrik.Test.host())
     assert Audit.about("agents/#{key}") == [{"agent.spawned", @ops}]
   end
 
@@ -235,7 +235,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     submit(session, "/spawn refused")
     assert screen(session) =~ "✗ the defaults name no such tool"
-    refute Fleet.whereis(AgentID.new!("refused", org: org))
+    refute Fleet.whereis(AgentID.new!("refused", org: org), host: Wardrik.Test.host())
   end
 
   test "/spawn sends the prompt as this client's first message", %{session: session, org: org} do
@@ -271,7 +271,7 @@ defmodule WardrikTUI.App.FleetTest do
     refute screen(session) =~ "hello from here"
     assert screen(session) =~ "› what is up"
     assert screen(session) =~ "⏺ the answer"
-    assert Fleet.whereis(other)
+    assert Fleet.whereis(other, host: Wardrik.Test.host())
   end
 
   test "attaching replays each tool call and what it returned", %{session: session, org: org} do
@@ -342,7 +342,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "⏺ ok"
     assert text =~ "2 messages arrived while this client was elsewhere"
     assert text =~ "› while you were out"
-    assert Fleet.whereis(other)
+    assert Fleet.whereis(other, host: Wardrik.Test.host())
   end
 
   test "an agent asleep is shown asleep, and connecting to it wakes it", ctx do
@@ -404,7 +404,7 @@ defmodule WardrikTUI.App.FleetTest do
     text = screen(session)
     assert text =~ "spawned and connected to #{AgentID.new!("helper", org: org)}"
     assert text =~ "› hello there"
-    assert Fleet.whereis(AgentID.new!("helper", org: org))
+    assert Fleet.whereis(AgentID.new!("helper", org: org), host: Wardrik.Test.host())
     Fleet.forget(AgentID.new!("helper", org: org))
   end
 
@@ -689,7 +689,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/spawn placed node=#{short}")
 
     assert screen(session) =~ "spawned and connected to #{key}"
-    assert Fleet.whereis(key)
+    assert Fleet.whereis(key, host: Wardrik.Test.host())
   end
 
   test "/spawn says so when the node is not there", %{session: session} do
@@ -722,7 +722,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "sent to #{key}: look into it"
     assert text =~ to_string(agent_id)
     assert text =~ "› ○ watched"
-    assert Fleet.whereis(key)
+    assert Fleet.whereis(key, host: Wardrik.Test.host())
 
     assert_receive %Event{
       payload: %Event.MessageQueued{message: %{text: "look into it", sender: sender}}
@@ -734,14 +734,14 @@ defmodule WardrikTUI.App.FleetTest do
   test "/spawn of an agent already running connects rather than starting one", ctx do
     %{session: session, org: org} = ctx
     other = spawn_and_ask(org, "other", "what is up")
-    pid = Fleet.whereis(other)
+    pid = Fleet.whereis(other, host: Wardrik.Test.host())
 
     submit(session, "/spawn other")
 
     text = screen(session)
     assert text =~ "#{other} was already running · connected to it"
     assert text =~ "› what is up"
-    assert Fleet.whereis(other) == pid
+    assert Fleet.whereis(other, host: Wardrik.Test.host()) == pid
 
     submit(session, "/spawn watched --bg")
 
@@ -758,7 +758,10 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "#{agent_id} runs on #{node()} already"
 
     elsewhere()
-    expect(Fleet, :move, fn ^agent_id, :wardrik_b@localhost -> {:ok, Fleet.whereis(agent_id)} end)
+
+    expect(Fleet, :move, fn ^agent_id, :wardrik_b@localhost ->
+      {:ok, Fleet.whereis(agent_id, host: Wardrik.Test.host())}
+    end)
 
     submit(session, "/move watched node=b")
 
@@ -769,7 +772,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   test "a restart under the same ID is followed and announced", ctx do
     %{session: session, agent_id: agent_id} = ctx
-    before = Fleet.whereis(agent_id)
+    before = Fleet.whereis(agent_id, host: Wardrik.Test.host())
 
     # The same watch the client holds, so the test knows when the registry
     # has the new process and can ask the client to refresh right then.
@@ -820,7 +823,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "/move #{busy} restarts it on wardrik_b@localhost"
     assert text =~ "its turn is running and would be interrupted"
     assert text =~ "/confirm goes ahead"
-    assert Fleet.whereis(busy) == pid
+    assert Fleet.whereis(busy, host: Wardrik.Test.host()) == pid
 
     submit(session, "/confirm")
 
@@ -843,7 +846,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/move stays node=b")
     submit(session, "/filter")
     assert screen(session) =~ "move cancelled · the agent stays where it is"
-    assert Fleet.whereis(busy) == pid
+    assert Fleet.whereis(busy, host: Wardrik.Test.host()) == pid
     send(turn, :release)
   end
 
@@ -933,12 +936,12 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "/rm doomed removes 1 agent, and what they said, for good:"
     assert text =~ to_string(key)
     assert text =~ "/confirm goes ahead"
-    assert Fleet.whereis(key)
+    assert Fleet.whereis(key, host: Wardrik.Test.host())
 
     submit(session, "/confirm")
 
     assert screen(session) =~ "removed #{key} and its store"
-    assert Fleet.whereis(key) == nil
+    assert Fleet.whereis(key, host: Wardrik.Test.host()) == nil
     refute Fleet.stored?(key)
   end
 
@@ -953,7 +956,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     submit(session, "/confirm")
     assert screen(session) =~ "nothing is waiting to be confirmed"
-    assert Fleet.whereis(key)
+    assert Fleet.whereis(key, host: Wardrik.Test.host())
   end
 
   test "/rm NAME --yes skips the preview", %{session: session, org: org} do
@@ -964,7 +967,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/rm sure --yes")
 
     assert screen(session) =~ "removed #{key} and its store"
-    assert Fleet.whereis(key) == nil
+    assert Fleet.whereis(key, host: Wardrik.Test.host()) == nil
     assert Audit.about("agents/#{key}") == [{"agent.forgotten", @ops}]
   end
 
@@ -976,7 +979,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     submit(session, "/rm #{org}/")
     assert screen(session) =~ "you are attached to #{agent_id}"
-    assert Fleet.whereis(agent_id)
+    assert Fleet.whereis(agent_id, host: Wardrik.Test.host())
   end
 
   test "/rm PREFIX/ lists every agent under it and skips the attached one", ctx do
@@ -999,8 +1002,8 @@ defmodule WardrikTUI.App.FleetTest do
 
     text = screen(session)
     assert text =~ "removed 2 agents and their stores"
-    assert Enum.all?(keys, &(Fleet.whereis(&1) == nil))
-    assert Fleet.whereis(agent_id)
+    assert Enum.all?(keys, &(Fleet.whereis(&1, host: Wardrik.Test.host()) == nil))
+    assert Fleet.whereis(agent_id, host: Wardrik.Test.host())
   end
 
   test "a target may be a full ID, with or without a leading slash", ctx do
@@ -1018,7 +1021,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     submit(session, "/confirm")
     assert screen(session) =~ "removed #{key} and its store"
-    assert Fleet.whereis(key) == nil
+    assert Fleet.whereis(key, host: Wardrik.Test.host()) == nil
 
     submit(session, "/rm some/odd/shape/of/id")
     assert screen(session) =~ "some/odd/shape/of/id is not an agent ID"
@@ -1057,7 +1060,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     assert screen(session) =~ "asked #{key} to stop"
     assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
-    assert Fleet.whereis(key)
+    assert Fleet.whereis(key, host: Wardrik.Test.host())
     assert Audit.about("agents/#{key}") == [{"agent.cancelled", @ops}]
   end
 
@@ -1119,7 +1122,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/spawn sleeper")
 
     assert screen(session) =~ "› remember this"
-    assert Fleet.whereis(key)
+    assert Fleet.whereis(key, host: Wardrik.Test.host())
   end
 
   test "an attached agent forgotten leaves the client waiting, sending nothing", ctx do

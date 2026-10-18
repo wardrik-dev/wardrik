@@ -25,7 +25,7 @@ defmodule WardrikTrigger.Webhook.Server do
   @seen 500
 
   @enforce_keys [:agent, :hook]
-  defstruct [:agent, :hook, :last_at, :last_outcome, seen: []]
+  defstruct [:agent, :hook, :last_at, :last_outcome, :host, seen: []]
 
   @type t() :: %__MODULE__{
           agent: Wardrik.AgentID.t(),
@@ -36,15 +36,15 @@ defmodule WardrikTrigger.Webhook.Server do
         }
 
   @impl DurableServer
-  def dump_state(%__MODULE__{} = state), do: Map.from_struct(state)
+  def dump_state(%__MODULE__{} = state), do: state |> Map.from_struct() |> Map.delete(:host)
 
   @impl DurableServer
   def load_state(_old_vsn, dumped), do: struct!(__MODULE__, dumped)
 
   @impl DurableServer
-  def init(%__MODULE__{} = state, _info) do
+  def init(%__MODULE__{} = state, %{host: host}) do
     :ok = WardrikTrigger.join(state.agent, state.hook)
-    {:ok, state, meta: meta(state), permanent: true}
+    {:ok, %{state | host: host}, meta: meta(state), permanent: true}
   end
 
   @impl DurableServer
@@ -67,7 +67,7 @@ defmodule WardrikTrigger.Webhook.Server do
 
     with {:ok, item} <- received,
          false <- item.id in state.seen,
-         {:ok, pid} <- Delivery.ready(agent, hook.overlap) do
+         {:ok, pid} <- Delivery.ready(agent, hook.overlap, host: state.host) do
       next = %{
         state
         | seen: Enum.take([item.id | state.seen], @seen),

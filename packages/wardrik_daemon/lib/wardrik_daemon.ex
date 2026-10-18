@@ -211,7 +211,7 @@ defmodule WardrikDaemon do
   @spec status(Wardrik.Host.t(), Config.t()) :: String.t()
   def status(host, config) do
     agents = Wardrik.Host.definitions(host)
-    members = Fleet.list()
+    members = Fleet.list(Wardrik.AgentID.Prefix.all(), host: host)
     {uptime_ms, _since_last} = :erlang.statistics(:wall_clock)
 
     header =

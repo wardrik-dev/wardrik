@@ -29,12 +29,16 @@ defmodule Wardrik.Fleet.DefinedTest do
     Definitions.keep(key, Spec.new(id: key))
 
     refute Fleet.stored?(key)
-    assert %Fleet.Member{asleep: true, status: :idle, pid: nil} = Fleet.lookup(key)
-    assert [%Fleet.Member{id: ^key, asleep: true}] = Fleet.list(Prefix.of(key))
+
+    assert %Fleet.Member{asleep: true, status: :idle, pid: nil} =
+             Fleet.lookup(key, host: Wardrik.Test.host())
+
+    assert [%Fleet.Member{id: ^key, asleep: true}] =
+             Fleet.list(Prefix.of(key), host: Wardrik.Test.host())
 
     LLMStub.stream([LLMStub.final_answer("Hello.")])
     :ok = Event.Bus.subscribe(key)
-    :ok = Agent.ask(key, "hi")
+    :ok = Agent.ask(key, "hi", host: Wardrik.Test.host())
 
     assert_receive %Event{payload: %Event.TurnFinished{}}, 2_000
     assert Fleet.stored?(key)
@@ -66,23 +70,35 @@ defmodule Wardrik.Fleet.DefinedTest do
     :ok = Fleet.stop(key)
     :ok = written_earlier(key)
 
-    assert capture_log(fn -> assert {:error, :not_found} = Agent.ask(key, "hello") end) =~
+    assert capture_log(fn ->
+             assert {:error, :not_found} = Agent.ask(key, "hello", host: Wardrik.Test.host())
+           end) =~
              "#{key} kept a state this release cannot read"
 
     assert Wardrik.Test.Fleet.await_update(fn -> not Fleet.stored?(key) end)
   end
 
+  test "asks the definitions of the host it is given", %{key: key} do
+    Definitions.keep(key, Spec.new(id: key))
+    none = Wardrik.Host.new()
+
+    assert Fleet.whereis(key, host: none) == nil
+    assert Fleet.lookup(key, host: none) == nil
+    assert Fleet.list(Prefix.of(key), host: none) == []
+    assert %Fleet.Member{asleep: true} = Fleet.lookup(key, host: Wardrik.Test.host())
+  end
+
   test "a forgotten agent, its definition gone with it, stays not found", %{key: key} do
     Definitions.keep(key, Spec.new(id: key))
-    assert is_pid(Fleet.whereis(key))
+    assert is_pid(Fleet.whereis(key, host: Wardrik.Test.host()))
 
     :ok = Definitions.forget(key)
     :ok = Fleet.forget(key)
 
-    assert Fleet.whereis(key) == nil
-    assert Fleet.lookup(key) == nil
-    assert Fleet.list(Prefix.of(key)) == []
-    assert {:error, :not_found} = Agent.ask(key, "hello")
+    assert Fleet.whereis(key, host: Wardrik.Test.host()) == nil
+    assert Fleet.lookup(key, host: Wardrik.Test.host()) == nil
+    assert Fleet.list(Prefix.of(key), host: Wardrik.Test.host()) == []
+    assert {:error, :not_found} = Agent.ask(key, "hello", host: Wardrik.Test.host())
   end
 
   # Writes the agent asleep under `key` down again as an earlier release

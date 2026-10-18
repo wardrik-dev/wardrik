@@ -108,7 +108,7 @@ defmodule WardrikTUI.App.Commands do
   defp spawn_agent(term, id, name, options, prompt, mode) do
     with {:ok, placement} <- placement(options),
          {:ok, %Spawned{from: from}} <- Wardrik.agent_spawn(term.assigns.session, id, placement) do
-      pid = Fleet.whereis(id)
+      pid = Fleet.whereis(id, host: term.assigns.session.host)
 
       if from == :running,
         do: existing_agent(term, id, name, pid, prompt, mode),
@@ -189,7 +189,7 @@ defmodule WardrikTUI.App.Commands do
     case Wardrik.agent_move(term.assigns.session, id, node) do
       {:ok, _answer} ->
         term
-        |> adopt(id, Fleet.whereis(id))
+        |> adopt(id, Fleet.whereis(id, host: term.assigns.session.host))
         |> Connection.refresh_fleet()
         |> Display.append(View.moved(id, node))
 
@@ -225,9 +225,10 @@ defmodule WardrikTUI.App.Commands do
   defp connect(term, name) do
     case id(term, name) do
       {:ok, id} ->
-        if id == term.assigns.agent_id or Fleet.whereis(id) != nil,
-          do: Connection.connect_id(term, id),
-          else: search(term, name, View.no_such_agent(id))
+        if id == term.assigns.agent_id or
+             Fleet.whereis(id, host: term.assigns.session.host) != nil,
+           do: Connection.connect_id(term, id),
+           else: search(term, name, View.no_such_agent(id))
 
       {:error, message} ->
         search(term, name, View.error(message))
@@ -341,10 +342,17 @@ defmodule WardrikTUI.App.Commands do
 
   defp remove_one(%{assigns: %{agent_id: attached}} = term, id, target, confirmed?) do
     cond do
-      id == attached -> Display.append(term, View.attached(attached))
-      Fleet.whereis(id) == nil -> Display.append(term, View.no_such_agent(id))
-      confirmed? -> forget_all(term, [id])
-      true -> preview(term, target, [id], nil)
+      id == attached ->
+        Display.append(term, View.attached(attached))
+
+      Fleet.whereis(id, host: term.assigns.session.host) == nil ->
+        Display.append(term, View.no_such_agent(id))
+
+      confirmed? ->
+        forget_all(term, [id])
+
+      true ->
+        preview(term, target, [id], nil)
     end
   end
 

@@ -87,7 +87,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   end
 
   defp status(key) do
-    case Fleet.lookup(key) do
+    case Fleet.lookup(key, host: Host.host()) do
       nil -> nil
       %{asleep: true} -> :asleep
       member -> member.status
@@ -134,7 +134,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert File.read!(Path.join(dir, "agents/jon-digest.md")) =~
                "---\nname: digest\norg: #{org}\nuser: jon\n"
 
-      assert Fleet.lookup(key).node == node()
+      assert Fleet.lookup(key, host: Host.host()).node == node()
 
       assert command(["agent", "spawn", "other", "--on", "nowhere"]) ==
                {"No node nowhere runs wardrik; the nodes are #{here}.\n", 1}

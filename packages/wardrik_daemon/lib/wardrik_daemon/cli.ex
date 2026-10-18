@@ -307,7 +307,7 @@ defmodule WardrikDaemon.CLI do
 
     with {:ok, words, _opts} <- Command.parse(edit, args),
          {:ok, [key]} <- named(edit, words),
-         {:ok, path} <- Lifecycle.file(key) do
+         {:ok, path} <- Lifecycle.file(key, host: WardrikDaemon.Host.get()) do
       IO.puts(path)
     else
       {:error, message} -> failed(terminal, "failed", message, false)
@@ -554,11 +554,13 @@ defmodule WardrikDaemon.CLI do
   # What a running daemon knows to complete: its agents, what each waits on,
   # and the nodes an agent can move to.
   defp running do
+    host = WardrikDaemon.Host.get()
+
     %{
-      keys: fn -> Enum.map(Fleet.list(), &to_string(&1.id)) end,
+      keys: fn -> Enum.map(Fleet.list(Prefix.all(), host: host), &to_string(&1.id)) end,
       nodes: fn -> Enum.map(WardrikDaemon.daemons(), &Nodes.display/1) end,
       calls: fn key ->
-        case Agent.parked(key) do
+        case Agent.parked(key, host: host) do
           calls when is_list(calls) -> Enum.map(calls, &elem(&1, 0).id)
           {:error, :not_found} -> []
         end
@@ -649,7 +651,7 @@ defmodule WardrikDaemon.CLI do
   defp asking(key, words, session), do: Wardrik.agent_ask(session, key, Enum.join(words, " "))
 
   defp answer_followed([key | words], opts, terminal) do
-    if match?(%{state: :parked}, Agent.status(key)) do
+    if match?(%{state: :parked}, Agent.status(key, host: opts[:session].host)) do
       Terminal.puts(
         terminal,
         Owl.Data.tag("#{key} is waiting on a person, so this waits behind it.", @faint)
@@ -668,7 +670,7 @@ defmodule WardrikDaemon.CLI do
   defp sent({:error, error}), do: {:error, error}
 
   defp watch([key], opts, terminal) do
-    case {Fleet.lookup(key), opts[:json]} do
+    case {Fleet.lookup(key, host: opts[:session].host), opts[:json]} do
       {nil, _json?} ->
         {:error, no_agent(key)}
 

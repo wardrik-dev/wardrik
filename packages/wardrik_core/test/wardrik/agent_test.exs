@@ -706,7 +706,8 @@ defmodule Wardrik.AgentTest do
     end
 
     test "configure/2 on an ID nothing holds says so" do
-      assert {:error, :not_found} = Agent.configure(Wardrik.AgentID.parse!("nobody/here"), [])
+      assert {:error, :not_found} =
+               Agent.configure(Wardrik.AgentID.parse!("nobody/here"), host: Wardrik.Test.host())
     end
 
     test "an agent started with none of them has an inert run" do

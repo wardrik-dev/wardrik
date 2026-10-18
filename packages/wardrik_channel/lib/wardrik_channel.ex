@@ -371,7 +371,7 @@ defmodule WardrikChannel do
     with {:ok, session} <- reached(workspace.context, inbound.sender, agent),
          {:ok, _pid} <- Workspace.start(workspace, agent),
          :ok <- Replies.follow(room, thread, agent),
-         waiting? = match?([_ | _], Wardrik.Agent.parked(agent)),
+         waiting? = match?([_ | _], Wardrik.Agent.parked(agent, host: session.host)),
          {:ok, _message} <- Wardrik.agent_ask(session, agent, inbound.text, id: inbound.id) do
       if waiting?, do: Replies.remind(room, thread)
       {:asked, agent}

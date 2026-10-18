@@ -133,17 +133,19 @@ defmodule Wardrik.Credential do
   def available(ref, owner, opts \\ []) when is_binary(ref) and is_list(opts) do
     word = %Available{ref: ref, owner: owner, by: Keyword.get(opts, :by)}
 
-    Enum.each(Fleet.list(), fn
+    Enum.each(Fleet.held(Wardrik.AgentID.Prefix.all()), fn
       %{asleep: false, pid: pid} -> send(pid, word)
       %{asleep: true, status: :parked, id: id} -> wake_awaiting(id, word)
       %{asleep: true} -> :ok
     end)
   end
 
+  # Only an agent the store holds is woken here, which asks no host's
+  # definitions: a credential's resolver holds no host.
   defp wake_awaiting(id, %Available{ref: ref, owner: owner} = word) do
     with {:ok, dumped} <- Fleet.written(id),
          [_ | _] <- Wardrik.Agent.State.Stored.awaiting(dumped, ref, owner),
-         pid when is_pid(pid) <- Fleet.whereis(id) do
+         pid when is_pid(pid) <- Fleet.whereis(id, []) do
       send(pid, word)
     end
 

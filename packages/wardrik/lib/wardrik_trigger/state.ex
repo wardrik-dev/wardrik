@@ -8,7 +8,7 @@ defmodule WardrikTrigger.State do
   """
 
   @enforce_keys [:agent, :trigger, :next_at]
-  defstruct [:agent, :trigger, :next_at, :last_at, :last_outcome, :cursor, settings: %{}]
+  defstruct [:agent, :trigger, :next_at, :last_at, :last_outcome, :cursor, :host, settings: %{}]
 
   @type t() :: %__MODULE__{
           agent: Wardrik.AgentID.t(),

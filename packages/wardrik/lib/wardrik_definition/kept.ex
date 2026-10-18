@@ -10,7 +10,7 @@ defmodule WardrikDefinition.Kept do
       children = [
         {WardrikStore, store},
         {Wardrik.Core, host: host},
-        {WardrikTrigger, store: store}
+        {WardrikTrigger, store: store, host: host}
       ]
 
   Each definition is read under the `WardrikDefinition.Context` its
@@ -200,7 +200,7 @@ defmodule WardrikDefinition.Kept do
   def rebuild(%__MODULE__{store: store} = kept, opts) do
     only = Keyword.fetch!(opts, :only)
 
-    for %{id: id, asleep: false} <- Fleet.list(),
+    for %{id: id, asleep: false} <- Fleet.held(Prefix.all()),
         {:ok, record} <- [Record.of(store, id)],
         only.(record, id),
         message <- rebuilt(kept, record, id),

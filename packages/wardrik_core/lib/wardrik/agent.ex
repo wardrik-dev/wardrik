@@ -27,9 +27,11 @@ defmodule Wardrik.Agent do
   when its node is lost. Start one with `Wardrik.Fleet.spawn/2`.
 
   Every function here takes a pid or a `Wardrik.AgentID`, and an ID nothing
-  holds answers `{:error, :not_found}`.
+  holds answers `{:error, :not_found}`. Given an ID, each takes the
+  `Wardrik.Host` whose definitions start an agent the store does not hold,
+  as `:host`; see `Wardrik.Fleet.whereis/2`.
 
-      Wardrik.Agent.ask(~A"acme/@jon/researcher", "What changed this week?")
+      Wardrik.Agent.ask(~A"acme/@jon/researcher", "What changed this week?", host: host)
 
   ## Sleeping
 
@@ -239,10 +241,13 @@ defmodule Wardrik.Agent do
   resumed with no decisions, so its new hooks decide the calls it waits on:
   each goes ahead, is refused, or waits again on what the new hooks ask.
 
-      Wardrik.Agent.configure(~A"acme/@jon/researcher", config: config, hooks: hooks)
+      Wardrik.Agent.configure(~A"acme/@jon/researcher", config: config, hooks: hooks, host: host)
   """
   @spec configure(agent(), keyword()) :: :ok | {:error, :not_found}
-  def configure(agent, opts) when is_list(opts), do: call(agent, {:configure, opts})
+  def configure(agent, opts) when is_list(opts) do
+    {whereis, opts} = Keyword.split(opts, [:host])
+    call(agent, {:configure, opts}, whereis)
+  end
 
   @doc """
   Queues a message for the agent to answer.
@@ -254,7 +259,7 @@ defmodule Wardrik.Agent do
   `:labels` are what the message holds, as `Wardrik.Label`s, which its turn
   carries from its start: `["outside"]` for a message from someone who is not
   the agent's own. `:reply_to` lists the agents its answer goes to, besides
-  the log; see "Answering another agent" above.
+  the log; see "Answering another agent" above. `:host` is as above.
   """
   @spec ask(agent(), String.t(), keyword()) :: :ok | {:error, :not_found}
   def ask(agent, question, opts \\ []) when is_binary(question) and is_list(opts) do
@@ -265,22 +270,22 @@ defmodule Wardrik.Agent do
         reply_to: Keyword.get(opts, :reply_to, [])
       )
 
-    queue(agent, message)
+    queue(agent, message, Keyword.take(opts, [:host]))
   end
 
   @doc "Queues `message` for the agent to answer, as `ask/3` does with the message it makes."
-  @spec queue(agent(), Message.t()) :: :ok | {:error, :not_found}
-  def queue(agent, %Message{} = message), do: cast(agent, {:ask, message})
+  @spec queue(agent(), Message.t(), host: Wardrik.Host.t()) :: :ok | {:error, :not_found}
+  def queue(agent, %Message{} = message, opts \\ []), do: cast(agent, {:ask, message}, opts)
 
-  @spec get_context(agent()) :: Context.t() | {:error, :not_found}
-  def get_context(agent), do: call(agent, :get_context)
+  @spec get_context(agent(), host: Wardrik.Host.t()) :: Context.t() | {:error, :not_found}
+  def get_context(agent, opts \\ []), do: call(agent, :get_context, opts)
 
-  @spec status(agent()) :: status() | {:error, :not_found}
-  def status(agent), do: call(agent, :status)
+  @spec status(agent(), host: Wardrik.Host.t()) :: status() | {:error, :not_found}
+  def status(agent, opts \\ []), do: call(agent, :status, opts)
 
   @doc "Reads conversation, lifecycle state, and durable identity in one call."
-  @spec snapshot(agent()) :: Snapshot.t() | {:error, :not_found}
-  def snapshot(agent), do: call(agent, :snapshot)
+  @spec snapshot(agent(), host: Wardrik.Host.t()) :: Snapshot.t() | {:error, :not_found}
+  def snapshot(agent, opts \\ []), do: call(agent, :snapshot, opts)
 
   @doc """
   Accepts decisions only while their calls are parked, and only from a
@@ -297,14 +302,14 @@ defmodule Wardrik.Agent do
   @spec decide(agent(), map(), Caller.t()) ::
           :ok | {:error, :not_found | :not_parked | :stale_decision | :forbidden | :unrecorded}
   def decide(agent, decisions, %Caller{} = caller) when is_map(decisions),
-    do: call(agent, {:decide, decisions, caller})
+    do: call(agent, {:decide, decisions, caller}, host: caller.host)
 
   @doc """
   Empties this agent's history, keeping its config and queue.
   `{:error, :busy}` unless it is idle.
   """
-  @spec clear(agent()) :: :ok | {:error, :not_found | :busy}
-  def clear(agent), do: call(agent, :clear)
+  @spec clear(agent(), host: Wardrik.Host.t()) :: :ok | {:error, :not_found | :busy}
+  def clear(agent, opts \\ []), do: call(agent, :clear, opts)
 
   @doc """
   Stops whatever this agent is doing and discards whatever is queued.
@@ -326,7 +331,7 @@ defmodule Wardrik.Agent do
   names the `Wardrik.Principal` deciding, carried on each
   `Wardrik.Event.CallDecided` event. Unlike `decide/3`, it asks nobody's
   grant, so it is for code that already holds the agent, never for a
-  surface people decide through.
+  surface people decide through. `:host` is as `ask/3` takes it.
 
       Wardrik.Agent.resume(~A"acme/@jon/researcher", %{"call_abc" => :approve})
       Wardrik.Agent.resume(pid, %{"call_abc" => {:approve, "Only to staging."}})
@@ -335,24 +340,25 @@ defmodule Wardrik.Agent do
   @spec resume(agent(), %{String.t() => Turn.decision()}, keyword()) ::
           :ok | {:error, :not_found}
   def resume(agent, decisions, opts \\ []) when is_map(decisions) and is_list(opts),
-    do: cast(agent, {:resume, decisions, Keyword.get(opts, :by)})
+    do: cast(agent, {:resume, decisions, Keyword.get(opts, :by)}, Keyword.take(opts, [:host]))
 
   @doc """
   What this agent is waiting on, as `{call, prompt}` pairs, or `[]` when it is
   not parked.
   """
-  @spec parked(agent()) :: [{Wardrik.Tool.call(), String.t()}] | {:error, :not_found}
-  def parked(agent), do: call(agent, :parked)
+  @spec parked(agent(), host: Wardrik.Host.t()) ::
+          [{Wardrik.Tool.call(), String.t()}] | {:error, :not_found}
+  def parked(agent, opts \\ []), do: call(agent, :parked, opts)
 
-  defp cast(agent, message, opts \\ []) do
+  defp cast(agent, message, opts) do
     case resolve(agent, opts) do
       nil -> {:error, :not_found}
       pid -> GenServer.cast(pid, message)
     end
   end
 
-  defp call(agent, message) do
-    case resolve(agent, []) do
+  defp call(agent, message, opts) do
+    case resolve(agent, opts) do
       nil -> {:error, :not_found}
       pid -> GenServer.call(pid, message)
     end
@@ -835,7 +841,7 @@ defmodule Wardrik.Agent do
   # Sent from a task, so an asker woken from the store holds up nothing here.
   defp apply_effect({:send, agent, message}, state) do
     Task.Supervisor.start_child(Wardrik.Tasks.supervisor(), fn ->
-      with {:error, :not_found} <- cast(agent, {:ask, message}),
+      with {:error, :not_found} <- cast(agent, {:ask, message}, host: state.host),
            do: Logger.info("#{agent} is gone, so #{message.id} was not sent to it")
     end)
 

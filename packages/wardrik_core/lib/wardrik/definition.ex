@@ -122,7 +122,7 @@ defprotocol Wardrik.Definition do
 
   @doc """
   The agents a definition is kept for under `prefix`, found without
-  building any, so `Wardrik.Fleet.list/1` lists those not yet started.
+  building any, so `Wardrik.Fleet.list/2` lists those not yet started.
   """
   @spec defined(t(), Wardrik.AgentID.Prefix.t()) :: [Wardrik.AgentID.t()]
   def defined(definitions, prefix)

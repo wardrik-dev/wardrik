@@ -33,13 +33,15 @@ defmodule Wardrik.AgentSleepTest do
     assert_receive {:turn, [{:user, "hello"}]}
     asleep(key)
 
-    assert %{asleep: true, status: :idle, pid: nil} = Fleet.lookup(key)
-    assert [%{id: ^key, asleep: true}] = Fleet.list(Wardrik.AgentID.Prefix.of(key))
+    assert %{asleep: true, status: :idle, pid: nil} = Fleet.lookup(key, host: Wardrik.Test.host())
+
+    assert [%{id: ^key, asleep: true}] =
+             Fleet.list(Wardrik.AgentID.Prefix.of(key), host: Wardrik.Test.host())
 
     :ok = Agent.ask(key, "again")
 
     assert_receive {:turn, [{:user, "hello"}, {:assistant, "ok"}, {:user, "again"}]}
-    assert %{asleep: false} = Fleet.lookup(key)
+    assert %{asleep: false} = Fleet.lookup(key, host: Wardrik.Test.host())
   end
 
   test "an agent with something to do does not sleep" do
@@ -69,7 +71,9 @@ defmodule Wardrik.AgentSleepTest do
 
     pids =
       1..8
-      |> Enum.map(fn _n -> Task.async(fn -> Fleet.whereis(key) end) end)
+      |> Enum.map(fn _n ->
+        Task.async(fn -> Fleet.whereis(key, host: Wardrik.Test.host()) end)
+      end)
       |> Task.await_many()
       |> Enum.uniq()
 
@@ -102,7 +106,8 @@ defmodule Wardrik.AgentSleepTest do
     assert_receive %Event{payload: %Event.TurnParked{}}
     asleep(key)
 
-    assert %{asleep: true, status: :parked, waiting_on: [_name]} = Fleet.lookup(key)
+    assert %{asleep: true, status: :parked, waiting_on: [_name]} =
+             Fleet.lookup(key, host: Wardrik.Test.host())
 
     :ok =
       Agent.decide(
@@ -178,7 +183,7 @@ defmodule Wardrik.AgentSleepTest do
 
     expect(DurableServer.Supervisor, :get_server_info, fn _fleet, _key -> {:ok, info} end)
 
-    assert Fleet.whereis(key) == nil
+    assert Fleet.whereis(key, host: Wardrik.Test.host()) == nil
     assert Wardrik.Test.Fleet.await_update(fn -> Fleet.whereis(key, wake: false) == nil end)
     refute Fleet.stored?(key)
   end
@@ -189,7 +194,7 @@ defmodule Wardrik.AgentSleepTest do
     # The definition answers once, for the check, and is gone by the start.
     expect(WardrikStore, :get, fn _store, :test_definitions, _key -> Spec.new(id: key) end)
 
-    assert Fleet.whereis(key) == nil
+    assert Fleet.whereis(key, host: Wardrik.Test.host()) == nil
     assert Wardrik.Test.Fleet.await_update(fn -> Fleet.whereis(key, wake: false) == nil end)
     refute Fleet.stored?(key)
   end
@@ -230,8 +235,8 @@ defmodule Wardrik.AgentSleepTest do
   test "an ID nothing holds is not woken" do
     key = Wardrik.Test.Fleet.id()
 
-    assert {:error, :not_found} = Agent.ask(key, "hello")
-    assert Fleet.whereis(key) == nil
+    assert {:error, :not_found} = Agent.ask(key, "hello", host: Wardrik.Test.host())
+    assert Fleet.whereis(key, host: Wardrik.Test.host()) == nil
     refute Fleet.stored?(key)
   end
 end

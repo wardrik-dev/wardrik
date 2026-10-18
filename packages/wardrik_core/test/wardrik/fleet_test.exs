@@ -30,7 +30,7 @@ defmodule Wardrik.FleetTest do
       key = Wardrik.Test.Fleet.id()
       pid = start(key, runner: runner(self()))
 
-      assert Fleet.whereis(key) == pid
+      assert Fleet.whereis(key, host: Wardrik.Test.host()) == pid
       assert :ok = Agent.ask(key, "hello")
       assert_receive {:turn, [{:user, "hello"}]}
     end
@@ -50,7 +50,9 @@ defmodule Wardrik.FleetTest do
 
       assert_receive {:run, run}
       assert %AgentID{org: "acme", user: "42"} = Run.agent_id(run)
-      assert %{id: %AgentID{org: "acme", user: "42", name: "planner"}} = Fleet.lookup(key)
+
+      assert %{id: %AgentID{org: "acme", user: "42", name: "planner"}} =
+               Fleet.lookup(key, host: Wardrik.Test.host())
     end
 
     test "places the agent on the node it is given" do
@@ -58,7 +60,7 @@ defmodule Wardrik.FleetTest do
       pid = start(key, runner: runner(self()), node: node())
 
       assert node(pid) == node()
-      assert Fleet.whereis(key) == pid
+      assert Fleet.whereis(key, host: Wardrik.Test.host()) == pid
     end
 
     test "reports a node that cannot be reached" do
@@ -74,7 +76,7 @@ defmodule Wardrik.FleetTest do
       Enum.each(keys, &start(&1, runner: runner(self())))
 
       assert Fleet.forget_under(Prefix.new!(org: org)) == 2
-      assert Fleet.list(Prefix.new!(org: org)) == []
+      assert Fleet.list(Prefix.new!(org: org), host: Wardrik.Test.host()) == []
       assert Fleet.forget_under(Prefix.new!(org: org)) == 0
     end
   end
@@ -91,7 +93,7 @@ defmodule Wardrik.FleetTest do
 
       assert moved != pid
       assert node(moved) == node()
-      assert Fleet.whereis(key) == moved
+      assert Fleet.whereis(key, host: Wardrik.Test.host()) == moved
       assert [:user, :assistant] = roles(moved)
     end
   end
@@ -106,9 +108,16 @@ defmodule Wardrik.FleetTest do
       start(two, runner: runner(self()))
       start(jons, runner: runner(self()))
 
-      assert [%{id: ^one}, %{id: ^two}] = Fleet.list(Prefix.new!(org: org))
-      assert [%{id: ^jons}] = Fleet.list(Prefix.new!(org: org, user: "jon"))
-      assert Enum.all?(Fleet.list(Prefix.new!(org: org)), &(&1.status == :idle))
+      assert [%{id: ^one}, %{id: ^two}] =
+               Fleet.list(Prefix.new!(org: org), host: Wardrik.Test.host())
+
+      assert [%{id: ^jons}] =
+               Fleet.list(Prefix.new!(org: org, user: "jon"), host: Wardrik.Test.host())
+
+      assert Enum.all?(
+               Fleet.list(Prefix.new!(org: org), host: Wardrik.Test.host()),
+               &(&1.status == :idle)
+             )
     end
 
     test "an agent reports that it is running, then parked" do
@@ -122,7 +131,8 @@ defmodule Wardrik.FleetTest do
       # metadata it published is in the registry.
       assert [{_call, _prompt}] = Agent.parked(pid)
 
-      assert %{status: :parked, waiting_on: ["deploy"]} = Fleet.lookup(key)
+      assert %{status: :parked, waiting_on: ["deploy"]} =
+               Fleet.lookup(key, host: Wardrik.Test.host())
     end
   end
 
@@ -137,7 +147,7 @@ defmodule Wardrik.FleetTest do
       pid = start(key, runner: {Wardrik.Test.AgentRunners, :delegating, [self(), "pricing"]})
       Event.Bus.subscribe(key, level: :lifecycle)
 
-      assert %{outcome: nil} = Fleet.lookup(key)
+      assert %{outcome: nil} = Fleet.lookup(key, host: Wardrik.Test.host())
 
       Agent.ask(pid, "go")
       assert_receive {:delegating, branch}
@@ -151,7 +161,9 @@ defmodule Wardrik.FleetTest do
       send(branch, :release)
       assert_receive %Event{payload: %Event.TurnFinished{}}
 
-      assert Wardrik.Test.Fleet.await_update(fn -> match?(%{outcome: :ok}, Fleet.lookup(key)) end)
+      assert Wardrik.Test.Fleet.await_update(fn ->
+               match?(%{outcome: :ok}, Fleet.lookup(key, host: Wardrik.Test.host()))
+             end)
     end
 
     @tag capture_log: true
@@ -163,7 +175,9 @@ defmodule Wardrik.FleetTest do
       Agent.ask(pid, "go")
       assert_receive %Event{payload: %Event.TurnFailed{reason: :boom}}
 
-      assert Wardrik.Test.Fleet.await_update(fn -> Fleet.lookup(key).outcome == :failed end)
+      assert Wardrik.Test.Fleet.await_update(fn ->
+               Fleet.lookup(key, host: Wardrik.Test.host()).outcome == :failed
+             end)
     end
   end
 
@@ -255,10 +269,11 @@ defmodule Wardrik.FleetTest do
 
   describe "an agent that is not there" do
     test "answers rather than raising" do
-      assert Agent.ask(~A"no/such-agent", "hello") == {:error, :not_found}
-      assert Agent.status(~A"no/such-agent") == {:error, :not_found}
-      assert Fleet.whereis(~A"no/such-agent") == nil
-      assert Fleet.lookup(~A"no/such-agent") == nil
+      host = Wardrik.Test.host()
+      assert Agent.ask(~A"no/such-agent", "hello", host: host) == {:error, :not_found}
+      assert Agent.status(~A"no/such-agent", host: host) == {:error, :not_found}
+      assert Fleet.whereis(~A"no/such-agent", host: Wardrik.Test.host()) == nil
+      assert Fleet.lookup(~A"no/such-agent", host: Wardrik.Test.host()) == nil
     end
   end
 

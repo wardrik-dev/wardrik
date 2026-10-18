@@ -14,14 +14,16 @@ defmodule WardrikTrigger.Delivery do
   alias WardrikTrigger.Item
 
   @doc """
-  The agent `agent`'s process, woken where it sleeps, where it may be asked
-  now; else why not: `:busy` where it is running or waiting and `overlap` is
-  `:skip`, `:no_agent` where none runs under the ID, and `:failed` where
-  looking it up exited.
+  The agent `agent`'s process, woken where it sleeps, or started from its
+  definition on the `:host` given, where it may be asked now; else why not:
+  `:busy` where it is running or waiting and `overlap` is `:skip`,
+  `:no_agent` where nothing holds the ID, and `:failed` where looking it up
+  exited.
   """
-  @spec ready(AgentID.t(), :skip | :queue) :: {:ok, pid()} | :busy | :no_agent | :failed
-  def ready(%AgentID{} = agent, overlap) do
-    case Fleet.whereis(agent) do
+  @spec ready(AgentID.t(), :skip | :queue, host: Wardrik.Host.t()) ::
+          {:ok, pid()} | :busy | :no_agent | :failed
+  def ready(%AgentID{} = agent, overlap, opts) do
+    case Fleet.whereis(agent, opts) do
       nil -> :no_agent
       pid -> idle(pid, overlap)
     end

@@ -52,7 +52,7 @@ defmodule WardrikDaemon.Tree do
           {WardrikDaemon.Host, host: host, config: config},
           {Wardrik.Core, host: host},
           {WardrikPolicy.Supervisor, store: store},
-          {WardrikTrigger, store: store},
+          {WardrikTrigger, store: store, host: host},
           {WardrikHTTP.Access, store: store},
           WardrikHTTP.Workers,
           {WardrikDaemon, host: host, config: config}

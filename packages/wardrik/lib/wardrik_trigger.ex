@@ -52,7 +52,7 @@ defmodule WardrikTrigger do
       children = [
         {WardrikStore, store},
         {Wardrik.Core, host: host},
-        {WardrikTrigger, store: store, secrets: &MyApp.Vault.secret/2}
+        {WardrikTrigger, store: store, host: host, secrets: &MyApp.Vault.secret/2}
       ]
 
   `sync/2` brings an agent's triggers to a list, starting, changing and
@@ -155,11 +155,14 @@ defmodule WardrikTrigger do
 
   @doc """
   Starts the supervisor the triggers run under, over the store the fleet
-  runs on, which `:store` names. `:log` is passed to `Group`, and
-  `:settings` holds what each source is checked with, by its module, such
-  as `%{WardrikTrigger.Feed => [req_options: [...]]}`: every trigger on
-  this node is handed them as it starts, and keeps them out of the store. A
-  request for a webhook reaches it through `WardrikTrigger.Deliveries`.
+  runs on, which `:store` names. `:host` is the `Wardrik.Host` the agents
+  run on, whose definitions start an agent a trigger asks that the store
+  does not hold. `:log` is passed to `Group`, and `:settings` holds what
+  each source is checked with, by its module, such as
+  `%{WardrikTrigger.Feed => [req_options: [...]]}`: every trigger on this
+  node is handed the host and the settings as it starts, and keeps them out
+  of the store. A request for a webhook reaches it through
+  `WardrikTrigger.Deliveries`.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) do
@@ -169,7 +172,10 @@ defmodule WardrikTrigger do
         prefix: "triggers/",
         backend: opts |> Keyword.fetch!(:store) |> WardrikStore.durable_backend(),
         group: [log: Keyword.get(opts, :log, false)],
-        init_info: %{settings: Keyword.get(opts, :settings, %{})}
+        init_info: %{
+          host: Keyword.fetch!(opts, :host),
+          settings: Keyword.get(opts, :settings, %{})
+        }
       ] ++ WardrikStore.durable_shutdown()
     )
   end

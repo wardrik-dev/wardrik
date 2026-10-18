@@ -788,7 +788,9 @@ defmodule WardrikHTTP.RouterTest do
     assert_receive {:turn, _messages, _turn}
     # A cancel reads the agent's status from the fleet, which hears of the
     # turn just after the runner does.
-    Fleet.await_update(fn -> Wardrik.Fleet.lookup(key).status != :idle end)
+    Fleet.await_update(fn ->
+      Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()).status != :idle
+    end)
 
     assert {:ok, %{status: 202}} = Req.post(api, url: "/v1/agents/#{key}/cancel")
     assert_receive %Event{payload: %Event.TurnInterrupted{}}
@@ -866,14 +868,14 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 400, body: body}} = define(api, key, ["model"])
       assert body["error"]["message"] == "The body is a JSON object"
 
-      assert Wardrik.Fleet.lookup(key) == nil
+      assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()) == nil
     end
 
     test "outside the token's scope start nothing", %{api: api} do
       key = Wardrik.AgentID.new!("defined-#{System.unique_integer([:positive])}", org: "other")
 
       assert {:ok, %{status: 404}} = define(api, key, %{})
-      assert Wardrik.Fleet.lookup(key) == nil
+      assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()) == nil
     end
 
     test "for one agent never start another, and answer that something went wrong",
@@ -882,7 +884,10 @@ defmodule WardrikHTTP.RouterTest do
                define(api, defined_key(), %{"elsewhere" => true})
 
       assert body["error"]["type"] == "internal"
-      assert Wardrik.Fleet.lookup(Wardrik.AgentID.parse!("test/elsewhere")) == nil
+
+      assert Wardrik.Fleet.lookup(Wardrik.AgentID.parse!("test/elsewhere"),
+               host: Wardrik.Test.host()
+             ) == nil
     end
 
     test "for a key the module refuses start nothing", %{api: api} do
@@ -890,7 +895,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 409, body: body}} = define(api, key, %{"owned" => true})
       assert body["error"] == %{"type" => "conflict", "message" => "#{key} belongs to a file."}
-      assert Wardrik.Fleet.lookup(key) == nil
+      assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()) == nil
     end
 
     test "are neither taken nor kept by a server with nothing to read them", %{api: api} do
@@ -903,7 +908,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 204}} = Req.delete(api, url: "/v1/agents/#{key}")
 
-      assert Wardrik.Fleet.lookup(key) == nil
+      assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()) == nil
     end
 
     test "are not kept by a module that only reads them", %{api: api} do
@@ -929,7 +934,7 @@ defmodule WardrikHTTP.RouterTest do
 
     # The hooks the agent under `key` runs its calls past.
     defp hooks(key) do
-      %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(key))
+      %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(key, host: Wardrik.Test.host()))
       Keyword.fetch!(state.run_opts, :hooks)
     end
 
@@ -989,7 +994,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}")
 
-      assert Wardrik.Fleet.lookup(key) == nil
+      assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()) == nil
       assert {:ok, %{status: 404}} = Req.get(kept, url: "/v1/agents/#{key}/definition")
       assert {:ok, %{status: 404}} = Req.delete(kept, url: "/v1/agents/#{key}")
 
@@ -1002,7 +1007,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}")
 
-      assert Wardrik.Fleet.lookup(key) == nil
+      assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()) == nil
     end
 
     test "forgets an agent asleep, as one awake", %{kept: kept} do
@@ -1018,7 +1023,7 @@ defmodule WardrikHTTP.RouterTest do
       {key, _agent} = Fleet.start_agent([], Fleet.id("kept-owned"))
 
       assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}")
-      assert Wardrik.Fleet.lookup(key)
+      assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host())
       assert Audit.about("agents/#{key}") == []
     end
 
@@ -1584,7 +1589,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 200, body: %{"forgotten" => [_a], "failed" => []}}} =
                Req.delete(fleet, url: "/v1/agents", params: [prefix: "#{org}/"])
 
-      assert Wardrik.Fleet.lookup(a) == nil
+      assert Wardrik.Fleet.lookup(a, host: Wardrik.Test.host()) == nil
 
       assert {:ok, %{status: 404}} =
                Req.delete(fleet, url: "/v1/agents", params: [prefix: "#{org}/"])
@@ -1592,7 +1597,10 @@ defmodule WardrikHTTP.RouterTest do
 
     test "answer the calls they wait on a person for", %{api: api} do
       {key, _agent} = parked_agent()
-      assert Fleet.await_update(fn -> Wardrik.Fleet.lookup(key).status == :parked end)
+
+      assert Fleet.await_update(fn ->
+               Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()).status == :parked
+             end)
 
       assert {:ok, %{status: 200, body: %{"interrupts" => interrupts}}} =
                Req.get(api, url: "/v1/interrupts", params: [prefix: to_string(key)])
@@ -1618,7 +1626,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 200, body: %{"agent" => %{"id" => ^text, "asleep" => true}}}} =
                Req.post(api, url: "/v1/agents/#{key}/stop")
 
-      assert %{asleep: true} = Wardrik.Fleet.lookup(key)
+      assert %{asleep: true} = Wardrik.Fleet.lookup(key, host: Wardrik.Test.host())
 
       assert {:ok, %{status: 200, body: %{"agent" => %{"asleep" => false}} = body}} =
                Req.post(api, url: "/v1/agents/#{key}/spawn")

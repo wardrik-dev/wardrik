@@ -64,7 +64,12 @@ defmodule WardrikDaemon.AgentsTest do
     assert Agent.status(AgentID.parse!("#{org}/beta")).model ==
              "anthropic:claude-sonnet-5"
 
-    assert Enum.sort(Enum.map(Fleet.list(Prefix.parse!(org <> "/")), &to_string(&1.id))) == [
+    assert Enum.sort(
+             Enum.map(
+               Fleet.list(Prefix.parse!(org <> "/"), host: Host.host()),
+               &to_string(&1.id)
+             )
+           ) == [
              "#{org}/alpha",
              "#{org}/beta"
            ]
@@ -94,7 +99,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert Path.basename(broken) == "broken.md"
     assert message =~ "names nope"
     assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"))
-    assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/broken"))
+    assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/broken"), host: Host.host())
   end
 
   test "a file whose agent cannot be keyed is reported, and the rest still run", %{
@@ -421,7 +426,8 @@ defmodule WardrikDaemon.AgentsTest do
        %{org: org} = context do
     Host.start_agents(context.dir)
     defined = AgentID.parse!("#{org}/defined")
-    {:ok, spec} = Agents.put(Host.agents(), defined, definition: %{}, grant: grant(org))
+    fails = %{"retries" => %{"attempts" => 0, "on_exhausted" => "fail"}}
+    {:ok, spec} = Agents.put(Host.agents(), defined, definition: fails, grant: grant(org))
     {:ok, _pid} = Fleet.put(spec)
 
     # The store loses the agent, as a wiped one would, and keeps its definition.
@@ -429,7 +435,9 @@ defmodule WardrikDaemon.AgentsTest do
     Agents.reload(Host.agents())
 
     assert {:ok, _definition} = Agents.get(Host.agents(), defined)
-    assert [%Fleet.Member{asleep: true}] = Fleet.list(Prefix.of(defined))
+
+    assert [%Fleet.Member{asleep: true}] =
+             Fleet.list(Prefix.of(defined), host: Host.host())
 
     stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :offline} end)
     :ok = Event.Bus.subscribe(defined, level: :lifecycle)
@@ -442,7 +450,9 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :asked}}, 2_000
     assert_receive %Event{payload: %Event.TurnFailed{}}, 2_000
-    assert %Fleet.Member{asleep: false} = Fleet.lookup(defined)
+
+    assert %Fleet.Member{asleep: false} =
+             Fleet.lookup(defined, host: Host.host())
   end
 
   test "an agent starts with its file's options, or the defaults where no file declares it",
@@ -673,7 +683,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert Path.basename(careful_yaml) == "careful.yaml"
     assert message == "#{careful_yml}: policy careful is already careful.yaml"
-    assert [_member] = Fleet.list(Prefix.parse!(org <> "/"))
+    assert [_member] = Fleet.list(Prefix.parse!(org <> "/"), host: Host.host())
   end
 
   # The installation of the channel `channel`, as a room's events find it.
@@ -740,7 +750,7 @@ defmodule WardrikDaemon.AgentsTest do
              Agents.create_in(Host.agents(), in_channel("slack"), "Books & Bills", maria)
 
     assert id == AgentID.parse!("#{org}/books-bills")
-    assert Fleet.lookup(id)
+    assert Fleet.lookup(id, host: Host.host())
     assert id in Enum.map(Agents.offered(Host.agents(), in_channel("slack")), & &1.agent)
 
     assert Wardrik.Test.Audit.about("agents/#{id}") ==
@@ -778,7 +788,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     thread = AgentID.put_external_id(AgentID.parse!("#{org}/books"), "C1-1.1")
     assert {:ok, pid} = Agents.start(Host.agents(), in_channel("slack"), thread)
-    assert Fleet.whereis(thread) == pid
+    assert Fleet.whereis(thread, host: Host.host()) == pid
     assert Agents.start(Host.agents(), in_channel("slack"), thread) == {:ok, pid}
     assert Agent.status(thread).model == Agent.status(AgentID.parse!("#{org}/books")).model
 

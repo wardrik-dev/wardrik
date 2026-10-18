@@ -246,7 +246,7 @@ defmodule WardrikTUI.App.Connection do
     do: Display.append(term, View.connected(id))
 
   def connect_id(term, id) do
-    case Fleet.whereis(id) do
+    case Fleet.whereis(id, host: term.assigns.session.host) do
       nil ->
         Display.append(term, View.no_such_agent(id))
 

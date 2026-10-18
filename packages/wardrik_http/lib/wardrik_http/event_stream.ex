@@ -34,24 +34,27 @@ defmodule WardrikHTTP.EventStream do
 
   @doc """
   Streams `agent_id`'s log on `conn`, read from `opts[:store]`, after
-  `opts[:after]`.
+  `opts[:after]`, where `:head` asks the agent, found on `opts[:host]`.
 
-      EventStream.serve(conn, agent_id, store: store, after: :head)
+      EventStream.serve(conn, agent_id, store: store, host: host, after: :head)
 
   Answers `{:gap, oldest}` where events after the cursor have been dropped,
   and `:not_found` for `:head` when no agent runs under `agent_id`, in either
   case having sent nothing.
   """
-  @spec serve(Plug.Conn.t(), Wardrik.AgentID.t(), store: WardrikStore.t(), after: cursor()) ::
-          Plug.Conn.t() | {:gap, pos_integer()} | :not_found
+  @spec serve(Plug.Conn.t(), Wardrik.AgentID.t(),
+          store: WardrikStore.t(),
+          host: Wardrik.Host.t(),
+          after: cursor()
+        ) :: Plug.Conn.t() | {:gap, pos_integer()} | :not_found
   def serve(conn, agent_id, opts) do
-    opts = Keyword.validate!(opts, [:store, :after])
+    opts = Keyword.validate!(opts, [:store, :host, :after])
     store = Keyword.fetch!(opts, :store)
     cursor = Keyword.fetch!(opts, :after)
     :ok = Log.subscribe(agent_id)
 
     try do
-      with {:ok, starting_after} <- start(agent_id, cursor),
+      with {:ok, starting_after} <- start(agent_id, cursor, Keyword.fetch!(opts, :host)),
            {:ok, events} <-
              Log.read(store, agent_id, starting_after: starting_after, limit: @page) do
         conn
@@ -68,10 +71,10 @@ defmodule WardrikHTTP.EventStream do
     end
   end
 
-  defp start(_agent_id, sequence) when is_integer(sequence), do: {:ok, sequence}
+  defp start(_agent_id, sequence, _host) when is_integer(sequence), do: {:ok, sequence}
 
-  defp start(agent_id, :head) do
-    case Wardrik.Agent.snapshot(agent_id) do
+  defp start(agent_id, :head, host) do
+    case Wardrik.Agent.snapshot(agent_id, host: host) do
       %{sequence: sequence} -> {:ok, sequence}
       {:error, :not_found} -> :not_found
     end

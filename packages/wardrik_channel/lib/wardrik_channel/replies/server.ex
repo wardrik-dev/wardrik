@@ -164,7 +164,7 @@ defmodule WardrikChannel.Replies.Server do
   defp post(state, thread, {:parked, ids}) do
     agent = state.threads[thread].agent
 
-    with parked when is_list(parked) <- Agent.parked(agent),
+    with parked when is_list(parked) <- Agent.parked(agent, host: state.posting.context.host),
          [_ | _] = calls <- Enum.filter(parked, &waiting?(&1, ids)) do
       deliver(state, thread, {:notice, Notice.parked(agent, calls)}, :approvers)
     else

@@ -79,7 +79,7 @@ defmodule WardrikDaemonTest do
     assert {:ok, %{status: 200}} =
              Req.put(api, json: %{"policy" => "careful", "instructions" => "You help."})
 
-    assert Wardrik.Fleet.lookup(key)
+    assert Wardrik.Fleet.lookup(key, host: Host.host())
 
     assert {:ok,
             %{
@@ -91,7 +91,7 @@ defmodule WardrikDaemonTest do
             }} = Req.get(api, url: "definition")
 
     assert {:ok, %{status: 204}} = Req.delete(api)
-    assert Wardrik.Fleet.lookup(key) == nil
+    assert Wardrik.Fleet.lookup(key, host: Host.host()) == nil
     assert {:ok, %{status: 404}} = Req.get(api, url: "definition")
   end
 
@@ -214,7 +214,10 @@ defmodule WardrikDaemonTest do
     {{:ok, _pid}, config, host} = daemon(dir)
 
     Wardrik.Test.Fleet.await_update(fn ->
-      Enum.any?(Wardrik.Fleet.list(Prefix.parse!(org <> "/")), &(not &1.asleep))
+      Enum.any?(
+        Wardrik.Fleet.list(Prefix.parse!(org <> "/"), host: Host.host()),
+        &(not &1.asleep)
+      )
     end)
 
     assert WardrikDaemon.status(host, config) =~
