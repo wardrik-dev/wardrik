@@ -236,6 +236,26 @@ wardrik agent move KEY [NODE] [--yes]
 
 Without NODE it asks which. Moving ends a turn the agent is taking, and abandons what it waits on a person for, so it asks first; `--yes` moves it without asking.
 
+### wardrik agent calls
+
+The tool calls an agent is running, and how long each has run.
+
+```sh
+wardrik agent calls KEY
+```
+
+With `--json`, the calls as `GET /v1/agents/KEY/calls` answers them.
+
+### wardrik agent kill-call
+
+Stop one tool call an agent is running; the rest of its turn goes on.
+
+```sh
+wardrik agent kill-call KEY CALL_ID
+```
+
+The model is answered with an error, as if the tool had failed. `wardrik agent calls` lists the calls; `wardrik agent cancel` ends the whole turn instead.
+
 ### wardrik agent edit
 
 Edit the file that declares an agent, then read the files again.
