@@ -70,6 +70,28 @@ defmodule Wardrik.AgentLogTest do
     }
   end
 
+  test "what the agent is doing is followed as it changes, and never written", %{key: key} do
+    LLMStub.stream([LLMStub.final_answer("Hello.")])
+    {^key, agent} = Wardrik.Test.Fleet.start_agent([], key)
+
+    Agent.ask(agent, "hi")
+
+    assert_receive %Entry{
+      sequence: nil,
+      event: %{
+        "type" => "wardrik.activity.changed",
+        "data" => %{"activity" => %{"doing" => [%{"type" => "wardrik.message.started"}]}}
+      }
+    }
+
+    assert_receive %Entry{
+      sequence: nil,
+      event: %{"type" => "wardrik.activity.changed", "data" => %{"activity" => %{"doing" => []}}}
+    }
+
+    refute "wardrik.activity.changed" in EventLog.types(key)
+  end
+
   test "a decision is in the log before the run it resumes", %{key: key} do
     agent = parked_agent(key)
     by = Wardrik.Principal.new(:shell, "jon")

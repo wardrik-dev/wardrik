@@ -337,6 +337,119 @@
         "message"
       ],
       "description": "A call a run waits on a person for."
+    },
+    "doing": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "wardrik.run.started",
+            "wardrik.run.resumed",
+            "wardrik.run.interrupted",
+            "wardrik.message.started",
+            "wardrik.message.retrying",
+            "wardrik.step.started",
+            "wardrik.tool_call.started",
+            "wardrik.tool_call.completed",
+            "wardrik.tool_call.denied"
+          ],
+          "description": "The type of the event that set it."
+        },
+        "message": {
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/message_ref"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Which try after the first comes next."
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many tries after the first there may be."
+        },
+        "wait_ms": {
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
+        },
+        "step": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name"
+          ]
+        },
+        "tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "call": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "id"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "call"
+          ]
+        },
+        "interrupts": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/interrupt"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "description": "One thing an agent is doing, as the type of the event that set it, with what that event names of it."
+    },
+    "activity": {
+      "type": "object",
+      "properties": {
+        "doing": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/doing"
+          },
+          "description": "Every tool call running, oldest first, or the one thing it is doing otherwise; none when it is idle."
+        },
+        "since": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When it began what it is doing."
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many messages wait behind it."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "doing",
+        "since",
+        "pending"
+      ],
+      "description": "What an agent is doing now."
     }
   }
 }

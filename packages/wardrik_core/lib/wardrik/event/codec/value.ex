@@ -13,6 +13,7 @@ defmodule Wardrik.Event.Codec.Value do
 
   alias ReqLLM.Message.ContentPart
   alias ReqLLM.ToolCall
+  alias Wardrik.Event
   alias Wardrik.Principal
   alias Wardrik.Tool.Result
 
@@ -166,6 +167,54 @@ defmodule Wardrik.Event.Codec.Value do
     %{"id" => id, "reason" => reason, "message" => prompt, "tool_call_id" => id}
     |> put("name", name)
   end
+
+  @doc """
+  What an agent is doing, as `Wardrik.Agent.Activity` says: each thing it is
+  doing as the type of the event that set it, with what that event names of
+  it, and none when it is idle; since when; and how many messages wait.
+  """
+  @spec activity(Wardrik.Agent.Activity.t()) :: map()
+  def activity(%Wardrik.Agent.Activity{} = activity) do
+    %{
+      "doing" => doing(activity.doing),
+      "since" => activity.since |> DateTime.from_unix!(:microsecond) |> DateTime.to_iso8601(),
+      "pending" => activity.pending
+    }
+  end
+
+  defp doing(:idle), do: []
+  defp doing([_ | _] = calls), do: Enum.flat_map(calls, &doing/1)
+  defp doing(%Event.TurnStarted{}), do: [%{"type" => "wardrik.run.started"}]
+  defp doing(%Event.TurnResumed{}), do: [%{"type" => "wardrik.run.resumed"}]
+
+  defp doing(%Event.TurnParked{calls: calls}),
+    do: [%{"type" => "wardrik.run.interrupted", "interrupts" => Enum.map(calls, &interrupt/1)}]
+
+  defp doing(%Event.ModelStarted{message_id: id}),
+    do: [%{"type" => "wardrik.message.started", "message" => %{"id" => id}}]
+
+  defp doing(%Event.ModelRetrying{} = retry) do
+    [
+      %{
+        "type" => "wardrik.message.retrying",
+        "message" => %{"id" => retry.message_id},
+        "attempt" => retry.attempt,
+        "attempts" => retry.attempts,
+        "wait_ms" => retry.wait_ms
+      }
+    ]
+  end
+
+  defp doing(%Event.SpanStarted{name: name}),
+    do: [%{"type" => "wardrik.step.started", "step" => %{"name" => name}}]
+
+  defp doing(%Event.ToolStarted{} = call), do: [tool("wardrik.tool_call.started", call)]
+  defp doing(%Event.ToolDenied{} = call), do: [tool("wardrik.tool_call.denied", call)]
+  defp doing(%Event.ToolFinished{} = call), do: [tool("wardrik.tool_call.completed", call)]
+  defp doing(%Event.ToolReplayed{} = call), do: [tool("wardrik.tool_call.completed", call)]
+
+  defp tool(type, call),
+    do: %{"type" => type, "tool" => %{"name" => call.name, "call" => %{"id" => call.call_id}}}
 
   @doc """
   The provider and model a model spec names, however it names them: as

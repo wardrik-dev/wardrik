@@ -10,6 +10,9 @@
     public: [
       "Wardrik.Core",
       "Wardrik.Agent",
+      "Wardrik.Agent.Activity",
+      "Wardrik.Agent.Activity.English",
+      "Wardrik.Agent.Activity.Presenter",
       "Wardrik.Agent.Snapshot",
       "Wardrik.Agent.Spec",
       "Wardrik.AgentID",

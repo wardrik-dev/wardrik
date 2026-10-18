@@ -5,6 +5,7 @@ defmodule Wardrik.AgentTest do
 
   alias ReqLLM.Context
   alias Wardrik.Agent
+  alias Wardrik.Agent.Activity
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
@@ -203,6 +204,49 @@ defmodule Wardrik.AgentTest do
       assert_receive %Event{payload: %Event.TurnFinished{}}
 
       assert %{state: :idle, pending: 0} = Agent.status(agent)
+    end
+  end
+
+  describe "what it is doing" do
+    test "is announced as it changes, and read from its status meanwhile" do
+      agent = start_agent(runner: {AgentRunners, :delegating, [self(), "pricing"]})
+
+      Agent.ask(agent, "what do rivals charge?")
+
+      assert_receive %Event{
+        payload: %Event.ActivityChanged{activity: %{doing: %Event.TurnStarted{}}}
+      }
+
+      assert_receive {:delegating, delegation}
+
+      assert_receive %Event{
+                       payload: %Event.ActivityChanged{
+                         activity: %Activity{doing: %Event.SpanStarted{name: "pricing"}} = doing
+                       }
+                     } = changed
+
+      refute Event.root?(changed)
+      assert Agent.status(agent).activity == doing
+      assert Agent.snapshot(agent).status.activity == doing
+
+      send(delegation, :release)
+      assert_receive %Event{payload: %Event.ActivityChanged{activity: %{doing: :idle}}}
+    end
+
+    test "waits on a person while parked, and counts what is queued behind it" do
+      agent = start_agent(runner: parking_runner(self()))
+
+      Agent.ask(agent, "ship it")
+
+      assert_receive %Event{
+        payload: %Event.ActivityChanged{activity: %{doing: %Event.TurnParked{}, pending: 0}}
+      }
+
+      Agent.ask(agent, "and another thing")
+
+      assert_receive %Event{
+        payload: %Event.ActivityChanged{activity: %{doing: %Event.TurnParked{}, pending: 1}}
+      }
     end
   end
 

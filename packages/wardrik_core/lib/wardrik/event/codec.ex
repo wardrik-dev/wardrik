@@ -39,8 +39,10 @@ defmodule Wardrik.Event.Codec do
   ## Durable and live
 
   A durable event goes in the log and takes a sequence number. A live one, a
-  text or reasoning delta or a tool's progress, is streamed and never kept,
-  and a client that reconnects reads the whole text from `message.completed`.
+  text or reasoning delta, a tool's progress, or what the agent is doing now,
+  is streamed and never kept, and a client that reconnects reads the whole
+  text from `message.completed`, and what the agent is doing from its
+  snapshot.
   A delta names its message with the `:message_id` option, since the model
   call it streams from announced it.
 
@@ -62,7 +64,7 @@ defmodule Wardrik.Event.Codec do
 
   @padding 12
 
-  @live [:result, :thinking, :tool_progress]
+  @live [:result, :thinking, :tool_progress, :activity_changed]
   @skipped [:chunk, :meta, :tool_call, :tool_parked]
 
   @runs [
@@ -81,7 +83,8 @@ defmodule Wardrik.Event.Codec do
     :agent_stopped,
     :context_compacted,
     :context_cleared,
-    :trigger_fired
+    :trigger_fired,
+    :activity_changed
   ]
   @steps [:span_started, :span_finished, :delegation_started, :delegation_finished]
   @messages [:model_started, :model_finished, :model_retrying, :result, :thinking]
@@ -253,6 +256,11 @@ defmodule Wardrik.Event.Codec do
     {"trigger.fired", "agents/#{event.source.agent_id}",
      %{"trigger" => %{"name" => name}, "status" => to_string(outcome)}}
   end
+
+  defp agent(%Event.ActivityChanged{activity: activity}, event, _opts),
+    do:
+      {"activity.changed", "agents/#{event.source.agent_id}",
+       %{"activity" => Value.activity(activity)}}
 
   # -- steps and subagents -------------------------------------------------------
 

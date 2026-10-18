@@ -47,6 +47,10 @@ defmodule Wardrik.AgentCompactionTest do
     {_key, agent} = start(runner: {AgentRunners, :echo, [self(), "third answer"]})
     Agent.ask(agent, "third question")
 
+    compacting = %Event.SpanStarted{name: "compacting history"}
+    assert_receive %Event{payload: ^compacting}, 5_000
+    assert_receive %Event{payload: %Event.ActivityChanged{activity: %{doing: ^compacting}}}
+
     assert_receive %Event{
                      payload: %Event.ContextCompacted{
                        stats: %{messages_before: 4, messages_after: 4}

@@ -20,6 +20,8 @@ defmodule Wardrik.Resource do
       {"agent": {"id": "acme/triage", "name": "triage"},
        "conversation": {"id": "acme/triage/5f1c…"},
        "status": "parked", "pending": 0,
+       "activity": {"doing": [{"type": "wardrik.run.interrupted", "interrupts": […]}],
+                    "since": "2026-10-18T12:00:00.000000Z", "pending": 0},
        "request": {"model": "claude-sonnet-5"}, "provider": {"name": "anthropic"},
        "run": {"id": "4bf92f35…"},
        "interrupts": [{"id": "toolu_01", "reason": "tool_approval", "message": "…", "tool_call_id": "toolu_01"}],
@@ -27,7 +29,9 @@ defmodule Wardrik.Resource do
        "outcome": "ok", "sequence": 41}
 
   `run` is `null` between runs, and `sequence` is the last event the agent's
-  log has written: read and follow the log from there.
+  log has written: read and follow the log from there. `activity` is what
+  the agent is doing now, as `wardrik.activity.changed` says it, live, from
+  then on.
 
   ## An error
 
@@ -66,6 +70,7 @@ defmodule Wardrik.Resource do
       "conversation" => %{"id" => "#{id}/#{snapshot.generation}"},
       "status" => to_string(snapshot.status.state),
       "pending" => snapshot.status.pending,
+      "activity" => Value.activity(snapshot.status.activity),
       "request" => %{"model" => model},
       "run" => snapshot.trace_id && %{"id" => snapshot.trace_id},
       "interrupts" => Enum.map(snapshot.parked, &Value.interrupt/1),

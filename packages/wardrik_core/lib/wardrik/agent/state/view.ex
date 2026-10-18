@@ -11,11 +11,15 @@ defmodule Wardrik.Agent.State.View do
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.Waiting
 
-  @typedoc "Whether a turn is in flight, and how many messages are waiting behind it."
+  @typedoc """
+  Whether a turn is in flight, how many messages are waiting behind it, the
+  model, and what it is doing now.
+  """
   @type status() :: %{
           state: :idle | :running | :parked,
           pending: non_neg_integer(),
-          model: term()
+          model: term(),
+          activity: Wardrik.Agent.Activity.t()
         }
 
   @typedoc """
@@ -35,7 +39,8 @@ defmodule Wardrik.Agent.State.View do
     %{
       state: activity(state.mode),
       pending: length(state.pending),
-      model: state.config.model_spec
+      model: state.config.model_spec,
+      activity: state.activity
     }
   end
 

@@ -162,6 +162,9 @@ defmodule Wardrik.Compaction do
   word for word. `:keep` where nothing is due; `{:error, reason}` where the
   summary could not be made, which leaves the context as it was.
 
+  The summary is made in a span of its own, `"compacting history"`, so a
+  long one shows as what the agent is doing.
+
   An older part that takes more than half the model's window is summarised in
   parts, oldest first: each is written out as a transcript within that half,
   and asked about together with the summary of the parts before it, so no one
@@ -174,7 +177,7 @@ defmodule Wardrik.Compaction do
     compaction = compaction || %__MODULE__{}
 
     with {:ok, older, recent} <- split(compaction, context, config.model_spec),
-         {:ok, summary} <- summarise(run, compaction, older) do
+         {:ok, summary} <- Run.span(run, "compacting history", &summarise(&1, compaction, older)) do
       {:ok,
        Context.new([
          Context.user(@summary_intro <> summary),

@@ -10,6 +10,7 @@
     "conversation",
     "status",
     "pending",
+    "activity",
     "request",
     "run",
     "interrupts",
@@ -60,6 +61,9 @@
     "pending": {
       "type": "integer",
       "minimum": 0
+    },
+    "activity": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/activity"
     },
     "request": {
       "type": "object",
@@ -147,6 +151,23 @@
       },
       "status": "parked",
       "pending": 0,
+      "activity": {
+        "doing": [
+          {
+            "type": "wardrik.run.interrupted",
+            "interrupts": [
+              {
+                "id": "toolu_01",
+                "reason": "tool_approval",
+                "message": "Open an issue?",
+                "tool_call_id": "toolu_01"
+              }
+            ]
+          }
+        ],
+        "since": "2026-10-18T12:00:00.000000Z",
+        "pending": 0
+      },
       "request": {
         "model": "claude-sonnet-5"
       },

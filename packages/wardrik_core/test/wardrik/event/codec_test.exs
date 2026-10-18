@@ -2,6 +2,7 @@ defmodule Wardrik.Event.CodecTest do
   use ExUnit.Case, async: true
 
   alias ReqLLM.Context
+  alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
@@ -23,6 +24,15 @@ defmodule Wardrik.Event.CodecTest do
   defp within(source, name), do: Source.child(source, name: name)
 
   defp call(id, name), do: %{id: id, name: name, arguments: %{"repo" => "wardrik"}}
+
+  defp started(id, name),
+    do: %Event.ToolStarted{
+      call_id: id,
+      name: name,
+      arguments: %{"repo" => "wardrik"},
+      idempotency_key: "acme/@ops/triage/t/" <> id,
+      decided_by: %{by: :default, hooks: []}
+    }
 
   defp response(message, usage \\ %{input_tokens: 12, output_tokens: 4, cached_tokens: 3}) do
     %ReqLLM.Response{
@@ -89,6 +99,10 @@ defmodule Wardrik.Event.CodecTest do
        }},
       {Source.root(@agent), %Event.ContextCleared{dropped: 12}},
       {Source.root(@agent), %Event.TriggerFired{name: "sweep", outcome: :asked}},
+      {tool,
+       %Event.ActivityChanged{
+         activity: %Activity{doing: [started("call_1", "deploy")], since: 1_000_000, pending: 1}
+       }},
       {step, %Event.SpanStarted{name: "research"}},
       {step, %Event.SpanFinished{outcome: {:error, :timeout}, duration_ms: 1_200}},
       {step, %Event.DelegationStarted{prompt: "Look into the failing build."}},
@@ -332,10 +346,11 @@ defmodule Wardrik.Event.CodecTest do
   end
 
   describe "durable and live" do
-    test "deltas and progress are live, everything sent otherwise durable" do
+    test "deltas, progress and what an agent is doing are live, everything sent otherwise durable" do
       refute Codec.durable?(:result)
       refute Codec.durable?(:thinking)
       refute Codec.durable?(:tool_progress)
+      refute Codec.durable?(:activity_changed)
       assert Codec.durable?(:tool_started)
       assert Codec.durable?(:turn_parked)
     end
@@ -714,6 +729,99 @@ defmodule Wardrik.Event.CodecTest do
         encode(turn(), %Event.CallDecided{call_id: "call_1", decision: {:approve, " "}, by: nil})
 
       assert blank == %{"interrupt" => %{"id" => "call_1"}, "decision" => "approved"}
+    end
+  end
+
+  describe "what an agent is doing" do
+    defp changed(doing) do
+      activity = %Activity{doing: doing, since: 1_760_788_800_000_000, pending: 0}
+      {:ok, event} = encode(turn(), %Event.ActivityChanged{activity: activity}, [])
+      valid!(event)
+      event
+    end
+
+    test "is every call running, each as the type of the event that set it and the call it names" do
+      event = changed([started("call_1", "web_search"), started("call_2", "fetch_page")])
+
+      assert event["subject"] == "agents/acme/@ops/triage"
+
+      assert event["data"]["activity"] == %{
+               "doing" => [
+                 %{
+                   "type" => "wardrik.tool_call.started",
+                   "tool" => %{"name" => "web_search", "call" => %{"id" => "call_1"}}
+                 },
+                 %{
+                   "type" => "wardrik.tool_call.started",
+                   "tool" => %{"name" => "fetch_page", "call" => %{"id" => "call_2"}}
+                 }
+               ],
+               "since" => "2025-10-18T12:00:00.000000Z",
+               "pending" => 0
+             }
+    end
+
+    test "is nothing when idle, and otherwise one thing, which says what it needs to" do
+      parked = %Event.TurnParked{calls: [{call("call_1", "deploy"), "Ship it?"}]}
+
+      retrying = %Event.ModelRetrying{
+        message_id: "s.m0",
+        attempt: 2,
+        attempts: 6,
+        wait_ms: 900,
+        reason: :timeout
+      }
+
+      for {doing, said} <- [
+            {:idle, []},
+            {%Event.TurnStarted{messages: []}, [%{"type" => "wardrik.run.started"}]},
+            {%Event.TurnResumed{decisions: %{}}, [%{"type" => "wardrik.run.resumed"}]},
+            {parked,
+             [
+               %{
+                 "type" => "wardrik.run.interrupted",
+                 "interrupts" => [
+                   %{
+                     "id" => "call_1",
+                     "reason" => "tool_approval",
+                     "message" => "Ship it?",
+                     "tool_call_id" => "call_1",
+                     "name" => "deploy"
+                   }
+                 ]
+               }
+             ]},
+            {%Event.ModelStarted{message_id: "s.m0", model_spec: "x:y", decided_by: nil},
+             [%{"type" => "wardrik.message.started", "message" => %{"id" => "s.m0"}}]},
+            {retrying,
+             [
+               %{
+                 "type" => "wardrik.message.retrying",
+                 "message" => %{"id" => "s.m0"},
+                 "attempt" => 2,
+                 "attempts" => 6,
+                 "wait_ms" => 900
+               }
+             ]},
+            {%Event.SpanStarted{name: "compacting history"},
+             [%{"type" => "wardrik.step.started", "step" => %{"name" => "compacting history"}}]},
+            {%Event.ToolDenied{call_id: "c", name: "rm", reason: "No.", decided_by: nil},
+             [
+               %{
+                 "type" => "wardrik.tool_call.denied",
+                 "tool" => %{"name" => "rm", "call" => %{"id" => "c"}}
+               }
+             ]},
+            {%Event.ToolReplayed{call_id: "c", name: "rm", result: {:ok, "done"}},
+             [
+               %{
+                 "type" => "wardrik.tool_call.completed",
+                 "tool" => %{"name" => "rm", "call" => %{"id" => "c"}}
+               }
+             ]}
+          ] do
+        assert changed(doing)["data"]["activity"]["doing"] == said
+      end
     end
   end
 

@@ -132,6 +132,9 @@
   boundaries: [
     public: [
       "Wardrik.Agent",
+      "Wardrik.Agent.Activity",
+      "Wardrik.Agent.Activity.English",
+      "Wardrik.Agent.Activity.Presenter",
       "Wardrik.Agent.Message",
       "Wardrik.Agent.Snapshot",
       "Wardrik.Agent.Spec",

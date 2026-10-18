@@ -2,6 +2,7 @@ defmodule Wardrik.Agent.StateTest do
   use ExUnit.Case, async: true
 
   alias ReqLLM.Context
+  alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Due
@@ -688,6 +689,15 @@ defmodule Wardrik.Agent.StateTest do
       assert Stored.dump(stopping()).mode == %Due{recovery: :owed}
     end
 
+    test "what it is doing is never written, and is read back from what it waits on" do
+      refute Map.has_key?(Stored.dump(waiting()), :activity)
+
+      assert %Activity{doing: %Event.TurnParked{calls: [{%{id: "call_1"}, "Really?"}]}} =
+               reload(waiting()).activity
+
+      assert %Activity{doing: :idle, pending: 2} = reload(queued(state(), 2)).activity
+    end
+
     test "the host it runs on is never written, and every turn's run carries it" do
       host = Wardrik.Host.new(definitions: %Wardrik.Test.Definitions{})
       state = State.hosted(state(), host)
@@ -704,6 +714,21 @@ defmodule Wardrik.Agent.StateTest do
           Wardrik.AgentID.parse!("acme/@jon/assistant")
         )
       end
+    end
+  end
+
+  describe "what it is doing" do
+    test "an event that changes it is announced on that event's span, and one that does not is not" do
+      source = run().source
+      asked = %Event.TurnStarted{messages: []}
+
+      {state, effects} = State.heard(state(), Event.new(source, asked))
+
+      assert [{:emit, ^source, %Event.ActivityChanged{activity: %Activity{doing: ^asked}}}] =
+               effects
+
+      assert {^state, []} = State.heard(state, Event.new(source, %Event.Result{text: "Hel"}))
+      assert View.status(state).activity == state.activity
     end
   end
 
