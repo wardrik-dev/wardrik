@@ -6,7 +6,7 @@ sidebar:
   order: 5
 ---
 
-<!-- Written by mix wardrik.docs from packages/wardrik_http/guides/http-api.md and packages/wardrik_protocol/priv/v1. Edit it there, not here. -->
+<!-- Written by mix wardrik.docs from packages/wardrik_http/guides/http-api.md and packages/wardrik_core/priv/v1. Edit it there, not here. -->
 
 Wardrik's agents over HTTP: a versioned JSON API, and each agent's event log as server-sent events a
 client resumes after any disconnect.
@@ -116,7 +116,7 @@ The `/v1/deployment` routes are for a token over every agent alone.
 A cancel under a prefix answers `{"cancelled": [...]}`, and a removal
 `{"forgotten": [...], "kept": [{"id": ..., "why": ...}], "failed": [...]}`.
 
-`wardrik_protocol`'s `priv/openapi.json` is every route in OpenAPI 3.1: what each takes and
+wardrik_core's `priv/openapi.json` is every route in OpenAPI 3.1: what each takes and
 answers, and the function of `Wardrik` it calls. A client generator in any language reads
 `priv/openapi.bundled.json`, the same with every schema in it.
 

@@ -264,7 +264,6 @@ An agent can call GitHub's MCP server as the user it works for. Each user connec
 GitHub account once, and their agents use it from then on. Add the packages:
 
 ```elixir title="mix.exs"
-{:wardrik_vault, "~> 0.1"},
 {:wardrik_oauth, "~> 0.1"},
 {:wardrik_mcp, "~> 0.1"}
 ```
