@@ -80,8 +80,8 @@ restart. A server that's down offers no tools until it's back.
 and the daemon retries every five seconds.
 
 **An agent stopped answering.** `wardrik ls attention` lists agents waiting on a person, and
-`wardrik parked` shows what each waits on: a call, an account to connect, or a spent budget.
-`wardrik show KEY` says why its last turn failed.
+`wardrik parked` shows what each waits on: a call, an account to connect, a spent budget, or a model
+that kept failing. `wardrik show KEY` says why its last turn failed.
 
 **A trigger didn't run.** `wardrik triggers` says how each last ran: asked, nothing new, skipped
 while busy, or a missed run let go.

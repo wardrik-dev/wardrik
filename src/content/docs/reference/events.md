@@ -196,6 +196,18 @@ Text of an assistant message as it streams. Live: never stored.
 | `message` | [message_ref](#message_ref) | yes |  |
 | `delta` | string | yes |  |
 
+### `wardrik.message.retrying`
+
+The model failed to answer, and is asked again after a wait.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `message` | [message_ref](#message_ref) | yes |  |
+| `attempt` | integer | yes | Which try after the first comes next. |
+| `attempts` | integer | yes | How many tries after the first there may be. |
+| `wait_ms` | [duration_ms](#duration_ms) | yes |  |
+| `error` | [error](#error) | yes |  |
+
 ### `wardrik.message.started`
 
 The model was asked for an assistant message.
