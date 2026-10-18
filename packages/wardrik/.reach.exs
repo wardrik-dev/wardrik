@@ -13,7 +13,7 @@
       "Wardrik.Forgetting",
       "Wardrik.Migration",
       "Wardrik.Moving",
-      "Wardrik.Session",
+      "Wardrik.Scope",
       "Wardrik.Spawned",
       "Wardrik.Stream"
     ],
@@ -144,7 +144,6 @@
       "Wardrik.Audit",
       "Wardrik.Call",
       "Wardrik.Call.Ask",
-      "Wardrik.Caller",
       "Wardrik.Compaction",
       "Wardrik.Connections",
       "Wardrik.Connections.Connection",
@@ -168,8 +167,8 @@
       "Wardrik.Event.Log.Entry",
       "Wardrik.Fleet",
       "Wardrik.Fleet.Member",
-      "Wardrik.Grant",
-      "Wardrik.Grants",
+      "Wardrik.Issuer",
+      "Wardrik.Issuer.None",
       "Wardrik.Hook",
       "Wardrik.Host",
       "Wardrik.LLM.Config",
@@ -186,18 +185,21 @@
       "Wardrik.Ledger.None",
       "Wardrik.Ledger.Store",
       "Wardrik.Principal",
+      "Wardrik.Role",
       "Wardrik.Run",
       "Wardrik.Servers",
       "Wardrik.Servers.Key",
       "Wardrik.Servers.None",
       "Wardrik.Servers.Server",
+      "Wardrik.Statement",
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",
       "Wardrik.TimeZone",
+      "Wardrik.Token",
       "Wardrik.Tokens",
       "Wardrik.Tokens.None",
-      "Wardrik.Tokens.Token",
+      "Wardrik.Tokens.Entry",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
       "Wardrik.Tool.Name",
@@ -252,7 +254,7 @@
     layer_coverage: [
       require_all_modules: true,
       forbid_multiple_matches: true,
-      ignore: ["Wardrik.Test.*", "Wardrik.OrgGrants", "Wardrik.ByOrg"]
+      ignore: ["Wardrik.Test.*", "Wardrik.OrgIssuer", "Wardrik.ByOrg"]
     ]
   ]
 ]

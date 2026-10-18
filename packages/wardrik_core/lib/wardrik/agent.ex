@@ -189,7 +189,6 @@ defmodule Wardrik.Agent do
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.View
-  alias Wardrik.Caller
   alias Wardrik.Credential
   alias Wardrik.Event
   alias Wardrik.Event.Bus
@@ -294,20 +293,23 @@ defmodule Wardrik.Agent do
 
   @doc """
   Accepts decisions only while their calls are parked, and only from a
-  `caller` who may decide them, acknowledging acceptance before returning.
+  `:token` that may decide them, acknowledging acceptance before returning.
 
-  A caller may decide them where their grant allows `:decide` on the agent,
-  or where they asked for the turn that waits: `Wardrik.Principal.same?/2`
-  with its sender, so whoever asks may approve what their own turn does.
-  Anyone else is `{:error, :forbidden}`. The caller's principal is carried
-  on each `Wardrik.Event.CallDecided` event as who decided. `{:error,
+  A token may decide them where it allows `agent.decide` on the agent, or
+  where its principal asked for the turn that waits and acts directly,
+  assumed by nobody: `Wardrik.Principal.same?/2` with its sender, so whoever
+  asks may approve what their own turn does, and an agent acting for them
+  may not. Anyone else is `{:error, :forbidden}`. The token's principal is
+  carried on each `Wardrik.Event.CallDecided` event as who decided. `{:error,
   :unrecorded}` means the decisions could not be written to the agent's
-  log, and were not taken.
+  log, and were not taken. `:host` is as `ask/3` takes it.
   """
-  @spec decide(agent(), map(), Caller.t()) ::
+  @spec decide(agent(), map(), token: Wardrik.Token.t(), host: Wardrik.Host.t()) ::
           :ok | {:error, :not_found | :not_parked | :stale_decision | :forbidden | :unrecorded}
-  def decide(agent, decisions, %Caller{} = caller) when is_map(decisions),
-    do: call(agent, {:decide, decisions, caller}, host: caller.host)
+  def decide(agent, decisions, opts) when is_map(decisions) do
+    %Wardrik.Token{} = token = Keyword.fetch!(opts, :token)
+    call(agent, {:decide, decisions, token}, opts)
+  end
 
   @doc """
   Empties this agent's history, keeping its config and queue.
@@ -341,8 +343,8 @@ defmodule Wardrik.Agent do
   model wrote it. Calls left out stay parked, so several people can answer
   one call each. Non-blocking, and a no-op when nothing is parked. `:by`
   names the `Wardrik.Principal` deciding, carried on each
-  `Wardrik.Event.CallDecided` event. Unlike `decide/3`, it asks nobody's
-  grant, so it is for code that already holds the agent, never for a
+  `Wardrik.Event.CallDecided` event. Unlike `decide/3`, it asks no
+  token, so it is for code that already holds the agent, never for a
   surface people decide through. `:host` is as `ask/3` takes it.
 
       Wardrik.Agent.resume(~A"acme/@jon/researcher", %{"call_abc" => :approve}, host: host)
@@ -470,11 +472,11 @@ defmodule Wardrik.Agent do
   defp called(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
   defp called(:snapshot, _from, state), do: {:reply, View.snapshot(state), state}
 
-  defp called({:decide, decisions, %Caller{} = caller}, _from, state) do
+  defp called({:decide, decisions, %Wardrik.Token{} = token}, _from, state) do
     ids = Enum.map(State.waiting_on(state), fn {call, _prompt} -> call.id end)
 
     cond do
-      not State.decides?(state, caller) ->
+      not State.decides?(state, token) ->
         {:reply, {:error, :forbidden}, state}
 
       ids == [] ->
@@ -484,7 +486,7 @@ defmodule Wardrik.Agent do
         {:reply, {:error, :stale_decision}, state}
 
       true ->
-        case resume_turn(state, decisions, caller.principal) do
+        case resume_turn(state, decisions, token.principal) do
           {:ok, next} -> {:reply, :ok, next, meta: View.meta(next), sync: true}
           {:error, next} -> {:reply, {:error, :unrecorded}, next}
         end

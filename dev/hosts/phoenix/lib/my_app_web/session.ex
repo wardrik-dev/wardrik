@@ -20,15 +20,12 @@ defimpl WardrikHTTP.Authenticator, for: MyAppWeb.Session do
   def authenticate(session, conn) do
     with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
          {:ok, user} <- Phoenix.Token.verify(session.endpoint, "agents", token, max_age: @day) do
-      {:ok, grant} = Wardrik.Grant.new(MyApp.Grants.own(user))
+      token = %Wardrik.Token{
+        principal: MyApp.Issuer.principal(user),
+        scope: [Wardrik.Role.bind([:owner], MyApp.Issuer.own(user))]
+      }
 
-      {:ok,
-       %WardrikHTTP.Caller{
-         id: "session/#{user.id}",
-         name: user.email,
-         principal: MyApp.Grants.principal(user),
-         grant: grant
-       }}
+      {:ok, %WardrikHTTP.Caller{id: "session/#{user.id}", name: user.email, token: token}}
     else
       _no_session -> {:error, :unauthorized}
     end

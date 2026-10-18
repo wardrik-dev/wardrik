@@ -3,6 +3,7 @@ export { Agents, Wardrik, version, type Parked, type Removal, type WardrikOption
 export { Connections, type ConnectionOptions } from "./connections.ts";
 export { Servers, type ServerAuth, type ServerFields, type ServerOptions } from "./servers.ts";
 export { Deployment, type AuditOptions, type AuditPage } from "./deployment.ts";
+export { Tokens, type TokenFields } from "./tokens.ts";
 export { WardrikError } from "./errors.ts";
 export { EventStream, type FollowOptions } from "./events.ts";
 export { Export } from "./export.ts";

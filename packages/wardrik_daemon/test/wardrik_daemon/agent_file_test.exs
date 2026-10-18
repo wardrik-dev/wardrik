@@ -210,12 +210,16 @@ defmodule WardrikDaemon.AgentFileTest do
       assert team.tree == "shared/acme"
       assert files.context == ["shared/team/NOTES.md"]
 
-      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(id))
-      {:ok, definition} = Record.define(ctx(), id, fields: fields, source: {:api, grant})
+      token = %Wardrik.Token{
+        principal: Wardrik.Principal.new(:user, "jon"),
+        scope: [Wardrik.Role.bind([:owner], Wardrik.AgentID.Prefix.of(id))]
+      }
+
+      {:ok, definition} = Record.define(ctx(), id, fields: fields, source: {:api, token})
 
       assert Record.spec(definition, id, context: ctx()) ==
                {:error,
-                "workspace shared team: acme belongs to acme/, which acme/triage does not cover"}
+                "workspace shared team: acme belongs to acme/, which the token does not reach"}
     end
   end
 

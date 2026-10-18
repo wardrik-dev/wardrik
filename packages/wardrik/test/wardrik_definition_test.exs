@@ -177,7 +177,7 @@ defmodule WardrikDefinitionTest do
              WardrikDefinition.accept(AgentID.parse!("acme/triage/t1"), %{}, context)
   end
 
-  test "an org's ceilings come ahead of the agent's own policy", %{context: context, id: id} do
+  test "an org's policies come ahead of the agent's own policy", %{context: context, id: id} do
     {:ok, base} = WardrikPolicy.decode(%{"deny" => ["run_lua"]})
     policies = Map.put(context.policies, "base", base)
     context = %{context | policies: policies, ceilings: %{"*" => "base", "acme" => "careful"}}
@@ -188,7 +188,7 @@ defmodule WardrikDefinitionTest do
     context = %{context | ceilings: %{"acme" => "missing"}}
 
     assert {:error,
-            "Mode holds acme's agents to the ceiling missing, which is not a policy in " <>
+            "Mode holds acme's agents to the policy missing, which is not a policy in " <>
               "the org's policies"} = spec(%{}, context, id)
   end
 

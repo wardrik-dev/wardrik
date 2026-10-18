@@ -8,13 +8,13 @@ defmodule Wardrik.DeploymentTest do
   alias Wardrik.Deployment.Nodes
   alias Wardrik.Error
   alias Wardrik.Event.Log.Entry
-  alias Wardrik.Grant
   alias Wardrik.Host
   alias Wardrik.Principal
-  alias Wardrik.Session
+  alias Wardrik.Role
+  alias Wardrik.Scope
   alias Wardrik.Test.Audit
   alias Wardrik.Test.Fleet
-  alias Wardrik.Tokens.Token
+  alias Wardrik.Token
 
   # Reads its definitions again by telling the test that asked.
   defmodule Reloads do
@@ -45,19 +45,18 @@ defmodule Wardrik.DeploymentTest do
     @ns :deployment_test_tokens
     def create(_tokens, "refused", _opts), do: {:error, "No token is named refused."}
 
-    def create(_tokens, name, grant: grant, for: for) do
+    def create(_tokens, name, token: token) do
       id = Wardrik.UUID.v7()
 
-      token = %Token{
+      entry = %Wardrik.Tokens.Entry{
         id: id,
         name: name,
-        grant: grant,
-        principal: for,
+        token: token,
         created_at: DateTime.utc_now()
       }
 
-      {:ok, _vsn} = WardrikStore.put(store(), @ns, id, token)
-      {:ok, %{token | secret: "secret-" <> id}}
+      {:ok, _vsn} = WardrikStore.put(store(), @ns, id, entry)
+      {:ok, %{entry | secret: "secret-" <> id}}
     end
 
     def list(_tokens),
@@ -79,12 +78,16 @@ defmodule Wardrik.DeploymentTest do
   defp host, do: Wardrik.Test.host(definitions: %Reloads{}, tokens: %Tokens{})
 
   defp root(host \\ host()),
-    do: Session.root(host: host, principal: Principal.new(:user, "jon", name: "Jon"))
+    do: Scope.new(host, Token.root(Principal.new(:user, "jon", name: "Jon")))
 
-  # A session over the agents of one org, which the deployment is not.
-  defp session do
-    {:ok, grant} = Grant.new(Prefix.parse!("test/"), Grant.actions())
-    Session.new(host: host(), principal: Principal.new(:user, "jon", name: "Jon"), grant: grant)
+  # A scope over the agents of one org, which the deployment is not.
+  defp scope do
+    token = %Token{
+      principal: Principal.new(:user, "jon", name: "Jon"),
+      scope: [Role.bind([:owner], Prefix.parse!("test/"))]
+    }
+
+    Scope.new(host(), token)
   end
 
   describe "reloading" do
@@ -96,7 +99,7 @@ defmodule Wardrik.DeploymentTest do
       assert_received :reloaded
       assert Enum.any?(Audit.about("agents"), &match?({"agents.reloaded", %{"id" => "jon"}}, &1))
 
-      assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_reload(session())
+      assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_reload(scope())
     end
 
     test "is unsupported where no node's host reads its definitions again" do
@@ -113,7 +116,7 @@ defmodule Wardrik.DeploymentTest do
     assert node == node()
     assert agents >= 1
     assert is_integer(asleep)
-    assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_nodes(session())
+    assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_nodes(scope())
   end
 
   test "the audit reads a page of the changes after a sequence number" do
@@ -125,16 +128,15 @@ defmodule Wardrik.DeploymentTest do
              Wardrik.deployment_audit(root(), after: last - 1, limit: 1)
 
     assert {:ok, []} = Wardrik.deployment_audit(root(), after: last, limit: 10)
-    assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_audit(session())
+    assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_audit(scope())
   end
 
   describe "tokens" do
-    test "are made, listed and revoked through the host's module, and recorded" do
-      {:ok, grant} = Grant.new(Prefix.parse!("test/"), [:read])
-      ana = Principal.new(:user, "ana")
+    defp reader, do: [Role.bind([:reader], Prefix.parse!("test/"))]
 
-      assert {:ok, %Token{id: id, secret: "secret-" <> id} = made} =
-               Wardrik.tokens_create(root(), "ci", grant, for: ana)
+    test "are made, listed and revoked through the host's module, and recorded" do
+      assert {:ok, %Wardrik.Tokens.Entry{id: id, secret: "secret-" <> id} = made} =
+               Wardrik.tokens_create(root(), "ci", reader())
 
       refute inspect(made) =~ "secret-"
       assert [{"token.created", %{"id" => "jon"}}] = Audit.about("tokens/" <> id)
@@ -142,38 +144,52 @@ defmodule Wardrik.DeploymentTest do
       assert {:ok, tokens} = Wardrik.tokens_list(root())
       assert Enum.any?(tokens, &(&1.id == id))
 
-      assert {:ok, %Token{id: ^id, secret: nil}} = Wardrik.tokens_revoke(root(), id)
+      assert {:ok, %Wardrik.Tokens.Entry{id: ^id, secret: nil}} =
+               Wardrik.tokens_revoke(root(), id)
+
       assert [_created, {"token.revoked", _actor}] = Audit.about("tokens/" <> id)
       assert {:error, %Error{type: :not_found}} = Wardrik.tokens_revoke(root(), id)
 
       assert {:error, %Error{type: :invalid, message: "No token is named refused."}} =
-               Wardrik.tokens_create(root(), "refused", grant)
+               Wardrik.tokens_create(root(), "refused", reader())
 
-      assert {:error, %Error{type: :forbidden}} = Wardrik.tokens_create(session(), "ci", grant)
-      assert {:error, %Error{type: :forbidden}} = Wardrik.tokens_list(session())
+      assert {:error, %Error{type: :forbidden}} = Wardrik.tokens_create(scope(), "ci", reader())
+      assert {:error, %Error{type: :forbidden}} = Wardrik.tokens_list(scope())
     end
 
-    test "for a person reach their own agents, or what names nobody's, never another's" do
-      ana = Principal.new(:user, "ana")
+    test "act for whoever made them, under the policy they name or the maker's, until they expire" do
+      jon = root()
+      maker = %{jon | token: %{jon.token | policy: "careful"}}
 
-      for scope <- ["test/@ana/", "test/@ana/triage", "test/", ""] do
-        {:ok, grant} = Grant.new(Prefix.parse!(scope), [:read])
-        assert {:ok, %Token{}} = Wardrik.tokens_create(root(), "ok", grant, for: ana)
-      end
+      assert {:ok, %Wardrik.Tokens.Entry{token: token}} =
+               Wardrik.tokens_create(maker, "ci", reader(), policy: "strict")
 
-      {:ok, grant} = Grant.new(Prefix.parse!("test/@jon/"), [:read])
+      assert token.principal == jon.token.principal
+      assert token.scope == reader()
+      assert token.policy == "strict"
 
-      assert {:error, %Error{type: :invalid, message: message}} =
-               Wardrik.tokens_create(root(), "theirs", grant, for: ana)
+      assert {:ok, %Wardrik.Tokens.Entry{token: %{policy: "careful"}}} =
+               Wardrik.tokens_create(maker, "same", reader())
 
-      assert message == "A token for ana cannot reach test/@jon/, which is jon's."
+      assert_in_delta DateTime.diff(token.expires, DateTime.utc_now()), 90 * 86_400, 5
+
+      assert {:ok, %Wardrik.Tokens.Entry{token: brief}} =
+               Wardrik.tokens_create(jon, "brief", reader(), expires_in: 60)
+
+      assert_in_delta DateTime.diff(brief.expires, DateTime.utc_now()), 60, 5
+
+      shorter = root(Wardrik.Test.host(tokens: %Tokens{}, expires: [api: 3_600]))
+
+      assert {:ok, %Wardrik.Tokens.Entry{token: hour}} =
+               Wardrik.tokens_create(shorter, "hour", reader())
+
+      assert_in_delta DateTime.diff(hour.expires, DateTime.utc_now()), 3_600, 5
     end
 
     test "are unsupported where the host makes none" do
-      {:ok, grant} = Grant.new(Prefix.parse!("test/"), [:read])
       none = root(Host.new())
 
-      assert {:error, %Error{type: :unsupported}} = Wardrik.tokens_create(none, "ci", grant)
+      assert {:error, %Error{type: :unsupported}} = Wardrik.tokens_create(none, "ci", reader())
       assert {:error, %Error{type: :unsupported}} = Wardrik.tokens_list(none)
       assert {:error, %Error{type: :unsupported}} = Wardrik.tokens_revoke(none, "x")
     end

@@ -7,7 +7,9 @@ defmodule Wardrik.Audit do
 
   A surface people act through, the CLI, the TUI or the HTTP API, records
   each change it makes once it is made, with the `Wardrik.Principal` who
-  asked for it, or `nil` where none is known. What an agent does on its own,
+  asked for it, or `nil` where none is known, and, where someone acted for
+  them, who did, first to last: the token's `assumed_by`; see
+  `Wardrik.Token`. What an agent does on its own,
   and what a node does as it starts, is not recorded here; an agent's own log
   holds what it did.
 
@@ -38,7 +40,7 @@ defmodule Wardrik.Audit do
   alias Wardrik.Trace
 
   @enforce_keys [:id, :action, :at, :trace]
-  defstruct [:id, :action, :by, :at, :trace]
+  defstruct [:id, :action, :by, :at, :trace, assumed_by: []]
 
   @typedoc """
   A change, as a tuple whose first element names it.
@@ -72,9 +74,8 @@ defmodule Wardrik.Audit do
 
   Credentials:
 
-    * `{:token_created, token_id, name, grant, for}` - an API token was made,
-      reaching what its `Wardrik.Grant` reaches, for the principal `for`
-      names, or for itself where `nil`
+    * `{:token_created, token_id, name, token}` - an API token was made,
+      the `Wardrik.Token` its secret presents
     * `{:token_revoked, token_id}`
     * `{:secret_stored, name, owner}`, `{:secret_removed, name, owner}` - a
       secret was sealed in the vault, or taken out, for the org or user
@@ -101,7 +102,7 @@ defmodule Wardrik.Audit do
           | {:agents_reloaded, [node()]}
           | {:room_bound, String.t(), String.t(), AgentID.t(), :mentions | :everything}
           | {:room_unbound, String.t(), String.t()}
-          | {:token_created, String.t(), String.t(), Wardrik.Grant.t(), Principal.t() | nil}
+          | {:token_created, String.t(), String.t(), Wardrik.Token.t()}
           | {:token_revoked, String.t()}
           | {:secret_stored, String.t(), Prefix.t()}
           | {:secret_removed, String.t(), Prefix.t()}
@@ -109,13 +110,14 @@ defmodule Wardrik.Audit do
           | {:server_removed, Wardrik.Servers.Key.t()}
 
   @typedoc """
-  A change, who made it, and when, under a UUIDv7 of its own, at the root of
-  a trace of its own.
+  A change, who made it, who acted for them, and when, under a UUIDv7 of its
+  own, at the root of a trace of its own.
   """
   @type t() :: %__MODULE__{
           id: String.t(),
           action: action(),
           by: Principal.t() | nil,
+          assumed_by: [Principal.t()],
           at: integer(),
           trace: Trace.t()
         }
@@ -134,23 +136,31 @@ defmodule Wardrik.Audit do
   end
 
   @doc """
-  Records `action`, made by `:by`, in the audit log `audit`, the process
-  the host names as its `Wardrik.Host.audit/1`.
+  Records `action`, made by `:by`, acted for by `:assumed_by` where anyone
+  did, in the audit log `audit`, the process the host names as its
+  `Wardrik.Host.audit/1`.
   """
-  @spec record(GenServer.server(), action(), by: Principal.t() | nil) :: :ok
-  def record(audit, action, opts),
-    do: GenServer.call(audit, {:record, new(action, Keyword.fetch!(opts, :by))})
+  @spec record(GenServer.server(), action(), by: Principal.t() | nil, assumed_by: [Principal.t()]) ::
+          :ok
+  def record(audit, action, opts), do: record_all(audit, [action], opts)
 
   @doc """
-  Records `actions`, made by `:by` as one change, in the audit log `audit`:
-  each its own entry, all under one trace, so the entries say they were one
-  change.
+  Records `actions`, made by `:by` as one change, acted for by
+  `:assumed_by` where anyone did, in the audit log `audit`: each its own
+  entry, all under one trace, so the entries say they were one change.
   """
-  @spec record_all(GenServer.server(), [action()], by: Principal.t() | nil) :: :ok
+  @spec record_all(GenServer.server(), [action()],
+          by: Principal.t() | nil,
+          assumed_by: [Principal.t()]
+        ) :: :ok
   def record_all(audit, actions, opts) when is_list(actions) do
-    by = Keyword.fetch!(opts, :by)
-    trace = Trace.root()
-    Enum.each(actions, &(:ok = GenServer.call(audit, {:record, new(&1, by, trace)})))
+    opts = Keyword.validate!(opts, [:by, assumed_by: []])
+    {by, trace} = {Keyword.fetch!(opts, :by), Trace.root()}
+
+    Enum.each(actions, fn action ->
+      change = %{new(action, by, trace) | assumed_by: opts[:assumed_by]}
+      :ok = GenServer.call(audit, {:record, change})
+    end)
   end
 
   @doc false

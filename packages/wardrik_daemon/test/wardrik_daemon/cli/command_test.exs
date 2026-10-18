@@ -17,9 +17,9 @@ defmodule WardrikDaemon.CLI.CommandTest do
       name: "token create",
       group: "Tokens",
       arguments: "NAME",
-      options: "[--can ACTIONS]",
+      options: "[--role ROLES]",
       summary: "make a token",
-      switches: [can: :string],
+      switches: [role: :string],
       count: {1, 1}
     },
     %Command{
@@ -45,7 +45,7 @@ defmodule WardrikDaemon.CLI.CommandTest do
     assert Command.parse(ask, ["acme/triage", "what", "changed"]) ==
              {:ok, ["acme/triage", "what", "changed"], []}
 
-    assert Command.parse(create, ["dev", "--can", "read"]) == {:ok, ["dev"], [can: "read"]}
+    assert Command.parse(create, ["dev", "--role", "reader"]) == {:ok, ["dev"], [role: "reader"]}
     assert Command.parse(list, ["--json"]) == {:ok, [], [json: true]}
 
     assert {:error, usage} = Command.parse(ask, ["acme/triage"])
@@ -58,7 +58,7 @@ defmodule WardrikDaemon.CLI.CommandTest do
   test "usage/1 adds --json to a command that answers with it" do
     [_ask, create, list] = @commands
 
-    assert plain(Command.usage(create)) == "Usage: wardrik token create NAME [--can ACTIONS]"
+    assert plain(Command.usage(create)) == "Usage: wardrik token create NAME [--role ROLES]"
     assert plain(Command.usage(list)) == "Usage: wardrik token list [--json]"
   end
 

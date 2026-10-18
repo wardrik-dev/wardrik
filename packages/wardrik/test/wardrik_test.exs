@@ -76,10 +76,27 @@ defmodule WardrikTest do
 
     test "offers the seams it is given, and the None of each it is not" do
       wardrik =
-        Wardrik.new(store: store(), grants: %Wardrik.OrgGrants{org: "acme"})
+        Wardrik.new(store: store(), issuer: %Wardrik.OrgIssuer{org: "acme"})
 
-      assert %Wardrik.OrgGrants{org: "acme"} = Wardrik.Host.grants(Wardrik.host(wardrik))
+      assert %Wardrik.OrgIssuer{org: "acme"} = Wardrik.Host.issuer(Wardrik.host(wardrik))
       assert %Wardrik.Credentials.None{} = Wardrik.Host.credentials(Wardrik.host(wardrik))
+      assert Wardrik.Host.expires(Wardrik.host(wardrik), :api) == 90 * 86_400
+
+      brief = Wardrik.new(store: store(), expires: [api: 3_600])
+      assert Wardrik.Host.expires(Wardrik.host(brief), :api) == 3_600
+    end
+
+    test "makes the scope a principal acts in with the token its issuer issues them" do
+      wardrik = Wardrik.new(store: store(), issuer: %Wardrik.OrgIssuer{org: "acme"})
+      maria = Wardrik.Principal.new(:user, "maria")
+
+      assert %Wardrik.Scope{token: %Wardrik.Token{principal: ^maria} = token} =
+               Wardrik.as(wardrik, maria)
+
+      assert Wardrik.as(Wardrik.host(wardrik), maria).token == token
+
+      assert Wardrik.Token.authorize(token, "agent.define", Wardrik.AgentID.parse!("acme/x")) ==
+               :ok
     end
 
     test "takes no option it does not know" do

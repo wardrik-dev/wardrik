@@ -18,16 +18,14 @@ defmodule Wardrik.APITest do
     wardrik =
       Wardrik.new(
         store: Wardrik.Test.store(),
-        grants: %Wardrik.OrgGrants{org: "acme"},
+        issuer: %Wardrik.OrgIssuer{org: "acme"},
         context: Wardrik.context([])
       )
 
-    {:ok, root} = Wardrik.Grant.new(Prefix.all())
-
     %{
       wardrik: wardrik,
-      session: Wardrik.as(wardrik, maria()),
-      root: Wardrik.as(wardrik, maria(), grant: root)
+      scope: Wardrik.as(wardrik, maria()),
+      root: Wardrik.Scope.new(Wardrik.host(wardrik), Wardrik.Token.root(maria()))
     }
   end
 
@@ -43,11 +41,11 @@ defmodule Wardrik.APITest do
     id
   end
 
-  defp parked(session) do
+  defp parked(scope) do
     id =
       start({AgentRunners, :parking, [self(), "call_1"]})
 
-    {:ok, _message} = Wardrik.agent_ask(session, id, "ship it")
+    {:ok, _message} = Wardrik.agent_ask(scope, id, "ship it")
     assert_receive :asked, 5_000
 
     assert Wardrik.Test.Fleet.await_update(fn ->
@@ -57,65 +55,65 @@ defmodule Wardrik.APITest do
     id
   end
 
-  test "a session reaches what its principal's grants reach, and nothing else", %{
-    session: session
+  test "a scope reaches what its principal's token reaches, and nothing else", %{
+    scope: scope
   } do
     assert {:error, %Error{type: :not_found}} =
-             Wardrik.agent_read(session, AgentID.new!("support", org: "globex"))
+             Wardrik.agent_read(scope, AgentID.new!("support", org: "globex"))
 
-    assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_nodes(session)
+    assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_nodes(scope)
   end
 
-  test "an agent is defined, read, listed and forgotten", %{session: session} do
+  test "an agent is defined, read, listed and forgotten", %{scope: scope} do
     agent = id("support")
     definition = %{"model" => "anthropic:claude-sonnet-5", "instructions" => "Be brief."}
 
-    assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_define(session, agent, definition)
+    assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_define(scope, agent, definition)
 
     assert {:ok, %Wardrik.Definition.Read{fields: %{"instructions" => "Be brief."}}} =
-             Wardrik.agent_definition_read(session, agent)
+             Wardrik.agent_definition_read(scope, agent)
 
-    assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_read(session, agent)
-    assert {:ok, members} = Wardrik.agents_list(session, Prefix.of(agent))
+    assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_read(scope, agent)
+    assert {:ok, members} = Wardrik.agents_list(scope, Prefix.of(agent))
     assert Enum.any?(members, &(&1.id == agent))
 
     assert {:ok, trigger} =
-             Wardrik.agent_trigger_set(session, agent, "sweep", %{
+             Wardrik.agent_trigger_set(scope, agent, "sweep", %{
                "every" => "1h",
                "prompt" => "Look."
              })
 
     assert trigger["name"] == "sweep"
-    assert {:ok, %{"name" => "sweep"}} = Wardrik.agent_trigger_remove(session, agent, "sweep")
-    assert :ok = Wardrik.agent_forget(session, agent)
-    assert {:error, %Error{type: :not_found}} = Wardrik.agent_read(session, agent)
+    assert {:ok, %{"name" => "sweep"}} = Wardrik.agent_trigger_remove(scope, agent, "sweep")
+    assert :ok = Wardrik.agent_forget(scope, agent)
+    assert {:error, %Error{type: :not_found}} = Wardrik.agent_read(scope, agent)
   end
 
-  test "an agent asked answers in its log, which a stream and a page read", %{session: session} do
+  test "an agent asked answers in its log, which a stream and a page read", %{scope: scope} do
     agent = start({AgentRunners, :echo, [self(), "on its way"]})
 
-    assert :ok = Wardrik.agent_subscribe(session, agent)
+    assert :ok = Wardrik.agent_subscribe(scope, agent)
 
     assert {:ok, %Message{text: "where is it?", sequence: sequence}} =
-             Wardrik.agent_ask(session, agent, "where is it?", id: "m1")
+             Wardrik.agent_ask(scope, agent, "where is it?", id: "m1")
 
     assert_receive {:turn, _messages}, 5_000
     assert_receive %Entry{event: %{"type" => "wardrik.run.completed"}}, 5_000
 
-    assert {:ok, stream} = Wardrik.agent_stream(session, agent, after: sequence)
+    assert {:ok, stream} = Wardrik.agent_stream(scope, agent, after: sequence)
     assert [%Entry{sequence: first} | _rest] = Enum.take(stream, 2)
     assert first == sequence + 1
 
     assert {:ok, [%Entry{sequence: ^first}]} =
-             Wardrik.agent_events(session, agent, after: sequence, limit: 1)
+             Wardrik.agent_events(scope, agent, after: sequence, limit: 1)
 
-    assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_clear(session, agent)
+    assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_clear(scope, agent)
   end
 
-  test "a stream follows what the agent writes after what it read", %{session: session} do
+  test "a stream follows what the agent writes after what it read", %{scope: scope} do
     agent = start({AgentRunners, :echo, [self(), "done"]})
-    {:ok, %Snapshot{sequence: sequence}} = Wardrik.agent_read(session, agent)
-    {:ok, stream} = Wardrik.agent_stream(session, agent, after: sequence)
+    {:ok, %Snapshot{sequence: sequence}} = Wardrik.agent_read(scope, agent)
+    {:ok, stream} = Wardrik.agent_stream(scope, agent, after: sequence)
     test = self()
 
     task =
@@ -125,43 +123,43 @@ defmodule Wardrik.APITest do
       end)
 
     assert_receive :following
-    {:ok, _message} = Wardrik.agent_ask(session, agent, "anything?")
+    {:ok, _message} = Wardrik.agent_ask(scope, agent, "anything?")
     assert %Entry{} = Task.await(task, 5_000)
   end
 
-  test "a call an agent waits on is approved or denied", %{session: session} do
-    agent = parked(session)
+  test "a call an agent waits on is approved or denied", %{scope: scope} do
+    agent = parked(scope)
 
     assert {:ok, [{^agent, {%{id: "call_1"}, _prompt}}]} =
-             Wardrik.agents_parked(session, Prefix.of(agent))
+             Wardrik.agents_parked(scope, Prefix.of(agent))
 
     assert {:error, %Error{type: :not_found}} =
-             Wardrik.agent_authorization_read(session, agent, "call_1")
+             Wardrik.agent_authorization_read(scope, agent, "call_1")
 
     assert {:ok, %{"call_1" => {:approve, "Only staging."}}} =
-             Wardrik.agent_approve(session, agent, "call_1", note: "Only staging.")
+             Wardrik.agent_approve(scope, agent, "call_1", note: "Only staging.")
 
-    denied = parked(session)
+    denied = parked(scope)
 
     assert {:ok, %{"call_1" => {:deny, "Not now."}}} =
-             Wardrik.agent_deny(session, denied, ["call_1"], reason: "Not now.")
+             Wardrik.agent_deny(scope, denied, ["call_1"], reason: "Not now.")
 
-    decided = parked(session)
+    decided = parked(scope)
 
     assert {:ok, %{"call_1" => {:approve, "Fine."}}} =
-             Wardrik.agent_decide(session, decided, %{"call_1" => {:approve, "Fine."}})
+             Wardrik.agent_decide(scope, decided, %{"call_1" => {:approve, "Fine."}})
   end
 
-  test "an agent is stopped, spawned, cancelled and moved", %{session: session, root: root} do
+  test "an agent is stopped, spawned, cancelled and moved", %{scope: scope, root: root} do
     agent = start({AgentRunners, :echo, [self(), "ok"]})
 
-    assert {:ok, %Member{id: ^agent, asleep: true}} = Wardrik.agent_stop(session, agent)
+    assert {:ok, %Member{id: ^agent, asleep: true}} = Wardrik.agent_stop(scope, agent)
 
     assert {:ok, %Spawned{member: %Member{id: ^agent, asleep: false}, from: :store}} =
-             Wardrik.agent_spawn(session, agent)
+             Wardrik.agent_spawn(scope, agent)
 
-    assert :ok = Wardrik.agent_cancel(session, agent)
-    assert {:ok, []} = Wardrik.agents_cancel(session, Prefix.of(agent))
+    assert :ok = Wardrik.agent_cancel(scope, agent)
+    assert {:ok, []} = Wardrik.agents_cancel(scope, Prefix.of(agent))
 
     assert {:ok, %Spawned{member: %Member{node: node}, from: :running}} =
              Wardrik.agent_spawn(root, agent, node: node())
@@ -169,15 +167,15 @@ defmodule Wardrik.APITest do
     assert node == node()
     assert {:ok, %Moving{from: ^node, to: ^node}} = Wardrik.agent_move_preview(root, agent, node)
     assert {:ok, %Member{id: ^agent}} = Wardrik.agent_move(root, agent, node())
-    assert {:ok, []} = Wardrik.agent_calls(session, agent)
+    assert {:ok, []} = Wardrik.agent_calls(scope, agent)
 
     assert {:ok, %Forgetting{agents: [^agent]}} =
-             Wardrik.agents_forget_preview(session, Prefix.of(agent))
+             Wardrik.agents_forget_preview(scope, Prefix.of(agent))
 
-    assert {:ok, %{^agent => :forgotten}} = Wardrik.agents_forget(session, Prefix.of(agent))
+    assert {:ok, %{^agent => :forgotten}} = Wardrik.agents_forget(scope, Prefix.of(agent))
   end
 
-  test "what the host does not offer answers so", %{session: session, root: root} do
+  test "what the host does not offer answers so", %{scope: scope, root: root} do
     owner = Prefix.new!(org: "acme")
     agent = start({AgentRunners, :echo, [self(), "ok"]})
 
@@ -191,21 +189,21 @@ defmodule Wardrik.APITest do
     request = %{headers: [], body: "{}"}
 
     for answer <- [
-          Wardrik.servers_list(session, owner),
-          Wardrik.servers_add(session, owner, server),
-          Wardrik.servers_remove(session, owner, "docs"),
-          Wardrik.connections_list(session, owner),
-          Wardrik.connections_connect(session, owner, "github"),
-          Wardrik.connections_disconnect(session, owner, "github"),
-          Wardrik.agent_trigger_deliver(session, agent, "hook", request),
+          Wardrik.servers_list(scope, owner),
+          Wardrik.servers_add(scope, owner, server),
+          Wardrik.servers_remove(scope, owner, "docs"),
+          Wardrik.connections_list(scope, owner),
+          Wardrik.connections_connect(scope, owner, "github"),
+          Wardrik.connections_disconnect(scope, owner, "github"),
+          Wardrik.agent_trigger_deliver(scope, agent, "hook", request),
           Wardrik.tokens_list(root),
-          Wardrik.tokens_create(root, "ci", root.grant, for: maria()),
+          Wardrik.tokens_create(root, "ci", root.token.scope),
           Wardrik.tokens_revoke(root, "t1")
         ],
         do: assert({:error, %Error{type: :unsupported}} = answer)
   end
 
-  test "the deployment answers a session over every agent", %{root: root} do
+  test "the deployment answers a scope over every agent", %{root: root} do
     assert {:ok, %Wardrik.Deployment.Nodes{nodes: [{node, _count}]}} =
              Wardrik.deployment_nodes(root)
 
@@ -216,69 +214,69 @@ defmodule Wardrik.APITest do
   end
 
   test "each function's ! variant answers the value, or raises the error",
-       %{session: session, root: root} do
+       %{scope: scope, root: root} do
     owner = Prefix.new!(org: "acme")
     agent = id("bang")
     definition = %{"model" => "anthropic:claude-sonnet-5"}
 
-    assert %Snapshot{} = Wardrik.agent_define!(session, agent, definition)
-    assert %Wardrik.Definition.Read{} = Wardrik.agent_definition_read!(session, agent)
-    assert %Snapshot{} = Wardrik.agent_read!(session, agent)
-    assert [_ | _] = Wardrik.agents_list!(session, Prefix.of(agent))
-    assert [] = Wardrik.agents_parked!(session, Prefix.of(agent))
-    assert :ok = Wardrik.agent_subscribe!(session, agent)
-    assert Enumerable.impl_for(Wardrik.agent_stream!(session, agent))
-    assert [_ | _] = Wardrik.agent_events!(session, agent)
+    assert %Snapshot{} = Wardrik.agent_define!(scope, agent, definition)
+    assert %Wardrik.Definition.Read{} = Wardrik.agent_definition_read!(scope, agent)
+    assert %Snapshot{} = Wardrik.agent_read!(scope, agent)
+    assert [_ | _] = Wardrik.agents_list!(scope, Prefix.of(agent))
+    assert [] = Wardrik.agents_parked!(scope, Prefix.of(agent))
+    assert :ok = Wardrik.agent_subscribe!(scope, agent)
+    assert Enumerable.impl_for(Wardrik.agent_stream!(scope, agent))
+    assert [_ | _] = Wardrik.agent_events!(scope, agent)
 
     assert %{"name" => "s"} =
-             Wardrik.agent_trigger_set!(session, agent, "s", %{
+             Wardrik.agent_trigger_set!(scope, agent, "s", %{
                "every" => "1h",
                "prompt" => "Look."
              })
 
-    assert %{"name" => "s"} = Wardrik.agent_trigger_remove!(session, agent, "s")
-    assert %Snapshot{} = Wardrik.agent_clear!(session, agent)
-    assert :ok = Wardrik.agent_cancel!(session, agent)
-    assert [] = Wardrik.agents_cancel!(session, Prefix.of(agent))
-    assert %Member{asleep: true} = Wardrik.agent_stop!(session, agent)
-    assert %Spawned{} = Wardrik.agent_spawn!(session, agent)
+    assert %{"name" => "s"} = Wardrik.agent_trigger_remove!(scope, agent, "s")
+    assert %Snapshot{} = Wardrik.agent_clear!(scope, agent)
+    assert :ok = Wardrik.agent_cancel!(scope, agent)
+    assert [] = Wardrik.agents_cancel!(scope, Prefix.of(agent))
+    assert %Member{asleep: true} = Wardrik.agent_stop!(scope, agent)
+    assert %Spawned{} = Wardrik.agent_spawn!(scope, agent)
     assert %Moving{} = Wardrik.agent_move_preview!(root, agent, node())
     assert %Member{} = Wardrik.agent_move!(root, agent, node())
-    assert [] = Wardrik.agent_calls!(session, agent)
-    assert %Forgetting{} = Wardrik.agent_forget_preview!(session, agent)
-    assert %Forgetting{} = Wardrik.agents_forget_preview!(session, Prefix.of(agent))
+    assert [] = Wardrik.agent_calls!(scope, agent)
+    assert %Forgetting{} = Wardrik.agent_forget_preview!(scope, agent)
+    assert %Forgetting{} = Wardrik.agents_forget_preview!(scope, Prefix.of(agent))
     assert %Wardrik.Deployment.Nodes{} = Wardrik.deployment_nodes!(root)
     assert is_list(Wardrik.deployment_audit!(root))
     assert [_node] = Wardrik.deployment_reload!(root)
-    assert :ok = Wardrik.agent_forget!(session, agent)
+    assert :ok = Wardrik.agent_forget!(scope, agent)
 
-    parked = parked(session)
-    assert %{"call_1" => :approve} = Wardrik.agent_approve!(session, parked, "call_1")
-    denied = parked(session)
-    assert %{"call_1" => {:deny, _reason}} = Wardrik.agent_deny!(session, denied, "call_1")
-    decided = parked(session)
+    parked = parked(scope)
+    assert %{"call_1" => :approve} = Wardrik.agent_approve!(scope, parked, "call_1")
+    denied = parked(scope)
+    assert %{"call_1" => {:deny, _reason}} = Wardrik.agent_deny!(scope, denied, "call_1")
+    decided = parked(scope)
 
     assert %{"call_1" => :approve} =
-             Wardrik.agent_decide!(session, decided, %{"call_1" => :approve})
+             Wardrik.agent_decide!(scope, decided, %{"call_1" => :approve})
 
     echo = start({AgentRunners, :echo, [self(), "ok"]})
-    assert %Message{} = Wardrik.agent_ask!(session, echo, "hi")
-    assert %{^echo => :forgotten} = Wardrik.agents_forget!(session, Prefix.of(echo))
+    assert %Message{} = Wardrik.agent_ask!(scope, echo, "hi")
+    assert %{^echo => :forgotten} = Wardrik.agents_forget!(scope, Prefix.of(echo))
 
     for raising <- [
-          fn -> Wardrik.agent_authorization_read!(session, echo, "call_1") end,
-          fn -> Wardrik.agent_call_kill!(session, echo, "call_1") end,
-          fn -> Wardrik.servers_list!(session, owner) end,
+          fn -> Wardrik.agent_authorization_read!(scope, echo, "call_1") end,
+          fn -> Wardrik.agent_call_kill!(scope, echo, "call_1") end,
+          fn -> Wardrik.servers_list!(scope, owner) end,
           fn ->
-            Wardrik.servers_add!(session, owner, %Server{name: "d", url: "u", auth: "none"})
+            Wardrik.servers_add!(scope, owner, %Server{name: "d", url: "u", auth: "none"})
           end,
-          fn -> Wardrik.servers_remove!(session, owner, "d") end,
-          fn -> Wardrik.connections_list!(session, owner) end,
-          fn -> Wardrik.connections_connect!(session, owner, "github") end,
-          fn -> Wardrik.connections_disconnect!(session, owner, "github") end,
-          fn -> Wardrik.agent_trigger_deliver!(session, echo, "h", %{headers: [], body: ""}) end,
+          fn -> Wardrik.servers_remove!(scope, owner, "d") end,
+          fn -> Wardrik.connections_list!(scope, owner) end,
+          fn -> Wardrik.connections_connect!(scope, owner, "github") end,
+          fn -> Wardrik.connections_disconnect!(scope, owner, "github") end,
+          fn -> Wardrik.agent_trigger_deliver!(scope, echo, "h", %{headers: [], body: ""}) end,
           fn -> Wardrik.tokens_list!(root) end,
-          fn -> Wardrik.tokens_create!(root, "ci", root.grant) end,
+          fn -> Wardrik.tokens_create!(root, "ci", root.token.scope) end,
           fn -> Wardrik.tokens_revoke!(root, "t1") end
         ],
         do: assert_raise(Error, raising)

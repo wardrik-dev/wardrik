@@ -9,7 +9,6 @@ defmodule Wardrik.Event.CodecTest do
   alias Wardrik.Event
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Source
-  alias Wardrik.Grant
   alias Wardrik.Principal
   alias Wardrik.Servers.Key
 
@@ -175,7 +174,13 @@ defmodule Wardrik.Event.CodecTest do
   defp changes do
     id = @agent
     prefix = Prefix.new!(org: "acme")
-    {:ok, grant} = Grant.new(prefix, [:read, :define])
+
+    token = %Wardrik.Token{
+      principal: Principal.new(:user, "jon"),
+      scope: [Wardrik.Role.bind([:reader, :definer], prefix)],
+      policy: "careful",
+      expires: ~U[2026-12-01 00:00:00Z]
+    }
 
     [
       {:agent_defined, id},
@@ -193,7 +198,7 @@ defmodule Wardrik.Event.CodecTest do
       {:agents_reloaded, [:wardrik_a@localhost, :wardrik_b@localhost]},
       {:room_bound, "slack", "C0123", id, :mentions},
       {:room_unbound, "slack", "C0123"},
-      {:token_created, "tok_1", "ci", grant, Principal.new(:user, "jon")},
+      {:token_created, "tok_1", "ci", token},
       {:token_revoked, "tok_1"},
       {:secret_stored, "GITHUB_TOKEN", Prefix.all()},
       {:secret_removed, "GITHUB_TOKEN", Prefix.new!(org: "acme", user: "jon")},
@@ -263,7 +268,7 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "comes from the audit, at the root of a trace of its own, and names who made it" do
-      by = Principal.new(:token, "tok_9", name: "ci")
+      by = Principal.new(:user, "jon", name: "Jon")
       audit = Audit.new({:agent_forgotten, @agent}, by)
 
       assert {:ok, event} = Codec.encode(audit, sequence: 7)
@@ -274,15 +279,53 @@ defmodule Wardrik.Event.CodecTest do
                "type" => "wardrik.agent.forgotten",
                "subject" => "agents/acme/@ops/triage",
                "sequence" => "000000000007",
-               "data" => %{
-                 "agent" => %{"id" => "acme/@ops/triage"},
-                 "actor" => %{"type" => "token", "id" => "tok_9", "name" => "ci"}
-               }
+               "data" =>
+                 %{
+                   "agent" => %{"id" => "acme/@ops/triage"},
+                   "actor" => %{"type" => "user", "id" => "jon", "name" => "Jon"}
+                 } = data
              } = event
 
+      refute Map.has_key?(data, "assumed_by")
       assert id == audit.id
       assert event["traceparent"] == "00-#{audit.trace.trace_id}-#{audit.trace.span_id}-01"
       refute Map.has_key?(event, "parentspanid")
+    end
+
+    test "names who acted for the actor, first to last" do
+      front = Principal.new(:agent, "acme/front")
+
+      audit = %{
+        Audit.new({:agent_cleared, @agent}, Principal.new(:user, "jon"))
+        | assumed_by: [front]
+      }
+
+      assert {:ok,
+              %{"data" => %{"assumed_by" => [%{"type" => "agent", "id" => "acme/front"}]}} = event} =
+               Codec.encode(audit, sequence: 7)
+
+      valid!(event)
+    end
+
+    test "says what a token allows, and never its secret" do
+      {:token_created, _id, _name, token} = List.keyfind(changes(), :token_created, 0)
+
+      assert {:ok, %{"data" => data}} =
+               Codec.encode(Audit.new({:token_created, "tok_1", "ci", token}, nil))
+
+      assert data == %{
+               "token" => %{"id" => "tok_1", "name" => "ci"},
+               "principal" => %{"type" => "user", "id" => "jon"},
+               "statements" => [
+                 %{
+                   "actions" =>
+                     Enum.uniq(Wardrik.Role.actions(:reader) ++ Wardrik.Role.actions(:definer)),
+                   "resources" => ["acme/"]
+                 }
+               ],
+               "policy" => "careful",
+               "expires" => "2026-12-01T00:00:00Z"
+             }
     end
 
     test "says nothing of an actor none is known for, or the owner of a deployment's secret" do

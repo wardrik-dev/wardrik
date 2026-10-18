@@ -61,7 +61,12 @@ defmodule WardrikTUI.App.FleetTest do
         start_opts: [
           agent: agent_id,
           agent_id: agent_id,
-          host: Wardrik.Host.new(store: Wardrik.Test.store(), definitions: %Created{}),
+          host:
+            Wardrik.Host.new(
+              store: Wardrik.Test.store(),
+              definitions: %Created{},
+              issuer: %WardrikTUI.Test.Root{}
+            ),
           org: org,
           spawn_opts: spawn_opts,
           model: "test:model",
@@ -669,7 +674,7 @@ defmodule WardrikTUI.App.FleetTest do
         start_opts: [
           agent: key,
           agent_id: key,
-          host: Wardrik.Host.new(store: Wardrik.Test.store()),
+          host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %WardrikTUI.Test.Root{}),
           model: "test:model"
         ],
         global_keybindings: App.keybindings()

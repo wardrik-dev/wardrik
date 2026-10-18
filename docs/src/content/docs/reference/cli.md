@@ -273,10 +273,10 @@ It opens the file in $VISUAL, or $EDITOR, or vi.
 A token for the HTTP API, printed once.
 
 ```sh
-wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited] [--for NAME]
+wardrik token create NAME (--scope PREFIX | --all) --role ROLES [--policy NAME] [--expires 30d]
 ```
 
-`--scope PREFIX` is the agents it reaches: `org/` (the org's own), `org/@user/` (a user's), `org/`* (the org and all its users'), or a key, `org/name` or `org/@user/name`. `--can ACTIONS` limits it to some of read,message,decide,define,serve. A token that can define holds the agents it defines to `--policy NAME`, one of `policies/`, or to none beyond their org's with `--unlimited`. `--for NAME` is the person it is issued to, whom its decisions are recorded as made by; a scope naming a person's agents names theirs.
+`--scope PREFIX` is the agents it reaches: `org/` (the org's own), `org/@user/` (a user's), `org/`* (the org and all its users'), or a key, `org/name` or `org/@user/name`. `--role ROLES` is what it may do there, some of reader,messenger,approver,definer,worker,owner. `--policy NAME`, one of `policies/`, holds every agent it defines. `--expires` is how long it works, as 30d or 12h; tokens.expires.api by default. It acts for whoever made it.
 
 ### wardrik token list
 

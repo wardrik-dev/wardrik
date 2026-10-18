@@ -13,7 +13,8 @@ defmodule WardrikChannel.Notices do
   answered; the daemon finds it by the name `config.yaml` gives it.
   `:installation` is the `WardrikChannel.Installation` of the workspace to
   post in, `:room` where in it, and `:approvers` whom a notice asks, as the
-  channel names people. Who may answer it is what the host's `Wardrik.Grants` says.
+  channel names people. Who may answer it is what the token the host's
+  `Wardrik.Issuer` issues them allows.
   """
 
   @behaviour WardrikNotify

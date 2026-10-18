@@ -12,7 +12,7 @@ defmodule Wardrik.RunningTest do
     wardrik =
       Wardrik.new(
         store: Wardrik.Test.store(),
-        grants: %Wardrik.OrgGrants{org: "acme"},
+        issuer: %Wardrik.OrgIssuer{org: "acme"},
         context: context
       )
 
@@ -38,7 +38,7 @@ defmodule Wardrik.RunningTest do
 
   defp maria, do: Wardrik.Principal.new(:user, "maria")
 
-  test "a user defines an agent their grant reaches, read against its org's context, and kept",
+  test "a user defines an agent their token reaches, read against its org's context, and kept",
        %{wardrik: wardrik} do
     agent = AgentID.new!("support", org: "acme")
 
@@ -56,7 +56,7 @@ defmodule Wardrik.RunningTest do
              Wardrik.agent_definition_read(session, agent)
   end
 
-  test "a user reaches nothing their grant does not", %{wardrik: wardrik} do
+  test "a user reaches nothing their token does not", %{wardrik: wardrik} do
     agent = AgentID.new!("support", org: "globex")
 
     assert {:error, %Wardrik.Error{type: :not_found}} =

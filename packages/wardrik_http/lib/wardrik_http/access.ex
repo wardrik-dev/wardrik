@@ -1,22 +1,17 @@
 defmodule WardrikHTTP.Access do
   @moduledoc """
-  Whether a caller may act on an agent, and for how long what it was granted
-  holds.
+  For how long what a caller's credential allows holds.
 
   A surface knows its callers by a credential of its own, a bearer token or an
-  SSH key, and keeps what the credential grants in a record in the store the
+  SSH key, and keeps what the credential allows in a record in the store the
   fleet runs on, which every function reading or holding a record is handed
-  first. It reads the record with `get/2`, and asks `authorize/3` before each
-  thing the caller does:
+  first. It reads the record with `get/2`, and asks the `Wardrik.Token` it
+  holds before each thing the caller does:
 
-      with {:ok, token} <- WardrikHTTP.Access.get(store, {:tokens, id}),
-           :ok <- WardrikHTTP.Access.authorize(token.grant, :message, key) do
+      with {:ok, kept} <- WardrikHTTP.Access.get(store, {:tokens, id}),
+           :ok <- Wardrik.Token.authorize(kept.token, "agent.ask", key) do
         Wardrik.Agent.ask(key, text)
       end
-
-  `authorize/3` answers `{:error, :not_found}` for an agent no grant reaches,
-  which the caller is told does not exist, and `{:error, :forbidden}` for one
-  a grant reaches without the action.
 
   ## Reading records
 
@@ -67,7 +62,6 @@ defmodule WardrikHTTP.Access do
 
   require Logger
 
-  alias Wardrik.Grant
   alias WardrikHTTP.Access.Cache
   alias WardrikHTTP.Access.Leases
 
@@ -75,7 +69,7 @@ defmodule WardrikHTTP.Access do
   # revocation's refusal outlasts any read begun before it.
   @confirm_timeout 5_000
 
-  @typedoc "A record in `WardrikStore` that grants something: its namespace and key."
+  @typedoc "A record in `WardrikStore` a credential is kept in: its namespace and key."
   @type ref() :: {WardrikStore.ns(), WardrikStore.key()}
 
   @doc false
@@ -157,25 +151,6 @@ defmodule WardrikHTTP.Access do
     :exit, reason ->
       Logger.warning("#{ns}/#{key} could not be read: #{inspect(reason)}")
       {:error, :unavailable}
-  end
-
-  @doc """
-  Whether `grants` let their holder take `action` on the agent `id`:
-  `:ok` where any of them does, `{:error, :forbidden}` where one reaches the
-  agent and none allows it, and `{:error, :not_found}` where none reaches it.
-  """
-  @spec authorize(Grant.t() | [Grant.t()], Grant.action(), Wardrik.AgentID.t()) ::
-          :ok | {:error, :not_found | :forbidden}
-  def authorize(%Grant{} = grant, action, id), do: authorize([grant], action, id)
-
-  def authorize(grants, action, %Wardrik.AgentID{} = id) when is_list(grants) do
-    answers = Enum.map(grants, &Grant.authorize(&1, action, id))
-
-    cond do
-      :ok in answers -> :ok
-      Enum.any?(answers, &match?({:error, %{type: :forbidden}}, &1)) -> {:error, :forbidden}
-      true -> {:error, :not_found}
-    end
   end
 
   @doc """

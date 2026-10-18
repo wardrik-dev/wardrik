@@ -91,11 +91,11 @@ defmodule WardrikDaemon.ConfigTest do
       assert globex[:orgs] == ["globex"]
     end
 
-    test "orgs holds an org, or every org, to a ceiling", context do
+    test "orgs holds an org, or every org, to a policy", context do
       yaml = """
       orgs:
-        "*": {ceiling: base}
-        payments: {ceiling: payments-ceiling}
+        "*": {policy: base}
+        payments: {policy: payments-strict}
         growth: {}
       """
 
@@ -103,11 +103,25 @@ defmodule WardrikDaemon.ConfigTest do
 
       assert settings[WardrikDaemon][:ceilings] == %{
                "*" => "base",
-               "payments" => "payments-ceiling"
+               "payments" => "payments-strict"
              }
 
-      assert {:error, message} = read_all("orgs:\n  payments: {ceiling: [a]}\n", context)
-      assert message =~ "orgs.payments.ceiling is the name of a policy in policies/"
+      assert {:error, message} = read_all("orgs:\n  payments: {policy: [a]}\n", context)
+      assert message =~ "orgs.payments.policy is the name of a policy in policies/"
+
+      assert {:error, message} = read_all("orgs:\n  payments: {ceiling: base}\n", context)
+      assert message =~ "orgs.payments.ceiling is not a setting"
+    end
+
+    test "tokens says how long an API token lasts", context do
+      assert {:ok, settings} = read_all("tokens:\n  expires:\n    api: 30d\n", context)
+      assert settings[Wardrik.Tokens] == [expires: [api: 30 * 86_400]]
+
+      assert {:error, message} = read_all("tokens:\n  expires:\n    api: soon\n", context)
+      assert message =~ "tokens.expires.api is a duration, as 90d, 12h, 30m or 45s"
+
+      assert {:error, message} = read_all("tokens:\n  lifetime: 30d\n", context)
+      assert message =~ "tokens.lifetime is not a setting; expected one of expires"
     end
 
     test "orgs refuses a name its section does not define, and says the nearest", context do

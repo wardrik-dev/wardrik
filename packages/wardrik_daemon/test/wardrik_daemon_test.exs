@@ -54,9 +54,10 @@ defmodule WardrikDaemonTest do
 
     {:ok, secret, _token} =
       WardrikHTTP.Token.create(Wardrik.Test.store(), "daemon-test",
-        scope: Prefix.parse!("daemon/"),
-        can: Wardrik.Grant.actions(),
-        ceiling: []
+        token: %Wardrik.Token{
+          principal: Wardrik.Principal.new(:user, "ci"),
+          scope: [Wardrik.Role.bind([:owner], Prefix.parse!("daemon/"))]
+        }
       )
 
     key = AgentID.parse!("daemon/defined-#{System.unique_integer([:positive])}")

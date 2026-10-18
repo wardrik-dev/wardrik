@@ -10,17 +10,23 @@ end
 ```
 
 Describe Wardrik once, start it after your repo, and act on the agents as
-each user, in a session:
+each user, in a scope:
 
 ```elixir
-wardrik = Wardrik.new(store: Wardrik.store(repo: MyApp.Repo), grants: %MyApp.Grants{})
+wardrik = Wardrik.new(store: Wardrik.store(repo: MyApp.Repo), issuer: %MyApp.Issuer{})
 
 children = [MyApp.Repo, {Wardrik, wardrik}, MyAppWeb.Endpoint]
 
-session = Wardrik.as(wardrik, maria)
-{:ok, _snapshot} = Wardrik.agent_define(session, agent, definition)
-{:ok, message} = Wardrik.agent_ask(session, agent, "Where is order 1001?")
+scope = Wardrik.as(wardrik, maria)
+{:ok, _snapshot} = Wardrik.agent_define(scope, agent, definition)
+{:ok, message} = Wardrik.agent_ask(scope, agent, "Where is order 1001?")
 ```
+
+A scope holds a token, which says who acts and what they may do: its
+statements each allow some actions, such as `agent.ask`, on the agents
+under a prefix, and anything none allows is denied. A role is a named set
+of actions: `reader`, `messenger`, `approver`, `definer`, `worker` and
+`owner`. Your `Wardrik.Issuer` issues each user their token.
 
 Create its table from a migration of your own:
 

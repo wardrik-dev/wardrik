@@ -88,15 +88,12 @@
           "type": "string"
         }
       },
-      "owner": {
-        "description": "org for the caller's org's; the caller's own where left out.",
+      "owner_prefix": {
+        "description": "The owner's agents, as acme/ for an org's or acme/@jon/ for a person's.",
         "in": "query",
-        "name": "owner",
-        "required": false,
+        "name": "prefix",
+        "required": true,
         "schema": {
-          "enum": [
-            "org"
-          ],
           "type": "string"
         }
       },
@@ -154,6 +151,15 @@
         "schema": {
           "minimum": 0,
           "type": "integer"
+        }
+      },
+      "token": {
+        "description": "A token's id, as listing them shows it.",
+        "in": "path",
+        "name": "token",
+        "required": true,
+        "schema": {
+          "type": "string"
         }
       },
       "trigger": {
@@ -255,7 +261,7 @@
             }
           }
         },
-        "description": "No credential, or one that is not known or was revoked: unauthorized."
+        "description": "No credential, or one that is not known, was revoked or has expired: unauthorized."
       },
       "Unavailable": {
         "content": {
@@ -1355,6 +1361,13 @@
             ],
             "type": "object"
           },
+          "assumed_by": {
+            "description": "Who acted for the actor, first to last, as an agent acting for the person who asked it something. Absent where the actor acted themselves.",
+            "items": {
+              "$ref": "#/components/schemas/Defs/$defs/principal"
+            },
+            "type": "array"
+          },
           "cost": {
             "additionalProperties": false,
             "description": "What a call cost, the same figure a budget counts.",
@@ -1653,7 +1666,7 @@
                 "type": "string"
               },
               "type": {
-                "description": "shell, ssh, terminal, channel, oauth, token, webhook, agent or user. A channel's id is the channel's name, its workspace and the id it knows them by there, as slack/T0123/U024BE7LH.",
+                "description": "shell, ssh, terminal, channel, oauth, webhook, agent or user. A channel's id is the channel's name, its workspace and the id it knows them by there, as slack/T0123/U024BE7LH.",
                 "type": "string"
               }
             },
@@ -1696,6 +1709,31 @@
             },
             "required": [
               "id"
+            ],
+            "type": "object"
+          },
+          "statement": {
+            "additionalProperties": false,
+            "description": "What a token allows, on what.",
+            "properties": {
+              "actions": {
+                "description": "What it allows, as agent.ask or agents.list; agent.* is every action on one agent, and * every action.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "resources": {
+                "description": "The agents it allows them on, each by its prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "actions",
+              "resources"
             ],
             "type": "object"
           },
@@ -2133,6 +2171,63 @@
         "title": "servers.add",
         "type": "object"
       },
+      "InputTokensCreate": {
+        "additionalProperties": false,
+        "description": "What making an API token takes: its name, the agents it reaches, and the roles it holds there. It acts for whoever makes it.",
+        "examples": [
+          {
+            "expires_in": 2592000,
+            "name": "ci",
+            "roles": [
+              "reader",
+              "messenger"
+            ],
+            "scope": "acme/"
+          }
+        ],
+        "properties": {
+          "expires_in": {
+            "description": "How many seconds it works for; the server's own lifetime for API tokens, 90 days unless set, where left out.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "description": "What it is listed as.",
+            "type": "string"
+          },
+          "policy": {
+            "description": "The policy every agent it defines runs under, ahead of the agent's own, by the name the server holds it under: what IAM calls a permissions boundary. The token making it names its own where this is left out.",
+            "type": "string"
+          },
+          "roles": {
+            "description": "What it may do there, each a named set of actions.",
+            "items": {
+              "enum": [
+                "reader",
+                "messenger",
+                "approver",
+                "definer",
+                "worker",
+                "owner"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "scope": {
+            "description": "The agents it reaches, by their prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', an agent's ID, or empty for every agent.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "scope",
+          "roles"
+        ],
+        "title": "tokens.create",
+        "type": "object"
+      },
       "Interrupts": {
         "additionalProperties": false,
         "description": "The calls agents wait on a person for, each with the agent it is for.",
@@ -2454,6 +2549,101 @@
         "title": "Servers",
         "type": "object"
       },
+      "Token": {
+        "additionalProperties": false,
+        "description": "An API token as the server keeps it, never its secret.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires": {
+            "description": "When it stops working.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "What revoking it takes.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "policy": {
+            "description": "The policy every agent it defines runs under, ahead of the agent's own, by its name: what IAM calls a permissions boundary. Absent where it names none.",
+            "type": "string"
+          },
+          "principal": {
+            "$ref": "#/components/schemas/Defs/$defs/principal",
+            "description": "Whom it acts for: whoever made it."
+          },
+          "statements": {
+            "description": "What it allows, on what; anything none states is denied.",
+            "items": {
+              "$ref": "#/components/schemas/Defs/$defs/statement"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "principal",
+          "statements",
+          "created_at"
+        ],
+        "title": "Token",
+        "type": "object"
+      },
+      "TokenAnswer": {
+        "additionalProperties": false,
+        "description": "One token, as it was.",
+        "properties": {
+          "token": {
+            "$ref": "#/components/schemas/Token"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "TokenIssued": {
+        "additionalProperties": false,
+        "description": "A token just made, and the secret that presents it, given this once: what POST /v1/tokens answers.",
+        "properties": {
+          "secret": {
+            "description": "What a request presents, as Authorization: Bearer secret.",
+            "type": "string"
+          },
+          "token": {
+            "$ref": "#/components/schemas/Token"
+          }
+        },
+        "required": [
+          "token",
+          "secret"
+        ],
+        "title": "TokenIssued",
+        "type": "object"
+      },
+      "Tokens": {
+        "additionalProperties": false,
+        "description": "Every API token, oldest first: what GET /v1/tokens answers.",
+        "properties": {
+          "tokens": {
+            "items": {
+              "$ref": "#/components/schemas/Token"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tokens"
+        ],
+        "title": "Tokens",
+        "type": "object"
+      },
       "Trigger": {
         "additionalProperties": true,
         "description": "A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and a cron expression its timezone, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook, its secret and how a request is verified, and asks as each request arrives.",
@@ -2609,7 +2799,7 @@
     }
   },
   "info": {
-    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token; an agent outside its scope is answered as one that does not exist, 404, and one inside it the token may not act on so, 403. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
+    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token, whose statements each allow some actions on the agents under a prefix; an agent none reaches is answered as one that does not exist, 404, and one reached without the action, 403. An expired token is answered 401. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
     "license": {
       "identifier": "Apache-2.0",
       "name": "Apache-2.0"
@@ -4454,7 +4644,7 @@
         "operationId": "connections_list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -4477,6 +4667,9 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "501": {
             "$ref": "#/components/responses/NotSupported"
           }
@@ -4493,7 +4686,7 @@
         "operationId": "connections_disconnect",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -4541,7 +4734,7 @@
         "operationId": "connections_connect",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -5071,7 +5264,7 @@
         "operationId": "servers_list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -5094,6 +5287,9 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "501": {
             "$ref": "#/components/responses/NotSupported"
           }
@@ -5108,7 +5304,7 @@
         "operationId": "servers_add",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "requestBody": {
@@ -5141,6 +5337,9 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
@@ -5160,7 +5359,7 @@
         "operationId": "servers_remove",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner"
+            "$ref": "#/components/parameters/owner_prefix"
           }
         ],
         "responses": {
@@ -5199,6 +5398,118 @@
       "parameters": [
         {
           "$ref": "#/components/parameters/server"
+        }
+      ]
+    },
+    "/v1/tokens": {
+      "get": {
+        "operationId": "tokens_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tokens"
+                }
+              }
+            },
+            "description": "Every token, oldest first, never a secret."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "The API's tokens",
+        "tags": [
+          "Tokens"
+        ],
+        "x-wardrik-function": "tokens_list"
+      },
+      "post": {
+        "operationId": "tokens_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InputTokensCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenIssued"
+                }
+              }
+            },
+            "description": "The token, and its secret, given this once."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Make a token",
+        "tags": [
+          "Tokens"
+        ],
+        "x-wardrik-function": "tokens_create"
+      }
+    },
+    "/v1/tokens/{token}": {
+      "delete": {
+        "operationId": "tokens_revoke",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenAnswer"
+                }
+              }
+            },
+            "description": "The token, as it was; what was open on it is ended."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Revoke a token",
+        "tags": [
+          "Tokens"
+        ],
+        "x-wardrik-function": "tokens_revoke"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/token"
         }
       ]
     },
@@ -5263,6 +5574,10 @@
     {
       "description": "The deployment itself, to a token over every agent.",
       "name": "Deployment"
+    },
+    {
+      "description": "The API's tokens, to a token over every agent.",
+      "name": "Tokens"
     },
     {
       "description": "Tools offered from a process of the caller's own.",

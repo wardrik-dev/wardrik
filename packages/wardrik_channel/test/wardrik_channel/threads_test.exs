@@ -44,7 +44,7 @@ defmodule WardrikChannel.ThreadsTest do
         host:
           Wardrik.Host.new(
             store: Wardrik.Test.store(),
-            grants: %WardrikChannel.Test.Grants{reach: [Principal.id(@maria)]}
+            issuer: %WardrikChannel.Test.Issuer{reach: [Principal.id(@maria)]}
           ),
         installations: Installations.Config.new([{name, "token", Prefix.all()}]),
         offered: {__MODULE__, :offering, [agent]},
@@ -230,7 +230,8 @@ defmodule WardrikChannel.ThreadsTest do
       Wardrik.Agent.decide(
         agent,
         %{"call_1" => {:deny, "Not on Fridays."}},
-        Wardrik.Caller.root(principal: by, host: Wardrik.Host.new(store: Wardrik.Test.store()))
+        token: Wardrik.Token.root(by),
+        host: Wardrik.Host.new(store: Wardrik.Test.store())
       )
 
     assert_receive {:delivered,
@@ -255,7 +256,7 @@ defmodule WardrikChannel.ThreadsTest do
     assert reason =~ "The cellar is locked."
   end
 
-  test "asks nothing for someone the host's grants give no reach, and says so" do
+  test "asks nothing for someone the host's token allows no ask, and says so" do
     {context, binding} = bound({AgentRunners, :echo, [self(), "Here."]})
     stranger = Principal.new(:channel, "slack/T1/U9", name: "stranger")
 

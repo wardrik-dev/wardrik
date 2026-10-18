@@ -48,6 +48,7 @@ Someone dropped the turn an agent was taking, and what was queued behind it.
 | `agent.id` | string | yes | The agent's ID. |
 | `under` | string |  | The prefix someone cancelled every agent under at once, where it was one of them; every agent's entry from that one change shares its trace. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.agent.cleared`
 
@@ -58,6 +59,7 @@ Someone emptied an agent's conversation.
 | `agent` | object | yes |  |
 | `agent.id` | string | yes | The agent's ID. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.agent.defined`
 
@@ -68,6 +70,7 @@ Someone wrote an agent's definition, and the agent was started, or brought to it
 | `agent` | object | yes |  |
 | `agent.id` | string | yes | The agent's ID. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.agent.forgotten`
 
@@ -79,6 +82,7 @@ Someone removed an agent, with everything it had.
 | `agent.id` | string | yes | The agent's ID. |
 | `under` | string |  | The prefix someone removed every agent under at once, where it was one of them; every agent's entry from that one change shares its trace. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.agent.moved`
 
@@ -90,6 +94,7 @@ Someone started an agent again on another node.
 | `agent.id` | string | yes | The agent's ID. |
 | `node` | string | yes | The node it moved to, by its Erlang name. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.agent.spawned`
 
@@ -101,6 +106,7 @@ Someone started an agent.
 | `agent.id` | string | yes | The agent's ID. |
 | `node` | string | yes | The node, by its Erlang name. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.agent.started`
 
@@ -127,6 +133,7 @@ An agent stopped, keeping its conversation: someone stopped it, or it went to sl
 | `node` | string |  | The node it stopped on, where it stopped itself. |
 | `reason` | string |  | Why it stopped itself: idle, having had nothing to do for its idle timeout. Absent where someone stopped it. One of `idle`. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.agents.reloaded`
 
@@ -136,6 +143,7 @@ Someone had the files that declare agents read again.
 | --- | --- | --- | --- |
 | `nodes` | array of string | yes | The nodes that read them. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.call.killed`
 
@@ -148,6 +156,7 @@ Someone stopped a tool call an agent was running; the model is answered with an 
 | `call` | object | yes |  |
 | `call.id` | string | yes | The tool call's id. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.conversation.cleared`
 
@@ -262,6 +271,7 @@ Someone had an agent answer in a room of a channel.
 | `agent.id` | string | yes | The agent's ID. |
 | `answers` | string | yes | When it answers: when mentioned, or to every message. One of `mentions`, `everything`. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.room.unbound`
 
@@ -272,6 +282,7 @@ Someone had the agent that answered in a room of a channel stop.
 | `channel` | string | yes | The channel, by the name config.yaml gives it. |
 | `room` | string | yes | The room, as the channel knows it, such as a Slack channel's id. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.run.cancelled`
 
@@ -347,6 +358,7 @@ Someone took a secret out of the vault.
 | `secret.name` | string | yes |  |
 | `owner` | string |  | The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.secret.stored`
 
@@ -358,6 +370,7 @@ Someone sealed a secret in the vault.
 | `secret.name` | string | yes |  |
 | `owner` | string |  | The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.server.added`
 
@@ -370,6 +383,7 @@ Someone added an MCP server for an owner's agents.
 | `server.url` | string | yes |  |
 | `owner` | string | yes | The org, as acme/, or the user, as acme/@jon/, whose agents it serves. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.server.removed`
 
@@ -381,6 +395,7 @@ Someone removed an MCP server an owner had added.
 | `server.name` | string | yes |  |
 | `owner` | string | yes | The org, as acme/, or the user, as acme/@jon/, whose agents it serves. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.step.completed`
 
@@ -438,17 +453,19 @@ A subagent was handed a task.
 
 ### `wardrik.token.created`
 
-Someone made an API token.
+Someone made an API token, which acts for whoever made it.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `token` | object | yes |  |
 | `token.id` | string | yes |  |
 | `token.name` | string | yes |  |
-| `scope` | string | yes | The prefix of the agents it reaches: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent. |
-| `can` | array of string | yes | What it may do to them. |
-| `for` | [principal](#principal) |  |  |
+| `principal` | [principal](#principal) | yes |  |
+| `statements` | array of [statement](#statement) | yes | What it allows, on what; anything none states is denied. |
+| `policy` | string |  | The policy every agent it defines runs under, ahead of the agent's own, by its name: what IAM calls a permissions boundary. Absent where it names none. |
+| `expires` | string (date-time) |  | When it stops working. |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.token.revoked`
 
@@ -459,6 +476,7 @@ Someone revoked an API token.
 | `token` | object | yes |  |
 | `token.id` | string | yes |  |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.tool_call.completed`
 
@@ -523,6 +541,7 @@ Someone removed one of an agent's triggers.
 | `trigger` | object | yes |  |
 | `trigger.name` | string | yes |  |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ### `wardrik.trigger.set`
 
@@ -535,6 +554,7 @@ Someone set one of an agent's triggers.
 | `trigger` | object | yes |  |
 | `trigger.name` | string | yes |  |
 | `actor` | [principal](#principal) |  |  |
+| `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
 ## Shared types
 
@@ -612,9 +632,24 @@ Who did something, and how they were known.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `type` | string | yes | shell, ssh, terminal, channel, oauth, token, webhook, agent or user. A channel's id is the channel's name, its workspace and the id it knows them by there, as slack/T0123/U024BE7LH. |
+| `type` | string | yes | shell, ssh, terminal, channel, oauth, webhook, agent or user. A channel's id is the channel's name, its workspace and the id it knows them by there, as slack/T0123/U024BE7LH. |
 | `id` | string | yes |  |
 | `name` | string |  |  |
+
+### `assumed_by`
+
+Who acted for the actor, first to last, as an agent acting for the person who asked it something. Absent where the actor acted themselves.
+
+No fields.
+
+### `statement`
+
+What a token allows, on what.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `actions` | array of string | yes | What it allows, as agent.ask or agents.list; agent.* is every action on one agent, and * every action. |
+| `resources` | array of string | yes | The agents it allows them on, each by its prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent. |
 
 ### `decided`
 

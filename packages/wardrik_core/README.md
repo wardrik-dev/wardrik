@@ -293,12 +293,12 @@ does not repeat the effect either.
 
 What acting on the agents asks beyond one agent is the host's: where definitions are
 kept, which accounts people connect, where the secrets tools and model
-providers need come from, how tokens are made, where requests for triggers
-go, what each principal may do, and what each model call actually is. A
+providers need come from, how tokens are kept, where requests for triggers
+go, what token each principal acts with, and what each model call actually is. A
 `Wardrik.Host` names a value for each it offers, carrying that seam's own
 settings, and the default of each it does not. It is handed
 to `Wardrik.Core` as it starts, which hands it to every agent, and to each
-surface the application starts after it, which builds its callers with it:
+surface the application starts after it, which acts on the agents with it:
 
 ```elixir
 host =
@@ -306,7 +306,7 @@ host =
     store: store,
     definitions: %MyApp.Definitions{store: store},
     credentials: WardrikVault.new(store: store, keys: [key]),
-    grants: %MyApp.Grants{admins: ["maria"]},
+    issuer: %MyApp.Issuer{admins: ["maria"]},
     dispatch: %MyApp.Gateway{keys: keys}
   )
 
@@ -315,9 +315,15 @@ children = [
   {MyApp.Endpoint, host: host}
 ]
 
-{:ok, caller} = Wardrik.Host.caller(host, principal: maria, subject: id)
-:ok = Wardrik.Agent.decide(id, %{"call_1" => :approve}, caller)
+token = Wardrik.Issuer.issue(Wardrik.Host.issuer(host), maria, [])
+:ok = Wardrik.Agent.decide(id, %{"call_1" => :approve}, token)
 ```
+
+Who may do what is a `Wardrik.Token`, in IAM's words: its principal is who
+it acts for, and its statements each allow some actions, such as
+`agent.ask`, on the agents under a prefix. Anything none allows is denied.
+A `Wardrik.Role` is a named set of actions. The host's `Wardrik.Issuer`
+issues each principal their token.
 
 Nothing of the host is kept on the node or with an agent. A node runs one
 `Wardrik.Core`, since core's own processes are registered under their module
@@ -340,9 +346,9 @@ without notice.
 
 | | Modules |
 | --- | --- |
-| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Connections.Owner`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Grants`, `Wardrik.Servers` and the `None` of each, `Wardrik.Grants` and the `None` of each, `Wardrik.Servers.Key`, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Token`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store` |
-| Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
-| Who acts, and what `Wardrik` answers them | `Wardrik.Caller`, `Wardrik.Error`, `Wardrik.Resource`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
+| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Connections.Owner`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Issuer`, `Wardrik.Servers` and the `None` of each, `Wardrik.Servers.Key`, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Entry`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store` |
+| Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
+| Who acts, and what `Wardrik` answers them | `Wardrik.Token`, `Wardrik.Statement`, `Wardrik.Role`, `Wardrik.Error`, `Wardrik.Resource`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Tools`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |

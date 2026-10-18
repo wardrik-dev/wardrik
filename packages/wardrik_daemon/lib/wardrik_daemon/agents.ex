@@ -43,8 +43,8 @@ defmodule WardrikDaemon.Agents do
 
   It is also the daemon's `Wardrik.Definition`. A definition sent to the
   HTTP API is kept as `WardrikDefinition.Kept` keeps one, read under the
-  policies this process last read, with the grant of the token that sent
-  it: `put/4` keeps it, `get/2` answers it, `delete/2` forgets it, and
+  policies this process last read, with the token that sent it:
+  `put/3` keeps it, `get/2` answers it, `delete/2` forgets it, and
   `put_trigger/4` and `delete_trigger/3` change one of its triggers.
   `create/2` writes an agent file from `config.yaml`'s `defaults`. A key
   an agent file declares, here or on any node connected to this one,
@@ -64,7 +64,7 @@ defmodule WardrikDaemon.Agents do
 
   `reload/0` brings every running agent the API defined, its conversations,
   and the conversations of an agent a file that read declares, to what their
-  definitions say under the policies read then and the ceiling of the token
+  definitions say under the policies read then and the policy of the token
   that sent them, and `problems/0` says why one does not build. Those of a
   file that does not read are left as they were, as its agent is.
 
@@ -225,7 +225,7 @@ defmodule WardrikDaemon.Agents do
     with :ok <- creates(agents, installation),
          {:ok, id} <- created_id(agents, room, channel),
          :ok <- unkept(store, id, channel),
-         {:ok, spec} <- defined(agents, id, fields, :defaults),
+         {:ok, spec} <- defined(agents, id, fields, source: :defaults),
          {:ok, _pid} <- Fleet.put(spec) do
       :ok = Wardrik.Audit.record(agents.audit, {:agent_defined, id}, by: by)
       {:ok, %WardrikChannel.Offer{agent: id, description: description}}
@@ -291,16 +291,6 @@ defmodule WardrikDaemon.Agents do
   @spec orgs(t(), String.t()) :: [String.t()] | :all
   def orgs(agents, channel) when is_binary(channel),
     do: channel_setting(agents, :orgs, channel, [])
-
-  @doc """
-  The hooks of the policy `policies/` holds as `name`, as a ceiling over the
-  agents a grant defines, or `:error` where it holds none.
-  """
-  @spec ceiling(t(), String.t()) :: {:ok, [Wardrik.Hook.t()]} | :error
-  def ceiling(agents, name) when is_binary(name) do
-    with {:ok, policy} <- Map.fetch(policies(agents), name),
-         do: {:ok, WardrikPolicy.hooks(%{policy | name: "ceiling/" <> name})}
-  end
 
   defp creates(agents, installation) do
     if creatable?(agents, installation),
@@ -502,7 +492,7 @@ defmodule WardrikDaemon.Agents do
 
   @doc """
   The spec `definition` writes for the agent `key`, its own or one of its
-  conversations, under the policies last read, and under the ceiling of the
+  conversations, under the policies last read, and under the policy of the
   token that sent it where one did.
   """
   @spec build(t(), Record.t(), AgentID.t()) :: {:ok, Spec.t()} | {:error, String.t()}
@@ -529,8 +519,9 @@ defmodule WardrikDaemon.Agents do
 
   @doc """
   The spec a definition sent to the HTTP API writes for the agent `key`, sent
-  by a token holding `grant`, which it keeps, routing its notices as it says;
-  or a conflict where an agent file declares it.
+  with the `:token` given, which it keeps with the hooks it is `:held` to,
+  routing its notices as it says; or a conflict where an agent file
+  declares it.
   """
   def put(%__MODULE__{} = agents, key, opts),
     do:
@@ -538,12 +529,12 @@ defmodule WardrikDaemon.Agents do
         agents,
         key,
         Keyword.fetch!(opts, :definition),
-        {:api, Keyword.fetch!(opts, :grant)}
+        [source: {:api, Keyword.fetch!(opts, :token)}] ++ Keyword.take(opts, [:held])
       )
 
-  defp defined(%__MODULE__{} = agents, key, fields, source) do
+  defp defined(%__MODULE__{} = agents, key, fields, opts) do
     with {:ok, kept} <- editable_kept(agents, key),
-         do: Kept.define(kept, key, fields: fields, source: source)
+         do: Kept.define(kept, key, [fields: fields] ++ opts)
   end
 
   @doc "The definition kept for the agent `key`, as the HTTP API writes one."

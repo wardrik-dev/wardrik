@@ -8,9 +8,9 @@ defmodule WardrikChannel.Context do
   `WardrikChannel.Workspace` asks it.
 
     * `:channel` - the channel's name, as `config.yaml` gives it
-    * `:host` - the `Wardrik.Host` the channel was started on, which a
-      person known by their principal is asked of with
-      `Wardrik.Host.caller/2`
+    * `:host` - the `Wardrik.Host` the channel was started on, whose
+      `Wardrik.Issuer` issues a person known by their principal the token
+      they act with, through `Wardrik.as/3`
     * `:installations` - the host's `WardrikChannel.Installations`
     * `:offered` - given the installation, the agents that may answer in
       its rooms, as `WardrikChannel.Offer`s; none by default
@@ -25,7 +25,8 @@ defmodule WardrikChannel.Context do
     * `:approvers` - given the installation, who decides what an agent asks
       in its threads, as `WardrikChannel.Approvers`; nobody named by
       default. They are asked directly, and the room where it names nobody;
-      who may answer is what the host's `Wardrik.Grants` says
+      who may answer is what the token the host's `Wardrik.Issuer` issues
+      them allows
     * `:offering` - given the installation, how an agent comes to answer in
       its rooms, as said where none does: `Whoever runs Wardrik can offer
       an agent here.` by default

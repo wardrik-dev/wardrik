@@ -11,7 +11,6 @@ defmodule Wardrik.CatalogTest do
   alias Wardrik.Catalog.Entry
   alias Wardrik.Catalog.Self
   alias Wardrik.Event
-  alias Wardrik.Grant
   alias Wardrik.Host
   alias Wardrik.Principal
   alias Wardrik.Test.AgentRunners
@@ -24,8 +23,8 @@ defmodule Wardrik.CatalogTest do
     @moduledoc false
     defstruct []
 
-    def put(_definitions, id, definition: definition, grant: grant) do
-      tell({:put, id, definition, grant})
+    def put(_definitions, id, definition: definition, token: token, held: held) do
+      tell({:put, id, definition, token, held})
 
       if String.contains?(id.name, "filed"),
         do: {:error, :conflict, "#{id} belongs to a file."},
@@ -64,14 +63,28 @@ defmodule Wardrik.CatalogTest do
     defdelegate delete_trigger(a0, a1, a2), to: Kept
   end
 
-  # Whoever asks holds the grants a test gives.
-  defmodule Granted do
+  # Whoever asks holds the statements a test gives, or, an agent asking, its
+  # own: reader and messenger on its owner's agents, as a host's issuer may.
+  defmodule Issued do
     @moduledoc false
-    defstruct [:grants]
+    defstruct scope: []
   end
 
-  defimpl Wardrik.Grants, for: Granted do
-    def grants(%{grants: grants}, _principal), do: grants
+  defimpl Wardrik.Issuer, for: Issued do
+    def issue(%{scope: scope}, principal, _opts) do
+      case Principal.type(principal) do
+        :agent ->
+          owner = Prefix.owner(AgentID.parse!(Principal.id(principal)))
+
+          %Wardrik.Token{
+            principal: principal,
+            scope: [Wardrik.Role.bind([:reader, :messenger], owner)]
+          }
+
+        _person ->
+          %Wardrik.Token{principal: principal, scope: scope}
+      end
+    end
   end
 
   setup do
@@ -301,11 +314,13 @@ defmodule Wardrik.CatalogTest do
                })
 
       assert id == to_string(worker)
-      assert_received {:put, ^worker, %{"instructions" => "Reconcile."}, grant}
-      assert grant.ceiling == hooks
-      assert grant.can == [:read, :message, :define]
-      assert Grant.covers?(grant, AgentID.parse!("acme/anyone"))
-      refute Grant.covers?(grant, AgentID.parse!("other/anyone"))
+      assert_received {:put, ^worker, %{"instructions" => "Reconcile."}, token, ^hooks}
+      assert token.policy == :none
+      assert token.principal == Principal.new(:agent, to_string(front))
+
+      assert token.scope == [
+               Wardrik.Role.bind([:reader, :messenger, :definer], Prefix.owner(front))
+             ]
 
       %{user_state: state} =
         :sys.get_state(Wardrik.Fleet.whereis(worker, host: Wardrik.Test.host()))
@@ -350,11 +365,11 @@ defmodule Wardrik.CatalogTest do
       outside = echoing(acme("outside"), "ok")
       worker = acme("worker")
       on_exit(fn -> Wardrik.Fleet.forget(worker) end)
-      {:ok, one} = Grant.new(Prefix.of(inside), [:read, :message])
+      one = Wardrik.Role.bind([:reader, :messenger], Prefix.of(inside))
 
       run =
         run(front, Agents,
-          host: Host.new(definitions: %Kept{}, grants: %Granted{grants: [one]}),
+          host: Host.new(definitions: %Kept{}, issuer: %Issued{scope: [one]}),
           sender: Principal.new(:channel, "chat/U1"),
           hooks: [Wardrik.Hook.new("front", Rules, allow: ["agent_define"])]
         )
@@ -374,7 +389,7 @@ defmodule Wardrik.CatalogTest do
       assert id == to_string(worker)
     end
 
-    test "an agent that asks another reads and messages for it what it could itself" do
+    test "an agent that asks another reads and messages for it what its host issues it" do
       asking = acme("asking")
       front = acme("front")
       inside = echoing(acme("inside"), "ok")
@@ -385,7 +400,11 @@ defmodule Wardrik.CatalogTest do
           "ok"
         )
 
-      run = run(front, Agents, sender: Principal.new(:agent, to_string(asking)))
+      run =
+        run(front, Agents,
+          host: Host.new(definitions: %Kept{}, issuer: %Issued{}),
+          sender: Principal.new(:agent, to_string(asking))
+        )
 
       assert %Call{state: :done, result: {:ok, _snapshot}} =
                Wardrik.Test.call(run, "agent_read", %{"agent" => inside.name})

@@ -5,11 +5,12 @@ defmodule Wardrik.ConnectionsTest do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Connections.Connection
   alias Wardrik.Error
-  alias Wardrik.Grant
   alias Wardrik.Host
   alias Wardrik.Principal
-  alias Wardrik.Session
+  alias Wardrik.Role
+  alias Wardrik.Scope
   alias Wardrik.Test.Audit
+  alias Wardrik.Token
 
   # Offers what the test puts in its process as :offered, and holds what it
   # puts as :held, a map of owner to providers; the functions run in the
@@ -72,14 +73,13 @@ defmodule Wardrik.ConnectionsTest do
   @jon Principal.new(:user, "jon", name: "Jon")
   @mine Prefix.parse!("acme/@jon/")
 
-  defp session(scope, can \\ Grant.actions(), host \\ Host.new(connections: %Offered{})) do
-    {:ok, grant} = Grant.new(Prefix.parse!(scope), can)
-    Session.new(host: host, principal: @jon, grant: grant)
+  defp scope(prefix, can \\ [:owner], host \\ Host.new(connections: %Offered{})) do
+    Scope.new(host, %Token{principal: @jon, scope: [Role.bind(can, Prefix.parse!(prefix))]})
   end
 
   describe "listing" do
     test "says who holds each account offered, never a value", %{provider: provider} do
-      assert {:ok, connections} = Wardrik.connections_list(session("acme/@jon/"), @mine)
+      assert {:ok, connections} = Wardrik.connections_list(scope("acme/@jon/"), @mine)
 
       assert connections == [
                %Connection{provider: "github", held_by: :person},
@@ -87,59 +87,59 @@ defmodule Wardrik.ConnectionsTest do
              ]
     end
 
-    test "is refused outside the session's scope, and without read" do
+    test "is refused outside the scope's token, and without reader" do
       assert {:error, %Error{type: :not_found}} =
-               Wardrik.connections_list(session("acme/"), Prefix.parse!("globex/"))
+               Wardrik.connections_list(scope("acme/"), Prefix.parse!("globex/"))
 
       assert {:error, %Error{type: :not_found}} =
-               Wardrik.connections_list(session("acme/@maria/"), @mine)
+               Wardrik.connections_list(scope("acme/@maria/"), @mine)
 
       assert {:error, %Error{type: :forbidden}} =
-               Wardrik.connections_list(session("acme/@jon/", [:message]), @mine)
+               Wardrik.connections_list(scope("acme/@jon/", [:messenger]), @mine)
     end
 
     test "is unsupported where the host offers none" do
       assert {:error, %Error{type: :unsupported}} =
-               Wardrik.connections_list(session("acme/@jon/", Grant.actions(), Host.new()), @mine)
+               Wardrik.connections_list(scope("acme/@jon/", [:owner], Host.new()), @mine)
     end
   end
 
   describe "connecting" do
-    test "answers where to authorize, or that it is held, as the session's principal",
+    test "answers where to authorize, or that it is held, as the scope's principal",
          %{provider: provider} do
       assert {:ok, %Connection{authorization: %{url: "https://auth.example.com/" <> _}}} =
-               Wardrik.connections_connect(session("acme/@jon/"), @mine, provider)
+               Wardrik.connections_connect(scope("acme/@jon/"), @mine, provider)
 
       assert_received {:connect, ^provider, {"acme", "jon"}, @jon}
 
       assert {:ok, %Connection{provider: "github", held_by: :person, authorization: nil}} =
-               Wardrik.connections_connect(session("acme/@jon/"), @mine, "github")
+               Wardrik.connections_connect(scope("acme/@jon/"), @mine, "github")
     end
 
     test "is refused for an account not offered, or without define" do
       assert {:error, %Error{type: :not_found}} =
-               Wardrik.connections_connect(session("acme/@jon/"), @mine, "nothing")
+               Wardrik.connections_connect(scope("acme/@jon/"), @mine, "nothing")
 
       assert {:error, %Error{type: :forbidden}} =
                Wardrik.connections_connect(
-                 session("acme/", [:read]),
+                 scope("acme/", [:reader]),
                  Prefix.parse!("acme/"),
                  "github"
                )
     end
   end
 
-  test "disconnecting forgets the owner's account, recorded as the session's principal" do
+  test "disconnecting forgets the owner's account, recorded as the scope's principal" do
     assert {:ok, %Connection{provider: "github", held_by: :person}} =
-             Wardrik.connections_disconnect(session("acme/@jon/"), @mine, "github")
+             Wardrik.connections_disconnect(scope("acme/@jon/"), @mine, "github")
 
     assert {"secret.removed", %{"type" => "user", "id" => "jon"}} =
              List.last(Audit.about("secrets/github"))
 
     assert {:ok, [%Connection{provider: "github", held_by: nil} | _]} =
-             Wardrik.connections_list(session("acme/@jon/"), @mine)
+             Wardrik.connections_list(scope("acme/@jon/"), @mine)
 
     assert {:error, %Error{type: :not_found}} =
-             Wardrik.connections_disconnect(session("acme/@jon/"), @mine, "github")
+             Wardrik.connections_disconnect(scope("acme/@jon/"), @mine, "github")
   end
 end

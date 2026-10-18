@@ -342,11 +342,12 @@ defmodule WardrikDefinition.ReadingTest do
       assert {files.tree.tree, team.tree} == {"agents/acme/triage", "shared/acme"}
       assert files.context == ["shared/team/NOTES.md"]
 
-      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(id))
+      token = Wardrik.Token.root(Wardrik.Principal.new(:user, "jon"))
+      token = %{token | scope: [Wardrik.Role.bind([:owner], Wardrik.AgentID.Prefix.of(id))]}
 
-      assert WardrikDefinition.spec(fields, id, id, context, {:api, grant}) ==
+      assert WardrikDefinition.spec(fields, id, id, context, {:api, token}) ==
                {:error,
-                "workspace shared team: acme belongs to acme/, which acme/triage does not cover"}
+                "workspace shared team: acme belongs to acme/, which the token does not reach"}
     end
   end
 

@@ -3,12 +3,14 @@ defmodule WardrikSlack.Answers do
   What a press of a button `WardrikSlack.Notices` posted does.
 
   The person pressing is the principal `WardrikChannel.principal/3` makes of
-  them, in the workspace they pressed it in, and may do what the host's
-  `Wardrik.Grants` says, as `Wardrik.Host.caller/2` answers it on the host
-  the channel's context carries: they decide a call with `Wardrik.agent_approve/4` or
-  `Wardrik.agent_deny/4`, so where their grant allows `:decide` on the
-  agent, or where they asked for the turn that waits; and they are shown
-  where to connect an account where their grant allows `:decide`.
+  them, in the workspace they pressed it in, and may do what the token the
+  host's `Wardrik.Issuer` issues them allows, in the scope `Wardrik.as/3`
+  makes them on the host the channel's context carries: they decide a call
+  with `Wardrik.agent_approve/4` or `Wardrik.agent_deny/4`, so where their
+  token allows `agent.decide` on the agent, or where they asked for the
+  turn that waits; and they are shown where to connect an account where it
+  allows `agent.authorization.read`. A press on an agent their token does
+  not reach is refused.
   """
 
   alias Wardrik.Error
@@ -40,17 +42,18 @@ defmodule WardrikSlack.Answers do
         |> WardrikChannel.Member.new(user["id"])
         |> WardrikChannel.principal(name: user["username"] || user["name"])
 
-      reply =
-        case Wardrik.Host.caller(context.host,
-               principal: by,
-               subject: agent
-             ) do
-          {:ok, caller} -> pressed(action, payload, {user, caller}, agent, call, name)
-          {:error, _unreached} -> :refused
-        end
-        |> refused(workspace)
+      scope = Wardrik.as(context.host, by)
 
-      WardrikSlack.respond(payload["response_url"], reply, Keyword.get(opts, :req_options, []))
+      reply =
+        if Wardrik.Token.reaches?(scope.token, agent),
+          do: pressed(action, payload, {user, scope}, agent, call, name),
+          else: :refused
+
+      WardrikSlack.respond(
+        payload["response_url"],
+        refused(reply, workspace),
+        Keyword.get(opts, :req_options, [])
+      )
     else
       _unreadable -> :ignored
     end
@@ -64,21 +67,18 @@ defmodule WardrikSlack.Answers do
 
   defp refused(reply, _workspace), do: reply
 
-  defp pressed("wardrik_link", _payload, {_user, caller}, agent, call, _name) do
-    if Wardrik.Grant.allows?(caller.grant, :decide, agent),
-      do: WardrikSlack.ephemeral(link(agent, call, caller.host)),
+  defp pressed("wardrik_link", _payload, {_user, scope}, agent, call, _name) do
+    if Wardrik.Token.authorize(scope.token, "agent.authorization.read", agent) == :ok,
+      do: WardrikSlack.ephemeral(link(agent, call, scope.host)),
       else: :refused
   end
 
-  defp pressed(action, payload, {user, caller}, agent, call, name) do
+  defp pressed(action, payload, {user, scope}, agent, call, name) do
     note = note(payload, call)
-
-    session =
-      Wardrik.Session.new(host: caller.host, principal: caller.principal, grant: caller.grant)
 
     case decide(
            action,
-           session,
+           scope,
            agent,
            call,
            note,
@@ -107,17 +107,17 @@ defmodule WardrikSlack.Answers do
   defp link_text({%{link: %{url: url}}, _prompt}), do: "Open #{url}"
   defp link_text(_answered), do: "That is no longer waiting on anyone to connect."
 
-  defp decide("wardrik_approve", session, agent, call, nil, _who),
-    do: Wardrik.agent_approve(session, agent, call)
+  defp decide("wardrik_approve", scope, agent, call, nil, _who),
+    do: Wardrik.agent_approve(scope, agent, call)
 
-  defp decide("wardrik_approve", session, agent, call, note, _who),
-    do: Wardrik.agent_approve(session, agent, call, note: note)
+  defp decide("wardrik_approve", scope, agent, call, note, _who),
+    do: Wardrik.agent_approve(scope, agent, call, note: note)
 
-  defp decide(_deny, session, agent, call, nil, who),
-    do: Wardrik.agent_deny(session, agent, call, reason: "Denied in Slack by #{who}.")
+  defp decide(_deny, scope, agent, call, nil, who),
+    do: Wardrik.agent_deny(scope, agent, call, reason: "Denied in Slack by #{who}.")
 
-  defp decide(_deny, session, agent, call, note, who),
-    do: Wardrik.agent_deny(session, agent, call, reason: "Denied in Slack by #{who}: #{note}")
+  defp decide(_deny, scope, agent, call, note, who),
+    do: Wardrik.agent_deny(scope, agent, call, reason: "Denied in Slack by #{who}: #{note}")
 
   # What was written in the call's box as the button was pressed, where
   # anything was.

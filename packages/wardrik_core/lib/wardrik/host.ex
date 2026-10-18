@@ -3,9 +3,9 @@ defmodule Wardrik.Host do
   What the host running Wardrik answers that core cannot: the store
   everything is kept in, where agents' definitions are kept, which accounts
   people connect, which MCP servers they add, where secrets come from, how
-  callers' tokens are made, where requests for triggers go, what each
-  principal may do, where agents' files are kept, and what each model call
-  actually is.
+  callers' tokens are kept, where requests for triggers go, what token each
+  principal acts with, where agents' files are kept, and what each model
+  call actually is.
 
   `:store` is a `WardrikStore`, the one the host started, or
   `WardrikStore.None`'s where it names none, which raises on the first read
@@ -20,7 +20,7 @@ defmodule Wardrik.Host do
   | `:credentials` | `Wardrik.Credentials` | `%Wardrik.Credentials.None{}` |
   | `:tokens` | `Wardrik.Tokens` | `%Wardrik.Tokens.None{}` |
   | `:triggers` | `Wardrik.Triggers` | `%Wardrik.Triggers.None{}` |
-  | `:grants` | `Wardrik.Grants` | `%Wardrik.Grants.None{}` |
+  | `:issuer` | `Wardrik.Issuer` | `%Wardrik.Issuer.None{}` |
   | `:workspace` | `Wardrik.Workspace` | `%Wardrik.Workspace.None{}` |
   | `:dispatch` | `Wardrik.LLM.Dispatch` | `%Wardrik.LLM.Dispatch.Direct{}` |
 
@@ -35,7 +35,7 @@ defmodule Wardrik.Host do
         Wardrik.Host.new(
           store: store,
           definitions: %MyApp.Definitions{store: store},
-          grants: %MyApp.Grants{admins: ["maria"]}
+          issuer: %MyApp.Issuer{admins: ["maria"]}
         )
 
       children = [
@@ -47,31 +47,25 @@ defmodule Wardrik.Host do
 
   A seam it does not name is its default: a None, which answers each
   function with `:unsupported`, or with what having none means in that
-  function's own terms, as `[]` grants, and for `:dispatch` `Direct`, which
+  function's own terms, as a token allowing nothing, and for `:dispatch` `Direct`, which
   makes each model call as it stands. So every field is always a value its
   protocol answers for, and code asks it without first asking whether
   there is one.
 
-  The host travels with the work, never with what is stored: each
-  `Wardrik.Caller` carries it to what it acts on, and each agent is
-  handed it as it starts, wakes or restarts on another node (see
-  `Wardrik.Agent`). A node runs one `Wardrik.Core`, so one host; see `Wardrik.Core`.
+  `:expires` is how long a token the host makes lasts, by its kind, in
+  seconds: `:api`, one made for the HTTP API with `Wardrik.tokens_create/4`,
+  90 days unless given.
 
-  A caller is made here for someone known by a principal, holding the grant
-  the host's `Wardrik.Grants` gives them:
-
-      {:ok, caller} = Wardrik.Host.caller(host, principal: maria, subject: ~A"acme/triage")
+  The host travels with the work, never with what is stored: each scope a
+  surface acts in carries it to what it acts on, and each agent is handed
+  it as it starts, wakes or restarts on another node (see `Wardrik.Agent`).
+  A node runs one `Wardrik.Core`, so one host; see `Wardrik.Core`.
 
   The accessors answer each seam's value, so code that acts on the agents
   names the field, never an implementation.
   """
 
-  alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
-  alias Wardrik.Caller
-  alias Wardrik.Error
-  alias Wardrik.Grant
-  alias Wardrik.Principal
+  @api_expires 90 * 86_400
 
   defstruct store: %WardrikStore.None{},
             definitions: %Wardrik.Definition.None{},
@@ -80,10 +74,11 @@ defmodule Wardrik.Host do
             credentials: %Wardrik.Credentials.None{},
             tokens: %Wardrik.Tokens.None{},
             triggers: %Wardrik.Triggers.None{},
-            grants: %Wardrik.Grants.None{},
+            issuer: %Wardrik.Issuer.None{},
             workspace: %Wardrik.Workspace.None{},
             dispatch: %Wardrik.LLM.Dispatch.Direct{},
-            audit: Wardrik.Audit
+            audit: Wardrik.Audit,
+            expires: [api: @api_expires]
 
   @type t() :: %__MODULE__{
           store: WardrikStore.t(),
@@ -93,10 +88,11 @@ defmodule Wardrik.Host do
           credentials: Wardrik.Credentials.t(),
           tokens: Wardrik.Tokens.t(),
           triggers: Wardrik.Triggers.t(),
-          grants: Wardrik.Grants.t(),
+          issuer: Wardrik.Issuer.t(),
           workspace: Wardrik.Workspace.t(),
           dispatch: Wardrik.LLM.Dispatch.t(),
-          audit: GenServer.name()
+          audit: GenServer.name(),
+          expires: [api: pos_integer()]
         }
 
   @seams [
@@ -106,7 +102,7 @@ defmodule Wardrik.Host do
     :credentials,
     :tokens,
     :triggers,
-    :grants,
+    :issuer,
     :workspace,
     :dispatch
   ]
@@ -119,55 +115,9 @@ defmodule Wardrik.Host do
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
-    opts = Keyword.validate!(opts, [:store, :audit | @seams])
+    opts = Keyword.validate!(opts, [:store, :audit, :expires | @seams])
     struct!(__MODULE__, opts)
   end
-
-  @doc """
-  The person or system `:principal` names as a caller acting on
-  `:subject`, an agent or the agents under a prefix: holding the first grant
-  the host's `Wardrik.Grants` gives them whose scope reaches it. `:not_found`
-  where none does, or where nobody is known, a `nil` principal, as for a
-  turn nobody asked for: a subject outside a caller's reach is one that does
-  not exist to them.
-
-  An agent, as its `:agent` principal names it, is core's own: it may read
-  and message its owner's agents, as `Wardrik.AgentID.Prefix.owner/1` names
-  them, whatever the host's grants say, so a turn one agent asks of another
-  reads and messages for it what it could itself.
-
-      {:ok, caller} = Wardrik.Host.caller(host, principal: maria, subject: ~A"acme/triage")
-      :ok = Wardrik.Agent.decide(~A"acme/triage", decisions, caller)
-  """
-  @spec caller(t(), keyword()) :: {:ok, Caller.t()} | {:error, Error.t()}
-  def caller(%__MODULE__{} = host, opts) do
-    opts = Keyword.validate!(opts, [:principal, :subject])
-    principal = Keyword.fetch!(opts, :principal)
-    subject = Keyword.fetch!(opts, :subject)
-
-    case Enum.find(granted(host, principal), &Prefix.covers?(&1.scope, subject)) do
-      %Grant{} = grant ->
-        {:ok, Caller.new(principal: principal, grant: grant, host: host)}
-
-      nil ->
-        {:error, Error.new(:not_found, "Nothing at #{subject} is within this caller's reach.")}
-    end
-  end
-
-  defp granted(_host, nil), do: []
-
-  defp granted(host, principal),
-    do:
-      own(Principal.type(principal), principal) ++ Wardrik.Grants.grants(grants(host), principal)
-
-  defp own(:agent, principal) do
-    {:ok, grant} =
-      Grant.new(Prefix.owner(AgentID.parse!(Principal.id(principal))), [:read, :message])
-
-    [grant]
-  end
-
-  defp own(_type, _principal), do: []
 
   @doc "The `WardrikStore` everything is kept in."
   @spec store(t()) :: WardrikStore.t()
@@ -213,7 +163,11 @@ defmodule Wardrik.Host do
   @spec dispatch(t()) :: Wardrik.LLM.Dispatch.t()
   def dispatch(%__MODULE__{dispatch: dispatch}), do: dispatch
 
-  @doc "The `Wardrik.Grants` that says what each principal may do."
-  @spec grants(t()) :: Wardrik.Grants.t()
-  def grants(%__MODULE__{grants: grants}), do: grants
+  @doc "The `Wardrik.Issuer` that issues each principal the token it acts with."
+  @spec issuer(t()) :: Wardrik.Issuer.t()
+  def issuer(%__MODULE__{issuer: issuer}), do: issuer
+
+  @doc "How long a token of `kind` the host makes lasts, in seconds."
+  @spec expires(t(), :api) :: pos_integer()
+  def expires(%__MODULE__{expires: expires}, kind), do: Keyword.fetch!(expires, kind)
 end

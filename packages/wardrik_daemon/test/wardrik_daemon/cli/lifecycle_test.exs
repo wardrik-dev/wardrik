@@ -323,12 +323,16 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
     test "forgets the definition the HTTP API sent", %{org: org} do
       defined = AgentID.parse!("#{org}/defined")
-      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(defined))
+
+      token = %Wardrik.Token{
+        principal: Wardrik.Principal.new(:user, "jon"),
+        scope: [Wardrik.Role.bind([:owner], Wardrik.AgentID.Prefix.of(defined))]
+      }
 
       {:ok, spec} =
         WardrikDaemon.Agents.put(Host.agents(), defined,
           definition: %{"description" => "Defined."},
-          grant: grant
+          token: token
         )
 
       {:ok, _pid} = Fleet.put(spec)

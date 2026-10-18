@@ -4,10 +4,12 @@ defmodule Wardrik.TriggersTest do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
-  alias Wardrik.Grant
   alias Wardrik.Host
   alias Wardrik.Principal
-  alias Wardrik.Session
+  alias Wardrik.Role
+  alias Wardrik.Scope
+  alias Wardrik.Statement
+  alias Wardrik.Token
 
   # Answers what the test puts in its process as :answer, and tells the test
   # what it was handed; the functions run in the test's process.
@@ -27,13 +29,19 @@ defmodule Wardrik.TriggersTest do
 
   @agent AgentID.parse!("acme/hooked")
 
-  defp deliver(answer, can \\ [:message], host \\ Host.new(triggers: %Answering{})) do
+  defp deliver(
+         answer,
+         actions \\ ["agent.trigger.deliver"],
+         host \\ Host.new(triggers: %Answering{})
+       ) do
     Process.put(:answer, answer)
-    {:ok, grant} = Grant.new(Prefix.of(@agent), can)
-    principal = Principal.new(:webhook, "acme/hooked//issues")
-    session = Session.new(host: host, principal: principal, grant: grant)
 
-    Wardrik.agent_trigger_deliver(session, @agent, "issues", %{
+    token = %Token{
+      principal: Principal.new(:webhook, "acme/hooked//issues"),
+      scope: [%Statement{actions: actions, resources: [Prefix.of(@agent)]}]
+    }
+
+    Wardrik.agent_trigger_deliver(Scope.new(host, token), @agent, "issues", %{
       headers: [{"x-id", "1"}],
       body: "{}"
     })
@@ -55,12 +63,13 @@ defmodule Wardrik.TriggersTest do
     assert {:error, %Error{type: :unavailable}} = deliver({:error, :unavailable, "busy"})
   end
 
-  test "needs a grant to message the agent" do
-    assert {:error, %Error{type: :forbidden}} = deliver({:ok, :asked}, [:read])
+  test "needs a token allowing delivery to the agent" do
+    assert {:error, %Error{type: :forbidden}} = deliver({:ok, :asked}, Role.actions(:messenger))
     refute_received {:deliver, _id, _name, _request}
   end
 
   test "is unsupported where the host names no module" do
-    assert {:error, %Error{type: :unsupported}} = deliver({:ok, :asked}, [:message], Host.new())
+    assert {:error, %Error{type: :unsupported}} =
+             deliver({:ok, :asked}, ["agent.trigger.deliver"], Host.new())
   end
 end

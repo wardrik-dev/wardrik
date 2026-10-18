@@ -4,158 +4,79 @@ defmodule WardrikHTTP.TokenTest do
   import Wardrik.Test, only: [store: 0]
 
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Grant
+  alias Wardrik.Role
   alias WardrikHTTP.Token
 
-  test "a token is found by its secret, and by nothing else" do
-    assert {:ok, "wardrik_" <> _rest = secret, token} =
-             Token.create(store(), "ci",
-               scope: Prefix.parse!("acme/"),
-               can: Grant.actions(),
-               ceiling: []
-             )
+  @jon Wardrik.Principal.new(:user, "jon")
 
-    assert {:ok, ^token} = Token.verify(store(), secret)
-    assert {:ok, ^token} = Token.get(store(), token.id)
+  defp token(roles, opts \\ []) do
+    struct!(
+      %Wardrik.Token{principal: @jon, scope: [Role.bind(roles, Prefix.parse!("acme/"))]},
+      opts
+    )
+  end
+
+  test "a token is found by its secret, and by nothing else" do
+    assert {:ok, "wardrik_" <> _rest = secret, kept} =
+             Token.create(store(), "ci", token: token([:owner]))
+
+    assert {:ok, ^kept} = Token.verify(store(), secret)
+    assert {:ok, ^kept} = Token.get(store(), kept.id)
     assert :error = Token.get(store(), "0123456789ab")
     assert :error = Token.get(store(), "short")
     assert :error = Token.verify(store(), secret <> "x")
     assert :error = Token.verify(store(), "not-a-token")
-    assert %Token{name: "ci", grant: %Grant{scope: scope}} = token
-    assert to_string(scope) == "acme/"
-    assert byte_size(token.id) == 12
+    assert %Token{name: "ci", token: %Wardrik.Token{principal: @jon}} = kept
+    assert byte_size(kept.id) == 12
   end
 
-  test "a token acts for itself, or for the principal it was made for" do
-    {:ok, _secret, ci} = Token.create(store(), "ci", scope: Prefix.parse!("acme/"), can: [:read])
-    assert Wardrik.Principal.type(Token.principal(ci)) == :token
-    assert Wardrik.Principal.id(Token.principal(ci)) == ci.id
+  test "a token acts for whoever made it, and a request with it comes from its caller" do
+    {:ok, secret, _kept} = Token.create(store(), "laptop", token: token([:reader]))
 
-    jon = Wardrik.Principal.new(:user, "jon")
-
-    {:ok, secret, for_jon} =
-      Token.create(store(), "laptop", scope: Prefix.parse!("acme/"), can: [:read], for: jon)
-
-    assert Token.principal(for_jon) == jon
     assert {:ok, read} = Token.verify(store(), secret)
-    assert %WardrikHTTP.Caller{principal: ^jon, id: id, ref: {:tokens, id}} = Token.caller(read)
+
+    assert %WardrikHTTP.Caller{token: %Wardrik.Token{principal: @jon}, id: id, ref: {:tokens, id}} =
+             Token.caller(read)
   end
 
   test "the store holds a hash of the secret under its id, never the secret" do
-    {:ok, secret, token} =
-      Token.create(store(), "hashed",
-        scope: Prefix.parse!("acme/"),
-        can: Grant.actions(),
-        ceiling: []
-      )
+    {:ok, secret, kept} = Token.create(store(), "hashed", token: token([:owner]))
 
     hash = :crypto.hash(:sha256, secret) |> Base.encode16(case: :lower)
-    assert %Token{hash: ^hash} = WardrikStore.get(store(), :tokens, token.id)
-    assert String.starts_with?(hash, token.id)
+    assert %Token{hash: ^hash} = WardrikStore.get(store(), :tokens, kept.id)
+    assert String.starts_with?(hash, kept.id)
     refute secret in WardrikStore.keys(store(), :tokens, "")
   end
 
-  test "a token grants every action, or the ones it was made with" do
-    {:ok, _secret, every} =
-      Token.create(store(), "every",
-        scope: Prefix.parse!("acme/"),
-        can: Grant.actions(),
-        ceiling: []
-      )
+  test "keeps the token's statements and policy as they were made" do
+    {:ok, secret, kept} =
+      Token.create(store(), "careful", token: token([:definer], policy: "careful"))
 
-    assert every.grant.can == Grant.actions()
+    assert {:ok, %Token{token: %Wardrik.Token{policy: "careful", scope: [statement]}}} =
+             Token.verify(store(), secret)
 
-    {:ok, secret, watcher} =
-      Token.create(store(), "watcher", scope: Prefix.parse!("acme/"), can: ["read"])
-
-    assert watcher.grant.can == [:read]
-    assert {:ok, %Token{grant: %Grant{can: [:read]}}} = Token.verify(store(), secret)
-
-    assert {:error, message} =
-             Token.create(store(), "wrong", scope: Prefix.parse!("acme/"), can: ["read", "write"])
-
-    assert message =~ ~s("write" is not an action)
+    assert statement == Role.bind([:definer], Prefix.parse!("acme/"))
+    assert kept.token.policy == "careful"
   end
 
-  describe "a token that can define" do
-    test "is made with a ceiling, or with none, and never without saying" do
-      ceiling = [Wardrik.Hook.new("ceiling/careful", Wardrik.Test.Tools.Rules, ask: :all)]
+  test "an expired token stops working" do
+    past = DateTime.add(DateTime.utc_now(), -1)
+    {:ok, secret, _kept} = Token.create(store(), "old", token: token([:reader], expires: past))
 
-      assert {:error, message} = Token.create(store(), "unsaid", scope: Prefix.parse!("acme/"))
-
-      assert message ==
-               "A token that can define agents is made with a ceiling, or with none, ceiling: []"
-
-      assert {:error, ^message} =
-               Token.create(store(), "definer", scope: Prefix.parse!("acme/"), can: [:define])
-
-      {:ok, secret, token} =
-        Token.create(store(), "careful",
-          scope: Prefix.parse!("acme/"),
-          can: [:define],
-          ceiling: ceiling
-        )
-
-      assert token.grant.ceiling == ceiling
-      assert {:ok, %Token{grant: %Grant{ceiling: ^ceiling}}} = Token.verify(store(), secret)
-
-      {:ok, _secret, token} =
-        Token.create(store(), "unlimited",
-          scope: Prefix.parse!("acme/"),
-          can: [:define],
-          ceiling: []
-        )
-
-      assert token.grant.ceiling == []
-    end
-
-    test "is the only kind a ceiling is for" do
-      ceiling = [Wardrik.Hook.new("ceiling/careful", Wardrik.Test.Tools.Rules, ask: :all)]
-
-      assert {:ok, _secret, _token} =
-               Token.create(store(), "reader", scope: Prefix.parse!("acme/"), can: [:read])
-
-      assert Token.create(store(), "reader",
-               scope: Prefix.parse!("acme/"),
-               can: [:read],
-               ceiling: ceiling
-             ) ==
-               {:error, "A ceiling holds the agents a grant defines, and this one cannot define"}
-    end
-  end
-
-  test "a token stored before tokens had ceilings reads as one with none" do
-    {:ok, secret, token} =
-      Token.create(store(), "older",
-        scope: Prefix.parse!("acme/"),
-        can: Grant.actions(),
-        ceiling: []
-      )
-
-    older = %{token | grant: Map.delete(token.grant, :ceiling)}
-    {_token, vsn} = WardrikStore.lookup(store(), :tokens, token.id)
-    {:ok, _vsn} = WardrikStore.put(store(), :tokens, token.id, older, if_vsn: vsn)
-
-    assert {:ok, %Token{grant: %Grant{ceiling: []}}} = Token.verify(store(), secret)
-    assert Enum.find(Token.list(store()), &(&1.id == token.id)).grant.ceiling == []
+    assert :error = Token.verify(store(), secret)
   end
 
   test "a revoked token stops working, and is listed no more" do
-    {:ok, secret, token} =
-      Token.create(store(), "revoked",
-        scope: Prefix.parse!("acme/"),
-        can: Grant.actions(),
-        ceiling: []
-      )
+    {:ok, secret, kept} = Token.create(store(), "revoked", token: token([:owner]))
 
-    assert token in Token.list(store())
+    assert kept in Token.list(store())
 
-    assert {:error, :not_found} = Token.revoke(store(), binary_part(token.id, 0, 4))
-    assert :ok = Token.revoke(store(), token.id)
+    assert {:error, :not_found} = Token.revoke(store(), binary_part(kept.id, 0, 4))
+    assert :ok = Token.revoke(store(), kept.id)
 
     assert :error = Token.verify(store(), secret)
-    assert :error = Token.get(store(), token.id)
-    refute token in Token.list(store())
-    assert {:error, :not_found} = Token.revoke(store(), token.id)
+    assert :error = Token.get(store(), kept.id)
+    refute kept in Token.list(store())
+    assert {:error, :not_found} = Token.revoke(store(), kept.id)
   end
 end

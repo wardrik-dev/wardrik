@@ -4,22 +4,23 @@ defmodule WardrikHTTP.TokensTest do
   import Wardrik.Test, only: [store: 0]
 
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Grant
   alias WardrikHTTP.Token
   alias WardrikHTTP.Tokens
 
   defp tokens, do: %Tokens{store: Wardrik.Test.store()}
 
   test "makes, lists and revokes the API's tokens, as Wardrik.Tokens asks" do
-    {:ok, grant} = Grant.new(Prefix.parse!("acme/"), [:read])
-    jon = Wardrik.Principal.new(:user, "jon")
+    token = %Wardrik.Token{
+      principal: Wardrik.Principal.new(:user, "jon"),
+      scope: [Wardrik.Role.bind([:reader], Prefix.parse!("acme/"))]
+    }
 
-    assert {:ok, %Wardrik.Tokens.Token{id: id, name: "ci", principal: ^jon, secret: secret}} =
-             Tokens.create(tokens(), "ci", grant: grant, for: jon)
+    assert {:ok, %Wardrik.Tokens.Entry{id: id, name: "ci", token: ^token, secret: secret}} =
+             Tokens.create(tokens(), "ci", token: token)
 
     assert {:ok, %Token{id: ^id}} = Token.verify(store(), secret)
 
-    assert [%Wardrik.Tokens.Token{secret: nil}] =
+    assert [%Wardrik.Tokens.Entry{secret: nil, token: ^token}] =
              for(t <- Tokens.list(tokens()), t.id == id, do: t)
 
     assert :ok = Tokens.revoke(tokens(), id)

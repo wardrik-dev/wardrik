@@ -2,7 +2,7 @@ defmodule Wardrik.AgentID.Prefix do
   @moduledoc """
   The agents under a prefix: every agent, an org's, one user's, or one agent
   with every external ID it answers for. `Wardrik.Fleet` lists, watches and stops agents
-  by prefix, and a `Wardrik.Grant` reaches the agents under one.
+  by prefix, and a `Wardrik.Statement` reaches the agents under one.
 
   | Text | Covers |
   | --- | --- |

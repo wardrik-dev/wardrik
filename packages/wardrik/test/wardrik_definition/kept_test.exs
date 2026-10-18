@@ -58,13 +58,21 @@ defmodule WardrikDefinition.KeptTest do
 
   defp kept(contexts), do: %Kept{store: Wardrik.Test.store(), contexts: contexts}
 
-  defp grant(%Prefix{} = scope, ceiling \\ []) do
-    {:ok, grant} = Wardrik.Grant.new(scope, Wardrik.Grant.actions(), ceiling)
-    grant
+  defp token(prefix, policy \\ :none) do
+    %Wardrik.Token{
+      principal: Wardrik.Principal.new(:user, "jon"),
+      scope: [Wardrik.Role.bind([:owner], prefix)],
+      policy: policy
+    }
   end
 
   defp put(kept, id, fields),
-    do: Definition.put(kept, id, definition: fields, grant: grant(Prefix.new!(org: id.org)))
+    do:
+      Definition.put(kept, id,
+        definition: fields,
+        token: token(Prefix.new!(org: id.org)),
+        held: []
+      )
 
   test "keeps a definition, answers it as sent, and forgets it", %{org: org, kept: kept} do
     id = AgentID.parse!("#{org}/defined")
@@ -88,21 +96,32 @@ defmodule WardrikDefinition.KeptTest do
     assert Definition.delete(kept, id) == {:error, :not_found}
   end
 
-  test "an agent is held to the ceiling of the grant that defined it", %{org: org, kept: kept} do
+  test "an agent is held to the hooks it was defined under, then its token's policy, by name",
+       %{org: org, kept: kept} = test do
     id = AgentID.parse!("#{org}/defined")
+    held = [Wardrik.Hook.new("held", WardrikPolicy, WardrikPolicy.decode!(%{"deny" => ["*"]}))]
 
-    ceiling = [
-      Wardrik.Hook.new("ceiling", WardrikPolicy, WardrikPolicy.decode!(%{"deny" => ["*"]}))
-    ]
+    assert {:ok, spec} =
+             Definition.put(kept, id,
+               definition: %{"policy" => "careful"},
+               token: token(Prefix.new!(org: org), "careful"),
+               held: held
+             )
 
-    {:ok, _spec} =
-      Definition.put(kept, id,
-        definition: %{"policy" => "careful"},
-        grant: grant(Prefix.new!(org: org), ceiling)
-      )
-
+    assert [%{name: "policy/careful"}, %{name: "careful"}] = spec.hooks
     assert {:ok, spec} = Definition.current(kept, id)
-    assert [%{name: "ceiling"}, %{name: "careful"}] = spec.hooks
+    assert [%{name: "held"}, %{name: "policy/careful"}, %{name: "careful"}] = spec.hooks
+
+    without = kept(%{test.context | policies: %{"lax" => WardrikPolicy.decode!(%{}, "lax")}})
+
+    assert {:error, message} =
+             Definition.put(without, id,
+               definition: %{"policy" => "lax"},
+               token: token(Prefix.new!(org: org), "careful"),
+               held: []
+             )
+
+    assert message =~ "the token that defined it names the policy careful, which is not a policy"
   end
 
   test "a conversation runs on the definition of its agent", %{org: org, kept: kept} do
@@ -219,19 +238,23 @@ defmodule WardrikDefinition.KeptTest do
              )
   end
 
-  test "a definition shares only the trees the scope of the grant that sent it covers",
+  test "a definition shares only the trees the token that sent it reaches",
        %{org: org, kept: kept} do
     id = AgentID.parse!("#{org}/defined")
     fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"team" => org}}}
 
     assert {:ok, _spec} =
-             Definition.put(kept, id, definition: fields, grant: grant(Prefix.new!(org: org)))
+             Definition.put(kept, id,
+               definition: fields,
+               token: token(Prefix.new!(org: org)),
+               held: []
+             )
 
     assert {:error, message} =
-             Definition.put(kept, id, definition: fields, grant: grant(Prefix.of(id)))
+             Definition.put(kept, id, definition: fields, token: token(Prefix.of(id)), held: [])
 
     assert message ==
-             "workspace shared team: #{org} belongs to #{org}/, which #{id} does not cover"
+             "workspace shared team: #{org} belongs to #{org}/, which the token does not reach"
   end
 
   test "reload builds every agent awake again, and keeps the definitions of agents not stored",

@@ -50,7 +50,7 @@ defmodule WardrikTUI.AppTest do
         start_opts: [
           agent: agent,
           agent_id: agent_id,
-          host: Wardrik.Host.new(store: Wardrik.Test.store()),
+          host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %WardrikTUI.Test.Root{}),
           model: "test:model",
           sidebar: false,
           clipboard: fn text ->

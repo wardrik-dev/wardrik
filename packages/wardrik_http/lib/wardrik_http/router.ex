@@ -5,18 +5,19 @@ defmodule WardrikHTTP.Router do
   Every response carries a `Request-Id` header, the caller's own where it sent
   one, and the request is logged under it. Every request comes from a
   `WardrikHTTP.Caller` (`WardrikHTTP.Auth`), who acts through `Wardrik` in a
-  `Wardrik.Session` holding their grant: each route calls one of its
-  functions, which checks the grant and records each change in
+  `Wardrik.Scope` holding their token: each route calls one of its
+  functions, which checks the token and records each change in
   `Wardrik.Audit`, and answers what it answered as `Wardrik.Resource` shows
   it, and each `Wardrik.Error` with its status. `WardrikProtocol`'s
-  `openapi.json` is every route, its parameters and its answers. An agent outside the caller's scope is
-  answered as one that does not exist, `404`, and one inside it the caller
-  may not act on so, `403`. A stream of events, and a worker's socket, hold
-  the caller's credential, and end when it is revoked.
+  `openapi.json` is every route, its parameters and its answers. An agent
+  the caller's token does not reach is answered as one that does not exist,
+  `404`, and one it reaches without the action, `403`. A stream of events,
+  and a worker's socket, hold the caller's credential, and end when it is
+  revoked.
 
   Its options are the `WardrikHTTP.Listener`'s `:host`, `:authenticator`,
   `:workers` and `:channels`, assigned to each request as `:options`: every
-  session is on that host.
+  scope is on that host.
   """
 
   use Plug.Router, copy_opts_to_assign: :options
@@ -30,11 +31,13 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Event.Export
-  alias Wardrik.Grant
   alias Wardrik.Principal
   alias Wardrik.Resource
+  alias Wardrik.Role
+  alias Wardrik.Scope
   alias Wardrik.Servers.Server
-  alias Wardrik.Session
+  alias Wardrik.Statement
+  alias Wardrik.Token
   alias WardrikHTTP.Access
   alias WardrikHTTP.EventStream
 
@@ -59,7 +62,7 @@ defmodule WardrikHTTP.Router do
   plug :dispatch
 
   get "/v1/workers" do
-    serves? = :serve in conn.assigns.caller.grant.can
+    serves? = Token.allows?(conn.assigns.caller.token, "agent.serve")
 
     case WebSockAdapter.UpgradeValidation.validate_upgrade(conn) do
       :ok when not serves? ->
@@ -85,12 +88,13 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  # The agents under ?prefix=, the caller's whole scope where it names none.
+  # The agents under ?prefix=, or under the one resource the caller's token
+  # names where it names none.
   get "/v1/agents" do
     reply(
       conn,
       200,
-      with({:ok, prefix} <- under(conn, :scope), do: Wardrik.agents_list(session(conn), prefix)),
+      with({:ok, prefix} <- under(conn, :scope), do: Wardrik.agents_list(scope(conn), prefix)),
       &%{"agents" => Enum.map(&1, fn member -> Resource.agent(member) end)}
     )
   end
@@ -103,7 +107,7 @@ defmodule WardrikHTTP.Router do
       202,
       with(
         {:ok, prefix} <- under(conn, :named),
-        do: Wardrik.agents_cancel(session(conn), prefix)
+        do: Wardrik.agents_cancel(scope(conn), prefix)
       ),
       &Resource.cancelled/1
     )
@@ -115,21 +119,21 @@ defmodule WardrikHTTP.Router do
       200,
       with(
         {:ok, prefix} <- under(conn, :named),
-        do: Wardrik.agents_forget(session(conn), prefix)
+        do: Wardrik.agents_forget(scope(conn), prefix)
       ),
       &Resource.forgotten/1
     )
   end
 
-  # The calls agents under ?prefix= wait on a person for, under the caller's
-  # whole scope where it names none.
+  # The calls agents under ?prefix= wait on a person for, under the one
+  # resource the caller's token names where it names none.
   get "/v1/interrupts" do
     reply(
       conn,
       200,
       with(
         {:ok, prefix} <- under(conn, :scope),
-        do: Wardrik.agents_parked(session(conn), prefix)
+        do: Wardrik.agents_parked(scope(conn), prefix)
       ),
       &Resource.interrupts/1
     )
@@ -145,7 +149,7 @@ defmodule WardrikHTTP.Router do
             "and does not begin with @ or _"
         )
 
-      :read not in conn.assigns.caller.grant.can ->
+      not Token.allows?(conn.assigns.caller.token, "agent.events") ->
         json(conn, 403, Resource.error("forbidden", "This caller may not read events."))
 
       true ->
@@ -153,13 +157,13 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  # A caller's own connections, or with owner=org their org's; and the MCP
-  # servers they added for their own agents, or with owner=org their org's.
+  # The connections, and the MCP servers, of the owner whose agents ?prefix=
+  # names: an org's, acme/, or a person's, acme/@jon/.
   get "/v1/connections" do
     reply(
       conn,
       200,
-      with({:ok, owner} <- owner(conn), do: Wardrik.connections_list(session(conn), owner)),
+      with({:ok, owner} <- owner(conn), do: Wardrik.connections_list(scope(conn), owner)),
       &Resource.connections/1
     )
   end
@@ -170,7 +174,7 @@ defmodule WardrikHTTP.Router do
       200,
       with(
         {:ok, owner} <- owner(conn),
-        do: Wardrik.connections_connect(session(conn), owner, provider)
+        do: Wardrik.connections_connect(scope(conn), owner, provider)
       ),
       &Resource.connecting/1
     )
@@ -182,7 +186,7 @@ defmodule WardrikHTTP.Router do
       200,
       with(
         {:ok, owner} <- owner(conn),
-        do: Wardrik.connections_disconnect(session(conn), owner, provider)
+        do: Wardrik.connections_disconnect(scope(conn), owner, provider)
       ),
       &%{"connection" => Resource.connection(&1)}
     )
@@ -192,7 +196,7 @@ defmodule WardrikHTTP.Router do
     reply(
       conn,
       200,
-      with({:ok, owner} <- owner(conn), do: Wardrik.servers_list(session(conn), owner)),
+      with({:ok, owner} <- owner(conn), do: Wardrik.servers_list(scope(conn), owner)),
       &Resource.servers/1
     )
   end
@@ -205,7 +209,7 @@ defmodule WardrikHTTP.Router do
         {:ok, owner} <- owner(conn),
         {:ok, fields} <- object(conn.body_params),
         {:ok, server} <- server(fields),
-        do: Wardrik.servers_add(session(conn), owner, server)
+        do: Wardrik.servers_add(scope(conn), owner, server)
       ),
       &Resource.server_added/1
     )
@@ -215,7 +219,7 @@ defmodule WardrikHTTP.Router do
     reply(
       conn,
       200,
-      with({:ok, owner} <- owner(conn), do: Wardrik.servers_remove(session(conn), owner, name)),
+      with({:ok, owner} <- owner(conn), do: Wardrik.servers_remove(scope(conn), owner, name)),
       &%{"server" => Resource.server(&1)}
     )
   end
@@ -225,21 +229,40 @@ defmodule WardrikHTTP.Router do
     reply(
       conn,
       200,
-      Wardrik.deployment_reload(session(conn)),
+      Wardrik.deployment_reload(scope(conn)),
       &%{"reloaded" => Enum.map(&1, fn node -> to_string(node) end)}
     )
   end
 
   get "/v1/deployment/nodes",
-    do: reply(conn, 200, Wardrik.deployment_nodes(session(conn)), &Resource.nodes/1)
+    do: reply(conn, 200, Wardrik.deployment_nodes(scope(conn)), &Resource.nodes/1)
 
   get "/v1/deployment/audit", do: audit(conn)
+
+  # The API's tokens, to a token over every agent.
+  get "/v1/tokens", do: reply(conn, 200, Wardrik.tokens_list(scope(conn)), &Resource.tokens/1)
+
+  post "/v1/tokens" do
+    reply(
+      conn,
+      201,
+      with(
+        {:ok, name, statement, opts} <- token(conn.body_params),
+        do: Wardrik.tokens_create(scope(conn), name, [statement], opts)
+      ),
+      &Resource.token_created/1
+    )
+  end
+
+  delete "/v1/tokens/:id" do
+    reply(conn, 200, Wardrik.tokens_revoke(scope(conn), id), &%{"token" => Resource.token(&1)})
+  end
 
   # A request from outside to one of an agent's webhook triggers, at
   # /v1/hooks/{agent}/{trigger}, or with the trigger's secret after it for a
   # sender that sets no header: it holds no credential of this server's, so
-  # it comes as the trigger it names, granted only to message that agent,
-  # and the trigger checks it.
+  # it comes as the trigger it names, with a token allowing only delivery to
+  # that agent, and the trigger checks it.
   post "/v1/hooks/:org/*rest" do
     case agent_path([org | rest]) do
       {segments, [trigger]} ->
@@ -323,21 +346,21 @@ defmodule WardrikHTTP.Router do
   defp hook(conn, agent, trigger) do
     case read_body(conn, length: @outside_body) do
       {:ok, body, conn} ->
-        {:ok, grant} = Grant.new(Prefix.of(agent), [:message])
         id = "#{agent}//#{trigger}"
 
-        conn =
-          assign(conn, :caller, %WardrikHTTP.Caller{
-            id: id,
-            name: trigger,
-            principal: Principal.new(:webhook, id),
-            grant: grant
-          })
+        token = %Token{
+          principal: Principal.new(:webhook, id),
+          scope: [
+            %Statement{actions: ["agent.trigger.deliver"], resources: [Prefix.of(agent)]}
+          ]
+        }
+
+        conn = assign(conn, :caller, %WardrikHTTP.Caller{id: id, name: trigger, token: token})
 
         reply(
           conn,
           202,
-          Wardrik.agent_trigger_deliver(session(conn), agent, trigger, %{
+          Wardrik.agent_trigger_deliver(scope(conn), agent, trigger, %{
             headers: conn.req_headers,
             body: body
           }),
@@ -469,7 +492,7 @@ defmodule WardrikHTTP.Router do
   defp answer(_conn, {:events, fun}, key), do: fun.(key)
 
   defp answer(conn, {status, call, show}, key),
-    do: reply(conn, status, call.(session(conn), key), show)
+    do: reply(conn, status, call.(scope(conn), key), show)
 
   # Answers what a function of `Wardrik` answered: what it made, shown by
   # `show`, with `status`; `status` alone where it answers `:ok`; or its error.
@@ -480,22 +503,21 @@ defmodule WardrikHTTP.Router do
   defp agent(member), do: %{"agent" => Resource.agent(member)}
   defp trigger(trigger), do: %{"trigger" => trigger}
 
-  # The session the request's caller acts in, holding their grant.
-  defp session(conn) do
-    Session.new(
-      host: Keyword.fetch!(conn.assigns.options, :host),
-      principal: conn.assigns.caller.principal,
-      grant: conn.assigns.caller.grant
-    )
-  end
+  defp scope(conn),
+    do: Scope.new(Keyword.fetch!(conn.assigns.options, :host), conn.assigns.caller.token)
 
-  # The prefix ?prefix= names: where it names none, the caller's whole scope,
-  # or for a request that must name one, why not.
+  # The prefix ?prefix= names: where it names none, the one resource the
+  # caller's token names, or for a request that must name one, why not.
   defp under(conn, default) do
-    case {conn.query_params["prefix"], default} do
-      {nil, :scope} -> {:ok, conn.assigns.caller.grant.scope}
-      {nil, :named} -> {:error, Error.new(:invalid, "prefix names the agents, as acme/")}
-      {text, _default} -> prefixed(text)
+    case {conn.query_params["prefix"], default, Token.resources(conn.assigns.caller.token)} do
+      {nil, :scope, [prefix]} ->
+        {:ok, prefix}
+
+      {nil, _default, _resources} ->
+        {:error, Error.new(:invalid, "prefix names the agents, as acme/")}
+
+      {text, _default, _resources} ->
+        prefixed(text)
     end
   end
 
@@ -506,25 +528,47 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  # The caller's own connections and servers, or with owner=org their org's.
+  # The prefix of an org's agents or a person's, as ?prefix= names it.
   defp owner(conn) do
-    caller =
-      Wardrik.Caller.new(
-        principal: conn.assigns.caller.principal,
-        grant: conn.assigns.caller.grant,
-        host: Keyword.fetch!(conn.assigns.options, :host)
-      )
-
-    with {:ok, whose} <- whose(conn), do: Owner.owner(caller, whose)
-  end
-
-  defp whose(conn) do
-    case conn.query_params["owner"] do
-      nil -> {:ok, :person}
-      "org" -> {:ok, :org}
-      _other -> {:error, Error.new(:invalid, "owner is org, or left out for the caller's own")}
+    with {:ok, prefix} <- under(conn, :named) do
+      if Prefix.org(prefix) && Owner.prefix(Owner.owner_of(prefix)) == prefix,
+        do: {:ok, prefix},
+        else:
+          {:error, Error.new(:invalid, "prefix names an owner's agents, as acme/ or acme/@jon/")}
     end
   end
+
+  # The token a request makes, as `input_tokens_create.json` describes it.
+  defp token(%{"name" => name, "scope" => scope, "roles" => names} = body)
+       when is_binary(name) and is_binary(scope) and is_list(names) do
+    with {:ok, prefix} <- prefixed(scope),
+         {:ok, roles} <- roles(names),
+         {:ok, expires_in} <- expires_in(body["expires_in"]),
+         {:ok, policy} <- policy(body["policy"]),
+         do: {:ok, name, Role.bind(roles, prefix), expires_in ++ policy}
+  end
+
+  defp token(_body),
+    do: {:error, Error.new(:invalid, "A token is made with its name, scope and roles")}
+
+  defp roles(names) do
+    case Role.parse(names) do
+      {:ok, roles} -> {:ok, roles}
+      {:error, message} -> {:error, Error.new(:invalid, message)}
+    end
+  end
+
+  defp expires_in(nil), do: {:ok, []}
+
+  defp expires_in(seconds) when is_integer(seconds) and seconds > 0,
+    do: {:ok, [expires_in: seconds]}
+
+  defp expires_in(_seconds),
+    do: {:error, Error.new(:invalid, "expires_in is a number of seconds")}
+
+  defp policy(nil), do: {:ok, []}
+  defp policy(name) when is_binary(name) and name != "", do: {:ok, [policy: name]}
+  defp policy(_name), do: {:error, Error.new(:invalid, "policy is the name of a policy")}
 
   # The server a request adds, as `input_servers_add.json` describes it.
   defp server(%{"name" => name, "auth" => %{} = auth} = fields)
@@ -617,7 +661,7 @@ defmodule WardrikHTTP.Router do
       reply(
         conn,
         200,
-        Wardrik.deployment_audit(session(conn), after: starting_after || 0, limit: limit),
+        Wardrik.deployment_audit(scope(conn), after: starting_after || 0, limit: limit),
         &%{"changes" => Enum.map(&1, fn entry -> entry.event end)}
       )
     else
@@ -627,7 +671,7 @@ defmodule WardrikHTTP.Router do
 
   # -- events ----------------------------------------------------------------
 
-  # A page is read as any route is; a stream checks the grant itself, since
+  # A page is read as any route is; a stream checks the token itself, since
   # it goes on serving the caller.
   defp events(conn, key) do
     with {:ok, cursor} <- cursor(conn),
@@ -644,13 +688,13 @@ defmodule WardrikHTTP.Router do
     reply(
       conn,
       200,
-      Wardrik.agent_events(session(conn), key, after: starting_after, limit: limit),
+      Wardrik.agent_events(scope(conn), key, after: starting_after, limit: limit),
       &%{"events" => Enum.map(&1, fn entry -> entry.event end)}
     )
   end
 
   defp streamed(conn, key, cursor) do
-    case Grant.authorize(conn.assigns.caller.grant, :read, key) do
+    case Token.authorize(conn.assigns.caller.token, "agent.events", key) do
       :ok -> stream(conn, key, cursor)
       {:error, error} -> error(conn, error)
     end
@@ -691,7 +735,7 @@ defmodule WardrikHTTP.Router do
 
     store
     |> Access.holding(conn.assigns.caller.ref, fn ->
-      EventStream.serve(conn, key, store: store, host: session(conn).host, after: cursor)
+      EventStream.serve(conn, key, store: store, host: scope(conn).host, after: cursor)
     end)
     |> case do
       %Plug.Conn{} = conn ->
@@ -714,11 +758,11 @@ defmodule WardrikHTTP.Router do
   # -- exports ---------------------------------------------------------------
 
   defp export(conn, "GET", cursor) do
-    grant = conn.assigns.caller.grant
+    token = conn.assigns.caller.token
 
     case limit(conn.query_params) do
       {:ok, limit} ->
-        {:ok, page} = Export.read(store(conn), cursor, limit: limit, logs: &exported?(grant, &1))
+        {:ok, page} = Export.read(store(conn), cursor, limit: limit, logs: &exported?(token, &1))
         json(conn, 200, Resource.export(page))
 
       {:error, message} ->
@@ -746,10 +790,10 @@ defmodule WardrikHTTP.Router do
 
   defp export(conn, _method, _cursor), do: no_route(conn)
 
-  # The audit is read by a caller that reaches every agent, and an agent's
-  # log by one that may read the agent.
-  defp exported?(grant, :audit), do: Prefix.covers?(grant.scope, Prefix.all())
-  defp exported?(grant, id), do: Access.authorize(grant, :read, id) == :ok
+  defp exported?(token, :audit),
+    do: Token.authorize(token, "deployment.audit", Prefix.all()) == :ok
+
+  defp exported?(token, id), do: Token.authorize(token, "agent.events", id) == :ok
 
   defp store(conn), do: conn.assigns.options |> Keyword.fetch!(:host) |> Wardrik.Host.store()
 
@@ -762,6 +806,7 @@ defmodule WardrikHTTP.Router do
   end
 
   @statuses %{
+    unauthorized: 401,
     not_found: 404,
     forbidden: 403,
     invalid: 400,

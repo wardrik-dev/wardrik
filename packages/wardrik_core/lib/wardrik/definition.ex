@@ -15,14 +15,13 @@ defprotocol Wardrik.Definition do
 
   The implementation decides what a definition may say, the seams its agent
   is given, whether it is kept, and who owns an agent. `Wardrik` checks
-  the caller's grant first, runs the spec `put/3` answers with
-  `Wardrik.Fleet.put/1`, and puts the grant's ceiling ahead of the spec's
-  own hooks, so no implementation lets a definition loosen it; see
-  `Wardrik.Grant`.
+  the caller's token first, and runs the spec `put/3` answers with
+  `Wardrik.Fleet.put/1`, with the hooks it is held to ahead of its own, so
+  no implementation lets a definition loosen them.
 
   | Function | `Wardrik` | `Wardrik.Definition.None` |
   | --- | --- | --- |
-  | `put/3` | `agent_define/3` | `:unsupported` |
+  | `put/3` | `agent_define/4` | `:unsupported` |
   | `get/2` | `agent_definition_read/2` | `:unsupported` |
   | `delete/2` | `agent_forget/2`, `agents_forget/2` | the agent is forgotten, and no definition with it |
   | `put_trigger/4` | `agent_trigger_set/4` | `:unsupported` |
@@ -46,14 +45,22 @@ defprotocol Wardrik.Definition do
   agent the implementation does not let anyone define.
 
     * `:definition` - its fields, as sent
-    * `:grant` - the caller's `Wardrik.Grant`
+    * `:token` - the caller's `Wardrik.Token`
+    * `:held` - the hooks the caller holds the agent to, ahead of its own
 
-  The grant decides what the definition may reach, such as the trees
-  an agent shares, is the implementation's to check against its scope, and
-  one that builds the spec again later holds it under the same ceiling. The
-  spec is for `id` and no other.
+  What the definition may reach, such as the trees an agent shares, is the
+  implementation's to check against the token's scope. The token's policy
+  names a policy of the implementation's own, which it holds the agent to
+  ahead of the spec's own hooks. The `:held` hooks are not in the spec it
+  answers, as `Wardrik` puts them there; one that builds the spec again
+  later holds it under the same policy and hooks. The spec is for `id` and
+  no other.
   """
-  @spec put(t(), Wardrik.AgentID.t(), definition: map(), grant: Wardrik.Grant.t()) ::
+  @spec put(t(), Wardrik.AgentID.t(),
+          definition: map(),
+          token: Wardrik.Token.t(),
+          held: [Wardrik.Hook.t()]
+        ) ::
           {:ok, Wardrik.Agent.Spec.t()}
           | {:error, String.t()}
           | {:error, :conflict, String.t()}

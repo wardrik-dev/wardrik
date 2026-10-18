@@ -21,8 +21,8 @@ defmodule WardrikDaemon.AgentFile do
   ## Over HTTP
 
   The body of `PUT /v1/agents/{id}` is read under the same context, by
-  `WardrikDaemon.Agents`, into a record whose source is the grant of the
-  token that sent it. `WardrikProtocol`'s `agent_definition.json` is its
+  `WardrikDaemon.Agents`, into a record whose source is the token that sent
+  it. `WardrikProtocol`'s `agent_definition.json` is its
   schema; the ID gives the agent's `name`, `org` and `user`. A definition's
   `tools` and `policy` name what the daemon ships or configures, never a
   module, and its `workspace` shares only the trees the scope of the token
@@ -39,7 +39,7 @@ defmodule WardrikDaemon.AgentFile do
 
   @doc """
   What a definition may name here, as `WardrikDefinition` reads it: the orgs
-  `config` declares and the ceilings it holds them to, the tools the daemon ships, and the MCP servers,
+  `config` declares and the policy it holds each org's to, the tools the daemon ships, and the MCP servers,
   channels and notify targets `config` configures, and its `defaults`. A reading under the policies in
   `policies/` puts them, by name, as the context's `:policies`.
   """

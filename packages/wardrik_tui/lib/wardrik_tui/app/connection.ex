@@ -118,7 +118,7 @@ defmodule WardrikTUI.App.Connection do
     # `:raw` delivers `Wardrik.Event.ToolCall` with its arguments.
     :ok = Bus.subscribe(agent_id, level: :raw)
 
-    case snapshot(agent, term.assigns.session.host) do
+    case snapshot(agent, term.assigns.host) do
       {:ok, snapshot} -> attach_snapshot(term, agent, agent_id, snapshot)
       {:error, _reason} -> assign(term, available?: false)
     end
@@ -233,8 +233,8 @@ defmodule WardrikTUI.App.Connection do
 
   # How many messages the conversation holds now, or the count last known when
   # the agent cannot be asked.
-  defp seen(%{assigns: %{agent: agent, seen: seen, session: session}}) do
-    case Agent.get_context(agent, host: session.host) do
+  defp seen(%{assigns: %{agent: agent, seen: seen, host: host}}) do
+    case Agent.get_context(agent, host: host) do
       %ReqLLM.Context{messages: messages} -> length(messages)
       {:error, :not_found} -> seen
     end
@@ -246,7 +246,7 @@ defmodule WardrikTUI.App.Connection do
     do: Display.append(term, View.connected(id))
 
   def connect_id(term, id) do
-    case Fleet.whereis(id, host: term.assigns.session.host) do
+    case Fleet.whereis(id, host: term.assigns.host) do
       nil ->
         Display.append(term, View.no_such_agent(id))
 
@@ -266,7 +266,7 @@ defmodule WardrikTUI.App.Connection do
   end
 
   def refresh_fleet(term) do
-    {:ok, fleet} = Wardrik.agents_list(term.assigns.session, Prefix.all())
+    {:ok, fleet} = Wardrik.agents_list(WardrikTUI.App.scope(term), Prefix.all())
 
     term
     |> assign(fleet: fleet, fleet_due?: false, unseen: unseen(term, fleet))

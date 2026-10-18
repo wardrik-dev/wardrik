@@ -9,17 +9,23 @@ defmodule Wardrik.Catalog.Tools do
   | `Wardrik.Catalog.Agents` | the entries on an agent, as `agent_trigger_set`, taking the `agent` they act on, and those on the agents under a prefix, as `agents_list` | the agents of its org |
 
   Each tool is described by its entry's summary, and takes its input. A
-  call runs the entry in a session of the calling agent's own, made with
-  `Wardrik.Session.agent/1` on the host the call's run carries: the audit
-  records the agent as who made a change, an agent another surface
-  declares, as a file does, answers as it would there, and an agent it
+  call runs the entry in the calling agent's scope, made with
+  `Wardrik.Scope.agent/2` on the host the call's run carries, so an agent it
   sends a message answers it back with a message of its own (see
-  `Wardrik.agent_ask/4`).
+  `Wardrik.agent_ask/4`), and an agent another surface declares, as a file
+  does, answers as it would there.
 
-  The session's grant lets it read, send messages to and define what its
-  source reaches, and never more. Its ceiling is the calling agent's own
-  hooks: an agent it defines is held to every policy and budget that holds
-  the agent that defined it, ahead of its own, and so is never looser.
+  The agent's own token is the `:agent` principal of its ID, holding
+  `reader`, `messenger` and `definer` on what its source reaches, and never
+  more. A change runs with that token, and the audit records the agent as
+  who made it. An agent it defines is held to the calling agent's own
+  hooks, every policy and budget that holds it, ahead of its own, and so is
+  never looser. A read or a message is the asker's as
+  well: it runs with the token the host's `Wardrik.Issuer` issues whoever
+  asked for the turn, assumed by the agent and narrowed to what its own
+  allows, so an agent never reads or messages for someone what they could
+  not themselves. A turn nobody asked for, as a trigger's, acts with the
+  agent's own.
 
   A change is gated, so it waits on a person unless the agent's policy
   allows it by the tool's name. An answer that shows an agent's
@@ -29,21 +35,25 @@ defmodule Wardrik.Catalog.Tools do
   """
 
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Caller
   alias Wardrik.Catalog.Entry
   alias Wardrik.Error
-  alias Wardrik.Grant
   alias Wardrik.Host
+  alias Wardrik.Principal
   alias Wardrik.Resource
+  alias Wardrik.Role
   alias Wardrik.Run
-  alias Wardrik.Session
+  alias Wardrik.Scope
+  alias Wardrik.Token
+
+  @reads Role.actions(:reader)
+  @changes Role.actions(:definer)
 
   @doc """
   The annotations of the tool for `entry`, or of a tool no entry offers: one
   that changes something waits on a person.
   """
   @spec annotations(Entry.t() | nil) :: map()
-  def annotations(%Entry{action: action}) when action != :read, do: %{gated: true}
+  def annotations(%Entry{name: name}) when name not in @reads, do: %{gated: true}
   def annotations(_read_or_none), do: %{}
 
   @doc """
@@ -66,15 +76,7 @@ defmodule Wardrik.Catalog.Tools do
   @doc """
   Runs `entry` on `subject` with `:input`, for the call `:context` is of, as
   the calling agent reaching `:reach`: the tool's answer, labelled with
-  what it holds.
-
-  The agent may read, send messages to and define the agents its reach
-  covers, under its own hooks as ceiling, on the host the call's run
-  carries. A read or a message is the asker's as well: where someone asked
-  for the turn, it reaches only what both the agent and they may, as the
-  host's `Wardrik.Grants` say of them, so an agent never reads or messages
-  for someone what they could not themselves. A change is the agent's own,
-  held to its ceiling and asked of a person as its policy says.
+  what it holds. See above for the token it runs with.
   """
   @spec run(Entry.t(), Entry.subject(),
           reach: Prefix.t(),
@@ -83,34 +85,29 @@ defmodule Wardrik.Catalog.Tools do
         ) :: Wardrik.Tool.answer()
   def run(%Entry{} = entry, subject, opts) do
     opts = Keyword.validate!(opts, [:reach, :input, :context])
+    %Wardrik.Tool.Context{run: run, sender: sender} = context = Keyword.fetch!(opts, :context)
+    id = Run.agent_id(run)
 
-    with {:ok, session} <- session(entry, subject, opts),
-         {:ok, output, labels} <- entry.run.(session, subject, Keyword.fetch!(opts, :input)) do
-      {:ok, output, labels: labels}
-    else
+    own = %Token{
+      principal: Principal.new(:agent, to_string(id)),
+      scope: [Role.bind([:reader, :messenger, :definer], Keyword.fetch!(opts, :reach))]
+    }
+
+    scope = Scope.agent(Scope.new(run.host, token(entry, own, sender, run.host)), id)
+
+    case entry.run.(scope, subject, Keyword.fetch!(opts, :input), context) do
+      {:ok, output, labels} -> {:ok, output, labels: labels}
       {:error, %Error{} = error} -> {:error, Resource.error(error)}
     end
   end
 
-  defp session(%Entry{action: action}, subject, opts) do
-    %Wardrik.Tool.Context{run: run, sender: sender} = Keyword.fetch!(opts, :context)
-    {:ok, own} = Grant.new(Keyword.fetch!(opts, :reach), [:read, :message, :define], run.hooks)
+  defp token(%Entry{name: name}, own, _sender, _host) when name in @changes, do: own
+  defp token(_entry, own, nil, _host), do: own
 
-    with {:ok, grant} <- asked(own, sender, subject, action, run.host),
-         do: {:ok, Session.agent(id: Run.agent_id(run), grant: grant, host: run.host)}
+  defp token(_entry, own, sender, host) do
+    host
+    |> Host.issuer()
+    |> Wardrik.Issuer.issue(sender, [])
+    |> Token.assume(own.principal, scope: own.scope)
   end
-
-  # A turn nobody asked for is the agent's own.
-  defp asked(own, nil, _subject, _action, _host), do: {:ok, own}
-
-  defp asked(own, sender, subject, action, host) when action in [:read, :message] do
-    with {:ok, %Caller{grant: theirs}} <- Host.caller(host, principal: sender, subject: subject) do
-      case Grant.within(own, theirs) do
-        {:ok, grant} -> {:ok, grant}
-        :error -> {:error, Error.new(:forbidden, "Whoever asked may not #{action} #{subject}.")}
-      end
-    end
-  end
-
-  defp asked(own, _sender, _subject, _action, _host), do: {:ok, own}
 end

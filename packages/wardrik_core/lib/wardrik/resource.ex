@@ -44,7 +44,7 @@ defmodule Wardrik.Resource do
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet.Member
   alias Wardrik.Servers.Server
-  alias Wardrik.Tokens.Token
+  alias Wardrik.Tokens.Entry
 
   @doc "An agent as the fleet lists it."
   @spec agent(Member.t()) :: map()
@@ -102,25 +102,29 @@ defmodule Wardrik.Resource do
   end
 
   @doc """
-  A token as `Wardrik.Tokens` keeps it, never its secret: what its grant
-  reaches, and allows; the names of the hooks of its ceiling, where it can
-  define agents; and the person it acts for, where it acts for one.
+  A token as `Wardrik.Tokens` keeps it, never its secret: its id and name,
+  whom it acts for, what it allows on what, the policy it names, when it
+  was made, and when it expires.
   """
-  @spec token(Token.t()) :: map()
-  def token(%Token{} = token) do
-    %{
-      "id" => token.id,
-      "name" => token.name,
-      "scope" => to_string(token.grant.scope),
-      "can" => Enum.map(token.grant.can, &to_string/1),
-      "created_at" => DateTime.to_iso8601(token.created_at)
-    }
-    |> Value.put(
-      "ceiling",
-      if(:define in token.grant.can, do: Enum.map(token.grant.ceiling, & &1.name))
-    )
-    |> Value.put("for", token.principal && Wardrik.Principal.id(token.principal))
+  @spec token(Entry.t()) :: map()
+  def token(%Entry{} = entry) do
+    entry.token
+    |> Value.token()
+    |> Map.merge(%{
+      "id" => entry.id,
+      "name" => entry.name,
+      "created_at" => DateTime.to_iso8601(entry.created_at)
+    })
   end
+
+  @doc "A token just made, with the secret that presents it, given this once."
+  @spec token_created(Entry.t()) :: map()
+  def token_created(%Entry{secret: secret} = entry),
+    do: %{"token" => token(entry), "secret" => secret}
+
+  @doc "Every token a host keeps."
+  @spec tokens([Entry.t()]) :: map()
+  def tokens(entries), do: %{"tokens" => Enum.map(entries, &token/1)}
 
   @doc "The connections an owner is offered, and who holds each, where anyone does."
   @spec connections([Connection.t()]) :: map()
@@ -240,6 +244,7 @@ defmodule Wardrik.Resource do
   end
 
   @types %{
+    unauthorized: "unauthorized",
     not_found: "not_found",
     forbidden: "forbidden",
     invalid: "invalid_request",

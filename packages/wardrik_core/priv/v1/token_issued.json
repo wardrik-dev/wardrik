@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:token_issued",
+  "title": "TokenIssued",
+  "description": "A token just made, and the secret that presents it, given this once: what POST /v1/tokens answers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "token",
+    "secret"
+  ],
+  "properties": {
+    "token": {
+      "$ref": "urn:wardrik:schema:v1:token"
+    },
+    "secret": {
+      "type": "string",
+      "description": "What a request presents, as Authorization: Bearer secret."
+    }
+  }
+}

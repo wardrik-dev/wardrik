@@ -64,7 +64,7 @@ defmodule WardrikDaemon.CLI.Decisions do
       rows =
         for %{"agent" => %{"id" => id}} = interrupt <- interrupts,
             key = AgentID.parse!(id),
-            do: row_of(key, interrupt) <> read(interrupt) <> link(key, interrupt, opts[:session])
+            do: row_of(key, interrupt) <> read(interrupt) <> link(key, interrupt, opts[:as])
 
       case rows do
         [] -> {:ok, "Nothing is waiting on a person."}
@@ -74,7 +74,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   end
 
   defp interrupts(_words, opts) do
-    with {:ok, parked} <- Wardrik.agents_parked(opts[:session], Prefix.all()),
+    with {:ok, parked} <- Wardrik.agents_parked(opts[:as], Prefix.all()),
          do: {:ok, Wardrik.Resource.interrupts(parked)}
   end
 
@@ -88,30 +88,30 @@ defmodule WardrikDaemon.CLI.Decisions do
 
   # Where to authorize, for the operator reading this on the node; no notice
   # or event carries it.
-  defp link(key, %{"reason" => "authorization", "id" => id}, session) do
-    case Wardrik.agent_authorization_read(session, key, id) do
+  defp link(key, %{"reason" => "authorization", "id" => id}, scope) do
+    case Wardrik.agent_authorization_read(scope, key, id) do
       {:ok, %{url: url, code: code}} when is_binary(code) -> "\n      enter #{code} at #{url}"
       {:ok, %{url: url}} -> "\n      open #{url}"
       {:error, _gone} -> ""
     end
   end
 
-  defp link(_key, _interrupt, _session), do: ""
+  defp link(_key, _interrupt, _scope), do: ""
 
   defp approve([key, call | note], opts),
-    do: decided(key, [call], {:approve, Enum.join(note, " ")}, opts[:session])
+    do: decided(key, [call], {:approve, Enum.join(note, " ")}, opts[:as])
 
   defp approve(_words, _opts), do: :live
 
   defp deny([key, call | reason], opts),
-    do: decided(key, [call], {:deny, Enum.join(reason, " ")}, opts[:session])
+    do: decided(key, [call], {:deny, Enum.join(reason, " ")}, opts[:as])
 
   defp deny(_words, _opts), do: :live
 
   defp approve_chosen(words, opts, terminal),
-    do: choose(words, terminal, :approve, opts[:session])
+    do: choose(words, terminal, :approve, opts[:as])
 
-  defp deny_chosen(words, opts, terminal), do: choose(words, terminal, :deny, opts[:session])
+  defp deny_chosen(words, opts, terminal), do: choose(words, terminal, :deny, opts[:as])
 
   # Which calls, asked of the person at the terminal.
   defp choose(_words, %Terminal{input?: false}, verb, _by) do
@@ -120,12 +120,12 @@ defmodule WardrikDaemon.CLI.Decisions do
        "wardrik #{verb} KEY CALL. wardrik parked lists them."}
   end
 
-  defp choose(words, %Terminal{} = terminal, verb, session) do
-    case {waiting(words, session), words} do
+  defp choose(words, %Terminal{} = terminal, verb, scope) do
+    case {waiting(words, scope), words} do
       {{:error, message}, _words} -> {:error, message}
       {[], []} -> {:ok, "Nothing is waiting on a person."}
-      {[only], [_key]} -> decide([only], verb, terminal, session)
-      {calls, _words} -> calls |> pick(verb, words == []) |> decide(verb, terminal, session)
+      {[only], [_key]} -> decide([only], verb, terminal, scope)
+      {calls, _words} -> calls |> pick(verb, words == []) |> decide(verb, terminal, scope)
     end
   end
 
@@ -145,22 +145,22 @@ defmodule WardrikDaemon.CLI.Decisions do
     ]
   end
 
-  defp decide([], _verb, _terminal, _session), do: {:ok, "Nothing was decided."}
+  defp decide([], _verb, _terminal, _scope), do: {:ok, "Nothing was decided."}
 
-  defp decide(chosen, :approve, _terminal, session),
-    do: each_agent(chosen, {:approve, ""}, session)
+  defp decide(chosen, :approve, _terminal, scope),
+    do: each_agent(chosen, {:approve, ""}, scope)
 
-  defp decide(chosen, :deny, terminal, session) do
+  defp decide(chosen, :deny, terminal, scope) do
     Terminal.puts(terminal, Owl.Data.tag("Why? Enter for no reason.", @faint))
-    each_agent(chosen, {:deny, Owl.IO.input(optional: true) || ""}, session)
+    each_agent(chosen, {:deny, Owl.IO.input(optional: true) || ""}, scope)
   end
 
   # One decision for each agent the chosen calls belong to.
-  defp each_agent(chosen, decision, session) do
+  defp each_agent(chosen, decision, scope) do
     answers =
       chosen
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1)["id"])
-      |> Enum.map(fn {key, ids} -> decided(key, ids, decision, session) end)
+      |> Enum.map(fn {key, ids} -> decided(key, ids, decision, scope) end)
 
     lines = Enum.map_intersperse(answers, "\n", &said/1)
     if Enum.all?(answers, &match?({:ok, _}, &1)), do: {:ok, lines}, else: {:error, lines}
@@ -169,21 +169,21 @@ defmodule WardrikDaemon.CLI.Decisions do
   defp said({:ok, line}), do: line
   defp said({:error, %Error{message: message}}), do: message
 
-  defp decided(key, ids, {verb, said}, session) do
-    with {:ok, _decided} <- decision(verb, session, key, ids, said),
+  defp decided(key, ids, {verb, said}, scope) do
+    with {:ok, _decided} <- decision(verb, scope, key, ids, said),
          do: {:ok, [done(verb), " ", names(ids), " for ", to_string(key), "."]}
   end
 
   # A note or a reason only where one was given.
-  defp decision(:approve, session, key, ids, ""), do: Wardrik.agent_approve(session, key, ids)
+  defp decision(:approve, scope, key, ids, ""), do: Wardrik.agent_approve(scope, key, ids)
 
-  defp decision(:approve, session, key, ids, note),
-    do: Wardrik.agent_approve(session, key, ids, note: note)
+  defp decision(:approve, scope, key, ids, note),
+    do: Wardrik.agent_approve(scope, key, ids, note: note)
 
-  defp decision(:deny, session, key, ids, ""), do: Wardrik.agent_deny(session, key, ids)
+  defp decision(:deny, scope, key, ids, ""), do: Wardrik.agent_deny(scope, key, ids)
 
-  defp decision(:deny, session, key, ids, reason),
-    do: Wardrik.agent_deny(session, key, ids, reason: reason)
+  defp decision(:deny, scope, key, ids, reason),
+    do: Wardrik.agent_deny(scope, key, ids, reason: reason)
 
   defp done(:approve), do: "Approved"
   defp done(:deny), do: "Denied"
@@ -193,12 +193,12 @@ defmodule WardrikDaemon.CLI.Decisions do
 
   # Every call a parked agent is waiting on, with the agent's ID, or those
   # of the one agent `words` name.
-  defp waiting([], session), do: parked_under(Prefix.all(), session)
+  defp waiting([], scope), do: parked_under(Prefix.all(), scope)
 
-  defp waiting([key], session) do
-    with {:ok, _snapshot} <- Wardrik.agent_read(session, key),
+  defp waiting([key], scope) do
+    with {:ok, _snapshot} <- Wardrik.agent_read(scope, key),
          [_ | _] = calls <-
-           for({^key, _interrupt} = call <- parked_under(Prefix.of(key), session), do: call) do
+           for({^key, _interrupt} = call <- parked_under(Prefix.of(key), scope), do: call) do
       calls
     else
       [] -> {:error, "#{key} is not waiting on anything."}
@@ -206,9 +206,9 @@ defmodule WardrikDaemon.CLI.Decisions do
     end
   end
 
-  # The CLI's session may read every agent.
-  defp parked_under(prefix, session) do
-    {:ok, parked} = Wardrik.agents_parked(session, prefix)
+  # The CLI's token allows every action on every agent.
+  defp parked_under(prefix, scope) do
+    {:ok, parked} = Wardrik.agents_parked(scope, prefix)
     for {id, waiting} <- parked, do: {id, Value.interrupt(waiting)}
   end
 end

@@ -116,7 +116,7 @@ defmodule WardrikDaemon.Test.Host do
 
   defp dictionary(test), do: Process.info(test, :dictionary) |> elem(1) |> Map.new()
 
-  # The suite's host, with the test's definitions, and grants read from them.
+  # The suite's host, with the test's definitions, and tokens issued from them.
   def host(%Agents{config: config} = agents) do
     store = Wardrik.Test.store()
 
@@ -136,7 +136,7 @@ defmodule WardrikDaemon.Test.Host do
         triggers: %WardrikTrigger.Deliveries{
           secrets: &WardrikDaemon.Secrets.for_agent(vault, &1, &2)
         },
-        grants: %WardrikDaemon.Grants{store: store, agents: agents}
+        issuer: %WardrikDaemon.Issuer{agents: agents}
     }
   end
 end

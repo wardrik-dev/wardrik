@@ -159,9 +159,9 @@ defmodule Wardrik.Agent.StateTest do
       State.started(state(), task(), run, Context.new(), System.monotonic_time())
     end
 
-    defp decider(principal, can) do
-      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.new!(org: "acme", user: "jon"), can)
-      Wardrik.Caller.new(principal: principal, grant: grant, host: Wardrik.Host.new())
+    defp decider(principal, roles) do
+      prefix = Wardrik.AgentID.Prefix.new!(org: "acme", user: "jon")
+      %Wardrik.Token{principal: principal, scope: [Wardrik.Role.bind(roles, prefix)]}
     end
 
     test "a turn takes the oldest sender's messages, up to the next sender's" do
@@ -198,24 +198,22 @@ defmodule Wardrik.Agent.StateTest do
       assert {:resume, %Run{sender: ^sender}, _turn, _at} = State.resume(waiting)
     end
 
-    test "the asker, or a grant to decide, decides the calls a turn waits on" do
+    test "the asker acting directly, or a token allowing it, decides the calls a turn waits on" do
       {waiting, _effects} = State.parked(asked_by(maria()), parked_turn())
+      agent = Wardrik.Principal.new(:agent, "acme/@jon/assistant")
+      asker = decider(maria(), [:reader])
 
-      assert State.decides?(waiting, decider(maria(), [:read]))
-      assert State.decides?(waiting, decider(jon(), [:decide]))
-      refute State.decides?(waiting, decider(jon(), [:read, :message]))
-      refute State.decides?(waiting, decider(nil, [:read]))
+      assert State.decides?(waiting, asker)
+      assert State.decides?(waiting, decider(jon(), [:approver]))
+      refute State.decides?(waiting, decider(jon(), [:reader, :messenger]))
+      refute State.decides?(waiting, Wardrik.Token.assume(asker, agent, scope: asker.scope))
     end
 
-    test "a turn nobody asked for is decided only by a grant to" do
+    test "a turn nobody asked for is decided only by a token allowing it" do
       {waiting, _effects} = State.parked(running(), parked_turn())
 
-      refute State.decides?(waiting, decider(nil, [:read]))
-
-      assert State.decides?(
-               waiting,
-               Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
-             )
+      refute State.decides?(waiting, decider(jon(), [:reader]))
+      assert State.decides?(waiting, Wardrik.Token.root(jon()))
     end
   end
 

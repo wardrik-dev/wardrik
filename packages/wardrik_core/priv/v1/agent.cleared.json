@@ -20,6 +20,9 @@
     },
     "actor": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    },
+    "assumed_by": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/assumed_by"
     }
   },
   "additionalProperties": false,

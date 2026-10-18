@@ -29,7 +29,6 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.Fleet
   alias Wardrik.Host
   alias Wardrik.Resource
-  alias Wardrik.Session
   alias WardrikConsole.Nodes
   alias WardrikDaemon.Boot
   alias WardrikDaemon.CLI.Agents
@@ -375,7 +374,7 @@ defmodule WardrikDaemon.CLI do
     opts =
       Keyword.merge(opts,
         by: by,
-        session: Session.root(host: host, principal: by),
+        as: Wardrik.as(host, by),
         config: WardrikDaemon.Host.config()
       )
 
@@ -580,16 +579,16 @@ defmodule WardrikDaemon.CLI do
   # waits for.
   defp waiting, do: Cluster.waiting(Boot.cluster(), Boot.store())
 
-  defp status(_words, opts), do: {:ok, WardrikDaemon.status(opts[:session].host, opts[:config])}
+  defp status(_words, opts), do: {:ok, WardrikDaemon.status(opts[:as].host, opts[:config])}
 
   defp nodes(_words, opts) do
-    with {:ok, nodes} <- Wardrik.deployment_nodes(opts[:session]),
+    with {:ok, nodes} <- Wardrik.deployment_nodes(opts[:as]),
          do: {:ok, Resource.nodes(nodes)}
   end
 
   defp reload(_words, opts) do
-    with {:ok, _reloaded} <- Wardrik.deployment_reload(opts[:session]),
-         do: {:ok, WardrikDaemon.status(opts[:session].host, opts[:config])}
+    with {:ok, _reloaded} <- Wardrik.deployment_reload(opts[:as]),
+         do: {:ok, WardrikDaemon.status(opts[:as].host, opts[:config])}
   end
 
   defp audit_page(_words, opts) do
@@ -599,7 +598,7 @@ defmodule WardrikDaemon.CLI do
       do:
         with(
           {:ok, read} <-
-            Wardrik.deployment_audit(opts[:session], after: opts[:after] || 0, limit: limit),
+            Wardrik.deployment_audit(opts[:as], after: opts[:after] || 0, limit: limit),
           do: {:ok, %{"changes" => Enum.map(read, & &1.event)}}
         ),
       else: {:error, "--limit is a number from 1 to 500"}
@@ -645,20 +644,20 @@ defmodule WardrikDaemon.CLI do
   defp ask(words, opts), do: if(opts[:no_wait], do: asked(words, opts), else: :live)
 
   defp asked([key | words], opts) do
-    with {:ok, _message} <- asking(key, words, opts[:session]), do: {:ok, "Asked #{key}."}
+    with {:ok, _message} <- asking(key, words, opts[:as]), do: {:ok, "Asked #{key}."}
   end
 
-  defp asking(key, words, session), do: Wardrik.agent_ask(session, key, Enum.join(words, " "))
+  defp asking(key, words, scope), do: Wardrik.agent_ask(scope, key, Enum.join(words, " "))
 
   defp answer_followed([key | words], opts, terminal) do
-    if match?(%{state: :parked}, Agent.status(key, host: opts[:session].host)) do
+    if match?(%{state: :parked}, Agent.status(key, host: opts[:as].host)) do
       Terminal.puts(
         terminal,
         Owl.Data.tag("#{key} is waiting on a person, so this waits behind it.", @faint)
       )
     end
 
-    case Follow.turn(key, terminal, fn -> sent(asking(key, words, opts[:session])) end) do
+    case Follow.turn(key, terminal, fn -> sent(asking(key, words, opts[:as])) end) do
       {:error, %Error{} = error} -> {:error, error}
       :parked -> {:ok, Owl.Data.tag("wardrik approve #{key}, or deny, decides it.", @faint)}
       :failed -> :error
@@ -670,7 +669,7 @@ defmodule WardrikDaemon.CLI do
   defp sent({:error, error}), do: {:error, error}
 
   defp watch([key], opts, terminal) do
-    case {Fleet.lookup(key, host: opts[:session].host), opts[:json]} do
+    case {Fleet.lookup(key, host: opts[:as].host), opts[:json]} do
       {nil, _json?} ->
         {:error, no_agent(key)}
 
@@ -705,12 +704,12 @@ defmodule WardrikDaemon.CLI do
   end
 
   defp snapshot([key], opts) do
-    with {:ok, snapshot} <- Wardrik.agent_read(opts[:session], key),
+    with {:ok, snapshot} <- Wardrik.agent_read(opts[:as], key),
          do: {:ok, Resource.snapshot(snapshot)}
   end
 
   defp clear([key], opts) do
-    with {:ok, _snapshot} <- Wardrik.agent_clear(opts[:session], key),
+    with {:ok, _snapshot} <- Wardrik.agent_clear(opts[:as], key),
          do: {:ok, "Cleared #{key}'s conversation."}
   end
 

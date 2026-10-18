@@ -4,12 +4,13 @@ defmodule Wardrik.ServersTest do
 
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
-  alias Wardrik.Grant
   alias Wardrik.Host
   alias Wardrik.Principal
+  alias Wardrik.Role
+  alias Wardrik.Scope
   alias Wardrik.Servers.Server
-  alias Wardrik.Session
   alias Wardrik.Test.Audit
+  alias Wardrik.Token
 
   # Keeps the servers it is given in the test's process, as :added, a map
   # of owner to their servers; the functions run in the test's process.
@@ -66,13 +67,12 @@ defmodule Wardrik.ServersTest do
   @acme Prefix.parse!("acme/")
   @docs %Server{name: "docs", url: "https://docs.example.com/mcp", auth: "none"}
 
-  defp session(scope, can \\ Grant.actions(), host \\ Host.new(servers: %Added{})) do
-    {:ok, grant} = Grant.new(Prefix.parse!(scope), can)
-    Session.new(host: host, principal: @jon, grant: grant)
+  defp scope(prefix, can \\ [:owner], host \\ Host.new(servers: %Added{})) do
+    Scope.new(host, %Token{principal: @jon, scope: [Role.bind(can, Prefix.parse!(prefix))]})
   end
 
-  test "an owner's servers are added, listed and removed, each change recorded as the session's" do
-    jon = session("acme/@jon/")
+  test "an owner's servers are added, listed and removed, each change recorded as the scope's" do
+    jon = scope("acme/@jon/")
     mine = Prefix.parse!("acme/@jon/")
 
     assert {:ok, %Server{name: "docs", authorization: nil}} =
@@ -99,7 +99,7 @@ defmodule Wardrik.ServersTest do
     }
 
     assert {:ok, %Server{name: "crm", authorization: %{url: "https://auth.example.com/crm"}}} =
-             Wardrik.servers_add(session("acme/"), @acme, crm)
+             Wardrik.servers_add(scope("acme/"), @acme, crm)
 
     assert_received {:add, @acme, "crm", fields, @jon}
 
@@ -111,24 +111,24 @@ defmodule Wardrik.ServersTest do
   end
 
   test "the seam's refusal is the function's" do
-    {:ok, _added} = Wardrik.servers_add(session("acme/"), @acme, @docs)
+    {:ok, _added} = Wardrik.servers_add(scope("acme/"), @acme, @docs)
 
-    assert {:error, %Error{type: :conflict}} = Wardrik.servers_add(session("acme/"), @acme, @docs)
+    assert {:error, %Error{type: :conflict}} = Wardrik.servers_add(scope("acme/"), @acme, @docs)
 
     assert {:error, %Error{type: :not_found}} =
-             Wardrik.servers_remove(session("acme/"), @acme, "nothing")
+             Wardrik.servers_remove(scope("acme/"), @acme, "nothing")
   end
 
-  test "adding needs define, and a session reaches its own owner alone" do
+  test "adding needs define, and a scope reaches its own owner alone" do
     assert {:error, %Error{type: :forbidden}} =
-             Wardrik.servers_add(session("acme/", [:read]), @acme, @docs)
+             Wardrik.servers_add(scope("acme/", [:reader]), @acme, @docs)
 
     assert {:error, %Error{type: :not_found}} =
-             Wardrik.servers_add(session("acme/"), Prefix.parse!("globex/"), @docs)
+             Wardrik.servers_add(scope("acme/"), Prefix.parse!("globex/"), @docs)
   end
 
   test "a host that lets nobody add servers answers unsupported" do
     assert {:error, %Error{type: :unsupported}} =
-             Wardrik.servers_list(session("acme/", Grant.actions(), Host.new()), @acme)
+             Wardrik.servers_list(scope("acme/", [:owner], Host.new()), @acme)
   end
 end

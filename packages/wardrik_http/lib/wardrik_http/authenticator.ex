@@ -5,10 +5,10 @@ defprotocol WardrikHTTP.Authenticator do
 
   `WardrikHTTP.Listener` takes one as `:authenticator`, a struct implementing
   this protocol, and uses `%WardrikHTTP.Tokens{}` over its host's store where
-  none is given. Every route runs on the caller it answers: its grant decides
-  what the request may do, and its principal is whom a decision is recorded
-  as made by. A sign-in elsewhere answers a caller the same way, with a grant
-  it chose for the person who signed in:
+  none is given. Every route runs on the caller it answers: its token
+  decides what the request may do, and its principal is whom a change is
+  recorded as made by. A sign-in elsewhere answers a caller the same way,
+  with a token it chose for the person who signed in:
 
       defmodule MyApp.Session do
         defstruct [:secret]

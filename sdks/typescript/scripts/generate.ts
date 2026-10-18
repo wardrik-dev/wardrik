@@ -56,6 +56,9 @@ const resources: Record<string, string> = {
   "nodes.json": "Nodes",
   "server_added.json": "ServerAdded",
   "servers.json": "Servers",
+  "token.json": "Token",
+  "token_issued.json": "TokenIssued",
+  "tokens.json": "Tokens",
   "trigger.json": "Trigger",
   "trigger_definition.json": "TriggerDefinition",
 };

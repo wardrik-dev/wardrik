@@ -18,32 +18,22 @@ defmodule WardrikHTTP.Tokens do
 
   @type t() :: %__MODULE__{store: WardrikStore.t()}
 
-  # The grant is one already, so only the store failing stops the token
-  # being made.
+  # The token is one already, so only the store failing stops it being
+  # kept.
   @doc false
   def create(%__MODULE__{store: store}, name, opts) do
-    grant = Keyword.fetch!(opts, :grant)
-
-    {:ok, secret, token} =
-      Token.create(store, name,
-        scope: grant.scope,
-        can: grant.can,
-        ceiling: grant.ceiling,
-        for: opts[:for]
-      )
-
-    {:ok, %{kept(token) | secret: secret}}
+    {:ok, secret, token} = Token.create(store, name, token: Keyword.fetch!(opts, :token))
+    {:ok, %{entry(token) | secret: secret}}
   end
 
   @doc false
-  def list(%__MODULE__{store: store}), do: store |> Token.list() |> Enum.map(&kept/1)
+  def list(%__MODULE__{store: store}), do: store |> Token.list() |> Enum.map(&entry/1)
 
-  defp kept(%Token{} = token) do
-    %Wardrik.Tokens.Token{
+  defp entry(%Token{} = token) do
+    %Wardrik.Tokens.Entry{
       id: token.id,
       name: token.name,
-      grant: token.grant,
-      principal: token.principal,
+      token: token.token,
       created_at: token.created_at
     }
   end

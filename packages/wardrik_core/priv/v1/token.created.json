@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:token.created",
   "title": "wardrik.token.created",
-  "description": "Someone made an API token.",
+  "description": "Someone made an API token, which acts for whoever made it.",
   "type": "object",
   "properties": {
     "token": {
@@ -21,28 +21,36 @@
         "name"
       ]
     },
-    "scope": {
-      "type": "string",
-      "description": "The prefix of the agents it reaches: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent."
+    "principal": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
     },
-    "can": {
+    "statements": {
       "type": "array",
       "items": {
-        "type": "string"
+        "$ref": "urn:wardrik:schema:v1:defs#/$defs/statement"
       },
-      "description": "What it may do to them."
+      "description": "What it allows, on what; anything none states is denied."
     },
-    "for": {
-      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    "policy": {
+      "type": "string",
+      "description": "The policy every agent it defines runs under, ahead of the agent's own, by its name: what IAM calls a permissions boundary. Absent where it names none."
+    },
+    "expires": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When it stops working."
     },
     "actor": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    },
+    "assumed_by": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/assumed_by"
     }
   },
   "additionalProperties": false,
   "required": [
     "token",
-    "scope",
-    "can"
+    "principal",
+    "statements"
   ]
 }

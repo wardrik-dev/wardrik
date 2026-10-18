@@ -91,16 +91,15 @@ defmodule WardrikChannel do
 
   Someone writing in a room, or pressing a button, is the
   `Wardrik.Principal` `principal/2` makes of them, a `WardrikChannel.Member`
-  of their workspace, and may do
-  what the host's
-  `Wardrik.Grants` says that principal may, such as message the agent a
-  room answers with, or decide what an agent asks: `Wardrik.Host.caller/2`,
-  on the host its context carries, finds them a grant, and they act through
-  `Wardrik` as a `Wardrik.Session` holding it. A host whose grants
-  give someone nothing has every room ignore what they post, saying why. A
-  host that grants by what `config.yaml` names people, as a channel's
-  approvers, asks `include?/3` with the channel's adapter and options, and
-  `WardrikChannel.Approvers` whether they decide.
+  of their workspace, and may do what the token the host's
+  `Wardrik.Issuer` issues that principal allows, such as message the agent
+  a room answers with, or decide what an agent asks: they act through
+  `Wardrik` in the `Wardrik.Scope` `Wardrik.as/3` makes them on the host
+  its context carries. A host whose tokens allow someone nothing has every
+  room ignore what they post, saying why. A host that issues tokens by what
+  `config.yaml` names people, as a channel's approvers, asks `include?/3`
+  with the channel's adapter and options, and `WardrikChannel.Approvers`
+  whether they decide.
 
   ## Starting channels
 
@@ -345,9 +344,9 @@ defmodule WardrikChannel do
   agent does not answer.
 
   The message is the sender's, asked with `Wardrik.agent_ask/4` as
-  every surface asks an agent, holding what the host's `Wardrik.Grants`
-  give them: a room says which agent answers, and the sender's grants
-  whether they may reach it. One who may not is told so, and the agent is
+  every surface asks an agent, with the token the host's `Wardrik.Issuer`
+  issues them: a room says which agent answers, and the sender's token
+  whether they may ask it. One who may not is told so, and the agent is
   neither started nor asked.
   """
   @spec received(Workspace.t(), Inbound.t()) ::
@@ -368,11 +367,11 @@ defmodule WardrikChannel do
   # Whether the agent waited on a person is asked before the message, so a
   # turn the message starts, and parks, is not taken for one already waiting.
   defp ask(%Room{workspace: workspace} = room, inbound, thread, agent) do
-    with {:ok, session} <- reached(workspace.context, inbound.sender, agent),
+    with {:ok, scope} <- reached(workspace.context, inbound.sender, agent),
          {:ok, _pid} <- Workspace.start(workspace, agent),
          :ok <- Replies.follow(room, thread, agent),
-         waiting? = match?([_ | _], Wardrik.Agent.parked(agent, host: session.host)),
-         {:ok, _message} <- Wardrik.agent_ask(session, agent, inbound.text, id: inbound.id) do
+         waiting? = match?([_ | _], Wardrik.Agent.parked(agent, host: scope.host)),
+         {:ok, _message} <- Wardrik.agent_ask(scope, agent, inbound.text, id: inbound.id) do
       if waiting?, do: Replies.remind(room, thread)
       {:asked, agent}
     else
@@ -383,9 +382,11 @@ defmodule WardrikChannel do
   end
 
   defp reached(%Context{host: host}, sender, agent) do
-    case Wardrik.Host.caller(host, principal: sender, subject: agent) do
-      {:ok, caller} ->
-        {:ok, Wardrik.Session.new(host: host, principal: sender, grant: caller.grant)}
+    scope = Wardrik.as(host, sender)
+
+    case Wardrik.Token.authorize(scope.token, "agent.ask", agent) do
+      :ok ->
+        {:ok, scope}
 
       {:error, _unreached} ->
         {:error, "#{AgentID.put_external_id(agent, nil)} is not one you may reach from here."}

@@ -8,7 +8,7 @@ defmodule WardrikHTTP do
   `http` says otherwise. Every request presents a token, which
   `WardrikHTTP.Token` makes and `WardrikHTTP.Tokens` checks, unless the
   listener is given another `WardrikHTTP.Authenticator`, such as a sign-in,
-  which answers the caller's `Wardrik.Grant` and who they are the same way.
+  which answers the caller's `Wardrik.Token` the same way.
 
   ## The host
 

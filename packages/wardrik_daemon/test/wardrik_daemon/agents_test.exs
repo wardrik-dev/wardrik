@@ -41,12 +41,13 @@ defmodule WardrikDaemon.AgentsTest do
     )
   end
 
-  defp grant(org) when is_binary(org), do: grant(Prefix.new!(org: org))
+  defp token(org) when is_binary(org), do: token(Prefix.new!(org: org))
 
-  defp grant(scope) do
-    {:ok, grant} = Wardrik.Grant.new(scope)
-    grant
-  end
+  defp token(prefix),
+    do: %Wardrik.Token{
+      principal: Wardrik.Principal.new(:user, "jon"),
+      scope: [Wardrik.Role.bind([:owner], prefix)]
+    }
 
   defp write_policy(%{dir: dir}, name, yaml) do
     File.mkdir_p!(Path.join(dir, "policies"))
@@ -149,11 +150,11 @@ defmodule WardrikDaemon.AgentsTest do
     assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"), host: Host.host())
   end
 
-  test "an org's ceiling holds its agents ahead of their own policy", %{org: org} = context do
+  test "an org's policy holds its agents ahead of their own", %{org: org} = context do
     write_policy(context, "team", "deny: [run_lua]\nbudget:\n  usd: 5.0\n")
     write_policy(context, "careful", "ask: [web_search]\nbudget:\n  tokens: 500\n")
     write(context, "alpha", "policy: careful\n")
-    ceiling(org, "team")
+    org_policy(org, "team")
 
     Host.start_agents(context.dir)
 
@@ -175,20 +176,20 @@ defmodule WardrikDaemon.AgentsTest do
     assert %{} = Agent.status(alpha, host: Host.host())
   end
 
-  test "an org held to a ceiling policies/ does not hold runs none of its agents",
+  test "an org held to a policy policies/ does not hold runs none of its agents",
        %{org: org} = context do
     write(context, "alpha", "")
-    ceiling(org, "nowhere")
+    org_policy(org, "nowhere")
 
     Host.start_agents(context.dir)
 
     assert [{_alpha, {:error, message}}] = Agents.files(Host.agents())
 
     assert message =~
-             "config.yaml holds #{org}'s agents to the ceiling nowhere, which is not a policy in policies/"
+             "config.yaml holds #{org}'s agents to the policy nowhere, which is not a policy in policies/"
   end
 
-  defp ceiling(org, name) do
+  defp org_policy(org, name) do
     own = Keyword.get(Host.sections(), WardrikDaemon, [])
     Host.put_section(WardrikDaemon, Keyword.put(own, :ceilings, %{org => name}))
   end
@@ -224,7 +225,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, _spec} =
              Agents.put(Host.agents(), beta,
                definition: %{"notify" => "audit"},
-               grant: grant(org)
+               token: token(org)
              )
 
     assert %{^beta => %WardrikNotify.Route{targets: [:audit]}} = routes.()
@@ -233,13 +234,13 @@ defmodule WardrikDaemon.AgentsTest do
     start_supervised!({WardrikNotify.Supervisor, notify})
     assert %{^beta => %WardrikNotify.Route{targets: [:audit]}} = routes.()
 
-    assert {:ok, _spec} = Agents.put(Host.agents(), beta, definition: %{}, grant: grant(org))
+    assert {:ok, _spec} = Agents.put(Host.agents(), beta, definition: %{}, token: token(org))
     refute is_map_key(routes.(), beta)
 
     notify_on = %{"notify" => %{"to" => "audit", "on" => ["finished"]}}
 
     assert {:ok, _spec} =
-             Agents.put(Host.agents(), beta, definition: notify_on, grant: grant(org))
+             Agents.put(Host.agents(), beta, definition: notify_on, token: token(org))
 
     assert %{^beta => %WardrikNotify.Route{on: [:finished]}} = routes.()
 
@@ -256,7 +257,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, spec} =
              Agents.put(Host.agents(), defined,
                definition: %{"policy" => "careful"},
-               grant: grant(org)
+               token: token(org)
              )
 
     assert [%Wardrik.Hook{name: "careful", module: WardrikPolicy}] = spec.hooks
@@ -267,7 +268,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:error, message} =
              Agents.put(Host.agents(), defined,
                definition: %{"policy" => "lax"},
-               grant: grant(org)
+               token: token(org)
              )
 
     assert message =~ "policy names lax"
@@ -289,7 +290,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, spec} =
              Agents.put(Host.agents(), defined,
                definition: %{"tools" => ["crm/*"]},
-               grant: grant(org)
+               token: token(org)
              )
 
     assert Wardrik.LLM.Config.tools(spec.config) == []
@@ -320,7 +321,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, _spec} =
              Agents.put(Host.agents(), defined,
                definition: fields,
-               grant: grant(Prefix.new!(org: org, user: "jon"))
+               token: token(Prefix.new!(org: org, user: "jon"))
              )
   end
 
@@ -330,29 +331,35 @@ defmodule WardrikDaemon.AgentsTest do
     fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"team" => org}}}
 
     assert {:error, message} =
-             Agents.put(Host.agents(), defined, definition: fields, grant: grant(Prefix.all()))
+             Agents.put(Host.agents(), defined, definition: fields, token: token(Prefix.all()))
 
     assert message ==
              "workspace shared team: #{org} belongs to #{org}/, which #{defined} is not under"
   end
 
-  test "an agent the HTTP API defined is held to the ceiling of the token that sent it",
+  test "an agent the HTTP API defined is held to the policy its token names, which must be one",
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")
+    write_policy(context, "strict", "deny: [\"*\"]\n")
     Host.start_agents(context.dir)
     defined = AgentID.parse!("#{org}/defined")
 
-    ceiling = [
-      Wardrik.Hook.new("ceiling", WardrikPolicy, WardrikPolicy.decode!(%{"deny" => ["*"]}))
-    ]
-
-    {:ok, grant} = Wardrik.Grant.new(Prefix.new!(org: org), Wardrik.Grant.actions(), ceiling)
-
     {:ok, _spec} =
-      Agents.put(Host.agents(), defined, definition: %{"policy" => "careful"}, grant: grant)
+      Agents.put(Host.agents(), defined,
+        definition: %{"policy" => "careful"},
+        token: %{token(org) | policy: "strict"}
+      )
 
     assert {:ok, spec} = Agents.spec(Host.agents(), defined)
-    assert [%{name: "ceiling"}, %{name: "careful"}] = spec.hooks
+    assert [%{name: "policy/strict"}, %{name: "careful"}] = spec.hooks
+
+    assert {:error, message} =
+             Agents.put(Host.agents(), defined,
+               definition: %{},
+               token: %{token(org) | policy: "missing"}
+             )
+
+    assert message =~ "names the policy missing, which is not a policy in policies/"
   end
 
   test "a conversation runs on the definition of its agent, in the agent's tree",
@@ -399,7 +406,7 @@ defmodule WardrikDaemon.AgentsTest do
     defined = AgentID.parse!("#{org}/defined")
 
     {:ok, spec} =
-      Agents.put(Host.agents(), defined, definition: %{"policy" => "careful"}, grant: grant(org))
+      Agents.put(Host.agents(), defined, definition: %{"policy" => "careful"}, token: token(org))
 
     {:ok, _pid} = Fleet.put(spec)
 
@@ -427,7 +434,7 @@ defmodule WardrikDaemon.AgentsTest do
     Host.start_agents(context.dir)
     defined = AgentID.parse!("#{org}/defined")
     fails = %{"retries" => %{"attempts" => 0, "on_exhausted" => "fail"}}
-    {:ok, spec} = Agents.put(Host.agents(), defined, definition: fails, grant: grant(org))
+    {:ok, spec} = Agents.put(Host.agents(), defined, definition: fails, token: token(org))
     {:ok, _pid} = Fleet.put(spec)
 
     # The store loses the agent, as a wiped one would, and keeps its definition.
@@ -484,7 +491,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert Agents.put(Host.agents(), AgentID.parse!("#{org}/alpha"),
              definition: %{},
-             grant: grant(org)
+             token: token(org)
            ) ==
              {:error, :conflict, message}
 
@@ -620,7 +627,7 @@ defmodule WardrikDaemon.AgentsTest do
       {:ok, spec} =
         Agents.put(Host.agents(), AgentID.parse!("#{org}/defined"),
           definition: %{"instructions" => "You help."},
-          grant: grant(org)
+          token: token(org)
         )
 
       {:ok, _pid} = Fleet.put(spec)

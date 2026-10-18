@@ -254,6 +254,35 @@ defmodule Wardrik.Event.Codec.Value do
     |> put("name", Principal.name(principal))
   end
 
+  @doc "Who acted for someone, first to last, or `nil` where nobody did."
+  @spec principals([Wardrik.Principal.t()]) :: [map()] | nil
+  def principals([]), do: nil
+  def principals(principals), do: Enum.map(principals, &principal/1)
+
+  @doc """
+  `token`, never a secret: whom it acts for, what each of its statements
+  allows on what, the policy it names, and when it expires, where it does.
+  """
+  @spec token(Wardrik.Token.t()) :: map()
+  def token(%Wardrik.Token{} = token) do
+    %{
+      "principal" => principal(token.principal),
+      "statements" =>
+        for(
+          statement <- token.scope,
+          do: %{
+            "actions" => statement.actions,
+            "resources" => Enum.map(statement.resources, &to_string/1)
+          }
+        )
+    }
+    |> put("policy", if(token.policy != :none, do: token.policy))
+    |> put("expires", expires(token.expires))
+  end
+
+  defp expires(:infinity), do: nil
+  defp expires(at), do: DateTime.to_iso8601(at)
+
   @doc """
   A term as JSON can hold it: maps with string keys, lists, strings, numbers,
   booleans and `nil`. An atom becomes its name, a struct its fields, a tuple a

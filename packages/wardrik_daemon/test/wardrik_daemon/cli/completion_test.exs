@@ -35,7 +35,7 @@ defmodule WardrikDaemon.CLI.CompletionTest do
 
   test "an option is one the command takes, --json where it answers with JSON" do
     assert complete(["token", "create", "dev", "--"]) ==
-             ~w(--scope --all --can --policy --unlimited --for --help)
+             ~w(--scope --all --role --policy --expires --help)
 
     assert complete(["history", "--j"]) == ["--json"]
     assert complete(["ask", "acme/triage", "--no"]) == ["--no-wait"]

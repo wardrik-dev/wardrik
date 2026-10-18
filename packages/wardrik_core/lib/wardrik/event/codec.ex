@@ -53,7 +53,8 @@ defmodule Wardrik.Event.Codec do
   ## Changes
 
   A `Wardrik.Audit` change is durable, at the root of a trace of its own,
-  and its data says who made it, as `actor`, where that is known.
+  and its data says who made it, as `actor`, where that is known, and who
+  acted for them, first to last, as `assumed_by`, where anyone did.
   """
 
   alias Wardrik.AgentID.Prefix
@@ -112,7 +113,12 @@ defmodule Wardrik.Event.Codec do
 
   def encode(%Audit{} = audit, opts) do
     {type, subject, data} = change(audit.action)
-    data = Value.put(data, "actor", Value.principal(audit.by))
+
+    data =
+      data
+      |> Value.put("actor", Value.principal(audit.by))
+      |> Value.put("assumed_by", Value.principals(audit.assumed_by))
+
     {:ok, envelope(audit, source(:audit), audit.trace, {type, subject, data}, opts)}
   end
 
@@ -457,17 +463,10 @@ defmodule Wardrik.Event.Codec do
   defp change({:room_unbound, channel, room}),
     do: {"room.unbound", "rooms/#{channel}/#{room}", %{"channel" => channel, "room" => room}}
 
-  defp change({:token_created, id, name, grant, for}) do
-    data =
-      %{
-        "token" => %{"id" => id, "name" => name},
-        "scope" => to_string(grant.scope),
-        "can" => Enum.map(grant.can, &to_string/1)
-      }
-      |> Value.put("for", Value.principal(for))
-
-    {"token.created", "tokens/" <> id, data}
-  end
+  defp change({:token_created, id, name, token}),
+    do:
+      {"token.created", "tokens/" <> id,
+       Map.put(Value.token(token), "token", %{"id" => id, "name" => name})}
 
   defp change({:token_revoked, id}),
     do: {"token.revoked", "tokens/" <> id, %{"token" => %{"id" => id}}}

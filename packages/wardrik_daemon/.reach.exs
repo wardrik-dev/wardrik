@@ -4,7 +4,7 @@
 # internals, which only core calls.
 [
   layers: [
-    daemon: ["WardrikDaemon", "WardrikDaemon.*", "Wardrik.Definition.WardrikDaemon.Agents", "Wardrik.Grants.WardrikDaemon.Grants"],
+    daemon: ["WardrikDaemon", "WardrikDaemon.*", "Wardrik.Definition.WardrikDaemon.Agents", "Wardrik.Issuer.WardrikDaemon.Issuer"],
     docs: "Mix.Tasks.Wardrik.Docs",
     # `mix wardrik`, an agent and the TUI on this node, and the tools it is
     # tried with, compiled in dev alone.
@@ -14,7 +14,7 @@
   boundaries: [
     public: [
       "Wardrik",
-      "Wardrik.Session",
+      "Wardrik.Scope",
       "Wardrik.Core",
       "Wardrik.Agent",
       "Wardrik.Agent.Activity",
@@ -28,7 +28,6 @@
       "Wardrik.Audit",
       "Wardrik.Call",
       "Wardrik.Call.Ask",
-      "Wardrik.Caller",
       "Wardrik.Catalog.Agents",
       "Wardrik.Catalog.Self",
       "Wardrik.Compaction",
@@ -51,8 +50,8 @@
       "Wardrik.Event.Log.Entry",
       "Wardrik.Fleet",
       "Wardrik.Fleet.Member",
-      "Wardrik.Grant",
-      "Wardrik.Grants",
+      "Wardrik.Issuer",
+      "Wardrik.Issuer.None",
       "Wardrik.Hook",
       "Wardrik.Host",
       "Wardrik.LLM.Config",
@@ -70,17 +69,20 @@
       "Wardrik.Ledger.Store",
       "Wardrik.Principal",
       "Wardrik.Resource",
+      "Wardrik.Role",
       "Wardrik.Run",
       "Wardrik.Servers",
       "Wardrik.Servers.Key",
       "Wardrik.Servers.Server",
       "Wardrik.Servers.None",
+      "Wardrik.Statement",
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",
       "Wardrik.TimeZone",
+      "Wardrik.Token",
       "Wardrik.Tokens",
-      "Wardrik.Tokens.Token",
+      "Wardrik.Tokens.Entry",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
       "Wardrik.Tool.Result",

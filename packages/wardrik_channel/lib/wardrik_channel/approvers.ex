@@ -11,7 +11,7 @@ defprotocol WardrikChannel.Approvers do
           approvers: ["@maria", "ana@example.com"]   # these people
           # approvers: anyone                        # anyone in the channel
 
-  and its `Wardrik.Grants` asks `decides?/2` whether someone decides, with
+  and its `Wardrik.Issuer` asks `decides?/2` whether someone decides, with
   whether names include them, as the channel's adapter says, through
   `WardrikChannel.include?/3`. Naming nobody, a channel's approvers leave
   who decides to the host.

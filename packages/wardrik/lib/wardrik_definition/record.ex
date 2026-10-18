@@ -22,27 +22,39 @@ defmodule WardrikDefinition.Record do
   @ns :definitions
 
   @enforce_keys [:id, :fields, :source]
-  defstruct [:id, :fields, :source]
+  defstruct [:id, :fields, :source, held: []]
 
   @type t() :: %__MODULE__{
           id: AgentID.t(),
           fields: WardrikDefinition.fields(),
-          source: WardrikDefinition.source()
+          source: WardrikDefinition.source(),
+          held: [Wardrik.Hook.t()]
         }
 
   @doc """
   The record the definition `:fields` writes for the agent `id`, written by
-  `:source`. What its settings say is checked as `spec/3` builds a spec from
-  it, the trees its workspace shares against the scope of a grant that sent
-  it among them.
+  `:source`, held to the hooks `:held` gives, none unless given. What its settings say is checked as `spec/3` builds a spec from
+  it, the trees its workspace shares against what the token that sent it
+  reaches, where one did.
   """
-  @spec define(Context.t(), AgentID.t(), fields: map(), source: WardrikDefinition.source()) ::
-          {:ok, t()} | {:error, String.t()}
+  @spec define(Context.t(), AgentID.t(),
+          fields: map(),
+          source: WardrikDefinition.source(),
+          held: [Wardrik.Hook.t()]
+        ) :: {:ok, t()} | {:error, String.t()}
   def define(%Context{} = context, %AgentID{} = id, opts) do
+    opts = Keyword.validate!(opts, [:fields, :source, held: []])
     fields = Keyword.fetch!(opts, :fields)
 
     with :ok <- WardrikDefinition.accept(id, fields, context),
-         do: {:ok, %__MODULE__{id: id, fields: fields, source: Keyword.fetch!(opts, :source)}}
+         do:
+           {:ok,
+            %__MODULE__{
+              id: id,
+              fields: fields,
+              source: Keyword.fetch!(opts, :source),
+              held: opts[:held]
+            }}
   end
 
   @doc """

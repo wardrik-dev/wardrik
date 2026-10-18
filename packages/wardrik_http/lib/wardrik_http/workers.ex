@@ -9,7 +9,7 @@ defmodule WardrikHTTP.Workers do
       Wardrik.LLM.Config.new(tools: [{WardrikHTTP.Workers, id}])
 
   An agent file or definition names it as `workers/*`. The agent is offered
-  the tools of every connected worker whose credential may `:serve` it, each
+  the tools of every connected worker whose token allows `agent.serve` on it, each
   named `workers__<name>`, as an MCP server's tools are named for their
   server, so a policy governs them as `workers/*` or `workers/refund_order`.
 
@@ -75,7 +75,6 @@ defmodule WardrikHTTP.Workers do
 
   alias Wardrik.AgentID
   alias Wardrik.Tool.Result
-  alias WardrikHTTP.Access
   alias WardrikHTTP.Caller
   alias WardrikHTTP.Worker.Tool
 
@@ -230,7 +229,7 @@ defmodule WardrikHTTP.Workers do
   defp offered(id) do
     offers =
       for {worker, %{caller: caller, tools: tools} = joined} <- Group.members(__MODULE__, @group),
-          Access.authorize(caller.grant, :serve, id) == :ok,
+          Wardrik.Token.authorize(caller.token, "agent.serve", id) == :ok,
           tool <- tools,
           do:
             Map.merge(Map.take(joined, [:since, :timeout, :trusted]), %{

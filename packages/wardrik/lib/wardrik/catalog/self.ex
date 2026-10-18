@@ -10,7 +10,7 @@ defmodule Wardrik.Catalog.Self do
   Each entry of `Wardrik.Catalog.agent/0` is a tool named `self_` and the
   rest of its name, `.` written `_`, as `self_trigger_set` for
   `agent.trigger.set`. A call acts on the agent, its conversation's agent
-  where a conversation calls it, granted no further; see
+  where a conversation calls it, and reaches no further; see
   `Wardrik.Catalog.Tools` for how it runs.
   """
 

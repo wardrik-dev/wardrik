@@ -5,7 +5,6 @@ defmodule WardrikHTTP.AccessTest do
 
   import ExUnit.CaptureLog
 
-  alias Wardrik.Grant
   alias WardrikHTTP.Access
   alias WardrikHTTP.Access.Cache
 
@@ -56,37 +55,6 @@ defmodule WardrikHTTP.AccessTest do
     [{^ref, value, _at}] = :ets.lookup(Cache, ref)
     true = :ets.insert(Cache, {ref, value, System.monotonic_time(:millisecond) - @sweep})
     :ok = Cache.purge(@sweep)
-  end
-
-  describe "authorize/3" do
-    test "wants a grant that reaches the agent and allows the action" do
-      {:ok, reader} = Grant.new(Wardrik.AgentID.Prefix.parse!("acme/"), [:read])
-      {:ok, decider} = Grant.new(Wardrik.AgentID.Prefix.parse!("acme/@ops/"), [:decide])
-
-      assert :ok = Access.authorize(reader, :read, Wardrik.AgentID.parse!("acme/deploy"))
-
-      assert {:error, :forbidden} =
-               Access.authorize(reader, :decide, Wardrik.AgentID.parse!("acme/deploy"))
-
-      assert {:error, :not_found} =
-               Access.authorize(reader, :read, Wardrik.AgentID.parse!("acme/@ops/deploy"))
-
-      assert {:error, :not_found} =
-               Access.authorize(reader, :read, Wardrik.AgentID.parse!("globex/deploy"))
-
-      assert :ok =
-               Access.authorize(
-                 [reader, decider],
-                 :decide,
-                 Wardrik.AgentID.parse!("acme/@ops/deploy")
-               )
-
-      assert {:error, :forbidden} =
-               Access.authorize([reader, decider], :decide, Wardrik.AgentID.parse!("acme/x"))
-
-      assert {:error, :not_found} =
-               Access.authorize([], :read, Wardrik.AgentID.parse!("acme/@ops/deploy"))
-    end
   end
 
   test "a caller with no record holds nothing" do
