@@ -30,11 +30,11 @@ set -euo pipefail
 host=$(hostname -s)
 cookie=${WARDRIK_COOKIE:-wardrik}
 name=${WARDRIK_TMUX:-wardrik-cluster}
-sdk=$(cd "$(dirname "$0")/../packages/wardrik_sdk" && pwd -P)
+daemon=$(cd "$(dirname "$0")/../packages/wardrik_daemon" && pwd -P)
 
-# Each node runs the package that has everything. Two of the three nodes are a
+# Each node runs `mix wardrik` in the daemon, which has everything. Two of the three nodes are a
 # quorum, which is what lets one be killed.
-run="cd $sdk && env WARDRIK_CLUSTER_SIZE=3"
+run="cd $daemon && env WARDRIK_CLUSTER_SIZE=3"
 
 # Inside tmux this takes a window in the session already open; outside it, a
 # session of its own to attach to.

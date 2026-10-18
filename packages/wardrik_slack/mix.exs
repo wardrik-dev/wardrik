@@ -38,7 +38,6 @@ defmodule WardrikSlack.MixProject do
     [
       sibling(:wardrik_core),
       sibling(:wardrik),
-      sibling(:wardrik_notify),
       sibling(:wardrik_channel),
       {:req, "~> 0.7"},
       # Slack's Socket Mode.

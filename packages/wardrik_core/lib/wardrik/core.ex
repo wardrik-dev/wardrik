@@ -83,7 +83,7 @@ defmodule Wardrik.Core do
     Supervisor.init(children, strategy: :rest_for_one)
   end
 
-  @kept [:wardrik_core, :wardrik_store]
+  @kept [:wardrik_core]
 
   defp load_kept do
     for {app, _description, _vsn} <- Application.loaded_applications(),

@@ -1,7 +1,7 @@
 defprotocol Wardrik.Definition do
   @moduledoc """
   What every agent is, as the host keeps it: a definition as
-  `wardrik_protocol`'s `agent_definition.json` describes it, read into the
+  `WardrikProtocol`'s `agent_definition.json` describes it, read into the
   `Wardrik.Agent.Spec` it runs on, and the triggers beside it. It is where
   an agent's spec comes from as it is defined, created, started or woken.
 
@@ -79,7 +79,7 @@ defprotocol Wardrik.Definition do
 
   @doc """
   Sets the trigger `name` of the agent `id` to the `:fields` `opts` name, as
-  `wardrik_protocol`'s `trigger_definition.json` describes them: whether it
+  `WardrikProtocol`'s `trigger_definition.json` describes them: whether it
   was `:created` or `:changed`, and the trigger as `trigger.json` describes
   it. `{:error, :not_found}` is for an agent no definition is kept for, a
   message for fields that do not read.

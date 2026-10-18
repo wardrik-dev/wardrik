@@ -9,7 +9,7 @@ defmodule Wardrik.Catalog.Entry do
   The surface supplies the subject, the agent or the prefix the operation
   acts on, as it knows it: a path on HTTP, an argument on the command line,
   the calling agent for a tool. The input is the rest, as
-  `wardrik_protocol`'s `input_<name>.json` describes it, `.` written `_`:
+  `WardrikProtocol`'s `input_<name>.json` describes it, `.` written `_`:
 
       Wardrik.Operations.SetTrigger.new(~A"acme/triage", %{
         "name" => "sweep",

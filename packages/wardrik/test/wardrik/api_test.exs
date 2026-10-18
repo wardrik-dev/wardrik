@@ -12,18 +12,12 @@ defmodule Wardrik.APITest do
   alias Wardrik.Test.AgentRunners
 
   setup_all do
-    dir = Path.join(System.tmp_dir!(), "wardrik-api-#{System.unique_integer([:positive])}")
-
     wardrik =
       Wardrik.new(
-        store: Wardrik.store(data_dir: dir),
+        store: Wardrik.Test.store(),
         grants: %Wardrik.OrgGrants{org: "acme"},
         context: Wardrik.context([])
       )
-
-    start_supervised!({Wardrik, wardrik})
-    :ok = DurableServer.Supervisor.wait_until_ready(Wardrik.Fleet, timeout: 10_000)
-    on_exit(fn -> File.rm_rf(dir) end)
 
     {:ok, root} = Wardrik.Grant.new(Prefix.all())
 

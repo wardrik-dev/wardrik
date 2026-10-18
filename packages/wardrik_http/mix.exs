@@ -53,7 +53,6 @@ defmodule WardrikHTTP.MixProject do
       {:plug, "~> 1.16"},
       {:websock_adapter, "~> 0.6.0"},
       # The schemas the tests check the API's answers against.
-      sibling(:wardrik_protocol),
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

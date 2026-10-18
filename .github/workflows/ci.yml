@@ -72,7 +72,7 @@ jobs:
     env:
       # The projects whose tests reach Postgres or an S3 service fail rather
       # than skip the tests that need them.
-      SERVICES: ${{ contains(matrix.only, 'test') && contains(fromJSON('["packages/wardrik_daemon", "packages/wardrik_ecto", "packages/wardrik_s3"]'), matrix.project) }}
+      SERVICES: ${{ contains(matrix.only, 'test') && contains(fromJSON('["packages/wardrik_daemon", "packages/wardrik"]'), matrix.project) }}
     steps:
       - uses: actions/checkout@v7
 

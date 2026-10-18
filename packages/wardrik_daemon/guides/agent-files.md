@@ -139,7 +139,7 @@ policy:
 ```
 
 Without one, every call the agent's tools allow may run, apart from a gated tool's, which waits on a
-person. See [Policies](`e:wardrik_policy:policies.html`) for what a policy holds.
+person. See [Policies](`e:wardrik:policies.html`) for what a policy holds.
 
 ## retries
 

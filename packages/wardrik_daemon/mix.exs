@@ -16,7 +16,7 @@ defmodule WardrikDaemon.MixProject do
       docs: docs(),
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
-        plt_add_apps: [:mix, :ex_unit, :wardrik_protocol],
+        plt_add_apps: [:mix, :ex_unit],
         plt_core_path: "priv/plts",
         plt_local_path: "priv/plts"
       ],
@@ -57,37 +57,24 @@ defmodule WardrikDaemon.MixProject do
       sibling(:wardrik_core),
       sibling(:wardrik),
       sibling(:wardrik_brave),
-      sibling(:wardrik_console),
-      sibling(:wardrik_definition),
-      sibling(:wardrik_ecto),
       sibling(:wardrik_http),
       sibling(:wardrik_lua),
       sibling(:wardrik_mcp),
-      sibling(:wardrik_notify),
       sibling(:wardrik_channel),
       sibling(:wardrik_oauth),
-      sibling(:wardrik_policy),
-      sibling(:wardrik_research),
-      sibling(:wardrik_s3),
-      sibling(:wardrik_trigger),
-      sibling(:wardrik_vault),
-      sibling(:wardrik_workspace),
       {:yaml_elixir, "~> 2.12"},
       {:owl, "~> 0.13"},
       # The store a daemon keeps where config.yaml names none.
       {:ekv, "~> 0.4.3"},
-      # Postgres, the store config.yaml may name instead, which wardrik_ecto
-      # leaves to the application.
+      # Postgres, the store config.yaml may name instead, which wardrik leaves
+      # to the application.
       {:ecto_sql, "~> 3.14"},
       {:postgrex, "~> 0.22.4"},
-      # What serves the TUI over SSH, where the release carries it.
-      {:termite_ssh, "~> 0.1.2", optional: true},
-      # The TUI the SSH tests serve, as a release that carries it does.
-      sibling(:wardrik_tui, only: :test),
-      # The schemas the docs task writes the event and resource references
-      # from, and the tests check definitions against; read as
-      # wardrik_definition compiles.
-      sibling(:wardrik_protocol, runtime: false),
+      # What serves the TUI over SSH.
+      {:termite_ssh, "~> 0.1.2"},
+      # The console the CLI prints with, and the TUI the SSH tests serve, as a
+      # release that carries it does.
+      sibling(:wardrik_tui),
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

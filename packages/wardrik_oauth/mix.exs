@@ -35,7 +35,7 @@ defmodule WardrikOAuth.MixProject do
   defp deps do
     [
       sibling(:wardrik_core),
-      sibling(:wardrik_vault),
+      sibling(:wardrik),
       {:group, "~> 0.2.1"},
       {:req, "~> 0.7"},
       {:bandit, "~> 1.8"},

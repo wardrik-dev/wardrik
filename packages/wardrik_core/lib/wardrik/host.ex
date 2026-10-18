@@ -74,7 +74,7 @@ defmodule Wardrik.Host do
   alias Wardrik.Grant
   alias Wardrik.Principal
 
-  defstruct store: WardrikStore.new(adapter: WardrikStore.None),
+  defstruct store: %WardrikStore.None{},
             definitions: %Wardrik.Definition.None{},
             connections: %Wardrik.Connections.None{},
             servers: %Wardrik.Servers.None{},

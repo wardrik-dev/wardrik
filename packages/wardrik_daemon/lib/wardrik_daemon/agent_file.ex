@@ -22,7 +22,7 @@ defmodule WardrikDaemon.AgentFile do
 
   The body of `PUT /v1/agents/{id}` is read under the same context, by
   `WardrikDaemon.Agents`, into a record whose source is the grant of the
-  token that sent it. `wardrik_protocol`'s `agent_definition.json` is its
+  token that sent it. `WardrikProtocol`'s `agent_definition.json` is its
   schema; the ID gives the agent's `name`, `org` and `user`. A definition's
   `tools` and `policy` name what the daemon ships or configures, never a
   module, and its `workspace` shares only the trees the scope of the token

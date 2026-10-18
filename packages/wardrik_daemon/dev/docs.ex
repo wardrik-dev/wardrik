@@ -5,7 +5,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
   `docs/src/content/docs/reference`, from what the code already says: the
   commands `WardrikDaemon.CLI.commands/0` lists, the guides the packages'
   docs carry as extras for `config.yaml`, agent files, policies and the HTTP
-  API, and the protocol's JSON Schemas in `packages/wardrik_protocol/priv/v1`.
+  API, and the protocol's JSON Schemas in `packages/wardrik_core/priv/v1`.
 
       mix wardrik.docs           write them
       mix wardrik.docs --check   fail where one is not what it would write
@@ -42,7 +42,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
       cli(),
       guide(:wardrik_daemon, "config.md", 2),
       guide(:wardrik_daemon, "agent-files.md", 3),
-      guide(:wardrik_policy, "policies.md", 4),
+      guide(:wardrik, "policies.md", 4),
       http(),
       events()
     ]
@@ -201,7 +201,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
       title,
       5,
       lead(body),
-      "packages/wardrik_http/guides/http-api.md and packages/wardrik_protocol/priv/v1",
+      "packages/wardrik_http/guides/http-api.md and packages/wardrik_core/priv/v1",
       [
         body,
         "\n\n## Resources\n\nThe bodies the routes take and answer with.\n\n",
@@ -227,7 +227,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
       "Events",
       6,
       "The events an agent publishes, as CloudEvents, and the data each carries.",
-      "packages/wardrik_protocol/priv/v1",
+      "packages/wardrik_core/priv/v1",
       [
         "Every event is a CloudEvent: the envelope below, with the event's own data under `data`.\n\n",
         "## The envelope\n\n",

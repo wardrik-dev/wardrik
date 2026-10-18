@@ -1,6 +1,6 @@
 defmodule WardrikHTTP.OpenAPI do
   @moduledoc """
-  `wardrik_protocol`'s `openapi.json`, read for the suite: the operation a
+  `WardrikProtocol`'s `openapi.json`, read for the suite: the operation a
   request is, and whether an answer is one it lists.
 
   `attach/1` adds a response step to a `Req` client that checks every answer

@@ -8,7 +8,7 @@ defmodule WardrikHTTP.Router do
   `Wardrik.Session` holding their grant: each route calls one of its
   functions, which checks the grant and records each change in
   `Wardrik.Audit`, and answers what it answered as `Wardrik.Resource` shows
-  it, and each `Wardrik.Error` with its status. `wardrik_protocol`'s
+  it, and each `Wardrik.Error` with its status. `WardrikProtocol`'s
   `openapi.json` is every route, its parameters and its answers. An agent outside the caller's scope is
   answered as one that does not exist, `404`, and one inside it the caller
   may not act on so, `403`. A stream of events, and a worker's socket, hold

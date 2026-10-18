@@ -523,7 +523,7 @@ defmodule Wardrik do
   # -- triggers -------------------------------------------------------------------
 
   @doc """
-  Sets `agent`'s trigger `name` to `fields`, as `wardrik_protocol`'s
+  Sets `agent`'s trigger `name` to `fields`, as `WardrikProtocol`'s
   `trigger_definition.json` describes one, and answers the trigger.
   """
   @doc group: "Triggers"

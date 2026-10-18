@@ -9,12 +9,14 @@ defmodule WardrikCore.MixProject do
       app: :wardrik_core,
       version: @version,
       elixir: "~> 1.20",
-      description: "The agent runtime inside Wardrik: agents, the fleet, turns, tools and hooks.",
+      description:
+        "The agent runtime inside Wardrik: agents, the fleet, turns, tools and hooks, the store they are kept in, and the schemas of what they say.",
       source_url: @source_url,
       package: package(),
+      docs: [main: "readme", extras: ["README.md", "guides/store.md", "guides/protocol.md"]],
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
-        plt_add_apps: [:mix, :ex_unit, :mimic],
+        plt_add_apps: [:mix, :ex_unit, :mimic, :ekv],
         plt_core_path: "priv/plts",
         plt_local_path: "priv/plts"
       ],
@@ -35,7 +37,8 @@ defmodule WardrikCore.MixProject do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
+      files:
+        ~w(lib priv/v1 priv/openapi.json priv/openapi.bundled.json .formatter.exs mix.exs README.md LICENSE)
     ]
   end
 
@@ -49,25 +52,15 @@ defmodule WardrikCore.MixProject do
       {:group, "~> 0.2.1"},
       # The time zones schedules and budget periods are read in.
       {:tz, "~> 0.28"},
-      # Where agents and their records are kept.
-      sibling(:wardrik_store),
-      # The store core's suite keeps its fleet in, as a release does.
-      {:ekv, "~> 0.4.3", only: :test},
+      # The store on each node's disk, which an application adds itself. Core's
+      # suite keeps its fleet in it, as a release does.
+      {:ekv, "~> 0.4.3", optional: true},
       # Test only, and in dev for dialyzer: Wardrik.Test.LLMStub stubs with it.
       {:mimic, "~> 1.7", only: [:dev, :test]},
-      # The schemas of what operations take, which the catalog's surfaces
-      # describe them by, and the codec's tests check what it writes against.
-      sibling(:wardrik_protocol),
+      # The JSON Schemas in priv/: what operations take, which the catalog's
+      # surfaces describe them by, and what the codec writes.
+      {:jsv, "~> 0.23"},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
-  end
-
-  # A package beside this one in this repository: by path while it is here,
-  # and by version where this one is built for Hex, with WARDRIK_HEX=1, or
-  # fetched from it.
-  defp sibling(app, opts \\ []) do
-    if System.get_env("WARDRIK_HEX") != "1" and Path.basename(Path.dirname(__DIR__)) == "packages",
-      do: {app, [path: "../#{app}"] ++ opts},
-      else: {app, "~> #{@version}", opts}
   end
 end

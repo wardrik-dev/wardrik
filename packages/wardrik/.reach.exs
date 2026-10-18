@@ -1,11 +1,123 @@
 # Architecture policy for `mix reach.check --arch`.
 #
-# Wardrik puts core and the packages an application embeds together. It calls
-# core's public modules listed below, never the internals, which only core
-# calls.
+# Wardrik puts core and what an application embeds together: definitions,
+# policies, triggers, files, credentials, notices, the Postgres and S3 stores,
+# workflows. It calls core's public modules listed below, never the internals,
+# which only core calls.
 [
   layers: [
-    wardrik: ["Wardrik", "Wardrik.Migration", "Wardrik.Session", "Wardrik.Stream"]
+    wardrik: ["Wardrik", "Wardrik.Migration", "Wardrik.Session", "Wardrik.Stream"],
+    definition: ["WardrikDefinition", "WardrikDefinition.*", "Wardrik.Definition.WardrikDefinition.Kept"],
+    policy: ["WardrikPolicy", "WardrikPolicy.*"],
+    triggers: ["WardrikTrigger", "WardrikTrigger.*", "Wardrik.Triggers.WardrikTrigger.Deliveries"],
+    workspace: ["WardrikWorkspace", "WardrikWorkspace.*", "Wardrik.Workspace.WardrikWorkspace.Backend.Store"],
+    notify: ["WardrikNotify", "WardrikNotify.*"],
+    vault: ["WardrikVault", "WardrikVault.*", "Wardrik.Credentials.WardrikVault", "Inspect.WardrikVault", "WardrikVault.Grants.*"],
+    ecto: ["WardrikEcto", "WardrikEcto.*"],
+    s3: ["WardrikS3", "WardrikS3.*"],
+    workflow: ["WardrikWorkflow", "WardrikWorkflow.*"],
+    research: ["WardrikResearch", "WardrikResearch.*"]
+  ],
+  # What the packages folded in here depended on, kept: each layer calls only
+  # the ones its package depended on, and none calls Wardrik itself.
+  deps: [
+    forbidden: [
+      {:definition, :wardrik},
+      {:definition, :vault},
+      {:definition, :ecto},
+      {:definition, :s3},
+      {:definition, :workflow},
+      {:definition, :research},
+      {:policy, :wardrik},
+      {:policy, :definition},
+      {:policy, :triggers},
+      {:policy, :workspace},
+      {:policy, :notify},
+      {:policy, :vault},
+      {:policy, :ecto},
+      {:policy, :s3},
+      {:policy, :workflow},
+      {:policy, :research},
+      {:triggers, :wardrik},
+      {:triggers, :definition},
+      {:triggers, :policy},
+      {:triggers, :workspace},
+      {:triggers, :notify},
+      {:triggers, :vault},
+      {:triggers, :ecto},
+      {:triggers, :s3},
+      {:triggers, :workflow},
+      {:triggers, :research},
+      {:workspace, :wardrik},
+      {:workspace, :definition},
+      {:workspace, :policy},
+      {:workspace, :triggers},
+      {:workspace, :notify},
+      {:workspace, :vault},
+      {:workspace, :ecto},
+      {:workspace, :s3},
+      {:workspace, :workflow},
+      {:workspace, :research},
+      {:notify, :wardrik},
+      {:notify, :definition},
+      {:notify, :policy},
+      {:notify, :triggers},
+      {:notify, :workspace},
+      {:notify, :vault},
+      {:notify, :ecto},
+      {:notify, :s3},
+      {:notify, :workflow},
+      {:notify, :research},
+      {:vault, :wardrik},
+      {:vault, :definition},
+      {:vault, :policy},
+      {:vault, :triggers},
+      {:vault, :workspace},
+      {:vault, :notify},
+      {:vault, :ecto},
+      {:vault, :s3},
+      {:vault, :workflow},
+      {:vault, :research},
+      {:ecto, :wardrik},
+      {:ecto, :definition},
+      {:ecto, :policy},
+      {:ecto, :triggers},
+      {:ecto, :workspace},
+      {:ecto, :notify},
+      {:ecto, :vault},
+      {:ecto, :s3},
+      {:ecto, :workflow},
+      {:ecto, :research},
+      {:s3, :wardrik},
+      {:s3, :definition},
+      {:s3, :policy},
+      {:s3, :triggers},
+      {:s3, :workspace},
+      {:s3, :notify},
+      {:s3, :vault},
+      {:s3, :ecto},
+      {:s3, :workflow},
+      {:s3, :research},
+      {:workflow, :wardrik},
+      {:workflow, :definition},
+      {:workflow, :policy},
+      {:workflow, :triggers},
+      {:workflow, :workspace},
+      {:workflow, :notify},
+      {:workflow, :vault},
+      {:workflow, :ecto},
+      {:workflow, :s3},
+      {:workflow, :research},
+      {:research, :wardrik},
+      {:research, :definition},
+      {:research, :policy},
+      {:research, :triggers},
+      {:research, :workspace},
+      {:research, :notify},
+      {:research, :vault},
+      {:research, :ecto},
+      {:research, :s3}
+    ]
   ],
   boundaries: [
     public: [
@@ -24,15 +136,15 @@
       "Wardrik.Catalog.Self",
       "Wardrik.Compaction",
       "Wardrik.Connections",
-      "Wardrik.Connections.Owner",
       "Wardrik.Connections.Connection",
+      "Wardrik.Connections.Owner",
       "Wardrik.Core",
       "Wardrik.Credential",
       "Wardrik.Credentials",
       "Wardrik.Credentials.None",
       "Wardrik.Definition",
-      "Wardrik.Definition.Read",
       "Wardrik.Definition.None",
+      "Wardrik.Definition.Read",
       "Wardrik.Definitions",
       "Wardrik.Delegation",
       "Wardrik.Error",
@@ -60,6 +172,10 @@
       "Wardrik.Ledger.Store",
       "Wardrik.Principal",
       "Wardrik.Scope",
+      "Wardrik.Servers",
+      "Wardrik.Servers.Key",
+      "Wardrik.Servers.None",
+      "Wardrik.Servers.Server",
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",
@@ -68,6 +184,7 @@
       "Wardrik.Tokens.Token",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
+      "Wardrik.Tool.Name",
       "Wardrik.Tool.Result",
       "Wardrik.Triggers",
       "Wardrik.UUID",
@@ -99,16 +216,20 @@
   ],
   calls: [
     forbidden: [
-      # Wardrik takes its settings as the options it is made with, and reads
-      # no application environment, its own or another's.
-      {["Wardrik", "Wardrik.Migration"],
-       [
-         "Application.get_env",
-         "Application.fetch_env",
-         "Application.fetch_env!",
-         "Application.put_env",
-         "Application.delete_env"
-       ]}
+      # Each takes its settings as the options it is made or started with, and
+      # reads no application environment, its own or another's.
+      {["Wardrik", "Wardrik.Migration", "WardrikNotify", "WardrikNotify.*", "WardrikVault", "WardrikVault.*"],
+       ["Application.get_env", "Application.fetch_env", "Application.fetch_env!", "Application.put_env", "Application.delete_env"]},
+      {["WardrikResearch", "WardrikResearch.*", "WardrikWorkspace", "WardrikWorkspace.*"],
+       ["Application.get_env", "Application.fetch_env", "Application.fetch_env!"]}
+    ]
+  ],
+  smells: [
+    behaviour_candidate: [
+      # WardrikTrigger.Kind is a protocol, and its implementations are the
+      # modules the check finds; it groups modules by their public functions,
+      # and does not read the protocol they implement.
+      ignore: [modules: ["WardrikTrigger.Kind", "WardrikTrigger.Kind.*"]]
     ]
   ],
   checks: [

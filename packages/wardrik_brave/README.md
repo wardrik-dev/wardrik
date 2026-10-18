@@ -19,7 +19,7 @@ becomes part of the turn that asked for it.
 
 Its key is the credential `BRAVE_API_KEY`, which the host's
 `Wardrik.Credentials` resolve for each call. With
-[wardrik_vault](../wardrik_vault) that is the deployment's secret of that name
+[the vault](../wardrik/guides/vault.md) that is the deployment's secret of that name
 (`wardrik vault put BRAVE_API_KEY`), or the environment variable where the
 vault holds none, where the vault shares it with every agent:
 
@@ -30,4 +30,4 @@ host = Wardrik.Host.new(store: store, credentials: vault)
 
 The pages it returns are ones anyone could have written, so a search is
 labelled `outside`: once a turn has read one, a policy holds its gated tools'
-calls for a person. See [wardrik_policy](../wardrik_policy).
+calls for a person. See [policies](../wardrik/guides/policy.md).

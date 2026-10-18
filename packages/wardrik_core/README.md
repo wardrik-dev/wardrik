@@ -37,10 +37,10 @@ children = [
 ```
 
 EKV keeps the store on each node's disk. It is optional: an application that
-keeps the store elsewhere, in Postgres through [wardrik_ecto](../wardrik_ecto)
-or in a bucket through [wardrik_s3](../wardrik_s3), leaves it out and never
-compiles its SQLite NIF. [wardrik_store](../wardrik_store) lists the
-adapters.
+keeps the store elsewhere, in Postgres or in a bucket through
+[wardrik](../wardrik)'s adapters, leaves it out and never compiles its SQLite
+NIF. [The store](guides/store.md) lists the adapters, and
+[Schemas](guides/protocol.md) the JSON Schemas core ships in `priv/`.
 
 ## Agents
 
@@ -189,7 +189,7 @@ hooks = [Wardrik.Hook.new("fridays", MyApp.NoFridayDeploys, timezone: "Europe/Lo
 ```
 
 What `init/1` returns is plain data, so a hook travels with its agent to
-whichever node holds it. [wardrik_policy](../wardrik_policy) turns a policy
+whichever node holds it. [wardrik](../wardrik)'s `WardrikPolicy` turns a policy
 written as data into hooks.
 
 A hook that asks a person **parks** the turn: nothing runs, nothing is added
@@ -358,5 +358,5 @@ assert %Wardrik.Call{state: :done, result: {:ok, _}} = Wardrik.Test.call(scope, 
 `Wardrik.Test.Fleet` starts an agent under an ID of each test's own and
 removes it after, `Wardrik.Test.LLMStub` answers turns with canned responses
 through Mimic. A store adapter of your own is checked with
-[wardrik_store](../wardrik_store)'s `WardrikStore.Conformance` and
+`WardrikStore.Conformance` and
 `WardrikStore.Test.Durable`.

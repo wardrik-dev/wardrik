@@ -62,7 +62,7 @@ runs over a connection of that user's own:
 ```
 
 The credential is resolved through the agent's `:credentials` seam, such as
-[wardrik_vault](../wardrik_vault). Until a user has connected, the server
+[the vault](../wardrik/guides/vault.md). Until a user has connected, the server
 offers only `github__connect`, which asks them to authorize; see
 [wardrik_oauth](../wardrik_oauth).
 

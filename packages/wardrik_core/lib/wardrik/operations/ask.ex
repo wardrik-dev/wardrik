@@ -8,7 +8,7 @@ defmodule Wardrik.Operations.Ask do
   answer as a message of its own; see "Answering another agent" in
   `Wardrik.Agent`.
 
-  `new/2` reads a message as `wardrik_protocol` describes one: text parts,
+  `new/2` reads a message as `WardrikProtocol` describes one: text parts,
   or `content`, with an `id` of the sender's choosing, or one made for it.
   """
 

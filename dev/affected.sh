@@ -97,6 +97,6 @@ job() {
 
 echo "release=$(job '^(packages/[^/]+/(lib/|priv/|mix\.exs$)|release/|Dockerfile$|\.dockerignore$|deploy/|dev/(distros|service|failover|services)\.sh$)')"
 echo "arm=$(job '^(Dockerfile$|\.dockerignore$|release/|deploy/|dev/(distros|service|failover)\.sh$)')"
-echo "hosts=$(job '^(packages/(wardrik|wardrik_core|wardrik_store|wardrik_ecto|wardrik_s3)/(lib/|priv/|mix\.exs$)|dev/hosts|dev/services\.sh$)')"
-echo "sdk=$(job '^(sdks/typescript/|packages/wardrik_protocol/priv/)')"
+echo "hosts=$(job '^(packages/(wardrik|wardrik_core)/(lib/|priv/|mix\.exs$)|dev/hosts|dev/services\.sh$)')"
+echo "sdk=$(job '^(sdks/typescript/|packages/wardrik_core/priv/)')"
 echo "docs=$(job '^docs/')"

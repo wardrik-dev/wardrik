@@ -3,7 +3,7 @@
 Accounts a user connects to [Wardrik](../wardrik) by authorizing. When a tool
 needs a credential the user has not connected, the turn waits, the user
 authorizes, and the call goes ahead by itself with the token, which is kept
-in [wardrik_vault](../wardrik_vault) and renewed without asking again.
+in [the vault](../wardrik/guides/vault.md) and renewed without asking again.
 
 ```elixir
 def deps do
