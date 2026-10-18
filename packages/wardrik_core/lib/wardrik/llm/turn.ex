@@ -77,6 +77,11 @@ defmodule Wardrik.LLM.Turn do
   a person answers it the way they answer any other. Approving it makes the
   call; denying it fails the turn as `{:policy_denied, reason}`.
 
+  A model call whose tries are spent, where its retry says to ask, parks the
+  turn the same way, and the prompt says why: "The model failed 7 times:
+  <reason>. Try again?". Approving it makes the call again with a fresh set
+  of tries; denying it fails the turn as `{:model_failed, reason}`.
+
   A turn that waits is written down with no run, so it holds no
   credentials and runs no processes, and `under/2` gives it the run it
   resumes under.
@@ -116,16 +121,17 @@ defmodule Wardrik.LLM.Turn do
 
   A call that fails is handed to the run's `Wardrik.LLM.Retry`, with the
   failed try added to the request's attempts, which decides whether to ask
-  again and after how long: by default after each wait the config's
-  `:retries` lists, for a reason `Wardrik.Failure` calls transient, such as a
-  stream that times out, before its first chunk or part way through. Each try
-  goes through the hooks and the dispatch, which may send it to another
-  model, and is its own `Wardrik.Event.ModelStarted` and
-  `Wardrik.Event.ModelFinished`. A retry answers under the message id of the
-  first try with the try's number added, `.2` for the second, so what a failed
-  try had streamed is never taken for its answer. A call the retry lets go
-  fails the turn. `:interrupt` stops the wait, and a turn past its deadline
-  fails with the call's reason rather than waiting.
+  again and after how long, and what happens once it asks again no more:
+  `Wardrik.LLM.Retry.Backoff` by default. Each try goes through the hooks and
+  the dispatch, which may send it to another model, and is its own
+  `Wardrik.Event.ModelStarted` and `Wardrik.Event.ModelFinished`, with a
+  `Wardrik.Event.ModelRetrying` before each wait. A retry answers under the
+  message id of the first try with the try's number added, `.2` for the
+  second, and a call a person approved under the id of their call added, so
+  what a failed try had streamed is never taken for an answer. Once the
+  retry asks again no more, the turn parks to ask a person, as above, or
+  fails with the call's reason. `:interrupt` stops a wait, and a turn past
+  its deadline fails with the call's reason rather than waiting.
 
   ## The iteration cap
 
@@ -291,7 +297,7 @@ defmodule Wardrik.LLM.Turn do
       decision ->
         case call |> Call.under(turn.run) |> Pipeline.answer(decision) do
           %Call{state: :approved} = approved -> turn |> running() |> loop(approved: approved)
-          %Call{denied: denied} -> fail(turn, {:policy_denied, denied.reason})
+          %Call{} = refused -> fail(turn, refusal(refused))
         end
     end
   end
@@ -304,6 +310,13 @@ defmodule Wardrik.LLM.Turn do
     if Enum.any?(resumed.calls, &Call.waiting?/1),
       do: %{resumed | revision: revision(turn.run)},
       else: finish(%{resumed | state: :running, revision: nil})
+  end
+
+  # A model call waits on its own tool only once its tries are spent.
+  defp refusal(%Call{denied: denied} = call) do
+    if Call.asked_by?(call, :tool),
+      do: {:model_failed, denied.reason},
+      else: {:policy_denied, denied.reason}
   end
 
   defp running(turn), do: %{turn | state: :running, calls: [], revision: nil}
@@ -530,8 +543,10 @@ defmodule Wardrik.LLM.Turn do
 
   # The message a model call answers with is named by where the turn is: its
   # span and its round, so a turn replayed names it as it did the first time.
-  defp message_id(%__MODULE__{run: %Run{source: source}} = turn),
+  defp message_id(%__MODULE__{run: %Run{source: source}} = turn, nil),
     do: "#{source.trace.span_id}.m#{rounds(turn)}"
+
+  defp message_id(turn, %Call{id: id}), do: "#{message_id(turn, nil)}.#{id}"
 
   # A call a hook parks is never made, so it has no model events. `opts` hold
   # the call a person approved, which every try goes ahead as. `run` is the
@@ -539,7 +554,8 @@ defmodule Wardrik.LLM.Turn do
   # its cap.
   defp request(%__MODULE__{} = turn, %Run{config: config} = run, opts, closing? \\ false) do
     config = %{config | system: system(config.system, turn, closing?)}
-    asked(%{run | config: config}, Request.new(config, turn.context), message_id(turn), opts)
+    request = Request.new(config, turn.context)
+    asked(%{run | config: config}, request, message_id(turn, opts[:approved]), opts)
   end
 
   defp asked(%Run{} = run, %Request{} = request, message_id, opts) do
@@ -564,9 +580,17 @@ defmodule Wardrik.LLM.Turn do
     attempt = %Attempt{model_spec: model_spec, reason: reason, answered?: Process.get(@answered)}
     tried = Request.failed(request, attempt)
 
-    case if(Run.expired?(run), do: :stop, else: Retry.again(run, tried)) do
-      {:again, wait} ->
+    case if(Run.expired?(run), do: :fail, else: Retry.again(run.retry, tried, run: run)) do
+      {:again, wait, attempts} ->
         Logger.warning("Model call failed, asking again in #{wait}ms: #{inspect(reason)}")
+
+        Event.emit(run.source, %Event.ModelRetrying{
+          message_id: tried_id(message_id, request),
+          attempt: length(tried.attempts),
+          attempts: attempts,
+          wait_ms: wait,
+          reason: reason
+        })
 
         receive do
           :interrupt -> {:interrupted, ""}
@@ -574,12 +598,29 @@ defmodule Wardrik.LLM.Turn do
           wait -> asked(run, tried, message_id, opts)
         end
 
-      :stop ->
+      :ask ->
+        {:park, tried |> Call.model(run) |> Call.wait(:tool, exhausted(tried))}
+
+      :fail ->
         failed
     end
   end
 
   defp again({result, _model_spec}, _run, _request, _message_id, _opts), do: result
+
+  defp exhausted(%Request{attempts: [last | _] = attempts}) do
+    "The model failed #{times(length(attempts))}: #{String.slice(said(last.reason), 0, 200)}. " <>
+      "Try again?"
+  end
+
+  defp times(1), do: "once"
+  defp times(n), do: "#{n} times"
+
+  # What a failure says to a person: the message of the error beneath, where
+  # one wraps another, as a stream that broke wraps its request's.
+  defp said(%{cause: %{__exception__: true} = cause}), do: said(cause)
+  defp said(%{__exception__: true} = error), do: Exception.message(error)
+  defp said(reason), do: inspect(reason)
 
   # What a try came to, with the model it went to once the dispatch had
   # admitted it.

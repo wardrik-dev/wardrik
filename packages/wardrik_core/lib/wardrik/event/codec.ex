@@ -84,7 +84,7 @@ defmodule Wardrik.Event.Codec do
     :trigger_fired
   ]
   @steps [:span_started, :span_finished, :delegation_started, :delegation_finished]
-  @messages [:model_started, :model_finished, :result, :thinking]
+  @messages [:model_started, :model_finished, :model_retrying, :result, :thinking]
 
   @doc """
   The CloudEvent for `event`, or `:skip` for one that is not sent.
@@ -314,6 +314,18 @@ defmodule Wardrik.Event.Codec do
       |> priced(response, cost)
 
     {"message.completed", "messages/" <> message_id, data}
+  end
+
+  defp message(%Event.ModelRetrying{message_id: message_id} = retrying, _event, _opts) do
+    data = %{
+      "message" => %{"id" => message_id},
+      "attempt" => retrying.attempt,
+      "attempts" => retrying.attempts,
+      "wait_ms" => retrying.wait_ms,
+      "error" => Value.error(retrying.reason)
+    }
+
+    {"message.retrying", "messages/" <> message_id, data}
   end
 
   defp message(%Event.Result{text: text}, _event, opts), do: delta("message.delta", text, opts)

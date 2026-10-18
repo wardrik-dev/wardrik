@@ -9,6 +9,7 @@ defmodule Wardrik.LLM.TurnTest do
   alias Wardrik.Call
   alias Wardrik.Event
   alias Wardrik.LLM
+  alias Wardrik.LLM.Retry.Backoff
   alias Wardrik.Run
   alias Wardrik.Test.LLMStub
   alias Wardrik.Tool.Result
@@ -31,8 +32,29 @@ defmodule Wardrik.LLM.TurnTest do
     LLM.Config.new(tools: tools) |> Run.root(agent_id, name: "turn")
   end
 
+  # A run whose failed model call fails the turn at once.
+  defp failing(agent_id, opts \\ []) do
+    retry = %Backoff{attempts: 0, on_exhausted: :fail}
+    LLM.Config.new() |> Run.root(agent_id, [name: "turn", retry: retry] ++ opts)
+  end
+
   defmodule Failover do
     defstruct []
+  end
+
+  defmodule Twice do
+    defstruct [:test]
+  end
+
+  defimpl Wardrik.LLM.Retry, for: Twice do
+    def again(twice, %LLM.Request{attempts: attempts}, run: run) do
+      send(twice.test, {:again, attempts, run})
+
+      case attempts do
+        [_first, _second, _third | _more] -> :fail
+        _fewer -> {:again, 0, 2}
+      end
+    end
   end
 
   defimpl Wardrik.LLM.Dispatch, for: Failover do
@@ -287,7 +309,7 @@ defmodule Wardrik.LLM.TurnTest do
     Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
     {_result, _log} =
-      ExUnit.CaptureLog.with_log(fn -> turn(run(agent_id), Context.new()) end)
+      ExUnit.CaptureLog.with_log(fn -> turn(failing(agent_id), Context.new()) end)
 
     assert_receive %Event{payload: %Event.ModelStarted{}}
 
@@ -297,10 +319,11 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   describe "a model call that fails" do
-    defp retrying(agent_id, retries, opts \\ []) do
-      [retries: retries]
-      |> LLM.Config.new()
-      |> Run.root(agent_id, Keyword.put(opts, :name, "turn"))
+    defp retrying(agent_id, backoff, opts \\ []) do
+      opts =
+        [name: "turn", retry: struct(Backoff, Keyword.put_new(backoff, :max_wait, 0))] ++ opts
+
+      LLM.Config.new() |> Run.root(agent_id, opts)
     end
 
     defp answering do
@@ -318,7 +341,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       capture_log(fn ->
         assert %LLM.Turn{state: :done, messages: [%{role: :assistant}]} =
-                 turn(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+                 turn(retrying(agent_id, attempts: 1), Context.new([Context.user("hi")]))
       end)
 
       assert_receive %Event{payload: %Event.ModelStarted{}}
@@ -331,25 +354,142 @@ defmodule Wardrik.LLM.TurnTest do
       assert_receive %Event{payload: %Event.ModelFinished{outcome: :ok}}
     end
 
-    test "fails the turn once its retries are spent", %{agent_id: agent_id} do
+    test "says before each wait which try comes next, of how many, and why",
+         %{agent_id: agent_id} do
+      expect(ReqLLM, :stream_text, 2, fn _model, _context, _opts -> {:error, :timeout} end)
+      answering()
+
+      capture_log(fn ->
+        assert %LLM.Turn{state: :done} =
+                 turn(retrying(agent_id, attempts: 3), Context.new([Context.user("hi")]))
+      end)
+
+      assert_receive %Event{payload: %Event.ModelStarted{message_id: first}}
+      assert_receive %Event{payload: %Event.ModelRetrying{} = once} = event
+      assert event.source.trace.span_id <> ".m0" == first
+
+      assert %{message_id: ^first, attempt: 1, attempts: 3, wait_ms: 0, reason: :timeout} =
+               once
+
+      assert_receive %Event{payload: %Event.ModelStarted{message_id: second}}
+      assert_receive %Event{payload: %Event.ModelRetrying{message_id: ^second, attempt: 2}}
+    end
+
+    test "is asked again after a stream breaks in any way, and the turn answers",
+         %{agent_id: agent_id} do
+      broken = %ReqLLM.Error.API.Stream{reason: "Stream failed: {:error, {:case_clause, nil}}"}
+      expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :broken} end)
+      expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+      stub(ReqLLM.StreamResponse, :process_stream, fn
+        :broken, _opts -> {:error, broken}
+        :streamed, _opts -> {:ok, LLMStub.final_answer("done")}
+      end)
+
+      capture_log(fn ->
+        assert %LLM.Turn{state: :done, messages: [%{role: :assistant}]} =
+                 turn(retrying(agent_id, attempts: 1), Context.new([Context.user("hi")]))
+      end)
+
+      assert_receive %Event{payload: %Event.ModelRetrying{reason: ^broken}}
+    end
+
+    test "fails the turn once its tries are spent, where the retry says to fail",
+         %{agent_id: agent_id} do
       expect(ReqLLM, :stream_text, 3, fn _model, _context, _opts -> {:error, :timeout} end)
+      run = retrying(agent_id, attempts: 2, on_exhausted: :fail)
 
       log =
         capture_log(fn ->
           assert %LLM.Turn{state: :failed, error: :timeout} =
-                   turn(retrying(agent_id, [0, 0]), Context.new([Context.user("hi")]))
+                   turn(run, Context.new([Context.user("hi")]))
         end)
 
       assert log =~ "Model call failed, asking again in 0ms"
     end
 
-    test "is not asked again for a reason that would fail the same way", %{agent_id: agent_id} do
-      expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts -> {:error, :rate_limited} end)
+    test "is not asked again for a 4xx that says the request cannot succeed",
+         %{agent_id: agent_id} do
+      refused = ReqLLM.Error.API.Request.exception(status: 401, reason: "Invalid key")
+      expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts -> {:error, refused} end)
+      run = retrying(agent_id, attempts: 6, on_exhausted: :fail)
 
       capture_log(fn ->
-        assert %LLM.Turn{state: :failed, error: :rate_limited} =
-                 turn(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+        assert %LLM.Turn{state: :failed, error: ^refused} =
+                 turn(run, Context.new([Context.user("hi")]))
       end)
+
+      refute_received %Event{payload: %Event.ModelRetrying{}}
+    end
+
+    test "parks once its tries are spent, asking a person to try again, and says why",
+         %{agent_id: agent_id} do
+      refused = ReqLLM.Error.API.Request.exception(status: 402, reason: "Insufficient balance")
+      stream = %ReqLLM.Error.API.Stream{reason: "Stream failed", cause: refused}
+      expect(ReqLLM, :stream_text, 3, fn _model, _context, _opts -> {:error, :timeout} end)
+
+      capture_log(fn ->
+        assert %LLM.Turn{state: :waiting} =
+                 parked = turn(retrying(agent_id, attempts: 2), Context.new([Context.user("hi")]))
+
+        assert LLM.Turn.model?(parked)
+
+        assert [{%{name: "model"}, "The model failed 3 times: :timeout. Try again?"}] =
+                 LLM.Turn.waiting(parked)
+      end)
+
+      expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, stream} end)
+
+      capture_log(fn ->
+        assert %LLM.Turn{state: :waiting} =
+                 parked = turn(retrying(agent_id, []), Context.new([Context.user("hi")]))
+
+        assert [{_call, "The model failed once: API request failed (402): " <> _}] =
+                 LLM.Turn.waiting(parked)
+      end)
+    end
+
+    test "approved once its tries are spent, tries again afresh under ids of its own",
+         %{agent_id: agent_id} do
+      expect(ReqLLM, :stream_text, 2, fn _model, _context, _opts -> {:error, :timeout} end)
+      run = retrying(agent_id, attempts: 1)
+
+      %LLM.Turn{state: :waiting} =
+        parked = capture(fn -> turn(run, Context.new([Context.user("hi")])) end)
+
+      assert_receive %Event{payload: %Event.ModelStarted{message_id: first}}
+      assert_receive %Event{payload: %Event.ModelStarted{message_id: second}}
+
+      expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :timeout} end)
+      answering()
+      [{call, _prompt}] = LLM.Turn.waiting(parked)
+
+      capture_log(fn ->
+        assert %LLM.Turn{state: :done, messages: [%{role: :assistant}]} =
+                 resume(run, parked, %{call.id => :approve})
+      end)
+
+      assert_receive %Event{payload: %Event.ModelStarted{message_id: third, decided_by: by}}
+      assert_receive %Event{payload: %Event.ModelRetrying{attempt: 1, attempts: 1}}
+      assert_receive %Event{payload: %Event.ModelStarted{message_id: fourth}}
+      assert by == %{by: :person, hooks: []}
+      assert third == "#{first}.#{call.id}"
+      assert fourth == third <> ".2"
+      assert second == first <> ".2"
+    end
+
+    test "denied once its tries are spent, fails the turn as one the model kept failing",
+         %{agent_id: agent_id} do
+      expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts -> {:error, :timeout} end)
+      run = retrying(agent_id, attempts: 0)
+
+      %LLM.Turn{state: :waiting} =
+        parked = capture(fn -> turn(run, Context.new([Context.user("hi")])) end)
+
+      [{call, _prompt}] = LLM.Turn.waiting(parked)
+
+      assert %LLM.Turn{state: :failed, error: {:model_failed, "Not now."}} =
+               resume(run, parked, %{call.id => {:deny, "Not now."}})
     end
 
     test "is asked again once the provider has begun to answer, under a message id of its own",
@@ -369,7 +509,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       capture_log(fn ->
         assert %LLM.Turn{state: :done, messages: [%{role: :assistant}]} =
-                 turn(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+                 turn(retrying(agent_id, attempts: 1), Context.new([Context.user("hi")]))
       end)
 
       assert_receive %Event{payload: %Event.ModelStarted{message_id: first}}
@@ -387,14 +527,14 @@ defmodule Wardrik.LLM.TurnTest do
         {:ok, LLMStub.final_answer("done")}
       end)
 
-      run = retrying(agent_id, [], retry: {__MODULE__.Twice, self()})
+      run = LLM.Config.new() |> Run.root(agent_id, name: "turn", retry: %Twice{test: self()})
 
       capture_log(fn ->
         assert %LLM.Turn{state: :done} = turn(run, Context.new([Context.user("hi")]))
       end)
 
-      assert_receive {:again, [%LLM.Attempt{reason: :rate_limited, answered?: false}]}
-      assert_receive {:again, [%LLM.Attempt{}, %LLM.Attempt{}]}
+      assert_receive {:again, [%LLM.Attempt{reason: :rate_limited, answered?: false}], %Run{}}
+      assert_receive {:again, [%LLM.Attempt{}, %LLM.Attempt{}], %Run{}}
     end
 
     test "is admitted by the dispatch with its attempts, which may send it elsewhere",
@@ -410,7 +550,7 @@ defmodule Wardrik.LLM.TurnTest do
         {:ok, LLMStub.final_answer("done")}
       end)
 
-      run = retrying(agent_id, [0], host: Wardrik.Host.new(dispatch: %Failover{}))
+      run = retrying(agent_id, [attempts: 1], host: Wardrik.Host.new(dispatch: %Failover{}))
 
       capture_log(fn ->
         assert %LLM.Turn{state: :done} = turn(run, Context.new([Context.user("hi")]))
@@ -424,14 +564,33 @@ defmodule Wardrik.LLM.TurnTest do
     test "stops waiting when the turn is interrupted", %{agent_id: agent_id} do
       expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts -> {:error, :timeout} end)
       :ok = LLM.Turn.interrupt(self())
+      run = retrying(agent_id, attempts: 1, max_wait: :timer.minutes(10))
 
       capture_log(fn ->
         assert %LLM.Turn{state: :done, messages: []} =
-                 turn(
-                   retrying(agent_id, [:timer.minutes(10)]),
-                   Context.new([Context.user("hi")])
-                 )
+                 turn(run, Context.new([Context.user("hi")]))
       end)
+    end
+
+    test "fails at once past the turn's deadline, without waiting or asking",
+         %{agent_id: agent_id} do
+      deadline = System.monotonic_time() + System.convert_time_unit(50, :millisecond, :native)
+      run = retrying(agent_id, [attempts: 6], deadline: deadline)
+
+      # The call lasts until the turn's deadline has passed.
+      expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts ->
+        receive do
+        after
+          Run.remaining_ms(run) -> {:error, :timeout}
+        end
+      end)
+
+      capture_log(fn ->
+        assert %LLM.Turn{state: :failed, error: :timeout} =
+                 turn(run, Context.new([Context.user("hi")]))
+      end)
+
+      refute_received %Event{payload: %Event.ModelRetrying{}}
     end
   end
 
@@ -499,7 +658,7 @@ defmodule Wardrik.LLM.TurnTest do
     stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
     assert %LLM.Turn{state: :failed, error: :rate_limited} =
-             capture(fn -> turn(run(agent_id), Context.new()) end)
+             capture(fn -> turn(failing(agent_id), Context.new()) end)
   end
 
   test "a response with no assistant message falls back to the classified text", %{
@@ -1011,12 +1170,7 @@ defmodule Wardrik.LLM.TurnTest do
         {:error, :closed}
       end)
 
-      run =
-        LLM.Config.new()
-        |> Run.root(agent_id,
-          name: "turn",
-          host: Wardrik.Host.new(dispatch: %Recording{test: self()})
-        )
+      run = failing(agent_id, host: Wardrik.Host.new(dispatch: %Recording{test: self()}))
 
       capture_log(fn ->
         assert %LLM.Turn{state: :failed, error: :closed} =
@@ -1031,12 +1185,7 @@ defmodule Wardrik.LLM.TurnTest do
     } do
       Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
-      run =
-        LLM.Config.new()
-        |> Run.root(agent_id,
-          name: "turn",
-          host: Wardrik.Host.new(dispatch: %Recording{test: self()})
-        )
+      run = failing(agent_id, host: Wardrik.Host.new(dispatch: %Recording{test: self()}))
 
       capture_log(fn ->
         assert %LLM.Turn{state: :failed, error: :rate_limited} =
@@ -1049,9 +1198,7 @@ defmodule Wardrik.LLM.TurnTest do
     test "a refused call fails the turn without reaching the provider", %{agent_id: agent_id} do
       reject(&ReqLLM.stream_text/3)
 
-      run =
-        LLM.Config.new()
-        |> Run.root(agent_id, name: "turn", host: Wardrik.Host.new(dispatch: %Refusing{}))
+      run = failing(agent_id, host: Wardrik.Host.new(dispatch: %Refusing{}))
 
       log =
         capture_log(fn ->
@@ -1125,8 +1272,6 @@ defmodule Wardrik.LLM.TurnTest do
 
       assert %LLM.Turn{state: :failed, error: {:policy_denied, "Not today."}} =
                resume(run, parked, %{call.id => {:deny, "Not today."}})
-
-      assert Wardrik.Failure.classify({:policy_denied, "Not today."}) == :ceiling
     end
 
     test "with no decision for it, stays parked", %{run: run} do
@@ -1408,21 +1553,6 @@ defmodule Wardrik.LLM.TurnTest do
                resume(governed(agent_id, [], []), parked, %{call.id => {:deny, "No."}})
 
       assert answer.role == :assistant
-    end
-  end
-
-  defmodule Twice do
-    @moduledoc false
-    @behaviour Wardrik.LLM.Retry
-
-    @impl true
-    def again(%LLM.Request{attempts: attempts}, _run, test_pid) do
-      send(test_pid, {:again, attempts})
-
-      case attempts do
-        [_first, _second, _third | _more] -> :stop
-        _fewer -> {:again, 0}
-      end
     end
   end
 end

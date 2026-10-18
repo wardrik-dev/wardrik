@@ -40,6 +40,7 @@ defmodule WardrikDefinition do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.LLM.Config
+  alias Wardrik.LLM.Retry.Backoff
   alias Wardrik.Servers.Key
   alias WardrikDefinition.Context
   alias WardrikPolicy.Pattern
@@ -56,7 +57,11 @@ defmodule WardrikDefinition do
   @file_keys ~w(name org user) ++ (@keys -- ["instructions"])
   @default_keys ~w(model tools policy timeout idle_timeout max_iterations retries compaction)
   @trigger_keys ~w(name prompt_file)
-  @retries "is a list of whole numbers of seconds, one wait for each try"
+  @retries %{
+    "attempts" => "is a whole number of tries after the first",
+    "max_wait" => "is a whole number of seconds",
+    "on_exhausted" => "is ask or fail"
+  }
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
   @type source() :: {:file, String.t()} | {:api, Wardrik.Grant.t()} | :defaults
@@ -95,10 +100,8 @@ defmodule WardrikDefinition do
   defp idle(seconds) when is_integer(seconds) and seconds > 0, do: :ok
   defp idle(_seconds), do: {:error, "idle_timeout", "is a whole number of seconds, or infinity"}
 
-  defp retries(nil), do: :ok
-
-  defp retries(waits) do
-    if waits?(waits), do: :ok, else: {:error, "retries", @retries}
+  defp retries(fields) do
+    with %Backoff{} <- backoff(fields || %{}), do: :ok
   end
 
   @doc """
@@ -389,7 +392,6 @@ defmodule WardrikDefinition do
        ] ++ context.config)
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
-      |> put(:retries, fields["retries"] || context.defaults["retries"], &retries!/1)
       |> compaction(fields)
       |> Config.new()
 
@@ -398,7 +400,8 @@ defmodule WardrikDefinition do
        description: optional_string!(fields["description"], "description"),
        config: config,
        hooks: ceilings(context, id.org) ++ policy(fields["policy"], context, modules?),
-       timeout: fields["timeout"] && seconds!(fields["timeout"])
+       timeout: fields["timeout"] && seconds!(fields["timeout"]),
+       retry: retry!(fields["retries"] || context.defaults["retries"] || %{})
      ] ++ context.seams)
     |> put(:idle_timeout, fields["idle_timeout"] || context.defaults["idle_timeout"], &idle!/1)
     |> Spec.new()
@@ -892,13 +895,35 @@ defmodule WardrikDefinition do
   defp iterations!("infinity"), do: :infinity
   defp iterations!(_n), do: invalid!("max_iterations is a whole number, or infinity")
 
-  defp retries!(waits) do
-    if waits?(waits),
-      do: Enum.map(waits, &:timer.seconds/1),
-      else: invalid!("retries " <> @retries)
+  defp retry!(fields) do
+    case backoff(fields) do
+      %Backoff{} = backoff -> backoff
+      {:error, key, message} -> invalid!("#{key} #{message}")
+    end
   end
 
-  defp waits?(waits), do: is_list(waits) and Enum.all?(waits, &(is_integer(&1) and &1 >= 0))
+  # `retries`, with the defaults of a `Wardrik.LLM.Retry.Backoff` for what it
+  # leaves out.
+  defp backoff(%{} = fields) do
+    Enum.reduce_while(fields, %Backoff{}, fn {key, value}, backoff ->
+      case retry(key, value) do
+        {:ok, field, value} -> {:cont, Map.replace!(backoff, field, value)}
+        {:error, message} -> {:halt, {:error, "retries.#{key}", message}}
+      end
+    end)
+  end
+
+  defp backoff(_fields),
+    do: {:error, "retries", "is a set of attempts, max_wait and on_exhausted"}
+
+  defp retry("attempts", n) when is_integer(n) and n >= 0, do: {:ok, :attempts, n}
+  defp retry("max_wait", s) when is_integer(s) and s >= 0, do: {:ok, :max_wait, :timer.seconds(s)}
+  defp retry("on_exhausted", "ask"), do: {:ok, :on_exhausted, :ask}
+  defp retry("on_exhausted", "fail"), do: {:ok, :on_exhausted, :fail}
+  defp retry(key, _value) when is_map_key(@retries, key), do: {:error, @retries[key]}
+
+  defp retry(_key, _value),
+    do: {:error, "is not a setting; expected attempts, max_wait or on_exhausted"}
 
   defp string!(value, _key) when is_binary(value), do: value
   defp string!(_value, key), do: invalid!("#{key} is a string")

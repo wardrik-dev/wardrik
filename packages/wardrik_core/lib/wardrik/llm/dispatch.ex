@@ -75,9 +75,9 @@ defprotocol Wardrik.LLM.Dispatch do
 
   ## Refusing a call
 
-  An `{:error, reason}` from `admit/3` fails the turn with that reason and
-  the provider is never reached, which is what a disabled model should do.
-  Classify the reason so callers know whether to retry it; see `Wardrik.Failure`.
+  An `{:error, reason}` from `admit/3` fails the try with that reason and the
+  provider is never reached, which is what a disabled model should do. The
+  run's `Wardrik.LLM.Retry` is handed it as any try that failed.
 
   ## Failing to settle
 

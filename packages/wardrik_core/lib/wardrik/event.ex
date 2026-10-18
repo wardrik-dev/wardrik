@@ -39,9 +39,10 @@ defmodule Wardrik.Event do
       `Wardrik.Event.SpanFinished`, `Wardrik.Event.DelegationStarted`,
       `Wardrik.Event.DelegationFinished`.
     * Model calls: `Wardrik.Event.ModelStarted`,
-      `Wardrik.Event.ModelFinished`, `Wardrik.Event.Result`,
-      `Wardrik.Event.Thinking`, `Wardrik.Event.Meta`, `Wardrik.Event.Chunk`,
-      `Wardrik.Event.ToolCall`, `Wardrik.Event.DeadlineReached`.
+      `Wardrik.Event.ModelFinished`, `Wardrik.Event.ModelRetrying`,
+      `Wardrik.Event.Result`, `Wardrik.Event.Thinking`, `Wardrik.Event.Meta`,
+      `Wardrik.Event.Chunk`, `Wardrik.Event.ToolCall`,
+      `Wardrik.Event.DeadlineReached`.
     * Tool calls, on the call's span: `Wardrik.Event.ToolStarted`,
       `Wardrik.Event.ToolFinished`, `Wardrik.Event.ToolReplayed`,
       `Wardrik.Event.ToolDenied`, `Wardrik.Event.ToolParked`,
@@ -67,6 +68,7 @@ defmodule Wardrik.Event do
           | __MODULE__.DelegationFinished.t()
           | __MODULE__.ModelStarted.t()
           | __MODULE__.ModelFinished.t()
+          | __MODULE__.ModelRetrying.t()
           | __MODULE__.Result.t()
           | __MODULE__.Thinking.t()
           | __MODULE__.Meta.t()
@@ -133,6 +135,7 @@ defmodule Wardrik.Event do
     __MODULE__.DelegationFinished => :delegation_finished,
     __MODULE__.ModelStarted => :model_started,
     __MODULE__.ModelFinished => :model_finished,
+    __MODULE__.ModelRetrying => :model_retrying,
     __MODULE__.Result => :result,
     __MODULE__.Thinking => :thinking,
     __MODULE__.Meta => :meta,
