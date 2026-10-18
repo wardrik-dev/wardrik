@@ -382,11 +382,11 @@
                 "linear/*"
               ]
             },
-            "retries": [
-              2,
-              10,
-              30
-            ],
+            "retries": {
+              "attempts": 4,
+              "max_wait": 30,
+              "on_exhausted": "fail"
+            },
             "timeout": 600,
             "tools": [
               "web_search",
@@ -569,12 +569,29 @@
             ]
           },
           "retries": {
-            "description": "How many seconds a turn waits before asking a model call again that failed for a passing reason, such as a timeout, one for each try: [1, 5] where neither this nor the host's defaults say. [] never asks again.",
-            "items": {
-              "minimum": 0,
-              "type": "integer"
+            "additionalProperties": false,
+            "description": "How a turn tries a failed model call again, after a random wait of up to a second that doubles each time. A 4xx answer other than 408, 425 and 429 is not tried again. The host's defaults hold where this is absent.",
+            "properties": {
+              "attempts": {
+                "description": "How many times a failed model call is tried again: 6 unless set. 0 never tries again.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "max_wait": {
+                "description": "The longest wait between tries, in seconds: 60 unless set.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "on_exhausted": {
+                "description": "What happens once the tries are spent: ask a person whether to try again, or fail the turn. ask unless set.",
+                "enum": [
+                  "ask",
+                  "fail"
+                ],
+                "type": "string"
+              }
             },
-            "type": "array"
+            "type": "object"
           },
           "timeout": {
             "description": "How many seconds a turn may take.",

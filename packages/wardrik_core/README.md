@@ -319,12 +319,13 @@ Nothing of the host is kept on the node or with an agent. A node runs one
 `Wardrik.Core`, since core's own processes are registered under their module
 names; to run several on one machine, run several nodes.
 
-### Failures
+### Retries
 
-`Wardrik.Failure.classify/1` sorts a turn's error into `:transient`,
-`:ceiling` or `:bug`, so you know whether trying again could help. Anything
-it does not recognise is a `:bug`, because a retry loop that assumes
-otherwise spends real money finding out.
+A model call that fails is asked again by the run's `Wardrik.LLM.Retry`:
+`Wardrik.LLM.Retry.Backoff` unless the agent names another. It asks again
+up to six times, after random waits that double from a second, and then
+asks a person whether to try again. An answer with a 4xx status, but for
+408, 425 and 429, goes to a person at once.
 
 ## Public modules
 
@@ -336,7 +337,7 @@ without notice.
 | | Modules |
 | --- | --- |
 | Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Connections.Owner`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Grants`, `Wardrik.Servers` and the `None` of each, `Wardrik.Grants` and the `None` of each, `Wardrik.Servers.Key`, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Token`, `Wardrik.Catalog`, `Wardrik.Catalog.Entry`, `Wardrik.Catalog.Tools`, `Wardrik.Catalog.Self`, `Wardrik.Catalog.Agents`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store` |
-| Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.History`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
+| Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | What people changed | `Wardrik.Audit` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |

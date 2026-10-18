@@ -163,6 +163,8 @@
       "Wardrik.LLM.Config",
       "Wardrik.LLM.Cost",
       "Wardrik.LLM.Message",
+      "Wardrik.LLM.Retry",
+      "Wardrik.LLM.Retry.Backoff",
       "Wardrik.LLM.Usage",
       "Wardrik.Label",
       "Wardrik.Ledger",

@@ -108,6 +108,14 @@ defmodule Wardrik.Event.CodecTest do
          response: response(asking),
          cost: nil
        }},
+      {turn,
+       %Event.ModelRetrying{
+         message_id: "#{turn.trace.span_id}.m0",
+         attempt: 1,
+         attempts: 6,
+         wait_ms: 800,
+         reason: :timeout
+       }},
       {turn, %Event.Result{text: "Shipped"}},
       {turn, %Event.Thinking{text: "The build is green."}},
       {turn, %Event.Meta{chunk: %{usage: %{input_tokens: 1}}}},
@@ -572,6 +580,28 @@ defmodule Wardrik.Event.CodecTest do
                "message" => %{"id" => "s.m0"},
                "status" => "cancelled",
                "duration_ms" => 10
+             }
+    end
+
+    test "that failed say which try comes next, of how many, after how long, and why" do
+      {:ok, event} =
+        encode(turn(), %Event.ModelRetrying{
+          message_id: "s.m0.2",
+          attempt: 2,
+          attempts: 6,
+          wait_ms: 1_400,
+          reason: :timeout
+        })
+
+      assert event["type"] == "wardrik.message.retrying"
+      assert event["subject"] == "messages/s.m0.2"
+
+      assert event["data"] == %{
+               "message" => %{"id" => "s.m0.2"},
+               "attempt" => 2,
+               "attempts" => 6,
+               "wait_ms" => 1_400,
+               "error" => %{"type" => "timeout", "message" => "timeout"}
              }
     end
 

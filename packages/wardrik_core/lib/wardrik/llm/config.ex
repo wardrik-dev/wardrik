@@ -65,14 +65,6 @@ defmodule Wardrik.LLM.Config do
   should be given them, and a person watching one can stop it. Set `:infinity`
   where something else is doing the stopping.
 
-  `:retries` is how long a turn waits before asking again when a model call
-  fails for a reason `Wardrik.Failure` calls transient, one wait for each try:
-  a second after the first failure and five after the second, by default.
-  `[]` never asks again. They are the waits of `Wardrik.LLM.Retry.Backoff`, the
-  retry of a run that names none; see `Wardrik.LLM.Retry`.
-
-      Wardrik.LLM.Config.new(retries: [2_000, 10_000, 30_000])
-
   The runtime wiring a turn also needs, such as who its events are published
   to, lives on `Wardrik.Run`.
 
@@ -97,7 +89,6 @@ defmodule Wardrik.LLM.Config do
             tool_prices: %{},
             generation: [],
             max_iterations: 30,
-            retries: [1_000, 5_000],
             history: {Wardrik.Compaction, %Wardrik.Compaction{}}
 
   @type t :: %__MODULE__{
@@ -109,7 +100,6 @@ defmodule Wardrik.LLM.Config do
           tool_prices: %{String.t() => number()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
-          retries: [non_neg_integer()],
           history: Wardrik.History.t()
         }
 
@@ -124,7 +114,6 @@ defmodule Wardrik.LLM.Config do
           tool_prices: %{String.t() => number()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
-          retries: [non_neg_integer()],
           history: Wardrik.History.t()
         }
 

@@ -35,8 +35,8 @@ defmodule Wardrik.Run do
   | `:host` | the `Wardrik.Host` the agent runs on, whose seams an operation a tool calls asks, whose credentials a call resolves, and whose dispatch every model call goes through |
 
   `:hooks` to `:retry` are the seams a host reaches through for one
-  agent. Each defaults to something inert, so a deployment that needs none of
-  them configures none of them and no branch in the runtime has to handle
+  agent. Each has a default, so a deployment that needs none of them
+  configures none of them and no branch in the runtime has to handle
   their absence. `:host` is the deployment's, handed to every agent as it
   starts, and `Wardrik.Host.new/1`, which offers no seam, where a run is
   given none.
@@ -106,11 +106,11 @@ defmodule Wardrik.Run do
     :host,
     :sender,
     :deadline,
-    :retry,
     :journal,
     :batch,
     hooks: [],
     labels: [],
+    retry: %Wardrik.LLM.Retry.Backoff{},
     ledger: %Wardrik.Ledger.None{}
   ]
 
@@ -126,7 +126,7 @@ defmodule Wardrik.Run do
           sender: Wardrik.Principal.t() | nil,
           deadline: integer() | nil,
           hooks: [Wardrik.Hook.t()],
-          retry: Wardrik.LLM.Retry.t() | nil,
+          retry: Wardrik.LLM.Retry.t(),
           ledger: Wardrik.Ledger.t(),
           journal: pid() | nil,
           batch: String.t() | nil,
@@ -159,8 +159,8 @@ defmodule Wardrik.Run do
       already holds one
     * `:hooks` - the `Wardrik.Hook`s every call is checked against, `[]` to
       allow everything
-    * `:retry` - a `Wardrik.LLM.Retry`, or `nil` to ask a failed model call
-      again after the waits the config's `:retries` lists
+    * `:retry` - the `Wardrik.LLM.Retry` that decides whether a failed model
+      call is asked again, `%Wardrik.LLM.Retry.Backoff{}` where none is given
     * `:ledger` - a `Wardrik.Ledger` module, which records each tool call before
       it runs, or `nil` to record none
     * `:journal` - the process a turn under this run hands each batch of
@@ -175,7 +175,7 @@ defmodule Wardrik.Run do
       host: Keyword.get_lazy(opts, :host, &Wardrik.Host.new/0),
       sender: Keyword.get(opts, :sender),
       hooks: Keyword.get(opts, :hooks) || [],
-      retry: Keyword.get(opts, :retry),
+      retry: Keyword.get(opts, :retry, %Wardrik.LLM.Retry.Backoff{}),
       ledger: Keyword.get(opts, :ledger, %Wardrik.Ledger.None{}),
       journal: Keyword.get(opts, :journal),
       deadline: Keyword.get(opts, :deadline)

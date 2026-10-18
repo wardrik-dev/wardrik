@@ -335,7 +335,10 @@ The body of PUT /v1/agents/{key}, and the definition GET /v1/agents/{key}/defini
 | `timeout` | integer |  | How many seconds a turn may take. |
 | `idle_timeout` | integer or `"infinity"` |  | How many seconds the agent may have nothing to do before it sleeps, until something asks it. The server's default when absent. |
 | `max_iterations` | integer or `"infinity"` |  | How many rounds of tool calls a turn may make. |
-| `retries` | array of integer |  | How many seconds a turn waits before asking a model call again that failed for a passing reason, such as a timeout, one for each try: [1, 5] where neither this nor the host's defaults say. [] never asks again. |
+| `retries` | object |  | How a turn tries a failed model call again, after a random wait of up to a second that doubles each time. A 4xx answer other than 408, 425 and 429 is not tried again. The host's defaults hold where this is absent. |
+| `retries.attempts` | integer |  | How many times a failed model call is tried again: 6 unless set. 0 never tries again. |
+| `retries.max_wait` | integer |  | The longest wait between tries, in seconds: 60 unless set. |
+| `retries.on_exhausted` | string |  | What happens once the tries are spent: ask a person whether to try again, or fail the turn. ask unless set. One of `ask`, `fail`. |
 | `compaction` | `false` or object |  | When the agent summarises its older history, as shares of the model's window; false never does. |
 | `triggers` | array of object |  | The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. A trigger on a clock has every, and a timezone a cron expression is read in; a webhook has webhook in its place, holding its secret and how a request is verified, and is sent requests at POST /v1/hooks/{key}/{trigger}. |
 | `notify` | string or array of string or object |  | Who hears when the agent parks, fails or answers: a target config.yaml's notify names, a list of them, or to and on. A target tells only the agents of the orgs it serves. |

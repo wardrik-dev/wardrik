@@ -317,7 +317,9 @@ defmodule Wardrik.SubagentTest do
     test "a failed delegation closes its span as a failure", %{run: run} do
       stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
-      ExUnit.CaptureLog.with_log(fn -> Subagent.run(run, "pricing?", name: "researcher") end)
+      ExUnit.CaptureLog.with_log(fn ->
+        Subagent.run(failing(run), "pricing?", name: "researcher")
+      end)
 
       assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :rate_limited}}}
     end
@@ -335,10 +337,14 @@ defmodule Wardrik.SubagentTest do
   test "a failed turn is reported to the caller", %{run: run} do
     stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
-    {result, _log} = ExUnit.CaptureLog.with_log(fn -> Subagent.run(run, "pricing?") end)
+    {result, _log} = ExUnit.CaptureLog.with_log(fn -> Subagent.run(failing(run), "pricing?") end)
 
     assert result == {:error, :rate_limited}
   end
+
+  # A run whose failed model call fails the turn at once.
+  defp failing(run),
+    do: %{run | retry: %Wardrik.LLM.Retry.Backoff{attempts: 0, on_exhausted: :fail}}
 
   test "a turn that produced no text answers empty rather than failing", %{run: run} do
     stub_llm("")

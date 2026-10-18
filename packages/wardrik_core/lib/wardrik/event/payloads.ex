@@ -207,6 +207,20 @@ defmodule Wardrik.Event.ModelFinished do
         }
 end
 
+defmodule Wardrik.Event.ModelRetrying do
+  @moduledoc "A model call failed and is asked again after `wait_ms`, as the `attempt`th of `attempts` tries after the first. `message_id` names the try that failed, and `reason` is why it failed."
+  @enforce_keys ~w(message_id attempt attempts wait_ms reason)a
+  defstruct @enforce_keys
+
+  @type t() :: %__MODULE__{
+          message_id: String.t(),
+          attempt: pos_integer(),
+          attempts: non_neg_integer(),
+          wait_ms: non_neg_integer(),
+          reason: term()
+        }
+end
+
 defmodule Wardrik.Event.Result do
   @moduledoc "Answer text, as it streams."
   @enforce_keys ~w(text)a

@@ -401,6 +401,14 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "defaults.idle_timeout is a whole number of seconds, or infinity"
     end
 
+    test "defaults' retries are an agent file's", context do
+      assert {:ok, [{WardrikDaemon.Agents, defaults: %{"retries" => %{"attempts" => 3}}}]} =
+               read("defaults:\n  retries: {attempts: 3}\n", context)
+
+      assert {:error, message} = read("defaults:\n  retries: {on_exhausted: never}\n", context)
+      assert message =~ "defaults.retries.on_exhausted is ask or fail"
+    end
+
     test "tools lists what one call to a tool costs, by name or pattern", context do
       yaml = "tools:\n  web_search:\n    price: 0.005\n  github/*:\n    price: 0\n"
 

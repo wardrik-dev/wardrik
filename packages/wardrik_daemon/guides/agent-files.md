@@ -33,7 +33,7 @@ why, and an agent already running keeps what it had. A file with no frontmatter 
 | `timeout` | seconds a turn may take |
 | `idle_timeout` | seconds it may have nothing to do before it sleeps, or `infinity`; 900 unless `config.yaml`'s `defaults` say otherwise. A sleeping agent wakes when something asks it |
 | `max_iterations` | rounds of tool calls a turn may make, or `infinity` |
-| [`retries`](#retries) | how long to wait before asking a failed model call again |
+| [`retries`](#retries) | how often a failed model call is tried again, and what happens after |
 | `compaction` | when it summarises its older history, as `at`, `keep` and `window`, or `false` never to |
 | [`triggers`](#triggers) | when it is asked something on a clock, by a feed, or by a webhook |
 | [`notify`](#notify) | who hears when it waits on a person, fails or answers |
@@ -143,15 +143,27 @@ person. See [Policies](`e:wardrik:policies.html`) for what a policy holds.
 
 ## retries
 
-The waits, in seconds, before a model call that failed for a passing reason, such as a timeout, a
-dropped connection or a provider's 5xx, is asked again. The turn fails after the last.
+How a turn tries a failed model call again. It waits a random while before each try: up to a
+second, then up to two, then four, and so on, never more than `max_wait`. Where the provider says
+how long to wait, in a `Retry-After` header, it waits that long instead.
 
 ```yaml
-retries: [2, 10, 30]    # after 2s, then 10s, then 30s
-retries: []             # never ask again
+retries:
+  attempts: 6          # tries after the first; 0 never tries again
+  max_wait: 60         # seconds, the longest wait between tries
+  on_exhausted: ask    # once spent: ask a person to try again, or fail
 ```
 
-`[1, 5]` unless `config.yaml`'s `defaults` say otherwise.
+Those are the defaults where neither the file nor `config.yaml`'s `defaults` set `retries`. A key
+left out takes its default above.
+
+Every failure is tried again: a timeout, a dropped connection, a stream that broke, a rate limit, a
+provider's 5xx. A 4xx other than 408, 425 and 429 says the request can't succeed as it is, so it
+goes straight to `on_exhausted`.
+
+With `ask`, the turn waits on a person, as for an approval: "The model failed 7 times: <reason>. Try
+again?". Approving tries again with a fresh set of tries. Denying fails the turn. With `fail`, the
+turn fails.
 
 ## triggers
 

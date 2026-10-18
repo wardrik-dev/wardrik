@@ -245,9 +245,22 @@ export interface AgentDefinition {
    */
   max_iterations?: number | "infinity";
   /**
-   * How many seconds a turn waits before asking a model call again that failed for a passing reason, such as a timeout, one for each try: [1, 5] where neither this nor the host's defaults say. [] never asks again.
+   * How a turn tries a failed model call again, after a random wait of up to a second that doubles each time. A 4xx answer other than 408, 425 and 429 is not tried again. The host's defaults hold where this is absent.
    */
-  retries?: number[];
+  retries?: {
+    /**
+     * How many times a failed model call is tried again: 6 unless set. 0 never tries again.
+     */
+    attempts?: number;
+    /**
+     * The longest wait between tries, in seconds: 60 unless set.
+     */
+    max_wait?: number;
+    /**
+     * What happens once the tries are spent: ask a person whether to try again, or fail the turn. ask unless set.
+     */
+    on_exhausted?: "ask" | "fail";
+  };
   /**
    * When the agent summarises its older history, as shares of the model's window; false never does.
    */
@@ -839,6 +852,22 @@ export interface MessageDeltaData {
   delta: string;
 }
 /**
+ * The model failed to answer, and is asked again after a wait.
+ */
+export interface MessageRetryingData {
+  message: MessageRef;
+  /**
+   * Which try after the first comes next.
+   */
+  attempt: number;
+  /**
+   * How many tries after the first there may be.
+   */
+  attempts: number;
+  wait_ms: DurationMs;
+  error: ErrorInfo;
+}
+/**
  * The model was asked for an assistant message.
  */
 export interface MessageStartedData {
@@ -1169,6 +1198,7 @@ export interface EventData {
   "wardrik.message.completed": MessageCompletedData;
   "wardrik.message.created": MessageCreatedData;
   "wardrik.message.delta": MessageDeltaData;
+  "wardrik.message.retrying": MessageRetryingData;
   "wardrik.message.started": MessageStartedData;
   "wardrik.reasoning.delta": ReasoningDeltaData;
   "wardrik.room.bound": RoomBoundData;

@@ -227,10 +227,13 @@ defmodule WardrikDefinitionTest do
     assert {:error, "idle_timeout", "is a whole number of seconds, or infinity"} =
              WardrikDefinition.check_defaults(%{"idle_timeout" => 0})
 
-    assert :ok = WardrikDefinition.check_defaults(%{"retries" => [1, 5, 30]})
+    assert :ok = WardrikDefinition.check_defaults(%{"retries" => %{"attempts" => 3}})
 
-    assert {:error, "retries", "is a list of whole numbers of seconds, one wait for each try"} =
+    assert {:error, "retries", "is a set of attempts, max_wait and on_exhausted"} =
              WardrikDefinition.check_defaults(%{"retries" => "often"})
+
+    assert {:error, "retries.on_exhausted", "is ask or fail"} =
+             WardrikDefinition.check_defaults(%{"retries" => %{"on_exhausted" => "never"}})
 
     assert {:error, "name", "is not a setting; expected one of model, tools" <> _} =
              WardrikDefinition.check_defaults(%{"name" => "x"})

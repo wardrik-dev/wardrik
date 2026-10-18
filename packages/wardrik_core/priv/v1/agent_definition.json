@@ -132,12 +132,29 @@
       "description": "How many rounds of tool calls a turn may make."
     },
     "retries": {
-      "type": "array",
-      "items": {
-        "type": "integer",
-        "minimum": 0
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many times a failed model call is tried again: 6 unless set. 0 never tries again."
+        },
+        "max_wait": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The longest wait between tries, in seconds: 60 unless set."
+        },
+        "on_exhausted": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "fail"
+          ],
+          "description": "What happens once the tries are spent: ask a person whether to try again, or fail the turn. ask unless set."
+        }
       },
-      "description": "How many seconds a turn waits before asking a model call again that failed for a passing reason, such as a timeout, one for each try: [1, 5] where neither this nor the host's defaults say. [] never asks again."
+      "description": "How a turn tries a failed model call again, after a random wait of up to a second that doubles each time. A 4xx answer other than 408, 425 and 429 is not tried again. The host's defaults hold where this is absent."
     },
     "compaction": {
       "oneOf": [
@@ -302,11 +319,11 @@
       "timeout": 600,
       "idle_timeout": 900,
       "max_iterations": 12,
-      "retries": [
-        2,
-        10,
-        30
-      ],
+      "retries": {
+        "attempts": 4,
+        "max_wait": 30,
+        "on_exhausted": "fail"
+      },
       "compaction": {
         "at": 0.6,
         "keep": 0.25

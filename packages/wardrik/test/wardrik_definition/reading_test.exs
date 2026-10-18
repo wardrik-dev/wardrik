@@ -3,6 +3,7 @@ defmodule WardrikDefinition.ReadingTest do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
+  alias Wardrik.LLM.Retry.Backoff
   alias Wardrik.Servers.Key
   alias WardrikDefinition.Context
 
@@ -131,20 +132,34 @@ defmodule WardrikDefinition.ReadingTest do
              read("---\nidle_timeout: infinity\n---\n", defaults)
   end
 
-  test "retries are seconds before each try, and the defaults' where it sets none", context do
-    assert {:ok, spec} = read("---\nretries: [2, 10, 30]\n---\n", context)
-    assert spec.config.retries == [2_000, 10_000, 30_000]
-    assert {:ok, %{config: %{retries: []}}} = read("---\nretries: []\n---\n", context)
-    assert {:ok, %{config: %{retries: [1_000, 5_000]}}} = read("Answer briefly.\n", context)
+  test "retries are how often and how long a failed model call is tried again", context do
+    assert {:ok, %{retry: %Backoff{attempts: 6, max_wait: 60_000, on_exhausted: :ask}}} =
+             read("Answer briefly.\n", context)
 
-    for written <- ["soon", "[1, -1]", "[1.5]"] do
-      assert {:error, "retries is a list of whole numbers of seconds, one wait for each try"} =
-               read("---\nretries: #{written}\n---\n", context)
+    written = "---\nretries: {attempts: 2, max_wait: 30, on_exhausted: fail}\n---\n"
+
+    assert {:ok, %{retry: %Backoff{attempts: 2, max_wait: 30_000, on_exhausted: :fail}}} =
+             read(written, context)
+
+    assert {:ok, %{retry: %Backoff{attempts: 0, max_wait: 60_000}}} =
+             read("---\nretries: {attempts: 0}\n---\n", context)
+
+    for {written, message} <- [
+          {"[1, 5]", "retries is a set of attempts, max_wait and on_exhausted"},
+          {"{attempts: -1}", "retries.attempts is a whole number of tries after the first"},
+          {"{max_wait: 1.5}", "retries.max_wait is a whole number of seconds"},
+          {"{on_exhausted: retry}", "retries.on_exhausted is ask or fail"},
+          {"{waits: [1]}",
+           "retries.waits is not a setting; expected attempts, max_wait or on_exhausted"}
+        ] do
+      assert {:error, ^message} = read("---\nretries: #{written}\n---\n", context)
     end
 
-    defaults = %{context: %{context.context | defaults: %{"retries" => [3]}}}
-    assert {:ok, %{config: %{retries: [3_000]}}} = read("Answer briefly.\n", defaults)
-    assert {:ok, %{config: %{retries: []}}} = read("---\nretries: []\n---\n", defaults)
+    defaults = %{context: %{context.context | defaults: %{"retries" => %{"attempts" => 3}}}}
+    assert {:ok, %{retry: %Backoff{attempts: 3}}} = read("Answer briefly.\n", defaults)
+
+    assert {:ok, %{retry: %Backoff{attempts: 1, on_exhausted: :ask}}} =
+             read("---\nretries: {attempts: 1}\n---\n", defaults)
   end
 
   test "text/1 writes a file that reads back as it was given", context do

@@ -24,7 +24,7 @@ left.
 | --- | --- | --- |
 | `max_iterations` | 30 rounds of tool calls | the model is asked once more, without tools, to answer |
 | `timeout` | none | the turn stops at its next step, as `run.deadline_exceeded` |
-| `retries` | `[1, 5]` | a failed model call is asked again after each wait; then the turn fails |
+| `retries` | 6 more tries, waits up to 60 seconds | a person is asked whether to try again |
 
 Set them in the [agent file](/reference/agent-files/), or for every agent in `config.yaml`'s
 `defaults`. Up to 8 of a round's tool calls run at once, each for up to 60 seconds.
@@ -58,10 +58,11 @@ conversation of its own, and can't wait on a person: a call that would ask one i
 
 ## Details
 
-- **Retries.** A model call is retried only for a passing failure: a timeout, a dropped connection
-  or a provider's 5xx, before or during its answer. What a failed try had streamed is dropped, and
-  the next try answers as a message of its own. `retries: [2, 10, 30]` waits longer;
-  `retries: []` never retries.
+- **Retries.** A failed model call is tried again after a random wait that doubles each time, or as
+  long as the provider's `Retry-After` says. A 4xx other than 408, 425 and 429 isn't tried again.
+  Each try is announced with `message.retrying`. What a failed try had streamed is dropped, and the
+  next try answers as a message of its own. Once the tries are spent the turn waits on a person,
+  unless [`retries`](/reference/agent-files/#retries) says `on_exhausted: fail`.
 - **Stopping.** A turn that stops within two seconds keeps what it said; one that doesn't is ended
   and adds nothing. A stopped turn stays stopped on whichever node holds the agent next.
   `wardrik stop` stops the daemon, and every agent with it.
