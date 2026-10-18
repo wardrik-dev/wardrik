@@ -532,6 +532,10 @@ defmodule WardrikTUI.View do
   @spec stopped(AgentID.t()) :: Text.t()
   def stopped(id), do: note(["asked ", Text.tag(to_string(id), :bright), " to stop"])
 
+  @doc "That the attached agent is taking no turn, so `/stop` had nothing to stop."
+  @spec taking_no_turn(AgentID.t()) :: Text.t()
+  def taking_no_turn(id), do: note([Text.tag(to_string(id), :bright), " is taking no turn"])
+
   @doc "That every agent under a prefix was asked to stop."
   @spec stopped_under(Prefix.t(), non_neg_integer()) :: Text.t()
   def stopped_under(prefix, 0),

@@ -1089,6 +1089,21 @@ defmodule WardrikTUI.App.FleetTest do
     assert under == "#{org}/"
   end
 
+  test "/stop interrupts the attached agent, as the person here", %{session: session, org: org} do
+    key = AgentID.new!("busy", org: org)
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :streaming, [self()]})
+    on_exit(fn -> Fleet.forget(key) end)
+    submit(session, "/connect busy")
+    :ok = Bus.subscribe(key)
+    submit(session, "take your time")
+    assert_receive {:running, _turn_pid}
+
+    submit(session, "/stop")
+
+    assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
+    assert Audit.about("agents/#{key}") == [{"agent.cancelled", @ops}]
+  end
+
   test "/shutdown NAME stops an agent and keeps its conversation for /spawn", ctx do
     %{session: session, org: org} = ctx
     key = spawn_and_ask(org, "sleeper", "remember this")
@@ -1120,6 +1135,9 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "hello?")
     assert screen(session) =~ "is not running · nothing was sent"
     refute_receive {:turn, _}
+
+    submit(session, "/stop")
+    assert screen(session) =~ "no agent at #{agent_id}"
   end
 
   test "shutting down the attached agent puts it to sleep, and what is typed wakes it", ctx do

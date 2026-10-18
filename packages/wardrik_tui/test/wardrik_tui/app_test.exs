@@ -1,17 +1,43 @@
 defmodule WardrikTUI.AppTest do
   use ExUnit.Case, async: false
+  use Mimic
 
   alias Wardrik.Agent.Message
   alias Wardrik.Event
   alias Wardrik.Event.Source
+  alias Wardrik.Fleet
   alias WardrikTUI.App
 
   # The view is driven purely by events, so a fake agent is enough. It forwards
-  # `Agent.ask/2` and `Agent.interrupt/1` to this test's mailbox as casts.
+  # what it is asked, decided and interrupted to this test's mailbox as casts.
+  # The fleet holds it under `agent_id`, taking a turn, so every operation on
+  # the agent reaches it.
   setup do
     agent_id = Wardrik.Test.Fleet.id()
     {:ok, agent} = Wardrik.Test.FakeAgent.start_link(self())
     test = self()
+
+    Mimic.set_mimic_global()
+
+    stub(Fleet, :whereis, fn
+      ^agent_id, _opts -> agent
+      id, opts -> call_original(Fleet, :whereis, [id, opts])
+    end)
+
+    stub(Fleet, :lookup, fn
+      ^agent_id ->
+        %Fleet.Member{
+          id: agent_id,
+          pid: agent,
+          node: node(),
+          status: :running,
+          pending: 0,
+          waiting_on: []
+        }
+
+      id ->
+        call_original(Fleet, :lookup, [id])
+    end)
 
     session =
       Breeze.Test.start!(App,
@@ -35,7 +61,8 @@ defmodule WardrikTUI.AppTest do
     # Implicits such as the prompt only exist once a frame has been rendered.
     Breeze.Test.render_text!(session)
 
-    {:ok, session: session, agent_id: agent_id, turn: Source.root(agent_id, name: "turn")}
+    {:ok,
+     session: session, agent: agent, agent_id: agent_id, turn: Source.root(agent_id, name: "turn")}
   end
 
   defp screen(session), do: Breeze.Test.render_text!(session)
@@ -140,6 +167,23 @@ defmodule WardrikTUI.AppTest do
       assert screen(session) =~ "│ › /connect one two"
     end
 
+    test "a line for an agent that has stopped says nothing was sent", ctx do
+      %{session: session, agent: agent} = ctx
+      GenServer.stop(agent)
+      submit(session, "hello?")
+
+      assert screen(session) =~ "is not running · nothing was sent"
+    end
+
+    test "a line for an agent the fleet no longer holds says nothing was sent", ctx do
+      %{session: session} = ctx
+      stub(Fleet, :whereis, fn _id, _opts -> nil end)
+      submit(session, "hello?")
+
+      refute_receive {:"$gen_cast", {:ask, _message}}
+      assert screen(session) =~ "is not running · nothing was sent"
+    end
+
     test "two slashes send text that begins with one", %{session: session} do
       submit(session, "//spawn is a word here")
 
@@ -154,7 +198,16 @@ defmodule WardrikTUI.AppTest do
       assert screen(session) =~ "usage: /connect [NAME]"
     end
 
-    test "/stop interrupts and /quit stops", %{session: session} do
+    test "/stop interrupts a turn, says when there is none, and /quit stops", %{
+      session: session,
+      turn: turn,
+      agent_id: agent_id
+    } do
+      submit(session, "/stop")
+      refute_receive {:"$gen_cast", :interrupt}
+      assert screen(session) =~ "#{agent_id} is taking no turn"
+
+      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
       submit(session, "/stop")
       assert_receive {:"$gen_cast", :interrupt}
 
@@ -432,6 +485,21 @@ defmodule WardrikTUI.AppTest do
 
       assert_receive {:"$gen_cast", {:resume, %{"call_deploy" => :approve}}}
       assert screen(session) =~ "▌ approved deploy"
+    end
+
+    test "an answer for an agent the fleet no longer holds says nothing was sent", ctx do
+      %{session: session, turn: turn} = ctx
+
+      emit(turn, [
+        %Event.TurnStarted{messages: [Message.new("hi")]},
+        %Event.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
+      ])
+
+      stub(Fleet, :whereis, fn _id, _opts -> nil end)
+      submit(session, "y")
+
+      refute_receive {:"$gen_cast", {:resume, _decisions}}
+      assert screen(session) =~ "is not running · nothing was sent"
     end
 
     test "several parked calls are decided one at a time, or all at once", ctx do

@@ -30,8 +30,8 @@ defmodule WardrikTUI.SSH do
   not edited in `$VISUAL`, which would run on the server.
   """
 
-  alias Wardrik.Agent
   alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Fleet
 
@@ -42,16 +42,16 @@ defmodule WardrikTUI.SSH do
     org = Keyword.get(opts, :org)
     host = Keyword.fetch!(opts, :host)
     principal = Wardrik.Principal.new(:ssh, to_string(session.username))
+    as = Wardrik.Session.root(host: host, principal: principal)
 
-    with {:ok, id} <-
-           attach(session.username, org, Wardrik.Session.root(host: host, principal: principal)) do
+    with {:ok, id} <- attach(session.username, org, as) do
       start_opts = [
         agent: id,
         agent_id: id,
         org: org,
         host: host,
         principal: principal,
-        model: model(id),
+        model: model(as, id),
         clipboard: WardrikTUI.Clipboard.osc52(&write(session, &1)),
         editor: fn _draft, _context -> {:error, :remote} end
       ]
@@ -74,7 +74,9 @@ defmodule WardrikTUI.SSH do
     do: Termite.SSH.Adapter.write(%Termite.SSH.Adapter{channel_pid: session.channel_pid}, string)
 
   defp attach(username, org, as) do
-    case choose(Fleet.list(), username, org) do
+    {:ok, members} = Wardrik.agents_list(as, Prefix.all())
+
+    case choose(members, username, org) do
       {:attach, id} ->
         {:ok, id}
 
@@ -110,10 +112,10 @@ defmodule WardrikTUI.SSH do
     with {:ok, id} <- AgentID.new("assistant", org: org, user: user), do: {:start, id}
   end
 
-  defp model(id) do
-    case Agent.status(id) do
-      %{model: model} -> model
-      {:error, :not_found} -> ""
+  defp model(as, id) do
+    case Wardrik.agent_read(as, id) do
+      {:ok, %{status: %{model: model}}} -> model
+      {:error, %Error{type: :not_found}} -> ""
     end
   end
 end
