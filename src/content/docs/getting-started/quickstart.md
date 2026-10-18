@@ -98,7 +98,7 @@ A tool worker is your app offering agents tools. They run in your process, with 
 your app dials the daemon, so nothing needs to reach it. Make a token for it:
 
 ```sh
-wardrik token create shop --scope default/ --can serve
+wardrik token create shop --scope default/ --role worker
 ```
 
 Then offer a tool with the TypeScript SDK, `@wardrik/sdk`. It isn't on npm yet; build it from

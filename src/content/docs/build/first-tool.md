@@ -89,7 +89,7 @@ await wardrik.work({ signal: stop.signal });
 Make a token that may serve tools to the deployment's agents:
 
 ```sh
-wardrik token create statuspage --scope default/ --can serve
+wardrik token create statuspage --scope default/ --role worker
 ```
 
 Run the app with it:

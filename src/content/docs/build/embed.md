@@ -41,17 +41,19 @@ end
 
 ## 3. Say who may do what
 
-Wardrik knows a user as a `Wardrik.Principal`, and asks your app what they may do. Here, a user
-may read and message their org's agents, and do anything with their own:
+Wardrik knows a user as a `Wardrik.Principal`, and asks your app for the token they act with. A
+token's statements each allow some actions on some agents, and a role is a named set of actions.
+Here, a user may read and message their org's agents, and own their own:
 
-```elixir title="lib/my_app/grants.ex"
-defmodule MyApp.Grants do
+```elixir title="lib/my_app/issuer.ex"
+defmodule MyApp.Issuer do
   @moduledoc """
-  What each signed-in user may do with agents: read and message their org's,
-  and everything with their own.
+  The token each signed-in user acts with: reader and messenger on their
+  org's agents, and owner of their own.
   """
 
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Role
 
   defstruct []
 
@@ -63,18 +65,19 @@ defmodule MyApp.Grants do
   def own(%MyApp.Accounts.User{} = user), do: Prefix.new!(org: user.org, user: to_string(user.id))
 
   @doc "What the user `id` of `org` may do."
-  def of(org, id) do
-    {:ok, org_agents} = Wardrik.Grant.new(Prefix.new!(org: org), [:read, :message])
-    {:ok, own_agents} = Wardrik.Grant.new(Prefix.new!(org: org, user: id))
-    [org_agents, own_agents]
+  def scope(org, id) do
+    [
+      Role.bind([:reader, :messenger], Prefix.new!(org: org)),
+      Role.bind([:owner], Prefix.new!(org: org, user: id))
+    ]
   end
 end
 
-defimpl Wardrik.Grants, for: MyApp.Grants do
-  def grants(_grants, principal) do
+defimpl Wardrik.Issuer, for: MyApp.Issuer do
+  def issue(_issuer, principal, _opts) do
     case {Wardrik.Principal.type(principal), String.split(Wardrik.Principal.id(principal), "/")} do
-      {:user, [org, id]} -> MyApp.Grants.of(org, id)
-      _other -> []
+      {:user, [org, id]} -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.scope(org, id)}
+      _other -> %Wardrik.Token{principal: principal}
     end
   end
 end
@@ -86,7 +89,7 @@ another org reaches none of them. [Agents](/concepts/agents/) explains IDs.
 ## 4. Describe Wardrik
 
 `Wardrik.new/1` takes everything Wardrik needs from your app: the store in your `Repo`, and your
-grants. Keep it in one module:
+issuer. Keep it in one module:
 
 ```elixir title="lib/my_app/agents.ex"
 defmodule MyApp.Agents do
@@ -96,7 +99,7 @@ defmodule MyApp.Agents do
 
   def store, do: Wardrik.store(repo: MyApp.Repo)
 
-  def wardrik, do: Wardrik.new(store: store(), grants: %MyApp.Grants{})
+  def wardrik, do: Wardrik.new(store: store(), issuer: %MyApp.Issuer{})
 end
 ```
 
@@ -136,20 +139,20 @@ Wardrik always runs on the Wardrik before it.
 
 ## 6. Define an agent and ask it
 
-Your code acts as the signed-in user, in a session `Wardrik.as/3` makes. Each function of
-`Wardrik` checks their grant, and records what it changed in the audit log:
+Your code acts as the signed-in user, in a scope `Wardrik.as/3` makes. Each function of
+`Wardrik` checks their token, and records what it changed in the audit log:
 
 ```elixir title="lib/my_app/agents.ex"
 def define(user, name, definition) do
   agent = AgentID.new!(name, org: user.org, user: to_string(user.id))
-  Wardrik.agent_define(session(user), agent, definition)
+  Wardrik.agent_define(scope(user), agent, definition)
 end
 
-def ask(user, agent, text), do: Wardrik.agent_ask(session(user), agent, text)
+def ask(user, agent, text), do: Wardrik.agent_ask(scope(user), agent, text)
 
-def subscribe(user, agent), do: Wardrik.agent_subscribe(session(user), agent)
+def subscribe(user, agent), do: Wardrik.agent_subscribe(scope(user), agent)
 
-defp session(user), do: Wardrik.as(wardrik(), MyApp.Grants.principal(user))
+defp scope(user), do: Wardrik.as(wardrik(), MyApp.Issuer.principal(user))
 ```
 
 Define Maria's support agent, ask it something, and read the answer from its log. The model's key
@@ -180,8 +183,8 @@ end
 ```
 
 Every event an agent writes reaches its subscribers, so a LiveView can show a turn as it streams.
-[Events](/concepts/events/) lists them. Nobody else reaches Maria's agent: the grant on `acme/`
-covers the org's own agents, not its users'. Anyone else is told it isn't there.
+[Events](/concepts/events/) lists them. Nobody else reaches Maria's agent: reading `acme/` reaches
+the org's own agents, not its users'. Anyone else is told it isn't there.
 
 ## Serve the HTTP API
 
@@ -212,15 +215,12 @@ defimpl WardrikHTTP.Authenticator, for: MyAppWeb.Session do
   def authenticate(session, conn) do
     with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
          {:ok, user} <- Phoenix.Token.verify(session.endpoint, "agents", token, max_age: @day) do
-      {:ok, grant} = Wardrik.Grant.new(MyApp.Grants.own(user))
+      token = %Wardrik.Token{
+        principal: MyApp.Issuer.principal(user),
+        scope: [Wardrik.Role.bind([:owner], MyApp.Issuer.own(user))]
+      }
 
-      {:ok,
-       %WardrikHTTP.Caller{
-         id: "session/#{user.id}",
-         name: user.email,
-         principal: MyApp.Grants.principal(user),
-         grant: grant
-       }}
+      {:ok, %WardrikHTTP.Caller{id: "session/#{user.id}", name: user.email, token: token}}
     else
       _no_session -> {:error, :unauthorized}
     end
@@ -230,7 +230,7 @@ defimpl WardrikHTTP.Authenticator, for: MyAppWeb.Session do
 end
 ```
 
-A request reaches the user's own agents, as its grant says. Start the API's listener on a port of
+A request reaches the user's own agents, as its token says. Start the API's listener on a port of
 its own, after Wardrik:
 
 ```elixir title="lib/my_app/agents.ex"
@@ -292,7 +292,7 @@ def wardrik do
 
   Wardrik.new(
     store: store(),
-    grants: %MyApp.Grants{},
+    issuer: %MyApp.Issuer{},
     credentials: vault,
     connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault},
     context: Wardrik.context(servers: [github: [orgs: :all]], mcp: WardrikMCP)
@@ -376,9 +376,9 @@ Add two functions to `MyApp.Agents`:
 
 ```elixir title="lib/my_app/agents.ex"
 def connect(user, provider),
-  do: Wardrik.connections_connect(session(user), MyApp.Grants.own(user), provider)
+  do: Wardrik.connections_connect(scope(user), MyApp.Issuer.own(user), provider)
 
-def connections(user), do: Wardrik.connections_list(session(user), MyApp.Grants.own(user))
+def connections(user), do: Wardrik.connections_list(scope(user), MyApp.Issuer.own(user))
 ```
 
 Give Maria an agent that uses GitHub, and the link to connect her account:

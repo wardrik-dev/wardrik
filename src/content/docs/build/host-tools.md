@@ -121,11 +121,11 @@ WARDRIK_URL=https://agents.acme.example
 ```
 
 The SDK opens a WebSocket to `wss://agents.acme.example/v1/workers`, and Caddy passes it on. Only
-that path is open, and it takes only tokens that can `serve`.
+that path is open, and it takes only tokens with the `worker` role.
 
 ## Tokens and keys
 
-- Make one token per app, with `--can serve`, scoped to the agents that may use its tools. See
+- Make one token per app, with `--role worker`, scoped to the agents that may use its tools. See
   [Tokens](/run/tokens/).
 - The tools' own keys, such as Statuspage's, stay in the app's environment. The daemon never sees
   them.

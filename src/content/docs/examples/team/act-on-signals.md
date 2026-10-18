@@ -138,7 +138,7 @@ await wardrik.work();
 Start it with a token that can serve acme's agents:
 
 ```sh
-wardrik token create growth --scope acme/ --can serve
+wardrik token create growth --scope acme/ --role worker
 WARDRIK_TOKEN=wardrik_... node growth.ts
 ```
 
@@ -336,7 +336,7 @@ from `agents/` and run `wardrik reload`; the agent stops, keeping its conversati
 body as `instructions.md` and define it with a token held to the policy:
 
 ```sh
-wardrik token create growth-admin --scope acme/ --can define --policy growth
+wardrik token create growth-admin --scope acme/ --role definer --policy growth
 export TOKEN=wardrik_...
 
 jq -n --rawfile instructions instructions.md '{

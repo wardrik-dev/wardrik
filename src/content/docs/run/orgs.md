@@ -34,17 +34,17 @@ which orgs are: an agent file, an agent defined over the API, `wardrik vault put
 `wardrik agent spawn --org` and `wardrik token create --scope`. A typo is caught the same way. See
 [`orgs`](/reference/config/#orgs).
 
-## Hold an org to a ceiling
+## Hold an org to a policy
 
-A ceiling is a policy every agent of the org is held to, ahead of its own:
+An org's `policy` is one every agent of the org is held to, ahead of its own:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 orgs:
   payments:
-    ceiling: payments-ceiling
+    policy: payments-limits
 ```
 
-```yaml title="~/.config/wardrik/policies/payments-ceiling.yaml"
+```yaml title="~/.config/wardrik/policies/payments-limits.yaml"
 ask:
   stripe/stripe_api_write: This changes money in Stripe.
 deny: [shell/*]
@@ -59,12 +59,12 @@ budget:
 - Its budget is the org's: every agent of the org, its users' included, spends from it together.
   Once they have spent it, the next model call any of them makes asks or stops, and approving it
   grants more to all of them. Each agent's own budget still counts apart.
-- `"*"`'s ceiling holds every org, beside each org's own, and each org spends its budget apart.
-- A ceiling `policies/` doesn't hold stops the org's agents, rather than running them without it.
-- `wardrik show` lists it among the agent's policies, as `orgs/payments/payments-ceiling`, and
+- `"*"`'s policy holds every org, beside each org's own, and each org spends its budget apart.
+- A policy `policies/` doesn't hold stops the org's agents, rather than running them without it.
+- `wardrik show` lists it among the agent's policies, as `orgs/payments/payments-limits`, and
   what the org has spent of its budget, as `$12.40 of $20.00 today across payments`.
 
-A [token](/run/tokens/#what-agents-it-defines-may-do) can add a ceiling of its own over the agents it
+A [token](/run/tokens/#what-agents-it-defines-may-do) can add a policy of its own over the agents it
 defines.
 
 ## What stays inside an org
