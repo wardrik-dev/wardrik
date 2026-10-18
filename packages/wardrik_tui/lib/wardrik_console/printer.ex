@@ -16,7 +16,8 @@ defmodule WardrikConsole.Printer do
   work it delegated.
 
   A tool call is a line when it starts and another when it finishes or is
-  refused, cut to the width. What the answer and the reasoning had not
+  refused, cut to the width, as are a model call asked again after it failed
+  and history being compacted. What the answer and the reasoning had not
   finished comes first, so the lines keep the order things happened in. A
   turn that ends, fails, is stopped, or waits on a person returns what is
   left of its text, then says so, and why it failed is written whole. Every
@@ -93,6 +94,16 @@ defmodule WardrikConsole.Printer do
 
   defp said(%Event.ToolDenied{name: name, reason: reason}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, " was refused: ", reason]}]
+
+  defp said(%Event.ModelRetrying{} = retry) do
+    again = ", again in #{ceil(retry.wait_ms / 1_000)}s (#{retry.attempt} of #{retry.attempts})"
+    [{:cut, ["  ", Owl.Data.tag("↻", :yellow), " model failed: ", inspect(retry.reason), again]}]
+  end
+
+  # Every other span is a tool call's, or work inside one, which the call's own
+  # lines already say.
+  defp said(%Event.SpanStarted{name: "compacting history" = name}),
+    do: [{:cut, ["  ", Owl.Data.tag("·", :cyan), " ", name]}]
 
   defp said(%Event.TurnParked{calls: calls}) do
     [

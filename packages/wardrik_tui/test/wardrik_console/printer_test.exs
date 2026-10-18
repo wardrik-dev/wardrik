@@ -107,6 +107,24 @@ defmodule WardrikConsole.PrinterTest do
            ]
   end
 
+  test "a model call asked again, and history compacted, are lines of their own" do
+    assert print([
+             %Event.Result{text: "Looking"},
+             %Event.ModelRetrying{
+               message_id: "m0",
+               attempt: 2,
+               attempts: 6,
+               wait_ms: 3_200,
+               reason: :timeout
+             },
+             %Event.SpanStarted{name: "compacting history"}
+           ]) == [
+             "Looking",
+             "  ↻ model failed: :timeout, again in 4s (2 of 6)",
+             "  · compacting history"
+           ]
+  end
+
   test "a line longer than the width is cut short" do
     [line] =
       print(
