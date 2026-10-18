@@ -43,7 +43,7 @@ defmodule WardrikWorkspace.Tools do
   def names, do: @names
 
   @doc "The file tools over `spec`."
-  @spec build(Spec.t()) :: [ReqLLM.Tool.t()]
+  @spec build(Spec.t()) :: [Wardrik.Tool.t()]
   def build(%Spec{} = spec) do
     for name <- @names do
       {description, schema} = definition(name)
@@ -51,7 +51,7 @@ defmodule WardrikWorkspace.Tools do
       Wardrik.Tool.new!(
         name: name,
         description: description,
-        parameter_schema: schema,
+        schema: schema,
         run: {__MODULE__, :handle, [String.to_existing_atom(name), spec]}
       )
     end

@@ -62,7 +62,7 @@ defmodule WardrikMCP.Test.Case do
   end
 
   @doc "Waits until a server has reported its tools, or fails the test."
-  @spec await_tools(Wardrik.Servers.Key.t(), timeout()) :: [ReqLLM.Tool.t()]
+  @spec await_tools(Wardrik.Servers.Key.t(), timeout()) :: [Wardrik.Tool.t()]
   def await_tools(key, timeout \\ :timer.seconds(30)) do
     case WardrikMCP.Connection.await(key, :deployment, timeout) do
       {:ok, tools} -> tools

@@ -6,7 +6,7 @@ defmodule Wardrik.LLM.ConfigTest do
   alias Wardrik.Test.EchoTool
 
   defp tool!(name) do
-    ReqLLM.Tool.new!(name: name, description: "test tool", callback: fn i -> {:ok, i} end)
+    Wardrik.Tool.new!(name: name, description: "test tool", run: fn i, _context -> {:ok, i} end)
   end
 
   test "new/1 defaults" do
@@ -36,7 +36,7 @@ defmodule Wardrik.LLM.ConfigTest do
     config = Config.new(tools: [EchoTool])
 
     assert config.tools == [EchoTool]
-    assert [%ReqLLM.Tool{name: "echo"}] = Config.tools(config)
+    assert [%Wardrik.Tool{name: "echo"}] = Config.tools(config)
   end
 
   test "tools/1 leaves an already-built tool alone, so building twice is safe" do
@@ -72,7 +72,11 @@ defmodule Wardrik.LLM.ConfigTest do
 
       @impl true
       def tool do
-        ReqLLM.Tool.new!(name: "patient", description: "slow", callback: fn _ -> {:ok, %{}} end)
+        Wardrik.Tool.new!(
+          name: "patient",
+          description: "slow",
+          run: fn _, _context -> {:ok, %{}} end
+        )
       end
 
       @impl true
@@ -143,7 +147,7 @@ defmodule Wardrik.LLM.ConfigTest do
   end
 
   test "add_tool/2 takes a module as readily as a built tool" do
-    assert [%ReqLLM.Tool{name: "echo"}] =
+    assert [%Wardrik.Tool{name: "echo"}] =
              Config.new() |> Config.add_tool(EchoTool) |> Config.tools()
   end
 
@@ -187,7 +191,9 @@ defmodule Wardrik.LLM.ConfigTest do
     end
 
     test "a tool given inline is dropped by name" do
-      inline = ReqLLM.Tool.new!(name: "inline", description: "d", callback: fn _ -> {:ok, 1} end)
+      inline =
+        Wardrik.Tool.new!(name: "inline", description: "d", run: fn _, _context -> {:ok, 1} end)
+
       config = Config.new(tools: [EchoTool, inline])
 
       dumped = Config.dump(config)
@@ -197,7 +203,9 @@ defmodule Wardrik.LLM.ConfigTest do
     end
 
     test "loading warns about the tools that could not travel" do
-      inline = ReqLLM.Tool.new!(name: "inline", description: "d", callback: fn _ -> {:ok, 1} end)
+      inline =
+        Wardrik.Tool.new!(name: "inline", description: "d", run: fn _, _context -> {:ok, 1} end)
+
       dumped = Config.dump(Config.new(tools: [inline]))
 
       log = ExUnit.CaptureLog.capture_log(fn -> assert %Config{} = Config.load(dumped) end)

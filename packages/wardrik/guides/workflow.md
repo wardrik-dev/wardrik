@@ -17,7 +17,7 @@ defmodule MyApp.Nightly do
     WardrikWorkflow.as_tool(__MODULE__,
       name: "nightly",
       description: "Summarise everything that changed since a date.",
-      parameter_schema: [since: [type: :string, required: true, doc: "ISO date"]]
+      schema: [since: [type: :string, required: true, doc: "ISO date"]]
     )
   end
 

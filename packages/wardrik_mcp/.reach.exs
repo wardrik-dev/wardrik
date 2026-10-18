@@ -49,6 +49,7 @@
       "Wardrik.LLM.Message",
       "Wardrik.LLM.Retry",
       "Wardrik.LLM.Retry.Backoff",
+      "Wardrik.LLM.Tools",
       "Wardrik.LLM.Usage",
       "Wardrik.Label",
       "Wardrik.Ledger",

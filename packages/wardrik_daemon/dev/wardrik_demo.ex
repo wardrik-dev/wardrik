@@ -59,16 +59,15 @@ defmodule WardrikDemo do
 
     @impl true
     def tool do
-      ReqLLM.Tool.new!(
+      Wardrik.Tool.new!(
         name: "list_services",
         description: "List the services that can be deployed.",
-        parameter_schema: [],
-        callback: {__MODULE__, :run}
+        run: {__MODULE__, :run, []}
       )
     end
 
     @doc false
-    def run(_args), do: Wardrik.Tool.Result.ok(%{"services" => @services})
+    def run(_args, _context), do: Wardrik.Tool.Result.ok(%{"services" => @services})
   end
 
   defmodule Deploy do
@@ -86,24 +85,21 @@ defmodule WardrikDemo do
       Wardrik.Tool.new!(
         name: "deploy",
         description: "Deploy a service to an environment. This has a real effect.",
-        parameter_schema: [
+        schema: [
           service: [type: :string, required: true, doc: "Which service to deploy"],
           environment: [type: :string, required: true, doc: "Where to deploy it"]
         ],
-        call: {__MODULE__, :run}
+        run: {__MODULE__, :run, []}
       )
     end
 
     @doc false
-    def run(%Wardrik.Call{id: id, target: %{arguments: args}} = call) do
-      Wardrik.Call.answer(
-        call,
-        Wardrik.Tool.Result.ok(%{
-          "deployed" => args.service,
-          "environment" => args.environment,
-          "approved_call" => id
-        })
-      )
+    def run(args, %Wardrik.Tool.Context{call_id: id}) do
+      Wardrik.Tool.Result.ok(%{
+        "deployed" => args.service,
+        "environment" => args.environment,
+        "approved_call" => id
+      })
     end
   end
 
@@ -121,37 +117,37 @@ defmodule WardrikDemo do
 
     @impl true
     def tool do
-      ReqLLM.Tool.new!(
+      Wardrik.Tool.new!(
         name: "restart_service",
         description: "Restart a running service.",
-        parameter_schema: [service: [type: :string, required: true, doc: "Which service"]],
-        callback: {__MODULE__, :run}
+        schema: [service: [type: :string, required: true, doc: "Which service"]],
+        run: {__MODULE__, :run, []}
       )
     end
 
     @doc false
-    def run(%{service: service}) do
+    def run(%{service: service}, _context) do
       raise "restart_service ran for #{service}, which means the hook did not stop it"
     end
   end
 
   defmodule DropTable do
-    @moduledoc "The tool the demo policy refuses. Its callback must never run."
+    @moduledoc "The tool the demo policy refuses. It must never run."
 
     @behaviour Wardrik.Tool
 
     @impl true
     def tool do
-      ReqLLM.Tool.new!(
+      Wardrik.Tool.new!(
         name: "drop_table",
         description: "Drop a database table permanently.",
-        parameter_schema: [table: [type: :string, required: true, doc: "The table to drop"]],
-        callback: {__MODULE__, :run}
+        schema: [table: [type: :string, required: true, doc: "The table to drop"]],
+        run: {__MODULE__, :run, []}
       )
     end
 
     @doc false
-    def run(%{table: table}) do
+    def run(%{table: table}, _context) do
       raise "drop_table ran for #{table}, which means the hook did not stop it"
     end
   end

@@ -1,67 +1,52 @@
 defmodule Wardrik.Tool do
   @moduledoc """
-  A module that produces a tool an agent may call.
+  A tool an agent may call, and the behaviour of a module that builds one.
+
+  A tool is a `t:t/0`: a name, a description, a schema for its arguments,
+  and what it runs. `new!/1` builds one.
 
   Wardrik ships no tools of its own but the catalog's, which offer an agent
   `Wardrik`'s functions on itself and on the agents of its owner, through
   `Wardrik.Catalog.Self` and `Wardrik.Catalog.Agents`. Implement this behaviour in your own
   application or in a tool package, then name the module in a config:
 
-      Wardrik.LLM.Config.new(tools: [MyApp.Tools.Ping])
+      Wardrik.LLM.Config.new(tools: [MyApp.Tools.SearchIssues])
 
-  Prefer an MFA callback over an anonymous function, so the tool survives being
-  named by a config that crosses a node boundary.
+  A tool is handed its arguments, validated against its schema, and a
+  `Wardrik.Tool.Context`: the run the call runs under, the call's id and
+  idempotency key, the credentials its annotations named, and a way to
+  report progress. It answers as `t:answer/0` says:
 
-      defmodule MyApp.Tools.Ping do
+      defmodule MyApp.Tools.SearchIssues do
         @behaviour Wardrik.Tool
 
         @impl true
         def tool do
-          ReqLLM.Tool.new!(
-            name: "ping",
-            description: "Check whether a host answers.",
-            parameter_schema: [host: [type: :string, required: true, doc: "Host to reach"]],
-            callback: {__MODULE__, :run}
+          Wardrik.Tool.new!(
+            name: "search_issues",
+            description: "Search this user's GitHub issues.",
+            schema: [query: [type: :string, required: true, doc: "What to find"]],
+            run: {__MODULE__, :run, []}
           )
         end
 
-        def run(%{host: host}), do: {:ok, %{"reachable" => reachable?(host)}}
+        @impl true
+        def annotations(_name), do: %{credentials: ["github"], labels: ["outside"]}
+
+        def run(%{query: query}, %Wardrik.Tool.Context{credentials: %{"github" => github}}) do
+          case search(query, github) do
+            {:ok, issues} -> Wardrik.Tool.Result.ok(issues)
+            {:error, :unauthorized} -> {:refused, "github"}
+            {:error, reason} -> Wardrik.Tool.Result.error(reason)
+          end
+        end
       end
 
   ## Answering
 
-  A callback answers with `{:ok, result}`, `{:error, reason}`, or
-  `Wardrik.Tool.Result.ok/1` and `error/1` for the difference between a tool that
-  failed and a call that did.
-
-  ## Handed its context
-
-  A tool that needs to know who it works for, which call it is answering, or
-  a credential, is built with `new!/1` and `:run` in place of `:callback`. It
-  is handed its arguments, validated, and a `Wardrik.Tool.Context`: the run
-  the call runs under, the call's id and idempotency key, the credentials its
-  annotations named, and a way to report progress. It answers the same way,
-  and in four more ways; see `t:answer/0`:
-
-      def tool do
-        Wardrik.Tool.new!(
-          name: "search_issues",
-          description: "Search this user's GitHub issues.",
-          parameter_schema: [query: [type: :string, required: true, doc: "What to find"]],
-          run: {__MODULE__, :run}
-        )
-      end
-
-      @impl true
-      def annotations(_name), do: %{credentials: ["github"], labels: ["outside"]}
-
-      def run(%{query: query}, %Wardrik.Tool.Context{credentials: %{"github" => github}}) do
-        case search(query, github) do
-          {:ok, issues} -> Wardrik.Tool.Result.ok(issues)
-          {:error, :unauthorized} -> {:refused, "github"}
-          {:error, reason} -> Wardrik.Tool.Result.error(reason)
-        end
-      end
+  A tool answers with `{:ok, result}`, `{:error, reason}`, or
+  `Wardrik.Tool.Result.ok/1` and `error/1` for the difference between a tool
+  that failed and a call that did, and in four more ways; see `t:answer/0`.
 
   Parking a call, `{:park, prompt}`, stops the turn instead of answering it,
   and the prompt is what a person is shown. What parking is for is work that
@@ -107,6 +92,28 @@ defmodule Wardrik.Tool do
 
   alias Wardrik.Tool.Annotations
 
+  @enforce_keys [:name, :description, :run]
+  defstruct [:name, :description, :run, schema: []]
+
+  @typedoc """
+  A tool: the `name` the model calls it by, the `description` it reads to
+  decide when to, the `schema` of its arguments, as `NimbleOptions` keys or a
+  JSON Schema map, and what it runs; see `t:run/0`.
+  """
+  @type t() :: %__MODULE__{
+          name: String.t(),
+          description: String.t(),
+          schema: keyword() | map(),
+          run: run()
+        }
+
+  @typedoc """
+  What a tool runs: `{module, function, args}`, called as
+  `module.function(args..., input, context)`, or a function of the input and
+  the context.
+  """
+  @type run() :: {module(), atom(), list()} | (map(), Wardrik.Tool.Context.t() -> answer())
+
   @typedoc """
   A call the model asked for, in the shape `ReqLLM.Response.classify/1`
   produces: a provider-assigned id, the tool's name, and decoded arguments.
@@ -119,12 +126,12 @@ defmodule Wardrik.Tool do
   How a config names a tool: a module implementing this behaviour, a source
   module with its argument, or a tool built inline.
   """
-  @type spec() :: module() | {module(), term()} | ReqLLM.Tool.t()
+  @type spec() :: module() | {module(), term()} | t()
 
   @typedoc """
-  What a tool handed its context answers.
+  What a tool answers.
 
-    * `{:ok, output}` and `{:error, reason}`, as a callback does
+    * `{:ok, output}` and `{:error, reason}`
     * `{:ok, output, opts}` - an answer with what the runtime records of it:
       `labels:` for what it holds, which its run carries from then on (see
       `Wardrik.Call.label/2`), `served_by:` for what answered it, which
@@ -158,7 +165,7 @@ defmodule Wardrik.Tool do
   Called when a config naming this module is built, so a tool that reads
   application settings sees them as they stand then.
   """
-  @callback tool() :: ReqLLM.Tool.t()
+  @callback tool() :: t()
 
   @doc """
   Every tool this source has, built on this node.
@@ -166,7 +173,7 @@ defmodule Wardrik.Tool do
   Called with the argument the spec named it with, wherever a turn needs its
   tools. An empty list is a source with nothing to offer right now.
   """
-  @callback tools(term()) :: [ReqLLM.Tool.t()]
+  @callback tools(term()) :: [t()]
 
   @doc """
   What holds for every call to the tool `name`, as `Wardrik.Tool.Annotations`
@@ -219,54 +226,18 @@ defmodule Wardrik.Tool do
                       context: 1,
                       context: 2
 
-  @typedoc """
-  What a tool `new!/1` builds runs: `{module, function, args}`, called as
-  `module.function(args..., input, context)`, or a function of the input and
-  the context.
-  """
-  @type handler() ::
-          {module(), atom(), list()} | (map(), Wardrik.Tool.Context.t() -> answer())
-
   @doc """
-  A tool handed its context: what `ReqLLM.Tool.new!/1` takes, with `:run` in
-  place of `:callback`.
+  A tool, from `:name`, `:description`, `:schema` and `:run`; see `t:t/0`.
 
-  `:run` is `{module, function}`, `{module, function, args}`, or, for a tool
-  built inline, a function of the input and the context. It is handed the
-  call's arguments, validated, and a `Wardrik.Tool.Context`, and answers as
-  `t:answer/0` says. Raises on a bad schema, as `ReqLLM.Tool.new!/1` does.
+  Raises on a field missing or unknown, and on a name or schema no model
+  could be offered.
   """
-  @spec new!(keyword()) :: ReqLLM.Tool.t()
+  @spec new!(keyword()) :: t()
   def new!(opts) when is_list(opts) do
-    {handler, opts} = Keyword.pop!(opts, :run)
-    ReqLLM.Tool.new!(Keyword.put(opts, :callback, {__MODULE__, :invoke, [handler(handler)]}))
+    tool = struct!(__MODULE__, opts)
+    _offered = Wardrik.LLM.Tools.to_req_llm(tool)
+    tool
   end
-
-  defp handler({module, function}), do: {module, function, []}
-
-  defp handler({module, function, args} = handler)
-       when is_atom(module) and is_atom(function) and is_list(args),
-       do: handler
-
-  defp handler(fun) when is_function(fun, 2), do: fun
-
-  @doc "Hands `input` and `context` to `handler`, the one a `new!/1` tool was built with."
-  @spec hand(handler(), map(), Wardrik.Tool.Context.t()) :: answer()
-  def hand({module, function, args}, input, %Wardrik.Tool.Context{} = context),
-    do: apply(module, function, args ++ [input, context])
-
-  def hand(fun, input, %Wardrik.Tool.Context{} = context) when is_function(fun, 2),
-    do: fun.(input, context)
-
-  @doc """
-  What a tool `new!/1` builds answers when something other than
-  `Wardrik.Call.Pipeline` calls it, which has no context to hand it.
-  """
-  @spec invoke(handler(), map()) :: {:error, String.t()}
-  def invoke(_handler, _input),
-    do:
-      {:error,
-       "a tool built with Wardrik.Tool.new!/1 is handed its context, and runs only in a turn"}
 
   @doc """
   Builds every tool in a list of specs, in the order they are named.
@@ -274,7 +245,7 @@ defmodule Wardrik.Tool do
   Raises when a spec names a module that cannot be loaded or does not implement
   this behaviour, which is a configuration error rather than a runtime one.
   """
-  @spec resolve!([spec()]) :: [ReqLLM.Tool.t()]
+  @spec resolve!([spec()]) :: [t()]
   def resolve!(specs) when is_list(specs), do: Enum.flat_map(specs, &resolve_one!/1)
 
   @doc """
@@ -327,7 +298,7 @@ defmodule Wardrik.Tool do
     if exports?(module, function, length(args)), do: apply(module, function, args)
   end
 
-  defp declared(%ReqLLM.Tool{}, _function, _args), do: nil
+  defp declared(%__MODULE__{}, _function, _args), do: nil
 
   @doc """
   The call with what `spec`, the spec that builds its tool, declares written
@@ -345,7 +316,7 @@ defmodule Wardrik.Tool do
 
   @doc "Whether this node can build the tools a spec names."
   @spec available?(spec()) :: boolean()
-  def available?(%ReqLLM.Tool{}), do: true
+  def available?(%__MODULE__{}), do: true
 
   def available?({module, _argument}) when is_atom(module), do: exports?(module, :tools, 1)
 
@@ -354,23 +325,22 @@ defmodule Wardrik.Tool do
   @doc """
   Whether a spec can be written down and read back on another node.
 
-  A module and a source travel as the data that names them. A tool built
-  inline holds a callback, and does not.
+  A module and a source travel as the data that names them, and build their
+  tools again where they are read. A tool given inline does not.
   """
   @spec travels?(spec()) :: boolean()
-  def travels?(%ReqLLM.Tool{}), do: false
-  def travels?({module, _argument}) when is_atom(module), do: true
-  def travels?(module) when is_atom(module), do: true
+  def travels?(%__MODULE__{}), do: false
+  def travels?(_named), do: true
 
   @doc "The names of the tools a spec builds."
   @spec names(spec()) :: [String.t()]
   def names(spec), do: Enum.map(resolve!([spec]), & &1.name)
 
-  defp resolve_one!(%ReqLLM.Tool{} = tool), do: [tool]
+  defp resolve_one!(%__MODULE__{} = tool), do: [tool]
 
   defp resolve_one!({module, argument}) when is_atom(module) do
     if available?({module, argument}) do
-      module.tools(argument) |> assert_tools!(module)
+      module.tools(argument)
     else
       raise ArgumentError,
             "#{inspect(module)} cannot be loaded or does not implement Wardrik.Tool tools/1"
@@ -388,23 +358,7 @@ defmodule Wardrik.Tool do
 
   defp resolve_one!(other) do
     raise ArgumentError,
-          "expected a tool module, a source, or %ReqLLM.Tool{}, got: #{inspect(other)}"
-  end
-
-  defp assert_tools!(tools, module) when is_list(tools) do
-    Enum.each(tools, fn
-      %ReqLLM.Tool{} ->
-        :ok
-
-      other ->
-        raise ArgumentError, "#{inspect(module)}.tools/1 gave #{inspect(other)}, not a tool"
-    end)
-
-    tools
-  end
-
-  defp assert_tools!(other, module) do
-    raise ArgumentError, "#{inspect(module)}.tools/1 gave #{inspect(other)}, not a list of tools"
+          "expected a tool module, a source, or %Wardrik.Tool{}, got: #{inspect(other)}"
   end
 
   defp exports?(module, function, arity) do

@@ -32,8 +32,8 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
       Wardrik.Tool.new!(
         name: "refund",
         description: "Refunds an order, once per key.",
-        parameter_schema: [],
-        run: {__MODULE__, :run}
+        schema: [],
+        run: {__MODULE__, :run, []}
       )
     end
 
@@ -59,7 +59,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     Wardrik.Tool.new!(
       name: name,
       description: "Does something with an effect.",
-      parameter_schema: [],
+      schema: [],
       run: fn _input, _context ->
         send(test_pid, {:ran, name})
         answer

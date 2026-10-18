@@ -479,10 +479,10 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       test = self()
 
       hang =
-        ReqLLM.Tool.new!(
+        Wardrik.Tool.new!(
           name: "hang",
           description: "Waits.",
-          callback: fn _input ->
+          run: fn _input, _context ->
             send(test, :started)
             receive do: (:never -> {:ok, %{}})
           end

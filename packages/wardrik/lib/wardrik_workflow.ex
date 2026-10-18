@@ -64,15 +64,15 @@ defmodule WardrikWorkflow do
   @doc """
   Builds the tool an agent calls to reach `step`.
 
-  Takes the same options as `ReqLLM.Tool.new!/1` and supplies what runs it, so
-  a workflow declares what the model sees and nothing else:
+  Takes the options of `Wardrik.Tool.new!/1` and supplies what runs it, so a
+  workflow declares what the model sees and nothing else:
 
       @impl Wardrik.Tool
       def tool do
         WardrikWorkflow.as_tool(__MODULE__,
           name: "deep_research",
           description: "...",
-          parameter_schema: [topic: [type: :string, required: true, doc: "..."]]
+          schema: [topic: [type: :string, required: true, doc: "..."]]
         )
       end
 
@@ -82,7 +82,7 @@ defmodule WardrikWorkflow do
   Raises on a bad schema, which happens at `Wardrik.LLM.Config.new/1` and so is
   heard at construction rather than mid-turn.
   """
-  @spec as_tool(Step.t(), keyword()) :: ReqLLM.Tool.t()
+  @spec as_tool(Step.t(), keyword()) :: Wardrik.Tool.t()
   def as_tool(step, opts) when is_list(opts) do
     Wardrik.Tool.new!(Keyword.put(opts, :run, {__MODULE__, :handle, [step]}))
   end

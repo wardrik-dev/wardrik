@@ -251,7 +251,7 @@ defmodule WardrikHTTP.Workers do
     Wardrik.Tool.new!(
       name: @prefix <> tool.name,
       description: (tool.description || tool.name) <> "\n\nFrom a tool worker.",
-      parameter_schema: tool.input_schema,
+      schema: tool.input_schema,
       run: {__MODULE__, :call, [id, tool.name]}
     )
   end

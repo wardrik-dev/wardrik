@@ -5,17 +5,20 @@ defmodule WardrikLua.RunTest do
   alias WardrikLua.Run
   alias WardrikLua.Sandbox.Limits
 
-  defp call(code, tool \\ Run.tool()), do: ReqLLM.Tool.execute(tool, %{"code" => code})
+  defp call(code, tool \\ Run.tool()) do
+    run = Wardrik.Test.run(tools: [tool])
+    Wardrik.Test.call(run, "run_lua", %{"code" => code}).result
+  end
 
   describe "tool/0" do
     test "is a tool an agent can be configured with" do
       assert %Wardrik.LLM.Config{} = Wardrik.LLM.Config.new(tools: [Run])
-      assert %ReqLLM.Tool{name: "run_lua"} = tool = Run.tool()
+      assert %Wardrik.Tool{name: "run_lua"} = tool = Run.tool()
       assert tool.description =~ "Lua 5.3"
     end
 
     test "asks for the code and nothing else" do
-      assert {:error, error} = ReqLLM.Tool.execute(Run.tool(), %{})
+      assert {:error, error} = Wardrik.LLM.Tools.validate(Run.tool(), %{})
       assert Exception.message(error) =~ "code"
     end
   end

@@ -15,7 +15,12 @@ defmodule WardrikDefinition.KeptTest do
 
     @impl Wardrik.Tool
     def tool,
-      do: ReqLLM.Tool.new!(name: "web_search", description: "Searches.", callback: &{:ok, &1})
+      do:
+        Wardrik.Tool.new!(
+          name: "web_search",
+          description: "Searches.",
+          run: fn input, _context -> {:ok, input} end
+        )
   end
 
   # A context for each org, as a host holding orgs to policies of their own does.

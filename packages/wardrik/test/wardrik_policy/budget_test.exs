@@ -304,7 +304,7 @@ defmodule WardrikPolicy.BudgetTest do
         Wardrik.Tool.new!(
           name: "search",
           description: "Searches, at a price.",
-          parameter_schema: [],
+          schema: [],
           run: fn _input, _context -> Wardrik.Tool.Result.ok(%{"hits" => 1}, cost: 0.004) end
         )
 
@@ -312,7 +312,7 @@ defmodule WardrikPolicy.BudgetTest do
         Wardrik.Tool.new!(
           name: "free",
           description: "Costs nothing it knows of.",
-          parameter_schema: [],
+          schema: [],
           run: fn _input, _context -> Wardrik.Tool.Result.ok(%{}) end
         )
 
@@ -320,7 +320,7 @@ defmodule WardrikPolicy.BudgetTest do
         Wardrik.Tool.new!(
           name: "charge",
           description: "Fails, and is charged.",
-          parameter_schema: [],
+          schema: [],
           run: fn _input, _context -> {:error, "Declined.", cost: 0.25} end
         )
 
@@ -328,7 +328,7 @@ defmodule WardrikPolicy.BudgetTest do
         Wardrik.Tool.new!(
           name: "lookup",
           description: "Says nothing of cost; the config lists it.",
-          parameter_schema: [],
+          schema: [],
           run: fn _input, _context -> {:error, "Not found."} end
         )
 

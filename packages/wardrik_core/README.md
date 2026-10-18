@@ -78,7 +78,8 @@ who sent it, and the model reads that ahead of the text:
 
 ## Tools
 
-A tool implements `Wardrik.Tool`:
+A tool is a `Wardrik.Tool`: a name, a description, a schema for its
+arguments, and what it runs. A module implementing the behaviour builds one:
 
 ```elixir
 defmodule MyApp.Ping do
@@ -86,27 +87,27 @@ defmodule MyApp.Ping do
 
   @impl true
   def tool do
-    ReqLLM.Tool.new!(
+    Wardrik.Tool.new!(
       name: "ping",
       description: "Check whether a host answers.",
-      parameter_schema: [host: [type: :string, required: true, doc: "Host to reach"]],
-      callback: {__MODULE__, :run}
+      schema: [host: [type: :string, required: true, doc: "Host to reach"]],
+      run: {__MODULE__, :run, []}
     )
   end
 
-  def run(%{host: host}), do: Wardrik.Tool.Result.ok(%{"reachable" => reachable?(host)})
+  def run(%{host: host}, _context), do: Wardrik.Tool.Result.ok(%{"reachable" => reachable?(host)})
 end
 
 Wardrik.LLM.Config.new(tools: [MyApp.Ping])
 ```
 
-Give a callback as `{module, function}` rather than an anonymous function:
-a config is written to the store and read back on whichever node runs the
-agent next, and a function cannot travel that way.
+Name the module rather than the tool: a config is written to the store and
+read back on whichever node runs the agent next, where the module builds the
+tool again. A tool given inline stays on the node it was given on.
 
-A tool that needs to know who it works for, a credential, or a way to report
-progress is built with `Wardrik.Tool.new!/1` and handed a `Wardrik.Tool.Context`
-with its arguments. What holds for every call to it, such as being gated or
+Every tool is handed its arguments, checked against its schema, and a
+`Wardrik.Tool.Context`: who it works for, the credentials it needs, and a way
+to report progress. What holds for every call to it, such as being gated or
 needing a credential, is its `annotations/1`; see `Wardrik.Tool.Annotations`.
 
 Modules belong to their package, so they only need to say what sets them
@@ -344,7 +345,7 @@ without notice.
 | Who acts, and what `Wardrik` answers them | `Wardrik.Caller`, `Wardrik.Error`, `Wardrik.Resource`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
-| Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
+| Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Tools`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |
 
 ## Testing

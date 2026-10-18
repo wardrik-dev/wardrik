@@ -163,8 +163,8 @@ defmodule Wardrik.Test do
     do: run |> proposed(name, arguments, []) |> Wardrik.Call.Pipeline.decide()
 
   @doc """
-  The context a tool built with `Wardrik.Tool.new!/1` is handed for one call
-  under `run`, for a test that hands a tool its arguments directly.
+  The context a tool is handed for one call under `run`, for a test that
+  hands a tool its arguments directly.
   `credentials:` are what the runtime would have resolved for it, by name,
   `name:` the tool's name and `id:` the call's.
   """

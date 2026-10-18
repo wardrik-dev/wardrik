@@ -1,7 +1,7 @@
 defmodule Wardrik.Tool.Context do
   @moduledoc """
-  What a tool built with `Wardrik.Tool.new!/1` is handed with a call's
-  arguments: the run the call is part of, and what the runtime did for it.
+  What a `Wardrik.Tool` is handed with a call's arguments: the run the call
+  is part of, and what the runtime did for it.
 
     * `:run` - the `Wardrik.Run` the call runs under: whose work it is,
       what it may do, and whether the run has read content from outside

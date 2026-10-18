@@ -71,9 +71,10 @@ defmodule Wardrik.LLM.Config do
   ## Travelling
 
   `dump/1` writes a config down with its module-named tools, and `load/1` reads
-  it back on whatever node holds it. A tool given inline holds a callback
-  rather than a name, so it cannot travel; a module this node cannot build
-  cannot either. Both are dropped, and `load/1` warns with their names.
+  it back on whatever node holds it, where they build their tools again. A
+  `Wardrik.Tool` given inline is not named by anything that could build it
+  there, so it cannot travel; a module this node cannot build cannot either.
+  Both are dropped, and `load/1` warns with their names.
   """
 
   require Logger
@@ -137,7 +138,7 @@ defmodule Wardrik.LLM.Config do
   end
 
   @doc "The tools this config names, built on this node, apart from those it leaves out."
-  @spec tools(t()) :: [ReqLLM.Tool.t()]
+  @spec tools(t()) :: [Tool.t()]
   def tools(%__MODULE__{} = config),
     do: config.tools |> Tool.resolve!() |> Enum.reject(&(&1.name in config.except_tools))
 
@@ -146,7 +147,7 @@ defmodule Wardrik.LLM.Config do
   config leaves out, with the spec that builds it. Where two specs build a
   tool of one name, the first named wins.
   """
-  @type tool_index() :: %{String.t() => {ReqLLM.Tool.t() | nil, Tool.spec()}}
+  @type tool_index() :: %{String.t() => {Tool.t() | nil, Tool.spec()}}
 
   @doc """
   Every tool this config names, built once on this node, by name, for what

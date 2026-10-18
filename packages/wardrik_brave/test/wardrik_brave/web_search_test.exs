@@ -7,11 +7,13 @@ defmodule WardrikBrave.WebSearchTest do
 
   @body %{"grounding" => %{"generic" => [%{"url" => "https://a.test", "snippets" => ["hi"]}]}}
 
+  defp validate(args), do: Wardrik.LLM.Tools.validate(WebSearch.tool(), args)
+
   describe "tool/0" do
     test "declares a web_search tool the model can call" do
       tool = WebSearch.tool()
 
-      assert %ReqLLM.Tool{name: "web_search"} = tool
+      assert %Wardrik.Tool{name: "web_search"} = tool
       assert tool.description =~ "Search the web"
     end
 
@@ -24,8 +26,8 @@ defmodule WardrikBrave.WebSearchTest do
     end
 
     test "requires only a query" do
-      assert {:ok, _input} = ReqLLM.Tool.validate_input(WebSearch.tool(), %{query: "elixir"})
-      assert {:error, _reason} = ReqLLM.Tool.validate_input(WebSearch.tool(), %{})
+      assert {:ok, _input} = validate(%{query: "elixir"})
+      assert {:error, _reason} = validate(%{})
     end
   end
 
@@ -102,12 +104,8 @@ defmodule WardrikBrave.WebSearchTest do
 
   describe "the schema guides the model" do
     defp properties do
-      WardrikBrave.WebSearch.tool()
-      |> ReqLLM.Tool.to_json_schema()
-      |> get_in(["function", "parameters", "properties"])
+      ReqLLM.Schema.to_json(WebSearch.tool().schema)["properties"]
     end
-
-    defp validate(args), do: ReqLLM.Tool.validate_input(WardrikBrave.WebSearch.tool(), args)
 
     test "freshness reaches the model as an enum, not prose" do
       assert properties()["freshness"]["enum"] == ["pd", "pw", "pm", "py"]

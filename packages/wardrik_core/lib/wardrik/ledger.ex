@@ -53,11 +53,11 @@ defprotocol Wardrik.Ledger do
   A call whose tool answers in doubt keeps its claim pending, so a replay
   asks about it too. See `Wardrik.LLM.Turn`.
 
-  A tool with an effect outside Wardrik, handed its `Wardrik.Call` (see
-  `Wardrik.Tool.new!/1`), passes `Wardrik.Ledger.Key.idempotency/1` along to
-  the system it calls, so the effect itself is not repeated either:
+  A tool with an effect outside Wardrik passes the idempotency key of the
+  `Wardrik.Tool.Context` it is handed along to the system it calls, so the
+  effect itself is not repeated either:
 
-      Stripe.refund(order, idempotency_key: Wardrik.Ledger.Key.idempotency(call))
+      Stripe.refund(order, idempotency_key: context.idempotency_key)
 
   `Wardrik.Ledger.Guarded` asks a ledger on a call's behalf, so one that
   raises answers an error rather than taking the turn with it.
@@ -91,9 +91,9 @@ defprotocol Wardrik.Ledger do
   Records that the `:call` `opts` name is about to run, and says whether
   anything already did.
 
-  Called once per call, before the tool's callback is invoked. An
-  implementation must not write over an entry it finds: the answer to a second
-  claim is the first one's state, whatever it is.
+  Called once per call, before its tool runs. An implementation must not
+  write over an entry it finds: the answer to a second claim is the first
+  one's state, whatever it is.
   """
   @spec claim(t(), key(), call: Tool.call(), store: WardrikStore.t()) :: claim()
   def claim(ledger, key, opts)

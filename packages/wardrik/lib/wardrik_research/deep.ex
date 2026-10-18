@@ -91,7 +91,7 @@ defmodule WardrikResearch.Deep do
   Angles are checked here, so a malformed one raises at
   `Wardrik.LLM.Config.new/1` rather than part way through a sweep.
   """
-  @spec tool(keyword()) :: ReqLLM.Tool.t()
+  @spec tool(keyword()) :: Wardrik.Tool.t()
   def tool(opts) when is_list(opts) do
     WardrikWorkflow.as_tool({__MODULE__, Keyword.put(opts, :angles, configured(opts))},
       name: "deep_research",
@@ -102,7 +102,7 @@ defmodule WardrikResearch.Deep do
 
       Each angle goes to its own agent with the same tools you have. Returns the combined report plus any angles that could not be finished, so a partial answer is still an answer.
       """,
-      parameter_schema: [
+      schema: [
         topic: [
           type: :string,
           required: true,

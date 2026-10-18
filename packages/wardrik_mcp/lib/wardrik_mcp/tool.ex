@@ -2,7 +2,7 @@ defmodule WardrikMCP.Tool do
   @moduledoc """
   One tool on an MCP server, as an agent sees it.
 
-  `build/2` turns a `tools/list` entry into a `ReqLLM.Tool`, named for the
+  `build/2` turns a `tools/list` entry into a `Wardrik.Tool`, named for the
   server it came from and carrying the server's own JSON Schema. Calling it
   sends `tools/call` and hands back the content the server answered with.
 
@@ -24,31 +24,25 @@ defmodule WardrikMCP.Tool do
   parks on the authorization link, and the user's own connection lists the real
   tools in its place.
   """
-  @spec connect(Server.t()) :: ReqLLM.Tool.t()
+  @spec connect(Server.t()) :: Wardrik.Tool.t()
   def connect(%Server{} = server) do
-    {:module, WardrikMCP} = Code.ensure_loaded(WardrikMCP)
-
     Wardrik.Tool.new!(
       name: Server.local_name(server, "connect"),
       description: """
       Authorize this agent to use #{server.key.name}. Call it when you need #{server.key.name}       and no #{server.key.name} tool is available yet: the user is asked to connect, and       #{server.key.name}'s own tools appear once they have.
       """,
-      parameter_schema: %{"type" => "object", "properties" => %{}},
+      schema: %{"type" => "object", "properties" => %{}},
       run: {WardrikMCP, :authorize, [server.key]}
     )
   end
 
   @doc "Builds the tool a `tools/list` entry describes."
-  @spec build(Server.t(), map()) :: ReqLLM.Tool.t()
+  @spec build(Server.t(), map()) :: Wardrik.Tool.t()
   def build(%Server{} = server, %{"name" => name} = listed) do
-    # ReqLLM checks an MFA callback with function_exported?/3, which is false
-    # for a module nothing has loaded yet.
-    {:module, WardrikMCP} = Code.ensure_loaded(WardrikMCP)
-
     Wardrik.Tool.new!(
       name: Server.local_name(server, name),
       description: description(listed, server),
-      parameter_schema: listed["inputSchema"] || %{"type" => "object", "properties" => %{}},
+      schema: listed["inputSchema"] || %{"type" => "object", "properties" => %{}},
       run: {WardrikMCP, :call, [server.key, name]}
     )
   end

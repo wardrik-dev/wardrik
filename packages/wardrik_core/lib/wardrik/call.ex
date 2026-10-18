@@ -215,8 +215,8 @@ defmodule Wardrik.Call do
   Marks the call's answer as holding what `labels` name, such as `"outside"`
   for a page or an issue anyone could have written; see `Wardrik.Label`. The
   run it belongs to carries them from then on. A tool's annotations name the
-  labels every answer of its holds, and one handed its context labels one
-  answer with `{:ok, output, labels: labels}`.
+  labels every answer of its holds, and a tool labels one answer with
+  `{:ok, output, labels: labels}`.
   """
   @spec label(t(), [Wardrik.Label.t()]) :: t()
   def label(%__MODULE__{} = call, labels) when is_list(labels),

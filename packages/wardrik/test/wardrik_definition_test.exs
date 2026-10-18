@@ -12,10 +12,10 @@ defmodule WardrikDefinitionTest do
     @impl Wardrik.Tool
     def tool,
       do:
-        ReqLLM.Tool.new!(
+        Wardrik.Tool.new!(
           name: "clock",
           description: "The time.",
-          callback: fn _ -> {:ok, "noon"} end
+          run: fn _, _context -> {:ok, "noon"} end
         )
   end
 
