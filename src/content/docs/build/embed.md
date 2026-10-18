@@ -422,6 +422,11 @@ several on one machine, run several nodes.
 or on each node's disk with `data_dir:`, which needs `{:ekv, "~> 0.4.3"}` among your
 dependencies. [Storage](/run/storage/) compares them.
 
+### A new release
+
+A release that writes agents differently needs no cleanup, and two releases running at once can't
+read each other's agents. See [Upgrade and back up](/run/upgrade-and-back-up/#details).
+
 ### Logs
 
 `DurableServer` logs each agent it starts and moves. Quiet it in your application's `start/2`:
