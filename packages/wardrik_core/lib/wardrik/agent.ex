@@ -293,7 +293,7 @@ defmodule Wardrik.Agent do
 
   @doc """
   Accepts decisions only while their calls are parked, and only from a
-  `token` that may decide them, acknowledging acceptance before returning.
+  `:token` that may decide them, acknowledging acceptance before returning.
 
   A token may decide them where it allows `agent.decide` on the agent, or
   where its principal asked for the turn that waits and acts directly,
@@ -304,10 +304,12 @@ defmodule Wardrik.Agent do
   :unrecorded}` means the decisions could not be written to the agent's
   log, and were not taken. `:host` is as `ask/3` takes it.
   """
-  @spec decide(agent(), map(), Wardrik.Token.t(), host: Wardrik.Host.t()) ::
+  @spec decide(agent(), map(), token: Wardrik.Token.t(), host: Wardrik.Host.t()) ::
           :ok | {:error, :not_found | :not_parked | :stale_decision | :forbidden | :unrecorded}
-  def decide(agent, decisions, %Wardrik.Token{} = token, opts \\ []) when is_map(decisions),
-    do: call(agent, {:decide, decisions, token}, opts)
+  def decide(agent, decisions, opts) when is_map(decisions) do
+    %Wardrik.Token{} = token = Keyword.fetch!(opts, :token)
+    call(agent, {:decide, decisions, token}, opts)
+  end
 
   @doc """
   Empties this agent's history, keeping its config and queue.
@@ -341,7 +343,7 @@ defmodule Wardrik.Agent do
   model wrote it. Calls left out stay parked, so several people can answer
   one call each. Non-blocking, and a no-op when nothing is parked. `:by`
   names the `Wardrik.Principal` deciding, carried on each
-  `Wardrik.Event.CallDecided` event. Unlike `decide/4`, it asks no
+  `Wardrik.Event.CallDecided` event. Unlike `decide/3`, it asks no
   token, so it is for code that already holds the agent, never for a
   surface people decide through. `:host` is as `ask/3` takes it.
 

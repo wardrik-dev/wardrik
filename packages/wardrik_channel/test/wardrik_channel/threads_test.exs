@@ -230,7 +230,7 @@ defmodule WardrikChannel.ThreadsTest do
       Wardrik.Agent.decide(
         agent,
         %{"call_1" => {:deny, "Not on Fridays."}},
-        Wardrik.Token.root(by),
+        token: Wardrik.Token.root(by),
         host: Wardrik.Host.new(store: Wardrik.Test.store())
       )
 

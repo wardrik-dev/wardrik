@@ -434,7 +434,7 @@ defmodule Wardrik do
           {:ok, %{String.t() => decision()}} | {:error, Error.t()}
   def agent_decide(%Scope{} = scope, %AgentID{} = agent, decisions) when is_map(decisions) do
     with :ok <- authorize(scope, "agent.read", agent) do
-      case Agent.decide(agent, decisions, scope.token, host: scope.host) do
+      case Agent.decide(agent, decisions, token: scope.token, host: scope.host) do
         :ok -> {:ok, decisions}
         {:error, reason} -> {:error, undecided(reason, agent, decisions)}
       end

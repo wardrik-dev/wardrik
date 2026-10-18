@@ -164,7 +164,7 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(
              pid,
              %{"first" => :approve},
-             Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
            ) ==
              {:error, :not_parked}
 
@@ -175,21 +175,21 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(
              pid,
              %{"absent" => :approve},
-             Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
            ) ==
              {:error, :stale_decision}
 
     assert Agent.decide(
              pid,
              %{},
-             Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
            ) ==
              {:error, :stale_decision}
 
     assert Agent.decide(
              pid,
              %{"first" => :approve},
-             Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
            ) == :ok
 
     assert_receive {:resumer, running, %{"first" => :approve}}
@@ -197,7 +197,7 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(
              pid,
              %{"second" => :approve},
-             Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
            ) ==
              {:error, :not_parked}
 
