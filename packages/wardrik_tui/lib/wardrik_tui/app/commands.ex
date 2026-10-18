@@ -4,10 +4,8 @@ defmodule WardrikTUI.App.Commands do
   """
   import Breeze.View, only: [assign: 2]
 
-  alias Wardrik.Agent
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Audit
   alias Wardrik.Change
   alias Wardrik.Command, as: Operation
   alias Wardrik.Error
@@ -16,7 +14,6 @@ defmodule WardrikTUI.App.Commands do
   alias Wardrik.Operations.Move
   alias Wardrik.Operations.Spawn
   alias Wardrik.Operations.SpawnOn
-  alias Wardrik.Session
   alias WardrikConsole.Nodes
   alias WardrikTUI.App.Connection
   alias WardrikTUI.App.Display
@@ -54,7 +51,7 @@ defmodule WardrikTUI.App.Commands do
     apply_command(command, term |> assign(confirm: nil) |> Display.append(cancelled))
   end
 
-  defp apply_command({:stop, nil}, term), do: interrupt(term)
+  defp apply_command({:stop, nil}, term), do: stop_attached(term)
 
   defp apply_command({:stop, target}, term), do: stop(term, target)
 
@@ -251,16 +248,17 @@ defmodule WardrikTUI.App.Commands do
   # One agent whose ID holds `name` is the one meant; several are offered to
   # pick from. Where none does, `none` is said.
   defp search(term, name, none) do
-    case matching(name) do
+    case matching(term, name) do
       [] -> Display.append(term, none)
       [member] -> Connection.connect_id(term, member.id)
       _several -> Interaction.pick(term, "/connect", [], String.trim_leading(name, "/"))
     end
   end
 
-  defp matching(name) do
+  defp matching(term, name) do
     text = name |> String.trim_leading("/") |> String.downcase()
-    Enum.filter(Fleet.list(), &String.contains?(String.downcase(to_string(&1.id)), text))
+    {:ok, fleet} = Wardrik.agents_list(term.assigns.session, Prefix.all())
+    Enum.filter(fleet, &String.contains?(String.downcase(to_string(&1.id)), text))
   end
 
   # A name is read as `Wardrik.AgentID.expand/2` reads it, in this client's
@@ -291,7 +289,7 @@ defmodule WardrikTUI.App.Commands do
   defp stop_under(term, target) do
     case Prefix.expand(target, term.assigns.org) do
       {:ok, prefix} ->
-        {:ok, cancelled} = Wardrik.agents_cancel(session(term), prefix)
+        {:ok, cancelled} = Wardrik.agents_cancel(term.assigns.session, prefix)
 
         Display.append(term, View.stopped_under(prefix, length(cancelled)))
 
@@ -300,8 +298,14 @@ defmodule WardrikTUI.App.Commands do
     end
   end
 
+  # Esc stops only a turn; /stop says when there is none to stop.
+  defp stop_attached(%{assigns: %{available?: true, running?: false, parked: []}} = term),
+    do: Display.append(term, View.taking_no_turn(term.assigns.agent_id))
+
+  defp stop_attached(term), do: interrupt(term)
+
   defp stop_one(term, id) do
-    case Wardrik.agent_cancel(session(term), id) do
+    case Wardrik.agent_cancel(term.assigns.session, id) do
       :ok -> Display.append(term, View.stopped(id))
       {:error, %Error{type: :not_found}} -> Display.append(term, View.no_such_agent(id))
     end
@@ -310,7 +314,7 @@ defmodule WardrikTUI.App.Commands do
   # Stops an agent and keeps its store, so `/spawn` brings it back as it was.
   # The attached agent may be shut down; the status row then says so.
   defp shutdown(term, id, name) do
-    case Wardrik.agent_stop(session(term), id) do
+    case Wardrik.agent_stop(term.assigns.session, id) do
       {:ok, _member} ->
         term |> Connection.refresh_fleet() |> Display.append(View.shut_down(id, name))
 
@@ -332,7 +336,8 @@ defmodule WardrikTUI.App.Commands do
   defp remove_under(%{assigns: %{agent_id: attached}} = term, target) do
     case Prefix.expand(target, term.assigns.org) do
       {:ok, prefix} ->
-        ids = prefix |> Fleet.list() |> Enum.map(& &1.id)
+        {:ok, members} = Wardrik.agents_list(term.assigns.session, prefix)
+        ids = Enum.map(members, & &1.id)
 
         case {List.delete(ids, attached), if(attached in ids, do: attached)} do
           {[], nil} -> Display.append(term, View.nothing_under(target))
@@ -374,7 +379,7 @@ defmodule WardrikTUI.App.Commands do
     {removed, failed} =
       Enum.split_with(
         ids,
-        &(Wardrik.agent_forget(session(term), &1) == :ok)
+        &(Wardrik.agent_forget(term.assigns.session, &1) == :ok)
       )
 
     term = assign(term, views: Map.drop(term.assigns.views, removed))
@@ -411,21 +416,27 @@ defmodule WardrikTUI.App.Commands do
   defp accept_decision(term, chosen, decision) do
     decisions = decisions(chosen, decision)
 
-    case Agent.decide(term.assigns.agent, decisions, caller(term)) do
-      :ok ->
+    case Wardrik.agent_decide(term.assigns.session, term.assigns.agent_id, decisions) do
+      {:ok, _decided} ->
         remaining = term.assigns.parked -- chosen
 
         term
         |> assign(parked: remaining, running?: true)
         |> Display.append(View.decided(chosen, decision, length(remaining)))
 
-      {:error, _reason} ->
+      {:error, %Error{type: :not_found}} ->
+        unreachable(term)
+
+      {:error, _error} ->
         Display.append(term, View.decision_pending())
     end
   catch
-    :exit, _reason ->
-      term |> assign(available?: false) |> Display.append(View.unavailable(term.assigns.agent_id))
+    :exit, _reason -> unreachable(term)
   end
+
+  defp unreachable(term),
+    do:
+      term |> assign(available?: false) |> Display.append(View.unavailable(term.assigns.agent_id))
 
   defp chosen([only], nil), do: {:ok, [only]}
 
@@ -446,9 +457,19 @@ defmodule WardrikTUI.App.Commands do
   defp ask(%{assigns: %{available?: false, agent_id: id}} = term, _text),
     do: Display.append(term, View.unavailable(id))
 
-  defp ask(term, text) do
-    :ok = Agent.ask(term.assigns.agent, text, sender: term.assigns.principal)
+  # An agent that stops while it is asked takes nothing with it: the client
+  # says it is not running.
+  defp ask(%{assigns: %{agent_id: id}} = term, text) do
+    case asked(term, id, text) do
+      {:ok, _message} -> echo(term, text)
+      {:error, %Error{type: :not_found}} -> Display.append(term, View.unavailable(id))
+    end
+  catch
+    :exit, _reason -> Display.append(term, View.unavailable(id))
+  end
 
+  # The line as sent: a question, or one steering the turn or queued behind it.
+  defp echo(term, text) do
     cond do
       term.assigns.running? -> steer(term, text, :running)
       term.assigns.parked != [] -> steer(term, text, :parked)
@@ -462,21 +483,16 @@ defmodule WardrikTUI.App.Commands do
     |> Display.append_lines(["", View.steered(text, how)])
   end
 
-  def interrupt(term) do
-    Agent.interrupt(term.assigns.agent)
-    :ok = record(term, {:agent_cancelled, term.assigns.agent_id})
-    term
+  def interrupt(%{assigns: %{agent_id: id}} = term) do
+    case Wardrik.agent_cancel(term.assigns.session, id) do
+      :ok -> term
+      {:error, %Error{type: :not_found}} -> Display.append(term, View.no_such_agent(id))
+    end
   end
 
-  defp asked(term, id, text), do: Wardrik.agent_ask(session(term), id, text)
+  defp asked(term, id, text), do: Wardrik.agent_ask(term.assigns.session, id, text)
 
-  # Whoever uses this client holds the node, as a shell on it does.
-  defp session(term), do: Session.root(host: term.assigns.host, principal: term.assigns.principal)
-
-  # The same, as the caller a planned change is made by.
-  defp caller(term), do: Host.root(term.assigns.host, principal: term.assigns.principal)
-
-  # A change this client made, recorded for the person using it.
-  defp record(term, action),
-    do: Audit.record(Host.audit(term.assigns.host), action, by: term.assigns.principal)
+  # The session's principal, as the caller a planned change is made by.
+  defp caller(%{assigns: %{session: session}}),
+    do: Host.root(session.host, principal: session.principal)
 end

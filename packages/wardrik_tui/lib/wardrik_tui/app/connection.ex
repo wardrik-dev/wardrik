@@ -6,6 +6,7 @@ defmodule WardrikTUI.App.Connection do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Delegation
   alias Wardrik.Event.Bus
   alias Wardrik.Fleet
@@ -265,7 +266,7 @@ defmodule WardrikTUI.App.Connection do
   end
 
   def refresh_fleet(term) do
-    fleet = Fleet.list()
+    {:ok, fleet} = Wardrik.agents_list(term.assigns.session, Prefix.all())
 
     term
     |> assign(fleet: fleet, fleet_due?: false, unseen: unseen(term, fleet))

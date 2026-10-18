@@ -19,6 +19,7 @@ defmodule WardrikTUI.App do
   alias Wardrik.Delegation
   alias Wardrik.Event
   alias Wardrik.Fleet
+  alias Wardrik.Session
   alias WardrikConsole.Filter
   alias WardrikTUI.App.Commands
   alias WardrikTUI.App.Connection
@@ -392,8 +393,12 @@ defmodule WardrikTUI.App do
       term
       |> assign(
         org: Keyword.get(opts, :org),
-        host: Keyword.fetch!(opts, :host),
-        principal: Keyword.get_lazy(opts, :principal, &terminal/0),
+        # Whoever uses this client holds the node, as a shell on it does.
+        session:
+          Session.root(
+            host: Keyword.fetch!(opts, :host),
+            principal: Keyword.get_lazy(opts, :principal, &terminal/0)
+          ),
         fleet: [],
         fleet_due?: false,
         sidebar?: Keyword.get(opts, :sidebar, true),
