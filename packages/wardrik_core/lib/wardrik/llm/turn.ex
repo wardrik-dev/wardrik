@@ -24,7 +24,9 @@ defmodule Wardrik.LLM.Turn do
   ## Fields
 
     * `:run` - the `Wardrik.Run` it runs under, `nil` while it is written down
-    * `:context` - the `Wardrik.Conversation` as it stands, what it added included
+    * `:context` - the `Wardrik.Conversation` as it stands, what it added
+      included, and `nil` where it is stored beside the history it began on,
+      which with `:messages` makes it again; see `on/2`
     * `:messages` - what it added, in order
     * `:remaining` - how many rounds of tool use it has left
     * `:answer` - the model's `Wardrik.LLM.Answer` whose tool calls it is
@@ -181,7 +183,7 @@ defmodule Wardrik.LLM.Turn do
 
   @type t() :: %__MODULE__{
           run: Run.t() | nil,
-          context: Conversation.t(),
+          context: Conversation.t() | nil,
           answer: Answer.t() | nil,
           revision: String.t() | nil,
           error: term(),
@@ -225,6 +227,17 @@ defmodule Wardrik.LLM.Turn do
   @doc "The turn under `run`, or under none for one that is written down."
   @spec under(t(), Run.t() | nil) :: t()
   def under(%__MODULE__{} = turn, run), do: %{turn | run: run}
+
+  @doc """
+  The turn on `history`, the conversation it began on, its context made again
+  from it and what the turn added; or on none, its context left out, for one
+  stored beside that history.
+  """
+  @spec on(t(), Conversation.t() | nil) :: t()
+  def on(%__MODULE__{} = turn, nil), do: %{turn | context: nil}
+
+  def on(%__MODULE__{} = turn, %Conversation{} = history),
+    do: %{turn | context: Conversation.append(history, turn.messages)}
 
   @doc "The turn done, having added `messages` besides what it already had."
   @spec done(t(), [Conversation.message()]) :: t()
@@ -440,11 +453,10 @@ defmodule Wardrik.LLM.Turn do
   end
 
   # A request's system prompt: the config's, what the tools said as the turn
-  # began, and the closing note on the last request of a turn at its cap. A
-  # turn written down before it had a preamble has none.
+  # began, and the closing note on the last request of a turn at its cap.
   defp system(system, turn, closing?) do
     case Enum.reject(
-           [system, Map.get(turn, :preamble), closing? && @closing],
+           [system, turn.preamble, closing? && @closing],
            &(&1 in [nil, false, ""])
          ) do
       [] -> nil
