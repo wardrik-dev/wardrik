@@ -18,6 +18,16 @@ defmodule WardrikChannel.Replies do
     * why a run failed
     * that someone connected an account a call waited on
     * who decided a call, and how, wherever they decided it
+    * that a run stopped before it answered, with the messages it would
+      have answered
+
+  While a thread's agent works, and waits on nobody, it has the channel
+  show what the agent is doing as the thread's status, worded by a
+  `Wardrik.Agent.Activity.Presenter` and read from the agent as it is
+  shown, so the latest is: at most once a throttle, a change within one as
+  it ends, and again after a refresh while it stands unchanged. What is
+  posted next in the thread takes it away, and a run stopped clears it. A
+  status, or a run stopped, that the channel refuses is not tried again.
 
   `remind/3` posts again the calls a thread's agent still waits on, for a
   message that arrived behind them, which the agent will not read until
@@ -41,6 +51,9 @@ defmodule WardrikChannel.Replies do
 
   @name WardrikChannel.Replies.Rooms
 
+  @throttle 2_000
+  @refresh 90_000
+
   @doc "The name it runs under unless started with another."
   @spec supervisor() :: atom()
   def supervisor, do: @name
@@ -56,6 +69,14 @@ defmodule WardrikChannel.Replies do
       kept in; required
     * `:name` - what it runs under, `supervisor/0` unless given; a channel's
       context names it as `:replies`
+    * `:presenter` - the `Wardrik.Agent.Activity.Presenter` a thread's
+      status is worded by, `Wardrik.Agent.Activity.English` unless given
+    * `:throttle` - the least time between two of a thread's statuses, in
+      milliseconds, 2 seconds unless given
+    * `:refresh` - how long after it is shown a status that stands
+      unchanged is shown again, in milliseconds, longer than `:throttle`:
+      90 seconds unless given, within the two minutes a channel such as
+      Slack shows one
   """
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
@@ -73,7 +94,16 @@ defmodule WardrikChannel.Replies do
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) do
-    opts = Keyword.validate!(opts, [:channels, :store, name: @name])
+    opts =
+      Keyword.validate!(opts, [
+        :channels,
+        :store,
+        name: @name,
+        presenter: %Wardrik.Agent.Activity.English{},
+        throttle: @throttle,
+        refresh: @refresh
+      ])
+
     name = Keyword.fetch!(opts, :name)
 
     DurableServer.Supervisor.start_link(
@@ -81,7 +111,10 @@ defmodule WardrikChannel.Replies do
         name: name,
         prefix: "channel_replies/#{inspect(name)}/",
         backend: opts |> Keyword.fetch!(:store) |> WardrikStore.durable_backend(),
-        init_info: %{channels: Keyword.fetch!(opts, :channels)}
+        init_info: %{
+          channels: Keyword.fetch!(opts, :channels),
+          showing: Map.new(Keyword.take(opts, [:presenter, :throttle, :refresh]))
+        }
       ] ++ WardrikStore.durable_shutdown()
     )
   end

@@ -3,14 +3,25 @@ defmodule WardrikChannel.Replies.State do
   What one room's `WardrikChannel.Replies` keeps: each thread it answers in,
   the agent answering there, the last event of that agent's log it has
   posted, and the messages each run under way answers. `retries` counts the
-  attempts at each thread's next post, and `posting` is the
-  `WardrikChannel.Channel` it posts through; neither is kept.
+  attempts at each thread's next post, `posting` is the
+  `WardrikChannel.Channel` it posts through, `showing` how it shows what
+  each thread's agent is doing, as `WardrikChannel.Replies` takes it, and
+  `statuses` where each thread's status stands; none of them is kept.
   """
 
   alias Wardrik.AgentID
 
   @enforce_keys [:channel, :workspace, :room]
-  defstruct [:channel, :workspace, :room, :posting, threads: %{}, retries: %{}]
+  defstruct [
+    :channel,
+    :workspace,
+    :room,
+    :posting,
+    :showing,
+    threads: %{},
+    retries: %{},
+    statuses: %{}
+  ]
 
   @typedoc "A thread followed: its agent, how far its log is posted, and its runs under way."
   @type thread() :: %{
@@ -19,20 +30,42 @@ defmodule WardrikChannel.Replies.State do
           runs: %{String.t() => [String.t()]}
         }
 
+  @typedoc """
+  How it shows what each thread's agent is doing: the presenter that words
+  it, the least time between two statuses, and how long one stands
+  unchanged before it is shown again, in milliseconds.
+  """
+  @type showing() :: %{
+          presenter: Wardrik.Agent.Activity.Presenter.t(),
+          throttle: pos_integer(),
+          refresh: pos_integer()
+        }
+
+  @typedoc """
+  Where a thread's status stands, under the tag of the timer that ends it,
+  with the words it shows, `nil` once a post has taken them away: `:shown`
+  until it may change, `:changed` where what the agent is doing has changed
+  since, and `:standing` until it is shown again.
+  """
+  @type status() :: {reference(), :shown | :changed | :standing, String.t() | nil}
+
   @type t() :: %__MODULE__{
           channel: String.t(),
           workspace: String.t(),
           room: String.t(),
           posting: WardrikChannel.Channel.t() | nil,
+          showing: showing() | nil,
           threads: %{String.t() => thread()},
-          retries: %{String.t() => pos_integer()}
+          retries: %{String.t() => pos_integer()},
+          statuses: %{String.t() => status()}
         }
 
   @typedoc """
   What an event asks to be posted in its thread: what a run answered, and
   the messages it answers; the calls a run waits on; why a run failed; that
   someone connected an account a call waited on, by the provider's name; who
-  decided a call, and how; or nothing.
+  decided a call, and how; that a run stopped before it answered, with the
+  messages it would have answered; or nothing.
   """
   @type post() ::
           {:reply, String.t(), [String.t()]}
@@ -40,15 +73,17 @@ defmodule WardrikChannel.Replies.State do
           | {:failed, String.t()}
           | {:connected, String.t()}
           | {:decided, String.t()}
+          | {:stopped, [String.t()]}
           | :none
 
   @spec new(String.t(), String.t(), String.t()) :: t()
   def new(channel, workspace, room),
     do: %__MODULE__{channel: channel, workspace: workspace, room: room}
 
-  @doc "The same room, posting through `channel`."
-  @spec posting(t(), WardrikChannel.Channel.t()) :: t()
-  def posting(%__MODULE__{} = state, channel), do: %{state | posting: channel}
+  @doc "The same room, posting through `channel`, and showing statuses as `showing` says."
+  @spec posting(t(), WardrikChannel.Channel.t(), showing()) :: t()
+  def posting(%__MODULE__{} = state, channel, showing),
+    do: %{state | posting: channel, showing: showing}
 
   @doc """
   Follows `agent` in `thread`, posting what its log holds after `through`,
@@ -104,8 +139,10 @@ defmodule WardrikChannel.Replies.State do
   defp post(%{"type" => "wardrik.run.failed", "data" => data}, runs),
     do: {{:failed, data["error"]["message"]}, Map.delete(runs, data["run"]["id"])}
 
-  defp post(%{"type" => "wardrik.run.cancelled", "data" => data}, runs),
-    do: {:none, Map.delete(runs, data["run"]["id"])}
+  defp post(%{"type" => "wardrik.run.cancelled", "data" => data}, runs) do
+    {answering, runs} = Map.pop(runs, data["run"]["id"], [])
+    {{:stopped, answering}, runs}
+  end
 
   # A call is decided by an authorization, rather than by a person, where an
   # account it waited on was connected.

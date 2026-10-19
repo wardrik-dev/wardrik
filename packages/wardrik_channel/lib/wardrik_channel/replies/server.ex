@@ -2,13 +2,14 @@ defmodule WardrikChannel.Replies.Server do
   @moduledoc """
   The process behind one room's `WardrikChannel.Replies`: it subscribes to
   the log of each thread's agent, and posts what each new event asks for,
-  writing down how far it has posted.
+  writing down how far it has posted, and shows what the agent is doing as
+  its log says it changed.
 
   Started by `WardrikChannel.Replies.follow/3` under the supervisor
-  `WardrikChannel.Replies` runs, which hands it the channels as it starts:
-  it keeps its own `WardrikChannel.Channel` in memory, and writes none of it
-  down. A room whose channel is not among them does not
-  start.
+  `WardrikChannel.Replies` runs, which hands it the channels, and how it
+  shows statuses, as it starts: it keeps its own `WardrikChannel.Channel` in
+  memory, and writes none of it down. A room whose channel is not among
+  them does not start.
   """
 
   use DurableServer, vsn: 1
@@ -16,6 +17,8 @@ defmodule WardrikChannel.Replies.Server do
   require Logger
 
   alias Wardrik.Agent
+  alias Wardrik.Agent.Activity
+  alias Wardrik.Agent.Activity.Presenter
   alias Wardrik.AgentID
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
@@ -33,7 +36,7 @@ defmodule WardrikChannel.Replies.Server do
 
   @impl DurableServer
   def dump_state(%State{} = state),
-    do: state |> Map.from_struct() |> Map.drop([:retries, :posting])
+    do: state |> Map.from_struct() |> Map.drop([:retries, :posting, :showing, :statuses])
 
   @impl DurableServer
   def load_state(_old_vsn, dumped), do: struct!(State, dumped)
@@ -42,9 +45,9 @@ defmodule WardrikChannel.Replies.Server do
   # from `init`.
   @dialyzer {:nowarn_function, init: 2}
   @impl DurableServer
-  def init(%State{channel: channel} = state, %{channels: channels}),
+  def init(%State{channel: channel} = state, %{channels: channels, showing: showing}),
     do:
-      {:ok, State.posting(state, Map.fetch!(channels, channel)), {:continue, :open},
+      {:ok, State.posting(state, Map.fetch!(channels, channel), showing), {:continue, :open},
        permanent: true}
 
   @impl DurableServer
@@ -79,7 +82,24 @@ defmodule WardrikChannel.Replies.Server do
     {:noreply, state}
   end
 
+  # A change in what an agent is doing says only that it changed: what it
+  # is doing is read from the agent as it is shown.
   @impl DurableServer
+  def handle_info(
+        %Entry{
+          event: %{"type" => "wardrik.activity.changed", "source" => @source <> id},
+          sequence: nil
+        },
+        state
+      ) do
+    with {:ok, agent} <- AgentID.parse(id),
+         thread when is_binary(thread) <- State.thread_of(state, agent) do
+      {:noreply, changed(state, thread)}
+    else
+      _unfollowed -> {:noreply, state}
+    end
+  end
+
   def handle_info(%Entry{sequence: nil}, state), do: {:noreply, state}
 
   def handle_info(%Entry{event: %{"source" => @source <> id}, sequence: sequence}, state) do
@@ -99,7 +119,57 @@ defmodule WardrikChannel.Replies.Server do
       else: {:noreply, state}
   end
 
+  def handle_info({:status, thread, tag}, state) do
+    case state.statuses[thread] do
+      {^tag, :shown, label} -> {:noreply, standing(state, thread, label)}
+      {^tag, _changed_or_standing, _label} -> {:noreply, show(state, thread)}
+      _stale -> {:noreply, state}
+    end
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
+
+  # A change while a status may not yet change is shown once it may.
+  defp changed(state, thread) do
+    case state.statuses[thread] do
+      {tag, :shown, label} -> put_in(state.statuses[thread], {tag, :changed, label})
+      {_tag, :changed, _label} -> state
+      _standing_or_none -> show(state, thread)
+    end
+  end
+
+  # An agent idle, or waiting on a person, has nothing shown: what is posted
+  # in the thread takes away what was.
+  defp show(state, thread) do
+    case Agent.status(state.threads[thread].agent, host: state.posting.context.host) do
+      %{state: :running, activity: %Activity{doing: doing} = activity} when doing != :idle ->
+        show(state, thread, Presenter.label(state.showing.presenter, activity))
+
+      _idle_parked_or_gone ->
+        %{state | statuses: Map.delete(state.statuses, thread)}
+    end
+  end
+
+  # Changes that come back to the words shown show nothing new.
+  defp show(state, thread, label) do
+    case state.statuses[thread] do
+      {_tag, :changed, ^label} ->
+        standing(state, thread, label)
+
+      _new_or_due ->
+        _shown = deliver(state, thread, {:status, label})
+        wake(state, thread, :shown, label, state.showing.throttle)
+    end
+  end
+
+  defp standing(state, thread, label),
+    do: wake(state, thread, :standing, label, state.showing.refresh - state.showing.throttle)
+
+  defp wake(state, thread, status, label, ms) do
+    tag = make_ref()
+    Process.send_after(self(), {:status, thread, tag}, ms)
+    put_in(state.statuses[thread], {tag, status, label})
+  end
 
   # Posts what the thread's log holds past what has been posted, until it
   # ends or a post is refused.
@@ -123,7 +193,8 @@ defmodule WardrikChannel.Replies.Server do
 
     case post(state, thread, post) do
       :ok ->
-        posted(%{next | retries: Map.delete(next.retries, thread)}, thread, rest)
+        next = %{next | retries: Map.delete(next.retries, thread)}
+        posted(cleared(next, thread, post), thread, rest)
 
       {:error, reason} ->
         attempt = Map.get(state.retries, thread, 0) + 1
@@ -143,6 +214,17 @@ defmodule WardrikChannel.Replies.Server do
     end
   end
 
+  # What is posted in a thread takes its status away, which is a change: what
+  # the agent is doing is shown again once it may be, whatever the words.
+  defp cleared(state, _thread, :none), do: state
+
+  defp cleared(state, thread, _posted) do
+    case state.statuses[thread] do
+      {tag, status, _label} -> changed(put_in(state.statuses[thread], {tag, status, nil}), thread)
+      nil -> state
+    end
+  end
+
   defp post(_state, _thread, :none), do: :ok
 
   defp post(state, thread, {:reply, text, answering}),
@@ -152,6 +234,11 @@ defmodule WardrikChannel.Replies.Server do
     do: deliver(state, thread, {:reply, "Connected #{provider}.", []})
 
   defp post(state, thread, {:decided, line}), do: deliver(state, thread, {:reply, line, []})
+
+  defp post(state, thread, {:stopped, answering}) do
+    _cleared = deliver(state, thread, {:stopped, answering})
+    :ok
+  end
 
   defp post(state, thread, {:failed, reason}) do
     agent = state.threads[thread].agent

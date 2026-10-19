@@ -43,14 +43,14 @@ defmodule WardrikChannel.Replies.StateTest do
     assert {{:reply, "", []}, _state} = State.take(state, "1.1", silent)
   end
 
-  test "posts nothing for a run cancelled, and nothing for events that ask for nothing" do
+  test "says a run cancelled stopped, with the messages it answers, and nothing for the rest" do
     started =
       event(1, "wardrik.run.started", %{"run" => %{"id" => "r1", "message_ids" => ["m1"]}})
 
     {:none, state} = State.take(followed(), "1.1", started)
 
     cancelled = event(2, "wardrik.run.cancelled", %{"run" => run("r1")})
-    assert {:none, state} = State.take(state, "1.1", cancelled)
+    assert {{:stopped, ["m1"]}, state} = State.take(state, "1.1", cancelled)
     assert state.threads["1.1"].runs == %{}
 
     assert {:none, state} = State.take(state, "1.1", event(3, "wardrik.message.created", %{}))

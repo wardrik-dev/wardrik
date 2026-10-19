@@ -5,8 +5,9 @@ defmodule WardrikSlack.Threads do
 
   Each thread under a message is a conversation of its own with the Slack
   channel's agent; see `WardrikChannel`. A message the agent is asked gets
-  :eyes:, which turns to :white_check_mark: once the agent has answered it;
-  one it could not be asked gets a reply in its thread saying why.
+  :eyes:, which turns to :white_check_mark: once the agent has answered it,
+  and is taken away where its run is stopped; one it could not be asked
+  gets a reply in its thread saying why.
 
   Passed over: an edit, a deletion or any other change Slack reports as a
   message, a bot's message, the app's own, a direct message, and a message
@@ -86,6 +87,14 @@ defmodule WardrikSlack.Threads do
       react("reactions.add", room, ts, "white_check_mark", opts)
     end)
   end
+
+  @doc """
+  Takes :eyes: from the messages a run stopped before it answered. A
+  reaction Slack refuses is passed over, as `answered/3` passes it.
+  """
+  @spec stopped(String.t(), [String.t()], keyword()) :: :ok
+  def stopped(room, ids, opts),
+    do: Enum.each(ids, &react("reactions.remove", room, &1, "eyes", opts))
 
   defp react(method, room, ts, name, opts) do
     _reacted = slack(method, %{channel: room, timestamp: ts, name: name}, opts)

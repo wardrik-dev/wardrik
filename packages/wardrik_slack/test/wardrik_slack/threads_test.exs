@@ -191,11 +191,17 @@ defmodule WardrikSlack.ThreadsTest do
   end
 
   test "names someone Slack does not know by their id alone" do
-    Req.Test.stub(WardrikSlack.Stub, &Req.Test.json(&1, %{ok: false, error: "user_not_found"}))
+    test = self()
+
+    Req.Test.stub(WardrikSlack.Stub, fn conn ->
+      send(test, {:slack, conn.request_path, JSON.decode!(Req.Test.raw_body(conn))})
+      Req.Test.json(conn, %{ok: false, error: "user_not_found"})
+    end)
 
     opts = bound({AgentRunners, :echo, [self(), "Here."]})
     assert {:asked, _agent} = Threads.event(message(%{}), opts)
     assert_receive {:turn, turn}
     assert {:user, "From #{from(opts)}:\nHow much Barolo is left?"} in turn
+    assert %{"text" => "Here."} = called("/api/chat.postMessage")
   end
 end

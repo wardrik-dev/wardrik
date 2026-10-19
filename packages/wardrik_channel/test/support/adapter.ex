@@ -1,13 +1,16 @@
 defmodule WardrikChannel.Test.Adapter do
   @moduledoc """
-  A channel that tells the test process what it was asked to post. It
+  A channel that tells the test process what it was asked to post, and
+  each status it was asked to show, as `{:status, thread, label}`. It
   refuses a post in `#nowhere`, and, given `:refusals`, an `Agent` holding a
-  count, refuses that many posts first. It answers a request with what it
-  was sent, and installs in the workspace a request's `workspace` names.
+  count, refuses that many posts first; given `unshown: true`, it refuses
+  every status. It answers a request with what it was sent, and installs in
+  the workspace a request's `workspace` names.
   """
 
   alias WardrikChannel.Installation
   alias WardrikChannel.Installations
+  alias WardrikChannel.Outbound
   alias WardrikChannel.Response
   @behaviour WardrikChannel
 
@@ -19,6 +22,11 @@ defmodule WardrikChannel.Test.Adapter do
   def child_spec(opts), do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> opts end]}}
 
   @impl WardrikChannel
+  def deliver(%Outbound{body: {:status, label}} = outbound, opts) do
+    send(opts[:test], {:status, outbound.thread, label})
+    if opts[:unshown], do: {:error, :ratelimited}, else: {:ok, :shown}
+  end
+
   def deliver(outbound, opts) do
     if refused?(opts[:refusals]) do
       send(opts[:test], {:refused, outbound})
