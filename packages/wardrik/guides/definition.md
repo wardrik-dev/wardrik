@@ -25,7 +25,7 @@ context = %WardrikDefinition.Context{org: "acme"}
 {:ok, definition} =
   Wardrik.Definition.read(fields, id: id, source: {:file, "agents/triage.md"}, context: context)
 
-{:ok, spec} = Wardrik.Definition.spec(definition, id, context: context, host: host)
+{:ok, spec} = Wardrik.Definition.spec(definition, context: context, host: host)
 {:ok, _pid} = Wardrik.Fleet.put(spec)
 ```
 

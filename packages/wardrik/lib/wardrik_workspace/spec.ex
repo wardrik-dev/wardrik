@@ -130,7 +130,7 @@ defmodule WardrikWorkspace.Spec do
       {[org], _id} ->
         if AgentID.segment?(org), do: {:ok, trimmed}, else: not_a_tree(what, tree)
 
-      {_parts, {:ok, %AgentID{external_id: nil}}} ->
+      {_parts, {:ok, _id}} ->
         {:ok, trimmed}
 
       {_parts, _not_a_name} ->

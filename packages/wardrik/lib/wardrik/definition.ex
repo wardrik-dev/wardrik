@@ -3,18 +3,19 @@ defmodule Wardrik.Definition do
   An agent's definition, read once: what an agent file's frontmatter says,
   with its body as `instructions`, the body of `PUT /v1/agents/{id}`, or a
   host's defaults, checked and read into what its agent is given.
-  `Wardrik.Definitions` keeps it, and `spec/3` builds the
-  `Wardrik.Agent.Spec` the agent runs on from it each time it starts.
+  `Wardrik.Definitions` keeps it, and `spec/2` builds the
+  `Wardrik.Agent.Spec` the agent, and each `Wardrik.Thread` of it, runs on
+  from it each time it starts.
 
       fields = %{"model" => "anthropic:claude-sonnet-5", "tools" => ["web_search"]}
       {:ok, definition} = Wardrik.Definition.read(fields, id: ~A"acme/triage", source: :defaults, context: context)
-      {:ok, spec} = Wardrik.Definition.spec(definition, ~A"acme/triage", context: context, host: host)
+      {:ok, spec} = Wardrik.Definition.spec(definition, context: context, host: host)
 
   `read/2` applies what the context gives every agent where the definition
   says none, `idle_timeout` and `retries`, once, so an agent keeps them
   until its definition is read again. A policy it names is kept by its
   name, one written in place as it reads, and the tools it names by their
-  names: `spec/3` finds each as the agent starts.
+  names: `spec/2` finds each as the agent starts.
 
   `WardrikProtocol`'s `agent_definition.json` is the schema, and the keys a
   definition takes are read from it as this compiles: `keys/0`. An agent
@@ -197,7 +198,7 @@ defmodule Wardrik.Definition do
   its frontmatter, with its body as `instructions`. Its `name`, `org` and
   `user` give the agent's ID, `name` the file's own name where it has none
   and `org` the context's, which must be one of its `orgs`. What its
-  settings say is checked as `read/2` and `spec/3` read them.
+  settings say is checked as `read/2` and `spec/2` read them.
   """
   @spec parse(String.t(), String.t(), Context.t()) ::
           {:ok, AgentID.t(), fields()} | {:error, String.t()}
@@ -219,7 +220,7 @@ defmodule Wardrik.Definition do
   Its keys must be a definition's, its org one of the context's `orgs`,
   and the policies it and the token that sent it name the context's; its
   triggers are checked as they are read. Its tools and settings are checked
-  as `spec/3` reads them.
+  as `spec/2` reads them.
   """
   @spec read(fields(),
           id: AgentID.t(),
@@ -233,9 +234,6 @@ defmodule Wardrik.Definition do
     %Context{} = context = Keyword.fetch!(opts, :context)
     source = Keyword.fetch!(opts, :source)
     file? = match?({:file, _path}, source)
-
-    if id.external_id,
-      do: invalid!("#{id} is a conversation of #{owner(id)}; define #{owner(id)}")
 
     known!(fields, @keys)
     declared!(id.org, context)
@@ -267,10 +265,9 @@ defmodule Wardrik.Definition do
   end
 
   @doc """
-  The spec `definition` writes for the agent `id`, under `:context`, or a
-  message saying what in it is not there: its own, or that of one of its
-  conversations, an ID with an external ID, with the tools of the
-  definition's agent, its workspace tree among them.
+  The spec `definition` writes for its agent, under `:context`, or a
+  message saying what in it is not there. A `Wardrik.Thread` of the agent
+  runs on it too, with the agent's tools, its workspace tree among them.
 
   The tools and policies it names are found by their names as it is asked,
   the tools and tool sources among those `:host` holds, and its settings
@@ -280,15 +277,13 @@ defmodule Wardrik.Definition do
   of the token that sent it, then those the context holds its owner to, then
   its own policy.
   """
-  @spec spec(t(), AgentID.t(), context: Context.t(), host: Host.t()) ::
-          {:ok, Spec.t()} | {:error, String.t()}
-  def spec(%__MODULE__{id: owner, fields: fields} = definition, %AgentID{} = id, opts) do
+  @spec spec(t(), context: Context.t(), host: Host.t()) :: {:ok, Spec.t()} | {:error, String.t()}
+  def spec(%__MODULE__{id: id, fields: fields} = definition, opts) do
     %Context{} = context = Keyword.fetch!(opts, :context)
     %Host{} = host = Keyword.fetch!(opts, :host)
-    if owner(id) != owner, do: invalid!("#{id} is neither #{owner} nor a conversation of it")
 
-    tools = tools(fields, context, host, owner)
-    within!(tools, owner, context, definition.source)
+    tools = tools(fields, context, host, id)
+    within!(tools, id, context, definition.source)
     resolved = %Runtime.Context{instructions: definition.instructions, tools: tools}
 
     {:ok,
@@ -400,8 +395,6 @@ defmodule Wardrik.Definition do
         context: context,
         held: definition.held
       )
-
-  defp owner(id), do: AgentID.put_external_id(id, nil)
 
   # A definition a token sent shares only the trees the token reaches, or
   # that the deployment shares with the agent.

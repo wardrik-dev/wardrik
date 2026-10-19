@@ -138,14 +138,14 @@ defmodule Wardrik.CatalogTest do
                {"trigger.set", %{"id" => to_string(AgentID.resource(agent))}}
     end
 
-    test "a conversation's call changes its agent", %{agent: agent} do
+    test "a thread's call changes its agent", %{agent: agent} do
       define(agent, %{"triggers" => [Map.put(@trigger, "name", "rivals")]})
       assert triggers(agent) == ["rivals"]
-      conversation = AgentID.put_external_id(agent, "thread-1")
+      thread = [id: Wardrik.Thread.new!(agent, "thread-1")]
 
       assert %Call{state: :done, result: {:ok, "done"}} =
-               conversation
-               |> run(Self, allowing(["self_trigger_remove"]))
+               agent
+               |> run(Self, allowing(["self_trigger_remove"]) ++ thread)
                |> Wardrik.Test.call("self_trigger_remove", %{"name" => "rivals"})
 
       assert triggers(agent) == []

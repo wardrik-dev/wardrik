@@ -35,7 +35,7 @@ defmodule Wardrik.Catalog.Tools do
   that reads it.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Catalog.Entry
   alias Wardrik.Error
   alias Wardrik.Host
@@ -90,7 +90,7 @@ defmodule Wardrik.Catalog.Tools do
     id = Run.agent_id(run)
 
     own = %Token{
-      principal: Principal.new(to_string(AgentID.resource(id))),
+      principal: Principal.new(to_string(AgentAddress.resource(id))),
       scope: [Role.bind([:reader, :messenger, :definer], Keyword.fetch!(opts, :reach))],
       expires: DateTime.add(DateTime.utc_now(:second), Host.expires(run.host, :session))
     }

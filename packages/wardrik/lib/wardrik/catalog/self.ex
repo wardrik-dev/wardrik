@@ -9,9 +9,9 @@ defmodule Wardrik.Catalog.Self do
 
   Each entry of `Wardrik.Catalog.agent/0` is a tool named `self_` and the
   rest of its name, `.` written `_`, as `self_trigger_set` for
-  `agent.trigger.set`. A call acts on the agent, its conversation's agent
-  where a conversation calls it, and reaches no further; see
-  `Wardrik.Catalog.Tools` for how it runs.
+  `agent.trigger.set`. A call acts on the agent, the agent of a thread that
+  calls it too, and reaches no further; see `Wardrik.Catalog.Tools` for how
+  it runs.
   """
 
   use Wardrik.Tool
@@ -23,8 +23,6 @@ defmodule Wardrik.Catalog.Self do
 
   @impl Wardrik.Tool
   def tools(%AgentID{} = agent) do
-    agent = AgentID.put_external_id(agent, nil)
-
     for entry <- Catalog.agent(),
         do:
           Tools.tool(entry,

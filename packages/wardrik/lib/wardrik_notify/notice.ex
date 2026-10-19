@@ -27,7 +27,7 @@ defmodule WardrikNotify.Notice do
         }
 
   @type t() :: %__MODULE__{
-          agent: Wardrik.AgentID.t(),
+          agent: Wardrik.AgentAddress.t(),
           kind: WardrikDefinition.Route.kind(),
           at: DateTime.t(),
           calls: [call()],
@@ -84,8 +84,8 @@ defmodule WardrikNotify.Notice do
   The notice that `agent` waits on `calls`, as `Wardrik.Agent.parked/1`
   answers them, now.
   """
-  @spec parked(Wardrik.AgentID.t(), [{Wardrik.Tool.call(), String.t()}]) :: t()
-  def parked(%Wardrik.AgentID{} = agent, calls) when is_list(calls),
+  @spec parked(Wardrik.AgentAddress.t(), [{Wardrik.Tool.call(), String.t()}]) :: t()
+  def parked(agent, calls) when is_list(calls),
     do: %__MODULE__{
       agent: agent,
       kind: :parked,

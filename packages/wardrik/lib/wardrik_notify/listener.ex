@@ -7,8 +7,8 @@ defmodule WardrikNotify.Listener do
   turn. Then it hands the keeper the cursor past the event.
 
   An agent's route is read from the definition kept for it, by its ID, so
-  an agent's conversation in a thread of its own, as `acme/books/1696.1234`,
-  is routed nowhere.
+  a `Wardrik.Thread` of it, as `acme/books/1696.1234`, which has no
+  definition of its own, is routed nowhere.
 
   Each delivery runs in a task of its own under `:tasks`, so a target that
   crashes is taken as one that failed: it is tried again after `:backoff`,
@@ -61,7 +61,7 @@ defmodule WardrikNotify.Listener do
     targets = Keyword.fetch!(opts, :targets)
 
     with {:ok, {module, target}} <- WardrikNotify.target(targets, name),
-         true <- WardrikNotify.tells?(targets, name, notice.agent.org) do
+         true <- WardrikNotify.tells?(targets, name, Wardrik.AgentAddress.agent(notice.agent).org) do
       target
       |> Keyword.put(:target, name)
       |> Keyword.put_new(:req_options, Keyword.fetch!(opts, :req_options))

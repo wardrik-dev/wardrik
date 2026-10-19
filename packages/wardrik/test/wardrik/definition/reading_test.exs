@@ -82,12 +82,12 @@ defmodule Wardrik.Definition.ReadingTest do
     ])
   end
 
-  defp built(definition, id, context),
-    do: Definition.spec(definition, id, context: context, host: host())
+  defp built(definition, context),
+    do: Definition.spec(definition, context: context, host: host())
 
   defp read(name \\ "triage", text, %{context: context} = test) do
     with {:ok, definition} <- definition(name, text, test),
-         do: built(definition, definition.id, context)
+         do: built(definition, context)
   end
 
   defp with_policies(%{context: context}, policies),
@@ -96,7 +96,7 @@ defmodule Wardrik.Definition.ReadingTest do
   # The spec a definition sent to the HTTP API writes for `id`, sent by no token.
   defp define(id, fields, %{context: context}) do
     with {:ok, definition} <- Definition.read(fields, id: id, source: :defaults, context: context),
-         do: built(definition, id, context)
+         do: built(definition, context)
   end
 
   # Where the notices of the agent a file `text` declares go, once the file reads.
@@ -357,7 +357,7 @@ defmodule Wardrik.Definition.ReadingTest do
 
       {:ok, definition} = Definition.read(fields, id: id, source: {:api, token}, context: context)
 
-      assert built(definition, id, context) ==
+      assert built(definition, context) ==
                {:error,
                 "workspace shared team: acme belongs to acme/agent/*, which the token does not reach"}
     end
@@ -706,12 +706,6 @@ defmodule Wardrik.Definition.ReadingTest do
 
       assert {:error, "instructions is a string"} =
                define(~A"acme/triage", %{"instructions" => ["a"]}, context)
-
-      {:ok, definition} =
-        Definition.read(%{}, id: ~A"acme/triage", source: :defaults, context: context.context)
-
-      assert {:error, "acme/other is neither acme/triage nor a conversation of it"} =
-               built(definition, ~A"acme/other", context.context)
     end
 
     test "lists its triggers as a file does, and one is set or deleted in it" do

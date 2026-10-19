@@ -24,6 +24,7 @@ defmodule Wardrik.LifecycleTest do
   alias Wardrik.Test.Audit
   alias Wardrik.Test.Fleet
   alias Wardrik.Test.Script
+  alias Wardrik.Thread
   alias Wardrik.Token
 
   # One spawned with no definition is given its defaults' model.
@@ -363,8 +364,16 @@ defmodule Wardrik.LifecycleTest do
       assert {:ok, %Definition{fields: %{"model" => "openai:gpt-5"}, source: :defaults}} =
                Definitions.get(definitions(), fresh)
 
-      assert {:error, %Error{type: :invalid}} =
-               Wardrik.agent_spawn(scope(), AgentID.put_external_id(Fleet.id("fresh"), "t1"))
+      thread = Thread.new!(id, "C1-1.1")
+
+      assert {:ok, %Spawned{from: :definition, member: %Member{id: ^thread}}} =
+               Wardrik.agent_spawn(scope(), thread)
+
+      assert Agent.status(thread, host: Wardrik.Test.host()).model == "openai:gpt-5"
+      assert {:error, :not_found} = Definitions.get(definitions(), thread)
+
+      assert {:error, %Error{type: :not_found, message: "test/" <> _}} =
+               Wardrik.agent_spawn(scope(), Thread.new!(Fleet.id("fresh"), "t1"))
     end
 
     test "on a node is the deployment's to choose" do

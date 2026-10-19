@@ -24,15 +24,13 @@ defmodule Wardrik.Scope do
   agent's log for its answer, and name no agent there.
   """
 
-  alias Wardrik.AgentID
-
   @enforce_keys [:host, :token]
   defstruct [:host, :token, reply_to: []]
 
   @type t() :: %__MODULE__{
           host: Wardrik.Host.t(),
           token: Wardrik.Token.t(),
-          reply_to: [AgentID.t()]
+          reply_to: [Wardrik.AgentAddress.t()]
         }
 
   @doc "The scope of `token` on `host`."
@@ -41,6 +39,6 @@ defmodule Wardrik.Scope do
     do: %__MODULE__{host: host, token: token}
 
   @doc "`scope`, as the agent `id` acts in it: answered back where it asks another agent something."
-  @spec agent(t(), AgentID.t()) :: t()
-  def agent(%__MODULE__{} = scope, %AgentID{} = id), do: %{scope | reply_to: [id]}
+  @spec agent(t(), Wardrik.AgentAddress.t()) :: t()
+  def agent(%__MODULE__{} = scope, id), do: %{scope | reply_to: [id]}
 end
