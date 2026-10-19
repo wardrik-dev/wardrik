@@ -562,7 +562,7 @@
         "operationId": "agent_events",
         "summary": "An agent's log",
         "description": "Reads after Last-Event-ID, or ?starting_after=. 410 where the log was trimmed past the cursor; read the snapshot and follow from its sequence.",
-        "x-wardrik-function": "agent_events",
+        "x-wardrik-function": "events",
         "tags": [
           "Agents"
         ],
@@ -630,7 +630,7 @@
         "operationId": "user_agent_events",
         "summary": "An agent's log",
         "description": "Reads after Last-Event-ID, or ?starting_after=. 410 where the log was trimmed past the cursor; read the snapshot and follow from its sequence.",
-        "x-wardrik-function": "agent_events",
+        "x-wardrik-function": "events",
         "tags": [
           "Agents"
         ],

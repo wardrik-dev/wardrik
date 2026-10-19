@@ -953,6 +953,19 @@ export interface ConversationCompactedData {
   tokens_after: number;
 }
 /**
+ * Events a reader asked for were dropped from the agent's log before it read them; it reads on from the oldest the log still holds. Sent to that reader alone, and never written.
+ */
+export interface EventsDroppedData {
+  /**
+   * The sequence the reader had read through.
+   */
+  after: number;
+  /**
+   * The oldest sequence the log still held.
+   */
+  oldest: number;
+}
+/**
  * A person answered an interrupt.
  */
 export interface InterruptResolvedData {
@@ -1356,6 +1369,7 @@ export interface EventData {
   "wardrik.call.killed": CallKilledData;
   "wardrik.conversation.cleared": ConversationClearedData;
   "wardrik.conversation.compacted": ConversationCompactedData;
+  "wardrik.events.dropped": EventsDroppedData;
   "wardrik.interrupt.resolved": InterruptResolvedData;
   "wardrik.message.completed": MessageCompletedData;
   "wardrik.message.created": MessageCreatedData;

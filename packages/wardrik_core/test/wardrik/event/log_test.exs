@@ -131,9 +131,11 @@ defmodule Wardrik.Event.LogTest do
       refute_received %Entry{}
     end
 
-    test "an entry says whether it comes after the log read through a number" do
-      live = %Entry{event: %{}, follows: 4}
-      durable = %Entry{event: %{}, sequence: 4, follows: 3}
+    test "an entry says whether it comes after the log read through a number", %{
+      agent_id: agent_id
+    } do
+      live = %Entry{log: agent_id, event: %{}, follows: 4}
+      durable = %Entry{log: agent_id, event: %{}, sequence: 4, follows: 3}
 
       assert Entry.follows?(live, 4)
       refute Entry.follows?(live, 5)

@@ -3389,7 +3389,7 @@
         "tags": [
           "Agents"
         ],
-        "x-wardrik-function": "agent_events"
+        "x-wardrik-function": "events"
       },
       "parameters": [
         {
@@ -4212,7 +4212,7 @@
         "tags": [
           "Agents"
         ],
-        "x-wardrik-function": "agent_events"
+        "x-wardrik-function": "events"
       },
       "parameters": [
         {

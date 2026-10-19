@@ -52,7 +52,6 @@ on another node when its own is lost.
 id = Wardrik.AgentID.new!("assistant", org: current_org, user: current_user)
 
 {:ok, pid} = Wardrik.Fleet.spawn(id, config: Wardrik.LLM.Config.new(system: "You answer briefly."))
-:ok = Wardrik.Event.Bus.subscribe(id)
 :ok = Wardrik.Agent.ask(pid, "What changed this week?")
 ```
 
@@ -68,6 +67,12 @@ is doing now, a `Wardrik.Agent.Activity`, each time that changes, and a
 `Wardrik.Agent.Activity.Presenter` puts it in words, such as `running
 web_search and fetch_page`. `Wardrik.Agent.snapshot/1` gives a client that
 attaches mid-turn what it missed.
+
+Each agent's `Wardrik.Event.Log` keeps what it did as CloudEvents, numbered
+from 1. `Wardrik.subscribe/2` in [wardrik](../wardrik) follows the agents a
+`Wardrik.Resource` pattern covers, as `acme/agent/*`, and
+`Wardrik.events/2` reads their logs on from a `Wardrik.Event.Cursor`, then
+follows them. Wardrik keeps no reader's place: the reader keeps its cursor.
 
 Where several people talk to one agent, as in a chat room, each message names
 who sent it, and the model reads that ahead of the text:
@@ -230,11 +235,11 @@ it, in one log for the whole cluster, beside each agent's own:
 
 ```elixir
 :ok = Wardrik.Audit.record({:agent_forgotten, id}, Wardrik.Principal.new(:user, "jon"))
-{:ok, changes} = Wardrik.Event.Log.read(:audit, starting_after: 0)
 ```
 
 Changes are CloudEvents from `wardrik://local/audit`, kept as long as
-agents' events are. `Wardrik.Audit` lists them.
+agents' events are. `Wardrik.Audit` lists them, and `Wardrik.deployment_audit/2`
+reads them a page at a time.
 
 ### Exporting every log
 
@@ -351,7 +356,7 @@ without notice.
 | Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.History.All`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | Who acts, and what `Wardrik` answers them | `Wardrik.Token`, `Wardrik.Statement`, `Wardrik.Role`, `Wardrik.Resource`, `Wardrik.Error`, `Wardrik.JSON`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |
-| Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Conversation` and the modules under it |
+| Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Cursor`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Conversation` and the modules under it |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.Call.Pipeline`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Tools`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |
 

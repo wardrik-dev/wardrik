@@ -123,19 +123,31 @@ defmodule Wardrik.TalkingTest do
     end
   end
 
-  test "a page of events after a sequence, and where the log now starts" do
+  test "events after a cursor, and where the log now starts" do
     {id, agent} = Fleet.start_agent(config: Script.new({AgentRunners, :echo, [self(), "ok"]}))
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "hi")
     assert_receive %Event{payload: %Event.TurnFinished{}}
+    resources = [AgentID.resource(id)]
 
-    assert {:ok, [%Log.Entry{sequence: 1, follows: 0}, %Log.Entry{sequence: 2}]} =
-             Wardrik.agent_events(scope(), id, limit: 2)
+    assert {:ok, events} = Wardrik.events(scope(), resources: resources)
+    assert [%Log.Entry{sequence: 1, follows: 0}, %Log.Entry{sequence: 2}] = Enum.take(events, 2)
 
     :ok = Log.trim(store(), id, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
-    assert {:error, %Error{type: :gap, details: %{"oldest" => 3}}} =
-             Wardrik.agent_events(scope(), id, limit: 2)
+    assert {:ok, events} = Wardrik.events(scope(), resources: resources)
+
+    assert [%Log.Entry{sequence: nil, follows: 2, event: dropped}, %Log.Entry{sequence: 3}] =
+             Enum.take(events, 2)
+
+    assert %{"type" => "wardrik.events.dropped", "data" => %{"after" => 0, "oldest" => 3}} =
+             dropped
+
+    assert {:ok, events} =
+             Wardrik.events(scope(), resources: resources, types: ["wardrik.run.completed"])
+
+    assert [%Log.Entry{event: %{"type" => "wardrik.events.dropped"}} | _rest] =
+             Enum.to_list(events)
   end
 
   describe "an authorization" do
@@ -176,9 +188,10 @@ defmodule Wardrik.TalkingTest do
       {id, _agent} = Fleet.start_agent(config: Script.new({AgentRunners, :echo, [self(), "ok"]}))
       :ok = Event.Bus.subscribe(id)
 
-      assert {:ok, %Message{id: "m1", sequence: sequence}} =
+      assert {:ok, %Message{id: "m1", cursor: cursor}} =
                Wardrik.agent_ask(scope(), id, "hi", id: "m1")
 
+      assert {:ok, %{^id => sequence}} = Wardrik.Event.Cursor.decode(cursor)
       assert is_integer(sequence)
       assert_receive %Event{payload: %Event.MessageQueued{message: %{sender: sender}}}
       assert Principal.id(sender) == "jon"

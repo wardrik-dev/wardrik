@@ -4,8 +4,9 @@ defmodule Wardrik.Event.Bus do
 
   Publishers name the agent an event belongs to and know nothing about who is
   listening: there may be no subscribers, one, or several UIs attached to the
-  same agent. Subscribe with `subscribe/2` and receive `t:Wardrik.Event.t/0`
-  structs as plain messages.
+  same agent. A renderer in the same VM, as the TUI is, subscribes and
+  receives `t:Wardrik.Event.t/0` structs as plain messages; an application
+  follows the CloudEvents of `Wardrik.subscribe/2` instead.
 
   Each event goes two places:
 
@@ -54,14 +55,10 @@ defmodule Wardrik.Event.Bus do
   @doc false
   def child_spec([]), do: Group.child_spec(name: @group)
 
-  @doc """
-  Subscribe the calling process to an agent's events.
-
-  Options:
-
-    * `:level` - a `t:Wardrik.Event.level/0`, `:activity` by default. `:lifecycle`
-      is the shape of the work alone, cheap enough to hold for many agents.
-  """
+  # Subscribes the calling process to an agent's events, at `:level`, a
+  # `t:Wardrik.Event.level/0`, `:activity` by default. `:lifecycle` is the
+  # shape of the work alone, cheap enough to hold for many agents.
+  @doc false
   @spec subscribe(agent_id(), keyword()) :: :ok
   def subscribe(%Wardrik.AgentID{} = agent_id, opts \\ []) do
     level = level!(opts)
@@ -80,11 +77,13 @@ defmodule Wardrik.Event.Bus do
     level
   end
 
+  @doc false
   @spec unsubscribe(agent_id()) :: :ok
   def unsubscribe(%Wardrik.AgentID{} = agent_id) do
     Enum.each(Event.levels(), &Group.leave(@group, topic(agent_id, &1)))
   end
 
+  @doc false
   @spec subscribers(agent_id()) :: [pid()]
   def subscribers(%Wardrik.AgentID{} = agent_id) do
     Event.levels()

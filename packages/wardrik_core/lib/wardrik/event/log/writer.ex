@@ -18,7 +18,7 @@ defmodule Wardrik.Event.Log.Writer do
 
   ## Owners
 
-  `open/3` writes the log down among `Wardrik.Event.Log.logs/1`, and finds
+  `open/3` writes the log down among those a reader lists, and finds
   the head. From the sequence the agent last wrote down, it
   reads forward through consensus to the first number nobody has written, and
   writes `agent.started` there. A conflict while it does is an owner before it
@@ -162,8 +162,14 @@ defmodule Wardrik.Event.Log.Writer do
 
     case WardrikStore.put(store, Log.namespace(), key, cloud_event, if_vsn: nil) do
       {:ok, _vsn} ->
-        entry = %Entry{event: cloud_event, sequence: sequence, follows: writer.head}
-        :ok = Log.publish(writer.agent_id, entry)
+        entry = %Entry{
+          log: writer.agent_id,
+          event: cloud_event,
+          sequence: sequence,
+          follows: writer.head
+        }
+
+        :ok = Log.publish(entry)
         {:ok, %{writer | head: sequence, unconfirmed: []}}
 
       {:error, :conflict} ->
@@ -204,7 +210,7 @@ defmodule Wardrik.Event.Log.Writer do
 
   defp deliver(writer, event, opts) do
     with {:ok, cloud_event} <- Codec.encode(event, opts) do
-      Log.publish(writer.agent_id, %Entry{event: cloud_event, follows: writer.head})
+      Log.publish(%Entry{log: writer.agent_id, event: cloud_event, follows: writer.head})
     end
 
     {:ok, writer}

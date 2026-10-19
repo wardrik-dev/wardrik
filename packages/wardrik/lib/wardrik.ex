@@ -53,8 +53,8 @@ defmodule Wardrik do
     * a read answers what it read, such as `agent_read/2`'s snapshot
     * a change answers what it made, such as `agent_define/4`'s agent
     * a change whose outcome the agent's log shows answers that it was
-      taken, as `agent_ask/4` answers the message queued; `agent_subscribe/2`
-      and `agent_stream/3` follow what happens next
+      taken, as `agent_ask/4` answers the message queued; `subscribe/2`
+      and `events/2` follow what happens next
     * a removal answers what it removed, as it was, as an Ecto delete does
     * a change whose outcome nothing can answer at once answers `:ok`, as
       `agent_cancel/2` and `agent_forget/2` do
@@ -98,6 +98,7 @@ defmodule Wardrik do
   alias Wardrik.Definitions
   alias Wardrik.Deployment.Nodes
   alias Wardrik.Error
+  alias Wardrik.Event.Cursor
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
   alias Wardrik.Fleet
@@ -264,9 +265,9 @@ defmodule Wardrik do
   @doc """
   Sends `agent` `text` from whoever acts with the scope's token, its
   `Wardrik.Token.actor/1`, which it answers in a turn of its own.
-  Acknowledged with the `Wardrik.Agent.Message` queued, whose `sequence` is
+  Acknowledged with the `Wardrik.Agent.Message` queued, whose `cursor` is
   where the agent's log stood: the turn that answers it is written after
-  it, so `agent_stream/3` from there reads it. An agent's scope, as
+  it, so `events/2` after it reads that turn. An agent's scope, as
   `Wardrik.Scope.agent/2` makes it, is answered back.
 
   ## Options
@@ -286,7 +287,7 @@ defmodule Wardrik do
       message =
         Message.new(text, opts[:id], sender: Token.actor(scope.token), reply_to: scope.reply_to)
 
-      message = %{message | sequence: sequence}
+      message = %{message | cursor: Cursor.encode(%{agent => sequence})}
 
       case Agent.queue(agent, message, host: scope.host) do
         :ok -> {:ok, message}
@@ -299,77 +300,170 @@ defmodule Wardrik do
   defp said(_text, ""), do: {:error, Error.new(:invalid, "A message's id is text")}
   defp said(_text, _id), do: :ok
 
-  @doc """
-  Sends this process every entry `agent`'s log writes from now on, as
-  `%Wardrik.Event.Log.Entry{}` messages, where the scope may read its events.
-  """
-  @doc group: "Talking to an agent"
-  @spec agent_subscribe(Scope.t(), AgentID.t()) :: :ok | {:error, Error.t()}
-  def agent_subscribe(%Scope{} = scope, %AgentID{} = agent) do
-    with :ok <- authorize(scope, "agent.events", agent), do: Log.subscribe(agent)
-  end
+  # -- events ------------------------------------------------------------------
 
-  @stream_opts NimbleOptions.new!(
-                 after: [
-                   type: :non_neg_integer,
-                   default: 0,
-                   doc: "the sequence it follows from, such as a message's or a snapshot's"
-                 ]
+  @following [
+    resources: [
+      type: {:list, {:struct, Resource}},
+      doc:
+        "the agents, as `Wardrik.Resource` patterns, as `acme/agent/*`, each of which the " <>
+          "scope's token allows `agent.events` on whole; those it allows it on by default"
+    ],
+    types: [
+      type: {:list, :string},
+      doc: "the CloudEvent types it takes, as `\"wardrik.run.completed\"`; every type by default"
+    ]
+  ]
+
+  @events_opts NimbleOptions.new!(
+                 @following ++
+                   [
+                     after: [
+                       type: {:or, [:string, {:in, [:head]}]},
+                       default: "",
+                       doc:
+                         "the cursor it reads after, as `cursor/2` moves it, or `:head` to read " <>
+                           "nothing and take what is written from now; every event by default"
+                     ],
+                     follow: [
+                       type: :boolean,
+                       default: false,
+                       doc: "whether it goes on to take each entry as it is written"
+                     ]
+                   ]
                )
 
+  @subscribe_opts NimbleOptions.new!(@following)
+  @unsubscribe_opts NimbleOptions.new!(Keyword.take(@following, [:resources]))
+
   @doc """
-  `agent`'s log as a lazy `Stream` of `Wardrik.Event.Log.Entry`s: every one
-  written after `:after`, then each as the agent writes it, until the
-  process taking it stops. It subscribes the process taking it while it
-  runs, so it reads each entry once, in order.
+  Sends this process each entry the agents `:resources` covers write from
+  now on, durable and live, as `%Wardrik.Event.Log.Entry{}` messages: once
+  however many of its patterns cover the agent, in the order each agent
+  wrote them, from any node. An entry's `log` is its agent, and its `event`
+  the CloudEvent.
+
+      :ok = Wardrik.subscribe(scope, resources: [Wardrik.Resource.parse!("acme/agent/*")])
+
+      receive do
+        %Wardrik.Event.Log.Entry{log: agent, event: %{"type" => "wardrik.run.completed"}} -> agent
+      end
+
+  The token is checked once, here. A process that subscribes again follows
+  those agents as well; `unsubscribe/2` takes patterns away, and a process
+  that exits follows none.
+
+  ## Options
+
+  #{NimbleOptions.docs(@subscribe_opts)}
+  """
+  @doc group: "Events"
+  @spec subscribe(Scope.t(), keyword()) :: :ok | {:error, Error.t()}
+  def subscribe(%Scope{} = scope, opts \\ []) do
+    opts = NimbleOptions.validate!(opts, @subscribe_opts)
+
+    with {:ok, resources} <- readable(scope, opts),
+         do: Log.subscribe(resources, Keyword.get(opts, :types, :all))
+  end
+
+  @doc """
+  Stops sending this process the entries of the patterns `:resources`
+  names, as it subscribed to them, and goes on with the rest.
+
+  ## Options
+
+  #{NimbleOptions.docs(@unsubscribe_opts)}
+  """
+  @doc group: "Events"
+  @spec unsubscribe(Scope.t(), keyword()) :: :ok
+  def unsubscribe(%Scope{} = scope, opts \\ []) do
+    opts = NimbleOptions.validate!(opts, @unsubscribe_opts)
+    Log.unsubscribe(Keyword.get_lazy(opts, :resources, fn -> readable_by(scope) end))
+  end
+
+  @doc """
+  The logs of the agents `:resources` covers as a lazy `Stream` of
+  `Wardrik.Event.Log.Entry`s: every one written after the cursor `:after`,
+  read page by page, a log at a time, then, with `follow: true`, each as an
+  agent writes it, until the process taking it stops. Following, it
+  subscribes the process taking it while it runs, so it takes each entry
+  once, in order, and drops the entries sent it as it stops.
 
       {:ok, message} = Wardrik.agent_ask(scope, agent, "Summarise the inbox")
-      {:ok, stream} = Wardrik.agent_stream(scope, agent, after: message.sequence)
 
-      Enum.find(stream, &(&1.event["type"] == "wardrik.run.completed"))
+      {:ok, events} =
+        Wardrik.events(scope,
+          resources: [Wardrik.AgentID.resource(agent)],
+          after: message.cursor,
+          follow: true
+        )
 
-  ## Options
+      Enum.find(events, &(&1.event["type"] == "wardrik.run.completed"))
 
-  #{NimbleOptions.docs(@stream_opts)}
-  """
-  @doc group: "Talking to an agent"
-  @spec agent_stream(Scope.t(), AgentID.t(), keyword()) ::
-          {:ok, Enumerable.t(Entry.t())} | {:error, Error.t()}
-  def agent_stream(%Scope{} = scope, %AgentID{} = agent, opts \\ []) do
-    opts = NimbleOptions.validate!(opts, @stream_opts)
-
-    with :ok <- authorize(scope, "agent.events", agent),
-         do: {:ok, Wardrik.Stream.new(Host.store(scope.host), agent, opts[:after])}
-  end
-
-  @page_opts NimbleOptions.new!(
-               after: [type: :non_neg_integer, default: 0, doc: "the last sequence already read"],
-               limit: [type: :pos_integer, default: 100, doc: "how many to answer at most"]
-             )
-
-  @doc """
-  A page of `agent`'s log: the entries after `:after`, oldest first, or a
-  `:gap` error whose `details` hold `oldest` where those were dropped.
+  Wardrik keeps no reader's place: a reader keeps its cursor, moved past
+  each entry by `cursor/2`, and reads on from it. Where a log was trimmed
+  past the cursor, the stream takes a `wardrik.events.dropped` entry naming
+  the sequence it was after and the oldest the log still held, whatever
+  `:types` names, and reads on from there.
 
   ## Options
 
-  #{NimbleOptions.docs(@page_opts)}
+  #{NimbleOptions.docs(@events_opts)}
   """
-  @doc group: "Talking to an agent"
-  @spec agent_events(Scope.t(), AgentID.t(), keyword()) ::
-          {:ok, [Entry.t()]} | {:error, Error.t()}
-  def agent_events(%Scope{} = scope, %AgentID{} = agent, opts \\ []) do
-    opts = NimbleOptions.validate!(opts, @page_opts)
-    with :ok <- authorize(scope, "agent.events", agent), do: page(scope, agent, opts)
-  end
+  @doc group: "Events"
+  @spec events(Scope.t(), keyword()) :: {:ok, Enumerable.t(Entry.t())} | {:error, Error.t()}
+  def events(%Scope{} = scope, opts \\ []) do
+    opts = NimbleOptions.validate!(opts, @events_opts)
 
-  # A page of the log `log`, an agent's or the audit, as `opts` ask for it.
-  defp page(scope, log, opts) do
-    case Log.read(Host.store(scope.host), log, starting_after: opts[:after], limit: opts[:limit]) do
-      {:ok, events} -> {:ok, Entry.numbered(events, opts[:after])}
-      {:gap, oldest} -> {:error, Error.gap(oldest)}
+    with {:ok, resources} <- readable(scope, opts),
+         {:ok, positions} <- positions(opts[:after]) do
+      {:ok,
+       Log.stream(Host.store(scope.host), resources,
+         after: positions,
+         follow: opts[:follow],
+         types: Keyword.get(opts, :types, :all)
+       )}
     end
   end
+
+  defp positions(:head), do: {:ok, :head}
+
+  defp positions(cursor) do
+    with :error <- Cursor.decode(cursor),
+         do: {:error, Error.new(:invalid, "#{inspect(cursor)} is not a cursor events answered")}
+  end
+
+  @doc """
+  `cursor` moved past `entry`: the cursor `events/2` reads on from after it.
+  A cursor of `:head` names the logs of the entries it has been moved past
+  alone, and reads the rest from their start.
+
+      cursor = Enum.reduce(entries, cursor, &Wardrik.cursor(&2, &1))
+  """
+  @doc group: "Events"
+  @spec cursor(String.t() | :head, Entry.t()) :: String.t()
+  def cursor(:head, entry), do: cursor("", entry)
+
+  def cursor(cursor, %Entry{log: %AgentID{} = log} = entry) do
+    {:ok, positions} = Cursor.decode(cursor)
+    Cursor.encode(Map.put(positions, log, entry.sequence || entry.follows))
+  end
+
+  # The patterns `opts` names, or those the scope's token allows
+  # `agent.events` on, where it allows it on each whole.
+  defp readable(scope, opts) do
+    resources = Keyword.get_lazy(opts, :resources, fn -> readable_by(scope) end)
+    none = Error.new(:forbidden, "This token reads the events of no agent.")
+
+    Enum.reduce_while(resources, {:error, none}, fn resource, _readable ->
+      case authorize(scope, "agent.events", resource) do
+        :ok -> {:cont, {:ok, resources}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp readable_by(%Scope{token: token}), do: Token.resources(token, "agent.events")
 
   @approve_opts NimbleOptions.new!(note: [type: :string, doc: "what the agent is told with it"])
 
@@ -1402,9 +1496,15 @@ defmodule Wardrik do
     end
   end
 
+  @page_opts NimbleOptions.new!(
+               after: [type: :non_neg_integer, default: 0, doc: "the last sequence already read"],
+               limit: [type: :pos_integer, default: 100, doc: "how many to answer at most"]
+             )
+
   @doc """
-  A page of the audit, what people changed across the deployment, as
-  `agent_events/3` reads an agent's log.
+  A page of the audit, what people changed across the deployment: the
+  entries after `:after`, oldest first, or a `:gap` error whose `details`
+  hold `oldest` where those were dropped.
 
   ## Options
 
@@ -1414,7 +1514,15 @@ defmodule Wardrik do
   @spec deployment_audit(Scope.t(), keyword()) :: {:ok, [Entry.t()]} | {:error, Error.t()}
   def deployment_audit(%Scope{} = scope, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @page_opts)
-    with :ok <- on_deployment(scope, "deployment.audit"), do: page(scope, :audit, opts)
+
+    with :ok <- on_deployment(scope, "deployment.audit") do
+      store = Host.store(scope.host)
+
+      case Log.read(store, :audit, starting_after: opts[:after], limit: opts[:limit]) do
+        {:ok, events} -> {:ok, Entry.numbered(events, :audit, opts[:after])}
+        {:gap, oldest} -> {:error, Error.gap(oldest)}
+      end
+    end
   end
 
   # -- checking and recording -------------------------------------------------------
@@ -1455,21 +1563,6 @@ defmodule Wardrik do
   @spec agent_ask!(Scope.t(), AgentID.t(), String.t(), keyword()) :: Message.t()
   def agent_ask!(scope, agent, text, opts \\ []),
     do: unwrap(agent_ask(scope, agent, text, opts))
-
-  @doc "As `agent_subscribe/2`, answering the value, or raising the `Wardrik.Error`."
-  @doc group: "Talking to an agent"
-  @spec agent_subscribe!(Scope.t(), AgentID.t()) :: :ok
-  def agent_subscribe!(scope, agent), do: unwrap(agent_subscribe(scope, agent))
-
-  @doc "As `agent_stream/3`, answering the value, or raising the `Wardrik.Error`."
-  @doc group: "Talking to an agent"
-  @spec agent_stream!(Scope.t(), AgentID.t(), keyword()) :: Enumerable.t(Entry.t())
-  def agent_stream!(scope, agent, opts \\ []), do: unwrap(agent_stream(scope, agent, opts))
-
-  @doc "As `agent_events/3`, answering the value, or raising the `Wardrik.Error`."
-  @doc group: "Talking to an agent"
-  @spec agent_events!(Scope.t(), AgentID.t(), keyword()) :: [Entry.t()]
-  def agent_events!(scope, agent, opts \\ []), do: unwrap(agent_events(scope, agent, opts))
 
   @doc "As `agent_approve/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
@@ -1673,6 +1766,16 @@ defmodule Wardrik do
   @doc group: "Deployment"
   @spec deployment_reload!(Scope.t()) :: [node()]
   def deployment_reload!(scope), do: unwrap(deployment_reload(scope))
+
+  @doc "As `subscribe/2`, answering the value, or raising the `Wardrik.Error`."
+  @doc group: "Events"
+  @spec subscribe!(Scope.t(), keyword()) :: :ok
+  def subscribe!(scope, opts \\ []), do: unwrap(subscribe(scope, opts))
+
+  @doc "As `events/2`, answering the value, or raising the `Wardrik.Error`."
+  @doc group: "Events"
+  @spec events!(Scope.t(), keyword()) :: Enumerable.t(Entry.t())
+  def events!(scope, opts \\ []), do: unwrap(events(scope, opts))
 
   @doc "As `deployment_audit/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Deployment"

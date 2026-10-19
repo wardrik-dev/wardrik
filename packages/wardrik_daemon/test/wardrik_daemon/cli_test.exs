@@ -440,15 +440,16 @@ defmodule WardrikDaemon.CLITest do
     # Its start is in its log before anything watches it, so no late write
     # reaches a terminal that has closed.
     assert_receive %Wardrik.Event.Log.Entry{sequence: 1}
-    :ok = Group.monitor(Wardrik.Event.Log, to_string(key))
+    resource = Wardrik.AgentID.resource(key)
+    :ok = Group.monitor(Wardrik.Event.Log, key.org)
     terminal = watching(["watch", key, "--json"])
-    assert_receive {:group, [%Group.Event{type: :joined} | _events], _info}
+    assert_receive {:group, [%Group.Event{type: :joined, meta: %{^resource => :all}} | _], _info}
 
     # Whatever else the agent writes as it settles is a line of its own, so
     # the test waits for this one.
     event = %{"type" => "wardrik.message.delta", "data" => %{"delta" => "hi"}}
     line = JSON.encode!(event) <> "\n"
-    Wardrik.Event.Log.publish(key, %Wardrik.Event.Log.Entry{event: event, follows: 0})
+    Wardrik.Event.Log.publish(%Wardrik.Event.Log.Entry{log: key, event: event, follows: 0})
     assert_receive {:written, ^line}
 
     send(terminal, :close)

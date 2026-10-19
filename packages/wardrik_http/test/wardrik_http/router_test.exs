@@ -1100,14 +1100,22 @@ defmodule WardrikHTTP.RouterTest do
       settled(agent)
       :ok = Log.trim(store(), key, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
-      for headers <- [[], [{"accept", "text/event-stream"}]] do
-        assert {:ok, %{status: 410, body: %{"error" => %{"type" => "gap", "oldest" => 3}}}} =
-                 Req.get(api,
-                   url: "/v1/agents/#{key}/events",
-                   params: [starting_after: 0],
-                   headers: headers
-                 )
-      end
+      assert {:ok,
+              %{status: 200, body: %{"events" => [dropped, %{"sequence" => "000000000003"}]}}} =
+               Req.get(api,
+                 url: "/v1/agents/#{key}/events",
+                 params: [starting_after: 0, limit: 2]
+               )
+
+      assert %{"type" => "wardrik.events.dropped", "data" => %{"after" => 0, "oldest" => 3}} =
+               dropped
+
+      assert {:ok, %{status: 410, body: %{"error" => %{"type" => "gap", "oldest" => 3}}}} =
+               Req.get(api,
+                 url: "/v1/agents/#{key}/events",
+                 params: [starting_after: 0],
+                 headers: [{"accept", "text/event-stream"}]
+               )
     end
 
     test "streams the log after Last-Event-ID, then each event as it is written", %{api: api} do
@@ -1871,7 +1879,11 @@ defmodule WardrikHTTP.RouterTest do
           url: "/v1/agents/#{key}/decisions",
           json: %{"decisions" => [%{"id" => "x", "decision" => "approve"}]}
         ),
-        Req.get(api, url: "/v1/agents/#{key}/events", params: [starting_after: 0]),
+        Req.get(api,
+          url: "/v1/agents/#{key}/events",
+          params: [starting_after: 0],
+          headers: [{"accept", "text/event-stream"}]
+        ),
         Req.get(api, url: "/v1/workers"),
         Req.get(api, url: "/v1/agents/#{key}/definition"),
         Req.post(api, url: "/v1/agents/#{key}/cancel", auth: {:bearer, secret})

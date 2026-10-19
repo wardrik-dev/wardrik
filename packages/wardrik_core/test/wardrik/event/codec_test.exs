@@ -387,6 +387,22 @@ defmodule Wardrik.Event.CodecTest do
     end
   end
 
+  describe "events dropped" do
+    test "say where a reader was and where the log now starts, under the agent's log" do
+      event = Codec.dropped(@agent, after: 12, oldest: 30)
+      valid!(event)
+
+      assert %{
+               "type" => "wardrik.events.dropped",
+               "source" => "wardrik://local/agents/acme/@ops/triage",
+               "subject" => "agents/acme/@ops/triage",
+               "data" => %{"after" => 12, "oldest" => 30}
+             } = event
+
+      refute Map.has_key?(event, "sequence")
+    end
+  end
+
   describe "durable and live" do
     test "deltas, progress and what an agent is doing are live, everything sent otherwise durable" do
       refute Codec.durable?(:result)

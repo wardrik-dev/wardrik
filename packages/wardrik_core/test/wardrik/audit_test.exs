@@ -9,15 +9,12 @@ defmodule Wardrik.AuditTest do
 
   alias Wardrik.Audit
   alias Wardrik.Event.Log
-  alias Wardrik.Event.Log.Entry
   alias Wardrik.Principal
 
   setup :verify_on_exit!
 
   setup do
     empty()
-    :ok = Log.subscribe(:audit)
-    on_exit(fn -> Log.unsubscribe(:audit) end)
 
     %{
       by: Principal.new(:shell, "jon"),
@@ -53,7 +50,7 @@ defmodule Wardrik.AuditTest do
       WardrikStore.put(store(), Log.namespace(), Log.key(:audit, sequence), event, if_vsn: nil)
   end
 
-  test "numbers each change, says who made it, and tells those following", %{by: by, id: id} do
+  test "numbers each change, and says who made it", %{by: by, id: id} do
     agent = Wardrik.Principal.new(:agent, "acme/front")
     assert :ok = Audit.record(Wardrik.Audit, {:agent_forgotten, id}, by: by, assumed_by: [agent])
     assert :ok = Audit.record(Wardrik.Audit, {:agent_cleared, id}, by: nil)
@@ -73,9 +70,6 @@ defmodule Wardrik.AuditTest do
 
     refute Map.has_key?(data, "actor")
     refute Map.has_key?(data, "assumed_by")
-
-    assert_receive %Entry{sequence: 1, follows: 0, event: %{"type" => "wardrik.agent.forgotten"}}
-    assert_receive %Entry{sequence: 2, follows: 1, event: %{"type" => "wardrik.agent.cleared"}}
   end
 
   test "carries on from the end, after starting again", %{by: by, id: id} do
