@@ -134,8 +134,10 @@ answers again without a mention.
 > **maria:** @Wardrik how much Barolo is left? :eyes:
 > ↳ **Wardrik:** Two cases, both 2019.
 
-The app marks a message :eyes: when the agent takes it, and :white_check_mark: once it answers. See
-[Channels](/channels/#threads) for how threads work.
+The app marks a message :eyes: when the agent takes it, and :white_check_mark: once it answers.
+While the agent works, the thread shows what it's doing, as *Wardrik is running web_search…*;
+stopping the turn clears that and takes the :eyes: away. See [Channels](/channels/#threads) for how
+threads work.
 
 ## What a notice says in Slack
 
