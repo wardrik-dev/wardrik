@@ -10,6 +10,7 @@ defmodule Wardrik.Agent.State.View do
   alias Wardrik.Agent.State.Running
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.Waiting
+  alias Wardrik.Event.Cursor
 
   @typedoc """
   Whether a turn is in flight, how many messages are waiting behind it, the
@@ -85,7 +86,7 @@ defmodule Wardrik.Agent.State.View do
 
   @doc """
   An atomic attachment snapshot; generation survives restarts but not
-  deletion. Carries the last sequence its log has written, so the client can
+  deletion. Carries the cursor where its log stands, so the client can
   follow the log from there.
   """
   @spec snapshot(State.t()) :: Snapshot.t()
@@ -98,7 +99,7 @@ defmodule Wardrik.Agent.State.View do
       parked: State.waiting_on(state),
       trace_id: trace_id(state.mode),
       outcome: state.outcome,
-      sequence: state.log.head,
+      cursor: Cursor.encode(%{state.agent_id => state.log.head}),
       labels: state.labels
     }
   end

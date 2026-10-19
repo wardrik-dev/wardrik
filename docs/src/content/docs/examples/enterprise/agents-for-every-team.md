@@ -140,21 +140,20 @@ agents can't reach Stripe at all.
 
 ### Feeding a SIEM
 
-A reader on `*` can read one export across every team's logs:
+A reader on `*` reads every team's events, and keeps its own place:
 
 ```sh
 wardrik token create siem --resource '*' --role reader
 ```
 
 ```http
-GET /v1/exports/siem?limit=500
+GET /v1/events?limit=500
 
-POST /v1/exports/siem
-{"next": "eyJwYXltZW50cy9yZWZ1bmRzIjo0MX0"}
+GET /v1/events?limit=500&after=eyJwYXltZW50cy9yZWZ1bmRzIjo0MX0
 ```
 
-Each page answers the events after the export's cursor; posting the page's `next` moves it on once
-they're stored. See [Exports](/reference/http-api/#exports). The audit of what people changed is
+Each page answers `next`, the cursor after its events: store it with them, and read on from it.
+See [Events](/reference/http-api/#events). The audit of what people changed is
 the deployment's: an `owner` token on `*` reads it too, and `wardrik audit` lists it from
 a shell.
 

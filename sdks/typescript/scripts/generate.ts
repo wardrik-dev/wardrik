@@ -52,7 +52,7 @@ const resources: Record<string, string> = {
   "decisions.json": "Decisions",
   "definition_read.json": "DefinitionRead",
   "error.json": "ErrorBody",
-  "export.json": "ExportPage",
+  "events.json": "EventsPage",
   "nodes.json": "Nodes",
   "server_added.json": "ServerAdded",
   "servers.json": "Servers",

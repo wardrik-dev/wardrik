@@ -8,7 +8,7 @@ let wardrik: Wardrik;
 
 const key = "acme/triage";
 const path = "/v1/agents/acme/triage";
-const snapshot = (sequence: number) => ({ sequence });
+const snapshot = (cursor: string) => ({ cursor });
 
 beforeEach(async () => {
   server = await fake();
@@ -27,20 +27,20 @@ const collect = async (events: AsyncIterable<WardrikEvent>, count = Infinity) =>
 describe("requests", () => {
   test("carry the token, and each segment of a key encoded on its own", async () => {
     server.on("GET", "/v1/agents/acme/tri%3Fage", (_request, response) =>
-      json(response, 200, snapshot(3)),
+      json(response, 200, snapshot("c3")),
     );
 
-    assert.equal((await wardrik.agent("acme/tri?age").snapshot()).sequence, 3);
+    assert.equal((await wardrik.agent("acme/tri?age").snapshot()).cursor, "c3");
     assert.equal(server.received[0]!.headers.authorization, "Bearer wardrik_secret");
     await server.close();
   });
 
   test("reach a user's agent under @user, with the @ kept", async () => {
     server.on("GET", "/v1/agents/acme/@j%20n/triage", (_request, response) =>
-      json(response, 200, snapshot(4)),
+      json(response, 200, snapshot("c4")),
     );
 
-    assert.equal((await wardrik.agent("acme/@j n/triage").snapshot()).sequence, 4);
+    assert.equal((await wardrik.agent("acme/@j n/triage").snapshot()).cursor, "c4");
     await server.close();
   });
 
@@ -83,7 +83,7 @@ describe("requests", () => {
   });
 
   test("put an agent, and answer a handle to it", async () => {
-    server.on("PUT", path, (_request, response) => json(response, 201, snapshot(0)));
+    server.on("PUT", path, (_request, response) => json(response, 201, snapshot("")));
 
     const agent = await wardrik.agents.put(key, { model: "anthropic:claude-sonnet-5" });
 
@@ -148,7 +148,7 @@ describe("requests", () => {
 
   test("send a message, set a trigger, decide, cancel, clear and page as the API takes them", async () => {
     server.on("POST", path + "/messages", (_request, response) =>
-      json(response, 202, { message: { id: "m1" } }),
+      json(response, 202, { message: { id: "m1", cursor: "c4" } }),
     );
     server.on("PUT", path + "/triggers/sweep", (request, response) =>
       json(response, 201, { trigger: { name: "sweep", ...(request.body as object) } }),
@@ -159,20 +159,21 @@ describe("requests", () => {
     server.on("POST", path + "/cancel", (_request, response) => json(response, 202, {}));
     server.on("DELETE", path + "/conversation", (_request, response) => json(response, 204));
     server.on("GET", path + "/events", (_request, response) =>
-      json(response, 200, { events: [event("run.started", {}, { sequence: 5 })] }),
+      json(response, 200, { events: [event("run.started", {}, { sequence: 5 })], next: "c5" }),
     );
 
     const agent = wardrik.agent(key);
 
-    assert.deepEqual(await agent.send("hi", { id: "m1" }), { id: "m1" });
+    assert.deepEqual(await agent.send("hi", { id: "m1" }), { id: "m1", cursor: "c4" });
     await agent.setTrigger("sweep", { every: "*/30 * * * *", prompt: "Look." });
     await agent.approve("call_1");
     await agent.reject("call_1", "Not now.");
     await agent.cancel();
     await agent.clear();
-    const page = await agent.page({ after: 4, limit: 10 });
+    const page = await agent.page({ after: "c4", limit: 10 });
 
-    assert.equal(page[0]!.sequence, "000000000005");
+    assert.equal(page.events[0]!.sequence, "000000000005");
+    assert.equal(page.next, "c5");
     assert.deepEqual(
       server.received.map((request) => [request.method, request.path, request.body]),
       [
@@ -186,7 +187,7 @@ describe("requests", () => {
         ],
         ["POST", path + "/cancel", undefined],
         ["DELETE", path + "/conversation", undefined],
-        ["GET", path + "/events?starting_after=4&limit=10", undefined],
+        ["GET", path + "/events?after=c4&limit=10", undefined],
       ],
     );
 
@@ -195,8 +196,8 @@ describe("requests", () => {
 });
 
 describe("events", () => {
-  test("follow the log from the head, and resume after the last durable event", async () => {
-    server.on("GET", path, (_request, response) => json(response, 200, snapshot(7)));
+  test("follow the log from where it stood, and resume after the last event that moved the cursor", async () => {
+    server.on("GET", path, (_request, response) => json(response, 200, snapshot("c7")));
     server.on(
       "GET",
       path + "/events",
@@ -216,30 +217,15 @@ describe("events", () => {
       .filter((request) => request.path.endsWith("/events"))
       .map((request) => request.headers["last-event-id"]);
 
-    assert.deepEqual(cursors, ["7", "8"]);
-    assert.equal(events.sequence, 9);
-    await server.close();
-  });
-
-  test("tell of a gap in the log", async () => {
-    server.on("GET", path + "/events", (_request, response) =>
-      json(response, 410, error("gap", "Events before 3 have been dropped.", { oldest: 3 })),
-    );
-
-    await assert.rejects(collect(wardrik.agent(key).events({ after: 0 })), (thrown: unknown) => {
-      assert.ok(thrown instanceof WardrikError);
-      assert.equal(thrown.type, "gap");
-      assert.equal(thrown.oldest, 3);
-      return true;
-    });
-
+    assert.deepEqual(cursors, ["c7", "000000000008"]);
+    assert.equal(events.cursor, "000000000009");
     await server.close();
   });
 
   test("end when their signal aborts", async () => {
     server.on("GET", path + "/events", stream([], { end: false }));
     const stop = new AbortController();
-    const events = wardrik.agent(key).events({ after: 0, signal: stop.signal });
+    const events = wardrik.agent(key).events({ after: "c0", signal: stop.signal });
 
     const done = collect(events);
     await events.opened;
@@ -248,14 +234,50 @@ describe("events", () => {
     assert.deepEqual(await done, []);
     await server.close();
   });
+
+  test("read what is kept of the agents and types asked for, a page at a time", async () => {
+    const started = event("agent.started", {}, { sequence: 1 });
+    server.on("GET", "/v1/events", (_request, response) =>
+      json(response, 200, { events: [started], next: "c1" }),
+    );
+    server.on("GET", "/v1/events", (_request, response) => json(response, 200, { events: [], next: "c1" }));
+
+    const events = wardrik.events({ resources: ["acme/agent/*", "acme/@jon/*"], types: ["wardrik.agent.started"] });
+
+    assert.deepEqual(await collect(events), [started]);
+    assert.equal(events.cursor, "c1");
+
+    assert.deepEqual(
+      server.received.map((request) => request.path),
+      [
+        "/v1/events?resources=acme%2Fagent%2F*&resources=acme%2F%40jon%2F*&types=wardrik.agent.started&limit=500",
+        "/v1/events?resources=acme%2Fagent%2F*&resources=acme%2F%40jon%2F*&types=wardrik.agent.started&after=c1&limit=500",
+      ],
+    );
+
+    await server.close();
+  });
+
+  test("follow every agent the token reads, from what is written next", async () => {
+    server.on("GET", "/v1/events", stream([event("run.completed", {}, { sequence: 3 })], { end: false }));
+
+    const events = wardrik.events({ follow: true });
+
+    assert.deepEqual((await collect(events, 1)).map((event) => event.type), ["wardrik.run.completed"]);
+    assert.equal(server.received[0]!.headers["last-event-id"], undefined);
+    assert.equal(events.cursor, "000000000003");
+    await server.close();
+  });
 });
 
 describe("ask", () => {
   const mine = "b".repeat(32);
   const theirs = "c".repeat(32);
 
-  test("opens the stream before it sends, and gives only its own run's events, to its end", async () => {
-    server.on("GET", path, (_request, response) => json(response, 200, snapshot(1)));
+  test("follows from where the log stood as it sent, and gives only its own run's events, to its end", async () => {
+    server.on("POST", path + "/messages", (_request, response) =>
+      json(response, 202, { message: { id: "m1", cursor: "c1" } }),
+    );
     server.on("GET", path + "/events", (request, response) => {
       stream(
         [
@@ -274,15 +296,15 @@ describe("ask", () => {
         { end: false },
       )(request, response);
     });
-    server.on("POST", path + "/messages", (_request, response) =>
-      json(response, 202, { message: { id: "m1" } }),
-    );
 
     const seen = await collect(wardrik.agent(key).ask("hi", { id: "m1" }));
 
     assert.deepEqual(
-      server.received.map((request) => `${request.method} ${request.path}`),
-      [`GET ${path}`, `GET ${path}/events`, `POST ${path}/messages`],
+      server.received.map((request) => [`${request.method} ${request.path}`, request.headers["last-event-id"]]),
+      [
+        [`POST ${path}/messages`, undefined],
+        [`GET ${path}/events`, "c1"],
+      ],
     );
 
     assert.deepEqual(
@@ -301,40 +323,13 @@ describe("ask", () => {
     await server.close();
   });
 
-  test("closes its stream when the message is refused", async () => {
-    server.on("GET", path, (_request, response) => json(response, 200, snapshot(1)));
-    server.on("GET", path + "/events", stream([], { end: false }));
+  test("reads nothing when the message is refused", async () => {
     server.on("POST", path + "/messages", (_request, response) =>
       json(response, 400, error("invalid_request", "A message has text to send")),
     );
 
     await assert.rejects(collect(wardrik.agent(key).ask("")), WardrikError);
-    await server.close();
-  });
-});
-
-describe("exports", () => {
-  test("read a page, move past it, and start over", async () => {
-    const started = event("wardrik.agent.started", {}, { sequence: 1 });
-    const page = { events: [started], next: "e30", gaps: [] };
-    server.on("GET", "/v1/exports/siem", (_request, response) => json(response, 200, page));
-    server.on("POST", "/v1/exports/siem", (_request, response) => json(response, 204));
-    server.on("DELETE", "/v1/exports/siem", (_request, response) => json(response, 204));
-
-    const siem = wardrik.export("siem");
-    assert.deepEqual(await siem.read({ limit: 500 }), page);
-    await siem.advance(page.next);
-    await siem.delete();
-
-    assert.deepEqual(
-      server.received.map((request) => [request.method, request.path, request.body]),
-      [
-        ["GET", "/v1/exports/siem?limit=500", undefined],
-        ["POST", "/v1/exports/siem", { next: "e30" }],
-        ["DELETE", "/v1/exports/siem", undefined],
-      ],
-    );
-
+    assert.deepEqual(server.received.map((request) => request.method), ["POST"]);
     await server.close();
   });
 });

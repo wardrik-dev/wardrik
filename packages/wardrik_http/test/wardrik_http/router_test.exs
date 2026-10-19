@@ -6,7 +6,9 @@ defmodule WardrikHTTP.RouterTest do
 
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
+  alias Wardrik.AgentID
   alias Wardrik.Event
+  alias Wardrik.Event.Cursor
   alias Wardrik.Event.Log
   alias Wardrik.Host
   alias Wardrik.LLM.Config
@@ -531,7 +533,7 @@ defmodule WardrikHTTP.RouterTest do
     assert to_string(key) =~ name
   end
 
-  test "answers an agent's snapshot, with the sequence to follow its log from", %{api: api} do
+  test "answers an agent's snapshot, with the cursor to follow its log from", %{api: api} do
     {key, agent} = echo_agent()
     Agent.ask(agent, "hi", id: "m1")
     settled(agent)
@@ -548,7 +550,7 @@ defmodule WardrikHTTP.RouterTest do
              "messages" => [%{"role" => "user"}, %{"role" => "assistant"}]
            } = snapshot
 
-    assert snapshot["sequence"] == Agent.snapshot(agent).sequence
+    assert snapshot["cursor"] == Agent.snapshot(agent).cursor
     assert snapshot["conversation"]["id"] == "#{key}/#{Agent.snapshot(agent).generation}"
 
     assert {:ok, %{status: 404}} = Req.get(api, url: "/v1/agents/test/nobody")
@@ -625,11 +627,13 @@ defmodule WardrikHTTP.RouterTest do
     test "queues a message under the id it was given, or one it names", %{api: api} do
       {key, _agent} = echo_agent()
 
-      assert {:ok, %{status: 202, body: %{"message" => %{"id" => "m1"}}}} =
+      assert {:ok, %{status: 202, body: %{"message" => %{"id" => "m1", "cursor" => cursor}}}} =
                Req.post(api,
                  url: "/v1/agents/#{key}/messages",
                  json: %{"id" => "m1", "parts" => [%{"type" => "text", "content" => "hi"}]}
                )
+
+      assert {:ok, %{^key => _sequence}} = Cursor.decode(cursor)
 
       assert_receive {:turn, [{:user, "From router-test (user ci):" <> _rest = said}]}
       assert said =~ ~r/\):\nhi$/
@@ -679,8 +683,7 @@ defmodule WardrikHTTP.RouterTest do
                  auth: {:bearer, secret}
                )
 
-      {:ok, %{body: %{"events" => events}}} =
-        Req.get(api, url: "/v1/agents/#{key}/events", params: [starting_after: 0])
+      {:ok, %{body: %{"events" => events}}} = Req.get(api, url: "/v1/agents/#{key}/events")
 
       refute JSON.encode!(events) =~ "WDJB-MJHT"
       refute JSON.encode!(events) =~ "github.com/login"
@@ -1075,20 +1078,21 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "events" do
-    test "a page of the log after a sequence, as JSON", %{api: api} do
+    test "a page of the log after a cursor, as JSON, with the cursor after it", %{api: api} do
       {key, agent} = echo_agent()
       Agent.ask(agent, "hi")
       settled(agent)
 
-      assert {:ok, %{status: 200, body: %{"events" => events}}} =
+      assert {:ok, %{status: 200, body: %{"events" => events, "next" => next}}} =
                Req.get(api,
                  url: "/v1/agents/#{key}/events",
-                 params: [starting_after: 1, limit: 2]
+                 params: [after: Cursor.encode(%{key => 1}), limit: 2]
                )
 
       assert Enum.map(events, & &1["type"]) == ["wardrik.message.created", "wardrik.run.started"]
+      assert Cursor.decode(next) == {:ok, %{key => 3}}
 
-      for params <- [[limit: 0], [starting_after: "soon"], [limit: "many"]] do
+      for params <- [[limit: 0], [after: "soon"], [limit: "many"]] do
         assert {:ok, %{status: 400}} =
                  Req.get(api, url: "/v1/agents/#{key}/events", params: params)
       end
@@ -1102,20 +1106,25 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok,
               %{status: 200, body: %{"events" => [dropped, %{"sequence" => "000000000003"}]}}} =
-               Req.get(api,
-                 url: "/v1/agents/#{key}/events",
-                 params: [starting_after: 0, limit: 2]
-               )
+               Req.get(api, url: "/v1/agents/#{key}/events", params: [limit: 2])
 
       assert %{"type" => "wardrik.events.dropped", "data" => %{"after" => 0, "oldest" => 3}} =
                dropped
 
-      assert {:ok, %{status: 410, body: %{"error" => %{"type" => "gap", "oldest" => 3}}}} =
-               Req.get(api,
-                 url: "/v1/agents/#{key}/events",
-                 params: [starting_after: 0],
-                 headers: [{"accept", "text/event-stream"}]
-               )
+      completed = [resources: AgentID.resource(key), types: "wardrik.run.completed"]
+
+      assert {:ok, %{body: %{"events" => events}}} =
+               Req.get(api, url: "/v1/events", params: completed)
+
+      assert Enum.map(events, & &1["type"]) == ["wardrik.events.dropped", "wardrik.run.completed"]
+
+      stream = open(api, "/v1/agents/#{key}/events?after=", [])
+
+      assert {[{dropped, "wardrik.events.dropped"}, {third, "wardrik.run.started"}], stream} =
+               frames(stream, 2)
+
+      assert {at(dropped, key), at(third, key)} == {2, 3}
+      Req.cancel_async_response(stream.response)
     end
 
     test "streams the log after Last-Event-ID, then each event as it is written", %{api: api} do
@@ -1123,22 +1132,24 @@ defmodule WardrikHTTP.RouterTest do
       Agent.ask(agent, "hi")
       settled(agent)
 
-      stream = open(api, key, [{"last-event-id", "1"}])
+      stream = open(api, key, [{"last-event-id", Cursor.encode(%{key => 1})}])
 
       assert {[
-                {"000000000002", "wardrik.message.created"},
-                {"000000000003", "wardrik.run.started"},
-                {"000000000004", "wardrik.run.completed"}
+                {second, "wardrik.message.created"},
+                {_third, "wardrik.run.started"},
+                {fourth, "wardrik.run.completed"}
               ], stream} = frames(stream, 3)
 
+      assert {at(second, key), at(fourth, key)} == {2, 4}
       Agent.ask(agent, "again")
 
       assert {[
-                {"000000000005", "wardrik.message.created"},
-                {"000000000006", "wardrik.run.started"},
-                {"000000000007", "wardrik.run.completed"}
+                {fifth, "wardrik.message.created"},
+                {_sixth, "wardrik.run.started"},
+                {seventh, "wardrik.run.completed"}
               ], stream} = kept(stream, 3)
 
+      assert {at(fifth, key), at(seventh, key)} == {5, 7}
       Req.cancel_async_response(stream.response)
     end
 
@@ -1148,28 +1159,79 @@ defmodule WardrikHTTP.RouterTest do
 
       Agent.ask(agent, "hi")
 
-      assert {[{"000000000002", "wardrik.message.created"} | _rest], stream} = frames(stream, 3)
+      assert {[{id, "wardrik.message.created"} | _rest], stream} = frames(stream, 3)
+      assert at(id, key) == 2
       Req.cancel_async_response(stream.response)
 
-      for nobody <- ["test/nobody", "other/nobody"] do
-        assert {:ok, %{status: 404}} =
-                 Req.get(api,
-                   url: "/v1/agents/#{nobody}/events",
-                   headers: [{"accept", "text/event-stream"}]
-                 )
-      end
+      assert {:ok, %{status: 404}} =
+               Req.get(api,
+                 url: "/v1/agents/other/nobody/events",
+                 headers: [{"accept", "text/event-stream"}]
+               )
     end
 
-    test "a stream opened from the head of a sleeping agent wakes it and follows it",
+    test "a stream opened from the head of a sleeping agent follows it once it wakes",
          %{api: api} do
       key = sleeping_agent()
 
       stream = open(api, key, [])
       :ok = Agent.ask(key, "again", host: Wardrik.Test.host())
 
-      assert {[{_id, "wardrik.message.created"} | _rest], stream} = frames(stream, 3)
+      assert {[{_id, "wardrik.agent.started"} | _rest], stream} = frames(stream, 3)
       Req.cancel_async_response(stream.response)
     end
+
+    test "read across the agents each pattern covers, of the types asked for", %{api: api} do
+      user = "events#{System.unique_integer([:positive])}"
+      reader = client(api, "test/@#{user}/agent/*", [:reader])
+      pattern = "test/@#{user}/agent/*"
+      started = [resources: pattern, types: "wardrik.agent.started"]
+
+      stream = open(reader, "/v1/events?" <> URI.encode_query(started), [])
+
+      {first, _agent} = Fleet.start_agent([], AgentID.new!("first", org: "test", user: user))
+      {second, _agent} = Fleet.start_agent([], AgentID.new!("second", org: "test", user: user))
+
+      assert {[{one, "wardrik.agent.started"}, {two, "wardrik.agent.started"}], stream} =
+               frames(stream, 2)
+
+      assert {:ok, %{^first => 1, ^second => 1}} = Cursor.decode(two)
+      assert {:ok, positions} = Cursor.decode(one)
+      assert map_size(positions) == 1
+      Req.cancel_async_response(stream.response)
+
+      assert {:ok, %{status: 200, body: %{"events" => events, "next" => next}}} =
+               Req.get(reader, url: "/v1/events", params: started)
+
+      assert events |> Enum.map(& &1["source"]) |> Enum.sort() ==
+               ["wardrik://local/agents/#{first}", "wardrik://local/agents/#{second}"]
+
+      assert {:ok, %{body: %{"events" => [], "next" => ^next}}} =
+               Req.get(reader, url: "/v1/events", params: [after: next])
+    end
+
+    test "refuse a pattern that is none, one past the token, and a token that reads none",
+         %{api: api} do
+      assert {:ok, %{status: 400}} =
+               Req.get(api, url: "/v1/events", params: [resources: "test/x/y"])
+
+      assert {:ok, %{status: 404}} =
+               Req.get(api, url: "/v1/events", params: [resources: "other/*"])
+
+      assert {:ok, %{status: 403}} =
+               Req.get(client(api, "test/agent/*", [:messenger]), url: "/v1/events")
+    end
+  end
+
+  defp at(cursor, key) do
+    {:ok, positions} = Cursor.decode(cursor)
+    Map.fetch!(positions, key)
+  end
+
+  # A client for the same listener, holding a token of its own.
+  defp client(api, scope, roles) do
+    {:ok, secret, _token} = token("events-test", scope, roles)
+    Req.merge(api, auth: {:bearer, secret})
   end
 
   # An agent that answered once, then went to sleep.
@@ -1187,18 +1249,16 @@ defmodule WardrikHTTP.RouterTest do
     key
   end
 
-  defp open(api, key, headers) do
+  defp open(api, "/" <> _path = url, headers) do
     response =
-      Req.get!(api,
-        url: "/v1/agents/#{key}/events",
-        headers: [{"accept", "text/event-stream"} | headers],
-        into: :self
-      )
+      Req.get!(api, url: url, headers: [{"accept", "text/event-stream"} | headers], into: :self)
 
     assert response.status == 200
     assert ["text/event-stream" <> _charset] = Req.Response.get_header(response, "content-type")
     %{response: response, buffer: ""}
   end
+
+  defp open(api, key, headers), do: open(api, "/v1/agents/#{key}/events", headers)
 
   # The next `count` events on the stream, as their id and type, and the
   # stream with what is left of what it has received.
@@ -1253,82 +1313,6 @@ defmodule WardrikHTTP.RouterTest do
           do: {name, value}
 
     {fields["id"], JSON.decode!(fields["data"])["type"]}
-  end
-
-  describe "exports" do
-    # A client for the same listener, holding a token of its own.
-    defp client(api, scope, roles) do
-      {:ok, secret, _token} = token("export-test", scope, roles)
-      Req.merge(api, auth: {:bearer, secret})
-    end
-
-    defp sources(events), do: events |> Enum.map(& &1["source"]) |> Enum.uniq() |> Enum.sort()
-
-    test "read the logs the caller may read, from where the export was moved to", %{api: api} do
-      user = "exp#{System.unique_integer([:positive])}"
-
-      {first, _agent} =
-        Fleet.start_agent([], Wardrik.AgentID.new!("first", org: "test", user: user))
-
-      {second, _agent} =
-        Fleet.start_agent([], Wardrik.AgentID.new!("second", org: "test", user: user))
-
-      client = client(api, "test/@#{user}/agent/*", [:reader])
-
-      assert {:ok, %{status: 200, body: %{"events" => events, "next" => next, "gaps" => []}}} =
-               Req.get(client, url: "/v1/exports/feed")
-
-      assert sources(events) == [
-               "wardrik://local/agents/#{first}",
-               "wardrik://local/agents/#{second}"
-             ]
-
-      assert {:ok, %{body: %{"events" => ^events}}} = Req.get(client, url: "/v1/exports/feed")
-
-      assert {:ok, %{status: 204}} =
-               Req.post(client, url: "/v1/exports/feed", json: %{"next" => next})
-
-      assert {:ok, %{body: %{"events" => []}}} = Req.get(client, url: "/v1/exports/feed")
-
-      # Another caller's export of the same name is its own.
-      other = client(api, "test/@#{user}/agent/*", [:reader])
-      assert {:ok, %{body: %{"events" => ^events}}} = Req.get(other, url: "/v1/exports/feed")
-
-      assert {:ok, %{status: 204}} = Req.delete(client, url: "/v1/exports/feed")
-      assert {:ok, %{body: %{"events" => ^events}}} = Req.get(client, url: "/v1/exports/feed")
-    end
-
-    test "read the audit for a caller that owns every agent", %{api: api} do
-      :ok =
-        Wardrik.Audit.record(
-          Wardrik.Audit,
-          {:agent_cleared, Wardrik.AgentID.parse!("test/exported")},
-          by: nil
-        )
-
-      client = client(api, "*", [:owner])
-
-      assert {:ok, %{status: 200, body: %{"events" => [event]}}} =
-               Req.get(client, url: "/v1/exports/audit?limit=1")
-
-      assert event["source"] == "wardrik://local/audit"
-    end
-
-    test "refuse a name that is not one, a caller that may not read, and a next not answered",
-         %{api: api} do
-      assert {:ok, %{status: 400}} = Req.get(api, url: "/v1/exports/@feed")
-      assert {:ok, %{status: 400}} = Req.get(api, url: "/v1/exports/feed?limit=0")
-
-      assert {:ok, %{status: 403}} =
-               Req.get(client(api, "test/agent/*", [:messenger]), url: "/v1/exports/feed")
-
-      assert {:ok, %{status: 400, body: body}} =
-               Req.post(api, url: "/v1/exports/feed", json: %{"next" => "not a page"})
-
-      assert body["error"]["message"] == "next is not one a page of this export answered"
-      assert {:ok, %{status: 400}} = Req.post(api, url: "/v1/exports/feed", json: %{})
-      assert {:ok, %{status: 404}} = Req.put(api, url: "/v1/exports/feed", json: %{})
-    end
   end
 
   describe "connections" do
@@ -1808,7 +1792,7 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "the resources' schemas" do
-    @resources ~w(agent agent_snapshot authorization decisions definition_read trigger trigger_definition export error connections connecting nodes input_tokens_create)
+    @resources ~w(agent agent_snapshot authorization decisions definition_read trigger trigger_definition events error connections connecting nodes input_tokens_create)
 
     defp schema(name) do
       WardrikProtocol.dir()
@@ -1858,16 +1842,13 @@ defmodule WardrikHTTP.RouterTest do
 
       reader = client(api, "test/@#{user}/agent/*", [:reader])
 
-      {:ok, %{status: 200, body: page}} = Req.get(reader, url: "/v1/exports/schemas")
+      {:ok, %{status: 200, body: page}} = Req.get(reader, url: "/v1/events")
       assert [_ | _] = page["events"]
-      conforms(page, "export")
+      conforms(page, "events")
     end
 
     test "describe every error", %{api: api} do
-      {key, agent} = echo_agent()
-      Agent.ask(agent, "hi")
-      settled(agent)
-      :ok = Log.trim(store(), key, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
+      {key, _agent} = echo_agent()
 
       {:ok, secret, _token} = token("reader", "test/agent/*", [:reader])
 
@@ -1879,18 +1860,13 @@ defmodule WardrikHTTP.RouterTest do
           url: "/v1/agents/#{key}/decisions",
           json: %{"decisions" => [%{"id" => "x", "decision" => "approve"}]}
         ),
-        Req.get(api,
-          url: "/v1/agents/#{key}/events",
-          params: [starting_after: 0],
-          headers: [{"accept", "text/event-stream"}]
-        ),
         Req.get(api, url: "/v1/workers"),
         Req.get(api, url: "/v1/agents/#{key}/definition"),
         Req.post(api, url: "/v1/agents/#{key}/cancel", auth: {:bearer, secret})
       ]
 
       assert Enum.map(answers, fn {:ok, response} -> response.status end) ==
-               [401, 404, 400, 409, 410, 426, 501, 403]
+               [401, 404, 400, 409, 426, 501, 403]
 
       for {:ok, response} <- answers, do: conforms(response.body, "error")
     end

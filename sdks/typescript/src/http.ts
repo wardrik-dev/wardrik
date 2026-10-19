@@ -3,7 +3,7 @@ import { WardrikError } from "./errors.ts";
 export interface Request {
   body?: unknown;
   headers?: Record<string, string>;
-  query?: Record<string, string | number | undefined>;
+  query?: Record<string, string | number | string[] | undefined>;
   signal?: AbortSignal | undefined;
   /** Statuses of 400 and above to answer with rather than throw on. */
   accept?: number[];
@@ -58,7 +58,7 @@ export class Http {
   #address(path: string, query: Request["query"]): string {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query ?? {})) {
-      if (value !== undefined) params.set(key, String(value));
+      for (const one of [value ?? []].flat()) params.append(key, String(one));
     }
 
     const search = params.size > 0 ? `?${params}` : "";
