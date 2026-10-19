@@ -142,7 +142,11 @@ defmodule WardrikHost.GuideTest do
     token = app("Web.Session").token(user)
 
     assert %{status: 200, body: %{"agents" => listed}} =
-             Req.get!("http://127.0.0.1:4850/v1/agents", auth: {:bearer, token}, retry: false)
+             Req.get!("http://127.0.0.1:4850/v1/agents",
+               auth: {:bearer, token},
+               params: [resource: "#{user.org}/@#{user.id}/agent/*"],
+               retry: false
+             )
 
     assert Enum.any?(listed, &(&1["id"] == to_string(agent)))
     assert %{status: 401} = Req.get!("http://127.0.0.1:4850/v1/agents", retry: false)

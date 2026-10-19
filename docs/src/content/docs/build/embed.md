@@ -114,8 +114,10 @@ says what else a definition may name, such as the policies it may hold to:
 `context: Wardrik.context(policies: policies)`. A value of your own implementing
 `WardrikDefinition.Contexts` gives each agent a context of its own, such as one per org.
 
-`Wardrik.new/1` answers the `Wardrik.Host` everything runs on. A package of tools adds them to it
-through an `attach/2` of its own, before Wardrik starts: `Wardrik.new(...) |> SomePackage.attach()`.
+`Wardrik.new/1` answers the `Wardrik.Host` everything runs on. A package adds what it brings to it
+through an `attach/2` of its own, before Wardrik starts: its tools, what it serves over HTTP, and
+what it runs, as `Wardrik.new(...) |> WardrikHTTP.attach(port: 4850)`. Wardrik starts what each
+attached in the order they were attached.
 
 ## 5. Start it in your tree
 
@@ -265,25 +267,21 @@ defimpl WardrikHTTP.Authenticator, for: MyAppWeb.Session do
 end
 ```
 
-A request reaches the user's own agents, as its token says. Start the API's listener on a port of
-its own, after Wardrik:
+A request reaches the user's own agents, as its token says. Attach the API to Wardrik, which runs
+its listener on a port of its own:
 
 ```elixir title="lib/my_app/agents.ex"
-def children do
-  wardrik = wardrik()
-
-  [
-    {WardrikStore, store()},
-    {Wardrik, wardrik},
-    {WardrikHTTP.Access, store: store()},
-    WardrikHTTP.Workers,
-    {WardrikHTTP.Listener,
-     host: wardrik,
-     port: 4850,
-     authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}}
-  ]
+def wardrik do
+  Wardrik.new(store: store(), issuer: %MyApp.Issuer{})
+  |> WardrikHTTP.attach(
+    port: 4850,
+    authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}
+  )
 end
 ```
+
+`children/0` stays as it is. The API also offers your agents the tools of programs that connect to
+it as [tool workers](/build/tool-workers/), which a definition names as `workers/*`.
 
 Have your proxy forward `/v1/` to port 4850. Then Maria's programs list her agents with the token
 your app gave her:
@@ -330,8 +328,20 @@ def wardrik do
     store: store(),
     issuer: %MyApp.Issuer{},
     credentials: vault,
-    connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault},
-    context: Wardrik.context(servers: [github: [orgs: :all]], mcp: WardrikMCP)
+    connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault}
+  )
+  |> WardrikMCP.attach(
+    servers: [
+      github: [
+        transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
+        credential: "github"
+      ]
+    ]
+  )
+  |> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
+  |> WardrikHTTP.attach(
+    port: 4850,
+    authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}
   )
 end
 
@@ -360,21 +370,8 @@ def oauth do
 end
 ```
 
-`context:` now lets a definition name the server's tools as `github/*`. Start the sign-ins and the
-server's connections in `children/0`, after `{Wardrik, wardrik}`:
-
-```elixir title="lib/my_app/agents.ex"
-WardrikOAuth.Supervisor,
-{WardrikMCP.Supervisor,
- store: store(),
- servers: [
-   github: [
-     transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
-     credential: "github"
-   ]
- ]},
-```
-
+`WardrikMCP.attach/2` lets a definition name the server's tools as `github/*`, and runs its
+connections, after Wardrik's own; `WardrikOAuth.Supervisor` runs the sign-ins under way.
 `credential: "github"` makes each call with the token of the user the agent works for.
 
 ### Take GitHub's callback in your app

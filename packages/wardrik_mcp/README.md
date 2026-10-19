@@ -8,31 +8,36 @@ def deps do
 end
 ```
 
-Start `WardrikMCP.Supervisor` in your application with the servers it
-reaches, and give an agent a server the way you give it any other tool:
+Attach it to your Wardrik with the servers it reaches, and a definition names
+each server's tools as `github/*`:
 
 ```elixir
-# lib/my_app/application.ex
-children = [
-  Wardrik,
-  {WardrikMCP.Supervisor,
-   servers: [
-     github: [
-       transport:
-         {:stdio,
-          command: "github-mcp-server",
-          env: %{"GITHUB_TOKEN" => System.get_env("GITHUB_TOKEN")}},
-       only: ~w(search_issues create_issue)
-     ],
-     linear: [
-       transport:
-         {:streamable_http,
-          base_url: "https://mcp.linear.app/mcp",
-          headers: %{"authorization" => "Bearer " <> System.fetch_env!("LINEAR_TOKEN")}}
-     ]
-   ]}
-]
+# lib/my_app/agents.ex
+wardrik =
+  Wardrik.new(store: store)
+  |> WardrikMCP.attach(
+    servers: [
+      github: [
+        transport:
+          {:stdio,
+           command: "github-mcp-server",
+           env: %{"GITHUB_TOKEN" => System.get_env("GITHUB_TOKEN")}},
+        only: ~w(search_issues create_issue)
+      ],
+      linear: [
+        transport:
+          {:streamable_http,
+           base_url: "https://mcp.linear.app/mcp",
+           headers: %{"authorization" => "Bearer " <> System.fetch_env!("LINEAR_TOKEN")}}
+      ]
+    ]
+  )
+
+children = [{WardrikStore, store}, {Wardrik, wardrik}]
 ```
+
+`{Wardrik, wardrik}` starts `WardrikMCP.Supervisor`, which connects to them. A
+config names a server by its resource, as a tool:
 
 ```elixir
 github = Wardrik.Resource.parse!("deployment/server/github")
@@ -57,8 +62,9 @@ A server that acts as a user names the credential each call is made with, and
 runs over a connection of that user's own:
 
 ```elixir
-{WardrikMCP.Supervisor,
- servers: [github: [transport: {:streamable_http, base_url: "..."}, credential: "github"]]}
+WardrikMCP.attach(host,
+  servers: [github: [transport: {:streamable_http, base_url: "..."}, credential: "github"]]
+)
 ```
 
 The credential is resolved through the agent's `:credentials` seam, such as
@@ -73,18 +79,17 @@ offers only `github__connect`, which asks them to authorize; see
 An org or a person adds a server of their own as the deployment runs,
 through `Wardrik.servers_add/3`, which every surface offers: over HTTP,
 `POST /v1/servers`. `WardrikMCP.Servers` keeps each in the store, and serves
-it to its owner's agents alone:
+it to its owner's agents alone, which name it as `books/*`, or every one
+their owner adds as `servers/*`:
 
 ```elixir
 oauth = WardrikOAuth.new(added: %WardrikMCP.Servers.Providers{store: store})
 vault = WardrikVault.new(store: store, keys: keys, grants: oauth)
 servers = %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault}
-host = Wardrik.Host.new(store: store, credentials: vault, servers: servers)
 
-children = [
-  {Wardrik.Core, host: host},
-  {WardrikMCP.Supervisor, store: store}
-]
+wardrik =
+  Wardrik.new(store: store, credentials: vault, servers: servers)
+  |> WardrikMCP.attach()
 ```
 
 Such a server is reached over Streamable HTTP at an `https` URL whose host

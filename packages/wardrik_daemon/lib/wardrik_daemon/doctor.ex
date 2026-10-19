@@ -397,7 +397,7 @@ defmodule WardrikDaemon.Doctor do
   # configures, and no servers people add, which only a daemon that runs
   # reaches.
   defp agents(config) do
-    host = WardrikDaemon.attach(Wardrik.Host.new(), config)
+    host = WardrikDaemon.attach(Wardrik.new(store: %WardrikStore.None{}), config)
     {policies, agents} = Agents.read_files(config, host: host)
 
     case for({path, {:error, message}} <- policies ++ agents, do: {path, message}) do

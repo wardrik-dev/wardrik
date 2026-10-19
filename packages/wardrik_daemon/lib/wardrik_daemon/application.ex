@@ -14,7 +14,7 @@ defmodule WardrikDaemon.Application do
   while it waits; `WardrikDaemon.Cluster` connects this node to the others,
   and `WardrikDaemon.Cluster.Quorum` waits for enough of them; then
   `WardrikDaemon.Tree` reads the rest of `config.yaml`, builds the host and
-  starts core and the daemon. See `WardrikDaemon.Config.boot/1`.
+  starts `Wardrik` on it. See `WardrikDaemon.Config.boot/1`.
 
   `DurableServer`, which runs the fleet, the triggers and the budgets, logs
   its warnings and errors alone: at `info` it writes a line every few seconds

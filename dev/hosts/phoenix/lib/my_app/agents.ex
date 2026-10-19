@@ -12,8 +12,20 @@ defmodule MyApp.Agents do
       store: store(),
       issuer: %MyApp.Issuer{},
       credentials: vault,
-      connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault},
-      context: Wardrik.context(servers: [github: [orgs: :all]], mcp: WardrikMCP)
+      connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault}
+    )
+    |> WardrikMCP.attach(
+      servers: [
+        github: [
+          transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
+          credential: "github"
+        ]
+      ]
+    )
+    |> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
+    |> WardrikHTTP.attach(
+      port: 4850,
+      authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}
     )
   end
 
@@ -41,30 +53,7 @@ defmodule MyApp.Agents do
     )
   end
 
-  def children do
-    store = store()
-    wardrik = wardrik()
-
-    [
-      {WardrikStore, store},
-      {Wardrik, wardrik},
-      WardrikOAuth.Supervisor,
-      {WardrikMCP.Supervisor,
-       store: store,
-       servers: [
-         github: [
-           transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
-           credential: "github"
-         ]
-       ]},
-      {WardrikHTTP.Access, store: store},
-      WardrikHTTP.Workers,
-      {WardrikHTTP.Listener,
-       host: wardrik,
-       port: 4850,
-       authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}}
-    ]
-  end
+  def children, do: [{WardrikStore, store()}, {Wardrik, wardrik()}]
 
   def define(user, name, definition) do
     agent = AgentID.new!(name, org: user.org, user: to_string(user.id))

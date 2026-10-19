@@ -60,7 +60,7 @@ defmodule Deploy.HetznerTest do
 
     assert {:ok, %Wardrik.Agent.Spec{id: %Wardrik.AgentID{name: "triage"}}} =
              WardrikDaemon.AgentFile.read(WardrikDaemon.AgentFile.context(config), agent,
-               host: WardrikDaemon.attach(Wardrik.Host.new(), config)
+               host: WardrikDaemon.attach(Wardrik.new(store: Wardrik.Test.store()), config)
              )
   end
 end
