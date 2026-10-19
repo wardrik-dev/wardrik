@@ -1184,10 +1184,11 @@
           {
             "connections": [
               {
-                "held_by": "person",
+                "held_by": "own",
                 "provider": "github"
               },
               {
+                "held_by": "none",
                 "provider": "linear"
               }
             ]
@@ -1199,11 +1200,11 @@
               "additionalProperties": false,
               "properties": {
                 "held_by": {
-                  "description": "Whose a call of the owner's would use: the person's own, their org's, or the deployment's. Absent where nobody holds it.",
+                  "description": "What a call of an agent the owner owns would use: own where the owner holds it, shared where they do not and the deployment shares one, none where neither does.",
                   "enum": [
-                    "person",
-                    "org",
-                    "deployment"
+                    "own",
+                    "shared",
+                    "none"
                   ]
                 },
                 "provider": {
@@ -1212,7 +1213,8 @@
                 }
               },
               "required": [
-                "provider"
+                "provider",
+                "held_by"
               ],
               "type": "object"
             },
@@ -4623,7 +4625,7 @@
                 }
               }
             },
-            "description": "Each account, and who holds it."
+            "description": "Each account, and what holds it."
           },
           "400": {
             "$ref": "#/components/responses/Invalid"

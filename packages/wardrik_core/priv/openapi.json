@@ -2237,7 +2237,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Each account, and who holds it.",
+            "description": "Each account, and what holds it.",
             "content": {
               "application/json": {
                 "schema": {

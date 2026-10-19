@@ -160,7 +160,7 @@ defmodule WardrikHost.GuideTest do
   end
 
   test "a user's connections offer GitHub, which they have not connected", %{user: user} do
-    assert {:ok, [%{provider: "github", held_by: nil}]} = agents().connections(user)
+    assert {:ok, [%{provider: "github", held_by: :none}]} = agents().connections(user)
   end
 
   test "the sign-in callback is the app's own route" do

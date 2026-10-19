@@ -429,6 +429,37 @@ defmodule WardrikVaultTest do
     end
   end
 
+  describe "held_by/3" do
+    test "is the owner's own, and never their org's", %{user: user} do
+      org = "org-#{user}"
+      :ok = WardrikVault.put(vault(), "github", ns(org), value: "org-token", kind: :grant)
+
+      assert WardrikVault.held_by(vault(), "github", ns(org)) == :own
+      assert WardrikVault.held_by(vault(), "github", person(org, user)) == :none
+
+      :ok = WardrikVault.put(vault(), "github", person(org, user), value: "user-token")
+      assert WardrikVault.held_by(vault(), "github", person(org, user)) == :own
+    end
+
+    test "is shared where the owner holds none and a call would find the deployment's",
+         %{user: user} do
+      sealed = "linear-#{user}"
+      granted = "github-#{user}"
+      variable = environment_variable("from-the-environment")
+      :ok = WardrikVault.put(vault(), sealed, Resource.deployment(), value: "deployment")
+      :ok = WardrikVault.put(vault(), granted, Resource.deployment(), value: "t", kind: :grant)
+
+      assert WardrikVault.held_by(vault(), sealed, person("acme", user)) == :none
+
+      Process.put(:vault, %{vault() | shared: [sealed, granted, variable, "unset-#{user}"]})
+
+      assert WardrikVault.held_by(vault(), sealed, person("acme", user)) == :shared
+      assert WardrikVault.held_by(vault(), variable, ns("acme")) == :shared
+      assert WardrikVault.held_by(vault(), granted, ns("acme")) == :none
+      assert WardrikVault.held_by(vault(), "unset-#{user}", ns("acme")) == :none
+    end
+  end
+
   describe "as a value" do
     test "shows its store and how many keys it holds, never a key" do
       key = WardrikVault.generate_key()

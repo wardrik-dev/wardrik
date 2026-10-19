@@ -18,11 +18,12 @@ defmodule Wardrik.Credential do
 
   ## Names, and whose
 
-  A credential is named, as `"github"`, and belongs to someone: the call's
-  user, its org, or the deployment. Which one a name resolves to is the
-  resolver's business, as is what the name means; `WardrikVault` takes the
-  most specific it holds, the user's before the org's before the
-  deployment's. Core carries the name and never interprets it.
+  A credential is named, as `"github"`, and belongs to someone: a user, an
+  org, or the deployment. Which one a name resolves to is the resolver's
+  business, as is what the name means; `WardrikVault` takes what the agent's
+  owner holds, its user's or, for an agent that works for nobody, its org's,
+  and the deployment's only where it shares that name, so nothing falls back
+  from a user to their org. Core carries the name and never interprets it.
 
   A resolved credential says whose it is as `:owner`, an opaque term, so a
   tool holding something open per credential, such as a connection, holds one

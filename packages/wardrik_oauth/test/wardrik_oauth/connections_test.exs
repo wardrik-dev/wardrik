@@ -44,17 +44,17 @@ defmodule WardrikOAuth.ConnectionsTest do
   test "lists what the person holds, and what they do not", %{jon: jon, mine: mine} do
     authorize(jon, mine, "github")
 
-    assert list(jon, mine) == %{"github" => :person, "linear" => nil}
+    assert list(jon, mine) == %{"github" => :own, "linear" => :none}
   end
 
   test "connecting answers a link, and once the browser is back the account is held",
        %{jon: jon, mine: mine, org: org} do
     assert {:ok, %{authorization: %{url: url}}} = Wardrik.connections_connect(jon, mine, "linear")
 
-    assert list(jon, mine)["linear"] == nil
+    assert list(jon, mine)["linear"] == :none
     assert {:ok, "linear"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-    assert list(jon, mine)["linear"] == :person
+    assert list(jon, mine)["linear"] == :own
     assert {:ok, %{authorization: nil}} = Wardrik.connections_connect(jon, mine, "linear")
 
     jon_id = to_string(mine)
@@ -69,10 +69,10 @@ defmodule WardrikOAuth.ConnectionsTest do
        %{jon: jon, mine: mine} do
     authorize(jon, mine, "linear")
 
-    assert {:ok, %Wardrik.Connections.Connection{provider: "linear", held_by: :person}} =
+    assert {:ok, %Wardrik.Connections.Connection{provider: "linear", held_by: :own}} =
              Wardrik.connections_disconnect(jon, mine, "linear")
 
-    assert list(jon, mine)["linear"] == nil
+    assert list(jon, mine)["linear"] == :none
 
     jon_id = to_string(mine)
 
@@ -94,16 +94,16 @@ defmodule WardrikOAuth.ConnectionsTest do
              Wardrik.connections_disconnect(jon, globex, "github")
 
     assert {:error, %Error{type: :not_found}} = Wardrik.connections_connect(jon, globex, "github")
-    assert list(jon, mine)["github"] == :person
+    assert list(jon, mine)["github"] == :own
   end
 
-  test "an org's account shows as the org's to its people", %{jon: jon, mine: mine, org: org} do
-    {:ok, %{authorization: %{url: url}}} =
-      Wardrik.connections_connect(jon, Wardrik.Resource.parse!(org), "linear")
-
+  test "an org's account is the org's own, and none of its people's",
+       %{jon: jon, mine: mine, org: org} do
+    org = Wardrik.Resource.parse!(org)
+    {:ok, %{authorization: %{url: url}}} = Wardrik.connections_connect(jon, org, "linear")
     {:ok, "linear"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-    assert list(jon, mine)["linear"] == :org
-    assert WardrikOAuth.connected?(vault(), "linear", Wardrik.Resource.parse!(org))
+    assert list(jon, org)["linear"] == :own
+    assert list(jon, mine)["linear"] == :none
   end
 end

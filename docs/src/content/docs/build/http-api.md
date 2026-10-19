@@ -94,7 +94,7 @@ A token that reaches a person's agents connects their accounts before any agent 
 
 ```sh
 curl -s -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections?owner=acme/@jon"
-# {"connections": [{"provider": "github", "held_by": "person"}, {"provider": "linear"}]}
+# {"connections": [{"provider": "github", "held_by": "own"}, {"provider": "linear", "held_by": "none"}]}
 
 curl -s -X POST -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections/linear?owner=acme/@jon"
 # {"provider": "linear", "connected": false, "authorization": {"url": "https://…"}}
@@ -144,8 +144,8 @@ also runs tools in your app; see [Tools in your app](/build/tool-workers/).
 
 - An interrupt with the reason `authorization` waits for a person to connect an account.
   `GET .../interrupts/{id}/authorization` answers where, as `{"url": ..., "code": ...}`.
-- `held_by` is `person`, `org` or `deployment`, whichever a call of theirs would use, and absent where
-  nobody holds it.
+- `held_by` is what a call of the owner's agents would use: `own`, `shared` where they hold none and
+  the deployment shares one, or `none`. An org's account is not its people's.
 - `owner` names whose accounts: a person's, `acme/@jon`, or an org's, `acme`.
 - Listing needs the `reader` role; connecting and forgetting (`DELETE /v1/connections/linear`) need
   `definer`.
