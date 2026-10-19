@@ -684,7 +684,7 @@ defmodule WardrikDaemon.Config do
   defp defaults(defaults) do
     defaults = table!(defaults, ["defaults"])
 
-    case WardrikDefinition.check_defaults(defaults) do
+    case Wardrik.Definition.check_defaults(defaults) do
       :ok -> defaults
       {:error, key, message} -> invalid!(["defaults", key], message)
     end

@@ -163,7 +163,7 @@ defmodule Wardrik do
 
     [
       store: store,
-      definitions: %WardrikDefinition.Kept{store: store, contexts: opts[:context]},
+      definitions: %Definitions{store: store, contexts: opts[:context]},
       workspace: %WardrikWorkspace.Backend.Store{store: store}
     ]
     |> Kernel.++(Keyword.take(opts, [:expires, :runtimes | @seams]))
@@ -679,8 +679,8 @@ defmodule Wardrik do
   @doc """
   Defines `agent` with `definition`, or defines it again, and answers its
   snapshot. It runs under the `:held` hooks, then the policy the token
-  names, ahead of its own; the host's definitions read that policy by its
-  name, and keep both with it, so it runs under them each time it starts.
+  names, ahead of its own; the host's definitions keep both with it, and
+  find that policy by its name each time it starts.
 
   ## Options
 
@@ -695,54 +695,51 @@ defmodule Wardrik do
     scope = refreshed(scope)
 
     with :ok <- authorize(scope, "agent.define", agent),
-         {:ok, spec} <- defined(scope, agent, definition, opts[:held]),
-         {:ok, _pid} <-
-           started(Fleet.put(%{spec | hooks: opts[:held] ++ List.wrap(spec.hooks)}), agent) do
+         {:ok, spec} <-
+           defined(scope, agent, definition, source: {:api, scope.token}, held: opts[:held]),
+         {:ok, _pid} <- started(Fleet.put(spec), agent) do
       audit(scope, [{:agent_defined, agent}])
       agent_snapshot(agent, scope.host)
     end
   end
 
-  defp defined(scope, agent, fields, held) do
-    case Definition.put(Host.definitions(scope.host), agent,
-           definition: fields,
-           token: scope.token,
-           held: held,
-           host: scope.host
-         ) do
-      {:ok, %{id: ^agent} = spec} ->
-        {:ok, spec}
+  # Reads `fields` as `agent`'s definition under its owner's context, and
+  # keeps it once the spec it writes builds.
+  defp defined(scope, agent, fields, opts) do
+    definitions = Host.definitions(scope.host)
+    context = Definitions.context(definitions, agent)
 
-      {:ok, spec} ->
-        raise ArgumentError, "the host's definitions wrote a spec for #{spec.id}, not #{agent}"
-
-      :unsupported ->
-        {:error, Error.new(:unsupported, "This server does not define agents.")}
-
-      refused ->
-        refused(refused)
-    end
+    with {:ok, definition} <-
+           refused(Definition.read(fields, [id: agent, context: context] ++ opts)),
+         {:ok, spec} <-
+           refused(Definition.spec(definition, agent, context: context, host: scope.host)),
+         :ok <- refused(Definitions.put(definitions, definition)),
+         do: {:ok, spec}
   end
 
   # A refusal of the host's definitions, as an error of its kind.
   defp refused({:error, :conflict, message}), do: {:error, Error.new(:conflict, message)}
   defp refused({:error, message}), do: {:error, Error.new(:invalid, message)}
+  defp refused(ok), do: ok
 
   @doc "`agent`'s definition as it was last put, and the tools it names that offer nothing yet."
   @doc group: "Agent lifecycle"
   @spec agent_definition_read(Scope.t(), AgentID.t()) ::
-          {:ok, Wardrik.Definition.Read.t()} | {:error, Error.t()}
+          {:ok, %{definition: Definition.t(), missing: [String.t()]}} | {:error, Error.t()}
   def agent_definition_read(%Scope{} = scope, %AgentID{} = agent) do
+    definitions = Host.definitions(scope.host)
+
     with :ok <- authorize(scope, "agent.definition.read", agent) do
-      case Definition.get(Host.definitions(scope.host), agent, host: scope.host) do
-        {:ok, read} ->
-          {:ok, read}
+      case Definitions.get(definitions, agent) do
+        {:ok, definition} ->
+          {:ok,
+           %{
+             definition: definition,
+             missing: Definitions.missing(definitions, definition, host: scope.host)
+           }}
 
         {:error, :not_found} ->
           {:error, undefined(agent)}
-
-        :unsupported ->
-          {:error, Error.new(:unsupported, "This server does not keep agents' definitions.")}
       end
     end
   end
@@ -760,8 +757,8 @@ defmodule Wardrik do
   @doc """
   Starts `agent`, and answers it as the fleet lists it, with what it started
   from: one running already runs on, one asleep wakes, one the host defines
-  starts on its definition, and one nothing defines yet is defined as the
-  host's `c:Wardrik.Definition.create/3` says.
+  starts on its definition, and one nothing defines yet is defined from the
+  `defaults` of its owner's context, which is kept for it.
 
   ## Options
 
@@ -797,11 +794,11 @@ defmodule Wardrik do
 
   defp from(scope, agent) do
     case {Fleet.lookup(agent, host: scope.host),
-          Definition.current(Host.definitions(scope.host), agent, host: scope.host)} do
-      {%Member{asleep: false}, _current} -> {:running, nil}
+          Definitions.spec(Host.definitions(scope.host), agent, host: scope.host)} do
+      {%Member{asleep: false}, _spec} -> {:running, nil}
       {_member, {:ok, spec}} -> {:definition, spec}
-      {%Member{asleep: true}, :none} -> {:store, nil}
-      {nil, :none} -> {:new, nil}
+      {%Member{asleep: true}, _none} -> {:store, nil}
+      {nil, _none} -> {:new, nil}
     end
   end
 
@@ -815,11 +812,10 @@ defmodule Wardrik do
   defp spawn(_scope, agent, {:definition, spec}, node), do: spec |> put(node) |> spawned(agent)
 
   defp spawn(scope, agent, {:new, nil}, node) do
-    case Definition.create(Host.definitions(scope.host), agent, host: scope.host) do
-      {:ok, spec} -> spec |> put(node) |> spawned(agent)
-      :unsupported -> {:error, Error.no_agent(agent)}
-      refused -> refused(refused)
-    end
+    defaults = Definitions.context(Host.definitions(scope.host), agent).defaults
+
+    with {:ok, spec} <- defined(scope, agent, defaults, source: :defaults),
+         do: spec |> put(node) |> spawned(agent)
   end
 
   # An agent bound for a node is started there first, then given its spec.
@@ -965,10 +961,8 @@ defmodule Wardrik do
   @spec agent_forget(Scope.t(), AgentID.t()) :: :ok | {:error, Error.t()}
   def agent_forget(%Scope{} = scope, %AgentID{} = agent) do
     with {:ok, _forgetting} <- forgetting(scope, agent) do
-      case Definitions.forget(scope.host, agent) do
-        {:ok, kept} -> forgotten(scope, agent, kept)
-        {:error, :conflict, why} -> {:error, Error.new(:conflict, why)}
-      end
+      kept = Definitions.delete(Host.definitions(scope.host), agent) == :ok
+      forgotten(scope, agent, kept)
     end
   end
 
@@ -991,18 +985,16 @@ defmodule Wardrik do
 
   defp forgetting(scope, agent) do
     with :ok <- authorize(scope, "agent.forget", agent),
-         :ok <- kept(scope.host, agent) do
-      case Definition.editable(Host.definitions(scope.host), agent) do
-        :ok -> {:ok, %Forgetting{agents: [agent], kept: []}}
-        {:error, :conflict, why} -> {:error, Error.new(:conflict, why)}
-      end
-    end
+         :ok <- kept(scope.host, agent),
+         :ok <- refused(Definitions.editable(Host.definitions(scope.host), agent)),
+         do: {:ok, %Forgetting{agents: [agent], kept: []}}
   end
 
   defp kept(host, agent) do
-    if Fleet.stored?(agent) or Definitions.kept?(host, agent),
-      do: :ok,
-      else: {:error, Error.no_agent(agent)}
+    if Fleet.stored?(agent) or
+         match?({:ok, _kept}, Definitions.get(Host.definitions(host), agent)),
+       do: :ok,
+       else: {:error, Error.no_agent(agent)}
   end
 
   @doc """
@@ -1022,7 +1014,10 @@ defmodule Wardrik do
   end
 
   defp forget(host, agent) do
-    with {:ok, _kept} <- Definitions.forget(host, agent),
+    definitions = Host.definitions(host)
+
+    with :ok <- Definitions.editable(definitions, agent),
+         _kept = Definitions.delete(definitions, agent),
          :ok <- Fleet.forget(agent) do
       :forgotten
     else
@@ -1045,7 +1040,7 @@ defmodule Wardrik do
 
       checked =
         for %Member{id: id} <- Fleet.list(pattern, host: scope.host),
-            do: {id, Definition.editable(definitions, id)}
+            do: {id, Definitions.editable(definitions, id)}
 
       case {for({id, :ok} <- checked, do: id),
             for({id, {:error, :conflict, why}} <- checked, do: {id, why})} do
@@ -1120,10 +1115,9 @@ defmodule Wardrik do
   end
 
   defp trigger_set(scope, agent, name, fields) do
-    case Definition.put_trigger(Host.definitions(scope.host), agent, name, fields: fields) do
+    case Definitions.put_trigger(Host.definitions(scope.host), agent, name, fields) do
       {:ok, _created_or_changed, trigger} -> {:ok, trigger}
       {:error, :not_found} -> {:error, undefined(agent)}
-      :unsupported -> {:error, Error.new(:unsupported, "This server keeps no triggers.")}
       refused -> refused(refused)
     end
   end
@@ -1139,11 +1133,10 @@ defmodule Wardrik do
   end
 
   defp trigger_removed(scope, agent, name) do
-    case Definition.delete_trigger(Host.definitions(scope.host), agent, name) do
+    case Definitions.delete_trigger(Host.definitions(scope.host), agent, name) do
       {:ok, trigger} -> {:ok, trigger}
       {:error, :not_found} -> {:error, Error.new(:not_found, "#{agent} has no trigger #{name}.")}
-      {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
-      :unsupported -> {:error, Error.new(:unsupported, "This server keeps no triggers.")}
+      refused -> refused(refused)
     end
   end
 
@@ -1483,24 +1476,17 @@ defmodule Wardrik do
   end
 
   @doc """
-  Has every node the host's definitions name in
-  `c:Wardrik.Definition.reloading/1` read its agents' definitions again, and
-  answers those nodes.
+  Has the host's definitions read again what they are read under, and
+  every agent awake built again from its definition, as
+  `Wardrik.Definitions.reload/2` does, and answers the nodes they were
+  read on.
   """
   @doc group: "Deployment"
   @spec deployment_reload(Scope.t()) :: {:ok, [node()]} | {:error, Error.t()}
   def deployment_reload(%Scope{} = scope) do
     with :ok <- on_deployment(scope, "deployment.reload") do
-      definitions = Host.definitions(scope.host)
-
-      case Definition.reloading(definitions) do
-        [] ->
-          {:error, Error.new(:unsupported, "This deployment reads no definitions again.")}
-
-        nodes ->
-          :ok = Definitions.reload_on(scope.host, nodes)
-          audited(scope, [{:agents_reloaded, nodes}], nodes)
-      end
+      nodes = Definitions.reload(Host.definitions(scope.host), host: scope.host)
+      audited(scope, [{:agents_reloaded, nodes}], nodes)
     end
   end
 
@@ -1643,7 +1629,8 @@ defmodule Wardrik do
 
   @doc "As `agent_definition_read/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_definition_read!(Scope.t(), AgentID.t()) :: Wardrik.Definition.Read.t()
+  @spec agent_definition_read!(Scope.t(), AgentID.t()) ::
+          %{definition: Definition.t(), missing: [String.t()]}
   def agent_definition_read!(scope, agent), do: unwrap(agent_definition_read(scope, agent))
 
   @doc "As `agent_spawn/3`, answering the value, or raising the `Wardrik.Error`."

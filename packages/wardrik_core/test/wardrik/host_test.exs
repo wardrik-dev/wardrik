@@ -19,7 +19,7 @@ defmodule Wardrik.HostTest do
     host = Host.new(issuer: %Issued{}, tokens: %Wardrik.Tokens.None{})
 
     assert Host.issuer(host) == %Issued{}
-    assert Host.definitions(host) == %Wardrik.Definition.None{}
+    assert Host.definitions(host) == %Wardrik.Specs.None{}
     assert Host.connections(host) == %Wardrik.Connections.None{}
     assert Host.credentials(host) == %Wardrik.Credentials.None{}
     assert Host.tokens(host) == %Wardrik.Tokens.None{}
@@ -104,11 +104,7 @@ defmodule Wardrik.HostTest do
              {:error, :no_resolver}
 
     assert Wardrik.Credentials.refused(Host.credentials(host), "github", nil) == :ok
-    assert Wardrik.Definition.current(definitions, id, host: host) == :none
-    assert Wardrik.Definition.editable(definitions, id) == :ok
-    assert Wardrik.Definition.delete(definitions, id) == {:error, :not_found}
-    assert Wardrik.Definition.create(definitions, id, host: host) == :unsupported
-    assert Wardrik.Definition.reloading(definitions) == []
-    assert Wardrik.Definition.reload(definitions, host: host) == :ok
+    assert Wardrik.Specs.current(definitions, id, host: host) == :none
+    assert Wardrik.Specs.defined(definitions, Wardrik.Resource.parse!("*")) == []
   end
 end

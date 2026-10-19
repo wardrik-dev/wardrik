@@ -48,7 +48,7 @@ defmodule WardrikDaemon.Test.Host do
 
   def agents(dir) do
     config = config(dir)
-    agents = Wardrik.Host.definitions(host())
+    agents = Agents.of(host())
 
     %{
       agents
@@ -70,16 +70,30 @@ defmodule WardrikDaemon.Test.Host do
     :ok
   end
 
-  # Starts the daemon's definitions reading `dir`, as the test's own.
+  # Starts the daemon's agents reading `dir`, as the test's own, once they
+  # have read it.
   def start_agents(dir) do
     Process.put(@agents, dir)
     ExUnit.Callbacks.start_supervised!({Agents, agents: agents(dir), host: host()})
+    _files = Agents.files(agents(dir))
     agents(dir)
   end
 
   # The definitions of the directory start_agents/1 read, under the sections
   # the test has put so far.
   def agents, do: agents(Process.get(@agents) || System.tmp_dir!())
+
+  # Keeps `fields` as the definition of `id`, as `source` wrote them, read
+  # under the test's agents: the spec it writes.
+  def define(id, fields, source) do
+    definitions = Agents.definitions(agents())
+    context = Agents.context(agents())
+
+    with {:ok, definition} <-
+           Wardrik.Definition.read(fields, id: id, source: source, context: context),
+         :ok <- Wardrik.Definitions.put(definitions, definition),
+         do: Wardrik.Definitions.spec(definitions, id, host: host())
+  end
 
   # A command run over rpc finds the test's host and config where the
   # daemon's tree holds them: those of the directory start_agents/1 read, as
@@ -103,7 +117,7 @@ defmodule WardrikDaemon.Test.Host do
     config = config(dir_of(test)) |> with_sections(test)
 
     %{
-      Wardrik.Host.definitions(host())
+      Agents.of(host())
       | config: config,
         context: WardrikDaemon.AgentFile.context(config),
         nodes: dictionary(test)[@nodes] || (&Node.list/0)
@@ -127,7 +141,7 @@ defmodule WardrikDaemon.Test.Host do
 
     %{
       host()
-      | definitions: agents,
+      | definitions: Agents.definitions(agents),
         credentials: vault,
         connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
         triggers: %WardrikTrigger.Deliveries{

@@ -20,7 +20,7 @@ defmodule WardrikTUI.SSH do
 
   An agent a session starts, that assistant or one `/spawn` names, starts as
   `Wardrik.agent_spawn/3` starts any: on the definition the host keeps of
-  it, or one the host's `Wardrik.Definition` creates, so every surface starts
+  it, or one its defaults write, so every surface starts
   the same agent. Whoever connected acts as the `:ssh` principal of their
   user name, with the token the host's `Wardrik.Issuer` issues them, on the
   `Wardrik.Host` the entrypoint's `:host` names.

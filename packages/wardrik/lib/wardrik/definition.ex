@@ -1,38 +1,37 @@
-defmodule WardrikDefinition do
+defmodule Wardrik.Definition do
   @moduledoc """
-  An agent's definition, as it is written: the keys of an agent file's
-  frontmatter, with its body as `instructions`, or the body of
-  `PUT /v1/agents/{id}`. `spec/3` reads one into the `Wardrik.Agent.Spec` the
-  agent runs on, so a definition reads alike from a file, from the HTTP API
-  or from a host's own store, and says alike why it does not read.
+  An agent's definition, read once: what an agent file's frontmatter says,
+  with its body as `instructions`, the body of `PUT /v1/agents/{id}`, or a
+  host's defaults, checked and read into what its agent is given.
+  `Wardrik.Definitions` keeps it, and `spec/3` builds the
+  `Wardrik.Agent.Spec` the agent runs on from it each time it starts.
 
-      fields = %{"model" => "anthropic:claude-sonnet-5", "tools" => ["search"]}
-      id = ~A"acme/triage"
+      fields = %{"model" => "anthropic:claude-sonnet-5", "tools" => ["web_search"]}
+      {:ok, definition} = Wardrik.Definition.read(fields, id: ~A"acme/triage", source: :defaults, context: context)
+      {:ok, spec} = Wardrik.Definition.spec(definition, ~A"acme/triage", context: context, host: host)
 
-      {:ok, spec} =
-        WardrikDefinition.spec(fields, id,
-          owner: id,
-          context: context,
-          source: :defaults,
-          host: host
-        )
+  `read/2` applies what the context gives every agent where the definition
+  says none, `idle_timeout` and `retries`, once, so an agent keeps them
+  until its definition is read again. A policy it names is kept by its
+  name, one written in place as it reads, and the tools it names by their
+  names: `spec/3` finds each as the agent starts.
 
   `WardrikProtocol`'s `agent_definition.json` is the schema, and the keys a
   definition takes are read from it as this compiles: `keys/0`. An agent
   file takes them too, but `instructions`, which is its body, and `name`,
-  `org` and `user` besides: `file_keys/0`. Where its agent's notices go is
-  read beside its spec: `route/3`.
+  `org` and `user` besides: `file_keys/0`.
 
   What a definition may name, the host says in its `Wardrik.Host`, the
   tools and tool sources it holds and the runtimes that read its settings,
-  and in a `WardrikDefinition.Context`: its MCP servers, channels, notify
-  targets and policies, and the defaults every agent takes. A definition is read by the first of the host's runtimes
-  whose key it names, `model` for `Wardrik.LLM.Runtime`, or by the first
-  where it names none.
+  and in a `WardrikDefinition.Context`: its MCP servers and policies, and
+  the defaults every agent takes. The channels and notify
+  targets it names are read as names: a channel offers only the agents of
+  the orgs it serves, and a target tells only those of the orgs it is kept
+  for.
 
   Where it came from, the source, says what it may say:
 
-    * `{:file, name}` - an agent file the host's operator wrote, which may
+    * `{:file, path}` - an agent file the host's operator wrote, which may
       name modules as tools and policies
     * `{:api, token}` - a definition sent with the `Wardrik.Token`
       `token`. It names no modules, writes no policy that holds after a
@@ -41,9 +40,6 @@ defmodule WardrikDefinition do
     * `:defaults` - one the host wrote from its defaults, which no token
       sent. It names no modules and writes no policy that holds after a
       label
-
-  `WardrikDefinition.Record` keeps a definition in the store with its
-  source.
   """
 
   alias Wardrik.Agent.Spec
@@ -54,6 +50,25 @@ defmodule WardrikDefinition do
   alias Wardrik.Runtime
   alias WardrikDefinition.Context
   alias WardrikPolicy.Pattern
+
+  @enforce_keys [:id, :display_name, :retry, :source]
+  defstruct [
+    :id,
+    :display_name,
+    :description,
+    :instructions,
+    :policy,
+    :timeout,
+    :idle_timeout,
+    :retry,
+    :notify,
+    :source,
+    tools: [],
+    triggers: [],
+    channels: [],
+    held: [],
+    fields: %{}
+  ]
 
   @schema Path.join(WardrikProtocol.dir(), "agent_definition.json")
   @external_resource @schema
@@ -74,8 +89,35 @@ defmodule WardrikDefinition do
   }
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
-  @type source() :: {:file, String.t()} | {:api, Wardrik.Token.t()} | :defaults
+  @type source() :: {:file, Path.t()} | {:api, Wardrik.Token.t()} | :defaults
   @type fields() :: %{String.t() => term()}
+
+  @typedoc """
+  A definition, read: the agent's `id`, the name a person calls it by, its
+  name unless given, what it is for and its instructions; the `tools` and
+  `channels` it names, and its `notify` route, as names; its `policy`, by
+  name or as it reads; its `timeout`, `idle_timeout` and `retry`, the
+  context's where it says none; its `triggers`; where it came from, the
+  hooks it is `held` to ahead of its own, and its `fields`, as written,
+  from which its settings are read as it starts.
+  """
+  @type t() :: %__MODULE__{
+          id: AgentID.t(),
+          display_name: String.t(),
+          description: String.t() | nil,
+          instructions: String.t() | nil,
+          tools: [String.t()],
+          policy: String.t() | WardrikPolicy.t() | nil,
+          timeout: pos_integer() | nil,
+          idle_timeout: timeout() | nil,
+          retry: Backoff.t(),
+          triggers: [WardrikTrigger.trigger()],
+          notify: WardrikNotify.Route.t() | nil,
+          channels: [String.t()],
+          source: source(),
+          held: [Wardrik.Hook.t()],
+          fields: fields()
+        }
 
   @doc "The keys a definition takes, in the order its schema lists them."
   @spec keys() :: [String.t()]
@@ -154,7 +196,7 @@ defmodule WardrikDefinition do
   its frontmatter, with its body as `instructions`. Its `name`, `org` and
   `user` give the agent's ID, `name` the file's own name where it has none
   and `org` the context's, which must be one of its `orgs`. What its
-  settings say is checked as `spec/3` reads them.
+  settings say is checked as `read/2` and `spec/3` read them.
   """
   @spec parse(String.t(), String.t(), Context.t()) ::
           {:ok, AgentID.t(), fields()} | {:error, String.t()}
@@ -168,56 +210,98 @@ defmodule WardrikDefinition do
   end
 
   @doc """
-  Whether `fields`, sent to the HTTP API, read as a definition of the agent
-  `id`: keys it takes, an org of the context's `orgs`, and nothing only an
-  operator may write. What its settings say is checked as `spec/3` reads
-  them.
+  Reads `fields` as the definition of the agent `:id`, written by
+  `:source`, under `:context`, held to the `:held` hooks ahead of its own,
+  none unless given: the definition, or a message saying why it does not
+  read. It reads nothing but what it is given.
+
+  Its keys must be a definition's, its org one of the context's `orgs`,
+  and the policies it and the token that sent it name the context's; its
+  triggers are checked as they are read. Its tools and settings are checked
+  as `spec/3` reads them.
   """
-  @spec accept(AgentID.t(), fields(), Context.t()) :: :ok | {:error, String.t()}
-  def accept(%AgentID{} = id, fields, %Context{} = context) when is_map(fields) do
+  @spec read(fields(),
+          id: AgentID.t(),
+          source: source(),
+          context: Context.t(),
+          held: [Wardrik.Hook.t()]
+        ) :: {:ok, t()} | {:error, String.t()}
+  def read(fields, opts) when is_map(fields) do
+    opts = Keyword.validate!(opts, [:id, :source, :context, held: []])
+    %AgentID{} = id = Keyword.fetch!(opts, :id)
+    %Context{} = context = Keyword.fetch!(opts, :context)
+    source = Keyword.fetch!(opts, :source)
+    file? = match?({:file, _path}, source)
+
     if id.external_id,
       do: invalid!("#{id} is a conversation of #{owner(id)}; define #{owner(id)}")
 
     known!(fields, @keys)
     declared!(id.org, context)
-    held_after!(fields["policy"], context)
-    optional_string!(fields["instructions"], "instructions")
-    :ok
+    if not file?, do: held_after!(fields["policy"], context)
+    if not files?(fields), do: unreached!(fields)
+
+    definition = %__MODULE__{
+      id: id,
+      display_name: optional_string!(fields["display_name"], "display_name") || id.name,
+      description: optional_string!(fields["description"], "description"),
+      instructions: optional_string!(fields["instructions"], "instructions"),
+      tools: names!(fields["tools"]),
+      policy: policy!(fields["policy"]),
+      timeout: fields["timeout"] && seconds!(fields["timeout"]),
+      idle_timeout: idle!(fields["idle_timeout"] || context.defaults["idle_timeout"]),
+      retry: retry!(fields["retries"] || context.defaults["retries"] || %{}),
+      triggers: triggers(fields["triggers"], files?(fields), context.triggers),
+      notify: route!(fields["notify"]),
+      channels: channels!(fields["channels"]),
+      source: source,
+      held: opts[:held],
+      fields: written_fields(fields)
+    }
+
+    _hooks = hooks!(definition, context)
+    {:ok, definition}
   catch
     {:invalid, message} -> {:error, message}
   end
 
   @doc """
-  The spec the definition `fields` of the agent `:owner` writes for the
-  agent `id`, written by `:source`, read under `:context` on `:host`.
+  The spec `definition` writes for the agent `id`, under `:context`, or a
+  message saying what in it is not there: its own, or that of one of its
+  conversations, an ID with an external ID, with the tools of the
+  definition's agent, its workspace tree among them.
 
-  `id` is the owner, or one of its conversations: an ID with an external ID,
-  whose spec has the tools of the definition's agent, its workspace tree
-  among them. Its triggers and where its notices go are checked with the
-  rest of it, and kept beside the spec rather than in it; see `triggers/1`
-  and `route/3`.
+  The tools and policies it names are found by their names as it is asked,
+  the tools and tool sources among those `:host` holds, and its settings
+  read with those tools, by the first of the host's runtimes whose key it
+  names, `model` for `Wardrik.LLM.Runtime`, or by the first
+  where it names none. Its hooks are those it is held to, then the policy
+  of the token that sent it, then those the context holds its org to, then
+  its own policy.
   """
-  @spec spec(fields(), AgentID.t(),
-          owner: AgentID.t(),
-          context: Context.t(),
-          source: source(),
-          host: Wardrik.Host.t()
-        ) :: {:ok, Spec.t()} | {:error, String.t()}
-  def spec(fields, %AgentID{} = id, opts) do
-    owner = Keyword.fetch!(opts, :owner)
-    context = Keyword.fetch!(opts, :context)
-    source = Keyword.fetch!(opts, :source)
+  @spec spec(t(), AgentID.t(), context: Context.t(), host: Host.t()) ::
+          {:ok, Spec.t()} | {:error, String.t()}
+  def spec(%__MODULE__{id: owner, fields: fields} = definition, %AgentID{} = id, opts) do
+    %Context{} = context = Keyword.fetch!(opts, :context)
+    %Host{} = host = Keyword.fetch!(opts, :host)
     if owner(id) != owner, do: invalid!("#{id} is neither #{owner} nor a conversation of it")
 
-    file? = match?({:file, _name}, source)
-    system = optional_string!(fields["instructions"], "instructions") || ""
-    _triggers = triggers(fields["triggers"], files?(fields), context.triggers)
-    _channels = channels!(fields["channels"], owner.org, context)
-    _route = route!(fields["notify"], owner.org, context)
-    spec = build(fields, system, context, Keyword.fetch!(opts, :host), file?, owner)
-    within!(spec, owner, context, source)
+    tools = tools(fields, context, host, match?({:file, _path}, definition.source), owner)
+    within!(tools, owner, context, definition.source)
+    resolved = %Runtime.Context{instructions: definition.instructions, tools: tools}
 
-    {:ok, %{spec | id: id, hooks: bounded(source, context) ++ spec.hooks}}
+    {:ok,
+     [
+       id: id,
+       display_name: definition.display_name,
+       description: definition.description,
+       config: settings!(fields, resolved, Host.runtimes(host)),
+       hooks: hooks!(definition, context),
+       timeout: definition.timeout,
+       retry: definition.retry
+     ]
+     |> put(:idle_timeout, definition.idle_timeout)
+     |> Spec.new()}
   rescue
     error in [ArgumentError] -> {:error, Exception.message(error)}
   catch
@@ -229,8 +313,8 @@ defmodule WardrikDefinition do
   describes it: what an agent file says besides its `name`, `org` and
   `user`, with one trigger as a list of one.
   """
-  @spec fields(fields()) :: fields()
-  def fields(fields) do
+  @spec written_fields(fields()) :: fields()
+  def written_fields(fields) do
     case Map.take(fields, @keys) do
       %{"triggers" => %{} = one} = taken -> %{taken | "triggers" => [one]}
       taken -> taken
@@ -238,39 +322,22 @@ defmodule WardrikDefinition do
   end
 
   @doc """
-  Where the notices of the agent `owner`, whose definition is `fields`, go:
-  a `WardrikNotify.Route` to the targets the host names, or `:none` where
-  it says nothing of them. A target tells the agents of the orgs the host
-  keeps it for, so a definition naming one kept for another org does not
-  read. It is checked with the rest of the definition as `spec/3` reads it.
+  The tools `definition` names that offer nothing yet, read under
+  `:context` on `:host`: each `server/*` naming a server its agent's owner
+  has not added, and the host does not configure. Each offers its tools
+  once the owner adds it, without the definition being read again.
   """
-  @spec route(fields(), AgentID.t(), Context.t()) ::
-          {:ok, WardrikNotify.Route.t()} | :none | {:error, String.t()}
-  def route(fields, %AgentID{org: org}, %Context{} = context) do
-    route!(fields["notify"], org, context)
-  catch
-    {:invalid, message} -> {:error, message}
-  end
-
-  @doc """
-  The tools the definition `fields` of the agent `owner` names that offer
-  nothing yet, read under `:context` on `:host`: each `server/*` naming a
-  server the owner has not added, and the host does not configure. Each
-  offers its tools once the owner adds it, without the definition being put
-  again.
-  """
-  @spec missing(fields(), AgentID.t(), context: Context.t(), host: Wardrik.Host.t()) ::
-          [String.t()]
-  def missing(fields, %AgentID{} = owner, opts) do
-    context = Keyword.fetch!(opts, :context)
-    host = Keyword.fetch!(opts, :host)
+  @spec missing(t(), context: Context.t(), host: Host.t()) :: [String.t()]
+  def missing(%__MODULE__{id: owner, tools: names}, opts) do
+    %Context{} = context = Keyword.fetch!(opts, :context)
+    %Host{} = host = Keyword.fetch!(opts, :host)
 
     case Wardrik.Servers.list(Host.servers(host), Resource.owner(AgentID.resource(owner))) do
       :unsupported ->
         []
 
       listed ->
-        for name <- List.wrap(fields["tools"]),
+        for name <- names,
             [server, "*"] <- [String.split(name, "/", parts: 2)],
             source(name, host) == :none,
             not Map.has_key?(configured(context), server),
@@ -279,65 +346,68 @@ defmodule WardrikDefinition do
     end
   end
 
-  @doc "The channels a definition offers its agent in, by name."
-  @spec channels(fields()) :: [String.t()]
-  def channels(fields), do: Map.get(fields, "channels") || []
-
   @doc """
-  The triggers a definition lists, which ask its agent something when they come round, read
-  under `context`. They are checked with the rest of the definition as `spec/3` reads it.
-  """
-  @spec triggers(fields(), Context.t()) :: [WardrikTrigger.trigger()]
-  def triggers(fields, %Context{} = context),
-    do: triggers(fields["triggers"], files?(fields), context.triggers)
-
-  @doc """
-  `fields` with the trigger `name` set to the `:trigger` `opts` name, as the
-  body of `PUT /v1/agents/{id}/triggers/{name}` writes one, read under
-  `:context`: whether it was added or changed, and the trigger it reads
+  `definition` with the trigger `name` set to `trigger`, as the body of
+  `PUT /v1/agents/{id}/triggers/{name}` writes one, read again under
+  `context`: whether it was added or changed, and the trigger it reads
   into, or why it does not read.
   """
-  @spec put_trigger(fields(), String.t(), trigger: map(), context: Context.t()) ::
-          {:ok, fields(), :created | :changed, WardrikTrigger.trigger()} | {:error, String.t()}
-  def put_trigger(fields, name, opts) do
-    %{} = given = Keyword.fetch!(opts, :trigger)
-    %Context{} = context = Keyword.fetch!(opts, :context)
+  @spec put_trigger(t(), String.t(), map(), Context.t()) ::
+          {:ok, t(), :created | :changed, WardrikTrigger.trigger()} | {:error, String.t()}
+  def put_trigger(%__MODULE__{fields: fields} = definition, name, %{} = trigger, context) do
     listed = named(fields["triggers"])
-    trigger = Map.put(given, "name", name)
+    trigger = Map.put(trigger, "name", name)
 
     {status, listed} =
       if Enum.any?(listed, &(&1["name"] == name)),
         do: {:changed, Enum.map(listed, &if(&1["name"] == name, do: trigger, else: &1))},
         else: {:created, listed ++ [trigger]}
 
-    read = triggers(listed, files?(fields), context.triggers)
-    {:ok, Map.put(fields, "triggers", listed), status, Enum.find(read, &(&1.name == name))}
-  catch
-    {:invalid, message} -> {:error, message}
+    with {:ok, definition} <- again(definition, Map.put(fields, "triggers", listed), context),
+         do: {:ok, definition, status, Enum.find(definition.triggers, &(&1.name == name))}
   end
 
-  @doc "`fields` without the trigger `name`, or `{:error, :not_found}` where it has none."
-  @spec delete_trigger(fields(), String.t()) :: {:ok, fields()} | {:error, :not_found}
-  def delete_trigger(fields, name) do
-    case Enum.split_with(named(fields["triggers"]), &(&1["name"] == name)) do
-      {[], _kept} -> {:error, :not_found}
-      {_gone, []} -> {:ok, Map.delete(fields, "triggers")}
-      {_gone, kept} -> {:ok, Map.put(fields, "triggers", kept)}
+  @doc """
+  `definition` without the trigger `name`, read again under `context`: the
+  trigger it was, or `{:error, :not_found}` where it has none.
+  """
+  @spec delete_trigger(t(), String.t(), Context.t()) ::
+          {:ok, t(), WardrikTrigger.trigger()} | {:error, :not_found} | {:error, String.t()}
+  def delete_trigger(%__MODULE__{fields: fields} = definition, name, context) do
+    with %{} = trigger <- Enum.find(definition.triggers, {:error, :not_found}, &(&1.name == name)),
+         {:ok, definition} <- again(definition, without(fields, name), context),
+         do: {:ok, definition, trigger}
+  end
+
+  defp without(fields, name) do
+    case Enum.reject(named(fields["triggers"]), &(&1["name"] == name)) do
+      [] -> Map.delete(fields, "triggers")
+      kept -> Map.put(fields, "triggers", kept)
     end
   end
+
+  # `fields` read in place of the definition's, from where it came, held as it was.
+  defp again(definition, fields, context),
+    do:
+      read(fields,
+        id: definition.id,
+        source: definition.source,
+        context: context,
+        held: definition.held
+      )
 
   defp owner(id), do: AgentID.put_external_id(id, nil)
 
   # A definition a token sent shares only the trees the token reaches, or
   # that the deployment shares with the agent.
-  defp within!(%Spec{config: config}, owner, context, {:api, %Wardrik.Token{} = token}) do
-    for {WardrikWorkspace, workspace} <- config.tools,
+  defp within!(tools, owner, context, {:api, %Wardrik.Token{} = token}) do
+    for {WardrikWorkspace, workspace} <- tools,
         do: ok!(WardrikWorkspace.Spec.within(workspace, token, id: owner, shares: context.shares))
   end
 
-  defp within!(_spec, _owner, _context, _source), do: :ok
+  defp within!(_tools, _owner, _context, _source), do: :ok
 
-  # The policy the token that sent a definition names, read each time its
+  # The policy the token that sent a definition names, found each time its
   # agent is built, as the policy a definition names is.
   defp bounded({:api, %Wardrik.Token{policy: :none}}, _context), do: []
 
@@ -355,6 +425,13 @@ defmodule WardrikDefinition do
   end
 
   defp bounded(_source, _context), do: []
+
+  defp hooks!(definition, context),
+    do:
+      definition.held ++
+        bounded(definition.source, context) ++
+        ceilings(context, definition.id.org) ++
+        policy_hooks(definition.policy, context, match?({:file, _path}, definition.source))
 
   defp declared!(_org, %Context{orgs: :any}), do: :ok
 
@@ -423,26 +500,6 @@ defmodule WardrikDefinition do
     end
   end
 
-  # Everything a file and a definition say alike, for the agent `id`. `modules?`
-  # lets `tools` and `policy` name modules.
-  defp build(fields, system, context, host, modules?, id) do
-    resolved = %Runtime.Context{
-      instructions: if(system == "", do: nil, else: system),
-      tools: tools(fields, context, host, modules?, id)
-    }
-
-    [
-      id: id,
-      description: optional_string!(fields["description"], "description"),
-      config: settings!(fields, resolved, Host.runtimes(host)),
-      hooks: ceilings(context, id.org) ++ policy(fields["policy"], context, modules?),
-      timeout: fields["timeout"] && seconds!(fields["timeout"]),
-      retry: retry!(fields["retries"] || context.defaults["retries"] || %{})
-    ]
-    |> put(:idle_timeout, fields["idle_timeout"] || context.defaults["idle_timeout"], &idle!/1)
-    |> Spec.new()
-  end
-
   defp settings!(fields, resolved, [first | _rest] = runtimes) do
     runtime = Enum.find(runtimes, first, &Map.has_key?(fields, Runtime.key(&1)))
 
@@ -452,14 +509,12 @@ defmodule WardrikDefinition do
     end
   end
 
-  defp put(opts, _key, nil, _cast), do: opts
-  defp put(opts, key, value, cast), do: Keyword.put(opts, key, cast.(value))
+  defp put(opts, _key, nil), do: opts
+  defp put(opts, key, value), do: Keyword.put(opts, key, value)
 
   # -- tools and servers -----------------------------------------------------
 
   defp tools(%{"tools" => names} = fields, context, host, modules?, key) when is_list(names) do
-    if not files?(fields), do: unreached!(fields)
-
     names
     |> Enum.flat_map(fn
       "files" -> [files!(fields, key, context)]
@@ -469,13 +524,7 @@ defmodule WardrikDefinition do
     |> Enum.uniq()
   end
 
-  defp tools(%{"tools" => _names}, _context, _host, _modules?, _key),
-    do: invalid!("tools is a list")
-
-  defp tools(fields, _context, _host, _modules?, _key) do
-    unreached!(fields)
-    []
-  end
+  defp tools(_fields, _context, _host, _modules?, _key), do: []
 
   defp files?(%{"tools" => names}) when is_list(names),
     do: Enum.any?(names, &(&1 in ["files", "*"]))
@@ -550,16 +599,13 @@ defmodule WardrikDefinition do
       servers ++ for({_name, source} <- Host.sources(host), do: {source, key})
   end
 
-  defp tool!(name, context, host, modules?, key) when is_binary(name) do
+  defp tool!(name, context, host, modules?, key) do
     case source(name, host) do
       {:all, source} -> [{source, key}]
       {:one, prefix, tool} -> invalid!(one_of(name, prefix, tool))
       :none -> named!(name, context, host, modules?, key)
     end
   end
-
-  defp tool!(name, _context, _host, _modules?, _key),
-    do: invalid!("tools names #{inspect(name)}, which is not a tool")
 
   # A source the host holds, as `name/*`: every tool it has for the agent.
   defp source(name, host) do
@@ -744,15 +790,11 @@ defmodule WardrikDefinition do
 
   # -- notify ----------------------------------------------------------------
 
-  defp route!(nil, _org, _context), do: :none
+  defp route!(nil), do: nil
+  defp route!(target) when is_binary(target), do: route!(%{"to" => [target]})
+  defp route!(targets) when is_list(targets), do: route!(%{"to" => targets})
 
-  defp route!(target, org, context) when is_binary(target),
-    do: route!(%{"to" => [target]}, org, context)
-
-  defp route!(targets, org, context) when is_list(targets),
-    do: route!(%{"to" => targets}, org, context)
-
-  defp route!(%{} = fields, org, context) do
+  defp route!(%{} = fields) do
     case Map.keys(fields) -- ~w(to on) do
       [] -> :ok
       [key | _] -> invalid!("notify #{key} is not a setting; expected to or on")
@@ -761,44 +803,16 @@ defmodule WardrikDefinition do
     targets = fields |> Map.get("to") |> List.wrap()
     if targets == [], do: invalid!("notify names no target")
 
-    {:ok,
-     %WardrikNotify.Route{
-       targets: Enum.map(targets, &target!(&1, org, context)),
-       on: fields |> Map.get("on", ~w(parked failed)) |> List.wrap() |> Enum.map(&kind!/1)
-     }}
+    %WardrikNotify.Route{
+      targets: Enum.map(targets, &target!/1),
+      on: fields |> Map.get("on", ~w(parked failed)) |> List.wrap() |> Enum.map(&kind!/1)
+    }
   end
 
-  defp route!(_other, _org, _context),
-    do: invalid!("notify is a target, a list of them, or to and on")
+  defp route!(_other), do: invalid!("notify is a target, a list of them, or to and on")
 
-  defp target!(name, org, context) when is_binary(name) do
-    names = Keyword.keys(context.targets)
-    config = context.names.config
-
-    case Enum.find(names, &(Atom.to_string(&1) == name)) do
-      nil ->
-        invalid!(
-          IO.iodata_to_binary([
-            "notify names #{name}, but #{config}'s notify has no target #{name}",
-            known_targets(names)
-          ])
-        )
-
-      target ->
-        if not WardrikNotify.tells?(context.targets, target, org),
-          do: invalid!("notify names #{name}, which #{config}'s notify keeps for another org")
-
-        target
-    end
-  end
-
-  defp target!(name, _org, _context),
-    do: invalid!("notify names #{inspect(name)}, which is not a target")
-
-  defp known_targets([]), do: []
-
-  defp known_targets(names),
-    do: ["; it has " | Enum.map_intersperse(names, ", ", &Atom.to_string/1)]
+  defp target!(name) when is_binary(name), do: name
+  defp target!(name), do: invalid!("notify names #{inspect(name)}, which is not a target")
 
   defp kind!(kind) do
     case Enum.find(WardrikNotify.Route.kinds(), &(Atom.to_string(&1) == kind)) do
@@ -807,32 +821,28 @@ defmodule WardrikDefinition do
     end
   end
 
-  # -- channels ----------------------------------------------------------------
+  # -- names -------------------------------------------------------------------
 
-  defp channels!(nil, _org, _context), do: []
+  defp channels!(nil), do: []
 
-  defp channels!(names, org, context) when is_list(names),
-    do: for(name <- names, do: channel!(name, org, context))
+  defp channels!(names) when is_list(names) do
+    if Enum.all?(names, &is_binary/1),
+      do: names,
+      else: invalid!("channels is a list of the channels it is offered in")
+  end
 
-  defp channels!(_other, _org, _context),
-    do: invalid!("channels is a list of the channels it is offered in")
+  defp channels!(_other), do: invalid!("channels is a list of the channels it is offered in")
 
-  defp channel!(name, org, context) do
-    config = context.names.config
+  defp names!(nil), do: []
 
-    case Enum.find(context.channels, fn {channel, _orgs} -> Atom.to_string(channel) == name end) do
-      nil ->
-        invalid!("channels names #{inspect(name)}, but #{config}'s channels has no such channel")
-
-      {_channel, :all} ->
-        name
-
-      {_channel, served} ->
-        if org in served,
-          do: name,
-          else: invalid!("channels names #{name}, which #{config} keeps for another org")
+  defp names!(names) when is_list(names) do
+    case Enum.reject(names, &is_binary/1) do
+      [] -> names
+      [name | _rest] -> invalid!("tools names #{inspect(name)}, which is not a tool")
     end
   end
+
+  defp names!(_names), do: invalid!("tools is a list")
 
   # -- scalars ---------------------------------------------------------------
 
@@ -855,16 +865,30 @@ defmodule WardrikDefinition do
     |> List.flatten()
   end
 
-  defp policy(nil, _context, _modules?), do: []
+  # A policy named is kept by its name, and one written in place as it reads.
+  defp policy!(nil), do: nil
+  defp policy!(name) when is_binary(name), do: name
 
-  defp policy(name, context, modules?) when is_binary(name) do
+  defp policy!(fields) when is_map(fields) do
+    case WardrikPolicy.decode(fields) do
+      {:ok, policy} -> policy
+      {:error, message} -> invalid!("policy " <> message)
+    end
+  end
+
+  defp policy!(_value), do: invalid!("policy is the name of a policy, rules, or a module")
+
+  defp policy_hooks(nil, _context, _file?), do: []
+  defp policy_hooks(%WardrikPolicy{} = policy, _context, _file?), do: WardrikPolicy.hooks(policy)
+
+  defp policy_hooks(name, context, file?) do
     known = "a policy in #{context.names.policies}"
 
     case Map.fetch(context.policies, name) do
       {:ok, policy} ->
         WardrikPolicy.hooks(policy)
 
-      :error when modules? ->
+      :error when file? ->
         module = module!(name, :call, 2, "a hook", known)
         [Wardrik.Hook.new(name, module)]
 
@@ -872,16 +896,6 @@ defmodule WardrikDefinition do
         invalid!("policy names #{name}, which is not #{known}")
     end
   end
-
-  defp policy(fields, _context, _modules?) when is_map(fields) do
-    case WardrikPolicy.decode(fields) do
-      {:ok, policy} -> WardrikPolicy.hooks(policy)
-      {:error, message} -> invalid!("policy " <> message)
-    end
-  end
-
-  defp policy(_value, _context, _modules?),
-    do: invalid!("policy is the name of a policy, rules, or a module")
 
   defp module!(name, function, arity, what, known) do
     module = Module.safe_concat([name])
@@ -896,6 +910,7 @@ defmodule WardrikDefinition do
   defp seconds!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)
   defp seconds!(_seconds), do: invalid!("timeout is a whole number of seconds")
 
+  defp idle!(nil), do: nil
   defp idle!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)
   defp idle!("infinity"), do: :infinity
   defp idle!(_seconds), do: invalid!("idle_timeout is a whole number of seconds, or infinity")

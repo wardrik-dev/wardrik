@@ -30,9 +30,9 @@ defmodule WardrikDaemon.Host do
   @spec config() :: WardrikDaemon.Config.t()
   def config, do: GenServer.call(__MODULE__, :config)
 
-  @doc "The held host's definitions, the daemon's `WardrikDaemon.Agents`."
+  @doc "The daemon's `WardrikDaemon.Agents`, as the held host's definitions are read under."
   @spec agents() :: WardrikDaemon.Agents.t()
-  def agents, do: Wardrik.Host.definitions(get())
+  def agents, do: WardrikDaemon.Agents.of(get())
 
   @doc "The agent files that read, by the ID each declares, as `WardrikDaemon.declared/1` has them."
   @spec declared() :: %{Wardrik.AgentID.t() => {Path.t(), Wardrik.Agent.Spec.t()}}

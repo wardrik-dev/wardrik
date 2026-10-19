@@ -51,7 +51,8 @@ defmodule Wardrik.RunningTest do
 
     assert {:ok, _snapshot} = Wardrik.agent_define(session, agent, definition)
 
-    assert {:ok, %Wardrik.Definition.Read{fields: %{"instructions" => "Answer briefly."}}} =
+    assert {:ok,
+            %{definition: %Wardrik.Definition{fields: %{"instructions" => "Answer briefly."}}}} =
              Wardrik.agent_definition_read(session, agent)
   end
 

@@ -32,6 +32,7 @@ why, and an agent already running keeps what it had. A file with no frontmatter 
 | `name` | its name; the file's name without `.md` unless set |
 | `org` | the org it belongs to, one `config.yaml` declares; its `org` unless set |
 | `user` | the user of its org it works for, if any |
+| `display_name` | what a person calls it; its name unless set |
 | `description` | what it is for, as `wardrik show` shows it |
 | `model` | the model, as `provider:model` |
 | [`tools`](#tools) | what it may call |
@@ -47,7 +48,9 @@ why, and an agent already running keeps what it had. A file with no frontmatter 
 | [`notify`](#notify) | who hears when it waits on a person, fails or answers |
 | [`channels`](#channels) | the chat channels it may answer in |
 
-Keys an agent file leaves out come from `config.yaml`'s [`defaults`](/reference/config/#defaults).
+Keys an agent file leaves out come from `config.yaml`'s [`defaults`](/reference/config/#defaults), as it is
+read: an agent keeps the `idle_timeout` and `retries` it was read with until `wardrik reload` reads
+it again. A policy it names is found in `policies/` each time it starts.
 
 Its ID is `org/name`, or `org/@user/name` for one that works for a user: the file above, with
 `org: acme` and `user: jon`, would be `acme/@jon/triage`. The CLI finds an agent of the deployment's
@@ -224,12 +227,14 @@ notify: {to: [ops], on: [parked, failed, finished]}
 ```
 
 `on` lists what is sent: `parked` for a call waiting on a person, `failed`, and `finished` for what
-a turn answered. A target serves one org's agents; a file routing to another org's doesn't read.
+a turn answered. A target tells only the agents of the orgs it serves, and one `config.yaml` doesn't
+name tells nothing; `wardrik status` lists the names it doesn't.
 
 ## channels
 
 The channels of `config.yaml`'s [`channels`](/reference/config/#channels) the agent may be offered in.
-Inviting a channel's bot into a room then offers it there:
+Inviting a channel's bot into a room then offers it there, where the channel serves its org.
+`wardrik status` lists a channel `config.yaml` doesn't name:
 
 ```yaml
 channels: [slack]
@@ -237,7 +242,9 @@ channels: [slack]
 
 ## Written by wardrik
 
-`wardrik agent spawn` writes a file here from `config.yaml`'s `defaults` and a short prompt to edit.
+`wardrik agent spawn NAME --file` writes a file here from `config.yaml`'s `defaults` and a short
+prompt to edit. Without `--file`, an agent no file declares starts from the defaults, which are kept
+as its definition.
 `wardrik init` writes the front door's, whose body is its instructions and a playbook to edit; see
 [The front door](/build/front-door/).
 

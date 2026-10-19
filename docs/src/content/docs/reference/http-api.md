@@ -341,6 +341,7 @@ The body of PUT /v1/agents/{key}, and the definition GET /v1/agents/{key}/defini
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
+| `display_name` | string |  | What a person calls the agent; its name unless given. |
 | `description` | string |  | What the agent is for, in words a person reads. |
 | `instructions` | string |  | The system prompt. |
 | `model` | string |  | The model, as provider:model. |

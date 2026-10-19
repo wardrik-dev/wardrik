@@ -7,14 +7,13 @@ defmodule Wardrik.LifecycleTest do
 
   alias Wardrik.Agent
   alias Wardrik.Agent.Snapshot
-  alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
+  alias Wardrik.Definition
+  alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Event
   alias Wardrik.Fleet.Member
   alias Wardrik.Forgetting
-  alias Wardrik.Host
-  alias Wardrik.LLM.Config
   alias Wardrik.Moving
   alias Wardrik.Principal
   alias Wardrik.Resource
@@ -27,127 +26,40 @@ defmodule Wardrik.LifecycleTest do
   alias Wardrik.Test.Script
   alias Wardrik.Token
 
-  # Keeps what it is sent in the suite's store, triggers beside definitions;
-  # refuses a definition holding "refuse", writes every spec for
-  # test/elsewhere where one holds "elsewhere", and refuses to change an agent
-  # whose name holds "-owned".
-  defmodule Kept do
-    @moduledoc false
-    defstruct []
-
-    @ns :lifecycle_test_definitions
-    @triggers :lifecycle_test_triggers
-
-    def put(_definitions, _id, [{:definition, %{"refuse" => message}} | _opts]),
-      do: {:error, message}
-
-    def put(_definitions, _id, [{:definition, %{"elsewhere" => true}} | _opts]),
-      do: {:ok, Spec.new(id: elsewhere())}
-
-    def put(host, id, [{:definition, fields} | _opts]) do
-      with :ok <- editable(host, id) do
-        {:ok, _vsn} = WardrikStore.put(store(), @ns, to_string(id), fields)
-        {:ok, spec(id, fields)}
-      end
-    end
-
-    def get(_host, id, _opts \\ []) do
-      case WardrikStore.get(store(), @ns, to_string(id)) do
-        nil -> {:error, :not_found}
-        fields -> {:ok, %Wardrik.Definition.Read{fields: fields, missing: []}}
-      end
-    end
-
-    def delete(host, id) do
-      with :ok <- editable(host, id) do
-        if get(host, id) == {:error, :not_found},
-          do: {:error, :not_found},
-          else: WardrikStore.delete(store(), @ns, to_string(id))
-      end
-    end
-
-    def put_trigger(_definitions, _id, _name, fields: %{"refuse" => message}),
-      do: {:error, message}
-
-    def put_trigger(host, id, name, fields: fields) do
-      with :ok <- editable(host, id),
-           {:ok, _definition} <- get(host, id) do
-        status =
-          if WardrikStore.get(store(), @triggers, "#{id}//#{name}"), do: :changed, else: :created
-
-        {:ok, _vsn} = WardrikStore.put(store(), @triggers, "#{id}//#{name}", fields)
-        {:ok, status, Map.put(fields, "name", name)}
-      end
-    end
-
-    def delete_trigger(host, id, name) do
-      with :ok <- editable(host, id) do
-        case WardrikStore.get(store(), @triggers, "#{id}//#{name}") do
-          nil ->
-            {:error, :not_found}
-
-          fields ->
-            :ok = WardrikStore.delete(store(), @triggers, "#{id}//#{name}")
-            {:ok, Map.put(fields, "name", name)}
-        end
-      end
-    end
-
-    def current(host, id, _opts) do
-      case get(host, id) do
-        {:ok, %Wardrik.Definition.Read{fields: fields}} -> {:ok, spec(id, fields)}
-        {:error, :not_found} -> :none
-      end
-    end
-
-    def create(host, id, _opts) do
-      with {:ok, _spec} <- put(host, id, definition: %{"model" => "openai:gpt-5"}),
-           do: {:ok, spec(id, %{"model" => "openai:gpt-5"})}
-    end
-
-    defp spec(id, fields),
-      do:
-        Spec.new(
-          id: id,
-          config: Config.new(model_spec: Map.get(fields, "model", "anthropic:claude-sonnet-5"))
-        )
-
-    def elsewhere, do: AgentID.parse!("test/elsewhere")
-
-    def editable(_host, id) do
-      if String.contains?(id.name, "-owned"),
-        do: {:error, :conflict, "#{id} belongs to a file."},
-        else: :ok
-    end
+  # One spawned with no definition is given its defaults' model.
+  defp definitions do
+    %Wardrik.Definitions{
+      store: store(),
+      contexts: Wardrik.context(defaults: %{"model" => "openai:gpt-5"})
+    }
   end
 
-  defimpl Wardrik.Definition, for: Kept do
-    use Wardrik.Definition.None
-    defdelegate put(a0, a1, a2), to: Kept
-    defdelegate get(a0, a1, a2), to: Kept
-    defdelegate delete(a0, a1), to: Kept
-    defdelegate put_trigger(a0, a1, a2, a3), to: Kept
-    defdelegate delete_trigger(a0, a1, a2), to: Kept
-    defdelegate current(a0, a1, a2), to: Kept
-    defdelegate create(a0, a1, a2), to: Kept
-    defdelegate editable(a0, a1), to: Kept
-  end
+  # `id` as an agent file declares it.
+  defp declared(id) do
+    {:ok, definition} =
+      Definition.read(%{},
+        id: id,
+        source: {:file, "agents/#{id.name}.md"},
+        context: Definitions.context(definitions(), id)
+      )
 
-  # Reads definitions, and keeps none.
-  defmodule Reading do
-    @moduledoc false
-    defstruct []
-    def put(_definitions, id, _opts), do: {:ok, Spec.new(id: id)}
-  end
-
-  defimpl Wardrik.Definition, for: Reading do
-    use Wardrik.Definition.None
-    defdelegate put(a0, a1, a2), to: Reading
+    :ok = Definitions.put(definitions(), definition)
+    on_exit(fn -> Definitions.delete(definitions(), id) end)
+    "#{id} is declared by agents/#{id.name}.md; change or remove that file, then reload it"
   end
 
   @jon %{"type" => "user", "id" => "jon", "name" => "Jon"}
 
-  defp host(definitions \\ %Kept{}), do: Wardrik.Test.host(definitions: definitions)
+  # Agents run on the model the runtime gives unless they name one.
+  defp host,
+    do:
+      Wardrik.Test.host(
+        definitions: definitions(),
+        runtimes: [
+          %Wardrik.LLM.Runtime{config: [model_spec: "anthropic:claude-sonnet-5"]},
+          %Wardrik.Test.Runtime{}
+        ]
+      )
 
   defp scope(pattern \\ "test/agent/*", roles \\ [:owner], host \\ host()) do
     Scope.new(host, %Token{
@@ -197,7 +109,7 @@ defmodule Wardrik.LifecycleTest do
 
       assert Agent.status(id, host: Wardrik.Test.host()).model == "openai:gpt-5"
 
-      assert {:ok, %Wardrik.Definition.Read{fields: %{"model" => "openai:gpt-5"}}} =
+      assert {:ok, %{definition: %Definition{fields: %{"model" => "openai:gpt-5"}}, missing: []}} =
                Wardrik.agent_definition_read(scope(), id)
 
       assert Audit.about(id) == [{"agent.defined", @jon}, {"agent.defined", @jon}]
@@ -206,23 +118,17 @@ defmodule Wardrik.LifecycleTest do
     test "starts nothing for a definition that does not read, or an agent the host keeps" do
       id = defined_id()
 
-      assert {:error, %Error{type: :invalid, message: "model is text"}} =
-               Wardrik.agent_define(scope(), id, %{"refuse" => "model is text"})
+      assert {:error, %Error{type: :invalid, message: "model is a string"}} =
+               Wardrik.agent_define(scope(), id, %{"model" => 5})
 
-      owned = defined_id("kept-owned")
-      assert {:error, %Error{type: :conflict}} = Wardrik.agent_define(scope(), owned, %{})
+      owned = defined_id("owned")
+      why = declared(owned)
+
+      assert {:error, %Error{type: :conflict, message: ^why}} =
+               Wardrik.agent_define(scope(), owned, %{})
+
       assert Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()) == nil
       assert Wardrik.Fleet.lookup(owned, host: Wardrik.Test.host()) == nil
-    end
-
-    test "never starts another agent than the one defined" do
-      id = defined_id()
-
-      assert_raise ArgumentError, ~r"wrote a spec for test/elsewhere, not #{id}", fn ->
-        Wardrik.agent_define(scope(), id, %{"elsewhere" => true})
-      end
-
-      assert Wardrik.Fleet.lookup(Kept.elsewhere(), host: Wardrik.Test.host()) == nil
     end
 
     test "holds the agent to the hooks held, ahead of its own" do
@@ -274,14 +180,15 @@ defmodule Wardrik.LifecycleTest do
     test "that do not read, or are for an agent without a definition or owned, are refused",
          %{id: id} do
       assert {:error, %Error{type: :invalid}} =
-               Wardrik.agent_trigger_set(scope(), id, "sweep", %{"refuse" => "no time"})
+               Wardrik.agent_trigger_set(scope(), id, "sweep", %{"every" => "1h"})
 
       assert {:error, %Error{type: :not_found, message: message}} =
                Wardrik.agent_trigger_set(scope(), Fleet.id("nobody"), "s", %{})
 
       assert message =~ "has no definition kept."
 
-      owned = Fleet.id("kept-owned")
+      owned = Fleet.id("owned")
+      declared(owned)
 
       assert {:error, %Error{type: :conflict}} =
                Wardrik.agent_trigger_set(scope(), owned, "s", %{})
@@ -314,12 +221,12 @@ defmodule Wardrik.LifecycleTest do
       assert :ok = Wardrik.agent_forget(scope(), id)
       assert Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()) == nil
 
-      {owned, _agent} = Fleet.start_agent([], Fleet.id("kept-owned"))
+      {owned, _agent} = Fleet.start_agent([], Fleet.id("owned"))
+      why = declared(owned)
 
-      assert {:error, %Error{type: :conflict, message: message}} =
+      assert {:error, %Error{type: :conflict, message: ^why}} =
                Wardrik.agent_forget_preview(scope(), owned)
 
-      assert message == "#{owned} belongs to a file."
       assert {:error, %Error{type: :conflict}} = Wardrik.agent_forget(scope(), owned)
       assert Wardrik.Fleet.lookup(owned, host: Wardrik.Test.host())
     end
@@ -328,10 +235,10 @@ defmodule Wardrik.LifecycleTest do
       org = "forget-#{System.unique_integer([:positive])}"
       pattern = Resource.parse!("#{org}/agent/*")
       {gone, _agent} = Fleet.start_agent([], AgentID.new!("gone", org: org))
-      {owned, _agent} = Fleet.start_agent([], AgentID.new!("kept-owned", org: org))
+      {owned, _agent} = Fleet.start_agent([], AgentID.new!("owned", org: org))
       on_exit(fn -> Wardrik.Fleet.forget(owned) end)
       scope = scope("#{org}/agent/*")
-      why = "#{owned} belongs to a file."
+      why = declared(owned)
 
       assert {:ok, %Forgetting{agents: [^gone], kept: [{^owned, ^why}]}} =
                Wardrik.agents_forget_preview(scope, pattern)
@@ -434,10 +341,14 @@ defmodule Wardrik.LifecycleTest do
     test "starts an agent on its definition, or defines one nothing defines" do
       id = defined_id()
 
-      {:ok, _vsn} =
-        WardrikStore.put(store(), :lifecycle_test_definitions, to_string(id), %{
-          "model" => "openai:gpt-5"
-        })
+      {:ok, definition} =
+        Definition.read(%{"model" => "openai:gpt-5"},
+          id: id,
+          source: :defaults,
+          context: Definitions.context(definitions(), id)
+        )
+
+      :ok = Definitions.put(definitions(), definition)
 
       assert {:ok, %Spawned{from: :definition, member: %Member{id: ^id}}} =
                Wardrik.agent_spawn(scope(), id)
@@ -447,16 +358,13 @@ defmodule Wardrik.LifecycleTest do
       fresh = defined_id("fresh")
       assert {:ok, %Spawned{from: :new}} = Wardrik.agent_spawn(scope(), fresh)
 
-      assert {:ok, %Wardrik.Definition.Read{fields: %{"model" => "openai:gpt-5"}}} =
-               Kept.get(%Kept{}, fresh)
+      assert Agent.status(fresh, host: Wardrik.Test.host()).model == "openai:gpt-5"
 
-      owned = defined_id("fresh-owned")
-      assert {:error, %Error{type: :conflict}} = Wardrik.agent_spawn(scope(), owned)
-    end
+      assert {:ok, %Definition{fields: %{"model" => "openai:gpt-5"}, source: :defaults}} =
+               Definitions.get(definitions(), fresh)
 
-    test "finds nothing to start where nothing defines it and the host creates none" do
-      assert {:error, %Error{type: :not_found}} =
-               Wardrik.agent_spawn(scope("test/agent/*", [:owner], Host.new()), Fleet.id())
+      assert {:error, %Error{type: :invalid}} =
+               Wardrik.agent_spawn(scope(), AgentID.put_external_id(Fleet.id("fresh"), "t1"))
     end
 
     test "on a node is the deployment's to choose" do
@@ -500,27 +408,5 @@ defmodule Wardrik.LifecycleTest do
       assert {:ok, %Moving{from: :asleep, status: :idle}} =
                Wardrik.agent_move_preview(root(), id, node())
     end
-  end
-
-  test "a host without a definitions module, or one that only reads, defines and keeps nothing" do
-    {id, _agent} = Fleet.start_agent()
-
-    for definitions <- [%Wardrik.Definition.None{}, %Reading{}] do
-      scope = scope("test/agent/*", [:owner], host(definitions))
-
-      assert {:error, %Error{type: :unsupported}} = Wardrik.agent_definition_read(scope, id)
-
-      assert {:error, %Error{type: :unsupported}} =
-               Wardrik.agent_trigger_set(scope, id, "s", %{})
-
-      assert {:error, %Error{type: :unsupported}} = Wardrik.agent_trigger_remove(scope, id, "s")
-    end
-
-    none = scope("test/agent/*", [:owner], Host.new())
-    assert {:error, %Error{type: :unsupported}} = Wardrik.agent_define(none, id, %{})
-    assert Wardrik.Fleet.lookup(id, host: Wardrik.Test.host())
-
-    assert :ok = Wardrik.agent_forget(none, id)
-    assert Wardrik.Fleet.lookup(id, host: Wardrik.Test.host()) == nil
   end
 end

@@ -417,7 +417,7 @@ defmodule WardrikHTTP.Router do
   defp route("GET", ["definition"], _conn),
     do:
       {200, &Wardrik.agent_definition_read/2,
-       &%{"definition" => &1.fields, "missing" => &1.missing}}
+       &%{"definition" => &1.definition.fields, "missing" => &1.missing}}
 
   defp route("GET", ["events"], conn), do: {:events, &events(conn, &1)}
 

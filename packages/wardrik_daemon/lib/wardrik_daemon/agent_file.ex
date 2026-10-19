@@ -1,9 +1,9 @@
 defmodule WardrikDaemon.AgentFile do
   @moduledoc """
   Reads an agent file, one in `agents/` under the config directory, into the
-  `WardrikDefinition.Record` it writes, under the context `context/1` builds,
-  from which `WardrikDefinition.Record.spec/3` builds the `Wardrik.Agent.Spec`
-  it writes on the daemon's host, naming the tools and sources
+  `Wardrik.Definition` it writes, under the context `context/1` builds, from
+  which `Wardrik.Definition.spec/3` builds the `Wardrik.Agent.Spec` it
+  writes on the daemon's host, naming the tools and sources
   `WardrikDaemon.attach/1` attaches. The [Agent files](agent-files.md) guide
   is every key a file takes, for whoever writes one.
 
@@ -20,9 +20,9 @@ defmodule WardrikDaemon.AgentFile do
 
   ## Over HTTP
 
-  The body of `PUT /v1/agents/{id}` is read under the same context, by
-  `WardrikDaemon.Agents`, into a record whose source is the token that sent
-  it. `WardrikProtocol`'s `agent_definition.json` is its
+  The body of `PUT /v1/agents/{id}` is read under the same context, with
+  the policies `WardrikDaemon.Agents` keeps, into a definition whose source
+  is the token that sent it. `WardrikProtocol`'s `agent_definition.json` is its
   schema; the ID gives the agent's `name`, `org` and `user`. A definition's
   `tools` and `policy` name what the daemon ships or configures, never a
   module, and its `workspace` shares only the trees the scope of the token
@@ -32,15 +32,15 @@ defmodule WardrikDaemon.AgentFile do
   """
 
   alias Wardrik.Agent.Spec
+  alias Wardrik.Definition
   alias WardrikDaemon.Config
-  alias WardrikDefinition.Record
 
   @doc """
   What a definition may name here beyond the host's tools and sources, as
-  `WardrikDefinition` reads it: the orgs `config` declares and the policy it
-  holds each org's to, the MCP servers, channels and notify targets `config`
-  configures, and its `defaults`. A reading under the policies in
-  `policies/` puts them, by name, as the context's `:policies`.
+  `Wardrik.Definition` reads it: the orgs `config` declares and the policy
+  it holds each org's to, the MCP servers `config` configures, and its
+  `defaults`. A reading under the policies in `policies/` puts them, by
+  name, as the context's `:policies`.
   """
   @spec context(Config.t()) :: WardrikDefinition.Context.t()
   def context(%Config{} = config) do
@@ -50,8 +50,6 @@ defmodule WardrikDaemon.AgentFile do
       ceilings: Config.ceilings(config),
       servers: config |> Config.section(WardrikMCP) |> Keyword.get(:servers, []),
       mcp: WardrikMCP,
-      channels: config |> Config.section(WardrikChannel) |> Keyword.get(:orgs, []),
-      targets: config |> Config.section(WardrikNotify) |> Keyword.get(:targets, []),
       policies: %{},
       defaults: config |> Config.section(WardrikDaemon.Agents) |> Keyword.get(:defaults, %{}),
       shares: config |> Config.section(WardrikWorkspace) |> Keyword.get(:shared, []),
@@ -62,12 +60,12 @@ defmodule WardrikDaemon.AgentFile do
 
   @doc """
   An agent file with `fields` as its frontmatter, in the order given, and
-  `prompt` after it, or a short one; see `WardrikDefinition.text/2`.
+  `prompt` after it, or a short one; see `Wardrik.Definition.text/2`.
   """
   @spec text([{String.t(), term()}]) :: String.t()
   @spec text([{String.t(), term()}], String.t()) :: String.t()
-  def text(fields), do: WardrikDefinition.text(fields)
-  def text(fields, prompt), do: WardrikDefinition.text(fields, prompt)
+  def text(fields), do: Definition.text(fields)
+  def text(fields, prompt), do: Definition.text(fields, prompt)
 
   @doc """
   Reads the spec of the agent `path` declares, under `context`, whose
@@ -76,8 +74,11 @@ defmodule WardrikDaemon.AgentFile do
   @spec read(WardrikDefinition.Context.t(), Path.t(), host: Wardrik.Host.t()) ::
           {:ok, Spec.t()} | {:error, String.t()}
   def read(context, path, opts) do
-    with {:ok, record} <- parse(context, path) do
-      case Record.spec(record, record.id, context: context, host: Keyword.fetch!(opts, :host)) do
+    with {:ok, definition} <- parse(context, path) do
+      case Definition.spec(definition, definition.id,
+             context: context,
+             host: Keyword.fetch!(opts, :host)
+           ) do
         {:ok, spec} -> {:ok, spec}
         {:error, message} -> {:error, "#{path}: #{message}"}
       end
@@ -85,19 +86,20 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   @doc """
-  The `WardrikDefinition.Record` the agent file `path` writes: its
-  frontmatter, with its body as `instructions`, for the agent its `name`,
-  `org` and `user` name. What its settings say is checked as
-  `WardrikDefinition.Record.spec/3` builds a spec from it.
+  The `Wardrik.Definition` the agent file `path` writes, read under
+  `context`: its frontmatter, with its body as `instructions`, for the
+  agent its `name`, `org` and `user` name.
   """
   @spec parse(WardrikDefinition.Context.t(), Path.t()) ::
-          {:ok, Record.t()} | {:error, String.t()}
+          {:ok, Definition.t()} | {:error, String.t()}
   def parse(context, path) do
     name = path |> Path.basename() |> Path.rootname()
 
     with {:ok, text} <- File.read(path),
-         {:ok, id, fields} <- WardrikDefinition.parse(text, name, context) do
-      {:ok, %Record{id: id, fields: fields, source: {:file, Path.basename(path)}}}
+         {:ok, id, fields} <- Definition.parse(text, name, context),
+         {:ok, definition} <-
+           Definition.read(fields, id: id, source: {:file, path}, context: context) do
+      {:ok, definition}
     else
       {:error, reason} when is_atom(reason) -> {:error, "#{path}: #{:file.format_error(reason)}"}
       {:error, message} -> {:error, "#{path}: #{message}"}

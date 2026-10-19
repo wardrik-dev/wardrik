@@ -1,7 +1,8 @@
-defmodule WardrikDefinitionTest do
+defmodule Wardrik.DefinitionTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
+  alias Wardrik.Definition
   alias Wardrik.Resource
   alias WardrikDefinition.Context
 
@@ -51,8 +52,6 @@ defmodule WardrikDefinitionTest do
       org: "acme",
       servers: [books: [serves: [Wardrik.Resource.parse!("acme/*")]], wiki: []],
       mcp: Source,
-      channels: [chat: :all, ops: ["globex"]],
-      targets: [pager: {Source, orgs: :all}],
       policies: %{"careful" => careful},
       defaults: %{"idle_timeout" => 60},
       names: %{host: "Mode", config: "Mode", policies: "the org's policies"}
@@ -61,19 +60,25 @@ defmodule WardrikDefinitionTest do
     %{context: context, id: AgentID.parse!("acme/triage")}
   end
 
+  defp read(fields, context, id, source \\ :defaults),
+    do: Definition.read(fields, id: id, source: source, context: context)
+
   defp host(opts \\ []),
     do: Wardrik.Host.register(Wardrik.Host.new(opts), :tools, [{"clock", Clock}])
 
   # The spec `fields` write for `id` under `context`, sent by no token, on
   # host/1 unless `:host` names another.
   defp spec(fields, context, id, opts \\ []) do
-    WardrikDefinition.spec(fields, id,
-      owner: id,
-      context: context,
-      source: Keyword.get(opts, :source, :defaults),
-      host: Keyword.get_lazy(opts, :host, &host/0)
-    )
+    with {:ok, definition} <- read(fields, context, id),
+         do: built(definition, id, context, opts)
   end
+
+  defp built(definition, id, context, opts \\ []),
+    do:
+      Definition.spec(definition, id,
+        context: context,
+        host: Keyword.get_lazy(opts, :host, &host/0)
+      )
 
   test "takes the keys its schema lists, in order" do
     schema =
@@ -82,11 +87,11 @@ defmodule WardrikDefinitionTest do
       |> File.read!()
       |> JSON.decode!()
 
-    assert Enum.sort(WardrikDefinition.keys()) == Enum.sort(Map.keys(schema["properties"]))
-    assert ["description", "instructions" | _rest] = WardrikDefinition.keys()
+    assert Enum.sort(Definition.keys()) == Enum.sort(Map.keys(schema["properties"]))
+    assert ["display_name", "description", "instructions" | _rest] = Definition.keys()
 
-    assert Enum.sort(WardrikDefinition.file_keys()) ==
-             Enum.sort((WardrikDefinition.keys() -- ["instructions"]) ++ ~w(name org user))
+    assert Enum.sort(Definition.file_keys()) ==
+             Enum.sort((Definition.keys() -- ["instructions"]) ++ ~w(name org user))
   end
 
   test "reads a definition into the spec it writes, with what the host gives every agent",
@@ -96,15 +101,27 @@ defmodule WardrikDefinitionTest do
       "model" => "test:model",
       "tools" => ["clock", "books/*"],
       "policy" => "careful",
-      "notify" => "pager"
+      "notify" => "pager",
+      "channels" => ["chat"]
     }
 
-    assert {:ok, spec} = spec(fields, context, id, source: {:file, "triage.md"})
+    assert {:ok, definition} = read(fields, context, id, {:file, "agents/triage.md"})
+    assert definition.display_name == "triage"
+    assert definition.tools == ["clock", "books/*"]
+    assert definition.policy == "careful"
+    assert definition.channels == ["chat"]
+    assert %WardrikNotify.Route{targets: ["pager"]} = definition.notify
+    assert definition.fields == fields
+
+    assert {:ok, spec} = built(definition, id, context)
+    assert spec.display_name == "triage"
     assert spec.config.system == "Watch the queue."
     assert spec.config.tools == [Clock, {Source, Resource.parse!("deployment/server/books")}]
     assert [_hook | _hooks] = spec.hooks
     assert spec.idle_timeout == :timer.seconds(60)
-    assert {:ok, %{targets: [:pager]}} = WardrikDefinition.route(fields, id, context)
+
+    assert {:ok, %{display_name: "Triage desk"}} =
+             spec(%{"display_name" => "Triage desk"}, context, id)
 
     priced = [%Wardrik.LLM.Runtime{config: [tool_prices: %{"clock" => 0.01}]}]
 
@@ -128,8 +145,35 @@ defmodule WardrikDefinitionTest do
     assert {:error, "policy names loose, which is not a policy in the org's policies"} =
              spec(%{"policy" => "loose"}, context, id)
 
-    assert {:error, "channels names ops, which Mode keeps for another org"} =
-             spec(%{"channels" => ["ops"]}, context, id)
+    assert {:error, "channels is a list of the channels it is offered in"} =
+             spec(%{"channels" => "chat"}, context, id)
+
+    assert {:error, "notify names 1, which is not a target"} =
+             spec(%{"notify" => [1]}, context, id)
+  end
+
+  test "applies the host's defaults once, as it reads", %{context: context, id: id} do
+    assert {:ok, definition} = read(%{}, context, id)
+    assert definition.idle_timeout == :timer.seconds(60)
+
+    later = %{context | defaults: %{"idle_timeout" => 5}}
+    assert {:ok, %{idle_timeout: 60_000}} = built(definition, id, later)
+    assert {:ok, %{idle_timeout: 5_000}} = read(definition.fields, later, id)
+  end
+
+  test "keeps a policy it names by its name, found as its agent starts, and one in place as it reads",
+       %{context: context, id: id} do
+    assert {:ok, named} = read(%{"policy" => "careful"}, context, id)
+    assert named.policy == "careful"
+
+    assert {:error, "policy names careful, which is not a policy in the org's policies"} =
+             built(named, id, %{context | policies: %{}})
+
+    assert {:ok, inline} = read(%{"policy" => %{"deny" => ["clock"]}}, context, id)
+    assert %WardrikPolicy{} = inline.policy
+
+    assert {:ok, %{hooks: [%Wardrik.Hook{}]}} =
+             built(inline, id, %{context | policies: %{}})
   end
 
   test "names a server or a source only where the host has them", %{context: context, id: id} do
@@ -159,22 +203,21 @@ defmodule WardrikDefinitionTest do
              {Source, Resource.new(owner, server: "later")}
            ]
 
-    fields = %{"tools" => ["clock", "crm/*", "books/*", "later/*"]}
-    assert WardrikDefinition.missing(fields, id, context: context, host: host) == ["later/*"]
+    {:ok, definition} = read(%{"tools" => ["clock", "crm/*", "books/*", "later/*"]}, context, id)
+    assert Definition.missing(definition, context: context, host: host) == ["later/*"]
 
     jon = AgentID.parse!("acme/@jon/triage")
-
-    assert WardrikDefinition.missing(%{"tools" => ["crm/*"]}, jon, context: context, host: host) ==
-             ["crm/*"]
+    {:ok, definition} = read(%{"tools" => ["crm/*"]}, context, jon)
+    assert Definition.missing(definition, context: context, host: host) == ["crm/*"]
   end
 
   test "names no server it has not configured where owners add none",
        %{context: context, id: id} do
-    assert WardrikDefinition.missing(%{"tools" => ["nope/*"]}, id, context: context, host: host()) ==
-             []
-
     assert {:error, "tools names nope/*, but Mode configures no server nope" <> _} =
              spec(%{"tools" => ["nope/*"]}, context, id)
+
+    nope = %Definition{read!(context, id) | tools: ["nope/*"]}
+    assert Definition.missing(nope, context: context, host: host()) == []
   end
 
   test "a definition a token sent names no module, and holds after no label",
@@ -184,10 +227,10 @@ defmodule WardrikDefinitionTest do
 
     assert {:error,
             "policy cannot allow_after in a definition; name a policy in the org's policies that does"} =
-             WardrikDefinition.accept(id, %{"policy" => %{"allow_after" => %{}}}, context)
+             read(%{"policy" => %{"allow_after" => %{}}}, context, id)
 
     assert {:error, "acme/triage/t1 is a conversation of acme/triage; define acme/triage"} =
-             WardrikDefinition.accept(AgentID.parse!("acme/triage/t1"), %{}, context)
+             read(%{}, context, AgentID.parse!("acme/triage/t1"))
   end
 
   test "an org's policies come ahead of the agent's own policy", %{context: context, id: id} do
@@ -208,65 +251,79 @@ defmodule WardrikDefinitionTest do
   test "an agent is in one of the orgs the context declares", %{context: context, id: id} do
     context = %{context | orgs: ["globex"]}
 
-    assert {:error, "acme is not an org Mode declares: globex"} =
-             WardrikDefinition.accept(id, %{}, context)
+    assert {:error, "acme is not an org Mode declares: globex"} = read(%{}, context, id)
 
     assert {:error, "acme is not an org Mode declares: globex"} =
-             WardrikDefinition.parse("---\norg: acme\n---\n", "triage", context)
+             Definition.parse("---\norg: acme\n---\n", "triage", context)
 
     assert {:ok, _id, _fields} =
-             WardrikDefinition.parse("---\norg: globex\n---\n", "triage", context)
+             Definition.parse("---\norg: globex\n---\n", "triage", context)
   end
 
   test "reads an agent file into the agent it declares and its definition", %{context: context} do
     text = "---\nname: triage\nuser: jon\nmodel: test:model\n---\nWatch the queue.\n"
 
     assert {:ok, id, %{"model" => "test:model", "instructions" => "Watch the queue."}} =
-             WardrikDefinition.parse(text, "file-name", context)
+             Definition.parse(text, "file-name", context)
 
     assert to_string(id) == "acme/@jon/triage"
 
     assert {:ok, %AgentID{name: "file-name", org: "acme"}, %{}} =
-             WardrikDefinition.parse("", "file-name", context)
+             Definition.parse("", "file-name", context)
 
     assert {:error, "notify? is not a setting; expected one of name, org, user" <> _} =
-             WardrikDefinition.parse("---\nnotify?: x\n---\n", "file-name", context)
+             Definition.parse("---\nnotify?: x\n---\n", "file-name", context)
   end
 
   test "checks a host's defaults" do
     assert :ok =
-             WardrikDefinition.check_defaults(%{"model" => "test:model", "idle_timeout" => 60})
+             Definition.check_defaults(%{"model" => "test:model", "idle_timeout" => 60})
 
     assert {:error, "idle_timeout", "is a whole number of seconds, or infinity"} =
-             WardrikDefinition.check_defaults(%{"idle_timeout" => 0})
+             Definition.check_defaults(%{"idle_timeout" => 0})
 
-    assert :ok = WardrikDefinition.check_defaults(%{"retries" => %{"attempts" => 3}})
+    assert :ok = Definition.check_defaults(%{"retries" => %{"attempts" => 3}})
 
     assert {:error, "retries", "is a set of attempts, max_wait and on_exhausted"} =
-             WardrikDefinition.check_defaults(%{"retries" => "often"})
+             Definition.check_defaults(%{"retries" => "often"})
 
     assert {:error, "retries.on_exhausted", "is ask or fail"} =
-             WardrikDefinition.check_defaults(%{"retries" => %{"on_exhausted" => "never"}})
+             Definition.check_defaults(%{"retries" => %{"on_exhausted" => "never"}})
 
     assert {:error, "name", "is not a setting; expected one of model, tools" <> _} =
-             WardrikDefinition.check_defaults(%{"name" => "x"})
+             Definition.check_defaults(%{"name" => "x"})
   end
 
-  test "changes and removes one trigger" do
-    fields = %{"triggers" => %{"every" => "1h", "prompt" => "Look."}}
+  test "changes and removes one trigger", %{id: id} do
+    context = %Context{}
 
-    assert {:ok, fields, :created, %WardrikTrigger{name: "sweep"}} =
-             WardrikDefinition.put_trigger(fields, "sweep",
-               trigger: %{"every" => "2h", "prompt" => "Go."},
-               context: %WardrikDefinition.Context{}
+    {:ok, definition} =
+      read(%{"triggers" => %{"every" => "1h", "prompt" => "Look."}}, context, id)
+
+    assert {:ok, definition, :created, %WardrikTrigger{name: "sweep"}} =
+             Definition.put_trigger(
+               definition,
+               "sweep",
+               %{"every" => "2h", "prompt" => "Go."},
+               context
              )
 
-    assert [%{name: "trigger-1"}, %{name: "sweep"}] =
-             WardrikDefinition.triggers(fields, %WardrikDefinition.Context{})
+    assert [%{name: "trigger-1"}, %{name: "sweep"}] = definition.triggers
 
-    assert {:ok, %{"triggers" => [%{"name" => "sweep"}]}} =
-             WardrikDefinition.delete_trigger(fields, "trigger-1")
+    assert {:ok, %{fields: %{"triggers" => [%{"name" => "sweep"}]}}, %{name: "trigger-1"}} =
+             Definition.delete_trigger(definition, "trigger-1", context)
 
-    assert {:error, :not_found} = WardrikDefinition.delete_trigger(fields, "nope")
+    assert {:error, :not_found} = Definition.delete_trigger(definition, "nope", context)
+
+    assert {:ok, %{fields: fields}, %{name: "sweep"}} =
+             Definition.delete_trigger(definition, "sweep", context)
+
+    assert {:ok, %{fields: %{}}, %{name: "trigger-1"}} =
+             Definition.delete_trigger(%{definition | fields: fields}, "trigger-1", context)
+  end
+
+  defp read!(context, id) do
+    {:ok, definition} = read(%{}, context, id)
+    definition
   end
 end

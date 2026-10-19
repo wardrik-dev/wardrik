@@ -144,16 +144,18 @@ defmodule Mix.Tasks.Wardrik do
 
     vault = WardrikVault.new([store: store, grants: oauth] ++ settings(WardrikVault))
     config = config(opts)
-    created = struct!(Mix.Tasks.Wardrik.Created, fields: [config: config] ++ run_opts(opts))
+
+    tools = shipped(opts)
 
     host =
       Wardrik.Host.new(
         store: store,
-        definitions: created,
+        definitions: %Wardrik.Definitions{store: store, contexts: context(opts, tools)},
         credentials: vault,
         connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
         workspace: %WardrikWorkspace.Backend.Store{store: store}
       )
+      |> Wardrik.Host.register(:tools, for(tool <- tools, do: {tool.tool().name, tool}))
 
     {:ok, _wardrik} =
       Supervisor.start_link([{WardrikStore, store}, {Wardrik.Core, host: host}],
@@ -171,9 +173,10 @@ defmodule Mix.Tasks.Wardrik do
     org = opts[:org] || @org
     agent_id = Wardrik.AgentID.new!(opts[:name] || "assistant", org: org, user: opts[:user])
 
-    # Every agent this session starts is created on what the task was given.
-    {:ok, spec} = Wardrik.Definition.create(created, agent_id, host: host)
-    {:ok, _agent} = Wardrik.Fleet.put(spec)
+    # The agent the task starts runs on everything it was given; one /spawn
+    # starts, on its model and tools.
+    {:ok, _agent} =
+      Wardrik.Fleet.put(Wardrik.Agent.Spec.new([id: agent_id, config: config] ++ run_opts(opts)))
 
     :ok =
       Breeze.Server.run(
@@ -218,6 +221,16 @@ defmodule Mix.Tasks.Wardrik do
       formatter: {:logger_formatter, %{single_line: true}}
     })
   end
+
+  # An agent /spawn starts takes the model and tools the task was given.
+  defp context(opts, tools) do
+    model = if opts[:model], do: %{"model" => opts[:model]}, else: %{}
+    names = for tool <- tools, do: tool.tool().name
+    %WardrikDefinition.Context{org: opts[:org] || @org, defaults: Map.put(model, "tools", names)}
+  end
+
+  defp shipped(opts),
+    do: if(Keyword.get(opts, :tools, true), do: named(Keyword.get_values(opts, :tool)), else: [])
 
   defp config(opts) do
     opts
@@ -309,17 +322,4 @@ defmodule Mix.Tasks.Wardrik do
   end
 
   defp settings(module), do: Application.get_env(:wardrik_daemon, module, [])
-end
-
-defmodule Mix.Tasks.Wardrik.Created do
-  @moduledoc false
-  # The agents `mix wardrik` starts: each one new, on the config and seams the
-  # task was given, which it keeps no definition of.
-  defstruct fields: []
-end
-
-defimpl Wardrik.Definition, for: Mix.Tasks.Wardrik.Created do
-  use Wardrik.Definition.None
-
-  def create(%{fields: fields}, id, _opts), do: {:ok, Wardrik.Agent.Spec.new([id: id] ++ fields)}
 end

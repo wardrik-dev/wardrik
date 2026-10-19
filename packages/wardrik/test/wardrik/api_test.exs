@@ -70,7 +70,7 @@ defmodule Wardrik.APITest do
 
     assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_define(scope, agent, definition)
 
-    assert {:ok, %Wardrik.Definition.Read{fields: %{"instructions" => "Be brief."}}} =
+    assert {:ok, %{definition: %Wardrik.Definition{fields: %{"instructions" => "Be brief."}}}} =
              Wardrik.agent_definition_read(scope, agent)
 
     assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_read(scope, agent)
@@ -242,7 +242,7 @@ defmodule Wardrik.APITest do
     definition = %{"model" => "anthropic:claude-sonnet-5"}
 
     assert %Snapshot{} = Wardrik.agent_define!(scope, agent, definition)
-    assert %Wardrik.Definition.Read{} = Wardrik.agent_definition_read!(scope, agent)
+    assert %{definition: %Wardrik.Definition{}} = Wardrik.agent_definition_read!(scope, agent)
     assert %Snapshot{} = Wardrik.agent_read!(scope, agent)
     assert [_ | _] = Wardrik.agents_list!(scope, Wardrik.AgentID.resource(agent))
     assert [] = Wardrik.agents_parked!(scope, Wardrik.AgentID.resource(agent))

@@ -26,7 +26,6 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.AgentID
   alias Wardrik.Error
   alias Wardrik.Fleet
-  alias Wardrik.Host
   alias Wardrik.JSON
   alias Wardrik.Resource
   alias WardrikConsole.Nodes
@@ -240,7 +239,7 @@ defmodule WardrikDaemon.CLI do
   def started do
     cond do
       Process.whereis(WardrikDaemon.Agents) ->
-        _files = WardrikDaemon.Agents.files(Host.definitions(WardrikDaemon.Host.get()))
+        _files = WardrikDaemon.Agents.files(WardrikDaemon.Host.agents())
         ""
 
       reason = Cluster.refusal(Boot.cluster()) ->

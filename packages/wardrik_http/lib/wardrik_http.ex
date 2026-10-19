@@ -13,12 +13,11 @@ defmodule WardrikHTTP do
   ## The host
 
   The routes act through the `Wardrik.Host` the listener was started with. Its
-  `:definitions`, a `Wardrik.Definition`, reads a definition put, and decides
-  whether definitions are kept and who owns a key: a key it refuses answers
-  `409`. A daemon reads one as an agent file (see `WardrikDaemon.AgentFile`)
-  and refuses the keys its agent files declare. A route the host's module
-  answers `:unsupported`, as every one where the host names none does,
-  answers `501`. Connections are offered by the host's `:connections`; see
+  `:definitions`, `Wardrik.Definitions`, keep the definitions put, read as
+  `Wardrik.Definition` reads them, and refuse the keys agent files declare:
+  such a key answers `409`. A route the host's module answers
+  `:unsupported`, as every one where the host names none does, answers
+  `501`. Connections are offered by the host's `:connections`; see
   `Wardrik.Connections`.
 
   ## What answers

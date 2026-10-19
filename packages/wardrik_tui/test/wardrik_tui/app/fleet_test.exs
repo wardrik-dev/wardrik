@@ -3,7 +3,6 @@ defmodule WardrikTUI.App.FleetTest do
   use Mimic
 
   alias Wardrik.Agent
-  alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
@@ -21,25 +20,6 @@ defmodule WardrikTUI.App.FleetTest do
   alias Wardrik.Test.Audit
   alias Wardrik.Test.Script
   alias WardrikTUI.App
-
-  # Defines each agent a session starts as a new one, on a model nothing
-  # answers, or says why it cannot.
-  defmodule Created do
-    @moduledoc false
-    defstruct []
-  end
-
-  defimpl Wardrik.Definition, for: Created do
-    use Wardrik.Definition.None
-
-    def put(_definitions, _id, _opts), do: {:error, "not here"}
-
-    def create(_definitions, %AgentID{name: "refused"}, _opts),
-      do: {:error, "the defaults name no such tool"}
-
-    def create(_definitions, id, _opts),
-      do: {:ok, Spec.new(id: id, config: Config.new(model_spec: "test:model"))}
-  end
 
   # A second node, b, which the session can name and Wardrik.Fleet.move/2 is
   # stubbed to reach.
@@ -61,6 +41,7 @@ defmodule WardrikTUI.App.FleetTest do
     agent_id = AgentID.new!("watched", org: org)
     {:ok, _pid} = Fleet.spawn(agent_id, spawn_opts)
     on_exit(fn -> Fleet.forget(agent_id) end)
+    on_exit(fn -> forget_definitions(org) end)
 
     session =
       Breeze.Test.start!(App,
@@ -71,7 +52,13 @@ defmodule WardrikTUI.App.FleetTest do
           host:
             Wardrik.Host.new(
               store: Wardrik.Test.store(),
-              definitions: %Created{},
+              definitions: %Wardrik.Definitions{
+                store: Wardrik.Test.store(),
+                contexts: %WardrikDefinition.Context{
+                  orgs: [org],
+                  defaults: %{"model" => "test:model"}
+                }
+              },
               issuer: %WardrikTUI.Test.Root{}
             ),
           org: org,
@@ -90,6 +77,18 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   @ops %{"type" => "ssh", "id" => "ops"}
+
+  # The definitions the agents this test spawned were given, which the
+  # fleet would list after it.
+  defp forget_definitions(org) do
+    definitions = %Wardrik.Definitions{
+      store: Wardrik.Test.store(),
+      contexts: %WardrikDefinition.Context{}
+    }
+
+    for id <- Wardrik.Definitions.ids(definitions, Wardrik.Resource.parse!(org <> "/*")),
+        do: Wardrik.Definitions.delete(definitions, id)
+  end
 
   defp screen(session), do: Breeze.Test.render_text!(session)
 
@@ -245,9 +244,9 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "spawned and connected to #{key}"
     assert Agent.status(key, host: Wardrik.Test.host()).model == "test:model"
 
-    submit(session, "/spawn refused")
-    assert screen(session) =~ "✗ the defaults name no such tool"
-    refute Fleet.whereis(AgentID.new!("refused", org: org), host: Wardrik.Test.host())
+    submit(session, "/spawn elsewhere/refused")
+    assert screen(session) =~ "✗ elsewhere is not an org the host declares: #{org}"
+    refute Fleet.whereis(AgentID.new!("refused", org: "elsewhere"), host: Wardrik.Test.host())
   end
 
   test "/spawn sends the prompt as this client's first message", %{session: session, org: org} do

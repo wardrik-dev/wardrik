@@ -30,8 +30,7 @@ defmodule Wardrik.Test.Definitions do
   def forget(id), do: WardrikStore.delete(Wardrik.Test.store(), @ns, to_string(id))
 end
 
-defimpl Wardrik.Definition, for: Wardrik.Test.Definitions do
-  use Wardrik.Definition.None
+defimpl Wardrik.Specs, for: Wardrik.Test.Definitions do
   defdelegate current(a0, a1, a2), to: Wardrik.Test.Definitions
   defdelegate defined(a0, a1), to: Wardrik.Test.Definitions
 end

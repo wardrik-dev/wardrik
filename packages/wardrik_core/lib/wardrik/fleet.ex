@@ -30,7 +30,7 @@ defmodule Wardrik.Fleet do
   registry: `list/2` reads it from the store, as it wrote itself down. One
   the host defines that has not started, or whose state this release cannot
   read, is listed asleep and idle, from the host's
-  `c:Wardrik.Definition.defined/2`.
+  `c:Wardrik.Specs.defined/2`.
 
   ## Waking
 
@@ -257,7 +257,7 @@ defmodule Wardrik.Fleet do
     do:
       match?(
         {:ok, _spec},
-        Wardrik.Definition.current(Wardrik.Host.definitions(host), id, host: host)
+        Wardrik.Specs.current(Wardrik.Host.definitions(host), id, host: host)
       )
 
   # -- the fleet -------------------------------------------------------------
@@ -276,7 +276,7 @@ defmodule Wardrik.Fleet do
     started = MapSet.new(held, & &1.id)
 
     defined =
-      for id <- Wardrik.Definition.defined(definitions, pattern),
+      for id <- Wardrik.Specs.defined(definitions, pattern),
           not MapSet.member?(started, id),
           do: Member.asleep(id)
 

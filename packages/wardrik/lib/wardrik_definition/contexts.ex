@@ -12,18 +12,30 @@ defprotocol WardrikDefinition.Contexts do
       defimpl WardrikDefinition.Contexts, for: MyApp.Contexts do
         def context(%MyApp.Contexts{base: base}, owner),
           do: %{base | policies: MyApp.Policies.for_org(owner.org)}
+
+        def reload(_contexts, _opts), do: [node()]
       end
 
-  An agent built from a context keeps the spec it was given until it is
-  built again, as `Wardrik.deployment_reload/1` does for every agent awake, and
-  as an agent asleep is when it wakes.
+  A definition is read under the context as it is put, and keeps what it
+  read until it is read again, as `Wardrik.deployment_reload/1` reads every
+  one; the policies it names are found in the context each time its agent
+  starts.
   """
 
   @doc "The context the definition of the agent `owner` is read under."
   @spec context(t(), Wardrik.AgentID.t()) :: WardrikDefinition.Context.t()
   def context(contexts, owner)
+
+  @doc """
+  Reads again what the contexts are read from, on each node that reads
+  them, with the `:host` asking, as `Wardrik.deployment_reload/1` asks
+  before the definitions are read again: the nodes that read.
+  """
+  @spec reload(t(), host: Wardrik.Host.t()) :: [node()]
+  def reload(contexts, opts)
 end
 
 defimpl WardrikDefinition.Contexts, for: WardrikDefinition.Context do
   def context(context, _owner), do: context
+  def reload(_context, _opts), do: [node()]
 end

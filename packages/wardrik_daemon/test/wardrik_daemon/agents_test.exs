@@ -6,6 +6,8 @@ defmodule WardrikDaemon.AgentsTest do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
+  alias Wardrik.Definition
+  alias Wardrik.Definitions
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.Resource
@@ -48,6 +50,21 @@ defmodule WardrikDaemon.AgentsTest do
       principal: Wardrik.Principal.new(:user, "jon"),
       scope: [Wardrik.Role.bind([:owner], [pattern])]
     }
+
+  defp definitions, do: Agents.definitions(Host.agents())
+
+  # Reads `fields` as the definition the HTTP API was sent for `id` with
+  # `token`, keeps it, and answers the spec it writes.
+  defp put(id, fields, token) do
+    with {:ok, definition} <-
+           Definition.read(fields,
+             id: id,
+             source: {:api, token},
+             context: Agents.context(Host.agents())
+           ),
+         :ok <- Definitions.put(definitions(), definition),
+         do: Definitions.spec(definitions(), id, host: Host.host())
+  end
 
   defp write_policy(%{dir: dir}, name, yaml) do
     File.mkdir_p!(Path.join(dir, "policies"))
@@ -197,7 +214,7 @@ defmodule WardrikDaemon.AgentsTest do
   test "notify started after it routes the agents its files route", %{org: org} = context do
     targets = [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
     Host.put_section(WardrikNotify, targets: targets)
-    notify = [routes: {Agents, :routes, [Host.agents()]}, targets: targets]
+    notify = [routes: {Definitions, :routes, [definitions()]}, targets: targets]
 
     write(context, "alpha", "notify: audit\n")
     Host.start_agents(context.dir)
@@ -205,57 +222,45 @@ defmodule WardrikDaemon.AgentsTest do
     _files = Agents.files(Host.agents())
 
     alpha = AgentID.parse!("#{org}/alpha")
-    assert %{^alpha => %WardrikNotify.Route{targets: [:audit]}} = Agents.routes(Host.agents())
+
+    assert %{^alpha => %WardrikNotify.Route{targets: ["audit"]}} =
+             Definitions.routes(definitions())
 
     stop_supervised!(WardrikNotify.Supervisor)
     start_supervised!({WardrikNotify.Supervisor, notify})
-    assert :sys.get_state(WardrikNotify.Dispatcher).routes == Agents.routes(Host.agents())
+    assert :sys.get_state(WardrikNotify.Dispatcher).routes == Definitions.routes(definitions())
   end
 
   test "routes an agent the HTTP API defines as its definition says, until it is forgotten",
        %{org: org} = context do
     targets = [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
     Host.put_section(WardrikNotify, targets: targets)
-    notify = [routes: {Agents, :routes, [Host.agents()]}, targets: targets]
+    notify = [routes: {Definitions, :routes, [definitions()]}, targets: targets]
     Host.start_agents(context.dir)
     start_supervised!({WardrikNotify.Supervisor, notify})
     beta = AgentID.parse!("#{org}/beta")
     routes = fn -> :sys.get_state(WardrikNotify.Dispatcher).routes end
 
     assert {:ok, _spec} =
-             Agents.put(Host.agents(), beta,
-               host: Host.host(),
-               definition: %{"notify" => "audit"},
-               token: token(org)
-             )
+             put(beta, %{"notify" => "audit"}, token(org))
 
-    assert %{^beta => %WardrikNotify.Route{targets: [:audit]}} = routes.()
+    assert %{^beta => %WardrikNotify.Route{targets: ["audit"]}} = routes.()
 
     stop_supervised!(WardrikNotify.Supervisor)
     start_supervised!({WardrikNotify.Supervisor, notify})
-    assert %{^beta => %WardrikNotify.Route{targets: [:audit]}} = routes.()
+    assert %{^beta => %WardrikNotify.Route{targets: ["audit"]}} = routes.()
 
-    assert {:ok, _spec} =
-             Agents.put(Host.agents(), beta,
-               host: Host.host(),
-               definition: %{},
-               token: token(org)
-             )
-
+    assert {:ok, _spec} = put(beta, %{}, token(org))
     refute is_map_key(routes.(), beta)
 
     notify_on = %{"notify" => %{"to" => "audit", "on" => ["finished"]}}
 
     assert {:ok, _spec} =
-             Agents.put(Host.agents(), beta,
-               host: Host.host(),
-               definition: notify_on,
-               token: token(org)
-             )
+             put(beta, notify_on, token(org))
 
     assert %{^beta => %WardrikNotify.Route{on: [:finished]}} = routes.()
 
-    assert :ok = Agents.delete(Host.agents(), beta)
+    assert :ok = Definitions.delete(definitions(), beta)
     refute is_map_key(routes.(), beta)
   end
 
@@ -266,32 +271,24 @@ defmodule WardrikDaemon.AgentsTest do
     defined = AgentID.parse!("#{org}/defined")
 
     assert {:ok, spec} =
-             Agents.put(Host.agents(), defined,
-               host: Host.host(),
-               definition: %{"policy" => "careful"},
-               token: token(org)
-             )
+             put(defined, %{"policy" => "careful"}, token(org))
 
     assert [%Wardrik.Hook{name: "careful", module: WardrikPolicy}] = spec.hooks
 
-    assert Agents.get(Host.agents(), defined, host: Host.host()) ==
-             {:ok, %Wardrik.Definition.Read{fields: %{"policy" => "careful"}, missing: []}}
+    assert {:ok, %Definition{fields: %{"policy" => "careful"}}} =
+             Definitions.get(definitions(), defined)
 
     assert {:error, message} =
-             Agents.put(Host.agents(), defined,
-               host: Host.host(),
-               definition: %{"policy" => "lax"},
-               token: token(org)
-             )
+             put(defined, %{"policy" => "lax"}, token(org))
 
     assert message =~ "policy names lax"
 
-    assert Agents.get(Host.agents(), defined, host: Host.host()) ==
-             {:ok, %Wardrik.Definition.Read{fields: %{"policy" => "careful"}, missing: []}}
+    assert {:ok, %Definition{fields: %{"policy" => "careful"}}} =
+             Definitions.get(definitions(), defined)
 
-    assert Agents.delete(Host.agents(), defined) == :ok
-    assert Agents.get(Host.agents(), defined, host: Host.host()) == {:error, :not_found}
-    assert Agents.delete(Host.agents(), defined) == {:error, :not_found}
+    assert Definitions.delete(definitions(), defined) == :ok
+    assert Definitions.get(definitions(), defined) == {:error, :not_found}
+    assert Definitions.delete(definitions(), defined) == {:error, :not_found}
   end
 
   test "a definition names a server its owner has yet to add, and offers it once they do",
@@ -301,16 +298,12 @@ defmodule WardrikDaemon.AgentsTest do
     owner = Wardrik.Resource.parse!(org)
 
     assert {:ok, spec} =
-             Agents.put(Host.agents(), defined,
-               host: Host.host(),
-               definition: %{"tools" => ["crm/*"]},
-               token: token(org)
-             )
+             put(defined, %{"tools" => ["crm/*"]}, token(org))
 
     assert Wardrik.LLM.Config.tools(spec.config) == []
 
-    assert {:ok, %Wardrik.Definition.Read{missing: ["crm/*"]}} =
-             Agents.get(Host.agents(), defined, host: Host.host())
+    assert {:ok, definition} = Definitions.get(definitions(), defined)
+    assert Definitions.missing(definitions(), definition, host: Host.host()) == ["crm/*"]
 
     remote = %WardrikMCP.Remote{
       key: Wardrik.Resource.new(owner, server: "crm"),
@@ -320,9 +313,7 @@ defmodule WardrikDaemon.AgentsTest do
     }
 
     :ok = WardrikMCP.Remote.put(Wardrik.Host.store(Host.host()), remote)
-
-    assert {:ok, %Wardrik.Definition.Read{missing: []}} =
-             Agents.get(Host.agents(), defined, host: Host.host())
+    assert Definitions.missing(definitions(), definition, host: Host.host()) == []
   end
 
   test "a user's agent shares its org's tree where config.yaml shares it with them",
@@ -335,11 +326,7 @@ defmodule WardrikDaemon.AgentsTest do
     fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"runbooks" => runbooks}}}
 
     assert {:ok, _spec} =
-             Agents.put(Host.agents(), defined,
-               host: Host.host(),
-               definition: fields,
-               token: token(Resource.parse!(org <> "/@jon/agent/*"))
-             )
+             put(defined, fields, token(Resource.parse!(org <> "/@jon/agent/*")))
   end
 
   test "a user's agent shares none of its org's trees", %{org: org} = context do
@@ -348,11 +335,7 @@ defmodule WardrikDaemon.AgentsTest do
     fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"team" => org}}}
 
     assert {:error, message} =
-             Agents.put(Host.agents(), defined,
-               host: Host.host(),
-               definition: fields,
-               token: token(Resource.parse!("*"))
-             )
+             put(defined, fields, token(Resource.parse!("*")))
 
     assert message ==
              "workspace shared team: #{org} belongs to #{org}/agent/*, which does not cover #{defined}"
@@ -366,21 +349,13 @@ defmodule WardrikDaemon.AgentsTest do
     defined = AgentID.parse!("#{org}/defined")
 
     {:ok, _spec} =
-      Agents.put(Host.agents(), defined,
-        host: Host.host(),
-        definition: %{"policy" => "careful"},
-        token: %{token(org) | policy: "strict"}
-      )
+      put(defined, %{"policy" => "careful"}, %{token(org) | policy: "strict"})
 
     assert {:ok, spec} = Agents.spec(Host.agents(), defined, host: Host.host())
     assert [%{name: "policy/strict"}, %{name: "careful"}] = spec.hooks
 
     assert {:error, message} =
-             Agents.put(Host.agents(), defined,
-               host: Host.host(),
-               definition: %{},
-               token: %{token(org) | policy: "missing"}
-             )
+             put(defined, %{}, %{token(org) | policy: "missing"})
 
     assert message =~ "names the policy missing, which is not a policy in policies/"
   end
@@ -404,8 +379,8 @@ defmodule WardrikDaemon.AgentsTest do
     write(context, "alpha", "policy: careful\n")
     Host.start_agents(context.dir)
     thread = AgentID.parse!("#{org}/alpha/1696.1234")
-    {:ok, options} = Agents.options(Host.agents(), thread, host: Host.host())
-    {:ok, _pid} = Fleet.spawn(thread, options)
+    {:ok, spec} = Agents.spec(Host.agents(), thread, host: Host.host())
+    {:ok, _pid} = Fleet.spawn(thread, Wardrik.Agent.Spec.options(spec))
 
     write(context, "alpha", "policy: lax\n")
     Agents.reload(Host.agents())
@@ -429,11 +404,7 @@ defmodule WardrikDaemon.AgentsTest do
     defined = AgentID.parse!("#{org}/defined")
 
     {:ok, spec} =
-      Agents.put(Host.agents(), defined,
-        host: Host.host(),
-        definition: %{"policy" => "careful"},
-        token: token(org)
-      )
+      put(defined, %{"policy" => "careful"}, token(org))
 
     {:ok, _pid} = Fleet.put(spec)
 
@@ -452,7 +423,7 @@ defmodule WardrikDaemon.AgentsTest do
     Agents.reload(Host.agents())
 
     assert Agents.problems(Host.agents()) == []
-    assert {:ok, _definition} = Agents.get(Host.agents(), defined, host: Host.host())
+    assert {:ok, _definition} = Definitions.get(definitions(), defined)
   end
 
   @tag :capture_log
@@ -461,17 +432,14 @@ defmodule WardrikDaemon.AgentsTest do
     Host.start_agents(context.dir)
     defined = AgentID.parse!("#{org}/defined")
     fails = %{"retries" => %{"attempts" => 0, "on_exhausted" => "fail"}}
-
-    {:ok, spec} =
-      Agents.put(Host.agents(), defined, host: Host.host(), definition: fails, token: token(org))
-
+    {:ok, spec} = put(defined, fails, token(org))
     {:ok, _pid} = Fleet.put(spec)
 
     # The store loses the agent, as a wiped one would, and keeps its definition.
     :ok = Fleet.forget(defined)
     Agents.reload(Host.agents())
 
-    assert {:ok, _definition} = Agents.get(Host.agents(), defined, host: Host.host())
+    assert {:ok, _definition} = Definitions.get(definitions(), defined)
 
     assert [%Fleet.Member{asleep: true}] =
              Fleet.list(AgentID.resource(defined), host: Host.host())
@@ -506,22 +474,22 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert Agents.dir(Host.agents()) == context.dir
 
-    assert {:ok, options} =
-             Agents.options(Host.agents(), AgentID.parse!("#{org}/alpha"), host: Host.host())
+    assert {:ok, spec} =
+             Agents.spec(Host.agents(), AgentID.parse!("#{org}/alpha"), host: Host.host())
 
-    assert options[:config].model_spec == "anthropic:claude-haiku-4-5"
+    assert spec.config.model_spec == "anthropic:claude-haiku-4-5"
 
-    assert {:ok, options} =
-             Agents.options(Host.agents(), AgentID.parse!("#{org}/@jon/assistant"),
+    assert {:ok, spec} =
+             Agents.spec(Host.agents(), AgentID.parse!("#{org}/@jon/assistant"),
                host: Host.host()
              )
 
-    assert options[:config].model_spec == "anthropic:claude-sonnet-5"
+    assert spec.config.model_spec == "anthropic:claude-sonnet-5"
 
     Host.put_section(Agents, defaults: %{"tools" => ["nothing"]})
 
     assert {:error, message} =
-             Agents.options(Host.agents(), AgentID.parse!("#{org}/assistant"), host: Host.host())
+             Agents.spec(Host.agents(), AgentID.parse!("#{org}/assistant"), host: Host.host())
 
     assert message =~ "tools names nothing"
   end
@@ -530,26 +498,18 @@ defmodule WardrikDaemon.AgentsTest do
     write(context, "alpha", "")
     Host.start_agents(context.dir)
 
+    alpha = AgentID.parse!("#{org}/alpha")
+
     message =
-      "#{org}/alpha is declared by agents/alpha.md; change or remove that file, then wardrik reload reads it"
+      "#{alpha} is declared by agents/alpha.md; change or remove that file, then reload it"
 
-    assert Agents.put(Host.agents(), AgentID.parse!("#{org}/alpha"),
-             host: Host.host(),
-             definition: %{},
-             token: token(org)
-           ) ==
+    assert put(alpha, %{}, token(org)) == {:error, :conflict, message}
+    assert Definitions.editable(definitions(), alpha) == {:error, :conflict, message}
+
+    assert Definitions.put_trigger(definitions(), alpha, "sweep", %{}) ==
              {:error, :conflict, message}
 
-    assert Agents.delete(Host.agents(), AgentID.parse!("#{org}/alpha")) ==
-             {:error, :conflict, message}
-
-    assert Agents.editable(Host.agents(), AgentID.parse!("#{org}/alpha")) ==
-             {:error, :conflict, message}
-
-    assert Agents.put_trigger(Host.agents(), AgentID.parse!("#{org}/alpha"), "sweep", fields: %{}) ==
-             {:error, :conflict, message}
-
-    assert Agents.delete_trigger(Host.agents(), AgentID.parse!("#{org}/alpha"), "sweep") ==
+    assert Definitions.delete_trigger(definitions(), alpha, "sweep") ==
              {:error, :conflict, message}
   end
 
@@ -569,9 +529,9 @@ defmodule WardrikDaemon.AgentsTest do
     assert Agents.problems(Host.agents()) == []
 
     assert {:error, :conflict, _message} =
-             Agents.editable(Host.agents(), AgentID.parse!("#{org}/alpha"))
+             Definitions.editable(definitions(), AgentID.parse!("#{org}/alpha"))
 
-    assert Agents.editable(Host.agents(), AgentID.parse!("#{org}/beta")) == :ok
+    assert Definitions.editable(definitions(), AgentID.parse!("#{org}/beta")) == :ok
 
     assert {:ok, _spec} =
              Agents.spec(Host.agents(), AgentID.parse!("#{org}/alpha"), host: Host.host())
@@ -649,9 +609,9 @@ defmodule WardrikDaemon.AgentsTest do
 
       assert %{} = Agent.status(AgentID.parse!("#{org}/beta"), host: Host.host())
 
-      assert Agents.editable(agents, AgentID.parse!("#{org}/beta")) ==
+      assert Definitions.editable(Agents.definitions(agents), AgentID.parse!("#{org}/beta")) ==
                {:error, :conflict,
-                "#{org}/beta is declared by agents/beta.md on #{other}; change or remove that file, then wardrik reload reads it"}
+                "#{org}/beta is declared by agents/beta.md; change or remove that file, then reload it"}
     end
 
     test "is left as it was while its file does not read", %{org: org} = context do
@@ -672,11 +632,7 @@ defmodule WardrikDaemon.AgentsTest do
       Host.start_agents(context.dir)
 
       {:ok, spec} =
-        Agents.put(Host.agents(), AgentID.parse!("#{org}/defined"),
-          host: Host.host(),
-          definition: %{"instructions" => "You help."},
-          token: token(org)
-        )
+        put(AgentID.parse!("#{org}/defined"), %{"instructions" => "You help."}, token(org))
 
       {:ok, _pid} = Fleet.put(spec)
 
@@ -685,7 +641,7 @@ defmodule WardrikDaemon.AgentsTest do
 
       assert Fleet.held_pid(AgentID.parse!("#{org}/alpha"), wake: false) == nil
       assert %{} = Agent.status(AgentID.parse!("#{org}/defined"), host: Host.host())
-      assert :ok = Agents.editable(Host.agents(), AgentID.parse!("#{org}/defined"))
+      assert :ok = Definitions.editable(definitions(), AgentID.parse!("#{org}/defined"))
     end
   end
 

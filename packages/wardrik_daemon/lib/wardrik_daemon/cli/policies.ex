@@ -60,14 +60,15 @@ defmodule WardrikDaemon.CLI.Policies do
 
   defp tried(name, opts) do
     with {:ok, policy} <- JudgeReplay.policy(name),
-         {:ok, patterns, where} <- patterns(store(opts), name, opts[:agent]),
+         {:ok, patterns, where} <-
+           patterns(Wardrik.Host.definitions(opts[:as].host), name, opts[:agent]),
          {:ok, last} <- last(Keyword.get(opts, :last, @last)) do
       {:ok, JudgeReplay.tried(opts[:as].host, policy.judge, under: patterns, last: last), where}
     end
   end
 
-  defp patterns(store, name, nil) do
-    case JudgeReplay.using(store, name) do
+  defp patterns(definitions, name, nil) do
+    case JudgeReplay.using(definitions, name) do
       [] ->
         {:error,
          "No agent runs under the policy #{name}; name some with --agent, as acme/books or " <>
@@ -78,7 +79,7 @@ defmodule WardrikDaemon.CLI.Policies do
     end
   end
 
-  defp patterns(_store, _name, text) do
+  defp patterns(_definitions, _name, text) do
     if String.contains?(text, ["*", "?"]) do
       with {:ok, pattern} <- Wardrik.Resource.parse(text), do: {:ok, [pattern], text}
     else
@@ -195,6 +196,4 @@ defmodule WardrikDaemon.CLI.Policies do
 
   defp judged_document({:allow, :judged}), do: %{"decision" => "allow"}
   defp judged_document(:pass), do: %{"decision" => "none"}
-
-  defp store(opts), do: Wardrik.Host.store(opts[:as].host)
 end

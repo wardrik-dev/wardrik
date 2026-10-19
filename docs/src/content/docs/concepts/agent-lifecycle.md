@@ -14,8 +14,11 @@ has nothing to do, wakes when asked, and runs on one node of a cluster at a time
 | --- | --- | --- |
 | A file in `agents/` | at start, and on `wardrik reload` | editing the file |
 | `PUT /v1/agents/{key}` | at once | sending it again |
+| `wardrik agent spawn NAME` | at once, from `config.yaml`'s `defaults` | `--file`, which writes it a file |
 
-`wardrik agent spawn NAME` writes a file from `config.yaml`'s `defaults` and starts its agent. See
+`wardrik agent spawn NAME` starts an agent nothing defines from `config.yaml`'s `defaults`, kept as
+its definition; `--file` writes it a file from them first. Each definition takes the defaults' `idle_timeout` and
+`retries` as it is read, and finds the policy it names each time its agent starts. See
 [Agent files](/reference/agent-files/) and [Use the HTTP API](/build/http-api/).
 
 A file's agent is changed only through its file: the HTTP API refuses, with `409`, to define it,

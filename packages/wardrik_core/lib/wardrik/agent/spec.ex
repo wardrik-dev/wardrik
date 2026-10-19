@@ -6,6 +6,7 @@ defmodule Wardrik.Agent.Spec do
       spec =
         Wardrik.Agent.Spec.new(
           id: Wardrik.AgentID.new!("triage", org: "acme"),
+          display_name: "Triage",
           description: "Watches the incident queue.",
           config: Wardrik.LLM.Config.new(system: "You watch the incident queue."),
           hooks: [Wardrik.Hook.new("careful", MyApp.Hook)],
@@ -23,6 +24,7 @@ defmodule Wardrik.Agent.Spec do
   | Field | What it is |
   | --- | --- |
   | `:id` | the agent's `Wardrik.AgentID` |
+  | `:display_name` | what a person calls it |
   | `:description` | what it is for, in words a person reads |
   | `:config` | its `Wardrik.Runtime.Settings`, a `Wardrik.LLM.Config` unless given |
   | `:idle_timeout` | how long it may have nothing to do before it sleeps, in milliseconds or `:infinity`; see `Wardrik.Agent` |
@@ -34,11 +36,18 @@ defmodule Wardrik.Agent.Spec do
   alias Wardrik.Run
 
   @enforce_keys [:id, :config]
-  defstruct [:id, :description, :config, idle_timeout: Wardrik.Agent.State.default_idle_timeout()] ++
+  defstruct [
+              :id,
+              :display_name,
+              :description,
+              :config,
+              idle_timeout: Wardrik.Agent.State.default_idle_timeout()
+            ] ++
               Run.seams()
 
   @type t() :: %__MODULE__{
           id: AgentID.t(),
+          display_name: String.t() | nil,
           description: String.t() | nil,
           config: Wardrik.Runtime.Settings.t(),
           idle_timeout: timeout(),
