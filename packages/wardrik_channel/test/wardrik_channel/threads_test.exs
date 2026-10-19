@@ -1,9 +1,9 @@
 defmodule WardrikChannel.ThreadsTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Context, as: Said
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Conversation.Assistant
   alias Wardrik.Event.ToolStarted
   alias Wardrik.Fleet
   alias Wardrik.LLM.Turn
@@ -54,7 +54,7 @@ defmodule WardrikChannel.ThreadsTest do
         work(turn)
 
       :release ->
-        Turn.done(turn, [Said.assistant("Done.")])
+        Turn.done(turn, [Assistant.new("Done.")])
 
       :interrupt ->
         Turn.done(turn, [])
