@@ -263,9 +263,9 @@ Wardrik.LLM.Config.new(history: %Wardrik.History.All{})   # never
 ```
 
 It happens as a turn begins, before the messages it answers join the history,
-and is reported as `{:context_compacted, stats}`. The summary is a model call
-of the turn's like any other, so a budget counts it, and interrupting the turn
-interrupts it. Compaction is the default `Wardrik.History`: a struct of your
+and is reported as `Wardrik.Event.ContextCompacted`, with the messages and
+tokens before and after. The summary is a model call of the turn's like any
+other, so a budget counts it, and interrupting the turn interrupts it. Compaction is the default `Wardrik.History`: a struct of your
 own that implements it can keep the history its way instead.
 
 ### A turn lost part way
