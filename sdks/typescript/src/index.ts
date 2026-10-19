@@ -5,6 +5,6 @@ export { Servers, type ServerAuth, type ServerFields, type ServerOptions } from 
 export { Deployment, type AuditOptions, type AuditPage } from "./deployment.ts";
 export { Tokens, type TokenFields } from "./tokens.ts";
 export { WardrikError } from "./errors.ts";
-export { EventStream, type EventsOptions, type FollowOptions } from "./events.ts";
+export { EventStream, type EventsOptions, type FollowOptions, type Handlers, type ListenOptions } from "./events.ts";
 export type * from "./protocol.ts";
 export type { CallingAgent, ToolContext, ToolDefinition, WorkOptions } from "./worker.ts";
