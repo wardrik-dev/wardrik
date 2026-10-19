@@ -10,6 +10,7 @@ defmodule Wardrik.AgentTest do
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
 
   defp runner(test_pid, reply \\ "ok"), do: {AgentRunners, :echo, [test_pid, reply]}
   defp blocking_runner(test_pid, reply \\ "ok"), do: {AgentRunners, :blocking, [test_pid, reply]}
@@ -43,7 +44,7 @@ defmodule Wardrik.AgentTest do
   defp flush(agent), do: Agent.history(agent)
 
   test "ask/2 returns immediately and the turn runs asynchronously" do
-    agent = start_agent(runner: runner(self()))
+    agent = start_agent(config: Script.new(runner(self())))
 
     assert :ok = Agent.ask(agent, "hello")
 
@@ -53,7 +54,7 @@ defmodule Wardrik.AgentTest do
   end
 
   test "a message names who sent it, to the model and in its event" do
-    agent = start_agent(runner: runner(self()))
+    agent = start_agent(config: Script.new(runner(self())))
     maria = Wardrik.Principal.new(:channel, "slack/U024BE7LH", name: "Maria Chen")
 
     :ok = Agent.ask(agent, "Reconcile last week.", id: "m-1", sender: maria)
@@ -65,7 +66,7 @@ defmodule Wardrik.AgentTest do
   end
 
   test "a second turn sees the first turn's result — turns never overlap" do
-    agent = start_agent(runner: blocking_runner(self()))
+    agent = start_agent(config: Script.new(blocking_runner(self())))
 
     Agent.ask(agent, "first")
     assert_receive {:turn, [{:user, "first"}], first_turn}
@@ -79,7 +80,7 @@ defmodule Wardrik.AgentTest do
   end
 
   test "messages queued during a turn are batched into the next one, in order" do
-    agent = start_agent(runner: blocking_runner(self()))
+    agent = start_agent(config: Script.new(blocking_runner(self())))
 
     Agent.ask(agent, "first")
     assert_receive {:turn, [{:user, "first"}], first_turn}
@@ -101,7 +102,7 @@ defmodule Wardrik.AgentTest do
   end
 
   test "context accumulates in order across turns" do
-    agent = start_agent(runner: runner(self()))
+    agent = start_agent(config: Script.new(runner(self())))
 
     Agent.ask(agent, "one")
     assert_receive %Event{payload: %Event.TurnFinished{}}
@@ -116,7 +117,7 @@ defmodule Wardrik.AgentTest do
     runner = {AgentRunners, :crashing, [self(), "boom"]}
 
     capture_log(fn ->
-      agent = start_agent(runner: runner)
+      agent = start_agent(config: Script.new(runner))
 
       Agent.ask(agent, "boom")
       assert_receive {:turn, [{:user, "boom"}]}
@@ -159,7 +160,7 @@ defmodule Wardrik.AgentTest do
     runner = {AgentRunners, :failing, [:rate_limited]}
 
     capture_log(fn ->
-      agent = start_agent(runner: runner)
+      agent = start_agent(config: Script.new(runner))
 
       Agent.ask(agent, "hello")
 
@@ -169,7 +170,7 @@ defmodule Wardrik.AgentTest do
   end
 
   test "stream events are published to subscribers, not routed through the agent" do
-    agent = start_agent(runner: {AgentRunners, :emitting, ["streamed"]})
+    agent = start_agent(config: Script.new({AgentRunners, :emitting, ["streamed"]}))
 
     Agent.ask(agent, "hello")
 
@@ -178,13 +179,13 @@ defmodule Wardrik.AgentTest do
 
   describe "status/1" do
     test "reports idle with nothing pending" do
-      agent = start_agent(runner: runner(self()))
+      agent = start_agent(config: Script.new(runner(self())))
 
-      assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
+      assert %{state: :idle, pending: 0, model: "test:script"} = Agent.status(agent)
     end
 
     test "reports running, and counts what is queued behind the turn" do
-      agent = start_agent(runner: blocking_runner(self()))
+      agent = start_agent(config: Script.new(blocking_runner(self())))
 
       Agent.ask(agent, "first")
       assert_receive {:turn, [{:user, "first"}], first_turn}
@@ -202,7 +203,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "returns to idle once the turn ends" do
-      agent = start_agent(runner: runner(self()))
+      agent = start_agent(config: Script.new(runner(self())))
 
       Agent.ask(agent, "hello")
       assert_receive %Event{payload: %Event.TurnFinished{}}
@@ -213,7 +214,7 @@ defmodule Wardrik.AgentTest do
 
   describe "what it is doing" do
     test "is announced as it changes, and read from its status meanwhile" do
-      agent = start_agent(runner: {AgentRunners, :delegating, [self(), "pricing"]})
+      agent = start_agent(config: Script.new({AgentRunners, :delegating, [self(), "pricing"]}))
 
       Agent.ask(agent, "what do rivals charge?")
 
@@ -238,7 +239,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "waits on a person while parked, and counts what is queued behind it" do
-      agent = start_agent(runner: parking_runner(self()))
+      agent = start_agent(config: Script.new(parking_runner(self())))
 
       Agent.ask(agent, "ship it")
 
@@ -255,7 +256,7 @@ defmodule Wardrik.AgentTest do
   end
 
   test "a starting turn is announced before any output" do
-    agent = start_agent(runner: runner(self()))
+    agent = start_agent(config: Script.new(runner(self())))
 
     Agent.ask(agent, "hello")
 
@@ -264,7 +265,7 @@ defmodule Wardrik.AgentTest do
   end
 
   test "a turn's lifecycle events share one root span, and the next turn opens another" do
-    agent = start_agent(runner: runner(self()))
+    agent = start_agent(config: Script.new(runner(self())))
 
     Agent.ask(agent, "one")
     assert_receive %Event{payload: %Event.TurnStarted{messages: [%{text: "one"}]}} = started
@@ -282,7 +283,7 @@ defmodule Wardrik.AgentTest do
     runner = {AgentRunners, :failing, [:rate_limited]}
 
     capture_log(fn ->
-      agent = start_agent(runner: runner)
+      agent = start_agent(config: Script.new(runner))
 
       Agent.ask(agent, "hello")
 
@@ -294,19 +295,19 @@ defmodule Wardrik.AgentTest do
   end
 
   test "the turn is handed a run addressed to the agent" do
-    {key, agent} = Wardrik.Test.Fleet.start_agent(runner: reporting_runner(self()))
+    {key, agent} = Wardrik.Test.Fleet.start_agent(config: Script.new(reporting_runner(self())))
 
     Agent.ask(agent, "hello")
 
     assert_receive {:run, run}
     assert run.source.agent_id == key
-    assert run.config == Config.new()
+    assert %Script{} = run.config
     assert Wardrik.Trace.root?(run.source.trace)
   end
 
   describe "messages from abandoned or unknown senders" do
     test "a stale task reply never touches context" do
-      agent = start_agent(runner: runner(self()))
+      agent = start_agent(config: Script.new(runner(self())))
 
       Agent.ask(agent, "hello")
       assert_receive %Event{payload: %Event.TurnFinished{}}
@@ -320,7 +321,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "a stale DOWN does not clear the running turn" do
-      agent = start_agent(runner: blocking_runner(self()))
+      agent = start_agent(config: Script.new(blocking_runner(self())))
 
       Agent.ask(agent, "first")
       assert_receive {:turn, [{:user, "first"}], first_turn}
@@ -338,7 +339,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "an unrecognised message is ignored" do
-      agent = start_agent(runner: runner(self()))
+      agent = start_agent(config: Script.new(runner(self())))
 
       capture_log(fn ->
         send(agent, :nonsense)
@@ -351,7 +352,7 @@ defmodule Wardrik.AgentTest do
 
   describe "a message arriving mid-turn" do
     test "asks the running turn to stop at its next boundary" do
-      agent = start_agent(runner: yielding_runner(self()))
+      agent = start_agent(config: Script.new(yielding_runner(self())))
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -363,7 +364,7 @@ defmodule Wardrik.AgentTest do
 
     test "starts the next turn against what the yielded one left behind" do
       test_pid = self()
-      agent = start_agent(runner: yielding_runner(test_pid))
+      agent = start_agent(config: Script.new(yielding_runner(test_pid)))
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -379,7 +380,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "nothing is nudged when nothing is running" do
-      agent = start_agent(runner: runner(self()))
+      agent = start_agent(config: Script.new(runner(self())))
 
       Agent.ask(agent, "one")
 
@@ -389,7 +390,7 @@ defmodule Wardrik.AgentTest do
 
   describe "interrupt/1" do
     test "stops the running turn and keeps what it produced" do
-      agent = start_agent(runner: streaming_runner(self()))
+      agent = start_agent(config: Script.new(streaming_runner(self())))
 
       Agent.ask(agent, "tell me a long story")
       assert_receive {:running, _pid}
@@ -404,7 +405,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "drops what was queued and says how much" do
-      agent = start_agent(runner: streaming_runner(self()))
+      agent = start_agent(config: Script.new(streaming_runner(self())))
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -418,7 +419,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "reports an interrupt with nothing running rather than staying silent" do
-      agent = start_agent(runner: runner(self()))
+      agent = start_agent(config: Script.new(runner(self())))
 
       Agent.interrupt(agent)
 
@@ -431,7 +432,7 @@ defmodule Wardrik.AgentTest do
       # Deaf on purpose: :interrupt lands in its mailbox and is never read,
       # which is what a turn stuck inside a tool call looks like. A short
       # grace: this is the kill path, not a test of how long to wait.
-      agent = start_agent(runner: deaf_runner(test_pid), grace: 25)
+      agent = start_agent(config: Script.new(deaf_runner(test_pid)), grace: 25)
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -444,7 +445,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "leaves the agent able to take the next question" do
-      agent = start_agent(runner: streaming_runner(self()))
+      agent = start_agent(config: Script.new(streaming_runner(self())))
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -459,7 +460,7 @@ defmodule Wardrik.AgentTest do
 
   describe "waiting for a person" do
     test "an agent whose turn parked reports what it is waiting on" do
-      agent = start_agent(runner: parking_runner(self()))
+      agent = start_agent(config: Script.new(parking_runner(self())))
 
       Agent.ask(agent, "ship it")
       assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, prompt}]}}
@@ -472,7 +473,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "an idle agent is waiting on nothing" do
-      agent = start_agent(runner: runner(self()))
+      agent = start_agent(config: Script.new(runner(self())))
 
       assert Agent.parked(agent) == []
     end
@@ -482,7 +483,9 @@ defmodule Wardrik.AgentTest do
       answer = {:ok, [Assistant.new("shipped")]}
 
       agent =
-        start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, answer))
+        start_agent(
+          config: Script.new(parking_runner(test_pid), resume: resumer(test_pid, answer))
+        )
 
       Agent.ask(agent, "ship it")
       assert_receive %Event{payload: %Event.TurnParked{}}
@@ -493,7 +496,7 @@ defmodule Wardrik.AgentTest do
       assert_receive {:resumed, %{"call_1" => :approve}}
       assert_receive %Event{payload: %Event.TurnFinished{}}
       assert authors(agent) == [User, Assistant]
-      assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
+      assert %{state: :idle, pending: 0, model: "test:script"} = Agent.status(agent)
     end
 
     test "each decision says who made it" do
@@ -502,7 +505,9 @@ defmodule Wardrik.AgentTest do
       by = Wardrik.Principal.new(:channel, "slack/U1", name: "jon")
 
       agent =
-        start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, answer))
+        start_agent(
+          config: Script.new(parking_runner(test_pid), resume: resumer(test_pid, answer))
+        )
 
       Agent.ask(agent, "ship it")
       assert_receive %Event{payload: %Event.TurnParked{}}
@@ -525,7 +530,10 @@ defmodule Wardrik.AgentTest do
       test_pid = self()
       still = {:parked, parked_turn("call_2")}
 
-      agent = start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, still))
+      agent =
+        start_agent(
+          config: Script.new(parking_runner(test_pid), resume: resumer(test_pid, still))
+        )
 
       Agent.ask(agent, "ship it")
       assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, _}]}}
@@ -547,8 +555,10 @@ defmodule Wardrik.AgentTest do
 
       agent =
         start_agent(
-          runner: {AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
-          resumer: resumer(test_pid, answer)
+          config:
+            Script.new({AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
+              resume: resumer(test_pid, answer)
+            )
         )
 
       Agent.ask(agent, "open an issue")
@@ -582,8 +592,10 @@ defmodule Wardrik.AgentTest do
           credential = %{ref: "github", owner: owner}
 
           start_agent(
-            runner: {AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
-            resumer: resumer(test_pid, {:ok, [Assistant.new("opened")]})
+            config:
+              Script.new({AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
+                resume: resumer(test_pid, {:ok, [Assistant.new("opened")]})
+              )
           )
         end
 
@@ -605,7 +617,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "a call a hook asked about waits for a person, whatever credential arrives" do
-      agent = start_agent(runner: parking_runner(self()))
+      agent = start_agent(config: Script.new(parking_runner(self())))
 
       Agent.ask(agent, "ship it")
       assert_receive %Event{payload: %Event.TurnParked{}}
@@ -615,16 +627,16 @@ defmodule Wardrik.AgentTest do
     end
 
     test "resuming an agent that is not parked does nothing" do
-      agent = start_agent(runner: runner(self()))
+      agent = start_agent(config: Script.new(runner(self())))
 
       Agent.resume(agent, %{"call_1" => :approve})
 
-      assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
+      assert %{state: :idle, pending: 0, model: "test:script"} = Agent.status(agent)
     end
 
     test "a message arriving while parked queues rather than starting a second turn" do
       test_pid = self()
-      agent = start_agent(runner: parking_runner(test_pid))
+      agent = start_agent(config: Script.new(parking_runner(test_pid)))
 
       Agent.ask(agent, "ship it")
       assert_receive :asked
@@ -638,7 +650,7 @@ defmodule Wardrik.AgentTest do
 
     test "interrupt/1 abandons a parked turn and says what it dropped" do
       test_pid = self()
-      agent = start_agent(runner: parking_runner(test_pid))
+      agent = start_agent(config: Script.new(parking_runner(test_pid)))
 
       Agent.ask(agent, "ship it")
       assert_receive %Event{payload: %Event.TurnParked{}}
@@ -649,7 +661,7 @@ defmodule Wardrik.AgentTest do
       assert_receive %Event{payload: %Event.TurnInterrupted{stats: stats}}
       assert stats.resolution == :abandoned
       assert stats.dropped == 1
-      assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
+      assert %{state: :idle, pending: 0, model: "test:script"} = Agent.status(agent)
       assert Agent.parked(agent) == []
     end
   end
@@ -661,8 +673,10 @@ defmodule Wardrik.AgentTest do
       answer = {:ok, [Assistant.new("deployed")]}
 
       opts = [
-        runner: {AgentRunners, :checkpointing, [test_pid]},
-        replayer: {AgentRunners, :replaying, [test_pid, answer]}
+        config:
+          Script.new({AgentRunners, :checkpointing, [test_pid]},
+            recover: {AgentRunners, :replaying, [test_pid, answer]}
+          )
       ]
 
       agent = start_agent(opts, key)
@@ -690,8 +704,10 @@ defmodule Wardrik.AgentTest do
       answer = {:ok, [Assistant.new("left it")]}
 
       opts = [
-        runner: parking_runner(test_pid),
-        resumer: {AgentRunners, :holding, [test_pid, answer]}
+        config:
+          Script.new(parking_runner(test_pid),
+            resume: {AgentRunners, :holding, [test_pid, answer]}
+          )
       ]
 
       agent = start_agent(opts, key)
@@ -721,7 +737,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "a checkpoint from anything but the running turn is refused" do
-      agent = start_agent(runner: blocking_runner(self()))
+      agent = start_agent(config: Script.new(blocking_runner(self())))
 
       assert {:error, :not_the_running_turn} =
                GenServer.call(agent, {:checkpoint, AgentRunners.checkpoint()})
@@ -735,7 +751,7 @@ defmodule Wardrik.AgentTest do
       agent =
         start_agent(
           [
-            runner: reporting_runner(test_pid),
+            config: Script.new(reporting_runner(test_pid)),
             hooks: [%Wardrik.Hook{name: "some", module: SomeHook}],
             timeout: 60_000
           ],
@@ -759,7 +775,7 @@ defmodule Wardrik.AgentTest do
       agent =
         start_agent(
           [
-            runner: reporting_runner(test_pid),
+            config: Script.new(reporting_runner(test_pid)),
             hooks: [%Wardrik.Hook{name: "some", module: SomeHook}]
           ],
           Wardrik.AgentID.new!("configure-#{System.unique_integer([:positive])}",
@@ -768,8 +784,7 @@ defmodule Wardrik.AgentTest do
           )
         )
 
-      config =
-        Config.new(model_spec: "anthropic:claude-sonnet-5", system: "New here.")
+      config = Script.new(reporting_runner(test_pid), model: "anthropic:claude-sonnet-5")
 
       assert :ok =
                Agent.configure(agent,
@@ -793,7 +808,7 @@ defmodule Wardrik.AgentTest do
     test "an agent started with none of them has an inert run" do
       test_pid = self()
 
-      agent = start_agent(runner: reporting_runner(test_pid))
+      agent = start_agent(config: Script.new(reporting_runner(test_pid)))
       Agent.ask(agent, "hi")
 
       assert_receive {:run, run}

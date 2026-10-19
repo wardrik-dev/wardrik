@@ -1,9 +1,8 @@
 defmodule Wardrik.Test.AgentRunners do
   @moduledoc """
-  Turn runners and resumers for driving `Wardrik.Agent` without a model.
-
-  An agent's runner is an MFA, so these are named functions taking their own
-  arguments first and the `Wardrik.LLM.Turn` last, and handing the turn back.
+  What the turns of a `Wardrik.Test.Script` do, for driving `Wardrik.Agent`
+  without a model: named functions taking their own arguments first and the
+  `Wardrik.LLM.Turn` last, and handing the turn back.
   """
 
   alias Wardrik.Conversation
@@ -142,7 +141,8 @@ defmodule Wardrik.Test.AgentRunners do
 
   @doc "Hands the agent the turn before a batch, as a turn does, tells the test, and blocks."
   def checkpointing(test_pid, %Turn{run: run, context: context} = turn) do
-    :ok = GenServer.call(run.journal, {:checkpoint, checkpoint(context)})
+    checkpoint = Wardrik.Test.Turn.new(run.config, checkpoint(context))
+    :ok = GenServer.call(run.journal, {:checkpoint, checkpoint})
     send(test_pid, {:checkpointed, self()})
 
     receive do

@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.CLITest do
   use ExUnit.Case, async: false
 
+  alias Wardrik.Test.Script
   alias WardrikDaemon.Test.Host
 
   # Commands run over rpc build their callers on the daemon's host.
@@ -69,8 +70,10 @@ defmodule WardrikDaemon.CLITest do
 
     {key, agent} =
       Wardrik.Test.Fleet.start_agent(
-        runner: {AgentRunners, :parking, [test_pid, "call_1"]},
-        resumer: {AgentRunners, :resuming, [test_pid, answer]}
+        config:
+          Script.new({AgentRunners, :parking, [test_pid, "call_1"]},
+            resume: {AgentRunners, :resuming, [test_pid, answer]}
+          )
       )
 
     :ok = Event.Bus.subscribe(key)
@@ -95,7 +98,7 @@ defmodule WardrikDaemon.CLITest do
 
     {key, agent} =
       Wardrik.Test.Fleet.start_agent(
-        runner: {AgentRunners, :connecting, [self(), "call_1", link]}
+        config: Script.new({AgentRunners, :connecting, [self(), "call_1", link]})
       )
 
     :ok = Event.Bus.subscribe(key)
@@ -332,7 +335,9 @@ defmodule WardrikDaemon.CLITest do
     test_pid = self()
 
     {key, _agent} =
-      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [test_pid, "hello back"]})
+      Wardrik.Test.Fleet.start_agent(
+        config: Script.new({AgentRunners, :echo, [test_pid, "hello back"]})
+      )
 
     assert command(["ask", key, "hello", "there", "--no-wait"]) == {"Asked #{key}.\n", 0}
     assert_receive {:turn, [{:user, "From shell ops:\nhello there"}]}
@@ -340,7 +345,9 @@ defmodule WardrikDaemon.CLITest do
 
   test "ask follows the answer live, and says so where it cannot" do
     {key, _agent} =
-      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :emitting, ["# Shipped\nall done\n"]})
+      Wardrik.Test.Fleet.start_agent(
+        config: Script.new({AgentRunners, :emitting, ["# Shipped\nall done\n"]})
+      )
 
     assert command(["ask", key, "ship it"]) == {"", :live}
     assert live(["ask", key, "ship", "it"]) == {"Shipped\nall done\n", 0}
@@ -348,14 +355,18 @@ defmodule WardrikDaemon.CLITest do
 
   test "ask that parks says what it waits on and how to decide it; one that fails exits 1" do
     {parking, _agent} =
-      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :parking, [self(), "call_1"]})
+      Wardrik.Test.Fleet.start_agent(
+        config: Script.new({AgentRunners, :parking, [self(), "call_1"]})
+      )
 
     {output, 0} = live(["ask", parking, "deploy"])
     assert output =~ "Waiting on a person for 1 call:\n  ? deploy  call_1"
     assert output =~ "wardrik approve #{parking}, or deny, decides it."
 
     {failing, _agent} =
-      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :failing, [:rate_limited]})
+      Wardrik.Test.Fleet.start_agent(
+        config: Script.new({AgentRunners, :failing, [:rate_limited]})
+      )
 
     assert live(["ask", failing, "hi"]) == {"✗ the turn failed: :rate_limited\n", 1}
     assert live(["ask", "nobody/here", "hi"]) == {"No agent runs under nobody/here.\n", 1}
@@ -479,7 +490,9 @@ defmodule WardrikDaemon.CLITest do
     test_pid = self()
 
     {key, agent} =
-      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [test_pid, "hello back"]})
+      Wardrik.Test.Fleet.start_agent(
+        config: Script.new({AgentRunners, :echo, [test_pid, "hello back"]})
+      )
 
     assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
 
@@ -492,7 +505,9 @@ defmodule WardrikDaemon.CLITest do
 
   test "clear empties what has been said" do
     {key, agent} =
-      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "hello back"]})
+      Wardrik.Test.Fleet.start_agent(
+        config: Script.new({AgentRunners, :echo, [self(), "hello back"]})
+      )
 
     :ok = Event.Bus.subscribe(key)
     Agent.ask(agent, "hello", host: Host.host())
@@ -511,7 +526,7 @@ defmodule WardrikDaemon.CLITest do
 
     {key, _agent} =
       Wardrik.Test.Fleet.start_agent(
-        [runner: {AgentRunners, :echo, [test_pid, "hi"]}],
+        [config: Script.new({AgentRunners, :echo, [test_pid, "hi"]})],
         Wardrik.AgentID.new!(name, org: "default")
       )
 

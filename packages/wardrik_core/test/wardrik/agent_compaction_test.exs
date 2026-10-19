@@ -43,10 +43,25 @@ defmodule Wardrik.AgentCompactionTest do
     {key, agent}
   end
 
-  test "an outgrown history is summarised as the turn begins, which runs on it, and the agent keeps it" do
-    LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Two questions were asked and answered.")])
+  # Answers the summary with `summary`, and the turn after it, telling the
+  # test what the turn was asked.
+  defp answering(summary) do
+    test = self()
 
-    {_key, agent} = start(runner: {AgentRunners, :echo, [self(), "third answer"]})
+    LLM.answering(Wardrik.Test.llm(), fn
+      %{system: "You are condensing" <> _} ->
+        summary
+
+      asked ->
+        send(test, {:turn, AgentRunners.snapshot(Conversation.new(asked.messages))})
+        LLM.final_answer("third answer")
+    end)
+  end
+
+  test "an outgrown history is summarised as the turn begins, which runs on it, and the agent keeps it" do
+    answering(LLM.final_answer("Two questions were asked and answered."))
+
+    {_key, agent} = start([])
     Agent.ask(agent, "third question")
 
     compacting = %Event.SpanStarted{name: "compacting history"}
@@ -88,20 +103,20 @@ defmodule Wardrik.AgentCompactionTest do
       end
     end)
 
-    {_key, agent} = start(grace: 50, runner: {AgentRunners, :echo, [self(), "third answer"]})
+    {_key, agent} = start(grace: 50)
     Agent.ask(agent, "third question")
 
     assert_receive :summarising, 5_000
     :ok = Agent.interrupt(agent)
 
     assert_receive %Event{payload: %Event.TurnInterrupted{stats: %{resolution: :killed}}}, 5_000
-    refute_received {:turn, _turn}
+    refute_received :summarising
   end
 
   test "a summary that cannot be made leaves the history, and the turn runs regardless" do
-    LLM.stream(Wardrik.Test.llm(), [%Error{message: "timeout"}])
+    answering(%Error{message: "timeout"})
 
-    {_key, agent} = start(runner: {AgentRunners, :echo, [self(), "third answer"]})
+    {_key, agent} = start([])
     Agent.ask(agent, "third question")
 
     assert_receive {:turn, turn}, 5_000
@@ -119,16 +134,10 @@ defmodule Wardrik.AgentCompactionTest do
 
   test "a history that raises fails the turn it began" do
     capture_log(fn ->
-      {_key, agent} =
-        start(
-          config: Config.new(history: %Broken{}),
-          runner: {AgentRunners, :echo, [self(), "third answer"]}
-        )
-
+      {_key, agent} = start(config: Config.new(history: %Broken{}))
       Agent.ask(agent, "third question")
 
       assert_receive %Event{payload: %Event.TurnFailed{}}, 5_000
-      refute_received {:turn, _turn}
     end)
   end
 

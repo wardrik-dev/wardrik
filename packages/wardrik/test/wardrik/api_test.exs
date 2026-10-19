@@ -12,6 +12,7 @@ defmodule Wardrik.APITest do
   alias Wardrik.Servers.Server
   alias Wardrik.Spawned
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
 
   setup_all do
     wardrik =
@@ -32,17 +33,17 @@ defmodule Wardrik.APITest do
 
   defp id(name), do: AgentID.new!("#{name}-#{System.unique_integer([:positive])}", org: "acme")
 
-  # An agent that echoes, or parks on the call "call_1", run without a model,
-  # and so without compacting its history, which reads the model catalog.
-  defp start(runner) do
-    config = Wardrik.LLM.Config.new(history: %Wardrik.History.All{})
-    {id, _pid} = Wardrik.Test.Fleet.start_agent([runner: runner, config: config], id("agent"))
+  # An agent that echoes, or parks on the call "call_1", run without a model.
+  defp start(runner, opts \\ []) do
+    {id, _pid} = Wardrik.Test.Fleet.start_agent([config: Script.new(runner, opts)], id("agent"))
     id
   end
 
   defp parked(scope) do
     id =
-      start({AgentRunners, :parking, [self(), "call_1"]})
+      start({AgentRunners, :parking, [self(), "call_1"]},
+        resume: {AgentRunners, :resuming, [self(), {:ok, []}]}
+      )
 
     {:ok, _message} = Wardrik.agent_ask(scope, id, "ship it")
     assert_receive :asked, 5_000

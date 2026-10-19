@@ -2,7 +2,8 @@ defmodule Wardrik.Run do
   @moduledoc """
   Everything one run needs that nobody configures.
 
-  `Wardrik.LLM.Config` is supplied by the caller and says what an agent is;
+  A config, the agent's `Wardrik.Runtime.Settings`, such as a
+  `Wardrik.LLM.Config`, is supplied by the caller and says what an agent is;
   a run is what the system builds around it to actually take a turn, and
   says what this particular run may do. The split is the point: a config can
   be written down, shared and reused, while a run happens once and carries
@@ -24,7 +25,7 @@ defmodule Wardrik.Run do
 
   | Field | What it decides |
   | --- | --- |
-  | `:config` | which model, and what it can call |
+  | `:config` | the agent's settings: which model, and what it can call, for a `Wardrik.LLM.Config` |
   | `:source` | which agent the work is for, where its events go, and which span they belong to |
   | `:sender` | who asked for the work: the `Wardrik.Principal` who sent the messages a turn answers; see "Who asked" |
   | `:batch` | which batch of tool calls the work belongs to; see `batch/2` |
@@ -96,7 +97,6 @@ defmodule Wardrik.Run do
   alias Wardrik.Event
   alias Wardrik.Event.Bus
   alias Wardrik.Event.Source
-  alias Wardrik.LLM.Config
   alias Wardrik.Trace
 
   @enforce_keys [:config, :source, :host]
@@ -120,7 +120,7 @@ defmodule Wardrik.Run do
 
   @typedoc "The config a run was given, where its events go, and what it may do."
   @type t() :: %__MODULE__{
-          config: Config.t(),
+          config: Wardrik.Runtime.Settings.t(),
           source: Source.t(),
           host: Wardrik.Host.t(),
           sender: Wardrik.Principal.t() | nil,
@@ -167,8 +167,8 @@ defmodule Wardrik.Run do
       tool calls to before running it, so a turn lost part way can be
       replayed from there. `Wardrik.Agent` is one. Not inherited by `child/2`
   """
-  @spec root(Config.t(), Bus.agent_id(), keyword()) :: t()
-  def root(%Config{} = config, %Wardrik.AgentID{} = agent_id, opts \\ []) do
+  @spec root(Wardrik.Runtime.Settings.t(), Bus.agent_id(), keyword()) :: t()
+  def root(config, %Wardrik.AgentID{} = agent_id, opts \\ []) do
     %__MODULE__{
       config: config,
       source: Source.root(agent_id, opts),

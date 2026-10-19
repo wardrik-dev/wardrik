@@ -5,6 +5,7 @@ defmodule WardrikSlack.ThreadsTest do
   alias Wardrik.Fleet
   alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
   alias WardrikChannel.Context
   alias WardrikChannel.Installations
   alias WardrikChannel.Offer
@@ -62,7 +63,7 @@ defmodule WardrikSlack.ThreadsTest do
   def offering(agent, _channel), do: [%Offer{agent: agent}]
 
   @doc false
-  def starting(runner, _channel, agent), do: Fleet.spawn(agent, runner: runner)
+  def starting(runner, _channel, agent), do: Fleet.spawn(agent, config: Script.new(runner))
 
   # A Slack channel's agent, whose threads run on `runner`, bound to C1, and
   # posted in by a WardrikChannel.Replies of its own started with it.

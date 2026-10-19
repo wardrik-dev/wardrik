@@ -16,9 +16,9 @@ Mimic.copy(WardrikStore)
 # The tests that reach real services, which dev/services.sh starts, are
 # left out where nothing answers; see WardrikEcto.Test.Services.
 # The suite's fleet runs on the host a daemon builds from the suite's own
-# settings, its model calls answered by the suite's test model, held where a
-# command run over rpc finds it, as the daemon's tree holds it; see
-# WardrikDaemon.Test.Host.
+# settings, its model calls answered by the suite's test model and the test
+# runtime beside the model's, held where a command run over rpc finds it, as
+# the daemon's tree holds it; see WardrikDaemon.Test.Host.
 store = Wardrik.Test.store()
 
 config =
@@ -27,7 +27,12 @@ config =
     sections: Application.get_all_env(:wardrik_daemon)
   )
 
-host = %{WardrikDaemon.host(config, store: store) | llm: Wardrik.Test.llm()}
+host = %{
+  WardrikDaemon.host(config, store: store)
+  | llm: Wardrik.Test.llm(),
+    runtimes: Wardrik.Test.runtimes()
+}
+
 Application.put_env(:wardrik_daemon, WardrikDaemon.Test.Host, {host, config})
 
 Wardrik.Test.start(

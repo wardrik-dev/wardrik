@@ -24,7 +24,7 @@ defmodule Wardrik.Agent.Spec do
   | --- | --- |
   | `:id` | the agent's `Wardrik.AgentID` |
   | `:description` | what it is for, in words a person reads |
-  | `:config` | a `Wardrik.LLM.Config` |
+  | `:config` | its `Wardrik.Runtime.Settings`, a `Wardrik.LLM.Config` unless given |
   | `:idle_timeout` | how long it may have nothing to do before it sleeps, in milliseconds or `:infinity`; see `Wardrik.Agent` |
   | `:hooks`, `:retry`, `:ledger`, `:timeout` | the seams of `Wardrik.Run.seams/0` |
   """
@@ -40,7 +40,7 @@ defmodule Wardrik.Agent.Spec do
   @type t() :: %__MODULE__{
           id: AgentID.t(),
           description: String.t() | nil,
-          config: Config.t(),
+          config: Wardrik.Runtime.Settings.t(),
           idle_timeout: timeout(),
           hooks: [Wardrik.Hook.t()] | nil,
           retry: Wardrik.LLM.Retry.t() | nil,

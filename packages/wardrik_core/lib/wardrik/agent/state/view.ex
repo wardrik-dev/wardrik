@@ -39,7 +39,7 @@ defmodule Wardrik.Agent.State.View do
     %{
       state: activity(state.mode),
       pending: length(state.pending),
-      model: state.config.model_spec,
+      model: Wardrik.Runtime.Settings.model(state.config),
       activity: state.activity
     }
   end

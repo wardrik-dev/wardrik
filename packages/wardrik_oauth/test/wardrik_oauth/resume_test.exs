@@ -10,6 +10,7 @@ defmodule WardrikOAuth.ResumeTest do
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Calls
   alias Wardrik.Test.Fleet
+  alias Wardrik.Test.Script
   alias WardrikOAuth.Pending
 
   setup do
@@ -38,9 +39,11 @@ defmodule WardrikOAuth.ResumeTest do
 
     {key, agent} =
       Fleet.start_agent(
-        runner:
-          {AgentRunners, :connecting, [self(), "call_1", link, %{ref: "github", owner: whose}]},
-        resumer: {AgentRunners, :resuming, [self(), {:ok, []}]}
+        config:
+          Script.new(
+            {AgentRunners, :connecting, [self(), "call_1", link, %{ref: "github", owner: whose}]},
+            resume: {AgentRunners, :resuming, [self(), {:ok, []}]}
+          )
       )
 
     :ok = Event.Bus.subscribe(key)

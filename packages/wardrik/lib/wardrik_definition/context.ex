@@ -17,7 +17,7 @@ defmodule WardrikDefinition.Context do
         policies: %{"careful" => policy},
         defaults: %{"idle_timeout" => 900},
         seams: [ledger: %Wardrik.Ledger.Store{}],
-        config: [tool_prices: %{"web_search" => 0.005}],
+        runtimes: [%Wardrik.LLM.Runtime{config: [tool_prices: %{"web_search" => 0.005}]}],
         shares: [runbooks_share]
       }
 
@@ -51,8 +51,10 @@ defmodule WardrikDefinition.Context do
       definition says none: `idle_timeout`
     * `seams` - `Wardrik.Agent.Spec` options every agent gets, such as
       `ledger`
-    * `config` - `Wardrik.LLM.Config` options every agent gets, such as
-      `tool_prices`
+    * `runtimes` - the `Wardrik.Runtime`s that read a definition's
+      settings, `Wardrik.LLM.Runtime`'s by default, whose `config` holds the
+      `Wardrik.LLM.Config` options every agent it reads gets, such as
+      `tool_prices`; see `WardrikDefinition`
     * `shares` - the trees the deployment lets agents beyond their owners
       mount, as `WardrikWorkspace.Share`s
     * `triggers` - the trigger sources and webhook verifiers a definition's
@@ -75,7 +77,7 @@ defmodule WardrikDefinition.Context do
             policies: %{},
             defaults: %{},
             seams: [],
-            config: [],
+            runtimes: [%Wardrik.LLM.Runtime{}],
             shares: [],
             triggers: %WardrikTrigger.Offered{},
             names: %{host: "the host", config: "the host", policies: "the host's policies"}
@@ -96,7 +98,7 @@ defmodule WardrikDefinition.Context do
           policies: %{String.t() => WardrikPolicy.t()},
           defaults: %{String.t() => term()},
           seams: keyword(),
-          config: keyword(),
+          runtimes: [Wardrik.Runtime.t(), ...],
           shares: [WardrikWorkspace.Share.t()],
           triggers: WardrikTrigger.Offered.t(),
           names: %{host: String.t(), config: String.t(), policies: String.t()}

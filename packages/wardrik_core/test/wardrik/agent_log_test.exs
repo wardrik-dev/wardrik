@@ -9,6 +9,7 @@ defmodule Wardrik.AgentLogTest do
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.EventLog
   alias Wardrik.Test.LLM
+  alias Wardrik.Test.Script
 
   setup do
     key = Wardrik.Test.Fleet.id("log")
@@ -20,8 +21,10 @@ defmodule Wardrik.AgentLogTest do
     {^key, agent} =
       Wardrik.Test.Fleet.start_agent(
         [
-          runner: {AgentRunners, :parking, [self(), "call_1"]},
-          resumer: {AgentRunners, :resuming, [self(), {:ok, []}]}
+          config:
+            Script.new({AgentRunners, :parking, [self(), "call_1"]},
+              resume: {AgentRunners, :resuming, [self(), {:ok, []}]}
+            )
         ],
         key
       )

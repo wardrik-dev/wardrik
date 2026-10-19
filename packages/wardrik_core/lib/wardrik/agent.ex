@@ -78,13 +78,9 @@ defmodule Wardrik.Agent do
 
   ## A history that grows
 
-  As a turn begins, its task hands the agent's history to its config's
-  `Wardrik.History`, before the messages it answers join it. The default,
-  `Wardrik.Compaction`, summarises the older part of a history that has
-  outgrown the model's window, with the agent's own model. The agent keeps
-  what it answers, and `Wardrik.Event.ContextCompacted` reports it on the turn's
-  trace. A history that cannot be rewritten, `{:error, reason}`, is kept as it
-  was, and the turn runs regardless.
+  A turn may rewrite the history it begins on, as `Wardrik.LLM.Turn`
+  summarises one that has outgrown its model's window, and hands what it
+  keeps to the agent, which keeps it from then on.
 
   `clear/1` empties the history of an idle agent, and reports
   `Wardrik.Event.ContextCleared`, with how many messages it held. It is how an
@@ -106,13 +102,16 @@ defmodule Wardrik.Agent do
 
   ## What a host supplies
 
-  Beyond `:config`, an agent takes the seams every run it roots is built
-  with: `:hooks` decide whether a tool call may run and a model call be made,
-  `:retry` whether one that failed is asked again, and `:timeout` bounds the
-  whole turn. Each is optional: `Wardrik.Run.root/3` says what each is
-  without one. Who the work is for is read from the agent's ID. What a model
-  call actually is, and who pays for it, is the host's
-  `Wardrik.LLM.Dispatch`, the same for every agent.
+  An agent's `:config` is its `Wardrik.Runtime.Settings`, which name the
+  host's `Wardrik.Runtime` that makes its turns, `Wardrik.LLM.Runtime` for a
+  `Wardrik.LLM.Config`; see `Wardrik.Host.runtime/2`. Beyond it, an agent
+  takes the seams every run it roots is built with: `:hooks` decide whether
+  a tool call may run and a model call be made, `:retry` whether one that
+  failed is asked again, and `:timeout` bounds the whole turn. Each is
+  optional: `Wardrik.Run.root/3` says what each is without one. Who the work
+  is for is read from the agent's ID. What a model call actually is, and who
+  pays for it, is the host's `Wardrik.LLM.Dispatch`, the same for every
+  agent.
 
   A config's tools are built on whichever node runs the agent. One that node
   cannot build is left out with a warning.
@@ -197,9 +196,9 @@ defmodule Wardrik.Agent do
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
   alias Wardrik.Fleet
-  alias Wardrik.History
   alias Wardrik.Host
-  alias Wardrik.LLM.Tokens
+  alias Wardrik.Runtime
+  alias Wardrik.Runtime.Settings
   alias Wardrik.Turn
   alias Wardrik.Turn.Signal
 
@@ -212,20 +211,14 @@ defmodule Wardrik.Agent do
   @typedoc "What an interrupt stopped."
   @type stats() :: State.stats()
 
-  @typedoc "Runs one turn and reports how it ended."
-  @type runner() :: State.runner()
-
-  @typedoc "Finishes a parked turn once its calls have been answered."
-  @type resumer() :: State.resumer()
-
   # Transitions worth keeping sync on their own. This is the backstop.
   @sync_every_ms 30_000
 
   @doc """
   The state an agent starts life with, for `Wardrik.Fleet.spawn/2` to hand over.
 
-  Options: `:config`, `:history`, `:runner`, `:resumer`, `:grace`,
-  `:idle_timeout`, `:wake_only`, and the run's `Wardrik.Run.seams/0`.
+  Options: `:config`, `:history`, `:grace`, `:idle_timeout`, `:wake_only`,
+  and the run's `Wardrik.Run.seams/0`.
 
   `:idle_timeout` is how long the agent may have nothing to do before it
   sleeps, in milliseconds or `:infinity`; see "Sleeping" above. `:wake_only`
@@ -234,8 +227,7 @@ defmodule Wardrik.Agent do
   itself as it starts.
 
   `:grace` is how long an interrupted turn is given to answer before it is
-  killed, #{State.default_grace()}ms by default. `:runner` and `:resumer` are
-  `{module, function, args}`; see `t:Wardrik.Agent.State.runner/0`.
+  killed, #{State.default_grace()}ms by default.
   """
   @spec initial_state(keyword(), Wardrik.AgentID.t()) :: State.t()
   def initial_state(opts, id), do: State.new(opts, id)
@@ -556,7 +548,7 @@ defmodule Wardrik.Agent do
 
   defp carry_on(state, run, turn, decisions, started_at) do
     Event.emit(run.source, %Event.TurnResumed{decisions: decisions})
-    task = tethered(fn -> State.apply_resumer(state, run, turn, decisions) end)
+    task = tethered(fn -> turn |> Turn.under(run) |> Turn.resume(decisions) end)
 
     state
     |> heed(&Credential.unsubscribe/2)
@@ -756,54 +748,28 @@ defmodule Wardrik.Agent do
 
   # -- turns -----------------------------------------------------------------
 
+  # The turn is made in its task, as making one may read what it begins with,
+  # such as the files its tools tell the model first.
   defp start(state, run, messages) do
     run = run |> journaled() |> heard(messages)
+    asked = Enum.map(messages, &User.new(Message.content(&1)))
+    runtime = Host.runtime(state.host, Settings.key(state.config))
+    history = state.history
 
     Event.emit(run.source, %Event.TurnStarted{messages: messages})
-    task = tethered(fn -> State.apply_runner(state, run, kept(state, run, messages)) end)
 
-    State.started(state, task, run, asked(state.history, messages), System.monotonic_time())
+    task =
+      tethered(fn ->
+        runtime |> Runtime.turn(run, history: history, asked: asked) |> Turn.run()
+      end)
+
+    State.started(state, task, run, Conversation.append(history, asked), System.monotonic_time())
   end
-
-  # What the agent's history keeps of itself, with the turn's messages after
-  # it, word for word. A history rewritten is handed to this agent to keep, as
-  # a batch is, before the turn runs on it.
-  defp kept(state, run, messages) do
-    case History.prepare(state.config.history, state.history, run: run) do
-      {:ok, history} ->
-        stats = stats(state.history, history)
-        history = asked(history, messages)
-        :ok = GenServer.call(run.journal, {:kept, history}, :timer.seconds(30))
-        Event.emit(run.source, %Event.ContextCompacted{stats: stats})
-        history
-
-      :keep ->
-        asked(state.history, messages)
-
-      {:error, _reason} ->
-        asked(state.history, messages)
-    end
-  end
-
-  defp stats(before, kept) do
-    before = Conversation.to_list(before)
-    kept = Conversation.to_list(kept)
-
-    %{
-      messages_before: length(before),
-      messages_after: length(kept),
-      tokens_before: Tokens.messages(before),
-      tokens_after: Tokens.messages(kept)
-    }
-  end
-
-  defp asked(history, messages),
-    do: Conversation.append(history, Enum.map(messages, &User.new(Message.content(&1))))
 
   defp replay(state, run, checkpoint) do
     run = journaled(run)
     Event.emit(run.source, %Event.TurnStarted{messages: []})
-    task = tethered(fn -> State.apply_replayer(state, run, checkpoint) end)
+    task = tethered(fn -> checkpoint |> Turn.under(run) |> Turn.recover() end)
 
     State.replayed(state, task, run, checkpoint, System.monotonic_time())
   end

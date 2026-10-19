@@ -72,11 +72,12 @@ defmodule Wardrik.LLM.Config do
 
   ## Travelling
 
-  `dump/1` writes a config down with its module-named tools, and `load/1` reads
-  it back on whatever node holds it, where they build their tools again. A
-  `Wardrik.Tool` given inline is not named by anything that could build it
-  there, so it cannot travel; a module this node cannot build cannot either.
-  Both are dropped, and `load/1` warns with their names.
+  A config is the `Wardrik.Runtime.Settings` of an agent `Wardrik.LLM.Runtime`
+  runs. `dump/1` writes it down with its module-named tools, and `load/1`
+  reads it back on whatever node holds it, where they build their tools
+  again. A `Wardrik.Tool` given inline is not named by anything that could
+  build it there, so it cannot travel; a module this node cannot build cannot
+  either. Both are dropped, and `load/1` warns with their names.
   """
 
   require Logger
@@ -92,7 +93,8 @@ defmodule Wardrik.LLM.Config do
             tool_prices: %{},
             generation: [],
             max_iterations: 30,
-            history: %Wardrik.Compaction{}
+            history: %Wardrik.Compaction{},
+            dropped_tools: []
 
   @type t :: %__MODULE__{
           model_spec: String.t() | {atom(), keyword()},
@@ -103,21 +105,8 @@ defmodule Wardrik.LLM.Config do
           tool_prices: %{String.t() => number()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
-          history: Wardrik.History.t()
-        }
-
-  @typedoc "A config written down: its fields, with the names of the tools that could not travel."
-  @type dumped() :: %{
-          model_spec: String.t() | {atom(), keyword()},
-          system: String.t() | nil,
-          tools: [module() | {module(), term()}],
-          dropped_tools: [String.t()],
-          except_tools: [String.t()],
-          tool_timeouts: %{String.t() => timeout()},
-          tool_prices: %{String.t() => number()},
-          generation: keyword(),
-          max_iterations: pos_integer() | :infinity,
-          history: Wardrik.History.t()
+          history: Wardrik.History.t(),
+          dropped_tools: [String.t()]
         }
 
   @doc """
@@ -209,14 +198,14 @@ defmodule Wardrik.LLM.Config do
     end
   end
 
-  @doc "Writes a config down as data. Tools given inline are kept only by name."
-  @spec dump(t()) :: dumped()
+  @doc """
+  Writes a config down as data. Tools given inline are kept only by name, in
+  `:dropped_tools`.
+  """
+  @spec dump(t()) :: t()
   def dump(%__MODULE__{} = config) do
     {travelling, inline} = Enum.split_with(config.tools, &Tool.travels?/1)
-
-    config
-    |> Map.from_struct()
-    |> Map.merge(%{tools: travelling, dropped_tools: Enum.map(inline, & &1.name)})
+    %{config | tools: travelling, dropped_tools: Enum.map(inline, & &1.name)}
   end
 
   @doc """
@@ -225,17 +214,24 @@ defmodule Wardrik.LLM.Config do
   Tools that could not travel, and modules this node does not have, are named
   in a warning and never stop the config being read.
   """
-  @spec load(dumped()) :: t()
-  def load(%{tools: specs, dropped_tools: dropped} = dumped) do
+  @spec load(t()) :: t()
+  def load(%__MODULE__{tools: specs, dropped_tools: dropped} = dumped) do
     {here, missing} = Enum.split_with(specs, &Tool.available?/1)
     warn_dropped(dropped ++ Enum.map(missing, &inspect/1))
 
-    struct!(__MODULE__, dumped |> Map.delete(:dropped_tools) |> Map.put(:tools, here))
+    %{dumped | tools: here, dropped_tools: []}
   end
 
   defp warn_dropped([]), do: :ok
 
   defp warn_dropped(names) do
     Logger.warning("Tools left behind by a config that travelled: #{Enum.join(names, ", ")}")
+  end
+
+  defimpl Wardrik.Runtime.Settings do
+    def key(_config), do: "model"
+    def model(config), do: config.model_spec
+    defdelegate dump(config), to: Wardrik.LLM.Config
+    defdelegate load(config), to: Wardrik.LLM.Config
   end
 end

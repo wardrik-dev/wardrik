@@ -20,6 +20,7 @@ defmodule Wardrik.TalkingTest do
   alias Wardrik.Test.Audit
   alias Wardrik.Test.EventLog
   alias Wardrik.Test.Fleet
+  alias Wardrik.Test.Script
   alias Wardrik.Token
 
   @jon %{"type" => "user", "id" => "jon", "name" => "Jon"}
@@ -34,10 +35,12 @@ defmodule Wardrik.TalkingTest do
   defp parked_agent(sender \\ nil) do
     {id, agent} =
       Fleet.start_agent(
-        runner: {AgentRunners, :parking, [self(), "call_1"]},
-        resumer:
-          {AgentRunners, :resuming,
-           [self(), {:ok, [Wardrik.Conversation.Assistant.new("shipped")]}]}
+        config:
+          Script.new({AgentRunners, :parking, [self(), "call_1"]},
+            resume:
+              {AgentRunners, :resuming,
+               [self(), {:ok, [Wardrik.Conversation.Assistant.new("shipped")]}]}
+          )
       )
 
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
@@ -49,7 +52,10 @@ defmodule Wardrik.TalkingTest do
   # An agent running a turn, which goes on until it is sent `:release`.
   defp busy_agent(id \\ Fleet.id()) do
     {id, agent} =
-      Fleet.start_agent([runner: {AgentRunners, :blocking, [self(), "ok"]}, grace: 10], id)
+      Fleet.start_agent(
+        [config: Script.new({AgentRunners, :blocking, [self(), "ok"]}), grace: 10],
+        id
+      )
 
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "wait")
@@ -118,7 +124,7 @@ defmodule Wardrik.TalkingTest do
   end
 
   test "a page of events after a sequence, and where the log now starts" do
-    {id, agent} = Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "ok"]})
+    {id, agent} = Fleet.start_agent(config: Script.new({AgentRunners, :echo, [self(), "ok"]}))
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "hi")
     assert_receive %Event{payload: %Event.TurnFinished{}}
@@ -137,7 +143,9 @@ defmodule Wardrik.TalkingTest do
       link = %{url: "https://github.com/login/device", code: "WDJB-MJHT"}
 
       {id, agent} =
-        Fleet.start_agent(runner: {AgentRunners, :connecting, [self(), "call_1", link]})
+        Fleet.start_agent(
+          config: Script.new({AgentRunners, :connecting, [self(), "call_1", link]})
+        )
 
       :ok = Event.Bus.subscribe(id, level: :lifecycle)
       Agent.ask(agent, "open an issue")
@@ -165,7 +173,7 @@ defmodule Wardrik.TalkingTest do
 
   describe "asking" do
     test "sends the agent the message from the scope, and says where its log stood" do
-      {id, _agent} = Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "ok"]})
+      {id, _agent} = Fleet.start_agent(config: Script.new({AgentRunners, :echo, [self(), "ok"]}))
       :ok = Event.Bus.subscribe(id)
 
       assert {:ok, %Message{id: "m1", sequence: sequence}} =

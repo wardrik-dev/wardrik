@@ -62,10 +62,9 @@ defmodule Wardrik.Agent.State do
   would have then, until `clear/1` empties the history. A summary of the
   history keeps them, since it was written from what was read.
 
-  A turn's task hands its config's `Wardrik.History` the history first, and
-  the history it keeps, a summary in place of its older part, say, is the
-  agent's from then on: `kept/3` records it, so a turn that parks or is lost
-  keeps it too.
+  A turn may hand the agent a history it rewrote as it began, a summary in
+  place of its older part, say, which is the agent's from then on: `kept/3`
+  records it, so a turn that parks or is lost keeps it too.
 
   ## Who the turn answers
 
@@ -189,7 +188,7 @@ defmodule Wardrik.Agent.State do
 
   @default_idle_timeout :timer.minutes(15)
 
-  @enforce_keys [:agent_id, :config, :history, :runner, :resumer, :run_opts, :log, :host]
+  @enforce_keys [:agent_id, :config, :history, :run_opts, :log, :host]
   defstruct [
     :generation,
     :agent_id,
@@ -197,11 +196,8 @@ defmodule Wardrik.Agent.State do
     :host,
     :config,
     :history,
-    :runner,
-    :resumer,
     :run_opts,
     :activity,
-    replayer: {Turn, :recover, []},
     grace: @default_grace,
     idle_timeout: @default_idle_timeout,
     active_at: nil,
@@ -231,33 +227,13 @@ defmodule Wardrik.Agent.State do
   """
   @type mode() :: :idle | Due.t() | Running.t() | Waiting.t()
 
-  @typedoc """
-  Runs one turn and hands it back, as `{module, function, args}`.
-
-  Called with the `Wardrik.LLM.Turn` to run appended to `args`, so a host that
-  needs to carry something of its own into the turn carries it there. It is an
-  MFA rather than a function because an agent's state is written down and read
-  back on another machine, and a closure is code rather than data.
-  """
-  @type runner() :: {module(), atom(), list()}
-
-  @typedoc """
-  Finishes a waiting turn once its calls have been answered.
-
-  Called with the turn, under the run it resumes in, and the decisions
-  appended to `args`.
-  """
-  @type resumer() :: {module(), atom(), list()}
-
   @type t() :: %__MODULE__{
           generation: String.t(),
           agent_id: Event.Bus.agent_id(),
           log: Writer.t(),
           host: Wardrik.Host.t(),
-          config: Config.t(),
+          config: Wardrik.Runtime.Settings.t(),
           history: Conversation.t(),
-          runner: runner(),
-          resumer: resumer(),
           run_opts: keyword(),
           activity: Activity.t(),
           grace: pos_integer(),
@@ -327,9 +303,6 @@ defmodule Wardrik.Agent.State do
       host: Wardrik.Host.new(),
       config: Keyword.get(opts, :config, Config.new()),
       history: Keyword.get(opts, :history, Conversation.new()),
-      runner: mfa!(Keyword.get(opts, :runner, {Turn, :run, []}), :runner),
-      resumer: mfa!(Keyword.get(opts, :resumer, {Turn, :resume, []}), :resumer),
-      replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :recover, []}), :replayer),
       run_opts: Keyword.take(opts, Run.seams()),
       activity: %Activity{doing: :idle, since: System.system_time(:microsecond)},
       grace: Keyword.get(opts, :grace, @default_grace),
@@ -405,43 +378,6 @@ defmodule Wardrik.Agent.State do
   defp at_rest?(%__MODULE__{}), do: false
 
   defp generation, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
-
-  defp mfa!({module, function, args}, _key)
-       when is_atom(module) and is_atom(function) and is_list(args),
-       do: {module, function, args}
-
-  defp mfa!(other, key) do
-    raise ArgumentError,
-          ":#{key} must be {module, function, args}, got: #{inspect(other)}. " <>
-            "An agent's state is written down and read back elsewhere, so a function cannot be one."
-  end
-
-  @doc "Runs a turn with the runner this agent was given."
-  @spec apply_runner(t(), Run.t(), Conversation.t()) :: Turn.t()
-  def apply_runner(%__MODULE__{runner: {module, function, args}}, %Run{} = run, history) do
-    apply(module, function, args ++ [Wardrik.LLM.Turn.new(run, history)])
-  end
-
-  @doc "Finishes a parked turn with the resumer this agent was given."
-  @spec apply_resumer(t(), Run.t(), Turn.t(), map()) :: Turn.t()
-  def apply_resumer(
-        %__MODULE__{resumer: {module, function, args}},
-        %Run{} = run,
-        turn,
-        decisions
-      ) do
-    apply(module, function, args ++ [Turn.under(turn, run), decisions])
-  end
-
-  @doc "Carries on a lost turn from where its journal last had it, with the replayer this agent was given."
-  @spec apply_replayer(t(), Run.t(), Turn.t()) :: Turn.t()
-  def apply_replayer(
-        %__MODULE__{replayer: {module, function, args}},
-        %Run{} = run,
-        checkpoint
-      ) do
-    apply(module, function, args ++ [Turn.under(checkpoint, run)])
-  end
 
   @doc """
   Whether the turn this agent waits on parked under hooks other than the ones

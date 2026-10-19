@@ -18,7 +18,10 @@ defmodule WardrikDefinition do
 
   What a definition may name, the host says in a `WardrikDefinition.Context`:
   the tools it ships, its MCP servers, channels, notify targets and
-  policies, the defaults every agent takes, and the seams every agent gets.
+  policies, the defaults every agent takes, the seams every agent gets, and
+  the runtimes that read its settings. A definition is read by the first of
+  the context's runtimes whose key it names, `model` for
+  `Wardrik.LLM.Runtime`, or by the first where it names none.
 
   Where it came from, the source, says what it may say:
 
@@ -38,9 +41,9 @@ defmodule WardrikDefinition do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
-  alias Wardrik.LLM.Config
   alias Wardrik.LLM.Retry.Backoff
   alias Wardrik.Resource
+  alias Wardrik.Runtime
   alias WardrikDefinition.Context
   alias WardrikPolicy.Pattern
 
@@ -403,26 +406,30 @@ defmodule WardrikDefinition do
   # Everything a file and a definition say alike, for the agent `id`. `modules?`
   # lets `tools` and `policy` name modules.
   defp build(fields, system, context, modules?, id) do
-    config =
-      ([
-         system: if(system == "", do: nil, else: system),
-         tools: tools(fields, context, modules?, id)
-       ] ++ context.config)
-      |> put(:model_spec, fields["model"], &string!(&1, "model"))
-      |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
-      |> compaction(fields)
-      |> Config.new()
+    resolved = %Runtime.Context{
+      instructions: if(system == "", do: nil, else: system),
+      tools: tools(fields, context, modules?, id)
+    }
 
     ([
        id: id,
        description: optional_string!(fields["description"], "description"),
-       config: config,
+       config: settings!(fields, resolved, context.runtimes),
        hooks: ceilings(context, id.org) ++ policy(fields["policy"], context, modules?),
        timeout: fields["timeout"] && seconds!(fields["timeout"]),
        retry: retry!(fields["retries"] || context.defaults["retries"] || %{})
      ] ++ context.seams)
     |> put(:idle_timeout, fields["idle_timeout"] || context.defaults["idle_timeout"], &idle!/1)
     |> Spec.new()
+  end
+
+  defp settings!(fields, resolved, [first | _rest] = runtimes) do
+    runtime = Enum.find(runtimes, first, &Map.has_key?(fields, Runtime.key(&1)))
+
+    case Runtime.read(runtime, fields, resolved) do
+      {:ok, settings} -> settings
+      {:error, message} -> invalid!(message)
+    end
   end
 
   defp put(opts, _key, nil, _cast), do: opts
@@ -867,52 +874,12 @@ defmodule WardrikDefinition do
     ArgumentError -> invalid!("names #{name}, which is neither #{known} nor a module")
   end
 
-  defp compaction(config, %{"compaction" => false}),
-    do: Keyword.put(config, :history, %Wardrik.History.All{})
-
-  defp compaction(config, %{"compaction" => %{} = fields}) do
-    case Map.keys(fields) -- ~w(at keep window) do
-      [] ->
-        compaction =
-          Wardrik.Compaction.new(
-            at: share!(fields, "at", 0.6),
-            keep: share!(fields, "keep", 0.25),
-            window: window!(fields["window"])
-          )
-
-        Keyword.put(config, :history, compaction)
-
-      [key | _] ->
-        invalid!("compaction #{key} is not a setting; expected at, keep or window")
-    end
-  end
-
-  defp compaction(_config, %{"compaction" => _other}),
-    do: invalid!("compaction is false, or a set of at, keep and window")
-
-  defp compaction(config, _fields), do: config
-
-  defp share!(fields, key, default) do
-    case Map.get(fields, key, default) do
-      n when is_number(n) and n > 0 and n < 1 -> n / 1
-      _other -> invalid!("compaction #{key} is a share of the window, between 0 and 1")
-    end
-  end
-
-  defp window!(nil), do: nil
-  defp window!(n) when is_integer(n) and n > 0, do: n
-  defp window!(_n), do: invalid!("compaction window is a whole number of tokens")
-
   defp seconds!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)
   defp seconds!(_seconds), do: invalid!("timeout is a whole number of seconds")
 
   defp idle!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)
   defp idle!("infinity"), do: :infinity
   defp idle!(_seconds), do: invalid!("idle_timeout is a whole number of seconds, or infinity")
-
-  defp iterations!(n) when is_integer(n) and n > 0, do: n
-  defp iterations!("infinity"), do: :infinity
-  defp iterations!(_n), do: invalid!("max_iterations is a whole number, or infinity")
 
   defp retry!(fields) do
     case backoff(fields) do
@@ -943,9 +910,6 @@ defmodule WardrikDefinition do
 
   defp retry(_key, _value),
     do: {:error, "is not a setting; expected attempts, max_wait or on_exhausted"}
-
-  defp string!(value, _key) when is_binary(value), do: value
-  defp string!(_value, key), do: invalid!("#{key} is a string")
 
   defp optional_string!(nil, _key), do: nil
 

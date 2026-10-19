@@ -24,6 +24,7 @@ defmodule Wardrik.LifecycleTest do
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Audit
   alias Wardrik.Test.Fleet
+  alias Wardrik.Test.Script
   alias Wardrik.Token
 
   # Keeps what it is sent in the suite's store, triggers beside definitions;
@@ -169,7 +170,10 @@ defmodule Wardrik.LifecycleTest do
   # An agent running a turn, which goes on until it is sent `:release`.
   defp busy_agent(id \\ Fleet.id()) do
     {id, agent} =
-      Fleet.start_agent([runner: {AgentRunners, :blocking, [self(), "ok"]}, grace: 10], id)
+      Fleet.start_agent(
+        [config: Script.new({AgentRunners, :blocking, [self(), "ok"]}), grace: 10],
+        id
+      )
 
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "wait")

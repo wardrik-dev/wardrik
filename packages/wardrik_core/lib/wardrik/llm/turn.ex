@@ -27,6 +27,7 @@ defmodule Wardrik.LLM.Turn do
     * `:context` - the `Wardrik.Conversation` as it stands, what it added
       included, and `nil` where it is stored beside the history it began on,
       which with `:messages` makes it again; see `dump/1` and `load/2`
+    * `:asked` - what it is asked, which joins `:context` as `run/1` begins
     * `:messages` - what it added, in order
     * `:remaining` - how many rounds of tool use it has left
     * `:answer` - the model's `Wardrik.LLM.Answer` whose tool calls it is
@@ -96,9 +97,20 @@ defmodule Wardrik.LLM.Turn do
   credentials and runs no processes, and `under/2` gives it the run it
   resumes under.
 
+  ## A history that grows
+
+  As `run/1` begins, it hands the conversation to its config's
+  `Wardrik.History`, before what it is asked joins it. The default,
+  `Wardrik.Compaction`, summarises the older part of a history that has
+  outgrown the model's window, with the agent's own model. A history
+  rewritten is handed to the run's journal to keep, as a batch is, before the
+  turn runs on it, and `Wardrik.Event.ContextCompacted` reports it on the
+  turn's trace. A history that cannot be rewritten, `{:error, reason}`, is
+  kept as it was, and the turn runs regardless.
+
   ## What the tools say first
 
-  `new/2` asks each of the config's tools what it tells the model before the
+  `new/3` asks each of the config's tools what it tells the model before the
   turn (see `c:Wardrik.Tool.context/1`), once, and every request the turn
   makes carries it after the system prompt. The turn keeps it, so a turn
   carried on after a lost node says what it began with. The labels of what a
@@ -157,6 +169,7 @@ defmodule Wardrik.LLM.Turn do
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Event
+  alias Wardrik.History
   alias Wardrik.Hook
   alias Wardrik.Host
   alias Wardrik.LLM.Answer
@@ -164,6 +177,7 @@ defmodule Wardrik.LLM.Turn do
   alias Wardrik.LLM.Client
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Retry
+  alias Wardrik.LLM.Tokens
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Run
   alias Wardrik.Tool
@@ -178,6 +192,7 @@ defmodule Wardrik.LLM.Turn do
     :revision,
     :error,
     :preamble,
+    asked: [],
     messages: [],
     remaining: :infinity,
     calls: [],
@@ -194,6 +209,7 @@ defmodule Wardrik.LLM.Turn do
           revision: String.t() | nil,
           error: term(),
           preamble: String.t() | nil,
+          asked: [Conversation.message()],
           messages: [Conversation.message()],
           remaining: non_neg_integer() | :infinity,
           calls: [Call.t()],
@@ -208,15 +224,17 @@ defmodule Wardrik.LLM.Turn do
 
   @doc """
   A turn to answer `context` under `run`, with the rounds its config allows,
-  and what its tools tell the model first.
+  and what its tools tell the model first. `:asked` is what it is asked,
+  which joins `context` as it runs.
   """
-  @spec new(Run.t(), Conversation.t()) :: t()
-  def new(%Run{config: config} = run, %Conversation{} = context) do
+  @spec new(Run.t(), Conversation.t(), asked: [Conversation.message()]) :: t()
+  def new(%Run{config: config} = run, %Conversation{} = context, opts \\ []) do
     {preamble, labels} = Tool.context(config.tools, run)
 
     %__MODULE__{
       run: run,
       context: context,
+      asked: Keyword.get(opts, :asked, []),
       remaining: config.max_iterations,
       preamble: preamble,
       labels: Wardrik.Label.union(run.labels, labels)
@@ -225,7 +243,41 @@ defmodule Wardrik.LLM.Turn do
 
   @doc "Runs `turn` until it is done, waits on a person, or fails."
   @spec run(t()) :: t()
-  def run(%__MODULE__{state: :running, run: %Run{}} = turn), do: loop(turn)
+  def run(%__MODULE__{state: :running, run: %Run{}} = turn), do: turn |> kept() |> loop()
+
+  defp kept(%__MODULE__{run: run, context: history, asked: asked} = turn) do
+    context =
+      case History.prepare(run.config.history, history, run: run) do
+        {:ok, kept} ->
+          context = Conversation.append(kept, asked)
+          :ok = keep(run.journal, context)
+          Event.emit(run.source, %Event.ContextCompacted{stats: stats(history, kept)})
+          context
+
+        :keep ->
+          Conversation.append(history, asked)
+
+        {:error, _reason} ->
+          Conversation.append(history, asked)
+      end
+
+    %{turn | context: context, asked: []}
+  end
+
+  defp keep(nil, _context), do: :ok
+  defp keep(journal, context), do: GenServer.call(journal, {:kept, context}, :timer.seconds(30))
+
+  defp stats(before, kept) do
+    before = Conversation.to_list(before)
+    kept = Conversation.to_list(kept)
+
+    %{
+      messages_before: length(before),
+      messages_after: length(kept),
+      tokens_before: Tokens.messages(before),
+      tokens_after: Tokens.messages(kept)
+    }
+  end
 
   @doc "The turn under `run`, or under none for one that is written down."
   @spec under(t(), Run.t() | nil) :: t()

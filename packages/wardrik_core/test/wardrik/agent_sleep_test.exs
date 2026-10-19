@@ -13,6 +13,7 @@ defmodule Wardrik.AgentSleepTest do
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.LLM
+  alias Wardrik.Test.Script
 
   @idle 50
 
@@ -31,7 +32,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "an agent idle past its timeout stops, and its next message wakes it as it was" do
-    key = start_agent(runner: runner(self()))
+    key = start_agent(config: Script.new(runner(self())))
 
     :ok = Agent.ask(key, "hello", host: Wardrik.Test.host())
     assert_receive {:turn, [{:user, "hello"}]}
@@ -49,7 +50,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "an agent with something to do does not sleep" do
-    key = start_agent(runner: {AgentRunners, :blocking, [self(), "ok"]})
+    key = start_agent(config: Script.new({AgentRunners, :blocking, [self(), "ok"]}))
 
     :ok = Agent.ask(key, "work", host: Wardrik.Test.host())
     assert_receive {:turn, _messages, turn}
@@ -60,7 +61,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "an agent that never sleeps stays up" do
-    key = start_agent(runner: runner(self()), idle_timeout: :infinity)
+    key = start_agent(config: Script.new(runner(self())), idle_timeout: :infinity)
 
     :ok = Agent.ask(key, "hello", host: Wardrik.Test.host())
     assert_receive {:turn, _messages}
@@ -70,7 +71,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "callers racing to wake a sleeping agent start one process between them" do
-    key = start_agent(runner: runner(self()))
+    key = start_agent(config: Script.new(runner(self())))
     asleep(key)
 
     pids =
@@ -87,7 +88,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "a sleeping agent asked what it waits on wakes and answers" do
-    key = start_agent(runner: {AgentRunners, :parking, [self(), "call_1"]})
+    key = start_agent(config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
 
     :ok = Agent.ask(key, "ship it", host: Wardrik.Test.host())
     assert_receive %Event{payload: %Event.TurnParked{}}
@@ -102,8 +103,10 @@ defmodule Wardrik.AgentSleepTest do
 
     key =
       start_agent(
-        runner: {AgentRunners, :parking, [test_pid, "call_1"]},
-        resumer: resumer(test_pid, answer)
+        config:
+          Script.new({AgentRunners, :parking, [test_pid, "call_1"]},
+            resume: resumer(test_pid, answer)
+          )
       )
 
     :ok = Agent.ask(key, "ship it", host: Wardrik.Test.host())
@@ -210,8 +213,10 @@ defmodule Wardrik.AgentSleepTest do
 
     key =
       start_agent(
-        runner: {AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
-        resumer: resumer(test_pid, answer)
+        config:
+          Script.new({AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
+            resume: resumer(test_pid, answer)
+          )
       )
 
     :ok = Agent.ask(key, "open an issue", host: Wardrik.Test.host())
@@ -227,7 +232,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "moving a sleeping agent wakes it on the node it is moved to" do
-    key = start_agent(runner: runner(self()))
+    key = start_agent(config: Script.new(runner(self())))
     asleep(key)
 
     assert {:ok, pid} = Fleet.move(key, node())
@@ -236,7 +241,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "a sleeping agent is forgotten with its prefix" do
-    key = start_agent(runner: runner(self()))
+    key = start_agent(config: Script.new(runner(self())))
     asleep(key)
 
     assert Fleet.forget_under(Wardrik.AgentID.resource(key)) == 1
@@ -244,7 +249,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "interrupting a sleeping agent wakes nothing" do
-    key = start_agent(runner: runner(self()))
+    key = start_agent(config: Script.new(runner(self())))
     asleep(key)
 
     assert {:error, :not_found} = Agent.interrupt(key)
@@ -252,7 +257,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "an agent forgotten after it was found stored does not come back empty" do
-    key = start_agent(runner: runner(self()))
+    key = start_agent(config: Script.new(runner(self())))
     asleep(key)
     {:ok, info} = DurableServer.Supervisor.get_server_info(Wardrik.Fleet, to_string(key))
     :ok = Fleet.forget(key)
@@ -282,7 +287,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "an agent wakes with the definition the host answers for it now" do
-    key = start_agent(runner: runner(self()), config: Config.new(model_spec: "test:before"))
+    key = start_agent(config: Script.new(runner(self()), model: "test:before"))
     asleep(key)
 
     Wardrik.Test.Definitions.keep(
@@ -294,7 +299,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   test "without a definition the host answers, an agent wakes as it slept" do
-    key = start_agent(runner: runner(self()), config: Config.new(model_spec: "test:before"))
+    key = start_agent(config: Script.new(runner(self()), model: "test:before"))
     asleep(key)
 
     assert %{model: "test:before"} = Agent.status(key, host: Wardrik.Test.host())

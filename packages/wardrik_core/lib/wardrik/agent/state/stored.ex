@@ -25,7 +25,7 @@ defmodule Wardrik.Agent.State.Stored do
   alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
-  alias Wardrik.LLM.Config
+  alias Wardrik.Runtime.Settings
   alias Wardrik.Turn
 
   @typedoc "An agent written down: what it is, what it was asked, and what it is waiting on."
@@ -33,14 +33,12 @@ defmodule Wardrik.Agent.State.Stored do
           generation: String.t(),
           agent_id: Event.Bus.agent_id(),
           sequence: non_neg_integer(),
-          config: Config.dumped(),
+          config: Settings.t(),
           history: Conversation.t(),
           run_opts: keyword(),
           grace: pos_integer(),
           pending: [Message.t()],
           recent: [String.t()],
-          runner: State.runner(),
-          resumer: State.resumer(),
           outcome: State.outcome(),
           labels: [Wardrik.Label.t()],
           mode: :idle | Due.t() | {:waiting, Turn.t(), Source.t(), Wardrik.Principal.t() | nil}
@@ -53,7 +51,7 @@ defmodule Wardrik.Agent.State.Stored do
     |> Map.from_struct()
     |> Map.drop([:log, :host, :active_at, :idle_timer, :activity])
     |> Map.merge(%{
-      config: Config.dump(state.config),
+      config: Settings.dump(state.config),
       mode: at_rest(state.mode),
       sequence: state.log.head
     })
@@ -84,7 +82,7 @@ defmodule Wardrik.Agent.State.Stored do
     struct!(
       State,
       Map.merge(dumped, %{
-        config: Config.load(config),
+        config: Settings.load(config),
         mode: reopen(mode, dumped.history),
         host: Wardrik.Host.new(),
         activity: %Activity{

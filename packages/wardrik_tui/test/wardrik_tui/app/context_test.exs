@@ -3,6 +3,7 @@ defmodule WardrikTUI.App.ContextTest do
   alias Wardrik.{Agent, Event, Fleet}
   alias Wardrik.Conversation
   alias Wardrik.Conversation.User
+  alias Wardrik.Test.Script
   alias WardrikTUI.App
 
   def park_two(%Wardrik.LLM.Turn{run: run}) do
@@ -117,7 +118,7 @@ defmodule WardrikTUI.App.ContextTest do
     {a, pid} =
       Wardrik.Test.Fleet.start_agent(
         history: Conversation.new(messages),
-        runner: {Wardrik.Test.AgentRunners, :echo, [self(), "new answer"]}
+        config: Script.new({Wardrik.Test.AgentRunners, :echo, [self(), "new answer"]})
       )
 
     {b, _} = Wardrik.Test.Fleet.start_agent()
@@ -165,8 +166,8 @@ defmodule WardrikTUI.App.ContextTest do
   test "the backend rejects stale and concurrent decisions without claiming acceptance" do
     {id, pid} =
       Wardrik.Test.Fleet.start_agent(
-        runner: {__MODULE__, :park_two, []},
-        resumer: {__MODULE__, :resume_blocked, [self()]}
+        config:
+          Script.new({__MODULE__, :park_two, []}, resume: {__MODULE__, :resume_blocked, [self()]})
       )
 
     assert Agent.decide(
@@ -213,7 +214,7 @@ defmodule WardrikTUI.App.ContextTest do
   end
 
   test "reconnecting refreshes a missed parked state" do
-    {id, pid} = Wardrik.Test.Fleet.start_agent(runner: {__MODULE__, :park_two, []})
+    {id, pid} = Wardrik.Test.Fleet.start_agent(config: Script.new({__MODULE__, :park_two, []}))
     s = session(id)
     :ok = Fleet.stop(id)
     Breeze.Test.info(s, :refresh_fleet)
@@ -236,7 +237,8 @@ defmodule WardrikTUI.App.ContextTest do
   test "attaching mid-turn says what the agent is doing, and counts every message waiting" do
     {id, pid} =
       Wardrik.Test.Fleet.start_agent(
-        runner: {Wardrik.Test.AgentRunners, :delegating, [self(), "weighing the options"]}
+        config:
+          Script.new({Wardrik.Test.AgentRunners, :delegating, [self(), "weighing the options"]})
       )
 
     Event.Bus.subscribe(id)
@@ -264,8 +266,8 @@ defmodule WardrikTUI.App.ContextTest do
   test "second approval is not silently lost while first runs" do
     {id, pid} =
       Wardrik.Test.Fleet.start_agent(
-        runner: {__MODULE__, :park_two, []},
-        resumer: {__MODULE__, :resume_blocked, [self()]}
+        config:
+          Script.new({__MODULE__, :park_two, []}, resume: {__MODULE__, :resume_blocked, [self()]})
       )
 
     Event.Bus.subscribe(id)

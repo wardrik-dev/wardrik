@@ -14,6 +14,7 @@ defmodule Wardrik.CatalogTest do
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
   alias Wardrik.Test.Tools.Rules
 
   # Keeps nothing: tells the test what it was asked, and refuses an agent
@@ -116,7 +117,11 @@ defmodule Wardrik.CatalogTest do
   defp acme(name), do: AgentID.parse!("acme/#{name}-#{System.unique_integer([:positive])}")
 
   defp echoing(id, reply) do
-    Wardrik.Test.Fleet.start_agent([runner: {AgentRunners, :echo, [self(), reply]}], id)
+    Wardrik.Test.Fleet.start_agent(
+      [config: Script.new({AgentRunners, :echo, [self(), reply]})],
+      id
+    )
+
     :ok = Event.Bus.subscribe(id)
     id
   end
