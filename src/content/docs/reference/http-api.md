@@ -120,7 +120,7 @@ answers an agent with is its key.
 | `GET /v1/servers?owner=` | the MCP servers `owner` added for their agents |
 | `POST /v1/servers?owner=` | adds an MCP server for the owner's agents, `201`: that they can call it now, or where to sign in to it first |
 | `DELETE /v1/servers/{name}?owner=` | removes the server, so the owner's agents can no longer call it, and answers it as it was |
-| `POST /v1/deployment/reload` | has every node read its agent and policy files again, and answers those nodes |
+| `POST /v1/deployment/reload` | reads the agent and policy files and every definition again, on the node that answers, and answers that node |
 | `GET /v1/deployment/nodes` | the deployment's nodes, each with how many agents run on it, and how many sleep |
 | `GET /v1/deployment/audit` | a page of what people changed across the deployment, after `?starting_after=` |
 | `GET /v1/tokens` | every token, oldest first, never a secret |
@@ -341,6 +341,7 @@ The body of PUT /v1/agents/{key}, and the definition GET /v1/agents/{key}/defini
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
+| `display_name` | string |  | What a person calls the agent; its name unless given. |
 | `description` | string |  | What the agent is for, in words a person reads. |
 | `instructions` | string |  | The system prompt. |
 | `model` | string |  | The model, as provider:model. |
