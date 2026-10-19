@@ -160,6 +160,10 @@ defmodule WardrikChannel do
 
   @settings [:installations, :org, channels: [], orgs: [], creates: [], approvers: []]
 
+  # What Wardrik's own principals are known by, before the `:` of their
+  # names: a channel named so would name its people as them.
+  @reserved ~w(shell ssh terminal oauth)
+
   @doc """
   Reads a channel's settings, as `config.yaml` writes them, less the keys
   every channel takes: `type`, `token`, `approvers`, `admins` and `create`. Answers
@@ -240,6 +244,11 @@ defmodule WardrikChannel do
   `attach/2` takes, with `types` the adapters by the `type` each names, or
   the key that does not read, as a path within the section, and why.
 
+  A channel's name is how its people are known, before the `:` of the
+  names `principal/2` gives them: lower-case letters, digits and `-`,
+  beginning with a letter, and none of `shell`, `ssh`, `terminal` or
+  `oauth`, which Wardrik's own principals are known by.
+
   Every channel takes `type`, `token`, the one its installation in the
   workspace that token reaches acts with, `create`, `approvers` and
   `admins`, who may change the agents of its orgs, and its adapter's
@@ -266,6 +275,14 @@ defmodule WardrikChannel do
   def config(_section, _types), do: {:error, [], "is a set of keys"}
 
   defp channel!(name, channel, types) do
+    unless Wardrik.Principal.provider?(name) and name not in @reserved,
+      do:
+        invalid!(
+          [name],
+          "is not a channel's name: one is lower-case letters, digits and -, beginning " <>
+            "with a letter, and none of shell, ssh, terminal or oauth"
+        )
+
     {type, settings} = Map.pop(table!(channel, [name]), "type")
     {token, settings} = Map.pop(settings, "token")
     {creates, settings} = Map.pop(settings, "create", true)

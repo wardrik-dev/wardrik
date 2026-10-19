@@ -233,7 +233,9 @@ address](/run/public-address/).
 
 ## channels
 
-Chat media agents are reached through, each by a name of the deployment's own.
+Chat media agents are reached through, each by a name of the deployment's own: lower-case letters,
+digits and `-`, beginning with a letter, and none of `shell`, `ssh`, `terminal` or `oauth`. Its
+people are known by it, as `slack:T0123/U024BE7LH`.
 
 | Key | Means |
 | --- | --- |

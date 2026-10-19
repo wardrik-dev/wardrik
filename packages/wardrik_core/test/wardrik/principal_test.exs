@@ -48,6 +48,13 @@ defmodule Wardrik.PrincipalTest do
     assert Principal.same?(Principal.deployment(), Principal.new("deployment"))
   end
 
+  test "provider?/1 says what can name where someone reached Wardrik" do
+    for text <- ~w(slack globex-slack s3 shell), do: assert(Principal.provider?(text))
+
+    for text <- ["", "Slack", "1slack", "slack_x", "sl ack", "a:b", :slack],
+        do: refute(Principal.provider?(text))
+  end
+
   test "same?/2 is the same name, whatever each goes by, and nobody is never anyone" do
     assert Principal.same?(Principal.new("shell:jon", name: "Jon"), Principal.new("shell:jon"))
     refute Principal.same?(Principal.new("shell:jon"), Principal.new("ssh:jon"))

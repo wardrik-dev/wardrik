@@ -41,6 +41,7 @@ defmodule Wardrik.Principal do
 
   @opaque t() :: %__MODULE__{id: String.t(), name: String.t() | nil}
 
+  @provider ~r/\A[a-z][a-z0-9-]*\z/
   @federated ~r/\A[a-z][a-z0-9-]*:\S+\z/u
 
   @doc """
@@ -66,6 +67,14 @@ defmodule Wardrik.Principal do
   @doc "The deployment's own principal, `deployment`."
   @spec deployment() :: t()
   def deployment, do: %__MODULE__{id: "deployment"}
+
+  @doc """
+  Whether `text` can be the provider of a `provider:subject` name:
+  lower-case letters, digits and `-`, beginning with a letter.
+  """
+  @spec provider?(term()) :: boolean()
+  def provider?(text) when is_binary(text), do: Regex.match?(@provider, text)
+  def provider?(_text), do: false
 
   @doc "The name the principal is known by."
   @spec id(t()) :: String.t()

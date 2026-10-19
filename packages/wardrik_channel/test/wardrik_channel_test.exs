@@ -112,6 +112,18 @@ defmodule WardrikChannelTest do
       assert WardrikChannel.config(%{"chat" => %{"type" => "test"}}, %{}) ==
                {:error, ["chat", "type"], "is the kind of channel, and this host has none"}
     end
+
+    test "refuses a name its people could not be known by, or that Wardrik's own are" do
+      for name <- ["Chat", "my_chat", "1chat", "ch at", "shell", "ssh", "terminal", "oauth"] do
+        assert {:error, [^name], message} =
+                 WardrikChannel.config(%{name => %{"type" => "test", "test" => "me"}}, @types)
+
+        assert message =~ "is not a channel's name"
+      end
+
+      assert {:ok, _read} =
+               WardrikChannel.config(%{"chat-2" => %{"type" => "test", "test" => "me"}}, @types)
+    end
   end
 
   test "posts a notice in a room through the channel's adapter" do
