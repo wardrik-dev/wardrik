@@ -33,7 +33,7 @@ defmodule Wardrik.Agent.State do
   began on, so the calls keep their ids; a fresh turn that has not is owed,
   and runs again against the history it already holds; a turn resumed from a
   park, and not checkpointed since, comes back resuming with the decisions it
-  was given, so none is lost, and a `Wardrik.Ledger` answers for an approved
+  was given, so none is lost, and the `Wardrik.Ledger` answers for an approved
   call that had begun. A waiting turn keeps its source, and the events of its
   resumption land on the trace that parked. Its budget starts over when it is
   resumed. `Wardrik.Agent.State.View` is what the agent shows of itself.

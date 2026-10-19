@@ -41,7 +41,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
   defp run(agent_id, llm, opts) do
     LLM.Config.new(tools: [refund_tool(self())])
-    |> Run.root(agent_id, [name: "turn", ledger: %Ledger.Store{}, host: host(llm: llm)] ++ opts)
+    |> Run.root(agent_id, [name: "turn", host: host(llm: llm)] ++ opts)
   end
 
   defp run_async(run) do
@@ -80,7 +80,6 @@ defmodule Wardrik.LLM.TurnJournalTest do
       |> LLM.Config.new()
       |> Run.root(agent_id,
         name: "turn",
-        ledger: %Ledger.Store{},
         hooks: rules,
         host: host(llm: llm)
       )
@@ -132,13 +131,8 @@ defmodule Wardrik.LLM.TurnJournalTest do
     answer = TestLLM.tool_call("call_1", "refund", %{})
     [call] = Assistant.calls(answer.message)
     key = Ledger.Key.of(Run.batch(run, 0), call)
-    :ok = Ledger.claim(%Ledger.Store{}, key, call: call, store: Wardrik.Test.store())
-
-    :ok =
-      Ledger.settle(%Ledger.Store{}, key,
-        result: {:ok, %{"refunded" => true}},
-        store: Wardrik.Test.store()
-      )
+    :ok = Ledger.claim(Wardrik.Test.store(), key, call: call)
+    :ok = Ledger.settle(Wardrik.Test.store(), key, result: {:ok, %{"refunded" => true}})
 
     TestLLM.stream(llm, [TestLLM.final_answer("Refunded.")])
 
@@ -166,13 +160,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
     answer = TestLLM.tool_call("call_1", "refund", %{})
     [call] = Assistant.calls(answer.message)
 
-    :ok =
-      Ledger.claim(
-        %Ledger.Store{},
-        Ledger.Key.of(Run.batch(run, 0), call),
-        call: call,
-        store: Wardrik.Test.store()
-      )
+    :ok = Ledger.claim(Wardrik.Test.store(), Ledger.Key.of(Run.batch(run, 0), call), call: call)
 
     parked = %LLM.Turn{
       context: Conversation.new([User.new("refund it")]),
@@ -242,7 +230,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
     run =
       LLM.Config.new(tools: [research, refund_tool(test_pid)])
-      |> Run.root(agent_id, name: "turn", ledger: %Ledger.Store{}, host: host(llm: llm))
+      |> Run.root(agent_id, name: "turn", host: host(llm: llm))
 
     assert %LLM.Turn{state: :done, messages: _messages} =
              turn(run, Conversation.new([User.new("look into it")]))

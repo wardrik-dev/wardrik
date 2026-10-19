@@ -7,7 +7,7 @@ defmodule Wardrik.Call.Pipeline do
        (see `Wardrik.Tool.declared/2`), and the run's `Wardrik.Hook`s allow
        it, refuse it, or ask a person about it. `answer/2` writes on a call
        that waited what a person decided.
-    2. **Before.** A tool call that may go ahead is claimed in the run's
+    2. **Before.** A tool call that may go ahead is claimed in the
        `Wardrik.Ledger`, and the credentials its tool's annotations name are
        resolved; a model call is admitted by the run's
        `Wardrik.LLM.Dispatch`. A refused tool call is answered with why.
@@ -72,7 +72,6 @@ defmodule Wardrik.Call.Pipeline do
   alias Wardrik.Hook
   alias Wardrik.Host
   alias Wardrik.Ledger
-  alias Wardrik.Ledger.Guarded
   alias Wardrik.Ledger.Key
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Dispatch
@@ -247,11 +246,11 @@ defmodule Wardrik.Call.Pipeline do
 
   # A call is claimed before it runs, so a replay knows it began, and settled
   # after, so a replay knows what it returned.
-  defp claim(%Call{state: state, target: %Tool{}, run: %Run{ledger: ledger} = run} = call)
+  defp claim(%Call{state: state, target: %Tool{}, run: run} = call)
        when state in [:allowed, :approved] do
     key = Key.of(run, Call.to_map(call))
 
-    case Guarded.claim(ledger, key, call: Call.to_map(call), store: Host.store(run.host)) do
+    case Ledger.claim(Host.store(run.host), key, call: Call.to_map(call)) do
       :ok ->
         Call.put_private(call, @claim, key)
 
@@ -316,8 +315,8 @@ defmodule Wardrik.Call.Pipeline do
 
   defp held(call), do: call
 
-  defp fetched(%Call{run: %Run{ledger: ledger} = run} = call),
-    do: Guarded.fetch(ledger, Key.of(run, Call.to_map(call)), store: Host.store(run.host))
+  defp fetched(%Call{run: run} = call),
+    do: Ledger.fetch(Host.store(run.host), Key.of(run, Call.to_map(call)))
 
   defp not_run_again(call, reason) do
     "#{Call.name(call)} was not run again, and may already have done what it does. #{reason}"
@@ -525,15 +524,13 @@ defmodule Wardrik.Call.Pipeline do
   # A claimed call is settled with what it answered. One whose tool stopped to
   # ask before doing anything gives its claim back; one in doubt keeps it, so
   # a replay asks too.
-  defp recorded(%Call{private: %{@claim => key}, run: %Run{ledger: ledger}} = call)
-       when key != nil do
+  defp recorded(%Call{private: %{@claim => key}} = call) when key != nil do
     case call.state do
       :done ->
-        settle(call, ledger, key)
+        settle(call, key)
 
       :waiting ->
-        if Call.asked_by?(call, :tool),
-          do: _ = Guarded.release(ledger, key, store: Host.store(call.run.host))
+        if Call.asked_by?(call, :tool), do: _ = Ledger.release(Host.store(call.run.host), key)
     end
 
     Call.put_private(call, @claim, nil)
@@ -541,13 +538,18 @@ defmodule Wardrik.Call.Pipeline do
 
   defp recorded(call), do: call
 
-  defp settle(call, ledger, key) do
-    with {:error, reason} <-
-           Guarded.settle(ledger, key, result: call.result, store: Host.store(call.run.host)) do
-      Logger.warning(
-        "#{Call.name(call)} ran, but what it returned was not recorded: #{inspect(reason)}"
-      )
-    end
+  # The call has run: a store that loses its record must not hide its result.
+  defp settle(call, key) do
+    with {:error, reason} <- Ledger.settle(Host.store(call.run.host), key, result: call.result),
+         do: unrecorded(call, reason)
+  catch
+    kind, reason when kind in [:error, :exit] -> unrecorded(call, reason)
+  end
+
+  defp unrecorded(call, reason) do
+    Logger.warning(
+      "#{Call.name(call)} ran, but what it returned was not recorded: #{inspect(reason)}"
+    )
   end
 
   # A call answered by a tool whose answers hold labels carries them, whether

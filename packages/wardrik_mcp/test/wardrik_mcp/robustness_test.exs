@@ -13,7 +13,9 @@ defmodule WardrikMCP.RobustnessTest do
     agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
 
-    run = Config.new(tools: [{WardrikMCP, key}]) |> Run.root(agent_id, name: "turn")
+    run =
+      Config.new(tools: [{WardrikMCP, key}])
+      |> Run.root(agent_id, name: "turn", host: Wardrik.Test.host())
 
     %{agent_id: agent_id, run: run}
   end

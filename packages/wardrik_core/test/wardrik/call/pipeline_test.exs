@@ -280,7 +280,7 @@ defmodule Wardrik.Call.PipelineTest do
       |> call("call_1", "echo")
       |> Pipeline.run()
 
-      ledgered = run(agent_id, tools: [echo], ledger: %Ledger.Store{})
+      ledgered = run(agent_id, tools: [echo])
       ledgered |> call("call_2", "echo") |> Pipeline.run()
 
       ledgered = %{ledgered | hooks: saying(:pass)}
@@ -347,7 +347,7 @@ defmodule Wardrik.Call.PipelineTest do
   describe "a tool call in doubt" do
     test "waits on a person, and keeps its claim so a replay asks too", %{agent_id: agent_id} do
       quiet = tool("refund", fn _ -> {:in_doubt, "The worker went away before it answered."} end)
-      run = run(agent_id, tools: [quiet], ledger: %Ledger.Store{})
+      run = run(agent_id, tools: [quiet])
       call = call(run, "call_1", "refund")
 
       assert %Call{state: :waiting, asks: [%Call.Ask{by: :doubt, prompt: prompt}]} =
@@ -362,15 +362,13 @@ defmodule Wardrik.Call.PipelineTest do
       }
 
       assert {:ok, %Ledger.Entry{result: nil}} =
-               Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(run, Call.to_map(call)),
-                 store: Wardrik.Test.store()
-               )
+               Ledger.fetch(Wardrik.Test.store(), Ledger.Key.of(run, Call.to_map(call)))
 
       assert [{%{in_doubt: true}, ^prompt}] = ToolRunner.parked([waiting])
     end
 
     test "runs once more under the same key where its tool says it may", %{agent_id: agent_id} do
-      run = run(agent_id, tools: [Refund], ledger: %Ledger.Store{})
+      run = run(agent_id, tools: [Refund])
       call = call(run, "call_1", "refund")
 
       assert %Call{state: :done, result: {:ok, %{"refunded" => true}}} = Pipeline.run(call)
@@ -388,9 +386,7 @@ defmodule Wardrik.Call.PipelineTest do
       }
 
       assert {:ok, %Ledger.Entry{result: {:ok, %{"refunded" => true}}}} =
-               Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(run, Call.to_map(call)),
-                 store: Wardrik.Test.store()
-               )
+               Ledger.fetch(Wardrik.Test.store(), Ledger.Key.of(run, Call.to_map(call)))
     end
 
     test "again waits on a person", %{agent_id: agent_id} do
@@ -429,12 +425,13 @@ defmodule Wardrik.Call.PipelineTest do
       }
     end
 
-    test "refused tells the model it may have run, with no ledger to say so", %{
+    test "refused tells the model it may have run, where the store shows no claim", %{
       agent_id: agent_id
     } do
       quiet = tool("refund", fn _ -> {:in_doubt, "No worker answered."} end)
       run = run(agent_id, tools: [quiet])
       waiting = run |> call("call_1", "refund") |> Pipeline.run()
+      :ok = Ledger.forget(Wardrik.Test.store(), agent_id, trace: run.source.trace.trace_id)
 
       waiting |> Call.under(run) |> Pipeline.answer({:deny, "Leave it."}) |> Pipeline.run()
 

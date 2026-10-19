@@ -136,7 +136,7 @@ defmodule Wardrik.LLM.Turn do
   the turn, written down, before every batch of tool calls, and the batch runs
   only once the journal has answered `:ok`. A journal that does not answer
   ends the turn before anything runs. `recover/1` carries such a turn on, with
-  the answer it had, so the calls it asked for keep their ids and a
+  the answer it had, so the calls it asked for keep their ids and the
   `Wardrik.Ledger` can say which already ran.
 
   ## A model call that fails

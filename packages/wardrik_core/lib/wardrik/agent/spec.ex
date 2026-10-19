@@ -26,7 +26,7 @@ defmodule Wardrik.Agent.Spec do
   | `:description` | what it is for, in words a person reads |
   | `:config` | its `Wardrik.Runtime.Settings`, a `Wardrik.LLM.Config` unless given |
   | `:idle_timeout` | how long it may have nothing to do before it sleeps, in milliseconds or `:infinity`; see `Wardrik.Agent` |
-  | `:hooks`, `:retry`, `:ledger`, `:timeout` | the seams of `Wardrik.Run.seams/0` |
+  | `:hooks`, `:retry`, `:timeout` | the seams of `Wardrik.Run.seams/0` |
   """
 
   alias Wardrik.AgentID
@@ -44,7 +44,6 @@ defmodule Wardrik.Agent.Spec do
           idle_timeout: timeout(),
           hooks: [Wardrik.Hook.t()] | nil,
           retry: Wardrik.LLM.Retry.t() | nil,
-          ledger: Wardrik.Ledger.t() | nil,
           timeout: timeout() | nil
         }
 

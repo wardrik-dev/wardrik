@@ -76,7 +76,6 @@ defmodule WardrikDaemon.AgentFileTest do
     assert spec.config.max_iterations == 12
     assert spec.timeout == 600_000
     assert spec.hooks == [%Wardrik.Hook{name: "WardrikDaemon.AgentFileTest.Hook", module: Hook}]
-    assert spec.ledger == %Wardrik.Ledger.Store{}
   end
 
   describe "idle_timeout" do
@@ -498,7 +497,6 @@ defmodule WardrikDaemon.AgentFileTest do
              ]
 
       assert spec.timeout == :timer.seconds(600)
-      assert spec.ledger == %Wardrik.Ledger.Store{}
     end
 
     test "an empty definition is an agent with no prompt and no tools" do

@@ -1,6 +1,6 @@
 defmodule Wardrik.Ledger.Key do
   @moduledoc """
-  What a call is claimed under in a `Wardrik.Ledger`, and the idempotency key
+  What a call is claimed under in the `Wardrik.Ledger`, and the idempotency key
   a tool passes to the system it calls, both the same when the call is
   replayed.
   """

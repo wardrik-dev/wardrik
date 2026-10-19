@@ -139,8 +139,7 @@ store key, so give a user as an id rather than an email address.
 ```elixir
 Wardrik.Fleet.spawn(id,
   config: config,
-  hooks: hooks,                    # may this call run?
-  ledger: %Wardrik.Ledger.Store{}, # which calls already ran, if the turn is lost
+  hooks: hooks, # may this call run?
   timeout: :timer.minutes(10)
 )
 ```
@@ -148,7 +147,6 @@ Wardrik.Fleet.spawn(id,
 | Seam | What it decides |
 | --- | --- |
 | `:hooks` | A list of `Wardrik.Hook`s, each handed every tool call and model call before it happens. A hook may deny a call, ask a person about it, or leave it be, and the strictest answer wins. Each hears what a call did once it is made. |
-| `:ledger` | A `Wardrik.Ledger`, which records each tool call before it runs. See [A turn lost part way](#a-turn-lost-part-way). |
 | `:timeout` | A deadline for each turn. Work under it can narrow it, never widen it. |
 
 Which model a call lands on and who pays for it is the host's dispatch, the
@@ -275,15 +273,12 @@ and the agent writes the batch to the store first. A turn whose node is lost
 comes back replaying from that batch, with the same calls, rather than asking
 the model again.
 
-With a `Wardrik.Ledger` on the run, each call is claimed before it runs and
-settled after. A replay then answers a call that already ran with what it
-returned, and parks one that began and never finished for a person to decide,
-as it does a call whose tool answers `{:in_doubt, reason}` because it cannot
-say how the call ended:
-
-```elixir
-Wardrik.Fleet.spawn(id, config: config, ledger: %Wardrik.Ledger.Store{})
-```
+Every call is claimed in the `Wardrik.Ledger` before it runs and settled
+after. The ledger is kept in the host's store, so every run has it and
+nothing configures it. A replay then answers a call that already ran with
+what it returned, and parks one that began and never finished for a person
+to decide, as it does a call whose tool answers `{:in_doubt, reason}`
+because it cannot say how the call ended.
 
 A tool with an effect outside Wardrik passes
 `Wardrik.Ledger.Key.idempotency/2` to the system it calls, so that system
@@ -347,7 +342,7 @@ without notice.
 
 | | Modules |
 | --- | --- |
-| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Issuer`, `Wardrik.Servers` and the `None` of each, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Entry`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store`, `Wardrik.LLM.Client`, `Wardrik.LLM.Answer`, `Wardrik.LLM.Error` |
+| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Issuer`, `Wardrik.Servers` and the `None` of each, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Entry`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.LLM.Client`, `Wardrik.LLM.Answer`, `Wardrik.LLM.Error` |
 | Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.History.All`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | Who acts, and what `Wardrik` answers them | `Wardrik.Token`, `Wardrik.Statement`, `Wardrik.Role`, `Wardrik.Resource`, `Wardrik.Error`, `Wardrik.JSON`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |

@@ -33,7 +33,7 @@ defmodule Wardrik.Run do
   | `:deadline` | when the work must stop |
   | `:hooks` | whether a tool call may run, and a model call be made |
   | `:retry` | whether a model call that failed is asked again |
-  | `:host` | the `Wardrik.Host` the agent runs on, whose seams an operation a tool calls asks, whose credentials a call resolves, and whose dispatch every model call goes through |
+  | `:host` | the `Wardrik.Host` the agent runs on, whose seams an operation a tool calls asks, whose credentials a call resolves, whose store keeps the `Wardrik.Ledger`, and whose dispatch every model call goes through |
 
   `:hooks` to `:retry` are the seams a host reaches through for one
   agent. Each has a default, so a deployment that needs none of them
@@ -110,13 +110,12 @@ defmodule Wardrik.Run do
     :batch,
     hooks: [],
     labels: [],
-    retry: %Wardrik.LLM.Retry.Backoff{},
-    ledger: %Wardrik.Ledger.None{}
+    retry: %Wardrik.LLM.Retry.Backoff{}
   ]
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
   # each turn's run is built.
-  @seams [:hooks, :retry, :ledger, :timeout]
+  @seams [:hooks, :retry, :timeout]
 
   @typedoc "The config a run was given, where its events go, and what it may do."
   @type t() :: %__MODULE__{
@@ -127,7 +126,6 @@ defmodule Wardrik.Run do
           deadline: integer() | nil,
           hooks: [Wardrik.Hook.t()],
           retry: Wardrik.LLM.Retry.t(),
-          ledger: Wardrik.Ledger.t(),
           journal: pid() | nil,
           batch: String.t() | nil,
           labels: [Wardrik.Label.t()]
@@ -161,8 +159,6 @@ defmodule Wardrik.Run do
       allow everything
     * `:retry` - the `Wardrik.LLM.Retry` that decides whether a failed model
       call is asked again, `%Wardrik.LLM.Retry.Backoff{}` where none is given
-    * `:ledger` - a `Wardrik.Ledger` module, which records each tool call before
-      it runs, or `nil` to record none
     * `:journal` - the process a turn under this run hands each batch of
       tool calls to before running it, so a turn lost part way can be
       replayed from there. `Wardrik.Agent` is one. Not inherited by `child/2`
@@ -176,7 +172,6 @@ defmodule Wardrik.Run do
       sender: Keyword.get(opts, :sender),
       hooks: Keyword.get(opts, :hooks) || [],
       retry: Keyword.get(opts, :retry, %Wardrik.LLM.Retry.Backoff{}),
-      ledger: Keyword.get(opts, :ledger, %Wardrik.Ledger.None{}),
       journal: Keyword.get(opts, :journal),
       deadline: Keyword.get(opts, :deadline)
     }

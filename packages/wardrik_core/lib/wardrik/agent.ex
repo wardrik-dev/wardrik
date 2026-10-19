@@ -92,8 +92,8 @@ defmodule Wardrik.Agent do
   Each turn hands the agent every batch of tool calls before running it, and
   the agent writes the batch to the store before the calls run. A turn lost
   after that comes back replaying from its last batch, with the same calls, and
-  a `Wardrik.Ledger` on the run answers for any that already ran. See
-  `Wardrik.LLM.Turn`.
+  the `Wardrik.Ledger` in the host's store answers for any that already ran.
+  See `Wardrik.LLM.Turn`.
 
   A turn is tethered to its agent, and each tool call to its turn, so an agent
   that stops or moves leaves nothing of its turn running beside the replay.
@@ -869,10 +869,7 @@ defmodule Wardrik.Agent do
     cutoff = DateTime.add(DateTime.utc_now(), -Log.retention_days(), :day)
 
     Task.Supervisor.start_child(Wardrik.Tasks.supervisor(), fn ->
-      Wardrik.Ledger.Guarded.forget(run.ledger, agent_id,
-        trace: run.source.trace.trace_id,
-        store: Host.store(run.host)
-      )
+      Wardrik.Ledger.forget(Host.store(run.host), agent_id, trace: run.source.trace.trace_id)
 
       Log.trim(Host.store(run.host), agent_id, through: through, before: cutoff)
     end)

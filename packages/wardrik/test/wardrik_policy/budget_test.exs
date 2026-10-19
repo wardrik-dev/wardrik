@@ -103,7 +103,12 @@ defmodule WardrikPolicy.BudgetTest do
 
       policy = WardrikPolicy.decode!(%{"budget" => %{"usd" => 1.0, "grant" => %{"usd" => 0.5}}})
       hooks = WardrikPolicy.hooks(policy)
-      run = Run.root(Config.new(), agent, hooks: hooks)
+
+      run =
+        Run.root(Config.new(), agent,
+          hooks: hooks,
+          host: Wardrik.Host.new(store: Wardrik.Test.store())
+        )
 
       %{
         budget: List.last(hooks).value,
