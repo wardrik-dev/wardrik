@@ -79,7 +79,7 @@ check() {
   cd "$dir/$1"
   quietly mix deps.get
   quietly mix compile
-  mix run "$repo/dev/hosts/check.exs"
+  mix run "$repo/dev/hosts/check.exs" || die "the checks failed in $1"
   cd "$repo"
 }
 

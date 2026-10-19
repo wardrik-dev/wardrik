@@ -5,6 +5,7 @@ defmodule Wardrik.DefinitionTest do
   alias Wardrik.Definition
   alias Wardrik.Resource
   alias WardrikDefinition.Context
+  alias WardrikDefinition.Test.Served
 
   defmodule Clock do
     use Wardrik.Tool
@@ -50,8 +51,6 @@ defmodule Wardrik.DefinitionTest do
 
     context = %Context{
       org: "acme",
-      servers: [books: [serves: [Wardrik.Resource.parse!("acme/*")]], wiki: []],
-      mcp: Source,
       policies: %{"careful" => careful},
       defaults: %{"idle_timeout" => 60},
       names: %{host: "Mode", config: "Mode", policies: "the org's policies"}
@@ -63,8 +62,17 @@ defmodule Wardrik.DefinitionTest do
   defp read(fields, context, id, source \\ :defaults),
     do: Definition.read(fields, id: id, source: source, context: context)
 
-  defp host(opts \\ []),
-    do: Wardrik.Host.register(Wardrik.Host.new(opts), :tools, [{"clock", Clock}])
+  # A host with a tool, the servers it configures and those owners add.
+  defp host(opts \\ []) do
+    opts
+    |> Wardrik.Host.new()
+    |> Wardrik.Host.register(:tools, [{"clock", Clock}])
+    |> Wardrik.Host.register(:sources, [
+      {"books", %Served{name: "books", source: Source, serves: [Resource.parse!("acme/*")]}},
+      {"wiki", %Served{name: "wiki", source: Source}},
+      {"servers", Source}
+    ])
+  end
 
   # The spec `fields` write for `id` under `context`, sent by no token, on
   # host/1 unless `:host` names another.
@@ -133,10 +141,11 @@ defmodule Wardrik.DefinitionTest do
   end
 
   test "says why a definition does not read, in the host's words", %{context: context, id: id} do
-    assert {:error, "tools names nope/*, but Mode configures no server nope; it has " <> _} =
+    assert {:error,
+            "tools names nope/*, but Mode has no nope/*; it has books/*, servers/*, wiki/*"} =
              spec(%{"tools" => ["nope/*"]}, context, id)
 
-    assert {:error, "tools names books/*, but Mode's books serves acme/*, and not globex/triage"} =
+    assert {:error, "tools names books/*, but books serves acme/*, and not globex/triage"} =
              spec(%{"tools" => ["books/*"]}, context, AgentID.parse!("globex/triage"))
 
     assert {:error, "tools names web_search, which is not a tool Mode ships"} =
@@ -177,16 +186,22 @@ defmodule Wardrik.DefinitionTest do
   end
 
   test "names a server or a source only where the host has them", %{context: context, id: id} do
-    assert {:error, "tools names workers/*, but Mode configures no server workers" <> _} =
+    assert {:error, "tools names workers/*, but Mode has no workers/*" <> _} =
              spec(%{"tools" => ["workers/*"]}, context, id)
 
-    assert {:error, "tools names books/*, but Mode configures no server books" <> _} =
-             spec(%{"tools" => ["books/*"]}, %{context | mcp: nil}, id)
+    bare = Wardrik.Host.register(Wardrik.Host.new(), :tools, [{"clock", Clock}])
+
+    assert {:error, "tools names books/*, but Mode has no books/*"} =
+             spec(%{"tools" => ["books/*"]}, context, id, host: bare)
 
     workers = Wardrik.Host.register(host(), :sources, [{"workers", Source}])
     assert {:ok, spec} = spec(%{"tools" => ["workers/*"]}, context, id, host: workers)
 
     assert spec.config.tools == [{Source, id}]
+
+    assert {:ok, spec} = spec(%{"tools" => ["*"]}, context, AgentID.parse!("globex/triage"))
+    assert {Source, Resource.parse!("deployment/server/wiki")} in spec.config.tools
+    refute {Source, Resource.parse!("deployment/server/books")} in spec.config.tools
   end
 
   test "names a server its owner added, and one its owner has yet to add",
@@ -204,23 +219,23 @@ defmodule Wardrik.DefinitionTest do
            ]
 
     {:ok, definition} = read(%{"tools" => ["clock", "crm/*", "books/*", "later/*"]}, context, id)
-    assert Definition.missing(definition, context: context, host: host) == ["later/*"]
+    assert Definition.missing(definition, host: host) == ["later/*"]
 
     jon = AgentID.parse!("acme/@jon/triage")
     {:ok, definition} = read(%{"tools" => ["crm/*"]}, context, jon)
-    assert Definition.missing(definition, context: context, host: host) == ["crm/*"]
+    assert Definition.missing(definition, host: host) == ["crm/*"]
   end
 
   test "names no server it has not configured where owners add none",
        %{context: context, id: id} do
-    assert {:error, "tools names nope/*, but Mode configures no server nope" <> _} =
+    assert {:error, "tools names nope/*, but Mode has no nope/*" <> _} =
              spec(%{"tools" => ["nope/*"]}, context, id)
 
     nope = %Definition{read!(context, id) | tools: ["nope/*"]}
-    assert Definition.missing(nope, context: context, host: host()) == []
+    assert Definition.missing(nope, host: host()) == []
   end
 
-  test "a definition a token sent names no module, and holds after no label",
+  test "a definition names no module, and one a token sent holds after no label",
        %{context: context, id: id} do
     assert {:error, "policy names Elixir.Kernel, which is not a policy in the org's policies"} =
              spec(%{"policy" => "Elixir.Kernel"}, context, id)

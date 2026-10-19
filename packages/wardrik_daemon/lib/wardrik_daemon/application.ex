@@ -8,14 +8,13 @@ defmodule WardrikDaemon.Application do
 
   What `config/runtime.exs` read of `config.yaml` as the node booted, the
   store, the cluster and the HTTP API's settings, and what the release's
-  own configuration says of each module, and the channel adapters, trigger
-  sources and webhook verifiers the loaded applications register, are read
-  here once, and handed down: the store `storage` names starts first; `WardrikDaemon.Boot` holds it
+  own configuration says of each module, are read here once, and handed
+  down: the store `storage` names starts first; `WardrikDaemon.Boot` holds it
   and the cluster's settings, for the commands that reach the node over rpc
   while it waits; `WardrikDaemon.Cluster` connects this node to the others,
   and `WardrikDaemon.Cluster.Quorum` waits for enough of them; then
   `WardrikDaemon.Tree` reads the rest of `config.yaml`, builds the host and
-  starts core and the daemon. See `WardrikDaemon.Config.boot/1`.
+  starts `Wardrik` on it. See `WardrikDaemon.Config.boot/1`.
 
   `DurableServer`, which runs the fleet, the triggers and the budgets, logs
   its warnings and errors alone: at `info` it writes a line every few seconds
@@ -36,11 +35,7 @@ defmodule WardrikDaemon.Application do
       {WardrikDaemon.Boot, store: store, cluster: cluster},
       {WardrikDaemon.Cluster, cluster},
       {WardrikDaemon.Cluster.Quorum, store: store, cluster: cluster},
-      {WardrikDaemon.Tree,
-       store: store,
-       base: base,
-       adapters: WardrikChannel.discover(),
-       triggers: WardrikTrigger.Offered.discover()}
+      {WardrikDaemon.Tree, store: store, base: base}
     ]
 
     Supervisor.start_link(children, strategy: :rest_for_one, name: WardrikDaemon.Supervisor)

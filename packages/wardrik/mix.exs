@@ -27,17 +27,7 @@ defmodule Wardrik.MixProject do
     ]
   end
 
-  def application,
-    do: [
-      extra_applications: [:logger, :crypto],
-      env: [
-        wardrik_trigger_sources: [feed: WardrikTrigger.Feed],
-        wardrik_trigger_verifiers: [
-          shared: WardrikTrigger.Webhook.Shared,
-          standard: WardrikTrigger.Webhook.Standard
-        ]
-      ]
-    ]
+  def application, do: [extra_applications: [:logger, :crypto]]
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]

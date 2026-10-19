@@ -4,8 +4,8 @@ defmodule WardrikDaemon.Host do
   was started with, for what reaches the daemon from outside the tree that
   started it: a `wardrik` command, which `bin/wardrik` runs on the daemon's
   node over rpc, builds its caller on the host `get/0` answers, and reads
-  the config `config/0` does. `WardrikDaemon.Tree` starts it first;
-  everything started after it is handed both in its options.
+  the config `config/0` does. `WardrikDaemon.host/2` makes it the host's
+  first child, which `Wardrik` starts after core, handing it the host.
   """
 
   use GenServer

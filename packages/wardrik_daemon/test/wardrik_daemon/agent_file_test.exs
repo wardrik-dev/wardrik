@@ -11,21 +11,16 @@ defmodule WardrikDaemon.AgentFileTest do
 
   @moduletag :tmp_dir
 
-  defmodule Hook do
-    use Wardrik.Hook
-
-    @impl true
-    def init(_opts), do: nil
-
-    @impl true
-    def call(_call, _value), do: :pass
-  end
-
   # What a definition may name here, under the sections the test has put,
   # on a host with what the daemon ships, and no servers people add.
   defp ctx, do: AgentFile.context(Host.config(System.tmp_dir!()))
 
-  defp host, do: WardrikDaemon.attach(Wardrik.Host.new())
+  defp host,
+    do:
+      WardrikDaemon.attach(
+        Wardrik.new(store: Wardrik.Test.store()),
+        Host.config(System.tmp_dir!())
+      )
 
   # The definition `fields` write from the defaults, as one sent over HTTP reads.
   defp read_definition(context, id, fields, source \\ :defaults),
@@ -62,7 +57,6 @@ defmodule WardrikDaemon.AgentFileTest do
                user: jon
                timeout: 600
                max_iterations: 12
-               policy: WardrikDaemon.AgentFileTest.Hook
                ---
                You watch the incident queue.
                """,
@@ -82,7 +76,6 @@ defmodule WardrikDaemon.AgentFileTest do
 
     assert spec.config.max_iterations == 12
     assert spec.timeout == 600_000
-    assert spec.hooks == [%Wardrik.Hook{name: "WardrikDaemon.AgentFileTest.Hook", module: Hook}]
   end
 
   describe "idle_timeout" do
@@ -147,9 +140,9 @@ defmodule WardrikDaemon.AgentFileTest do
              WardrikResearch.Deep,
              WardrikLua.Run,
              WardrikBrave.WebSearch,
-             {WardrikMCP, Resource.parse!("deployment/server/linear")},
-             {WardrikMCP, Resource.parse!("deployment/server/github")},
              {Wardrik.Catalog.Agents, ~A"default/triage"},
+             {WardrikMCP, Resource.parse!("deployment/server/github")},
+             {WardrikMCP, Resource.parse!("deployment/server/linear")},
              {Wardrik.Catalog.Self, ~A"default/triage"},
              {WardrikMCP.Added, ~A"default/triage"},
              {WardrikHTTP.Workers, ~A"default/triage"},
@@ -175,8 +168,7 @@ defmodule WardrikDaemon.AgentFileTest do
 
     assert {:error, message} = read("---\ntools: [theirs/*]\n---\n", context)
 
-    assert message =~
-             "tools names theirs/*, but config.yaml's theirs serves globex/*, and not default/triage"
+    assert message =~ "tools names theirs/*, but theirs serves globex/*, and not default/triage"
 
     assert {:ok, _spec} = read("---\ntools: [theirs/*]\norg: globex\n---\n", context)
 
@@ -239,13 +231,14 @@ defmodule WardrikDaemon.AgentFileTest do
   test "a tool nothing ships is refused", context do
     assert {:error, message} = read("---\ntools: [websearch]\n---\n", context)
 
-    assert message =~
-             "triage.md: names websearch, which is neither a tool the daemon ships nor a module"
+    assert message =~ "triage.md: tools names websearch, which is not a tool the daemon ships"
   end
 
   test "a server config.yaml does not configure is refused, naming those it does", context do
     assert {:error, message} = read("---\ntools: [github/*]\n---\n", context)
-    assert message =~ "configures no server github; it has linear"
+
+    assert message =~
+             "tools names github/*, but the daemon has no github/*; it has agents/*, linear/*"
   end
 
   test "a file may write a rule that holds after a label, and a definition may not",
@@ -289,9 +282,12 @@ defmodule WardrikDaemon.AgentFileTest do
     assert spec.hooks == WardrikPolicy.hooks(careful)
   end
 
-  test "a policy name that is neither a policy nor a module is refused", context do
+  test "a policy name that is not a policy is refused, a module's too", context do
     assert {:error, message} = read("---\npolicy: careful\n---\n", context)
-    assert message =~ "names careful, which is neither a policy in policies/ nor a module"
+    assert message =~ "policy names careful, which is not a policy in policies/"
+
+    assert {:error, message} = read("---\npolicy: WardrikPolicy.Budget\n---\n", context)
+    assert message =~ "policy names WardrikPolicy.Budget, which is not a policy in policies/"
   end
 
   # The triggers the file `text` lists, once it reads.

@@ -26,9 +26,92 @@ defmodule WardrikChannelTest do
       at: DateTime.utc_now()
     }
 
-  test "finds an adapter by the type its application names" do
-    assert WardrikChannel.discover()["test"] == WardrikChannel.Test.Adapter
-    refute Map.has_key?(WardrikChannel.discover(), "carrier-pigeon")
+  describe "attach/2" do
+    test "has the host serve its channels' requests, and run them" do
+      settings = [
+        channels: [one: {WardrikChannel.Test.Adapter, test: self()}],
+        installations: Installations.Config.new([])
+      ]
+
+      host = WardrikChannel.attach(host(), settings)
+
+      assert [{["v1", "channels"], {WardrikChannel.Requests, routed}}] = Wardrik.Host.routes(host)
+      assert routed[:channels] == settings[:channels]
+
+      assert [
+               {WardrikChannel.Replies, settings: kept},
+               {WardrikChannel.Supervisor, settings: kept}
+             ] =
+               Wardrik.Host.children(host)
+
+      assert kept == routed
+      assert WardrikChannel.attach(host(), channels: []) == host()
+      assert_raise ArgumentError, fn -> WardrikChannel.attach(host(), mounts: []) end
+    end
+  end
+
+  describe "config/2" do
+    @types %{"test" => WardrikChannel.Test.Adapter}
+
+    test "reads each channel, its adapter's settings by the adapter's own config/1" do
+      assert {:ok, read} =
+               WardrikChannel.config(
+                 %{
+                   "chat" => %{
+                     "type" => "test",
+                     "token" => "xoxb-1",
+                     "test" => "me",
+                     "approvers" => ["@maria"],
+                     "admins" => ["@jon"]
+                   },
+                   "open" => %{
+                     "type" => "test",
+                     "test" => "you",
+                     "approvers" => "anyone",
+                     "create" => false
+                   }
+                 },
+                 @types
+               )
+
+      assert Enum.sort(read[:channels]) == [
+               chat: {WardrikChannel.Test.Adapter, test: "me"},
+               open: {WardrikChannel.Test.Adapter, test: "you"}
+             ]
+
+      assert read[:tokens] == [chat: "xoxb-1"]
+      assert Enum.sort(read[:creates]) == [chat: true, open: false]
+      assert read[:approvers][:chat] == %WardrikChannel.Approvers.Named{names: ["@maria"]}
+      assert read[:approvers][:open] == %WardrikChannel.Approvers.Anyone{}
+      assert read[:admins][:chat] == ["@jon"]
+
+      assert {:ok, none} = WardrikChannel.config(nil, @types)
+      assert none[:channels] == []
+    end
+
+    test "says where a channel does not read" do
+      for {section, path, message} <- [
+            {"x", [], "is a set of keys"},
+            {%{"chat" => "x"}, ["chat"], "is a set of keys"},
+            {%{"chat" => %{"type" => "pigeon"}}, ["chat", "type"],
+             "is the kind of channel: test"},
+            {%{"chat" => %{"test" => "me"}}, ["chat", "type"], "is the kind of channel: test"},
+            {%{"chat" => %{"type" => "test"}}, ["chat", "test"], "is required"},
+            {%{"chat" => %{"type" => "test", "test" => "me", "create" => 1}}, ["chat", "create"],
+             "is true or false"},
+            {%{"chat" => %{"type" => "test", "test" => "me", "token" => ""}}, ["chat", "token"],
+             "is the token the channel acts with, such as a bot's"},
+            {%{"chat" => %{"type" => "test", "approvers" => "maria"}}, ["chat", "approvers"],
+             "is anyone, or a list of who may answer, as the channel names them"},
+            {%{"chat" => %{"type" => "test", "test" => "me", "admins" => "jon"}},
+             ["chat", "admins"], "is a list of who may answer, as the channel names them"}
+          ] do
+        assert WardrikChannel.config(section, @types) == {:error, path, message}
+      end
+
+      assert WardrikChannel.config(%{"chat" => %{"type" => "test"}}, %{}) ==
+               {:error, ["chat", "type"], "is the kind of channel, and this host has none"}
+    end
   end
 
   test "posts a notice in a room through the channel's adapter" do
@@ -68,11 +151,11 @@ defmodule WardrikChannelTest do
     pid =
       start_supervised!(
         {WardrikChannel.Supervisor,
-         channels:
-           WardrikChannel.channels([one: {WardrikChannel.Test.Adapter, settings}],
-             host: host(),
-             installations: Installations.Config.new([])
-           )}
+         host: host(),
+         settings: [
+           channels: [one: {WardrikChannel.Test.Adapter, settings}],
+           installations: Installations.Config.new([])
+         ]}
       )
 
     assert [{_tasks, _task_pid, :supervisor, _}, {{:channel, "one"}, channel, :worker, _}] =
@@ -96,9 +179,10 @@ defmodule WardrikChannelTest do
     refute WardrikChannel.include?(named, [], member)
   end
 
-  test "makes each channel once, its context from the host's answers" do
+  test "makes each channel, its context from what its settings say of it" do
     host = host()
     installations = Installations.Config.new([])
+    approvers = %WardrikChannel.Approvers.Anyone{}
 
     assert %{
              "one" => %Channel{
@@ -106,11 +190,22 @@ defmodule WardrikChannelTest do
                adapter: WardrikChannel.Test.Adapter,
                options: [test: :me],
                context: context
-             }
+             },
+             "two" => %Channel{context: two}
            } =
-             WardrikChannel.channels([one: {WardrikChannel.Test.Adapter, test: :me}],
+             WardrikChannel.channels(
+               [
+                 channels: [
+                   one: {WardrikChannel.Test.Adapter, test: :me},
+                   two: {WardrikChannel.Test.Adapter, test: :you}
+                 ],
+                 installations: installations,
+                 org: "acme",
+                 orgs: [one: ["acme", "globex"]],
+                 creates: [one: false],
+                 approvers: [one: approvers]
+               ],
                host: host,
-               installations: installations,
                replies: :elsewhere
              )
 
@@ -118,15 +213,24 @@ defmodule WardrikChannelTest do
              channel: "one",
              host: ^host,
              installations: ^installations,
+             org: "acme",
+             orgs: ["acme", "globex"],
+             creates: false,
+             approvers: ^approvers,
              replies: :elsewhere
            } = context
+
+    assert %WardrikChannel.Context{orgs: :all, creates: true, approvers: %{names: []}} = two
   end
 
   test "hands a request the medium sent to the channel's adapter, as it was sent" do
     %{"one" => channel} =
-      WardrikChannel.channels([one: {WardrikChannel.Test.Adapter, test: self()}],
-        host: host(),
-        installations: Installations.Config.new([])
+      WardrikChannel.channels(
+        [
+          channels: [one: {WardrikChannel.Test.Adapter, test: self()}],
+          installations: Installations.Config.new([])
+        ],
+        host: host()
       )
 
     assert %Response{status: 200, body: body} =
@@ -152,9 +256,12 @@ defmodule WardrikChannelTest do
     }
 
     %{"one" => channel} =
-      WardrikChannel.channels([one: {WardrikChannel.Test.Adapter, test: self()}],
-        host: host(),
-        installations: installations
+      WardrikChannel.channels(
+        [
+          channels: [one: {WardrikChannel.Test.Adapter, test: self()}],
+          installations: installations
+        ],
+        host: host()
       )
 
     acme = Resource.parse!("acme")
@@ -191,15 +298,14 @@ defmodule WardrikChannelTest do
   test "runs what each channel runs, under its name, beside the channels' tasks" do
     {:ok, {_flags, [tasks | channels]}} =
       WardrikChannel.Supervisor.init(
-        channels:
-          WardrikChannel.channels(
-            [
-              one: {WardrikChannel.Test.Adapter, test: self()},
-              two: {WardrikChannel.Test.Adapter, test: self()}
-            ],
-            host: host(),
-            installations: Installations.Config.new([])
-          )
+        host: host(),
+        settings: [
+          channels: [
+            one: {WardrikChannel.Test.Adapter, test: self()},
+            two: {WardrikChannel.Test.Adapter, test: self()}
+          ],
+          installations: Installations.Config.new([])
+        ]
       )
 
     assert tasks.id == WardrikChannel.tasks()

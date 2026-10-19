@@ -18,7 +18,7 @@ defmodule WardrikDaemon.ConfigTest do
   defp read_all(yaml, %{tmp_dir: dir}, opts \\ []) do
     file = Path.join(dir, "config.yaml")
     File.write!(file, yaml)
-    Config.read(file, Keyword.put_new(opts, :adapters, WardrikChannel.discover()))
+    Config.read(file, Keyword.put_new(opts, :adapters, %{"test" => WardrikDaemon.Test.Channel}))
   end
 
   defp env(value) do
@@ -164,51 +164,6 @@ defmodule WardrikDaemon.ConfigTest do
                read_all("mcp:\n  x: {url: https://a.example.com/mcp, org: globex}\n", context)
 
       assert message =~ "mcp.x.org is not a setting"
-    end
-
-    test "a server with a command is started as one", context do
-      assert {:ok, [{WardrikMCP, servers: [notes: server]}]} =
-               read(
-                 """
-                 mcp:
-                   notes:
-                     command: npx
-                     args: [-y, server-filesystem]
-                     env:
-                       ROOT: /srv/notes
-                     only: [read_file]
-                     timeout: 30
-                 """,
-                 context
-               )
-
-      assert server[:transport] ==
-               {:stdio,
-                command: "npx", args: ["-y", "server-filesystem"], env: %{"ROOT" => "/srv/notes"}}
-
-      assert server[:only] == ["read_file"]
-      assert server[:timeout] == 30_000
-    end
-
-    test "a server with a url is reached over HTTP, with the credential it names", context do
-      assert {:ok, [{WardrikMCP, servers: [github: server]}]} =
-               read(
-                 """
-                 mcp:
-                   github:
-                     url: https://api.githubcopilot.com/mcp/
-                     headers:
-                       x-team: core
-                     credential: github
-                 """,
-                 context
-               )
-
-      assert server[:transport] ==
-               {:streamable_http,
-                base_url: "https://api.githubcopilot.com/mcp/", headers: %{"x-team" => "core"}}
-
-      assert server[:credential] == "github"
     end
 
     test "${NAME} is read from the environment", context do
@@ -453,84 +408,6 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "names the tool alone"
     end
 
-    test "a key nothing takes is refused", context do
-      assert {:error, message} =
-               read("mcp:\n  notes:\n    command: npx\n    comand: typo\n", context)
-
-      assert message =~ "mcp.notes.comand is not a setting"
-    end
-
-    test "a server is a command or a url, not both and not neither", context do
-      assert {:error, both} = read("mcp:\n  a:\n    command: x\n    url: https://x\n", context)
-      assert both =~ "mcp.a has both command and url"
-
-      assert {:error, neither} = read("mcp:\n  b:\n    only: [x]\n", context)
-      assert neither =~ "mcp.b needs a command or a url"
-    end
-
-    test "a server's tools may not be named for the tool workers", context do
-      assert {:error, named} = read("mcp:\n  workers:\n    command: npx\n", context)
-
-      assert named =~
-               "mcp.workers names its tools with workers, which tool workers' tools are named with"
-
-      assert {:error, prefixed} =
-               read("mcp:\n  notes:\n    command: npx\n    prefix: workers\n", context)
-
-      assert prefixed =~ "mcp.notes names its tools with workers"
-    end
-
-    test "a server's name or prefix may not hold __", context do
-      assert {:error, named} = read("mcp:\n  my__notes:\n    command: npx\n", context)
-      assert named =~ "mcp.my__notes names its tools with my__notes"
-
-      assert {:error, prefixed} =
-               read("mcp:\n  notes:\n    command: npx\n    prefix: my__notes\n", context)
-
-      assert prefixed =~ "mcp.notes names its tools with my__notes"
-    end
-
-    test "a server gates the tools it names, and may be trusted", context do
-      assert {:ok, [{WardrikMCP, servers: [docs: docs, github: github, notes: notes]}]} =
-               read(
-                 """
-                 mcp:
-                   github:
-                     url: https://api.githubcopilot.com/mcp/
-                     gated: [create_*, issue_write]
-                   notes:
-                     command: npx
-                     gated: true
-                     trusted: true
-                   docs:
-                     command: npx
-                     gated: false
-                 """,
-                 context
-               )
-
-      assert github[:gated] == ["create_*", "issue_write"]
-      refute Keyword.has_key?(github, :trusted)
-      assert notes[:gated] == true
-      assert notes[:trusted] == true
-      assert docs[:gated] == false
-
-      assert {:error, gated} = read("mcp:\n  a:\n    command: x\n    gated: [1]\n", context)
-      assert gated =~ "mcp.a.gated is true, false, or a list of the server's tool names"
-      assert {:error, trusted} = read("mcp:\n  a:\n    command: x\n    trusted: 1\n", context)
-      assert trusted =~ "mcp.a.trusted is true or false"
-    end
-
-    test "a credential is a name", context do
-      for credential <- ["user:github", "a/b", "_x", "\"\""] do
-        assert {:error, message} =
-                 read("mcp:\n  a:\n    url: https://x\n    credential: #{credential}\n", context)
-
-        assert message =~ "mcp.a.credential is"
-        assert message =~ "the name of a credential"
-      end
-    end
-
     test "ssh moves the listener", context do
       assert {:ok, [{WardrikDaemon.SSH, ssh}]} =
                read("ssh:\n  port: 2022\n  ip: 0.0.0.0\n", context)
@@ -557,7 +434,7 @@ defmodule WardrikDaemon.ConfigTest do
 
     test "http trusts tool workers' answers only where it says so", context do
       assert {:ok, [{WardrikHTTP, http}]} = read("http:\n  trusted_workers: true\n", context)
-      assert http == [trusted_workers: true]
+      assert http == [workers: [trusted: true]]
 
       assert {:error, message} = read("http:\n  trusted_workers: yes please\n", context)
       assert message =~ "http.trusted_workers is true or false"
@@ -573,20 +450,13 @@ defmodule WardrikDaemon.ConfigTest do
           type: test
       """
 
-      assert {:ok,
-              [
-                {WardrikChannel,
-                 [
-                   channels: channels,
-                   orgs: orgs,
-                   creates: _creates,
-                   approvers: approvers,
-                   admins: admins,
-                   installations: %WardrikChannel.Installations.Config{installations: none}
-                 ]}
-              ]} = read(yaml, context)
-
-      assert none == %{}
+      assert {:ok, [{WardrikChannel, settings}]} = read(yaml, context)
+      channels = settings[:channels]
+      orgs = settings[:orgs]
+      approvers = settings[:approvers]
+      admins = settings[:admins]
+      assert settings[:installations] == WardrikChannel.Installations.Config.new([])
+      refute Keyword.has_key?(settings, :tokens)
 
       assert Enum.sort(channels) == [
                chat: {WardrikDaemon.Test.Channel, [room_prefix: "wardrik-"]},
@@ -668,7 +538,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "channels.chat.token is the token the channel acts with"
 
       assert {:error, message} = read("channels:\n  chat: {type: pigeon}\n", context)
-      assert message =~ "channels.chat.type is the kind of channel: slack, test"
+      assert message =~ "channels.chat.type is the kind of channel: test"
 
       assert {:error, message} = read("channels:\n  chat: {type: test, colour: red}\n", context)
       assert message =~ "channels.chat.room_prefix is the only setting"
@@ -790,114 +660,6 @@ defmodule WardrikDaemon.ConfigTest do
 
       config = Config.new(sections: [{WardrikDaemon, base_url: "https://agents.example.com"}])
       assert Config.base_url(config) == "https://agents.example.com"
-    end
-
-    test "oauth.redirect names where a browser comes back to", context do
-      assert {:ok, [{WardrikOAuth, oauth}]} =
-               read(
-                 "oauth:\n  redirect:\n    url: https://agents.example.com/oauth/\n" <>
-                   "    open: false\n",
-                 context
-               )
-
-      assert Enum.sort(oauth[:redirect]) == [open: false, url: "https://agents.example.com/oauth"]
-
-      assert {:ok, [{WardrikOAuth, [redirect: [url: "http://localhost:4747/oauth"]]}]} =
-               read("oauth:\n  redirect:\n    url: http://localhost:4747/oauth\n", context)
-
-      for {yaml, said} <- [
-            {"url: http://agents.example.com", "url is an https:// URL, or http:// on loopback"},
-            {"url: https://agents.example.com/?a=1", "url is an https:// URL"},
-            {"url: https://agents.example.com/#top", "url is an https:// URL"},
-            {"url: 4599", "url is an https:// URL"},
-            {"port: 4600", "port is not"},
-            {"open: sometimes", "open is true or false"},
-            {"uri: https://agents.example.com", "uri is not"}
-          ] do
-        assert {:error, message} = read("oauth:\n  redirect:\n    #{yaml}\n", context)
-        assert message =~ "oauth.redirect." <> said
-      end
-
-      assert {:error, message} =
-               read(
-                 "oauth:\n  providers:\n    github:\n      resource: https://x\n" <>
-                   "      redirect_uri: https://y\n",
-                 context
-               )
-
-      assert message =~ "oauth.providers.github.redirect_uri"
-    end
-
-    test "a provider names how its users authorize", context do
-      assert {:ok, [{WardrikOAuth, oauth}]} =
-               read(
-                 "oauth:\n  providers:\n    github:\n      resource: https://x\n      flow: device\n",
-                 context
-               )
-
-      assert oauth[:providers][:github][:flow] == :device
-
-      assert {:error, message} =
-               read(
-                 "oauth:\n  providers:\n    github:\n      resource: https://x\n      flow: phone\n",
-                 context
-               )
-
-      assert message =~ "oauth.providers.github.flow is auto, browser or device"
-    end
-
-    test "a provider sends more with the authorization request, but not what Wardrik sets",
-         context do
-      assert {:ok, [{WardrikOAuth, oauth}]} =
-               read(
-                 "oauth:\n  providers:\n    google:\n      resource: https://x\n" <>
-                   "      authorization_params:\n        access_type: offline\n" <>
-                   "        prompt: consent\n        max_age: 0\n",
-                 context
-               )
-
-      assert oauth[:providers][:google][:authorization_params] ==
-               %{"access_type" => "offline", "prompt" => "consent", "max_age" => "0"}
-
-      assert {:error, message} =
-               read(
-                 "oauth:\n  providers:\n    google:\n      resource: https://x\n" <>
-                   "      authorization_params:\n        redirect_uri: https://y\n",
-                 context
-               )
-
-      assert message =~
-               "oauth.providers.google.authorization_params.redirect_uri is one Wardrik sets itself"
-
-      assert {:error, message} =
-               read(
-                 "oauth:\n  providers:\n    google:\n      resource: https://x\n" <>
-                   "      authorization_params: offline\n",
-                 context
-               )
-
-      assert message =~ "oauth.providers.google.authorization_params is a table"
-    end
-
-    test "a provider's client secret goes only to an issuer it names", context do
-      assert {:error, message} =
-               read(
-                 "oauth:\n  providers:\n    github:\n      resource: https://x\n" <>
-                   "      client_id: a\n      client_secret: s\n",
-                 context
-               )
-
-      assert message =~
-               "oauth.providers.github.client_secret is sent only to an issuer the provider names"
-
-      assert {:ok, [{WardrikOAuth, oauth}]} =
-               read(
-                 "oauth:\n  providers:\n    github:\n      resource: https://x\n" <>
-                   "      issuer: https://y\n      client_id: a\n      client_secret: s\n",
-                 context
-               )
-
-      assert oauth[:providers][:github][:client_secret] == "s"
     end
 
     test "a cluster of nodes on this machine is found by name, and counted", context do

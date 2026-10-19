@@ -2,9 +2,16 @@ defmodule WardrikMCP do
   @moduledoc """
   MCP servers as tools an agent can call.
 
-  A host starts `WardrikMCP.Supervisor` with the servers it wants reached, then
-  names one by its `Wardrik.Resource` in a config the way it names any
-  other tool:
+  A host attaches it to its `Wardrik.Host` with the servers it wants
+  reached, and a definition names each as `name/*`; see `attach/2`:
+
+      host =
+        WardrikMCP.attach(host,
+          servers: [github: [transport: {:stdio, command: "github-mcp-server"}]]
+        )
+
+  A config names one by its `Wardrik.Resource` the way it names any other
+  tool:
 
       github = Wardrik.Resource.parse!("deployment/server/github")
       Wardrik.LLM.Config.new(tools: [{WardrikMCP, github}])
@@ -30,8 +37,8 @@ defmodule WardrikMCP do
 
   ## Configuration
 
-  The servers are options of `WardrikMCP.Supervisor`, which the host starts in
-  its own tree:
+  The servers are options of `attach/2`, and of `WardrikMCP.Supervisor`,
+  which it makes the host's child, or which a host starts in its own tree:
 
       {WardrikMCP.Supervisor,
        servers: [
@@ -55,11 +62,14 @@ defmodule WardrikMCP do
   the transport: `:env` for a command, `:headers` for HTTP. Wardrik holds no token
   of its own and runs no OAuth flow; a server that needs one is given a token
   that was minted elsewhere.
+
+  `config/1` reads `config.yaml`'s `mcp` into the servers.
   """
 
   use Wardrik.Tool
 
   alias Wardrik.Credential
+  alias Wardrik.Host
   alias Wardrik.Resource
   alias Wardrik.Run
   alias Wardrik.Tool
@@ -70,6 +80,134 @@ defmodule WardrikMCP do
   alias WardrikMCP.Server
 
   @timeout :timer.seconds(60)
+
+  @transport ~w(command args env cwd url headers)a
+  @settings ~w(only except prefix timeout max_result_bytes gated trusted credential credential_header credential_scheme credential_env)a
+  @keys Map.new(@transport ++ @settings, &{Atom.to_string(&1), &1})
+  @credential "the name of a credential, such as github: letters, digits, ., - and _"
+
+  @doc """
+  `host` with the MCP servers it reaches attached: among its tool sources,
+  each of `:servers` by its name, which a definition names as `name/*` and
+  which gives its tools to the agents it serves, and `servers`, which gives
+  an agent the servers its owner adds (`WardrikMCP.Added`); and among its
+  children, `WardrikMCP.Supervisor`, which connects to them, with the
+  servers owners add kept in the host's store. `:servers`, `:stderr`,
+  `:first_retry`, `:refresh_after` and `:check` are the supervisor's.
+  """
+  @spec attach(Host.t(), keyword()) :: Host.t()
+  def attach(%Host{} = host, opts \\ []) do
+    opts = Keyword.validate!(opts, [:stderr, :first_retry, :refresh_after, :check, servers: []])
+    opts = [store: Host.store(host)] ++ opts
+
+    configured =
+      for server <- WardrikMCP.Supervisor.configured(opts),
+          do: {Resource.basename(server.key), server}
+
+    host
+    |> Host.register(:sources, [{"servers", WardrikMCP.Added} | configured])
+    |> Host.child({WardrikMCP.Supervisor, opts})
+  end
+
+  @doc """
+  Reads `config.yaml`'s `mcp`, each server by its name, into the options
+  `attach/2` takes, or the key that does not read, as a path within the
+  section, and why. A server runs a `command`, with its `args`, `env` and
+  `cwd`, or is reached at a `url`, with its `headers`, and takes the
+  options `WardrikMCP.Server` does besides, `timeout` in seconds.
+  """
+  @spec config(map() | nil) :: {:ok, keyword()} | {:error, [String.t()], String.t()}
+  def config(nil), do: {:ok, servers: []}
+
+  def config(%{} = section) do
+    {:ok,
+     servers: Enum.map(section, fn {name, server} -> {named(name), server!(name, server)} end)}
+  catch
+    {:invalid, path, message} -> {:error, path, message}
+  end
+
+  def config(_section), do: {:error, [], "is a set of keys"}
+
+  defp server!(name, nil), do: server!(name, %{})
+
+  defp server!(name, %{} = server) do
+    case Map.keys(server) -- Map.keys(@keys) do
+      [] ->
+        prefix!(Map.get(server, "prefix", name), [name])
+
+        [transport: transport!(server, [name])] ++
+          Enum.map(Map.drop(server, ~w(command args env cwd url headers)), &option!(&1, [name]))
+
+      [key | _rest] ->
+        invalid!(
+          [name, key],
+          "is not a setting; expected one of #{Enum.map_join(@transport ++ @settings, ", ", &Atom.to_string/1)}"
+        )
+    end
+  end
+
+  defp server!(name, _server), do: invalid!([name], "is a set of keys")
+
+  defp prefix!("workers", path),
+    do:
+      invalid!(
+        path,
+        "names its tools with workers, which tool workers' tools are named with; give it another prefix"
+      )
+
+  defp prefix!(prefix, path) when is_binary(prefix) do
+    if String.contains?(prefix, "__"),
+      do: invalid!(path, "names its tools with #{prefix}, and a server's prefix may not hold __")
+  end
+
+  defp prefix!(prefix, path),
+    do: invalid!(path, "names its tools with #{inspect(prefix)}, which is not text")
+
+  defp transport!(%{"command" => _, "url" => _}, path),
+    do: invalid!(path, "has both command and url; a server is one or the other")
+
+  defp transport!(%{"command" => command} = server, _path),
+    do: {:stdio, [command: command] ++ taken(server, ~w(args env cwd))}
+
+  defp transport!(%{"url" => url} = server, _path),
+    do: {:streamable_http, [base_url: url] ++ taken(server, ~w(headers))}
+
+  defp transport!(_server, path), do: invalid!(path, "needs a command or a url")
+
+  defp taken(server, keys),
+    do: for(key <- keys, Map.has_key?(server, key), do: {@keys[key], server[key]})
+
+  defp option!({"timeout", seconds}, _path) when is_integer(seconds) and seconds > 0,
+    do: {:timeout, :timer.seconds(seconds)}
+
+  defp option!({"timeout", _seconds}, path),
+    do: invalid!(path ++ ["timeout"], "is a whole number of seconds")
+
+  defp option!({"credential", name}, path), do: {:credential, credential!(name, path)}
+  defp option!({"gated", gated}, _path) when is_boolean(gated), do: {:gated, gated}
+
+  defp option!({"gated", names}, path) do
+    if is_list(names) and Enum.all?(names, &is_binary/1),
+      do: {:gated, names},
+      else: invalid!(path ++ ["gated"], "is true, false, or a list of the server's tool names")
+  end
+
+  defp option!({"trusted", trusted}, _path) when is_boolean(trusted), do: {:trusted, trusted}
+  defp option!({"trusted", _trusted}, path), do: invalid!(path ++ ["trusted"], "is true or false")
+  defp option!({key, value}, _path), do: {@keys[key], value}
+
+  defp credential!(name, path) when is_binary(name) do
+    if Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/, name),
+      do: name,
+      else: invalid!(path ++ ["credential"], "is #{inspect(name)}, which is not #{@credential}")
+  end
+
+  defp credential!(_name, path), do: invalid!(path ++ ["credential"], "is #{@credential}")
+
+  # reach:disable-next-line unsafe_atom_creation -- config.yaml's own server names
+  defp named(name), do: String.to_atom(name)
+
+  defp invalid!(path, message), do: throw({:invalid, path, message})
 
   @doc """
   The tools a server offers, as it last reported them.

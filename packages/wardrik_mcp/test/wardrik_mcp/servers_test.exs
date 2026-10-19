@@ -365,6 +365,9 @@ defmodule WardrikMCP.ServersTest do
                gated: true,
                labels: ["outside"]
              }
+
+      assert WardrikMCP.Added.tools(key) == WardrikMCP.tools(key)
+      assert WardrikMCP.Added.annotations(key, "#{Resource.basename(key)}__post").gated
     end
 
     test "is closed everywhere as it is removed", %{key: key} do

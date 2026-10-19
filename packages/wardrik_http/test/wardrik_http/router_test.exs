@@ -1742,41 +1742,7 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
-  describe "a chat channel's requests" do
-    @doc false
-    def answering(test, request) do
-      send(test, {:channel, request})
-      %{status: 200, headers: [{"content-type", "text/plain"}], body: "taken"}
-    end
-
-    test "hands what the medium sends to its channel, as it was sent, and sends back its answer",
-         %{api: api} do
-      api = listener(api, channels: %{"chat" => {__MODULE__, :answering, [self()]}})
-
-      assert {:ok, %{status: 200, body: "taken"}} =
-               Req.post(Req.merge(api, auth: nil),
-                 url: "/v1/channels/chat/events?retry=1",
-                 headers: [{"x-signature", "v0=abc"}, {"content-type", "application/json"}],
-                 body: ~s({"a": 1})
-               )
-
-      assert_received {:channel, request}
-
-      assert %{method: "POST", path: ["events"], query: %{"retry" => "1"}, body: ~s({"a": 1})} =
-               request
-
-      assert {"x-signature", "v0=abc"} in request.headers
-    end
-
-    test "answers 404 for a channel that takes no requests here", %{api: api} do
-      assert {:ok, %{status: 404, body: %{"error" => %{"message" => message}}}} =
-               Req.post(Req.merge(api, auth: nil), url: "/v1/channels/elsewhere/events", body: "")
-
-      assert message =~ "No channel elsewhere"
-    end
-  end
-
-  describe "a mounted plug" do
+  describe "the host's routes" do
     defmodule Page do
       @behaviour Plug
 
@@ -1785,19 +1751,19 @@ defmodule WardrikHTTP.RouterTest do
 
       @impl Plug
       def call(conn, test: test) do
-        send(test, {:mounted, conn.path_info})
+        send(test, {:routed, conn.path_info, conn.private.wardrik_host})
         Plug.Conn.send_resp(conn, 200, "page")
       end
     end
 
-    test "answers the paths under its own, as they came, asking no credential", %{api: api} do
-      api = listener(api, mounts: [{["oauth", "callback"], {Page, test: self()}}])
-      anyone = Req.merge(api, auth: nil)
+    test "answer the paths under their own, as they came, asking no credential", %{api: api} do
+      host = Host.register(host(), :routes, [{["oauth", "callback"], {Page, test: self()}}])
+      anyone = Req.merge(listener(api, host: host), auth: nil)
 
       assert {:ok, %{status: 200, body: "page"}} =
-               Req.get(anyone, url: "/oauth/callback/github?code=c")
+               Req.post(anyone, url: "/oauth/callback/github?code=c", body: "")
 
-      assert_received {:mounted, ["oauth", "callback", "github"]}
+      assert_received {:routed, ["oauth", "callback", "github"], ^host}
 
       for path <- ["/oauth/check", "/v1/agents"],
           do: assert({:ok, %{status: 401}} = Req.get(anyone, url: path))
@@ -1822,11 +1788,13 @@ defmodule WardrikHTTP.RouterTest do
     }
 
     # As a token over an org of its own, whose export reads no other test's
-    # log.
+    # log. What a chat channel's medium sends is answered by the route its
+    # host has wardrik_channel register.
     test "names every route the router serves, and no method it does not", %{api: api} do
       probe = scoped(api, "openapi-#{System.unique_integer([:positive])}")
 
       for {template, methods} <- WardrikHTTP.OpenAPI.routes(),
+          not String.starts_with?(template, "/v1/channels/"),
           method <- ~w(get put post delete) do
         path = Regex.replace(~r/\{([a-z_]+)\}/, template, fn _whole, name -> @values[name] end)
 

@@ -28,3 +28,13 @@ is refused at once, and the streams and sockets open on it are closed.
 The [HTTP API reference](https://docs.wardrik.dev/reference/http-api/) lists
 every route, and the [TypeScript SDK](../../sdks/typescript) drives it from
 Node.
+
+An application embedding Wardrik attaches it to its host, which serves the
+API, and the routes the packages attached to it register, on the port it
+says, and offers its agents the tools of the tool workers that connect to it,
+as `workers/*`:
+
+```elixir
+wardrik = Wardrik.new(store: store) |> WardrikHTTP.attach(port: 4850)
+children = [{WardrikStore, store}, {Wardrik, wardrik}]
+```

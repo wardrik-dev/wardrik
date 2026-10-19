@@ -60,15 +60,17 @@ defmodule WardrikChannel.Replies do
 
   @doc """
   The supervisor the rooms' processes run under, which a host starts once per
-  node, after Wardrik and before `WardrikChannel.Supervisor`. Options:
+  node, after Wardrik and before `WardrikChannel.Supervisor`, as
+  `WardrikChannel.attach/2` has it. Options:
 
-    * `:channels` - the channels it posts in, as `WardrikChannel.channels/2`
-      makes them, handed to each room's process as it starts, wakes, or
-      restarts on another node; required
-    * `:store` - the `WardrikStore` the fleet runs on, which the rooms are
-      kept in; required
-    * `:name` - what it runs under, `supervisor/0` unless given; a channel's
-      context names it as `:replies`
+    * `:host` - the `Wardrik.Host` it runs on, in whose store the rooms are
+      kept; required
+    * `:settings` - the channels it posts in, as `WardrikChannel.attach/2`
+      takes them, which it makes on the host with
+      `WardrikChannel.channels/2`, handed to each room's process as it
+      starts, wakes, or restarts on another node; none unless given
+    * `:name` - what it runs under, `supervisor/0` unless given; the
+      channels it makes name it as their `:replies`
     * `:presenter` - the `Wardrik.Agent.Activity.Presenter` a thread's
       status is worded by, `Wardrik.Agent.Activity.English` unless given
     * `:throttle` - the least time between two of a thread's statuses, in
@@ -89,15 +91,16 @@ defmodule WardrikChannel.Replies do
   end
 
   @doc """
-  Starts the supervisor the rooms' processes run under, over the store the
-  fleet runs on. Each runs under its own prefix in the store, by its name.
+  Starts the supervisor the rooms' processes run under, over the store of
+  the host it runs on. Each runs under its own prefix in the store, by its
+  name.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) do
     opts =
       Keyword.validate!(opts, [
-        :channels,
-        :store,
+        :host,
+        settings: [],
         name: @name,
         presenter: %Wardrik.Agent.Activity.English{},
         throttle: @throttle,
@@ -105,14 +108,15 @@ defmodule WardrikChannel.Replies do
       ])
 
     name = Keyword.fetch!(opts, :name)
+    host = Keyword.fetch!(opts, :host)
 
     DurableServer.Supervisor.start_link(
       [
         name: name,
         prefix: "channel_replies/#{inspect(name)}/",
-        backend: opts |> Keyword.fetch!(:store) |> WardrikStore.durable_backend(),
+        backend: host |> Wardrik.Host.store() |> WardrikStore.durable_backend(),
         init_info: %{
-          channels: Keyword.fetch!(opts, :channels),
+          channels: WardrikChannel.channels(opts[:settings], host: host, replies: name),
           showing: Map.new(Keyword.take(opts, [:presenter, :throttle, :refresh]))
         }
       ] ++ WardrikStore.durable_shutdown()

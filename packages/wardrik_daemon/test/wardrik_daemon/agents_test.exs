@@ -316,7 +316,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert Wardrik.LLM.Config.tools(spec.config) == []
 
     assert {:ok, definition} = Definitions.get(definitions(), defined)
-    assert Definitions.missing(definitions(), definition, host: Host.host()) == ["crm/*"]
+    assert Definition.missing(definition, host: Host.host()) == ["crm/*"]
 
     remote = %WardrikMCP.Remote{
       key: Wardrik.Resource.new(owner, server: "crm"),
@@ -326,7 +326,7 @@ defmodule WardrikDaemon.AgentsTest do
     }
 
     :ok = WardrikMCP.Remote.put(Wardrik.Host.store(Host.host()), remote)
-    assert Definitions.missing(definitions(), definition, host: Host.host()) == []
+    assert Definition.missing(definition, host: Host.host()) == []
   end
 
   test "a user's agent shares its org's tree where config.yaml shares it with them",
@@ -660,132 +660,34 @@ defmodule WardrikDaemon.AgentsTest do
     assert [_member] = Fleet.list(Resource.parse!(org <> "/agent/*"), host: Host.host())
   end
 
-  # The installation of the channel `channel`, as a room's events find it.
-  defp in_channel(channel),
-    do: %WardrikChannel.Installation{
-      channel: channel,
-      workspace: channel,
-      owner: Wardrik.Resource.deployment(),
-      token: "token"
-    }
-
-  test "offers in a channel the agents whose files name it, of the orgs it serves",
+  test "a room's thread starts on its agent's definition, in a channel config.yaml offers it in",
        %{org: org} = context do
-    Host.put_section(WardrikChannel, orgs: [slack: [org], everyone: :all])
-
-    write(context, "books", "channels: [slack]\n")
-    write(context, "triage", "channels: [slack, everyone]\n")
-    write(context, "quiet", "")
-    Host.start_agents(context.dir)
-    # Answered once the files have been read.
-    _files = Agents.files(Host.agents(), host: Host.host())
-
-    assert Enum.map(Agents.offered(Host.agents(), in_channel("slack")), & &1.agent) ==
-             [AgentID.parse!("#{org}/books"), AgentID.parse!("#{org}/triage")]
-
-    everyone = Enum.map(Agents.offered(Host.agents(), in_channel("everyone")), & &1.agent)
-    assert AgentID.parse!("#{org}/triage") in everyone
-    refute AgentID.parse!("#{org}/books") in everyone
-
-    Host.put_section(WardrikChannel, orgs: [slack: ["elsewhere"]])
-    assert Agents.offered(Host.agents(), in_channel("slack")) == []
-    assert Agents.offered(Host.agents(), in_channel("nowhere")) == []
-  end
-
-  test "creates an agent for a room from the defaults, where they name a policy and the channel lets it",
-       %{org: org} = context do
-    Host.put_section(WardrikChannel,
-      orgs: [slack: [org], closed: [org]],
-      creates: [slack: true, closed: false]
-    )
-
-    Host.put_section(Agents,
-      defaults: %{"model" => "anthropic:claude-sonnet-5"}
-    )
-
-    write_policy(context, "careful", "deny: [run_lua]\n")
-    Host.start_agents(context.dir)
-    _files = Agents.files(Host.agents(), host: Host.host())
-    maria = Wardrik.Principal.new(:channel, "slack/T1/U1", name: "maria")
-
-    refute Agents.creatable?(Host.agents(), in_channel("slack"))
-
-    assert {:error, "Agents are not created from here" <> _} =
-             Agents.create_in(Host.host(Host.agents()), in_channel("slack"), "books", maria)
-
-    Host.put_section(Agents,
-      defaults: %{"model" => "anthropic:claude-sonnet-5", "policy" => "careful"}
-    )
-
-    assert Agents.creatable?(Host.agents(), in_channel("slack"))
-    refute Agents.creatable?(Host.agents(), in_channel("closed"))
-
-    assert {:ok, %WardrikChannel.Offer{agent: id, description: "Answers in #Books & Bills."}} =
-             Agents.create_in(
-               Host.host(Host.agents()),
-               in_channel("slack"),
-               "Books & Bills",
-               maria
-             )
-
-    assert id == AgentID.parse!("#{org}/books-bills")
-    assert Fleet.lookup(id, host: Host.host())
-    assert id in Enum.map(Agents.offered(Host.agents(), in_channel("slack")), & &1.agent)
-
-    assert Wardrik.Test.Audit.about(id) ==
-             [{"agent.defined", %{"type" => "channel", "id" => "slack/T1/U1", "name" => "maria"}}]
-
-    assert {:error, message} =
-             Agents.create_in(Host.host(Host.agents()), in_channel("slack"), "books-bills", maria)
-
-    assert message =~ "#{org}/books-bills is there already"
-
-    assert {:error, "Agents are not created from here" <> _} =
-             Agents.create_in(Host.host(Host.agents()), in_channel("closed"), "x", maria)
-
-    assert {:error, ~s("!!!" makes no agent's name.)} =
-             Agents.create_in(Host.host(Host.agents()), in_channel("slack"), "!!!", maria)
-  end
-
-  test "says in a channel how an agent is offered there, and who else decides" do
-    assert Agents.offering(in_channel("slack")) ==
-             "Whoever runs Wardrik can offer an agent here by adding `channels: [slack]` to its agent file."
-
-    assert Agents.deciding(in_channel("slack")) =~ "approvers in config.yaml"
-  end
-
-  test "starts the agent of a room's thread on its definition, and names the channel's approvers",
-       %{org: org} = context do
-    Host.put_section(WardrikChannel,
-      orgs: [slack: [org]],
-      approvers: [slack: %WardrikChannel.Approvers.Named{names: ["@maria"]}]
-    )
-
+    Host.put_section(WardrikChannel, orgs: [slack: [org]])
     write(context, "books", "channels: [slack]\ndescription: Keeps the books.\n")
     Host.start_agents(context.dir)
     _files = Agents.files(Host.agents(), host: Host.host())
 
-    thread = AgentID.put_external_id(AgentID.parse!("#{org}/books"), "C1-1.1")
-    assert {:ok, pid} = Agents.start(Host.host(Host.agents()), in_channel("slack"), thread)
+    %{"slack" => channel} =
+      WardrikChannel.channels(
+        [
+          channels: [slack: {WardrikDaemon.Test.Channel, []}],
+          installations:
+            WardrikChannel.Installations.Config.new([{:slack, "token", Resource.deployment()}]),
+          orgs: [slack: [org]]
+        ],
+        host: Host.host(Host.agents())
+      )
+
+    {:ok, workspace} = WardrikChannel.Workspace.new(channel.context, "slack")
+    books = AgentID.parse!("#{org}/books")
+    assert [%WardrikChannel.Offer{agent: ^books}] = WardrikChannel.Workspace.offered(workspace)
+
+    thread = AgentID.put_external_id(books, "C1-1.1")
+    assert {:ok, pid} = WardrikChannel.Workspace.start(workspace, thread)
     assert Fleet.whereis(thread, host: Host.host()) == pid
-    assert Agents.start(Host.host(Host.agents()), in_channel("slack"), thread) == {:ok, pid}
 
     assert Agent.status(thread, host: Host.host()).model ==
-             Agent.status(AgentID.parse!("#{org}/books"), host: Host.host()).model
-
-    assert Agents.approvers(Host.agents(), in_channel("slack")) ==
-             %WardrikChannel.Approvers.Named{names: ["@maria"]}
-
-    assert Agents.approvers(Host.agents(), in_channel("other")) ==
-             %WardrikChannel.Approvers.Named{names: []}
-
-    Host.put_section(WardrikChannel,
-      orgs: [slack: [org]],
-      approvers: [slack: %WardrikChannel.Approvers.Anyone{}]
-    )
-
-    assert Agents.approvers(Host.agents(), in_channel("slack")) ==
-             %WardrikChannel.Approvers.Anyone{}
+             Agent.status(books, host: Host.host()).model
   end
 
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do

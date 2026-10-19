@@ -22,19 +22,21 @@ defmodule WardrikNotify do
 
   A target is a module implementing this behaviour and its options.
   `WardrikNotify.Webhook` ships with the package, `WardrikChannel.Notices`
-  with `wardrik_channel`, and a host names its own beside them, as it starts
-  `WardrikNotify.Supervisor`:
+  with `wardrik_channel`, and a host names its own beside them, as it
+  attaches the package to its `Wardrik.Host` (see `attach/2`):
 
-      {WardrikNotify.Supervisor,
-       targets: [
-         ops:
-           {WardrikChannel.Notices,
-            channel: {WardrikSlack, []}, installation: installation, room: "#ops"},
-         pager: {MyApp.Pager, opts}
-       ]}
+      host =
+        WardrikNotify.attach(host,
+          targets: [
+            ops:
+              {WardrikChannel.Notices,
+               channel: {WardrikSlack, []}, installation: installation, room: "#ops"},
+            pager: {MyApp.Pager, opts}
+          ]
+        )
 
   A target's `:orgs` is the orgs whose agents it tells, every org's unless it
-  says.
+  says. `config/1` reads `config.yaml`'s `notify` into the targets.
 
   `WardrikNotify.Dispatcher` subscribes to each routed agent's events and sends
   each `WardrikNotify.Notice` from the node that holds the agent, so a cluster
@@ -46,6 +48,97 @@ defmodule WardrikNotify do
 
   @typedoc "Targets by name: the module that delivers to each, and its options."
   @type targets() :: [{atom(), {module(), keyword()}}]
+
+  @target "is a webhook, or a channel and a room in it"
+
+  @doc """
+  `host` with `WardrikNotify.Supervisor` among its children, delivering to
+  `:targets`, where it names any, with the agents' routes read from the
+  host's `Wardrik.Definitions` as it starts. `:req_options` and `:backoff`
+  are the supervisor's.
+  """
+  @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
+  def attach(%Wardrik.Host{} = host, opts \\ []) do
+    opts = Keyword.validate!(opts, [:req_options, :backoff, targets: []])
+
+    if opts[:targets] == [],
+      do: host,
+      else:
+        Wardrik.Host.child(
+          host,
+          {WardrikNotify.Supervisor,
+           [routes: {Wardrik.Definitions, :routes, [Wardrik.Host.definitions(host)]}] ++ opts}
+        )
+  end
+
+  @doc """
+  Reads `config.yaml`'s `notify`, each target by its name, into the
+  options `attach/2` takes, or the key that does not read, as a path within
+  the section, and why. A target is a webhook, its `url` and `secret`, or a
+  room of a channel, which posts through `WardrikChannel.Notices` once the
+  host finds the channel `channel` names.
+
+      WardrikNotify.config(%{"ops" => %{"channel" => "slack", "room" => "#ops"}})
+      #=> {:ok, targets: [ops: {WardrikChannel.Notices, channel: "slack", room: "#ops", approvers: []}]}
+  """
+  @spec config(map() | nil) :: {:ok, keyword()} | {:error, [String.t()], String.t()}
+  def config(nil), do: {:ok, targets: []}
+
+  def config(%{} = section) do
+    {:ok, targets: for({name, target} <- section, do: {named(name), target!(name, target)})}
+  catch
+    {:invalid, path, message} -> {:error, path, message}
+  end
+
+  def config(_section), do: {:error, [], "is a set of keys"}
+
+  defp target!(name, %{"channel" => _} = target) do
+    known!(target, ~w(channel room approvers), [name])
+
+    for key <- ~w(channel room),
+        not (is_binary(target[key]) and target[key] != ""),
+        do: invalid!([name, key], "is required")
+
+    approvers = Map.get(target, "approvers", [])
+
+    unless is_list(approvers) and Enum.all?(approvers, &is_binary/1),
+      do: invalid!([name, "approvers"], "is a list of who may answer, as the channel names them")
+
+    {WardrikChannel.Notices,
+     channel: target["channel"], room: target["room"], approvers: approvers}
+  end
+
+  defp target!(name, %{"webhook" => %{} = webhook} = target) when map_size(target) == 1 do
+    known!(webhook, ~w(url secret), [name, "webhook"])
+    unless Map.has_key?(webhook, "url"), do: invalid!([name, "webhook", "url"], "is required")
+
+    {WardrikNotify.Webhook,
+     for(
+       {key, value} <- [url: webhook["url"], secret: webhook["secret"]],
+       value != nil,
+       do: {key, value}
+     )}
+  end
+
+  defp target!(name, %{"webhook" => _webhook} = target) when map_size(target) == 1,
+    do: invalid!([name, "webhook"], "is a set of keys")
+
+  defp target!(name, _target), do: invalid!([name], @target)
+
+  # reach:disable-next-line unsafe_atom_creation -- config.yaml's own target names
+  defp named(name), do: String.to_atom(name)
+
+  defp known!(table, keys, path) do
+    case Map.keys(table) -- keys do
+      [] ->
+        :ok
+
+      [key | _] ->
+        invalid!(path ++ [key], "is not a setting; expected one of #{Enum.join(keys, ", ")}")
+    end
+  end
+
+  defp invalid!(path, message), do: throw({:invalid, path, message})
 
   @doc """
   Sends `notice` where `opts` say, called in a task of its own. `opts` are

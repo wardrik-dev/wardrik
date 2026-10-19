@@ -49,7 +49,8 @@ defmodule WardrikTest do
 
   describe "context/1" do
     test "is the context its fields name, which names no tools of its own" do
-      assert %WardrikDefinition.Context{org: "acme", servers: []} = Wardrik.context(org: "acme")
+      assert %WardrikDefinition.Context{org: "acme", policies: %{}} = Wardrik.context(org: "acme")
+      assert_raise KeyError, fn -> Wardrik.context(servers: []) end
       assert_raise KeyError, fn -> Wardrik.context(tools: [Search]) end
     end
   end

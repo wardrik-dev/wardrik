@@ -24,9 +24,11 @@ defmodule WardrikSlack.HTTPTest do
 
     %{"slack" => channel} =
       WardrikChannel.channels(
-        [slack: {WardrikSlack, signing_secret: @secret, req_options: @req_options}],
-        host: Wardrik.Host.new(store: Wardrik.Test.store()),
-        installations: installations
+        [
+          channels: [slack: {WardrikSlack, signing_secret: @secret, req_options: @req_options}],
+          installations: installations
+        ],
+        host: Wardrik.Host.new(store: Wardrik.Test.store())
       )
 
     %{channel: channel, installations: installations}

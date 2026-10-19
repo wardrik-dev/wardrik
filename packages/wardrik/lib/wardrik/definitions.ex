@@ -188,18 +188,6 @@ defmodule Wardrik.Definitions do
   end
 
   @doc """
-  The tools `definition` names that offer nothing yet, under its agent's
-  owner's context on the `:host` given; see `Wardrik.Definition.missing/2`.
-  """
-  @spec missing(t(), Definition.t(), host: Wardrik.Host.t()) :: [String.t()]
-  def missing(%__MODULE__{} = definitions, %Definition{id: id} = definition, opts),
-    do:
-      Definition.missing(definition,
-        context: context(definitions, id),
-        host: Keyword.fetch!(opts, :host)
-      )
-
-  @doc """
   Reads every definition again, in one pass on this node: what the files
   the contexts read declare now is kept, a definition a file declared that
   no file declares any more is retired, as its agent stops and keeps its

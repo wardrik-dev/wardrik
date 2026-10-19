@@ -10,8 +10,6 @@ defmodule WardrikHTTP.Auth do
   A request to `/v1/hooks/`, from outside to one of an agent's triggers,
   presents no credential and is let through: the trigger checks its
   signature, and `WardrikHTTP.Router` gives it no caller but that trigger.
-  So is one to `/v1/channels/`, which a chat channel's medium sends, and
-  the channel checks.
   """
 
   @behaviour Plug
@@ -26,7 +24,6 @@ defmodule WardrikHTTP.Auth do
 
   @impl Plug
   def call(%Plug.Conn{path_info: ["v1", "hooks" | _rest]} = conn, _opts), do: conn
-  def call(%Plug.Conn{path_info: ["v1", "channels" | _rest]} = conn, _opts), do: conn
 
   def call(conn, _opts) do
     authenticator = Keyword.fetch!(conn.assigns.options, :authenticator)

@@ -83,7 +83,8 @@ defmodule WardrikHTTP.Workers do
   @defaults [timeout: :timer.seconds(60), trusted: false]
 
   @doc false
-  def child_spec([]) do
+  def child_spec(opts) do
+    Keyword.validate!(opts, [:host])
     group = Group.child_spec(name: __MODULE__)
     %{group | id: __MODULE__}
   end

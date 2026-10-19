@@ -1,8 +1,8 @@
 defmodule WardrikChannel do
   @moduledoc """
   A chat medium Wardrik's agents are reached through, such as Slack: the
-  behaviour each one's adapter implements, and how the adapters a release
-  holds are found.
+  behaviour each one's adapter implements, and the channels a host runs,
+  attached to its `Wardrik.Host` with `attach/2`.
 
   A *channel* is one configured instance of an adapter, under a name of the
   deployment's own: one Slack workspace's app, say, with its tokens. A *room*
@@ -38,16 +38,8 @@ defmodule WardrikChannel do
   ## Adapters
 
   An adapter is a module implementing this behaviour, in a package of its
-  own. It names itself in its application's environment, under
-  `:wardrik_channels`, so whatever starts channels finds it by its type
-  without naming it:
-
-      # mix.exs of wardrik_slack
-      def application,
-        do: [env: [wardrik_channels: [slack: WardrikSlack]]]
-
-  `discover/0` lists the types the loaded applications name, which a host
-  reads once, as it starts.
+  own, which a host names by the type a channel's settings give, as the
+  daemon names `WardrikSlack` by `slack`; see `config/2`.
 
   ## What an adapter does
 
@@ -69,12 +61,13 @@ defmodule WardrikChannel do
 
   ## HTTP
 
-  A host serves each channel's requests where the medium sends them, such
-  as under `/channels/slack/`, without reading them: it hands each to
-  `request/2` with the channel, and sends back the `WardrikChannel.Response`
-  it answers. What the medium sends is checked by the adapter, by whatever
-  proof it carries, such as a signature over the body; so the body is
-  handed over as it was sent.
+  A host serves each channel's requests where the medium sends them,
+  `/v1/channels/{channel}/`, without reading them: `WardrikChannel.Requests`,
+  among the routes `attach/2` registers, hands each to `request/2` with the
+  channel, and sends back the `WardrikChannel.Response` it answers. What
+  the medium sends is checked by the adapter, by whatever proof it carries,
+  such as a signature over the body; so the body is handed over as it was
+  sent.
 
       response =
         WardrikChannel.request(channels["slack"], %{
@@ -104,22 +97,20 @@ defmodule WardrikChannel do
 
   ## Starting channels
 
-  `channels/2` makes, once, what each configured channel runs on, a
-  `WardrikChannel.Channel` by its name. The host hands the same map to
-  `WardrikChannel.Replies` and to `WardrikChannel.Supervisor` as they
-  start, and serves each one's requests, so nothing about a channel is kept
-  where a node finds it:
+  `attach/2` takes the channels' settings, each channel's adapter and the
+  options its `config/1` answered by its name, and where they are
+  installed, and has the host run them:
 
-      channels =
-        WardrikChannel.channels([slack: {WardrikSlack, options}],
-          host: host,
+      host =
+        WardrikChannel.attach(host,
+          channels: [slack: {WardrikSlack, options}],
           installations: installations
         )
 
-      children = [
-        {WardrikChannel.Replies, channels: channels},
-        {WardrikChannel.Supervisor, channels: channels}
-      ]
+  `WardrikChannel.Replies`, `WardrikChannel.Supervisor` and
+  `WardrikChannel.Requests` each make the channels from the settings on the
+  host they run on, with `channels/2`, a `WardrikChannel.Channel` by its
+  name, so nothing about a channel is kept where a node finds it.
 
   ## Rooms
 
@@ -166,6 +157,8 @@ defmodule WardrikChannel do
 
   @typedoc "The channels a node runs, by name."
   @type channels() :: %{String.t() => Channel.t()}
+
+  @settings [:installations, :org, channels: [], orgs: [], creates: [], approvers: []]
 
   @doc """
   Reads a channel's settings, as `config.yaml` writes them, less the keys
@@ -215,16 +208,129 @@ defmodule WardrikChannel do
   @callback install(owner :: Resource.t(), Request.t(), keyword()) :: Response.t()
 
   @doc """
-  Every adapter the loaded applications name, by its type. Read once, as a
-  host starts, and handed to what reads its channels' settings.
+  `host` running the channels `settings` name, where it names any: among
+  its routes, `/v1/channels/`, where `WardrikChannel.Requests` answers what
+  each channel's medium sends it, and among its children
+  `WardrikChannel.Replies` and `WardrikChannel.Supervisor`, which run them.
+
+    * `:channels` - each channel's adapter and the options its `config/1`
+      answered, by the channel's name
+    * `:installations` - the `WardrikChannel.Installations` the workspaces
+      each is installed in are kept in
+    * `:orgs`, `:creates` and `:approvers` - each channel's, by its name,
+      and `:org`, every channel's, as `WardrikChannel.Context` says of them
   """
-  @spec discover() :: %{String.t() => module()}
-  def discover do
-    for {app, _description, _version} <- Application.loaded_applications(),
-        {type, module} <- Application.get_env(app, :wardrik_channels, []),
-        into: %{},
-        do: {to_string(type), module}
+  @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
+  def attach(%Wardrik.Host{} = host, settings) do
+    settings = Keyword.validate!(settings, @settings)
+
+    if settings[:channels] == [],
+      do: host,
+      else:
+        host
+        |> Wardrik.Host.register(:routes, [
+          {["v1", "channels"], {WardrikChannel.Requests, settings}}
+        ])
+        |> Wardrik.Host.child({WardrikChannel.Replies, settings: settings})
+        |> Wardrik.Host.child({WardrikChannel.Supervisor, settings: settings})
   end
+
+  @doc """
+  Reads `config.yaml`'s `channels`, each by its name, into the settings
+  `attach/2` takes, with `types` the adapters by the `type` each names, or
+  the key that does not read, as a path within the section, and why.
+
+  Every channel takes `type`, `token`, the one its installation in the
+  workspace that token reaches acts with, `create`, `approvers` and
+  `admins`, who may change the agents of its orgs, and its adapter's
+  `config/1` reads the rest. `:tokens` and `:admins` are each channel's by
+  its name, for the host to install and to issue tokens with.
+  """
+  @spec config(map() | nil, %{String.t() => module()}) ::
+          {:ok, keyword()} | {:error, [String.t()], String.t()}
+  def config(nil, types), do: config(%{}, types)
+
+  def config(%{} = section, types) do
+    read = for {name, channel} <- section, do: {named(name), channel!(name, channel, types)}
+
+    {:ok,
+     channels: for({name, channel} <- read, do: {name, channel.adapter}),
+     tokens: for({name, %{token: token}} <- read, token != nil, do: {name, token}),
+     creates: for({name, channel} <- read, do: {name, channel.creates}),
+     approvers: for({name, channel} <- read, do: {name, channel.approvers}),
+     admins: for({name, channel} <- read, do: {name, channel.admins})}
+  catch
+    {:invalid, path, message} -> {:error, path, message}
+  end
+
+  def config(_section, _types), do: {:error, [], "is a set of keys"}
+
+  defp channel!(name, channel, types) do
+    {type, settings} = Map.pop(table!(channel, [name]), "type")
+    {token, settings} = Map.pop(settings, "token")
+    {creates, settings} = Map.pop(settings, "create", true)
+    {approvers, settings} = Map.pop(settings, "approvers", [])
+    approvers = approvers!(approvers, [name, "approvers"])
+    {admins, settings} = Map.pop(settings, "admins", [])
+    adapter = adapter!(type, [name, "type"], types)
+
+    unless is_boolean(creates), do: invalid!([name, "create"], "is true or false")
+
+    unless is_nil(token) or (is_binary(token) and token != ""),
+      do: invalid!([name, "token"], "is the token the channel acts with, such as a bot's")
+
+    names!(admins, [name, "admins"])
+
+    case adapter.config(settings) do
+      {:ok, options} ->
+        %{
+          adapter: {adapter, options},
+          token: token,
+          creates: creates,
+          approvers: approvers,
+          admins: admins
+        }
+
+      {:error, at, message} ->
+        invalid!([name | at], message)
+    end
+  end
+
+  defp adapter!(type, path, types) do
+    case is_binary(type) and Map.fetch(types, type) do
+      {:ok, adapter} ->
+        adapter
+
+      _unknown ->
+        case types |> Map.keys() |> Enum.sort() do
+          [] -> invalid!(path, "is the kind of channel, and this host has none")
+          known -> invalid!(path, "is the kind of channel: #{Enum.join(known, ", ")}")
+        end
+    end
+  end
+
+  # Who decides in a channel: anyone in it, or the people it names.
+  defp approvers!("anyone", _path), do: %WardrikChannel.Approvers.Anyone{}
+
+  defp approvers!(names, path) do
+    if is_list(names) and Enum.all?(names, &is_binary/1),
+      do: %WardrikChannel.Approvers.Named{names: names},
+      else: invalid!(path, "is anyone, or a list of who may answer, as the channel names them")
+  end
+
+  defp names!(names, path) do
+    unless is_list(names) and Enum.all?(names, &is_binary/1),
+      do: invalid!(path, "is a list of who may answer, as the channel names them")
+  end
+
+  defp table!(nil, _path), do: %{}
+  defp table!(%{} = table, _path), do: table
+  defp table!(_value, path), do: invalid!(path, "is a set of keys")
+
+  # reach:disable-next-line unsafe_atom_creation -- config.yaml's own channel names
+  defp named(name), do: String.to_atom(name)
+
+  defp invalid!(path, message), do: throw({:invalid, path, message})
 
   @doc "The task supervisor a channel runs its work under."
   @spec tasks() :: atom()
@@ -262,36 +368,30 @@ defmodule WardrikChannel do
   end
 
   @doc """
-  What each of `configured`, channels by name as their adapters and the
-  options their `config/1` answered, runs on: a `WardrikChannel.Channel`
-  by its name, whose `WardrikChannel.Context` `opts` fill in.
-
-  Options are the context's: `:host` and `:installations`, required, and
-  `:offered`, `:creatable`, `:create`, `:start`, `:approvers`,
-  `:offering`, `:deciding` and `:replies`, each as `WardrikChannel.Context`
-  describes it.
+  What each channel `settings` name, as `attach/2` takes them, runs on, on
+  the `:host` given: a `WardrikChannel.Channel` by its name, with its
+  `WardrikChannel.Context`, whose `:replies` is the `WardrikChannel.Replies`
+  given, `WardrikChannel.Replies.supervisor/0` unless given.
   """
-  @spec channels([{atom() | String.t(), channel()}], keyword()) :: channels()
-  def channels(configured, opts) do
-    opts =
-      Keyword.validate!(opts, [
-        :host,
-        :installations,
-        :offered,
-        :creatable,
-        :create,
-        :start,
-        :approvers,
-        :offering,
-        :deciding,
-        :replies
-      ])
+  @spec channels(keyword(), keyword()) :: channels()
+  def channels(settings, opts) do
+    settings = Keyword.validate!(settings, @settings)
+    opts = Keyword.validate!(opts, [:host, :replies])
+    shared = Keyword.take(settings, [:installations, :org]) ++ opts
 
-    for {name, {adapter, options}} <- configured, into: %{} do
+    for {name, {adapter, options}} <- settings[:channels], into: %{} do
       name = to_string(name)
-      context = struct!(Context, [channel: name] ++ opts)
+      context = struct!(Context, [channel: name] ++ shared ++ own(settings, name))
       {name, %Channel{name: name, adapter: adapter, options: options, context: context}}
     end
+  end
+
+  # What `settings` say of the channel `name`, each by the channel's name.
+  defp own(settings, name) do
+    for key <- [:orgs, :creates, :approvers],
+        {channel, value} <- settings[key],
+        to_string(channel) == name,
+        do: {key, value}
   end
 
   @doc """

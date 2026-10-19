@@ -4,7 +4,12 @@
 # internals, which only core calls.
 [
   layers: [
-    mcp: ["WardrikMCP", "WardrikMCP.*", "Wardrik.Servers.WardrikMCP.Servers"]
+    mcp: [
+      "WardrikMCP",
+      "WardrikMCP.*",
+      "Wardrik.Servers.WardrikMCP.Servers",
+      "WardrikDefinition.Source.WardrikMCP.Server"
+    ]
   ],
   boundaries: [
     public: [
@@ -43,6 +48,7 @@
       "Wardrik.Issuer",
       "Wardrik.Issuer.None",
       "Wardrik.Hook",
+      "Wardrik.Host",
       "Wardrik.LLM.Answer",
       "Wardrik.LLM.Client",
       "Wardrik.LLM.Config",

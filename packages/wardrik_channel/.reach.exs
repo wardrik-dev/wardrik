@@ -44,6 +44,7 @@
       "Wardrik.Fleet.Member",
       "Wardrik.Issuer",
       "Wardrik.Issuer.None",
+      "Wardrik.JSON",
       "Wardrik.Hook",
       "Wardrik.Host",
       "Wardrik.LLM.Answer",
@@ -105,9 +106,7 @@
     forbidden: [
       # The package takes its settings as options of what the host starts,
       # and never reads or writes the application environment; nor does it
-      # name core's store or supervisors. WardrikChannel.discover/0 reads the
-      # adapters other applications name under :wardrik_channels, which is how
-      # a channel package makes itself known, once as a host starts.
+      # name core's store or supervisors.
       {["WardrikChannel", "WardrikChannel.*"],
        [
          "Application.get_env",
@@ -115,7 +114,7 @@
          "Application.fetch_env!",
          "Application.put_env",
          "Application.delete_env"
-       ], except: ["WardrikChannel"]}
+       ]}
     ]
   ],
   smells: [

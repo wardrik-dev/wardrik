@@ -14,8 +14,7 @@ defmodule WardrikDaemonTest do
   defp load(dir) do
     Config.load(
       store: store(),
-      adapters: WardrikChannel.discover(),
-      triggers: WardrikTrigger.Offered.discover(),
+      adapters: %{"test" => WardrikDaemon.Test.Channel},
       base: Host.config(dir).sections,
       config_dir: dir,
       data_dir: dir,
@@ -23,27 +22,43 @@ defmodule WardrikDaemonTest do
     )
   end
 
-  # The daemon, started as its tree starts it on what `dir` holds, with its
-  # config and host.
+  # The host's children, as Wardrik starts them on the host the daemon
+  # builds from what `dir` holds, with its config, but for what the suite
+  # runs already beside its fleet.
   defp daemon(dir) do
     {:ok, config} = load(dir)
 
-    agents = %{
-      Host.agents(dir)
-      | config: config,
-        context: WardrikDaemon.AgentFile.context(config)
+    host = %{
+      WardrikDaemon.host(config, store: store())
+      | llm: Wardrik.Test.llm(),
+        runtimes: Wardrik.Test.runtimes()
     }
 
-    host = Host.host(agents)
-    {start_supervised({WardrikDaemon, host: host, config: config}), config, host}
+    running = [WardrikDaemon.Host, WardrikHTTP.Access, WardrikHTTP.Workers]
+
+    children =
+      for {module, opts} <- host.children,
+          module not in running,
+          do: {module, [host: host] ++ opts}
+
+    started =
+      start_supervised(%{
+        id: :daemon,
+        start: {Supervisor, :start_link, [children, [strategy: :rest_for_one]]},
+        type: :supervisor
+      })
+
+    {started, config, host}
   end
 
   test "starts with no config.yaml at all, running the agent files, the servers people add and the HTTP API",
        %{tmp_dir: dir} do
-    assert {{:ok, pid}, _config, _host} = daemon(dir)
+    assert {{:ok, pid}, _config, host} = daemon(dir)
 
-    assert [WardrikHTTP.Listener, WardrikMCP.Supervisor] =
+    assert [WardrikDaemon, WardrikHTTP.Listener, WardrikMCP.Supervisor] =
              pid |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
+
+    assert [WardrikDaemon.Host, WardrikDaemon | _packages] = Enum.map(host.children, &elem(&1, 0))
 
     assert WardrikDaemon.CLI.started() == ""
   end

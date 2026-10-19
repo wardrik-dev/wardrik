@@ -179,7 +179,7 @@ defmodule WardrikDaemon.CLI.Agents do
     case Definitions.get(definitions, Wardrik.AgentID.put_external_id(key, nil)) do
       {:ok, definition} ->
         {definition, Definitions.spec(definitions, key, host: host),
-         Definitions.missing(definitions, definition, host: host)}
+         Wardrik.Definition.missing(definition, host: host)}
 
       {:error, :not_found} ->
         nil

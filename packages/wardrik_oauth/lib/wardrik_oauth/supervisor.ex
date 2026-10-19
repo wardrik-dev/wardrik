@@ -6,8 +6,9 @@ defmodule WardrikOAuth.Supervisor do
 
       children = [WardrikOAuth.Supervisor]
 
-  The pages a browser comes back to are the host's to serve; see
-  `WardrikOAuth.Callback`.
+  `WardrikOAuth.attach/2` makes it a child of the host, which `Wardrik`
+  starts with `:host`, the one option it takes. The pages a browser comes
+  back to are the host's to serve; see `WardrikOAuth.Callback`.
   """
 
   use Supervisor
@@ -15,8 +16,11 @@ defmodule WardrikOAuth.Supervisor do
   alias WardrikOAuth.Pending
 
   @doc "Starts the flows' registry and supervisor."
-  @spec start_link([]) :: Supervisor.on_start()
-  def start_link([]), do: Supervisor.start_link(__MODULE__, [], name: __MODULE__)
+  @spec start_link(keyword()) :: Supervisor.on_start()
+  def start_link(opts) do
+    Keyword.validate!(opts, [:host])
+    Supervisor.start_link(__MODULE__, [], name: __MODULE__)
+  end
 
   @impl Supervisor
   def init([]) do

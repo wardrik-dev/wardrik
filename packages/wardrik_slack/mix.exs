@@ -29,7 +29,7 @@ defmodule WardrikSlack.MixProject do
 
   # The adapter `type: slack` names, as `WardrikChannel` finds adapters.
   def application,
-    do: [extra_applications: [:logger], env: [wardrik_channels: [slack: WardrikSlack]]]
+    do: [extra_applications: [:logger]]
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
@@ -42,7 +42,6 @@ defmodule WardrikSlack.MixProject do
       {:req, "~> 0.7"},
       # Slack's Socket Mode.
       {:websockex, "~> 0.5.1"},
-      {:plug, "~> 1.16", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

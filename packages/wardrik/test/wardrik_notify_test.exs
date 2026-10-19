@@ -13,6 +13,54 @@ defmodule WardrikNotifyTest do
     assert WardrikNotify.target(@targets, "missing") == :error
   end
 
+  test "attaches a supervisor delivering to its targets, where it has any" do
+    host = Wardrik.Host.new(definitions: %Wardrik.Definitions{store: nil, contexts: nil})
+
+    assert WardrikNotify.attach(host) == host
+
+    assert [{WardrikNotify.Supervisor, opts}] =
+             WardrikNotify.attach(host, targets: @targets).children
+
+    assert opts[:targets] == @targets
+    assert opts[:routes] == {Wardrik.Definitions, :routes, [Wardrik.Host.definitions(host)]}
+    assert_raise ArgumentError, fn -> WardrikNotify.attach(host, room: "#ops") end
+  end
+
+  test "reads config.yaml's notify, each target a webhook or a room of a channel" do
+    assert {:ok, targets: []} = WardrikNotify.config(nil)
+
+    assert {:ok, targets: targets} =
+             WardrikNotify.config(%{
+               "ops" => %{"channel" => "chat", "room" => "#ops", "approvers" => ["@maria"]},
+               "audit" => %{"webhook" => %{"url" => "https://hooks.test/a", "secret" => "s"}},
+               "log" => %{"webhook" => %{"url" => "https://hooks.test/b"}}
+             })
+
+    assert Enum.sort(targets) == [
+             audit: {WardrikNotify.Webhook, url: "https://hooks.test/a", secret: "s"},
+             log: {WardrikNotify.Webhook, url: "https://hooks.test/b"},
+             ops: {WardrikChannel.Notices, channel: "chat", room: "#ops", approvers: ["@maria"]}
+           ]
+  end
+
+  test "says where a target does not read" do
+    for {section, path, message} <- [
+          {[], [], "is a set of keys"},
+          {%{"ops" => %{"email" => %{}}}, ["ops"], "is a webhook, or a channel and a room in it"},
+          {%{"ops" => %{"channel" => "chat"}}, ["ops", "room"], "is required"},
+          {%{"ops" => %{"channel" => "chat", "room" => "#ops", "colour" => "red"}},
+           ["ops", "colour"], "is not a setting; expected one of channel, room, approvers"},
+          {%{"ops" => %{"channel" => "chat", "room" => "x", "approvers" => "maria"}},
+           ["ops", "approvers"], "is a list of who may answer, as the channel names them"},
+          {%{"ops" => %{"webhook" => "x"}}, ["ops", "webhook"], "is a set of keys"},
+          {%{"ops" => %{"webhook" => %{}}}, ["ops", "webhook", "url"], "is required"},
+          {%{"ops" => %{"webhook" => %{"url" => "x", "colour" => "red"}}},
+           ["ops", "webhook", "colour"], "is not a setting; expected one of url, secret"}
+        ] do
+      assert WardrikNotify.config(section) == {:error, path, message}
+    end
+  end
+
   test "a target tells the agents of its orgs, every org's unless it says" do
     assert WardrikNotify.tells?(@targets, :audit, "acme")
     assert WardrikNotify.tells?(@targets, "globex", "globex")

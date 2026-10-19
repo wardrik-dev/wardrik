@@ -1,7 +1,9 @@
 defmodule WardrikHTTP.Listener do
   @moduledoc """
   Serves `WardrikHTTP.Router` with Bandit, on loopback port 4747 unless told
-  otherwise.
+  otherwise: the HTTP API, and ahead of it what its host's routes answer,
+  such as the requests a chat channel's medium sends, and the pages a
+  browser comes back to from a sign-in; see `Wardrik.Host`.
 
   A port another process holds is tried again every five seconds, so of
   several nodes of a cluster on one machine the first to start serves the API,
@@ -11,22 +13,10 @@ defmodule WardrikHTTP.Listener do
     * `:ip` - the address to listen on, `{127, 0, 0, 1}` by default
     * `:workers` - what holds for the tool workers that connect, as
       `WardrikHTTP.Workers` reads it: `:timeout` and `:trusted`
-    * `:host` - the `Wardrik.Host` every request's operation runs on;
-      required
+    * `:host` - the `Wardrik.Host` every request's operation runs on, and
+      whose routes it serves; required
     * `:authenticator` - the `WardrikHTTP.Authenticator` every request is
       known by; `%WardrikHTTP.Tokens{}` over the host's store by default
-    * `:channels` - what answers the requests each chat channel's medium
-      sends, under `/v1/channels/{channel}/`, by the channel's name: a
-      `{module, function, args}` given the request, as a map of its
-      `:method`, `:path` below the channel's, `:query`, `:headers` and
-      `:body` as it was sent, and answering a map of the `:status`,
-      `:headers` and `:body` to send back, as `WardrikChannel.request/2`
-      does; none by default
-    * `:mounts` - plugs that answer paths of their own, ahead of the API and
-      asking no credential, as `{path, {plug, options}}`: a request whose
-      path begins with the segments `path` goes to the plug, its path as it
-      came, as the pages a sign-in comes back to are served; none by
-      default
     * `:retry` - milliseconds between tries, 5000 by default
     * `:name` - the process's name, `WardrikHTTP.Listener` by default
   """
@@ -66,9 +56,7 @@ defmodule WardrikHTTP.Listener do
       router: [
         host: host,
         authenticator: authenticator,
-        workers: Keyword.get(opts, :workers, []),
-        channels: Keyword.get(opts, :channels, %{}),
-        mounts: Keyword.get(opts, :mounts, [])
+        workers: Keyword.get(opts, :workers, [])
       ],
       retry: Keyword.get(opts, :retry, @retry),
       server: nil

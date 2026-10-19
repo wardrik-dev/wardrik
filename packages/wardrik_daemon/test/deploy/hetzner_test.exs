@@ -42,7 +42,7 @@ defmodule Deploy.HetznerTest do
 
     assert {:ok, settings} =
              with_env(text, fn ->
-               WardrikDaemon.Config.read(config, adapters: WardrikChannel.discover())
+               WardrikDaemon.Config.read(config)
              end)
 
     github =
@@ -56,14 +56,11 @@ defmodule Deploy.HetznerTest do
     agent = Path.join(dir, "triage.md")
     File.write!(agent, written("/home/wardrik/.config/wardrik/agents/triage.md"))
 
-    context =
-      [config_dir: dir, sections: settings, triggers: WardrikTrigger.Offered.discover()]
-      |> WardrikDaemon.Config.new()
-      |> WardrikDaemon.AgentFile.context()
+    config = WardrikDaemon.Config.new(config_dir: dir, sections: settings)
 
     assert {:ok, %Wardrik.Agent.Spec{id: %Wardrik.AgentID{name: "triage"}}} =
-             WardrikDaemon.AgentFile.read(context, agent,
-               host: WardrikDaemon.attach(Wardrik.Host.new())
+             WardrikDaemon.AgentFile.read(WardrikDaemon.AgentFile.context(config), agent,
+               host: WardrikDaemon.attach(Wardrik.new(store: Wardrik.Test.store()), config)
              )
   end
 end

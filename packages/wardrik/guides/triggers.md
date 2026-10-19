@@ -33,11 +33,12 @@ outcome}`.
 A trigger watches a source: the clock, which asks the agent on every run,
 unless it names another, which asks only when it finds something new, with
 what it found under the prompt. A source is a module implementing
-`WardrikTrigger.Source`, registered under the key a trigger names it by:
+`WardrikTrigger.Source`, offered under the key a trigger names it by, as
+`WardrikTrigger.Offered` says:
 
 ```elixir
-# mix.exs of the package that ships it
-def application, do: [env: [wardrik_trigger_sources: [feed: MyApp.Feed]]]
+offered = %WardrikTrigger.Offered{}
+Wardrik.context(triggers: %{offered | sources: Map.put(offered.sources, "alerts", MyApp.Feed)})
 ```
 
 ```elixir
@@ -53,7 +54,7 @@ clock, and asks the agent as each request a service sends arrives, through
 `Wardrik.Triggers`. A request presents the trigger's secret, or is signed
 as the Standard Webhooks spec says, checked against a secret the host's
 `:secrets` reads by name for the trigger's agent, so each org keeps its own,
-or from the environment where the host gives none; a host registers a
+or from the environment where the host gives none; a host offers a
 `WardrikTrigger.Webhook.Verifier` of its own for any other signature. A
 request sent again is asked about once.
 

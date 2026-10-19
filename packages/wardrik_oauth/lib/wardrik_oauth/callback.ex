@@ -12,8 +12,8 @@ defmodule WardrikOAuth.Callback do
   RFC 8252 has a native application's: the browser is on the same machine,
   and the link is opened in it.
 
-  The host serves `pages/1` on a listener of its own, as the daemon does on
-  its HTTP API. They are under the URL's own path, so a front that ends
+  The host serves `pages/1` among its routes, as `WardrikOAuth.attach/2`
+  has it, on a listener of its own, as the daemon does on its HTTP API. They are under the URL's own path, so a front that ends
   TLS, such as Caddy, passes requests on as they came.
   `WardrikOAuth.finish/3` finds a flow any node of the cluster started, so
   any node may serve them.
@@ -46,6 +46,22 @@ defmodule WardrikOAuth.Callback do
   @doc "Whether the browser comes back to this machine: the URL names loopback."
   @spec loopback?(WardrikOAuth.t()) :: boolean()
   def loopback?(oauth), do: URI.parse(url(oauth)).host in ["127.0.0.1", "localhost", "::1"]
+
+  @doc """
+  Whether a provider may send a browser back to `url`: https, or http on
+  this machine's own loopback, with nothing after its path.
+  """
+  @spec redirect?(String.t()) :: boolean()
+  def redirect?(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{userinfo: nil, query: nil, fragment: nil} = uri -> secure?(uri.scheme, uri.host)
+      _other -> false
+    end
+  end
+
+  defp secure?("https", host), do: host not in [nil, ""]
+  defp secure?("http", host), do: host in ["127.0.0.1", "localhost", "::1"]
+  defp secure?(_scheme, _host), do: false
 
   @doc "The path segments every page is served under: the redirect URL's own."
   @spec prefix(WardrikOAuth.t()) :: [String.t()]

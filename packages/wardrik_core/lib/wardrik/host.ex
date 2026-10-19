@@ -78,7 +78,7 @@ defmodule Wardrik.Host do
   | Field | What it holds |
   | --- | --- |
   | `:tools` | the tools a definition names, each a module implementing `Wardrik.Tool`, by its name |
-  | `:sources` | the tool sources a definition names as `name/*`, each a module implementing `Wardrik.Tool`'s `tools/1`, by that name |
+  | `:sources` | the tool sources a definition names as `name/*`, by that name: each a module implementing `Wardrik.Tool`'s `tools/1`, handed the agent's ID, or a value of a package's own, as `WardrikDefinition.Source` reads them |
   | `:routes` | what the host serves over HTTP, each a plug and its options, by the segments of its path |
   | `:children` | what `Wardrik` starts after its own, in order, each `{module, opts}` |
 
@@ -141,7 +141,7 @@ defmodule Wardrik.Host do
           llm: Wardrik.LLM.Client.t(),
           runtimes: [Wardrik.Runtime.t()],
           tools: %{String.t() => module()},
-          sources: %{String.t() => module()},
+          sources: %{String.t() => module() | struct()},
           routes: [route()],
           children: [{module(), keyword()}],
           audit: GenServer.name(),
@@ -245,7 +245,7 @@ defmodule Wardrik.Host do
   def tools(%__MODULE__{tools: tools}), do: tools
 
   @doc "The tool sources a definition names as `name/*`, by name."
-  @spec sources(t()) :: %{String.t() => module()}
+  @spec sources(t()) :: %{String.t() => module() | struct()}
   def sources(%__MODULE__{sources: sources}), do: sources
 
   @doc "What the host serves over HTTP, in the order it was registered."
@@ -264,7 +264,8 @@ defmodule Wardrik.Host do
 
       Wardrik.Host.register(host, :sources, [{"workers", WardrikHTTP.Workers}])
   """
-  @spec register(t(), :tools | :sources, [{String.t(), module()}]) :: t()
+  @spec register(t(), :tools, [{String.t(), module()}]) :: t()
+  @spec register(t(), :sources, [{String.t(), module() | struct()}]) :: t()
   @spec register(t(), :routes, [route()]) :: t()
   @spec register(t(), :runtimes, [Wardrik.Runtime.t()]) :: t()
   def register(%__MODULE__{} = host, field, entries)

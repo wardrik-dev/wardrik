@@ -35,7 +35,12 @@ defmodule WardrikDaemon.IssuerTest do
   end
 
   defp in_chat(user) do
-    {:ok, installation} = Agents.installation(Host.agents(), "chat")
+    {:ok, installation} =
+      Host.sections()
+      |> Keyword.fetch!(WardrikChannel)
+      |> Keyword.fetch!(:installations)
+      |> WardrikChannel.Installations.fetch("chat", "chat")
+
     issue(WardrikChannel.principal(WardrikChannel.Member.new(installation, user)))
   end
 
