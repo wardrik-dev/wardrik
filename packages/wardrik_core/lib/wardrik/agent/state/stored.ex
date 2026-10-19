@@ -8,7 +8,7 @@ defmodule Wardrik.Agent.State.Stored do
   keeps its source, and its clock starts again where it is read back. Each
   keeps who asked for it. A turn began on the history the agent holds, so it
   is written as only what it added, and read back on that history; see
-  `Wardrik.LLM.Turn.dump/1`. How far
+  `Wardrik.Turn.dump/1`. How far
   the agent's `Wardrik.Event.Log` has got is written as a sequence number,
   from which the next owner looks for the head. The `Wardrik.Host` it runs
   on is never written: whichever node loads it next hands it its own. Nor is
@@ -26,7 +26,7 @@ defmodule Wardrik.Agent.State.Stored do
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
   alias Wardrik.LLM.Config
-  alias Wardrik.LLM.Turn
+  alias Wardrik.Turn
 
   @typedoc "An agent written down: what it is, what it was asked, and what it is waiting on."
   @type t() :: %{

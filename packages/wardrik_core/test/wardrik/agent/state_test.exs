@@ -40,7 +40,7 @@ defmodule Wardrik.Agent.StateTest do
       calls: [Wardrik.Test.AgentRunners.waiting(call, "Really?")],
       remaining: 5,
       revision: Wardrik.Hook.revision([]),
-      state: :waiting
+      state: {:waiting, :tools}
     }
   end
 
@@ -382,7 +382,7 @@ defmodule Wardrik.Agent.StateTest do
       assert {:resume, run, turn, started_at} = State.resume(state)
       assert run.source == source
       assert run.config == Config.new()
-      assert %Turn{state: :waiting} = turn
+      assert %Turn{state: {:waiting, :tools}} = turn
       assert is_integer(started_at)
     end
 
@@ -595,7 +595,8 @@ defmodule Wardrik.Agent.StateTest do
       assert %{state: :running} = View.status(reopened)
       assert State.waiting_on(reopened) == []
 
-      assert {:resume, run, %Turn{state: :waiting}, %{"call_1" => {:deny, "No."}}, _state} =
+      assert {:resume, run, %Turn{state: {:waiting, :tools}}, %{"call_1" => {:deny, "No."}},
+              _state} =
                State.take(reopened)
 
       assert run.source == source

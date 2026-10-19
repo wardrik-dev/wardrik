@@ -6,14 +6,14 @@ defmodule Wardrik.LLM.Turn do
   A turn is a token, the way a `Plug.Conn` is. `new/2` builds one from a
   run and the conversation as it stands, `run/1` takes it and hands it
   back, and it is the same value whether it is running, waiting on a person,
-  or done:
+  or done. It is a `Wardrik.Turn`, which says how it came out:
 
       turn = run |> Wardrik.LLM.Turn.new(context) |> Wardrik.LLM.Turn.run()
 
-      case turn do
-        %Wardrik.LLM.Turn{state: :done, messages: messages} -> append(messages)
-        %Wardrik.LLM.Turn{state: :waiting} -> hold(turn)
-        %Wardrik.LLM.Turn{state: :failed, error: reason} -> report(reason)
+      case Wardrik.Turn.status(turn) do
+        {:done, messages, _labels} -> append(messages)
+        :waiting -> hold(turn)
+        {:failed, reason} -> report(reason)
       end
 
   `:messages` is what the turn added, a delta rather than a snapshot, so the
@@ -37,7 +37,9 @@ defmodule Wardrik.LLM.Turn do
       put after the system prompt of every request it makes
     * `:labels` - what it has read, as `Wardrik.Label`s, which every batch
       after it is told
-    * `:state` - `:running`, `:waiting`, `:done` or `:failed`
+    * `:state` - `:running`, `{:waiting, :tools}` on calls of its batch,
+      `{:waiting, :model}` on the model call it is about to make, `:done` or
+      `:failed`
     * `:error` - why a failed turn failed
 
   ## Where a model call actually goes
@@ -51,7 +53,8 @@ defmodule Wardrik.LLM.Turn do
 
   ## Stopping early
 
-  Three things stop a turn, and none of them lose what it has already produced:
+  Three things stop a turn, and none of them lose what it has already
+  produced, the first two asked through `Wardrik.Turn.Signal`:
 
     * `:yield` is read at an iteration boundary. The current model answer and
       any tools it asked for run to completion; the turn returns rather than
@@ -74,13 +77,15 @@ defmodule Wardrik.LLM.Turn do
   ## Stopping to ask
 
   A `Wardrik.Hook` that asks a person about a tool call parks the call. The
-  turn comes back `:waiting` with nothing appended to the conversation, its
-  batch in `:calls`, and `resume/2` finishes it once a person has decided.
+  turn comes back `{:waiting, :tools}` with nothing appended to the
+  conversation, its batch in `:calls`, and `resume/2` finishes it once a
+  person has decided.
 
   A hook that asks about a model call parks the turn before the call the same
-  way, with the one call it waits on the model call itself, named `model`, so
-  a person answers it the way they answer any other. Approving it makes the
-  call; denying it fails the turn as `{:policy_denied, reason}`.
+  way, `{:waiting, :model}`, with the one call it waits on the model call
+  itself, named `model`, so a person answers it the way they answer any
+  other. Approving it makes the call; denying it fails the turn as
+  `{:policy_denied, reason}`.
 
   A model call whose tries are spent, where its retry says to ask, parks the
   turn the same way, and the prompt says why: "The model failed 7 times:
@@ -118,7 +123,7 @@ defmodule Wardrik.LLM.Turn do
   A run with a journal, as `Wardrik.Agent` gives each turn it runs, is handed
   the turn, written down, before every batch of tool calls, and the batch runs
   only once the journal has answered `:ok`. A journal that does not answer
-  ends the turn before anything runs. `replay/1` carries such a turn on, with
+  ends the turn before anything runs. `recover/1` carries such a turn on, with
   the answer it had, so the calls it asked for keep their ids and a
   `Wardrik.Ledger` can say which already ran.
 
@@ -163,6 +168,7 @@ defmodule Wardrik.LLM.Turn do
   alias Wardrik.Run
   alias Wardrik.Tool
   alias Wardrik.Trace
+  alias Wardrik.Turn.Signal
 
   @enforce_keys [:context]
   defstruct [
@@ -179,7 +185,7 @@ defmodule Wardrik.LLM.Turn do
     labels: []
   ]
 
-  @type state() :: :running | :waiting | :done | :failed
+  @type state() :: :running | {:waiting, :tools | :model} | :done | :failed
 
   @type t() :: %__MODULE__{
           run: Run.t() | nil,
@@ -194,9 +200,6 @@ defmodule Wardrik.LLM.Turn do
           state: state(),
           labels: [Wardrik.Label.t()]
         }
-
-  @typedoc "What a person decides about one call a turn waits on."
-  @type decision() :: Pipeline.decision()
 
   @streamed :wardrik_streamed_text
   @answered :wardrik_answered
@@ -284,8 +287,11 @@ defmodule Wardrik.LLM.Turn do
 
   @doc "Whether the turn waits on a person before a model call rather than at a tool call."
   @spec model?(t()) :: boolean()
-  def model?(%__MODULE__{state: :waiting, answer: nil}), do: true
-  def model?(%__MODULE__{}), do: false
+  def model?(%__MODULE__{state: state}), do: state == {:waiting, :model}
+
+  @doc "Whether the turn waits under hooks other than `hooks`, by `Wardrik.Hook.revision/1`."
+  @spec stale?(t(), [Wardrik.Hook.t()]) :: boolean()
+  def stale?(%__MODULE__{revision: revision}, hooks), do: revision != Hook.revision(hooks)
 
   @doc """
   Finishes a waiting turn, applying one decision per waiting call.
@@ -308,10 +314,10 @@ defmodule Wardrik.LLM.Turn do
   the hooks ask now. A call waiting on its tool or the ledger keeps its
   decision.
   """
-  @spec resume(t(), %{String.t() => decision()}) :: t()
-  def resume(%__MODULE__{state: :waiting, answer: nil, calls: [call]} = turn, decisions)
+  @spec resume(t(), Wardrik.Turn.decisions()) :: t()
+  def resume(%__MODULE__{state: {:waiting, :model}, calls: [call]} = turn, decisions)
       when is_map(decisions) do
-    case if(stale?(turn), do: :redecide, else: Map.get(decisions, call.id)) do
+    case if(stale?(turn, turn.run.hooks), do: :redecide, else: Map.get(decisions, call.id)) do
       nil ->
         turn
 
@@ -326,8 +332,8 @@ defmodule Wardrik.LLM.Turn do
     end
   end
 
-  def resume(%__MODULE__{state: :waiting} = turn, decisions) when is_map(decisions) do
-    stale? = stale?(turn)
+  def resume(%__MODULE__{state: {:waiting, :tools}} = turn, decisions) when is_map(decisions) do
+    stale? = stale?(turn, turn.run.hooks)
     run = batch(turn)
     calls = turn.calls |> Enum.map(&decide(&1, decisions, run, stale?)) |> ran(run)
     resumed = read(%{turn | calls: calls}, calls)
@@ -345,8 +351,6 @@ defmodule Wardrik.LLM.Turn do
   end
 
   defp running(turn), do: %{turn | state: :running, calls: [], revision: nil}
-
-  defp stale?(%__MODULE__{revision: revision, run: run}), do: revision != revision(run)
 
   defp revision(%Run{hooks: hooks}), do: Hook.revision(hooks)
 
@@ -389,23 +393,9 @@ defmodule Wardrik.LLM.Turn do
   with the ledger answering for any call that already had, and the turn goes
   on from there.
   """
-  @spec replay(t()) :: t()
-  def replay(%__MODULE__{state: :running, run: %Run{}, answer: %Answer{}} = turn),
+  @spec recover(t()) :: t()
+  def recover(%__MODULE__{state: :running, run: %Run{}, answer: %Answer{}} = turn),
     do: advance(turn)
-
-  @doc "Asks the process running a turn to stop iterating once it reaches a boundary."
-  @spec yield(pid()) :: :ok
-  def yield(pid) when is_pid(pid) do
-    send(pid, :yield)
-    :ok
-  end
-
-  @doc "Asks the process running a turn to stop as soon as it can, mid-response if need be."
-  @spec interrupt(pid()) :: :ok
-  def interrupt(pid) when is_pid(pid) do
-    send(pid, :interrupt)
-    :ok
-  end
 
   # `opts` apply to the next model call alone.
   defp loop(%__MODULE__{run: run} = turn, opts \\ []) do
@@ -428,7 +418,7 @@ defmodule Wardrik.LLM.Turn do
         advance(%{turn | answer: answer})
 
       {:park, waiting} ->
-        waiting_on_model(turn, waiting)
+        parked(turn, :model, [Call.under(waiting, nil)])
 
       {:interrupted, text} ->
         done(turn, partial(text))
@@ -452,7 +442,7 @@ defmodule Wardrik.LLM.Turn do
         done(turn, partial(Conversation.text(message)))
 
       {:park, waiting} ->
-        waiting_on_model(turn, waiting)
+        parked(turn, :model, [Call.under(waiting, nil)])
 
       {:interrupted, text} ->
         done(turn, partial(text))
@@ -463,15 +453,8 @@ defmodule Wardrik.LLM.Turn do
     end
   end
 
-  defp waiting_on_model(turn, waiting) do
-    %{
-      turn
-      | state: :waiting,
-        answer: nil,
-        calls: [Call.under(waiting, nil)],
-        revision: revision(turn.run)
-    }
-  end
+  defp parked(turn, on, calls),
+    do: %{turn | state: {:waiting, on}, calls: calls, revision: revision(turn.run)}
 
   # A request's system prompt: the config's, what the tools said as the turn
   # began, and the closing note on the last request of a turn at its cap.
@@ -523,7 +506,7 @@ defmodule Wardrik.LLM.Turn do
         turn |> read(calls) |> continue(context, messages)
 
       {:waiting, calls} ->
-        %{read(turn, calls) | state: :waiting, calls: calls, revision: revision(turn.run)}
+        turn |> read(calls) |> parked(:tools, calls)
     end
   end
 
@@ -544,26 +527,9 @@ defmodule Wardrik.LLM.Turn do
         messages: turn.messages ++ messages
     }
 
-    if stop_requested?(),
+    if Signal.stopping?(),
       do: done(turn),
       else: loop(%{turn | remaining: countdown(turn.remaining)})
-  end
-
-  defp stop_requested? do
-    receive do
-      :yield -> true
-      :interrupt -> true
-    after
-      0 -> false
-    end
-  end
-
-  defp interrupted? do
-    receive do
-      :interrupt -> true
-    after
-      0 -> false
-    end
   end
 
   defp countdown(:infinity), do: :infinity
@@ -625,11 +591,9 @@ defmodule Wardrik.LLM.Turn do
           reason: reason
         })
 
-        receive do
-          :interrupt -> {:interrupted, ""}
-        after
-          wait -> asked(run, tried, message_id, opts)
-        end
+        if Signal.interrupted?(wait),
+          do: {:interrupted, ""},
+          else: asked(run, tried, message_id, opts)
 
       :ask ->
         {:park, tried |> Call.model(run) |> Call.wait(:tool, exhausted(tried))}
@@ -744,7 +708,7 @@ defmodule Wardrik.LLM.Turn do
   defp emitted(delta, source) do
     Process.put(@answered, true)
     published(delta, source)
-    if interrupted?(), do: throw(:interrupt)
+    if Signal.interrupted?(), do: throw(:interrupt)
   end
 
   defp published({:text, text}, source) do
@@ -754,4 +718,22 @@ defmodule Wardrik.LLM.Turn do
 
   defp published({:reasoning, text}, source), do: Event.emit(source, %Event.Thinking{text: text})
   defp published({:tool_call, call}, source), do: Event.emit(source, %Event.ToolCall{call: call})
+
+  defimpl Wardrik.Turn do
+    alias Wardrik.LLM.Turn
+
+    defdelegate run(turn), to: Turn
+    defdelegate resume(turn, decisions), to: Turn
+    defdelegate recover(turn), to: Turn
+    defdelegate waiting(turn), to: Turn
+    defdelegate awaiting(turn, ref, owner), to: Turn
+    defdelegate under(turn, run), to: Turn
+    defdelegate stale?(turn, hooks), to: Turn
+    defdelegate dump(turn), to: Turn
+    defdelegate load(turn, history), to: Turn
+
+    def status(%Turn{state: :done} = turn), do: {:done, turn.messages, turn.labels}
+    def status(%Turn{state: {:waiting, _on}}), do: :waiting
+    def status(%Turn{state: :failed, error: reason}), do: {:failed, reason}
+  end
 end

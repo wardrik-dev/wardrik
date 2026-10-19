@@ -180,7 +180,7 @@ defmodule Wardrik.Test.AgentRunners do
       calls: [waiting(call, "This ships to production.")],
       remaining: 5,
       revision: Wardrik.Hook.revision([]),
-      state: :waiting
+      state: {:waiting, :tools}
     }
   end
 

@@ -20,6 +20,7 @@ defmodule Wardrik.LLM.TurnTest do
   alias Wardrik.Run
   alias Wardrik.Test.LLM, as: TestLLM
   alias Wardrik.Tool.Result
+  alias Wardrik.Turn.Signal
 
   # A turn run or resumed through its token, as a turn under `run` is.
   defp turn(run, context), do: run |> LLM.Turn.new(context) |> LLM.Turn.run()
@@ -455,7 +456,7 @@ defmodule Wardrik.LLM.TurnTest do
       TestLLM.stream(llm, [@timeout, @timeout, @timeout])
 
       capture_log(fn ->
-        assert %LLM.Turn{state: :waiting} =
+        assert %LLM.Turn{state: {:waiting, :model}} =
                  parked =
                  turn(retrying(agent_id, llm, attempts: 2), Conversation.new([User.new("hi")]))
 
@@ -468,7 +469,7 @@ defmodule Wardrik.LLM.TurnTest do
       TestLLM.stream(llm, [refused])
 
       capture_log(fn ->
-        assert %LLM.Turn{state: :waiting} =
+        assert %LLM.Turn{state: {:waiting, :model}} =
                  parked = turn(retrying(agent_id, llm, []), Conversation.new([User.new("hi")]))
 
         assert [{_call, "The model failed once: API request failed (402): " <> _}] =
@@ -481,7 +482,7 @@ defmodule Wardrik.LLM.TurnTest do
       TestLLM.stream(llm, [@timeout, @timeout])
       run = retrying(agent_id, llm, attempts: 1)
 
-      %LLM.Turn{state: :waiting} =
+      %LLM.Turn{state: {:waiting, :model}} =
         parked = capture(fn -> turn(run, Conversation.new([User.new("hi")])) end)
 
       assert_receive %Event{payload: %Event.ModelStarted{message_id: first}}
@@ -509,7 +510,7 @@ defmodule Wardrik.LLM.TurnTest do
       TestLLM.stream(llm, [@timeout])
       run = retrying(agent_id, llm, attempts: 0)
 
-      %LLM.Turn{state: :waiting} =
+      %LLM.Turn{state: {:waiting, :model}} =
         parked = capture(fn -> turn(run, Conversation.new([User.new("hi")])) end)
 
       [{call, _prompt}] = LLM.Turn.waiting(parked)
@@ -571,7 +572,7 @@ defmodule Wardrik.LLM.TurnTest do
 
     test "stops waiting when the turn is interrupted", %{agent_id: agent_id, llm: llm} do
       TestLLM.stream(llm, [@timeout])
-      :ok = LLM.Turn.interrupt(self())
+      :ok = Signal.interrupt(self())
       run = retrying(agent_id, llm, attempts: 1, max_wait: :timer.minutes(10))
 
       capture_log(fn ->
@@ -770,7 +771,7 @@ defmodule Wardrik.LLM.TurnTest do
     } do
       TestLLM.stream(llm, List.duplicate(TestLLM.tool_call("call_1", "echo", %{}), 5))
 
-      :ok = LLM.Turn.yield(self())
+      :ok = Signal.yield(self())
 
       assert %LLM.Turn{state: :done, messages: messages} =
                turn(looping_run(agent_id, llm, :infinity), Conversation.new())
@@ -782,7 +783,7 @@ defmodule Wardrik.LLM.TurnTest do
     test "never lands between a tool call and its result", %{agent_id: agent_id, llm: llm} do
       TestLLM.stream(llm, List.duplicate(TestLLM.tool_call("call_1", "echo", %{}), 5))
 
-      :ok = LLM.Turn.yield(self())
+      :ok = Signal.yield(self())
 
       %LLM.Turn{state: :done, messages: messages} =
         turn(looping_run(agent_id, llm, :infinity), Conversation.new())
@@ -793,7 +794,7 @@ defmodule Wardrik.LLM.TurnTest do
     test "a turn that finishes first is unaffected", %{agent_id: agent_id, llm: llm} do
       TestLLM.stream(llm, [TestLLM.final_answer("done")])
 
-      :ok = LLM.Turn.yield(self())
+      :ok = Signal.yield(self())
 
       assert %LLM.Turn{state: :done, messages: [_message]} =
                turn(run(agent_id, llm), Conversation.new())
@@ -811,7 +812,7 @@ defmodule Wardrik.LLM.TurnTest do
       said = %Assistant{parts: [%Text{text: "half a th"}, %Text{text: "ought that never lands"}]}
       TestLLM.stream(llm, [TestLLM.answer(said, :stop)])
 
-      :ok = LLM.Turn.interrupt(self())
+      :ok = Signal.interrupt(self())
 
       assert %LLM.Turn{state: :done, messages: [message]} =
                turn(run(agent_id, llm), Conversation.new())
@@ -823,7 +824,7 @@ defmodule Wardrik.LLM.TurnTest do
     test "an interrupt with no text streamed yet appends nothing", %{agent_id: agent_id, llm: llm} do
       TestLLM.stream(llm, [TestLLM.answer(thinking("unreachable"), :stop)])
 
-      :ok = LLM.Turn.interrupt(self())
+      :ok = Signal.interrupt(self())
 
       assert %LLM.Turn{state: :done, messages: []} = turn(run(agent_id, llm), Conversation.new())
     end
@@ -831,7 +832,7 @@ defmodule Wardrik.LLM.TurnTest do
     test "the model request is reported as having failed", %{agent_id: agent_id, llm: llm} do
       TestLLM.stream(llm, [TestLLM.answer(thinking("unreachable"), :stop)])
 
-      :ok = LLM.Turn.interrupt(self())
+      :ok = Signal.interrupt(self())
       turn(run(agent_id, llm), Conversation.new())
 
       assert_receive %Event{
@@ -844,7 +845,7 @@ defmodule Wardrik.LLM.TurnTest do
     # `:yield` is read.
     test "also stops at an iteration boundary, like a yield", %{agent_id: agent_id} do
       quiet = %Quiet{answer: TestLLM.tool_call("call_1", "echo", %{})}
-      :ok = LLM.Turn.interrupt(self())
+      :ok = Signal.interrupt(self())
 
       assert %LLM.Turn{state: :done, messages: messages} =
                turn(looping_run(agent_id, quiet, :infinity), Conversation.new())
@@ -920,7 +921,7 @@ defmodule Wardrik.LLM.TurnTest do
           else: TestLLM.final_answer("done")
       end)
 
-      assert %LLM.Turn{state: :waiting} =
+      assert %LLM.Turn{state: {:waiting, :tools}} =
                parked =
                turn(
                  governed(agent_id, llm, [{TellingSource, :own}, deploy_tool()]),
@@ -946,7 +947,7 @@ defmodule Wardrik.LLM.TurnTest do
         |> LLM.Config.new()
         |> Run.root(agent_id, name: "turn", hooks: rules, host: host(llm))
 
-      assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
+      assert %LLM.Turn{state: {:waiting, :tools}, labels: ["outside"]} =
                parked = turn(run, Conversation.new())
 
       assert [{%{id: "call_1", name: "deploy", labels: ["outside"]}, prompt}] =
@@ -987,7 +988,7 @@ defmodule Wardrik.LLM.TurnTest do
         |> LLM.Config.new()
         |> Run.root(agent_id, name: "turn", hooks: rules, host: host(llm))
 
-      assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
+      assert %LLM.Turn{state: {:waiting, :tools}, labels: ["outside"]} =
                parked = turn(%{run | labels: ["outside"]}, Conversation.new())
 
       assert [{%{id: "call_1"}, prompt}] = LLM.Turn.waiting(parked)
@@ -1209,7 +1210,8 @@ defmodule Wardrik.LLM.TurnTest do
     end
 
     test "stops the turn before the call, with the model call waiting", %{run: run} do
-      assert %LLM.Turn{state: :waiting} = parked = turn(run, Conversation.new([User.new("hi")]))
+      assert %LLM.Turn{state: {:waiting, :model}} =
+               parked = turn(run, Conversation.new([User.new("hi")]))
 
       assert LLM.Turn.model?(parked)
 
@@ -1226,7 +1228,9 @@ defmodule Wardrik.LLM.TurnTest do
     } do
       TestLLM.stream(llm, [TestLLM.final_answer("done")])
 
-      %LLM.Turn{state: :waiting} = parked = turn(run, Conversation.new([User.new("hi")]))
+      %LLM.Turn{state: {:waiting, :model}} =
+        parked = turn(run, Conversation.new([User.new("hi")]))
+
       [{call, _prompt}] = LLM.Turn.waiting(parked)
 
       assert %LLM.Turn{state: :done, messages: [answer]} =
@@ -1244,7 +1248,9 @@ defmodule Wardrik.LLM.TurnTest do
 
       run = governed(agent_id, llm, [], [Wardrik.Hook.new("asker", ModelAsker)])
 
-      %LLM.Turn{state: :waiting} = parked = turn(run, Conversation.new([User.new("hi")]))
+      %LLM.Turn{state: {:waiting, :model}} =
+        parked = turn(run, Conversation.new([User.new("hi")]))
+
       [{call, _prompt}] = LLM.Turn.waiting(parked)
 
       assert %LLM.Turn{state: :done, messages: [answer]} =
@@ -1254,7 +1260,9 @@ defmodule Wardrik.LLM.TurnTest do
     end
 
     test "denying it ends the turn as a refusal", %{run: run} do
-      %LLM.Turn{state: :waiting} = parked = turn(run, Conversation.new([User.new("hi")]))
+      %LLM.Turn{state: {:waiting, :model}} =
+        parked = turn(run, Conversation.new([User.new("hi")]))
+
       [{call, _prompt}] = LLM.Turn.waiting(parked)
 
       assert %LLM.Turn{state: :failed, error: {:policy_denied, "Not today."}} =
@@ -1262,9 +1270,10 @@ defmodule Wardrik.LLM.TurnTest do
     end
 
     test "with no decision for it, stays parked", %{run: run} do
-      %LLM.Turn{state: :waiting} = parked = turn(run, Conversation.new([User.new("hi")]))
+      %LLM.Turn{state: {:waiting, :model}} =
+        parked = turn(run, Conversation.new([User.new("hi")]))
 
-      assert %LLM.Turn{state: :waiting} =
+      assert %LLM.Turn{state: {:waiting, :model}} =
                ^parked = resume(run, parked, %{"call_other" => :approve})
     end
   end
@@ -1296,13 +1305,13 @@ defmodule Wardrik.LLM.TurnTest do
 
       run = governed(agent_id, llm, [deploy_tool()])
 
-      assert %LLM.Turn{state: :waiting} =
+      assert %LLM.Turn{state: {:waiting, :tools}} =
                parked = turn(run, Conversation.new([User.new("ship it")]))
 
       assert [{%{id: "call_1", name: "deploy"}, "This ships to production."}] =
                LLM.Turn.waiting(parked)
 
-      assert parked.state == :waiting
+      assert parked.state == {:waiting, :tools}
     end
 
     test "approving runs the call and finishes the turn", %{agent_id: agent_id, llm: llm} do
@@ -1313,7 +1322,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       run = governed(agent_id, llm, [deploy_tool()])
 
-      assert %LLM.Turn{state: :waiting} =
+      assert %LLM.Turn{state: {:waiting, :tools}} =
                parked = turn(run, Conversation.new([User.new("ship it")]))
 
       assert %LLM.Turn{state: :done, messages: messages} =
@@ -1367,7 +1376,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       run = governed(agent_id, llm, [deploy_tool()])
 
-      assert %LLM.Turn{state: :waiting} =
+      assert %LLM.Turn{state: {:waiting, :tools}} =
                parked = turn(run, Conversation.new([User.new("ship it twice")]))
 
       assert %LLM.Turn{state: :done, messages: messages} =
@@ -1391,7 +1400,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       run = governed(agent_id, llm, [deploy_tool()])
 
-      assert %LLM.Turn{state: :waiting} =
+      assert %LLM.Turn{state: {:waiting, :tools}} =
                parked = turn(run, Conversation.new([User.new("ship it")]))
 
       assert %LLM.Turn{state: :done, messages: messages} =
@@ -1409,11 +1418,11 @@ defmodule Wardrik.LLM.TurnTest do
 
       run = governed(agent_id, llm, [deploy_tool()])
 
-      assert %LLM.Turn{state: :waiting} =
+      assert %LLM.Turn{state: {:waiting, :tools}} =
                parked = turn(run, Conversation.new([User.new("ship it")]))
 
-      assert %LLM.Turn{state: :waiting} = still = resume(run, parked, %{})
-      assert still.state == :waiting
+      assert %LLM.Turn{state: {:waiting, :tools}} = still = resume(run, parked, %{})
+      assert still.state == {:waiting, :tools}
     end
 
     test "an answer that is neither approval nor refusal refuses", %{agent_id: agent_id, llm: llm} do
@@ -1424,7 +1433,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       run = governed(agent_id, llm, [deploy_tool()])
 
-      assert %LLM.Turn{state: :waiting} =
+      assert %LLM.Turn{state: {:waiting, :tools}} =
                parked = turn(run, Conversation.new([User.new("ship it")]))
 
       assert %LLM.Turn{state: :done, messages: _messages} =
@@ -1478,7 +1487,7 @@ defmodule Wardrik.LLM.TurnTest do
         TestLLM.tool_call("call_2", "deploy", %{"target" => "prod"})
       ])
 
-      assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
+      assert %LLM.Turn{state: {:waiting, :tools}, labels: ["outside"]} =
                parked =
                turn(allowing_deploy(agent_id, llm), Conversation.new([User.new("read it")]))
 
@@ -1513,7 +1522,7 @@ defmodule Wardrik.LLM.TurnTest do
         TestLLM.final_answer("shipped")
       ])
 
-      %LLM.Turn{state: :waiting} =
+      %LLM.Turn{state: {:waiting, :tools}} =
         parked =
         turn(governed(agent_id, llm, [deploy_tool()]), Conversation.new([User.new("ship")]))
 
@@ -1534,7 +1543,7 @@ defmodule Wardrik.LLM.TurnTest do
         TestLLM.final_answer("understood")
       ])
 
-      %LLM.Turn{state: :waiting} =
+      %LLM.Turn{state: {:waiting, :tools}} =
         parked =
         turn(governed(agent_id, llm, [deploy_tool()]), Conversation.new([User.new("ship")]))
 
@@ -1557,7 +1566,7 @@ defmodule Wardrik.LLM.TurnTest do
       old = [Wardrik.Hook.new("asking", AskingHook)]
       new = [Wardrik.Hook.new("asking-again", AskingHook)]
 
-      %LLM.Turn{state: :waiting} =
+      %LLM.Turn{state: {:waiting, :tools}} =
         parked =
         turn(
           governed(agent_id, llm, [deploy_tool()], old),
@@ -1566,7 +1575,9 @@ defmodule Wardrik.LLM.TurnTest do
 
       run = governed(agent_id, llm, [deploy_tool()], new)
 
-      assert %LLM.Turn{state: :waiting} = again = resume(run, parked, %{"call_1" => :approve})
+      assert %LLM.Turn{state: {:waiting, :tools}} =
+               again = resume(run, parked, %{"call_1" => :approve})
+
       assert again.revision == Wardrik.Hook.revision(new)
       assert [{%{id: "call_1"}, "This ships to production."}] = LLM.Turn.waiting(again)
       refute_received %Event{payload: %Event.ToolFinished{call_id: "call_1", name: "deploy"}}
@@ -1576,7 +1587,10 @@ defmodule Wardrik.LLM.TurnTest do
       TestLLM.stream(llm, [TestLLM.final_answer("done")])
 
       asking = governed(agent_id, llm, [], [Wardrik.Hook.new("asker", ModelAsker)])
-      %LLM.Turn{state: :waiting} = parked = turn(asking, Conversation.new([User.new("hi")]))
+
+      %LLM.Turn{state: {:waiting, :model}} =
+        parked = turn(asking, Conversation.new([User.new("hi")]))
+
       [{call, _prompt}] = LLM.Turn.waiting(parked)
 
       assert %LLM.Turn{state: :done, messages: [answer]} =

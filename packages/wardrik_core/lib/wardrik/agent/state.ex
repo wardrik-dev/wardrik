@@ -98,12 +98,11 @@ defmodule Wardrik.Agent.State do
   alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
-  alias Wardrik.Hook
   alias Wardrik.LLM.Config
-  alias Wardrik.LLM.Turn
   alias Wardrik.Principal
   alias Wardrik.Run
   alias Wardrik.Trace
+  alias Wardrik.Turn
 
   defmodule Stopping do
     @moduledoc "A running turn that has been asked to stop, and the kill armed behind it."
@@ -130,7 +129,7 @@ defmodule Wardrik.Agent.State do
     @type recovery() ::
             :owed
             | {:replaying, Turn.t()}
-            | {:resuming, Turn.t(), %{String.t() => Turn.decision()}}
+            | {:resuming, Turn.t(), Turn.decisions()}
 
     @typedoc """
     The task running the turn, the run it is under, whether it is
@@ -202,7 +201,7 @@ defmodule Wardrik.Agent.State do
     :resumer,
     :run_opts,
     :activity,
-    replayer: {Turn, :replay, []},
+    replayer: {Turn, :recover, []},
     grace: @default_grace,
     idle_timeout: @default_idle_timeout,
     active_at: nil,
@@ -330,7 +329,7 @@ defmodule Wardrik.Agent.State do
       history: Keyword.get(opts, :history, Conversation.new()),
       runner: mfa!(Keyword.get(opts, :runner, {Turn, :run, []}), :runner),
       resumer: mfa!(Keyword.get(opts, :resumer, {Turn, :resume, []}), :resumer),
-      replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :replay, []}), :replayer),
+      replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :recover, []}), :replayer),
       run_opts: Keyword.take(opts, Run.seams()),
       activity: %Activity{doing: :idle, since: System.system_time(:microsecond)},
       grace: Keyword.get(opts, :grace, @default_grace),
@@ -420,7 +419,7 @@ defmodule Wardrik.Agent.State do
   @doc "Runs a turn with the runner this agent was given."
   @spec apply_runner(t(), Run.t(), Conversation.t()) :: Turn.t()
   def apply_runner(%__MODULE__{runner: {module, function, args}}, %Run{} = run, history) do
-    apply(module, function, args ++ [Turn.new(run, history)])
+    apply(module, function, args ++ [Wardrik.LLM.Turn.new(run, history)])
   end
 
   @doc "Finishes a parked turn with the resumer this agent was given."
@@ -449,8 +448,8 @@ defmodule Wardrik.Agent.State do
   it has now, by `Wardrik.Hook.revision/1`.
   """
   @spec stale?(t()) :: boolean()
-  def stale?(%__MODULE__{mode: %Waiting{turn: %Turn{revision: revision}}} = state),
-    do: revision != Hook.revision(Keyword.get(state.run_opts, :hooks) || [])
+  def stale?(%__MODULE__{mode: %Waiting{turn: turn}} = state),
+    do: Turn.stale?(turn, Keyword.get(state.run_opts, :hooks) || [])
 
   def stale?(%__MODULE__{}), do: false
 
@@ -555,7 +554,7 @@ defmodule Wardrik.Agent.State do
   @spec take(t()) ::
           {:run, Run.t(), [Message.t()], t()}
           | {:replay, Run.t(), Turn.t(), t()}
-          | {:resume, Run.t(), Turn.t(), %{String.t() => Turn.decision()}, t()}
+          | {:resume, Run.t(), Turn.t(), Turn.decisions(), t()}
           | :none
   def take(%__MODULE__{mode: %Due{recovery: {:replaying, checkpoint}} = due} = state),
     do: {:replay, %{turn_run(state, due.sender) | source: due.source}, checkpoint, state}
@@ -856,8 +855,7 @@ defmodule Wardrik.Agent.State do
   Records the turn a `resume/1`, or a `{:resume, ...}` from `take/1`, led to:
   the park it came from and the decisions it was resumed with.
   """
-  @spec resumed(t(), Task.t(), Run.t(), Turn.t(), %{String.t() => Turn.decision()}, integer()) ::
-          t()
+  @spec resumed(t(), Task.t(), Run.t(), Turn.t(), Turn.decisions(), integer()) :: t()
   def resumed(%__MODULE__{} = state, task, %Run{} = run, turn, decisions, started_at) do
     running = %Running{
       task: task,

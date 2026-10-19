@@ -200,7 +200,8 @@ defmodule Wardrik.Agent do
   alias Wardrik.History
   alias Wardrik.Host
   alias Wardrik.LLM.Tokens
-  alias Wardrik.LLM.Turn
+  alias Wardrik.Turn
+  alias Wardrik.Turn.Signal
 
   @typedoc "An agent: the pid of one, or its ID."
   @type agent() :: pid() | Wardrik.AgentID.t()
@@ -354,7 +355,7 @@ defmodule Wardrik.Agent do
       Wardrik.Agent.resume(pid, %{"call_abc" => {:approve, "Only to staging."}})
       Wardrik.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """
-  @spec resume(agent(), %{String.t() => Turn.decision()}, keyword()) ::
+  @spec resume(agent(), Turn.decisions(), keyword()) ::
           :ok | {:error, :not_found}
   def resume(agent, decisions, opts \\ []) when is_map(decisions) and is_list(opts),
     do: cast(agent, {:resume, decisions, Keyword.get(opts, :by)}, Keyword.take(opts, [:host]))
@@ -825,16 +826,19 @@ defmodule Wardrik.Agent do
     end)
   end
 
-  defp answered(state, %Turn{state: :done, messages: messages} = turn),
-    do: settle(state, State.settled(state, messages, turn.labels))
+  defp answered(state, turn) do
+    case Turn.status(turn) do
+      {:done, messages, labels} ->
+        settle(state, State.settled(state, messages, labels))
 
-  # A waiting turn is held as it is written down, with no run.
-  defp answered(state, %Turn{state: :waiting} = turn),
-    do: settle(state, State.parked(state, Turn.under(turn, nil)))
+      # A waiting turn is held as it is written down, with no run.
+      :waiting ->
+        settle(state, State.parked(state, Turn.under(turn, nil)))
 
-  defp answered(state, %Turn{state: :failed, error: reason}) do
-    Logger.error("Turn failed: #{inspect(reason)}")
-    settle(state, State.failed(state, reason))
+      {:failed, reason} ->
+        Logger.error("Turn failed: #{inspect(reason)}")
+        settle(state, State.failed(state, reason))
+    end
   end
 
   defp settle(_state, {next, effects}), do: perform(next, effects)
@@ -850,12 +854,12 @@ defmodule Wardrik.Agent do
   end
 
   defp apply_effect({:ask_to_stop, pid}, state) do
-    Turn.yield(pid)
+    Signal.yield(pid)
     state
   end
 
   defp apply_effect({:stop_now, pid}, state) do
-    Turn.interrupt(pid)
+    Signal.interrupt(pid)
     state
   end
 

@@ -46,7 +46,7 @@ defmodule WardrikWorkspace.TurnTest do
       |> LLM.Config.new()
       |> Run.root(key, name: "turn", host: Workspace.host(llm: llm), hooks: rules)
 
-    assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
+    assert %LLM.Turn{state: {:waiting, :tools}, labels: ["outside"]} =
              parked =
              run |> LLM.Turn.new(Conversation.new([User.new("Any news?")])) |> LLM.Turn.run()
 
@@ -145,7 +145,7 @@ defmodule WardrikWorkspace.TurnTest do
       |> LLM.Config.new()
       |> Run.root(key, name: "turn", host: Workspace.host(llm: llm), hooks: rules)
 
-    assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
+    assert %LLM.Turn{state: {:waiting, :tools}, labels: ["outside"]} =
              parked =
              run |> LLM.Turn.new(Conversation.new([User.new("Anything?")])) |> LLM.Turn.run()
 

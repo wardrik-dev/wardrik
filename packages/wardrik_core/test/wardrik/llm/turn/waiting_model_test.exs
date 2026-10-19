@@ -13,7 +13,7 @@ defmodule Wardrik.LLM.Turn.WaitingModelTest do
     call = Call.model(Request.new(Config.new(model_spec: spec), Conversation.new()))
     call = %{call | state: :waiting, asks: [%Call.Ask{by: "budget", prompt: "Over budget."}]}
 
-    %Turn{context: Conversation.new(), calls: [call], remaining: 3, state: :waiting}
+    %Turn{context: Conversation.new(), calls: [call], remaining: 3, state: {:waiting, :model}}
   end
 
   test "a turn waiting before a model call waits on one call named model" do
