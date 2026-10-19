@@ -458,6 +458,15 @@ defmodule WardrikVaultTest do
       assert WardrikVault.held_by(vault(), granted, ns("acme")) == :none
       assert WardrikVault.held_by(vault(), "unset-#{user}", ns("acme")) == :none
     end
+
+    test "needs no key", %{user: user} do
+      sealed = "linear-#{user}"
+      :ok = WardrikVault.put(vault(), sealed, Resource.deployment(), value: "deployment")
+      locked = %{vault() | keys: [], shared: [sealed]}
+
+      assert WardrikVault.held_by(locked, sealed, person("acme", user)) == :shared
+      assert WardrikVault.held_by(locked, sealed, Resource.deployment()) == :own
+    end
   end
 
   describe "as a value" do

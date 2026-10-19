@@ -303,15 +303,22 @@ defmodule WardrikVault do
   `t:Wardrik.Connections.held_by/0`: `:own` where `owner` holds it, `:shared`
   where they do not and the vault shares the deployment's secret, or the
   node's environment variable, of that name, and `:none` where neither does.
-  Answers no value.
+  It answers what is written, not whether it unseals.
+
+  Reads no credential and needs no key.
   """
   @spec held_by(t(), String.t(), owner()) :: Wardrik.Connections.held_by()
   def held_by(%__MODULE__{} = vault, name, owner) when is_binary(name) do
     cond do
       name in names(vault, owner) -> :own
-      name in vault.shared and match?({:ok, _secret}, deployment(vault, name)) -> :shared
+      name in vault.shared and shares?(vault, name) -> :shared
       true -> :none
     end
+  end
+
+  defp shares?(vault, name) do
+    match?({:ok, %Sealed{kind: :secret}}, read(vault.store, path(name, Resource.deployment()))) or
+      System.get_env(name) != nil
   end
 
   @doc "Every credential written, as `{name, owner}` pairs. Reads no credential and needs no key."

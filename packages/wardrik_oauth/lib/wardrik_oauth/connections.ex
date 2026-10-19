@@ -7,8 +7,9 @@ defmodule WardrikOAuth.Connections do
       Wardrik.Host.new(connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault})
 
   What holds a provider for an owner is what a call of theirs would find
-  under its name, as `WardrikVault.held_by/3` answers: their own, a
-  sign-in's token or a key someone sealed, else one the deployment shares.
+  under its name, as `WardrikVault.held_by/3` answers without unsealing
+  anything: their own, a sign-in's token or a key someone sealed, else one
+  the deployment shares.
   Connecting starts the provider's sign-in through `WardrikOAuth.hold/4`,
   with nothing parked on it, and forgetting removes what the vault keeps for
   the owner.
