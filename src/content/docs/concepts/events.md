@@ -56,7 +56,7 @@ Each event is a [CloudEvent](https://cloudevents.io), with what it's about under
 | `run.deadline_exceeded` | a turn reached its `timeout` |
 | `message.started`, `message.delta`, `message.completed` | the model's reply, streaming and in full |
 | `reasoning.delta` | the model's reasoning, streaming |
-| `step.started`, `step.completed` | a step of a turn: a tool call, or a subagent's work |
+| `step.started`, `step.completed` | a step of a turn other than a tool call, such as summarising its history, or a subagent's work |
 | `tool_call.started`, `tool_call.completed`, `tool_call.denied`, `tool_call.progress` | a tool call, its result or refusal, and its progress |
 | `subagent.started`, `subagent.completed`, `subagent.failed` | delegated work |
 | `conversation.compacted`, `conversation.cleared` | the history was summarised, or emptied |
@@ -95,7 +95,10 @@ resumes for you; see [Use the HTTP API](/build/http-api/).
 
 A turn is a trace: its events carry a W3C `traceparent`, and the trace id is the run's id. Each tool
 call is a span beneath the turn, and a subagent's work a span beneath the call that delegated it.
-A turn that carries on after a lost node, or after a person decides, keeps its trace.
+A tool call's own events open and close its span: `tool_call.started`, or `tool_call.denied` for a
+call that never ran, opens it, and `tool_call.completed` or `tool_call.denied` closes it. A call
+waiting on a person is listed in the turn's `run.interrupted`. A turn that carries on after a lost
+node, or after a person decides, keeps its trace.
 
 ## Details
 
