@@ -53,7 +53,8 @@ defmodule Wardrik.AgentLogTest do
              "wardrik.run.completed"
            ]
 
-    assert %{sequence: 6} = Agent.snapshot(agent)
+    assert %{cursor: cursor} = Agent.snapshot(agent)
+    assert Wardrik.Event.Cursor.decode(cursor) == {:ok, %{key => 6}}
 
     assert_received %Entry{
       sequence: 3,

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:agent_snapshot",
   "title": "An agent's snapshot",
-  "description": "The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.",
+  "description": "The body of GET /v1/agents/{key}, and of a PUT there. cursor is where the agent's log stands: read and follow the log after it.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,7 +17,7 @@
     "messages",
     "labels",
     "outcome",
-    "sequence"
+    "cursor"
   ],
   "properties": {
     "agent": {
@@ -135,9 +135,9 @@
       ],
       "description": "How the last run ended, or null before the first."
     },
-    "sequence": {
-      "type": "integer",
-      "minimum": 0
+    "cursor": {
+      "type": "string",
+      "description": "Where the agent's log stands, as GET /v1/events and the agent's own events take it."
     }
   },
   "examples": [
@@ -198,7 +198,7 @@
       ],
       "labels": [],
       "outcome": "ok",
-      "sequence": 41
+      "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"
     }
   ]
 }

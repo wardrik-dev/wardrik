@@ -3,7 +3,7 @@ import { Agent } from "./agent.ts";
 import { Connections } from "./connections.ts";
 import { Servers } from "./servers.ts";
 import { Deployment } from "./deployment.ts";
-import { Export } from "./export.ts";
+import { EventStream, type EventsOptions } from "./events.ts";
 import { Tokens } from "./tokens.ts";
 import { agentPath, Http } from "./http.ts";
 import type { AgentDefinition, AgentSummary, Interrupt } from "./protocol.ts";
@@ -72,9 +72,16 @@ export class Wardrik {
     return new Agent(this.#http, key);
   }
 
-  /** The export under `name`: a cursor of this token's own over every log it may read. */
-  export(name: string): Export {
-    return new Export(this.#http, name);
+  /**
+   * The events of the agents `resources` covers, of `types`, after `after`:
+   * those kept, or with `follow`, then each as it is written. The server keeps
+   * no reader's place: keep `cursor`, and read on from it.
+   *
+   *     const events = wardrik.events({ resources: ["acme/agent/*"], after: saved, follow: true });
+   *     for await (const event of events) save(event, events.cursor);
+   */
+  events(options: EventsOptions = {}): EventStream {
+    return new EventStream(this.#http, "/v1/events", options);
   }
 
   /**

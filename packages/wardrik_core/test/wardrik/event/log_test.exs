@@ -272,6 +272,8 @@ defmodule Wardrik.Event.LogTest do
 
       assert {:ok, []} = Log.read(store(), agent_id, starting_after: 5)
       assert {:ok, []} = Log.read(store(), Wardrik.AgentID.parse!("test/nobody"))
+      assert [:audit | logs] = Log.logs(store())
+      assert agent_id in logs
     end
   end
 

@@ -1,6 +1,15 @@
 {
   "components": {
     "parameters": {
+      "after": {
+        "description": "The cursor to read after: a page's next, the id of an event a stream gave, or a snapshot's cursor.",
+        "in": "query",
+        "name": "after",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
       "call": {
         "description": "The id of a tool call the agent is running.",
         "in": "path",
@@ -28,16 +37,6 @@
           "type": "string"
         }
       },
-      "export": {
-        "description": "The export's name: no / or whitespace, and not beginning with @ or _.",
-        "in": "path",
-        "name": "export",
-        "required": true,
-        "schema": {
-          "pattern": "^[^/@_\\s][^/\\s]*$",
-          "type": "string"
-        }
-      },
       "interrupt": {
         "description": "The id of the call the agent waits on.",
         "in": "path",
@@ -48,7 +47,7 @@
         }
       },
       "last_event_id": {
-        "description": "The last sequence a stream read, in place of starting_after.",
+        "description": "The id of the last event a stream gave, in place of after.",
         "in": "header",
         "name": "Last-Event-ID",
         "required": false,
@@ -124,6 +123,20 @@
           "type": "string"
         }
       },
+      "resources": {
+        "description": "The agents each pattern covers, as acme/agent/*, given once for each; every agent whose events the token reads where left out.",
+        "explode": true,
+        "in": "query",
+        "name": "resources",
+        "required": false,
+        "schema": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
+      },
       "secret": {
         "description": "The trigger's secret, for a sender that sets no header.",
         "in": "path",
@@ -169,6 +182,20 @@
         "schema": {
           "type": "string"
         }
+      },
+      "types": {
+        "description": "The event types to read, as wardrik.run.completed, given once for each; every type where left out. A wardrik.events.dropped comes whatever the types.",
+        "explode": true,
+        "in": "query",
+        "name": "types",
+        "required": false,
+        "schema": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
       },
       "user": {
         "description": "The user the agent works for, after @.",
@@ -718,7 +745,7 @@
       },
       "AgentSnapshot": {
         "additionalProperties": false,
-        "description": "The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.",
+        "description": "The body of GET /v1/agents/{key}, and of a PUT there. cursor is where the agent's log stands: read and follow the log after it.",
         "examples": [
           {
             "activity": {
@@ -745,6 +772,7 @@
             "conversation": {
               "id": "acme/triage/5f1c2a"
             },
+            "cursor": "eyJhY21lL3RyaWFnZSI6NDF9",
             "interrupts": [
               {
                 "id": "toolu_01",
@@ -776,7 +804,6 @@
             "run": {
               "id": "4bf92f3577b34da6a3ce929d0e0e4736"
             },
-            "sequence": 41,
             "status": "parked"
           }
         ],
@@ -813,6 +840,10 @@
               "id"
             ],
             "type": "object"
+          },
+          "cursor": {
+            "description": "Where the agent's log stands, as GET /v1/events and the agent's own events take it.",
+            "type": "string"
           },
           "interrupts": {
             "items": {
@@ -888,10 +919,6 @@
               }
             ]
           },
-          "sequence": {
-            "minimum": 0,
-            "type": "integer"
-          },
           "status": {
             "enum": [
               "idle",
@@ -913,7 +940,7 @@
           "messages",
           "labels",
           "outcome",
-          "sequence"
+          "cursor"
         ],
         "title": "An agent's snapshot",
         "type": "object"
@@ -1898,84 +1925,31 @@
       },
       "Events": {
         "additionalProperties": false,
-        "description": "A page of an agent's log, oldest first.",
-        "properties": {
-          "events": {
-            "items": {
-              "$ref": "#/components/schemas/Cloudevent"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "events"
-        ],
-        "type": "object"
-      },
-      "Export": {
-        "additionalProperties": false,
-        "description": "What GET /v1/exports/{name} answers: the events after the export's cursor, in every log the caller may read.",
+        "description": "What GET /v1/events, and an agent's own events, answer as JSON: the events after the cursor, oldest first within each agent's log.",
         "examples": [
           {
             "events": [],
-            "gaps": [
-              {
-                "after": 12,
-                "log": "acme/triage",
-                "oldest": 30
-              }
-            ],
             "next": "eyJhY21lL3RyaWFnZSI6NDF9"
           }
         ],
         "properties": {
           "events": {
-            "description": "Oldest first within each log; each event's source names its log, and its sequence its place there.",
+            "description": "Each event's source names its agent, and its sequence its place in that agent's log. Where a log was trimmed past the cursor, a wardrik.events.dropped says so.",
             "items": {
               "$ref": "#/components/schemas/Cloudevent"
             },
             "type": "array"
           },
-          "gaps": {
-            "description": "Each log trimmed past the cursor, which was read from its oldest event.",
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "after": {
-                  "description": "The sequence the cursor was at.",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "log": {
-                  "description": "audit, or the agent's ID.",
-                  "type": "string"
-                },
-                "oldest": {
-                  "description": "The oldest sequence the log still held.",
-                  "minimum": 1,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "log",
-                "after",
-                "oldest"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
           "next": {
-            "description": "What POST /v1/exports/{name} takes, as {\"next\": …}, to move the cursor past these events.",
+            "description": "The cursor after these events, which ?after= reads on from.",
             "type": "string"
           }
         },
         "required": [
           "events",
-          "next",
-          "gaps"
+          "next"
         ],
-        "title": "A page of an export",
+        "title": "A page of events",
         "type": "object"
       },
       "Forgotten": {
@@ -2332,35 +2306,27 @@
       },
       "MessageQueued": {
         "additionalProperties": false,
-        "description": "The message queued, by its id.",
+        "description": "The message queued, by its id, with the cursor where its agent's log stood: the turn that answers it is written after it.",
         "properties": {
           "message": {
             "additionalProperties": false,
             "properties": {
+              "cursor": {
+                "type": "string"
+              },
               "id": {
                 "type": "string"
               }
             },
             "required": [
-              "id"
+              "id",
+              "cursor"
             ],
             "type": "object"
           }
         },
         "required": [
           "message"
-        ],
-        "type": "object"
-      },
-      "Next": {
-        "properties": {
-          "next": {
-            "description": "A page's next.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "next"
         ],
         "type": "object"
       },
@@ -2976,7 +2942,7 @@
                 }
               }
             },
-            "description": "What it is doing, what it waits on, and its conversation; sequence is the last event its log has written."
+            "description": "What it is doing, what it waits on, and its conversation; cursor is where its log stands."
           },
           "400": {
             "$ref": "#/components/responses/Invalid"
@@ -3342,11 +3308,11 @@
     },
     "/v1/agents/{org}/@{user}/{name}/events": {
       "get": {
-        "description": "Reads after Last-Event-ID, or ?starting_after=. 410 where the log was trimmed past the cursor; read the snapshot and follow from its sequence.",
+        "description": "Reads after Last-Event-ID, or ?after=; with neither, a page reads from the start, and a stream from what is written next. Where the log was trimmed past the cursor, a wardrik.events.dropped says so, and the log is read on from the oldest event it holds.",
         "operationId": "user_agent_events",
         "parameters": [
           {
-            "$ref": "#/components/parameters/starting_after"
+            "$ref": "#/components/parameters/after"
           },
           {
             "$ref": "#/components/parameters/limit"
@@ -3369,7 +3335,7 @@
                 }
               }
             },
-            "description": "A page of the log, or with Accept: text/event-stream the log as server-sent events, after the cursor and then as it is written."
+            "description": "A page of the log, or with Accept: text/event-stream the log as server-sent events, after the cursor and then as it is written; each event's id is the cursor after it."
           },
           "400": {
             "$ref": "#/components/responses/Invalid"
@@ -3382,9 +3348,6 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          },
-          "410": {
-            "$ref": "#/components/responses/Gone"
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
@@ -3820,7 +3783,7 @@
                 }
               }
             },
-            "description": "What it is doing, what it waits on, and its conversation; sequence is the last event its log has written."
+            "description": "What it is doing, what it waits on, and its conversation; cursor is where its log stands."
           },
           "400": {
             "$ref": "#/components/responses/Invalid"
@@ -4165,11 +4128,11 @@
     },
     "/v1/agents/{org}/{name}/events": {
       "get": {
-        "description": "Reads after Last-Event-ID, or ?starting_after=. 410 where the log was trimmed past the cursor; read the snapshot and follow from its sequence.",
+        "description": "Reads after Last-Event-ID, or ?after=; with neither, a page reads from the start, and a stream from what is written next. Where the log was trimmed past the cursor, a wardrik.events.dropped says so, and the log is read on from the oldest event it holds.",
         "operationId": "agent_events",
         "parameters": [
           {
-            "$ref": "#/components/parameters/starting_after"
+            "$ref": "#/components/parameters/after"
           },
           {
             "$ref": "#/components/parameters/limit"
@@ -4192,7 +4155,7 @@
                 }
               }
             },
-            "description": "A page of the log, or with Accept: text/event-stream the log as server-sent events, after the cursor and then as it is written."
+            "description": "A page of the log, or with Accept: text/event-stream the log as server-sent events, after the cursor and then as it is written; each event's id is the cursor after it."
           },
           "400": {
             "$ref": "#/components/responses/Invalid"
@@ -4205,9 +4168,6 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          },
-          "410": {
-            "$ref": "#/components/responses/Gone"
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
@@ -4882,37 +4842,25 @@
         "x-wardrik-function": "deployment_reload"
       }
     },
-    "/v1/exports/{export}": {
-      "delete": {
-        "operationId": "export_forget",
-        "responses": {
-          "204": {
-            "description": "Deleted: the export reads from the start again."
-          },
-          "400": {
-            "$ref": "#/components/responses/Invalid"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "503": {
-            "$ref": "#/components/responses/Unavailable"
-          }
-        },
-        "summary": "Delete an export's cursor",
-        "tags": [
-          "Exports"
-        ],
-        "x-wardrik-function": "export_forget"
-      },
+    "/v1/events": {
       "get": {
-        "operationId": "export_read",
+        "description": "Reads after Last-Event-ID, or ?after=; with neither, a page reads from the start, and a stream from what is written next. Where the log was trimmed past the cursor, a wardrik.events.dropped says so, and the log is read on from the oldest event it holds.",
+        "operationId": "events",
         "parameters": [
           {
+            "$ref": "#/components/parameters/resources"
+          },
+          {
+            "$ref": "#/components/parameters/types"
+          },
+          {
+            "$ref": "#/components/parameters/after"
+          },
+          {
             "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/last_event_id"
           }
         ],
         "responses": {
@@ -4920,11 +4868,16 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Export"
+                  "$ref": "#/components/schemas/Events"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
                 }
               }
             },
-            "description": "The events after the export's cursor, in every log the caller may read."
+            "description": "A page of their logs, or with Accept: text/event-stream their logs as server-sent events, after the cursor and then as they are written; each event's id is the cursor after it."
           },
           "400": {
             "$ref": "#/components/responses/Invalid"
@@ -4935,55 +4888,18 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
-          "503": {
-            "$ref": "#/components/responses/Unavailable"
-          }
-        },
-        "summary": "A page of an export",
-        "tags": [
-          "Exports"
-        ],
-        "x-wardrik-function": "export_read"
-      },
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/export"
-        }
-      ],
-      "post": {
-        "operationId": "export_advance",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Next"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Moved past the page."
-          },
-          "400": {
-            "$ref": "#/components/responses/Invalid"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
           }
         },
-        "summary": "Move an export's cursor",
+        "summary": "The events of every agent the patterns cover",
         "tags": [
-          "Exports"
+          "Agents"
         ],
-        "x-wardrik-function": "export_advance"
+        "x-wardrik-function": "events"
       }
     },
     "/v1/hooks/{org}/@{user}/{name}/{trigger}": {
@@ -5576,10 +5492,6 @@
     {
       "description": "The MCP servers an owner adds for their agents.",
       "name": "Servers"
-    },
-    {
-      "description": "Every log a caller may read, followed by a cursor of its own.",
-      "name": "Exports"
     },
     {
       "description": "The deployment itself, to a token over deployment/*.",

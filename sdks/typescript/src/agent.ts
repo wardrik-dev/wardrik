@@ -5,6 +5,7 @@ import type {
   Authorization,
   Decisions,
   DefinitionRead,
+  EventsPage,
   Trigger,
   TriggerDefinition,
   WardrikEvent,
@@ -44,7 +45,7 @@ export class Agent {
     this.#path = agentPath(key);
   }
 
-  /** What the agent holds now, with `sequence`, the last event its log has written. */
+  /** What the agent holds now, with `cursor`, where its log stands. */
   snapshot(options: { signal?: AbortSignal } = {}): Promise<AgentSnapshot> {
     return this.#http.json("GET", this.#path, options);
   }
@@ -57,14 +58,17 @@ export class Agent {
     return this.#http.json("GET", this.#path + "/definition");
   }
 
-  /** Queues a message for the agent's next run, and answers its id. */
-  async send(content: string, options: SendOptions = {}): Promise<{ id: string }> {
+  /**
+   * Queues a message for the agent's next run, and answers its id, and the
+   * cursor its log stood at: the run that answers it is read after it.
+   */
+  async send(content: string, options: SendOptions = {}): Promise<{ id: string; cursor: string }> {
     const body = {
       ...(options.id === undefined ? {} : { id: options.id }),
       parts: [{ type: "text", content }],
     };
 
-    const answer = await this.#http.json<{ message: { id: string } }>(
+    const answer = await this.#http.json<{ message: { id: string; cursor: string } }>(
       "POST",
       this.#path + "/messages",
       { body, signal: options.signal },
@@ -91,55 +95,34 @@ export class Agent {
    */
   async *ask(content: string, options: SendOptions = {}): AsyncGenerator<WardrikEvent> {
     const id = options.id ?? crypto.randomUUID();
-    const done = new AbortController();
-    const signal = options.signal ? AbortSignal.any([options.signal, done.signal]) : done.signal;
-    const stream = this.events({ signal });
-    const events = stream[Symbol.asyncIterator]();
+    const { cursor } = await this.send(content, { id, signal: options.signal });
+    let run: string | undefined;
 
-    try {
-      const first = events.next();
-      first.catch(() => {});
-      await stream.opened;
-      await this.send(content, { id, signal: options.signal });
-
-      let run: string | undefined;
-
-      for (let next = await first; !next.done; next = await events.next()) {
-        const event = next.value;
-
-        if (event.type === "wardrik.message.created" && event.data.message.id === id) {
-          yield event;
-        } else if (event.type === "wardrik.run.started" && event.data.run.message_ids?.includes(id)) {
-          run = event.data.run.id;
-          yield event;
-        } else if (run !== undefined && (runOf(event) === run || event.type === "wardrik.agent.started")) {
-          yield event;
-          if (ends.has(event.type)) return;
-        }
+    for await (const event of this.events({ after: cursor, signal: options.signal })) {
+      if (event.type === "wardrik.message.created" && event.data.message.id === id) {
+        yield event;
+      } else if (event.type === "wardrik.run.started" && event.data.run.message_ids?.includes(id)) {
+        run = event.data.run.id;
+        yield event;
+      } else if (run !== undefined && (runOf(event) === run || event.type === "wardrik.agent.started")) {
+        yield event;
+        if (ends.has(event.type)) return;
       }
-    } finally {
-      done.abort();
-      await events.return(undefined);
     }
   }
 
   /**
-   * The agent's events as they are written, after `after`, or after the last
-   * one written when it opens. See `EventStream`.
+   * The agent's events as they are written, after `after`, or after where
+   * its log stood when it opens. See `EventStream`.
    */
   events(options: FollowOptions = {}): EventStream {
-    const head = async () => (await this.snapshot()).sequence;
-    return new EventStream(this.#http, this.#path, head, options);
+    const head = async () => (await this.snapshot()).cursor;
+    return new EventStream(this.#http, this.#path + "/events", { ...options, follow: true }, head);
   }
 
-  /** A page of the agent's log: up to `limit` durable events after `after`. */
-  async page(options: { after?: number; limit?: number } = {}): Promise<WardrikEvent[]> {
-    const query = { starting_after: options.after ?? 0, limit: options.limit };
-    const page = await this.#http.json<{ events: WardrikEvent[] }>("GET", this.#path + "/events", {
-      query,
-    });
-
-    return page.events;
+  /** A page of the agent's log: up to `limit` events after `after`, and `next`, the cursor after them. */
+  page(options: { after?: string; limit?: number } = {}): Promise<EventsPage> {
+    return this.#http.json("GET", this.#path + "/events", { query: options });
   }
 
   /**

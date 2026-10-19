@@ -407,7 +407,7 @@ export interface AgentDefinition {
   channels?: string[];
 }
 /**
- * The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.
+ * The body of GET /v1/agents/{key}, and of a PUT there. cursor is where the agent's log stands: read and follow the log after it.
  */
 export interface AgentSnapshot {
   agent: {
@@ -446,7 +446,10 @@ export interface AgentSnapshot {
    * How the last run ended, or null before the first.
    */
   outcome: ("ok" | "failed" | "interrupted") | null;
-  sequence: number;
+  /**
+   * Where the agent's log stands, as GET /v1/events and the agent's own events take it.
+   */
+  cursor: string;
 }
 /**
  * Where a person authorizes the call an interrupt with reason authorization waits on: what GET /v1/agents/{key}/interrupts/{id}/authorization answers, to a token that may decide the agent's calls. The link is in no event.
@@ -585,34 +588,17 @@ export interface ErrorBody {
   };
 }
 /**
- * What GET /v1/exports/{name} answers: the events after the export's cursor, in every log the caller may read.
+ * What GET /v1/events, and an agent's own events, answer as JSON: the events after the cursor, oldest first within each agent's log.
  */
-export interface ExportPage {
+export interface EventsPage {
   /**
-   * Oldest first within each log; each event's source names its log, and its sequence its place there.
+   * Each event's source names its agent, and its sequence its place in that agent's log. Where a log was trimmed past the cursor, a wardrik.events.dropped says so.
    */
   events: Envelope[];
   /**
-   * What POST /v1/exports/{name} takes, as {"next": …}, to move the cursor past these events.
+   * The cursor after these events, which ?after= reads on from.
    */
   next: string;
-  /**
-   * Each log trimmed past the cursor, which was read from its oldest event.
-   */
-  gaps: {
-    /**
-     * audit, or the agent's ID.
-     */
-    log: string;
-    /**
-     * The sequence the cursor was at.
-     */
-    after: number;
-    /**
-     * The oldest sequence the log still held.
-     */
-    oldest: number;
-  }[];
 }
 /**
  * The deployment's nodes, each with how many agents run on it, and how many agents sleep on none: what GET /v1/deployment/nodes answers.

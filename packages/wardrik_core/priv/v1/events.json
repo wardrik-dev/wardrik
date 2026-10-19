@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:events",
+  "title": "A page of events",
+  "description": "What GET /v1/events, and an agent's own events, answer as JSON: the events after the cursor, oldest first within each agent's log.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "events",
+    "next"
+  ],
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:cloudevent"
+      },
+      "description": "Each event's source names its agent, and its sequence its place in that agent's log. Where a log was trimmed past the cursor, a wardrik.events.dropped says so."
+    },
+    "next": {
+      "type": "string",
+      "description": "The cursor after these events, which ?after= reads on from."
+    }
+  },
+  "examples": [
+    {
+      "events": [],
+      "next": "eyJhY21lL3RyaWFnZSI6NDF9"
+    }
+  ]
+}

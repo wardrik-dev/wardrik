@@ -62,7 +62,7 @@ Every event is a CloudEvent whose `type` is `wardrik.<noun>.<verb>`, and
 `event.data`.
 
 ```ts
-const events = agent.events({ after: 41 });
+const events = agent.events({ after: saved });
 
 for await (const event of events) {
   // …
@@ -70,14 +70,34 @@ for await (const event of events) {
 ```
 
 A stream reconnects after any drop, a `kill -9` of the node included, and
-resumes after the last durable event it gave, `events.sequence`. Left without
-`after`, it starts after the last event the agent had written. Live events
-(text and reasoning deltas, tool progress, and `wardrik.activity.changed`,
-what the agent is doing now) are not sent again after a reconnect;
-`wardrik.message.completed` carries the whole text, and `agent.snapshot()`
-what the agent is doing. When the log no
-longer holds what comes after the cursor, the stream throws a `WardrikError` of
-type `gap`: read `agent.snapshot()` and follow from its `sequence`.
+resumes after the last event it gave that moved its cursor, `events.cursor`:
+an opaque string, where the reader has got to in each agent's log, which
+`after` takes back. A snapshot's `cursor` and a sent message's are one too.
+Left without `after`, an agent's stream starts where its log stood when it
+opened. Live events (text and reasoning deltas, tool progress, and
+`wardrik.activity.changed`, what the agent is doing now) move no cursor and
+are not sent again after a reconnect; `wardrik.message.completed` carries
+the whole text, and `agent.snapshot()` what the agent is doing. Where a log
+was trimmed past the cursor, a `wardrik.events.dropped` says so, and the log
+is read on from the oldest event it holds.
+
+`wardrik.events` reads many agents at once, by pattern:
+
+```ts
+const events = wardrik.events({
+  resources: ["acme/agent/*"],
+  types: ["wardrik.run.completed"],
+  after: saved,
+  follow: true,
+});
+
+for await (const event of events) await save(event, events.cursor);
+```
+
+A `wardrik.events.dropped` comes whatever `types` names, so a gap never
+passes unseen. Without `follow`, it reads what is kept after `after`, a page
+at a time, and ends. The server keeps no reader's place, so keep `cursor` with what you
+read, and read on from it.
 
 ## Owners
 
@@ -93,20 +113,6 @@ await wardrik.servers.add("acme", {
   url: "https://mcp.crm.example/mcp",
   auth: { secret: { name: "crm-key" } },
 });
-```
-
-## Exports
-
-An export reads every log the token may read, each agent's and, for a token
-owning every agent, the audit of what people changed, on from a cursor
-the server keeps under a name of the token's own. A page leaves the cursor
-where it is until `advance` moves it, so each event arrives at least once:
-
-```ts
-const siem = wardrik.export("siem");
-const page = await siem.read({ limit: 500 });
-await ship(page.events);
-await siem.advance(page.next);
 ```
 
 ## Tools

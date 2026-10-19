@@ -287,11 +287,11 @@ defmodule Wardrik do
 
     with :ok <- said(text, opts[:id]),
          :ok <- authorize(scope, "agent.ask", agent),
-         {:ok, %Snapshot{sequence: sequence}} <- agent_snapshot(agent, scope.host) do
+         {:ok, %Snapshot{cursor: cursor}} <- agent_snapshot(agent, scope.host) do
       message =
         Message.new(text, opts[:id], sender: Token.actor(scope.token), reply_to: scope.reply_to)
 
-      message = %{message | cursor: Cursor.encode(%{agent => sequence})}
+      message = %{message | cursor: cursor}
 
       case Agent.queue(agent, message, host: scope.host) do
         :ok -> {:ok, message}
@@ -405,7 +405,8 @@ defmodule Wardrik do
       Enum.find(events, &(&1.event["type"] == "wardrik.run.completed"))
 
   Wardrik keeps no reader's place: a reader keeps its cursor, moved past
-  each entry by `cursor/2`, and reads on from it. Where a log was trimmed
+  each entry by `cursor/2`, and reads on from it, or from the cursor of
+  `agent_read/2`'s snapshot or `agent_ask/4`'s message. Where a log was trimmed
   past the cursor, the stream takes a `wardrik.events.dropped` entry naming
   the sequence it was after and the oldest the log still held, whatever
   `:types` names, and reads on from there.
