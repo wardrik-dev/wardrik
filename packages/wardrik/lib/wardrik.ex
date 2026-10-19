@@ -1349,7 +1349,7 @@ defmodule Wardrik do
         :ok ->
           audited(scope, [{:secret_removed, provider, owner}], %Connection{
             provider: provider,
-            held_by: held_by(owner)
+            held_by: :own
           })
 
         {:error, :not_found} ->
@@ -1367,9 +1367,6 @@ defmodule Wardrik do
   # Every one of `owner`'s resources of `type`, as `acme/server/*`: an owner's
   # servers, and their accounts, are checked as one.
   defp owned(owner, type), do: Resource.parse!("#{owner}/#{type}/*")
-
-  # An owner forgets only an account of their own.
-  defp held_by(owner), do: if(Resource.org(owner) == owner, do: :org, else: :person)
 
   # -- tokens -----------------------------------------------------------------------
 

@@ -21,18 +21,20 @@ defprotocol Wardrik.Connections do
   answer `:unsupported`, and so does each of those.
 
   An owner is a namespace, as `Wardrik.Resource` names one: a person in
-  their org, `acme/@jon`, or an org, `acme`, as `Wardrik.Credential`
-  resolves credentials for them: a person's call takes their own, then
-  their org's, then the deployment's.
+  their org, `acme/@jon`, or an org, `acme`. What holds a connection for
+  them is what a call of an agent they own would use, as
+  `Wardrik.Credential` resolves it: `:own` where the owner holds it,
+  `:shared` where they do not and the deployment shares one, and `:none`
+  where neither does. Nothing falls back from a person to their org.
   """
 
   @typedoc "A person in their org, or an org, as the namespace `Wardrik.Resource` names."
   @type owner() :: Wardrik.Resource.t()
 
-  @typedoc "Who holds a connection for an owner: them, their org, the deployment, or nobody."
-  @type held_by() :: :person | :org | :deployment | nil
+  @typedoc "What holds a connection for an owner: their own, one the deployment shares, or nothing."
+  @type held_by() :: :own | :shared | :none
 
-  @doc "The connections the deployment offers `owner`, and who holds each; never a value."
+  @doc "The connections the deployment offers `owner`, and what holds each; never a value."
   @spec list(t(), owner()) :: [Wardrik.Connections.Connection.t()] | :unsupported
   def list(connections, owner)
 

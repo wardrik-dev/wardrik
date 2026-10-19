@@ -514,9 +514,9 @@ export interface Connections {
      */
     provider: string;
     /**
-     * Whose a call of the owner's would use: the person's own, their org's, or the deployment's. Absent where nobody holds it.
+     * What a call of an agent the owner owns would use: own where the owner holds it, shared where they do not and the deployment shares one, none where neither does.
      */
-    held_by?: "person" | "org" | "deployment";
+    held_by: "own" | "shared" | "none";
   }[];
 }
 /**

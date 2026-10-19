@@ -23,7 +23,7 @@ export class Connections {
     this.#http = http;
   }
 
-  /** The accounts offered `owner`, and whether the person, the org or the deployment holds each. */
+  /** The accounts offered `owner`, and whether each is their own, one the deployment shares, or none. */
   list(owner: string, options: ConnectionOptions = {}): Promise<ConnectionList> {
     return this.#http.json("GET", "/v1/connections", request(owner, options));
   }

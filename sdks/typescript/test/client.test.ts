@@ -336,7 +336,7 @@ describe("ask", () => {
 
 describe("connections", () => {
   test("list, connect and forget, for the owner named", async () => {
-    const list = { connections: [{ provider: "github", held_by: "person" }, { provider: "linear" }] };
+    const list = { connections: [{ provider: "github", held_by: "own" }, { provider: "linear", held_by: "none" }] };
     const link = { provider: "linear", connected: false, authorization: { url: "https://auth.example.com/a" } };
     server.on("GET", "/v1/connections", (_request, response) => json(response, 200, list));
     server.on("POST", "/v1/connections/linear", (_request, response) => json(response, 200, link));

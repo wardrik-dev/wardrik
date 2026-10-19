@@ -113,7 +113,8 @@ variable `credential_env` names.
 
 - A call after a link's 15 minutes parks on a new link.
 - Connecting asks nobody to approve; the account is held once the person has authorized.
-- The connections list says whether the person, their org or the deployment holds each account.
+- The connections list says whether each account is the owner's own, one the deployment shares, or
+  none; an org's account is not its people's.
   `?owner=acme` acts on the org's, for a token that reaches the org's agents.
 - The audit records each account stored or removed, and who asked.
 - Until any user has connected, a server that needs an account to list its tools offers one tool,

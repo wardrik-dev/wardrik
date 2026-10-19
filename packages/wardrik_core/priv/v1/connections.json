@@ -15,7 +15,8 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "provider"
+          "provider",
+          "held_by"
         ],
         "properties": {
           "provider": {
@@ -24,11 +25,11 @@
           },
           "held_by": {
             "enum": [
-              "person",
-              "org",
-              "deployment"
+              "own",
+              "shared",
+              "none"
             ],
-            "description": "Whose a call of the owner's would use: the person's own, their org's, or the deployment's. Absent where nobody holds it."
+            "description": "What a call of an agent the owner owns would use: own where the owner holds it, shared where they do not and the deployment shares one, none where neither does."
           }
         }
       }
@@ -39,10 +40,11 @@
       "connections": [
         {
           "provider": "github",
-          "held_by": "person"
+          "held_by": "own"
         },
         {
-          "provider": "linear"
+          "provider": "linear",
+          "held_by": "none"
         }
       ]
     }

@@ -6,15 +6,15 @@ defmodule WardrikOAuth.Connections do
 
       Wardrik.Host.new(connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault})
 
-  A provider is held for an owner where the vault keeps anything under its
-  name for them, a sign-in's token or a key someone sealed, read without
-  unsealing it; the most specific holder is the one a call would use.
+  What holds a provider for an owner is what a call of theirs would find
+  under its name, as `WardrikVault.held_by/3` answers without unsealing
+  anything: their own, a sign-in's token or a key someone sealed, else one
+  the deployment shares.
   Connecting starts the provider's sign-in through `WardrikOAuth.hold/4`,
   with nothing parked on it, and forgetting removes what the vault keeps for
   the owner.
   """
 
-  alias Wardrik.Resource
   alias WardrikOAuth.Provider
 
   @enforce_keys [:oauth, :vault]
@@ -24,22 +24,12 @@ defmodule WardrikOAuth.Connections do
 
   @doc false
   def list(%__MODULE__{oauth: oauth, vault: vault}, owner) do
-    held = for {kind, holder} <- holders(owner), do: {kind, WardrikVault.names(vault, holder)}
-
     for provider <- Provider.all(oauth) do
       %Wardrik.Connections.Connection{
         provider: provider.name,
-        held_by: Enum.find_value(held, fn {kind, names} -> provider.name in names && kind end)
+        held_by: WardrikVault.held_by(vault, provider.name, owner)
       }
     end
-  end
-
-  # Whose credentials a call of the owner's would use, the most specific first.
-  defp holders(owner) do
-    org = Resource.org(owner)
-
-    if(owner == org, do: [], else: [person: owner]) ++
-      [org: org, deployment: Resource.deployment()]
   end
 
   @doc false

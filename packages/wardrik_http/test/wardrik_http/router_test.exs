@@ -71,7 +71,7 @@ defmodule WardrikHTTP.RouterTest do
     def challenge(_signed), do: ~s(Signed realm="test")
   end
 
-  # Offers github, held by jon in test, and linear, held by nobody.
+  # Offers github, jon's own in test, and linear, which nothing holds.
   defmodule Linked do
     @moduledoc false
     defstruct []
@@ -80,9 +80,9 @@ defmodule WardrikHTTP.RouterTest do
       [
         %Wardrik.Connections.Connection{
           provider: "github",
-          held_by: if(to_string(owner) == "test/@jon", do: :person)
+          held_by: if(to_string(owner) == "test/@jon", do: :own, else: :none)
         },
-        %Wardrik.Connections.Connection{provider: "linear", held_by: nil}
+        %Wardrik.Connections.Connection{provider: "linear", held_by: :none}
       ]
     end
 
@@ -1205,9 +1205,11 @@ defmodule WardrikHTTP.RouterTest do
                Req.get(jon, url: "/v1/connections")
 
       assert listed == [
-               %{"provider" => "github", "held_by" => "person"},
-               %{"provider" => "linear"}
+               %{"provider" => "github", "held_by" => "own"},
+               %{"provider" => "linear", "held_by" => "none"}
              ]
+
+      conforms(%{"connections" => listed}, "connections")
 
       assert {:ok, %{status: 200, body: %{"connections" => [%{"provider" => "github"} | _]}}} =
                Req.get(jon, url: "/v1/connections", params: [owner: "test"])
@@ -1228,7 +1230,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok,
               %{
                 status: 200,
-                body: %{"connection" => %{"provider" => "github", "held_by" => "person"}}
+                body: %{"connection" => %{"provider" => "github", "held_by" => "own"}}
               }} =
                Req.delete(jon, url: "/v1/connections/github")
 
@@ -1266,7 +1268,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
                Req.get(globex, url: "/v1/connections", params: [owner: "globex/@jon"])
 
-      refute Enum.any?(listed, &Map.has_key?(&1, "held_by"))
+      assert Enum.all?(listed, &(&1["held_by"] == "none"))
 
       reader = as(api, "test/*", @jon, [:reader])
 

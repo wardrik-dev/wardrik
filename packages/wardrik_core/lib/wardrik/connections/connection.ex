@@ -1,8 +1,8 @@
 defmodule Wardrik.Connections.Connection do
   @moduledoc """
-  An account a deployment offers an owner: its provider, who holds it for
-  them, `:person`, `:org`, `:deployment` or `nil` for nobody, and, as it is
-  connected, where to authorize it, or `nil` where it is held already.
+  An account a deployment offers an owner: its provider, what holds it for
+  them, `:own`, `:shared` or `:none`, as `Wardrik.Connections` says, and, as
+  it is connected, where to authorize it, or `nil` where it is held already.
   """
 
   @enforce_keys [:provider, :held_by]

@@ -104,7 +104,7 @@ answers an agent with is its key.
 | `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, and answers it as it was |
 | `POST /v1/hooks/{key}/{trigger}`, or `.../{trigger}/{secret}` | delivers a service's request to a webhook trigger; see [Webhooks](#webhooks) |
 | `POST /v1/channels/{channel}/{path}` | delivers what a chat app, such as Slack, sends a channel; see [Channels](#channels) |
-| `GET /v1/connections?owner=` | the accounts `owner` is offered, and whether they, their org or the deployment holds each |
+| `GET /v1/connections?owner=` | the accounts `owner` is offered, and whether each is their own, one the deployment shares, or none |
 | `POST /v1/connections/{provider}` | connects an account: where to authorize it, or that it is held already |
 | `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, and answers it as it was held |
 | `GET /v1/servers?owner=` | the MCP servers `owner` added for their agents |
@@ -231,8 +231,8 @@ answers as the chat app expects; `404` where no channel of that name takes reque
 ```http
 GET /v1/connections?owner=acme/@jon
 
-{"connections": [{"provider": "github", "held_by": "person"},
-                 {"provider": "linear"}]}
+{"connections": [{"provider": "github", "held_by": "own"},
+                 {"provider": "linear", "held_by": "none"}]}
 ```
 
 ```http
@@ -243,8 +243,10 @@ POST /v1/connections/linear?owner=acme/@jon
 ```
 
 `owner` names a person, `acme/@jon`, or an org, `acme`. The token must reach the owner's
-agents. The account is held once the person has authorized it at the link. A secret's value
-is never answered.
+agents. `held_by` is what a call of the owner's agents would use: `own`, `shared` where they
+hold none and the deployment shares one, or `none`; an org's account is not its people's. The
+account is held once the person has authorized it at the link. A secret's value is never
+answered.
 
 ### Servers
 

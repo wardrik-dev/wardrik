@@ -15,8 +15,8 @@ def run(%{url: url}, %Wardrik.Tool.Context{credentials: %{"github" => credential
 
 The vault is the host's `Wardrik.Credentials` that answers. It seals each credential with
 AES-256-GCM into Wardrik's store, so there is no separate service to run and
-nothing kept in plaintext, and finds a name for each call the most specific
-first: the call's user's, then its org's, then the deployment's.
+nothing kept in plaintext, and finds a name for each call in what the agent's
+owner holds, as below.
 
 ```elixir
 # lib/my_app/application.ex
