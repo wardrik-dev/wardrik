@@ -83,9 +83,9 @@ defmodule WardrikConsole.Filter do
 
   defp matches?(:attention, _member, attention?), do: attention?
   defp matches?({:key, text}, member, _), do: contains?(to_string(member.id), text)
-  defp matches?({:name, text}, member, _), do: contains?(member.id.name, text)
-  defp matches?({:org, text}, member, _), do: scope?(member.id.org, text)
-  defp matches?({:user, text}, member, _), do: scope?(member.id.user, text)
+  defp matches?({:name, text}, member, _), do: contains?(agent(member).name, text)
+  defp matches?({:org, text}, member, _), do: scope?(agent(member).org, text)
+  defp matches?({:user, text}, member, _), do: scope?(agent(member).user, text)
   defp matches?({:node, text}, member, _), do: contains?(Atom.to_string(member.node), text)
   defp matches?({:status, status}, member, _), do: member.status == status
 
@@ -93,6 +93,8 @@ defmodule WardrikConsole.Filter do
   defp scope?(value, text), do: String.downcase(value) == text
 
   defp contains?(value, text), do: String.contains?(String.downcase(value), text)
+
+  defp agent(member), do: Wardrik.AgentAddress.agent(member.id)
 
   @doc "The query as typed, normalised to single spaces."
   @spec describe(t()) :: String.t()

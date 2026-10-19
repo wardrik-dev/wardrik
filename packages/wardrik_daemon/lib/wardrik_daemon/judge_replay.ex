@@ -94,10 +94,10 @@ defmodule WardrikDaemon.JudgeReplay do
         do: pattern
   end
 
-  @doc "The agent `id` with its conversations: its resource, and what is under it."
-  @spec of(AgentID.t()) :: [Wardrik.Resource.t()]
-  def of(%AgentID{} = id) do
-    itself = AgentID.resource(id)
+  @doc "The agent `id` with its threads: its resource, and what is under it."
+  @spec of(Wardrik.AgentAddress.t()) :: [Wardrik.Resource.t()]
+  def of(id) do
+    itself = Wardrik.AgentAddress.resource(id)
     [itself, Wardrik.Resource.parse!("#{itself}/*")]
   end
 
@@ -121,7 +121,7 @@ defmodule WardrikDaemon.JudgeReplay do
   end
 
   defp judged(host, judge, call) do
-    run = Run.root(Config.new(), AgentID.parse!(call.agent), name: "judge", host: host)
+    run = Run.root(Config.new(), AgentID.address!(call.agent), name: "judge", host: host)
     answers = Judge.evaluate(judge, %{name: call.tool, arguments: call.arguments}, run: run)
     Map.merge(call, %{answers: answers, judged: Judge.judged(call.questions, answers)})
   end

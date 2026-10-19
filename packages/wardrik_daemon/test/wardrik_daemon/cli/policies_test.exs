@@ -9,7 +9,6 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
 
   import ExUnit.CaptureIO
 
-  alias Wardrik.AgentID
   alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
@@ -69,7 +68,7 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
   # Writes a log for `id` of the calls `calls` made, each `{call_id, tool,
   # arguments, decided_by}`, and `{:approved, call_id, principal}` for one a
   # person approved.
-  defp ran(%AgentID{} = id, calls) do
+  defp ran(id, calls) do
     source = Source.root(id, name: "turn")
 
     writer =
@@ -147,9 +146,9 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
     refute output =~ "web_search"
   end
 
-  test "policy judge --agent tries an agent's conversations, or a prefix's agents", %{id: id} do
+  test "policy judge --agent tries an agent's threads, or a prefix's agents", %{id: id} do
     answering()
-    thread = AgentID.put_external_id(id, "C1-1696.1234")
+    thread = Wardrik.Thread.new!(id, "C1-1696.1234")
     ran(thread, [{"c1", "books__create_bill", %{"amount" => 700}, %{by: :default, hooks: []}}])
 
     {output, 0} = command(["policy", "judge", "careful", "--agent", id, "--last", "5", "--json"])

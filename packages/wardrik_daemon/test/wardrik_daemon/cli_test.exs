@@ -64,16 +64,19 @@ defmodule WardrikDaemon.CLITest do
     end)
   end
 
-  defp parked_agent do
+  defp parked_agent(id \\ Wardrik.Test.Fleet.id()) do
     test_pid = self()
     answer = {:ok, [Wardrik.Conversation.Assistant.new("shipped")]}
 
     {key, agent} =
       Wardrik.Test.Fleet.start_agent(
-        config:
-          Script.new({AgentRunners, :parking, [test_pid, "call_1"]},
-            resume: {AgentRunners, :resuming, [test_pid, answer]}
-          )
+        [
+          config:
+            Script.new({AgentRunners, :parking, [test_pid, "call_1"]},
+              resume: {AgentRunners, :resuming, [test_pid, answer]}
+            )
+        ],
+        id
       )
 
     :ok = Event.Bus.subscribe(key)
@@ -91,6 +94,15 @@ defmodule WardrikDaemon.CLITest do
     {output, 0} = command(["parked"])
 
     assert output =~ "#{key}  call_1  deploy  This ships to production."
+  end
+
+  test "a thread's call is decided by the thread's key, as a channel's notice writes it" do
+    key = parked_agent(Wardrik.Thread.new!(Wardrik.Test.Fleet.id(), "C1-17.1"))
+
+    {output, 0} = command(["parked"])
+    assert output =~ "#{key}  call_1"
+    assert command(["approve", to_string(key), "call_1"]) == {"Approved call_1 for #{key}.\n", 0}
+    assert_receive {:resumed, %{"call_1" => :approve}}
   end
 
   test "parked shows the operator where to authorize a call" do
@@ -652,9 +664,8 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ ~r"trigger +every 30m +next in \d+m +not run yet"
     assert output =~ Path.join([dir, "agents", "counter.md"])
 
-    thread = Wardrik.AgentID.put_external_id(key, "1696.1234")
-    {:ok, spec} = WardrikDaemon.Agents.spec(Host.agents(), thread, host: Host.host())
-    {:ok, _pid} = Wardrik.Fleet.spawn(thread, Wardrik.Agent.Spec.options(spec))
+    thread = Wardrik.Thread.new!(key, "1696.1234")
+    {:ok, _pid} = Wardrik.Fleet.spawn(thread)
     {output, 0} = command(["show", thread])
     assert output =~ "Counts what it is asked to."
     assert output =~ ~r"conversation +of #{key}"

@@ -10,6 +10,7 @@ defmodule WardrikDaemon.AgentsTest do
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.Resource
+  alias Wardrik.Thread
   alias WardrikDaemon.Agents
   alias WardrikDaemon.Test.Host
 
@@ -338,7 +339,7 @@ defmodule WardrikDaemon.AgentsTest do
     {:ok, _spec} =
       put(defined, %{"policy" => "careful"}, %{token(org) | policy: "strict"})
 
-    assert {:ok, spec} = Agents.spec(Host.agents(), defined, host: Host.host())
+    assert {:ok, spec} = Definitions.spec(definitions(), defined, host: Host.host())
     assert [%{name: "policy/strict"}, %{name: "careful"}] = spec.hooks
 
     assert {:error, message} =
@@ -347,27 +348,27 @@ defmodule WardrikDaemon.AgentsTest do
     assert message =~ "names the policy missing, which is not a policy in policies/"
   end
 
-  test "a conversation runs on the definition of its agent, in the agent's tree",
+  test "a thread runs on the definition of its agent, in the agent's tree",
        %{org: org} = context do
     write(context, "alpha", "model: anthropic:claude-haiku-4-5\ntools: [files]\n")
     Host.start_agents(context.dir)
-    thread = AgentID.parse!("#{org}/alpha/1696.1234")
+    alpha = AgentID.parse!("#{org}/alpha")
 
-    assert {:ok, spec} = Agents.spec(Host.agents(), thread, host: Host.host())
-    assert spec.id == thread
-    assert spec.config.model_spec == "anthropic:claude-haiku-4-5"
+    assert Agent.status(Thread.new!(alpha, "1696.1234"), host: Host.host()).model ==
+             "anthropic:claude-haiku-4-5"
+
+    assert {:ok, spec} = Definitions.spec(definitions(), alpha, host: Host.host())
     assert [{WardrikWorkspace, workspace}] = spec.config.tools
     assert workspace.tree.tree == "agents/#{org}/agent/alpha"
   end
 
-  test "reload brings a conversation to its file, and leaves it where the file does not read",
+  test "reload brings a thread to its agent's file, and leaves it where the file does not read",
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")
     write(context, "alpha", "policy: careful\n")
     Host.start_agents(context.dir)
-    thread = AgentID.parse!("#{org}/alpha/1696.1234")
-    {:ok, spec} = Agents.spec(Host.agents(), thread, host: Host.host())
-    {:ok, _pid} = Fleet.spawn(thread, Wardrik.Agent.Spec.options(spec))
+    alpha = AgentID.parse!("#{org}/alpha")
+    {:ok, _pid} = Fleet.spawn(Thread.new!(alpha, "1696.1234"))
 
     write(context, "alpha", "policy: lax\n")
     assert [message] = failed(context, Host.reload())
@@ -379,7 +380,7 @@ defmodule WardrikDaemon.AgentsTest do
     File.rm!(Path.join([context.dir, "policies", "careful.yaml"]))
     write(context, "alpha", "")
     assert failed(context, Host.reload()) == []
-    assert {:ok, %{hooks: []}} = Agents.spec(Host.agents(), thread, host: Host.host())
+    assert {:ok, %{hooks: []}} = Definitions.spec(definitions(), alpha, host: Host.host())
   end
 
   test "reload brings the agents the HTTP API defined to what their definitions write now",
@@ -459,21 +460,20 @@ defmodule WardrikDaemon.AgentsTest do
     assert Agents.dir(Host.agents()) == context.dir
 
     assert {:ok, spec} =
-             Agents.spec(Host.agents(), AgentID.parse!("#{org}/alpha"), host: Host.host())
+             Definitions.spec(definitions(), AgentID.parse!("#{org}/alpha"), host: Host.host())
 
     assert spec.config.model_spec == "anthropic:claude-haiku-4-5"
 
-    assert {:ok, spec} =
-             Agents.spec(Host.agents(), AgentID.parse!("#{org}/@jon/assistant"),
-               host: Host.host()
-             )
-
-    assert spec.config.model_spec == "anthropic:claude-sonnet-5"
+    scope = Wardrik.Scope.new(Host.host(Host.agents()), token(Resource.parse!(org <> "/*")))
+    assistant = AgentID.parse!("#{org}/@jon/assistant")
+    assert {:ok, %{from: :new}} = Wardrik.agent_spawn(scope, assistant)
+    assert Agent.status(assistant, host: Host.host()).model == "anthropic:claude-sonnet-5"
 
     Host.put_section(Agents, defaults: %{"tools" => ["nothing"]})
+    scope = Wardrik.Scope.new(Host.host(Host.agents()), token(Resource.parse!(org <> "/*")))
 
-    assert {:error, message} =
-             Agents.spec(Host.agents(), AgentID.parse!("#{org}/assistant"), host: Host.host())
+    assert {:error, %Wardrik.Error{message: message}} =
+             Wardrik.agent_spawn(scope, AgentID.parse!("#{org}/assistant"))
 
     assert message =~ "tools names nothing"
   end
@@ -656,7 +656,7 @@ defmodule WardrikDaemon.AgentsTest do
     books = AgentID.parse!("#{org}/books")
     assert [%WardrikChannel.Offer{agent: ^books}] = WardrikChannel.Workspace.offered(workspace)
 
-    thread = AgentID.put_external_id(books, "C1-1.1")
+    thread = Thread.new!(books, "C1-1.1")
     assert {:ok, pid} = WardrikChannel.Workspace.start(workspace, thread)
     assert Fleet.whereis(thread, host: Host.host()) == pid
 

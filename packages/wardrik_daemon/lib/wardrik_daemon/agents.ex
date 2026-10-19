@@ -142,26 +142,12 @@ defmodule WardrikDaemon.Agents do
   @spec defaults(t()) :: map()
   def defaults(%__MODULE__{context: context}), do: context.defaults
 
-  @doc """
-  The spec the agent `key` runs on, on `:host`: the one its definition, or
-  that of the agent it is a conversation of, writes, or the one
-  `defaults/1` write where none is kept.
-  """
-  @spec spec(t(), AgentID.t(), host: Wardrik.Host.t()) :: {:ok, Spec.t()} | {:error, String.t()}
-  def spec(%__MODULE__{} = agents, %AgentID{} = key, opts) do
-    case Definitions.spec(definitions(agents), key, opts) do
-      {:error, :not_found} -> defaulted(agents, key, opts)
-      written -> written
-    end
-  end
-
   defp defaulted(agents, key, opts) do
-    owner = AgentID.put_external_id(key, nil)
     context = context(agents, Resource.owner(AgentID.resource(key)))
 
     with {:ok, definition} <-
-           Definition.read(defaults(agents), id: owner, source: :defaults, context: context),
-         do: Definition.spec(definition, key, context: context, host: Keyword.fetch!(opts, :host))
+           Definition.read(defaults(agents), id: key, source: :defaults, context: context),
+         do: Definition.spec(definition, context: context, host: Keyword.fetch!(opts, :host))
   end
 
   @doc """
@@ -267,7 +253,7 @@ defmodule WardrikDaemon.Agents do
     with {:ok, definition} <- AgentFile.parse(context, path) do
       context = held(context, config, Resource.owner(AgentID.resource(definition.id)))
 
-      case Definition.spec(definition, definition.id, context: context, host: host) do
+      case Definition.spec(definition, context: context, host: host) do
         {:ok, spec} -> {:ok, definition, spec}
         {:error, message} -> {:error, "#{path}: #{message}"}
       end

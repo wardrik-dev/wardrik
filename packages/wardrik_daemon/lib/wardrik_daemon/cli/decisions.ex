@@ -15,6 +15,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   node runs as can read, so that account is who decides.
   """
 
+  alias Wardrik.AgentAddress
   alias Wardrik.AgentID
   alias Wardrik.Error
   alias Wardrik.Event.Codec.Value
@@ -63,7 +64,7 @@ defmodule WardrikDaemon.CLI.Decisions do
     with {:ok, %{"interrupts" => interrupts}} <- interrupts(words, opts) do
       rows =
         for %{"agent" => %{"id" => id}} = interrupt <- interrupts,
-            key = AgentID.parse!(id),
+            key = AgentID.address!(id),
             do: row_of(key, interrupt) <> read(interrupt) <> link(key, interrupt, opts[:as])
 
       case rows do
@@ -199,7 +200,7 @@ defmodule WardrikDaemon.CLI.Decisions do
     with {:ok, _snapshot} <- Wardrik.agent_read(scope, key),
          [_ | _] = calls <-
            for(
-             {^key, _interrupt} = call <- parked_under(AgentID.resource(key), scope),
+             {^key, _interrupt} = call <- parked_under(AgentAddress.resource(key), scope),
              do: call
            ) do
       calls
