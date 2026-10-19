@@ -63,7 +63,7 @@ defmodule WardrikDaemon.CLI.Policies do
          {:ok, patterns, where} <-
            patterns(Wardrik.Host.definitions(opts[:as].host), name, opts[:agent]),
          {:ok, last} <- last(Keyword.get(opts, :last, @last)) do
-      {:ok, JudgeReplay.tried(opts[:as].host, policy.judge, under: patterns, last: last), where}
+      {:ok, JudgeReplay.tried(opts[:as], policy.judge, under: patterns, last: last), where}
     end
   end
 
