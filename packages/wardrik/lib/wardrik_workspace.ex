@@ -54,7 +54,7 @@ defmodule WardrikWorkspace do
   to every agent that reads it.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   alias WardrikWorkspace.Context
   alias WardrikWorkspace.Path

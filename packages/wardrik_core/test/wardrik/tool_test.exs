@@ -103,7 +103,7 @@ defmodule Wardrik.ToolTest do
     alias Wardrik.Tool.Annotations
 
     defmodule Declaring do
-      @behaviour Wardrik.Tool
+      use Wardrik.Tool
 
       @impl true
       def tool do
@@ -120,7 +120,7 @@ defmodule Wardrik.ToolTest do
     end
 
     defmodule DeclaringSource do
-      @behaviour Wardrik.Tool
+      use Wardrik.Tool
 
       @impl true
       def tools(_argument), do: []
@@ -181,7 +181,7 @@ defmodule Wardrik.ToolTest do
 
   describe "context/1" do
     defmodule Telling do
-      @behaviour Wardrik.Tool
+      use Wardrik.Tool
 
       @impl true
       def tool, do: EchoTool.tool()
@@ -191,7 +191,7 @@ defmodule Wardrik.ToolTest do
     end
 
     defmodule TellingSource do
-      @behaviour Wardrik.Tool
+      use Wardrik.Tool
 
       @impl true
       def tools(_argument), do: []

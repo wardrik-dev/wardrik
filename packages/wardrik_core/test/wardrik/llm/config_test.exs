@@ -68,7 +68,7 @@ defmodule Wardrik.LLM.ConfigTest do
 
   describe "tool_timeout/2" do
     defmodule Patient do
-      @behaviour Wardrik.Tool
+      use Wardrik.Tool
 
       @impl true
       def tool do

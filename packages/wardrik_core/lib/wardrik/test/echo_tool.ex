@@ -1,7 +1,7 @@
 defmodule Wardrik.Test.EchoTool do
   @moduledoc "A `Wardrik.Tool` that hands its arguments straight back."
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   @impl true
   def tool do

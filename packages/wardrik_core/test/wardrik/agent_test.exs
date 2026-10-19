@@ -130,7 +130,7 @@ defmodule Wardrik.AgentTest do
   end
 
   defmodule RaisingContext do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tools(_argument), do: []

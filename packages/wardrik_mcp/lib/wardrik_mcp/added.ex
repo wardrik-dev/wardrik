@@ -11,7 +11,7 @@ defmodule WardrikMCP.Added do
   org's own agents the org's, and a person's agents that person's.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   alias Wardrik.AgentID
   alias Wardrik.Resource

@@ -6,7 +6,7 @@ defmodule Wardrik.Test.SearchTool do
   reach the outside world, with no provider and no network.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   alias Wardrik.Tool.Result
 

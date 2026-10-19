@@ -101,7 +101,7 @@ defmodule WardrikPolicy do
   lifts a call a rule asks about or denies.
   """
 
-  @behaviour Wardrik.Hook
+  use Wardrik.Hook
 
   alias Wardrik.Call
   alias Wardrik.Hook

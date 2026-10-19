@@ -25,7 +25,7 @@ defmodule WardrikDemo do
     needs a person, and dropping a table is refused outright.
     """
 
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
 
     alias Wardrik.Call.Tool
 
@@ -53,7 +53,7 @@ defmodule WardrikDemo do
   defmodule ListServices do
     @moduledoc "A read-only tool, to show that a policy in place costs an allowed call nothing."
 
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @services ["billing", "checkout", "search"]
 
@@ -78,7 +78,7 @@ defmodule WardrikDemo do
     a run can be followed from the approval to the effect.
     """
 
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tool do
@@ -113,7 +113,7 @@ defmodule WardrikDemo do
     visible.
     """
 
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tool do
@@ -134,7 +134,7 @@ defmodule WardrikDemo do
   defmodule DropTable do
     @moduledoc "The tool the demo policy refuses. It must never run."
 
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tool do

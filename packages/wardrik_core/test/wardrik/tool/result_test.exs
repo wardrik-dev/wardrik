@@ -31,11 +31,16 @@ defmodule Wardrik.Tool.ResultTest do
     assert error["message"] =~ "GMAIL_NOPE"
   end
 
+  test "an exception is worded by its message" do
+    assert {:ok, %{"error" => %{"code" => "request_failed", "message" => "nope"}}} =
+             Result.error(%RuntimeError{message: "nope"})
+  end
+
   test "anything else is inspected rather than lost" do
     assert {:ok, %{"error" => %{"code" => "request_failed", "message" => message}}} =
-             Result.error(%RuntimeError{message: "nope"})
+             Result.error(%{status: 503})
 
-    assert message =~ "nope"
+    assert message =~ "503"
   end
 
   test "error/2 takes a code and sentence chosen by the caller" do

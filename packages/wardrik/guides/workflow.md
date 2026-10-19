@@ -9,8 +9,9 @@ should be able to call it:
 
 ```elixir
 defmodule MyApp.Nightly do
-  @behaviour Wardrik.Tool
   @behaviour WardrikWorkflow.Step
+
+  use Wardrik.Tool
 
   @impl Wardrik.Tool
   def tool do

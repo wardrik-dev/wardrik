@@ -310,7 +310,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
   describe "a batch" do
     defmodule Resolving do
-      @behaviour Wardrik.Tool
+      use Wardrik.Tool
 
       @impl true
       def tools(test) do
@@ -502,7 +502,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
   end
 
   defmodule AskingHook do
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
 
     @impl true
     def init(_opts), do: nil
@@ -621,7 +621,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     alias Wardrik.Test.Tools.Rules
 
     defmodule Reporting do
-      @behaviour Wardrik.Hook
+      use Wardrik.Hook
 
       @impl true
       def init(test_pid), do: test_pid
@@ -634,7 +634,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     end
 
     defmodule Refusing do
-      @behaviour Wardrik.Hook
+      use Wardrik.Hook
 
       @impl true
       def init(_opts), do: nil
@@ -784,7 +784,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     end
 
     defmodule Needing do
-      @behaviour Wardrik.Tool
+      use Wardrik.Tool
 
       @impl true
       def tool do

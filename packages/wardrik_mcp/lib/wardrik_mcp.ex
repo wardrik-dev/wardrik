@@ -57,7 +57,7 @@ defmodule WardrikMCP do
   that was minted elsewhere.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   alias Wardrik.Credential
   alias Wardrik.Resource
