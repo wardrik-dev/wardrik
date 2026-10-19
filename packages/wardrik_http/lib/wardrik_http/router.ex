@@ -314,28 +314,32 @@ defmodule WardrikHTTP.Router do
   # A secret in the path is the request's credential, as a bearer token is.
   defp bearer(conn, secret), do: put_req_header(conn, "authorization", "Bearer " <> secret)
 
+  # A name that is not a segment names no trigger.
   defp hook(conn, agent, trigger) do
-    case read_body(conn, length: @outside_body) do
-      {:ok, body, conn} ->
-        itself = AgentID.resource(agent)
-        id = "#{itself}/trigger/#{trigger}"
+    with true <- AgentID.segment?(trigger),
+         {:ok, body, conn} <- read_body(conn, length: @outside_body) do
+      itself = AgentID.resource(agent)
+      id = "#{itself}/trigger/#{trigger}"
 
-        token = %Token{
-          principal: Principal.new(id),
-          scope: [%Statement{actions: ["agent.trigger.deliver"], resources: [itself]}]
-        }
+      token = %Token{
+        principal: Principal.new(id),
+        scope: [%Statement{actions: ["agent.trigger.deliver"], resources: [itself]}]
+      }
 
-        conn = assign(conn, :caller, %WardrikHTTP.Caller{id: id, name: trigger, token: token})
+      conn = assign(conn, :caller, %WardrikHTTP.Caller{id: id, name: trigger, token: token})
 
-        reply(
-          conn,
-          202,
-          Wardrik.agent_trigger_deliver(scope(conn), agent, trigger, %{
-            headers: conn.req_headers,
-            body: body
-          }),
-          &%{"delivery" => %{"status" => Atom.to_string(&1)}}
-        )
+      reply(
+        conn,
+        202,
+        Wardrik.agent_trigger_deliver(scope(conn), agent, trigger, %{
+          headers: conn.req_headers,
+          body: body
+        }),
+        &%{"delivery" => %{"status" => Atom.to_string(&1)}}
+      )
+    else
+      false ->
+        no_route(conn)
 
       {:more, _read, conn} ->
         json(

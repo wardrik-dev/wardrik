@@ -1386,6 +1386,12 @@ defmodule WardrikHTTP.RouterTest do
 
       conforms(body, "error")
       assert {:ok, %{status: 404}} = Req.post(anyone, url: "/v1/hooks/test/triage", body: "{}")
+
+      for name <- ["is%20sues", "is:sues", "_issues"] do
+        assert {:ok, %{status: 404}} =
+                 Req.post(anyone, url: "/v1/hooks/test/triage/#{name}", body: "{}")
+      end
+
       assert {:ok, %{status: 401}} = Req.get(anyone, url: "/v1/agents")
       refute_received {:delivered, _key, _name, _headers, _body}
     end
