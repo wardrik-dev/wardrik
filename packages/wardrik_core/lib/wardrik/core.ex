@@ -4,7 +4,8 @@ defmodule Wardrik.Core do
   before it. In order:
 
     * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
-      `Wardrik.Audit`, which writes to the host's store,
+      `Wardrik.Credential`, which tells a call parked on a credential it is
+      available, `Wardrik.Audit`, which writes to the host's store,
       `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
     * What `:cluster` names, which connects this node to others before the
       fleet starts.
@@ -72,6 +73,7 @@ defmodule Wardrik.Core do
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,
+        Wardrik.Credential,
         {Wardrik.Audit, store: Wardrik.Host.store(host), name: Wardrik.Host.audit(host)},
         Wardrik.LLM.ToolRunner,
         Wardrik.Tasks

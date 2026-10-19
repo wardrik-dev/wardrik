@@ -7,7 +7,6 @@ defmodule Wardrik.FleetTest do
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.User
-  alias Wardrik.Delegation
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.LLM.Config
@@ -155,11 +154,10 @@ defmodule Wardrik.FleetTest do
       Agent.ask(pid, "go")
       assert_receive {:delegating, branch}
 
-      assert_receive %Event{payload: %Event.DelegationStarted{prompt: "look into pricing"}} =
-                       started
-
-      assert [%{name: "pricing", status: :running}] =
-               Delegation.list(Delegation.fold(Delegation.new(), started))
+      assert_receive %Event{
+        source: %{trace: %{name: "pricing"}},
+        payload: %Event.DelegationStarted{prompt: "look into pricing"}
+      }
 
       send(branch, :release)
       assert_receive %Event{payload: %Event.TurnFinished{}}

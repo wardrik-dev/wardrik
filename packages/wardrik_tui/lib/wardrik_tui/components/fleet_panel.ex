@@ -2,9 +2,8 @@ defmodule WardrikTUI.Components.FleetPanel do
   @moduledoc "Fleet rows and their sidebar or overlay container."
   use Breeze.Component
   import Breeze.Blocks
-  alias Wardrik.Delegation
   alias WardrikConsole.Filter
-  alias WardrikTUI.{Render, Text}
+  alias WardrikTUI.{Delegation, Render, Text}
 
   # The fleet panel: its heading and the list of rows, wherever it is placed.
   defp fleet_panel(assigns) do

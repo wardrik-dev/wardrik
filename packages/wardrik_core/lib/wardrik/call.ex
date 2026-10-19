@@ -254,10 +254,14 @@ defmodule Wardrik.Call do
 
   @doc "Whether the call waits on `ref` being resolvable for `owner`; see `Wardrik.Credential.available/3`."
   @spec awaits?(t(), Wardrik.Credential.ref(), Wardrik.Credential.owner()) :: boolean()
-  def awaits?(%__MODULE__{state: :waiting, asks: asks}, ref, owner),
-    do: Enum.any?(asks, &(&1.credential == %{ref: ref, owner: owner}))
+  def awaits?(%__MODULE__{} = call, ref, owner), do: %{ref: ref, owner: owner} in awaited(call)
 
-  def awaits?(%__MODULE__{}, _ref, _owner), do: false
+  @doc "The credentials the call waits on being resolvable; see `Wardrik.Credential.available/3`."
+  @spec awaited(t()) :: [Ask.credential()]
+  def awaited(%__MODULE__{state: :waiting, asks: asks}),
+    do: for(%Ask{credential: %{} = credential} <- asks, do: credential)
+
+  def awaited(%__MODULE__{}), do: []
 
   @doc """
   The call waiting on `by`, `:tool` or `:doubt`, which asks `prompt`. What

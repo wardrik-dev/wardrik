@@ -6,7 +6,6 @@ defmodule WardrikTUI.App.Connection do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
-  alias Wardrik.Delegation
   alias Wardrik.Event.Bus
   alias Wardrik.Fleet
   alias Wardrik.Resource
@@ -16,6 +15,7 @@ defmodule WardrikTUI.App.Connection do
   alias WardrikTUI.App.Display
   alias WardrikTUI.App.Frames
   alias WardrikTUI.App.TermState
+  alias WardrikTUI.Delegation
   alias WardrikTUI.View
 
   # -- delegations -----------------------------------------------------------

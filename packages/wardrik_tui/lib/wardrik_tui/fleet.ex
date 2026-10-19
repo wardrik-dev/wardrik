@@ -22,8 +22,8 @@ defmodule WardrikTUI.Fleet do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.Delegation
   alias Wardrik.Fleet.Member
+  alias WardrikTUI.Delegation
   alias WardrikTUI.Render
   alias WardrikTUI.Text
 
@@ -96,7 +96,7 @@ defmodule WardrikTUI.Fleet do
   several agents, which are shown as whole IDs; `:unseen`, how the agent's
   last turn ended if the client has not looked, `:ok` or `:failed`;
   `:delegations`, how many its turn has going and has started, as
-  `Wardrik.Delegation.summary/1` counts them.
+  `WardrikTUI.Delegation.summary/1` counts them.
   """
   @spec row(Member.t(), AgentID.t(), pos_integer(), keyword()) :: String.t()
   def row(%Member{} = member, attached, width, opts \\ []) do

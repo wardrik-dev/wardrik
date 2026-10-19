@@ -16,7 +16,6 @@ defmodule WardrikTUI.App do
   import WardrikTUI.Components.Inspector, only: [inspector: 1]
   import WardrikTUI.Components.Palette, only: [palette_box: 1]
 
-  alias Wardrik.Delegation
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias WardrikConsole.Filter
@@ -29,6 +28,7 @@ defmodule WardrikTUI.App do
   alias WardrikTUI.App.Prompt
   alias WardrikTUI.App.TermState
   alias WardrikTUI.Components.Chrome
+  alias WardrikTUI.Delegation
   alias WardrikTUI.Exchange
   alias WardrikTUI.History
   alias WardrikTUI.Palette

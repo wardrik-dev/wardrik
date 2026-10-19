@@ -10,7 +10,7 @@ defmodule WardrikOAuth.RenewTest do
   alias Wardrik.Test.Calls
 
   setup do
-    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), loopback: false})
+    start_supervised!(WardrikOAuth.Supervisor)
     :ok = configure([])
 
     test = self()

@@ -160,7 +160,7 @@ any other. See [Writing rules](/concepts/rules/).
 ### The Google OAuth client
 
 Make it in Google Cloud under **APIs & Services › Credentials**: a web application, with the
-daemon's callback, `http://127.0.0.1:4599/callback/google`, as its redirect URI. To sign in from
+daemon's callback, `http://127.0.0.1:4747/oauth/callback/google`, as its redirect URI. To sign in from
 another device, give the daemon a [public address](/run/public-address/). Turn on the Gmail API,
 the Calendar API, and both MCP servers in the same project. Google's MCP servers are a Workspace
 Developer Preview.

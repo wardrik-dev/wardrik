@@ -39,7 +39,6 @@
       "Wardrik.Definition",
       "Wardrik.Definition.None",
       "Wardrik.Definitions",
-      "Wardrik.Delegation",
       "Wardrik.Error",
       "Wardrik.Event",
       "Wardrik.Event.Bus",

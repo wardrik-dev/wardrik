@@ -9,7 +9,7 @@ defmodule WardrikOAuth.ConnectionsTest do
   alias Wardrik.Token
 
   setup %{owner: owner} do
-    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), callback: false})
+    start_supervised!(WardrikOAuth.Supervisor)
 
     stub_server(cimd: true)
 

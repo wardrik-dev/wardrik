@@ -15,11 +15,11 @@ defmodule WardrikTUI.App.Conversation do
   alias Wardrik.Conversation.ToolError
   alias Wardrik.Conversation.ToolResult
   alias Wardrik.Conversation.User
-  alias Wardrik.Delegation
   alias Wardrik.Event
   alias WardrikConsole.Markdown
   alias WardrikConsole.Table
   alias WardrikTUI.Activity
+  alias WardrikTUI.Delegation
   alias WardrikTUI.Exchange
   alias WardrikTUI.History
   alias WardrikTUI.Line

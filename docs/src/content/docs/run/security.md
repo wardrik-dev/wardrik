@@ -20,10 +20,9 @@ Everything listens on loopback unless you say otherwise.
 
 | | Port | Who gets in | Beyond loopback |
 | --- | --- | --- | --- |
-| The HTTP API | 4747 | a request with a [token](/run/tokens/) | `http.ip`, or `WARDRIK_HTTP_IP` |
+| The HTTP API | 4747 | a request with a [token](/run/tokens/), or a browser a provider sends back to `/oauth/` | `http.ip`, or `WARDRIK_HTTP_IP`, behind HTTPS; see [A public address](/run/public-address/) |
 | The terminal client, over SSH | 2222 | a key in `ssh/authorized_keys` | `ssh.ip`, or `WARDRIK_SSH_IP` |
 | Erlang distribution, and epmd | 4369, and one it chooses | anything holding the cookie | `WARDRIK_DIST_INTERFACE`, with `WARDRIK_DIST_EXPOSED=1` |
-| The OAuth callback | 4599 | a provider sending a browser back | `oauth.redirect.ip`, behind HTTPS; see [A public address](/run/public-address/) |
 
 The HTTP API speaks plain HTTP. To reach it across a network, put a proxy in front that ends TLS; a
 token sent over plain HTTP can be read on the way.

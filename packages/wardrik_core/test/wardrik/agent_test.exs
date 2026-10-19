@@ -570,6 +570,40 @@ defmodule Wardrik.AgentTest do
       assert %{state: :idle, pending: 0} = Agent.status(agent)
     end
 
+    test "a credential is told to the agents waiting on it, and only while they wait" do
+      test_pid = self()
+      link = %{url: "https://github.com/login/oauth", code: nil}
+
+      [jon, maria] =
+        for name <- ["jon", "maria"], do: {"acme", "#{name}-#{System.unique_integer()}"}
+
+      [waiting, other] =
+        for owner <- [jon, maria] do
+          credential = %{ref: "github", owner: owner}
+
+          start_agent(
+            runner: {AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
+            resumer: resumer(test_pid, {:ok, [Assistant.new("opened")]})
+          )
+        end
+
+      for agent <- [waiting, other] do
+        Agent.ask(agent, "open an issue")
+        assert_receive %Event{payload: %Event.TurnParked{}}
+        :erlang.trace(agent, true, [:receive])
+      end
+
+      :ok = Wardrik.Credential.available("github", jon)
+
+      assert_receive {:trace, ^waiting, :receive, %Wardrik.Credential.Available{owner: ^jon}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
+      refute_receive {:trace, ^other, :receive, %Wardrik.Credential.Available{}}
+      assert [{%{id: "call_1"}, _prompt}] = Agent.parked(other)
+
+      :ok = Wardrik.Credential.available("github", jon)
+      refute_receive {:trace, ^waiting, :receive, %Wardrik.Credential.Available{}}
+    end
+
     test "a call a hook asked about waits for a person, whatever credential arrives" do
       agent = start_agent(runner: parking_runner(self()))
 

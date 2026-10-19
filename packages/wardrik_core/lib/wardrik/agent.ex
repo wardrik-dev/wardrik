@@ -504,7 +504,7 @@ defmodule Wardrik.Agent do
   end
 
   defp told(:interrupt, state) do
-    {state, effects} = State.interrupt(state)
+    {state, effects} = state |> heed(&Credential.unsubscribe/2) |> State.interrupt()
 
     state |> perform(effects) |> advance(sync: true)
   end
@@ -558,7 +558,16 @@ defmodule Wardrik.Agent do
     Event.emit(run.source, %Event.TurnResumed{decisions: decisions})
     task = tethered(fn -> State.apply_resumer(state, run, turn, decisions) end)
 
-    State.resumed(state, task, run, turn, decisions, started_at)
+    state
+    |> heed(&Credential.unsubscribe/2)
+    |> State.resumed(task, run, turn, decisions, started_at)
+  end
+
+  # An agent hears that a credential is available while a call it parked
+  # waits on it, and only then.
+  defp heed(state, how) do
+    Enum.each(State.awaited(state), fn %{ref: ref, owner: owner} -> how.(ref, owner) end)
+    state
   end
 
   # Decisions are written to the log before they take effect, so none takes
@@ -595,7 +604,7 @@ defmodule Wardrik.Agent do
 
     state = State.logged(state, Writer.open(Host.store(state.host), state.log, started))
     :ok = Bus.publish(started)
-    {state, sync} = defined(state)
+    {state, sync} = state |> heed(&Credential.subscribe/2) |> defined()
 
     state |> touched() |> arm_idle() |> advance(sync)
   end
@@ -649,8 +658,7 @@ defmodule Wardrik.Agent do
     end
   end
 
-  # Every agent hears of every credential; one that parked a call to resolve
-  # it approves the call.
+  # Word of a credential a call it parked waits on, which it approves.
   def handle_info(%Credential.Available{ref: ref, owner: owner, by: by}, state) do
     case State.awaiting(state, ref, owner) do
       [] -> {:noreply, state}
@@ -833,7 +841,9 @@ defmodule Wardrik.Agent do
 
       # A waiting turn is held as it is written down, with no run.
       :waiting ->
-        settle(state, State.parked(state, Turn.under(turn, nil)))
+        state
+        |> settle(State.parked(state, Turn.under(turn, nil)))
+        |> heed(&Credential.subscribe/2)
 
       {:failed, reason} ->
         Logger.error("Turn failed: #{inspect(reason)}")

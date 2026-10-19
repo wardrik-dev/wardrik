@@ -96,15 +96,9 @@ The daemon's HTTP API listens on loopback, `127.0.0.1:4747`. For a worker elsewh
 
 ```text title="/etc/caddy/Caddyfile"
 agents.acme.example {
-	handle /oauth/* {
-		reverse_proxy 127.0.0.1:4599
-	}
+	@daemon path /oauth/* /v1/hooks/* /v1/workers
 
-	handle /v1/hooks/* {
-		reverse_proxy 127.0.0.1:4747
-	}
-
-	handle /v1/workers {
+	handle @daemon {
 		reverse_proxy 127.0.0.1:4747
 	}
 

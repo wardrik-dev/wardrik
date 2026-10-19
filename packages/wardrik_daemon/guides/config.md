@@ -219,8 +219,8 @@ oauth:
 `providers` names a provider for each credential people connect, `client` what a provider's consent
 screen shows (`name`, `client_uri`, `logo_uri` and the like), and `redirect` where a provider sends
 the browser back. `redirect.url` is an `https://` URL served by something in front of the daemon,
-which passes requests to where `redirect.ip` and `redirect.port` say; each provider is under
-`callback/NAME`. Without it, the callback is this machine's loopback. See [A public
+which passes requests on to the HTTP API as they came; each provider is under `callback/NAME`.
+Without it, the callback is `{base_url}/oauth`, which the HTTP API serves. See [A public
 address](https://docs.wardrik.dev/run/public-address/).
 
 ## channels
@@ -355,8 +355,9 @@ Without `storage`, the store is on the node's disk under `WARDRIK_DATA_DIR`. See
 
 `port` and `ip` for the HTTP API, `127.0.0.1:4747` unless set, and `trusted_workers: true` where
 tool workers' answers are the deployment's own. See [HTTP API](`e:wardrik_http:http-api.html`).
-Beside the API, it serves what each channel's medium sends under `/v1/channels/`, and what services
-send webhook triggers under `/v1/hooks/`; see
+Beside the API, it serves what each channel's medium sends under `/v1/channels/`, what services
+send webhook triggers under `/v1/hooks/`, and the page a provider sends a browser back to under
+the redirect URL's path, `/oauth/` by default; see
 [A public address](https://docs.wardrik.dev/run/public-address/).
 
 ## ssh

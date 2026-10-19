@@ -7,25 +7,17 @@ defmodule WardrikOAuth.CallbackTest do
   alias Wardrik.Run
   alias Wardrik.Test.Calls
   alias WardrikOAuth.Callback
+  alias WardrikOAuth.Callback.Page
   alias WardrikOAuth.Pending
 
-  setup %{owner: owner} do
-    # The callback is served from a process of the listener's own, so the stub
-    # cannot belong to this test alone.
-    Req.Test.set_req_test_to_shared()
-    on_exit(&Req.Test.set_req_test_to_private/0)
-
-    port = 4600 + System.unique_integer([:positive, :monotonic])
-    serve(port, [])
-
-    %{port: port, owner: owner}
+  setup do
+    start_supervised!(WardrikOAuth.Supervisor)
+    configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
   end
 
-  # Starts a flow for `owner` against a stub server answering with `server`,
-  # under the redirect settings `redirect`.
-  defp flow(%{port: port, owner: owner}, server \\ [], redirect \\ []) do
+  # Starts a flow for `owner` against a stub server answering with `server`.
+  defp flow(%{owner: owner}, server \\ []) do
     stub_server([cimd: true] ++ server)
-    if redirect != [], do: serve(port, redirect)
 
     id = AgentID.new!("a", org: "acme", user: owner)
     run = Config.new() |> Run.root(id, host: host())
@@ -36,50 +28,18 @@ defmodule WardrikOAuth.CallbackTest do
     %{run: run, url: url, state: state_of(url)}
   end
 
-  # The callback answers under the settings it was started with, so it is
-  # started again with the redirect a test names.
-  defp serve(port, redirect) do
-    configure(
-      providers: [github: [resource: resource(), scopes: ~w(repo)]],
-      redirect: [port: port, open: false] ++ redirect
-    )
-
-    _ = stop_supervised(WardrikOAuth.Supervisor)
-    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), port: port})
-  end
-
-  defp get(port, target) do
-    {:ok, socket} =
-      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false, packet: :raw], 2_000)
-
-    :ok =
-      :gen_tcp.send(
-        socket,
-        "GET #{target} HTTP/1.1\r\nhost: 127.0.0.1\r\nconnection: close\r\n\r\n"
-      )
-
-    response = read_all(socket, "")
-    :gen_tcp.close(socket)
-
-    response
-  end
-
-  defp read_all(socket, read) do
-    case :gen_tcp.recv(socket, 0, 5_000) do
-      {:ok, more} -> read_all(socket, read <> more)
-      {:error, :closed} -> read
-    end
-  end
+  # The pages as a host serves them, handed the request with its path whole.
+  defp get(target), do: :get |> Plug.Test.conn(target) |> Page.call(Page.init(oauth: oauth()))
 
   test "a browser coming back with a code finishes the flow, at the provider's own path",
        context do
     %{url: url, state: state, run: run} = flow(context)
-    assert params_of(url)["redirect_uri"] == "http://127.0.0.1:#{context.port}/callback/github"
+    assert params_of(url)["redirect_uri"] == redirect_uri()
 
-    response = get(context.port, "/callback/github?code=the-code&state=#{state}")
+    conn = get("/oauth/callback/github?code=the-code&state=#{state}")
 
-    assert response =~ "200 OK"
-    assert response =~ "github is connected"
+    assert conn.status == 200
+    assert conn.resp_body =~ "github is connected"
 
     assert {:ok, credential} =
              Credential.resolve(Calls.tool("tool", %{}, run), "github")
@@ -90,96 +50,75 @@ defmodule WardrikOAuth.CallbackTest do
   test "a code that comes back to another provider's path finishes nothing", context do
     %{state: state} = flow(context)
 
-    assert get(context.port, "/callback/linear?code=the-code&state=#{state}") =~
-             "404 Not Found"
-
+    assert get("/oauth/callback/linear?code=the-code&state=#{state}").status == 404
     assert {:ok, _flight} = Pending.under_way("github", person("acme", context.owner))
-
-    assert get(context.port, "/callback/github?code=the-code&state=#{state}") =~ "200 OK"
+    assert get("/oauth/callback/github?code=the-code&state=#{state}").status == 200
   end
 
   test "a callback naming another issuer finishes nothing", context do
     %{state: state} = flow(context)
+    callback = "/oauth/callback/github?code=c&state=#{state}&iss="
 
-    assert get(
-             context.port,
-             "/callback/github?code=c&state=#{state}&iss=https%3A%2F%2Fevil.example.com"
-           ) =~ "400 Bad Request"
-
-    assert get(
-             context.port,
-             "/callback/github?code=c&state=#{state}&iss=https%3A%2F%2Fauth.example.com"
-           ) =~ "200 OK"
+    assert get(callback <> "https%3A%2F%2Fevil.example.com").status == 400
+    assert get(callback <> "https%3A%2F%2Fauth.example.com").status == 200
   end
 
   test "a callback without iss, from an issuer that says it sends one, finishes nothing",
        context do
     %{state: state} = flow(context, iss: true)
+    callback = "/oauth/callback/github?code=c&state=#{state}"
 
-    assert get(context.port, "/callback/github?code=c&state=#{state}") =~ "400 Bad Request"
-
-    assert get(
-             context.port,
-             "/callback/github?code=c&state=#{state}&iss=https%3A%2F%2Fauth.example.com"
-           ) =~ "200 OK"
-  end
-
-  test "the listener keeps answering after one callback", context do
-    %{state: state} = flow(context)
-
-    get(context.port, "/callback/github?code=the-code&state=#{state}")
-
-    assert get(context.port, "/nothing-here") =~ "404 Not Found"
+    assert get(callback).status == 400
+    assert get(callback <> "&iss=https%3A%2F%2Fauth.example.com").status == 200
   end
 
   test "a callback the user refused says so, escaped, and stores nothing", context do
     flow(context)
 
-    response =
-      get(context.port, "/callback/github?error=access_denied&error_description=%3Cscript%3E")
+    conn = get("/oauth/callback/github?error=access_denied&error_description=%3Cscript%3E")
 
-    assert response =~ "400 Bad Request"
-    assert response =~ "access_denied: &lt;script&gt;"
-    refute response =~ "<script>"
+    assert conn.status == 400
+    assert conn.resp_body =~ "access_denied: &lt;script&gt;"
+    refute conn.resp_body =~ "<script>"
     refute WardrikOAuth.connected?(vault(), "github", person("acme", context.owner))
   end
 
   test "a callback with no code is refused", context do
     flow(context)
-    assert get(context.port, "/callback/github") =~ "400 Bad Request"
+    assert get("/oauth/callback/github").status == 400
   end
 
-  test "serves the redirect URL's own path, for a front that passes requests on as they came",
+  test "is served under the redirect URL's own path, for a front that passes requests on as they came",
        context do
-    %{url: url, state: state} = flow(context, [], url: "https://agents.example.com/oauth/")
-    assert params_of(url)["redirect_uri"] == "https://agents.example.com/oauth/callback/github"
-    refute Callback.loopback?(oauth())
+    %{state: state} = flow(context)
 
-    assert get(context.port, "/callback/github?code=the-code&state=#{state}") =~ "404 Not Found"
+    assert [{["oauth", "callback"], {Page, _}}, {["oauth", "check"], {Page, _}}] =
+             Callback.pages(oauth())
 
-    assert get(context.port, "/oauth/callback/github?code=the-code&state=#{state}") =~
-             "200 OK"
+    assert get("/callback/github?code=the-code&state=#{state}").status == 404
+    assert get("/oauth/callback/github?code=the-code&state=#{state}").status == 200
   end
 
   test "every page is kept from caches, referrers and frames, and loads nothing", context do
     flow(context)
 
-    for response <- [get(context.port, "/callback/github"), get(context.port, "/elsewhere")] do
-      assert response =~ "cache-control: no-store"
-      assert response =~ "referrer-policy: no-referrer"
-      assert response =~ "content-security-policy: default-src 'none'"
-      assert response =~ "x-frame-options: DENY"
+    for conn <- [get("/oauth/callback/github"), get("/oauth/elsewhere")] do
+      assert Plug.Conn.get_resp_header(conn, "cache-control") == ["no-store"]
+      assert Plug.Conn.get_resp_header(conn, "referrer-policy") == ["no-referrer"]
+
+      assert ["default-src 'none'" <> _] =
+               Plug.Conn.get_resp_header(conn, "content-security-policy")
+
+      assert Plug.Conn.get_resp_header(conn, "x-frame-options") == ["DENY"]
     end
   end
 
-  test "check answers with the nonce it was sent, so the URL can be shown to reach it",
-       %{port: port} do
-    configure(redirect: [port: port])
-    assert get(port, "/check?nonce=abc-1") =~ "wardrik abc-1"
-    assert get(port, "/check?nonce=%3Cscript%3E") =~ "400 Bad Request"
-    assert get(port, "/check") =~ "400 Bad Request"
+  test "check answers with the nonce it was sent, so the URL can be shown to reach it" do
+    assert get("/oauth/check?nonce=abc-1").resp_body == "wardrik abc-1"
+    assert get("/oauth/check?nonce=%3Cscript%3E").status == 400
+    assert get("/oauth/check").status == 400
 
-    assert Callback.check("http://127.0.0.1:#{port}/") == :ok
+    assert Callback.check(Callback.url(oauth()), plug: {Page, oauth: oauth()}) == :ok
 
     {:ok, other} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
     {:ok, closed} = :inet.port(other)
@@ -188,52 +127,17 @@ defmodule WardrikOAuth.CallbackTest do
   end
 
   test "a URL on loopback is this machine's, and opens the browser here" do
-    configure(redirect: [url: "http://localhost:4599"])
+    refute Callback.loopback?(oauth())
+
+    configure(redirect: [url: "http://localhost:4747/oauth/"])
     assert Callback.loopback?(oauth())
-    assert Callback.redirect_uri(oauth(), "github") == "http://localhost:4599/callback/github"
 
-    configure(redirect: [port: 4700])
-    assert Callback.loopback?(oauth())
-    assert Callback.url(oauth()) == "http://127.0.0.1:4700"
+    assert Callback.redirect_uri(oauth(), "github") ==
+             "http://localhost:4747/oauth/callback/github"
   end
 
-  test "a path that is not a callback is not served", %{port: port} do
-    assert get(port, "/") =~ "404 Not Found"
-    assert get(port, "/callback") =~ "404 Not Found"
-  end
-
-  test "a port another process holds is listened on once it is free" do
-    {:ok, held} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
-    {:ok, port} = :inet.port(held)
-
-    {listener, log} =
-      ExUnit.CaptureLog.with_log(fn ->
-        {:ok, listener} =
-          GenServer.start_link(Callback, oauth: oauth(), port: port, retry: :timer.hours(1))
-
-        listener
-      end)
-
-    assert log =~ "The OAuth callback could not listen on #{port}"
-    assert :error = Callback.listening(listener)
-
-    :ok = :gen_tcp.close(held)
-    send(listener, :listen)
-
-    assert {:ok, {{127, 0, 0, 1}, ^port}} = Callback.listening(listener)
-    assert get(port, "/") =~ "404 Not Found"
-  end
-
-  test "it listens on loopback unless told where", %{port: port} do
-    assert {:ok, {{127, 0, 0, 1}, ^port}} = Callback.listening()
-
-    {:ok, held} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
-    {:ok, other} = :inet.port(held)
-    :ok = :gen_tcp.close(held)
-
-    {:ok, listener} =
-      GenServer.start_link(Callback, oauth: oauth(), ip: {0, 0, 0, 0}, port: other)
-
-    assert {:ok, {{0, 0, 0, 0}, ^other}} = Callback.listening(listener)
+  test "a path that is not a callback is not served" do
+    assert get("/oauth").status == 404
+    assert get("/oauth/callback").status == 404
   end
 end

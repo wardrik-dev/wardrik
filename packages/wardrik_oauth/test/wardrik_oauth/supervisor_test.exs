@@ -1,11 +1,10 @@
 defmodule WardrikOAuth.SupervisorTest do
   use WardrikOAuth.Test.Case, async: false
 
-  test "starts the flows and the callback under the settings it is handed" do
-    oauth = WardrikOAuth.new(providers: [github: [resource: resource()]], redirect: [port: 0])
-    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth})
+  test "starts the flows' registry and the tasks that open a browser" do
+    start_supervised!(WardrikOAuth.Supervisor)
 
-    assert {:ok, {_ip, _port}} = WardrikOAuth.Callback.listening()
+    assert Process.whereis(WardrikOAuth.Tasks)
   end
 
   test "each setting left out is at its default, and one it does not have is refused" do

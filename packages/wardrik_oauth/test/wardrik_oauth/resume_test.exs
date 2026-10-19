@@ -13,7 +13,7 @@ defmodule WardrikOAuth.ResumeTest do
   alias WardrikOAuth.Pending
 
   setup do
-    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), loopback: false})
+    start_supervised!(WardrikOAuth.Supervisor)
     stub_server(cimd: true)
     configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
 

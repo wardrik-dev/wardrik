@@ -1912,6 +1912,34 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
+  describe "a mounted plug" do
+    defmodule Page do
+      @behaviour Plug
+
+      @impl Plug
+      def init(opts), do: opts
+
+      @impl Plug
+      def call(conn, test: test) do
+        send(test, {:mounted, conn.path_info})
+        Plug.Conn.send_resp(conn, 200, "page")
+      end
+    end
+
+    test "answers the paths under its own, as they came, asking no credential", %{api: api} do
+      api = listener(api, mounts: [{["oauth", "callback"], {Page, test: self()}}])
+      anyone = Req.merge(api, auth: nil)
+
+      assert {:ok, %{status: 200, body: "page"}} =
+               Req.get(anyone, url: "/oauth/callback/github?code=c")
+
+      assert_received {:mounted, ["oauth", "callback", "github"]}
+
+      for path <- ["/oauth/check", "/v1/agents"],
+          do: assert({:ok, %{status: 401}} = Req.get(anyone, url: path))
+    end
+  end
+
   describe "openapi.json" do
     @values %{
       "org" => "test",

@@ -8,7 +8,7 @@ defmodule WardrikMCP.SignInTest do
   def reachable(_url), do: :ok
 
   setup %{owner: user} do
-    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), callback: false})
+    start_supervised!(WardrikOAuth.Supervisor)
     stub_server(register: true)
 
     configure(

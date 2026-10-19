@@ -55,6 +55,10 @@ defprotocol Wardrik.Turn do
   @spec awaiting(t(), Wardrik.Credential.ref(), Wardrik.Credential.owner()) :: [String.t()]
   def awaiting(turn, ref, owner)
 
+  @doc "The credentials the calls the turn waits on were parked to resolve."
+  @spec awaited(t()) :: [Wardrik.Call.Ask.credential()]
+  def awaited(turn)
+
   @doc "The turn under `run`, or under none for one that is written down."
   @spec under(t(), Wardrik.Run.t() | nil) :: t()
   def under(turn, run)

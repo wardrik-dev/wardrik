@@ -8,6 +8,7 @@ defmodule WardrikOAuth do
       oauth =
         WardrikOAuth.new(
           client: [name: "Wardrik", client_uri: "https://wardrik.dev"],
+          redirect: [url: "https://agents.example.com/oauth"],
           providers: [
             github: [
               resource: "https://api.githubcopilot.com/mcp/",
@@ -21,7 +22,7 @@ defmodule WardrikOAuth do
 
       vault = WardrikVault.new(store: store, keys: keys, grants: oauth)
       host = Wardrik.Host.new(store: store, credentials: vault)
-      children = [{Wardrik.Core, host: host}, {WardrikOAuth.Supervisor, oauth: oauth}]
+      children = [{Wardrik.Core, host: host}, WardrikOAuth.Supervisor]
 
   A credential named `github` that the vault holds for nobody the call
   reaches is then asked for: of the call's user, or of its org where it has
@@ -113,7 +114,7 @@ defmodule WardrikOAuth do
   | `:client` | the identity this deployment presents, see `WardrikOAuth.Client` |
   | `:providers` | what a user can authorize, see `WardrikOAuth.Provider` |
   | `:added` | providers added beyond those, each for an owner, see `WardrikOAuth.Providers` |
-  | `:redirect` | where a code comes back to: `:url`, `:ip`, `:port`, `:open`, `:opener`; see `WardrikOAuth.Callback` |
+  | `:redirect` | where a code comes back to: `:url`, `:open`, `:opener`; see `WardrikOAuth.Callback` |
   | `:req_options` | merged into every request |
   | `:resolve` | answers a host's addresses, `WardrikOAuth.Egress.resolve/1` by default |
   | `:poll_floor` | the fewest milliseconds between two polls of a device flow, 5 seconds by default |

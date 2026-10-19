@@ -8,7 +8,7 @@ defmodule WardrikOAuthTest do
   alias Wardrik.Test.Calls
 
   setup do
-    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), callback: false})
+    start_supervised!(WardrikOAuth.Supervisor)
     :ok = configure([])
 
     :ok
@@ -367,7 +367,7 @@ defmodule WardrikOAuthTest do
 
       configure(
         providers: [github: [resource: resource(), scopes: ~w(repo)]],
-        redirect: [open: false]
+        redirect: [url: "http://127.0.0.1:4747/oauth", open: false]
       )
 
       assert {:error, {:authorization_required, _link, _owner}} =
@@ -382,7 +382,7 @@ defmodule WardrikOAuthTest do
 
       configure(
         providers: [github: [resource: resource(), scopes: ~w(repo)]],
-        redirect: [port: 4599, opener: "true"]
+        redirect: [url: "http://127.0.0.1:4747/oauth", opener: "true"]
       )
 
       assert {:error, {:authorization_required, %{url: url}, _owner}} =
@@ -391,7 +391,7 @@ defmodule WardrikOAuthTest do
                  "github"
                )
 
-      assert params_of(url)["redirect_uri"] == "http://127.0.0.1:4599/callback/github"
+      assert params_of(url)["redirect_uri"] == "http://127.0.0.1:4747/oauth/callback/github"
     end
 
     test "a machine with nothing to open a link with says so, and the flow stands" do

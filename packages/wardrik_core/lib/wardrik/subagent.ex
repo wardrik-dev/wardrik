@@ -48,8 +48,8 @@ defmodule Wardrik.Subagent do
   A delegation announces itself on its own span:
   `Wardrik.Event.DelegationStarted` before the turn and
   `Wardrik.Event.DelegationFinished` after it, where `outcome` is what the
-  call returns. Both are `:lifecycle` events, so `Wardrik.Delegation` can follow
-  a turn's delegations without its token stream.
+  call returns. Both are `:lifecycle` events, so a client can follow a turn's
+  delegations without its token stream.
   """
 
   alias Wardrik.Conversation

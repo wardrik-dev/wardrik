@@ -158,7 +158,6 @@
       "Wardrik.Definition.None",
       "Wardrik.Definition.Read",
       "Wardrik.Definitions",
-      "Wardrik.Delegation",
       "Wardrik.Error",
       "Wardrik.Event",
       "Wardrik.Event.Bus",

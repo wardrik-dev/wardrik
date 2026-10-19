@@ -236,26 +236,26 @@ defmodule WardrikDaemon.DoctorTest do
       refute check(Doctor.checks(dir), "oauth")
     end
 
-    test "says a browser comes back to this machine alone without a URL", %{tmp_dir: dir} do
+    test "is the HTTP API's on this machine without a URL", %{tmp_dir: dir} do
       config(dir, "oauth:\n" <> @provider)
 
-      assert {:ok, "oauth",
-              "a browser comes back to http://127.0.0.1:4599, so on this machine" <> _} =
-               check(Doctor.checks(dir), "oauth")
+      assert {:ok, "oauth", message} = check(Doctor.checks(dir), "oauth")
+      assert message =~ ~r{^http://127\.0\.0\.1:\d+/oauth is not checked}
     end
 
     test "reaches the daemon's callback at its URL, and says why not", %{tmp_dir: dir} do
       port = free_port()
       url = "http://127.0.0.1:#{port}/oauth"
-      config(dir, "oauth:\n  redirect: {url: \"#{url}\", port: #{port}}\n" <> @provider)
+      config(dir, "oauth:\n  redirect: {url: \"#{url}\"}\n" <> @provider)
       vault = fn _name -> nil end
 
       assert {:error, "oauth", message} = check(Doctor.checks(dir, vault), "oauth")
       assert message =~ "#{url}/check?nonce="
       assert message =~ "did not answer"
 
-      oauth = WardrikOAuth.new(redirect: [url: url, port: port])
-      start_supervised!({WardrikOAuth.Callback, oauth: oauth, port: port})
+      pages = WardrikOAuth.Callback.pages(WardrikOAuth.new(redirect: [url: url]))
+      listener = [name: :doctor_callback, port: port, host: Wardrik.Test.host(), mounts: pages]
+      start_supervised!({WardrikHTTP.Listener, listener})
 
       assert check(Doctor.checks(dir, vault), "oauth") ==
                {:ok, "oauth", "#{url} reaches the daemon's callback"}

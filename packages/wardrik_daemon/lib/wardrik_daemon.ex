@@ -28,8 +28,10 @@ defmodule WardrikDaemon do
       in the config directory lets anyone in.
     * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, or where
       `http` says, to callers holding a token that `wardrik token create`
-      made, on the host; and, under `/v1/channels/`, what each channel's
-      medium sends it, such as Slack's events, answered by the channel.
+      made, on the host; under `/v1/channels/`, what each channel's medium
+      sends it, such as Slack's events, answered by the channel; and, where
+      `WardrikOAuth.Supervisor` runs, the pages a browser comes back to from
+      a sign-in, under the redirect URL's path; see `WardrikOAuth.Callback`.
 
   `:host` and `:config` are required.
 
@@ -77,15 +79,19 @@ defmodule WardrikDaemon do
     agents = Wardrik.Host.definitions(host)
 
     channels = channels(config, host, agents)
+    {signing_in, pages} = signs_in(host)
 
     children =
       mcp(config, store) ++
-        oauth(host) ++
+        signing_in ++
         [{Agents, agents: agents, host: host}] ++
         running(channels, host) ++
         notify(config, agents) ++
         WardrikDaemon.SSH.children(config, host: host) ++
-        [{WardrikHTTP.Listener, [host: host, channels: served(channels)] ++ listener(config)}]
+        [
+          {WardrikHTTP.Listener,
+           [host: host, channels: served(channels), mounts: pages] ++ listener(config)}
+        ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -105,7 +111,7 @@ defmodule WardrikDaemon do
     store = Keyword.fetch!(opts, :store)
     audit = Wardrik.Audit
     added = %WardrikMCP.Servers.Providers{store: store}
-    oauth = WardrikOAuth.new([audit: audit, added: added] ++ oauth_settings(config))
+    oauth = WardrikOAuth.new([audit: audit, added: added] ++ Config.oauth_settings(config))
     vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
     vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
     servers = %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault}
@@ -130,9 +136,6 @@ defmodule WardrikDaemon do
     )
   end
 
-  defp oauth_settings(config),
-    do: Keyword.take(Config.section(config, WardrikOAuth), [:client, :providers, :redirect])
-
   # Orgs and people may add servers whenever the daemon runs, so it always
   # runs, with the configured ones beside.
   defp mcp(config, store) do
@@ -146,13 +149,14 @@ defmodule WardrikDaemon do
   end
 
   # The host this daemon built offers its own sign-ins, and those of the
-  # servers people add, which keep their tokens in a vault with a key.
-  defp oauth(host) do
+  # servers people add, which keep their tokens in a vault with a key. The
+  # HTTP API serves the pages a browser comes back to.
+  defp signs_in(host) do
     %WardrikOAuth.Connections{oauth: oauth, vault: vault} = Wardrik.Host.connections(host)
 
     if WardrikOAuth.configured?(oauth) or WardrikVault.configured?(vault),
-      do: [{WardrikOAuth.Supervisor, oauth: oauth}],
-      else: []
+      do: {[WardrikOAuth.Supervisor], WardrikOAuth.Callback.pages(oauth)},
+      else: {[], []}
   end
 
   defp notify(config, agents) do
