@@ -80,3 +80,7 @@ new key first.
 - Without the key, what the vault sealed can't be read.
 - A token is sealed with the new key the next time it is refreshed, and a secret the next time you
   put it. Once a key is removed, a token sealed with it isn't read, and its user connects again.
+- Each secret is kept under its owner as the owner reads: `deployment/NAME`, `acme/NAME`, or a
+  user's namespace, `acme/@jon`. Secrets kept before the vault named owners this way, the
+  deployment's under `_/NAME` and users' under a hash of who they are, aren't read: after
+  upgrading, `wardrik vault put` them again, and users connect their accounts again.

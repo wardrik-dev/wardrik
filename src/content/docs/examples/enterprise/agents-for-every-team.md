@@ -100,11 +100,11 @@ budget:
 ### A token per team
 
 ```sh
-wardrik token create payments-platform --scope payments/ --role reader,messenger,definer
-wardrik token create growth-platform --scope growth/ --role reader,messenger,definer
+wardrik token create payments-platform --resource 'payments/agent/*' --role reader,messenger,definer
+wardrik token create growth-platform --resource 'growth/agent/*' --role reader,messenger,definer
 ```
 
-- `--scope` keeps each token to its team's own agents; another team's are answered as if they
+- `--resource` keeps each token to its team's own agents; another team's are answered as if they
   didn't exist.
 - The org's policy holds every agent each token defines. See [Tokens](/run/tokens/).
 
@@ -140,10 +140,10 @@ agents can't reach Stripe at all.
 
 ### Feeding a SIEM
 
-A reader over every agent can read one export across every team's logs:
+A reader on `*` can read one export across every team's logs:
 
 ```sh
-wardrik token create siem --all --role reader
+wardrik token create siem --resource '*' --role reader
 ```
 
 ```http
@@ -155,14 +155,14 @@ POST /v1/exports/siem
 
 Each page answers the events after the export's cursor; posting the page's `next` moves it on once
 they're stored. See [Exports](/reference/http-api/#exports). The audit of what people changed is
-the deployment's: an `owner` token over every agent reads it too, and `wardrik audit` lists it from
+the deployment's: an `owner` token on `*` reads it too, and `wardrik audit` lists it from
 a shell.
 
 ### People's own agents
 
 An agent that works for one person is keyed under them, `payments/@jon/assistant`, and reads only
 that person's credentials. A token for them is scoped the same way:
-`wardrik token create jon-laptop --scope payments/@jon/ --role reader,messenger,approver`.
+`wardrik token create jon-laptop --resource 'payments/@jon/*' --role reader,messenger,approver`.
 
 ### Taking it further
 

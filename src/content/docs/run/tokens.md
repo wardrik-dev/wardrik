@@ -1,21 +1,22 @@
 ---
 title: Tokens
-description: "Make HTTP API tokens that allow some actions on some agents, and revoke them."
+description: "Make HTTP API tokens that allow some actions on some resources, and revoke them."
 sidebar:
   order: 5
 ---
 
-Every HTTP API request presents a token. `wardrik token create` makes one: roles on some agents.
+Every HTTP API request presents a token. `wardrik token create` makes one: roles on some resources.
 
 ```sh
-wardrik token create ci --scope acme/ --role reader,messenger,definer --policy careful
-wardrik token create watcher --scope acme/@ops/ --role reader
-wardrik token create shop --scope acme/ --role worker --expires 30d
+wardrik token create ci --resource 'acme/agent/*' --role reader,messenger,definer --policy careful
+wardrik token create watcher --resource 'acme/@ops/*' --role reader
+wardrik token create shop --resource 'acme/agent/*' --role worker --expires 30d
 wardrik token list
 wardrik token revoke 3f9a61c0d4e2
 ```
 
-The token is printed once. The store keeps only its SHA-256.
+The token is printed once. The store keeps only its SHA-256. A token an earlier release made
+doesn't read; make it again.
 
 ## What a token is
 
@@ -26,21 +27,27 @@ Wardrik uses IAM's words. A token is what someone acts with:
   is denied.
 - An action is what a request does, such as `agent.ask` or `agents.list`. `agent.*` is every action
   on one agent, and `*` every action.
-- A resource is the agents under a key prefix.
+- A resource is named as IAM names one: a namespace, an org, `acme`, a user in it, `acme/@jon`, or
+  `deployment`, then a type and a name. The agent `acme/@jon/triage` is `acme/@jon/agent/triage`,
+  and answering for a thread, `acme/@jon/agent/triage/thread/1696.1234`; its trigger `hook` is
+  `acme/@jon/agent/triage/trigger/hook`. An MCP server is `acme/server/crm`, an account or a
+  secret `acme/@jon/secret/github`, and a token `deployment/token/3f9a61c0d4e2`.
 
-## Which agents it reaches
+## What it reaches
 
-`--scope` names the agents, by key prefix:
+`--resource` names what it reaches, once or more, each a pattern: `*` matches anything, `/` too,
+and `?` one character.
 
-| Scope | Reaches |
+| Resource | Reaches |
 | --- | --- |
-| `acme/` | acme's own agents, none of its users' |
-| `acme/@jon/` | jon's agents in acme |
-| `acme/*` | acme and every one of its users' |
-| `acme/@jon/triage` | one agent |
-| `--all` | every agent |
+| `acme/agent/*` | acme's own agents, with their threads, none of its users' |
+| `acme/@jon/*` | everything of jon's in acme: his agents, servers and accounts |
+| `acme/*` | everything of acme's and every one of its users' |
+| `acme/agent/triage` | one agent; `acme/agent/triage/*` its threads and triggers |
+| `*` | everything, the deployment's own included |
 
-An agent outside the scope is answered as one that doesn't exist, `404`.
+Nothing is implied: an agent and its threads are `acme/agent/triage` and `acme/agent/triage/*`. An
+agent outside what it reaches is answered as one that doesn't exist, `404`.
 
 ## What it may do
 
@@ -56,8 +63,9 @@ with `403`.
 | `worker` | offering tools as a [worker](/build/tool-workers/) |
 | `owner` | everything |
 
-The nodes, the audit, reloading, moving an agent and tokens themselves are the deployment's. Only
-`owner` with `--all` reaches them.
+The nodes, the audit, reloading, moving an agent and tokens themselves are the deployment's,
+`deployment/*`. Only `owner` on `*` or `deployment/*` reaches them. An owner's servers are checked
+as `acme/server/*`, and their accounts as `acme/secret/*`.
 
 ## What agents it defines may do
 
@@ -91,10 +99,10 @@ worker connections close.
 - The full syntax:
 
   ```sh
-  wardrik token create NAME (--scope PREFIX | --all) --role ROLES [--policy NAME] [--expires DURATION]
+  wardrik token create NAME --resource PATTERN... --role ROLES [--policy NAME] [--expires DURATION]
   ```
 
-- Over the HTTP API, a token over every agent makes, lists and revokes tokens at `/v1/tokens`.
+- Over the HTTP API, an `owner` token on `*` makes, lists and revokes tokens at `/v1/tokens`.
 - Revocation reaches every node it can at once, and any other node within 15 seconds.
 - An agent a revoked token defined keeps running, under the policy it was defined with.
 - Every option is in the [CLI reference](/reference/cli/#wardrik-token-create).

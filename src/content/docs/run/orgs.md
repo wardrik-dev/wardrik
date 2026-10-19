@@ -31,7 +31,7 @@ orgs:
 
 Restart the daemon after a change. Anything in an org that isn't declared is refused, and says
 which orgs are: an agent file, an agent defined over the API, `wardrik vault put --org`,
-`wardrik agent spawn --org` and `wardrik token create --scope`. A typo is caught the same way. See
+`wardrik agent spawn --org` and `wardrik token create --resource`. A typo is caught the same way. See
 [`orgs`](/reference/config/#orgs).
 
 ## Hold an org to a policy

@@ -40,7 +40,7 @@ wardrik start --node a
 wardrik start --node b
 wardrik start --node c
 wardrik status                     # cluster of 3: a, b, c up
-wardrik token create it --scope default/ --role reader,messenger,definer
+wardrik token create it --resource 'default/agent/*' --role reader,messenger,definer
 export TOKEN=wardrik_...
 ```
 
