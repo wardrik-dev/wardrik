@@ -64,12 +64,12 @@ Once the account is connected, the call carries on by itself. A link is good for
 ### Before any agent asks
 
 A person can connect ahead of time over the HTTP API, with a token that reaches their agents.
-`prefix` names whose accounts: theirs, `acme/@jon/`, or their org's, `acme/`:
+`owner` names whose accounts: theirs, `acme/@jon`, or their org's, `acme`:
 
 ```sh
-curl -s -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections?prefix=acme/@jon/"
-curl -s -X POST -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections/linear?prefix=acme/@jon/"
-curl -s -X DELETE -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections/linear?prefix=acme/@jon/"
+curl -s -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections?owner=acme/@jon"
+curl -s -X POST -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections/linear?owner=acme/@jon"
+curl -s -X DELETE -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections/linear?owner=acme/@jon"
 ```
 
 The list says who holds each account, never a value. `POST` answers the link to authorize at.
@@ -113,7 +113,7 @@ variable `credential_env` names.
 - A call after a link's 15 minutes parks on a new link.
 - Connecting asks nobody to approve; the account is held once the person has authorized.
 - The connections list says whether the person, their org or the deployment holds each account.
-  `?prefix=acme/` acts on the org's, for a token that reaches the org's agents.
+  `?owner=acme` acts on the org's, for a token that reaches the org's agents.
 - The audit records each account stored or removed, and who asked.
 - Until any user has connected, a server that needs an account to list its tools offers one tool,
   `github__connect`, so an agent can begin. Once one has, its tools are kept in the store and

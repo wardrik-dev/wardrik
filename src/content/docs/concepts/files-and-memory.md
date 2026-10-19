@@ -52,7 +52,7 @@ workspace:
 | `acme/runbooks` | `acme`'s own agents |
 | `acme/@jon/notes` | the agents of `acme` that work for `jon` |
 
-Anyone else mounts a tree only where `config.yaml` shares it, by agent prefix:
+Anyone else mounts a tree only where `config.yaml` shares it, by resource pattern:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 org: acme
@@ -60,8 +60,8 @@ org: acme
 workspace:
   shared:
     acme/runbooks:
-      read: ["acme/*"]     # every agent in acme may read it
-      write: [acme/ops]    # and acme's ops agent change it
+      read: ["acme/*"]                             # every agent in acme may read it
+      write: [acme/agent/ops, "acme/agent/ops/*"]  # and acme's ops agent, in every thread, change it
 ```
 
 ## Read into every turn

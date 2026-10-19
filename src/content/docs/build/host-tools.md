@@ -131,11 +131,11 @@ that path is open, and it takes only tokens with the `worker` role.
   them.
 - Revoke the token to cut the app off at once: its connection closes.
 
-| Scope | Agents that get the tools |
+| Resource | Agents that get the tools |
 | --- | --- |
-| `acme/` | acme's own agents, none that work for a user |
+| `'acme/agent/*'` | acme's own agents, none that work for a user |
 | `'acme/*'` | acme's and its users' agents, as per-user agents need |
-| `default/` | agents whose file names no `org`, unless `config.yaml` names another |
+| `'default/agent/*'` | agents whose file names no `org`, unless `config.yaml` names another |
 
 ## Deploys and restarts
 

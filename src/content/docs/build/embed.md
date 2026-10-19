@@ -52,7 +52,7 @@ defmodule MyApp.Issuer do
   org's agents, and owner of their own.
   """
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias Wardrik.Role
 
   defstruct []
@@ -61,14 +61,14 @@ defmodule MyApp.Issuer do
   def principal(%MyApp.Accounts.User{} = user),
     do: Wardrik.Principal.new(:user, "#{user.org}/#{user.id}", name: user.email)
 
-  @doc "The agents `user` owns: `acme/@42/`."
-  def own(%MyApp.Accounts.User{} = user), do: Prefix.new!(org: user.org, user: to_string(user.id))
+  @doc "Who `user` is as an owner of accounts and agents: `acme/@42`."
+  def own(%MyApp.Accounts.User{} = user), do: Resource.parse!("#{user.org}/@#{user.id}")
 
   @doc "What the user `id` of `org` may do."
   def scope(org, id) do
     [
-      Role.bind([:reader, :messenger], Prefix.new!(org: org)),
-      Role.bind([:owner], Prefix.new!(org: org, user: id))
+      Role.bind([:reader, :messenger], [Resource.parse!("#{org}/agent/*")]),
+      Role.bind([:owner], [Resource.parse!("#{org}/@#{id}/*")])
     ]
   end
 end
@@ -83,8 +83,8 @@ defimpl Wardrik.Issuer, for: MyApp.Issuer do
 end
 ```
 
-Maria, user 42 of `acme`, owns the agents under `acme/@42/`, such as `acme/@42/support`. A user of
-another org reaches none of them. [Agents](/concepts/agents/) explains IDs.
+Maria, user 42 of `acme`, owns everything of `acme/@42`'s, such as the agent `acme/@42/support`,
+whose resource is `acme/@42/agent/support`. A user of another org reaches none of them. [Agents](/concepts/agents/) explains IDs.
 
 ## 4. Describe Wardrik
 
@@ -183,8 +183,8 @@ end
 ```
 
 Every event an agent writes reaches its subscribers, so a LiveView can show a turn as it streams.
-[Events](/concepts/events/) lists them. Nobody else reaches Maria's agent: reading `acme/` reaches
-the org's own agents, not its users'. Anyone else is told it isn't there.
+[Events](/concepts/events/) lists them. Nobody else reaches Maria's agent: reading `acme/agent/*`
+reaches the org's own agents, not its users'. Anyone else is told it isn't there.
 
 ## Serve the HTTP API
 
@@ -217,7 +217,7 @@ defimpl WardrikHTTP.Authenticator, for: MyAppWeb.Session do
          {:ok, user} <- Phoenix.Token.verify(session.endpoint, "agents", token, max_age: @day) do
       token = %Wardrik.Token{
         principal: MyApp.Issuer.principal(user),
-        scope: [Wardrik.Role.bind([:owner], MyApp.Issuer.own(user))]
+        scope: MyApp.Issuer.scope(user.org, to_string(user.id))
       }
 
       {:ok, %WardrikHTTP.Caller{id: "session/#{user.id}", name: user.email, token: token}}
