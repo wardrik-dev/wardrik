@@ -80,13 +80,21 @@ Their org's [policy](/run/orgs/#hold-an-org-to-a-policy) and their own policies 
 
 ## When it expires
 
-A token works for 90 days, or for `--expires`, such as `30d` or `12h`. An expired token is refused
-with `401`. `config.yaml` sets the default:
+Every token expires. A token you make works for 90 days, or for `--expires`, such as `30d` or
+`12h`, then is refused with `401`. It isn't refreshed: make another.
+
+The token the daemon issues a shell, the terminal client, someone in a channel or an agent works
+for 12 hours, then is refreshed as it is used. A refreshed token is never wider than it was, and
+holds only what `config.yaml` gives now, so a change that takes something away holds at its next
+use.
+
+`config.yaml` sets both:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 tokens:
   expires:
     api: 30d
+    session: 1h
 ```
 
 ## Revoke a token

@@ -86,6 +86,11 @@ end
 Maria, user 42 of `acme`, owns everything of `acme/@42`'s, such as the agent `acme/@42/support`,
 whose resource is `acme/@42/agent/support`. A user of another org reaches none of them. [Agents](/concepts/agents/) explains IDs.
 
+A token your issuer issues expires after 12 hours, or as `Wardrik.new/1`'s
+`expires: [session: seconds]` says. Each function of `Wardrik` refreshes one past that through your
+issuer as it uses it, never wider than it was, so what you take away from a user holds at their
+next call.
+
 ## 4. Describe Wardrik
 
 `Wardrik.new/1` takes everything Wardrik needs from your app: the store in your `Repo`, and your
