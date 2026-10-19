@@ -3,8 +3,9 @@ defmodule WardrikDaemon.AgentFile do
   Reads an agent file, one in `agents/` under the config directory, into the
   `WardrikDefinition.Record` it writes, under the context `context/1` builds,
   from which `WardrikDefinition.Record.spec/3` builds the `Wardrik.Agent.Spec`
-  it writes. The [Agent files](agent-files.md) guide is every key a file
-  takes, for whoever writes one.
+  it writes on the daemon's host, naming the tools and sources
+  `WardrikDaemon.attach/1` attaches. The [Agent files](agent-files.md) guide
+  is every key a file takes, for whoever writes one.
 
   In Elixir, `tools` may also name a module implementing `Wardrik.Tool`, and
   `policy` a module implementing `Wardrik.Hook`. Rules a policy writes, named
@@ -34,12 +35,11 @@ defmodule WardrikDaemon.AgentFile do
   alias WardrikDaemon.Config
   alias WardrikDefinition.Record
 
-  @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
-
   @doc """
-  What a definition may name here, as `WardrikDefinition` reads it: the orgs
-  `config` declares and the policy it holds each org's to, the tools the daemon ships, and the MCP servers,
-  channels and notify targets `config` configures, and its `defaults`. A reading under the policies in
+  What a definition may name here beyond the host's tools and sources, as
+  `WardrikDefinition` reads it: the orgs `config` declares and the policy it
+  holds each org's to, the MCP servers, channels and notify targets `config`
+  configures, and its `defaults`. A reading under the policies in
   `policies/` puts them, by name, as the context's `:policies`.
   """
   @spec context(Config.t()) :: WardrikDefinition.Context.t()
@@ -48,26 +48,12 @@ defmodule WardrikDaemon.AgentFile do
       org: Config.org(config),
       orgs: Config.orgs(config),
       ceilings: Config.ceilings(config),
-      tools: @shipped,
       servers: config |> Config.section(WardrikMCP) |> Keyword.get(:servers, []),
       mcp: WardrikMCP,
-      sources: [
-        workers: WardrikHTTP.Workers,
-        self: Wardrik.Catalog.Self,
-        agents: Wardrik.Catalog.Agents,
-        servers: WardrikMCP.Added
-      ],
       channels: config |> Config.section(WardrikChannel) |> Keyword.get(:orgs, []),
       targets: config |> Config.section(WardrikNotify) |> Keyword.get(:targets, []),
       policies: %{},
       defaults: config |> Config.section(WardrikDaemon.Agents) |> Keyword.get(:defaults, %{}),
-      runtimes: [
-        %Wardrik.LLM.Runtime{
-          config: [
-            tool_prices: config |> Config.section(__MODULE__) |> Keyword.get(:tool_prices, %{})
-          ]
-        }
-      ],
       shares: config |> Config.section(WardrikWorkspace) |> Keyword.get(:shared, []),
       triggers: config.triggers,
       names: %{host: "the daemon", config: "config.yaml", policies: "policies/"}
@@ -85,12 +71,13 @@ defmodule WardrikDaemon.AgentFile do
 
   @doc """
   Reads the spec of the agent `path` declares, under `context`, whose
-  `:policies` are the policies in `policies/`, by name.
+  `:policies` are the policies in `policies/`, by name, on `:host`.
   """
-  @spec read(WardrikDefinition.Context.t(), Path.t()) :: {:ok, Spec.t()} | {:error, String.t()}
-  def read(context, path) do
+  @spec read(WardrikDefinition.Context.t(), Path.t(), host: Wardrik.Host.t()) ::
+          {:ok, Spec.t()} | {:error, String.t()}
+  def read(context, path, opts) do
     with {:ok, record} <- parse(context, path) do
-      case Record.spec(record, record.id, context: context) do
+      case Record.spec(record, record.id, context: context, host: Keyword.fetch!(opts, :host)) do
         {:ok, spec} -> {:ok, spec}
         {:error, message} -> {:error, "#{path}: #{message}"}
       end

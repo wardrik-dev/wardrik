@@ -147,7 +147,7 @@ bare() {
 
   cd "$dir/bare"
   WARDRIK_REPO=$repo perl -0pi -e 's/# \{:dep_from_hexpm, "~> 0.3.0"\},/{:wardrik, path: "$ENV{WARDRIK_REPO}\/packages\/wardrik"},/' mix.exs
-  perl -0pi -e 's/(    children = \[\n)/$1      {Wardrik, Wardrik.new(store: Bare.Wardrik.store())},\n/' lib/bare/application.ex
+  perl -0pi -e 's/(    children = \[\n)/$1      {WardrikStore, Bare.Wardrik.store()},\n      {Wardrik, Wardrik.new(store: Bare.Wardrik.store())},\n/' lib/bare/application.ex
   grep -q 'Bare.Wardrik.store()' lib/bare/application.ex || die "bare's application has no children to start Wardrik among"
   cat >lib/wardrik.ex <<'EOF'
 defmodule Bare.Wardrik do

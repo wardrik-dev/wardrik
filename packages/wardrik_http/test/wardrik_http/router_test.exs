@@ -121,7 +121,7 @@ defmodule WardrikHTTP.RouterTest do
   defimpl Wardrik.Definition, for: Kept do
     use Wardrik.Definition.None
     def put(d, key, opts), do: Kept.put(d, key, opts[:definition], opts[:token])
-    defdelegate get(d, key), to: Kept
+    def get(d, key, _opts), do: Kept.get(d, key)
     defdelegate delete(d, key), to: Kept
     def put_trigger(d, key, name, opts), do: Kept.put_trigger(d, key, name, opts[:fields])
     defdelegate delete_trigger(d, key, name), to: Kept

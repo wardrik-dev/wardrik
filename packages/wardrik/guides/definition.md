@@ -6,20 +6,30 @@ frontmatter, or of the body of `PUT /v1/agents/{id}`, read into the
 the HTTP API's definitions through it, and a host that keeps definitions in
 its own store reads them the same way.
 
-What a definition may name, the host says in a context: the tools it ships,
-its MCP servers, channels, notify targets and policies, and the defaults
-every agent takes.
+What a definition may name, the host says in its `Wardrik.Host`, the tools
+and tool sources it holds and the runtimes that read a definition's settings,
+and in a context: its MCP servers, channels, notify targets and policies, and
+the defaults every agent takes.
 
 ```elixir
+host = Wardrik.Host.register(host, :tools, [{"search", MyApp.Search}])
+
 context = %WardrikDefinition.Context{
   org: "acme",
-  tools: [WardrikBrave.WebSearch],
   servers: [github: []],
   mcp: WardrikMCP
 }
 
 {:ok, id, fields} = WardrikDefinition.parse(File.read!("agents/triage.md"), "triage", context)
-{:ok, spec, _route} = WardrikDefinition.spec(fields, id, id, context, {:file, "triage.md"})
+
+{:ok, spec} =
+  WardrikDefinition.spec(fields, id,
+    owner: id,
+    context: context,
+    source: {:file, "triage.md"},
+    host: host
+  )
+
 {:ok, _pid} = Wardrik.Fleet.put(spec)
 ```
 

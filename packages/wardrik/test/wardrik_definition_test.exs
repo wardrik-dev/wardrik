@@ -49,7 +49,6 @@ defmodule WardrikDefinitionTest do
 
     context = %Context{
       org: "acme",
-      tools: [Clock],
       servers: [books: [serves: [Wardrik.Resource.parse!("acme/*")]], wiki: []],
       mcp: Source,
       channels: [chat: :all, ops: ["globex"]],
@@ -62,8 +61,19 @@ defmodule WardrikDefinitionTest do
     %{context: context, id: AgentID.parse!("acme/triage")}
   end
 
-  defp spec(fields, context, id, source \\ :defaults),
-    do: WardrikDefinition.spec(fields, id, id, context, source)
+  defp host(opts \\ []),
+    do: Wardrik.Host.register(Wardrik.Host.new(opts), :tools, [{"clock", Clock}])
+
+  # The spec `fields` write for `id` under `context`, sent by no token, on
+  # host/1 unless `:host` names another.
+  defp spec(fields, context, id, opts \\ []) do
+    WardrikDefinition.spec(fields, id,
+      owner: id,
+      context: context,
+      source: Keyword.get(opts, :source, :defaults),
+      host: Keyword.get_lazy(opts, :host, &host/0)
+    )
+  end
 
   test "takes the keys its schema lists, in order" do
     schema =
@@ -89,22 +99,17 @@ defmodule WardrikDefinitionTest do
       "notify" => "pager"
     }
 
-    assert {:ok, spec} = spec(fields, context, id, {:file, "triage.md"})
+    assert {:ok, spec} = spec(fields, context, id, source: {:file, "triage.md"})
     assert spec.config.system == "Watch the queue."
     assert spec.config.tools == [Clock, {Source, Resource.parse!("deployment/server/books")}]
     assert [_hook | _hooks] = spec.hooks
     assert spec.idle_timeout == :timer.seconds(60)
     assert {:ok, %{targets: [:pager]}} = WardrikDefinition.route(fields, id, context)
 
+    priced = [%Wardrik.LLM.Runtime{config: [tool_prices: %{"clock" => 0.01}]}]
+
     assert {:ok, %{config: %{tool_prices: %{"clock" => 0.01}}}} =
-             spec(
-               %{},
-               %{
-                 context
-                 | runtimes: [%Wardrik.LLM.Runtime{config: [tool_prices: %{"clock" => 0.01}]}]
-               },
-               id
-             )
+             spec(%{}, context, id, host: host(runtimes: priced))
 
     assert {:ok, %{idle_timeout: :infinity}} =
              spec(%{"idle_timeout" => "infinity"}, context, id)
@@ -134,18 +139,19 @@ defmodule WardrikDefinitionTest do
     assert {:error, "tools names books/*, but Mode configures no server books" <> _} =
              spec(%{"tools" => ["books/*"]}, %{context | mcp: nil}, id)
 
-    assert {:ok, spec} =
-             spec(%{"tools" => ["workers/*"]}, %{context | sources: [workers: Source]}, id)
+    workers = Wardrik.Host.register(host(), :sources, [{"workers", Source}])
+    assert {:ok, spec} = spec(%{"tools" => ["workers/*"]}, context, id, host: workers)
 
     assert spec.config.tools == [{Source, id}]
   end
 
   test "names a server its owner added, and one its owner has yet to add",
        %{context: context, id: id} do
-    context = %{context | added: %Added{by: %{"acme" => ["crm"]}}}
+    host = host(servers: %Added{by: %{"acme" => ["crm"]}})
     owner = Resource.owner(Wardrik.AgentID.resource(id))
 
-    assert {:ok, spec} = spec(%{"tools" => ["crm/*", "books/*", "later/*"]}, context, id)
+    assert {:ok, spec} =
+             spec(%{"tools" => ["crm/*", "books/*", "later/*"]}, context, id, host: host)
 
     assert spec.config.tools == [
              {Source, Resource.new(owner, server: "crm")},
@@ -154,15 +160,18 @@ defmodule WardrikDefinitionTest do
            ]
 
     fields = %{"tools" => ["clock", "crm/*", "books/*", "later/*"]}
-    assert WardrikDefinition.missing(fields, id, context) == ["later/*"]
+    assert WardrikDefinition.missing(fields, id, context: context, host: host) == ["later/*"]
 
     jon = AgentID.parse!("acme/@jon/triage")
-    assert WardrikDefinition.missing(%{"tools" => ["crm/*"]}, jon, context) == ["crm/*"]
+
+    assert WardrikDefinition.missing(%{"tools" => ["crm/*"]}, jon, context: context, host: host) ==
+             ["crm/*"]
   end
 
   test "names no server it has not configured where owners add none",
        %{context: context, id: id} do
-    assert WardrikDefinition.missing(%{"tools" => ["nope/*"]}, id, context) == []
+    assert WardrikDefinition.missing(%{"tools" => ["nope/*"]}, id, context: context, host: host()) ==
+             []
 
     assert {:error, "tools names nope/*, but Mode configures no server nope" <> _} =
              spec(%{"tools" => ["nope/*"]}, context, id)

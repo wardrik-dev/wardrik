@@ -12,7 +12,7 @@ defmodule Wardrik.Definition.None do
       defimpl Wardrik.Definition, for: MyApp.Definitions do
         use Wardrik.Definition.None
 
-        def put(definitions, id, definition: fields, token: token, held: hooks), do: ...
+        def put(definitions, id, opts), do: ...
       end
   """
 
@@ -23,26 +23,26 @@ defmodule Wardrik.Definition.None do
   defmacro __using__(_opts) do
     quote do
       def put(_definitions, _id, _opts), do: :unsupported
-      def get(_definitions, _id), do: :unsupported
+      def get(_definitions, _id, _opts), do: :unsupported
       def delete(_definitions, _id), do: {:error, :not_found}
       def put_trigger(_definitions, _id, _name, _opts), do: :unsupported
       def delete_trigger(_definitions, _id, _name), do: :unsupported
       def editable(_definitions, _id), do: :ok
-      def current(_definitions, _id), do: :none
+      def current(_definitions, _id, _opts), do: :none
       def defined(_definitions, _pattern), do: []
-      def create(_definitions, _id), do: :unsupported
+      def create(_definitions, _id, _opts), do: :unsupported
       def reload(_definitions, _opts), do: :ok
       def reloading(_definitions), do: []
 
       defoverridable put: 3,
-                     get: 2,
+                     get: 3,
                      delete: 2,
                      put_trigger: 4,
                      delete_trigger: 3,
                      editable: 2,
-                     current: 2,
+                     current: 3,
                      defined: 2,
-                     create: 2,
+                     create: 3,
                      reload: 2,
                      reloading: 1
     end

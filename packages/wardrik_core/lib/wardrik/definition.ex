@@ -22,15 +22,18 @@ defprotocol Wardrik.Definition do
   | Function | `Wardrik` | `Wardrik.Definition.None` |
   | --- | --- | --- |
   | `put/3` | `agent_define/4` | `:unsupported` |
-  | `get/2` | `agent_definition_read/2` | `:unsupported` |
+  | `get/3` | `agent_definition_read/2` | `:unsupported` |
   | `delete/2` | `agent_forget/2`, `agents_forget/2` | the agent is forgotten, and no definition with it |
   | `put_trigger/4` | `agent_trigger_set/4` | `:unsupported` |
   | `delete_trigger/3` | `agent_trigger_remove/3` | `:unsupported` |
   | `editable/2` | `agent_forget/2`, `agents_forget/2`, which keep what it refuses | every agent may be forgotten |
-  | `current/2` | `agent_spawn/3`, `Wardrik.Fleet.whereis/2`, and an agent starting or waking | an agent starts and wakes as it was stored |
+  | `current/3` | `agent_spawn/3`, `Wardrik.Fleet.whereis/2`, and an agent starting or waking | an agent starts and wakes as it was stored |
   | `defined/2` | `Wardrik.Fleet.list/2`, for agents not yet started | none |
-  | `create/2` | `agent_spawn/3`, for an agent nothing defines | `:unsupported`: such an agent is not found |
+  | `create/3` | `agent_spawn/3`, for an agent nothing defines | `:unsupported`: such an agent is not found |
   | `reloading/1`, `reload/2` | `deployment_reload/1`, on every node `reloading/1` names | no node, so `:unsupported` |
+
+  Each function that reads a definition into a spec is handed the host
+  asking as `:host`, whose tools, sources and runtimes a definition names.
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads
   an agent file, keeps it, and refuses the agents its files declare. An
@@ -47,6 +50,7 @@ defprotocol Wardrik.Definition do
     * `:definition` - its fields, as sent
     * `:token` - the caller's `Wardrik.Token`
     * `:held` - the hooks the caller holds the agent to, ahead of its own
+    * `:host` - the `Wardrik.Host` asking
 
   What the definition may reach, such as the trees an agent shares, is the
   implementation's to check against the token's scope. The token's policy
@@ -59,7 +63,8 @@ defprotocol Wardrik.Definition do
   @spec put(t(), Wardrik.AgentID.t(),
           definition: map(),
           token: Wardrik.Token.t(),
-          held: [Wardrik.Hook.t()]
+          held: [Wardrik.Hook.t()],
+          host: Wardrik.Host.t()
         ) ::
           {:ok, Wardrik.Agent.Spec.t()}
           | {:error, String.t()}
@@ -71,9 +76,9 @@ defprotocol Wardrik.Definition do
   The definition last put for the agent `id`, as it was sent, with the tools
   it names that offer nothing yet; see `Wardrik.Definition.Read`.
   """
-  @spec get(t(), Wardrik.AgentID.t()) ::
+  @spec get(t(), Wardrik.AgentID.t(), host: Wardrik.Host.t()) ::
           {:ok, Wardrik.Definition.Read.t()} | {:error, :not_found} | :unsupported
-  def get(definitions, id)
+  def get(definitions, id, opts)
 
   @doc """
   Told that the agent `id` is to be forgotten, before it is:
@@ -124,8 +129,9 @@ defprotocol Wardrik.Definition do
   changed while it slept is the one it wakes with, and `Wardrik.Fleet`
   starts from it an agent the store does not hold.
   """
-  @spec current(t(), Wardrik.AgentID.t()) :: {:ok, Wardrik.Agent.Spec.t()} | :none
-  def current(definitions, id)
+  @spec current(t(), Wardrik.AgentID.t(), host: Wardrik.Host.t()) ::
+          {:ok, Wardrik.Agent.Spec.t()} | :none
+  def current(definitions, id, opts)
 
   @doc """
   The agents a definition is kept for that the `Wardrik.Resource` pattern
@@ -141,12 +147,12 @@ defprotocol Wardrik.Definition do
   saying why it cannot, or a conflict where something else already holds
   what it would write; `:unsupported` where it creates none.
   """
-  @spec create(t(), Wardrik.AgentID.t()) ::
+  @spec create(t(), Wardrik.AgentID.t(), host: Wardrik.Host.t()) ::
           {:ok, Wardrik.Agent.Spec.t()}
           | {:error, String.t()}
           | {:error, :conflict, String.t()}
           | :unsupported
-  def create(definitions, id)
+  def create(definitions, id, opts)
 
   @doc """
   Reads every definition this node keeps again, and brings the agents it

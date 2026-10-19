@@ -338,6 +338,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       {:ok, spec} =
         WardrikDaemon.Agents.put(Host.agents(), defined,
+          host: Host.host(),
           definition: %{"description" => "Defined."},
           token: token
         )
@@ -346,7 +347,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       assert command(["agent", "rm", defined, "--yes"]) == {"Removed #{defined}.\n", 0}
 
-      assert WardrikDaemon.Agents.get(Host.agents(), defined) ==
+      assert WardrikDaemon.Agents.get(Host.agents(), defined, host: Host.host()) ==
                {:error, :not_found}
     end
 

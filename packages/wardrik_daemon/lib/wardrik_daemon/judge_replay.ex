@@ -53,7 +53,8 @@ defmodule WardrikDaemon.JudgeReplay do
   """
   @spec policy(String.t()) :: {:ok, WardrikPolicy.t()} | {:error, IO.chardata()}
   def policy(name) do
-    {files, _agents} = Agents.read_files(WardrikDaemon.Host.config())
+    {files, _agents} =
+      Agents.read_files(WardrikDaemon.Host.config(), host: WardrikDaemon.Host.get())
 
     case Enum.find(files, &named?(&1, name)) do
       {_path, {:ok, %WardrikPolicy{judge: nil}}} ->

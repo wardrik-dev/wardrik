@@ -108,17 +108,21 @@ defmodule MyApp.Agents do
 end
 ```
 
-Each agent's definition is kept in the store, and so are the files it works on. `context:` says
-what a definition may name, such as the tools your app ships:
-`context: Wardrik.context(tools: [MyApp.Tools.Search])`. A value of your own implementing
+Each agent's definition is kept in the store, and so are the files it works on. `tools:` names the
+tools your app ships, which a definition names by name: `tools: [MyApp.Tools.Search]`. `context:`
+says what else a definition may name, such as the policies it may hold to:
+`context: Wardrik.context(policies: policies)`. A value of your own implementing
 `WardrikDefinition.Contexts` gives each agent a context of its own, such as one per org.
+
+`Wardrik.new/1` answers the `Wardrik.Host` everything runs on. A package of tools adds them to it
+through an `attach/2` of its own, before Wardrik starts: `Wardrik.new(...) |> SomePackage.attach()`.
 
 ## 5. Start it in your tree
 
-List what runs, then start it after your `Repo`:
+List what runs, its store first, then start it after your `Repo`:
 
 ```elixir title="lib/my_app/agents.ex"
-def children, do: [{Wardrik, wardrik()}]
+def children, do: [{WardrikStore, store()}, {Wardrik, wardrik()}]
 ```
 
 ```elixir title="lib/my_app/application.ex"
@@ -130,14 +134,15 @@ children =
 Supervisor.start_link(children, strategy: :rest_for_one, name: MyApp.Supervisor)
 ```
 
+`{WardrikStore, ...}` keeps everything Wardrik keeps in your `Repo`, started as your `Repo` is.
 `{Wardrik, ...}` runs, in order:
 
 | Part | What it runs |
 | --- | --- |
-| The store | everything Wardrik keeps, in your `Repo` |
 | The agents | the fleet, its event log and its audit log |
 | The meters | what [budgets](/concepts/budgets/) count in |
 | The triggers | [triggers](/build/triggers/): clocks, feeds and webhooks |
+| The packages | what each package attached to it runs, in the order they were attached |
 
 Under `:rest_for_one`, a restart of one restarts everything after it, so what you start after
 Wardrik always runs on the Wardrik before it.
@@ -268,11 +273,12 @@ def children do
   wardrik = wardrik()
 
   [
+    {WardrikStore, store()},
     {Wardrik, wardrik},
     {WardrikHTTP.Access, store: store()},
     WardrikHTTP.Workers,
     {WardrikHTTP.Listener,
-     host: Wardrik.host(wardrik),
+     host: wardrik,
      port: 4850,
      authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}}
   ]

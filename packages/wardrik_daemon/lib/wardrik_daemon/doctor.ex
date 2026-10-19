@@ -398,8 +398,11 @@ defmodule WardrikDaemon.Doctor do
 
   # -- agents ------------------------------------------------------------------
 
+  # Read on a host offering what the daemon ships, and no servers people
+  # add, which only a daemon that runs reaches.
   defp agents(config) do
-    {policies, agents} = Agents.read_files(config)
+    host = WardrikDaemon.attach(Wardrik.Host.new())
+    {policies, agents} = Agents.read_files(config, host: host)
 
     case for({path, {:error, message}} <- policies ++ agents, do: {path, message}) do
       [] -> [{:ok, "agents", read(length(agents), length(policies), config.config_dir)}]

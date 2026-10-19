@@ -48,7 +48,6 @@ defmodule WardrikDefinition.KeptTest do
     careful = WardrikPolicy.decode!(%{"deny" => ["run_lua"]}, "careful")
 
     context = %Context{
-      tools: [Search],
       targets: [audit: {Search, []}],
       policies: %{"careful" => careful}
     }
@@ -57,6 +56,8 @@ defmodule WardrikDefinition.KeptTest do
   end
 
   defp kept(contexts), do: %Kept{store: Wardrik.Test.store(), contexts: contexts}
+
+  defp host, do: Wardrik.Host.register(Wardrik.Test.host(), :tools, [{"web_search", Search}])
 
   defp token(pattern, policy \\ :none) do
     %Wardrik.Token{
@@ -71,7 +72,8 @@ defmodule WardrikDefinition.KeptTest do
       Definition.put(kept, id,
         definition: fields,
         token: token(Resource.parse!(id.org <> "/agent/*")),
-        held: []
+        held: [],
+        host: host()
       )
 
   test "keeps a definition, answers it as sent, and forgets it", %{org: org, kept: kept} do
@@ -80,7 +82,7 @@ defmodule WardrikDefinition.KeptTest do
     assert {:ok, spec} = put(kept, id, %{"policy" => "careful", "tools" => ["web_search"]})
     assert [%Wardrik.Hook{name: "careful"}] = spec.hooks
 
-    assert Definition.get(kept, id) ==
+    assert Definition.get(kept, id, host: host()) ==
              {:ok,
               %Definition.Read{
                 fields: %{"policy" => "careful", "tools" => ["web_search"]},
@@ -89,10 +91,12 @@ defmodule WardrikDefinition.KeptTest do
 
     assert {:error, message} = put(kept, id, %{"policy" => "lax"})
     assert message =~ "policy names lax"
-    assert {:ok, %Definition.Read{fields: %{"policy" => "careful"}}} = Definition.get(kept, id)
+
+    assert {:ok, %Definition.Read{fields: %{"policy" => "careful"}}} =
+             Definition.get(kept, id, host: host())
 
     assert Definition.delete(kept, id) == :ok
-    assert Definition.get(kept, id) == {:error, :not_found}
+    assert Definition.get(kept, id, host: host()) == {:error, :not_found}
     assert Definition.delete(kept, id) == {:error, :not_found}
   end
 
@@ -105,11 +109,12 @@ defmodule WardrikDefinition.KeptTest do
              Definition.put(kept, id,
                definition: %{"policy" => "careful"},
                token: token(Resource.parse!(org <> "/agent/*"), "careful"),
-               held: held
+               held: held,
+               host: host()
              )
 
     assert [%{name: "policy/careful"}, %{name: "careful"}] = spec.hooks
-    assert {:ok, spec} = Definition.current(kept, id)
+    assert {:ok, spec} = Definition.current(kept, id, host: host())
     assert [%{name: "held"}, %{name: "policy/careful"}, %{name: "careful"}] = spec.hooks
 
     without = kept(%{test.context | policies: %{"lax" => WardrikPolicy.decode!(%{}, "lax")}})
@@ -118,7 +123,8 @@ defmodule WardrikDefinition.KeptTest do
              Definition.put(without, id,
                definition: %{"policy" => "lax"},
                token: token(Resource.parse!(org <> "/agent/*"), "careful"),
-               held: []
+               held: [],
+               host: host()
              )
 
     assert message =~ "the token that defined it names the policy careful, which is not a policy"
@@ -128,10 +134,10 @@ defmodule WardrikDefinition.KeptTest do
     {:ok, _spec} = put(kept, AgentID.parse!("#{org}/defined"), %{"tools" => ["web_search"]})
     thread = AgentID.parse!("#{org}/defined/1696.1234")
 
-    assert {:ok, spec} = Definition.current(kept, thread)
+    assert {:ok, spec} = Definition.current(kept, thread, host: host())
     assert spec.id == thread
     assert spec.config.tools == [Search]
-    assert Definition.current(kept, AgentID.parse!("#{org}/nobody")) == :none
+    assert Definition.current(kept, AgentID.parse!("#{org}/nobody"), host: host()) == :none
   end
 
   test "reads each definition under the context its agent's owner is given", %{org: org} = test do
@@ -149,7 +155,7 @@ defmodule WardrikDefinition.KeptTest do
   test "creates no agent, and lets every agent be changed", %{org: org, kept: kept} do
     id = AgentID.parse!("#{org}/nobody")
 
-    assert Definition.create(kept, id) == :unsupported
+    assert Definition.create(kept, id, host: host()) == :unsupported
     assert Definition.editable(kept, id) == :ok
     assert Definition.reloading(kept) == [node()]
   end
@@ -216,7 +222,7 @@ defmodule WardrikDefinition.KeptTest do
               fields: %{
                 "triggers" => [%{"name" => "sweep", "every" => "2h"}, %{"name" => "digest"}]
               }
-            }} = Definition.get(kept, id)
+            }} = Definition.get(kept, id, host: host())
 
     assert [%{name: "digest"}, %{name: "sweep", schedule: "every 2h"}] =
              WardrikTrigger.for_agent(id)
@@ -247,14 +253,16 @@ defmodule WardrikDefinition.KeptTest do
              Definition.put(kept, id,
                definition: fields,
                token: token(Resource.parse!(org <> "/agent/*")),
-               held: []
+               held: [],
+               host: host()
              )
 
     assert {:error, message} =
              Definition.put(kept, id,
                definition: fields,
                token: token(AgentID.resource(id)),
-               held: []
+               held: [],
+               host: host()
              )
 
     assert message ==
@@ -278,7 +286,7 @@ defmodule WardrikDefinition.KeptTest do
 
     :ok = Fleet.forget(id)
     assert Definition.reload(kept, host: Wardrik.Test.host()) == :ok
-    assert {:ok, _definition} = Definition.get(kept, id)
+    assert {:ok, _definition} = Definition.get(kept, id, host: host())
   end
 
   test "names the agents it keeps a definition for under a prefix", %{org: org, kept: kept} do

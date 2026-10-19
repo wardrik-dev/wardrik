@@ -104,8 +104,9 @@ defmodule WardrikDaemon do
   tokens, lasting as long as `config.yaml`'s `tokens.expires.api` says;
   webhooks checked with the vault's secrets for each agent, else the
   environment's; `WardrikDaemon.Issuer`, whose tokens last as long as
-  `tokens.expires.session` says; agents' files kept in the store; and the
-  MCP servers orgs and people add, kept there too.
+  `tokens.expires.session` says; agents' files kept in the store; the MCP
+  servers orgs and people add, kept there too; the model's runtime, pricing
+  tools as `config.yaml`'s `tools` says; and what `attach/1` adds.
   """
   @spec host(Config.t(), store: WardrikStore.t()) :: Wardrik.Host.t()
   def host(%Config{} = config, opts) do
@@ -115,26 +116,51 @@ defmodule WardrikDaemon do
     oauth = WardrikOAuth.new([audit: audit, added: added] ++ Config.oauth_settings(config))
     vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
     vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
-    servers = %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault}
-    agents = Agents.new(store: store, config: config, audit: audit, servers: servers)
+    agents = Agents.new(store: store, config: config, audit: audit)
+    prices = config |> Config.section(WardrikDaemon.AgentFile) |> Keyword.get(:tool_prices, %{})
 
-    Wardrik.Host.new(
-      [
-        store: store,
-        audit: audit,
-        definitions: agents,
-        connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
-        servers: servers,
-        credentials: vault,
-        tokens: %WardrikHTTP.Tokens{store: store},
-        triggers: %WardrikTrigger.Deliveries{
-          secrets: &Secrets.for_agent(vault, &1, &2),
-          verifiers: config.triggers.verifiers
-        },
-        issuer: %WardrikDaemon.Issuer{agents: agents},
-        workspace: %WardrikWorkspace.Backend.Store{store: store}
-      ] ++ Keyword.take(Config.section(config, Wardrik.Tokens), [:expires])
-    )
+    [
+      store: store,
+      audit: audit,
+      definitions: agents,
+      connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
+      servers: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault},
+      credentials: vault,
+      tokens: %WardrikHTTP.Tokens{store: store},
+      triggers: %WardrikTrigger.Deliveries{
+        secrets: &Secrets.for_agent(vault, &1, &2),
+        verifiers: config.triggers.verifiers
+      },
+      issuer: %WardrikDaemon.Issuer{agents: agents},
+      workspace: %WardrikWorkspace.Backend.Store{store: store},
+      runtimes: [%Wardrik.LLM.Runtime{config: [tool_prices: prices]}]
+    ]
+    |> Kernel.++(Keyword.take(Config.section(config, Wardrik.Tokens), [:expires]))
+    |> Wardrik.Host.new()
+    |> attach()
+  end
+
+  @doc """
+  `host` with what the daemon ships attached: web search, deep research
+  and Lua among its tools, and among its tool sources the tool workers',
+  `workers`, an agent's operations on itself, `self`, those on the other
+  agents of its org, `agents`, and the MCP servers its owner adds,
+  `servers`.
+  """
+  @spec attach(Wardrik.Host.t()) :: Wardrik.Host.t()
+  def attach(host) do
+    host
+    |> WardrikBrave.attach()
+    |> Wardrik.Host.register(:tools, [
+      {"deep_research", WardrikResearch.Deep},
+      {"run_lua", WardrikLua.Run}
+    ])
+    |> Wardrik.Host.register(:sources, [
+      {"workers", WardrikHTTP.Workers},
+      {"self", Wardrik.Catalog.Self},
+      {"agents", Wardrik.Catalog.Agents},
+      {"servers", WardrikMCP.Added}
+    ])
   end
 
   # Orgs and people may add servers whenever the daemon runs, so it always
@@ -181,8 +207,8 @@ defmodule WardrikDaemon do
           installations: Keyword.fetch!(settings, :installations),
           offered: {Agents, :offered, [agents]},
           creatable: {Agents, :creatable?, [agents]},
-          create: {Agents, :create_in, [agents]},
-          start: {Agents, :start, [agents]},
+          create: {Agents, :create_in, [host]},
+          start: {Agents, :start, [host]},
           approvers: {Agents, :approvers, [agents]},
           offering: {Agents, :offering, []},
           deciding: {Agents, :deciding, []}
@@ -235,7 +261,7 @@ defmodule WardrikDaemon do
               [
                 "  #{member.id}",
                 Wardrik.Fleet.Member.label(member)
-                | where(member) ++ spent(agents, member.id) ++ next_run(member.id)
+                | where(member) ++ spent(host, member.id) ++ next_run(member.id)
               ],
               "  "
             )
@@ -274,12 +300,15 @@ defmodule WardrikDaemon do
 
   @doc """
   What the agent `key` has spent of each budget the spec its kept definition
-  writes gives it, as its budgets say it; nothing where none is kept.
+  writes on `host` gives it, as its budgets say it; nothing where none is
+  kept.
   """
-  @spec spent(Agents.t(), Wardrik.AgentID.t()) :: [String.t()]
-  def spent(%Agents{store: store} = agents, key) do
-    with {:ok, definition} <- WardrikDefinition.Record.of(store, key),
-         {:ok, spec} <- Agents.build(agents, definition, key) do
+  @spec spent(Wardrik.Host.t(), Wardrik.AgentID.t()) :: [String.t()]
+  def spent(host, key) do
+    agents = Wardrik.Host.definitions(host)
+
+    with {:ok, definition} <- WardrikDefinition.Record.of(agents.store, key),
+         {:ok, spec} <- Agents.build(agents, definition, key, host: host) do
       spent_by(spec, key)
     else
       {:error, _reason} -> []

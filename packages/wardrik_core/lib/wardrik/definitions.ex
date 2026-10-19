@@ -19,7 +19,7 @@ defmodule Wardrik.Definitions do
   @doc "Whether the definitions of `host` keep one of the agent `id`."
   @spec kept?(Wardrik.Host.t(), Wardrik.AgentID.t()) :: boolean()
   def kept?(host, id),
-    do: match?({:ok, _definition}, Definition.get(Wardrik.Host.definitions(host), id))
+    do: match?({:ok, _definition}, Definition.get(Wardrik.Host.definitions(host), id, host: host))
 
   @doc """
   Forgets the definition the definitions of `host` keep of the agent `id`,

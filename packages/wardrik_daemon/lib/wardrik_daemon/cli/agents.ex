@@ -106,7 +106,7 @@ defmodule WardrikDaemon.CLI.Agents do
           status(member),
           where(member),
           next(member.id),
-          Enum.join(WardrikDaemon.spent(WardrikDaemon.Host.agents(), member.id), ", ")
+          Enum.join(WardrikDaemon.spent(WardrikDaemon.Host.get(), member.id), ", ")
         ]
       end
 
@@ -172,11 +172,15 @@ defmodule WardrikDaemon.CLI.Agents do
   # writes none, and the tools it names that offer nothing yet, or `nil`
   # where none is kept.
   defp defined(opts, key) do
-    case Record.of(Wardrik.Host.store(opts[:as].host), key) do
+    host = opts[:as].host
+
+    case Record.of(Wardrik.Host.store(host), key) do
       {:ok, definition} ->
         agents = WardrikDaemon.Host.agents()
-        {:ok, read} = Wardrik.Definition.get(agents, definition.id)
-        {definition, WardrikDaemon.Agents.build(agents, definition, key), read.missing}
+        {:ok, read} = Wardrik.Definition.get(agents, definition.id, host: host)
+
+        {definition, WardrikDaemon.Agents.build(agents, definition, key, host: host),
+         read.missing}
 
       {:error, :not_found} ->
         nil

@@ -55,10 +55,8 @@ defmodule WardrikDefinition.ReadingTest do
   setup do
     %{
       context: %Context{
-        tools: [Search, Lua],
         servers: [linear: [], theirs: [serves: [Wardrik.Resource.parse!("globex/*")]]],
         mcp: Source,
-        sources: [workers: Source, self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents],
         channels: [slack: ["default"], acme: ["acme"], every: :all],
         targets: [
           ops: {Source, []},
@@ -70,10 +68,30 @@ defmodule WardrikDefinition.ReadingTest do
     }
   end
 
+  # The host the definitions are read on: its tools, and its sources as `name/*`.
+  defp host do
+    Wardrik.Host.new()
+    |> Wardrik.Host.register(:tools, [{"web_search", Search}, {"run_lua", Lua}])
+    |> Wardrik.Host.register(:sources, [
+      {"workers", Source},
+      {"self", Wardrik.Catalog.Self},
+      {"agents", Wardrik.Catalog.Agents}
+    ])
+  end
+
+  defp spec(fields, id, context, source),
+    do:
+      WardrikDefinition.spec(fields, id,
+        owner: id,
+        context: context,
+        source: source,
+        host: host()
+      )
+
   # The spec an agent file `text` named `name` writes, as an operator's file.
   defp read(name \\ "triage", text, %{context: context}) do
     with {:ok, id, fields} <- WardrikDefinition.parse(text, name, context),
-         do: WardrikDefinition.spec(fields, id, id, context, {:file, name})
+         do: spec(fields, id, context, {:file, name})
   end
 
   defp with_policies(%{context: context}, policies),
@@ -82,7 +100,7 @@ defmodule WardrikDefinition.ReadingTest do
   # The spec a definition sent to the HTTP API writes for `id`, sent by no token.
   defp define(id, fields, %{context: context}) do
     with :ok <- WardrikDefinition.accept(id, fields, context),
-         do: WardrikDefinition.spec(fields, id, id, context, :defaults)
+         do: spec(fields, id, context, :defaults)
   end
 
   # Where the notices of the agent a file `text` declares go, once the file reads.
@@ -233,12 +251,12 @@ defmodule WardrikDefinition.ReadingTest do
     {:ok, files} = WardrikWorkspace.Spec.new(~A"default/triage")
 
     assert spec.config.tools == [
-             Search,
              Lua,
+             Search,
              {Source, Resource.parse!("deployment/server/linear")},
-             {Source, ~A"default/triage"},
-             {Wardrik.Catalog.Self, ~A"default/triage"},
              {Wardrik.Catalog.Agents, ~A"default/triage"},
+             {Wardrik.Catalog.Self, ~A"default/triage"},
+             {Source, ~A"default/triage"},
              {WardrikWorkspace, files}
            ]
 
@@ -346,7 +364,7 @@ defmodule WardrikDefinition.ReadingTest do
       token = Wardrik.Token.root(Wardrik.Principal.new(:user, "jon"))
       token = %{token | scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(id)])]}
 
-      assert WardrikDefinition.spec(fields, id, id, context, {:api, token}) ==
+      assert spec(fields, id, context, {:api, token}) ==
                {:error,
                 "workspace shared team: acme belongs to acme/agent/*, which the token does not reach"}
     end
@@ -699,12 +717,11 @@ defmodule WardrikDefinition.ReadingTest do
                define(~A"acme/triage", %{"instructions" => ["a"]}, context)
 
       assert {:error, "acme/other is neither acme/triage nor a conversation of it"} =
-               WardrikDefinition.spec(
-                 %{},
-                 ~A"acme/triage",
-                 ~A"acme/other",
-                 context.context,
-                 :defaults
+               WardrikDefinition.spec(%{}, ~A"acme/other",
+                 owner: ~A"acme/triage",
+                 context: context.context,
+                 source: :defaults,
+                 host: host()
                )
     end
 

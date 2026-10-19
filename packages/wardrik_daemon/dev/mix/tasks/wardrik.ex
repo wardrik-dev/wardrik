@@ -172,7 +172,7 @@ defmodule Mix.Tasks.Wardrik do
     agent_id = Wardrik.AgentID.new!(opts[:name] || "assistant", org: org, user: opts[:user])
 
     # Every agent this session starts is created on what the task was given.
-    {:ok, spec} = Wardrik.Definition.create(created, agent_id)
+    {:ok, spec} = Wardrik.Definition.create(created, agent_id, host: host)
     {:ok, _agent} = Wardrik.Fleet.put(spec)
 
     :ok =
@@ -321,5 +321,5 @@ end
 defimpl Wardrik.Definition, for: Mix.Tasks.Wardrik.Created do
   use Wardrik.Definition.None
 
-  def create(%{fields: fields}, id), do: {:ok, Wardrik.Agent.Spec.new([id: id] ++ fields)}
+  def create(%{fields: fields}, id, _opts), do: {:ok, Wardrik.Agent.Spec.new([id: id] ++ fields)}
 end

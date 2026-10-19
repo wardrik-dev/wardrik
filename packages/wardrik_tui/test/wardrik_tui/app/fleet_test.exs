@@ -34,10 +34,10 @@ defmodule WardrikTUI.App.FleetTest do
 
     def put(_definitions, _id, _opts), do: {:error, "not here"}
 
-    def create(_definitions, %AgentID{name: "refused"}),
+    def create(_definitions, %AgentID{name: "refused"}, _opts),
       do: {:error, "the defaults name no such tool"}
 
-    def create(_definitions, id),
+    def create(_definitions, id, _opts),
       do: {:ok, Spec.new(id: id, config: Config.new(model_spec: "test:model"))}
   end
 

@@ -44,9 +44,9 @@ defmodule WardrikDaemon.Agents do
   It is also the daemon's `Wardrik.Definition`. A definition sent to the
   HTTP API is kept as `WardrikDefinition.Kept` keeps one, read under the
   policies this process last read, with the token that sent it:
-  `put/3` keeps it, `get/2` answers it, `delete/2` forgets it, and
+  `put/3` keeps it, `get/3` answers it, `delete/2` forgets it, and
   `put_trigger/4` and `delete_trigger/3` change one of its triggers.
-  `create/2` writes an agent file from `config.yaml`'s `defaults`. A key
+  `create/3` writes an agent file from `config.yaml`'s `defaults`. A key
   an agent file declares, here or on any node connected to this one,
   belongs to the file: each of them refuses it with a conflict, so the API
   changes neither it nor its triggers.
@@ -71,7 +71,7 @@ defmodule WardrikDaemon.Agents do
   ## Defaults
 
   `config.yaml`'s `defaults` is what an agent is given where nothing else
-  says, read as a definition over the HTTP API is. `options/2` answers what
+  says, read as a definition over the HTTP API is. `options/3` answers what
   an agent starts with, for a surface that starts one, as the TUI does: what
   the definition it runs on writes, or the defaults' where none is kept.
   `wardrik agent spawn` writes a file from them.
@@ -117,10 +117,8 @@ defmodule WardrikDaemon.Agents do
   The daemon's definitions, kept in `:store` and read under `:config`, with
   a table of their own for what each reading comes to, which the process
   that makes the value owns. `:nodes` gives the other nodes whose
-  inventories count, `Node.list/0` unless given, `:audit` the log of
-  `Wardrik.Host.audit/1`, `Wardrik.Audit` unless given, and `:servers` the
-  `Wardrik.Servers` whose servers a definition names as its owner's,
-  `Wardrik.Servers.None` unless given.
+  inventories count, `Node.list/0` unless given, and `:audit` the log of
+  `Wardrik.Host.audit/1`, `Wardrik.Audit` unless given.
   """
   @spec new(keyword()) :: t()
   def new(opts) do
@@ -129,10 +127,7 @@ defmodule WardrikDaemon.Agents do
     %__MODULE__{
       store: Keyword.fetch!(opts, :store),
       config: config,
-      context: %{
-        AgentFile.context(config)
-        | added: Keyword.get(opts, :servers, %Wardrik.Servers.None{})
-      },
+      context: AgentFile.context(config),
       table: :ets.new(__MODULE__, [:public, read_concurrency: true]),
       nodes: Keyword.get(opts, :nodes, &Node.list/0),
       audit: Keyword.get(opts, :audit, Wardrik.Audit)
@@ -205,27 +200,23 @@ defmodule WardrikDaemon.Agents do
       channel_setting(agents, :creates, channel, true) and is_map_key(defaults(agents), "policy")
 
   @doc """
-  Creates an agent for the room `room` of the channel installed as
-  `installation`, as `by` asked: named after the room, in the channel's
-  org, from `config.yaml`'s `defaults`, offered in the channel. It is kept
-  as a definition the HTTP API sent is, and recorded in `Wardrik.Audit` as
-  defined by `by`.
+  Creates an agent on `host`, whose definitions are the daemon's, for the
+  room `room` of the channel installed as `installation`, as `by` asked:
+  named after the room, in the channel's org, from `config.yaml`'s
+  `defaults`, offered in the channel. It is kept as a definition the HTTP
+  API sent is, and recorded in `Wardrik.Audit` as defined by `by`.
   """
-  @spec create_in(t(), Installation.t(), String.t(), Wardrik.Principal.t() | nil) ::
+  @spec create_in(Wardrik.Host.t(), Installation.t(), String.t(), Wardrik.Principal.t() | nil) ::
           {:ok, WardrikChannel.Offer.t()} | {:error, String.t()}
-  def create_in(
-        %__MODULE__{store: store} = agents,
-        %Installation{channel: channel} = installation,
-        room,
-        by
-      ) do
+  def create_in(host, %Installation{channel: channel} = installation, room, by) do
+    %__MODULE__{store: store} = agents = Wardrik.Host.definitions(host)
     description = "Answers in ##{room}."
     fields = Map.merge(defaults(agents), %{"channels" => [channel], "description" => description})
 
     with :ok <- creates(agents, installation),
          {:ok, id} <- created_id(agents, room, channel),
          :ok <- unkept(store, id, channel),
-         {:ok, spec} <- defined(agents, id, fields, source: :defaults),
+         {:ok, spec} <- defined(agents, id, fields, source: :defaults, host: host),
          {:ok, _pid} <- Fleet.put(spec) do
       :ok = Wardrik.Audit.record(agents.audit, {:agent_defined, id}, by: by)
       {:ok, %WardrikChannel.Offer{agent: id, description: description}}
@@ -237,13 +228,14 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  Starts `agent`, which answers in a thread of the channel installed as
-  `installation`, on the spec its definition writes, where it is not
-  running.
+  Starts `agent` on `host`, whose definitions are the daemon's, which
+  answers in a thread of the channel installed as `installation`, on the
+  spec its definition writes, where it is not running.
   """
-  @spec start(t(), Installation.t(), AgentID.t()) :: {:ok, pid()} | {:error, String.t()}
-  def start(agents, %Installation{}, %AgentID{} = agent) do
-    with {:ok, options} <- options(agents, agent) do
+  @spec start(Wardrik.Host.t(), Installation.t(), AgentID.t()) ::
+          {:ok, pid()} | {:error, String.t()}
+  def start(host, %Installation{}, %AgentID{} = agent) do
+    with {:ok, options} <- options(Wardrik.Host.definitions(host), agent, host: host) do
       case Fleet.spawn(agent, options) do
         {:ok, pid} -> {:ok, pid}
         {:error, reason} -> {:error, "#{agent} did not start: #{inspect(reason)}"}
@@ -338,21 +330,22 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  The options the agent `key` starts with, as `Wardrik.Fleet.spawn/2` takes
-  them: those of `spec/1`.
+  The options the agent `key` starts with on `:host`, as
+  `Wardrik.Fleet.spawn/2` takes them: those of `spec/3`.
   """
-  @spec options(t(), AgentID.t()) :: {:ok, keyword()} | {:error, String.t()}
-  def options(agents, key) do
-    with {:ok, spec} <- spec(agents, key), do: {:ok, Spec.options(spec)}
+  @spec options(t(), AgentID.t(), host: Wardrik.Host.t()) ::
+          {:ok, keyword()} | {:error, String.t()}
+  def options(agents, key, opts) do
+    with {:ok, spec} <- spec(agents, key, opts), do: {:ok, Spec.options(spec)}
   end
 
   @doc """
-  The spec the agent `key` runs on: `build/2`'s, from the definition it runs
-  on, as `WardrikDefinition.Record.of/2` finds it in the store, or from
-  `defaults/1` where none is kept.
+  The spec the agent `key` runs on, read on `:host`: `build/4`'s, from the
+  definition it runs on, as `WardrikDefinition.Record.of/2` finds it in the
+  store, or from `defaults/1` where none is kept.
   """
-  @spec spec(t(), AgentID.t()) :: {:ok, Spec.t()} | {:error, String.t()}
-  def spec(%__MODULE__{store: store} = agents, key) do
+  @spec spec(t(), AgentID.t(), host: Wardrik.Host.t()) :: {:ok, Spec.t()} | {:error, String.t()}
+  def spec(%__MODULE__{store: store} = agents, key, opts) do
     # Asked first, so the files have been read once before the store is.
     policies = policies(agents)
 
@@ -368,12 +361,14 @@ defmodule WardrikDaemon.Agents do
           )
       end
 
-    with {:ok, definition} <- definition, do: Kept.build(kept(agents, policies), definition, key)
+    with {:ok, definition} <- definition,
+         do: Kept.build(kept(agents, policies), definition, key, opts)
   end
 
   @doc """
-  The spec the definition kept for `key` writes now, for it or the agent it
-  is a conversation of, or `:none` where none is kept or it does not build.
+  The spec the definition kept for `key` writes now on `:host`, for it or
+  the agent it is a conversation of, or `:none` where none is kept or it
+  does not build.
   An agent asks it as it starts or wakes, so a definition changed while the
   agent slept is the one it wakes with; see `Wardrik.Agent`.
 
@@ -382,9 +377,9 @@ defmodule WardrikDaemon.Agents do
   that a kept definition writes to it, so one starting meanwhile, as each a
   reading puts does, is brought to it then.
   """
-  def current(%__MODULE__{} = agents, key) do
+  def current(%__MODULE__{} = agents, key, opts) do
     case read_policies(agents) do
-      {:ok, policies} -> Kept.current(kept(agents, policies), key)
+      {:ok, policies} -> Kept.current(kept(agents, policies), key, opts)
       :reading -> :none
     end
   end
@@ -404,15 +399,15 @@ defmodule WardrikDaemon.Agents do
   `agents/NAME.md`, or `agents/USER-NAME.md` for a user's agent, from
   `config.yaml`'s `defaults`, with its org and user where they are not the
   deployment's, then reading the files again on every node; answers the
-  spec the file writes. The file is written only
-  once the defaults are known to make an agent under the key, and never over
-  one that is there, which is a conflict saying what it declares.
+  spec the file writes. The file is written only once the defaults are
+  known to make an agent under the key on `:host`, and never over one that
+  is there, which is a conflict saying what it declares.
   """
-  def create(%__MODULE__{} = agents, %AgentID{} = key) do
+  def create(%__MODULE__{} = agents, %AgentID{} = key, opts) do
     path = Path.join([dir(agents), "agents", file_name(key) <> ".md"])
 
     with :ok <- untaken(agents, path),
-         {:ok, _options} <- created(agents, key),
+         {:ok, _options} <- created(agents, key, opts),
          :ok <- write(path, AgentFile.text(created_fields(agents, key))) do
       for node <- reloading(agents),
           do: :ok = :erpc.call(node, __MODULE__, :reload, [agents], :timer.minutes(1))
@@ -439,8 +434,8 @@ defmodule WardrikDaemon.Agents do
   defp declaring({key, {path, _spec}}, path), do: key
   defp declaring(_declared, _path), do: nil
 
-  defp created(agents, key) do
-    case options(agents, key) do
+  defp created(agents, key, opts) do
+    case options(agents, key, opts) do
       {:ok, options} ->
         {:ok, options}
 
@@ -491,13 +486,14 @@ defmodule WardrikDaemon.Agents do
   defp shown(path), do: Path.join("agents", Path.basename(path))
 
   @doc """
-  The spec `definition` writes for the agent `key`, its own or one of its
-  conversations, under the policies last read, and under the policy of the
-  token that sent it where one did.
+  The spec `definition` writes for the agent `key` on `:host`, its own or
+  one of its conversations, under the policies last read, and under the
+  policy of the token that sent it where one did.
   """
-  @spec build(t(), Record.t(), AgentID.t()) :: {:ok, Spec.t()} | {:error, String.t()}
-  def build(agents, %Record{} = definition, key),
-    do: Kept.build(kept(agents, policies(agents)), definition, key)
+  @spec build(t(), Record.t(), AgentID.t(), host: Wardrik.Host.t()) ::
+          {:ok, Spec.t()} | {:error, String.t()}
+  def build(agents, %Record{} = definition, key, opts),
+    do: Kept.build(kept(agents, policies(agents)), definition, key, opts)
 
   # API-defined agents are kept as the library keeps them, read under the
   # policies of this reading.
@@ -518,10 +514,10 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  The spec a definition sent to the HTTP API writes for the agent `key`, sent
-  with the `:token` given, which it keeps with the hooks it is `:held` to,
-  routing its notices as it says; or a conflict where an agent file
-  declares it.
+  The spec a definition sent to the HTTP API writes for the agent `key` on
+  `:host`, sent with the `:token` given, which it keeps with the hooks it is
+  `:held` to, routing its notices as it says; or a conflict where an agent
+  file declares it.
   """
   def put(%__MODULE__{} = agents, key, opts),
     do:
@@ -529,7 +525,7 @@ defmodule WardrikDaemon.Agents do
         agents,
         key,
         Keyword.fetch!(opts, :definition),
-        [source: {:api, Keyword.fetch!(opts, :token)}] ++ Keyword.take(opts, [:held])
+        [source: {:api, Keyword.fetch!(opts, :token)}] ++ Keyword.take(opts, [:held, :host])
       )
 
   defp defined(%__MODULE__{} = agents, key, fields, opts) do
@@ -537,8 +533,8 @@ defmodule WardrikDaemon.Agents do
          do: Kept.define(kept, key, [fields: fields] ++ opts)
   end
 
-  @doc "The definition kept for the agent `key`, as the HTTP API writes one."
-  def get(%__MODULE__{} = agents, key), do: Kept.get(kept(agents), key)
+  @doc "The definition kept for the agent `key`, as the HTTP API writes one, read on `:host`."
+  def get(%__MODULE__{} = agents, key, opts), do: Kept.get(kept(agents), key, opts)
 
   @doc """
   Forgets the definition the HTTP API sent for the agent `key`:
@@ -686,23 +682,25 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  What the policy and agent files under `dir` read into, without starting
-  anything: each policy file's policy, and each agent file's definition with
-  the spec it writes, or the message saying why it does not read.
+  What the policy and agent files under `config`'s directory read into on
+  `:host`, without starting anything: each policy file's policy, and each
+  agent file's definition with the spec it writes, or the message saying
+  why it does not read.
   """
-  @spec read_files(WardrikDaemon.Config.t()) ::
+  @spec read_files(WardrikDaemon.Config.t(), host: Wardrik.Host.t()) ::
           {[{Path.t(), {:ok, WardrikPolicy.t()} | {:error, String.t()}}],
            [{Path.t(), {:ok, Record.t(), Spec.t()} | {:error, String.t()}}]}
-  def read_files(%WardrikDaemon.Config{config_dir: dir} = config) do
+  def read_files(%WardrikDaemon.Config{config_dir: dir} = config, opts) do
+    host = Keyword.fetch!(opts, :host)
     context = AgentFile.context(config)
     policy_files = dir |> read("policies/*.{yaml,yml}", &PolicyFile.read/1) |> once_each()
     policies = for {_path, {:ok, policy}} <- policy_files, into: %{}, do: {policy.name, policy}
-    {policy_files, read(dir, "agents/*.md", &agent(%{context | policies: policies}, &1))}
+    {policy_files, read(dir, "agents/*.md", &agent(%{context | policies: policies}, host, &1))}
   end
 
-  defp agent(context, path) do
+  defp agent(context, host, path) do
     with {:ok, definition} <- AgentFile.parse(context, path) do
-      case Record.spec(definition, definition.id, context: context) do
+      case Record.spec(definition, definition.id, context: context, host: host) do
         {:ok, spec} -> {:ok, definition, spec}
         {:error, message} -> {:error, "#{path}: #{message}"}
       end
@@ -710,7 +708,7 @@ defmodule WardrikDaemon.Agents do
   end
 
   defp load(%{agents: agents} = state) do
-    {policy_files, read} = read_files(agents.config)
+    {policy_files, read} = read_files(agents.config, host: state.host)
 
     agent_files =
       for {path, result} <- read,
@@ -837,14 +835,14 @@ end
 
 defimpl Wardrik.Definition, for: WardrikDaemon.Agents do
   defdelegate put(agents, id, opts), to: WardrikDaemon.Agents
-  defdelegate get(agents, id), to: WardrikDaemon.Agents
+  defdelegate get(agents, id, opts), to: WardrikDaemon.Agents
   defdelegate delete(agents, id), to: WardrikDaemon.Agents
   defdelegate put_trigger(agents, id, name, opts), to: WardrikDaemon.Agents
   defdelegate delete_trigger(agents, id, name), to: WardrikDaemon.Agents
   defdelegate editable(agents, id), to: WardrikDaemon.Agents
-  defdelegate current(agents, id), to: WardrikDaemon.Agents
+  defdelegate current(agents, id, opts), to: WardrikDaemon.Agents
   defdelegate defined(agents, pattern), to: WardrikDaemon.Agents
-  defdelegate create(agents, id), to: WardrikDaemon.Agents
+  defdelegate create(agents, id, opts), to: WardrikDaemon.Agents
   def reload(agents, _opts), do: WardrikDaemon.Agents.reload(agents)
   defdelegate reloading(agents), to: WardrikDaemon.Agents
 end

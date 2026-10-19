@@ -25,7 +25,7 @@ defmodule Wardrik.APITest do
     %{
       wardrik: wardrik,
       scope: Wardrik.as(wardrik, maria()),
-      root: Wardrik.Scope.new(Wardrik.host(wardrik), Wardrik.Token.root(maria()))
+      root: Wardrik.Scope.new(wardrik, Wardrik.Token.root(maria()))
     }
   end
 

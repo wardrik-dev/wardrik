@@ -59,10 +59,12 @@ def deps do
 end
 ```
 
-Start it in your application's tree, keeping everything on the node's disk:
+Start it in your application's tree, after its store, keeping everything on
+the node's disk:
 
 ```elixir
-children = [{Wardrik, Wardrik.new(store: [data_dir: "/var/lib/my_app/wardrik"])}]
+store = Wardrik.store(data_dir: "/var/lib/my_app/wardrik")
+children = [{WardrikStore, store}, {Wardrik, Wardrik.new(store: store)}]
 ```
 
 Then run an agent:
@@ -100,8 +102,8 @@ from, the policies that decide its calls, and the surfaces people reach it
 through. Take the ones you need.
 
 **Wardrik** (`wardrik`) puts core and the packages an application embeds
-together behind one child, `{Wardrik, Wardrik.new(...)}`, kept in the
-application's own store.
+together behind one child, `{Wardrik, Wardrik.new(...)}`, started after the
+store the application keeps it in.
 
 **The daemon** (`wardrik_daemon`) puts them together behind the `wardrik`
 command, reading agents, policies and settings from files. It builds into one
