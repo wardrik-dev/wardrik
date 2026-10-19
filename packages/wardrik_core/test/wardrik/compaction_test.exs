@@ -61,7 +61,6 @@ defmodule Wardrik.CompactionTest do
   describe "split/3" do
     test "keeps a history that has not outgrown its window" do
       assert Compaction.split(Compaction.new(window: 1_000_000), history(), run()) == :keep
-      assert Compaction.split(nil, history(), run()) == :keep
     end
 
     test "cuts an outgrown history where a person's message begins, keeping a tool call with its result" do
@@ -120,8 +119,7 @@ defmodule Wardrik.CompactionTest do
         LLM.final_answer("They asked about lookups; the answer was found.")
       end)
 
-      assert {:ok, compacted, stats} =
-               Wardrik.History.prepare({Compaction, roomy()}, history(), run(llm))
+      assert {:ok, compacted} = Wardrik.History.prepare(roomy(), history(), run: run(llm))
 
       assert [%User{} = summary, %Assistant{}, second_question, second_answer] =
                Conversation.to_list(compacted)
@@ -129,9 +127,6 @@ defmodule Wardrik.CompactionTest do
       assert Conversation.text(summary) =~ "They asked about lookups"
       assert Conversation.text(second_question) =~ "second question"
       assert Conversation.text(second_answer) =~ "second answer"
-
-      assert stats.messages_before == 6 and stats.messages_after == 4
-      assert stats.tokens_after < stats.tokens_before
 
       assert_received {:asked, asked}
       assert asked.tools == []
@@ -150,7 +145,7 @@ defmodule Wardrik.CompactionTest do
         LLM.final_answer("summary #{n}")
       end)
 
-      assert {:ok, compacted} = Compaction.prepare(history(), run(llm), small())
+      assert {:ok, compacted} = Compaction.prepare(small(), history(), run: run(llm))
 
       assert_received {:asked, 1, [first]}
       assert_received {:asked, 2, [second]}
@@ -170,7 +165,7 @@ defmodule Wardrik.CompactionTest do
       llm = LLM.start()
       LLM.stream(llm, [LLM.final_answer("They asked about lookups.")])
 
-      {:ok, compacted} = Compaction.prepare(history(), run(llm), roomy())
+      {:ok, compacted} = Compaction.prepare(roomy(), history(), run: run(llm))
       [summary, acknowledgement | _recent] = Conversation.to_list(compacted)
 
       outgrown =
@@ -180,17 +175,17 @@ defmodule Wardrik.CompactionTest do
     end
 
     test "is nothing to do for a history that has not outgrown its window" do
-      assert :keep = Compaction.prepare(history(), run(), Compaction.new())
+      assert :keep = Compaction.prepare(Compaction.new(), history(), run: run())
     end
 
     test "leaves the history as it was when the summary cannot be made" do
       llm = LLM.start()
       LLM.stream(llm, [LLM.final_answer("   "), %Error{message: "timeout"}])
 
-      assert {:error, :empty_summary} = Compaction.prepare(history(), run(llm), roomy())
+      assert {:error, :empty_summary} = Compaction.prepare(roomy(), history(), run: run(llm))
 
       assert {:error, %Error{message: "timeout"}} =
-               Compaction.prepare(history(), run(llm), roomy())
+               Compaction.prepare(roomy(), history(), run: run(llm))
     end
   end
 end

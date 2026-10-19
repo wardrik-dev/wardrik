@@ -1,6 +1,8 @@
 defmodule Wardrik.AgentCompactionTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Wardrik.Agent
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
@@ -26,13 +28,16 @@ defmodule Wardrik.AgentCompactionTest do
   end
 
   defp config,
-    do: Config.new(history: {Compaction, Compaction.new(window: 400, at: 0.6, keep: 0.5)})
+    do: Config.new(history: Compaction.new(window: 400, at: 0.6, keep: 0.5))
 
   defp start(opts) do
     key = Wardrik.Test.Fleet.id("compact")
 
     {^key, agent} =
-      Wardrik.Test.Fleet.start_agent([config: config(), history: history()] ++ opts, key)
+      Wardrik.Test.Fleet.start_agent(
+        Keyword.merge([config: config(), history: history()], opts),
+        key
+      )
 
     :ok = Event.Bus.subscribe(key)
     {key, agent}
@@ -102,6 +107,29 @@ defmodule Wardrik.AgentCompactionTest do
     assert_receive {:turn, turn}, 5_000
     assert [_, _, _, _, _] = turn
     refute_received %Event{payload: %Event.ContextCompacted{}}
+  end
+
+  defmodule Broken do
+    defstruct []
+
+    defimpl Wardrik.History do
+      def prepare(_broken, _history, _opts), do: raise("the store is down")
+    end
+  end
+
+  test "a history that raises fails the turn it began" do
+    capture_log(fn ->
+      {_key, agent} =
+        start(
+          config: Config.new(history: %Broken{}),
+          runner: {AgentRunners, :echo, [self(), "third answer"]}
+        )
+
+      Agent.ask(agent, "third question")
+
+      assert_receive %Event{payload: %Event.TurnFailed{}}, 5_000
+      refute_received {:turn, _turn}
+    end)
   end
 
   describe "the state" do

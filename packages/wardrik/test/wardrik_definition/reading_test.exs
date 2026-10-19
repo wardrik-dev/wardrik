@@ -483,14 +483,14 @@ defmodule WardrikDefinition.ReadingTest do
 
   test "compaction is on by default, tuned or turned off", context do
     assert {:ok, default} = read("---\n---\n", context)
-    assert default.config.history == {Wardrik.Compaction, %Wardrik.Compaction{}}
+    assert default.config.history == %Wardrik.Compaction{}
 
     assert {:ok, tuned} = read("---\ncompaction:\n  at: 0.5\n  window: 32000\n---\n", context)
 
-    assert tuned.config.history ==
-             {Wardrik.Compaction, %Wardrik.Compaction{at: 0.5, keep: 0.25, window: 32_000}}
+    assert tuned.config.history == %Wardrik.Compaction{at: 0.5, keep: 0.25, window: 32_000}
 
-    assert {:ok, %{config: %{history: nil}}} = read("---\ncompaction: false\n---\n", context)
+    assert {:ok, %{config: %{history: %Wardrik.History.All{}}}} =
+             read("---\ncompaction: false\n---\n", context)
 
     for {settings, refusal} <- [
           {"{at: 2}", "compaction at is a share of the window, between 0 and 1"},

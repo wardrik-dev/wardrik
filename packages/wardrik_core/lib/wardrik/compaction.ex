@@ -7,7 +7,7 @@ defmodule Wardrik.Compaction do
   part of it with a summary the model writes, and keeps the most recent part
   word for word:
 
-      Wardrik.LLM.Config.new(history: {Wardrik.Compaction, Wardrik.Compaction.new(at: 0.5, keep: 0.2)})
+      Wardrik.LLM.Config.new(history: Wardrik.Compaction.new(at: 0.5, keep: 0.2))
 
   | Field | What it decides |
   | --- | --- |
@@ -16,7 +16,7 @@ defmodule Wardrik.Compaction do
   | `:window` | the context window in tokens, for a model the host's `Wardrik.LLM.Client` does not know. What it knows otherwise, and #{128_000} where it knows nothing |
 
   It is an agent's `Wardrik.History` unless its config names another, and a
-  config with `history: nil` never compacts.
+  config with `%Wardrik.History.All{}` never compacts.
 
   Sizes are estimated from the text a history holds, as `Wardrik.LLM.Tokens`
   counts it, since no provider counts tokens before a call is made. The kept
@@ -28,8 +28,6 @@ defmodule Wardrik.Compaction do
   An agent compacts as a turn begins, before the messages it answers join
   the history; see `prepare/3` for the summary itself.
   """
-
-  @behaviour Wardrik.History
 
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
@@ -118,10 +116,8 @@ defmodule Wardrik.Compaction do
   model `run` asks: `{:ok, older, recent}`, or `:keep` where it has not, has
   nowhere to cut, or would have only an earlier summary to summarise.
   """
-  @spec split(t() | nil, Conversation.t(), Run.t()) ::
+  @spec split(t(), Conversation.t(), Run.t()) ::
           {:ok, [Conversation.message()], [Conversation.message()]} | :keep
-  def split(nil, _history, _run), do: :keep
-
   def split(%__MODULE__{} = compaction, %Conversation{} = history, %Run{} = run) do
     messages = Conversation.to_list(history)
     tails = Tokens.tails(messages)
@@ -160,7 +156,7 @@ defmodule Wardrik.Compaction do
   defp summary?(_older), do: false
 
   @doc """
-  Compacts `history` under `run`, if `compaction` says it is due.
+  Compacts `history` under `:run`, if `compaction` says it is due.
 
   The older part is summarised by the agent's own model, through
   `Wardrik.Call.Pipeline`, so the run's hooks decide and count the call like
@@ -177,12 +173,9 @@ defmodule Wardrik.Compaction do
   and asked about together with the summary of the parts before it, so no one
   request outgrows the model.
   """
-  @impl Wardrik.History
-  @spec prepare(Conversation.t(), Run.t(), t() | nil) ::
+  @spec prepare(t(), Conversation.t(), run: Run.t()) ::
           {:ok, Conversation.t()} | :keep | {:error, term()}
-  def prepare(%Conversation{} = history, %Run{} = run, compaction) do
-    compaction = compaction || %__MODULE__{}
-
+  def prepare(%__MODULE__{} = compaction, %Conversation{} = history, run: %Run{} = run) do
     with {:ok, older, recent} <- split(compaction, history, run),
          {:ok, summary} <- Run.span(run, "compacting history", &summarise(&1, compaction, older)) do
       {:ok,
@@ -300,4 +293,8 @@ defmodule Wardrik.Compaction do
   end
 
   defp text({:error, reason}), do: {:error, reason}
+
+  defimpl Wardrik.History do
+    defdelegate prepare(compaction, history, opts), to: Wardrik.Compaction
+  end
 end

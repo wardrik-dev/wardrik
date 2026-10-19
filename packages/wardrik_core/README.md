@@ -258,15 +258,15 @@ By default it compacts at 60% of the model's context window and keeps the
 last 25%:
 
 ```elixir
-Wardrik.LLM.Config.new(history: {Wardrik.Compaction, Wardrik.Compaction.new(at: 0.5, keep: 0.2)})
-Wardrik.LLM.Config.new(history: nil)   # never
+Wardrik.LLM.Config.new(history: Wardrik.Compaction.new(at: 0.5, keep: 0.2))
+Wardrik.LLM.Config.new(history: %Wardrik.History.All{})   # never
 ```
 
 It happens as a turn begins, before the messages it answers join the history,
 and is reported as `{:context_compacted, stats}`. The summary is a model call
 of the turn's like any other, so a budget counts it, and interrupting the turn
-interrupts it. Compaction is the default `Wardrik.History`: a module of your
-own can keep the history its way instead.
+interrupts it. Compaction is the default `Wardrik.History`: a struct of your
+own that implements it can keep the history its way instead.
 
 ### A turn lost part way
 
@@ -347,7 +347,7 @@ without notice.
 | | Modules |
 | --- | --- |
 | Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Connections.Owner`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Issuer`, `Wardrik.Servers` and the `None` of each, `Wardrik.Servers.Key`, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Entry`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store`, `Wardrik.LLM.Client`, `Wardrik.LLM.Answer`, `Wardrik.LLM.Error` |
-| Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
+| Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.History.All`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | Who acts, and what `Wardrik` answers them | `Wardrik.Token`, `Wardrik.Statement`, `Wardrik.Role`, `Wardrik.Error`, `Wardrik.Resource`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.Conversation` and the modules under it |

@@ -54,10 +54,11 @@ defmodule Wardrik.LLM.Config do
 
   `:history` is what the agent keeps of its history before each turn, a
   `Wardrik.History`: by default `Wardrik.Compaction`, which summarises the
-  older history so the rest still fits what the model can read. `nil` keeps
-  every message.
+  older history so the rest still fits what the model can read.
+  `Wardrik.History.All` keeps every message.
 
-      Wardrik.LLM.Config.new(history: {Wardrik.Compaction, Wardrik.Compaction.new(at: 0.5)})
+      Wardrik.LLM.Config.new(history: Wardrik.Compaction.new(at: 0.5))
+      Wardrik.LLM.Config.new(history: %Wardrik.History.All{})
 
   `:max_iterations` bounds how many rounds of tool calls a turn may make,
   thirty by default. A turn that reaches it is asked to answer with what it
@@ -91,7 +92,7 @@ defmodule Wardrik.LLM.Config do
             tool_prices: %{},
             generation: [],
             max_iterations: 30,
-            history: {Wardrik.Compaction, %Wardrik.Compaction{}}
+            history: %Wardrik.Compaction{}
 
   @type t :: %__MODULE__{
           model_spec: String.t() | {atom(), keyword()},
