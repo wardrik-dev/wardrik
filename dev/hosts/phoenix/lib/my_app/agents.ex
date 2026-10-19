@@ -53,7 +53,7 @@ defmodule MyApp.Agents do
     )
   end
 
-  def children, do: [{WardrikStore, store()}, {Wardrik, wardrik()}]
+  def children, do: [{WardrikStore, store()}, {Wardrik, wardrik()}, {MyApp.Agents.Runs, wardrik()}]
 
   def define(user, name, definition) do
     agent = AgentID.new!(name, org: user.org, user: to_string(user.id))
@@ -72,6 +72,12 @@ defmodule MyApp.Agents do
         after: cursor,
         follow: true
       )
+
+  def doing(user, agent) do
+    with {:ok, snapshot} <- Wardrik.agent_read(scope(user), agent) do
+      {:ok, Wardrik.Agent.Activity.Presenter.label(%Wardrik.Agent.Activity.English{}, snapshot.status.activity)}
+    end
+  end
 
   def connect(user, provider),
     do: Wardrik.connections_connect(scope(user), MyApp.Issuer.own(user), provider)
