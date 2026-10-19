@@ -247,7 +247,7 @@ The rest of a channel's keys are its kind's, such as Slack's `signing_secret` an
 its medium sends it over HTTP reaches the daemon at `/v1/channels/NAME/`; see [`http`](#http). A
 channel
 offers the agents of the orgs that [`orgs`](#orgs) lists it for. An agent is offered in a channel's
-rooms where its file lists the channel.
+rooms where its definition lists the channel.
 
 Everyone in a channel holds the roles `reader` and `messenger` on the agents of its orgs: they read
 them and send them messages. Its approvers hold `approver` too, and its admins `approver` and
