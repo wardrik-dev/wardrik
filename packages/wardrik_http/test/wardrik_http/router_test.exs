@@ -15,6 +15,7 @@ defmodule WardrikHTTP.RouterTest do
   alias Wardrik.Test.Audit
   alias Wardrik.Test.EventLog
   alias Wardrik.Test.Fleet
+  alias Wardrik.Test.Script
   alias WardrikHTTP.Listener
   alias WardrikHTTP.Token
 
@@ -307,7 +308,7 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   defp echo_agent do
-    {key, agent} = Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "ok"]})
+    {key, agent} = Fleet.start_agent(config: Script.new({AgentRunners, :echo, [self(), "ok"]}))
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     {key, agent}
   end
@@ -315,10 +316,12 @@ defmodule WardrikHTTP.RouterTest do
   defp parked_agent do
     {key, agent} =
       Fleet.start_agent(
-        runner: {AgentRunners, :parking, [self(), "call_1"]},
-        resumer:
-          {AgentRunners, :resuming,
-           [self(), {:ok, [Wardrik.Conversation.Assistant.new("shipped")]}]}
+        config:
+          Script.new({AgentRunners, :parking, [self(), "call_1"]},
+            resume:
+              {AgentRunners, :resuming,
+               [self(), {:ok, [Wardrik.Conversation.Assistant.new("shipped")]}]}
+          )
       )
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
@@ -331,7 +334,7 @@ defmodule WardrikHTTP.RouterTest do
   # An agent waiting on a person to connect an account at `link`.
   defp connecting_agent(link) do
     {key, agent} =
-      Fleet.start_agent(runner: {AgentRunners, :connecting, [self(), "call_1", link]})
+      Fleet.start_agent(config: Script.new({AgentRunners, :connecting, [self(), "call_1", link]}))
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     Agent.ask(agent, "open an issue")
@@ -558,7 +561,7 @@ defmodule WardrikHTTP.RouterTest do
 
       {key, _agent} =
         Fleet.start_agent(
-          [runner: {AgentRunners, :echo, [self(), "ok"]}],
+          [config: Script.new({AgentRunners, :echo, [self(), "ok"]})],
           Wardrik.AgentID.parse!("test/@jon/#{name}")
         )
 
@@ -783,7 +786,7 @@ defmodule WardrikHTTP.RouterTest do
 
   test "cancel stops what the agent is doing", %{api: api} do
     {key, agent} =
-      Fleet.start_agent(runner: {AgentRunners, :blocking, [self(), "ok"]}, grace: 10)
+      Fleet.start_agent(config: Script.new({AgentRunners, :blocking, [self(), "ok"]}), grace: 10)
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     Agent.ask(agent, "wait")
@@ -805,7 +808,7 @@ defmodule WardrikHTTP.RouterTest do
     api: api
   } do
     {key, agent} =
-      Fleet.start_agent(runner: {AgentRunners, :blocking, [self(), "ok"]}, grace: 10)
+      Fleet.start_agent(config: Script.new({AgentRunners, :blocking, [self(), "ok"]}), grace: 10)
 
     :ok = Event.Bus.subscribe(key)
     Agent.ask(agent, "wait")
@@ -1164,7 +1167,10 @@ defmodule WardrikHTTP.RouterTest do
   # An agent that answered once, then went to sleep.
   defp sleeping_agent do
     {key, agent} =
-      Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "ok"]}, idle_timeout: 50)
+      Fleet.start_agent(
+        config: Script.new({AgentRunners, :echo, [self(), "ok"]}),
+        idle_timeout: 50
+      )
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     Agent.ask(agent, "hi")

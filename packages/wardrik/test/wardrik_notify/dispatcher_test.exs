@@ -6,6 +6,7 @@ defmodule WardrikNotify.DispatcherTest do
   alias Wardrik.Agent
   alias Wardrik.Fleet
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
   alias WardrikNotify.Route
 
   setup :set_req_test_to_shared
@@ -28,7 +29,9 @@ defmodule WardrikNotify.DispatcherTest do
   defp set_req_test_to_shared(context), do: Req.Test.set_req_test_to_shared(context)
 
   test "tells a route's targets when its agent parks", %{key: key} do
-    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    {:ok, _pid} =
+      Fleet.spawn(key, config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
+
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
 
     :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
@@ -39,7 +42,8 @@ defmodule WardrikNotify.DispatcherTest do
   end
 
   test "sends what a turn answered only to a route that asks for it", %{key: key} do
-    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "All quiet."]})
+    {:ok, _pid} =
+      Fleet.spawn(key, config: Script.new({AgentRunners, :echo, [self(), "All quiet."]}))
 
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
     :ok = Agent.ask(key, "Anything?", host: Wardrik.Test.host())
@@ -53,7 +57,9 @@ defmodule WardrikNotify.DispatcherTest do
   end
 
   test "an agent left out of the routes is no longer heard", %{key: key} do
-    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    {:ok, _pid} =
+      Fleet.spawn(key, config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
+
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
     :ok = WardrikNotify.put_routes(%{})
 
@@ -70,7 +76,9 @@ defmodule WardrikNotify.DispatcherTest do
       conn |> Plug.Conn.put_status(400) |> Req.Test.json(%{})
     end)
 
-    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    {:ok, _pid} =
+      Fleet.spawn(key, config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
+
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit, :missing]}})
 
     log =
@@ -93,7 +101,9 @@ defmodule WardrikNotify.DispatcherTest do
       conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{})
     end)
 
-    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    {:ok, _pid} =
+      Fleet.spawn(key, config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
+
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
 
     log =
@@ -122,7 +132,9 @@ defmodule WardrikNotify.DispatcherTest do
       Req.Test.json(conn, %{})
     end)
 
-    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    {:ok, _pid} =
+      Fleet.spawn(key, config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
+
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
 
     log =
@@ -140,7 +152,9 @@ defmodule WardrikNotify.DispatcherTest do
   test "tells a target only of its own orgs' agents, and logs one routed to another's", %{
     key: key
   } do
-    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    {:ok, _pid} =
+      Fleet.spawn(key, config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
+
     :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:globex, :audit]}})
 
     log =
@@ -163,7 +177,9 @@ defmodule WardrikNotify.DispatcherTest do
       {WardrikNotify.Supervisor, [routes: {Function, :identity, [routes]}] ++ settings()}
     )
 
-    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    {:ok, _pid} =
+      Fleet.spawn(key, config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
+
     :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
 
     assert_receive {:notice, %{"event" => "turn_parked"}}

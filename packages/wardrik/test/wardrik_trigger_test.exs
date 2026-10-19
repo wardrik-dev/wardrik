@@ -35,6 +35,7 @@ defmodule WardrikTriggerTest do
   alias Wardrik.Fleet
   alias Wardrik.LLM.Turn
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
   alias WardrikTrigger.Cron
   alias WardrikTrigger.Interval
   alias WardrikTrigger.Item
@@ -71,7 +72,7 @@ defmodule WardrikTriggerTest do
   end
 
   defp spawn_agent(key, runner) do
-    {:ok, _pid} = Fleet.spawn(key, runner: runner)
+    {:ok, _pid} = Fleet.spawn(key, config: Script.new(runner))
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
   end
 

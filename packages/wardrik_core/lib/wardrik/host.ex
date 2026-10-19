@@ -5,7 +5,7 @@ defmodule Wardrik.Host do
   people connect, which MCP servers they add, where secrets come from, how
   callers' tokens are kept, where requests for triggers go, what token each
   principal acts with, where agents' files are kept, what each model call
-  actually is, and what makes it.
+  actually is, what makes it, and what runs agents' turns.
 
   `:store` is a `WardrikStore`, the one the host started, or
   `WardrikStore.None`'s where it names none, which raises on the first read
@@ -24,6 +24,7 @@ defmodule Wardrik.Host do
   | `:workspace` | `Wardrik.Workspace` | `%Wardrik.Workspace.None{}` |
   | `:dispatch` | `Wardrik.LLM.Dispatch` | `%Wardrik.LLM.Dispatch.Direct{}` |
   | `:llm` | `Wardrik.LLM.Client` | `%Wardrik.LLM.ReqLLM{}` |
+  | `:runtimes` | `Wardrik.Runtime`, a list of them | `[%Wardrik.LLM.Runtime{}]` |
 
   `Wardrik`, of the `wardrik` package, builds the host of an application
   embedding Wardrik from its options. A host that puts its own tree
@@ -49,8 +50,9 @@ defmodule Wardrik.Host do
   A seam it does not name is its default: a None, which answers each
   function with `:unsupported`, or with what having none means in that
   function's own terms, as a token allowing nothing; for `:dispatch`
-  `Direct`, which makes each model call as it stands; and for `:llm`
-  `Wardrik.LLM.ReqLLM`, which reaches every provider ReqLLM does. So every
+  `Direct`, which makes each model call as it stands; for `:llm`
+  `Wardrik.LLM.ReqLLM`, which reaches every provider ReqLLM does; and for
+  `:runtimes` `Wardrik.LLM.Runtime`, whose turns ask a model. So every
   field is always a value its protocol answers for, and code asks it
   without first asking whether there is one.
 
@@ -80,6 +82,7 @@ defmodule Wardrik.Host do
             workspace: %Wardrik.Workspace.None{},
             dispatch: %Wardrik.LLM.Dispatch.Direct{},
             llm: %Wardrik.LLM.ReqLLM{},
+            runtimes: [%Wardrik.LLM.Runtime{}],
             audit: Wardrik.Audit,
             expires: [api: @api_expires]
 
@@ -95,6 +98,7 @@ defmodule Wardrik.Host do
           workspace: Wardrik.Workspace.t(),
           dispatch: Wardrik.LLM.Dispatch.t(),
           llm: Wardrik.LLM.Client.t(),
+          runtimes: [Wardrik.Runtime.t()],
           audit: GenServer.name(),
           expires: [api: pos_integer()]
         }
@@ -109,7 +113,8 @@ defmodule Wardrik.Host do
     :issuer,
     :workspace,
     :dispatch,
-    :llm
+    :llm,
+    :runtimes
   ]
 
   @doc """
@@ -171,6 +176,16 @@ defmodule Wardrik.Host do
   @doc "The `Wardrik.LLM.Client` every model call is made through."
   @spec llm(t()) :: Wardrik.LLM.Client.t()
   def llm(%__MODULE__{llm: llm}), do: llm
+
+  @doc """
+  The runtime of the host's `:runtimes` whose `Wardrik.Runtime.key/1` is
+  `key`, which runs the turns of the agents whose settings name it.
+  """
+  @spec runtime(t(), String.t()) :: Wardrik.Runtime.t()
+  def runtime(%__MODULE__{runtimes: runtimes}, key) do
+    Enum.find(runtimes, &(Wardrik.Runtime.key(&1) == key)) ||
+      raise ArgumentError, "the host runs no runtime #{inspect(key)}"
+  end
 
   @doc "The `Wardrik.Issuer` that issues each principal the token it acts with."
   @spec issuer(t()) :: Wardrik.Issuer.t()

@@ -12,6 +12,7 @@ defmodule Wardrik.Fleet.DefinedTest do
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Definitions
   alias Wardrik.Test.LLM
+  alias Wardrik.Test.Script
 
   setup do
     key = Wardrik.Test.Fleet.id()
@@ -44,7 +45,10 @@ defmodule Wardrik.Fleet.DefinedTest do
     key: key
   } do
     {^key, _pid} =
-      Wardrik.Test.Fleet.start_agent([runner: {AgentRunners, :echo, [self(), "ok"]}], key)
+      Wardrik.Test.Fleet.start_agent(
+        [config: Script.new({AgentRunners, :echo, [self(), "ok"]})],
+        key
+      )
 
     :ok = Agent.ask(key, "hello", host: Wardrik.Test.host())
     assert_receive {:turn, _messages}

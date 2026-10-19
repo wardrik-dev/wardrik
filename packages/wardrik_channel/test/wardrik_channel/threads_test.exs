@@ -9,6 +9,7 @@ defmodule WardrikChannel.ThreadsTest do
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
   alias WardrikChannel.Approvers
   alias WardrikChannel.Binding
   alias WardrikChannel.Context
@@ -63,7 +64,7 @@ defmodule WardrikChannel.ThreadsTest do
 
   # A channel of its own, delivering to the test, posted in by a
   # WardrikChannel.Replies of its own started with it, with a room bound to
-  # an agent whose threads run on `runner`, and resume on `:resumer`.
+  # an agent whose threads run on `runner`, and resume on `:resume`.
   defp bound(runner, opts \\ []) do
     agent = Wardrik.Test.Fleet.id("books")
     name = "chat-#{System.unique_integer([:positive])}"
@@ -83,7 +84,8 @@ defmodule WardrikChannel.ThreadsTest do
           ),
         installations: Installations.Config.new([{name, "token", Resource.deployment()}]),
         offered: {__MODULE__, :offering, [agent]},
-        start: {__MODULE__, :starting, [[runner: runner] ++ Keyword.take(opts, [:resumer])]},
+        start:
+          {__MODULE__, :starting, [[config: Script.new(runner, Keyword.take(opts, [:resume]))]]},
         approvers: {__MODULE__, :approving, [Keyword.get(opts, :approvers, [])]},
         replies: replies
       )
@@ -245,7 +247,7 @@ defmodule WardrikChannel.ThreadsTest do
 
     {context, _room} =
       bound({AgentRunners, :connecting, [self(), "call_1", link, credential]},
-        resumer: {AgentRunners, :resuming, [self(), answer]}
+        resume: {AgentRunners, :resuming, [self(), answer]}
       )
 
     assert {:asked, _agent} =

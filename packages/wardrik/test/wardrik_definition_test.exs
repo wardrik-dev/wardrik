@@ -99,7 +99,14 @@ defmodule WardrikDefinitionTest do
     assert {:ok, %{targets: [:pager]}} = WardrikDefinition.route(fields, id, context)
 
     assert {:ok, %{config: %{tool_prices: %{"clock" => 0.01}}}} =
-             spec(%{}, %{context | config: [tool_prices: %{"clock" => 0.01}]}, id)
+             spec(
+               %{},
+               %{
+                 context
+                 | runtimes: [%Wardrik.LLM.Runtime{config: [tool_prices: %{"clock" => 0.01}]}]
+               },
+               id
+             )
 
     assert {:ok, %{idle_timeout: :infinity}} =
              spec(%{"idle_timeout" => "infinity"}, context, id)

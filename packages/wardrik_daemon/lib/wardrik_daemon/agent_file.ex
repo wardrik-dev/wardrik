@@ -63,8 +63,12 @@ defmodule WardrikDaemon.AgentFile do
       policies: %{},
       defaults: config |> Config.section(WardrikDaemon.Agents) |> Keyword.get(:defaults, %{}),
       seams: [ledger: %Wardrik.Ledger.Store{}],
-      config: [
-        tool_prices: config |> Config.section(__MODULE__) |> Keyword.get(:tool_prices, %{})
+      runtimes: [
+        %Wardrik.LLM.Runtime{
+          config: [
+            tool_prices: config |> Config.section(__MODULE__) |> Keyword.get(:tool_prices, %{})
+          ]
+        }
       ],
       shares: config |> Config.section(WardrikWorkspace) |> Keyword.get(:shared, []),
       triggers: config.triggers,

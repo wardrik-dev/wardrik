@@ -13,6 +13,7 @@ defmodule Wardrik.FleetTest do
   alias Wardrik.Resource
   alias Wardrik.Run
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
@@ -29,7 +30,7 @@ defmodule Wardrik.FleetTest do
   describe "spawn/2" do
     test "starts an agent reachable by its ID from anywhere" do
       key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: runner(self()))
+      pid = start(key, config: Script.new(runner(self())))
 
       assert Fleet.whereis(key, host: Wardrik.Test.host()) == pid
       assert :ok = Agent.ask(key, "hello", host: Wardrik.Test.host())
@@ -38,14 +39,14 @@ defmodule Wardrik.FleetTest do
 
     test "returns the agent already holding the ID rather than a second one" do
       key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: runner(self()))
+      pid = start(key, config: Script.new(runner(self())))
 
-      assert {:ok, ^pid} = Fleet.spawn(key, runner: runner(self()))
+      assert {:ok, ^pid} = Fleet.spawn(key, config: Script.new(runner(self())))
     end
 
     test "the run names the agent it runs for" do
       key = AgentID.new!("planner", org: "acme", user: 42)
-      pid = start(key, runner: {AgentRunners, :reporting, [self()]})
+      pid = start(key, config: Script.new({AgentRunners, :reporting, [self()]}))
 
       Agent.ask(pid, "hi")
 
@@ -58,7 +59,7 @@ defmodule Wardrik.FleetTest do
 
     test "places the agent on the node it is given" do
       key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: runner(self()), node: node())
+      pid = start(key, config: Script.new(runner(self())), node: node())
 
       assert node(pid) == node()
       assert Fleet.whereis(key, host: Wardrik.Test.host()) == pid
@@ -74,7 +75,7 @@ defmodule Wardrik.FleetTest do
     test "removes every running agent a pattern covers and says how many" do
       org = "org#{System.unique_integer([:positive])}"
       keys = for name <- ["one", "two"], do: AgentID.new!(name, org: org)
-      Enum.each(keys, &start(&1, runner: runner(self())))
+      Enum.each(keys, &start(&1, config: Script.new(runner(self()))))
       own = Resource.parse!("#{org}/agent/*")
 
       assert Fleet.forget_under(own) == 2
@@ -86,7 +87,7 @@ defmodule Wardrik.FleetTest do
   describe "move/2" do
     test "restarts an agent on the target node with the conversation it had" do
       key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: runner(self()))
+      pid = start(key, config: Script.new(runner(self())))
       Event.Bus.subscribe(key)
       Agent.ask(pid, "hello")
       assert_receive %Event{payload: %Event.TurnFinished{}}
@@ -106,9 +107,9 @@ defmodule Wardrik.FleetTest do
       one = AgentID.new!("one", org: org)
       two = AgentID.new!("two", org: org)
       jons = AgentID.new!("one", org: org, user: "jon")
-      start(one, runner: runner(self()))
-      start(two, runner: runner(self()))
-      start(jons, runner: runner(self()))
+      start(one, config: Script.new(runner(self())))
+      start(two, config: Script.new(runner(self())))
+      start(jons, config: Script.new(runner(self())))
 
       own = Resource.parse!("#{org}/agent/*")
       assert [%{id: ^one}, %{id: ^two}] = Fleet.list(own, host: Wardrik.Test.host())
@@ -124,7 +125,7 @@ defmodule Wardrik.FleetTest do
 
     test "an agent reports that it is running, then parked" do
       key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: parking_runner(self()))
+      pid = start(key, config: Script.new(parking_runner(self())))
       Event.Bus.subscribe(key)
 
       Agent.ask(pid, "deploy")
@@ -146,7 +147,12 @@ defmodule Wardrik.FleetTest do
 
     test "a turn's delegations are followed from its lifecycle events, and the fleet how it ended" do
       key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: {Wardrik.Test.AgentRunners, :delegating, [self(), "pricing"]})
+
+      pid =
+        start(key,
+          config: Script.new({Wardrik.Test.AgentRunners, :delegating, [self(), "pricing"]})
+        )
+
       Event.Bus.subscribe(key, level: :lifecycle)
 
       assert %{outcome: nil} = Fleet.lookup(key, host: Wardrik.Test.host())
@@ -170,7 +176,7 @@ defmodule Wardrik.FleetTest do
     @tag capture_log: true
     test "a failed turn is reported as the last outcome" do
       key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: {Wardrik.Test.AgentRunners, :failing, [:boom]})
+      pid = start(key, config: Script.new({Wardrik.Test.AgentRunners, :failing, [:boom]}))
       Event.Bus.subscribe(key, level: :lifecycle)
 
       Agent.ask(pid, "go")
@@ -193,7 +199,7 @@ defmodule Wardrik.FleetTest do
       on_exit(&Fleet.unwatch/0)
 
       key = AgentID.new!("watched", org: org)
-      start(key, runner: runner(self()))
+      start(key, config: Script.new(runner(self())))
 
       assert joined?(to_string(key))
     end
@@ -212,7 +218,7 @@ defmodule Wardrik.FleetTest do
   describe "durability" do
     test "an agent comes back with the conversation it had" do
       key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: runner(self()))
+      pid = start(key, config: Script.new(runner(self())))
       Event.Bus.subscribe(key)
 
       Agent.ask(pid, "hello")
@@ -232,7 +238,7 @@ defmodule Wardrik.FleetTest do
 
     test "a parked turn is still parked after a restart" do
       key = Wardrik.Test.Fleet.id()
-      pid = start(key, runner: parking_runner(self()))
+      pid = start(key, config: Script.new(parking_runner(self())))
       Event.Bus.subscribe(key)
 
       Agent.ask(pid, "deploy it")
@@ -251,13 +257,13 @@ defmodule Wardrik.FleetTest do
     test "a turn that was running when the node went is run again" do
       key = Wardrik.Test.Fleet.id()
       test_pid = self()
-      pid = start(key, runner: blocking_runner(test_pid))
+      pid = start(key, config: Script.new(blocking_runner(test_pid)))
 
       Agent.ask(pid, "slow one")
       assert_receive {:turn, [{:user, "slow one"}], _turn_pid}
 
       # Stopping syncs the state as it stands, which is mid-turn.
-      # The runner comes back from the dump, so the turn runs the same way.
+      # The script comes back with the config, so the turn runs the same way.
       :ok = Fleet.stop(key)
       {:ok, _restarted} = Fleet.spawn(key, [])
 
@@ -267,7 +273,7 @@ defmodule Wardrik.FleetTest do
     test "a config's tools are rebuilt on the node that loads it" do
       key = Wardrik.Test.Fleet.id()
       config = Config.new(tools: [Wardrik.Test.EchoTool])
-      pid = start(key, config: config, runner: runner(self()))
+      pid = start(key, config: config)
 
       :ok = Fleet.stop(key)
       {:ok, restarted} = Fleet.spawn(key, [])

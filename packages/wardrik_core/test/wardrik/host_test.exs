@@ -30,6 +30,17 @@ defmodule Wardrik.HostTest do
     assert_raise ArgumentError, fn -> Host.new(ledger: %Issued{}) end
   end
 
+  test "finds each runtime it runs by its key, and raises on one it does not run" do
+    host = Host.new(runtimes: Wardrik.Test.runtimes())
+
+    assert Host.runtime(host, "test") == %Wardrik.Test.Runtime{}
+    assert Host.runtime(Host.new(), "model") == %Wardrik.LLM.Runtime{}
+    assert_raise ArgumentError, ~r/no runtime "test"/, fn -> Host.runtime(Host.new(), "test") end
+
+    assert {:error, _why} =
+             Wardrik.Runtime.read(%Wardrik.Test.Runtime{}, %{}, %Wardrik.Runtime.Context{})
+  end
+
   test "each None answers that the host offers nothing" do
     id = ~A"acme/triage"
     host = Host.new()

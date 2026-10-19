@@ -29,7 +29,12 @@ defmodule Wardrik.Test do
   `store/0` and `host/1` are the store and the host that runtime started on,
   for a test to hand what it calls. The host's `Wardrik.LLM.Client` is
   `llm/0`, which answers every agent's model calls from the script a test
-  sets on it; see `Wardrik.Test.LLM`.
+  sets on it; see `Wardrik.Test.LLM`. It runs `Wardrik.Test.Runtime` beside
+  `Wardrik.LLM.Runtime`, so an agent whose config is a `Wardrik.Test.Script`
+  runs turns a test writes in place of a model's:
+
+      config = Wardrik.Test.Script.new({Wardrik.Test.AgentRunners, :echo, [self(), "ok"]})
+      {id, pid} = Wardrik.Test.Fleet.start_agent(config: config)
 
   The modules under this one stand in for parts of a run: `Wardrik.Test.Fleet`
   starts an agent under a key of each test's own, `Wardrik.Test.LLM`
@@ -121,8 +126,8 @@ defmodule Wardrik.Test do
   def store, do: WardrikStore.new(settings())
 
   @doc """
-  The host the runtime started on, with `store/0`, `llm/0` and the seams the
-  suite's configuration names, and those `opts` name over them.
+  The host the runtime started on, with `store/0`, `llm/0`, `runtimes/0` and
+  the seams the suite's configuration names, and those `opts` name over them.
   """
   @spec host(keyword()) :: Wardrik.Host.t()
   def host(opts \\ []) do
@@ -130,8 +135,14 @@ defmodule Wardrik.Test do
       for {seam, {module, fields}} <- Keyword.get(config(), :host, []),
           do: {seam, struct!(module, fields)}
 
-    Wardrik.Host.new(Keyword.merge([store: store(), llm: llm()] ++ seams, opts))
+    Wardrik.Host.new(
+      Keyword.merge([store: store(), llm: llm(), runtimes: runtimes()] ++ seams, opts)
+    )
   end
+
+  @doc "`Wardrik.LLM.Runtime` and `Wardrik.Test.Runtime`, which `host/1` runs."
+  @spec runtimes() :: [Wardrik.Runtime.t()]
+  def runtimes, do: [%Wardrik.LLM.Runtime{}, %Wardrik.Test.Runtime{}]
 
   @doc """
   The run a turn would run under, for an agent of this test's own.

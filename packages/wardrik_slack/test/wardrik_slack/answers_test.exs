@@ -5,6 +5,7 @@ defmodule WardrikSlack.AnswersTest do
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
   alias WardrikSlack.Answers
 
   @req_options [plug: {Req.Test, WardrikSlack.Stub}]
@@ -78,8 +79,10 @@ defmodule WardrikSlack.AnswersTest do
 
       {:ok, _pid} =
         Fleet.spawn(key,
-          runner: {AgentRunners, :connecting, [self(), "call_1", link]},
-          resumer: {AgentRunners, :resuming, [self(), {:ok, []}]}
+          config:
+            Script.new({AgentRunners, :connecting, [self(), "call_1", link]},
+              resume: {AgentRunners, :resuming, [self(), {:ok, []}]}
+            )
         )
 
       on_exit(fn -> Fleet.forget(key) end)
@@ -145,8 +148,10 @@ defmodule WardrikSlack.AnswersTest do
 
       {:ok, _pid} =
         Fleet.spawn(key,
-          runner: {AgentRunners, :parking, [self(), "call_1"]},
-          resumer: {AgentRunners, :resuming, [self(), {:ok, []}]}
+          config:
+            Script.new({AgentRunners, :parking, [self(), "call_1"]},
+              resume: {AgentRunners, :resuming, [self(), {:ok, []}]}
+            )
         )
 
       on_exit(fn -> Fleet.forget(key) end)
@@ -175,8 +180,10 @@ defmodule WardrikSlack.AnswersTest do
 
       {:ok, _pid} =
         Fleet.spawn(key,
-          runner: {AgentRunners, :parking, [self(), "call_1"]},
-          resumer: {AgentRunners, :resuming, [self(), {:ok, []}]}
+          config:
+            Script.new({AgentRunners, :parking, [self(), "call_1"]},
+              resume: {AgentRunners, :resuming, [self(), {:ok, []}]}
+            )
         )
 
       on_exit(fn -> Fleet.forget(key) end)

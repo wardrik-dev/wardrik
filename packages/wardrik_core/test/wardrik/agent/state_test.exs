@@ -18,6 +18,7 @@ defmodule Wardrik.Agent.StateTest do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
   alias Wardrik.Run
+  alias Wardrik.Test.Script
 
   defp state, do: State.new([config: Config.new()], Wardrik.AgentID.parse!("acme/@jon/assistant"))
 
@@ -703,14 +704,11 @@ defmodule Wardrik.Agent.StateTest do
       assert state.run_opts == []
     end
 
-    test "the runner and resumer travel" do
-      state =
-        State.new(
-          [config: Config.new(), runner: {SomeHost, :run, [:arg]}],
-          Wardrik.AgentID.parse!("acme/@jon/assistant")
-        )
+    test "a config of its runtime's own travels" do
+      script = Script.new({SomeHost, :run, [:arg]})
+      state = State.new([config: script], Wardrik.AgentID.parse!("acme/@jon/assistant"))
 
-      assert reload(state).runner == {SomeHost, :run, [:arg]}
+      assert reload(state).config == script
     end
 
     test "a dump holds no processes, timers or callbacks" do
@@ -739,15 +737,6 @@ defmodule Wardrik.Agent.StateTest do
       refute Map.has_key?(Stored.dump(state), :host)
       assert reload(state).host == Wardrik.Host.new()
       assert State.turn_run(state, nil).host == host
-    end
-
-    test "a runner that is not an MFA is refused when the state is built" do
-      assert_raise ArgumentError, ~r/must be \{module, function, args\}/, fn ->
-        State.new(
-          [runner: fn _run, _context -> :ok end],
-          Wardrik.AgentID.parse!("acme/@jon/assistant")
-        )
-      end
     end
   end
 

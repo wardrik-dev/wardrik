@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.CLI.LifecycleTest do
   use ExUnit.Case, async: false
 
+  alias Wardrik.Test.Script
   alias WardrikDaemon.Test.Host
 
   import Wardrik.Test, only: [store: 0]
@@ -78,7 +79,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   end
 
   defp parked(org, name) do
-    key = agent(org, name, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    key = agent(org, name, config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
     :ok = Event.Bus.subscribe(key)
     :ok = Agent.ask(key, "ship it", host: Host.host())
     assert_receive %Event{payload: %Event.TurnParked{}}
@@ -169,7 +170,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "spawn", "helper", "--org", org]) ==
                {"Started #{key} on #{here}, as agents/helper.md declares it.\n", 0}
 
-      loose = agent(org, "loose", runner: {AgentRunners, :echo, [self(), "hello back"]})
+      loose =
+        agent(org, "loose", config: Script.new({AgentRunners, :echo, [self(), "hello back"]}))
+
       :ok = Agent.ask(loose, "hello", host: Host.host())
       assert_receive {:turn, [{:user, "hello"}]}
       assert Wardrik.Test.Fleet.await_update(fn -> status(loose) == :idle end)
@@ -455,7 +458,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     end
 
     test "says a running turn ends, and why a move failed", %{org: org} do
-      key = agent(org, "busy", runner: {AgentRunners, :blocking, [self(), "done"]})
+      key = agent(org, "busy", config: Script.new({AgentRunners, :blocking, [self(), "done"]}))
       :ok = Agent.ask(key, "work", host: Host.host())
       assert_receive {:turn, _messages, runner}
       assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :running end)
