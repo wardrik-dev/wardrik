@@ -592,8 +592,10 @@ defmodule Wardrik.AgentTest do
           credential = %{ref: "github", owner: owner}
 
           start_agent(
-            runner: {AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
-            resumer: resumer(test_pid, {:ok, [Assistant.new("opened")]})
+            config:
+              Script.new({AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
+                resume: resumer(test_pid, {:ok, [Assistant.new("opened")]})
+              )
           )
         end
 

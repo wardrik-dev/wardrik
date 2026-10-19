@@ -24,6 +24,7 @@ defmodule Wardrik.Test.Turn do
     def status(test), do: Turn.status(test.turn)
     def waiting(test), do: Turn.waiting(test.turn)
     def awaiting(test, ref, owner), do: Turn.awaiting(test.turn, ref, owner)
+    def awaited(test), do: Turn.awaited(test.turn)
     def under(test, run), do: %{test | turn: Turn.under(test.turn, run)}
     def stale?(test, hooks), do: Turn.stale?(test.turn, hooks)
     def dump(test), do: %{test | turn: Turn.dump(test.turn)}
