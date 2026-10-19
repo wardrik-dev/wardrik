@@ -10,6 +10,7 @@ defmodule Wardrik.LLM.TurnTest do
   alias Wardrik.Conversation.ServerToolCall
   alias Wardrik.Conversation.Text
   alias Wardrik.Conversation.ToolCall
+  alias Wardrik.Conversation.ToolError
   alias Wardrik.Conversation.ToolResult
   alias Wardrik.Conversation.User
   alias Wardrik.Event
@@ -1321,6 +1322,35 @@ defmodule Wardrik.LLM.TurnTest do
       assert Enum.any?(messages, &match?(%ToolResult{}, &1))
       assert %Assistant{} = List.last(messages)
       assert_receive %Event{payload: %Event.ToolFinished{call_id: "call_1", name: "deploy"}}
+    end
+
+    test "a call that crashes once approved is answered with why, and the turn carries on", %{
+      agent_id: agent_id,
+      llm: llm
+    } do
+      TestLLM.stream(llm, [
+        TestLLM.tool_call("call_1", "deploy", %{}),
+        TestLLM.final_answer("it broke")
+      ])
+
+      crashing =
+        Wardrik.Tool.new!(
+          name: "deploy",
+          description: "Ship it.",
+          schema: [],
+          run: fn _args, _context -> raise "kaboom" end
+        )
+
+      run = governed(agent_id, llm, [crashing])
+      parked = turn(run, Conversation.new([User.new("ship it")]))
+
+      {resumed, _log} = with_log(fn -> resume(run, parked, %{"call_1" => :approve}) end)
+
+      assert %LLM.Turn{state: :done, messages: [_call, %ToolError{}, %Assistant{}]} = resumed
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1"}} = started
+      assert_receive %Event{payload: %Event.ToolFinished{call_id: "call_1"} = payload} = finished
+      assert started.source.trace.span_id == finished.source.trace.span_id
+      assert {:error, "Tool crashed: " <> _why} = Event.ended(payload)
     end
 
     test "approving with a note hands the model the note beside the call's answer", %{

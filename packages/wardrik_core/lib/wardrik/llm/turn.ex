@@ -287,7 +287,9 @@ defmodule Wardrik.LLM.Turn do
   Finishes a waiting turn, applying one decision per waiting call.
 
   Approved calls go ahead now, without the hooks being asked again: the
-  decision has been made, and asking again would park them forever. Each hook
+  decision has been made, and asking again would park them forever. They run
+  as a batch's calls do, each in a task of its own, so one that crashes or
+  hangs is answered with why and the turn carries on. Each hook
   that asked hears of the approval through `Wardrik.Hook.approved/1`. A call that
   parked because it may already have run runs again once approved; one
   approved when a hook asked, and found by the ledger to have begun since,
@@ -322,7 +324,8 @@ defmodule Wardrik.LLM.Turn do
 
   def resume(%__MODULE__{state: :waiting} = turn, decisions) when is_map(decisions) do
     stale? = stale?(turn)
-    calls = Enum.map(turn.calls, &decide(&1, decisions, batch(turn), stale?))
+    run = batch(turn)
+    calls = turn.calls |> Enum.map(&decide(&1, decisions, run, stale?)) |> ran(run)
     resumed = read(%{turn | calls: calls}, calls)
 
     if Enum.any?(resumed.calls, &Call.waiting?/1),
@@ -345,16 +348,30 @@ defmodule Wardrik.LLM.Turn do
 
   defp decide(%Call{state: :waiting} = call, decisions, run, stale?) do
     if stale? and Call.asked_by_hook?(call),
-      do: call |> Call.reset() |> ToolRunner.execute(run),
+      do: {:run, Call.reset(call)},
       else: decided(call, Map.get(decisions, call.id), run)
   end
 
-  defp decide(%Call{} = call, _decisions, _run, _stale?), do: call
+  defp decide(%Call{} = call, _decisions, _run, _stale?), do: {:keep, call}
 
-  defp decided(call, nil, _run), do: call
+  defp decided(call, nil, _run), do: {:keep, call}
 
   defp decided(call, decision, run),
-    do: call |> Call.under(run) |> Pipeline.answer(decision) |> ToolRunner.execute(run)
+    do: {:run, call |> Call.under(run) |> Pipeline.answer(decision)}
+
+  # The calls that go ahead run together, as a batch's calls do, each in a
+  # task of its own; the rest keep their places.
+  defp ran(decided, run) do
+    done = ToolRunner.execute_many_async(for({:run, call} <- decided, do: call), run)
+
+    {calls, []} =
+      Enum.map_reduce(decided, done, fn
+        {:run, _call}, [call | rest] -> {call, rest}
+        {:keep, call}, rest -> {call, rest}
+      end)
+
+    calls
+  end
 
   # A batch every call of which has been answered is appended, and the turn
   # goes on.
