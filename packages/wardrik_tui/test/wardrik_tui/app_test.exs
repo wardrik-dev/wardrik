@@ -2,6 +2,7 @@ defmodule WardrikTUI.AppTest do
   use ExUnit.Case, async: false
   use Mimic
 
+  alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.Event
   alias Wardrik.Event.Source
@@ -11,8 +12,8 @@ defmodule WardrikTUI.AppTest do
   # The view is driven purely by events, so a fake agent is enough. It forwards
   # what it is asked, decided and interrupted to this test's mailbox as casts.
   # The fleet holds it under `agent_id`, taking a turn, so every operation on
-  # the agent reaches it.
-  setup do
+  # the agent reaches it. A test tagged with a `:presenter` starts with it.
+  setup context do
     agent_id = Wardrik.Test.Fleet.id()
     {:ok, agent} = Wardrik.Test.FakeAgent.start_link(self())
     test = self()
@@ -52,6 +53,7 @@ defmodule WardrikTUI.AppTest do
           agent_id: agent_id,
           host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %WardrikTUI.Test.Root{}),
           model: "test:model",
+          presenter: Map.get(context, :presenter, %Activity.English{}),
           sidebar: false,
           clipboard: fn text ->
             send(test, {:copied, text})
@@ -95,6 +97,26 @@ defmodule WardrikTUI.AppTest do
     do: Enum.each(payloads, &Event.emit(source, &1))
 
   defp call(name), do: %{id: "call_#{name}", name: name, arguments: %{}}
+
+  # What the agent says it is doing, as `Wardrik.Agent` announces it.
+  defp doing(source, doing),
+    do: emit(source, [%Event.ActivityChanged{activity: %Activity{doing: doing, since: 0}}])
+
+  defp model,
+    do: %Event.ModelStarted{
+      message_id: "m0",
+      model_spec: "m",
+      decided_by: %{by: :default, hooks: []}
+    }
+
+  defp started(name),
+    do: %Event.ToolStarted{
+      call_id: "call_#{name}",
+      name: name,
+      arguments: %{},
+      idempotency_key: name,
+      decided_by: %{by: :default, hooks: []}
+    }
 
   defp tool_call(name, arguments),
     do: %Wardrik.Conversation.ToolCall{id: "call_#{name}", name: name, arguments: arguments}
@@ -144,7 +166,6 @@ defmodule WardrikTUI.AppTest do
       assert_receive {:"$gen_cast", {:ask, %Wardrik.Agent.Message{text: "second thought"}}}
       text = screen(session)
       assert text =~ "» second thought  · steers the turn at its next boundary"
-      assert text =~ "1 message steering the turn"
     end
 
     test "a line sent while parked queues behind the decision", %{session: session, turn: turn} do
@@ -160,7 +181,6 @@ defmodule WardrikTUI.AppTest do
       assert_receive {:"$gen_cast", {:ask, %Wardrik.Agent.Message{text: "also this"}}}
       text = screen(session)
       assert text =~ "» also this  · queued behind the parked turn"
-      assert text =~ "1 message queued behind the parked turn"
     end
 
     test "a mistyped command is reported with the nearest ones, and never sent", ctx do
@@ -559,15 +579,16 @@ defmodule WardrikTUI.AppTest do
 
     test "a resumed turn is running again, whoever answered it", %{session: session, turn: turn} do
       calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
+      session = Breeze.Test.resize(session, {100, 14})
+      parked = %Event.TurnParked{calls: calls}
+      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}, parked])
+      doing(turn, parked)
 
-      emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.TurnParked{calls: calls}
-      ])
+      assert screen(session) =~ "? waiting on a person to approve deploy and drop_table"
 
-      assert screen(session) =~ "waiting on deploy, drop"
-
-      emit(turn, [%Event.TurnResumed{decisions: %{"call_deploy" => :approve}}])
+      resumed = %Event.TurnResumed{decisions: %{"call_deploy" => :approve}}
+      emit(turn, [resumed])
+      doing(turn, resumed)
 
       text = screen(session)
       refute text =~ "idle"
@@ -575,8 +596,10 @@ defmodule WardrikTUI.AppTest do
       assert text =~ "Enter steers the turn"
 
       # The other call is still parked, and the turn says so again.
-      emit(turn, [%Event.TurnParked{calls: [{call("drop_table"), "Drop it?"}]}])
-      assert screen(session) =~ "waiting on drop_table"
+      parked = %Event.TurnParked{calls: [{call("drop_table"), "Drop it?"}]}
+      emit(turn, [parked])
+      doing(turn, parked)
+      assert screen(session) =~ "waiting on a person to approve drop_table"
     end
 
     test "all answers every parked call", %{session: session, turn: turn} do
@@ -1151,7 +1174,7 @@ defmodule WardrikTUI.AppTest do
 
   describe "the activity row" do
     test "is idle between turns", %{session: session} do
-      assert screen(session) =~ "idle"
+      assert screen(session) =~ "idle · type a"
     end
 
     test "carries a spinner only while a turn runs", %{session: session, turn: turn} do
@@ -1183,47 +1206,62 @@ defmodule WardrikTUI.AppTest do
                {:error, {:element_not_found, "activity"}}
     end
 
-    test "names the innermost work and the newest reasoning", %{
-      session: session,
-      turn: turn
-    } do
-      tool = Source.child(turn, name: "web_search")
+    test "says what the agent is doing, as it changes", %{session: session, turn: turn} do
+      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
 
-      emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Thinking{text: "I should look this up carefully"}
-      ])
+      retry = %Event.ModelRetrying{
+        message_id: "m0",
+        attempt: 2,
+        attempts: 6,
+        wait_ms: 900,
+        reason: :timeout
+      }
 
-      assert screen(session) =~ "turn · I should look this up carefully"
+      for {doing, words} <- [
+            {model(), "thinking"},
+            {[started("web_search"), started("fetch_page")], "running web_search and fetch_page"},
+            {retry, "retrying the model, 2 of 6"},
+            {%Event.SpanStarted{name: "compacting history"}, "compacting history"}
+          ] do
+        doing(turn, doing)
+        assert screen(session) =~ words
+      end
+    end
 
-      emit(tool, [%Event.SpanStarted{name: "web_search"}])
+    @tag presenter: %WardrikTUI.Test.Terse{}
+    test "takes its words from the presenter it was given", %{session: session, turn: turn} do
+      assert screen(session) =~ "resting · type a"
+
+      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      doing(turn, model())
+
+      assert screen(session) =~ "busy"
+    end
+
+    test "shows the newest reasoning while the model is asked", %{session: session, turn: turn} do
+      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      doing(turn, model())
+      emit(turn, [%Event.Thinking{text: "I should look this up carefully"}])
+
+      assert screen(session) =~ "thinking · I should look this up carefully"
+
+      doing(turn, [started("web_search")])
       text = screen(session)
-      assert text =~ "web_search"
-      refute text =~ "idle"
+      assert text =~ "running web_search"
       refute text =~ "look this up"
 
-      emit(tool, [%Event.SpanFinished{outcome: :ok, duration_ms: 10}])
+      doing(turn, model())
+      emit(turn, [%Event.Thinking{text: " and then decide"}])
 
-      emit(turn, [
-        %Event.ModelStarted{
-          message_id: "m0",
-          model_spec: "m",
-          decided_by: %{by: :default, hooks: []}
-        },
-        %Event.Thinking{text: " and then decide"}
-      ])
-
-      assert screen(session) =~ "turn · I should look this up carefully and then decide"
+      assert screen(session) =~ "thinking · I should look this up carefully and then decide"
     end
 
     test "a chunk ending in a space still separates words", %{session: session, turn: turn} do
-      emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Thinking{text: "I should "},
-        %Event.Thinking{text: "rank these"}
-      ])
+      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      doing(turn, model())
+      emit(turn, [%Event.Thinking{text: "I should "}, %Event.Thinking{text: "rank these"}])
 
-      assert screen(session) =~ "turn · I should rank these"
+      assert screen(session) =~ "thinking · I should rank these"
     end
 
     test "long reasoning shows its newest words, cut at a word and marked", %{
@@ -1232,11 +1270,13 @@ defmodule WardrikTUI.AppTest do
     } do
       words = Enum.map_join(1..30, " ", &"word#{&1}")
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}, %Event.Thinking{text: words}])
+      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      doing(turn, model())
+      emit(turn, [%Event.Thinking{text: words}])
 
-      [row] = session |> screen() |> String.split("\n") |> Enum.filter(&(&1 =~ "turn ·"))
+      [row] = session |> screen() |> String.split("\n") |> Enum.filter(&(&1 =~ "thinking ·"))
 
-      assert row =~ ~r/turn · …word\d+ /
+      assert row =~ ~r/thinking · …word\d+ /
       assert row =~ "word30"
     end
 

@@ -230,7 +230,35 @@ defmodule WardrikTUI.App.ContextTest do
     Agent.ask(next, "please work")
     assert_receive %Event{payload: %Event.TurnParked{}}, 2000
     Breeze.Test.info(s, :refresh_fleet)
-    assert screen(s) =~ "waiting on deploy, second"
+    assert screen(s) =~ "waiting on a person to approve deploy and second"
+  end
+
+  test "attaching mid-turn says what the agent is doing, and counts every message waiting" do
+    {id, pid} =
+      Wardrik.Test.Fleet.start_agent(
+        runner: {Wardrik.Test.AgentRunners, :delegating, [self(), "weighing the options"]}
+      )
+
+    Event.Bus.subscribe(id)
+    Agent.ask(pid, "please work")
+    assert_receive {:delegating, _branch}, 2000
+
+    assert_receive %Event{
+      payload: %Event.ActivityChanged{activity: %{doing: %Event.SpanStarted{}}}
+    }
+
+    s = session(id)
+    assert screen(s) =~ "weighing the options"
+
+    Agent.ask(pid, "from elsewhere", sender: Wardrik.Principal.new(:slack, "U1"))
+
+    assert_receive %Event{
+      payload: %Event.ActivityChanged{
+        activity: %{doing: %Event.SpanStarted{}, pending: 1}
+      }
+    }
+
+    assert screen(s) =~ "weighing the options, 1 message waiting"
   end
 
   test "second approval is not silently lost while first runs" do

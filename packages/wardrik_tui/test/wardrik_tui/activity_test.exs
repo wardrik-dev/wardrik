@@ -4,7 +4,6 @@ defmodule WardrikTUI.ActivityTest do
   import Wardrik.AgentID, only: [sigil_A: 2]
 
   alias Wardrik.Agent.Message
-  alias Wardrik.Conversation.ToolCall
   alias Wardrik.Event
   alias Wardrik.Event.Source
   alias WardrikTUI.Activity
@@ -47,7 +46,6 @@ defmodule WardrikTUI.ActivityTest do
       assert [span] = Activity.spans(activity)
       assert span.span_id == tool.trace.span_id
       assert span.status == :running
-      assert span.doing == "answering"
     end
 
     test "spans keep the order they were first seen", %{turn: turn} do
@@ -77,7 +75,6 @@ defmodule WardrikTUI.ActivityTest do
 
       assert span.status == :ok
       assert span.duration_ms == 1234
-      assert span.doing == nil
     end
 
     test "a failed span settles as an error", %{tool: tool} do
@@ -124,58 +121,6 @@ defmodule WardrikTUI.ActivityTest do
     end
   end
 
-  describe "what a span is doing" do
-    test "follows the last thing it reported", %{turn: turn} do
-      activity = Activity.new() |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-
-      assert fold(activity, turn, %Event.ModelStarted{
-               message_id: "m0",
-               model_spec: :m,
-               decided_by: %{by: :default, hooks: []}
-             }).spans
-             |> Map.fetch!(turn.trace.span_id)
-             |> Map.fetch!(:doing) == "waiting on the model"
-
-      assert fold(activity, turn, %Event.Thinking{text: "hmm"}).spans
-             |> Map.fetch!(turn.trace.span_id)
-             |> Map.fetch!(:doing) == "thinking"
-
-      assert fold(activity, turn, %Event.Result{text: "yes"}).spans
-             |> Map.fetch!(turn.trace.span_id)
-             |> Map.fetch!(:doing) == "answering"
-    end
-
-    test "a finished model request is no longer doing anything", %{turn: turn} do
-      activity =
-        Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-        |> fold(turn, %Event.ModelStarted{
-          message_id: "m0",
-          model_spec: :m,
-          decided_by: %{by: :default, hooks: []}
-        })
-        |> fold(turn, %Event.ModelFinished{
-          message_id: "m0",
-          outcome: :ok,
-          duration_ms: 12,
-          answer: nil,
-          cost: nil
-        })
-
-      assert Activity.fetch(activity, turn.trace.span_id).doing == nil
-    end
-
-    test "a payload it does not follow leaves the span alone", %{turn: turn} do
-      activity =
-        Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-        |> fold(turn, %Event.Thinking{text: "hmm"})
-        |> fold(turn, %Event.ToolCall{call: %ToolCall{id: "c1", name: "echo", arguments: %{}}})
-
-      assert Activity.fetch(activity, turn.trace.span_id).doing == "thinking"
-    end
-  end
-
   describe "depth" do
     test "the root is zero and each level adds one", %{turn: turn, tool: tool} do
       branch = Source.child(tool, name: "pricing")
@@ -199,47 +144,6 @@ defmodule WardrikTUI.ActivityTest do
 
     test "a span nobody has seen is at the root", %{turn: turn} do
       assert Activity.depth(Activity.new(), turn.trace.span_id) == 0
-    end
-  end
-
-  describe "running" do
-    setup %{turn: turn, tool: tool} do
-      branch = Source.child(tool, name: "pricing")
-
-      activity =
-        Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-        |> fold(tool, %Event.SpanStarted{name: "deep_research"})
-        |> fold(branch, %Event.SpanStarted{name: "pricing"})
-
-      {:ok, activity: activity, branch: branch}
-    end
-
-    test "lists only what is still going", %{activity: activity, branch: branch} do
-      assert Enum.map(Activity.running(activity), & &1.name) ==
-               ["turn", "deep_research", "pricing"]
-
-      activity = fold(activity, branch, %Event.SpanFinished{outcome: :ok, duration_ms: 10})
-
-      assert Enum.map(Activity.running(activity), & &1.name) == ["turn", "deep_research"]
-    end
-
-    test "the innermost running span is the deepest one", %{activity: activity, branch: branch} do
-      assert Activity.innermost(activity).name == "pricing"
-
-      activity = fold(activity, branch, %Event.SpanFinished{outcome: :ok, duration_ms: 10})
-
-      assert Activity.innermost(activity).name == "deep_research"
-    end
-
-    test "nothing running has no innermost", %{turn: turn} do
-      activity =
-        Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-        |> fold(turn, %Event.TurnFinished{messages: []})
-
-      assert Activity.running(activity) == []
-      assert Activity.innermost(activity) == nil
     end
   end
 

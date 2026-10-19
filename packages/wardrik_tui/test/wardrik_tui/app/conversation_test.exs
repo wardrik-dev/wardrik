@@ -74,7 +74,6 @@ defmodule WardrikTUI.App.ConversationTest do
       | generation: :old_generation,
         trace_id: :old_trace,
         running?: true,
-        queued: 3,
         draft: "unfinished",
         scroll: %{offset_y: 12},
         prompt: %{cursor: 4}
@@ -83,7 +82,7 @@ defmodule WardrikTUI.App.ConversationTest do
     restored = Conversation.restored_assigns(saved)
     assert restored.draft == "unfinished"
 
-    for field <- [:generation, :trace_id, :activity, :running?, :queued, :scroll, :prompt] do
+    for field <- [:generation, :trace_id, :activity, :running?, :scroll, :prompt] do
       refute Map.has_key?(restored, field)
     end
 

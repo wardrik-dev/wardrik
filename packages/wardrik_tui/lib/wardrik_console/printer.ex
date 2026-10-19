@@ -16,7 +16,8 @@ defmodule WardrikConsole.Printer do
   work it delegated.
 
   A tool call is a line when it starts and another when it finishes or is
-  refused, cut to the width. What the answer and the reasoning had not
+  refused, cut to the width, as are a model call asked again after it failed
+  and history being compacted. What the answer and the reasoning had not
   finished comes first, so the lines keep the order things happened in. A
   turn that ends, fails, is stopped, or waits on a person returns what is
   left of its text, then says so, and why it failed is written whole. Every
@@ -89,10 +90,20 @@ defmodule WardrikConsole.Printer do
     do: [{:cut, ["  ", Owl.Data.tag("✓", :green), " ", name]}]
 
   defp said(%Event.ToolFinished{name: name, result: {:error, reason}}),
-    do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, ": ", inspect(reason)]}]
+    do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, ": ", why(reason)]}]
 
   defp said(%Event.ToolDenied{name: name, reason: reason}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, " was refused: ", reason]}]
+
+  defp said(%Event.ModelRetrying{} = retry) do
+    again = ", again in #{ceil(retry.wait_ms / 1_000)}s (#{retry.attempt} of #{retry.attempts})"
+    [{:cut, ["  ", Owl.Data.tag("↻", :yellow), " model failed: ", why(retry.reason), again]}]
+  end
+
+  # Every other span is a tool call's, or work inside one, which the call's own
+  # lines already say.
+  defp said(%Event.SpanStarted{name: "compacting history" = name}),
+    do: [{:cut, ["  ", Owl.Data.tag("·", :cyan), " ", name]}]
 
   defp said(%Event.TurnParked{calls: calls}) do
     [
@@ -104,13 +115,16 @@ defmodule WardrikConsole.Printer do
   defp said(%Event.TurnFinished{}), do: []
 
   defp said(%Event.TurnFailed{reason: reason}),
-    do: [Owl.Data.tag("✗ the turn failed: #{inspect(reason)}", :red)]
+    do: [Owl.Data.tag("✗ the turn failed: #{why(reason)}", :red)]
 
   defp said(%Event.TurnInterrupted{}), do: [Owl.Data.tag("■ stopped", :yellow)]
   defp said(_payload), do: nil
 
   defp arguments(arguments) when map_size(arguments) == 0, do: []
   defp arguments(arguments), do: Owl.Data.tag([" ", JSON.encode!(arguments)], @faint)
+
+  defp why(%{__exception__: true} = error), do: Exception.message(error)
+  defp why(reason), do: inspect(reason)
 
   defp count([_only]), do: "1 call"
   defp count(calls), do: "#{length(calls)} calls"

@@ -55,15 +55,14 @@ defmodule WardrikTUI.App.Conversation do
     :answer_text,
     :search
   ]
-  @fields @kept ++ [:running?, :queued, :scroll, :prompt]
+  @fields @kept ++ [:running?, :scroll, :prompt]
   defstruct @fields
 
   @type t :: %__MODULE__{
           transcript: Transcript.t() | nil,
           draft: String.t() | nil,
           answer_text: String.t() | nil,
-          running?: boolean() | nil,
-          queued: non_neg_integer() | nil
+          running?: boolean() | nil
         }
   @type options :: [now: integer(), verbose?: boolean(), pinned?: boolean()]
 
@@ -89,7 +88,6 @@ defmodule WardrikTUI.App.Conversation do
       seen: 0,
       parked: [],
       running?: false,
-      queued: 0,
       scroll: %{},
       prompt: %{}
     }
@@ -253,7 +251,7 @@ defmodule WardrikTUI.App.Conversation do
 
   defp handle_projection(%Event{payload: %Event.TurnStarted{}} = event, projection) do
     projection
-    |> assign(running?: true, parked: [], started_at: projection.now, queued: 0)
+    |> assign(running?: true, parked: [], started_at: projection.now)
     |> trace(event)
   end
 
