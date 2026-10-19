@@ -37,7 +37,6 @@ defmodule Wardrik.Token do
   allows.
   """
 
-  alias Wardrik.AgentID
   alias Wardrik.Error
   alias Wardrik.Principal
   alias Wardrik.Resource
@@ -87,10 +86,10 @@ defmodule Wardrik.Token do
     end
   end
 
-  defp unreached(%AgentID{} = id), do: Error.no_agent(id)
-
-  defp unreached(resource),
+  defp unreached(%Resource{} = resource),
     do: Error.new(:not_found, "Nothing #{resource} names is within this token's reach.")
+
+  defp unreached(address), do: Error.no_agent(address)
 
   @doc "Whether any statement of `token` allows `action`, on whatever it reaches."
   @spec allows?(t(), Statement.action()) :: boolean()

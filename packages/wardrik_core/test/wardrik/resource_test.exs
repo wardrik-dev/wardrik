@@ -128,10 +128,21 @@ defmodule Wardrik.ResourceTest do
     end
   end
 
-  test "an agent's ID is its resource's" do
-    assert Wardrik.AgentID.resource(~A"acme/@jon/triage/1696.1234") ==
-             r("acme/@jon/agent/triage/thread/1696.1234")
+  test "address/1 reads back the agent or thread AgentAddress.resource/1 names, and nothing else" do
+    for address <- [
+          ~A"acme/triage",
+          ~A"acme/@jon/triage",
+          Wardrik.Thread.parse!("acme/triage/1696.1234"),
+          Wardrik.Thread.parse!("acme/@jon/a/b")
+        ],
+        do: assert(Resource.address(Wardrik.AgentAddress.resource(address)) == {:ok, address})
 
+    for text <- ~w(acme acme/@jon acme/server/crm acme/agent/triage/trigger/hook acme/agent/*) do
+      assert Resource.address(r(text)) == :error
+    end
+  end
+
+  test "an agent's ID is its resource's" do
     assert to_string(Wardrik.AgentID.resource(~A"acme/triage")) == "acme/agent/triage"
     assert inspect(r("acme")) == "#Wardrik.Resource<acme>"
   end

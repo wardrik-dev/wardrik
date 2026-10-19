@@ -23,7 +23,7 @@ defmodule Wardrik.Agent.Spec do
 
   | Field | What it is |
   | --- | --- |
-  | `:id` | the agent's `Wardrik.AgentID` |
+  | `:id` | the agent's `Wardrik.AgentID`, or a `Wardrik.Thread` of it |
   | `:display_name` | what a person calls it |
   | `:description` | what it is for, in words a person reads |
   | `:config` | its `Wardrik.Runtime.Settings`, a `Wardrik.LLM.Config` unless given |
@@ -31,7 +31,6 @@ defmodule Wardrik.Agent.Spec do
   | `:hooks`, `:retry`, `:timeout` | the seams of `Wardrik.Run.seams/0` |
   """
 
-  alias Wardrik.AgentID
   alias Wardrik.LLM.Config
   alias Wardrik.Run
 
@@ -46,7 +45,7 @@ defmodule Wardrik.Agent.Spec do
               Run.seams()
 
   @type t() :: %__MODULE__{
-          id: AgentID.t(),
+          id: Wardrik.AgentAddress.t(),
           display_name: String.t() | nil,
           description: String.t() | nil,
           config: Wardrik.Runtime.Settings.t(),

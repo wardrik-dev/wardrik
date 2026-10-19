@@ -75,7 +75,7 @@ defmodule Wardrik.Ledger do
   ended.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Ledger.Entry
   alias Wardrik.Tool
 
@@ -175,7 +175,7 @@ defmodule Wardrik.Ledger do
 
     answer =
       store
-      |> WardrikStore.keys(@ns, "#{AgentID.resource(agent_id)}//#{trace_id}/")
+      |> WardrikStore.keys(@ns, "#{AgentAddress.resource(agent_id)}//#{trace_id}/")
       |> Enum.reduce_while(:ok, fn encoded, :ok ->
         case WardrikStore.lookup(store, @ns, encoded) do
           {_entry, vsn} -> delete(store, encoded, vsn) |> continue()
@@ -195,7 +195,7 @@ defmodule Wardrik.Ledger do
   defp continue(:ok), do: {:cont, :ok}
   defp continue({:error, reason}), do: {:halt, {:error, reason}}
 
-  defp encoded({agent_id, call_id}), do: "#{AgentID.resource(agent_id)}//#{call_id}"
+  defp encoded({agent_id, call_id}), do: "#{AgentAddress.resource(agent_id)}//#{call_id}"
 
   defp delete(store, encoded, vsn) do
     case WardrikStore.delete(store, @ns, encoded, if_vsn: vsn) do

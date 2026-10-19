@@ -55,10 +55,11 @@ id = Wardrik.AgentID.new!("assistant", org: current_org, user: current_user)
 :ok = Wardrik.Agent.ask(pid, "What changed this week?")
 ```
 
-An ID is `acme/assistant` for an org's own agent, `acme/@jon/assistant` for
-one that works for a user, and either with an external ID after it, such as a
-thread in a chat, where one agent answers for many. The fleet is listed and
-stopped by `Wardrik.Resource` pattern, as `acme/agent/*`, and watched whole.
+An ID is `acme/assistant` for an org's own agent, and `acme/@jon/assistant` for
+one that works for a user. Where one agent answers for many, as for each thread
+in a chat, each is a `Wardrik.Thread` of it, `acme/assistant/C1-1696.1234`: a
+process of its own, on its agent's definition. The fleet is listed and stopped
+by `Wardrik.Resource` pattern, as `acme/agent/*`, and watched whole.
 
 `ask/2` returns at once. The agent takes its messages one turn at a time, and
 what it does arrives as `Wardrik.Event`s: the text as it streams, each tool

@@ -49,8 +49,8 @@ defmodule Wardrik.Event.Bus do
 
   @default_level :activity
 
-  @typedoc "What subscribers subscribe to: an agent's ID."
-  @type agent_id() :: Wardrik.AgentID.t()
+  @typedoc "What subscribers subscribe to: an agent's or a thread's address."
+  @type agent_id() :: Wardrik.AgentAddress.t()
 
   @doc false
   def child_spec([]), do: Group.child_spec(name: @group)
@@ -60,7 +60,7 @@ defmodule Wardrik.Event.Bus do
   # shape of the work alone, cheap enough to hold for many agents.
   @doc false
   @spec subscribe(agent_id(), keyword()) :: :ok
-  def subscribe(%Wardrik.AgentID{} = agent_id, opts \\ []) do
+  def subscribe(agent_id, opts \\ []) do
     level = level!(opts)
 
     Enum.each(topics(level), &Group.join(@group, topic(agent_id, &1), %{level: level}))
@@ -79,13 +79,13 @@ defmodule Wardrik.Event.Bus do
 
   @doc false
   @spec unsubscribe(agent_id()) :: :ok
-  def unsubscribe(%Wardrik.AgentID{} = agent_id) do
+  def unsubscribe(agent_id) do
     Enum.each(Event.levels(), &Group.leave(@group, topic(agent_id, &1)))
   end
 
   @doc false
   @spec subscribers(agent_id()) :: [pid()]
-  def subscribers(%Wardrik.AgentID{} = agent_id) do
+  def subscribers(agent_id) do
     Event.levels()
     |> Enum.flat_map(&Group.members(@group, topic(agent_id, &1)))
     |> Enum.map(&elem(&1, 0))

@@ -30,7 +30,7 @@ defmodule Wardrik.Agent.Snapshot do
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
-          agent: Wardrik.AgentID.t(),
+          agent: Wardrik.AgentAddress.t(),
           generation: String.t(),
           status: Wardrik.Agent.State.View.status(),
           history: Wardrik.Conversation.t(),

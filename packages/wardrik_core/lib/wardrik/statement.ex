@@ -19,15 +19,15 @@ defmodule Wardrik.Statement do
   everything there is.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Resource
 
   @enforce_keys [:actions, :resources]
   defstruct [:actions, :resources]
 
   @type action() :: String.t()
-  @typedoc "What an action is taken on: one agent, or a resource, a name or a pattern."
-  @type target() :: AgentID.t() | Resource.t()
+  @typedoc "What an action is taken on: one agent or thread, or a resource, a name or a pattern."
+  @type target() :: AgentAddress.t() | Resource.t()
   @type t() :: %__MODULE__{actions: [action()], resources: [Resource.t()]}
 
   @doc "Whether `statement` names `action`, itself or under a wildcard."
@@ -37,11 +37,11 @@ defmodule Wardrik.Statement do
 
   @doc "Whether `statement` reaches `target`: one of its resources covers it."
   @spec reaches?(t(), target()) :: boolean()
-  def reaches?(%__MODULE__{} = statement, %AgentID{} = id),
-    do: reaches?(statement, AgentID.resource(id))
-
-  def reaches?(%__MODULE__{resources: resources}, target),
+  def reaches?(%__MODULE__{resources: resources}, %Resource{} = target),
     do: Enum.any?(resources, &Resource.covers?(&1, target))
+
+  def reaches?(%__MODULE__{} = statement, address),
+    do: reaches?(statement, AgentAddress.resource(address))
 
   @doc """
   What both `statement` and `other` allow, as a statement, or none: the

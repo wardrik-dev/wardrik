@@ -112,6 +112,33 @@ defmodule Wardrik.Resource do
   @spec prefix(t()) :: String.t()
   def prefix(%__MODULE__{name: name}), do: name |> String.split(["*", "?"], parts: 2) |> hd()
 
+  @doc """
+  The agent, or the `Wardrik.Thread` of one, `resource` names, as
+  `Wardrik.AgentAddress.resource/1` names it, or `:error` where it names
+  neither.
+
+      Wardrik.Resource.address(Wardrik.Resource.parse!("acme/@jon/agent/triage"))
+      #=> {:ok, ~A"acme/@jon/triage"}
+  """
+  @spec address(t()) :: {:ok, Wardrik.AgentAddress.t()} | :error
+  def address(%__MODULE__{name: name}) do
+    case String.split(name, "/") do
+      [org, "@" <> _user = user | named] -> address(named, [org, user])
+      [org | named] -> address(named, [org])
+    end
+  end
+
+  defp address(["agent", name], owner), do: written(owner ++ [name])
+  defp address(["agent", name, "thread", id], owner), do: written(owner ++ [name, id])
+  defp address(_named, _owner), do: :error
+
+  defp written(segments) do
+    case AgentID.address(Enum.join(segments, "/")) do
+      {:ok, address} -> {:ok, address}
+      {:error, _message} -> :error
+    end
+  end
+
   @doc "The name `resource` ends in: `crm` of `acme/server/crm`."
   @spec basename(t()) :: String.t()
   def basename(%__MODULE__{name: name}), do: name |> String.split("/") |> List.last()

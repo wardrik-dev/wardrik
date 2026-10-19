@@ -31,6 +31,7 @@ defmodule Wardrik.Audit do
 
   require Logger
 
+  alias Wardrik.AgentAddress
   alias Wardrik.AgentID
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Log
@@ -87,15 +88,15 @@ defmodule Wardrik.Audit do
   """
   @type action() ::
           {:agent_defined, AgentID.t()}
-          | {:agent_spawned, AgentID.t(), node()}
-          | {:agent_stopped, AgentID.t()}
-          | {:agent_forgotten, AgentID.t()}
-          | {:agent_forgotten, AgentID.t(), Wardrik.Resource.t()}
-          | {:agent_moved, AgentID.t(), node()}
-          | {:agent_cancelled, AgentID.t()}
-          | {:agent_cancelled, AgentID.t(), Wardrik.Resource.t()}
-          | {:agent_cleared, AgentID.t()}
-          | {:call_killed, AgentID.t(), String.t()}
+          | {:agent_spawned, AgentAddress.t(), node()}
+          | {:agent_stopped, AgentAddress.t()}
+          | {:agent_forgotten, AgentAddress.t()}
+          | {:agent_forgotten, AgentAddress.t(), Wardrik.Resource.t()}
+          | {:agent_moved, AgentAddress.t(), node()}
+          | {:agent_cancelled, AgentAddress.t()}
+          | {:agent_cancelled, AgentAddress.t(), Wardrik.Resource.t()}
+          | {:agent_cleared, AgentAddress.t()}
+          | {:call_killed, AgentAddress.t(), String.t()}
           | {:trigger_set, AgentID.t(), String.t()}
           | {:trigger_removed, AgentID.t(), String.t()}
           | {:agents_reloaded, [node()]}

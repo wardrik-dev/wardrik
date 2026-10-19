@@ -250,7 +250,7 @@ defmodule Wardrik.Agent.State do
         }
 
   @typedoc "A message the turn answers to another agent: the agent, and the message's id."
-  @type ask() :: {Wardrik.AgentID.t(), String.t()}
+  @type ask() :: {Wardrik.AgentAddress.t(), String.t()}
 
   @typedoc "How the last turn ended, or `nil` before the first."
   @type outcome() :: nil | :ok | :failed | :interrupted
@@ -278,7 +278,7 @@ defmodule Wardrik.Agent.State do
           | {:cancel_kill, reference()}
           | {:shutdown, Task.t()}
           | {:close_turn, Run.t()}
-          | {:send, Wardrik.AgentID.t(), Message.t()}
+          | {:send, Wardrik.AgentAddress.t(), Message.t()}
 
   @typedoc "What an interrupt stopped."
   @type stats() :: %{
@@ -815,7 +815,7 @@ defmodule Wardrik.Agent.State do
     do: answer(state, state.answering ++ asks(state.pending), &stopped/1, [])
 
   defp answer(state, asks, text, labels) do
-    sender = Principal.new(to_string(Wardrik.AgentID.resource(state.agent_id)))
+    sender = Principal.new(to_string(Wardrik.AgentAddress.resource(state.agent_id)))
 
     for {agent, id} <- asks,
         do:

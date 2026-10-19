@@ -60,7 +60,7 @@ defmodule Wardrik.Event.Codec do
   acted for them, first to last, as `assumed_by`, where anyone did.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Audit
   alias Wardrik.Call.Pipeline
   alias Wardrik.Event
@@ -146,8 +146,8 @@ defmodule Wardrik.Event.Codec do
   sequence it read `:after`, and the `:oldest` the log still held, which it
   reads on from.
   """
-  @spec dropped(AgentID.t(), after: non_neg_integer(), oldest: pos_integer()) :: map()
-  def dropped(%AgentID{} = agent_id, opts) do
+  @spec dropped(AgentAddress.t(), after: non_neg_integer(), oldest: pos_integer()) :: map()
+  def dropped(agent_id, opts) do
     data = %{"after" => Keyword.fetch!(opts, :after), "oldest" => Keyword.fetch!(opts, :oldest)}
     gap = %{id: Wardrik.UUID.v7(), at: System.system_time(:microsecond)}
     trace = Wardrik.Trace.root()
@@ -249,7 +249,7 @@ defmodule Wardrik.Event.Codec do
 
     {"agent.started", "agents/" <> key,
      %{
-       "agent" => %{"id" => key, "name" => id.name},
+       "agent" => %{"id" => key, "name" => AgentAddress.agent(id).name},
        "conversation" => %{"id" => key <> "/" <> generation},
        "node" => to_string(node),
        "status" => to_string(status)
@@ -500,7 +500,9 @@ defmodule Wardrik.Event.Codec do
     do: server("server.removed", key, %{"name" => Resource.basename(key)})
 
   defp agent_change(type, id, data),
-    do: {type, to_string(AgentID.resource(id)), Map.put(data, "agent", %{"id" => to_string(id)})}
+    do:
+      {type, to_string(AgentAddress.resource(id)),
+       Map.put(data, "agent", %{"id" => to_string(id)})}
 
   # A deployment's secret is every agent's, and its owner goes unsaid.
   defp secret(type, name, owner) do

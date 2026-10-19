@@ -164,7 +164,7 @@ defmodule Wardrik.Run do
       replayed from there. `Wardrik.Agent` is one. Not inherited by `child/2`
   """
   @spec root(Wardrik.Runtime.Settings.t(), Bus.agent_id(), keyword()) :: t()
-  def root(config, %Wardrik.AgentID{} = agent_id, opts \\ []) do
+  def root(config, agent_id, opts \\ []) do
     %__MODULE__{
       config: config,
       source: Source.root(agent_id, opts),
@@ -209,9 +209,10 @@ defmodule Wardrik.Run do
     do: %{run | batch: source.trace.span_id <> "/" <> Integer.to_string(round)}
 
   @doc """
-  The agent the work is for. Its org and user say who the work is done for.
+  The agent or thread the work is for. Its agent's org and user say who the
+  work is done for.
 
-      %Wardrik.AgentID{org: org, user: user} = Wardrik.Run.agent_id(run)
+      %Wardrik.AgentID{org: org, user: user} = Wardrik.AgentAddress.agent(Wardrik.Run.agent_id(run))
   """
   @spec agent_id(t()) :: Bus.agent_id()
   def agent_id(%__MODULE__{source: source}), do: source.agent_id

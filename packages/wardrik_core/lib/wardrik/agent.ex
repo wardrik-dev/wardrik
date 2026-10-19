@@ -25,7 +25,7 @@ defmodule Wardrik.Agent do
   written to the store on every change that matters, and restarted elsewhere
   when its node is lost. Start one with `Wardrik.Fleet.spawn/2`.
 
-  Every function here takes a pid or a `Wardrik.AgentID`, and an ID nothing
+  Every function here takes a pid or a `Wardrik.AgentAddress`, and an ID nothing
   holds answers `{:error, :not_found}`. Given an ID, each takes the
   `Wardrik.Host` whose definitions start an agent the store does not hold,
   as `:host`; see `Wardrik.Fleet.whereis/2`.
@@ -186,6 +186,7 @@ defmodule Wardrik.Agent do
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.View
+  alias Wardrik.AgentAddress
   alias Wardrik.Conversation
   alias Wardrik.Conversation.User
   alias Wardrik.Credential
@@ -201,8 +202,8 @@ defmodule Wardrik.Agent do
   alias Wardrik.Turn
   alias Wardrik.Turn.Signal
 
-  @typedoc "An agent: the pid of one, or its ID."
-  @type agent() :: pid() | Wardrik.AgentID.t()
+  @typedoc "An agent: the pid of one, or its `Wardrik.AgentAddress`."
+  @type agent() :: pid() | Wardrik.AgentAddress.t()
 
   @typedoc "Whether a turn is in flight, how many messages wait behind it, and the model."
   @type status() :: View.status()
@@ -228,7 +229,7 @@ defmodule Wardrik.Agent do
   `:grace` is how long an interrupted turn is given to answer before it is
   killed, #{State.default_grace()}ms by default.
   """
-  @spec initial_state(keyword(), Wardrik.AgentID.t()) :: State.t()
+  @spec initial_state(keyword(), Wardrik.AgentAddress.t()) :: State.t()
   def initial_state(opts, id), do: State.new(opts, id)
 
   @doc """
@@ -322,7 +323,7 @@ defmodule Wardrik.Agent do
   @spec interrupt(agent()) :: :ok | {:error, :not_found}
   def interrupt(pid) when is_pid(pid), do: GenServer.cast(pid, :interrupt)
 
-  def interrupt(%Wardrik.AgentID{} = id) do
+  def interrupt(id) do
     case Fleet.held_pid(id, wake: false) do
       nil -> {:error, :not_found}
       pid -> interrupt(pid)
@@ -374,7 +375,7 @@ defmodule Wardrik.Agent do
   end
 
   defp resolve(pid, _opts) when is_pid(pid), do: pid
-  defp resolve(%Wardrik.AgentID{} = id, opts), do: Fleet.whereis(id, opts)
+  defp resolve(id, opts), do: Fleet.whereis(id, opts)
 
   # -- durability ------------------------------------------------------------
 
@@ -408,7 +409,9 @@ defmodule Wardrik.Agent do
   @dialyzer {:nowarn_function, init: 2}
   @impl DurableServer
   def init(%State{wake_only: true} = state, %{host: host} = info) do
-    case Wardrik.Specs.current(Host.definitions(host), state.agent_id, host: host) do
+    case Wardrik.Specs.current(Host.definitions(host), AgentAddress.agent(state.agent_id),
+           host: host
+         ) do
       {:ok, _spec} ->
         init(%{state | wake_only: false}, info)
 
@@ -623,7 +626,9 @@ defmodule Wardrik.Agent do
   # slept or ran on a node since lost. It is asked once the log is open, as a
   # parked turn its new hooks decide again writes to it.
   defp defined(state) do
-    case Wardrik.Specs.current(Host.definitions(state.host), state.agent_id, host: state.host) do
+    agent = AgentAddress.agent(state.agent_id)
+
+    case Wardrik.Specs.current(Host.definitions(state.host), agent, host: state.host) do
       {:ok, spec} -> {state |> State.configure(Spec.options(spec)) |> redecide(), [sync: true]}
       :none -> {state, []}
     end
