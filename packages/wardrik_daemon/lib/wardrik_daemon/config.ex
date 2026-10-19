@@ -9,7 +9,7 @@ defmodule WardrikDaemon.Config do
   or `prefix` holds `__`, or an org that uses what the file does not define,
   and says where. `boot/1` reads what a release needs before anything
   starts, `storage`, `cluster` and `http`, from the environment alone.
-  `org/1`, `orgs/1` and `base_url/1` read those settings.
+  `org/1`, `orgs/1`, `base_url/1` and `oauth_settings/1` read those settings.
 
   ## Where the settings go
 
@@ -62,7 +62,7 @@ defmodule WardrikDaemon.Config do
             ~w(only except prefix timeout max_result_bytes gated trusted credential credential_header credential_scheme credential_env)a
   @oauth ~w(client redirect providers)a
   @client ~w(name document_url client_uri logo_uri policy_uri tos_uri)a
-  @redirect ~w(url ip port open)a
+  @redirect ~w(url open)a
   @provider ~w(resource issuer client_id client_secret scopes authorization_params flow)a
   @vault ~w(keys shared)a
   @listener ~w(port ip)a
@@ -171,6 +171,20 @@ defmodule WardrikDaemon.Config do
     Keyword.get_lazy(section(config, WardrikDaemon), :base_url, fn ->
       "http://127.0.0.1:#{Keyword.get(section(config, WardrikHTTP), :port, 4747)}"
     end)
+  end
+
+  @doc """
+  What `WardrikOAuth.new/1` takes of `config`: `oauth`'s client, providers
+  and redirect, where a provider sends a browser back to after a sign-in.
+  That is `oauth.redirect.url`, or else `/oauth` under `base_url/1`, which
+  the HTTP API serves.
+  """
+  @spec oauth_settings(t()) :: keyword()
+  def oauth_settings(%__MODULE__{} = config) do
+    settings = Keyword.take(section(config, WardrikOAuth), [:client, :providers, :redirect])
+    redirect = Keyword.get(settings, :redirect, [])
+    url = Keyword.get_lazy(redirect, :url, fn -> base_url(config) <> "/oauth" end)
+    Keyword.put(settings, :redirect, Keyword.put(redirect, :url, url))
   end
 
   @doc """
@@ -354,27 +368,11 @@ defmodule WardrikDaemon.Config do
       | document
         |> sections({org, uses}, orgs, adapters)
         |> through_channels()
-        |> addressed(base_url)
     ]
   end
 
   defp addressed_at(nil), do: []
   defp addressed_at(url), do: [base_url: redirect_url!(url, ["base_url"])]
-
-  # A setting further down that names no address of its own is under the
-  # deployment's.
-  defp addressed(sections, []), do: sections
-
-  defp addressed(sections, base_url: base_url) do
-    Enum.map(sections, fn
-      {WardrikOAuth, oauth} ->
-        redirect = Keyword.put_new(Keyword.get(oauth, :redirect, []), :url, base_url <> "/oauth")
-        {WardrikOAuth, Keyword.put(oauth, :redirect, redirect)}
-
-      section ->
-        section
-    end)
-  end
 
   defp sections(document, owners, orgs, adapters) do
     Enum.map(document, fn
@@ -713,9 +711,6 @@ defmodule WardrikDaemon.Config do
 
     Enum.map(redirect, fn
       {"url", url} -> {:url, redirect_url!(url, path ++ ["url"])}
-      {"ip", ip} -> {:ip, address!(ip, path ++ ["ip"])}
-      {"port", port} when is_integer(port) and port in 1..65_535 -> {:port, port}
-      {"port", _port} -> invalid!(path ++ ["port"], "is a port number")
       {"open", open} when is_boolean(open) -> {:open, open}
       {"open", _open} -> invalid!(path ++ ["open"], "is true or false")
     end)

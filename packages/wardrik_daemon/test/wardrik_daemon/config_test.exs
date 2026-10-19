@@ -749,21 +749,25 @@ defmodule WardrikDaemon.ConfigTest do
                    ceilings: %{},
                    base_url: "https://agents.example.com"
                  ]},
-                {WardrikOAuth, [redirect: redirect]}
-              ]} =
+                {WardrikOAuth, [redirect: [open: false]]}
+              ] = sections} =
                read_all(
-                 "base_url: https://agents.example.com/\noauth:\n  redirect:\n    port: 4600\n",
+                 "base_url: https://agents.example.com/\noauth:\n  redirect:\n    open: false\n",
                  context
                )
 
-      assert Enum.sort(redirect) == [port: 4600, url: "https://agents.example.com/oauth"]
+      assert Enum.sort(Config.oauth_settings(Config.new(sections: sections))[:redirect]) ==
+               [open: false, url: "https://agents.example.com/oauth"]
 
-      assert {:ok, [{WardrikOAuth, [redirect: [url: "https://elsewhere.example.com/cb"]]}]} =
-               read(
+      assert {:ok, sections} =
+               read_all(
                  "base_url: https://agents.example.com\n" <>
                    "oauth:\n  redirect:\n    url: https://elsewhere.example.com/cb\n",
                  context
                )
+
+      assert Config.oauth_settings(Config.new(sections: sections))[:redirect] ==
+               [url: "https://elsewhere.example.com/cb"]
 
       assert {:error, message} = read("base_url: http://agents.example.com\n", context)
       assert message =~ "base_url is an https:// URL, or http:// on loopback"
@@ -772,38 +776,31 @@ defmodule WardrikDaemon.ConfigTest do
     test "base_url/1 is this machine's loopback where the file names none" do
       config = Config.new(sections: [{WardrikDaemon, org: "default"}, {WardrikHTTP, port: 4800}])
       assert Config.base_url(config) == "http://127.0.0.1:4800"
+      assert Config.oauth_settings(config) == [redirect: [url: "http://127.0.0.1:4800/oauth"]]
 
       config = Config.new(sections: [{WardrikDaemon, base_url: "https://agents.example.com"}])
       assert Config.base_url(config) == "https://agents.example.com"
     end
 
-    test "oauth.redirect names where a browser comes back to, and where the daemon listens",
-         context do
+    test "oauth.redirect names where a browser comes back to", context do
       assert {:ok, [{WardrikOAuth, oauth}]} =
                read(
                  "oauth:\n  redirect:\n    url: https://agents.example.com/oauth/\n" <>
-                   "    ip: 0.0.0.0\n    port: 4600\n    open: false\n",
+                   "    open: false\n",
                  context
                )
 
-      assert Enum.sort(oauth[:redirect]) ==
-               [
-                 ip: {0, 0, 0, 0},
-                 open: false,
-                 port: 4600,
-                 url: "https://agents.example.com/oauth"
-               ]
+      assert Enum.sort(oauth[:redirect]) == [open: false, url: "https://agents.example.com/oauth"]
 
-      assert {:ok, [{WardrikOAuth, [redirect: [url: "http://localhost:4599"]]}]} =
-               read("oauth:\n  redirect:\n    url: http://localhost:4599\n", context)
+      assert {:ok, [{WardrikOAuth, [redirect: [url: "http://localhost:4747/oauth"]]}]} =
+               read("oauth:\n  redirect:\n    url: http://localhost:4747/oauth\n", context)
 
       for {yaml, said} <- [
             {"url: http://agents.example.com", "url is an https:// URL, or http:// on loopback"},
             {"url: https://agents.example.com/?a=1", "url is an https:// URL"},
             {"url: https://agents.example.com/#top", "url is an https:// URL"},
             {"url: 4599", "url is an https:// URL"},
-            {"ip: everywhere", "ip is an address"},
-            {"port: 70000", "port is a port number"},
+            {"port: 4600", "port is not"},
             {"open: sometimes", "open is true or false"},
             {"uri: https://agents.example.com", "uri is not"}
           ] do

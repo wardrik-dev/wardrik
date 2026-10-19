@@ -19,7 +19,7 @@ defmodule WardrikMCP.AuthorizedTest do
 
     stub_server(cimd: true)
     configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
-    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), loopback: false})
+    start_supervised!(WardrikOAuth.Supervisor)
 
     run =
       Wardrik.Test.run(

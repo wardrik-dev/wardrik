@@ -17,7 +17,7 @@ defmodule WardrikOAuth.DeviceTest do
   @unhurried %{"interval" => 60}
 
   setup do
-    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), loopback: false})
+    start_supervised!(WardrikOAuth.Supervisor)
     :ok = configure([])
 
     test = self()
@@ -267,7 +267,11 @@ defmodule WardrikOAuth.DeviceTest do
       owner: owner
     } do
       assert {:error, {:authorization_required, %{code: "WDJB-MJHT"}, _owner}} =
-               resolve(owner, open: false, opener: "no-such-opener-anywhere")
+               resolve(owner,
+                 url: "http://127.0.0.1:4747/oauth",
+                 open: false,
+                 opener: "no-such-opener-anywhere"
+               )
     end
 
     test "is in a browser where the redirect comes back somewhere else", %{owner: owner} do
@@ -282,7 +286,11 @@ defmodule WardrikOAuth.DeviceTest do
 
       configure(
         providers: provider(flow: :browser),
-        redirect: [open: false, opener: "no-such-opener-anywhere"]
+        redirect: [
+          url: "http://127.0.0.1:4747/oauth",
+          open: false,
+          opener: "no-such-opener-anywhere"
+        ]
       )
 
       assert {:error, {:authorization_required, %{url: url}, _owner}} =

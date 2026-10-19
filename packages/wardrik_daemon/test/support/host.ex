@@ -120,10 +120,7 @@ defmodule WardrikDaemon.Test.Host do
   def host(%Agents{config: config} = agents) do
     store = Wardrik.Test.store()
 
-    oauth =
-      WardrikOAuth.new(
-        Keyword.take(Config.section(config, WardrikOAuth), [:client, :providers, :redirect])
-      )
+    oauth = WardrikOAuth.new(Config.oauth_settings(config))
 
     settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
     vault = WardrikVault.new([store: store, grants: oauth] ++ settings)

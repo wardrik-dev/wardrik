@@ -104,6 +104,10 @@ defmodule WardrikDaemonTest do
     assert Config.section(config, WardrikVault)[:keys] == [key]
     assert Wardrik.Host.credentials(host).keys == [key]
     assert %WardrikOAuth{} = Wardrik.Host.credentials(host).grants
+
+    # A browser coming back from a sign-in reaches the HTTP API's own port.
+    {:ok, port} = WardrikHTTP.Listener.port()
+    assert WardrikOAuth.Callback.check("http://127.0.0.1:#{port}/oauth") == :ok
   end
 
   test "starts what config.yaml configures with its section as options", %{tmp_dir: dir} do

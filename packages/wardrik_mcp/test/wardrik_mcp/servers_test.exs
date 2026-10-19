@@ -244,7 +244,7 @@ defmodule WardrikMCP.ServersTest do
 
       vault = WardrikVault.new(store: store, keys: [@key], grants: oauth)
       servers = %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault, check: @reachable}
-      start_supervised!({WardrikOAuth.Supervisor, oauth: oauth, callback: false})
+      start_supervised!(WardrikOAuth.Supervisor)
 
       # The server publishes no metadata of its own; the host names its issuer.
       assert {:ok, %{url: url}} =

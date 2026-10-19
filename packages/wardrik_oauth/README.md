@@ -16,6 +16,7 @@ end
 oauth =
   WardrikOAuth.new(
     client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
+    redirect: [url: "https://agents.example.com/oauth"],
     providers: [
       github: [
         resource: "https://api.githubcopilot.com/mcp/",
@@ -37,8 +38,12 @@ host =
     connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault}
   )
 
-children = [{WardrikStore, store}, {Wardrik.Core, host: host}, {WardrikOAuth.Supervisor, oauth: oauth}]
+children = [{WardrikStore, store}, {Wardrik.Core, host: host}, WardrikOAuth.Supervisor]
 ```
+
+Your web server serves the pages a browser comes back to,
+`WardrikOAuth.Callback.pages(oauth)`, each a path and the plug answering under
+it, or calls `WardrikOAuth.finish/3` from a controller of its own.
 
 It finds the authorization server from the resource, and presents whichever
 client identity the server accepts: one registered by hand, its own metadata

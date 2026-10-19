@@ -22,6 +22,11 @@ defmodule WardrikHTTP.Listener do
       `:body` as it was sent, and answering a map of the `:status`,
       `:headers` and `:body` to send back, as `WardrikChannel.request/2`
       does; none by default
+    * `:mounts` - plugs that answer paths of their own, ahead of the API and
+      asking no credential, as `{path, {plug, options}}`: a request whose
+      path begins with the segments `path` goes to the plug, its path as it
+      came, as the pages a sign-in comes back to are served; none by
+      default
     * `:retry` - milliseconds between tries, 5000 by default
     * `:name` - the process's name, `WardrikHTTP.Listener` by default
   """
@@ -62,7 +67,8 @@ defmodule WardrikHTTP.Listener do
         host: host,
         authenticator: authenticator,
         workers: Keyword.get(opts, :workers, []),
-        channels: Keyword.get(opts, :channels, %{})
+        channels: Keyword.get(opts, :channels, %{}),
+        mounts: Keyword.get(opts, :mounts, [])
       ],
       retry: Keyword.get(opts, :retry, @retry),
       server: nil

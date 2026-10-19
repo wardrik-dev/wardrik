@@ -13,10 +13,10 @@ defmodule WardrikDaemon.Doctor do
       `config.yaml`, `WARDRIK_VAULT_KEY` or the key file in the data home (see
       `WardrikDaemon.VaultKey`), and that there is one where OAuth providers or
       servers' credentials need it
-    * `oauth` - where OAuth providers are configured, where a browser comes
-      back to once someone connects an account: with `redirect.url`, that the
-      URL reaches the callback of a daemon that runs, through whatever is in
-      front of it
+    * `oauth` - where OAuth providers are configured, that the URL a browser
+      comes back to once someone connects an account reaches the callback of
+      a daemon that runs, through whatever is in front of it; see
+      `WardrikDaemon.Config.oauth_settings/1`
     * `mcp NAME` - for each MCP server, that the program a command server
       runs is on this machine, and that the host an HTTP server is reached at
       answers
@@ -124,7 +124,7 @@ defmodule WardrikDaemon.Doctor do
         )
 
       [env(config_dir), config(file, from_vault, vault), store(read), vault(settings)] ++
-        callback(settings, vault) ++ servers(settings) ++ channels(settings) ++ agents(config)
+        callback(config, vault) ++ servers(settings) ++ channels(settings) ++ agents(config)
     else
       {:error, message} -> [env(config_dir), {:error, "config", message}]
     end
@@ -289,22 +289,13 @@ defmodule WardrikDaemon.Doctor do
 
   # A daemon that runs answers the vault's names; one that does not cannot
   # answer the callback either.
-  defp callback(settings, vault) do
-    oauth = Keyword.get(settings, WardrikOAuth, [])
-    url = oauth |> Keyword.get(:redirect, []) |> Keyword.get(:url)
+  defp callback(config, vault) do
+    oauth = Config.oauth_settings(config)
+    url = oauth[:redirect][:url]
 
     cond do
       Keyword.get(oauth, :providers, []) == [] ->
         []
-
-      is_nil(url) ->
-        port = oauth |> Keyword.get(:redirect, []) |> Keyword.get(:port, 4599)
-
-        [
-          {:ok, "oauth",
-           "a browser comes back to http://127.0.0.1:#{port}, so on this machine alone; " <>
-             "oauth.redirect.url serves it to browsers elsewhere"}
-        ]
 
       is_nil(vault) ->
         [{:ok, "oauth", "#{url} is not checked: no daemon runs to answer it"}]

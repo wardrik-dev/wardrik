@@ -41,6 +41,8 @@ defmodule WardrikMCP.MixProject do
       # Its HTTP transport expects a Finch pool it does not start, which
       # WardrikMCP.Supervisor starts.
       {:finch, "~> 0.23"},
+      # Test only: serves the stub servers the suite reaches over HTTP.
+      {:bandit, "~> 1.8", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

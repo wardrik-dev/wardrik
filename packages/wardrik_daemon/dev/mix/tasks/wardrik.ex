@@ -138,7 +138,10 @@ defmodule Mix.Tasks.Wardrik do
       Application.ensure_all_started(Application.spec(:wardrik_daemon, :applications))
 
     store = WardrikStore.new(settings(WardrikStore))
-    oauth = WardrikOAuth.new(settings(WardrikOAuth))
+
+    configured = WardrikDaemon.Config.new(sections: Application.get_all_env(:wardrik_daemon))
+    oauth = WardrikOAuth.new(WardrikDaemon.Config.oauth_settings(configured))
+
     vault = WardrikVault.new([store: store, grants: oauth] ++ settings(WardrikVault))
     config = config(opts)
     created = struct!(Mix.Tasks.Wardrik.Created, fields: [config: config] ++ run_opts(opts))
@@ -158,7 +161,7 @@ defmodule Mix.Tasks.Wardrik do
       )
 
     start_mcp(opts, store)
-    start_oauth(oauth)
+    start_oauth(oauth, host)
 
     # After the applications start, not before: starting :logger installs
     # the default handler, so removing it earlier is undone.
@@ -294,9 +297,15 @@ defmodule Mix.Tasks.Wardrik do
     end
   end
 
-  defp start_oauth(oauth) do
-    if WardrikOAuth.configured?(oauth),
-      do: {:ok, _pid} = WardrikOAuth.Supervisor.start_link(oauth: oauth)
+  # A browser comes back from a sign-in to the HTTP API, as the daemon's does.
+  defp start_oauth(oauth, host) do
+    if WardrikOAuth.configured?(oauth) do
+      {:ok, _pid} = WardrikOAuth.Supervisor.start_link([])
+      pages = WardrikOAuth.Callback.pages(oauth)
+
+      {:ok, _pid} =
+        WardrikHTTP.Listener.start_link([host: host, mounts: pages] ++ settings(WardrikHTTP))
+    end
   end
 
   defp settings(module), do: Application.get_env(:wardrik_daemon, module, [])

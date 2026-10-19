@@ -17,8 +17,9 @@ TypeScript SDK for a client.
 ## Tokens
 
 Every request presents a token, as `Authorization: Bearer wardrik_…`, except a webhook's to
-`/v1/hooks/`, which its trigger checks instead, and a chat app's to `/v1/channels/`, which its
-channel checks. `wardrik token create` makes one from a shell on the server, and `/v1/tokens`
+`/v1/hooks/`, which its trigger checks instead, a chat app's to `/v1/channels/`, which its
+channel checks, and a browser's that a provider sends back after a sign-in, to `/oauth/` on the
+daemon. `wardrik token create` makes one from a shell on the server, and `/v1/tokens`
 over the API:
 
 ```sh

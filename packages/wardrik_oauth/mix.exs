@@ -38,7 +38,6 @@ defmodule WardrikOAuth.MixProject do
       sibling(:wardrik),
       {:group, "~> 0.2.1"},
       {:req, "~> 0.7"},
-      {:bandit, "~> 1.8"},
       {:plug, "~> 1.16"},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

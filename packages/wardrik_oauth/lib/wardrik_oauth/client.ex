@@ -3,13 +3,14 @@ defmodule WardrikOAuth.Client do
   What Wardrik looks like to an authorization server: one identity, rendered
   however each server wants to be told about it.
 
-      {WardrikOAuth.Supervisor,
-       client: [
-         name: "Wardrik",
-         client_uri: "https://wardrik.dev",
-         logo_uri: "https://wardrik.dev/logo.png",
-         document_url: "https://wardrik.dev/oauth/client"
-       ]}
+      WardrikOAuth.new(
+        client: [
+          name: "Wardrik",
+          client_uri: "https://wardrik.dev",
+          logo_uri: "https://wardrik.dev/logo.png",
+          document_url: "https://wardrik.dev/oauth/client"
+        ]
+      )
 
   The same fields are the CIMD document a server fetches, the body of a dynamic
   registration, and what a person types into a provider's form. Branding is one

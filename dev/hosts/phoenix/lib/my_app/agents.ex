@@ -47,7 +47,7 @@ defmodule MyApp.Agents do
 
     [
       {Wardrik, wardrik},
-      {WardrikOAuth.Supervisor, oauth: oauth(), callback: false},
+      WardrikOAuth.Supervisor,
       {WardrikMCP.Supervisor,
        store: store,
        servers: [

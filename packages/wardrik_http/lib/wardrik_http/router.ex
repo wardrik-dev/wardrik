@@ -16,8 +16,9 @@ defmodule WardrikHTTP.Router do
   revoked.
 
   Its options are the `WardrikHTTP.Listener`'s `:host`, `:authenticator`,
-  `:workers` and `:channels`, assigned to each request as `:options`: every
-  scope is on that host.
+  `:workers`, `:channels` and `:mounts`, assigned to each request as
+  `:options`: every scope is on that host. A request to a path mounted with
+  a plug of its own is that plug's alone.
   """
 
   use Plug.Router, copy_opts_to_assign: :options
@@ -55,6 +56,7 @@ defmodule WardrikHTTP.Router do
 
   plug Plug.RequestId, http_header: "request-id"
   plug Plug.Logger
+  plug :mounted
   plug WardrikHTTP.Auth
   plug :match
   plug :parse
@@ -298,6 +300,15 @@ defmodule WardrikHTTP.Router do
 
   match _ do
     no_route(conn)
+  end
+
+  defp mounted(conn, _opts) do
+    mounts = Keyword.get(conn.assigns.options, :mounts, [])
+
+    case Enum.find(mounts, fn {path, _plug} -> List.starts_with?(conn.path_info, path) end) do
+      {_path, {plug, options}} -> conn |> plug.call(plug.init(options)) |> halt()
+      nil -> conn
+    end
   end
 
   # A request to a trigger is checked against its body as it was sent, so it

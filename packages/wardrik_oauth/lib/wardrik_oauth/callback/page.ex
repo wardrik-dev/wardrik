@@ -1,9 +1,12 @@
 defmodule WardrikOAuth.Callback.Page do
   @moduledoc """
-  The pages `WardrikOAuth.Callback` serves, under the redirect URL's path: a
-  callback for each provider configured, `check`, and a 404 for anything
-  else. What is shown is HTML-escaped, and every page is kept from caches,
-  referrers and frames, and loads nothing.
+  The pages `WardrikOAuth.Callback` describes, as a plug a host serves where
+  `WardrikOAuth.Callback.pages/1` says, handed the request with its path as
+  it came: a callback for each provider configured, `check`, and a 404 for
+  anything else. What is shown is HTML-escaped, and every page is kept
+  from caches, referrers and frames, and loads nothing.
+
+      {WardrikOAuth.Callback.Page, oauth: oauth}
   """
 
   @behaviour Plug
