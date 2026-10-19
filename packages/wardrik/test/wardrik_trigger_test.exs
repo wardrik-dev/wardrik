@@ -480,16 +480,26 @@ defmodule WardrikTriggerTest do
       assert deliver(key, "issues", request("d-1", "{}")) == {:error, :not_found}
     end
 
-    test "becomes the other kind when put under the same name", %{key: key, put: put} do
+    test "becomes the other kind when put under the same name, each named for its trigger", %{
+      key: key,
+      put: put
+    } do
       {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
       {:ok, _pid} = put.([])
       spawn_agent(key, {__MODULE__, :labelled, [self()]})
 
-      assert [%WardrikTrigger.Status{schedule: "on request"}] = WardrikTrigger.for_agent(key)
+      trigger = "#{Wardrik.AgentID.resource(key)}/trigger/issues"
+
+      assert [%WardrikTrigger.Status{schedule: "on request", key: webhook}] =
+               WardrikTrigger.for_agent(key)
+
+      assert webhook == trigger <> "/webhook"
       assert deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}
 
       {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
-      assert [%WardrikTrigger.Status{schedule: "@daily Etc/UTC"}] = WardrikTrigger.for_agent(key)
+
+      assert [%WardrikTrigger.Status{schedule: "@daily Etc/UTC", key: ^trigger}] =
+               WardrikTrigger.for_agent(key)
     end
   end
 

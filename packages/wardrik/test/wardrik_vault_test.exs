@@ -76,14 +76,15 @@ defmodule WardrikVaultTest do
               {"github", Resource.deployment()},
               {"github", ns("acme/@jon")},
               {"github", ns("globex/@jon")},
-              {"git hub", ns("jon")},
-              {"git_hub", ns("jon")}
+              {"git_hub", ns("jon")},
+              {"git-hub", ns("jon")}
             ],
             do: WardrikVault.path(name, owner)
 
       assert length(Enum.uniq(paths)) == length(paths)
-      assert WardrikVault.path("github", ns("jon")) == "jon/github"
-      assert WardrikVault.path("github", ns("acme/@jon")) == "acme%2F%40jon/github"
+      assert WardrikVault.path("github", ns("jon")) == "jon/secret/github"
+      assert WardrikVault.path("github", ns("acme/@jon")) == "acme/@jon/secret/github"
+      assert_raise ArgumentError, fn -> WardrikVault.path("git hub", ns("jon")) end
     end
   end
 
@@ -401,9 +402,9 @@ defmodule WardrikVaultTest do
   describe "names/1, list/0 and forget/2" do
     test "list what an owner holds, without reading any of it", %{user: user} do
       :ok = WardrikVault.put(vault(), "github", ns(user), value: "a")
-      :ok = WardrikVault.put(vault(), "git_hub key", ns(user), value: "b")
+      :ok = WardrikVault.put(vault(), "git_hub.key", ns(user), value: "b")
 
-      assert Enum.sort(WardrikVault.names(vault(), ns(user))) == ["git_hub key", "github"]
+      assert Enum.sort(WardrikVault.names(vault(), ns(user))) == ["git_hub.key", "github"]
     end
 
     test "list every credential, with each owner written as text", %{user: user} do

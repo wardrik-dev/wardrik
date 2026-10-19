@@ -211,7 +211,7 @@ defmodule WardrikDaemon.AgentFileTest do
       assert [{WardrikWorkspace, %WardrikWorkspace.Spec{shared: [team]} = files}] =
                spec.config.tools
 
-      assert files.tree.tree == "agents/acme/triage"
+      assert files.tree.tree == "agents/acme/agent/triage"
       assert team.tree == "shared/acme"
       assert files.context == ["shared/team/NOTES.md"]
 

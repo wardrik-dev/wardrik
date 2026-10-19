@@ -357,7 +357,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert spec.id == thread
     assert spec.config.model_spec == "anthropic:claude-haiku-4-5"
     assert [{WardrikWorkspace, workspace}] = spec.config.tools
-    assert workspace.tree.tree == "agents/#{org}/alpha"
+    assert workspace.tree.tree == "agents/#{org}/agent/alpha"
   end
 
   test "reload brings a conversation to its file, and leaves it where the file does not read",

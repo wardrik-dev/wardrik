@@ -6,7 +6,7 @@ defmodule WardrikWorkspace.Backend.Store do
 
       Wardrik.Host.new(store: store, workspace: %WardrikWorkspace.Backend.Store{store: store})
 
-      files / agents/acme/@jon/triage//MEMORY.md
+      files / agents/acme/@jon/agent/triage//MEMORY.md
       files / shared/acme//findings/2026-09-30-db-failover.md
 
   The `//` is where a tree ends and its path begins. A tree and a path are

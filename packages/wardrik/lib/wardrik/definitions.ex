@@ -1,9 +1,9 @@
 defmodule Wardrik.Definitions do
   @moduledoc """
   Where agents' definitions are kept, as the host's `:definitions`: each a
-  `Wardrik.Definition`, kept in `:store` under its agent's ID, and read
-  under the `WardrikDefinition.Context` that `:contexts` give the agent's
-  owner (see `WardrikDefinition.Contexts`).
+  `Wardrik.Definition`, kept in `:store` under its agent's resource name,
+  and read under the `WardrikDefinition.Context` that `:contexts` give the
+  agent's owner (see `WardrikDefinition.Contexts`).
 
       definitions = %Wardrik.Definitions{store: store, contexts: Wardrik.context([])}
       host = Wardrik.Host.new(store: store, definitions: definitions)
@@ -58,7 +58,7 @@ defmodule Wardrik.Definitions do
   @spec put(t(), Definition.t()) :: :ok | {:error, :conflict, String.t()}
   def put(%__MODULE__{store: store} = definitions, %Definition{id: id} = definition) do
     with :ok <- writable(definitions, definition) do
-      {:ok, _vsn} = WardrikStore.put(store, @ns, to_string(id), definition)
+      {:ok, _vsn} = WardrikStore.put(store, @ns, key(id), definition)
       :ok = WardrikTrigger.sync(id, definition.triggers)
     end
   end
@@ -69,7 +69,7 @@ defmodule Wardrik.Definitions do
   @doc "The definition kept for the agent `id`."
   @spec get(t(), AgentID.t()) :: {:ok, Definition.t()} | {:error, :not_found}
   def get(%__MODULE__{store: store}, %AgentID{} = id) do
-    case WardrikStore.get(store, @ns, to_string(id)) do
+    case WardrikStore.get(store, @ns, key(id)) do
       %Definition{} = definition -> {:ok, definition}
       nil -> {:error, :not_found}
     end
@@ -83,11 +83,11 @@ defmodule Wardrik.Definitions do
   def delete(%__MODULE__{store: store} = definitions, %AgentID{} = id) do
     with {:ok, _definition} <- get(definitions, id) do
       :ok = WardrikTrigger.sync(id, [])
-      :ok = WardrikStore.delete(store, @ns, to_string(id))
+      :ok = WardrikStore.delete(store, @ns, key(id))
     end
   end
 
-  @doc "Every definition kept for an agent `pattern` covers, sorted by ID."
+  @doc "Every definition kept for an agent `pattern` covers, in the order of their names."
   @spec list(t(), Resource.t()) :: [Definition.t()]
   def list(%__MODULE__{} = definitions, pattern) do
     for id <- ids(definitions, pattern),
@@ -95,14 +95,20 @@ defmodule Wardrik.Definitions do
         do: definition
   end
 
-  @doc "The agents `pattern` covers a definition is kept for, sorted, read from the store's keys alone."
+  @doc """
+  The agents `pattern` covers a definition is kept for, in the order of
+  their names, read from the store's keys alone.
+  """
   @spec ids(t(), Resource.t()) :: [AgentID.t()]
   def ids(%__MODULE__{store: store}, pattern) do
-    for key <- Enum.sort(WardrikStore.keys(store, @ns)),
-        id = AgentID.parse!(key),
-        Resource.covers?(pattern, AgentID.resource(id)),
+    for key <- Enum.sort(WardrikStore.keys(store, @ns, Resource.prefix(pattern))),
+        resource = Resource.parse!(key),
+        Resource.covers?(pattern, resource),
+        {:ok, id} = AgentID.from_resource(resource),
         do: id
   end
+
+  defp key(id), do: to_string(AgentID.resource(id))
 
   @doc """
   The spec the agent `id` runs on now: that the definition kept for it, or

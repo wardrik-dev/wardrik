@@ -12,14 +12,14 @@ defmodule WardrikTrigger do
         timezone: "Europe/Berlin",
         prompt: "Write up today.")
 
-  Each trigger is a `DurableServer` keyed by the agent's ID and the
-  trigger's name, so one process in the cluster owns it, and it carries on
-  from its store on another node when its own is lost. When it comes due it
-  checks its source, and where that found something calls
-  `Wardrik.Agent.ask/3`, and it announces what happened on the agent's topic
-  as `Wardrik.Event.TriggerFired`. It also joins a group of its agent's,
-  so `for_agent/1` finds an agent's triggers by its ID rather than by
-  looking through every trigger in the cluster.
+  Each trigger is a `DurableServer` keyed by its resource name, the agent's
+  with `trigger/<name>` after it, so one process in the cluster owns it,
+  and it carries on from its store on another node when its own is lost.
+  When it comes due it checks its source, and where that found something
+  calls `Wardrik.Agent.ask/3`, and it announces what happened on the
+  agent's topic as `Wardrik.Event.TriggerFired`. It also joins a group of
+  its agent's, so `for_agent/1` finds an agent's triggers by its ID rather
+  than by looking through every trigger in the cluster.
 
   A trigger writes down its next run before it asks the agent, so a firing
   lost to a crash is not made again: a trigger fires at most once for each
@@ -521,7 +521,7 @@ defmodule WardrikTrigger do
   def join(%AgentID{} = agent, trigger),
     do: Group.join(@name, group(agent), %{key: Kind.key(trigger, agent)})
 
-  defp group(agent), do: "agents/#{agent}"
+  defp group(agent), do: to_string(AgentID.resource(agent))
 
   @doc """
   Every trigger of the agents the `Wardrik.Resource` pattern covers, across
@@ -542,9 +542,8 @@ defmodule WardrikTrigger do
 end
 
 defimpl WardrikTrigger.Kind, for: WardrikTrigger do
-  # `//` holds no ID, so an agent's triggers never mix with those of an agent
-  # whose external ID is one of its triggers' names.
-  def key(trigger, agent), do: "#{agent}//#{trigger.name}"
+  def key(trigger, agent),
+    do: to_string(Wardrik.Resource.new(Wardrik.AgentID.resource(agent), trigger: trigger.name))
 
   def child(trigger, agent),
     do: {WardrikTrigger.Server, WardrikTrigger.State.new(agent, trigger, WardrikTrigger.now())}

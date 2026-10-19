@@ -282,7 +282,7 @@ defmodule Wardrik.Definition.ReadingTest do
                )
 
       assert [{WardrikWorkspace, %WardrikWorkspace.Spec{} = files}] = spec.config.tools
-      assert files.tree.tree == "agents/acme/triage"
+      assert files.tree.tree == "agents/acme/agent/triage"
 
       assert Enum.map(files.shared, &{&1.name, &1.tree, &1.mode}) == [
                {"runbooks", "shared/acme/runbooks", :read},
@@ -349,7 +349,7 @@ defmodule Wardrik.Definition.ReadingTest do
       assert [{WardrikWorkspace, %WardrikWorkspace.Spec{shared: [team]} = files}] =
                spec.config.tools
 
-      assert {files.tree.tree, team.tree} == {"agents/acme/triage", "shared/acme"}
+      assert {files.tree.tree, team.tree} == {"agents/acme/agent/triage", "shared/acme"}
       assert files.context == ["shared/team/NOTES.md"]
 
       token = Wardrik.Token.root(Wardrik.Principal.new("acme/@jon"))

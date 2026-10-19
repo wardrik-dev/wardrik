@@ -52,11 +52,13 @@ defmodule WardrikTrigger.Webhook do
 
   @doc """
   The key the webhook trigger `name` of `agent` runs under, which
-  `WardrikTrigger.Deliveries` finds it by: apart from a trigger on a clock of
-  the same name, since a name holds no `/`.
+  `WardrikTrigger.Deliveries` finds it by: its resource name with
+  `/webhook` after it, apart from a trigger on a clock of the same name,
+  since a name holds no `/`.
   """
   @spec key(Wardrik.AgentID.t(), String.t()) :: String.t()
-  def key(agent, name), do: "#{agent}//#{name}/webhook"
+  def key(agent, name),
+    do: "#{Wardrik.Resource.new(Wardrik.AgentID.resource(agent), trigger: name)}/webhook"
 
   @doc """
   The path the webhook trigger `name` of `agent` is sent requests at, under

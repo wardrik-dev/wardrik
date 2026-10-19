@@ -327,7 +327,7 @@ defmodule Wardrik.DefinitionsTest do
   defp read(id, fields, context),
     do: Definition.read(fields, id: id, source: file(id), context: context)
 
-  test "names the agents it keeps a definition for under a prefix",
+  test "keeps each definition under its agent's resource name, and names those a pattern covers",
        %{org: org, definitions: definitions} do
     one = AgentID.parse!("#{org}/one")
     other = AgentID.parse!("#{org}/@jon/other")
@@ -335,6 +335,10 @@ defmodule Wardrik.DefinitionsTest do
     {:ok, _spec} = put(definitions, other, %{})
 
     assert Wardrik.Specs.defined(definitions, Resource.parse!(org <> "/*")) == [other, one]
+    assert Wardrik.Specs.defined(definitions, Resource.parse!(org <> "/agent/*")) == [one]
     assert Wardrik.Specs.defined(definitions, AgentID.resource(other)) == [other]
+
+    assert Enum.sort(WardrikStore.keys(definitions.store, :definitions, org <> "/")) ==
+             ["#{org}/@jon/agent/other", "#{org}/agent/one"]
   end
 end

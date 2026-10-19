@@ -290,12 +290,8 @@ defmodule WardrikVault do
   """
   @spec names(t(), owner()) :: [String.t()]
   def names(%__MODULE__{store: store}, owner) do
-    prefix = segment(to_string(owner)) <> "/"
-
-    for key <- WardrikStore.keys(store, @ns, prefix),
-        name = String.replace_prefix(key, prefix, ""),
-        name != "",
-        do: URI.decode(name)
+    prefix = "#{owner}/secret/"
+    for key <- WardrikStore.keys(store, @ns, prefix), do: String.replace_prefix(key, prefix, "")
   end
 
   @doc """
@@ -325,8 +321,8 @@ defmodule WardrikVault do
   @spec list(t()) :: [{String.t(), owner()}]
   def list(%__MODULE__{store: store}) do
     for key <- WardrikStore.keys(store, @ns),
-        [owner, name] <- [String.split(key, "/")],
-        do: {URI.decode(name), Resource.parse!(URI.decode(owner))}
+        secret = Resource.parse!(key),
+        do: {Resource.basename(secret), Resource.owner(secret)}
   end
 
   @doc "A new key, base64-encoded, for `:keys`."
@@ -350,12 +346,13 @@ defmodule WardrikVault do
   def namespace, do: @ns
 
   @doc """
-  The key `name` is written under for `owner`, within `namespace/0`. Distinct
-  names and owners are written under distinct keys.
+  The key `name` is written under for `owner`, within `namespace/0`: the
+  secret's resource name, as `acme/@jon/secret/github`, so distinct names and
+  owners are written under distinct keys. A name is a segment, as
+  `Wardrik.AgentID` writes one; any other raises `ArgumentError`.
   """
   @spec path(String.t(), owner()) :: String.t()
-  def path(name, owner) when is_binary(name),
-    do: segment(to_string(owner)) <> "/" <> segment(name)
+  def path(name, owner) when is_binary(name), do: to_string(Resource.new(owner, secret: name))
 
   defp write(store, path, %Sealed{} = sealed) do
     case WardrikStore.put(store, @ns, path, sealed) do
@@ -430,10 +427,6 @@ defmodule WardrikVault do
   end
 
   defp decode_key(_key), do: []
-
-  # Distinct owners and names always write distinct keys: text keeps its
-  # unreserved characters and percent-encodes the rest, `/` among them.
-  defp segment(text), do: URI.encode(text, &URI.char_unreserved?/1)
 end
 
 defimpl Wardrik.Credentials, for: WardrikVault do

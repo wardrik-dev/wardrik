@@ -18,14 +18,15 @@ defmodule WardrikPolicy.Spend do
 
   @doc """
   The name of `agent`'s spend against the budget `meter` names in `window`,
-  as a meter is keyed: the agent's, never one conversation's, so an agent and
-  every conversation it answers for spend from one meter. Each budget the
+  as a meter is keyed: the agent's resource name, never one conversation's,
+  so an agent and every conversation it answers for spend from one meter. Each budget the
   agent is held to has its own, so two budgets never count one call twice,
   and more granted to one loosens no other.
   """
   @spec key(Wardrik.AgentID.t(), String.t(), String.t()) :: String.t()
   def key(%Wardrik.AgentID{} = agent, meter, window),
-    do: "#{Wardrik.AgentID.put_external_id(agent, nil)}|#{meter}|#{window}"
+    do:
+      "#{Wardrik.AgentID.resource(Wardrik.AgentID.put_external_id(agent, nil))}|#{meter}|#{window}"
 
   @doc """
   The name of what every agent the `Wardrik.Resource` pattern covers has
