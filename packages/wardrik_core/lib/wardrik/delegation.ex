@@ -5,8 +5,9 @@ defmodule Wardrik.Delegation do
   A delegation is one `Wardrik.Subagent.run/3`: it is identified by its own span
   and it is known from the
   `Wardrik.Event.DelegationStarted` and `Wardrik.Event.DelegationFinished`
-  events the subagent emits there. Spans are followed too, so a delegation's
-  depth under other delegations and the work under it are known.
+  events the subagent emits there. Spans are followed too, a tool call's as
+  its events open and close it (see `Wardrik.Event.ended/1`), so a
+  delegation's depth under other delegations and the work under it are known.
 
       delegations = Enum.reduce(events, Wardrik.Delegation.new(), &Wardrik.Delegation.fold(&2, &1))
 
@@ -165,17 +166,8 @@ defmodule Wardrik.Delegation do
     update_span(delegations, span_id, &%{&1 | name: name, started_at: now})
   end
 
-  defp absorb(delegations, span_id, %Event.SpanFinished{outcome: outcome, duration_ms: ms}, now) do
-    closed =
-      delegations
-      |> update_span(span_id, &close(&1, outcome, ms))
-      |> update_record(span_id, &close(&1, outcome, ms))
-
-    case outcome do
-      {:error, _reason} -> close_descendants(closed, span_id, outcome, now)
-      :ok -> closed
-    end
-  end
+  defp absorb(delegations, span_id, %Event.SpanFinished{outcome: outcome, duration_ms: ms}, now),
+    do: closed(delegations, span_id, outcome, ms, now)
 
   defp absorb(delegations, span_id, %Event.DelegationStarted{prompt: task}, now) do
     if Map.has_key?(delegations.records, span_id) do
@@ -241,7 +233,28 @@ defmodule Wardrik.Delegation do
     %{delegations | records: records}
   end
 
-  defp absorb(delegations, _span_id, _payload, _now), do: delegations
+  defp absorb(delegations, span_id, payload, now) do
+    case Event.ended(payload) do
+      nil ->
+        delegations
+
+      outcome ->
+        ms = elapsed_ms(Map.fetch!(delegations.spans, span_id), now)
+        closed(delegations, span_id, outcome, ms, now)
+    end
+  end
+
+  defp closed(delegations, span_id, outcome, ms, now) do
+    closed =
+      delegations
+      |> update_span(span_id, &close(&1, outcome, ms))
+      |> update_record(span_id, &close(&1, outcome, ms))
+
+    case outcome do
+      {:error, _reason} -> close_descendants(closed, span_id, outcome, now)
+      :ok -> closed
+    end
+  end
 
   defp close_descendants(delegations, ancestor, outcome, now) do
     Enum.reduce(Map.keys(delegations.spans), delegations, fn id, acc ->

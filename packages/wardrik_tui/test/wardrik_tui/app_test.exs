@@ -845,6 +845,40 @@ defmodule WardrikTUI.AppTest do
       assert text =~ "  ✓ deep_research · 6.0s"
     end
 
+    test "a tool call's span draws from its own events", %{session: session, turn: turn} do
+      search = Source.child(turn, name: "web_search")
+      drop = Source.child(turn, name: "drop")
+      decided = %{by: :default, hooks: []}
+
+      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+
+      emit(search, [
+        %Event.ToolStarted{
+          call_id: "call_1",
+          name: "web_search",
+          arguments: %{},
+          idempotency_key: "k",
+          decided_by: decided
+        },
+        %Event.ToolFinished{
+          call_id: "call_1",
+          name: "web_search",
+          result: {:ok, %{"hits" => 3}},
+          served_by: nil,
+          cost: nil
+        }
+      ])
+
+      emit(drop, [
+        %Event.ToolDenied{call_id: "call_2", name: "drop", reason: "Never.", decided_by: decided}
+      ])
+
+      text = screen(session)
+      assert text =~ "  · web_search"
+      assert text =~ "  ✓ web_search · "
+      assert text =~ ~s(  ✗ drop · "Never.")
+    end
+
     test "a failed span's reason is written in full under it", %{session: session, turn: turn} do
       tool = Source.child(turn, name: "deep_research")
 

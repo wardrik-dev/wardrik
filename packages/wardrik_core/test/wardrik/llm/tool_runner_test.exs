@@ -413,17 +413,22 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert started.source.trace.span_id == finished.source.trace.span_id
     end
 
-    test "a call announces both ends of its span", %{agent_id: agent_id} do
+    test "a call's own events open and close its span, beneath the turn's", %{
+      agent_id: agent_id
+    } do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
       turn = run(agent_id, tools)
 
       ToolRunner.execute(call("call_1", "echo", %{}), turn)
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}} = started
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}} = finished
+      assert_receive %Event{payload: %Event.ToolStarted{}} = started
+      assert_receive %Event{payload: %Event.ToolFinished{} = payload}
 
-      assert started.source.trace.span_id == finished.source.trace.span_id
+      assert started.source.trace.name == "echo"
       assert started.source.trace.parent_span_id == turn.source.trace.span_id
+      assert Event.ended(payload) == :ok
+      refute_received %Event{payload: %Event.SpanStarted{}}
+      refute_received %Event{payload: %Event.SpanFinished{}}
     end
 
     test "a failing tool closes its span as a failure", %{agent_id: agent_id} do
@@ -431,7 +436,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute(call("call_1", "boom", %{}), run(agent_id, tools))
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :nope}}}
+      assert_receive %Event{payload: %Event.ToolFinished{} = payload}
+      assert Event.ended(payload) == {:error, :nope}
     end
 
     test "a tool that reports its own failure closes its span as a failure", %{
@@ -441,7 +447,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       done = ToolRunner.execute(call("call_1", "search", %{}), run(agent_id, tools))
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, _reason}}}
+      assert_receive %Event{payload: %Event.ToolFinished{} = payload}
+      assert {:error, %{"code" => "missing_api_key"}} = Event.ended(payload)
 
       # The model still gets a successful tool result saying the call failed.
       assert %ToolResult{} = message(done)
@@ -452,7 +459,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute(call("call_1", "search", %{}), run(agent_id, tools))
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
+      assert_receive %Event{payload: %Event.ToolFinished{} = payload}
+      assert Event.ended(payload) == :ok
     end
 
     test "a crashing call still closes its span", %{agent_id: agent_id} do
@@ -464,10 +472,11 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         |> ToolRunner.messages()
       end)
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "boom"}} = started
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :kaboom}}} = finished
+      assert_receive %Event{payload: %Event.ToolStarted{name: "boom"}} = started
+      assert_receive %Event{payload: %Event.ToolFinished{} = payload} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
+      assert Event.ended(payload) == {:error, "Tool crashed: :kaboom"}
     end
   end
 
@@ -546,7 +555,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute_many_async([call("call_1", "drop", %{})], governed(agent_id, tools))
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, _reason}}}
+      assert_receive %Event{payload: %Event.ToolDenied{} = payload}
+      assert Event.ended(payload) == {:error, "Never."}
     end
 
     test "an asked call parks instead of running", %{agent_id: agent_id} do

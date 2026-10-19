@@ -310,6 +310,13 @@ defmodule WardrikTUI.App.Conversation do
   defp handle_projection(%Event{payload: %Event.SpanFinished{}} = event, projection),
     do: span(projection, event)
 
+  defp handle_projection(%Event{payload: %Event.ToolStarted{}} = event, projection),
+    do: projection |> span(event) |> trace(event)
+
+  defp handle_projection(%Event{payload: %kind{}} = event, projection)
+       when kind in [Event.ToolReplayed, Event.ToolParked],
+       do: projection |> trace(event) |> span(event)
+
   defp handle_projection(%Event{payload: %Event.ToolCall{call: call}} = event, projection) do
     case tool_call(call) do
       nil ->
@@ -340,6 +347,7 @@ defmodule WardrikTUI.App.Conversation do
     projection
     |> assign(tools: Exchange.finish(projection.state.tools, id, name, output, ok?))
     |> trace(event)
+    |> span(event)
   end
 
   defp handle_projection(
@@ -349,6 +357,7 @@ defmodule WardrikTUI.App.Conversation do
     projection
     |> assign(tools: Exchange.finish(projection.state.tools, id, name, reason, false))
     |> trace(event)
+    |> span(event)
   end
 
   # -- streaming, root span only
