@@ -214,7 +214,8 @@ defmodule WardrikDaemon.CLI.Lifecycle do
              do: {:ok, AgentID.new!(name, org: org, user: opts[:user])}
 
       {_text, message} ->
-        {:error, message <> ": a name holds no / or whitespace, and does not begin with @ or _"}
+        {:error,
+         message <> ": a name holds no /, : or whitespace, and does not begin with @ or _"}
     end
   end
 

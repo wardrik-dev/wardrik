@@ -408,8 +408,8 @@ defmodule WardrikDaemon.CLI.Vault do
       do: :ok,
       else:
         {:error,
-         "#{flag} #{text} is not #{whose} name: a name holds no / or whitespace, and does " <>
-           "not begin with @ or _." <> hint}
+         "#{flag} #{text} is not #{whose} name: a name holds no /, : or whitespace, and " <>
+           "does not begin with @ or _." <> hint}
   end
 
   # The namespace a user's agents read their own secrets as, as their IDs

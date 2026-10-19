@@ -78,7 +78,7 @@ wardrik ls attention          # the agents waiting on a person
 
 ## Details
 
-- An org, a user and a name hold no `/` or whitespace, and don't begin with `@` or `_`. They appear
+- An org, a user and a name hold no `/`, `:` or whitespace, and don't begin with `@` or `_`. They appear
   in event sources, store keys and logs, so make a user's an id, not an email address.
 - An agent whose last turn failed shows as `idle, last failed`; `wardrik show` says why.
 - A `running` agent may begin a turn by summarising its history; see

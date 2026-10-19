@@ -158,7 +158,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     end
 
     test "refuses a name that is not one", %{org: org} do
-      rule = ": a name holds no / or whitespace, and does not begin with @ or _\n"
+      rule = ": a name holds no /, : or whitespace, and does not begin with @ or _\n"
 
       assert command(["agent", "spawn", "a/b"]) == {"a/b is not an agent's name" <> rule, 1}
 

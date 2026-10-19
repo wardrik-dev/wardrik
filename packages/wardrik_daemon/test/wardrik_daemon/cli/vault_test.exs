@@ -208,7 +208,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
                {"#{name}= gives no value; wardrik vault put #{name} asks for it\n", 1}
 
       assert command(["vault", "put", "#{name}=v", "--user", "acme/jon"]) ==
-               {"--user acme/jon is not a user's name: a name holds no / or whitespace, and " <>
+               {"--user acme/jon is not a user's name: a name holds no /, : or whitespace, and " <>
                   "does not begin with @ or _. A user within an org is --org ORG --user USER.\n",
                 1}
 
