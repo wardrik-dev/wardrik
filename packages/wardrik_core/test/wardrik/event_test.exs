@@ -56,6 +56,37 @@ defmodule Wardrik.EventTest do
     assert event.source.trace.trace_id == source.trace.trace_id
   end
 
+  describe "ended/1" do
+    test "reads how a tool call ended from the event that settles it" do
+      for {payload, ended} <- [
+            {%Event.ToolFinished{
+               call_id: "c",
+               name: "x",
+               result: {:ok, %{"n" => 1}},
+               served_by: nil,
+               cost: nil
+             }, :ok},
+            {%Event.ToolReplayed{call_id: "c", name: "x", result: {:error, :gone}},
+             {:error, :gone}},
+            {%Event.ToolReplayed{
+               call_id: "c",
+               name: "x",
+               result: Wardrik.Tool.Result.error(:nope)
+             }, {:error, %{"code" => "nope", "message" => "nope"}}},
+            {%Event.ToolDenied{
+               call_id: "c",
+               name: "x",
+               reason: "Never.",
+               decided_by: %{by: :default, hooks: []}
+             }, {:error, "Never."}},
+            {%Event.ToolParked{call_id: "c", name: "x", prompt: "Ship?"}, {:error, :parked}},
+            {%Event.SpanFinished{outcome: :ok, duration_ms: 1}, nil}
+          ] do
+        assert Event.ended(payload) == ended
+      end
+    end
+  end
+
   describe "levels" do
     test "a tool call as it streams is raw" do
       assert Event.level(:tool_call) == :raw
@@ -68,6 +99,11 @@ defmodule Wardrik.EventTest do
             :turn_parked,
             :span_started,
             :span_finished,
+            :tool_started,
+            :tool_finished,
+            :tool_replayed,
+            :tool_denied,
+            :tool_parked,
             :delegation_started,
             :delegation_finished
           ] do
@@ -76,7 +112,7 @@ defmodule Wardrik.EventTest do
     end
 
     test "everything else is activity" do
-      for type <- [:model_started, :tool_started, :result, :thinking, :meta] do
+      for type <- [:model_started, :tool_progress, :result, :thinking, :meta] do
         assert Event.level(type) == :activity
       end
     end

@@ -4,11 +4,15 @@ defmodule Wardrik.AgentSleepTest do
 
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
+  alias Wardrik.Agent.State.Waiting
   alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.ToolResult
+  alias Wardrik.Conversation.User
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.LLM
 
   @idle 50
 
@@ -119,6 +123,83 @@ defmodule Wardrik.AgentSleepTest do
 
     assert_receive {:resumed, %{"call_1" => :approve}}
     assert_receive %Event{payload: %Event.TurnFinished{}}
+  end
+
+  defmodule Tools do
+    @moduledoc false
+    @behaviour Wardrik.Tool
+
+    @impl true
+    def tools(_value) do
+      for name <- ["lookup", "deploy"] do
+        Wardrik.Tool.new!(
+          name: name,
+          description: "Does #{name}.",
+          schema: [],
+          run: fn _args, _context -> {:ok, %{"done" => name}} end
+        )
+      end
+    end
+  end
+
+  defmodule Careful do
+    @moduledoc false
+    @behaviour Wardrik.Hook
+
+    @impl true
+    def init(_opts), do: nil
+
+    @impl true
+    def call(%Wardrik.Call{target: %Wardrik.Call.Tool{name: "deploy"}}, _value),
+      do: {:ask, "This ships to production."}
+
+    def call(_call, _value), do: :pass
+  end
+
+  defp waiting(key) do
+    %{user_state: %{mode: %Waiting{turn: turn}}} =
+      :sys.get_state(Fleet.held_pid(key, wake: false))
+
+    turn
+  end
+
+  test "a turn parked a round in wakes as it was, and goes on with all it had said" do
+    test_pid = self()
+
+    LLM.answering(Wardrik.Test.llm(), fn %{messages: messages} ->
+      send(test_pid, {:asked, messages})
+
+      case Enum.count(messages, &match?(%Assistant{}, &1)) do
+        0 -> LLM.tool_call("call_1", "lookup", %{})
+        1 -> LLM.tool_call("call_2", "deploy", %{})
+        _done -> LLM.final_answer("Shipped.")
+      end
+    end)
+
+    key =
+      start_agent(
+        config: Config.new(tools: [{Tools, nil}]),
+        hooks: [%Wardrik.Hook{name: "careful", module: Careful, value: nil}]
+      )
+
+    :ok = Agent.ask(key, "ship it", host: Wardrik.Test.host())
+    assert_receive %Event{payload: %Event.TurnParked{}}, 5_000
+    parked = waiting(key)
+    asleep(key)
+
+    assert [{%{id: "call_2"}, _prompt}] = Agent.parked(key, host: Wardrik.Test.host())
+    assert waiting(key) == parked
+
+    :ok =
+      Agent.decide(key, %{"call_2" => :approve},
+        token: Wardrik.Token.root(Wardrik.Principal.new(:shell, "root")),
+        host: Wardrik.Test.host()
+      )
+
+    assert_receive {:asked, [%User{}, %Assistant{}, %ToolResult{}, %Assistant{}, %ToolResult{}]},
+                   5_000
+
+    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
   end
 
   test "a sleeping agent parked on a credential wakes when it is connected" do

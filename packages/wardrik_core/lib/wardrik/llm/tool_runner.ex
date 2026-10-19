@@ -15,8 +15,10 @@ defmodule Wardrik.LLM.ToolRunner do
   finds its place in the tree and how a tool with an outside effect finds an
   idempotency key.
 
-  Spans are opened by the caller and closed inside the task; a call killed at
-  the timeout is closed by the caller instead.
+  A call's own events open and close its span, as `Wardrik.Event.ended/1`
+  reads them, rather than span events of their own; a call killed at the
+  timeout is answered by the caller with `Wardrik.Event.ToolFinished` on its
+  span.
 
   A batch runs under the longest timeout any tool in it declares, narrowed by
   whatever its run has left. See `Wardrik.Tool.Annotations` and
@@ -59,7 +61,6 @@ defmodule Wardrik.LLM.ToolRunner do
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Run
-  alias Wardrik.Tool.Result
 
   @registry __MODULE__.Registry
 
@@ -97,7 +98,7 @@ defmodule Wardrik.LLM.ToolRunner do
 
     Wardrik.Tasks.supervisor()
     |> Task.Supervisor.async_stream_nolink(
-      Enum.map(calls, &{&1, Run.open(run, Call.name(&1))}),
+      Enum.map(calls, &{&1, span(run, &1)}),
       fn {call, span} ->
         Wardrik.Tether.to(turn)
         call |> Pipeline.indexed(index) |> in_span(span)
@@ -193,7 +194,7 @@ defmodule Wardrik.LLM.ToolRunner do
   @spec execute(Call.t() | Wardrik.Tool.call(), Run.t()) :: Call.t()
   def execute(call, %Run{} = run) do
     call = token(call)
-    in_span(call, Run.open(run, Call.name(call)))
+    in_span(call, span(run, call))
   end
 
   @doc """
@@ -237,23 +238,9 @@ defmodule Wardrik.LLM.ToolRunner do
   defp token(%Call{} = call), do: call
   defp token(%{id: _, name: _, arguments: _} = call), do: Call.tool(call)
 
-  defp in_span(call, span) do
-    span
-    |> Run.closing(&run(call, &1), &outcome/1)
-    |> Call.under(nil)
-  end
+  defp span(run, call), do: Run.child(run, name: Call.name(call))
 
-  # A tool that reports its own failure answers the model successfully and the
-  # span unsuccessfully: the model gets to correct itself, and a surface gets
-  # to say the call did not do its job.
-  defp outcome(%Call{state: :waiting}), do: {:error, :parked}
-  defp outcome(%Call{result: {:error, reason}}), do: {:error, reason}
-
-  defp outcome(%Call{result: {:ok, %{"error" => error}} = result}) do
-    if Result.ok?(result), do: :ok, else: {:error, error}
-  end
-
-  defp outcome(%Call{}), do: :ok
+  defp in_span(call, span), do: call |> run(span) |> Call.under(nil)
 
   defp run(call, branch) do
     agent_id = branch.source.agent_id
@@ -282,8 +269,17 @@ defmodule Wardrik.LLM.ToolRunner do
   defp noted(output, note), do: %{"result" => output, "note" => note}
 
   defp reap(call, span, reason) do
-    Run.close(span, {:error, reason})
-    Call.answer(call, {:error, "Tool crashed: #{inspect(reason)}"})
+    reaped = Call.answer(call, {:error, "Tool crashed: #{inspect(reason)}"})
+
+    Event.emit(span.source, %Event.ToolFinished{
+      call_id: call.id,
+      name: Call.name(call),
+      result: reaped.result,
+      served_by: nil,
+      cost: nil
+    })
+
+    reaped
   end
 
   defp error_message(%Call{id: id, target: %Tool{name: name}} = call, reason)

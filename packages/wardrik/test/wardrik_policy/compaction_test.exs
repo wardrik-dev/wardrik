@@ -51,6 +51,6 @@ defmodule WardrikPolicy.CompactionTest do
         10
       )
 
-    assert {:error, {:parked, _prompt}} = Compaction.prepare(history(), run, compaction())
+    assert {:error, {:parked, _prompt}} = Compaction.prepare(compaction(), history(), run: run)
   end
 end

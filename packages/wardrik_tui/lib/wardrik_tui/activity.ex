@@ -16,6 +16,9 @@ defmodule WardrikTUI.Activity do
   Closing is first-wins, because a branch reaped by its parent may also have
   closed itself.
 
+  A tool call's span opens on the first of its events, and closes on the one
+  that settles it, as `Wardrik.Event.ended/1` reads it.
+
   Pure: the clock is passed in, so a surface renders the same thing in a test
   as it does at three in the morning.
   """
@@ -39,6 +42,8 @@ defmodule WardrikTUI.Activity do
   @type t() :: %__MODULE__{spans: %{String.t() => span()}, order: [String.t()]}
 
   defstruct spans: %{}, order: []
+
+  @settled [Event.ToolFinished, Event.ToolReplayed, Event.ToolDenied, Event.ToolParked]
 
   @doc "An empty tree. One per turn."
   @spec new() :: t()
@@ -116,6 +121,10 @@ defmodule WardrikTUI.Activity do
 
   defp absorb(activity, span_id, %Event.SpanFinished{outcome: outcome, duration_ms: ms}, _now) do
     close(activity, span_id, outcome, ms)
+  end
+
+  defp absorb(activity, span_id, %kind{} = payload, now) when kind in @settled do
+    close(activity, span_id, Event.ended(payload), since(activity, span_id, now))
   end
 
   defp absorb(activity, span_id, %Event.TurnStarted{}, now) do

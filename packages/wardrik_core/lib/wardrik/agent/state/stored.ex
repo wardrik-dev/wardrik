@@ -6,7 +6,9 @@ defmodule Wardrik.Agent.State.Stored do
   A turn in flight is written as the `Wardrik.Agent.State.Due` turn it comes
   back as, from its `recovery`; see `Wardrik.Agent.State`. A waiting turn
   keeps its source, and its clock starts again where it is read back. Each
-  keeps who asked for it. How far
+  keeps who asked for it. A turn began on the history the agent holds, so it
+  is written as only what it added, and read back on that history; see
+  `Wardrik.LLM.Turn.dump/1`. How far
   the agent's `Wardrik.Event.Log` has got is written as a sequence number,
   from which the next owner looks for the head. The `Wardrik.Host` it runs
   on is never written: whichever node loads it next hands it its own. Nor is
@@ -58,15 +60,20 @@ defmodule Wardrik.Agent.State.Stored do
   end
 
   defp at_rest(%Waiting{turn: turn, source: source, sender: sender}),
-    do: {:waiting, turn, source, sender}
+    do: {:waiting, Turn.dump(turn), source, sender}
 
   defp at_rest(%Running{recovery: :owed, run: run}),
     do: %Due{recovery: :owed, sender: run.sender}
 
   defp at_rest(%Running{recovery: recovery, run: run}),
-    do: %Due{recovery: recovery, source: run.source, sender: run.sender}
+    do: at_rest(%Due{recovery: recovery, source: run.source, sender: run.sender})
 
-  defp at_rest(mode), do: mode
+  defp at_rest(%Due{recovery: recovery} = due), do: %{due | recovery: dumped(recovery)}
+  defp at_rest(:idle), do: :idle
+
+  defp dumped({:replaying, checkpoint}), do: {:replaying, Turn.dump(checkpoint)}
+  defp dumped({:resuming, turn, decisions}), do: {:resuming, Turn.dump(turn), decisions}
+  defp dumped(:owed), do: :owed
 
   @doc "Reads an agent back from `dump/1`, with the tools this node can build."
   @spec load(t()) :: State.t()
@@ -78,7 +85,7 @@ defmodule Wardrik.Agent.State.Stored do
       State,
       Map.merge(dumped, %{
         config: Config.load(config),
-        mode: reopen(mode),
+        mode: reopen(mode, dumped.history),
         host: Wardrik.Host.new(),
         activity: %Activity{
           doing: doing(mode),
@@ -109,8 +116,24 @@ defmodule Wardrik.Agent.State.Stored do
 
   def awaiting(%{}, _ref, _owner), do: []
 
-  defp reopen({:waiting, turn, source, sender}),
-    do: %Waiting{turn: turn, source: source, sender: sender, started_at: System.monotonic_time()}
+  defp reopen({:waiting, turn, source, sender}, history) do
+    %Waiting{
+      turn: Turn.load(turn, history),
+      source: source,
+      sender: sender,
+      started_at: System.monotonic_time()
+    }
+  end
 
-  defp reopen(mode), do: mode
+  defp reopen(%Due{recovery: recovery} = due, history),
+    do: %{due | recovery: loaded(recovery, history)}
+
+  defp reopen(:idle, _history), do: :idle
+
+  defp loaded({:replaying, checkpoint}, history), do: {:replaying, Turn.load(checkpoint, history)}
+
+  defp loaded({:resuming, turn, decisions}, history),
+    do: {:resuming, Turn.load(turn, history), decisions}
+
+  defp loaded(:owed, _history), do: :owed
 end

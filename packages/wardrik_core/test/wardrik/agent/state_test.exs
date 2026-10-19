@@ -11,6 +11,9 @@ defmodule Wardrik.Agent.StateTest do
   alias Wardrik.Agent.State.Waiting
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.Text
+  alias Wardrik.Conversation.ToolResult
+  alias Wardrik.Conversation.User
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
@@ -637,6 +640,47 @@ defmodule Wardrik.Agent.StateTest do
       state = State.replayed(state(), task(), run(), checkpoint(), System.monotonic_time())
       assert %State{mode: %Running{recovery: {:replaying, %Turn{}}}} = state
       assert %State{mode: %Due{recovery: {:replaying, %Turn{}}}} = reload(state)
+    end
+
+    # The history a turn began on, and the turn, having run a round of calls.
+    defp asked,
+      do:
+        Conversation.new([
+          User.new("Where is 1001?"),
+          Assistant.new("Shipped."),
+          User.new("1002?")
+        ])
+
+    defp went_on(%Turn{} = turn) do
+      looked = Assistant.new("Looking.")
+      found = %ToolResult{call_id: "call_0", name: "lookup", parts: [%Text{text: "Packed."}]}
+      %{turn | context: Conversation.append(asked(), [looked, found]), messages: [looked, found]}
+    end
+
+    defp turn_of(%Waiting{turn: turn}), do: turn
+    defp turn_of({:waiting, turn, _source, _sender}), do: turn
+    defp turn_of(%Due{recovery: {:replaying, turn}}), do: turn
+    defp turn_of(%Due{recovery: {:resuming, turn, _decisions}}), do: turn
+
+    test "a turn is written as what it added, and read back on the history it began on" do
+      running = State.started(state(), task(), run(), asked(), System.monotonic_time())
+      parked = went_on(parked_turn())
+      {:ok, checkpointed} = State.checkpointed(running, self(), went_on(checkpoint()))
+      {waiting, _effects} = State.parked(running, parked)
+      {:resume, run, turn, started_at} = State.resume(waiting)
+      resumed = State.resumed(waiting, task(), run, turn, %{"call_1" => :approve}, started_at)
+
+      for {state, turn} <- [
+            {checkpointed, went_on(checkpoint())},
+            {waiting, parked},
+            {resumed, parked}
+          ] do
+        assert %Turn{context: nil, messages: [_looked, _found]} =
+                 turn_of(Stored.dump(state).mode)
+
+        assert turn_of(reload(state).mode) == turn
+        assert turn_of(reload(reload(state)).mode) == turn
+      end
     end
 
     test "interrupting a turn due to replay abandons it" do

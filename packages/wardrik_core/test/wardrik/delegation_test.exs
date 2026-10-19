@@ -79,8 +79,8 @@ defmodule Wardrik.DelegationTest do
         at(tool, %Event.SpanStarted{name: "fan_out"}, 2),
         at(angle, %Event.SpanStarted{name: "pricing"}, 3),
         at(angle, %Event.DelegationStarted{prompt: "pricing angle"}, 4),
-        at(search, %Event.SpanStarted{name: "web_search"}, 5),
-        at(search, %Event.SpanFinished{outcome: :ok, duration_ms: 40}, 45)
+        at(search, started("web_search"), 5),
+        at(search, finished("web_search", {:ok, %{"hits" => 3}}), 45)
       ])
 
     assert Delegation.summary(delegations) == %{active: 2, total: 2}
@@ -92,6 +92,39 @@ defmodule Wardrik.DelegationTest do
 
     assert [%{name: "fan_out", status: :running}] =
              Delegation.activity(delegations, research.trace.span_id)
+  end
+
+  defp started(name),
+    do: %Event.ToolStarted{
+      call_id: "call_1",
+      name: name,
+      arguments: %{},
+      idempotency_key: "key",
+      decided_by: %{by: :default, hooks: []}
+    }
+
+  defp finished(name, result),
+    do: %Event.ToolFinished{
+      call_id: "call_1",
+      name: name,
+      result: result,
+      served_by: nil,
+      cost: nil
+    }
+
+  test "a tool call killed at its timeout closes what it delegated with it" do
+    tool = Source.child(turn(), name: "deep_research")
+    branch = Source.child(tool, name: "pricing")
+
+    delegations =
+      fold([
+        at(tool, started("deep_research"), 0),
+        at(branch, %Event.DelegationStarted{prompt: "pricing angle"}, 1),
+        at(tool, finished("deep_research", {:error, "Tool crashed: :killed"}), 60_000)
+      ])
+
+    assert [%{status: :error, error: "Tool crashed: :killed", duration_ms: 59_999}] =
+             Delegation.list(delegations)
   end
 
   test "a branch killed by its fan-out is closed with its span" do

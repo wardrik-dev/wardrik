@@ -24,7 +24,9 @@ defmodule Wardrik.LLM.Turn do
   ## Fields
 
     * `:run` - the `Wardrik.Run` it runs under, `nil` while it is written down
-    * `:context` - the `Wardrik.Conversation` as it stands, what it added included
+    * `:context` - the `Wardrik.Conversation` as it stands, what it added
+      included, and `nil` where it is stored beside the history it began on,
+      which with `:messages` makes it again; see `dump/1` and `load/2`
     * `:messages` - what it added, in order
     * `:remaining` - how many rounds of tool use it has left
     * `:answer` - the model's `Wardrik.LLM.Answer` whose tool calls it is
@@ -181,7 +183,7 @@ defmodule Wardrik.LLM.Turn do
 
   @type t() :: %__MODULE__{
           run: Run.t() | nil,
-          context: Conversation.t(),
+          context: Conversation.t() | nil,
           answer: Answer.t() | nil,
           revision: String.t() | nil,
           error: term(),
@@ -225,6 +227,21 @@ defmodule Wardrik.LLM.Turn do
   @doc "The turn under `run`, or under none for one that is written down."
   @spec under(t(), Run.t() | nil) :: t()
   def under(%__MODULE__{} = turn, run), do: %{turn | run: run}
+
+  @doc """
+  The turn with its context left out, for storing beside the history it
+  began on; `load/2` makes it again.
+  """
+  @spec dump(t()) :: t()
+  def dump(%__MODULE__{} = turn), do: %{turn | context: nil}
+
+  @doc """
+  Makes again the context `dump/1` left out: `history`, the conversation the
+  turn began on, with what the turn added after it.
+  """
+  @spec load(t(), Conversation.t()) :: t()
+  def load(%__MODULE__{} = turn, %Conversation{} = history),
+    do: %{turn | context: Conversation.append(history, turn.messages)}
 
   @doc "The turn done, having added `messages` besides what it already had."
   @spec done(t(), [Conversation.message()]) :: t()
@@ -274,7 +291,9 @@ defmodule Wardrik.LLM.Turn do
   Finishes a waiting turn, applying one decision per waiting call.
 
   Approved calls go ahead now, without the hooks being asked again: the
-  decision has been made, and asking again would park them forever. Each hook
+  decision has been made, and asking again would park them forever. They run
+  as a batch's calls do, each in a task of its own, so one that crashes or
+  hangs is answered with why and the turn carries on. Each hook
   that asked hears of the approval through `Wardrik.Hook.approved/1`. A call that
   parked because it may already have run runs again once approved; one
   approved when a hook asked, and found by the ledger to have begun since,
@@ -309,7 +328,8 @@ defmodule Wardrik.LLM.Turn do
 
   def resume(%__MODULE__{state: :waiting} = turn, decisions) when is_map(decisions) do
     stale? = stale?(turn)
-    calls = Enum.map(turn.calls, &decide(&1, decisions, batch(turn), stale?))
+    run = batch(turn)
+    calls = turn.calls |> Enum.map(&decide(&1, decisions, run, stale?)) |> ran(run)
     resumed = read(%{turn | calls: calls}, calls)
 
     if Enum.any?(resumed.calls, &Call.waiting?/1),
@@ -332,16 +352,30 @@ defmodule Wardrik.LLM.Turn do
 
   defp decide(%Call{state: :waiting} = call, decisions, run, stale?) do
     if stale? and Call.asked_by_hook?(call),
-      do: call |> Call.reset() |> ToolRunner.execute(run),
+      do: {:run, Call.reset(call)},
       else: decided(call, Map.get(decisions, call.id), run)
   end
 
-  defp decide(%Call{} = call, _decisions, _run, _stale?), do: call
+  defp decide(%Call{} = call, _decisions, _run, _stale?), do: {:keep, call}
 
-  defp decided(call, nil, _run), do: call
+  defp decided(call, nil, _run), do: {:keep, call}
 
   defp decided(call, decision, run),
-    do: call |> Call.under(run) |> Pipeline.answer(decision) |> ToolRunner.execute(run)
+    do: {:run, call |> Call.under(run) |> Pipeline.answer(decision)}
+
+  # The calls that go ahead run together, as a batch's calls do, each in a
+  # task of its own; the rest keep their places.
+  defp ran(decided, run) do
+    done = ToolRunner.execute_many_async(for({:run, call} <- decided, do: call), run)
+
+    {calls, []} =
+      Enum.map_reduce(decided, done, fn
+        {:run, _call}, [call | rest] -> {call, rest}
+        {:keep, call}, rest -> {call, rest}
+      end)
+
+    calls
+  end
 
   # A batch every call of which has been answered is appended, and the turn
   # goes on.
@@ -440,11 +474,10 @@ defmodule Wardrik.LLM.Turn do
   end
 
   # A request's system prompt: the config's, what the tools said as the turn
-  # began, and the closing note on the last request of a turn at its cap. A
-  # turn written down before it had a preamble has none.
+  # began, and the closing note on the last request of a turn at its cap.
   defp system(system, turn, closing?) do
     case Enum.reject(
-           [system, Map.get(turn, :preamble), closing? && @closing],
+           [system, turn.preamble, closing? && @closing],
            &(&1 in [nil, false, ""])
          ) do
       [] -> nil

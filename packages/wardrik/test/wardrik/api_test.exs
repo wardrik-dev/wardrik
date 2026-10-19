@@ -36,7 +36,7 @@ defmodule Wardrik.APITest do
   # An agent that echoes, or parks on the call "call_1", run without a model,
   # and so without compacting its history, which reads the model catalog.
   defp start(runner) do
-    config = Wardrik.LLM.Config.new(history: nil)
+    config = Wardrik.LLM.Config.new(history: %Wardrik.History.All{})
     {id, _pid} = Wardrik.Test.Fleet.start_agent([runner: runner, config: config], id("agent"))
     id
   end

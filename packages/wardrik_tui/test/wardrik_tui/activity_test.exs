@@ -86,6 +86,46 @@ defmodule WardrikTUI.ActivityTest do
       assert Activity.fetch(activity, tool.trace.span_id).status == :error
     end
 
+    test "a tool call's span opens on its first event and closes on the one that settles it", %{
+      turn: turn
+    } do
+      call = Source.child(turn, name: "echo")
+
+      started = %Event.ToolStarted{
+        call_id: "c1",
+        name: "echo",
+        arguments: %{},
+        idempotency_key: "k",
+        decided_by: %{by: :default, hooks: []}
+      }
+
+      for {payload, status} <- [
+            {%Event.ToolFinished{
+               call_id: "c1",
+               name: "echo",
+               result: {:ok, %{}},
+               served_by: nil,
+               cost: nil
+             }, :ok},
+            {%Event.ToolReplayed{call_id: "c1", name: "echo", result: {:error, :gone}}, :error},
+            {%Event.ToolDenied{
+               call_id: "c1",
+               name: "echo",
+               reason: "Never.",
+               decided_by: %{by: :default, hooks: []}
+             }, :error},
+            {%Event.ToolParked{call_id: "c1", name: "echo", prompt: "Ship?"}, :parked}
+          ] do
+        activity =
+          Activity.new()
+          |> fold(call, started, 100)
+          |> fold(call, payload, 125)
+
+        assert %{name: "echo", status: ^status, duration_ms: 25} =
+                 Activity.fetch(activity, call.trace.span_id)
+      end
+    end
+
     test "the first close wins, because a reaped branch may close twice", %{tool: tool} do
       activity =
         Activity.new()

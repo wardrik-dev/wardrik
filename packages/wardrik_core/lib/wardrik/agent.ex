@@ -83,8 +83,8 @@ defmodule Wardrik.Agent do
   `Wardrik.Compaction`, summarises the older part of a history that has
   outgrown the model's window, with the agent's own model. The agent keeps
   what it answers, and `Wardrik.Event.ContextCompacted` reports it on the turn's
-  trace. A history that cannot be rewritten is kept as it was, and the turn
-  runs regardless.
+  trace. A history that cannot be rewritten, `{:error, reason}`, is kept as it
+  was, and the turn runs regardless.
 
   `clear/1` empties the history of an idle agent, and reports
   `Wardrik.Event.ContextCleared`, with how many messages it held. It is how an
@@ -199,6 +199,7 @@ defmodule Wardrik.Agent do
   alias Wardrik.Fleet
   alias Wardrik.History
   alias Wardrik.Host
+  alias Wardrik.LLM.Tokens
   alias Wardrik.LLM.Turn
 
   @typedoc "An agent: the pid of one, or its ID."
@@ -759,16 +760,32 @@ defmodule Wardrik.Agent do
   # it, word for word. A history rewritten is handed to this agent to keep, as
   # a batch is, before the turn runs on it.
   defp kept(state, run, messages) do
-    case History.prepare(state.config.history, state.history, run) do
-      :keep ->
-        asked(state.history, messages)
-
-      {:ok, history, stats} ->
+    case History.prepare(state.config.history, state.history, run: run) do
+      {:ok, history} ->
+        stats = stats(state.history, history)
         history = asked(history, messages)
         :ok = GenServer.call(run.journal, {:kept, history}, :timer.seconds(30))
         Event.emit(run.source, %Event.ContextCompacted{stats: stats})
         history
+
+      :keep ->
+        asked(state.history, messages)
+
+      {:error, _reason} ->
+        asked(state.history, messages)
     end
+  end
+
+  defp stats(before, kept) do
+    before = Conversation.to_list(before)
+    kept = Conversation.to_list(kept)
+
+    %{
+      messages_before: length(before),
+      messages_after: length(kept),
+      tokens_before: Tokens.messages(before),
+      tokens_after: Tokens.messages(kept)
+    }
   end
 
   defp asked(history, messages),

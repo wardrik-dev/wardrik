@@ -37,9 +37,9 @@ defmodule Wardrik.Event do
       `Wardrik.Event.TriggerFired`.
     * What the agent is doing, on the span of the event that changed it:
       `Wardrik.Event.ActivityChanged`.
-    * Spans and delegations, on their own span: `Wardrik.Event.SpanStarted`,
-      `Wardrik.Event.SpanFinished`, `Wardrik.Event.DelegationStarted`,
-      `Wardrik.Event.DelegationFinished`.
+    * Spans other than a tool call's, and delegations, on their own span:
+      `Wardrik.Event.SpanStarted`, `Wardrik.Event.SpanFinished`,
+      `Wardrik.Event.DelegationStarted`, `Wardrik.Event.DelegationFinished`.
     * Model calls: `Wardrik.Event.ModelStarted`,
       `Wardrik.Event.ModelFinished`, `Wardrik.Event.ModelRetrying`,
       `Wardrik.Event.Result`, `Wardrik.Event.Thinking`,
@@ -47,7 +47,8 @@ defmodule Wardrik.Event do
     * Tool calls, on the call's span: `Wardrik.Event.ToolStarted`,
       `Wardrik.Event.ToolFinished`, `Wardrik.Event.ToolReplayed`,
       `Wardrik.Event.ToolDenied`, `Wardrik.Event.ToolParked`,
-      `Wardrik.Event.ToolProgress`.
+      `Wardrik.Event.ToolProgress`. The first of them opens the span, and
+      the one that settles the call closes it; see `ended/1`.
   """
   @type payload() ::
           __MODULE__.TurnStarted.t()
@@ -157,10 +158,11 @@ defmodule Wardrik.Event do
   How much of an agent's stream to take.
 
     * `:lifecycle` - the shape of the work: turns starting and ending, spans
-      opening and closing, and delegations starting and ending, with what the
-      agent is doing now as `Wardrik.Event.ActivityChanged`
+      opening and closing, a tool call's events among them, and delegations
+      starting and ending, with what the agent is doing now as
+      `Wardrik.Event.ActivityChanged`
     * `:activity` - what the agent is doing inside that shape: model requests,
-      tool calls, answer text and reasoning
+      a tool call's progress, answer text and reasoning
     * `:raw` - everything, including each tool call as the model streams it
   """
   @type level() :: :lifecycle | :activity | :raw
@@ -182,6 +184,11 @@ defmodule Wardrik.Event do
     :activity_changed,
     :span_started,
     :span_finished,
+    :tool_started,
+    :tool_finished,
+    :tool_replayed,
+    :tool_denied,
+    :tool_parked,
     :delegation_started,
     :delegation_finished
   ]
@@ -210,6 +217,27 @@ defmodule Wardrik.Event do
   end
 
   defp rank(level), do: Enum.find_index(@levels, &(&1 == level))
+
+  @doc """
+  How the tool call whose span `payload` closes ended, or `nil` for a payload
+  that closes no tool call's span: answered, answered from the ledger,
+  refused, or parked on a person, as `{:error, :parked}`. A tool that reports
+  its own failure (see `Wardrik.Tool.Result`) answers the model, and ends as
+  an error, so a surface can say the call did not do its job.
+  """
+  @spec ended(payload()) :: Wardrik.Run.outcome() | nil
+  def ended(%__MODULE__.ToolFinished{result: result}), do: answered(result)
+  def ended(%__MODULE__.ToolReplayed{result: result}), do: answered(result)
+  def ended(%__MODULE__.ToolDenied{reason: reason}), do: {:error, reason}
+  def ended(%__MODULE__.ToolParked{}), do: {:error, :parked}
+  def ended(_payload), do: nil
+
+  defp answered({:error, reason}), do: {:error, reason}
+
+  defp answered({:ok, %{"error" => error}} = result),
+    do: if(Wardrik.Tool.Result.ok?(result), do: :ok, else: {:error, error})
+
+  defp answered(_result), do: :ok
 
   @doc "Whether the event came from a turn itself rather than work the turn spawned."
   @spec root?(t()) :: boolean()

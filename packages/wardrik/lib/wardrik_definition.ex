@@ -868,7 +868,8 @@ defmodule WardrikDefinition do
     ArgumentError -> invalid!("names #{name}, which is neither #{known} nor a module")
   end
 
-  defp compaction(config, %{"compaction" => false}), do: Keyword.put(config, :history, nil)
+  defp compaction(config, %{"compaction" => false}),
+    do: Keyword.put(config, :history, %Wardrik.History.All{})
 
   defp compaction(config, %{"compaction" => %{} = fields}) do
     case Map.keys(fields) -- ~w(at keep window) do
@@ -880,7 +881,7 @@ defmodule WardrikDefinition do
             window: window!(fields["window"])
           )
 
-        Keyword.put(config, :history, {Wardrik.Compaction, compaction})
+        Keyword.put(config, :history, compaction)
 
       [key | _] ->
         invalid!("compaction #{key} is not a setting; expected at, keep or window")
