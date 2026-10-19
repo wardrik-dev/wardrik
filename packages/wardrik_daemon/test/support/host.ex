@@ -83,7 +83,7 @@ defmodule WardrikDaemon.Test.Host do
   # under the test's agents: the spec it writes.
   def define(id, fields, source) do
     definitions = Agents.definitions(agents())
-    context = Agents.context(agents())
+    context = Agents.context(agents(), Wardrik.Resource.owner(Wardrik.AgentID.resource(id)))
 
     with {:ok, definition} <-
            Wardrik.Definition.read(fields, id: id, source: source, context: context),

@@ -31,6 +31,22 @@ defmodule Wardrik.DefinitionsTest do
     def reload(%{files: files}, _opts), do: files
   end
 
+  # Holds each org's agents to the allowance it pays for, as a host that
+  # bills its orgs would: a policy value of its own, by org.
+  defmodule Allowances do
+    defstruct [:base, :usd]
+  end
+
+  defimpl WardrikDefinition.Contexts, for: Allowances do
+    def context(%{base: base, usd: usd}, owner) do
+      org = to_string(Wardrik.Resource.org(owner))
+      budget = %{"usd" => Map.fetch!(usd, org), "per" => "total", "on_exhausted" => "deny"}
+      %{base | held: base.held ++ [WardrikPolicy.decode!(%{"budget" => budget}, "allowance")]}
+    end
+
+    def reload(_allowances, _opts), do: []
+  end
+
   setup do
     org = "kept-#{System.unique_integer([:positive])}"
 
@@ -148,6 +164,38 @@ defmodule Wardrik.DefinitionsTest do
 
     assert message =~ "policy names careful"
   end
+
+  test "holds each org's agents to the policy its contexts give the org, which they spend together",
+       %{org: org, context: context} do
+    other = org <> "-other"
+    allowances = %Allowances{base: context, usd: %{org => 5, other => 1}}
+    definitions = definitions(allowances)
+    one = AgentID.parse!("#{org}/one")
+    jon = AgentID.parse!("#{org}/@jon/two")
+    theirs = AgentID.parse!("#{other}/one")
+
+    ceilings =
+      for id <- [one, jon, theirs] do
+        assert {:ok, spec} = put(definitions, id, %{"policy" => "careful"})
+        assert ["held/allowance", "held/allowance/budget", "careful"] = names(spec)
+        allowance(spec)
+      end
+
+    {ours, others} = {Resource.parse!(org), Resource.parse!(other)}
+    assert [pooled, pooled, %WardrikPolicy.Ceiling{org: ^others, budget: %{usd: 1.0}}] = ceilings
+
+    assert %WardrikPolicy.Ceiling{
+             org: ^ours,
+             budget: %{usd: 5.0, per: :total, meter: "held/allowance/budget"}
+           } = pooled
+
+    raised = definitions(%{allowances | usd: %{org => 8, other => 1}})
+    assert {:ok, spec} = Definitions.spec(raised, one, host: host())
+    assert %{budget: %{usd: 8.0}} = allowance(spec)
+  end
+
+  defp names(spec), do: Enum.map(spec.hooks, & &1.name)
+  defp allowance(spec), do: Enum.find(spec.hooks, &(&1.name == "held/allowance/budget")).value
 
   test "keeps one an agent file declares from all but its file",
        %{org: org, definitions: definitions} do

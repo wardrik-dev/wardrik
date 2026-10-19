@@ -7,16 +7,18 @@ defmodule WardrikDefinition.Context do
       %WardrikDefinition.Context{
         org: "acme",
         orgs: ["acme", "globex"],
-        ceilings: %{"*" => "base", "acme" => "acme-ceiling"},
-        policies: %{"careful" => policy},
+        held: ["base"],
+        policies: %{"base" => base, "careful" => careful},
         defaults: %{"idle_timeout" => 900},
         shares: [runbooks_share]
       }
 
     * `org` - the org of an agent file that names none
     * `orgs` - the orgs an agent may be in, or `:any`, the default
-    * `ceilings` - the policy each org's agents are held to ahead of their
-      own, by org, `"*"` for every org's; each a name in `policies`
+    * `held` - the policies the owner's agents are held to ahead of their
+      own, each a name in `policies` or a `WardrikPolicy` with a name of its
+      own; the budget of each is the org's, which every agent of the org
+      spends from together
     * `policies` - the policies a definition may name, by name
     * `defaults` - what an agent is given where nothing else says: the
       `idle_timeout` and `retries` of one whose definition sets none,
@@ -32,7 +34,7 @@ defmodule WardrikDefinition.Context do
 
   defstruct org: "default",
             orgs: :any,
-            ceilings: %{},
+            held: [],
             policies: %{},
             defaults: %{},
             shares: [],
@@ -42,7 +44,7 @@ defmodule WardrikDefinition.Context do
   @type t() :: %__MODULE__{
           org: String.t(),
           orgs: :any | [String.t()],
-          ceilings: %{String.t() => String.t()},
+          held: [String.t() | WardrikPolicy.t()],
           policies: %{String.t() => WardrikPolicy.t()},
           defaults: %{String.t() => term()},
           shares: [WardrikWorkspace.Share.t()],

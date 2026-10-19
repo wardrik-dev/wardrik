@@ -117,12 +117,13 @@ defmodule WardrikDaemon.Config do
     do: config |> section(WardrikDaemon) |> Keyword.get_lazy(:orgs, fn -> [org(config)] end)
 
   @doc """
-  The policy of `policies/` each org's agents are held to, ahead of their
-  own, by org, with `*`'s holding every org's: `orgs.<org>.policy`.
+  The policies of `policies/` each org's agents are held to, ahead of their
+  own, by org: `orgs."*".policy`, which holds every org, then
+  `orgs.<org>.policy`.
   """
-  @spec ceilings(t()) :: %{String.t() => String.t()}
-  def ceilings(%__MODULE__{} = config),
-    do: config |> section(WardrikDaemon) |> Keyword.get(:ceilings, %{})
+  @spec held(t()) :: %{Wardrik.Resource.t() => [String.t()]}
+  def held(%__MODULE__{} = config),
+    do: config |> section(WardrikDaemon) |> Keyword.get(:held, %{})
 
   @doc "Whether `org` is one `config` declares, or why not, with the nearest that is."
   @spec declared(t(), String.t()) :: :ok | {:error, String.t()}
@@ -336,7 +337,7 @@ defmodule WardrikDaemon.Config do
     orgs = Enum.uniq([org | Enum.sort(Map.keys(uses) -- ["*"])])
 
     [
-      {WardrikDaemon, [org: org, orgs: orgs, ceilings: ceilings_of(uses)] ++ base_url}
+      {WardrikDaemon, [org: org, orgs: orgs, held: held_of(uses, orgs)] ++ base_url}
       | document
         |> sections({org, uses}, orgs, adapters)
         |> through_channels()
@@ -508,9 +509,15 @@ defmodule WardrikDaemon.Config do
   defp policy!(name, _path) when is_binary(name) and name != "", do: name
   defp policy!(_name, path), do: invalid!(path, "is the name of a policy in policies/")
 
-  # The policy each org is held to, `*`'s holding every org.
-  defp ceilings_of(uses) do
-    for {owner, %{"policy" => name}} <- uses, name != nil, into: %{}, do: {owner, name}
+  # The policies each org is held to: `*`'s, which holds every org, then its own.
+  defp held_of(uses, orgs) do
+    every = List.wrap(get_in(uses, ["*", "policy"]))
+
+    for org <- orgs,
+        held = Enum.uniq(every ++ List.wrap(get_in(uses, [org, "policy"]))),
+        held != [],
+        into: %{},
+        do: {Wardrik.Resource.parse!(org), held}
   end
 
   defp used!(names, section, document, path) do

@@ -277,7 +277,7 @@ defmodule Wardrik.Definition do
   read with those tools, by the first of the host's runtimes whose key it
   names, `model` for `Wardrik.LLM.Runtime`, or by the first
   where it names none. Its hooks are those it is held to, then the policy
-  of the token that sent it, then those the context holds its org to, then
+  of the token that sent it, then those the context holds its owner to, then
   its own policy.
   """
   @spec spec(t(), AgentID.t(), context: Context.t(), host: Host.t()) ::
@@ -417,16 +417,8 @@ defmodule Wardrik.Definition do
   defp bounded({:api, %Wardrik.Token{policy: :none}}, _context), do: []
 
   defp bounded({:api, %Wardrik.Token{policy: name}}, context) do
-    case Map.fetch(context.policies, name) do
-      {:ok, policy} ->
-        WardrikPolicy.hooks(%{policy | name: "policy/" <> name})
-
-      :error ->
-        invalid!(
-          "the token that defined it names the policy #{name}, which is not a policy in " <>
-            context.names.policies
-        )
-    end
+    policy = named!(name, context, "the token that defined it names the policy")
+    WardrikPolicy.hooks(%{policy | name: "policy/" <> name})
   end
 
   defp bounded(_source, _context), do: []
@@ -435,7 +427,7 @@ defmodule Wardrik.Definition do
     do:
       definition.held ++
         bounded(definition.source, context) ++
-        ceilings(context, definition.id.org) ++
+        held(context, Resource.org(AgentID.resource(definition.id))) ++
         policy_hooks(definition.policy, context)
 
   defp declared!(_org, %Context{orgs: :any}), do: :ok
@@ -823,23 +815,11 @@ defmodule Wardrik.Definition do
 
   # -- scalars ---------------------------------------------------------------
 
-  # The policies the host holds every agent of `org` to, ahead of its own,
-  # each named for where the host sets it, so its budget meters apart, and
-  # every agent of the org spends from it together.
-  defp ceilings(context, org) do
-    for owner <- ["*", org], name = context.ceilings[owner], name != nil do
-      case Map.fetch(context.policies, name) do
-        {:ok, policy} ->
-          WardrikPolicy.ceiling(%{policy | name: "orgs/#{owner}/#{name}"}, org)
-
-        :error ->
-          invalid!(
-            "#{context.names.config} holds #{org}'s agents to the policy #{name}, " <>
-              "which is not a policy in #{context.names.policies}"
-          )
-      end
-    end
-    |> List.flatten()
+  # The policies the host holds the owner's agents to, ahead of their own:
+  # each budget is the org's, which every agent of it spends from together.
+  defp held(context, org) do
+    naming = "#{context.names.config} holds #{org}'s agents to the policy"
+    Enum.flat_map(context.held, &WardrikPolicy.ceiling(named!(&1, context, naming), org))
   end
 
   # A policy named is kept by its name, and one written in place as it reads.
@@ -856,15 +836,18 @@ defmodule Wardrik.Definition do
   defp policy!(_value), do: invalid!("policy is the name of a policy, or rules")
 
   defp policy_hooks(nil, _context), do: []
-  defp policy_hooks(%WardrikPolicy{} = policy, _context), do: WardrikPolicy.hooks(policy)
 
-  defp policy_hooks(name, context) do
+  defp policy_hooks(policy, context),
+    do: WardrikPolicy.hooks(named!(policy, context, "policy names"))
+
+  # A policy written in place, or the one of the context's policies a name
+  # names, by that name, which `naming` says where it is not one.
+  defp named!(%WardrikPolicy{} = policy, _context, _naming), do: policy
+
+  defp named!(name, context, naming) do
     case Map.fetch(context.policies, name) do
-      {:ok, policy} ->
-        WardrikPolicy.hooks(policy)
-
-      :error ->
-        invalid!("policy names #{name}, which is not a policy in #{context.names.policies}")
+      {:ok, policy} -> %{policy | name: name}
+      :error -> invalid!("#{naming} #{name}, which is not a policy in #{context.names.policies}")
     end
   end
 

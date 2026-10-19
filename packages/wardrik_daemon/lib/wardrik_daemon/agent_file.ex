@@ -38,16 +38,17 @@ defmodule WardrikDaemon.AgentFile do
 
   @doc """
   What a definition may name here beyond the host's tools and sources, as
-  `Wardrik.Definition` reads it: the orgs `config` declares and the policy
-  it holds each org's to, and its `defaults`. A reading under the policies
-  in `policies/` puts them, by name, as the context's `:policies`.
+  `Wardrik.Definition` reads it: the orgs `config` declares and its
+  `defaults`. A reading under the policies in `policies/` puts them, by
+  name, as the context's `:policies`, and one for an org's agents the
+  policies `config` holds the org to as its `:held`; see
+  `WardrikDaemon.Agents.context/2`.
   """
   @spec context(Config.t()) :: WardrikDefinition.Context.t()
   def context(%Config{} = config) do
     %WardrikDefinition.Context{
       org: Config.org(config),
       orgs: Config.orgs(config),
-      ceilings: Config.ceilings(config),
       policies: %{},
       defaults: config |> Config.section(WardrikDaemon.Agents) |> Keyword.get(:defaults, %{}),
       shares: config |> Config.section(WardrikWorkspace) |> Keyword.get(:shared, []),

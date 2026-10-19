@@ -5,7 +5,9 @@ defmodule Wardrik.ByOrg do
   defstruct [:contexts]
 
   defimpl WardrikDefinition.Contexts do
-    def context(%{contexts: contexts}, %Wardrik.AgentID{org: org}), do: Map.fetch!(contexts, org)
+    def context(%{contexts: contexts}, owner),
+      do: Map.fetch!(contexts, to_string(Wardrik.Resource.org(owner)))
+
     def reload(_by_org, _opts), do: []
   end
 end

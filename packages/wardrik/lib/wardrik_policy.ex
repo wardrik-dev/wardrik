@@ -140,13 +140,17 @@ defmodule WardrikPolicy do
     do: hooks(policy, fn name, budget -> Hook.new(name, Budget, budget) end)
 
   @doc """
-  The hooks `policy` is as the ceiling of `org`: `hooks/1`'s, but its budget
-  is a `WardrikPolicy.Ceiling`, which every agent of the org spends from
-  together.
+  The hooks `policy` is as one a host holds every agent of `org` to:
+  `hooks/1`'s, named for the policy under `held/`, apart from an agent's own
+  of the same name, with its budget a `WardrikPolicy.Ceiling`, which every
+  agent of the org spends from together. The policy has a name.
   """
-  @spec ceiling(t(), String.t()) :: [Hook.t()]
-  def ceiling(%__MODULE__{} = policy, org),
-    do: hooks(policy, fn name, budget -> Hook.new(name, Ceiling, Ceiling.new(budget, org)) end)
+  @spec ceiling(t(), Wardrik.Resource.t()) :: [Hook.t()]
+  def ceiling(%__MODULE__{name: name} = policy, %Wardrik.Resource{} = org),
+    do:
+      hooks(%{policy | name: "held/" <> name}, fn hook, budget ->
+        Hook.new(hook, Ceiling, Ceiling.new(budget, org))
+      end)
 
   defp hooks(policy, budget_hook) do
     name = policy.name || "policy"

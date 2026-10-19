@@ -8,7 +8,8 @@ defmodule WardrikDaemon.Agents do
   It is the `WardrikDefinition.Contexts` of the daemon's definitions,
   `definitions/1`: every definition, a file's or one the HTTP API sent, is
   read under the context `config.yaml` gives, with the policies the store
-  keeps, so every node reads the same ones. `wardrik reload`, as
+  keeps, so every node reads the same ones, holding its agent to those
+  `config.yaml` holds the agent's org to. `wardrik reload`, as
   `Wardrik.deployment_reload/1` does, reads the files on the node it is
   asked of, in one pass, through `reload/1`: the policies first, kept in the
   store, then each agent file's `Wardrik.Definition`. So every node of a
@@ -37,7 +38,9 @@ defmodule WardrikDaemon.Agents do
   alias Wardrik.AgentID
   alias Wardrik.Definition
   alias Wardrik.Definitions
+  alias Wardrik.Resource
   alias WardrikDaemon.AgentFile
+  alias WardrikDaemon.Config
   alias WardrikDaemon.PolicyFile
 
   @policies :policies
@@ -104,12 +107,19 @@ defmodule WardrikDaemon.Agents do
   defp definition_of(unread), do: unread
 
   @doc """
-  The context every definition is read under: what `config.yaml` says, with
-  the policies the store keeps, as the last reading of `policies/` put them.
+  The context the definitions of the agents `owner` owns are read under:
+  what `config.yaml` says, with the policies the store keeps, as the last
+  reading of `policies/` put them, holding them to those `config.yaml`
+  holds their org to.
   """
-  @spec context(t()) :: WardrikDefinition.Context.t()
-  def context(%__MODULE__{context: context, store: store}),
-    do: %{context | policies: WardrikStore.get(store, @policies, "policies") || %{}}
+  @spec context(t(), Resource.t()) :: WardrikDefinition.Context.t()
+  def context(%__MODULE__{context: context, store: store, config: config}, owner) do
+    policies = WardrikStore.get(store, @policies, "policies") || %{}
+    held(%{context | policies: policies}, config, owner)
+  end
+
+  defp held(context, config, owner),
+    do: %{context | held: Map.get(Config.held(config), Resource.org(owner), context.held)}
 
   @doc """
   What each file reads into now, on `:host`: the policies, then the agents,
@@ -147,7 +157,7 @@ defmodule WardrikDaemon.Agents do
 
   defp defaulted(agents, key, opts) do
     owner = AgentID.put_external_id(key, nil)
-    context = context(agents)
+    context = context(agents, Resource.owner(AgentID.resource(key)))
 
     with {:ok, definition} <-
            Definition.read(defaults(agents), id: owner, source: :defaults, context: context),
@@ -249,11 +259,14 @@ defmodule WardrikDaemon.Agents do
     context = AgentFile.context(config)
     policy_files = dir |> read("policies/*.{yaml,yml}", &PolicyFile.read/1) |> once_each()
     policies = for {_path, {:ok, policy}} <- policy_files, into: %{}, do: {policy.name, policy}
-    {policy_files, read(dir, "agents/*.md", &agent(%{context | policies: policies}, host, &1))}
+    context = %{context | policies: policies}
+    {policy_files, read(dir, "agents/*.md", &agent(context, config, host, &1))}
   end
 
-  defp agent(context, host, path) do
+  defp agent(context, config, host, path) do
     with {:ok, definition} <- AgentFile.parse(context, path) do
+      context = held(context, config, Resource.owner(AgentID.resource(definition.id)))
+
       case Definition.spec(definition, definition.id, context: context, host: host) do
         {:ok, spec} -> {:ok, definition, spec}
         {:error, message} -> {:error, "#{path}: #{message}"}
@@ -300,6 +313,6 @@ defmodule WardrikDaemon.Agents do
 end
 
 defimpl WardrikDefinition.Contexts, for: WardrikDaemon.Agents do
-  def context(agents, _owner), do: WardrikDaemon.Agents.context(agents)
+  defdelegate context(agents, owner), to: WardrikDaemon.Agents
   defdelegate reload(agents, opts), to: WardrikDaemon.Agents
 end

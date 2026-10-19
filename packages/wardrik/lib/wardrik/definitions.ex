@@ -45,10 +45,10 @@ defmodule Wardrik.Definitions do
   @typedoc "Definitions kept in `:store`, each read under what `:contexts` gives its agent's owner."
   @type t() :: %__MODULE__{store: WardrikStore.t(), contexts: Contexts.t()}
 
-  @doc "The context the definition of the agent `id`, or of its owner, is read under."
+  @doc "The context the definition of the agent `id` is read under: its owner's."
   @spec context(t(), AgentID.t()) :: WardrikDefinition.Context.t()
   def context(%__MODULE__{contexts: contexts}, %AgentID{} = id),
-    do: Contexts.context(contexts, owner(id))
+    do: Contexts.context(contexts, Resource.owner(AgentID.resource(id)))
 
   @doc """
   Keeps `definition`, in place of any its agent had, and brings its agent's

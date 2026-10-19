@@ -59,7 +59,7 @@ defmodule WardrikDaemon.AgentsTest do
            Definition.read(fields,
              id: id,
              source: {:api, token},
-             context: Agents.context(Host.agents())
+             context: Agents.context(Host.agents(), Resource.owner(AgentID.resource(id)))
            ),
          :ok <- Definitions.put(definitions(), definition),
          do: Definitions.spec(definitions(), id, host: Host.host())
@@ -190,13 +190,13 @@ defmodule WardrikDaemon.AgentsTest do
     assert [_team, _careful, {_alpha, {:ok, spec}}] =
              Agents.files(Host.agents(), host: Host.host())
 
-    assert ["orgs/#{org}/team", "orgs/#{org}/team/budget", "careful", "careful/budget"] ==
+    assert ["held/team", "held/team/budget", "careful", "careful/budget"] ==
              Enum.map(spec.hooks, & &1.name)
 
     alpha = AgentID.parse!("#{org}/alpha")
 
     assert WardrikDaemon.spent_by(spec, alpha) == [
-             "orgs/#{org}/team: $0.00 of $5.00 today across #{org}",
+             "held/team: $0.00 of $5.00 today across #{org}",
              "careful: 0 of 500 tokens today"
            ]
 
@@ -221,7 +221,7 @@ defmodule WardrikDaemon.AgentsTest do
 
   defp org_policy(org, name) do
     own = Keyword.get(Host.sections(), WardrikDaemon, [])
-    Host.put_section(WardrikDaemon, Keyword.put(own, :ceilings, %{org => name}))
+    Host.put_section(WardrikDaemon, Keyword.put(own, :held, %{Resource.parse!(org) => [name]}))
   end
 
   test "keeps where an agent the HTTP API defines tells of it, as its definition says, until it is forgotten",

@@ -40,12 +40,12 @@ defmodule WardrikDaemon.ConfigTest do
     test "org is the deployment's org, default unless it says", context do
       assert {:ok,
               [
-                {WardrikDaemon, [org: "default", orgs: ["default"], ceilings: %{}]},
+                {WardrikDaemon, [org: "default", orgs: ["default"], held: %{}]},
                 {WardrikDaemon.SSH, _ssh}
               ]} =
                read_all("ssh: {port: 2223}\n", context)
 
-      assert {:ok, [{WardrikDaemon, [org: "acme", orgs: ["acme"], ceilings: %{}]}]} =
+      assert {:ok, [{WardrikDaemon, [org: "acme", orgs: ["acme"], held: %{}]}]} =
                read_all("org: acme\n", context)
 
       for org <- ["_acme", "@acme", "a/b", "deployment"] do
@@ -102,9 +102,10 @@ defmodule WardrikDaemon.ConfigTest do
 
       assert {:ok, settings} = read_all(yaml, context)
 
-      assert settings[WardrikDaemon][:ceilings] == %{
-               "*" => "base",
-               "payments" => "payments-strict"
+      assert settings[WardrikDaemon][:held] == %{
+               Wardrik.Resource.parse!("default") => ["base"],
+               Wardrik.Resource.parse!("growth") => ["base"],
+               Wardrik.Resource.parse!("payments") => ["base", "payments-strict"]
              }
 
       assert {:error, message} = read_all("orgs:\n  payments: {policy: [a]}\n", context)
@@ -626,7 +627,7 @@ defmodule WardrikDaemon.ConfigTest do
                  [
                    org: "default",
                    orgs: ["default"],
-                   ceilings: %{},
+                   held: %{},
                    base_url: "https://agents.example.com"
                  ]},
                 {WardrikOAuth, [redirect: [open: false]]}

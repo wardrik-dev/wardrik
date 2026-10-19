@@ -132,6 +132,31 @@ says what else a definition may name, such as the policies it may hold to:
 `context: Wardrik.context(policies: policies)`. A value of your own implementing
 `WardrikDefinition.Contexts` gives each agent a context of its own, such as one per org.
 
+To hold each org's agents to the allowance its plan pays for, give its context a policy with a
+budget in `held`:
+
+```elixir title="lib/my_app/contexts.ex"
+defmodule MyApp.Contexts do
+  @moduledoc "Each org's context: the base, holding its agents to the allowance it pays for."
+
+  defstruct [:base]
+
+  defimpl WardrikDefinition.Contexts do
+    def context(%{base: base}, owner) do
+      org = to_string(Wardrik.Resource.org(owner))
+      budget = %{"usd" => MyApp.Billing.allowance_usd(org), "per" => "month"}
+      %{base | held: base.held ++ [WardrikPolicy.decode!(%{"budget" => budget}, "allowance")]}
+    end
+
+    def reload(_contexts, _opts), do: []
+  end
+end
+```
+
+Pass it as `context: %MyApp.Contexts{base: Wardrik.context(policies: policies)}`. All of an org's
+agents, its users' too, spend from one allowance together. An agent reads its owner's context as it
+starts, so an allowance you change holds from its next start, or from `Wardrik.deployment_reload/1`.
+
 `Wardrik.new/1` answers the `Wardrik.Host` everything runs on. A package adds what it brings to it
 through an `attach/2` of its own, before Wardrik starts: its tools, what it serves over HTTP, and
 what it runs, as `Wardrik.new(...) |> WardrikHTTP.attach(port: 4850)`. Wardrik starts what each

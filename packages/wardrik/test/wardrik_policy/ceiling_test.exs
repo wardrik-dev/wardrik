@@ -26,7 +26,7 @@ defmodule WardrikPolicy.CeilingTest do
     team =
       WardrikPolicy.decode!(
         %{"budget" => %{"usd" => 1.0, "grant" => %{"usd" => 0.5}}},
-        "orgs/#{org}/team"
+        "team"
       )
 
     %{
@@ -36,6 +36,8 @@ defmodule WardrikPolicy.CeilingTest do
       request: Request.new(Config.new(), Wardrik.Conversation.new())
     }
   end
+
+  defp ns(org), do: Wardrik.Resource.parse!(org)
 
   defp agent(org, name, hooks),
     do: Run.root(Config.new(), AgentID.parse!("#{org}/#{name}"), hooks: hooks)
@@ -56,17 +58,18 @@ defmodule WardrikPolicy.CeilingTest do
   defp approve(waiting, run),
     do: waiting |> Call.approve() |> Call.under(run) |> Hook.approved()
 
-  test "is the policy's hooks with its budget as the org's", %{org: org, team: team} do
-    assert [%Hook{name: "orgs/" <> _, module: WardrikPolicy}, %Hook{module: Ceiling} = hook] =
-             WardrikPolicy.ceiling(team, org)
+  test "is the policy's hooks, held apart from an agent's own, with its budget as the org's",
+       %{org: org, team: team} do
+    assert [%Hook{name: "held/team", module: WardrikPolicy}, %Hook{module: Ceiling} = hook] =
+             WardrikPolicy.ceiling(team, ns(org))
 
-    assert hook.name == "orgs/#{org}/team/budget"
-    assert hook.value == Ceiling.new(%{team.budget | meter: "orgs/#{org}/team/budget"}, org)
+    assert hook.name == "held/team/budget"
+    assert hook.value == Ceiling.new(%{team.budget | meter: "held/team/budget"}, ns(org))
   end
 
   test "the org's agents spend from it together, and the next call any of them makes stops",
        %{org: org, team: team, request: request} do
-    hooks = WardrikPolicy.ceiling(team, org)
+    hooks = WardrikPolicy.ceiling(team, ns(org))
     alpha = agent(org, "alpha", hooks)
     beta = agent(org, "beta", hooks)
 
@@ -87,7 +90,7 @@ defmodule WardrikPolicy.CeilingTest do
   end
 
   test "a user's agents in the org spend from it too", %{org: org, team: team, request: request} do
-    hooks = WardrikPolicy.ceiling(team, org)
+    hooks = WardrikPolicy.ceiling(team, ns(org))
 
     spend(agent(org, "alpha", hooks), request, 0.6)
     spend(agent(org, "@jon/assistant", hooks), request, 0.6)
@@ -100,7 +103,7 @@ defmodule WardrikPolicy.CeilingTest do
     team: team,
     request: request
   } do
-    hooks = WardrikPolicy.ceiling(team, org)
+    hooks = WardrikPolicy.ceiling(team, ns(org))
     alpha = agent(org, "alpha", hooks)
     beta = agent(org, "beta", hooks)
 
@@ -115,16 +118,16 @@ defmodule WardrikPolicy.CeilingTest do
   end
 
   test "another org spends from its own", %{org: org, other: other, team: team, request: request} do
-    spend(agent(org, "alpha", WardrikPolicy.ceiling(team, org)), request, 1.2)
+    spend(agent(org, "alpha", WardrikPolicy.ceiling(team, ns(org))), request, 1.2)
 
-    other_hooks = WardrikPolicy.ceiling(team, other)
+    other_hooks = WardrikPolicy.ceiling(team, ns(other))
     assert %Call{state: :allowed} = decide(agent(other, "alpha", other_hooks), request)
   end
 
   test "an agent's own budget still counts apart, beside the org's",
        %{org: org, team: team, request: request} do
     own = WardrikPolicy.decode!(%{"budget" => %{"usd" => 0.5}}, "own")
-    hooks = WardrikPolicy.ceiling(team, org) ++ WardrikPolicy.hooks(own)
+    hooks = WardrikPolicy.ceiling(team, ns(org)) ++ WardrikPolicy.hooks(own)
     alpha = agent(org, "alpha", hooks)
     beta = agent(org, "beta", hooks)
 
@@ -139,8 +142,8 @@ defmodule WardrikPolicy.CeilingTest do
   end
 
   test "a ceiling per turn has no one period to read", %{org: org} do
-    budget = %Budget{usd: 1.0, per: :turn, meter: "orgs/#{org}/team/budget"}
-    ceiling = Ceiling.new(budget, org)
+    budget = %Budget{usd: 1.0, per: :turn, meter: "held/team/budget"}
+    ceiling = Ceiling.new(budget, ns(org))
 
     assert Ceiling.spent(ceiling) == nil
     assert Ceiling.spending(ceiling, AgentID.parse!("#{org}/alpha")) == nil

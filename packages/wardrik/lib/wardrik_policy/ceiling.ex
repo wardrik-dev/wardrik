@@ -4,11 +4,12 @@ defmodule WardrikPolicy.Ceiling do
   `WardrikPolicy.ceiling/2` gives it.
 
   It is a `WardrikPolicy.Budget` counted under one meter for the whole
-  tenant, `acme/*`, rather than one for each agent: the org's own agents and
-  each of its users' spend from it alike. Once they have spent its limit
-  together, the next model call any of them makes is stopped, and approving
-  it grants the budget's `grant` more to all of them for that period. Each
-  agent's own budget still counts apart, beside it.
+  tenant, `acme/*`, rather than one for each agent, named for that pattern
+  and the budget's meter: the org's own agents and each of its users' spend
+  from it alike. Once they have spent its limit together, the next model
+  call any of them makes is stopped, and approving it grants the budget's
+  `grant` more to all of them for that period. Each agent's own budget
+  still counts apart, beside it.
   """
 
   use Wardrik.Hook
@@ -20,11 +21,12 @@ defmodule WardrikPolicy.Ceiling do
   @enforce_keys [:budget, :org]
   defstruct [:budget, :org]
 
-  @type t() :: %__MODULE__{budget: Budget.t(), org: String.t()}
+  @type t() :: %__MODULE__{budget: Budget.t(), org: Wardrik.Resource.t()}
 
   @doc "The ceiling `budget` puts on every agent of `org` together."
-  @spec new(Budget.t(), String.t()) :: t()
-  def new(%Budget{} = budget, org), do: %__MODULE__{budget: budget, org: org}
+  @spec new(Budget.t(), Wardrik.Resource.t()) :: t()
+  def new(%Budget{} = budget, %Wardrik.Resource{} = org),
+    do: %__MODULE__{budget: budget, org: org}
 
   @impl Wardrik.Hook
   def init(%__MODULE__{} = ceiling), do: ceiling
@@ -71,7 +73,7 @@ defmodule WardrikPolicy.Ceiling do
 
   defp key(ceiling, trace_id) do
     Spend.pooled(
-      Wardrik.Resource.parse!(ceiling.org <> "/*"),
+      Wardrik.Resource.parse!("#{ceiling.org}/*"),
       ceiling.budget.meter,
       Budget.window(ceiling.budget, trace_id, DateTime.utc_now())
     )
