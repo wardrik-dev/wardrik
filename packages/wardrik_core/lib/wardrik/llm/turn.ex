@@ -732,6 +732,7 @@ defmodule Wardrik.LLM.Turn do
     defdelegate recover(turn), to: Turn
     defdelegate waiting(turn), to: Turn
     defdelegate awaiting(turn, ref, owner), to: Turn
+    defdelegate awaited(turn), to: Turn
     defdelegate under(turn, run), to: Turn
     defdelegate stale?(turn, hooks), to: Turn
     defdelegate dump(turn), to: Turn
