@@ -38,7 +38,6 @@
       "Wardrik.Event.Bus",
       "Wardrik.Event.Codec.Value",
       "Wardrik.Event.Cursor",
-      "Wardrik.Event.Log",
       "Wardrik.Event.Log.Entry",
       "Wardrik.Fleet",
       "Wardrik.Fleet.Member",

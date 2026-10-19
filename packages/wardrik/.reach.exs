@@ -159,10 +159,8 @@
       "Wardrik.Specs.None",
       "Wardrik.Error",
       "Wardrik.Event",
-      "Wardrik.Event.Bus",
       "Wardrik.Event.Codec.Value",
       "Wardrik.Event.Cursor",
-      "Wardrik.Event.Log",
       "Wardrik.Event.Log.Entry",
       "Wardrik.Fleet",
       "Wardrik.Fleet.Member",
@@ -216,6 +214,7 @@
       "Wardrik.LLM.Catalog",
       "Wardrik.Fleet.Supervisor",
       "Wardrik.Event.Source",
+      "Wardrik.Event.Log",
       "Wardrik.Trace"
     ],
     internal_callers: [
@@ -227,6 +226,9 @@
       {"Wardrik.LLM.Catalog", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Event.Source", ["Wardrik", "Wardrik.*"]},
+      # The agents' logs are read and followed through Wardrik alone, which
+      # checks the token first.
+      {"Wardrik.Event.Log", ["Wardrik"]},
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]
   ],
