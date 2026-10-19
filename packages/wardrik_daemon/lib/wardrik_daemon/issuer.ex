@@ -14,8 +14,9 @@ defmodule WardrikDaemon.Issuer do
       `acme/@jon/agent/*`, so a turn one agent asks of another reads and
       messages for it what it could itself
     * the deployment itself, `deployment` - `agent.events` on every agent,
-      `*/agent/*`, and nothing else: what follows every agent's log as the
-      deployment, as `WardrikNotify` does, reads it, and acts on nothing
+      `*/agent/*`, and nothing else: what follows agents' logs as the
+      deployment, as `WardrikNotify` and `WardrikChannel.Replies` do, reads
+      them, and acts on nothing
     * anyone else - nothing, as a request to a trigger,
       `acme/agent/front/trigger/hook`, or an authorization that finished,
       `oauth:github`

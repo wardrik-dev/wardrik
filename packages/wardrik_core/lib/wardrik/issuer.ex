@@ -26,9 +26,10 @@ defprotocol Wardrik.Issuer do
   what the issuer gives someone reaches what they hold at its next use.
 
   What runs as the deployment itself, `Wardrik.Principal.deployment/0`, asks
-  it too. `WardrikNotify` follows every agent's log as the deployment, so a
-  host running it issues `deployment` `agent.events` on the agents it tells
-  of, as `*/agent/*`:
+  it too. `WardrikNotify` follows every agent's log as the deployment, and
+  `WardrikChannel.Replies` each thread's agent, so a host running either
+  issues `deployment` `agent.events` on the agents they follow, as
+  `*/agent/*`:
 
       %Wardrik.Token{
         principal: principal,

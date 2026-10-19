@@ -100,9 +100,9 @@ end
 Maria, user 42 of `acme`, owns everything of `acme/@42`'s, such as the agent `acme/@42/support`,
 whose resource is `acme/@42/agent/support`. A user of another org reaches none of them. [Agents](/concepts/agents/) explains IDs.
 
-What follows every agent's log acts as `deployment`: [notices](/build/notices/), which need
-`agent.events` on `*/agent/*` and fail to start without it, and your own
-[listeners](/build/listen/), which read on from where they stopped.
+What follows agents' logs acts as `deployment`: [notices](/build/notices/) and a
+[channel](/channels/)'s replies, which need `agent.events` on `*/agent/*` and fail without it, and
+your own [listeners](/build/listen/), which read on from where they stopped.
 
 A token your issuer issues expires after 12 hours, or as `Wardrik.new/1`'s
 `expires: [session: seconds]` says. Each function of `Wardrik` refreshes one past that through your

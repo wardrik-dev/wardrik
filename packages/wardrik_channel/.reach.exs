@@ -57,6 +57,7 @@
       "Wardrik.LLM.Tools",
       "Wardrik.LLM.Usage",
       "Wardrik.Label",
+      "Wardrik.Listener",
       "Wardrik.Ledger",
       "Wardrik.Ledger.Key",
       "Wardrik.Principal",
