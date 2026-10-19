@@ -26,7 +26,7 @@ defmodule Wardrik.LLM.Turn do
     * `:run` - the `Wardrik.Run` it runs under, `nil` while it is written down
     * `:context` - the `Wardrik.Conversation` as it stands, what it added
       included, and `nil` where it is stored beside the history it began on,
-      which with `:messages` makes it again; see `on/2`
+      which with `:messages` makes it again; see `dump/1` and `load/2`
     * `:messages` - what it added, in order
     * `:remaining` - how many rounds of tool use it has left
     * `:answer` - the model's `Wardrik.LLM.Answer` whose tool calls it is
@@ -229,14 +229,18 @@ defmodule Wardrik.LLM.Turn do
   def under(%__MODULE__{} = turn, run), do: %{turn | run: run}
 
   @doc """
-  The turn on `history`, the conversation it began on, its context made again
-  from it and what the turn added; or on none, its context left out, for one
-  stored beside that history.
+  The turn with its context left out, for storing beside the history it
+  began on; `load/2` makes it again.
   """
-  @spec on(t(), Conversation.t() | nil) :: t()
-  def on(%__MODULE__{} = turn, nil), do: %{turn | context: nil}
+  @spec dump(t()) :: t()
+  def dump(%__MODULE__{} = turn), do: %{turn | context: nil}
 
-  def on(%__MODULE__{} = turn, %Conversation{} = history),
+  @doc """
+  Makes again the context `dump/1` left out: `history`, the conversation the
+  turn began on, with what the turn added after it.
+  """
+  @spec load(t(), Conversation.t()) :: t()
+  def load(%__MODULE__{} = turn, %Conversation{} = history),
     do: %{turn | context: Conversation.append(history, turn.messages)}
 
   @doc "The turn done, having added `messages` besides what it already had."
