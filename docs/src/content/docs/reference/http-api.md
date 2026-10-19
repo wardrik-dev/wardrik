@@ -244,8 +244,8 @@ answers as the chat app expects; `404` where no channel of that name takes reque
 ```http
 GET /v1/connections?owner=acme/@jon
 
-{"connections": [{"provider": "github", "held_by": "own"},
-                 {"provider": "linear", "held_by": "none"}]}
+{"connections": [{"provider": "github", "connected": true},
+                 {"provider": "linear", "connected": false}]}
 ```
 
 ```http
@@ -256,9 +256,9 @@ POST /v1/connections/linear?owner=acme/@jon
 ```
 
 `owner` names a person, `acme/@jon`, or an org, `acme`. The token must reach the owner's
-agents. `held_by` is what a call of the owner's agents would use: `own`, `shared` where they
-hold none and the deployment shares one, or `none`; an org's account is not its people's. The
-account is held once the person has authorized it at the link. A secret's value is never
+agents. `connected` says whether the owner holds it, which is what a call of their agents would
+use; an org's account is not its people's. The account is held once the person has authorized it at
+the link. A secret's value is never
 answered.
 
 ### Servers
@@ -414,7 +414,7 @@ What POST /v1/connections/{provider} answers: that the owner holds the account a
 
 ### `connections`
 
-The accounts an owner's org is offered, and who holds each: what GET /v1/connections answers. A value is never answered.
+The accounts an owner's org is offered, and whether the owner holds each: what GET /v1/connections answers. A value is never answered.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |

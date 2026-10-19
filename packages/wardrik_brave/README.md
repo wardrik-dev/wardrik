@@ -21,13 +21,12 @@ Results are kept small, since each one becomes part of the turn that asked
 for it.
 
 Its key is the credential `BRAVE_API_KEY`, which the host's
-`Wardrik.Credentials` resolve for each call. With
-[the vault](../wardrik/guides/vault.md) that is the deployment's secret of that name
-(`wardrik vault put BRAVE_API_KEY`), or the environment variable where the
-vault holds none, where the vault shares it with every agent:
+`Wardrik.Credentials` resolve for each call as the agent's owner holds it.
+With [the vault](../wardrik/guides/vault.md) each org seals its own
+(`wardrik vault put BRAVE_API_KEY --org acme`):
 
 ```elixir
-vault = WardrikVault.new(store: store, keys: [key], shared: ["BRAVE_API_KEY"])
+:ok = WardrikVault.put(vault, "BRAVE_API_KEY", Wardrik.Resource.parse!("acme"), value: key)
 host = Wardrik.Host.new(store: store, credentials: vault)
 ```
 

@@ -476,7 +476,7 @@ Show her `url`. She signs in at GitHub, comes back to `/oauth/callback/github`, 
 her token. Her connections then say she holds it:
 
 ```elixir
-{:ok, [%Wardrik.Connections.Connection{provider: "github", held_by: :own}]} =
+{:ok, [%Wardrik.Connections.Connection{provider: "github", connected: true}]} =
   MyApp.Agents.connections(maria)
 ```
 

@@ -87,7 +87,7 @@ These belong to an org, or one of its users, and reach only their agents:
 ## What the whole deployment shares
 
 - `policies/`, which any agent file can name.
-- Vault credentials put for the deployment, which an agent reads only where `vault.shared` names
-  them.
+- Vault credentials put for the deployment, for the daemon's own use, such as a model provider's
+  key. No agent reads them.
 - Credentials in an MCP server's `headers` or `env`, used for every org the server serves.
 - The terminal client, whose keys reach every org's agents.

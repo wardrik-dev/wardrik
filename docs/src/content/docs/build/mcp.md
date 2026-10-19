@@ -190,8 +190,8 @@ mcp:
 
 - `url` is the server's Streamable HTTP endpoint, with `headers` sent on every request.
 - A key in `headers` is the deployment's: every agent reaches the server as the deployment.
-- To keep it out of the environment, seal it with `wardrik vault put linear` and name it as
-  `credential: linear`, sent as `authorization: Bearer <token>`.
+- To reach it as each org, seal its key for each, `wardrik vault put linear --org acme`, and name it
+  as `credential: linear`, sent as `authorization: Bearer <token>`.
 
 ### Gating and trust
 

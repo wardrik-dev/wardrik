@@ -15,7 +15,7 @@ defmodule WardrikBrave.WebSearch do
 
   Its key is the credential `BRAVE_API_KEY`, which the
   `Wardrik.Credentials` of the host resolve for each call, such as `WardrikVault`
-  holding it as the deployment's secret.
+  holding it for the agent's owner.
   """
 
   use Wardrik.Tool

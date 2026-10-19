@@ -54,9 +54,6 @@ orgs:
     mcp: [github]
     channels: [growth-slack]
     policy: growth-limits
-
-vault:
-  shared: [SEARCH_API_KEY]
 ```
 
 - **Each team is declared once,** under `orgs`, with what it uses and the policy it's held to. A
@@ -64,8 +61,7 @@ vault:
 - **Servers are defined once.** Stripe serves Payments alone; GitHub serves both, each with its own
   token.
 - **Each team has its own Slack app,** offering only its own org's agents.
-- **Shared secrets are named.** Every agent may read `SEARCH_API_KEY`; no other deployment secret
-  reaches an agent.
+- **No deployment secret reaches an agent.** Each team's agents read only what their org holds.
 
 Each team's credentials are sealed for its org, where no other team's agents can read them:
 
@@ -73,7 +69,8 @@ Each team's credentials are sealed for its org, where no other team's agents can
 wardrik vault put STRIPE_AGENT_KEY --org payments
 wardrik vault put GITHUB_TOKEN --org payments
 wardrik vault put GITHUB_TOKEN --org growth
-wardrik vault put SEARCH_API_KEY
+wardrik vault put SEARCH_API_KEY --org payments
+wardrik vault put SEARCH_API_KEY --org growth
 ```
 
 See [Orgs](/run/orgs/) for everything an org keeps apart.
