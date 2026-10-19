@@ -558,7 +558,7 @@ Someone set one of an agent's triggers.
 
 ## Shared types
 
-The types events and resources refer to.
+The types events and bodies refer to.
 
 ### `message`
 

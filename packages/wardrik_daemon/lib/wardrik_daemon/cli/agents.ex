@@ -15,7 +15,7 @@ defmodule WardrikDaemon.CLI.Agents do
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
-  alias Wardrik.Resource
+  alias Wardrik.JSON
   alias WardrikConsole.Filter
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
@@ -78,7 +78,7 @@ defmodule WardrikDaemon.CLI.Agents do
 
   defp listed(words, opts) do
     with {:ok, members} <- picked(words, opts),
-         do: {:ok, %{"agents" => Enum.map(members, &Resource.agent/1)}}
+         do: {:ok, %{"agents" => Enum.map(members, &JSON.agent/1)}}
   end
 
   defp picked(words, opts) do

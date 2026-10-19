@@ -38,8 +38,8 @@ defmodule Wardrik.Catalog.Tools do
   alias Wardrik.Catalog.Entry
   alias Wardrik.Error
   alias Wardrik.Host
+  alias Wardrik.JSON
   alias Wardrik.Principal
-  alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Run
   alias Wardrik.Scope
@@ -97,7 +97,7 @@ defmodule Wardrik.Catalog.Tools do
 
     case entry.run.(scope, subject, Keyword.fetch!(opts, :input), context) do
       {:ok, output, labels} -> {:ok, output, labels: labels}
-      {:error, %Error{} = error} -> {:error, Resource.error(error)}
+      {:error, %Error{} = error} -> {:error, JSON.error(error)}
     end
   end
 

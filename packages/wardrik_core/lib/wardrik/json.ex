@@ -1,4 +1,4 @@
-defmodule Wardrik.Resource do
+defmodule Wardrik.JSON do
   @moduledoc """
   What `Wardrik`'s functions answer, as JSON, as maps `JSON.encode!/1`
   takes: the shapes every surface answers in, as the HTTP API does.

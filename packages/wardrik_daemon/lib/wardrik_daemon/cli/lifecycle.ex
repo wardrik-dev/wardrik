@@ -213,7 +213,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp spawned(:new, agent, key, scope) do
     {:ok, snapshot} = Wardrik.agent_read(scope, key)
-    snapshot = Wardrik.Resource.snapshot(snapshot)
+    snapshot = Wardrik.JSON.snapshot(snapshot)
     {path, _spec} = WardrikDaemon.Host.declared()[key]
 
     [
@@ -482,7 +482,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp calls_json([key], opts) do
     with {:ok, calls} <- Wardrik.agent_calls(opts[:as], key),
-         do: {:ok, Wardrik.Resource.calls(calls)}
+         do: {:ok, Wardrik.JSON.calls(calls)}
   end
 
   defp kill_call([key, call_id], opts) do

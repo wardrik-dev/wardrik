@@ -75,7 +75,7 @@ defmodule WardrikDaemon.CLI.Decisions do
 
   defp interrupts(_words, opts) do
     with {:ok, parked} <- Wardrik.agents_parked(opts[:as], Prefix.all()),
-         do: {:ok, Wardrik.Resource.interrupts(parked)}
+         do: {:ok, Wardrik.JSON.interrupts(parked)}
   end
 
   defp row_of(key, %{"id" => id, "message" => prompt} = interrupt),

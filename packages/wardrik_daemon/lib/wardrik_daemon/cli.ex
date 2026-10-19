@@ -28,7 +28,7 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.Error
   alias Wardrik.Fleet
   alias Wardrik.Host
-  alias Wardrik.Resource
+  alias Wardrik.JSON
   alias WardrikConsole.Nodes
   alias WardrikDaemon.Boot
   alias WardrikDaemon.CLI.Agents
@@ -383,7 +383,9 @@ defmodule WardrikDaemon.CLI do
     |> answered(terminal, command, json?)
   end
 
-  defp answered({:ok, document}, _terminal, _command, true), do: IO.puts(JSON.encode!(document))
+  defp answered({:ok, document}, _terminal, _command, true),
+    do: IO.puts(Elixir.JSON.encode!(document))
+
   defp answered({:ok, text}, terminal, _command, false), do: Terminal.puts(terminal, text)
   defp answered(:ok, _terminal, _command, _json?), do: :ok
   defp answered(:live, _terminal, _command, _json?), do: exit({:shutdown, :live})
@@ -411,7 +413,7 @@ defmodule WardrikDaemon.CLI do
   # saying so, as the HTTP API answers it, and exits with status 1.
   defp failed(terminal, %Error{message: message} = error, json?) do
     if json?,
-      do: IO.puts(JSON.encode!(Resource.error(error))),
+      do: IO.puts(Elixir.JSON.encode!(JSON.error(error))),
       else: Terminal.puts(terminal, message)
 
     exit({:shutdown, 1})
@@ -419,7 +421,7 @@ defmodule WardrikDaemon.CLI do
 
   defp failed(terminal, type, message, json?) do
     if json?,
-      do: IO.puts(JSON.encode!(Resource.error(type, plain(message)))),
+      do: IO.puts(Elixir.JSON.encode!(JSON.error(type, plain(message)))),
       else: Terminal.puts(terminal, message)
 
     exit({:shutdown, 1})
@@ -583,7 +585,7 @@ defmodule WardrikDaemon.CLI do
 
   defp nodes(_words, opts) do
     with {:ok, nodes} <- Wardrik.deployment_nodes(opts[:as]),
-         do: {:ok, Resource.nodes(nodes)}
+         do: {:ok, JSON.nodes(nodes)}
   end
 
   defp reload(_words, opts) do
@@ -705,7 +707,7 @@ defmodule WardrikDaemon.CLI do
 
   defp snapshot([key], opts) do
     with {:ok, snapshot} <- Wardrik.agent_read(opts[:as], key),
-         do: {:ok, Resource.snapshot(snapshot)}
+         do: {:ok, JSON.snapshot(snapshot)}
   end
 
   defp clear([key], opts) do

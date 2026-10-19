@@ -18,7 +18,7 @@ defmodule WardrikHTTP.Auth do
 
   import Plug.Conn
 
-  alias Wardrik.Resource
+  alias Wardrik.JSON
   alias WardrikHTTP.Authenticator
 
   @impl Plug
@@ -36,11 +36,11 @@ defmodule WardrikHTTP.Auth do
         assign(conn, :caller, caller)
 
       {:error, :unavailable} ->
-        body = Resource.error("unavailable", "Credentials cannot be checked now. Try again.")
+        body = JSON.error("unavailable", "Credentials cannot be checked now. Try again.")
         refuse(conn, 503, body)
 
       {:error, :unauthorized} ->
-        body = Resource.error("unauthorized", "No credential this server knows was presented.")
+        body = JSON.error("unauthorized", "No credential this server knows was presented.")
 
         conn
         |> put_resp_header("www-authenticate", Authenticator.challenge(authenticator))
@@ -51,7 +51,7 @@ defmodule WardrikHTTP.Auth do
   defp refuse(conn, status, body) do
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(status, JSON.encode!(body))
+    |> send_resp(status, Elixir.JSON.encode!(body))
     |> halt()
   end
 end

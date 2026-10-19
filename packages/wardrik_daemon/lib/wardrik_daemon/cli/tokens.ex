@@ -15,7 +15,7 @@ defmodule WardrikDaemon.CLI.Tokens do
   """
 
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Resource
+  alias Wardrik.JSON
   alias Wardrik.Role
   alias WardrikDaemon.CLI.Command
 
@@ -78,7 +78,7 @@ defmodule WardrikDaemon.CLI.Tokens do
              [Role.bind(roles, scope)],
              policy ++ expires
            ) do
-      token = Resource.token(issued)
+      token = JSON.token(issued)
 
       {:ok,
        Enum.join(
@@ -151,7 +151,7 @@ defmodule WardrikDaemon.CLI.Tokens do
 
   defp list(_words, opts) do
     with {:ok, tokens} <- Wardrik.tokens_list(opts[:as]),
-         do: {:ok, listed(Enum.map(tokens, &Resource.token/1))}
+         do: {:ok, listed(Enum.map(tokens, &JSON.token/1))}
   end
 
   defp listed(tokens) do

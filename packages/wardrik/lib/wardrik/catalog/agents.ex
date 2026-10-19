@@ -30,7 +30,7 @@ defmodule Wardrik.Catalog.Agents do
   alias Wardrik.Catalog.Entry
   alias Wardrik.Catalog.Tools
   alias Wardrik.Error
-  alias Wardrik.Resource
+  alias Wardrik.JSON
 
   @agent %{
     "type" => "string",
@@ -88,12 +88,12 @@ defmodule Wardrik.Catalog.Agents do
         Tools.run(entry, agent, reach: reach, input: Map.delete(input, "agent"), context: context)
 
       {:error, message} ->
-        {:error, Resource.error(Error.new(:invalid, message))}
+        {:error, JSON.error(Error.new(:invalid, message))}
     end
   end
 
   def run(_entry, _reach, _input, _context),
-    do: {:error, Resource.error(Error.new(:invalid, "Name the agent the call acts on, as agent"))}
+    do: {:error, JSON.error(Error.new(:invalid, "Name the agent the call acts on, as agent"))}
 
   @doc false
   @spec run_all(Entry.t(), Prefix.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()

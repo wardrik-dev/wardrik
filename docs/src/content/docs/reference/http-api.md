@@ -129,7 +129,7 @@ wardrik_core's `priv/openapi.json` is every route in OpenAPI 3.1: what each take
 answers, and the function of `Wardrik` it calls. A client generator in any language reads
 `priv/openapi.bundled.json`, the same with every schema in it.
 
-[Resources](#resources), below, lists what each route takes and answers. The TypeScript SDK's types
+[Bodies](#bodies), below, lists what each route takes and answers. The TypeScript SDK's types
 are generated from the same schemas.
 
 ### Agents
@@ -308,9 +308,9 @@ Carries a `Request-Id` header, the caller's own where it sent one. An error is
 with the caller.
 
 
-## Resources
+## Bodies
 
-The bodies the routes take and answer with.
+The JSON the routes take and answer with.
 
 ### `agent`
 
