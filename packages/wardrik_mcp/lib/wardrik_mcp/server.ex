@@ -14,7 +14,7 @@ defmodule WardrikMCP.Server do
   | `:key` | required | whose server this is and what it is called among theirs, a `Wardrik.Resource` such as `deployment/server/github`; the name it ends in is the prefix on its tool names |
   | `:transport` | required | `{:stdio, opts}` or `{:streamable_http, opts}`, as `Anubis.Client` takes them |
   | `:prefix` | the key's name | what every tool name from this server starts with, which may not hold `__` |
-  | `:serves` | every agent | the prefixes whose agents may call its tools, as `Wardrik.AgentID.Prefix`es |
+  | `:serves` | every agent | the `Wardrik.Resource` patterns whose agents may call its tools, as `acme/*` |
   | `:only` | every tool | the remote names to take |
   | `:except` | none | the remote names to leave |
   | `:gated` | every tool the server does not mark `readOnlyHint` | the remote names whose calls wait on a person unless a hook allows them by name, a name ending in `*` naming every tool it begins, `true` for all of them, or `false` for none; see `c:Wardrik.Tool.gated?/1` |
@@ -96,7 +96,7 @@ defmodule WardrikMCP.Server do
     :credential,
     :credential_env,
     except: [],
-    serves: [Wardrik.AgentID.Prefix.all()],
+    serves: [Wardrik.Resource.parse!("*")],
     gated: nil,
     trusted: false,
     store: WardrikStore.new(adapter: WardrikStore.None),
@@ -121,7 +121,7 @@ defmodule WardrikMCP.Server do
           prefix: String.t(),
           only: [String.t()] | nil,
           except: [String.t()],
-          serves: [Wardrik.AgentID.Prefix.t()],
+          serves: [Wardrik.Resource.t()],
           gated: [String.t()] | boolean() | nil,
           trusted: boolean(),
           credential: Wardrik.Credential.ref() | nil,
@@ -192,7 +192,7 @@ defmodule WardrikMCP.Server do
   @doc "Whether the agent `id` may call this server's tools: one of `:serves` covers it."
   @spec serves?(t(), Wardrik.AgentID.t()) :: boolean()
   def serves?(%__MODULE__{serves: serves}, %Wardrik.AgentID{} = id),
-    do: Enum.any?(serves, &Wardrik.AgentID.Prefix.covers?(&1, id))
+    do: Enum.any?(serves, &Wardrik.Resource.covers?(&1, Wardrik.AgentID.resource(id)))
 
   @doc "Whether a remote tool name is one this server offers to an agent."
   @spec offers?(t(), String.t()) :: boolean()

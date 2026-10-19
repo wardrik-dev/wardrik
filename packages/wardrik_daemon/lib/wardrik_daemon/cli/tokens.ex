@@ -5,17 +5,18 @@ defmodule WardrikDaemon.CLI.Tokens do
   do over the API at `/v1/tokens`. A token acts for whoever made it.
 
   `token create NAME` makes a token printed once. It allows its roles, each a
-  named set of actions (see `Wardrik.Role`), on the agents under its scope:
-  `--scope PREFIX` is `org/`, the org's own, none of its users'; `org/@user/`,
-  a user's; `org/*`, the org and every one of its users'; or a key,
-  `org/name` or `org/@user/name`. `--all` is every agent. `--policy NAME`, a
-  policy `policies/` holds, is its policy: every agent it defines runs under
-  it, ahead of its own. `--expires` is how long it works, `30d` or `12h`;
-  `config.yaml`'s `tokens.expires.api` where left out.
+  named set of actions (see `Wardrik.Role`), on what each `--resource
+  PATTERN` covers, a `Wardrik.Resource` pattern: `org/agent/*`, the org's
+  own agents, none of its users'; `org/@user/*`, a user's; `org/*`, the org
+  and every one of its users'; `org/agent/name`, one agent; `*`, everything,
+  the deployment's own included. `--policy NAME`, a policy `policies/`
+  holds, is its policy: every agent it defines runs under it, ahead of its
+  own. `--expires` is how long it works, `30d` or `12h`; `config.yaml`'s
+  `tokens.expires.api` where left out.
   """
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.JSON
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias WardrikDaemon.CLI.Command
 
@@ -29,19 +30,19 @@ defmodule WardrikDaemon.CLI.Tokens do
         name: "token create",
         group: "Tokens and secrets",
         arguments: "NAME",
-        options: "(--scope PREFIX | --all) --role ROLES [--policy NAME] [--expires 30d]",
+        options: "--resource PATTERN... --role ROLES [--policy NAME] [--expires 30d]",
         summary: "a token for the HTTP API, printed once",
         details: [
-          "--scope PREFIX is the agents it reaches: org/ (the org's own), org/@user/ (a user's),",
-          "org/* (the org and all its users'), or a key, org/name or org/@user/name.",
+          "--resource PATTERN, once or more, is what it reaches: org/agent/* (the org's own",
+          "agents), org/@user/* (a user's), org/* (the org and all its users'), org/agent/name",
+          "(one agent), or * (everything).",
           "--role ROLES is what it may do there, some of #{Enum.join(@roles, ",")}.",
           "--policy NAME, one of policies/, holds every agent it defines.",
           "--expires is how long it works, as 30d or 12h; tokens.expires.api by default.",
           "It acts for whoever made it."
         ],
         switches: [
-          scope: :string,
-          all: :boolean,
+          resource: :keep,
           role: :string,
           policy: :string,
           expires: :string
@@ -67,7 +68,7 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp create([name], opts) do
-    with {:ok, scope} <- scope(opts),
+    with {:ok, resources} <- resources(opts),
          {:ok, roles} <- roles(opts[:role]),
          {:ok, policy} <- policy(opts[:policy]),
          {:ok, expires} <- expires(opts[:expires]),
@@ -75,7 +76,7 @@ defmodule WardrikDaemon.CLI.Tokens do
            Wardrik.tokens_create(
              opts[:as],
              name,
-             [Role.bind(roles, scope)],
+             [Role.bind(roles, resources)],
              policy ++ expires
            ) do
       token = JSON.token(issued)
@@ -93,26 +94,35 @@ defmodule WardrikDaemon.CLI.Tokens do
     end
   end
 
-  # One of --scope and --all.
-  defp scope(opts) do
-    case {opts[:scope], opts[:all]} do
-      {scope, nil} when is_binary(scope) -> scope |> Prefix.parse() |> declared()
-      {nil, true} -> {:ok, Prefix.all()}
-      _neither_or_both -> {:error, :usage}
+  # Each --resource, a pattern beginning with an org config.yaml declares
+  # where it begins with one.
+  defp resources(opts) do
+    case Keyword.get_values(opts, :resource) do
+      [] -> {:error, :usage}
+      texts -> texts |> Enum.map(&resource/1) |> parsed()
     end
   end
 
-  defp declared({:ok, scope}) do
-    case Prefix.org(scope) do
-      nil -> {:ok, scope}
-      org -> declared(WardrikDaemon.Config.declared(WardrikDaemon.Host.config(), org), scope)
+  defp parsed(resources) do
+    case Enum.find(resources, &match?({:error, _message}, &1)) do
+      nil -> {:ok, for({:ok, pattern} <- resources, do: pattern)}
+      {:error, message} -> {:error, "--resource: " <> message}
     end
   end
 
-  defp declared(error), do: error
+  defp resource(text) do
+    [org | _rest] = String.split(text, "/")
 
-  defp declared(:ok, scope), do: {:ok, scope}
-  defp declared({:error, message}, _scope), do: {:error, "--scope: " <> message}
+    with {:ok, pattern} <- Resource.parse(text),
+         :ok <- declared(org),
+         do: {:ok, pattern}
+  end
+
+  defp declared(org) do
+    if org == "deployment" or String.contains?(org, ["*", "?"]),
+      do: :ok,
+      else: WardrikDaemon.Config.declared(WardrikDaemon.Host.config(), org)
+  end
 
   defp roles(nil), do: {:error, :usage}
 
@@ -161,7 +171,7 @@ defmodule WardrikDaemon.CLI.Tokens do
 
     case rows do
       [] ->
-        "No tokens. Make one with: wardrik token create NAME --scope PREFIX --role ROLES"
+        "No tokens. Make one with: wardrik token create NAME --resource PATTERN --role ROLES"
 
       [_row] ->
         Enum.join(["1 token:" | rows], "\n")
@@ -183,10 +193,7 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp statement(%{"actions" => actions, "resources" => resources}),
-    do: "#{named(actions)} on " <> Enum.map_join(resources, ", ", &agents/1)
-
-  defp agents(""), do: "every agent"
-  defp agents(prefix), do: prefix
+    do: "#{named(actions)} on #{Enum.join(resources, ", ")}"
 
   # The roles whose actions these are, where they are, else the actions.
   defp named(actions) do

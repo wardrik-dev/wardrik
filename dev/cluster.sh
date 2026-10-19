@@ -13,11 +13,11 @@
 #   /connect researcher    attach this client to it, wherever it landed
 #   /move researcher       pick a node to restart it on
 #   /fleet                 move into the fleet panel
-#   /stop acme/            interrupt everything under a prefix
+#   /stop acme/agent/*     interrupt every agent the pattern covers
 #
 # And from either iex pane, to see the same fleet from another node:
 #
-#   Wardrik.Fleet.list()
+#   Wardrik.Fleet.held(Wardrik.Resource.parse!("*"))
 #   Wardrik.Fleet.spawn(Wardrik.AgentID.new!("analyst", org: "acme", user: "jon"))
 #   Wardrik.Fleet.stop(Wardrik.AgentID.new!("analyst", org: "acme", user: "jon"))
 #

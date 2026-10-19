@@ -876,7 +876,7 @@ defmodule Wardrik.Agent.State do
     do: answer(state, state.answering ++ asks(state.pending), &stopped/1, [])
 
   defp answer(state, asks, text, labels) do
-    sender = Principal.new(:agent, to_string(state.agent_id))
+    sender = Principal.new(:agent, to_string(Wardrik.AgentID.resource(state.agent_id)))
 
     for {agent, id} <- asks,
         do:

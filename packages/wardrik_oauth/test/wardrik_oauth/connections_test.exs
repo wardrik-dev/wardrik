@@ -1,7 +1,6 @@
 defmodule WardrikOAuth.ConnectionsTest do
   use WardrikOAuth.Test.Case, async: false
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Principal
   alias Wardrik.Role
@@ -26,7 +25,7 @@ defmodule WardrikOAuth.ConnectionsTest do
     jon =
       Scope.new(host(), %Token{
         principal: Principal.new(:user, owner, name: "Jon"),
-        scope: [Role.bind([:owner], Prefix.tenant!(org))]
+        scope: [Role.bind([:owner], [Wardrik.Resource.parse!("#{org}/*")])]
       })
 
     %{org: org, jon: jon, mine: person(org, owner)}
@@ -59,7 +58,7 @@ defmodule WardrikOAuth.ConnectionsTest do
     assert {:ok, %{authorization: nil}} = Wardrik.connections_connect(jon, mine, "linear")
 
     assert [{"secret.stored", %{"type" => "user", "id" => ^owner}} | _] =
-             Enum.reverse(Audit.about("secrets/linear"))
+             Enum.reverse(Audit.about("#{mine}/secret/linear"))
 
     refute WardrikOAuth.connected?(vault(), "linear", Wardrik.Resource.parse!(org))
   end
@@ -74,7 +73,7 @@ defmodule WardrikOAuth.ConnectionsTest do
     assert list(jon, mine)["linear"] == nil
 
     assert {"secret.removed", %{"type" => "user", "id" => ^owner}} =
-             List.last(Audit.about("secrets/linear"))
+             List.last(Audit.about("#{mine}/secret/linear"))
 
     assert {:error, %Error{type: :not_found}} =
              Wardrik.connections_disconnect(jon, mine, "linear")

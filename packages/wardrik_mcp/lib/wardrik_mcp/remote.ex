@@ -15,7 +15,6 @@ defmodule WardrikMCP.Remote do
   connection stops after a quarter of an hour with no call through it.
   """
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Resource
   alias WardrikMCP.Auth
   alias WardrikMCP.Server
@@ -68,7 +67,7 @@ defmodule WardrikMCP.Remote do
       remote.key,
       [
         transport: {:streamable_http, base_url: remote.url},
-        serves: [Prefix.owned_by(Resource.owner(remote.key))],
+        serves: [Resource.parse!("#{Resource.owner(remote.key)}/agent/*")],
         store: store,
         idle_after: @idle_after
       ] ++ Auth.options(remote.auth, remote.key) ++ remote.filters

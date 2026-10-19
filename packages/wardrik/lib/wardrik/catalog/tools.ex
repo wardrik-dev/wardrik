@@ -6,7 +6,7 @@ defmodule Wardrik.Catalog.Tools do
   | Source | Offers | On |
   | --- | --- | --- |
   | `Wardrik.Catalog.Self` | the entries on an agent, as `self_trigger_set` | the agent itself |
-  | `Wardrik.Catalog.Agents` | the entries on an agent, as `agent_trigger_set`, taking the `agent` they act on, and those on the agents under a prefix, as `agents_list` | the agents of its org |
+  | `Wardrik.Catalog.Agents` | the entries on an agent, as `agent_trigger_set`, taking the `agent` they act on, and those on many agents, as `agents_list` | the agents of its owner |
 
   Each tool is described by its entry's summary, and takes its input. A
   call runs the entry in the calling agent's scope, made with
@@ -15,12 +15,12 @@ defmodule Wardrik.Catalog.Tools do
   `Wardrik.agent_ask/4`), and an agent another surface declares, as a file
   does, answers as it would there.
 
-  The agent's own token is the `:agent` principal of its ID, holding
-  `reader`, `messenger` and `definer` on what its source reaches, and never
-  more. A change runs with that token, and the audit records the agent as
-  who made it. An agent it defines is held to the calling agent's own
-  hooks, every policy and budget that holds it, ahead of its own, and so is
-  never looser. A read or a message is the asker's as
+  The agent's own token is the `:agent` principal of its resource, as
+  `acme/agent/front`, holding `reader`, `messenger` and `definer` on what
+  its source reaches, and never more. A change runs with that token, and
+  the audit records the agent as who made it. An agent it defines is held
+  to the calling agent's own hooks, every policy and budget that holds it,
+  ahead of its own, and so is never looser. A read or a message is the asker's as
   well: it runs with the token the host's `Wardrik.Issuer` issues whoever
   asked for the turn, assumed by the agent and narrowed to what its own
   allows, so an agent never reads or messages for someone what they could
@@ -34,7 +34,7 @@ defmodule Wardrik.Catalog.Tools do
   that reads it.
   """
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.AgentID
   alias Wardrik.Catalog.Entry
   alias Wardrik.Error
   alias Wardrik.Host
@@ -79,7 +79,7 @@ defmodule Wardrik.Catalog.Tools do
   what it holds. See above for the token it runs with.
   """
   @spec run(Entry.t(), Entry.subject(),
-          reach: Prefix.t(),
+          reach: [Wardrik.Resource.t()],
           input: map(),
           context: Wardrik.Tool.Context.t()
         ) :: Wardrik.Tool.answer()
@@ -89,7 +89,7 @@ defmodule Wardrik.Catalog.Tools do
     id = Run.agent_id(run)
 
     own = %Token{
-      principal: Principal.new(:agent, to_string(id)),
+      principal: Principal.new(:agent, to_string(AgentID.resource(id))),
       scope: [Role.bind([:reader, :messenger, :definer], Keyword.fetch!(opts, :reach))]
     }
 

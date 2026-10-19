@@ -19,8 +19,8 @@ defmodule WardrikMCP do
 
       Wardrik.LLM.Config.new(tools: [{WardrikMCP, :*}])
 
-  A server's `:serves` limits which agents it serves, by prefix. A call from an
-  agent under none of them is refused, so an agent that is not to see a
+  A server's `:serves` limits which agents it serves, by `Wardrik.Resource`
+  pattern. A call from an agent none of them covers is refused, so an agent that is not to see a
   server's tools names the servers it is given, rather than `:*`.
 
   Both are read again for every turn, so a config outlives the servers it was

@@ -92,7 +92,7 @@ describe("requests", () => {
     await server.close();
   });
 
-  test("list, cancel, remove and read the parked calls of agents under a prefix", async () => {
+  test("list, cancel, remove and read the parked calls of the agents a pattern covers", async () => {
     server.on("GET", "/v1/agents", (_request, response) => json(response, 200, { agents: [] }));
     server.on("POST", "/v1/agents/cancel", (_request, response) =>
       json(response, 202, { cancelled: ["acme/a"] }),
@@ -104,17 +104,17 @@ describe("requests", () => {
       json(response, 200, { interrupts: [] }),
     );
 
-    assert.deepEqual(await wardrik.agents.list("acme/"), []);
-    assert.deepEqual(await wardrik.agents.cancel("acme/"), ["acme/a"]);
-    assert.deepEqual((await wardrik.agents.remove("acme/")).forgotten, ["acme/a"]);
+    assert.deepEqual(await wardrik.agents.list("acme/agent/*"), []);
+    assert.deepEqual(await wardrik.agents.cancel("acme/agent/*"), ["acme/a"]);
+    assert.deepEqual((await wardrik.agents.remove("acme/agent/*")).forgotten, ["acme/a"]);
     assert.deepEqual(await wardrik.agents.parked(), []);
 
     assert.deepEqual(
       server.received.map((request) => [request.method, request.path]),
       [
-        ["GET", "/v1/agents?prefix=acme%2F"],
-        ["POST", "/v1/agents/cancel?prefix=acme%2F"],
-        ["DELETE", "/v1/agents?prefix=acme%2F"],
+        ["GET", "/v1/agents?resource=acme%2Fagent%2F*"],
+        ["POST", "/v1/agents/cancel?resource=acme%2Fagent%2F*"],
+        ["DELETE", "/v1/agents?resource=acme%2Fagent%2F*"],
         ["GET", "/v1/interrupts"],
       ],
     );
@@ -397,7 +397,7 @@ describe("tokens", () => {
       id: "0123456789ab",
       name: "ci",
       principal: { type: "user", id: "jon" },
-      statements: [{ actions: ["agent.read"], resources: ["acme/"] }],
+      statements: [{ actions: ["agent.read"], resources: ["acme/agent/*"] }],
       policy: "careful",
       created_at: "2026-10-18T00:00:00Z",
     };
@@ -412,7 +412,7 @@ describe("tokens", () => {
     assert.deepEqual(
       await wardrik.tokens.create({
         name: "ci",
-        scope: "acme/",
+        resources: ["acme/agent/*"],
         roles: ["reader"],
         policy: "careful",
         expiresIn: 3600,
@@ -429,7 +429,13 @@ describe("tokens", () => {
         [
           "POST",
           "/v1/tokens",
-          { name: "ci", scope: "acme/", roles: ["reader"], policy: "careful", expires_in: 3600 },
+          {
+            name: "ci",
+            resources: ["acme/agent/*"],
+            roles: ["reader"],
+            policy: "careful",
+            expires_in: 3600,
+          },
         ],
         ["DELETE", "/v1/tokens/0123456789ab", undefined],
       ],

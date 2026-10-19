@@ -22,7 +22,6 @@ defmodule WardrikTUI.Fleet do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Delegation
   alias Wardrik.Fleet.Member
   alias WardrikTUI.Render
@@ -181,7 +180,8 @@ defmodule WardrikTUI.Fleet do
        else: [Text.tag(scope(id), @faint), named]
   end
 
-  defp scope(%AgentID{org: org, user: user}), do: to_string(Prefix.new!(org: org, user: user))
+  defp scope(%AgentID{org: org, user: nil}), do: org <> "/"
+  defp scope(%AgentID{org: org, user: user}), do: "#{org}/@#{user}/"
 
   defp name(%AgentID{name: name, external_id: nil}), do: name
   defp name(%AgentID{name: name, external_id: external_id}), do: name <> "/" <> external_id

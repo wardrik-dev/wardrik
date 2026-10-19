@@ -4,9 +4,9 @@ defmodule WardrikDefinition.KeptTest do
   import ExUnit.CaptureLog
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Definition
   alias Wardrik.Fleet
+  alias Wardrik.Resource
   alias WardrikDefinition.Context
   alias WardrikDefinition.Kept
 
@@ -37,12 +37,12 @@ defmodule WardrikDefinition.KeptTest do
     org = "kept-#{System.unique_integer([:positive])}"
 
     on_exit(fn ->
-      prefix = Prefix.parse!(org <> "/")
+      own = Resource.parse!(org <> "/agent/*")
 
-      for trigger <- WardrikTrigger.list(prefix),
+      for trigger <- WardrikTrigger.list(own),
           do: WardrikTrigger.delete(trigger.agent, trigger.name)
 
-      Fleet.forget_under(prefix)
+      Fleet.forget_under(own)
     end)
 
     careful = WardrikPolicy.decode!(%{"deny" => ["run_lua"]}, "careful")
@@ -58,10 +58,10 @@ defmodule WardrikDefinition.KeptTest do
 
   defp kept(contexts), do: %Kept{store: Wardrik.Test.store(), contexts: contexts}
 
-  defp token(prefix, policy \\ :none) do
+  defp token(pattern, policy \\ :none) do
     %Wardrik.Token{
       principal: Wardrik.Principal.new(:user, "jon"),
-      scope: [Wardrik.Role.bind([:owner], prefix)],
+      scope: [Wardrik.Role.bind([:owner], [pattern])],
       policy: policy
     }
   end
@@ -70,7 +70,7 @@ defmodule WardrikDefinition.KeptTest do
     do:
       Definition.put(kept, id,
         definition: fields,
-        token: token(Prefix.new!(org: id.org)),
+        token: token(Resource.parse!(id.org <> "/agent/*")),
         held: []
       )
 
@@ -104,7 +104,7 @@ defmodule WardrikDefinition.KeptTest do
     assert {:ok, spec} =
              Definition.put(kept, id,
                definition: %{"policy" => "careful"},
-               token: token(Prefix.new!(org: org), "careful"),
+               token: token(Resource.parse!(org <> "/agent/*"), "careful"),
                held: held
              )
 
@@ -117,7 +117,7 @@ defmodule WardrikDefinition.KeptTest do
     assert {:error, message} =
              Definition.put(without, id,
                definition: %{"policy" => "lax"},
-               token: token(Prefix.new!(org: org), "careful"),
+               token: token(Resource.parse!(org <> "/agent/*"), "careful"),
                held: []
              )
 
@@ -246,15 +246,19 @@ defmodule WardrikDefinition.KeptTest do
     assert {:ok, _spec} =
              Definition.put(kept, id,
                definition: fields,
-               token: token(Prefix.new!(org: org)),
+               token: token(Resource.parse!(org <> "/agent/*")),
                held: []
              )
 
     assert {:error, message} =
-             Definition.put(kept, id, definition: fields, token: token(Prefix.of(id)), held: [])
+             Definition.put(kept, id,
+               definition: fields,
+               token: token(AgentID.resource(id)),
+               held: []
+             )
 
     assert message ==
-             "workspace shared team: #{org} belongs to #{org}/, which the token does not reach"
+             "workspace shared team: #{org} belongs to #{org}/agent/*, which the token does not reach"
   end
 
   test "reload builds every agent awake again, and keeps the definitions of agents not stored",
@@ -283,9 +287,9 @@ defmodule WardrikDefinition.KeptTest do
     {:ok, _spec} = put(kept, one, %{})
     {:ok, _spec} = put(kept, other, %{})
 
-    assert Enum.sort_by(Definition.defined(kept, Prefix.parse!(org <> "/*")), &to_string/1) ==
+    assert Enum.sort_by(Definition.defined(kept, Resource.parse!(org <> "/*")), &to_string/1) ==
              [other, one]
 
-    assert Definition.defined(kept, Prefix.of(other)) == [other]
+    assert Definition.defined(kept, AgentID.resource(other)) == [other]
   end
 end

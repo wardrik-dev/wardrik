@@ -1,13 +1,13 @@
 defmodule Wardrik.OrgIssuer do
-  @moduledoc "Issues everyone `owner` on the agents of `:org`."
+  @moduledoc "Issues everyone `owner` on everything of `:org`'s, `org/*`."
 
   @enforce_keys [:org]
   defstruct [:org]
 
   defimpl Wardrik.Issuer do
     def issue(%{org: org}, principal, _opts) do
-      prefix = Wardrik.AgentID.Prefix.new!(org: org)
-      %Wardrik.Token{principal: principal, scope: [Wardrik.Role.bind([:owner], prefix)]}
+      tenant = Wardrik.Resource.parse!("#{org}/*")
+      %Wardrik.Token{principal: principal, scope: [Wardrik.Role.bind([:owner], [tenant])]}
     end
   end
 end

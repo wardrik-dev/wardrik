@@ -58,8 +58,8 @@ id = Wardrik.AgentID.new!("assistant", org: current_org, user: current_user)
 
 An ID is `acme/assistant` for an org's own agent, `acme/@jon/assistant` for
 one that works for a user, and either with an external ID after it, such as a
-thread in a chat, where one agent answers for many. The fleet is listed,
-watched and stopped by `Wardrik.AgentID.Prefix`.
+thread in a chat, where one agent answers for many. The fleet is listed and
+stopped by `Wardrik.Resource` pattern, as `acme/agent/*`, and watched whole.
 
 `ask/2` returns at once. The agent takes its messages one turn at a time, and
 what it does arrives as `Wardrik.Event`s: the text as it streams, each tool
@@ -321,7 +321,8 @@ token = Wardrik.Issuer.issue(Wardrik.Host.issuer(host), maria, [])
 
 Who may do what is a `Wardrik.Token`, in IAM's words: its principal is who
 it acts for, and its statements each allow some actions, such as
-`agent.ask`, on the agents under a prefix. Anything none allows is denied.
+`agent.ask`, on the resources a `Wardrik.Resource` pattern covers, as
+`acme/agent/*`. Anything none allows is denied.
 A `Wardrik.Role` is a named set of actions. The host's `Wardrik.Issuer`
 issues each principal their token.
 
@@ -347,7 +348,7 @@ without notice.
 | | Modules |
 | --- | --- |
 | Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Issuer`, `Wardrik.Servers` and the `None` of each, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Entry`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store`, `Wardrik.LLM.Client`, `Wardrik.LLM.Answer`, `Wardrik.LLM.Error` |
-| Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.History.All`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
+| Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.History.All`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | Who acts, and what `Wardrik` answers them | `Wardrik.Token`, `Wardrik.Statement`, `Wardrik.Role`, `Wardrik.Resource`, `Wardrik.Error`, `Wardrik.JSON`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.Conversation` and the modules under it |

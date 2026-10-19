@@ -104,7 +104,7 @@ export class Wardrik {
   }
 }
 
-/** What a removal under a prefix did. */
+/** What a removal by a pattern did. */
 export interface Removal {
   forgotten: string[];
   kept: { id: string; why: string }[];
@@ -123,40 +123,43 @@ export class Agents {
     this.#http = http;
   }
 
-  /** The agents under `prefix`, such as `"acme/"`, or every one the token reaches. */
-  async list(prefix?: string): Promise<AgentSummary[]> {
+  /**
+   * The agents the resource pattern `resource` covers, such as `"acme/agent/*"`, or those the
+   * token's one resource covers.
+   */
+  async list(resource?: string): Promise<AgentSummary[]> {
     const answer = await this.#http.json<{ agents: AgentSummary[] }>("GET", "/v1/agents", {
-      query: { prefix },
+      query: { resource },
     });
 
     return answer.agents;
   }
 
   /**
-   * Stops what every agent under `prefix` is doing, where it is taking a
-   * turn, and answers the keys of those it stopped. `""` is every agent.
+   * Stops what every agent `resource` covers is doing, where it is taking a
+   * turn, and answers the keys of those it stopped.
    */
-  async cancel(prefix: string): Promise<string[]> {
+  async cancel(resource: string): Promise<string[]> {
     const answer = await this.#http.json<{ cancelled: string[] }>("POST", "/v1/agents/cancel", {
-      query: { prefix },
+      query: { resource },
     });
 
     return answer.cancelled;
   }
 
   /**
-   * Removes every agent under `prefix` but those the server keeps, such as one
-   * an agent file declares: those removed, those kept and why, and those that
-   * could not be removed and why.
+   * Removes every agent `resource` covers but those the server keeps, such as
+   * one an agent file declares: those removed, those kept and why, and those
+   * that could not be removed and why.
    */
-  async remove(prefix: string): Promise<Removal> {
-    return this.#http.json<Removal>("DELETE", "/v1/agents", { query: { prefix } });
+  async remove(resource: string): Promise<Removal> {
+    return this.#http.json<Removal>("DELETE", "/v1/agents", { query: { resource } });
   }
 
-  /** The calls agents under `prefix`, or every one the token reaches, wait on a person for. */
-  async parked(prefix?: string): Promise<Parked[]> {
+  /** The calls agents `resource` covers, or those the token's one resource covers, wait on a person for. */
+  async parked(resource?: string): Promise<Parked[]> {
     const answer = await this.#http.json<{ interrupts: Parked[] }>("GET", "/v1/interrupts", {
-      query: { prefix },
+      query: { resource },
     });
 
     return answer.interrupts;

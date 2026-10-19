@@ -50,7 +50,7 @@ defmodule WardrikDefinitionTest do
     context = %Context{
       org: "acme",
       tools: [Clock],
-      servers: [books: [serves: [Wardrik.AgentID.Prefix.tenant!("acme")]], wiki: []],
+      servers: [books: [serves: [Wardrik.Resource.parse!("acme/*")]], wiki: []],
       mcp: Source,
       channels: [chat: :all, ops: ["globex"]],
       targets: [pager: {Source, orgs: :all}],

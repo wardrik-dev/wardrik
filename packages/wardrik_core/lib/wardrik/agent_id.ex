@@ -28,8 +28,8 @@ defmodule Wardrik.AgentID do
   is in every event's `source`, every store key and every log line naming the
   agent, so a user's should be an opaque id rather than an email address.
 
-  The ways a fleet is sliced are `Wardrik.AgentID.Prefix`es, and the name a
-  statement gives an agent is its `resource/1`.
+  The name a `Wardrik.Statement` gives an agent is its `resource/1`, and a
+  fleet is sliced by `Wardrik.Resource` patterns those names match.
 
   `~A` reads an ID's text when the code is compiled:
 

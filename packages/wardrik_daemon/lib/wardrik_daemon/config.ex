@@ -27,7 +27,6 @@ defmodule WardrikDaemon.Config do
   ```
   """
 
-  alias Wardrik.AgentID.Prefix
   alias WardrikDaemon.Cluster.DNSPoll
   alias WardrikDaemon.Cluster.Epmd
   alias WardrikDaemon.Cluster.Topology
@@ -452,9 +451,10 @@ defmodule WardrikDaemon.Config do
   end
 
   defp declared!(share, orgs, path) do
-    for prefix <- share.read ++ share.write,
-        org = Prefix.org(prefix),
-        org not in [nil | orgs],
+    for pattern <- share.read ++ share.write,
+        [org | _rest] = String.split(to_string(pattern), "/"),
+        not String.contains?(org, ["*", "?"]),
+        org not in orgs,
         do: invalid!(path, "names " <> undeclared(org, orgs))
 
     share
@@ -580,8 +580,8 @@ defmodule WardrikDaemon.Config do
 
   # The agents a server serves: every org's, or each named org's whole tenant,
   # its users' agents with its own.
-  defp serves(:all), do: [Prefix.all()]
-  defp serves(orgs), do: Enum.map(orgs, &Prefix.tenant!/1)
+  defp serves(:all), do: [Wardrik.Resource.parse!("*")]
+  defp serves(orgs), do: Enum.map(orgs, &Wardrik.Resource.parse!(&1 <> "/*"))
 
   defp prefix!("workers", path),
     do:

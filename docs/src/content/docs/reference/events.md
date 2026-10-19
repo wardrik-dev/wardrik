@@ -46,7 +46,7 @@ Someone dropped the turn an agent was taking, and what was queued behind it.
 | --- | --- | --- | --- |
 | `agent` | object | yes |  |
 | `agent.id` | string | yes | The agent's ID. |
-| `under` | string |  | The prefix someone cancelled every agent under at once, where it was one of them; every agent's entry from that one change shares its trace. |
+| `resource` | string |  | The pattern someone cancelled every agent it covers by at once, where it was one of them; every agent's entry from that one change shares its trace. |
 | `actor` | [principal](#principal) |  |  |
 | `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
@@ -80,7 +80,7 @@ Someone removed an agent, with everything it had.
 | --- | --- | --- | --- |
 | `agent` | object | yes |  |
 | `agent.id` | string | yes | The agent's ID. |
-| `under` | string |  | The prefix someone removed every agent under at once, where it was one of them; every agent's entry from that one change shares its trace. |
+| `resource` | string |  | The pattern someone removed every agent it covers by at once, where it was one of them; every agent's entry from that one change shares its trace. |
 | `actor` | [principal](#principal) |  |  |
 | `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
@@ -649,7 +649,7 @@ What a token allows, on what.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `actions` | array of string | yes | What it allows, as agent.ask or agents.list; agent.* is every action on one agent, and * every action. |
-| `resources` | array of string | yes | The agents it allows them on, each by its prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent. |
+| `resources` | array of string | yes | What it allows them on, each a resource pattern, as IAM writes one: * matches anything, / included, and ? one character. acme/agent/* is acme's own agents, acme/@jon/* everything of jon's in acme, acme/* everything of acme's and its users', and * everything. |
 
 ### `decided`
 

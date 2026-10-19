@@ -97,7 +97,8 @@ defmodule WardrikChannel.ThreadsTest do
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
     {:ok, workspace} = Workspace.new(channels[name].context, "T1")
     {:bound, binding, _offer} = Rooms.joined(Room.new(workspace, "C1"), name: "books", by: @maria)
-    on_exit(fn -> Fleet.forget_under(AgentID.Prefix.of(agent)) end)
+    itself = AgentID.resource(agent)
+    on_exit(fn -> Enum.each([itself, Resource.parse!("#{itself}/*")], &Fleet.forget_under/1) end)
 
     {workspace, binding}
   end

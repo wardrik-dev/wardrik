@@ -87,8 +87,8 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
   # What the audit log says of the secret `name`: each change, and whose it was.
   defp changes(name) do
-    for %{"subject" => "secrets/" <> ^name, "type" => "wardrik." <> type, "data" => data} <-
-          Audit.all(),
+    for %{"subject" => subject, "type" => "wardrik." <> type, "data" => data} <- Audit.all(),
+        String.ends_with?(subject, "/secret/" <> name),
         do: {type, data["owner"], data["actor"]["id"]}
   end
 

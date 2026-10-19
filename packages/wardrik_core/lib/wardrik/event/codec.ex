@@ -17,8 +17,9 @@ defmodule Wardrik.Event.Codec do
       the event's OpenTelemetry event name
     * `subject` - what the event is about: `runs/…`, `messages/…`,
       `tool_calls/…`, `interrupts/…`, `steps/…` or `agents/…`, and for a
-      change, `agents/…`, an agent or a prefix, `agents`, every one,
-      `rooms/…`, `tokens/…` or `secrets/…`
+      change, the `Wardrik.Resource` it was made to, as `acme/agent/triage`,
+      `acme/@jon/secret/github` or `deployment/token/…`, `agents`, every
+      agent, or `rooms/…`
     * `time` - RFC 3339 in UTC, to the microsecond
     * `datacontenttype` - `"application/json"`
     * `dataschema` - `urn:wardrik:schema:v1:<type>`, the JSON Schema the data
@@ -56,6 +57,7 @@ defmodule Wardrik.Event.Codec do
   acted for them, first to last, as `assumed_by`, where anyone did.
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.Audit
   alias Wardrik.Call.Pipeline
   alias Wardrik.Event
@@ -424,16 +426,16 @@ defmodule Wardrik.Event.Codec do
   defp change({:agent_stopped, id}), do: agent_change("agent.stopped", id, %{})
   defp change({:agent_forgotten, id}), do: agent_change("agent.forgotten", id, %{})
 
-  defp change({:agent_forgotten, id, prefix}),
-    do: agent_change("agent.forgotten", id, %{"under" => to_string(prefix)})
+  defp change({:agent_forgotten, id, pattern}),
+    do: agent_change("agent.forgotten", id, %{"resource" => to_string(pattern)})
 
   defp change({:agent_moved, id, node}),
     do: agent_change("agent.moved", id, %{"node" => to_string(node)})
 
   defp change({:agent_cancelled, id}), do: agent_change("agent.cancelled", id, %{})
 
-  defp change({:agent_cancelled, id, prefix}),
-    do: agent_change("agent.cancelled", id, %{"under" => to_string(prefix)})
+  defp change({:agent_cancelled, id, pattern}),
+    do: agent_change("agent.cancelled", id, %{"resource" => to_string(pattern)})
 
   defp change({:agent_cleared, id}), do: agent_change("agent.cleared", id, %{})
 
@@ -465,11 +467,11 @@ defmodule Wardrik.Event.Codec do
 
   defp change({:token_created, id, name, token}),
     do:
-      {"token.created", "tokens/" <> id,
+      {"token.created", "deployment/token/" <> id,
        Map.put(Value.token(token), "token", %{"id" => id, "name" => name})}
 
   defp change({:token_revoked, id}),
-    do: {"token.revoked", "tokens/" <> id, %{"token" => %{"id" => id}}}
+    do: {"token.revoked", "deployment/token/" <> id, %{"token" => %{"id" => id}}}
 
   defp change({:secret_stored, name, owner}), do: secret("secret.stored", name, owner)
   defp change({:secret_removed, name, owner}), do: secret("secret.removed", name, owner)
@@ -481,17 +483,17 @@ defmodule Wardrik.Event.Codec do
     do: server("server.removed", key, %{"name" => Resource.basename(key)})
 
   defp agent_change(type, id, data),
-    do: {type, "agents/#{id}", Map.put(data, "agent", %{"id" => to_string(id)})}
+    do: {type, to_string(AgentID.resource(id)), Map.put(data, "agent", %{"id" => to_string(id)})}
 
   # A deployment's secret is every agent's, and its owner goes unsaid.
   defp secret(type, name, owner) do
     data = Value.put(%{"secret" => %{"name" => name}}, "owner", owned_by(owner))
-    {type, "secrets/" <> name, data}
+    {type, "#{owner}/secret/#{name}", data}
   end
 
   defp server(type, key, server) do
     data = %{"server" => server, "owner" => to_string(Resource.owner(key))}
-    {type, "servers/#{key}", data}
+    {type, to_string(key), data}
   end
 
   defp owned_by(owner) do

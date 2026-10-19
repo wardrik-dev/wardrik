@@ -48,7 +48,7 @@ defmodule WardrikHost.FleetTest do
     id = Wardrik.AgentID.new!(name, org: "host")
 
     assert {:ok, _pid} = Wardrik.Fleet.spawn(id)
-    assert id in Enum.map(Wardrik.Fleet.list(), & &1.id)
+    assert id in Enum.map(Wardrik.Fleet.held(Wardrik.Resource.parse!("*")), & &1.id)
 
     assert Enum.any?(
              WardrikStore.keys(WardrikHost.store(), :durable, Wardrik.Fleet.prefix()),

@@ -9,7 +9,7 @@ defmodule WardrikChannel.Test.Issuer do
     def issue(%{reach: reach}, principal, _opts) do
       scope =
         if Wardrik.Principal.id(principal) in reach,
-          do: [Wardrik.Role.bind([:reader, :messenger], Wardrik.AgentID.Prefix.all())],
+          do: [Wardrik.Role.bind([:reader, :messenger], [Wardrik.Resource.parse!("*")])],
           else: []
 
       %Wardrik.Token{principal: principal, scope: scope}

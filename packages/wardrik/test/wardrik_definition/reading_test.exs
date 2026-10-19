@@ -56,7 +56,7 @@ defmodule WardrikDefinition.ReadingTest do
     %{
       context: %Context{
         tools: [Search, Lua],
-        servers: [linear: [], theirs: [serves: [Wardrik.AgentID.Prefix.tenant!("globex")]]],
+        servers: [linear: [], theirs: [serves: [Wardrik.Resource.parse!("globex/*")]]],
         mcp: Source,
         sources: [workers: Source, self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents],
         channels: [slack: ["default"], acme: ["acme"], every: :all],
@@ -310,7 +310,8 @@ defmodule WardrikDefinition.ReadingTest do
                )
 
       assert message =~
-               "workspace shared theirs: globex belongs to globex/, which acme/triage is not under"
+               "workspace shared theirs: globex belongs to globex/agent/*, which does not cover " <>
+                 "acme/triage"
     end
 
     test "are what a workspace needs, and a workspace takes only shared", context do
@@ -343,11 +344,11 @@ defmodule WardrikDefinition.ReadingTest do
       assert files.context == ["shared/team/NOTES.md"]
 
       token = Wardrik.Token.root(Wardrik.Principal.new(:user, "jon"))
-      token = %{token | scope: [Wardrik.Role.bind([:owner], Wardrik.AgentID.Prefix.of(id))]}
+      token = %{token | scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(id)])]}
 
       assert WardrikDefinition.spec(fields, id, id, context, {:api, token}) ==
                {:error,
-                "workspace shared team: acme belongs to acme/, which the token does not reach"}
+                "workspace shared team: acme belongs to acme/agent/*, which the token does not reach"}
     end
   end
 

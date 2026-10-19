@@ -4,12 +4,12 @@ defmodule Wardrik.DeploymentTest do
 
   import Wardrik.Test, only: [store: 0]
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Deployment.Nodes
   alias Wardrik.Error
   alias Wardrik.Event.Log.Entry
   alias Wardrik.Host
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Scope
   alias Wardrik.Test.Audit
@@ -84,7 +84,7 @@ defmodule Wardrik.DeploymentTest do
   defp scope do
     token = %Token{
       principal: Principal.new(:user, "jon", name: "Jon"),
-      scope: [Role.bind([:owner], Prefix.parse!("test/"))]
+      scope: [Role.bind([:owner], [Resource.parse!("test/*")])]
     }
 
     Scope.new(host(), token)
@@ -132,14 +132,14 @@ defmodule Wardrik.DeploymentTest do
   end
 
   describe "tokens" do
-    defp reader, do: [Role.bind([:reader], Prefix.parse!("test/"))]
+    defp reader, do: [Role.bind([:reader], [Resource.parse!("test/agent/*")])]
 
     test "are made, listed and revoked through the host's module, and recorded" do
       assert {:ok, %Wardrik.Tokens.Entry{id: id, secret: "secret-" <> id} = made} =
                Wardrik.tokens_create(root(), "ci", reader())
 
       refute inspect(made) =~ "secret-"
-      assert [{"token.created", %{"id" => "jon"}}] = Audit.about("tokens/" <> id)
+      assert [{"token.created", %{"id" => "jon"}}] = Audit.about("deployment/token/" <> id)
 
       assert {:ok, tokens} = Wardrik.tokens_list(root())
       assert Enum.any?(tokens, &(&1.id == id))
@@ -147,7 +147,7 @@ defmodule Wardrik.DeploymentTest do
       assert {:ok, %Wardrik.Tokens.Entry{id: ^id, secret: nil}} =
                Wardrik.tokens_revoke(root(), id)
 
-      assert [_created, {"token.revoked", _actor}] = Audit.about("tokens/" <> id)
+      assert [_created, {"token.revoked", _actor}] = Audit.about("deployment/token/" <> id)
       assert {:error, %Error{type: :not_found}} = Wardrik.tokens_revoke(root(), id)
 
       assert {:error, %Error{type: :invalid, message: "No token is named refused."}} =

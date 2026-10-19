@@ -7,8 +7,8 @@ defmodule WardrikDaemon.CLI.Policies do
   made, as `WardrikDaemon.JudgeReplay` tries them, and sets what it decides
   beside how each call was decided when it was made. By default the calls
   are those of the agents whose definitions name the policy; `--agent` names
-  an agent, with its conversations, or a prefix such as `acme/`, whatever
-  policy they run under. `--last N` is how many, 20 by default.
+  an agent, with its conversations, or a pattern such as `acme/agent/*`,
+  whatever policy they run under. `--last N` is how many, 20 by default.
   """
 
   alias WardrikDaemon.CLI.Command
@@ -27,14 +27,14 @@ defmodule WardrikDaemon.CLI.Policies do
         name: "policy judge",
         group: "Decide",
         arguments: "NAME",
-        options: "[--agent KEY|PREFIX/] [--last N]",
+        options: "[--agent KEY|PATTERN] [--last N]",
         summary: "try a policy's judge on the calls agents have made",
         details: [
           "Its model answers each question again, and what that decides is set beside how",
           "the call was decided; ! marks where they differ. The policy is read from its file",
           "as it is now, and nothing is decided or changed.",
-          "The calls are those of the agents that run under the policy, or those under",
-          "--agent, newest first, --last 20 by default. Only calls that ran are kept with",
+          "The calls are those of the agents that run under the policy, or those --agent",
+          "names, newest first, --last 20 by default. Only calls that ran are kept with",
           "their arguments, so a call refused, or waiting on a person, is not tried.",
           "With --json, each call with its answers, what they decide, and how it was decided."
         ],
@@ -60,31 +60,32 @@ defmodule WardrikDaemon.CLI.Policies do
 
   defp tried(name, opts) do
     with {:ok, policy} <- JudgeReplay.policy(name),
-         {:ok, prefixes, where} <- prefixes(store(opts), name, opts[:agent]),
+         {:ok, patterns, where} <- patterns(store(opts), name, opts[:agent]),
          {:ok, last} <- last(Keyword.get(opts, :last, @last)) do
-      {:ok, JudgeReplay.tried(opts[:as].host, policy.judge, under: prefixes, last: last), where}
+      {:ok, JudgeReplay.tried(opts[:as].host, policy.judge, under: patterns, last: last), where}
     end
   end
 
-  defp prefixes(store, name, nil) do
+  defp patterns(store, name, nil) do
     case JudgeReplay.using(store, name) do
       [] ->
         {:error,
-         "No agent runs under the policy #{name}; name some with --agent, as acme/books or acme/."}
+         "No agent runs under the policy #{name}; name some with --agent, as acme/books or " <>
+           "'acme/agent/*'."}
 
-      prefixes ->
-        {:ok, prefixes, "the agents under #{name}"}
+      patterns ->
+        {:ok, patterns, "the agents under #{name}"}
     end
   end
 
-  defp prefixes(_store, _name, text) do
-    with {:ok, prefix} <-
-           Wardrik.AgentID.Prefix.expand(text, Config.org(WardrikDaemon.Host.config())),
-         do: {:ok, [prefix], under(to_string(prefix))}
+  defp patterns(_store, _name, text) do
+    if String.contains?(text, ["*", "?"]) do
+      with {:ok, pattern} <- Wardrik.Resource.parse(text), do: {:ok, [pattern], text}
+    else
+      with {:ok, id} <- Wardrik.AgentID.expand(text, Config.org(WardrikDaemon.Host.config())),
+           do: {:ok, JudgeReplay.of(id), to_string(id)}
+    end
   end
-
-  defp under(""), do: "every agent"
-  defp under(prefix), do: prefix
 
   defp last(n) when n > 0, do: {:ok, n}
   defp last(_n), do: {:error, "--last is how many calls to try, 1 or more"}

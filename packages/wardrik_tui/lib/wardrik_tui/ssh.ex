@@ -33,9 +33,9 @@ defmodule WardrikTUI.SSH do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Fleet
+  alias Wardrik.Resource
 
   @doc "Starts a session for `opts[:session]`, and answers its pid."
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -76,7 +76,7 @@ defmodule WardrikTUI.SSH do
     do: Termite.SSH.Adapter.write(%Termite.SSH.Adapter{channel_pid: session.channel_pid}, string)
 
   defp attach(username, org, as) do
-    {:ok, members} = Wardrik.agents_list(as, Prefix.all())
+    {:ok, members} = Wardrik.agents_list(as, Resource.parse!("*"))
 
     case choose(members, username, org) do
       {:attach, id} ->

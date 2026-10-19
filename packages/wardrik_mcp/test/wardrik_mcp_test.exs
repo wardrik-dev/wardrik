@@ -83,7 +83,7 @@ defmodule WardrikMCPTest do
       assert error["message"] =~ "the tool refused"
     end
 
-    @tag server_opts: [serves: [Wardrik.AgentID.Prefix.tenant!("acme")]]
+    @tag server_opts: [serves: [Resource.parse!("acme/*")]]
     test "a server serves the agents under the prefixes it names, and refuses another's", %{
       key: key
     } do

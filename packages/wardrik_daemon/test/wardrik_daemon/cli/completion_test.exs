@@ -35,7 +35,7 @@ defmodule WardrikDaemon.CLI.CompletionTest do
 
   test "an option is one the command takes, --json where it answers with JSON" do
     assert complete(["token", "create", "dev", "--"]) ==
-             ~w(--scope --all --role --policy --expires --help)
+             ~w(--resource --role --policy --expires --help)
 
     assert complete(["history", "--j"]) == ["--json"]
     assert complete(["ask", "acme/triage", "--no"]) == ["--no-wait"]
@@ -46,7 +46,7 @@ defmodule WardrikDaemon.CLI.CompletionTest do
     assert complete(["approve", ""]) == ["acme/triage", "acme/@jon/digest"]
     assert complete(["approve", "acme/triage", ""]) == ["call_1", "call_2"]
     assert complete(["deny", "acme/@jon/digest", ""]) == []
-    assert complete(["triggers", "acme/"]) == ["acme/triage", "acme/@jon/digest"]
+    assert complete(["triggers", "acme/"]) == []
     assert complete(["agent", "cancel", "acme/t"]) == ["acme/triage"]
   end
 
@@ -61,9 +61,9 @@ defmodule WardrikDaemon.CLI.CompletionTest do
   end
 
   test "a word an option is waiting for, or one past the last a command takes, has nothing" do
-    assert complete(["token", "create", "dev", "--scope", ""]) == []
+    assert complete(["token", "create", "dev", "--resource", ""]) == []
     assert complete(["show", "acme/triage", ""]) == []
-    assert complete(["agent", "rm", "acme/", ""]) == []
+    assert complete(["agent", "rm", "acme/agent/*", ""]) == []
     assert complete(["status", ""]) == []
   end
 

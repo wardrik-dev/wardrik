@@ -9,13 +9,13 @@ defmodule WardrikWorkspace.Spec do
       })
 
   The agent's own tree is `agents/<id>`, seen at the root of its paths. A
-  shared tree is named like a prefix with a name after it, and is reachable by
-  the agents under that prefix: `acme` and `acme/runbooks` by acme's own
-  agents, none of its users', and `acme/@jon/notes` by jon's. Others mount
-  it where the deployment shares it with them, by the
-  `WardrikWorkspace.Share`s `new/3` is handed: to read, or to read and
-  change. `new/3` refuses a tree the agent can reach neither way, as
-  `Wardrik.AgentID.Prefix.covers?/2` decides, and sees each at
+  shared tree is named by its owner, an org or a user in it, with a name
+  after it, and is reachable by the owner's agents, `<owner>/agent/*`:
+  `acme` and `acme/runbooks` by acme's own agents, none of its users', and
+  `acme/@jon/notes` by jon's. Others mount it where the deployment shares
+  it with them, by the `WardrikWorkspace.Share`s `new/3` is handed: to
+  read, or to read and change. `new/3` refuses a tree the agent can reach
+  neither way, as `Wardrik.Resource.covers?/2` decides, and sees each at
   `shared/<name>`, so `shared/` at the root of a path is never the agent's
   own.
 
@@ -25,7 +25,7 @@ defmodule WardrikWorkspace.Spec do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias WardrikWorkspace.Mount
   alias WardrikWorkspace.Path
   alias WardrikWorkspace.Share
@@ -143,14 +143,14 @@ defmodule WardrikWorkspace.Spec do
   # The tree's owner's agents mount it as they ask; another agent as a share
   # lets it.
   defp reaches(id, name, tree, mode, shares) do
-    prefix = owners(tree)
+    owners = owners(tree)
     shared = Share.mode(shares, tree, id)
 
     cond do
-      Prefix.covers?(prefix, id) -> :ok
+      Resource.covers?(owners, AgentID.resource(id)) -> :ok
       allowed?(shared, mode) -> :ok
       shared == {:ok, :read} -> read_only(name, tree, id)
-      true -> {:error, "shared #{name}: #{tree} belongs to #{prefix}, which #{id} is not under"}
+      true -> {:error, "shared #{name}: #{tree} belongs to #{owners}, which does not cover #{id}"}
     end
   end
 
@@ -161,12 +161,15 @@ defmodule WardrikWorkspace.Spec do
   defp read_only(name, tree, id),
     do: {:error, "shared #{name}: #{tree} is shared with #{id} to read; mount it with mode: read"}
 
-  # A tree is reachable by the agents under the prefix its name begins with.
+  # A tree is reachable by the agents of the owner its name begins with.
   defp owners(tree) do
-    case String.split(tree, "/") do
-      [org] -> Prefix.parse!(org)
-      parts -> parts |> Enum.drop(-1) |> Enum.join("/") |> Prefix.parse!()
-    end
+    owner =
+      case String.split(tree, "/") do
+        [org] -> org
+        parts -> parts |> Enum.drop(-1) |> Enum.join("/")
+      end
+
+    Resource.parse!(owner <> "/agent/*")
   end
 
   @doc """
