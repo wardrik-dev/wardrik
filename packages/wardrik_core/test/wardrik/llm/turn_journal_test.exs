@@ -19,7 +19,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
   defp resume(run, turn, decisions),
     do: turn |> LLM.Turn.under(run) |> LLM.Turn.resume(decisions)
 
-  defp replay(run, turn), do: turn |> LLM.Turn.under(run) |> LLM.Turn.replay()
+  defp replay(run, turn), do: turn |> LLM.Turn.under(run) |> LLM.Turn.recover()
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
@@ -97,7 +97,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
     Task.shutdown(task, :brutal_kill)
 
-    assert %LLM.Turn{state: :waiting} = replayed = replay(run, checkpoint)
+    assert %LLM.Turn{state: {:waiting, :tools}} = replayed = replay(run, checkpoint)
     assert [{%{id: "call_2"}, prompt}] = LLM.Turn.waiting(replayed)
     assert prompt =~ "this run has read content from outside"
   end
@@ -180,10 +180,12 @@ defmodule Wardrik.LLM.TurnJournalTest do
       calls: [Wardrik.Test.AgentRunners.waiting(call, "This refunds money.")],
       remaining: 5,
       revision: Wardrik.Hook.revision([]),
-      state: :waiting
+      state: {:waiting, :tools}
     }
 
-    assert %LLM.Turn{state: :waiting} = again = resume(run, parked, %{"call_1" => :approve})
+    assert %LLM.Turn{state: {:waiting, :tools}} =
+             again = resume(run, parked, %{"call_1" => :approve})
+
     assert [{%{id: "call_1"}, prompt}] = LLM.Turn.waiting(again)
     assert prompt =~ "may already have done what it does"
     refute_received :refunded

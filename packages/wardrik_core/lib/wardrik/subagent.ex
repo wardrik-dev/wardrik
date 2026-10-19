@@ -114,12 +114,12 @@ defmodule Wardrik.Subagent do
     turn = delegate |> Turn.new(Conversation.new([User.new(prompt)])) |> Turn.run()
     :ok = read(turn.labels)
 
-    case turn do
-      %Turn{state: :done, messages: messages} -> {:ok, Conversation.answer(messages)}
+    case Wardrik.Turn.status(turn) do
+      {:done, messages, _labels} -> {:ok, Conversation.answer(messages)}
       # A bounded delegation has no agent process to retain and resume a park.
       # Report the blocked work without executing the unapproved tool.
-      %Turn{state: :waiting} -> {:error, :approval_required}
-      %Turn{state: :failed, error: reason} -> {:error, reason}
+      :waiting -> {:error, :approval_required}
+      {:failed, reason} -> {:error, reason}
     end
   end
 

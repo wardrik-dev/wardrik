@@ -67,7 +67,7 @@ defmodule Wardrik.Event.CallDecided do
 
   @type t() :: %__MODULE__{
           call_id: String.t(),
-          decision: Wardrik.LLM.Turn.decision(),
+          decision: Wardrik.Call.Pipeline.decision(),
           by: Wardrik.Principal.t() | nil
         }
 end
