@@ -212,7 +212,7 @@
           "items": {
             "type": "string"
           },
-          "description": "The agents it allows them on, each by its prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent."
+          "description": "What it allows them on, each a resource pattern, as IAM writes one: * matches anything, / included, and ? one character. acme/agent/* is acme's own agents, acme/@jon/* everything of jon's in acme, acme/* everything of acme's and its users', and * everything."
         }
       },
       "additionalProperties": false,

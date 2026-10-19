@@ -77,8 +77,8 @@ books's judge on 2 calls of the agents under books, newest first; 1 decided othe
     decided    allowed by books
 ```
 
-It tries the agents whose definitions name the policy, or those under `--agent` (an agent, or an
-org as `acme/`), so you can test a judge before any agent uses it. `--last N` sets how many calls,
+It tries the agents whose definitions name the policy, or those `--agent` names (an agent, or a
+pattern as `acme/agent/*`), so you can test a judge before any agent uses it. `--last N` sets how many calls,
 20 by default; `--json` gives the full answers. Only calls that ran are tried, and the log doesn't
 record whether a run had read outside content, so an allow is shown as for a run that hadn't.
 

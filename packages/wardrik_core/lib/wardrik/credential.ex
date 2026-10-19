@@ -133,7 +133,7 @@ defmodule Wardrik.Credential do
   def available(ref, owner, opts \\ []) when is_binary(ref) and is_list(opts) do
     word = %Available{ref: ref, owner: owner, by: Keyword.get(opts, :by)}
 
-    Enum.each(Fleet.held(Wardrik.AgentID.Prefix.all()), fn
+    Enum.each(Fleet.held(Wardrik.Resource.parse!("*")), fn
       %{asleep: false, pid: pid} -> send(pid, word)
       %{asleep: true, status: :parked, id: id} -> wake_awaiting(id, word)
       %{asleep: true} -> :ok

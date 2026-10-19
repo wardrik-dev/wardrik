@@ -1,9 +1,9 @@
 defmodule Wardrik.Role do
   @moduledoc """
   A named set of actions, as `Wardrik.Statement` names them, which `bind/2`
-  allows on the agents under a prefix:
+  allows on resources:
 
-      Wardrik.Role.bind([:reader, :messenger], Wardrik.AgentID.Prefix.new!(org: "acme"))
+      Wardrik.Role.bind([:reader, :messenger], [Wardrik.Resource.parse!("acme/agent/*")])
 
   | Role | Allows |
   | --- | --- |
@@ -14,13 +14,16 @@ defmodule Wardrik.Role do
   | `worker` | `agent.serve`, offering the agents tools |
   | `owner` | `*`, every action |
 
-  Owning agents is holding `owner` over them. What acts on the deployment
-  itself, its nodes, its tokens, its audit, reloading every agent and
-  moving one, is checked against every agent's prefix, so only `owner` on
-  every agent, root, may.
+  Owning agents is holding `owner` over them. An action on agents is
+  checked against each agent's resource, or the pattern a call names them
+  by; one on an owner's servers against `acme/server/*`, and on their
+  accounts against `acme/secret/*`. What acts on the deployment itself, its
+  nodes, its tokens, its audit, reloading every agent and moving one, is
+  checked against `deployment/*`, so only `owner` on `*` or on
+  `deployment/*` may.
   """
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias Wardrik.Statement
 
   @roles [
@@ -41,10 +44,10 @@ defmodule Wardrik.Role do
   @spec actions(t()) :: [Statement.action()]
   def actions(role), do: Keyword.fetch!(@roles, role)
 
-  @doc "The statement allowing what each of `roles` does on the agents under `prefix`."
-  @spec bind([t()], Prefix.t()) :: Statement.t()
-  def bind(roles, prefix) when is_list(roles),
-    do: %Statement{actions: Enum.uniq(Enum.flat_map(roles, &actions/1)), resources: [prefix]}
+  @doc "The statement allowing what each of `roles` does on `resources`."
+  @spec bind([t()], [Resource.t()]) :: Statement.t()
+  def bind(roles, resources) when is_list(roles),
+    do: %Statement{actions: Enum.uniq(Enum.flat_map(roles, &actions/1)), resources: resources}
 
   @doc "The roles `names` name, or a message naming one that is none."
   @spec parse([String.t()]) :: {:ok, [t()]} | {:error, String.t()}

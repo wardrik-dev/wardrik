@@ -153,10 +153,10 @@ wardrik deny [KEY [CALL [REASON]]]
 Try a policy's judge on the calls agents have made.
 
 ```sh
-wardrik policy judge NAME [--agent KEY|PREFIX/] [--last N]
+wardrik policy judge NAME [--agent KEY|PATTERN] [--last N]
 ```
 
-Its model answers each question again, and what that decides is set beside how the call was decided; ! marks where they differ. The policy is read from its file as it is now, and nothing is decided or changed. The calls are those of the agents that run under the policy, or those under `--agent`, newest first, `--last` 20 by default. Only calls that ran are kept with their arguments, so a call refused, or waiting on a person, is not tried. With `--json`, each call with its answers, what they decide, and how it was decided.
+Its model answers each question again, and what that decides is set beside how the call was decided; ! marks where they differ. The policy is read from its file as it is now, and nothing is decided or changed. The calls are those of the agents that run under the policy, or those `--agent` names, newest first, `--last` 20 by default. Only calls that ran are kept with their arguments, so a call refused, or waiting on a person, is not tried. With `--json`, each call with its answers, what they decide, and how it was decided.
 
 ## Manage agents
 
@@ -183,7 +183,7 @@ wardrik show KEY
 When each trigger runs next, and how it last ran.
 
 ```sh
-wardrik triggers [PREFIX]
+wardrik triggers [PATTERN]
 ```
 
 ### wardrik agent spawn
@@ -201,10 +201,10 @@ It starts the agent `agents/NAME.md` declares, writing the file first where ther
 End the turn an agent is taking; it keeps running.
 
 ```sh
-wardrik agent cancel KEY|PREFIX/ [--all]
+wardrik agent cancel KEY|PATTERN [--all]
 ```
 
-The messages waiting behind the turn go too, and a turn waiting on a person is abandoned. A `PREFIX/`, such as `acme/`, ends the turns of every agent under it, and `--all` those of every agent there is.
+The messages waiting behind the turn go too, and a turn waiting on a person is abandoned. A PATTERN, such as `acme/agent/*`, ends the turns of every agent it covers, and `--all` those of every agent there is.
 
 ### wardrik agent stop
 
@@ -221,10 +221,10 @@ Anything asked of it by its key wakes it, as does `wardrik agent spawn`. `wardri
 Remove an agent, its conversation and its triggers, for good.
 
 ```sh
-wardrik agent rm KEY|PREFIX/ [--yes]
+wardrik agent rm KEY|PATTERN [--yes]
 ```
 
-It lists what it removes and asks first; `--yes` removes without asking. A `PREFIX/`, such as `acme/`, removes every agent under it. An agent a file declares is left: remove the file, then `wardrik reload` removes it.
+It lists what it removes and asks first; `--yes` removes without asking. A PATTERN, such as `acme/agent/*`, removes every agent it covers. An agent a file declares is left: remove the file, then `wardrik reload` removes it.
 
 ### wardrik agent move
 
@@ -273,10 +273,10 @@ It opens the file in $VISUAL, or $EDITOR, or vi.
 A token for the HTTP API, printed once.
 
 ```sh
-wardrik token create NAME (--scope PREFIX | --all) --role ROLES [--policy NAME] [--expires 30d]
+wardrik token create NAME --resource PATTERN... --role ROLES [--policy NAME] [--expires 30d]
 ```
 
-`--scope PREFIX` is the agents it reaches: `org/` (the org's own), `org/@user/` (a user's), `org/`* (the org and all its users'), or a key, `org/name` or `org/@user/name`. `--role ROLES` is what it may do there, some of reader,messenger,approver,definer,worker,owner. `--policy NAME`, one of `policies/`, holds every agent it defines. `--expires` is how long it works, as 30d or 12h; tokens.expires.api by default. It acts for whoever made it.
+`--resource PATTERN`, once or more, is what it reaches: `org/agent/*` (the org's own agents), `org/@user/*` (a user's), `org/*` (the org and all its users'), `org/agent/name` (one agent), or * (everything). `--role ROLES` is what it may do there, some of reader,messenger,approver,definer,worker,owner. `--policy NAME`, one of `policies/`, holds every agent it defines. `--expires` is how long it works, as 30d or 12h; tokens.expires.api by default. It acts for whoever made it.
 
 ### wardrik token list
 

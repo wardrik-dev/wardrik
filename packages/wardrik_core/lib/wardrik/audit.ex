@@ -32,7 +32,6 @@ defmodule Wardrik.Audit do
   require Logger
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
@@ -52,12 +51,12 @@ defmodule Wardrik.Audit do
     * `{:agent_spawned, id, node}` - it was started, on `node`
     * `{:agent_stopped, id}` - it was stopped, keeping its conversation
     * `{:agent_forgotten, id}` - it was removed, with everything it had;
-      `{:agent_forgotten, id, prefix}` where it was one of the agents under
-      `prefix` someone removed at once
+      `{:agent_forgotten, id, pattern}` where it was one of the agents the
+      `Wardrik.Resource` pattern covers someone removed at once
     * `{:agent_moved, id, node}` - it was started again on `node`
     * `{:agent_cancelled, id}` - its turn, and what was queued behind it,
-      were dropped; `{:agent_cancelled, id, prefix}` where it was one of the
-      agents under `prefix` someone cancelled at once
+      were dropped; `{:agent_cancelled, id, pattern}` where it was one of
+      the agents `pattern` covers someone cancelled at once
     * `{:agent_cleared, id}` - its conversation was emptied
     * `{:call_killed, id, call_id}` - the tool call `call_id` it was
       running was stopped, and the model answered with an error
@@ -92,10 +91,10 @@ defmodule Wardrik.Audit do
           | {:agent_spawned, AgentID.t(), node()}
           | {:agent_stopped, AgentID.t()}
           | {:agent_forgotten, AgentID.t()}
-          | {:agent_forgotten, AgentID.t(), Prefix.t()}
+          | {:agent_forgotten, AgentID.t(), Wardrik.Resource.t()}
           | {:agent_moved, AgentID.t(), node()}
           | {:agent_cancelled, AgentID.t()}
-          | {:agent_cancelled, AgentID.t(), Prefix.t()}
+          | {:agent_cancelled, AgentID.t(), Wardrik.Resource.t()}
           | {:agent_cleared, AgentID.t()}
           | {:call_killed, AgentID.t(), String.t()}
           | {:trigger_set, AgentID.t(), String.t()}

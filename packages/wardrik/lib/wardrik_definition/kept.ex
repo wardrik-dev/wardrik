@@ -44,8 +44,8 @@ defmodule WardrikDefinition.Kept do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Fleet
+  alias Wardrik.Resource
   alias WardrikDefinition.Contexts
   alias WardrikDefinition.Record
 
@@ -169,10 +169,10 @@ defmodule WardrikDefinition.Kept do
     end
   end
 
-  @doc "The agents under `prefix` a definition is kept for, read from the store's keys alone."
-  @spec defined(t(), Prefix.t()) :: [AgentID.t()]
-  def defined(%__MODULE__{store: store}, prefix),
-    do: for(id <- Record.ids(store), Prefix.covers?(prefix, id), do: id)
+  @doc "The agents `pattern` covers a definition is kept for, read from the store's keys alone."
+  @spec defined(t(), Resource.t()) :: [AgentID.t()]
+  def defined(%__MODULE__{store: store}, pattern),
+    do: for(id <- Record.ids(store), Resource.covers?(pattern, AgentID.resource(id)), do: id)
 
   @doc """
   Builds every agent awake on `:host` again from the definition it runs on,
@@ -215,7 +215,7 @@ defmodule WardrikDefinition.Kept do
     host = Keyword.fetch!(opts, :host)
     only = Keyword.fetch!(opts, :only)
 
-    for %{id: id, asleep: false} <- Fleet.list(Prefix.all(), host: host),
+    for %{id: id, asleep: false} <- Fleet.list(Resource.parse!("*"), host: host),
         {:ok, record} <- [Record.of(store, id)],
         only.(record, id),
         message <- rebuilt(kept, record, id),
@@ -287,7 +287,7 @@ defimpl Wardrik.Definition, for: WardrikDefinition.Kept do
   defdelegate put_trigger(kept, id, name, opts), to: WardrikDefinition.Kept
   defdelegate delete_trigger(kept, id, name), to: WardrikDefinition.Kept
   defdelegate current(kept, id), to: WardrikDefinition.Kept
-  defdelegate defined(kept, prefix), to: WardrikDefinition.Kept
+  defdelegate defined(kept, pattern), to: WardrikDefinition.Kept
   defdelegate reload(kept, opts), to: WardrikDefinition.Kept
   defdelegate reloading(kept), to: WardrikDefinition.Kept
 end

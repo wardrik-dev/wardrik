@@ -22,7 +22,6 @@ defmodule WardrikMCP.Servers do
   forgets its token.
   """
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Resource
   alias Wardrik.Servers.Server
@@ -134,7 +133,7 @@ defmodule WardrikMCP.Servers do
   defp taken(why), do: {:error, Error.new(:conflict, why <> "; give it another name.")}
 
   defp serves?(server, owner),
-    do: Enum.any?(server.serves, &Prefix.covers?(&1, Prefix.owned_by(owner)))
+    do: Enum.any?(server.serves, &Resource.covers?(&1, Resource.parse!("#{owner}/agent/*")))
 
   defp kept(%__MODULE__{store: store}, %Remote{key: key} = remote) do
     case Remote.put(store, remote) do

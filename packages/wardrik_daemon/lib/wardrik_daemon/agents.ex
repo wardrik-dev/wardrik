@@ -389,8 +389,8 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  @doc "The agents under `prefix` a definition is kept for, by a file or the HTTP API."
-  def defined(%__MODULE__{} = agents, prefix), do: Kept.defined(kept(agents), prefix)
+  @doc "The agents `pattern` covers a definition is kept for, by a file or the HTTP API."
+  def defined(%__MODULE__{} = agents, pattern), do: Kept.defined(kept(agents), pattern)
 
   defp read_policies(%__MODULE__{table: table}) do
     case :ets.lookup(table, :loaded) do
@@ -843,7 +843,7 @@ defimpl Wardrik.Definition, for: WardrikDaemon.Agents do
   defdelegate delete_trigger(agents, id, name), to: WardrikDaemon.Agents
   defdelegate editable(agents, id), to: WardrikDaemon.Agents
   defdelegate current(agents, id), to: WardrikDaemon.Agents
-  defdelegate defined(agents, prefix), to: WardrikDaemon.Agents
+  defdelegate defined(agents, pattern), to: WardrikDaemon.Agents
   defdelegate create(agents, id), to: WardrikDaemon.Agents
   def reload(agents, _opts), do: WardrikDaemon.Agents.reload(agents)
   defdelegate reloading(agents), to: WardrikDaemon.Agents

@@ -121,7 +121,7 @@ export async function answer(customerId: string, text: string, reply: (delta: st
 Make the app's token so it can define these agents only under the policy, and serve them tools:
 
 ```sh
-wardrik token create shop --scope 'shop/*' --role reader,messenger,definer,worker --policy support
+wardrik token create shop --resource 'shop/*' --role reader,messenger,definer,worker --policy support
 ```
 
 `--policy` is the token's policy: no agent it defines can do more than `support.yaml` allows. See
@@ -146,7 +146,7 @@ for a $20 refund and it's done. Ask for $200 and it says a person will look; the
 
 ### Why the key matters
 
-A token reaches agents by key prefix, and a tool learns the agent from its key. A customer can tell
+A token reaches agents by resource pattern, `shop/*`, and a tool learns the agent from its key. A customer can tell
 their agent to look up someone else's order, and the tool still answers only for them.
 
 ### Taking it further

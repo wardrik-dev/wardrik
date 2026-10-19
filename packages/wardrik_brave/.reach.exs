@@ -16,7 +16,6 @@
       "Wardrik.Agent.Snapshot",
       "Wardrik.Agent.Spec",
       "Wardrik.AgentID",
-      "Wardrik.AgentID.Prefix",
       "Wardrik.AgentID.Segment",
       "Wardrik.Audit",
       "Wardrik.Call",

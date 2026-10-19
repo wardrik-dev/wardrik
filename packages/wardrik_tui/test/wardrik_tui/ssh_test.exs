@@ -52,16 +52,16 @@ defmodule WardrikTUI.SSHTest do
     org = "aaa-ssh-#{System.unique_integer([:positive])}"
     id = AgentID.new!("first", org: org)
     {:ok, _pid} = Fleet.spawn(id)
-    on_exit(fn -> Fleet.forget_under(AgentID.Prefix.new!(org: org)) end)
+    on_exit(fn -> Fleet.forget_under(Wardrik.Resource.parse!("#{org}/*")) end)
 
     Wardrik.Test.Fleet.await_update(fn ->
       Enum.any?(
-        Fleet.list(Wardrik.AgentID.Prefix.all(), host: Wardrik.Test.host()),
+        Fleet.list(Wardrik.Resource.parse!("*"), host: Wardrik.Test.host()),
         &(&1.id == id)
       )
     end)
 
-    [first | _rest] = Fleet.list(Wardrik.AgentID.Prefix.all(), host: Wardrik.Test.host())
+    [first | _rest] = Fleet.list(Wardrik.Resource.parse!("*"), host: Wardrik.Test.host())
 
     {:ok, pid} =
       WardrikTUI.SSH.start_link(

@@ -4,7 +4,6 @@ defmodule WardrikDaemonTest do
   import Wardrik.Test, only: [store: 0]
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias WardrikDaemon.Config
   alias WardrikDaemon.Test.Host
   alias WardrikDaemon.Test.Settings
@@ -56,7 +55,7 @@ defmodule WardrikDaemonTest do
       WardrikHTTP.Token.create(Wardrik.Test.store(), "daemon-test",
         token: %Wardrik.Token{
           principal: Wardrik.Principal.new(:user, "ci"),
-          scope: [Wardrik.Role.bind([:owner], Prefix.parse!("daemon/"))]
+          scope: [Wardrik.Role.bind([:owner], [Wardrik.Resource.parse!("daemon/agent/*")])]
         }
       )
 
@@ -213,7 +212,7 @@ defmodule WardrikDaemonTest do
 
   test "status/0 shows what a budgeted agent has spent", %{tmp_dir: dir} do
     org = "status-#{System.unique_integer([:positive])}"
-    on_exit(fn -> Wardrik.Fleet.forget_under(Prefix.parse!(org <> "/")) end)
+    on_exit(fn -> Wardrik.Fleet.forget_under(Wardrik.Resource.parse!(org <> "/*")) end)
 
     File.write!(Path.join(dir, "config.yaml"), "orgs:\n  #{org}: {}\n")
     File.mkdir_p!(Path.join(dir, "agents"))
@@ -227,7 +226,7 @@ defmodule WardrikDaemonTest do
 
     Wardrik.Test.Fleet.await_update(fn ->
       Enum.any?(
-        Wardrik.Fleet.list(Prefix.parse!(org <> "/"), host: Host.host()),
+        Wardrik.Fleet.list(Wardrik.Resource.parse!(org <> "/agent/*"), host: Host.host()),
         &(not &1.asleep)
       )
     end)

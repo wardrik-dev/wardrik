@@ -38,7 +38,6 @@ defmodule WardrikDefinition do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Retry.Backoff
   alias Wardrik.Resource
@@ -619,12 +618,12 @@ defmodule WardrikDefinition do
       "tools names #{name}/*, but #{context.names.config} configures no server #{name}" <>
         configured_servers(configured(context))
 
-  # Whether the agent `id` can reach the server `ref`: one serving a prefix
+  # Whether the agent `id` can reach the server `ref`: one serving a pattern
   # that covers it.
   defp reach(%AgentID{} = id, ref, opts, context) do
-    serves = Keyword.get(opts, :serves, [Prefix.all()])
+    serves = Keyword.get(opts, :serves, [Resource.parse!("*")])
 
-    if Enum.any?(serves, &Prefix.covers?(&1, id)),
+    if Enum.any?(serves, &Resource.covers?(&1, AgentID.resource(id))),
       do: :ok,
       else: {:error, not_served(ref, serves, id, context)}
   end

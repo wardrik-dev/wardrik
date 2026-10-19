@@ -15,10 +15,10 @@ import { Wardrik } from "@wardrik/sdk";
 const wardrik = new Wardrik(); // WARDRIK_URL, else http://127.0.0.1:4747; WARDRIK_TOKEN
 ```
 
-A token comes from the daemon, `wardrik token create NAME --scope acme/ --role
-reader,messenger`, or from `wardrik.tokens.create` with a token owning every
-agent. It acts for whoever made it, on the agents under its scope, holding the
-roles it was made with: each a named set of actions, from `reader` to `owner`.
+A token comes from the daemon, `wardrik token create NAME --resource 'acme/agent/*' --role
+reader,messenger`, or from `wardrik.tokens.create` with a token owning `*`. It
+acts for whoever made it, on the resources its patterns cover, holding the roles
+it was made with: each a named set of actions, from `reader` to `owner`.
 An action it does not allow throws a `WardrikError` of type `forbidden`, an
 expired token one of type `unauthorized`, and a revoked token closes its
 streams and workers.

@@ -83,6 +83,8 @@ or the bucket's versioning or replication.
   `acme/@jon`. Secrets kept before it named owners this way, the deployment's under `_/NAME` and
   users' under a hash, aren't read: after upgrading, `wardrik vault put` them again, and users
   connect their accounts again.
+- An HTTP API token names what it reaches by resource pattern, as `acme/agent/*`. A token made
+  before tokens named resources this way doesn't read: make it again with `wardrik token create`.
 - Two releases running at once, as in a blue-green deploy, can't read each other's agents. For the
   minute both run, each treats the other's agents as absent.
 - `~/.config/wardrik` holds only what a person writes, so it can live in a dotfiles repository.

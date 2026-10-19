@@ -6,10 +6,10 @@ defmodule WardrikTUI.App.Connection do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Delegation
   alias Wardrik.Event.Bus
   alias Wardrik.Fleet
+  alias Wardrik.Resource
   alias WardrikConsole.Filter
   alias WardrikTUI.Activity
   alias WardrikTUI.App.Conversation
@@ -266,7 +266,7 @@ defmodule WardrikTUI.App.Connection do
   end
 
   def refresh_fleet(term) do
-    {:ok, fleet} = Wardrik.agents_list(WardrikTUI.App.scope(term), Prefix.all())
+    {:ok, fleet} = Wardrik.agents_list(WardrikTUI.App.scope(term), Resource.parse!("*"))
 
     term
     |> assign(fleet: fleet, fleet_due?: false, unseen: unseen(term, fleet))

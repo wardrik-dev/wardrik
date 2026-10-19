@@ -96,7 +96,6 @@ defmodule WardrikTrigger do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.TimeZone
   alias WardrikTrigger.Clock
   alias WardrikTrigger.Cron
@@ -522,11 +521,14 @@ defmodule WardrikTrigger do
 
   defp group(agent), do: "agents/#{agent}"
 
-  @doc "Every trigger of the agents under `prefix`, across the cluster, sorted by key."
-  @spec list(Prefix.t()) :: [Status.t()]
-  def list(prefix \\ Prefix.all()) do
+  @doc """
+  Every trigger of the agents the `Wardrik.Resource` pattern covers, across
+  the cluster, sorted by key.
+  """
+  @spec list(Wardrik.Resource.t()) :: [Status.t()]
+  def list(pattern) do
     for {key, {pid, meta}} <- DurableServer.Supervisor.global_members(@name),
-        Prefix.covers?(prefix, meta.user_meta.agent) do
+        Wardrik.Resource.covers?(pattern, AgentID.resource(meta.user_meta.agent)) do
       Status.new(key, pid, meta.user_meta)
     end
     |> Enum.sort_by(& &1.key)

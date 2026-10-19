@@ -15,7 +15,6 @@ defmodule WardrikTUI.View do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Event
   alias WardrikTUI.Activity
   alias WardrikTUI.Render
@@ -534,13 +533,13 @@ defmodule WardrikTUI.View do
   @spec taking_no_turn(AgentID.t()) :: Text.t()
   def taking_no_turn(id), do: note([Text.tag(to_string(id), :bright), " is taking no turn"])
 
-  @doc "That every agent under a prefix was asked to stop."
-  @spec stopped_under(Prefix.t(), non_neg_integer()) :: Text.t()
-  def stopped_under(prefix, 0),
-    do: note(["nothing running under ", Text.tag(to_string(prefix), :bright)])
+  @doc "That every agent a pattern covers was asked to stop."
+  @spec stopped_under(Wardrik.Resource.t(), non_neg_integer()) :: Text.t()
+  def stopped_under(pattern, 0),
+    do: note(["nothing running under ", Text.tag(to_string(pattern), :bright)])
 
-  def stopped_under(prefix, n),
-    do: note(["asked #{n} under ", Text.tag(to_string(prefix), :bright), " to stop"])
+  def stopped_under(pattern, n),
+    do: note(["asked #{n} under ", Text.tag(to_string(pattern), :bright), " to stop"])
 
   @doc "That an agent was shut down with its conversation kept."
   @spec shut_down(AgentID.t(), String.t()) :: Text.t()
@@ -1063,9 +1062,9 @@ defmodule WardrikTUI.View do
     ])
   end
 
-  @doc "That a prefix matched nothing running."
+  @doc "That a pattern matched nothing running."
   @spec nothing_under(String.t()) :: Text.t()
-  def nothing_under(prefix), do: note(["nothing running under ", Text.tag(prefix, :bright)])
+  def nothing_under(pattern), do: note(["nothing running under ", Text.tag(pattern, :bright)])
 
   @doc "That a removal would have taken the agent this client is attached to."
   @spec attached(AgentID.t()) :: Text.t()

@@ -1,51 +1,55 @@
 defmodule Wardrik.TokenTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Statement
   alias Wardrik.Token
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
-  @acme Prefix.new!(org: "acme")
   @maria Principal.new(:user, "maria")
 
-  defp token(roles, prefix \\ @acme),
-    do: %Token{principal: @maria, scope: [Role.bind(roles, prefix)]}
+  defp r(text), do: Resource.parse!(text)
+  defp acme, do: [r("acme/agent/*")]
 
-  test "a statement reaches the agents its resources cover" do
-    statement = Role.bind([:reader], @acme)
+  defp token(roles), do: %Token{principal: @maria, scope: [Role.bind(roles, acme())]}
+
+  test "a statement reaches what its resources cover" do
+    statement = Role.bind([:reader], acme())
 
     assert Statement.reaches?(statement, ~A"acme/triage")
+    assert Statement.reaches?(statement, ~A"acme/triage/t1")
     refute Statement.reaches?(statement, ~A"acme/@jon/triage")
     refute Statement.reaches?(statement, ~A"globex/triage")
     refute Statement.reaches?(statement, ~A"acmecorp/triage")
-    assert Statement.reaches?(statement, Prefix.parse!("acme/triage"))
-    refute Statement.reaches?(statement, Prefix.all())
+    assert Statement.reaches?(statement, r("acme/agent/triage/*"))
+    refute Statement.reaches?(statement, r("*"))
+    refute Statement.reaches?(statement, r("acme/server/crm"))
 
-    one = Role.bind([:reader], Prefix.of(~A"acme/@jon/triage"))
+    one = Role.bind([:reader], [r("acme/@jon/agent/triage"), r("acme/@jon/agent/triage/*")])
+    assert Statement.reaches?(one, ~A"acme/@jon/triage")
     assert Statement.reaches?(one, ~A"acme/@jon/triage/t1")
     refute Statement.reaches?(one, ~A"acme/@jon/triage2")
   end
 
   test "a statement allows the actions it names, and those under a wildcard" do
-    on_one = %Statement{actions: ["agent.*"], resources: [@acme]}
+    on_one = %Statement{actions: ["agent.*"], resources: acme()}
 
     assert Statement.allows?(on_one, "agent.ask")
     assert Statement.allows?(on_one, "agent.trigger.set")
     refute Statement.allows?(on_one, "agents.list")
-    assert Statement.allows?(Role.bind([:owner], @acme), "deployment.nodes")
-    refute Statement.allows?(Role.bind([:reader], @acme), "agent.ask")
+    assert Statement.allows?(Role.bind([:owner], acme()), "deployment.nodes")
+    refute Statement.allows?(Role.bind([:reader], acme()), "agent.ask")
   end
 
   test "a role is a named set of actions, and binding several unites them" do
     assert Role.actions(:approver) == ["agent.decide", "agent.authorization.read"]
 
-    assert %Statement{actions: actions, resources: [@acme]} =
-             Role.bind([:reader, :messenger, :reader], @acme)
+    assert %Statement{actions: actions, resources: [%Resource{name: "acme/agent/*"}]} =
+             Role.bind([:reader, :messenger, :reader], acme())
 
     assert actions == Enum.uniq(Role.actions(:reader) ++ Role.actions(:messenger))
     assert Role.parse(["reader", "worker"]) == {:ok, [:reader, :worker]}
@@ -70,10 +74,11 @@ defmodule Wardrik.TokenTest do
     assert {:error, %Error{type: :not_found, message: "No agent runs under globex/triage."}} =
              Token.authorize(token, "agent.read", ~A"globex/triage")
 
-    assert Token.authorize(token, "agents.list", Prefix.parse!("acme/triage")) == :ok
+    assert Token.authorize(token, "agents.list", r("acme/agent/tri*")) == :ok
 
-    assert {:error, %Error{type: :not_found}} =
-             Token.authorize(token, "agents.list", Prefix.all())
+    assert {:error,
+            %Error{type: :not_found, message: "Nothing * names is within this token's reach."}} =
+             Token.authorize(token, "agents.list", r("*"))
 
     assert {:error, %Error{type: :not_found}} =
              Token.authorize(%Token{principal: @maria}, "agent.read", ~A"acme/triage")
@@ -91,19 +96,22 @@ defmodule Wardrik.TokenTest do
     assert Token.authorize(later, "agent.read", ~A"acme/triage") == :ok
   end
 
-  test "root holds owner on every agent" do
+  test "root holds owner on everything" do
     root = Token.root(@maria)
 
-    assert Token.authorize(root, "deployment.reload", Prefix.all()) == :ok
+    assert Token.authorize(root, "deployment.reload", r("deployment/*")) == :ok
     assert Token.authorize(root, "agent.serve", ~A"anyone/@at/all") == :ok
-    assert Token.resources(root) == [Prefix.all()]
+    assert Token.resources(root) == [r("*")]
+
+    assert {:error, %Error{type: :not_found}} =
+             Token.authorize(token([:owner]), "deployment.reload", r("deployment/*"))
   end
 
   describe "assuming a token" do
     test "allows only what both allow, and names who acts last" do
       agent = Principal.new(:agent, "acme/front")
-      own = [Role.bind([:reader, :messenger, :definer], @acme)]
-      asker = %Token{principal: @maria, scope: [Role.bind([:reader], Prefix.tenant!("acme"))]}
+      own = [Role.bind([:reader, :messenger, :definer], acme())]
+      asker = %Token{principal: @maria, scope: [Role.bind([:reader], [r("acme/*")])]}
 
       assumed = Token.assume(asker, agent, scope: own)
 
@@ -122,13 +130,13 @@ defmodule Wardrik.TokenTest do
 
     test "never allows more than the token it narrows" do
       agent = Principal.new(:agent, "acme/front")
-      one = %Token{principal: @maria, scope: [Role.bind([:reader], Prefix.of(~A"acme/triage"))]}
+      one = %Token{principal: @maria, scope: [Role.bind([:reader], [r("acme/agent/triage")])]}
 
-      assumed = Token.assume(one, agent, scope: [Role.bind([:owner], Prefix.all())])
+      assumed = Token.assume(one, agent, scope: [Role.bind([:owner], [r("*")])])
 
       assert assumed.scope == one.scope
 
-      assert Token.assume(one, agent, scope: [Role.bind([:owner], Prefix.new!(org: "globex"))]).scope ==
+      assert Token.assume(one, agent, scope: [Role.bind([:owner], [r("globex/*")])]).scope ==
                []
     end
 

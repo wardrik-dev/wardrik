@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:input_tokens_create",
   "title": "tokens.create",
-  "description": "What making an API token takes: its name, the agents it reaches, and the roles it holds there. It acts for whoever makes it.",
+  "description": "What making an API token takes: its name, the resources it reaches, and the roles it holds there. It acts for whoever makes it.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "name",
-    "scope",
+    "resources",
     "roles"
   ],
   "properties": {
@@ -15,9 +15,13 @@
       "type": "string",
       "description": "What it is listed as."
     },
-    "scope": {
-      "type": "string",
-      "description": "The agents it reaches, by their prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', an agent's ID, or empty for every agent."
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "description": "What it reaches, each a resource pattern: acme/agent/* for acme's own agents, acme/@jon/* for everything of a user's, acme/* for everything of the org's and its users', acme/agent/triage for one agent, or * for everything."
     },
     "roles": {
       "type": "array",
@@ -48,7 +52,9 @@
   "examples": [
     {
       "name": "ci",
-      "scope": "acme/",
+      "resources": [
+        "acme/agent/*"
+      ],
       "roles": [
         "reader",
         "messenger"

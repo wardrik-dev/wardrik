@@ -95,7 +95,7 @@ An org or a person can add an MCP server for their own agents while the daemon r
 to `config.yaml`. Maria works with a token for her own agents:
 
 ```sh
-wardrik token create maria --scope acme/@maria/ --role reader,messenger,definer
+wardrik token create maria --resource 'acme/@maria/*' --role reader,messenger,definer
 ```
 
 Her agent can name a server before she adds it. It offers nothing from it yet, and its definition

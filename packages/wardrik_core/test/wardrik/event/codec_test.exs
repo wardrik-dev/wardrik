@@ -3,7 +3,6 @@ defmodule Wardrik.Event.CodecTest do
 
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.Text
@@ -175,11 +174,11 @@ defmodule Wardrik.Event.CodecTest do
   # One change of every shape `Audit.action/0` lists.
   defp changes do
     id = @agent
-    prefix = Prefix.new!(org: "acme")
+    pattern = Resource.parse!("acme/agent/*")
 
     token = %Wardrik.Token{
       principal: Principal.new(:user, "jon"),
-      scope: [Wardrik.Role.bind([:reader, :definer], prefix)],
+      scope: [Wardrik.Role.bind([:reader, :definer], [pattern])],
       policy: "careful",
       expires: ~U[2026-12-01 00:00:00Z]
     }
@@ -189,10 +188,10 @@ defmodule Wardrik.Event.CodecTest do
       {:agent_spawned, id, :wardrik_b@localhost},
       {:agent_stopped, id},
       {:agent_forgotten, id},
-      {:agent_forgotten, id, prefix},
+      {:agent_forgotten, id, pattern},
       {:agent_moved, id, :wardrik_b@localhost},
       {:agent_cancelled, id},
-      {:agent_cancelled, id, prefix},
+      {:agent_cancelled, id, pattern},
       {:agent_cleared, id},
       {:call_killed, id, "call_1"},
       {:trigger_set, id, "sweep"},
@@ -279,7 +278,7 @@ defmodule Wardrik.Event.CodecTest do
                "id" => id,
                "source" => "wardrik://local/audit",
                "type" => "wardrik.agent.forgotten",
-               "subject" => "agents/acme/@ops/triage",
+               "subject" => "acme/@ops/agent/triage",
                "sequence" => "000000000007",
                "data" =>
                  %{
@@ -322,7 +321,7 @@ defmodule Wardrik.Event.CodecTest do
                  %{
                    "actions" =>
                      Enum.uniq(Wardrik.Role.actions(:reader) ++ Wardrik.Role.actions(:definer)),
-                   "resources" => ["acme/"]
+                   "resources" => ["acme/agent/*"]
                  }
                ],
                "policy" => "careful",

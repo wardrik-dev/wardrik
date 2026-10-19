@@ -17,12 +17,17 @@ defmodule Wardrik.Test.Audit do
   end
 
   @doc """
-  The changes recorded about `subject`, such as `"agents/acme/triage"`, as
-  `{type, actor}`: the CloudEvent type without `wardrik.`, and the actor's
-  data, or `nil`. Oldest first.
+  The changes recorded about `subject`, an agent, or a resource or its
+  name, such as `"acme/agent/triage"`, as `{type, actor}`: the CloudEvent
+  type without `wardrik.`, and the actor's data, or `nil`. Oldest first.
   """
-  @spec about(String.t()) :: [{String.t(), map() | nil}]
+  @spec about(Wardrik.AgentID.t() | Wardrik.Resource.t() | String.t()) ::
+          [{String.t(), map() | nil}]
+  def about(%Wardrik.AgentID{} = id), do: about(Wardrik.AgentID.resource(id))
+
   def about(subject) do
+    subject = to_string(subject)
+
     for %{"subject" => ^subject, "type" => "wardrik." <> type} = event <- all(),
         do: {type, event["data"]["actor"]}
   end

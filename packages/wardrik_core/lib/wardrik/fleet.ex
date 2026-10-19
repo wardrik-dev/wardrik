@@ -8,23 +8,24 @@ defmodule Wardrik.Fleet do
   | `put/1` | start an agent from its `Wardrik.Agent.Spec`, or bring a running one to it |
   | `list/2` | every agent, awake, asleep or defined, and what each is doing |
   | `held/1` | every agent awake or asleep, without those only defined |
-  | `watch/1` | what is awake, as messages, whenever it changes |
-  | `forget/1`, `forget_under/1` | remove an agent, or every agent under a prefix, and its store |
+  | `watch/0` | what is awake, as messages, whenever it changes |
+  | `forget/1`, `forget_under/1` | remove an agent, or every agent a pattern covers, and its store |
   | `move/2` | restart an agent on another node, as it was |
   | `whereis/2` | the pid behind an ID, on whatever node holds it, waking it where it sleeps or starting it from its definition |
   | `held_pid/2` | the same for an agent already started, without a host |
   | `stored?/1` | whether the store holds an agent, running or stopped |
 
   An agent is addressed by its `Wardrik.AgentID`, and the fleet is sliced by
-  `Wardrik.AgentID.Prefix`:
+  `Wardrik.Resource` patterns, which each agent's `Wardrik.AgentID.resource/1`
+  is matched against:
 
-      Wardrik.Fleet.list(Wardrik.AgentID.Prefix.all(), host: host)            # everything
-      Wardrik.Fleet.list(Wardrik.AgentID.Prefix.new!(org: "acme"), host: host)  # one tenant
+      Wardrik.Fleet.list(Wardrik.Resource.parse!("*"), host: host)       # everything
+      Wardrik.Fleet.list(Wardrik.Resource.parse!("acme/*"), host: host)  # one tenant
 
   ## Listing
 
   Agents publish what they are doing as registry metadata when it changes, and
-  the registry replicates between nodes, so `watch/1` needs no polling. An
+  the registry replicates between nodes, so `watch/0` needs no polling. An
   agent that has gone to sleep, as `Wardrik.Agent` describes, is in no
   registry: `list/2` reads it from the store, as it wrote itself down. One
   the host defines that has not started, or whose state this release cannot
@@ -63,8 +64,8 @@ defmodule Wardrik.Fleet do
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Fleet.Member
+  alias Wardrik.Resource
 
   @name __MODULE__
   @prefix "agents/"
@@ -178,10 +179,10 @@ defmodule Wardrik.Fleet do
   def forget(%AgentID{} = id),
     do: DurableServer.Supervisor.terminate_and_delete_child(@name, to_string(id))
 
-  @doc "Forgets every agent under `prefix`, awake or asleep, and returns how many."
-  @spec forget_under(Prefix.t()) :: non_neg_integer()
-  def forget_under(prefix) do
-    members = held(prefix)
+  @doc "Forgets every agent `pattern` covers, awake or asleep, and returns how many."
+  @spec forget_under(Resource.t()) :: non_neg_integer()
+  def forget_under(pattern) do
+    members = held(pattern)
     Enum.each(members, &forget(&1.id))
     length(members)
   end
@@ -260,20 +261,20 @@ defmodule Wardrik.Fleet do
   # -- the fleet -------------------------------------------------------------
 
   @doc """
-  Every agent under `prefix`, across the cluster, awake or asleep, sorted by
-  ID: those `held/1` answers, and those the definitions of the `:host` given
-  hold that have not started.
+  Every agent `pattern` covers, across the cluster, awake or asleep, sorted
+  by ID: those `held/1` answers, and those the definitions of the `:host`
+  given hold that have not started.
 
-      Wardrik.Fleet.list(Wardrik.AgentID.Prefix.new!(org: "acme"), host: host)
+      Wardrik.Fleet.list(Wardrik.Resource.parse!("acme/agent/*"), host: host)
   """
-  @spec list(Prefix.t(), host: Wardrik.Host.t()) :: [Member.t()]
-  def list(prefix, opts) do
+  @spec list(Resource.t(), host: Wardrik.Host.t()) :: [Member.t()]
+  def list(pattern, opts) do
     definitions = definitions(opts)
-    held = held(prefix)
+    held = held(pattern)
     started = MapSet.new(held, & &1.id)
 
     defined =
-      for id <- Wardrik.Definition.defined(definitions, prefix),
+      for id <- Wardrik.Definition.defined(definitions, pattern),
           not MapSet.member?(started, id),
           do: Member.asleep(id)
 
@@ -281,18 +282,18 @@ defmodule Wardrik.Fleet do
   end
 
   @doc """
-  Every agent under `prefix` the fleet holds, across the cluster, awake or
-  asleep, sorted by ID.
+  Every agent `pattern` covers the fleet holds, across the cluster, awake
+  or asleep, sorted by ID.
 
   Reads each node's registry for the agents awake, and the store for those
-  asleep, so it reads every agent the store holds. `watch/1` is the cheaper
+  asleep, so it reads every agent the store holds. `watch/0` is the cheaper
   way to keep a view of the agents awake up to date.
   """
-  @spec held(Prefix.t()) :: [Member.t()]
-  def held(prefix) do
+  @spec held(Resource.t()) :: [Member.t()]
+  def held(pattern) do
     awake =
       for {key, {pid, meta}} <- DurableServer.Supervisor.global_members(@name),
-          id <- under(prefix, key),
+          id <- under(pattern, key),
           into: %{},
           do: {key, Member.new(id, pid, meta.user_meta)}
 
@@ -301,14 +302,15 @@ defmodule Wardrik.Fleet do
           not info.running,
           info.status != :deleting,
           not Map.has_key?(awake, info.key),
-          id <- under(prefix, info.key),
+          id <- under(pattern, info.key),
           do: Member.asleep(id, info.user_state)
 
     Enum.sort_by(Map.values(awake) ++ asleep, &to_string(&1.id))
   end
 
-  defp under(prefix, key) do
-    with {:ok, id} <- AgentID.parse(key), true <- Prefix.covers?(prefix, id) do
+  defp under(pattern, key) do
+    with {:ok, id} <- AgentID.parse(key),
+         true <- Resource.covers?(pattern, AgentID.resource(id)) do
       [id]
     else
       _elsewhere -> []
@@ -316,29 +318,20 @@ defmodule Wardrik.Fleet do
   end
 
   @doc """
-  Sends this process a message whenever an agent under `prefix` starts, stops,
-  or changes what it is doing.
+  Sends this process a message whenever an agent in the cluster starts,
+  stops, or changes what it is doing.
 
   Messages arrive as `{:group, [%Group.Event{}], info}`, where each event's
   `key` is the agent ID's text. A state change re-registers metadata, so a
   `:registered` event carrying `previous_meta` is a change rather than a new
-  agent. Agents are matched by the start of their ID's text, so watching an
-  org's own agents, `acme/`, hears of its users' too: pass each event's key
-  through `Wardrik.AgentID.Prefix.covers?/2` where that matters.
-
-      Wardrik.Fleet.watch(Wardrik.AgentID.Prefix.new!(org: "acme"))
-      Wardrik.Fleet.watch()        # the whole cluster
+  agent.
   """
-  @spec watch(Prefix.t()) :: :ok
-  def watch(prefix \\ Prefix.all()) do
-    Enum.each(Prefix.patterns(prefix), &(:ok = Group.monitor(@name, &1)))
-  end
+  @spec watch() :: :ok
+  def watch, do: Group.monitor(@name, :all)
 
-  @doc "Stops the messages `watch/1` started."
-  @spec unwatch(Prefix.t()) :: :ok
-  def unwatch(prefix \\ Prefix.all()) do
-    Enum.each(Prefix.patterns(prefix), &(:ok = Group.demonitor(@name, &1)))
-  end
+  @doc "Stops the messages `watch/0` started."
+  @spec unwatch() :: :ok
+  def unwatch, do: Group.demonitor(@name, :all)
 
   @doc "The nodes agents run on: this one, and every one connected to it."
   @spec nodes() :: [node()]

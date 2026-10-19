@@ -2,7 +2,6 @@ defmodule Wardrik.TriggersTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Host
   alias Wardrik.Principal
@@ -37,8 +36,8 @@ defmodule Wardrik.TriggersTest do
     Process.put(:answer, answer)
 
     token = %Token{
-      principal: Principal.new(:webhook, "acme/hooked//issues"),
-      scope: [%Statement{actions: actions, resources: [Prefix.of(@agent)]}]
+      principal: Principal.new(:webhook, "acme/agent/hooked/trigger/issues"),
+      scope: [%Statement{actions: actions, resources: [Wardrik.AgentID.resource(@agent)]}]
     }
 
     Wardrik.agent_trigger_deliver(Scope.new(host, token), @agent, "issues", %{

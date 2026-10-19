@@ -1,9 +1,10 @@
 defmodule WardrikDaemon.ConfigTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.AgentID.Prefix
   alias WardrikChannel.Approvers.Named
   alias WardrikDaemon.Config
+
+  defp r(text), do: Wardrik.Resource.parse!(text)
 
   @moduletag :tmp_dir
 
@@ -79,10 +80,10 @@ defmodule WardrikDaemon.ConfigTest do
       assert settings[WardrikDaemon][:orgs] == ["acme", "globex", "initech"]
 
       servers = settings[WardrikMCP][:servers]
-      assert servers[:mine][:serves] == [Prefix.tenant!("acme")]
-      assert servers[:theirs][:serves] == [Prefix.tenant!("globex")]
-      assert servers[:shared][:serves] == [Prefix.tenant!("acme"), Prefix.tenant!("globex")]
-      assert servers[:public][:serves] == [Prefix.all()]
+      assert servers[:mine][:serves] == [r("acme/*")]
+      assert servers[:theirs][:serves] == [r("globex/*")]
+      assert servers[:shared][:serves] == [r("acme/*"), r("globex/*")]
+      assert servers[:public][:serves] == [r("*")]
 
       targets = settings[WardrikNotify][:targets]
       assert {WardrikNotify.Webhook, ops} = targets[:ops]
@@ -255,14 +256,14 @@ defmodule WardrikDaemon.ConfigTest do
                    shared:
                      acme/runbooks:
                        read: ["acme/*"]
-                       write: [acme/ops]
+                       write: [acme/agent/ops, "acme/agent/ops/*"]
                  """,
                  context
                )
 
       assert share.tree == "acme/runbooks"
       assert Enum.map(share.read, &to_string/1) == ["acme/*"]
-      assert Enum.map(share.write, &to_string/1) == ["acme/ops"]
+      assert Enum.map(share.write, &to_string/1) == ["acme/agent/ops", "acme/agent/ops/*"]
 
       assert {:error, message} =
                read("workspace:\n  shared:\n    acme/runbooks: {read: [\"/x\"]}\n", context)
@@ -270,7 +271,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "workspace.shared.acme/runbooks does not read"
 
       assert {:error, message} =
-               read("workspace:\n  shared:\n    acme/runbooks: {read: [acmee/]}\n", context)
+               read("workspace:\n  shared:\n    acme/runbooks: {read: [acmee/*]}\n", context)
 
       assert message =~
                "workspace.shared.acme/runbooks names acmee is not an org config.yaml declares"

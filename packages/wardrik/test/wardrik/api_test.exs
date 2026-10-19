@@ -4,7 +4,6 @@ defmodule Wardrik.APITest do
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Event.Log.Entry
   alias Wardrik.Fleet.Member
@@ -74,7 +73,7 @@ defmodule Wardrik.APITest do
              Wardrik.agent_definition_read(scope, agent)
 
     assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_read(scope, agent)
-    assert {:ok, members} = Wardrik.agents_list(scope, Prefix.of(agent))
+    assert {:ok, members} = Wardrik.agents_list(scope, Wardrik.AgentID.resource(agent))
     assert Enum.any?(members, &(&1.id == agent))
 
     assert {:ok, trigger} =
@@ -131,7 +130,7 @@ defmodule Wardrik.APITest do
     agent = parked(scope)
 
     assert {:ok, [{^agent, {%{id: "call_1"}, _prompt}}]} =
-             Wardrik.agents_parked(scope, Prefix.of(agent))
+             Wardrik.agents_parked(scope, Wardrik.AgentID.resource(agent))
 
     assert {:error, %Error{type: :not_found}} =
              Wardrik.agent_authorization_read(scope, agent, "call_1")
@@ -159,7 +158,7 @@ defmodule Wardrik.APITest do
              Wardrik.agent_spawn(scope, agent)
 
     assert :ok = Wardrik.agent_cancel(scope, agent)
-    assert {:ok, []} = Wardrik.agents_cancel(scope, Prefix.of(agent))
+    assert {:ok, []} = Wardrik.agents_cancel(scope, Wardrik.AgentID.resource(agent))
 
     assert {:ok, %Spawned{member: %Member{node: node}, from: :running}} =
              Wardrik.agent_spawn(root, agent, node: node())
@@ -170,13 +169,14 @@ defmodule Wardrik.APITest do
     assert {:ok, []} = Wardrik.agent_calls(scope, agent)
 
     assert {:ok, %Forgetting{agents: [^agent]}} =
-             Wardrik.agents_forget_preview(scope, Prefix.of(agent))
+             Wardrik.agents_forget_preview(scope, Wardrik.AgentID.resource(agent))
 
-    assert {:ok, %{^agent => :forgotten}} = Wardrik.agents_forget(scope, Prefix.of(agent))
+    assert {:ok, %{^agent => :forgotten}} =
+             Wardrik.agents_forget(scope, Wardrik.AgentID.resource(agent))
   end
 
   test "what the host does not offer answers so", %{scope: scope, root: root} do
-    owner = Prefix.new!(org: "acme")
+    owner = Wardrik.Resource.parse!("acme")
     agent = start({AgentRunners, :echo, [self(), "ok"]})
 
     server = %Server{
@@ -215,15 +215,15 @@ defmodule Wardrik.APITest do
 
   test "each function's ! variant answers the value, or raises the error",
        %{scope: scope, root: root} do
-    owner = Prefix.new!(org: "acme")
+    owner = Wardrik.Resource.parse!("acme")
     agent = id("bang")
     definition = %{"model" => "anthropic:claude-sonnet-5"}
 
     assert %Snapshot{} = Wardrik.agent_define!(scope, agent, definition)
     assert %Wardrik.Definition.Read{} = Wardrik.agent_definition_read!(scope, agent)
     assert %Snapshot{} = Wardrik.agent_read!(scope, agent)
-    assert [_ | _] = Wardrik.agents_list!(scope, Prefix.of(agent))
-    assert [] = Wardrik.agents_parked!(scope, Prefix.of(agent))
+    assert [_ | _] = Wardrik.agents_list!(scope, Wardrik.AgentID.resource(agent))
+    assert [] = Wardrik.agents_parked!(scope, Wardrik.AgentID.resource(agent))
     assert :ok = Wardrik.agent_subscribe!(scope, agent)
     assert Enumerable.impl_for(Wardrik.agent_stream!(scope, agent))
     assert [_ | _] = Wardrik.agent_events!(scope, agent)
@@ -237,14 +237,14 @@ defmodule Wardrik.APITest do
     assert %{"name" => "s"} = Wardrik.agent_trigger_remove!(scope, agent, "s")
     assert %Snapshot{} = Wardrik.agent_clear!(scope, agent)
     assert :ok = Wardrik.agent_cancel!(scope, agent)
-    assert [] = Wardrik.agents_cancel!(scope, Prefix.of(agent))
+    assert [] = Wardrik.agents_cancel!(scope, Wardrik.AgentID.resource(agent))
     assert %Member{asleep: true} = Wardrik.agent_stop!(scope, agent)
     assert %Spawned{} = Wardrik.agent_spawn!(scope, agent)
     assert %Moving{} = Wardrik.agent_move_preview!(root, agent, node())
     assert %Member{} = Wardrik.agent_move!(root, agent, node())
     assert [] = Wardrik.agent_calls!(scope, agent)
     assert %Forgetting{} = Wardrik.agent_forget_preview!(scope, agent)
-    assert %Forgetting{} = Wardrik.agents_forget_preview!(scope, Prefix.of(agent))
+    assert %Forgetting{} = Wardrik.agents_forget_preview!(scope, Wardrik.AgentID.resource(agent))
     assert %Wardrik.Deployment.Nodes{} = Wardrik.deployment_nodes!(root)
     assert is_list(Wardrik.deployment_audit!(root))
     assert [_node] = Wardrik.deployment_reload!(root)
@@ -261,7 +261,7 @@ defmodule Wardrik.APITest do
 
     echo = start({AgentRunners, :echo, [self(), "ok"]})
     assert %Message{} = Wardrik.agent_ask!(scope, echo, "hi")
-    assert %{^echo => :forgotten} = Wardrik.agents_forget!(scope, Prefix.of(echo))
+    assert %{^echo => :forgotten} = Wardrik.agents_forget!(scope, Wardrik.AgentID.resource(echo))
 
     for raising <- [
           fn -> Wardrik.agent_authorization_read!(scope, echo, "call_1") end,

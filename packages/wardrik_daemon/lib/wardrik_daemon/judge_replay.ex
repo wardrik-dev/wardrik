@@ -19,7 +19,6 @@ defmodule WardrikDaemon.JudgeReplay do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Event.Log
   alias Wardrik.Host
   alias Wardrik.LLM.Config
@@ -86,28 +85,37 @@ defmodule WardrikDaemon.JudgeReplay do
   The agents a policy's calls are looked for under where none are named:
   each agent whose definition names the policy, with its conversations.
   """
-  @spec using(WardrikStore.t(), String.t()) :: [Prefix.t()]
+  @spec using(WardrikStore.t(), String.t()) :: [Wardrik.Resource.t()]
   def using(store, name) do
     for %Record{id: id, fields: %{"policy" => ^name}} <- Record.all(store),
-        do: Prefix.of(id)
+        pattern <- of(id),
+        do: pattern
+  end
+
+  @doc "The agent `id` with its conversations: its resource, and what is under it."
+  @spec of(AgentID.t()) :: [Wardrik.Resource.t()]
+  def of(%AgentID{} = id) do
+    itself = AgentID.resource(id)
+    [itself, Wardrik.Resource.parse!("#{itself}/*")]
   end
 
   @doc """
-  The newest `opts[:last]` calls kept in `host`'s store under the prefixes
-  `opts[:under]` that a question of `judge` names, each tried on it, newest
-  first.
+  The newest `opts[:last]` calls kept in `host`'s store by the agents the
+  patterns `opts[:under]` cover that a question of `judge` names, each tried
+  on it, newest first.
   """
-  @spec tried(Host.t(), Judge.t(), under: [Prefix.t()], last: pos_integer()) :: [tried()]
+  @spec tried(Host.t(), Judge.t(), under: [Wardrik.Resource.t()], last: pos_integer()) ::
+          [tried()]
   def tried(%Host{} = host, %Judge{} = judge, opts) do
     opts = Keyword.validate!(opts, [:under, :last])
-    prefixes = Keyword.fetch!(opts, :under)
+    patterns = Keyword.fetch!(opts, :under)
     last = Keyword.fetch!(opts, :last)
     store = Host.store(host)
 
     for(
       log <- Log.logs(store),
       log != :audit,
-      Enum.any?(prefixes, &Prefix.covers?(&1, log)),
+      Enum.any?(patterns, &Wardrik.Resource.covers?(&1, AgentID.resource(log))),
       call <- calls(store, log, judge),
       do: call
     )

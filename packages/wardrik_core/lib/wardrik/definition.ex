@@ -128,11 +128,12 @@ defprotocol Wardrik.Definition do
   def current(definitions, id)
 
   @doc """
-  The agents a definition is kept for under `prefix`, found without
-  building any, so `Wardrik.Fleet.list/2` lists those not yet started.
+  The agents a definition is kept for that the `Wardrik.Resource` pattern
+  covers, found without building any, so `Wardrik.Fleet.list/2` lists
+  those not yet started.
   """
-  @spec defined(t(), Wardrik.AgentID.Prefix.t()) :: [Wardrik.AgentID.t()]
-  def defined(definitions, prefix)
+  @spec defined(t(), Wardrik.Resource.t()) :: [Wardrik.AgentID.t()]
+  def defined(definitions, pattern)
 
   @doc """
   Defines the agent `id`, which nothing defines yet, from what the host
