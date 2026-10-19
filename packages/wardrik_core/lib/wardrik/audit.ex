@@ -78,13 +78,14 @@ defmodule Wardrik.Audit do
       the `Wardrik.Token` its secret presents
     * `{:token_revoked, token_id}`
     * `{:secret_stored, name, owner}`, `{:secret_removed, name, owner}` - a
-      secret was sealed in the vault, or taken out, for the org or user
-      `owner` names, or for the whole deployment where it is every agent
+      secret was sealed in the vault, or taken out, for the namespace
+      `owner`, an org, a user, or the deployment
 
   MCP servers orgs and people add:
 
-    * `{:server_added, key, url}` - the server `key` names was added at `url`
-    * `{:server_removed, key}`
+    * `{:server_added, server, url}` - the server, a `Wardrik.Resource`, was
+      added at `url`
+    * `{:server_removed, server}`
   """
   @type action() ::
           {:agent_defined, AgentID.t()}
@@ -104,10 +105,10 @@ defmodule Wardrik.Audit do
           | {:room_unbound, String.t(), String.t()}
           | {:token_created, String.t(), String.t(), Wardrik.Token.t()}
           | {:token_revoked, String.t()}
-          | {:secret_stored, String.t(), Prefix.t()}
-          | {:secret_removed, String.t(), Prefix.t()}
-          | {:server_added, Wardrik.Servers.Key.t(), String.t()}
-          | {:server_removed, Wardrik.Servers.Key.t()}
+          | {:secret_stored, String.t(), Wardrik.Resource.t()}
+          | {:secret_removed, String.t(), Wardrik.Resource.t()}
+          | {:server_added, Wardrik.Resource.t(), String.t()}
+          | {:server_removed, Wardrik.Resource.t()}
 
   @typedoc """
   A change, who made it, who acted for them, and when, under a UUIDv7 of its

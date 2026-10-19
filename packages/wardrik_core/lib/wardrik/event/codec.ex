@@ -56,12 +56,12 @@ defmodule Wardrik.Event.Codec do
   acted for them, first to last, as `assumed_by`, where anyone did.
   """
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
   alias Wardrik.Call.Pipeline
   alias Wardrik.Event
   alias Wardrik.Event.Codec.Value
   alias Wardrik.LLM.Answer
+  alias Wardrik.Resource
 
   @padding 12
 
@@ -475,9 +475,10 @@ defmodule Wardrik.Event.Codec do
   defp change({:secret_removed, name, owner}), do: secret("secret.removed", name, owner)
 
   defp change({:server_added, key, url}),
-    do: server("server.added", key, %{"name" => key.name, "url" => url})
+    do: server("server.added", key, %{"name" => Resource.basename(key), "url" => url})
 
-  defp change({:server_removed, key}), do: server("server.removed", key, %{"name" => key.name})
+  defp change({:server_removed, key}),
+    do: server("server.removed", key, %{"name" => Resource.basename(key)})
 
   defp agent_change(type, id, data),
     do: {type, "agents/#{id}", Map.put(data, "agent", %{"id" => to_string(id)})}
@@ -489,12 +490,12 @@ defmodule Wardrik.Event.Codec do
   end
 
   defp server(type, key, server) do
-    data = %{"server" => server, "owner" => to_string(key.owner)}
+    data = %{"server" => server, "owner" => to_string(Resource.owner(key))}
     {type, "servers/#{key}", data}
   end
 
   defp owned_by(owner) do
-    if owner == Prefix.all(), do: nil, else: to_string(owner)
+    if owner == Resource.deployment(), do: nil, else: to_string(owner)
   end
 
   # -- helpers -------------------------------------------------------------------

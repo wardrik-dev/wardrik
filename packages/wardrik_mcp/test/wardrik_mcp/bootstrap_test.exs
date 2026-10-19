@@ -6,6 +6,8 @@ defmodule WardrikMCP.BootstrapTest do
 
   use WardrikMCP.Test.Case, async: false
 
+  alias Wardrik.Resource
+
   alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
@@ -50,11 +52,14 @@ defmodule WardrikMCP.BootstrapTest do
   end
 
   defp call(key, user, tool) do
-    ToolRunner.execute(%{id: "c1", name: "#{key}__#{tool}", arguments: %{}}, run(key, user))
+    ToolRunner.execute(
+      %{id: "c1", name: "#{Resource.basename(key)}__#{tool}", arguments: %{}},
+      run(key, user)
+    )
   end
 
   setup %{key: key} do
-    %{connect: "#{key}__connect"}
+    %{connect: "#{Resource.basename(key)}__connect"}
   end
 
   test "offers the tool that authorizes, and nothing else", context do
@@ -79,7 +84,7 @@ defmodule WardrikMCP.BootstrapTest do
 
     names = Enum.map(WardrikMCP.tools(key), & &1.name)
 
-    assert "#{key}__echo" in names
+    assert "#{Resource.basename(key)}__echo" in names
     refute connect in names
   end
 
@@ -94,7 +99,7 @@ defmodule WardrikMCP.BootstrapTest do
 
     names = Enum.map(WardrikMCP.tools(key), & &1.name)
 
-    assert "#{key}__echo" in names
+    assert "#{Resource.basename(key)}__echo" in names
     refute connect in names
   end
 
@@ -102,7 +107,11 @@ defmodule WardrikMCP.BootstrapTest do
     %{key: key} = context
     %Wardrik.Call{state: :done} = call(key, "connected", "connect")
 
-    secret = %{id: "c2", name: "#{key}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
+    secret = %{
+      id: "c2",
+      name: "#{Resource.basename(key)}__secret",
+      arguments: %{"name" => "DEMO_TOKEN"}
+    }
 
     assert [message] =
              Wardrik.LLM.ToolRunner.messages([
@@ -119,7 +128,7 @@ defmodule WardrikMCP.BootstrapTest do
     Connection.offer_listing(key, [%{"name" => "echo", "description" => "Hands the value back."}])
 
     assert {:ok, tools} = Connection.await(key)
-    assert Enum.map(tools, & &1.name) == ["#{key}__echo"]
+    assert Enum.map(tools, & &1.name) == ["#{Resource.basename(key)}__echo"]
   end
 
   describe "a connection started after a user has connected elsewhere" do
@@ -140,7 +149,7 @@ defmodule WardrikMCP.BootstrapTest do
     test "offers the server's own tools from the start", context do
       %{key: key, connect: connect, started_with: names} = context
 
-      assert "#{key}__echo" in names
+      assert "#{Resource.basename(key)}__echo" in names
       refute connect in names
     end
 
@@ -148,7 +157,11 @@ defmodule WardrikMCP.BootstrapTest do
       %{key: key} = context
       refute Connection.running?(key, {:owner, {"acme", "connected"}})
 
-      secret = %{id: "c2", name: "#{key}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
+      secret = %{
+        id: "c2",
+        name: "#{Resource.basename(key)}__secret",
+        arguments: %{"name" => "DEMO_TOKEN"}
+      }
 
       assert [message] =
                Wardrik.LLM.ToolRunner.messages([
@@ -162,7 +175,11 @@ defmodule WardrikMCP.BootstrapTest do
     test "parks a call from a user who has not connected on the link", context do
       %{key: key} = context
 
-      echo = %{id: "c2", name: "#{key}__echo", arguments: %{"value" => "hello"}}
+      echo = %{
+        id: "c2",
+        name: "#{Resource.basename(key)}__echo",
+        arguments: %{"value" => "hello"}
+      }
 
       assert %Wardrik.Call{state: :waiting, asks: [%{link: %{url: url}}]} =
                ToolRunner.execute(echo, run(key, "someone"))

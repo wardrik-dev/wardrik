@@ -24,7 +24,7 @@ defmodule WardrikMCP.Servers do
 
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias Wardrik.Servers.Server
   alias WardrikMCP.Auth
   alias WardrikMCP.Remote
@@ -40,12 +40,12 @@ defmodule WardrikMCP.Servers do
         }
 
   @doc false
-  @spec list(t(), Prefix.t()) :: [Server.t()]
+  @spec list(t(), Resource.t()) :: [Server.t()]
   def list(%__MODULE__{store: store}, owner) do
     for remote <- Remote.list(store, owner),
         do:
           %Server{
-            name: remote.key.name,
+            name: Resource.basename(remote.key),
             url: remote.url,
             auth: Auth.name(remote.auth),
             only: remote.filters[:only],
@@ -61,12 +61,11 @@ defmodule WardrikMCP.Servers do
   defp signs_in(_auth), do: []
 
   @doc false
-  @spec add(t(), Prefix.t(), keyword()) ::
+  @spec add(t(), Resource.t(), keyword()) ::
           {:ok, :connected} | {:ok, Wardrik.Call.Ask.link()} | {:error, Error.t()}
   def add(%__MODULE__{} = servers, owner, opts) do
-    key = Key.new(owner, Keyword.fetch!(opts, :name))
-
-    with {:ok, remote} <- decoded(key, Keyword.fetch!(opts, :fields)),
+    with {:ok, key} <- key(owner, Keyword.fetch!(opts, :name)),
+         {:ok, remote} <- decoded(key, Keyword.fetch!(opts, :fields)),
          :ok <- reachable(servers, remote),
          :ok <- unclaimed(servers, key),
          :ok <- kept(servers, remote) do
@@ -75,19 +74,24 @@ defmodule WardrikMCP.Servers do
   end
 
   @doc false
-  @spec remove(t(), Prefix.t(), keyword()) :: :ok | {:error, Error.t()}
+  @spec remove(t(), Resource.t(), keyword()) :: :ok | {:error, Error.t()}
   def remove(%__MODULE__{store: store} = servers, owner, opts) do
-    key = Key.new(owner, Keyword.fetch!(opts, :name))
+    name = Keyword.fetch!(opts, :name)
 
-    case Remote.fetch(store, key) do
-      {:ok, remote} ->
-        :ok = Remote.delete(store, key)
-        :erpc.multicast(Node.list(), WardrikMCP, :close, [key])
-        :ok = WardrikMCP.close(key)
-        forget(servers, remote)
+    with {:ok, key} <- key(owner, name), {:ok, remote} <- Remote.fetch(store, key) do
+      :ok = Remote.delete(store, key)
+      :erpc.multicast(Node.list(), WardrikMCP, :close, [key])
+      :ok = WardrikMCP.close(key)
+      forget(servers, remote)
+    else
+      _none -> {:error, Error.new(:not_found, "#{owner} added no server named #{name}.")}
+    end
+  end
 
-      :error ->
-        {:error, Error.new(:not_found, "#{owner} added no server named #{key.name}.")}
+  defp key(owner, name) do
+    case Remote.named(name) do
+      :ok -> {:ok, Resource.new(owner, server: name)}
+      {:error, message} -> {:error, Error.new(:invalid, message)}
     end
   end
 
@@ -112,7 +116,9 @@ defmodule WardrikMCP.Servers do
   # A server of the deployment's own that serves the owner names its tools
   # with its prefix, and so would the owner's of that name; a configured
   # provider of that name is the sign-in its credential would resolve.
-  defp unclaimed(%__MODULE__{oauth: oauth}, %Key{owner: owner, name: name}) do
+  defp unclaimed(%__MODULE__{oauth: oauth}, key) do
+    {owner, name} = {Resource.owner(key), Resource.basename(key)}
+
     cond do
       Enum.any?(WardrikMCP.Supervisor.servers(), &(&1.prefix == name and serves?(&1, owner))) ->
         taken("#{name} names a server this deployment offers #{owner}")
@@ -127,7 +133,8 @@ defmodule WardrikMCP.Servers do
 
   defp taken(why), do: {:error, Error.new(:conflict, why <> "; give it another name.")}
 
-  defp serves?(server, owner), do: Enum.any?(server.serves, &Prefix.covers?(&1, owner))
+  defp serves?(server, owner),
+    do: Enum.any?(server.serves, &Prefix.covers?(&1, Prefix.owned_by(owner)))
 
   defp kept(%__MODULE__{store: store}, %Remote{key: key} = remote) do
     case Remote.put(store, remote) do
@@ -135,7 +142,11 @@ defmodule WardrikMCP.Servers do
         :ok
 
       {:error, :conflict} ->
-        {:error, Error.new(:conflict, "#{key.owner} has a server named #{key.name} already.")}
+        {:error,
+         Error.new(
+           :conflict,
+           "#{Resource.owner(key)} has a server named #{Resource.basename(key)} already."
+         )}
     end
   end
 
@@ -152,16 +163,16 @@ defmodule WardrikMCP.Servers do
   end
 
   defp found(%__MODULE__{oauth: oauth}, %Remote{key: key}, provider) do
-    case WardrikOAuth.Provider.fetch(oauth, key.name, holder(key.owner)) do
+    case WardrikOAuth.Provider.fetch(oauth, Resource.basename(key), Resource.owner(key)) do
       {:ok, found} -> found
       :error -> provider
     end
   end
 
   defp started(servers, remote, provider, by) do
-    holder = holder(remote.key.owner)
+    owner = Resource.owner(remote.key)
 
-    case WardrikOAuth.hold(servers.oauth, provider, holder, vault: servers.vault, by: by) do
+    case WardrikOAuth.hold(servers.oauth, provider, owner, vault: servers.vault, by: by) do
       {:ok, _credential} ->
         {:ok, :connected}
 
@@ -179,17 +190,9 @@ defmodule WardrikMCP.Servers do
   # Its token, for a server its owner signed in to.
   defp forget(%__MODULE__{vault: vault}, remote) do
     with {:ok, provider} <- Remote.provider(remote),
-         do: WardrikOAuth.disconnect(vault, provider.name, holder(remote.key.owner))
+         do: WardrikOAuth.disconnect(vault, provider.name, Resource.owner(remote.key))
 
     :ok
-  end
-
-  # Whom the vault keeps an owner's credentials for: a person, or an org.
-  defp holder(owner) do
-    case Prefix.user(owner) do
-      nil -> Prefix.org(owner)
-      user -> {Prefix.org(owner), user}
-    end
   end
 
   defimpl Wardrik.Servers do

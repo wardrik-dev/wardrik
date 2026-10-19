@@ -21,13 +21,15 @@ defmodule Wardrik.AgentID do
 
   `new/2` writes the host's own org and user values down through
   `Wardrik.AgentID.Segment`. A segment is the org, the user, the name or the
-  external ID. It holds no `/` or whitespace, and does not begin with `@`, which
-  marks the user, or `_`, which is kept for the fleet's own records, and is
-  not `*`, which a tenant's prefix is written with. A segment
+  external ID. It holds no `/` or whitespace, nor `*` or `?`, which patterns
+  are written with, and does not begin with `@`, which marks the user, or
+  `_`, which is kept for the fleet's own records. No org is named
+  `deployment`, which names the deployment itself. A segment
   is in every event's `source`, every store key and every log line naming the
   agent, so a user's should be an opaque id rather than an email address.
 
-  The ways a fleet is sliced are `Wardrik.AgentID.Prefix`es.
+  The ways a fleet is sliced are `Wardrik.AgentID.Prefix`es, and the name a
+  statement gives an agent is its `resource/1`.
 
   `~A` reads an ID's text when the code is compiled:
 
@@ -36,6 +38,7 @@ defmodule Wardrik.AgentID do
   """
 
   alias Wardrik.AgentID.Segment
+  alias Wardrik.Resource
 
   @enforce_keys [:org, :name]
   defstruct [:org, :user, :name, :external_id]
@@ -47,7 +50,7 @@ defmodule Wardrik.AgentID do
           external_id: String.t() | nil
         }
 
-  @segment ~r/\A[^\/@_\s][^\/\s]*\z/u
+  @segment ~r/\A[^\/@_\s*?][^\/\s*?]*\z/u
 
   @doc """
   The ID of the agent named `name` in `:org`, working for `:user` and
@@ -82,9 +85,26 @@ defmodule Wardrik.AgentID do
   @doc "Whether `text` can be one segment of an ID: an org, a user, a name or an external ID."
   @spec segment?(term()) :: boolean()
   def segment?(text) when is_binary(text),
-    do: text not in [".", "..", "*"] and Regex.match?(@segment, text)
+    do: text not in [".", ".."] and Regex.match?(@segment, text)
 
   def segment?(_text), do: false
+
+  @doc "Whether `text` can be an org: a segment other than `deployment`."
+  @spec org?(term()) :: boolean()
+  def org?(text), do: segment?(text) and text != "deployment"
+
+  @doc """
+  The resource `id` names, as a `Wardrik.Statement` names it.
+
+      Wardrik.AgentID.resource(~A"acme/@jon/triage/1696.1234")
+      #=> #Wardrik.Resource<acme/@jon/agent/triage/thread/1696.1234>
+  """
+  @spec resource(t()) :: Resource.t()
+  def resource(%__MODULE__{org: org, user: user, name: name, external_id: external_id}) do
+    owner = if user, do: [org, "@" <> user], else: [org]
+    thread = if external_id, do: ["thread", external_id], else: []
+    %Resource{name: Enum.join(owner ++ ["agent", name] ++ thread, "/")}
+  end
 
   @doc """
   The ID `text` writes, as `to_string/1` writes one.
@@ -152,7 +172,7 @@ defmodule Wardrik.AgentID do
   def from_segments(_segments), do: :error
 
   defp build(org, user, name, external_id) do
-    if Enum.all?(Enum.reject([org, user, name, external_id], &is_nil/1), &segment?/1),
+    if org?(org) and Enum.all?(Enum.reject([user, name, external_id], &is_nil/1), &segment?/1),
       do: {:ok, %__MODULE__{org: org, user: user, name: name, external_id: external_id}},
       else: :error
   end
@@ -171,13 +191,17 @@ defmodule Wardrik.AgentID do
   defp optional(nil, _what), do: {:ok, nil}
   defp optional(value, what), do: part(value, what)
 
+  defp written("deployment", _value, "org"),
+    do: {:error, "an agent's org is deployment, which names the deployment itself"}
+
   defp written(segment, value, what) do
     if segment?(segment),
       do: {:ok, segment},
       else:
         {:error,
          "an agent's #{what} is #{inspect(segment)} from #{inspect(value)}, which is not a " <>
-           "segment; a segment holds no / or whitespace and does not begin with @ or _"}
+           "segment; a segment holds no / or whitespace, nor * or ?, and does not begin " <>
+           "with @ or _"}
   end
 
   defp ok!({:ok, value}), do: value

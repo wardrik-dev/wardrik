@@ -47,7 +47,7 @@ defmodule WardrikOAuthTest do
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
       assert {:ok, _credential} = resolve_in(in_org("acme", owner), "github")
-      assert WardrikOAuth.connected?(vault(), "github", {"acme", owner})
+      assert WardrikOAuth.connected?(vault(), "github", person("acme", owner))
 
       assert {:error, {:authorization_required, _link, _owner}} =
                resolve_in(in_org("globex", owner), "github")
@@ -65,13 +65,13 @@ defmodule WardrikOAuthTest do
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
       assert {:ok, credential} = resolve_in(in_org(org, nil), "github")
-      assert credential.owner == org
-      assert WardrikOAuth.connected?(vault(), "github", org)
+      assert credential.owner == Wardrik.Resource.parse!(org)
+      assert WardrikOAuth.connected?(vault(), "github", Wardrik.Resource.parse!(org))
 
       assert {:error, {:authorization_required, _link, _owner}} =
                resolve_in(in_org(org, owner), "github")
 
-      refute WardrikOAuth.connected?(vault(), "github", {org, owner})
+      refute WardrikOAuth.connected?(vault(), "github", person(org, owner))
     end
 
     test "calls that park at once share one flow", %{owner: owner} do
@@ -98,8 +98,8 @@ defmodule WardrikOAuthTest do
 
     test "cannot be finished by a callback once it has expired", %{owner: owner} do
       url = connect(owner)
-      {:ok, flight} = Pending.under_way("github", {"acme", owner})
-      :ok = Pending.drop("github", {"acme", owner})
+      {:ok, flight} = Pending.under_way("github", person("acme", owner))
+      :ok = Pending.drop("github", person("acme", owner))
       {:ok, _url} = Pending.start(%{flight | started_at: flight.started_at - :timer.hours(1)})
 
       assert {:error, :no_such_flow} = WardrikOAuth.finish(state_of(url), "the-code")
@@ -113,42 +113,42 @@ defmodule WardrikOAuthTest do
       {:error, {:authorization_required, _link, _owner}} =
         Credential.resolve(Calls.tool("tool", %{}, run(owner)), "github")
 
-      {:ok, flight} = Pending.under_way("github", {"acme", owner})
+      {:ok, flight} = Pending.under_way("github", person("acme", owner))
 
       assert {:error, :no_such_flow} = WardrikOAuth.finish(flight.state, "a-code")
-      assert {:ok, _still} = Pending.under_way("github", {"acme", owner})
+      assert {:ok, _still} = Pending.under_way("github", person("acme", owner))
     end
 
     test "is found by who it is for, and dropped by it", %{owner: owner} do
       url = connect(owner)
 
-      assert {:ok, flight} = Pending.under_way("github", {"acme", owner})
+      assert {:ok, flight} = Pending.under_way("github", person("acme", owner))
       assert flight.url == url
 
-      assert :error = Pending.under_way("github", {"acme", "nobody"})
-      assert :error = Pending.under_way("gitlab", {"acme", owner})
+      assert :error = Pending.under_way("github", person("acme", "nobody"))
+      assert :error = Pending.under_way("gitlab", person("acme", owner))
 
-      :ok = Pending.drop("github", {"acme", owner})
-      assert :error = Pending.under_way("github", {"acme", owner})
+      :ok = Pending.drop("github", person("acme", owner))
+      assert :error = Pending.under_way("github", person("acme", owner))
       assert {:error, :no_such_flow} = WardrikOAuth.finish(state_of(url), "the-code")
     end
 
     test "that crashes takes no other with it", %{owner: owner} do
       connect(owner)
       other = connect("#{owner}-other")
-      crashed = flow_of({"acme", owner})
+      crashed = flow_of(person("acme", owner))
       ref = Process.monitor(crashed)
 
       Process.exit(crashed, :kill)
 
       assert_receive {:DOWN, ^ref, :process, ^crashed, :killed}
-      assert :error = Pending.under_way("github", {"acme", owner})
-      assert {:ok, %{url: ^other}} = Pending.under_way("github", {"acme", "#{owner}-other"})
+      assert :error = Pending.under_way("github", person("acme", owner))
+      assert {:ok, %{url: ^other}} = Pending.under_way("github", person("acme", "#{owner}-other"))
     end
 
     test "says what it is for, never its verifier or client", %{owner: owner} do
       connect(owner)
-      {:ok, flight} = Pending.under_way("github", {"acme", owner})
+      {:ok, flight} = Pending.under_way("github", person("acme", owner))
 
       shown = inspect(flight)
       assert shown =~ owner
@@ -256,7 +256,7 @@ defmodule WardrikOAuthTest do
                )
 
       assert Credential.reveal(credential) == "at_first"
-      assert WardrikOAuth.connected?(vault(), "github", {"acme", owner})
+      assert WardrikOAuth.connected?(vault(), "github", person("acme", owner))
     end
 
     test "the credential says when it stops being good", %{owner: owner} do
@@ -277,7 +277,7 @@ defmodule WardrikOAuthTest do
       url = connect(owner)
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-      path = WardrikVault.path("github", {"acme", owner})
+      path = WardrikVault.path("github", person("acme", owner))
       {sealed, _vsn} = WardrikStore.lookup(Wardrik.Test.store(), WardrikVault.namespace(), path)
 
       refute inspect(sealed) =~ "at_first"
@@ -416,7 +416,7 @@ defmodule WardrikOAuthTest do
                  "github"
                )
 
-      refute WardrikOAuth.connected?(vault(), "github", {"acme", owner})
+      refute WardrikOAuth.connected?(vault(), "github", person("acme", owner))
     end
 
     test "so does something that is not a token at all", %{owner: owner} do
@@ -424,7 +424,10 @@ defmodule WardrikOAuthTest do
       stub_server(cimd: true)
 
       :ok =
-        WardrikVault.put(vault(), "github", {"acme", owner}, value: "not json", kind: :grant)
+        WardrikVault.put(vault(), "github", person("acme", owner),
+          value: "not json",
+          kind: :grant
+        )
 
       assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
@@ -449,8 +452,8 @@ defmodule WardrikOAuthTest do
       url = connect(owner)
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-      assert :ok = WardrikOAuth.disconnect(vault(), "github", {"acme", owner})
-      refute WardrikOAuth.connected?(vault(), "github", {"acme", owner})
+      assert :ok = WardrikOAuth.disconnect(vault(), "github", person("acme", owner))
+      refute WardrikOAuth.connected?(vault(), "github", person("acme", owner))
 
       assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
@@ -463,11 +466,11 @@ defmodule WardrikOAuthTest do
       url = connect(owner)
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-      assert WardrikOAuth.connections(oauth(), {"acme", owner}, vault: vault()) == [
+      assert WardrikOAuth.connections(oauth(), person("acme", owner), vault: vault()) == [
                %{provider: "github", connected?: true}
              ]
 
-      assert WardrikOAuth.connections(oauth(), "nobody", vault: vault()) == [
+      assert WardrikOAuth.connections(oauth(), person("acme", "nobody"), vault: vault()) == [
                %{provider: "github", connected?: false}
              ]
     end

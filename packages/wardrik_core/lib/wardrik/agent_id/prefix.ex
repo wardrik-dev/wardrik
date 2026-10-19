@@ -75,6 +75,15 @@ defmodule Wardrik.AgentID.Prefix do
   @spec owner(AgentID.t()) :: t()
   def owner(%AgentID{org: org, user: user}), do: new!(org: org, user: user)
 
+  @doc """
+  The agents of the namespace `owner`, a `Wardrik.Resource`: an org's own,
+  a user's, or every agent for the deployment's.
+  """
+  @spec owned_by(Wardrik.Resource.t()) :: t()
+  def owned_by(owner) do
+    if owner == Wardrik.Resource.deployment(), do: all(), else: parse!("#{owner}/")
+  end
+
   @doc "The org whose agents `prefix` is under, or `nil` for every agent."
   @spec org(t()) :: String.t() | nil
   def org(%__MODULE__{segments: [org | _rest]}), do: org

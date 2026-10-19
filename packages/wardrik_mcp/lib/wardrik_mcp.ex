@@ -3,10 +3,11 @@ defmodule WardrikMCP do
   MCP servers as tools an agent can call.
 
   A host starts `WardrikMCP.Supervisor` with the servers it wants reached, then
-  names one by its `Wardrik.Servers.Key` in a config the way it names any
+  names one by its `Wardrik.Resource` in a config the way it names any
   other tool:
 
-      Wardrik.LLM.Config.new(tools: [{WardrikMCP, Wardrik.Servers.Key.deployment("github")}])
+      github = Wardrik.Resource.parse!("deployment/server/github")
+      Wardrik.LLM.Config.new(tools: [{WardrikMCP, github}])
 
   The spec is a `Wardrik.Tool` source: it stands for however many tools that
   server offers, and it travels, so an agent that moves to another node builds
@@ -59,8 +60,8 @@ defmodule WardrikMCP do
   @behaviour Wardrik.Tool
 
   alias Wardrik.Credential
+  alias Wardrik.Resource
   alias Wardrik.Run
-  alias Wardrik.Servers.Key
   alias Wardrik.Tool
   alias Wardrik.Tool.Result
   alias WardrikMCP.Connection
@@ -83,7 +84,7 @@ defmodule WardrikMCP do
   next turn, and one that disconnects takes its own away.
   """
   @impl Wardrik.Tool
-  @spec tools(Key.t() | :*) :: [Tool.t()]
+  @spec tools(Resource.t() | :*) :: [Tool.t()]
   def tools(source), do: source |> keys() |> Enum.flat_map(&offered/1)
 
   @doc """
@@ -135,7 +136,7 @@ defmodule WardrikMCP do
   defp offered(server, _read_only, :authorize, [_key]), do: {server, :connect}
 
   defp keys(:*), do: servers()
-  defp keys(%Key{} = key), do: [key]
+  defp keys(%Resource{} = key), do: [key]
 
   # What a server is offering on this node: one of the deployment's own, or
   # one an owner added, whose connection starts here the first time it is
@@ -169,8 +170,8 @@ defmodule WardrikMCP do
   the runtime tells the resolver, resolves it afresh and calls again, which
   covers a token revoked or expired without warning.
   """
-  @spec call(Key.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
-  def call(%Key{} = key, name, input, %Wardrik.Tool.Context{} = context) do
+  @spec call(Resource.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
+  def call(%Resource{} = key, name, input, %Wardrik.Tool.Context{} = context) do
     with %Offer{server: server} <- offer(key),
          :ok <- serves(server, context.run),
          {:ok, principal} <- connected(server, context.credentials[server.credential]) do
@@ -211,8 +212,8 @@ defmodule WardrikMCP do
   authorized yet never reaches it: the credential is named in the tool's
   annotations, so the runtime parks the call on the link first.
   """
-  @spec authorize(Key.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
-  def authorize(%Key{} = key, _input, %Wardrik.Tool.Context{} = context) do
+  @spec authorize(Resource.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
+  def authorize(%Resource{} = key, _input, %Wardrik.Tool.Context{} = context) do
     with %Offer{server: server} <- offer(key),
          :ok <- serves(server, context.run),
          {:ok, _principal} <- connected(server, context.credentials[server.credential]) do
@@ -224,25 +225,25 @@ defmodule WardrikMCP do
   end
 
   @doc "Connects to a server that was not in the configuration."
-  @spec connect(Key.t(), keyword()) :: {:ok, pid()} | {:error, term()}
-  def connect(%Key{} = key, opts) when is_list(opts) do
+  @spec connect(Resource.t(), keyword()) :: {:ok, pid()} | {:error, term()}
+  def connect(%Resource{} = key, opts) when is_list(opts) do
     WardrikMCP.Supervisor.connect(Server.new(key, opts))
   end
 
   @doc "Stops a connection and drops the tools it was offering."
-  @spec disconnect(Key.t()) :: :ok | {:error, :not_found}
-  def disconnect(%Key{} = key), do: WardrikMCP.Supervisor.disconnect(key)
+  @spec disconnect(Resource.t()) :: :ok | {:error, :not_found}
+  def disconnect(%Resource{} = key), do: WardrikMCP.Supervisor.disconnect(key)
 
   @doc """
   The keys of the deployment's own servers, those `WardrikMCP.Supervisor`
   was started with or `connect/2` added, which `:*` names.
   """
-  @spec servers() :: [Key.t()]
+  @spec servers() :: [Resource.t()]
   def servers, do: for(server <- WardrikMCP.Supervisor.servers(), do: server.key)
 
   @doc "Stops every connection to the server `key` names on this node."
-  @spec close(Key.t()) :: :ok
-  def close(%Key{} = key) do
+  @spec close(Resource.t()) :: :ok
+  def close(%Resource{} = key) do
     for principal <- Connection.principals(key), do: Connection.close(key, principal)
     :ok
   end

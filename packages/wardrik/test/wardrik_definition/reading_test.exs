@@ -4,7 +4,7 @@ defmodule WardrikDefinition.ReadingTest do
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.LLM.Retry.Backoff
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikDefinition.Context
 
   import Wardrik.AgentID, only: [sigil_A: 2]
@@ -121,7 +121,7 @@ defmodule WardrikDefinition.ReadingTest do
     assert spec.description == "Watches the queue."
     assert spec.config.model_spec == "anthropic:claude-sonnet-5"
     assert spec.config.system == "You watch the incident queue."
-    assert spec.config.tools == [Search, {Source, Key.deployment("linear")}]
+    assert spec.config.tools == [Search, {Source, Resource.parse!("deployment/server/linear")}]
     assert spec.config.max_iterations == 12
     assert spec.timeout == 600_000
     assert spec.hooks == [%Wardrik.Hook{name: "WardrikDefinition.ReadingTest.Hook", module: Hook}]
@@ -235,7 +235,7 @@ defmodule WardrikDefinition.ReadingTest do
     assert spec.config.tools == [
              Search,
              Lua,
-             {Source, Key.deployment("linear")},
+             {Source, Resource.parse!("deployment/server/linear")},
              {Source, ~A"default/triage"},
              {Wardrik.Catalog.Self, ~A"default/triage"},
              {Wardrik.Catalog.Agents, ~A"default/triage"},
@@ -243,7 +243,7 @@ defmodule WardrikDefinition.ReadingTest do
            ]
 
     assert {:ok, spec} = read("---\ntools: ['*']\norg: globex\n---\n", context)
-    assert {Source, Key.deployment("theirs")} in spec.config.tools
+    assert {Source, Resource.parse!("deployment/server/theirs")} in spec.config.tools
   end
 
   test "a server is refused to an agent of an org it does not serve", context do
@@ -671,7 +671,7 @@ defmodule WardrikDefinition.ReadingTest do
 
       assert spec.id == ~A"acme/triage"
       assert spec.config.system == "You watch the incident queue."
-      assert spec.config.tools == [Search, {Source, Key.deployment("linear")}]
+      assert spec.config.tools == [Search, {Source, Resource.parse!("deployment/server/linear")}]
       assert spec.timeout == :timer.seconds(600)
 
       assert {:ok, %{config: %{system: nil, tools: []}}} = define(~A"default/blank", %{}, context)

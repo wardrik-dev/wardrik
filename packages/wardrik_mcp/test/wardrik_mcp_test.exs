@@ -2,7 +2,7 @@ defmodule WardrikMCPTest do
   use WardrikMCP.Test.Case, async: false
 
   alias Wardrik.LLM.Config
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias Wardrik.Test.Calls
   alias Wardrik.Tool
 
@@ -10,7 +10,7 @@ defmodule WardrikMCPTest do
     do:
       Enum.map(
         ~w(echo boom secret slow noisy refuses_once noise cancellations grow),
-        &"#{key}__#{&1}"
+        &"#{Resource.basename(key)}__#{&1}"
       )
 
   describe "tools/1" do
@@ -27,7 +27,7 @@ defmodule WardrikMCPTest do
     end
 
     test "a key nothing is connected under offers nothing" do
-      assert WardrikMCP.tools(Key.deployment("never_connected")) == []
+      assert WardrikMCP.tools(Resource.parse!("deployment/server/never_connected")) == []
     end
   end
 
@@ -52,14 +52,15 @@ defmodule WardrikMCPTest do
     test "a tool from a server reads the timeout the source declares", %{key: key} do
       config = Config.new(tools: [{WardrikMCP, key}])
 
-      assert Config.tool_timeout(config, "#{key}__echo") == :timer.seconds(60)
+      assert Config.tool_timeout(config, "#{Resource.basename(key)}__echo") == :timer.seconds(60)
     end
 
     test "a config holding a server that never answers is still valid" do
-      config = Config.new(tools: [{WardrikMCP, Key.deployment("never_connected")}])
+      config =
+        Config.new(tools: [{WardrikMCP, Resource.parse!("deployment/server/never_connected")}])
 
       assert Config.tools(config) == []
-      assert Tool.available?({WardrikMCP, Key.deployment("never_connected")})
+      assert Tool.available?({WardrikMCP, Resource.parse!("deployment/server/never_connected")})
     end
   end
 
@@ -99,7 +100,12 @@ defmodule WardrikMCPTest do
 
     test "a server that is not connected answers as an error" do
       assert {:ok, %{"ok" => false, "error" => error}} =
-               WardrikMCP.call(Key.deployment("never_connected"), "echo", %{}, context())
+               WardrikMCP.call(
+                 Resource.parse!("deployment/server/never_connected"),
+                 "echo",
+                 %{},
+                 context()
+               )
 
       assert error["message"] =~ "no MCP server is connected"
     end

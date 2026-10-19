@@ -2,14 +2,16 @@ defmodule WardrikMCP.Server do
   @moduledoc """
   One MCP server as Wardrik is configured to reach it.
 
-      WardrikMCP.Server.new(Wardrik.Servers.Key.deployment("github"),
+      github = Wardrik.Resource.parse!("deployment/server/github")
+
+      WardrikMCP.Server.new(github,
         transport: {:stdio, command: "npx", args: ["-y", "@modelcontextprotocol/server-github"]},
         only: ~w(search_issues create_issue)
       )
 
   | Field | Default | What it decides |
   | --- | --- | --- |
-  | `:key` | required | whose server this is and what it is called among theirs, a `Wardrik.Servers.Key`; its name is the prefix on its tool names |
+  | `:key` | required | whose server this is and what it is called among theirs, a `Wardrik.Resource` such as `deployment/server/github`; the name it ends in is the prefix on its tool names |
   | `:transport` | required | `{:stdio, opts}` or `{:streamable_http, opts}`, as `Anubis.Client` takes them |
   | `:prefix` | the key's name | what every tool name from this server starts with, which may not hold `__` |
   | `:serves` | every agent | the prefixes whose agents may call its tools, as `Wardrik.AgentID.Prefix`es |
@@ -114,7 +116,7 @@ defmodule WardrikMCP.Server do
 
   @typedoc "A configured server."
   @type t() :: %__MODULE__{
-          key: Wardrik.Servers.Key.t(),
+          key: Wardrik.Resource.t(),
           transport: transport(),
           prefix: String.t(),
           only: [String.t()] | nil,
@@ -142,11 +144,11 @@ defmodule WardrikMCP.Server do
   Raises on a missing or unknown transport, and on an option this struct does
   not have.
   """
-  @spec new(Wardrik.Servers.Key.t(), keyword()) :: t()
-  def new(%Wardrik.Servers.Key{} = key, opts) when is_list(opts) do
+  @spec new(Wardrik.Resource.t(), keyword()) :: t()
+  def new(%Wardrik.Resource{} = key, opts) when is_list(opts) do
     server = struct!(__MODULE__, Keyword.put(opts, :key, key))
 
-    %{server | prefix: server.prefix || key.name}
+    %{server | prefix: server.prefix || Wardrik.Resource.basename(key)}
     |> validate_prefix!()
     |> validate_transport!()
     |> split_url()

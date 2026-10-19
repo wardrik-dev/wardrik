@@ -26,7 +26,7 @@ defmodule WardrikMCP.PoolTest do
     )
 
     assert Process.whereis(Anubis.Finch)
-    assert_receive {:retrying, %Wardrik.Servers.Key{name: "remote"}}, 5_000
+    assert_receive {:retrying, %Wardrik.Resource{name: "deployment/server/remote"}}, 5_000
   end
 
   test "a deployment of commands runs no pool" do
@@ -35,6 +35,6 @@ defmodule WardrikMCP.PoolTest do
     )
 
     refute Process.whereis(Anubis.Finch)
-    assert_receive {:retrying, %Wardrik.Servers.Key{name: "local"}}, 5_000
+    assert_receive {:retrying, %Wardrik.Resource{name: "deployment/server/local"}}, 5_000
   end
 end

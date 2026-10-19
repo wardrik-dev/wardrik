@@ -10,6 +10,7 @@ defmodule WardrikMCP.Tool do
   where it sends any, cut to the server's `:max_result_bytes`.
   """
 
+  alias Wardrik.Resource
   alias Wardrik.Tool.Result
   alias WardrikMCP.Server
 
@@ -26,10 +27,12 @@ defmodule WardrikMCP.Tool do
   """
   @spec connect(Server.t()) :: Wardrik.Tool.t()
   def connect(%Server{} = server) do
+    name = Resource.basename(server.key)
+
     Wardrik.Tool.new!(
       name: Server.local_name(server, "connect"),
       description: """
-      Authorize this agent to use #{server.key.name}. Call it when you need #{server.key.name}       and no #{server.key.name} tool is available yet: the user is asked to connect, and       #{server.key.name}'s own tools appear once they have.
+      Authorize this agent to use #{name}. Call it when you need #{name}       and no #{name} tool is available yet: the user is asked to connect, and       #{name}'s own tools appear once they have.
       """,
       schema: %{"type" => "object", "properties" => %{}},
       run: {WardrikMCP, :authorize, [server.key]}
@@ -69,7 +72,7 @@ defmodule WardrikMCP.Tool do
 
   defp description(listed, server) do
     (listed["description"] || listed["title"] || listed["name"]) <>
-      "\n\nFrom the #{server.key.name} MCP server."
+      "\n\nFrom the #{Resource.basename(server.key)} MCP server."
   end
 
   defp text(%{"content" => content}, server) when is_list(content) do

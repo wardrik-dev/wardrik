@@ -2,7 +2,7 @@ defmodule WardrikMCP.AmbientTest do
   use WardrikMCP.Test.Case, async: false
 
   alias Wardrik.LLM.Config
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
 
   describe "{WardrikMCP, :*}" do
     test "offers what the connected server offers", %{key: key} do
@@ -18,27 +18,27 @@ defmodule WardrikMCP.AmbientTest do
       names = config |> Config.tools() |> Enum.map(& &1.name)
 
       assert length(names) == length(before) + length(WardrikMCP.tools(later))
-      assert "#{key}__echo" in names
-      assert "#{later}__echo" in names
+      assert "#{Resource.basename(key)}__echo" in names
+      assert "#{Resource.basename(later)}__echo" in names
     end
 
     test "drops a server that disconnects", %{key: key} do
       later = connect_another()
 
-      assert "#{later}__echo" in Enum.map(WardrikMCP.tools(:*), & &1.name)
+      assert "#{Resource.basename(later)}__echo" in Enum.map(WardrikMCP.tools(:*), & &1.name)
 
       :ok = WardrikMCP.disconnect(later)
 
       names = Enum.map(WardrikMCP.tools(:*), & &1.name)
-      refute "#{later}__echo" in names
-      assert "#{key}__echo" in names
+      refute "#{Resource.basename(later)}__echo" in names
+      assert "#{Resource.basename(key)}__echo" in names
     end
 
     test "travels, and is still a source after it does", %{key: key} do
       loaded = [tools: [{WardrikMCP, :*}]] |> Config.new() |> Config.dump() |> Config.load()
 
       assert loaded.tools == [{WardrikMCP, :*}]
-      assert "#{key}__echo" in Enum.map(Config.tools(loaded), & &1.name)
+      assert "#{Resource.basename(key)}__echo" in Enum.map(Config.tools(loaded), & &1.name)
     end
   end
 
@@ -54,12 +54,12 @@ end
 defmodule WardrikMCP.AmbientWithoutServersTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
 
   test "a host that started no MCP servers offers none rather than raising" do
     assert WardrikMCP.Connection.keys() == []
     assert WardrikMCP.tools(:*) == []
-    assert WardrikMCP.Connection.tools(Key.deployment("absent")) == []
+    assert WardrikMCP.Connection.tools(Resource.parse!("deployment/server/absent")) == []
     assert WardrikMCP.Connection.keys_for(self()) == []
   end
 end

@@ -1,8 +1,7 @@
 defmodule WardrikMCP.SignInTest do
   use WardrikOAuth.Test.Case, async: false
 
-  alias Wardrik.AgentID.Prefix
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikMCP.Remote
   alias WardrikOAuth.Callback
 
@@ -18,7 +17,7 @@ defmodule WardrikMCP.SignInTest do
     )
 
     org = "acme#{user}"
-    %{org: org, owner: Prefix.new!(org: org), name: "crm"}
+    %{org: org, owner: Resource.parse!(org), name: "crm"}
   end
 
   defp servers,
@@ -38,39 +37,39 @@ defmodule WardrikMCP.SignInTest do
       )
 
   test "adding one answers where its owner signs in, and the token is kept for them",
-       %{org: org, owner: owner, name: name} do
+       %{owner: owner, name: name} do
     assert {:ok, %{url: url}} = add(owner, name, %{"oauth" => %{"scopes" => ["write"]}})
     assert url =~ "https://auth.example.com/authorize"
     assert params_of(url)["scope"] == "write"
 
     assert {:ok, ^name} = WardrikOAuth.finish(state_of(url), "the-code", provider: name)
-    assert {:ok, :grant, _token} = WardrikVault.lookup(vault(), name, org)
+    assert {:ok, :grant, _token} = WardrikVault.lookup(vault(), name, owner)
 
-    {:ok, remote} = Remote.fetch(Wardrik.Test.store(), Key.new(owner, name))
+    {:ok, remote} = Remote.fetch(Wardrik.Test.store(), Resource.new(owner, server: name))
     assert Remote.server(remote, store: Wardrik.Test.store()).credential == name
 
     assert :ok = Wardrik.Servers.remove(servers(), owner, name: name, by: nil)
-    assert {:error, :not_found} = WardrikVault.lookup(vault(), name, org)
+    assert {:error, :not_found} = WardrikVault.lookup(vault(), name, owner)
   end
 
   test "is a provider of its owner's alone, reached as a server named it",
        %{org: org, owner: owner, name: name} do
     {:ok, _link} = add(owner, name, %{"oauth" => %{}})
 
-    assert {:ok, provider} = WardrikOAuth.Provider.fetch(oauth(), name, org)
+    assert {:ok, provider} = WardrikOAuth.Provider.fetch(oauth(), name, owner)
     assert provider.trust == :discovered
-    assert :error = WardrikOAuth.Provider.fetch(oauth(), name, "globex")
-    assert :error = WardrikOAuth.Provider.fetch(oauth(), name, {org, "jon"})
+    assert :error = WardrikOAuth.Provider.fetch(oauth(), name, Resource.parse!("globex"))
+    assert :error = WardrikOAuth.Provider.fetch(oauth(), name, person(org, "jon"))
     assert name in WardrikOAuth.Provider.names(oauth())
     assert Callback.redirect_uri(oauth(), name) in WardrikOAuth.document(oauth())["redirect_uris"]
   end
 
-  test "one reached with nothing, or a secret, is no provider", %{org: org, owner: owner} do
+  test "one reached with nothing, or a secret, is no provider", %{owner: owner} do
     assert {:ok, :connected} = add(owner, "docs", %{"none" => %{}})
     assert {:ok, :connected} = add(owner, "keyed", %{"secret" => %{"name" => "k"}})
 
-    assert :error = WardrikOAuth.Provider.fetch(oauth(), "docs", org)
-    assert :error = WardrikOAuth.Provider.fetch(oauth(), "keyed", org)
+    assert :error = WardrikOAuth.Provider.fetch(oauth(), "docs", owner)
+    assert :error = WardrikOAuth.Provider.fetch(oauth(), "keyed", owner)
   end
 
   test "a name the deployment offers as an account is refused", %{owner: owner} do

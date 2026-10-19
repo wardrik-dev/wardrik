@@ -12,25 +12,17 @@ defmodule WardrikMCP.Servers.Providers do
   where the owner has none.
   """
 
-  alias Wardrik.AgentID.Prefix
-
   @enforce_keys [:store]
   defstruct [:store]
 
   @type t() :: %__MODULE__{store: WardrikStore.t()}
 
-  @doc "The prefix of the agents a vault owner owns: an org's own, or a person's."
-  @spec prefix(WardrikVault.owner()) :: Prefix.t()
-  def prefix({org, user}), do: Prefix.new!(org: org, user: user)
-  def prefix(org), do: Prefix.new!(org: org)
-
   defimpl WardrikOAuth.Providers do
-    alias Wardrik.Servers.Key
+    alias Wardrik.Resource
     alias WardrikMCP.Remote
-    alias WardrikMCP.Servers.Providers
 
     def fetch(%{store: store}, name, owner: owner) do
-      with {:ok, remote} <- Remote.fetch(store, Key.new(Providers.prefix(owner), name)),
+      with {:ok, remote} <- Remote.fetch(store, Resource.new(owner, server: name)),
            {:ok, provider} <- Remote.provider(remote) do
         {:ok, provider}
       else
@@ -41,7 +33,7 @@ defmodule WardrikMCP.Servers.Providers do
     def names(%{store: store}) do
       for remote <- Remote.all(store),
           match?({:ok, _provider}, Remote.provider(remote)),
-          do: remote.key.name
+          do: Resource.basename(remote.key)
     end
   end
 end

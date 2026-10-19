@@ -88,10 +88,10 @@
           "type": "string"
         }
       },
-      "owner_prefix": {
-        "description": "The owner's agents, as acme/ for an org's or acme/@jon/ for a person's.",
+      "owner": {
+        "description": "The owner, as acme for an org or acme/@jon for a person.",
         "in": "query",
-        "name": "prefix",
+        "name": "owner",
         "required": true,
         "schema": {
           "type": "string"
@@ -4644,7 +4644,7 @@
         "operationId": "connections_list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -4686,7 +4686,7 @@
         "operationId": "connections_disconnect",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -4734,7 +4734,7 @@
         "operationId": "connections_connect",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -5264,7 +5264,7 @@
         "operationId": "servers_list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -5304,7 +5304,7 @@
         "operationId": "servers_add",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "requestBody": {
@@ -5359,7 +5359,7 @@
         "operationId": "servers_remove",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {

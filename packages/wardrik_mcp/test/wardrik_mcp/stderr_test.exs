@@ -3,12 +3,13 @@ defmodule WardrikMCP.StderrTest do
 
   import WardrikMCP.Test.Case, only: [stub_options: 1, await_tools: 1, fresh_key: 0, context: 0]
 
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikMCP.Server
 
   defp start(key, opts) do
     start_supervised!(
-      {WardrikMCP.Supervisor, servers: [{String.to_atom(key.name), stub_options(opts)}]}
+      {WardrikMCP.Supervisor,
+       servers: [{String.to_atom(Resource.basename(key)), stub_options(opts)}]}
     )
 
     await_tools(key)
@@ -40,7 +41,7 @@ defmodule WardrikMCP.StderrTest do
   describe "the transport it builds" do
     defp server(opts) do
       Server.new(
-        Key.deployment("stub"),
+        Resource.parse!("deployment/server/stub"),
         Keyword.merge(
           [transport: {:stdio, command: "npx", args: ["-y", "x"]}, inherit_env: :all],
           opts

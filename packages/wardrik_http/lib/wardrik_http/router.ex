@@ -28,11 +28,11 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Agent.Message
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Event.Export
   alias Wardrik.JSON
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Scope
   alias Wardrik.Servers.Server
@@ -157,8 +157,8 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  # The connections, and the MCP servers, of the owner whose agents ?prefix=
-  # names: an org's, acme/, or a person's, acme/@jon/.
+  # The connections, and the MCP servers, of the owner ?owner= names: an
+  # org, acme, or a person, acme/@jon.
   get "/v1/connections" do
     reply(
       conn,
@@ -528,13 +528,17 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  # The prefix of an org's agents or a person's, as ?prefix= names it.
+  # An org or a person, as ?owner= names them, never a pattern.
   defp owner(conn) do
-    with {:ok, prefix} <- under(conn, :named) do
-      if Prefix.org(prefix) && Owner.prefix(Owner.owner_of(prefix)) == prefix,
-        do: {:ok, prefix},
-        else:
-          {:error, Error.new(:invalid, "prefix names an owner's agents, as acme/ or acme/@jon/")}
+    text = conn.query_params["owner"] || ""
+
+    with false <- String.contains?(text, ["*", "?"]),
+         {:ok, owner} <- Resource.parse(text),
+         true <- Resource.owner(owner) == owner and owner != Resource.deployment() do
+      {:ok, owner}
+    else
+      _other ->
+        {:error, Error.new(:invalid, "owner names an org or a person, as acme or acme/@jon")}
     end
   end
 

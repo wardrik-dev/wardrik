@@ -1,13 +1,15 @@
 defmodule WardrikMCP.ConnectionTest do
   use WardrikMCP.Test.Case, async: false
 
+  alias Wardrik.Resource
+
   defp annotations(key, name), do: Wardrik.Tool.annotations({WardrikMCP, key}, name)
 
   describe "a server that filters its tools" do
     @describetag server_opts: [only: ~w(echo)]
 
     test "offers only what it was told to", %{key: key} do
-      assert Enum.map(WardrikMCP.tools(key), & &1.name) == ["#{key}__echo"]
+      assert Enum.map(WardrikMCP.tools(key), & &1.name) == ["#{Resource.basename(key)}__echo"]
     end
 
     test "still calls a tool it does not offer, when asked directly", %{key: key} do
@@ -18,8 +20,8 @@ defmodule WardrikMCP.ConnectionTest do
 
   describe "a server left to say which of its tools may change something" do
     test "gates the tools it does not mark read-only", %{key: key} do
-      refute annotations(key, "#{key}__echo").gated
-      assert annotations(key, "#{key}__grow").gated
+      refute annotations(key, "#{Resource.basename(key)}__echo").gated
+      assert annotations(key, "#{Resource.basename(key)}__grow").gated
     end
   end
 
@@ -27,12 +29,15 @@ defmodule WardrikMCP.ConnectionTest do
     @describetag server_opts: [gated: ["ech*"]]
 
     test "gates those, and its answers are content from outside", %{key: key} do
-      assert annotations(key, "#{key}__echo").gated
-      assert annotations(:*, "#{key}__echo").gated
-      refute annotations(key, "#{key}__secret").gated
+      assert annotations(key, "#{Resource.basename(key)}__echo").gated
+      assert annotations(:*, "#{Resource.basename(key)}__echo").gated
+      refute annotations(key, "#{Resource.basename(key)}__secret").gated
 
-      assert annotations(key, "#{key}__echo").labels == ["outside"]
-      assert annotations(key, "#{key}__nothing_it_offers").labels == ["outside"]
+      assert annotations(key, "#{Resource.basename(key)}__echo").labels == ["outside"]
+
+      assert annotations(key, "#{Resource.basename(key)}__nothing_it_offers").labels == [
+               "outside"
+             ]
     end
   end
 
@@ -40,9 +45,9 @@ defmodule WardrikMCP.ConnectionTest do
     @describetag server_opts: [trusted: true]
 
     test "answers with what is the deployment's own", %{key: key} do
-      assert annotations(key, "#{key}__echo").labels == []
-      assert annotations(:*, "#{key}__echo").labels == []
-      refute annotations(key, "#{key}__echo").gated
+      assert annotations(key, "#{Resource.basename(key)}__echo").labels == []
+      assert annotations(:*, "#{Resource.basename(key)}__echo").labels == []
+      refute annotations(key, "#{Resource.basename(key)}__echo").gated
     end
   end
 
@@ -83,7 +88,9 @@ defmodule WardrikMCP.ConnectionTest do
     test "asks the server for its tools again", %{key: key} do
       assert :ok = WardrikMCP.Connection.refresh(key)
 
-      assert await_tools(key) |> Enum.map(& &1.name) |> Enum.member?("#{key}__echo")
+      assert await_tools(key)
+             |> Enum.map(& &1.name)
+             |> Enum.member?("#{Resource.basename(key)}__echo")
     end
   end
 end

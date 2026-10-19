@@ -95,7 +95,6 @@ defmodule Wardrik do
   alias Wardrik.Audit
   alias Wardrik.Connections
   alias Wardrik.Connections.Connection
-  alias Wardrik.Connections.Owner
   alias Wardrik.Definition
   alias Wardrik.Definitions
   alias Wardrik.Deployment.Nodes
@@ -109,9 +108,9 @@ defmodule Wardrik do
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Moving
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Scope
   alias Wardrik.Servers
-  alias Wardrik.Servers.Key
   alias Wardrik.Servers.Server
   alias Wardrik.Spawned
   alias Wardrik.Statement
@@ -1094,11 +1093,15 @@ defmodule Wardrik do
 
   # -- servers and connections ------------------------------------------------------
 
-  @doc "The MCP servers `owner`, a person's or an org's agents, added."
+  @doc """
+  The MCP servers `owner` added, a person or an org, as the namespace
+  `Wardrik.Resource` names.
+  """
   @doc group: "Servers and connections"
-  @spec servers_list(Scope.t(), Prefix.t()) :: {:ok, [Server.t()]} | {:error, Error.t()}
+  @spec servers_list(Scope.t(), Resource.t()) :: {:ok, [Server.t()]} | {:error, Error.t()}
   def servers_list(%Scope{} = scope, owner) do
-    with :ok <- authorize(scope, "servers.list", owner), do: servers(scope, owner)
+    with :ok <- authorize(scope, "servers.list", Prefix.owned_by(owner)),
+         do: servers(scope, owner)
   end
 
   defp servers(scope, owner) do
@@ -1114,17 +1117,19 @@ defmodule Wardrik do
   signs in to it first where they have to.
   """
   @doc group: "Servers and connections"
-  @spec servers_add(Scope.t(), Prefix.t(), Server.t()) ::
+  @spec servers_add(Scope.t(), Resource.t(), Server.t()) ::
           {:ok, Server.t()} | {:error, Error.t()}
   def servers_add(%Scope{} = scope, owner, %Server{} = server) do
-    with :ok <- authorize(scope, "servers.add", owner) do
+    with :ok <- authorize(scope, "servers.add", Prefix.owned_by(owner)) do
       case Servers.add(Host.servers(scope.host), owner,
              name: server.name,
              fields: fields(server),
              by: scope.token.principal
            ) do
         {:ok, added} ->
-          audited(scope, [{:server_added, Key.new(owner, server.name), server.url}], %{
+          key = Resource.new(owner, server: server.name)
+
+          audited(scope, [{:server_added, key, server.url}], %{
             server
             | authorization: if(added == :connected, do: nil, else: added)
           })
@@ -1163,16 +1168,16 @@ defmodule Wardrik do
   its agents lose its tools on their next turn.
   """
   @doc group: "Servers and connections"
-  @spec servers_remove(Scope.t(), Prefix.t(), String.t()) ::
+  @spec servers_remove(Scope.t(), Resource.t(), String.t()) ::
           {:ok, Server.t()} | {:error, Error.t()}
   def servers_remove(%Scope{} = scope, owner, name) when is_binary(name) do
-    with :ok <- authorize(scope, "servers.remove", owner),
+    with :ok <- authorize(scope, "servers.remove", Prefix.owned_by(owner)),
          {:ok, servers} <- servers(scope, owner),
          :ok <-
            Servers.remove(Host.servers(scope.host), owner, name: name, by: scope.token.principal) do
       audited(
         scope,
-        [{:server_removed, Key.new(owner, name)}],
+        [{:server_removed, Resource.new(owner, server: name)}],
         Enum.find(servers, &(&1.name == name))
       )
     end
@@ -1180,13 +1185,15 @@ defmodule Wardrik do
 
   @doc "The accounts the deployment offers `owner`, and who holds each; never a value."
   @doc group: "Servers and connections"
-  @spec connections_list(Scope.t(), Prefix.t()) :: {:ok, [Connection.t()]} | {:error, Error.t()}
+  @spec connections_list(Scope.t(), Resource.t()) ::
+          {:ok, [Connection.t()]} | {:error, Error.t()}
   def connections_list(%Scope{} = scope, owner) do
-    with :ok <- authorize(scope, "connections.list", owner), do: connections(scope, owner)
+    with :ok <- authorize(scope, "connections.list", Prefix.owned_by(owner)),
+         do: connections(scope, owner)
   end
 
   defp connections(scope, owner) do
-    case Connections.list(Host.connections(scope.host), Owner.owner_of(owner)) do
+    case Connections.list(Host.connections(scope.host), owner) do
       :unsupported -> {:error, Wardrik.Connections.None.unsupported()}
       connections -> {:ok, connections}
     end
@@ -1198,11 +1205,11 @@ defmodule Wardrik do
   Nothing parks on it.
   """
   @doc group: "Servers and connections"
-  @spec connections_connect(Scope.t(), Prefix.t(), String.t()) ::
+  @spec connections_connect(Scope.t(), Resource.t(), String.t()) ::
           {:ok, Connection.t()} | {:error, Error.t()}
   def connections_connect(%Scope{} = scope, owner, provider)
       when is_binary(provider) do
-    with :ok <- authorize(scope, "connections.connect", owner),
+    with :ok <- authorize(scope, "connections.connect", Prefix.owned_by(owner)),
          {:ok, link} <- connect(scope, owner, provider),
          {:ok, connections} <- connections(scope, owner) do
       {:ok, %{Enum.find(connections, &(&1.provider == provider)) | authorization: link}}
@@ -1212,9 +1219,7 @@ defmodule Wardrik do
   defp connect(scope, owner, provider) do
     connections = Host.connections(scope.host)
 
-    case Connections.connect(connections, provider, Owner.owner_of(owner),
-           by: scope.token.principal
-         ) do
+    case Connections.connect(connections, provider, owner, by: scope.token.principal) do
       {:ok, :held} ->
         {:ok, nil}
 
@@ -1237,18 +1242,16 @@ defmodule Wardrik do
   asks them to connect again, and answers the connection as it was.
   """
   @doc group: "Servers and connections"
-  @spec connections_disconnect(Scope.t(), Prefix.t(), String.t()) ::
+  @spec connections_disconnect(Scope.t(), Resource.t(), String.t()) ::
           {:ok, Connection.t()} | {:error, Error.t()}
   def connections_disconnect(%Scope{} = scope, owner, provider)
       when is_binary(provider) do
-    with :ok <- authorize(scope, "connections.disconnect", owner) do
-      whose = Owner.owner_of(owner)
-
-      case Connections.disconnect(Host.connections(scope.host), provider, whose) do
+    with :ok <- authorize(scope, "connections.disconnect", Prefix.owned_by(owner)) do
+      case Connections.disconnect(Host.connections(scope.host), provider, owner) do
         :ok ->
           audited(scope, [{:secret_removed, provider, owner}], %Connection{
             provider: provider,
-            held_by: held_by(whose)
+            held_by: held_by(owner)
           })
 
         {:error, :not_found} ->
@@ -1264,8 +1267,7 @@ defmodule Wardrik do
   end
 
   # An owner forgets only an account of their own.
-  defp held_by({_org, _user}), do: :person
-  defp held_by(_org), do: :org
+  defp held_by(owner), do: if(Resource.org(owner) == owner, do: :org, else: :person)
 
   # -- tokens -----------------------------------------------------------------------
 
@@ -1610,33 +1612,33 @@ defmodule Wardrik do
 
   @doc "As `servers_list/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec servers_list!(Scope.t(), Prefix.t()) :: [Server.t()]
+  @spec servers_list!(Scope.t(), Resource.t()) :: [Server.t()]
   def servers_list!(scope, owner), do: unwrap(servers_list(scope, owner))
 
   @doc "As `servers_add/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec servers_add!(Scope.t(), Prefix.t(), Server.t()) :: Server.t()
+  @spec servers_add!(Scope.t(), Resource.t(), Server.t()) :: Server.t()
   def servers_add!(scope, owner, server), do: unwrap(servers_add(scope, owner, server))
 
   @doc "As `servers_remove/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec servers_remove!(Scope.t(), Prefix.t(), String.t()) :: Server.t()
+  @spec servers_remove!(Scope.t(), Resource.t(), String.t()) :: Server.t()
   def servers_remove!(scope, owner, name), do: unwrap(servers_remove(scope, owner, name))
 
   @doc "As `connections_list/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec connections_list!(Scope.t(), Prefix.t()) :: [Connection.t()]
+  @spec connections_list!(Scope.t(), Resource.t()) :: [Connection.t()]
   def connections_list!(scope, owner), do: unwrap(connections_list(scope, owner))
 
   @doc "As `connections_connect/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec connections_connect!(Scope.t(), Prefix.t(), String.t()) :: Connection.t()
+  @spec connections_connect!(Scope.t(), Resource.t(), String.t()) :: Connection.t()
   def connections_connect!(scope, owner, provider),
     do: unwrap(connections_connect(scope, owner, provider))
 
   @doc "As `connections_disconnect/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec connections_disconnect!(Scope.t(), Prefix.t(), String.t()) :: Connection.t()
+  @spec connections_disconnect!(Scope.t(), Resource.t(), String.t()) :: Connection.t()
   def connections_disconnect!(scope, owner, provider),
     do: unwrap(connections_disconnect(scope, owner, provider))
 

@@ -26,9 +26,11 @@ children = [{WardrikStore, store}, {Wardrik.Core, host: host}]
 ```
 
 ```elixir
-WardrikVault.put(vault, "github", {"acme", "jon"}, value: "ghp_xxx")   # jon's, in acme
-WardrikVault.put(vault, "pagerduty", "acme", value: "pd_xxx")         # acme's
-WardrikVault.put(vault, "linear", nil, value: "lin_xxx")              # the deployment's
+alias Wardrik.Resource
+
+WardrikVault.put(vault, "github", Resource.parse!("acme/@jon"), value: "ghp_xxx")   # jon's, in acme
+WardrikVault.put(vault, "pagerduty", Resource.parse!("acme"), value: "pd_xxx")     # acme's
+WardrikVault.put(vault, "linear", Resource.deployment(), value: "lin_xxx")         # the deployment's
 ```
 
 A credential nobody holds yet can be asked for instead, by giving the vault

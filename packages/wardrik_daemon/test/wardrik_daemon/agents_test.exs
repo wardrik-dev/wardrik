@@ -285,7 +285,7 @@ defmodule WardrikDaemon.AgentsTest do
        %{org: org} = context do
     Host.start_agents(context.dir)
     defined = AgentID.parse!("#{org}/defined")
-    owner = Prefix.new!(org: org)
+    owner = Wardrik.Resource.parse!(org)
 
     assert {:ok, spec} =
              Agents.put(Host.agents(), defined,
@@ -299,7 +299,7 @@ defmodule WardrikDaemon.AgentsTest do
              Agents.get(Host.agents(), defined)
 
     remote = %WardrikMCP.Remote{
-      key: Wardrik.Servers.Key.new(owner, "crm"),
+      key: Wardrik.Resource.new(owner, server: "crm"),
       url: "https://mcp.crm.example/mcp",
       auth: %WardrikMCP.Auth.None{},
       filters: []
@@ -702,7 +702,7 @@ defmodule WardrikDaemon.AgentsTest do
     do: %WardrikChannel.Installation{
       channel: channel,
       workspace: channel,
-      owner: Prefix.all(),
+      owner: Wardrik.Resource.deployment(),
       token: "token"
     }
 

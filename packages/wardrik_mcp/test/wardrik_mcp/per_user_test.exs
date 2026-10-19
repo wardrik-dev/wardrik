@@ -1,6 +1,8 @@
 defmodule WardrikMCP.PerUserTest do
   use WardrikMCP.Test.Case, async: false
 
+  alias Wardrik.Resource
+
   alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
@@ -57,7 +59,7 @@ defmodule WardrikMCP.PerUserTest do
   defp run(key, user, tool, arguments), do: run(key, "acme", user, tool, arguments)
 
   defp run(key, org, user, tool, arguments) do
-    call = %{id: "call_1", name: "#{key}__#{tool}", arguments: arguments}
+    call = %{id: "call_1", name: "#{Resource.basename(key)}__#{tool}", arguments: arguments}
 
     ToolRunner.execute(call, run_for(key, org, user))
   end
@@ -71,8 +73,8 @@ defmodule WardrikMCP.PerUserTest do
   test "the tools are listed once, over the deployment's own connection", %{key: key} do
     names = Enum.map(WardrikMCP.tools(key), & &1.name)
 
-    assert "#{key}__echo" in names
-    assert "#{key}__secret" in names
+    assert "#{Resource.basename(key)}__echo" in names
+    assert "#{Resource.basename(key)}__secret" in names
   end
 
   test "a connected user calls over a connection carrying their own credential", %{key: key} do
@@ -120,7 +122,7 @@ defmodule WardrikMCP.PerUserTest do
     assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt, link: link}]} =
              run(key, "unconnected", "echo", %{"value" => "hello"})
 
-    assert prompt =~ "To use #{key}__echo, connect stub at its link"
+    assert prompt =~ "To use #{Resource.basename(key)}__echo, connect stub at its link"
     refute prompt =~ "https://"
     assert link == %{url: "https://example.com/connect", code: nil}
     refute Connection.running?(key, {:owner, {"acme", "unconnected"}})
@@ -130,7 +132,7 @@ defmodule WardrikMCP.PerUserTest do
     assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt, link: link}]} =
              run(key, "elsewhere", "echo", %{"value" => "hello"})
 
-    assert prompt =~ "To use #{key}__echo, connect stub at its link"
+    assert prompt =~ "To use #{Resource.basename(key)}__echo, connect stub at its link"
     refute prompt =~ "WDJB-MJHT"
     assert link == %{url: "https://example.com/device", code: "WDJB-MJHT"}
   end

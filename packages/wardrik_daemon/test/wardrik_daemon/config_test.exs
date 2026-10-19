@@ -47,7 +47,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:ok, [{WardrikDaemon, [org: "acme", orgs: ["acme"], ceilings: %{}]}]} =
                read_all("org: acme\n", context)
 
-      for org <- ["_acme", "@acme", "a/b"] do
+      for org <- ["_acme", "@acme", "a/b", "deployment"] do
         assert {:error, message} = read_all("org: #{inspect(org)}\n", context)
         assert message =~ "which is not an org"
       end
@@ -143,6 +143,9 @@ defmodule WardrikDaemon.ConfigTest do
 
       assert {:error, message} = read_all("orgs:\n  _x: {}\n", context)
       assert message =~ "orgs._x is not an org"
+
+      assert {:error, message} = read_all("orgs:\n  deployment: {}\n", context)
+      assert message =~ "orgs.deployment is not an org"
     end
 
     test "a server or a target names no org of its own", context do
@@ -643,11 +646,11 @@ defmodule WardrikDaemon.ConfigTest do
       assert %WardrikChannel.Installation{channel: "chat", workspace: "chat", token: "xoxb-1"} =
                chat
 
-      assert to_string(chat.owner) == "default/"
+      assert to_string(chat.owner) == "default"
       assert {:ok, acme} = WardrikChannel.Installations.fetch(installations, "acme", "T1")
-      assert to_string(acme.owner) == "acme/"
+      assert to_string(acme.owner) == "acme"
       assert {:ok, all} = WardrikChannel.Installations.fetch(installations, "all", "T1")
-      assert all.owner == Prefix.all()
+      assert all.owner == Wardrik.Resource.deployment()
       refute Keyword.has_key?(settings[:channels][:chat] |> elem(1), :token)
 
       assert {:error, message} = read("channels:\n  chat: {type: test, token: 1}\n", context)
@@ -690,7 +693,7 @@ defmodule WardrikDaemon.ConfigTest do
                installation: %WardrikChannel.Installation{
                  channel: "chat",
                  workspace: "chat",
-                 owner: Prefix.new!(org: "default"),
+                 owner: Wardrik.Resource.parse!("default"),
                  token: "xoxb-1"
                },
                orgs: ["default"],

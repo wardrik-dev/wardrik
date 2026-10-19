@@ -340,23 +340,23 @@ describe("exports", () => {
 });
 
 describe("connections", () => {
-  test("list, connect and forget, for the owner the prefix names", async () => {
+  test("list, connect and forget, for the owner named", async () => {
     const list = { connections: [{ provider: "github", held_by: "person" }, { provider: "linear" }] };
     const link = { provider: "linear", connected: false, authorization: { url: "https://auth.example.com/a" } };
     server.on("GET", "/v1/connections", (_request, response) => json(response, 200, list));
     server.on("POST", "/v1/connections/linear", (_request, response) => json(response, 200, link));
     server.on("DELETE", "/v1/connections/linear", (_request, response) => json(response, 204));
 
-    assert.deepEqual(await wardrik.connections.list("acme/@jon/"), list);
-    assert.deepEqual(await wardrik.connections.connect("acme/@jon/", "linear"), link);
-    await wardrik.connections.disconnect("acme/", "linear");
+    assert.deepEqual(await wardrik.connections.list("acme/@jon"), list);
+    assert.deepEqual(await wardrik.connections.connect("acme/@jon", "linear"), link);
+    await wardrik.connections.disconnect("acme", "linear");
 
     assert.deepEqual(
       server.received.map((request) => [request.method, request.path]),
       [
-        ["GET", "/v1/connections?prefix=acme%2F%40jon%2F"],
-        ["POST", "/v1/connections/linear?prefix=acme%2F%40jon%2F"],
-        ["DELETE", "/v1/connections/linear?prefix=acme%2F"],
+        ["GET", "/v1/connections?owner=acme%2F%40jon"],
+        ["POST", "/v1/connections/linear?owner=acme%2F%40jon"],
+        ["DELETE", "/v1/connections/linear?owner=acme"],
       ],
     );
 
@@ -364,7 +364,7 @@ describe("connections", () => {
   });
 });
 describe("servers", () => {
-  test("list, add and remove, for the owner the prefix names", async () => {
+  test("list, add and remove, for the owner named", async () => {
     const list = { servers: [{ name: "crm", url: "https://mcp.crm.example/mcp", auth: "secret" as const }] };
     const added = { server: "crm", connected: true };
     server.on("GET", "/v1/servers", (_request, response) => json(response, 200, list));
@@ -372,16 +372,16 @@ describe("servers", () => {
     server.on("DELETE", "/v1/servers/crm", (_request, response) => json(response, 204));
 
     const crm = { name: "crm", url: "https://mcp.crm.example/mcp", auth: { secret: { name: "crm-key" } } };
-    assert.deepEqual(await wardrik.servers.list("acme/@jon/"), list);
-    assert.deepEqual(await wardrik.servers.add("acme/", crm), added);
-    await wardrik.servers.remove("acme/@jon/", "crm");
+    assert.deepEqual(await wardrik.servers.list("acme/@jon"), list);
+    assert.deepEqual(await wardrik.servers.add("acme", crm), added);
+    await wardrik.servers.remove("acme/@jon", "crm");
 
     assert.deepEqual(
       server.received.map((request) => [request.method, request.path]),
       [
-        ["GET", "/v1/servers?prefix=acme%2F%40jon%2F"],
-        ["POST", "/v1/servers?prefix=acme%2F"],
-        ["DELETE", "/v1/servers/crm?prefix=acme%2F%40jon%2F"],
+        ["GET", "/v1/servers?owner=acme%2F%40jon"],
+        ["POST", "/v1/servers?owner=acme"],
+        ["DELETE", "/v1/servers/crm?owner=acme%2F%40jon"],
       ],
     );
     assert.deepEqual(server.received[1]!.body, crm);

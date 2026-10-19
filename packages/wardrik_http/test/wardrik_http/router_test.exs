@@ -165,20 +165,20 @@ defmodule WardrikHTTP.RouterTest do
       [
         %Wardrik.Connections.Connection{
           provider: "github",
-          held_by: if(owner == {"test", "jon"}, do: :person)
+          held_by: if(to_string(owner) == "test/@jon", do: :person)
         },
         %Wardrik.Connections.Connection{provider: "linear", held_by: nil}
       ]
     end
 
-    def connect(_host, "github", {"test", "jon"}, _by), do: {:ok, :held}
+    def connect(_host, "github", %{name: "test/@jon"}, _by), do: {:ok, :held}
 
     def connect(_host, provider, _owner, _by) when provider in ["github", "linear"],
       do: {:ok, %{url: "https://auth.example.com/#{provider}", code: nil}}
 
     def connect(_host, _provider, _owner, _by), do: {:error, :not_found}
 
-    def disconnect(_host, "github", {"test", "jon"}), do: :ok
+    def disconnect(_host, "github", %{name: "test/@jon"}), do: :ok
     def disconnect(_host, _provider, _owner), do: {:error, :not_found}
   end
 
@@ -188,14 +188,14 @@ defmodule WardrikHTTP.RouterTest do
     defdelegate disconnect(c, provider, owner), to: Linked
   end
 
-  # Has test/@jon/'s docs, adds docs and crm, the second behind a sign-in,
+  # Has test/@jon's docs, adds docs and crm, the second behind a sign-in,
   # and has taken already.
   defmodule Added do
     @moduledoc false
     defstruct []
 
     def list(_servers, owner) do
-      if to_string(owner) == "test/@jon/",
+      if to_string(owner) == "test/@jon",
         do: [%Wardrik.Servers.Server{name: "docs", url: "https://docs.example/mcp", auth: "none"}],
         else: []
     end
@@ -1328,7 +1328,7 @@ defmodule WardrikHTTP.RouterTest do
     @jon Wardrik.Principal.new(:user, "jon")
 
     test "lists, connects and forgets a person's own, or an org's", %{api: api} do
-      jon = Req.merge(as(api, "test/*", @jon), params: [prefix: "test/@jon/"])
+      jon = Req.merge(as(api, "test/*", @jon), params: [owner: "test/@jon"])
 
       assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
                Req.get(jon, url: "/v1/connections")
@@ -1339,7 +1339,7 @@ defmodule WardrikHTTP.RouterTest do
              ]
 
       assert {:ok, %{status: 200, body: %{"connections" => [%{"provider" => "github"} | _]}}} =
-               Req.get(jon, url: "/v1/connections", params: [prefix: "test/"])
+               Req.get(jon, url: "/v1/connections", params: [owner: "test"])
 
       assert {:ok, %{status: 200, body: %{"connected" => true}}} =
                Req.post(jon, url: "/v1/connections/github")
@@ -1371,43 +1371,43 @@ defmodule WardrikHTTP.RouterTest do
     test "are refused with no owner, outside the token's reach, or without definer",
          %{api: api} do
       assert {:ok, %{status: 400, body: body}} = Req.get(api, url: "/v1/connections")
-      assert body["error"]["message"] =~ "prefix"
+      assert body["error"]["message"] =~ "owner"
 
       assert {:ok, %{status: 200}} =
-               Req.get(api, url: "/v1/connections", params: [prefix: "test/"])
+               Req.get(api, url: "/v1/connections", params: [owner: "test"])
 
-      for prefix <- ["test/*", "test/triage", ""] do
+      for owner <- ["test/*", "test/agent/triage", "test/", "deployment", ""] do
         assert {:ok, %{status: 400}} =
-                 Req.get(api, url: "/v1/connections", params: [prefix: prefix])
+                 Req.get(api, url: "/v1/connections", params: [owner: owner])
       end
 
       assert {:ok, %{status: 404}} =
-               Req.post(api, url: "/v1/connections/github", params: [prefix: "globex/"])
+               Req.post(api, url: "/v1/connections/github", params: [owner: "globex"])
 
       globex = as(api, "globex/*", @jon)
 
       assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
-               Req.get(globex, url: "/v1/connections", params: [prefix: "globex/@jon/"])
+               Req.get(globex, url: "/v1/connections", params: [owner: "globex/@jon"])
 
       refute Enum.any?(listed, &Map.has_key?(&1, "held_by"))
 
       reader = as(api, "test/*", @jon, [:reader])
 
       assert {:ok, %{status: 403}} =
-               Req.post(reader, url: "/v1/connections/linear", params: [prefix: "test/@jon/"])
+               Req.post(reader, url: "/v1/connections/linear", params: [owner: "test/@jon"])
     end
 
     test "answer 501 where the host offers none", %{api: api} do
       jon = api |> listener(host: Host.new(store: Wardrik.Test.store())) |> as("test/*", @jon)
 
       assert {:ok, %{status: 501}} =
-               Req.get(jon, url: "/v1/connections", params: [prefix: "test/@jon/"])
+               Req.get(jon, url: "/v1/connections", params: [owner: "test/@jon"])
     end
   end
 
   describe "servers" do
     test "lists, adds and removes a person's own, or an org's", %{api: api} do
-      jon = Req.merge(as(api, "test/*", @jon), params: [prefix: "test/@jon/"])
+      jon = Req.merge(as(api, "test/*", @jon), params: [owner: "test/@jon"])
 
       assert {:ok, %{status: 200, body: %{"servers" => [%{"name" => "docs"}]} = body}} =
                Req.get(jon, url: "/v1/servers")
@@ -1415,7 +1415,7 @@ defmodule WardrikHTTP.RouterTest do
       conforms(body, "servers")
 
       assert {:ok, %{status: 200, body: %{"servers" => []}}} =
-               Req.get(jon, url: "/v1/servers", params: [prefix: "test/"])
+               Req.get(jon, url: "/v1/servers", params: [owner: "test"])
 
       docs = %{"name" => "docs", "url" => "https://docs.example/mcp", "auth" => %{"none" => %{}}}
 
@@ -1435,7 +1435,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 200, body: %{"server" => %{"name" => "docs", "auth" => "none"}}}} =
                Req.delete(jon, url: "/v1/servers/docs")
 
-      assert Audit.about("servers/test/@jon/docs") |> List.last() ==
+      assert Audit.about("servers/test/@jon/server/docs") |> List.last() ==
                {"server.removed", %{"type" => "user", "id" => "jon"}}
 
       assert {:ok, %{status: 404}} = Req.delete(jon, url: "/v1/servers/nothing")
@@ -1443,14 +1443,14 @@ defmodule WardrikHTTP.RouterTest do
 
     test "are refused a body without a name, and answer 501 where the host offers none",
          %{api: api} do
-      jon = Req.merge(as(api, "test/*", @jon), params: [prefix: "test/@jon/"])
+      jon = Req.merge(as(api, "test/*", @jon), params: [owner: "test/@jon"])
 
       assert {:ok, %{status: 400}} = Req.post(jon, url: "/v1/servers", json: %{"url" => "x"})
 
       none = api |> listener(host: Host.new(store: Wardrik.Test.store())) |> as("test/*", @jon)
 
       assert {:ok, %{status: 501}} =
-               Req.get(none, url: "/v1/servers", params: [prefix: "test/@jon/"])
+               Req.get(none, url: "/v1/servers", params: [owner: "test/@jon"])
     end
   end
 

@@ -356,7 +356,7 @@ Someone took a secret out of the vault.
 | --- | --- | --- | --- |
 | `secret` | object | yes |  |
 | `secret.name` | string | yes |  |
-| `owner` | string |  | The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's. |
+| `owner` | string |  | The org, as acme, or the user, as acme/@jon, it is kept for; none where it is the deployment's. |
 | `actor` | [principal](#principal) |  |  |
 | `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
@@ -368,7 +368,7 @@ Someone sealed a secret in the vault.
 | --- | --- | --- | --- |
 | `secret` | object | yes |  |
 | `secret.name` | string | yes |  |
-| `owner` | string |  | The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's. |
+| `owner` | string |  | The org, as acme, or the user, as acme/@jon, it is kept for; none where it is the deployment's. |
 | `actor` | [principal](#principal) |  |  |
 | `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
@@ -381,7 +381,7 @@ Someone added an MCP server for an owner's agents.
 | `server` | object | yes |  |
 | `server.name` | string | yes |  |
 | `server.url` | string | yes |  |
-| `owner` | string | yes | The org, as acme/, or the user, as acme/@jon/, whose agents it serves. |
+| `owner` | string | yes | The org, as acme, or the user, as acme/@jon, whose agents it serves. |
 | `actor` | [principal](#principal) |  |  |
 | `assumed_by` | [assumed_by](#assumed_by) |  |  |
 
@@ -393,7 +393,7 @@ Someone removed an MCP server an owner had added.
 | --- | --- | --- | --- |
 | `server` | object | yes |  |
 | `server.name` | string | yes |  |
-| `owner` | string | yes | The org, as acme/, or the user, as acme/@jon/, whose agents it serves. |
+| `owner` | string | yes | The org, as acme, or the user, as acme/@jon, whose agents it serves. |
 | `actor` | [principal](#principal) |  |  |
 | `assumed_by` | [assumed_by](#assumed_by) |  |  |
 

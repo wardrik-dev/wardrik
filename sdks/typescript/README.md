@@ -82,14 +82,13 @@ type `gap`: read `agent.snapshot()` and follow from its `sequence`.
 ## Owners
 
 The accounts an owner's agents act with, and the MCP servers they add, are
-named by the prefix of the owner's agents: `acme/` for an org's, `acme/@jon/`
-for a person's.
+named by their owner: an org, `acme`, or a person, `acme/@jon`.
 
 ```ts
-const linear = await wardrik.connections.connect("acme/@jon/", "linear");
+const linear = await wardrik.connections.connect("acme/@jon", "linear");
 if (!linear.connected) console.log("Authorize at", linear.authorization?.url);
 
-await wardrik.servers.add("acme/", {
+await wardrik.servers.add("acme", {
   name: "crm",
   url: "https://mcp.crm.example/mcp",
   auth: { secret: { name: "crm-key" } },

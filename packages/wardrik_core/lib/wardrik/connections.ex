@@ -20,16 +20,14 @@ defprotocol Wardrik.Connections do
   A host that offers none has `Wardrik.Connections.None`, whose functions
   answer `:unsupported`, and so does each of those.
 
-  An owner is a person in their org, `{org, user}`, or an org, as
-  `Wardrik.Credential` resolves credentials for them: a person's call takes
-  their own, then their org's, then the deployment's. The operations name
-  an owner by the `Wardrik.AgentID.Prefix` of the agents it owns, so a
-  token reaches a person's connections where it reaches their agents;
-  `Wardrik.Connections.Owner` finds it.
+  An owner is a namespace, as `Wardrik.Resource` names one: a person in
+  their org, `acme/@jon`, or an org, `acme`, as `Wardrik.Credential`
+  resolves credentials for them: a person's call takes their own, then
+  their org's, then the deployment's.
   """
 
-  @typedoc "A person in their org, or an org."
-  @type owner() :: {String.t(), String.t()} | String.t()
+  @typedoc "A person in their org, or an org, as the namespace `Wardrik.Resource` names."
+  @type owner() :: Wardrik.Resource.t()
 
   @typedoc "Who holds a connection for an owner: them, their org, the deployment, or nobody."
   @type held_by() :: :person | :org | :deployment | nil

@@ -74,7 +74,7 @@ defmodule WardrikSlack.ThreadsTest do
       WardrikChannel.channels([{name, {WardrikSlack, req_options: @req_options}}],
         host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %Everyone{}),
         installations:
-          Installations.Config.new([{name, "xoxb-test", Wardrik.AgentID.Prefix.all()}]),
+          Installations.Config.new([{name, "xoxb-test", Wardrik.Resource.deployment()}]),
         offered: {__MODULE__, :offering, [agent]},
         start: {__MODULE__, :starting, [runner]},
         replies: replies

@@ -15,7 +15,7 @@ defmodule WardrikMCP.Listing do
   """
 
   require Logger
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikMCP.Connection
 
   @ns :mcp_tools
@@ -30,16 +30,16 @@ defmodule WardrikMCP.Listing do
 
   A listing the store already holds is not written again.
   """
-  @spec remember(WardrikStore.t(), Key.t(), [map()]) :: :ok
-  def remember(store, %Key{} = key, listed) when is_list(listed) do
+  @spec remember(WardrikStore.t(), Resource.t(), [map()]) :: :ok
+  def remember(store, %Resource{} = key, listed) when is_list(listed) do
     if recall(store, key) != listed, do: write(store, key, listed)
 
     :erpc.multicast(Node.list(), Connection, :offer_listing, [key, listed])
   end
 
   @doc "The `tools/list` entries last kept for the server `key`, or `[]`."
-  @spec recall(WardrikStore.t(), Key.t()) :: [map()]
-  def recall(store, %Key{} = key) do
+  @spec recall(WardrikStore.t(), Resource.t()) :: [map()]
+  def recall(store, %Resource{} = key) do
     case stored(fn -> WardrikStore.get(store, @ns, to_string(key)) end) do
       listed when is_list(listed) -> listed
       _nothing -> []

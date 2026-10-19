@@ -4,7 +4,7 @@ defmodule WardrikMCP.Supervisor do
 
   A host starts it with the servers it wants reached, each a name and the
   options `WardrikMCP.Server.new/2` takes. They are the deployment's own,
-  keyed by `Wardrik.Servers.Key.deployment/1`:
+  keyed by the resource `deployment/server/<name>`:
 
       children = [
         {WardrikMCP.Supervisor,
@@ -34,7 +34,7 @@ defmodule WardrikMCP.Supervisor do
 
   use Supervisor
 
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikMCP.Connection
   alias WardrikMCP.Server
 
@@ -133,8 +133,8 @@ defmodule WardrikMCP.Supervisor do
   end
 
   @doc "Stops the connection to a server, and forgets it."
-  @spec disconnect(Key.t()) :: :ok | {:error, :not_found}
-  def disconnect(%Key{} = key) do
+  @spec disconnect(Resource.t()) :: :ok | {:error, :not_found}
+  def disconnect(%Resource{} = key) do
     with :ok <- Supervisor.terminate_child(@connections, {Connection, key}) do
       Supervisor.delete_child(@connections, {Connection, key})
     end
@@ -171,7 +171,8 @@ defmodule WardrikMCP.Supervisor do
     opts
     |> Keyword.get(:servers, [])
     |> Enum.map(fn {name, server_opts} ->
-      Server.new(Key.deployment(Atom.to_string(name)), Keyword.merge(defaults, server_opts))
+      key = Resource.new(Resource.deployment(), server: Atom.to_string(name))
+      Server.new(key, Keyword.merge(defaults, server_opts))
     end)
   end
 end

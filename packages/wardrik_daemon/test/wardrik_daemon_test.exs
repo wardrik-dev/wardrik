@@ -164,8 +164,15 @@ defmodule WardrikDaemonTest do
   test "reads a ${NAME} the environment does not set from the vault", %{tmp_dir: dir} do
     :ok = Settings.vault()
     name = "DAEMON_TEST_IP_#{System.unique_integer([:positive])}"
-    :ok = WardrikVault.put(Settings.held_vault(), name, nil, value: "127.0.0.1")
-    on_exit(fn -> WardrikVault.forget(Settings.held_vault(), name, nil) end)
+
+    :ok =
+      WardrikVault.put(Settings.held_vault(), name, Wardrik.Resource.deployment(),
+        value: "127.0.0.1"
+      )
+
+    on_exit(fn ->
+      WardrikVault.forget(Settings.held_vault(), name, Wardrik.Resource.deployment())
+    end)
 
     File.write!(Path.join(dir, "config.yaml"), "ssh:\n  ip: \"${#{name}}\"\n")
 
@@ -179,9 +186,13 @@ defmodule WardrikDaemonTest do
     name = "DAEMON_TEST_DB_#{System.unique_integer([:positive])}"
 
     :ok =
-      WardrikVault.put(Settings.held_vault(), name, nil, value: "postgres://localhost/wardrik")
+      WardrikVault.put(Settings.held_vault(), name, Wardrik.Resource.deployment(),
+        value: "postgres://localhost/wardrik"
+      )
 
-    on_exit(fn -> WardrikVault.forget(Settings.held_vault(), name, nil) end)
+    on_exit(fn ->
+      WardrikVault.forget(Settings.held_vault(), name, Wardrik.Resource.deployment())
+    end)
 
     File.write!(Path.join(dir, "config.yaml"), "storage:\n  postgres:\n    url: \"${#{name}}\"\n")
 

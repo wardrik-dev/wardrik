@@ -12,7 +12,7 @@ defmodule WardrikSlack.Test do
     do: %Installation{
       channel: "slack",
       workspace: "T1",
-      owner: Wardrik.AgentID.Prefix.all(),
+      owner: Wardrik.Resource.deployment(),
       token: token
     }
 end

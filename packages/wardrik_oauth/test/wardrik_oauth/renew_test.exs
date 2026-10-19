@@ -53,14 +53,14 @@ defmodule WardrikOAuth.RenewTest do
     token = struct(Token, Map.merge(fields, overrides))
 
     :ok =
-      WardrikVault.put(vault(), "github", {"acme", owner},
+      WardrikVault.put(vault(), "github", person("acme", owner),
         value: Token.encode(token),
         kind: :grant
       )
   end
 
   defp kept(owner) do
-    {:ok, encoded} = WardrikVault.fetch(vault(), "github", {"acme", owner})
+    {:ok, encoded} = WardrikVault.fetch(vault(), "github", person("acme", owner))
     {:ok, token} = Token.decode(encoded)
     token
   end
@@ -177,7 +177,10 @@ defmodule WardrikOAuth.RenewTest do
     configure(providers: provider())
 
     :ok =
-      WardrikVault.put(vault(), "github", {"acme", owner}, value: "not a token", kind: :grant)
+      WardrikVault.put(vault(), "github", person("acme", owner),
+        value: "not a token",
+        kind: :grant
+      )
 
     log =
       capture_log(fn ->
@@ -187,7 +190,7 @@ defmodule WardrikOAuth.RenewTest do
     assert log =~ "cannot be read (token_unreadable); asking again"
 
     assert {:ok, "not a token"} =
-             WardrikVault.fetch(vault(), "github", {"acme", owner})
+             WardrikVault.fetch(vault(), "github", person("acme", owner))
   end
 
   test "a vault with no key is an error, and starts nothing", %{owner: owner} do
@@ -243,7 +246,8 @@ defmodule WardrikOAuth.RenewTest do
     configure(providers: provider(flow: :device))
 
     assert {:error, {:authorization_required, %{code: "WDJB-MJHT"}, _owner}} = resolve(owner)
-    assert_receive {:device_done, %{owner: {"acme", ^owner}, outcome: :authorized}}
+    jon = person("acme", owner)
+    assert_receive {:device_done, %{owner: ^jon, outcome: :authorized}}
 
     assert %Token{access_token: "at_first", token_endpoint: "https://auth.example.com/token"} =
              kept(owner)

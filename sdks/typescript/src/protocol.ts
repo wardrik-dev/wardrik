@@ -1131,7 +1131,7 @@ export interface SecretRemovedData {
     name: string;
   };
   /**
-   * The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's.
+   * The org, as acme, or the user, as acme/@jon, it is kept for; none where it is the deployment's.
    */
   owner?: string;
   actor?: Principal;
@@ -1145,7 +1145,7 @@ export interface SecretStoredData {
     name: string;
   };
   /**
-   * The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's.
+   * The org, as acme, or the user, as acme/@jon, it is kept for; none where it is the deployment's.
    */
   owner?: string;
   actor?: Principal;
@@ -1160,7 +1160,7 @@ export interface ServerAddedData {
     url: string;
   };
   /**
-   * The org, as acme/, or the user, as acme/@jon/, whose agents it serves.
+   * The org, as acme, or the user, as acme/@jon, whose agents it serves.
    */
   owner: string;
   actor?: Principal;
@@ -1174,7 +1174,7 @@ export interface ServerRemovedData {
     name: string;
   };
   /**
-   * The org, as acme/, or the user, as acme/@jon/, whose agents it serves.
+   * The org, as acme, or the user, as acme/@jon, whose agents it serves.
    */
   owner: string;
   actor?: Principal;

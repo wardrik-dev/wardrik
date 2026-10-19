@@ -6,6 +6,7 @@ defmodule Wardrik.ServersTest do
   alias Wardrik.Error
   alias Wardrik.Host
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Scope
   alias Wardrik.Servers.Server
@@ -64,7 +65,7 @@ defmodule Wardrik.ServersTest do
   end
 
   @jon Principal.new(:user, "jon", name: "Jon")
-  @acme Prefix.parse!("acme/")
+  @acme Resource.parse!("acme")
   @docs %Server{name: "docs", url: "https://docs.example.com/mcp", auth: "none"}
 
   defp scope(prefix, can \\ [:owner], host \\ Host.new(servers: %Added{})) do
@@ -73,7 +74,7 @@ defmodule Wardrik.ServersTest do
 
   test "an owner's servers are added, listed and removed, each change recorded as the scope's" do
     jon = scope("acme/@jon/")
-    mine = Prefix.parse!("acme/@jon/")
+    mine = Resource.parse!("acme/@jon")
 
     assert {:ok, %Server{name: "docs", authorization: nil}} =
              Wardrik.servers_add(jon, mine, @docs)
@@ -82,11 +83,11 @@ defmodule Wardrik.ServersTest do
     assert {:ok, [%Server{name: "docs", auth: "none"}]} = Wardrik.servers_list(jon, mine)
 
     assert [{"server.added", %{"type" => "user", "id" => "jon"}} | _] =
-             Audit.about("servers/acme/@jon/docs")
+             Audit.about("servers/acme/@jon/server/docs")
 
     assert {:ok, %Server{name: "docs"}} = Wardrik.servers_remove(jon, mine, "docs")
     assert {:ok, []} = Wardrik.servers_list(jon, mine)
-    assert {"server.removed", _by} = List.last(Audit.about("servers/acme/@jon/docs"))
+    assert {"server.removed", _by} = List.last(Audit.about("servers/acme/@jon/server/docs"))
   end
 
   test "a server someone signs in to first answers where, and is added as it is described" do
@@ -124,7 +125,7 @@ defmodule Wardrik.ServersTest do
              Wardrik.servers_add(scope("acme/", [:reader]), @acme, @docs)
 
     assert {:error, %Error{type: :not_found}} =
-             Wardrik.servers_add(scope("acme/"), Prefix.parse!("globex/"), @docs)
+             Wardrik.servers_add(scope("acme/"), Resource.parse!("globex"), @docs)
   end
 
   test "a host that lets nobody add servers answers unsupported" do

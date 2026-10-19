@@ -19,7 +19,7 @@
     },
     "owner": {
       "type": "string",
-      "description": "The org, as acme/, or the user, as acme/@jon/, whose agents it serves."
+      "description": "The org, as acme, or the user, as acme/@jon, whose agents it serves."
     },
     "actor": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"

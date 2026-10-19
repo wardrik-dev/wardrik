@@ -312,7 +312,7 @@ The vault's secrets and whose they are, never their values.
 wardrik vault ls [--org ORG] [--user USER]
 ```
 
-Users' secrets are counted by name; `--user USER` lists one user's. With `--json`, each as its name, kind, and owner as `--org` and `--user` take it, or the count of users with it; the deployment's say whether the daemon's environment sets them.
+`--org ORG` or `--user USER` lists one owner's. With `--json`, each as its name, kind and owner; the deployment's say whether the daemon's environment sets them.
 
 ### wardrik vault rm
 

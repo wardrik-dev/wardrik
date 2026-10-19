@@ -106,12 +106,12 @@ answers an agent with is its key.
 | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
 | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
 | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
-| `GET /v1/connections?prefix=` | the accounts the owner `prefix` names is offered, and whether they, their org or the deployment holds each |
+| `GET /v1/connections?owner=` | the accounts `owner` is offered, and whether they, their org or the deployment holds each |
 | `POST /v1/connections/{provider}` | connects an account: where to authorize it, or that it is held already |
 | `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, and answers it as it was held |
-| `GET /v1/servers?prefix=` | the MCP servers the owner `prefix` names added for their agents |
-| `POST /v1/servers?prefix=` | adds an MCP server for the owner's agents, `201`: that they can call it now, or where to sign in to it first |
-| `DELETE /v1/servers/{name}?prefix=` | removes the server, so the owner's agents can no longer call it, and answers it as it was |
+| `GET /v1/servers?owner=` | the MCP servers `owner` added for their agents |
+| `POST /v1/servers?owner=` | adds an MCP server for the owner's agents, `201`: that they can call it now, or where to sign in to it first |
+| `DELETE /v1/servers/{name}?owner=` | removes the server, so the owner's agents can no longer call it, and answers it as it was |
 | `POST /v1/deployment/reload` | has every node read its agent and policy files again, and answers those nodes |
 | `GET /v1/deployment/nodes` | the deployment's nodes, each with how many agents run on it, and how many sleep |
 | `GET /v1/deployment/audit` | a page of what people changed across the deployment, after `?starting_after=` |
@@ -229,27 +229,27 @@ answers as the chat app expects; `404` where no channel of that name takes reque
 ### Connections
 
 ```http
-GET /v1/connections?prefix=acme/@jon/
+GET /v1/connections?owner=acme/@jon
 
 {"connections": [{"provider": "github", "held_by": "person"},
                  {"provider": "linear"}]}
 ```
 
 ```http
-POST /v1/connections/linear?prefix=acme/@jon/
+POST /v1/connections/linear?owner=acme/@jon
 
 {"provider": "linear", "connected": false,
  "authorization": {"url": "https://linear.app/oauth/authorize?…"}}
 ```
 
-`prefix` names the owner: a person, `acme/@jon/`, or an org, `acme/`. The token must reach the
-owner's agents. The account is held once the person has authorized it at the link. A secret's value
+`owner` names a person, `acme/@jon`, or an org, `acme`. The token must reach the owner's
+agents. The account is held once the person has authorized it at the link. A secret's value
 is never answered.
 
 ### Servers
 
 ```http
-POST /v1/servers?prefix=acme/@jon/
+POST /v1/servers?owner=acme/@jon
 
 {"name": "crm", "url": "https://mcp.crm.example/mcp",
  "auth": {"secret": {"name": "crm-key"}}}
@@ -258,12 +258,12 @@ POST /v1/servers?prefix=acme/@jon/
 ```
 
 ```http
-GET /v1/servers?prefix=acme/@jon/
+GET /v1/servers?owner=acme/@jon
 
 {"servers": [{"name": "crm", "url": "https://mcp.crm.example/mcp", "auth": "secret"}]}
 ```
 
-`prefix` names the owner, as for connections. A server serves its owner's agents alone, and each of its tools arrives as `crm__tool`. It is reached over
+`owner` names the owner, as for connections. A server serves its owner's agents alone, and each of its tools arrives as `crm__tool`. It is reached over
 Streamable HTTP at an `https` URL whose host has public addresses, and signs in with nothing,
 `{"none": {}}`, in a browser as the server's own authorization server asks, `{"oauth": {"scopes":
 [...]}}`, which answers the link to sign in at, or a secret the owner keeps in the vault,
