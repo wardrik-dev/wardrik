@@ -258,14 +258,28 @@ describe("events", () => {
     await server.close();
   });
 
-  test("follow every agent the token reads, from what is written next", async () => {
-    server.on("GET", "/v1/events", stream([event("run.completed", {}, { sequence: 3 })], { end: false }));
+  test("follow every agent the patterns cover from the head of each, and resume there", async () => {
+    server.on("GET", "/v1/events/head", (_request, response) => json(response, 200, { cursor: "h0" }));
+    server.on("GET", "/v1/events", stream([event("run.completed", {}, { sequence: 3 })]));
+    server.on("GET", "/v1/events", stream([event("run.started", {}, { sequence: 4 })], { end: false }));
 
-    const events = wardrik.events({ follow: true });
+    const events = wardrik.events({ resources: ["acme/agent/*"], follow: true });
 
-    assert.deepEqual((await collect(events, 1)).map((event) => event.type), ["wardrik.run.completed"]);
-    assert.equal(server.received[0]!.headers["last-event-id"], undefined);
-    assert.equal(events.cursor, "000000000003");
+    assert.deepEqual(
+      (await collect(events, 2)).map((event) => event.type),
+      ["wardrik.run.completed", "wardrik.run.started"],
+    );
+
+    assert.deepEqual(
+      server.received.map((request) => [request.path, request.headers["last-event-id"]]),
+      [
+        ["/v1/events/head?resources=acme%2Fagent%2F*", undefined],
+        ["/v1/events?resources=acme%2Fagent%2F*", "h0"],
+        ["/v1/events?resources=acme%2Fagent%2F*", "000000000003"],
+      ],
+    );
+
+    assert.equal(events.cursor, "000000000004");
     await server.close();
   });
 });

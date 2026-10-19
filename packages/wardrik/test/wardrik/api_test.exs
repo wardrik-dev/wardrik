@@ -131,6 +131,48 @@ defmodule Wardrik.APITest do
     assert %Entry{log: ^agent} = Enum.find(events, &(&1.event["type"] == "wardrik.run.completed"))
   end
 
+  test "a cursor moved from the head of many agents resumes after what it took, in each",
+       %{scope: scope} do
+    [one, two] = for _n <- 1..2, do: start({AgentRunners, :echo, [self(), "ok"]})
+    for agent <- [one, two], do: {:ok, _message} = Wardrik.agent_ask(scope, agent, "hi")
+    for _agent <- [one, two], do: assert_receive({:turn, _messages}, 5_000)
+    resources = for agent <- [one, two], do: AgentID.resource(agent)
+    for agent <- [one, two], do: settled(scope, agent)
+
+    assert {:ok, head} = Wardrik.events_head(scope, resources: resources)
+    assert {:ok, %{^one => _at, ^two => _also}} = Wardrik.Event.Cursor.decode(head)
+
+    {:ok, _message} = Wardrik.agent_ask(scope, one, "again")
+    assert_receive {:turn, _messages}, 5_000
+    settled(scope, one)
+
+    taken = scope |> Wardrik.events!(resources: resources, after: head) |> Enum.take(1)
+    rest = Wardrik.events!(scope, resources: resources, after: moved(head, taken))
+
+    assert [%Entry{log: ^one}] = taken
+    assert rest |> Enum.to_list() |> Enum.all?(&(&1.log == one))
+
+    replayed = Wardrik.events!(scope, resources: resources, after: moved(:head, taken))
+    assert Enum.any?(replayed, &(&1.log == two))
+
+    assert {:error, %Error{type: :not_found}} =
+             Wardrik.events_head(scope, resources: [Wardrik.Resource.parse!("globex/agent/*")])
+
+    assert_raise Error, fn -> Wardrik.events_head!(scope, resources: []) end
+  end
+
+  defp moved(cursor, entries), do: Enum.reduce(entries, cursor, &Wardrik.cursor(&2, &1))
+
+  # An agent's turn is over once its log says so.
+  defp settled(scope, agent) do
+    assert Wardrik.Test.Fleet.await_update(fn ->
+             match?(
+               %Snapshot{status: %{state: :idle}, trace_id: nil},
+               Wardrik.agent_read!(scope, agent)
+             )
+           end)
+  end
+
   test "events are what the scope's token reads, from a cursor events answered", %{scope: scope} do
     agent = start({AgentRunners, :echo, [self(), "ok"]})
 

@@ -1951,6 +1951,19 @@
         "title": "A page of events",
         "type": "object"
       },
+      "EventsHead": {
+        "additionalProperties": false,
+        "description": "The cursor at the head of each log the patterns cover, as GET /v1/events reads after it.",
+        "properties": {
+          "cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cursor"
+        ],
+        "type": "object"
+      },
       "Forgotten": {
         "additionalProperties": false,
         "description": "What a removal did: the IDs removed, those an agent file keeps with why, and those not removed with why.",
@@ -4843,7 +4856,7 @@
     },
     "/v1/events": {
       "get": {
-        "description": "Reads after Last-Event-ID, or ?after=; with neither, a page reads from the start, and a stream from what is written next. Where the log was trimmed past the cursor, a wardrik.events.dropped says so, and the log is read on from the oldest event it holds.",
+        "description": "Reads after Last-Event-ID, or ?after=; with neither, a page reads from the start, and a stream from the head of every log the patterns cover, as GET /v1/events/head names it. Where the log was trimmed past the cursor, a wardrik.events.dropped says so, and the log is read on from the oldest event it holds.",
         "operationId": "events",
         "parameters": [
           {
@@ -4899,6 +4912,49 @@
           "Agents"
         ],
         "x-wardrik-function": "events"
+      }
+    },
+    "/v1/events/head": {
+      "get": {
+        "description": "A cursor naming the head of each log the patterns cover, so a reader that starts from what is written next resumes, after any event, in every one of them. An agent whose log opens after it is read from its start.",
+        "operationId": "events_head",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/resources"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsHead"
+                }
+              }
+            },
+            "description": "The cursor."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "Where the log of every agent the patterns cover stands",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "events_head"
       }
     },
     "/v1/hooks/{org}/@{user}/{name}/{trigger}": {

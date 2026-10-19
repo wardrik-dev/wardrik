@@ -327,7 +327,8 @@ defmodule Wardrik do
                        default: "",
                        doc:
                          "the cursor it reads after, as `cursor/2` moves it, or `:head` to read " <>
-                           "nothing and take what is written from now; every event by default"
+                           "nothing and take what is written from now, as from `events_head/2`'s " <>
+                           "cursor; every event by default"
                      ],
                      follow: [
                        type: :boolean,
@@ -338,7 +339,7 @@ defmodule Wardrik do
                )
 
   @subscribe_opts NimbleOptions.new!(@following)
-  @unsubscribe_opts NimbleOptions.new!(Keyword.take(@following, [:resources]))
+  @resources_opts NimbleOptions.new!(Keyword.take(@following, [:resources]))
 
   @doc """
   Sends this process each entry the agents `:resources` covers write from
@@ -376,12 +377,12 @@ defmodule Wardrik do
 
   ## Options
 
-  #{NimbleOptions.docs(@unsubscribe_opts)}
+  #{NimbleOptions.docs(@resources_opts)}
   """
   @doc group: "Events"
   @spec unsubscribe(Scope.t(), keyword()) :: :ok
   def unsubscribe(%Scope{} = scope, opts \\ []) do
-    opts = NimbleOptions.validate!(opts, @unsubscribe_opts)
+    opts = NimbleOptions.validate!(opts, @resources_opts)
     Log.unsubscribe(Keyword.get_lazy(opts, :resources, fn -> readable_by(scope) end))
   end
 
@@ -406,7 +407,9 @@ defmodule Wardrik do
 
   Wardrik keeps no reader's place: a reader keeps its cursor, moved past
   each entry by `cursor/2`, and reads on from it, or from the cursor of
-  `agent_read/2`'s snapshot or `agent_ask/4`'s message. Where a log was trimmed
+  `agent_read/2`'s snapshot or `agent_ask/4`'s message. One that starts
+  from what is written next, and keeps its place, starts from
+  `events_head/2`'s cursor. Where a log was trimmed
   past the cursor, the stream takes a `wardrik.events.dropped` entry naming
   the sequence it was after and the oldest the log still held, whatever
   `:types` names, and reads on from there.
@@ -439,9 +442,32 @@ defmodule Wardrik do
   end
 
   @doc """
+  The cursor at the head of the log of every agent `:resources` covers:
+  where each stands now, so `events/2` after it takes what is written from
+  now on, and a cursor `cursor/2` moves from it resumes there in all of
+  them. An agent whose log is opened after it is read from its start.
+
+      {:ok, head} = Wardrik.events_head(scope, resources: resources)
+      {:ok, events} = Wardrik.events(scope, resources: resources, after: head, follow: true)
+
+  ## Options
+
+  #{NimbleOptions.docs(@resources_opts)}
+  """
+  @doc group: "Events"
+  @spec events_head(Scope.t(), keyword()) :: {:ok, String.t()} | {:error, Error.t()}
+  def events_head(%Scope{} = scope, opts \\ []) do
+    opts = NimbleOptions.validate!(opts, @resources_opts)
+
+    with {:ok, resources} <- readable(scope, opts),
+         do: {:ok, Cursor.encode(Log.heads(Host.store(scope.host), resources))}
+  end
+
+  @doc """
   `cursor` moved past `entry`: the cursor `events/2` reads on from after it.
   A cursor of `:head` names the logs of the entries it has been moved past
-  alone, and reads the rest from their start.
+  alone, and reads the rest from their start, so one that resumes across
+  many agents is moved from `events_head/2`'s.
 
       cursor = Enum.reduce(entries, cursor, &Wardrik.cursor(&2, &1))
   """
@@ -1784,6 +1810,11 @@ defmodule Wardrik do
   @doc group: "Events"
   @spec events!(Scope.t(), keyword()) :: Enumerable.t(Entry.t())
   def events!(scope, opts \\ []), do: unwrap(events(scope, opts))
+
+  @doc "As `events_head/2`, answering the value, or raising the `Wardrik.Error`."
+  @doc group: "Events"
+  @spec events_head!(Scope.t(), keyword()) :: String.t()
+  def events_head!(scope, opts \\ []), do: unwrap(events_head(scope, opts))
 
   @doc "As `deployment_audit/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Deployment"

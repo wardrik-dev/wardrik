@@ -47,7 +47,8 @@ defmodule Wardrik.Event.Log do
   from before what the log still holds, `{:gap, oldest}`.
 
   A stream reads every log a reader's patterns cover from its positions,
-  page by page, then follows them. It subscribes before it reads, and takes
+  page by page, then follows them; `heads/2` are the positions of a reader
+  starting from now. It subscribes before it reads, and takes
   only the entries that follow what it read (`Wardrik.Event.Log.Entry.follows?/2`),
   so it sees each event once, in order; an entry that follows events it has
   not read, as an agent's first after the reader listed the logs, reads
@@ -160,6 +161,18 @@ defmodule Wardrik.Event.Log do
         covers?(resources, id),
         uniq: true,
         do: id
+  end
+
+  @doc """
+  The last sequence written to each log `resources` covers, read through
+  consensus: where a reader starts that takes what is written from now and
+  resumes from its cursor.
+  """
+  @spec heads(WardrikStore.t(), [Resource.t()]) :: Wardrik.Event.Cursor.positions()
+  def heads(store, resources) do
+    Map.new(covered(store, resources), fn log ->
+      {log, head(store, log, oldest(store, log, consistent: true) - 1)}
+    end)
   end
 
   defp prefix(pattern) do

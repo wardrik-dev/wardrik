@@ -75,13 +75,27 @@ export class Wardrik {
   /**
    * The events of the agents `resources` covers, of `types`, after `after`:
    * those kept, or with `follow`, then each as it is written. The server keeps
-   * no reader's place: keep `cursor`, and read on from it.
+   * no reader's place: keep `cursor`, and read on from it. Following with no
+   * `after`, it starts from `eventsHead`, so `cursor` resumes in every agent it reads.
    *
    *     const events = wardrik.events({ resources: ["acme/agent/*"], after: saved, follow: true });
    *     for await (const event of events) save(event, events.cursor);
    */
   events(options: EventsOptions = {}): EventStream {
-    return new EventStream(this.#http, "/v1/events", options);
+    return new EventStream(this.#http, "/v1/events", options, () => this.eventsHead(options));
+  }
+
+  /**
+   * The cursor where the log of every agent `resources` covers stands now, or
+   * of every agent the token reads: reading after it takes what is written
+   * from now on, and a cursor moved from it resumes in each of them.
+   */
+  async eventsHead(options: Pick<EventsOptions, "resources"> = {}): Promise<string> {
+    const answer = await this.#http.json<{ cursor: string }>("GET", "/v1/events/head", {
+      query: { resources: options.resources },
+    });
+
+    return answer.cursor;
   }
 
   /**

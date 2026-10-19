@@ -27,7 +27,7 @@ defmodule WardrikHTTP.EventStream do
   @keepalive :timer.seconds(15)
 
   @doc "Streams `events`, which `Wardrik.events/2` reads after `opts[:after]`, on `conn`."
-  @spec serve(Plug.Conn.t(), Enumerable.t(Wardrik.Event.Log.Entry.t()), after: String.t() | :head) ::
+  @spec serve(Plug.Conn.t(), Enumerable.t(Wardrik.Event.Log.Entry.t()), after: String.t()) ::
           Plug.Conn.t()
   def serve(conn, events, opts) do
     stream = self()
