@@ -81,15 +81,16 @@ curl -N -H "authorization: Bearer $TOKEN" -H "accept: text/event-stream" \
 ```
 
 ```
-id: 000000000042
+id: eyJhY21lL3RyaWFnZSI6NDJ9
 data: {"specversion":"1.0","type":"wardrik.tool_call.started",...}
 
 data: {"specversion":"1.0","type":"wardrik.message.delta",...}
 ```
 
 The stream begins with what happens next. To resume, send the last `id:` you saw as
-`Last-Event-ID`, or `?starting_after=`, and you miss nothing kept. The TypeScript SDK reconnects and
-resumes for you; see [Use the HTTP API](/build/http-api/).
+`Last-Event-ID`, or `?after=`, and you miss nothing kept. `GET /v1/events?resources=acme/agent/*`
+follows every agent a pattern covers the same way. The TypeScript SDK reconnects and resumes for
+you; see [Use the HTTP API](/build/http-api/).
 
 ## Traces
 
@@ -106,13 +107,15 @@ node, or after a person decides, keeps its trace.
   them.
 - **Field names.** The keys under `data` follow OpenTelemetry's names for generative AI, without
   their `gen_ai.` prefix. A value longer than 64 KiB is cut short and marked `"truncated": true`.
-- **The stream over HTTP** needs a token that can `read`. A kept event's `id:` is its sequence; a
-  live one has none. A comment line every 15 seconds keeps the connection open.
-- **Pages.** Without `text/event-stream`, the route answers a page of kept events as JSON.
-  `?starting_after=` and `?limit=` (100 unless set, up to 500) page through them.
-- **Too old.** A position older than what's kept answers `410` with the oldest sequence there is.
-  Read the agent with `GET /v1/agents/{key}`, whose `sequence` is where its state was taken, and
-  follow from there.
+- **The stream over HTTP** needs a token that can `read`. An event's `id:` is a cursor, where you
+  are in each agent's log; a live one that moves nothing has none. Wardrik keeps no reader's
+  place: keep the last `id:` yourself. A comment line every 15 seconds keeps the connection open.
+- **Pages.** Without `text/event-stream`, the route answers a page of kept events as JSON, with
+  `next`, the cursor after them. `?after=` and `?limit=` (100 unless set, up to 500) page through
+  them.
+- **Too old.** Where a log was trimmed past your cursor, a `wardrik.events.dropped` event names
+  the sequence you were after and the oldest kept, and reading goes on from there. An agent's
+  snapshot, `GET /v1/agents/{key}`, has the `cursor` its state was taken at.
 - **Span tree.** `parentspanid` says which span an event's span is beneath, so a turn's events form
   a tree.
 - **Notices aren't events.** An agent can tell someone when it parks, fails or answers, in Slack or

@@ -154,8 +154,8 @@ access, give each team its own room and [notice target](/build/notices/) with it
 
 - Each agent's events, including every decision and who made it, stream over the
   [HTTP API](/reference/http-api/#events).
-- An export reads every log a token may read, for a SIEM. See
-  [Exports](/reference/http-api/#exports).
+- `GET /v1/events` reads every agent's events a token may read, for a SIEM, from a cursor it
+  keeps. See [Events](/reference/http-api/#events).
 
 ### Taking it further
 
