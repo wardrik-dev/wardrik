@@ -31,7 +31,7 @@ defmodule WardrikSlack.Test do
     do: %Installation{
       channel: "slack",
       workspace: "T1",
-      owner: Wardrik.Resource.deployment(),
+      owner: Wardrik.Resource.parse!("*"),
       token: token
     }
 end

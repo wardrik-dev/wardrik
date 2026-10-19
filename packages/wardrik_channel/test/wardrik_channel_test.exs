@@ -13,7 +13,7 @@ defmodule WardrikChannelTest do
     do: %Installation{
       channel: "named",
       workspace: "T1",
-      owner: Resource.deployment(),
+      owner: Resource.parse!("*"),
       token: "token"
     }
 
@@ -295,7 +295,7 @@ defmodule WardrikChannelTest do
   end
 
   test "installs nothing more than its config names, from its config" do
-    config = Installations.Config.new([{:slack, "xoxb-1", Resource.deployment()}])
+    config = Installations.Config.new([{:slack, "xoxb-1", Resource.parse!("*")}])
 
     assert {:ok, %Installation{channel: "slack", workspace: "slack", token: "xoxb-1"}} =
              Installations.fetch(config, "slack", "T0123")

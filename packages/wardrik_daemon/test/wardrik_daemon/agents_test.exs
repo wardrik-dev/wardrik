@@ -672,7 +672,7 @@ defmodule WardrikDaemon.AgentsTest do
         [
           channels: [slack: {WardrikDaemon.Test.Channel, []}],
           installations:
-            WardrikChannel.Installations.Config.new([{:slack, "token", Resource.deployment()}]),
+            WardrikChannel.Installations.Config.new([{:slack, "token", Resource.parse!(org)}]),
           orgs: [slack: [org]]
         ],
         host: Host.host(Host.agents())

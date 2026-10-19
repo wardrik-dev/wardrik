@@ -8,9 +8,10 @@ defmodule WardrikChannel.Workspace do
 
   The agents a workspace offers are those the host's `Wardrik.Definitions`
   keep whose definitions name the channel among their `channels`, of the
-  orgs it offers. An agent created in one of its rooms is defined from the
-  `defaults` of its org's definitions, as a definition the host wrote, and
-  offered in the channel.
+  orgs it offers, that its installation's owner covers (see
+  `WardrikChannel.Installation.covers?/2`). An agent created in one of its
+  rooms is defined from the `defaults` of its org's definitions, as a
+  definition the host wrote, and offered in the channel.
   """
 
   alias Wardrik.AgentID
@@ -41,24 +42,28 @@ defmodule WardrikChannel.Workspace do
 
   @doc "The agents that may answer in a room of the workspace, sorted by ID."
   @spec offered(t()) :: [Offer.t()]
-  def offered(%__MODULE__{context: context}) do
+  def offered(%__MODULE__{context: context, installation: installation}) do
     for %Definition{id: id, channels: channels, description: description} <-
           Definitions.list(Host.definitions(context.host), Wardrik.Resource.parse!("*")),
         context.channel in channels,
         context.orgs == :all or id.org in context.orgs,
+        Installation.covers?(installation, id),
         do: %Offer{agent: id, description: description}
   end
 
   @doc """
   Whether someone in a room of the workspace may create an agent to answer
-  there: where the channel creates them, and its org's `defaults` name a
-  policy their calls are held to.
+  there: where the channel creates them, in an org its installation's
+  owner covers, and the org's `defaults` name a policy their calls are held
+  to.
   """
   @spec creatable?(t()) :: boolean()
-  def creatable?(%__MODULE__{context: context} = workspace) do
+  def creatable?(%__MODULE__{context: context, installation: installation} = workspace) do
     # The org's defaults, as any agent of the org reads them.
     any = AgentID.new!("agent", org: org(context))
-    context.creates and is_map_key(defaults(workspace, any), "policy")
+
+    context.creates and Installation.covers?(installation, any) and
+      is_map_key(defaults(workspace, any), "policy")
   end
 
   @doc """

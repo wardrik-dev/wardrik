@@ -219,4 +219,5 @@ in your own service can be installed in many, one for each org: give the channel
 `client_secret` from **Basic Information › App Credentials** in place of `token`, set the app's
 **Redirect URL** to your install route, and send each org's admin to
 `WardrikChannel.install_url/3`. Your route hands Slack's redirect to `WardrikChannel.install/3` for
-the org they act for, and your `WardrikChannel.Installations` keeps each workspace's token.
+the org they act for, and your `WardrikChannel.Installations` keeps each workspace's token. Each
+workspace offers that org's agents alone.

@@ -663,7 +663,7 @@ defmodule WardrikDaemon.Config do
 
   # Each channel offers the agents of the orgs `orgs` has use it, and is
   # installed in the workspace its token reaches, for its one org, or for
-  # every org.
+  # `*`, every org, where it offers several.
   defp offering(channels, owners) do
     {tokens, channels} = Keyword.pop!(channels, :tokens)
 
@@ -683,7 +683,7 @@ defmodule WardrikDaemon.Config do
 
   # Whom a channel's token is installed for: its one org, or every org.
   defp owner([org]), do: Wardrik.Resource.parse!(org)
-  defp owner(_orgs), do: Wardrik.Resource.deployment()
+  defp owner(_orgs), do: Wardrik.Resource.parse!("*")
 
   # A notify target in a channel posts through it, as `channels` holds it,
   # in the workspace its token reaches.
