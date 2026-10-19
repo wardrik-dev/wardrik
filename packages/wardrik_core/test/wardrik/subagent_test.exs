@@ -159,27 +159,19 @@ defmodule Wardrik.SubagentTest do
     def call(_call, _value), do: :pass
   end
 
-  test "a parked delegation reports an error that observers can fold", %{run: run} do
+  test "a parked delegation reports the error it ends with", %{run: run} do
     stream(run, [LLM.tool_call("blocked", "echo", %{"text" => "hello"})])
 
     assert Subagent.run(%{run | hooks: [Wardrik.Hook.new("ask", AskHook)]}, "echo") ==
              {:error, :approval_required}
 
-    assert_receive %Event{payload: %Event.DelegationStarted{prompt: "echo"}} = started
+    assert_receive %Event{payload: %Event.DelegationStarted{prompt: "echo"}}
 
     assert_receive %Event{
-                     payload: %Event.DelegationFinished{outcome: {:error, :approval_required}}
-                   } =
-                     ended
+      payload: %Event.DelegationFinished{outcome: {:error, :approval_required}}
+    }
 
     refute_receive %Event{payload: %Event.ToolStarted{call_id: "blocked"}}
-
-    delegations =
-      Wardrik.Delegation.new()
-      |> Wardrik.Delegation.fold(started)
-      |> Wardrik.Delegation.fold(ended)
-
-    assert [%{status: :error, error: :approval_required}] = Wardrik.Delegation.list(delegations)
   end
 
   describe "with a config of its own" do

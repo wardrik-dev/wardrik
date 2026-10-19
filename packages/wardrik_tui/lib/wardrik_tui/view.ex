@@ -846,8 +846,8 @@ defmodule WardrikTUI.View do
   milliseconds.
   """
   @spec inspector(
-          Wardrik.Delegation.delegation(),
-          [Wardrik.Delegation.span()],
+          WardrikTUI.Delegation.delegation(),
+          [WardrikTUI.Delegation.span()],
           AgentID.t(),
           integer()
         ) ::
@@ -866,13 +866,18 @@ defmodule WardrikTUI.View do
 
   defp state(%{status: :running} = record, now),
     do:
-      Text.tag("◐ running · #{Text.duration(Wardrik.Delegation.elapsed_ms(record, now))}", :cyan)
+      Text.tag(
+        "◐ running · #{Text.duration(WardrikTUI.Delegation.elapsed_ms(record, now))}",
+        :cyan
+      )
 
   defp state(%{status: :ok} = record, now),
-    do: Text.tag("✓ done · #{Text.duration(Wardrik.Delegation.elapsed_ms(record, now))}", :green)
+    do:
+      Text.tag("✓ done · #{Text.duration(WardrikTUI.Delegation.elapsed_ms(record, now))}", :green)
 
   defp state(%{status: :error} = record, now),
-    do: Text.tag("✗ failed · #{Text.duration(Wardrik.Delegation.elapsed_ms(record, now))}", :red)
+    do:
+      Text.tag("✗ failed · #{Text.duration(WardrikTUI.Delegation.elapsed_ms(record, now))}", :red)
 
   defp work([], _now), do: [Text.tag("activity", :bright), Text.tag("  nothing yet", @faint), ""]
 
@@ -884,7 +889,7 @@ defmodule WardrikTUI.View do
           Text.tag(glyph(span), colour(span)),
           " ",
           span.name || "?",
-          Text.tag(" · #{Text.duration(Wardrik.Delegation.elapsed_ms(span, now))}", @faint)
+          Text.tag(" · #{Text.duration(WardrikTUI.Delegation.elapsed_ms(span, now))}", @faint)
         ]
       end) ++ [""]
   end

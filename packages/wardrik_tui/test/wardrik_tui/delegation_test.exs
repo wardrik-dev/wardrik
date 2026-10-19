@@ -1,10 +1,10 @@
-defmodule Wardrik.DelegationTest do
+defmodule WardrikTUI.DelegationTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Agent.Message
-  alias Wardrik.Delegation
   alias Wardrik.Event
   alias Wardrik.Event.Source
+  alias WardrikTUI.Delegation
 
   @agent Wardrik.AgentID.parse!("test/delegating")
 

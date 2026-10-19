@@ -1,8 +1,7 @@
 defmodule WardrikTUI.Components.Inspector do
   @moduledoc "Scrollable tool and delegation details."
   use Breeze.Component
-  alias Wardrik.Delegation
-  alias WardrikTUI.{Exchange, Text, Transcript, View}
+  alias WardrikTUI.{Delegation, Exchange, Text, Transcript, View}
   @faint [:faint, :light_black]
 
   # The inspector sits centred over the panes, as tall as its lines need.

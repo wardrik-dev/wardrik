@@ -1,4 +1,4 @@
-defmodule Wardrik.Delegation do
+defmodule WardrikTUI.Delegation do
   @moduledoc """
   The delegations of one turn, folded from its `:lifecycle` events.
 
@@ -9,10 +9,10 @@ defmodule Wardrik.Delegation do
   its events open and close it (see `Wardrik.Event.ended/1`), so a
   delegation's depth under other delegations and the work under it are known.
 
-      delegations = Enum.reduce(events, Wardrik.Delegation.new(), &Wardrik.Delegation.fold(&2, &1))
+      delegations = Enum.reduce(events, WardrikTUI.Delegation.new(), &WardrikTUI.Delegation.fold(&2, &1))
 
-      Wardrik.Delegation.summary(delegations)   #=> %{active: 2, total: 4}
-      Wardrik.Delegation.list(delegations)      # every delegation, oldest first
+      WardrikTUI.Delegation.summary(delegations)   #=> %{active: 2, total: 4}
+      WardrikTUI.Delegation.list(delegations)      # every delegation, oldest first
 
   `Wardrik.Event.TurnStarted` starts over. A turn ending with delegations still
   running closes them as interrupted, and a span closed as an error with a
