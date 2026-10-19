@@ -48,7 +48,7 @@ defmodule Wardrik.LifecycleTest do
     "#{id} is declared by agents/#{id.name}.md; change or remove that file, then reload it"
   end
 
-  @jon %{"type" => "user", "id" => "jon", "name" => "Jon"}
+  @jon %{"id" => "acme/@jon", "name" => "Jon"}
 
   # Agents run on the model the runtime gives unless they name one.
   defp host,
@@ -70,7 +70,7 @@ defmodule Wardrik.LifecycleTest do
 
   defp root, do: Scope.new(host(), Token.root(jon()))
 
-  defp jon, do: Principal.new(:user, "jon", name: "Jon")
+  defp jon, do: Principal.new("acme/@jon", name: "Jon")
 
   defp defined_id(name \\ "defined") do
     id = Fleet.id(name)

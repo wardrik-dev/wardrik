@@ -321,7 +321,7 @@ defmodule WardrikHTTP.Router do
         id = "#{itself}/trigger/#{trigger}"
 
         token = %Token{
-          principal: Principal.new(:webhook, id),
+          principal: Principal.new(id),
           scope: [%Statement{actions: ["agent.trigger.deliver"], resources: [itself]}]
         }
 

@@ -337,19 +337,19 @@ defmodule WardrikChannel do
   def tasks, do: WardrikChannel.TaskSupervisor
 
   @doc """
-  The `Wardrik.Principal` of `member`: of type `:channel`, known as
-  `channel/workspace/id`, so the same id in two channels, or two
-  workspaces, are two people, and every channel names its people alike.
-  Options: `:name`, the name the channel shows for them.
+  The `Wardrik.Principal` of `member`, known as `channel:workspace/id`, so
+  the same id in two channels, or two workspaces, are two people, and every
+  channel names its people alike. Options: `:name`, the name the channel
+  shows for them.
 
       WardrikChannel.principal(member, name: "jon")
-      #=> a principal of type :channel, known as "slack/T0123/U024BE7LH", by name "jon"
+      #=> a principal known as "slack:T0123/U024BE7LH", by name "jon"
   """
   @spec principal(Member.t(), keyword()) :: Wardrik.Principal.t()
   def principal(%Member{installation: installation, id: id}, opts \\ []) do
     opts = Keyword.validate!(opts, [:name])
 
-    Wardrik.Principal.new(:channel, "#{installation.channel}/#{installation.workspace}/#{id}",
+    Wardrik.Principal.new("#{installation.channel}:#{installation.workspace}/#{id}",
       name: opts[:name]
     )
   end
@@ -363,7 +363,8 @@ defmodule WardrikChannel do
   """
   @spec person(Wardrik.Principal.t()) :: {String.t(), String.t(), String.t()}
   def person(principal) do
-    [channel, workspace, user] = String.split(Wardrik.Principal.id(principal), "/", parts: 3)
+    [channel, known] = String.split(Wardrik.Principal.id(principal), ":", parts: 2)
+    [workspace, user] = String.split(known, "/", parts: 2)
     {channel, workspace, user}
   end
 

@@ -36,7 +36,7 @@ defmodule Wardrik.TriggersTest do
     Process.put(:answer, answer)
 
     token = %Token{
-      principal: Principal.new(:webhook, "acme/agent/hooked/trigger/issues"),
+      principal: Principal.new("acme/agent/hooked/trigger/issues"),
       scope: [%Statement{actions: actions, resources: [Wardrik.AgentID.resource(@agent)]}]
     }
 

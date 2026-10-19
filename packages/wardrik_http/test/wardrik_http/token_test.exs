@@ -7,7 +7,7 @@ defmodule WardrikHTTP.TokenTest do
   alias Wardrik.Role
   alias WardrikHTTP.Token
 
-  @jon Wardrik.Principal.new(:user, "jon")
+  @jon Wardrik.Principal.new("acme/@jon")
 
   defp token(roles, opts \\ []) do
     struct!(

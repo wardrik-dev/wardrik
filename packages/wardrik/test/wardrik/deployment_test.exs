@@ -77,12 +77,12 @@ defmodule Wardrik.DeploymentTest do
       )
 
   defp root(host \\ host()),
-    do: Scope.new(host, Token.root(Principal.new(:user, "jon", name: "Jon")))
+    do: Scope.new(host, Token.root(Principal.new("acme/@jon", name: "Jon")))
 
   # A scope over the agents of one org, which the deployment is not.
   defp scope do
     token = %Token{
-      principal: Principal.new(:user, "jon", name: "Jon"),
+      principal: Principal.new("acme/@jon", name: "Jon"),
       scope: [Role.bind([:owner], [Resource.parse!("test/*")])]
     }
 
@@ -97,7 +97,11 @@ defmodule Wardrik.DeploymentTest do
       assert "agents/broken.md: tools is a list" in failed
 
       assert_received :reloaded
-      assert Enum.any?(Audit.about("agents"), &match?({"agents.reloaded", %{"id" => "jon"}}, &1))
+
+      assert Enum.any?(
+               Audit.about("agents"),
+               &match?({"agents.reloaded", %{"id" => "acme/@jon"}}, &1)
+             )
 
       assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_reload(scope())
     end
@@ -135,7 +139,7 @@ defmodule Wardrik.DeploymentTest do
                Wardrik.tokens_create(root(), "ci", reader())
 
       refute inspect(made) =~ "secret-"
-      assert [{"token.created", %{"id" => "jon"}}] = Audit.about("deployment/token/" <> id)
+      assert [{"token.created", %{"id" => "acme/@jon"}}] = Audit.about("deployment/token/" <> id)
 
       assert {:ok, tokens} = Wardrik.tokens_list(root())
       assert Enum.any?(tokens, &(&1.id == id))

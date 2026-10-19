@@ -21,7 +21,7 @@ defmodule WardrikDaemon.CLITest do
   @token_usage "Usage: wardrik token create NAME --resource PATTERN... --role ROLES " <>
                  "[--policy NAME] [--expires 30d]\n"
 
-  @ops %{"type" => "shell", "id" => "ops"}
+  @ops %{"id" => "shell:ops"}
 
   # Runs a command, answering what it printed and how it exited: 0, 1, or
   # :live for one that needs the terminal it came from.
@@ -123,7 +123,7 @@ defmodule WardrikDaemon.CLITest do
       payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
     }
 
-    assert by == Wardrik.Principal.new(:shell, "ops")
+    assert by == Wardrik.Principal.new("shell:ops")
   end
 
   test "approve hands the agent the note given" do
@@ -169,7 +169,7 @@ defmodule WardrikDaemon.CLITest do
 
     assert {:ok, token} = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
     assert %Wardrik.Token{principal: principal} = token.token
-    assert Wardrik.Principal.id(principal) == "ops"
+    assert Wardrik.Principal.id(principal) == "shell:ops"
 
     assert line ==
              "#{name} (#{token.id}) allows owner on acme/agent/*, " <>
@@ -340,7 +340,7 @@ defmodule WardrikDaemon.CLITest do
       )
 
     assert command(["ask", key, "hello", "there", "--no-wait"]) == {"Asked #{key}.\n", 0}
-    assert_receive {:turn, [{:user, "From shell ops:\nhello there"}]}
+    assert_receive {:turn, [{:user, "From shell:ops:\nhello there"}]}
   end
 
   test "ask follows the answer live, and says so where it cannot" do
@@ -533,7 +533,7 @@ defmodule WardrikDaemon.CLITest do
 
     assert to_string(key) == "default/#{name}"
     assert command(["ask", name, "hello", "--no-wait"]) == {"Asked #{key}.\n", 0}
-    assert_receive {:turn, [{:user, "From shell ops:\nhello"}]}
+    assert_receive {:turn, [{:user, "From shell:ops:\nhello"}]}
 
     {mine, _agent} =
       Wardrik.Test.Fleet.start_agent([], Wardrik.AgentID.new!(name, org: "default", user: "jon"))
@@ -568,7 +568,7 @@ defmodule WardrikDaemon.CLITest do
   test "audit reads what people changed, a page at a time" do
     :ok =
       Wardrik.Audit.record(Wardrik.Audit, {:agents_reloaded, [node()]},
-        by: Wardrik.Principal.new(:user, "ops")
+        by: Wardrik.Principal.new("acme/@ops")
       )
 
     last = String.to_integer(List.last(Audit.all())["sequence"])
@@ -576,7 +576,7 @@ defmodule WardrikDaemon.CLITest do
 
     assert {page, 0} = command(["audit", "--after", previous, "--limit", "1"])
     assert [change, more, ""] = String.split(page, "\n")
-    assert change =~ ~r/^#{last}  \S+  agents.reloaded  agents  by ops$/
+    assert change =~ ~r/^#{last}  \S+  agents.reloaded  agents  by acme\/@ops$/
     assert more == "More: wardrik audit --after #{last}"
 
     assert {"No changes after #{last}.\n", 0} == command(["audit", "--after", to_string(last)])
@@ -663,7 +663,7 @@ defmodule WardrikDaemon.CLITest do
     defined = Wardrik.AgentID.parse!("#{org}/defined")
 
     token = %Wardrik.Token{
-      principal: Wardrik.Principal.new(:user, "jon"),
+      principal: Wardrik.Principal.new("acme/@jon"),
       scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(defined)])]
     }
 

@@ -35,7 +35,7 @@ defmodule Wardrik.RunningTest do
     def run(_input, _context), do: {:ok, "nothing"}
   end
 
-  defp maria, do: Wardrik.Principal.new(:user, "maria")
+  defp maria, do: Wardrik.Principal.new("acme/@maria")
 
   test "a user defines an agent their token reaches, read against its org's context, and kept",
        %{wardrik: wardrik} do

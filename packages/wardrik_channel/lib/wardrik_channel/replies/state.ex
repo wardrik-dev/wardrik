@@ -149,7 +149,7 @@ defmodule WardrikChannel.Replies.State do
   defp post(
          %{
            "type" => "wardrik.interrupt.resolved",
-           "data" => %{"resolved_by" => %{"type" => "oauth", "id" => provider}}
+           "data" => %{"resolved_by" => %{"id" => "oauth:" <> provider}}
          },
          runs
        ),

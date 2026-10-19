@@ -21,7 +21,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   alias WardrikDaemon.CLI
 
   @moduletag :tmp_dir
-  @ops %{"type" => "shell", "id" => "ops"}
+  @ops %{"id" => "shell:ops"}
   @defaults %{"model" => "anthropic:claude-sonnet-5", "tools" => ["web_search"]}
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know.\n"
 
@@ -350,7 +350,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       defined = AgentID.parse!("#{org}/defined")
 
       token = %Wardrik.Token{
-        principal: Wardrik.Principal.new(:user, "jon"),
+        principal: Wardrik.Principal.new("acme/@jon"),
         scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(defined)])]
       }
 

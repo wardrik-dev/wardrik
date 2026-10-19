@@ -24,7 +24,7 @@ defmodule WardrikOAuth.ConnectionsTest do
 
     jon =
       Scope.new(host(), %Token{
-        principal: Principal.new(:user, owner, name: "Jon"),
+        principal: Principal.new("#{org}/@#{owner}", name: "Jon"),
         scope: [Role.bind([:owner], [Wardrik.Resource.parse!("#{org}/*")])]
       })
 
@@ -48,7 +48,7 @@ defmodule WardrikOAuth.ConnectionsTest do
   end
 
   test "connecting answers a link, and once the browser is back the account is held",
-       %{jon: jon, mine: mine, org: org, owner: owner} do
+       %{jon: jon, mine: mine, org: org} do
     assert {:ok, %{authorization: %{url: url}}} = Wardrik.connections_connect(jon, mine, "linear")
 
     assert list(jon, mine)["linear"] == nil
@@ -57,14 +57,16 @@ defmodule WardrikOAuth.ConnectionsTest do
     assert list(jon, mine)["linear"] == :person
     assert {:ok, %{authorization: nil}} = Wardrik.connections_connect(jon, mine, "linear")
 
-    assert [{"secret.stored", %{"type" => "user", "id" => ^owner}} | _] =
+    jon_id = to_string(mine)
+
+    assert [{"secret.stored", %{"id" => ^jon_id}} | _] =
              Enum.reverse(Audit.about("#{mine}/secret/linear"))
 
     refute WardrikOAuth.connected?(vault(), "linear", Wardrik.Resource.parse!(org))
   end
 
   test "disconnecting removes it, recorded as the person who did",
-       %{jon: jon, mine: mine, owner: owner} do
+       %{jon: jon, mine: mine} do
     authorize(jon, mine, "linear")
 
     assert {:ok, %Wardrik.Connections.Connection{provider: "linear", held_by: :person}} =
@@ -72,7 +74,9 @@ defmodule WardrikOAuth.ConnectionsTest do
 
     assert list(jon, mine)["linear"] == nil
 
-    assert {"secret.removed", %{"type" => "user", "id" => ^owner}} =
+    jon_id = to_string(mine)
+
+    assert {"secret.removed", %{"id" => ^jon_id}} =
              List.last(Audit.about("#{mine}/secret/linear"))
 
     assert {:error, %Error{type: :not_found}} =

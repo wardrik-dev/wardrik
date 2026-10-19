@@ -70,7 +70,7 @@ defmodule Wardrik.ConnectionsTest do
     %{provider: provider}
   end
 
-  @jon Principal.new(:user, "jon", name: "Jon")
+  @jon Principal.new("acme/@jon", name: "Jon")
   @mine Resource.parse!("acme/@jon")
 
   defp scope(pattern, can \\ [:owner], host \\ Host.new(connections: %Offered{})) do
@@ -133,7 +133,7 @@ defmodule Wardrik.ConnectionsTest do
     assert {:ok, %Connection{provider: "github", held_by: :person}} =
              Wardrik.connections_disconnect(scope("acme/@jon/*"), @mine, "github")
 
-    assert {"secret.removed", %{"type" => "user", "id" => "jon"}} =
+    assert {"secret.removed", %{"id" => "acme/@jon"}} =
              List.last(Audit.about("acme/@jon/secret/github"))
 
     assert {:ok, [%Connection{provider: "github", held_by: nil} | _]} =

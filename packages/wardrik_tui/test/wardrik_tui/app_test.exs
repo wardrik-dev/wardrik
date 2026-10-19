@@ -460,7 +460,7 @@ defmodule WardrikTUI.AppTest do
       Breeze.Test.input(session, "Enter")
       assert_receive {:"$gen_cast", {:resume, %{"call_deploy" => :approve}}}
       assert_receive {:decided_by, by}
-      assert Wardrik.Principal.type(by) == :terminal
+      assert "terminal:" <> _account = Wardrik.Principal.id(by)
     end
 
     test "several parked calls are picked by number, and Backspace steps back", ctx do

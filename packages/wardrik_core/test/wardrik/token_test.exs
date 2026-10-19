@@ -10,7 +10,7 @@ defmodule Wardrik.TokenTest do
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
-  @maria Principal.new(:user, "maria")
+  @maria Principal.new("acme/@maria")
 
   defp r(text), do: Resource.parse!(text)
   defp acme, do: [r("acme/agent/*")]
@@ -109,7 +109,7 @@ defmodule Wardrik.TokenTest do
 
   describe "assuming a token" do
     test "allows only what both allow, and names who acts last" do
-      agent = Principal.new(:agent, "acme/front")
+      agent = Principal.new("acme/agent/front")
       own = [Role.bind([:reader, :messenger, :definer], acme())]
       asker = %Token{principal: @maria, scope: [Role.bind([:reader], [r("acme/*")])]}
 
@@ -129,7 +129,7 @@ defmodule Wardrik.TokenTest do
     end
 
     test "never allows more than the token it narrows" do
-      agent = Principal.new(:agent, "acme/front")
+      agent = Principal.new("acme/agent/front")
       one = %Token{principal: @maria, scope: [Role.bind([:reader], [r("acme/agent/triage")])]}
 
       assumed = Token.assume(one, agent, scope: [Role.bind([:owner], [r("*")])])
@@ -141,7 +141,7 @@ defmodule Wardrik.TokenTest do
     end
 
     test "keeps the policy it names, unless the actor names another" do
-      agent = Principal.new(:agent, "acme/front")
+      agent = Principal.new("acme/agent/front")
       careful = %{Token.root(@maria) | policy: "careful"}
 
       assert Token.assume(careful, agent, scope: careful.scope).policy == "careful"
@@ -157,7 +157,7 @@ defmodule Wardrik.TokenTest do
       soon = DateTime.add(DateTime.utc_now(:second), 60)
       later = DateTime.add(soon, 60)
       token = %{Token.root(@maria) | expires: soon}
-      agent = Principal.new(:agent, "acme/front")
+      agent = Principal.new("acme/agent/front")
 
       assert Token.assume(token, agent, scope: token.scope).expires == soon
       assert Token.assume(token, agent, scope: token.scope, expires: later).expires == soon
@@ -167,7 +167,7 @@ defmodule Wardrik.TokenTest do
 
   describe "refreshing a token" do
     test "takes the expiry of the one issued now, keeping its policy and who assumed it" do
-      agent = Principal.new(:agent, "acme/front")
+      agent = Principal.new("acme/agent/front")
       later = DateTime.add(DateTime.utc_now(:second), 60)
       careful = %{Token.root(@maria) | policy: "careful"}
 
@@ -184,7 +184,7 @@ defmodule Wardrik.TokenTest do
     end
 
     test "never allows more than the token it renews, nor what the issuer no longer gives" do
-      agent = Principal.new(:agent, "acme/front")
+      agent = Principal.new("acme/agent/front")
       narrowed = Token.assume(Token.root(@maria), agent, scope: token([:reader]).scope)
 
       assert Token.refresh(narrowed, Token.root(@maria)).scope == narrowed.scope

@@ -10,7 +10,7 @@ defmodule WardrikWorkspace.SpecTest do
   # A token reaching what `pattern` covers.
   defp reaching(pattern),
     do: %Wardrik.Token{
-      principal: Wardrik.Principal.new(:user, "jon"),
+      principal: Wardrik.Principal.new("acme/@jon"),
       scope: [Wardrik.Role.bind([:definer], [Resource.parse!(pattern)])]
     }
 

@@ -244,8 +244,7 @@ defmodule Wardrik.Event.Codec.Value do
   def principal(nil), do: nil
 
   def principal(principal) do
-    %{"type" => to_string(Principal.type(principal)), "id" => Principal.id(principal)}
-    |> put("name", Principal.name(principal))
+    put(%{"id" => Principal.id(principal)}, "name", Principal.name(principal))
   end
 
   @doc "Who acted for someone, first to last, or `nil` where nobody did."

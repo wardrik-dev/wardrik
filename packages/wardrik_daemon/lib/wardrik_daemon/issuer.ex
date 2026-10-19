@@ -1,18 +1,21 @@
 defmodule WardrikDaemon.Issuer do
   @moduledoc """
   The token each person or system that reaches the daemon acts with, as
-  `Wardrik.Issuer` asks, by how they reached it:
+  `Wardrik.Issuer` asks, by the name their `Wardrik.Principal` is known by:
 
-    * `:shell`, `:terminal` and `:ssh` - `owner` on every agent: they hold
-      the node itself
-    * `:channel` - what `config.yaml`'s `channels` says of someone in that
-      channel, as it names people, on the agents of each org it serves; see
-      below
-    * `:agent` - `reader` and `messenger` on its owner's agents,
-      `acme/agent/*` or `acme/@jon/agent/*`, read from the resource the
-      principal is named by, so a turn one agent asks of another reads and
+    * `shell:…`, `terminal:…` and `ssh:…` - `owner` on every agent: they
+      hold the node itself
+    * `<channel>:…`, for a channel `config.yaml`'s `channels` names, as
+      `slack:T0123/U024BE7LH` - what it says of someone in that channel, as
+      it names people, on the agents of each org it serves; see below
+    * an agent, or a thread of one, as `acme/agent/front` or
+      `acme/@jon/agent/assistant/thread/1696.1234` - `reader` and
+      `messenger` on its owner's agents, `acme/agent/*` or
+      `acme/@jon/agent/*`, so a turn one agent asks of another reads and
       messages for it what it could itself
-    * anyone else - nothing
+    * anyone else - nothing, as a request to a trigger,
+      `acme/agent/front/trigger/hook`, an authorization that finished,
+      `oauth:github`, or the deployment itself, `deployment`
 
   Each lasts as long as `config.yaml`'s `tokens.expires.session` says; one
   held past that is refreshed here as it is used, so a change to `channels`
@@ -54,26 +57,22 @@ defmodule WardrikDaemon.Issuer do
   @everyone [:reader, :messenger]
   @deciders [:reader, :messenger, :approver]
 
+  @node ~w(shell terminal ssh)
+
   @doc false
   def issue(%__MODULE__{agents: agents}, principal, _opts),
-    do: issued(Principal.type(principal), principal, agents)
+    do: issued(String.split(Principal.id(principal), ":", parts: 2), principal, agents)
 
-  defp issued(type, principal, _agents) when type in [:shell, :terminal, :ssh],
+  defp issued([node, _account], principal, _agents) when node in @node,
     do: Token.root(principal)
 
-  defp issued(:agent, principal, _agents) do
-    owner = Resource.owner(Resource.parse!(Principal.id(principal)))
-    %Token{principal: principal, scope: [Role.bind(@everyone, [agents_of(owner)])]}
-  end
-
-  defp issued(:channel, principal, agents) do
-    {channel, _workspace, user} = WardrikChannel.person(principal)
-
+  defp issued([channel, _person], principal, agents) do
     case agents.config
          |> Config.section(WardrikChannel)
          |> Keyword.fetch!(:installations)
          |> WardrikChannel.Installations.fetch(channel, channel) do
       {:ok, installation} ->
+        {_channel, _workspace, user} = WardrikChannel.person(principal)
         member(agents, principal, WardrikChannel.Member.new(installation, user))
 
       :error ->
@@ -81,7 +80,20 @@ defmodule WardrikDaemon.Issuer do
     end
   end
 
-  defp issued(_type, principal, _agents), do: %Token{principal: principal}
+  # After its owner, an agent's resource is agent/<name>, and a thread's
+  # thread/<id> after that.
+  defp issued([name], principal, _agents) do
+    owner = Resource.owner(Resource.parse!(name))
+
+    case String.split(String.replace_prefix(name, "#{owner}/", ""), "/") do
+      ["agent", _agent] -> acting(principal, owner)
+      ["agent", _agent, "thread", _thread] -> acting(principal, owner)
+      _other -> %Token{principal: principal}
+    end
+  end
+
+  defp acting(principal, owner),
+    do: %Token{principal: principal, scope: [Role.bind(@everyone, [agents_of(owner)])]}
 
   # Someone in the workspace of a channel's installation, by their id there.
   defp member(agents, principal, %WardrikChannel.Member{installation: installation} = member) do

@@ -108,7 +108,7 @@ defmodule WardrikTest do
 
     test "makes the scope a principal acts in with the token its issuer issues them" do
       wardrik = Wardrik.new(store: store(), issuer: %Wardrik.OrgIssuer{org: "acme"})
-      maria = Wardrik.Principal.new(:user, "maria")
+      maria = Wardrik.Principal.new("acme/@maria")
 
       assert %Wardrik.Scope{token: %Wardrik.Token{principal: ^maria} = token} =
                Wardrik.as(wardrik, maria)
@@ -118,7 +118,7 @@ defmodule WardrikTest do
     end
 
     test "issues every token to expire after the host's session length" do
-      maria = Wardrik.Principal.new(:user, "maria")
+      maria = Wardrik.Principal.new("acme/@maria")
       wardrik = Wardrik.new(store: store(), issuer: %Wardrik.OrgIssuer{org: "acme"})
       brief = Wardrik.new(store: store(), expires: [session: 60])
 

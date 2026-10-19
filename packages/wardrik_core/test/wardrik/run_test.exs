@@ -153,7 +153,7 @@ defmodule Wardrik.RunTest do
 
   describe "who asked" do
     test "is the sender named at the root, kept by the work it spawns, and handed to each tool" do
-      maria = Wardrik.Principal.new(:channel, "slack/U1", name: "Maria")
+      maria = Wardrik.Principal.new("slack:U1", name: "Maria")
       run = Run.root(Config.new(), ~A"acme/assistant", sender: maria)
 
       assert Run.child(run, name: "researcher").sender == maria

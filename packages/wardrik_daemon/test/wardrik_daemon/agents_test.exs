@@ -46,7 +46,7 @@ defmodule WardrikDaemon.AgentsTest do
 
   defp token(pattern),
     do: %Wardrik.Token{
-      principal: Wardrik.Principal.new(:user, "jon"),
+      principal: Wardrik.Principal.new("acme/@jon"),
       scope: [Wardrik.Role.bind([:owner], [pattern])]
     }
 

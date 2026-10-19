@@ -158,7 +158,7 @@ defmodule WardrikDaemon.CLI.Policies do
   defp decided(%{"by" => "ledger"}), do: "answered from the ledger"
 
   defp person(%{"name" => name}), do: name
-  defp person(%{"type" => type, "id" => id}), do: "#{type} #{id}"
+  defp person(%{"id" => id}), do: id
 
   # Every call tried ran, so a judge that refuses or asks where no person
   # did, or allows where a person was asked, would have decided otherwise.

@@ -21,8 +21,8 @@ defmodule WardrikTUI.SSH do
   An agent a session starts, that assistant or one `/spawn` names, starts as
   `Wardrik.agent_spawn/3` starts any: on the definition the host keeps of
   it, or one its defaults write, so every surface starts
-  the same agent. Whoever connected acts as the `:ssh` principal of their
-  user name, with the token the host's `Wardrik.Issuer` issues them, on the
+  the same agent. Whoever connected acts as the principal `ssh:<user name>`,
+  with the token the host's `Wardrik.Issuer` issues them, on the
   `Wardrik.Host` the entrypoint's `:host` names.
 
   Breeze starts the session's terminal itself, from the options
@@ -43,7 +43,7 @@ defmodule WardrikTUI.SSH do
     session = Keyword.fetch!(opts, :session)
     org = Keyword.get(opts, :org)
     host = Keyword.fetch!(opts, :host)
-    principal = Wardrik.Principal.new(:ssh, to_string(session.username))
+    principal = Wardrik.Principal.new("ssh:#{session.username}")
     as = Wardrik.as(host, principal)
 
     with {:ok, id} <- attach(session.username, org, as) do

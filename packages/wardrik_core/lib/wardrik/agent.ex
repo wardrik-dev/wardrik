@@ -147,8 +147,8 @@ defmodule Wardrik.Agent do
 
   A message may name agents its answer goes to, as one agent's message to
   another names the agent that sent it; see `Wardrik.Agent.Message`. The turn
-  that takes it sends each of them a message of its own, from this agent, a
-  `:agent` `Wardrik.Principal`:
+  that takes it sends each of them a message of its own, from this agent, the
+  `Wardrik.Principal` its resource names:
 
     * where the turn finishes, its answer, the text of its last assistant
       message, holding the labels the turn ended with, such as `"outside"`

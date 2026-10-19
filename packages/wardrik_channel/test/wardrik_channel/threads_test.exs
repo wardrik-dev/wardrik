@@ -23,7 +23,7 @@ defmodule WardrikChannel.ThreadsTest do
   alias WardrikChannel.Workspace
   alias WardrikNotify.Notice
 
-  @maria Principal.new(:channel, "slack/T1/U1", name: "maria")
+  @maria Principal.new("slack:T1/U1", name: "maria")
 
   @doc false
   def working(test, %Turn{} = turn) do
@@ -143,7 +143,7 @@ defmodule WardrikChannel.ThreadsTest do
                     _channel}
 
     assert_receive {:turn, turn}
-    assert {:user, "From maria (channel slack/T1/U1):\nHow much Barolo is left?"} in turn
+    assert {:user, "From maria (slack:T1/U1):\nHow much Barolo is left?"} in turn
   end
 
   test "leaves alone what the room's agent does not answer" do
@@ -257,7 +257,7 @@ defmodule WardrikChannel.ThreadsTest do
 
     assert connecting.authorization
 
-    by = Wardrik.Principal.new(:oauth, "github", name: "github authorization")
+    by = Wardrik.Principal.new("oauth:github", name: "github authorization")
     :ok = Wardrik.Credential.available("github", {"test", nil}, by: by)
 
     assert_receive {:delivered, %Outbound{thread: "9.1", body: {:reply, "Connected github.", []}},
@@ -275,7 +275,7 @@ defmodule WardrikChannel.ThreadsTest do
 
     assert_receive {:delivered, %Outbound{body: {:notice, %Notice{kind: :parked}}}, _channel}
 
-    by = Wardrik.Principal.new(:channel, "slack/T1/U1", name: "maria")
+    by = Wardrik.Principal.new("slack:T1/U1", name: "maria")
 
     :ok =
       Wardrik.Agent.decide(
@@ -309,7 +309,7 @@ defmodule WardrikChannel.ThreadsTest do
 
   test "asks nothing for someone the host's token allows no ask, and says so" do
     {context, binding} = bound({AgentRunners, :echo, [self(), "Here."]}, [])
-    stranger = Principal.new(:channel, "slack/T1/U9", name: "stranger")
+    stranger = Principal.new("slack:T1/U9", name: "stranger")
 
     assert {:error, message} =
              WardrikChannel.received(context, %{

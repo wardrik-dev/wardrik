@@ -391,7 +391,7 @@ describe("tokens", () => {
     const token = {
       id: "0123456789ab",
       name: "ci",
-      principal: { type: "user", id: "jon" },
+      principal: { id: "acme/@jon" },
       statements: [{ actions: ["agent.read"], resources: ["acme/agent/*"] }],
       policy: "careful",
       created_at: "2026-10-18T00:00:00Z",

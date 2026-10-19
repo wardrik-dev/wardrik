@@ -78,7 +78,7 @@ Where several people talk to one agent, as in a chat room, each message names
 who sent it, and the model reads that ahead of the text:
 
 ```elixir
-:ok = Wardrik.Agent.ask(pid, "Reconcile last week.", sender: Wardrik.Principal.new(:channel, "slack/U024BE7LH", name: "Maria Chen"))
+:ok = Wardrik.Agent.ask(pid, "Reconcile last week.", sender: Wardrik.Principal.new("slack:T0123/U024BE7LH", name: "Maria Chen"))
 ```
 
 ## Tools
@@ -232,7 +232,7 @@ A surface people act through records each change it makes, with who made
 it, in one log for the whole cluster, beside each agent's own:
 
 ```elixir
-:ok = Wardrik.Audit.record({:agent_forgotten, id}, Wardrik.Principal.new(:user, "jon"))
+:ok = Wardrik.Audit.record({:agent_forgotten, id}, Wardrik.Principal.new("acme/@jon"))
 ```
 
 Changes are CloudEvents from `wardrik://local/audit`, kept as long as

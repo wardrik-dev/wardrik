@@ -17,7 +17,7 @@ defmodule Wardrik.AuditTest do
     empty()
 
     %{
-      by: Principal.new(:shell, "jon"),
+      by: Principal.new("shell:jon"),
       id: Wardrik.AgentID.parse!("acme/triage")
     }
   end
@@ -51,7 +51,7 @@ defmodule Wardrik.AuditTest do
   end
 
   test "numbers each change, and says who made it", %{by: by, id: id} do
-    agent = Wardrik.Principal.new(:agent, "acme/front")
+    agent = Wardrik.Principal.new("acme/agent/front")
     assert :ok = Audit.record(Wardrik.Audit, {:agent_forgotten, id}, by: by, assumed_by: [agent])
     assert :ok = Audit.record(Wardrik.Audit, {:agent_cleared, id}, by: nil)
 
@@ -61,8 +61,8 @@ defmodule Wardrik.AuditTest do
                 "type" => "wardrik.agent.forgotten",
                 "sequence" => "000000000001",
                 "data" => %{
-                  "actor" => %{"type" => "shell", "id" => "jon"},
-                  "assumed_by" => [%{"type" => "agent", "id" => "acme/front"}]
+                  "actor" => %{"id" => "shell:jon"},
+                  "assumed_by" => [%{"id" => "acme/agent/front"}]
                 }
               },
               %{"type" => "wardrik.agent.cleared", "sequence" => "000000000002", "data" => data}

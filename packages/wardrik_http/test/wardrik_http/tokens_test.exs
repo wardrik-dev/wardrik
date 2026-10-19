@@ -10,7 +10,7 @@ defmodule WardrikHTTP.TokensTest do
 
   test "makes, lists and revokes the API's tokens, as Wardrik.Tokens asks" do
     token = %Wardrik.Token{
-      principal: Wardrik.Principal.new(:user, "jon"),
+      principal: Wardrik.Principal.new("acme/@jon"),
       scope: [Wardrik.Role.bind([:reader], [Wardrik.Resource.parse!("acme/agent/*")])]
     }
 

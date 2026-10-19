@@ -56,7 +56,7 @@ defmodule Wardrik.Event.CodecTest do
     turn = turn()
     tool = within(turn, "deploy")
     step = within(turn, "research")
-    by = Principal.new(:channel, "slack/U1", name: "jon")
+    by = Principal.new("slack:U1", name: "jon")
 
     asking = deploying()
 
@@ -177,7 +177,7 @@ defmodule Wardrik.Event.CodecTest do
     pattern = Resource.parse!("acme/agent/*")
 
     token = %Wardrik.Token{
-      principal: Principal.new(:user, "jon"),
+      principal: Principal.new("acme/@jon"),
       scope: [Wardrik.Role.bind([:reader, :definer], [pattern])],
       policy: "careful",
       expires: ~U[2026-12-01 00:00:00Z]
@@ -260,7 +260,7 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "encodes to a CloudEvent the envelope schema takes, with data its type's schema takes" do
-      by = Principal.new(:shell, "jon")
+      by = Principal.new("shell:jon")
 
       for action <- changes(), anyone <- [by, nil] do
         assert {:ok, event} = Codec.encode(Audit.new(action, anyone), sequence: 7)
@@ -269,7 +269,7 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "comes from the audit, at the root of a trace of its own, and names who made it" do
-      by = Principal.new(:user, "jon", name: "Jon")
+      by = Principal.new("acme/@jon", name: "Jon")
       audit = Audit.new({:agent_forgotten, @agent}, by)
 
       assert {:ok, event} = Codec.encode(audit, sequence: 7)
@@ -283,7 +283,7 @@ defmodule Wardrik.Event.CodecTest do
                "data" =>
                  %{
                    "agent" => %{"id" => "acme/@ops/triage"},
-                   "actor" => %{"type" => "user", "id" => "jon", "name" => "Jon"}
+                   "actor" => %{"id" => "acme/@jon", "name" => "Jon"}
                  } = data
              } = event
 
@@ -294,15 +294,14 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "names who acted for the actor, first to last" do
-      front = Principal.new(:agent, "acme/front")
+      front = Principal.new("acme/agent/front")
 
       audit = %{
-        Audit.new({:agent_cleared, @agent}, Principal.new(:user, "jon"))
+        Audit.new({:agent_cleared, @agent}, Principal.new("acme/@jon"))
         | assumed_by: [front]
       }
 
-      assert {:ok,
-              %{"data" => %{"assumed_by" => [%{"type" => "agent", "id" => "acme/front"}]}} = event} =
+      assert {:ok, %{"data" => %{"assumed_by" => [%{"id" => "acme/agent/front"}]}} = event} =
                Codec.encode(audit, sequence: 7)
 
       valid!(event)
@@ -316,7 +315,7 @@ defmodule Wardrik.Event.CodecTest do
 
       assert data == %{
                "token" => %{"id" => "tok_1", "name" => "ci"},
-               "principal" => %{"type" => "user", "id" => "jon"},
+               "principal" => %{"id" => "acme/@jon"},
                "statements" => [
                  %{
                    "actions" =>
@@ -758,14 +757,14 @@ defmodule Wardrik.Event.CodecTest do
 
       assert approved == %{"interrupt" => %{"id" => "call_1"}, "decision" => "approved"}
 
-      by = Principal.new(:shell, "wardrik")
+      by = Principal.new("shell:wardrik")
 
       {:ok, %{"data" => rejected}} =
         encode(turn(), %Event.CallDecided{call_id: "call_1", decision: {:deny, "No."}, by: by})
 
       assert rejected["decision"] == "rejected"
       assert rejected["reason"] == "No."
-      assert rejected["resolved_by"] == %{"type" => "shell", "id" => "wardrik"}
+      assert rejected["resolved_by"] == %{"id" => "shell:wardrik"}
 
       {:ok, %{"data" => noted}} =
         encode(turn(), %Event.CallDecided{
@@ -879,11 +878,11 @@ defmodule Wardrik.Event.CodecTest do
   end
 
   test "a message created names who sent it, where anyone is named" do
-    by = Principal.new(:channel, "slack/U1", name: "jon")
+    by = Principal.new("slack:U1", name: "jon")
 
     assert {:ok,
             %{
-              "data" => %{"sender" => %{"type" => "channel", "id" => "slack/U1", "name" => "jon"}}
+              "data" => %{"sender" => %{"id" => "slack:U1", "name" => "jon"}}
             }} =
              encode(Source.root(@agent), %Event.MessageQueued{
                message: Message.new("Hi.", "m-1", sender: by)

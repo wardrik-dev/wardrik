@@ -170,7 +170,7 @@ defmodule WardrikChannelTest do
     member = WardrikChannel.Member.new(installation(), "U1")
     maria = WardrikChannel.principal(member, name: "maria")
 
-    assert Wardrik.Principal.id(maria) == "named/T1/U1"
+    assert Wardrik.Principal.id(maria) == "named:T1/U1"
     assert WardrikChannel.person(maria) == {"named", "T1", "U1"}
 
     assert Wardrik.Principal.name(maria) == "maria"

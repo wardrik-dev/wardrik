@@ -55,14 +55,13 @@ defmodule Wardrik.AgentTest do
 
   test "a message names who sent it, to the model and in its event" do
     agent = start_agent(config: Script.new(runner(self())))
-    maria = Wardrik.Principal.new(:channel, "slack/U024BE7LH", name: "Maria Chen")
+    maria = Wardrik.Principal.new("slack:U024BE7LH", name: "Maria Chen")
 
     :ok = Agent.ask(agent, "Reconcile last week.", id: "m-1", sender: maria)
 
     assert_receive %Event{payload: %Event.MessageQueued{message: %{id: "m-1", sender: ^maria}}}
 
-    assert_receive {:turn,
-                    [{:user, "From Maria Chen (channel slack/U024BE7LH):\nReconcile last week."}]}
+    assert_receive {:turn, [{:user, "From Maria Chen (slack:U024BE7LH):\nReconcile last week."}]}
   end
 
   test "a second turn sees the first turn's result — turns never overlap" do
@@ -502,7 +501,7 @@ defmodule Wardrik.AgentTest do
     test "each decision says who made it" do
       test_pid = self()
       answer = {:ok, [Assistant.new("left it")]}
-      by = Wardrik.Principal.new(:channel, "slack/U1", name: "jon")
+      by = Wardrik.Principal.new("slack:U1", name: "jon")
 
       agent =
         start_agent(
@@ -551,7 +550,7 @@ defmodule Wardrik.AgentTest do
       answer = {:ok, [Assistant.new("opened")]}
       link = %{url: "https://github.com/login/oauth", code: nil}
       credential = %{ref: "github", owner: {"acme", "jon"}}
-      by = Wardrik.Principal.new(:oauth, "github", name: "github authorization")
+      by = Wardrik.Principal.new("oauth:github", name: "github authorization")
 
       agent =
         start_agent(
@@ -718,7 +717,7 @@ defmodule Wardrik.AgentTest do
         Agent.decide(
           agent,
           decisions,
-          token: Wardrik.Token.root(Wardrik.Principal.new(:shell, "root"))
+          token: Wardrik.Token.root(Wardrik.Principal.new("shell:root"))
         )
 
       assert_receive {:holding, ^decisions, _lost}

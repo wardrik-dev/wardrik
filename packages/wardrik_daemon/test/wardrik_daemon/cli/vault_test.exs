@@ -102,7 +102,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert WardrikVault.fetch(vault(), name <> "_B", Wardrik.Resource.deployment()) ==
                {:ok, "two=three"}
 
-      assert changes(name) == [{"secret.stored", nil, "ops"}]
+      assert changes(name) == [{"secret.stored", nil, "shell:ops"}]
     end
 
     test "seals for an org, or for a user within one", %{name: name} do
@@ -394,9 +394,9 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert command(["vault", "rm", name]) == {"The vault holds no #{name}.\n", 1}
 
       assert changes(name) == [
-               {"secret.removed", "acme", "ops"},
-               {"secret.removed", "acme/@jon", "ops"},
-               {"secret.removed", nil, "ops"}
+               {"secret.removed", "acme", "shell:ops"},
+               {"secret.removed", "acme/@jon", "shell:ops"},
+               {"secret.removed", nil, "shell:ops"}
              ]
     end
   end
