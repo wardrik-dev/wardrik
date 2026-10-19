@@ -31,7 +31,7 @@ defmodule Wardrik.Agent.State do
   `recovery` from the moment it starts. A turn that has handed over a batch
   of tool calls comes back replaying from the last one, under the trace it
   began on, so the calls keep their ids; a fresh turn that has not is owed,
-  and runs again against the context it already holds; a turn resumed from a
+  and runs again against the history it already holds; a turn resumed from a
   park, and not checkpointed since, comes back resuming with the decisions it
   was given, so none is lost, and a `Wardrik.Ledger` answers for an approved
   call that had begun. A waiting turn keeps its source, and the events of its
@@ -92,9 +92,9 @@ defmodule Wardrik.Agent.State do
   match rather than by a guard someone has to remember to write.
   """
 
-  alias ReqLLM.Context
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
+  alias Wardrik.Conversation
   alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
@@ -123,7 +123,7 @@ defmodule Wardrik.Agent.State do
 
     @typedoc """
     What the turn comes back as if it is lost: `:owed`, run again against
-    the context the agent holds; `{:replaying, checkpoint}`, carried on from
+    the history the agent holds; `{:replaying, checkpoint}`, carried on from
     the batch of tool calls it last handed over; or `{:resuming, parked,
     decisions}`, the park it resumed, with the decisions it was resumed with.
     """
@@ -190,14 +190,14 @@ defmodule Wardrik.Agent.State do
 
   @default_idle_timeout :timer.minutes(15)
 
-  @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :run_opts, :log, :host]
+  @enforce_keys [:agent_id, :config, :history, :runner, :resumer, :run_opts, :log, :host]
   defstruct [
     :generation,
     :agent_id,
     :log,
     :host,
     :config,
-    :context,
+    :history,
     :runner,
     :resumer,
     :run_opts,
@@ -256,7 +256,7 @@ defmodule Wardrik.Agent.State do
           log: Writer.t(),
           host: Wardrik.Host.t(),
           config: Config.t(),
-          context: Context.t(),
+          history: Conversation.t(),
           runner: runner(),
           resumer: resumer(),
           run_opts: keyword(),
@@ -327,7 +327,7 @@ defmodule Wardrik.Agent.State do
       log: Writer.new(agent_id),
       host: Wardrik.Host.new(),
       config: Keyword.get(opts, :config, Config.new()),
-      context: Keyword.get(opts, :context, Context.new()),
+      history: Keyword.get(opts, :history, Conversation.new()),
       runner: mfa!(Keyword.get(opts, :runner, {Turn, :run, []}), :runner),
       resumer: mfa!(Keyword.get(opts, :resumer, {Turn, :resume, []}), :resumer),
       replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :replay, []}), :replayer),
@@ -418,9 +418,9 @@ defmodule Wardrik.Agent.State do
   end
 
   @doc "Runs a turn with the runner this agent was given."
-  @spec apply_runner(t(), Run.t(), Context.t()) :: Turn.t()
-  def apply_runner(%__MODULE__{runner: {module, function, args}}, %Run{} = run, context) do
-    apply(module, function, args ++ [Turn.new(run, context)])
+  @spec apply_runner(t(), Run.t(), Conversation.t()) :: Turn.t()
+  def apply_runner(%__MODULE__{runner: {module, function, args}}, %Run{} = run, history) do
+    apply(module, function, args ++ [Turn.new(run, history)])
   end
 
   @doc "Finishes a parked turn with the resumer this agent was given."
@@ -545,7 +545,7 @@ defmodule Wardrik.Agent.State do
   behind it waits to be answered or abandoned rather than starting beside it.
 
   An agent owed a turn runs one for the sender it was running it for, with
-  only their queued messages ahead, against the context that already holds
+  only their queued messages ahead, against the history that already holds
   the question it was answering. One due to replay a turn
   answers `{:replay, run, checkpoint, state}`: the turn goes on from its
   checkpoint, under the trace it began on. One due to resume a parked turn
@@ -585,12 +585,12 @@ defmodule Wardrik.Agent.State do
   defp asks(messages),
     do: for(%Message{id: id, reply_to: to} <- messages, agent <- to, do: {agent, id})
 
-  @doc "Records the turn a `take/1` led to, and the context it was given."
-  @spec started(t(), Task.t(), Run.t(), Context.t(), integer()) :: t()
-  def started(%__MODULE__{} = state, task, %Run{} = run, %Context{} = context, started_at) do
+  @doc "Records the turn a `take/1` led to, and the history it was given."
+  @spec started(t(), Task.t(), Run.t(), Conversation.t(), integer()) :: t()
+  def started(%__MODULE__{} = state, task, %Run{} = run, %Conversation{} = history, started_at) do
     %{
       state
-      | context: context,
+      | history: history,
         labels: Wardrik.Label.union(state.labels, run.labels),
         mode: %Running{task: task, run: run, started_at: started_at, recovery: :owed}
     }
@@ -630,11 +630,15 @@ defmodule Wardrik.Agent.State do
   messages the turn answers after it, as the agent's from now on. `:stale`
   when `pid` is not the running turn.
   """
-  @spec kept(t(), pid(), Context.t()) :: {:ok, t()} | :stale
-  def kept(%__MODULE__{mode: %Running{task: %Task{pid: pid}}} = state, pid, %Context{} = context),
-    do: {:ok, %{state | context: context}}
+  @spec kept(t(), pid(), Conversation.t()) :: {:ok, t()} | :stale
+  def kept(
+        %__MODULE__{mode: %Running{task: %Task{pid: pid}}} = state,
+        pid,
+        %Conversation{} = history
+      ),
+      do: {:ok, %{state | history: history}}
 
-  def kept(%__MODULE__{}, _pid, _context), do: :stale
+  def kept(%__MODULE__{}, _pid, _history), do: :stale
 
   @doc """
   Whether `task_ref` is the turn this agent is running.
@@ -653,13 +657,13 @@ defmodule Wardrik.Agent.State do
   A turn that answered while stopping reports what the interrupt kept rather
   than a plain finish, so a kill switch is never silent about what it caught.
   """
-  @spec settled(t(), [ReqLLM.Message.t()], [Wardrik.Label.t()]) :: {t(), [effect()]}
+  @spec settled(t(), [Conversation.message()], [Wardrik.Label.t()]) :: {t(), [effect()]}
   def settled(%__MODULE__{mode: %Running{} = running} = state, messages, labels) do
     outcome = if running.stopping, do: :interrupted, else: :ok
 
     state = %{
       state
-      | context: Context.append(state.context, messages),
+      | history: Conversation.append(state.history, messages),
         outcome: outcome,
         labels: Wardrik.Label.union(state.labels, labels)
     }
@@ -677,7 +681,7 @@ defmodule Wardrik.Agent.State do
     }
 
   defp reply(%Running{stopping: nil}, state, messages, labels),
-    do: answer(state, state.answering, answered(Wardrik.LLM.Message.answer(messages)), labels)
+    do: answer(state, state.answering, answered(Conversation.answer(messages)), labels)
 
   defp reply(%Running{stopping: %Stopping{}}, state, _messages, _labels),
     do: answer(state, state.answering, &stopped/1, [])
@@ -689,9 +693,9 @@ defmodule Wardrik.Agent.State do
   """
   @spec clear(t()) :: {:ok, t(), [effect()]} | {:error, :busy}
   def clear(%__MODULE__{mode: :idle} = state) do
-    dropped = length(state.context.messages)
+    dropped = length(state.history.messages)
 
-    {:ok, %{state | context: Context.new(), labels: []},
+    {:ok, %{state | history: Conversation.new(), labels: []},
      [{:emit, Source.root(state.agent_id), %Event.ContextCleared{dropped: dropped}}]}
   end
 

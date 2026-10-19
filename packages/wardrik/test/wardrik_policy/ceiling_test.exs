@@ -1,7 +1,6 @@
 defmodule WardrikPolicy.CeilingTest do
   use ExUnit.Case, async: false
 
-  alias ReqLLM.Context
   alias Wardrik.AgentID
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
@@ -9,7 +8,7 @@ defmodule WardrikPolicy.CeilingTest do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Request
   alias Wardrik.Run
-  alias Wardrik.Test.LLMStub
+  alias Wardrik.Test.LLM
   alias WardrikPolicy.Budget
   alias WardrikPolicy.Ceiling
   alias WardrikPolicy.Spend
@@ -30,7 +29,12 @@ defmodule WardrikPolicy.CeilingTest do
         "orgs/#{org}/team"
       )
 
-    %{org: org, other: other, team: team, request: Request.new(Config.new(), Context.new())}
+    %{
+      org: org,
+      other: other,
+      team: team,
+      request: Request.new(Config.new(), Wardrik.Conversation.new())
+    }
   end
 
   defp agent(org, name, hooks),
@@ -38,8 +42,8 @@ defmodule WardrikPolicy.CeilingTest do
 
   defp costing(usd),
     do: %{
-      LLMStub.final_answer("done")
-      | usage: %{input_tokens: 10, output_tokens: 5, total_cost: usd}
+      LLM.final_answer("done")
+      | usage: %Wardrik.LLM.Usage{input_tokens: 10, output_tokens: 5, total_cost: usd}
     }
 
   defp decide(run, request), do: request |> Pipeline.model(run) |> Pipeline.decide()

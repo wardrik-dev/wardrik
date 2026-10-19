@@ -2,15 +2,11 @@ defmodule Wardrik.AgentLedgerTest do
   use ExUnit.Case, async: false
 
   import Wardrik.Test, only: [store: 0]
-  use Mimic
 
   alias Wardrik.Agent
   alias Wardrik.Event
   alias Wardrik.LLM.Config
-  alias Wardrik.Test.LLMStub
-
-  setup :set_mimic_global
-  setup :verify_on_exit!
+  alias Wardrik.Test.LLM
 
   # One tool that tells the test it has begun, then waits to be told to finish,
   # so a test can lose the agent part way through the call.
@@ -80,9 +76,9 @@ defmodule Wardrik.AgentLedgerTest do
   test "a call lost part way through its batch does not run again unless a person says so", %{
     key: key
   } do
-    LLMStub.stream([
-      LLMStub.tool_call("call_1", "deploy", %{}),
-      LLMStub.final_answer("It may have shipped.")
+    LLM.stream(Wardrik.Test.llm(), [
+      LLM.tool_call("call_1", "deploy", %{}),
+      LLM.final_answer("It may have shipped.")
     ])
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts([]), key)
@@ -103,7 +99,10 @@ defmodule Wardrik.AgentLedgerTest do
   end
 
   test "a call lost after a person approved it asks again before it runs again", %{key: key} do
-    LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{}), LLMStub.final_answer("Shipped.")])
+    LLM.stream(Wardrik.Test.llm(), [
+      LLM.tool_call("call_1", "deploy", %{}),
+      LLM.final_answer("Shipped.")
+    ])
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts(hooks: @careful), key)
     Agent.ask(agent, "ship it")
@@ -127,7 +126,10 @@ defmodule Wardrik.AgentLedgerTest do
   end
 
   test "an agent given hooks that allow the call it waits on carries on", %{key: key} do
-    LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{}), LLMStub.final_answer("Shipped.")])
+    LLM.stream(Wardrik.Test.llm(), [
+      LLM.tool_call("call_1", "deploy", %{}),
+      LLM.final_answer("Shipped.")
+    ])
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts(hooks: @careful), key)
     Agent.ask(agent, "ship it")
@@ -145,9 +147,9 @@ defmodule Wardrik.AgentLedgerTest do
   end
 
   test "a turn stopped with its agent stops, with the call it was making", %{key: key} do
-    LLMStub.by_round([
-      LLMStub.tool_call("call_1", "deploy", %{}),
-      LLMStub.final_answer("It may have shipped.")
+    LLM.by_round(Wardrik.Test.llm(), [
+      LLM.tool_call("call_1", "deploy", %{}),
+      LLM.final_answer("It may have shipped.")
     ])
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts([]), key)
@@ -167,7 +169,10 @@ defmodule Wardrik.AgentLedgerTest do
   end
 
   test "a call refused after it was lost part way tells the model it may have run", %{key: key} do
-    LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{}), LLMStub.final_answer("Left it.")])
+    LLM.stream(Wardrik.Test.llm(), [
+      LLM.tool_call("call_1", "deploy", %{}),
+      LLM.final_answer("Left it.")
+    ])
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts(hooks: @careful), key)
     Agent.ask(agent, "ship it")
@@ -200,7 +205,10 @@ defmodule Wardrik.AgentLedgerTest do
 
     on_exit(fn -> :telemetry.detach(handler) end)
 
-    LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{}), LLMStub.final_answer("Shipped.")])
+    LLM.stream(Wardrik.Test.llm(), [
+      LLM.tool_call("call_1", "deploy", %{}),
+      LLM.final_answer("Shipped.")
+    ])
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts([]), key)
     Agent.ask(agent, "ship it")

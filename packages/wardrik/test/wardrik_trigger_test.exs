@@ -31,7 +31,6 @@ end
 defmodule WardrikTriggerTest do
   use ExUnit.Case, async: false
 
-  alias ReqLLM.Context
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.LLM.Turn
@@ -58,9 +57,9 @@ defmodule WardrikTriggerTest do
 
   @doc "Reports the message and labels a turn began with, then answers."
   def labelled(test_pid, %Turn{} = turn) do
-    [%{content: [%{text: text}]} | _] = Enum.reverse(turn.context.messages)
-    send(test_pid, {:asked, text, turn.labels})
-    Turn.done(turn, [Context.assistant("done")])
+    [last | _] = Enum.reverse(turn.context.messages)
+    send(test_pid, {:asked, Wardrik.Conversation.text(last), turn.labels})
+    Turn.done(turn, [Wardrik.Conversation.Assistant.new("done")])
   end
 
   defp watching(_context), do: :ok

@@ -2,9 +2,9 @@ defmodule Wardrik.AgentSleepTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
+  alias Wardrik.Conversation.Assistant
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.LLM.Config
@@ -94,7 +94,7 @@ defmodule Wardrik.AgentSleepTest do
 
   test "a decision on a call parked before the agent slept carries the call on" do
     test_pid = self()
-    answer = {:ok, [Context.assistant("shipped")]}
+    answer = {:ok, [Assistant.new("shipped")]}
 
     key =
       start_agent(
@@ -123,7 +123,7 @@ defmodule Wardrik.AgentSleepTest do
 
   test "a sleeping agent parked on a credential wakes when it is connected" do
     test_pid = self()
-    answer = {:ok, [Context.assistant("opened")]}
+    answer = {:ok, [Assistant.new("opened")]}
     link = %{url: "https://github.com/login/oauth", code: nil}
     credential = %{ref: "github", owner: {"acme", "jon"}}
 

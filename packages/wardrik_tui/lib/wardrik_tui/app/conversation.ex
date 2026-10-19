@@ -11,9 +11,12 @@ defmodule WardrikTUI.App.Conversation do
   draft, transcript, usage, and scroll position belong to the saved display.
   """
 
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.ToolError
+  alias Wardrik.Conversation.ToolResult
+  alias Wardrik.Conversation.User
   alias Wardrik.Delegation
   alias Wardrik.Event
-  alias Wardrik.LLM.Message
   alias WardrikConsole.Markdown
   alias WardrikConsole.Table
   alias WardrikTUI.Activity
@@ -65,8 +68,8 @@ defmodule WardrikTUI.App.Conversation do
   @type options :: [now: integer(), verbose?: boolean(), pinned?: boolean()]
 
   @doc "An empty display, independent of subscriptions and terminal widgets."
-  @spec new(pos_integer(), String.t()) :: t()
-  def new(width, model) do
+  @spec new(pos_integer()) :: t()
+  def new(width) do
     %__MODULE__{
       activity: Activity.new(),
       transcript: Transcript.new(width),
@@ -76,7 +79,7 @@ defmodule WardrikTUI.App.Conversation do
       chars: 0,
       answering?: false,
       tail: [],
-      usage: Usage.new(model),
+      usage: Usage.new(),
       unread: 0,
       draft: "",
       history: History.new(),
@@ -169,26 +172,24 @@ defmodule WardrikTUI.App.Conversation do
   # asked, what the agent answered, and each tool call with what it returned.
   defp playback_projection(projection, messages), do: Enum.reduce(messages, projection, &play/2)
 
-  defp play(%{role: :user} = message, projection),
-    do: question_projection(projection, Message.text(message))
+  defp play(%User{} = message, projection),
+    do: question_projection(projection, Wardrik.Conversation.text(message))
 
-  defp play(%{role: :assistant} = message, projection) do
-    projection |> say(Message.text(message)) |> calls(message.tool_calls || [])
+  defp play(%Assistant{} = message, projection) do
+    projection |> say(Wardrik.Conversation.text(message)) |> calls(message.parts)
   end
 
-  defp play(%{role: :tool} = message, projection) do
-    output = Message.text(message)
+  defp play(%ToolResult{} = message, projection), do: answered(projection, message)
+  defp play(%ToolError{} = message, projection), do: answered(projection, message)
+
+  defp answered(projection, %{call_id: id, name: name} = message) do
+    output = Wardrik.Conversation.text(message)
     ok? = tool_ok?(message, output)
-    name = message.name || "tool"
 
     projection
     |> append_projection(View.tool_result(name, output, ok?))
-    |> assign(
-      tools: Exchange.finish(projection.state.tools, message.tool_call_id, name, output, ok?)
-    )
+    |> assign(tools: Exchange.finish(projection.state.tools, id, name, output, ok?))
   end
-
-  defp play(_system_message, projection), do: projection
 
   defp say(projection, ""), do: projection
 
@@ -199,19 +200,19 @@ defmodule WardrikTUI.App.Conversation do
     projection |> assign(answering?: false, answer_text: text) |> answer_lines(streamed ++ rest)
   end
 
-  defp calls(projection, tool_calls) do
-    Enum.reduce(tool_calls, projection, fn call, projection ->
-      %{id: id, name: name, arguments: arguments} = ReqLLM.ToolCall.from_map(call)
-
-      projection
-      |> append_projection(View.tool_call(name, arguments))
-      |> assign(tools: Exchange.call(projection.state.tools, id, name, arguments))
-    end)
+  # The calls the model asked for, and those its provider ran for it.
+  defp calls(projection, parts) do
+    for %{id: id, name: name, arguments: arguments} <- parts, reduce: projection do
+      projection ->
+        projection
+        |> append_projection(View.tool_call(name, arguments))
+        |> assign(tools: Exchange.call(projection.state.tools, id, name, arguments))
+    end
   end
 
-  # A result is a failure when the runner marked it so, or when the tool
-  # itself reported one through `Wardrik.Tool.Result.error/1`.
-  defp tool_ok?(%{metadata: %{is_error: true}}, _output), do: false
+  # A result is a failure when the runner answered it as one, or when the
+  # tool itself reported one through `Wardrik.Tool.Result.error/1`.
+  defp tool_ok?(%ToolError{}, _output), do: false
 
   defp tool_ok?(_message, output) do
     not match?({:ok, %{"ok" => false}}, JSON.decode(output))
@@ -319,11 +320,12 @@ defmodule WardrikTUI.App.Conversation do
       line ->
         indent = indent(projection, event)
         room = projection.state.transcript.width - String.length(indent)
-        id = call.metadata[:id]
 
         projection
         |> append_projection([indent, Text.truncate(line, max(room, 8))])
-        |> assign(tools: Exchange.call(projection.state.tools, id, call.name, call.arguments))
+        |> assign(
+          tools: Exchange.call(projection.state.tools, call.id, call.name, call.arguments)
+        )
     end
   end
 
@@ -386,24 +388,11 @@ defmodule WardrikTUI.App.Conversation do
 
   # -- usage
 
-  defp handle_projection(%Event{payload: %Event.Meta{chunk: chunk}, source: source}, projection) do
-    assign(projection, usage: Usage.observe(projection.state.usage, source.trace.span_id, chunk))
-  end
-
-  defp handle_projection(
-         %Event{
-           payload: %Event.ModelFinished{},
-           source: source
-         } =
-           event,
-         projection
-       ) do
+  defp handle_projection(%Event{payload: %Event.ModelFinished{}} = event, projection) do
     projection
-    |> assign(usage: Usage.settle(projection.state.usage, source.trace.span_id))
+    |> assign(usage: Usage.settle(projection.state.usage, event))
     |> trace(event)
   end
-
-  defp handle_projection(%Event{payload: %Event.Chunk{}}, projection), do: projection
 
   defp handle_projection(%Event{} = event, projection), do: trace(projection, event)
 

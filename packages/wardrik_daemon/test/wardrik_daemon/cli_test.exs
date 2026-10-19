@@ -11,7 +11,6 @@ defmodule WardrikDaemon.CLITest do
 
   import ExUnit.CaptureIO
 
-  alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Event
@@ -67,7 +66,7 @@ defmodule WardrikDaemon.CLITest do
 
   defp parked_agent do
     test_pid = self()
-    answer = {:ok, [Context.assistant("shipped")]}
+    answer = {:ok, [Wardrik.Conversation.Assistant.new("shipped")]}
 
     {key, agent} =
       Wardrik.Test.Fleet.start_agent(

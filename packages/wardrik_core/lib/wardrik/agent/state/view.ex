@@ -94,7 +94,7 @@ defmodule Wardrik.Agent.State.View do
       agent: state.agent_id,
       generation: state.generation,
       status: status(state),
-      context: state.context,
+      history: state.history,
       parked: State.waiting_on(state),
       trace_id: trace_id(state.mode),
       outcome: state.outcome,

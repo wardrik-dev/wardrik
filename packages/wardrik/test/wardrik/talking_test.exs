@@ -4,7 +4,6 @@ defmodule Wardrik.TalkingTest do
 
   import Wardrik.Test, only: [store: 0]
 
-  alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
@@ -36,7 +35,9 @@ defmodule Wardrik.TalkingTest do
     {id, agent} =
       Fleet.start_agent(
         runner: {AgentRunners, :parking, [self(), "call_1"]},
-        resumer: {AgentRunners, :resuming, [self(), {:ok, [Context.assistant("shipped")]}]}
+        resumer:
+          {AgentRunners, :resuming,
+           [self(), {:ok, [Wardrik.Conversation.Assistant.new("shipped")]}]}
       )
 
     :ok = Event.Bus.subscribe(id, level: :lifecycle)

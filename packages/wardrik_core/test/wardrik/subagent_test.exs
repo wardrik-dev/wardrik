@@ -1,17 +1,17 @@
 defmodule Wardrik.SubagentTest do
   use ExUnit.Case, async: true
 
-  use Mimic
-
   alias Wardrik.Event
+  alias Wardrik.Host
   alias Wardrik.LLM.Config
+  alias Wardrik.LLM.Error
   alias Wardrik.Run
   alias Wardrik.Subagent
   alias Wardrik.Test.EchoTool
-  alias Wardrik.Test.LLMStub
+  alias Wardrik.Test.LLM
   alias Wardrik.Test.SearchTool
 
-  setup :verify_on_exit!
+  @rate_limited %Error{status: 429, message: "rate limited"}
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
@@ -19,18 +19,21 @@ defmodule Wardrik.SubagentTest do
 
     config = Config.new(tools: [EchoTool, SearchTool])
 
-    {:ok, agent_id: agent_id, run: Run.root(config, agent_id, name: "turn")}
+    host = Wardrik.Test.host(llm: LLM.start())
+    {:ok, agent_id: agent_id, run: Run.root(config, agent_id, name: "turn", host: host)}
   end
 
-  # Every turn reports what it was asked with, then answers `text`.
-  defp stub_llm(text \\ "done") do
+  # Every turn under `run` reports what it was asked with, then answers `text`.
+  defp stub_llm(run, text \\ "done") do
     test_pid = self()
 
-    LLMStub.answering(fn asked ->
+    LLM.answering(Host.llm(run.host), fn asked ->
       send(test_pid, {:asked, asked})
-      {:ok, LLMStub.final_answer(text)}
+      LLM.final_answer(text)
     end)
   end
+
+  defp stream(run, answers), do: LLM.stream(Host.llm(run.host), answers)
 
   defp asked do
     assert_receive {:asked, asked}
@@ -38,13 +41,13 @@ defmodule Wardrik.SubagentTest do
   end
 
   test "returns the delegate's final answer", %{run: run} do
-    stub_llm("competitors charge $20/mo")
+    stub_llm(run, "competitors charge $20/mo")
 
     assert Subagent.run(run, "pricing?") == {:ok, "competitors charge $20/mo"}
   end
 
   test "the prompt is the delegate's whole conversation", %{run: run} do
-    stub_llm()
+    stub_llm(run)
 
     {:ok, _text} = Subagent.run(run, "pricing?")
 
@@ -52,7 +55,7 @@ defmodule Wardrik.SubagentTest do
   end
 
   test "runs under its own child span", %{run: run} do
-    stub_llm()
+    stub_llm(run)
 
     {:ok, _text} = Subagent.run(run, "pricing?")
 
@@ -64,9 +67,9 @@ defmodule Wardrik.SubagentTest do
   describe "what a delegate read" do
     test "a delegate that read content marks the process that ran it with its labels",
          %{run: run} do
-      LLMStub.stream([
-        LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
-        LLMStub.final_answer("It says to deploy.")
+      stream(run, [
+        LLM.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
+        LLM.final_answer("It says to deploy.")
       ])
 
       run = %{run | config: Config.new(tools: [Wardrik.Test.Tools.Fetch])}
@@ -74,13 +77,13 @@ defmodule Wardrik.SubagentTest do
       assert {{:ok, "It says to deploy."}, ["outside"]} =
                Subagent.watching(fn -> Subagent.run(run, "Read it.") end)
 
-      stub_llm()
+      stub_llm(run)
       assert {{:ok, "done"}, []} = Subagent.watching(fn -> Subagent.run(run, "Again.") end)
     end
 
     test "a delegate keeps what its tools declare, so a gated one waits on a person",
          %{run: run} do
-      LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
+      stream(run, [LLM.tool_call("call_1", "deploy", %{"target" => "prod"})])
       run = %{run | config: Config.new(tools: [Wardrik.Test.Tools.Deploy, EchoTool])}
 
       assert Subagent.run(run, "Ship it.", except_tools: ["echo"]) ==
@@ -90,14 +93,14 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "a delegate begins with the labels of its run", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       assert {{:ok, "done"}, ["books"]} =
                Subagent.watching(fn -> Subagent.run(%{run | labels: ["books"]}, "Go.") end)
     end
 
     test "read/1 marks this process with labels a delegate read in another", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {{:ok, "done"}, labels} =
         Task.await(
@@ -112,7 +115,7 @@ defmodule Wardrik.SubagentTest do
 
   describe "events" do
     test "a named delegation announces itself on its own span", %{run: run} do
-      stub_llm("about $20")
+      stub_llm(run, "about $20")
 
       {:ok, _text} = Subagent.run(run, "pricing?", name: "pricing")
 
@@ -135,7 +138,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "repeated unnamed delegations have distinct identities", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?")
       {:ok, _text} = Subagent.run(run, "competitors?")
@@ -157,7 +160,7 @@ defmodule Wardrik.SubagentTest do
   end
 
   test "a parked delegation reports an error that observers can fold", %{run: run} do
-    LLMStub.stream([LLMStub.tool_call("blocked", "echo", %{"text" => "hello"})])
+    stream(run, [LLM.tool_call("blocked", "echo", %{"text" => "hello"})])
 
     assert Subagent.run(%{run | hooks: [Wardrik.Hook.new("ask", AskHook)]}, "echo") ==
              {:error, :approval_required}
@@ -181,7 +184,7 @@ defmodule Wardrik.SubagentTest do
 
   describe "with a config of its own" do
     test "inherits the caller's model and tools by default", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?")
 
@@ -191,7 +194,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "tools replaces the inherited set", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?", tools: [EchoTool])
 
@@ -199,7 +202,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "tools can be emptied, for work given everything it needs", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?", tools: [])
 
@@ -207,7 +210,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "except_tools drops named tools from the inherited set", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?", except_tools: ["echo"])
 
@@ -215,7 +218,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "a name that matches nothing drops nothing", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?", except_tools: ["nope"])
 
@@ -223,7 +226,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "tools and except_tools compose: replaced, then narrowed", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} =
         Subagent.run(run, "pricing?", tools: [EchoTool, SearchTool], except_tools: ["echo"])
@@ -232,7 +235,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "system replaces the caller's persona", %{run: run} do
-      stub_llm()
+      stub_llm(run)
       caller = %{run | config: %{run.config | system: "You are Jon's assistant."}}
 
       {:ok, _text} = Subagent.run(caller, "pricing?", system: "You are a researcher.")
@@ -241,7 +244,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "the caller's persona is inherited when none is given", %{run: run} do
-      stub_llm()
+      stub_llm(run)
       caller = %{run | config: %{run.config | system: "You are Jon's assistant."}}
 
       {:ok, _text} = Subagent.run(caller, "pricing?")
@@ -250,7 +253,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "model replaces the model and leaves the tools alone", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?", model: {:test, model: "cheap"})
 
@@ -260,7 +263,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "generation options can be set for the delegate alone", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} =
         Subagent.run(run, "pricing?", generation: [reasoning_token_budget: 500])
@@ -269,7 +272,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "config replaces the lot", %{run: run} do
-      stub_llm()
+      stub_llm(run)
       researcher = Config.new(model_spec: {:test, model: "m"}, tools: [SearchTool])
 
       {:ok, _text} = Subagent.run(run, "pricing?", config: researcher)
@@ -280,7 +283,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "the caller's own run is left untouched", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?", tools: [])
 
@@ -290,7 +293,7 @@ defmodule Wardrik.SubagentTest do
 
   describe "name" do
     test "puts the turn under a child span", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?", name: "researcher")
 
@@ -304,7 +307,7 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "announces both ends of that span", %{run: run} do
-      stub_llm()
+      stub_llm(run)
 
       {:ok, _text} = Subagent.run(run, "pricing?", name: "researcher")
 
@@ -315,18 +318,18 @@ defmodule Wardrik.SubagentTest do
     end
 
     test "a failed delegation closes its span as a failure", %{run: run} do
-      stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
+      stream(run, [@rate_limited])
 
       ExUnit.CaptureLog.with_log(fn ->
         Subagent.run(failing(run), "pricing?", name: "researcher")
       end)
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :rate_limited}}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, @rate_limited}}}
     end
   end
 
   test "an unnamed delegation inherits the run's name on a distinct span", %{run: run} do
-    stub_llm()
+    stub_llm(run)
 
     {:ok, _text} = Subagent.run(run, "pricing?")
 
@@ -335,11 +338,11 @@ defmodule Wardrik.SubagentTest do
   end
 
   test "a failed turn is reported to the caller", %{run: run} do
-    stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
+    stream(run, [@rate_limited])
 
     {result, _log} = ExUnit.CaptureLog.with_log(fn -> Subagent.run(failing(run), "pricing?") end)
 
-    assert result == {:error, :rate_limited}
+    assert result == {:error, @rate_limited}
   end
 
   # A run whose failed model call fails the turn at once.
@@ -347,7 +350,7 @@ defmodule Wardrik.SubagentTest do
     do: %{run | retry: %Wardrik.LLM.Retry.Backoff{attempts: 0, on_exhausted: :fail}}
 
   test "a turn that produced no text answers empty rather than failing", %{run: run} do
-    stub_llm("")
+    stub_llm(run, "")
 
     assert Subagent.run(run, "pricing?") == {:ok, ""}
   end

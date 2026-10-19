@@ -6,22 +6,23 @@ defmodule Wardrik.Test.AgentRunners do
   arguments first and the `Wardrik.LLM.Turn` last, and handing the turn back.
   """
 
-  alias ReqLLM.Context
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.ToolCall
   alias Wardrik.Event
-  alias Wardrik.LLM.Message
   alias Wardrik.LLM.Turn
 
-  @doc "Reports the context it was handed, then answers immediately."
+  @doc "Reports the history it was handed, then answers immediately."
   def echo(test_pid, reply, %Turn{} = turn) do
     send(test_pid, {:turn, snapshot(turn.context)})
-    Turn.done(turn, [Context.assistant(reply)])
+    Turn.done(turn, [Assistant.new(reply)])
   end
 
   @doc "Hands back its own pid and blocks until released."
   def blocking(test_pid, reply, %Turn{} = turn) do
     send(test_pid, {:turn, snapshot(turn.context), self()})
     receive do: (:release -> :ok)
-    Turn.done(turn, [Context.assistant(reply)])
+    Turn.done(turn, [Assistant.new(reply)])
   end
 
   @doc "Yields the moment it is asked to."
@@ -34,7 +35,7 @@ defmodule Wardrik.Test.AgentRunners do
       1_000 -> send(test_pid, :never_yielded)
     end
 
-    Turn.done(turn, [Context.assistant("yielded")])
+    Turn.done(turn, [Assistant.new("yielded")])
   end
 
   @doc "Streams until interrupted."
@@ -42,9 +43,9 @@ defmodule Wardrik.Test.AgentRunners do
     send(test_pid, {:running, self()})
 
     receive do
-      :interrupt -> Turn.done(turn, [Context.assistant("half a th")])
+      :interrupt -> Turn.done(turn, [Assistant.new("half a th")])
     after
-      1_000 -> Turn.done(turn, [Context.assistant("never interrupted")])
+      1_000 -> Turn.done(turn, [Assistant.new("never interrupted")])
     end
   end
 
@@ -57,8 +58,8 @@ defmodule Wardrik.Test.AgentRunners do
   @doc "Raises when the last message is `trigger`, and otherwise answers."
   def crashing(test_pid, trigger, %Turn{context: context} = turn) do
     send(test_pid, {:turn, snapshot(context)})
-    if Message.text(List.last(context.messages)) == trigger, do: raise("kaboom")
-    Turn.done(turn, [Context.assistant("ok")])
+    if Conversation.text(List.last(context.messages)) == trigger, do: raise("kaboom")
+    Turn.done(turn, [Assistant.new("ok")])
   end
 
   @doc """
@@ -79,7 +80,7 @@ defmodule Wardrik.Test.AgentRunners do
       :ok
     end)
 
-    Turn.done(turn, [Context.assistant("done")])
+    Turn.done(turn, [Assistant.new("done")])
   end
 
   @doc "Fails every turn with `reason`."
@@ -88,13 +89,13 @@ defmodule Wardrik.Test.AgentRunners do
   @doc "Emits on the run it was given before answering."
   def emitting(text, %Turn{run: run} = turn) do
     Wardrik.Event.emit(run.source, %Event.Result{text: text})
-    Turn.done(turn, [Context.assistant("ok")])
+    Turn.done(turn, [Assistant.new("ok")])
   end
 
   @doc "Reports the run it was given, then answers."
   def reporting(test_pid, %Turn{run: run} = turn) do
     send(test_pid, {:run, run})
-    Turn.done(turn, [Context.assistant("ok")])
+    Turn.done(turn, [Assistant.new("ok")])
   end
 
   @doc "Waits on a single call, so the waiting path runs without a hook."
@@ -160,18 +161,10 @@ defmodule Wardrik.Test.AgentRunners do
   defp came_to(turn, {:parked, %Turn{} = parked}), do: Turn.under(parked, turn.run)
 
   @doc "A turn written down before a batch asking for one call to `deploy`."
-  def checkpoint(context \\ Context.new()) do
-    call = ReqLLM.ToolCall.new("call_1", "deploy", "{}")
-
+  def checkpoint(context \\ Conversation.new()) do
     %Turn{
       context: context,
-      response: %ReqLLM.Response{
-        id: "r",
-        model: "m",
-        context: context,
-        message: Context.assistant("", tool_calls: [call]),
-        finish_reason: :tool_calls
-      },
+      answer: Wardrik.Test.LLM.tool_call("call_1", "deploy", %{}),
       remaining: 5
     }
   end
@@ -179,16 +172,11 @@ defmodule Wardrik.Test.AgentRunners do
   @doc "A turn written down, waiting on one call to `deploy`."
   @spec parked_turn(String.t()) :: Turn.t()
   def parked_turn(call_id \\ "call_1") do
-    call = %{id: call_id, name: "deploy", arguments: %{}}
+    call = %ToolCall{id: call_id, name: "deploy", arguments: %{}}
 
     %Turn{
-      context: Context.new(),
-      response: %ReqLLM.Response{
-        id: "r",
-        model: "test",
-        context: Context.new(),
-        finish_reason: :tool_calls
-      },
+      context: Conversation.new(),
+      answer: Wardrik.Test.LLM.answer(%Assistant{parts: []}, :tool_calls),
       calls: [waiting(call, "This ships to production.")],
       remaining: 5,
       revision: Wardrik.Hook.revision([]),
@@ -209,6 +197,10 @@ defmodule Wardrik.Test.AgentRunners do
     }
   end
 
-  @doc "The roles and text of a context, for asserting on what a turn was handed."
-  def snapshot(context), do: Enum.map(context.messages, &{&1.role, Message.text(&1)})
+  @doc "The authors and text of a history, for asserting on what a turn was handed."
+  def snapshot(context), do: Enum.map(context.messages, &{role(&1), Conversation.text(&1)})
+
+  defp role(%Wardrik.Conversation.User{}), do: :user
+  defp role(%Assistant{}), do: :assistant
+  defp role(_answer), do: :tool
 end

@@ -73,7 +73,9 @@ defmodule Wardrik.Event.LogTest do
           decided_by: %{by: :default, hooks: []}
         }
       )
-      |> append!(source, %Event.Chunk{chunk: "chunk"})
+      |> append!(source, %Event.ToolCall{
+        call: %Wardrik.Conversation.ToolCall{id: "call_1", name: "search", arguments: %{}}
+      })
       |> append!(source, %Event.Thinking{text: "hmm"})
       |> append!(source, %Event.Result{text: "Hel"})
       |> append!(source, %Event.ToolProgress{
@@ -86,7 +88,7 @@ defmodule Wardrik.Event.LogTest do
         message_id: "s1.m0",
         outcome: :ok,
         duration_ms: 5,
-        response: nil,
+        answer: nil,
         cost: nil
       })
       |> append!(source, %Event.Result{text: "lo"})

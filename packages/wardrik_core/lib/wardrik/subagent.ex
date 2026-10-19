@@ -52,10 +52,10 @@ defmodule Wardrik.Subagent do
   a turn's delegations without its token stream.
   """
 
-  alias ReqLLM.Context
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.User
   alias Wardrik.Event
   alias Wardrik.LLM.Config
-  alias Wardrik.LLM.Message
   alias Wardrik.LLM.Turn
   alias Wardrik.Run
   alias Wardrik.Tool
@@ -111,11 +111,11 @@ defmodule Wardrik.Subagent do
   end
 
   defp answer(delegate, prompt) do
-    turn = delegate |> Turn.new(Context.new([Context.user(prompt)])) |> Turn.run()
+    turn = delegate |> Turn.new(Conversation.new([User.new(prompt)])) |> Turn.run()
     :ok = read(turn.labels)
 
     case turn do
-      %Turn{state: :done, messages: messages} -> {:ok, Message.answer(messages)}
+      %Turn{state: :done, messages: messages} -> {:ok, Conversation.answer(messages)}
       # A bounded delegation has no agent process to retain and resume a park.
       # Report the blocked work without executing the unapproved tool.
       %Turn{state: :waiting} -> {:error, :approval_required}

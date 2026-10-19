@@ -1,18 +1,14 @@
 defmodule WardrikResearch.DeepTest do
   use ExUnit.Case, async: true
 
-  use Mimic
-
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Run
   alias Wardrik.Test.Calls
-  alias Wardrik.Test.LLMStub
+  alias Wardrik.Test.LLM
   alias Wardrik.Test.SearchTool
 
   alias WardrikResearch.Deep
-
-  setup :verify_on_exit!
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
@@ -20,22 +16,24 @@ defmodule WardrikResearch.DeepTest do
 
     config = Config.new(tools: [SearchTool, Deep])
 
-    {:ok, agent_id: agent_id, run: Run.root(config, agent_id, name: "turn")}
+    llm = LLM.start()
+    host = Wardrik.Test.host(llm: llm)
+    {:ok, agent_id: agent_id, llm: llm, run: Run.root(config, agent_id, name: "turn", host: host)}
   end
 
   # Every turn reports itself, then answers according to what it was asked.
   # `crash_on` names angles whose researcher dies.
-  defp stub_llm(crash_on \\ []) do
+  defp stub_llm(llm, crash_on \\ []) do
     test_pid = self()
 
-    LLMStub.answering(fn asked ->
+    LLM.answering(llm, fn asked ->
       kind = if asked.prompt =~ "Your angle:", do: :research, else: :synthesis
       send(test_pid, {:turn, kind, asked})
 
       cond do
-        kind == :synthesis -> {:ok, LLMStub.final_answer("the combined report")}
+        kind == :synthesis -> LLM.final_answer("the combined report")
         Enum.any?(crash_on, &(asked.prompt =~ &1)) -> exit(:no_signal)
-        true -> {:ok, LLMStub.final_answer("what I found")}
+        true -> LLM.final_answer("what I found")
       end
     end)
   end
@@ -62,8 +60,8 @@ defmodule WardrikResearch.DeepTest do
   end
 
   describe "run/3" do
-    test "researches every angle and returns the synthesised report", %{run: run} do
-      stub_llm()
+    test "researches every angle and returns the synthesised report", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       assert {:ok, result} = Deep.run(%{topic: "widget pricing"}, run, [])
 
@@ -72,16 +70,16 @@ defmodule WardrikResearch.DeepTest do
       assert result["gaps"] == []
     end
 
-    test "one researcher per angle", %{run: run} do
-      stub_llm()
+    test "one researcher per angle", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets"}, run, [])
 
       assert Enum.count(research_turns()) == 5
     end
 
-    test "researchers get the agent's tools, minus this workflow", %{run: run} do
-      stub_llm()
+    test "researchers get the agent's tools, minus this workflow", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       assert run.config |> Config.tools() |> Enum.map(& &1.name) |> Enum.sort() == [
                "deep_research",
@@ -93,16 +91,16 @@ defmodule WardrikResearch.DeepTest do
       for asked <- research_turns(), do: assert(asked.tools == ["web_search"])
     end
 
-    test "the synthesiser gets no tools at all", %{run: run} do
-      stub_llm()
+    test "the synthesiser gets no tools at all", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets"}, run, [])
 
       assert synthesis_turn().tools == []
     end
 
-    test "each researcher is told the topic and its own angle", %{run: run} do
-      stub_llm()
+    test "each researcher is told the topic and its own angle", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing", "rivals"]}, run, [])
 
@@ -113,8 +111,8 @@ defmodule WardrikResearch.DeepTest do
       assert Enum.all?(prompts, &(&1 =~ "Topic: widgets"))
     end
 
-    test "the synthesiser is given every finding under its angle", %{run: run} do
-      stub_llm()
+    test "the synthesiser is given every finding under its angle", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing"]}, run, [])
 
@@ -127,8 +125,8 @@ defmodule WardrikResearch.DeepTest do
   end
 
   describe "personas" do
-    test "a researcher is told how to research, not just what", %{run: run} do
-      stub_llm()
+    test "a researcher is told how to research, not just what", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing"]}, run, [])
 
@@ -138,16 +136,16 @@ defmodule WardrikResearch.DeepTest do
       assert system =~ "rather than answering from memory"
     end
 
-    test "the synthesiser gets a persona of its own", %{run: run} do
-      stub_llm()
+    test "the synthesiser gets a persona of its own", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing"]}, run, [])
 
       assert synthesis_turn().system =~ "combine several researchers' reports"
     end
 
-    test "a persona is prepended, never left in the conversation", %{run: run} do
-      stub_llm()
+    test "a persona is prepended, never left in the conversation", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing"]}, run, [])
 
@@ -156,8 +154,11 @@ defmodule WardrikResearch.DeepTest do
       refute prompt =~ "rather than answering from memory"
     end
 
-    test "an angle's prompt is added to the shared persona, not swapped for it", %{run: run} do
-      stub_llm()
+    test "an angle's prompt is added to the shared persona, not swapped for it", %{
+      run: run,
+      llm: llm
+    } do
+      stub_llm(llm)
 
       angles = [%{angle: "plain"}, %{angle: "special", prompt: "Think like a pricing analyst."}]
       {:ok, _result} = Deep.run(%{topic: "widgets"}, run, angles: angles)
@@ -169,8 +170,8 @@ defmodule WardrikResearch.DeepTest do
       refute personas[false] =~ "Think like a pricing analyst."
     end
 
-    test "each angle gets only its own prompt", %{run: run} do
-      stub_llm()
+    test "each angle gets only its own prompt", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       angles = [
         %{angle: "pricing", prompt: "Think like a pricing analyst."},
@@ -192,24 +193,24 @@ defmodule WardrikResearch.DeepTest do
   end
 
   describe "angles" do
-    test "the caller can choose them, and the width follows", %{run: run} do
-      stub_llm()
+    test "the caller can choose them, and the width follows", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["one", "two", "three"]}, run, [])
 
       assert Enum.count(research_turns()) == 3
     end
 
-    test "an empty list falls back to the configured ones", %{run: run} do
-      stub_llm()
+    test "an empty list falls back to the configured ones", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: []}, run, [])
 
       assert Enum.count(research_turns()) == 5
     end
 
-    test "a caller's angles override the deployment's", %{run: run} do
-      stub_llm()
+    test "a caller's angles override the deployment's", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       angles = [%{angle: "pricing", prompt: "Think like a pricing analyst."}]
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["rivals"]}, run, angles: angles)
@@ -240,8 +241,11 @@ defmodule WardrikResearch.DeepTest do
   end
 
   describe "gaps" do
-    test "a dead angle is reported as a gap and the rest are still synthesised", %{run: run} do
-      stub_llm(["rivals"])
+    test "a dead angle is reported as a gap and the rest are still synthesised", %{
+      run: run,
+      llm: llm
+    } do
+      stub_llm(llm, ["rivals"])
 
       assert {:ok, result} =
                quietly(fn ->
@@ -253,8 +257,8 @@ defmodule WardrikResearch.DeepTest do
       assert reason =~ "no_signal"
     end
 
-    test "a gap's findings are kept out of the synthesis prompt", %{run: run} do
-      stub_llm(["rivals"])
+    test "a gap's findings are kept out of the synthesis prompt", %{run: run, llm: llm} do
+      stub_llm(llm, ["rivals"])
 
       quietly(fn -> Deep.run(%{topic: "widgets", angles: ["pricing", "rivals"]}, run, []) end)
 
@@ -265,15 +269,16 @@ defmodule WardrikResearch.DeepTest do
     end
 
     test "an angle that runs over its time is a gap, and the rest are still synthesised", %{
-      run: run
+      run: run,
+      llm: llm
     } do
-      LLMStub.answering(fn asked ->
+      LLM.answering(llm, fn asked ->
         # The rivals researcher never answers; the fan-out has to give up on it.
         if asked.prompt =~ "rivals", do: receive(do: (:never -> :ok))
 
         if asked.prompt =~ "Your angle:",
-          do: {:ok, LLMStub.final_answer("what I found")},
-          else: {:ok, LLMStub.final_answer("the combined report")}
+          do: LLM.final_answer("what I found"),
+          else: LLM.final_answer("the combined report")
       end)
 
       assert {:ok, result} =
@@ -286,24 +291,25 @@ defmodule WardrikResearch.DeepTest do
     end
 
     test "a researcher that keeps asking for tools is stopped at its iteration cap", %{
-      run: run
+      run: run,
+      llm: llm
     } do
       test_pid = self()
 
-      LLMStub.answering(fn asked ->
+      LLM.answering(llm, fn asked ->
         cond do
           asked.prompt =~ "Your angle:" and asked.tools == [] ->
             send(test_pid, {:turn, :research, asked})
-            {:ok, LLMStub.final_answer("what I found before the cap")}
+            LLM.final_answer("what I found before the cap")
 
           asked.prompt =~ "Your angle:" ->
             send(test_pid, {:turn, :research, asked})
             id = "call_#{System.unique_integer([:positive])}"
-            {:ok, LLMStub.tool_call(id, "web_search", %{query: "one more"})}
+            LLM.tool_call(id, "web_search", %{query: "one more"})
 
           true ->
             send(test_pid, {:turn, :synthesis, asked})
-            {:ok, LLMStub.final_answer("the combined report")}
+            LLM.final_answer("the combined report")
         end
       end)
 
@@ -321,8 +327,11 @@ defmodule WardrikResearch.DeepTest do
       assert result["report"] == "the combined report"
     end
 
-    test "losing every angle is an error, because there is nothing to synthesise", %{run: run} do
-      stub_llm(["pricing", "rivals"])
+    test "losing every angle is an error, because there is nothing to synthesise", %{
+      run: run,
+      llm: llm
+    } do
+      stub_llm(llm, ["pricing", "rivals"])
 
       assert {:error, {:no_findings, gaps}} =
                quietly(fn ->
@@ -334,8 +343,8 @@ defmodule WardrikResearch.DeepTest do
   end
 
   describe "spans" do
-    test "each angle has a distinct delegation span under its branch", %{run: run} do
-      stub_llm()
+    test "each angle has a distinct delegation span under its branch", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing", "rivals"]}, run, [])
 
@@ -356,8 +365,12 @@ defmodule WardrikResearch.DeepTest do
       assert MapSet.size(MapSet.new(spans, & &1.span_id)) == 3
     end
 
-    test "every event stays on the calling agent's topic", %{run: run, agent_id: agent_id} do
-      stub_llm()
+    test "every event stays on the calling agent's topic", %{
+      run: run,
+      agent_id: agent_id,
+      llm: llm
+    } do
+      stub_llm(llm)
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing"]}, run, [])
 
@@ -385,10 +398,10 @@ defmodule WardrikResearch.DeepTest do
       assert Enum.map(Config.tools(config), & &1.name) == ["deep_research"]
     end
 
-    test "tool/1 carries its angles into the sweep", %{agent_id: agent_id} do
-      stub_llm()
+    test "tool/1 carries its angles into the sweep", %{agent_id: agent_id, llm: llm} do
+      stub_llm(llm)
       tool = Deep.tool(angles: [%{angle: "pricing", prompt: "Think like a pricing analyst."}])
-      run = Wardrik.Test.run(tools: [SearchTool, tool], key: agent_id, name: "turn")
+      run = Wardrik.Test.run(tools: [SearchTool, tool], key: agent_id, name: "turn", llm: llm)
 
       assert {:ok, %{"ok" => true}} =
                run |> Wardrik.Test.call(tool.name, %{"topic" => "widgets"}) |> Calls.result()
@@ -397,8 +410,8 @@ defmodule WardrikResearch.DeepTest do
       assert asked.system =~ "pricing analyst"
     end
 
-    test "runs from a tool call, wrapped as a tool result", %{run: run} do
-      stub_llm()
+    test "runs from a tool call, wrapped as a tool result", %{run: run, llm: llm} do
+      stub_llm(llm)
 
       assert {:ok, %{"ok" => true, "result" => result}} =
                WardrikWorkflow.handle(
@@ -411,9 +424,10 @@ defmodule WardrikResearch.DeepTest do
     end
 
     test "a sweep that found nothing answers the model rather than failing the turn", %{
-      run: run
+      run: run,
+      llm: llm
     } do
-      stub_llm(["pricing"])
+      stub_llm(llm, ["pricing"])
 
       assert {:ok, %{"ok" => false, "error" => %{"code" => "no_findings"}}} =
                quietly(fn ->

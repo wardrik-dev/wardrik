@@ -16,7 +16,7 @@ defmodule Wardrik.Event.TurnFinished do
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
-          messages: [ReqLLM.Message.t()]
+          messages: [Wardrik.Conversation.message()]
         }
 end
 
@@ -208,15 +208,15 @@ defmodule Wardrik.Event.ModelStarted do
 end
 
 defmodule Wardrik.Event.ModelFinished do
-  @moduledoc "A model call ended. `response` is the `ReqLLM.Response` without its context, or `nil` for a call that did not answer, and `cost` what it cost, as `t:Wardrik.Call.cost/0`, or `nil` where it cannot be priced."
-  @enforce_keys ~w(message_id outcome duration_ms response cost)a
+  @moduledoc "A model call ended. `answer` is the `Wardrik.LLM.Answer` it answered with, or `nil` for a call that did not answer, and `cost` what it cost, as `t:Wardrik.Call.cost/0`, or `nil` where it cannot be priced."
+  @enforce_keys ~w(message_id outcome duration_ms answer cost)a
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
           message_id: String.t(),
           outcome: :ok | {:error, term()},
           duration_ms: non_neg_integer(),
-          response: ReqLLM.Response.t() | nil,
+          answer: Wardrik.LLM.Answer.t() | nil,
           cost: Wardrik.Call.cost() | nil
         }
 end
@@ -255,33 +255,13 @@ defmodule Wardrik.Event.Thinking do
         }
 end
 
-defmodule Wardrik.Event.Meta do
-  @moduledoc "A provider's stream metadata, such as usage."
-  @enforce_keys ~w(chunk)a
-  defstruct @enforce_keys
-
-  @type t() :: %__MODULE__{
-          chunk: term()
-        }
-end
-
-defmodule Wardrik.Event.Chunk do
-  @moduledoc "A provider's raw stream record."
-  @enforce_keys ~w(chunk)a
-  defstruct @enforce_keys
-
-  @type t() :: %__MODULE__{
-          chunk: term()
-        }
-end
-
 defmodule Wardrik.Event.ToolCall do
-  @moduledoc "A tool call as the provider streams it."
+  @moduledoc "A tool call as the model streams it, with no arguments yet where they are still to come."
   @enforce_keys ~w(call)a
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
-          call: term()
+          call: Wardrik.Conversation.ToolCall.t()
         }
 end
 
@@ -303,7 +283,7 @@ defmodule Wardrik.Event.ToolStarted do
   @type t() :: %__MODULE__{
           call_id: String.t(),
           name: String.t(),
-          arguments: map(),
+          arguments: map() | String.t(),
           idempotency_key: String.t(),
           decided_by: Wardrik.Call.decider()
         }

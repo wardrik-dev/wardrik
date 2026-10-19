@@ -63,7 +63,7 @@ defmodule WardrikLua.RunTest do
         assert {:ok, answer} = call(code)
         assert answer["ok"] == false, code
         assert answer["error"]["code"] == "lua_failed"
-        assert %ReqLLM.Message{} = ReqLLM.Context.tool_result_message("run_lua", "id", answer)
+        assert is_binary(JSON.encode!(answer))
       end
     end
 
@@ -75,7 +75,7 @@ defmodule WardrikLua.RunTest do
         assert {:ok, answer} = call(code)
         assert answer["error"]["code"] == "lua_failed"
         assert answer["error"]["message"] =~ "collide"
-        assert %ReqLLM.Message{} = ReqLLM.Context.tool_result_message("run_lua", "id", answer)
+        assert is_binary(JSON.encode!(answer))
       end
     end
 

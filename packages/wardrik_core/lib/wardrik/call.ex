@@ -148,7 +148,7 @@ defmodule Wardrik.Call do
 
   # -- building ----------------------------------------------------------------
 
-  @doc "The call a model asked for, as `ReqLLM.Response.classify/1` gives it."
+  @doc "The call a model asked for, as a `Wardrik.Conversation.ToolCall` carries it."
   @spec tool(Wardrik.Tool.call(), Run.t() | nil) :: t()
   def tool(%{id: id, name: name, arguments: arguments}, run \\ nil),
     do: %__MODULE__{id: id, target: %Tool{name: name, arguments: arguments}, run: run}
@@ -323,11 +323,14 @@ defmodule Wardrik.Call do
 
   @doc """
   A model call that used `usage` of `model_spec`, the model it reached, and
-  cost what `Wardrik.LLM.Cost.price/2` makes of that.
+  cost what `Wardrik.LLM.Cost.price/3` makes of that, as the run's host's
+  `Wardrik.LLM.Client` prices it.
   """
-  @spec used(t(), map(), term()) :: t()
-  def used(%__MODULE__{target: %Model{} = model} = call, usage, model_spec),
-    do: %{call | target: %{model | usage: usage}, cost: Cost.price(model_spec, usage)}
+  @spec used(t(), Wardrik.LLM.Usage.t(), term()) :: t()
+  def used(%__MODULE__{target: %Model{} = model, run: run} = call, usage, model_spec) do
+    cost = Cost.price(Wardrik.Host.llm(run.host), model_spec, usage)
+    %{call | target: %{model | usage: usage}, cost: cost}
+  end
 
   @doc "A tool call its tool said cost `usd` dollars, or one it said nothing of, for `nil`."
   @spec priced(t(), number() | nil) :: t()

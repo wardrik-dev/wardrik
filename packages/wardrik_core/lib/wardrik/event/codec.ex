@@ -46,9 +46,8 @@ defmodule Wardrik.Event.Codec do
   A delta names its message with the `:message_id` option, since the model
   call it streams from announced it.
 
-  Provider stream records, `:chunk`, `:meta` and `:tool_call`, and the
-  per-call `:tool_parked`, which `run.interrupted` lists, are not sent:
-  `encode/2` answers `:skip`.
+  A tool call as it streams, `:tool_call`, and the per-call `:tool_parked`,
+  which `run.interrupted` lists, are not sent: `encode/2` answers `:skip`.
 
   ## Changes
 
@@ -62,11 +61,12 @@ defmodule Wardrik.Event.Codec do
   alias Wardrik.Call.Pipeline
   alias Wardrik.Event
   alias Wardrik.Event.Codec.Value
+  alias Wardrik.LLM.Answer
 
   @padding 12
 
   @live [:result, :thinking, :tool_progress, :activity_changed]
-  @skipped [:chunk, :meta, :tool_call, :tool_parked]
+  @skipped [:tool_call, :tool_parked]
 
   @runs [
     :turn_started,
@@ -314,18 +314,18 @@ defmodule Wardrik.Event.Codec do
            message_id: message_id,
            outcome: outcome,
            duration_ms: ms,
-           response: response,
+           answer: answer,
            cost: cost
          },
          _event,
          _opts
        ) do
     data =
-      %{"message" => answered(message_id, response), "duration_ms" => ms}
+      %{"message" => answered(message_id, answer), "duration_ms" => ms}
       |> outcome(outcome)
-      |> Value.put("response", response(response))
-      |> Value.put("usage", response && Value.usage(response.usage))
-      |> priced(response, cost)
+      |> Value.put("response", response(answer))
+      |> Value.put("usage", answer && Value.usage(answer.usage))
+      |> priced(answer, cost)
 
     {"message.completed", "messages/" <> message_id, data}
   end
@@ -350,7 +350,7 @@ defmodule Wardrik.Event.Codec do
   # A model that answered and that nobody prices is said to cost null, which
   # is not the same as nothing; one that never answered says nothing of cost.
   defp priced(data, nil, _cost), do: data
-  defp priced(data, _response, cost), do: Map.put(data, "cost", Value.cost(cost))
+  defp priced(data, _answer, cost), do: Map.put(data, "cost", Value.cost(cost))
 
   # -- tool calls ----------------------------------------------------------------
 
@@ -519,16 +519,14 @@ defmodule Wardrik.Event.Codec do
   defp outcome(data, {:error, reason}),
     do: data |> Map.put("status", "error") |> Map.put("error", Value.error(reason))
 
-  defp answered(message_id, %ReqLLM.Response{message: %ReqLLM.Message{} = message}),
-    do: Value.message(message, message_id)
-
-  defp answered(message_id, _nothing), do: %{"id" => message_id}
+  defp answered(message_id, %Answer{message: message}), do: Value.message(message, message_id)
+  defp answered(message_id, nil), do: %{"id" => message_id}
 
   defp response(nil), do: nil
 
-  defp response(%ReqLLM.Response{} = response) do
-    %{"model" => response.model, "id" => response.id}
-    |> Value.put("finish_reasons", response.finish_reason && [to_string(response.finish_reason)])
+  defp response(%Answer{} = answer) do
+    %{"model" => answer.model, "id" => answer.id}
+    |> Value.put("finish_reasons", answer.finish_reason && [to_string(answer.finish_reason)])
   end
 
   defp delta(type, text, opts) do

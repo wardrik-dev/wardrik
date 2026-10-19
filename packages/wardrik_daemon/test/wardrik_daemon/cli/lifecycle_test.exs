@@ -184,7 +184,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       refute File.exists?(Path.join(dir, "agents/loose.md"))
 
       assert [_hello, _back] =
-               loose |> Agent.get_context(host: Host.host()) |> ReqLLM.Context.to_list()
+               loose |> Agent.history(host: Host.host()) |> Wardrik.Conversation.to_list()
 
       assert command(["agent", "stop", "nobody/here"]) ==
                {"No agent runs under nobody/here.\n", 1}

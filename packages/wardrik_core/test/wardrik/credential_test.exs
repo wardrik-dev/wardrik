@@ -190,5 +190,5 @@ defmodule Wardrik.CredentialTest do
   end
 
   defp request(model),
-    do: Request.new(Config.new(model_spec: model), ReqLLM.Context.new([]))
+    do: Request.new(Config.new(model_spec: model), Wardrik.Conversation.new())
 end

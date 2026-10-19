@@ -4,6 +4,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
   import ExUnit.CaptureLog
 
   alias Wardrik.Call
+  alias Wardrik.Conversation.ToolError
+  alias Wardrik.Conversation.ToolResult
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
@@ -33,8 +35,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     Config.new(tools: tools) |> Run.root(agent_id, name: "turn")
   end
 
-  # The shape `ReqLLM.Response.classify/1` actually produces: `:arguments`,
-  # already decoded, with string ids.
+  # A call as the model asked for it: `:arguments` already decoded, with
+  # string ids.
   defp call(id, name, arguments), do: %{id: id, name: name, arguments: arguments}
 
   # What the model reads of an answered call.
@@ -118,7 +120,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       done = ToolRunner.execute(call("call_1", "odd", %{}), run(agent_id, tools))
 
-      [part] = message(done).content
+      [part] = message(done).parts
       assert part.text =~ "Tool answered with"
     end
   end
@@ -154,9 +156,9 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         payload: %Event.ToolFinished{call_id: "call_2", name: "reverse", result: {:ok, "dlroW"}}
       }
 
-      assert Enum.map(messages, & &1.tool_call_id) == ["call_1", "call_2"]
+      assert Enum.map(messages, & &1.call_id) == ["call_1", "call_2"]
       assert Enum.map(messages, & &1.name) == ["echo", "reverse"]
-      assert Enum.all?(messages, &(&1.role == :tool))
+      assert Enum.all?(messages, &match?(%ToolResult{}, &1))
     end
 
     test "answers an unknown tool with an error result rather than raising", %{
@@ -177,8 +179,25 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         }
       }
 
-      assert message.tool_call_id == "call_1"
-      assert message.metadata.is_error
+      assert message.call_id == "call_1"
+      assert %ToolError{} = message
+    end
+
+    test "refuses arguments the model wrote as something other than a JSON object", %{
+      agent_id: agent_id
+    } do
+      test_pid = self()
+      tools = [tool!("echo", &{:ok, send(test_pid, {:ran, &1})})]
+
+      assert [%ToolError{call_id: "call_1", parts: [part]}] =
+               [call("call_1", "echo", ~s({"text": ))]
+               |> ToolRunner.execute_many_async(run(agent_id, tools))
+               |> ToolRunner.messages()
+
+      assert %{"error" => "echo takes its arguments as a JSON object" <> _} =
+               JSON.decode!(part.text)
+
+      refute_received {:ran, _input}
     end
 
     test "a crashing tool is isolated and still yields a paired result", %{agent_id: agent_id} do
@@ -190,9 +209,9 @@ defmodule Wardrik.LLM.ToolRunnerTest do
           calls |> ToolRunner.execute_many_async(run(agent_id, tools)) |> ToolRunner.messages()
         end)
 
-      assert message.tool_call_id == "call_1"
+      assert message.call_id == "call_1"
       assert message.name == "boom"
-      assert message.metadata.is_error
+      assert %ToolError{} = message
     end
 
     test "a schema violation tells the model what was expected", %{agent_id: agent_id} do
@@ -210,10 +229,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         |> ToolRunner.execute_many_async(run(agent_id, tools))
         |> ToolRunner.messages()
 
-      [part] = message.content
+      [part] = message.parts
       %{"error" => error} = JSON.decode!(part.text)
 
-      assert message.metadata.is_error
+      assert %ToolError{} = message
       assert error =~ ~s(expected one of ["red", "blue"])
       refute error =~ "stacktrace"
     end
@@ -226,8 +245,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
                |> ToolRunner.execute_many_async(run(agent_id, tools))
                |> ToolRunner.messages()
 
-      assert message.tool_call_id == "call_1"
-      assert message.metadata.is_error
+      assert message.call_id == "call_1"
+      assert %ToolError{} = message
     end
 
     test "results come back in call order even when tools finish out of order", %{
@@ -261,7 +280,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       messages = Task.await(task)
 
-      assert Enum.map(messages, & &1.tool_call_id) == ["call_1", "call_2"]
+      assert Enum.map(messages, & &1.call_id) == ["call_1", "call_2"]
       assert Enum.map(messages, & &1.name) == ["waiter", "runner"]
     end
 
@@ -425,7 +444,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, _reason}}}
 
       # The model still gets a successful tool result saying the call failed.
-      refute message(done).metadata[:is_error]
+      assert %ToolResult{} = message(done)
     end
 
     test "a tool that succeeds closes its span as a success", %{agent_id: agent_id} do
@@ -467,8 +486,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         payload: %Event.ToolFinished{call_id: "call_1", name: "echo", result: {:ok, %{"a" => 1}}}
       }
 
-      assert message.role == :tool
-      assert message.tool_call_id == "call_1"
+      assert %ToolResult{} = message
+      assert message.call_id == "call_1"
       assert message.name == "echo"
     end
   end
@@ -500,7 +519,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert [%Call{state: :done} = done] =
                ToolRunner.execute_many_async(calls, governed(agent_id, tools))
 
-      assert message(done).tool_call_id == "call_1"
+      assert message(done).call_id == "call_1"
       assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}}
     end
 
@@ -518,7 +537,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         payload: %Event.ToolDenied{call_id: "call_1", name: "drop", reason: "Never."}
       }
 
-      [part] = message(done).content
+      [part] = message(done).parts
       assert %{"ok" => false, "error" => %{"message" => "Never."}} = JSON.decode!(part.text)
     end
 
@@ -582,7 +601,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert %Call{state: :done} =
                done = waiting |> Call.approve() |> ToolRunner.execute(governed(agent_id, tools))
 
-      assert message(done).tool_call_id == "call_1"
+      assert message(done).call_id == "call_1"
     end
   end
 
@@ -879,9 +898,9 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         payload: %Event.ToolDenied{call_id: "call_1", name: "deploy", reason: "Not this quarter."}
       }
 
-      assert message(done).tool_call_id == "call_1"
+      assert message(done).call_id == "call_1"
 
-      [part] = message(done).content
+      [part] = message(done).parts
 
       assert %{"ok" => false, "error" => %{"message" => "Not this quarter."}} =
                JSON.decode!(part.text)
@@ -907,9 +926,9 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert ToolRunner.kill_call(agent_id, "call_1") == :ok
 
       assert [killed, echoed] = task |> Task.await(5_000) |> ToolRunner.messages()
-      assert killed.metadata.is_error
-      assert killed.tool_call_id == "call_1"
-      refute echoed.metadata[:is_error]
+      assert %ToolError{} = killed
+      assert killed.call_id == "call_1"
+      assert %ToolResult{} = echoed
     end
 
     test "a call nobody is running cannot be killed", %{agent_id: agent_id} do

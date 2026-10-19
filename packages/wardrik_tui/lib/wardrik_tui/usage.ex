@@ -1,111 +1,60 @@
 defmodule WardrikTUI.Usage do
   @moduledoc """
-  Token and cost totals for one agent, folded from `Wardrik.Event.Meta` events.
+  Token and cost totals for one agent, folded from its
+  `Wardrik.Event.ModelFinished` events.
 
-  Usage is collected per request, keyed by the span the request runs on, with
-  later records overwriting earlier ones. `settle/2` folds a span's request
-  into the totals when its `Wardrik.Event.ModelFinished` arrives, so concurrent
-  requests on different spans add up.
-
-  Cost is the provider's `total_cost` when present, otherwise what
-  `ReqLLM.Usage.Cost` computes from the model's pricing, and zero for a model
-  without pricing. The model is looked up in `ReqLLM` when the first request
-  settles, not when the totals are created.
+  Each model call that answered adds what it used, as its
+  `Wardrik.LLM.Answer` reports it, and what it cost, as the event carries
+  it: the provider's figure, or the tokens as the host's model client prices
+  them, and nothing for a call nobody prices. A call that never answered
+  adds nothing.
   """
 
+  alias Wardrik.Event
+  alias Wardrik.Event.ModelFinished
+  alias Wardrik.LLM.Answer
+
   @type t() :: %__MODULE__{
-          spec: term(),
-          model: struct() | nil,
-          priced?: boolean(),
           input: non_neg_integer(),
           output: non_neg_integer(),
           reasoning: non_neg_integer(),
           cached: non_neg_integer(),
           cost: float(),
-          requests: non_neg_integer(),
-          open: %{String.t() => map()}
+          requests: non_neg_integer()
         }
 
-  defstruct spec: nil,
-            model: nil,
-            priced?: false,
-            input: 0,
-            output: 0,
-            reasoning: 0,
-            cached: 0,
-            cost: 0.0,
-            requests: 0,
-            open: %{}
+  defstruct input: 0, output: 0, reasoning: 0, cached: 0, cost: 0.0, requests: 0
 
-  @doc """
-  Totals at zero, to be priced as `model_spec` once a request settles.
-  """
-  @spec new(term()) :: t()
-  def new(model_spec \\ nil), do: %__MODULE__{spec: model_spec}
+  @doc "Totals at zero."
+  @spec new() :: t()
+  def new, do: %__MODULE__{}
 
-  # The model behind the spec, looked up once.
-  defp price(%__MODULE__{priced?: true} = usage), do: usage
-  defp price(%__MODULE__{spec: nil} = usage), do: %{usage | priced?: true}
+  @doc "Adds the model call a `Wardrik.Event.ModelFinished` reports, where it answered."
+  @spec settle(t(), Event.t()) :: t()
+  def settle(%__MODULE__{} = usage, %Event{payload: %ModelFinished{answer: nil}}), do: usage
 
-  defp price(%__MODULE__{spec: spec} = usage) do
-    case ReqLLM.model(spec) do
-      {:ok, model} -> %{usage | model: model, priced?: true}
-      _unknown -> %{usage | priced?: true}
-    end
+  def settle(
+        %__MODULE__{} = usage,
+        %Event{payload: %ModelFinished{answer: %Answer{usage: used}, cost: cost}}
+      ) do
+    used = used || %Wardrik.LLM.Usage{}
+
+    %{
+      usage
+      | requests: usage.requests + 1,
+        input: usage.input + tokens(used.input_tokens),
+        output: usage.output + tokens(used.output_tokens),
+        reasoning: usage.reasoning + tokens(used.reasoning_tokens),
+        cached: usage.cached + tokens(used.cached_tokens),
+        cost: usage.cost + dollars(cost)
+    }
   end
 
-  @doc """
-  Records a metadata chunk seen on `span_id`.
+  defp tokens(n) when is_integer(n) and n >= 0, do: n
+  defp tokens(_missing), do: 0
 
-  Anything without a `usage` map, such as a finish reason on its own, is
-  ignored.
-  """
-  @spec observe(t(), String.t(), term()) :: t()
-  def observe(%__MODULE__{} = usage, span_id, %{metadata: %{usage: seen}}) when is_map(seen) do
-    %{usage | open: Map.update(usage.open, span_id, seen, &Map.merge(&1, seen))}
-  end
-
-  def observe(%__MODULE__{} = usage, _span_id, _chunk), do: usage
-
-  @doc "Folds the request that ran on `span_id` into the totals."
-  @spec settle(t(), String.t()) :: t()
-  def settle(%__MODULE__{} = usage, span_id) do
-    case Map.pop(usage.open, span_id) do
-      {nil, _open} ->
-        usage
-
-      {seen, open} ->
-        usage = price(usage)
-
-        %{
-          usage
-          | open: open,
-            requests: usage.requests + 1,
-            input: usage.input + tokens(seen, :input_tokens),
-            output: usage.output + tokens(seen, :output_tokens),
-            reasoning: usage.reasoning + tokens(seen, :reasoning_tokens),
-            cached: usage.cached + tokens(seen, :cached_tokens),
-            cost: usage.cost + cost(seen, usage.model)
-        }
-    end
-  end
-
-  defp tokens(seen, key) do
-    case Map.get(seen, key) do
-      n when is_integer(n) and n >= 0 -> n
-      _missing -> 0
-    end
-  end
-
-  defp cost(%{total_cost: total}, _model) when is_number(total), do: total / 1
-  defp cost(_seen, nil), do: 0.0
-
-  defp cost(seen, model) do
-    case ReqLLM.Usage.Cost.apply(seen, model) do
-      %{total_cost: total} when is_number(total) -> total / 1
-      _other -> 0.0
-    end
-  end
+  defp dollars(%{micro_usd: micro_usd}), do: micro_usd / 1_000_000
+  defp dollars(nil), do: 0.0
 
   @doc "Whether anything has been counted yet."
   @spec empty?(t()) :: boolean()
@@ -130,7 +79,7 @@ defmodule WardrikTUI.Usage do
       |> Enum.reject(&is_nil/1)
       |> Enum.join("  ")
 
-    Enum.join([tokens, dollars(usage.cost), "#{usage.requests} req"], " · ")
+    Enum.join([tokens, cost(usage.cost), "#{usage.requests} req"], " · ")
   end
 
   @doc "A token count, abbreviated."
@@ -139,6 +88,6 @@ defmodule WardrikTUI.Usage do
   def count(n) when n < 1_000_000, do: "#{Float.round(n / 1_000, 1)}k"
   def count(n), do: "#{Float.round(n / 1_000_000, 2)}M"
 
-  defp dollars(cost) when cost < 0.01, do: "$#{:erlang.float_to_binary(cost / 1, decimals: 4)}"
-  defp dollars(cost), do: "$#{:erlang.float_to_binary(cost / 1, decimals: 2)}"
+  defp cost(cost) when cost < 0.01, do: "$#{:erlang.float_to_binary(cost / 1, decimals: 4)}"
+  defp cost(cost), do: "$#{:erlang.float_to_binary(cost / 1, decimals: 2)}"
 end

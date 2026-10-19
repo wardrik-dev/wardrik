@@ -4,9 +4,9 @@ defmodule Wardrik.Call.PipelineTest do
   import ExUnit.CaptureLog
   import Wardrik.Test, only: [host: 0, host: 1]
 
-  alias ReqLLM.Context
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
+  alias Wardrik.Conversation
   alias Wardrik.Event
   alias Wardrik.Ledger
   alias Wardrik.LLM.Config
@@ -148,7 +148,7 @@ defmodule Wardrik.Call.PipelineTest do
 
   defp call(run, id, name), do: Call.tool(%{id: id, name: name, arguments: %{}}, run)
 
-  defp request, do: Request.new(Config.new(), Context.new())
+  defp request, do: Request.new(Config.new(), Conversation.new())
 
   defp answering(outcome) do
     fn call ->
@@ -158,7 +158,7 @@ defmodule Wardrik.Call.PipelineTest do
   end
 
   defp response(usage),
-    do: %ReqLLM.Response{id: "r", model: "m", context: Context.new(), usage: usage}
+    do: %{Wardrik.Test.LLM.final_answer("") | usage: struct!(Wardrik.LLM.Usage, usage)}
 
   describe "a model call" do
     test "is decided by the hooks before the dispatch, which a call that waits never reaches",

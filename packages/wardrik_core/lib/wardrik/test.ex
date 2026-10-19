@@ -27,11 +27,13 @@ defmodule Wardrik.Test do
         host: [definitions: {MyApp.Definitions, []}]
 
   `store/0` and `host/1` are the store and the host that runtime started on,
-  for a test to hand what it calls.
+  for a test to hand what it calls. The host's `Wardrik.LLM.Client` is
+  `llm/0`, which answers every agent's model calls from the script a test
+  sets on it; see `Wardrik.Test.LLM`.
 
   The modules under this one stand in for parts of a run: `Wardrik.Test.Fleet`
-  starts an agent under a key of each test's own, `Wardrik.Test.LLMStub`
-  answers turns with canned responses, `Wardrik.Test.Tools` has a gated
+  starts an agent under a key of each test's own, `Wardrik.Test.LLM`
+  answers model calls from a script, `Wardrik.Test.Tools` has a gated
   tool, one that reads from outside, and a hook that decides calls by rules,
   and `WardrikStore.Test.Durable` checks a store adapter of your own.
   """
@@ -53,11 +55,7 @@ defmodule Wardrik.Test do
         wait: [WardrikPolicy.Meter.supervisor()]
       )
 
-  Loads the
-  model catalog, which the application starts loading in the background,
-  so the wait for it lands on no test. Copies what `Wardrik.Test.LLMStub`
-  stubs where `llm_stub: true`. Once the suite is over, removes the store's
-  `:data_dir` where it has one.
+  Once the suite is over, removes the store's `:data_dir` where it has one.
 
   Every other option goes to `ExUnit.start/1`, over `capture_log: true` and
   an `assert_receive_timeout` of a second: an `assert_receive` returns as
@@ -69,10 +67,6 @@ defmodule Wardrik.Test do
   def start(opts \\ []) do
     {children, opts} = Keyword.pop_lazy(opts, :children, &children/0)
     {wait, opts} = Keyword.pop(opts, :wait, [])
-    {llm_stub, opts} = Keyword.pop(opts, :llm_stub, false)
-
-    if llm_stub, do: Wardrik.Test.LLMStub.copy()
-    _loaded = ReqLLM.model("test:model")
 
     {:ok, _pid} =
       Supervisor.start_link(children, strategy: :rest_for_one, name: Wardrik.Test.Supervisor)
@@ -98,11 +92,23 @@ defmodule Wardrik.Test do
   end
 
   @doc """
-  The store, then core on `host/1`: the runtime a suite starts by default,
-  before what runs on it.
+  The store, the holder of `llm/0`'s script, then core on `host/1`: the
+  runtime a suite starts by default, before what runs on it.
   """
   @spec children() :: [Supervisor.child_spec() | {module(), term()}]
-  def children, do: [{WardrikStore, store()}, {Wardrik.Core, host: host()}]
+  def children,
+    do: [
+      {WardrikStore, store()},
+      {Wardrik.Test.LLM, name: llm().script},
+      {Wardrik.Core, host: host()}
+    ]
+
+  @doc """
+  The suite's `Wardrik.Test.LLM`, which `host/1` gives every agent, its
+  holder the one `children/0` starts.
+  """
+  @spec llm() :: Wardrik.Test.LLM.t()
+  def llm, do: %Wardrik.Test.LLM{script: Wardrik.Test.LLM}
 
   # The store's settings, as the suite's configuration names them.
   defp settings,
@@ -115,8 +121,8 @@ defmodule Wardrik.Test do
   def store, do: WardrikStore.new(settings())
 
   @doc """
-  The host the runtime started on, with `store/0` and the seams the suite's
-  configuration names, and those `opts` name over them.
+  The host the runtime started on, with `store/0`, `llm/0` and the seams the
+  suite's configuration names, and those `opts` name over them.
   """
   @spec host(keyword()) :: Wardrik.Host.t()
   def host(opts \\ []) do
@@ -124,7 +130,7 @@ defmodule Wardrik.Test do
       for {seam, {module, fields}} <- Keyword.get(config(), :host, []),
           do: {seam, struct!(module, fields)}
 
-    Wardrik.Host.new(Keyword.merge([store: store()] ++ seams, opts))
+    Wardrik.Host.new(Keyword.merge([store: store(), llm: llm()] ++ seams, opts))
   end
 
   @doc """
@@ -132,15 +138,17 @@ defmodule Wardrik.Test do
 
   `tools:` names the tools, as `Wardrik.LLM.Config` takes them, or `config:`
   gives the whole config; `id:` names the agent, in place of one no other
-  test uses. The rest is what `Wardrik.Run.root/3` takes: the hooks, the
-  ledger, and the host, `host/1` unless given.
+  test uses; `llm:` is the model client its host has, `llm/0` unless given.
+  The rest is what `Wardrik.Run.root/3` takes: the hooks, the ledger, and
+  the host, `host/1` unless given.
   """
   @spec run(keyword()) :: Run.t()
   def run(opts \\ []) do
     {tools, opts} = Keyword.pop(opts, :tools, [])
     {config, opts} = Keyword.pop_lazy(opts, :config, fn -> Config.new(tools: tools) end)
     {id, opts} = Keyword.pop_lazy(opts, :id, &Wardrik.Test.Fleet.id/0)
-    Run.root(config, id, Keyword.put_new_lazy(opts, :host, &host/0))
+    {llm, opts} = Keyword.pop_lazy(opts, :llm, &llm/0)
+    Run.root(config, id, Keyword.put_new_lazy(opts, :host, fn -> host(llm: llm) end))
   end
 
   @doc """

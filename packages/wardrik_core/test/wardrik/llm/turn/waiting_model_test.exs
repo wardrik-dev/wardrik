@@ -1,8 +1,8 @@
 defmodule Wardrik.LLM.Turn.WaitingModelTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Context
   alias Wardrik.Call
+  alias Wardrik.Conversation
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Turn
@@ -10,10 +10,10 @@ defmodule Wardrik.LLM.Turn.WaitingModelTest do
   # A turn waiting before a call to `spec`, as a hook that asked about it
   # leaves one.
   defp waiting(spec) do
-    call = Call.model(Request.new(Config.new(model_spec: spec), Context.new()))
+    call = Call.model(Request.new(Config.new(model_spec: spec), Conversation.new()))
     call = %{call | state: :waiting, asks: [%Call.Ask{by: "budget", prompt: "Over budget."}]}
 
-    %Turn{context: Context.new(), calls: [call], remaining: 3, state: :waiting}
+    %Turn{context: Conversation.new(), calls: [call], remaining: 3, state: :waiting}
   end
 
   test "a turn waiting before a model call waits on one call named model" do

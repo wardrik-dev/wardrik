@@ -4,7 +4,6 @@ defmodule WardrikHTTP.RouterTest do
 
   import Wardrik.Test, only: [store: 0]
 
-  alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID.Prefix
@@ -317,7 +316,9 @@ defmodule WardrikHTTP.RouterTest do
     {key, agent} =
       Fleet.start_agent(
         runner: {AgentRunners, :parking, [self(), "call_1"]},
-        resumer: {AgentRunners, :resuming, [self(), {:ok, [Context.assistant("shipped")]}]}
+        resumer:
+          {AgentRunners, :resuming,
+           [self(), {:ok, [Wardrik.Conversation.Assistant.new("shipped")]}]}
       )
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
@@ -822,7 +823,7 @@ defmodule WardrikHTTP.RouterTest do
 
     conforms(cleared, "agent_snapshot")
     assert_receive %Event{payload: %Event.ContextCleared{dropped: 2}}
-    assert Agent.get_context(agent).messages == []
+    assert Agent.history(agent).messages == []
     assert Audit.about("agents/#{key}") == [{"agent.cleared", @actor}]
 
     assert {:ok, %{status: 404}} = Req.delete(api, url: "/v1/agents/test/nobody/conversation")

@@ -1,14 +1,15 @@
 defmodule Wardrik.LLM.RequestTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Context
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.User
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Request
   alias Wardrik.Test.EchoTool
 
   test "new/2 carries the model, the conversation and the generation options" do
     config = Config.new(generation: [max_tokens: 100], model_spec: {:anthropic, model: "x"})
-    context = Context.new([Context.user("hi")])
+    context = Conversation.new([User.new("hi")])
 
     request = Request.new(config, context)
 
@@ -25,20 +26,20 @@ defmodule Wardrik.LLM.RequestTest do
         generation: [tools: [], system_prompt: "ignored"]
       )
 
-    request = Request.new(config, Context.new())
+    request = Request.new(config, Conversation.new())
 
     assert Enum.map(request.opts[:tools], & &1.name) == ["echo"]
     assert request.opts[:system_prompt] == "Be brief."
   end
 
   test "new/2 leaves out the persona entirely when a config has none" do
-    request = Request.new(Config.new(), Context.new())
+    request = Request.new(Config.new(), Conversation.new())
 
     refute Keyword.has_key?(request.opts, :system_prompt)
   end
 
   test "put_opts/2 merges over what is already there" do
-    request = Config.new(generation: [max_tokens: 100]) |> Request.new(Context.new())
+    request = Config.new(generation: [max_tokens: 100]) |> Request.new(Conversation.new())
 
     updated = Request.put_opts(request, api_key: "secret", max_tokens: 50)
 
@@ -47,7 +48,7 @@ defmodule Wardrik.LLM.RequestTest do
   end
 
   test "put_model/2 sends the same conversation to a different model" do
-    request = Request.new(Config.new(), Context.new([Context.user("hi")]))
+    request = Request.new(Config.new(), Conversation.new([User.new("hi")]))
 
     updated = Request.put_model(request, {:openai, model: "gpt-5"})
 

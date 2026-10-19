@@ -1,21 +1,27 @@
 defmodule Wardrik.Event.Codec.ValueTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Message.ContentPart
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.Blob
+  alias Wardrik.Conversation.Reasoning
+  alias Wardrik.Conversation.Text
+  alias Wardrik.Conversation.ToolCall
+  alias Wardrik.Conversation.ToolResult
+  alias Wardrik.Conversation.Uri
   alias Wardrik.Event.Codec.Value
 
-  defp parts(content), do: Value.message(%ReqLLM.Message{role: :user, content: content})["parts"]
+  defp parts(parts), do: Value.message(%Assistant{parts: parts})["parts"]
 
   describe "message parts" do
     test "take OpenTelemetry's type for each kind of content" do
       assert parts([
-               ContentPart.text("hi"),
-               ContentPart.thinking("hmm"),
-               ContentPart.image_url("https://example.com/a.png"),
-               ContentPart.video_url("https://example.com/a.mp4"),
-               ContentPart.image(<<1, 2>>, "image/png"),
-               %ContentPart{type: :file, data: "%PDF", media_type: "application/pdf"},
-               %ContentPart{type: :file, file_id: "file_1", media_type: "application/pdf"}
+               %Text{text: "hi"},
+               %Reasoning{text: "hmm", provider: %{"metadata" => %{"signature" => "s"}}},
+               %Uri{modality: "image", uri: "https://example.com/a.png"},
+               %Uri{modality: "video", uri: "https://example.com/a.mp4"},
+               %Blob{modality: "image", data: <<1, 2>>, mime_type: "image/png"},
+               %Blob{modality: "document", data: "%PDF", mime_type: "application/pdf"},
+               %Wardrik.Conversation.File{file_id: "file_1", mime_type: "application/pdf"}
              ]) == [
                %{"type" => "text", "content" => "hi"},
                %{"type" => "reasoning", "content" => "hmm"},
@@ -42,12 +48,22 @@ defmodule Wardrik.Event.Codec.ValueTest do
              ]
     end
 
-    test "take plain text for a message holding a string" do
-      assert parts("hello") == [%{"type" => "text", "content" => "hello"}]
+    test "put the calls a model asked for after what it said" do
+      call = %ToolCall{id: "call_1", name: "deploy", arguments: ~s({"repo": )}
+
+      assert parts([call, %Text{text: "Deploying."}]) == [
+               %{"type" => "text", "content" => "Deploying."},
+               %{
+                 "type" => "tool_call",
+                 "id" => "call_1",
+                 "name" => "deploy",
+                 "arguments" => ~s({"repo": )
+               }
+             ]
     end
 
     test "cut text too long to keep, whole characters only, and say so" do
-      [part] = parts(String.duplicate("é", 40_000))
+      [part] = parts([%Text{text: String.duplicate("é", 40_000)}])
 
       assert part["truncated"] == true
       assert byte_size(part["content"]) <= 64 * 1024
@@ -55,9 +71,9 @@ defmodule Wardrik.Event.Codec.ValueTest do
     end
   end
 
-  test "a message keeps its author's name" do
-    assert %{"name" => "jon"} =
-             Value.message(%ReqLLM.Message{role: :user, content: "hi", name: "jon"})
+  test "a tool's answer is named for its tool" do
+    assert %{"role" => "tool", "name" => "deploy"} =
+             Value.message(%ToolResult{call_id: "c", name: "deploy", parts: [%Text{text: "ok"}]})
   end
 
   describe "json/1" do
@@ -94,7 +110,9 @@ defmodule Wardrik.Event.Codec.ValueTest do
   end
 
   test "usage names reasoning tokens as OpenTelemetry's conventions do, and leaves cost to cost" do
-    assert Value.usage(%{input_tokens: 1, reasoning_tokens: 2, total_cost: 0.1}) ==
+    usage = %Wardrik.LLM.Usage{input_tokens: 1, reasoning_tokens: 2, total_cost: 0.1}
+
+    assert Value.usage(usage) ==
              %{"input_tokens" => 1, "reasoning" => %{"output_tokens" => 2}}
   end
 

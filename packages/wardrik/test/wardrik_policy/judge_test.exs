@@ -1,7 +1,8 @@
 defmodule WardrikPolicy.JudgeTest do
   use ExUnit.Case, async: true
-  use Mimic
 
+  alias Wardrik.LLM.Error
+  alias Wardrik.Test.LLM
   alias Wardrik.Test.Tools.Deploy
   alias WardrikPolicy.Judge
 
@@ -12,12 +13,30 @@ defmodule WardrikPolicy.JudgeTest do
     WardrikPolicy.decode!(Map.put(rules, "judge", %{"questions" => questions}), "careful")
   end
 
+  # A dispatch that tells the test what each model call it admits goes to.
+  defmodule Admitting do
+    defstruct [:test]
+  end
+
+  defimpl Wardrik.LLM.Dispatch, for: Admitting do
+    def admit(admitting, request, _opts) do
+      send(admitting.test, {:admitted, request.model_spec})
+      {:ok, request}
+    end
+
+    def settle(_admitting, _request, _opts), do: :ok
+  end
+
+  setup do
+    {:ok, llm: LLM.start()}
+  end
+
   # Answers each question asked, by its text, with `probabilities`, and tells
   # the test what was asked.
-  defp answering(probabilities) do
+  defp answering(llm, probabilities) do
     test = self()
 
-    stub(ReqLLM, :evaluate, fn model, state, questions ->
+    LLM.answering(llm, fn %{model: model, state: state, questions: questions} ->
       send(test, {:evaluated, model, state, questions})
 
       answers =
@@ -25,25 +44,31 @@ defmodule WardrikPolicy.JudgeTest do
           {id, %{"type" => "boolean", "probability" => Map.fetch!(probabilities, question)}}
         end)
 
-      {:ok, %ReqLLM.Response{id: "e", model: model, context: nil, object: answers}}
+      LLM.evaluation(answers)
     end)
   end
 
-  defp checked(policy, labels \\ []) do
-    run = %{
-      Wardrik.Test.run(
+  defp run(llm, policy, opts \\ []) do
+    {labels, opts} = Keyword.pop(opts, :labels, [])
+
+    run =
+      [
         tools: [Deploy],
         id: Wardrik.AgentID.parse!("acme/books"),
-        hooks: WardrikPolicy.hooks(policy)
-      )
-      | labels: labels
-    }
+        hooks: WardrikPolicy.hooks(policy),
+        llm: llm
+      ]
+      |> Keyword.merge(opts)
+      |> Wardrik.Test.run()
 
-    Wardrik.Test.check(run, "deploy", %{"target" => "prod"})
+    %{run | labels: labels}
   end
 
-  test "asks the questions naming a call together, with its tool and arguments" do
-    answering(%{@books => 0.9, @money => 0.1})
+  defp checked(llm, policy, opts \\ []),
+    do: llm |> run(policy, opts) |> Wardrik.Test.check("deploy", %{"target" => "prod"})
+
+  test "asks the questions naming a call together, with its tool and arguments", %{llm: llm} do
+    answering(llm, %{@books => 0.9, @money => 0.1})
 
     policy =
       judge([
@@ -53,7 +78,7 @@ defmodule WardrikPolicy.JudgeTest do
       ])
 
     assert %Wardrik.Call{state: :waiting, asks: [%{by: "careful/judge", prompt: prompt}]} =
-             checked(policy)
+             checked(llm, policy)
 
     assert prompt == "Judged 90% likely: #{@books}"
 
@@ -75,8 +100,10 @@ defmodule WardrikPolicy.JudgeTest do
     assert Judge.judged([deny], {:ok, [0.01]}) == :pass
   end
 
-  test "allows a call by name where every question allowing it is below its threshold" do
-    answering(%{@books => 0.01, @money => 0.02})
+  test "allows a call by name where every question allowing it is below its threshold", %{
+    llm: llm
+  } do
+    answering(llm, %{@books => 0.01, @money => 0.02})
 
     policy =
       judge([
@@ -84,53 +111,81 @@ defmodule WardrikPolicy.JudgeTest do
         %{"question" => @money, "allow" => 0.05, "deny" => 0.8}
       ])
 
-    assert %Wardrik.Call{state: :allowed, allowed: ["careful/judge"]} = checked(policy)
+    assert %Wardrik.Call{state: :allowed, allowed: ["careful/judge"]} = checked(llm, policy)
 
-    answering(%{@books => 0.01, @money => 0.3})
-    assert %Wardrik.Call{state: :waiting} = checked(policy)
+    answering(llm, %{@books => 0.01, @money => 0.3})
+    assert %Wardrik.Call{state: :waiting} = checked(llm, policy)
   end
 
-  test "allows nothing once the run has read from outside" do
-    answering(%{@books => 0.01})
+  test "allows nothing once the run has read from outside", %{llm: llm} do
+    answering(llm, %{@books => 0.01})
     policy = judge([%{"question" => @books, "allow" => 0.05}])
 
-    assert %Wardrik.Call{state: :waiting} = checked(policy, ["outside"])
+    assert %Wardrik.Call{state: :waiting} = checked(llm, policy, labels: ["outside"])
   end
 
-  test "never lifts a call a rule asks about or denies" do
-    answering(%{@books => 0.01})
+  test "never lifts a call a rule asks about or denies", %{llm: llm} do
+    answering(llm, %{@books => 0.01})
     question = %{"question" => @books, "allow" => 0.05}
 
     assert %Wardrik.Call{state: :waiting, asks: [%{by: "careful"}]} =
-             checked(judge([question], %{"ask" => ["deploy"]}))
+             checked(llm, judge([question], %{"ask" => ["deploy"]}))
 
     assert %Wardrik.Call{state: :denied, denied: %{by: "careful"}} =
-             checked(judge([question], %{"deny" => ["deploy"]}))
+             checked(llm, judge([question], %{"deny" => ["deploy"]}))
   end
 
-  test "asks a person where it cannot answer and could have asked or denied" do
-    stub(ReqLLM, :evaluate, fn _model, _state, _questions -> {:error, :timeout} end)
+  test "asks a person where it cannot answer and could have asked or denied", %{llm: llm} do
+    policy = judge([%{"question" => @books, "ask" => 0.5}])
+    LLM.stream(llm, [%Error{message: "the model timed out"}, LLM.evaluation(%{})])
 
-    assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt}]} =
-             checked(judge([%{"question" => @books, "ask" => 0.5}]))
-
-    assert prompt =~ "The judge could not answer (:timeout)"
+    assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt}]} = checked(llm, policy)
+    assert prompt =~ "The judge could not answer (the model timed out)"
 
     assert Judge.judged([%{deny: nil, ask: nil, allow: 0.05}], {:error, :timeout}) == :pass
 
-    stub(ReqLLM, :evaluate, fn model, _state, _questions ->
-      {:ok, %ReqLLM.Response{id: "e", model: model, context: nil, object: %{}}}
-    end)
-
-    assert Judge.evaluate("typesafe:jev-latest", "deploy", %{}, [%{question: @books}]) ==
+    assert Judge.evaluate(policy.judge, %{name: "deploy", arguments: %{}}, run: run(llm, policy)) ==
              {:error, :no_answer}
   end
 
-  test "judges no call its questions do not name, and no model call" do
-    stub(ReqLLM, :evaluate, fn _model, _state, _questions -> raise "asked" end)
+  test "makes its model call as the run's, which its dispatch admits and its hooks decide", %{
+    llm: llm
+  } do
+    answering(llm, %{@books => 0.9})
+    policy = judge([%{"question" => @books, "ask" => 0.5}])
+    host = Wardrik.Test.host(llm: llm, dispatch: %__MODULE__.Admitting{test: self()})
+
+    assert %Wardrik.Call{state: :waiting} = checked(llm, policy, host: host)
+    assert_received {:admitted, "typesafe:jev-latest"}
+
+    spent = WardrikPolicy.decode!(%{"budget" => %{"tokens" => 1, "on_exhausted" => "deny"}})
+    agent = Wardrik.Test.Fleet.id("judged")
+    run = run(llm, policy, id: agent, hooks: WardrikPolicy.hooks(spent))
+
+    on_exit(fn ->
+      for key <- WardrikStore.keys(Wardrik.Test.store(), :budgets, to_string(agent)),
+          do: WardrikStore.delete(Wardrik.Test.store(), :budgets, key)
+    end)
+
+    :ok =
+      WardrikPolicy.Meter.spend(
+        WardrikPolicy.Spend.key(
+          run.source.agent_id,
+          "policy/budget",
+          WardrikPolicy.Budget.window(spent.budget, "", DateTime.utc_now())
+        ),
+        0,
+        10
+      )
+
+    assert {:error, {:policy_denied, _reason}} =
+             Judge.evaluate(policy.judge, %{name: "deploy", arguments: %{}}, run: run)
+  end
+
+  test "judges no call its questions do not name, and no model call", %{llm: llm} do
     policy = judge([%{"question" => @books, "tools" => ["books/*"], "ask" => 0.5}])
 
-    assert %Wardrik.Call{state: :waiting, asks: asks} = checked(policy)
+    assert %Wardrik.Call{state: :waiting, asks: asks} = checked(llm, policy)
     refute Enum.any?(asks, &(&1.by == "careful/judge"))
     assert Judge.call(%Wardrik.Call{id: "m", target: :model}, policy.judge) == :pass
     assert Judge.asked(policy.judge, "deploy") == []

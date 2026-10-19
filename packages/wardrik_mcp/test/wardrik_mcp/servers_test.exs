@@ -188,7 +188,7 @@ defmodule WardrikMCP.ServersTest do
   defp run(key, org, tool, arguments) do
     call = %{id: "call_1", name: "#{key.name}__#{tool}", arguments: arguments}
     [message] = ToolRunner.messages([ToolRunner.execute(call, run_for(key, org))])
-    [part] = message.content
+    [part] = message.parts
     part.text
   end
 

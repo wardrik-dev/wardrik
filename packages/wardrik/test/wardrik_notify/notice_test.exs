@@ -3,7 +3,7 @@ defmodule WardrikNotify.NoticeTest do
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
-  alias ReqLLM.Context
+  alias Wardrik.Conversation.Assistant
   alias Wardrik.Event
   alias WardrikNotify.Notice
 
@@ -74,7 +74,7 @@ defmodule WardrikNotify.NoticeTest do
     assert {:ok, %Notice{kind: :failed, reason: :timeout}} =
              Notice.from_event(event(%Event.TurnFailed{reason: :timeout}))
 
-    messages = [Context.assistant("Looking."), Context.assistant("Two incidents need you.")]
+    messages = [Assistant.new("Looking."), Assistant.new("Two incidents need you.")]
 
     assert {:ok, %Notice{kind: :finished, text: "Two incidents need you."}} =
              Notice.from_event(event(%Event.TurnFinished{messages: messages}))
@@ -94,8 +94,7 @@ defmodule WardrikNotify.NoticeTest do
   end
 
   test "reason_text/1 says what an error says, rather than what it holds" do
-    stalled =
-      ReqLLM.Error.API.Stream.exception(reason: "Stream failed: :timeout", cause: :timeout)
+    stalled = %Wardrik.LLM.Error{message: "Stream failed: :timeout"}
 
     assert Notice.reason_text(stalled) == "Stream failed: :timeout"
     assert Notice.reason_text("A person refused this call.") == "A person refused this call."

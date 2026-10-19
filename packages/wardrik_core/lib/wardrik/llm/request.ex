@@ -6,16 +6,16 @@ defmodule Wardrik.LLM.Request do
   what lets a host route the call, supply the key it runs under, or refuse it,
   without the turn knowing that any of that happened.
 
-  Everything `ReqLLM.stream_text/3` takes is here, so a dispatch that rewrites
-  a request cannot rewrite anything the turn depends on, and with it the tries
-  of the call that failed before this one, newest first, as
-  `Wardrik.LLM.Attempt`s: empty on a call's first try. A dispatch reads them to
-  send the next try elsewhere; see `Wardrik.LLM.Retry`.
+  Everything the host's `Wardrik.LLM.Client` is handed is here, so a dispatch
+  that rewrites a request cannot rewrite anything the turn depends on, and
+  with it the tries of the call that failed before this one, newest first,
+  as `Wardrik.LLM.Attempt`s: empty on a call's first try. A dispatch reads
+  them to send the next try elsewhere; see `Wardrik.LLM.Retry`.
   """
 
+  alias Wardrik.Conversation
   alias Wardrik.LLM.Attempt
   alias Wardrik.LLM.Config
-  alias Wardrik.LLM.Tools
 
   @enforce_keys [:model_spec, :context, :opts]
   defstruct [:model_spec, :context, :opts, attempts: []]
@@ -23,19 +23,20 @@ defmodule Wardrik.LLM.Request do
   @typedoc "A model call: which model, what conversation, the options it runs under, and its failed tries."
   @type t() :: %__MODULE__{
           model_spec: term(),
-          context: ReqLLM.Context.t(),
+          context: Conversation.t(),
           opts: keyword(),
           attempts: [Attempt.t()]
         }
 
   @doc """
-  Builds the request a config and context describe.
+  Builds the request a config and conversation describe.
 
-  `:tools` and `:system_prompt` are taken from the config's own fields rather
-  than from `:generation`, which is why a caller cannot set them there.
+  `:tools`, the `Wardrik.Tool`s it offers, and `:system_prompt` are taken
+  from the config's own fields rather than from `:generation`, which is why
+  a caller cannot set them there.
   """
-  @spec new(Config.t(), ReqLLM.Context.t()) :: t()
-  def new(%Config{} = config, %ReqLLM.Context{} = context) do
+  @spec new(Config.t(), Conversation.t()) :: t()
+  def new(%Config{} = config, %Conversation{} = context) do
     %__MODULE__{
       model_spec: config.model_spec,
       context: context,
@@ -45,7 +46,7 @@ defmodule Wardrik.LLM.Request do
 
   defp opts(%Config{} = config) do
     config.generation
-    |> Keyword.put(:tools, config |> Config.tools() |> Enum.map(&Tools.to_req_llm/1))
+    |> Keyword.put(:tools, Config.tools(config))
     |> put_system(config.system)
   end
 

@@ -4,6 +4,7 @@ defmodule WardrikTUI.ActivityTest do
   import Wardrik.AgentID, only: [sigil_A: 2]
 
   alias Wardrik.Agent.Message
+  alias Wardrik.Conversation.ToolCall
   alias Wardrik.Event
   alias Wardrik.Event.Source
   alias WardrikTUI.Activity
@@ -157,7 +158,7 @@ defmodule WardrikTUI.ActivityTest do
           message_id: "m0",
           outcome: :ok,
           duration_ms: 12,
-          response: nil,
+          answer: nil,
           cost: nil
         })
 
@@ -169,7 +170,7 @@ defmodule WardrikTUI.ActivityTest do
         Activity.new()
         |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
         |> fold(turn, %Event.Thinking{text: "hmm"})
-        |> fold(turn, %Event.Chunk{chunk: :whatever})
+        |> fold(turn, %Event.ToolCall{call: %ToolCall{id: "c1", name: "echo", arguments: %{}}})
 
       assert Activity.fetch(activity, turn.trace.span_id).doing == "thinking"
     end

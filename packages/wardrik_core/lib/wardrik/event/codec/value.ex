@@ -11,20 +11,33 @@ defmodule Wardrik.Event.Codec.Value do
   #{64 * 1024} bytes once encoded is cut and marked `"truncated": true`.
   """
 
-  alias ReqLLM.Message.ContentPart
-  alias ReqLLM.ToolCall
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.Blob
+  alias Wardrik.Conversation.Reasoning
+  alias Wardrik.Conversation.ServerToolCall
+  alias Wardrik.Conversation.Text
+  alias Wardrik.Conversation.ToolCall
+  alias Wardrik.Conversation.ToolError
+  alias Wardrik.Conversation.ToolResult
+  alias Wardrik.Conversation.Uri
+  alias Wardrik.Conversation.User
   alias Wardrik.Event
+  alias Wardrik.LLM.Usage
   alias Wardrik.Principal
   alias Wardrik.Tool.Result
 
   @limit 64 * 1024
 
-  @doc "A `ReqLLM.Message` as an OpenTelemetry message, under `id` where one is given."
-  @spec message(ReqLLM.Message.t(), String.t() | nil) :: map()
-  def message(%ReqLLM.Message{} = message, id \\ nil) do
-    %{"role" => to_string(message.role), "parts" => parts(message)}
+  @doc """
+  A message of a `Wardrik.Conversation` as an OpenTelemetry message, under
+  `id` where one is given. A tool's answer is named for its tool.
+  """
+  @spec message(Conversation.message(), String.t() | nil) :: map()
+  def message(message, id \\ nil) do
+    %{"role" => role(message), "parts" => parts(message)}
     |> put("id", id)
-    |> put("name", message.name)
+    |> put("name", Map.get(message, :name))
   end
 
   @doc "A message someone sent an agent, as an OpenTelemetry message."
@@ -37,64 +50,45 @@ defmodule Wardrik.Event.Codec.Value do
   def assistant(text) when is_binary(text),
     do: %{"role" => "assistant", "parts" => [text_part("text", text)]}
 
-  defp parts(%ReqLLM.Message{role: :tool, tool_call_id: id} = message) when is_binary(id),
-    do: [%{"type" => "tool_call_response", "id" => id, "response" => text(message.content)}]
+  defp role(%User{}), do: "user"
+  defp role(%Assistant{}), do: "assistant"
+  defp role(%ToolResult{}), do: "tool"
+  defp role(%ToolError{}), do: "tool"
 
-  defp parts(%ReqLLM.Message{content: content, tool_calls: calls}),
-    do: Enum.map(content(content), &part/1) ++ Enum.map(calls || [], &tool_call/1)
+  defp parts(%{call_id: id} = answer),
+    do: [%{"type" => "tool_call_response", "id" => id, "response" => Conversation.text(answer)}]
 
-  defp content(text) when is_binary(text), do: [ContentPart.text(text)]
-  defp content(parts) when is_list(parts), do: parts
-
-  defp text(content) do
-    content
-    |> content()
-    |> Enum.map_join(fn
-      %ContentPart{text: text} when is_binary(text) -> text
-      _other -> ""
-    end)
+  # The calls a model asked for follow what it said, as OpenTelemetry lists
+  # them.
+  defp parts(%{parts: parts}) do
+    {calls, said} = Enum.split_with(parts, &call?/1)
+    Enum.map(said, &part/1) ++ Enum.map(calls, &tool_call/1)
   end
 
-  defp part(%ContentPart{type: :text, text: text}), do: text_part("text", text || "")
-  defp part(%ContentPart{type: :thinking, text: text}), do: text_part("reasoning", text || "")
-  defp part(%ContentPart{type: :image_url, url: url}), do: uri("image", url)
-  defp part(%ContentPart{type: :video_url, url: url}), do: uri("video", url)
+  defp call?(%ToolCall{}), do: true
+  defp call?(%ServerToolCall{}), do: true
+  defp call?(_part), do: false
 
-  defp part(%ContentPart{type: :file, file_id: id} = part) when is_binary(id),
+  defp part(%Text{text: text}), do: text_part("text", text)
+  defp part(%Reasoning{text: text}), do: text_part("reasoning", text)
+
+  defp part(%Uri{modality: modality, uri: uri}),
+    do: %{"type" => "uri", "modality" => modality, "uri" => uri}
+
+  defp part(%Wardrik.Conversation.File{file_id: id, mime_type: mime_type}),
     do:
-      put(
-        %{"type" => "file", "modality" => "document", "file_id" => id},
-        "mime_type",
-        part.media_type
-      )
+      put(%{"type" => "file", "modality" => "document", "file_id" => id}, "mime_type", mime_type)
 
-  defp part(%ContentPart{type: type, data: data} = part) when type in [:image, :file] do
-    modality = if type == :image, do: "image", else: "document"
-
+  defp part(%Blob{modality: modality, mime_type: mime_type, data: data}) do
     %{"type" => "blob", "modality" => modality}
-    |> put("mime_type", part.media_type)
-    |> capped("content", Base.encode64(data || ""))
+    |> put("mime_type", mime_type)
+    |> capped("content", Base.encode64(data))
   end
-
-  defp part(%ContentPart{type: type}), do: %{"type" => to_string(type)}
 
   defp text_part(type, text), do: capped(%{"type" => type}, "content", text)
 
-  defp uri(modality, url), do: %{"type" => "uri", "modality" => modality, "uri" => url}
-
-  defp tool_call(%ToolCall{} = call) do
-    arguments =
-      case ToolCall.args_map(call) do
-        arguments when is_map(arguments) -> arguments
-        _unreadable -> ToolCall.args_json(call)
-      end
-
-    capped(
-      %{"type" => "tool_call", "id" => call.id, "name" => ToolCall.name(call)},
-      "arguments",
-      json(arguments)
-    )
-  end
+  defp tool_call(%{id: id, name: name, arguments: arguments}),
+    do: capped(%{"type" => "tool_call", "id" => id, "name" => name}, "arguments", json(arguments))
 
   @doc """
   A failure reason as `{type, message}`: `type` is its low-cardinality code,
@@ -119,16 +113,16 @@ defmodule Wardrik.Event.Codec.Value do
   def result({:error, reason}), do: {"error", nil, error(reason)}
   def result(other), do: {"error", nil, error({:invalid_result, other})}
 
-  @doc "A provider's usage as OpenTelemetry names it, without the `gen_ai.` prefix."
-  @spec usage(map() | nil) :: map() | nil
+  @doc "What a model call used, as OpenTelemetry names it, without the `gen_ai.` prefix."
+  @spec usage(Usage.t() | nil) :: map() | nil
   def usage(nil), do: nil
 
-  def usage(usage) when is_map(usage) do
+  def usage(%Usage{} = usage) do
     %{}
-    |> put("input_tokens", usage[:input_tokens])
-    |> put("output_tokens", usage[:output_tokens])
-    |> put("cache_read", count("input_tokens", usage[:cached_tokens]))
-    |> put("reasoning", count("output_tokens", usage[:reasoning_tokens]))
+    |> put("input_tokens", usage.input_tokens)
+    |> put("output_tokens", usage.output_tokens)
+    |> put("cache_read", count("input_tokens", usage.cached_tokens))
+    |> put("reasoning", count("output_tokens", usage.reasoning_tokens))
   end
 
   @doc "What a call cost, as `t:Wardrik.Call.cost/0` carries it, or `nil`."

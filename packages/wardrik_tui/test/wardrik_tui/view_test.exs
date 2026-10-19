@@ -162,7 +162,7 @@ defmodule WardrikTUI.ViewTest do
                message_id: "m0",
                outcome: :ok,
                duration_ms: 1_200,
-               response: nil,
+               answer: nil,
                cost: nil
              })
              |> plain() =~ "ok 1.2s"
@@ -172,7 +172,7 @@ defmodule WardrikTUI.ViewTest do
           message_id: "m0",
           outcome: {:error, :rate_limited},
           duration_ms: 40,
-          response: nil,
+          answer: nil,
           cost: nil
         })
 
@@ -218,7 +218,9 @@ defmodule WardrikTUI.ViewTest do
     end
 
     test "ends each line so traces stack one per row" do
-      assert View.trace(%Event.Meta{chunk: %{}}) |> plain() |> String.ends_with?("\n")
+      assert View.trace(%Event.DelegationStarted{prompt: "x"})
+             |> plain()
+             |> String.ends_with?("\n")
     end
 
     test "says nothing about events that have their own rendering" do

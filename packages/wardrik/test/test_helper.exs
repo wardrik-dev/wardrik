@@ -7,7 +7,6 @@ Mimic.copy(WardrikPolicy.Meter)
 # real services, which dev/services.sh starts, are left out where nothing
 # answers; see WardrikEcto.Test.Services and WardrikS3.Test.Services.
 Wardrik.Test.start(
-  llm_stub: true,
   children:
     Wardrik.Test.children() ++
       [

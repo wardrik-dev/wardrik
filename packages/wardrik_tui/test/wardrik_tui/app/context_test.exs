@@ -1,6 +1,8 @@
 defmodule WardrikTUI.App.ContextTest do
   use ExUnit.Case, async: false
   alias Wardrik.{Agent, Event, Fleet}
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.User
   alias WardrikTUI.App
 
   def park_two(%Wardrik.LLM.Turn{run: run}) do
@@ -54,16 +56,19 @@ defmodule WardrikTUI.App.ContextTest do
     {a, _} = Wardrik.Test.Fleet.start_agent()
 
     {b, _} =
-      Wardrik.Test.Fleet.start_agent(
-        context: ReqLLM.Context.new([ReqLLM.Context.user("OLD DELETED HISTORY")])
-      )
+      Wardrik.Test.Fleet.start_agent(history: Conversation.new([User.new("OLD DELETED HISTORY")]))
 
     s = session(a)
     submit(s, "/connect #{b}")
     submit(s, "/connect #{a}")
     submit(s, "/rm #{b}")
     submit(s, "/confirm")
-    {:ok, _} = Fleet.spawn(b, context: ReqLLM.Context.new([ReqLLM.Context.user("NEW HISTORY")]))
+
+    {:ok, _} =
+      Fleet.spawn(b,
+        history: Conversation.new([User.new("NEW HISTORY")])
+      )
+
     submit(s, "/connect #{b}")
     text = screen(s)
     refute text =~ "OLD DELETED HISTORY"
@@ -87,15 +92,18 @@ defmodule WardrikTUI.App.ContextTest do
     {a, _} = Wardrik.Test.Fleet.start_agent()
 
     {b, _} =
-      Wardrik.Test.Fleet.start_agent(
-        context: ReqLLM.Context.new([ReqLLM.Context.user("old context")])
-      )
+      Wardrik.Test.Fleet.start_agent(history: Conversation.new([User.new("old context")]))
 
     s = session(b)
     Enum.each(String.graphemes("old draft"), &Breeze.Test.input(s, &1))
     connect_sidebar(s, a)
     :ok = Fleet.forget(b)
-    {:ok, _} = Fleet.spawn(b, context: ReqLLM.Context.new([ReqLLM.Context.user("new context")]))
+
+    {:ok, _} =
+      Fleet.spawn(b,
+        history: Conversation.new([User.new("new context")])
+      )
+
     submit(s, "/connect #{b}")
     text = screen(s)
     assert text =~ "new context"
@@ -104,11 +112,11 @@ defmodule WardrikTUI.App.ContextTest do
   end
 
   test "scrollback and unread messages survive switching until following output" do
-    messages = for n <- 1..50, do: ReqLLM.Context.user("message #{n}")
+    messages = for n <- 1..50, do: User.new("message #{n}")
 
     {a, pid} =
       Wardrik.Test.Fleet.start_agent(
-        context: ReqLLM.Context.new(messages),
+        history: Conversation.new(messages),
         runner: {Wardrik.Test.AgentRunners, :echo, [self(), "new answer"]}
       )
 

@@ -18,14 +18,14 @@ defmodule Wardrik.Test.FakeAgent do
   def handle_call(:status, _from, owner), do: {:reply, status(), owner}
 
   def handle_call(:parked, _from, owner), do: {:reply, [], owner}
-  def handle_call(:get_context, _from, owner), do: {:reply, ReqLLM.Context.new(), owner}
+  def handle_call(:history, _from, owner), do: {:reply, Wardrik.Conversation.new(), owner}
 
   def handle_call(:snapshot, _from, owner) do
     {:reply,
      %Wardrik.Agent.Snapshot{
        agent: Wardrik.AgentID.parse!("acme/fake"),
        status: status(),
-       context: ReqLLM.Context.new(),
+       history: Wardrik.Conversation.new(),
        parked: [],
        generation: inspect(self()),
        trace_id: nil,

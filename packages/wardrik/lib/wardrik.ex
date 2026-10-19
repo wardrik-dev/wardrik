@@ -73,10 +73,11 @@ defmodule Wardrik do
       `WardrikDefinition.Contexts`, which gives each agent its context.
       `context([])` by default.
     * `:issuer`, `:credentials`, `:connections`, `:servers`, `:tokens`,
-      `:triggers`, `:dispatch` - the host's seams, each a value implementing
-      core's protocol of that name, as `Wardrik.Host` lists them. One left
-      out is that protocol's None: tokens allowing nothing, no credentials,
-      and so on.
+      `:triggers`, `:dispatch`, `:llm` - the host's seams, each a value
+      implementing core's protocol of that name, as `Wardrik.Host` lists
+      them. One left out is that protocol's default: tokens allowing
+      nothing, no credentials, every model call made through ReqLLM, and so
+      on.
     * `:expires` - how long the tokens `tokens_create/4` makes last, as
       `api:` seconds; 90 days by default.
     * `:fleet` - the options of `Wardrik.Fleet.Supervisor`.
@@ -129,7 +130,7 @@ defmodule Wardrik do
   @typedoc "What became of an agent a forget reached: removed, kept with why, or not removed with why."
   @type outcome() :: :forgotten | {:kept, String.t()} | {:failed, String.t()}
 
-  @seams [:issuer, :credentials, :connections, :servers, :tokens, :triggers, :dispatch]
+  @seams [:issuer, :credentials, :connections, :servers, :tokens, :triggers, :dispatch, :llm]
 
   # The setting that names each store.
   @stores [

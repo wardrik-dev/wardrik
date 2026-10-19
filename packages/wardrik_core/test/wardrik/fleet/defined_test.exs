@@ -1,6 +1,5 @@
 defmodule Wardrik.Fleet.DefinedTest do
   use ExUnit.Case, async: false
-  use Mimic
 
   import ExUnit.CaptureLog
 
@@ -13,9 +12,7 @@ defmodule Wardrik.Fleet.DefinedTest do
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Definitions
-  alias Wardrik.Test.LLMStub
-
-  setup :set_mimic_global
+  alias Wardrik.Test.LLM
 
   setup do
     key = Wardrik.Test.Fleet.id()
@@ -36,7 +33,7 @@ defmodule Wardrik.Fleet.DefinedTest do
     assert [%Fleet.Member{id: ^key, asleep: true}] =
              Fleet.list(Prefix.of(key), host: Wardrik.Test.host())
 
-    LLMStub.stream([LLMStub.final_answer("Hello.")])
+    LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Hello.")])
     :ok = Event.Bus.subscribe(key)
     :ok = Agent.ask(key, "hi", host: Wardrik.Test.host())
 
@@ -62,7 +59,7 @@ defmodule Wardrik.Fleet.DefinedTest do
            end) =~
              "#{key} kept a state this release cannot read"
 
-    assert Agent.snapshot(key, host: Wardrik.Test.host()).context.messages == []
+    assert Agent.snapshot(key, host: Wardrik.Test.host()).history.messages == []
   end
 
   test "an agent whose state does not read, and that nothing defines, is not found", %{

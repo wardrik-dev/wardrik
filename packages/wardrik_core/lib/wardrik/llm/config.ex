@@ -40,9 +40,10 @@ defmodule Wardrik.LLM.Config do
 
       Wardrik.LLM.Config.new(tools: [...], tool_prices: %{"web_search" => 0.005, "github/*" => 0.0})
 
-  `:generation` is passed to `ReqLLM.stream_text/3` as it stands, so anything
-  the provider takes can be set here — how long an answer may run, and how much
-  of it the model may spend on reasoning.
+  `:generation` is passed to the host's `Wardrik.LLM.Client` as it stands, so
+  anything the provider takes can be set here — how long an answer may run,
+  and how much of it the model may spend on reasoning, as
+  `Wardrik.LLM.ReqLLM` names them.
 
       Wardrik.LLM.Config.new(generation: [max_tokens: 8_000])
       Wardrik.LLM.Config.new(generation: [reasoning_token_budget: 2_000])
@@ -93,7 +94,7 @@ defmodule Wardrik.LLM.Config do
             history: {Wardrik.Compaction, %Wardrik.Compaction{}}
 
   @type t :: %__MODULE__{
-          model_spec: {atom(), keyword()},
+          model_spec: String.t() | {atom(), keyword()},
           system: String.t() | nil,
           tools: [Tool.spec()],
           except_tools: [String.t()],
@@ -106,7 +107,7 @@ defmodule Wardrik.LLM.Config do
 
   @typedoc "A config written down: its fields, with the names of the tools that could not travel."
   @type dumped() :: %{
-          model_spec: {atom(), keyword()},
+          model_spec: String.t() | {atom(), keyword()},
           system: String.t() | nil,
           tools: [module() | {module(), term()}],
           dropped_tools: [String.t()],

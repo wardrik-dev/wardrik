@@ -29,7 +29,7 @@ defmodule Wardrik.History do
 
   require Logger
 
-  alias ReqLLM.Context
+  alias Wardrik.Conversation
   alias Wardrik.LLM.Tokens
   alias Wardrik.Run
 
@@ -49,22 +49,22 @@ defmodule Wardrik.History do
   `:keep` for the history as it is, or `{:error, reason}`, which keeps it too.
   `value` is what the config named the module with, or `nil`.
   """
-  @callback prepare(history :: Context.t(), Run.t(), value :: term()) ::
-              {:ok, Context.t()} | :keep | {:error, term()}
+  @callback prepare(history :: Conversation.t(), Run.t(), value :: term()) ::
+              {:ok, Conversation.t()} | :keep | {:error, term()}
 
   @doc """
   What `seam` keeps of `history` before a turn under `run`: the history it
   rewrote, with what changed, or `:keep`.
   """
-  @spec prepare(t(), Context.t(), Run.t()) :: {:ok, Context.t(), stats()} | :keep
-  def prepare(nil, %Context{}, %Run{}), do: :keep
+  @spec prepare(t(), Conversation.t(), Run.t()) :: {:ok, Conversation.t(), stats()} | :keep
+  def prepare(nil, %Conversation{}, %Run{}), do: :keep
 
-  def prepare(module, %Context{} = history, %Run{} = run) when is_atom(module),
+  def prepare(module, %Conversation{} = history, %Run{} = run) when is_atom(module),
     do: prepare({module, nil}, history, run)
 
-  def prepare({module, value}, %Context{} = history, %Run{} = run) do
+  def prepare({module, value}, %Conversation{} = history, %Run{} = run) do
     case module.prepare(history, run, value) do
-      {:ok, %Context{} = kept} -> {:ok, kept, stats(history, kept)}
+      {:ok, %Conversation{} = kept} -> {:ok, kept, stats(history, kept)}
       :keep -> :keep
       {:error, reason} -> kept(module, reason)
       other -> kept(module, {:invalid_answer, other})
@@ -79,8 +79,8 @@ defmodule Wardrik.History do
   end
 
   defp stats(before, kept) do
-    before = Context.to_list(before)
-    kept = Context.to_list(kept)
+    before = Conversation.to_list(before)
+    kept = Conversation.to_list(kept)
 
     %{
       messages_before: length(before),

@@ -13,13 +13,13 @@ defmodule Wardrik.Agent.State.Stored do
   its `Wardrik.Agent.Activity`, which is read back from what it waits on.
   """
 
-  alias ReqLLM.Context
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Due
   alias Wardrik.Agent.State.Running
   alias Wardrik.Agent.State.Waiting
+  alias Wardrik.Conversation
   alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
@@ -32,7 +32,7 @@ defmodule Wardrik.Agent.State.Stored do
           agent_id: Event.Bus.agent_id(),
           sequence: non_neg_integer(),
           config: Config.dumped(),
-          context: Context.t(),
+          history: Conversation.t(),
           run_opts: keyword(),
           grace: pos_integer(),
           pending: [Message.t()],
