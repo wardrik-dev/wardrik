@@ -33,7 +33,7 @@ defmodule WardrikSlack.Answers do
     user = Map.get(payload, "user", %{})
 
     with {:ok, %{"a" => text, "c" => call, "n" => name}} <- JSON.decode(value),
-         {:ok, agent} <- Wardrik.AgentID.parse(text) do
+         {:ok, agent} <- Wardrik.AgentID.address(text) do
       %{context: context, installation: installation} =
         workspace = Keyword.fetch!(opts, :workspace)
 

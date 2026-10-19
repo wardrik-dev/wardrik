@@ -19,7 +19,7 @@ defmodule WardrikChannel.Installation do
   for an org reads `triage`, not the org's id before it.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Resource
 
   @derive {Inspect, except: [:token]}
@@ -38,15 +38,16 @@ defmodule WardrikChannel.Installation do
   owner's, as `triage` or `@jon/triage` where the owner is an org; whole
   where the owner is not its org.
   """
-  @spec shown(t(), AgentID.t()) :: String.t()
-  def shown(%__MODULE__{owner: owner}, %AgentID{} = agent),
+  @spec shown(t(), AgentAddress.t()) :: String.t()
+  def shown(%__MODULE__{owner: owner}, agent),
     do: String.replace_prefix(to_string(agent), "#{owner}/", "")
 
   @doc """
   Whether `agent` is the owner's: an agent of the org it was installed
-  for, its users' among them, or of the user; any agent, for `*`.
+  for, its users' among them, or of the user, or a `Wardrik.Thread` of
+  one; any agent, for `*`.
   """
-  @spec covers?(t(), AgentID.t()) :: boolean()
-  def covers?(%__MODULE__{owner: owner}, %AgentID{} = agent),
-    do: Resource.covers?(Resource.parse!("#{owner}/*"), AgentID.resource(agent))
+  @spec covers?(t(), AgentAddress.t()) :: boolean()
+  def covers?(%__MODULE__{owner: owner}, agent),
+    do: Resource.covers?(Resource.parse!("#{owner}/*"), AgentAddress.resource(agent))
 end

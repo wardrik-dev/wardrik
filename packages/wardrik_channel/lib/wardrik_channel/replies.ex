@@ -47,7 +47,7 @@ defmodule WardrikChannel.Replies do
   behind it.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.Thread
   alias WardrikChannel.Replies.Server
   alias WardrikChannel.Replies.State
   alias WardrikChannel.Room
@@ -130,8 +130,8 @@ defmodule WardrikChannel.Replies do
   Posts in `thread` of the room what `agent` answers from now on, unless
   the thread is followed already.
   """
-  @spec follow(Room.t(), String.t(), AgentID.t()) :: :ok
-  def follow(%Room{workspace: %{installation: installation}} = room, thread, %AgentID{} = agent) do
+  @spec follow(Room.t(), String.t(), Thread.t()) :: :ok
+  def follow(%Room{workspace: %{installation: installation}} = room, thread, %Thread{} = agent) do
     state = State.new(installation.channel, installation.workspace, room.id)
     child = {Server, key: Room.key(room), initial_state: state}
     {:ok, {pid, _meta}} = DurableServer.Supervisor.ensure_started_child(replies(room), child)

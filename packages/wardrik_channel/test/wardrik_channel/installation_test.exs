@@ -14,7 +14,7 @@ defmodule WardrikChannel.InstallationTest do
 
     assert Installation.shown(org, ~A"acme/triage") == "triage"
     assert Installation.shown(org, ~A"acme/@jon/triage") == "@jon/triage"
-    assert Installation.shown(org, ~A"acme/triage/C1-1.2") == "triage/C1-1.2"
+    assert Installation.shown(org, Wardrik.Thread.parse!("acme/triage/C1-1.2")) == "triage/C1-1.2"
 
     assert Installation.shown(
              installed(Resource.parse!("acme/@jon")),
