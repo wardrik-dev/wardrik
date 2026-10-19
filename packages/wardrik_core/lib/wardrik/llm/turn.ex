@@ -278,6 +278,11 @@ defmodule Wardrik.LLM.Turn do
   def awaiting(%__MODULE__{calls: calls}, ref, owner),
     do: for(call <- calls, Call.awaits?(call, ref, owner), do: call.id)
 
+  @doc "The credentials the calls the turn waits on were parked to resolve."
+  @spec awaited(t()) :: [Call.Ask.credential()]
+  def awaited(%__MODULE__{calls: calls}),
+    do: calls |> Enum.flat_map(&Call.awaited/1) |> Enum.uniq()
+
   @doc "The ids of the tool calls the turn's answer asked for."
   @spec call_ids(t()) :: [String.t()]
   def call_ids(%__MODULE__{answer: nil}), do: []

@@ -78,8 +78,8 @@ defmodule Wardrik.Credential do
   defmodule Available do
     @moduledoc """
     Word that a credential can now be resolved: `ref` for `owner`, as
-    `Wardrik.Credential.available/3` sends it to every agent, and `by`, the
-    `Wardrik.Principal` that made it so, or `nil`.
+    `Wardrik.Credential.available/3` sends it to whoever waits on it, and
+    `by`, the `Wardrik.Principal` that made it so, or `nil`.
     """
 
     @enforce_keys [:ref, :owner]
@@ -118,26 +118,29 @@ defmodule Wardrik.Credential do
           | {:error, {:authorization_required, Call.Ask.link(), owner()}}
           | {:error, term()}
 
+  @doc false
+  def child_spec([]), do: Group.child_spec(name: __MODULE__)
+
   @doc """
   Says that `ref` can now be resolved for `owner`, so a call parked on it
   carries on.
 
-  Every agent awake in the cluster hears it, as an `Available`, and one
-  holding a call parked to resolve `ref` for `owner` approves the call as
-  `:by`, the `Wardrik.Principal` that connected it, and carries on with nobody
-  asked. One asleep with such a call is woken to hear it. A resolver says it
-  once the credential is kept where the next `Wardrik.Credentials.resolve/3`
-  finds it.
+  Whoever `subscribe/2`d to `ref` for `owner`, on any node of the cluster,
+  hears it, as an `Available`: an agent holding a call parked to resolve it,
+  which approves the call as `:by`, the `Wardrik.Principal` that connected
+  it, and carries on with nobody asked. An agent asleep with such a call is
+  woken to hear it. A resolver says it once the credential is kept where the
+  next `Wardrik.Credentials.resolve/3` finds it.
   """
   @spec available(ref(), owner(), by: Wardrik.Principal.t() | nil) :: :ok
   def available(ref, owner, opts \\ []) when is_binary(ref) and is_list(opts) do
     word = %Available{ref: ref, owner: owner, by: Keyword.get(opts, :by)}
 
-    Enum.each(Fleet.held(Wardrik.Resource.parse!("*")), fn
-      %{asleep: false, pid: pid} -> send(pid, word)
-      %{asleep: true, status: :parked, id: id} -> wake_awaiting(id, word)
-      %{asleep: true} -> :ok
-    end)
+    # The asleep first, so one that wakes meanwhile is told either way.
+    for %{asleep: true, status: :parked, id: id} <- Fleet.held(Wardrik.Resource.parse!("*")),
+        do: wake_awaiting(id, word)
+
+    Group.dispatch(__MODULE__, topic(ref, owner), word)
   end
 
   defp wake_awaiting(id, %Available{ref: ref, owner: owner} = word) do
@@ -149,6 +152,19 @@ defmodule Wardrik.Credential do
 
     :ok
   end
+
+  @doc """
+  Subscribes the calling process to `ref` for `owner`: it is sent the
+  `Available` that `available/3` says, wherever in the cluster it is said.
+  """
+  @spec subscribe(ref(), owner()) :: :ok
+  def subscribe(ref, owner), do: Group.join(__MODULE__, topic(ref, owner), %{})
+
+  @spec unsubscribe(ref(), owner()) :: :ok
+  def unsubscribe(ref, owner), do: Group.leave(__MODULE__, topic(ref, owner))
+
+  defp topic(ref, owner),
+    do: Base.url_encode64(:erlang.term_to_binary({ref, owner}, [:deterministic]), padding: false)
 
   @doc """
   A credential holding the real value.

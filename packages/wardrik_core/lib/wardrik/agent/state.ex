@@ -496,6 +496,11 @@ defmodule Wardrik.Agent.State do
 
   def awaiting(%__MODULE__{}, _ref, _owner), do: []
 
+  @doc "The credentials a waiting agent's calls were parked to resolve, or `[]`."
+  @spec awaited(t()) :: [Wardrik.Call.Ask.credential()]
+  def awaited(%__MODULE__{mode: %Waiting{turn: turn}}), do: Turn.awaited(turn)
+  def awaited(%__MODULE__{}), do: []
+
   @doc """
   Queues a message, announces it, and says who to nudge.
 
