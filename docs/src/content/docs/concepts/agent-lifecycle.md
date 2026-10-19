@@ -26,8 +26,11 @@ remove it or change its triggers.
 
 ## Changing and removing
 
-`wardrik reload` gives each awake agent what its file says now; a sleeping one takes it as it wakes.
-The conversation is kept, and a running turn finishes with what it started with.
+`wardrik reload` reads every file and definition again, on the node that answers, for the whole
+cluster, so every node keeps `agents/` and `policies/` alike. Each awake agent takes what its file
+or definition says now; a sleeping one, or one a file adds, takes it as it wakes. The conversation
+is kept, and a running turn finishes with what it started with. An agent whose file is gone stops,
+and its definition goes.
 
 To remove an agent, delete its file and run `wardrik reload`, then `wardrik agent rm KEY`. An agent
 the HTTP API defined is removed with `wardrik agent rm KEY` alone.

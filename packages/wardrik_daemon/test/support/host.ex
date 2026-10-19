@@ -11,7 +11,6 @@ defmodule WardrikDaemon.Test.Host do
 
   @sections {__MODULE__, :sections}
   @agents {__MODULE__, :agents}
-  @nodes {__MODULE__, :nodes}
 
   # As test_helper.exs built them, past any stub of held/0.
   def host, do: elem(suite(), 0)
@@ -53,15 +52,8 @@ defmodule WardrikDaemon.Test.Host do
     %{
       agents
       | config: config,
-        context: WardrikDaemon.AgentFile.context(config),
-        nodes: Process.get(@nodes, &Node.list/0)
+        context: WardrikDaemon.AgentFile.context(config)
     }
-  end
-
-  # The other nodes whose inventories the test's definitions count.
-  def put_nodes(nodes) do
-    Process.put(@nodes, nodes)
-    :ok
   end
 
   # The test's directory, for its config, without starting anything.
@@ -70,14 +62,18 @@ defmodule WardrikDaemon.Test.Host do
     :ok
   end
 
-  # Starts the daemon's agents reading `dir`, as the test's own, once they
-  # have read it.
+  # Reads the files of `dir`, as the test's own, as the daemon does as it
+  # starts.
   def start_agents(dir) do
     Process.put(@agents, dir)
-    ExUnit.Callbacks.start_supervised!({Agents, agents: agents(dir), host: host()})
-    _files = Agents.files(agents(dir))
+    _reloaded = reload(agents(dir))
     agents(dir)
   end
+
+  # Reads every definition again, the files of the test's directory among
+  # them, as wardrik reload does.
+  def reload(agents \\ agents()),
+    do: Wardrik.Definitions.reload(Agents.definitions(agents), host: host())
 
   # The definitions of the directory start_agents/1 read, under the sections
   # the test has put so far.
@@ -119,8 +115,7 @@ defmodule WardrikDaemon.Test.Host do
     %{
       Agents.of(host())
       | config: config,
-        context: WardrikDaemon.AgentFile.context(config),
-        nodes: dictionary(test)[@nodes] || (&Node.list/0)
+        context: WardrikDaemon.AgentFile.context(config)
     }
   end
 

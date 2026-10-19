@@ -40,7 +40,7 @@ wardrik doctor
 
 ### wardrik reload
 
-Read the agent and policy files again, everywhere.
+Read the agent and policy files again, for every node.
 
 ```sh
 wardrik reload

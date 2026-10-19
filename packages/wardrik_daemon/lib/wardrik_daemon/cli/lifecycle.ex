@@ -5,8 +5,9 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   `agent spawn NAME` starts the agent `agents/NAME.md` declares, or one
   nothing defines from `config.yaml`'s `defaults`, kept as its definition.
-  `--file` writes `agents/NAME.md` from the defaults first, and reads the
-  files again on every node, as `wardrik reload` does. `--org` and `--user`
+  `--file` writes `agents/NAME.md` from the defaults first, on the node that
+  answers, which every other node keeps too, and reads the files again, as
+  `wardrik reload` does. `--org` and `--user`
   put the agent in an org, or with one of its users, as a file's `org` and
   `user` do, and `--on NODE` starts it on that node. An agent `agent stop`
   stopped comes back as it was.
@@ -224,7 +225,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     do: "Started #{key} on #{on(agent)} again, with its conversation."
 
   defp spawned(:definition, agent, key, _scope) do
-    case WardrikDaemon.Host.declared()[key] do
+    case declared()[key] do
       {path, _spec} -> "Started #{key} on #{on(agent)}, as #{shown(path)} declares it."
       nil -> "Started #{key} on #{on(agent)}, on the definition kept for it."
     end
@@ -518,7 +519,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   @spec file(Wardrik.AgentID.t(), host: Wardrik.Host.t()) ::
           {:ok, Path.t()} | {:error, String.t()}
   def file(key, opts) do
-    case {WardrikDaemon.Host.declared()[key], Fleet.lookup(key, opts)} do
+    case {declared()[key], Fleet.lookup(key, opts)} do
       {{path, _spec}, _member} ->
         {:ok, path}
 
@@ -554,6 +555,13 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp pattern?(target), do: match?(%Resource{}, target)
 
   defp shown(path), do: Path.join("agents", Path.basename(path))
+
+  # The agent files that read now, by the ID each declares.
+  defp declared,
+    do:
+      WardrikDaemon.Host.agents()
+      |> WardrikDaemon.Agents.files(host: WardrikDaemon.Host.get())
+      |> WardrikDaemon.declared()
 
   defp no_agent(key), do: "No agent runs under #{key}."
 

@@ -230,7 +230,7 @@ defmodule Wardrik.APITest do
              Wardrik.deployment_nodes(root)
 
     assert node == node()
-    assert {:ok, [^node]} = Wardrik.deployment_reload(root)
+    assert {:ok, %{reloaded: _agents, failed: _failed}} = Wardrik.deployment_reload(root)
     assert {:ok, changes} = Wardrik.deployment_audit(root, limit: 10)
     assert is_list(changes)
   end
@@ -268,7 +268,7 @@ defmodule Wardrik.APITest do
     assert %Forgetting{} = Wardrik.agents_forget_preview!(scope, Wardrik.AgentID.resource(agent))
     assert %Wardrik.Deployment.Nodes{} = Wardrik.deployment_nodes!(root)
     assert is_list(Wardrik.deployment_audit!(root))
-    assert [_node] = Wardrik.deployment_reload!(root)
+    assert %{reloaded: _agents} = Wardrik.deployment_reload!(root)
     assert :ok = Wardrik.agent_forget!(scope, agent)
 
     parked = parked(scope)

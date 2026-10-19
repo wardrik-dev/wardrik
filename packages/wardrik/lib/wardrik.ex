@@ -1476,17 +1476,20 @@ defmodule Wardrik do
   end
 
   @doc """
-  Has the host's definitions read again what they are read under, and
-  every agent awake built again from its definition, as
-  `Wardrik.Definitions.reload/2` does, and answers the nodes they were
-  read on.
+  Reads every agent's definition again, in one pass on this node, as
+  `Wardrik.Definitions.reload/2` does: the files that declare agents, which
+  every node of the deployment keeps alike, and every other definition,
+  under the context as it is now. Every agent awake takes what it reads
+  into; one asleep takes it as it wakes. Answers the agents whose
+  definitions were read, and why each that did not read or build did not.
   """
   @doc group: "Deployment"
-  @spec deployment_reload(Scope.t()) :: {:ok, [node()]} | {:error, Error.t()}
+  @spec deployment_reload(Scope.t()) ::
+          {:ok, %{reloaded: [AgentID.t()], failed: [String.t()]}} | {:error, Error.t()}
   def deployment_reload(%Scope{} = scope) do
     with :ok <- on_deployment(scope, "deployment.reload") do
-      nodes = Definitions.reload(Host.definitions(scope.host), host: scope.host)
-      audited(scope, [{:agents_reloaded, nodes}], nodes)
+      reloaded = Definitions.reload(Host.definitions(scope.host), host: scope.host)
+      audited(scope, [{:agents_reloaded, [node()]}], reloaded)
     end
   end
 
@@ -1771,7 +1774,7 @@ defmodule Wardrik do
 
   @doc "As `deployment_reload/1`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Deployment"
-  @spec deployment_reload!(Scope.t()) :: [node()]
+  @spec deployment_reload!(Scope.t()) :: %{reloaded: [AgentID.t()], failed: [String.t()]}
   def deployment_reload!(scope), do: unwrap(deployment_reload(scope))
 
   @doc "As `subscribe/2`, answering the value, or raising the `Wardrik.Error`."

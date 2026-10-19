@@ -36,7 +36,7 @@ export class Deployment {
     return this.#http.json("GET", "/v1/deployment/nodes");
   }
 
-  /** Has every node whose host reads its definitions again do so; answers those nodes. */
+  /** Has the node that answers read every agent's definition again; answers that node. */
   async reload(): Promise<string[]> {
     const answer = await this.#http.json<{ reloaded: string[] }>("POST", "/v1/deployment/reload");
     return answer.reloaded;

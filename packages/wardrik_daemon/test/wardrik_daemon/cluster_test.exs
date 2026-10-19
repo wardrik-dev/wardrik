@@ -243,14 +243,6 @@ defmodule WardrikDaemon.ClusterTest do
   end
 
   describe "the CLI" do
-    @tag :tmp_dir
-    test "wardrik start is told nothing once the agent files have been read", %{tmp_dir: dir} do
-      cluster([])
-      Host.start_agents(dir)
-
-      assert WardrikDaemon.CLI.started() == ""
-    end
-
     test "wardrik start keeps waiting while nothing has started" do
       cluster([])
 

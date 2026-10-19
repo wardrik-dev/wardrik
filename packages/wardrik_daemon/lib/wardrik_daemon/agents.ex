@@ -1,49 +1,30 @@
 defmodule WardrikDaemon.Agents do
   @moduledoc """
-  Runs the agents `agents/` in the config directory declares, one per `*.md`
+  The agents `agents/` in the config directory declares, one per `*.md`
   file, under the policies `policies/` declares, one per `*.yaml` or `*.yml`
-  file. See
-  `WardrikDaemon.AgentFile` and `WardrikDaemon.PolicyFile` for what each says.
+  file. See `WardrikDaemon.AgentFile` and `WardrikDaemon.PolicyFile` for
+  what each says.
 
-  It reads every file when it starts and again on `reload/1`, policies first,
-  keeps the policies in the store, and each agent file's `Wardrik.Definition`
-  in the daemon's `Wardrik.Definitions`, then puts each agent's
-  `Wardrik.Agent.Spec` to the fleet with `Wardrik.Fleet.put/1`: an agent
-  that is not running is started, and one that is takes what its file says
-  now. An agent keeps its conversation either way.
-
-  It is also the `WardrikDefinition.Contexts` of the daemon's definitions,
+  It is the `WardrikDefinition.Contexts` of the daemon's definitions,
   `definitions/1`: every definition, a file's or one the HTTP API sent, is
   read under the context `config.yaml` gives, with the policies the store
-  keeps, so every node reads the same ones; and `wardrik reload` has every
-  daemon of the deployment read its files again.
+  keeps, so every node reads the same ones. `wardrik reload`, as
+  `Wardrik.deployment_reload/1` does, reads the files on the node it is
+  asked of, in one pass, through `reload/1`: the policies first, kept in the
+  store, then each agent file's `Wardrik.Definition`. So every node of a
+  deployment keeps `agents/` and `policies/` alike, as a release does. The
+  daemon reads them so as it starts.
 
-  A file that does not read, or whose agent does not start, is reported by
-  `files/1`, and by `wardrik status`, and every other file is read as if it
-  were not there. An agent already running for it is left as it was, and an
-  agent naming a policy that does not read does not read either.
-
-  ## Agents the files no longer declare
-
-  Each node keeps its own inventory in the store: the keys its agent files
-  declare, and the name of the file each came from. A key its inventory held
-  that no file declares any more, because its file was removed or now names
-  another agent, is retired once no other node connected to it declares it
-  either: the agent stops, its triggers are cleared and its definition
-  forgotten, and it keeps its conversation, so a file that declares it again
-  brings it back as it was.
-  `Wardrik.Fleet.forget/1`, or `wardrik agent rm`, removes it for good. A
-  file that does not read keeps its keys in the inventory, so its agent is
-  left as it was. An agent the HTTP API defined is in no inventory, and
-  reading the files never touches it.
-
-  ## Reading what was read
-
-  Files are read in its process, one reading at a time. What each reading
-  comes to is published to the table `new/1` made with the value, a cache
-  of the process's own, and `files/1` is read from it in the caller: it
-  does not wait behind a reading under way. Until the first reading is done
-  it waits for it.
+  An agent a file declares starts as anything asks it; one awake takes what
+  its file says now as the files are read, and keeps its conversation. A
+  file that does not read is reported by `files/1`, and by `wardrik status`,
+  and leaves what it declared as it was. An agent naming a policy that does
+  not read does not read either. A definition a file declared that no file
+  declares any more is retired: its agent stops, its triggers are cleared
+  and its definition forgotten, and it keeps its conversation, so a file
+  that declares it again brings it back as it was. `wardrik agent rm`
+  removes it for good. An agent the HTTP API defined is read again under the
+  policies read, and no file touches it.
 
   ## Defaults
 
@@ -51,10 +32,6 @@ defmodule WardrikDaemon.Agents do
   says: an agent nothing defines starts from them, and `write/2` writes a
   file from them, as `wardrik agent spawn --file` asks.
   """
-
-  use GenServer
-
-  require Logger
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
@@ -65,36 +42,29 @@ defmodule WardrikDaemon.Agents do
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.PolicyFile
 
-  @inventory :declared
   @policies :policies
 
-  @enforce_keys [:store, :config, :context, :table, :nodes]
-  defstruct [:store, :config, :context, :table, :nodes, audit: Wardrik.Audit]
+  @enforce_keys [:store, :config, :context]
+  defstruct [:store, :config, :context, audit: Wardrik.Audit]
 
   @typedoc """
   The daemon's agents: definitions kept in `:store`, read under `:config`,
-  with what each reading came to published to `:table`, `:nodes` the other
-  nodes whose inventories count, and `:audit` the `Wardrik.Audit` log an
-  agent a channel creates is recorded in.
+  and `:audit` the `Wardrik.Audit` log an agent a channel creates is
+  recorded in.
   """
   @type t() :: %__MODULE__{
           store: WardrikStore.t(),
           config: WardrikDaemon.Config.t(),
           context: WardrikDefinition.Context.t(),
-          table: :ets.tid(),
-          nodes: (-> [node()]),
           audit: GenServer.name()
         }
 
-  @typedoc "What became of one file: the spec or policy it writes, or why it writes neither."
+  @typedoc "What one file reads into: the spec or policy it writes, or why it writes neither."
   @type file() :: {Path.t(), {:ok, Spec.t() | WardrikPolicy.t()} | {:error, String.t()}}
 
   @doc """
-  The daemon's agents, kept in `:store` and read under `:config`, with a
-  table of their own for what each reading comes to, which the process
-  that makes the value owns. `:nodes` gives the other nodes whose
-  inventories count, `Node.list/0` unless given, `:audit` the log of
-  `Wardrik.Host.audit/1`, `Wardrik.Audit` unless given.
+  The daemon's agents, kept in `:store` and read under `:config`. `:audit`
+  is the log of `Wardrik.Host.audit/1`, `Wardrik.Audit` unless given.
   """
   @spec new(keyword()) :: t()
   def new(opts) do
@@ -104,48 +74,37 @@ defmodule WardrikDaemon.Agents do
       store: Keyword.fetch!(opts, :store),
       config: config,
       context: AgentFile.context(config),
-      table: :ets.new(__MODULE__, [:public, read_concurrency: true]),
-      nodes: Keyword.get(opts, :nodes, &Node.list/0),
       audit: Keyword.get(opts, :audit, Wardrik.Audit)
     }
   end
 
   @doc "The daemon's definitions: kept in its store, and read under it."
   @spec definitions(t()) :: Definitions.t()
-  def definitions(%__MODULE__{} = agents),
-    do: %Definitions{store: agents.store, contexts: agents, nodes: agents.nodes}
+  def definitions(%__MODULE__{} = agents), do: %Definitions{store: agents.store, contexts: agents}
 
   @doc "The agents of the daemon `host` runs: the contexts of its definitions."
   @spec of(Wardrik.Host.t()) :: t()
   def of(host), do: Wardrik.Host.definitions(host).contexts
 
   @doc """
-  Starts it, reading the files under the config directory of `:agents`, and
-  bringing the agents awake on `:host` to them.
+  Reads the policy and agent files again, on this node: keeps the policies
+  in the store, and answers each agent file with the definition it reads
+  into under them on `:host`, and each file that does not read with why, as
+  `Wardrik.Definitions.reload/2` asks.
   """
-  @spec start_link(agents: t(), host: Wardrik.Host.t()) :: GenServer.on_start()
-  def start_link(opts) do
-    init = {Keyword.fetch!(opts, :agents), Keyword.fetch!(opts, :host)}
-    GenServer.start_link(__MODULE__, init, name: __MODULE__)
+  @spec reload(t(), host: Wardrik.Host.t()) ::
+          [{Path.t(), {:ok, Definition.t()} | {:error, String.t()}}]
+  def reload(%__MODULE__{} = agents, opts) do
+    {policy_files, agent_files} = read_files(agents.config, opts)
+    policies = for {_path, {:ok, policy}} <- policy_files, into: %{}, do: {policy.name, policy}
+    {:ok, _vsn} = WardrikStore.put(agents.store, @policies, "policies", policies)
+
+    for({path, {:error, message}} <- policy_files, do: {path, {:error, message}}) ++
+      for {path, read} <- agent_files, do: {path, definition_of(read)}
   end
 
-  @doc "Reads every file again and brings the fleet to what they say."
-  @spec reload(t()) :: :ok
-  def reload(_agents), do: GenServer.call(__MODULE__, :reload, :timer.minutes(1))
-
-  @doc """
-  Has every node that runs a daemon read its files again, as
-  `Wardrik.deployment_reload/1` asks: the nodes that read.
-  """
-  @spec reload_everywhere(t()) :: [node()]
-  def reload_everywhere(agents) do
-    nodes = WardrikDaemon.daemons()
-
-    for node <- nodes,
-        do: :ok = :erpc.call(node, __MODULE__, :reload, [agents], :timer.minutes(1))
-
-    nodes
-  end
+  defp definition_of({:ok, definition, _spec}), do: {:ok, definition}
+  defp definition_of(unread), do: unread
 
   @doc """
   The context every definition is read under: what `config.yaml` says, with
@@ -156,11 +115,17 @@ defmodule WardrikDaemon.Agents do
     do: %{context | policies: WardrikStore.get(store, @policies, "policies") || %{}}
 
   @doc """
-  What became of each file the last time they were read: the policies, then
-  the agents, each in the order of their names.
+  What each file reads into now, on `:host`: the policies, then the agents,
+  each in the order of their names.
   """
-  @spec files(t()) :: [file()]
-  def files(agents), do: loaded(agents).files
+  @spec files(t(), host: Wardrik.Host.t()) :: [file()]
+  def files(%__MODULE__{config: config}, opts) do
+    {policy_files, agent_files} = read_files(config, opts)
+    policy_files ++ for {path, read} <- agent_files, do: {path, spec_of(read)}
+  end
+
+  defp spec_of({:ok, _definition, spec}), do: {:ok, spec}
+  defp spec_of(unread), do: unread
 
   @doc "The config directory the files are read from."
   @spec dir(t()) :: Path.t()
@@ -368,18 +333,18 @@ defmodule WardrikDaemon.Agents do
   def write(%__MODULE__{} = agents, %AgentID{} = key, opts) do
     path = Path.join([dir(agents), "agents", file_name(key) <> ".md"])
 
-    with :ok <- untaken(agents, path),
+    with :ok <- untaken(agents, path, opts),
          {:ok, _spec} <- created(agents, key, opts),
          :ok <- written(path, AgentFile.text(created_fields(agents, key))),
          do: {:ok, path}
   end
 
-  defp untaken(agents, path) do
+  defp untaken(agents, path, opts) do
     cond do
       not File.exists?(path) ->
         :ok
 
-      other = Enum.find_value(WardrikDaemon.declared(files(agents)), &declaring(&1, path)) ->
+      other = Enum.find_value(WardrikDaemon.declared(files(agents, opts)), &declaring(&1, path)) ->
         {:error, :conflict, "#{shown(path)} is there already, and declares #{other}."}
 
       true ->
@@ -436,50 +401,6 @@ defmodule WardrikDaemon.Agents do
 
   defp shown(path), do: Path.join("agents", Path.basename(path))
 
-  # Published at the end of each reading. Before the first one there is
-  # nothing to read, so the process is asked, and answers once it is done.
-  defp loaded(%__MODULE__{table: table}) do
-    case :ets.lookup(table, :loaded) do
-      [{:loaded, loaded}] -> loaded
-      [] -> GenServer.call(__MODULE__, :loaded, :timer.minutes(1))
-    end
-  end
-
-  @doc """
-  Why each agent `reload/1` last built again from a kept definition did not
-  build, a message each.
-  """
-  @spec problems(t()) :: [String.t()]
-  def problems(agents), do: loaded(agents).problems
-
-  @impl true
-  def init({%__MODULE__{} = agents, host}) do
-    # A reading of a process before this one is not this one's: until its
-    # first is done, the process is asked, and answers once it is.
-    true = :ets.delete(agents.table, :loaded)
-
-    state = %{agents: agents, host: host, store: agents.store, nodes: agents.nodes}
-    {:ok, state, {:continue, :load}}
-  end
-
-  @impl true
-  def handle_continue(:load, state), do: {:noreply, load(state)}
-
-  @impl true
-  def handle_call(:reload, _from, state), do: {:reply, :ok, load(state)}
-
-  def handle_call(:loaded, _from, state), do: {:reply, published(state), state}
-
-  defp published(state), do: Map.take(state, [:files, :problems])
-
-  # The file another node connected to this one declares `key` in, as its
-  # inventory has it.
-  defp elsewhere(store, nodes, key) do
-    Enum.find_value(nodes.(), fn node ->
-      Map.get(WardrikStore.get(store, @inventory, inventory(node)) || %{}, to_string(key))
-    end)
-  end
-
   @doc """
   What the policy and agent files under `config`'s directory read into on
   `:host`, without starting anything: each policy file's policy, and each
@@ -506,28 +427,6 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  # The policies are kept first, so the definitions the files write read
-  # under them wherever they are built.
-  defp load(%{agents: agents} = state) do
-    {policy_files, read} = read_files(agents.config, host: state.host)
-    policies = for {_path, {:ok, policy}} <- policy_files, into: %{}, do: {policy.name, policy}
-    {:ok, _vsn} = WardrikStore.put(state.store, @policies, "policies", policies)
-
-    agent_files =
-      for {path, result} <- read,
-          do: {path, contained(path, fn _path -> put(agents, result) end)}
-
-    prune(state, agent_files)
-    problems = Definitions.rebuild(definitions(agents), host: state.host)
-
-    state = Map.merge(state, %{files: policy_files ++ agent_files, problems: problems})
-    for {_path, {:error, message}} <- state.files, do: Logger.error(message)
-    for message <- problems, do: Logger.error(message)
-
-    true = :ets.insert(agents.table, {:loaded, published(state)})
-    state
-  end
-
   # careful.yaml and careful.yml would both be the policy careful; the first by
   # name is read, and the other reported.
   defp once_each(files) do
@@ -550,36 +449,6 @@ defmodule WardrikDaemon.Agents do
     files
   end
 
-  # The keys the files declare now, and those of files that do not read,
-  # become this node's inventory. A key it held before that it holds no
-  # longer, and that no connected node's inventory holds, is retired.
-  defp prune(state, agent_files) do
-    named = for {path, result} <- agent_files, do: {Path.basename(path), result}
-    unread = for {name, {:error, _message}} <- named, into: MapSet.new(), do: name
-    declared = for {name, {:ok, spec}} <- named, into: %{}, do: {to_string(spec.id), name}
-
-    previous = WardrikStore.get(state.store, @inventory, inventory(node())) || %{}
-    kept = Map.filter(previous, fn {_key, path} -> MapSet.member?(unread, path) end)
-    inventory = Map.merge(kept, declared)
-    {:ok, _vsn} = WardrikStore.put(state.store, @inventory, inventory(node()), inventory)
-
-    for text <- Map.keys(previous) -- Map.keys(inventory),
-        key = Wardrik.AgentID.parse!(text),
-        elsewhere(state.store, state.nodes, key) == nil,
-        do: retire(state.agents, key)
-  end
-
-  defp inventory(node), do: "agents/#{node}"
-
-  defp retire(agents, key) do
-    _forgotten = Definitions.delete(definitions(agents), key)
-
-    case Fleet.stop(key) do
-      :ok -> :ok
-      {:error, :noproc} -> :ok
-    end
-  end
-
   defp read(dir, pattern, read) do
     dir
     |> Path.join(pattern)
@@ -594,29 +463,9 @@ defmodule WardrikDaemon.Agents do
     kind, reason ->
       {:error, "#{path}: " <> String.trim_leading(Exception.format_banner(kind, reason), "** ")}
   end
-
-  # The definition is kept before the agent starts, so whatever finds the
-  # agent finds what it is. An agent the store holds asleep is left asleep,
-  # and takes the definition as it wakes.
-  defp put(agents, {:ok, definition, spec}) do
-    :ok = Definitions.put(definitions(agents), definition)
-
-    if Fleet.held_pid(spec.id, wake: false) == nil and Fleet.stored?(spec.id),
-      do: {:ok, spec},
-      else: started(spec)
-  end
-
-  defp put(_agents, {:error, _message} = error), do: error
-
-  defp started(spec) do
-    case Fleet.put(spec) do
-      {:ok, _pid} -> {:ok, spec}
-      {:error, reason} -> {:error, "#{spec.id} did not start: #{inspect(reason)}"}
-    end
-  end
 end
 
 defimpl WardrikDefinition.Contexts, for: WardrikDaemon.Agents do
   def context(agents, _owner), do: WardrikDaemon.Agents.context(agents)
-  def reload(agents, _opts), do: WardrikDaemon.Agents.reload_everywhere(agents)
+  defdelegate reload(agents, opts), to: WardrikDaemon.Agents
 end
