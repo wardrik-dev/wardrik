@@ -127,7 +127,7 @@ defmodule Wardrik.AgentSleepTest do
 
   defmodule Tools do
     @moduledoc false
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tools(_value) do
@@ -144,7 +144,7 @@ defmodule Wardrik.AgentSleepTest do
 
   defmodule Careful do
     @moduledoc false
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
 
     @impl true
     def init(_opts), do: nil
