@@ -34,10 +34,6 @@ defmodule WardrikDaemon.Host do
   @spec agents() :: WardrikDaemon.Agents.t()
   def agents, do: WardrikDaemon.Agents.of(get())
 
-  @doc "The agent files that read, by the ID each declares, as `WardrikDaemon.declared/1` has them."
-  @spec declared() :: %{Wardrik.AgentID.t() => {Path.t(), Wardrik.Agent.Spec.t()}}
-  def declared, do: WardrikDaemon.declared(WardrikDaemon.Agents.files(agents()))
-
   @doc "The deployment's secret `name` in the held host's vault, as `WardrikDaemon.Secrets.named/2` reads it."
   @spec secret(String.t()) :: String.t() | nil
   def secret(name), do: WardrikDaemon.Secrets.named(Wardrik.Host.credentials(get()), name)

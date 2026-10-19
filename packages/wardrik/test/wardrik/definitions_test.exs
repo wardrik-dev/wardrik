@@ -1,8 +1,6 @@
 defmodule Wardrik.DefinitionsTest do
   use ExUnit.Case, async: false
 
-  import ExUnit.CaptureLog
-
   alias Wardrik.AgentID
   alias Wardrik.Definition
   alias Wardrik.Definitions
@@ -21,6 +19,16 @@ defmodule Wardrik.DefinitionsTest do
           description: "Searches.",
           run: fn input, _context -> {:ok, input} end
         )
+  end
+
+  # A context whose files declare what a test gives.
+  defmodule Files do
+    defstruct [:context, files: []]
+  end
+
+  defimpl WardrikDefinition.Contexts, for: Files do
+    def context(%{context: context}, _owner), do: context
+    def reload(%{files: files}, _opts), do: files
   end
 
   setup do
@@ -249,19 +257,71 @@ defmodule Wardrik.DefinitionsTest do
     {:ok, spec} = put(definitions, id, %{"policy" => "careful"})
     {:ok, _pid} = Fleet.put(spec)
 
-    assert Definitions.reload(definitions, host: host()) == [node()]
+    assert %{reloaded: reloaded, failed: failed} =
+             Definitions.reload(definitions, host: host())
+
+    assert id in reloaded
+    assert of(failed, org) == []
 
     without = definitions(%{test.context | policies: %{}})
+    assert %{failed: failed} = Definitions.reload(without, host: host())
 
-    assert capture_log(fn ->
-             assert Definitions.reload(without, host: host()) == [node()]
-           end) =~
-             "#{id} does not build from its definition: policy names careful"
+    assert List.last(failed) =~ "#{id} does not build from its definition: policy names careful"
 
     :ok = Fleet.forget(id)
-    assert Definitions.reload(definitions, host: host()) == [node()]
+    assert %{failed: failed} = Definitions.reload(definitions, host: host())
+    assert of(failed, org) == []
     assert {:ok, _definition} = Definitions.get(definitions, id)
   end
+
+  test "reload keeps what files declare now, retires what none does, and reads the rest again",
+       %{org: org, context: context} do
+    [api, kept, unread, retired, added] =
+      for name <- ~w(api kept unread retired added), do: AgentID.parse!("#{org}/#{name}")
+
+    definitions = definitions(%Files{context: context})
+    {:ok, _spec} = put(definitions, api, %{})
+
+    for id <- [kept, unread, retired],
+        do: {:ok, _spec} = put(definitions, id, %{}, source: file(id))
+
+    {:ok, _pid} = Fleet.put(Wardrik.Agent.Spec.new(id: retired))
+
+    later = %{context | defaults: %{"idle_timeout" => 60}}
+
+    files = [
+      {"agents/kept.md", read(kept, %{"description" => "Kept."}, later)},
+      {"agents/unread.md", {:error, "agents/unread.md: tools is a list"}},
+      {"agents/added.md", read(added, %{}, later)}
+    ]
+
+    definitions = definitions(%Files{context: later, files: files})
+
+    assert %{reloaded: reloaded, failed: ["agents/unread.md: tools is a list" | failed]} =
+             Definitions.reload(definitions, host: host())
+
+    assert for(id <- reloaded, id.org == org, do: id) == [added, api, kept]
+    assert of(failed, org) == []
+
+    assert {:ok, %{idle_timeout: 60_000, source: {:api, _token}}} =
+             Definitions.get(definitions, api)
+
+    assert {:ok, %{description: "Kept."}} = Definitions.get(definitions, kept)
+    assert {:ok, %{source: {:file, "agents/unread.md"}}} = Definitions.get(definitions, unread)
+    assert {:ok, _added} = Definitions.get(definitions, added)
+    assert Definitions.get(definitions, retired) == {:error, :not_found}
+    assert Fleet.held_pid(retired, wake: false) == nil
+    assert Fleet.stored?(retired)
+  end
+
+  # Every definition in the suite's store is read again; these are the
+  # messages of the test's own org's.
+  defp of(messages, org), do: Enum.filter(messages, &String.contains?(&1, org))
+
+  defp file(id), do: {:file, "agents/#{id.name}.md"}
+
+  defp read(id, fields, context),
+    do: Definition.read(fields, id: id, source: file(id), context: context)
 
   test "names the agents it keeps a definition for under a prefix",
        %{org: org, definitions: definitions} do

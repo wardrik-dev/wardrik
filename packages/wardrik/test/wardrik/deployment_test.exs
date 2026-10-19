@@ -27,7 +27,7 @@ defmodule Wardrik.DeploymentTest do
 
     def reload(_reloads, _opts) do
       send(:persistent_term.get({Reloads, :test}), :reloaded)
-      [node()]
+      [{"agents/broken.md", {:error, "agents/broken.md: tools is a list"}}]
     end
   end
 
@@ -90,11 +90,12 @@ defmodule Wardrik.DeploymentTest do
   end
 
   describe "reloading" do
-    test "reads the contexts again on every node that reads them, and records it" do
+    test "reads every definition again on this node, says what does not read, and records it" do
       :persistent_term.put({Reloads, :test}, self())
 
-      assert {:ok, [node]} = Wardrik.deployment_reload(root())
-      assert node == node()
+      assert {:ok, %{failed: failed}} = Wardrik.deployment_reload(root())
+      assert "agents/broken.md: tools is a list" in failed
+
       assert_received :reloaded
       assert Enum.any?(Audit.about("agents"), &match?({"agents.reloaded", %{"id" => "jon"}}, &1))
 

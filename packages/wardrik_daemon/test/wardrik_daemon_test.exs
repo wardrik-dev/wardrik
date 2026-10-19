@@ -42,8 +42,10 @@ defmodule WardrikDaemonTest do
        %{tmp_dir: dir} do
     assert {{:ok, pid}, _config, _host} = daemon(dir)
 
-    assert [WardrikDaemon.Agents, WardrikHTTP.Listener, WardrikMCP.Supervisor] =
+    assert [WardrikHTTP.Listener, WardrikMCP.Supervisor] =
              pid |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
+
+    assert WardrikDaemon.CLI.started() == ""
   end
 
   test "defines the agents sent to its HTTP API as it reads agent files", %{tmp_dir: dir} do
@@ -227,13 +229,7 @@ defmodule WardrikDaemonTest do
     )
 
     {{:ok, _pid}, config, host} = daemon(dir)
-
-    Wardrik.Test.Fleet.await_update(fn ->
-      Enum.any?(
-        Wardrik.Fleet.list(Wardrik.Resource.parse!(org <> "/agent/*"), host: Host.host()),
-        &(not &1.asleep)
-      )
-    end)
+    assert %{} = Wardrik.Agent.status(AgentID.new!("counter", org: org), host: host)
 
     assert WardrikDaemon.status(host, config) =~
              "#{org}/counter  idle  #{node()}  0 of 500 tokens today"

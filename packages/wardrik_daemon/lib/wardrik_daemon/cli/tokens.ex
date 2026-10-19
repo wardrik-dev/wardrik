@@ -139,7 +139,9 @@ defmodule WardrikDaemon.CLI.Tokens do
   defp policy(name) do
     names =
       for {_path, {:ok, %WardrikPolicy{name: held}}} <-
-            WardrikDaemon.Agents.files(WardrikDaemon.Host.agents()),
+            WardrikDaemon.Agents.files(WardrikDaemon.Host.agents(),
+              host: WardrikDaemon.Host.get()
+            ),
           do: held
 
     if name in names,

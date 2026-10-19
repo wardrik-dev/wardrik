@@ -117,7 +117,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                "---\norg: #{org}\nmodel: anthropic:claude-sonnet-5\ntools: [web_search]\n---\n" <>
                  @prompt
 
-      assert [{_path, {:ok, _spec}}] = WardrikDaemon.Agents.files(Host.agents())
+      assert [{_path, {:ok, _spec}}] =
+               WardrikDaemon.Agents.files(Host.agents(), host: Host.host())
+
       assert {:ok, %{source: {:file, _path}}} = Wardrik.Definitions.get(definitions, key)
 
       assert Audit.about(key) == [{"agent.spawned", @ops}]
@@ -206,7 +208,8 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "stop", "nobody/here"]) ==
                {"No agent runs under nobody/here.\n", 1}
 
-      assert Audit.about(key) == [{"agent.stopped", @ops}, {"agent.spawned", @ops}]
+      assert Audit.about(key) ==
+               [{"agent.spawned", @ops}, {"agent.stopped", @ops}, {"agent.spawned", @ops}]
 
       assert Audit.about(loose) == [{"agent.stopped", @ops}, {"agent.spawned", @ops}]
     end

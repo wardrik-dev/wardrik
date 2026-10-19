@@ -6,6 +6,6 @@ defmodule Wardrik.ByOrg do
 
   defimpl WardrikDefinition.Contexts do
     def context(%{contexts: contexts}, %Wardrik.AgentID{org: org}), do: Map.fetch!(contexts, org)
-    def reload(_by_org, _opts), do: [node()]
+    def reload(_by_org, _opts), do: []
   end
 end

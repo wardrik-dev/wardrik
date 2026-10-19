@@ -108,8 +108,9 @@ Then:
 
 `start`, `stop`, `serve`, `remote`, `logs`, `pid`, `doctor` and `service` act on one node, and take
 `--node` once there are several. Every other command asks whichever node answers, since each speaks
-for the whole cluster. `reload` reads the files again on every node. `WARDRIK_NODE` sets the node
-for every command.
+for the whole cluster. `reload` reads the files on the node that answers, for the whole cluster, so
+every node keeps `agents/` and `policies/` alike, as one release or one deploy gives them.
+`WARDRIK_NODE` sets the node for every command.
 
 ### Shared ports
 

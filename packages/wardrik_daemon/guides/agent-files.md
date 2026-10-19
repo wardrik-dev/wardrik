@@ -14,7 +14,9 @@ You watch the incident queue. Summarise anything new, and say which
 issues need an engineer.
 ```
 
-`wardrik reload` reads the agent files again and starts what changed. A file that doesn't read says
+`wardrik reload` reads the agent files again, on the node that answers, for every node, so every
+node keeps `agents/` and `policies/` alike. An agent awake takes what its file says now; one asleep
+takes it as it wakes, and one a file adds starts as anything asks it. A file that doesn't read says
 why, and an agent already running keeps what it had. A file with no frontmatter is all prompt.
 
 ## Keys

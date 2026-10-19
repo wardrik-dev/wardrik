@@ -31,8 +31,6 @@ defmodule Wardrik.Definitions do
   own.
   """
 
-  require Logger
-
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.Definition
@@ -202,24 +200,61 @@ defmodule Wardrik.Definitions do
       )
 
   @doc """
-  Has the contexts read again what they are read from, then builds every
-  agent awake on `:host` again, as `rebuild/2` does: the nodes the contexts
-  were read on. Why an agent does not build is logged.
+  Reads every definition again, in one pass on this node: what the files
+  the contexts read declare now is kept, a definition a file declared that
+  no file declares any more is retired, as its agent stops and keeps its
+  conversation, and every other is read again from its fields under its
+  owner's context as it is now. A file that does not read leaves what it
+  declared as it was.
+
+  Every agent awake on `:host` a definition is kept for is then built
+  again from it; one asleep takes its definition as it wakes. Answers the
+  agents whose definitions were read, and why each file, definition or
+  agent that did not read or build did not.
   """
-  @spec reload(t(), host: Wardrik.Host.t()) :: [node()]
+  @spec reload(t(), host: Wardrik.Host.t()) :: %{reloaded: [AgentID.t()], failed: [String.t()]}
   def reload(%__MODULE__{contexts: contexts} = definitions, opts) do
-    nodes = Contexts.reload(contexts, opts)
-    for message <- rebuild(definitions, opts), do: Logger.error(message)
-    nodes
+    files = Contexts.reload(contexts, opts)
+    declared = for {_path, {:ok, definition}} <- files, into: %{}, do: {definition.id, definition}
+    unread = for {path, {:error, _message}} <- files, do: path
+    kept = list(definitions, Resource.parse!("*"))
+
+    for %Definition{id: id, source: {:file, path}} <- kept,
+        not is_map_key(declared, id) and path not in unread,
+        do: :ok = retire(definitions, id)
+
+    read = Enum.map(Map.values(declared), &{:ok, &1}) ++ read_again(definitions, kept, declared)
+    for {:ok, definition} <- read, do: :ok = put(definitions, definition)
+
+    %{
+      reloaded: Enum.sort_by(for({:ok, %Definition{id: id}} <- read, do: id), &to_string/1),
+      failed:
+        for({_path, {:error, message}} <- files, do: message) ++
+          for({:error, message} <- read, do: message) ++ rebuild(definitions, opts)
+    }
   end
 
-  @doc """
-  Builds every agent awake on `:host` a definition is kept for again, from
-  it, and puts the routes again: why each that does not build does not, a
-  message each. One asleep takes its definition as it wakes.
-  """
-  @spec rebuild(t(), host: Wardrik.Host.t()) :: [String.t()]
-  def rebuild(%__MODULE__{} = definitions, opts) do
+  # Every definition no file declares, read again under its owner's context.
+  defp read_again(definitions, kept, declared) do
+    for %Definition{id: id, source: source} = definition <- kept,
+        not match?({:file, _path}, source) and not is_map_key(declared, id) do
+      with {:error, message} <- Definition.again(definition, context(definitions, id)),
+           do: {:error, "#{id} does not read: #{message}"}
+    end
+  end
+
+  defp retire(definitions, id) do
+    :ok = delete(definitions, id)
+
+    case Fleet.stop(id) do
+      :ok -> :ok
+      {:error, :noproc} -> :ok
+    end
+  end
+
+  # Builds every agent awake on `:host` a definition is kept for again, and
+  # puts the routes again: why each that does not build does not.
+  defp rebuild(definitions, opts) do
     host = Keyword.fetch!(opts, :host)
 
     messages =

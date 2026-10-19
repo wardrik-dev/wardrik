@@ -1,7 +1,6 @@
 defmodule WardrikDaemon.AgentsTest do
   use ExUnit.Case, async: false
 
-  import Wardrik.Test, only: [store: 0]
   use Mimic
 
   alias Wardrik.Agent
@@ -66,6 +65,12 @@ defmodule WardrikDaemon.AgentsTest do
          do: Definitions.spec(definitions(), id, host: Host.host())
   end
 
+  # Why each of the test's files, definitions or agents did not read or
+  # build, as a reload of every definition in the suite's store answers it.
+  defp failed(%{org: org, dir: dir}, %{failed: failed}),
+    do:
+      Enum.filter(failed, &(String.starts_with?(&1, org <> "/") or String.starts_with?(&1, dir)))
+
   defp write_policy(%{dir: dir}, name, yaml) do
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join([dir, "policies", "#{name}.yaml"]), yaml)
@@ -77,7 +82,8 @@ defmodule WardrikDaemon.AgentsTest do
 
     Host.start_agents(context.dir)
 
-    assert [{_alpha, {:ok, _}}, {_beta, {:ok, _}}] = Agents.files(Host.agents())
+    assert [{_alpha, {:ok, _}}, {_beta, {:ok, _}}] =
+             Agents.files(Host.agents(), host: Host.host())
 
     assert Agent.status(AgentID.parse!("#{org}/beta"), host: Host.host()).model ==
              "anthropic:claude-sonnet-5"
@@ -99,7 +105,7 @@ defmodule WardrikDaemon.AgentsTest do
     {:ok, pid} = Fleet.spawn(AgentID.parse!("#{org}/alpha"))
 
     write(context, "alpha", "model: anthropic:claude-sonnet-5\n")
-    Agents.reload(Host.agents())
+    Host.reload()
 
     assert {:ok, ^pid} = Fleet.spawn(AgentID.parse!("#{org}/alpha"))
 
@@ -113,7 +119,9 @@ defmodule WardrikDaemon.AgentsTest do
 
     Host.start_agents(context.dir)
 
-    assert [{_alpha, {:ok, _}}, {broken, {:error, message}}] = Agents.files(Host.agents())
+    assert [{_alpha, {:ok, _}}, {broken, {:error, message}}] =
+             Agents.files(Host.agents(), host: Host.host())
+
     assert Path.basename(broken) == "broken.md"
     assert message =~ "names nope"
     assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"), host: Host.host())
@@ -129,7 +137,9 @@ defmodule WardrikDaemon.AgentsTest do
 
     Host.start_agents(dir)
 
-    assert [{_alpha, {:ok, _}}, {slashed, {:error, message}}] = Agents.files(Host.agents())
+    assert [{_alpha, {:ok, _}}, {slashed, {:error, message}}] =
+             Agents.files(Host.agents(), host: Host.host())
+
     assert Path.basename(slashed) == "slashed.md"
     assert message =~ "slashed.md: an agent's org is"
     assert message =~ "which is not a segment"
@@ -149,7 +159,9 @@ defmodule WardrikDaemon.AgentsTest do
 
     Host.start_agents(context.dir)
 
-    assert [{_alpha, {:ok, _}}, {failing, {:error, message}}] = Agents.files(Host.agents())
+    assert [{_alpha, {:ok, _}}, {failing, {:error, message}}] =
+             Agents.files(Host.agents(), host: Host.host())
+
     assert message == "#{failing}: (exit) :store_timeout"
     assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"), host: Host.host())
   end
@@ -161,7 +173,7 @@ defmodule WardrikDaemon.AgentsTest do
     Host.start_agents(context.dir)
 
     assert [{_policy, {:ok, %WardrikPolicy{name: "careful"} = careful}}, {_alpha, {:ok, spec}}] =
-             Agents.files(Host.agents())
+             Agents.files(Host.agents(), host: Host.host())
 
     assert spec.hooks == WardrikPolicy.hooks(careful)
     assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"), host: Host.host())
@@ -175,7 +187,8 @@ defmodule WardrikDaemon.AgentsTest do
 
     Host.start_agents(context.dir)
 
-    assert [_team, _careful, {_alpha, {:ok, spec}}] = Agents.files(Host.agents())
+    assert [_team, _careful, {_alpha, {:ok, spec}}] =
+             Agents.files(Host.agents(), host: Host.host())
 
     assert ["orgs/#{org}/team", "orgs/#{org}/team/budget", "careful", "careful/budget"] ==
              Enum.map(spec.hooks, & &1.name)
@@ -200,7 +213,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     Host.start_agents(context.dir)
 
-    assert [{_alpha, {:error, message}}] = Agents.files(Host.agents())
+    assert [{_alpha, {:error, message}}] = Agents.files(Host.agents(), host: Host.host())
 
     assert message =~
              "config.yaml holds #{org}'s agents to the policy nowhere, which is not a policy in policies/"
@@ -219,7 +232,7 @@ defmodule WardrikDaemon.AgentsTest do
     write(context, "alpha", "notify: audit\n")
     Host.start_agents(context.dir)
     start_supervised!({WardrikNotify.Supervisor, notify})
-    _files = Agents.files(Host.agents())
+    _files = Agents.files(Host.agents(), host: Host.host())
 
     alpha = AgentID.parse!("#{org}/alpha")
 
@@ -383,17 +396,15 @@ defmodule WardrikDaemon.AgentsTest do
     {:ok, _pid} = Fleet.spawn(thread, Wardrik.Agent.Spec.options(spec))
 
     write(context, "alpha", "policy: lax\n")
-    Agents.reload(Host.agents())
-
-    assert [_policy, {_alpha, {:error, message}}] = Agents.files(Host.agents())
+    assert [message] = failed(context, Host.reload())
     assert message =~ "names lax"
-    assert Agents.problems(Host.agents()) == []
+
+    assert [_policy, {_alpha, {:error, ^message}}] =
+             Agents.files(Host.agents(), host: Host.host())
 
     File.rm!(Path.join([context.dir, "policies", "careful.yaml"]))
     write(context, "alpha", "")
-    Agents.reload(Host.agents())
-
-    assert Agents.problems(Host.agents()) == []
+    assert failed(context, Host.reload()) == []
     assert {:ok, %{hooks: []}} = Agents.spec(Host.agents(), thread, host: Host.host())
   end
 
@@ -408,21 +419,20 @@ defmodule WardrikDaemon.AgentsTest do
 
     {:ok, _pid} = Fleet.put(spec)
 
-    Agents.reload(Host.agents())
-    assert Agents.problems(Host.agents()) == []
+    assert %{reloaded: reloaded} = Host.reload()
+    assert defined in reloaded
 
     File.rm!(Path.join([context.dir, "policies", "careful.yaml"]))
-    Agents.reload(Host.agents())
 
-    assert Agents.problems(Host.agents()) == [
-             "#{defined} does not build from its definition: " <>
-               "policy names careful, which is not a policy in policies/"
+    missing = "policy names careful, which is not a policy in policies/"
+
+    assert failed(context, Host.reload()) == [
+             "#{defined} does not read: #{missing}",
+             "#{defined} does not build from its definition: #{missing}"
            ]
 
     :ok = Fleet.forget(defined)
-    Agents.reload(Host.agents())
-
-    assert Agents.problems(Host.agents()) == []
+    assert failed(context, Host.reload()) == ["#{defined} does not read: #{missing}"]
     assert {:ok, _definition} = Definitions.get(definitions(), defined)
   end
 
@@ -437,7 +447,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     # The store loses the agent, as a wiped one would, and keeps its definition.
     :ok = Fleet.forget(defined)
-    Agents.reload(Host.agents())
+    Host.reload()
 
     assert {:ok, _definition} = Definitions.get(definitions(), defined)
 
@@ -513,45 +523,19 @@ defmodule WardrikDaemon.AgentsTest do
              {:error, :conflict, message}
   end
 
-  test "answers what it last read while it is busy reading again", %{org: org} = context do
-    write(context, "alpha", "")
-    write_policy(context, "careful", "deny: [run_lua]\n")
-    Host.start_agents(context.dir)
-    assert [_policy, _agent] = Agents.files(Host.agents())
-
-    :ok = :sys.suspend(Agents)
-    on_exit(fn -> if Process.whereis(Agents), do: :sys.resume(Agents) end)
-
-    assert [{_careful, {:ok, %WardrikPolicy{}}}, {_alpha, {:ok, _spec}}] =
-             Agents.files(Host.agents())
-
-    assert Agents.dir(Host.agents()) == context.dir
-    assert Agents.problems(Host.agents()) == []
-
-    assert {:error, :conflict, _message} =
-             Definitions.editable(definitions(), AgentID.parse!("#{org}/alpha"))
-
-    assert Definitions.editable(definitions(), AgentID.parse!("#{org}/beta")) == :ok
-
-    assert {:ok, _spec} =
-             Agents.spec(Host.agents(), AgentID.parse!("#{org}/alpha"), host: Host.host())
-
-    :ok = :sys.resume(Agents)
-  end
-
   describe "an agent asleep" do
     test "is left asleep by a reload, and wakes with its file as it reads now",
          %{org: org} = context do
       write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-sonnet-5\n")
       Host.start_agents(context.dir)
-      Agents.files(Host.agents())
       key = AgentID.parse!("#{org}/alpha")
       :ok = Wardrik.Event.Bus.subscribe(key)
+      assert %{} = Agent.status(key, host: Host.host())
       assert_receive %Wardrik.Event{payload: %Event.AgentStopped{reason: :idle}}, 3_000
       assert Wardrik.Test.Fleet.await_update(fn -> Fleet.held_pid(key, wake: false) == nil end)
 
       write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-haiku-4-5\n")
-      Agents.reload(Host.agents())
+      Host.reload()
 
       assert Fleet.held_pid(key, wake: false) == nil
       assert %{model: "anthropic:claude-haiku-4-5"} = Agent.status(key, host: Host.host())
@@ -564,18 +548,18 @@ defmodule WardrikDaemon.AgentsTest do
       write(context, "alpha", "")
       write(context, "beta", "triggers:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
       Host.start_agents(dir)
-      Agents.files(Host.agents())
+      Agents.files(Host.agents(), host: Host.host())
       %{generation: generation} = Agent.snapshot(AgentID.parse!("#{org}/beta"), host: Host.host())
 
       File.rm!(Path.join([dir, "agents", "beta.md"]))
-      Agents.reload(Host.agents())
+      Host.reload()
 
       assert Fleet.held_pid(AgentID.parse!("#{org}/beta"), wake: false) == nil
       assert WardrikTrigger.for_agent(AgentID.parse!("#{org}/beta")) == []
       assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"), host: Host.host())
 
       write(context, "beta", "")
-      Agents.reload(Host.agents())
+      Host.reload()
 
       assert %{generation: ^generation} =
                Agent.snapshot(AgentID.parse!("#{org}/beta"), host: Host.host())
@@ -586,32 +570,10 @@ defmodule WardrikDaemon.AgentsTest do
       Host.start_agents(context.dir)
 
       write(context, "alpha", "name: gamma\n")
-      Agents.reload(Host.agents())
+      Host.reload()
 
       assert Fleet.held_pid(AgentID.parse!("#{org}/alpha"), wake: false) == nil
       assert %{} = Agent.status(AgentID.parse!("#{org}/gamma"), host: Host.host())
-    end
-
-    test "runs on while another node's files declare it", %{dir: dir, org: org} = context do
-      other = :"agents-test@elsewhere"
-      write(context, "beta", "")
-      agents = %{Host.agents(dir) | nodes: fn -> [other] end}
-      start_supervised!({Agents, agents: agents, host: Host.host()})
-      Agents.files(agents)
-
-      {:ok, _vsn} =
-        WardrikStore.put(store(), :declared, "agents/#{other}", %{"#{org}/beta" => "beta.md"})
-
-      on_exit(fn -> WardrikStore.delete(store(), :declared, "agents/#{other}") end)
-
-      File.rm!(Path.join([dir, "agents", "beta.md"]))
-      Agents.reload(agents)
-
-      assert %{} = Agent.status(AgentID.parse!("#{org}/beta"), host: Host.host())
-
-      assert Definitions.editable(Agents.definitions(agents), AgentID.parse!("#{org}/beta")) ==
-               {:error, :conflict,
-                "#{org}/beta is declared by agents/beta.md; change or remove that file, then reload it"}
     end
 
     test "is left as it was while its file does not read", %{org: org} = context do
@@ -619,11 +581,11 @@ defmodule WardrikDaemon.AgentsTest do
       Host.start_agents(context.dir)
 
       write(context, "alpha", "tools: [nope]\n")
-      Agents.reload(Host.agents())
+      Host.reload()
       assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"), host: Host.host())
 
       write(context, "alpha", "")
-      Agents.reload(Host.agents())
+      Host.reload()
       assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"), host: Host.host())
     end
 
@@ -637,7 +599,7 @@ defmodule WardrikDaemon.AgentsTest do
       {:ok, _pid} = Fleet.put(spec)
 
       File.rm!(Path.join([context.dir, "agents", "alpha.md"]))
-      Agents.reload(Host.agents())
+      Host.reload()
 
       assert Fleet.held_pid(AgentID.parse!("#{org}/alpha"), wake: false) == nil
       assert %{} = Agent.status(AgentID.parse!("#{org}/defined"), host: Host.host())
@@ -652,7 +614,7 @@ defmodule WardrikDaemon.AgentsTest do
     Host.start_agents(context.dir)
 
     assert [{_policy, {:error, policy_error}}, {_alpha, {:error, agent_error}}] =
-             Agents.files(Host.agents())
+             Agents.files(Host.agents(), host: Host.host())
 
     assert policy_error =~ "careful.yaml: deny is a list"
     assert agent_error =~ "names careful"
@@ -663,7 +625,7 @@ defmodule WardrikDaemon.AgentsTest do
        %{org: org} = context do
     write(context, "alpha", "triggers:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
     Host.start_agents(context.dir)
-    assert [{_alpha, {:ok, _spec}}] = Agents.files(Host.agents())
+    assert [{_alpha, {:ok, _spec}}] = Agents.files(Host.agents(), host: Host.host())
 
     assert [%WardrikTrigger.Status{name: "sweep"}] =
              WardrikTrigger.for_agent(AgentID.parse!("#{org}/alpha"))
@@ -672,7 +634,7 @@ defmodule WardrikDaemon.AgentsTest do
              ~r"#{org}/alpha .*next run in 5\dm"
 
     write(context, "alpha", "")
-    Agents.reload(Host.agents())
+    Host.reload()
 
     assert WardrikTrigger.for_agent(AgentID.parse!("#{org}/alpha")) == []
   end
@@ -691,7 +653,7 @@ defmodule WardrikDaemon.AgentsTest do
              {careful_yml, {:error, message}},
              {_strict, {:ok, %WardrikPolicy{name: "strict"}}},
              {_alpha, {:ok, _spec}}
-           ] = Agents.files(Host.agents())
+           ] = Agents.files(Host.agents(), host: Host.host())
 
     assert Path.basename(careful_yaml) == "careful.yaml"
     assert message == "#{careful_yml}: policy careful is already careful.yaml"
@@ -716,7 +678,7 @@ defmodule WardrikDaemon.AgentsTest do
     write(context, "quiet", "")
     Host.start_agents(context.dir)
     # Answered once the files have been read.
-    _files = Agents.files(Host.agents())
+    _files = Agents.files(Host.agents(), host: Host.host())
 
     assert Enum.map(Agents.offered(Host.agents(), in_channel("slack")), & &1.agent) ==
              [AgentID.parse!("#{org}/books"), AgentID.parse!("#{org}/triage")]
@@ -743,7 +705,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     write_policy(context, "careful", "deny: [run_lua]\n")
     Host.start_agents(context.dir)
-    _files = Agents.files(Host.agents())
+    _files = Agents.files(Host.agents(), host: Host.host())
     maria = Wardrik.Principal.new(:channel, "slack/T1/U1", name: "maria")
 
     refute Agents.creatable?(Host.agents(), in_channel("slack"))
@@ -801,7 +763,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     write(context, "books", "channels: [slack]\ndescription: Keeps the books.\n")
     Host.start_agents(context.dir)
-    _files = Agents.files(Host.agents())
+    _files = Agents.files(Host.agents(), host: Host.host())
 
     thread = AgentID.put_external_id(AgentID.parse!("#{org}/books"), "C1-1.1")
     assert {:ok, pid} = Agents.start(Host.host(Host.agents()), in_channel("slack"), thread)
@@ -828,6 +790,6 @@ defmodule WardrikDaemon.AgentsTest do
 
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do
     Host.start_agents(Path.join(dir, "missing"))
-    assert Agents.files(Host.agents()) == []
+    assert Agents.files(Host.agents(), host: Host.host()) == []
   end
 end

@@ -13,8 +13,6 @@ defmodule WardrikDaemon do
       `log/mcp.log` in the state directory.
     * `WardrikOAuth.Supervisor`, when a provider is configured, or the vault
       has a key to keep the tokens of servers people add and sign in to.
-    * `WardrikDaemon.Agents`, which runs the agents `agents/` declares, and
-      gives the host's definitions what they are read under.
     * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
       `Wardrik.Definitions.routes/1` for the routes as it starts, so one that
       restarts routes the agents as before.
@@ -32,6 +30,10 @@ defmodule WardrikDaemon do
       sends it, such as Slack's events, answered by the channel; and, where
       `WardrikOAuth.Supervisor` runs, the pages a browser comes back to from
       a sign-in, under the redirect URL's path; see `WardrikOAuth.Callback`.
+
+  Before any of them, it reads the agent and policy files once, as `wardrik
+  reload` does (see `WardrikDaemon.Agents`), so nothing they serve finds a
+  deployment half read.
 
   `:host` and `:config` are required.
 
@@ -76,17 +78,20 @@ defmodule WardrikDaemon do
   @impl true
   def init(%{host: host, config: config}) do
     store = Wardrik.Host.store(host)
+    definitions = Wardrik.Host.definitions(host)
     agents = Agents.of(host)
-
     channels = channels(config, host, agents)
     {signing_in, pages} = signs_in(host)
+
+    # The files are read before what serves the agents starts, so nothing
+    # it serves finds an agent its file does not yet define.
+    _reloaded = Wardrik.Definitions.reload(definitions, host: host)
 
     children =
       mcp(config, store) ++
         signing_in ++
-        [{Agents, agents: agents, host: host}] ++
         running(channels, host) ++
-        notify(config, Wardrik.Host.definitions(host)) ++
+        notify(config, definitions) ++
         WardrikDaemon.SSH.children(config, host: host) ++
         [
           {WardrikHTTP.Listener,
@@ -270,8 +275,10 @@ defmodule WardrikDaemon do
               "  "
             )
 
-    broken = for {_path, {:error, message}} <- Agents.files(agents), do: "  #{message}"
-    unbuilt = for message <- Agents.problems(agents), do: "  #{message}"
+    broken =
+      for {_path, {:error, message}} <- Agents.files(agents, host: host), do: "  #{message}"
+
+    unbuilt = for message <- unbuilt(host), do: "  #{message}"
 
     Enum.join(
       header ++
@@ -281,6 +288,14 @@ defmodule WardrikDaemon do
         problems(unknown(host, config), "name is not configured", "names are not configured"),
       "\n"
     )
+  end
+
+  defp unbuilt(host) do
+    definitions = Wardrik.Host.definitions(host)
+
+    for %{id: id} <- Wardrik.Definitions.list(definitions, Wardrik.Resource.parse!("*")),
+        {:error, message} <- [Wardrik.Definitions.spec(definitions, id, host: host)],
+        do: "#{id} does not build from its definition: #{message}"
   end
 
   # A channel or notify target a definition names that config.yaml does not
@@ -324,7 +339,7 @@ defmodule WardrikDaemon do
   @spec daemons() :: [node()]
   def daemons do
     for daemon <- [node() | Node.list()],
-        :erpc.call(daemon, Process, :whereis, [WardrikDaemon.Agents]) != nil,
+        :erpc.call(daemon, Process, :whereis, [WardrikDaemon.Host]) != nil,
         do: daemon
   end
 

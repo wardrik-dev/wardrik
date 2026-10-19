@@ -363,7 +363,8 @@ defmodule Wardrik.Definition do
         do: {:changed, Enum.map(listed, &if(&1["name"] == name, do: trigger, else: &1))},
         else: {:created, listed ++ [trigger]}
 
-    with {:ok, definition} <- again(definition, Map.put(fields, "triggers", listed), context),
+    with {:ok, definition} <-
+           again(%{definition | fields: Map.put(fields, "triggers", listed)}, context),
          do: {:ok, definition, status, Enum.find(definition.triggers, &(&1.name == name))}
   end
 
@@ -375,7 +376,7 @@ defmodule Wardrik.Definition do
           {:ok, t(), WardrikTrigger.trigger()} | {:error, :not_found} | {:error, String.t()}
   def delete_trigger(%__MODULE__{fields: fields} = definition, name, context) do
     with %{} = trigger <- Enum.find(definition.triggers, {:error, :not_found}, &(&1.name == name)),
-         {:ok, definition} <- again(definition, without(fields, name), context),
+         {:ok, definition} <- again(%{definition | fields: without(fields, name)}, context),
          do: {:ok, definition, trigger}
   end
 
@@ -386,10 +387,15 @@ defmodule Wardrik.Definition do
     end
   end
 
-  # `fields` read in place of the definition's, from where it came, held as it was.
-  defp again(definition, fields, context),
+  @doc """
+  `definition` read again from its `fields` under `context`, from where it
+  came and held as it was, so it takes what the context gives every agent
+  now.
+  """
+  @spec again(t(), Context.t()) :: {:ok, t()} | {:error, String.t()}
+  def again(%__MODULE__{} = definition, %Context{} = context),
     do:
-      read(fields,
+      read(definition.fields,
         id: definition.id,
         source: definition.source,
         context: context,

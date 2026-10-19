@@ -35,7 +35,7 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
     File.write!(Path.join(dir, "policies/careful.yaml"), @careful)
     File.write!(Path.join(dir, "policies/plain.yaml"), "ask: [books/*]\n")
     Host.start_agents(dir)
-    _files = WardrikDaemon.Agents.files(Host.agents())
+    _files = WardrikDaemon.Agents.files(Host.agents(), host: Host.host())
 
     Host.declare(["test"])
     id = Wardrik.Test.Fleet.id("books")
