@@ -31,7 +31,7 @@ defmodule Wardrik.Principal do
 
   No segment of a resource's name holds a `:`, so the two never meet. A
   host's `Wardrik.Issuer` reads the name to decide what the principal may
-  do, parsing what it needs of it there; nothing else reads it.
+  do, parsing what it needs of it there; nothing else decides by it.
   """
 
   alias Wardrik.Resource
