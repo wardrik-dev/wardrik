@@ -5,11 +5,9 @@ defmodule WardrikHTTP.RouterTest do
   import Wardrik.Test, only: [store: 0]
 
   alias Wardrik.Agent
-  alias Wardrik.Agent.Spec
   alias Wardrik.Event
   alias Wardrik.Event.Log
   alias Wardrik.Host
-  alias Wardrik.LLM.Config
   alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Audit
@@ -19,113 +17,27 @@ defmodule WardrikHTTP.RouterTest do
   alias WardrikHTTP.Listener
   alias WardrikHTTP.Token
 
-  defmodule Definition do
-    @moduledoc false
-    defstruct []
-
-    def put(_host, _key, %{"refuse" => message}, _token), do: {:error, message}
-
-    def put(_host, key, %{"owned" => true}, _token),
-      do: {:error, :conflict, "#{key} belongs to a file."}
-
-    def put(_host, _key, %{"elsewhere" => true}, _token),
-      do: {:ok, Spec.new(id: Wardrik.AgentID.parse!("test/elsewhere"))}
-
-    # Holds the agent to a hook named for the policy its token names.
-    def put(_host, key, %{"bounded" => true}, token) do
-      bounded = [Wardrik.Hook.new(token.policy, Wardrik.Test.Tools.Rules, deny: :all)]
-      {:ok, Spec.new(id: key, hooks: bounded)}
-    end
-
-    def put(_host, key, %{"allow" => names}, _token) do
-      own = [Wardrik.Hook.new("own", Wardrik.Test.Tools.Rules, allow: names)]
-      {:ok, Spec.new(id: key, hooks: own)}
-    end
-
-    def put(_host, key, fields, _token) do
-      config = Config.new(model_spec: Map.get(fields, "model", "anthropic:claude-sonnet-5"))
-      {:ok, Spec.new(id: key, config: config)}
-    end
+  # The suite's definitions, kept in its store: a token may name the policy
+  # strict, which denies every call.
+  defp definitions do
+    %Wardrik.Definitions{
+      store: Wardrik.Test.store(),
+      contexts: %WardrikDefinition.Context{
+        policies: %{"strict" => WardrikPolicy.decode!(%{"deny" => ["*"]}, "strict")}
+      }
+    }
   end
 
-  defimpl Wardrik.Definition, for: Definition do
-    use Wardrik.Definition.None
-    def put(d, key, opts), do: Definition.put(d, key, opts[:definition], opts[:token])
-  end
+  # `key` as an agent file declares it, and why nothing else may change it.
+  defp declared(key) do
+    context = Wardrik.Definitions.context(definitions(), key)
 
-  # Keeps what it is sent in WardrikStore, triggers beside definitions, and
-  # refuses to change an agent whose name holds "-owned".
-  defmodule Kept do
-    @moduledoc false
-    defstruct []
+    {:ok, definition} =
+      Wardrik.Definition.read(%{}, id: key, source: {:file, "agents/x.md"}, context: context)
 
-    @ns :router_test_definitions
-    @triggers :router_test_triggers
-
-    def put(host, key, definition, token) do
-      with {:ok, spec} <- Definition.put(host, key, definition, token),
-           {:ok, _vsn} <- WardrikStore.put(store(), @ns, to_string(key), definition),
-           do: {:ok, spec}
-    end
-
-    def get(_host, key) do
-      case WardrikStore.get(store(), @ns, to_string(key)) do
-        nil -> {:error, :not_found}
-        fields -> {:ok, %Wardrik.Definition.Read{fields: fields, missing: []}}
-      end
-    end
-
-    def delete(_host, key) do
-      cond do
-        String.contains?(key.name, "-owned") -> {:error, :conflict, "#{key} belongs to a file."}
-        WardrikStore.get(store(), @ns, to_string(key)) == nil -> {:error, :not_found}
-        true -> WardrikStore.delete(store(), @ns, to_string(key))
-      end
-    end
-
-    def put_trigger(_host, _key, _name, %{"refuse" => message}), do: {:error, message}
-
-    def put_trigger(host, key, name, fields) do
-      with :ok <- editable(host, key),
-           {:ok, _definition} <- get(host, key) do
-        status = if triggered(key, name), do: :changed, else: :created
-        defaults = %{"name" => name, "overlap" => "skip", "missed" => "run_once", "jitter" => 0}
-        trigger = Map.merge(defaults, fields)
-        {:ok, _vsn} = WardrikStore.put(store(), @triggers, "#{key}//#{name}", trigger)
-        {:ok, status, trigger}
-      end
-    end
-
-    def delete_trigger(host, key, name) do
-      with :ok <- editable(host, key) do
-        case triggered(key, name) do
-          nil ->
-            {:error, :not_found}
-
-          trigger ->
-            :ok = WardrikStore.delete(store(), @triggers, "#{key}//#{name}")
-            {:ok, trigger}
-        end
-      end
-    end
-
-    defp triggered(key, name), do: WardrikStore.get(store(), @triggers, "#{key}//#{name}")
-
-    def editable(_host, key) do
-      if String.contains?(key.name, "-owned"),
-        do: {:error, :conflict, "#{key} belongs to a file."},
-        else: :ok
-    end
-  end
-
-  defimpl Wardrik.Definition, for: Kept do
-    use Wardrik.Definition.None
-    def put(d, key, opts), do: Kept.put(d, key, opts[:definition], opts[:token])
-    def get(d, key, _opts), do: Kept.get(d, key)
-    defdelegate delete(d, key), to: Kept
-    def put_trigger(d, key, name, opts), do: Kept.put_trigger(d, key, name, opts[:fields])
-    defdelegate delete_trigger(d, key, name), to: Kept
-    defdelegate editable(d, key), to: Kept
+    :ok = Wardrik.Definitions.put(definitions(), definition)
+    on_exit(fn -> Wardrik.Definitions.delete(definitions(), key) end)
+    "#{key} is declared by agents/x.md; change or remove that file, then reload it"
   end
 
   # Knows a request by its x-user header, as a person who may do anything
@@ -255,14 +167,16 @@ defmodule WardrikHTTP.RouterTest do
     def challenge(_down), do: ~s(Down realm="test")
   end
 
+  # An agent runs claude-sonnet-5 unless its definition names another model.
   defp host,
     do:
       Host.new(
         store: Wardrik.Test.store(),
-        definitions: %Definition{},
+        definitions: definitions(),
         connections: %Linked{},
         servers: %Added{},
-        triggers: %Hooked{}
+        triggers: %Hooked{},
+        runtimes: [%Wardrik.LLM.Runtime{config: [model_spec: "anthropic:claude-sonnet-5"]}]
       )
 
   # A token named `name`, made by a person of that name, holding `roles` over
@@ -866,8 +780,8 @@ defmodule WardrikHTTP.RouterTest do
     test "that do not read, or are not an object, start nothing", %{api: api} do
       key = defined_key()
 
-      assert {:ok, %{status: 400, body: body}} = define(api, key, %{"refuse" => "model is text"})
-      assert body["error"] == %{"type" => "invalid_request", "message" => "model is text"}
+      assert {:ok, %{status: 400, body: body}} = define(api, key, %{"model" => 5})
+      assert body["error"] == %{"type" => "invalid_request", "message" => "model is a string"}
 
       assert {:ok, %{status: 400, body: body}} = define(api, key, ["model"])
       assert body["error"]["message"] == "The body is a JSON object"
@@ -882,44 +796,13 @@ defmodule WardrikHTTP.RouterTest do
       assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()) == nil
     end
 
-    test "for one agent never start another, and answer that something went wrong",
-         %{api: api} do
-      assert {:ok, %{status: 500, body: body}} =
-               define(api, defined_key(), %{"elsewhere" => true})
-
-      assert body["error"]["type"] == "internal"
-
-      assert Wardrik.Fleet.lookup(Wardrik.AgentID.parse!("test/elsewhere"),
-               host: Wardrik.Test.host()
-             ) == nil
-    end
-
-    test "for a key the module refuses start nothing", %{api: api} do
+    test "for a key an agent file declares start nothing", %{api: api} do
       key = defined_key()
+      why = declared(key)
 
-      assert {:ok, %{status: 409, body: body}} = define(api, key, %{"owned" => true})
-      assert body["error"] == %{"type" => "conflict", "message" => "#{key} belongs to a file."}
+      assert {:ok, %{status: 409, body: body}} = define(api, key, %{})
+      assert body["error"] == %{"type" => "conflict", "message" => why}
       assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()) == nil
-    end
-
-    test "are neither taken nor kept by a server with nothing to read them", %{api: api} do
-      api = listener(api, host: Host.new(store: Wardrik.Test.store()))
-      {key, _agent} = echo_agent()
-
-      assert {:ok, %{status: 501, body: body}} = define(api, defined_key(), %{})
-      assert body["error"]["type"] == "not_supported"
-      assert {:ok, %{status: 501}} = Req.get(api, url: "/v1/agents/#{key}/definition")
-
-      assert {:ok, %{status: 204}} = Req.delete(api, url: "/v1/agents/#{key}")
-
-      assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host()) == nil
-    end
-
-    test "are not kept by a module that only reads them", %{api: api} do
-      {key, _agent} = echo_agent()
-
-      assert {:ok, %{status: 501, body: body}} = Req.get(api, url: "/v1/agents/#{key}/definition")
-      assert body["error"]["message"] == "This server does not keep agents' definitions."
     end
   end
 
@@ -935,16 +818,14 @@ defmodule WardrikHTTP.RouterTest do
       key = defined_key()
 
       assert {:ok, %{status: 200}} =
-               define(Req.merge(api, auth: {:bearer, secret}), key, %{"bounded" => true})
+               define(Req.merge(api, auth: {:bearer, secret}), key, %{})
 
-      assert [%Wardrik.Hook{name: "strict"}] = hooks(key)
+      assert [%Wardrik.Hook{name: "policy/strict"}] = hooks(key)
     end
   end
 
-  describe "a definition module that keeps definitions" do
-    setup %{api: api} do
-      %{kept: listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: %Kept{}))}
-    end
+  describe "definitions kept" do
+    setup %{api: api}, do: %{kept: api}
 
     test "answers one back as it was sent, and forgets it with its agent", %{
       kept: kept
@@ -987,7 +868,8 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "may refuse to delete an agent, which is left be", %{kept: kept} do
-      {key, _agent} = Fleet.start_agent([], Fleet.id("kept-owned"))
+      {key, _agent} = Fleet.start_agent([], Fleet.id("declared"))
+      declared(key)
 
       assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}")
       assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host())
@@ -995,7 +877,8 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "may refuse to change an agent's triggers", %{kept: kept} do
-      key = Fleet.id("kept-owned")
+      key = Fleet.id("declared")
+      why = declared(key)
 
       assert {:ok, %{status: 409, body: body}} =
                Req.put(kept,
@@ -1003,14 +886,14 @@ defmodule WardrikHTTP.RouterTest do
                  json: %{"every" => "2h", "prompt" => "Look less."}
                )
 
-      assert body["error"]["message"] == "#{key} belongs to a file."
+      assert body["error"]["message"] == why
       assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}/triggers/sweep")
     end
   end
 
   describe "triggers" do
     setup %{api: api} do
-      kept = listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: %Kept{}))
+      kept = api
       key = Fleet.id("triggered")
       {:ok, %{status: 200}} = Req.put(kept, url: "/v1/agents/#{key}", json: %{})
       on_exit(fn -> Wardrik.Fleet.forget(key) end)
@@ -1032,10 +915,8 @@ defmodule WardrikHTTP.RouterTest do
 
     test "that do not read, or are for an agent with no definition kept, are refused",
          %{kept: kept, key: key} do
-      assert {:ok, %{status: 400, body: body}} =
-               trigger(kept, key, "sweep", %{"refuse" => "every is not a time"})
-
-      assert body["error"]["message"] == "every is not a time"
+      assert {:ok, %{status: 400, body: body}} = trigger(kept, key, "sweep", %{"every" => "1h"})
+      assert body["error"]["message"] =~ "trigger sweep: prompt is a string"
 
       assert {:ok, %{status: 404, body: body}} =
                trigger(kept, "test/nobody", "sweep", %{"every" => "30m", "prompt" => "Look."})
@@ -1063,14 +944,6 @@ defmodule WardrikHTTP.RouterTest do
                {"trigger.set", @actor},
                {"trigger.removed", @actor}
              ]
-    end
-
-    test "are not set where the server keeps no definitions", %{api: api, key: key} do
-      assert {:ok, %{status: 501, body: body}} =
-               trigger(api, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
-
-      assert body["error"]["message"] == "This server keeps no triggers."
-      assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}/triggers/sweep")
     end
   end
 
@@ -1535,10 +1408,6 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "agents a pattern covers" do
-    setup %{api: api} do
-      %{api: listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: %Kept{}))}
-    end
-
     defp org_agents(names) do
       org = "fleet-#{System.unique_integer([:positive])}"
 
@@ -1697,10 +1566,11 @@ defmodule WardrikHTTP.RouterTest do
       conforms(body, "nodes")
     end
 
-    test "reloads its definitions where the host reads them again", %{api: api} do
+    test "reads its definitions again", %{api: api} do
       assert {:ok, %{status: 403}} = Req.post(api, url: "/v1/deployment/reload")
+      here = to_string(node())
 
-      assert {:ok, %{status: 501}} =
+      assert {:ok, %{status: 200, body: %{"reloaded" => [^here]}}} =
                Req.post(over_every_agent(api), url: "/v1/deployment/reload")
     end
 
@@ -1885,7 +1755,7 @@ defmodule WardrikHTTP.RouterTest do
           headers: [{"accept", "text/event-stream"}]
         ),
         Req.get(api, url: "/v1/workers"),
-        Req.get(api, url: "/v1/agents/#{key}/definition"),
+        Req.get(owning_everything(api), url: "/v1/tokens"),
         Req.post(api, url: "/v1/agents/#{key}/cancel", auth: {:bearer, secret})
       ]
 

@@ -26,7 +26,6 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.AgentID
   alias Wardrik.Error
   alias Wardrik.Fleet
-  alias Wardrik.Host
   alias Wardrik.JSON
   alias Wardrik.Resource
   alias WardrikConsole.Nodes
@@ -100,7 +99,7 @@ defmodule WardrikDaemon.CLI do
       %Command{
         name: "reload",
         group: "Set up",
-        summary: "read the agent and policy files again, everywhere",
+        summary: "read the agent and policy files again, for every node",
         run: &reload/2
       },
       %Command{
@@ -239,8 +238,7 @@ defmodule WardrikDaemon.CLI do
   @spec started() :: String.t()
   def started do
     cond do
-      Process.whereis(WardrikDaemon.Agents) ->
-        _files = WardrikDaemon.Agents.files(Host.definitions(WardrikDaemon.Host.get()))
+      Process.whereis(WardrikDaemon) ->
         ""
 
       reason = Cluster.refusal(Boot.cluster()) ->

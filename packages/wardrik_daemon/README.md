@@ -28,7 +28,7 @@ wardrik ask triage "What changed today?"   # and follow the answer
 wardrik watch triage              # follow what it does, until Ctrl-C
 wardrik parked                    # what is waiting on a person
 wardrik approve triage call_1     # or deny, with a reason
-wardrik agent spawn helper        # write agents/helper.md from config.yaml's defaults, and start it
+wardrik agent spawn helper        # start it from config.yaml's defaults; --file writes agents/helper.md
 wardrik agent move triage b       # start it again on node b, as it was
 wardrik agent cancel triage       # stop what it is doing, and leave it running
 wardrik reload                    # read the agent and policy files again

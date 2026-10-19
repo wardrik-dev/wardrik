@@ -4,11 +4,11 @@
 # internals, which only core calls.
 [
   layers: [
-    daemon: ["WardrikDaemon", "WardrikDaemon.*", "Wardrik.Definition.WardrikDaemon.Agents", "Wardrik.Issuer.WardrikDaemon.Issuer"],
+    daemon: ["WardrikDaemon", "WardrikDaemon.*", "WardrikDefinition.Contexts.WardrikDaemon.Agents", "Wardrik.Issuer.WardrikDaemon.Issuer"],
     docs: "Mix.Tasks.Wardrik.Docs",
     # `mix wardrik`, an agent and the TUI on this node, and the tools it is
     # tried with, compiled in dev alone.
-    launcher: ["Mix.Tasks.Wardrik", "Mix.Tasks.Wardrik.Created", "Wardrik.Definition.Mix.Tasks.Wardrik.Created"],
+    launcher: "Mix.Tasks.Wardrik",
     demo: ["WardrikDemo", "WardrikDemo.*"]
   ],
   boundaries: [
@@ -39,7 +39,6 @@
       "Wardrik.Credentials",
       "Wardrik.Credentials.None",
       "Wardrik.Definition",
-      "Wardrik.Definition.None",
       "Wardrik.Definitions",
       "Wardrik.Error",
       "Wardrik.Event",
@@ -73,6 +72,8 @@
       "Wardrik.Run",
       "Wardrik.Servers",
       "Wardrik.Servers.Server",
+      "Wardrik.Specs",
+      "Wardrik.Specs.None",
       "Wardrik.Servers.None",
       "Wardrik.Statement",
       "Wardrik.Subagent",

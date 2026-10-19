@@ -70,7 +70,7 @@ defmodule Wardrik.APITest do
 
     assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_define(scope, agent, definition)
 
-    assert {:ok, %Wardrik.Definition.Read{fields: %{"instructions" => "Be brief."}}} =
+    assert {:ok, %{definition: %Wardrik.Definition{fields: %{"instructions" => "Be brief."}}}} =
              Wardrik.agent_definition_read(scope, agent)
 
     assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_read(scope, agent)
@@ -230,7 +230,7 @@ defmodule Wardrik.APITest do
              Wardrik.deployment_nodes(root)
 
     assert node == node()
-    assert {:ok, [^node]} = Wardrik.deployment_reload(root)
+    assert {:ok, %{reloaded: _agents, failed: _failed}} = Wardrik.deployment_reload(root)
     assert {:ok, changes} = Wardrik.deployment_audit(root, limit: 10)
     assert is_list(changes)
   end
@@ -242,7 +242,7 @@ defmodule Wardrik.APITest do
     definition = %{"model" => "anthropic:claude-sonnet-5"}
 
     assert %Snapshot{} = Wardrik.agent_define!(scope, agent, definition)
-    assert %Wardrik.Definition.Read{} = Wardrik.agent_definition_read!(scope, agent)
+    assert %{definition: %Wardrik.Definition{}} = Wardrik.agent_definition_read!(scope, agent)
     assert %Snapshot{} = Wardrik.agent_read!(scope, agent)
     assert [_ | _] = Wardrik.agents_list!(scope, Wardrik.AgentID.resource(agent))
     assert [] = Wardrik.agents_parked!(scope, Wardrik.AgentID.resource(agent))
@@ -268,7 +268,7 @@ defmodule Wardrik.APITest do
     assert %Forgetting{} = Wardrik.agents_forget_preview!(scope, Wardrik.AgentID.resource(agent))
     assert %Wardrik.Deployment.Nodes{} = Wardrik.deployment_nodes!(root)
     assert is_list(Wardrik.deployment_audit!(root))
-    assert [_node] = Wardrik.deployment_reload!(root)
+    assert %{reloaded: _agents} = Wardrik.deployment_reload!(root)
     assert :ok = Wardrik.agent_forget!(scope, agent)
 
     parked = parked(scope)

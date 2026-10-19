@@ -1,8 +1,8 @@
-defmodule WardrikDefinition.ReadingTest do
+defmodule Wardrik.Definition.ReadingTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
+  alias Wardrik.Definition
   alias Wardrik.LLM.Retry.Backoff
   alias Wardrik.Resource
   alias WardrikDefinition.Context
@@ -57,17 +57,19 @@ defmodule WardrikDefinition.ReadingTest do
       context: %Context{
         servers: [linear: [], theirs: [serves: [Wardrik.Resource.parse!("globex/*")]]],
         mcp: Source,
-        channels: [slack: ["default"], acme: ["acme"], every: :all],
-        targets: [
-          ops: {Source, []},
-          audit: {Source, []},
-          globex: {Source, orgs: ["globex"]}
-        ],
         names: %{host: "the daemon", config: "config.yaml", policies: "policies/"}
       }
     }
   end
 
+  # The definition an agent file `text` named `name` writes, as an operator's file.
+  defp definition(name, text, %{context: context}) do
+    with {:ok, id, fields} <- Definition.parse(text, name, context),
+         do:
+           Definition.read(fields, id: id, source: {:file, "agents/#{name}.md"}, context: context)
+  end
+
+  # The spec an agent file `text` named `name` writes.
   # The host the definitions are read on: its tools, and its sources as `name/*`.
   defp host do
     Wardrik.Host.new()
@@ -79,19 +81,12 @@ defmodule WardrikDefinition.ReadingTest do
     ])
   end
 
-  defp spec(fields, id, context, source),
-    do:
-      WardrikDefinition.spec(fields, id,
-        owner: id,
-        context: context,
-        source: source,
-        host: host()
-      )
+  defp built(definition, id, context),
+    do: Definition.spec(definition, id, context: context, host: host())
 
-  # The spec an agent file `text` named `name` writes, as an operator's file.
-  defp read(name \\ "triage", text, %{context: context}) do
-    with {:ok, id, fields} <- WardrikDefinition.parse(text, name, context),
-         do: spec(fields, id, context, {:file, name})
+  defp read(name \\ "triage", text, %{context: context} = test) do
+    with {:ok, definition} <- definition(name, text, test),
+         do: built(definition, definition.id, context)
   end
 
   defp with_policies(%{context: context}, policies),
@@ -99,21 +94,19 @@ defmodule WardrikDefinition.ReadingTest do
 
   # The spec a definition sent to the HTTP API writes for `id`, sent by no token.
   defp define(id, fields, %{context: context}) do
-    with :ok <- WardrikDefinition.accept(id, fields, context),
-         do: spec(fields, id, context, :defaults)
+    with {:ok, definition} <- Definition.read(fields, id: id, source: :defaults, context: context),
+         do: built(definition, id, context)
   end
 
   # Where the notices of the agent a file `text` declares go, once the file reads.
-  defp route(text, %{context: context} = test) do
-    with {:ok, _spec} <- read(text, test),
-         {:ok, id, fields} <- WardrikDefinition.parse(text, "triage", context),
-         do: WardrikDefinition.route(fields, id, context)
+  defp route(text, test) do
+    with {:ok, definition} <- definition("triage", text, test),
+         do: definition.notify
   end
 
-  defp triggers(text, %{context: context} = test) do
-    with {:ok, _spec} <- read(text, test),
-         {:ok, _id, fields} <- WardrikDefinition.parse(text, "triage", context),
-         do: {:ok, WardrikDefinition.triggers(fields, %WardrikDefinition.Context{})}
+  defp triggers(text, test) do
+    with {:ok, definition} <- definition("triage", text, test),
+         do: {:ok, definition.triggers}
   end
 
   test "reads a whole file into the agent's spec", context do
@@ -128,7 +121,7 @@ defmodule WardrikDefinition.ReadingTest do
                user: jon
                timeout: 600
                max_iterations: 12
-               policy: WardrikDefinition.ReadingTest.Hook
+               policy: Wardrik.Definition.ReadingTest.Hook
                ---
                You watch the incident queue.
                """,
@@ -142,7 +135,10 @@ defmodule WardrikDefinition.ReadingTest do
     assert spec.config.tools == [Search, {Source, Resource.parse!("deployment/server/linear")}]
     assert spec.config.max_iterations == 12
     assert spec.timeout == 600_000
-    assert spec.hooks == [%Wardrik.Hook{name: "WardrikDefinition.ReadingTest.Hook", module: Hook}]
+
+    assert spec.hooks == [
+             %Wardrik.Hook{name: "Wardrik.Definition.ReadingTest.Hook", module: Hook}
+           ]
   end
 
   test "idle_timeout is seconds or infinity, and the defaults' where it sets none", context do
@@ -192,7 +188,7 @@ defmodule WardrikDefinition.ReadingTest do
 
   test "text/1 writes a file that reads back as it was given", context do
     text =
-      WardrikDefinition.text([
+      Definition.text([
         {"org", "acme"},
         {"description", "Says what it does."},
         {"model", "anthropic:claude-sonnet-5"},
@@ -213,7 +209,7 @@ defmodule WardrikDefinition.ReadingTest do
 
   test "text/2 writes the prompt it is given, and quotes what YAML would misread", context do
     text =
-      WardrikDefinition.text(
+      Definition.text(
         [
           {"tools", ["files"]},
           {"context", ["MEMORY.md", "a: b", "yes"]},
@@ -364,7 +360,9 @@ defmodule WardrikDefinition.ReadingTest do
       token = Wardrik.Token.root(Wardrik.Principal.new(:user, "jon"))
       token = %{token | scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(id)])]}
 
-      assert spec(fields, id, context, {:api, token}) ==
+      {:ok, definition} = Definition.read(fields, id: id, source: {:api, token}, context: context)
+
+      assert built(definition, id, context) ==
                {:error,
                 "workspace shared team: acme belongs to acme/agent/*, which the token does not reach"}
     end
@@ -467,8 +465,8 @@ defmodule WardrikDefinition.ReadingTest do
     assert {:error, "names careful, which is neither a policy in policies/ nor a module"} =
              read("---\npolicy: careful\n---\n", context)
 
-    assert {:error, "WardrikDefinition.ReadingTest is not a hook"} =
-             read("---\npolicy: WardrikDefinition.ReadingTest\n---\n", context)
+    assert {:error, "Wardrik.Definition.ReadingTest is not a hook"} =
+             read("---\npolicy: Wardrik.Definition.ReadingTest\n---\n", context)
 
     assert {:error, "policy is the name of a policy, rules, or a module"} =
              read("---\npolicy: [x]\n---\n", context)
@@ -629,35 +627,32 @@ defmodule WardrikDefinition.ReadingTest do
     end
   end
 
-  test "channels are the ones the host names for the agent's org", context do
-    assert {:ok, %Spec{}} = read("---\nchannels: [slack, every]\n---\n", context)
-    assert WardrikDefinition.channels(%{"channels" => ["slack"]}) == ["slack"]
-    assert WardrikDefinition.channels(%{}) == []
+  test "channels are names, each offering the agent where it serves its org", context do
+    assert {:ok, definition} =
+             definition("triage", "---\nchannels: [slack, teams]\n---\n", context)
 
-    assert {:error, ~s(channels names "teams", but config.yaml's channels has no such channel)} =
-             read("---\nchannels: [teams]\n---\n", context)
-
-    assert {:error, "channels names acme, which config.yaml keeps for another org"} =
-             read("---\nchannels: [acme]\n---\n", context)
+    assert definition.channels == ["slack", "teams"]
+    assert {:ok, %{channels: []}} = definition("triage", "", context)
 
     assert {:error, "channels is a list of the channels it is offered in"} =
              read("---\nchannels: slack\n---\n", context)
+
+    assert {:error, "channels is a list of the channels it is offered in"} =
+             read("---\nchannels: [1]\n---\n", context)
   end
 
-  test "notify routes the agent's notices to targets the host names for its org", context do
-    assert {:ok, %WardrikNotify.Route{targets: [:ops], on: [:parked, :failed]}} =
+  test "notify routes the agent's notices to targets by name, each telling the orgs it serves",
+       context do
+    assert %WardrikNotify.Route{targets: ["ops"], on: [:parked, :failed]} =
              route("---\nnotify: ops\n---\n", context)
 
-    assert {:ok, %WardrikNotify.Route{targets: [:ops, :audit], on: [:finished]}} =
+    assert %WardrikNotify.Route{targets: ["ops", "audit"], on: [:finished]} =
              route("---\nnotify: {to: [ops, audit], on: [finished]}\n---\n", context)
 
-    assert :none = route("---\n---\n", context)
+    assert nil == route("---\n---\n", context)
 
     for {settings, refusal} <- [
-          {"pager",
-           "notify names pager, but config.yaml's notify has no target pager; it has ops, audit, globex"},
           {"{to: ops, on: [started]}", ~s(notify on lists "started")},
-          {"globex", "notify names globex, which config.yaml's notify keeps for another org"},
           {"{to: []}", "notify names no target"},
           {"{to: ops, when: now}", "notify when is not a setting; expected to or on"},
           {"[1]", "notify names 1, which is not a target"},
@@ -666,11 +661,6 @@ defmodule WardrikDefinition.ReadingTest do
       assert {:error, message} = route("---\nnotify: #{settings}\n---\n", context)
       assert message =~ refusal
     end
-
-    assert {:ok, _route} = route("---\nnotify: globex\norg: globex\n---\n", context)
-
-    assert {:error, "notify names ops, but the host's notify has no target ops"} =
-             route("---\nnotify: ops\n---\n", %{context: %Context{}})
   end
 
   describe "a definition sent to the HTTP API" do
@@ -707,7 +697,9 @@ defmodule WardrikDefinition.ReadingTest do
     test "takes who the agent is from its key, and says why it does not read", context do
       for key <- ~w(name org user) do
         assert {:error, message} = define(~A"acme/triage", %{key => "x"}, context)
-        assert message =~ "#{key} is not a setting; expected one of description, instructions"
+
+        assert message =~
+                 "#{key} is not a setting; expected one of display_name, description, instructions"
       end
 
       assert {:error, "timeout is a whole number of seconds"} =
@@ -716,68 +708,53 @@ defmodule WardrikDefinition.ReadingTest do
       assert {:error, "instructions is a string"} =
                define(~A"acme/triage", %{"instructions" => ["a"]}, context)
 
+      {:ok, definition} =
+        Definition.read(%{}, id: ~A"acme/triage", source: :defaults, context: context.context)
+
       assert {:error, "acme/other is neither acme/triage nor a conversation of it"} =
-               WardrikDefinition.spec(%{}, ~A"acme/other",
-                 owner: ~A"acme/triage",
-                 context: context.context,
-                 source: :defaults,
-                 host: host()
-               )
-    end
-
-    test "routes its notices as a file does, to targets that serve its org", context do
-      fields = %{"notify" => %{"to" => ["ops"], "on" => ["finished"]}}
-      assert {:ok, _spec} = define(~A"acme/triage", fields, context)
-
-      assert {:ok, %WardrikNotify.Route{targets: [:ops], on: [:finished]}} =
-               WardrikDefinition.route(fields, ~A"acme/triage", context.context)
-
-      assert {:error, "notify names globex, which config.yaml's notify keeps for another org"} =
-               define(~A"acme/triage", %{"notify" => "globex"}, context)
-
-      assert {:ok, _spec} = define(~A"globex/triage", %{"notify" => ["globex"]}, context)
+               built(definition, ~A"acme/other", context.context)
     end
 
     test "lists its triggers as a file does, and one is set or deleted in it" do
       unnamed = %{"every" => "1h", "prompt" => "Look."}
-      fields = %{"triggers" => [unnamed, %{"every" => "1d", "prompt" => "Sum up."}]}
+      context = %Context{}
+
+      {:ok, definition} =
+        Definition.read(
+          %{"triggers" => [unnamed, %{"every" => "1d", "prompt" => "Sum up."}]},
+          id: ~A"acme/triage",
+          source: :defaults,
+          context: context
+        )
 
       assert [%WardrikTrigger{name: "trigger-1"}, %WardrikTrigger{name: "trigger-2"}] =
-               WardrikDefinition.triggers(fields, %WardrikDefinition.Context{})
+               definition.triggers
 
-      assert {:ok, fields, :changed,
+      assert {:ok, definition, :changed,
               %WardrikTrigger{every: %WardrikTrigger.Interval{ms: 7_200_000}}} =
-               WardrikDefinition.put_trigger(fields, "trigger-1",
-                 trigger: %{unnamed | "every" => "2h"},
-                 context: %WardrikDefinition.Context{}
+               Definition.put_trigger(
+                 definition,
+                 "trigger-1",
+                 %{unnamed | "every" => "2h"},
+                 context
                )
 
-      assert {:ok, fields, :created, %WardrikTrigger{name: "sweep"}} =
-               WardrikDefinition.put_trigger(fields, "sweep",
-                 trigger: unnamed,
-                 context: %WardrikDefinition.Context{}
-               )
+      assert {:ok, definition, :created, %WardrikTrigger{name: "sweep"}} =
+               Definition.put_trigger(definition, "sweep", unnamed, context)
 
-      assert ~w(trigger-1 trigger-2 sweep) ==
-               Enum.map(
-                 WardrikDefinition.triggers(fields, %WardrikDefinition.Context{}),
-                 & &1.name
-               )
+      assert ~w(trigger-1 trigger-2 sweep) == Enum.map(definition.triggers, & &1.name)
 
       assert {:error, "trigger sweep: prompt is a string" <> _rest} =
-               WardrikDefinition.put_trigger(fields, "sweep",
-                 trigger: %{"every" => "1h"},
-                 context: %WardrikDefinition.Context{}
-               )
+               Definition.put_trigger(definition, "sweep", %{"every" => "1h"}, context)
 
-      {:ok, fields} = WardrikDefinition.delete_trigger(fields, "trigger-2")
-      {:ok, fields} = WardrikDefinition.delete_trigger(fields, "trigger-1")
-      assert {:error, :not_found} = WardrikDefinition.delete_trigger(fields, "trigger-1")
-      {:ok, fields} = WardrikDefinition.delete_trigger(fields, "sweep")
-      assert WardrikDefinition.fields(fields) == %{}
+      {:ok, definition, _trigger} = Definition.delete_trigger(definition, "trigger-2", context)
+      {:ok, definition, _trigger} = Definition.delete_trigger(definition, "trigger-1", context)
+      assert {:error, :not_found} = Definition.delete_trigger(definition, "trigger-1", context)
+      {:ok, definition, _trigger} = Definition.delete_trigger(definition, "sweep", context)
+      assert definition.fields == %{}
 
       assert %{"triggers" => [%{"every" => "1h"}], "notify" => "ops"} =
-               WardrikDefinition.fields(%{"triggers" => unnamed, "notify" => "ops"})
+               Definition.written_fields(%{"triggers" => unnamed, "notify" => "ops"})
     end
   end
 

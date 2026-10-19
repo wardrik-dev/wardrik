@@ -4,7 +4,6 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   alias Wardrik.Test.Script
   alias WardrikDaemon.Test.Host
 
-  import Wardrik.Test, only: [store: 0]
   use Mimic
 
   # Commands run over rpc build their callers on the daemon's host.
@@ -96,26 +95,32 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   end
 
   describe "spawn" do
-    test "writes the agent's file from the defaults, and starts it", context do
+    test "starts an agent nothing defines from the defaults, and writes its file when asked",
+         context do
       %{dir: dir, org: org, here: here} = context
       key = AgentID.parse!("#{org}/helper")
+      definitions = WardrikDaemon.Agents.definitions(Host.agents())
 
       assert command(["agent", "spawn", "helper", "--org", org]) ==
-               {"Wrote agents/helper.md, and started #{key} on #{here}, with " <>
-                  "anthropic:claude-sonnet-5.\nwardrik agent edit #{key} changes what it is for.\n",
-                0}
+               {"Started #{key} on #{here}, from config.yaml's defaults, with " <>
+                  "anthropic:claude-sonnet-5.\nwardrik agent spawn helper --org #{org} --file " <>
+                  "writes it a file to change.\n", 0}
+
+      refute File.exists?(Path.join(dir, "agents/helper.md"))
+      assert {:ok, %{source: :defaults}} = Wardrik.Definitions.get(definitions, key)
+      assert status(key) == :idle
+
+      assert command(["agent", "spawn", "helper", "--org", org, "--file"]) ==
+               {"Wrote agents/helper.md; #{key} runs on #{here}, as it declares.\n", 0}
 
       assert File.read!(Path.join(dir, "agents/helper.md")) ==
                "---\norg: #{org}\nmodel: anthropic:claude-sonnet-5\ntools: [web_search]\n---\n" <>
                  @prompt
 
-      assert status(key) == :idle
-
       assert [{_path, {:ok, _spec}}] =
-               WardrikDaemon.Agents.files(Host.agents())
+               WardrikDaemon.Agents.files(Host.agents(), host: Host.host())
 
-      assert command(["agent", "spawn", "helper", "--org", org]) ==
-               {"#{key} runs already, on #{here}.\n", 0}
+      assert {:ok, %{source: {:file, _path}}} = Wardrik.Definitions.get(definitions, key)
 
       assert Audit.about(key) == [{"agent.spawned", @ops}]
     end
@@ -128,9 +133,20 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       key = AgentID.parse!("#{org}/@jon/digest")
 
       {output, 0} =
-        command(["agent", "spawn", "digest", "--org", org, "--user", "jon", "--on", here])
+        command([
+          "agent",
+          "spawn",
+          "digest",
+          "--org",
+          org,
+          "--user",
+          "jon",
+          "--on",
+          here,
+          "--file"
+        ])
 
-      assert output =~ "Wrote agents/jon-digest.md, and started #{key} on #{here}"
+      assert output == "Wrote agents/jon-digest.md; #{key} runs on #{here}, as it declares.\n"
 
       assert File.read!(Path.join(dir, "agents/jon-digest.md")) =~
                "---\nname: digest\norg: #{org}\nuser: jon\n"
@@ -158,7 +174,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
     test "starts a stopped agent again, as its file declares it or as it was", context do
       %{dir: dir, org: org, here: here} = context
-      {_output, 0} = command(["agent", "spawn", "helper", "--org", org])
+      {_output, 0} = command(["agent", "spawn", "helper", "--org", org, "--file"])
       key = AgentID.parse!("#{org}/helper")
 
       assert command(["agent", "stop", key]) ==
@@ -210,10 +226,10 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       File.write!(Path.join(dir, "agents/broken.md"), "---\ntools: nope\n---\nHi.\n")
       {_status, 0} = command(["reload"])
 
-      assert command(["agent", "spawn", "other", "--org", org]) ==
+      assert command(["agent", "spawn", "other", "--org", org, "--file"]) ==
                {"agents/other.md is there already, and declares #{org}/different.\n", 1}
 
-      assert command(["agent", "spawn", "broken"]) ==
+      assert command(["agent", "spawn", "broken", "--file"]) ==
                {"agents/broken.md is there already, and is kept as it is: wardrik reload " <>
                   "reads it, and wardrik status says why where it does not.\n", 1}
 
@@ -221,9 +237,11 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
         defaults: %{"tools" => "web_search"}
       )
 
-      assert command(["agent", "spawn", "fresh", "--org", org]) ==
+      assert command(["agent", "spawn", "fresh", "--org", org, "--file"]) ==
                {"config.yaml's defaults do not make an agent for #{org}/fresh: tools is a list\n",
                 1}
+
+      assert command(["agent", "spawn", "fresh", "--org", org]) == {"tools is a list\n", 1}
 
       refute File.exists?(Path.join(dir, "agents/fresh.md"))
     end
@@ -337,28 +355,23 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       }
 
       {:ok, spec} =
-        WardrikDaemon.Agents.put(Host.agents(), defined,
-          host: Host.host(),
-          definition: %{"description" => "Defined."},
-          token: token
-        )
+        Host.define(defined, %{"description" => "Defined."}, {:api, token})
 
       {:ok, _pid} = Fleet.put(spec)
 
       assert command(["agent", "rm", defined, "--yes"]) == {"Removed #{defined}.\n", 0}
 
-      assert WardrikDaemon.Agents.get(Host.agents(), defined, host: Host.host()) ==
+      assert Wardrik.Definitions.get(WardrikDaemon.Agents.definitions(Host.agents()), defined) ==
                {:error, :not_found}
     end
 
     test "leaves an agent a file declares, and names the file", %{org: org} do
-      {_output, 0} = command(["agent", "spawn", "helper", "--org", org])
+      {_output, 0} = command(["agent", "spawn", "helper", "--org", org, "--file"])
       helper = AgentID.parse!("#{org}/helper")
       other = agent(org, "other")
 
       declared =
-        "#{helper} is declared by agents/helper.md; change or remove that file, then " <>
-          "wardrik reload reads it"
+        "#{helper} is declared by agents/helper.md; change or remove that file, then reload it"
 
       assert command(["agent", "rm", helper, "--yes"]) == {declared <> "\n", 1}
 
@@ -368,23 +381,13 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert status(helper) == :idle
     end
 
-    test "leaves an agent a file on another node declares", %{dir: dir, org: org} do
-      other = :"lifecycle-test@elsewhere"
-      stop_supervised!(WardrikDaemon.Agents)
-
-      :ok = Host.put_nodes(fn -> [other] end)
-      Host.start_agents(dir)
-
+    test "leaves an agent a file on another node declares", %{org: org} do
       key = agent(org, "theirs")
-
-      {:ok, _vsn} =
-        WardrikStore.put(store(), :declared, "agents/#{other}", %{to_string(key) => "theirs.md"})
-
-      on_exit(fn -> WardrikStore.delete(store(), :declared, "agents/#{other}") end)
+      {:ok, _spec} = Host.define(key, %{}, {:file, "/elsewhere/agents/theirs.md"})
 
       assert command(["agent", "rm", key, "--yes"]) ==
-               {"#{key} is declared by agents/theirs.md on #{other}; change or remove that file, then wardrik reload reads it\n",
-                1}
+               {"#{key} is declared by agents/theirs.md; change or remove that file, then " <>
+                  "reload it\n", 1}
 
       assert status(key) == :idle
     end
@@ -524,15 +527,16 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
   describe "edit" do
     test "asks the node for the file that declares the agent", %{dir: dir, org: org} do
-      {_output, 0} = command(["agent", "spawn", "helper", "--org", org])
+      {_output, 0} = command(["agent", "spawn", "helper", "--org", org, "--file"])
       loose = agent(org, "loose")
 
       assert command(["__agent_file", "#{org}/helper"]) ==
                {Path.join(dir, "agents/helper.md") <> "\n", 0}
 
       assert command(["__agent_file", loose]) ==
-               {"No file declares #{loose}: it was defined over the HTTP API, or started in " <>
-                  "the TUI, so there is none to edit.\n", 1}
+               {"No file declares #{loose}: it was defined over the HTTP API, or from " <>
+                  "config.yaml's defaults, so there is none to edit; wardrik agent spawn loose " <>
+                  "--org #{org} --file writes one.\n", 1}
 
       assert command(["__agent_file", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
       assert command(["__agent_file"]) == {"Usage: wardrik agent edit KEY\n", 1}

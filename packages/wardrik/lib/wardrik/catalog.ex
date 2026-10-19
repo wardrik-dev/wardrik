@@ -91,7 +91,7 @@ defmodule Wardrik.Catalog do
   @doc false
   def definition_read(session, agent, _input, _context) do
     with {:ok, read} <- Wardrik.agent_definition_read(session, agent),
-         do: {:ok, %{"definition" => read.fields, "missing" => read.missing}, []}
+         do: {:ok, %{"definition" => read.definition.fields, "missing" => read.missing}, []}
   end
 
   @doc false

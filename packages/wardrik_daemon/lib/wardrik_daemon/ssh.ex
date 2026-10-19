@@ -22,8 +22,8 @@ defmodule WardrikDaemon.SSH do
   Each connection is a session of the `:entrypoint` the application
   environment names, given the deployment's org and the daemon's
   `Wardrik.Host`, and the name is who it is for. `config/config.exs` names
-  the TUI's, which starts agents through the host's `Wardrik.Definition`, as
-  every surface does:
+  the TUI's, which starts agents through `Wardrik.agent_spawn/3`, as every
+  surface does:
 
       config :wardrik_daemon, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
 

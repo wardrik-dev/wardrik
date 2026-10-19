@@ -13,10 +13,8 @@ defmodule WardrikDaemon do
       `log/mcp.log` in the state directory.
     * `WardrikOAuth.Supervisor`, when a provider is configured, or the vault
       has a key to keep the tokens of servers people add and sign in to.
-    * `WardrikDaemon.Agents`, which runs the agents `agents/` declares, as
-      the host's definitions.
     * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
-      `WardrikDaemon.Agents.routes/1` for the routes as it starts, so one that
+      `Wardrik.Definitions.routes/1` for the routes as it starts, so one that
       restarts routes the agents as before.
     * `WardrikChannel.Supervisor`, when a channel is configured, which runs
       what each channel's adapter runs, such as its connection to the medium,
@@ -32,6 +30,10 @@ defmodule WardrikDaemon do
       sends it, such as Slack's events, answered by the channel; and, where
       `WardrikOAuth.Supervisor` runs, the pages a browser comes back to from
       a sign-in, under the redirect URL's path; see `WardrikOAuth.Callback`.
+
+  Before any of them, it reads the agent and policy files once, as `wardrik
+  reload` does (see `WardrikDaemon.Agents`), so nothing they serve finds a
+  deployment half read.
 
   `:host` and `:config` are required.
 
@@ -76,17 +78,20 @@ defmodule WardrikDaemon do
   @impl true
   def init(%{host: host, config: config}) do
     store = Wardrik.Host.store(host)
-    agents = Wardrik.Host.definitions(host)
-
+    definitions = Wardrik.Host.definitions(host)
+    agents = Agents.of(host)
     channels = channels(config, host, agents)
     {signing_in, pages} = signs_in(host)
+
+    # The files are read before what serves the agents starts, so nothing
+    # it serves finds an agent its file does not yet define.
+    _reloaded = Wardrik.Definitions.reload(definitions, host: host)
 
     children =
       mcp(config, store) ++
         signing_in ++
-        [{Agents, agents: agents, host: host}] ++
         running(channels, host) ++
-        notify(config, agents) ++
+        notify(config, definitions) ++
         WardrikDaemon.SSH.children(config, host: host) ++
         [
           {WardrikHTTP.Listener,
@@ -98,7 +103,7 @@ defmodule WardrikDaemon do
 
   @doc """
   The host a daemon running under `config` offers, keeping everything in
-  `store`: its definitions, `WardrikDaemon.Agents`; the vault the config's
+  `store`: its definitions, read under `WardrikDaemon.Agents`; the vault the config's
   keys unseal, as its credentials, granting through `WardrikOAuth` with the
   config's `oauth`; the accounts people connect through both; the HTTP API's
   tokens, lasting as long as `config.yaml`'s `tokens.expires.api` says;
@@ -122,7 +127,7 @@ defmodule WardrikDaemon do
     [
       store: store,
       audit: audit,
-      definitions: agents,
+      definitions: Agents.definitions(agents),
       connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
       servers: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault},
       credentials: vault,
@@ -186,11 +191,14 @@ defmodule WardrikDaemon do
       else: {[], []}
   end
 
-  defp notify(config, agents) do
+  defp notify(config, definitions) do
     settings = Config.section(config, WardrikNotify)
 
     if Keyword.get(settings, :targets, []) != [],
-      do: [{WardrikNotify.Supervisor, [routes: {Agents, :routes, [agents]}] ++ settings}],
+      do: [
+        {WardrikNotify.Supervisor,
+         [routes: {Wardrik.Definitions, :routes, [definitions]}] ++ settings}
+      ],
       else: []
   end
 
@@ -240,11 +248,12 @@ defmodule WardrikDaemon do
   What this node is running, as `wardrik status` prints it: the node, how long
   it has been up, which of its cluster's nodes are connected, each agent in
   the fleet with what it is doing, on which node, and when a trigger asks it
-  next, and each agent or policy file that does not read.
+  next, each agent or policy file that does not read, and each channel or
+  notify target a definition names that `config.yaml` does not configure.
   """
   @spec status(Wardrik.Host.t(), Config.t()) :: String.t()
   def status(host, config) do
-    agents = Wardrik.Host.definitions(host)
+    agents = Agents.of(host)
     members = Fleet.list(Wardrik.Resource.parse!("*"), host: host)
     {uptime_ms, _since_last} = :erlang.statistics(:wall_clock)
 
@@ -266,17 +275,53 @@ defmodule WardrikDaemon do
               "  "
             )
 
-    broken = for {_path, {:error, message}} <- Agents.files(agents), do: "  #{message}"
-    unbuilt = for message <- Agents.problems(agents), do: "  #{message}"
+    broken =
+      for {_path, {:error, message}} <- Agents.files(agents, host: host), do: "  #{message}"
+
+    unbuilt = for message <- unbuilt(host), do: "  #{message}"
 
     Enum.join(
       header ++
         rows ++
         problems(broken, "file does not read", "files do not read") ++
-        problems(unbuilt, "definition does not build", "definitions do not build"),
+        problems(unbuilt, "definition does not build", "definitions do not build") ++
+        problems(unknown(host, config), "name is not configured", "names are not configured"),
       "\n"
     )
   end
+
+  defp unbuilt(host) do
+    definitions = Wardrik.Host.definitions(host)
+
+    for %{id: id} <- Wardrik.Definitions.list(definitions, Wardrik.Resource.parse!("*")),
+        {:error, message} <- [Wardrik.Definitions.spec(definitions, id, host: host)],
+        do: "#{id} does not build from its definition: #{message}"
+  end
+
+  # A channel or notify target a definition names that config.yaml does not
+  # configure, which offers or tells nothing.
+  defp unknown(host, config) do
+    channels = configured(config, WardrikChannel, :channels)
+    targets = configured(config, WardrikNotify, :targets)
+
+    for definition <-
+          Wardrik.Definitions.list(Wardrik.Host.definitions(host), Wardrik.Resource.parse!("*")),
+        {what, name, known} <-
+          Enum.map(definition.channels, &{"channel", &1, channels}) ++
+            Enum.map(routed(definition.notify), &{"notify target", &1, targets}),
+        name not in known,
+        do: "  #{definition.id} names the #{what} #{name}, which config.yaml does not configure"
+  end
+
+  defp configured(config, section, key),
+    do:
+      for(
+        {name, _settings} <- Config.section(config, section) |> Keyword.get(key, []),
+        do: Atom.to_string(name)
+      )
+
+  defp routed(nil), do: []
+  defp routed(%WardrikNotify.Route{targets: targets}), do: targets
 
   @doc """
   The agent files that read, by the ID of the agent each declares, with its
@@ -294,7 +339,7 @@ defmodule WardrikDaemon do
   @spec daemons() :: [node()]
   def daemons do
     for daemon <- [node() | Node.list()],
-        :erpc.call(daemon, Process, :whereis, [WardrikDaemon.Agents]) != nil,
+        :erpc.call(daemon, Process, :whereis, [WardrikDaemon.Host]) != nil,
         do: daemon
   end
 
@@ -305,12 +350,8 @@ defmodule WardrikDaemon do
   """
   @spec spent(Wardrik.Host.t(), Wardrik.AgentID.t()) :: [String.t()]
   def spent(host, key) do
-    agents = Wardrik.Host.definitions(host)
-
-    with {:ok, definition} <- WardrikDefinition.Record.of(agents.store, key),
-         {:ok, spec} <- Agents.build(agents, definition, key, host: host) do
-      spent_by(spec, key)
-    else
+    case Wardrik.Definitions.spec(Wardrik.Host.definitions(host), key, host: host) do
+      {:ok, spec} -> spent_by(spec, key)
       {:error, _reason} -> []
     end
   end

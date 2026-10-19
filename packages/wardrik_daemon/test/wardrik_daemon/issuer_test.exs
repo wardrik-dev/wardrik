@@ -118,7 +118,7 @@ defmodule WardrikDaemon.IssuerTest do
     File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
     Host.put_section(Agents, defaults: %{"policy" => "careful"})
     Host.start_agents(dir)
-    _files = Agents.files(Host.agents())
+    _files = Agents.files(Host.agents(), host: Host.host())
 
     assert %Token{policy: "careful"} = token = in_chat("U1")
     assert roles(token) == [{"acme/agent/*", bound([:reader, :messenger, :approver, :definer])}]

@@ -14,7 +14,6 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
   alias WardrikDaemon.CLI
-  alias WardrikDefinition.Record
 
   @moduletag :tmp_dir
 
@@ -36,18 +35,16 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
     File.write!(Path.join(dir, "policies/careful.yaml"), @careful)
     File.write!(Path.join(dir, "policies/plain.yaml"), "ask: [books/*]\n")
     Host.start_agents(dir)
-    _files = WardrikDaemon.Agents.files(Host.agents())
+    _files = WardrikDaemon.Agents.files(Host.agents(), host: Host.host())
 
+    Host.declare(["test"])
     id = Wardrik.Test.Fleet.id("books")
 
-    :ok =
-      Record.put(Wardrik.Test.store(), %Record{
-        id: id,
-        fields: %{"policy" => "careful"},
-        source: :defaults
-      })
+    {:ok, _spec} = Host.define(id, %{"policy" => "careful"}, :defaults)
 
-    on_exit(fn -> Record.delete(Wardrik.Test.store(), id) end)
+    on_exit(fn ->
+      Wardrik.Definitions.delete(WardrikDaemon.Agents.definitions(Host.agents()), id)
+    end)
 
     %{id: id}
   end

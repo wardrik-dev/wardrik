@@ -653,8 +653,8 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ Path.join([dir, "agents", "counter.md"])
 
     thread = Wardrik.AgentID.put_external_id(key, "1696.1234")
-    {:ok, options} = WardrikDaemon.Agents.options(Host.agents(), thread, host: Host.host())
-    {:ok, _pid} = Wardrik.Fleet.spawn(thread, options)
+    {:ok, spec} = WardrikDaemon.Agents.spec(Host.agents(), thread, host: Host.host())
+    {:ok, _pid} = Wardrik.Fleet.spawn(thread, Wardrik.Agent.Spec.options(spec))
     {output, 0} = command(["show", thread])
     assert output =~ "Counts what it is asked to."
     assert output =~ ~r"conversation +of #{key}"
@@ -668,11 +668,7 @@ defmodule WardrikDaemon.CLITest do
     }
 
     {:ok, spec} =
-      WardrikDaemon.Agents.put(Host.agents(), defined,
-        host: Host.host(),
-        definition: %{"description" => "Defined."},
-        token: token
-      )
+      Host.define(defined, %{"description" => "Defined."}, {:api, token})
 
     {:ok, _pid} = Wardrik.Fleet.put(spec)
     {output, 0} = command(["show", defined])

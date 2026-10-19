@@ -121,8 +121,8 @@ defmodule Wardrik.Agent do
   node, the fleet hands it the `Wardrik.Host` that `Wardrik.Core` was started
   with (see `Wardrik.Fleet.Supervisor`). It keeps it in memory and never
   writes it down, so what the store holds of an agent names no module of
-  the host's. As it starts it asks the host's `Wardrik.Definition` for the
-  spec it runs on now, `c:Wardrik.Definition.current/1`, and takes its
+  the host's. As it starts it asks the host's `Wardrik.Specs` for the
+  spec it runs on now, `c:Wardrik.Specs.current/2`, and takes its
   config, seams and idle timeout as `configure/2` gives them, so a
   definition changed while it slept is the one it wakes with; `:none`
   leaves it as it was. Every turn's run carries the host, for the tools
@@ -408,7 +408,7 @@ defmodule Wardrik.Agent do
   @dialyzer {:nowarn_function, init: 2}
   @impl DurableServer
   def init(%State{wake_only: true} = state, %{host: host} = info) do
-    case Wardrik.Definition.current(Host.definitions(host), state.agent_id, host: host) do
+    case Wardrik.Specs.current(Host.definitions(host), state.agent_id, host: host) do
       {:ok, _spec} ->
         init(%{state | wake_only: false}, info)
 
@@ -623,9 +623,7 @@ defmodule Wardrik.Agent do
   # slept or ran on a node since lost. It is asked once the log is open, as a
   # parked turn its new hooks decide again writes to it.
   defp defined(state) do
-    case Wardrik.Definition.current(Host.definitions(state.host), state.agent_id,
-           host: state.host
-         ) do
+    case Wardrik.Specs.current(Host.definitions(state.host), state.agent_id, host: state.host) do
       {:ok, spec} -> {state |> State.configure(Spec.options(spec)) |> redecide(), [sync: true]}
       :none -> {state, []}
     end

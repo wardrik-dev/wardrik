@@ -12,6 +12,8 @@ defmodule WardrikDaemon.CLI.Agents do
   """
 
   alias Wardrik.Agent
+  alias Wardrik.Definition
+  alias Wardrik.Definitions
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
@@ -20,7 +22,6 @@ defmodule WardrikDaemon.CLI.Agents do
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.Config
-  alias WardrikDefinition.Record
   alias WardrikPolicy.Pattern
   alias WardrikTrigger.Status
 
@@ -71,7 +72,7 @@ defmodule WardrikDaemon.CLI.Agents do
       case members do
         [] when words == [] -> {:ok, "No agents."}
         [] -> {:ok, "No agent matches #{Enum.join(words, " ")}."}
-        members -> {:ok, table(Wardrik.Host.store(opts[:as].host), members)}
+        members -> {:ok, table(opts[:as].host, members)}
       end
     end
   end
@@ -96,7 +97,7 @@ defmodule WardrikDaemon.CLI.Agents do
 
   # A column for each thing any agent listed has, the key, status and node
   # always, under a faint heading.
-  defp table(_store, members) do
+  defp table(host, members) do
     headings = ["AGENT", "STATUS", "NODE", "NEXT RUN", "SPENT"]
 
     rows =
@@ -106,7 +107,7 @@ defmodule WardrikDaemon.CLI.Agents do
           status(member),
           where(member),
           next(member.id),
-          Enum.join(WardrikDaemon.spent(WardrikDaemon.Host.get(), member.id), ", ")
+          Enum.join(WardrikDaemon.spent(host, member.id), ", ")
         ]
       end
 
@@ -173,14 +174,12 @@ defmodule WardrikDaemon.CLI.Agents do
   # where none is kept.
   defp defined(opts, key) do
     host = opts[:as].host
+    definitions = Wardrik.Host.definitions(host)
 
-    case Record.of(Wardrik.Host.store(host), key) do
+    case Definitions.get(definitions, Wardrik.AgentID.put_external_id(key, nil)) do
       {:ok, definition} ->
-        agents = WardrikDaemon.Host.agents()
-        {:ok, read} = Wardrik.Definition.get(agents, definition.id, host: host)
-
-        {definition, WardrikDaemon.Agents.build(agents, definition, key, host: host),
-         read.missing}
+        {definition, Definitions.spec(definitions, key, host: host),
+         Definitions.missing(definitions, definition, host: host)}
 
       {:error, :not_found} ->
         nil
@@ -215,7 +214,7 @@ defmodule WardrikDaemon.CLI.Agents do
     )
   end
 
-  defp described(lines, {%Record{fields: %{"description" => description}}, _spec, _missing})
+  defp described(lines, {%Definition{description: description}, _spec, _missing})
        when is_binary(description),
        do: [description, "" | lines]
 
@@ -319,22 +318,17 @@ defmodule WardrikDaemon.CLI.Agents do
   # Where the definition was written, and whose it is for a conversation.
   defp written(nil, _key), do: []
 
-  defp written({%Record{id: owner, source: source}, _spec, _missing}, key) do
+  defp written({%Definition{id: owner, source: source}, _spec, _missing}, key) do
     conversation = if owner == key, do: [], else: [{"conversation", "of #{owner}"}]
-    conversation ++ [{"file", source(owner, source)}]
+    conversation ++ [{"file", source(source)}]
   end
 
-  defp source(owner, {:file, name}) do
-    case WardrikDaemon.Host.declared()[owner] do
-      {path, _spec} -> path
-      nil -> Path.join("agents", name)
-    end
-  end
+  defp source({:file, path}), do: path
 
-  defp source(_owner, {:api, _token}),
+  defp source({:api, _token}),
     do: Owl.Data.tag("none; it was defined over the HTTP API", @faint)
 
-  defp source(_owner, :defaults),
+  defp source(:defaults),
     do: Owl.Data.tag("none; it was made from config.yaml's defaults", @faint)
 
   # -- triggers ----------------------------------------------------------------

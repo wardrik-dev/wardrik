@@ -28,7 +28,15 @@ defmodule WardrikTUI.App.ContextTest do
         start_opts: [
           agent: id,
           agent_id: id,
-          host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %WardrikTUI.Test.Root{})
+          host:
+            Wardrik.Host.new(
+              store: Wardrik.Test.store(),
+              definitions: %Wardrik.Definitions{
+                store: Wardrik.Test.store(),
+                contexts: %WardrikDefinition.Context{}
+              },
+              issuer: %WardrikTUI.Test.Root{}
+            )
         ],
         global_keybindings: App.keybindings()
       )

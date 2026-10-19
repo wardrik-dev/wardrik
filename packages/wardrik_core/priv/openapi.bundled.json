@@ -377,6 +377,7 @@
               "shared/team/CONVENTIONS.md"
             ],
             "description": "Watches the incident queue.",
+            "display_name": "Triage",
             "idle_timeout": 900,
             "instructions": "You watch the incident queue.",
             "max_iterations": 12,
@@ -487,6 +488,10 @@
           },
           "description": {
             "description": "What the agent is for, in words a person reads.",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "What a person calls the agent; its name unless given.",
             "type": "string"
           },
           "idle_timeout": {

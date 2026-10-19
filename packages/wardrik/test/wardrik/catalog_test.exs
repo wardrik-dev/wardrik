@@ -1,5 +1,4 @@
 defmodule Wardrik.CatalogTest do
-  # The definitions module finds the test by a name kept for the node.
   use ExUnit.Case, async: false
 
   alias Wardrik.Agent.Message
@@ -9,59 +8,14 @@ defmodule Wardrik.CatalogTest do
   alias Wardrik.Catalog.Agents
   alias Wardrik.Catalog.Entry
   alias Wardrik.Catalog.Self
+  alias Wardrik.Definition
+  alias Wardrik.Definitions
   alias Wardrik.Event
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Script
   alias Wardrik.Test.Tools.Rules
-
-  # Keeps nothing: tells the test what it was asked, and refuses an agent
-  # whose name holds "filed", as a host refuses one a file declares. Calls run
-  # in the tool runner, so it finds the test by the name it registers.
-  defmodule Kept do
-    @moduledoc false
-    defstruct []
-
-    def put(_definitions, id, definition: definition, token: token, held: held, host: _host) do
-      tell({:put, id, definition, token, held})
-
-      if String.contains?(id.name, "filed"),
-        do: {:error, :conflict, "#{id} belongs to a file."},
-        else: {:ok, Wardrik.Agent.Spec.new(id: id, hooks: [])}
-    end
-
-    def get(_definitions, _id, _opts),
-      do:
-        {:ok,
-         %Wardrik.Definition.Read{
-           fields: %{"description" => "Watches.", "triggers" => []},
-           missing: []
-         }}
-
-    def put_trigger(_definitions, id, name, fields: fields) do
-      tell({:put_trigger, id, name, fields})
-
-      if String.contains?(id.name, "filed"),
-        do: {:error, :conflict, "#{id} belongs to a file."},
-        else: {:ok, :created, Map.put(fields, "name", name)}
-    end
-
-    def delete_trigger(_definitions, id, name) do
-      tell({:delete_trigger, id, name})
-      {:ok, %{"name" => name}}
-    end
-
-    defp tell(message), do: send(:persistent_term.get(__MODULE__), message)
-  end
-
-  defimpl Wardrik.Definition, for: Kept do
-    use Wardrik.Definition.None
-    defdelegate put(a0, a1, a2), to: Kept
-    defdelegate get(a0, a1, a2), to: Kept
-    defdelegate put_trigger(a0, a1, a2, a3), to: Kept
-    defdelegate delete_trigger(a0, a1, a2), to: Kept
-  end
 
   # Whoever asks holds the statements a test gives, or, an agent asking, its
   # own: reader and messenger on its owner's agents, as a host's issuer may.
@@ -90,11 +44,24 @@ defmodule Wardrik.CatalogTest do
   end
 
   setup do
-    :persistent_term.put(Kept, self())
-    on_exit(fn -> :persistent_term.erase(Kept) end)
-
-    %{agent: acme("watch")}
+    agent = acme("watch")
+    on_exit(fn -> WardrikTrigger.sync(agent, []) end)
+    %{agent: define(agent, %{"description" => "Watches."})}
   end
+
+  defp definitions,
+    do: %Definitions{store: Wardrik.Test.store(), contexts: Wardrik.context([])}
+
+  # Keeps `fields` as `id`'s definition, as `source` wrote them.
+  defp define(id, fields, source \\ :defaults) do
+    context = Definitions.context(definitions(), id)
+    {:ok, definition} = Definition.read(fields, id: id, source: source, context: context)
+    :ok = Definitions.put(definitions(), definition)
+    on_exit(fn -> Definitions.delete(definitions(), id) end)
+    id
+  end
+
+  defp triggers(id), do: Enum.map(WardrikTrigger.for_agent(id), & &1.name)
 
   @trigger %{
     "every" => "30m",
@@ -106,7 +73,11 @@ defmodule Wardrik.CatalogTest do
     do:
       Wardrik.Test.run(
         Keyword.merge(
-          [tools: [{source, agent}], id: agent, host: Wardrik.Test.host(definitions: %Kept{})],
+          [
+            tools: [{source, agent}],
+            id: agent,
+            host: Wardrik.Test.host(definitions: definitions())
+          ],
           opts
         )
       )
@@ -155,18 +126,20 @@ defmodule Wardrik.CatalogTest do
         Wardrik.Test.call(run, "self_trigger_set", %{"name" => "rivals", "trigger" => @trigger})
 
       assert %Call{state: :waiting} = waiting
-      refute_received {:put_trigger, _id, _name, _fields}
+      assert triggers(agent) == []
 
       assert %Call{state: :done, result: {:ok, %{"trigger" => %{"name" => "rivals"}}}} =
                Wardrik.Test.resume(run, waiting)
 
-      assert_received {:put_trigger, ^agent, "rivals", @trigger}
+      assert triggers(agent) == ["rivals"]
 
       assert Wardrik.Test.Audit.about(agent) |> List.last() ==
                {"trigger.set", %{"type" => "agent", "id" => to_string(AgentID.resource(agent))}}
     end
 
     test "a conversation's call changes its agent", %{agent: agent} do
+      define(agent, %{"triggers" => [Map.put(@trigger, "name", "rivals")]})
+      assert triggers(agent) == ["rivals"]
       conversation = AgentID.put_external_id(agent, "thread-1")
 
       assert %Call{state: :done, result: {:ok, "done"}} =
@@ -174,7 +147,7 @@ defmodule Wardrik.CatalogTest do
                |> run(Self, allowing(["self_trigger_remove"]))
                |> Wardrik.Test.call("self_trigger_remove", %{"name" => "rivals"})
 
-      assert_received {:delete_trigger, ^agent, "rivals"}
+      assert triggers(agent) == []
     end
 
     test "a read runs without waiting on anyone", %{agent: agent} do
@@ -191,7 +164,7 @@ defmodule Wardrik.CatalogTest do
                |> run(Self, allowing(["self_trigger_set"]))
                |> Wardrik.Test.call("self_trigger_set", %{"name" => "x"})
 
-      filed = AgentID.parse!("acme/filed")
+      filed = define(acme("filed"), %{}, {:file, "agents/filed.md"})
 
       assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "conflict"}}}} =
                filed
@@ -280,7 +253,7 @@ defmodule Wardrik.CatalogTest do
 
     test "a read of an agent labels the call with what its history holds" do
       front = acme("front")
-      reconciler = echoing(acme("reconciler"), "Read.")
+      reconciler = echoing(define(acme("reconciler"), %{"description" => "Watches."}), "Read.")
 
       :ok =
         Wardrik.Agent.ask(reconciler, "Read this page.",
@@ -308,7 +281,11 @@ defmodule Wardrik.CatalogTest do
     test "a worker it defines is held to its own hooks, ahead of the worker's" do
       front = acme("front")
       worker = acme("worker")
-      on_exit(fn -> Wardrik.Fleet.forget(worker) end)
+
+      on_exit(fn ->
+        Wardrik.Fleet.forget(worker)
+        Definitions.delete(definitions(), worker)
+      end)
 
       hooks = [Wardrik.Hook.new("front", Rules, allow: ["agent_define"])]
       run = run(front, Agents, hooks: hooks)
@@ -320,7 +297,14 @@ defmodule Wardrik.CatalogTest do
                })
 
       assert id == to_string(worker)
-      assert_received {:put, ^worker, %{"instructions" => "Reconcile."}, token, ^hooks}
+
+      assert {:ok,
+              %Definition{
+                fields: %{"instructions" => "Reconcile."},
+                source: {:api, token},
+                held: ^hooks
+              }} = Definitions.get(definitions(), worker)
+
       assert token.policy == :none
       assert token.principal == Principal.new(:agent, to_string(AgentID.resource(front)))
 
@@ -372,12 +356,17 @@ defmodule Wardrik.CatalogTest do
       inside = echoing(acme("inside"), "ok")
       outside = echoing(acme("outside"), "ok")
       worker = acme("worker")
-      on_exit(fn -> Wardrik.Fleet.forget(worker) end)
+
+      on_exit(fn ->
+        Wardrik.Fleet.forget(worker)
+        Definitions.delete(definitions(), worker)
+      end)
+
       one = Wardrik.Role.bind([:reader, :messenger], [AgentID.resource(inside)])
 
       run =
         run(front, Agents,
-          host: Wardrik.Test.host(definitions: %Kept{}, issuer: %Issued{scope: [one]}),
+          host: Wardrik.Test.host(definitions: definitions(), issuer: %Issued{scope: [one]}),
           sender: Principal.new(:channel, "chat/U1"),
           hooks: [Wardrik.Hook.new("front", Rules, allow: ["agent_define"])]
         )
@@ -410,7 +399,7 @@ defmodule Wardrik.CatalogTest do
 
       run =
         run(front, Agents,
-          host: Wardrik.Test.host(definitions: %Kept{}, issuer: %Issued{}),
+          host: Wardrik.Test.host(definitions: definitions(), issuer: %Issued{}),
           sender: Principal.new(:agent, to_string(AgentID.resource(asking)))
         )
 

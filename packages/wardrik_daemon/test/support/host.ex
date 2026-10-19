@@ -11,7 +11,6 @@ defmodule WardrikDaemon.Test.Host do
 
   @sections {__MODULE__, :sections}
   @agents {__MODULE__, :agents}
-  @nodes {__MODULE__, :nodes}
 
   # As test_helper.exs built them, past any stub of held/0.
   def host, do: elem(suite(), 0)
@@ -48,20 +47,13 @@ defmodule WardrikDaemon.Test.Host do
 
   def agents(dir) do
     config = config(dir)
-    agents = Wardrik.Host.definitions(host())
+    agents = Agents.of(host())
 
     %{
       agents
       | config: config,
-        context: WardrikDaemon.AgentFile.context(config),
-        nodes: Process.get(@nodes, &Node.list/0)
+        context: WardrikDaemon.AgentFile.context(config)
     }
-  end
-
-  # The other nodes whose inventories the test's definitions count.
-  def put_nodes(nodes) do
-    Process.put(@nodes, nodes)
-    :ok
   end
 
   # The test's directory, for its config, without starting anything.
@@ -70,16 +62,34 @@ defmodule WardrikDaemon.Test.Host do
     :ok
   end
 
-  # Starts the daemon's definitions reading `dir`, as the test's own.
+  # Reads the files of `dir`, as the test's own, as the daemon does as it
+  # starts.
   def start_agents(dir) do
     Process.put(@agents, dir)
-    ExUnit.Callbacks.start_supervised!({Agents, agents: agents(dir), host: host()})
+    _reloaded = reload(agents(dir))
     agents(dir)
   end
+
+  # Reads every definition again, the files of the test's directory among
+  # them, as wardrik reload does.
+  def reload(agents \\ agents()),
+    do: Wardrik.Definitions.reload(Agents.definitions(agents), host: host())
 
   # The definitions of the directory start_agents/1 read, under the sections
   # the test has put so far.
   def agents, do: agents(Process.get(@agents) || System.tmp_dir!())
+
+  # Keeps `fields` as the definition of `id`, as `source` wrote them, read
+  # under the test's agents: the spec it writes.
+  def define(id, fields, source) do
+    definitions = Agents.definitions(agents())
+    context = Agents.context(agents())
+
+    with {:ok, definition} <-
+           Wardrik.Definition.read(fields, id: id, source: source, context: context),
+         :ok <- Wardrik.Definitions.put(definitions, definition),
+         do: Wardrik.Definitions.spec(definitions, id, host: host())
+  end
 
   # A command run over rpc finds the test's host and config where the
   # daemon's tree holds them: those of the directory start_agents/1 read, as
@@ -103,10 +113,9 @@ defmodule WardrikDaemon.Test.Host do
     config = config(dir_of(test)) |> with_sections(test)
 
     %{
-      Wardrik.Host.definitions(host())
+      Agents.of(host())
       | config: config,
-        context: WardrikDaemon.AgentFile.context(config),
-        nodes: dictionary(test)[@nodes] || (&Node.list/0)
+        context: WardrikDaemon.AgentFile.context(config)
     }
   end
 
@@ -127,7 +136,7 @@ defmodule WardrikDaemon.Test.Host do
 
     %{
       host()
-      | definitions: agents,
+      | definitions: Agents.definitions(agents),
         credentials: vault,
         connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
         triggers: %WardrikTrigger.Deliveries{

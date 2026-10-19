@@ -19,12 +19,12 @@ defmodule WardrikDaemon.JudgeReplay do
   """
 
   alias Wardrik.AgentID
+  alias Wardrik.Definition
   alias Wardrik.Event.Log
   alias Wardrik.Host
   alias Wardrik.LLM.Config
   alias Wardrik.Run
   alias WardrikDaemon.Agents
-  alias WardrikDefinition.Record
   alias WardrikPolicy.Judge
 
   @page 500
@@ -86,9 +86,10 @@ defmodule WardrikDaemon.JudgeReplay do
   The agents a policy's calls are looked for under where none are named:
   each agent whose definition names the policy, with its conversations.
   """
-  @spec using(WardrikStore.t(), String.t()) :: [Wardrik.Resource.t()]
-  def using(store, name) do
-    for %Record{id: id, fields: %{"policy" => ^name}} <- Record.all(store),
+  @spec using(Wardrik.Definitions.t(), String.t()) :: [Wardrik.Resource.t()]
+  def using(definitions, name) do
+    for %Definition{id: id, policy: ^name} <-
+          Wardrik.Definitions.list(definitions, Wardrik.Resource.parse!("*")),
         pattern <- of(id),
         do: pattern
   end

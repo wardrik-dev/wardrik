@@ -228,13 +228,14 @@ defmodule WardrikHTTP.Router do
     )
   end
 
-  # The deployment itself, to a token over deployment/*.
+  # The deployment itself, to a token over deployment/*. A reload reads
+  # every definition on the node it is asked of.
   post "/v1/deployment/reload" do
     reply(
       conn,
       200,
       Wardrik.deployment_reload(scope(conn)),
-      &%{"reloaded" => Enum.map(&1, fn node -> to_string(node) end)}
+      fn _reloaded -> %{"reloaded" => [to_string(node())]} end
     )
   end
 
@@ -417,7 +418,7 @@ defmodule WardrikHTTP.Router do
   defp route("GET", ["definition"], _conn),
     do:
       {200, &Wardrik.agent_definition_read/2,
-       &%{"definition" => &1.fields, "missing" => &1.missing}}
+       &%{"definition" => &1.definition.fields, "missing" => &1.missing}}
 
   defp route("GET", ["events"], conn), do: {:events, &events(conn, &1)}
 

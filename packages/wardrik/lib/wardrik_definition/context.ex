@@ -2,7 +2,7 @@ defmodule WardrikDefinition.Context do
   @moduledoc """
   What a host lets its definitions name beyond the tools, sources and
   runtimes its `Wardrik.Host` holds, and what it gives every agent, for
-  `WardrikDefinition` to read a definition against.
+  `Wardrik.Definition` to read a definition against.
 
       %WardrikDefinition.Context{
         org: "acme",
@@ -10,8 +10,6 @@ defmodule WardrikDefinition.Context do
         ceilings: %{"*" => "base", "acme" => "acme-ceiling"},
         servers: [github: [], books: [serves: [Wardrik.Resource.parse!("acme/*")]]],
         mcp: WardrikMCP,
-        channels: [slack: :all],
-        targets: [ops: {WardrikNotify.Webhook, url: "https://ops.example.com", orgs: :all}],
         policies: %{"careful" => policy},
         defaults: %{"idle_timeout" => 900},
         shares: [runbooks_share]
@@ -29,13 +27,10 @@ defmodule WardrikDefinition.Context do
       `Wardrik.Servers.None`, a definition names only these
     * `mcp` - the tool source the servers' tools come through, such as
       `WardrikMCP`; with none, a definition names no server
-    * `channels` - the channels an agent may be offered in, by name, each
-      with the orgs it serves
-    * `targets` - the notify targets, as `WardrikNotify` takes them: each a
-      name with its module and options, `orgs` among them
     * `policies` - the policies a definition may name, by name
-    * `defaults` - definition keys every agent takes where its own
-      definition says none: `idle_timeout`
+    * `defaults` - what an agent is given where nothing else says: the
+      `idle_timeout` and `retries` of one whose definition sets none,
+      applied as it is read, and the definition of one started with none
     * `shares` - the trees the deployment lets agents beyond their owners
       mount, as `WardrikWorkspace.Share`s
     * `triggers` - the trigger sources and webhook verifiers a definition's
@@ -50,15 +45,11 @@ defmodule WardrikDefinition.Context do
             ceilings: %{},
             servers: [],
             mcp: nil,
-            channels: [],
-            targets: [],
             policies: %{},
             defaults: %{},
             shares: [],
             triggers: %WardrikTrigger.Offered{},
             names: %{host: "the host", config: "the host", policies: "the host's policies"}
-
-  @type orgs() :: :all | [String.t()]
 
   @type t() :: %__MODULE__{
           org: String.t(),
@@ -66,8 +57,6 @@ defmodule WardrikDefinition.Context do
           ceilings: %{String.t() => String.t()},
           servers: [{atom(), keyword()}],
           mcp: module() | nil,
-          channels: [{atom(), orgs()}],
-          targets: WardrikNotify.targets(),
           policies: %{String.t() => WardrikPolicy.t()},
           defaults: %{String.t() => term()},
           shares: [WardrikWorkspace.Share.t()],

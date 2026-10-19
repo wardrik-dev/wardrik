@@ -6,6 +6,10 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "display_name": {
+      "type": "string",
+      "description": "What a person calls the agent; its name unless given."
+    },
     "description": {
       "type": "string",
       "description": "What the agent is for, in words a person reads."
@@ -294,6 +298,7 @@
   },
   "examples": [
     {
+      "display_name": "Triage",
       "description": "Watches the incident queue.",
       "instructions": "You watch the incident queue.",
       "model": "anthropic:claude-sonnet-5",

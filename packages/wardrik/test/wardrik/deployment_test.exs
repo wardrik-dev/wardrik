@@ -16,25 +16,19 @@ defmodule Wardrik.DeploymentTest do
   alias Wardrik.Test.Fleet
   alias Wardrik.Token
 
-  # Reads its definitions again by telling the test that asked.
+  # Read again by telling the test that asked.
   defmodule Reloads do
     @moduledoc false
     defstruct []
-    def put(_definitions, _id, _opts), do: {:error, "keeps none"}
-
-    def reload(_definitions, _opts) do
-      send(:persistent_term.get({__MODULE__, :test}), :reloaded)
-      :ok
-    end
-
-    def reloading(_definitions), do: [node()]
   end
 
-  defimpl Wardrik.Definition, for: Reloads do
-    use Wardrik.Definition.None
-    defdelegate put(a0, a1, a2), to: Reloads
-    defdelegate reload(a0, a1), to: Reloads
-    defdelegate reloading(a0), to: Reloads
+  defimpl WardrikDefinition.Contexts, for: Reloads do
+    def context(_reloads, _owner), do: %WardrikDefinition.Context{}
+
+    def reload(_reloads, _opts) do
+      send(:persistent_term.get({Reloads, :test}), :reloaded)
+      [{"agents/broken.md", {:error, "agents/broken.md: tools is a list"}}]
+    end
   end
 
   # Keeps its tokens in the store, each with the secret "secret-" and its id.
@@ -75,7 +69,12 @@ defmodule Wardrik.DeploymentTest do
     defdelegate revoke(a0, a1), to: Tokens
   end
 
-  defp host, do: Wardrik.Test.host(definitions: %Reloads{}, tokens: %Tokens{})
+  defp host,
+    do:
+      Wardrik.Test.host(
+        definitions: %Wardrik.Definitions{store: store(), contexts: %Reloads{}},
+        tokens: %Tokens{}
+      )
 
   defp root(host \\ host()),
     do: Scope.new(host, Token.root(Principal.new(:user, "jon", name: "Jon")))
@@ -91,19 +90,16 @@ defmodule Wardrik.DeploymentTest do
   end
 
   describe "reloading" do
-    test "reads the definitions again on every node whose host reads them, and records it" do
+    test "reads every definition again on this node, says what does not read, and records it" do
       :persistent_term.put({Reloads, :test}, self())
 
-      assert {:ok, [node]} = Wardrik.deployment_reload(root())
-      assert node == node()
+      assert {:ok, %{failed: failed}} = Wardrik.deployment_reload(root())
+      assert "agents/broken.md: tools is a list" in failed
+
       assert_received :reloaded
       assert Enum.any?(Audit.about("agents"), &match?({"agents.reloaded", %{"id" => "jon"}}, &1))
 
       assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_reload(scope())
-    end
-
-    test "is unsupported where no node's host reads its definitions again" do
-      assert {:error, %Error{type: :unsupported}} = Wardrik.deployment_reload(root(Host.new()))
     end
   end
 

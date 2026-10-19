@@ -63,7 +63,7 @@ defmodule WardrikTest do
       store = store()
       host = Wardrik.new(store: store)
 
-      assert %WardrikDefinition.Kept{store: ^store} = Wardrik.Host.definitions(host)
+      assert %Wardrik.Definitions{store: ^store} = Wardrik.Host.definitions(host)
       assert %WardrikWorkspace.Backend.Store{store: ^store} = Wardrik.Host.workspace(host)
     end
 

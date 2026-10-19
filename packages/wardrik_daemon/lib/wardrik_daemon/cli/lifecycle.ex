@@ -3,13 +3,14 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   `wardrik agent`: starting, cancelling, stopping, removing, moving and
   editing agents.
 
-  `agent spawn NAME` starts the agent `agents/NAME.md` declares, writing the
-  file from `config.yaml`'s `defaults` first where there is none, and reads
-  the files again on every node, as `wardrik reload` does. `--org` and
-  `--user` put the agent in an org, or with one of its users, as a file's
-  `org` and `user` do, and `--on NODE` starts it on that node. An agent
-  `agent stop` stopped comes back as it was, and one no file declares is
-  given no file.
+  `agent spawn NAME` starts the agent `agents/NAME.md` declares, or one
+  nothing defines from `config.yaml`'s `defaults`, kept as its definition.
+  `--file` writes `agents/NAME.md` from the defaults first, on the node that
+  answers, which every other node keeps too, and reads the files again, as
+  `wardrik reload` does. `--org` and `--user`
+  put the agent in an org, or with one of its users, as a file's `org` and
+  `user` do, and `--on NODE` starts it on that node. An agent `agent stop`
+  stopped comes back as it was.
 
   `agent cancel` ends the turn an agent is taking, or abandons the one it
   waits on a person for, with the messages waiting behind it, for one agent,
@@ -63,15 +64,16 @@ defmodule WardrikDaemon.CLI.Lifecycle do
         name: "agent spawn",
         group: "Manage agents",
         arguments: "NAME",
-        options: "[--org ORG] [--user USER] [--on NODE]",
-        summary: "start an agent, writing its file from config.yaml's defaults if it has none",
+        options: "[--org ORG] [--user USER] [--on NODE] [--file]",
+        summary: "start an agent, from config.yaml's defaults if nothing defines it",
         details: [
-          "It starts the agent agents/NAME.md declares, writing the file first where there",
-          "is none, and reads the files again, as wardrik reload does. --org and --user put",
-          "it in an org, or with one of its users, and --on NODE starts it on that node. An",
-          "agent wardrik agent stop stopped comes back with its conversation."
+          "It starts the agent agents/NAME.md declares, or one nothing defines from",
+          "config.yaml's defaults. --file writes agents/NAME.md from them first, and reads the",
+          "files again, as wardrik reload does. --org and --user put it in an org, or with",
+          "one of its users, and --on NODE starts it on that node. An agent wardrik agent",
+          "stop stopped comes back with its conversation."
         ],
-        switches: [org: :string, user: :string, on: :string],
+        switches: [org: :string, user: :string, on: :string, file: :boolean],
         count: {1, 1},
         run: &spawn_agent/2
       },
@@ -171,10 +173,27 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp spawn_agent([name], opts) do
     with {:ok, key} <- key(name, opts),
          {:ok, node} <- named_node(opts[:on]),
-         {:ok, %Spawned{member: agent, from: from}} <-
-           Wardrik.agent_spawn(opts[:as], key, if(node, do: [node: node], else: [])),
-         do: {:ok, spawned(from, agent, key, opts[:as])}
+         do: spawn_agent(key, if(node, do: [node: node], else: []), opts[:file], opts[:as])
   end
+
+  # A file is written only where it is asked for, then read as wardrik reload
+  # reads it, which starts its agent.
+  defp spawn_agent(key, placed, true, scope) do
+    agents = WardrikDaemon.Host.agents()
+
+    with {:ok, path} <- files(WardrikDaemon.Agents.write(agents, key, host: scope.host)),
+         {:ok, _nodes} <- Wardrik.deployment_reload(scope),
+         {:ok, %Spawned{member: agent}} <- Wardrik.agent_spawn(scope, key, placed),
+         do: {:ok, "Wrote #{shown(path)}; #{key} runs on #{on(agent)}, as it declares."}
+  end
+
+  defp spawn_agent(key, placed, _file, scope) do
+    with {:ok, %Spawned{member: agent, from: from}} <- Wardrik.agent_spawn(scope, key, placed),
+         do: {:ok, spawned(from, agent, key, scope)}
+  end
+
+  defp files({:error, :conflict, message}), do: {:error, message}
+  defp files(written), do: written
 
   defp key(name, opts) do
     named = [
@@ -206,7 +225,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     do: "Started #{key} on #{on(agent)} again, with its conversation."
 
   defp spawned(:definition, agent, key, _scope) do
-    case WardrikDaemon.Host.declared()[key] do
+    case declared()[key] do
       {path, _spec} -> "Started #{key} on #{on(agent)}, as #{shown(path)} declares it."
       nil -> "Started #{key} on #{on(agent)}, on the definition kept for it."
     end
@@ -215,12 +234,11 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp spawned(:new, agent, key, scope) do
     {:ok, snapshot} = Wardrik.agent_read(scope, key)
     snapshot = Wardrik.JSON.snapshot(snapshot)
-    {path, _spec} = WardrikDaemon.Host.declared()[key]
 
     [
-      "Wrote #{shown(path)}, and started #{key} on #{on(agent)}, ",
+      "Started #{key} on #{on(agent)}, from config.yaml's defaults, ",
       "with #{model(snapshot)}.\n",
-      Owl.Data.tag("wardrik agent edit #{key} changes what it is for.", @faint)
+      Owl.Data.tag("#{spawn_line(key)} --file writes it a file to change.", @faint)
     ]
   end
 
@@ -501,7 +519,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   @spec file(Wardrik.AgentID.t(), host: Wardrik.Host.t()) ::
           {:ok, Path.t()} | {:error, String.t()}
   def file(key, opts) do
-    case {WardrikDaemon.Host.declared()[key], Fleet.lookup(key, opts)} do
+    case {declared()[key], Fleet.lookup(key, opts)} do
       {{path, _spec}, _member} ->
         {:ok, path}
 
@@ -510,8 +528,8 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
       {nil, _member} ->
         {:error,
-         "No file declares #{key}: it was defined over the HTTP API, or started in the TUI, " <>
-           "so there is none to edit."}
+         "No file declares #{key}: it was defined over the HTTP API, or from config.yaml's " <>
+           "defaults, so there is none to edit; #{spawn_line(key)} --file writes one."}
     end
   end
 
@@ -537,6 +555,13 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp pattern?(target), do: match?(%Resource{}, target)
 
   defp shown(path), do: Path.join("agents", Path.basename(path))
+
+  # The agent files that read now, by the ID each declares.
+  defp declared,
+    do:
+      WardrikDaemon.Host.agents()
+      |> WardrikDaemon.Agents.files(host: WardrikDaemon.Host.get())
+      |> WardrikDaemon.declared()
 
   defp no_agent(key), do: "No agent runs under #{key}."
 

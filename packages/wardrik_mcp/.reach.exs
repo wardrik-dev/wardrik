@@ -30,7 +30,6 @@
       "Wardrik.Credentials",
       "Wardrik.Credentials.None",
       "Wardrik.Definition",
-      "Wardrik.Definition.None",
       "Wardrik.Definitions",
       "Wardrik.Error",
       "Wardrik.Event",

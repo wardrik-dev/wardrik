@@ -263,6 +263,10 @@ export interface AgentSummary {
  */
 export interface AgentDefinition {
   /**
+   * What a person calls the agent; its name unless given.
+   */
+  display_name?: string;
+  /**
    * What the agent is for, in words a person reads.
    */
   description?: string;

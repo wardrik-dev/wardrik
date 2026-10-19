@@ -14,7 +14,7 @@ defmodule Wardrik.Host do
 
   | Field | Protocol | Default |
   | --- | --- | --- |
-  | `:definitions` | `Wardrik.Definition` | `%Wardrik.Definition.None{}` |
+  | `:definitions` | `Wardrik.Specs` | `%Wardrik.Specs.None{}` |
   | `:connections` | `Wardrik.Connections` | `%Wardrik.Connections.None{}` |
   | `:servers` | `Wardrik.Servers` | `%Wardrik.Servers.None{}` |
   | `:credentials` | `Wardrik.Credentials` | `%Wardrik.Credentials.None{}` |
@@ -36,7 +36,7 @@ defmodule Wardrik.Host do
       host =
         Wardrik.Host.new(
           store: store,
-          definitions: %MyApp.Definitions{store: store},
+          definitions: %MyApp.Specs{store: store},
           issuer: %MyApp.Issuer{admins: ["maria"]}
         )
 
@@ -106,7 +106,7 @@ defmodule Wardrik.Host do
   @expires [api: 90 * 86_400, session: 12 * 3_600]
 
   defstruct store: %WardrikStore.None{},
-            definitions: %Wardrik.Definition.None{},
+            definitions: %Wardrik.Specs.None{},
             connections: %Wardrik.Connections.None{},
             servers: %Wardrik.Servers.None{},
             credentials: %Wardrik.Credentials.None{},
@@ -129,7 +129,7 @@ defmodule Wardrik.Host do
 
   @type t() :: %__MODULE__{
           store: WardrikStore.t(),
-          definitions: Wardrik.Definition.t(),
+          definitions: Wardrik.Specs.t(),
           connections: Wardrik.Connections.t(),
           servers: Wardrik.Servers.t(),
           credentials: Wardrik.Credentials.t(),
@@ -182,8 +182,8 @@ defmodule Wardrik.Host do
   @spec store(t()) :: WardrikStore.t()
   def store(%__MODULE__{store: store}), do: store
 
-  @doc "The `Wardrik.Definition` agents' definitions go to."
-  @spec definitions(t()) :: Wardrik.Definition.t()
+  @doc "The `Wardrik.Specs` the agents it defines start from."
+  @spec definitions(t()) :: Wardrik.Specs.t()
   def definitions(%__MODULE__{definitions: definitions}), do: definitions
 
   @doc "The `Wardrik.Connections` the accounts people and orgs connect are asked of."

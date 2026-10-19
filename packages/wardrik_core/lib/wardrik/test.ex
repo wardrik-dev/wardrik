@@ -24,7 +24,7 @@ defmodule Wardrik.Test do
 
       config :wardrik_core, Wardrik.Test,
         store: [adapter: WardrikStore.EKV, data_dir: "/tmp/my-suite"],
-        host: [definitions: {MyApp.Definitions, []}]
+        host: [definitions: {MyApp.Specs, []}]
 
   `store/0` and `host/1` are the store and the host that runtime started on,
   for a test to hand what it calls. The host's `Wardrik.LLM.Client` is
