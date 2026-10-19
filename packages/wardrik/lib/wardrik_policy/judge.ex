@@ -97,7 +97,9 @@ defmodule WardrikPolicy.Judge do
         :pass
 
       asked ->
-        asked |> judged(evaluate(run, judge, %{name: name, arguments: arguments})) |> held(run)
+        asked
+        |> judged(evaluate(judge, %{name: name, arguments: arguments}, run: run))
+        |> held(run)
     end
   end
 
@@ -112,13 +114,15 @@ defmodule WardrikPolicy.Judge do
   defp names?(%{tools: tools}, name), do: Enum.any?(tools, &Pattern.match?(&1, name))
 
   @doc """
-  What `judge`'s model answers, asked under `run`, of `call`, a call to the
-  tool `name` with `arguments`: the probability of yes of each question it
-  asks of the call, in their order, or why there is none.
+  What `judge`'s model answers of `call`, a call to the tool `name` with
+  `arguments`: the probability of yes of each question it asks of the
+  call, in their order, or why there is none. It is asked as one of the
+  model calls of `:run`.
   """
-  @spec evaluate(Run.t(), t(), %{name: String.t(), arguments: map()}) ::
+  @spec evaluate(t(), %{name: String.t(), arguments: map()}, run: Run.t()) ::
           {:ok, [float()]} | {:error, term()}
-  def evaluate(%Run{config: config} = run, %__MODULE__{} = judge, %{name: name} = call) do
+  def evaluate(%__MODULE__{} = judge, %{name: name} = call, opts) do
+    %Run{config: config} = run = Keyword.fetch!(opts, :run)
     asked = asked(judge, name)
 
     questions =

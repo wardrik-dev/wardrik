@@ -119,7 +119,7 @@ defmodule WardrikDaemon.JudgeReplay do
 
   defp judged(host, judge, call) do
     run = Run.root(Config.new(), AgentID.parse!(call.agent), name: "judge", host: host)
-    answers = Judge.evaluate(run, judge, %{name: call.tool, arguments: call.arguments})
+    answers = Judge.evaluate(judge, %{name: call.tool, arguments: call.arguments}, run: run)
     Map.merge(call, %{answers: answers, judged: Judge.judged(call.questions, answers)})
   end
 

@@ -144,7 +144,7 @@ defmodule WardrikPolicy.JudgeTest do
 
     assert Judge.judged([%{deny: nil, ask: nil, allow: 0.05}], {:error, :timeout}) == :pass
 
-    assert Judge.evaluate(run(llm, policy), policy.judge, %{name: "deploy", arguments: %{}}) ==
+    assert Judge.evaluate(policy.judge, %{name: "deploy", arguments: %{}}, run: run(llm, policy)) ==
              {:error, :no_answer}
   end
 
@@ -179,7 +179,7 @@ defmodule WardrikPolicy.JudgeTest do
       )
 
     assert {:error, {:policy_denied, _reason}} =
-             Judge.evaluate(run, policy.judge, %{name: "deploy", arguments: %{}})
+             Judge.evaluate(policy.judge, %{name: "deploy", arguments: %{}}, run: run)
   end
 
   test "judges no call its questions do not name, and no model call", %{llm: llm} do
