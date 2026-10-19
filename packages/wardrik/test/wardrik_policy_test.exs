@@ -305,7 +305,7 @@ defmodule WardrikPolicyTest do
                pay.(50) |> Wardrik.Call.tool(run) |> Wardrik.Hook.check()
 
       model =
-        Wardrik.Call.model(Wardrik.LLM.Request.new(Config.new(), ReqLLM.Context.new()), run)
+        Wardrik.Call.model(Wardrik.LLM.Request.new(Config.new(), Wardrik.Conversation.new()), run)
 
       assert %Wardrik.Call{state: :allowed} = Wardrik.Hook.check(model)
     end

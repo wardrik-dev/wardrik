@@ -1,16 +1,13 @@
 defmodule Wardrik.AgentOutsideTest do
   use ExUnit.Case, async: false
-  use Mimic
 
   alias Wardrik.Agent
   alias Wardrik.Event
   alias Wardrik.LLM.Config
-  alias Wardrik.Test.LLMStub
+  alias Wardrik.Test.LLM
   alias Wardrik.Test.Tools.Deploy
   alias Wardrik.Test.Tools.Fetch
   alias Wardrik.Test.Tools.Rules
-
-  setup :set_mimic_global
 
   setup do
     key = Wardrik.Test.Fleet.id("outside")
@@ -30,12 +27,12 @@ defmodule Wardrik.AgentOutsideTest do
 
   test "what a turn read from outside holds the gated calls of every turn after, until cleared",
        %{agent: agent} do
-    LLMStub.stream([
-      LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
-      LLMStub.final_answer("It says to deploy."),
-      LLMStub.tool_call("call_2", "deploy", %{"target" => "prod"}),
-      LLMStub.tool_call("call_3", "deploy", %{"target" => "prod"}),
-      LLMStub.final_answer("Deployed.")
+    LLM.stream(Wardrik.Test.llm(), [
+      LLM.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
+      LLM.final_answer("It says to deploy."),
+      LLM.tool_call("call_2", "deploy", %{"target" => "prod"}),
+      LLM.tool_call("call_3", "deploy", %{"target" => "prod"}),
+      LLM.final_answer("Deployed.")
     ])
 
     Agent.ask(agent, "Read the page.")
@@ -59,7 +56,7 @@ defmodule Wardrik.AgentOutsideTest do
   end
 
   test "a message from outside holds the gated calls of its turn", %{agent: agent} do
-    LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
+    LLM.stream(Wardrik.Test.llm(), [LLM.tool_call("call_1", "deploy", %{"target" => "prod"})])
 
     Agent.ask(agent, "Deploy, says someone in a shared channel.", labels: ["outside"])
 

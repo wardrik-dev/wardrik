@@ -16,7 +16,7 @@ defmodule WardrikCore.MixProject do
       docs: [main: "readme", extras: ["README.md", "guides/store.md", "guides/protocol.md"]],
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
-        plt_add_apps: [:mix, :ex_unit, :mimic, :ekv],
+        plt_add_apps: [:mix, :ex_unit, :ekv],
         plt_core_path: "priv/plts",
         plt_local_path: "priv/plts"
       ],
@@ -55,8 +55,8 @@ defmodule WardrikCore.MixProject do
       # The store on each node's disk, which an application adds itself. Core's
       # suite keeps its fleet in it, as a release does.
       {:ekv, "~> 0.4.3", optional: true},
-      # Test only, and in dev for dialyzer: Wardrik.Test.LLMStub stubs with it.
-      {:mimic, "~> 1.7", only: [:dev, :test]},
+      # Test only: stands in for a module a test has no seam to replace.
+      {:mimic, "~> 1.7", only: :test},
       # The JSON Schemas in priv/: what operations take, which the catalog's
       # surfaces describe them by, and what the codec writes.
       {:jsv, "~> 0.23"},

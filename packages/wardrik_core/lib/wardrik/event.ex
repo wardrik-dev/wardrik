@@ -42,9 +42,8 @@ defmodule Wardrik.Event do
       `Wardrik.Event.DelegationFinished`.
     * Model calls: `Wardrik.Event.ModelStarted`,
       `Wardrik.Event.ModelFinished`, `Wardrik.Event.ModelRetrying`,
-      `Wardrik.Event.Result`, `Wardrik.Event.Thinking`, `Wardrik.Event.Meta`,
-      `Wardrik.Event.Chunk`, `Wardrik.Event.ToolCall`,
-      `Wardrik.Event.DeadlineReached`.
+      `Wardrik.Event.Result`, `Wardrik.Event.Thinking`,
+      `Wardrik.Event.ToolCall`, `Wardrik.Event.DeadlineReached`.
     * Tool calls, on the call's span: `Wardrik.Event.ToolStarted`,
       `Wardrik.Event.ToolFinished`, `Wardrik.Event.ToolReplayed`,
       `Wardrik.Event.ToolDenied`, `Wardrik.Event.ToolParked`,
@@ -74,8 +73,6 @@ defmodule Wardrik.Event do
           | __MODULE__.ModelRetrying.t()
           | __MODULE__.Result.t()
           | __MODULE__.Thinking.t()
-          | __MODULE__.Meta.t()
-          | __MODULE__.Chunk.t()
           | __MODULE__.ToolCall.t()
           | __MODULE__.DeadlineReached.t()
           | __MODULE__.ToolStarted.t()
@@ -142,8 +139,6 @@ defmodule Wardrik.Event do
     __MODULE__.ModelRetrying => :model_retrying,
     __MODULE__.Result => :result,
     __MODULE__.Thinking => :thinking,
-    __MODULE__.Meta => :meta,
-    __MODULE__.Chunk => :chunk,
     __MODULE__.ToolCall => :tool_call,
     __MODULE__.DeadlineReached => :deadline_reached,
     __MODULE__.ToolStarted => :tool_started,
@@ -166,7 +161,7 @@ defmodule Wardrik.Event do
       agent is doing now as `Wardrik.Event.ActivityChanged`
     * `:activity` - what the agent is doing inside that shape: model requests,
       tool calls, answer text and reasoning
-    * `:raw` - everything, including the provider's own stream records
+    * `:raw` - everything, including each tool call as the model streams it
   """
   @type level() :: :lifecycle | :activity | :raw
 
@@ -191,7 +186,7 @@ defmodule Wardrik.Event do
     :delegation_finished
   ]
 
-  @raw [:chunk, :tool_call]
+  @raw [:tool_call]
 
   @doc "Every level, from least to most."
   @spec levels() :: [level()]
@@ -200,9 +195,8 @@ defmodule Wardrik.Event do
   @doc """
   The lowest level at which `type` is delivered.
 
-  `:chunk` repeats every stream record that `:result`, `:thinking` and
-  `:tool_call` already report, and `:tool_call` repeats what `:tool_started`
-  reports with the call resolved. A type nobody has classified is activity.
+  `:tool_call` repeats what `:tool_started` reports with the call resolved.
+  A type nobody has classified is activity.
   """
   @spec level(atom()) :: level()
   def level(type) when type in @lifecycle, do: :lifecycle

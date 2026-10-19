@@ -2,10 +2,16 @@ defmodule WardrikTUI.App.FleetTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.Text
+  alias Wardrik.Conversation.ToolCall
+  alias Wardrik.Conversation.ToolError
+  alias Wardrik.Conversation.ToolResult
+  alias Wardrik.Conversation.User
   alias Wardrik.Event
   alias Wardrik.Event.Bus
   alias Wardrik.Event.Source
@@ -283,22 +289,31 @@ defmodule WardrikTUI.App.FleetTest do
     key = AgentID.new!("tooled", org: org)
     on_exit(fn -> Fleet.forget(key) end)
 
-    context =
-      Context.new([
-        Context.user("how many hits?"),
-        Context.assistant("Let me look.",
-          tool_calls: [ReqLLM.ToolCall.new("call_1", "web_search", ~s({"query":"lemonade"}))]
-        ),
-        Context.tool_result_message("web_search", "call_1", %{"ok" => true, "hits" => 3}),
-        Context.assistant("",
-          tool_calls: [ReqLLM.ToolCall.new("call_2", "deep_research", "{}")]
-        ),
-        Context.tool_result_message("deep_research", "call_2", %{error: "boom"}, %{is_error: true}),
-        Context.assistant("Three, and the second search broke.")
+    history =
+      Conversation.new([
+        User.new("how many hits?"),
+        %Assistant{
+          parts: [
+            %Text{text: "Let me look."},
+            %ToolCall{id: "call_1", name: "web_search", arguments: %{"query" => "lemonade"}}
+          ]
+        },
+        %ToolResult{
+          call_id: "call_1",
+          name: "web_search",
+          parts: [%Text{text: ~s({"hits":3,"ok":true})}]
+        },
+        %Assistant{parts: [%ToolCall{id: "call_2", name: "deep_research", arguments: %{}}]},
+        %ToolError{
+          call_id: "call_2",
+          name: "deep_research",
+          parts: [%Text{text: ~s({"error":"boom"})}]
+        },
+        Assistant.new("Three, and the second search broke.")
       ])
 
     {:ok, _pid} =
-      Fleet.spawn(key, context: context, runner: {AgentRunners, :echo, [self(), "ok"]})
+      Fleet.spawn(key, history: history, runner: {AgentRunners, :echo, [self(), "ok"]})
 
     session = Breeze.Test.resize(session, {90, 30})
     submit(session, "/connect tooled")

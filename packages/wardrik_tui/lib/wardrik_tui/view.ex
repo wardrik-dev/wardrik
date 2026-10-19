@@ -57,8 +57,6 @@ defmodule WardrikTUI.View do
   def trace(%Event.ModelFinished{outcome: {:error, reason}, duration_ms: ms}),
     do: line("model", "#{inspect(reason)} #{Text.duration(ms)}", :red)
 
-  def trace(%Event.Meta{chunk: meta}), do: line("meta", inspect(meta), @faint)
-
   def trace(%Event.ToolStarted{call_id: id, name: name}),
     do: line("tool", "#{name} #{id}", :yellow)
 

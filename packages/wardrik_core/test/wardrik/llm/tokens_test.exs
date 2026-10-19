@@ -1,7 +1,10 @@
 defmodule Wardrik.LLM.TokensTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Context
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.ToolCall
+  alias Wardrik.Conversation.User
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Tokens
@@ -14,21 +17,21 @@ defmodule Wardrik.LLM.TokensTest do
   end
 
   test "messages count their text and their tool calls" do
-    call = ReqLLM.ToolCall.new("call_1", "lookup", "{}")
-    asked = [Context.user(chars("q", 400))]
+    call = %ToolCall{id: "call_1", name: "lookup", arguments: %{}}
+    asked = [User.new(chars("q", 400))]
 
     assert Tokens.messages(asked) == 100
-    assert Tokens.messages(asked ++ [Context.assistant("", tool_calls: [call])]) > 100
+    assert Tokens.messages(asked ++ [%Assistant{parts: [call]}]) > 100
   end
 
   test "every tail counts as messages/1 counts it, rounding the whole tail" do
-    call = ReqLLM.ToolCall.new("call_1", "lookup", "{}")
+    call = %ToolCall{id: "call_1", name: "lookup", arguments: %{}}
 
     messages = [
-      Context.user(chars("q", 3)),
-      Context.assistant("", tool_calls: [call]),
-      Context.user(chars("r", 3)),
-      Context.assistant(chars("a", 3))
+      User.new(chars("q", 3)),
+      %Assistant{parts: [call]},
+      User.new(chars("r", 3)),
+      Assistant.new(chars("a", 3))
     ]
 
     assert Tokens.tails(messages) ==
@@ -46,7 +49,7 @@ defmodule Wardrik.LLM.TokensTest do
         run: fn _args, _context -> {:ok, %{}} end
       )
 
-    context = Context.new([Context.user(chars("q", 400))])
+    context = Conversation.new([User.new(chars("q", 400))])
 
     offered = Request.new(Config.new(system: chars("s", 400), tools: [tool]), context)
 

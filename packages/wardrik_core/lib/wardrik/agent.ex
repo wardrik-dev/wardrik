@@ -4,11 +4,11 @@ defmodule Wardrik.Agent do
 
   `ask/2` is non-blocking. Messages are queued in `pending` and drained one turn
   at a time: exactly one turn task runs at once, and this process is the only
-  writer of `context`. Order is therefore a structural property rather than
+  writer of `history`. Order is therefore a structural property rather than
   something callers have to coordinate.
 
   The turn itself runs in a `Task.Supervisor.async_nolink/3` task, so a failure
-  inside `ReqLLM` or a tool cannot take the agent down.
+  inside the model's client or a tool cannot take the agent down.
 
   Stream and tool events do not pass through this process at all. The turn
   publishes them through its run, and any number of listeners on any node can
@@ -17,7 +17,7 @@ defmodule Wardrik.Agent do
 
   A message arriving while a turn is running joins that turn rather than
   waiting for it: the turn is asked to stop at its next boundary, and the
-  messages queued behind it start the next one against the context it left.
+  messages queued behind it start the next one against the history it left.
   Nothing in that path knows where the message came from.
 
   ## Durable and keyed
@@ -182,13 +182,14 @@ defmodule Wardrik.Agent do
 
   use DurableServer, vsn: 1
 
-  alias ReqLLM.Context
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
   alias Wardrik.Agent.Spec
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.View
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.User
   alias Wardrik.Credential
   alias Wardrik.Event
   alias Wardrik.Event.Bus
@@ -221,7 +222,7 @@ defmodule Wardrik.Agent do
   @doc """
   The state an agent starts life with, for `Wardrik.Fleet.spawn/2` to hand over.
 
-  Options: `:config`, `:context`, `:runner`, `:resumer`, `:grace`,
+  Options: `:config`, `:history`, `:runner`, `:resumer`, `:grace`,
   `:idle_timeout`, `:wake_only`, and the run's `Wardrik.Run.seams/0`.
 
   `:idle_timeout` is how long the agent may have nothing to do before it
@@ -281,8 +282,9 @@ defmodule Wardrik.Agent do
   @spec queue(agent(), Message.t(), host: Wardrik.Host.t()) :: :ok | {:error, :not_found}
   def queue(agent, %Message{} = message, opts \\ []), do: cast(agent, {:ask, message}, opts)
 
-  @spec get_context(agent(), host: Wardrik.Host.t()) :: Context.t() | {:error, :not_found}
-  def get_context(agent, opts \\ []), do: call(agent, :get_context, opts)
+  @doc "The agent's history, the messages of a turn it has taken included."
+  @spec history(agent(), host: Wardrik.Host.t()) :: Conversation.t() | {:error, :not_found}
+  def history(agent, opts \\ []), do: call(agent, :history, opts)
 
   @spec status(agent(), host: Wardrik.Host.t()) :: status() | {:error, :not_found}
   def status(agent, opts \\ []), do: call(agent, :status, opts)
@@ -449,8 +451,8 @@ defmodule Wardrik.Agent do
     end
   end
 
-  defp called({:kept, context}, {pid, _tag}, state) do
-    case State.kept(state, pid, context) do
+  defp called({:kept, history}, {pid, _tag}, state) do
+    case State.kept(state, pid, history) do
       {:ok, next} -> {:reply, :ok, next, sync: true}
       :stale -> {:reply, {:error, :not_the_running_turn}, state}
     end
@@ -467,7 +469,7 @@ defmodule Wardrik.Agent do
     end
   end
 
-  defp called(:get_context, _from, state), do: {:reply, state.context, state}
+  defp called(:history, _from, state), do: {:reply, state.history, state}
   defp called(:status, _from, state), do: {:reply, View.status(state), state}
   defp called(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
   defp called(:snapshot, _from, state), do: {:reply, View.snapshot(state), state}
@@ -750,27 +752,27 @@ defmodule Wardrik.Agent do
     Event.emit(run.source, %Event.TurnStarted{messages: messages})
     task = tethered(fn -> State.apply_runner(state, run, kept(state, run, messages)) end)
 
-    State.started(state, task, run, asked(state.context, messages), System.monotonic_time())
+    State.started(state, task, run, asked(state.history, messages), System.monotonic_time())
   end
 
   # What the agent's history keeps of itself, with the turn's messages after
   # it, word for word. A history rewritten is handed to this agent to keep, as
   # a batch is, before the turn runs on it.
   defp kept(state, run, messages) do
-    case History.prepare(state.config.history, state.context, run) do
+    case History.prepare(state.config.history, state.history, run) do
       :keep ->
-        asked(state.context, messages)
+        asked(state.history, messages)
 
       {:ok, history, stats} ->
-        context = asked(history, messages)
-        :ok = GenServer.call(run.journal, {:kept, context}, :timer.seconds(30))
+        history = asked(history, messages)
+        :ok = GenServer.call(run.journal, {:kept, history}, :timer.seconds(30))
         Event.emit(run.source, %Event.ContextCompacted{stats: stats})
-        context
+        history
     end
   end
 
-  defp asked(context, messages),
-    do: Enum.reduce(messages, context, &Context.append(&2, Context.user(Message.content(&1))))
+  defp asked(history, messages),
+    do: Conversation.append(history, Enum.map(messages, &User.new(Message.content(&1))))
 
   defp replay(state, run, checkpoint) do
     run = journaled(run)

@@ -446,7 +446,10 @@ defmodule WardrikDaemon.AgentsTest do
     assert [%Fleet.Member{asleep: true}] =
              Fleet.list(Prefix.of(defined), host: Host.host())
 
-    stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :offline} end)
+    Wardrik.Test.LLM.answering(Wardrik.Test.llm(), fn _asked ->
+      %Wardrik.LLM.Error{message: "offline"}
+    end)
+
     :ok = Event.Bus.subscribe(defined, level: :lifecycle)
 
     {:ok, _pid} =

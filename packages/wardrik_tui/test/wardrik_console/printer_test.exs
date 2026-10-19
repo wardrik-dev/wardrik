@@ -174,9 +174,9 @@ defmodule WardrikConsole.PrinterTest do
 
   test "events that say nothing return no lines" do
     assert print([
-             %Event.Chunk{chunk: "c"},
-             %Event.Meta{chunk: %{}},
-             %Event.ToolCall{call: %{}},
+             %Event.ToolCall{
+               call: %Wardrik.Conversation.ToolCall{id: "c", name: "n", arguments: %{}}
+             },
              %Event.SpanStarted{name: "x"}
            ]) == []
   end

@@ -48,9 +48,7 @@ defmodule WardrikConsoleTest do
   test "ignores events it does not render" do
     output =
       render(Fleet.id(), [
-        %Event.Chunk{chunk: "c"},
-        %Event.Meta{chunk: %{}},
-        %Event.ToolCall{call: %{}}
+        %Event.ToolCall{call: %Wardrik.Conversation.ToolCall{id: "c", name: "n", arguments: %{}}}
       ])
 
     assert output == ""

@@ -1,11 +1,14 @@
 defmodule Wardrik.Event.CodecTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Context
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.Text
+  alias Wardrik.Conversation.ToolCall
+  alias Wardrik.Conversation.ToolResult
   alias Wardrik.Event
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Source
@@ -33,16 +36,20 @@ defmodule Wardrik.Event.CodecTest do
       decided_by: %{by: :default, hooks: []}
     }
 
-  defp response(message, usage \\ %{input_tokens: 12, output_tokens: 4, cached_tokens: 3}) do
-    %ReqLLM.Response{
+  defp answer(message, usage \\ %{input_tokens: 12, output_tokens: 4, cached_tokens: 3}) do
+    %Wardrik.LLM.Answer{
       id: "resp_1",
       model: "claude-sonnet-5",
-      context: nil,
       message: message,
-      usage: usage,
+      usage: struct!(Wardrik.LLM.Usage, usage),
       finish_reason: :stop
     }
   end
+
+  defp deploying,
+    do: %Assistant{
+      parts: [%ToolCall{id: "call_1", name: "deploy", arguments: %{"repo" => "wardrik"}}]
+    }
 
   # One payload of every shape `Wardrik.Event.payload/0` lists, with the source
   # each is emitted on.
@@ -52,10 +59,7 @@ defmodule Wardrik.Event.CodecTest do
     step = within(turn, "research")
     by = Principal.new(:channel, "slack/U1", name: "jon")
 
-    asking =
-      Context.assistant("",
-        tool_calls: [ReqLLM.ToolCall.new("call_1", "deploy", ~s({"repo":"wardrik"}))]
-      )
+    asking = deploying()
 
     [
       {turn, %Event.TurnStarted{messages: [Message.new("Ship it.", "m-1")]}},
@@ -63,8 +67,8 @@ defmodule Wardrik.Event.CodecTest do
        %Event.TurnFinished{
          messages: [
            asking,
-           Context.tool_result("call_1", "deploy", "done"),
-           Context.assistant("Shipped.")
+           %ToolResult{call_id: "call_1", name: "deploy", parts: [%Text{text: "done"}]},
+           Assistant.new("Shipped.")
          ]
        }},
       {turn, %Event.TurnFailed{reason: :timeout}},
@@ -118,7 +122,7 @@ defmodule Wardrik.Event.CodecTest do
          message_id: "#{turn.trace.span_id}.m0",
          outcome: :ok,
          duration_ms: 1_500,
-         response: response(asking),
+         answer: answer(asking),
          cost: nil
        }},
       {turn,
@@ -131,9 +135,7 @@ defmodule Wardrik.Event.CodecTest do
        }},
       {turn, %Event.Result{text: "Shipped"}},
       {turn, %Event.Thinking{text: "The build is green."}},
-      {turn, %Event.Meta{chunk: %{usage: %{input_tokens: 1}}}},
-      {turn, %Event.Chunk{chunk: :anything}},
-      {turn, %Event.ToolCall{call: %{name: "deploy"}}},
+      {turn, %Event.ToolCall{call: %ToolCall{id: "call_1", name: "deploy", arguments: %{}}}},
       {turn, %Event.DeadlineReached{message_count: 6}},
       {tool,
        %Event.ToolStarted{
@@ -398,11 +400,9 @@ defmodule Wardrik.Event.CodecTest do
       assert Codec.durable?(:turn_parked)
     end
 
-    test "provider records and the per-call park are not sent" do
+    test "a tool call as it streams and the per-call park are not sent" do
       for payload <- [
-            %Event.Chunk{chunk: 1},
-            %Event.Meta{chunk: %{}},
-            %Event.ToolCall{call: %{}},
+            %Event.ToolCall{call: %ToolCall{id: "c", name: "n", arguments: %{}}},
             %Event.ToolParked{call_id: "c", name: "n", prompt: "p"}
           ],
           do: assert(:skip = encode(turn(), payload))
@@ -551,17 +551,14 @@ defmodule Wardrik.Event.CodecTest do
 
   describe "assistant messages" do
     test "complete with the message, the response and its usage" do
-      message =
-        Context.assistant("",
-          tool_calls: [ReqLLM.ToolCall.new("call_1", "deploy", ~s({"repo":"wardrik"}))]
-        )
+      message = deploying()
 
       {:ok, %{"data" => data}} =
         encode(turn(), %Event.ModelFinished{
           message_id: "s.m0",
           outcome: :ok,
           duration_ms: 900,
-          response: response(message),
+          answer: answer(message),
           cost: nil
         })
 
@@ -594,7 +591,7 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "complete with what the call cost, null where nobody prices the model" do
-      message = Context.assistant("hi")
+      message = Assistant.new("hi")
 
       {:ok, %{"data" => priced} = event} =
         encode(
@@ -603,7 +600,7 @@ defmodule Wardrik.Event.CodecTest do
             message_id: "s.m0",
             outcome: :ok,
             duration_ms: 900,
-            response: response(message),
+            answer: answer(message),
             cost: %{micro_usd: 4_200, source: :catalog}
           }
         )
@@ -616,7 +613,7 @@ defmodule Wardrik.Event.CodecTest do
           message_id: "s.m0",
           outcome: :ok,
           duration_ms: 900,
-          response: response(message),
+          answer: answer(message),
           cost: nil
         })
 
@@ -631,7 +628,7 @@ defmodule Wardrik.Event.CodecTest do
           message_id: "s.m0",
           outcome: {:error, :interrupted},
           duration_ms: 10,
-          response: nil,
+          answer: nil,
           cost: nil
         })
 
@@ -689,7 +686,7 @@ defmodule Wardrik.Event.CodecTest do
     test "answered by a tool name the call they answer" do
       {:ok, %{"data" => %{"messages" => [message]}}} =
         encode(turn(), %Event.TurnFinished{
-          messages: [Context.tool_result("call_1", "deploy", "done")]
+          messages: [%ToolResult{call_id: "call_1", name: "deploy", parts: [%Text{text: "done"}]}]
         })
 
       assert message["parts"] == [

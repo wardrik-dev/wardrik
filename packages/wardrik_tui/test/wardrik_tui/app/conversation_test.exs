@@ -15,7 +15,7 @@ defmodule WardrikTUI.App.ConversationTest do
     child = Source.child(root, name: "research")
 
     state =
-      Conversation.new(60, "test:model")
+      Conversation.new(60)
       |> Conversation.apply_event(
         Event.new(root, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hello")]}),
         @options
@@ -57,7 +57,7 @@ defmodule WardrikTUI.App.ConversationTest do
   end
 
   test "unread rows depend on the supplied scroll position" do
-    state = Conversation.new(60, "test:model")
+    state = Conversation.new(60)
     scrolled = Keyword.put(@options, :pinned?, false)
 
     state = Conversation.append_lines(state, ["first", "second"], scrolled)
@@ -70,7 +70,7 @@ defmodule WardrikTUI.App.ConversationTest do
 
   test "restoring a display preserves the draft without overwriting the current snapshot" do
     saved = %{
-      Conversation.new(60, "test:model")
+      Conversation.new(60)
       | generation: :old_generation,
         trace_id: :old_trace,
         running?: true,

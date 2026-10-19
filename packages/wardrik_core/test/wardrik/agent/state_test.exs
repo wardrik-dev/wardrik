@@ -1,7 +1,6 @@
 defmodule Wardrik.Agent.StateTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Context
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
@@ -10,6 +9,8 @@ defmodule Wardrik.Agent.StateTest do
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.View
   alias Wardrik.Agent.State.Waiting
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.Assistant
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
@@ -24,20 +25,15 @@ defmodule Wardrik.Agent.StateTest do
   defp task, do: %Task{pid: self(), ref: make_ref(), owner: self(), mfa: {__MODULE__, :none, 0}}
 
   defp running(state \\ state()) do
-    State.started(state, task(), run(), Context.new(), System.monotonic_time())
+    State.started(state, task(), run(), Conversation.new(), System.monotonic_time())
   end
 
   defp parked_turn do
     call = %{id: "call_1", name: "deploy", arguments: %{}}
 
     %Turn{
-      context: Context.new(),
-      response: %ReqLLM.Response{
-        id: "r",
-        model: "m",
-        context: Context.new(),
-        finish_reason: :tool_calls
-      },
+      context: Conversation.new(),
+      answer: Wardrik.Test.LLM.answer(%Assistant{parts: []}, :tool_calls),
       calls: [Wardrik.Test.AgentRunners.waiting(call, "Really?")],
       remaining: 5,
       revision: Wardrik.Hook.revision([]),
@@ -47,13 +43,8 @@ defmodule Wardrik.Agent.StateTest do
 
   defp checkpoint do
     %Turn{
-      context: Context.new(),
-      response: %ReqLLM.Response{
-        id: "r",
-        model: "m",
-        context: Context.new(),
-        finish_reason: :tool_calls
-      },
+      context: Conversation.new(),
+      answer: Wardrik.Test.LLM.answer(%Assistant{parts: []}, :tool_calls),
       remaining: 5
     }
   end
@@ -156,7 +147,7 @@ defmodule Wardrik.Agent.StateTest do
       run =
         Run.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), sender: sender)
 
-      State.started(state(), task(), run, Context.new(), System.monotonic_time())
+      State.started(state(), task(), run, Conversation.new(), System.monotonic_time())
     end
 
     defp decider(principal, roles) do
@@ -304,12 +295,12 @@ defmodule Wardrik.Agent.StateTest do
 
   describe "clearing" do
     test "empties the history and its mark, and says how much it held" do
-      {state, _effects} = State.settled(running(), [Context.assistant("read it")], ["outside"])
+      {state, _effects} = State.settled(running(), [Assistant.new("read it")], ["outside"])
 
       assert {:ok, cleared, [{:emit, _source, %Event.ContextCleared{dropped: 1}}]} =
                State.clear(state)
 
-      assert cleared.context.messages == []
+      assert cleared.history.messages == []
       assert cleared.labels == []
     end
 
@@ -321,18 +312,18 @@ defmodule Wardrik.Agent.StateTest do
 
   describe "settling" do
     test "a turn that answered normally reports what it produced" do
-      messages = [Context.assistant("done")]
+      messages = [Assistant.new("done")]
 
       {state, [{:emit, source, event}, {:close_turn, run}]} =
         State.settled(running(), messages, [])
 
       assert event == %Event.TurnFinished{messages: messages}
       assert run.source == source
-      assert Context.to_list(state.context) |> length() == 1
+      assert Conversation.to_list(state.history) |> length() == 1
     end
 
     test "a turn that answered while stopping reports what the interrupt kept" do
-      messages = [Context.assistant("partial")]
+      messages = [Assistant.new("partial")]
       {_state, effects} = State.settled(stopping(), messages, [])
 
       assert [
@@ -358,11 +349,11 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "a turn leaves the labels of what it read on the history, and on every turn after" do
-      {state, _effects} = State.settled(running(), [Context.assistant("read it")], ["outside"])
+      {state, _effects} = State.settled(running(), [Assistant.new("read it")], ["outside"])
       assert state.labels == ["outside"]
       assert State.turn_run(state, nil).labels == ["outside"]
 
-      {state, _effects} = State.settled(running(state), [Context.assistant("still")], ["books"])
+      {state, _effects} = State.settled(running(state), [Assistant.new("still")], ["books"])
       assert state.labels == ["books", "outside"]
       assert State.turn_run(state(), nil).labels == []
     end
@@ -426,7 +417,7 @@ defmodule Wardrik.Agent.StateTest do
 
     test "a turn that finishes sends its answer, holding what it read, from the agent" do
       {state, effects} =
-        State.settled(asking(), [Context.assistant("Two are open.")], ["outside"])
+        State.settled(asking(), [Assistant.new("Two are open.")], ["outside"])
 
       assert [{@asker, %Message{} = answer}] = sent(effects)
       assert answer.id == "answer:ask-1"
@@ -451,7 +442,7 @@ defmodule Wardrik.Agent.StateTest do
       {state, _effects} = State.queue(state, Message.new("Second?", "b", reply_to: [@asker]))
       {:run, _run, _messages, state} = State.take(state)
 
-      {_state, effects} = State.settled(running(state), [Context.assistant("Both.")], [])
+      {_state, effects} = State.settled(running(state), [Assistant.new("Both.")], [])
 
       assert Enum.map(sent(effects), fn {_to, message} -> message.id end) == [
                "answer:a",
@@ -469,7 +460,7 @@ defmodule Wardrik.Agent.StateTest do
       {stopping, _effects} = State.interrupt(asking())
       stopping = State.arm(stopping, make_ref(), 0)
 
-      {_state, effects} = State.settled(stopping, [Context.assistant("Half of it.")], ["outside"])
+      {_state, effects} = State.settled(stopping, [Assistant.new("Half of it.")], ["outside"])
       assert [{@asker, %Message{labels: [], text: text}}] = sent(effects)
       assert text =~ "Stopped before answering"
     end
@@ -507,7 +498,7 @@ defmodule Wardrik.Agent.StateTest do
       assert state.answering == [{@asker, "ask-1"}]
 
       {:run, _run, [], state} = State.take(state)
-      {_state, effects} = State.settled(running(state), [Context.assistant("Done.")], [])
+      {_state, effects} = State.settled(running(state), [Assistant.new("Done.")], [])
       assert [{@asker, %Message{id: "answer:ask-1"}}] = sent(effects)
     end
   end
@@ -573,7 +564,7 @@ defmodule Wardrik.Agent.StateTest do
       run =
         Run.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), sender: maria)
 
-      running = State.started(state(), task(), run, Context.new(), System.monotonic_time())
+      running = State.started(state(), task(), run, Conversation.new(), System.monotonic_time())
       {waiting, _effects} = State.parked(running, parked_turn())
 
       assert %State{mode: %Due{recovery: :owed, sender: ^maria}} = owed = reload(running)

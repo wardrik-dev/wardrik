@@ -62,10 +62,13 @@
   ],
   smells: [
     behaviour_candidate: [
-      # Wardrik.Ledger is a protocol, and its implementations share its
-      # functions by design; the check groups modules by their public
-      # functions, and does not read the protocol they implement.
-      ignore: [modules: ["Wardrik.Ledger", "Wardrik.Ledger.*"]]
+      # Wardrik.Ledger and Wardrik.LLM.Client are protocols, and their
+      # implementations share their functions by design; the check groups
+      # modules by their public functions, and does not read the protocol
+      # they implement.
+      ignore: [
+        modules: ["Wardrik.Ledger", "Wardrik.Ledger.*", "Wardrik.LLM.Client", "Wardrik.LLM.Client.*"]
+      ]
     ]
   ],
   checks: [

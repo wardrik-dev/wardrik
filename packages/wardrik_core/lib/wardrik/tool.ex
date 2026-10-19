@@ -115,12 +115,18 @@ defmodule Wardrik.Tool do
   @type run() :: {module(), atom(), list()} | (map(), Wardrik.Tool.Context.t() -> answer())
 
   @typedoc """
-  A call the model asked for, in the shape `ReqLLM.Response.classify/1`
-  produces: a provider-assigned id, the tool's name, and decoded arguments.
+  A call the model asked for, as a `Wardrik.Conversation.ToolCall` carries
+  it: a provider-assigned id, the tool's name, and decoded arguments, with
+  whatever else a surface reading it is told of it, such as its `:labels`.
 
   The id is what a host correlates against.
   """
-  @type call() :: %{id: String.t(), name: String.t(), arguments: map()}
+  @type call() :: %{
+          required(:id) => String.t(),
+          required(:name) => String.t(),
+          required(:arguments) => map() | String.t(),
+          optional(atom()) => term()
+        }
 
   @typedoc """
   How a config names a tool: a module implementing this behaviour, a source

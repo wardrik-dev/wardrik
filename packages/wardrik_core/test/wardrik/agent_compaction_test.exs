@@ -1,28 +1,27 @@
 defmodule Wardrik.AgentCompactionTest do
   use ExUnit.Case, async: false
-  use Mimic
 
-  alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
   alias Wardrik.Compaction
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.User
   alias Wardrik.Event
   alias Wardrik.LLM.Config
+  alias Wardrik.LLM.Error
   alias Wardrik.Test.AgentRunners
-  alias Wardrik.Test.LLMStub
-
-  setup :set_mimic_global
-  setup :verify_on_exit!
+  alias Wardrik.Test.LLM
 
   defp long(label), do: String.pad_trailing(label, 400, ".")
 
   defp history do
-    Context.new([
-      Context.user(long("first question")),
-      Context.assistant(long("first answer")),
-      Context.user(long("second question")),
-      Context.assistant(long("second answer"))
+    Conversation.new([
+      User.new(long("first question")),
+      Assistant.new(long("first answer")),
+      User.new(long("second question")),
+      Assistant.new(long("second answer"))
     ])
   end
 
@@ -33,16 +32,14 @@ defmodule Wardrik.AgentCompactionTest do
     key = Wardrik.Test.Fleet.id("compact")
 
     {^key, agent} =
-      Wardrik.Test.Fleet.start_agent([config: config(), context: history()] ++ opts, key)
+      Wardrik.Test.Fleet.start_agent([config: config(), history: history()] ++ opts, key)
 
     :ok = Event.Bus.subscribe(key)
     {key, agent}
   end
 
   test "an outgrown history is summarised as the turn begins, which runs on it, and the agent keeps it" do
-    stub(ReqLLM, :generate_text, fn _model, _context, _opts ->
-      {:ok, LLMStub.final_answer("Two questions were asked and answered.")}
-    end)
+    LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Two questions were asked and answered.")])
 
     {_key, agent} = start(runner: {AgentRunners, :echo, [self(), "third answer"]})
     Agent.ask(agent, "third question")
@@ -71,18 +68,18 @@ defmodule Wardrik.AgentCompactionTest do
     assert summary =~ "Two questions were asked and answered."
     assert_receive %Event{payload: %Event.TurnFinished{}}
 
-    assert [kept | _rest] = agent |> Agent.get_context() |> Context.to_list()
-    assert Wardrik.LLM.Message.text(kept) =~ "Two questions were asked and answered."
+    assert [kept | _rest] = agent |> Agent.history() |> Conversation.to_list()
+    assert Conversation.text(kept) =~ "Two questions were asked and answered."
   end
 
   test "interrupting a summary interrupts the turn it began" do
     test = self()
 
-    stub(ReqLLM, :generate_text, fn _model, _context, _opts ->
+    LLM.answering(Wardrik.Test.llm(), fn _asked ->
       send(test, :summarising)
 
       receive do
-        :never -> {:ok, LLMStub.final_answer("never")}
+        :never -> LLM.final_answer("never")
       end
     end)
 
@@ -97,7 +94,7 @@ defmodule Wardrik.AgentCompactionTest do
   end
 
   test "a summary that cannot be made leaves the history, and the turn runs regardless" do
-    stub(ReqLLM, :generate_text, fn _model, _context, _opts -> {:error, :timeout} end)
+    LLM.stream(Wardrik.Test.llm(), [%Error{message: "timeout"}])
 
     {_key, agent} = start(runner: {AgentRunners, :echo, [self(), "third answer"]})
     Agent.ask(agent, "third question")
@@ -111,7 +108,7 @@ defmodule Wardrik.AgentCompactionTest do
     defp idle,
       do:
         State.new(
-          [config: config(), context: history()],
+          [config: config(), history: history()],
           Wardrik.AgentID.parse!("acme/@jon/assistant")
         )
 
@@ -126,9 +123,9 @@ defmodule Wardrik.AgentCompactionTest do
     test "kept/3 takes the history the running turn kept, and refuses any other process" do
       run = State.turn_run(idle(), nil)
       running = State.started(idle(), task(), run, history(), System.monotonic_time())
-      kept = Context.new([Context.user("summary")])
+      kept = Conversation.new([User.new("summary")])
 
-      assert {:ok, %State{context: ^kept}} = State.kept(running, self(), kept)
+      assert {:ok, %State{history: ^kept}} = State.kept(running, self(), kept)
       assert State.kept(running, spawn(fn -> :ok end), kept) == :stale
       assert State.kept(idle(), self(), kept) == :stale
     end

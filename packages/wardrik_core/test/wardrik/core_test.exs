@@ -1,12 +1,12 @@
 defmodule Wardrik.CoreTest do
   use ExUnit.Case, async: false
 
-  test "the harness starts the store, then core, and the fleet under it" do
+  test "the harness starts the store, the test model's script, then core, and the fleet under it" do
     ids =
       for {id, _pid, _type, _modules} <- Supervisor.which_children(Wardrik.Test.Supervisor),
           do: id
 
-    assert Enum.reverse(ids) == [WardrikStore, Wardrik.Core]
+    assert Enum.reverse(ids) == [WardrikStore, Wardrik.Test.LLM, Wardrik.Core]
 
     ids = for {id, _pid, _type, _modules} <- Supervisor.which_children(Wardrik.Core), do: id
 
@@ -50,7 +50,7 @@ defmodule Wardrik.CoreTest do
   end
 
   test "has loaded the modules whose structs the store reads back" do
-    for module <- [Wardrik.Agent.State, WardrikStore.Memory, ReqLLM.Context],
+    for module <- [Wardrik.Agent.State, WardrikStore.Memory, Wardrik.Conversation.Assistant],
         do: assert({:file, _path} = :code.is_loaded(module))
   end
 end

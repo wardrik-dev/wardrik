@@ -6,6 +6,8 @@ defmodule Wardrik.Event.BusTest do
   alias Wardrik.Event.Source
   alias Wardrik.Test.Fleet
 
+  @call %Wardrik.Conversation.ToolCall{id: "call_1", name: "deploy", arguments: %{}}
+
   setup do
     {:ok, agent_id: Fleet.id()}
   end
@@ -72,20 +74,20 @@ defmodule Wardrik.Event.BusTest do
     test "activity is what a subscriber gets by default", %{agent_id: agent_id} do
       :ok = Bus.subscribe(agent_id)
 
-      emit(agent_id, %Event.Chunk{chunk: "a"})
+      emit(agent_id, %Event.ToolCall{call: @call})
       emit(agent_id, %Event.Result{text: "a"})
 
       assert_receive %Event{payload: %Event.Result{text: "a"}}
-      refute_received %Event{payload: %Event.Chunk{chunk: "a"}}
+      refute_received %Event{payload: %Event.ToolCall{call: @call}}
     end
 
-    test "raw takes the provider's records too", %{agent_id: agent_id} do
+    test "raw takes each tool call as it streams too", %{agent_id: agent_id} do
       :ok = Bus.subscribe(agent_id, level: :raw)
 
-      emit(agent_id, %Event.Chunk{chunk: "a"})
+      emit(agent_id, %Event.ToolCall{call: @call})
       emit(agent_id, %Event.Result{text: "a"})
 
-      assert_receive %Event{payload: %Event.Chunk{chunk: "a"}}
+      assert_receive %Event{payload: %Event.ToolCall{call: @call}}
       assert_receive %Event{payload: %Event.Result{text: "a"}}
     end
 
@@ -95,16 +97,16 @@ defmodule Wardrik.Event.BusTest do
       spawn_link(fn ->
         Bus.subscribe(agent_id, level: :raw)
         send(test_pid, :ready)
-        receive do: (%Event{payload: %Event.Chunk{}} = e -> send(test_pid, {:other, e}))
+        receive do: (%Event{payload: %Event.ToolCall{}} = e -> send(test_pid, {:other, e}))
       end)
 
       assert_receive :ready
       :ok = Bus.subscribe(agent_id)
 
-      emit(agent_id, %Event.Chunk{chunk: "a"})
+      emit(agent_id, %Event.ToolCall{call: @call})
 
-      assert_receive {:other, %Event{payload: %Event.Chunk{chunk: "a"}}}
-      refute_received %Event{payload: %Event.Chunk{chunk: "a"}}
+      assert_receive {:other, %Event{payload: %Event.ToolCall{call: @call}}}
+      refute_received %Event{payload: %Event.ToolCall{call: @call}}
     end
 
     test "an unknown level is a mistake worth hearing about", %{agent_id: agent_id} do
@@ -160,10 +162,10 @@ defmodule Wardrik.Event.BusTest do
       source = Source.root(agent_id)
 
       Event.emit(source, %Event.Result{text: "activity"})
-      Event.emit(source, %Event.Chunk{chunk: "raw"})
+      Event.emit(source, %Event.ToolCall{call: @call})
 
       assert_receive %Event{payload: %Event.Result{text: "activity"}}
-      assert_receive %Event{payload: %Event.Chunk{chunk: "raw"}}
+      assert_receive %Event{payload: %Event.ToolCall{call: @call}}
       refute_receive %Event{}
     end
 

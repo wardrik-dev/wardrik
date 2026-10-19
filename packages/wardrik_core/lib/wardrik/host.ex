@@ -4,8 +4,8 @@ defmodule Wardrik.Host do
   everything is kept in, where agents' definitions are kept, which accounts
   people connect, which MCP servers they add, where secrets come from, how
   callers' tokens are kept, where requests for triggers go, what token each
-  principal acts with, where agents' files are kept, and what each model
-  call actually is.
+  principal acts with, where agents' files are kept, what each model call
+  actually is, and what makes it.
 
   `:store` is a `WardrikStore`, the one the host started, or
   `WardrikStore.None`'s where it names none, which raises on the first read
@@ -23,6 +23,7 @@ defmodule Wardrik.Host do
   | `:issuer` | `Wardrik.Issuer` | `%Wardrik.Issuer.None{}` |
   | `:workspace` | `Wardrik.Workspace` | `%Wardrik.Workspace.None{}` |
   | `:dispatch` | `Wardrik.LLM.Dispatch` | `%Wardrik.LLM.Dispatch.Direct{}` |
+  | `:llm` | `Wardrik.LLM.Client` | `%Wardrik.LLM.ReqLLM{}` |
 
   `Wardrik`, of the `wardrik` package, builds the host of an application
   embedding Wardrik from its options. A host that puts its own tree
@@ -47,10 +48,11 @@ defmodule Wardrik.Host do
 
   A seam it does not name is its default: a None, which answers each
   function with `:unsupported`, or with what having none means in that
-  function's own terms, as a token allowing nothing, and for `:dispatch` `Direct`, which
-  makes each model call as it stands. So every field is always a value its
-  protocol answers for, and code asks it without first asking whether
-  there is one.
+  function's own terms, as a token allowing nothing; for `:dispatch`
+  `Direct`, which makes each model call as it stands; and for `:llm`
+  `Wardrik.LLM.ReqLLM`, which reaches every provider ReqLLM does. So every
+  field is always a value its protocol answers for, and code asks it
+  without first asking whether there is one.
 
   `:expires` is how long a token the host makes lasts, by its kind, in
   seconds: `:api`, one made for the HTTP API with `Wardrik.tokens_create/4`,
@@ -77,6 +79,7 @@ defmodule Wardrik.Host do
             issuer: %Wardrik.Issuer.None{},
             workspace: %Wardrik.Workspace.None{},
             dispatch: %Wardrik.LLM.Dispatch.Direct{},
+            llm: %Wardrik.LLM.ReqLLM{},
             audit: Wardrik.Audit,
             expires: [api: @api_expires]
 
@@ -91,6 +94,7 @@ defmodule Wardrik.Host do
           issuer: Wardrik.Issuer.t(),
           workspace: Wardrik.Workspace.t(),
           dispatch: Wardrik.LLM.Dispatch.t(),
+          llm: Wardrik.LLM.Client.t(),
           audit: GenServer.name(),
           expires: [api: pos_integer()]
         }
@@ -104,7 +108,8 @@ defmodule Wardrik.Host do
     :triggers,
     :issuer,
     :workspace,
-    :dispatch
+    :dispatch,
+    :llm
   ]
 
   @doc """
@@ -162,6 +167,10 @@ defmodule Wardrik.Host do
   @doc "The `Wardrik.LLM.Dispatch` every model call is admitted and settled through."
   @spec dispatch(t()) :: Wardrik.LLM.Dispatch.t()
   def dispatch(%__MODULE__{dispatch: dispatch}), do: dispatch
+
+  @doc "The `Wardrik.LLM.Client` every model call is made through."
+  @spec llm(t()) :: Wardrik.LLM.Client.t()
+  def llm(%__MODULE__{llm: llm}), do: llm
 
   @doc "The `Wardrik.Issuer` that issues each principal the token it acts with."
   @spec issuer(t()) :: Wardrik.Issuer.t()

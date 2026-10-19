@@ -1,21 +1,19 @@
 defmodule Wardrik.AgentRetryTest do
   use ExUnit.Case, async: false
-  use Mimic
 
   import ExUnit.CaptureLog
 
   alias Wardrik.Agent
   alias Wardrik.Event
+  alias Wardrik.LLM.Error
   alias Wardrik.LLM.Retry.Backoff
-  alias Wardrik.Test.LLMStub
-
-  setup :set_mimic_global
+  alias Wardrik.Test.LLM
 
   test "a turn whose model call keeps failing parks for a person, and goes on once approved" do
     key = Wardrik.Test.Fleet.id("retry")
     {^key, agent} = Wardrik.Test.Fleet.start_agent([retry: %Backoff{attempts: 0}], key)
     :ok = Event.Bus.subscribe(key)
-    stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :timeout} end)
+    LLM.stream(Wardrik.Test.llm(), [%Error{message: "timeout"}])
 
     capture_log(fn ->
       Agent.ask(agent, "Reconcile last week.")
@@ -23,7 +21,7 @@ defmodule Wardrik.AgentRetryTest do
       assert_receive %Event{
                        payload: %Event.TurnParked{
                          calls: [
-                           {%{name: "model"}, "The model failed once: :timeout. Try again?"}
+                           {%{name: "model"}, "The model failed once: timeout. Try again?"}
                          ]
                        }
                      },
@@ -32,7 +30,7 @@ defmodule Wardrik.AgentRetryTest do
 
     assert [{%{id: id, name: "model"}, _prompt}] = Agent.parked(agent)
 
-    LLMStub.stream([LLMStub.final_answer("Reconciled.")])
+    LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Reconciled.")])
     :ok = Agent.resume(agent, %{id => :approve})
 
     assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000

@@ -13,7 +13,7 @@ defmodule Wardrik.Compaction do
   | --- | --- |
   | `:at` | compact once the history reaches this share of the model's context window. `0.6` |
   | `:keep` | how much of the most recent history is kept word for word, as a share of the window, less than `:at`. `0.25` |
-  | `:window` | the context window in tokens, for a model the catalog does not know. The catalog's otherwise, and #{128_000} where it has none |
+  | `:window` | the context window in tokens, for a model the host's `Wardrik.LLM.Client` does not know. What it knows otherwise, and #{128_000} where it knows nothing |
 
   It is an agent's `Wardrik.History` unless its config names another, and a
   config with `history: nil` never compacts.
@@ -31,10 +31,17 @@ defmodule Wardrik.Compaction do
 
   @behaviour Wardrik.History
 
-  alias ReqLLM.Context
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
-  alias Wardrik.LLM.Message
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.ToolError
+  alias Wardrik.Conversation.ToolResult
+  alias Wardrik.Conversation.User
+  alias Wardrik.Host
+  alias Wardrik.LLM.Answer
+  alias Wardrik.LLM.Client
+  alias Wardrik.LLM.Model
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Tokens
   alias Wardrik.Run
@@ -95,30 +102,30 @@ defmodule Wardrik.Compaction do
   defp window!(window),
     do: raise(ArgumentError, ":window is a whole number of tokens, got: #{inspect(window)}")
 
-  @doc "The context window of `model_spec`, in tokens."
-  @spec window(t(), term()) :: pos_integer()
-  def window(%__MODULE__{window: window}, _model_spec) when is_integer(window), do: window
+  @doc "The context window of the model `run` asks, in tokens."
+  @spec window(t(), Run.t()) :: pos_integer()
+  def window(%__MODULE__{window: window}, _run) when is_integer(window), do: window
 
-  def window(%__MODULE__{}, model_spec) do
-    case ReqLLM.model(model_spec) do
-      {:ok, %{limits: %{context: context}}} when is_integer(context) and context > 0 -> context
+  def window(%__MODULE__{}, %Run{config: config, host: host}) do
+    case Client.model(Host.llm(host), config.model_spec) do
+      {:ok, %Model{window: window}} when is_integer(window) -> window
       _unknown -> @default_window
     end
   end
 
   @doc """
-  Where `context` would be cut, if it has outgrown `compaction` for
-  `model_spec`: `{:ok, older, recent}`, or `:keep` where it has not, has
+  Where `history` would be cut, if it has outgrown `compaction` for the
+  model `run` asks: `{:ok, older, recent}`, or `:keep` where it has not, has
   nowhere to cut, or would have only an earlier summary to summarise.
   """
-  @spec split(t() | nil, Context.t(), term()) ::
-          {:ok, [ReqLLM.Message.t()], [ReqLLM.Message.t()]} | :keep
-  def split(nil, _context, _model_spec), do: :keep
+  @spec split(t() | nil, Conversation.t(), Run.t()) ::
+          {:ok, [Conversation.message()], [Conversation.message()]} | :keep
+  def split(nil, _history, _run), do: :keep
 
-  def split(%__MODULE__{} = compaction, %Context{} = context, model_spec) do
-    messages = Context.to_list(context)
+  def split(%__MODULE__{} = compaction, %Conversation{} = history, %Run{} = run) do
+    messages = Conversation.to_list(history)
     tails = Tokens.tails(messages)
-    window = window(compaction, model_spec)
+    window = window(compaction, run)
 
     if List.first(tails, 0) > compaction.at * window,
       do: cut(messages, tails, compaction.keep * window),
@@ -130,7 +137,7 @@ defmodule Wardrik.Compaction do
   # shrink, so the first that fits is the longest.
   defp cut(messages, tails, keep) do
     starts =
-      for {{%{role: :user}, tail}, index} <- Enum.with_index(Enum.zip(messages, tails)),
+      for {{%User{}, tail}, index} <- Enum.with_index(Enum.zip(messages, tails)),
           index > 0,
           do: {index, tail}
 
@@ -145,22 +152,22 @@ defmodule Wardrik.Compaction do
   end
 
   # What `prepare/3` puts in place of an older part.
-  defp summary?([%{role: :user} = summary, %{role: :assistant} = acknowledgement]) do
-    String.starts_with?(Message.text(summary), @summary_intro) and
-      Message.text(acknowledgement) == @acknowledgement
+  defp summary?([%User{} = summary, %Assistant{} = acknowledgement]) do
+    String.starts_with?(Conversation.text(summary), @summary_intro) and
+      Conversation.text(acknowledgement) == @acknowledgement
   end
 
   defp summary?(_older), do: false
 
   @doc """
-  Compacts `context` under `run`, if `compaction` says it is due.
+  Compacts `history` under `run`, if `compaction` says it is due.
 
   The older part is summarised by the agent's own model, through
   `Wardrik.Call.Pipeline`, so the run's hooks decide and count the call like
   any other, and its `Wardrik.LLM.Dispatch` admits it. The summary and an
   acknowledgement take the older part's place, and the recent part follows
   word for word. `:keep` where nothing is due; `{:error, reason}` where the
-  summary could not be made, which leaves the context as it was.
+  summary could not be made, which leaves the history as it was.
 
   The summary is made in a span of its own, `"compacting history"`, so a
   long one shows as what the agent is doing.
@@ -171,26 +178,26 @@ defmodule Wardrik.Compaction do
   request outgrows the model.
   """
   @impl Wardrik.History
-  @spec prepare(Context.t(), Run.t(), t() | nil) ::
-          {:ok, Context.t()} | :keep | {:error, term()}
-  def prepare(%Context{} = context, %Run{config: config} = run, compaction) do
+  @spec prepare(Conversation.t(), Run.t(), t() | nil) ::
+          {:ok, Conversation.t()} | :keep | {:error, term()}
+  def prepare(%Conversation{} = history, %Run{} = run, compaction) do
     compaction = compaction || %__MODULE__{}
 
-    with {:ok, older, recent} <- split(compaction, context, config.model_spec),
+    with {:ok, older, recent} <- split(compaction, history, run),
          {:ok, summary} <- Run.span(run, "compacting history", &summarise(&1, compaction, older)) do
       {:ok,
-       Context.new([
-         Context.user(@summary_intro <> summary),
-         Context.assistant(@acknowledgement) | recent
+       Conversation.new([
+         User.new(@summary_intro <> summary),
+         Assistant.new(@acknowledgement) | recent
        ])}
     end
   end
 
-  defp summarise(%Run{config: config} = run, compaction, older) do
-    budget = trunc(@request_share * window(compaction, config.model_spec))
+  defp summarise(%Run{} = run, compaction, older) do
+    budget = trunc(@request_share * window(compaction, run))
 
     if Tokens.messages(older) <= budget do
-      ask(run, older ++ [Context.user(@ask)])
+      ask(run, older ++ [User.new(@ask)])
     else
       older
       |> parts(budget)
@@ -200,7 +207,7 @@ defmodule Wardrik.Compaction do
   end
 
   defp summarise_part(run, part, {:ok, summary}) do
-    case ask(run, [Context.user(continued(summary, part))]) do
+    case ask(run, [User.new(continued(summary, part))]) do
       {:ok, summary} -> {:cont, {:ok, summary}}
       error -> {:halt, error}
     end
@@ -230,20 +237,25 @@ defmodule Wardrik.Compaction do
     |> Enum.chunk_while({[], 0}, &pack(&1, &2, limit), &close/1)
   end
 
-  defp line(%{role: :user} = message), do: "Person: " <> Message.text(message)
-  defp line(%{role: :tool} = message), do: "#{message.name} answered: " <> Message.text(message)
+  defp line(%User{} = message), do: "Person: " <> Conversation.text(message)
+  defp line(%ToolResult{} = message), do: answered(message)
+  defp line(%ToolError{} = message), do: answered(message)
 
-  defp line(%{role: :assistant} = message) do
-    said = if Message.text(message) == "", do: [], else: ["You: " <> Message.text(message)]
+  defp line(%Assistant{} = message) do
+    text = Conversation.text(message)
+    said = if text == "", do: [], else: ["You: " <> text]
 
     calls =
-      for call <- Map.get(message, :tool_calls) || [],
-          do: "You called #{ReqLLM.ToolCall.name(call)} with #{ReqLLM.ToolCall.args_json(call)}"
+      for %{name: name, arguments: arguments} <- message.parts,
+          do: "You called #{name} with #{written(arguments)}"
 
     Enum.join(said ++ calls, "\n")
   end
 
-  defp line(_message), do: ""
+  defp answered(message), do: "#{message.name} answered: " <> Conversation.text(message)
+
+  defp written(arguments) when is_binary(arguments), do: arguments
+  defp written(arguments), do: JSON.encode!(arguments)
 
   defp slices(line, limit) do
     if String.length(line) <= limit,
@@ -267,7 +279,8 @@ defmodule Wardrik.Compaction do
   defp joined(lines), do: lines |> Enum.reverse() |> Enum.join("\n\n")
 
   defp ask(run, messages) do
-    request = Request.new(%{run.config | tools: [], system: @summarise}, Context.new(messages))
+    request =
+      Request.new(%{run.config | tools: [], system: @summarise}, Conversation.new(messages))
 
     case request |> Pipeline.model(run) |> Pipeline.run(&generate/1) do
       %Call{state: :waiting} = waiting -> {:error, {:parked, Call.prompt(waiting)}}
@@ -276,13 +289,11 @@ defmodule Wardrik.Compaction do
     end
   end
 
-  defp generate(call) do
-    admitted = Pipeline.request(call)
-    Call.answer(call, ReqLLM.generate_text(admitted.model_spec, admitted.context, admitted.opts))
-  end
+  defp generate(%Call{run: run} = call),
+    do: Call.answer(call, Client.generate(Host.llm(run.host), Pipeline.request(call)))
 
-  defp text({:ok, response}) do
-    case response |> ReqLLM.Response.text() |> to_string() |> String.trim() do
+  defp text({:ok, %Answer{message: message}}) do
+    case message |> Conversation.text() |> String.trim() do
       "" -> {:error, :empty_summary}
       summary -> {:ok, summary}
     end

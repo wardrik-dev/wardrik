@@ -1,11 +1,13 @@
 defmodule Wardrik.FleetTest do
   use ExUnit.Case, async: false
 
-  alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.User
   alias Wardrik.Delegation
   alias Wardrik.Event
   alias Wardrik.Fleet
@@ -94,7 +96,7 @@ defmodule Wardrik.FleetTest do
       assert moved != pid
       assert node(moved) == node()
       assert Fleet.whereis(key, host: Wardrik.Test.host()) == moved
-      assert [:user, :assistant] = roles(moved)
+      assert [User, Assistant] = authors(moved)
     end
   end
 
@@ -214,7 +216,7 @@ defmodule Wardrik.FleetTest do
       {:ok, restarted} = Fleet.spawn(key, [])
 
       assert restarted != pid
-      assert [:user, :assistant] = roles(restarted)
+      assert [User, Assistant] = authors(restarted)
 
       :ok = Fleet.forget(key)
       refute Fleet.stored?(key)
@@ -277,11 +279,11 @@ defmodule Wardrik.FleetTest do
     end
   end
 
-  defp roles(agent) do
+  defp authors(agent) do
     agent
-    |> Agent.get_context(host: Wardrik.Test.host())
-    |> Context.to_list()
-    |> Enum.map(& &1.role)
+    |> Agent.history(host: Wardrik.Test.host())
+    |> Conversation.to_list()
+    |> Enum.map(& &1.__struct__)
   end
 
   describe "put/1" do

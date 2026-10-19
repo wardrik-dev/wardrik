@@ -64,7 +64,7 @@ defmodule WardrikMCP.PerUserTest do
 
   defp text(call) do
     [message] = ToolRunner.messages([call])
-    [part] = message.content
+    [part] = message.parts
     part.text
   end
 
@@ -81,7 +81,7 @@ defmodule WardrikMCP.PerUserTest do
                run(key, "connected", "secret", %{"name" => "DEMO_TOKEN"})
              ])
 
-    [part] = message.content
+    [part] = message.parts
     assert part.text =~ "token-for-connected"
   end
 
@@ -139,7 +139,7 @@ defmodule WardrikMCP.PerUserTest do
     assert [message] =
              Wardrik.LLM.ToolRunner.messages([run(key, "refused", "echo", %{"value" => "hello"})])
 
-    [part] = message.content
+    [part] = message.parts
     assert part.text =~ "not_authorized"
   end
 

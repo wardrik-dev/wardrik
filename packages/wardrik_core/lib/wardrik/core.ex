@@ -38,12 +38,11 @@ defmodule Wardrik.Core do
   the tool runner, are registered under their module names. To run several
   on one machine, run several nodes.
 
-  As it starts, it loads every module of core, of the store, of each
-  application depending on either, and of ReqLLM. The store reads what it
-  keeps back without making atoms, and an agent's kept state names the
-  fields of their structs, which a node loading code as it is first called,
-  as in dev and tests, has not made yet. A release has loaded them all as it
-  booted.
+  As it starts, it loads every module of core, of the store, and of each
+  application depending on either. The store reads what it keeps back
+  without making atoms, and an agent's kept state names the fields of their
+  structs, which a node loading code as it is first called, as in dev and
+  tests, has not made yet. A release has loaded them all as it booted.
 
   ## Options
 
@@ -87,7 +86,7 @@ defmodule Wardrik.Core do
 
   defp load_kept do
     for {app, _description, _vsn} <- Application.loaded_applications(),
-        app in [:req_llm | @kept] or
+        app in @kept or
           Enum.any?(Application.spec(app, :applications), &(&1 in @kept)),
         do: app |> Application.spec(:modules) |> Code.ensure_all_loaded()
 

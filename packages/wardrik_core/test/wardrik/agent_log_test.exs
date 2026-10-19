@@ -2,17 +2,13 @@ defmodule Wardrik.AgentLogTest do
   use ExUnit.Case, async: false
 
   import Wardrik.Test, only: [store: 0]
-  use Mimic
 
   alias Wardrik.Agent
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.EventLog
-  alias Wardrik.Test.LLMStub
-
-  setup :set_mimic_global
-  setup :verify_on_exit!
+  alias Wardrik.Test.LLM
 
   setup do
     key = Wardrik.Test.Fleet.id("log")
@@ -39,7 +35,7 @@ defmodule Wardrik.AgentLogTest do
   test "a turn's events are written in the order they happened, and followed as they are", %{
     key: key
   } do
-    LLMStub.stream([LLMStub.final_answer("Hello.")])
+    LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Hello.")])
     {^key, agent} = Wardrik.Test.Fleet.start_agent([], key)
 
     Agent.ask(agent, "hi", id: "m1")
@@ -71,7 +67,7 @@ defmodule Wardrik.AgentLogTest do
   end
 
   test "what the agent is doing is followed as it changes, and never written", %{key: key} do
-    LLMStub.stream([LLMStub.final_answer("Hello.")])
+    LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Hello.")])
     {^key, agent} = Wardrik.Test.Fleet.start_agent([], key)
 
     Agent.ask(agent, "hi")

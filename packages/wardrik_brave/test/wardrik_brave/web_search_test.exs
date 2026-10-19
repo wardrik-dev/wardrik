@@ -104,7 +104,7 @@ defmodule WardrikBrave.WebSearchTest do
 
   describe "the schema guides the model" do
     defp properties do
-      ReqLLM.Schema.to_json(WebSearch.tool().schema)["properties"]
+      Wardrik.LLM.Tools.schema(WebSearch.tool())["properties"]
     end
 
     test "freshness reaches the model as an enum, not prose" do

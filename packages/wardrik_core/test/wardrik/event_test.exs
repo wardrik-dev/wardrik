@@ -19,7 +19,7 @@ defmodule Wardrik.EventTest do
   end
 
   test "type/1 names the event from its payload", %{source: source} do
-    assert Event.new(source, %Event.Chunk{chunk: "a"}) |> Event.type() == :chunk
+    assert Event.new(source, %Event.Thinking{text: "a"}) |> Event.type() == :thinking
 
     assert Event.new(source, %Event.ToolFinished{
              call_id: "1",
@@ -57,8 +57,7 @@ defmodule Wardrik.EventTest do
   end
 
   describe "levels" do
-    test "the provider's own stream records are raw" do
-      assert Event.level(:chunk) == :raw
+    test "a tool call as it streams is raw" do
       assert Event.level(:tool_call) == :raw
     end
 
@@ -92,10 +91,10 @@ defmodule Wardrik.EventTest do
 
       assert Event.delivers?(:activity, :turn_started)
       assert Event.delivers?(:activity, :result)
-      refute Event.delivers?(:activity, :chunk)
+      refute Event.delivers?(:activity, :tool_call)
 
       assert Event.delivers?(:raw, :result)
-      assert Event.delivers?(:raw, :chunk)
+      assert Event.delivers?(:raw, :tool_call)
     end
 
     test "levels run from least to most" do

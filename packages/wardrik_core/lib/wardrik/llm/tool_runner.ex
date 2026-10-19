@@ -5,8 +5,9 @@ defmodule Wardrik.LLM.ToolRunner do
   A tool crash, exit or hang is contained: it becomes an error tool-result
   rather than taking down the turn. The reverse does not hold: a turn that is
   killed takes the calls it has in flight with it. Every call is answered with exactly one
-  canonical tool-result message, including calls whose task died, which is
-  what `ReqLLM.Context.append_tool_exchange/3` requires.
+  `Wardrik.Conversation.ToolResult` or `Wardrik.Conversation.ToolError`,
+  including calls whose task died, so the model never reads a call left
+  unanswered.
 
   Each call runs under its own child span, so its events are attributed to
   that call rather than to the turn as a whole. A tool is handed a
@@ -21,9 +22,10 @@ defmodule Wardrik.LLM.ToolRunner do
   whatever its run has left. See `Wardrik.Tool.Annotations` and
   `Wardrik.Run.remaining_ms/1`.
 
-  Each call is a `Wardrik.Call` to a `Wardrik.Call.Tool`, built from the normalized
-  shape `ReqLLM.Response.classify/1` produces (see `t:Wardrik.Tool.call/0`), and
-  each comes back as one: `:done`, with its `:result`, or `:waiting` on a
+  Each call is a `Wardrik.Call` to a `Wardrik.Call.Tool`, built from the
+  `Wardrik.Conversation.ToolCall` the model asked for (see
+  `t:Wardrik.Tool.call/0`), and each comes back as one: `:done`, with its
+  `:result`, or `:waiting` on a
   person. A call that comes back holds no run, and `messages/1` gives what
   the model reads of a batch.
 
@@ -48,10 +50,12 @@ defmodule Wardrik.LLM.ToolRunner do
   the model is never left with an unanswered call. `in_flight/1` lists what
   could be stopped.
   """
-  alias ReqLLM.Context
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
   alias Wardrik.Call.Tool
+  alias Wardrik.Conversation.Text
+  alias Wardrik.Conversation.ToolError
+  alias Wardrik.Conversation.ToolResult
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Run
@@ -116,7 +120,7 @@ defmodule Wardrik.LLM.ToolRunner do
   Raises on a call waiting on a person, which has no message and never will
   until it is resumed. Call it only where nothing can have parked.
   """
-  @spec messages([Call.t()]) :: [ReqLLM.Message.t()]
+  @spec messages([Call.t()]) :: [ToolResult.t() | ToolError.t()]
   def messages(calls) when is_list(calls) do
     Enum.map(calls, fn
       %Call{state: :done, result: {:ok, output}} = call ->
@@ -264,7 +268,7 @@ defmodule Wardrik.LLM.ToolRunner do
   end
 
   defp result_message(%Call{id: id, target: %Tool{name: name}, note: note}, output),
-    do: Context.tool_result_message(name, id, noted(output, note))
+    do: %ToolResult{call_id: id, name: name, parts: [%Text{text: text(noted(output, note))}]}
 
   # A note from whoever approved the call goes in the output itself, which
   # some providers send in place of its text.
@@ -284,10 +288,20 @@ defmodule Wardrik.LLM.ToolRunner do
 
   defp error_message(%Call{id: id, target: %Tool{name: name}} = call, reason)
        when is_binary(reason) do
-    Context.tool_result_message(name, id, noted(%{error: reason}, call.note), %{is_error: true})
+    %ToolError{
+      call_id: id,
+      name: name,
+      parts: [%Text{text: text(noted(%{error: reason}, call.note))}]
+    }
   end
 
   defp error_message(call, reason), do: error_message(call, message(reason))
+
+  # What the model reads of an answer: text as it stands, and anything else
+  # written as JSON.
+  defp text(output) when is_binary(output), do: output
+  defp text(output) when is_map(output) or is_list(output), do: JSON.encode!(output)
+  defp text(output), do: to_string(output)
 
   # What the model is told is the sentence, not the struct around it. A schema
   # violation already says which argument was wrong and what was expected;

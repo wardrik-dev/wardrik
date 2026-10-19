@@ -18,7 +18,7 @@ defmodule Wardrik.Call.Model do
           model_spec: term(),
           input_tokens: non_neg_integer(),
           tools: [String.t()],
-          usage: map() | nil
+          usage: Wardrik.LLM.Usage.t() | nil
         }
 
   @doc "The model `request` goes to."

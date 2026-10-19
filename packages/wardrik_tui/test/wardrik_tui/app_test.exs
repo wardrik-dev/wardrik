@@ -94,12 +94,23 @@ defmodule WardrikTUI.AppTest do
   defp emit(source, payloads) when is_list(payloads),
     do: Enum.each(payloads, &Event.emit(source, &1))
 
-  defp meta(usage), do: %ReqLLM.StreamChunk{type: :meta, metadata: %{usage: usage}}
-
   defp call(name), do: %{id: "call_#{name}", name: name, arguments: %{}}
 
-  defp tool_call(name, arguments) do
-    %ReqLLM.StreamChunk{type: :tool_call, name: name, arguments: arguments, metadata: %{}}
+  defp tool_call(name, arguments),
+    do: %Wardrik.Conversation.ToolCall{id: "call_#{name}", name: name, arguments: arguments}
+
+  # A model call that answered, having used `usage` and cost `micro_usd`.
+  defp finished(usage, micro_usd) do
+    %Event.ModelFinished{
+      message_id: "m0",
+      outcome: :ok,
+      duration_ms: 10,
+      answer: %{
+        Wardrik.Test.LLM.final_answer("done")
+        | usage: struct!(Wardrik.LLM.Usage, usage)
+      },
+      cost: %{micro_usd: micro_usd, source: :provider}
+    }
   end
 
   describe "the prompt" do
@@ -1267,35 +1278,10 @@ defmodule WardrikTUI.AppTest do
         }
       ])
 
-      emit(turn, [
-        %Event.Meta{chunk: meta(%{input_tokens: 1_000, output_tokens: 100, total_cost: 0.01})}
-      ])
-
-      emit(branch, [
-        %Event.Meta{chunk: meta(%{input_tokens: 500, output_tokens: 50, total_cost: 0.005})}
-      ])
-
       refute screen(session) =~ "req"
 
-      emit(turn, [
-        %Event.ModelFinished{
-          message_id: "m0",
-          outcome: :ok,
-          duration_ms: 10,
-          response: nil,
-          cost: nil
-        }
-      ])
-
-      emit(branch, [
-        %Event.ModelFinished{
-          message_id: "m0",
-          outcome: :ok,
-          duration_ms: 10,
-          response: nil,
-          cost: nil
-        }
-      ])
+      emit(turn, [finished(%{input_tokens: 1_000, output_tokens: 100}, 10_000)])
+      emit(branch, [finished(%{input_tokens: 500, output_tokens: 50}, 5_000)])
 
       text = screen(session)
       assert text =~ "↑ 1.5k in"

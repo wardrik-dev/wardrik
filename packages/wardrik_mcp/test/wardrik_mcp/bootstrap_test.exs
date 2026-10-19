@@ -109,7 +109,7 @@ defmodule WardrikMCP.BootstrapTest do
                ToolRunner.execute(secret, run(key, "connected"))
              ])
 
-    [part] = message.content
+    [part] = message.parts
     assert part.text =~ "a-token"
   end
 
@@ -155,7 +155,7 @@ defmodule WardrikMCP.BootstrapTest do
                  ToolRunner.execute(secret, run(key, "connected"))
                ])
 
-      [part] = message.content
+      [part] = message.parts
       assert part.text =~ "a-token"
     end
 

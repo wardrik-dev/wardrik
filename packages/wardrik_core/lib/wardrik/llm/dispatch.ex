@@ -33,8 +33,8 @@ defprotocol Wardrik.LLM.Dispatch do
           end
         end
 
-        def settle(_gateway, request, outcome: {:ok, response}, run: run),
-          do: MyApp.Billing.record(Wardrik.Run.agent_id(run).org, request.model_spec, response.usage)
+        def settle(_gateway, request, outcome: {:ok, answer}, run: run),
+          do: MyApp.Billing.record(Wardrik.Run.agent_id(run).org, request.model_spec, answer.usage)
 
         def settle(_gateway, _request, _opts), do: :ok
       end
@@ -95,13 +95,13 @@ defprotocol Wardrik.LLM.Dispatch do
   alias Wardrik.LLM.Request
 
   @typedoc """
-  How a model call ended: with its response, interrupted with the text that
+  How a model call ended: with its answer, interrupted with the text that
   had streamed, or failed. A call that failed after the provider began to
   answer it is `{:error, reason, text}`, with the text that had streamed; one
   that failed before is `{:error, reason}`.
   """
   @type outcome() ::
-          {:ok, ReqLLM.Response.t()}
+          {:ok, Wardrik.LLM.Answer.t()}
           | {:interrupted, String.t()}
           | {:error, term()}
           | {:error, term(), String.t()}

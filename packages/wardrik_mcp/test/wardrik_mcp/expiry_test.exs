@@ -85,7 +85,7 @@ defmodule WardrikMCP.ExpiryTest do
       assert [message] =
                Wardrik.LLM.ToolRunner.messages([ToolRunner.execute(call, run(key, "jon"))])
 
-      [part] = message.content
+      [part] = message.parts
       assert part.text =~ "accepted this time"
       assert_received {:refused, "stub", "jon"}
     end
@@ -102,7 +102,7 @@ defmodule WardrikMCP.ExpiryTest do
       assert [message] =
                Wardrik.LLM.ToolRunner.messages([ToolRunner.execute(call, run(key, "jon"))])
 
-      [part] = message.content
+      [part] = message.parts
       assert part.text =~ "no longer valid"
     end
 

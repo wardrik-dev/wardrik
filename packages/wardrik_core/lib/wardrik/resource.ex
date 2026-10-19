@@ -74,7 +74,7 @@ defmodule Wardrik.Resource do
       "request" => %{"model" => model},
       "run" => snapshot.trace_id && %{"id" => snapshot.trace_id},
       "interrupts" => Enum.map(snapshot.parked, &Value.interrupt/1),
-      "messages" => Enum.map(snapshot.context.messages, &Value.message/1),
+      "messages" => Enum.map(snapshot.history.messages, &Value.message/1),
       "labels" => snapshot.labels,
       "outcome" => snapshot.outcome && to_string(snapshot.outcome),
       "sequence" => snapshot.sequence

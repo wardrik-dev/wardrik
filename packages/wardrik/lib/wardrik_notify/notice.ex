@@ -10,8 +10,8 @@ defmodule WardrikNotify.Notice do
     * `:finished` - a turn answered, and `text` is what it said last
   """
 
+  alias Wardrik.Conversation
   alias Wardrik.Event
-  alias Wardrik.LLM.Message
 
   @enforce_keys [:agent, :kind, :at]
   defstruct [:agent, :kind, :at, :reason, :text, calls: []]
@@ -48,7 +48,8 @@ defmodule WardrikNotify.Notice do
         {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :failed, reason: reason}))}
 
       %Event.TurnFinished{messages: messages} ->
-        {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :finished, text: last_said(messages)}))}
+        text = Conversation.answer(messages)
+        {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :finished, text: text}))}
 
       _other ->
         :none
@@ -78,18 +79,6 @@ defmodule WardrikNotify.Notice do
       labels: Map.get(call, :labels, [])
     }
   end
-
-  defp last_said(messages) do
-    messages
-    |> Enum.reverse()
-    |> Enum.find_value("", fn
-      %{role: :assistant} = message -> presence(Message.text(message))
-      _message -> nil
-    end)
-  end
-
-  defp presence(""), do: nil
-  defp presence(text), do: text
 
   @doc "The notice as JSON-ready data, as `WardrikNotify.Webhook` sends it."
   @spec to_map(t()) :: map()

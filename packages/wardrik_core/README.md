@@ -346,11 +346,11 @@ without notice.
 
 | | Modules |
 | --- | --- |
-| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Connections.Owner`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Issuer`, `Wardrik.Servers` and the `None` of each, `Wardrik.Servers.Key`, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Entry`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store` |
+| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Run`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definition.Read`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Connections.Owner`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Issuer`, `Wardrik.Servers` and the `None` of each, `Wardrik.Servers.Key`, `Wardrik.Servers.Server`, `Wardrik.Connections.Connection`, `Wardrik.Tokens.Entry`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store`, `Wardrik.LLM.Client`, `Wardrik.LLM.Answer`, `Wardrik.LLM.Error` |
 | Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | Who acts, and what `Wardrik` answers them | `Wardrik.Token`, `Wardrik.Statement`, `Wardrik.Role`, `Wardrik.Error`, `Wardrik.Resource`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |
-| Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
+| Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.Conversation` and the modules under it |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Tools`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |
 
@@ -368,7 +368,7 @@ assert %Wardrik.Call{state: :done, result: {:ok, _}} = Wardrik.Test.call(run, "p
 ```
 
 `Wardrik.Test.Fleet` starts an agent under an ID of each test's own and
-removes it after, `Wardrik.Test.LLMStub` answers turns with canned responses
-through Mimic. A store adapter of your own is checked with
+removes it after, and `Wardrik.Test.LLM` answers model calls from a script a
+test sets. A store adapter of your own is checked with
 `WardrikStore.Conformance` and
 `WardrikStore.Test.Durable`.

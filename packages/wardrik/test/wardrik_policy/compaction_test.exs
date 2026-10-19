@@ -1,37 +1,42 @@
 defmodule WardrikPolicy.CompactionTest do
   use ExUnit.Case, async: true
-  use Mimic
 
-  alias ReqLLM.Context
   alias Wardrik.Compaction
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.Text
+  alias Wardrik.Conversation.ToolCall
+  alias Wardrik.Conversation.ToolResult
+  alias Wardrik.Conversation.User
   alias Wardrik.LLM.Config
   alias Wardrik.Run
-
-  setup :verify_on_exit!
 
   # 400 characters, about 100 tokens.
   defp words(label), do: String.pad_trailing(label, 400, ".")
 
   defp history do
-    call = ReqLLM.ToolCall.new("call_1", "lookup", "{}")
+    found = JSON.encode!(%{"found" => words("a long result")})
 
-    Context.new([
-      Context.user(words("first question")),
-      Context.assistant("", tool_calls: [call]),
-      Context.tool_result_message("lookup", "call_1", %{"found" => words("a long result")}),
-      Context.assistant(words("first answer")),
-      Context.user(words("second question")),
-      Context.assistant(words("second answer"))
+    Conversation.new([
+      User.new(words("first question")),
+      %Assistant{parts: [%ToolCall{id: "call_1", name: "lookup", arguments: %{}}]},
+      %ToolResult{call_id: "call_1", name: "lookup", parts: [%Text{text: found}]},
+      Assistant.new(words("first answer")),
+      User.new(words("second question")),
+      Assistant.new(words("second answer"))
     ])
   end
 
-  defp run(opts),
-    do: Run.root(Config.new(), Wardrik.Test.Fleet.id(), [name: "compaction"] ++ opts)
+  # A run whose model calls a test model answers, with no script, so a call
+  # that reached it would fail the test.
+  defp run(opts) do
+    host = Wardrik.Test.host(llm: Wardrik.Test.LLM.start())
+    Run.root(Config.new(), Wardrik.Test.Fleet.id(), [name: "compaction", host: host] ++ opts)
+  end
 
   defp compaction, do: Compaction.new(window: 1_000, at: 0.3, keep: 0.25)
 
   test "a summary goes through the dispatch, so a budget that has run out stops it" do
-    reject(&ReqLLM.generate_text/3)
     policy = WardrikPolicy.decode!(%{"budget" => %{"tokens" => 1}})
     run = run(hooks: WardrikPolicy.hooks(policy))
 

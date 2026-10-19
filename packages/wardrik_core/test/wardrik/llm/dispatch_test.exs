@@ -1,7 +1,7 @@
 defmodule Wardrik.LLM.DispatchTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Context
+  alias Wardrik.Conversation
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Dispatch
   alias Wardrik.LLM.Request
@@ -39,7 +39,7 @@ defmodule Wardrik.LLM.DispatchTest do
   end
 
   defp run, do: Run.root(Config.new(), Wardrik.AgentID.parse!("acme/assistant"))
-  defp request, do: Request.new(Config.new(), Context.new())
+  defp request, do: Request.new(Config.new(), Conversation.new())
 
   describe "Direct" do
     test "admits a request as it stands and is told nothing" do

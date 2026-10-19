@@ -20,9 +20,9 @@ defmodule WardrikPolicy.Budget do
   | `on_exhausted` | `ask`, which parks the agent until a person approves more, or `deny`, which ends the turn. `ask` unless set |
 
   A budget sets `usd`, `tokens`, or both, and is spent when either is. A token
-  limit governs a model the catalog cannot price, or one a subscription pays
-  for, whose calls cost nothing in dollars; a budget in dollars refuses a model
-  the catalog cannot price.
+  limit governs a model the host's `Wardrik.LLM.Client` cannot price, or one
+  a subscription pays for, whose calls cost nothing in dollars; a budget in
+  dollars refuses a model the client cannot price.
 
   Days, weeks and months are calendar periods in `timezone`, and a week
   starts on Monday. Where the zone's clocks change, a day is 23 or 25
@@ -50,7 +50,7 @@ defmodule WardrikPolicy.Budget do
   limit, a budget that asks parks it on the next call, and approving that
   call grants the budget's `grant` more for the period the call was asked
   in. A budget that denies ends the turn instead. A budget in dollars refuses
-  every call to a model the catalog cannot price.
+  every call to a model the host's client cannot price.
   """
 
   @behaviour Wardrik.Hook
@@ -64,7 +64,7 @@ defmodule WardrikPolicy.Budget do
   alias WardrikPolicy.Meter
   alias WardrikPolicy.Spend
 
-  @unpriced "This agent's budget is in dollars, and the catalog has no price for its model, so " <>
+  @unpriced "This agent's budget is in dollars, and its model has no price, so " <>
               "what its calls cost cannot be counted. A budget in tokens alone can count them."
 
   defstruct [
@@ -175,8 +175,8 @@ defmodule WardrikPolicy.Budget do
   `WardrikPolicy.Ceiling` checks an org's agents together this way.
   """
   @spec check(t(), Call.t(), key: String.t(), spender: String.t()) :: Wardrik.Hook.decision()
-  def check(%__MODULE__{} = budget, %Call{target: %Call.Model{model_spec: spec}}, opts) do
-    if budget.usd != nil and not Cost.priced?(spec),
+  def check(%__MODULE__{} = budget, %Call{target: %Call.Model{model_spec: spec}, run: run}, opts) do
+    if budget.usd != nil and not Cost.priced?(Wardrik.Host.llm(run.host), spec),
       do: {:deny, @unpriced},
       else: metered(Keyword.fetch!(opts, :key), budget, Keyword.fetch!(opts, :spender))
   end

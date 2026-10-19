@@ -3,9 +3,10 @@ defmodule Wardrik.AgentTest do
 
   import ExUnit.CaptureLog
 
-  alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Agent.Activity
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Conversation.User
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
@@ -30,16 +31,16 @@ defmodule Wardrik.AgentTest do
     agent
   end
 
-  defp roles(agent) do
+  defp authors(agent) do
     agent
-    |> Agent.get_context(host: Wardrik.Test.host())
-    |> Context.to_list()
-    |> Enum.map(& &1.role)
+    |> Agent.history(host: Wardrik.Test.host())
+    |> Wardrik.Conversation.to_list()
+    |> Enum.map(& &1.__struct__)
   end
 
   # A synchronous call is a barrier: when it returns, every cast this process
   # sent beforehand has already been handled.
-  defp flush(agent), do: Agent.get_context(agent)
+  defp flush(agent), do: Agent.history(agent)
 
   test "ask/2 returns immediately and the turn runs asynchronously" do
     agent = start_agent(runner: runner(self()))
@@ -48,7 +49,7 @@ defmodule Wardrik.AgentTest do
 
     assert_receive {:turn, [{:user, "hello"}]}
     assert_receive %Event{payload: %Event.TurnFinished{messages: [_assistant]}}
-    assert roles(agent) == [:user, :assistant]
+    assert authors(agent) == [User, Assistant]
   end
 
   test "a message names who sent it, to the model and in its event" do
@@ -108,7 +109,7 @@ defmodule Wardrik.AgentTest do
     Agent.ask(agent, "two")
     assert_receive %Event{payload: %Event.TurnFinished{}}
 
-    assert roles(agent) == [:user, :assistant, :user, :assistant]
+    assert authors(agent) == [User, Assistant, User, Assistant]
   end
 
   test "a crashing turn does not take the agent down, and the queue drains" do
@@ -163,7 +164,7 @@ defmodule Wardrik.AgentTest do
       Agent.ask(agent, "hello")
 
       assert_receive %Event{payload: %Event.TurnFailed{reason: :rate_limited}}
-      assert roles(agent) == [:user]
+      assert authors(agent) == [User]
     end)
   end
 
@@ -311,10 +312,10 @@ defmodule Wardrik.AgentTest do
       assert_receive %Event{payload: %Event.TurnFinished{}}
 
       # Replies carrying a ref the agent is not waiting on.
-      send(agent, {make_ref(), {:ok, [Context.assistant("injected")]}})
+      send(agent, {make_ref(), {:ok, [Assistant.new("injected")]}})
       send(agent, {make_ref(), {:error, :whatever}})
 
-      assert roles(agent) == [:user, :assistant]
+      assert authors(agent) == [User, Assistant]
       assert Process.alive?(agent)
     end
 
@@ -341,7 +342,7 @@ defmodule Wardrik.AgentTest do
 
       capture_log(fn ->
         send(agent, :nonsense)
-        assert roles(agent) == []
+        assert authors(agent) == []
       end)
 
       assert Process.alive?(agent)
@@ -374,8 +375,7 @@ defmodule Wardrik.AgentTest do
       # and the message that interrupted it — in that order.
       assert %{state: :running} = Agent.status(agent)
 
-      context = Agent.get_context(agent)
-      assert Enum.map(context.messages, & &1.role) == [:user, :assistant, :user]
+      assert authors(agent) == [User, Assistant, User]
     end
 
     test "nothing is nudged when nothing is running" do
@@ -400,8 +400,7 @@ defmodule Wardrik.AgentTest do
       assert stats.resolution == :stopped
       assert stats.kept == 1
 
-      context = Agent.get_context(agent)
-      assert Enum.map(context.messages, & &1.role) == [:user, :assistant]
+      assert authors(agent) == [User, Assistant]
     end
 
     test "drops what was queued and says how much" do
@@ -480,7 +479,7 @@ defmodule Wardrik.AgentTest do
 
     test "resume/2 hands the decisions to the turn and appends what comes back" do
       test_pid = self()
-      answer = {:ok, [Context.assistant("shipped")]}
+      answer = {:ok, [Assistant.new("shipped")]}
 
       agent =
         start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, answer))
@@ -493,13 +492,13 @@ defmodule Wardrik.AgentTest do
       assert_receive %Event{payload: %Event.TurnResumed{decisions: %{"call_1" => :approve}}}
       assert_receive {:resumed, %{"call_1" => :approve}}
       assert_receive %Event{payload: %Event.TurnFinished{}}
-      assert roles(agent) == [:user, :assistant]
+      assert authors(agent) == [User, Assistant]
       assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
     end
 
     test "each decision says who made it" do
       test_pid = self()
-      answer = {:ok, [Context.assistant("left it")]}
+      answer = {:ok, [Assistant.new("left it")]}
       by = Wardrik.Principal.new(:channel, "slack/U1", name: "jon")
 
       agent =
@@ -541,7 +540,7 @@ defmodule Wardrik.AgentTest do
 
     test "a call parked to resolve a credential carries on once it is available" do
       test_pid = self()
-      answer = {:ok, [Context.assistant("opened")]}
+      answer = {:ok, [Assistant.new("opened")]}
       link = %{url: "https://github.com/login/oauth", code: nil}
       credential = %{ref: "github", owner: {"acme", "jon"}}
       by = Wardrik.Principal.new(:oauth, "github", name: "github authorization")
@@ -625,7 +624,7 @@ defmodule Wardrik.AgentTest do
     test "comes back replaying from the batch it handed over, not asking again" do
       test_pid = self()
       key = Wardrik.Test.Fleet.id("replay")
-      answer = {:ok, [Context.assistant("deployed")]}
+      answer = {:ok, [Assistant.new("deployed")]}
 
       opts = [
         runner: {AgentRunners, :checkpointing, [test_pid]},
@@ -642,7 +641,7 @@ defmodule Wardrik.AgentTest do
       assert_receive {:replayed, %Wardrik.LLM.Turn{} = checkpoint}, 5_000
       assert Wardrik.LLM.Turn.call_ids(checkpoint) == ["call_1"]
       assert_receive %Event{payload: %Event.TurnFinished{}}
-      assert roles(key) == [:user, :assistant]
+      assert authors(key) == [User, Assistant]
     end
 
     for {name, decision} <- [denied: {:deny, "Not today."}, noted: {:approve, "Only staging."}] do
@@ -654,7 +653,7 @@ defmodule Wardrik.AgentTest do
     defp resumes_after_loss(decisions) do
       test_pid = self()
       key = Wardrik.Test.Fleet.id("decided")
-      answer = {:ok, [Context.assistant("left it")]}
+      answer = {:ok, [Assistant.new("left it")]}
 
       opts = [
         runner: parking_runner(test_pid),
@@ -684,7 +683,7 @@ defmodule Wardrik.AgentTest do
 
       assert_receive %Event{payload: %Event.TurnFinished{}}
       assert Agent.parked(key, host: Wardrik.Test.host()) == []
-      assert roles(key) == [:user, :assistant]
+      assert authors(key) == [User, Assistant]
     end
 
     test "a checkpoint from anything but the running turn is refused" do

@@ -136,7 +136,7 @@ defmodule WardrikTUI.App.Connection do
   defp attach_snapshot(term, agent, agent_id, snapshot) do
     %{
       status: %{state: state, pending: pending, model: model},
-      context: %{messages: messages},
+      history: %{messages: messages},
       parked: parked,
       generation: generation,
       trace_id: trace_id
@@ -176,7 +176,7 @@ defmodule WardrikTUI.App.Connection do
   end
 
   defp fresh(term, messages) do
-    display = Conversation.new(TermState.width(term), term.assigns.model)
+    display = Conversation.new(TermState.width(term))
 
     term
     |> assign(display |> Conversation.restored_assigns() |> Map.put(:seen, length(messages)))
@@ -234,8 +234,8 @@ defmodule WardrikTUI.App.Connection do
   # How many messages the conversation holds now, or the count last known when
   # the agent cannot be asked.
   defp seen(%{assigns: %{agent: agent, seen: seen, host: host}}) do
-    case Agent.get_context(agent, host: host) do
-      %ReqLLM.Context{messages: messages} -> length(messages)
+    case Agent.history(agent, host: host) do
+      %Wardrik.Conversation{messages: messages} -> length(messages)
       {:error, :not_found} -> seen
     end
   catch

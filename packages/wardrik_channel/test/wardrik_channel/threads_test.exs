@@ -190,7 +190,7 @@ defmodule WardrikChannel.ThreadsTest do
   test "says in the thread that an account a call waited on was connected, and carries on" do
     link = %{url: "https://github.com/login/oauth", code: nil}
     credential = %{ref: "github", owner: {"test", nil}}
-    answer = {:ok, [ReqLLM.Context.assistant("Opened.")]}
+    answer = {:ok, [Wardrik.Conversation.Assistant.new("Opened.")]}
 
     {context, _room} =
       bound({AgentRunners, :connecting, [self(), "call_1", link, credential]},

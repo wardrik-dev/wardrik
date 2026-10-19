@@ -4,16 +4,18 @@ defmodule WardrikPolicy.BudgetTest do
 
   import ExUnit.CaptureLog
 
-  alias ReqLLM.Context
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
+  alias Wardrik.Conversation
+  alias Wardrik.Conversation.User
   alias Wardrik.Hook
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Cost
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Tokens
+  alias Wardrik.LLM.Usage
   alias Wardrik.Run
-  alias Wardrik.Test.LLMStub
+  alias Wardrik.Test.LLM
   alias Wardrik.TimeZone
   alias WardrikPolicy.Budget
   alias WardrikPolicy.Spend
@@ -106,14 +108,14 @@ defmodule WardrikPolicy.BudgetTest do
       %{
         budget: List.last(hooks).value,
         run: run,
-        request: Request.new(Config.new(), Context.new())
+        request: Request.new(Config.new(), Conversation.new())
       }
     end
 
     defp costing(usd) do
       %{
-        LLMStub.final_answer("done")
-        | usage: %{input_tokens: 10, output_tokens: 5, total_cost: usd}
+        LLM.final_answer("done")
+        | usage: %Usage{input_tokens: 10, output_tokens: 5, total_cost: usd}
       }
     end
 
@@ -248,16 +250,17 @@ defmodule WardrikPolicy.BudgetTest do
       request =
         Request.new(
           Config.new(model_spec: model, system: String.duplicate("s", 400)),
-          Context.new([Context.user(String.duplicate("q", 4000))])
+          Conversation.new([User.new(String.duplicate("q", 4000))])
         )
 
       input = Tokens.request(request)
       output = Tokens.text(streamed)
-      each = Budget.micro(Cost.of(model, %{input_tokens: input, output_tokens: output}))
+      usage = %Usage{input_tokens: input, output_tokens: output}
+      each = Budget.micro(Cost.of(Wardrik.Host.llm(run.host), model, usage))
 
       spend(run, request, {:interrupted, streamed})
       spend(run, request, {:error, :closed, streamed})
-      spend(run, request, {:ok, LLMStub.final_answer(streamed)})
+      spend(run, request, {:ok, LLM.final_answer(streamed)})
 
       assert input == 1100 and output == 100 and each > 0
       assert %Spend{micro_usd: micro_usd, tokens: tokens} = Budget.spent(budget, run)
@@ -351,10 +354,10 @@ defmodule WardrikPolicy.BudgetTest do
       assert %Spend{micro_usd: 358_000, tokens: 0} = Budget.spent(budget, run)
     end
 
-    test "a budget in dollars refuses a model the catalog cannot price", context do
+    test "a budget in dollars refuses a model the host's client cannot price", context do
       %{run: run} = context
 
-      request = Request.new(Config.new(model_spec: "nowhere:no-such-model"), Context.new())
+      request = Request.new(Config.new(model_spec: "nowhere:no-such-model"), Conversation.new())
 
       assert %Call{state: :denied, denied: %{reason: "This agent's budget is in dollars" <> _}} =
                decide(run, request)
