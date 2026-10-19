@@ -505,7 +505,7 @@ export interface Connecting {
   authorization?: Authorization;
 }
 /**
- * The accounts an owner's org is offered, and who holds each: what GET /v1/connections answers. A value is never answered.
+ * The accounts an owner's org is offered, and whether the owner holds each: what GET /v1/connections answers. A value is never answered.
  */
 export interface Connections {
   connections: {
@@ -514,9 +514,9 @@ export interface Connections {
      */
     provider: string;
     /**
-     * What a call of an agent the owner owns would use: own where the owner holds it, shared where they do not and the deployment shares one, none where neither does.
+     * Whether the owner holds it, which is what a call of an agent they own would use.
      */
-    held_by: "own" | "shared" | "none";
+    connected: boolean;
   }[];
 }
 /**

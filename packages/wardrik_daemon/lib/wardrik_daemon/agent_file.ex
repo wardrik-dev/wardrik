@@ -15,9 +15,8 @@ defmodule WardrikDaemon.AgentFile do
 
   The agent resolves the credentials its tools name from `WardrikVault` as
   its owner holds them, its user's or, for an agent that works for nobody,
-  its org's, and the deployment's only where `vault.shared` names them; its
-  owner connects an account through `WardrikOAuth` where a provider is named
-  for one it does not hold.
+  its org's, and nothing else; its owner connects an account through
+  `WardrikOAuth` where a provider is named for one it does not hold.
 
   ## Over HTTP
 

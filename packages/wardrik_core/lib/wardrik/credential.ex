@@ -22,8 +22,8 @@ defmodule Wardrik.Credential do
   org, or the deployment. Which one a name resolves to is the resolver's
   business, as is what the name means; `WardrikVault` takes what the agent's
   owner holds, its user's or, for an agent that works for nobody, its org's,
-  and the deployment's only where it shares that name, so nothing falls back
-  from a user to their org. Core carries the name and never interprets it.
+  and nothing else, so nothing falls back from a user to their org or the
+  deployment. Core carries the name and never interprets it.
 
   A resolved credential says whose it is as `:owner`, an opaque term, so a
   tool holding something open per credential, such as a connection, holds one

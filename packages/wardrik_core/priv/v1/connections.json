@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:connections",
   "title": "Connections",
-  "description": "The accounts an owner's org is offered, and who holds each: what GET /v1/connections answers. A value is never answered.",
+  "description": "The accounts an owner's org is offered, and whether the owner holds each: what GET /v1/connections answers. A value is never answered.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,20 +16,16 @@
         "additionalProperties": false,
         "required": [
           "provider",
-          "held_by"
+          "connected"
         ],
         "properties": {
           "provider": {
             "type": "string",
             "description": "The account's name, as the deployment configures it."
           },
-          "held_by": {
-            "enum": [
-              "own",
-              "shared",
-              "none"
-            ],
-            "description": "What a call of an agent the owner owns would use: own where the owner holds it, shared where they do not and the deployment shares one, none where neither does."
+          "connected": {
+            "type": "boolean",
+            "description": "Whether the owner holds it, which is what a call of an agent they own would use."
           }
         }
       }
@@ -40,11 +36,11 @@
       "connections": [
         {
           "provider": "github",
-          "held_by": "own"
+          "connected": true
         },
         {
           "provider": "linear",
-          "held_by": "none"
+          "connected": false
         }
       ]
     }

@@ -202,7 +202,6 @@ defmodule WardrikDaemon.ConfigTest do
                        scopes: [repo]
                  vault:
                    keys: ["${#{key}}"]
-                   shared: [linear]
                  """,
                  context
                )
@@ -210,7 +209,7 @@ defmodule WardrikDaemon.ConfigTest do
       oauth = Keyword.fetch!(settings, WardrikOAuth)
       assert oauth[:client] == [name: "Acme agents"]
       assert oauth[:providers][:github][:scopes] == ["repo"]
-      assert Keyword.fetch!(settings, WardrikVault) == [keys: ["a-vault-key"], shared: ["linear"]]
+      assert Keyword.fetch!(settings, WardrikVault) == [keys: ["a-vault-key"]]
     end
 
     test "workspace.shared names who beyond a tree's owner may mount it", context do
@@ -248,9 +247,9 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "all"
     end
 
-    test "vault.shared is a list of credential names", context do
-      assert {:error, message} = read(~s(vault:\n  shared: linear\n), context)
-      assert message =~ "vault.shared is a list of credential names"
+    test "vault shares nothing with every agent", context do
+      assert {:error, message} = read(~s(vault:\n  shared: [linear]\n), context)
+      assert message =~ "vault.shared is not a setting"
     end
 
     test "a variable that is not set says which value names it", context do
@@ -892,7 +891,7 @@ defmodule WardrikDaemon.ConfigTest do
       System.put_env("KEYED", key)
       on_exit(fn -> System.delete_env("KEYED") end)
 
-      base = [{WardrikVault, shared: ["SEARCH_API_KEY"]}, {WardrikMCP, servers: []}]
+      base = [{WardrikVault, keys: ["the release's"]}, {WardrikMCP, servers: []}]
 
       assert {:ok, %Config{} = config} =
                Config.load(
@@ -903,7 +902,6 @@ defmodule WardrikDaemon.ConfigTest do
                )
 
       assert Config.org(config) == "acme"
-      assert Config.section(config, WardrikVault)[:shared] == ["SEARCH_API_KEY"]
       assert Config.section(config, WardrikVault)[:keys] == [key]
       assert Config.section(config, WardrikMCP) == [servers: []]
       assert config.config_dir == dir

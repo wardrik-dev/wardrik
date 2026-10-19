@@ -79,9 +79,8 @@ defmodule WardrikMCP.Server do
 
       credential: "github"
 
-  The answer may be the call's user's, its org's or the deployment's, and
-  calls run over a connection of its owner's own: a user's within their org,
-  an org's, or the deployment's. A user who has not authorized yet parks the
+  The answer is what the agent's owner holds, its user's within their org or
+  its org's, and calls run over a connection of that owner's own. A user who has not authorized yet parks the
   call rather than failing it. The tools a server offers are listed once over
   the deployment's own connection and shared: the MCP specification has list
   results not varying per connection.

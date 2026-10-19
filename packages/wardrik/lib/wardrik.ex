@@ -1376,7 +1376,7 @@ defmodule Wardrik do
         :ok ->
           audited(scope, [{:secret_removed, provider, owner}], %Connection{
             provider: provider,
-            held_by: :own
+            connected: true
           })
 
         {:error, :not_found} ->

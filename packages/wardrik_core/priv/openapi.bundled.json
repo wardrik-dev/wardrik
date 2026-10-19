@@ -1179,16 +1179,16 @@
       },
       "Connections": {
         "additionalProperties": false,
-        "description": "The accounts an owner's org is offered, and who holds each: what GET /v1/connections answers. A value is never answered.",
+        "description": "The accounts an owner's org is offered, and whether the owner holds each: what GET /v1/connections answers. A value is never answered.",
         "examples": [
           {
             "connections": [
               {
-                "held_by": "own",
+                "connected": true,
                 "provider": "github"
               },
               {
-                "held_by": "none",
+                "connected": false,
                 "provider": "linear"
               }
             ]
@@ -1199,13 +1199,9 @@
             "items": {
               "additionalProperties": false,
               "properties": {
-                "held_by": {
-                  "description": "What a call of an agent the owner owns would use: own where the owner holds it, shared where they do not and the deployment shares one, none where neither does.",
-                  "enum": [
-                    "own",
-                    "shared",
-                    "none"
-                  ]
+                "connected": {
+                  "description": "Whether the owner holds it, which is what a call of an agent they own would use.",
+                  "type": "boolean"
                 },
                 "provider": {
                   "description": "The account's name, as the deployment configures it.",
@@ -1214,7 +1210,7 @@
               },
               "required": [
                 "provider",
-                "held_by"
+                "connected"
               ],
               "type": "object"
             },

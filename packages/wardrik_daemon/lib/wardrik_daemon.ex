@@ -98,8 +98,8 @@ defmodule WardrikDaemon do
   keys unseal, as its credentials, granting through `WardrikOAuth` with the
   config's `oauth`; the accounts people connect through both; the HTTP API's
   tokens, lasting as long as `config.yaml`'s `tokens.expires.api` says;
-  webhooks checked with the vault's secrets for each agent, else the
-  environment's; `WardrikDaemon.Issuer`, whose tokens last as long as
+  webhooks checked with the secret the vault holds for each agent's owner;
+  `WardrikDaemon.Issuer`, whose tokens last as long as
   `tokens.expires.session` says; agents' files kept in the store; the MCP
   servers orgs and people add, kept there too; the model's runtime, pricing
   tools as `config.yaml`'s `tools` says; the daemon's own processes, the
@@ -110,7 +110,7 @@ defmodule WardrikDaemon do
   def host(%Config{} = config, opts) do
     store = Keyword.fetch!(opts, :store)
     oauth = oauth(config, store)
-    vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
+    vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys])
     vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
     agents = Agents.new(store: store, config: config)
     prices = config |> Config.section(WardrikDaemon.AgentFile) |> Keyword.get(:tool_prices, %{})

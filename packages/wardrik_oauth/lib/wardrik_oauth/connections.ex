@@ -6,11 +6,9 @@ defmodule WardrikOAuth.Connections do
 
       Wardrik.Host.new(connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault})
 
-  What holds a provider for an owner is what a call of theirs would find
-  under its name, as `WardrikVault.held_by/3` answers without unsealing
-  anything: their own, a sign-in's token or a key someone sealed, else one
-  the deployment shares.
-  Connecting starts the provider's sign-in through `WardrikOAuth.hold/4`,
+  A provider is connected for an owner where the vault keeps anything of
+  theirs under its name, a sign-in's token or a key someone sealed, read
+  without unsealing it: what a call of theirs would find. Connecting starts the provider's sign-in through `WardrikOAuth.hold/4`,
   with nothing parked on it, and forgetting removes what the vault keeps for
   the owner.
   """
@@ -24,12 +22,13 @@ defmodule WardrikOAuth.Connections do
 
   @doc false
   def list(%__MODULE__{oauth: oauth, vault: vault}, owner) do
-    for provider <- Provider.all(oauth) do
-      %Wardrik.Connections.Connection{
-        provider: provider.name,
-        held_by: WardrikVault.held_by(vault, provider.name, owner)
-      }
-    end
+    held = WardrikVault.names(vault, owner)
+
+    for provider <- Provider.all(oauth),
+        do: %Wardrik.Connections.Connection{
+          provider: provider.name,
+          connected: provider.name in held
+        }
   end
 
   @doc false

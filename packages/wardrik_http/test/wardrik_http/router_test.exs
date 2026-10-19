@@ -80,9 +80,9 @@ defmodule WardrikHTTP.RouterTest do
       [
         %Wardrik.Connections.Connection{
           provider: "github",
-          held_by: if(to_string(owner) == "test/@jon", do: :own, else: :none)
+          connected: to_string(owner) == "test/@jon"
         },
-        %Wardrik.Connections.Connection{provider: "linear", held_by: :none}
+        %Wardrik.Connections.Connection{provider: "linear", connected: false}
       ]
     end
 
@@ -1257,8 +1257,8 @@ defmodule WardrikHTTP.RouterTest do
                Req.get(jon, url: "/v1/connections")
 
       assert listed == [
-               %{"provider" => "github", "held_by" => "own"},
-               %{"provider" => "linear", "held_by" => "none"}
+               %{"provider" => "github", "connected" => true},
+               %{"provider" => "linear", "connected" => false}
              ]
 
       conforms(%{"connections" => listed}, "connections")
@@ -1282,7 +1282,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok,
               %{
                 status: 200,
-                body: %{"connection" => %{"provider" => "github", "held_by" => "own"}}
+                body: %{"connection" => %{"provider" => "github", "connected" => true}}
               }} =
                Req.delete(jon, url: "/v1/connections/github")
 
@@ -1320,7 +1320,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
                Req.get(globex, url: "/v1/connections", params: [owner: "globex/@jon"])
 
-      assert Enum.all?(listed, &(&1["held_by"] == "none"))
+      assert Enum.all?(listed, &(&1["connected"] == false))
 
       reader = as(api, "test/*", @jon, [:reader])
 

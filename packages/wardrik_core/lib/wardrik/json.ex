@@ -126,14 +126,14 @@ defmodule Wardrik.JSON do
   @spec tokens([Entry.t()]) :: map()
   def tokens(entries), do: %{"tokens" => Enum.map(entries, &token/1)}
 
-  @doc "The connections an owner is offered, and what holds each."
+  @doc "The connections an owner is offered, and whether they hold each."
   @spec connections([Connection.t()]) :: map()
   def connections(connections), do: %{"connections" => Enum.map(connections, &connection/1)}
 
-  @doc "One connection: its provider, and what holds it."
+  @doc "One connection: its provider, and whether the owner holds it."
   @spec connection(Connection.t()) :: map()
-  def connection(%Connection{provider: provider, held_by: held_by}),
-    do: %{"provider" => provider, "held_by" => Atom.to_string(held_by)}
+  def connection(%Connection{provider: provider, connected: connected}),
+    do: %{"provider" => provider, "connected" => connected}
 
   @doc "A connection asked for: held already, or where to authorize it."
   @spec connecting(Connection.t()) :: map()

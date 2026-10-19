@@ -25,7 +25,7 @@ defmodule WardrikDaemon.Config do
   `config.yaml` is merged over:
 
   ```elixir
-  config :wardrik_daemon, WardrikVault, shared: ["SEARCH_API_KEY"]
+  config :wardrik_daemon, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
   ```
   """
 
@@ -54,7 +54,7 @@ defmodule WardrikDaemon.Config do
           adapters: %{String.t() => module()}
         }
 
-  @vault ~w(keys shared)a
+  @vault ~w(keys)a
   @listener ~w(port ip)a
   @stores %{
     "postgres" => {WardrikEcto.Store, ~w(url), ~w(url)},
@@ -206,11 +206,7 @@ defmodule WardrikDaemon.Config do
         keys -> keys
       end
 
-    WardrikVault.new(
-      store: store,
-      keys: keys,
-      shared: Keyword.get(settings, :shared, [])
-    )
+    WardrikVault.new(store: store, keys: keys)
   end
 
   @doc "Each module's settings in `over`, merged over its settings in `base`."
@@ -620,19 +616,7 @@ defmodule WardrikDaemon.Config do
 
   # -- vault -----------------------------------------------------------------
 
-  defp vault(vault) do
-    vault = options(vault, @vault_keys, ["vault"])
-
-    case Keyword.get(vault, :shared, []) do
-      names when is_list(names) ->
-        if Enum.all?(names, &is_binary/1),
-          do: vault,
-          else: invalid!(["vault", "shared"], "is a list of credential names")
-
-      _other ->
-        invalid!(["vault", "shared"], "is a list of credential names")
-    end
-  end
+  defp vault(vault), do: options(vault, @vault_keys, ["vault"])
 
   # -- listeners -------------------------------------------------------------
 

@@ -32,20 +32,13 @@ defmodule WardrikVault do
   agent never reads a user's, so whoever may ask an agent may use what its
   owner holds and nothing else. A name the owner does not hold answers
   `{:error, :not_found}`. The credential answered says whose it is as
-  `:owner`.
-
-  A name in `:shared` is one every agent may read where its owner does not
-  hold it: the deployment's, sealed with no owner, or, where the vault
-  holds none or has no key, the node's environment variable of that name.
-  The deployment says so, by name; a deployment's secret it does not name
-  reaches no agent's calls.
-
-      WardrikVault.new(store: store, keys: keys, shared: ["SEARCH_API_KEY"])
+  `:owner`. The deployment's own secrets reach no agent's calls: a key
+  every org's agents use is sealed for each org.
 
   A grant is an account its owner connected, and acts as them, so only its
-  owner's agents reach it, and a deployment's is never shared. A name
-  nobody holds that the vault's grants can grant is asked of the owner, so
-  a user's agent asks them to connect their own.
+  owner's agents reach it. A name the owner does not hold that the vault's
+  grants can grant is asked of the owner, so a user's agent asks them to
+  connect their own.
 
   ## Grants
 
@@ -95,18 +88,13 @@ defmodule WardrikVault do
   alias WardrikVault.Sealed
 
   @enforce_keys [:store]
-  defstruct [:store, keys: [], grants: %Grants.None{}, shared: []]
+  defstruct [:store, keys: [], grants: %Grants.None{}]
 
   @typedoc """
   A vault: the store it keeps credentials in, the base64-encoded keys the
-  first of which seals, what it grants, and the names every agent may read.
+  first of which seals, and what it grants.
   """
-  @type t() :: %__MODULE__{
-          store: WardrikStore.t(),
-          keys: [String.t()],
-          grants: Grants.t(),
-          shared: [String.t()]
-        }
+  @type t() :: %__MODULE__{store: WardrikStore.t(), keys: [String.t()], grants: Grants.t()}
 
   @ns :vault
   # The additional data a value is sealed with: its kind and its key, under
@@ -128,15 +116,13 @@ defmodule WardrikVault do
     * `:keys` - the base64-encoded keys, the first of which seals; none by
       default, so nothing is sealed or unsealed
     * `:grants` - the `WardrikVault.Grants` that renew and ask for grants
-    * `:shared` - the names every agent may read where its owner holds
-      none: the deployment's, or the node's environment variable
 
   Its inspected form shows its store and how many keys it holds, never a
   key.
   """
   @spec new(keyword()) :: t()
   def new(opts) do
-    opts = Keyword.validate!(opts, [:store, keys: [], grants: %Grants.None{}, shared: []])
+    opts = Keyword.validate!(opts, [:store, keys: [], grants: %Grants.None{}])
     struct!(__MODULE__, Keyword.update!(opts, :keys, &List.wrap/1))
   end
 
@@ -157,41 +143,13 @@ defmodule WardrikVault do
         ask(vault, name, owner)
 
       {:error, :not_found} ->
-        shared(vault, name, fn -> ask(vault, name, owner) end)
-
-      {:error, :no_key} ->
-        shared(vault, name, fn -> {:error, :no_key} end)
+        ask(vault, name, owner)
 
       {:error, _kind, reason} ->
         {:error, reason}
 
       {:error, reason} ->
         {:error, reason}
-    end
-  end
-
-  # A name the deployment shares with every agent: its own sealed secret,
-  # else the node's environment variable; `otherwise` where it shares none.
-  defp shared(vault, name, otherwise) do
-    with true <- name in vault.shared,
-         {:ok, secret} <- deployment(vault, name) do
-      {:ok, Credential.secret(secret, owner: Resource.deployment())}
-    else
-      _unshared_or_unset -> otherwise.()
-    end
-  end
-
-  defp deployment(vault, name) do
-    case lookup(vault, name, Resource.deployment()) do
-      {:ok, :secret, secret} -> {:ok, secret}
-      _absent_or_unreadable -> environment(name)
-    end
-  end
-
-  defp environment(name) do
-    case System.get_env(name) do
-      secret when is_binary(secret) -> {:ok, secret}
-      nil -> :error
     end
   end
 
@@ -292,29 +250,6 @@ defmodule WardrikVault do
   def names(%__MODULE__{store: store}, owner) do
     prefix = "#{owner}/secret/"
     for key <- WardrikStore.keys(store, @ns, prefix), do: String.replace_prefix(key, prefix, "")
-  end
-
-  @doc """
-  What a call of an agent `owner` owns would find as `name`, as a
-  `t:Wardrik.Connections.held_by/0`: `:own` where `owner` holds it, `:shared`
-  where they do not and the vault shares the deployment's secret, or the
-  node's environment variable, of that name, and `:none` where neither does.
-  It answers what is written, not whether it unseals.
-
-  Reads no credential and needs no key.
-  """
-  @spec held_by(t(), String.t(), owner()) :: Wardrik.Connections.held_by()
-  def held_by(%__MODULE__{} = vault, name, owner) when is_binary(name) do
-    cond do
-      name in names(vault, owner) -> :own
-      name in vault.shared and shares?(vault, name) -> :shared
-      true -> :none
-    end
-  end
-
-  defp shares?(vault, name) do
-    match?({:ok, %Sealed{kind: :secret}}, read(vault.store, path(name, Resource.deployment()))) or
-      System.get_env(name) != nil
   end
 
   @doc "Every credential written, as `{name, owner}` pairs. Reads no credential and needs no key."
