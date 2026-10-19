@@ -168,8 +168,8 @@ curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/age
 - `GET /v1/agents?resource=acme/agent/*` lists agents; `GET /v1/interrupts` lists the calls they
   wait on.
 - `POST .../stop` puts an agent to sleep with its conversation, and answers it. `POST .../spawn`
-  starts it again, starts one the server defines, or has the server define one as
-  `wardrik agent spawn` does.
+  starts it again, starts one the server defines, or defines one from `config.yaml`'s `defaults`,
+  as `wardrik agent spawn` does.
 - `POST .../move` with `{"node": "wardrik@box2"}`, or `spawn` with a node, takes an `owner` token
   on `*` or `deployment/*`.
 - Triggers are set and removed at `/triggers/{name}`; see

@@ -14,8 +14,11 @@ has nothing to do, wakes when asked, and runs on one node of a cluster at a time
 | --- | --- | --- |
 | A file in `agents/` | at start, and on `wardrik reload` | editing the file |
 | `PUT /v1/agents/{key}` | at once | sending it again |
+| `wardrik agent spawn NAME` | at once, from `config.yaml`'s `defaults` | `--file`, which writes it a file |
 
-`wardrik agent spawn NAME` writes a file from `config.yaml`'s `defaults` and starts its agent. See
+`wardrik agent spawn NAME` starts an agent nothing defines from `config.yaml`'s `defaults`, kept as
+its definition; `--file` writes it a file from them first. Each definition takes the defaults' `idle_timeout` and
+`retries` as it is read, and finds the policy it names each time its agent starts. See
 [Agent files](/reference/agent-files/) and [Use the HTTP API](/build/http-api/).
 
 A file's agent is changed only through its file: the HTTP API refuses, with `409`, to define it,
@@ -23,8 +26,11 @@ remove it or change its triggers.
 
 ## Changing and removing
 
-`wardrik reload` gives each awake agent what its file says now; a sleeping one takes it as it wakes.
-The conversation is kept, and a running turn finishes with what it started with.
+`wardrik reload` reads every file and definition again, on the node that answers, for the whole
+cluster, so every node keeps `agents/` and `policies/` alike. Each awake agent takes what its file
+or definition says now; a sleeping one, or one a file adds, takes it as it wakes. The conversation
+is kept, and a running turn finishes with what it started with. An agent whose file is gone stops,
+and its definition goes.
 
 To remove an agent, delete its file and run `wardrik reload`, then `wardrik agent rm KEY`. An agent
 the HTTP API defined is removed with `wardrik agent rm KEY` alone.

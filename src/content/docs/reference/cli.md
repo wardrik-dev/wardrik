@@ -40,7 +40,7 @@ wardrik doctor
 
 ### wardrik reload
 
-Read the agent and policy files again, everywhere.
+Read the agent and policy files again, for every node.
 
 ```sh
 wardrik reload
@@ -188,13 +188,13 @@ wardrik triggers [PATTERN]
 
 ### wardrik agent spawn
 
-Start an agent, writing its file from `config.yaml`'s defaults if it has none.
+Start an agent, from `config.yaml`'s defaults if nothing defines it.
 
 ```sh
-wardrik agent spawn NAME [--org ORG] [--user USER] [--on NODE]
+wardrik agent spawn NAME [--org ORG] [--user USER] [--on NODE] [--file]
 ```
 
-It starts the agent `agents/NAME.md` declares, writing the file first where there is none, and reads the files again, as `wardrik reload` does. `--org` and `--user` put it in an org, or with one of its users, and `--on NODE` starts it on that node. An agent `wardrik agent stop` stopped comes back with its conversation.
+It starts the agent `agents/NAME.md` declares, or one nothing defines from `config.yaml`'s defaults. `--file` writes `agents/NAME.md` from them first, and reads the files again, as `wardrik reload` does. `--org` and `--user` put it in an org, or with one of its users, and `--on NODE` starts it on that node. An agent `wardrik agent stop` stopped comes back with its conversation.
 
 ### wardrik agent cancel
 
