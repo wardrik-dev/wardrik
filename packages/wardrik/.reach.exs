@@ -11,6 +11,7 @@
       "Wardrik.Catalog",
       "Wardrik.Catalog.*",
       "Wardrik.Forgetting",
+      "Wardrik.Listener",
       "Wardrik.Migration",
       "Wardrik.Moving",
       "Wardrik.Scope",

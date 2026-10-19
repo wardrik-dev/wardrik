@@ -42,7 +42,8 @@ defmodule Wardrik do
       wardrik = Wardrik.new(store: store) |> MyApp.Search.attach()
 
   A surface the application starts after Wardrik, such as the HTTP API,
-  takes the same host. A node runs one Wardrik, since core's own processes
+  takes the same host, and so does a `Wardrik.Listener`, which follows the
+  agents' events into the application's own work. A node runs one Wardrik, since core's own processes
   are registered under their module names.
 
   ## Acting on the agents
@@ -409,7 +410,7 @@ defmodule Wardrik do
   each entry by `cursor/2`, and reads on from it, or from the cursor of
   `agent_read/2`'s snapshot or `agent_ask/4`'s message. One that starts
   from what is written next, and keeps its place, starts from
-  `events_head/2`'s cursor. Where a log was trimmed
+  `events_head/2`'s cursor, as `Wardrik.Listener` does. Where a log was trimmed
   past the cursor, the stream takes a `wardrik.events.dropped` entry naming
   the sequence it was after and the oldest the log still held, whatever
   `:types` names, and reads on from there.
