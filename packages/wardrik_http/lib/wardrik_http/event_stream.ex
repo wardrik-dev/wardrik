@@ -1,135 +1,106 @@
 defmodule WardrikHTTP.EventStream do
   @moduledoc """
-  An agent's log as server-sent events: every event after a sequence, then
-  each one as the agent numbers it, until the client goes.
+  The entries of `Wardrik.events/2` as server-sent events, until the client
+  goes.
 
-      id: 000000000042
+      id: eyJhY21lL3RyaWFnZSI6NDJ9
       data: {"specversion":"1.0","type":"wardrik.interrupt.resolved",…}
 
       data: {"specversion":"1.0","type":"wardrik.message.delta",…}
 
-  A durable event is sent with its sequence as the event's `id`, so a
-  client's `Last-Event-ID` resumes after it. A live one, a delta or tool
-  progress, is sent without one, so it never moves the client's place. Each
-  event is one `data:` line holding the CloudEvent.
+  An event that moves the reader's cursor, as `Wardrik.cursor/2` moves it, is
+  sent with that cursor as its `id`, so a client's `Last-Event-ID` resumes
+  after it. One that leaves it where it was, a delta or tool progress, is
+  sent without one. Each event is one `data:` line holding the CloudEvent.
 
-  The stream subscribes to the log before it reads, and sends only the
-  entries that follow what it read (`Wardrik.Event.Log.Entry.follows?/2`), so
-  each event reaches the client once, in order. A comment every 15 seconds
-  keeps an idle stream open through proxies, and finds a client that has
-  gone. A stream whose process is sent `{:shutdown, :revoked}`, as
-  `WardrikHTTP.Access` sends the holders of a revoked token, ends there.
+  A process of the stream's own takes the entries, handing each over as the
+  one before it is sent, so the stream can send a comment every 15 seconds,
+  which keeps an idle stream open through proxies and finds a client that
+  has gone. It follows them before the response opens, so a client that
+  starts from what is written next misses nothing written once it is open.
+  A stream whose process is sent an exit, as `WardrikHTTP.Access` sends the
+  holders of a revoked token, ends there.
   """
 
   import Plug.Conn
 
-  alias Wardrik.Event.Log
-  alias Wardrik.Event.Log.Entry
-
   @keepalive :timer.seconds(15)
-  @page 500
 
-  @typedoc "Where the stream starts: after a sequence, or after the last event written now."
-  @type cursor() :: non_neg_integer() | :head
+  @doc "Streams `events`, which `Wardrik.events/2` reads after `opts[:after]`, on `conn`."
+  @spec serve(Plug.Conn.t(), Enumerable.t(Wardrik.Event.Log.Entry.t()), after: String.t() | :head) ::
+          Plug.Conn.t()
+  def serve(conn, events, opts) do
+    stream = self()
 
-  @doc """
-  Streams `agent_id`'s log on `conn`, read from `opts[:store]`, after
-  `opts[:after]`, where `:head` asks the agent, found on `opts[:host]`.
+    # A suspended reduce opens the entries, which follows them, and the
+    # taker goes on from there once the stream knows.
+    task =
+      Task.async(fn ->
+        {:suspended, nil, take} =
+          Enumerable.reduce(events, {:suspend, nil}, &hand(stream, &1, &2))
 
-      EventStream.serve(conn, agent_id, store: store, host: host, after: :head)
+        send(stream, {self(), :open})
+        take.({:cont, nil})
+      end)
 
-  Answers `{:gap, oldest}` where events after the cursor have been dropped,
-  and `:not_found` for `:head` when no agent runs under `agent_id`, in either
-  case having sent nothing.
-  """
-  @spec serve(Plug.Conn.t(), Wardrik.AgentID.t(),
-          store: WardrikStore.t(),
-          host: Wardrik.Host.t(),
-          after: cursor()
-        ) :: Plug.Conn.t() | {:gap, pos_integer()} | :not_found
-  def serve(conn, agent_id, opts) do
-    opts = Keyword.validate!(opts, [:store, :host, :after])
-    store = Keyword.fetch!(opts, :store)
-    cursor = Keyword.fetch!(opts, :after)
-    :ok = Log.subscribe(agent_id)
+    opened(task.pid)
 
-    try do
-      with {:ok, starting_after} <- start(agent_id, cursor, Keyword.fetch!(opts, :host)),
-           {:ok, events} <-
-             Log.read(store, agent_id, starting_after: starting_after, limit: @page) do
-        conn
-        |> put_resp_content_type("text/event-stream")
-        |> put_resp_header("cache-control", "no-cache")
-        |> send_chunked(200)
-        |> send_events(events, starting_after)
-        |> catch_up(store, agent_id)
-        |> follow()
-      end
-    after
-      Log.unsubscribe(agent_id)
-      flush()
-    end
+    conn =
+      conn
+      |> put_resp_content_type("text/event-stream")
+      |> put_resp_header("cache-control", "no-cache")
+      |> send_chunked(200)
+      |> follow(task.pid, Keyword.fetch!(opts, :after))
+
+    Task.shutdown(task, :brutal_kill)
+    flush(task.pid)
+    conn
   end
 
-  defp start(_agent_id, sequence, _host) when is_integer(sequence), do: {:ok, sequence}
-
-  defp start(agent_id, :head, host) do
-    case Wardrik.Agent.snapshot(agent_id, host: host) do
-      %{sequence: sequence} -> {:ok, sequence}
-      {:error, :not_found} -> :not_found
-    end
-  end
-
-  # Pages of the log after the last event sent, until a read comes back empty.
-  defp catch_up({:ok, conn, last}, store, agent_id) do
-    case Log.read(store, agent_id, starting_after: last, limit: @page) do
-      {:ok, [_ | _] = events} -> conn |> send_events(events, last) |> catch_up(store, agent_id)
-      _caught_up -> {:ok, conn, last}
-    end
-  end
-
-  defp catch_up(closed, _store, _agent_id), do: closed
-
-  defp send_events(conn, events, last) do
-    Enum.reduce_while(events, {:ok, conn, last}, fn event, {:ok, conn, _last} ->
-      case chunk(conn, frame(event)) do
-        {:ok, conn} -> {:cont, {:ok, conn, String.to_integer(event["sequence"])}}
-        {:error, _closed} -> {:halt, {:closed, conn}}
-      end
-    end)
-  end
-
-  defp follow({:closed, conn}), do: conn
-
-  defp follow({:ok, conn, last}) do
+  defp opened(taker) do
     receive do
-      %Entry{} = entry ->
-        if Entry.follows?(entry, last),
-          do: send_live(conn, frame(entry.event), entry.sequence || last),
-          else: follow({:ok, conn, last})
-
-      {:EXIT, _from, {:shutdown, :revoked}} ->
-        conn
-    after
-      @keepalive -> send_live(conn, ": keepalive\n\n", last)
+      {^taker, :open} -> :ok
+      {:EXIT, ^taker, reason} -> exit(reason)
     end
   end
 
-  defp send_live(conn, data, last) do
+  defp hand(stream, entry, nil) do
+    send(stream, {self(), entry})
+
+    receive do
+      :taken -> {:cont, nil}
+    end
+  end
+
+  defp follow(conn, taker, cursor) do
+    receive do
+      {^taker, entry} ->
+        send(taker, :taken)
+        moved = Wardrik.cursor(cursor, entry)
+        sent(conn, frame(entry.event, cursor, moved), taker, moved)
+
+      {:EXIT, _from, _reason} ->
+        conn
+    after
+      @keepalive -> sent(conn, ": keepalive\n\n", taker, cursor)
+    end
+  end
+
+  defp sent(conn, data, taker, cursor) do
     case chunk(conn, data) do
-      {:ok, conn} -> follow({:ok, conn, last})
+      {:ok, conn} -> follow(conn, taker, cursor)
       {:error, _closed} -> conn
     end
   end
 
-  defp frame(%{"sequence" => sequence} = event), do: ["id: ", sequence, "\n" | data(event)]
-  defp frame(event), do: data(event)
+  defp frame(event, cursor, cursor), do: data(event)
+  defp frame(event, _cursor, moved), do: ["id: ", moved, "\n" | data(event)]
 
   defp data(event), do: ["data: ", JSON.encode!(event), "\n\n"]
 
-  defp flush do
+  defp flush(taker) do
     receive do
-      %Entry{} -> flush()
+      {^taker, _entry} -> :ok
     after
       0 -> :ok
     end

@@ -53,7 +53,7 @@ defmodule Wardrik.Error do
   def gap(oldest) do
     new(
       :gap,
-      "Events before #{oldest} have been dropped; read the snapshot and follow from its sequence.",
+      "Events before #{oldest} have been dropped; read on after #{oldest - 1}.",
       %{"oldest" => oldest}
     )
   end

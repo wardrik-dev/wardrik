@@ -92,11 +92,12 @@ answers an agent with is its key.
 | `POST /v1/agents/cancel?resource=` | stops what every agent the pattern covers is doing, `202` |
 | `DELETE /v1/agents?resource=` | removes every agent the pattern covers but those agent files declare; answers which went, which stayed and why |
 | `GET /v1/interrupts` | the calls agents `?resource=` covers, or those the token's one resource covers, wait on a person for |
-| `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
+| `GET /v1/events` | the events of the agents each `?resources=` covers, as server-sent events with `Accept: text/event-stream`, otherwise a page as JSON; see [Events](#events) |
+| `GET /v1/agents/{key}` | the agent's snapshot, with `cursor`, where its log stands |
 | `PUT /v1/agents/{key}` | starts the agent a definition describes, or brings the one running to it; answers its snapshot |
 | `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, with the tools it names that offer nothing yet as `missing` |
 | `DELETE /v1/agents/{key}` | stops the agent and deletes everything it had, its definition and triggers included, `204`; `409` where an agent file declares it |
-| `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
+| `GET /v1/agents/{key}/events` | its log, as `GET /v1/events` reads it |
 | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |
 | `POST /v1/agents/{key}/decisions` | approves or rejects calls the agent is waiting on, together |
 | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization` |
@@ -111,9 +112,6 @@ answers an agent with is its key.
 | `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, and answers it as it was |
 | `POST /v1/hooks/{key}/{trigger}`, or `.../{trigger}/{secret}` | delivers a service's request to a webhook trigger; see [Webhooks](#webhooks) |
 | `POST /v1/channels/{channel}/{path}` | delivers what a chat app, such as Slack, sends a channel; see [Channels](#channels) |
-| `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
-| `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
-| `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
 | `GET /v1/connections?owner=` | the accounts `owner` is offered, and whether they, their org or the deployment holds each |
 | `POST /v1/connections/{provider}` | connects an account: where to authorize it, or that it is held already |
 | `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, and answers it as it was held |
@@ -159,26 +157,26 @@ conversation.
 
 ### Events
 
-The stream starts after `Last-Event-ID`, or after `?starting_after=`, and without either after the
-last event written when it connects. A page takes `?starting_after=`, `0` by default, and `?limit=`,
-up to 500. Where events after the sequence have been dropped, either answers `410` with the oldest
-one still held; read the snapshot and follow from its `sequence`. See
-[Events](/reference/events/) for every event.
-
-### Exports
-
 ```http
-GET /v1/exports/siem?limit=500
+GET /v1/events?resources=acme/agent/*&types=wardrik.run.completed
+Accept: text/event-stream
 
-POST /v1/exports/siem
-{"next": "eyJhY21lL3RyaWFnZSI6NDF9"}
+id: eyJhY21lL3RyaWFnZSI6NDF9
+data: {"specversion":"1.0","type":"wardrik.run.completed",…}
 ```
 
-An export is a cursor of the caller's own, kept on the server under the name it gives, over every
-log it may read: each agent's it may `read`, a removed agent's included, and the audit where it
-reaches every agent. A page answers the events after the cursor and leaves it there, so reading
-again answers them again; posting the page's `next` moves it past them, once they are safely kept.
-`gaps` names each log trimmed past the cursor, which was read from its oldest event.
+`?resources=` is a pattern, given once for each, and `?types=` an event type; without them, every
+agent whose events the token reads, and every type. A `wardrik.events.dropped` comes whatever the
+types. An event's `id` is a cursor: where the reader
+has got to in each agent's log. A stream starts after `Last-Event-ID` or `?after=`, and without
+either at what is written next; a page starts after `?after=`, at the start by default, takes
+`?limit=` up to 500, and answers `{"events": [...], "next": ...}`, the cursor after them. A
+snapshot's `cursor`, and a message's, read on from there. The server keeps no reader's place.
+
+A cursor is about 50 bytes for each agent it names, so a `Last-Event-ID` holds the place of 150 to
+200 agents; read more as pages. Where a log was trimmed past the cursor, a
+`wardrik.events.dropped` names the sequence asked after and the oldest the log holds, and reading
+goes on from there. See [Events](/reference/events/) for every event.
 
 ### Messages
 
@@ -189,7 +187,8 @@ POST /v1/agents/acme/triage/messages
 ```
 
 `content` in place of `parts` is the text alone. `id` is optional, and a message sent again under
-the same `id` is taken once. The answer names it: `{"message": {"id": "msg_01"}}`.
+the same `id` is taken once. The answer names it, with the cursor its turn is read after:
+`{"message": {"id": "msg_01", "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"}}`.
 
 ### Decisions
 
@@ -364,7 +363,7 @@ The body of PUT /v1/agents/{key}, and the definition GET /v1/agents/{key}/defini
 
 ### `agent_snapshot`
 
-The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.
+The body of GET /v1/agents/{key}, and of a PUT there. cursor is where the agent's log stands: read and follow the log after it.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -385,7 +384,7 @@ The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event
 | `messages` | array of [message](/reference/events/#message) | yes |  |
 | `labels` | array of string | yes | What the agent's history holds, as labels, such as outside for content nobody on the agent's side wrote. Every turn carries them until the history is cleared. |
 | `outcome` | string or null | yes | How the last run ended, or null before the first. |
-| `sequence` | integer | yes |  |
+| `cursor` | string | yes | Where the agent's log stands, as GET /v1/events and the agent's own events take it. |
 
 ### `authorization`
 
@@ -442,15 +441,14 @@ What every answer of 400 and above holds. A 410 adds oldest, the first sequence 
 | `error.message` | string | yes |  |
 | `error.oldest` | integer |  |  |
 
-### `export`
+### `events`
 
-What GET /v1/exports/{name} answers: the events after the export's cursor, in every log the caller may read.
+What GET /v1/events, and an agent's own events, answer as JSON: the events after the cursor, oldest first within each agent's log.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `events` | array of [event](/reference/events/#the-envelope) | yes | Oldest first within each log; each event's source names its log, and its sequence its place there. |
-| `next` | string | yes | What POST /v1/exports/{name} takes, as {"next": …}, to move the cursor past these events. |
-| `gaps` | array of object | yes | Each log trimmed past the cursor, which was read from its oldest event. |
+| `events` | array of [event](/reference/events/#the-envelope) | yes | Each event's source names its agent, and its sequence its place in that agent's log. Where a log was trimmed past the cursor, a wardrik.events.dropped says so. |
+| `next` | string | yes | The cursor after these events, which ?after= reads on from. |
 
 ### `nodes`
 

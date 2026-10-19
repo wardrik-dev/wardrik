@@ -29,8 +29,6 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Agent.Message
   alias Wardrik.AgentID
   alias Wardrik.Error
-  alias Wardrik.Event.Cursor
-  alias Wardrik.Event.Export
   alias Wardrik.JSON
   alias Wardrik.Principal
   alias Wardrik.Resource
@@ -143,21 +141,18 @@ defmodule WardrikHTTP.Router do
     )
   end
 
-  # An export is a cursor of the caller's own, over every log it may read.
-  match "/v1/exports/:name" do
-    cond do
-      not AgentID.segment?(name) ->
-        invalid(
-          conn,
-          "#{inspect(name)} is not an export's name: a name holds no / or whitespace, " <>
-            "and does not begin with @ or _"
-        )
+  # The events of the agents each ?resources= covers, of each type ?types=
+  # names: every agent's the caller's token reads, of every type, by default.
+  get "/v1/events" do
+    named = &for({^&1, value} <- URI.query_decoder(conn.query_string), do: value)
 
-      not Token.allows?(conn.assigns.caller.token, "agent.events") ->
-        json(conn, 403, JSON.error("forbidden", "This caller may not read events."))
+    case patterns(named.("resources")) do
+      {:ok, resources} ->
+        filters = [resources: resources, types: named.("types")]
+        events(conn, Enum.reject(filters, &match?({_name, []}, &1)))
 
-      true ->
-        export(conn, conn.method, "#{conn.assigns.caller.id}/#{name}")
+      {:error, error} ->
+        error(conn, error)
     end
   end
 
@@ -420,14 +415,15 @@ defmodule WardrikHTTP.Router do
       {200, &Wardrik.agent_definition_read/2,
        &%{"definition" => &1.definition.fields, "missing" => &1.missing}}
 
-  defp route("GET", ["events"], conn), do: {:events, &events(conn, &1)}
+  defp route("GET", ["events"], conn),
+    do: {:events, &events(conn, resources: [AgentID.resource(&1)])}
 
   defp route("POST", ["messages"], conn) do
     {202,
      &with(
        {:ok, text, id} <- Message.read(conn.body_params),
        do: Wardrik.agent_ask(&1, &2, text, id: id)
-     ), &%{"message" => %{"id" => &1.id}}}
+     ), &%{"message" => %{"id" => &1.id, "cursor" => &1.cursor}}}
   end
 
   defp route("POST", ["decisions"], conn) do
@@ -542,6 +538,15 @@ defmodule WardrikHTTP.Router do
   end
 
   defp parsed(_other), do: {:error, Error.new(:invalid, "A resource is a pattern, as acme/*")}
+
+  defp patterns(texts) do
+    parsed = Enum.map(texts, &parsed/1)
+
+    case Enum.find(parsed, &match?({:error, _error}, &1)) do
+      nil -> {:ok, for({:ok, pattern} <- parsed, do: pattern)}
+      error -> error
+    end
+  end
 
   # An org or a person, as ?owner= names them, never a pattern.
   defp owner(conn) do
@@ -699,45 +704,50 @@ defmodule WardrikHTTP.Router do
 
   # -- events ----------------------------------------------------------------
 
-  # A page is read as any route is; a stream checks the token itself, since
-  # it goes on serving the caller.
-  defp events(conn, key) do
-    with {:ok, cursor} <- cursor(conn),
-         {:ok, limit} <- limit(conn.query_params) do
-      if stream?(conn),
-        do: streamed(conn, key, cursor || :head),
-        else: page(conn, key, cursor || 0, limit)
+  # A page is read after ?after=, from the start by default; a stream after
+  # Last-Event-ID or ?after=, from what is written next by default, and holds
+  # its caller's credential while it runs, so revoking the credential ends it.
+  defp events(conn, filters) do
+    follow = stream?(conn)
+    cursor = cursor(conn, if(follow, do: :head, else: ""))
+
+    with {:ok, limit} <- limit(conn.query_params),
+         {:ok, events} <- Wardrik.events(scope(conn), [after: cursor, follow: follow] ++ filters) do
+      if follow, do: stream(conn, events, cursor), else: page(conn, events, cursor, limit)
     else
+      {:error, %Error{} = error} -> error(conn, error)
       {:error, message} -> invalid(conn, message)
     end
   end
 
-  defp page(conn, key, starting_after, limit) do
-    resources = [AgentID.resource(key)]
-    cursor = Cursor.encode(%{key => starting_after})
-
-    reply(
-      conn,
-      200,
-      with(
-        {:ok, events} <- Wardrik.events(scope(conn), resources: resources, after: cursor),
-        do: {:ok, Enum.take(events, limit)}
-      ),
-      &%{"events" => Enum.map(&1, fn entry -> entry.event end)}
-    )
-  end
-
-  defp streamed(conn, key, cursor) do
-    case Token.authorize(conn.assigns.caller.token, "agent.events", key) do
-      :ok -> stream(conn, key, cursor)
-      {:error, error} -> error(conn, error)
+  defp cursor(conn, default) do
+    case get_req_header(conn, "last-event-id") do
+      [cursor | _] -> cursor
+      [] -> Map.get(conn.query_params, "after", default)
     end
   end
 
-  defp cursor(conn) do
-    case get_req_header(conn, "last-event-id") do
-      [id | _] -> sequence(id, "Last-Event-ID")
-      [] -> sequence(conn.query_params["starting_after"], "starting_after")
+  defp page(conn, events, cursor, limit) do
+    events = Enum.take(events, limit)
+    next = Enum.reduce(events, cursor, &Wardrik.cursor(&2, &1))
+    json(conn, 200, %{"events" => Enum.map(events, & &1.event), "next" => next})
+  end
+
+  defp stream(conn, events, cursor) do
+    conn
+    |> store()
+    |> Access.holding(conn.assigns.caller.ref, fn ->
+      EventStream.serve(conn, events, after: cursor)
+    end)
+    |> case do
+      %Plug.Conn{} = conn ->
+        conn
+
+      {:error, :not_found} ->
+        json(conn, 401, JSON.error("unauthorized", "The credential was revoked."))
+
+      {:error, :unavailable} ->
+        unavailable(conn, "The credential cannot be checked now", :unavailable)
     end
   end
 
@@ -761,73 +771,6 @@ defmodule WardrikHTTP.Router do
 
   defp stream?(conn),
     do: Enum.any?(get_req_header(conn, "accept"), &String.contains?(&1, "text/event-stream"))
-
-  # The stream holds its caller's credential while it runs, so revoking the
-  # credential ends it.
-  defp stream(conn, key, cursor) do
-    store = store(conn)
-
-    store
-    |> Access.holding(conn.assigns.caller.ref, fn ->
-      EventStream.serve(conn, key, store: store, host: scope(conn).host, after: cursor)
-    end)
-    |> case do
-      %Plug.Conn{} = conn ->
-        conn
-
-      {:gap, oldest} ->
-        error(conn, Error.gap(oldest))
-
-      :not_found ->
-        error(conn, Error.no_agent(key))
-
-      {:error, :not_found} ->
-        json(conn, 401, JSON.error("unauthorized", "The credential was revoked."))
-
-      {:error, :unavailable} ->
-        unavailable(conn, "The credential cannot be checked now", :unavailable)
-    end
-  end
-
-  # -- exports ---------------------------------------------------------------
-
-  defp export(conn, "GET", cursor) do
-    token = conn.assigns.caller.token
-
-    case limit(conn.query_params) do
-      {:ok, limit} ->
-        {:ok, page} = Export.read(store(conn), cursor, limit: limit, logs: &exported?(token, &1))
-        json(conn, 200, JSON.export(page))
-
-      {:error, message} ->
-        invalid(conn, message)
-    end
-  end
-
-  defp export(conn, "POST", cursor) do
-    with %{"next" => next} when is_binary(next) <- conn.body_params,
-         :ok <- Export.advance(store(conn), cursor, next) do
-      send_resp(conn, 204, "")
-    else
-      {:error, :invalid} -> invalid(conn, "next is not one a page of this export answered")
-      {:error, reason} -> unavailable(conn, "The export did not move", reason)
-      _body -> invalid(conn, "The body is a page's next, as {\"next\": …}")
-    end
-  end
-
-  defp export(conn, "DELETE", cursor) do
-    case Export.forget(store(conn), cursor) do
-      :ok -> send_resp(conn, 204, "")
-      {:error, reason} -> unavailable(conn, "The export was not deleted", reason)
-    end
-  end
-
-  defp export(conn, _method, _cursor), do: no_route(conn)
-
-  defp exported?(token, :audit),
-    do: Token.authorize(token, "deployment.audit", Resource.parse!("deployment/*")) == :ok
-
-  defp exported?(token, id), do: Token.authorize(token, "agent.events", id) == :ok
 
   defp store(conn), do: conn.assigns.options |> Keyword.fetch!(:host) |> Wardrik.Host.store()
 

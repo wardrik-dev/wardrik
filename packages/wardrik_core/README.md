@@ -239,19 +239,6 @@ Changes are CloudEvents from `wardrik://local/audit`, kept as long as
 agents' events are. `Wardrik.Audit` lists them, and `Wardrik.deployment_audit/2`
 reads them a page at a time.
 
-### Exporting every log
-
-`Wardrik.Event.Export` reads every log, the audit and each agent's, a removed
-agent's included, on from a named cursor kept in the store. A page leaves the
-cursor where it is until the reader moves it, so each event arrives at least
-once, on any node and after any restart:
-
-```elixir
-{:ok, page} = Wardrik.Event.Export.read("siem", limit: 500)
-:ok = ship(page.events)
-:ok = Wardrik.Event.Export.advance("siem", page.next)
-```
-
 ### A history that grows
 
 An agent that runs for weeks keeps adding to one conversation. Before the
@@ -351,7 +338,7 @@ without notice.
 | Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.History.All`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | Who acts, and what `Wardrik` answers them | `Wardrik.Token`, `Wardrik.Statement`, `Wardrik.Role`, `Wardrik.Resource`, `Wardrik.Error`, `Wardrik.JSON`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |
-| Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Cursor`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Conversation` and the modules under it |
+| Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Cursor`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Conversation` and the modules under it |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.Call.Pipeline`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Tools`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |
 

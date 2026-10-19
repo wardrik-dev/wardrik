@@ -69,8 +69,9 @@ curl -N -H "authorization: Bearer $TOKEN" -H "accept: text/event-stream" \
   http://127.0.0.1:4747/v1/agents/acme/triage/events
 ```
 
-Open the stream before sending the message, or follow from a snapshot's `sequence` with
-`Last-Event-ID`, so nothing is missed. See [The event stream](/concepts/events/#following-over-http).
+The message's answer carries a `cursor`, where the agent's log stood: follow from it with
+`Last-Event-ID` or `?after=`, and nothing of its turn is missed. See
+[The event stream](/concepts/events/#following-over-http).
 
 ## Decide what it waits on
 
@@ -137,7 +138,7 @@ also runs tools in your app; see [Tools in your app](/build/tool-workers/).
 - A key an agent file declares belongs to the file, and is refused with `409`.
 - `notify` works as in an agent file; see [Send notices](/build/notices/).
 - `GET /v1/agents/acme/triage` answers the snapshot: status, what it waits on, its messages, and
-  the `sequence` it was taken at.
+  the `cursor` it was taken at.
 
 ### Accounts and interrupts
 

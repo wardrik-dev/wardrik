@@ -26,10 +26,10 @@ defmodule Wardrik.JSON do
        "run": {"id": "4bf92f35…"},
        "interrupts": [{"id": "toolu_01", "reason": "tool_approval", "message": "…", "tool_call_id": "toolu_01"}],
        "messages": [{"role": "user", "parts": [{"type": "text", "content": "…"}]}],
-       "outcome": "ok", "sequence": 41}
+       "outcome": "ok", "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"}
 
-  `run` is `null` between runs, and `sequence` is the last event the agent's
-  log has written: read and follow the log from there. `activity` is what
+  `run` is `null` between runs, and `cursor` is where the agent's log
+  stands: read and follow it from there. `activity` is what
   the agent is doing now, as `wardrik.activity.changed` says it, live, from
   then on.
 
@@ -77,7 +77,7 @@ defmodule Wardrik.JSON do
       "messages" => Enum.map(snapshot.history.messages, &Value.message/1),
       "labels" => snapshot.labels,
       "outcome" => snapshot.outcome && to_string(snapshot.outcome),
-      "sequence" => snapshot.sequence
+      "cursor" => snapshot.cursor
     }
     |> Value.put("provider", provider && %{"name" => provider})
   end
@@ -225,23 +225,6 @@ defmodule Wardrik.JSON do
   @doc "The agents a cancel stopped."
   @spec cancelled([Wardrik.AgentID.t()]) :: map()
   def cancelled(ids), do: %{"cancelled" => Enum.map(ids, &to_string/1)}
-
-  @doc """
-  A page of an export: its events, the `next` that moves the export past
-  them, and where a log was trimmed before the export got to it.
-  """
-  @spec export(Wardrik.Event.Export.t()) :: map()
-  def export(%Wardrik.Event.Export{} = page) do
-    %{
-      "events" => page.events,
-      "next" => page.next,
-      "gaps" =>
-        for(
-          gap <- page.gaps,
-          do: %{"log" => to_string(gap.log), "after" => gap.after, "oldest" => gap.oldest}
-        )
-    }
-  end
 
   @types %{
     unauthorized: "unauthorized",
