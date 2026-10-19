@@ -12,8 +12,7 @@ defmodule Wardrik.Agent do
 
   Stream and tool events do not pass through this process at all. The turn
   publishes them through its run, and any number of listeners on any node can
-  subscribe with `Wardrik.Event.Bus.subscribe/1`. See `WardrikConsole` for one
-  that prints to a terminal.
+  follow them with `Wardrik.subscribe/2`.
 
   A message arriving while a turn is running joins that turn rather than
   waiting for it: the turn is asked to stop at its next boundary, and the

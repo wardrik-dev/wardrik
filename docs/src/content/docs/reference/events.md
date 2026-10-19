@@ -177,6 +177,15 @@ The older part of the conversation was summarised.
 | `tokens_before` | integer | yes |  |
 | `tokens_after` | integer | yes |  |
 
+### `wardrik.events.dropped`
+
+Events a reader asked for were dropped from the agent's log before it read them; it reads on from the oldest the log still holds. Sent to that reader alone, and never written.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `after` | integer | yes | The sequence the reader had read through. |
+| `oldest` | integer | yes | The oldest sequence the log still held. |
+
 ### `wardrik.interrupt.resolved`
 
 A person answered an interrupt.

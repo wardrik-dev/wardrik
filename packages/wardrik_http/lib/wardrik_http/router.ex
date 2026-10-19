@@ -29,6 +29,7 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Agent.Message
   alias Wardrik.AgentID
   alias Wardrik.Error
+  alias Wardrik.Event.Cursor
   alias Wardrik.Event.Export
   alias Wardrik.JSON
   alias Wardrik.Principal
@@ -711,10 +712,16 @@ defmodule WardrikHTTP.Router do
   end
 
   defp page(conn, key, starting_after, limit) do
+    resources = [AgentID.resource(key)]
+    cursor = Cursor.encode(%{key => starting_after})
+
     reply(
       conn,
       200,
-      Wardrik.agent_events(scope(conn), key, after: starting_after, limit: limit),
+      with(
+        {:ok, events} <- Wardrik.events(scope(conn), resources: resources, after: cursor),
+        do: {:ok, Enum.take(events, limit)}
+      ),
       &%{"events" => Enum.map(&1, fn entry -> entry.event end)}
     )
   end

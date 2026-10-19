@@ -72,7 +72,16 @@ defmodule MyApp.Agents do
 
   def ask(user, agent, text), do: Wardrik.agent_ask(scope(user), agent, text)
 
-  def subscribe(user, agent), do: Wardrik.agent_subscribe(scope(user), agent)
+  def subscribe(user, agent),
+    do: Wardrik.subscribe(scope(user), resources: [AgentID.resource(agent)])
+
+  def events(user, agent, cursor),
+    do:
+      Wardrik.events(scope(user),
+        resources: [AgentID.resource(agent)],
+        after: cursor,
+        follow: true
+      )
 
   def connect(user, provider),
     do: Wardrik.connections_connect(scope(user), MyApp.Issuer.own(user), provider)

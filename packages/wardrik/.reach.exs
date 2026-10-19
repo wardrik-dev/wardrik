@@ -14,8 +14,7 @@
       "Wardrik.Migration",
       "Wardrik.Moving",
       "Wardrik.Scope",
-      "Wardrik.Spawned",
-      "Wardrik.Stream"
+      "Wardrik.Spawned"
     ],
     definition: ["WardrikDefinition", "WardrikDefinition.*", "Wardrik.Definition.WardrikDefinition.Kept"],
     policy: ["WardrikPolicy", "WardrikPolicy.*"],
@@ -162,6 +161,7 @@
       "Wardrik.Event",
       "Wardrik.Event.Bus",
       "Wardrik.Event.Codec.Value",
+      "Wardrik.Event.Cursor",
       "Wardrik.Event.Export",
       "Wardrik.Event.Log",
       "Wardrik.Event.Log.Entry",

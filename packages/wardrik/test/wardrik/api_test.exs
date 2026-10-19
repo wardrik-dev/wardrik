@@ -89,42 +89,63 @@ defmodule Wardrik.APITest do
     assert {:error, %Error{type: :not_found}} = Wardrik.agent_read(scope, agent)
   end
 
-  test "an agent asked answers in its log, which a stream and a page read", %{scope: scope} do
+  test "an agent asked answers in its log, which a subscriber follows and a reader reads",
+       %{scope: scope} do
     agent = start({AgentRunners, :echo, [self(), "on its way"]})
+    resources = [AgentID.resource(agent)]
 
-    assert :ok = Wardrik.agent_subscribe(scope, agent)
+    assert :ok = Wardrik.subscribe(scope, resources: resources, types: ["wardrik.run.completed"])
 
-    assert {:ok, %Message{text: "where is it?", sequence: sequence}} =
+    assert {:ok, %Message{text: "where is it?", cursor: cursor}} =
              Wardrik.agent_ask(scope, agent, "where is it?", id: "m1")
 
     assert_receive {:turn, _messages}, 5_000
-    assert_receive %Entry{event: %{"type" => "wardrik.run.completed"}}, 5_000
+    assert_receive %Entry{log: ^agent, event: %{"type" => "wardrik.run.completed"}}, 5_000
+    assert :ok = Wardrik.unsubscribe(scope, resources: resources)
 
-    assert {:ok, stream} = Wardrik.agent_stream(scope, agent, after: sequence)
-    assert [%Entry{sequence: first} | _rest] = Enum.take(stream, 2)
-    assert first == sequence + 1
+    assert {:ok, events} = Wardrik.events(scope, resources: resources, after: cursor)
 
-    assert {:ok, [%Entry{sequence: ^first}]} =
-             Wardrik.agent_events(scope, agent, after: sequence, limit: 1)
+    assert [%Entry{sequence: first} = entry, %Entry{sequence: second} | _rest] =
+             Enum.to_list(events)
 
+    assert second == first + 1
+
+    assert {:ok, events} =
+             Wardrik.events(scope, resources: resources, after: Wardrik.cursor(cursor, entry))
+
+    assert [%Entry{sequence: ^second} | _rest] = Enum.to_list(events)
     assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_clear(scope, agent)
   end
 
-  test "a stream follows what the agent writes after what it read", %{scope: scope} do
+  test "a stream followed from a message takes the turn that answers it", %{scope: scope} do
     agent = start({AgentRunners, :echo, [self(), "done"]})
-    {:ok, %Snapshot{sequence: sequence}} = Wardrik.agent_read(scope, agent)
-    {:ok, stream} = Wardrik.agent_stream(scope, agent, after: sequence)
-    test = self()
+    {:ok, message} = Wardrik.agent_ask(scope, agent, "anything?")
 
-    task =
-      Task.async(fn ->
-        send(test, :following)
-        Enum.find(stream, &(&1.event["type"] == "wardrik.run.completed"))
-      end)
+    {:ok, events} =
+      Wardrik.events(scope,
+        resources: [AgentID.resource(agent)],
+        after: message.cursor,
+        follow: true
+      )
 
-    assert_receive :following
-    {:ok, _message} = Wardrik.agent_ask(scope, agent, "anything?")
-    assert %Entry{} = Task.await(task, 5_000)
+    assert %Entry{log: ^agent} = Enum.find(events, &(&1.event["type"] == "wardrik.run.completed"))
+  end
+
+  test "events are what the scope's token reads, from a cursor events answered", %{scope: scope} do
+    agent = start({AgentRunners, :echo, [self(), "ok"]})
+
+    assert :ok = Wardrik.subscribe(scope)
+    {:ok, _message} = Wardrik.agent_ask(scope, agent, "hi")
+    assert_receive %Entry{log: ^agent}, 5_000
+    assert :ok = Wardrik.unsubscribe(scope)
+
+    assert {:ok, events} = Wardrik.events(scope, after: :head)
+    assert [] = Enum.to_list(events)
+
+    globex = Wardrik.Resource.parse!("globex/agent/*")
+    assert {:error, %Error{type: :not_found}} = Wardrik.subscribe(scope, resources: [globex])
+    assert {:error, %Error{type: :forbidden}} = Wardrik.events(scope, resources: [])
+    assert {:error, %Error{type: :invalid}} = Wardrik.events(scope, after: "nope")
   end
 
   test "a call an agent waits on is approved or denied", %{scope: scope} do
@@ -225,9 +246,8 @@ defmodule Wardrik.APITest do
     assert %Snapshot{} = Wardrik.agent_read!(scope, agent)
     assert [_ | _] = Wardrik.agents_list!(scope, Wardrik.AgentID.resource(agent))
     assert [] = Wardrik.agents_parked!(scope, Wardrik.AgentID.resource(agent))
-    assert :ok = Wardrik.agent_subscribe!(scope, agent)
-    assert Enumerable.impl_for(Wardrik.agent_stream!(scope, agent))
-    assert [_ | _] = Wardrik.agent_events!(scope, agent)
+    assert :ok = Wardrik.subscribe!(scope, resources: [Wardrik.AgentID.resource(agent)])
+    assert [_ | _] = Enum.to_list(Wardrik.events!(scope, resources: [AgentID.resource(agent)]))
 
     assert %{"name" => "s"} =
              Wardrik.agent_trigger_set!(scope, agent, "s", %{
@@ -265,6 +285,7 @@ defmodule Wardrik.APITest do
     assert %{^echo => :forgotten} = Wardrik.agents_forget!(scope, Wardrik.AgentID.resource(echo))
 
     for raising <- [
+          fn -> Wardrik.events!(scope, resources: []) end,
           fn -> Wardrik.agent_authorization_read!(scope, echo, "call_1") end,
           fn -> Wardrik.agent_call_kill!(scope, echo, "call_1") end,
           fn -> Wardrik.servers_list!(scope, owner) end,

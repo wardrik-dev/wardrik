@@ -16,8 +16,8 @@ defmodule Wardrik.Audit do
   ## The log
 
   Each change is a CloudEvent, as `Wardrik.Event.Codec` writes it, in the
-  `Wardrik.Event.Log` named `:audit`, which is read, followed and trimmed as
-  an agent's log is. Its numbers start at 1 and run without a gap.
+  `Wardrik.Event.Log` named `:audit`, which is read and trimmed as an
+  agent's log is. Its numbers start at 1 and run without a gap.
 
   Any node writes it. This process holds the last number it knows was
   written, and writes the next change after it on the condition that nothing
@@ -34,7 +34,6 @@ defmodule Wardrik.Audit do
   alias Wardrik.AgentID
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Log
-  alias Wardrik.Event.Log.Entry
   alias Wardrik.Principal
   alias Wardrik.Trace
 
@@ -207,7 +206,6 @@ defmodule Wardrik.Audit do
 
     case WardrikStore.put(store, Log.namespace(), Log.key(:audit, sequence), event, if_vsn: nil) do
       {:ok, _vsn} ->
-        :ok = Log.publish(:audit, %Entry{event: event, sequence: sequence, follows: sequence - 1})
         sequence
 
       {:error, :conflict} ->

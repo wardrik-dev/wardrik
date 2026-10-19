@@ -39,6 +39,7 @@
       "Wardrik.Event",
       "Wardrik.Event.Bus",
       "Wardrik.Event.Codec.Value",
+      "Wardrik.Event.Cursor",
       "Wardrik.Event.Export",
       "Wardrik.Event.Log",
       "Wardrik.Event.Log.Entry",

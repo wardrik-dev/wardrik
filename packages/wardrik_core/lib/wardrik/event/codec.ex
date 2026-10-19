@@ -50,6 +50,9 @@ defmodule Wardrik.Event.Codec do
   A tool call as it streams, `:tool_call`, and the per-call `:tool_parked`,
   which `run.interrupted` lists, are not sent: `encode/2` answers `:skip`.
 
+  A reader of a log trimmed past where it reads takes `dropped/2`'s
+  `wardrik.events.dropped` there, which no log holds.
+
   ## Changes
 
   A `Wardrik.Audit` change is durable, at the root of a trace of its own,
@@ -136,6 +139,20 @@ defmodule Wardrik.Event.Codec do
   @doc "The URI of the JSON Schema for a CloudEvent type's data."
   @spec schema(String.t()) :: String.t()
   def schema("wardrik." <> type), do: "urn:wardrik:schema:v1:" <> type
+
+  @doc """
+  The CloudEvent a reader of `agent_id`'s log takes in place of events it
+  asked for that were dropped: `wardrik.events.dropped`, saying the
+  sequence it read `:after`, and the `:oldest` the log still held, which it
+  reads on from.
+  """
+  @spec dropped(AgentID.t(), after: non_neg_integer(), oldest: pos_integer()) :: map()
+  def dropped(%AgentID{} = agent_id, opts) do
+    data = %{"after" => Keyword.fetch!(opts, :after), "oldest" => Keyword.fetch!(opts, :oldest)}
+    gap = %{id: Wardrik.UUID.v7(), at: System.system_time(:microsecond)}
+    trace = Wardrik.Trace.root()
+    envelope(gap, source(agent_id), trace, {"events.dropped", "agents/#{agent_id}", data}, [])
+  end
 
   defp envelope(event, source, trace, {type, subject, data}, opts) do
     %{

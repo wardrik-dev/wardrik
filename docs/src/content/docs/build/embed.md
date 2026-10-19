@@ -155,7 +155,16 @@ end
 
 def ask(user, agent, text), do: Wardrik.agent_ask(scope(user), agent, text)
 
-def subscribe(user, agent), do: Wardrik.agent_subscribe(scope(user), agent)
+def subscribe(user, agent),
+  do: Wardrik.subscribe(scope(user), resources: [AgentID.resource(agent)])
+
+def events(user, agent, cursor),
+  do:
+    Wardrik.events(scope(user),
+      resources: [AgentID.resource(agent)],
+      after: cursor,
+      follow: true
+    )
 
 defp scope(user), do: Wardrik.as(wardrik(), MyApp.Issuer.principal(user))
 ```
@@ -188,8 +197,24 @@ end
 ```
 
 Every event an agent writes reaches its subscribers, so a LiveView can show a turn as it streams.
-[Events](/concepts/events/) lists them. Nobody else reaches Maria's agent: reading `acme/agent/*`
+[Events](/concepts/events/) lists them. `resources:` takes patterns, as `acme/agent/*`, and
+`types:` the event types to take. Nobody else reaches Maria's agent: reading `acme/agent/*`
 reaches the org's own agents, not its users'. Anyone else is told it isn't there.
+
+A subscription takes what is written from then on. To read what was written before, or to pick
+up after a restart, read the log from a cursor. A message says where the log stood as it was
+sent, so the turn that answers it comes after:
+
+```elixir
+{:ok, message} = MyApp.Agents.ask(maria, agent, "Where is order 1001?")
+{:ok, events} = MyApp.Agents.events(maria, agent, message.cursor)
+
+Enum.find(events, &(&1.event["type"] == "wardrik.run.completed"))
+```
+
+Wardrik keeps no reader's place. Keep your own: `Wardrik.cursor/2` moves a cursor past each entry,
+and `events/2` reads on from it, then follows. A log trimmed past your cursor gives a
+`wardrik.events.dropped` entry, and reading goes on from the oldest event it still holds.
 
 ## Serve the HTTP API
 

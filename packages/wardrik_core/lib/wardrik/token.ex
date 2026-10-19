@@ -104,10 +104,17 @@ defmodule Wardrik.Token do
 
   @doc "Every resource the statements of `token` name."
   @spec resources(t()) :: [Resource.t()]
-  def resources(%__MODULE__{scope: scope}),
+  def resources(%__MODULE__{scope: scope}), do: named(scope)
+
+  @doc "Every resource on which a statement of `token` allows `action`."
+  @spec resources(t(), Statement.action()) :: [Resource.t()]
+  def resources(%__MODULE__{scope: scope}, action),
+    do: scope |> Enum.filter(&Statement.allows?(&1, action)) |> named()
+
+  defp named(statements),
     do:
       Enum.uniq(
-        for %Statement{resources: resources} <- scope, resource <- resources, do: resource
+        for %Statement{resources: resources} <- statements, resource <- resources, do: resource
       )
 
   @doc "Whether `token` has stopped working."
