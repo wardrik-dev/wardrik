@@ -94,7 +94,7 @@ defmodule Wardrik.AgentLogTest do
 
   test "a decision is in the log before the run it resumes", %{key: key} do
     agent = parked_agent(key)
-    by = Wardrik.Principal.new(:shell, "jon")
+    by = Wardrik.Principal.new("shell:jon")
 
     assert :ok =
              Agent.decide(
@@ -114,7 +114,7 @@ defmodule Wardrik.AgentLogTest do
 
     assert {:ok, events} = Log.read(store(), key)
 
-    assert %{"data" => %{"decision" => "approved", "resolved_by" => %{"id" => "jon"}}} =
+    assert %{"data" => %{"decision" => "approved", "resolved_by" => %{"id" => "shell:jon"}}} =
              Enum.find(events, &(&1["type"] == "wardrik.interrupt.resolved"))
   end
 
@@ -126,7 +126,7 @@ defmodule Wardrik.AgentLogTest do
              Agent.decide(
                agent,
                %{"call_1" => :approve},
-               token: Wardrik.Token.root(Wardrik.Principal.new(:shell, "root"))
+               token: Wardrik.Token.root(Wardrik.Principal.new("shell:root"))
              )
 
     Agent.resume(agent, %{"call_1" => :approve})

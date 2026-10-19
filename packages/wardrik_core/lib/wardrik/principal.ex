@@ -1,61 +1,82 @@
 defmodule Wardrik.Principal do
   @moduledoc """
-  Who did something, and how they were known: the person or system behind a
-  decision.
+  Who did something: the person or system behind a decision, by the name
+  they are known by, and the name they go by where one is known.
 
-      Wardrik.Principal.new(:channel, "slack/T0123/U024BE7LH", name: "jon")
+      Wardrik.Principal.new("acme/@jon", name: "Jon")
 
-  A principal is built here and read with `type/1`, `id/1` and `name/1`, and
-  what it is made of is its own business: a surface that knows its callers
-  another way, or knows more about them, changes nothing that reads one.
+  One Wardrik knows as a resource is named as `Wardrik.Resource` names
+  it, with no wildcard in it:
 
-  `type/1` says how they reached Wardrik:
+  | Name | Who |
+  | --- | --- |
+  | `acme` | the org acme |
+  | `acme/@jon` | jon, a person in acme: a user |
+  | `deployment` | the deployment itself; see `deployment/0` |
+  | `acme/agent/triage` | acme's agent `triage`, acting through its tools, on itself or on another agent, or answering one that asked it something; see `Wardrik.Catalog.Tools` |
+  | `acme/@jon/agent/triage/thread/1696.1234` | jon's `triage`, answering for `1696.1234` |
+  | `acme/agent/triage/trigger/hook` | a request from outside to the trigger `hook` of acme's `triage`: whoever sent it is known only by the secret its signature was made with |
 
-    * `:shell` - an operating system account on the node, through `bin/wardrik`
-    * `:ssh` - an SSH session to the TUI, by the name the client connected as
-    * `:terminal` - a TUI started in a terminal on the node
-    * `:channel` - someone in a chat channel, by the channel's name, the
-      workspace it is installed in, and the id the channel knows them by
-      there, as `slack/T0123/U024BE7LH`; see `WardrikChannel.principal/3`
-    * `:oauth` - an authorization flow that finished, by the provider it was
-      for: whoever completed it is not known
-    * `:agent` - an agent acting through its tools, on itself or on another
-      agent, and an agent answering one that asked it something, by its ID;
-      see `Wardrik.Catalog.Tools`
-    * `:webhook` - a request from outside to one of an agent's triggers, by
-      the trigger it was sent to, as `org/name//trigger`: whoever sent it is
-      known only by the secret its signature was made with
-    * `:user` - a person known by a sign-in, as an application embedding
-      Wardrik knows its users
+  Anyone else is named where they reached Wardrik, as `provider:subject`:
+  a provider of lower-case letters, digits and `-`, beginning with a
+  letter, then what it knows them as, holding no whitespace.
+
+  | Name | Who |
+  | --- | --- |
+  | `slack:T0123/U024BE7LH` | someone in the chat channel `slack`, by the workspace it is installed in and the id it knows them by there; see `WardrikChannel.principal/2` |
+  | `shell:jon` | the operating system account `jon` on the node, through `bin/wardrik` |
+  | `ssh:jon` | an SSH session to the TUI, by the name the client connected as |
+  | `terminal:jon` | a TUI started in a terminal on the node, by the account running it |
+  | `oauth:github` | an authorization flow for `github` that finished: whoever completed it is not known |
+
+  No segment of a resource's name holds a `:`, so the two never meet. A
+  host's `Wardrik.Issuer` reads the name to decide what the principal may
+  do, parsing what it needs of it there; nothing else decides by it.
   """
 
-  @enforce_keys [:type, :id]
-  defstruct [:type, :id, :name]
+  alias Wardrik.Resource
 
-  @typedoc "How a principal reached Wardrik."
-  @type type() ::
-          :shell
-          | :ssh
-          | :terminal
-          | :channel
-          | :oauth
-          | :webhook
-          | :agent
-          | :user
-          | atom()
+  @enforce_keys [:id]
+  defstruct [:id, :name]
 
-  @opaque t() :: %__MODULE__{type: type(), id: String.t(), name: String.t() | nil}
+  @opaque t() :: %__MODULE__{id: String.t(), name: String.t() | nil}
 
-  @doc "A principal that reached Wardrik as `type`, known there as `id`, and by `name:` where they have one."
-  @spec new(type(), String.t(), name: String.t() | nil) :: t()
-  def new(type, id, opts \\ []) when is_atom(type) and is_binary(id) and is_list(opts),
-    do: %__MODULE__{type: type, id: id, name: Keyword.get(opts, :name)}
+  @provider ~r/\A[a-z][a-z0-9-]*\z/
+  @federated ~r/\A[a-z][a-z0-9-]*:\S+\z/u
 
-  @doc "How the principal reached Wardrik."
-  @spec type(t()) :: type()
-  def type(%__MODULE__{type: type}), do: type
+  @doc """
+  The principal known as `id`, and by `name:` where they go by one. Raises
+  `ArgumentError` unless `id` is a resource's name or `provider:subject`.
 
-  @doc "What the principal is known as where they reached Wardrik."
+      Wardrik.Principal.new("slack:T0123/U024BE7LH", name: "jon")
+  """
+  @spec new(String.t(), name: String.t() | nil) :: t()
+  def new(id, opts \\ []) when is_binary(id) and is_list(opts) do
+    opts = Keyword.validate!(opts, [:name])
+
+    if Regex.match?(@federated, id) or resource?(id),
+      do: %__MODULE__{id: id, name: opts[:name]},
+      else:
+        raise(
+          ArgumentError,
+          "#{inspect(id)} names no principal; one is a resource, as acme/@jon or " <>
+            "acme/agent/triage, or provider:subject, as slack:T0123/U024BE7LH"
+        )
+  end
+
+  @doc "The deployment's own principal, `deployment`."
+  @spec deployment() :: t()
+  def deployment, do: %__MODULE__{id: "deployment"}
+
+  @doc """
+  Whether `text` can be the provider of a `provider:subject` name:
+  lower-case letters, digits and `-`, beginning with a letter.
+  """
+  @spec provider?(term()) :: boolean()
+  def provider?(text) when is_binary(text), do: Regex.match?(@provider, text)
+  def provider?(_text), do: false
+
+  @doc "The name the principal is known by."
   @spec id(t()) :: String.t()
   def id(%__MODULE__{id: id}), do: id
 
@@ -64,11 +85,13 @@ defmodule Wardrik.Principal do
   def name(%__MODULE__{name: name}), do: name
 
   @doc """
-  Whether `a` and `b` are the same person or system: reached the same way
-  and known by the same id, whatever name each goes by. Nobody, `nil`, is
-  never anyone.
+  Whether `a` and `b` are the same person or system: known by the same
+  name, whatever name each goes by. Nobody, `nil`, is never anyone.
   """
   @spec same?(t() | nil, t() | nil) :: boolean()
-  def same?(%__MODULE__{type: type, id: id}, %__MODULE__{type: type, id: id}), do: true
+  def same?(%__MODULE__{id: id}, %__MODULE__{id: id}), do: true
   def same?(_a, _b), do: false
+
+  defp resource?(id),
+    do: not String.contains?(id, ["*", "?"]) and match?({:ok, _resource}, Resource.parse(id))
 end

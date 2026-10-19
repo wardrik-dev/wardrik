@@ -14,8 +14,8 @@ defprotocol Wardrik.Issuer do
 
       scope = Wardrik.as(host, principal)
 
-  An issuer may decide by how someone reached the deployment,
-  `Wardrik.Principal.type/1`; nothing else does. Where a host answers who
+  An issuer may decide by the name someone is known by,
+  `Wardrik.Principal.id/1`; nothing else does. Where a host answers who
   someone is in one place, every surface holds them to the same token. A
   surface that holds a token of its own for its callers, as the HTTP API
   does, need not ask.

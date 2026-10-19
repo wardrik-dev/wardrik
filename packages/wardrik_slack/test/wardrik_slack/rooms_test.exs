@@ -67,7 +67,7 @@ defmodule WardrikSlack.RoomsTest do
   end
 
   defp channel(opts), do: opts[:workspace].context.channel
-  defp person(opts, user), do: "#{channel(opts)}/T1/#{user}"
+  defp person(opts, user), do: "#{channel(opts)}:T1/#{user}"
 
   defp with_context(opts, change),
     do: Keyword.update!(opts, :workspace, &%{&1 | context: change.(&1.context)})
@@ -129,7 +129,7 @@ defmodule WardrikSlack.RoomsTest do
     assert buttons(message) == ["everything", "wardrik_room_more"]
 
     assert Audit.about("rooms/#{channel(opts)}/C1") ==
-             [{"room.bound", %{"type" => "channel", "id" => person(opts, "U1")}}]
+             [{"room.bound", %{"id" => person(opts, "U1")}}]
   end
 
   test "says who approves, where the channel names approvers" do

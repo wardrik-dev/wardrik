@@ -15,7 +15,7 @@ defmodule Wardrik.Catalog.Tools do
   `Wardrik.agent_ask/4`), and an agent another surface declares, as a file
   does, answers as it would there.
 
-  The agent's own token is the `:agent` principal of its resource, as
+  The agent's own token is the principal its resource names, as
   `acme/agent/front`, holding `reader`, `messenger` and `definer` on what
   its source reaches, and never more, expiring as the host's `:session`
   expiry says. A change runs with that token, and the audit records the
@@ -90,7 +90,7 @@ defmodule Wardrik.Catalog.Tools do
     id = Run.agent_id(run)
 
     own = %Token{
-      principal: Principal.new(:agent, to_string(AgentID.resource(id))),
+      principal: Principal.new(to_string(AgentID.resource(id))),
       scope: [Role.bind([:reader, :messenger, :definer], Keyword.fetch!(opts, :reach))],
       expires: DateTime.add(DateTime.utc_now(:second), Host.expires(run.host, :session))
     }

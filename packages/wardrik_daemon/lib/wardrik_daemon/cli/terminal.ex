@@ -62,11 +62,11 @@ defmodule WardrikDaemon.CLI.Terminal do
 
   @doc """
   Who a command typed here is run for: the account that ran `bin/wardrik`,
-  as a `:shell` principal, or `nil` where none was said.
+  as the principal `shell:<account>`, or `nil` where none was said.
   """
   @spec principal(t()) :: Wardrik.Principal.t() | nil
   def principal(%__MODULE__{user: nil}), do: nil
-  def principal(%__MODULE__{user: user}), do: Wardrik.Principal.new(:shell, user)
+  def principal(%__MODULE__{user: user}), do: Wardrik.Principal.new("shell:" <> user)
 
   @doc """
   Writes `data` and a newline to `device`, in colour where the terminal takes

@@ -100,7 +100,7 @@ defmodule WardrikSlack.ThreadsTest do
   # How the agent reads the sender, of the test's channel.
   defp from(opts) do
     %{channel: channel, workspace: workspace} = opts[:workspace].installation
-    "channel #{channel}/#{workspace}/U1"
+    "#{channel}:#{workspace}/U1"
   end
 
   defp message(fields) do

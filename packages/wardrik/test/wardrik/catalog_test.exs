@@ -17,8 +17,9 @@ defmodule Wardrik.CatalogTest do
   alias Wardrik.Test.Script
   alias Wardrik.Test.Tools.Rules
 
-  # Whoever asks holds the statements a test gives, or, an agent asking, its
-  # own: reader and messenger on its owner's agents, as a host's issuer may.
+  # Whoever asks holds the statements a test gives, or, an agent asking, known
+  # by its resource, its own: reader and messenger on its owner's agents, as a
+  # host's issuer may.
   defmodule Issued do
     @moduledoc false
     defstruct scope: []
@@ -26,9 +27,9 @@ defmodule Wardrik.CatalogTest do
 
   defimpl Wardrik.Issuer, for: Issued do
     def issue(%{scope: scope}, principal, _opts) do
-      case Principal.type(principal) do
-        :agent ->
-          owner = Resource.owner(Resource.parse!(Principal.id(principal)))
+      case String.split(Principal.id(principal), ":") do
+        [agent] ->
+          owner = Resource.owner(Resource.parse!(agent))
 
           %Wardrik.Token{
             principal: principal,
@@ -134,7 +135,7 @@ defmodule Wardrik.CatalogTest do
       assert triggers(agent) == ["rivals"]
 
       assert Wardrik.Test.Audit.about(agent) |> List.last() ==
-               {"trigger.set", %{"type" => "agent", "id" => to_string(AgentID.resource(agent))}}
+               {"trigger.set", %{"id" => to_string(AgentID.resource(agent))}}
     end
 
     test "a conversation's call changes its agent", %{agent: agent} do
@@ -245,7 +246,6 @@ defmodule Wardrik.CatalogTest do
       assert answer.id == "answer:" <> id
       assert answer.text =~ "Two are open."
       assert answer.labels == ["outside"]
-      assert Principal.type(answer.sender) == :agent
       assert Principal.id(answer.sender) == to_string(AgentID.resource(reconciler))
 
       assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^front}}, 5_000
@@ -306,7 +306,7 @@ defmodule Wardrik.CatalogTest do
               }} = Definitions.get(definitions(), worker)
 
       assert token.policy == :none
-      assert token.principal == Principal.new(:agent, to_string(AgentID.resource(front)))
+      assert token.principal == Principal.new(to_string(AgentID.resource(front)))
 
       assert token.scope == [
                Wardrik.Role.bind([:reader, :messenger, :definer], [
@@ -320,7 +320,7 @@ defmodule Wardrik.CatalogTest do
       assert Keyword.fetch!(state.run_opts, :hooks) == hooks
 
       assert Wardrik.Test.Audit.about(worker) |> List.last() ==
-               {"agent.defined", %{"type" => "agent", "id" => to_string(AgentID.resource(front))}}
+               {"agent.defined", %{"id" => to_string(AgentID.resource(front))}}
     end
 
     test "reaches its own org and no other" do
@@ -367,7 +367,7 @@ defmodule Wardrik.CatalogTest do
       run =
         run(front, Agents,
           host: Wardrik.Test.host(definitions: definitions(), issuer: %Issued{scope: [one]}),
-          sender: Principal.new(:channel, "chat/U1"),
+          sender: Principal.new("chat:U1"),
           hooks: [Wardrik.Hook.new("front", Rules, allow: ["agent_define"])]
         )
 
@@ -400,7 +400,7 @@ defmodule Wardrik.CatalogTest do
       run =
         run(front, Agents,
           host: Wardrik.Test.host(definitions: definitions(), issuer: %Issued{}),
-          sender: Principal.new(:agent, to_string(AgentID.resource(asking)))
+          sender: Principal.new(to_string(AgentID.resource(asking)))
         )
 
       assert %Call{state: :done, result: {:ok, _snapshot}} =

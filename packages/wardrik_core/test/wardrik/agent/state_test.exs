@@ -139,8 +139,8 @@ defmodule Wardrik.Agent.StateTest do
   end
 
   describe "one sender a turn" do
-    defp maria, do: Wardrik.Principal.new(:channel, "slack/U1", name: "Maria")
-    defp jon, do: Wardrik.Principal.new(:channel, "slack/U2", name: "jon")
+    defp maria, do: Wardrik.Principal.new("slack:U1", name: "Maria")
+    defp jon, do: Wardrik.Principal.new("slack:U2", name: "jon")
 
     defp from(state, sender, text) do
       {state, _effects} = State.queue(state, Message.new(text, nil, sender: sender))
@@ -195,7 +195,7 @@ defmodule Wardrik.Agent.StateTest do
 
     test "the asker acting directly, or a token allowing it, decides the calls a turn waits on" do
       {waiting, _effects} = State.parked(asked_by(maria()), parked_turn())
-      agent = Wardrik.Principal.new(:agent, "acme/@jon/assistant")
+      agent = Wardrik.Principal.new("acme/@jon/agent/assistant")
       asker = decider(maria(), [:reader])
 
       assert State.decides?(waiting, asker)
@@ -428,7 +428,6 @@ defmodule Wardrik.Agent.StateTest do
       assert answer.text =~ "ask-1"
       assert answer.text =~ "Two are open."
       assert answer.labels == ["outside"]
-      assert Wardrik.Principal.type(answer.sender) == :agent
       assert Wardrik.Principal.id(answer.sender) == "acme/@jon/agent/assistant"
       assert answer.reply_to == []
       assert state.answering == []
@@ -563,7 +562,7 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "a turn keeps who asked for it, in flight, owed or parked" do
-      maria = Wardrik.Principal.new(:channel, "slack/U1", name: "Maria")
+      maria = Wardrik.Principal.new("slack:U1", name: "Maria")
 
       run =
         Run.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), sender: maria)

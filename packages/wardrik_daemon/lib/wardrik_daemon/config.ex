@@ -82,7 +82,7 @@ defmodule WardrikDaemon.Config do
     "vault" => "vault reads the environment alone, since the vault cannot unlock itself"
   }
   @org "default"
-  @segment "an org holds no / or whitespace, nor * or ?, does not begin with @ or _, " <>
+  @segment "an org holds no / or whitespace, nor *, ? or :, does not begin with @ or _, " <>
              "and is not deployment"
 
   # What an org in `orgs` may use, by the section that defines it.

@@ -725,7 +725,7 @@ defmodule WardrikOAuth do
   # that, not as the user the token is kept for. The audit names who asked
   # for the connection, where someone did.
   defp connected(%Flight{provider: %Provider{name: name}, owner: owner, by: asked} = flight) do
-    by = Wardrik.Principal.new(:oauth, name, name: "#{name} authorization")
+    by = Wardrik.Principal.new("oauth:" <> name, name: "#{name} authorization")
 
     :ok =
       Wardrik.Audit.record(

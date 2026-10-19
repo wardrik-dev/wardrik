@@ -253,8 +253,8 @@ defmodule WardrikVaultTest do
 
       for sender <- [
             nil,
-            Wardrik.Principal.new(:shell, "root"),
-            Wardrik.Principal.new(:user, user)
+            Wardrik.Principal.new("shell:root"),
+            Wardrik.Principal.new("acme/@#{user}")
           ] do
         assert {:ok, credential} = Credential.resolve(call(user: user, sender: sender), "tracker")
         assert Credential.reveal(credential) == "theirs"

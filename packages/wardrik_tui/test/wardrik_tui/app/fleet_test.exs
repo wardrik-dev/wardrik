@@ -65,7 +65,7 @@ defmodule WardrikTUI.App.FleetTest do
           spawn_opts: spawn_opts,
           model: "test:model",
           sidebar_width: 24,
-          principal: Wardrik.Principal.new(:ssh, "ops")
+          principal: Wardrik.Principal.new("ssh:ops")
         ],
         global_keybindings: App.keybindings()
       )
@@ -76,7 +76,7 @@ defmodule WardrikTUI.App.FleetTest do
     {:ok, session: session, org: org, agent_id: agent_id}
   end
 
-  @ops %{"type" => "ssh", "id" => "ops"}
+  @ops %{"id" => "ssh:ops"}
 
   # The definitions the agents this test spawned were given, which the
   # fleet would list after it.
@@ -760,7 +760,7 @@ defmodule WardrikTUI.App.FleetTest do
       payload: %Event.MessageQueued{message: %{text: "look into it", sender: sender}}
     }
 
-    assert Wardrik.Principal.id(sender) == "ops"
+    assert Wardrik.Principal.id(sender) == "ssh:ops"
   end
 
   test "/spawn of an agent already running connects rather than starting one", ctx do
@@ -821,7 +821,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "reconnected to #{agent_id} on #{node()}"
 
     submit(session, "hello again")
-    assert_receive {:turn, [{:user, "From ssh ops:\nhello again"}]}, 2_000
+    assert_receive {:turn, [{:user, "From ssh:ops:\nhello again"}]}, 2_000
   end
 
   test "/move NAME without a node says so when there is nowhere to go", %{session: session} do
@@ -1188,7 +1188,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert Fleet.held_pid(agent_id, wake: false) == nil
 
     submit(session, "hello again")
-    assert_receive {:turn, [{:user, "From ssh ops:\nhello again"}]}, 2_000
+    assert_receive {:turn, [{:user, "From ssh:ops:\nhello again"}]}, 2_000
   end
 
   test "/help opens searchable help, the keys of this pane first, and Enter runs a command",

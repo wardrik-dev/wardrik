@@ -23,14 +23,14 @@ defmodule Wardrik.TalkingTest do
   alias Wardrik.Test.Script
   alias Wardrik.Token
 
-  @jon %{"type" => "user", "id" => "jon", "name" => "Jon"}
+  @jon %{"id" => "acme/@jon", "name" => "Jon"}
 
   defp scope(pattern \\ "test/agent/*", roles \\ [:owner]) do
     token = %Token{principal: jon(), scope: [Role.bind(roles, [Resource.parse!(pattern)])]}
     Scope.new(Wardrik.Test.host(), token)
   end
 
-  defp jon, do: Principal.new(:user, "jon", name: "Jon")
+  defp jon, do: Principal.new("acme/@jon", name: "Jon")
 
   defp parked_agent(sender \\ nil) do
     {id, agent} =
@@ -194,7 +194,7 @@ defmodule Wardrik.TalkingTest do
       assert {:ok, %{^id => sequence}} = Wardrik.Event.Cursor.decode(cursor)
       assert is_integer(sequence)
       assert_receive %Event{payload: %Event.MessageQueued{message: %{sender: sender}}}
-      assert Principal.id(sender) == "jon"
+      assert Principal.id(sender) == "acme/@jon"
       assert_receive {:turn, _messages}
 
       assert {:error, %Error{type: :not_found}} =
@@ -217,7 +217,7 @@ defmodule Wardrik.TalkingTest do
                Wardrik.agent_deny(scope(), id, "call_1", reason: "No.")
 
       assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: by}}
-      assert Principal.id(by) == "jon"
+      assert Principal.id(by) == "acme/@jon"
 
       assert {:error, %Error{type: :conflict}} = Wardrik.agent_approve(scope(), id, "call_1")
     end
@@ -235,7 +235,7 @@ defmodule Wardrik.TalkingTest do
     end
 
     test "takes a decision from whoever asked for the turn, and refuses anyone else without a token allowing it" do
-      maria = Principal.new(:channel, "slack/U1", name: "Maria")
+      maria = Principal.new("slack:U1", name: "Maria")
       id = parked_agent(maria)
 
       token = %Token{
@@ -283,7 +283,7 @@ defmodule Wardrik.TalkingTest do
                Wardrik.agent_approve(held(%Wardrik.OrgIssuer{org: "test"}, scope()), id, "call_1")
 
       assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: by}}
-      assert Principal.id(by) == "jon"
+      assert Principal.id(by) == "acme/@jon"
     end
 
     test "never allows more than it did" do

@@ -2,7 +2,7 @@ defmodule WardrikSlack.Answers do
   @moduledoc """
   What a press of a button `WardrikSlack.Notices` posted does.
 
-  The person pressing is the principal `WardrikChannel.principal/3` makes of
+  The person pressing is the principal `WardrikChannel.principal/2` makes of
   them, in the workspace they pressed it in, and may do what the token the
   host's `Wardrik.Issuer` issues them allows, in the scope `Wardrik.as/3`
   makes them on the host the channel's context carries: they decide a call

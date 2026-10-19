@@ -133,6 +133,7 @@ defmodule Wardrik.AgentIDTest do
     refute AgentID.segment?("a/b")
     refute AgentID.segment?("..")
     refute AgentID.segment?("a*")
+    refute AgentID.segment?("ssh:jon")
     refute AgentID.segment?(7)
     assert AgentID.org?("acme")
     refute AgentID.org?("deployment")

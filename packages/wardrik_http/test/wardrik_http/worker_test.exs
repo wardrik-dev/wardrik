@@ -114,7 +114,7 @@ defmodule WardrikHTTP.WorkerTest do
   defp token(name, scope, roles \\ [:owner]) do
     Token.create(store(), name,
       token: %Wardrik.Token{
-        principal: Wardrik.Principal.new(:user, "ci"),
+        principal: Wardrik.Principal.new("acme/@ci"),
         scope: [Wardrik.Role.bind(roles, [Wardrik.Resource.parse!(scope)])]
       }
     )

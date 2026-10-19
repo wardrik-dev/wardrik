@@ -216,7 +216,7 @@ defmodule WardrikDaemon.AgentFileTest do
       assert files.context == ["shared/team/NOTES.md"]
 
       token = %Wardrik.Token{
-        principal: Wardrik.Principal.new(:user, "jon"),
+        principal: Wardrik.Principal.new("acme/@jon"),
         scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(id)])]
       }
 

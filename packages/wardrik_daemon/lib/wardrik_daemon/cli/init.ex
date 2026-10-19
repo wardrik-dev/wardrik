@@ -410,8 +410,8 @@ defmodule WardrikDaemon.CLI.Init do
       do: write_agent(%{init | agent: name}),
       else:
         {:error,
-         "#{name} is not an agent's name: a name holds no / or whitespace, and does not " <>
-           "begin with @ or _"}
+         "#{name} is not an agent's name: a name holds no /, : or whitespace, and does " <>
+           "not begin with @ or _"}
   end
 
   defp write_agent(%__MODULE__{agent: name} = init) do

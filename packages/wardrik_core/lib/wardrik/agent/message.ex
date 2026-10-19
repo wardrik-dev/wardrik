@@ -23,7 +23,7 @@ defmodule Wardrik.Agent.Message do
   carries it, so the agent's log says who said what, and the model reads it
   ahead of the text, so it can tell several people apart:
 
-      From Maria Chen (channel slack/T0123/U024BE7LH):
+      From Maria Chen (slack:T0123/U024BE7LH):
       Reconcile last week's deposits.
 
   A message with no sender is read as its text alone.
@@ -110,11 +110,9 @@ defmodule Wardrik.Agent.Message do
   def content(%__MODULE__{sender: sender, text: text}), do: "From #{named(sender)}:\n" <> text
 
   defp named(sender) do
-    known = "#{Principal.type(sender)} #{Principal.id(sender)}"
-
     case Principal.name(sender) do
-      nil -> known
-      name -> "#{name} (#{known})"
+      nil -> Principal.id(sender)
+      name -> "#{name} (#{Principal.id(sender)})"
     end
   end
 end

@@ -352,7 +352,7 @@ defmodule Wardrik.Definition.ReadingTest do
       assert {files.tree.tree, team.tree} == {"agents/acme/triage", "shared/acme"}
       assert files.context == ["shared/team/NOTES.md"]
 
-      token = Wardrik.Token.root(Wardrik.Principal.new(:user, "jon"))
+      token = Wardrik.Token.root(Wardrik.Principal.new("acme/@jon"))
       token = %{token | scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(id)])]}
 
       {:ok, definition} = Definition.read(fields, id: id, source: {:api, token}, context: context)

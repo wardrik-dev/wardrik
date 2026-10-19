@@ -63,7 +63,7 @@ defmodule Wardrik.ServersTest do
     defdelegate remove(a0, a1, a2), to: Added
   end
 
-  @jon Principal.new(:user, "jon", name: "Jon")
+  @jon Principal.new("acme/@jon", name: "Jon")
   @acme Resource.parse!("acme")
   @docs %Server{name: "docs", url: "https://docs.example.com/mcp", auth: "none"}
 
@@ -81,7 +81,7 @@ defmodule Wardrik.ServersTest do
     assert_received {:add, ^mine, "docs", %{"auth" => %{"none" => %{}}}, @jon}
     assert {:ok, [%Server{name: "docs", auth: "none"}]} = Wardrik.servers_list(jon, mine)
 
-    assert [{"server.added", %{"type" => "user", "id" => "jon"}} | _] =
+    assert [{"server.added", %{"id" => "acme/@jon"}} | _] =
              Audit.about("acme/@jon/server/docs")
 
     assert {:ok, %Server{name: "docs"}} = Wardrik.servers_remove(jon, mine, "docs")

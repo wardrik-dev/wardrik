@@ -74,7 +74,7 @@ defmodule WardrikChannel.Replies.StateTest do
       event(1, "wardrik.interrupt.resolved", %{
         "interrupt" => %{"id" => "c1"},
         "decision" => "approved",
-        "resolved_by" => %{"type" => "oauth", "id" => "github", "name" => "github authorization"}
+        "resolved_by" => %{"id" => "oauth:github", "name" => "github authorization"}
       })
 
     assert {{:connected, "github"}, _state} = State.take(followed(), "1.1", connected)
@@ -89,19 +89,19 @@ defmodule WardrikChannel.Replies.StateTest do
   end
 
   test "says who decided a call, and what they said with it" do
-    maria = %{"type" => "channel", "id" => "slack/U1", "name" => "maria"}
-    jon = %{"type" => "user", "id" => "jon"}
+    maria = %{"id" => "slack:U1", "name" => "maria"}
+    jon = %{"id" => "acme/@jon"}
 
     assert decided("approved", maria) == {:decided, "Approved by maria."}
-    assert decided("approved", jon) == {:decided, "Approved by jon."}
+    assert decided("approved", jon) == {:decided, "Approved by acme/@jon."}
 
     assert decided("approved", jon, "Only this once.") ==
-             {:decided, "Approved by jon: Only this once."}
+             {:decided, "Approved by acme/@jon: Only this once."}
 
-    assert decided("rejected", jon) == {:decided, "Denied by jon."}
+    assert decided("rejected", jon) == {:decided, "Denied by acme/@jon."}
 
     assert decided("rejected", jon, "Not on Fridays.") ==
-             {:decided, "Denied by jon: Not on Fridays."}
+             {:decided, "Denied by acme/@jon: Not on Fridays."}
 
     assert decided("rejected", maria, "Denied in Slack by maria: Staging first.") ==
              {:decided, "Denied in Slack by maria: Staging first."}

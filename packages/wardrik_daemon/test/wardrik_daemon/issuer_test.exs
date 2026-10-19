@@ -56,8 +56,8 @@ defmodule WardrikDaemon.IssuerTest do
   defp bound(roles), do: Wardrik.Role.bind(roles, []).actions
 
   test "whoever holds the node holds owner on everything" do
-    for type <- [:shell, :terminal, :ssh] do
-      jon = Principal.new(type, "jon")
+    for id <- ~w(shell:jon terminal:jon ssh:jon) do
+      jon = Principal.new(id)
       assert %Token{principal: ^jon} = token = issue(jon)
       assert roles(token) == [{"*", ["*"]}]
       assert Token.authorize(token, "agent.define", AgentID.parse!("anyone/@at/all")) == :ok
@@ -130,16 +130,31 @@ defmodule WardrikDaemon.IssuerTest do
   end
 
   test "an agent reads and messages its owner's agents" do
-    token = issue(Principal.new(:agent, "acme/agent/front/thread/thread-1"))
+    token = issue(Principal.new("acme/agent/front"))
     assert roles(token) == [{"acme/agent/*", bound([:reader, :messenger])}]
 
-    token = issue(Principal.new(:agent, "acme/@jon/agent/assistant"))
+    token = issue(Principal.new("acme/agent/front/thread/thread-1"))
+    assert roles(token) == [{"acme/agent/*", bound([:reader, :messenger])}]
+
+    token = issue(Principal.new("acme/@jon/agent/assistant"))
     assert roles(token) == [{"acme/@jon/agent/*", bound([:reader, :messenger])}]
   end
 
+  test "a request to a trigger, and the deployment itself, hold nothing" do
+    for id <- [
+          "acme/agent/front/trigger/hook",
+          "acme/@jon/agent/front/trigger/hook",
+          "deployment"
+        ] do
+      assert %Token{scope: []} = issue(Principal.new(id))
+    end
+  end
+
   test "anyone else holds nothing" do
-    for type <- [:oauth, :webhook, :token, :user] do
-      assert %Token{scope: []} = issue(Principal.new(type, "acme/x"))
+    channel(orgs: [chat: ["acme"]])
+
+    for id <- ~w(oauth:github slack:T1/U1 acme acme/@jon deployment/server/github acme/server/crm) do
+      assert %Token{scope: []} = issue(Principal.new(id))
     end
   end
 end

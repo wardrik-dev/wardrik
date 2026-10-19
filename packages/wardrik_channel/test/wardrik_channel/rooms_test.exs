@@ -15,7 +15,7 @@ defmodule WardrikChannel.RoomsTest do
   alias WardrikChannel.Test.Defined
   alias WardrikChannel.Workspace
 
-  @maria Principal.new(:channel, "slack/T1/U1", name: "maria")
+  @maria Principal.new("slack:T1/U1", name: "maria")
 
   setup do
     org = "acme-#{System.unique_integer([:positive])}"
@@ -74,7 +74,7 @@ defmodule WardrikChannel.RoomsTest do
              Rooms.get(Room.new(context, "C1"))
 
     assert Audit.about("rooms/#{channel}/C1") ==
-             [{"room.bound", %{"type" => "channel", "id" => "slack/T1/U1", "name" => "maria"}}]
+             [{"room.bound", %{"id" => "slack:T1/U1", "name" => "maria"}}]
   end
 
   test "answers the agents to choose among, and binds the one chosen", test do

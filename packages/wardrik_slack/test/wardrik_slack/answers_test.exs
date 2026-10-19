@@ -19,8 +19,8 @@ defmodule WardrikSlack.AnswersTest do
     def issue(_host, principal, _opts) do
       roles =
         case Wardrik.Principal.id(principal) do
-          "slack/T1/U1" -> [[:reader, :messenger, :approver]]
-          "slack/T1/U2" -> [[:reader, :messenger]]
+          "slack:T1/U1" -> [[:reader, :messenger, :approver]]
+          "slack:T1/U2" -> [[:reader, :messenger]]
           _anyone -> []
         end
 
@@ -119,7 +119,7 @@ defmodule WardrikSlack.AnswersTest do
         Agent.decide(
           key,
           %{"call_1" => {:deny, "Not now."}},
-          token: Wardrik.Token.root(Wardrik.Principal.new(:shell, "t")),
+          token: Wardrik.Token.root(Wardrik.Principal.new("shell:t")),
           host: Wardrik.Host.new(store: Wardrik.Test.store())
         )
 
@@ -212,7 +212,7 @@ defmodule WardrikSlack.AnswersTest do
 
       assert_receive {:resumed, %{"call_1" => :approve}}
 
-      jon = Wardrik.Principal.new(:channel, "slack/T1/U1", name: "jon")
+      jon = Wardrik.Principal.new("slack:T1/U1", name: "jon")
 
       assert_receive %Event{
         payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: ^jon}

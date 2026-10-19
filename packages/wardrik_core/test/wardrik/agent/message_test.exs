@@ -9,14 +9,14 @@ defmodule Wardrik.Agent.MessageTest do
   end
 
   test "is read after a line naming who sent it, by name where they have one" do
-    maria = Principal.new(:channel, "slack/U024BE7LH", name: "Maria Chen")
-    nameless = Principal.new(:channel, "slack/U024BE7LH")
+    maria = Principal.new("slack:U024BE7LH", name: "Maria Chen")
+    nameless = Principal.new("slack:U024BE7LH")
 
     assert Message.content(Message.new("What changed?", nil, sender: maria)) ==
-             "From Maria Chen (channel slack/U024BE7LH):\nWhat changed?"
+             "From Maria Chen (slack:U024BE7LH):\nWhat changed?"
 
     assert Message.content(Message.new("What changed?", nil, sender: nameless)) ==
-             "From channel slack/U024BE7LH:\nWhat changed?"
+             "From slack:U024BE7LH:\nWhat changed?"
   end
 
   test "is read from its text parts, or its content, with the id its sender chose" do

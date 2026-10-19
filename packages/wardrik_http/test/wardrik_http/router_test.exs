@@ -58,7 +58,7 @@ defmodule WardrikHTTP.RouterTest do
              id: "session-#{user}",
              name: user,
              token: %Wardrik.Token{
-               principal: Wardrik.Principal.new(:user, user),
+               principal: Wardrik.Principal.new("test/@#{user}"),
                scope: [Wardrik.Role.bind([:owner], [Resource.parse!("test/agent/*")])]
              }
            }}
@@ -188,7 +188,7 @@ defmodule WardrikHTTP.RouterTest do
       token:
         struct!(
           %Wardrik.Token{
-            principal: Wardrik.Principal.new(:user, "ci", name: name),
+            principal: Wardrik.Principal.new("acme/@ci", name: name),
             scope: [Wardrik.Role.bind(roles, [Resource.parse!(pattern)])]
           },
           fields
@@ -298,7 +298,7 @@ defmodule WardrikHTTP.RouterTest do
         payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
       }
 
-      assert {Wardrik.Principal.type(by), Wardrik.Principal.id(by)} == {:user, "jon"}
+      assert Wardrik.Principal.id(by) == "test/@jon"
     end
 
     test "a credential the authenticator cannot check now is answered unavailable", %{
@@ -492,7 +492,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 202}} =
                Req.post(tenant, url: "/v1/agents/#{key}/messages", json: %{"content" => "hi"})
 
-      assert_receive {:turn, [{:user, "From tenant (user ci):" <> _rest = said}]}
+      assert_receive {:turn, [{:user, "From tenant (acme/@ci):" <> _rest = said}]}
       assert said =~ ~r/\):\nhi$/
 
       assert {:ok, %{status: 404}} = Req.get(tenant, url: "/v1/agents/test/@ann/#{name}")
@@ -549,7 +549,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{^key => _sequence}} = Cursor.decode(cursor)
 
-      assert_receive {:turn, [{:user, "From router-test (user ci):" <> _rest = said}]}
+      assert_receive {:turn, [{:user, "From router-test (acme/@ci):" <> _rest = said}]}
       assert said =~ ~r/\):\nhi$/
 
       assert {:ok, %{status: 202, body: %{"message" => %{"id" => id}}}} =
@@ -631,7 +631,7 @@ defmodule WardrikHTTP.RouterTest do
         payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
       }
 
-      assert by == Wardrik.Principal.new(:user, "ci", name: "router-test")
+      assert by == Wardrik.Principal.new("acme/@ci", name: "router-test")
 
       assert {:ok, %{status: 409, body: %{"error" => %{"type" => "conflict"}}}} =
                Req.post(api,
@@ -699,7 +699,7 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   # The actor a change made through the API names: whoever made its token.
-  @actor %{"type" => "user", "id" => "ci", "name" => "router-test"}
+  @actor %{"id" => "acme/@ci", "name" => "router-test"}
 
   test "cancel stops what the agent is doing", %{api: api} do
     {key, agent} =
@@ -1196,7 +1196,7 @@ defmodule WardrikHTTP.RouterTest do
       Req.merge(api, auth: {:bearer, secret})
     end
 
-    @jon Wardrik.Principal.new(:user, "jon")
+    @jon Wardrik.Principal.new("acme/@jon")
 
     test "lists, connects and forgets a person's own, or an org's", %{api: api} do
       jon = Req.merge(as(api, "test/*", @jon), params: [owner: "test/@jon"])
@@ -1233,7 +1233,7 @@ defmodule WardrikHTTP.RouterTest do
                Req.delete(jon, url: "/v1/connections/github")
 
       assert Audit.about("test/@jon/secret/github") |> List.last() ==
-               {"secret.removed", %{"type" => "user", "id" => "jon"}}
+               {"secret.removed", %{"id" => "acme/@jon"}}
 
       assert {:ok, %{status: 404}} = Req.delete(jon, url: "/v1/connections/linear")
       assert {:ok, %{status: 404}} = Req.post(jon, url: "/v1/connections/nothing")
@@ -1313,7 +1313,7 @@ defmodule WardrikHTTP.RouterTest do
                Req.delete(jon, url: "/v1/servers/docs")
 
       assert Audit.about("test/@jon/server/docs") |> List.last() ==
-               {"server.removed", %{"type" => "user", "id" => "jon"}}
+               {"server.removed", %{"id" => "acme/@jon"}}
 
       assert {:ok, %{status: 404}} = Req.delete(jon, url: "/v1/servers/nothing")
     end
@@ -1377,7 +1377,7 @@ defmodule WardrikHTTP.RouterTest do
       for {:ok, response} <- answers, do: conforms(response.body, "error")
     end
 
-    test "are refused past a megabyte, or with no trigger in the path", %{anyone: anyone} do
+    test "are refused past a megabyte, or with no trigger's name in the path", %{anyone: anyone} do
       assert {:ok, %{status: 413, body: body}} =
                Req.post(anyone,
                  url: "/v1/hooks/test/triage/issues",
@@ -1386,6 +1386,12 @@ defmodule WardrikHTTP.RouterTest do
 
       conforms(body, "error")
       assert {:ok, %{status: 404}} = Req.post(anyone, url: "/v1/hooks/test/triage", body: "{}")
+
+      for name <- ["is%20sues", "is:sues", "_issues"] do
+        assert {:ok, %{status: 404}} =
+                 Req.post(anyone, url: "/v1/hooks/test/triage/#{name}", body: "{}")
+      end
+
       assert {:ok, %{status: 401}} = Req.get(anyone, url: "/v1/agents")
       refute_received {:delivered, _key, _name, _headers, _body}
     end
@@ -1609,7 +1615,7 @@ defmodule WardrikHTTP.RouterTest do
                Req.post(root, url: "/v1/tokens", json: @made)
 
       conforms(issued, "token_issued")
-      assert made["principal"] == %{"type" => "user", "id" => "ci", "name" => "root"}
+      assert made["principal"] == %{"id" => "acme/@ci", "name" => "root"}
       assert made["policy"] == "careful"
 
       assert made["statements"] == [

@@ -23,7 +23,7 @@ defmodule WardrikDaemon.CLI.TerminalTest do
       Terminal.read(["--terminal=90,plain,input,user=jon", "agent", "rm"])
 
     assert terminal.user == "jon"
-    assert Terminal.principal(terminal) == Wardrik.Principal.new(:shell, "jon")
+    assert Terminal.principal(terminal) == Wardrik.Principal.new("shell:jon")
 
     assert {%Terminal{user: nil} = nobody, []} = Terminal.read(["--terminal=90,plain,user="])
     assert Terminal.principal(nobody) == nil

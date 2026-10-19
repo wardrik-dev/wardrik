@@ -196,7 +196,7 @@ triggers:
 | `timezone` | the time zone a cron expression is read in, by its IANA name, as `Europe/Berlin`; `Etc/UTC` unless set. A duration takes none |
 | `prompt` | what the agent is asked |
 | `prompt_file` | in place of `prompt`, a file in its workspace it is asked to read and follow, so it can edit its own checklist; needs `files` |
-| `name` | the trigger's name; `trigger-1`, `trigger-2` and so on by its place unless set |
+| `name` | the trigger's name, holding no `/`, `:` or whitespace; `trigger-1`, `trigger-2` and so on by its place unless set |
 | `overlap` | `skip` leaves a busy agent be, `queue` asks it anyway; `skip` unless set, `queue` for a webhook |
 | `missed` | `run_once` runs once for what was missed while the daemon was down, `skip` lets it go; `run_once` unless set |
 | `jitter` | up to this many seconds added to each run |

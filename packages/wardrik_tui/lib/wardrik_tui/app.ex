@@ -370,7 +370,7 @@ defmodule WardrikTUI.App do
   end
 
   # Who decides from a TUI started in a terminal here: the account running it.
-  defp terminal, do: Wardrik.Principal.new(:terminal, System.get_env("USER") || "unknown")
+  defp terminal, do: Wardrik.Principal.new("terminal:" <> (System.get_env("USER") || "unknown"))
 
   @doc """
   The scope a command acts in, made for each: whoever uses this client, with

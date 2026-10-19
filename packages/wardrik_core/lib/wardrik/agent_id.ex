@@ -22,7 +22,8 @@ defmodule Wardrik.AgentID do
   `new/2` writes the host's own org and user values down through
   `Wardrik.AgentID.Segment`. A segment is the org, the user, the name or the
   external ID. It holds no `/` or whitespace, nor `*` or `?`, which patterns
-  are written with, and does not begin with `@`, which marks the user, or
+  are written with, nor `:`, which a `Wardrik.Principal` known elsewhere is
+  named with, and does not begin with `@`, which marks the user, or
   `_`, which is kept for the fleet's own records. No org is named
   `deployment`, which names the deployment itself. A segment
   is in every event's `source`, every store key and every log line naming the
@@ -50,7 +51,7 @@ defmodule Wardrik.AgentID do
           external_id: String.t() | nil
         }
 
-  @segment ~r/\A[^\/@_\s*?][^\/\s*?]*\z/u
+  @segment ~r/\A[^\/:@_\s*?][^\/:\s*?]*\z/u
 
   @doc """
   The ID of the agent named `name` in `:org`, working for `:user` and
@@ -200,7 +201,7 @@ defmodule Wardrik.AgentID do
       else:
         {:error,
          "an agent's #{what} is #{inspect(segment)} from #{inspect(value)}, which is not a " <>
-           "segment; a segment holds no / or whitespace, nor * or ?, and does not begin " <>
+           "segment; a segment holds no / or whitespace, nor *, ? or :, and does not begin " <>
            "with @ or _"}
   end
 

@@ -88,14 +88,16 @@ export interface Cost {
   source: "provider" | "catalog" | "tool";
 }
 /**
- * Who did something, and how they were known.
+ * Who did something, by the name they are known by.
  */
 export interface Principal {
   /**
-   * shell, ssh, terminal, channel, oauth, webhook, agent or user. A channel's id is the channel's name, its workspace and the id it knows them by there, as slack/T0123/U024BE7LH.
+   * The name they are known by. One known as a resource is named as the resource is, with no wildcard: an org, acme; a user, acme/@jon; the deployment itself, deployment; an agent, acme/agent/triage, or one of its threads, acme/@jon/agent/triage/thread/1696.1234; a request to an agent's trigger, acme/agent/triage/trigger/hook. Anyone else is provider:subject, by where they reached Wardrik: a provider of lower-case letters, digits and -, then what it knows them as, with no whitespace, as slack:T0123/U024BE7LH for someone in the channel slack, by its workspace and their id there, shell:jon, ssh:jon, terminal:jon or oauth:github.
    */
-  type: string;
   id: string;
+  /**
+   * The name they go by, where one is known.
+   */
   name?: string;
 }
 /**

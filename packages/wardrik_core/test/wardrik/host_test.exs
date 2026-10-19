@@ -97,7 +97,7 @@ defmodule Wardrik.HostTest do
     assert Wardrik.Triggers.deliver(Host.triggers(host), id, "issues", %{headers: [], body: ""}) ==
              :unsupported
 
-    assert Wardrik.Issuer.issue(Host.issuer(host), Principal.new(:user, "maria"), []).scope == []
+    assert Wardrik.Issuer.issue(Host.issuer(host), Principal.new("acme/@maria"), []).scope == []
     assert Wardrik.Credentials.key(Host.credentials(host), "ANTHROPIC_API_KEY") == :error
 
     assert Wardrik.Credentials.resolve(Host.credentials(host), "github", nil) ==

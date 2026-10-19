@@ -114,7 +114,7 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
       {"c1", "books__list_invoices", %{"amount" => 10}, %{by: :hook, hooks: ["careful"]}},
       {"c2", "web_search", %{"q" => "rates"}, %{by: :default, hooks: []}},
       {"c3", "books__create_bill", %{"amount" => 700}, %{by: :default, hooks: []}},
-      {:approved, "c4", Wardrik.Principal.new(:channel, "slack/U1", name: "maria")},
+      {:approved, "c4", Wardrik.Principal.new("slack:U1", name: "maria")},
       {"c4", "books__send_payment", %{"amount" => 600}, %{by: :person, hooks: ["careful/judge"]}},
       {"c5", "books__send_payment", %{"amount" => 950}, %{by: :hook, hooks: ["careful"]}},
       {"c5", "books__send_payment", %{"amount" => 950}, %{by: :hook, hooks: ["careful"]}}

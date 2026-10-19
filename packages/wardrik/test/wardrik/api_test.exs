@@ -29,7 +29,7 @@ defmodule Wardrik.APITest do
     }
   end
 
-  defp maria, do: Wardrik.Principal.new(:user, "maria")
+  defp maria, do: Wardrik.Principal.new("acme/@maria")
 
   defp id(name), do: AgentID.new!("#{name}-#{System.unique_integer([:positive])}", org: "acme")
 

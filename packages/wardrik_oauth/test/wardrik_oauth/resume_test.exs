@@ -27,7 +27,7 @@ defmodule WardrikOAuth.ResumeTest do
   end
 
   # Whoever finishes a flow is recorded as the flow: the provider's authorization.
-  defp authorizer, do: Wardrik.Principal.new(:oauth, "github", name: "github authorization")
+  defp authorizer, do: Wardrik.Principal.new("oauth:github", name: "github authorization")
 
   # An agent holding a call parked to resolve github for `owner`, as the
   # runtime parks one whose tool names it, and the link it was sent to.

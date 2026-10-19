@@ -34,6 +34,8 @@ defmodule Wardrik.ResourceTest do
               "acme/@jon/@sam",
               "deployment/@jon",
               "acme/agent/tri age",
+              "ssh:jon",
+              "acme/agent/slack:T1",
               "_acme",
               "acme/agent/../x"
             ] do

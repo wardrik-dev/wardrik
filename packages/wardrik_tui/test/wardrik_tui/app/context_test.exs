@@ -181,7 +181,7 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(
              pid,
              %{"first" => :approve},
-             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new("terminal:test"))
            ) ==
              {:error, :not_parked}
 
@@ -192,21 +192,21 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(
              pid,
              %{"absent" => :approve},
-             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new("terminal:test"))
            ) ==
              {:error, :stale_decision}
 
     assert Agent.decide(
              pid,
              %{},
-             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new("terminal:test"))
            ) ==
              {:error, :stale_decision}
 
     assert Agent.decide(
              pid,
              %{"first" => :approve},
-             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new("terminal:test"))
            ) == :ok
 
     assert_receive {:resumer, running, %{"first" => :approve}}
@@ -214,7 +214,7 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(
              pid,
              %{"second" => :approve},
-             token: Wardrik.Token.root(Wardrik.Principal.new(:terminal, "test"))
+             token: Wardrik.Token.root(Wardrik.Principal.new("terminal:test"))
            ) ==
              {:error, :not_parked}
 
@@ -260,7 +260,7 @@ defmodule WardrikTUI.App.ContextTest do
     s = session(id)
     assert screen(s) =~ "weighing the options"
 
-    Agent.ask(pid, "from elsewhere", sender: Wardrik.Principal.new(:slack, "U1"))
+    Agent.ask(pid, "from elsewhere", sender: Wardrik.Principal.new("slack:U1"))
 
     assert_receive %Event{
       payload: %Event.ActivityChanged{

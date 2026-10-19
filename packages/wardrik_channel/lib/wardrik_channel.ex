@@ -160,6 +160,10 @@ defmodule WardrikChannel do
 
   @settings [:installations, :org, channels: [], orgs: [], creates: [], approvers: []]
 
+  # What Wardrik's own principals are known by, before the `:` of their
+  # names: a channel named so would name its people as them.
+  @reserved ~w(shell ssh terminal oauth)
+
   @doc """
   Reads a channel's settings, as `config.yaml` writes them, less the keys
   every channel takes: `type`, `token`, `approvers`, `admins` and `create`. Answers
@@ -240,6 +244,11 @@ defmodule WardrikChannel do
   `attach/2` takes, with `types` the adapters by the `type` each names, or
   the key that does not read, as a path within the section, and why.
 
+  A channel's name is how its people are known, before the `:` of the
+  names `principal/2` gives them: lower-case letters, digits and `-`,
+  beginning with a letter, and none of `shell`, `ssh`, `terminal` or
+  `oauth`, which Wardrik's own principals are known by.
+
   Every channel takes `type`, `token`, the one its installation in the
   workspace that token reaches acts with, `create`, `approvers` and
   `admins`, who may change the agents of its orgs, and its adapter's
@@ -266,6 +275,14 @@ defmodule WardrikChannel do
   def config(_section, _types), do: {:error, [], "is a set of keys"}
 
   defp channel!(name, channel, types) do
+    unless Wardrik.Principal.provider?(name) and name not in @reserved,
+      do:
+        invalid!(
+          [name],
+          "is not a channel's name: one is lower-case letters, digits and -, beginning " <>
+            "with a letter, and none of shell, ssh, terminal or oauth"
+        )
+
     {type, settings} = Map.pop(table!(channel, [name]), "type")
     {token, settings} = Map.pop(settings, "token")
     {creates, settings} = Map.pop(settings, "create", true)
@@ -337,19 +354,19 @@ defmodule WardrikChannel do
   def tasks, do: WardrikChannel.TaskSupervisor
 
   @doc """
-  The `Wardrik.Principal` of `member`: of type `:channel`, known as
-  `channel/workspace/id`, so the same id in two channels, or two
-  workspaces, are two people, and every channel names its people alike.
-  Options: `:name`, the name the channel shows for them.
+  The `Wardrik.Principal` of `member`, known as `channel:workspace/id`, so
+  the same id in two channels, or two workspaces, are two people, and every
+  channel names its people alike. Options: `:name`, the name the channel
+  shows for them.
 
       WardrikChannel.principal(member, name: "jon")
-      #=> a principal of type :channel, known as "slack/T0123/U024BE7LH", by name "jon"
+      #=> a principal known as "slack:T0123/U024BE7LH", by name "jon"
   """
   @spec principal(Member.t(), keyword()) :: Wardrik.Principal.t()
   def principal(%Member{installation: installation, id: id}, opts \\ []) do
     opts = Keyword.validate!(opts, [:name])
 
-    Wardrik.Principal.new(:channel, "#{installation.channel}/#{installation.workspace}/#{id}",
+    Wardrik.Principal.new("#{installation.channel}:#{installation.workspace}/#{id}",
       name: opts[:name]
     )
   end
@@ -363,7 +380,8 @@ defmodule WardrikChannel do
   """
   @spec person(Wardrik.Principal.t()) :: {String.t(), String.t(), String.t()}
   def person(principal) do
-    [channel, workspace, user] = String.split(Wardrik.Principal.id(principal), "/", parts: 3)
+    [channel, known] = String.split(Wardrik.Principal.id(principal), ":", parts: 2)
+    [workspace, user] = String.split(known, "/", parts: 2)
     {channel, workspace, user}
   end
 
