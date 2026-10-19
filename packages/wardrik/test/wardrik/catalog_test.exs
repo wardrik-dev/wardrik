@@ -351,6 +351,23 @@ defmodule Wardrik.CatalogTest do
                |> Wardrik.Test.call("agent_read", %{"agent" => "a/b/c/d/e"})
     end
 
+    test "names a thread's agent where the call is on its definition or triggers" do
+      books = acme("books")
+      thread = "#{books}/C1-17.1"
+
+      assert %Call{state: :done, result: {:error, %{"error" => error}}} =
+               acme("front")
+               |> run(Agents)
+               |> Wardrik.Test.call("agent_definition_read", %{"agent" => thread})
+
+      assert error == %{
+               "type" => "invalid_request",
+               "message" =>
+                 "#{thread} is a thread of #{books}, which holds its definition and triggers; " <>
+                   "name #{books} instead."
+             }
+    end
+
     test "reads and messages only what whoever asked may, and changes as itself" do
       front = acme("front")
       inside = echoing(acme("inside"), "ok")

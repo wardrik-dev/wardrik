@@ -71,6 +71,12 @@ defmodule Wardrik do
   Each answers `{:ok, value}`, `:ok` or `{:error, %Wardrik.Error{}}`, and
   has a variant ending in `!` that answers the value or raises the error.
 
+  A function on one agent acts on a `Wardrik.Thread` of it too, but for
+  those on its definition and triggers, `agent_define/4`,
+  `agent_definition_read/2`, `agent_trigger_set/4` and
+  `agent_trigger_remove/3`: a thread runs on its agent's, so they refuse
+  one, naming the agent to act on instead.
+
   ## Options
 
     * `:store` - where everything is kept, as `store/1` makes it, which the
@@ -129,6 +135,7 @@ defmodule Wardrik do
   alias Wardrik.Servers.Server
   alias Wardrik.Spawned
   alias Wardrik.Statement
+  alias Wardrik.Thread
   alias Wardrik.Token
   alias Wardrik.Tokens
   alias WardrikDefinition.Context
@@ -138,6 +145,9 @@ defmodule Wardrik do
 
   @typedoc "What became of an agent a forget reached: removed, kept with why, or not removed with why."
   @type outcome() :: :forgotten | {:kept, String.t()} | {:failed, String.t()}
+
+  # What a thread runs on of its agent's, read and changed on the agent.
+  @agents_own ~w(agent.define agent.definition.read agent.trigger.set agent.trigger.remove)
 
   @seams [:issuer, :credentials, :connections, :servers, :tokens, :triggers, :dispatch, :llm]
 
@@ -716,9 +726,9 @@ defmodule Wardrik do
   #{NimbleOptions.docs(@define_opts)}
   """
   @doc group: "Agent lifecycle"
-  @spec agent_define(Scope.t(), AgentID.t(), map(), keyword()) ::
+  @spec agent_define(Scope.t(), AgentAddress.t(), map(), keyword()) ::
           {:ok, Snapshot.t()} | {:error, Error.t()}
-  def agent_define(%Scope{} = scope, %AgentID{} = agent, definition, opts \\ [])
+  def agent_define(%Scope{} = scope, agent, definition, opts \\ [])
       when is_map(definition) do
     opts = NimbleOptions.validate!(opts, @define_opts)
     scope = refreshed(scope)
@@ -753,9 +763,9 @@ defmodule Wardrik do
 
   @doc "`agent`'s definition as it was last put, and the tools it names that offer nothing yet."
   @doc group: "Agent lifecycle"
-  @spec agent_definition_read(Scope.t(), AgentID.t()) ::
+  @spec agent_definition_read(Scope.t(), AgentAddress.t()) ::
           {:ok, %{definition: Definition.t(), missing: [String.t()]}} | {:error, Error.t()}
-  def agent_definition_read(%Scope{} = scope, %AgentID{} = agent) do
+  def agent_definition_read(%Scope{} = scope, agent) do
     definitions = Host.definitions(scope.host)
 
     with :ok <- authorize(scope, "agent.definition.read", agent) do
@@ -1141,9 +1151,9 @@ defmodule Wardrik do
   it.
   """
   @doc group: "Triggers"
-  @spec agent_trigger_set(Scope.t(), AgentID.t(), String.t(), map()) ::
+  @spec agent_trigger_set(Scope.t(), AgentAddress.t(), String.t(), map()) ::
           {:ok, map()} | {:error, Error.t()}
-  def agent_trigger_set(%Scope{} = scope, %AgentID{} = agent, name, fields)
+  def agent_trigger_set(%Scope{} = scope, agent, name, fields)
       when is_binary(name) and is_map(fields) do
     with :ok <- authorize(scope, "agent.trigger.set", agent),
          {:ok, trigger} <- trigger_set(scope, agent, name, fields),
@@ -1160,9 +1170,9 @@ defmodule Wardrik do
 
   @doc "Removes `agent`'s trigger `name`, and answers it as `agent_trigger_set/4` would."
   @doc group: "Triggers"
-  @spec agent_trigger_remove(Scope.t(), AgentID.t(), String.t()) ::
+  @spec agent_trigger_remove(Scope.t(), AgentAddress.t(), String.t()) ::
           {:ok, map()} | {:error, Error.t()}
-  def agent_trigger_remove(%Scope{} = scope, %AgentID{} = agent, name) when is_binary(name) do
+  def agent_trigger_remove(%Scope{} = scope, agent, name) when is_binary(name) do
     with :ok <- authorize(scope, "agent.trigger.remove", agent),
          {:ok, trigger} <- trigger_removed(scope, agent, name),
          do: audited(scope, [{:trigger_removed, agent, name}], trigger)
@@ -1557,6 +1567,15 @@ defmodule Wardrik do
 
   # -- checking and recording -------------------------------------------------------
 
+  defp authorize(_scope, action, %Thread{agent: agent} = thread) when action in @agents_own,
+    do:
+      {:error,
+       Error.new(
+         :invalid,
+         "#{thread} is a thread of #{agent}, which holds its definition and triggers; " <>
+           "name #{agent} instead."
+       )}
+
   defp authorize(scope, action, target),
     do: Token.authorize(refreshed(scope).token, action, target)
 
@@ -1660,13 +1679,13 @@ defmodule Wardrik do
 
   @doc "As `agent_define/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_define!(Scope.t(), AgentID.t(), map(), keyword()) :: Snapshot.t()
+  @spec agent_define!(Scope.t(), AgentAddress.t(), map(), keyword()) :: Snapshot.t()
   def agent_define!(scope, agent, definition, opts \\ []),
     do: unwrap(agent_define(scope, agent, definition, opts))
 
   @doc "As `agent_definition_read/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_definition_read!(Scope.t(), AgentID.t()) ::
+  @spec agent_definition_read!(Scope.t(), AgentAddress.t()) ::
           %{definition: Definition.t(), missing: [String.t()]}
   def agent_definition_read!(scope, agent), do: unwrap(agent_definition_read(scope, agent))
 
@@ -1737,13 +1756,13 @@ defmodule Wardrik do
 
   @doc "As `agent_trigger_set/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Triggers"
-  @spec agent_trigger_set!(Scope.t(), AgentID.t(), String.t(), map()) :: map()
+  @spec agent_trigger_set!(Scope.t(), AgentAddress.t(), String.t(), map()) :: map()
   def agent_trigger_set!(scope, agent, name, fields),
     do: unwrap(agent_trigger_set(scope, agent, name, fields))
 
   @doc "As `agent_trigger_remove/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Triggers"
-  @spec agent_trigger_remove!(Scope.t(), AgentID.t(), String.t()) :: map()
+  @spec agent_trigger_remove!(Scope.t(), AgentAddress.t(), String.t()) :: map()
   def agent_trigger_remove!(scope, agent, name),
     do: unwrap(agent_trigger_remove(scope, agent, name))
 
