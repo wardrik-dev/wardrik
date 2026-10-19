@@ -28,6 +28,7 @@
       "Wardrik.Audit",
       "Wardrik.Call",
       "Wardrik.Call.Ask",
+      "Wardrik.Call.Pipeline",
       "Wardrik.Catalog.Agents",
       "Wardrik.Catalog.Self",
       "Wardrik.Compaction",

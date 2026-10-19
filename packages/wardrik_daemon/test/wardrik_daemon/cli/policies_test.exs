@@ -104,10 +104,9 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
 
   # Answers each call by the amount it names.
   defp answering do
-    stub(ReqLLM, :evaluate, fn model, %{"arguments" => arguments}, %{"q0" => _question} ->
+    Wardrik.Test.LLM.answering(Wardrik.Test.llm(), fn %{state: %{"arguments" => arguments}} ->
       p = Map.get(arguments, "amount", 0) / 1000
-      object = %{"q0" => %{"type" => "boolean", "probability" => p}}
-      {:ok, %ReqLLM.Response{id: "e", model: model, context: nil, object: object}}
+      Wardrik.Test.LLM.evaluation(%{"q0" => %{"type" => "boolean", "probability" => p}})
     end)
   end
 

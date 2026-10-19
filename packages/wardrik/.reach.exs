@@ -144,6 +144,7 @@
       "Wardrik.Audit",
       "Wardrik.Call",
       "Wardrik.Call.Ask",
+      "Wardrik.Call.Pipeline",
       "Wardrik.Compaction",
       "Wardrik.Connections",
       "Wardrik.Connections.Connection",

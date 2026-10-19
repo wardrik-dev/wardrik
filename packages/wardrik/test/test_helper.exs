@@ -1,7 +1,6 @@
 Mimic.copy(WardrikEcto.Migration)
 Mimic.copy(Ecto.Adapters.SQL)
 Mimic.copy(WardrikPolicy.Meter)
-Mimic.copy(ReqLLM)
 
 # One runtime for the suite, with the budgets' meters and the triggers beside
 # it. A feed a trigger watches is read through Req.Test. The tests that reach

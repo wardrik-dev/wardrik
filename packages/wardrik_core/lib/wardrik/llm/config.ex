@@ -94,7 +94,7 @@ defmodule Wardrik.LLM.Config do
             history: {Wardrik.Compaction, %Wardrik.Compaction{}}
 
   @type t :: %__MODULE__{
-          model_spec: {atom(), keyword()},
+          model_spec: String.t() | {atom(), keyword()},
           system: String.t() | nil,
           tools: [Tool.spec()],
           except_tools: [String.t()],
@@ -107,7 +107,7 @@ defmodule Wardrik.LLM.Config do
 
   @typedoc "A config written down: its fields, with the names of the tools that could not travel."
   @type dumped() :: %{
-          model_spec: {atom(), keyword()},
+          model_spec: String.t() | {atom(), keyword()},
           system: String.t() | nil,
           tools: [module() | {module(), term()}],
           dropped_tools: [String.t()],

@@ -12,10 +12,18 @@ defmodule WardrikDaemon.JudgeReplay do
   refused, or of one still waiting on a person. Of those, the calls a
   question of the judge names, the newest first, each once however many
   times it ran.
+
+  The judge is asked about each call as one of its agent's model calls on
+  the host, so the host's dispatch admits it and its credentials hold the
+  key, with no policy deciding it, as nothing is decided here.
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Event.Log
+  alias Wardrik.Host
+  alias Wardrik.LLM.Config
+  alias Wardrik.Run
   alias WardrikDaemon.Agents
   alias WardrikDefinition.Record
   alias WardrikPolicy.Judge
@@ -85,15 +93,16 @@ defmodule WardrikDaemon.JudgeReplay do
   end
 
   @doc """
-  The newest `opts[:last]` calls in `store` under the prefixes `opts[:under]`
-  that a question of `judge` names, each tried on it, newest first.
+  The newest `opts[:last]` calls kept in `host`'s store under the prefixes
+  `opts[:under]` that a question of `judge` names, each tried on it, newest
+  first.
   """
-  @spec tried(WardrikStore.t(), Judge.t(), under: [Prefix.t()], last: pos_integer()) ::
-          [tried()]
-  def tried(store, %Judge{} = judge, opts) do
+  @spec tried(Host.t(), Judge.t(), under: [Prefix.t()], last: pos_integer()) :: [tried()]
+  def tried(%Host{} = host, %Judge{} = judge, opts) do
     opts = Keyword.validate!(opts, [:under, :last])
     prefixes = Keyword.fetch!(opts, :under)
     last = Keyword.fetch!(opts, :last)
+    store = Host.store(host)
 
     for(
       log <- Log.logs(store),
@@ -104,12 +113,13 @@ defmodule WardrikDaemon.JudgeReplay do
     )
     |> Enum.sort_by(& &1.time, :desc)
     |> Enum.take(last)
-    |> Task.async_stream(&judged(judge, &1), timeout: :timer.minutes(2))
+    |> Task.async_stream(&judged(host, judge, &1), timeout: :timer.minutes(2))
     |> Enum.map(fn {:ok, tried} -> tried end)
   end
 
-  defp judged(judge, call) do
-    answers = Judge.evaluate(judge.model, call.tool, call.arguments, call.questions)
+  defp judged(host, judge, call) do
+    run = Run.root(Config.new(), AgentID.parse!(call.agent), name: "judge", host: host)
+    answers = Judge.evaluate(run, judge, %{name: call.tool, arguments: call.arguments})
     Map.merge(call, %{answers: answers, judged: Judge.judged(call.questions, answers)})
   end
 

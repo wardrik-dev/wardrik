@@ -16,8 +16,9 @@ defmodule WardrikPolicy.Judge do
 
   For each tool call, the questions whose `tools` name it, every tool's
   where they name none, are asked together in one request to `model`, an
-  evaluation model `ReqLLM.evaluate/4` reaches, with the tool's name and its
-  arguments as the state. A question decides by its probability of yes:
+  evaluation model, with the tool's name and its arguments as the state; see
+  `Wardrik.LLM.Client.evaluate/3`. A question decides by its probability of
+  yes:
 
     * at or above `deny`, the call is refused
     * else at or above `ask`, a person is asked first
@@ -36,6 +37,15 @@ defmodule WardrikPolicy.Judge do
   nothing usable, asks a person where a question it asked could ask or
   deny, and otherwise says nothing.
 
+  ## Its model call
+
+  The judge's model call is one of the run's, made as a turn's summary of
+  its history is: through `Wardrik.Call.Pipeline`, so the run's hooks decide
+  it and a budget counts what it spends, its `Wardrik.LLM.Dispatch` admits
+  it, the host's credentials hold its key, and the host's
+  `Wardrik.LLM.Client` makes it. A hook that refuses it, or asks a person
+  about it, leaves the judge without an answer.
+
   ## Caution
 
   A call's arguments may have been written by what the run read, so they may
@@ -50,6 +60,13 @@ defmodule WardrikPolicy.Judge do
   defstruct model: "typesafe:jev-latest", questions: []
 
   alias Wardrik.Call
+  alias Wardrik.Call.Pipeline
+  alias Wardrik.Conversation
+  alias Wardrik.Host
+  alias Wardrik.LLM.Answer
+  alias Wardrik.LLM.Client
+  alias Wardrik.LLM.Request
+  alias Wardrik.Run
   alias WardrikPolicy.Pattern
 
   @type question() :: %{
@@ -76,8 +93,11 @@ defmodule WardrikPolicy.Judge do
   @impl Wardrik.Hook
   def call(%Call{target: %Call.Tool{name: name, arguments: arguments}, run: run}, judge) do
     case asked(judge, name) do
-      [] -> :pass
-      asked -> asked |> judged(evaluate(judge.model, name, arguments, asked)) |> held(run)
+      [] ->
+        :pass
+
+      asked ->
+        asked |> judged(evaluate(run, judge, %{name: name, arguments: arguments})) |> held(run)
     end
   end
 
@@ -92,22 +112,44 @@ defmodule WardrikPolicy.Judge do
   defp names?(%{tools: tools}, name), do: Enum.any?(tools, &Pattern.match?(&1, name))
 
   @doc """
-  What the model answers for a call to `name` with `arguments`: each
-  question's probability of yes, in their order, or why there is none.
+  What `judge`'s model answers, asked under `run`, of `call`, a call to the
+  tool `name` with `arguments`: the probability of yes of each question it
+  asks of the call, in their order, or why there is none.
   """
-  @spec evaluate(String.t(), String.t(), map(), [question()]) ::
+  @spec evaluate(Run.t(), t(), %{name: String.t(), arguments: map()}) ::
           {:ok, [float()]} | {:error, term()}
-  def evaluate(model, name, arguments, asked) do
+  def evaluate(%Run{config: config} = run, %__MODULE__{} = judge, %{name: name} = call) do
+    asked = asked(judge, name)
+
     questions =
       asked
       |> Enum.with_index()
       |> Map.new(fn {asked, n} -> {"q#{n}", %{type: :boolean, instructions: asked.question}} end)
 
-    state = %{"tool" => Pattern.shown(name), "arguments" => arguments}
+    request =
+      Request.new(
+        %{config | model_spec: judge.model, tools: [], system: nil, generation: []},
+        Conversation.new()
+      )
 
-    with {:ok, %{object: answers}} <- ReqLLM.evaluate(model, state, questions) do
-      probabilities(answers, length(asked))
+    state = %{"tool" => Pattern.shown(name), "arguments" => call.arguments}
+
+    case request |> Pipeline.model(run) |> Pipeline.run(&made(&1, state, questions)) do
+      %Call{state: :waiting} = waiting -> {:error, {:parked, Call.prompt(waiting)}}
+      %Call{state: :denied, denied: denied} -> {:error, {:policy_denied, denied.reason}}
+      %Call{result: {:ok, %Answer{object: answers}}} -> probabilities(answers, length(asked))
+      %Call{result: {:error, reason}} -> {:error, reason}
     end
+  end
+
+  defp made(%Call{run: run} = call, state, questions) do
+    evaluated =
+      Client.evaluate(Host.llm(run.host), Pipeline.request(call),
+        state: state,
+        questions: questions
+      )
+
+    Call.answer(call, evaluated)
   end
 
   defp probabilities(answers, count) do
@@ -138,9 +180,12 @@ defmodule WardrikPolicy.Judge do
 
   def judged(asked, {:error, reason}) do
     if Enum.any?(asked, &(&1.deny || &1.ask)),
-      do: {:ask, "The judge could not answer (#{inspect(reason)}), so a person decides."},
+      do: {:ask, "The judge could not answer (#{why(reason)}), so a person decides."},
       else: :pass
   end
+
+  defp why(%{__exception__: true} = error), do: Exception.message(error)
+  defp why(reason), do: inspect(reason)
 
   defp over?({question, probability}, effect) do
     threshold = Map.fetch!(question, effect)
@@ -159,13 +204,10 @@ defmodule WardrikPolicy.Judge do
   defp said({question, probability}),
     do: "Judged #{round(probability * 100)}% likely: #{question.question}"
 
-  defp held({:allow, :judged}, run),
-    do: if(@outside in labels(run), do: :pass, else: :allow)
+  defp held({:allow, :judged}, %Run{labels: labels}),
+    do: if(@outside in labels, do: :pass, else: :allow)
 
   defp held(decision, _run), do: decision
-
-  defp labels(%Wardrik.Run{labels: labels}), do: labels
-  defp labels(nil), do: []
 
   # -- written down ------------------------------------------------------------
 
