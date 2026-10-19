@@ -105,6 +105,18 @@ defmodule Wardrik.ResourceTest do
       refute Resource.covers?(r("acme/agent/ab"), r("acme/agent/abc"))
       refute Resource.covers?(r("acme/agent/abc"), r("acme/agent/ab"))
     end
+
+    test "takes no longer for a pattern of many stars than its length allows" do
+      many = "acme/agent/" <> String.duplicate("a*", 30) <> "b"
+      name = "acme/agent/" <> String.duplicate("a", 200)
+
+      {microseconds, covered?} = :timer.tc(fn -> Resource.covers?(r(many), r(name)) end)
+
+      refute covered?
+      assert microseconds < 1_000_000
+      assert Resource.covers?(r("acme/*/*/thread/*"), r("acme/agent/triage/thread/1"))
+      assert Resource.covers?(r("a*e/agent/*ia*e"), r("acme/agent/triage"))
+    end
   end
 
   test "an agent's ID is its resource's" do

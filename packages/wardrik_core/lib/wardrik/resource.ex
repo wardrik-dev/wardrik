@@ -112,24 +112,28 @@ defmodule Wardrik.Resource do
   """
   @spec covers?(t(), t()) :: boolean()
   def covers?(%__MODULE__{name: pattern}, %__MODULE__{name: target}),
-    do: matches?(pattern, target)
+    do: matches?(pattern, target, nil)
 
   # Read a character at a time, so nothing is compiled for a call. A `?`
   # meets one character of the target, never a `*` that stands for many,
-  # so a pattern covers another only where it covers all it matches.
-  defp matches?(<<>>, <<>>), do: true
-  defp matches?(<<?*, pattern::binary>>, <<>>), do: matches?(pattern, <<>>)
+  # so a pattern covers another only where it covers all it matches. Only
+  # the latest `*` is gone back to, with one more character for it, which
+  # keeps a pattern of many `*` from taking time exponential in them.
+  defp matches?(<<>>, <<>>, _back), do: true
 
-  defp matches?(<<?*, rest::binary>> = pattern, <<_char::utf8, tail::binary>> = target),
-    do: matches?(rest, target) or matches?(pattern, tail)
+  defp matches?(<<?*, pattern::binary>>, target, _back),
+    do: matches?(pattern, target, {pattern, target})
 
-  defp matches?(<<??, pattern::binary>>, <<char::utf8, tail::binary>>) when char != ?*,
-    do: matches?(pattern, tail)
+  defp matches?(<<??, pattern::binary>>, <<char::utf8, tail::binary>>, back) when char != ?*,
+    do: matches?(pattern, tail, back)
 
-  defp matches?(<<char::utf8, pattern::binary>>, <<char::utf8, tail::binary>>),
-    do: matches?(pattern, tail)
+  defp matches?(<<char::utf8, pattern::binary>>, <<char::utf8, tail::binary>>, back),
+    do: matches?(pattern, tail, back)
 
-  defp matches?(_pattern, _target), do: false
+  defp matches?(_pattern, _target, {pattern, <<_char::utf8, tail::binary>>}),
+    do: matches?(pattern, tail, {pattern, tail})
+
+  defp matches?(_pattern, _target, _back), do: false
 
   defp written?(["deployment" | pairs], whole?), do: pairs?(pairs, whole?)
 
