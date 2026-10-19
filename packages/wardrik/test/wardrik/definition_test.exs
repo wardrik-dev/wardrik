@@ -118,7 +118,7 @@ defmodule Wardrik.DefinitionTest do
     assert definition.tools == ["clock", "books/*"]
     assert definition.policy == "careful"
     assert definition.channels == ["chat"]
-    assert %WardrikNotify.Route{targets: ["pager"]} = definition.notify
+    assert %WardrikDefinition.Route{targets: ["pager"]} = definition.notify
     assert definition.fields == fields
 
     assert {:ok, spec} = built(definition, id, context)

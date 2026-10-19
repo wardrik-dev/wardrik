@@ -29,10 +29,13 @@
     research: ["WardrikResearch", "WardrikResearch.*"]
   ],
   # What the packages folded in here depended on, kept: each layer calls only
-  # the ones its package depended on, and none calls Wardrik itself.
+  # the ones its package depended on, and none calls Wardrik itself but
+  # notify, which follows the agents' logs through Wardrik.Listener and reads
+  # each agent's route from its definition.
   deps: [
     forbidden: [
       {:definition, :wardrik},
+      {:definition, :notify},
       {:definition, :vault},
       {:definition, :ecto},
       {:definition, :s3},
@@ -68,8 +71,6 @@
       {:workspace, :s3},
       {:workspace, :workflow},
       {:workspace, :research},
-      {:notify, :wardrik},
-      {:notify, :definition},
       {:notify, :policy},
       {:notify, :triggers},
       {:notify, :workspace},
@@ -251,7 +252,7 @@
     layer_coverage: [
       require_all_modules: true,
       forbid_multiple_matches: true,
-      ignore: ["Wardrik.Test.*", "Wardrik.OrgIssuer", "Wardrik.ByOrg"]
+      ignore: ["Wardrik.Test.*", "Wardrik.OrgIssuer", "Wardrik.DeploymentIssuer", "Wardrik.ByOrg"]
     ]
   ]
 ]

@@ -20,9 +20,10 @@ defmodule WardrikDaemon do
       `log/mcp.log` in the state directory.
     * `WardrikOAuth.Supervisor`, when a provider is configured, or the vault
       has a key to keep the tokens of servers people add and sign in to.
-    * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
-      `Wardrik.Definitions.routes/1` for the routes as it starts, so one that
-      restarts routes the agents as before.
+    * `WardrikNotify.Supervisor`, when a notify target is configured. It
+      follows every agent's log as `deployment`, which
+      `WardrikDaemon.Issuer` allows `agent.events`, reading each agent's
+      route from its definition as its events come.
     * `WardrikChannel.Replies`, which posts what agents answer in the rooms'
       threads, and `WardrikChannel.Supervisor`, which runs what each
       channel's adapter runs, such as its connection to the medium, when a
@@ -261,7 +262,7 @@ defmodule WardrikDaemon do
       )
 
   defp routed(nil), do: []
-  defp routed(%WardrikNotify.Route{targets: targets}), do: targets
+  defp routed(%WardrikDefinition.Route{targets: targets}), do: targets
 
   @doc """
   The agent files that read, by the ID of the agent each declares, with its

@@ -642,10 +642,10 @@ defmodule Wardrik.Definition.ReadingTest do
 
   test "notify routes the agent's notices to targets by name, each telling the orgs it serves",
        context do
-    assert %WardrikNotify.Route{targets: ["ops"], on: [:parked, :failed]} =
+    assert %WardrikDefinition.Route{targets: ["ops"], on: [:parked, :failed]} =
              route("---\nnotify: ops\n---\n", context)
 
-    assert %WardrikNotify.Route{targets: ["ops", "audit"], on: [:finished]} =
+    assert %WardrikDefinition.Route{targets: ["ops", "audit"], on: [:finished]} =
              route("---\nnotify: {to: [ops, audit], on: [finished]}\n---\n", context)
 
     assert nil == route("---\n---\n", context)

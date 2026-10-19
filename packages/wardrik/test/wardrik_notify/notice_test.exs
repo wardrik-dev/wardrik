@@ -3,21 +3,48 @@ defmodule WardrikNotify.NoticeTest do
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
-  alias Wardrik.Conversation.Assistant
-  alias Wardrik.Event
+  alias Wardrik.Event.Log
+  alias Wardrik.Event.Log.Entry
+  alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Script
   alias WardrikNotify.Notice
 
-  defp event(payload) do
-    %Event{source: %{agent_id: ~A"acme/triage"}, payload: payload, at: 1_790_000_000_000_000}
+  @time "2026-10-19T12:04:09.611000Z"
+
+  defp entry(type, data, agent \\ ~A"acme/triage"),
+    do: %Entry{log: agent, event: %{"type" => type, "time" => @time, "data" => data}, follows: 0}
+
+  defp from(entry), do: Notice.from_entry(entry, host: Wardrik.Test.host())
+
+  # An agent waiting on the call "call_1", and the entry of its log for the
+  # turn that parked.
+  defp parked do
+    config = Script.new({AgentRunners, :parking, [self(), "call_1"]})
+    {agent, pid} = Wardrik.Test.Fleet.start_agent(config: config)
+    :ok = Log.subscribe(agent)
+    :ok = Wardrik.Agent.ask(pid, "Ship it.")
+    assert_receive %Entry{event: %{"type" => "wardrik.run.interrupted"}} = entry, 5_000
+    {agent, entry}
   end
 
-  test "a parked turn names each call and its question" do
-    call = %{id: "call_1", name: "deploy", arguments: %{"env" => "prod"}}
+  test "a parked turn names each call it still waits on, and its question, as it was written" do
+    {agent, entry} = parked()
 
-    assert {:ok, %Notice{kind: :parked, agent: ~A"acme/triage", calls: [parked]} = notice} =
-             Notice.from_event(
-               event(%Event.TurnParked{calls: [{call, "This ships to production."}]})
-             )
+    assert {:ok, %Notice{kind: :parked, agent: ^agent, calls: [call]} = notice} = from(entry)
+    assert %{id: "call_1", prompt: "This ships to production.", authorization: false} = call
+    assert {:ok, notice.at, 0} == DateTime.from_iso8601(entry.event["time"])
+
+    elsewhere = put_in(entry.event["data"]["interrupts"], [%{"id" => "call_2"}])
+    assert from(elsewhere) == :none
+    assert from(%{entry | log: ~A"acme/nobody-waits"}) == :none
+  end
+
+  test "the calls an agent waits on, as it answers them, make a notice of now" do
+    call = %{id: "call_1", name: "deploy", arguments: %{"env" => "prod"}, labels: ["outside"]}
+    before = DateTime.utc_now()
+
+    assert %Notice{kind: :parked, agent: ~A"acme/triage", calls: [parked], at: at} =
+             Notice.parked(~A"acme/triage", [{call, "This ships to production."}])
 
     assert parked == %{
              id: "call_1",
@@ -25,29 +52,10 @@ defmodule WardrikNotify.NoticeTest do
              arguments: %{"env" => "prod"},
              prompt: "This ships to production.",
              authorization: false,
-             labels: []
+             labels: ["outside"]
            }
 
-    assert notice.at == DateTime.from_unix!(1_790_000_000_000_000, :microsecond)
-  end
-
-  test "the calls an agent waits on, as it answers them, make a notice of now" do
-    call = %{id: "call_1", name: "deploy", arguments: %{"env" => "prod"}}
-    before = DateTime.utc_now()
-
-    assert %Notice{kind: :parked, agent: ~A"acme/triage", calls: [%{id: "call_1"}], at: at} =
-             Notice.parked(~A"acme/triage", [{call, "This ships to production."}])
-
     assert DateTime.compare(at, before) != :lt
-  end
-
-  test "a call a turn made after reading content from outside says so" do
-    call = %{id: "call_1", name: "deploy", arguments: %{}, labels: ["outside"]}
-
-    assert {:ok, %Notice{calls: [%{labels: ["outside"]}]}} =
-             Notice.from_event(
-               event(%Event.TurnParked{calls: [{call, "This ships to production."}]})
-             )
   end
 
   test "a call waiting on an authorization is named without its link" do
@@ -58,11 +66,7 @@ defmodule WardrikNotify.NoticeTest do
       link: %{url: "https://github.com/login/device", code: "WDJB-MJHT"}
     }
 
-    assert {:ok, notice} =
-             Notice.from_event(
-               event(%Event.TurnParked{calls: [{call, "To connect github, open its link."}]})
-             )
-
+    notice = Notice.parked(~A"acme/triage", [{call, "To connect github, open its link."}])
     assert [%{authorization: true}] = notice.calls
 
     encoded = notice |> Notice.to_map() |> JSON.encode!()
@@ -70,27 +74,41 @@ defmodule WardrikNotify.NoticeTest do
     refute encoded =~ "github.com/login"
   end
 
-  test "a failed turn keeps its reason, and a finished one what it said last" do
-    assert {:ok, %Notice{kind: :failed, reason: :timeout}} =
-             Notice.from_event(event(%Event.TurnFailed{reason: :timeout}))
+  test "a failed turn keeps why, and a finished one what it said last" do
+    failed =
+      entry("wardrik.run.failed", %{
+        "error" => %{"type" => "timeout", "message" => "It took too long."}
+      })
 
-    messages = [Assistant.new("Looking."), Assistant.new("Two incidents need you.")]
+    assert {:ok, %Notice{kind: :failed, reason: "It took too long."}} = from(failed)
+
+    said = fn text ->
+      %{"role" => "assistant", "parts" => [%{"type" => "text", "content" => text}]}
+    end
+
+    messages = [said.("Looking."), said.("Two incidents need you."), said.("")]
 
     assert {:ok, %Notice{kind: :finished, text: "Two incidents need you."}} =
-             Notice.from_event(event(%Event.TurnFinished{messages: messages}))
+             from(entry("wardrik.run.completed", %{"messages" => messages}))
+
+    assert {:ok, %Notice{text: ""}} = from(entry("wardrik.run.completed", %{"messages" => []}))
   end
 
-  test "any other event is nobody's business" do
-    assert Notice.from_event(
-             event(%Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hi")]})
-           ) == :none
+  test "any other entry is nobody's business" do
+    assert from(entry("wardrik.run.started", %{"run" => %{"id" => "r1"}})) == :none
+    assert from(entry("wardrik.events.dropped", %{"after" => 0, "oldest" => 4})) == :none
   end
 
   test "to_map/1 is what a webhook sends" do
-    {:ok, notice} = Notice.from_event(event(%Event.TurnFailed{reason: :timeout}))
+    {:ok, notice} = from(entry("wardrik.run.failed", %{"error" => %{"message" => "Timed out."}}))
 
-    assert %{event: "turn_failed", agent: "acme/triage", reason: ":timeout", calls: []} =
-             Notice.to_map(notice)
+    assert %{
+             event: "turn_failed",
+             agent: "acme/triage",
+             at: "2026-10-19T12:04:09.611000Z",
+             reason: "Timed out.",
+             calls: []
+           } = Notice.to_map(notice)
   end
 
   test "reason_text/1 says what an error says, rather than what it holds" do

@@ -373,10 +373,10 @@ defmodule WardrikDaemon.AgentFileTest do
         definition.notify
       end
 
-      assert %WardrikNotify.Route{targets: ["ops"], on: [:parked, :failed]} =
+      assert %WardrikDefinition.Route{targets: ["ops"], on: [:parked, :failed]} =
                route.("---\nnotify: ops\n---\n")
 
-      assert %WardrikNotify.Route{targets: ["ops", "audit"], on: [:finished]} =
+      assert %WardrikDefinition.Route{targets: ["ops", "audit"], on: [:finished]} =
                route.("---\nnotify: {to: [ops, audit], on: [finished]}\n---\n")
 
       assert nil == route.("---\n---\n")
@@ -389,7 +389,7 @@ defmodule WardrikDaemon.AgentFileTest do
 
       {:ok, definition} = read_definition(ctx(), id, %{"notify" => ["ops", "audit"]})
 
-      assert %WardrikNotify.Route{targets: ["ops", "audit"], on: [:parked, :failed]} =
+      assert %WardrikDefinition.Route{targets: ["ops", "audit"], on: [:parked, :failed]} =
                definition.notify
     end
 

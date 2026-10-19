@@ -38,10 +38,15 @@ defmodule WardrikNotify do
   A target's `:orgs` is the orgs whose agents it tells, every org's unless it
   says. `config/1` reads `config.yaml`'s `notify` into the targets.
 
-  `WardrikNotify.Dispatcher` subscribes to each routed agent's events and sends
-  each `WardrikNotify.Notice` from the node that holds the agent, so a cluster
-  sends it once. A notice that cannot be delivered is logged; nothing retries
-  it past the target's own retries.
+  `WardrikNotify.Keeper`, one in the cluster, follows every agent's log
+  as the deployment, `Wardrik.Principal.deployment/0`, so the host's
+  `Wardrik.Issuer` allows `deployment` `agent.events` on `*/agent/*`. For
+  each event it reads the agent's route from its definition, sends each
+  `WardrikNotify.Notice` the route asks for (see `WardrikNotify.Listener`),
+  and writes down its place: after a restart it carries on from there, so
+  each notice is sent at least once, and a receiver tells a repeat by its
+  agent, its `event` and its `at`. A notice that cannot be delivered is
+  logged; nothing retries it past the listener's own attempts.
   """
 
   alias WardrikNotify.Notice
@@ -53,22 +58,16 @@ defmodule WardrikNotify do
 
   @doc """
   `host` with `WardrikNotify.Supervisor` among its children, delivering to
-  `:targets`, where it names any, with the agents' routes read from the
-  host's `Wardrik.Definitions` as it starts. `:req_options` and `:backoff`
-  are the supervisor's.
+  `:targets`, where it names any, as the agents' definitions on the host
+  route them. `:req_options`, `:backoff` and `:name` are the supervisor's.
   """
   @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
   def attach(%Wardrik.Host{} = host, opts \\ []) do
-    opts = Keyword.validate!(opts, [:req_options, :backoff, targets: []])
+    opts = Keyword.validate!(opts, [:req_options, :backoff, :name, targets: []])
 
     if opts[:targets] == [],
       do: host,
-      else:
-        Wardrik.Host.child(
-          host,
-          {WardrikNotify.Supervisor,
-           [routes: {Wardrik.Definitions, :routes, [Wardrik.Host.definitions(host)]}] ++ opts}
-        )
+      else: Wardrik.Host.child(host, {WardrikNotify.Supervisor, opts})
   end
 
   @doc """
@@ -170,16 +169,4 @@ defmodule WardrikNotify do
 
   defp served?(:all, _org), do: true
   defp served?(orgs, org), do: org in orgs
-
-  @doc """
-  Routes each agent in `routes` to its targets, replacing every route set
-  before. An agent left out is no longer routed. Does nothing where
-  `WardrikNotify.Supervisor` is not running, which no route can then need.
-  """
-  @spec put_routes(%{Wardrik.AgentID.t() => WardrikNotify.Route.t()}) :: :ok
-  def put_routes(routes) when is_map(routes) do
-    if GenServer.whereis(WardrikNotify.Dispatcher),
-      do: WardrikNotify.Dispatcher.put_routes(routes),
-      else: :ok
-  end
 end

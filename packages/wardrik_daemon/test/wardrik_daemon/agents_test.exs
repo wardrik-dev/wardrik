@@ -224,57 +224,31 @@ defmodule WardrikDaemon.AgentsTest do
     Host.put_section(WardrikDaemon, Keyword.put(own, :ceilings, %{org => name}))
   end
 
-  test "notify started after it routes the agents its files route", %{org: org} = context do
-    targets = [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
-    Host.put_section(WardrikNotify, targets: targets)
-    notify = [routes: {Definitions, :routes, [definitions()]}, targets: targets]
-
-    write(context, "alpha", "notify: audit\n")
-    Host.start_agents(context.dir)
-    start_supervised!({WardrikNotify.Supervisor, notify})
-    _files = Agents.files(Host.agents(), host: Host.host())
-
-    alpha = AgentID.parse!("#{org}/alpha")
-
-    assert %{^alpha => %WardrikNotify.Route{targets: ["audit"]}} =
-             Definitions.routes(definitions())
-
-    stop_supervised!(WardrikNotify.Supervisor)
-    start_supervised!({WardrikNotify.Supervisor, notify})
-    assert :sys.get_state(WardrikNotify.Dispatcher).routes == Definitions.routes(definitions())
-  end
-
-  test "routes an agent the HTTP API defines as its definition says, until it is forgotten",
+  test "keeps where an agent the HTTP API defines tells of it, as its definition says, until it is forgotten",
        %{org: org} = context do
-    targets = [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
-    Host.put_section(WardrikNotify, targets: targets)
-    notify = [routes: {Definitions, :routes, [definitions()]}, targets: targets]
+    Host.put_section(WardrikNotify,
+      targets: [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
+    )
+
     Host.start_agents(context.dir)
-    start_supervised!({WardrikNotify.Supervisor, notify})
     beta = AgentID.parse!("#{org}/beta")
-    routes = fn -> :sys.get_state(WardrikNotify.Dispatcher).routes end
 
-    assert {:ok, _spec} =
-             put(beta, %{"notify" => "audit"}, token(org))
+    route = fn ->
+      with {:ok, definition} <- Definitions.get(definitions(), beta), do: definition.notify
+    end
 
-    assert %{^beta => %WardrikNotify.Route{targets: ["audit"]}} = routes.()
-
-    stop_supervised!(WardrikNotify.Supervisor)
-    start_supervised!({WardrikNotify.Supervisor, notify})
-    assert %{^beta => %WardrikNotify.Route{targets: ["audit"]}} = routes.()
+    assert {:ok, _spec} = put(beta, %{"notify" => "audit"}, token(org))
+    assert %WardrikDefinition.Route{targets: ["audit"]} = route.()
 
     assert {:ok, _spec} = put(beta, %{}, token(org))
-    refute is_map_key(routes.(), beta)
+    assert route.() == nil
 
     notify_on = %{"notify" => %{"to" => "audit", "on" => ["finished"]}}
-
-    assert {:ok, _spec} =
-             put(beta, notify_on, token(org))
-
-    assert %{^beta => %WardrikNotify.Route{on: [:finished]}} = routes.()
+    assert {:ok, _spec} = put(beta, notify_on, token(org))
+    assert %WardrikDefinition.Route{on: [:finished]} = route.()
 
     assert :ok = Definitions.delete(definitions(), beta)
-    refute is_map_key(routes.(), beta)
+    assert route.() == {:error, :not_found}
   end
 
   test "reads a definition sent to the HTTP API under the policies it read, and keeps it",
