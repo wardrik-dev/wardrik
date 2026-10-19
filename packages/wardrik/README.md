@@ -9,13 +9,14 @@ def deps do
 end
 ```
 
-Describe Wardrik once, start it after your repo, and act on the agents as
-each user, in a scope:
+Describe Wardrik once, start its store and it after your repo, and act on
+the agents as each user, in a scope:
 
 ```elixir
-wardrik = Wardrik.new(store: Wardrik.store(repo: MyApp.Repo), issuer: %MyApp.Issuer{})
+store = Wardrik.store(repo: MyApp.Repo)
+wardrik = Wardrik.new(store: store, issuer: %MyApp.Issuer{}, tools: [MyApp.Tools.Search])
 
-children = [MyApp.Repo, {Wardrik, wardrik}, MyAppWeb.Endpoint]
+children = [MyApp.Repo, {WardrikStore, store}, {Wardrik, wardrik}, MyAppWeb.Endpoint]
 
 scope = Wardrik.as(wardrik, maria)
 {:ok, _snapshot} = Wardrik.agent_define(scope, agent, definition)
@@ -39,13 +40,19 @@ defmodule MyApp.Repo.Migrations.AddWardrik do
 end
 ```
 
-`{Wardrik, wardrik}` starts the store, [core](../wardrik_core), the meters
-[budgets](guides/policy.md) count in, and [triggers](guides/triggers.md), in
-that order. Each agent's definition is kept in the store, read as
-[definitions](guides/definition.md) are against what `context:` lets it
-name, and so are [the files](guides/workspace.md) it works on. `Wardrik.context/1` makes one context
-for every agent; a value of your own implementing `WardrikDefinition.Contexts`
-gives each agent its own.
+`{WardrikStore, store}` starts the store, as your repo starts.
+`{Wardrik, wardrik}` starts [core](../wardrik_core), the meters
+[budgets](guides/policy.md) count in, [triggers](guides/triggers.md), then
+what the packages attached to it add, in that order. Each agent's definition
+is kept in the store, read as [definitions](guides/definition.md) are
+against the tools `tools:` names and what `context:` lets it name, and so
+are [the files](guides/workspace.md) it works on. `Wardrik.context/1` makes
+one context for every agent; a value of your own implementing
+`WardrikDefinition.Contexts` gives each agent its own.
+
+A package adds its tools, and what it runs, to the `Wardrik.Host`
+`Wardrik.new/1` answers, through an `attach/2` of its own, before Wardrik
+starts: `Wardrik.new(store: store) |> SomePackage.attach()`.
 
 `Wardrik.store/1` keeps everything in Postgres through your repo (`repo:`), in
 an S3 bucket (`bucket:`), or on each node's disk (`data_dir:`, with

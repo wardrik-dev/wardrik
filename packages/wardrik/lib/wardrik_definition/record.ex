@@ -5,7 +5,7 @@ defmodule WardrikDefinition.Record do
   of `PUT /v1/agents/{id}`, or a host's defaults.
 
   `spec/3` builds the agent's `Wardrik.Agent.Spec` from one under a
-  `WardrikDefinition.Context`, and `triggers/2` and `route/2` read what is
+  `WardrikDefinition.Context`, on a `Wardrik.Host`, and `triggers/2` and `route/2` read what is
   kept beside the spec. The store functions are each handed first the store
   records are kept in.
 
@@ -59,11 +59,17 @@ defmodule WardrikDefinition.Record do
 
   @doc """
   The spec `record` writes for the agent `id`, its own or one of its
-  conversations, under `:context`; see `WardrikDefinition.spec/5`.
+  conversations, under `:context` on `:host`; see `WardrikDefinition.spec/3`.
   """
-  @spec spec(t(), AgentID.t(), context: Context.t()) :: {:ok, Spec.t()} | {:error, String.t()}
+  @spec spec(t(), AgentID.t(), context: Context.t(), host: Wardrik.Host.t()) ::
+          {:ok, Spec.t()} | {:error, String.t()}
   def spec(%__MODULE__{id: owner, fields: fields, source: source}, %AgentID{} = id, opts),
-    do: WardrikDefinition.spec(fields, owner, id, Keyword.fetch!(opts, :context), source)
+    do:
+      WardrikDefinition.spec(
+        fields,
+        id,
+        [owner: owner, source: source] ++ Keyword.take(opts, [:context, :host])
+      )
 
   @doc """
   Where the notices of `record`'s agent go, under `:context`; see

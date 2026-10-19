@@ -38,20 +38,20 @@ defmodule Wardrik.LifecycleTest do
     @ns :lifecycle_test_definitions
     @triggers :lifecycle_test_triggers
 
-    def put(_definitions, _id, definition: %{"refuse" => message}, token: _token, held: _held),
+    def put(_definitions, _id, [{:definition, %{"refuse" => message}} | _opts]),
       do: {:error, message}
 
-    def put(_definitions, _id, definition: %{"elsewhere" => true}, token: _token, held: _held),
+    def put(_definitions, _id, [{:definition, %{"elsewhere" => true}} | _opts]),
       do: {:ok, Spec.new(id: elsewhere())}
 
-    def put(host, id, definition: fields, token: _token, held: _held) do
+    def put(host, id, [{:definition, fields} | _opts]) do
       with :ok <- editable(host, id) do
         {:ok, _vsn} = WardrikStore.put(store(), @ns, to_string(id), fields)
         {:ok, spec(id, fields)}
       end
     end
 
-    def get(_host, id) do
+    def get(_host, id, _opts \\ []) do
       case WardrikStore.get(store(), @ns, to_string(id)) do
         nil -> {:error, :not_found}
         fields -> {:ok, %Wardrik.Definition.Read{fields: fields, missing: []}}
@@ -93,16 +93,15 @@ defmodule Wardrik.LifecycleTest do
       end
     end
 
-    def current(host, id) do
+    def current(host, id, _opts) do
       case get(host, id) do
         {:ok, %Wardrik.Definition.Read{fields: fields}} -> {:ok, spec(id, fields)}
         {:error, :not_found} -> :none
       end
     end
 
-    def create(host, id) do
-      with {:ok, _spec} <-
-             put(host, id, definition: %{"model" => "openai:gpt-5"}, token: nil, held: []),
+    def create(host, id, _opts) do
+      with {:ok, _spec} <- put(host, id, definition: %{"model" => "openai:gpt-5"}),
            do: {:ok, spec(id, %{"model" => "openai:gpt-5"})}
     end
 
@@ -125,12 +124,12 @@ defmodule Wardrik.LifecycleTest do
   defimpl Wardrik.Definition, for: Kept do
     use Wardrik.Definition.None
     defdelegate put(a0, a1, a2), to: Kept
-    defdelegate get(a0, a1), to: Kept
+    defdelegate get(a0, a1, a2), to: Kept
     defdelegate delete(a0, a1), to: Kept
     defdelegate put_trigger(a0, a1, a2, a3), to: Kept
     defdelegate delete_trigger(a0, a1, a2), to: Kept
-    defdelegate current(a0, a1), to: Kept
-    defdelegate create(a0, a1), to: Kept
+    defdelegate current(a0, a1, a2), to: Kept
+    defdelegate create(a0, a1, a2), to: Kept
     defdelegate editable(a0, a1), to: Kept
   end
 

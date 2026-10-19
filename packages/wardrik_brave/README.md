@@ -10,12 +10,15 @@ def deps do
 end
 ```
 
+Attach it to the `Wardrik.Host` agents run on, before Wardrik starts, and
+a definition names it as `web_search`:
+
 ```elixir
-Wardrik.LLM.Config.new(tools: [WardrikBrave.WebSearch])
+host = WardrikBrave.attach(host)
 ```
 
-The agent calls it as `web_search`. Results are kept small, since each one
-becomes part of the turn that asked for it.
+Results are kept small, since each one becomes part of the turn that asked
+for it.
 
 Its key is the credential `BRAVE_API_KEY`, which the host's
 `Wardrik.Credentials` resolve for each call. With

@@ -5,15 +5,14 @@ defmodule Wardrik.RunningTest do
 
   setup_all do
     # Each org's agents read their definitions against a context of the org's own.
-    context = %Wardrik.ByOrg{
-      contexts: %{"acme" => Wardrik.context(tools: [Wardrik.RunningTest.Search])}
-    }
+    context = %Wardrik.ByOrg{contexts: %{"acme" => Wardrik.context(org: "acme")}}
 
     wardrik =
       Wardrik.new(
         store: Wardrik.Test.store(),
         issuer: %Wardrik.OrgIssuer{org: "acme"},
-        context: context
+        context: context,
+        tools: [Wardrik.RunningTest.Search]
       )
 
     %{wardrik: wardrik}

@@ -408,7 +408,7 @@ defmodule Wardrik.Agent do
   @dialyzer {:nowarn_function, init: 2}
   @impl DurableServer
   def init(%State{wake_only: true} = state, %{host: host} = info) do
-    case Wardrik.Definition.current(Host.definitions(host), state.agent_id) do
+    case Wardrik.Definition.current(Host.definitions(host), state.agent_id, host: host) do
       {:ok, _spec} ->
         init(%{state | wake_only: false}, info)
 
@@ -623,7 +623,9 @@ defmodule Wardrik.Agent do
   # slept or ran on a node since lost. It is asked once the log is open, as a
   # parked turn its new hooks decide again writes to it.
   defp defined(state) do
-    case Wardrik.Definition.current(Host.definitions(state.host), state.agent_id) do
+    case Wardrik.Definition.current(Host.definitions(state.host), state.agent_id,
+           host: state.host
+         ) do
       {:ok, spec} -> {state |> State.configure(Spec.options(spec)) |> redecide(), [sync: true]}
       :none -> {state, []}
     end

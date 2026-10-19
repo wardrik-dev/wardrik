@@ -69,6 +69,38 @@ defmodule Wardrik.Host do
 
   The accessors answer each seam's value, so code that acts on the agents
   names the field, never an implementation.
+
+  ## What packages add
+
+  Beside its seams, a host holds what the packages it runs add to it, each
+  empty until one does:
+
+  | Field | What it holds |
+  | --- | --- |
+  | `:tools` | the tools a definition names, each a module implementing `Wardrik.Tool`, by its name |
+  | `:sources` | the tool sources a definition names as `name/*`, each a module implementing `Wardrik.Tool`'s `tools/1`, by that name |
+  | `:routes` | what the host serves over HTTP, each a plug and its options, by the segments of its path |
+  | `:children` | what `Wardrik` starts after its own, in order, each `{module, opts}` |
+
+  A package adds to them in an `attach/2` of its own, which takes the host
+  and the package's options, checked with `Keyword.validate!/2`, and answers
+  the host with what it adds, through `register/3` and `child/2`. One
+  attached after another starts after it:
+
+      defmodule MyApp.Search do
+        def attach(host, opts \\ []) do
+          opts = Keyword.validate!(opts, [:index])
+
+          host
+          |> Wardrik.Host.register(:tools, [{"search", MyApp.Search.Tool}])
+          |> Wardrik.Host.child({MyApp.Search.Index, opts})
+        end
+      end
+
+      host = Wardrik.Host.new(store: store) |> MyApp.Search.attach(index: "docs")
+
+  `Wardrik` starts each child with `host:` the host it starts with, so a
+  child is handed what everything attached after it added too.
   """
 
   @expires [api: 90 * 86_400, session: 12 * 3_600]
@@ -85,8 +117,15 @@ defmodule Wardrik.Host do
             dispatch: %Wardrik.LLM.Dispatch.Direct{},
             llm: %Wardrik.LLM.ReqLLM{},
             runtimes: [%Wardrik.LLM.Runtime{}],
+            tools: %{},
+            sources: %{},
+            routes: [],
+            children: [],
             audit: Wardrik.Audit,
             expires: @expires
+
+  @typedoc "What the host serves at a path, given as its segments: a plug and its options."
+  @type route() :: {[String.t()], {module(), term()}}
 
   @type t() :: %__MODULE__{
           store: WardrikStore.t(),
@@ -101,6 +140,10 @@ defmodule Wardrik.Host do
           dispatch: Wardrik.LLM.Dispatch.t(),
           llm: Wardrik.LLM.Client.t(),
           runtimes: [Wardrik.Runtime.t()],
+          tools: %{String.t() => module()},
+          sources: %{String.t() => module()},
+          routes: [route()],
+          children: [{module(), keyword()}],
           audit: GenServer.name(),
           expires: [api: pos_integer(), session: pos_integer()]
         }
@@ -192,6 +235,63 @@ defmodule Wardrik.Host do
     Enum.find(runtimes, &(Wardrik.Runtime.key(&1) == key)) ||
       raise ArgumentError, "the host runs no runtime #{inspect(key)}"
   end
+
+  @doc "The runtimes the host runs, the first reading every definition that names none of theirs."
+  @spec runtimes(t()) :: [Wardrik.Runtime.t()]
+  def runtimes(%__MODULE__{runtimes: runtimes}), do: runtimes
+
+  @doc "The tools a definition names, by name."
+  @spec tools(t()) :: %{String.t() => module()}
+  def tools(%__MODULE__{tools: tools}), do: tools
+
+  @doc "The tool sources a definition names as `name/*`, by name."
+  @spec sources(t()) :: %{String.t() => module()}
+  def sources(%__MODULE__{sources: sources}), do: sources
+
+  @doc "What the host serves over HTTP, in the order it was registered."
+  @spec routes(t()) :: [route()]
+  def routes(%__MODULE__{routes: routes}), do: routes
+
+  @doc "What `Wardrik` starts after its own, in order."
+  @spec children(t()) :: [{module(), keyword()}]
+  def children(%__MODULE__{children: children}), do: children
+
+  @doc """
+  `host` with `entries` added to `field`: to `:tools`, `:sources` or
+  `:routes`, each a name and its value; to `:runtimes`, each a runtime,
+  named by its `Wardrik.Runtime.key/1`, after those it runs. Raises where a
+  name is taken.
+
+      Wardrik.Host.register(host, :sources, [{"workers", WardrikHTTP.Workers}])
+  """
+  @spec register(t(), :tools | :sources, [{String.t(), module()}]) :: t()
+  @spec register(t(), :routes, [route()]) :: t()
+  @spec register(t(), :runtimes, [Wardrik.Runtime.t()]) :: t()
+  def register(%__MODULE__{} = host, field, entries)
+      when field in [:tools, :sources, :routes, :runtimes] do
+    held = Map.fetch!(host, field)
+    names = Enum.map(Enum.to_list(held) ++ entries, &name(field, &1))
+
+    case names -- Enum.uniq(names) do
+      [] -> Map.put(host, field, added(field, held, entries))
+      [taken | _] -> raise ArgumentError, "the host's #{field} has #{inspect(taken)} already"
+    end
+  end
+
+  defp name(:runtimes, runtime), do: Wardrik.Runtime.key(runtime)
+  defp name(_field, {name, _value}), do: name
+
+  defp added(field, held, entries) when field in [:routes, :runtimes], do: held ++ entries
+  defp added(_field, held, entries), do: Map.merge(held, Map.new(entries))
+
+  @doc """
+  `host` with `child` among its children, after those added before it.
+  `Wardrik` starts it with `host:` the host it starts with among its
+  options.
+  """
+  @spec child(t(), {module(), keyword()}) :: t()
+  def child(%__MODULE__{children: children} = host, {_module, _opts} = child),
+    do: %{host | children: children ++ [child]}
 
   @doc "The `Wardrik.Issuer` that issues each principal the token it acts with."
   @spec issuer(t()) :: Wardrik.Issuer.t()

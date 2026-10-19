@@ -6,14 +6,14 @@ defmodule Wardrik.Test.Definitions do
   defstruct []
 
   @ns :test_definitions
-  def current(_host, id) do
+  def current(_definitions, id, _opts) do
     case WardrikStore.get(Wardrik.Test.store(), @ns, to_string(id)) do
       nil -> :none
       spec -> {:ok, spec}
     end
   end
 
-  def defined(_host, pattern) do
+  def defined(_definitions, pattern) do
     for key <- WardrikStore.keys(Wardrik.Test.store(), @ns),
         id = Wardrik.AgentID.parse!(key),
         Wardrik.Resource.covers?(pattern, Wardrik.AgentID.resource(id)),
@@ -32,6 +32,6 @@ end
 
 defimpl Wardrik.Definition, for: Wardrik.Test.Definitions do
   use Wardrik.Definition.None
-  defdelegate current(a0, a1), to: Wardrik.Test.Definitions
+  defdelegate current(a0, a1, a2), to: Wardrik.Test.Definitions
   defdelegate defined(a0, a1), to: Wardrik.Test.Definitions
 end

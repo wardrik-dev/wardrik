@@ -51,6 +51,35 @@ defmodule Wardrik.HostTest do
              Wardrik.Runtime.read(%Wardrik.Test.Runtime{}, %{}, %Wardrik.Runtime.Context{})
   end
 
+  test "holds what packages add in the order they add it, and refuses a name taken" do
+    host =
+      Host.new()
+      |> Host.register(:tools, [{"search", MyApp.Search}])
+      |> Host.register(:sources, [{"workers", MyApp.Workers}])
+      |> Host.register(:routes, [{["v1", "hooks"], {MyApp.Hooks, []}}])
+      |> Host.register(:runtimes, [%Wardrik.Test.Runtime{}])
+      |> Host.child({MyApp.Index, name: :a})
+      |> Host.child({MyApp.Index, name: :b})
+
+    assert Host.tools(host) == %{"search" => MyApp.Search}
+    assert Host.sources(host) == %{"workers" => MyApp.Workers}
+    assert Host.routes(host) == [{["v1", "hooks"], {MyApp.Hooks, []}}]
+    assert Host.runtimes(host) == Wardrik.Test.runtimes()
+    assert Host.children(host) == [{MyApp.Index, name: :a}, {MyApp.Index, name: :b}]
+
+    assert_raise ArgumentError, ~r/tools has "search" already/, fn ->
+      Host.register(host, :tools, [{"search", MyApp.Other}])
+    end
+
+    assert_raise ArgumentError, ~r/runtimes has "model" already/, fn ->
+      Host.register(host, :runtimes, [%Wardrik.LLM.Runtime{}])
+    end
+
+    assert_raise ArgumentError, fn ->
+      Host.register(Host.new(), :sources, [{"a", MyApp.A}, {"a", MyApp.B}])
+    end
+  end
+
   test "each None answers that the host offers nothing" do
     id = ~A"acme/triage"
     host = Host.new()
@@ -75,10 +104,10 @@ defmodule Wardrik.HostTest do
              {:error, :no_resolver}
 
     assert Wardrik.Credentials.refused(Host.credentials(host), "github", nil) == :ok
-    assert Wardrik.Definition.current(definitions, id) == :none
+    assert Wardrik.Definition.current(definitions, id, host: host) == :none
     assert Wardrik.Definition.editable(definitions, id) == :ok
     assert Wardrik.Definition.delete(definitions, id) == {:error, :not_found}
-    assert Wardrik.Definition.create(definitions, id) == :unsupported
+    assert Wardrik.Definition.create(definitions, id, host: host) == :unsupported
     assert Wardrik.Definition.reloading(definitions) == []
     assert Wardrik.Definition.reload(definitions, host: host) == :ok
   end

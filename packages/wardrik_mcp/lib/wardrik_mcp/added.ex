@@ -1,11 +1,11 @@
 defmodule WardrikMCP.Added do
   @moduledoc """
   Every MCP server an agent's owner added, as one tool source: the tools of
-  each, as `WardrikMCP` offers them. A host names it among the sources a
+  each, as `WardrikMCP` offers them. A host registers it among the sources a
   definition may name, so a definition asking for `servers/*` reaches
   whatever its owner adds, as they add it:
 
-      %WardrikDefinition.Context{mcp: WardrikMCP, sources: [servers: WardrikMCP.Added]}
+      Wardrik.Host.register(host, :sources, [{"servers", WardrikMCP.Added}])
 
   It is handed the agent's ID and reaches its owner's servers alone: an
   org's own agents the org's, and a person's agents that person's.

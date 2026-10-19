@@ -62,6 +62,8 @@ defmodule Deploy.HetznerTest do
       |> WardrikDaemon.AgentFile.context()
 
     assert {:ok, %Wardrik.Agent.Spec{id: %Wardrik.AgentID{name: "triage"}}} =
-             WardrikDaemon.AgentFile.read(context, agent)
+             WardrikDaemon.AgentFile.read(context, agent,
+               host: WardrikDaemon.attach(Wardrik.Host.new())
+             )
   end
 end

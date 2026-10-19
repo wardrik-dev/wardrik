@@ -199,10 +199,10 @@ defmodule Wardrik.Fleet do
   """
   @spec whereis(AgentID.t(), host: Wardrik.Host.t()) :: pid() | nil
   def whereis(%AgentID{} = id, opts) do
-    definitions = definitions(opts)
+    host = Keyword.fetch!(opts, :host)
 
     case held_pid(id) do
-      nil -> if defined?(id, definitions), do: wake(id)
+      nil -> if defined?(id, host), do: wake(id)
       pid -> pid
     end
   end
@@ -238,25 +238,27 @@ defmodule Wardrik.Fleet do
   """
   @spec lookup(AgentID.t(), host: Wardrik.Host.t()) :: Member.t() | nil
   def lookup(%AgentID{} = id, opts) do
-    definitions = definitions(opts)
+    host = Keyword.fetch!(opts, :host)
 
     case DurableServer.Supervisor.lookup(@name, to_string(id)) do
       {pid, meta} -> Member.new(id, pid, meta)
-      nil -> asleep(id, definitions)
+      nil -> asleep(id, host)
     end
   end
 
-  defp asleep(id, definitions) do
+  defp asleep(id, host) do
     case written(id) do
       {:ok, dumped} -> Member.asleep(id, dumped)
-      {:error, :not_found} -> if defined?(id, definitions), do: Member.asleep(id)
+      {:error, :not_found} -> if defined?(id, host), do: Member.asleep(id)
     end
   end
 
-  defp defined?(id, definitions),
-    do: match?({:ok, _spec}, Wardrik.Definition.current(definitions, id))
-
-  defp definitions(opts), do: opts |> Keyword.fetch!(:host) |> Wardrik.Host.definitions()
+  defp defined?(id, host),
+    do:
+      match?(
+        {:ok, _spec},
+        Wardrik.Definition.current(Wardrik.Host.definitions(host), id, host: host)
+      )
 
   # -- the fleet -------------------------------------------------------------
 
@@ -269,7 +271,7 @@ defmodule Wardrik.Fleet do
   """
   @spec list(Resource.t(), host: Wardrik.Host.t()) :: [Member.t()]
   def list(pattern, opts) do
-    definitions = definitions(opts)
+    definitions = opts |> Keyword.fetch!(:host) |> Wardrik.Host.definitions()
     held = held(pattern)
     started = MapSet.new(held, & &1.id)
 

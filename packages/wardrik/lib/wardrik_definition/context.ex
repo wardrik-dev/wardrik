@@ -1,22 +1,19 @@
 defmodule WardrikDefinition.Context do
   @moduledoc """
-  What a host lets its definitions name, and what it gives every agent, for
+  What a host lets its definitions name beyond the tools, sources and
+  runtimes its `Wardrik.Host` holds, and what it gives every agent, for
   `WardrikDefinition` to read a definition against.
 
       %WardrikDefinition.Context{
         org: "acme",
         orgs: ["acme", "globex"],
         ceilings: %{"*" => "base", "acme" => "acme-ceiling"},
-        tools: [WardrikBrave.WebSearch],
         servers: [github: [], books: [serves: [Wardrik.Resource.parse!("acme/*")]]],
-        added: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault},
         mcp: WardrikMCP,
-        sources: [workers: WardrikHTTP.Workers, self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents],
         channels: [slack: :all],
         targets: [ops: {WardrikNotify.Webhook, url: "https://ops.example.com", orgs: :all}],
         policies: %{"careful" => policy},
         defaults: %{"idle_timeout" => 900},
-        runtimes: [%Wardrik.LLM.Runtime{config: [tool_prices: %{"web_search" => 0.005}]}],
         shares: [runbooks_share]
       }
 
@@ -24,23 +21,14 @@ defmodule WardrikDefinition.Context do
     * `orgs` - the orgs an agent may be in, or `:any`, the default
     * `ceilings` - the policy each org's agents are held to ahead of their
       own, by org, `"*"` for every org's; each a name in `policies`
-    * `tools` - the tools the host ships, each a module implementing
-      `Wardrik.Tool`, named in a definition by its tool's name
     * `servers` - the MCP servers, by name, each with the patterns it
       `serves`, every agent's unless it says, which a definition names as
-      `server/*`
-    * `added` - the MCP servers orgs and people add as the host runs, as
-      `Wardrik.Servers`; a definition names one of its owner's as
-      `server/*` too, and one its owner has not added yet offers nothing
-      until they do. With `Wardrik.Servers.None`, the default, a definition
-      names only `servers`
+      `server/*`. A definition names one its owner added, as the host's
+      `Wardrik.Servers` lists them, as `server/*` too, and one its owner has
+      not added yet offers nothing until they do. With
+      `Wardrik.Servers.None`, a definition names only these
     * `mcp` - the tool source the servers' tools come through, such as
       `WardrikMCP`; with none, a definition names no server
-    * `sources` - the tool sources a definition names as `name/*`, each a
-      module implementing `Wardrik.Tool`'s `tools/1`, handed the agent's ID,
-      such as `workers: WardrikHTTP.Workers` for the tool workers' tools,
-      `self: Wardrik.Catalog.Self` for the agent's operations on itself, and
-      `agents: Wardrik.Catalog.Agents` for those on the agents of its org
     * `channels` - the channels an agent may be offered in, by name, each
       with the orgs it serves
     * `targets` - the notify targets, as `WardrikNotify` takes them: each a
@@ -48,10 +36,6 @@ defmodule WardrikDefinition.Context do
     * `policies` - the policies a definition may name, by name
     * `defaults` - definition keys every agent takes where its own
       definition says none: `idle_timeout`
-    * `runtimes` - the `Wardrik.Runtime`s that read a definition's
-      settings, `Wardrik.LLM.Runtime`'s by default, whose `config` holds the
-      `Wardrik.LLM.Config` options every agent it reads gets, such as
-      `tool_prices`; see `WardrikDefinition`
     * `shares` - the trees the deployment lets agents beyond their owners
       mount, as `WardrikWorkspace.Share`s
     * `triggers` - the trigger sources and webhook verifiers a definition's
@@ -64,16 +48,12 @@ defmodule WardrikDefinition.Context do
   defstruct org: "default",
             orgs: :any,
             ceilings: %{},
-            tools: [],
             servers: [],
-            added: %Wardrik.Servers.None{},
             mcp: nil,
-            sources: [],
             channels: [],
             targets: [],
             policies: %{},
             defaults: %{},
-            runtimes: [%Wardrik.LLM.Runtime{}],
             shares: [],
             triggers: %WardrikTrigger.Offered{},
             names: %{host: "the host", config: "the host", policies: "the host's policies"}
@@ -84,16 +64,12 @@ defmodule WardrikDefinition.Context do
           org: String.t(),
           orgs: :any | [String.t()],
           ceilings: %{String.t() => String.t()},
-          tools: [module()],
           servers: [{atom(), keyword()}],
-          added: Wardrik.Servers.t(),
           mcp: module() | nil,
-          sources: [{atom(), module()}],
           channels: [{atom(), orgs()}],
           targets: WardrikNotify.targets(),
           policies: %{String.t() => WardrikPolicy.t()},
           defaults: %{String.t() => term()},
-          runtimes: [Wardrik.Runtime.t(), ...],
           shares: [WardrikWorkspace.Share.t()],
           triggers: WardrikTrigger.Offered.t(),
           names: %{host: String.t(), config: String.t(), policies: String.t()}

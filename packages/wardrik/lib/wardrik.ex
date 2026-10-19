@@ -3,42 +3,47 @@ defmodule Wardrik do
   Wardrik inside an application: agents kept in the application's own store,
   started in its own tree, and reached as the people it knows.
 
-  `new/1` reads the options once, into a value the application starts and
-  makes its callers with:
+  `new/1` reads the options once, into the `Wardrik.Host` the application
+  starts Wardrik on and makes its callers with:
+
+      store = Wardrik.store(repo: MyApp.Repo)
 
       wardrik =
-        Wardrik.new(
-          store: Wardrik.store(repo: MyApp.Repo),
-          issuer: %MyApp.Issuer{},
-          context: Wardrik.context(tools: [MyApp.Tools.Search])
-        )
+        Wardrik.new(store: store, issuer: %MyApp.Issuer{}, tools: [MyApp.Tools.Search])
 
-      children = [MyApp.Repo, {Wardrik, wardrik}, MyAppWeb.Endpoint]
+      children = [MyApp.Repo, {WardrikStore, store}, {Wardrik, wardrik}, MyAppWeb.Endpoint]
 
       scope = Wardrik.as(wardrik, maria)
       {:ok, _snapshot} = Wardrik.agent_define(scope, agent, %{"instructions" => "Be brief."})
       {:ok, message} = Wardrik.agent_ask(scope, agent, "Where is order 1001?")
 
-  `{Wardrik, wardrik}` starts, in order, under `:rest_for_one`, so a restart
-  of one restarts everything after it:
+  The application starts the store, `{WardrikStore, store}`, as it starts
+  its Repo. `{Wardrik, wardrik}` starts, in order, under `:rest_for_one`, so
+  a restart of one restarts everything after it:
 
   | Child | What it runs |
   | --- | --- |
-  | the store | where everything is kept |
   | `Wardrik.Core` | the agents |
   | the meters | what budgets count in |
   | the triggers | clocks, feeds and webhooks |
+  | the host's children | what the packages attached to it start, in the order they were attached |
 
   Each agent's definition is kept in the store, read against what
-  `:context` lets it name, and so are the files it works on.
+  `:context` lets it name and the tools and sources the host holds, and so
+  are the files it works on.
 
   The store is a value of its own, made by `store/1`, so a seam that keeps
   something, such as a vault of credentials, is made with the same one. So
   is the context, made by `context/1`, so an application can read it
-  differently for each agent. A
-  surface the application starts after Wardrik, such as the HTTP API, takes
-  the store or `host/1`. A node runs one Wardrik, since core's own
-  processes are registered under their module names.
+  differently for each agent. A package adds tools, sources and children to
+  the host with an `attach/2` of its own, before Wardrik starts; see
+  `Wardrik.Host`:
+
+      wardrik = Wardrik.new(store: store) |> MyApp.Search.attach()
+
+  A surface the application starts after Wardrik, such as the HTTP API,
+  takes the same host. A node runs one Wardrik, since core's own processes
+  are registered under their module names.
 
   ## Acting on the agents
 
@@ -67,11 +72,19 @@ defmodule Wardrik do
 
   ## Options
 
-    * `:store` - where everything is kept, as `store/1` makes it. Required.
-    * `:context` - what each agent's definition may name: `context/1`'s, or
-      a value of the application's own implementing
-      `WardrikDefinition.Contexts`, which gives each agent its context.
-      `context([])` by default.
+    * `:store` - where everything is kept, as `store/1` makes it, which the
+      application starts. Required.
+    * `:context` - what each agent's definition may name beyond the host's
+      tools and sources: `context/1`'s, or a value of the application's own
+      implementing `WardrikDefinition.Contexts`, which gives each agent its
+      context. `context([])` by default.
+    * `:tools` - the tools a definition may name, each a module
+      implementing `Wardrik.Tool`, by its tool's name. A definition may name
+      `self/*`, an agent's operations on itself, and `agents/*`, those on
+      the other agents of its org, besides.
+    * `:runtimes` - the `Wardrik.Runtime`s that read a definition's
+      settings and run its agent's turns; `Wardrik.LLM.Runtime`'s by
+      default.
     * `:issuer`, `:credentials`, `:connections`, `:servers`, `:tokens`,
       `:triggers`, `:dispatch`, `:llm` - the host's seams, each a value
       implementing core's protocol of that name, as `Wardrik.Host` lists
@@ -81,7 +94,6 @@ defmodule Wardrik do
     * `:expires` - how long tokens last, in seconds: `api:`, those
       `tokens_create/4` makes, 90 days by default; `session:`, those
       `as/3` issues, 12 hours by default.
-    * `:fleet` - the options of `Wardrik.Fleet.Supervisor`.
   """
 
   use Supervisor
@@ -119,11 +131,6 @@ defmodule Wardrik do
   alias Wardrik.Tokens
   alias WardrikDefinition.Context
 
-  @enforce_keys [:host]
-  defstruct [:host, fleet: []]
-
-  @type t() :: %__MODULE__{host: Wardrik.Host.t(), fleet: keyword()}
-
   @typedoc "A decision on a call an agent waits on."
   @type decision() :: :approve | {:approve, String.t()} | {:deny, String.t()}
 
@@ -141,24 +148,31 @@ defmodule Wardrik do
   ]
 
   @doc """
-  Wardrik as `opts` describe it, made without starting anything. Raises
+  The `Wardrik.Host` `opts` describe, made without starting anything. Raises
   where an option is not one of those above, or where `:store` is missing.
   """
-  @spec new(keyword()) :: t()
+  @spec new(keyword()) :: Host.t()
   def new(opts) do
-    opts = Keyword.validate!(opts, [:store, :expires, fleet: [], context: context([])] ++ @seams)
-    store = Keyword.fetch!(opts, :store)
-
-    host =
-      Wardrik.Host.new(
-        [
-          store: store,
-          definitions: %WardrikDefinition.Kept{store: store, contexts: opts[:context]},
-          workspace: %WardrikWorkspace.Backend.Store{store: store}
-        ] ++ Keyword.take(opts, [:expires | @seams])
+    opts =
+      Keyword.validate!(
+        opts,
+        [:store, :expires, :runtimes, tools: [], context: context([])] ++ @seams
       )
 
-    %__MODULE__{host: host, fleet: opts[:fleet]}
+    store = Keyword.fetch!(opts, :store)
+
+    [
+      store: store,
+      definitions: %WardrikDefinition.Kept{store: store, contexts: opts[:context]},
+      workspace: %WardrikWorkspace.Backend.Store{store: store}
+    ]
+    |> Kernel.++(Keyword.take(opts, [:expires, :runtimes | @seams]))
+    |> Host.new()
+    |> Host.register(:tools, for(tool <- opts[:tools], do: {tool.tool().name, tool}))
+    |> Host.register(:sources, [
+      {"self", Wardrik.Catalog.Self},
+      {"agents", Wardrik.Catalog.Agents}
+    ])
   end
 
   @doc """
@@ -192,70 +206,53 @@ defmodule Wardrik do
   end
 
   @doc """
-  What a definition may name, as the fields of `WardrikDefinition.Context`
-  in `fields`: the `tools` the application ships, the MCP `servers`, the
-  `policies`, and so on. `sources` names `self`, an agent's operations on
-  itself, and `agents`, those on the other agents of its org, unless
-  given.
+  What a definition may name beyond the host's tools and sources, as the
+  fields of `WardrikDefinition.Context` in `fields`: the MCP `servers`, the
+  `policies`, and so on.
 
-      Wardrik.context(tools: [MyApp.Tools.Search])
+      Wardrik.context(policies: %{"careful" => policy})
   """
   @spec context(keyword()) :: Context.t()
-  def context(fields) do
-    struct!(
-      Context,
-      Keyword.merge(
-        [sources: [self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents]],
-        fields
-      )
-    )
-  end
+  def context(fields), do: struct!(Context, fields)
 
-  @doc "The `Wardrik.Host` the agents run on, for a surface started after Wardrik."
-  @spec host(t()) :: Wardrik.Host.t()
-  def host(%__MODULE__{host: host}), do: host
+  @doc "The child that runs Wardrik on `host`, as `new/1` makes it."
+  @spec child_spec(Host.t()) :: Supervisor.child_spec()
+  def child_spec(%Host{} = host),
+    do: %{id: __MODULE__, start: {__MODULE__, :start_link, [host]}, type: :supervisor}
 
-  @doc "The child that runs `wardrik`."
-  @spec child_spec(t()) :: Supervisor.child_spec()
-  def child_spec(%__MODULE__{} = wardrik),
-    do: %{id: __MODULE__, start: {__MODULE__, :start_link, [wardrik]}, type: :supervisor}
-
-  @doc "Starts `wardrik`, as `child_spec/1` does."
-  @spec start_link(t()) :: Supervisor.on_start()
-  def start_link(%__MODULE__{} = wardrik),
-    do: Supervisor.start_link(__MODULE__, wardrik, name: __MODULE__)
+  @doc "Starts Wardrik on `host`, as `child_spec/1` does."
+  @spec start_link(Host.t()) :: Supervisor.on_start()
+  def start_link(%Host{} = host), do: Supervisor.start_link(__MODULE__, host)
 
   @impl true
-  def init(%__MODULE__{host: host, fleet: fleet}) do
-    store = Wardrik.Host.store(host)
+  def init(%Host{} = host) do
+    store = Host.store(host)
 
-    children = [
-      {WardrikStore, store},
-      {Wardrik.Core, host: host, fleet: fleet},
-      {WardrikPolicy.Supervisor, store: store},
-      {WardrikTrigger, store: store, host: host}
-    ]
+    children =
+      [
+        {Wardrik.Core, host: host},
+        {WardrikPolicy.Supervisor, store: store},
+        {WardrikTrigger, store: store, host: host}
+      ] ++
+        for({module, opts} <- Host.children(host), do: {module, Keyword.put(opts, :host, host)})
 
     Supervisor.init(children, strategy: :rest_for_one)
   end
 
   @doc """
-  The scope `principal` acts in on the agents of `wardrik`, or of the
-  `Wardrik.Host` a surface was started with: the token the host's
-  `Wardrik.Issuer` issues them, which reads `opts` as it reads them,
-  expiring as the host's `:session` expiry says. Each function here
-  refreshes a token past its expiry through the issuer as it uses it, so
-  whatever holds the scope keeps working, held to what the issuer gives
-  the principal now (see `Wardrik.Token.refresh/2`).
+  The scope `principal` acts in on the agents of `host`, as `new/1` makes
+  it or a surface was started with: the token the host's `Wardrik.Issuer`
+  issues them, which reads `opts` as it reads them, expiring as the host's
+  `:session` expiry says. Each function here refreshes a token past its
+  expiry through the issuer as it uses it, so whatever holds the scope
+  keeps working, held to what the issuer gives the principal now (see
+  `Wardrik.Token.refresh/2`).
 
       scope = Wardrik.as(wardrik, maria)
   """
   @doc group: "Scopes"
-  @spec as(t() | Host.t(), Principal.t(), keyword()) :: Scope.t()
-  def as(wardrik_or_host, principal, opts \\ [])
-  def as(%__MODULE__{host: host}, principal, opts), do: as(host, principal, opts)
-
-  def as(%Host{} = host, principal, opts) do
+  @spec as(Host.t(), Principal.t(), keyword()) :: Scope.t()
+  def as(%Host{} = host, principal, opts \\ []) do
     token = Wardrik.Issuer.issue(Host.issuer(host), principal, opts)
     Scope.new(host, %{token | expires: from_now(Host.expires(host, :session))})
   end
@@ -710,7 +707,8 @@ defmodule Wardrik do
     case Definition.put(Host.definitions(scope.host), agent,
            definition: fields,
            token: scope.token,
-           held: held
+           held: held,
+           host: scope.host
          ) do
       {:ok, %{id: ^agent} = spec} ->
         {:ok, spec}
@@ -736,7 +734,7 @@ defmodule Wardrik do
           {:ok, Wardrik.Definition.Read.t()} | {:error, Error.t()}
   def agent_definition_read(%Scope{} = scope, %AgentID{} = agent) do
     with :ok <- authorize(scope, "agent.definition.read", agent) do
-      case Definition.get(Host.definitions(scope.host), agent) do
+      case Definition.get(Host.definitions(scope.host), agent, host: scope.host) do
         {:ok, read} ->
           {:ok, read}
 
@@ -763,7 +761,7 @@ defmodule Wardrik do
   Starts `agent`, and answers it as the fleet lists it, with what it started
   from: one running already runs on, one asleep wakes, one the host defines
   starts on its definition, and one nothing defines yet is defined as the
-  host's `c:Wardrik.Definition.create/2` says.
+  host's `c:Wardrik.Definition.create/3` says.
 
   ## Options
 
@@ -799,7 +797,7 @@ defmodule Wardrik do
 
   defp from(scope, agent) do
     case {Fleet.lookup(agent, host: scope.host),
-          Definition.current(Host.definitions(scope.host), agent)} do
+          Definition.current(Host.definitions(scope.host), agent, host: scope.host)} do
       {%Member{asleep: false}, _current} -> {:running, nil}
       {_member, {:ok, spec}} -> {:definition, spec}
       {%Member{asleep: true}, :none} -> {:store, nil}
@@ -817,7 +815,7 @@ defmodule Wardrik do
   defp spawn(_scope, agent, {:definition, spec}, node), do: spec |> put(node) |> spawned(agent)
 
   defp spawn(scope, agent, {:new, nil}, node) do
-    case Definition.create(Host.definitions(scope.host), agent) do
+    case Definition.create(Host.definitions(scope.host), agent, host: scope.host) do
       {:ok, spec} -> spec |> put(node) |> spawned(agent)
       :unsupported -> {:error, Error.no_agent(agent)}
       refused -> refused(refused)

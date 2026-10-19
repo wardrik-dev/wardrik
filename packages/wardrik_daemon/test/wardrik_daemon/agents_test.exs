@@ -224,6 +224,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert {:ok, _spec} =
              Agents.put(Host.agents(), beta,
+               host: Host.host(),
                definition: %{"notify" => "audit"},
                token: token(org)
              )
@@ -234,13 +235,23 @@ defmodule WardrikDaemon.AgentsTest do
     start_supervised!({WardrikNotify.Supervisor, notify})
     assert %{^beta => %WardrikNotify.Route{targets: [:audit]}} = routes.()
 
-    assert {:ok, _spec} = Agents.put(Host.agents(), beta, definition: %{}, token: token(org))
+    assert {:ok, _spec} =
+             Agents.put(Host.agents(), beta,
+               host: Host.host(),
+               definition: %{},
+               token: token(org)
+             )
+
     refute is_map_key(routes.(), beta)
 
     notify_on = %{"notify" => %{"to" => "audit", "on" => ["finished"]}}
 
     assert {:ok, _spec} =
-             Agents.put(Host.agents(), beta, definition: notify_on, token: token(org))
+             Agents.put(Host.agents(), beta,
+               host: Host.host(),
+               definition: notify_on,
+               token: token(org)
+             )
 
     assert %{^beta => %WardrikNotify.Route{on: [:finished]}} = routes.()
 
@@ -256,28 +267,30 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert {:ok, spec} =
              Agents.put(Host.agents(), defined,
+               host: Host.host(),
                definition: %{"policy" => "careful"},
                token: token(org)
              )
 
     assert [%Wardrik.Hook{name: "careful", module: WardrikPolicy}] = spec.hooks
 
-    assert Agents.get(Host.agents(), defined) ==
+    assert Agents.get(Host.agents(), defined, host: Host.host()) ==
              {:ok, %Wardrik.Definition.Read{fields: %{"policy" => "careful"}, missing: []}}
 
     assert {:error, message} =
              Agents.put(Host.agents(), defined,
+               host: Host.host(),
                definition: %{"policy" => "lax"},
                token: token(org)
              )
 
     assert message =~ "policy names lax"
 
-    assert Agents.get(Host.agents(), defined) ==
+    assert Agents.get(Host.agents(), defined, host: Host.host()) ==
              {:ok, %Wardrik.Definition.Read{fields: %{"policy" => "careful"}, missing: []}}
 
     assert Agents.delete(Host.agents(), defined) == :ok
-    assert Agents.get(Host.agents(), defined) == {:error, :not_found}
+    assert Agents.get(Host.agents(), defined, host: Host.host()) == {:error, :not_found}
     assert Agents.delete(Host.agents(), defined) == {:error, :not_found}
   end
 
@@ -289,6 +302,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert {:ok, spec} =
              Agents.put(Host.agents(), defined,
+               host: Host.host(),
                definition: %{"tools" => ["crm/*"]},
                token: token(org)
              )
@@ -296,7 +310,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert Wardrik.LLM.Config.tools(spec.config) == []
 
     assert {:ok, %Wardrik.Definition.Read{missing: ["crm/*"]}} =
-             Agents.get(Host.agents(), defined)
+             Agents.get(Host.agents(), defined, host: Host.host())
 
     remote = %WardrikMCP.Remote{
       key: Wardrik.Resource.new(owner, server: "crm"),
@@ -306,7 +320,9 @@ defmodule WardrikDaemon.AgentsTest do
     }
 
     :ok = WardrikMCP.Remote.put(Wardrik.Host.store(Host.host()), remote)
-    assert {:ok, %Wardrik.Definition.Read{missing: []}} = Agents.get(Host.agents(), defined)
+
+    assert {:ok, %Wardrik.Definition.Read{missing: []}} =
+             Agents.get(Host.agents(), defined, host: Host.host())
   end
 
   test "a user's agent shares its org's tree where config.yaml shares it with them",
@@ -320,6 +336,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert {:ok, _spec} =
              Agents.put(Host.agents(), defined,
+               host: Host.host(),
                definition: fields,
                token: token(Resource.parse!(org <> "/@jon/agent/*"))
              )
@@ -332,6 +349,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert {:error, message} =
              Agents.put(Host.agents(), defined,
+               host: Host.host(),
                definition: fields,
                token: token(Resource.parse!("*"))
              )
@@ -349,15 +367,17 @@ defmodule WardrikDaemon.AgentsTest do
 
     {:ok, _spec} =
       Agents.put(Host.agents(), defined,
+        host: Host.host(),
         definition: %{"policy" => "careful"},
         token: %{token(org) | policy: "strict"}
       )
 
-    assert {:ok, spec} = Agents.spec(Host.agents(), defined)
+    assert {:ok, spec} = Agents.spec(Host.agents(), defined, host: Host.host())
     assert [%{name: "policy/strict"}, %{name: "careful"}] = spec.hooks
 
     assert {:error, message} =
              Agents.put(Host.agents(), defined,
+               host: Host.host(),
                definition: %{},
                token: %{token(org) | policy: "missing"}
              )
@@ -371,7 +391,7 @@ defmodule WardrikDaemon.AgentsTest do
     Host.start_agents(context.dir)
     thread = AgentID.parse!("#{org}/alpha/1696.1234")
 
-    assert {:ok, spec} = Agents.spec(Host.agents(), thread)
+    assert {:ok, spec} = Agents.spec(Host.agents(), thread, host: Host.host())
     assert spec.id == thread
     assert spec.config.model_spec == "anthropic:claude-haiku-4-5"
     assert [{WardrikWorkspace, workspace}] = spec.config.tools
@@ -384,7 +404,7 @@ defmodule WardrikDaemon.AgentsTest do
     write(context, "alpha", "policy: careful\n")
     Host.start_agents(context.dir)
     thread = AgentID.parse!("#{org}/alpha/1696.1234")
-    {:ok, options} = Agents.options(Host.agents(), thread)
+    {:ok, options} = Agents.options(Host.agents(), thread, host: Host.host())
     {:ok, _pid} = Fleet.spawn(thread, options)
 
     write(context, "alpha", "policy: lax\n")
@@ -399,7 +419,7 @@ defmodule WardrikDaemon.AgentsTest do
     Agents.reload(Host.agents())
 
     assert Agents.problems(Host.agents()) == []
-    assert {:ok, %{hooks: []}} = Agents.spec(Host.agents(), thread)
+    assert {:ok, %{hooks: []}} = Agents.spec(Host.agents(), thread, host: Host.host())
   end
 
   test "reload brings the agents the HTTP API defined to what their definitions write now",
@@ -409,7 +429,11 @@ defmodule WardrikDaemon.AgentsTest do
     defined = AgentID.parse!("#{org}/defined")
 
     {:ok, spec} =
-      Agents.put(Host.agents(), defined, definition: %{"policy" => "careful"}, token: token(org))
+      Agents.put(Host.agents(), defined,
+        host: Host.host(),
+        definition: %{"policy" => "careful"},
+        token: token(org)
+      )
 
     {:ok, _pid} = Fleet.put(spec)
 
@@ -428,7 +452,7 @@ defmodule WardrikDaemon.AgentsTest do
     Agents.reload(Host.agents())
 
     assert Agents.problems(Host.agents()) == []
-    assert {:ok, _definition} = Agents.get(Host.agents(), defined)
+    assert {:ok, _definition} = Agents.get(Host.agents(), defined, host: Host.host())
   end
 
   @tag :capture_log
@@ -437,14 +461,17 @@ defmodule WardrikDaemon.AgentsTest do
     Host.start_agents(context.dir)
     defined = AgentID.parse!("#{org}/defined")
     fails = %{"retries" => %{"attempts" => 0, "on_exhausted" => "fail"}}
-    {:ok, spec} = Agents.put(Host.agents(), defined, definition: fails, token: token(org))
+
+    {:ok, spec} =
+      Agents.put(Host.agents(), defined, host: Host.host(), definition: fails, token: token(org))
+
     {:ok, _pid} = Fleet.put(spec)
 
     # The store loses the agent, as a wiped one would, and keeps its definition.
     :ok = Fleet.forget(defined)
     Agents.reload(Host.agents())
 
-    assert {:ok, _definition} = Agents.get(Host.agents(), defined)
+    assert {:ok, _definition} = Agents.get(Host.agents(), defined, host: Host.host())
 
     assert [%Fleet.Member{asleep: true}] =
              Fleet.list(AgentID.resource(defined), host: Host.host())
@@ -478,13 +505,24 @@ defmodule WardrikDaemon.AgentsTest do
     Host.start_agents(context.dir)
 
     assert Agents.dir(Host.agents()) == context.dir
-    assert {:ok, options} = Agents.options(Host.agents(), AgentID.parse!("#{org}/alpha"))
+
+    assert {:ok, options} =
+             Agents.options(Host.agents(), AgentID.parse!("#{org}/alpha"), host: Host.host())
+
     assert options[:config].model_spec == "anthropic:claude-haiku-4-5"
-    assert {:ok, options} = Agents.options(Host.agents(), AgentID.parse!("#{org}/@jon/assistant"))
+
+    assert {:ok, options} =
+             Agents.options(Host.agents(), AgentID.parse!("#{org}/@jon/assistant"),
+               host: Host.host()
+             )
+
     assert options[:config].model_spec == "anthropic:claude-sonnet-5"
 
     Host.put_section(Agents, defaults: %{"tools" => ["nothing"]})
-    assert {:error, message} = Agents.options(Host.agents(), AgentID.parse!("#{org}/assistant"))
+
+    assert {:error, message} =
+             Agents.options(Host.agents(), AgentID.parse!("#{org}/assistant"), host: Host.host())
+
     assert message =~ "tools names nothing"
   end
 
@@ -496,6 +534,7 @@ defmodule WardrikDaemon.AgentsTest do
       "#{org}/alpha is declared by agents/alpha.md; change or remove that file, then wardrik reload reads it"
 
     assert Agents.put(Host.agents(), AgentID.parse!("#{org}/alpha"),
+             host: Host.host(),
              definition: %{},
              token: token(org)
            ) ==
@@ -533,7 +572,9 @@ defmodule WardrikDaemon.AgentsTest do
              Agents.editable(Host.agents(), AgentID.parse!("#{org}/alpha"))
 
     assert Agents.editable(Host.agents(), AgentID.parse!("#{org}/beta")) == :ok
-    assert {:ok, _spec} = Agents.spec(Host.agents(), AgentID.parse!("#{org}/alpha"))
+
+    assert {:ok, _spec} =
+             Agents.spec(Host.agents(), AgentID.parse!("#{org}/alpha"), host: Host.host())
 
     :ok = :sys.resume(Agents)
   end
@@ -632,6 +673,7 @@ defmodule WardrikDaemon.AgentsTest do
 
       {:ok, spec} =
         Agents.put(Host.agents(), AgentID.parse!("#{org}/defined"),
+          host: Host.host(),
           definition: %{"instructions" => "You help."},
           token: token(org)
         )
@@ -751,7 +793,7 @@ defmodule WardrikDaemon.AgentsTest do
     refute Agents.creatable?(Host.agents(), in_channel("slack"))
 
     assert {:error, "Agents are not created from here" <> _} =
-             Agents.create_in(Host.agents(), in_channel("slack"), "books", maria)
+             Agents.create_in(Host.host(Host.agents()), in_channel("slack"), "books", maria)
 
     Host.put_section(Agents,
       defaults: %{"model" => "anthropic:claude-sonnet-5", "policy" => "careful"}
@@ -761,7 +803,12 @@ defmodule WardrikDaemon.AgentsTest do
     refute Agents.creatable?(Host.agents(), in_channel("closed"))
 
     assert {:ok, %WardrikChannel.Offer{agent: id, description: "Answers in #Books & Bills."}} =
-             Agents.create_in(Host.agents(), in_channel("slack"), "Books & Bills", maria)
+             Agents.create_in(
+               Host.host(Host.agents()),
+               in_channel("slack"),
+               "Books & Bills",
+               maria
+             )
 
     assert id == AgentID.parse!("#{org}/books-bills")
     assert Fleet.lookup(id, host: Host.host())
@@ -771,15 +818,15 @@ defmodule WardrikDaemon.AgentsTest do
              [{"agent.defined", %{"type" => "channel", "id" => "slack/T1/U1", "name" => "maria"}}]
 
     assert {:error, message} =
-             Agents.create_in(Host.agents(), in_channel("slack"), "books-bills", maria)
+             Agents.create_in(Host.host(Host.agents()), in_channel("slack"), "books-bills", maria)
 
     assert message =~ "#{org}/books-bills is there already"
 
     assert {:error, "Agents are not created from here" <> _} =
-             Agents.create_in(Host.agents(), in_channel("closed"), "x", maria)
+             Agents.create_in(Host.host(Host.agents()), in_channel("closed"), "x", maria)
 
     assert {:error, ~s("!!!" makes no agent's name.)} =
-             Agents.create_in(Host.agents(), in_channel("slack"), "!!!", maria)
+             Agents.create_in(Host.host(Host.agents()), in_channel("slack"), "!!!", maria)
   end
 
   test "says in a channel how an agent is offered there, and who else decides" do
@@ -801,9 +848,9 @@ defmodule WardrikDaemon.AgentsTest do
     _files = Agents.files(Host.agents())
 
     thread = AgentID.put_external_id(AgentID.parse!("#{org}/books"), "C1-1.1")
-    assert {:ok, pid} = Agents.start(Host.agents(), in_channel("slack"), thread)
+    assert {:ok, pid} = Agents.start(Host.host(Host.agents()), in_channel("slack"), thread)
     assert Fleet.whereis(thread, host: Host.host()) == pid
-    assert Agents.start(Host.agents(), in_channel("slack"), thread) == {:ok, pid}
+    assert Agents.start(Host.host(Host.agents()), in_channel("slack"), thread) == {:ok, pid}
 
     assert Agent.status(thread, host: Host.host()).model ==
              Agent.status(AgentID.parse!("#{org}/books"), host: Host.host()).model

@@ -21,13 +21,16 @@ defmodule WardrikDaemon.AgentFileTest do
     def call(_call, _value), do: :pass
   end
 
-  # What a definition may name here, under the sections the test has put.
+  # What a definition may name here, under the sections the test has put,
+  # on a host with what the daemon ships, and no servers people add.
   defp ctx, do: AgentFile.context(Host.config(System.tmp_dir!()))
+
+  defp host, do: WardrikDaemon.attach(Wardrik.Host.new())
 
   # The spec a definition from the defaults writes, as one sent over HTTP reads.
   defp definition(context, id, fields: fields) do
     with {:ok, record} <- Record.define(context, id, fields: fields, source: :defaults),
-         do: Record.spec(record, id, context: context)
+         do: Record.spec(record, id, context: context, host: host())
   end
 
   setup do
@@ -40,7 +43,7 @@ defmodule WardrikDaemon.AgentFileTest do
   defp read_with(name, text, %{tmp_dir: dir}, policies) do
     path = Path.join(dir, "#{name}.md")
     File.write!(path, text)
-    AgentFile.read(%{ctx() | policies: policies}, path)
+    AgentFile.read(%{ctx() | policies: policies}, path, host: host())
   end
 
   test "reads a whole file into the agent's spec", context do
@@ -137,15 +140,15 @@ defmodule WardrikDaemon.AgentFileTest do
     {:ok, files} = WardrikWorkspace.Spec.new(~A"default/triage")
 
     assert spec.config.tools == [
-             WardrikBrave.WebSearch,
              WardrikResearch.Deep,
              WardrikLua.Run,
+             WardrikBrave.WebSearch,
              {WardrikMCP, Resource.parse!("deployment/server/linear")},
              {WardrikMCP, Resource.parse!("deployment/server/github")},
-             {WardrikHTTP.Workers, ~A"default/triage"},
-             {Wardrik.Catalog.Self, ~A"default/triage"},
              {Wardrik.Catalog.Agents, ~A"default/triage"},
+             {Wardrik.Catalog.Self, ~A"default/triage"},
              {WardrikMCP.Added, ~A"default/triage"},
+             {WardrikHTTP.Workers, ~A"default/triage"},
              {WardrikWorkspace, files}
            ]
 
@@ -183,10 +186,13 @@ defmodule WardrikDaemon.AgentFileTest do
     assert message =~ "serves globex/*, and not default/triage"
   end
 
-  test "carries the prices config.yaml's tools lists", context do
+  test "carries the prices config.yaml's tools lists", %{tmp_dir: dir} do
     Host.put_section(AgentFile, tool_prices: %{"github/*" => 0.001})
+    path = Path.join(dir, "triage.md")
+    File.write!(path, "---\ntools: [web_search]\n---\n")
+    host = WardrikDaemon.host(Host.config(dir), store: Wardrik.Test.store())
 
-    assert {:ok, spec} = read("---\ntools: [web_search]\n---\n", context)
+    assert {:ok, spec} = AgentFile.read(ctx(), path, host: host)
     assert spec.config.tool_prices == %{"github/*" => 0.001}
     assert Wardrik.LLM.Config.tool_price(spec.config, "github__create_issue") == 0.001
   end
@@ -220,7 +226,7 @@ defmodule WardrikDaemon.AgentFileTest do
 
       {:ok, definition} = Record.define(ctx(), id, fields: fields, source: {:api, token})
 
-      assert Record.spec(definition, id, context: ctx()) ==
+      assert Record.spec(definition, id, context: ctx(), host: host()) ==
                {:error,
                 "workspace shared team: acme belongs to acme/agent/*, which the token does not reach"}
     end

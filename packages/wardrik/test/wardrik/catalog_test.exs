@@ -23,7 +23,7 @@ defmodule Wardrik.CatalogTest do
     @moduledoc false
     defstruct []
 
-    def put(_definitions, id, definition: definition, token: token, held: held) do
+    def put(_definitions, id, definition: definition, token: token, held: held, host: _host) do
       tell({:put, id, definition, token, held})
 
       if String.contains?(id.name, "filed"),
@@ -31,7 +31,7 @@ defmodule Wardrik.CatalogTest do
         else: {:ok, Wardrik.Agent.Spec.new(id: id, hooks: [])}
     end
 
-    def get(_definitions, _id),
+    def get(_definitions, _id, _opts),
       do:
         {:ok,
          %Wardrik.Definition.Read{
@@ -58,7 +58,7 @@ defmodule Wardrik.CatalogTest do
   defimpl Wardrik.Definition, for: Kept do
     use Wardrik.Definition.None
     defdelegate put(a0, a1, a2), to: Kept
-    defdelegate get(a0, a1), to: Kept
+    defdelegate get(a0, a1, a2), to: Kept
     defdelegate put_trigger(a0, a1, a2, a3), to: Kept
     defdelegate delete_trigger(a0, a1, a2), to: Kept
   end

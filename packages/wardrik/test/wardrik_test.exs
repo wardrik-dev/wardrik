@@ -4,6 +4,16 @@ defmodule WardrikTest do
 
   defmodule Search do
     @moduledoc false
+    use Wardrik.Tool
+
+    @impl Wardrik.Tool
+    def tool,
+      do:
+        Wardrik.Tool.new!(
+          name: "search",
+          description: "Searches.",
+          run: fn input, _context -> {:ok, input} end
+        )
   end
 
   defp data_dir, do: Path.join(System.tmp_dir!(), "wardrik-#{System.unique_integer([:positive])}")
@@ -38,14 +48,9 @@ defmodule WardrikTest do
   end
 
   describe "context/1" do
-    test "offers what its fields name, and an agent's operations unless they name sources" do
-      assert %WardrikDefinition.Context{
-               tools: [],
-               sources: [self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents]
-             } = Wardrik.context([])
-
-      assert %WardrikDefinition.Context{tools: [Search], sources: [self: Wardrik.Catalog.Self]} =
-               Wardrik.context(tools: [Search], sources: [self: Wardrik.Catalog.Self])
+    test "is the context its fields name, which names no tools of its own" do
+      assert %WardrikDefinition.Context{org: "acme", servers: []} = Wardrik.context(org: "acme")
+      assert_raise KeyError, fn -> Wardrik.context(tools: [Search]) end
     end
   end
 
@@ -56,18 +61,18 @@ defmodule WardrikTest do
 
     test "keeps definitions and agents' files in the store" do
       store = store()
-      host = Wardrik.host(Wardrik.new(store: store))
+      host = Wardrik.new(store: store)
 
       assert %WardrikDefinition.Kept{store: ^store} = Wardrik.Host.definitions(host)
       assert %WardrikWorkspace.Backend.Store{store: ^store} = Wardrik.Host.workspace(host)
     end
 
     test "reads each definition against :context, context([]) by default" do
-      offered = fn wardrik -> Wardrik.Host.definitions(Wardrik.host(wardrik)).contexts end
+      offered = fn host -> Wardrik.Host.definitions(host).contexts end
 
       assert offered.(Wardrik.new(store: store())) == Wardrik.context([])
 
-      context = Wardrik.context(tools: [Search])
+      context = Wardrik.context(org: "acme")
       assert offered.(Wardrik.new(store: store(), context: context)) == context
 
       by_org = %Wardrik.ByOrg{contexts: %{"acme" => context}}
@@ -75,16 +80,29 @@ defmodule WardrikTest do
     end
 
     test "offers the seams it is given, and the None of each it is not" do
-      wardrik =
-        Wardrik.new(store: store(), issuer: %Wardrik.OrgIssuer{org: "acme"})
+      host = Wardrik.new(store: store(), issuer: %Wardrik.OrgIssuer{org: "acme"})
 
-      assert %Wardrik.OrgIssuer{org: "acme"} = Wardrik.Host.issuer(Wardrik.host(wardrik))
-      assert %Wardrik.Credentials.None{} = Wardrik.Host.credentials(Wardrik.host(wardrik))
-      assert Wardrik.Host.expires(Wardrik.host(wardrik), :api) == 90 * 86_400
+      assert %Wardrik.OrgIssuer{org: "acme"} = Wardrik.Host.issuer(host)
+      assert %Wardrik.Credentials.None{} = Wardrik.Host.credentials(host)
+      assert Wardrik.Host.expires(host, :api) == 90 * 86_400
 
       brief = Wardrik.new(store: store(), expires: [api: 3_600])
-      assert Wardrik.Host.expires(Wardrik.host(brief), :api) == 3_600
-      assert Wardrik.Host.expires(Wardrik.host(brief), :session) == 12 * 3_600
+      assert Wardrik.Host.expires(brief, :api) == 3_600
+      assert Wardrik.Host.expires(brief, :session) == 12 * 3_600
+    end
+
+    test "holds the tools it is given by name, an agent's operations as sources, and its runtimes" do
+      host = Wardrik.new(store: store(), tools: [Search], runtimes: Wardrik.Test.runtimes())
+
+      assert Wardrik.Host.tools(host) == %{"search" => Search}
+
+      assert Wardrik.Host.sources(host) == %{
+               "self" => Wardrik.Catalog.Self,
+               "agents" => Wardrik.Catalog.Agents
+             }
+
+      assert Wardrik.Host.runtimes(host) == Wardrik.Test.runtimes()
+      assert Wardrik.Host.runtimes(Wardrik.new(store: store())) == [%Wardrik.LLM.Runtime{}]
     end
 
     test "makes the scope a principal acts in with the token its issuer issues them" do
@@ -93,8 +111,6 @@ defmodule WardrikTest do
 
       assert %Wardrik.Scope{token: %Wardrik.Token{principal: ^maria} = token} =
                Wardrik.as(wardrik, maria)
-
-      assert Wardrik.as(Wardrik.host(wardrik), maria).token.scope == token.scope
 
       assert Wardrik.Token.authorize(token, "agent.define", Wardrik.AgentID.parse!("acme/x")) ==
                :ok
@@ -121,21 +137,20 @@ defmodule WardrikTest do
     end
   end
 
-  test "starts the store, core, the meters and the triggers, each after the one before" do
-    wardrik = Wardrik.new(store: store(), fleet: [log: false])
+  test "starts core, the meters, the triggers, then the host's children, each after the one before" do
+    host = Wardrik.Host.child(Wardrik.new(store: store()), {Agent, name: :index})
 
-    assert {:ok, {%{strategy: :rest_for_one}, specs}} = Wardrik.init(wardrik)
+    assert {:ok, {%{strategy: :rest_for_one}, specs}} = Wardrik.init(host)
 
     assert Enum.map(specs, & &1.id) == [
-             WardrikStore,
              Wardrik.Core,
              WardrikPolicy.Supervisor,
-             WardrikTrigger.Triggers
+             WardrikTrigger.Triggers,
+             Agent
            ]
 
-    assert %{start: {Wardrik.Core, :start_link, [opts]}} = Enum.at(specs, 1)
-    assert opts[:fleet] == [log: false]
-    assert opts[:host] == Wardrik.host(wardrik)
+    assert %{start: {Wardrik.Core, :start_link, [[host: ^host]]}} = hd(specs)
+    assert %{start: {Agent, :start_link, [[host: ^host, name: :index]]}} = List.last(specs)
   end
 
   test "makes and drops the store's table in Postgres, as WardrikEcto does" do

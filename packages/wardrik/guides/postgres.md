@@ -7,13 +7,16 @@ kept in one table, `wardrik_records`.
 `:ecto_sql` and `:postgrex` are optional: an application with a repo has
 them already, and one that keeps the store elsewhere compiles neither.
 
-An application embedding Wardrik has it already. It
-starts Wardrik after its repo, and names the repo as its store:
+An application embedding Wardrik has it already. It names the repo as its
+store, and starts the store and Wardrik after its repo:
 
 ```elixir
+store = Wardrik.store(repo: MyApp.Repo)
+
 children = [
   MyApp.Repo,
-  {Wardrik, Wardrik.new(store: Wardrik.store(repo: MyApp.Repo))},
+  {WardrikStore, store},
+  {Wardrik, Wardrik.new(store: store)},
   MyAppWeb.Endpoint
 ]
 ```

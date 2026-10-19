@@ -53,7 +53,7 @@ defmodule WardrikDaemon.Test.Host do
     %{
       agents
       | config: config,
-        context: %{WardrikDaemon.AgentFile.context(config) | added: agents.context.added},
+        context: WardrikDaemon.AgentFile.context(config),
         nodes: Process.get(@nodes, &Node.list/0)
     }
   end

@@ -19,11 +19,11 @@ defmodule Wardrik.Core do
   it, so an agent never holds a membership of a bus that is gone. The catalog
   load is a task that exits once done and is not started again.
 
-  An application embedding Wardrik starts `Wardrik`, of the `wardrik`
-  package, which starts this after the store and the packages around it. A
-  host that puts its own tree together, as the daemon does, starts it after
-  the store, and hands the same `Wardrik.Host` to each surface it starts
-  after it:
+  An application embedding Wardrik starts the store, then `Wardrik`, of the
+  `wardrik` package, which starts this, then the packages around it. A host
+  that puts its own tree together, as the daemon does, starts it after the
+  store, and hands the same `Wardrik.Host` to each surface it starts after
+  it:
 
       children = [
         {WardrikStore, store},

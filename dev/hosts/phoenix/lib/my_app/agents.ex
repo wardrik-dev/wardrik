@@ -46,6 +46,7 @@ defmodule MyApp.Agents do
     wardrik = wardrik()
 
     [
+      {WardrikStore, store},
       {Wardrik, wardrik},
       WardrikOAuth.Supervisor,
       {WardrikMCP.Supervisor,
@@ -59,7 +60,7 @@ defmodule MyApp.Agents do
       {WardrikHTTP.Access, store: store},
       WardrikHTTP.Workers,
       {WardrikHTTP.Listener,
-       host: Wardrik.host(wardrik),
+       host: wardrik,
        port: 4850,
        authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}}
     ]

@@ -109,7 +109,8 @@ defmodule WardrikDaemon.CLI.InitTest do
     assert {:ok, _spec} =
              WardrikDaemon.AgentFile.read(
                WardrikDaemon.AgentFile.context(Host.config(config)),
-               Path.join(config, "agents/assistant.md")
+               Path.join(config, "agents/assistant.md"),
+               host: Host.host()
              )
 
     commands = log(log)
