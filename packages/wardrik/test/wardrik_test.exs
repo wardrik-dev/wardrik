@@ -84,6 +84,7 @@ defmodule WardrikTest do
 
       brief = Wardrik.new(store: store(), expires: [api: 3_600])
       assert Wardrik.Host.expires(Wardrik.host(brief), :api) == 3_600
+      assert Wardrik.Host.expires(Wardrik.host(brief), :session) == 12 * 3_600
     end
 
     test "makes the scope a principal acts in with the token its issuer issues them" do
@@ -93,10 +94,24 @@ defmodule WardrikTest do
       assert %Wardrik.Scope{token: %Wardrik.Token{principal: ^maria} = token} =
                Wardrik.as(wardrik, maria)
 
-      assert Wardrik.as(Wardrik.host(wardrik), maria).token == token
+      assert Wardrik.as(Wardrik.host(wardrik), maria).token.scope == token.scope
 
       assert Wardrik.Token.authorize(token, "agent.define", Wardrik.AgentID.parse!("acme/x")) ==
                :ok
+    end
+
+    test "issues every token to expire after the host's session length" do
+      maria = Wardrik.Principal.new(:user, "maria")
+      wardrik = Wardrik.new(store: store(), issuer: %Wardrik.OrgIssuer{org: "acme"})
+      brief = Wardrik.new(store: store(), expires: [session: 60])
+
+      assert_in_delta DateTime.diff(Wardrik.as(wardrik, maria).token.expires, DateTime.utc_now()),
+                      12 * 3_600,
+                      5
+
+      assert_in_delta DateTime.diff(Wardrik.as(brief, maria).token.expires, DateTime.utc_now()),
+                      60,
+                      5
     end
 
     test "takes no option it does not know" do

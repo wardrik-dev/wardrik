@@ -78,8 +78,9 @@ defmodule Wardrik do
       them. One left out is that protocol's default: tokens allowing
       nothing, no credentials, every model call made through ReqLLM, and so
       on.
-    * `:expires` - how long the tokens `tokens_create/4` makes last, as
-      `api:` seconds; 90 days by default.
+    * `:expires` - how long tokens last, in seconds: `api:`, those
+      `tokens_create/4` makes, 90 days by default; `session:`, those
+      `as/3` issues, 12 hours by default.
     * `:fleet` - the options of `Wardrik.Fleet.Supervisor`.
   """
 
@@ -240,7 +241,11 @@ defmodule Wardrik do
   @doc """
   The scope `principal` acts in on the agents of `wardrik`, or of the
   `Wardrik.Host` a surface was started with: the token the host's
-  `Wardrik.Issuer` issues them, which reads `opts` as it reads them.
+  `Wardrik.Issuer` issues them, which reads `opts` as it reads them,
+  expiring as the host's `:session` expiry says. Each function here
+  refreshes a token past its expiry through the issuer as it uses it, so
+  whatever holds the scope keeps working, held to what the issuer gives
+  the principal now (see `Wardrik.Token.refresh/2`).
 
       scope = Wardrik.as(wardrik, maria)
   """
@@ -249,8 +254,10 @@ defmodule Wardrik do
   def as(wardrik_or_host, principal, opts \\ [])
   def as(%__MODULE__{host: host}, principal, opts), do: as(host, principal, opts)
 
-  def as(%Host{} = host, principal, opts),
-    do: Scope.new(host, Wardrik.Issuer.issue(Host.issuer(host), principal, opts))
+  def as(%Host{} = host, principal, opts) do
+    token = Wardrik.Issuer.issue(Host.issuer(host), principal, opts)
+    Scope.new(host, %{token | expires: from_now(Host.expires(host, :session))})
+  end
 
   # -- talking to an agent ----------------------------------------------------
 
@@ -432,6 +439,8 @@ defmodule Wardrik do
   @spec agent_decide(Scope.t(), AgentID.t(), %{String.t() => decision()}) ::
           {:ok, %{String.t() => decision()}} | {:error, Error.t()}
   def agent_decide(%Scope{} = scope, %AgentID{} = agent, decisions) when is_map(decisions) do
+    scope = refreshed(scope)
+
     with :ok <- authorize(scope, "agent.read", agent) do
       case Agent.decide(agent, decisions, token: scope.token, host: scope.host) do
         :ok -> {:ok, decisions}
@@ -592,6 +601,7 @@ defmodule Wardrik do
   def agent_define(%Scope{} = scope, %AgentID{} = agent, definition, opts \\ [])
       when is_map(definition) do
     opts = NimbleOptions.validate!(opts, @define_opts)
+    scope = refreshed(scope)
 
     with :ok <- authorize(scope, "agent.define", agent),
          {:ok, spec} <- defined(scope, agent, definition, opts[:held]),
@@ -1328,7 +1338,7 @@ defmodule Wardrik do
       principal: scope.token.principal,
       scope: statements,
       policy: Keyword.get(opts, :policy, scope.token.policy),
-      expires: DateTime.add(DateTime.utc_now(:second), seconds)
+      expires: from_now(seconds)
     }
 
     with :ok <- on_deployment(scope, "tokens.create") do
@@ -1419,7 +1429,19 @@ defmodule Wardrik do
 
   # -- checking and recording -------------------------------------------------------
 
-  defp authorize(%Scope{token: token}, action, target), do: Token.authorize(token, action, target)
+  defp authorize(scope, action, target),
+    do: Token.authorize(refreshed(scope).token, action, target)
+
+  # The scope, its token renewed once expired with what the host's issuer
+  # gives its principal now, so a revocation holds at its next use. A
+  # decision or a definition hands the token on, so renews it first.
+  defp refreshed(%Scope{host: host, token: token} = scope) do
+    if Token.expired?(token),
+      do: %{scope | token: Token.refresh(token, as(host, token.principal).token)},
+      else: scope
+  end
+
+  defp from_now(seconds), do: DateTime.add(DateTime.utc_now(:second), seconds)
 
   # The deployment is acted on by a token allowing it on `deployment/*`, so
   # one held to an org or a person never learns, nor changes, where any

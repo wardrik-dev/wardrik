@@ -165,6 +165,34 @@ defmodule Wardrik.TokenTest do
     end
   end
 
+  describe "refreshing a token" do
+    test "takes the expiry of the one issued now, keeping its policy and who assumed it" do
+      agent = Principal.new(:agent, "acme/front")
+      later = DateTime.add(DateTime.utc_now(:second), 60)
+      careful = %{Token.root(@maria) | policy: "careful"}
+
+      held = %{
+        Token.assume(careful, agent, scope: careful.scope)
+        | expires: DateTime.add(DateTime.utc_now(), -1)
+      }
+
+      refreshed = Token.refresh(held, %{Token.root(@maria) | expires: later})
+
+      assert %Token{policy: "careful", assumed_by: [^agent], expires: ^later} = refreshed
+      assert refreshed.scope == held.scope
+      refute Token.expired?(refreshed)
+    end
+
+    test "never allows more than the token it renews, nor what the issuer no longer gives" do
+      agent = Principal.new(:agent, "acme/front")
+      narrowed = Token.assume(Token.root(@maria), agent, scope: token([:reader]).scope)
+
+      assert Token.refresh(narrowed, Token.root(@maria)).scope == narrowed.scope
+      assert Token.refresh(Token.root(@maria), token([:reader])).scope == narrowed.scope
+      assert Token.refresh(narrowed, %Token{principal: @maria}).scope == []
+    end
+  end
+
   test "an issuer that names none issues a token allowing nothing" do
     token = Wardrik.Issuer.issue(%Wardrik.Issuer.None{}, @maria, [])
 

@@ -114,12 +114,22 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "orgs.payments.ceiling is not a setting"
     end
 
-    test "tokens says how long an API token lasts", context do
+    test "tokens says how long an API token lasts, and one the daemon issues", context do
       assert {:ok, settings} = read_all("tokens:\n  expires:\n    api: 30d\n", context)
       assert settings[Wardrik.Tokens] == [expires: [api: 30 * 86_400]]
 
+      yaml = "tokens:\n  expires:\n    api: 30d\n    session: 1h\n"
+      assert {:ok, settings} = read_all(yaml, context)
+      assert settings[Wardrik.Tokens] == [expires: [api: 30 * 86_400, session: 3_600]]
+
       assert {:error, message} = read_all("tokens:\n  expires:\n    api: soon\n", context)
       assert message =~ "tokens.expires.api is a duration, as 90d, 12h, 30m or 45s"
+
+      assert {:error, message} = read_all("tokens:\n  expires:\n    session: 0h\n", context)
+      assert message =~ "tokens.expires.session is a duration, as 90d, 12h, 30m or 45s"
+
+      assert {:error, message} = read_all("tokens:\n  expires:\n    forever: 1d\n", context)
+      assert message =~ "tokens.expires.forever is not a setting"
 
       assert {:error, message} = read_all("tokens:\n  lifetime: 30d\n", context)
       assert message =~ "tokens.lifetime is not a setting; expected one of expires"

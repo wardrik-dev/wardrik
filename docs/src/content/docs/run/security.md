@@ -11,7 +11,7 @@ with accounts you don't trust.
 
 More on who reaches what:
 
-- [Tokens](/run/tokens/): what each HTTP API token may reach and do.
+- [Tokens](/run/tokens/): what each HTTP API token may reach and do, and when tokens expire.
 - [Orgs](/run/orgs/): how agents of different orgs and users are kept apart.
 
 ## What listens
@@ -42,6 +42,13 @@ such as Tailscale or WireGuard. See [Run a cluster](/run/cluster/#on-several-mac
 The client is served once `~/.config/wardrik/ssh/authorized_keys` lists a key. A listed key reaches
 every agent and everything the client does, including removing agents. See
 [The terminal client](/build/tui/).
+
+## Tokens expire
+
+Every token expires. A token for the HTTP API lasts 90 days, `tokens.expires.api`, then is refused.
+One the daemon issues, as a shell's or someone's in a channel, lasts 12 hours,
+`tokens.expires.session`, then is refreshed as it is used, holding only what `config.yaml` gives
+now, so access you take away is gone at its next use. See [Tokens](/run/tokens/#when-it-expires).
 
 ## Secrets
 

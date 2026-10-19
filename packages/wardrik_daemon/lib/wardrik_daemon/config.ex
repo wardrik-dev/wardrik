@@ -649,14 +649,17 @@ defmodule WardrikDaemon.Config do
     known!(tokens, ["expires"], ["tokens"])
     path = ["tokens", "expires"]
     expires = table!(tokens["expires"], path)
-    known!(expires, ["api"], path)
+    known!(expires, ["api", "session"], path)
 
-    for {"api", text} <- expires do
-      case seconds(text) do
-        {:ok, seconds} -> {:expires, [api: seconds]}
-        :error -> invalid!(path ++ ["api"], "is a duration, as 90d, 12h, 30m or 45s")
-      end
-    end
+    [
+      expires:
+        for {kind, text} <- expires do
+          case seconds(text) do
+            {:ok, seconds} -> {String.to_existing_atom(kind), seconds}
+            :error -> invalid!(path ++ [kind], "is a duration, as 90d, 12h, 30m or 45s")
+          end
+        end
+    ]
   end
 
   @units %{"d" => 86_400, "h" => 3_600, "m" => 60, "s" => 1}

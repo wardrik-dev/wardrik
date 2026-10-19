@@ -58,7 +58,9 @@ defmodule Wardrik.Host do
 
   `:expires` is how long a token the host makes lasts, by its kind, in
   seconds: `:api`, one made for the HTTP API with `Wardrik.tokens_create/4`,
-  90 days unless given.
+  90 days unless given; `:session`, one its `:issuer` issues through
+  `Wardrik.as/3`, 12 hours unless given. Naming one keeps the other's
+  default.
 
   The host travels with the work, never with what is stored: each scope a
   surface acts in carries it to what it acts on, and each agent is handed
@@ -69,7 +71,7 @@ defmodule Wardrik.Host do
   names the field, never an implementation.
   """
 
-  @api_expires 90 * 86_400
+  @expires [api: 90 * 86_400, session: 12 * 3_600]
 
   defstruct store: %WardrikStore.None{},
             definitions: %Wardrik.Definition.None{},
@@ -84,7 +86,7 @@ defmodule Wardrik.Host do
             llm: %Wardrik.LLM.ReqLLM{},
             runtimes: [%Wardrik.LLM.Runtime{}],
             audit: Wardrik.Audit,
-            expires: [api: @api_expires]
+            expires: @expires
 
   @type t() :: %__MODULE__{
           store: WardrikStore.t(),
@@ -100,7 +102,7 @@ defmodule Wardrik.Host do
           llm: Wardrik.LLM.Client.t(),
           runtimes: [Wardrik.Runtime.t()],
           audit: GenServer.name(),
-          expires: [api: pos_integer()]
+          expires: [api: pos_integer(), session: pos_integer()]
         }
 
   @seams [
@@ -126,7 +128,11 @@ defmodule Wardrik.Host do
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
     opts = Keyword.validate!(opts, [:store, :audit, :expires | @seams])
-    struct!(__MODULE__, opts)
+
+    struct!(
+      __MODULE__,
+      Keyword.update(opts, :expires, @expires, &Keyword.validate!(&1, @expires))
+    )
   end
 
   @doc "The `WardrikStore` everything is kept in."
@@ -192,6 +198,6 @@ defmodule Wardrik.Host do
   def issuer(%__MODULE__{issuer: issuer}), do: issuer
 
   @doc "How long a token of `kind` the host makes lasts, in seconds."
-  @spec expires(t(), :api) :: pos_integer()
+  @spec expires(t(), :api | :session) :: pos_integer()
   def expires(%__MODULE__{expires: expires}, kind), do: Keyword.fetch!(expires, kind)
 end

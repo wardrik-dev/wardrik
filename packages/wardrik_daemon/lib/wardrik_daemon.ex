@@ -103,8 +103,9 @@ defmodule WardrikDaemon do
   config's `oauth`; the accounts people connect through both; the HTTP API's
   tokens, lasting as long as `config.yaml`'s `tokens.expires.api` says;
   webhooks checked with the vault's secrets for each agent, else the
-  environment's; `WardrikDaemon.Issuer`; agents' files kept in the store;
-  and the MCP servers orgs and people add, kept there too.
+  environment's; `WardrikDaemon.Issuer`, whose tokens last as long as
+  `tokens.expires.session` says; agents' files kept in the store; and the
+  MCP servers orgs and people add, kept there too.
   """
   @spec host(Config.t(), store: WardrikStore.t()) :: Wardrik.Host.t()
   def host(%Config{} = config, opts) do

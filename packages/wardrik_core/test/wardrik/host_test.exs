@@ -25,9 +25,19 @@ defmodule Wardrik.HostTest do
     assert Host.tokens(host) == %Wardrik.Tokens.None{}
     assert Host.triggers(host) == %Wardrik.Triggers.None{}
     assert Host.store(host) == WardrikStore.new(adapter: WardrikStore.None)
-    assert Host.expires(host, :api) == 90 * 86_400
-    assert Host.expires(Host.new(expires: [api: 60]), :api) == 60
     assert_raise ArgumentError, fn -> Host.new(ledger: %Issued{}) end
+  end
+
+  test "lasts each kind of token as :expires says, and the others as by default" do
+    assert Host.expires(Host.new(), :api) == 90 * 86_400
+    assert Host.expires(Host.new(), :session) == 12 * 3_600
+
+    brief = Host.new(expires: [api: 60])
+    assert Host.expires(brief, :api) == 60
+    assert Host.expires(brief, :session) == 12 * 3_600
+    assert Host.expires(Host.new(expires: [session: 60]), :session) == 60
+
+    assert_raise ArgumentError, fn -> Host.new(expires: [forever: 60]) end
   end
 
   test "finds each runtime it runs by its key, and raises on one it does not run" do

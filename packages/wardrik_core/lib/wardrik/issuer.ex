@@ -20,6 +20,11 @@ defprotocol Wardrik.Issuer do
   surface that holds a token of its own for its callers, as the HTTP API
   does, need not ask.
 
+  A token `Wardrik.as/3` makes of what it issues expires as the host's
+  `:session` expiry says (see `Wardrik.Host`). Once it has, `Wardrik`'s
+  functions refresh it through the issuer as they use it, so a change to
+  what the issuer gives someone reaches what they hold at its next use.
+
   A host that names none has `Wardrik.Issuer.None`, whose tokens allow
   nothing.
   """

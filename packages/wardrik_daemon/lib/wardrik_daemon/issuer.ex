@@ -14,8 +14,10 @@ defmodule WardrikDaemon.Issuer do
       messages for it what it could itself
     * anyone else - nothing
 
-  A token of the HTTP API is not issued here: `WardrikHTTP.Tokens` reads it
-  where it is kept.
+  Each lasts as long as `config.yaml`'s `tokens.expires.session` says; one
+  held past that is refreshed here as it is used, so a change to `channels`
+  that takes something away reaches whoever holds one. A token of the HTTP
+  API is not issued here: `WardrikHTTP.Tokens` reads it where it is kept.
 
   In a channel, everyone holds `reader` and `messenger` on the agents of
   the channel's orgs, `acme/agent/*`, and none of their users'; see

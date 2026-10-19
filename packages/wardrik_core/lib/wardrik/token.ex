@@ -17,7 +17,9 @@ defmodule Wardrik.Token do
     * `assumed_by` - who acts with it for the principal, first to last, as
       an agent acting for the person who asked it something; `[]` where the
       principal acts themselves
-    * `expires` - when it stops working, or `:infinity`
+    * `expires` - when it stops working, or `:infinity`; one
+      `Wardrik.as/3` or `Wardrik.tokens_create/4` makes expires as the
+      host's `:expires` says (see `Wardrik.Host`)
 
   A host's `Wardrik.Issuer` issues one to whoever it knows, and
   `Wardrik.as/3` asks it. A surface that keeps tokens, as the HTTP API
@@ -30,8 +32,9 @@ defmodule Wardrik.Token do
 
       Wardrik.Token.authorize(token, "agent.ask", ~A"acme/triage")      #=> :ok
 
-  `assume/3` hands a token on to someone acting for its principal, and can
-  only narrow what it allows.
+  `assume/3` hands a token on to someone acting for its principal, and
+  `refresh/2` renews one that has expired; each can only narrow what it
+  allows.
   """
 
   alias Wardrik.AgentID
@@ -133,18 +136,26 @@ defmodule Wardrik.Token do
 
     %{
       token
-      | scope:
-          for(
-            one <- token.scope,
-            other <- Keyword.fetch!(opts, :scope),
-            both <- Statement.intersect(one, other),
-            do: both
-          ),
+      | scope: both(token.scope, Keyword.fetch!(opts, :scope)),
         assumed_by: token.assumed_by ++ [actor],
         expires: earlier(token.expires, opts[:expires]),
         policy: named(token.policy, opts[:policy])
     }
   end
+
+  @doc """
+  `token`, renewed with `issued`, the token its principal's issuer issues
+  them now, as an OAuth refresh renews an access token: it allows only what
+  both allow, keeps its policy and who assumed it, and expires as `issued`
+  does. It never allows more than `token`, nor anything the issuer no
+  longer gives its principal.
+  """
+  @spec refresh(t(), t()) :: t()
+  def refresh(%__MODULE__{} = token, %__MODULE__{} = issued),
+    do: %{token | scope: both(token.scope, issued.scope), expires: issued.expires}
+
+  defp both(scope, other),
+    do: for(one <- scope, another <- other, both <- Statement.intersect(one, another), do: both)
 
   defp named(policy, :none), do: policy
   defp named(_policy, name), do: name
