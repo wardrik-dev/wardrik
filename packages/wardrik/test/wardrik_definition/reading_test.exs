@@ -10,7 +10,7 @@ defmodule WardrikDefinition.ReadingTest do
   import Wardrik.AgentID, only: [sigil_A: 2]
 
   defmodule Hook do
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
 
     @impl true
     def init(_opts), do: nil
@@ -20,7 +20,7 @@ defmodule WardrikDefinition.ReadingTest do
   end
 
   defmodule Search do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl Wardrik.Tool
     def tool,
@@ -33,7 +33,7 @@ defmodule WardrikDefinition.ReadingTest do
   end
 
   defmodule Lua do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl Wardrik.Tool
     def tool,
@@ -46,7 +46,7 @@ defmodule WardrikDefinition.ReadingTest do
   end
 
   defmodule Source do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl Wardrik.Tool
     def tools(_argument), do: []

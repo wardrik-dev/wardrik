@@ -4,7 +4,7 @@ defmodule Wardrik.Test.Tools.Deploy do
   name. Its call acts on the target its arguments name.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   @impl true
   def tool do
@@ -28,7 +28,7 @@ end
 defmodule Wardrik.Test.Tools.Fetch do
   @moduledoc "A tool whose answers are content from outside: a page anyone could have written."
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   @impl true
   def tool do
@@ -61,7 +61,7 @@ defmodule Wardrik.Test.Tools.Rules do
       Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, ask: ["deploy"], allow: :all)
   """
 
-  @behaviour Wardrik.Hook
+  use Wardrik.Hook
 
   alias Wardrik.Call
   alias Wardrik.Run

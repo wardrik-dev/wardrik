@@ -16,7 +16,7 @@ defmodule Wardrik.Call.PipelineTest do
 
   # A hook that answers every call one way, and tells the test what it hears.
   defmodule Saying do
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
 
     @impl true
     def init(answer), do: answer
@@ -67,7 +67,7 @@ defmodule Wardrik.Call.PipelineTest do
   # A tool whose worker went away the first time, and that may run again
   # under the same key.
   defmodule Refund do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tool do
@@ -95,7 +95,7 @@ defmodule Wardrik.Call.PipelineTest do
 
   # The same, whose worker never answers.
   defmodule Lost do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tool do

@@ -20,7 +20,7 @@ defmodule Wardrik.Hook do
   holds no function and no reference.
 
       defmodule MyApp.NoFridayDeploys do
-        @behaviour Wardrik.Hook
+        use Wardrik.Hook
 
         @impl true
         def init(opts), do: Map.new(opts)
@@ -32,6 +32,9 @@ defmodule Wardrik.Hook do
 
         def call(_call, _value), do: :pass
       end
+
+  `use Wardrik.Hook` gives a hook a `c:approved/3` and a `c:settle/2` that
+  hear nothing, so it defines them only where it has something to hear.
 
   ## Deciding together
 
@@ -63,8 +66,9 @@ defmodule Wardrik.Hook do
   with `:result` set: a tool call its tool answered, and a model call with
   `:usage` set on its target. A model call that failed before the provider
   began to answer used nothing, and is not settled; nor is a call refused, a
-  call answered from the ledger, or one waiting on a person. A failure there
-  is logged. A hook that cares for one kind of call matches on its target:
+  call answered from the ledger, or one waiting on a person. A hook that
+  raises there fails the call, as a tool that raises does. A hook that cares
+  for one kind of call matches on its target:
 
       def settle(%Wardrik.Call{target: %Wardrik.Call.Model{usage: usage}}, value), do: book(usage, value)
       def settle(_call, _value), do: :ok
@@ -75,8 +79,6 @@ defmodule Wardrik.Hook do
   the revision it parked under, and one resumed under a different revision
   hands the calls a hook was waiting on to the hooks it has now.
   """
-
-  require Logger
 
   alias Wardrik.Call
   alias Wardrik.Run
@@ -115,7 +117,19 @@ defmodule Wardrik.Hook do
   @doc "Hears what a call did once it was made: what a tool answered, or what a model call used."
   @callback settle(Call.t(), value :: term()) :: any()
 
-  @optional_callbacks approved: 3, settle: 2
+  defmacro __using__(_opts) do
+    quote do
+      @behaviour Wardrik.Hook
+
+      @doc false
+      def approved(_call, _memo, _value), do: :ok
+
+      @doc false
+      def settle(_call, _value), do: :ok
+
+      defoverridable approved: 3, settle: 2
+    end
+  end
 
   @doc "A hook named `name`, reading what `module`'s `c:init/1` makes of `opts`."
   @spec new(String.t(), module(), term()) :: t()
@@ -173,8 +187,8 @@ defmodule Wardrik.Hook do
   @spec approved(Call.t()) :: :ok
   def approved(%Call{state: :approved, run: %Run{hooks: hooks}} = call) do
     for %Call.Ask{by: name, memo: memo} <- call.asks,
-        %__MODULE__{} = hook <- [Enum.find(hooks, &(&1.name == name))] do
-      optional(hook, :approved, [call, memo])
+        %__MODULE__{module: module, value: value} <- [Enum.find(hooks, &(&1.name == name))] do
+      module.approved(call, memo, value)
     end
 
     :ok
@@ -183,15 +197,9 @@ defmodule Wardrik.Hook do
   @doc "Tells every hook on its run what a call did once it was made."
   @spec settle(Call.t()) :: :ok
   def settle(%Call{state: :done, run: %Run{hooks: hooks}} = call) do
-    Enum.each(hooks, &optional(&1, :settle, [call]))
-  end
-
-  defp optional(%__MODULE__{module: module, value: value} = hook, function, args) do
-    if Code.ensure_loaded?(module) and function_exported?(module, function, length(args) + 1),
-      do: apply(module, function, args ++ [value])
-  catch
-    kind, reason ->
-      Logger.error("Hook #{hook.name} failed in #{function}: #{Exception.format(kind, reason)}")
+    Enum.each(hooks, fn %__MODULE__{module: module, value: value} ->
+      module.settle(call, value)
+    end)
   end
 
   @doc "A name for `hooks` that changes whenever what they hold does."

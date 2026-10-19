@@ -23,7 +23,7 @@ defmodule Wardrik.Catalog.Agents do
   held to, and how an answer it is sent comes back.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   alias Wardrik.AgentID
   alias Wardrik.Catalog

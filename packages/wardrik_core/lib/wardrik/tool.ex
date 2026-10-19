@@ -7,8 +7,8 @@ defmodule Wardrik.Tool do
 
   Wardrik ships no tools of its own but the catalog's, which offer an agent
   `Wardrik`'s functions on itself and on the agents of its owner, through
-  `Wardrik.Catalog.Self` and `Wardrik.Catalog.Agents`. Implement this behaviour in your own
-  application or in a tool package, then name the module in a config:
+  `Wardrik.Catalog.Self` and `Wardrik.Catalog.Agents`. `use Wardrik.Tool` in a module of your
+  own application or of a tool package, then name the module in a config:
 
       Wardrik.LLM.Config.new(tools: [MyApp.Tools.SearchIssues])
 
@@ -18,7 +18,7 @@ defmodule Wardrik.Tool do
   report progress. It answers as `t:answer/0` says:
 
       defmodule MyApp.Tools.SearchIssues do
-        @behaviour Wardrik.Tool
+        use Wardrik.Tool
 
         @impl true
         def tool do
@@ -73,8 +73,9 @@ defmodule Wardrik.Tool do
 
   ## What a tool declares
 
-  Three optional callbacks tell the runtime about a tool's calls, each with a
-  form taking a source's argument first:
+  Three callbacks tell the runtime about a tool's calls, each with a form
+  taking a source's argument first. `use Wardrik.Tool` has each declare
+  nothing, so a tool defines only what it declares:
 
     * `c:annotations/1` - what holds for every call to the tool: whether it
       is gated, what its answers hold, what a call does in doubt, how long
@@ -183,8 +184,8 @@ defmodule Wardrik.Tool do
 
   @doc """
   What holds for every call to the tool `name`, as `Wardrik.Tool.Annotations`
-  reads it. Optional; a tool that declares none has every default. A source
-  answers with `c:annotations/2`.
+  reads it. `use Wardrik.Tool` declares none, which is every default. A
+  source answers with `c:annotations/2`.
   """
   @callback annotations(name :: String.t()) :: Annotations.t() | map() | keyword()
 
@@ -195,8 +196,8 @@ defmodule Wardrik.Tool do
   @doc """
   What a call to the tool `name` with `arguments` acts on: strings a rule
   that names the tool with an argument, `name(argument)`, is matched against,
-  each on its own. Optional; a tool that declares none is spoken for only by
-  rules naming it whole. A source answers with `c:subjects/3`.
+  each on its own. `use Wardrik.Tool` declares none, so a tool is spoken for
+  only by rules naming it whole. A source answers with `c:subjects/3`.
   """
   @callback subjects(name :: String.t(), arguments :: map()) :: [String.t()]
 
@@ -213,24 +214,48 @@ defmodule Wardrik.Tool do
   @doc """
   What the tool tells the model as each turn begins, put after the system
   prompt of every request the turn makes, asked with the turn's run, whose
-  host holds the store it reads from. Optional. It is asked once, when the
-  turn is built, so it reads what it needs then. One that raises fails that
-  turn, which runs supervised, and the agent goes on to its next. A source
-  answers with `c:context/2`.
+  host holds the store it reads from; `use Wardrik.Tool` tells it nothing.
+  It is asked once, when the turn is built, so it reads what it needs then.
+  One that raises fails that turn, which runs supervised, and the agent goes
+  on to its next. A source answers with `c:context/2`.
   """
   @callback context(Wardrik.Run.t()) :: context()
 
   @doc "`c:context/1` for a source, asked with the argument the spec named it with first."
   @callback context(argument :: term(), Wardrik.Run.t()) :: context()
 
-  @optional_callbacks tool: 0,
-                      tools: 1,
-                      annotations: 1,
-                      annotations: 2,
-                      subjects: 2,
-                      subjects: 3,
-                      context: 1,
-                      context: 2
+  @optional_callbacks tool: 0, tools: 1
+
+  defmacro __using__(_opts) do
+    quote do
+      @behaviour Wardrik.Tool
+
+      @doc false
+      def annotations(_name), do: %{}
+
+      @doc false
+      def annotations(_argument, _name), do: %{}
+
+      @doc false
+      def subjects(_name, _arguments), do: []
+
+      @doc false
+      def subjects(_argument, _name, _arguments), do: []
+
+      @doc false
+      def context(_run), do: nil
+
+      @doc false
+      def context(_argument, _run), do: nil
+
+      defoverridable annotations: 1,
+                     annotations: 2,
+                     subjects: 2,
+                     subjects: 3,
+                     context: 1,
+                     context: 2
+    end
+  end
 
   @doc """
   A tool, from `:name`, `:description`, `:schema` and `:run`; see `t:t/0`.
@@ -294,15 +319,11 @@ defmodule Wardrik.Tool do
   end
 
   # What a module declares with `function`, or a source with its argument
-  # first; `nil` where it declares nothing.
-  defp declared({module, argument}, function, args) when is_atom(module) do
-    if exports?(module, function, length(args) + 1),
-      do: apply(module, function, [argument | args])
-  end
+  # first; `nil` for a tool given inline, which declares nothing.
+  defp declared({module, argument}, function, args) when is_atom(module),
+    do: apply(module, function, [argument | args])
 
-  defp declared(module, function, args) when is_atom(module) do
-    if exports?(module, function, length(args)), do: apply(module, function, args)
-  end
+  defp declared(module, function, args) when is_atom(module), do: apply(module, function, args)
 
   defp declared(%__MODULE__{}, _function, _args), do: nil
 

@@ -6,7 +6,7 @@ defmodule WardrikDefinitionTest do
   alias WardrikDefinition.Context
 
   defmodule Clock do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl Wardrik.Tool
     def tool,
@@ -19,7 +19,7 @@ defmodule WardrikDefinitionTest do
   end
 
   defmodule Source do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl Wardrik.Tool
     def tools(_argument), do: []

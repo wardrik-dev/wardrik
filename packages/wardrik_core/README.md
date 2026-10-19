@@ -83,7 +83,7 @@ arguments, and what it runs. A module implementing the behaviour builds one:
 
 ```elixir
 defmodule MyApp.Ping do
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   @impl true
   def tool do
@@ -176,7 +176,7 @@ handed a `Wardrik.Call` and says what it makes of it: `:pass`, `:allow`,
 
 ```elixir
 defmodule MyApp.NoFridayDeploys do
-  @behaviour Wardrik.Hook
+  use Wardrik.Hook
 
   @impl true
   def init(opts), do: Map.new(opts)

@@ -85,7 +85,7 @@ defmodule WardrikPolicy.Judge do
   @effects [:deny, :ask, :allow]
   @outside "outside"
 
-  @behaviour Wardrik.Hook
+  use Wardrik.Hook
 
   @impl Wardrik.Hook
   def init(%__MODULE__{} = judge), do: judge

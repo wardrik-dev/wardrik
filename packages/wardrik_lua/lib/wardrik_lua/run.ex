@@ -20,7 +20,7 @@ defmodule WardrikLua.Run do
   `Wardrik.LLM.ToolRunner` stops the call first.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   alias Wardrik.Tool.Result
   alias WardrikLua.Sandbox

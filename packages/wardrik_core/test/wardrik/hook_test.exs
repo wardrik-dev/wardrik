@@ -1,8 +1,6 @@
 defmodule Wardrik.HookTest do
   use ExUnit.Case, async: true
 
-  import ExUnit.CaptureLog
-
   alias Wardrik.Call
   alias Wardrik.Call.Ask
   alias Wardrik.Call.Denial
@@ -11,7 +9,7 @@ defmodule Wardrik.HookTest do
 
   # Says of every call whatever its value is, and reports what it hears.
   defmodule Scripted do
-    @behaviour Hook
+    use Hook
 
     @impl true
     def init(script), do: script
@@ -136,25 +134,6 @@ defmodule Wardrik.HookTest do
 
       :ok = waiting |> Call.approve() |> Call.under(Wardrik.Test.run()) |> Hook.approved()
       refute_received {:approved, _id, _memo, _script}
-    end
-
-    test "a hook that fails to hear it is logged" do
-      defmodule Unhearing do
-        @behaviour Hook
-        @impl true
-        def init(_opts), do: nil
-        @impl true
-        def call(_call, _value), do: {:ask, "Sure?"}
-        @impl true
-        def approved(_call, _memo, _value), do: raise("approval is broken")
-      end
-
-      log =
-        capture_log(fn ->
-          :ok = [Hook.new("unhearing", Unhearing)] |> check() |> Call.approve() |> Hook.approved()
-        end)
-
-      assert log =~ "approval is broken"
     end
   end
 

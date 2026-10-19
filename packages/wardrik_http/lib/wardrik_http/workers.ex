@@ -69,7 +69,7 @@ defmodule WardrikHTTP.Workers do
   settings travel with what it offers, as it joins the group.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   require Logger
 

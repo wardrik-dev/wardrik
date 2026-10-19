@@ -25,7 +25,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
 
   # A tool that passes its call's idempotency key on, so it may run again.
   defmodule Rerunnable do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tool do

@@ -86,6 +86,9 @@ defmodule Wardrik.Tool.Result do
   defp describe({code, detail}) when is_atom(code),
     do: %{"code" => to_string(code), "message" => "#{humanize(code)}: #{inspect(detail)}"}
 
+  defp describe(reason) when is_exception(reason),
+    do: %{"code" => "request_failed", "message" => Exception.message(reason)}
+
   defp describe(reason),
     do: %{"code" => "request_failed", "message" => inspect(reason)}
 

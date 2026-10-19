@@ -52,8 +52,9 @@ defmodule WardrikResearch.Deep do
   `:max_iterations`.
   """
 
-  @behaviour Wardrik.Tool
   @behaviour WardrikWorkflow.Step
+
+  use Wardrik.Tool
 
   alias Wardrik.Subagent
 

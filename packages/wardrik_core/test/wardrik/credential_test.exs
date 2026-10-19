@@ -34,7 +34,6 @@ defmodule Wardrik.CredentialTest do
 
     def resolve(_vault, _ref, %Wardrik.Call{run: %Run{}}), do: {:error, :denied}
 
-    def refused(_vault, "explodes", _call), do: raise("the vault is on fire")
     def refused(_vault, ref, %Wardrik.Call{}), do: send(self(), {:refused, ref}) && :ok
 
     def key(_vault, "XAI_API_KEY"), do: {:ok, "sk-from-the-vault"}
@@ -106,13 +105,7 @@ defmodule Wardrik.CredentialTest do
       assert_received {:refused, "github"}
     end
 
-    test "passes over credentials that raise, and a host with none" do
-      assert :ok =
-               Credential.refused(
-                 Calls.tool("t", %{}, run(credentials: %Vault{})),
-                 "explodes"
-               )
-
+    test "a host with none has nothing to renew" do
       assert :ok = Credential.refused(Calls.tool("t", %{}, run()), "x")
     end
   end

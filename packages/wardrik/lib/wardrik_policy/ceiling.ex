@@ -11,7 +11,7 @@ defmodule WardrikPolicy.Ceiling do
   agent's own budget still counts apart, beside it.
   """
 
-  @behaviour Wardrik.Hook
+  use Wardrik.Hook
 
   alias Wardrik.Call
   alias WardrikPolicy.Budget

@@ -18,7 +18,7 @@ defmodule WardrikBrave.WebSearch do
   holding it as the deployment's secret.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   alias Wardrik.Tool.Result
   alias WardrikBrave.Client

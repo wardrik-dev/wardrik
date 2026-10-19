@@ -1,7 +1,7 @@
 defmodule Wardrik.Test.CountingSource do
   @moduledoc "A `Wardrik.Tool` source that gives as many numbered tools as it is asked for."
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   @impl true
   def tools(count) when is_integer(count) do

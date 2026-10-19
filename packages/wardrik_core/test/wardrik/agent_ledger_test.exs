@@ -12,7 +12,7 @@ defmodule Wardrik.AgentLedgerTest do
   # so a test can lose the agent part way through the call.
   defmodule Effect do
     @moduledoc false
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tools({name, test_pid}) do
@@ -35,7 +35,7 @@ defmodule Wardrik.AgentLedgerTest do
 
   defmodule Careful do
     @moduledoc false
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
 
     @impl true
     def init(_opts), do: nil

@@ -14,7 +14,7 @@ defmodule Wardrik.Catalog.Self do
   `Wardrik.Catalog.Tools` for how it runs.
   """
 
-  @behaviour Wardrik.Tool
+  use Wardrik.Tool
 
   alias Wardrik.AgentID
   alias Wardrik.Catalog

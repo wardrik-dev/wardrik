@@ -11,7 +11,7 @@ defmodule WardrikDefinition.KeptTest do
   alias WardrikDefinition.Kept
 
   defmodule Search do
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl Wardrik.Tool
     def tool,

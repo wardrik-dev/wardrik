@@ -860,7 +860,7 @@ defmodule Wardrik.LLM.TurnTest do
 
   describe "what the tools say first" do
     defmodule TellingSource do
-      @behaviour Wardrik.Tool
+      use Wardrik.Tool
 
       @impl true
       def tools(_argument), do: []
@@ -1018,7 +1018,7 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   defmodule AskingHook do
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
     @impl true
     def init(_opts), do: nil
     @impl true
@@ -1029,7 +1029,7 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   defmodule DenyingHook do
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
     @impl true
     def init(_opts), do: nil
     @impl true
@@ -1039,7 +1039,7 @@ defmodule Wardrik.LLM.TurnTest do
 
   # Asks about every model call, and remembers nothing.
   defmodule ModelAsker do
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
     @impl true
     def init(_opts), do: nil
     @impl true
@@ -1086,7 +1086,7 @@ defmodule Wardrik.LLM.TurnTest do
   # A hook named with a value: the Agent holding the memo a person approved,
   # if one has been.
   defmodule Gate do
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
 
     @impl true
     def init(gate), do: gate

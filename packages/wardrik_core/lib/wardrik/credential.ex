@@ -210,15 +210,11 @@ defmodule Wardrik.Credential do
 
   @doc """
   Tells the `Wardrik.Credentials` of the host `call` runs on that the
-  credential they resolved for `ref` was refused. Credentials that raise are
-  passed over.
+  credential they resolved for `ref` was refused.
   """
   @spec refused(Call.t(), ref()) :: :ok
-  def refused(%Call{run: %Run{host: host}} = call, ref) do
-    :ok = Wardrik.Credentials.refused(Wardrik.Host.credentials(host), ref, call)
-  catch
-    _kind, _reason -> :ok
-  end
+  def refused(%Call{run: %Run{host: host}} = call, ref),
+    do: :ok = Wardrik.Credentials.refused(Wardrik.Host.credentials(host), ref, call)
 
   defimpl Inspect do
     def inspect(%Wardrik.Credential{kind: kind}, _opts) do

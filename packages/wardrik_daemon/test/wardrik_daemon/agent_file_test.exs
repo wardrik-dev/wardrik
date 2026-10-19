@@ -12,7 +12,7 @@ defmodule WardrikDaemon.AgentFileTest do
   @moduletag :tmp_dir
 
   defmodule Hook do
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
 
     @impl true
     def init(_opts), do: nil

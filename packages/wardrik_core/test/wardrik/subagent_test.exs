@@ -151,7 +151,7 @@ defmodule Wardrik.SubagentTest do
   end
 
   defmodule AskHook do
-    @behaviour Wardrik.Hook
+    use Wardrik.Hook
     @impl true
     def init(_opts), do: nil
     @impl true

@@ -53,7 +53,7 @@ defmodule WardrikPolicy.Budget do
   every call to a model the host's client cannot price.
   """
 
-  @behaviour Wardrik.Hook
+  use Wardrik.Hook
 
   require Logger
 

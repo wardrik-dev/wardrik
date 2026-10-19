@@ -21,7 +21,7 @@ defmodule Wardrik.RunningTest do
 
   defmodule Search do
     @moduledoc false
-    @behaviour Wardrik.Tool
+    use Wardrik.Tool
 
     @impl true
     def tool do
