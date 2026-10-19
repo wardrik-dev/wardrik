@@ -3,7 +3,7 @@
   "info": {
     "title": "Wardrik",
     "version": "1",
-    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token, whose statements each allow some actions on the agents under a prefix; an agent none reaches is answered as one that does not exist, 404, and one reached without the action, 403. An expired token is answered 401. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
+    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token, whose statements each allow some actions on the resources a pattern covers, as acme/agent/*; an agent none reaches is answered as one that does not exist, 404, and one reached without the action, 403. An expired token is answered 401. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -44,11 +44,11 @@
     },
     {
       "name": "Deployment",
-      "description": "The deployment itself, to a token over every agent."
+      "description": "The deployment itself, to a token over deployment/*."
     },
     {
       "name": "Tokens",
-      "description": "The API's tokens, to a token over every agent."
+      "description": "The API's tokens, to a token over deployment/*."
     },
     {
       "name": "Workers",
@@ -63,14 +63,14 @@
     "/v1/agents": {
       "get": {
         "operationId": "agents_list",
-        "summary": "The agents under a prefix",
+        "summary": "The agents a pattern covers",
         "x-wardrik-function": "agents_list",
         "tags": [
           "Agents"
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/prefix"
+            "$ref": "#/components/parameters/resource"
           }
         ],
         "responses": {
@@ -100,15 +100,15 @@
       },
       "delete": {
         "operationId": "agents_forget",
-        "summary": "Remove every agent under a prefix",
-        "description": "Removes every agent under the prefix, with everything each had, but those an agent file declares.",
+        "summary": "Remove every agent a pattern covers",
+        "description": "Removes every agent the pattern covers, with everything each had, but those an agent file declares.",
         "x-wardrik-function": "agents_forget",
         "tags": [
           "Agents"
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/prefix_named"
+            "$ref": "#/components/parameters/resource_named"
           }
         ],
         "responses": {
@@ -140,14 +140,14 @@
     "/v1/agents/cancel": {
       "post": {
         "operationId": "agents_cancel",
-        "summary": "Cancel the turn of every agent under a prefix",
+        "summary": "Cancel the turn of every agent a pattern covers",
         "x-wardrik-function": "agents_cancel",
         "tags": [
           "Agents"
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/prefix_named"
+            "$ref": "#/components/parameters/resource_named"
           }
         ],
         "responses": {
@@ -179,14 +179,14 @@
     "/v1/interrupts": {
       "get": {
         "operationId": "agents_parked",
-        "summary": "The calls agents under a prefix wait on a person for",
+        "summary": "The calls agents a pattern covers wait on a person for",
         "x-wardrik-function": "agents_parked",
         "tags": [
           "Agents"
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/prefix"
+            "$ref": "#/components/parameters/resource"
           }
         ],
         "responses": {
@@ -1179,7 +1179,7 @@
       "post": {
         "operationId": "agent_spawn",
         "summary": "Start an agent",
-        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over every agent alone.",
+        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over deployment/* alone.",
         "x-wardrik-function": "agent_spawn",
         "tags": [
           "Agents"
@@ -1235,7 +1235,7 @@
       "post": {
         "operationId": "user_agent_spawn",
         "summary": "Start an agent",
-        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over every agent alone.",
+        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over deployment/* alone.",
         "x-wardrik-function": "agent_spawn",
         "tags": [
           "Agents"
@@ -1375,7 +1375,7 @@
       "post": {
         "operationId": "agent_move",
         "summary": "Move an agent to a node",
-        "description": "To a token over every agent alone.",
+        "description": "To a token over deployment/* alone.",
         "x-wardrik-function": "agent_move",
         "tags": [
           "Agents"
@@ -1431,7 +1431,7 @@
       "post": {
         "operationId": "user_agent_move",
         "summary": "Move an agent to a node",
-        "description": "To a token over every agent alone.",
+        "description": "To a token over deployment/* alone.",
         "x-wardrik-function": "agent_move",
         "tags": [
           "Agents"
@@ -2286,7 +2286,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -2333,7 +2333,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -2373,7 +2373,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -2418,7 +2418,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -2458,7 +2458,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "requestBody": {
@@ -2518,7 +2518,7 @@
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -3191,7 +3191,7 @@
       },
       "Placement": {
         "type": "object",
-        "description": "Where to start it: on node, to a token over every agent alone; anywhere where left out.",
+        "description": "Where to start it: on node, to a token over deployment/* alone; anywhere where left out.",
         "properties": {
           "node": {
             "type": "string",
@@ -3435,29 +3435,28 @@
           "type": "string"
         }
       },
-      "prefix": {
-        "name": "prefix",
+      "resource": {
+        "name": "resource",
         "in": "query",
-        "description": "The agents under it, as acme/ or acme/@jon/; the token's whole scope where left out.",
+        "description": "The agents the pattern covers, as acme/agent/* or acme/@jon/*; those the token's one resource covers where left out.",
         "required": false,
         "schema": {
           "type": "string"
         }
       },
-      "prefix_named": {
-        "name": "prefix",
+      "resource_named": {
+        "name": "resource",
         "in": "query",
-        "description": "The agents under it, as acme/; prefix= alone is every agent.",
+        "description": "The agents the pattern covers, as acme/agent/*.",
         "required": true,
         "schema": {
           "type": "string"
-        },
-        "allowEmptyValue": true
+        }
       },
-      "owner_prefix": {
-        "name": "prefix",
+      "owner": {
+        "name": "owner",
         "in": "query",
-        "description": "The owner's agents, as acme/ for an org's or acme/@jon/ for a person's.",
+        "description": "The owner, as acme for an org or acme/@jon for a person.",
         "required": true,
         "schema": {
           "type": "string"

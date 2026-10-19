@@ -58,7 +58,7 @@ defmodule WardrikSlack.HTTPTest do
       Installations.put(installations, %Installation{
         channel: "slack",
         workspace: workspace,
-        owner: Wardrik.AgentID.Prefix.new!(org: "acme"),
+        owner: Wardrik.Resource.parse!("acme"),
         token: "xoxb-" <> workspace
       })
   end

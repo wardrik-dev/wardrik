@@ -5,6 +5,7 @@ defmodule WardrikVaultTest do
 
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
+  alias Wardrik.Resource
   alias Wardrik.Run
   alias Wardrik.Test.Calls
   alias WardrikVault.Sealed
@@ -46,6 +47,9 @@ defmodule WardrikVaultTest do
 
   defp call(run_opts), do: Calls.tool("tool", %{}, run(run_opts))
 
+  defp ns(text), do: Resource.parse!(text)
+  defp person(org, user), do: ns("#{org}/@#{user}")
+
   defp run(opts) do
     {user, opts} = Keyword.pop(opts, :user)
     {org, opts} = Keyword.pop(opts, :org, "acme")
@@ -65,54 +69,59 @@ defmodule WardrikVaultTest do
     test "writes distinct owners and names under distinct keys" do
       paths =
         for {name, owner} <- [
-              {"github", "jon doe"},
-              {"github", "jon_doe"},
-              {"github", "jon/doe"},
-              {"github", "_"},
-              {"github", nil},
-              {"github", {"acme", "jon"}},
-              {"github", {"globex", "jon"}},
-              {"git hub", "jon"},
-              {"git_hub", "jon"}
+              {"github", ns("jon")},
+              {"github", ns("jon_doe")},
+              {"github", ns("jon/@doe")},
+              {"github", ns("jon-doe")},
+              {"github", Resource.deployment()},
+              {"github", ns("acme/@jon")},
+              {"github", ns("globex/@jon")},
+              {"git hub", ns("jon")},
+              {"git_hub", ns("jon")}
             ],
             do: WardrikVault.path(name, owner)
 
       assert length(Enum.uniq(paths)) == length(paths)
-      assert WardrikVault.path("github", "jon") == "jon/github"
+      assert WardrikVault.path("github", ns("jon")) == "jon/github"
+      assert WardrikVault.path("github", ns("acme/@jon")) == "acme%2F%40jon/github"
     end
   end
 
   describe "put/4, fetch/2 and lookup/2" do
     test "hand back what was put, and say whether it is a secret or a grant", %{user: user} do
-      assert :ok = WardrikVault.put(vault(), "github", user, value: "ghp_secret")
-      assert {:ok, "ghp_secret"} = WardrikVault.fetch(vault(), "github", user)
-      assert {:ok, :secret, "ghp_secret"} = WardrikVault.lookup(vault(), "github", user)
+      assert :ok = WardrikVault.put(vault(), "github", ns(user), value: "ghp_secret")
+      assert {:ok, "ghp_secret"} = WardrikVault.fetch(vault(), "github", ns(user))
+      assert {:ok, :secret, "ghp_secret"} = WardrikVault.lookup(vault(), "github", ns(user))
 
-      :ok = WardrikVault.put(vault(), "github", user, value: "token", kind: :grant)
-      assert {:ok, :grant, "token"} = WardrikVault.lookup(vault(), "github", user)
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "token", kind: :grant)
+      assert {:ok, :grant, "token"} = WardrikVault.lookup(vault(), "github", ns(user))
     end
 
     test "keep one owner's, and one name's, from another", %{user: user} do
-      :ok = WardrikVault.put(vault(), "github", user, value: "mine")
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "mine")
 
-      assert {:error, :not_found} = WardrikVault.fetch(vault(), "github", "someone-else")
-      assert {:error, :not_found} = WardrikVault.fetch(vault(), "linear", user)
+      assert {:error, :not_found} = WardrikVault.fetch(vault(), "github", ns("someone-else"))
+      assert {:error, :not_found} = WardrikVault.fetch(vault(), "linear", ns(user))
     end
 
     test "a second put replaces the first", %{user: user} do
-      :ok = WardrikVault.put(vault(), "github", user, value: "old")
-      :ok = WardrikVault.put(vault(), "github", user, value: "new")
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "old")
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "new")
 
-      assert {:ok, "new"} = WardrikVault.fetch(vault(), "github", user)
+      assert {:ok, "new"} = WardrikVault.fetch(vault(), "github", ns(user))
     end
   end
 
   describe "what is written down" do
     test "is sealed, and says nothing when inspected", %{user: user} do
-      :ok = WardrikVault.put(vault(), "github", user, value: "ghp_secret")
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "ghp_secret")
 
       {%Sealed{} = sealed, _vsn} =
-        WardrikStore.lookup(store(), WardrikVault.namespace(), WardrikVault.path("github", user))
+        WardrikStore.lookup(
+          store(),
+          WardrikVault.namespace(),
+          WardrikVault.path("github", ns(user))
+        )
 
       refute inspect(sealed) =~ "ghp_secret"
       refute sealed.ciphertext =~ "ghp_secret"
@@ -120,60 +129,66 @@ defmodule WardrikVaultTest do
     end
 
     test "will not unseal under another owner's path, or as another kind", %{user: user} do
-      :ok = WardrikVault.put(vault(), "github", user, value: "ghp_secret", kind: :grant)
-      mine = WardrikVault.path("github", user)
-      theirs = WardrikVault.path("github", "thief")
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "ghp_secret", kind: :grant)
+      mine = WardrikVault.path("github", ns(user))
+      theirs = WardrikVault.path("github", ns("thief"))
 
       {sealed, _vsn} = WardrikStore.lookup(store(), WardrikVault.namespace(), mine)
       {:ok, _vsn} = WardrikStore.put(store(), WardrikVault.namespace(), theirs, sealed)
-      assert {:error, :grant, :undecipherable} = WardrikVault.lookup(vault(), "github", "thief")
+
+      assert {:error, :grant, :undecipherable} =
+               WardrikVault.lookup(vault(), "github", ns("thief"))
 
       {:ok, _vsn} =
         WardrikStore.put(store(), WardrikVault.namespace(), mine, %{sealed | kind: :secret})
 
-      assert {:error, :secret, :undecipherable} = WardrikVault.lookup(vault(), "github", user)
+      assert {:error, :secret, :undecipherable} = WardrikVault.lookup(vault(), "github", ns(user))
     end
 
     test "is not read where it is not sealed, or sealed by a version this one does not know",
          %{user: user} do
-      path = WardrikVault.path("github", user)
+      path = WardrikVault.path("github", ns(user))
 
       {:ok, _vsn} = WardrikStore.put(store(), WardrikVault.namespace(), path, "ghp_plain")
-      assert {:error, {:unreadable, "ghp_plain"}} = WardrikVault.fetch(vault(), "github", user)
 
-      :ok = WardrikVault.put(vault(), "github", user, value: "ghp_secret")
+      assert {:error, {:unreadable, "ghp_plain"}} =
+               WardrikVault.fetch(vault(), "github", ns(user))
+
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "ghp_secret")
       {sealed, _vsn} = WardrikStore.lookup(store(), WardrikVault.namespace(), path)
 
       {:ok, _vsn} =
         WardrikStore.put(store(), WardrikVault.namespace(), path, %{sealed | version: 99})
 
-      assert {:error, {:unknown_version, 99}} = WardrikVault.fetch(vault(), "github", user)
+      assert {:error, {:unknown_version, 99}} = WardrikVault.fetch(vault(), "github", ns(user))
     end
   end
 
   describe "keys" do
     test "a rotated key still reads what the old one sealed", %{user: user} do
       [old] = vault().keys
-      :ok = WardrikVault.put(vault(), "github", user, value: "ghp_secret")
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "ghp_secret")
 
       keys([WardrikVault.generate_key(), old])
 
-      assert {:ok, "ghp_secret"} = WardrikVault.fetch(vault(), "github", user)
+      assert {:ok, "ghp_secret"} = WardrikVault.fetch(vault(), "github", ns(user))
     end
 
     test "a key that is gone cannot read what it sealed", %{user: user} do
-      :ok = WardrikVault.put(vault(), "github", user, value: "ghp_secret")
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "ghp_secret")
 
       keys([WardrikVault.generate_key()])
 
-      assert {:error, :undecipherable} = WardrikVault.fetch(vault(), "github", user)
+      assert {:error, :undecipherable} = WardrikVault.fetch(vault(), "github", ns(user))
     end
 
     test "with no key nothing is written and nothing is read", %{user: user} do
       keys([])
 
-      assert {:error, :no_key} = WardrikVault.put(vault(), "github", user, value: "ghp_secret")
-      assert {:error, :no_key} = WardrikVault.fetch(vault(), "github", user)
+      assert {:error, :no_key} =
+               WardrikVault.put(vault(), "github", ns(user), value: "ghp_secret")
+
+      assert {:error, :no_key} = WardrikVault.fetch(vault(), "github", ns(user))
       refute WardrikVault.ready?(vault())
     end
 
@@ -204,24 +219,24 @@ defmodule WardrikVaultTest do
     test "takes the owner's alone, never another's", %{user: user} do
       org = "org-#{user}"
 
-      :ok = WardrikVault.put(vault(), "tracker", nil, value: "deployment")
+      :ok = WardrikVault.put(vault(), "tracker", Resource.deployment(), value: "deployment")
       assert {:error, :not_found} = Credential.resolve(call(org: org), "tracker")
 
-      :ok = WardrikVault.put(vault(), "tracker", org, value: "org")
+      :ok = WardrikVault.put(vault(), "tracker", ns(org), value: "org")
       assert {:ok, credential} = Credential.resolve(call(org: org), "tracker")
-      assert {Credential.reveal(credential), credential.owner} == {"org", org}
+      assert {Credential.reveal(credential), credential.owner} == {"org", ns(org)}
       assert {:error, :not_found} = Credential.resolve(call(org: org, user: user), "tracker")
 
-      :ok = WardrikVault.put(vault(), "tracker", {org, user}, value: "user")
+      :ok = WardrikVault.put(vault(), "tracker", person(org, user), value: "user")
       assert {:ok, credential} = Credential.resolve(call(org: org, user: user), "tracker")
-      assert {Credential.reveal(credential), credential.owner} == {"user", {org, user}}
+      assert {Credential.reveal(credential), credential.owner} == {"user", person(org, user)}
 
       assert {:ok, credential} = Credential.resolve(call(org: org), "tracker")
-      assert credential.owner == org
+      assert credential.owner == ns(org)
     end
 
     test "a user's is theirs within their org, and no one else's", %{user: user} do
-      :ok = WardrikVault.put(vault(), "github", {"acme", user}, value: "acme-token")
+      :ok = WardrikVault.put(vault(), "github", person("acme", user), value: "acme-token")
 
       assert {:error, :not_found} =
                Credential.resolve(call(org: "globex", user: user), "github")
@@ -234,7 +249,7 @@ defmodule WardrikVaultTest do
     end
 
     test "is the agent's owner's, whoever asked for the turn", %{user: user} do
-      :ok = WardrikVault.put(vault(), "tracker", {"acme", user}, value: "theirs")
+      :ok = WardrikVault.put(vault(), "tracker", person("acme", user), value: "theirs")
 
       for sender <- [
             nil,
@@ -256,13 +271,15 @@ defmodule WardrikVaultTest do
     end
 
     test "a shared name is the deployment's, where the owner holds none", %{user: user} do
-      :ok = WardrikVault.put(vault(), "linear", nil, value: "deployment")
+      :ok = WardrikVault.put(vault(), "linear", Resource.deployment(), value: "deployment")
       Process.put(:vault, %{vault() | shared: ["linear"]})
 
       assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), "linear")
-      assert {Credential.reveal(credential), credential.owner} == {"deployment", nil}
 
-      :ok = WardrikVault.put(vault(), "linear", {"acme", user}, value: "sealed")
+      assert {Credential.reveal(credential), credential.owner} ==
+               {"deployment", Resource.deployment()}
+
+      :ok = WardrikVault.put(vault(), "linear", person("acme", user), value: "sealed")
       assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), "linear")
       assert Credential.reveal(credential) == "sealed"
     end
@@ -272,7 +289,9 @@ defmodule WardrikVaultTest do
       Process.put(:vault, %{vault() | shared: [name]})
 
       assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
-      assert {Credential.reveal(credential), credential.owner} == {"from-the-environment", nil}
+
+      assert {Credential.reveal(credential), credential.owner} ==
+               {"from-the-environment", Resource.deployment()}
     end
 
     test "a shared name resolves where the vault has no key", %{user: user} do
@@ -286,7 +305,7 @@ defmodule WardrikVaultTest do
 
     test "a name the deployment does not share reaches no agent", %{user: user} do
       name = environment_variable("unnamed")
-      :ok = WardrikVault.put(vault(), name, nil, value: "deployment")
+      :ok = WardrikVault.put(vault(), name, Resource.deployment(), value: "deployment")
 
       assert {:error, :not_found} = Credential.resolve(call(org: "acme", user: user), name)
       assert {:error, :not_found} = Credential.resolve(call(org: "acme"), name)
@@ -294,14 +313,17 @@ defmodule WardrikVaultTest do
 
     test "a grant is handed to the grants module to answer, and to renew", %{user: user} do
       grants(%Grants{})
-      :ok = WardrikVault.put(vault(), "github", {"acme", user}, value: "token", kind: :grant)
+
+      :ok =
+        WardrikVault.put(vault(), "github", person("acme", user), value: "token", kind: :grant)
 
       assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), "github")
       assert Credential.reveal(credential) == "renewed token"
-      assert credential.owner == {"acme", user}
+      assert credential.owner == person("acme", user)
 
       assert :ok = Credential.refused(call(org: "acme", user: user), "github")
-      assert_received {:refused, {"acme", ^user}}
+      assert_received {:refused, owner}
+      assert owner == person("acme", user)
     end
 
     test "a name nobody holds that the grants module grants is asked of the user, or the org",
@@ -309,36 +331,47 @@ defmodule WardrikVaultTest do
       grants(%Grants{})
       org = "org-#{user}"
 
-      assert {:error, {:authorization_required, %{url: "https://github.test"}, {^org, ^user}}} =
+      assert {:error, {:authorization_required, %{url: "https://github.test"}, owner}} =
                Credential.resolve(call(org: org, user: user), "github")
 
-      assert {:error, {:authorization_required, %{url: "https://github.test"}, ^org}} =
+      assert owner == person(org, user)
+
+      assert {:error, {:authorization_required, %{url: "https://github.test"}, owner}} =
                Credential.resolve(call(org: org), "github")
+
+      assert owner == ns(org)
     end
 
     test "an org's grant reaches the org's own calls, and a user is asked for theirs",
          %{user: user} do
       grants(%Grants{})
       org = "org-#{user}"
-      :ok = WardrikVault.put(vault(), "github", org, value: "org-token", kind: :grant)
-      :ok = WardrikVault.put(vault(), "github", nil, value: "deployment-token", kind: :grant)
+      :ok = WardrikVault.put(vault(), "github", ns(org), value: "org-token", kind: :grant)
+
+      :ok =
+        WardrikVault.put(vault(), "github", Resource.deployment(),
+          value: "deployment-token",
+          kind: :grant
+        )
 
       assert {:ok, credential} = Credential.resolve(call(org: org), "github")
-      assert {Credential.reveal(credential), credential.owner} == {"renewed org-token", org}
+      assert {Credential.reveal(credential), credential.owner} == {"renewed org-token", ns(org)}
 
-      assert {:error, {:authorization_required, _link, {^org, ^user}}} =
+      assert {:error, {:authorization_required, _link, owner}} =
                Credential.resolve(call(org: org, user: user), "github")
+
+      assert owner == person(org, user)
 
       assert :ok = Credential.refused(call(org: org, user: user), "github")
       refute_received {:refused, _owner}
 
-      :ok = WardrikVault.forget(vault(), "github", nil)
+      :ok = WardrikVault.forget(vault(), "github", Resource.deployment())
     end
 
     test "a secret held for the name is the answer, and no grant is asked for", %{user: user} do
       grants(%Grants{})
       org = "org-#{user}"
-      :ok = WardrikVault.put(vault(), "github", {org, user}, value: "user-token")
+      :ok = WardrikVault.put(vault(), "github", person(org, user), value: "user-token")
 
       assert {:ok, credential} = Credential.resolve(call(org: org, user: user), "github")
       assert Credential.reveal(credential) == "user-token"
@@ -348,13 +381,18 @@ defmodule WardrikVaultTest do
 
     test "a grant that no longer unseals is asked for again", %{user: user} do
       grants(%Grants{})
-      :ok = WardrikVault.put(vault(), "github", {"acme", user}, value: "token", kind: :grant)
+
+      :ok =
+        WardrikVault.put(vault(), "github", person("acme", user), value: "token", kind: :grant)
+
       [old] = vault().keys
       keys([WardrikVault.generate_key()])
       grants(%Grants{})
 
-      assert {:error, {:authorization_required, _link, {"acme", ^user}}} =
+      assert {:error, {:authorization_required, _link, owner}} =
                Credential.resolve(call(org: "acme", user: user), "github")
+
+      assert owner == person("acme", user)
 
       keys([old])
     end
@@ -362,32 +400,32 @@ defmodule WardrikVaultTest do
 
   describe "names/1, list/0 and forget/2" do
     test "list what an owner holds, without reading any of it", %{user: user} do
-      :ok = WardrikVault.put(vault(), "github", user, value: "a")
-      :ok = WardrikVault.put(vault(), "git_hub key", user, value: "b")
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "a")
+      :ok = WardrikVault.put(vault(), "git_hub key", ns(user), value: "b")
 
-      assert Enum.sort(WardrikVault.names(vault(), user)) == ["git_hub key", "github"]
+      assert Enum.sort(WardrikVault.names(vault(), ns(user))) == ["git_hub key", "github"]
     end
 
     test "list every credential, with each owner written as text", %{user: user} do
       org = "org-#{user}"
-      :ok = WardrikVault.put(vault(), "#{user}_TOKEN", nil, value: "a")
-      :ok = WardrikVault.put(vault(), "linear", org, value: "b")
-      :ok = WardrikVault.put(vault(), "github", {org, user}, value: "c", kind: :grant)
+      :ok = WardrikVault.put(vault(), "#{user}_TOKEN", Resource.deployment(), value: "a")
+      :ok = WardrikVault.put(vault(), "linear", ns(org), value: "b")
+      :ok = WardrikVault.put(vault(), "github", person(org, user), value: "c", kind: :grant)
 
       listed = WardrikVault.list(vault())
 
-      assert {"#{user}_TOKEN", nil} in listed
-      assert {"linear", org} in listed
-      assert {"github", :hashed} in listed
+      assert {"#{user}_TOKEN", Resource.deployment()} in listed
+      assert {"linear", ns(org)} in listed
+      assert {"github", person(org, user)} in listed
     end
 
     test "forgetting removes one, and forgetting twice is still fine", %{user: user} do
-      :ok = WardrikVault.put(vault(), "github", user, value: "a")
+      :ok = WardrikVault.put(vault(), "github", ns(user), value: "a")
 
-      assert :ok = WardrikVault.forget(vault(), "github", user)
-      assert :ok = WardrikVault.forget(vault(), "github", user)
-      assert {:error, :not_found} = WardrikVault.fetch(vault(), "github", user)
-      refute WardrikVault.has?(vault(), "github", user)
+      assert :ok = WardrikVault.forget(vault(), "github", ns(user))
+      assert :ok = WardrikVault.forget(vault(), "github", ns(user))
+      assert {:error, :not_found} = WardrikVault.fetch(vault(), "github", ns(user))
+      refute WardrikVault.has?(vault(), "github", ns(user))
     end
   end
 
@@ -403,8 +441,8 @@ defmodule WardrikVaultTest do
 
     test "answers a provider's key as the deployment's secret of its name" do
       vault = vault()
-      :ok = WardrikVault.put(vault, "XAI_API_KEY", nil, value: "xai-vault")
-      on_exit(fn -> WardrikVault.forget(vault, "XAI_API_KEY", nil) end)
+      :ok = WardrikVault.put(vault, "XAI_API_KEY", Resource.deployment(), value: "xai-vault")
+      on_exit(fn -> WardrikVault.forget(vault, "XAI_API_KEY", Resource.deployment()) end)
 
       assert Wardrik.Credentials.key(vault(), "XAI_API_KEY") == {:ok, "xai-vault"}
       assert Wardrik.Credentials.key(vault(), "NOBODY_SEALED_THIS") == :error
@@ -413,21 +451,24 @@ defmodule WardrikVaultTest do
     test "grants nothing without grants of its own", %{user: user} do
       none = %WardrikVault.Grants.None{}
 
-      refute WardrikVault.Grants.grants?(none, "github", "acme")
+      refute WardrikVault.Grants.grants?(none, "github", ns("acme"))
 
-      assert WardrikVault.Grants.renew(none, "github", user, vault: vault(), value: "t") ==
+      assert WardrikVault.Grants.renew(none, "github", ns(user), vault: vault(), value: "t") ==
                {:error, :not_found}
 
-      assert WardrikVault.Grants.ask(none, "github", user, vault: vault()) == {:error, :not_found}
-      assert WardrikVault.Grants.refused(none, "github", user, vault: vault()) == :ok
+      assert WardrikVault.Grants.ask(none, "github", ns(user), vault: vault()) ==
+               {:error, :not_found}
+
+      assert WardrikVault.Grants.refused(none, "github", ns(user), vault: vault()) == :ok
     end
 
     test "tells its grants of a refusal through the host's credentials", %{user: user} do
       grants(%Grants{})
-      :ok = WardrikVault.put(vault(), "github", {"acme", user}, value: "t", kind: :grant)
+      :ok = WardrikVault.put(vault(), "github", person("acme", user), value: "t", kind: :grant)
 
       assert Wardrik.Credential.refused(call(org: "acme", user: user), "github") == :ok
-      assert_received {:refused, {"acme", ^user}}
+      assert_received {:refused, owner}
+      assert owner == person("acme", user)
     end
   end
 end

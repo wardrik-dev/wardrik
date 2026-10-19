@@ -13,7 +13,7 @@ defmodule Wardrik.Catalog do
   | `fleet/0` | every agent under a prefix: listing them |
 
   Each entry's `run` reads the tool's input, calls the function, and
-  answers what it answered as `Wardrik.Resource` shows it, with the labels
+  answers what it answered as `Wardrik.JSON` shows it, with the labels
   of what it holds: a snapshot holds the agent's history, so an answer that
   shows one carries its labels.
   """
@@ -21,7 +21,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Agent.Message
   alias Wardrik.Catalog.Entry
   alias Wardrik.Error
-  alias Wardrik.Resource
+  alias Wardrik.JSON
 
   @doc "The entries that act on one agent, the reads first."
   @spec agent() :: [Entry.t()]
@@ -85,7 +85,7 @@ defmodule Wardrik.Catalog do
   @doc false
   def read(session, agent, _input, _context) do
     with {:ok, snapshot} <- Wardrik.agent_read(session, agent),
-         do: {:ok, Resource.snapshot(snapshot), snapshot.labels}
+         do: {:ok, JSON.snapshot(snapshot), snapshot.labels}
   end
 
   @doc false
@@ -105,7 +105,7 @@ defmodule Wardrik.Catalog do
   def define(session, agent, %{"definition" => %{} = definition}, context) do
     with {:ok, snapshot} <-
            Wardrik.agent_define(session, agent, definition, held: context.run.hooks),
-         do: {:ok, Resource.snapshot(snapshot), snapshot.labels}
+         do: {:ok, JSON.snapshot(snapshot), snapshot.labels}
   end
 
   def define(_session, _agent, _input, _context),
@@ -133,7 +133,7 @@ defmodule Wardrik.Catalog do
   @doc false
   def list(session, prefix, _input, _context) do
     with {:ok, members} <- Wardrik.agents_list(session, prefix),
-         do: {:ok, %{"agents" => Enum.map(members, &Resource.agent/1)}, []}
+         do: {:ok, %{"agents" => Enum.map(members, &JSON.agent/1)}, []}
   end
 
   defp invalid(message), do: {:error, Error.new(:invalid, message)}

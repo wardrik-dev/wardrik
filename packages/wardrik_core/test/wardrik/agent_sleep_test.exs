@@ -40,7 +40,7 @@ defmodule Wardrik.AgentSleepTest do
     assert %{asleep: true, status: :idle, pid: nil} = Fleet.lookup(key, host: Wardrik.Test.host())
 
     assert [%{id: ^key, asleep: true}] =
-             Fleet.list(Wardrik.AgentID.Prefix.of(key), host: Wardrik.Test.host())
+             Fleet.list(Wardrik.AgentID.resource(key), host: Wardrik.Test.host())
 
     :ok = Agent.ask(key, "again", host: Wardrik.Test.host())
 
@@ -239,7 +239,7 @@ defmodule Wardrik.AgentSleepTest do
     key = start_agent(runner: runner(self()))
     asleep(key)
 
-    assert Fleet.forget_under(Wardrik.AgentID.Prefix.of(key)) == 1
+    assert Fleet.forget_under(Wardrik.AgentID.resource(key)) == 1
     refute Fleet.stored?(key)
   end
 

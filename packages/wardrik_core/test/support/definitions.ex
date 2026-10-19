@@ -13,10 +13,10 @@ defmodule Wardrik.Test.Definitions do
     end
   end
 
-  def defined(_host, prefix) do
+  def defined(_host, pattern) do
     for key <- WardrikStore.keys(Wardrik.Test.store(), @ns),
         id = Wardrik.AgentID.parse!(key),
-        Wardrik.AgentID.Prefix.covers?(prefix, id),
+        Wardrik.Resource.covers?(pattern, Wardrik.AgentID.resource(id)),
         do: id
   end
 

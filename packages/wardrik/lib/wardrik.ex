@@ -91,11 +91,9 @@ defmodule Wardrik do
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
   alias Wardrik.Connections
   alias Wardrik.Connections.Connection
-  alias Wardrik.Connections.Owner
   alias Wardrik.Definition
   alias Wardrik.Definitions
   alias Wardrik.Deployment.Nodes
@@ -109,9 +107,9 @@ defmodule Wardrik do
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Moving
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Scope
   alias Wardrik.Servers
-  alias Wardrik.Servers.Key
   alias Wardrik.Servers.Server
   alias Wardrik.Spawned
   alias Wardrik.Statement
@@ -536,26 +534,29 @@ defmodule Wardrik do
      )}
   end
 
-  @doc "Every agent under `prefix`, awake or asleep, as the fleet lists each, sorted by ID."
+  @doc """
+  Every agent the `Wardrik.Resource` pattern covers, as `acme/agent/*`,
+  awake or asleep, as the fleet lists each, sorted by ID.
+  """
   @doc group: "Talking to an agent"
-  @spec agents_list(Scope.t(), Prefix.t()) :: {:ok, [Member.t()]} | {:error, Error.t()}
-  def agents_list(%Scope{} = scope, prefix) do
-    with :ok <- authorize(scope, "agents.list", prefix),
-         do: {:ok, Fleet.list(prefix, host: scope.host)}
+  @spec agents_list(Scope.t(), Resource.t()) :: {:ok, [Member.t()]} | {:error, Error.t()}
+  def agents_list(%Scope{} = scope, pattern) do
+    with :ok <- authorize(scope, "agents.list", pattern),
+         do: {:ok, Fleet.list(pattern, host: scope.host)}
   end
 
   @doc """
-  Every call an agent under `prefix` waits on a person for, with the agent
-  it is for, as `{id, {call, prompt}}`.
+  Every call an agent `pattern` covers waits on a person for, with the
+  agent it is for, as `{id, {call, prompt}}`.
   """
   @doc group: "Talking to an agent"
-  @spec agents_parked(Scope.t(), Prefix.t()) ::
+  @spec agents_parked(Scope.t(), Resource.t()) ::
           {:ok, [{AgentID.t(), {Wardrik.Tool.call(), String.t()}}]} | {:error, Error.t()}
-  def agents_parked(%Scope{} = scope, prefix) do
-    with :ok <- authorize(scope, "agents.parked", prefix) do
+  def agents_parked(%Scope{} = scope, pattern) do
+    with :ok <- authorize(scope, "agents.parked", pattern) do
       {:ok,
        for(
-         %Member{status: :parked, id: id} <- Fleet.list(prefix, host: scope.host),
+         %Member{status: :parked, id: id} <- Fleet.list(pattern, host: scope.host),
          {:ok, calls} <- [parked(id, scope.host)],
          waiting <- calls,
          do: {id, waiting}
@@ -650,7 +651,7 @@ defmodule Wardrik do
                 node: [
                   type: :atom,
                   doc:
-                    "the node it starts on, which only a token allowing it on every agent may choose"
+                    "the node it starts on, which only a token allowing it on the deployment may choose"
                 ]
               )
 
@@ -679,7 +680,7 @@ defmodule Wardrik do
   end
 
   # Where an agent starts is the deployment's to say, so only a token
-  # allowing it on every agent names a node.
+  # allowing it on the deployment names a node.
   defp spawning(scope, agent, nil), do: authorize(scope, "agent.spawn", agent)
 
   defp spawning(scope, _agent, node) do
@@ -742,7 +743,7 @@ defmodule Wardrik do
   @doc """
   Starts `agent` again on `node`, with what it had, and answers it as the
   fleet lists it. What it is doing is interrupted. Only a token allowing
-  `agent.move` on every agent may move one, since where an agent runs is
+  `agent.move` on `deployment/*` may move one, since where an agent runs is
   the deployment's to say.
   """
   @doc group: "Agent lifecycle"
@@ -807,13 +808,13 @@ defmodule Wardrik do
          do: audit(scope, for(id <- cancelled([member]), do: {:agent_cancelled, id}))
   end
 
-  @doc "Ends the turn of every agent under `prefix`, and answers those it ended."
+  @doc "Ends the turn of every agent `pattern` covers, and answers those it ended."
   @doc group: "Agent lifecycle"
-  @spec agents_cancel(Scope.t(), Prefix.t()) :: {:ok, [AgentID.t()]} | {:error, Error.t()}
-  def agents_cancel(%Scope{} = scope, prefix) do
-    with :ok <- authorize(scope, "agents.cancel", prefix) do
-      cancelled = cancelled(Fleet.list(prefix, host: scope.host))
-      audit(scope, for(id <- cancelled, do: {:agent_cancelled, id, prefix}))
+  @spec agents_cancel(Scope.t(), Resource.t()) :: {:ok, [AgentID.t()]} | {:error, Error.t()}
+  def agents_cancel(%Scope{} = scope, pattern) do
+    with :ok <- authorize(scope, "agents.cancel", pattern) do
+      cancelled = cancelled(Fleet.list(pattern, host: scope.host))
+      audit(scope, for(id <- cancelled, do: {:agent_cancelled, id, pattern}))
       {:ok, cancelled}
     end
   end
@@ -903,17 +904,17 @@ defmodule Wardrik do
   end
 
   @doc """
-  Removes every agent under `prefix` but those the host keeps, and answers
-  what became of each. A prefix with nothing under it is not found, and one
-  whose every agent is kept is a conflict saying why.
+  Removes every agent `pattern` covers but those the host keeps, and
+  answers what became of each. A pattern covering none is not found, and
+  one whose every agent is kept is a conflict saying why.
   """
   @doc group: "Agent lifecycle"
-  @spec agents_forget(Scope.t(), Prefix.t()) ::
+  @spec agents_forget(Scope.t(), Resource.t()) ::
           {:ok, %{AgentID.t() => outcome()}} | {:error, Error.t()}
-  def agents_forget(%Scope{} = scope, prefix) do
-    with {:ok, %Forgetting{agents: agents, kept: kept}} <- forgetting_under(scope, prefix) do
+  def agents_forget(%Scope{} = scope, pattern) do
+    with {:ok, %Forgetting{agents: agents, kept: kept}} <- forgetting_under(scope, pattern) do
       outcomes = Map.new(agents, &{&1, forget(scope.host, &1)})
-      audit(scope, for({id, :forgotten} <- outcomes, do: {:agent_forgotten, id, prefix}))
+      audit(scope, for({id, :forgotten} <- outcomes, do: {:agent_forgotten, id, pattern}))
       {:ok, Map.merge(outcomes, Map.new(kept, fn {id, why} -> {id, {:kept, why}} end))}
     end
   end
@@ -930,23 +931,23 @@ defmodule Wardrik do
 
   @doc "What `agents_forget/2` would do, checked as it checks."
   @doc group: "Agent lifecycle"
-  @spec agents_forget_preview(Scope.t(), Prefix.t()) ::
+  @spec agents_forget_preview(Scope.t(), Resource.t()) ::
           {:ok, Forgetting.t()} | {:error, Error.t()}
-  def agents_forget_preview(%Scope{} = scope, prefix) do
-    forgetting_under(scope, prefix)
+  def agents_forget_preview(%Scope{} = scope, pattern) do
+    forgetting_under(scope, pattern)
   end
 
-  defp forgetting_under(scope, prefix) do
-    with :ok <- authorize(scope, "agents.forget", prefix) do
+  defp forgetting_under(scope, pattern) do
+    with :ok <- authorize(scope, "agents.forget", pattern) do
       definitions = Host.definitions(scope.host)
 
       checked =
-        for %Member{id: id} <- Fleet.list(prefix, host: scope.host),
+        for %Member{id: id} <- Fleet.list(pattern, host: scope.host),
             do: {id, Definition.editable(definitions, id)}
 
       case {for({id, :ok} <- checked, do: id),
             for({id, {:error, :conflict, why}} <- checked, do: {id, why})} do
-        {[], []} -> {:error, Error.new(:not_found, "Nothing runs under #{prefix}.")}
+        {[], []} -> {:error, Error.new(:not_found, "No agent #{pattern} covers runs.")}
         {[], kept} -> {:error, Error.new(:conflict, Enum.map_join(kept, "\n", &elem(&1, 1)))}
         {agents, kept} -> {:ok, %Forgetting{agents: agents, kept: kept}}
       end
@@ -1094,11 +1095,15 @@ defmodule Wardrik do
 
   # -- servers and connections ------------------------------------------------------
 
-  @doc "The MCP servers `owner`, a person's or an org's agents, added."
+  @doc """
+  The MCP servers `owner` added, a person or an org, as the namespace
+  `Wardrik.Resource` names.
+  """
   @doc group: "Servers and connections"
-  @spec servers_list(Scope.t(), Prefix.t()) :: {:ok, [Server.t()]} | {:error, Error.t()}
+  @spec servers_list(Scope.t(), Resource.t()) :: {:ok, [Server.t()]} | {:error, Error.t()}
   def servers_list(%Scope{} = scope, owner) do
-    with :ok <- authorize(scope, "servers.list", owner), do: servers(scope, owner)
+    with :ok <- authorize(scope, "servers.list", owned(owner, :server)),
+         do: servers(scope, owner)
   end
 
   defp servers(scope, owner) do
@@ -1114,17 +1119,19 @@ defmodule Wardrik do
   signs in to it first where they have to.
   """
   @doc group: "Servers and connections"
-  @spec servers_add(Scope.t(), Prefix.t(), Server.t()) ::
+  @spec servers_add(Scope.t(), Resource.t(), Server.t()) ::
           {:ok, Server.t()} | {:error, Error.t()}
   def servers_add(%Scope{} = scope, owner, %Server{} = server) do
-    with :ok <- authorize(scope, "servers.add", owner) do
+    with :ok <- authorize(scope, "servers.add", owned(owner, :server)) do
       case Servers.add(Host.servers(scope.host), owner,
              name: server.name,
              fields: fields(server),
              by: scope.token.principal
            ) do
         {:ok, added} ->
-          audited(scope, [{:server_added, Key.new(owner, server.name), server.url}], %{
+          key = Resource.new(owner, server: server.name)
+
+          audited(scope, [{:server_added, key, server.url}], %{
             server
             | authorization: if(added == :connected, do: nil, else: added)
           })
@@ -1163,16 +1170,16 @@ defmodule Wardrik do
   its agents lose its tools on their next turn.
   """
   @doc group: "Servers and connections"
-  @spec servers_remove(Scope.t(), Prefix.t(), String.t()) ::
+  @spec servers_remove(Scope.t(), Resource.t(), String.t()) ::
           {:ok, Server.t()} | {:error, Error.t()}
   def servers_remove(%Scope{} = scope, owner, name) when is_binary(name) do
-    with :ok <- authorize(scope, "servers.remove", owner),
+    with :ok <- authorize(scope, "servers.remove", owned(owner, :server)),
          {:ok, servers} <- servers(scope, owner),
          :ok <-
            Servers.remove(Host.servers(scope.host), owner, name: name, by: scope.token.principal) do
       audited(
         scope,
-        [{:server_removed, Key.new(owner, name)}],
+        [{:server_removed, Resource.new(owner, server: name)}],
         Enum.find(servers, &(&1.name == name))
       )
     end
@@ -1180,13 +1187,15 @@ defmodule Wardrik do
 
   @doc "The accounts the deployment offers `owner`, and who holds each; never a value."
   @doc group: "Servers and connections"
-  @spec connections_list(Scope.t(), Prefix.t()) :: {:ok, [Connection.t()]} | {:error, Error.t()}
+  @spec connections_list(Scope.t(), Resource.t()) ::
+          {:ok, [Connection.t()]} | {:error, Error.t()}
   def connections_list(%Scope{} = scope, owner) do
-    with :ok <- authorize(scope, "connections.list", owner), do: connections(scope, owner)
+    with :ok <- authorize(scope, "connections.list", owned(owner, :secret)),
+         do: connections(scope, owner)
   end
 
   defp connections(scope, owner) do
-    case Connections.list(Host.connections(scope.host), Owner.owner_of(owner)) do
+    case Connections.list(Host.connections(scope.host), owner) do
       :unsupported -> {:error, Wardrik.Connections.None.unsupported()}
       connections -> {:ok, connections}
     end
@@ -1198,11 +1207,11 @@ defmodule Wardrik do
   Nothing parks on it.
   """
   @doc group: "Servers and connections"
-  @spec connections_connect(Scope.t(), Prefix.t(), String.t()) ::
+  @spec connections_connect(Scope.t(), Resource.t(), String.t()) ::
           {:ok, Connection.t()} | {:error, Error.t()}
   def connections_connect(%Scope{} = scope, owner, provider)
       when is_binary(provider) do
-    with :ok <- authorize(scope, "connections.connect", owner),
+    with :ok <- authorize(scope, "connections.connect", owned(owner, :secret)),
          {:ok, link} <- connect(scope, owner, provider),
          {:ok, connections} <- connections(scope, owner) do
       {:ok, %{Enum.find(connections, &(&1.provider == provider)) | authorization: link}}
@@ -1212,9 +1221,7 @@ defmodule Wardrik do
   defp connect(scope, owner, provider) do
     connections = Host.connections(scope.host)
 
-    case Connections.connect(connections, provider, Owner.owner_of(owner),
-           by: scope.token.principal
-         ) do
+    case Connections.connect(connections, provider, owner, by: scope.token.principal) do
       {:ok, :held} ->
         {:ok, nil}
 
@@ -1237,18 +1244,16 @@ defmodule Wardrik do
   asks them to connect again, and answers the connection as it was.
   """
   @doc group: "Servers and connections"
-  @spec connections_disconnect(Scope.t(), Prefix.t(), String.t()) ::
+  @spec connections_disconnect(Scope.t(), Resource.t(), String.t()) ::
           {:ok, Connection.t()} | {:error, Error.t()}
   def connections_disconnect(%Scope{} = scope, owner, provider)
       when is_binary(provider) do
-    with :ok <- authorize(scope, "connections.disconnect", owner) do
-      whose = Owner.owner_of(owner)
-
-      case Connections.disconnect(Host.connections(scope.host), provider, whose) do
+    with :ok <- authorize(scope, "connections.disconnect", owned(owner, :secret)) do
+      case Connections.disconnect(Host.connections(scope.host), provider, owner) do
         :ok ->
           audited(scope, [{:secret_removed, provider, owner}], %Connection{
             provider: provider,
-            held_by: held_by(whose)
+            held_by: held_by(owner)
           })
 
         {:error, :not_found} ->
@@ -1263,9 +1268,12 @@ defmodule Wardrik do
     end
   end
 
+  # Every one of `owner`'s resources of `type`, as `acme/server/*`: an owner's
+  # servers, and their accounts, are checked as one.
+  defp owned(owner, type), do: Resource.parse!("#{owner}/#{type}/*")
+
   # An owner forgets only an account of their own.
-  defp held_by({_org, _user}), do: :person
-  defp held_by(_org), do: :org
+  defp held_by(owner), do: if(Resource.org(owner) == owner, do: :org, else: :person)
 
   # -- tokens -----------------------------------------------------------------------
 
@@ -1364,7 +1372,7 @@ defmodule Wardrik do
   def deployment_nodes(%Scope{} = scope) do
     with :ok <- on_deployment(scope, "deployment.nodes") do
       {asleep, running} =
-        Enum.split_with(Fleet.list(Prefix.all(), host: scope.host), & &1.asleep)
+        Enum.split_with(Fleet.list(Resource.parse!("*"), host: scope.host), & &1.asleep)
 
       counts = Enum.frequencies_by(running, & &1.node)
       nodes = for node <- Fleet.nodes(), do: {node, Map.get(counts, node, 0)}
@@ -1413,11 +1421,11 @@ defmodule Wardrik do
 
   defp authorize(%Scope{token: token}, action, target), do: Token.authorize(token, action, target)
 
-  # The deployment is acted on by a token allowing it on every agent alone,
-  # so one held to an org or a person never learns, nor changes, where any
+  # The deployment is acted on by a token allowing it on `deployment/*`, so
+  # one held to an org or a person never learns, nor changes, where any
   # agent runs.
   defp on_deployment(scope, action) do
-    case authorize(scope, action, Prefix.all()) do
+    case authorize(scope, action, Resource.parse!("deployment/*")) do
       {:error, %Error{type: type}} when type != :unauthorized ->
         {:error, Error.new(:forbidden, "This token may not act on the deployment.")}
 
@@ -1504,15 +1512,15 @@ defmodule Wardrik do
 
   @doc "As `agents_list/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agents_list!(Scope.t(), Prefix.t()) :: [Member.t()]
-  def agents_list!(scope, prefix), do: unwrap(agents_list(scope, prefix))
+  @spec agents_list!(Scope.t(), Resource.t()) :: [Member.t()]
+  def agents_list!(scope, pattern), do: unwrap(agents_list(scope, pattern))
 
   @doc "As `agents_parked/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agents_parked!(Scope.t(), Prefix.t()) :: [
+  @spec agents_parked!(Scope.t(), Resource.t()) :: [
           {AgentID.t(), {Wardrik.Tool.call(), String.t()}}
         ]
-  def agents_parked!(scope, prefix), do: unwrap(agents_parked(scope, prefix))
+  def agents_parked!(scope, pattern), do: unwrap(agents_parked(scope, pattern))
 
   @doc "As `agent_define/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
@@ -1548,8 +1556,8 @@ defmodule Wardrik do
 
   @doc "As `agents_cancel/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agents_cancel!(Scope.t(), Prefix.t()) :: [AgentID.t()]
-  def agents_cancel!(scope, prefix), do: unwrap(agents_cancel(scope, prefix))
+  @spec agents_cancel!(Scope.t(), Resource.t()) :: [AgentID.t()]
+  def agents_cancel!(scope, pattern), do: unwrap(agents_cancel(scope, pattern))
 
   @doc "As `agent_stop/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
@@ -1563,8 +1571,8 @@ defmodule Wardrik do
 
   @doc "As `agents_forget/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agents_forget!(Scope.t(), Prefix.t()) :: %{AgentID.t() => outcome()}
-  def agents_forget!(scope, prefix), do: unwrap(agents_forget(scope, prefix))
+  @spec agents_forget!(Scope.t(), Resource.t()) :: %{AgentID.t() => outcome()}
+  def agents_forget!(scope, pattern), do: unwrap(agents_forget(scope, pattern))
 
   @doc "As `agent_forget_preview/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
@@ -1573,9 +1581,9 @@ defmodule Wardrik do
 
   @doc "As `agents_forget_preview/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agents_forget_preview!(Scope.t(), Prefix.t()) :: Forgetting.t()
-  def agents_forget_preview!(scope, prefix),
-    do: unwrap(agents_forget_preview(scope, prefix))
+  @spec agents_forget_preview!(Scope.t(), Resource.t()) :: Forgetting.t()
+  def agents_forget_preview!(scope, pattern),
+    do: unwrap(agents_forget_preview(scope, pattern))
 
   @doc "As `agent_calls/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
@@ -1610,33 +1618,33 @@ defmodule Wardrik do
 
   @doc "As `servers_list/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec servers_list!(Scope.t(), Prefix.t()) :: [Server.t()]
+  @spec servers_list!(Scope.t(), Resource.t()) :: [Server.t()]
   def servers_list!(scope, owner), do: unwrap(servers_list(scope, owner))
 
   @doc "As `servers_add/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec servers_add!(Scope.t(), Prefix.t(), Server.t()) :: Server.t()
+  @spec servers_add!(Scope.t(), Resource.t(), Server.t()) :: Server.t()
   def servers_add!(scope, owner, server), do: unwrap(servers_add(scope, owner, server))
 
   @doc "As `servers_remove/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec servers_remove!(Scope.t(), Prefix.t(), String.t()) :: Server.t()
+  @spec servers_remove!(Scope.t(), Resource.t(), String.t()) :: Server.t()
   def servers_remove!(scope, owner, name), do: unwrap(servers_remove(scope, owner, name))
 
   @doc "As `connections_list/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec connections_list!(Scope.t(), Prefix.t()) :: [Connection.t()]
+  @spec connections_list!(Scope.t(), Resource.t()) :: [Connection.t()]
   def connections_list!(scope, owner), do: unwrap(connections_list(scope, owner))
 
   @doc "As `connections_connect/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec connections_connect!(Scope.t(), Prefix.t(), String.t()) :: Connection.t()
+  @spec connections_connect!(Scope.t(), Resource.t(), String.t()) :: Connection.t()
   def connections_connect!(scope, owner, provider),
     do: unwrap(connections_connect(scope, owner, provider))
 
   @doc "As `connections_disconnect/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec connections_disconnect!(Scope.t(), Prefix.t(), String.t()) :: Connection.t()
+  @spec connections_disconnect!(Scope.t(), Resource.t(), String.t()) :: Connection.t()
   def connections_disconnect!(scope, owner, provider),
     do: unwrap(connections_disconnect(scope, owner, provider))
 

@@ -36,11 +36,16 @@ defmodule Wardrik.AgentIDTest do
             [org: "@acme"],
             [org: "acme", user: "jo n"],
             [org: "acme", user: ""],
-            [org: "acme", external_id: "a/b"]
+            [org: "acme", external_id: "a/b"],
+            [org: "acme", external_id: "a*"],
+            [org: "acme", user: "j?n"]
           ] do
         assert {:error, message} = AgentID.new("researcher", opts)
         assert message =~ "not a segment"
       end
+
+      assert {:error, message} = AgentID.new("researcher", org: "deployment")
+      assert message =~ "names the deployment itself"
 
       assert {:error, _message} = AgentID.new("acme/researcher", org: "acme")
       assert {:error, _message} = AgentID.new("@researcher", org: "acme")
@@ -85,6 +90,8 @@ defmodule Wardrik.AgentIDTest do
             "@a/b",
             "a/_x",
             "a/ b",
+            "deployment/x",
+            "a/tri*ge",
             ""
           ] do
         assert {:error, message} = AgentID.parse(text)
@@ -125,7 +132,10 @@ defmodule Wardrik.AgentIDTest do
     refute AgentID.segment?("@acme")
     refute AgentID.segment?("a/b")
     refute AgentID.segment?("..")
+    refute AgentID.segment?("a*")
     refute AgentID.segment?(7)
+    assert AgentID.org?("acme")
+    refute AgentID.org?("deployment")
   end
 
   test "inspects as the sigil that writes it" do

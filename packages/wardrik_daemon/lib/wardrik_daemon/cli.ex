@@ -24,10 +24,10 @@ defmodule WardrikDaemon.CLI do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Fleet
   alias Wardrik.Host
+  alias Wardrik.JSON
   alias Wardrik.Resource
   alias WardrikConsole.Nodes
   alias WardrikDaemon.Boot
@@ -336,26 +336,24 @@ defmodule WardrikDaemon.CLI do
     end
   end
 
-  # A KEY or PREFIX, first among a command's arguments, may leave out the
-  # deployment's org, as Wardrik.AgentID.expand/2 reads it, and is handed on
-  # as the ID or prefix it names. A KEY|PREFIX/ is a prefix where it ends in
-  # /, an ID otherwise, and never every agent at once.
+  # A KEY, first among a command's arguments, may leave out the deployment's
+  # org, as Wardrik.AgentID.expand/2 reads it, and is handed on as the ID it
+  # names. A PATTERN is a Wardrik.Resource pattern, as acme/agent/*, and a
+  # KEY|PATTERN is a pattern where it holds * or ?, a KEY otherwise.
   defp named(%Command{arguments: arguments}, [word | rest]) do
-    org = Config.org(WardrikDaemon.Host.config())
-
     expanded =
       cond do
-        String.starts_with?(arguments, "KEY|PREFIX/") and word == "" ->
-          {:error, "Name an agent's key, or a prefix such as acme/."}
+        String.starts_with?(arguments, "KEY|PATTERN") and word == "" ->
+          {:error, "Name an agent's key, or a pattern such as 'acme/agent/*'."}
 
-        String.starts_with?(arguments, "KEY|PREFIX/") and String.ends_with?(word, "/") ->
-          Prefix.expand(word, org)
+        String.starts_with?(arguments, "KEY|PATTERN") and String.contains?(word, ["*", "?"]) ->
+          Resource.parse(word)
 
-        String.starts_with?(arguments, ["KEY", "[KEY", "KEY|PREFIX/"]) ->
-          AgentID.expand(word, org)
+        String.starts_with?(arguments, ["KEY", "[KEY"]) ->
+          AgentID.expand(word, Config.org(WardrikDaemon.Host.config()))
 
-        String.starts_with?(arguments, "[PREFIX") ->
-          Prefix.expand(word, org)
+        String.starts_with?(arguments, "[PATTERN") ->
+          Resource.parse(word)
 
         true ->
           {:ok, word}
@@ -383,7 +381,9 @@ defmodule WardrikDaemon.CLI do
     |> answered(terminal, command, json?)
   end
 
-  defp answered({:ok, document}, _terminal, _command, true), do: IO.puts(JSON.encode!(document))
+  defp answered({:ok, document}, _terminal, _command, true),
+    do: IO.puts(Elixir.JSON.encode!(document))
+
   defp answered({:ok, text}, terminal, _command, false), do: Terminal.puts(terminal, text)
   defp answered(:ok, _terminal, _command, _json?), do: :ok
   defp answered(:live, _terminal, _command, _json?), do: exit({:shutdown, :live})
@@ -411,7 +411,7 @@ defmodule WardrikDaemon.CLI do
   # saying so, as the HTTP API answers it, and exits with status 1.
   defp failed(terminal, %Error{message: message} = error, json?) do
     if json?,
-      do: IO.puts(JSON.encode!(Resource.error(error))),
+      do: IO.puts(Elixir.JSON.encode!(JSON.error(error))),
       else: Terminal.puts(terminal, message)
 
     exit({:shutdown, 1})
@@ -419,7 +419,7 @@ defmodule WardrikDaemon.CLI do
 
   defp failed(terminal, type, message, json?) do
     if json?,
-      do: IO.puts(JSON.encode!(Resource.error(type, plain(message)))),
+      do: IO.puts(Elixir.JSON.encode!(JSON.error(type, plain(message)))),
       else: Terminal.puts(terminal, message)
 
     exit({:shutdown, 1})
@@ -556,7 +556,7 @@ defmodule WardrikDaemon.CLI do
     host = WardrikDaemon.Host.get()
 
     %{
-      keys: fn -> Enum.map(Fleet.list(Prefix.all(), host: host), &to_string(&1.id)) end,
+      keys: fn -> Enum.map(Fleet.list(Resource.parse!("*"), host: host), &to_string(&1.id)) end,
       nodes: fn -> Enum.map(WardrikDaemon.daemons(), &Nodes.display/1) end,
       calls: fn key ->
         case Agent.parked(key, host: host) do
@@ -583,7 +583,7 @@ defmodule WardrikDaemon.CLI do
 
   defp nodes(_words, opts) do
     with {:ok, nodes} <- Wardrik.deployment_nodes(opts[:as]),
-         do: {:ok, Resource.nodes(nodes)}
+         do: {:ok, JSON.nodes(nodes)}
   end
 
   defp reload(_words, opts) do
@@ -705,7 +705,7 @@ defmodule WardrikDaemon.CLI do
 
   defp snapshot([key], opts) do
     with {:ok, snapshot} <- Wardrik.agent_read(opts[:as], key),
-         do: {:ok, Resource.snapshot(snapshot)}
+         do: {:ok, JSON.snapshot(snapshot)}
   end
 
   defp clear([key], opts) do

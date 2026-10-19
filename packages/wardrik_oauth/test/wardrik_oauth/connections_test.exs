@@ -1,7 +1,6 @@
 defmodule WardrikOAuth.ConnectionsTest do
   use WardrikOAuth.Test.Case, async: false
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Principal
   alias Wardrik.Role
@@ -26,10 +25,10 @@ defmodule WardrikOAuth.ConnectionsTest do
     jon =
       Scope.new(host(), %Token{
         principal: Principal.new(:user, owner, name: "Jon"),
-        scope: [Role.bind([:owner], Prefix.tenant!(org))]
+        scope: [Role.bind([:owner], [Wardrik.Resource.parse!("#{org}/*")])]
       })
 
-    %{org: org, jon: jon, mine: Prefix.new!(org: org, user: owner)}
+    %{org: org, jon: jon, mine: person(org, owner)}
   end
 
   defp list(scope, mine) do
@@ -59,9 +58,9 @@ defmodule WardrikOAuth.ConnectionsTest do
     assert {:ok, %{authorization: nil}} = Wardrik.connections_connect(jon, mine, "linear")
 
     assert [{"secret.stored", %{"type" => "user", "id" => ^owner}} | _] =
-             Enum.reverse(Audit.about("secrets/linear"))
+             Enum.reverse(Audit.about("#{mine}/secret/linear"))
 
-    refute WardrikOAuth.connected?(vault(), "linear", org)
+    refute WardrikOAuth.connected?(vault(), "linear", Wardrik.Resource.parse!(org))
   end
 
   test "disconnecting removes it, recorded as the person who did",
@@ -74,7 +73,7 @@ defmodule WardrikOAuth.ConnectionsTest do
     assert list(jon, mine)["linear"] == nil
 
     assert {"secret.removed", %{"type" => "user", "id" => ^owner}} =
-             List.last(Audit.about("secrets/linear"))
+             List.last(Audit.about("#{mine}/secret/linear"))
 
     assert {:error, %Error{type: :not_found}} =
              Wardrik.connections_disconnect(jon, mine, "linear")
@@ -83,7 +82,7 @@ defmodule WardrikOAuth.ConnectionsTest do
   test "a token for one org can neither see nor touch another's",
        %{jon: jon, mine: mine, owner: owner} do
     authorize(jon, mine, "github")
-    globex = Prefix.new!(org: "globex#{owner}", user: owner)
+    globex = person("globex#{owner}", owner)
 
     assert {:error, %Error{type: :not_found}} = Wardrik.connections_list(jon, globex)
 
@@ -96,11 +95,11 @@ defmodule WardrikOAuth.ConnectionsTest do
 
   test "an org's account shows as the org's to its people", %{jon: jon, mine: mine, org: org} do
     {:ok, %{authorization: %{url: url}}} =
-      Wardrik.connections_connect(jon, Prefix.new!(org: org), "linear")
+      Wardrik.connections_connect(jon, Wardrik.Resource.parse!(org), "linear")
 
     {:ok, "linear"} = WardrikOAuth.finish(state_of(url), "the-code")
 
     assert list(jon, mine)["linear"] == :org
-    assert WardrikOAuth.connected?(vault(), "linear", org)
+    assert WardrikOAuth.connected?(vault(), "linear", Wardrik.Resource.parse!(org))
   end
 end

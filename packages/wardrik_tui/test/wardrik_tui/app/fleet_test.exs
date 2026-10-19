@@ -230,7 +230,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     assert screen(session) =~ "spawned and connected to #{key}"
     assert Fleet.whereis(key, host: Wardrik.Test.host())
-    assert Audit.about("agents/#{key}") == [{"agent.spawned", @ops}]
+    assert Audit.about(key) == [{"agent.spawned", @ops}]
   end
 
   test "/spawn starts an agent as the host defines it, or says why it cannot", %{
@@ -786,7 +786,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/move watched node=b")
 
     assert screen(session) =~ "moved #{agent_id} to wardrik_b@localhost"
-    assert Audit.about("agents/#{agent_id}") == [{"agent.moved", @ops}]
+    assert Audit.about(agent_id) == [{"agent.moved", @ops}]
     assert screen(session) =~ "› ○ watched"
   end
 
@@ -988,7 +988,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     assert screen(session) =~ "removed #{key} and its store"
     assert Fleet.whereis(key, host: Wardrik.Test.host()) == nil
-    assert Audit.about("agents/#{key}") == [{"agent.forgotten", @ops}]
+    assert Audit.about(key) == [{"agent.forgotten", @ops}]
   end
 
   test "/rm never removes the agent this client is attached to, and says so", ctx do
@@ -997,12 +997,12 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/rm watched")
     assert screen(session) =~ "you are attached to #{agent_id}"
 
-    submit(session, "/rm #{org}/")
+    submit(session, "/rm #{org}/agent/*")
     assert screen(session) =~ "you are attached to #{agent_id}"
     assert Fleet.whereis(agent_id, host: Wardrik.Test.host())
   end
 
-  test "/rm PREFIX/ lists every agent under it and skips the attached one", ctx do
+  test "/rm PATTERN lists every agent it covers and skips the attached one", ctx do
     %{session: session, agent_id: agent_id, org: org} = ctx
     keys = for name <- ["one", "two"], do: AgentID.new!(name, org: org)
 
@@ -1011,7 +1011,7 @@ defmodule WardrikTUI.App.FleetTest do
       on_exit(fn -> Fleet.forget(key) end)
     end
 
-    submit(session, "/rm #{org}/")
+    submit(session, "/rm #{org}/agent/*")
 
     text = screen(session)
     assert text =~ "removes 2 agents"
@@ -1053,10 +1053,10 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "no agent at #{org}/nobody"
   end
 
-  test "/rm says so when a prefix matches nothing", %{session: session} do
-    submit(session, "/rm nothing/@here/")
+  test "/rm says so when a pattern matches nothing", %{session: session} do
+    submit(session, "/rm nothing/@here/*")
 
-    assert screen(session) =~ "nothing running under nothing/@here/"
+    assert screen(session) =~ "nothing running under nothing/@here/*"
   end
 
   test "/kill is gone, and says where its jobs went", %{session: session} do
@@ -1081,7 +1081,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "asked #{key} to stop"
     assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
     assert Fleet.whereis(key, host: Wardrik.Test.host())
-    assert Audit.about("agents/#{key}") == [{"agent.cancelled", @ops}]
+    assert Audit.about(key) == [{"agent.cancelled", @ops}]
   end
 
   test "/stop of an agent that does not run says so", %{session: session, org: org} do
@@ -1090,7 +1090,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "no agent at #{org}/nobody"
   end
 
-  test "/stop PREFIX/ interrupts every agent under it taking a turn", %{
+  test "/stop PATTERN interrupts every agent it covers taking a turn", %{
     session: session,
     org: org
   } do
@@ -1101,15 +1101,16 @@ defmodule WardrikTUI.App.FleetTest do
     Agent.ask(pid, "take your time")
     assert_receive {:running, _turn_pid}
 
-    submit(session, "/stop #{org}/")
+    submit(session, "/stop #{org}/agent/*")
 
-    assert screen(session) =~ "asked 1 under #{org}/ to stop"
+    assert screen(session) =~ "asked 1 under #{org}/agent/* to stop"
     assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
+    subject = to_string(AgentID.resource(key))
 
-    assert [%{"data" => %{"under" => under, "actor" => @ops}}] =
-             for(%{"subject" => subject} = e <- Audit.all(), subject == "agents/#{key}", do: e)
+    assert [%{"data" => %{"resource" => resource, "actor" => @ops}}] =
+             for(%{"subject" => ^subject} = e <- Audit.all(), do: e)
 
-    assert under == "#{org}/"
+    assert resource == "#{org}/agent/*"
   end
 
   test "/stop interrupts the attached agent, as the person here", %{session: session, org: org} do
@@ -1124,7 +1125,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/stop")
 
     assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
-    assert Audit.about("agents/#{key}") == [{"agent.cancelled", @ops}]
+    assert Audit.about(key) == [{"agent.cancelled", @ops}]
   end
 
   test "/shutdown NAME stops an agent and keeps its conversation for /spawn", ctx do
@@ -1137,7 +1138,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "shut down #{key}"
     assert text =~ "its conversation is kept"
     assert Fleet.held_pid(key, wake: false) == nil
-    assert Audit.about("agents/#{key}") == [{"agent.stopped", @ops}]
+    assert Audit.about(key) == [{"agent.stopped", @ops}]
 
     submit(session, "/spawn sleeper")
 
@@ -1199,7 +1200,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ ~r/transcript ─+/
     assert text =~ ~r/j\/k, Ctrl-U\/D, PageUp\/Down\s+scroll a row/
     assert text =~ ~r/not right now ─+/
-    assert text =~ ~r/\/stop \[NAME \| PREFIX\/\]\s+interrupt/
+    assert text =~ ~r/\/stop \[NAME \| PATTERN\]\s+interrupt/
 
     Enum.each(String.graphemes("conn"), &Breeze.Test.input(session, &1))
     text = screen(session)

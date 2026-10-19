@@ -15,18 +15,18 @@ defprotocol Wardrik.Servers do
   | `servers_add/3` | `add/3` |
   | `servers_remove/3` | `remove/3` |
 
-  An owner is the `Wardrik.AgentID.Prefix` of the agents a server serves: an
-  org's own, `acme/`, or a person's, `acme/@jon/`. A server one owner adds
-  is named by a `Wardrik.Servers.Key` and serves that owner's agents alone.
+  An owner is a namespace, as `Wardrik.Resource` names one: an org,
+  `acme`, or a person, `acme/@jon`. A server one owner adds is the resource
+  `acme/server/crm`, and serves that owner's agents alone.
 
   A host that offers none has `Wardrik.Servers.None`, whose functions answer
   `:unsupported`, and so does each of those.
   """
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
 
   @doc "The servers `owner` added."
-  @spec list(t(), Prefix.t()) :: [Wardrik.Servers.Server.t()] | :unsupported
+  @spec list(t(), Resource.t()) :: [Wardrik.Servers.Server.t()] | :unsupported
   def list(servers, owner)
 
   @doc """
@@ -34,7 +34,7 @@ defprotocol Wardrik.Servers do
   them, as `:by` asked: `{:ok, :connected}` where its agents can call it
   now, or the link where someone signs in to it first.
   """
-  @spec add(t(), Prefix.t(),
+  @spec add(t(), Resource.t(),
           name: String.t(),
           fields: map(),
           by: Wardrik.Principal.t() | nil
@@ -46,7 +46,7 @@ defprotocol Wardrik.Servers do
   def add(servers, owner, opts)
 
   @doc "Removes `owner`'s server `:name`, and stops every connection to it."
-  @spec remove(t(), Prefix.t(), name: String.t(), by: Wardrik.Principal.t() | nil) ::
+  @spec remove(t(), Resource.t(), name: String.t(), by: Wardrik.Principal.t() | nil) ::
           :ok | {:error, Wardrik.Error.t()} | :unsupported
   def remove(servers, owner, opts)
 end

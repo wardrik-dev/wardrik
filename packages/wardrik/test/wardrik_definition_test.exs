@@ -2,8 +2,7 @@ defmodule WardrikDefinitionTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikDefinition.Context
 
   defmodule Clock do
@@ -51,7 +50,7 @@ defmodule WardrikDefinitionTest do
     context = %Context{
       org: "acme",
       tools: [Clock],
-      servers: [books: [serves: [Wardrik.AgentID.Prefix.tenant!("acme")]], wiki: []],
+      servers: [books: [serves: [Wardrik.Resource.parse!("acme/*")]], wiki: []],
       mcp: Source,
       channels: [chat: :all, ops: ["globex"]],
       targets: [pager: {Source, orgs: :all}],
@@ -93,7 +92,7 @@ defmodule WardrikDefinitionTest do
 
     assert {:ok, spec} = spec(fields, context, id, {:file, "triage.md"})
     assert spec.config.system == "Watch the queue."
-    assert spec.config.tools == [Clock, {Source, Key.deployment("books")}]
+    assert spec.config.tools == [Clock, {Source, Resource.parse!("deployment/server/books")}]
     assert [_hook | _hooks] = spec.hooks
     assert spec.ledger == %Wardrik.Ledger.Store{}
     assert spec.idle_timeout == :timer.seconds(60)
@@ -138,15 +137,15 @@ defmodule WardrikDefinitionTest do
 
   test "names a server its owner added, and one its owner has yet to add",
        %{context: context, id: id} do
-    context = %{context | added: %Added{by: %{"acme/" => ["crm"]}}}
-    owner = Prefix.owner(id)
+    context = %{context | added: %Added{by: %{"acme" => ["crm"]}}}
+    owner = Resource.owner(Wardrik.AgentID.resource(id))
 
     assert {:ok, spec} = spec(%{"tools" => ["crm/*", "books/*", "later/*"]}, context, id)
 
     assert spec.config.tools == [
-             {Source, Key.new(owner, "crm")},
-             {Source, Key.deployment("books")},
-             {Source, Key.new(owner, "later")}
+             {Source, Resource.new(owner, server: "crm")},
+             {Source, Resource.parse!("deployment/server/books")},
+             {Source, Resource.new(owner, server: "later")}
            ]
 
     fields = %{"tools" => ["clock", "crm/*", "books/*", "later/*"]}

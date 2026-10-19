@@ -95,7 +95,7 @@ An org or a person can add an MCP server for their own agents while the daemon r
 to `config.yaml`. Maria works with a token for her own agents:
 
 ```sh
-wardrik token create maria --scope acme/@maria/ --role reader,messenger,definer
+wardrik token create maria --resource 'acme/@maria/*' --role reader,messenger,definer
 ```
 
 Her agent can name a server before she adds it. It offers nothing from it yet, and its definition
@@ -117,7 +117,7 @@ console.log((await triage.definition()).missing); // [ 'linear/*' ]
 She adds Linear's hosted server, and signs in to Linear at the link it answers:
 
 ```ts
-const added = await wardrik.servers.add("acme/@maria/", {
+const added = await wardrik.servers.add("acme/@maria", {
   name: "linear",
   url: "https://mcp.linear.app/mcp",
   auth: { oauth: {} },
@@ -136,13 +136,13 @@ for await (const event of triage.ask("What came in overnight?")) {
 }
 ```
 
-- A server serves its owner's agents alone, named by their prefix. Maria's serves the agents under
-  `acme/@maria/`; one added for `acme/` serves the org's own agents. A person's agents don't reach
+- A server serves its owner's agents alone. Maria's, added for `acme/@maria`, serves her agents;
+  one added for `acme` serves the org's own agents. A person's agents don't reach
   the org's servers.
 - `linear/*` names the owner's server first, else one `config.yaml` names. `servers/*` gives an
   agent the tools of every server its owner adds, as they add them.
 - `wardrik show` lists a server the agent names and its owner hasn't added as `missing`.
-- `wardrik.servers.remove("acme/@maria/", "linear")` takes its tools away on the next turn, and
+- `wardrik.servers.remove("acme/@maria", "linear")` takes its tools away on the next turn, and
   forgets her sign-in.
 - A server signs in with nothing, in a browser, or with a secret its owner keeps in the vault; see
   [Servers](/reference/http-api/#servers). What it answers is content from outside, and every tool

@@ -2,8 +2,7 @@ defmodule WardrikDaemon.AgentFileTest do
   use ExUnit.Case, async: false
 
   alias Wardrik.Agent.Spec
-  alias Wardrik.AgentID.Prefix
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.Test.Host
   alias WardrikDefinition.Record
@@ -68,7 +67,12 @@ defmodule WardrikDaemon.AgentFileTest do
     assert spec.description == "Watches the queue."
     assert spec.config.model_spec == "anthropic:claude-sonnet-5"
     assert spec.config.system == "You watch the incident queue."
-    assert spec.config.tools == [WardrikBrave.WebSearch, {WardrikMCP, Key.deployment("linear")}]
+
+    assert spec.config.tools == [
+             WardrikBrave.WebSearch,
+             {WardrikMCP, Resource.parse!("deployment/server/linear")}
+           ]
+
     assert spec.config.max_iterations == 12
     assert spec.timeout == 600_000
     assert spec.hooks == [%Wardrik.Hook{name: "WardrikDaemon.AgentFileTest.Hook", module: Hook}]
@@ -125,7 +129,7 @@ defmodule WardrikDaemon.AgentFileTest do
       linear: [transport: {:streamable_http, base_url: "https://mcp.linear.app/mcp"}],
       theirs: [
         transport: {:stdio, command: "theirs"},
-        serves: [Prefix.tenant!("globex")]
+        serves: [Wardrik.Resource.parse!("globex/*")]
       ],
       github: [transport: {:stdio, command: "gh"}, credential: "github"]
     )
@@ -137,8 +141,8 @@ defmodule WardrikDaemon.AgentFileTest do
              WardrikBrave.WebSearch,
              WardrikResearch.Deep,
              WardrikLua.Run,
-             {WardrikMCP, Key.deployment("linear")},
-             {WardrikMCP, Key.deployment("github")},
+             {WardrikMCP, Resource.parse!("deployment/server/linear")},
+             {WardrikMCP, Resource.parse!("deployment/server/github")},
              {WardrikHTTP.Workers, ~A"default/triage"},
              {Wardrik.Catalog.Self, ~A"default/triage"},
              {Wardrik.Catalog.Agents, ~A"default/triage"},
@@ -147,7 +151,7 @@ defmodule WardrikDaemon.AgentFileTest do
            ]
 
     assert {:ok, spec} = read("---\ntools: ['*']\norg: globex\n---\n", context)
-    assert {WardrikMCP, Key.deployment("theirs")} in spec.config.tools
+    assert {WardrikMCP, Resource.parse!("deployment/server/theirs")} in spec.config.tools
   end
 
   test "an agent is refused in an org config.yaml does not declare", context do
@@ -159,7 +163,7 @@ defmodule WardrikDaemon.AgentFileTest do
     with_servers(
       theirs: [
         transport: {:stdio, command: "theirs"},
-        serves: [Prefix.tenant!("globex")]
+        serves: [Wardrik.Resource.parse!("globex/*")]
       ]
     )
 
@@ -212,14 +216,14 @@ defmodule WardrikDaemon.AgentFileTest do
 
       token = %Wardrik.Token{
         principal: Wardrik.Principal.new(:user, "jon"),
-        scope: [Wardrik.Role.bind([:owner], Wardrik.AgentID.Prefix.of(id))]
+        scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(id)])]
       }
 
       {:ok, definition} = Record.define(ctx(), id, fields: fields, source: {:api, token})
 
       assert Record.spec(definition, id, context: ctx()) ==
                {:error,
-                "workspace shared team: acme belongs to acme/, which the token does not reach"}
+                "workspace shared team: acme belongs to acme/agent/*, which the token does not reach"}
     end
   end
 
@@ -487,7 +491,12 @@ defmodule WardrikDaemon.AgentFileTest do
       assert spec.description == "Watches the queue."
       assert spec.config.system == "You watch the incident queue."
       assert spec.config.model_spec == "anthropic:claude-sonnet-5"
-      assert spec.config.tools == [WardrikBrave.WebSearch, {WardrikMCP, Key.deployment("linear")}]
+
+      assert spec.config.tools == [
+               WardrikBrave.WebSearch,
+               {WardrikMCP, Resource.parse!("deployment/server/linear")}
+             ]
+
       assert spec.timeout == :timer.seconds(600)
       assert spec.ledger == %Wardrik.Ledger.Store{}
     end

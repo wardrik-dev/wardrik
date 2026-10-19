@@ -93,7 +93,7 @@ defmodule WardrikOAuth.CallbackTest do
     assert get(context.port, "/callback/linear?code=the-code&state=#{state}") =~
              "404 Not Found"
 
-    assert {:ok, _flight} = Pending.under_way("github", {"acme", context.owner})
+    assert {:ok, _flight} = Pending.under_way("github", person("acme", context.owner))
 
     assert get(context.port, "/callback/github?code=the-code&state=#{state}") =~ "200 OK"
   end
@@ -141,7 +141,7 @@ defmodule WardrikOAuth.CallbackTest do
     assert response =~ "400 Bad Request"
     assert response =~ "access_denied: &lt;script&gt;"
     refute response =~ "<script>"
-    refute WardrikOAuth.connected?(vault(), "github", {"acme", context.owner})
+    refute WardrikOAuth.connected?(vault(), "github", person("acme", context.owner))
   end
 
   test "a callback with no code is refused", context do

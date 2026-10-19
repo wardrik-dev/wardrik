@@ -13,12 +13,13 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   `agent cancel` ends the turn an agent is taking, or abandons the one it
   waits on a person for, with the messages waiting behind it, for one agent,
-  every agent under a prefix, or with `--all` every agent there is; the
-  agents keep running. `agent stop` stops one and keeps its conversation. An agent a
-  file declares starts again at the next `wardrik reload`.
+  every agent a pattern such as `acme/agent/*` covers, or with `--all` every
+  agent there is; the agents keep running. `agent stop` stops one and keeps
+  its conversation. An agent a file declares starts again at the next
+  `wardrik reload`.
 
-  `agent rm` removes an agent, running or stopped, or every agent running
-  under a prefix, with its conversation and triggers, for good. It lists
+  `agent rm` removes an agent, running or stopped, or every agent a pattern
+  covers, with its conversation and triggers, for good. It lists
   what it removes and asks first; `--yes` removes without asking, as it must
   where nobody can answer. It leaves an agent a file declares: removing the
   file, then `wardrik reload`, removes that one.
@@ -39,11 +40,11 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
   alias Wardrik.Forgetting
   alias Wardrik.Moving
+  alias Wardrik.Resource
   alias Wardrik.Spawned
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
@@ -77,13 +78,13 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       %Command{
         name: "agent cancel",
         group: "Manage agents",
-        arguments: "KEY|PREFIX/",
+        arguments: "KEY|PATTERN",
         options: "[--all]",
         summary: "end the turn an agent is taking; it keeps running",
         details: [
           "The messages waiting behind the turn go too, and a turn waiting on a person is",
-          "abandoned. A PREFIX/, such as acme/, ends the turns of every agent under it, and",
-          "--all those of every agent there is."
+          "abandoned. A PATTERN, such as acme/agent/*, ends the turns of every agent it covers,",
+          "and --all those of every agent there is."
         ],
         switches: [all: :boolean],
         count: {0, 1},
@@ -104,13 +105,13 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       %Command{
         name: "agent rm",
         group: "Manage agents",
-        arguments: "KEY|PREFIX/",
+        arguments: "KEY|PATTERN",
         options: "[--yes]",
         summary: "remove an agent, its conversation and its triggers, for good",
         details: [
-          "It lists what it removes and asks first; --yes removes without asking. A PREFIX/,",
-          "such as acme/, removes every agent under it. An agent a file declares is left:",
-          "remove the file, then wardrik reload removes it."
+          "It lists what it removes and asks first; --yes removes without asking. A PATTERN,",
+          "such as acme/agent/*, removes every agent it covers. An agent a file declares is",
+          "left: remove the file, then wardrik reload removes it."
         ],
         switches: [yes: :boolean],
         count: {1, 1},
@@ -213,7 +214,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp spawned(:new, agent, key, scope) do
     {:ok, snapshot} = Wardrik.agent_read(scope, key)
-    snapshot = Wardrik.Resource.snapshot(snapshot)
+    snapshot = Wardrik.JSON.snapshot(snapshot)
     {path, _spec} = WardrikDaemon.Host.declared()[key]
 
     [
@@ -234,14 +235,14 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp cancel([], opts) do
     if opts[:all],
-      do: cancelled_under(Prefix.all(), opts[:as]),
+      do: cancelled_under(Resource.parse!("*"), opts[:as]),
       else: {:error, :usage}
   end
 
   defp cancel([target], opts) do
     cond do
       opts[:all] -> {:error, :usage}
-      prefix?(target) -> cancelled_under(target, opts[:as])
+      pattern?(target) -> cancelled_under(target, opts[:as])
       true -> cancelled(target, opts[:as])
     end
   end
@@ -251,9 +252,9 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     with :ok <- Wardrik.agent_cancel(scope, key), do: {:ok, cancelled_line(key, busy?)}
   end
 
-  defp cancelled_under(prefix, scope) do
-    with {:ok, agents} <- Wardrik.agents_cancel(scope, prefix),
-         do: {:ok, cancelled_under_line(prefix, agents)}
+  defp cancelled_under(pattern, scope) do
+    with {:ok, agents} <- Wardrik.agents_cancel(scope, pattern),
+         do: {:ok, cancelled_under_line(pattern, agents)}
   end
 
   defp cancelled_line(key, false), do: "#{key} is taking no turn, so there is none to cancel."
@@ -263,15 +264,15 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       "Cancelled what #{key} was doing, and the messages waiting behind it. It keeps running, " <>
         "with what was said so far."
 
-  defp cancelled_under_line(prefix, []), do: "No agent#{under(prefix)} is taking a turn."
+  defp cancelled_under_line(pattern, []), do: "No agent#{covered(pattern)} is taking a turn."
 
-  defp cancelled_under_line(_prefix, agents),
+  defp cancelled_under_line(_pattern, agents),
     do: ["Cancelled the turns of ", listed(agents), ". They keep running."]
 
-  defp under(prefix) do
-    case to_string(prefix) do
-      "" -> ""
-      text -> " under #{text}"
+  defp covered(pattern) do
+    case to_string(pattern) do
+      "*" -> ""
+      text -> " #{text} covers"
     end
   end
 
@@ -286,7 +287,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   # which answer only that they were made, so the line can say what each
   # found.
   defp member(key, scope) do
-    {:ok, members} = Wardrik.agents_list(scope, Prefix.of(key))
+    {:ok, members} = Wardrik.agents_list(scope, AgentID.resource(key))
     Enum.find(members, &(&1.id == key))
   end
 
@@ -333,7 +334,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   end
 
   defp forgetting(%AgentID{} = key, scope), do: Wardrik.agent_forget_preview(scope, key)
-  defp forgetting(prefix, scope), do: Wardrik.agents_forget_preview(scope, prefix)
+  defp forgetting(pattern, scope), do: Wardrik.agents_forget_preview(scope, pattern)
 
   defp rm_confirmed(target, forgetting, terminal, scope) do
     Terminal.puts(terminal, removing(forgetting))
@@ -359,12 +360,12 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp them(_keys), do: "them"
 
   # An agent is removed on its own, answered with what became of it as one
-  # under a prefix is.
+  # a pattern covers is.
   defp forget(%AgentID{} = key, scope) do
     with :ok <- Wardrik.agent_forget(scope, key), do: {:ok, %{key => :forgotten}}
   end
 
-  defp forget(prefix, scope), do: Wardrik.agents_forget(scope, prefix)
+  defp forget(pattern, scope), do: Wardrik.agents_forget(scope, pattern)
 
   defp removed(target, scope) do
     with {:ok, outcomes} <- forget(target, scope) do
@@ -482,7 +483,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp calls_json([key], opts) do
     with {:ok, calls} <- Wardrik.agent_calls(opts[:as], key),
-         do: {:ok, Wardrik.Resource.calls(calls)}
+         do: {:ok, Wardrik.JSON.calls(calls)}
   end
 
   defp kill_call([key, call_id], opts) do
@@ -533,7 +534,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   # A node, as a person reads it.
   defp shown_node(node), do: Nodes.display(node)
 
-  defp prefix?(target), do: match?(%Prefix{}, target)
+  defp pattern?(target), do: match?(%Resource{}, target)
 
   defp shown(path), do: Path.join("agents", Path.basename(path))
 

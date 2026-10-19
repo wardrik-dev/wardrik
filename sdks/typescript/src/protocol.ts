@@ -107,7 +107,7 @@ export interface Statement {
    */
   actions: string[];
   /**
-   * The agents it allows them on, each by its prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent.
+   * What it allows them on, each a resource pattern, as IAM writes one: * matches anything, / included, and ? one character. acme/agent/* is acme's own agents, acme/@jon/* everything of jon's in acme, acme/* everything of acme's and its users', and * everything.
    */
   resources: string[];
 }
@@ -784,9 +784,9 @@ export interface AgentCancelledData {
     id: string;
   };
   /**
-   * The prefix someone cancelled every agent under at once, where it was one of them; every agent's entry from that one change shares its trace.
+   * The pattern someone cancelled every agent it covers by at once, where it was one of them; every agent's entry from that one change shares its trace.
    */
-  under?: string;
+  resource?: string;
   actor?: Principal;
   assumed_by?: AssumedBy;
 }
@@ -827,9 +827,9 @@ export interface AgentForgottenData {
     id: string;
   };
   /**
-   * The prefix someone removed every agent under at once, where it was one of them; every agent's entry from that one change shares its trace.
+   * The pattern someone removed every agent it covers by at once, where it was one of them; every agent's entry from that one change shares its trace.
    */
-  under?: string;
+  resource?: string;
   actor?: Principal;
   assumed_by?: AssumedBy;
 }
@@ -1131,7 +1131,7 @@ export interface SecretRemovedData {
     name: string;
   };
   /**
-   * The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's.
+   * The org, as acme, or the user, as acme/@jon, it is kept for; none where it is the deployment's.
    */
   owner?: string;
   actor?: Principal;
@@ -1145,7 +1145,7 @@ export interface SecretStoredData {
     name: string;
   };
   /**
-   * The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's.
+   * The org, as acme, or the user, as acme/@jon, it is kept for; none where it is the deployment's.
    */
   owner?: string;
   actor?: Principal;
@@ -1160,7 +1160,7 @@ export interface ServerAddedData {
     url: string;
   };
   /**
-   * The org, as acme/, or the user, as acme/@jon/, whose agents it serves.
+   * The org, as acme, or the user, as acme/@jon, whose agents it serves.
    */
   owner: string;
   actor?: Principal;
@@ -1174,7 +1174,7 @@ export interface ServerRemovedData {
     name: string;
   };
   /**
-   * The org, as acme/, or the user, as acme/@jon/, whose agents it serves.
+   * The org, as acme, or the user, as acme/@jon, whose agents it serves.
    */
   owner: string;
   actor?: Principal;

@@ -266,7 +266,7 @@ defmodule Mix.Tasks.Wardrik do
 
   defp configured!(configured, name) do
     if Enum.any?(configured, &(to_string(&1) == name)),
-      do: Wardrik.Servers.Key.deployment(name),
+      do: Wardrik.Resource.parse!("deployment/server/#{name}"),
       else:
         Mix.raise(
           "no MCP server is configured as #{name}; config :wardrik_daemon, WardrikMCP has " <>

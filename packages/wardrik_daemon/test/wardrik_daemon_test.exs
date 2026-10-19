@@ -4,7 +4,6 @@ defmodule WardrikDaemonTest do
   import Wardrik.Test, only: [store: 0]
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias WardrikDaemon.Config
   alias WardrikDaemon.Test.Host
   alias WardrikDaemon.Test.Settings
@@ -56,7 +55,7 @@ defmodule WardrikDaemonTest do
       WardrikHTTP.Token.create(Wardrik.Test.store(), "daemon-test",
         token: %Wardrik.Token{
           principal: Wardrik.Principal.new(:user, "ci"),
-          scope: [Wardrik.Role.bind([:owner], Prefix.parse!("daemon/"))]
+          scope: [Wardrik.Role.bind([:owner], [Wardrik.Resource.parse!("daemon/agent/*")])]
         }
       )
 
@@ -164,8 +163,15 @@ defmodule WardrikDaemonTest do
   test "reads a ${NAME} the environment does not set from the vault", %{tmp_dir: dir} do
     :ok = Settings.vault()
     name = "DAEMON_TEST_IP_#{System.unique_integer([:positive])}"
-    :ok = WardrikVault.put(Settings.held_vault(), name, nil, value: "127.0.0.1")
-    on_exit(fn -> WardrikVault.forget(Settings.held_vault(), name, nil) end)
+
+    :ok =
+      WardrikVault.put(Settings.held_vault(), name, Wardrik.Resource.deployment(),
+        value: "127.0.0.1"
+      )
+
+    on_exit(fn ->
+      WardrikVault.forget(Settings.held_vault(), name, Wardrik.Resource.deployment())
+    end)
 
     File.write!(Path.join(dir, "config.yaml"), "ssh:\n  ip: \"${#{name}}\"\n")
 
@@ -179,9 +185,13 @@ defmodule WardrikDaemonTest do
     name = "DAEMON_TEST_DB_#{System.unique_integer([:positive])}"
 
     :ok =
-      WardrikVault.put(Settings.held_vault(), name, nil, value: "postgres://localhost/wardrik")
+      WardrikVault.put(Settings.held_vault(), name, Wardrik.Resource.deployment(),
+        value: "postgres://localhost/wardrik"
+      )
 
-    on_exit(fn -> WardrikVault.forget(Settings.held_vault(), name, nil) end)
+    on_exit(fn ->
+      WardrikVault.forget(Settings.held_vault(), name, Wardrik.Resource.deployment())
+    end)
 
     File.write!(Path.join(dir, "config.yaml"), "storage:\n  postgres:\n    url: \"${#{name}}\"\n")
 
@@ -202,7 +212,7 @@ defmodule WardrikDaemonTest do
 
   test "status/0 shows what a budgeted agent has spent", %{tmp_dir: dir} do
     org = "status-#{System.unique_integer([:positive])}"
-    on_exit(fn -> Wardrik.Fleet.forget_under(Prefix.parse!(org <> "/")) end)
+    on_exit(fn -> Wardrik.Fleet.forget_under(Wardrik.Resource.parse!(org <> "/*")) end)
 
     File.write!(Path.join(dir, "config.yaml"), "orgs:\n  #{org}: {}\n")
     File.mkdir_p!(Path.join(dir, "agents"))
@@ -216,7 +226,7 @@ defmodule WardrikDaemonTest do
 
     Wardrik.Test.Fleet.await_update(fn ->
       Enum.any?(
-        Wardrik.Fleet.list(Prefix.parse!(org <> "/"), host: Host.host()),
+        Wardrik.Fleet.list(Wardrik.Resource.parse!(org <> "/agent/*"), host: Host.host()),
         &(not &1.asleep)
       )
     end)

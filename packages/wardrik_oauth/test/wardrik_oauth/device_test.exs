@@ -152,16 +152,17 @@ defmodule WardrikOAuth.DeviceTest do
 
       configure(providers: provider(flow: :device))
 
+      jon = person("acme", owner)
+
       assert {:error,
               {:authorization_required,
-               %{url: "https://auth.example.com/activate", code: "WDJB-MJHT"}, {"acme", ^owner}}} =
+               %{url: "https://auth.example.com/activate", code: "WDJB-MJHT"}, ^jon}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, run(owner)),
                  "github"
                )
 
-      assert_receive {:device_done,
-                      %{provider: "github", owner: {"acme", ^owner}, outcome: :authorized}}
+      assert_receive {:device_done, %{provider: "github", owner: ^jon, outcome: :authorized}}
 
       assert_received {:oauth, "POST", "/token", _pending}
       assert_received {:oauth, "POST", "/token", _authorized}
@@ -202,9 +203,11 @@ defmodule WardrikOAuth.DeviceTest do
           assert_receive {:device_done, %{outcome: :access_denied}}
         end)
 
-      assert log =~ "github was not connected for #{inspect({"acme", owner})}: :access_denied"
-      assert Pending.under_way("github", {"acme", owner}) == :error
-      refute WardrikOAuth.connected?(vault(), "github", {"acme", owner})
+      assert log =~
+               "github was not connected for #{inspect(person("acme", owner))}: :access_denied"
+
+      assert Pending.under_way("github", person("acme", owner)) == :error
+      refute WardrikOAuth.connected?(vault(), "github", person("acme", owner))
     end
 
     test "stops asking the server once the flow is dropped", %{owner: owner} do
@@ -215,17 +218,17 @@ defmodule WardrikOAuth.DeviceTest do
         Credential.resolve(Calls.tool("tool", %{}, run(owner)), "github")
 
       assert_receive {:oauth, "POST", "/token", _polled}
-      flow = flow_of({"acme", owner})
+      flow = flow_of(person("acme", owner))
       ref = Process.monitor(flow)
 
-      :ok = Pending.drop("github", {"acme", owner})
+      :ok = Pending.drop("github", person("acme", owner))
 
       # Each poll is made by the flow's own process, so none comes after it is down.
       assert_receive {:DOWN, ^ref, :process, ^flow, :shutdown}
       flush()
       refute_received {:oauth, "POST", "/token", _polled}
       refute_received {:device_done, _metadata}
-      assert Pending.under_way("github", {"acme", owner}) == :error
+      assert Pending.under_way("github", person("acme", owner)) == :error
     end
 
     test "says a server that offers no device grant cannot be asked for one", %{owner: owner} do

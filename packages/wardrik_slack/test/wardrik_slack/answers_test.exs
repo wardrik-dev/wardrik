@@ -25,7 +25,7 @@ defmodule WardrikSlack.AnswersTest do
 
       %Wardrik.Token{
         principal: principal,
-        scope: for(held <- roles, do: Wardrik.Role.bind(held, Wardrik.AgentID.Prefix.all()))
+        scope: for(held <- roles, do: Wardrik.Role.bind(held, [Wardrik.Resource.parse!("*")]))
       }
     end
   end

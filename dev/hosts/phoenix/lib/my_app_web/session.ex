@@ -22,7 +22,7 @@ defimpl WardrikHTTP.Authenticator, for: MyAppWeb.Session do
          {:ok, user} <- Phoenix.Token.verify(session.endpoint, "agents", token, max_age: @day) do
       token = %Wardrik.Token{
         principal: MyApp.Issuer.principal(user),
-        scope: [Wardrik.Role.bind([:owner], MyApp.Issuer.own(user))]
+        scope: MyApp.Issuer.scope(user.org, to_string(user.id))
       }
 
       {:ok, %WardrikHTTP.Caller{id: "session/#{user.id}", name: user.email, token: token}}

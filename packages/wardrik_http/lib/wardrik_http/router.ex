@@ -7,7 +7,7 @@ defmodule WardrikHTTP.Router do
   `WardrikHTTP.Caller` (`WardrikHTTP.Auth`), who acts through `Wardrik` in a
   `Wardrik.Scope` holding their token: each route calls one of its
   functions, which checks the token and records each change in
-  `Wardrik.Audit`, and answers what it answered as `Wardrik.Resource` shows
+  `Wardrik.Audit`, and answers what it answered as `Wardrik.JSON` shows
   it, and each `Wardrik.Error` with its status. `WardrikProtocol`'s
   `openapi.json` is every route, its parameters and its answers. An agent
   the caller's token does not reach is answered as one that does not exist,
@@ -27,10 +27,9 @@ defmodule WardrikHTTP.Router do
 
   alias Wardrik.Agent.Message
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
-  alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Event.Export
+  alias Wardrik.JSON
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Role
@@ -41,7 +40,7 @@ defmodule WardrikHTTP.Router do
   alias WardrikHTTP.Access
   alias WardrikHTTP.EventStream
 
-  @parsers Plug.Parsers.init(parsers: [:json], json_decoder: JSON, pass: ["*/*"])
+  @parsers Plug.Parsers.init(parsers: [:json], json_decoder: Elixir.JSON, pass: ["*/*"])
 
   # The most of a request from outside, to a trigger or a channel, read,
   # which its signature is checked against whole.
@@ -66,7 +65,7 @@ defmodule WardrikHTTP.Router do
 
     case WebSockAdapter.UpgradeValidation.validate_upgrade(conn) do
       :ok when not serves? ->
-        json(conn, 403, Resource.error("forbidden", "This caller may not offer tools."))
+        json(conn, 403, JSON.error("forbidden", "This caller may not offer tools."))
 
       :ok ->
         conn
@@ -84,32 +83,34 @@ defmodule WardrikHTTP.Router do
       {:error, _reason} ->
         conn
         |> put_resp_header("upgrade", "websocket")
-        |> json(426, Resource.error("upgrade_required", "/v1/workers is a WebSocket."))
+        |> json(426, JSON.error("upgrade_required", "/v1/workers is a WebSocket."))
     end
   end
 
-  # The agents under ?prefix=, or under the one resource the caller's token
+  # The agents ?resource= covers, or the one resource the caller's token
   # names where it names none.
   get "/v1/agents" do
     reply(
       conn,
       200,
-      with({:ok, prefix} <- under(conn, :scope), do: Wardrik.agents_list(scope(conn), prefix)),
-      &%{"agents" => Enum.map(&1, fn member -> Resource.agent(member) end)}
+      with(
+        {:ok, pattern} <- resource(conn, :scope),
+        do: Wardrik.agents_list(scope(conn), pattern)
+      ),
+      &%{"agents" => Enum.map(&1, fn member -> JSON.agent(member) end)}
     )
   end
 
-  # Every agent under ?prefix=, which the request must name: prefix= alone is
-  # every agent there is.
+  # Every agent ?resource= covers, which the request must name.
   post "/v1/agents/cancel" do
     reply(
       conn,
       202,
       with(
-        {:ok, prefix} <- under(conn, :named),
-        do: Wardrik.agents_cancel(scope(conn), prefix)
+        {:ok, pattern} <- resource(conn, :named),
+        do: Wardrik.agents_cancel(scope(conn), pattern)
       ),
-      &Resource.cancelled/1
+      &JSON.cancelled/1
     )
   end
 
@@ -118,24 +119,24 @@ defmodule WardrikHTTP.Router do
       conn,
       200,
       with(
-        {:ok, prefix} <- under(conn, :named),
-        do: Wardrik.agents_forget(scope(conn), prefix)
+        {:ok, pattern} <- resource(conn, :named),
+        do: Wardrik.agents_forget(scope(conn), pattern)
       ),
-      &Resource.forgotten/1
+      &JSON.forgotten/1
     )
   end
 
-  # The calls agents under ?prefix= wait on a person for, under the one
-  # resource the caller's token names where it names none.
+  # The calls agents ?resource= covers wait on a person for, or those the
+  # one resource the caller's token names covers where it names none.
   get "/v1/interrupts" do
     reply(
       conn,
       200,
       with(
-        {:ok, prefix} <- under(conn, :scope),
-        do: Wardrik.agents_parked(scope(conn), prefix)
+        {:ok, pattern} <- resource(conn, :scope),
+        do: Wardrik.agents_parked(scope(conn), pattern)
       ),
-      &Resource.interrupts/1
+      &JSON.interrupts/1
     )
   end
 
@@ -150,21 +151,21 @@ defmodule WardrikHTTP.Router do
         )
 
       not Token.allows?(conn.assigns.caller.token, "agent.events") ->
-        json(conn, 403, Resource.error("forbidden", "This caller may not read events."))
+        json(conn, 403, JSON.error("forbidden", "This caller may not read events."))
 
       true ->
         export(conn, conn.method, "#{conn.assigns.caller.id}/#{name}")
     end
   end
 
-  # The connections, and the MCP servers, of the owner whose agents ?prefix=
-  # names: an org's, acme/, or a person's, acme/@jon/.
+  # The connections, and the MCP servers, of the owner ?owner= names: an
+  # org, acme, or a person, acme/@jon.
   get "/v1/connections" do
     reply(
       conn,
       200,
       with({:ok, owner} <- owner(conn), do: Wardrik.connections_list(scope(conn), owner)),
-      &Resource.connections/1
+      &JSON.connections/1
     )
   end
 
@@ -176,7 +177,7 @@ defmodule WardrikHTTP.Router do
         {:ok, owner} <- owner(conn),
         do: Wardrik.connections_connect(scope(conn), owner, provider)
       ),
-      &Resource.connecting/1
+      &JSON.connecting/1
     )
   end
 
@@ -188,7 +189,7 @@ defmodule WardrikHTTP.Router do
         {:ok, owner} <- owner(conn),
         do: Wardrik.connections_disconnect(scope(conn), owner, provider)
       ),
-      &%{"connection" => Resource.connection(&1)}
+      &%{"connection" => JSON.connection(&1)}
     )
   end
 
@@ -197,7 +198,7 @@ defmodule WardrikHTTP.Router do
       conn,
       200,
       with({:ok, owner} <- owner(conn), do: Wardrik.servers_list(scope(conn), owner)),
-      &Resource.servers/1
+      &JSON.servers/1
     )
   end
 
@@ -211,7 +212,7 @@ defmodule WardrikHTTP.Router do
         {:ok, server} <- server(fields),
         do: Wardrik.servers_add(scope(conn), owner, server)
       ),
-      &Resource.server_added/1
+      &JSON.server_added/1
     )
   end
 
@@ -220,11 +221,11 @@ defmodule WardrikHTTP.Router do
       conn,
       200,
       with({:ok, owner} <- owner(conn), do: Wardrik.servers_remove(scope(conn), owner, name)),
-      &%{"server" => Resource.server(&1)}
+      &%{"server" => JSON.server(&1)}
     )
   end
 
-  # The deployment itself, to a token over every agent.
+  # The deployment itself, to a token over deployment/*.
   post "/v1/deployment/reload" do
     reply(
       conn,
@@ -235,12 +236,12 @@ defmodule WardrikHTTP.Router do
   end
 
   get "/v1/deployment/nodes",
-    do: reply(conn, 200, Wardrik.deployment_nodes(scope(conn)), &Resource.nodes/1)
+    do: reply(conn, 200, Wardrik.deployment_nodes(scope(conn)), &JSON.nodes/1)
 
   get "/v1/deployment/audit", do: audit(conn)
 
-  # The API's tokens, to a token over every agent.
-  get "/v1/tokens", do: reply(conn, 200, Wardrik.tokens_list(scope(conn)), &Resource.tokens/1)
+  # The API's tokens, to a token over deployment/*.
+  get "/v1/tokens", do: reply(conn, 200, Wardrik.tokens_list(scope(conn)), &JSON.tokens/1)
 
   post "/v1/tokens" do
     reply(
@@ -250,12 +251,12 @@ defmodule WardrikHTTP.Router do
         {:ok, name, statement, opts} <- token(conn.body_params),
         do: Wardrik.tokens_create(scope(conn), name, [statement], opts)
       ),
-      &Resource.token_created/1
+      &JSON.token_created/1
     )
   end
 
   delete "/v1/tokens/:id" do
-    reply(conn, 200, Wardrik.tokens_revoke(scope(conn), id), &%{"token" => Resource.token(&1)})
+    reply(conn, 200, Wardrik.tokens_revoke(scope(conn), id), &%{"token" => JSON.token(&1)})
   end
 
   # A request from outside to one of an agent's webhook triggers, at
@@ -329,13 +330,13 @@ defmodule WardrikHTTP.Router do
       conn |> merge_resp_headers(headers) |> send_resp(status, answer)
     else
       :error ->
-        json(conn, 404, Resource.error("not_found", "No channel #{name} takes requests here."))
+        json(conn, 404, JSON.error("not_found", "No channel #{name} takes requests here."))
 
       {:more, _read, conn} ->
         json(
           conn,
           413,
-          Resource.error("invalid_request", "A request to a channel is at most 1 MB.")
+          JSON.error("invalid_request", "A request to a channel is at most 1 MB.")
         )
     end
   end
@@ -346,13 +347,12 @@ defmodule WardrikHTTP.Router do
   defp hook(conn, agent, trigger) do
     case read_body(conn, length: @outside_body) do
       {:ok, body, conn} ->
-        id = "#{agent}//#{trigger}"
+        itself = AgentID.resource(agent)
+        id = "#{itself}/trigger/#{trigger}"
 
         token = %Token{
           principal: Principal.new(:webhook, id),
-          scope: [
-            %Statement{actions: ["agent.trigger.deliver"], resources: [Prefix.of(agent)]}
-          ]
+          scope: [%Statement{actions: ["agent.trigger.deliver"], resources: [itself]}]
         }
 
         conn = assign(conn, :caller, %WardrikHTTP.Caller{id: id, name: trigger, token: token})
@@ -371,7 +371,7 @@ defmodule WardrikHTTP.Router do
         json(
           conn,
           413,
-          Resource.error("invalid_request", "A request to a trigger is at most 1 MB.")
+          JSON.error("invalid_request", "A request to a trigger is at most 1 MB.")
         )
     end
   end
@@ -381,7 +381,7 @@ defmodule WardrikHTTP.Router do
       json(
         conn,
         404,
-        Resource.error("not_found", "No such route: #{conn.method} #{conn.request_path}")
+        JSON.error("not_found", "No such route: #{conn.method} #{conn.request_path}")
       )
 
   # The segments of the ID at the front of an agent's path, and the rest.
@@ -392,12 +392,12 @@ defmodule WardrikHTTP.Router do
   # What each route asks of the agent: the status it answers with, the
   # function of `Wardrik` it calls with the session and the agent's ID, and
   # how it shows what that answers.
-  defp route("GET", [], _conn), do: {200, &Wardrik.agent_read/2, &Resource.snapshot/1}
+  defp route("GET", [], _conn), do: {200, &Wardrik.agent_read/2, &JSON.snapshot/1}
 
   defp route("PUT", [], conn) do
     {200,
      &with({:ok, fields} <- object(conn.body_params), do: Wardrik.agent_define(&1, &2, fields)),
-     &Resource.snapshot/1}
+     &JSON.snapshot/1}
   end
 
   defp route("DELETE", [], _conn), do: {204, &Wardrik.agent_forget/2, nil}
@@ -422,16 +422,16 @@ defmodule WardrikHTTP.Router do
      &with(
        {:ok, decisions} <- decisions(conn.body_params),
        do: Wardrik.agent_decide(&1, &2, decisions)
-     ), &Resource.decisions/1}
+     ), &JSON.decisions/1}
   end
 
   defp route("GET", ["interrupts", id, "authorization"], _conn),
-    do: {200, &Wardrik.agent_authorization_read(&1, &2, id), &Resource.authorization/1}
+    do: {200, &Wardrik.agent_authorization_read(&1, &2, id), &JSON.authorization/1}
 
   defp route("POST", ["cancel"], _conn), do: {202, &Wardrik.agent_cancel/2, nil}
 
   defp route("DELETE", ["conversation"], _conn),
-    do: {200, &Wardrik.agent_clear/2, &Resource.snapshot/1}
+    do: {200, &Wardrik.agent_clear/2, &JSON.snapshot/1}
 
   defp route("POST", ["spawn"], conn), do: {200, &spawned(conn, &1, &2), &agent(&1.member)}
   defp route("POST", ["stop"], _conn), do: {200, &Wardrik.agent_stop/2, &agent/1}
@@ -455,7 +455,7 @@ defmodule WardrikHTTP.Router do
   defp route("DELETE", ["triggers", name], _conn),
     do: {200, &Wardrik.agent_trigger_remove(&1, &2, name), &trigger/1}
 
-  defp route("GET", ["calls"], _conn), do: {200, &Wardrik.agent_calls/2, &Resource.calls/1}
+  defp route("GET", ["calls"], _conn), do: {200, &Wardrik.agent_calls/2, &JSON.calls/1}
 
   defp route("DELETE", ["calls", id], _conn),
     do: {204, &Wardrik.agent_call_kill(&1, &2, id), nil}
@@ -464,10 +464,10 @@ defmodule WardrikHTTP.Router do
 
   @impl Plug.ErrorHandler
   def handle_errors(conn, %{reason: %Plug.Parsers.ParseError{}}),
-    do: json(conn, 400, Resource.error("invalid_request", "The body is not JSON."))
+    do: json(conn, 400, JSON.error("invalid_request", "The body is not JSON."))
 
   def handle_errors(conn, _error),
-    do: json(conn, conn.status, Resource.error("internal", "Something went wrong."))
+    do: json(conn, conn.status, JSON.error("internal", "Something went wrong."))
 
   # A path segment is one segment of the ID: one that decodes to a "/" is
   # refused.
@@ -500,56 +500,71 @@ defmodule WardrikHTTP.Router do
   defp reply(conn, status, :ok, _show), do: send_resp(conn, status, "")
   defp reply(conn, _status, {:error, %Error{} = error}, _show), do: error(conn, error)
 
-  defp agent(member), do: %{"agent" => Resource.agent(member)}
+  defp agent(member), do: %{"agent" => JSON.agent(member)}
   defp trigger(trigger), do: %{"trigger" => trigger}
 
   defp scope(conn),
     do: Scope.new(Keyword.fetch!(conn.assigns.options, :host), conn.assigns.caller.token)
 
-  # The prefix ?prefix= names: where it names none, the one resource the
+  # The pattern ?resource= names: where it names none, the one resource the
   # caller's token names, or for a request that must name one, why not.
-  defp under(conn, default) do
-    case {conn.query_params["prefix"], default, Token.resources(conn.assigns.caller.token)} do
-      {nil, :scope, [prefix]} ->
-        {:ok, prefix}
+  defp resource(conn, default) do
+    case {conn.query_params["resource"], default, Token.resources(conn.assigns.caller.token)} do
+      {nil, :scope, [pattern]} ->
+        {:ok, pattern}
 
       {nil, _default, _resources} ->
-        {:error, Error.new(:invalid, "prefix names the agents, as acme/")}
+        {:error, Error.new(:invalid, "resource names the agents, as acme/agent/*")}
 
       {text, _default, _resources} ->
-        prefixed(text)
+        parsed(text)
     end
   end
 
-  defp prefixed(text) do
-    case Prefix.parse(text) do
-      {:ok, prefix} -> {:ok, prefix}
+  defp parsed(text) when is_binary(text) do
+    case Resource.parse(text) do
+      {:ok, pattern} -> {:ok, pattern}
       {:error, message} -> {:error, Error.new(:invalid, message)}
     end
   end
 
-  # The prefix of an org's agents or a person's, as ?prefix= names it.
+  defp parsed(_other), do: {:error, Error.new(:invalid, "A resource is a pattern, as acme/*")}
+
+  # An org or a person, as ?owner= names them, never a pattern.
   defp owner(conn) do
-    with {:ok, prefix} <- under(conn, :named) do
-      if Prefix.org(prefix) && Owner.prefix(Owner.owner_of(prefix)) == prefix,
-        do: {:ok, prefix},
-        else:
-          {:error, Error.new(:invalid, "prefix names an owner's agents, as acme/ or acme/@jon/")}
+    text = conn.query_params["owner"] || ""
+
+    with false <- String.contains?(text, ["*", "?"]),
+         {:ok, owner} <- Resource.parse(text),
+         true <- Resource.owner(owner) == owner and owner != Resource.deployment() do
+      {:ok, owner}
+    else
+      _other ->
+        {:error, Error.new(:invalid, "owner names an org or a person, as acme or acme/@jon")}
     end
   end
 
   # The token a request makes, as `input_tokens_create.json` describes it.
-  defp token(%{"name" => name, "scope" => scope, "roles" => names} = body)
-       when is_binary(name) and is_binary(scope) and is_list(names) do
-    with {:ok, prefix} <- prefixed(scope),
+  defp token(%{"name" => name, "resources" => [_ | _] = texts, "roles" => names} = body)
+       when is_binary(name) and is_list(names) do
+    with {:ok, resources} <- resources(texts),
          {:ok, roles} <- roles(names),
          {:ok, expires_in} <- expires_in(body["expires_in"]),
          {:ok, policy} <- policy(body["policy"]),
-         do: {:ok, name, Role.bind(roles, prefix), expires_in ++ policy}
+         do: {:ok, name, Role.bind(roles, resources), expires_in ++ policy}
   end
 
   defp token(_body),
-    do: {:error, Error.new(:invalid, "A token is made with its name, scope and roles")}
+    do: {:error, Error.new(:invalid, "A token is made with its name, resources and roles")}
+
+  defp resources(texts) do
+    Enum.reduce_while(Enum.reverse(texts), {:ok, []}, fn text, {:ok, patterns} ->
+      case parsed(text) do
+        {:ok, pattern} -> {:cont, {:ok, [pattern | patterns]}}
+        {:error, error} -> {:halt, {:error, error}}
+      end
+    end)
+  end
 
   defp roles(names) do
     case Role.parse(names) do
@@ -748,7 +763,7 @@ defmodule WardrikHTTP.Router do
         error(conn, Error.no_agent(key))
 
       {:error, :not_found} ->
-        json(conn, 401, Resource.error("unauthorized", "The credential was revoked."))
+        json(conn, 401, JSON.error("unauthorized", "The credential was revoked."))
 
       {:error, :unavailable} ->
         unavailable(conn, "The credential cannot be checked now", :unavailable)
@@ -763,7 +778,7 @@ defmodule WardrikHTTP.Router do
     case limit(conn.query_params) do
       {:ok, limit} ->
         {:ok, page} = Export.read(store(conn), cursor, limit: limit, logs: &exported?(token, &1))
-        json(conn, 200, Resource.export(page))
+        json(conn, 200, JSON.export(page))
 
       {:error, message} ->
         invalid(conn, message)
@@ -791,7 +806,7 @@ defmodule WardrikHTTP.Router do
   defp export(conn, _method, _cursor), do: no_route(conn)
 
   defp exported?(token, :audit),
-    do: Token.authorize(token, "deployment.audit", Prefix.all()) == :ok
+    do: Token.authorize(token, "deployment.audit", Resource.parse!("deployment/*")) == :ok
 
   defp exported?(token, id), do: Token.authorize(token, "agent.events", id) == :ok
 
@@ -802,7 +817,7 @@ defmodule WardrikHTTP.Router do
   defp json(conn, status, body) do
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(status, JSON.encode!(body))
+    |> send_resp(status, Elixir.JSON.encode!(body))
   end
 
   @statuses %{
@@ -817,12 +832,12 @@ defmodule WardrikHTTP.Router do
   }
 
   defp error(conn, %Error{type: type} = error),
-    do: json(conn, Map.fetch!(@statuses, type), Resource.error(error))
+    do: json(conn, Map.fetch!(@statuses, type), JSON.error(error))
 
-  defp invalid(conn, message), do: json(conn, 400, Resource.error("invalid_request", message))
+  defp invalid(conn, message), do: json(conn, 400, JSON.error("invalid_request", message))
 
   defp unavailable(conn, message, reason) do
     Logger.warning("#{message}: #{inspect(reason)}")
-    json(conn, 503, Resource.error("unavailable", message <> "."))
+    json(conn, 503, JSON.error("unavailable", message <> "."))
   end
 end

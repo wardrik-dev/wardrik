@@ -26,7 +26,7 @@ defmodule WardrikMCP.Test.Case do
     opts = Map.get(context, :server_opts, [])
 
     start_supervised!({WardrikMCP.Supervisor, servers: [{name, stub_options(opts)}]})
-    key = Wardrik.Servers.Key.deployment(Atom.to_string(name))
+    key = Wardrik.Resource.parse!("deployment/server/#{name}")
     await_tools(key)
 
     %{key: key}
@@ -44,8 +44,8 @@ defmodule WardrikMCP.Test.Case do
   def fresh_name, do: :"stub_#{System.unique_integer([:positive])}"
 
   @doc "The key of a deployment server no other test is using."
-  @spec fresh_key() :: Wardrik.Servers.Key.t()
-  def fresh_key, do: Wardrik.Servers.Key.deployment(Atom.to_string(fresh_name()))
+  @spec fresh_key() :: Wardrik.Resource.t()
+  def fresh_key, do: Wardrik.Resource.parse!("deployment/server/#{fresh_name()}")
 
   @doc """
   The options for a server that runs the stub, with `opts` merged in. A
@@ -62,7 +62,7 @@ defmodule WardrikMCP.Test.Case do
   end
 
   @doc "Waits until a server has reported its tools, or fails the test."
-  @spec await_tools(Wardrik.Servers.Key.t(), timeout()) :: [Wardrik.Tool.t()]
+  @spec await_tools(Wardrik.Resource.t(), timeout()) :: [Wardrik.Tool.t()]
   def await_tools(key, timeout \\ :timer.seconds(30)) do
     case WardrikMCP.Connection.await(key, :deployment, timeout) do
       {:ok, tools} -> tools

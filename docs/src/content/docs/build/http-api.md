@@ -14,13 +14,14 @@ lists every route.
 Make a token with only what it needs, and send it as `authorization: Bearer`:
 
 ```sh
-wardrik token create app --scope acme/ --role reader,messenger,approver,definer --policy careful
+wardrik token create app --resource 'acme/agent/*' --role reader,messenger,approver,definer --policy careful
 export TOKEN=wardrik_...
 curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents
 ```
 
-The token is printed once. `--scope acme/` reaches acme's own agents; `acme/@jon/` reaches jon's,
-and `acme/*` every agent of acme and its users. `--role` says what it may do there. Agents the
+The token is printed once. `--resource 'acme/agent/*'` reaches acme's own agents; `acme/@jon/*`
+everything of jon's, and `acme/*` everything of acme and its users. `--role` says what it may do
+there. Agents the
 token defines are held to `careful`, ahead of their own policy. See [Tokens](/run/tokens/).
 
 ## Define an agent
@@ -91,10 +92,10 @@ is read by the model beside the answer and never changes the call; see
 A token that reaches a person's agents connects their accounts before any agent asks:
 
 ```sh
-curl -s -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections?prefix=acme/@jon/"
+curl -s -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections?owner=acme/@jon"
 # {"connections": [{"provider": "github", "held_by": "person"}, {"provider": "linear"}]}
 
-curl -s -X POST -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections/linear?prefix=acme/@jon/"
+curl -s -X POST -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/connections/linear?owner=acme/@jon"
 # {"provider": "linear", "connected": false, "authorization": {"url": "https://…"}}
 ```
 
@@ -144,7 +145,7 @@ also runs tools in your app; see [Tools in your app](/build/tool-workers/).
   `GET .../interrupts/{id}/authorization` answers where, as `{"url": ..., "code": ...}`.
 - `held_by` is `person`, `org` or `deployment`, whichever a call of theirs would use, and absent where
   nobody holds it.
-- `prefix` names whose accounts: a person's, `acme/@jon/`, or an org's, `acme/`.
+- `owner` names whose accounts: a person's, `acme/@jon`, or an org's, `acme`.
 - Listing needs the `reader` role; connecting and forgetting (`DELETE /v1/connections/linear`) need
   `definer`.
 
@@ -162,21 +163,22 @@ curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/age
   [outside label](/concepts/outside-content/), and answers the snapshot. It answers `409` while a
   turn runs or waits.
 - `DELETE` stops the agent and removes its conversation and triggers, answering `204`.
-- `POST /v1/agents/cancel?prefix=acme/` and `DELETE /v1/agents?prefix=acme/` act on every agent
-  under a prefix.
-- `GET /v1/agents?prefix=acme/` lists agents; `GET /v1/interrupts` lists the calls they wait on.
+- `POST /v1/agents/cancel?resource=acme/agent/*` and `DELETE /v1/agents?resource=acme/agent/*` act
+  on every agent the pattern covers.
+- `GET /v1/agents?resource=acme/agent/*` lists agents; `GET /v1/interrupts` lists the calls they
+  wait on.
 - `POST .../stop` puts an agent to sleep with its conversation, and answers it. `POST .../spawn`
   starts it again, starts one the server defines, or has the server define one as
   `wardrik agent spawn` does.
 - `POST .../move` with `{"node": "wardrik@box2"}`, or `spawn` with a node, takes an `owner` token
-  over every agent.
+  on `*` or `deployment/*`.
 - Triggers are set and removed at `/triggers/{name}`; see
   [Trigger an agent](/build/triggers/#over-http). Webhooks reach `POST /v1/hooks/{key}/{name}` with
   no token; see [Receiving a webhook](/build/triggers/#receiving-a-webhook).
 
 ### The deployment
 
-A token made with `wardrik token create NAME --all --role owner` also reaches the deployment:
+A token made with `wardrik token create NAME --resource '*' --role owner` also reaches the deployment:
 
 ```sh
 curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/deployment/nodes
@@ -191,7 +193,7 @@ lists and revokes tokens:
 ```sh
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
   http://127.0.0.1:4747/v1/tokens \
-  -d '{"name": "ci", "scope": "acme/", "roles": ["reader", "messenger"], "expires_in": 2592000}'
+  -d '{"name": "ci", "resources": ["acme/agent/*"], "roles": ["reader", "messenger"], "expires_in": 2592000}'
 ```
 
 It answers the token and its `secret`, given this once. The new token acts for whoever made it.

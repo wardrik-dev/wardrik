@@ -1,6 +1,8 @@
 defmodule WardrikMCP.RobustnessTest do
   use WardrikMCP.Test.Case, async: false
 
+  alias Wardrik.Resource
+
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
@@ -20,7 +22,7 @@ defmodule WardrikMCP.RobustnessTest do
     test "cancels the request the server is still working on", context do
       %{key: key, agent_id: agent_id, run: run} = context
 
-      batch = start_call(run, "call_slow", "#{key}__slow")
+      batch = start_call(run, "call_slow", "#{Resource.basename(key)}__slow")
       await_reached_server("call_slow")
 
       assert :ok = ToolRunner.kill_call(agent_id, "call_slow")
@@ -32,7 +34,7 @@ defmodule WardrikMCP.RobustnessTest do
     test "leaves the calls of other callers alone", context do
       %{key: key, agent_id: agent_id, run: run} = context
 
-      batch = start_call(run, "call_slow", "#{key}__slow")
+      batch = start_call(run, "call_slow", "#{Resource.basename(key)}__slow")
       await_reached_server("call_slow")
 
       answering =
@@ -62,7 +64,7 @@ defmodule WardrikMCP.RobustnessTest do
   describe "progress" do
     test "a server's progress lands on the turn's event stream", context do
       %{key: key, run: run} = context
-      name = "#{key}__noisy"
+      name = "#{Resource.basename(key)}__noisy"
       call = %{id: "call_noisy", name: name, arguments: %{"steps" => 3}}
 
       assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, run)

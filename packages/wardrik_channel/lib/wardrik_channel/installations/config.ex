@@ -19,7 +19,7 @@ defmodule WardrikChannel.Installations.Config do
   The installations of the channels `tokens` names, each with its token and
   the owner it is for.
   """
-  @spec new([{atom() | String.t(), String.t(), Wardrik.AgentID.Prefix.t()}]) :: t()
+  @spec new([{atom() | String.t(), String.t(), Wardrik.Resource.t()}]) :: t()
   def new(tokens) do
     installations =
       for {channel, token, owner} <- tokens, into: %{} do

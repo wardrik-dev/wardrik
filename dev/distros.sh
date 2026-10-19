@@ -65,7 +65,7 @@ installs() {
       wardrik version
       wardrik start
       rik status | grep -q \"0 agents\"
-      wardrik token create dev --all --unlimited | grep -q \"This is the only time it is shown\"
+      wardrik token create dev --resource \"*\" --role owner | grep -q \"This is the only time it is shown\"
       wardrik stop
     "
   '

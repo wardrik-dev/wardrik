@@ -2,12 +2,12 @@ defmodule WardrikChannel.ThreadsTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Event.ToolStarted
   alias Wardrik.Fleet
   alias Wardrik.LLM.Turn
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
   alias WardrikChannel.Approvers
   alias WardrikChannel.Binding
@@ -81,7 +81,7 @@ defmodule WardrikChannel.ThreadsTest do
             store: Wardrik.Test.store(),
             issuer: %WardrikChannel.Test.Issuer{reach: [Principal.id(@maria)]}
           ),
-        installations: Installations.Config.new([{name, "token", Prefix.all()}]),
+        installations: Installations.Config.new([{name, "token", Resource.deployment()}]),
         offered: {__MODULE__, :offering, [agent]},
         start: {__MODULE__, :starting, [[runner: runner] ++ Keyword.take(opts, [:resumer])]},
         approvers: {__MODULE__, :approving, [Keyword.get(opts, :approvers, [])]},
@@ -97,7 +97,8 @@ defmodule WardrikChannel.ThreadsTest do
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
     {:ok, workspace} = Workspace.new(channels[name].context, "T1")
     {:bound, binding, _offer} = Rooms.joined(Room.new(workspace, "C1"), name: "books", by: @maria)
-    on_exit(fn -> Fleet.forget_under(AgentID.Prefix.of(agent)) end)
+    itself = AgentID.resource(agent)
+    on_exit(fn -> Enum.each([itself, Resource.parse!("#{itself}/*")], &Fleet.forget_under/1) end)
 
     {workspace, binding}
   end
@@ -222,7 +223,7 @@ defmodule WardrikChannel.ThreadsTest do
         %Context{
           host: Wardrik.Host.new(store: Wardrik.Test.store()),
           channel: "chat-none",
-          installations: Installations.Config.new([{"chat-none", "token", Prefix.all()}])
+          installations: Installations.Config.new([{"chat-none", "token", Resource.deployment()}])
         },
         "T1"
       )

@@ -13,7 +13,7 @@ defprotocol WardrikMCP.Auth do
   The options of `WardrikMCP.Server.new/2` the server `key` names is reached
   with: the credential each call resolves, where it takes one.
   """
-  @spec options(t(), Wardrik.Servers.Key.t()) :: keyword()
+  @spec options(t(), Wardrik.Resource.t()) :: keyword()
   def options(auth, key)
 
   @doc "How a listing says it signs in: `none`, `secret` or `oauth`."
@@ -25,7 +25,7 @@ defprotocol WardrikMCP.Auth do
   `WardrikOAuth.Provider` named for the server, or `:none` where they do not
   sign in.
   """
-  @spec provider(t(), Wardrik.Servers.Key.t(), String.t()) ::
+  @spec provider(t(), Wardrik.Resource.t(), String.t()) ::
           {:ok, WardrikOAuth.Provider.t()} | :none
   def provider(auth, key, url)
 end

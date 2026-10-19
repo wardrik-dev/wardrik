@@ -278,8 +278,8 @@ optionally `secret`. A target tells the agents of the orgs that [`orgs`](#orgs) 
 
 ## workspace
 
-`shared` names the trees agents beyond their owners may mount, each with the agents, by key prefix,
-that may `read` it and those that may `write` it. An agent still names each tree it mounts in its
+`shared` names the trees agents beyond their owners may mount, each with the agents, by resource
+pattern, that may `read` it and those that may `write` it. An agent still names each tree it mounts in its
 own [`workspace`](/reference/agent-files/#workspace).
 
 ```yaml
@@ -288,8 +288,8 @@ org: acme
 workspace:
   shared:
     acme/runbooks:
-      read: ["acme/*"]
-      write: [acme/ops]
+      read: ["acme/*"]                             # every agent in acme, its users' included
+      write: [acme/agent/ops, "acme/agent/ops/*"]  # the org's ops agent, in every thread
 ```
 
 ## vault
@@ -307,13 +307,16 @@ vault:
 ## tokens
 
 A token says who acts and what they may do. Each of its statements allows some actions, such as
-`agent.ask`, on the agents under a prefix, and anything none allows is denied. A role is a named set
-of actions: `reader`, `messenger`, `approver`, `definer`, `worker` and `owner`, which is every
-action. A shell on the server holds `owner` on every agent. `wardrik token create` makes a token for
-the HTTP API, which acts for whoever made it:
+`agent.ask`, on the resources a pattern covers, and anything none allows is denied. A resource is
+named as IAM names one: `acme/agent/triage` is acme's agent `triage`, `acme/@jon/secret/github`
+jon's GitHub account, `deployment/token/…` a token. In a pattern `*` matches anything, `/` too, and
+`?` one character: `acme/agent/*` is acme's own agents, `acme/*` everything of acme's and its
+users', `*` everything. A role is a named set of actions: `reader`, `messenger`, `approver`,
+`definer`, `worker` and `owner`, which is every action. A shell on the server holds `owner` on `*`.
+`wardrik token create` makes a token for the HTTP API, which acts for whoever made it:
 
 ```sh
-wardrik token create ci --scope acme/ --role reader,messenger --expires 30d
+wardrik token create ci --resource 'acme/agent/*' --role reader,messenger --expires 30d
 ```
 
 A token may name a policy of `policies/`, with `--policy`: every agent it defines runs under it,

@@ -27,7 +27,6 @@ defmodule WardrikDaemon.Config do
   ```
   """
 
-  alias Wardrik.AgentID.Prefix
   alias WardrikDaemon.Cluster.DNSPoll
   alias WardrikDaemon.Cluster.Epmd
   alias WardrikDaemon.Cluster.Topology
@@ -111,7 +110,8 @@ defmodule WardrikDaemon.Config do
     "vault" => "vault reads the environment alone, since the vault cannot unlock itself"
   }
   @org "default"
-  @segment "an org holds no / or whitespace and does not begin with @ or _"
+  @segment "an org holds no / or whitespace, nor * or ?, does not begin with @ or _, " <>
+             "and is not deployment"
 
   # What an org in `orgs` may use, by the section that defines it.
   @uses ~w(mcp channels notify)
@@ -451,9 +451,10 @@ defmodule WardrikDaemon.Config do
   end
 
   defp declared!(share, orgs, path) do
-    for prefix <- share.read ++ share.write,
-        org = Prefix.org(prefix),
-        org not in [nil | orgs],
+    for pattern <- share.read ++ share.write,
+        [org | _rest] = String.split(to_string(pattern), "/"),
+        not String.contains?(org, ["*", "?"]),
+        org not in orgs,
         do: invalid!(path, "names " <> undeclared(org, orgs))
 
     share
@@ -492,7 +493,7 @@ defmodule WardrikDaemon.Config do
   defp org!(nil), do: @org
 
   defp org!(org) do
-    if Wardrik.AgentID.segment?(org),
+    if Wardrik.AgentID.org?(org),
       do: org,
       else: invalid!(["org"], "is #{inspect(org)}, which is not an org; #{@segment}")
   end
@@ -505,7 +506,7 @@ defmodule WardrikDaemon.Config do
     Map.new(table!(orgs, ["orgs"]), fn {owner, used} ->
       path = ["orgs", owner]
 
-      unless owner == "*" or Wardrik.AgentID.segment?(owner),
+      unless owner == "*" or Wardrik.AgentID.org?(owner),
         do: invalid!(path, "is not an org, or * for every org; #{@segment}")
 
       {policy, used} = Map.pop(table!(used, path), "policy")
@@ -579,8 +580,8 @@ defmodule WardrikDaemon.Config do
 
   # The agents a server serves: every org's, or each named org's whole tenant,
   # its users' agents with its own.
-  defp serves(:all), do: [Prefix.all()]
-  defp serves(orgs), do: Enum.map(orgs, &Prefix.tenant!/1)
+  defp serves(:all), do: [Wardrik.Resource.parse!("*")]
+  defp serves(orgs), do: Enum.map(orgs, &Wardrik.Resource.parse!(&1 <> "/*"))
 
   defp prefix!("workers", path),
     do:
@@ -966,8 +967,8 @@ defmodule WardrikDaemon.Config do
   end
 
   # Whom a channel's token is installed for: its one org, or every org.
-  defp owner([org]), do: Prefix.new!(org: org)
-  defp owner(_orgs), do: Prefix.all()
+  defp owner([org]), do: Wardrik.Resource.parse!(org)
+  defp owner(_orgs), do: Wardrik.Resource.deployment()
 
   # Who decides in a channel: anyone in it, or the people it names.
   defp approvers("anyone", _path), do: %WardrikChannel.Approvers.Anyone{}

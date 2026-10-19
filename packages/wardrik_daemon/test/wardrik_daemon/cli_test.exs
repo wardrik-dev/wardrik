@@ -12,13 +12,12 @@ defmodule WardrikDaemon.CLITest do
   import ExUnit.CaptureIO
 
   alias Wardrik.Agent
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Event
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Audit
   alias WardrikDaemon.CLI
 
-  @token_usage "Usage: wardrik token create NAME (--scope PREFIX | --all) --role ROLES " <>
+  @token_usage "Usage: wardrik token create NAME --resource PATTERN... --role ROLES " <>
                  "[--policy NAME] [--expires 30d]\n"
 
   @ops %{"type" => "shell", "id" => "ops"}
@@ -58,7 +57,7 @@ defmodule WardrikDaemon.CLITest do
   defp await_parked(key) do
     Wardrik.Test.Fleet.await_update(fn ->
       Enum.any?(
-        Wardrik.Fleet.list(Prefix.all(), host: Host.host()),
+        Wardrik.Fleet.list(Wardrik.Resource.parse!("*"), host: Host.host()),
         &(&1.id == key and &1.status == :parked)
       )
     end)
@@ -160,7 +159,9 @@ defmodule WardrikDaemon.CLITest do
   test "token create prints a token once; list shows it, and revoke stops it working" do
     name = "cli-#{System.unique_integer([:positive])}"
 
-    {output, 0} = command(["token", "create", name, "--scope", "acme/", "--role", "owner"])
+    {output, 0} =
+      command(["token", "create", name, "--resource", "acme/agent/*", "--role", "owner"])
+
     [secret, "", line, ""] = String.split(output, "\n")
 
     assert {:ok, token} = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
@@ -168,13 +169,14 @@ defmodule WardrikDaemon.CLITest do
     assert Wardrik.Principal.id(principal) == "ops"
 
     assert line ==
-             "#{name} (#{token.id}) allows owner on acme/, " <>
+             "#{name} (#{token.id}) allows owner on acme/agent/*, " <>
                "until #{DateTime.to_iso8601(token.token.expires)}. This is the only time it is shown."
 
     {list, 0} = command(["token", "list"])
 
     assert list =~
-             "  #{token.id}  #{name}  owner on acme/, until #{DateTime.to_iso8601(token.token.expires)}  " <>
+             "  #{token.id}  #{name}  owner on acme/agent/*, until " <>
+               "#{DateTime.to_iso8601(token.token.expires)}  " <>
                "made #{DateTime.to_iso8601(token.created_at)}"
 
     assert command(["token", "revoke", token.id]) == {"Revoked #{token.id}.\n", 0}
@@ -187,14 +189,14 @@ defmodule WardrikDaemon.CLITest do
            ] =
              for(
                %{"subject" => subject} = e <- Audit.all(),
-               subject == "tokens/#{token.id}",
+               subject == "deployment/token/#{token.id}",
                do: e
              )
 
     assert %{
              "token" => %{"name" => ^name},
              "principal" => @ops,
-             "statements" => [%{"actions" => ["*"], "resources" => ["acme/"]}],
+             "statements" => [%{"actions" => ["*"], "resources" => ["acme/agent/*"]}],
              "actor" => @ops
            } = created
 
@@ -203,50 +205,84 @@ defmodule WardrikDaemon.CLITest do
 
   test "token create allows the roles it names, for as long as --expires says" do
     {output, 0} =
-      command(["token", "create", "watcher", "--scope", "acme/", "--role", "reader,messenger"])
+      command([
+        "token",
+        "create",
+        "watcher",
+        "--resource",
+        "acme/agent/*",
+        "--role",
+        "reader,messenger"
+      ])
 
-    assert output =~ ") allows reader, messenger on acme/, until "
+    assert output =~ ") allows reader, messenger on acme/agent/*, until "
 
     {output, 0} =
-      command(["token", "create", "brief", "--all", "--role", "approver", "--expires", "1h"])
+      command([
+        "token",
+        "create",
+        "brief",
+        "--resource",
+        "*",
+        "--role",
+        "approver",
+        "--expires",
+        "1h"
+      ])
 
     [secret | _rest] = String.split(output, "\n")
     assert {:ok, token} = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
-    assert output =~ ") allows approver on every agent, until "
+    assert output =~ ") allows approver on *, until "
     assert_in_delta DateTime.diff(token.token.expires, DateTime.utc_now()), 3600, 5
 
     assert {~s(--role: "writer" is not a role; the roles are reader, messenger, approver, ) <>
               "definer, worker, owner\n", 1} =
-             command(["token", "create", "bad", "--all", "--role", "reader,writer"])
+             command(["token", "create", "bad", "--resource", "*", "--role", "reader,writer"])
 
     assert command(["token", "create", "nowhere", "--role", "reader"]) == {@token_usage, 1}
-    assert command(["token", "create", "nothing", "--all"]) == {@token_usage, 1}
+    assert command(["token", "create", "nothing", "--resource", "*"]) == {@token_usage, 1}
 
-    assert command(["token", "create", "never", "--all", "--role", "owner", "--expires", "soon"]) ==
+    assert command([
+             "token",
+             "create",
+             "never",
+             "--resource",
+             "*",
+             "--role",
+             "owner",
+             "--expires",
+             "soon"
+           ]) ==
              {"--expires is how long it works, as 30d, 12h, 30m or 45s\n", 1}
   end
 
-  test "token create writes a scope as the key prefix it is, and refuses one that is not" do
-    {output, 0} = command(["token", "create", "org", "--scope", "acme", "--role", "owner"])
-    assert output =~ ") allows owner on acme/, until "
+  test "token create takes each --resource as the pattern it is, and refuses one that is not" do
+    {output, 0} =
+      command([
+        "token",
+        "create",
+        "two",
+        "--resource",
+        "acme/agent/*",
+        "--resource",
+        "acme/@jon/*",
+        "--role",
+        "owner"
+      ])
 
-    {output, 0} = command(["token", "create", "tenant", "--scope", "acme/*", "--role", "owner"])
+    assert output =~ ") allows owner on acme/agent/*, acme/@jon/*, until "
+
+    {output, 0} =
+      command(["token", "create", "tenant", "--resource", "acme/*", "--role", "owner"])
+
     assert output =~ ") allows owner on acme/*, until "
 
-    assert command(["token", "create", "typo", "--scope", "acmee/", "--role", "owner"]) ==
-             {"--scope: acmee is not an org config.yaml declares: default, acme; did you mean acme?\n",
-              1}
+    assert command(["token", "create", "typo", "--resource", "acmee/*", "--role", "owner"]) ==
+             {"--resource: acmee is not an org config.yaml declares: default, acme; " <>
+                "did you mean acme?\n", 1}
 
-    assert command(["token", "create", "bad", "--scope", "acme//triage", "--role", "owner"]) ==
-             {~s("acme//triage" is not a prefix; a prefix is org/*, org/, org/@user/ or an agent ID\n),
-              1}
-  end
-
-  test "token create --all makes a token that reaches every agent" do
-    {output, 0} = command(["token", "create", "everywhere", "--all", "--role", "owner"])
-
-    assert output =~ "everywhere ("
-    assert output =~ ") allows owner on every agent, until "
+    assert {"--resource: \"acme//triage\" is not a resource" <> _rest, 1} =
+             command(["token", "create", "bad", "--resource", "acme//triage", "--role", "owner"])
   end
 
   test "token create --policy makes a policy of policies/ the token's policy" do
@@ -261,8 +297,8 @@ defmodule WardrikDaemon.CLITest do
         "token",
         "create",
         "ci",
-        "--scope",
-        "acme/",
+        "--resource",
+        "acme/agent/*",
         "--role",
         "definer",
         "--policy",
@@ -270,15 +306,25 @@ defmodule WardrikDaemon.CLITest do
       ])
 
     [secret, "", line, ""] = String.split(output, "\n")
-    assert line =~ ") allows definer on acme/, under the policy careful, until "
+    assert line =~ ") allows definer on acme/agent/*, under the policy careful, until "
 
     assert {:ok, token} = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
     assert token.token.policy == "careful"
 
     {list, 0} = command(["token", "list"])
-    assert list =~ "  #{token.id}  ci  definer on acme/, under the policy careful, until "
+    assert list =~ "  #{token.id}  ci  definer on acme/agent/*, under the policy careful, until "
 
-    assert command(["token", "create", "ci", "--all", "--role", "owner", "--policy", "nope"]) ==
+    assert command([
+             "token",
+             "create",
+             "ci",
+             "--resource",
+             "*",
+             "--role",
+             "owner",
+             "--policy",
+             "nope"
+           ]) ==
              {"policies/ has no policy nope; it has careful\n", 1}
   end
 
@@ -455,7 +501,7 @@ defmodule WardrikDaemon.CLITest do
     assert command(["clear", key]) == {"Cleared #{key}'s conversation.\n", 0}
     assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
     assert command(["clear", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
-    assert Audit.about("agents/#{key}") == [{"agent.cleared", @ops}]
+    assert Audit.about(key) == [{"agent.cleared", @ops}]
     assert Audit.about("agents/nobody/here") == []
   end
 
@@ -554,7 +600,7 @@ defmodule WardrikDaemon.CLITest do
     org = "show-#{System.unique_integer([:positive])}"
     Host.declare(["acme", org])
     on_exit(fn -> File.rm_rf!(dir) end)
-    on_exit(fn -> Wardrik.Fleet.forget_under(Prefix.parse!(org <> "/")) end)
+    on_exit(fn -> Wardrik.Fleet.forget_under(Wardrik.Resource.parse!(org <> "/*")) end)
     File.mkdir_p!(Path.join(dir, "agents"))
 
     File.write!(Path.join([dir, "agents", "counter.md"]), """
@@ -602,7 +648,7 @@ defmodule WardrikDaemon.CLITest do
 
     token = %Wardrik.Token{
       principal: Wardrik.Principal.new(:user, "jon"),
-      scope: [Wardrik.Role.bind([:owner], Prefix.of(defined))]
+      scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(defined)])]
     }
 
     {:ok, spec} =
@@ -625,12 +671,13 @@ defmodule WardrikDaemon.CLITest do
   end
 
   test "triggers lists each trigger's next run, and its last and what came of it" do
-    prefix = "cli-#{System.unique_integer([:positive])}/"
-    key = Wardrik.AgentID.parse!(prefix <> "pinger")
+    org = "cli-#{System.unique_integer([:positive])}"
+    pattern = org <> "/agent/*"
+    key = Wardrik.AgentID.parse!(org <> "/pinger")
     on_exit(fn -> WardrikTrigger.sync(key, []) end)
 
-    assert {output, 0} = command(["triggers", prefix])
-    assert output == "No agent has a trigger under #{prefix}.\n"
+    assert {output, 0} = command(["triggers", pattern])
+    assert output == "No agent #{pattern} covers has a trigger.\n"
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     {:ok, _pid} = WardrikTrigger.put(key, "hourly", every: "0 * * * *", prompt: "Ping.")
@@ -643,7 +690,7 @@ defmodule WardrikDaemon.CLITest do
     assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :no_agent}}
     assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :no_agent}}
 
-    assert {output, 0} = command(["triggers", prefix])
+    assert {output, 0} = command(["triggers", pattern])
     assert output =~ "2 triggers:"
     assert output =~ ~r"  #{key}/hourly  0 \* \* \* \* Etc/UTC  next in \d+[ms]  not run yet"
 
@@ -652,7 +699,7 @@ defmodule WardrikDaemon.CLITest do
 
     hook = WardrikTrigger.Webhook.new("issues", secret: "ISSUES_HOOK_SECRET", prompt: "Look.")
     {:ok, _pid} = WardrikTrigger.put(key, hook)
-    assert {output, 0} = command(["triggers", prefix])
+    assert {output, 0} = command(["triggers", pattern])
 
     assert output =~
              ~r"  #{key}/issues  on request  http://127\.0\.0\.1:\d+/v1/hooks/#{key}/issues  not run yet"
@@ -767,7 +814,7 @@ defmodule WardrikDaemon.CLITest do
 
     test "help for a command gives it in full, and for a group lists it" do
       {:ok, text} = unanswered(["help", "token", "create", "--help"])
-      assert text =~ "Usage: wardrik token create NAME (--scope PREFIX | --all)"
+      assert text =~ "Usage: wardrik token create NAME --resource PATTERN..."
       assert text =~ "--role ROLES is what it may do there"
 
       assert {:ok, "Usage: wardrik service COMMAND" <> _listing} = unanswered(["help", "service"])

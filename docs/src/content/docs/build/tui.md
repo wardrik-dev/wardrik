@@ -58,10 +58,10 @@ on.
 | `/next` | attach to the next agent waiting on a person |
 | `/approve [N \| all] [note]` | approve the waiting call, one by number, or all, with a note |
 | `/deny [N \| all] [reason]` | deny it, saying why |
-| `/stop [NAME \| PREFIX/]` | stop this agent's turn, another's, or every agent's under a prefix |
+| `/stop [NAME \| PATTERN]` | stop this agent's turn, another's, or every agent's a pattern such as `acme/agent/*` covers |
 | `/move [NAME [node=N]]` | start an agent again on another node, as it was |
 | `/shutdown NAME` | stop an agent and keep its conversation; `/spawn` brings it back |
-| `/rm NAME \| PREFIX/` | remove an agent and its conversation, after showing what goes |
+| `/rm NAME \| PATTERN` | remove an agent and its conversation, or every agent a pattern covers, after showing what goes |
 | `/fleet`, `/filter [QUERY]` | the fleet panel, narrowed as `wardrik ls` narrows |
 | `/find [TEXT]` | search the transcript |
 | `/tools` | a tool call of this conversation in full |

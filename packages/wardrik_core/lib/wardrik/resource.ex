@@ -1,266 +1,162 @@
 defmodule Wardrik.Resource do
   @moduledoc """
-  What `Wardrik`'s functions answer, as JSON, as maps `JSON.encode!/1`
-  takes: the shapes every surface answers in, as the HTTP API does.
+  What something is called, as IAM names resources: a namespace, or what
+  is in one, by its type and its name, with what that holds after it.
 
-  Names follow the event data's: OpenTelemetry's attribute names without
-  their `gen_ai.` prefix, as nested objects, and messages and interrupts in
-  the shapes `Wardrik.Event.Codec.Value` gives them.
+  | Name | What |
+  | --- | --- |
+  | `acme` | the org acme |
+  | `acme/@jon` | jon, in acme |
+  | `deployment` | the deployment itself |
+  | `acme/agent/triage` | acme's own agent `triage`, `acme/triage` as `Wardrik.AgentID` writes it |
+  | `acme/@jon/agent/triage/thread/1696.1234` | jon's `triage`, answering for `1696.1234` |
+  | `acme/agent/triage/trigger/hook` | the trigger `hook` of acme's `triage` |
+  | `acme/server/crm` | the MCP server acme added as `crm` |
+  | `acme/@jon/secret/github` | what jon connected or sealed as `github` |
+  | `deployment/server/github` | the MCP server `github` the deployment's configuration names |
+  | `deployment/token/0192…` | an API token |
 
-  ## An agent, listed
+  A namespace is an org, a user in it, or the deployment, and no org is
+  named `deployment`. A type is `agent`, `thread` or `trigger`, both under
+  an agent, `server`, `secret` or `token`, and each name is a segment as
+  `Wardrik.AgentID` writes one, holding no `*` or `?`. Names are
+  case-sensitive.
 
-      {"id": "acme/triage", "name": "triage", "status": "parked",
-       "pending": 0, "node": "wardrik@box1", "outcome": "ok"}
+  ## Patterns
 
-  `id` is the agent's ID, and its segments are the agent's path under
-  `/v1/agents/`, each encoded on its own.
-
-  ## An agent's snapshot
-
-      {"agent": {"id": "acme/triage", "name": "triage"},
-       "conversation": {"id": "acme/triage/5f1c…"},
-       "status": "parked", "pending": 0,
-       "activity": {"doing": [{"type": "wardrik.run.interrupted", "interrupts": […]}],
-                    "since": "2026-10-18T12:00:00.000000Z", "pending": 0},
-       "request": {"model": "claude-sonnet-5"}, "provider": {"name": "anthropic"},
-       "run": {"id": "4bf92f35…"},
-       "interrupts": [{"id": "toolu_01", "reason": "tool_approval", "message": "…", "tool_call_id": "toolu_01"}],
-       "messages": [{"role": "user", "parts": [{"type": "text", "content": "…"}]}],
-       "outcome": "ok", "sequence": 41}
-
-  `run` is `null` between runs, and `sequence` is the last event the agent's
-  log has written: read and follow the log from there. `activity` is what
-  the agent is doing now, as `wardrik.activity.changed` says it, live, from
-  then on.
-
-  ## An error
-
-      {"error": {"type": "not_found", "message": "No agent runs under acme/triage."}}
+  A pattern is a name with IAM's wildcards: `*` matches any run of
+  characters, `/` among them, and `?` any one. `*` is everything, the
+  deployment's own included; `acme/*` is the tenant acme, its users' with
+  its own; `acme/agent/*` acme's own agents, with their threads and
+  triggers. Nothing else is implied: an agent and its threads are
+  `acme/agent/triage` and `acme/agent/triage/*`.
   """
 
-  alias Wardrik.Agent.Snapshot
-  alias Wardrik.Connections.Connection
-  alias Wardrik.Deployment.Nodes
-  alias Wardrik.Event.Codec.Value
-  alias Wardrik.Fleet.Member
-  alias Wardrik.Servers.Server
-  alias Wardrik.Tokens.Entry
+  alias Wardrik.AgentID
 
-  @doc "An agent as the fleet lists it."
-  @spec agent(Member.t()) :: map()
-  def agent(%Member{} = member) do
-    %{
-      "id" => to_string(member.id),
-      "name" => member.id.name,
-      "status" => to_string(member.status),
-      "pending" => member.pending,
-      "asleep" => member.asleep
-    }
-    |> Value.put("node", member.node && to_string(member.node))
-    |> Value.put("outcome", member.outcome && to_string(member.outcome))
+  @enforce_keys [:name]
+  defstruct [:name]
+
+  @type t() :: %__MODULE__{name: String.t()}
+
+  @types ~w(agent thread trigger server secret token)
+
+  @doc "The deployment's namespace."
+  @spec deployment() :: t()
+  def deployment, do: %__MODULE__{name: "deployment"}
+
+  @doc """
+  The name or pattern `text` writes. A name follows the grammar above
+  throughout; a pattern up to its first wildcard.
+
+      Wardrik.Resource.parse("acme/agent/*")  #=> {:ok, #Wardrik.Resource<acme/agent/*>}
+  """
+  @spec parse(String.t()) :: {:ok, t()} | {:error, String.t()}
+  def parse(text) when is_binary(text) do
+    segments = String.split(text, "/")
+    named = Enum.take_while(segments, &(not String.contains?(&1, ["*", "?"])))
+
+    if written?(named, named == segments),
+      do: {:ok, %__MODULE__{name: text}},
+      else:
+        {:error,
+         "#{inspect(text)} is not a resource; one is a namespace, org, org/@user or " <>
+           "deployment, with type/name after it, as acme/agent/triage"}
   end
 
-  @doc "An agent's snapshot."
-  @spec snapshot(Snapshot.t()) :: map()
-  def snapshot(%Snapshot{agent: id} = snapshot) do
-    {provider, model} = Value.model(snapshot.status.model)
+  @doc "`parse/1`, raising `ArgumentError` where it answers an error."
+  @spec parse!(String.t()) :: t()
+  def parse!(text), do: ok!(parse(text))
 
-    %{
-      "agent" => %{"id" => to_string(id), "name" => id.name},
-      "conversation" => %{"id" => "#{id}/#{snapshot.generation}"},
-      "status" => to_string(snapshot.status.state),
-      "pending" => snapshot.status.pending,
-      "activity" => Value.activity(snapshot.status.activity),
-      "request" => %{"model" => model},
-      "run" => snapshot.trace_id && %{"id" => snapshot.trace_id},
-      "interrupts" => Enum.map(snapshot.parked, &Value.interrupt/1),
-      "messages" => Enum.map(snapshot.history.messages, &Value.message/1),
-      "labels" => snapshot.labels,
-      "outcome" => snapshot.outcome && to_string(snapshot.outcome),
-      "sequence" => snapshot.sequence
-    }
-    |> Value.put("provider", provider && %{"name" => provider})
+  @doc """
+  What `within` holds as each `type: name` of `pairs` in turn, raising
+  `ArgumentError` where a name is not a segment.
+
+      Wardrik.Resource.new(Wardrik.Resource.deployment(), server: "github")
+      #=> #Wardrik.Resource<deployment/server/github>
+  """
+  @spec new(t(), keyword(String.t())) :: t()
+  def new(%__MODULE__{name: name}, pairs) when is_list(pairs) do
+    if Enum.all?(pairs, fn {_type, segment} -> AgentID.segment?(segment) end),
+      do:
+        parse!(
+          Enum.join([name | Enum.map(pairs, fn {type, segment} -> "#{type}/#{segment}" end)], "/")
+        ),
+      else: raise(ArgumentError, "#{inspect(pairs)} holds a name that is not a segment")
   end
 
-  @doc "Where a person authorizes a waiting call: the page, and the code to enter where one is needed."
-  @spec authorization(Wardrik.Call.Ask.link()) :: map()
-  def authorization(%{url: url} = link) do
-    case link[:code] do
-      code when is_binary(code) -> %{"url" => url, "code" => code}
-      _none -> %{"url" => url}
+  @doc "The namespace `resource` is in: `acme/@jon` of `acme/@jon/agent/triage`, itself for a namespace."
+  @spec owner(t()) :: t()
+  def owner(%__MODULE__{name: name}) do
+    case String.split(name, "/", parts: 3) do
+      [org, "@" <> _user = user | _rest] -> %__MODULE__{name: org <> "/" <> user}
+      [namespace | _rest] -> %__MODULE__{name: namespace}
     end
   end
 
-  @doc "The deployment's nodes, each with how many agents run on it, and how many sleep on none."
-  @spec nodes(Nodes.t()) :: map()
-  def nodes(%Nodes{nodes: nodes, asleep: asleep}) do
-    %{
-      "nodes" =>
-        for({node, agents} <- nodes, do: %{"name" => to_string(node), "agents" => agents}),
-      "asleep" => asleep
-    }
-  end
+  @doc """
+  The org `resource` is in, as its namespace: `acme` of `acme/@jon/agent/triage`,
+  itself for an org's, and the deployment for the deployment's.
+  """
+  @spec org(t()) :: t()
+  def org(%__MODULE__{name: name}),
+    do: %__MODULE__{name: name |> String.split("/", parts: 2) |> hd()}
+
+  @doc "The name `resource` ends in: `crm` of `acme/server/crm`."
+  @spec basename(t()) :: String.t()
+  def basename(%__MODULE__{name: name}), do: name |> String.split("/") |> List.last()
 
   @doc """
-  A token as `Wardrik.Tokens` keeps it, never its secret: its id and name,
-  whom it acts for, what it allows on what, the policy it names, when it
-  was made, and when it expires.
+  Whether `pattern` covers `target`, a name or a pattern of its own: every
+  name `target` matches, `pattern` does too.
   """
-  @spec token(Entry.t()) :: map()
-  def token(%Entry{} = entry) do
-    entry.token
-    |> Value.token()
-    |> Map.merge(%{
-      "id" => entry.id,
-      "name" => entry.name,
-      "created_at" => DateTime.to_iso8601(entry.created_at)
-    })
+  @spec covers?(t(), t()) :: boolean()
+  def covers?(%__MODULE__{name: pattern}, %__MODULE__{name: target}),
+    do: matches?(pattern, target, nil)
+
+  # Read a character at a time, so nothing is compiled for a call. A `?`
+  # meets one character of the target, never a `*` that stands for many,
+  # so a pattern covers another only where it covers all it matches. Only
+  # the latest `*` is gone back to, with one more character for it, which
+  # keeps a pattern of many `*` from taking time exponential in them.
+  defp matches?(<<>>, <<>>, _back), do: true
+
+  defp matches?(<<?*, pattern::binary>>, target, _back),
+    do: matches?(pattern, target, {pattern, target})
+
+  defp matches?(<<??, pattern::binary>>, <<char::utf8, tail::binary>>, back) when char != ?*,
+    do: matches?(pattern, tail, back)
+
+  defp matches?(<<char::utf8, pattern::binary>>, <<char::utf8, tail::binary>>, back),
+    do: matches?(pattern, tail, back)
+
+  defp matches?(_pattern, _target, {pattern, <<_char::utf8, tail::binary>>}),
+    do: matches?(pattern, tail, {pattern, tail})
+
+  defp matches?(_pattern, _target, _back), do: false
+
+  defp written?(["deployment" | pairs], whole?), do: pairs?(pairs, whole?)
+
+  defp written?([org, "@" <> user | pairs], whole?),
+    do: AgentID.org?(org) and AgentID.segment?(user) and pairs?(pairs, whole?)
+
+  defp written?([org | pairs], whole?), do: AgentID.org?(org) and pairs?(pairs, whole?)
+  defp written?([], whole?), do: not whole?
+
+  defp pairs?([], _whole?), do: true
+  defp pairs?([type], whole?), do: type in @types and not whole?
+
+  defp pairs?([type, name | pairs], whole?),
+    do: type in @types and AgentID.segment?(name) and pairs?(pairs, whole?)
+
+  defp ok!({:ok, value}), do: value
+  defp ok!({:error, message}), do: raise(ArgumentError, message)
+
+  defimpl String.Chars do
+    def to_string(%{name: name}), do: name
   end
 
-  @doc "A token just made, with the secret that presents it, given this once."
-  @spec token_created(Entry.t()) :: map()
-  def token_created(%Entry{secret: secret} = entry),
-    do: %{"token" => token(entry), "secret" => secret}
-
-  @doc "Every token a host keeps."
-  @spec tokens([Entry.t()]) :: map()
-  def tokens(entries), do: %{"tokens" => Enum.map(entries, &token/1)}
-
-  @doc "The connections an owner is offered, and who holds each, where anyone does."
-  @spec connections([Connection.t()]) :: map()
-  def connections(connections), do: %{"connections" => Enum.map(connections, &connection/1)}
-
-  @doc "One connection: its provider, and who holds it, where anyone does."
-  @spec connection(Connection.t()) :: map()
-  def connection(%Connection{provider: provider, held_by: held_by}),
-    do: Value.put(%{"provider" => provider}, "held_by", held_by && to_string(held_by))
-
-  @doc "A connection asked for: held already, or where to authorize it."
-  @spec connecting(Connection.t()) :: map()
-  def connecting(%Connection{provider: provider, authorization: nil}),
-    do: %{"provider" => provider, "connected" => true}
-
-  def connecting(%Connection{provider: provider, authorization: link}),
-    do: %{"provider" => provider, "connected" => false, "authorization" => authorization(link)}
-
-  @doc "The MCP servers an owner added, each by its name, URL and how its agents sign in."
-  @spec servers([Server.t()]) :: map()
-  def servers(servers), do: %{"servers" => Enum.map(servers, &server/1)}
-
-  @doc "One MCP server an owner added: its name, URL and how its agents sign in."
-  @spec server(Server.t()) :: map()
-  def server(%Server{name: name, url: url, auth: auth}),
-    do: %{"name" => name, "url" => url, "auth" => auth}
-
-  @doc "A server added: its agents can call it now, or once someone signs in where it says."
-  @spec server_added(Server.t()) :: map()
-  def server_added(%Server{name: name, authorization: nil}),
-    do: %{"server" => name, "connected" => true}
-
-  def server_added(%Server{name: name, authorization: link}),
-    do: %{"server" => name, "connected" => false, "authorization" => authorization(link)}
-
-  @doc "The calls agents wait on a person for, each as an interrupt with the agent it is for."
-  @spec interrupts([{Wardrik.AgentID.t(), {Wardrik.Tool.call(), String.t()}}]) :: map()
-  def interrupts(parked) do
-    %{
-      "interrupts" =>
-        for(
-          {id, waiting} <- parked,
-          do: Map.put(Value.interrupt(waiting), "agent", %{"id" => to_string(id)})
-        )
-    }
+  defimpl Inspect do
+    def inspect(%{name: name}, _opts), do: "#Wardrik.Resource<" <> name <> ">"
   end
-
-  @doc """
-  What a forget did, as `%{id => outcome}`: the agents removed, those kept
-  with why, and those not removed with why, each by ID.
-  """
-  @spec forgotten(%{
-          Wardrik.AgentID.t() => :forgotten | {:kept, String.t()} | {:failed, String.t()}
-        }) :: map()
-  def forgotten(outcomes) do
-    sorted = Enum.sort_by(outcomes, fn {id, _outcome} -> to_string(id) end)
-
-    %{
-      "forgotten" => for({id, :forgotten} <- sorted, do: to_string(id)),
-      "kept" => reasons(for {id, {:kept, why}} <- sorted, do: {id, why}),
-      "failed" => reasons(for {id, {:failed, why}} <- sorted, do: {id, why})
-    }
-  end
-
-  defp reasons(pairs), do: for({id, why} <- pairs, do: %{"id" => to_string(id), "why" => why})
-
-  @doc """
-  The decisions taken on the calls an agent waits on, each by its id:
-  `approved` or `rejected`.
-  """
-  @spec decisions(%{String.t() => :approve | {:approve | :deny, String.t()}}) :: map()
-  def decisions(decisions) do
-    %{
-      "decisions" =>
-        for(
-          {id, decision} <- Enum.sort(decisions),
-          do: %{"id" => id, "decision" => verdict(decision)}
-        )
-    }
-  end
-
-  defp verdict({:deny, _reason}), do: "rejected"
-  defp verdict(_approved), do: "approved"
-
-  @doc "The tool calls an agent is running, each with how long it has run."
-  @spec calls([%{call_id: String.t(), name: String.t(), elapsed_ms: non_neg_integer()}]) ::
-          map()
-  def calls(calls) do
-    %{
-      "calls" =>
-        for(
-          call <- calls,
-          do: %{"id" => call.call_id, "name" => call.name, "elapsed_ms" => call.elapsed_ms}
-        )
-    }
-  end
-
-  @doc "The agents a cancel stopped."
-  @spec cancelled([Wardrik.AgentID.t()]) :: map()
-  def cancelled(ids), do: %{"cancelled" => Enum.map(ids, &to_string/1)}
-
-  @doc """
-  A page of an export: its events, the `next` that moves the export past
-  them, and where a log was trimmed before the export got to it.
-  """
-  @spec export(Wardrik.Event.Export.t()) :: map()
-  def export(%Wardrik.Event.Export{} = page) do
-    %{
-      "events" => page.events,
-      "next" => page.next,
-      "gaps" =>
-        for(
-          gap <- page.gaps,
-          do: %{"log" => to_string(gap.log), "after" => gap.after, "oldest" => gap.oldest}
-        )
-    }
-  end
-
-  @types %{
-    unauthorized: "unauthorized",
-    not_found: "not_found",
-    forbidden: "forbidden",
-    invalid: "invalid_request",
-    conflict: "conflict",
-    gap: "gap",
-    unsupported: "not_supported",
-    unavailable: "unavailable"
-  }
-
-  @doc "An operation's `Wardrik.Error`, as every surface answers it."
-  @spec error(Wardrik.Error.t()) :: map()
-  def error(%Wardrik.Error{type: type, message: message, details: details}),
-    do: error(Map.fetch!(@types, type), message, details)
-
-  @doc "An error of `type`, saying what went wrong, with any other fields beside."
-  @spec error(String.t(), String.t(), map()) :: map()
-  def error(type, message, fields \\ %{}),
-    do: %{"error" => Map.merge(%{"type" => type, "message" => message}, fields)}
 end

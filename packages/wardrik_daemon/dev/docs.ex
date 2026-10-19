@@ -179,7 +179,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
           "|--[a-z][a-z-]*(?: [A-Z][A-Z_]*\\b)?" <>
           "|\\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\\b" <>
           "|~/[\\w./-]*[\\w/]" <>
-          "|\\b\\w[\\w.-]*(?:/(?:[@\\w.-]*[@\\w-])?)+" <>
+          "|\\b\\w[\\w.-]*(?:/(?:[@\\w.*-]*[@\\w*-])?)+" <>
           "|\\b[\\w-]+\\.(?:yaml|md|json)\\b"
       )
 
@@ -193,8 +193,8 @@ defmodule Mix.Tasks.Wardrik.Docs do
     {title, body} = read_guide(:wardrik_http, "http-api.md")
     edit = @edit <> "wardrik_http/guides/http-api.md"
 
-    resources =
-      for {name, schema} <- schemas(), resource?(name), do: schema(name, schema, @events)
+    bodies =
+      for {name, schema} <- schemas(), body?(name), do: schema(name, schema, @events)
 
     page(
       "http-api",
@@ -204,8 +204,8 @@ defmodule Mix.Tasks.Wardrik.Docs do
       "packages/wardrik_http/guides/http-api.md and packages/wardrik_core/priv/v1",
       [
         body,
-        "\n\n## Resources\n\nThe bodies the routes take and answer with.\n\n",
-        Enum.intersperse(resources, "\n")
+        "\n\n## Bodies\n\nThe JSON the routes take and answer with.\n\n",
+        Enum.intersperse(bodies, "\n")
       ],
       edit
     )
@@ -235,7 +235,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
         fields(envelope, ""),
         "\n## Events\n\n",
         Enum.intersperse(events, "\n"),
-        "\n## Shared types\n\nThe types events and resources refer to.\n\n",
+        "\n## Shared types\n\nThe types events and bodies refer to.\n\n",
         Enum.intersperse(shared, "\n")
       ]
     )
@@ -268,7 +268,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
 
   defp event?(schema), do: String.starts_with?(schema["title"] || "", "wardrik.")
 
-  defp resource?(name),
+  defp body?(name),
     do:
       name not in ["cloudevent", "defs"] and not String.contains?(name, ".") and
         not String.starts_with?(name, "input_")
@@ -329,7 +329,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
   defp format(%{"format" => format}), do: " (#{format})"
   defp format(_field), do: ""
 
-  # A shared type and the envelope are on the events page, and a resource on
+  # A shared type and the envelope are on the events page, and a body on
   # the HTTP API's.
   defp ref("urn:wardrik:schema:v1:defs#/$defs/" <> name, defs_page),
     do: "[#{name}](#{defs_page}##{name})"

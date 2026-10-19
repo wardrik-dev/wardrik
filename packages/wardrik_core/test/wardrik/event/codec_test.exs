@@ -3,7 +3,6 @@ defmodule Wardrik.Event.CodecTest do
 
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.Text
@@ -13,7 +12,7 @@ defmodule Wardrik.Event.CodecTest do
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Source
   alias Wardrik.Principal
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
 
   @schemas WardrikProtocol.dir()
   @agent Wardrik.AgentID.parse!("acme/@ops/triage")
@@ -175,11 +174,11 @@ defmodule Wardrik.Event.CodecTest do
   # One change of every shape `Audit.action/0` lists.
   defp changes do
     id = @agent
-    prefix = Prefix.new!(org: "acme")
+    pattern = Resource.parse!("acme/agent/*")
 
     token = %Wardrik.Token{
       principal: Principal.new(:user, "jon"),
-      scope: [Wardrik.Role.bind([:reader, :definer], prefix)],
+      scope: [Wardrik.Role.bind([:reader, :definer], [pattern])],
       policy: "careful",
       expires: ~U[2026-12-01 00:00:00Z]
     }
@@ -189,10 +188,10 @@ defmodule Wardrik.Event.CodecTest do
       {:agent_spawned, id, :wardrik_b@localhost},
       {:agent_stopped, id},
       {:agent_forgotten, id},
-      {:agent_forgotten, id, prefix},
+      {:agent_forgotten, id, pattern},
       {:agent_moved, id, :wardrik_b@localhost},
       {:agent_cancelled, id},
-      {:agent_cancelled, id, prefix},
+      {:agent_cancelled, id, pattern},
       {:agent_cleared, id},
       {:call_killed, id, "call_1"},
       {:trigger_set, id, "sweep"},
@@ -202,10 +201,10 @@ defmodule Wardrik.Event.CodecTest do
       {:room_unbound, "slack", "C0123"},
       {:token_created, "tok_1", "ci", token},
       {:token_revoked, "tok_1"},
-      {:secret_stored, "GITHUB_TOKEN", Prefix.all()},
-      {:secret_removed, "GITHUB_TOKEN", Prefix.new!(org: "acme", user: "jon")},
-      {:server_added, Key.new(prefix, "crm"), "https://mcp.crm.example/mcp"},
-      {:server_removed, Key.new(prefix, "crm")}
+      {:secret_stored, "GITHUB_TOKEN", Resource.deployment()},
+      {:secret_removed, "GITHUB_TOKEN", Resource.parse!("acme/@jon")},
+      {:server_added, Resource.parse!("acme/server/crm"), "https://mcp.crm.example/mcp"},
+      {:server_removed, Resource.parse!("acme/server/crm")}
     ]
   end
 
@@ -279,7 +278,7 @@ defmodule Wardrik.Event.CodecTest do
                "id" => id,
                "source" => "wardrik://local/audit",
                "type" => "wardrik.agent.forgotten",
-               "subject" => "agents/acme/@ops/triage",
+               "subject" => "acme/@ops/agent/triage",
                "sequence" => "000000000007",
                "data" =>
                  %{
@@ -322,7 +321,7 @@ defmodule Wardrik.Event.CodecTest do
                  %{
                    "actions" =>
                      Enum.uniq(Wardrik.Role.actions(:reader) ++ Wardrik.Role.actions(:definer)),
-                   "resources" => ["acme/"]
+                   "resources" => ["acme/agent/*"]
                  }
                ],
                "policy" => "careful",
@@ -331,16 +330,14 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "says nothing of an actor none is known for, or the owner of a deployment's secret" do
-      all = Prefix.all()
-
       assert {:ok, %{"data" => data}} =
-               Codec.encode(Audit.new({:secret_stored, "KEY", all}, nil))
+               Codec.encode(Audit.new({:secret_stored, "KEY", Resource.deployment()}, nil))
 
       assert data == %{"secret" => %{"name" => "KEY"}}
 
-      jon = Prefix.new!(org: "acme", user: "jon")
+      jon = Resource.parse!("acme/@jon")
 
-      assert {:ok, %{"data" => %{"owner" => "acme/@jon/"}}} =
+      assert {:ok, %{"data" => %{"owner" => "acme/@jon"}}} =
                Codec.encode(Audit.new({:secret_removed, "KEY", jon}, nil))
     end
   end

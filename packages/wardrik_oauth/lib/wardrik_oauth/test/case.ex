@@ -120,6 +120,10 @@ defmodule WardrikOAuth.Test.Case do
     )
   end
 
+  @doc "The namespace of `user` in `org`, whose credentials a user's agents use."
+  @spec person(String.t(), String.t()) :: Wardrik.Resource.t()
+  def person(org, user), do: Wardrik.Resource.parse!("#{org}/@#{user}")
+
   @doc "The redirect URI the tests register for the `github` provider."
   @spec redirect_uri() :: String.t()
   def redirect_uri, do: "https://wardrik.example.com/oauth/callback/github"

@@ -8,17 +8,18 @@ defmodule WardrikDaemon.Issuer do
     * `:channel` - what `config.yaml`'s `channels` says of someone in that
       channel, as it names people, on the agents of each org it serves; see
       below
-    * `:agent` - `reader` and `messenger` on its owner's agents, so a turn
-      one agent asks of another reads and messages for it what it could
-      itself
+    * `:agent` - `reader` and `messenger` on its owner's agents,
+      `acme/agent/*` or `acme/@jon/agent/*`, read from the resource the
+      principal is named by, so a turn one agent asks of another reads and
+      messages for it what it could itself
     * anyone else - nothing
 
   A token of the HTTP API is not issued here: `WardrikHTTP.Tokens` reads it
   where it is kept.
 
   In a channel, everyone holds `reader` and `messenger` on the agents of
-  the channel's orgs, and none of their users'; see
-  `Wardrik.AgentID.Prefix`. Someone its `approvers` name, or the
+  the channel's orgs, `acme/agent/*`, and none of their users'; see
+  `Wardrik.Resource`. Someone its `approvers` name, or the
   `approvers` of a `notify` target that posts in it, holds `approver` too;
   with `approvers: anyone`, everyone in it does. Someone its `admins` name
   holds `approver`, and `definer` where `defaults` names a policy, which
@@ -34,9 +35,8 @@ defmodule WardrikDaemon.Issuer do
           approvers: ["@maria", "ana@example.com"]   # or: anyone
   """
 
-  alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Token
   alias WardrikDaemon.Agents
@@ -59,8 +59,8 @@ defmodule WardrikDaemon.Issuer do
     do: Token.root(principal)
 
   defp issued(:agent, principal, _agents) do
-    owner = Prefix.owner(AgentID.parse!(Principal.id(principal)))
-    %Token{principal: principal, scope: [Role.bind(@everyone, owner)]}
+    owner = Resource.owner(Resource.parse!(Principal.id(principal)))
+    %Token{principal: principal, scope: [Role.bind(@everyone, [agents_of(owner)])]}
   end
 
   defp issued(:channel, principal, agents) do
@@ -90,7 +90,7 @@ defmodule WardrikDaemon.Issuer do
 
     %Token{
       principal: principal,
-      scope: for(prefix <- prefixes(agents, channel), do: Role.bind(roles, prefix)),
+      scope: [Role.bind(roles, reached(agents, channel))],
       policy: policy
     }
   end
@@ -136,12 +136,14 @@ defmodule WardrikDaemon.Issuer do
         do: approver
   end
 
-  defp prefixes(agents, channel) do
+  defp reached(agents, channel) do
     case Agents.orgs(agents, channel) do
-      :all -> [Prefix.all()]
-      orgs -> Enum.map(orgs, &Prefix.new!(org: &1))
+      :all -> [agents_of("*")]
+      orgs -> Enum.map(orgs, &agents_of/1)
     end
   end
+
+  defp agents_of(owner), do: Resource.parse!("#{owner}/agent/*")
 end
 
 defimpl Wardrik.Issuer, for: WardrikDaemon.Issuer do

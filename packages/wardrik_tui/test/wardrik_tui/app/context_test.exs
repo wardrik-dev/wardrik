@@ -138,12 +138,12 @@ defmodule WardrikTUI.App.ContextTest do
     refute screen(s) =~ "new output below"
   end
 
-  test "prefix deletion still previews its exact targets with --yes" do
+  test "deletion by a pattern still previews its exact targets with --yes" do
     {a, _} = Wardrik.Test.Fleet.start_agent()
     org = "review#{System.unique_integer([:positive])}"
     {b, _} = Wardrik.Test.Fleet.start_agent([], Wardrik.AgentID.new!("other", org: org))
     s = session(a)
-    submit(s, "/rm #{org}/ --yes")
+    submit(s, "/rm #{org}/agent/* --yes")
     assert screen(s) =~ to_string(b)
     assert screen(s) =~ "/confirm goes ahead"
     assert Fleet.whereis(b, host: Wardrik.Test.host())

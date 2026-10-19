@@ -8,12 +8,12 @@ defmodule Wardrik.TalkingTest do
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Event
   alias Wardrik.Event.Log
   alias Wardrik.Fleet.Member
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Scope
   alias Wardrik.Test.AgentRunners
@@ -24,8 +24,8 @@ defmodule Wardrik.TalkingTest do
 
   @jon %{"type" => "user", "id" => "jon", "name" => "Jon"}
 
-  defp scope(prefix \\ "test/", roles \\ [:owner]) do
-    token = %Token{principal: jon(), scope: [Role.bind(roles, Prefix.parse!(prefix))]}
+  defp scope(pattern \\ "test/agent/*", roles \\ [:owner]) do
+    token = %Token{principal: jon(), scope: [Role.bind(roles, [Resource.parse!(pattern)])]}
     Scope.new(Wardrik.Test.host(), token)
   end
 
@@ -68,17 +68,18 @@ defmodule Wardrik.TalkingTest do
     test "answers what the scope's token reaches and allows" do
       {id, _agent} = Fleet.start_agent()
 
-      assert {:ok, %Snapshot{agent: ^id}} = Wardrik.agent_read(scope("test/", [:reader]), id)
+      assert {:ok, %Snapshot{agent: ^id}} =
+               Wardrik.agent_read(scope("test/agent/*", [:reader]), id)
     end
 
     test "finds nothing its token does not reach, and refuses what it does not allow" do
       {id, _agent} = Fleet.start_agent()
 
       assert {:error, %Error{type: :not_found}} =
-               Wardrik.agent_read(scope("other/", [:reader]), id)
+               Wardrik.agent_read(scope("other/agent/*", [:reader]), id)
 
       assert {:error, %Error{type: :forbidden, message: message}} =
-               Wardrik.agent_read(scope("test/", [:messenger]), id)
+               Wardrik.agent_read(scope("test/agent/*", [:messenger]), id)
 
       assert message == "This token does not allow agent.read on #{id}."
       assert {:error, %Error{type: :not_found}} = Wardrik.agent_read(scope(), Fleet.id())
@@ -90,19 +91,19 @@ defmodule Wardrik.TalkingTest do
       {id, _agent} = Fleet.start_agent()
 
       assert {:ok, %Snapshot{}} = Wardrik.agent_clear(scope(), id)
-      assert Audit.about("agents/#{id}") == [{"agent.cleared", @jon}]
+      assert Audit.about(id) == [{"agent.cleared", @jon}]
     end
 
     test "is made only where the scope's token allows it, and one that fails is not recorded" do
       {id, _agent} = Fleet.start_agent()
 
       assert {:error, %Error{type: :forbidden}} =
-               Wardrik.agent_clear(scope("test/", [:reader]), id)
+               Wardrik.agent_clear(scope("test/agent/*", [:reader]), id)
 
       nobody = Fleet.id("nobody")
       assert {:error, %Error{type: :not_found}} = Wardrik.agent_clear(scope(), nobody)
-      assert Audit.about("agents/#{id}") == []
-      assert Audit.about("agents/#{nobody}") == []
+      assert Audit.about(id) == []
+      assert Audit.about(nobody) == []
     end
 
     test "waits while a turn runs, to clear" do
@@ -148,7 +149,7 @@ defmodule Wardrik.TalkingTest do
                Wardrik.agent_authorization_read(scope(), id, "nope")
 
       assert {:error, %Error{type: :forbidden}} =
-               Wardrik.agent_authorization_read(scope("test/", [:reader]), id, "call_1")
+               Wardrik.agent_authorization_read(scope("test/agent/*", [:reader]), id, "call_1")
     end
 
     test "is none for a call that waits on a decision, or an agent not running" do
@@ -218,11 +219,11 @@ defmodule Wardrik.TalkingTest do
 
       token = %Token{
         principal: maria,
-        scope: [Role.bind([:reader, :messenger], Prefix.parse!("test/"))]
+        scope: [Role.bind([:reader, :messenger], [Resource.parse!("test/agent/*")])]
       }
 
       assert {:error, %Error{type: :forbidden}} =
-               Wardrik.agent_approve(scope("test/", [:reader]), id, "call_1")
+               Wardrik.agent_approve(scope("test/agent/*", [:reader]), id, "call_1")
 
       asker = Scope.new(Wardrik.Test.host(), token)
       assert {:ok, _decided} = Wardrik.agent_approve(asker, id, "call_1")
@@ -241,11 +242,14 @@ defmodule Wardrik.TalkingTest do
     test "answers every agent under the prefix, and refuses a scope that may not read them" do
       {id, _agent} = Fleet.start_agent()
 
-      assert {:ok, members} = Wardrik.agents_list(scope(), Prefix.parse!("test/"))
+      assert {:ok, members} = Wardrik.agents_list(scope(), Resource.parse!("test/agent/*"))
       assert %Member{} = Enum.find(members, &(&1.id == id))
 
       assert {:error, %Error{type: :forbidden}} =
-               Wardrik.agents_list(scope("test/", [:messenger]), Prefix.parse!("test/"))
+               Wardrik.agents_list(
+                 scope("test/agent/*", [:messenger]),
+                 Resource.parse!("test/agent/*")
+               )
     end
 
     test "answers each call waiting on a person, with its agent" do
@@ -256,7 +260,7 @@ defmodule Wardrik.TalkingTest do
              end)
 
       assert {:ok, [{^id, {%{id: "call_1"}, _prompt}}]} =
-               Wardrik.agents_parked(scope(), Prefix.of(id))
+               Wardrik.agents_parked(scope(), Wardrik.AgentID.resource(id))
     end
   end
 
@@ -286,15 +290,15 @@ defmodule Wardrik.TalkingTest do
       hanging(id)
 
       assert {:ok, [%{call_id: "call_1", name: "hang", elapsed_ms: elapsed}]} =
-               Wardrik.agent_calls(scope("test/", [:reader]), id)
+               Wardrik.agent_calls(scope("test/agent/*", [:reader]), id)
 
       assert is_integer(elapsed)
 
       assert {:error, %Error{type: :forbidden}} =
-               Wardrik.agent_call_kill(scope("test/", [:reader]), id, "call_1")
+               Wardrik.agent_call_kill(scope("test/agent/*", [:reader]), id, "call_1")
 
       assert :ok = Wardrik.agent_call_kill(scope(), id, "call_1")
-      assert Audit.about("agents/#{id}") == [{"call.killed", @jon}]
+      assert Audit.about(id) == [{"call.killed", @jon}]
 
       assert {:error, %Error{type: :not_found}} =
                Wardrik.agent_call_kill(scope(), id, "call_1")

@@ -3,6 +3,7 @@ defmodule WardrikSlack.ThreadsTest do
 
   alias Wardrik.AgentID
   alias Wardrik.Fleet
+  alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
   alias WardrikChannel.Context
   alias WardrikChannel.Installations
@@ -52,7 +53,7 @@ defmodule WardrikSlack.ThreadsTest do
     def issue(_everyone, principal, _opts) do
       %Wardrik.Token{
         principal: principal,
-        scope: [Wardrik.Role.bind([:reader, :messenger], Wardrik.AgentID.Prefix.all())]
+        scope: [Wardrik.Role.bind([:reader, :messenger], [Resource.parse!("*")])]
       }
     end
   end
@@ -74,7 +75,7 @@ defmodule WardrikSlack.ThreadsTest do
       WardrikChannel.channels([{name, {WardrikSlack, req_options: @req_options}}],
         host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %Everyone{}),
         installations:
-          Installations.Config.new([{name, "xoxb-test", Wardrik.AgentID.Prefix.all()}]),
+          Installations.Config.new([{name, "xoxb-test", Wardrik.Resource.deployment()}]),
         offered: {__MODULE__, :offering, [agent]},
         start: {__MODULE__, :starting, [runner]},
         replies: replies
@@ -87,7 +88,8 @@ defmodule WardrikSlack.ThreadsTest do
     {:bound, _room, _offer} =
       Rooms.joined(WardrikChannel.Room.new(workspace, "C1"), name: "books")
 
-    on_exit(fn -> Fleet.forget_under(AgentID.Prefix.of(agent)) end)
+    itself = AgentID.resource(agent)
+    on_exit(fn -> Enum.each([itself, Resource.parse!("#{itself}/*")], &Fleet.forget_under/1) end)
 
     [
       workspace: workspace,

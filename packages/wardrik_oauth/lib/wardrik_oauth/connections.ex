@@ -14,6 +14,7 @@ defmodule WardrikOAuth.Connections do
   the owner.
   """
 
+  alias Wardrik.Resource
   alias WardrikOAuth.Provider
 
   @enforce_keys [:oauth, :vault]
@@ -34,8 +35,12 @@ defmodule WardrikOAuth.Connections do
   end
 
   # Whose credentials a call of the owner's would use, the most specific first.
-  defp holders({org, _user} = person), do: [person: person, org: org, deployment: nil]
-  defp holders(org), do: [org: org, deployment: nil]
+  defp holders(owner) do
+    org = Resource.org(owner)
+
+    if(owner == org, do: [], else: [person: owner]) ++
+      [org: org, deployment: Resource.deployment()]
+  end
 
   @doc false
   def connect(%__MODULE__{oauth: oauth, vault: vault}, name, owner, opts) do

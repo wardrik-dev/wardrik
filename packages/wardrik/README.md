@@ -23,8 +23,8 @@ scope = Wardrik.as(wardrik, maria)
 ```
 
 A scope holds a token, which says who acts and what they may do: its
-statements each allow some actions, such as `agent.ask`, on the agents
-under a prefix, and anything none allows is denied. A role is a named set
+statements each allow some actions, such as `agent.ask`, on the resources
+a pattern covers, as `acme/agent/*`, and anything none allows is denied. A role is a named set
 of actions: `reader`, `messenger`, `approver`, `definer`, `worker` and
 `owner`. Your `Wardrik.Issuer` issues each user their token.
 

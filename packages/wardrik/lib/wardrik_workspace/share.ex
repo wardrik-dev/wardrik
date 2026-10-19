@@ -1,49 +1,50 @@
 defmodule WardrikWorkspace.Share do
   @moduledoc """
-  A tree the deployment lets agents beyond its owner mount: the agents under
-  each prefix of `read` may read it, and those under each of `write` may
-  read and change it. Its owner's agents mount it as they always may.
+  A tree the deployment lets agents beyond its owner mount: the agents each
+  `Wardrik.Resource` pattern of `read` covers may read it, and those each of
+  `write` covers may read and change it. Its owner's agents mount it as
+  they always may.
 
       # config.yaml
       workspace:
         shared:
           acme/runbooks:
-            read: ["acme/*"]       # every agent in acme, its users' included
-            write: [acme/ops]      # and the org's ops agent changes it
+            read: ["acme/*"]                         # every agent in acme, its users' included
+            write: [acme/agent/ops, "acme/agent/ops/*"]  # and the org's ops agent, in every thread
 
   An agent still names the trees it mounts in its own definition; a share
   only says who else may. See `WardrikWorkspace.Spec`.
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias WardrikWorkspace.Spec
 
   @enforce_keys [:tree]
   defstruct [:tree, read: [], write: []]
 
-  @type t() :: %__MODULE__{tree: String.t(), read: [Prefix.t()], write: [Prefix.t()]}
+  @type t() :: %__MODULE__{tree: String.t(), read: [Resource.t()], write: [Resource.t()]}
 
   @doc """
-  The share of `tree`, read by the agents under `:read` and changed by those
-  under `:write`, each a prefix or its text, or why it does not read.
+  The share of `tree`, read by the agents `:read` covers and changed by
+  those `:write` covers, each a pattern or its text, or why it does not read.
   """
   @spec new(String.t(), keyword()) :: {:ok, t()} | {:error, String.t()}
   def new(tree, opts) when is_binary(tree) do
     opts = Keyword.validate!(opts, read: [], write: [])
 
     with {:ok, tree} <- Spec.tree("shared " <> tree, tree),
-         {:ok, read} <- prefixes(tree, "read", opts[:read]),
-         {:ok, write} <- prefixes(tree, "write", opts[:write]) do
+         {:ok, read} <- patterns(tree, "read", opts[:read]),
+         {:ok, write} <- patterns(tree, "write", opts[:write]) do
       {:ok, %__MODULE__{tree: tree, read: read, write: write}}
     end
   end
 
-  defp prefixes(tree, key, prefixes) when is_list(prefixes) do
-    prefixes
-    |> Enum.reduce_while({:ok, []}, fn prefix, {:ok, read} ->
-      case prefix(prefix) do
-        {:ok, prefix} -> {:cont, {:ok, [prefix | read]}}
+  defp patterns(tree, key, patterns) when is_list(patterns) do
+    patterns
+    |> Enum.reduce_while({:ok, []}, fn pattern, {:ok, read} ->
+      case pattern(pattern) do
+        {:ok, pattern} -> {:cont, {:ok, [pattern | read]}}
         {:error, message} -> {:halt, {:error, "#{tree} #{key}: #{message}"}}
       end
     end)
@@ -53,11 +54,11 @@ defmodule WardrikWorkspace.Share do
     end
   end
 
-  defp prefixes(tree, key, _prefixes), do: {:error, "#{tree} #{key} is a list of prefixes"}
+  defp patterns(tree, key, _patterns), do: {:error, "#{tree} #{key} is a list of patterns"}
 
-  defp prefix(%Prefix{} = prefix), do: {:ok, prefix}
-  defp prefix(text) when is_binary(text), do: Prefix.parse(text)
-  defp prefix(other), do: {:error, "#{inspect(other)} is not a prefix"}
+  defp pattern(%Resource{} = pattern), do: {:ok, pattern}
+  defp pattern(text) when is_binary(text), do: Resource.parse(text)
+  defp pattern(other), do: {:error, "#{inspect(other)} is not a pattern"}
 
   @doc """
   How `shares` let the agent `id` mount `tree`: `{:ok, :write}`, `{:ok,
@@ -74,5 +75,6 @@ defmodule WardrikWorkspace.Share do
     end
   end
 
-  defp covered?(prefixes, id), do: Enum.any?(prefixes, &Prefix.covers?(&1, id))
+  defp covered?(patterns, id),
+    do: Enum.any?(patterns, &Resource.covers?(&1, AgentID.resource(id)))
 end

@@ -17,7 +17,7 @@ defmodule WardrikDaemon.Secrets do
 
   @doc "The deployment's secret `name` in `vault`, or `nil` where it holds none it can read."
   @spec named(WardrikVault.t(), String.t()) :: String.t() | nil
-  def named(vault, name), do: secret(vault, name, nil)
+  def named(vault, name), do: secret(vault, name, Wardrik.Resource.deployment())
 
   @doc """
   The secret `name` for the agent `id`: what `vault` holds for its user,
@@ -25,8 +25,10 @@ defmodule WardrikDaemon.Secrets do
   does.
   """
   @spec for_agent(WardrikVault.t(), String.t(), Wardrik.AgentID.t()) :: String.t() | nil
-  def for_agent(vault, name, %Wardrik.AgentID{org: org, user: user}) do
-    owners = if user, do: [{org, user}, org, nil], else: [org, nil]
+  def for_agent(vault, name, %Wardrik.AgentID{} = id) do
+    owner = Wardrik.Resource.owner(Wardrik.AgentID.resource(id))
+    owners = Enum.uniq([owner, Wardrik.Resource.org(owner), Wardrik.Resource.deployment()])
+
     Enum.find_value(owners, &secret(vault, name, &1)) || System.get_env(name)
   end
 

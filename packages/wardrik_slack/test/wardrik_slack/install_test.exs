@@ -1,7 +1,7 @@
 defmodule WardrikSlack.InstallTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias WardrikChannel.Installation
   alias WardrikChannel.Installations
   alias WardrikChannel.Response
@@ -35,7 +35,7 @@ defmodule WardrikSlack.InstallTest do
         installations: installations
       )
 
-    %{channel: channel, installations: installations, acme: Prefix.new!(org: "acme")}
+    %{channel: channel, installations: installations, acme: Resource.parse!("acme")}
   end
 
   defp back(query), do: %{method: "GET", path: ["install"], query: query, headers: [], body: ""}
@@ -75,7 +75,7 @@ defmodule WardrikSlack.InstallTest do
   test "installs nothing for another owner, nor from a state it did not sign",
        %{channel: channel, installations: installations, acme: acme} do
     {:ok, url} = WardrikChannel.install_url(channel, acme)
-    globex = Prefix.new!(org: "globex")
+    globex = Resource.parse!("globex")
 
     for {owner, state} <- [{globex, state(url)}, {acme, "forged.state"}, {acme, nil}] do
       assert %Response{status: 403} =

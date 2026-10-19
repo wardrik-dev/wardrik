@@ -6,7 +6,7 @@ defmodule Wardrik.Statement do
 
       %Wardrik.Statement{
         actions: ["agent.read", "agent.ask"],
-        resources: [Wardrik.AgentID.Prefix.new!(org: "acme")]
+        resources: [Wardrik.Resource.parse!("acme/agent/*")]
       }
 
   An action is what is done, by the name of the function of `Wardrik` that
@@ -14,30 +14,34 @@ defmodule Wardrik.Statement do
   action on one agent, and `*` every action there is. `Wardrik.Role` names
   the sets of them a person is usually given.
 
-  A resource is the agents under a `Wardrik.AgentID.Prefix`; it says what
-  each reaches.
+  A resource is a `Wardrik.Resource` pattern, IAM's: `acme/agent/*` is
+  acme's own agents, `acme/*` everything of acme's and its users', and `*`
+  everything there is.
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
 
   @enforce_keys [:actions, :resources]
   defstruct [:actions, :resources]
 
   @type action() :: String.t()
-  @typedoc "What an action is taken on: one agent, or every agent under a prefix."
-  @type target() :: AgentID.t() | Prefix.t()
-  @type t() :: %__MODULE__{actions: [action()], resources: [Prefix.t()]}
+  @typedoc "What an action is taken on: one agent, or a resource, a name or a pattern."
+  @type target() :: AgentID.t() | Resource.t()
+  @type t() :: %__MODULE__{actions: [action()], resources: [Resource.t()]}
 
   @doc "Whether `statement` names `action`, itself or under a wildcard."
   @spec allows?(t(), action()) :: boolean()
   def allows?(%__MODULE__{actions: actions}, action) when is_binary(action),
     do: Enum.any?(actions, &covers?(&1, action))
 
-  @doc "Whether `statement` reaches `target`: one agent, or every agent under a prefix."
+  @doc "Whether `statement` reaches `target`: one of its resources covers it."
   @spec reaches?(t(), target()) :: boolean()
+  def reaches?(%__MODULE__{} = statement, %AgentID{} = id),
+    do: reaches?(statement, AgentID.resource(id))
+
   def reaches?(%__MODULE__{resources: resources}, target),
-    do: Enum.any?(resources, &Prefix.covers?(&1, target))
+    do: Enum.any?(resources, &Resource.covers?(&1, target))
 
   @doc """
   What both `statement` and `other` allow, as a statement, or none: the
@@ -47,7 +51,7 @@ defmodule Wardrik.Statement do
   @spec intersect(t(), t()) :: [t()]
   def intersect(%__MODULE__{} = statement, %__MODULE__{} = other) do
     case {both(statement.actions, other.actions, &covers?/2),
-          both(statement.resources, other.resources, &Prefix.covers?/2)} do
+          both(statement.resources, other.resources, &Resource.covers?/2)} do
       {[_ | _] = actions, [_ | _] = resources} ->
         [%__MODULE__{actions: actions, resources: resources}]
 

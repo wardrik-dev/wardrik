@@ -1,8 +1,8 @@
 defmodule WardrikMCP.Remote do
   @moduledoc """
   An MCP server an owner added for their own agents, as it is kept in the
-  store: its `Wardrik.Servers.Key`, its URL, how its agents sign in to it,
-  and which of its tools they take.
+  store: its `Wardrik.Resource`, as `acme/server/crm`, its URL, how its
+  agents sign in to it, and which of its tools they take.
 
   It is reached over Streamable HTTP alone: a command would run on the
   deployment's own machine, so only the deployment's configuration names
@@ -15,8 +15,7 @@ defmodule WardrikMCP.Remote do
   connection stops after a quarter of an hour with no call through it.
   """
 
-  alias Wardrik.AgentID.Prefix
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikMCP.Auth
   alias WardrikMCP.Server
 
@@ -28,7 +27,7 @@ defmodule WardrikMCP.Remote do
   defstruct [:key, :url, :auth, :filters]
 
   @type t() :: %__MODULE__{
-          key: Key.t(),
+          key: Resource.t(),
           url: String.t(),
           auth: Auth.t(),
           filters: [only: [String.t()], except: [String.t()]]
@@ -38,15 +37,24 @@ defmodule WardrikMCP.Remote do
   The server `key` names, from `fields` as a request gave them: its `url`,
   its `auth`, and the `only` and `except` lists of its tools' own names.
   """
-  @spec decode(Key.t(), map()) :: {:ok, t()} | {:error, String.t()}
-  def decode(%Key{} = key, fields) when is_map(fields) do
-    with :ok <- named(key.name),
-         :ok <- known(fields),
+  @spec decode(Resource.t(), map()) :: {:ok, t()} | {:error, String.t()}
+  def decode(%Resource{} = key, fields) when is_map(fields) do
+    with :ok <- known(fields),
          {:ok, url} <- url(fields["url"]),
          {:ok, auth} <- auth(fields["auth"]),
          {:ok, filters} <- filters(fields) do
       {:ok, %__MODULE__{key: key, url: url, auth: auth, filters: filters}}
     end
+  end
+
+  @doc "`:ok` where `name` can name a server an owner adds, or why not."
+  @spec named(String.t()) :: :ok | {:error, String.t()}
+  def named(name) do
+    if name =~ ~r/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/ and not String.contains?(name, "__"),
+      do: :ok,
+      else:
+        {:error,
+         "#{inspect(name)} is not a server's name: letters, digits, - and _, up to 32, never __"}
   end
 
   @doc """
@@ -59,7 +67,7 @@ defmodule WardrikMCP.Remote do
       remote.key,
       [
         transport: {:streamable_http, base_url: remote.url},
-        serves: [remote.key.owner],
+        serves: [Resource.parse!("#{Resource.owner(remote.key)}/agent/*")],
         store: store,
         idle_after: @idle_after
       ] ++ Auth.options(remote.auth, remote.key) ++ remote.filters
@@ -92,8 +100,8 @@ defmodule WardrikMCP.Remote do
   end
 
   @doc "The server `key` names, where its owner added it."
-  @spec fetch(WardrikStore.t(), Key.t()) :: {:ok, t()} | :error
-  def fetch(store, %Key{} = key) do
+  @spec fetch(WardrikStore.t(), Resource.t()) :: {:ok, t()} | :error
+  def fetch(store, %Resource{} = key) do
     case WardrikStore.get(store, @ns, to_string(key)) do
       %__MODULE__{} = remote -> {:ok, remote}
       nil -> :error
@@ -101,12 +109,9 @@ defmodule WardrikMCP.Remote do
   end
 
   @doc "The servers `owner` added, by name."
-  @spec list(WardrikStore.t(), Prefix.t()) :: [t()]
+  @spec list(WardrikStore.t(), Resource.t()) :: [t()]
   def list(store, owner) do
-    under = to_string(owner)
-
-    for text <- WardrikStore.keys(store, @ns, under),
-        not String.contains?(String.replace_prefix(text, under, ""), "/"),
+    for text <- WardrikStore.keys(store, @ns, "#{owner}/server/"),
         remote = WardrikStore.get(store, @ns, text),
         do: remote
   end
@@ -124,20 +129,12 @@ defmodule WardrikMCP.Remote do
   def provider(%__MODULE__{} = remote), do: Auth.provider(remote.auth, remote.key, remote.url)
 
   @doc "Forgets the server `key` names."
-  @spec delete(WardrikStore.t(), Key.t()) :: :ok | {:error, :not_found}
-  def delete(store, %Key{} = key) do
+  @spec delete(WardrikStore.t(), Resource.t()) :: :ok | {:error, :not_found}
+  def delete(store, %Resource{} = key) do
     case fetch(store, key) do
       {:ok, _remote} -> WardrikStore.delete(store, @ns, to_string(key))
       :error -> {:error, :not_found}
     end
-  end
-
-  defp named(name) do
-    if name =~ ~r/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/ and not String.contains?(name, "__"),
-      do: :ok,
-      else:
-        {:error,
-         "#{inspect(name)} is not a server's name: letters, digits, - and _, up to 32, never __"}
   end
 
   defp known(fields) do
