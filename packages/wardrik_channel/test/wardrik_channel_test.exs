@@ -1,7 +1,7 @@
 defmodule WardrikChannelTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias WardrikChannel.Channel
   alias WardrikChannel.Installation
   alias WardrikChannel.Installations
@@ -10,7 +10,12 @@ defmodule WardrikChannelTest do
   alias WardrikNotify.Notice
 
   defp installation,
-    do: %Installation{channel: "named", workspace: "T1", owner: Prefix.all(), token: "token"}
+    do: %Installation{
+      channel: "named",
+      workspace: "T1",
+      owner: Resource.deployment(),
+      token: "token"
+    }
 
   defp host, do: Wardrik.Host.new(store: Wardrik.Test.store())
 
@@ -152,9 +157,9 @@ defmodule WardrikChannelTest do
         installations: installations
       )
 
-    acme = Prefix.new!(org: "acme")
+    acme = Resource.parse!("acme")
 
-    assert {:ok, "https://chat.example/install?owner=acme/&return_to=/settings"} =
+    assert {:ok, "https://chat.example/install?owner=acme&return_to=/settings"} =
              WardrikChannel.install_url(channel, acme, return_to: "/settings")
 
     assert %Response{status: 302} =
@@ -171,7 +176,7 @@ defmodule WardrikChannelTest do
   end
 
   test "installs nothing more than its config names, from its config" do
-    config = Installations.Config.new([{:slack, "xoxb-1", Prefix.all()}])
+    config = Installations.Config.new([{:slack, "xoxb-1", Resource.deployment()}])
 
     assert {:ok, %Installation{channel: "slack", workspace: "slack", token: "xoxb-1"}} =
              Installations.fetch(config, "slack", "T0123")

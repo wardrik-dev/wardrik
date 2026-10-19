@@ -8,11 +8,11 @@ export interface ConnectionOptions {
 
 /**
  * The accounts an owner's agents act with: a sign-in an agent's tools use,
- * connected before any agent asks for it. The owner is named by the prefix
- * of their agents, `acme/` for an org's or `acme/@jon/` for a person's.
+ * connected before any agent asks for it. The owner is an org, `acme`, or a
+ * person, `acme/@jon`.
  *
- *     const { connections } = await wardrik.connections.list("acme/@jon/");
- *     const linear = await wardrik.connections.connect("acme/@jon/", "linear");
+ *     const { connections } = await wardrik.connections.list("acme/@jon");
+ *     const linear = await wardrik.connections.connect("acme/@jon", "linear");
  *     if (!linear.connected) console.log("Authorize at", linear.authorization?.url);
  */
 export class Connections {
@@ -41,4 +41,4 @@ export class Connections {
 
 const path = (provider: string): string => `/v1/connections/${encodeURIComponent(provider)}`;
 
-const request = (owner: string, { signal }: ConnectionOptions) => ({ query: { prefix: owner }, signal });
+const request = (owner: string, { signal }: ConnectionOptions) => ({ query: { owner }, signal });

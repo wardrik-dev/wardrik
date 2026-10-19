@@ -31,7 +31,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     org = "life-#{System.unique_integer([:positive])}"
     Host.declare([org])
     Host.start_agents(dir)
-    on_exit(fn -> Fleet.forget_under(Wardrik.AgentID.Prefix.parse!(org <> "/")) end)
+    on_exit(fn -> Fleet.forget_under(Wardrik.Resource.parse!(org <> "/*")) end)
 
     %{dir: dir, org: org, here: Nodes.display(node())}
   end
@@ -53,7 +53,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     run(&CLI.live/1, [terminal | args], input)
   end
 
-  # Arguments are words on a command line, so an ID or a prefix is its text.
+  # Arguments are words on a command line, so an ID or a pattern is its text.
   defp run(entry, args, input) do
     parent = self()
     args = Enum.map(args, &to_string/1)
@@ -116,7 +116,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "spawn", "helper", "--org", org]) ==
                {"#{key} runs already, on #{here}.\n", 0}
 
-      assert Audit.about("agents/#{key}") == [{"agent.spawned", @ops}]
+      assert Audit.about(key) == [{"agent.spawned", @ops}]
     end
 
     test "puts an agent with a user in a file of its own, on the node named", %{
@@ -189,10 +189,10 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "stop", "nobody/here"]) ==
                {"No agent runs under nobody/here.\n", 1}
 
-      assert Audit.about("agents/#{key}") ==
+      assert Audit.about(key) ==
                [{"agent.spawned", @ops}, {"agent.stopped", @ops}, {"agent.spawned", @ops}]
 
-      assert Audit.about("agents/#{loose}") == [{"agent.stopped", @ops}, {"agent.spawned", @ops}]
+      assert Audit.about(loose) == [{"agent.stopped", @ops}, {"agent.spawned", @ops}]
     end
 
     test "keeps a file that is there, and writes none the defaults make no agent of", context do
@@ -227,7 +227,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   end
 
   describe "cancel" do
-    test "ends the turn an agent is taking, or every turn under a prefix", %{org: org} do
+    test "ends the turn an agent is taking, or every turn a pattern covers", %{org: org} do
       key = parked(org, "parker")
 
       assert command(["agent", "cancel", key]) ==
@@ -239,32 +239,34 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "cancel", key]) ==
                {"#{key} is taking no turn, so there is none to cancel.\n", 0}
 
-      assert command(["agent", "cancel", org <> "/"]) ==
-               {"No agent under #{org}/ is taking a turn.\n", 0}
+      assert command(["agent", "cancel", org <> "/agent/*"]) ==
+               {"No agent #{org}/agent/* covers is taking a turn.\n", 0}
 
       :ok = Agent.ask(key, "ship it again", host: Host.host())
       assert_receive %Event{payload: %Event.TurnParked{}}
       assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :parked end)
 
-      assert command(["agent", "cancel", org <> "/"]) ==
+      assert command(["agent", "cancel", org <> "/agent/*"]) ==
                {"Cancelled the turns of #{key}. They keep running.\n", 0}
 
-      assert command(["agent", "cancel", "nobody/"]) ==
-               {"No agent under nobody/ is taking a turn.\n", 0}
+      assert command(["agent", "cancel", "nobody/agent/*"]) ==
+               {"No agent nobody/agent/* covers is taking a turn.\n", 0}
 
       assert command(["agent", "cancel", "nobody/here"]) ==
                {"No agent runs under nobody/here.\n", 1}
 
       assert command(["agent", "cancel", ""]) ==
-               {"Name an agent's key, or a prefix such as acme/.\n", 1}
+               {"Name an agent's key, or a pattern such as 'acme/agent/*'.\n", 1}
 
-      assert Audit.about("agents/#{key}") ==
+      assert Audit.about(key) ==
                [{"agent.cancelled", @ops}, {"agent.cancelled", @ops}]
 
-      assert [_own, %{"data" => %{"under" => under, "actor" => @ops}}] =
-               for(%{"subject" => subject} = e <- Audit.all(), subject == "agents/#{key}", do: e)
+      subject = to_string(Wardrik.AgentID.resource(key))
 
-      assert under == org <> "/"
+      assert [_own, %{"data" => %{"resource" => resource, "actor" => @ops}}] =
+               for(%{"subject" => ^subject} = e <- Audit.all(), do: e)
+
+      assert resource == org <> "/agent/*"
     end
   end
 
@@ -286,9 +288,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       first = agent(org, "first")
       second = agent(org, "second")
 
-      assert command(["agent", "rm", org <> "/"]) == {"", :live}
+      assert command(["agent", "rm", org <> "/agent/*"]) == {"", :live}
 
-      {output, 0} = live(["agent", "rm", org <> "/"], "n\n")
+      {output, 0} = live(["agent", "rm", org <> "/agent/*"], "n\n")
 
       assert output =~
                "This removes 2 agents, their conversations and their triggers, for good:\n" <>
@@ -298,12 +300,12 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert output =~ "Nothing was removed."
       assert status(first) == :idle
 
-      {output, 0} = live(["agent", "rm", org <> "/"], "y\n")
+      {output, 0} = live(["agent", "rm", org <> "/agent/*"], "y\n")
       assert output =~ "Removed #{first} and #{second}."
       refute Fleet.stored?(first)
       refute Fleet.stored?(second)
-      assert Audit.about("agents/#{first}") == [{"agent.forgotten", @ops}]
-      assert Audit.about("agents/#{second}") == [{"agent.forgotten", @ops}]
+      assert Audit.about(first) == [{"agent.forgotten", @ops}]
+      assert Audit.about(second) == [{"agent.forgotten", @ops}]
     end
 
     test "needs --yes where nobody can answer, and removes a stopped agent", %{org: org} do
@@ -318,7 +320,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       refute Fleet.stored?(key)
 
       assert command(["agent", "rm", key]) == {"No agent runs under #{key}.\n", 1}
-      assert command(["agent", "rm", "nobody/"]) == {"Nothing runs under nobody/.\n", 1}
+
+      assert command(["agent", "rm", "nobody/agent/*"]) ==
+               {"No agent nobody/agent/* covers runs.\n", 1}
     end
 
     test "forgets the definition the HTTP API sent", %{org: org} do
@@ -326,7 +330,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       token = %Wardrik.Token{
         principal: Wardrik.Principal.new(:user, "jon"),
-        scope: [Wardrik.Role.bind([:owner], Wardrik.AgentID.Prefix.of(defined))]
+        scope: [Wardrik.Role.bind([:owner], [Wardrik.AgentID.resource(defined)])]
       }
 
       {:ok, spec} =
@@ -354,7 +358,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       assert command(["agent", "rm", helper, "--yes"]) == {declared <> "\n", 1}
 
-      assert command(["agent", "rm", org <> "/", "--yes"]) ==
+      assert command(["agent", "rm", org <> "/agent/*", "--yes"]) ==
                {"Removed #{other}.\n#{declared}\n", 0}
 
       assert status(helper) == :idle
@@ -417,7 +421,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       moved =
         for %{"subject" => subject, "type" => type, "data" => data} <- Audit.all(),
-            subject == "agents/#{key}",
+            subject == to_string(Wardrik.AgentID.resource(key)),
             do: {type, data["node"], data["actor"]}
 
       assert moved == List.duplicate({"wardrik.agent.moved", "wardrik_b@localhost", @ops}, 2)
@@ -510,7 +514,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "kill-call", key, "call_1"]) ==
                {"#{key} is not running call_1.\n", 1}
 
-      assert Audit.about("agents/#{key}") == [{"call.killed", @ops}]
+      assert Audit.about(key) == [{"call.killed", @ops}]
     end
   end
 

@@ -2,8 +2,8 @@ defmodule WardrikChannel.RoomsTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Test.Audit
   alias WardrikChannel.Binding
   alias WardrikChannel.Context
@@ -36,7 +36,7 @@ defmodule WardrikChannel.RoomsTest do
     workspace(%Context{
       host: Wardrik.Host.new(store: Wardrik.Test.store()),
       channel: channel,
-      installations: Installations.Config.new([{channel, "token", Prefix.all()}]),
+      installations: Installations.Config.new([{channel, "token", Resource.deployment()}]),
       offered: {__MODULE__, :offering, [offers]},
       creatable: {__MODULE__, :creatable, [create?]},
       create: {__MODULE__, :creating, [self()]}
@@ -143,7 +143,7 @@ defmodule WardrikChannel.RoomsTest do
       installation: %Installation{
         channel: "chat",
         workspace: "T1",
-        owner: Prefix.all(),
+        owner: Resource.deployment(),
         token: "token"
       }
     }
@@ -166,7 +166,7 @@ defmodule WardrikChannel.RoomsTest do
         Installations.put(installations, %Installation{
           channel: channel,
           workspace: workspace,
-          owner: Prefix.all(),
+          owner: Resource.deployment(),
           token: "token-" <> workspace
         })
     end

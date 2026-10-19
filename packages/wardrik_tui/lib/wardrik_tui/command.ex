@@ -128,8 +128,8 @@ defmodule WardrikTUI.Command do
         label: "Stop the turn",
         available: & &1.busy?,
         shortcut: "Esc",
-        usage: "/stop [NAME | PREFIX/]",
-        summary: "interrupt this agent, another, or every agent under a prefix",
+        usage: "/stop [NAME | PATTERN]",
+        summary: "interrupt this agent, another, or every agent a pattern covers",
         parse: &stop/1
       },
       %__MODULE__{
@@ -144,7 +144,7 @@ defmodule WardrikTUI.Command do
         name: "/rm",
         label: "Remove an agent and its conversation",
         arguments: [:agent],
-        usage: "/rm NAME | PREFIX/ [--yes]",
+        usage: "/rm NAME | PATTERN [--yes]",
         summary: "delete an agent and its conversation, after showing what goes",
         parse: &rm/1
       },

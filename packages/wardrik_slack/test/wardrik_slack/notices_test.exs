@@ -34,7 +34,7 @@ defmodule WardrikSlack.NoticesTest do
       )
 
   test "names the agent as the workspace it is posted in reads it" do
-    org = %{WardrikSlack.Test.installation() | owner: Wardrik.AgentID.Prefix.new!(org: "acme")}
+    org = %{WardrikSlack.Test.installation() | owner: Wardrik.Resource.parse!("acme")}
 
     {:ok, _posted} =
       WardrikSlack.deliver(

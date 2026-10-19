@@ -154,8 +154,8 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     defp decider(principal, roles) do
-      prefix = Wardrik.AgentID.Prefix.new!(org: "acme", user: "jon")
-      %Wardrik.Token{principal: principal, scope: [Wardrik.Role.bind(roles, prefix)]}
+      jons = Wardrik.Resource.parse!("acme/@jon/agent/*")
+      %Wardrik.Token{principal: principal, scope: [Wardrik.Role.bind(roles, [jons])]}
     end
 
     test "a turn takes the oldest sender's messages, up to the next sender's" do
@@ -428,7 +428,7 @@ defmodule Wardrik.Agent.StateTest do
       assert answer.text =~ "Two are open."
       assert answer.labels == ["outside"]
       assert Wardrik.Principal.type(answer.sender) == :agent
-      assert Wardrik.Principal.id(answer.sender) == "acme/@jon/assistant"
+      assert Wardrik.Principal.id(answer.sender) == "acme/@jon/agent/assistant"
       assert answer.reply_to == []
       assert state.answering == []
     end

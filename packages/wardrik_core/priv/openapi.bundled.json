@@ -88,29 +88,10 @@
           "type": "string"
         }
       },
-      "owner_prefix": {
-        "description": "The owner's agents, as acme/ for an org's or acme/@jon/ for a person's.",
+      "owner": {
+        "description": "The owner, as acme for an org or acme/@jon for a person.",
         "in": "query",
-        "name": "prefix",
-        "required": true,
-        "schema": {
-          "type": "string"
-        }
-      },
-      "prefix": {
-        "description": "The agents under it, as acme/ or acme/@jon/; the token's whole scope where left out.",
-        "in": "query",
-        "name": "prefix",
-        "required": false,
-        "schema": {
-          "type": "string"
-        }
-      },
-      "prefix_named": {
-        "allowEmptyValue": true,
-        "description": "The agents under it, as acme/; prefix= alone is every agent.",
-        "in": "query",
-        "name": "prefix",
+        "name": "owner",
         "required": true,
         "schema": {
           "type": "string"
@@ -120,6 +101,24 @@
         "description": "The account's provider.",
         "in": "path",
         "name": "provider",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "resource": {
+        "description": "The agents the pattern covers, as acme/agent/* or acme/@jon/*; those the token's one resource covers where left out.",
+        "in": "query",
+        "name": "resource",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "resource_named": {
+        "description": "The agents the pattern covers, as acme/agent/*.",
+        "in": "query",
+        "name": "resource",
         "required": true,
         "schema": {
           "type": "string"
@@ -1724,7 +1723,7 @@
                 "type": "array"
               },
               "resources": {
-                "description": "The agents it allows them on, each by its prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent.",
+                "description": "What it allows them on, each a resource pattern, as IAM writes one: * matches anything, / included, and ? one character. acme/agent/* is acme's own agents, acme/@jon/* everything of jon's in acme, acme/* everything of acme's and its users', and * everything.",
                 "items": {
                   "type": "string"
                 },
@@ -2173,16 +2172,18 @@
       },
       "InputTokensCreate": {
         "additionalProperties": false,
-        "description": "What making an API token takes: its name, the agents it reaches, and the roles it holds there. It acts for whoever makes it.",
+        "description": "What making an API token takes: its name, the resources it reaches, and the roles it holds there. It acts for whoever makes it.",
         "examples": [
           {
             "expires_in": 2592000,
             "name": "ci",
+            "resources": [
+              "acme/agent/*"
+            ],
             "roles": [
               "reader",
               "messenger"
-            ],
-            "scope": "acme/"
+            ]
           }
         ],
         "properties": {
@@ -2199,6 +2200,14 @@
             "description": "The policy every agent it defines runs under, ahead of the agent's own, by the name the server holds it under: what IAM calls a permissions boundary. The token making it names its own where this is left out.",
             "type": "string"
           },
+          "resources": {
+            "description": "What it reaches, each a resource pattern: acme/agent/* for acme's own agents, acme/@jon/* for everything of a user's, acme/* for everything of the org's and its users', acme/agent/triage for one agent, or * for everything.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
           "roles": {
             "description": "What it may do there, each a named set of actions.",
             "items": {
@@ -2214,15 +2223,11 @@
             },
             "minItems": 1,
             "type": "array"
-          },
-          "scope": {
-            "description": "The agents it reaches, by their prefix: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', an agent's ID, or empty for every agent.",
-            "type": "string"
           }
         },
         "required": [
           "name",
-          "scope",
+          "resources",
           "roles"
         ],
         "title": "tokens.create",
@@ -2422,7 +2427,7 @@
         "type": "object"
       },
       "Placement": {
-        "description": "Where to start it: on node, to a token over every agent alone; anywhere where left out.",
+        "description": "Where to start it: on node, to a token over deployment/* alone; anywhere where left out.",
         "properties": {
           "node": {
             "description": "A node's name, as wardrik@host.",
@@ -2799,7 +2804,7 @@
     }
   },
   "info": {
-    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token, whose statements each allow some actions on the agents under a prefix; an agent none reaches is answered as one that does not exist, 404, and one reached without the action, 403. An expired token is answered 401. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
+    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. A chat channel's requests, under /v1/channels/, are the channel's own, and call none. Every request presents a bearer token, whose statements each allow some actions on the resources a pattern covers, as acme/agent/*; an agent none reaches is answered as one that does not exist, 404, and one reached without the action, 403. An expired token is answered 401. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
     "license": {
       "identifier": "Apache-2.0",
       "name": "Apache-2.0"
@@ -2812,11 +2817,11 @@
   "paths": {
     "/v1/agents": {
       "delete": {
-        "description": "Removes every agent under the prefix, with everything each had, but those an agent file declares.",
+        "description": "Removes every agent the pattern covers, with everything each had, but those an agent file declares.",
         "operationId": "agents_forget",
         "parameters": [
           {
-            "$ref": "#/components/parameters/prefix_named"
+            "$ref": "#/components/parameters/resource_named"
           }
         ],
         "responses": {
@@ -2843,7 +2848,7 @@
             "$ref": "#/components/responses/NotFound"
           }
         },
-        "summary": "Remove every agent under a prefix",
+        "summary": "Remove every agent a pattern covers",
         "tags": [
           "Agents"
         ],
@@ -2853,7 +2858,7 @@
         "operationId": "agents_list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/prefix"
+            "$ref": "#/components/parameters/resource"
           }
         ],
         "responses": {
@@ -2880,7 +2885,7 @@
             "$ref": "#/components/responses/NotFound"
           }
         },
-        "summary": "The agents under a prefix",
+        "summary": "The agents a pattern covers",
         "tags": [
           "Agents"
         ],
@@ -2892,7 +2897,7 @@
         "operationId": "agents_cancel",
         "parameters": [
           {
-            "$ref": "#/components/parameters/prefix_named"
+            "$ref": "#/components/parameters/resource_named"
           }
         ],
         "responses": {
@@ -2919,7 +2924,7 @@
             "$ref": "#/components/responses/NotFound"
           }
         },
-        "summary": "Cancel the turn of every agent under a prefix",
+        "summary": "Cancel the turn of every agent a pattern covers",
         "tags": [
           "Agents"
         ],
@@ -3516,7 +3521,7 @@
         }
       ],
       "post": {
-        "description": "To a token over every agent alone.",
+        "description": "To a token over deployment/* alone.",
         "operationId": "user_agent_move",
         "requestBody": {
           "content": {
@@ -3572,7 +3577,7 @@
         }
       ],
       "post": {
-        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over every agent alone.",
+        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over deployment/* alone.",
         "operationId": "user_agent_spawn",
         "requestBody": {
           "content": {
@@ -4327,7 +4332,7 @@
         }
       ],
       "post": {
-        "description": "To a token over every agent alone.",
+        "description": "To a token over deployment/* alone.",
         "operationId": "agent_move",
         "requestBody": {
           "content": {
@@ -4380,7 +4385,7 @@
         }
       ],
       "post": {
-        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over every agent alone.",
+        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over deployment/* alone.",
         "operationId": "agent_spawn",
         "requestBody": {
           "content": {
@@ -4644,7 +4649,7 @@
         "operationId": "connections_list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -4686,7 +4691,7 @@
         "operationId": "connections_disconnect",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -4734,7 +4739,7 @@
         "operationId": "connections_connect",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -5225,7 +5230,7 @@
         "operationId": "agents_parked",
         "parameters": [
           {
-            "$ref": "#/components/parameters/prefix"
+            "$ref": "#/components/parameters/resource"
           }
         ],
         "responses": {
@@ -5252,7 +5257,7 @@
             "$ref": "#/components/responses/NotFound"
           }
         },
-        "summary": "The calls agents under a prefix wait on a person for",
+        "summary": "The calls agents a pattern covers wait on a person for",
         "tags": [
           "Agents"
         ],
@@ -5264,7 +5269,7 @@
         "operationId": "servers_list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -5304,7 +5309,7 @@
         "operationId": "servers_add",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "requestBody": {
@@ -5359,7 +5364,7 @@
         "operationId": "servers_remove",
         "parameters": [
           {
-            "$ref": "#/components/parameters/owner_prefix"
+            "$ref": "#/components/parameters/owner"
           }
         ],
         "responses": {
@@ -5572,11 +5577,11 @@
       "name": "Exports"
     },
     {
-      "description": "The deployment itself, to a token over every agent.",
+      "description": "The deployment itself, to a token over deployment/*.",
       "name": "Deployment"
     },
     {
-      "description": "The API's tokens, to a token over every agent.",
+      "description": "The API's tokens, to a token over deployment/*.",
       "name": "Tokens"
     },
     {

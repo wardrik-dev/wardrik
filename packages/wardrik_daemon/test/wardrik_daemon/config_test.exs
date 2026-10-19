@@ -1,9 +1,10 @@
 defmodule WardrikDaemon.ConfigTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.AgentID.Prefix
   alias WardrikChannel.Approvers.Named
   alias WardrikDaemon.Config
+
+  defp r(text), do: Wardrik.Resource.parse!(text)
 
   @moduletag :tmp_dir
 
@@ -47,7 +48,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:ok, [{WardrikDaemon, [org: "acme", orgs: ["acme"], ceilings: %{}]}]} =
                read_all("org: acme\n", context)
 
-      for org <- ["_acme", "@acme", "a/b"] do
+      for org <- ["_acme", "@acme", "a/b", "deployment"] do
         assert {:error, message} = read_all("org: #{inspect(org)}\n", context)
         assert message =~ "which is not an org"
       end
@@ -79,10 +80,10 @@ defmodule WardrikDaemon.ConfigTest do
       assert settings[WardrikDaemon][:orgs] == ["acme", "globex", "initech"]
 
       servers = settings[WardrikMCP][:servers]
-      assert servers[:mine][:serves] == [Prefix.tenant!("acme")]
-      assert servers[:theirs][:serves] == [Prefix.tenant!("globex")]
-      assert servers[:shared][:serves] == [Prefix.tenant!("acme"), Prefix.tenant!("globex")]
-      assert servers[:public][:serves] == [Prefix.all()]
+      assert servers[:mine][:serves] == [r("acme/*")]
+      assert servers[:theirs][:serves] == [r("globex/*")]
+      assert servers[:shared][:serves] == [r("acme/*"), r("globex/*")]
+      assert servers[:public][:serves] == [r("*")]
 
       targets = settings[WardrikNotify][:targets]
       assert {WardrikNotify.Webhook, ops} = targets[:ops]
@@ -143,6 +144,9 @@ defmodule WardrikDaemon.ConfigTest do
 
       assert {:error, message} = read_all("orgs:\n  _x: {}\n", context)
       assert message =~ "orgs._x is not an org"
+
+      assert {:error, message} = read_all("orgs:\n  deployment: {}\n", context)
+      assert message =~ "orgs.deployment is not an org"
     end
 
     test "a server or a target names no org of its own", context do
@@ -252,14 +256,14 @@ defmodule WardrikDaemon.ConfigTest do
                    shared:
                      acme/runbooks:
                        read: ["acme/*"]
-                       write: [acme/ops]
+                       write: [acme/agent/ops, "acme/agent/ops/*"]
                  """,
                  context
                )
 
       assert share.tree == "acme/runbooks"
       assert Enum.map(share.read, &to_string/1) == ["acme/*"]
-      assert Enum.map(share.write, &to_string/1) == ["acme/ops"]
+      assert Enum.map(share.write, &to_string/1) == ["acme/agent/ops", "acme/agent/ops/*"]
 
       assert {:error, message} =
                read("workspace:\n  shared:\n    acme/runbooks: {read: [\"/x\"]}\n", context)
@@ -267,7 +271,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "workspace.shared.acme/runbooks does not read"
 
       assert {:error, message} =
-               read("workspace:\n  shared:\n    acme/runbooks: {read: [acmee/]}\n", context)
+               read("workspace:\n  shared:\n    acme/runbooks: {read: [acmee/*]}\n", context)
 
       assert message =~
                "workspace.shared.acme/runbooks names acmee is not an org config.yaml declares"
@@ -643,11 +647,11 @@ defmodule WardrikDaemon.ConfigTest do
       assert %WardrikChannel.Installation{channel: "chat", workspace: "chat", token: "xoxb-1"} =
                chat
 
-      assert to_string(chat.owner) == "default/"
+      assert to_string(chat.owner) == "default"
       assert {:ok, acme} = WardrikChannel.Installations.fetch(installations, "acme", "T1")
-      assert to_string(acme.owner) == "acme/"
+      assert to_string(acme.owner) == "acme"
       assert {:ok, all} = WardrikChannel.Installations.fetch(installations, "all", "T1")
-      assert all.owner == Prefix.all()
+      assert all.owner == Wardrik.Resource.deployment()
       refute Keyword.has_key?(settings[:channels][:chat] |> elem(1), :token)
 
       assert {:error, message} = read("channels:\n  chat: {type: test, token: 1}\n", context)
@@ -690,7 +694,7 @@ defmodule WardrikDaemon.ConfigTest do
                installation: %WardrikChannel.Installation{
                  channel: "chat",
                  workspace: "chat",
-                 owner: Prefix.new!(org: "default"),
+                 owner: Wardrik.Resource.parse!("default"),
                  token: "xoxb-1"
                },
                orgs: ["default"],

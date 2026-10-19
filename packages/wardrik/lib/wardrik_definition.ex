@@ -38,10 +38,9 @@ defmodule WardrikDefinition do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Retry.Backoff
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikDefinition.Context
   alias WardrikPolicy.Pattern
 
@@ -243,7 +242,7 @@ defmodule WardrikDefinition do
   """
   @spec missing(fields(), AgentID.t(), Context.t()) :: [String.t()]
   def missing(fields, %AgentID{} = owner, %Context{} = context) do
-    case Wardrik.Servers.list(context.added, Prefix.owner(owner)) do
+    case Wardrik.Servers.list(context.added, Resource.owner(AgentID.resource(owner))) do
       :unsupported ->
         []
 
@@ -517,7 +516,7 @@ defmodule WardrikDefinition do
       for {ref, opts} <- context.servers,
           context.mcp,
           reach(key, ref, opts, context) == :ok,
-          do: {context.mcp, Key.deployment(Atom.to_string(ref))}
+          do: {context.mcp, Resource.new(Resource.deployment(), server: Atom.to_string(ref))}
 
     context.tools ++ servers ++ for({_name, source} <- context.sources, do: {source, key})
   end
@@ -590,21 +589,21 @@ defmodule WardrikDefinition do
   # configures; one neither has is the owner's to add, where the host lets
   # owners add servers.
   defp server!(name, context, key) do
-    owner = Prefix.owner(key)
+    owner = Resource.owner(AgentID.resource(key))
     added = Wardrik.Servers.list(context.added, owner)
 
     cond do
       context.mcp == nil -> invalid!(unconfigured(name, context))
-      added?(added, name) -> {context.mcp, Key.new(owner, name)}
+      added?(added, name) -> {context.mcp, Resource.new(owner, server: name)}
       ref = configured(context)[name] -> configured!(name, ref, context, key)
-      added != :unsupported -> {context.mcp, Key.new(owner, name)}
+      added != :unsupported -> {context.mcp, Resource.new(owner, server: name)}
       true -> invalid!(unconfigured(name, context))
     end
   end
 
   defp configured!(name, ref, context, key) do
     case reach(key, ref, Keyword.fetch!(context.servers, ref), context) do
-      :ok -> {context.mcp, Key.deployment(name)}
+      :ok -> {context.mcp, Resource.new(Resource.deployment(), server: name)}
       {:error, why} -> invalid!("tools names #{name}/*, but #{why}")
     end
   end
@@ -619,12 +618,12 @@ defmodule WardrikDefinition do
       "tools names #{name}/*, but #{context.names.config} configures no server #{name}" <>
         configured_servers(configured(context))
 
-  # Whether the agent `id` can reach the server `ref`: one serving a prefix
+  # Whether the agent `id` can reach the server `ref`: one serving a pattern
   # that covers it.
   defp reach(%AgentID{} = id, ref, opts, context) do
-    serves = Keyword.get(opts, :serves, [Prefix.all()])
+    serves = Keyword.get(opts, :serves, [Resource.parse!("*")])
 
-    if Enum.any?(serves, &Prefix.covers?(&1, id)),
+    if Enum.any?(serves, &Resource.covers?(&1, AgentID.resource(id))),
       do: :ok,
       else: {:error, not_served(ref, serves, id, context)}
   end

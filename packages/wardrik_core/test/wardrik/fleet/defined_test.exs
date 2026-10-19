@@ -6,7 +6,6 @@ defmodule Wardrik.Fleet.DefinedTest do
   alias DurableServer.StorageBackend
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.LLM.Config
@@ -31,7 +30,7 @@ defmodule Wardrik.Fleet.DefinedTest do
              Fleet.lookup(key, host: Wardrik.Test.host())
 
     assert [%Fleet.Member{id: ^key, asleep: true}] =
-             Fleet.list(Prefix.of(key), host: Wardrik.Test.host())
+             Fleet.list(Wardrik.AgentID.resource(key), host: Wardrik.Test.host())
 
     LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Hello.")])
     :ok = Event.Bus.subscribe(key)
@@ -83,7 +82,7 @@ defmodule Wardrik.Fleet.DefinedTest do
 
     assert Fleet.whereis(key, host: none) == nil
     assert Fleet.lookup(key, host: none) == nil
-    assert Fleet.list(Prefix.of(key), host: none) == []
+    assert Fleet.list(Wardrik.AgentID.resource(key), host: none) == []
     assert %Fleet.Member{asleep: true} = Fleet.lookup(key, host: Wardrik.Test.host())
   end
 
@@ -96,7 +95,7 @@ defmodule Wardrik.Fleet.DefinedTest do
 
     assert Fleet.whereis(key, host: Wardrik.Test.host()) == nil
     assert Fleet.lookup(key, host: Wardrik.Test.host()) == nil
-    assert Fleet.list(Prefix.of(key), host: Wardrik.Test.host()) == []
+    assert Fleet.list(Wardrik.AgentID.resource(key), host: Wardrik.Test.host()) == []
     assert {:error, :not_found} = Agent.ask(key, "hello", host: Wardrik.Test.host())
   end
 

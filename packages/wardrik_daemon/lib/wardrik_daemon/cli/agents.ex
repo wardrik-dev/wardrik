@@ -56,7 +56,7 @@ defmodule WardrikDaemon.CLI.Agents do
       %Command{
         name: "triggers",
         group: "Manage agents",
-        arguments: "[PREFIX]",
+        arguments: "[PATTERN]",
         summary: "when each trigger runs next, and how it last ran",
         count: {0, 1},
         run: &triggers/2
@@ -84,7 +84,7 @@ defmodule WardrikDaemon.CLI.Agents do
   defp picked(words, opts) do
     case Filter.parse(Enum.join(words, " ")) do
       {:ok, filter} ->
-        members = Fleet.list(Wardrik.AgentID.Prefix.all(), host: opts[:as].host)
+        members = Fleet.list(Wardrik.Resource.parse!("*"), host: opts[:as].host)
         {:ok, Enum.filter(members, &Filter.match?(filter, &1, &1.status == :parked))}
 
       {:error, word} ->
@@ -336,17 +336,15 @@ defmodule WardrikDaemon.CLI.Agents do
   # -- triggers ----------------------------------------------------------------
 
   defp triggers(words, _opts) do
-    prefix = List.first(words, Wardrik.AgentID.Prefix.all())
+    pattern = List.first(words, Wardrik.Resource.parse!("*"))
     now = DateTime.utc_now()
 
     rows =
-      for trigger <- WardrikTrigger.list(prefix),
+      for trigger <- WardrikTrigger.list(pattern),
           do: "  #{trigger.agent}/#{trigger.name}  #{trigger(trigger, now)}"
 
-    under = to_string(prefix)
-
     case rows do
-      [] -> {:ok, "No agent has a trigger#{if under != "", do: " under #{under}"}."}
+      [] -> {:ok, "No agent #{pattern} covers has a trigger."}
       [_row] -> {:ok, Enum.join(["1 trigger:" | rows], "\n")}
       rows -> {:ok, Enum.join(["#{length(rows)} triggers:" | rows], "\n")}
     end

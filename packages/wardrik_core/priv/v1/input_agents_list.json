@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:input_agents_list",
   "title": "agents.list",
-  "description": "What listing the agents under a prefix takes: nothing but the prefix.",
+  "description": "What listing the agents a pattern covers takes: nothing but the pattern.",
   "type": "object",
   "additionalProperties": false,
   "properties": {},

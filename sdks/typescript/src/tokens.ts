@@ -1,11 +1,14 @@
 import type { Http } from "./http.ts";
 import type { Token, Tokens as TokenList, TokenIssued } from "./protocol.ts";
 
-/** A token to make: its name, the agents it reaches, and the roles it holds there. */
+/** A token to make: its name, the resources it reaches, and the roles it holds there. */
 export interface TokenFields {
   name: string;
-  /** The agents' prefix: `acme/`, `acme/@jon/`, `acme/*`, an agent's key, or `""` for every agent. */
-  scope: string;
+  /**
+   * What it reaches, each a resource pattern: `acme/agent/*` for acme's own agents, `acme/@jon/*`
+   * for everything of a user's, `acme/*` for the org and its users', or `*` for everything.
+   */
+  resources: string[];
   /** Each a named set of actions: reader, messenger, approver, definer, worker or owner. */
   roles: string[];
   /**
@@ -18,11 +21,11 @@ export interface TokenFields {
 }
 
 /**
- * The API's tokens, for a token owning every agent. A token made here acts
- * for whoever made it, and its secret is given this once.
+ * The API's tokens, for a token owning `*` or `deployment/*`. A token made
+ * here acts for whoever made it, and its secret is given this once.
  *
  *     const { token, secret } = await wardrik.tokens.create({
- *       name: "ci", scope: "acme/", roles: ["reader", "messenger"], expiresIn: 86_400 });
+ *       name: "ci", resources: ["acme/agent/*"], roles: ["reader", "messenger"], expiresIn: 86_400 });
  *     await wardrik.tokens.revoke(token.id);
  */
 export class Tokens {
@@ -39,9 +42,9 @@ export class Tokens {
   }
 
   /** Makes a token: it, and the secret that presents it. */
-  create({ name, scope, roles, policy, expiresIn }: TokenFields): Promise<TokenIssued> {
+  create({ name, resources, roles, policy, expiresIn }: TokenFields): Promise<TokenIssued> {
     return this.#http.json("POST", "/v1/tokens", {
-      body: { name, scope, roles, policy, expires_in: expiresIn },
+      body: { name, resources, roles, policy, expires_in: expiresIn },
     });
   }
 

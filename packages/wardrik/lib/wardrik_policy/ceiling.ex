@@ -13,7 +13,6 @@ defmodule WardrikPolicy.Ceiling do
 
   @behaviour Wardrik.Hook
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Call
   alias WardrikPolicy.Budget
   alias WardrikPolicy.Spend
@@ -21,11 +20,11 @@ defmodule WardrikPolicy.Ceiling do
   @enforce_keys [:budget, :org]
   defstruct [:budget, :org]
 
-  @type t() :: %__MODULE__{budget: Budget.t(), org: Prefix.t()}
+  @type t() :: %__MODULE__{budget: Budget.t(), org: String.t()}
 
   @doc "The ceiling `budget` puts on every agent of `org` together."
   @spec new(Budget.t(), String.t()) :: t()
-  def new(%Budget{} = budget, org), do: %__MODULE__{budget: budget, org: Prefix.tenant!(org)}
+  def new(%Budget{} = budget, org), do: %__MODULE__{budget: budget, org: org}
 
   @impl Wardrik.Hook
   def init(%__MODULE__{} = ceiling), do: ceiling
@@ -34,7 +33,7 @@ defmodule WardrikPolicy.Ceiling do
   def call(%Call{run: run} = call, %__MODULE__{} = ceiling) do
     Budget.check(ceiling.budget, call,
       key: key(ceiling, run.source.trace.trace_id),
-      spender: "#{Prefix.org(ceiling.org)}'s agents have spent"
+      spender: "#{ceiling.org}'s agents have spent"
     )
   end
 
@@ -66,13 +65,13 @@ defmodule WardrikPolicy.Ceiling do
         nil
 
       %Spend{} = spend ->
-        "#{Budget.said(ceiling.budget, spend)} across #{Prefix.org(ceiling.org)}"
+        "#{Budget.said(ceiling.budget, spend)} across #{ceiling.org}"
     end
   end
 
   defp key(ceiling, trace_id) do
     Spend.pooled(
-      ceiling.org,
+      Wardrik.Resource.parse!(ceiling.org <> "/*"),
       ceiling.budget.meter,
       Budget.window(ceiling.budget, trace_id, DateTime.utc_now())
     )

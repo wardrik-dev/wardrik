@@ -3,7 +3,6 @@ defmodule WardrikHTTP.TokensTest do
 
   import Wardrik.Test, only: [store: 0]
 
-  alias Wardrik.AgentID.Prefix
   alias WardrikHTTP.Token
   alias WardrikHTTP.Tokens
 
@@ -12,7 +11,7 @@ defmodule WardrikHTTP.TokensTest do
   test "makes, lists and revokes the API's tokens, as Wardrik.Tokens asks" do
     token = %Wardrik.Token{
       principal: Wardrik.Principal.new(:user, "jon"),
-      scope: [Wardrik.Role.bind([:reader], Prefix.parse!("acme/"))]
+      scope: [Wardrik.Role.bind([:reader], [Wardrik.Resource.parse!("acme/agent/*")])]
     }
 
     assert {:ok, %Wardrik.Tokens.Entry{id: id, name: "ci", token: ^token, secret: secret}} =

@@ -5,7 +5,6 @@ defmodule WardrikHTTP.WorkerTest do
 
   import ExUnit.CaptureLog
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Ledger
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
@@ -116,14 +115,14 @@ defmodule WardrikHTTP.WorkerTest do
     Token.create(store(), name,
       token: %Wardrik.Token{
         principal: Wardrik.Principal.new(:user, "ci"),
-        scope: [Wardrik.Role.bind(roles, scope)]
+        scope: [Wardrik.Role.bind(roles, [Wardrik.Resource.parse!(scope)])]
       }
     )
   end
 
   setup do
     {:ok, secret, _token} =
-      token("worker-test", Prefix.tenant!("test"))
+      token("worker-test", "test/*")
 
     listener = :"worker-#{System.unique_integer([:positive])}"
 
@@ -389,7 +388,7 @@ defmodule WardrikHTTP.WorkerTest do
     connect(context, [tool("echo")])
 
     {:ok, second, _token} =
-      token("second", Prefix.parse!("test/"))
+      token("second", "test/agent/*")
 
     log =
       capture_log(fn -> connect(context, [tool("echo", %{"readOnlyHint" => true})], second) end)
@@ -408,7 +407,7 @@ defmodule WardrikHTTP.WorkerTest do
       context,
       [tool("echo")],
       elem(
-        token("elsewhere", Prefix.parse!("test/only/")),
+        token("elsewhere", "test/agent/only"),
         1
       )
     )
@@ -444,7 +443,7 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "a worker out of an agent's reach does not decide whether its call runs again", context do
     {:ok, elsewhere, _token} =
-      token("elsewhere", Prefix.parse!("other/"))
+      token("elsewhere", "other/agent/*")
 
     connect(context, [tool("refund", %{"idempotentHint" => true})], elsewhere)
     connect(context, [tool("refund")])
@@ -503,7 +502,7 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "a token that may not serve is refused the socket", %{port: port} do
     {:ok, secret, _token} =
-      token("reader", Prefix.parse!("test/"), [:reader])
+      token("reader", "test/agent/*", [:reader])
 
     assert {:error, %WebSockex.RequestError{code: 403}} =
              FakeWorker.start_link(port, secret, self(), [tool("echo")])
@@ -512,7 +511,7 @@ defmodule WardrikHTTP.WorkerTest do
   test "a worker's socket closes when its token is revoked",
        context do
     {:ok, secret, token} =
-      token("revoked", Prefix.parse!("test/"))
+      token("revoked", "test/agent/*")
 
     worker = connect(context, [tool("echo")], secret)
     monitor = Process.monitor(worker)

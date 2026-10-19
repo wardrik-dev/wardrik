@@ -151,7 +151,7 @@ await wardrik.work();
 Give it a token that serves acme's agents, and run it:
 
 ```sh
-wardrik token create statuspage --scope acme/ --role worker
+wardrik token create statuspage --resource 'acme/agent/*' --role worker
 WARDRIK_TOKEN=wardrik_... node statuspage.ts
 ```
 

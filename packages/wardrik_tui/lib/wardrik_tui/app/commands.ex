@@ -5,10 +5,10 @@ defmodule WardrikTUI.App.Commands do
   import Breeze.View, only: [assign: 2]
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Fleet
   alias Wardrik.Moving
+  alias Wardrik.Resource
   alias Wardrik.Spawned
   alias WardrikConsole.Nodes
   alias WardrikTUI.App.Connection
@@ -248,7 +248,7 @@ defmodule WardrikTUI.App.Commands do
 
   defp matching(term, name) do
     text = name |> String.trim_leading("/") |> String.downcase()
-    {:ok, fleet} = Wardrik.agents_list(WardrikTUI.App.scope(term), Prefix.all())
+    {:ok, fleet} = Wardrik.agents_list(WardrikTUI.App.scope(term), Resource.parse!("*"))
     Enum.filter(fleet, &String.contains?(String.downcase(to_string(&1.id)), text))
   end
 
@@ -265,24 +265,26 @@ defmodule WardrikTUI.App.Commands do
     end
   end
 
-  # `/stop NAME` interrupts one agent, and `/stop PREFIX/` every agent under a
-  # prefix. Both leave the agents running.
+  # `/stop NAME` interrupts one agent, and `/stop PATTERN` every agent the
+  # pattern covers, as acme/agent/*. Both leave the agents running.
   defp stop(term, target) do
     target = String.trim_leading(target, "/")
 
-    if String.ends_with?(target, "/"),
+    if pattern?(target),
       do: stop_under(term, target),
       else: with_id(term, target, &stop_one(term, &1))
   end
 
-  # This client may cancel every agent, so a cancel under a prefix it can
+  defp pattern?(target), do: String.contains?(target, ["*", "?"])
+
+  # This client may cancel every agent, so a cancel of a pattern it can
   # name always answers.
   defp stop_under(term, target) do
-    case Prefix.expand(target, term.assigns.org) do
-      {:ok, prefix} ->
-        {:ok, cancelled} = Wardrik.agents_cancel(WardrikTUI.App.scope(term), prefix)
+    case Resource.parse(target) do
+      {:ok, pattern} ->
+        {:ok, cancelled} = Wardrik.agents_cancel(WardrikTUI.App.scope(term), pattern)
 
-        Display.append(term, View.stopped_under(prefix, length(cancelled)))
+        Display.append(term, View.stopped_under(pattern, length(cancelled)))
 
       {:error, message} ->
         Display.append(term, View.error(message))
@@ -314,20 +316,21 @@ defmodule WardrikTUI.App.Commands do
     end
   end
 
-  # Prefix removal always previews exact targets. A single named agent may
-  # be removed at once with `--yes`. The attached agent is left out and named.
+  # Removing by pattern always previews exact targets. A single named agent
+  # may be removed at once with `--yes`. The attached agent is left out and
+  # named.
   defp remove(term, target, confirmed?) do
     target = String.trim_leading(target, "/")
 
-    if String.ends_with?(target, "/"),
+    if pattern?(target),
       do: remove_under(term, target),
       else: with_id(term, target, &remove_one(term, &1, target, confirmed?))
   end
 
   defp remove_under(%{assigns: %{agent_id: attached}} = term, target) do
-    case Prefix.expand(target, term.assigns.org) do
-      {:ok, prefix} ->
-        {:ok, members} = Wardrik.agents_list(WardrikTUI.App.scope(term), prefix)
+    case Resource.parse(target) do
+      {:ok, pattern} ->
+        {:ok, members} = Wardrik.agents_list(WardrikTUI.App.scope(term), pattern)
         ids = Enum.map(members, & &1.id)
 
         case {List.delete(ids, attached), if(attached in ids, do: attached)} do

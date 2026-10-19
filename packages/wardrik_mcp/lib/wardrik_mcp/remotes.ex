@@ -13,7 +13,7 @@ defmodule WardrikMCP.Remotes do
 
   use GenServer
 
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikMCP.Connection
   alias WardrikMCP.Offer
   alias WardrikMCP.Remote
@@ -31,8 +31,8 @@ defmodule WardrikMCP.Remotes do
   node where an owner added it and it is not running: `nil` where no owner
   added it, or where this node runs no `WardrikMCP.Supervisor`.
   """
-  @spec offer(Key.t()) :: Offer.t() | nil
-  def offer(%Key{} = key) do
+  @spec offer(Resource.t()) :: Offer.t() | nil
+  def offer(%Resource{} = key) do
     GenServer.call(__MODULE__, {:offer, key})
   catch
     :exit, {:noproc, _call} -> nil
@@ -42,7 +42,7 @@ defmodule WardrikMCP.Remotes do
   The servers `owner` added, by key: none where this node runs no
   `WardrikMCP.Supervisor`.
   """
-  @spec added(Wardrik.AgentID.Prefix.t()) :: [Key.t()]
+  @spec added(Resource.t()) :: [Resource.t()]
   def added(owner) do
     GenServer.call(__MODULE__, {:added, owner})
   catch

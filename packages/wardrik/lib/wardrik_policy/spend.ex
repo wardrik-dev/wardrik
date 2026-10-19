@@ -28,12 +28,12 @@ defmodule WardrikPolicy.Spend do
     do: "#{Wardrik.AgentID.put_external_id(agent, nil)}|#{meter}|#{window}"
 
   @doc """
-  The name of what every agent under `prefix` has spent together against the
-  budget `meter` names in `window`, as a meter is keyed: one meter for all of
-  them, apart from each agent's own.
+  The name of what every agent the `Wardrik.Resource` pattern covers has
+  spent together against the budget `meter` names in `window`, as a meter
+  is keyed: one meter for all of them, apart from each agent's own.
   """
-  @spec pooled(Wardrik.AgentID.Prefix.t(), String.t(), String.t()) :: String.t()
-  def pooled(prefix, meter, window), do: "#{prefix}|#{meter}|#{window}"
+  @spec pooled(Wardrik.Resource.t(), String.t(), String.t()) :: String.t()
+  def pooled(pattern, meter, window), do: "#{pattern}|#{meter}|#{window}"
 
   @doc "The spend with `micro_usd` and `tokens` more spent."
   @spec spend(t(), non_neg_integer(), non_neg_integer()) :: t()

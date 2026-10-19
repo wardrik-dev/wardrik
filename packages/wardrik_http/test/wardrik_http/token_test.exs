@@ -3,7 +3,7 @@ defmodule WardrikHTTP.TokenTest do
 
   import Wardrik.Test, only: [store: 0]
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias WardrikHTTP.Token
 
@@ -11,7 +11,10 @@ defmodule WardrikHTTP.TokenTest do
 
   defp token(roles, opts \\ []) do
     struct!(
-      %Wardrik.Token{principal: @jon, scope: [Role.bind(roles, Prefix.parse!("acme/"))]},
+      %Wardrik.Token{
+        principal: @jon,
+        scope: [Role.bind(roles, [Resource.parse!("acme/agent/*")])]
+      },
       opts
     )
   end
@@ -55,7 +58,7 @@ defmodule WardrikHTTP.TokenTest do
     assert {:ok, %Token{token: %Wardrik.Token{policy: "careful", scope: [statement]}}} =
              Token.verify(store(), secret)
 
-    assert statement == Role.bind([:definer], Prefix.parse!("acme/"))
+    assert statement == Role.bind([:definer], [Resource.parse!("acme/agent/*")])
     assert kept.token.policy == "careful"
   end
 

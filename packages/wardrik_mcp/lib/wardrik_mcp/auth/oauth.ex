@@ -11,13 +11,15 @@ defmodule WardrikMCP.Auth.OAuth do
   @type t() :: %__MODULE__{scopes: [String.t()]}
 
   defimpl WardrikMCP.Auth do
-    def options(_oauth, key), do: [credential: key.name]
+    alias Wardrik.Resource
+
+    def options(_oauth, key), do: [credential: Resource.basename(key)]
     def name(_oauth), do: "oauth"
 
     def provider(%{scopes: scopes}, key, url),
       do:
         {:ok,
-         WardrikOAuth.Provider.new(key.name,
+         WardrikOAuth.Provider.new(Resource.basename(key),
            resource: url,
            scopes: scopes,
            flow: :browser,

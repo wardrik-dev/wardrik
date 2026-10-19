@@ -22,18 +22,25 @@ channel checks. `wardrik token create` makes one from a shell on the server, and
 over the API:
 
 ```sh
-wardrik token create ci --scope acme/ --role reader,messenger,definer --policy careful
-wardrik token create watcher --scope acme/@ops/ --role reader
-wardrik token create one --scope acme/@jon/triage --role owner --expires 30d
-wardrik token create laptop --all --role owner
+wardrik token create ci --resource 'acme/agent/*' --role reader,messenger,definer --policy careful
+wardrik token create watcher --resource 'acme/@ops/*' --role reader
+wardrik token create one --resource acme/@jon/agent/triage --resource 'acme/@jon/agent/triage/*' \
+  --role owner --expires 30d
+wardrik token create laptop --resource '*' --role owner
 wardrik token list
 wardrik token revoke 3f9a61c0d4e2
 ```
 
-A token's statements each allow some actions, named for what a route does, such as `agent.ask`,
-on the agents under a key prefix that ends at a segment. Anything no statement allows is denied. An
-agent no statement reaches is answered as one that doesn't exist, `404`, and an action not allowed
-on one it reaches is refused with `403`. A role is a named set of actions:
+A token an earlier release made doesn't read; make it again. A token's statements each allow some
+actions, named for what a route does, such as `agent.ask`, on the resources a pattern covers. A resource is named as IAM names one: `acme/agent/triage` is
+acme's agent `triage`, the agent ID `acme/triage`; `acme/agent/triage/thread/1696.1234` is it
+answering for `1696.1234`; `acme/@jon/server/crm` and `acme/@jon/secret/github` are jon's MCP
+server and account; `deployment/token/…` is a token. In a pattern, `*` matches anything, `/` too,
+and `?` one character: `acme/agent/*` is acme's own agents with their threads, `acme/*` everything
+of acme's and its users', and `*` everything. Nothing is implied: an agent and its threads are
+`acme/agent/triage` and `acme/agent/triage/*`. Anything no statement allows is denied. An agent no
+statement reaches is answered as one that doesn't exist, `404`, and an action not allowed on one it
+reaches is refused with `403`. A role is a named set of actions:
 
 | Role | Routes |
 | --- | --- |
@@ -42,7 +49,7 @@ on one it reaches is refused with `403`. A role is a named set of actions:
 | `approver` | decisions, and authorization links |
 | `definer` | putting, starting, stopping and deleting agents and triggers, stopping a tool call, connecting accounts, and adding and removing servers |
 | `worker` | `/v1/workers` |
-| `owner` | every route; with `--all`, the deployment and `/v1/tokens` too |
+| `owner` | every route; on `*` or `deployment/*`, the deployment and `/v1/tokens` too |
 
 A token acts for whoever made it, and a change made with it is recorded as theirs. It works for 90
 days, or as long as `--expires` or `expires_in` says, and an expired token is refused with `401`. A
@@ -72,10 +79,10 @@ answers an agent with is its key.
 
 | Route | Answers |
 | --- | --- |
-| `GET /v1/agents` | the agents under `?prefix=`, or every one the token reaches |
-| `POST /v1/agents/cancel?prefix=` | stops what every agent under the prefix is doing, `202`; `prefix=` alone is every agent |
-| `DELETE /v1/agents?prefix=` | removes every agent under the prefix but those agent files declare; answers which went, which stayed and why |
-| `GET /v1/interrupts` | the calls agents under `?prefix=`, or every one the token reaches, wait on a person for |
+| `GET /v1/agents` | the agents `?resource=` covers, as `acme/agent/*`, or those the token's one resource covers |
+| `POST /v1/agents/cancel?resource=` | stops what every agent the pattern covers is doing, `202` |
+| `DELETE /v1/agents?resource=` | removes every agent the pattern covers but those agent files declare; answers which went, which stayed and why |
+| `GET /v1/interrupts` | the calls agents `?resource=` covers, or those the token's one resource covers, wait on a person for |
 | `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
 | `PUT /v1/agents/{key}` | starts the agent a definition describes, or brings the one running to it; answers its snapshot |
 | `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, with the tools it names that offer nothing yet as `missing` |
@@ -87,9 +94,9 @@ answers an agent with is its key.
 | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
 | `GET /v1/agents/{key}/calls` | the tool calls the agent is running, each with how long it has run; `404` while it sleeps |
 | `DELETE /v1/agents/{key}/calls/{call}` | stops one tool call the agent is running, `204`: the model is answered with an error, and the turn goes on |
-| `POST /v1/agents/{key}/spawn` | starts the agent; with `{"node": ...}`, on that node, to a token over every agent |
+| `POST /v1/agents/{key}/spawn` | starts the agent; with `{"node": ...}`, on that node, to a token over `deployment/*` |
 | `POST /v1/agents/{key}/stop` | stops the agent, keeping its conversation, so it sleeps until something asks it; answers it, asleep |
-| `POST /v1/agents/{key}/move` | starts the agent again on `{"node": ...}`, with its conversation, to a token over every agent |
+| `POST /v1/agents/{key}/move` | starts the agent again on `{"node": ...}`, with its conversation, to a token over `deployment/*` |
 | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and the labels of what it held, and answers its snapshot; `409` while it runs a turn or waits on a person |
 | `PUT /v1/agents/{key}/triggers/{trigger}` | sets or changes a trigger, and answers it; `404` where no definition is kept, `409` where an agent file declares the agent |
 | `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, and answers it as it was |
@@ -98,23 +105,24 @@ answers an agent with is its key.
 | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
 | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
 | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
-| `GET /v1/connections?prefix=` | the accounts the owner `prefix` names is offered, and whether they, their org or the deployment holds each |
+| `GET /v1/connections?owner=` | the accounts `owner` is offered, and whether they, their org or the deployment holds each |
 | `POST /v1/connections/{provider}` | connects an account: where to authorize it, or that it is held already |
 | `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, and answers it as it was held |
-| `GET /v1/servers?prefix=` | the MCP servers the owner `prefix` names added for their agents |
-| `POST /v1/servers?prefix=` | adds an MCP server for the owner's agents, `201`: that they can call it now, or where to sign in to it first |
-| `DELETE /v1/servers/{name}?prefix=` | removes the server, so the owner's agents can no longer call it, and answers it as it was |
+| `GET /v1/servers?owner=` | the MCP servers `owner` added for their agents |
+| `POST /v1/servers?owner=` | adds an MCP server for the owner's agents, `201`: that they can call it now, or where to sign in to it first |
+| `DELETE /v1/servers/{name}?owner=` | removes the server, so the owner's agents can no longer call it, and answers it as it was |
 | `POST /v1/deployment/reload` | has every node read its agent and policy files again, and answers those nodes |
 | `GET /v1/deployment/nodes` | the deployment's nodes, each with how many agents run on it, and how many sleep |
 | `GET /v1/deployment/audit` | a page of what people changed across the deployment, after `?starting_after=` |
 | `GET /v1/tokens` | every token, oldest first, never a secret |
-| `POST /v1/tokens` | makes a token from its `name`, `scope`, `roles`, `policy` and `expires_in`, `201`, with its `secret`, given this once |
+| `POST /v1/tokens` | makes a token from its `name`, `resources`, `roles`, `policy` and `expires_in`, `201`, with its `secret`, given this once |
 | `DELETE /v1/tokens/{id}` | revokes the token, and answers it as it was |
 | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 
-The `/v1/deployment` and `/v1/tokens` routes are for an `owner` token over every agent alone.
+The `/v1/deployment` and `/v1/tokens` routes are for an `owner` token on `*` or `deployment/*`
+alone.
 
-A cancel under a prefix answers `{"cancelled": [...]}`, and a removal
+A cancel by a pattern answers `{"cancelled": [...]}`, and a removal
 `{"forgotten": [...], "kept": [{"id": ..., "why": ...}], "failed": [...]}`.
 
 wardrik_core's `priv/openapi.json` is every route in OpenAPI 3.1: what each takes and
@@ -221,27 +229,27 @@ answers as the chat app expects; `404` where no channel of that name takes reque
 ### Connections
 
 ```http
-GET /v1/connections?prefix=acme/@jon/
+GET /v1/connections?owner=acme/@jon
 
 {"connections": [{"provider": "github", "held_by": "person"},
                  {"provider": "linear"}]}
 ```
 
 ```http
-POST /v1/connections/linear?prefix=acme/@jon/
+POST /v1/connections/linear?owner=acme/@jon
 
 {"provider": "linear", "connected": false,
  "authorization": {"url": "https://linear.app/oauth/authorize?…"}}
 ```
 
-`prefix` names the owner: a person, `acme/@jon/`, or an org, `acme/`. The token must reach the
-owner's agents. The account is held once the person has authorized it at the link. A secret's value
+`owner` names a person, `acme/@jon`, or an org, `acme`. The token must reach the owner's
+agents. The account is held once the person has authorized it at the link. A secret's value
 is never answered.
 
 ### Servers
 
 ```http
-POST /v1/servers?prefix=acme/@jon/
+POST /v1/servers?owner=acme/@jon
 
 {"name": "crm", "url": "https://mcp.crm.example/mcp",
  "auth": {"secret": {"name": "crm-key"}}}
@@ -250,12 +258,12 @@ POST /v1/servers?prefix=acme/@jon/
 ```
 
 ```http
-GET /v1/servers?prefix=acme/@jon/
+GET /v1/servers?owner=acme/@jon
 
 {"servers": [{"name": "crm", "url": "https://mcp.crm.example/mcp", "auth": "secret"}]}
 ```
 
-`prefix` names the owner, as for connections. A server serves its owner's agents alone, and each of its tools arrives as `crm__tool`. It is reached over
+`owner` names the owner, as for connections. A server serves its owner's agents alone, and each of its tools arrives as `crm__tool`. It is reached over
 Streamable HTTP at an `https` URL whose host has public addresses, and signs in with nothing,
 `{"none": {}}`, in a browser as the server's own authorization server asks, `{"oauth": {"scopes":
 [...]}}`, which answers the link to sign in at, or a secret the owner keeps in the vault,

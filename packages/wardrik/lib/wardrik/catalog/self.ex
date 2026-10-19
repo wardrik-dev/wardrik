@@ -17,7 +17,6 @@ defmodule Wardrik.Catalog.Self do
   @behaviour Wardrik.Tool
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Catalog
   alias Wardrik.Catalog.Entry
   alias Wardrik.Catalog.Tools
@@ -43,6 +42,9 @@ defmodule Wardrik.Catalog.Self do
 
   @doc false
   @spec run(Entry.t(), AgentID.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
-  def run(entry, agent, input, context),
-    do: Tools.run(entry, agent, reach: Prefix.of(agent), input: input, context: context)
+  def run(entry, agent, input, context) do
+    itself = AgentID.resource(agent)
+    reach = [itself, Wardrik.Resource.parse!("#{itself}/*")]
+    Tools.run(entry, agent, reach: reach, input: input, context: context)
+  end
 end

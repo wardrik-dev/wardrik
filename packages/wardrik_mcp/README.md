@@ -35,13 +35,13 @@ children = [
 ```
 
 ```elixir
-github = Wardrik.Servers.Key.deployment("github")
+github = Wardrik.Resource.parse!("deployment/server/github")
 
 Wardrik.LLM.Config.new(tools: [{WardrikMCP, github}])    # one server
 Wardrik.LLM.Config.new(tools: [{WardrikMCP, :*}])        # every server connected
 ```
 
-A server is named by its `Wardrik.Servers.Key`: whose it is, and its name.
+A server is named by its `Wardrik.Resource`: whose it is, and its name.
 The servers the supervisor starts are the deployment's own. `{WardrikMCP,
 github}` stands for however many tools that server offers, and
 they arrive as `github__search_issues`, with the server's own JSON Schema. Each
@@ -89,7 +89,7 @@ children = [
 
 Such a server is reached over Streamable HTTP at an `https` URL whose host
 has public addresses, signs in with nothing, in a browser, or with a secret
-its owner keeps in the vault, and is named by its `Wardrik.Servers.Key`. A
+its owner keeps in the vault, and is named by its `Wardrik.Resource`. A
 server signed in to is one of `WardrikOAuth`'s providers through
 `WardrikMCP.Servers.Providers`, for its owner alone. Each node starts its
 connection the first time an agent's tools are built with it, and stops it

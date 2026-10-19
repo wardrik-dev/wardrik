@@ -14,7 +14,7 @@ defmodule WardrikMCP.Added do
   @behaviour Wardrik.Tool
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias WardrikMCP.Remotes
 
   @doc "The tools of every server the owner of the agent `id` added."
@@ -35,7 +35,7 @@ defmodule WardrikMCP.Added do
     end
   end
 
-  defp keys(id), do: id |> Prefix.owner() |> Remotes.added()
+  defp keys(id), do: id |> AgentID.resource() |> Resource.owner() |> Remotes.added()
 
   defp offers?(key, name), do: Enum.any?(WardrikMCP.tools(key), &(&1.name == name))
 end

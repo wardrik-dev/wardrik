@@ -9,6 +9,7 @@ defmodule WardrikMCP.AuthorizedTest do
   use WardrikOAuth.Test.Case, async: false
 
   alias Wardrik.Call
+  alias Wardrik.Resource
 
   @moduletag server_opts: [credential: "github", credential_env: "DEMO_TOKEN"]
 
@@ -31,7 +32,7 @@ defmodule WardrikMCP.AuthorizedTest do
   end
 
   defp secret(key, run),
-    do: Wardrik.Test.call(run, "#{key.name}__secret", %{"name" => "DEMO_TOKEN"})
+    do: Wardrik.Test.call(run, "#{Resource.basename(key)}__secret", %{"name" => "DEMO_TOKEN"})
 
   test "parks on a link, then runs once the user has followed it", context do
     %{key: key, run: run, owner: owner} = context
@@ -43,7 +44,7 @@ defmodule WardrikMCP.AuthorizedTest do
     refute prompt =~ "https://"
 
     assert {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
-    assert WardrikOAuth.connected?(vault(), "github", {"acme", owner})
+    assert WardrikOAuth.connected?(vault(), "github", person("acme", owner))
 
     assert %Call{state: :done, result: {:ok, %{"result" => %{"content" => content}}}} =
              Wardrik.Test.resume(run, call)

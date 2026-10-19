@@ -13,7 +13,7 @@ defmodule WardrikDaemon.SecretsTest do
     Enum.each(@variables, &System.delete_env/1)
 
     on_exit(fn ->
-      Enum.each(@variables, &WardrikVault.forget(vault(), &1, nil))
+      Enum.each(@variables, &WardrikVault.forget(vault(), &1, Wardrik.Resource.deployment()))
 
       for {name, value} <- previous.environment,
           do: if(value, do: System.put_env(name, value), else: System.delete_env(name))
@@ -30,16 +30,18 @@ defmodule WardrikDaemon.SecretsTest do
 
     on_exit(fn ->
       System.delete_env(name)
-      for owner <- [{"acme", "jon"}, "acme", nil], do: WardrikVault.forget(vault(), name, owner)
+
+      for owner <- Enum.map(~w(acme/@jon acme deployment), &Wardrik.Resource.parse!/1),
+          do: WardrikVault.forget(vault(), name, owner)
     end)
 
     assert Secrets.for_agent(vault(), name, acme) == nil
     System.put_env(name, "environment's")
     assert Secrets.for_agent(vault(), name, acme) == "environment's"
 
-    :ok = WardrikVault.put(vault(), name, nil, value: "deployment's")
-    :ok = WardrikVault.put(vault(), name, "acme", value: "acme's")
-    :ok = WardrikVault.put(vault(), name, {"acme", "jon"}, value: "jon's")
+    :ok = WardrikVault.put(vault(), name, Wardrik.Resource.deployment(), value: "deployment's")
+    :ok = WardrikVault.put(vault(), name, Wardrik.Resource.parse!("acme"), value: "acme's")
+    :ok = WardrikVault.put(vault(), name, Wardrik.Resource.parse!("acme/@jon"), value: "jon's")
 
     assert Secrets.for_agent(vault(), name, jon) == "jon's"
     assert Secrets.for_agent(vault(), name, acme) == "acme's"
@@ -54,13 +56,20 @@ defmodule WardrikDaemon.SecretsTest do
   end
 
   test "a provider's key the vault holds reaches a model call as its key, the environment's first" do
-    :ok = WardrikVault.put(vault(), "ANTHROPIC_API_KEY", nil, value: "sk-ant-vault")
+    :ok =
+      WardrikVault.put(vault(), "ANTHROPIC_API_KEY", Wardrik.Resource.deployment(),
+        value: "sk-ant-vault"
+      )
+
     assert Wardrik.Credentials.key(vault(), "ANTHROPIC_API_KEY") == {:ok, "sk-ant-vault"}
     assert Wardrik.Credentials.key(vault(), "SEARCH_API_KEY") == :error
   end
 
   test "reads the deployment's secret, or nothing" do
-    :ok = WardrikVault.put(vault(), "ANTHROPIC_API_KEY", nil, value: "sk-ant-vault")
+    :ok =
+      WardrikVault.put(vault(), "ANTHROPIC_API_KEY", Wardrik.Resource.deployment(),
+        value: "sk-ant-vault"
+      )
 
     assert Secrets.named(vault(), "ANTHROPIC_API_KEY") == "sk-ant-vault"
     assert Secrets.named(vault(), "NOT_IN_THE_VAULT") == nil

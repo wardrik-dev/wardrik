@@ -14,13 +14,14 @@ defmodule WardrikVault do
   can hold its users' credentials across restarts and across the nodes the
   store is replicated to.
 
-  A credential is a name and whose it is: a user within an org, `{org, user}`,
-  since two orgs may each have a user of the same name; an org; or the
-  deployment, `nil`.
+  A credential is a name and whose it is, a namespace as `Wardrik.Resource`
+  names one: a user within an org, `acme/@jon`, since two orgs may each have
+  a user of the same name; an org, `acme`; or the deployment, `deployment`.
 
-      WardrikVault.put(vault, "github", {"acme", "jon"}, value: "ghp_xxx")
-      WardrikVault.put(vault, "pagerduty", "acme", value: "pd_xxx")
-      WardrikVault.put(vault, "linear", nil, value: "lin_xxx")
+      jon = Wardrik.Resource.parse!("acme/@jon")
+      WardrikVault.put(vault, "github", jon, value: "ghp_xxx")
+      WardrikVault.put(vault, "pagerduty", Wardrik.Resource.parse!("acme"), value: "pd_xxx")
+      WardrikVault.put(vault, "linear", Wardrik.Resource.deployment(), value: "lin_xxx")
 
   ## Resolving
 
@@ -86,7 +87,9 @@ defmodule WardrikVault do
 
   require Logger
 
+  alias Wardrik.AgentID
   alias Wardrik.Credential
+  alias Wardrik.Resource
   alias Wardrik.Run
   alias WardrikVault.Grants
   alias WardrikVault.Sealed
@@ -113,8 +116,8 @@ defmodule WardrikVault do
   @key_bytes 32
   @nonce_bytes 12
 
-  @typedoc "Who a credential belongs to: a user within an org, `{org, user}`, an org, any other term the host names, or the deployment, `nil`."
-  @type owner() :: term()
+  @typedoc "Who a credential belongs to: a user within an org, an org, or the deployment."
+  @type owner() :: Resource.t()
 
   @typedoc "A secret someone put, or a grant someone gave by authorizing."
   @type kind() :: :secret | :grant
@@ -172,14 +175,14 @@ defmodule WardrikVault do
   defp shared(vault, name, otherwise) do
     with true <- name in vault.shared,
          {:ok, secret} <- deployment(vault, name) do
-      {:ok, Credential.secret(secret, owner: nil)}
+      {:ok, Credential.secret(secret, owner: Resource.deployment())}
     else
       _unshared_or_unset -> otherwise.()
     end
   end
 
   defp deployment(vault, name) do
-    case lookup(vault, name, nil) do
+    case lookup(vault, name, Resource.deployment()) do
       {:ok, :secret, secret} -> {:ok, secret}
       _absent_or_unreadable -> environment(name)
     end
@@ -205,19 +208,14 @@ defmodule WardrikVault do
 
   @doc false
   def key(%__MODULE__{} = vault, name) do
-    case lookup(vault, name, nil) do
+    case lookup(vault, name, Resource.deployment()) do
       {:ok, :secret, secret} -> {:ok, secret}
       _grant_absent_or_unreadable -> :error
     end
   end
 
   # The owner of the agent a run is for.
-  defp owner(%Run{} = run) do
-    case Run.agent_id(run) do
-      %Wardrik.AgentID{org: org, user: nil} -> org
-      %Wardrik.AgentID{org: org, user: user} -> {org, user}
-    end
-  end
+  defp owner(%Run{} = run), do: Resource.owner(AgentID.resource(Run.agent_id(run)))
 
   defp unreadable(name, owner, reason) do
     Logger.warning(
@@ -292,7 +290,7 @@ defmodule WardrikVault do
   """
   @spec names(t(), owner()) :: [String.t()]
   def names(%__MODULE__{store: store}, owner) do
-    prefix = segment(owner) <> "/"
+    prefix = segment(to_string(owner)) <> "/"
 
     for key <- WardrikStore.keys(store, @ns, prefix),
         name = String.replace_prefix(key, prefix, ""),
@@ -300,19 +298,12 @@ defmodule WardrikVault do
         do: URI.decode(name)
   end
 
-  @doc """
-  Every credential written, as `{name, owner}` pairs.
-
-  An owner written as text, such as an org, reads back as that text, and the
-  deployment's as `nil`. Any other owner, such as a user's `{org, user}`, is
-  written only as a hash of it, and reads back as `:hashed`; `names/2` lists
-  what one such owner holds. Reads no credential and needs no key.
-  """
-  @spec list(t()) :: [{String.t(), owner() | :hashed}]
+  @doc "Every credential written, as `{name, owner}` pairs. Reads no credential and needs no key."
+  @spec list(t()) :: [{String.t(), owner()}]
   def list(%__MODULE__{store: store}) do
     for key <- WardrikStore.keys(store, @ns),
         [owner, name] <- [String.split(key, "/")],
-        do: {URI.decode(name), unsegment(owner)}
+        do: {URI.decode(name), Resource.parse!(URI.decode(owner))}
   end
 
   @doc "A new key, base64-encoded, for `:keys`."
@@ -340,7 +331,8 @@ defmodule WardrikVault do
   names and owners are written under distinct keys.
   """
   @spec path(String.t(), owner()) :: String.t()
-  def path(name, owner) when is_binary(name), do: segment(owner) <> "/" <> segment(name)
+  def path(name, owner) when is_binary(name),
+    do: segment(to_string(owner)) <> "/" <> segment(name)
 
   defp write(store, path, %Sealed{} = sealed) do
     case WardrikStore.put(store, @ns, path, sealed) do
@@ -416,23 +408,9 @@ defmodule WardrikVault do
 
   defp decode_key(_key), do: []
 
-  # Distinct owners and names always write distinct keys. Text keeps its
-  # unreserved characters and percent-encodes the rest, `_` and `~` among
-  # them; `_` alone is nobody's; and any other term is `~` and the SHA-256 of
-  # its external form.
-  defp segment(nil), do: "_"
-
-  defp segment(value) when is_binary(value) or is_atom(value),
-    do: value |> to_string() |> URI.encode(&(URI.char_unreserved?(&1) and &1 not in [?_, ?~]))
-
-  defp segment(value),
-    do:
-      "~" <>
-        Base.url_encode64(:crypto.hash(:sha256, :erlang.term_to_binary(value)), padding: false)
-
-  defp unsegment("_"), do: nil
-  defp unsegment("~" <> _hash), do: :hashed
-  defp unsegment(text), do: URI.decode(text)
+  # Distinct owners and names always write distinct keys: text keeps its
+  # unreserved characters and percent-encodes the rest, `/` among them.
+  defp segment(text), do: URI.encode(text, &URI.char_unreserved?/1)
 end
 
 defimpl Wardrik.Credentials, for: WardrikVault do

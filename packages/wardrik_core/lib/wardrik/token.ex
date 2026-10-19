@@ -25,7 +25,7 @@ defmodule Wardrik.Token do
 
       token = %Wardrik.Token{
         principal: maria,
-        scope: [Wardrik.Role.bind([:reader, :messenger], Wardrik.AgentID.Prefix.new!(org: "acme"))]
+        scope: [Wardrik.Role.bind([:reader, :messenger], [Wardrik.Resource.parse!("acme/agent/*")])]
       }
 
       Wardrik.Token.authorize(token, "agent.ask", ~A"acme/triage")      #=> :ok
@@ -35,9 +35,9 @@ defmodule Wardrik.Token do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Statement
 
@@ -53,16 +53,16 @@ defmodule Wardrik.Token do
         }
 
   @doc """
-  The token of `principal` holding `owner` on every agent: one who holds
+  The token of `principal` holding `owner` on `*`, everything: one who holds
   the node itself, as a shell on it does.
   """
   @spec root(Principal.t()) :: t()
   def root(principal),
-    do: %__MODULE__{principal: principal, scope: [Role.bind([:owner], Prefix.all())]}
+    do: %__MODULE__{principal: principal, scope: [Role.bind([:owner], [Resource.parse!("*")])]}
 
   @doc """
-  `:ok` where `token` allows `action` on `target`, one agent or every agent
-  under a prefix, or why not: an expired token is `:unauthorized`; a target
+  `:ok` where `token` allows `action` on `target`, one agent or a
+  resource, or why not: an expired token is `:unauthorized`; a target
   none of its statements reaches is `:not_found`, as if there were none, so
   its holder learns nothing outside its scope; and one they reach without
   the action is `:forbidden`.
@@ -86,8 +86,8 @@ defmodule Wardrik.Token do
 
   defp unreached(%AgentID{} = id), do: Error.no_agent(id)
 
-  defp unreached(prefix),
-    do: Error.new(:not_found, "Nothing under #{prefix} is within this token's reach.")
+  defp unreached(resource),
+    do: Error.new(:not_found, "Nothing #{resource} names is within this token's reach.")
 
   @doc "Whether any statement of `token` allows `action`, on whatever it reaches."
   @spec allows?(t(), Statement.action()) :: boolean()
@@ -100,7 +100,7 @@ defmodule Wardrik.Token do
     do: Enum.any?(scope, &Statement.reaches?(&1, target))
 
   @doc "Every resource the statements of `token` name."
-  @spec resources(t()) :: [Prefix.t()]
+  @spec resources(t()) :: [Resource.t()]
   def resources(%__MODULE__{scope: scope}),
     do:
       Enum.uniq(

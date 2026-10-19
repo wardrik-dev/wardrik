@@ -2,10 +2,10 @@ defmodule Wardrik.ServersTest do
   # The audit is one for the node, which these tests read.
   use ExUnit.Case, async: false
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Host
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Scope
   alias Wardrik.Servers.Server
@@ -64,16 +64,16 @@ defmodule Wardrik.ServersTest do
   end
 
   @jon Principal.new(:user, "jon", name: "Jon")
-  @acme Prefix.parse!("acme/")
+  @acme Resource.parse!("acme")
   @docs %Server{name: "docs", url: "https://docs.example.com/mcp", auth: "none"}
 
-  defp scope(prefix, can \\ [:owner], host \\ Host.new(servers: %Added{})) do
-    Scope.new(host, %Token{principal: @jon, scope: [Role.bind(can, Prefix.parse!(prefix))]})
+  defp scope(pattern, can \\ [:owner], host \\ Host.new(servers: %Added{})) do
+    Scope.new(host, %Token{principal: @jon, scope: [Role.bind(can, [Resource.parse!(pattern)])]})
   end
 
   test "an owner's servers are added, listed and removed, each change recorded as the scope's" do
-    jon = scope("acme/@jon/")
-    mine = Prefix.parse!("acme/@jon/")
+    jon = scope("acme/@jon/*")
+    mine = Resource.parse!("acme/@jon")
 
     assert {:ok, %Server{name: "docs", authorization: nil}} =
              Wardrik.servers_add(jon, mine, @docs)
@@ -82,11 +82,11 @@ defmodule Wardrik.ServersTest do
     assert {:ok, [%Server{name: "docs", auth: "none"}]} = Wardrik.servers_list(jon, mine)
 
     assert [{"server.added", %{"type" => "user", "id" => "jon"}} | _] =
-             Audit.about("servers/acme/@jon/docs")
+             Audit.about("acme/@jon/server/docs")
 
     assert {:ok, %Server{name: "docs"}} = Wardrik.servers_remove(jon, mine, "docs")
     assert {:ok, []} = Wardrik.servers_list(jon, mine)
-    assert {"server.removed", _by} = List.last(Audit.about("servers/acme/@jon/docs"))
+    assert {"server.removed", _by} = List.last(Audit.about("acme/@jon/server/docs"))
   end
 
   test "a server someone signs in to first answers where, and is added as it is described" do
@@ -99,7 +99,7 @@ defmodule Wardrik.ServersTest do
     }
 
     assert {:ok, %Server{name: "crm", authorization: %{url: "https://auth.example.com/crm"}}} =
-             Wardrik.servers_add(scope("acme/"), @acme, crm)
+             Wardrik.servers_add(scope("acme/*"), @acme, crm)
 
     assert_received {:add, @acme, "crm", fields, @jon}
 
@@ -111,24 +111,24 @@ defmodule Wardrik.ServersTest do
   end
 
   test "the seam's refusal is the function's" do
-    {:ok, _added} = Wardrik.servers_add(scope("acme/"), @acme, @docs)
+    {:ok, _added} = Wardrik.servers_add(scope("acme/*"), @acme, @docs)
 
-    assert {:error, %Error{type: :conflict}} = Wardrik.servers_add(scope("acme/"), @acme, @docs)
+    assert {:error, %Error{type: :conflict}} = Wardrik.servers_add(scope("acme/*"), @acme, @docs)
 
     assert {:error, %Error{type: :not_found}} =
-             Wardrik.servers_remove(scope("acme/"), @acme, "nothing")
+             Wardrik.servers_remove(scope("acme/*"), @acme, "nothing")
   end
 
   test "adding needs define, and a scope reaches its own owner alone" do
     assert {:error, %Error{type: :forbidden}} =
-             Wardrik.servers_add(scope("acme/", [:reader]), @acme, @docs)
+             Wardrik.servers_add(scope("acme/*", [:reader]), @acme, @docs)
 
     assert {:error, %Error{type: :not_found}} =
-             Wardrik.servers_add(scope("acme/"), Prefix.parse!("globex/"), @docs)
+             Wardrik.servers_add(scope("acme/*"), Resource.parse!("globex"), @docs)
   end
 
   test "a host that lets nobody add servers answers unsupported" do
     assert {:error, %Error{type: :unsupported}} =
-             Wardrik.servers_list(scope("acme/", [:owner], Host.new()), @acme)
+             Wardrik.servers_list(scope("acme/*", [:owner], Host.new()), @acme)
   end
 end

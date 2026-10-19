@@ -4,7 +4,6 @@ defmodule Wardrik.CatalogTest do
 
   alias Wardrik.Agent.Message
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Call
   alias Wardrik.Catalog
   alias Wardrik.Catalog.Agents
@@ -13,6 +12,7 @@ defmodule Wardrik.CatalogTest do
   alias Wardrik.Event
   alias Wardrik.Host
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Tools.Rules
 
@@ -74,11 +74,13 @@ defmodule Wardrik.CatalogTest do
     def issue(%{scope: scope}, principal, _opts) do
       case Principal.type(principal) do
         :agent ->
-          owner = Prefix.owner(AgentID.parse!(Principal.id(principal)))
+          owner = Resource.owner(Resource.parse!(Principal.id(principal)))
 
           %Wardrik.Token{
             principal: principal,
-            scope: [Wardrik.Role.bind([:reader, :messenger], owner)]
+            scope: [
+              Wardrik.Role.bind([:reader, :messenger], [Resource.parse!("#{owner}/agent/*")])
+            ]
           }
 
         _person ->
@@ -156,8 +158,8 @@ defmodule Wardrik.CatalogTest do
 
       assert_received {:put_trigger, ^agent, "rivals", @trigger}
 
-      assert Wardrik.Test.Audit.about("agents/#{agent}") |> List.last() ==
-               {"trigger.set", %{"type" => "agent", "id" => to_string(agent)}}
+      assert Wardrik.Test.Audit.about(agent) |> List.last() ==
+               {"trigger.set", %{"type" => "agent", "id" => to_string(AgentID.resource(agent))}}
     end
 
     test "a conversation's call changes its agent", %{agent: agent} do
@@ -267,7 +269,7 @@ defmodule Wardrik.CatalogTest do
       assert answer.text =~ "Two are open."
       assert answer.labels == ["outside"]
       assert Principal.type(answer.sender) == :agent
-      assert Principal.id(answer.sender) == to_string(reconciler)
+      assert Principal.id(answer.sender) == to_string(AgentID.resource(reconciler))
 
       assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^front}}, 5_000
     end
@@ -316,10 +318,12 @@ defmodule Wardrik.CatalogTest do
       assert id == to_string(worker)
       assert_received {:put, ^worker, %{"instructions" => "Reconcile."}, token, ^hooks}
       assert token.policy == :none
-      assert token.principal == Principal.new(:agent, to_string(front))
+      assert token.principal == Principal.new(:agent, to_string(AgentID.resource(front)))
 
       assert token.scope == [
-               Wardrik.Role.bind([:reader, :messenger, :definer], Prefix.owner(front))
+               Wardrik.Role.bind([:reader, :messenger, :definer], [
+                 Resource.parse!("acme/agent/*")
+               ])
              ]
 
       %{user_state: state} =
@@ -327,8 +331,8 @@ defmodule Wardrik.CatalogTest do
 
       assert Keyword.fetch!(state.run_opts, :hooks) == hooks
 
-      assert Wardrik.Test.Audit.about("agents/#{worker}") |> List.last() ==
-               {"agent.defined", %{"type" => "agent", "id" => to_string(front)}}
+      assert Wardrik.Test.Audit.about(worker) |> List.last() ==
+               {"agent.defined", %{"type" => "agent", "id" => to_string(AgentID.resource(front))}}
     end
 
     test "reaches its own org and no other" do
@@ -365,7 +369,7 @@ defmodule Wardrik.CatalogTest do
       outside = echoing(acme("outside"), "ok")
       worker = acme("worker")
       on_exit(fn -> Wardrik.Fleet.forget(worker) end)
-      one = Wardrik.Role.bind([:reader, :messenger], Prefix.of(inside))
+      one = Wardrik.Role.bind([:reader, :messenger], [AgentID.resource(inside)])
 
       run =
         run(front, Agents,
@@ -403,7 +407,7 @@ defmodule Wardrik.CatalogTest do
       run =
         run(front, Agents,
           host: Host.new(definitions: %Kept{}, issuer: %Issued{}),
-          sender: Principal.new(:agent, to_string(asking))
+          sender: Principal.new(:agent, to_string(AgentID.resource(asking)))
         )
 
       assert %Call{state: :done, result: {:ok, _snapshot}} =
@@ -415,7 +419,7 @@ defmodule Wardrik.CatalogTest do
 
     test "reaches none of its org's users' agents, and a user's agent none of the org's" do
       front = acme("front")
-      org = Prefix.org(Prefix.owner(front))
+      org = front.org
 
       jons =
         echoing(

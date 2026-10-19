@@ -146,8 +146,8 @@ defmodule WardrikChannel do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
+  alias Wardrik.Resource
   alias WardrikChannel.Binding
   alias WardrikChannel.Channel
   alias WardrikChannel.Context
@@ -203,7 +203,7 @@ defmodule WardrikChannel do
   for `owner`, given its options, its `:name`, its `:context`, and
   `:return_to`, where the browser goes once it is installed, if anywhere.
   """
-  @callback install_url(owner :: Prefix.t(), keyword()) ::
+  @callback install_url(owner :: Resource.t(), keyword()) ::
               {:ok, String.t()} | {:error, String.t()}
 
   @doc """
@@ -212,7 +212,7 @@ defmodule WardrikChannel do
   `WardrikChannel.Installations` where the install was started for `owner`,
   and refuses it otherwise.
   """
-  @callback install(owner :: Prefix.t(), Request.t(), keyword()) :: Response.t()
+  @callback install(owner :: Resource.t(), Request.t(), keyword()) :: Response.t()
 
   @doc """
   Every adapter the loaded applications name, by its type. Read once, as a
@@ -318,9 +318,9 @@ defmodule WardrikChannel do
   workspace of theirs. Options: `:return_to`, where the browser goes once
   it is installed.
   """
-  @spec install_url(Channel.t(), Prefix.t(), keyword()) ::
+  @spec install_url(Channel.t(), Resource.t(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def install_url(%Channel{} = channel, %Prefix{} = owner, opts \\ []) do
+  def install_url(%Channel{} = channel, %Resource{} = owner, opts \\ []) do
     opts = Keyword.validate!(opts, [:return_to])
     channel.adapter.install_url(owner, Channel.options(channel) ++ opts)
   end
@@ -331,8 +331,8 @@ defmodule WardrikChannel do
   their workspace, for `owner`, where `install_url/3` was asked for
   `owner`.
   """
-  @spec install(Channel.t(), Prefix.t(), map()) :: Response.t()
-  def install(%Channel{} = channel, %Prefix{} = owner, request) when is_map(request),
+  @spec install(Channel.t(), Resource.t(), map()) :: Response.t()
+  def install(%Channel{} = channel, %Resource{} = owner, request) when is_map(request),
     do: channel.adapter.install(owner, struct!(Request, request), Channel.options(channel))
 
   @doc """

@@ -166,7 +166,7 @@ defmodule WardrikSlack.RoomsTest do
       Keyword.update!(
         opts([books(), triage()]),
         :workspace,
-        &put_in(&1.installation.owner, Wardrik.AgentID.Prefix.new!(org: "acme"))
+        &put_in(&1.installation.owner, Wardrik.Resource.parse!("acme"))
       )
 
     assert :ok = Rooms.event(joined("C1"), org)

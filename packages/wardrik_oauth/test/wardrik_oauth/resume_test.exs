@@ -34,7 +34,7 @@ defmodule WardrikOAuth.ResumeTest do
     {:error, {:authorization_required, link, whose}} =
       Credential.resolve(Calls.tool("tool", %{}, run(owner)), "github")
 
-    assert whose == {"acme", owner}
+    assert whose == person("acme", owner)
 
     {key, agent} =
       Fleet.start_agent(
@@ -79,7 +79,7 @@ defmodule WardrikOAuth.ResumeTest do
       [provider] = WardrikOAuth.Provider.all(oauth())
 
       {:error, {:authorization_required, theirs, _whose}} =
-        WardrikOAuth.hold(oauth(), provider, {"acme", "else"}, vault: vault())
+        WardrikOAuth.hold(oauth(), provider, person("acme", "else"), vault: vault())
 
       assert {:ok, "github"} = finish(theirs.url)
 
@@ -92,7 +92,7 @@ defmodule WardrikOAuth.ResumeTest do
       refuse_tokens()
 
       assert {:error, _trouble} = finish(url)
-      assert {:ok, _flight} = Pending.under_way("github", {"acme", owner})
+      assert {:ok, _flight} = Pending.under_way("github", person("acme", owner))
       assert [{%{id: "call_1"}, _prompt}] = Agent.parked(agent)
 
       stub_server(cimd: true)
@@ -107,10 +107,10 @@ defmodule WardrikOAuth.ResumeTest do
       [provider] = WardrikOAuth.Provider.all(oauth())
 
       {:error, {:authorization_required, link, _whose}} =
-        WardrikOAuth.hold(oauth(), provider, {"acme", owner}, vault: vault())
+        WardrikOAuth.hold(oauth(), provider, person("acme", owner), vault: vault())
 
       assert {:ok, "github"} = finish(link.url)
-      assert WardrikOAuth.connected?(vault(), "github", {"acme", owner})
+      assert WardrikOAuth.connected?(vault(), "github", person("acme", owner))
     end
   end
 end

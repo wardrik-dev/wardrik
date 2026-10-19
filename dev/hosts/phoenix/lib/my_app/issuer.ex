@@ -4,7 +4,7 @@ defmodule MyApp.Issuer do
   org's agents, and owner of their own.
   """
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias Wardrik.Role
 
   defstruct []
@@ -13,14 +13,14 @@ defmodule MyApp.Issuer do
   def principal(%MyApp.Accounts.User{} = user),
     do: Wardrik.Principal.new(:user, "#{user.org}/#{user.id}", name: user.email)
 
-  @doc "The agents `user` owns: `acme/@42/`."
-  def own(%MyApp.Accounts.User{} = user), do: Prefix.new!(org: user.org, user: to_string(user.id))
+  @doc "Who `user` is as an owner of accounts and agents: `acme/@42`."
+  def own(%MyApp.Accounts.User{} = user), do: Resource.parse!("#{user.org}/@#{user.id}")
 
   @doc "What the user `id` of `org` may do."
   def scope(org, id) do
     [
-      Role.bind([:reader, :messenger], Prefix.new!(org: org)),
-      Role.bind([:owner], Prefix.new!(org: org, user: id))
+      Role.bind([:reader, :messenger], [Resource.parse!("#{org}/agent/*")]),
+      Role.bind([:owner], [Resource.parse!("#{org}/@#{id}/*")])
     ]
   end
 end

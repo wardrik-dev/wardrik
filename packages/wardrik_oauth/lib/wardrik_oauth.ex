@@ -584,7 +584,7 @@ defmodule WardrikOAuth do
     :ok =
       Wardrik.Audit.record(
         flight.oauth.audit,
-        {:secret_stored, name, Wardrik.Connections.Owner.prefix(owner)},
+        {:secret_stored, name, owner},
         by: asked || by
       )
 

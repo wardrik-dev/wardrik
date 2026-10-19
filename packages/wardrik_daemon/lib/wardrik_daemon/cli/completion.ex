@@ -121,7 +121,7 @@ defmodule WardrikDaemon.CLI.Completion do
     end
   end
 
-  defp values(name, _command, _positional, known) when name in ["KEY", "PREFIX"],
+  defp values("KEY", _command, _positional, known),
     do: known.keys.()
 
   defp values("QUERY", _command, _positional, known), do: @query ++ known.keys.()

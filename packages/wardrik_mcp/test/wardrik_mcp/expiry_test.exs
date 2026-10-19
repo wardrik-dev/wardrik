@@ -1,6 +1,8 @@
 defmodule WardrikMCP.ExpiryTest do
   use WardrikMCP.Test.Case, async: false
 
+  alias Wardrik.Resource
+
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
@@ -80,7 +82,7 @@ defmodule WardrikMCP.ExpiryTest do
 
   describe "a server that refuses the credential it was given" do
     test "is tried once more with a connection built afresh", %{key: key} do
-      call = %{id: "c1", name: "#{key}__refuses_once", arguments: %{}}
+      call = %{id: "c1", name: "#{Resource.basename(key)}__refuses_once", arguments: %{}}
 
       assert [message] =
                Wardrik.LLM.ToolRunner.messages([ToolRunner.execute(call, run(key, "jon"))])
@@ -97,7 +99,7 @@ defmodule WardrikMCP.ExpiryTest do
       {:ok, _pid} = WardrikMCP.Supervisor.connect(Server.new(key, always_refusing()))
       await_tools(key)
 
-      call = %{id: "c1", name: "#{key}__refuses_once", arguments: %{}}
+      call = %{id: "c1", name: "#{Resource.basename(key)}__refuses_once", arguments: %{}}
 
       assert [message] =
                Wardrik.LLM.ToolRunner.messages([ToolRunner.execute(call, run(key, "jon"))])

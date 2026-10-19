@@ -92,7 +92,7 @@ describe("requests", () => {
     await server.close();
   });
 
-  test("list, cancel, remove and read the parked calls of agents under a prefix", async () => {
+  test("list, cancel, remove and read the parked calls of the agents a pattern covers", async () => {
     server.on("GET", "/v1/agents", (_request, response) => json(response, 200, { agents: [] }));
     server.on("POST", "/v1/agents/cancel", (_request, response) =>
       json(response, 202, { cancelled: ["acme/a"] }),
@@ -104,17 +104,17 @@ describe("requests", () => {
       json(response, 200, { interrupts: [] }),
     );
 
-    assert.deepEqual(await wardrik.agents.list("acme/"), []);
-    assert.deepEqual(await wardrik.agents.cancel("acme/"), ["acme/a"]);
-    assert.deepEqual((await wardrik.agents.remove("acme/")).forgotten, ["acme/a"]);
+    assert.deepEqual(await wardrik.agents.list("acme/agent/*"), []);
+    assert.deepEqual(await wardrik.agents.cancel("acme/agent/*"), ["acme/a"]);
+    assert.deepEqual((await wardrik.agents.remove("acme/agent/*")).forgotten, ["acme/a"]);
     assert.deepEqual(await wardrik.agents.parked(), []);
 
     assert.deepEqual(
       server.received.map((request) => [request.method, request.path]),
       [
-        ["GET", "/v1/agents?prefix=acme%2F"],
-        ["POST", "/v1/agents/cancel?prefix=acme%2F"],
-        ["DELETE", "/v1/agents?prefix=acme%2F"],
+        ["GET", "/v1/agents?resource=acme%2Fagent%2F*"],
+        ["POST", "/v1/agents/cancel?resource=acme%2Fagent%2F*"],
+        ["DELETE", "/v1/agents?resource=acme%2Fagent%2F*"],
         ["GET", "/v1/interrupts"],
       ],
     );
@@ -340,23 +340,23 @@ describe("exports", () => {
 });
 
 describe("connections", () => {
-  test("list, connect and forget, for the owner the prefix names", async () => {
+  test("list, connect and forget, for the owner named", async () => {
     const list = { connections: [{ provider: "github", held_by: "person" }, { provider: "linear" }] };
     const link = { provider: "linear", connected: false, authorization: { url: "https://auth.example.com/a" } };
     server.on("GET", "/v1/connections", (_request, response) => json(response, 200, list));
     server.on("POST", "/v1/connections/linear", (_request, response) => json(response, 200, link));
     server.on("DELETE", "/v1/connections/linear", (_request, response) => json(response, 204));
 
-    assert.deepEqual(await wardrik.connections.list("acme/@jon/"), list);
-    assert.deepEqual(await wardrik.connections.connect("acme/@jon/", "linear"), link);
-    await wardrik.connections.disconnect("acme/", "linear");
+    assert.deepEqual(await wardrik.connections.list("acme/@jon"), list);
+    assert.deepEqual(await wardrik.connections.connect("acme/@jon", "linear"), link);
+    await wardrik.connections.disconnect("acme", "linear");
 
     assert.deepEqual(
       server.received.map((request) => [request.method, request.path]),
       [
-        ["GET", "/v1/connections?prefix=acme%2F%40jon%2F"],
-        ["POST", "/v1/connections/linear?prefix=acme%2F%40jon%2F"],
-        ["DELETE", "/v1/connections/linear?prefix=acme%2F"],
+        ["GET", "/v1/connections?owner=acme%2F%40jon"],
+        ["POST", "/v1/connections/linear?owner=acme%2F%40jon"],
+        ["DELETE", "/v1/connections/linear?owner=acme"],
       ],
     );
 
@@ -364,7 +364,7 @@ describe("connections", () => {
   });
 });
 describe("servers", () => {
-  test("list, add and remove, for the owner the prefix names", async () => {
+  test("list, add and remove, for the owner named", async () => {
     const list = { servers: [{ name: "crm", url: "https://mcp.crm.example/mcp", auth: "secret" as const }] };
     const added = { server: "crm", connected: true };
     server.on("GET", "/v1/servers", (_request, response) => json(response, 200, list));
@@ -372,16 +372,16 @@ describe("servers", () => {
     server.on("DELETE", "/v1/servers/crm", (_request, response) => json(response, 204));
 
     const crm = { name: "crm", url: "https://mcp.crm.example/mcp", auth: { secret: { name: "crm-key" } } };
-    assert.deepEqual(await wardrik.servers.list("acme/@jon/"), list);
-    assert.deepEqual(await wardrik.servers.add("acme/", crm), added);
-    await wardrik.servers.remove("acme/@jon/", "crm");
+    assert.deepEqual(await wardrik.servers.list("acme/@jon"), list);
+    assert.deepEqual(await wardrik.servers.add("acme", crm), added);
+    await wardrik.servers.remove("acme/@jon", "crm");
 
     assert.deepEqual(
       server.received.map((request) => [request.method, request.path]),
       [
-        ["GET", "/v1/servers?prefix=acme%2F%40jon%2F"],
-        ["POST", "/v1/servers?prefix=acme%2F"],
-        ["DELETE", "/v1/servers/crm?prefix=acme%2F%40jon%2F"],
+        ["GET", "/v1/servers?owner=acme%2F%40jon"],
+        ["POST", "/v1/servers?owner=acme"],
+        ["DELETE", "/v1/servers/crm?owner=acme%2F%40jon"],
       ],
     );
     assert.deepEqual(server.received[1]!.body, crm);
@@ -397,7 +397,7 @@ describe("tokens", () => {
       id: "0123456789ab",
       name: "ci",
       principal: { type: "user", id: "jon" },
-      statements: [{ actions: ["agent.read"], resources: ["acme/"] }],
+      statements: [{ actions: ["agent.read"], resources: ["acme/agent/*"] }],
       policy: "careful",
       created_at: "2026-10-18T00:00:00Z",
     };
@@ -412,7 +412,7 @@ describe("tokens", () => {
     assert.deepEqual(
       await wardrik.tokens.create({
         name: "ci",
-        scope: "acme/",
+        resources: ["acme/agent/*"],
         roles: ["reader"],
         policy: "careful",
         expiresIn: 3600,
@@ -429,7 +429,13 @@ describe("tokens", () => {
         [
           "POST",
           "/v1/tokens",
-          { name: "ci", scope: "acme/", roles: ["reader"], policy: "careful", expires_in: 3600 },
+          {
+            name: "ci",
+            resources: ["acme/agent/*"],
+            roles: ["reader"],
+            policy: "careful",
+            expires_in: 3600,
+          },
         ],
         ["DELETE", "/v1/tokens/0123456789ab", undefined],
       ],

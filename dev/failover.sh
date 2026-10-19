@@ -87,7 +87,7 @@ start() {
 # nothing while no node runs it.
 running_on() {
   rpc "$1" "$2" "
-    case Enum.find(Wardrik.Fleet.list(), &(to_string(&1.id) == \"$agent\")) do
+    case Enum.find(Wardrik.Fleet.held(Wardrik.Resource.parse!(\"*\")), &(to_string(&1.id) == \"$agent\")) do
       nil -> :ok
       member -> IO.puts(member.node)
     end
@@ -202,7 +202,7 @@ EOF
   rpc "$old" "" "{:ok, _pid} = Wardrik.Fleet.spawn(Wardrik.AgentID.parse!(\"$agent\"))"
   node=$(running_on "$old" "")
   [ -n "$node" ] || die "$agent did not start"
-  wardrik "$old" token create failover --all --unlimited >/dev/null
+  wardrik "$old" token create failover --resource '*' --role owner >/dev/null
   remember "$old" ""
 
   say "$agent runs on $node; killing it with kill -9 and throwing its home away"

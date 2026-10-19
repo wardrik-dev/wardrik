@@ -1,17 +1,17 @@
 defmodule WardrikWorkspace.SpecTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias WardrikWorkspace.Mount
   alias WardrikWorkspace.Spec
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
-  # A token reaching the agents under `prefix`.
-  defp reaching(prefix),
+  # A token reaching what `pattern` covers.
+  defp reaching(pattern),
     do: %Wardrik.Token{
       principal: Wardrik.Principal.new(:user, "jon"),
-      scope: [Wardrik.Role.bind([:definer], prefix)]
+      scope: [Wardrik.Role.bind([:definer], [Resource.parse!(pattern)])]
     }
 
   describe "new/2" do
@@ -39,13 +39,15 @@ defmodule WardrikWorkspace.SpecTest do
 
     test "refuses a user's agent its org's trees" do
       assert Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"team" => "acme"}) ==
-               {:error, "shared team: acme belongs to acme/, which acme/@jon/triage is not under"}
+               {:error,
+                "shared team: acme belongs to acme/agent/*, which does not cover acme/@jon/triage"}
     end
 
     test "refuses a tree under a scope the agent is not under" do
       assert Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"theirs" => "globex/findings"}) ==
                {:error,
-                "shared theirs: globex/findings belongs to globex/, which acme/@jon/triage is not under"}
+                "shared theirs: globex/findings belongs to globex/agent/*, which does not cover " <>
+                  "acme/@jon/triage"}
 
       assert {:error, _message} =
                Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"hers" => "acme/@ann/notes"})
@@ -70,7 +72,7 @@ defmodule WardrikWorkspace.SpecTest do
   describe "shares" do
     setup do
       {:ok, runbooks} =
-        WardrikWorkspace.Share.new("acme/runbooks", read: ["acme/*"], write: ["acme/ops"])
+        WardrikWorkspace.Share.new("acme/runbooks", read: ["acme/*"], write: ["acme/agent/ops"])
 
       %{shares: [runbooks]}
     end
@@ -96,7 +98,7 @@ defmodule WardrikWorkspace.SpecTest do
     test "let a definition share what the deployment shares with its agent", %{shares: shares} do
       read = %{"runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"}}
       {:ok, spec} = Spec.new(~A"acme/@jon/triage", read, shares: shares)
-      jon = reaching(Prefix.new!(org: "acme", user: "jon"))
+      jon = reaching("acme/@jon/agent/*")
 
       assert Spec.within(spec, jon, id: ~A"acme/@jon/triage", shares: shares) == :ok
       assert {:error, _message} = Spec.within(spec, jon, id: ~A"acme/@jon/triage")
@@ -114,22 +116,24 @@ defmodule WardrikWorkspace.SpecTest do
   describe "within/3" do
     test "answers whether every tree shared belongs to agents a token reaches" do
       {:ok, spec} = Spec.new(~A"acme/triage", %{"team" => "acme"})
-      triage = reaching(Prefix.of(~A"acme/triage"))
+      triage = reaching("acme/agent/triage")
 
-      assert Spec.within(spec, reaching(Prefix.new!(org: "acme")), id: ~A"acme/triage") == :ok
-      assert Spec.within(spec, reaching(Prefix.all()), id: ~A"acme/triage") == :ok
+      assert Spec.within(spec, reaching("acme/agent/*"), id: ~A"acme/triage") == :ok
+      assert Spec.within(spec, reaching("*"), id: ~A"acme/triage") == :ok
 
       assert Spec.within(spec, triage, id: ~A"acme/triage") ==
-               {:error, "shared team: acme belongs to acme/, which the token does not reach"}
+               {:error,
+                "shared team: acme belongs to acme/agent/*, which the token does not reach"}
 
       {:ok, jons} = Spec.new(~A"acme/@jon/triage", %{"notes" => "acme/@jon/notes"})
-      jon = reaching(Prefix.new!(org: "acme", user: "jon"))
+      jon = reaching("acme/@jon/agent/*")
 
       assert Spec.within(jons, jon, id: ~A"acme/@jon/triage") == :ok
 
-      assert Spec.within(jons, reaching(Prefix.new!(org: "acme")), id: ~A"acme/@jon/triage") ==
+      assert Spec.within(jons, reaching("acme/agent/*"), id: ~A"acme/@jon/triage") ==
                {:error,
-                "shared notes: acme/@jon/notes belongs to acme/@jon/, which the token does not reach"}
+                "shared notes: acme/@jon/notes belongs to acme/@jon/agent/*, which the token " <>
+                  "does not reach"}
 
       {:ok, alone} = Spec.new(~A"acme/triage")
       assert Spec.within(alone, triage, id: ~A"acme/triage") == :ok

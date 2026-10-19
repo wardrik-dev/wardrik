@@ -6,8 +6,8 @@ defmodule WardrikDaemon.IssuerTest do
   @moduletag :tmp_dir
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Principal
+  alias Wardrik.Resource
   alias Wardrik.Token
   alias WardrikDaemon.Agents
   alias WardrikDaemon.Test.Host
@@ -26,7 +26,8 @@ defmodule WardrikDaemon.IssuerTest do
       Keyword.merge(
         [
           channels: [chat: {WardrikDaemon.Test.Channel, []}],
-          installations: WardrikChannel.Installations.Config.new([{:chat, "token", Prefix.all()}])
+          installations:
+            WardrikChannel.Installations.Config.new([{:chat, "token", Resource.deployment()}])
         ],
         settings
       )
@@ -47,13 +48,13 @@ defmodule WardrikDaemon.IssuerTest do
         do: {to_string(resource), statement.actions}
       )
 
-  defp bound(roles), do: Wardrik.Role.bind(roles, Prefix.all()).actions
+  defp bound(roles), do: Wardrik.Role.bind(roles, []).actions
 
-  test "whoever holds the node holds owner on every agent" do
+  test "whoever holds the node holds owner on everything" do
     for type <- [:shell, :terminal, :ssh] do
       jon = Principal.new(type, "jon")
       assert %Token{principal: ^jon} = token = issue(jon)
-      assert roles(token) == [{"", ["*"]}]
+      assert roles(token) == [{"*", ["*"]}]
       assert Token.authorize(token, "agent.define", AgentID.parse!("anyone/@at/all")) == :ok
     end
   end
@@ -62,18 +63,18 @@ defmodule WardrikDaemon.IssuerTest do
     channel(orgs: [chat: ["acme", "globex"]])
 
     assert roles(in_chat("U1")) == [
-             {"acme/", bound([:reader, :messenger])},
-             {"globex/", bound([:reader, :messenger])}
+             {"acme/agent/*", bound([:reader, :messenger])},
+             {"globex/agent/*", bound([:reader, :messenger])}
            ]
 
     channel(orgs: [chat: :all], approvers: [chat: %WardrikChannel.Approvers.Named{names: ["U2"]}])
-    assert roles(in_chat("U1")) == [{"", bound([:reader, :messenger])}]
-    assert roles(in_chat("U2")) == [{"", bound([:reader, :messenger, :approver])}]
+    assert roles(in_chat("U1")) == [{"*/agent/*", bound([:reader, :messenger])}]
+    assert roles(in_chat("U2")) == [{"*/agent/*", bound([:reader, :messenger, :approver])}]
   end
 
   test "with approvers: anyone, everyone in the channel decides" do
     channel(orgs: [chat: ["acme"]], approvers: [chat: %WardrikChannel.Approvers.Anyone{}])
-    assert roles(in_chat("U1")) == [{"acme/", bound([:reader, :messenger, :approver])}]
+    assert roles(in_chat("U1")) == [{"acme/agent/*", bound([:reader, :messenger, :approver])}]
   end
 
   test "a token on the channel's orgs reaches none of their users' agents" do
@@ -99,8 +100,8 @@ defmodule WardrikDaemon.IssuerTest do
       ]
     )
 
-    assert roles(in_chat("U3")) == [{"acme/", bound([:reader, :messenger, :approver])}]
-    assert roles(in_chat("U4")) == [{"acme/", bound([:reader, :messenger])}]
+    assert roles(in_chat("U3")) == [{"acme/agent/*", bound([:reader, :messenger, :approver])}]
+    assert roles(in_chat("U4")) == [{"acme/agent/*", bound([:reader, :messenger])}]
   end
 
   test "an admin defines only under the policy the defaults name", %{dir: dir} do
@@ -111,7 +112,7 @@ defmodule WardrikDaemon.IssuerTest do
     )
 
     assert %Token{policy: :none} = token = in_chat("U1")
-    assert roles(token) == [{"acme/", bound([:reader, :messenger, :approver])}]
+    assert roles(token) == [{"acme/agent/*", bound([:reader, :messenger, :approver])}]
 
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
@@ -120,15 +121,15 @@ defmodule WardrikDaemon.IssuerTest do
     _files = Agents.files(Host.agents())
 
     assert %Token{policy: "careful"} = token = in_chat("U1")
-    assert roles(token) == [{"acme/", bound([:reader, :messenger, :approver, :definer])}]
+    assert roles(token) == [{"acme/agent/*", bound([:reader, :messenger, :approver, :definer])}]
   end
 
   test "an agent reads and messages its owner's agents" do
-    token = issue(Principal.new(:agent, "acme/front/thread-1"))
-    assert roles(token) == [{"acme/", bound([:reader, :messenger])}]
+    token = issue(Principal.new(:agent, "acme/agent/front/thread/thread-1"))
+    assert roles(token) == [{"acme/agent/*", bound([:reader, :messenger])}]
 
-    token = issue(Principal.new(:agent, "acme/@jon/assistant"))
-    assert roles(token) == [{"acme/@jon/", bound([:reader, :messenger])}]
+    token = issue(Principal.new(:agent, "acme/@jon/agent/assistant"))
+    assert roles(token) == [{"acme/@jon/agent/*", bound([:reader, :messenger])}]
   end
 
   test "anyone else holds nothing" do

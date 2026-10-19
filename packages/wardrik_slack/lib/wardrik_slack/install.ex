@@ -15,7 +15,7 @@ defmodule WardrikSlack.Install do
   `WardrikChannel.Installations`, which may refuse it.
   """
 
-  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Resource
   alias WardrikChannel.Installation
   alias WardrikChannel.Installations
   alias WardrikChannel.Request
@@ -36,7 +36,7 @@ defmodule WardrikSlack.Install do
   def scopes, do: @scopes
 
   @doc "Where someone acting for `owner` is sent to install the app, given the channel's options."
-  @spec url(Prefix.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec url(Resource.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def url(owner, opts) do
     with {:ok, id, secret} <- client(opts) do
       state =
@@ -58,7 +58,7 @@ defmodule WardrikSlack.Install do
   Answers Slack sending someone acting for `owner` back from installing the
   app, given the channel's options.
   """
-  @spec installed(Prefix.t(), Request.t(), keyword()) :: Response.t()
+  @spec installed(Resource.t(), Request.t(), keyword()) :: Response.t()
   def installed(owner, %Request{query: query}, opts) do
     with {:ok, id, secret} <- client(opts),
          {:ok, state} <- verified(query["state"], secret, owner),

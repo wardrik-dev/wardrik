@@ -23,12 +23,11 @@ export interface ServerFields {
 
 /**
  * The MCP servers an owner adds for their own agents, reached over
- * Streamable HTTP. The owner is named by the prefix of their agents,
- * `acme/` for an org's or `acme/@jon/` for a person's.
+ * Streamable HTTP. The owner is an org, `acme`, or a person, `acme/@jon`.
  *
- *     await wardrik.servers.add("acme/", { name: "crm", url: "https://mcp.crm.example/mcp",
- *                                          auth: { secret: { name: "crm-key" } } });
- *     const { servers } = await wardrik.servers.list("acme/");
+ *     await wardrik.servers.add("acme", { name: "crm", url: "https://mcp.crm.example/mcp",
+ *                                         auth: { secret: { name: "crm-key" } } });
+ *     const { servers } = await wardrik.servers.list("acme");
  */
 export class Servers {
   readonly #http: Http;
@@ -58,4 +57,4 @@ export class Servers {
   }
 }
 
-const request = (owner: string, { signal }: ServerOptions) => ({ query: { prefix: owner }, signal });
+const request = (owner: string, { signal }: ServerOptions) => ({ query: { owner }, signal });

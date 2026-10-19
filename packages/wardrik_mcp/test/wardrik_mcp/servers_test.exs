@@ -2,13 +2,12 @@ defmodule WardrikMCP.ServersTest do
   use ExUnit.Case, async: false
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Credential
   alias Wardrik.Error
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
+  alias Wardrik.Resource
   alias Wardrik.Run
-  alias Wardrik.Servers.Key
   alias Wardrik.Servers.Server
   alias WardrikMCP.Auth
   alias WardrikMCP.Connection
@@ -105,8 +104,8 @@ defmodule WardrikMCP.ServersTest do
     start_supervised!({WardrikMCP.Supervisor, store: Wardrik.Test.store(), check: @reachable})
 
     org = "o#{System.unique_integer([:positive])}"
-    owner = Prefix.new!(org: org)
-    %{key: Key.new(owner, "crm"), name: "crm", org: org, owner: owner}
+    owner = Resource.parse!(org)
+    %{key: Resource.new(owner, server: "crm"), name: "crm", org: org, owner: owner}
   end
 
   # Serves the stub, asking for `authorization` where it is given one.
@@ -186,7 +185,7 @@ defmodule WardrikMCP.ServersTest do
   end
 
   defp run(key, org, tool, arguments) do
-    call = %{id: "call_1", name: "#{key.name}__#{tool}", arguments: arguments}
+    call = %{id: "call_1", name: "#{Resource.basename(key)}__#{tool}", arguments: arguments}
     [message] = ToolRunner.messages([ToolRunner.execute(call, run_for(key, org))])
     [part] = message.parts
     part.text
@@ -219,7 +218,7 @@ defmodule WardrikMCP.ServersTest do
                }
              ] = Wardrik.Servers.list(servers(), owner)
 
-      assert Wardrik.Servers.list(servers(), Prefix.new!(org: "acme", user: "jon")) == []
+      assert Wardrik.Servers.list(servers(), Resource.parse!("acme/@jon")) == []
 
       assert {:error, %Error{type: :conflict}} =
                Wardrik.Servers.add(servers(), owner, name: name, fields: fields, by: nil)
@@ -321,7 +320,7 @@ defmodule WardrikMCP.ServersTest do
       WardrikMCP.tools(key)
 
       assert Connection.running?(key, :deployment)
-      assert "#{key.name}__echo" in listed(key)
+      assert "#{Resource.basename(key)}__echo" in listed(key)
       assert Listing.recall(Wardrik.Test.store(), key) != []
     end
 
@@ -342,9 +341,9 @@ defmodule WardrikMCP.ServersTest do
     test "waits on a person for a tool not marked read-only", %{key: key} do
       listed(key)
 
-      assert WardrikMCP.annotations(key, "#{key.name}__post").gated
-      refute WardrikMCP.annotations(key, "#{key.name}__echo").gated
-      assert WardrikMCP.annotations(key, "#{key.name}__echo").labels == ["outside"]
+      assert WardrikMCP.annotations(key, "#{Resource.basename(key)}__post").gated
+      refute WardrikMCP.annotations(key, "#{Resource.basename(key)}__echo").gated
+      assert WardrikMCP.annotations(key, "#{Resource.basename(key)}__echo").labels == ["outside"]
     end
 
     test "is among the tools of its owner's servers/*, and of no one else's",
@@ -353,10 +352,14 @@ defmodule WardrikMCP.ServersTest do
       agent = AgentID.new!("assistant", org: org)
       jon = AgentID.new!("assistant", org: org, user: "jon")
 
-      assert "#{key.name}__echo" in Enum.map(WardrikMCP.Added.tools(agent), & &1.name)
+      assert "#{Resource.basename(key)}__echo" in Enum.map(
+               WardrikMCP.Added.tools(agent),
+               & &1.name
+             )
+
       assert WardrikMCP.Added.tools(jon) == []
       assert WardrikMCP.Added.tools(AgentID.new!("assistant", org: "globex")) == []
-      assert WardrikMCP.Added.annotations(agent, "#{key.name}__post").gated
+      assert WardrikMCP.Added.annotations(agent, "#{Resource.basename(key)}__post").gated
 
       assert WardrikMCP.Added.annotations(agent, "gone__post") == %{
                gated: true,
@@ -366,7 +369,12 @@ defmodule WardrikMCP.ServersTest do
 
     test "is closed everywhere as it is removed", %{key: key} do
       listed(key)
-      assert :ok = Wardrik.Servers.remove(servers(), key.owner, name: key.name, by: nil)
+
+      assert :ok =
+               Wardrik.Servers.remove(servers(), Resource.owner(key),
+                 name: Resource.basename(key),
+                 by: nil
+               )
 
       refute Connection.running?(key, :deployment)
       assert WardrikMCP.tools(key) == []
@@ -384,11 +392,11 @@ defmodule WardrikMCP.ServersTest do
 
     test "offers the tool that connects it, then its own once the owner's call lists them",
          %{key: key, org: org} do
-      assert ["#{key.name}__connect"] == listed(key)
+      assert ["#{Resource.basename(key)}__connect"] == listed(key)
       assert run(key, org, "connect", %{}) =~ "connected"
 
       assert Connection.running?(key, {:owner, org})
-      assert "#{key.name}__echo" in Enum.map(WardrikMCP.tools(key), & &1.name)
+      assert "#{Resource.basename(key)}__echo" in Enum.map(WardrikMCP.tools(key), & &1.name)
       assert run(key, org, "echo", %{"value" => "hi"}) =~ "echo: hi"
     end
   end

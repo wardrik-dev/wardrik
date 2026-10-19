@@ -1,7 +1,7 @@
 defmodule WardrikMCP.SupervisorTest do
   use WardrikMCP.Test.Case, async: false
 
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikMCP.Server
 
   test "lists the servers it is connecting to", %{key: key} do
@@ -9,7 +9,7 @@ defmodule WardrikMCP.SupervisorTest do
   end
 
   test "connects to one more while it runs, and to the same one twice safely", %{key: key} do
-    second = Key.deployment("#{key}_more")
+    second = Resource.parse!("deployment/server/#{Resource.basename(key)}_more")
     server = Server.new(second, stub_options())
 
     assert {:ok, pid} = WardrikMCP.Supervisor.connect(server)

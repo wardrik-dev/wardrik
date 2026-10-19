@@ -4,7 +4,6 @@ defmodule Wardrik.FleetTest do
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.User
@@ -12,6 +11,7 @@ defmodule Wardrik.FleetTest do
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.LLM.Config
+  alias Wardrik.Resource
   alias Wardrik.Run
   alias Wardrik.Test.AgentRunners
 
@@ -72,14 +72,15 @@ defmodule Wardrik.FleetTest do
   end
 
   describe "forget_under/1" do
-    test "removes every running agent under a prefix and says how many" do
+    test "removes every running agent a pattern covers and says how many" do
       org = "org#{System.unique_integer([:positive])}"
       keys = for name <- ["one", "two"], do: AgentID.new!(name, org: org)
       Enum.each(keys, &start(&1, runner: runner(self())))
+      own = Resource.parse!("#{org}/agent/*")
 
-      assert Fleet.forget_under(Prefix.new!(org: org)) == 2
-      assert Fleet.list(Prefix.new!(org: org), host: Wardrik.Test.host()) == []
-      assert Fleet.forget_under(Prefix.new!(org: org)) == 0
+      assert Fleet.forget_under(own) == 2
+      assert Fleet.list(own, host: Wardrik.Test.host()) == []
+      assert Fleet.forget_under(own) == 0
     end
   end
 
@@ -101,7 +102,7 @@ defmodule Wardrik.FleetTest do
   end
 
   describe "list/1" do
-    test "reports every agent under a prefix, with what it is doing" do
+    test "reports every agent a pattern covers, with what it is doing" do
       org = "org#{System.unique_integer([:positive])}"
       one = AgentID.new!("one", org: org)
       two = AgentID.new!("two", org: org)
@@ -110,16 +111,16 @@ defmodule Wardrik.FleetTest do
       start(two, runner: runner(self()))
       start(jons, runner: runner(self()))
 
-      assert [%{id: ^one}, %{id: ^two}] =
-               Fleet.list(Prefix.new!(org: org), host: Wardrik.Test.host())
+      own = Resource.parse!("#{org}/agent/*")
+      assert [%{id: ^one}, %{id: ^two}] = Fleet.list(own, host: Wardrik.Test.host())
 
       assert [%{id: ^jons}] =
-               Fleet.list(Prefix.new!(org: org, user: "jon"), host: Wardrik.Test.host())
+               Fleet.list(Resource.parse!("#{org}/@jon/*"), host: Wardrik.Test.host())
 
-      assert Enum.all?(
-               Fleet.list(Prefix.new!(org: org), host: Wardrik.Test.host()),
-               &(&1.status == :idle)
-             )
+      assert [%{id: ^jons}, %{id: ^one}, %{id: ^two}] =
+               Fleet.list(Resource.parse!("#{org}/*"), host: Wardrik.Test.host())
+
+      assert Enum.all?(Fleet.list(own, host: Wardrik.Test.host()), &(&1.status == :idle))
     end
 
     test "an agent reports that it is running, then parked" do
@@ -187,17 +188,26 @@ defmodule Wardrik.FleetTest do
     assert Fleet.nodes() == [node() | Node.list()]
   end
 
-  describe "watch/1" do
+  describe "watch/0" do
     test "reports an agent joining the fleet" do
       org = "org#{System.unique_integer([:positive])}"
-      :ok = Fleet.watch(Prefix.new!(org: org))
-      on_exit(fn -> Fleet.unwatch(Prefix.new!(org: org)) end)
+      :ok = Fleet.watch()
+      on_exit(&Fleet.unwatch/0)
 
       key = AgentID.new!("watched", org: org)
       start(key, runner: runner(self()))
 
-      assert_receive {:group, events, _info}, 5_000
-      assert Enum.any?(events, &(&1.type == :registered and &1.key == to_string(key)))
+      assert joined?(to_string(key))
+    end
+  end
+
+  # Whether the fleet says `key` joined it, among whatever else joins.
+  defp joined?(key) do
+    receive do
+      {:group, events, _info} ->
+        Enum.any?(events, &(&1.type == :registered and &1.key == key)) or joined?(key)
+    after
+      5_000 -> false
     end
   end
 

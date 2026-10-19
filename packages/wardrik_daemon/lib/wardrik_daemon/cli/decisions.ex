@@ -16,9 +16,9 @@ defmodule WardrikDaemon.CLI.Decisions do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Event.Codec.Value
+  alias Wardrik.Resource
   alias WardrikConsole.Ansi
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
@@ -74,7 +74,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   end
 
   defp interrupts(_words, opts) do
-    with {:ok, parked} <- Wardrik.agents_parked(opts[:as], Prefix.all()),
+    with {:ok, parked} <- Wardrik.agents_parked(opts[:as], Resource.parse!("*")),
          do: {:ok, Wardrik.JSON.interrupts(parked)}
   end
 
@@ -193,12 +193,15 @@ defmodule WardrikDaemon.CLI.Decisions do
 
   # Every call a parked agent is waiting on, with the agent's ID, or those
   # of the one agent `words` name.
-  defp waiting([], scope), do: parked_under(Prefix.all(), scope)
+  defp waiting([], scope), do: parked_under(Resource.parse!("*"), scope)
 
   defp waiting([key], scope) do
     with {:ok, _snapshot} <- Wardrik.agent_read(scope, key),
          [_ | _] = calls <-
-           for({^key, _interrupt} = call <- parked_under(Prefix.of(key), scope), do: call) do
+           for(
+             {^key, _interrupt} = call <- parked_under(AgentID.resource(key), scope),
+             do: call
+           ) do
       calls
     else
       [] -> {:error, "#{key} is not waiting on anything."}
@@ -207,8 +210,8 @@ defmodule WardrikDaemon.CLI.Decisions do
   end
 
   # The CLI's token allows every action on every agent.
-  defp parked_under(prefix, scope) do
-    {:ok, parked} = Wardrik.agents_parked(scope, prefix)
+  defp parked_under(pattern, scope) do
+    {:ok, parked} = Wardrik.agents_parked(scope, pattern)
     for {id, waiting} <- parked, do: {id, Value.interrupt(waiting)}
   end
 end

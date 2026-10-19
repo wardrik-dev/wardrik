@@ -45,7 +45,7 @@ defmodule WardrikMCP.Connection do
 
   require Logger
 
-  alias Wardrik.Servers.Key
+  alias Wardrik.Resource
   alias WardrikMCP.Listing
   alias WardrikMCP.Offer
   alias WardrikMCP.Server
@@ -105,7 +105,7 @@ defmodule WardrikMCP.Connection do
   def start_link(%Server{} = server), do: start_link(server, :deployment, server.transport)
 
   @doc "Stops the connection a principal was using, if there is one."
-  @spec close(Key.t(), term()) :: :ok
+  @spec close(Resource.t(), term()) :: :ok
   def close(key, principal) do
     case GenServer.whereis(name(key, principal)) do
       nil -> :ok
@@ -134,7 +134,7 @@ defmodule WardrikMCP.Connection do
   A connection that has stopped offers nothing from the moment it stops, before
   the registry has dropped its entry.
   """
-  @spec offer(Key.t()) :: Offer.t() | nil
+  @spec offer(Resource.t()) :: Offer.t() | nil
   def offer(key) do
     case Registry.lookup(@registry, {:offer, key}) do
       [{pid, %Offer{} = offer}] -> if Process.alive?(pid), do: offer
@@ -145,7 +145,7 @@ defmodule WardrikMCP.Connection do
   end
 
   @doc "The tools a server last reported."
-  @spec tools(Key.t()) :: [Wardrik.Tool.t()]
+  @spec tools(Resource.t()) :: [Wardrik.Tool.t()]
   def tools(key) do
     case offer(key) do
       %Offer{tools: tools} -> tools
@@ -160,7 +160,7 @@ defmodule WardrikMCP.Connection do
   Empty on a host that started no registry, which is one running no MCP
   servers at all.
   """
-  @spec keys() :: [Key.t()]
+  @spec keys() :: [Resource.t()]
   def keys do
     @registry
     # Every server offered is the answer.
@@ -173,7 +173,7 @@ defmodule WardrikMCP.Connection do
   end
 
   @doc "The keys a principal has a connection to, as the registry holds them."
-  @spec keys_for(pid()) :: [{Key.t(), term()}]
+  @spec keys_for(pid()) :: [{Resource.t(), term()}]
   def keys_for(client) when is_pid(client) do
     for {:client, key, principal} <- Registry.keys(@registry, client), do: {key, principal}
   rescue
@@ -181,8 +181,8 @@ defmodule WardrikMCP.Connection do
   end
 
   @doc "The principals a connection to the server `key` names is running for."
-  @spec principals(Key.t()) :: [term()]
-  def principals(%Key{} = key) do
+  @spec principals(Resource.t()) :: [term()]
+  def principals(%Resource{} = key) do
     @registry
     # Every connection to one server is the answer.
     # credo:disable-for-next-line Wardrik.Credo.Check.NoScans
@@ -194,16 +194,16 @@ defmodule WardrikMCP.Connection do
   end
 
   @doc "The `Anubis.Client` name for a key and principal, whether or not it is running."
-  @spec client(Key.t(), term()) :: GenServer.name()
+  @spec client(Resource.t(), term()) :: GenServer.name()
   def client(key, principal \\ :deployment),
     do: {:via, Registry, {@registry, {:client, key, principal}}}
 
   @doc "The connection running for this server and principal, or `nil`."
-  @spec whereis(Key.t(), term()) :: pid() | nil
+  @spec whereis(Resource.t(), term()) :: pid() | nil
   def whereis(key, principal \\ :deployment), do: GenServer.whereis(name(key, principal))
 
   @doc "Whether a connection is running for this server and principal."
-  @spec running?(Key.t(), term()) :: boolean()
+  @spec running?(Resource.t(), term()) :: boolean()
   def running?(key, principal), do: not is_nil(whereis(key, principal))
 
   @doc """
@@ -213,7 +213,7 @@ defmodule WardrikMCP.Connection do
   reported stand until it is. Asking again while a listing is already due
   costs nothing: the one already due answers both.
   """
-  @spec refresh(Key.t(), term()) :: :ok
+  @spec refresh(Resource.t(), term()) :: :ok
   def refresh(key, principal \\ :deployment),
     do: GenServer.cast(name(key, principal), :list_tools)
 
@@ -225,7 +225,7 @@ defmodule WardrikMCP.Connection do
   with no connection to `key`, or one that reaches it as the deployment, is
   left as it is.
   """
-  @spec offer_listing(Key.t(), [map()]) :: :ok
+  @spec offer_listing(Resource.t(), [map()]) :: :ok
   def offer_listing(key, listed) when is_list(listed),
     do: GenServer.cast(name(key, :deployment), {:offer_listing, listed})
 
@@ -235,7 +235,7 @@ defmodule WardrikMCP.Connection do
   Returns `{:error, :timeout}` when it has not answered in time, which a server
   that is down never will.
   """
-  @spec await(Key.t(), term(), timeout()) :: {:ok, [Wardrik.Tool.t()]} | {:error, :timeout}
+  @spec await(Resource.t(), term(), timeout()) :: {:ok, [Wardrik.Tool.t()]} | {:error, :timeout}
   def await(key, principal \\ :deployment, timeout \\ :timer.seconds(30)) do
     GenServer.call(name(key, principal), :await, timeout)
   catch
@@ -250,7 +250,7 @@ defmodule WardrikMCP.Connection do
   unwatched. A connection that is busy or missing answers `:ok` all the same:
   the call still runs, and only its cancellation is lost.
   """
-  @spec watch(Key.t(), term()) :: :ok
+  @spec watch(Resource.t(), term()) :: :ok
   def watch(key, principal \\ :deployment) do
     case GenServer.whereis(name(key, principal)) do
       nil -> :ok

@@ -6,11 +6,11 @@ defmodule WardrikHTTP.RouterTest do
 
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Event
   alias Wardrik.Event.Log
   alias Wardrik.Host
   alias Wardrik.LLM.Config
+  alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Audit
   alias Wardrik.Test.EventLog
@@ -144,7 +144,7 @@ defmodule WardrikHTTP.RouterTest do
              name: user,
              token: %Wardrik.Token{
                principal: Wardrik.Principal.new(:user, user),
-               scope: [Wardrik.Role.bind([:owner], Prefix.parse!("test/"))]
+               scope: [Wardrik.Role.bind([:owner], [Resource.parse!("test/agent/*")])]
              }
            }}
 
@@ -165,20 +165,20 @@ defmodule WardrikHTTP.RouterTest do
       [
         %Wardrik.Connections.Connection{
           provider: "github",
-          held_by: if(owner == {"test", "jon"}, do: :person)
+          held_by: if(to_string(owner) == "test/@jon", do: :person)
         },
         %Wardrik.Connections.Connection{provider: "linear", held_by: nil}
       ]
     end
 
-    def connect(_host, "github", {"test", "jon"}, _by), do: {:ok, :held}
+    def connect(_host, "github", %{name: "test/@jon"}, _by), do: {:ok, :held}
 
     def connect(_host, provider, _owner, _by) when provider in ["github", "linear"],
       do: {:ok, %{url: "https://auth.example.com/#{provider}", code: nil}}
 
     def connect(_host, _provider, _owner, _by), do: {:error, :not_found}
 
-    def disconnect(_host, "github", {"test", "jon"}), do: :ok
+    def disconnect(_host, "github", %{name: "test/@jon"}), do: :ok
     def disconnect(_host, _provider, _owner), do: {:error, :not_found}
   end
 
@@ -188,14 +188,14 @@ defmodule WardrikHTTP.RouterTest do
     defdelegate disconnect(c, provider, owner), to: Linked
   end
 
-  # Has test/@jon/'s docs, adds docs and crm, the second behind a sign-in,
+  # Has test/@jon's docs, adds docs and crm, the second behind a sign-in,
   # and has taken already.
   defmodule Added do
     @moduledoc false
     defstruct []
 
     def list(_servers, owner) do
-      if to_string(owner) == "test/@jon/",
+      if to_string(owner) == "test/@jon",
         do: [%Wardrik.Servers.Server{name: "docs", url: "https://docs.example/mcp", auth: "none"}],
         else: []
     end
@@ -266,13 +266,13 @@ defmodule WardrikHTTP.RouterTest do
 
   # A token named `name`, made by a person of that name, holding `roles` over
   # `scope`: its secret, and the token as it is kept.
-  defp token(name, scope, roles \\ [:owner], fields \\ []) do
+  defp token(name, pattern, roles \\ [:owner], fields \\ []) do
     Token.create(store(), name,
       token:
         struct!(
           %Wardrik.Token{
             principal: Wardrik.Principal.new(:user, "ci", name: name),
-            scope: [Wardrik.Role.bind(roles, scope)]
+            scope: [Wardrik.Role.bind(roles, [Resource.parse!(pattern)])]
           },
           fields
         )
@@ -280,7 +280,7 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   setup do
-    {:ok, secret, _token} = token("router-test", Prefix.parse!("test/"))
+    {:ok, secret, _token} = token("router-test", "test/agent/*")
 
     listener = :"router-#{System.unique_integer([:positive])}"
     start_supervised!({Listener, name: listener, port: 0, host: host()})
@@ -396,7 +396,7 @@ defmodule WardrikHTTP.RouterTest do
       longer_id = Wardrik.AgentID.new!(key.name <> "0", org: key.org)
       {longer, _agent} = Fleet.start_agent([], longer_id)
 
-      {:ok, secret, _token} = token("one-agent", Prefix.of(key))
+      {:ok, secret, _token} = token("one-agent", to_string(Wardrik.AgentID.resource(key)))
 
       one = Req.merge(api, auth: {:bearer, secret})
 
@@ -436,7 +436,7 @@ defmodule WardrikHTTP.RouterTest do
          %{api: api} do
       {key, _agent} = echo_agent()
 
-      {:ok, secret, _token} = token("watcher", Prefix.parse!("test/"), [:reader])
+      {:ok, secret, _token} = token("watcher", "test/agent/*", [:reader])
 
       watcher = Req.merge(api, auth: {:bearer, secret})
 
@@ -471,7 +471,7 @@ defmodule WardrikHTTP.RouterTest do
 
     test "an expired token is refused", %{api: api} do
       past = DateTime.add(DateTime.utc_now(), -1)
-      {:ok, secret, _token} = token("expired", Prefix.parse!("test/"), [:owner], expires: past)
+      {:ok, secret, _token} = token("expired", "test/agent/*", [:owner], expires: past)
 
       assert {:ok, %{status: 401, body: body}} =
                Req.get(api, url: "/v1/agents", auth: {:bearer, secret})
@@ -482,7 +482,7 @@ defmodule WardrikHTTP.RouterTest do
     test "a revoked token is refused, and a stream open on it ends", %{api: api} do
       {key, _agent} = echo_agent()
 
-      {:ok, secret, token} = token("revoked", Prefix.parse!("test/"))
+      {:ok, secret, token} = token("revoked", "test/agent/*")
 
       revoked = Req.merge(api, auth: {:bearer, secret})
       stream = open(revoked, key, [])
@@ -581,7 +581,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     defp tenant(api) do
-      {:ok, secret, _token} = token("tenant", Prefix.tenant!("test"))
+      {:ok, secret, _token} = token("tenant", "test/*")
 
       Req.merge(api, auth: {:bearer, secret})
     end
@@ -600,7 +600,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "a token scoped to a user reaches that user's agents alone", %{api: api} do
-      {:ok, secret, _token} = token("jon-only", Prefix.parse!("test/@jon/"), [:reader])
+      {:ok, secret, _token} = token("jon-only", "test/@jon/agent/*", [:reader])
 
       jon = Req.merge(api, auth: {:bearer, secret})
       name = "scoped-#{System.unique_integer([:positive])}"
@@ -668,7 +668,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert body == %{"url" => "https://github.com/login/device", "code" => "WDJB-MJHT"}
 
-      {:ok, secret, _token} = token("reader", Prefix.parse!("test/"), [:reader])
+      {:ok, secret, _token} = token("reader", "test/agent/*", [:reader])
 
       assert {:ok, %{status: 403}} =
                Req.get(api,
@@ -796,7 +796,7 @@ defmodule WardrikHTTP.RouterTest do
 
     assert {:ok, %{status: 202}} = Req.post(api, url: "/v1/agents/#{key}/cancel")
     assert_receive %Event{payload: %Event.TurnInterrupted{}}
-    assert Audit.about("agents/#{key}") == [{"agent.cancelled", @actor}]
+    assert Audit.about(key) == [{"agent.cancelled", @actor}]
 
     assert {:ok, %{status: 404}} = Req.post(api, url: "/v1/agents/test/nobody/cancel")
   end
@@ -814,7 +814,7 @@ defmodule WardrikHTTP.RouterTest do
     assert {:ok, %{status: 409, body: %{"error" => %{"type" => "conflict"}}}} =
              Req.delete(api, url: "/v1/agents/#{key}/conversation")
 
-    assert Audit.about("agents/#{key}") == []
+    assert Audit.about(key) == []
     send(turn, :release)
     assert_receive %Event{payload: %Event.TurnFinished{}}
 
@@ -824,7 +824,7 @@ defmodule WardrikHTTP.RouterTest do
     conforms(cleared, "agent_snapshot")
     assert_receive %Event{payload: %Event.ContextCleared{dropped: 2}}
     assert Agent.history(agent).messages == []
-    assert Audit.about("agents/#{key}") == [{"agent.cleared", @actor}]
+    assert Audit.about(key) == [{"agent.cleared", @actor}]
 
     assert {:ok, %{status: 404}} = Req.delete(api, url: "/v1/agents/test/nobody/conversation")
   end
@@ -856,7 +856,7 @@ defmodule WardrikHTTP.RouterTest do
       assert snapshot["request"]["model"] == "gpt-5"
       assert Agent.status(key, host: Wardrik.Test.host()).model == "openai:gpt-5"
 
-      assert Audit.about("agents/#{key}") ==
+      assert Audit.about(key) ==
                [{"agent.defined", @actor}, {"agent.defined", @actor}]
     end
 
@@ -928,7 +928,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "goes by its name to the host's definitions, which hold the agent to it", %{api: api} do
-      {:ok, secret, _token} = token("held", Prefix.parse!("test/"), [:definer], policy: "strict")
+      {:ok, secret, _token} = token("held", "test/agent/*", [:definer], policy: "strict")
       key = defined_key()
 
       assert {:ok, %{status: 200}} =
@@ -962,7 +962,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 404}} = Req.get(kept, url: "/v1/agents/#{key}/definition")
       assert {:ok, %{status: 404}} = Req.delete(kept, url: "/v1/agents/#{key}")
 
-      assert Audit.about("agents/#{key}") ==
+      assert Audit.about(key) ==
                [{"agent.defined", @actor}, {"agent.forgotten", @actor}]
     end
 
@@ -988,7 +988,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}")
       assert Wardrik.Fleet.lookup(key, host: Wardrik.Test.host())
-      assert Audit.about("agents/#{key}") == []
+      assert Audit.about(key) == []
     end
 
     test "may refuse to change an agent's triggers", %{kept: kept} do
@@ -1024,7 +1024,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 200, body: %{"trigger" => %{"every" => "2h"}}}} =
                trigger(kept, key, "sweep", %{"every" => "2h", "prompt" => "Look."})
 
-      assert {"trigger.set", @actor} in Audit.about("agents/#{key}")
+      assert {"trigger.set", @actor} in Audit.about(key)
     end
 
     test "that do not read, or are for an agent with no definition kept, are refused",
@@ -1055,7 +1055,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert body["error"]["message"] == "#{key} has no trigger sweep."
 
-      assert Audit.about("agents/#{key}") == [
+      assert Audit.about(key) == [
                {"agent.defined", @actor},
                {"trigger.set", @actor},
                {"trigger.removed", @actor}
@@ -1259,7 +1259,7 @@ defmodule WardrikHTTP.RouterTest do
       {second, _agent} =
         Fleet.start_agent([], Wardrik.AgentID.new!("second", org: "test", user: user))
 
-      client = client(api, Prefix.parse!("test/@#{user}/"), [:reader])
+      client = client(api, "test/@#{user}/agent/*", [:reader])
 
       assert {:ok, %{status: 200, body: %{"events" => events, "next" => next, "gaps" => []}}} =
                Req.get(client, url: "/v1/exports/feed")
@@ -1277,7 +1277,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{body: %{"events" => []}}} = Req.get(client, url: "/v1/exports/feed")
 
       # Another caller's export of the same name is its own.
-      other = client(api, Prefix.parse!("test/@#{user}/"), [:reader])
+      other = client(api, "test/@#{user}/agent/*", [:reader])
       assert {:ok, %{body: %{"events" => ^events}}} = Req.get(other, url: "/v1/exports/feed")
 
       assert {:ok, %{status: 204}} = Req.delete(client, url: "/v1/exports/feed")
@@ -1292,7 +1292,7 @@ defmodule WardrikHTTP.RouterTest do
           by: nil
         )
 
-      client = client(api, Prefix.all(), [:owner])
+      client = client(api, "*", [:owner])
 
       assert {:ok, %{status: 200, body: %{"events" => [event]}}} =
                Req.get(client, url: "/v1/exports/audit?limit=1")
@@ -1306,7 +1306,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 400}} = Req.get(api, url: "/v1/exports/feed?limit=0")
 
       assert {:ok, %{status: 403}} =
-               Req.get(client(api, Prefix.parse!("test/"), [:messenger]), url: "/v1/exports/feed")
+               Req.get(client(api, "test/agent/*", [:messenger]), url: "/v1/exports/feed")
 
       assert {:ok, %{status: 400, body: body}} =
                Req.post(api, url: "/v1/exports/feed", json: %{"next" => "not a page"})
@@ -1320,7 +1320,7 @@ defmodule WardrikHTTP.RouterTest do
   describe "connections" do
     defp as(api, scope, principal, roles \\ [:owner]) do
       {:ok, secret, _token} =
-        token("connections", Prefix.parse!(scope), roles, principal: principal)
+        token("connections", scope, roles, principal: principal)
 
       Req.merge(api, auth: {:bearer, secret})
     end
@@ -1328,7 +1328,7 @@ defmodule WardrikHTTP.RouterTest do
     @jon Wardrik.Principal.new(:user, "jon")
 
     test "lists, connects and forgets a person's own, or an org's", %{api: api} do
-      jon = Req.merge(as(api, "test/*", @jon), params: [prefix: "test/@jon/"])
+      jon = Req.merge(as(api, "test/*", @jon), params: [owner: "test/@jon"])
 
       assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
                Req.get(jon, url: "/v1/connections")
@@ -1339,7 +1339,7 @@ defmodule WardrikHTTP.RouterTest do
              ]
 
       assert {:ok, %{status: 200, body: %{"connections" => [%{"provider" => "github"} | _]}}} =
-               Req.get(jon, url: "/v1/connections", params: [prefix: "test/"])
+               Req.get(jon, url: "/v1/connections", params: [owner: "test"])
 
       assert {:ok, %{status: 200, body: %{"connected" => true}}} =
                Req.post(jon, url: "/v1/connections/github")
@@ -1361,7 +1361,7 @@ defmodule WardrikHTTP.RouterTest do
               }} =
                Req.delete(jon, url: "/v1/connections/github")
 
-      assert Audit.about("secrets/github") |> List.last() ==
+      assert Audit.about("test/@jon/secret/github") |> List.last() ==
                {"secret.removed", %{"type" => "user", "id" => "jon"}}
 
       assert {:ok, %{status: 404}} = Req.delete(jon, url: "/v1/connections/linear")
@@ -1371,43 +1371,49 @@ defmodule WardrikHTTP.RouterTest do
     test "are refused with no owner, outside the token's reach, or without definer",
          %{api: api} do
       assert {:ok, %{status: 400, body: body}} = Req.get(api, url: "/v1/connections")
-      assert body["error"]["message"] =~ "prefix"
+      assert body["error"]["message"] =~ "owner"
+
+      assert {:ok, %{status: 404}} =
+               Req.get(api, url: "/v1/connections", params: [owner: "test"])
 
       assert {:ok, %{status: 200}} =
-               Req.get(api, url: "/v1/connections", params: [prefix: "test/"])
+               Req.get(as(api, "test/secret/*", @jon),
+                 url: "/v1/connections",
+                 params: [owner: "test"]
+               )
 
-      for prefix <- ["test/*", "test/triage", ""] do
+      for owner <- ["test/*", "test/agent/triage", "test/", "deployment", ""] do
         assert {:ok, %{status: 400}} =
-                 Req.get(api, url: "/v1/connections", params: [prefix: prefix])
+                 Req.get(api, url: "/v1/connections", params: [owner: owner])
       end
 
       assert {:ok, %{status: 404}} =
-               Req.post(api, url: "/v1/connections/github", params: [prefix: "globex/"])
+               Req.post(api, url: "/v1/connections/github", params: [owner: "globex"])
 
       globex = as(api, "globex/*", @jon)
 
       assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
-               Req.get(globex, url: "/v1/connections", params: [prefix: "globex/@jon/"])
+               Req.get(globex, url: "/v1/connections", params: [owner: "globex/@jon"])
 
       refute Enum.any?(listed, &Map.has_key?(&1, "held_by"))
 
       reader = as(api, "test/*", @jon, [:reader])
 
       assert {:ok, %{status: 403}} =
-               Req.post(reader, url: "/v1/connections/linear", params: [prefix: "test/@jon/"])
+               Req.post(reader, url: "/v1/connections/linear", params: [owner: "test/@jon"])
     end
 
     test "answer 501 where the host offers none", %{api: api} do
       jon = api |> listener(host: Host.new(store: Wardrik.Test.store())) |> as("test/*", @jon)
 
       assert {:ok, %{status: 501}} =
-               Req.get(jon, url: "/v1/connections", params: [prefix: "test/@jon/"])
+               Req.get(jon, url: "/v1/connections", params: [owner: "test/@jon"])
     end
   end
 
   describe "servers" do
     test "lists, adds and removes a person's own, or an org's", %{api: api} do
-      jon = Req.merge(as(api, "test/*", @jon), params: [prefix: "test/@jon/"])
+      jon = Req.merge(as(api, "test/*", @jon), params: [owner: "test/@jon"])
 
       assert {:ok, %{status: 200, body: %{"servers" => [%{"name" => "docs"}]} = body}} =
                Req.get(jon, url: "/v1/servers")
@@ -1415,7 +1421,7 @@ defmodule WardrikHTTP.RouterTest do
       conforms(body, "servers")
 
       assert {:ok, %{status: 200, body: %{"servers" => []}}} =
-               Req.get(jon, url: "/v1/servers", params: [prefix: "test/"])
+               Req.get(jon, url: "/v1/servers", params: [owner: "test"])
 
       docs = %{"name" => "docs", "url" => "https://docs.example/mcp", "auth" => %{"none" => %{}}}
 
@@ -1435,7 +1441,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 200, body: %{"server" => %{"name" => "docs", "auth" => "none"}}}} =
                Req.delete(jon, url: "/v1/servers/docs")
 
-      assert Audit.about("servers/test/@jon/docs") |> List.last() ==
+      assert Audit.about("test/@jon/server/docs") |> List.last() ==
                {"server.removed", %{"type" => "user", "id" => "jon"}}
 
       assert {:ok, %{status: 404}} = Req.delete(jon, url: "/v1/servers/nothing")
@@ -1443,14 +1449,14 @@ defmodule WardrikHTTP.RouterTest do
 
     test "are refused a body without a name, and answer 501 where the host offers none",
          %{api: api} do
-      jon = Req.merge(as(api, "test/*", @jon), params: [prefix: "test/@jon/"])
+      jon = Req.merge(as(api, "test/*", @jon), params: [owner: "test/@jon"])
 
       assert {:ok, %{status: 400}} = Req.post(jon, url: "/v1/servers", json: %{"url" => "x"})
 
       none = api |> listener(host: Host.new(store: Wardrik.Test.store())) |> as("test/*", @jon)
 
       assert {:ok, %{status: 501}} =
-               Req.get(none, url: "/v1/servers", params: [prefix: "test/@jon/"])
+               Req.get(none, url: "/v1/servers", params: [owner: "test/@jon"])
     end
   end
 
@@ -1514,12 +1520,10 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
-  describe "agents under a prefix" do
+  describe "agents a pattern covers" do
     setup %{api: api} do
       %{api: listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: %Kept{}))}
     end
-
-    defp under(org), do: Wardrik.AgentID.Prefix.new!(org: org)
 
     defp org_agents(names) do
       org = "fleet-#{System.unique_integer([:positive])}"
@@ -1532,7 +1536,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     defp scoped(api, org, roles \\ [:owner]) do
-      {:ok, secret, _token} = token("fleet", under(org), roles)
+      {:ok, secret, _token} = token("fleet", "#{org}/agent/*", roles)
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1540,14 +1544,14 @@ defmodule WardrikHTTP.RouterTest do
       {org, [a, b]} = org_agents(["a", "b"])
 
       assert {:ok, %{status: 200, body: %{"agents" => agents}}} =
-               Req.get(scoped(api, org), url: "/v1/agents", params: [prefix: "#{org}/"])
+               Req.get(scoped(api, org), url: "/v1/agents", params: [resource: "#{org}/agent/*"])
 
       assert Enum.map(agents, & &1["id"]) == [to_string(a), to_string(b)]
 
       assert {:ok, %{status: 403}} = Req.get(scoped(api, org, [:messenger]), url: "/v1/agents")
 
       assert {:ok, %{status: 404}} =
-               Req.get(scoped(api, org), url: "/v1/agents", params: [prefix: "elsewhere/"])
+               Req.get(scoped(api, org), url: "/v1/agents", params: [resource: "elsewhere/*"])
     end
 
     test "are cancelled, and removed, where the request names them", %{api: api} do
@@ -1558,15 +1562,15 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 400}} = Req.delete(fleet, url: "/v1/agents")
 
       assert {:ok, %{status: 202, body: %{"cancelled" => []}}} =
-               Req.post(fleet, url: "/v1/agents/cancel", params: [prefix: "#{org}/"])
+               Req.post(fleet, url: "/v1/agents/cancel", params: [resource: "#{org}/agent/*"])
 
       assert {:ok, %{status: 200, body: %{"forgotten" => [_a], "failed" => []}}} =
-               Req.delete(fleet, url: "/v1/agents", params: [prefix: "#{org}/"])
+               Req.delete(fleet, url: "/v1/agents", params: [resource: "#{org}/agent/*"])
 
       assert Wardrik.Fleet.lookup(a, host: Wardrik.Test.host()) == nil
 
       assert {:ok, %{status: 404}} =
-               Req.delete(fleet, url: "/v1/agents", params: [prefix: "#{org}/"])
+               Req.delete(fleet, url: "/v1/agents", params: [resource: "#{org}/agent/*"])
     end
 
     test "answer the calls they wait on a person for", %{api: api} do
@@ -1577,7 +1581,10 @@ defmodule WardrikHTTP.RouterTest do
              end)
 
       assert {:ok, %{status: 200, body: %{"interrupts" => interrupts}}} =
-               Req.get(api, url: "/v1/interrupts", params: [prefix: to_string(key)])
+               Req.get(api,
+                 url: "/v1/interrupts",
+                 params: [resource: to_string(Wardrik.AgentID.resource(key))]
+               )
 
       assert [%{"id" => "call_1", "agent" => %{"id" => text}}] = interrupts
       assert text == to_string(key)
@@ -1586,7 +1593,7 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "an agent's life" do
     defp root(api) do
-      {:ok, secret, _token} = token("root", Prefix.all())
+      {:ok, secret, _token} = token("root", "*")
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1651,13 +1658,13 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 204}} = Req.delete(api, url: "/v1/agents/#{key}/calls/call_1")
       assert {:ok, %{status: 404}} = Req.delete(api, url: "/v1/agents/#{key}/calls/call_1")
-      assert [{"call.killed", _by}] = Audit.about("agents/#{key}")
+      assert [{"call.killed", _by}] = Audit.about(key)
     end
   end
 
   describe "the deployment" do
     defp over_every_agent(api, roles \\ [:owner]) do
-      {:ok, secret, _token} = token("deployment", Prefix.all(), roles)
+      {:ok, secret, _token} = token("deployment", "*", roles)
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1713,19 +1720,19 @@ defmodule WardrikHTTP.RouterTest do
 
     @made %{
       "name" => "ci",
-      "scope" => "test/",
+      "resources" => ["test/agent/*"],
       "roles" => ["reader", "messenger"],
       "policy" => "careful",
       "expires_in" => 3600
     }
 
-    defp owning_every_agent(api) do
-      {:ok, secret, _token} = token("root", Prefix.all())
+    defp owning_everything(api) do
+      {:ok, secret, _token} = token("root", "*")
       Req.merge(api, auth: {:bearer, secret})
     end
 
-    test "are made, listed and revoked by a token owning every agent", %{kept: kept} do
-      root = owning_every_agent(kept)
+    test "are made, listed and revoked by a token owning everything", %{kept: kept} do
+      root = owning_everything(kept)
 
       assert {:ok, %{status: 403}} = Req.post(kept, url: "/v1/tokens", json: @made)
       assert {:ok, %{status: 403}} = Req.get(kept, url: "/v1/tokens")
@@ -1740,7 +1747,7 @@ defmodule WardrikHTTP.RouterTest do
       assert made["statements"] == [
                %{
                  "actions" => Wardrik.Role.actions(:reader) ++ Wardrik.Role.actions(:messenger),
-                 "resources" => ["test/"]
+                 "resources" => ["test/agent/*"]
                }
              ]
 
@@ -1762,14 +1769,17 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "are refused a body that does not read", %{kept: kept} do
-      root = owning_every_agent(kept)
+      root = owning_everything(kept)
 
       for body <- [
             %{},
             Map.delete(@made, "roles"),
             %{@made | "roles" => ["boss"]},
             %{@made | "roles" => "reader"},
-            %{@made | "scope" => "not a prefix"},
+            %{@made | "resources" => ["not a pattern"]},
+            %{@made | "resources" => []},
+            %{@made | "resources" => "test/*"},
+            %{@made | "resources" => [7]},
             %{@made | "expires_in" => 0},
             %{@made | "policy" => ["careful"]}
           ] do
@@ -1779,7 +1789,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "answer 501 where the host keeps none", %{api: api} do
-      assert {:ok, %{status: 501}} = Req.get(owning_every_agent(api), url: "/v1/tokens")
+      assert {:ok, %{status: 501}} = Req.get(owning_everything(api), url: "/v1/tokens")
     end
   end
 
@@ -1832,7 +1842,7 @@ defmodule WardrikHTTP.RouterTest do
       # Its log holds its start once the start is delivered.
       assert_receive %Wardrik.Event.Log.Entry{sequence: 1}
 
-      reader = client(api, Prefix.parse!("test/@#{user}/"), [:reader])
+      reader = client(api, "test/@#{user}/agent/*", [:reader])
 
       {:ok, %{status: 200, body: page}} = Req.get(reader, url: "/v1/exports/schemas")
       assert [_ | _] = page["events"]
@@ -1845,7 +1855,7 @@ defmodule WardrikHTTP.RouterTest do
       settled(agent)
       :ok = Log.trim(store(), key, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
-      {:ok, secret, _token} = token("reader", Prefix.parse!("test/"), [:reader])
+      {:ok, secret, _token} = token("reader", "test/agent/*", [:reader])
 
       answers = [
         Req.get(api, url: "/v1/agents", auth: nil),

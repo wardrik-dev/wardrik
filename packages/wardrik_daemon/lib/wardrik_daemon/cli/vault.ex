@@ -17,9 +17,8 @@ defmodule WardrikDaemon.CLI.Vault do
   key, and is shown as the key shows it, `acme` or `acme/@jon`. An account a
   user connects is kept in the vault too, and listed with the rest.
 
-  `vault ls` names each secret and whose it is. A user's secret is written
-  under a hash of who they are, so `vault ls` counts users' secrets by name,
-  and `vault ls --user USER` lists one user's.
+  `vault ls` names each secret and whose it is, and `--org ORG` or `--user
+  USER` lists one owner's.
 
   Where the vault has no key, the first `put` asks to make one, and keeps it
   in the data home; see `WardrikDaemon.VaultKey`. `--yes` makes it without
@@ -27,8 +26,8 @@ defmodule WardrikDaemon.CLI.Vault do
   give the vault a key instead.
   """
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
+  alias Wardrik.Resource
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Config
@@ -67,9 +66,8 @@ defmodule WardrikDaemon.CLI.Vault do
         options: "[--org ORG] [--user USER]",
         summary: "the vault's secrets and whose they are, never their values",
         details: [
-          "Users' secrets are counted by name; --user USER lists one user's. With --json,",
-          "each as its name, kind, and owner as --org and --user take it, or the count of",
-          "users with it; the deployment's say whether the daemon's environment sets them."
+          "--org ORG or --user USER lists one owner's. With --json, each as its name, kind",
+          "and owner; the deployment's say whether the daemon's environment sets them."
         ],
         switches: @owner,
         run: &ls/2,
@@ -178,7 +176,7 @@ defmodule WardrikDaemon.CLI.Vault do
     |> Enum.reduce_while(Enum.reverse(notes), fn {name, value}, lines ->
       case WardrikVault.put(vault, name, owner, value: value) do
         :ok ->
-          :ok = Audit.record(audit, {:secret_stored, name, prefix(owner)}, by: by)
+          :ok = Audit.record(audit, {:secret_stored, name, owner}, by: by)
           {:cont, [sealed(kind, name, owner, live?) | lines]}
 
         {:error, reason} ->
@@ -191,7 +189,7 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp sealed(:deployment, name, nil, live?) do
+  defp sealed(:deployment, name, _owner, live?) do
     cond do
       System.get_env(name) ->
         "Sealed #{name}. The daemon's environment sets #{name} too, which ${#{name}} and " <>
@@ -211,7 +209,7 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp sealed(_kind, name, owner, _live?), do: "Sealed #{name} for #{shown(owner)}."
+  defp sealed(_kind, name, owner, _live?), do: "Sealed #{name} for #{owner}."
 
   # -- the key -----------------------------------------------------------------
 
@@ -312,28 +310,25 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  # A row each, those written under a hash of their owner counted by name.
   defp rows(secrets) do
-    {hashed, owned} = Enum.split_with(secrets, &match?({_ref, :hashed}, &1))
-
-    counted =
-      for {ref, count} <- Enum.frequencies_by(hashed, &elem(&1, 0)), do: {ref, {:hashed, count}}
-
-    Enum.sort_by(owned ++ counted, fn {{kind, name}, _owner} ->
-      {name, kind != :deployment, kind}
+    Enum.sort_by(secrets, fn {{kind, name}, owner} ->
+      {name, kind != :deployment, kind, to_string(owner)}
     end)
   end
 
   defp listing([], opts) do
     case owner(opts) do
-      {:ok, {:deployment, nil}} -> "The vault holds no secrets. wardrik vault put NAME seals one."
-      {:ok, {_kind, owner}} -> "The vault holds no secrets for #{shown(owner)}."
+      {:ok, {:deployment, _owner}} ->
+        "The vault holds no secrets. wardrik vault put NAME seals one."
+
+      {:ok, {_kind, owner}} ->
+        "The vault holds no secrets for #{owner}."
     end
   end
 
   defp listing(rows, _opts) do
     width = rows |> Enum.map(fn {{_kind, name}, _owner} -> String.length(name) end) |> Enum.max()
-    total = Enum.sum_by(rows, &count/1)
+    total = length(rows)
 
     lines =
       for {{_kind, name} = ref, owner} <- rows,
@@ -342,31 +337,23 @@ defmodule WardrikDaemon.CLI.Vault do
     Enum.join(["#{total} #{if total == 1, do: "secret", else: "secrets"}:" | lines], "\n")
   end
 
-  defp count({_ref, {:hashed, count}}), do: count
-  defp count(_row), do: 1
-
-  defp whose({:deployment, name}, nil) do
+  defp whose({:deployment, name}, _owner) do
     if System.get_env(name),
       do: "the deployment's; the daemon's environment sets it too",
       else: "the deployment's"
   end
 
-  defp whose({kind, _name}, {:hashed, 1}), do: "1 #{kind}'s"
-  defp whose({kind, _name}, {:hashed, count}), do: "#{count} #{kind}s'"
-  defp whose(_ref, owner), do: "#{shown(owner)}'s"
+  defp whose(_ref, owner), do: "#{owner}'s"
 
-  defp document({{:deployment, name}, nil}),
+  defp document({{:deployment, name}, _owner}),
     do: %{"name" => name, "kind" => "deployment", "environment" => System.get_env(name) != nil}
 
-  defp document({{kind, name}, {:hashed, count}}),
-    do: %{"name" => name, "kind" => Atom.to_string(kind), "count" => count}
-
   defp document({{kind, name}, owner}),
-    do: %{"name" => name, "kind" => Atom.to_string(kind), "owner" => shown(owner)}
+    do: %{"name" => name, "kind" => Atom.to_string(kind), "owner" => to_string(owner)}
 
   defp rm([name], opts) do
     with {:ok, {kind, owner}} <- owner(opts) do
-      for_owner = if kind == :deployment, do: "", else: " for #{shown(owner)}"
+      for_owner = if kind == :deployment, do: "", else: " for #{owner}"
 
       if name in WardrikVault.names(vault(opts), owner) do
         :ok = removed(vault(opts), kind, name, owner)
@@ -374,7 +361,7 @@ defmodule WardrikDaemon.CLI.Vault do
         :ok =
           Audit.record(
             Wardrik.Host.audit(opts[:as].host),
-            {:secret_removed, name, prefix(owner)},
+            {:secret_removed, name, owner},
             by: opts[:by]
           )
 
@@ -404,8 +391,8 @@ defmodule WardrikDaemon.CLI.Vault do
            ),
          :ok <- declared(opts[:org]) do
       case {opts[:org], opts[:user]} do
-        {nil, nil} -> {:ok, {:deployment, nil}}
-        {org, nil} -> {:ok, {:org, org}}
+        {nil, nil} -> {:ok, {:deployment, Resource.deployment()}}
+        {org, nil} -> {:ok, {:org, Resource.parse!(org)}}
         {org, user} -> {:ok, {:user, user(org, user)}}
       end
     end
@@ -425,28 +412,20 @@ defmodule WardrikDaemon.CLI.Vault do
            "not begin with @ or _." <> hint}
   end
 
-  # The org and user a user's agents read their own secrets as, as their IDs
-  # carry them: without --org, the deployment's org.
+  # The namespace a user's agents read their own secrets as, as their IDs
+  # carry it: without --org, the deployment's org.
   defp user(org, user) do
-    id =
-      Wardrik.AgentID.new!("vault",
-        org: org || WardrikDaemon.Config.org(WardrikDaemon.Host.config()),
-        user: user
-      )
-
-    {id.org, id.user}
+    "vault"
+    |> Wardrik.AgentID.new!(org: org || Config.org(WardrikDaemon.Host.config()), user: user)
+    |> Wardrik.AgentID.resource()
+    |> Resource.owner()
   end
 
-  # The agents whose secret it is, the deployment's being every agent's.
-  defp prefix(nil), do: Prefix.all()
-  defp prefix(org) when is_binary(org), do: Prefix.new!(org: org)
-  defp prefix({org, user}), do: Prefix.new!(org: org, user: user)
-
-  defp kind(nil), do: :deployment
-  defp kind(owner) when is_binary(owner), do: :org
-  defp kind(_hashed), do: :user
-
-  # An owner as an agent's key shows it.
-  defp shown({org, user}), do: "#{org}/@#{user}"
-  defp shown(owner), do: to_string(owner)
+  defp kind(owner) do
+    cond do
+      owner == Resource.deployment() -> :deployment
+      owner == Resource.org(owner) -> :org
+      true -> :user
+    end
+  end
 end

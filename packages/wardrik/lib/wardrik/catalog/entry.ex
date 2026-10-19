@@ -18,7 +18,7 @@ defmodule Wardrik.Catalog.Entry do
   @enforce_keys [:name, :summary, :run]
   defstruct [:name, :summary, :run]
 
-  @type subject() :: Wardrik.AgentID.t() | Wardrik.AgentID.Prefix.t()
+  @type subject() :: Wardrik.AgentID.t() | Wardrik.Resource.t()
 
   @type t() :: %__MODULE__{
           name: String.t(),

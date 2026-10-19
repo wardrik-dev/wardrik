@@ -6,9 +6,9 @@ defmodule WardrikDaemon.AgentsTest do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Event
   alias Wardrik.Fleet
+  alias Wardrik.Resource
   alias WardrikDaemon.Agents
   alias WardrikDaemon.Test.Host
 
@@ -21,12 +21,12 @@ defmodule WardrikDaemon.AgentsTest do
     Host.declare([org, "acme"])
 
     on_exit(fn ->
-      prefix = Prefix.parse!(org <> "/")
+      own = Resource.parse!(org <> "/*")
 
-      for trigger <- WardrikTrigger.list(prefix),
+      for trigger <- WardrikTrigger.list(own),
           do: WardrikTrigger.delete(trigger.agent, trigger.name)
 
-      Fleet.forget_under(prefix)
+      Fleet.forget_under(own)
     end)
 
     %{dir: dir, org: org}
@@ -41,12 +41,12 @@ defmodule WardrikDaemon.AgentsTest do
     )
   end
 
-  defp token(org) when is_binary(org), do: token(Prefix.new!(org: org))
+  defp token(org) when is_binary(org), do: token(Resource.parse!(org <> "/agent/*"))
 
-  defp token(prefix),
+  defp token(pattern),
     do: %Wardrik.Token{
       principal: Wardrik.Principal.new(:user, "jon"),
-      scope: [Wardrik.Role.bind([:owner], prefix)]
+      scope: [Wardrik.Role.bind([:owner], [pattern])]
     }
 
   defp write_policy(%{dir: dir}, name, yaml) do
@@ -67,7 +67,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert Enum.sort(
              Enum.map(
-               Fleet.list(Prefix.parse!(org <> "/"), host: Host.host()),
+               Fleet.list(Resource.parse!(org <> "/agent/*"), host: Host.host()),
                &to_string(&1.id)
              )
            ) == [
@@ -285,7 +285,7 @@ defmodule WardrikDaemon.AgentsTest do
        %{org: org} = context do
     Host.start_agents(context.dir)
     defined = AgentID.parse!("#{org}/defined")
-    owner = Prefix.new!(org: org)
+    owner = Wardrik.Resource.parse!(org)
 
     assert {:ok, spec} =
              Agents.put(Host.agents(), defined,
@@ -299,7 +299,7 @@ defmodule WardrikDaemon.AgentsTest do
              Agents.get(Host.agents(), defined)
 
     remote = %WardrikMCP.Remote{
-      key: Wardrik.Servers.Key.new(owner, "crm"),
+      key: Wardrik.Resource.new(owner, server: "crm"),
       url: "https://mcp.crm.example/mcp",
       auth: %WardrikMCP.Auth.None{},
       filters: []
@@ -321,7 +321,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, _spec} =
              Agents.put(Host.agents(), defined,
                definition: fields,
-               token: token(Prefix.new!(org: org, user: "jon"))
+               token: token(Resource.parse!(org <> "/@jon/agent/*"))
              )
   end
 
@@ -331,10 +331,13 @@ defmodule WardrikDaemon.AgentsTest do
     fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"team" => org}}}
 
     assert {:error, message} =
-             Agents.put(Host.agents(), defined, definition: fields, token: token(Prefix.all()))
+             Agents.put(Host.agents(), defined,
+               definition: fields,
+               token: token(Resource.parse!("*"))
+             )
 
     assert message ==
-             "workspace shared team: #{org} belongs to #{org}/, which #{defined} is not under"
+             "workspace shared team: #{org} belongs to #{org}/agent/*, which does not cover #{defined}"
   end
 
   test "an agent the HTTP API defined is held to the policy its token names, which must be one",
@@ -444,7 +447,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, _definition} = Agents.get(Host.agents(), defined)
 
     assert [%Fleet.Member{asleep: true}] =
-             Fleet.list(Prefix.of(defined), host: Host.host())
+             Fleet.list(AgentID.resource(defined), host: Host.host())
 
     Wardrik.Test.LLM.answering(Wardrik.Test.llm(), fn _asked ->
       %Wardrik.LLM.Error{message: "offline"}
@@ -694,7 +697,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert Path.basename(careful_yaml) == "careful.yaml"
     assert message == "#{careful_yml}: policy careful is already careful.yaml"
-    assert [_member] = Fleet.list(Prefix.parse!(org <> "/"), host: Host.host())
+    assert [_member] = Fleet.list(Resource.parse!(org <> "/agent/*"), host: Host.host())
   end
 
   # The installation of the channel `channel`, as a room's events find it.
@@ -702,7 +705,7 @@ defmodule WardrikDaemon.AgentsTest do
     do: %WardrikChannel.Installation{
       channel: channel,
       workspace: channel,
-      owner: Prefix.all(),
+      owner: Wardrik.Resource.deployment(),
       token: "token"
     }
 
@@ -764,7 +767,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert Fleet.lookup(id, host: Host.host())
     assert id in Enum.map(Agents.offered(Host.agents(), in_channel("slack")), & &1.agent)
 
-    assert Wardrik.Test.Audit.about("agents/#{id}") ==
+    assert Wardrik.Test.Audit.about(id) ==
              [{"agent.defined", %{"type" => "channel", "id" => "slack/T1/U1", "name" => "maria"}}]
 
     assert {:error, message} =

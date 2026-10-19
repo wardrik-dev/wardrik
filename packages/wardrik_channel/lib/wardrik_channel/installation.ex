@@ -7,19 +7,18 @@ defmodule WardrikChannel.Installation do
 
     * `:channel` - the channel's name
     * `:workspace` - the workspace's id, as the installation names it
-    * `:owner` - the `Wardrik.AgentID.Prefix` it was installed for, such as
-      an org's agents
+    * `:owner` - the namespace it was installed for, as `Wardrik.Resource`
+      names one: an org, or the deployment for every org
     * `:token` - what the channel acts in the workspace with
 
   The host keeps installations; see `WardrikChannel.Installations`.
 
   An agent is written in the workspace by `shown/2`: its ID after the
-  owner's prefix, which every agent offered there shares, so a workspace
-  installed for an org reads `triage`, not the org's id before it.
+  owner's, which every agent offered there shares, so a workspace installed
+  for an org reads `triage`, not the org's id before it.
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.AgentID.Prefix
 
   @derive {Inspect, except: [:token]}
   @enforce_keys [:channel, :workspace, :owner, :token]
@@ -28,21 +27,16 @@ defmodule WardrikChannel.Installation do
   @type t() :: %__MODULE__{
           channel: String.t(),
           workspace: String.t(),
-          owner: Wardrik.AgentID.Prefix.t(),
+          owner: Wardrik.Resource.t(),
           token: String.t()
         }
 
   @doc """
   How `agent` reads in the installation's workspace: its ID after the
-  owner's prefix, as `triage` or `@jon/triage` where the owner is an org;
-  whole where it is not under the owner's prefix.
+  owner's, as `triage` or `@jon/triage` where the owner is an org; whole
+  where the owner is not its org.
   """
   @spec shown(t(), AgentID.t()) :: String.t()
-  def shown(%__MODULE__{owner: %Prefix{segments: own}}, %AgentID{} = agent) do
-    segments = AgentID.segments(agent)
-
-    if own != [] and List.starts_with?(segments, own) and length(segments) > length(own),
-      do: segments |> Enum.drop(length(own)) |> Enum.join("/"),
-      else: to_string(agent)
-  end
+  def shown(%__MODULE__{owner: owner}, %AgentID{} = agent),
+    do: String.replace_prefix(to_string(agent), "#{owner}/", "")
 end

@@ -176,7 +176,7 @@ defmodule WardrikTUI.CommandTest do
     usages = Command.help() |> Enum.map(&elem(&1, 0))
 
     assert "/spawn NAME [node=N] [--bg] [-- prompt]" in usages
-    assert "/rm NAME | PREFIX/ [--yes]" in usages
+    assert "/rm NAME | PATTERN [--yes]" in usages
     assert length(usages) == length(Command.all())
   end
 end
