@@ -15,6 +15,14 @@ defmodule Wardrik.Event.CursorTest do
     assert {:ok, %{}} = Cursor.decode("")
   end
 
+  test "names each log by its agent's resource name" do
+    assert {:ok, %{"acme/agent/triage" => 41}} =
+             %{@triage => 41}
+             |> Cursor.encode()
+             |> Base.url_decode64!(padding: false)
+             |> JSON.decode()
+  end
+
   test "is text a URL or a header carries, about 50 bytes a log" do
     positions =
       Map.new(1..150, &{AgentID.new!("support-#{&1}", org: "acme", user: "jon"), 1_000_000 + &1})
@@ -30,8 +38,10 @@ defmodule Wardrik.Event.CursorTest do
           "not base64!",
           Base.url_encode64("[1]"),
           encoded(%{"acme" => 1}),
-          encoded(%{"acme/triage" => -1}),
-          encoded(%{"acme/triage" => "1"})
+          encoded(%{"acme/triage" => 1}),
+          encoded(%{"acme/agent/*" => 1}),
+          encoded(%{"acme/agent/triage" => -1}),
+          encoded(%{"acme/agent/triage" => "1"})
         ] do
       assert Cursor.decode(text) == :error
     end

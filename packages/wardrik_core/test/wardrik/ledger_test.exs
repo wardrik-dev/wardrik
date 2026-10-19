@@ -9,7 +9,7 @@ defmodule Wardrik.LedgerTest do
 
   setup do
     id = System.unique_integer([:positive])
-    key = {"test/ledger-#{id}", "call_#{id}"}
+    key = {Wardrik.AgentID.new!("ledger-#{id}", org: "test"), "call_#{id}"}
 
     {:ok, key: key, call: %{id: elem(key, 1), name: "deploy", arguments: %{"env" => "prod"}}}
   end
@@ -68,7 +68,7 @@ defmodule Wardrik.LedgerTest do
 
   describe "forget/3" do
     test "removes every entry of the turn, and no other", %{call: call} do
-      agent = "test/forget-#{System.unique_integer([:positive])}"
+      agent = Wardrik.AgentID.new!("forget-#{System.unique_integer([:positive])}", org: "test")
       :ok = claim({agent, "trace-a/call_1"}, call)
       :ok = claim({agent, "trace-b/call_1"}, call)
 
@@ -79,7 +79,11 @@ defmodule Wardrik.LedgerTest do
   end
 
   describe "release" do
-    defp claim_key, do: {"release-#{System.unique_integer([:positive])}/a", "trace/call_1"}
+    defp claim_key,
+      do:
+        {Wardrik.AgentID.new!("a", org: "release-#{System.unique_integer([:positive])}"),
+         "trace/call_1"}
+
     defp a_call, do: %{id: "call_1", name: "connect", arguments: %{}}
 
     test "removes a claim that never settled, so the call can be claimed again" do

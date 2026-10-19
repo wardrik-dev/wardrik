@@ -36,6 +36,6 @@ defmodule Wardrik.Ledger.Key do
   @spec idempotency(Wardrik.Run.t(), Tool.call()) :: String.t()
   def idempotency(run, call) do
     {agent_id, call_id} = of(run, call)
-    "#{agent_id}//#{call_id}"
+    "#{Wardrik.AgentID.resource(agent_id)}//#{call_id}"
   end
 end

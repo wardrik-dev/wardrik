@@ -154,7 +154,7 @@ conversation.
 GET /v1/events?resources=acme/agent/*&types=wardrik.run.completed
 Accept: text/event-stream
 
-id: eyJhY21lL3RyaWFnZSI6NDF9
+id: eyJhY21lL2FnZW50L3RyaWFnZSI6NDF9
 data: {"specversion":"1.0","type":"wardrik.run.completed",…}
 ```
 
@@ -185,7 +185,7 @@ POST /v1/agents/acme/triage/messages
 
 `content` in place of `parts` is the text alone. `id` is optional, and a message sent again under
 the same `id` is taken once. The answer names it, with the cursor its turn is read after:
-`{"message": {"id": "msg_01", "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"}}`.
+`{"message": {"id": "msg_01", "cursor": "eyJhY21lL2FnZW50L3RyaWFnZSI6NDF9"}}`.
 
 ### Decisions
 

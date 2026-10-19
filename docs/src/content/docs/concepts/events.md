@@ -81,7 +81,7 @@ curl -N -H "authorization: Bearer $TOKEN" -H "accept: text/event-stream" \
 ```
 
 ```
-id: eyJhY21lL3RyaWFnZSI6NDJ9
+id: eyJhY21lL2FnZW50L3RyaWFnZSI6NDJ9
 data: {"specversion":"1.0","type":"wardrik.tool_call.started",...}
 
 data: {"specversion":"1.0","type":"wardrik.message.delta",...}

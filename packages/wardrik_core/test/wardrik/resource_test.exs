@@ -75,6 +75,13 @@ defmodule Wardrik.ResourceTest do
     assert Resource.basename(r("acme/server/crm")) == "crm"
   end
 
+  test "prefix/1 is what every name a pattern covers begins with" do
+    assert Resource.prefix(r("acme/agent/*")) == "acme/agent/"
+    assert Resource.prefix(r("*/agent/triage")) == ""
+    assert Resource.prefix(r("acme/agent/tri?ge")) == "acme/agent/tri"
+    assert Resource.prefix(r("acme/agent/triage")) == "acme/agent/triage"
+  end
+
   describe "covers?/2" do
     test "matches * across segments and ? as one character" do
       assert Resource.covers?(r("*"), r("deployment/token/1"))

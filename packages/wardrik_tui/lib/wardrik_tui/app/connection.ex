@@ -94,10 +94,10 @@ defmodule WardrikTUI.App.Connection do
 
   # Follows an agent the moment the fleet registers it, ahead of the refresh
   # behind the registration, so none of its first turn's events are missed.
-  # The fleet names each agent by its ID's text.
+  # The fleet names each agent by its resource name.
   def follow_registered(term, events) do
     for %Group.Event{type: :registered, key: key} <- events,
-        id = AgentID.parse!(key),
+        {:ok, id} = key |> Resource.parse!() |> AgentID.from_resource(),
         id != term.assigns.agent_id,
         not Map.has_key?(term.assigns.followed, id),
         reduce: term do

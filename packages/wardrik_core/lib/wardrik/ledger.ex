@@ -17,7 +17,7 @@ defmodule Wardrik.Ledger do
   Every run has one, kept in the store of the host it runs on, the store the
   fleet already runs on, so a host configures nothing for it. Entries are
   written under the `:claims` namespace, one per agent and call id, as the
-  agent's ID, then `//`, which no ID holds, then the call id. A claim is a
+  agent's resource name, then `//`, which no name holds, then the call id. A claim is a
   write conditional on nothing being written yet, so a second claim answers
   with the first one's state whatever adapter is underneath.
 
@@ -75,6 +75,7 @@ defmodule Wardrik.Ledger do
   ended.
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.Ledger.Entry
   alias Wardrik.Tool
 
@@ -174,7 +175,7 @@ defmodule Wardrik.Ledger do
 
     answer =
       store
-      |> WardrikStore.keys(@ns, "#{agent_id}//#{trace_id}/")
+      |> WardrikStore.keys(@ns, "#{AgentID.resource(agent_id)}//#{trace_id}/")
       |> Enum.reduce_while(:ok, fn encoded, :ok ->
         case WardrikStore.lookup(store, @ns, encoded) do
           {_entry, vsn} -> delete(store, encoded, vsn) |> continue()
@@ -194,7 +195,7 @@ defmodule Wardrik.Ledger do
   defp continue(:ok), do: {:cont, :ok}
   defp continue({:error, reason}), do: {:halt, {:error, reason}}
 
-  defp encoded({agent_id, call_id}), do: "#{agent_id}//#{call_id}"
+  defp encoded({agent_id, call_id}), do: "#{AgentID.resource(agent_id)}//#{call_id}"
 
   defp delete(store, encoded, vsn) do
     case WardrikStore.delete(store, @ns, encoded, if_vsn: vsn) do

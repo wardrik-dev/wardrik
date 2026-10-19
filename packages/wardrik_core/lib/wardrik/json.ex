@@ -26,7 +26,7 @@ defmodule Wardrik.JSON do
        "run": {"id": "4bf92f35…"},
        "interrupts": [{"id": "toolu_01", "reason": "tool_approval", "message": "…", "tool_call_id": "toolu_01"}],
        "messages": [{"role": "user", "parts": [{"type": "text", "content": "…"}]}],
-       "outcome": "ok", "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"}
+       "outcome": "ok", "cursor": "eyJhY21lL2FnZW50L3RyaWFnZSI6NDF9"}
 
   `run` is `null` between runs, and `cursor` is where the agent's log
   stands: read and follow it from there. `activity` is what

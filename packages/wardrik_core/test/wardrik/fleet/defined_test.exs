@@ -107,7 +107,7 @@ defmodule Wardrik.Fleet.DefinedTest do
   # might have: with a field this one does not have.
   defp written_earlier(key) do
     %{storage_backend: backend} = DurableServer.Supervisor.__get_config__(Fleet)
-    path = Fleet.prefix() <> to_string(key)
+    path = Fleet.prefix() <> to_string(Wardrik.AgentID.resource(key))
     {:ok, %{body: stored, etag: etag}} = StorageBackend.get_object(backend, path)
     earlier = %{stored | state: Map.put(stored.state, :scope_opts, [])}
     {:ok, _object} = StorageBackend.put_object(backend, path, earlier, etag: etag)

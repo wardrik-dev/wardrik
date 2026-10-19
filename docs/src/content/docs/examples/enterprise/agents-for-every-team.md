@@ -149,7 +149,7 @@ wardrik token create siem --resource '*' --role reader
 ```http
 GET /v1/events?limit=500
 
-GET /v1/events?limit=500&after=eyJwYXltZW50cy9yZWZ1bmRzIjo0MX0
+GET /v1/events?limit=500&after=eyJwYXltZW50cy9hZ2VudC9yZWZ1bmRzIjo0MX0
 ```
 
 Each page answers `next`, the cursor after its events: store it with them, and read on from it.
