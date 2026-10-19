@@ -9,7 +9,7 @@ defprotocol Wardrik.Triggers do
   it came from. The value carries what its implementation needs, such as
   where each trigger's secret is found:
 
-      Wardrik.Host.new(triggers: WardrikTrigger.new(secrets: secrets))
+      Wardrik.Host.new(triggers: %WardrikTrigger.Deliveries{secrets: &MyApp.Secrets.read/2})
 
   A host that takes none has `Wardrik.Triggers.None`, which answers
   `:unsupported`, and so does `Deliver`.

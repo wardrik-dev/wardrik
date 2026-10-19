@@ -43,16 +43,19 @@ defmodule WardrikTrigger do
 
   A trigger that a service sends requests is a `WardrikTrigger.Webhook`, a
   kind of its own: it has no clock, and asks its agent as each request
-  arrives, through `deliver/3`, which makes this module the host's
-  `Wardrik.Triggers`. `decode/2`, `put/2`, `sync/2` and the listings take
-  every kind alike, through `WardrikTrigger.Kind`. The secrets a webhook is checked with are read for its agent
-  by the host's `:secrets`, so each org can keep its own, and from the
-  environment where the host gives none:
+  arrives, through the host's `WardrikTrigger.Deliveries`. `decode/2`,
+  `put/2`, `sync/2` and the listings take every kind alike, through
+  `WardrikTrigger.Kind`. The secret a webhook is checked with is read for
+  its agent by the `:secrets` the host gives, as the agent's owner holds it,
+  so each org keeps its own:
+
+      deliveries = %WardrikTrigger.Deliveries{secrets: &MyApp.Secrets.read/2}
+      host = Wardrik.Host.new(store: store, triggers: deliveries)
 
       children = [
         {WardrikStore, store},
         {Wardrik.Core, host: host},
-        {WardrikTrigger, store: store, host: host, secrets: &MyApp.Vault.secret/2}
+        {WardrikTrigger, store: store, host: host}
       ]
 
   `sync/2` brings an agent's triggers to a list, starting, changing and

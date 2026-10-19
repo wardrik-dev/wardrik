@@ -50,11 +50,10 @@ WardrikTrigger.put(~A"acme/growth", "mentions",
 
 A webhook is a trigger of its own kind, `WardrikTrigger.Webhook`: it has no
 clock, and asks the agent as each request a service sends arrives, through
-`WardrikTrigger.deliver/3`, which makes `WardrikTrigger` the host's
-`Wardrik.Triggers`. A request presents the trigger's secret, or is signed
-as the Standard Webhooks spec says, checked against a secret the host's
-`:secrets` reads by name for the trigger's agent, so each org keeps its own,
-or from the environment where the host gives none; a host offers a
+the host's `WardrikTrigger.Deliveries`. A request presents the trigger's
+secret, or is signed as the Standard Webhooks spec says, checked against a
+secret the deliveries' `:secrets` reads by name for the trigger's agent, as
+the agent's owner holds it, so each org keeps its own; a host offers a
 `WardrikTrigger.Webhook.Verifier` of its own for any other signature. A
 request sent again is asked about once.
 
@@ -63,11 +62,12 @@ runs it, and how it is written as text, so `put/2`, `sync/2` and the listings
 take every kind alike, and a new kind is a struct, a server and that protocol.
 
 ```elixir
-host = Wardrik.Host.new(store: store, triggers: WardrikTrigger)
+deliveries = %WardrikTrigger.Deliveries{secrets: &MyApp.Secrets.read/2}
+host = Wardrik.Host.new(store: store, triggers: deliveries)
 
 children = [
   {Wardrik.Core, host: host},
-  {WardrikTrigger, store: store, host: host, secrets: &MyApp.Vault.secret/2}
+  {WardrikTrigger, store: store, host: host}
 ]
 
 WardrikTrigger.put(~A"acme/triage", WardrikTrigger.Webhook.new("issues",
