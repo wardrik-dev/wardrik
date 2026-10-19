@@ -8,8 +8,8 @@ defmodule WardrikTrigger.Source do
   A trigger that names no source has the clock, `WardrikTrigger.Clock`,
   which answers with one item every time, so the agent is asked on every run.
 
-  A source is named in a trigger by a key of its own, which a package
-  registers (see `WardrikTrigger.Offered`), so a trigger written as
+  A source is named in a trigger by a key of its own, which the host
+  offers (see `WardrikTrigger.Offered`), so a trigger written as
 
       %{"every" => "1h", "feed" => "https://example.com/feed.xml", "prompt" => "What is new?"}
 

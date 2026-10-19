@@ -37,8 +37,6 @@ defmodule WardrikDaemon.Agents do
   alias Wardrik.AgentID
   alias Wardrik.Definition
   alias Wardrik.Definitions
-  alias Wardrik.Fleet
-  alias WardrikChannel.Installation
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.PolicyFile
 
@@ -49,8 +47,7 @@ defmodule WardrikDaemon.Agents do
 
   @typedoc """
   The daemon's agents: definitions kept in `:store`, read under `:config`,
-  and `:audit` the `Wardrik.Audit` log an agent a channel creates is
-  recorded in.
+  and `:audit` the `Wardrik.Audit` log changes to them are recorded in.
   """
   @type t() :: %__MODULE__{
           store: WardrikStore.t(),
@@ -134,169 +131,6 @@ defmodule WardrikDaemon.Agents do
   @doc "`config.yaml`'s `defaults`, as the file writes them, or none."
   @spec defaults(t()) :: map()
   def defaults(%__MODULE__{context: context}), do: context.defaults
-
-  @doc """
-  The agents offered in the rooms of the channel installed as
-  `installation`, as `WardrikChannel.Context` asks: those whose definitions
-  name the channel, of the orgs `config.yaml` has the channel serve, each
-  with its `description`. Sorted by ID.
-  """
-  @spec offered(t(), Installation.t()) :: [WardrikChannel.Offer.t()]
-  def offered(%__MODULE__{} = agents, %Installation{channel: channel}) do
-    orgs = channel_setting(agents, :orgs, channel, [])
-
-    for %Definition{id: id, channels: channels, description: description} <-
-          Definitions.list(definitions(agents), Wardrik.Resource.parse!("*")),
-        channel in channels,
-        orgs == :all or id.org in orgs,
-        do: %WardrikChannel.Offer{agent: id, description: description}
-  end
-
-  @doc """
-  Whether someone in a room of the channel installed as `installation` may
-  create an agent to answer there: where the channel's `create` is not
-  `false`, and `config.yaml`'s `defaults`, which such an agent starts from,
-  name a policy its calls are held to.
-  """
-  @spec creatable?(t(), Installation.t()) :: boolean()
-  def creatable?(agents, %Installation{channel: channel}),
-    do:
-      channel_setting(agents, :creates, channel, true) and is_map_key(defaults(agents), "policy")
-
-  @doc """
-  Creates an agent for the room `room` of the channel installed as
-  `installation`, as `by` asked: named after the room, in the channel's
-  org, from `config.yaml`'s `defaults`, offered in the channel. It is kept
-  as a definition the HTTP API sent is, and recorded in `Wardrik.Audit` as
-  defined by `by`.
-  """
-  @spec create_in(Wardrik.Host.t(), Installation.t(), String.t(), Wardrik.Principal.t() | nil) ::
-          {:ok, WardrikChannel.Offer.t()} | {:error, String.t()}
-  def create_in(host, %Installation{channel: channel} = installation, room, by) do
-    agents = of(host)
-    description = "Answers in ##{room}."
-    fields = Map.merge(defaults(agents), %{"channels" => [channel], "description" => description})
-    definitions = definitions(agents)
-
-    with :ok <- creates(agents, installation),
-         {:ok, id} <- created_id(agents, room, channel),
-         :ok <- unkept(definitions, id, channel),
-         {:ok, definition} <-
-           Definition.read(fields, id: id, source: :defaults, context: context(agents)),
-         {:ok, spec} <-
-           Definition.spec(definition, id, context: context(agents), host: host),
-         :ok <- Definitions.put(definitions, definition),
-         {:ok, _pid} <- Fleet.put(spec) do
-      :ok = Wardrik.Audit.record(agents.audit, {:agent_defined, id}, by: by)
-      {:ok, %WardrikChannel.Offer{agent: id, description: description}}
-    else
-      {:error, :conflict, message} -> {:error, message}
-      {:error, message} when is_binary(message) -> {:error, message}
-      {:error, reason} -> {:error, "The agent did not start: #{inspect(reason)}"}
-    end
-  end
-
-  @doc """
-  Starts `agent` on `host`, whose definitions are the daemon's, which
-  answers in a thread of the channel installed as `installation`, on the
-  spec its definition writes, where it is not running.
-  """
-  @spec start(Wardrik.Host.t(), Installation.t(), AgentID.t()) ::
-          {:ok, pid()} | {:error, String.t()}
-  def start(host, %Installation{}, %AgentID{} = agent) do
-    with {:ok, spec} <- spec(of(host), agent, host: host) do
-      case Fleet.spawn(agent, Spec.options(spec)) do
-        {:ok, pid} -> {:ok, pid}
-        {:error, reason} -> {:error, "#{agent} did not start: #{inspect(reason)}"}
-      end
-    end
-  end
-
-  @doc """
-  Who decides what agents wait on in the channel installed as
-  `installation`, as its `approvers` say.
-  """
-  @spec approvers(t(), Installation.t()) :: WardrikChannel.Approvers.t()
-  def approvers(agents, %Installation{channel: channel}),
-    do: channel_setting(agents, :approvers, channel, %WardrikChannel.Approvers.Named{names: []})
-
-  @doc "How an agent comes to answer in the rooms of the channel installed as `installation`."
-  @spec offering(Installation.t()) :: String.t()
-  def offering(%Installation{channel: channel}),
-    do:
-      "Whoever runs Wardrik can offer an agent here by adding `channels: [#{channel}]` " <>
-        "to its agent file."
-
-  @doc "Who else may decide what agents ask in the channel installed as `installation`."
-  @spec deciding(Installation.t()) :: String.t()
-  def deciding(%Installation{}),
-    do:
-      "The channel's approvers in config.yaml name who else may, and wardrik approve " <>
-        "answers it from the server."
-
-  @doc "The installation of the channel `channel`, in the workspace its token reaches."
-  @spec installation(t(), String.t()) :: {:ok, Installation.t()} | :error
-  def installation(agents, channel) when is_binary(channel) do
-    agents.config
-    |> WardrikDaemon.Config.section(WardrikChannel)
-    |> Keyword.fetch!(:installations)
-    |> WardrikChannel.Installations.fetch(channel, channel)
-  end
-
-  @doc "Who may change the agents of the channel `channel`'s orgs, as it names people."
-  @spec admins(t(), String.t()) :: [String.t()]
-  def admins(agents, channel) when is_binary(channel),
-    do: channel_setting(agents, :admins, channel, [])
-
-  @doc "The orgs whose agents the channel `channel` offers, or `:all`."
-  @spec orgs(t(), String.t()) :: [String.t()] | :all
-  def orgs(agents, channel) when is_binary(channel),
-    do: channel_setting(agents, :orgs, channel, [])
-
-  defp creates(agents, installation) do
-    if creatable?(agents, installation),
-      do: :ok,
-      else: {:error, "Agents are not created from here; whoever runs Wardrik can offer one."}
-  end
-
-  # An agent's name, from the room's, in the channel's own org.
-  defp created_id(agents, room, channel) do
-    name = room |> String.downcase() |> String.replace(~r/[^a-z0-9_-]+/u, "-") |> String.trim("-")
-
-    org =
-      case channel_setting(agents, :orgs, channel, :all) do
-        [org | _] -> org
-        _every -> WardrikDaemon.Config.org(agents.config)
-      end
-
-    case AgentID.new(name, org: org) do
-      {:ok, id} -> {:ok, id}
-      {:error, _message} -> {:error, "#{inspect(room)} makes no agent's name."}
-    end
-  end
-
-  defp unkept(definitions, id, channel) do
-    case Definitions.get(definitions, id) do
-      {:error, :not_found} ->
-        :ok
-
-      {:ok, _definition} ->
-        {:error,
-         "#{id} is there already. Whoever runs Wardrik can offer it here by adding " <>
-           "`channels: [#{channel}]` to it."}
-    end
-  end
-
-  # What config.yaml says of the channel `channel` under `key`.
-  defp channel_setting(agents, key, channel, default) do
-    settings =
-      agents.config |> WardrikDaemon.Config.section(WardrikChannel) |> Keyword.get(key, [])
-
-    case Enum.find(settings, fn {name, _value} -> Atom.to_string(name) == channel end) do
-      {_name, value} -> value
-      nil -> default
-    end
-  end
 
   @doc """
   The spec the agent `key` runs on, on `:host`: the one its definition, or

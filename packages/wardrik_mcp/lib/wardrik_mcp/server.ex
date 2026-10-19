@@ -357,3 +357,14 @@ defmodule WardrikMCP.Server do
     "'" <> String.replace(to_string(argument), "'", "'\\''") <> "'"
   end
 end
+
+defimpl WardrikDefinition.Source, for: WardrikMCP.Server do
+  # A server the host configures gives its tools to the agents it serves.
+  def spec(%WardrikMCP.Server{key: key, serves: serves} = server, id) do
+    if WardrikMCP.Server.serves?(server, id),
+      do: {:ok, {WardrikMCP, key}},
+      else:
+        {:error,
+         "#{Wardrik.Resource.basename(key)} serves #{Enum.join(serves, ", ")}, and not #{id}"}
+  end
+end

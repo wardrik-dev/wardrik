@@ -22,24 +22,24 @@ defmodule Wardrik.Definition do
   `org` and `user` besides: `file_keys/0`.
 
   What a definition may name, the host says in its `Wardrik.Host`, the
-  tools and tool sources it holds and the runtimes that read its settings,
-  and in a `WardrikDefinition.Context`: its MCP servers and policies, and
-  the defaults every agent takes. The channels and notify
+  tools and tool sources it holds, by name, and the runtimes that read its
+  settings, and in a `WardrikDefinition.Context`: its policies, by name,
+  and the defaults every agent takes. It names no module: a tool or a
+  source is the host's to register, as a package's `attach/2` does, and a
+  hook the agent is held to is given as `:held`. The channels and notify
   targets it names are read as names: a channel offers only the agents of
   the orgs it serves, and a target tells only those of the orgs it is kept
   for.
 
   Where it came from, the source, says what it may say:
 
-    * `{:file, path}` - an agent file the host's operator wrote, which may
-      name modules as tools and policies
+    * `{:file, path}` - an agent file the host's operator wrote
     * `{:api, token}` - a definition sent with the `Wardrik.Token`
-      `token`. It names no modules, writes no policy that holds after a
-      label, and shares only the trees whose owners' agents the token
-      reaches. The policy the token names holds it, ahead of its own
+      `token`. It writes no policy that holds after a label, and shares
+      only the trees whose owners' agents the token reaches. The policy the
+      token names holds it, ahead of its own
     * `:defaults` - one the host wrote from its defaults, which no token
-      sent. It names no modules and writes no policy that holds after a
-      label
+      sent. It writes no policy that holds after a label
   """
 
   alias Wardrik.Agent.Spec
@@ -49,6 +49,7 @@ defmodule Wardrik.Definition do
   alias Wardrik.Resource
   alias Wardrik.Runtime
   alias WardrikDefinition.Context
+  alias WardrikDefinition.Source
   alias WardrikPolicy.Pattern
 
   @enforce_keys [:id, :display_name, :retry, :source]
@@ -286,7 +287,7 @@ defmodule Wardrik.Definition do
     %Host{} = host = Keyword.fetch!(opts, :host)
     if owner(id) != owner, do: invalid!("#{id} is neither #{owner} nor a conversation of it")
 
-    tools = tools(fields, context, host, match?({:file, _path}, definition.source), owner)
+    tools = tools(fields, context, host, owner)
     within!(tools, owner, context, definition.source)
     resolved = %Runtime.Context{instructions: definition.instructions, tools: tools}
 
@@ -322,14 +323,13 @@ defmodule Wardrik.Definition do
   end
 
   @doc """
-  The tools `definition` names that offer nothing yet, read under
-  `:context` on `:host`: each `server/*` naming a server its agent's owner
-  has not added, and the host does not configure. Each offers its tools
-  once the owner adds it, without the definition being read again.
+  The tools `definition` names that offer nothing yet on `:host`: each
+  `server/*` naming a server its agent's owner has not added, and the host
+  holds no source by its name. Each offers its tools once the owner adds
+  it, without the definition being read again.
   """
-  @spec missing(t(), context: Context.t(), host: Host.t()) :: [String.t()]
+  @spec missing(t(), host: Host.t()) :: [String.t()]
   def missing(%__MODULE__{id: owner, tools: names}, opts) do
-    %Context{} = context = Keyword.fetch!(opts, :context)
     %Host{} = host = Keyword.fetch!(opts, :host)
 
     case Wardrik.Servers.list(Host.servers(host), Resource.owner(AgentID.resource(owner))) do
@@ -340,8 +340,7 @@ defmodule Wardrik.Definition do
         for name <- names,
             [server, "*"] <- [String.split(name, "/", parts: 2)],
             source(name, host) == :none,
-            not Map.has_key?(configured(context), server),
-            not added?(listed, server),
+            not Enum.any?(listed, &(&1.name == server)),
             do: name
     end
   end
@@ -437,7 +436,7 @@ defmodule Wardrik.Definition do
       definition.held ++
         bounded(definition.source, context) ++
         ceilings(context, definition.id.org) ++
-        policy_hooks(definition.policy, context, match?({:file, _path}, definition.source))
+        policy_hooks(definition.policy, context)
 
   defp declared!(_org, %Context{orgs: :any}), do: :ok
 
@@ -520,17 +519,17 @@ defmodule Wardrik.Definition do
 
   # -- tools and servers -----------------------------------------------------
 
-  defp tools(%{"tools" => names} = fields, context, host, modules?, key) when is_list(names) do
+  defp tools(%{"tools" => names} = fields, context, host, key) when is_list(names) do
     names
     |> Enum.flat_map(fn
       "files" -> [files!(fields, key, context)]
-      "*" -> tool!("*", context, host, modules?, key) ++ [files!(fields, key, context)]
-      name -> tool!(name, context, host, modules?, key)
+      "*" -> tool!("*", context, host, key) ++ [files!(fields, key, context)]
+      name -> tool!(name, context, host, key)
     end)
     |> Enum.uniq()
   end
 
-  defp tools(_fields, _context, _host, _modules?, _key), do: []
+  defp tools(_fields, _context, _host, _key), do: []
 
   defp files?(%{"tools" => names}) when is_list(names),
     do: Enum.any?(names, &(&1 in ["files", "*"]))
@@ -594,22 +593,18 @@ defmodule Wardrik.Definition do
     end
   end
 
-  defp tool!("*", context, host, _modules?, key) do
-    servers =
-      for {ref, opts} <- context.servers,
-          context.mcp,
-          reach(key, ref, opts, context) == :ok,
-          do: {context.mcp, Resource.new(Resource.deployment(), server: Atom.to_string(ref))}
-
+  defp tool!("*", _context, host, key) do
     Map.values(Host.tools(host)) ++
-      servers ++ for({_name, source} <- Host.sources(host), do: {source, key})
+      for {_name, source} <- Host.sources(host),
+          {:ok, spec} <- [Source.spec(source, key)],
+          do: spec
   end
 
-  defp tool!(name, context, host, modules?, key) do
+  defp tool!(name, context, host, key) do
     case source(name, host) do
-      {:all, source} -> [{source, key}]
+      {:all, source} -> [given!(name, source, key)]
       {:one, prefix, tool} -> invalid!(one_of(name, prefix, tool))
-      :none -> named!(name, context, host, modules?, key)
+      :none -> named!(name, context, host, key)
     end
   end
 
@@ -623,12 +618,19 @@ defmodule Wardrik.Definition do
     end
   end
 
+  defp given!(name, source, key) do
+    case Source.spec(source, key) do
+      {:ok, spec} -> spec
+      {:error, why} -> invalid!("tools names #{name}, but #{why}")
+    end
+  end
+
   defp one_of(name, prefix, tool),
     do:
       "tools names #{name}; name the source's tools as #{prefix}/*, and let a policy deny " <>
         "what is not #{tool}"
 
-  defp named!(name, context, host, modules?, key) do
+  defp named!(name, context, host, key) do
     pattern = Pattern.parse!(name)
 
     cond do
@@ -649,72 +651,41 @@ defmodule Wardrik.Definition do
         )
 
       true ->
-        [shipped!(name, context, host, modules?)]
+        [shipped!(name, context, host)]
     end
   end
 
-  defp shipped!(name, context, host, modules?) do
-    shipped = "a tool #{context.names.host} ships"
-
+  defp shipped!(name, context, host) do
     case Map.fetch(Host.tools(host), name) do
       {:ok, module} -> module
-      :error when modules? -> module!(name, :tool, 0, "a tool", shipped)
-      :error -> invalid!("tools names #{name}, which is not #{shipped}")
+      :error -> invalid!("tools names #{name}, which is not a tool #{context.names.host} ships")
     end
   end
 
-  # A server the agent's owner added comes first, then one the host
-  # configures; one neither has is the owner's to add, where the host lets
-  # owners add servers.
+  # A server the host holds no source by its name for is one its agent's
+  # owner adds, through its `servers` source, where the host lets owners
+  # add servers: one they have yet to add offers nothing until they do.
   defp server!(name, context, host, key) do
     owner = Resource.owner(AgentID.resource(key))
-    added = Wardrik.Servers.list(Host.servers(host), owner)
 
-    cond do
-      context.mcp == nil -> invalid!(unconfigured(name, context))
-      added?(added, name) -> {context.mcp, Resource.new(owner, server: name)}
-      ref = configured(context)[name] -> configured!(name, ref, context, key)
-      added != :unsupported -> {context.mcp, Resource.new(owner, server: name)}
-      true -> invalid!(unconfigured(name, context))
+    with {:ok, servers} <- Map.fetch(Host.sources(host), "servers"),
+         listed when listed != :unsupported <- Wardrik.Servers.list(Host.servers(host), owner) do
+      {servers, Resource.new(owner, server: name)}
+    else
+      _unheld -> invalid!(unheld(name, context, host))
     end
   end
 
-  defp configured!(name, ref, context, key) do
-    case reach(key, ref, Keyword.fetch!(context.servers, ref), context) do
-      :ok -> {context.mcp, Resource.new(Resource.deployment(), server: name)}
-      {:error, why} -> invalid!("tools names #{name}/*, but #{why}")
+  defp unheld(name, context, host) do
+    case host |> Host.sources() |> Map.keys() |> Enum.sort() do
+      [] ->
+        "tools names #{name}/*, but #{context.names.host} has no #{name}/*"
+
+      held ->
+        "tools names #{name}/*, but #{context.names.host} has no #{name}/*; it has " <>
+          Enum.map_join(held, ", ", &(&1 <> "/*"))
     end
   end
-
-  defp configured(context), do: Map.new(Keyword.keys(context.servers), &{Atom.to_string(&1), &1})
-
-  defp added?(:unsupported, _name), do: false
-  defp added?(listed, name), do: Enum.any?(listed, &(&1.name == name))
-
-  defp unconfigured(name, context),
-    do:
-      "tools names #{name}/*, but #{context.names.config} configures no server #{name}" <>
-        configured_servers(configured(context))
-
-  # Whether the agent `id` can reach the server `ref`: one serving a pattern
-  # that covers it.
-  defp reach(%AgentID{} = id, ref, opts, context) do
-    serves = Keyword.get(opts, :serves, [Resource.parse!("*")])
-
-    if Enum.any?(serves, &Resource.covers?(&1, AgentID.resource(id))),
-      do: :ok,
-      else: {:error, not_served(ref, serves, id, context)}
-  end
-
-  defp not_served(ref, serves, id, context),
-    do: "#{context.names.config}'s #{ref} serves #{Enum.join(serves, ", ")}, and not #{id}"
-
-  defp configured_servers(configured) when map_size(configured) == 0, do: ""
-
-  defp configured_servers(configured),
-    do:
-      ["; it has ", Enum.map_join(configured, ", ", fn {name, _ref} -> name end)]
-      |> IO.iodata_to_binary()
 
   # -- triggers -------------------------------------------------------------
 
@@ -882,35 +853,19 @@ defmodule Wardrik.Definition do
     end
   end
 
-  defp policy!(_value), do: invalid!("policy is the name of a policy, rules, or a module")
+  defp policy!(_value), do: invalid!("policy is the name of a policy, or rules")
 
-  defp policy_hooks(nil, _context, _file?), do: []
-  defp policy_hooks(%WardrikPolicy{} = policy, _context, _file?), do: WardrikPolicy.hooks(policy)
+  defp policy_hooks(nil, _context), do: []
+  defp policy_hooks(%WardrikPolicy{} = policy, _context), do: WardrikPolicy.hooks(policy)
 
-  defp policy_hooks(name, context, file?) do
-    known = "a policy in #{context.names.policies}"
-
+  defp policy_hooks(name, context) do
     case Map.fetch(context.policies, name) do
       {:ok, policy} ->
         WardrikPolicy.hooks(policy)
 
-      :error when file? ->
-        module = module!(name, :call, 2, "a hook", known)
-        [Wardrik.Hook.new(name, module)]
-
       :error ->
-        invalid!("policy names #{name}, which is not #{known}")
+        invalid!("policy names #{name}, which is not a policy in #{context.names.policies}")
     end
-  end
-
-  defp module!(name, function, arity, what, known) do
-    module = Module.safe_concat([name])
-
-    if Code.ensure_loaded?(module) and function_exported?(module, function, arity),
-      do: module,
-      else: invalid!("#{name} is not #{what}")
-  rescue
-    ArgumentError -> invalid!("names #{name}, which is neither #{known} nor a module")
   end
 
   defp seconds!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)

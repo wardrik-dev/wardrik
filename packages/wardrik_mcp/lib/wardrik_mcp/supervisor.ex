@@ -25,6 +25,8 @@ defmodule WardrikMCP.Supervisor do
       keep there; see `WardrikMCP.Servers`
     * `:check` - whether the URL of a server an owner added may be reached;
       see `WardrikMCP.Remotes`
+    * `:host` - the `Wardrik.Host` it was attached to, as `Wardrik` starts
+      it; `WardrikMCP.attach/2` has read the store from it
 
   Every connection starts with the supervisor and keeps trying on its own, so a
   server that is down holds up neither the others nor the node, and one that
@@ -51,7 +53,7 @@ defmodule WardrikMCP.Supervisor do
 
   @impl Supervisor
   def init(opts) do
-    servers = servers(opts)
+    servers = configured(opts)
 
     children =
       [
@@ -165,7 +167,12 @@ defmodule WardrikMCP.Supervisor do
     end
   end
 
-  defp servers(opts) do
+  @doc """
+  The servers `opts` configure, as `start_link/1` takes them, each with the
+  defaults they take from it.
+  """
+  @spec configured(keyword()) :: [Server.t()]
+  def configured(opts) do
     defaults = Keyword.take(opts, [:store, :stderr, :first_retry, :refresh_after])
 
     opts

@@ -1,6 +1,9 @@
 Wardrik.Test.start(
   children:
     Wardrik.Test.children() ++
-      [{WardrikChannel.Replies, channels: %{}, store: Wardrik.Test.store()}],
-  wait: [WardrikChannel.Replies.supervisor()]
+      [
+        {WardrikTrigger, store: Wardrik.Test.store(), host: Wardrik.Test.host()},
+        {WardrikChannel.Replies, host: Wardrik.Test.host()}
+      ],
+  wait: [WardrikTrigger.supervisor(), WardrikChannel.Replies.supervisor()]
 )

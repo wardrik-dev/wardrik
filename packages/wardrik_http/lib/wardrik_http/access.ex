@@ -74,13 +74,13 @@ defmodule WardrikHTTP.Access do
 
   @doc false
   def child_spec(opts) do
-    opts = Keyword.validate!(opts, [:store, grace: 1_000, sweep: :timer.seconds(15)])
+    opts = Keyword.validate!(opts, [:store, :host, grace: 1_000, sweep: :timer.seconds(15)])
 
     children = [
       Group.child_spec(name: __MODULE__),
       {Task.Supervisor, name: Leases.tasks()},
       Leases.registry_spec(),
-      {Leases, opts}
+      {Leases, Keyword.delete(opts, :host)}
     ]
 
     %{

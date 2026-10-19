@@ -254,8 +254,8 @@ defmodule WardrikDaemon.DoctorTest do
       assert message =~ "did not answer"
 
       pages = WardrikOAuth.Callback.pages(WardrikOAuth.new(redirect: [url: url]))
-      listener = [name: :doctor_callback, port: port, host: Wardrik.Test.host(), mounts: pages]
-      start_supervised!({WardrikHTTP.Listener, listener})
+      host = Wardrik.Host.register(Wardrik.Test.host(), :routes, pages)
+      start_supervised!({WardrikHTTP.Listener, name: :doctor_callback, port: port, host: host})
 
       assert check(Doctor.checks(dir, vault), "oauth") ==
                {:ok, "oauth", "#{url} reaches the daemon's callback"}
@@ -325,9 +325,9 @@ defmodule WardrikDaemon.DoctorTest do
     test "says who decides what its agents wait on", %{tmp_dir: dir} do
       config(dir, """
       channels:
-        named: {type: test, approvers: ["@maria", "@ana"]}
-        open: {type: test, approvers: anyone}
-        unset: {type: test}
+        named: {type: slack, approvers: ["@maria", "@ana"]}
+        open: {type: slack, approvers: anyone}
+        unset: {type: slack}
       """)
 
       checks = Doctor.checks(dir)

@@ -41,6 +41,7 @@ defmodule WardrikDaemon.Issuer do
   alias Wardrik.Resource
   alias Wardrik.Role
   alias Wardrik.Token
+  alias WardrikChannel.Approvers.Named
   alias WardrikDaemon.Agents
   alias WardrikDaemon.Config
 
@@ -68,7 +69,10 @@ defmodule WardrikDaemon.Issuer do
   defp issued(:channel, principal, agents) do
     {channel, _workspace, user} = WardrikChannel.person(principal)
 
-    case Agents.installation(agents, channel) do
+    case agents.config
+         |> Config.section(WardrikChannel)
+         |> Keyword.fetch!(:installations)
+         |> WardrikChannel.Installations.fetch(channel, channel) do
       {:ok, installation} ->
         member(agents, principal, WardrikChannel.Member.new(installation, user))
 
@@ -85,7 +89,7 @@ defmodule WardrikDaemon.Issuer do
 
     {roles, policy} =
       cond do
-        include?(agents, Agents.admins(agents, channel), member) -> admin(agents)
+        include?(agents, setting(agents, :admins, channel, []), member) -> admin(agents)
         decides?(agents, member) -> {@deciders, :none}
         true -> {@everyone, :none}
       end
@@ -108,7 +112,9 @@ defmodule WardrikDaemon.Issuer do
   defp decides?(agents, %WardrikChannel.Member{installation: installation} = member) do
     include? = &include?(agents, &1, member)
 
-    WardrikChannel.Approvers.decides?(Agents.approvers(agents, installation), include?) or
+    approvers = setting(agents, :approvers, installation.channel, %Named{names: []})
+
+    WardrikChannel.Approvers.decides?(approvers, include?) or
       include?.(notifying(agents, installation.channel))
   end
 
@@ -139,13 +145,23 @@ defmodule WardrikDaemon.Issuer do
   end
 
   defp reached(agents, channel) do
-    case Agents.orgs(agents, channel) do
+    case setting(agents, :orgs, channel, []) do
       :all -> [agents_of("*")]
       orgs -> Enum.map(orgs, &agents_of/1)
     end
   end
 
   defp agents_of(owner), do: Resource.parse!("#{owner}/agent/*")
+
+  # What config.yaml says of the channel `channel` under `key`.
+  defp setting(agents, key, channel, default) do
+    settings = agents.config |> Config.section(WardrikChannel) |> Keyword.get(key, [])
+
+    case Enum.find(settings, fn {name, _value} -> Atom.to_string(name) == channel end) do
+      {_name, value} -> value
+      nil -> default
+    end
+  end
 end
 
 defimpl Wardrik.Issuer, for: WardrikDaemon.Issuer do

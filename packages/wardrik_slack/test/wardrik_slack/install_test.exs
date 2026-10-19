@@ -29,10 +29,13 @@ defmodule WardrikSlack.InstallTest do
     %{"slack" => channel} =
       WardrikChannel.channels(
         [
-          slack: {WardrikSlack, client_id: "1.2", client_secret: "shh", req_options: @req_options}
+          channels: [
+            slack:
+              {WardrikSlack, client_id: "1.2", client_secret: "shh", req_options: @req_options}
+          ],
+          installations: installations
         ],
-        host: Wardrik.Host.new(store: Wardrik.Test.store()),
-        installations: installations
+        host: Wardrik.Host.new(store: Wardrik.Test.store())
       )
 
     %{channel: channel, installations: installations, acme: Resource.parse!("acme")}

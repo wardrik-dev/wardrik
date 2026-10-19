@@ -4,13 +4,14 @@ defmodule WardrikDaemon.AgentFile do
   `Wardrik.Definition` it writes, under the context `context/1` builds, from
   which `Wardrik.Definition.spec/3` builds the `Wardrik.Agent.Spec` it
   writes on the daemon's host, naming the tools and sources
-  `WardrikDaemon.attach/1` attaches. The [Agent files](agent-files.md) guide
-  is every key a file takes, for whoever writes one.
+  `WardrikDaemon.attach/2` attaches, the MCP servers `config.yaml`
+  configures among them. The [Agent files](agent-files.md) guide is every
+  key a file takes, for whoever writes one.
 
-  In Elixir, `tools` may also name a module implementing `Wardrik.Tool`, and
-  `policy` a module implementing `Wardrik.Hook`. Rules a policy writes, named
-  or in place, are a `WardrikPolicy`, which the agent carries as its hooks:
-  they are written to the store with it and decide its calls on any node.
+  A file names tools and policies by name, never a module. Rules a policy
+  writes, named or in place, are a `WardrikPolicy`, which the agent carries
+  as its hooks: they are written to the store with it and decide its calls
+  on any node.
 
   The agent resolves the credentials its tools name from `WardrikVault` as
   its owner holds them, its user's or, for an agent that works for nobody,
@@ -38,9 +39,8 @@ defmodule WardrikDaemon.AgentFile do
   @doc """
   What a definition may name here beyond the host's tools and sources, as
   `Wardrik.Definition` reads it: the orgs `config` declares and the policy
-  it holds each org's to, the MCP servers `config` configures, and its
-  `defaults`. A reading under the policies in `policies/` puts them, by
-  name, as the context's `:policies`.
+  it holds each org's to, and its `defaults`. A reading under the policies
+  in `policies/` puts them, by name, as the context's `:policies`.
   """
   @spec context(Config.t()) :: WardrikDefinition.Context.t()
   def context(%Config{} = config) do
@@ -48,12 +48,9 @@ defmodule WardrikDaemon.AgentFile do
       org: Config.org(config),
       orgs: Config.orgs(config),
       ceilings: Config.ceilings(config),
-      servers: config |> Config.section(WardrikMCP) |> Keyword.get(:servers, []),
-      mcp: WardrikMCP,
       policies: %{},
       defaults: config |> Config.section(WardrikDaemon.Agents) |> Keyword.get(:defaults, %{}),
       shares: config |> Config.section(WardrikWorkspace) |> Keyword.get(:shared, []),
-      triggers: config.triggers,
       names: %{host: "the daemon", config: "config.yaml", policies: "policies/"}
     }
   end

@@ -15,10 +15,12 @@ defmodule WardrikHTTP.Router do
   and a worker's socket, hold the caller's credential, and end when it is
   revoked.
 
-  Its options are the `WardrikHTTP.Listener`'s `:host`, `:authenticator`,
-  `:workers`, `:channels` and `:mounts`, assigned to each request as
-  `:options`: every scope is on that host. A request to a path mounted with
-  a plug of its own is that plug's alone.
+  Its options are the `WardrikHTTP.Listener`'s `:host`, `:authenticator`
+  and `:workers`, assigned to each request as `:options`: every scope is on
+  that host. A request to a path among the host's routes (see
+  `Wardrik.Host`) is the plug's that answers it alone, ahead of the API
+  and asking no credential, its path as it came, with the host in its
+  `:wardrik_host` private.
   """
 
   use Plug.Router, copy_opts_to_assign: :options
@@ -42,7 +44,7 @@ defmodule WardrikHTTP.Router do
 
   @parsers Plug.Parsers.init(parsers: [:json], json_decoder: Elixir.JSON, pass: ["*/*"])
 
-  # The most of a request from outside, to a trigger or a channel, read,
+  # The most of a request from outside, to a trigger, read,
   # which its signature is checked against whole.
   @outside_body 1_048_576
 
@@ -55,7 +57,7 @@ defmodule WardrikHTTP.Router do
 
   plug Plug.RequestId, http_header: "request-id"
   plug Plug.Logger
-  plug :mounted
+  plug :routed
   plug WardrikHTTP.Auth
   plug :match
   plug :parse
@@ -279,13 +281,6 @@ defmodule WardrikHTTP.Router do
 
   # An agent is /v1/agents/{org}/{name}, or /v1/agents/{org}/@{user}/{name}
   # for a user's, and what follows its ID is what is asked of it.
-  # A request a chat channel's medium sends, such as Slack's events, at
-  # /v1/channels/{channel}/{path}: it holds no credential of this server's,
-  # and the channel checks it as it answers it.
-  post "/v1/channels/:channel/*rest" do
-    channel(conn, channel, rest)
-  end
-
   match "/v1/agents/:org/*rest" do
     with {segments, rest} <- agent_path([org | rest]),
          route when route != nil <- route(conn.method, rest, conn) do
@@ -299,55 +294,22 @@ defmodule WardrikHTTP.Router do
     no_route(conn)
   end
 
-  defp mounted(conn, _opts) do
-    mounts = Keyword.get(conn.assigns.options, :mounts, [])
+  defp routed(conn, _opts) do
+    host = Keyword.fetch!(conn.assigns.options, :host)
 
-    case Enum.find(mounts, fn {path, _plug} -> List.starts_with?(conn.path_info, path) end) do
-      {_path, {plug, options}} -> conn |> plug.call(plug.init(options)) |> halt()
-      nil -> conn
+    case Enum.find(Wardrik.Host.routes(host), &List.starts_with?(conn.path_info, elem(&1, 0))) do
+      {_path, {plug, options}} ->
+        conn |> put_private(:wardrik_host, host) |> plug.call(plug.init(options)) |> halt()
+
+      nil ->
+        conn
     end
   end
 
   # A request to a trigger is checked against its body as it was sent, so it
   # is read whole rather than parsed.
   defp parse(%Plug.Conn{path_info: ["v1", "hooks" | _rest]} = conn, _opts), do: conn
-  defp parse(%Plug.Conn{path_info: ["v1", "channels" | _rest]} = conn, _opts), do: conn
   defp parse(conn, _opts), do: Plug.Parsers.call(conn, @parsers)
-
-  defp channel(conn, name, path) do
-    with {:ok, {module, function, args}} <- Map.fetch(conn.assigns.options[:channels], name),
-         {:ok, body, conn} <- read_body(conn, length: @outside_body) do
-      conn = fetch_query_params(conn)
-
-      %{status: status, headers: headers, body: answer} =
-        apply(
-          module,
-          function,
-          args ++
-            [
-              %{
-                method: conn.method,
-                path: path,
-                query: conn.query_params,
-                headers: conn.req_headers,
-                body: body
-              }
-            ]
-        )
-
-      conn |> merge_resp_headers(headers) |> send_resp(status, answer)
-    else
-      :error ->
-        json(conn, 404, JSON.error("not_found", "No channel #{name} takes requests here."))
-
-      {:more, _read, conn} ->
-        json(
-          conn,
-          413,
-          JSON.error("invalid_request", "A request to a channel is at most 1 MB.")
-        )
-    end
-  end
 
   # A secret in the path is the request's credential, as a bearer token is.
   defp bearer(conn, secret), do: put_req_header(conn, "authorization", "Bearer " <> secret)

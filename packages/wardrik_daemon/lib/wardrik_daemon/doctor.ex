@@ -116,12 +116,7 @@ defmodule WardrikDaemon.Doctor do
       # daemon reads once as it starts, as config.yaml is merged over it.
       settings = Config.merge(Application.get_all_env(:wardrik_daemon), read)
 
-      config =
-        Config.new(
-          config_dir: config_dir,
-          sections: settings,
-          triggers: WardrikTrigger.Offered.discover()
-        )
+      config = Config.new(config_dir: config_dir, sections: settings)
 
       [env(config_dir), config(file, from_vault, vault), store(read), vault(settings)] ++
         callback(config, vault) ++ servers(settings) ++ channels(settings) ++ agents(config)
@@ -175,7 +170,7 @@ defmodule WardrikDaemon.Doctor do
       secret
     end
 
-    case Config.read(file, vault: lookup, adapters: WardrikChannel.discover()) do
+    case Config.read(file, vault: lookup) do
       {:ok, settings} -> {:ok, settings, from_vault([])}
       {:error, message} -> {:error, message <> unread(vault, from_vault([]))}
     end
@@ -398,10 +393,11 @@ defmodule WardrikDaemon.Doctor do
 
   # -- agents ------------------------------------------------------------------
 
-  # Read on a host offering what the daemon ships, and no servers people
-  # add, which only a daemon that runs reaches.
+  # Read on a host offering what the daemon ships and config.yaml
+  # configures, and no servers people add, which only a daemon that runs
+  # reaches.
   defp agents(config) do
-    host = WardrikDaemon.attach(Wardrik.Host.new())
+    host = WardrikDaemon.attach(Wardrik.Host.new(), config)
     {policies, agents} = Agents.read_files(config, host: host)
 
     case for({path, {:error, message}} <- policies ++ agents, do: {path, message}) do

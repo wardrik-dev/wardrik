@@ -53,9 +53,6 @@ defmodule WardrikSlack.AnswersTest do
     :ok
   end
 
-  @doc false
-  def deciding(_installation), do: "The org's approvers, in its settings, name who else may."
-
   # The channel's options a press is answered with.
   defp answering do
     context = %WardrikChannel.Context{
@@ -103,7 +100,7 @@ defmodule WardrikSlack.AnswersTest do
       assert [{%{id: "call_1"}, _prompt}] = Agent.parked(key, host: Wardrik.Test.host())
     end
 
-    test "is refused to someone who may not decide, saying who else may as the host words it",
+    test "is refused to someone who may not decide, saying who else may",
          %{key: key} do
       assert :ok = Answers.answer(press(key, "wardrik_link", "U2"), answering())
 
@@ -111,18 +108,10 @@ defmodule WardrikSlack.AnswersTest do
 
       assert text ==
                "Only whoever asked, or the approvers here, can answer that. " <>
-                 "Whoever runs Wardrik names who else may."
+                 "The channel's approvers name who else may, and whoever runs Wardrik " <>
+                 "answers it too."
 
       refute text =~ "WDJB-MJHT"
-
-      opts =
-        Keyword.update!(answering(), :workspace, fn workspace ->
-          %{workspace | context: %{workspace.context | deciding: {__MODULE__, :deciding, []}}}
-        end)
-
-      assert :ok = Answers.answer(press(key, "wardrik_link", "U2"), opts)
-      assert_receive {:slack, _host, _path, %{"text" => text}}
-      assert text =~ "The org's approvers, in its settings, name who else may."
     end
 
     test "says so once nothing waits on a connection", %{key: key} do

@@ -42,6 +42,7 @@
       "Wardrik.Issuer",
       "Wardrik.Issuer.None",
       "Wardrik.Hook",
+      "Wardrik.Host",
       "Wardrik.LLM.Answer",
       "Wardrik.LLM.Client",
       "Wardrik.LLM.Config",

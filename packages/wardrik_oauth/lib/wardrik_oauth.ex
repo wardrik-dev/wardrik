@@ -21,8 +21,7 @@ defmodule WardrikOAuth do
         )
 
       vault = WardrikVault.new(store: store, keys: keys, grants: oauth)
-      host = Wardrik.Host.new(store: store, credentials: vault)
-      children = [{Wardrik.Core, host: host}, WardrikOAuth.Supervisor]
+      host = Wardrik.new(store: store, credentials: vault) |> WardrikOAuth.attach(oauth: oauth)
 
   A credential named `github` that the vault holds for nobody the call
   reaches is then asked for: of the call's user, or of its org where it has
@@ -55,6 +54,10 @@ defmodule WardrikOAuth do
 
   Tokens are kept in `WardrikVault`, sealed, inside the customer's network.
   Wardrik is not a broker and holds no other tenant's tokens.
+
+  `attach/2` has the host serve the pages a browser comes back to, and run
+  the flows, and `config/1` reads `config.yaml`'s `oauth` into the options
+  `new/1` takes.
 
   ## What it does per server
 
@@ -130,6 +133,148 @@ defmodule WardrikOAuth do
           poll_floor: non_neg_integer(),
           audit: GenServer.name()
         }
+
+  @client ~w(name document_url client_uri logo_uri policy_uri tos_uri)a
+  @redirect ~w(url open)a
+  @provider ~w(resource issuer client_id client_secret scopes authorization_params flow)a
+  @keys Map.new(@client ++ @redirect ++ @provider, &{Atom.to_string(&1), &1})
+
+  @doc """
+  `host` serving the pages a browser comes back to from a sign-in, under
+  the redirect URL of `:oauth`, among its routes (see
+  `WardrikOAuth.Callback.pages/1`), and running `WardrikOAuth.Supervisor`,
+  the flows under way, among its children.
+  """
+  @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
+  def attach(%Wardrik.Host{} = host, opts) do
+    opts = Keyword.validate!(opts, [:oauth])
+
+    host
+    |> Wardrik.Host.register(:routes, Callback.pages(Keyword.fetch!(opts, :oauth)))
+    |> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
+  end
+
+  @doc """
+  Reads `config.yaml`'s `oauth`, its `client`, `redirect` and `providers`,
+  into the options `new/1` takes, or the key that does not read, as a path
+  within the section, and why. A redirect URL is https, or http on this
+  machine's loopback; see `WardrikOAuth.Callback.redirect?/1`.
+  """
+  @spec config(map() | nil) :: {:ok, keyword()} | {:error, [String.t()], String.t()}
+  def config(nil), do: {:ok, []}
+
+  def config(%{} = section) do
+    known!(section, ~w(client redirect providers), [])
+    {:ok, Enum.map(section, &setting!/1)}
+  catch
+    {:invalid, path, message} -> {:error, path, message}
+  end
+
+  def config(_section), do: {:error, [], "is a set of keys"}
+
+  defp setting!({"client", client}), do: {:client, options!(client, @client, ["client"])}
+
+  defp setting!({"redirect", redirect}) do
+    {:redirect,
+     Enum.map(options!(redirect, @redirect, ["redirect"]), fn
+       {:url, url} -> {:url, url!(url)}
+       {:open, open} when is_boolean(open) -> {:open, open}
+       {:open, _open} -> invalid!(["redirect", "open"], "is true or false")
+     end)}
+  end
+
+  defp setting!({"providers", providers}) do
+    {:providers,
+     for {name, provider} <- table!(providers, ["providers"]) do
+       path = ["providers", name]
+
+       # reach:disable-next-line unsafe_atom_creation -- config.yaml's own provider names
+       {String.to_atom(name),
+        provider
+        |> options!(@provider, path)
+        |> flow!(path)
+        |> secret!(path)
+        |> authorization_params!(path)}
+     end}
+  end
+
+  defp url!(url) do
+    if is_binary(url) and Callback.redirect?(url),
+      do: String.trim_trailing(url, "/"),
+      else:
+        invalid!(
+          ["redirect", "url"],
+          "is an https:// URL, or http:// on loopback, with no query or fragment"
+        )
+  end
+
+  defp flow!(provider, path) do
+    case Keyword.fetch(provider, :flow) do
+      {:ok, flow} when flow in ["auto", "browser", "device"] ->
+        Keyword.put(provider, :flow, Provider.flow!(flow))
+
+      {:ok, _flow} ->
+        invalid!(path ++ ["flow"], "is auto, browser or device")
+
+      :error ->
+        provider
+    end
+  end
+
+  defp secret!(provider, path) do
+    if Keyword.has_key?(provider, :client_secret) and not Keyword.has_key?(provider, :issuer),
+      do:
+        invalid!(
+          path ++ ["client_secret"],
+          "is sent only to an issuer the provider names; add issuer"
+        ),
+      else: provider
+  end
+
+  defp authorization_params!(provider, path) do
+    path = path ++ ["authorization_params"]
+
+    case Keyword.fetch(provider, :authorization_params) do
+      {:ok, params} when is_map(params) ->
+        Keyword.put(provider, :authorization_params, Map.new(params, &param!(&1, path)))
+
+      {:ok, _params} ->
+        invalid!(path, "is a table of names to the values to send")
+
+      :error ->
+        provider
+    end
+  end
+
+  defp param!({name, value}, path) do
+    cond do
+      name in Flow.own_params() -> invalid!(path ++ [name], "is one Wardrik sets itself")
+      is_binary(value) or is_number(value) or is_boolean(value) -> {name, to_string(value)}
+      true -> invalid!(path ++ [name], "is a string, a number or true or false")
+    end
+  end
+
+  defp options!(table, keys, path) do
+    table = table!(table, path)
+    known!(table, Enum.map(keys, &Atom.to_string/1), path)
+    Enum.map(table, fn {key, value} -> {@keys[key], value} end)
+  end
+
+  defp table!(nil, _path), do: %{}
+  defp table!(%{} = table, _path), do: table
+  defp table!(_value, path), do: invalid!(path, "is a set of keys")
+
+  defp known!(table, keys, path) do
+    case Map.keys(table) -- keys do
+      [] ->
+        :ok
+
+      [key | _] ->
+        invalid!(path ++ [key], "is not a setting; expected one of #{Enum.join(keys, ", ")}")
+    end
+  end
+
+  defp invalid!(path, message), do: throw({:invalid, path, message})
 
   @doc "The settings `opts` name, each one left out at its default; see `t:t/0`."
   @spec new(keyword()) :: t()

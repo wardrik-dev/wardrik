@@ -15,24 +15,15 @@ defmodule WardrikChannel.ThreadsTest do
   alias WardrikChannel.Context
   alias WardrikChannel.Inbound
   alias WardrikChannel.Installations
-  alias WardrikChannel.Offer
   alias WardrikChannel.Outbound
   alias WardrikChannel.Replies
   alias WardrikChannel.Room
   alias WardrikChannel.Rooms
+  alias WardrikChannel.Test.Defined
   alias WardrikChannel.Workspace
   alias WardrikNotify.Notice
 
   @maria Principal.new(:channel, "slack/T1/U1", name: "maria")
-
-  @doc false
-  def offering(agent, _channel), do: [%Offer{agent: agent}]
-
-  @doc false
-  def starting(options, _channel, agent), do: Fleet.spawn(agent, options)
-
-  @doc false
-  def approving(approvers, _channel), do: %Approvers.Named{names: approvers}
 
   @doc false
   def working(test, %Turn{} = turn) do
@@ -64,46 +55,50 @@ defmodule WardrikChannel.ThreadsTest do
 
   # A channel of its own, delivering to the test, posted in by a
   # WardrikChannel.Replies of its own started with it, with a room bound to
-  # an agent whose threads run on `runner`, and resume on `:resume`.
-  defp bound(runner, opts \\ []) do
+  # the agent its host defines, the one it offers. The agent of each of
+  # `threads` runs on `runner`, and resumes on `:resume`, as one started
+  # before the channel starts it would.
+  defp bound(runner, threads, opts \\ []) do
     agent = Wardrik.Test.Fleet.id("books")
     name = "chat-#{System.unique_integer([:positive])}"
     replies = :"replies-#{name}"
+    host = Defined.host([], issuer: %WardrikChannel.Test.Issuer{reach: [Principal.id(@maria)]})
+    Defined.define(host, agent, %{"channels" => [name]})
 
-    channels =
-      WardrikChannel.channels(
-        [
-          {name,
-           {WardrikChannel.Test.Adapter,
-            test: self(), refusals: opts[:refusals], unshown: opts[:unshown]}}
-        ],
-        host:
-          Wardrik.Host.new(
-            store: Wardrik.Test.store(),
-            issuer: %WardrikChannel.Test.Issuer{reach: [Principal.id(@maria)]}
-          ),
-        installations: Installations.Config.new([{name, "token", Resource.deployment()}]),
-        offered: {__MODULE__, :offering, [agent]},
-        start:
-          {__MODULE__, :starting, [[config: Script.new(runner, Keyword.take(opts, [:resume]))]]},
-        approvers: {__MODULE__, :approving, [Keyword.get(opts, :approvers, [])]},
-        replies: replies
-      )
+    settings = [
+      channels: [
+        {name,
+         {WardrikChannel.Test.Adapter,
+          test: self(), refusals: opts[:refusals], unshown: opts[:unshown]}}
+      ],
+      installations: Installations.Config.new([{name, "token", Resource.deployment()}]),
+      approvers: [{name, %Approvers.Named{names: Keyword.get(opts, :approvers, [])}}]
+    ]
 
     start_supervised!(
       {Replies,
-       [name: replies, channels: channels, store: Wardrik.Test.store()] ++
+       [name: replies, host: host, settings: settings] ++
          Keyword.take(opts, [:throttle, :refresh])}
     )
 
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
-    {:ok, workspace} = Workspace.new(channels[name].context, "T1")
+    %{^name => channel} = WardrikChannel.channels(settings, host: host, replies: replies)
+    {:ok, workspace} = Workspace.new(channel.context, "T1")
     {:bound, binding, _offer} = Rooms.joined(Room.new(workspace, "C1"), name: "books", by: @maria)
     itself = AgentID.resource(agent)
     on_exit(fn -> Enum.each([itself, Resource.parse!("#{itself}/*")], &Fleet.forget_under/1) end)
+    on_exit(fn -> Wardrik.Definitions.delete(Wardrik.Host.definitions(host), agent) end)
 
+    for thread <- threads, do: running(binding, thread, runner, opts)
     {workspace, binding}
   end
+
+  defp running(binding, thread, runner, opts),
+    do:
+      {:ok, _pid} =
+        Fleet.spawn(WardrikChannel.conversation(binding, thread),
+          config: Script.new(runner, Keyword.take(opts, [:resume]))
+        )
 
   defp inbound(_workspace, fields),
     do: struct!(Inbound, [room: "C1", sender: @maria, mentioned?: true] ++ fields)
@@ -119,7 +114,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "asks the room's agent in a thread of its own, and posts there what it answers" do
-    {context, binding} = bound({AgentRunners, :echo, [self(), "Two cases of Barolo."]})
+    {context, binding} = bound({AgentRunners, :echo, [self(), "Two cases of Barolo."]}, ["1.1"])
 
     assert {:asked, agent} =
              WardrikChannel.received(
@@ -152,7 +147,8 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "leaves alone what the room's agent does not answer" do
-    {context, binding} = bound({AgentRunners, :echo, [self(), "Here."]})
+    runner = {AgentRunners, :echo, [self(), "Here."]}
+    {context, binding} = bound(runner, [])
 
     unbound = %{inbound(context, id: "2.1", text: "Anyone?") | room: "C2"}
     assert WardrikChannel.received(context, unbound) == :ignored
@@ -164,6 +160,7 @@ defmodule WardrikChannel.ThreadsTest do
     assert WardrikChannel.received(context, elsewhere) == :ignored
 
     refute Fleet.stored?(WardrikChannel.conversation(binding, "2.2"))
+    running(binding, "2.2", runner, [])
 
     {:ok, %Binding{answers: :everything}, _offer} =
       Rooms.answers(Room.new(context, "C1"), :everything, by: @maria)
@@ -173,7 +170,8 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "asks the channel's approvers directly the calls a thread's run waits on" do
-    {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]}, approvers: ["@maria"])
+    {context, _room} =
+      bound({AgentRunners, :parking, [self(), "call_1"]}, ["3.1"], approvers: ["@maria"])
 
     assert {:asked, agent} =
              WardrikChannel.received(context, inbound(context, id: "3.1", text: "Ship it."))
@@ -196,7 +194,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "posts again what a thread's agent waits on, for a message that waits behind it" do
-    {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]})
+    {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]}, ["3.1"])
 
     assert {:asked, agent} =
              WardrikChannel.received(context, inbound(context, id: "3.1", text: "Ship it."))
@@ -232,7 +230,7 @@ defmodule WardrikChannel.ThreadsTest do
 
     assert Replies.remind(Room.new(nowhere, "C1"), "1.1") == :ok
 
-    {context, _room} = bound({AgentRunners, :echo, [self(), "Here."]})
+    {context, _room} = bound({AgentRunners, :echo, [self(), "Here."]}, ["8.1"])
     {:asked, _agent} = WardrikChannel.received(context, inbound(context, id: "8.1", text: "Hi."))
     assert_receive {:delivered, %Outbound{body: {:reply, "Here.", ["8.1"]}}, _channel}
 
@@ -246,7 +244,7 @@ defmodule WardrikChannel.ThreadsTest do
     answer = {:ok, [Wardrik.Conversation.Assistant.new("Opened.")]}
 
     {context, _room} =
-      bound({AgentRunners, :connecting, [self(), "call_1", link, credential]},
+      bound({AgentRunners, :connecting, [self(), "call_1", link, credential]}, ["9.1"],
         resume: {AgentRunners, :resuming, [self(), answer]}
       )
 
@@ -270,7 +268,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "says in the thread who decided a call it waited on" do
-    {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]})
+    {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]}, ["5.1"])
 
     assert {:asked, agent} =
              WardrikChannel.received(context, inbound(context, id: "5.1", text: "Ship it."))
@@ -295,7 +293,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "posts why a thread's run failed" do
-    {context, _room} = bound({AgentRunners, :failing, ["The cellar is locked."]})
+    {context, _room} = bound({AgentRunners, :failing, ["The cellar is locked."]}, ["4.1"])
 
     assert {:asked, _agent} =
              WardrikChannel.received(context, inbound(context, id: "4.1", text: "Count it."))
@@ -310,7 +308,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "asks nothing for someone the host's token allows no ask, and says so" do
-    {context, binding} = bound({AgentRunners, :echo, [self(), "Here."]})
+    {context, binding} = bound({AgentRunners, :echo, [self(), "Here."]}, [])
     stranger = Principal.new(:channel, "slack/T1/U9", name: "stranger")
 
     assert {:error, message} =
@@ -324,18 +322,27 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "says why where the thread's agent cannot be started" do
-    {context, _room} = bound({AgentRunners, :echo, [self(), "Here."]})
-    context = %{context | context: %{context.context | start: {Context, :unstarted, []}}}
+    {context, _room} = bound({AgentRunners, :echo, [self(), "Here."]}, [])
+
+    undefined =
+      Wardrik.Host.new(
+        store: Wardrik.Test.store(),
+        issuer: %WardrikChannel.Test.Issuer{reach: [Principal.id(@maria)]}
+      )
+
+    context = %{context | context: %{context.context | host: undefined}}
 
     assert {:error, message} =
              WardrikChannel.received(context, inbound(context, id: "5.1", text: "Hello?"))
 
-    assert message =~ "is not running"
+    assert message =~ "is not defined"
   end
 
   test "tries a refused post again until the channel takes it" do
     {:ok, refusals} = Agent.start_link(fn -> 1 end)
-    {context, _room} = bound({AgentRunners, :echo, [self(), "Later."]}, refusals: refusals)
+
+    {context, _room} =
+      bound({AgentRunners, :echo, [self(), "Later."]}, ["6.1"], refusals: refusals)
 
     assert {:asked, _agent} =
              WardrikChannel.received(context, inbound(context, id: "6.1", text: "Now?"))
@@ -347,7 +354,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "posts what was answered while it was stopped, from where it had posted" do
-    {context, binding} = bound({AgentRunners, :echo, [self(), "Counted."]})
+    {context, binding} = bound({AgentRunners, :echo, [self(), "Counted."]}, ["7.1"])
 
     assert {:asked, agent} =
              WardrikChannel.received(context, inbound(context, id: "7.1", text: "Count it."))
@@ -372,7 +379,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "shows what a thread's agent is doing, and the latest change once it may change" do
-    {context, _binding} = bound({__MODULE__, :working, [self()]}, throttle: 500)
+    {context, _binding} = bound({__MODULE__, :working, [self()]}, ["10.1"], throttle: 500)
 
     assert {:asked, _agent} =
              WardrikChannel.received(context, inbound(context, id: "10.1", text: "Look."))
@@ -390,7 +397,8 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "shows a status again while it stands, and nothing once the agent is idle" do
-    {context, _binding} = bound({__MODULE__, :working, [self()]}, throttle: 50, refresh: 150)
+    {context, _binding} =
+      bound({__MODULE__, :working, [self()]}, ["11.1"], throttle: 50, refresh: 150)
 
     assert {:asked, _agent} =
              WardrikChannel.received(context, inbound(context, id: "11.1", text: "Look."))
@@ -405,7 +413,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "shows a status again once what is posted in the thread takes it away" do
-    {context, _binding} = bound({__MODULE__, :working, [self()]}, throttle: 300)
+    {context, _binding} = bound({__MODULE__, :working, [self()]}, ["12.1"], throttle: 300)
 
     assert {:asked, _agent} =
              WardrikChannel.received(context, inbound(context, id: "12.1", text: "Look."))
@@ -425,7 +433,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "shows nothing while the agent waits on a person" do
-    {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]}, throttle: 50)
+    {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]}, ["13.1"], throttle: 50)
 
     assert {:asked, _agent} =
              WardrikChannel.received(context, inbound(context, id: "13.1", text: "Ship it."))
@@ -435,7 +443,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "says a stopped run stopped, and shows nothing more" do
-    {context, _binding} = bound({__MODULE__, :working, [self()]}, throttle: 50)
+    {context, _binding} = bound({__MODULE__, :working, [self()]}, ["14.1"], throttle: 50)
 
     assert {:asked, agent} =
              WardrikChannel.received(context, inbound(context, id: "14.1", text: "Look."))
@@ -449,7 +457,8 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "passes over a status the channel refuses, and shows the next change" do
-    {context, _binding} = bound({__MODULE__, :working, [self()]}, unshown: true, throttle: 50)
+    {context, _binding} =
+      bound({__MODULE__, :working, [self()]}, ["15.1"], unshown: true, throttle: 50)
 
     assert {:asked, _agent} =
              WardrikChannel.received(context, inbound(context, id: "15.1", text: "Look."))

@@ -9,7 +9,7 @@ defmodule WardrikTrigger.Deliveries do
 
   `:secrets` reads a webhook's secret by its name for the agent, the
   environment's variable of that name by default, and `:verifiers` names
-  the verifiers a webhook may name, as `WardrikTrigger.Offered` finds them.
+  the verifiers a webhook may name, `WardrikTrigger.Offered`'s by default.
   """
 
   @typedoc "Reads a webhook's secret by its name for an agent, `nil` where it is not set."

@@ -207,8 +207,8 @@ defmodule Wardrik do
 
   @doc """
   What a definition may name beyond the host's tools and sources, as the
-  fields of `WardrikDefinition.Context` in `fields`: the MCP `servers`, the
-  `policies`, and so on.
+  fields of `WardrikDefinition.Context` in `fields`: the `policies`, the
+  `defaults` every agent takes, and so on.
 
       Wardrik.context(policies: %{"careful" => policy})
   """
@@ -736,7 +736,7 @@ defmodule Wardrik do
           {:ok,
            %{
              definition: definition,
-             missing: Definitions.missing(definitions, definition, host: scope.host)
+             missing: Definition.missing(definition, host: scope.host)
            }}
 
         {:error, :not_found} ->

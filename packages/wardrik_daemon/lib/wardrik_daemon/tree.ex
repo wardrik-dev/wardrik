@@ -13,8 +13,6 @@ defmodule WardrikDaemon.Tree do
     * `Wardrik.Core`, whose fleet every agent runs in
     * `WardrikPolicy.Supervisor`, which keeps the budgets agents' policies set
     * `WardrikTrigger`, which runs their triggers
-    * `WardrikHTTP.Access`, which keeps what tokens grant
-    * `WardrikHTTP.Workers`, the tool workers connected to the cluster
     * `WardrikDaemon`, the rest
 
   One that stops takes those after it with it. A `config.yaml` that does not
@@ -22,7 +20,7 @@ defmodule WardrikDaemon.Tree do
 
   `:store` is required. `:base` is what the release's own configuration says
   of each module, which `config.yaml` is merged over; `:config_dir`,
-  `:data_dir`, `:state_dir`, `:adapters` and `:triggers` are as
+  `:data_dir`, `:state_dir` and `:adapters` are as
   `WardrikDaemon.Config.new/1` takes them.
   """
 
@@ -53,8 +51,6 @@ defmodule WardrikDaemon.Tree do
           {Wardrik.Core, host: host},
           {WardrikPolicy.Supervisor, store: store},
           {WardrikTrigger, store: store, host: host},
-          {WardrikHTTP.Access, store: store},
-          WardrikHTTP.Workers,
           {WardrikDaemon, host: host, config: config}
         ]
 

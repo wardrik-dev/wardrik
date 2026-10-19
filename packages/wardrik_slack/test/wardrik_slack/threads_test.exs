@@ -6,9 +6,7 @@ defmodule WardrikSlack.ThreadsTest do
   alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Script
-  alias WardrikChannel.Context
   alias WardrikChannel.Installations
-  alias WardrikChannel.Offer
   alias WardrikChannel.Replies
   alias WardrikChannel.Rooms
   alias WardrikChannel.Workspace
@@ -59,38 +57,36 @@ defmodule WardrikSlack.ThreadsTest do
     end
   end
 
-  @doc false
-  def offering(agent, _channel), do: [%Offer{agent: agent}]
-
-  @doc false
-  def starting(runner, _channel, agent), do: Fleet.spawn(agent, config: Script.new(runner))
-
-  # A Slack channel's agent, whose threads run on `runner`, bound to C1, and
-  # posted in by a WardrikChannel.Replies of its own started with it.
+  # A Slack channel's agent, its host's, bound to C1, and posted in by a
+  # WardrikChannel.Replies of its own started with it. The agent of the
+  # thread 1.1 runs on `runner`, as one started before the channel starts
+  # it would.
   defp bound(runner) do
     agent = Wardrik.Test.Fleet.id("books")
     name = "slack-#{System.unique_integer([:positive])}"
     replies = :"replies-#{name}"
+    host = WardrikSlack.Test.host([], issuer: %Everyone{})
+    WardrikSlack.Test.define(host, agent, %{"channels" => [name]})
 
-    channels =
-      WardrikChannel.channels([{name, {WardrikSlack, req_options: @req_options}}],
-        host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %Everyone{}),
-        installations:
-          Installations.Config.new([{name, "xoxb-test", Wardrik.Resource.deployment()}]),
-        offered: {__MODULE__, :offering, [agent]},
-        start: {__MODULE__, :starting, [runner]},
-        replies: replies
-      )
+    settings = [
+      channels: [{name, {WardrikSlack, req_options: @req_options}}],
+      installations:
+        Installations.Config.new([{name, "xoxb-test", Wardrik.Resource.deployment()}])
+    ]
 
-    start_supervised!({Replies, name: replies, channels: channels, store: Wardrik.Test.store()})
+    start_supervised!({Replies, name: replies, host: host, settings: settings})
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
-    {:ok, workspace} = Workspace.new(channels[name].context, "T1")
+    %{^name => channel} = WardrikChannel.channels(settings, host: host, replies: replies)
+    {:ok, workspace} = Workspace.new(channel.context, "T1")
 
-    {:bound, _room, _offer} =
-      Rooms.joined(WardrikChannel.Room.new(workspace, "C1"), name: "books")
+    {:bound, room, _offer} = Rooms.joined(WardrikChannel.Room.new(workspace, "C1"), name: "books")
+
+    {:ok, _pid} =
+      Fleet.spawn(WardrikChannel.conversation(room, "1.1"), config: Script.new(runner))
 
     itself = AgentID.resource(agent)
     on_exit(fn -> Enum.each([itself, Resource.parse!("#{itself}/*")], &Fleet.forget_under/1) end)
+    on_exit(fn -> Wardrik.Definitions.delete(Wardrik.Host.definitions(host), agent) end)
 
     [
       workspace: workspace,
@@ -180,14 +176,17 @@ defmodule WardrikSlack.ThreadsTest do
   test "says in the thread why its agent could not be asked" do
     opts = bound({AgentRunners, :echo, [self(), "Here."]})
 
+    undefined = Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %Everyone{})
+
     opts =
       Keyword.update!(opts, :workspace, fn workspace ->
-        %{workspace | context: %{workspace.context | start: {Context, :unstarted, []}}}
+        %{workspace | context: %{workspace.context | host: undefined}}
       end)
 
-    assert {:error, message} = Threads.event(message(%{}), opts)
+    assert {:error, message} = Threads.event(message(%{"ts" => "2.1"}), opts)
+    assert message =~ "is not defined"
 
-    assert %{"thread_ts" => "1.1", "text" => ":warning: " <> ^message} =
+    assert %{"thread_ts" => "2.1", "text" => ":warning: " <> ^message} =
              called("/api/chat.postMessage")
 
     refute_received {:slack, "/api/reactions.add", _body}

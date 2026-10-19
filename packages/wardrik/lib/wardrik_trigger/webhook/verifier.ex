@@ -17,7 +17,7 @@ defmodule WardrikTrigger.Webhook.Verifier do
     * `standard` (`WardrikTrigger.Webhook.Standard`): the request is signed
       as the Standard Webhooks spec says
 
-  A host that needs a service's own signature checked registers a module of
+  A host that needs a service's own signature checked offers a module of
   its own, and a trigger names it; see `WardrikTrigger.Offered`.
   """
 

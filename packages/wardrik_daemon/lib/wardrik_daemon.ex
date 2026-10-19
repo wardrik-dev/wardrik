@@ -5,8 +5,10 @@ defmodule WardrikDaemon do
   `WardrikDaemon.Tree` starts it last, once it has read `config.yaml`,
   built the `Wardrik.Host` from it, and started core and what runs on the
   fleet; see there. It is handed that host and the `WardrikDaemon.Config`
-  read, and starts what the config calls for, each with its own section as
-  options:
+  read, and starts `WardrikDaemon.SSH`, which serves the TUI over SSH,
+  where `ssh/authorized_keys` in the config directory lets anyone in, and
+  the children of the host, as `attach/2` attached the packages to it,
+  each with its own section of the config as options:
 
     * `WardrikMCP.Supervisor`, with the servers configured and those orgs and
       people add, kept in the store. Each command's stderr goes to
@@ -16,20 +18,19 @@ defmodule WardrikDaemon do
     * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
       `Wardrik.Definitions.routes/1` for the routes as it starts, so one that
       restarts routes the agents as before.
-    * `WardrikChannel.Supervisor`, when a channel is configured, which runs
-      what each channel's adapter runs, such as its connection to the medium,
-      after `WardrikChannel.Replies`, which posts what agents answer in its
-      rooms' threads. Both are handed the channels `WardrikChannel.channels/2`
-      makes once from the channels' settings, on the host, each installed in
-      the workspace its `token` reaches.
-    * `WardrikDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
-      in the config directory lets anyone in.
-    * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, or where
-      `http` says, to callers holding a token that `wardrik token create`
-      made, on the host; under `/v1/channels/`, what each channel's medium
-      sends it, such as Slack's events, answered by the channel; and, where
-      `WardrikOAuth.Supervisor` runs, the pages a browser comes back to from
-      a sign-in, under the redirect URL's path; see `WardrikOAuth.Callback`.
+    * `WardrikChannel.Replies`, which posts what agents answer in the rooms'
+      threads, and `WardrikChannel.Supervisor`, which runs what each
+      channel's adapter runs, such as its connection to the medium, when a
+      channel is configured, each installed in the workspace its `token`
+      reaches.
+    * `WardrikHTTP.Access`, the tool workers' group, and
+      `WardrikHTTP.Listener`, which serves the HTTP API on loopback, or
+      where `http` says, to callers holding a token that `wardrik token
+      create` made, on the host; and its routes: under `/v1/channels/`, what
+      each channel's medium sends it, such as Slack's events, answered by
+      the channel, and, where `WardrikOAuth.Supervisor` runs, the pages a
+      browser comes back to from a sign-in, under the redirect URL's path;
+      see `WardrikOAuth.Callback`.
 
   Before any of them, it reads the agent and policy files once, as `wardrik
   reload` does (see `WardrikDaemon.Agents`), so nothing they serve finds a
@@ -77,26 +78,17 @@ defmodule WardrikDaemon do
 
   @impl true
   def init(%{host: host, config: config}) do
-    store = Wardrik.Host.store(host)
-    definitions = Wardrik.Host.definitions(host)
-    agents = Agents.of(host)
-    channels = channels(config, host, agents)
-    {signing_in, pages} = signs_in(host)
-
     # The files are read before what serves the agents starts, so nothing
     # it serves finds an agent its file does not yet define.
-    _reloaded = Wardrik.Definitions.reload(definitions, host: host)
+    _reloaded = Wardrik.Definitions.reload(Wardrik.Host.definitions(host), host: host)
+
+    # The MCP servers started below write their commands' output there.
+    # credo:disable-for-next-line Wardrik.Credo.Check.InitDoesNoIO
+    File.mkdir_p!(Path.dirname(stderr(config)))
 
     children =
-      mcp(config, store) ++
-        signing_in ++
-        running(channels, host) ++
-        notify(config, definitions) ++
-        WardrikDaemon.SSH.children(config, host: host) ++
-        [
-          {WardrikHTTP.Listener,
-           [host: host, channels: served(channels), mounts: pages] ++ listener(config)}
-        ]
+      WardrikDaemon.SSH.children(config, host: host) ++
+        for {module, opts} <- Wardrik.Host.children(host), do: {module, [host: host] ++ opts}
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -111,14 +103,13 @@ defmodule WardrikDaemon do
   environment's; `WardrikDaemon.Issuer`, whose tokens last as long as
   `tokens.expires.session` says; agents' files kept in the store; the MCP
   servers orgs and people add, kept there too; the model's runtime, pricing
-  tools as `config.yaml`'s `tools` says; and what `attach/1` adds.
+  tools as `config.yaml`'s `tools` says; and what `attach/2` adds.
   """
   @spec host(Config.t(), store: WardrikStore.t()) :: Wardrik.Host.t()
   def host(%Config{} = config, opts) do
     store = Keyword.fetch!(opts, :store)
     audit = Wardrik.Audit
-    added = %WardrikMCP.Servers.Providers{store: store}
-    oauth = WardrikOAuth.new([audit: audit, added: added] ++ Config.oauth_settings(config))
+    oauth = oauth(config, store)
     vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
     vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
     agents = Agents.new(store: store, config: config, audit: audit)
@@ -132,116 +123,71 @@ defmodule WardrikDaemon do
       servers: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault},
       credentials: vault,
       tokens: %WardrikHTTP.Tokens{store: store},
-      triggers: %WardrikTrigger.Deliveries{
-        secrets: &Secrets.for_agent(vault, &1, &2),
-        verifiers: config.triggers.verifiers
-      },
+      triggers: %WardrikTrigger.Deliveries{secrets: &Secrets.for_agent(vault, &1, &2)},
       issuer: %WardrikDaemon.Issuer{agents: agents},
       workspace: %WardrikWorkspace.Backend.Store{store: store},
       runtimes: [%Wardrik.LLM.Runtime{config: [tool_prices: prices]}]
     ]
     |> Kernel.++(Keyword.take(Config.section(config, Wardrik.Tokens), [:expires]))
     |> Wardrik.Host.new()
-    |> attach()
+    |> attach(config)
   end
 
   @doc """
-  `host` with what the daemon ships attached: web search, deep research
-  and Lua among its tools, and among its tool sources the tool workers',
-  `workers`, an agent's operations on itself, `self`, those on the other
-  agents of its org, `agents`, and the MCP servers its owner adds,
-  `servers`.
+  `host` with what the daemon ships attached, and the packages `config`
+  configures, each with its own section as options: web search, deep
+  research and Lua among its tools, and among its tool sources an agent's
+  operations on itself, `self`, and those on the other agents of its org,
+  `agents`; the MCP servers configured and those owners add (see
+  `WardrikMCP.attach/2`); where a provider is configured, or the vault has
+  a key, the pages a sign-in comes back to; the notify targets and the
+  channels configured; and the HTTP API, and the tool workers', `workers`.
   """
-  @spec attach(Wardrik.Host.t()) :: Wardrik.Host.t()
-  def attach(host) do
+  @spec attach(Wardrik.Host.t(), Config.t()) :: Wardrik.Host.t()
+  def attach(host, %Config{} = config) do
     host
     |> WardrikBrave.attach()
-    |> Wardrik.Host.register(:tools, [
-      {"deep_research", WardrikResearch.Deep},
-      {"run_lua", WardrikLua.Run}
-    ])
+    |> WardrikResearch.attach()
+    |> WardrikLua.attach()
     |> Wardrik.Host.register(:sources, [
-      {"workers", WardrikHTTP.Workers},
       {"self", Wardrik.Catalog.Self},
-      {"agents", Wardrik.Catalog.Agents},
-      {"servers", WardrikMCP.Added}
+      {"agents", Wardrik.Catalog.Agents}
     ])
+    |> WardrikMCP.attach([stderr: {:file, stderr(config)}] ++ Config.section(config, WardrikMCP))
+    |> signs_in(config)
+    |> WardrikNotify.attach(Config.section(config, WardrikNotify))
+    |> WardrikChannel.attach(
+      [org: Config.org(config)] ++
+        Keyword.take(Config.section(config, WardrikChannel), [
+          :channels,
+          :installations,
+          :orgs,
+          :creates,
+          :approvers
+        ])
+    )
+    |> WardrikHTTP.attach(
+      Keyword.take(Config.section(config, WardrikHTTP), [:port, :ip, :workers])
+    )
   end
 
-  # Orgs and people may add servers whenever the daemon runs, so it always
-  # runs, with the configured ones beside.
-  defp mcp(config, store) do
-    stderr = Path.join([config.state_dir, "log", "mcp.log"])
-    File.mkdir_p!(Path.dirname(stderr))
-
-    [
-      {WardrikMCP.Supervisor,
-       [store: store, stderr: {:file, stderr}] ++ Config.section(config, WardrikMCP)}
-    ]
-  end
+  # Each command's stderr goes to log/mcp.log in the state directory.
+  defp stderr(config), do: Path.join([config.state_dir, "log", "mcp.log"])
 
   # The host this daemon built offers its own sign-ins, and those of the
-  # servers people add, which keep their tokens in a vault with a key. The
-  # HTTP API serves the pages a browser comes back to.
-  defp signs_in(host) do
-    %WardrikOAuth.Connections{oauth: oauth, vault: vault} = Wardrik.Host.connections(host)
+  # servers people add, which keep their tokens in a vault with a key.
+  defp signs_in(host, config) do
+    oauth = oauth(config, Wardrik.Host.store(host))
 
-    if WardrikOAuth.configured?(oauth) or WardrikVault.configured?(vault),
-      do: {[WardrikOAuth.Supervisor], WardrikOAuth.Callback.pages(oauth)},
-      else: {[], []}
+    if WardrikOAuth.configured?(oauth) or
+         Config.section(config, WardrikVault)[:keys] not in [nil, []],
+       do: WardrikOAuth.attach(host, oauth: oauth),
+       else: host
   end
 
-  defp notify(config, definitions) do
-    settings = Config.section(config, WardrikNotify)
-
-    if Keyword.get(settings, :targets, []) != [],
-      do: [
-        {WardrikNotify.Supervisor,
-         [routes: {Wardrik.Definitions, :routes, [definitions]}] ++ settings}
-      ],
-      else: []
-  end
-
-  # The channels config.yaml names, each installed in the workspace its
-  # token reaches, if it names one.
-  defp channels(config, host, agents) do
-    case Config.section(config, WardrikChannel) do
-      [] ->
-        %{}
-
-      settings ->
-        WardrikChannel.channels(Keyword.fetch!(settings, :channels),
-          host: host,
-          installations: Keyword.fetch!(settings, :installations),
-          offered: {Agents, :offered, [agents]},
-          creatable: {Agents, :creatable?, [agents]},
-          create: {Agents, :create_in, [host]},
-          start: {Agents, :start, [host]},
-          approvers: {Agents, :approvers, [agents]},
-          offering: {Agents, :offering, []},
-          deciding: {Agents, :deciding, []}
-        )
-    end
-  end
-
-  defp running(channels, _host) when channels == %{}, do: []
-
-  defp running(channels, host),
-    do: [
-      {WardrikChannel.Replies, channels: channels, store: Wardrik.Host.store(host)},
-      {WardrikChannel.Supervisor, channels: channels}
-    ]
-
-  # What Slack, say, sends each channel over HTTP is answered by the channel.
-  defp served(channels),
-    do: Map.new(channels, fn {name, channel} -> {name, {WardrikChannel, :request, [channel]}} end)
-
-  # Tool workers' answers are the deployment's own where `http` trusts them.
-  defp listener(config) do
-    http = Config.section(config, WardrikHTTP)
-
-    [workers: [trusted: Keyword.get(http, :trusted_workers, false)]] ++
-      Keyword.take(http, [:port, :ip])
+  defp oauth(config, store) do
+    added = %WardrikMCP.Servers.Providers{store: store}
+    WardrikOAuth.new([audit: Wardrik.Audit, added: added] ++ Config.oauth_settings(config))
   end
 
   @doc """

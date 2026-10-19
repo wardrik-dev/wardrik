@@ -1,8 +1,8 @@
 defmodule WardrikNotify.Supervisor do
   @moduledoc """
   Runs `WardrikNotify`: the tasks deliveries run in, and
-  `WardrikNotify.Dispatcher`. The daemon starts it when `config.yaml` names a
-  target.
+  `WardrikNotify.Dispatcher`. `WardrikNotify.attach/2` makes it a child of
+  the host, which `Wardrik` starts:
 
       {WardrikNotify.Supervisor,
        targets: [audit: {WardrikNotify.Webhook, url: "https://hooks.example.com/wardrik"}]}
@@ -16,6 +16,8 @@ defmodule WardrikNotify.Supervisor do
     * `:routes` - where the dispatcher finds its routes as it starts, and
       `:backoff` how long it waits before trying a failed delivery again, in
       milliseconds; see `WardrikNotify.Dispatcher`.
+    * `:host` - the `Wardrik.Host` it was attached to, as `Wardrik` starts
+      it; `WardrikNotify.attach/2` has read its routes from it
   """
 
   use Supervisor
@@ -25,11 +27,11 @@ defmodule WardrikNotify.Supervisor do
 
   @impl true
   def init(opts) do
-    opts = Keyword.validate!(opts, [:routes, :backoff, targets: [], req_options: []])
+    opts = Keyword.validate!(opts, [:routes, :backoff, :host, targets: [], req_options: []])
 
     children = [
       {Task.Supervisor, name: WardrikNotify.TaskSupervisor},
-      {WardrikNotify.Dispatcher, opts}
+      {WardrikNotify.Dispatcher, Keyword.delete(opts, :host)}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

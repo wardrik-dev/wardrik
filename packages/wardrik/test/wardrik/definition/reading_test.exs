@@ -6,6 +6,7 @@ defmodule Wardrik.Definition.ReadingTest do
   alias Wardrik.LLM.Retry.Backoff
   alias Wardrik.Resource
   alias WardrikDefinition.Context
+  alias WardrikDefinition.Test.Served
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
@@ -55,8 +56,6 @@ defmodule Wardrik.Definition.ReadingTest do
   setup do
     %{
       context: %Context{
-        servers: [linear: [], theirs: [serves: [Wardrik.Resource.parse!("globex/*")]]],
-        mcp: Source,
         names: %{host: "the daemon", config: "config.yaml", policies: "policies/"}
       }
     }
@@ -77,7 +76,9 @@ defmodule Wardrik.Definition.ReadingTest do
     |> Wardrik.Host.register(:sources, [
       {"workers", Source},
       {"self", Wardrik.Catalog.Self},
-      {"agents", Wardrik.Catalog.Agents}
+      {"agents", Wardrik.Catalog.Agents},
+      {"linear", %Served{name: "linear", source: Source}},
+      {"theirs", %Served{name: "theirs", source: Source, serves: [Resource.parse!("globex/*")]}}
     ])
   end
 
@@ -121,7 +122,6 @@ defmodule Wardrik.Definition.ReadingTest do
                user: jon
                timeout: 600
                max_iterations: 12
-               policy: Wardrik.Definition.ReadingTest.Hook
                ---
                You watch the incident queue.
                """,
@@ -135,10 +135,6 @@ defmodule Wardrik.Definition.ReadingTest do
     assert spec.config.tools == [Search, {Source, Resource.parse!("deployment/server/linear")}]
     assert spec.config.max_iterations == 12
     assert spec.timeout == 600_000
-
-    assert spec.hooks == [
-             %Wardrik.Hook{name: "Wardrik.Definition.ReadingTest.Hook", module: Hook}
-           ]
   end
 
   test "idle_timeout is seconds or infinity, and the defaults' where it sets none", context do
@@ -249,8 +245,8 @@ defmodule Wardrik.Definition.ReadingTest do
     assert spec.config.tools == [
              Lua,
              Search,
-             {Source, Resource.parse!("deployment/server/linear")},
              {Wardrik.Catalog.Agents, ~A"default/triage"},
+             {Source, Resource.parse!("deployment/server/linear")},
              {Wardrik.Catalog.Self, ~A"default/triage"},
              {Source, ~A"default/triage"},
              {WardrikWorkspace, files}
@@ -261,8 +257,7 @@ defmodule Wardrik.Definition.ReadingTest do
   end
 
   test "a server is refused to an agent of an org it does not serve", context do
-    assert {:error,
-            "tools names theirs/*, but config.yaml's theirs serves globex/*, and not default/triage"} =
+    assert {:error, "tools names theirs/*, but theirs serves globex/*, and not default/triage"} =
              read("---\ntools: [theirs/*]\n---\n", context)
 
     assert {:ok, _spec} = read("---\ntools: [theirs/*]\norg: globex\n---\n", context)
@@ -385,18 +380,21 @@ defmodule Wardrik.Definition.ReadingTest do
   end
 
   test "a tool, server or key nothing provides is refused, saying what does", context do
-    assert {:error, "names websearch, which is neither a tool the daemon ships nor a module"} =
+    assert {:error, "tools names websearch, which is not a tool the daemon ships"} =
              read("---\ntools: [websearch]\n---\n", context)
 
     assert {:error,
-            "tools names github/*, but config.yaml configures no server github; it has " <> _} =
-             read("---\ntools: [github/*]\n---\n", context)
+            "tools names github/*, but the daemon has no github/*; it has agents/*, linear/*, " <>
+              "self/*, theirs/*, workers/*"} = read("---\ntools: [github/*]\n---\n", context)
 
-    assert {:error, "tools names github/*, but config.yaml configures no server github"} =
-             read("---\ntools: [github/*]\n---\n", %{context: %{context.context | servers: []}})
+    assert {:error, "tools names Wardrik.Definition.ReadingTest.Lua, which is not a tool " <> _} =
+             read("---\ntools: [Wardrik.Definition.ReadingTest.Lua]\n---\n", context)
 
     assert {:error, message} = read("---\ntools: [linear/list_issues]\n---\n", context)
-    assert message =~ "name the whole server as linear/*, and list list_issues in its only"
+    assert message =~ "name the source's tools as linear/*, and let a policy deny"
+
+    assert {:error, message} = read("---\ntools: [github/list_issues]\n---\n", context)
+    assert message =~ "name the whole server as github/*, and list list_issues in its only"
 
     assert {:error, "mcp is not a setting; expected one of " <> _} =
              read("---\nmcp: [linear]\n---\n", context)
@@ -440,7 +438,7 @@ defmodule Wardrik.Definition.ReadingTest do
              )
   end
 
-  test "a policy is one policies/ names, rules written in place, or a module", context do
+  test "a policy is one policies/ names, or rules written in place", context do
     careful = WardrikPolicy.decode!(%{"deny" => ["run_lua"]}, "careful")
 
     assert {:ok, spec} =
@@ -462,13 +460,14 @@ defmodule Wardrik.Definition.ReadingTest do
     assert {:error, "policy allows is not a setting" <> _} =
              read("---\npolicy:\n  allows: [x]\n---\n", context)
 
-    assert {:error, "names careful, which is neither a policy in policies/ nor a module"} =
+    assert {:error, "policy names careful, which is not a policy in policies/"} =
              read("---\npolicy: careful\n---\n", context)
 
-    assert {:error, "Wardrik.Definition.ReadingTest is not a hook"} =
-             read("---\npolicy: Wardrik.Definition.ReadingTest\n---\n", context)
+    assert {:error,
+            "policy names Wardrik.Definition.ReadingTest.Hook, which is not a policy in policies/"} =
+             read("---\npolicy: Wardrik.Definition.ReadingTest.Hook\n---\n", context)
 
-    assert {:error, "policy is the name of a policy, rules, or a module"} =
+    assert {:error, "policy is the name of a policy, or rules"} =
              read("---\npolicy: [x]\n---\n", context)
   end
 

@@ -5,21 +5,23 @@ defmodule WardrikDaemon.Config do
   whoever writes one.
 
   `read/1` refuses a file with a variable that is not set, a key nothing
-  takes, a server that is neither a command nor a URL, a server whose name
-  or `prefix` holds `__`, or an org that uses what the file does not define,
-  and says where. `boot/1` reads what a release needs before anything
-  starts, `storage`, `cluster` and `http`, from the environment alone.
-  `org/1`, `orgs/1`, `base_url/1` and `oauth_settings/1` read those settings.
+  takes, or an org that uses what the file does not define, and says where.
+  `boot/1` reads what a release needs before anything starts, `storage`,
+  `cluster` and `http`, from the environment alone. `org/1`, `orgs/1`,
+  `base_url/1` and `oauth_settings/1` read those settings.
 
   ## Where the settings go
 
   `load/1` reads the file once, as the daemon's tree starts, into a
   `WardrikDaemon.Config`: the directories, and each section by the module it
-  is for. The tree hands it to what it starts, and each package is started
-  with its section as options: `WardrikMCP.Supervisor` with what `mcp` says,
-  `WardrikOAuth` with `oauth`, and so on; `section/2` reads one. A release's
-  own configuration may give a module settings of its own under
-  `:wardrik_daemon`, which the release reads once as it starts and
+  is for. A package's section is read by the package, with its `config/1`:
+  `mcp` by `WardrikMCP`, `oauth` by `WardrikOAuth`, `notify` by
+  `WardrikNotify`, `channels` by `WardrikChannel`, with the channel types
+  the daemon holds, and `http` by `WardrikHTTP`; then what `orgs` says each
+  org uses is put on each server, channel and target. The daemon attaches
+  each package to its host with its section as options; `section/2` reads
+  one. A release's own configuration may give a module settings of its own
+  under `:wardrik_daemon`, which the release reads once as it starts and
   `config.yaml` is merged over:
 
   ```elixir
@@ -34,15 +36,11 @@ defmodule WardrikDaemon.Config do
   @typedoc "Settings by the module they are for, which the daemon starts with them."
   @type settings() :: [{module(), keyword()}]
 
+  # The channel types a channel's `type` names.
+  @adapters %{"slack" => WardrikSlack}
+
   @enforce_keys [:config_dir, :data_dir, :state_dir]
-  defstruct [
-    :config_dir,
-    :data_dir,
-    :state_dir,
-    sections: [],
-    adapters: %{},
-    triggers: %WardrikTrigger.Offered{}
-  ]
+  defstruct [:config_dir, :data_dir, :state_dir, sections: [], adapters: @adapters]
 
   @typedoc """
   What the daemon runs with: where it reads and writes, and what
@@ -53,17 +51,9 @@ defmodule WardrikDaemon.Config do
           data_dir: Path.t(),
           state_dir: Path.t(),
           sections: settings(),
-          adapters: %{String.t() => module()},
-          triggers: WardrikTrigger.Offered.t()
+          adapters: %{String.t() => module()}
         }
 
-  @transport ~w(command args env cwd url headers)a
-  @server @transport ++
-            ~w(only except prefix timeout max_result_bytes gated trusted credential credential_header credential_scheme credential_env)a
-  @oauth ~w(client redirect providers)a
-  @client ~w(name document_url client_uri logo_uri policy_uri tos_uri)a
-  @redirect ~w(url open)a
-  @provider ~w(resource issuer client_id client_secret scopes authorization_params flow)a
   @vault ~w(keys shared)a
   @listener ~w(port ip)a
   @stores %{
@@ -72,34 +62,16 @@ defmodule WardrikDaemon.Config do
       {WardrikS3.Store, ~w(bucket endpoint region prefix access_key_id secret_access_key),
        ~w(bucket endpoint access_key_id secret_access_key)}
   }
-  @notifiers %{
-    "webhook" => {WardrikNotify.Webhook, ~w(url secret), ~w(url)}
-  }
-
-  @target "is a webhook, or a channel and a room in it"
-
   @store_settings ~w(url bucket endpoint region prefix access_key_id secret_access_key)a
   @store_urls %{
     "url" => {~w(postgres postgresql), "a postgres:// URL"},
     "endpoint" => {~w(http https), "an https:// URL"}
   }
 
-  @settings Map.new(
-              @server ++
-                @oauth ++
-                @client ++ @redirect ++ @provider ++ @vault ++ @listener ++ @store_settings,
-              &{Atom.to_string(&1), &1}
-            )
+  @settings Map.new(@vault ++ @listener ++ @store_settings, &{Atom.to_string(&1), &1})
 
-  @transport_keys Enum.map(@transport, &Atom.to_string/1)
-  @server_keys Enum.map(@server, &Atom.to_string/1)
-  @oauth_keys Enum.map(@oauth, &Atom.to_string/1)
-  @client_keys Enum.map(@client, &Atom.to_string/1)
-  @redirect_keys Enum.map(@redirect, &Atom.to_string/1)
-  @provider_keys Enum.map(@provider, &Atom.to_string/1)
   @vault_keys Enum.map(@vault, &Atom.to_string/1)
   @listener_keys Enum.map(@listener, &Atom.to_string/1)
-  @credential "the name of a credential, such as github: letters, digits, ., - and _"
 
   # The sections a read gives no name from the vault, and why.
   @environment_only %{
@@ -119,9 +91,7 @@ defmodule WardrikDaemon.Config do
   @doc """
   A config with the directories `opts` name, each the environment's where
   left out, and `:sections`, none by default. `:adapters` are the channel
-  adapters a `channels` type names, and `:triggers` the sources and
-  verifiers a trigger names, as the release found them registered as it
-  started; see `WardrikChannel.discover/0` and `WardrikTrigger.Offered`.
+  adapters a `channels` type names, the daemon's, `slack`, unless given.
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
@@ -130,8 +100,7 @@ defmodule WardrikDaemon.Config do
       data_dir: Keyword.get_lazy(opts, :data_dir, &data_dir/0),
       state_dir: Keyword.get_lazy(opts, :state_dir, &state_dir/0),
       sections: Keyword.get(opts, :sections, []),
-      adapters: Keyword.get(opts, :adapters, %{}),
-      triggers: Keyword.get(opts, :triggers, %WardrikTrigger.Offered{})
+      adapters: Keyword.get(opts, :adapters, @adapters)
     }
   end
 
@@ -290,7 +259,8 @@ defmodule WardrikDaemon.Config do
 
   @doc """
   The settings `file` configures, or none where there is no file.
-  `:adapters` are the channel adapters a channel's `type` may name.
+  `:adapters` are the channel adapters a channel's `type` may name, the
+  daemon's unless given.
 
   `${NAME}` reads the environment. Given `:vault`, a name the environment
   does not set is read from it: a function answering the deployment's secret
@@ -345,7 +315,9 @@ defmodule WardrikDaemon.Config do
         document = document |> table!([]) |> only(opts[:only])
         env = env_file(Path.dirname(file))
         secret = &secret(&1, &2, opts[:vault], env)
-        {:ok, document |> interpolate([], secret) |> sections(Keyword.get(opts, :adapters, %{}))}
+
+        {:ok,
+         document |> interpolate([], secret) |> sections(Keyword.get(opts, :adapters, @adapters))}
 
       {:error, error} ->
         {:error, "#{file}: is not YAML: #{Exception.message(error)}"}
@@ -372,7 +344,21 @@ defmodule WardrikDaemon.Config do
   end
 
   defp addressed_at(nil), do: []
-  defp addressed_at(url), do: [base_url: redirect_url!(url, ["base_url"])]
+
+  defp addressed_at(url) do
+    if is_binary(url) and WardrikOAuth.Callback.redirect?(url),
+      do: [base_url: String.trim_trailing(url, "/")],
+      else:
+        invalid!(
+          ["base_url"],
+          "is an https:// URL, or http:// on loopback, with no query or fragment"
+        )
+  end
+
+  # A package's section, as it read it, or where it does not read, under the
+  # section's name.
+  defp read!(_section, {:ok, settings}), do: settings
+  defp read!(section, {:error, path, message}), do: invalid!([section | path], message)
 
   defp sections(document, owners, orgs, adapters) do
     Enum.map(document, fn
@@ -383,10 +369,10 @@ defmodule WardrikDaemon.Config do
         {WardrikDaemon.AgentFile, tool_prices: prices(table!(tools, ["tools"]))}
 
       {"mcp", servers} ->
-        {WardrikMCP, servers: servers(table!(servers, ["mcp"]), owners)}
+        {WardrikMCP, "mcp" |> read!(WardrikMCP.config(servers)) |> serving(owners)}
 
       {"oauth", oauth} ->
-        {WardrikOAuth, oauth(table!(oauth, ["oauth"]))}
+        {WardrikOAuth, read!("oauth", WardrikOAuth.config(oauth))}
 
       {"vault", vault} ->
         {WardrikVault, vault(table!(vault, ["vault"]))}
@@ -395,13 +381,14 @@ defmodule WardrikDaemon.Config do
         {WardrikDaemon.SSH, listener(ssh, "ssh")}
 
       {"http", http} ->
-        {WardrikHTTP, http(http)}
+        {WardrikHTTP, read!("http", WardrikHTTP.config(http))}
 
       {"notify", targets} ->
-        {WardrikNotify, targets: targets(table!(targets, ["notify"]), owners)}
+        {WardrikNotify, "notify" |> read!(WardrikNotify.config(targets)) |> telling(owners)}
 
       {"channels", channels} ->
-        {WardrikChannel, channels(table!(channels, ["channels"]), owners, adapters)}
+        {WardrikChannel,
+         "channels" |> read!(WardrikChannel.config(channels, adapters)) |> offering(owners)}
 
       {"cluster", cluster} ->
         {WardrikDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
@@ -563,16 +550,11 @@ defmodule WardrikDaemon.Config do
 
   # -- mcp -------------------------------------------------------------------
 
-  defp servers(servers, owners) do
-    Enum.map(servers, fn {name, server} ->
-      path = ["mcp", name]
-      server = table!(server, path)
-      known!(server, @server_keys, path)
-      prefix!(Map.get(server, "prefix", name), path)
-
-      {name(name),
-       [transport: transport(server, path), serves: serves(owners("mcp", name, owners))] ++
-         Enum.map(Map.drop(server, @transport_keys), &server_option(&1, path))}
+  # Each server serves the agents of the orgs `orgs` has use it.
+  defp serving(mcp, owners) do
+    Keyword.update!(mcp, :servers, fn servers ->
+      for {name, server} <- servers,
+          do: {name, server ++ [serves: serves(owners("mcp", Atom.to_string(name), owners))]}
     end)
   end
 
@@ -580,67 +562,6 @@ defmodule WardrikDaemon.Config do
   # its users' agents with its own.
   defp serves(:all), do: [Wardrik.Resource.parse!("*")]
   defp serves(orgs), do: Enum.map(orgs, &Wardrik.Resource.parse!(&1 <> "/*"))
-
-  defp prefix!("workers", path),
-    do:
-      invalid!(
-        path,
-        "names its tools with workers, which tool workers' tools are named with; give it another prefix"
-      )
-
-  defp prefix!(prefix, path) when is_binary(prefix) do
-    if String.contains?(prefix, "__"),
-      do: invalid!(path, "names its tools with #{prefix}, and a server's prefix may not hold __")
-  end
-
-  defp prefix!(prefix, path),
-    do: invalid!(path, "names its tools with #{inspect(prefix)}, which is not text")
-
-  defp transport(%{"command" => _, "url" => _}, path),
-    do: invalid!(path, "has both command and url; a server is one or the other")
-
-  defp transport(%{"command" => command} = server, _path),
-    do: {:stdio, [command: command] ++ take(server, ~w(args env cwd))}
-
-  defp transport(%{"url" => url} = server, _path),
-    do: {:streamable_http, [base_url: url] ++ take(server, ~w(headers))}
-
-  defp transport(_server, path), do: invalid!(path, "needs a command or a url")
-
-  defp server_option({"timeout", seconds}, _path) when is_integer(seconds) and seconds > 0,
-    do: {:timeout, :timer.seconds(seconds)}
-
-  defp server_option({"timeout", _seconds}, path),
-    do: invalid!(path ++ ["timeout"], "is a whole number of seconds")
-
-  defp server_option({"credential", ref}, path), do: {:credential, credential(ref, path)}
-
-  defp server_option({"gated", gated}, _path) when is_boolean(gated), do: {:gated, gated}
-
-  defp server_option({"gated", names}, path) when is_list(names) do
-    if Enum.all?(names, &is_binary/1),
-      do: {:gated, names},
-      else: invalid!(path ++ ["gated"], "is true, false, or a list of the server's tool names")
-  end
-
-  defp server_option({"gated", _gated}, path),
-    do: invalid!(path ++ ["gated"], "is true, false, or a list of the server's tool names")
-
-  defp server_option({"trusted", trusted}, _path) when is_boolean(trusted),
-    do: {:trusted, trusted}
-
-  defp server_option({"trusted", _trusted}, path),
-    do: invalid!(path ++ ["trusted"], "is true or false")
-
-  defp server_option({key, value}, _path), do: {setting(key), value}
-
-  defp credential(name, path) when is_binary(name) do
-    if Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/, name),
-      do: name,
-      else: invalid!(path ++ ["credential"], "is #{inspect(name)}, which is not #{@credential}")
-  end
-
-  defp credential(_name, path), do: invalid!(path ++ ["credential"], "is #{@credential}")
 
   # -- tokens ----------------------------------------------------------------
 
@@ -690,122 +611,7 @@ defmodule WardrikDaemon.Config do
     end
   end
 
-  # -- oauth and vault -------------------------------------------------------
-
-  defp oauth(oauth) do
-    known!(oauth, @oauth_keys, ["oauth"])
-
-    Enum.map(oauth, fn
-      {"client", client} ->
-        {:client, options(client, @client_keys, ["oauth", "client"])}
-
-      {"redirect", redirect} ->
-        {:redirect, redirect(redirect)}
-
-      {"providers", providers} ->
-        {:providers, providers(table!(providers, ["oauth", "providers"]))}
-    end)
-  end
-
-  defp redirect(redirect) do
-    path = ["oauth", "redirect"]
-    redirect = table!(redirect, path)
-    known!(redirect, @redirect_keys, path)
-
-    Enum.map(redirect, fn
-      {"url", url} -> {:url, redirect_url!(url, path ++ ["url"])}
-      {"open", open} when is_boolean(open) -> {:open, open}
-      {"open", _open} -> invalid!(path ++ ["open"], "is true or false")
-    end)
-  end
-
-  @redirect_url "is an https:// URL, or http:// on loopback, with no query or fragment"
-
-  # Where providers send the browser back to: https, or http on this
-  # machine's own loopback, with nothing after its path.
-  defp redirect_url!(url, path) when is_binary(url) do
-    if redirect_url?(URI.parse(url)),
-      do: String.trim_trailing(url, "/"),
-      else: invalid!(path, @redirect_url)
-  end
-
-  defp redirect_url!(_url, path), do: invalid!(path, @redirect_url)
-
-  defp redirect_url?(%URI{userinfo: nil, query: nil, fragment: nil} = uri),
-    do: secure?(uri.scheme, uri.host)
-
-  defp redirect_url?(_uri), do: false
-
-  defp secure?("https", host), do: host not in [nil, ""]
-  defp secure?("http", host), do: host in ["127.0.0.1", "localhost", "::1"]
-  defp secure?(_scheme, _host), do: false
-
-  defp providers(providers) do
-    Enum.map(providers, fn {name, provider} ->
-      path = ["oauth", "providers", name]
-
-      {name(name),
-       provider
-       |> options(@provider_keys, path)
-       |> flow(path)
-       |> secret(path)
-       |> authorization_params(path)}
-    end)
-  end
-
-  defp secret(provider, path) do
-    if Keyword.has_key?(provider, :client_secret) and not Keyword.has_key?(provider, :issuer),
-      do:
-        invalid!(
-          path ++ ["client_secret"],
-          "is sent only to an issuer the provider names; add issuer"
-        ),
-      else: provider
-  end
-
-  defp authorization_params(provider, path) do
-    path = path ++ ["authorization_params"]
-
-    case Keyword.fetch(provider, :authorization_params) do
-      {:ok, params} when is_map(params) ->
-        Enum.each(params, &authorization_param(&1, path))
-        Keyword.put(provider, :authorization_params, Map.new(params, &text/1))
-
-      {:ok, _params} ->
-        invalid!(path, "is a table of names to the values to send")
-
-      :error ->
-        provider
-    end
-  end
-
-  defp authorization_param({name, value}, path) do
-    cond do
-      name in WardrikOAuth.Flow.own_params() ->
-        invalid!(path ++ [name], "is one Wardrik sets itself")
-
-      is_binary(value) or is_number(value) or is_boolean(value) ->
-        :ok
-
-      true ->
-        invalid!(path ++ [name], "is a string, a number or true or false")
-    end
-  end
-
-  defp text({name, value}), do: {name, to_string(value)}
-
-  defp flow(provider, path) do
-    case Keyword.fetch(provider, :flow) do
-      {:ok, flow} when flow in ["auto", "browser", "device"] ->
-        Keyword.put(provider, :flow, WardrikOAuth.Provider.flow!(flow))
-
-      {:ok, _flow} ->
-        invalid!(path ++ ["flow"], "is auto, browser or device")
-
-      :error ->
-        provider
-    end
-  end
+  # -- vault -----------------------------------------------------------------
 
   defp vault(vault) do
     vault = options(vault, @vault_keys, ["vault"])
@@ -822,18 +628,6 @@ defmodule WardrikDaemon.Config do
   end
 
   # -- listeners -------------------------------------------------------------
-
-  defp http(http) do
-    http = table!(http, ["http"])
-    known!(http, @listener_keys ++ ["trusted_workers"], ["http"])
-    {trusted, listener} = Map.pop(http, "trusted_workers")
-
-    case trusted do
-      nil -> listener(listener, "http")
-      trusted when is_boolean(trusted) -> [trusted_workers: trusted] ++ listener(listener, "http")
-      _other -> invalid!(["http", "trusted_workers"], "is true or false")
-    end
-  end
 
   defp listener(listener, section) do
     listener = table!(listener, [section])
@@ -857,143 +651,39 @@ defmodule WardrikDaemon.Config do
 
   # -- notify ----------------------------------------------------------------
 
-  defp targets(targets, owners) do
-    Enum.map(targets, fn {name, target} ->
-      path = ["notify", name]
-      {module, options} = target(table!(target, path), path)
-      {name(name), {module, options ++ [orgs: owners("notify", name, owners)]}}
+  # Each target tells the agents of the orgs `orgs` has use it.
+  defp telling(notify, owners) do
+    Keyword.update!(notify, :targets, fn targets ->
+      for {name, {module, options}} <- targets,
+          do: {name, {module, options ++ [orgs: owners("notify", Atom.to_string(name), owners)]}}
     end)
-  end
-
-  # A room in a channel, which `through_channels/1` finds by its name.
-  defp target(%{"channel" => _} = target, path) do
-    known!(target, ~w(channel room approvers), path)
-
-    for key <- ~w(channel room),
-        not (is_binary(target[key]) and target[key] != ""),
-        do: invalid!(path ++ [key], "is required")
-
-    approvers = Map.get(target, "approvers", [])
-    approvers!(approvers, path ++ ["approvers"])
-
-    {WardrikChannel.Notices,
-     channel: target["channel"], room: target["room"], approvers: approvers}
-  end
-
-  defp target(target, path) do
-    case Map.to_list(target) do
-      [{kind, options}] -> notifier(kind, options, path ++ [kind])
-      _other -> invalid!(path, @target)
-    end
-  end
-
-  defp notifier(kind, options, path) do
-    case Map.fetch(@notifiers, kind) do
-      {:ok, {module, keys, required}} ->
-        options = table!(options, path)
-        known!(options, keys, path)
-
-        for key <- required,
-            not Map.has_key?(options, key),
-            do: invalid!(path ++ [key], "is required")
-
-        # reach:disable-next-line unsafe_atom_creation -- keys checked against the notifier's list
-        {module, Enum.map(options, fn {key, value} -> {String.to_atom(key), value} end)}
-
-      :error ->
-        invalid!(Enum.drop(path, -1), @target)
-    end
   end
 
   # -- channels --------------------------------------------------------------
 
-  # Each channel, and the orgs whose agents it may offer.
-  defp channels(channels, owners, adapters) do
-    read = Enum.map(channels, fn {name, channel} -> channel(name, channel, owners, adapters) end)
+  # Each channel offers the agents of the orgs `orgs` has use it, and is
+  # installed in the workspace its token reaches, for its one org, or for
+  # every org.
+  defp offering(channels, owners) do
+    {tokens, channels} = Keyword.pop!(channels, :tokens)
 
-    [
-      channels: for({name, channel} <- read, do: {name, channel.channel}),
-      orgs: for({name, channel} <- read, do: {name, channel.orgs}),
-      creates: for({name, channel} <- read, do: {name, channel.creates}),
-      approvers: for({name, channel} <- read, do: {name, channel.approvers}),
-      admins: for({name, channel} <- read, do: {name, channel.admins}),
-      installations:
-        WardrikChannel.Installations.Config.new(
-          for {name, %{token: token} = channel} <- read,
-              token != nil,
-              do: {name, token, owner(channel.orgs)}
-        )
-    ]
-  end
+    orgs =
+      for {name, _channel} <- channels[:channels],
+          do: {name, owners("channels", Atom.to_string(name), owners)}
 
-  defp channel(name, channel, owners, adapters) do
-    path = ["channels", name]
-    {type, settings} = Map.pop(table!(channel, path), "type")
-    {token, settings} = Map.pop(settings, "token")
-    {creates, settings} = Map.pop(settings, "create", true)
-    {approvers, settings} = Map.pop(settings, "approvers", [])
-    approvers = approvers(approvers, path ++ ["approvers"])
-    {admins, settings} = Map.pop(settings, "admins", [])
-    adapter = adapter!(type, path ++ ["type"], adapters)
-
-    unless is_boolean(creates),
-      do: invalid!(path ++ ["create"], "is true or false")
-
-    token!(token, path ++ ["token"])
-    approvers!(admins, path ++ ["admins"])
-
-    case adapter.config(settings) do
-      {:ok, options} ->
-        {name(name),
-         %{
-           channel: {adapter, options},
-           token: token,
-           orgs: owners("channels", name, owners),
-           creates: creates,
-           approvers: approvers,
-           admins: admins
-         }}
-
-      {:error, at, message} ->
-        invalid!(path ++ at, message)
-    end
-  end
-
-  defp token!(token, path) do
-    unless is_nil(token) or (is_binary(token) and token != ""),
-      do: invalid!(path, "is the token the channel acts with, such as a bot's")
+    channels ++
+      [
+        orgs: orgs,
+        installations:
+          WardrikChannel.Installations.Config.new(
+            for {name, token} <- tokens, do: {name, token, owner(orgs[name])}
+          )
+      ]
   end
 
   # Whom a channel's token is installed for: its one org, or every org.
   defp owner([org]), do: Wardrik.Resource.parse!(org)
   defp owner(_orgs), do: Wardrik.Resource.deployment()
-
-  # Who decides in a channel: anyone in it, or the people it names.
-  defp approvers("anyone", _path), do: %WardrikChannel.Approvers.Anyone{}
-
-  defp approvers(names, path) do
-    if is_list(names) and Enum.all?(names, &is_binary/1),
-      do: %WardrikChannel.Approvers.Named{names: names},
-      else: invalid!(path, "is anyone, or a list of who may answer, as the channel names them")
-  end
-
-  defp approvers!(approvers, path) do
-    unless is_list(approvers) and Enum.all?(approvers, &is_binary/1),
-      do: invalid!(path, "is a list of who may answer, as the channel names them")
-  end
-
-  defp adapter!(type, path, adapters) do
-    with true <- is_binary(type),
-         {:ok, adapter} <- Map.fetch(adapters, type) do
-      adapter
-    else
-      _unknown ->
-        case adapters |> Map.keys() |> Enum.sort() do
-          [] -> invalid!(path, "is the kind of channel, and this release has none")
-          types -> invalid!(path, "is the kind of channel: #{Enum.join(types, ", ")}")
-        end
-    end
-  end
 
   # A notify target in a channel posts through it, as `channels` holds it,
   # in the workspace its token reaches.
@@ -1163,14 +853,7 @@ defmodule WardrikDaemon.Config do
     Enum.map(table, fn {key, value} -> {setting(key), value} end)
   end
 
-  defp take(table, keys) do
-    for key <- keys, Map.has_key?(table, key), do: {setting(key), Map.fetch!(table, key)}
-  end
-
   defp setting(key), do: Map.fetch!(@settings, key)
-
-  # reach:disable-next-line unsafe_atom_creation -- config.yaml's own server and provider names
-  defp name(name), do: String.to_atom(name)
 
   defp table!(value, _path) when is_map(value), do: value
   defp table!(nil, _path), do: %{}

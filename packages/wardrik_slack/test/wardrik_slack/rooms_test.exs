@@ -28,26 +28,34 @@ defmodule WardrikSlack.RoomsTest do
     :ok
   end
 
-  @doc false
-  def offering(offers, _channel), do: offers
-
-  @doc false
-  def creatable(answer, _channel), do: answer
-
-  @doc false
-  def creating(_installation, name, _by),
-    do: {:ok, %Offer{agent: AgentID.new!(name, org: "acme"), description: "Answers in ##{name}."}}
-
+  # The options a channel of its own is answered with, offering the agents
+  # `offers` define in it, and creating agents in an org of its own where
+  # `create?`.
   defp opts(offers, create? \\ false) do
     channel = "slack-#{System.unique_integer([:positive])}"
+    org = "made-#{System.unique_integer([:positive])}"
+    on_exit(fn -> Wardrik.Fleet.forget_under(Wardrik.Resource.parse!(org <> "/*")) end)
+    {:ok, careful} = WardrikPolicy.decode(%{"ask" => ["*"]})
+    defaults = %{"model" => "anthropic:claude-sonnet-5", "policy" => "careful"}
+
+    host =
+      WardrikSlack.Test.host(
+        policies: %{"careful" => careful},
+        defaults: if(create?, do: defaults, else: %{})
+      )
+
+    for offer <- offers,
+        do:
+          WardrikSlack.Test.define(host, offer.agent, %{
+            "channels" => [channel],
+            "description" => offer.description
+          })
 
     context = %Context{
-      host: Wardrik.Host.new(store: Wardrik.Test.store()),
+      host: host,
       channel: channel,
-      installations: Installations.Config.new([]),
-      offered: {__MODULE__, :offering, [offers]},
-      creatable: {__MODULE__, :creatable, [create?]},
-      create: {__MODULE__, :creating, []}
+      org: org,
+      installations: Installations.Config.new([])
     }
 
     workspace = %Workspace{
@@ -124,13 +132,14 @@ defmodule WardrikSlack.RoomsTest do
              [{"room.bound", %{"type" => "channel", "id" => person(opts, "U1")}}]
   end
 
-  @doc false
-  def approving(approvers, _installation),
-    do: %WardrikChannel.Approvers.Named{names: approvers}
-
   test "says who approves, where the channel names approvers" do
     opts = opts([books()])
-    opts = with_context(opts, &%{&1 | approvers: {__MODULE__, :approving, [["@maria", "U5"]]}})
+
+    opts =
+      with_context(
+        opts,
+        &%{&1 | approvers: %WardrikChannel.Approvers.Named{names: ["@maria", "U5"]}}
+      )
 
     assert :ok = Rooms.event(joined("C1"), opts)
 
@@ -198,10 +207,11 @@ defmodule WardrikSlack.RoomsTest do
     message = posted()
     assert message["text"] == "No agent answers in Slack here yet."
     assert buttons(message) == ["books"]
-    assert JSON.encode!(message["blocks"]) =~ "Whoever runs Wardrik can offer an agent here."
+    assert JSON.encode!(message["blocks"]) =~ "Whoever runs Wardrik can offer an agent here"
 
     assert :ok = Rooms.answer(press("C1", "wardrik_room_create", "books"), opts)
-    assert %{"text" => ":wave: *acme/books* answers here now."} = replaced()
+    org = opts[:workspace].context.org
+    assert %{"text" => ":wave: *" <> ^org <> "/books* answers here now."} = replaced()
   end
 
   test "says who can offer an agent where none may be created, and looks again" do
@@ -211,7 +221,8 @@ defmodule WardrikSlack.RoomsTest do
     message = posted()
 
     assert message["text"] ==
-             "No agent answers in Slack here yet. Whoever runs Wardrik can offer an agent here."
+             "No agent answers in Slack here yet. Whoever runs Wardrik can offer an agent here " <>
+               "by adding `channels: [#{channel(opts)}]` to its definition."
 
     assert buttons(message) == ["choose"]
 
@@ -222,18 +233,6 @@ defmodule WardrikSlack.RoomsTest do
 
     assert %{"response_type" => "ephemeral", "text" => "Agents are not created from here" <> _} =
              replaced()
-  end
-
-  @doc false
-  def offering(installation),
-    do: "Turn on Answers in Slack for an agent of #{installation.channel}."
-
-  test "says how an agent is offered as the host words it" do
-    opts = with_context(opts([]), &%{&1 | offering: {__MODULE__, :offering, []}})
-    assert :ok = Rooms.event(joined("C1"), opts)
-
-    assert posted()["text"] ==
-             "No agent answers in Slack here yet. Turn on Answers in Slack for an agent of #{channel(opts)}."
   end
 
   test "switches between every message and mentions, offers another agent, and stops" do

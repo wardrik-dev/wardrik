@@ -14,8 +14,7 @@ defmodule WardrikDaemonTest do
   defp load(dir) do
     Config.load(
       store: store(),
-      adapters: WardrikChannel.discover(),
-      triggers: WardrikTrigger.Offered.discover(),
+      adapters: %{"test" => WardrikDaemon.Test.Channel},
       base: Host.config(dir).sections,
       config_dir: dir,
       data_dir: dir,
@@ -24,17 +23,20 @@ defmodule WardrikDaemonTest do
   end
 
   # The daemon, started as its tree starts it on what `dir` holds, with its
-  # config and host.
+  # config and the host it builds from it, but for what the suite runs
+  # already.
   defp daemon(dir) do
     {:ok, config} = load(dir)
+    host = WardrikDaemon.host(config, store: store())
+    running = [WardrikHTTP.Access, WardrikHTTP.Workers]
 
-    agents = %{
-      Host.agents(dir)
-      | config: config,
-        context: WardrikDaemon.AgentFile.context(config)
+    host = %{
+      host
+      | llm: Wardrik.Test.llm(),
+        runtimes: Wardrik.Test.runtimes(),
+        children: Enum.reject(host.children, &(elem(&1, 0) in running))
     }
 
-    host = Host.host(agents)
     {start_supervised({WardrikDaemon, host: host, config: config}), config, host}
   end
 

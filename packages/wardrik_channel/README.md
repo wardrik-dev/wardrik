@@ -33,15 +33,22 @@ notify:
 ```
 
 An adapter is a package of its own, such as
-[wardrik_slack](../wardrik_slack), which names itself in its application's
-environment, so a release that holds it finds it by its type:
+[wardrik_slack](../wardrik_slack), which a host names by the type a
+channel's settings give, as the daemon names `WardrikSlack` by `slack`, and
+attaches the channels to its `Wardrik.Host`:
 
 ```elixir
-# mix.exs of an adapter
-def application, do: [env: [wardrik_channels: [teams: MyTeams]]]
+{:ok, settings} = WardrikChannel.config(yaml["channels"], %{"slack" => WardrikSlack})
+
+host =
+  WardrikChannel.attach(host,
+    channels: settings[:channels],
+    installations: installations
+  )
 ```
 
 A host keeps the workspaces each channel is installed in, with their
 tokens, as its `WardrikChannel.Installations` say, and serves what each
-medium sends over HTTP by handing it to `WardrikChannel.request/2`. See
-`WardrikChannel` for the callbacks.
+medium sends over HTTP at `/v1/channels/`, among its routes, which hand it
+to `WardrikChannel.request/2`. The agents a channel offers are those whose
+definitions name it. See `WardrikChannel` for the callbacks.
