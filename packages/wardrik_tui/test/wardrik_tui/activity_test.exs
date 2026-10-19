@@ -4,7 +4,6 @@ defmodule WardrikTUI.ActivityTest do
   import Wardrik.AgentID, only: [sigil_A: 2]
 
   alias Wardrik.Agent.Message
-  alias Wardrik.Conversation.ToolCall
   alias Wardrik.Event
   alias Wardrik.Event.Source
   alias WardrikTUI.Activity

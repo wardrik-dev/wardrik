@@ -90,14 +90,14 @@ defmodule WardrikConsole.Printer do
     do: [{:cut, ["  ", Owl.Data.tag("✓", :green), " ", name]}]
 
   defp said(%Event.ToolFinished{name: name, result: {:error, reason}}),
-    do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, ": ", inspect(reason)]}]
+    do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, ": ", why(reason)]}]
 
   defp said(%Event.ToolDenied{name: name, reason: reason}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, " was refused: ", reason]}]
 
   defp said(%Event.ModelRetrying{} = retry) do
     again = ", again in #{ceil(retry.wait_ms / 1_000)}s (#{retry.attempt} of #{retry.attempts})"
-    [{:cut, ["  ", Owl.Data.tag("↻", :yellow), " model failed: ", inspect(retry.reason), again]}]
+    [{:cut, ["  ", Owl.Data.tag("↻", :yellow), " model failed: ", why(retry.reason), again]}]
   end
 
   # Every other span is a tool call's, or work inside one, which the call's own
@@ -115,13 +115,16 @@ defmodule WardrikConsole.Printer do
   defp said(%Event.TurnFinished{}), do: []
 
   defp said(%Event.TurnFailed{reason: reason}),
-    do: [Owl.Data.tag("✗ the turn failed: #{inspect(reason)}", :red)]
+    do: [Owl.Data.tag("✗ the turn failed: #{why(reason)}", :red)]
 
   defp said(%Event.TurnInterrupted{}), do: [Owl.Data.tag("■ stopped", :yellow)]
   defp said(_payload), do: nil
 
   defp arguments(arguments) when map_size(arguments) == 0, do: []
   defp arguments(arguments), do: Owl.Data.tag([" ", JSON.encode!(arguments)], @faint)
+
+  defp why(%{__exception__: true} = error), do: Exception.message(error)
+  defp why(reason), do: inspect(reason)
 
   defp count([_only]), do: "1 call"
   defp count(calls), do: "#{length(calls)} calls"

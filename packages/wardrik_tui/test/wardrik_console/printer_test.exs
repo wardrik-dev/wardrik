@@ -115,12 +115,12 @@ defmodule WardrikConsole.PrinterTest do
                attempt: 2,
                attempts: 6,
                wait_ms: 3_200,
-               reason: :timeout
+               reason: %Wardrik.LLM.Error{status: 529, message: "overloaded"}
              },
              %Event.SpanStarted{name: "compacting history"}
            ]) == [
              "Looking",
-             "  ↻ model failed: :timeout, again in 4s (2 of 6)",
+             "  ↻ model failed: overloaded, again in 4s (2 of 6)",
              "  · compacting history"
            ]
   end
