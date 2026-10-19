@@ -59,8 +59,7 @@ defmodule Wardrik.AgentLedgerTest do
   end
 
   defp opts(extra) do
-    [config: Config.new(tools: [{Effect, {"deploy", self()}}]), ledger: %Wardrik.Ledger.Store{}] ++
-      extra
+    [config: Config.new(tools: [{Effect, {"deploy", self()}}])] ++ extra
   end
 
   # The node the agent ran on is gone: the agent, the turn and the tool it was

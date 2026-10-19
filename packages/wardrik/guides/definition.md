@@ -7,16 +7,15 @@ the HTTP API's definitions through it, and a host that keeps definitions in
 its own store reads them the same way.
 
 What a definition may name, the host says in a context: the tools it ships,
-its MCP servers, channels, notify targets and policies, the defaults every
-agent takes, and the seams every agent gets.
+its MCP servers, channels, notify targets and policies, and the defaults
+every agent takes.
 
 ```elixir
 context = %WardrikDefinition.Context{
   org: "acme",
   tools: [WardrikBrave.WebSearch],
   servers: [github: []],
-  mcp: WardrikMCP,
-  seams: [ledger: %Wardrik.Ledger.Store{}]
+  mcp: WardrikMCP
 }
 
 {:ok, id, fields} = WardrikDefinition.parse(File.read!("agents/triage.md"), "triage", context)

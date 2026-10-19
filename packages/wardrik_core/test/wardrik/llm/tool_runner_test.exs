@@ -2,6 +2,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
   use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
+  import Wardrik.Test, only: [host: 0, host: 1]
 
   alias Wardrik.Call
   alias Wardrik.Conversation.ToolError
@@ -32,7 +33,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
   end
 
   defp run(agent_id, tools) do
-    Config.new(tools: tools) |> Run.root(agent_id, name: "turn")
+    Config.new(tools: tools) |> Run.root(agent_id, name: "turn", host: host())
   end
 
   # A call as the model asked for it: `:arguments` already decoded, with
@@ -517,7 +518,11 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
   defp governed(agent_id, tools) do
     Config.new(tools: tools)
-    |> Run.root(agent_id, name: "turn", hooks: [Wardrik.Hook.new("asking", AskingHook)])
+    |> Run.root(agent_id,
+      name: "turn",
+      hooks: [Wardrik.Hook.new("asking", AskingHook)],
+      host: host()
+    )
   end
 
   describe "governance" do
@@ -644,7 +649,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     end
 
     defp under(agent_id, tools, hooks),
-      do: Config.new(tools: tools) |> Run.root(agent_id, name: "turn", hooks: hooks)
+      do: Config.new(tools: tools) |> Run.root(agent_id, name: "turn", hooks: hooks, host: host())
 
     test "is on the call before any hook reads it", %{agent_id: agent_id} do
       run = under(agent_id, [Deploy], [Wardrik.Hook.new("reporting", Reporting, self())])
@@ -813,7 +818,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       Run.root(Config.new(tools: [Needing]), id,
         name: "turn",
-        host: Wardrik.Host.new(credentials: %Vault{})
+        host: host(credentials: %Vault{})
       )
     end
 
@@ -870,7 +875,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert error["code"] == "not_authorized"
       assert error["message"] =~ "issues needs github"
 
-      resolving_nothing = %{needing(agent_id, "jon") | host: Wardrik.Host.new()}
+      resolving_nothing = %{needing(agent_id, "jon") | host: host()}
 
       assert %Call{result: {:ok, %{"error" => %{"message" => message}}}} =
                ToolRunner.execute(call("call_2", "issues", %{}), resolving_nothing)

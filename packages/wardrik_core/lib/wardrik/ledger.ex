@@ -1,4 +1,4 @@
-defprotocol Wardrik.Ledger do
+defmodule Wardrik.Ledger do
   @moduledoc """
   Whether a tool call has already run, recorded before it does.
 
@@ -14,14 +14,16 @@ defprotocol Wardrik.Ledger do
   nothing here to hold and nothing to wait on. An entry is written once and
   read on replay.
 
-  `%Wardrik.Ledger.Store{}` writes to the store the fleet already runs on, the
-  host's. A deployment that keeps its own system of record implements this
-  protocol for a struct of its own instead. Every function is handed the
-  store of the host the call runs on as `:store`.
+  Every run has one, kept in the store of the host it runs on, the store the
+  fleet already runs on, so a host configures nothing for it. Entries are
+  written under the `:claims` namespace, one per agent and call id, as the
+  agent's ID, then `//`, which no ID holds, then the call id. A claim is a
+  write conditional on nothing being written yet, so a second claim answers
+  with the first one's state whatever adapter is underneath.
 
       key = {~A"acme/@jon/assistant", call.id}
 
-      case Wardrik.Ledger.claim(%Wardrik.Ledger.Store{}, key, call: call, store: store) do
+      case Wardrik.Ledger.claim(store, key, call: call) do
         :ok -> run(call)
         {:settled, result} -> result
         {:pending, entry} -> park(entry)
@@ -37,21 +39,28 @@ defprotocol Wardrik.Ledger do
     * `{:pending, entry}` - it was claimed and never settled. Whether its
       effect happened is unknown, and guessing either way is worse than
       asking, so this belongs in front of a person.
-    * `{:error, reason}` - the ledger could not answer. A call with an outside
+    * `{:error, reason}` - the store could not answer. A call with an outside
       effect does not run on an unanswered ledger.
+
+  A store that raises as a call is claimed takes the call with it, as a tool
+  that raises does: `Wardrik.LLM.ToolRunner` answers it as crashed, and its
+  tool does not run. On `WardrikStore.None`, whose every read and write
+  raises, no tool call runs. One that raises as a call is settled loses the
+  record alone: the call has run, so `Wardrik.Call.Pipeline` answers it with
+  what it returned, and its claim stays pending for a replay to ask about.
 
   ## In a turn
 
-  A run's `:ledger` has `Wardrik.Call.Pipeline` claim every call the policy
-  allows before running it, under `Wardrik.Ledger.Key.of/2`, and settle it
-  once it has. A turn a `Wardrik.Agent` runs hands each batch of calls to its
-  agent before they run, so a turn lost part way is replayed from that batch
-  with the calls it had rather than asking the model again, and the ledger
-  answers for each one: a settled call is answered from the ledger without
-  running, and a pending one parks for a person to decide, or runs again
-  under the same key where its tool declares it may (`Wardrik.Tool.Annotations`).
-  A call whose tool answers in doubt keeps its claim pending, so a replay
-  asks about it too. See `Wardrik.LLM.Turn`.
+  `Wardrik.Call.Pipeline` claims every call the policy allows before running
+  it, under `Wardrik.Ledger.Key.of/2`, and settles it once it has. A turn a
+  `Wardrik.Agent` runs hands each batch of calls to its agent before they
+  run, so a turn lost part way is replayed from that batch with the calls it
+  had rather than asking the model again, and the ledger answers for each
+  one: a settled call is answered from the ledger without running, and a
+  pending one parks for a person to decide, or runs again under the same key
+  where its tool declares it may (`Wardrik.Tool.Annotations`). A call whose
+  tool answers in doubt keeps its claim pending, so a replay asks about it
+  too. See `Wardrik.LLM.Turn`.
 
   A tool with an effect outside Wardrik passes the idempotency key of the
   `Wardrik.Tool.Context` it is handed along to the system it calls, so the
@@ -59,19 +68,17 @@ defprotocol Wardrik.Ledger do
 
       Stripe.refund(order, idempotency_key: context.idempotency_key)
 
-  `Wardrik.Ledger.Guarded` asks a ledger on a call's behalf, so one that
-  raises answers an error rather than taking the turn with it.
+  ## Retention
 
-  ## Claiming without a ledger
-
-  A run that names none has `%Wardrik.Ledger.None{}`, which claims nothing
-  and answers `:ok`, so the default costs nothing and no branch anywhere has
-  to handle a missing one. It also keeps no guarantee: a turn that runs twice
-  does its work twice.
+  An entry lasts as long as the turn that made it, however long that turn
+  waits on a person, and `forget/3` removes the turn's entries once it has
+  ended.
   """
 
   alias Wardrik.Ledger.Entry
   alias Wardrik.Tool
+
+  @ns :claims
 
   @typedoc """
   The agent a call belongs to, and the call's place within its turn: the
@@ -80,7 +87,7 @@ defprotocol Wardrik.Ledger do
   """
   @type key() :: {Wardrik.Event.Bus.agent_id(), call_id :: String.t()}
 
-  @typedoc "What a ledger says about one call."
+  @typedoc "What the ledger says about one call."
   @type claim() ::
           :ok
           | {:settled, Tool.Result.t()}
@@ -88,15 +95,23 @@ defprotocol Wardrik.Ledger do
           | {:error, term()}
 
   @doc """
-  Records that the `:call` `opts` name is about to run, and says whether
-  anything already did.
+  Records in `store` that the `:call` `opts` name is about to run, and says
+  whether anything already did.
 
-  Called once per call, before its tool runs. An implementation must not
-  write over an entry it finds: the answer to a second claim is the first
-  one's state, whatever it is.
+  Called once per call, before its tool runs. An entry already written is
+  never written over: the answer to a second claim is the first one's state,
+  whatever it is.
   """
-  @spec claim(t(), key(), call: Tool.call(), store: WardrikStore.t()) :: claim()
-  def claim(ledger, key, opts)
+  @spec claim(WardrikStore.t(), key(), call: Tool.call()) :: claim()
+  def claim(store, key, opts) do
+    entry = Entry.claimed(Keyword.fetch!(opts, :call))
+
+    case WardrikStore.put(store, @ns, encoded(key), entry, if_vsn: nil) do
+      {:ok, _vsn} -> :ok
+      {:error, :conflict} -> held(store, key)
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   @doc """
   Records the `:result` a claimed call returned.
@@ -104,28 +119,104 @@ defprotocol Wardrik.Ledger do
   Answers `{:error, :not_claimed}` for a key holding no entry, which is a
   settle without a claim before it rather than something to write anyway.
   """
-  @spec settle(t(), key(), result: Tool.Result.t(), store: WardrikStore.t()) ::
-          :ok | {:error, term()}
-  def settle(ledger, key, opts)
+  @spec settle(WardrikStore.t(), key(), result: Tool.Result.t()) :: :ok | {:error, term()}
+  def settle(store, key, opts) do
+    encoded = encoded(key)
 
-  @doc "The entry a key holds, if it holds one."
-  @spec fetch(t(), key(), store: WardrikStore.t()) :: {:ok, Entry.t()} | :error
-  def fetch(ledger, key, opts)
+    case WardrikStore.lookup(store, @ns, encoded) do
+      nil ->
+        {:error, :not_claimed}
+
+      {%Entry{} = entry, vsn} ->
+        write(store, encoded, Entry.settled(entry, Keyword.fetch!(opts, :result)), vsn)
+
+      {other, _vsn} ->
+        {:error, {:unexpected_entry, other}}
+    end
+  end
+
+  @doc "The entry `key` holds in `store`, if it holds one."
+  @spec fetch(WardrikStore.t(), key()) :: {:ok, Entry.t()} | :error
+  def fetch(store, key) do
+    case WardrikStore.get(store, @ns, encoded(key)) do
+      %Entry{} = entry -> {:ok, entry}
+      _other -> :error
+    end
+  end
 
   @doc """
   Removes a claim for a call that did not run after all: one that stopped to
-  ask a person before doing anything. `:ok` for a ledger that keeps no such
-  thing.
+  ask a person before doing anything. A claim settled since it was made is
+  not the claim being released, and stays.
   """
-  @spec release(t(), key(), store: WardrikStore.t()) :: :ok | {:error, term()}
-  def release(ledger, key, opts)
+  @spec release(WardrikStore.t(), key()) :: :ok | {:error, term()}
+  def release(store, key) do
+    encoded = encoded(key)
+
+    case WardrikStore.lookup(store, @ns, encoded) do
+      {%Entry{result: nil}, vsn} -> delete(store, encoded, vsn)
+      _settled_or_gone -> :ok
+    end
+  end
 
   @doc """
   Removes every entry the turn `:trace` made, the calls of its delegations
-  included, once the turn has ended and nothing will replay it. `:ok` for a
-  ledger that keeps no such thing.
+  included, which share its trace, once the turn has ended and nothing will
+  replay it.
+
+  `[:wardrik, :ledger, :forgotten]` is emitted once the store has answered,
+  with the agent id, the trace id and the answer in its metadata.
   """
-  @spec forget(t(), Wardrik.Event.Bus.agent_id(), trace: String.t(), store: WardrikStore.t()) ::
+  @spec forget(WardrikStore.t(), Wardrik.Event.Bus.agent_id(), trace: String.t()) ::
           :ok | {:error, term()}
-  def forget(ledger, agent_id, opts)
+  def forget(store, agent_id, opts) do
+    trace_id = Keyword.fetch!(opts, :trace)
+
+    answer =
+      store
+      |> WardrikStore.keys(@ns, "#{agent_id}//#{trace_id}/")
+      |> Enum.reduce_while(:ok, fn encoded, :ok ->
+        case WardrikStore.lookup(store, @ns, encoded) do
+          {_entry, vsn} -> delete(store, encoded, vsn) |> continue()
+          nil -> {:cont, :ok}
+        end
+      end)
+
+    :telemetry.execute([:wardrik, :ledger, :forgotten], %{}, %{
+      agent_id: agent_id,
+      trace_id: trace_id,
+      answer: answer
+    })
+
+    answer
+  end
+
+  defp continue(:ok), do: {:cont, :ok}
+  defp continue({:error, reason}), do: {:halt, {:error, reason}}
+
+  defp encoded({agent_id, call_id}), do: "#{agent_id}//#{call_id}"
+
+  defp delete(store, encoded, vsn) do
+    case WardrikStore.delete(store, @ns, encoded, if_vsn: vsn) do
+      :ok -> :ok
+      {:error, :conflict} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp write(store, encoded, entry, vsn) do
+    case WardrikStore.put(store, @ns, encoded, entry, if_vsn: vsn) do
+      {:ok, _vsn} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp held(store, key) do
+    case WardrikStore.get(store, @ns, encoded(key), consistent: true) do
+      %Entry{result: nil} = entry -> {:pending, entry}
+      %Entry{result: result} -> {:settled, result}
+      nil -> {:error, :forgotten}
+      other -> {:error, {:unexpected_entry, other}}
+    end
+  end
 end

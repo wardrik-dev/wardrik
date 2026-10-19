@@ -15,8 +15,7 @@ defmodule WardrikDaemon.AgentFile do
   its owner holds them, its user's or, for an agent that works for nobody,
   its org's, and the deployment's only where `vault.shared` names them; its
   owner connects an account through `WardrikOAuth` where a provider is named
-  for one it does not hold. It records every tool call in
-  `Wardrik.Ledger.Store`, so a turn lost part way through runs no call twice.
+  for one it does not hold.
 
   ## Over HTTP
 
@@ -62,7 +61,6 @@ defmodule WardrikDaemon.AgentFile do
       targets: config |> Config.section(WardrikNotify) |> Keyword.get(:targets, []),
       policies: %{},
       defaults: config |> Config.section(WardrikDaemon.Agents) |> Keyword.get(:defaults, %{}),
-      seams: [ledger: %Wardrik.Ledger.Store{}],
       runtimes: [
         %Wardrik.LLM.Runtime{
           config: [

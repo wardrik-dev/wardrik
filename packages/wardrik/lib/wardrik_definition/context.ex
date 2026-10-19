@@ -16,7 +16,6 @@ defmodule WardrikDefinition.Context do
         targets: [ops: {WardrikNotify.Webhook, url: "https://ops.example.com", orgs: :all}],
         policies: %{"careful" => policy},
         defaults: %{"idle_timeout" => 900},
-        seams: [ledger: %Wardrik.Ledger.Store{}],
         runtimes: [%Wardrik.LLM.Runtime{config: [tool_prices: %{"web_search" => 0.005}]}],
         shares: [runbooks_share]
       }
@@ -49,8 +48,6 @@ defmodule WardrikDefinition.Context do
     * `policies` - the policies a definition may name, by name
     * `defaults` - definition keys every agent takes where its own
       definition says none: `idle_timeout`
-    * `seams` - `Wardrik.Agent.Spec` options every agent gets, such as
-      `ledger`
     * `runtimes` - the `Wardrik.Runtime`s that read a definition's
       settings, `Wardrik.LLM.Runtime`'s by default, whose `config` holds the
       `Wardrik.LLM.Config` options every agent it reads gets, such as
@@ -76,7 +73,6 @@ defmodule WardrikDefinition.Context do
             targets: [],
             policies: %{},
             defaults: %{},
-            seams: [],
             runtimes: [%Wardrik.LLM.Runtime{}],
             shares: [],
             triggers: %WardrikTrigger.Offered{},
@@ -97,7 +93,6 @@ defmodule WardrikDefinition.Context do
           targets: WardrikNotify.targets(),
           policies: %{String.t() => WardrikPolicy.t()},
           defaults: %{String.t() => term()},
-          seams: keyword(),
           runtimes: [Wardrik.Runtime.t(), ...],
           shares: [WardrikWorkspace.Share.t()],
           triggers: WardrikTrigger.Offered.t(),

@@ -44,7 +44,8 @@ defmodule Wardrik.LLM.TurnTest do
 
   # The host a turn runs on, whose model calls `llm` answers, with the other
   # seams `seams` names.
-  defp host(llm, seams \\ []), do: Wardrik.Host.new([llm: llm] ++ seams)
+  defp host(llm, seams \\ []),
+    do: Wardrik.Host.new([store: Wardrik.Test.store(), llm: llm] ++ seams)
 
   # A run whose failed model call fails the turn at once.
   defp failing(agent_id, llm, seams \\ []) do

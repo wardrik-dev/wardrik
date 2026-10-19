@@ -225,7 +225,6 @@ defmodule WardrikHTTP.WorkerTest do
       |> Config.new()
       |> Run.root(context.agent,
         name: "turn",
-        ledger: %Ledger.Store{},
         hooks: allowing_echo(),
         host: Wardrik.Test.host()
       )
@@ -253,7 +252,7 @@ defmodule WardrikHTTP.WorkerTest do
     refute Map.has_key?(whose, "user")
 
     assert {:ok, %Ledger.Entry{result: {:ok, %{"ok" => true, "result" => %{"order" => "o_1"}}}}} =
-             Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(run, call), store: Wardrik.Test.store())
+             Ledger.fetch(store(), Ledger.Key.of(run, call))
   end
 
   test "a call is answered with what its worker said it cost", context do
@@ -360,7 +359,6 @@ defmodule WardrikHTTP.WorkerTest do
       |> Config.new()
       |> Run.root(context.agent,
         name: "turn",
-        ledger: %Ledger.Store{},
         host: Wardrik.Test.host(),
         hooks: [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["workers__leave"])]
       )
@@ -374,7 +372,7 @@ defmodule WardrikHTTP.WorkerTest do
     assert prompt =~ "The worker running leave went away before it answered."
 
     assert {:ok, %Ledger.Entry{result: nil}} =
-             Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(run, call), store: Wardrik.Test.store())
+             Ledger.fetch(store(), Ledger.Key.of(run, call))
   end
 
   test "a call run again in doubt with no worker to run it stays in doubt", context do
@@ -471,18 +469,13 @@ defmodule WardrikHTTP.WorkerTest do
       |> Config.new()
       |> Run.root(context.agent,
         name: "turn",
-        ledger: %Ledger.Store{},
         hooks: allowing_echo(),
         host: Wardrik.Test.host()
       )
 
     call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
 
-    :ok =
-      Ledger.claim(%Ledger.Store{}, Ledger.Key.of(run, call),
-        call: call,
-        store: Wardrik.Test.store()
-      )
+    :ok = Ledger.claim(store(), Ledger.Key.of(run, call), call: call)
 
     assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, run)
 

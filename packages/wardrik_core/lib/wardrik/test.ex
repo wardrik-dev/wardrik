@@ -150,8 +150,8 @@ defmodule Wardrik.Test do
   `tools:` names the tools, as `Wardrik.LLM.Config` takes them, or `config:`
   gives the whole config; `id:` names the agent, in place of one no other
   test uses; `llm:` is the model client its host has, `llm/0` unless given.
-  The rest is what `Wardrik.Run.root/3` takes: the hooks, the ledger, and
-  the host, `host/1` unless given.
+  The rest is what `Wardrik.Run.root/3` takes: the hooks, and the host,
+  `host/1` unless given.
   """
   @spec run(keyword()) :: Run.t()
   def run(opts \\ []) do

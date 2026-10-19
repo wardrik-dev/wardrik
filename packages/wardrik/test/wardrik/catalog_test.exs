@@ -10,7 +10,6 @@ defmodule Wardrik.CatalogTest do
   alias Wardrik.Catalog.Entry
   alias Wardrik.Catalog.Self
   alias Wardrik.Event
-  alias Wardrik.Host
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
@@ -107,7 +106,7 @@ defmodule Wardrik.CatalogTest do
     do:
       Wardrik.Test.run(
         Keyword.merge(
-          [tools: [{source, agent}], id: agent, host: Host.new(definitions: %Kept{})],
+          [tools: [{source, agent}], id: agent, host: Wardrik.Test.host(definitions: %Kept{})],
           opts
         )
       )
@@ -378,7 +377,7 @@ defmodule Wardrik.CatalogTest do
 
       run =
         run(front, Agents,
-          host: Host.new(definitions: %Kept{}, issuer: %Issued{scope: [one]}),
+          host: Wardrik.Test.host(definitions: %Kept{}, issuer: %Issued{scope: [one]}),
           sender: Principal.new(:channel, "chat/U1"),
           hooks: [Wardrik.Hook.new("front", Rules, allow: ["agent_define"])]
         )
@@ -411,7 +410,7 @@ defmodule Wardrik.CatalogTest do
 
       run =
         run(front, Agents,
-          host: Host.new(definitions: %Kept{}, issuer: %Issued{}),
+          host: Wardrik.Test.host(definitions: %Kept{}, issuer: %Issued{}),
           sender: Principal.new(:agent, to_string(AgentID.resource(asking)))
         )
 

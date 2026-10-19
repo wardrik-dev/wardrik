@@ -56,7 +56,6 @@ defmodule WardrikDefinitionTest do
       targets: [pager: {Source, orgs: :all}],
       policies: %{"careful" => careful},
       defaults: %{"idle_timeout" => 60},
-      seams: [ledger: %Wardrik.Ledger.Store{}],
       names: %{host: "Mode", config: "Mode", policies: "the org's policies"}
     }
 
@@ -94,7 +93,6 @@ defmodule WardrikDefinitionTest do
     assert spec.config.system == "Watch the queue."
     assert spec.config.tools == [Clock, {Source, Resource.parse!("deployment/server/books")}]
     assert [_hook | _hooks] = spec.hooks
-    assert spec.ledger == %Wardrik.Ledger.Store{}
     assert spec.idle_timeout == :timer.seconds(60)
     assert {:ok, %{targets: [:pager]}} = WardrikDefinition.route(fields, id, context)
 

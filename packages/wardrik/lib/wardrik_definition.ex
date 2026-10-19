@@ -18,10 +18,10 @@ defmodule WardrikDefinition do
 
   What a definition may name, the host says in a `WardrikDefinition.Context`:
   the tools it ships, its MCP servers, channels, notify targets and
-  policies, the defaults every agent takes, the seams every agent gets, and
-  the runtimes that read its settings. A definition is read by the first of
-  the context's runtimes whose key it names, `model` for
-  `Wardrik.LLM.Runtime`, or by the first where it names none.
+  policies, the defaults every agent takes, and the runtimes that read its
+  settings. A definition is read by the first of the context's runtimes
+  whose key it names, `model` for `Wardrik.LLM.Runtime`, or by the first
+  where it names none.
 
   Where it came from, the source, says what it may say:
 
@@ -411,14 +411,14 @@ defmodule WardrikDefinition do
       tools: tools(fields, context, modules?, id)
     }
 
-    ([
-       id: id,
-       description: optional_string!(fields["description"], "description"),
-       config: settings!(fields, resolved, context.runtimes),
-       hooks: ceilings(context, id.org) ++ policy(fields["policy"], context, modules?),
-       timeout: fields["timeout"] && seconds!(fields["timeout"]),
-       retry: retry!(fields["retries"] || context.defaults["retries"] || %{})
-     ] ++ context.seams)
+    [
+      id: id,
+      description: optional_string!(fields["description"], "description"),
+      config: settings!(fields, resolved, context.runtimes),
+      hooks: ceilings(context, id.org) ++ policy(fields["policy"], context, modules?),
+      timeout: fields["timeout"] && seconds!(fields["timeout"]),
+      retry: retry!(fields["retries"] || context.defaults["retries"] || %{})
+    ]
     |> put(:idle_timeout, fields["idle_timeout"] || context.defaults["idle_timeout"], &idle!/1)
     |> Spec.new()
   end
