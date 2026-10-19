@@ -114,8 +114,10 @@ defmodule WardrikTriggerTest do
         WardrikTrigger.new("sweep", every: "30m")
       end
 
-      assert_raise ArgumentError, ~r/may not contain "\/"/, fn ->
-        WardrikTrigger.new("a/b", every: "30m", prompt: "Look.")
+      for name <- ["a/b", "a:b", "a b", "_a", "", :a] do
+        assert_raise ArgumentError, ~r/a trigger's name holds no \//, fn ->
+          WardrikTrigger.new(name, every: "30m", prompt: "Look.")
+        end
       end
 
       assert_raise ArgumentError, ~r/timezone: "Mars\/Olympus" is not a time zone/, fn ->

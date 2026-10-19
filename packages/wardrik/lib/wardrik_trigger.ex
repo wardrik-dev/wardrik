@@ -198,14 +198,16 @@ defmodule WardrikTrigger do
 
   @doc false
   @spec name!(term()) :: String.t()
-  def name!(name) when is_binary(name) and name != "" do
-    if String.contains?(name, "/"),
-      do: raise(ArgumentError, "a trigger's name may not contain \"/\", got #{inspect(name)}"),
-      else: name
+  def name!(name) do
+    if Wardrik.AgentID.segment?(name),
+      do: name,
+      else:
+        raise(
+          ArgumentError,
+          "a trigger's name holds no /, : or whitespace, nor * or ?, and does not begin " <>
+            "with @ or _, got #{inspect(name)}"
+        )
   end
-
-  def name!(name),
-    do: raise(ArgumentError, "a trigger's name is a string, got #{inspect(name)}")
 
   defp every!(%Interval{ms: ms} = every, :error) when is_integer(ms) and ms > 0, do: every
   defp every!(%Cron{} = every, :error), do: every
