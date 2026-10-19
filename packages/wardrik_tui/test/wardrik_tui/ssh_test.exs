@@ -75,6 +75,18 @@ defmodule WardrikTUI.SSHTest do
     assert drawn(to_string(first.id)) =~ to_string(first.id)
   end
 
+  test "a session for a user name that names no one says why on the client's terminal" do
+    for username <- ["", "jon doe"] do
+      session = %{session(self()) | username: username}
+      host = Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %WardrikTUI.Test.Root{})
+
+      assert {:error, message} = WardrikTUI.SSH.start_link(session: session, host: host)
+      assert message =~ "The SSH user name #{inspect(username)} names no one"
+      assert_receive {:written, written}
+      assert written == message <> "\r\n"
+    end
+  end
+
   test "choose/3 opens on the first agent by ID, or starts one for whoever connected" do
     members =
       for id <- [~A"b/two", ~A"a/one"],

@@ -42,7 +42,7 @@ defmodule Wardrik.Principal do
   @opaque t() :: %__MODULE__{id: String.t(), name: String.t() | nil}
 
   @provider ~r/\A[a-z][a-z0-9-]*\z/
-  @federated ~r/\A[a-z][a-z0-9-]*:\S+\z/u
+  @subject ~r/\A\S+\z/u
 
   @doc """
   The principal known as `id`, and by `name:` where they go by one. Raises
@@ -54,7 +54,7 @@ defmodule Wardrik.Principal do
   def new(id, opts \\ []) when is_binary(id) and is_list(opts) do
     opts = Keyword.validate!(opts, [:name])
 
-    if Regex.match?(@federated, id) or resource?(id),
+    if federated?(id) or resource?(id),
       do: %__MODULE__{id: id, name: opts[:name]},
       else:
         raise(
@@ -76,6 +76,14 @@ defmodule Wardrik.Principal do
   def provider?(text) when is_binary(text), do: Regex.match?(@provider, text)
   def provider?(_text), do: false
 
+  @doc """
+  Whether `text` can be the subject of a `provider:subject` name: text,
+  holding no whitespace.
+  """
+  @spec subject?(term()) :: boolean()
+  def subject?(text) when is_binary(text), do: Regex.match?(@subject, text)
+  def subject?(_text), do: false
+
   @doc "The name the principal is known by."
   @spec id(t()) :: String.t()
   def id(%__MODULE__{id: id}), do: id
@@ -91,6 +99,13 @@ defmodule Wardrik.Principal do
   @spec same?(t() | nil, t() | nil) :: boolean()
   def same?(%__MODULE__{id: id}, %__MODULE__{id: id}), do: true
   def same?(_a, _b), do: false
+
+  defp federated?(id) do
+    case String.split(id, ":", parts: 2) do
+      [provider, subject] -> provider?(provider) and subject?(subject)
+      [_resource] -> false
+    end
+  end
 
   defp resource?(id),
     do: not String.contains?(id, ["*", "?"]) and match?({:ok, _resource}, Resource.parse(id))

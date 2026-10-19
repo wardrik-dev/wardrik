@@ -23,7 +23,9 @@ defmodule WardrikTUI.SSH do
   it, or one its defaults write, so every surface starts
   the same agent. Whoever connected acts as the principal `ssh:<user name>`,
   with the token the host's `Wardrik.Issuer` issues them, on the
-  `Wardrik.Host` the entrypoint's `:host` names.
+  `Wardrik.Host` the entrypoint's `:host` names. A session that cannot open,
+  for a user name that is empty or holds whitespace, or an agent that does
+  not start, says why on the client's terminal and closes.
 
   Breeze starts the session's terminal itself, from the options
   `Termite.SSH.Session.terminal_opts/1` gives, so the keys the client types
@@ -43,10 +45,10 @@ defmodule WardrikTUI.SSH do
     session = Keyword.fetch!(opts, :session)
     org = Keyword.get(opts, :org)
     host = Keyword.fetch!(opts, :host)
-    principal = Wardrik.Principal.new("ssh:#{session.username}")
-    as = Wardrik.as(host, principal)
 
-    with {:ok, id} <- attach(session.username, org, as) do
+    with {:ok, principal} <- principal(to_string(session.username)),
+         as = Wardrik.as(host, principal),
+         {:ok, id} <- attach(session.username, org, as) do
       start_opts = [
         agent: id,
         agent_id: id,
@@ -62,7 +64,25 @@ defmodule WardrikTUI.SSH do
         [terminal_opts: Termite.SSH.Session.terminal_opts(session)] ++
           WardrikTUI.App.server_opts(start_opts ++ Keyword.take(opts, [:presenter]))
       )
+    else
+      {:error, message} -> refuse(session, message)
     end
+  end
+
+  defp principal(username) do
+    if Wardrik.Principal.subject?(username),
+      do: {:ok, Wardrik.Principal.new("ssh:" <> username)},
+      else:
+        {:error,
+         "The SSH user name #{inspect(username)} names no one: it is empty or holds " <>
+           "whitespace. Connect as a name without spaces, as ssh jon@host."}
+  end
+
+  # Said on the client's terminal before the session closes, so whoever
+  # connected sees why.
+  defp refuse(session, message) do
+    {:ok, _terminal} = write(session, message <> "\n")
+    {:error, message}
   end
 
   @doc false
