@@ -80,11 +80,12 @@ The list says who holds each account, never a value. `POST` answers the link to 
 The provider sends the browser back to the daemon at its redirect URL, with `/callback/` and the
 provider's name after it. Register that as the redirect URI with a provider you registered by hand.
 
-Without `oauth.redirect.url`, it is the daemon's own machine: `http://127.0.0.1:4599/callback/github`.
-For a daemon on another machine, forward the port first:
+Without `oauth.redirect.url`, it is `/oauth` on the daemon's [HTTP API](/build/http-api/), on its
+own machine: `http://127.0.0.1:4747/oauth/callback/github`. For a daemon on another machine, forward
+the port first:
 
 ```sh
-ssh -L 4599:127.0.0.1:4599 box
+ssh -L 4747:127.0.0.1:4747 box
 ```
 
 For people connecting from their own browsers, such as from a link in Slack, give the daemon a

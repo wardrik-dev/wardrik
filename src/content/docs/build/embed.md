@@ -328,7 +328,7 @@ end
 server's connections in `children/0`, after `{Wardrik, wardrik}`:
 
 ```elixir title="lib/my_app/agents.ex"
-{WardrikOAuth.Supervisor, oauth: oauth(), callback: false},
+WardrikOAuth.Supervisor,
 {WardrikMCP.Supervisor,
  store: store(),
  servers: [
@@ -343,7 +343,7 @@ server's connections in `children/0`, after `{Wardrik, wardrik}`:
 
 ### Take GitHub's callback in your app
 
-GitHub sends the browser back to your app. `callback: false` above leaves that to your router:
+GitHub sends the browser back to your app, at the redirect URL above. Your router takes it:
 
 ```elixir title="lib/my_app_web/router.ex"
 scope "/oauth", MyAppWeb do

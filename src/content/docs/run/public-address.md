@@ -10,8 +10,8 @@ daemon. Without a public address, that only works from a browser on the daemon's
 daemon on a server, with people clicking links in Slack, needs an HTTPS address their browsers
 reach. Many providers accept no other.
 
-The daemon doesn't end TLS itself. Something in front does, such as Caddy, and passes one path on to
-the daemon.
+The daemon doesn't end TLS itself. Something in front does, such as Caddy, and passes a few paths on
+to the daemon's HTTP API.
 
 ## Set it up with Caddy
 
@@ -22,15 +22,9 @@ so Caddy can get a certificate.
 
    ```text title="/etc/caddy/Caddyfile"
    agents.example.com {
-   	handle /oauth/* {
-   		reverse_proxy 127.0.0.1:4599
-   	}
+   	@daemon path /oauth/* /v1/hooks/* /v1/channels/*
 
-   	handle /v1/hooks/* {
-   		reverse_proxy 127.0.0.1:4747
-   	}
-
-   	handle /v1/channels/* {
+   	handle @daemon {
    		reverse_proxy 127.0.0.1:4747
    	}
 
@@ -67,10 +61,10 @@ registered by hand, with a `client_id`, enter it in the provider's settings.
 
 ## What is exposed
 
-Only the callback: `/oauth/callback/NAME` for each provider, and `/oauth/check`, which
-`wardrik doctor` uses. Everything else is a 404. A code that comes back finishes only a sign-in this
-deployment started, for that provider. The [HTTP API](/build/http-api/) has its own listener, behind
-loopback.
+Only the callback, `/oauth/callback/NAME` for each provider and `/oauth/check`, which
+`wardrik doctor` uses, and what triggers and channels are sent. Everything else is a 404. A code that
+comes back finishes only a sign-in this deployment started, for that provider. The rest of the
+[HTTP API](/build/http-api/) stays behind loopback.
 
 ## Details
 
@@ -85,24 +79,22 @@ came. A front that strips the path reaches nothing.
 
 ### Where the daemon listens
 
-`oauth.redirect.ip` and `oauth.redirect.port` set the callback listener, `127.0.0.1:4599` by
-default, which suits Caddy on the same machine. For a front on another machine, listen on a private
-network address, never a public one:
+The callback is served by the HTTP API's listener, `127.0.0.1:4747` by default, which suits Caddy on
+the same machine. For a front on another machine, listen on a private network address, never a
+public one:
 
 ```yaml
-oauth:
-  redirect:
-    url: https://agents.example.com/oauth
-    ip: 10.0.0.12
+http:
+  ip: 10.0.0.12
 ```
 
 In Docker, listen on every interface of the container, `ip: 0.0.0.0`, and publish the port to the
-host's loopback only, `-p 127.0.0.1:4599:4599`, for Caddy on the host.
+host's loopback only, `-p 127.0.0.1:4747:4747`, for Caddy on the host.
 
 ### Other fronts
 
 Any front that ends TLS for a public name and keeps the path will do: another proxy, a cloud load
-balancer, or a tunnel. Point `/oauth/` at `http://127.0.0.1:4599` and check with `wardrik doctor`.
+balancer, or a tunnel. Point `/oauth/` at `http://127.0.0.1:4747` and check with `wardrik doctor`.
 
 ### Pages and caches
 
