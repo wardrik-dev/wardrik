@@ -25,6 +25,16 @@ defprotocol Wardrik.Issuer do
   functions refresh it through the issuer as they use it, so a change to
   what the issuer gives someone reaches what they hold at its next use.
 
+  What runs as the deployment itself, `Wardrik.Principal.deployment/0`, asks
+  it too. `WardrikNotify` follows every agent's log as the deployment, so a
+  host running it issues `deployment` `agent.events` on the agents it tells
+  of, as `*/agent/*`:
+
+      %Wardrik.Token{
+        principal: principal,
+        scope: [%Wardrik.Statement{actions: ["agent.events"], resources: [Wardrik.Resource.parse!("*/agent/*")]}]
+      }
+
   A host that names none has `Wardrik.Issuer.None`, whose tokens allow
   nothing.
   """

@@ -140,13 +140,18 @@ defmodule WardrikDaemon.IssuerTest do
     assert roles(token) == [{"acme/@jon/agent/*", bound([:reader, :messenger])}]
   end
 
-  test "a request to a trigger, and the deployment itself, hold nothing" do
-    for id <- [
-          "acme/agent/front/trigger/hook",
-          "acme/@jon/agent/front/trigger/hook",
-          "deployment"
-        ] do
-      assert %Token{scope: []} = issue(Principal.new(id))
+  test "a request to a trigger holds nothing" do
+    for id <- ["acme/agent/front/trigger/hook", "acme/@jon/agent/front/trigger/hook"],
+        do: assert(%Token{scope: []} = issue(Principal.new(id)))
+  end
+
+  test "the deployment itself reads every agent's events, and does nothing else" do
+    token = issue(Principal.deployment())
+    assert roles(token) == [{"*/agent/*", ["agent.events"]}]
+
+    for agent <- ~w(acme/triage acme/@jon/assistant globex/front/thread-1) do
+      assert Token.authorize(token, "agent.events", AgentID.parse!(agent)) == :ok
+      assert {:error, _reason} = Token.authorize(token, "agent.read", AgentID.parse!(agent))
     end
   end
 
