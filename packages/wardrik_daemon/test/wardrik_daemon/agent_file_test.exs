@@ -15,7 +15,12 @@ defmodule WardrikDaemon.AgentFileTest do
   # on a host with what the daemon ships, and no servers people add.
   defp ctx, do: AgentFile.context(Host.config(System.tmp_dir!()))
 
-  defp host, do: WardrikDaemon.attach(Wardrik.Host.new(), Host.config(System.tmp_dir!()))
+  defp host,
+    do:
+      WardrikDaemon.attach(
+        Wardrik.new(store: Wardrik.Test.store()),
+        Host.config(System.tmp_dir!())
+      )
 
   # The definition `fields` write from the defaults, as one sent over HTTP reads.
   defp read_definition(context, id, fields, source \\ :defaults),

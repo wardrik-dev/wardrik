@@ -1,14 +1,19 @@
 defmodule WardrikDaemon do
   @moduledoc """
-  The host a `wardrik` release runs beside core.
+  The host a `wardrik` release runs: `host/2` composes it from
+  `config.yaml`, and `WardrikDaemon.Tree` starts `Wardrik` on it, which
+  starts core, then the host's children, in order, each handed the host:
 
-  `WardrikDaemon.Tree` starts it last, once it has read `config.yaml`,
-  built the `Wardrik.Host` from it, and started core and what runs on the
-  fleet; see there. It is handed that host and the `WardrikDaemon.Config`
-  read, and starts `WardrikDaemon.SSH`, which serves the TUI over SSH,
-  where `ssh/authorized_keys` in the config directory lets anyone in, and
-  the children of the host, as `attach/2` attached the packages to it,
-  each with its own section of the config as options:
+    * `WardrikDaemon.Host`, which holds the host and the config for the
+      `wardrik` commands that reach the node over rpc
+    * this supervisor, which reads the agent and policy files once, as
+      `wardrik reload` does (see `WardrikDaemon.Agents`), so nothing after
+      it finds a deployment half read, and starts `WardrikDaemon.SSH`,
+      which serves the TUI over SSH, where `ssh/authorized_keys` in the
+      config directory lets anyone in
+
+  then what `attach/2` attaches, each package with its own section of the
+  config as options:
 
     * `WardrikMCP.Supervisor`, with the servers configured and those orgs and
       people add, kept in the store. Each command's stderr goes to
@@ -31,10 +36,6 @@ defmodule WardrikDaemon do
       the channel, and, where `WardrikOAuth.Supervisor` runs, the pages a
       browser comes back to from a sign-in, under the redirect URL's path;
       see `WardrikOAuth.Callback`.
-
-  Before any of them, it reads the agent and policy files once, as `wardrik
-  reload` does (see `WardrikDaemon.Agents`), so nothing they serve finds a
-  deployment half read.
 
   `:host` and `:config` are required.
 
@@ -86,16 +87,13 @@ defmodule WardrikDaemon do
     # credo:disable-for-next-line Wardrik.Credo.Check.InitDoesNoIO
     File.mkdir_p!(Path.dirname(stderr(config)))
 
-    children =
-      WardrikDaemon.SSH.children(config, host: host) ++
-        for {module, opts} <- Wardrik.Host.children(host), do: {module, [host: host] ++ opts}
-
-    Supervisor.init(children, strategy: :one_for_one)
+    Supervisor.init(WardrikDaemon.SSH.children(config, host: host), strategy: :one_for_one)
   end
 
   @doc """
-  The host a daemon running under `config` offers, keeping everything in
-  `store`: its definitions, read under `WardrikDaemon.Agents`; the vault the config's
+  The host a daemon running under `config` offers, as `Wardrik.new/1` makes
+  it, keeping everything in `store`: its definitions, read under
+  `WardrikDaemon.Agents`; the vault the config's
   keys unseal, as its credentials, granting through `WardrikOAuth` with the
   config's `oauth`; the accounts people connect through both; the HTTP API's
   tokens, lasting as long as `config.yaml`'s `tokens.expires.api` says;
@@ -103,42 +101,42 @@ defmodule WardrikDaemon do
   environment's; `WardrikDaemon.Issuer`, whose tokens last as long as
   `tokens.expires.session` says; agents' files kept in the store; the MCP
   servers orgs and people add, kept there too; the model's runtime, pricing
-  tools as `config.yaml`'s `tools` says; and what `attach/2` adds.
+  tools as `config.yaml`'s `tools` says; the daemon's own processes, the
+  holder of the host and this supervisor, among its children; and what
+  `attach/2` adds.
   """
   @spec host(Config.t(), store: WardrikStore.t()) :: Wardrik.Host.t()
   def host(%Config{} = config, opts) do
     store = Keyword.fetch!(opts, :store)
-    audit = Wardrik.Audit
     oauth = oauth(config, store)
     vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
     vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
-    agents = Agents.new(store: store, config: config, audit: audit)
+    agents = Agents.new(store: store, config: config)
     prices = config |> Config.section(WardrikDaemon.AgentFile) |> Keyword.get(:tool_prices, %{})
 
     [
       store: store,
-      audit: audit,
-      definitions: Agents.definitions(agents),
+      context: agents,
       connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
       servers: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault},
       credentials: vault,
       tokens: %WardrikHTTP.Tokens{store: store},
       triggers: %WardrikTrigger.Deliveries{secrets: &Secrets.for_agent(vault, &1, &2)},
       issuer: %WardrikDaemon.Issuer{agents: agents},
-      workspace: %WardrikWorkspace.Backend.Store{store: store},
       runtimes: [%Wardrik.LLM.Runtime{config: [tool_prices: prices]}]
     ]
     |> Kernel.++(Keyword.take(Config.section(config, Wardrik.Tokens), [:expires]))
-    |> Wardrik.Host.new()
+    |> Wardrik.new()
+    |> Wardrik.Host.child({WardrikDaemon.Host, config: config})
+    |> Wardrik.Host.child({__MODULE__, config: config})
     |> attach(config)
   end
 
   @doc """
   `host` with what the daemon ships attached, and the packages `config`
   configures, each with its own section as options: web search, deep
-  research and Lua among its tools, and among its tool sources an agent's
-  operations on itself, `self`, and those on the other agents of its org,
-  `agents`; the MCP servers configured and those owners add (see
+  research and Lua among its tools; the MCP servers configured and those
+  owners add (see
   `WardrikMCP.attach/2`); where a provider is configured, or the vault has
   a key, the pages a sign-in comes back to; the notify targets and the
   channels configured; and the HTTP API, and the tool workers', `workers`.
@@ -149,10 +147,6 @@ defmodule WardrikDaemon do
     |> WardrikBrave.attach()
     |> WardrikResearch.attach()
     |> WardrikLua.attach()
-    |> Wardrik.Host.register(:sources, [
-      {"self", Wardrik.Catalog.Self},
-      {"agents", Wardrik.Catalog.Agents}
-    ])
     |> WardrikMCP.attach([stderr: {:file, stderr(config)}] ++ Config.section(config, WardrikMCP))
     |> signs_in(config)
     |> WardrikNotify.attach(Config.section(config, WardrikNotify))

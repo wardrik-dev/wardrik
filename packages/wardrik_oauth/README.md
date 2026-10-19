@@ -31,19 +31,21 @@ oauth =
 
 vault = WardrikVault.new(store: store, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")], grants: oauth)
 
-host =
-  Wardrik.Host.new(
+wardrik =
+  Wardrik.new(
     store: store,
     credentials: vault,
     connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault}
   )
+  |> WardrikOAuth.attach(oauth: oauth)
 
-children = [{WardrikStore, store}, {Wardrik.Core, host: host}, WardrikOAuth.Supervisor]
+children = [{WardrikStore, store}, {Wardrik, wardrik}]
 ```
 
-Your web server serves the pages a browser comes back to,
-`WardrikOAuth.Callback.pages(oauth)`, each a path and the plug answering under
-it, or calls `WardrikOAuth.finish/3` from a controller of its own.
+`WardrikOAuth.attach/2` runs the flows under way, and adds the pages a browser
+comes back to, `WardrikOAuth.Callback.pages(oauth)`, among the routes the HTTP
+API serves. A web server of your own calls `WardrikOAuth.finish/3` from a
+controller instead.
 
 It finds the authorization server from the resource, and presents whichever
 client identity the server accepts: one registered by hand, its own metadata

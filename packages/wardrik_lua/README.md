@@ -12,7 +12,8 @@ end
 ```
 
 ```elixir
-Wardrik.LLM.Config.new(tools: [WardrikLua.Run])
+host = WardrikLua.attach(host)                        # a definition names it as run_lua
+Wardrik.LLM.Config.new(tools: [WardrikLua.Run])       # a config names the module
 ```
 
 The VM is written in Elixir and reaches nothing outside itself: no files, no
