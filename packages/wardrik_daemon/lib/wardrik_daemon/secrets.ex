@@ -6,9 +6,8 @@ defmodule WardrikDaemon.Secrets do
   it is handed first.
 
   A webhook trigger's `secret` is read by `for_agent/3` instead, as each
-  request arrives, in the order a tool's credential is: the agent's user's,
-  its org's, then the deployment's, and the environment last, so each org
-  keeps its own.
+  request arrives, as a tool's credential is: the one the agent's owner
+  holds, or a name the vault shares with every agent, and nothing else.
 
   A model provider's key, such as `ANTHROPIC_API_KEY`, is the deployment's
   secret of that name, which each model call reads where the environment
@@ -20,16 +19,20 @@ defmodule WardrikDaemon.Secrets do
   def named(vault, name), do: secret(vault, name, Wardrik.Resource.deployment())
 
   @doc """
-  The secret `name` for the agent `id`: what `vault` holds for its user,
-  else its org, else the deployment, else the environment; `nil` where none
-  does.
+  The secret `name` for the agent `id`, as `WardrikVault.held_by/3` finds
+  it: what `vault` holds for its owner, else the deployment's secret or the
+  node's environment variable where the vault shares the name; `nil` where
+  neither does.
   """
   @spec for_agent(WardrikVault.t(), String.t(), Wardrik.AgentID.t()) :: String.t() | nil
   def for_agent(vault, name, %Wardrik.AgentID{} = id) do
     owner = Wardrik.Resource.owner(Wardrik.AgentID.resource(id))
-    owners = Enum.uniq([owner, Wardrik.Resource.org(owner), Wardrik.Resource.deployment()])
 
-    Enum.find_value(owners, &secret(vault, name, &1)) || System.get_env(name)
+    case WardrikVault.held_by(vault, name, owner) do
+      :own -> secret(vault, name, owner)
+      :shared -> named(vault, name) || System.get_env(name)
+      :none -> nil
+    end
   end
 
   @doc "Whether `name` is a model provider's key, such as `ANTHROPIC_API_KEY`."
