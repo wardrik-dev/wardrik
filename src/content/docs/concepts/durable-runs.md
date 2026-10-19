@@ -71,8 +71,8 @@ compaction: false
 - **Denying an uncertain call** tells the model the call may have run, so it can find out.
 - **Tool workers.** A worker that goes away mid-call, or answers late, leaves the call in doubt the
   same way.
-- **The ledger's lifetime.** The daemon gives every agent the ledger, and clears a turn's claims
-  once the turn ends.
+- **The ledger's lifetime.** Every agent has the ledger, in the store it runs on, and a turn's
+  claims are cleared once the turn ends.
 - **Where the key goes.** It's in the call's `tool_call.started` event as
   `tool.call.idempotency_key`. An MCP server isn't sent it.
 - **Failed turns.** Retries are covered in [Turns](/concepts/turns/#limits-on-a-turn). A failed turn
