@@ -17,9 +17,10 @@ defmodule Wardrik.Catalog.Tools do
 
   The agent's own token is the `:agent` principal of its resource, as
   `acme/agent/front`, holding `reader`, `messenger` and `definer` on what
-  its source reaches, and never more. A change runs with that token, and
-  the audit records the agent as who made it. An agent it defines is held
-  to the calling agent's own hooks, every policy and budget that holds it,
+  its source reaches, and never more, expiring as the host's `:session`
+  expiry says. A change runs with that token, and the audit records the
+  agent as who made it. An agent it defines is held to the calling agent's
+  own hooks, every policy and budget that holds it,
   ahead of its own, and so is never looser. A read or a message is the asker's as
   well: it runs with the token the host's `Wardrik.Issuer` issues whoever
   asked for the turn, assumed by the agent and narrowed to what its own
@@ -90,7 +91,8 @@ defmodule Wardrik.Catalog.Tools do
 
     own = %Token{
       principal: Principal.new(:agent, to_string(AgentID.resource(id))),
-      scope: [Role.bind([:reader, :messenger, :definer], Keyword.fetch!(opts, :reach))]
+      scope: [Role.bind([:reader, :messenger, :definer], Keyword.fetch!(opts, :reach))],
+      expires: DateTime.add(DateTime.utc_now(:second), Host.expires(run.host, :session))
     }
 
     scope = Scope.agent(Scope.new(run.host, token(entry, own, sender, run.host)), id)
@@ -104,10 +106,6 @@ defmodule Wardrik.Catalog.Tools do
   defp token(%Entry{name: name}, own, _sender, _host) when name in @changes, do: own
   defp token(_entry, own, nil, _host), do: own
 
-  defp token(_entry, own, sender, host) do
-    host
-    |> Host.issuer()
-    |> Wardrik.Issuer.issue(sender, [])
-    |> Token.assume(own.principal, scope: own.scope)
-  end
+  defp token(_entry, own, sender, host),
+    do: Token.assume(Wardrik.as(host, sender).token, own.principal, scope: own.scope)
 end

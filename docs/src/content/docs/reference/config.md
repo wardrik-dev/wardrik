@@ -74,7 +74,7 @@ set them.
 | [`channels`](#channels) | chat media agents are reached through, such as Slack |
 | [`notify`](#notify) | where agents' notices go |
 | [`workspace`](#workspace) | the trees of files agents beyond their owners may share |
-| [`tokens`](#tokens) | how long the HTTP API's tokens last |
+| [`tokens`](#tokens) | how long tokens last |
 | [`vault`](#vault) | the vault's keys, and the secrets every agent may read |
 | [`storage`](#storage) | the store everything is kept in |
 | [`cluster`](#cluster) | the other daemons this one runs with |
@@ -323,13 +323,20 @@ A token may name a policy of `policies/`, with `--policy`: every agent it define
 ahead of its own, read by its name each time the agent starts. It is what IAM calls a permissions
 boundary.
 
-`expires.api` is how long a token for the HTTP API lasts where `--expires` doesn't say, as `90d`,
-`12h`, `30m` or `45s`. `90d` unless set. An expired token is refused.
+Every token expires. Each setting is a duration, as `90d`, `12h`, `30m` or `45s`:
+
+- `expires.api` is how long a token for the HTTP API lasts where `--expires` doesn't say. `90d`
+  unless set. Once expired, it is refused.
+- `expires.session` is how long a token the daemon issues lasts: a shell's, the terminal client's,
+  someone's in a channel, or an agent's. `12h` unless set. Once expired, it is refreshed as it is
+  used, never wider than it was and holding only what `config.yaml` gives now, so a change that
+  takes something away holds at its next use.
 
 ```yaml
 tokens:
   expires:
     api: 30d
+    session: 1h
 ```
 
 ## storage

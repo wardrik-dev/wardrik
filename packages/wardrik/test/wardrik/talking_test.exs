@@ -246,6 +246,49 @@ defmodule Wardrik.TalkingTest do
     end
   end
 
+  describe "a token past its expiry" do
+    # The scope's token, held past its expiry on a host whose issuer is
+    # `issuer`.
+    defp held(issuer, %Scope{token: token}),
+      do:
+        Scope.new(Wardrik.Test.host(issuer: issuer), %{
+          token
+          | expires: DateTime.add(DateTime.utc_now(), -1)
+        })
+
+    test "is refreshed through the host's issuer as it is used" do
+      {id, _agent} = Fleet.start_agent()
+
+      assert {:ok, %Snapshot{agent: ^id}} =
+               Wardrik.agent_read(held(%Wardrik.OrgIssuer{org: "test"}, scope()), id)
+    end
+
+    test "decides with the token refreshed, which it hands the agent" do
+      id = parked_agent()
+
+      assert {:ok, _decided} =
+               Wardrik.agent_approve(held(%Wardrik.OrgIssuer{org: "test"}, scope()), id, "call_1")
+
+      assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: by}}
+      assert Principal.id(by) == "jon"
+    end
+
+    test "never allows more than it did" do
+      {id, _agent} = Fleet.start_agent()
+      reader = held(%Wardrik.OrgIssuer{org: "test"}, scope("test/agent/*", [:reader]))
+
+      assert {:ok, _snapshot} = Wardrik.agent_read(reader, id)
+      assert {:error, %Error{type: :forbidden}} = Wardrik.agent_clear(reader, id)
+    end
+
+    test "is refused once the issuer gives its principal nothing" do
+      {id, _agent} = Fleet.start_agent()
+
+      assert {:error, %Error{type: :not_found}} =
+               Wardrik.agent_read(held(%Wardrik.Issuer.None{}, scope()), id)
+    end
+  end
+
   describe "listing" do
     test "answers every agent under the prefix, and refuses a scope that may not read them" do
       {id, _agent} = Fleet.start_agent()
