@@ -71,42 +71,16 @@ defmodule WardrikMCP.ConfigTest do
       end
     end
 
-    defp vaulted(seams \\ []) do
+    test "registers the servers people add as what they may sign in to" do
       store = Wardrik.Test.store()
-      vault = WardrikVault.new(store: store, keys: [WardrikVault.generate_key()])
-      Wardrik.Host.new([store: store, credentials: vault] ++ seams)
-    end
+      host = WardrikMCP.attach(Wardrik.Host.new(store: store))
 
-    test "offers the servers owners add where the host keeps credentials in a vault" do
-      host = WardrikMCP.attach(vaulted())
+      assert Wardrik.Host.sign_ins(host) == %{
+               "servers" => %WardrikMCP.Servers.Providers{store: store}
+             }
 
-      assert %WardrikMCP.Servers{vault: vault, oauth: oauth} = Wardrik.Host.servers(host)
-      assert vault == Wardrik.Host.credentials(host)
-      assert oauth.providers == []
-
-      assert Wardrik.Host.servers(WardrikMCP.attach(Wardrik.Host.new())) ==
-               %Wardrik.Servers.None{}
-    end
-
-    test "signs in to added servers as the WardrikOAuth attached before it" do
-      settings = [redirect: [url: "https://myapp.example.com/oauth"], providers: [github: []]]
-      host = vaulted() |> WardrikOAuth.attach(settings) |> WardrikMCP.attach()
-
-      assert %WardrikMCP.Servers{oauth: oauth, vault: vault} = Wardrik.Host.servers(host)
-      assert [oauth: ^oauth] = Wardrik.Host.settings(host, WardrikOAuth)
-      assert vault == Wardrik.Host.credentials(host)
-    end
-
-    test "keeps the servers a host offers of its own" do
-      offered = %WardrikMCP.Servers{
-        store: Wardrik.Test.store(),
-        oauth: WardrikOAuth.new(),
-        vault: nil
-      }
-
-      host = WardrikMCP.attach(vaulted(servers: offered))
-
-      assert Wardrik.Host.servers(host) == offered
+      # A host built without `use Wardrik` offers the servers it wires itself.
+      assert Wardrik.Host.servers(host) == %Wardrik.Servers.None{}
     end
   end
 

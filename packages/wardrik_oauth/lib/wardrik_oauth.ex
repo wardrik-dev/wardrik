@@ -142,7 +142,7 @@ defmodule WardrikOAuth do
   @keys Map.new(@client ++ @redirect ++ @provider, &{Atom.to_string(&1), &1})
 
   # The settings a plugin builds its WardrikOAuth from, in place of `:oauth`.
-  @settings ~w(client redirect providers)a
+  @settings ~w(client redirect providers req_options resolve poll_floor)a
 
   @doc """
   `host` serving the pages a browser comes back to from a sign-in, under
@@ -151,9 +151,11 @@ defmodule WardrikOAuth do
   children.
 
   As a plugin, it takes the settings `new/1` does: `:providers`,
-  `:redirect` and `:client`. It keeps each token in the host's vault, which
-  grants through it, and offers its providers as the accounts people
-  connect:
+  `:redirect` and `:client`, and `:req_options`, `:resolve` and
+  `:poll_floor`. It keeps each token in the host's vault, which grants
+  through it, and offers its providers as the accounts people connect. On
+  an instance, it signs in to what its other plugins register as well, such
+  as the servers people add (`WardrikOAuth.Providers.Registered`):
 
       config :my_app, MyApp.Agents,
         store: [repo: MyApp.Repo],
@@ -186,7 +188,7 @@ defmodule WardrikOAuth do
   defp served(host, %__MODULE__{} = oauth, []), do: serving(host, oauth)
 
   defp served(host, nil, settings) do
-    oauth = new([audit: Wardrik.Host.audit(host)] ++ settings)
+    oauth = new([audit: Wardrik.Host.audit(host), added: registered(host)] ++ settings)
     vault = %{vault!(host) | grants: oauth}
 
     host
@@ -203,6 +205,13 @@ defmodule WardrikOAuth do
     |> Wardrik.Host.register(:routes, Callback.pages(oauth))
     |> Wardrik.Host.register(:settings, [{__MODULE__, oauth: oauth}])
     |> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
+  end
+
+  defp registered(host) do
+    case Wardrik.Instance.of(host) do
+      nil -> %WardrikOAuth.Providers.None{}
+      instance -> %WardrikOAuth.Providers.Registered{instance: instance}
+    end
   end
 
   defp vault!(host) do

@@ -108,10 +108,9 @@ defmodule WardrikMCP do
            servers: [github: [url: "https://api.githubcopilot.com/mcp/", credential: "github"]]}
         ]
 
-  Where the host keeps credentials in a vault and offers no servers of its
-  own, people add servers of their own too, kept in its store
-  (`WardrikMCP.Servers`). List it after `WardrikOAuth`, so they sign in as
-  it does.
+  On an instance with a vault, people add servers of their own too, kept
+  in its store (`WardrikMCP.Servers`). Those that sign in do so through the
+  instance's `WardrikOAuth`, wherever it is listed among the plugins.
   """
   @spec attach(Host.t(), keyword()) :: Host.t()
   @impl Wardrik.Plugin
@@ -126,6 +125,7 @@ defmodule WardrikMCP do
 
     host
     |> Host.register(:sources, [{"servers", WardrikMCP.Added} | configured])
+    |> Host.register(:sign_ins, [{"servers", %WardrikMCP.Servers.Providers{store: opts[:store]}}])
     |> Host.child({WardrikMCP.Supervisor, opts})
     |> added()
   end
@@ -142,14 +142,15 @@ defmodule WardrikMCP do
 
   defp stringified({key, value}), do: {Atom.to_string(key), value}
 
+  # On an instance with a vault and no servers of its host's own, people add
+  # servers of their own.
   defp added(host) do
-    case {Host.servers(host), Host.credentials(host)} do
-      {%Wardrik.Servers.None{}, %WardrikVault{} = vault} ->
-        oauth = Keyword.get_lazy(Host.settings(host, WardrikOAuth), :oauth, &WardrikOAuth.new/0)
-        servers = %WardrikMCP.Servers{store: Host.store(host), oauth: oauth, vault: vault}
+    case {Wardrik.Instance.of(host), Host.servers(host), Host.credentials(host)} do
+      {instance, %Wardrik.Servers.None{}, %WardrikVault{}} when instance != nil ->
+        servers = %WardrikMCP.Servers.Instance{store: Host.store(host), instance: instance}
         Host.put(host, :servers, servers)
 
-      _offered_or_no_vault ->
+      _offered_or_unsealed ->
         host
     end
   end

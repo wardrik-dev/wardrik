@@ -8,12 +8,15 @@
       "WardrikMCP",
       "WardrikMCP.*",
       "Wardrik.Servers.WardrikMCP.Servers",
+      "Wardrik.Servers.WardrikMCP.Servers.Instance",
       "WardrikDefinition.Source.WardrikMCP.Server"
     ]
   ],
   boundaries: [
     public: [
       "Wardrik.Core",
+      # What the servers people add on an instance reach its host through.
+      "Wardrik.Instance",
       "Wardrik.Agent",
       "Wardrik.Agent.Activity",
       "Wardrik.Agent.Activity.English",
