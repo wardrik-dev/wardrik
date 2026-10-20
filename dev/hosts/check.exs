@@ -6,8 +6,7 @@
 # with the guides' code, what a user does, and what the app's listener keeps
 # of it in tables of the app's own.
 #
-#   WARDRIK_HOST           the application's `use Wardrik` instance, or its module
-#                          whose store/0 is Wardrik's store
+#   WARDRIK_HOST           the application's `use Wardrik` instance
 #   WARDRIK_HOST_STORE     the adapter the application configured
 #   WARDRIK_HOST_WITHOUT   modules it must not have, separated by commas
 #   WARDRIK_HOST_REPO      the application's repo, where the store is kept in it
@@ -19,13 +18,8 @@ ExUnit.start(autorun: false)
 
 defmodule WardrikHost do
   @moduledoc false
-  def store do
-    host = Code.ensure_loaded!(Module.concat([System.fetch_env!("WARDRIK_HOST")]))
-
-    if function_exported?(host, :store, 0),
-      do: host.store(),
-      else: Wardrik.Host.store(Wardrik.Instance.host(host))
-  end
+  def store,
+    do: Wardrik.Host.store(Wardrik.Instance.host(Module.concat([System.fetch_env!("WARDRIK_HOST")])))
 
   def tree?(part), do: part in String.split(System.get_env("WARDRIK_HOST_TREE", ""), ",")
 end
@@ -176,19 +170,23 @@ defmodule WardrikHost.GuideTest do
           )
   end
 
+  # A request as the app's endpoint takes it, at the path its router forwards.
+  defp api(path, token \\ nil) do
+    endpoint = app("Web.Endpoint")
+    conn = Plug.Test.conn(:get, path)
+    conn = if token, do: Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> token), else: conn
+    endpoint.call(conn, endpoint.init([]))
+  end
+
   test "the API knows a user by the app's token, and shows them their own agents",
        %{user: user, agent: agent} do
     token = app("Web.Session").token(user)
+    query = URI.encode_query(resource: "#{user.org}/@#{user.id}/agent/*")
 
-    assert %{status: 200, body: %{"agents" => listed}} =
-             Req.get!("http://127.0.0.1:4850/v1/agents",
-               auth: {:bearer, token},
-               params: [resource: "#{user.org}/@#{user.id}/agent/*"],
-               retry: false
-             )
-
-    assert Enum.any?(listed, &(&1["id"] == to_string(agent)))
-    assert %{status: 401} = Req.get!("http://127.0.0.1:4850/v1/agents", retry: false)
+    conn = api("/agents/v1/agents?" <> query, token)
+    assert conn.status == 200
+    assert Enum.any?(JSON.decode!(conn.resp_body)["agents"], &(&1["id"] == to_string(agent)))
+    assert api("/agents/v1/agents").status == 401
   end
 
   test "a user's agent may name the GitHub server's tools", %{user: user} do
@@ -226,7 +224,8 @@ defmodule WardrikHost.GuideTest do
     assert WardrikChannel.Workspace.offering(workspace) =~ "turning on Slack in the agent's settings"
 
     books = Wardrik.AgentID.parse!("acme/books")
-    token = &Wardrik.as(agents().wardrik(), Wardrik.Principal.new("slack:#{team}/#{&1}")).token
+    host = Wardrik.Instance.host(agents())
+    token = &Wardrik.as(host, Wardrik.Principal.new("slack:#{team}/#{&1}")).token
 
     assert Wardrik.Token.authorize(token.("U2"), "agent.decide", books) == :ok
     assert {:error, _not_named} = Wardrik.Token.authorize(token.("U1"), "agent.decide", books)
@@ -234,10 +233,10 @@ defmodule WardrikHost.GuideTest do
     refute Wardrik.Token.reaches?(token.("U1"), Wardrik.AgentID.parse!("globex/books"))
   end
 
-  test "the sign-in callback is the app's own route" do
-    endpoint = app("Web.Endpoint")
-    conn = Plug.Test.conn(:get, "/oauth/callback/github") |> endpoint.call(endpoint.init([]))
+  test "the sign-in callback is served where the app forwards the API" do
+    conn = api("/agents/oauth/callback/github")
     assert conn.status == 400
+    assert conn.resp_body =~ "carried no code"
   end
 end
 
