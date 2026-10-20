@@ -13,8 +13,14 @@ defmodule Wardrik.Error do
   | `:gap` | events asked for have been dropped; `details` holds `oldest` | `410` |
   | `:unsupported` | the host does not offer it | `501` |
   | `:unavailable` | it could not happen now | `503` |
+  | `:failed` | the run it waited on ended without answering; `details` holds `error` | — |
+  | `:cancelled` | the run it waited on was stopped | — |
+  | `:timeout` | the run it waited on had not ended in time, and carries on | — |
 
   `details` holds whatever else a surface may answer beside the message.
+
+  The last three come only from a function's `wait:`, which the HTTP API
+  does not offer.
 
   It is an exception, so a function that answers it in `{:error, error}` has
   a bang variant that raises it.
@@ -31,6 +37,9 @@ defmodule Wardrik.Error do
           | :gap
           | :unsupported
           | :unavailable
+          | :failed
+          | :cancelled
+          | :timeout
 
   @type t() :: %__MODULE__{
           __exception__: true,

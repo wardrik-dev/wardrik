@@ -17,8 +17,11 @@
       "Wardrik.Listener",
       "Wardrik.Migration",
       "Wardrik.Moving",
+      "Wardrik.Reply",
       "Wardrik.Scope",
-      "Wardrik.Spawned"
+      "Wardrik.Spawned",
+      "Wardrik.Wait",
+      "Wardrik.Waiting"
     ],
     definition: ["Wardrik.Definition", "Wardrik.Definitions", "Wardrik.Specs.Wardrik.Definitions", "WardrikDefinition.*", "String.Chars.WardrikDefinition.Room"],
     policy: ["WardrikPolicy", "WardrikPolicy.*"],
