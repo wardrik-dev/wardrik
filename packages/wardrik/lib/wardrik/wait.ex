@@ -46,30 +46,36 @@ defmodule Wardrik.Wait do
   end
 
   defp step(
-         %Entry{event: %{"type" => type, "data" => %{"run" => %{"id" => run} = about} = data}} =
-           entry,
-         awaited,
-         agent,
-         cursor
+         %Entry{event: %{"type" => "wardrik.run.started"} = event},
+         {:asked, id},
+         _agent,
+         _cursor
        ) do
-    case awaited do
-      {:asked, id} when type == "wardrik.run.started" ->
-        if id in Map.get(about, "message_ids", []),
-          do: {:cont, {:run, run}},
-          else: {:cont, awaited}
+    %{"data" => %{"run" => %{"id" => run} = about}} = event
 
-      {:resumed, ^run} when type == "wardrik.run.resumed" ->
-        {:cont, {:run, run}}
-
-      {:run, ^run} when type in @ends ->
-        {:halt, ended(type, data, agent, run, Cursor.past(cursor, entry))}
-
-      _other ->
-        {:cont, awaited}
-    end
+    if id in Map.get(about, "message_ids", []),
+      do: {:cont, {:run, run}},
+      else: {:cont, {:asked, id}}
   end
 
-  # A log trimmed past the cursor says so, and holds no run.
+  defp step(
+         %Entry{event: %{"type" => "wardrik.run.resumed", "data" => %{"run" => %{"id" => run}}}},
+         {:resumed, run},
+         _agent,
+         _cursor
+       ),
+       do: {:cont, {:run, run}}
+
+  defp step(
+         %Entry{event: %{"type" => type, "data" => %{"run" => %{"id" => run}} = data}} = entry,
+         {:run, run},
+         agent,
+         cursor
+       )
+       when type in @ends,
+       do: {:halt, ended(type, data, agent, run, Cursor.past(cursor, entry))}
+
+  # Another run's, or a log trimmed past the cursor, which holds no run.
   defp step(%Entry{}, awaited, _agent, _cursor), do: {:cont, awaited}
 
   defp ended("wardrik.run.completed", %{"messages" => messages}, agent, run, cursor),
