@@ -59,6 +59,8 @@ defmodule WardrikNotify do
   logged; nothing retries it past the listener's own attempts.
   """
 
+  @behaviour Wardrik.Plugin
+
   alias WardrikNotify.Notice
 
   @typedoc "Targets by name: the module that delivers to each, and its options."
@@ -73,6 +75,7 @@ defmodule WardrikNotify do
   `:name` are the supervisor's.
   """
   @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
+  @impl true
   def attach(%Wardrik.Host{} = host, opts \\ []) do
     opts = Keyword.validate!(opts, [:req_options, :backoff, :name, targets: []])
     Wardrik.Host.child(host, {WardrikNotify.Supervisor, opts})

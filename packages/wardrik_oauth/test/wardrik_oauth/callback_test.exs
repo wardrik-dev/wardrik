@@ -99,6 +99,50 @@ defmodule WardrikOAuth.CallbackTest do
     assert get("/oauth/callback/github?code=the-code&state=#{state}").status == 200
   end
 
+  # The request as an app's router hands it on, having forwarded `mount`.
+  defp forwarded(target, mount) do
+    conn = Plug.Test.conn(:get, target)
+    %{conn | script_name: mount, path_info: Enum.drop(conn.path_info, length(mount))}
+  end
+
+  test "is served under the redirect URL's path from wherever an app forwards it", context do
+    %{state: state} = flow(context)
+    conn = forwarded("/oauth/callback/github?code=the-code&state=#{state}", ["oauth"])
+
+    assert Page.call(conn, Page.init(oauth: oauth())).status == 200
+  end
+
+  describe "WardrikOAuth.Plug" do
+    defmodule Agents do
+      @moduledoc false
+      use Wardrik, otp_app: :wardrik_oauth
+
+      @impl Wardrik
+      def principal(%{org: org, id: id}), do: %{org: org, id: id}
+    end
+
+    setup do
+      on_exit(fn -> :persistent_term.erase({Wardrik.Instance, Agents}) end)
+    end
+
+    test "serves an instance's pages where the app forwards their path", context do
+      %{state: state} = flow(context)
+      Wardrik.Instance.put(Agents, WardrikOAuth.attach(host(), oauth: oauth()))
+      conn = forwarded("/oauth/callback/github?code=the-code&state=#{state}", ["oauth"])
+
+      assert WardrikOAuth.Plug.call(conn, WardrikOAuth.Plug.init(agents: Agents)).status == 200
+    end
+
+    test "says what to add to an instance that signs in to nothing" do
+      Wardrik.Instance.put(Agents, host())
+      conn = forwarded("/oauth/callback/github", ["oauth"])
+
+      assert_raise ArgumentError, ~r/add WardrikOAuth to its plugins/, fn ->
+        WardrikOAuth.Plug.call(conn, WardrikOAuth.Plug.init(agents: Agents))
+      end
+    end
+  end
+
   test "every page is kept from caches, referrers and frames, and loads nothing", context do
     flow(context)
 

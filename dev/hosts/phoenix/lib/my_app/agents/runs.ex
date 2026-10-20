@@ -12,11 +12,10 @@ defmodule MyApp.Agents.Runs do
   alias MyApp.Repo
   alias Wardrik.Event.EventsDropped
 
-  @doc "The child that runs it, after Wardrik, on `wardrik`."
-  def child_spec(wardrik) do
+  @doc "The child that runs it, after `MyApp.Agents`."
+  def child_spec(_opts) do
     super(
-      host: wardrik,
-      principal: Wardrik.Principal.deployment(),
+      agents: MyApp.Agents,
       resources: [Wardrik.Resource.parse!("*/agent/*")],
       types: ~w(wardrik.run.started wardrik.run.completed wardrik.run.failed)
     )

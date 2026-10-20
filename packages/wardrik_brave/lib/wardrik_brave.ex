@@ -8,6 +8,8 @@ defmodule WardrikBrave do
   `WardrikBrave.WebSearch` is the tool, and says what a search answers.
   """
 
+  @behaviour Wardrik.Plugin
+
   @doc """
   `host` with `WardrikBrave.WebSearch` among its tools, as `web_search`,
   searching with `:api_key` for every agent the host runs. The key is held
@@ -16,6 +18,7 @@ defmodule WardrikBrave do
   without one, a search answers that the key is missing.
   """
   @spec attach(Wardrik.Host.t(), api_key: String.t()) :: Wardrik.Host.t()
+  @impl true
   def attach(%Wardrik.Host{} = host, opts \\ []) do
     opts =
       opts

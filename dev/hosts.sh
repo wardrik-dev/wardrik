@@ -86,6 +86,9 @@ check() {
 
 phoenix() {
   say "Making a Phoenix app, host, that keeps Wardrik in its Repo"
+  # What the app's config reads as it starts, which its mix tasks do too.
+  export WARDRIK_VAULT_KEY=${WARDRIK_VAULT_KEY:-$(openssl rand -base64 32)}
+  export SLACK_CLIENT_ID=hosts SLACK_CLIENT_SECRET=hosts SLACK_SIGNING_SECRET=hosts
   mix archive.install hex phx_new --force >/dev/null
   rm -rf "$dir/host"
   (cd "$dir" && mix phx.new host --no-assets --no-dashboard --no-gettext --no-html \
@@ -102,10 +105,11 @@ phoenix() {
     sed 's/MyAppWeb/HostWeb/g; s/MyApp/Host/g; s/my_app/host/g' "$repo/dev/hosts/phoenix/$file" >"$target"
   done
 
-  perl -0pi -e 's/(      Host\.Repo),\n/$1\n    ] ++ Host.Agents.children() ++ [\n/; s/strategy: :one_for_one/strategy: :rest_for_one/' lib/host/application.ex
-  grep -q 'Host.Agents.children()' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
-  perl -0pi -e 's/(  scope "\/api", HostWeb do\n    pipe_through :api\n  end\n)/$1\n  scope "\/oauth", HostWeb do\n    get "\/callback\/:provider", OAuthController, :callback\n  end\n/' lib/host_web/router.ex
-  grep -q 'OAuthController' lib/host_web/router.ex || die "host's router has no /api scope to put the sign-in callback after"
+  perl -0pi -e 's/(      Host\.Repo,\n)/$1      Host.Agents,\n      Host.Agents.Runs,\n/; s/strategy: :one_for_one/strategy: :rest_for_one/' lib/host/application.ex
+  grep -q 'Host.Agents.Runs' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
+  perl -0pi -e 's/(  scope "\/api", HostWeb do\n    pipe_through :api\n  end\n)/$1\n  forward "\/agents", WardrikHTTP.Plug, agents: Host.Agents\n/' lib/host_web/router.ex
+  grep -q 'WardrikHTTP.Plug' lib/host_web/router.ex || die "host's router has no /api scope to forward the agents' API after"
+  sed 's/MyAppWeb/HostWeb/g; s/MyApp/Host/g; s/my_app/host/g' "$repo/dev/hosts/phoenix/config/runtime.exs" >>config/runtime.exs
 
   perl -0pi -e 's/(# Import environment specific config)/config :os_mon, start_cpu_sup: false, start_disksup: false, start_memsup: false\n\n$1/' config/config.exs
   printf '\nconfig :host, Host.Repo, url: "%s"\nconfig :logger, level: :warning\n' \
@@ -118,9 +122,7 @@ phoenix() {
   cd "$repo"
 
   WARDRIK_HOST=Host.Agents WARDRIK_HOST_STORE=WardrikEcto.Store WARDRIK_HOST_WITHOUT=EKV \
-    WARDRIK_HOST_REPO=Host.Repo WARDRIK_HOST_TREE=agents WARDRIK_HOST_APP=Host \
-    WARDRIK_VAULT_KEY=$(openssl rand -base64 32) SLACK_CLIENT_ID=hosts SLACK_CLIENT_SECRET=hosts \
-    SLACK_SIGNING_SECRET=hosts check host
+    WARDRIK_HOST_REPO=Host.Repo WARDRIK_HOST_TREE=agents WARDRIK_HOST_APP=Host check host
 }
 
 bare() {

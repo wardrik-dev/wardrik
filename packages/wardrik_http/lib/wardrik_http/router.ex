@@ -20,7 +20,10 @@ defmodule WardrikHTTP.Router do
   that host. A request to a path among the host's routes (see
   `Wardrik.Host`) is the plug's that answers it alone, ahead of the API
   and asking no credential, its path as it came, with the host in its
-  `:wardrik_host` private.
+  `:wardrik_host` private. A route's path is the request's from where the
+  API is served, as a channel's is, or the whole of it, as a sign-in's
+  under its redirect URL, so both hold where an app forwards a path to
+  `WardrikHTTP.Plug`.
   """
 
   use Plug.Router, copy_opts_to_assign: :options
@@ -297,13 +300,21 @@ defmodule WardrikHTTP.Router do
   defp routed(conn, _opts) do
     host = Keyword.fetch!(conn.assigns.options, :host)
 
-    case Enum.find(Wardrik.Host.routes(host), &List.starts_with?(conn.path_info, elem(&1, 0))) do
+    case route(host, conn) do
       {_path, {plug, options}} ->
         conn |> put_private(:wardrik_host, host) |> plug.call(plug.init(options)) |> halt()
 
       nil ->
         conn
     end
+  end
+
+  defp route(host, conn) do
+    whole = conn.script_name ++ conn.path_info
+
+    Enum.find(Wardrik.Host.routes(host), fn {path, _plug} ->
+      List.starts_with?(conn.path_info, path) or List.starts_with?(whole, path)
+    end)
   end
 
   # A request to a trigger is checked against its body as it was sent, so it
