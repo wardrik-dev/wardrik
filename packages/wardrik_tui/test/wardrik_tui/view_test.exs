@@ -3,8 +3,10 @@ defmodule WardrikTUI.ViewTest do
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
-  alias Wardrik.Event
-  alias Wardrik.Event.Source
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
+  alias Wardrik.Bus.Source
   alias WardrikTUI.Activity
   alias WardrikTUI.Text
   alias WardrikTUI.View
@@ -38,8 +40,8 @@ defmodule WardrikTUI.ViewTest do
     setup %{turn: turn, tool: tool} do
       activity =
         Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hi")]})
-        |> fold(tool, %Event.SpanStarted{name: "web_search"})
+        |> fold(turn, %Bus.TurnStarted{messages: [Wardrik.Agent.Message.new("hi")]})
+        |> fold(tool, %Bus.SpanStarted{name: "web_search"})
 
       {:ok, activity: activity}
     end
@@ -61,7 +63,7 @@ defmodule WardrikTUI.ViewTest do
     end
 
     test "a finished span shows what it took", %{activity: activity, tool: tool} do
-      activity = fold(activity, tool, %Event.SpanFinished{outcome: :ok, duration_ms: 1_250})
+      activity = fold(activity, tool, %Bus.SpanFinished{outcome: :ok, duration_ms: 1_250})
       line = View.span(Activity.fetch(activity, tool.trace.span_id), 1, 0)
 
       assert plain(line) == "  ✓ web_search · 1.3s\n"
@@ -69,7 +71,7 @@ defmodule WardrikTUI.ViewTest do
     end
 
     test "a sub-second span is reported in milliseconds", %{activity: activity, tool: tool} do
-      activity = fold(activity, tool, %Event.SpanFinished{outcome: :ok, duration_ms: 42})
+      activity = fold(activity, tool, %Bus.SpanFinished{outcome: :ok, duration_ms: 42})
 
       assert Activity.fetch(activity, tool.trace.span_id)
              |> View.span(1, 0)
@@ -78,7 +80,7 @@ defmodule WardrikTUI.ViewTest do
 
     test "a failed span carries its reason", %{activity: activity, tool: tool} do
       activity =
-        fold(activity, tool, %Event.SpanFinished{outcome: {:error, :timeout}, duration_ms: 20_000})
+        fold(activity, tool, %Bus.SpanFinished{outcome: {:error, :timeout}, duration_ms: 20_000})
 
       line = View.span(Activity.fetch(activity, tool.trace.span_id), 1, 0)
 
@@ -88,7 +90,7 @@ defmodule WardrikTUI.ViewTest do
 
     test "a span named after a paragraph is still one row", %{activity: activity, tool: tool} do
       long = String.duplicate("a long angle name ", 30)
-      activity = fold(activity, tool, %Event.SpanStarted{name: long})
+      activity = fold(activity, tool, %Bus.SpanStarted{name: long})
       span = Activity.fetch(activity, tool.trace.span_id)
 
       for {depth, width} <- [{0, 80}, {1, 80}, {4, 80}, {1, 40}] do
@@ -100,7 +102,7 @@ defmodule WardrikTUI.ViewTest do
     end
 
     test "a span nobody named still gets a line", %{turn: turn} do
-      activity = Activity.new() |> fold(Source.child(turn), %Event.Result{text: "hi"})
+      activity = Activity.new() |> fold(Source.child(turn), %Bus.Result{text: "hi"})
       [span] = Activity.spans(activity)
 
       assert View.span(span, 1, 0) |> plain() == "  · ?\n"
@@ -128,17 +130,17 @@ defmodule WardrikTUI.ViewTest do
     test "approval traces distinguish waiting, rejection, and accepted decisions" do
       call = %{id: "deploy-1", name: "deploy", arguments: %{}}
 
-      assert View.trace(%Event.TurnParked{calls: [{call, "Ship?"}]}) |> plain() =~
+      assert View.trace(%Bus.TurnParked{calls: [{call, "Ship?"}]}) |> plain() =~
                "waiting on deploy"
 
-      assert View.trace(%Event.TurnResumed{decisions: %{call.id => :approve}}) |> plain() =~
+      assert View.trace(%Bus.TurnResumed{decisions: %{call.id => :approve}}) |> plain() =~
                "1 call(s) answered"
 
-      assert View.trace(%Event.ToolParked{call_id: call.id, name: call.name, prompt: "Ship?"})
+      assert View.trace(%Bus.ToolParked{call_id: call.id, name: call.name, prompt: "Ship?"})
              |> plain() =~ "Ship?"
 
       denied =
-        View.trace(%Event.ToolDenied{
+        View.trace(%Bus.ToolDenied{
           call_id: call.id,
           name: call.name,
           reason: "Not today",
@@ -150,7 +152,7 @@ defmodule WardrikTUI.ViewTest do
     end
 
     test "names the model request and how it went" do
-      assert View.trace(%Event.ModelStarted{
+      assert View.trace(%Bus.ModelStarted{
                message_id: "m0",
                model_spec: :m,
                decided_by: %{by: :default, hooks: []}
@@ -158,7 +160,7 @@ defmodule WardrikTUI.ViewTest do
              |> plain() =~
                "model"
 
-      assert View.trace(%Event.ModelFinished{
+      assert View.trace(%Bus.ModelFinished{
                message_id: "m0",
                outcome: :ok,
                duration_ms: 1_200,
@@ -168,7 +170,7 @@ defmodule WardrikTUI.ViewTest do
              |> plain() =~ "ok 1.2s"
 
       failed =
-        View.trace(%Event.ModelFinished{
+        View.trace(%Bus.ModelFinished{
           message_id: "m0",
           outcome: {:error, :rate_limited},
           duration_ms: 40,
@@ -181,7 +183,7 @@ defmodule WardrikTUI.ViewTest do
     end
 
     test "summarises tool calls by outcome" do
-      assert View.trace(%Event.ToolStarted{
+      assert View.trace(%Bus.ToolStarted{
                call_id: "c1",
                name: "echo",
                arguments: %{},
@@ -190,7 +192,7 @@ defmodule WardrikTUI.ViewTest do
              })
              |> plain() =~ "echo c1"
 
-      assert View.trace(%Event.ToolFinished{
+      assert View.trace(%Bus.ToolFinished{
                call_id: "c1",
                name: "echo",
                result: {:ok, :x},
@@ -201,7 +203,7 @@ defmodule WardrikTUI.ViewTest do
                "echo c1 ok"
 
       failed =
-        View.trace(%Event.ToolFinished{
+        View.trace(%Bus.ToolFinished{
           call_id: "c1",
           name: "boom",
           result: {:error, :nope},
@@ -214,20 +216,20 @@ defmodule WardrikTUI.ViewTest do
     end
 
     test "counts messages on a finished turn rather than dumping them" do
-      assert View.trace(%Event.TurnFinished{messages: [1, 2, 3]}) |> plain() =~ "3 message(s)"
+      assert View.trace(%Bus.TurnFinished{messages: [1, 2, 3]}) |> plain() =~ "3 message(s)"
     end
 
     test "ends each line so traces stack one per row" do
-      assert View.trace(%Event.DelegationStarted{prompt: "x"})
+      assert View.trace(%Bus.DelegationStarted{prompt: "x"})
              |> plain()
              |> String.ends_with?("\n")
     end
 
     test "says nothing about events that have their own rendering" do
-      assert View.trace(%Event.Result{text: "hi"}) == nil
-      assert View.trace(%Event.Thinking{text: "hmm"}) == nil
-      assert View.trace(%Event.SpanStarted{name: "echo"}) == nil
-      assert View.trace(%Event.SpanFinished{outcome: :ok, duration_ms: 1}) == nil
+      assert View.trace(%Bus.Result{text: "hi"}) == nil
+      assert View.trace(%Bus.Thinking{text: "hmm"}) == nil
+      assert View.trace(%Bus.SpanStarted{name: "echo"}) == nil
+      assert View.trace(%Bus.SpanFinished{outcome: :ok, duration_ms: 1}) == nil
     end
 
     test "says nothing about an event shape it has never seen" do
@@ -280,7 +282,7 @@ defmodule WardrikTUI.ViewTest do
   describe "tool results in the trace" do
     test "a successful call shows what it actually returned" do
       line =
-        View.trace(%Event.ToolFinished{
+        View.trace(%Bus.ToolFinished{
           call_id: "call_1",
           name: "list_services",
           result: {:ok, %{"services" => ["billing"]}},
@@ -295,7 +297,7 @@ defmodule WardrikTUI.ViewTest do
 
     test "a string result is shown as it stands rather than re-encoded" do
       line =
-        View.trace(%Event.ToolFinished{
+        View.trace(%Bus.ToolFinished{
           call_id: "call_1",
           name: "echo",
           result: {:ok, "plain text"},
@@ -311,7 +313,7 @@ defmodule WardrikTUI.ViewTest do
       output = %{"blob" => String.duplicate("x", 2_000)}
 
       line =
-        View.trace(%Event.ToolFinished{
+        View.trace(%Bus.ToolFinished{
           call_id: "call_1",
           name: "dump",
           result: {:ok, output},
@@ -325,7 +327,7 @@ defmodule WardrikTUI.ViewTest do
 
     test "newlines are folded so one result stays one row" do
       line =
-        View.trace(%Event.ToolFinished{
+        View.trace(%Bus.ToolFinished{
           call_id: "call_1",
           name: "read",
           result: {:ok, "one\ntwo\nthree"},

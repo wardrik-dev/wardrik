@@ -26,8 +26,10 @@ defmodule Wardrik.Tool.Context do
         end
   """
 
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Call
-  alias Wardrik.Event
   alias Wardrik.Run
 
   @enforce_keys [:run, :call_id, :idempotency_key, :progress]
@@ -64,7 +66,7 @@ defmodule Wardrik.Tool.Context do
       credentials: credentials,
       in_doubt: Keyword.get(opts, :in_doubt, false),
       progress: fn progress, total ->
-        Event.emit(source, %Event.ToolProgress{
+        Event.emit(source, %Bus.ToolProgress{
           call_id: id,
           name: name,
           progress: progress,
@@ -76,7 +78,7 @@ defmodule Wardrik.Tool.Context do
 
   @doc """
   Reports how far the call has got, on the turn's event stream: emits
-  `Wardrik.Event.ToolProgress` under the call's span,
+  `Wardrik.Bus.ToolProgress` under the call's span,
   where `total` is `nil` for work with no known end.
 
       Wardrik.Tool.Context.progress(context, 3, 10)

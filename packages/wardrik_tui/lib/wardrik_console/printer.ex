@@ -3,7 +3,7 @@ defmodule WardrikConsole.Printer do
   An agent's events as the lines a terminal shows, each written once and never
   redrawn.
 
-  `event/2` takes one `Wardrik.Event` and returns the lines it completed, in
+  `event/2` takes one `Wardrik.Bus.Event` and returns the lines it completed, in
   order, as `Owl.Data`:
 
       printer = WardrikConsole.Printer.new(width: 100)
@@ -24,7 +24,9 @@ defmodule WardrikConsole.Printer do
   other event returns no lines.
   """
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias WardrikConsole.Markdown
   alias WardrikConsole.Table
 
@@ -45,7 +47,7 @@ defmodule WardrikConsole.Printer do
 
   @doc "The lines `event` completes, and the printer to give the next event to."
   @spec event(t(), Event.t()) :: {[Owl.Data.t()], t()}
-  def event(%__MODULE__{} = printer, %Event{payload: %Event.Result{text: text}} = event) do
+  def event(%__MODULE__{} = printer, %Event{payload: %Bus.Result{text: text}} = event) do
     if Event.root?(event) do
       {settled, printer} = settle(printer, :reasoning)
       {lines, answer} = Markdown.push(printer.answer, text)
@@ -55,7 +57,7 @@ defmodule WardrikConsole.Printer do
     end
   end
 
-  def event(%__MODULE__{} = printer, %Event{payload: %Event.Thinking{text: text}} = event) do
+  def event(%__MODULE__{} = printer, %Event{payload: %Bus.Thinking{text: text}} = event) do
     if Event.root?(event) do
       {settled, printer} = settle(printer, :answer)
       {lines, reasoning} = Markdown.push(printer.reasoning, text)
@@ -83,41 +85,41 @@ defmodule WardrikConsole.Printer do
 
   # The lines an event says, before which the text so far is settled; `nil`
   # for an event that neither says anything nor settles.
-  defp said(%Event.ToolStarted{name: name, arguments: arguments}),
+  defp said(%Bus.ToolStarted{name: name, arguments: arguments}),
     do: [{:cut, ["  ", Owl.Data.tag("→", :cyan), " ", name, arguments(arguments)]}]
 
-  defp said(%Event.ToolFinished{name: name, result: {:ok, _output}}),
+  defp said(%Bus.ToolFinished{name: name, result: {:ok, _output}}),
     do: [{:cut, ["  ", Owl.Data.tag("✓", :green), " ", name]}]
 
-  defp said(%Event.ToolFinished{name: name, result: {:error, reason}}),
+  defp said(%Bus.ToolFinished{name: name, result: {:error, reason}}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, ": ", why(reason)]}]
 
-  defp said(%Event.ToolDenied{name: name, reason: reason}),
+  defp said(%Bus.ToolDenied{name: name, reason: reason}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, " was refused: ", reason]}]
 
-  defp said(%Event.ModelRetrying{} = retry) do
+  defp said(%Bus.ModelRetrying{} = retry) do
     again = ", again in #{ceil(retry.wait_ms / 1_000)}s (#{retry.attempt} of #{retry.attempts})"
     [{:cut, ["  ", Owl.Data.tag("↻", :yellow), " model failed: ", why(retry.reason), again]}]
   end
 
   # Every other span is a tool call's, or work inside one, which the call's own
   # lines already say.
-  defp said(%Event.SpanStarted{name: "compacting history" = name}),
+  defp said(%Bus.SpanStarted{name: "compacting history" = name}),
     do: [{:cut, ["  ", Owl.Data.tag("·", :cyan), " ", name]}]
 
-  defp said(%Event.TurnParked{calls: calls}) do
+  defp said(%Bus.TurnParked{calls: calls}) do
     [
       Owl.Data.tag("Waiting on a person for #{count(calls)}:", [:bright, :yellow])
       | for({call, prompt} <- calls, do: {:cut, ["  ? ", call.name, "  ", call.id, "  ", prompt]})
     ]
   end
 
-  defp said(%Event.TurnFinished{}), do: []
+  defp said(%Bus.TurnFinished{}), do: []
 
-  defp said(%Event.TurnFailed{reason: reason}),
+  defp said(%Bus.TurnFailed{reason: reason}),
     do: [Owl.Data.tag("✗ the turn failed: #{why(reason)}", :red)]
 
-  defp said(%Event.TurnInterrupted{}), do: [Owl.Data.tag("■ stopped", :yellow)]
+  defp said(%Bus.TurnInterrupted{}), do: [Owl.Data.tag("■ stopped", :yellow)]
   defp said(_payload), do: nil
 
   defp arguments(arguments) when map_size(arguments) == 0, do: []

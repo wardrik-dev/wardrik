@@ -36,8 +36,9 @@
       "Wardrik.Specs",
       "Wardrik.Specs.None",
       "Wardrik.Error",
+      "Wardrik.Bus.Event",
       "Wardrik.Event",
-      "Wardrik.Event.Bus",
+      "Wardrik.Bus",
       "Wardrik.Event.Codec.Value",
       "Wardrik.Event.Cursor",
       "Wardrik.Event.Log.Entry",
@@ -48,6 +49,8 @@
       "Wardrik.JSON",
       "Wardrik.Hook",
       "Wardrik.Host",
+      # What the plug reaches a `use Wardrik` instance through.
+      "Wardrik.Instance",
       "Wardrik.LLM.Answer",
       "Wardrik.LLM.Client",
       "Wardrik.LLM.Config",
@@ -89,7 +92,7 @@
       "Wardrik.LLM.ToolRunner",
       "Wardrik.LLM.Catalog",
       "Wardrik.Fleet.Supervisor",
-      "Wardrik.Event.Source",
+      "Wardrik.Bus.Source",
       "Wardrik.Trace"
     ],
     internal_callers: [
@@ -100,7 +103,7 @@
       {"Wardrik.LLM.ToolRunner", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.LLM.Catalog", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
-      {"Wardrik.Event.Source", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Bus.Source", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]
   ],

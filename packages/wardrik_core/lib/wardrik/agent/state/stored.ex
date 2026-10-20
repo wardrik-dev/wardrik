@@ -21,17 +21,17 @@ defmodule Wardrik.Agent.State.Stored do
   alias Wardrik.Agent.State.Due
   alias Wardrik.Agent.State.Running
   alias Wardrik.Agent.State.Waiting
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Source
   alias Wardrik.Conversation
-  alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
-  alias Wardrik.Event.Source
   alias Wardrik.Runtime.Settings
   alias Wardrik.Turn
 
   @typedoc "An agent written down: what it is, what it was asked, and what it is waiting on."
   @type t() :: %{
           generation: String.t(),
-          agent_id: Event.Bus.agent_id(),
+          agent_id: Bus.agent_id(),
           sequence: non_neg_integer(),
           config: Settings.t(),
           history: Conversation.t(),
@@ -96,7 +96,7 @@ defmodule Wardrik.Agent.State.Stored do
 
   # What it is doing as it is read back: waiting on a person, or nothing
   # until a turn starts.
-  defp doing({:waiting, turn, _source, _sender}), do: %Event.TurnParked{calls: Turn.waiting(turn)}
+  defp doing({:waiting, turn, _source, _sender}), do: %Bus.TurnParked{calls: Turn.waiting(turn)}
   defp doing(_mode), do: :idle
 
   @doc """

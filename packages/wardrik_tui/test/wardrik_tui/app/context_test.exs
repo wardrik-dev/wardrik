@@ -1,6 +1,6 @@
 defmodule WardrikTUI.App.ContextTest do
   use ExUnit.Case, async: false
-  alias Wardrik.{Agent, Event, Fleet}
+  alias Wardrik.{Agent, Bus, Fleet}
   alias Wardrik.Conversation
   alias Wardrik.Conversation.User
   alias Wardrik.Test.Script
@@ -135,9 +135,9 @@ defmodule WardrikTUI.App.ContextTest do
     Breeze.Test.input(s, "Home")
     assert screen(s) =~ "message 1"
     connect_sidebar(s, b)
-    Event.Bus.subscribe(a)
+    Bus.subscribe(a)
     Agent.ask(pid, "new question")
-    assert_receive %Event{payload: %Event.TurnFinished{}}, 2000
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}, 2000
     connect_sidebar(s, a)
     assert screen(s) =~ "message 1"
     assert screen(s) =~ "↓ new output below · End to follow"
@@ -185,9 +185,9 @@ defmodule WardrikTUI.App.ContextTest do
            ) ==
              {:error, :not_parked}
 
-    Event.Bus.subscribe(id)
+    Bus.subscribe(id)
     Agent.ask(pid, "work")
-    assert_receive %Event{payload: %Event.TurnParked{}}, 2000
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{}}, 2000
 
     assert Agent.decide(
              pid,
@@ -231,13 +231,13 @@ defmodule WardrikTUI.App.ContextTest do
     # Simulate a missed event during disconnection by dropping the TUI subscription.
     # Deliver a refresh after the replacement has parked without delivering its events.
     :sys.replace_state(s.pid, fn term ->
-      Event.Bus.unsubscribe(id)
+      Bus.unsubscribe(id)
       term
     end)
 
-    Event.Bus.subscribe(id)
+    Bus.subscribe(id)
     Agent.ask(next, "please work")
-    assert_receive %Event{payload: %Event.TurnParked{}}, 2000
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{}}, 2000
     Breeze.Test.info(s, :refresh_fleet)
     assert screen(s) =~ "waiting on a person to approve deploy and second"
   end
@@ -249,12 +249,12 @@ defmodule WardrikTUI.App.ContextTest do
           Script.new({Wardrik.Test.AgentRunners, :delegating, [self(), "weighing the options"]})
       )
 
-    Event.Bus.subscribe(id)
+    Bus.subscribe(id)
     Agent.ask(pid, "please work")
     assert_receive {:delegating, _branch}, 2000
 
-    assert_receive %Event{
-      payload: %Event.ActivityChanged{activity: %{doing: %Event.SpanStarted{}}}
+    assert_receive %Bus.Event{
+      payload: %Bus.ActivityChanged{activity: %{doing: %Bus.SpanStarted{}}}
     }
 
     s = session(id)
@@ -262,9 +262,9 @@ defmodule WardrikTUI.App.ContextTest do
 
     Agent.ask(pid, "from elsewhere", sender: Wardrik.Principal.new("slack:U1"))
 
-    assert_receive %Event{
-      payload: %Event.ActivityChanged{
-        activity: %{doing: %Event.SpanStarted{}, pending: 1}
+    assert_receive %Bus.Event{
+      payload: %Bus.ActivityChanged{
+        activity: %{doing: %Bus.SpanStarted{}, pending: 1}
       }
     }
 
@@ -278,9 +278,9 @@ defmodule WardrikTUI.App.ContextTest do
           Script.new({__MODULE__, :park_two, []}, resume: {__MODULE__, :resume_blocked, [self()]})
       )
 
-    Event.Bus.subscribe(id)
+    Bus.subscribe(id)
     Agent.ask(pid, "work")
-    assert_receive %Event{payload: %Event.TurnParked{}}, 2000
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{}}, 2000
     s = session(id)
     submit(s, "/approve 1")
     assert_receive {:resumer, running, %{"first" => :approve}}
@@ -289,7 +289,7 @@ defmodule WardrikTUI.App.ContextTest do
     assert screen(s) =~ "no decision sent"
     Agent.status(pid)
     send(running, :release)
-    assert_receive %Event{payload: %Event.TurnParked{calls: remaining}}, 2000
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{calls: remaining}}, 2000
     assert [{%{id: "second"}, _}] = remaining
     screen(s)
     submit(s, "/approve 1")

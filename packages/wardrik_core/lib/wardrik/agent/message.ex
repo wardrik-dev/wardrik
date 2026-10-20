@@ -38,16 +38,17 @@ defmodule Wardrik.Agent.Message do
 
   ## Where its turn is in the log
 
-  `cursor` is where the agent's log stood as the message was sent, where
-  its sender read it first, as `Wardrik.agent_ask/4` does, and `nil`
-  otherwise. The turn that answers it is written after it, so a client reads
-  the log on from there, with `Wardrik.events/2`, to read that turn.
+  `agent` is the agent it was sent to, and `cursor` where that agent's log
+  stood as it was sent, where its sender read it first, as
+  `Wardrik.agent_ask/4` does, and `nil` otherwise. The turn that answers it
+  is written after it, so `Wardrik.agent_await/3` waits for that turn, and
+  a client reads the log on from there with `Wardrik.events/2`.
   """
 
   alias Wardrik.Principal
 
   @enforce_keys [:id, :text]
-  defstruct [:id, :text, :sender, :cursor, labels: [], reply_to: []]
+  defstruct [:id, :text, :sender, :agent, :cursor, labels: [], reply_to: []]
 
   @type t() :: %__MODULE__{
           id: String.t(),
@@ -55,6 +56,7 @@ defmodule Wardrik.Agent.Message do
           sender: Principal.t() | nil,
           labels: [Wardrik.Label.t()],
           reply_to: [Wardrik.AgentAddress.t()],
+          agent: Wardrik.AgentAddress.t() | nil,
           cursor: String.t() | nil
         }
 

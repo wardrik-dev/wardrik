@@ -182,11 +182,13 @@ defmodule Wardrik.Event.Log do
   @spec subscribe(AgentAddress.t()) :: :ok
   def subscribe(agent_id), do: subscribe([AgentAddress.resource(agent_id)], :all)
 
+  # The calling process takes each entry `resources` cover, of `types`: as
+  # the entry, or with `:events` as its `Wardrik.Event`.
   @doc false
-  @spec subscribe([Resource.t()], types()) :: :ok
-  def subscribe(resources, types) do
+  @spec subscribe([Resource.t()], types(), :entries | :events) :: :ok
+  def subscribe(resources, types, shape \\ :entries) do
     for {topic, resources} <- Enum.group_by(resources, &topic/1) do
-      held = Map.merge(held(topic), Map.new(resources, &{&1, types}), &both/3)
+      held = Map.merge(held(topic), Map.new(resources, &{{&1, shape}, types}), &both/3)
       :ok = Group.join(__MODULE__, topic, held)
     end
 
@@ -198,12 +200,15 @@ defmodule Wardrik.Event.Log do
   defp both(_pattern, types, more), do: Enum.uniq(types ++ more)
 
   @doc false
-  @spec unsubscribe(AgentAddress.t() | [Resource.t()]) :: :ok
-  def unsubscribe(%_{} = agent_id), do: unsubscribe([AgentAddress.resource(agent_id)])
+  @spec unsubscribe(AgentAddress.t() | [Resource.t()], :entries | :events) :: :ok
+  def unsubscribe(agent_or_resources, shape \\ :entries)
 
-  def unsubscribe(resources) do
+  def unsubscribe(%_{} = agent_id, shape),
+    do: unsubscribe([AgentAddress.resource(agent_id)], shape)
+
+  def unsubscribe(resources, shape) do
     for {topic, resources} <- Enum.group_by(resources, &topic/1) do
-      case Map.drop(held(topic), resources) do
+      case Map.drop(held(topic), Enum.map(resources, &{&1, shape})) do
         held when map_size(held) == 0 -> Group.leave(__MODULE__, topic)
         held -> Group.join(__MODULE__, topic, held)
       end
@@ -231,16 +236,21 @@ defmodule Wardrik.Event.Log do
   def publish(%Entry{log: agent_id, event: %{"type" => type}} = entry) do
     resource = AgentAddress.resource(agent_id)
 
-    pids =
+    takers =
       for topic <- [@every_org, topic(resource)],
           {pid, held} <- Group.members(__MODULE__, topic),
-          Enum.any?(held, fn {pattern, types} ->
-            takes?(types, type) and Resource.covers?(pattern, resource)
-          end),
+          {{pattern, shape}, types} <- held,
+          takes?(types, type) and Resource.covers?(pattern, resource),
           uniq: true,
-          do: pid
+          do: {pid, shape}
 
-    Enum.each(pids, &send(&1, entry))
+    # Decoded once, and only where a taker takes events.
+    event = if Enum.any?(takers, &match?({_pid, :events}, &1)), do: Wardrik.Event.decode(entry)
+
+    Enum.each(takers, fn
+      {pid, :entries} -> send(pid, entry)
+      {pid, :events} -> send(pid, event)
+    end)
   end
 
   # A gap reaches every reader, whatever types it takes, so none passes it

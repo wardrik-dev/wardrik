@@ -13,7 +13,7 @@ defmodule WardrikDaemon.CLITest do
   import ExUnit.CaptureIO
 
   alias Wardrik.Agent
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Audit
   alias WardrikDaemon.CLI
@@ -79,9 +79,9 @@ defmodule WardrikDaemon.CLITest do
         id
       )
 
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     Agent.ask(agent, "ship it", host: Host.host())
-    assert_receive %Event{payload: %Event.TurnParked{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
 
     await_parked(key)
 
@@ -113,9 +113,9 @@ defmodule WardrikDaemon.CLITest do
         config: Script.new({AgentRunners, :connecting, [self(), "call_1", link]})
       )
 
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     Agent.ask(agent, "open an issue", host: Host.host())
-    assert_receive %Event{payload: %Event.TurnParked{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
 
     await_parked(key)
 
@@ -131,8 +131,8 @@ defmodule WardrikDaemon.CLITest do
     assert command(["approve", key, "call_1"]) == {"Approved call_1 for #{key}.\n", 0}
     assert_receive {:resumed, %{"call_1" => :approve}}
 
-    assert_receive %Event{
-      payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
+    assert_receive %Bus.Event{
+      payload: %Bus.CallDecided{call_id: "call_1", decision: :approve, by: by}
     }
 
     assert by == Wardrik.Principal.new("shell:ops")
@@ -423,11 +423,11 @@ defmodule WardrikDaemon.CLITest do
     assert_receive {:written, "Watching " <> watching}
     assert watching =~ "#{key}, idle on "
 
-    Wardrik.Test.Events.emit(key, %Event.Result{text: "first\n"})
+    Wardrik.Test.Events.emit(key, %Bus.Result{text: "first\n"})
 
     Wardrik.Test.Events.emit(
       key,
-      %Event.ToolStarted{
+      %Bus.ToolStarted{
         call_id: "call_1",
         name: "deploy",
         arguments: %{},
@@ -455,11 +455,21 @@ defmodule WardrikDaemon.CLITest do
     resource = Wardrik.AgentAddress.resource(key)
     :ok = Group.monitor(Wardrik.Event.Log, key.agent.org)
     terminal = watching(["watch", key, "--json"])
-    assert_receive {:group, [%Group.Event{type: :joined, meta: %{^resource => :all}} | _], _info}
+
+    assert_receive {:group,
+                    [%Group.Event{type: :joined, meta: %{{^resource, :entries} => :all}} | _],
+                    _info}
 
     # Whatever else the agent writes as it settles is a line of its own, so
     # the test waits for this one.
-    event = %{"type" => "wardrik.message.delta", "data" => %{"delta" => "hi"}}
+    event = %{
+      "id" => "e1",
+      "type" => "wardrik.message.delta",
+      "time" => "2026-10-20T12:00:00.000000Z",
+      "traceparent" => "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+      "data" => %{"delta" => "hi"}
+    }
+
     line = JSON.encode!(event) <> "\n"
     Wardrik.Event.Log.publish(%Wardrik.Event.Log.Entry{log: key, event: event, follows: 0})
     assert_receive {:written, ^line}
@@ -509,9 +519,9 @@ defmodule WardrikDaemon.CLITest do
 
     assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
 
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     Agent.ask(agent, "hello", host: Host.host())
-    assert_receive %Event{payload: %Event.TurnFinished{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
 
     assert command(["history", key]) == {"user: hello\n\nassistant: hello back\n", 0}
   end
@@ -522,9 +532,9 @@ defmodule WardrikDaemon.CLITest do
         config: Script.new({AgentRunners, :echo, [self(), "hello back"]})
       )
 
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     Agent.ask(agent, "hello", host: Host.host())
-    assert_receive %Event{payload: %Event.TurnFinished{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
 
     assert command(["clear", key]) == {"Cleared #{key}'s conversation.\n", 0}
     assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
@@ -703,7 +713,7 @@ defmodule WardrikDaemon.CLITest do
     assert {output, 0} = command(["triggers", pattern])
     assert output == "No agent #{pattern} covers has a trigger.\n"
 
-    :ok = Event.Bus.subscribe(key, level: :lifecycle)
+    :ok = Bus.subscribe(key, level: :lifecycle)
     {:ok, _pid} = WardrikTrigger.put(key, "hourly", every: "0 * * * *", prompt: "Ping.")
 
     {:ok, _pid} =
@@ -711,8 +721,8 @@ defmodule WardrikDaemon.CLITest do
 
     # A trigger announces a firing before it records it, so the second
     # firing is the first that finds the one before it written down.
-    assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :no_agent}}
-    assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :no_agent}}
+    assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "tick", outcome: :no_agent}}
+    assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "tick", outcome: :no_agent}}
 
     assert {output, 0} = command(["triggers", pattern])
     assert output =~ "2 triggers:"

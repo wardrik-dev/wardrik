@@ -13,8 +13,8 @@ defmodule WardrikDaemon.CLI.Follow do
   """
 
   alias Wardrik.AgentAddress
-  alias Wardrik.Event
-  alias Wardrik.Event.Bus
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias WardrikConsole.Printer
   alias WardrikDaemon.CLI.Terminal
 
@@ -63,7 +63,7 @@ defmodule WardrikDaemon.CLI.Follow do
 
     # The events are taken by a task of its own, writing to the same
     # terminal, while this process waits for the terminal to go.
-    task = Task.async(fn -> Enum.each(events, &IO.puts(JSON.encode!(&1.event))) end)
+    task = Task.async(fn -> Enum.each(events, &IO.puts(JSON.encode!(&1.cloudevent))) end)
 
     receive do
       {:DOWN, ^watching, :process, _pid, _reason} -> Task.shutdown(task, :brutal_kill)
@@ -100,9 +100,9 @@ defmodule WardrikDaemon.CLI.Follow do
     if Event.root?(event), do: outcome(payload)
   end
 
-  defp outcome(%Event.TurnFinished{}), do: :finished
-  defp outcome(%Event.TurnParked{}), do: :parked
-  defp outcome(%Event.TurnFailed{}), do: :failed
-  defp outcome(%Event.TurnInterrupted{}), do: :failed
+  defp outcome(%Bus.TurnFinished{}), do: :finished
+  defp outcome(%Bus.TurnParked{}), do: :parked
+  defp outcome(%Bus.TurnFailed{}), do: :failed
+  defp outcome(%Bus.TurnInterrupted{}), do: :failed
   defp outcome(_payload), do: nil
 end

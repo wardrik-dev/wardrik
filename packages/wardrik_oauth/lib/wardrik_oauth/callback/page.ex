@@ -3,7 +3,8 @@ defmodule WardrikOAuth.Callback.Page do
   The pages `WardrikOAuth.Callback` describes, as a plug a host serves where
   `WardrikOAuth.Callback.pages/1` says, handed the request with its path as
   it came: a callback for each provider configured, `check`, and a 404 for
-  anything else. What is shown is HTML-escaped, and every page is kept
+  anything else. The redirect URL's path is the whole of the request's,
+  from wherever the app mounted the plug that serves it. What is shown is HTML-escaped, and every page is kept
   from caches, referrers and frames, and loads nothing.
 
       {WardrikOAuth.Callback.Page, oauth: oauth}
@@ -30,7 +31,7 @@ defmodule WardrikOAuth.Callback.Page do
   def call(%Plug.Conn{method: "GET"} = conn, oauth: oauth) do
     conn = fetch_query_params(conn)
 
-    case under(conn.path_info, Callback.prefix(oauth)) do
+    case under(conn.script_name ++ conn.path_info, Callback.prefix(oauth)) do
       ["callback", provider] -> callback(conn, oauth, provider)
       ["check"] -> checked(conn)
       _elsewhere -> page(conn, 404, "Nothing here.")

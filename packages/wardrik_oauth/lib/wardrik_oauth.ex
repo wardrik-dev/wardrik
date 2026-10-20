@@ -83,6 +83,8 @@ defmodule WardrikOAuth do
   with no key is an error, and starts nothing.
   """
 
+  @behaviour Wardrik.Plugin
+
   require Logger
 
   alias Wardrik.Credential
@@ -139,19 +141,114 @@ defmodule WardrikOAuth do
   @provider ~w(resource issuer client_id client_secret scopes authorization_params flow)a
   @keys Map.new(@client ++ @redirect ++ @provider, &{Atom.to_string(&1), &1})
 
+  # The settings a plugin builds its WardrikOAuth from, in place of `:oauth`.
+  @settings ~w(client redirect providers req_options resolve poll_floor)a
+
   @doc """
   `host` serving the pages a browser comes back to from a sign-in, under
-  the redirect URL of `:oauth`, among its routes (see
-  `WardrikOAuth.Callback.pages/1`), and running `WardrikOAuth.Supervisor`,
-  the flows under way, among its children.
+  its redirect URL, among its routes (see `WardrikOAuth.Callback.pages/1`),
+  and running `WardrikOAuth.Supervisor`, the flows under way, among its
+  children.
+
+  As a plugin, it takes the settings `new/1` does: `:providers`,
+  `:redirect` and `:client`, and `:req_options`, `:resolve` and
+  `:poll_floor`. It keeps each token in the host's vault, which grants
+  through it, and offers its providers as the accounts people connect. On
+  an instance, it signs in to what its other plugins register as well, such
+  as the servers people add (`WardrikOAuth.Providers.Registered`):
+
+      config :my_app, MyApp.Agents,
+        store: [repo: MyApp.Repo],
+        vault: [keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]],
+        plugins: [
+          {WardrikOAuth,
+           redirect: [url: "https://myapp.example.com/agents/oauth"],
+           providers: [
+             github: [
+               resource: "https://api.githubcopilot.com/mcp/",
+               issuer: "https://github.com/login/oauth",
+               client_id: System.fetch_env!("GITHUB_CLIENT_ID"),
+               client_secret: System.fetch_env!("GITHUB_CLIENT_SECRET"),
+               scopes: ~w(repo)
+             ]
+           ]}
+        ]
+
+  A host that builds its seams itself passes `oauth:`, a `WardrikOAuth`
+  it wired them with, and gets the pages and the flows alone.
   """
   @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
+  @impl true
   def attach(%Wardrik.Host{} = host, opts) do
-    opts = Keyword.validate!(opts, [:oauth])
+    opts = Keyword.validate!(opts, [:oauth | @settings])
+    {oauth, settings} = Keyword.pop(opts, :oauth)
+    served(host, oauth, settings)
+  end
+
+  defp served(host, %__MODULE__{} = oauth, []), do: serving(host, oauth)
+
+  defp served(host, nil, settings) do
+    oauth = new([audit: Wardrik.Host.audit(host), added: registered(host)] ++ settings)
+    vault = %{vault!(host) | grants: oauth}
 
     host
-    |> Wardrik.Host.register(:routes, Callback.pages(Keyword.fetch!(opts, :oauth)))
+    |> Wardrik.Host.put(:credentials, vault)
+    |> Wardrik.Host.put(:connections, %WardrikOAuth.Connections{oauth: oauth, vault: vault})
+    |> serving(oauth)
+  end
+
+  defp served(_host, _oauth, _settings),
+    do: raise(ArgumentError, "WardrikOAuth takes :oauth, or the settings to build one, not both")
+
+  defp serving(host, oauth) do
+    host
+    |> Wardrik.Host.register(:routes, Callback.pages(oauth))
+    |> Wardrik.Host.register(:settings, [{__MODULE__, oauth: oauth}])
     |> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
+  end
+
+  defp registered(host) do
+    case Wardrik.Instance.of(host) do
+      nil -> %WardrikOAuth.Providers.None{}
+      instance -> %WardrikOAuth.Providers.Registered{instance: instance}
+    end
+  end
+
+  defp vault!(host) do
+    case Wardrik.Host.credentials(host) do
+      %WardrikVault{} = vault ->
+        vault
+
+      _none ->
+        raise ArgumentError,
+              "WardrikOAuth keeps the tokens people sign in with in a vault; " <>
+                "give the instance one, as vault: [keys: [System.fetch_env!(\"WARDRIK_VAULT_KEY\")]]"
+    end
+  end
+
+  @doc """
+  `:ok` where a plugin's `opts` name a redirect URL a provider may send a
+  browser back to and providers each as `new/1` takes them, or why not.
+  """
+  @spec validate(keyword()) :: :ok | {:error, String.t()}
+  @impl true
+  def validate(opts) do
+    url = opts[:redirect][:url]
+
+    cond do
+      not Keyword.keyword?(opts[:providers] || []) ->
+        {:error, "providers is a keyword list, each provider by its name"}
+
+      not is_binary(url) ->
+        {:error, "redirect names the URL a sign-in comes back to, as redirect: [url: url]"}
+
+      not Callback.redirect?(url) ->
+        {:error,
+         "#{url} is not one a provider sends a browser back to: https, or http on loopback"}
+
+      true ->
+        :ok
+    end
   end
 
   @doc """

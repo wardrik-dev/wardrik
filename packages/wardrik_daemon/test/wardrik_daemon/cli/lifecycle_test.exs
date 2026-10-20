@@ -13,7 +13,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.Fleet
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Audit
@@ -79,9 +79,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
   defp parked(org, name) do
     key = agent(org, name, config: Script.new({AgentRunners, :parking, [self(), "call_1"]}))
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     :ok = Agent.ask(key, "ship it", host: Host.host())
-    assert_receive %Event{payload: %Event.TurnParked{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
     assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :parked end)
     key
   end
@@ -264,7 +264,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                {"No agent #{org}/agent/* covers is taking a turn.\n", 0}
 
       :ok = Agent.ask(key, "ship it again", host: Host.host())
-      assert_receive %Event{payload: %Event.TurnParked{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
       assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :parked end)
 
       assert command(["agent", "cancel", org <> "/agent/*"]) ==

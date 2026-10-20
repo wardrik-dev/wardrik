@@ -5,7 +5,7 @@ defmodule Wardrik.APITest do
   alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentID
   alias Wardrik.Error
-  alias Wardrik.Event.Log.Entry
+  alias Wardrik.Event.RunCompleted
   alias Wardrik.Fleet.Member
   alias Wardrik.Forgetting
   alias Wardrik.Moving
@@ -100,20 +100,19 @@ defmodule Wardrik.APITest do
              Wardrik.agent_ask(scope, agent, "where is it?", id: "m1")
 
     assert_receive {:turn, _messages}, 5_000
-    assert_receive %Entry{log: ^agent, event: %{"type" => "wardrik.run.completed"}}, 5_000
+    assert_receive %RunCompleted{source: ^agent}, 5_000
     assert :ok = Wardrik.unsubscribe(scope, resources: resources)
 
     assert {:ok, events} = Wardrik.events(scope, resources: resources, after: cursor)
 
-    assert [%Entry{sequence: first} = entry, %Entry{sequence: second} | _rest] =
-             Enum.to_list(events)
-
-    assert second == first + 1
+    assert [first, second | _rest] = Enum.to_list(events)
+    assert sequence(second) == sequence(first) + 1
 
     assert {:ok, events} =
-             Wardrik.events(scope, resources: resources, after: Wardrik.cursor(cursor, entry))
+             Wardrik.events(scope, resources: resources, after: Wardrik.cursor(cursor, first))
 
-    assert [%Entry{sequence: ^second} | _rest] = Enum.to_list(events)
+    assert [again | _rest] = Enum.to_list(events)
+    assert again.id == second.id
     assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_clear(scope, agent)
   end
 
@@ -128,7 +127,7 @@ defmodule Wardrik.APITest do
         follow: true
       )
 
-    assert %Entry{log: ^agent} = Enum.find(events, &(&1.event["type"] == "wardrik.run.completed"))
+    assert %RunCompleted{source: ^agent} = Enum.find(events, &match?(%RunCompleted{}, &1))
   end
 
   test "a cursor moved from the head of many agents resumes after what it took, in each",
@@ -149,11 +148,11 @@ defmodule Wardrik.APITest do
     taken = scope |> Wardrik.events!(resources: resources, after: head) |> Enum.take(1)
     rest = Wardrik.events!(scope, resources: resources, after: moved(head, taken))
 
-    assert [%Entry{log: ^one}] = taken
-    assert rest |> Enum.to_list() |> Enum.all?(&(&1.log == one))
+    assert [%{source: ^one}] = taken
+    assert rest |> Enum.to_list() |> Enum.all?(&(&1.source == one))
 
     replayed = Wardrik.events!(scope, resources: resources, after: moved(:head, taken))
-    assert Enum.any?(replayed, &(&1.log == two))
+    assert Enum.any?(replayed, &(&1.source == two))
 
     assert {:error, %Error{type: :not_found}} =
              Wardrik.events_head(scope, resources: [Wardrik.Resource.parse!("globex/agent/*")])
@@ -161,7 +160,9 @@ defmodule Wardrik.APITest do
     assert_raise Error, fn -> Wardrik.events_head!(scope, resources: []) end
   end
 
-  defp moved(cursor, entries), do: Enum.reduce(entries, cursor, &Wardrik.cursor(&2, &1))
+  defp moved(cursor, events), do: Enum.reduce(events, cursor, &Wardrik.cursor(&2, &1))
+
+  defp sequence(%{cloudevent: %{"sequence" => sequence}}), do: String.to_integer(sequence)
 
   # An agent's turn is over once its log says so.
   defp settled(scope, agent) do
@@ -178,7 +179,7 @@ defmodule Wardrik.APITest do
 
     assert :ok = Wardrik.subscribe(scope)
     {:ok, _message} = Wardrik.agent_ask(scope, agent, "hi")
-    assert_receive %Entry{log: ^agent}, 5_000
+    assert_receive %{source: ^agent, cloudevent: _event}, 5_000
     assert :ok = Wardrik.unsubscribe(scope)
 
     assert {:ok, events} = Wardrik.events(scope, after: :head)
@@ -199,17 +200,17 @@ defmodule Wardrik.APITest do
     assert {:error, %Error{type: :not_found}} =
              Wardrik.agent_authorization_read(scope, agent, "call_1")
 
-    assert {:ok, %{"call_1" => {:approve, "Only staging."}}} =
+    assert {:ok, %Wardrik.Decided{decisions: %{"call_1" => {:approve, "Only staging."}}}} =
              Wardrik.agent_approve(scope, agent, "call_1", note: "Only staging.")
 
     denied = parked(scope)
 
-    assert {:ok, %{"call_1" => {:deny, "Not now."}}} =
+    assert {:ok, %Wardrik.Decided{decisions: %{"call_1" => {:deny, "Not now."}}}} =
              Wardrik.agent_deny(scope, denied, ["call_1"], reason: "Not now.")
 
     decided = parked(scope)
 
-    assert {:ok, %{"call_1" => {:approve, "Fine."}}} =
+    assert {:ok, %Wardrik.Decided{decisions: %{"call_1" => {:approve, "Fine."}}}} =
              Wardrik.agent_decide(scope, decided, %{"call_1" => {:approve, "Fine."}})
   end
 
@@ -314,12 +315,18 @@ defmodule Wardrik.APITest do
     assert :ok = Wardrik.agent_forget!(scope, agent)
 
     parked = parked(scope)
-    assert %{"call_1" => :approve} = Wardrik.agent_approve!(scope, parked, "call_1")
+
+    assert %Wardrik.Decided{decisions: %{"call_1" => :approve}} =
+             Wardrik.agent_approve!(scope, parked, "call_1")
+
     denied = parked(scope)
-    assert %{"call_1" => {:deny, _reason}} = Wardrik.agent_deny!(scope, denied, "call_1")
+
+    assert %Wardrik.Decided{decisions: %{"call_1" => {:deny, _reason}}} =
+             Wardrik.agent_deny!(scope, denied, "call_1")
+
     decided = parked(scope)
 
-    assert %{"call_1" => :approve} =
+    assert %Wardrik.Decided{decisions: %{"call_1" => :approve}} =
              Wardrik.agent_decide!(scope, decided, %{"call_1" => :approve})
 
     echo = start({AgentRunners, :echo, [self(), "ok"]})

@@ -6,7 +6,7 @@ defprotocol Wardrik.History do
   A turn's task hands the agent's history to its config's `:history` first,
   before the messages the turn answers join it, so those stay word for word.
   The agent keeps what it answers: the turn runs on it, a turn that parks or
-  is lost keeps it, and `Wardrik.Event.ContextCompacted` reports what changed on
+  is lost keeps it, and `Wardrik.Bus.ContextCompacted` reports what changed on
   the turn's trace. `Wardrik.Compaction`, the default, summarises the older
   part once the history outgrows what the model can read, and
   `Wardrik.History.All` keeps every message.
@@ -26,7 +26,7 @@ defprotocol Wardrik.History do
   turn carried on from a checkpoint or a park runs on the history it had.
   """
 
-  @typedoc "What a rewrite did, as `Wardrik.Event.ContextCompacted` reports it."
+  @typedoc "What a rewrite did, as `Wardrik.Bus.ContextCompacted` reports it."
   @type stats() :: %{
           messages_before: non_neg_integer(),
           messages_after: non_neg_integer(),

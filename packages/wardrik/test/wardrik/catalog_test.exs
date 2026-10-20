@@ -3,6 +3,7 @@ defmodule Wardrik.CatalogTest do
 
   alias Wardrik.Agent.Message
   alias Wardrik.AgentID
+  alias Wardrik.Bus
   alias Wardrik.Call
   alias Wardrik.Catalog
   alias Wardrik.Catalog.Agents
@@ -10,7 +11,6 @@ defmodule Wardrik.CatalogTest do
   alias Wardrik.Catalog.Self
   alias Wardrik.Definition
   alias Wardrik.Definitions
-  alias Wardrik.Event
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Test.AgentRunners
@@ -93,7 +93,7 @@ defmodule Wardrik.CatalogTest do
       id
     )
 
-    :ok = Event.Bus.subscribe(id)
+    :ok = Bus.subscribe(id)
     id
   end
 
@@ -220,7 +220,7 @@ defmodule Wardrik.CatalogTest do
           host: Wardrik.Test.host()
         )
 
-      assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^reconciler}}
+      assert_receive %Bus.Event{payload: %Bus.TurnFinished{}, source: %{agent_id: ^reconciler}}
 
       run = run(front, Agents, allowing(["agent_ask"]))
 
@@ -230,15 +230,15 @@ defmodule Wardrik.CatalogTest do
                  "content" => "Which deposits are open?"
                })
 
-      assert_receive %Event{
-        payload: %Event.MessageQueued{
+      assert_receive %Bus.Event{
+        payload: %Bus.MessageQueued{
           message: %Message{text: "Which deposits are open?", reply_to: [^front]}
         },
         source: %{agent_id: ^reconciler}
       }
 
-      assert_receive %Event{
-                       payload: %Event.MessageQueued{message: %Message{} = answer},
+      assert_receive %Bus.Event{
+                       payload: %Bus.MessageQueued{message: %Message{} = answer},
                        source: %{agent_id: ^front}
                      },
                      5_000
@@ -248,7 +248,7 @@ defmodule Wardrik.CatalogTest do
       assert answer.labels == ["outside"]
       assert Principal.id(answer.sender) == to_string(AgentID.resource(reconciler))
 
-      assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^front}}, 5_000
+      assert_receive %Bus.Event{payload: %Bus.TurnFinished{}, source: %{agent_id: ^front}}, 5_000
     end
 
     test "a read of an agent labels the call with what its history holds" do
@@ -261,7 +261,7 @@ defmodule Wardrik.CatalogTest do
           host: Wardrik.Test.host()
         )
 
-      assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^reconciler}}
+      assert_receive %Bus.Event{payload: %Bus.TurnFinished{}, source: %{agent_id: ^reconciler}}
 
       assert %Call{state: :done, labels: ["outside"], result: {:ok, %{"labels" => ["outside"]}}} =
                front

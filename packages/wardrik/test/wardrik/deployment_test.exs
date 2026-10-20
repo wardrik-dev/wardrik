@@ -6,7 +6,7 @@ defmodule Wardrik.DeploymentTest do
 
   alias Wardrik.Deployment.Nodes
   alias Wardrik.Error
-  alias Wardrik.Event.Log.Entry
+  alias Wardrik.Event.AgentsReloaded
   alias Wardrik.Host
   alias Wardrik.Principal
   alias Wardrik.Resource
@@ -139,8 +139,10 @@ defmodule Wardrik.DeploymentTest do
     [%{"sequence" => last} | _rest] = Enum.reverse(Audit.all())
     last = String.to_integer(last)
 
-    assert {:ok, [%Entry{sequence: ^last, event: %{"type" => "wardrik.agents.reloaded"}}]} =
+    assert {:ok, [%AgentsReloaded{source: :audit, cursor: nil} = change]} =
              Wardrik.deployment_audit(root(), after: last - 1, limit: 1)
+
+    assert String.to_integer(change.cloudevent["sequence"]) == last
 
     assert {:ok, []} = Wardrik.deployment_audit(root(), after: last, limit: 10)
     assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_audit(scope())

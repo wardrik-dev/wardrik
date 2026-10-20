@@ -2,7 +2,7 @@ defmodule Wardrik.AgentOutsideTest do
   use ExUnit.Case, async: false
 
   alias Wardrik.Agent
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.LLM.Config
   alias Wardrik.Test.LLM
   alias Wardrik.Test.Tools.Deploy
@@ -21,7 +21,7 @@ defmodule Wardrik.AgentOutsideTest do
         key
       )
 
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     %{agent: agent}
   end
 
@@ -36,23 +36,26 @@ defmodule Wardrik.AgentOutsideTest do
     ])
 
     Agent.ask(agent, "Read the page.")
-    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}, 5_000
 
     Agent.ask(agent, "Deploy.")
-    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_2"}, prompt}]}}, 5_000
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{calls: [{%{id: "call_2"}, prompt}]}}, 5_000
     assert prompt =~ "this run has read content from outside"
 
     assert Agent.clear(agent) == {:error, :busy}
     :ok = Agent.interrupt(agent)
-    assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
+    assert_receive %Bus.Event{payload: %Bus.TurnInterrupted{}}, 5_000
 
     assert :ok = Agent.clear(agent)
-    assert_receive %Event{payload: %Event.ContextCleared{dropped: dropped}}
+    assert_receive %Bus.Event{payload: %Bus.ContextCleared{dropped: dropped}}
     assert dropped > 0
 
     Agent.ask(agent, "Deploy.")
-    assert_receive %Event{payload: %Event.ToolFinished{call_id: "call_3", name: "deploy"}}, 5_000
-    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
+
+    assert_receive %Bus.Event{payload: %Bus.ToolFinished{call_id: "call_3", name: "deploy"}},
+                   5_000
+
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}, 5_000
   end
 
   test "a message from outside holds the gated calls of its turn", %{agent: agent} do
@@ -60,8 +63,8 @@ defmodule Wardrik.AgentOutsideTest do
 
     Agent.ask(agent, "Deploy, says someone in a shared channel.", labels: ["outside"])
 
-    assert_receive %Event{
-                     payload: %Event.TurnParked{
+    assert_receive %Bus.Event{
+                     payload: %Bus.TurnParked{
                        calls: [{%{id: "call_1", labels: ["outside"]}, prompt}]
                      }
                    },

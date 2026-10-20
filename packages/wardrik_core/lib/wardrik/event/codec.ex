@@ -1,6 +1,6 @@
 defmodule Wardrik.Event.Codec do
   @moduledoc """
-  A `Wardrik.Event`, or a `Wardrik.Audit` change, as a CloudEvent: the map,
+  A `Wardrik.Bus.Event`, or a `Wardrik.Audit` change, as a CloudEvent: the map,
   with string keys, that the event log stores and the HTTP API sends.
 
       {:ok, cloud_event} = Wardrik.Event.Codec.encode(event, sequence: 41)
@@ -62,9 +62,11 @@ defmodule Wardrik.Event.Codec do
 
   alias Wardrik.AgentAddress
   alias Wardrik.Audit
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Call.Pipeline
-  alias Wardrik.Event
   alias Wardrik.Event.Codec.Value
+  alias Wardrik.Event.Log
   alias Wardrik.LLM.Answer
   alias Wardrik.Resource
 
@@ -132,7 +134,7 @@ defmodule Wardrik.Event.Codec do
   def durable?(type) when is_atom(type), do: type not in @live and type not in @skipped
 
   @doc "The CloudEvents `source` of a log's events: an agent's, or `:audit`."
-  @spec source(Event.Log.log()) :: String.t()
+  @spec source(Log.log()) :: String.t()
   def source(:audit), do: "wardrik://local/audit"
   def source(agent_id), do: "wardrik://local/agents/#{agent_id}"
 
@@ -184,16 +186,16 @@ defmodule Wardrik.Event.Codec do
 
   # -- runs --------------------------------------------------------------------
 
-  defp run(%Event.TurnStarted{messages: messages}, event, _opts),
+  defp run(%Bus.TurnStarted{messages: messages}, event, _opts),
     do: in_run("run.started", event, %{"message_ids" => Enum.map(messages, & &1.id)}, %{})
 
-  defp run(%Event.TurnFinished{messages: messages}, event, _opts),
+  defp run(%Bus.TurnFinished{messages: messages}, event, _opts),
     do: in_run("run.completed", event, %{}, %{"messages" => Enum.map(messages, &Value.message/1)})
 
-  defp run(%Event.TurnFailed{reason: reason}, event, _opts),
+  defp run(%Bus.TurnFailed{reason: reason}, event, _opts),
     do: in_run("run.failed", event, %{}, %{"error" => Value.error(reason)})
 
-  defp run(%Event.TurnInterrupted{stats: stats}, event, _opts) do
+  defp run(%Bus.TurnInterrupted{stats: stats}, event, _opts) do
     in_run("run.cancelled", event, %{}, %{
       "dropped" => stats.dropped,
       "kept" => stats.kept,
@@ -202,19 +204,19 @@ defmodule Wardrik.Event.Codec do
     })
   end
 
-  defp run(%Event.TurnParked{calls: calls}, event, _opts),
+  defp run(%Bus.TurnParked{calls: calls}, event, _opts),
     do:
       in_run("run.interrupted", event, %{}, %{
         "interrupts" => Enum.map(calls, &Value.interrupt/1)
       })
 
-  defp run(%Event.TurnResumed{}, event, _opts),
+  defp run(%Bus.TurnResumed{}, event, _opts),
     do: in_run("run.resumed", event, %{}, %{})
 
-  defp run(%Event.DeadlineReached{message_count: count}, event, _opts),
+  defp run(%Bus.DeadlineReached{message_count: count}, event, _opts),
     do: in_run("run.deadline_exceeded", event, %{}, %{"message_count" => count})
 
-  defp run(%Event.CallDecided{call_id: call_id, decision: decision, by: by}, _event, _opts) do
+  defp run(%Bus.CallDecided{call_id: call_id, decision: decision, by: by}, _event, _opts) do
     {verdict, key, said} =
       case decision do
         :approve -> {"approved", "note", nil}
@@ -232,7 +234,7 @@ defmodule Wardrik.Event.Codec do
 
   # -- the agent and its conversation --------------------------------------------
 
-  defp agent(%Event.MessageQueued{message: message}, _event, _opts) do
+  defp agent(%Bus.MessageQueued{message: message}, _event, _opts) do
     data =
       Value.put(%{"message" => Value.user(message)}, "sender", Value.principal(message.sender))
 
@@ -240,7 +242,7 @@ defmodule Wardrik.Event.Codec do
   end
 
   defp agent(
-         %Event.AgentStarted{node: node, status: status, generation: generation},
+         %Bus.AgentStarted{node: node, status: status, generation: generation},
          event,
          _opts
        ) do
@@ -256,14 +258,14 @@ defmodule Wardrik.Event.Codec do
      }}
   end
 
-  defp agent(%Event.AgentStopped{node: node, reason: reason}, event, _opts) do
+  defp agent(%Bus.AgentStopped{node: node, reason: reason}, event, _opts) do
     key = to_string(event.source.agent_id)
 
     {"agent.stopped", "agents/" <> key,
      %{"agent" => %{"id" => key}, "node" => to_string(node), "reason" => to_string(reason)}}
   end
 
-  defp agent(%Event.ContextCompacted{stats: stats}, event, _opts) do
+  defp agent(%Bus.ContextCompacted{stats: stats}, event, _opts) do
     {"conversation.compacted", "agents/#{event.source.agent_id}",
      %{
        "messages_before" => stats.messages_before,
@@ -273,37 +275,37 @@ defmodule Wardrik.Event.Codec do
      }}
   end
 
-  defp agent(%Event.ContextCleared{dropped: dropped}, event, _opts),
+  defp agent(%Bus.ContextCleared{dropped: dropped}, event, _opts),
     do:
       {"conversation.cleared", "agents/#{event.source.agent_id}", %{"messages_before" => dropped}}
 
-  defp agent(%Event.TriggerFired{name: name, outcome: outcome}, event, _opts) do
+  defp agent(%Bus.TriggerFired{name: name, outcome: outcome}, event, _opts) do
     {"trigger.fired", "agents/#{event.source.agent_id}",
      %{"trigger" => %{"name" => name}, "status" => to_string(outcome)}}
   end
 
-  defp agent(%Event.ActivityChanged{activity: activity}, event, _opts),
+  defp agent(%Bus.ActivityChanged{activity: activity}, event, _opts),
     do:
       {"activity.changed", "agents/#{event.source.agent_id}",
        %{"activity" => Value.activity(activity)}}
 
   # -- steps and subagents -------------------------------------------------------
 
-  defp step(%Event.SpanStarted{name: name}, event, _opts),
+  defp step(%Bus.SpanStarted{name: name}, event, _opts),
     do: {"step.started", step_subject(event), %{"step" => %{"name" => name}}}
 
-  defp step(%Event.SpanFinished{outcome: outcome, duration_ms: ms}, event, _opts),
+  defp step(%Bus.SpanFinished{outcome: outcome, duration_ms: ms}, event, _opts),
     do: {"step.completed", step_subject(event), outcome(%{"duration_ms" => ms}, outcome)}
 
-  defp step(%Event.DelegationStarted{prompt: prompt}, event, _opts),
+  defp step(%Bus.DelegationStarted{prompt: prompt}, event, _opts),
     do: {"subagent.started", step_subject(event), subagent(event, %{"prompt" => prompt})}
 
-  defp step(%Event.DelegationFinished{outcome: {:ok, text}, duration_ms: ms}, event, _opts) do
+  defp step(%Bus.DelegationFinished{outcome: {:ok, text}, duration_ms: ms}, event, _opts) do
     data = %{"message" => Value.assistant(text), "duration_ms" => ms}
     {"subagent.completed", step_subject(event), subagent(event, data)}
   end
 
-  defp step(%Event.DelegationFinished{outcome: {:error, reason}, duration_ms: ms}, event, _opts) do
+  defp step(%Bus.DelegationFinished{outcome: {:error, reason}, duration_ms: ms}, event, _opts) do
     data = %{"error" => Value.error(reason), "duration_ms" => ms}
     {"subagent.failed", step_subject(event), subagent(event, data)}
   end
@@ -311,7 +313,7 @@ defmodule Wardrik.Event.Codec do
   # -- assistant messages --------------------------------------------------------
 
   defp message(
-         %Event.ModelStarted{message_id: message_id, model_spec: spec, decided_by: decided_by},
+         %Bus.ModelStarted{message_id: message_id, model_spec: spec, decided_by: decided_by},
          _event,
          _opts
        ) do
@@ -329,7 +331,7 @@ defmodule Wardrik.Event.Codec do
   end
 
   defp message(
-         %Event.ModelFinished{
+         %Bus.ModelFinished{
            message_id: message_id,
            outcome: outcome,
            duration_ms: ms,
@@ -349,7 +351,7 @@ defmodule Wardrik.Event.Codec do
     {"message.completed", "messages/" <> message_id, data}
   end
 
-  defp message(%Event.ModelRetrying{message_id: message_id} = retrying, _event, _opts) do
+  defp message(%Bus.ModelRetrying{message_id: message_id} = retrying, _event, _opts) do
     data = %{
       "message" => %{"id" => message_id},
       "attempt" => retrying.attempt,
@@ -361,9 +363,9 @@ defmodule Wardrik.Event.Codec do
     {"message.retrying", "messages/" <> message_id, data}
   end
 
-  defp message(%Event.Result{text: text}, _event, opts), do: delta("message.delta", text, opts)
+  defp message(%Bus.Result{text: text}, _event, opts), do: delta("message.delta", text, opts)
 
-  defp message(%Event.Thinking{text: text}, _event, opts),
+  defp message(%Bus.Thinking{text: text}, _event, opts),
     do: delta("reasoning.delta", text, opts)
 
   # A model that answered and that nobody prices is said to cost null, which
@@ -374,7 +376,7 @@ defmodule Wardrik.Event.Codec do
   # -- tool calls ----------------------------------------------------------------
 
   defp tool(
-         %Event.ToolStarted{
+         %Bus.ToolStarted{
            call_id: id,
            name: name,
            arguments: arguments,
@@ -393,7 +395,7 @@ defmodule Wardrik.Event.Codec do
   end
 
   defp tool(
-         %Event.ToolFinished{
+         %Bus.ToolFinished{
            call_id: id,
            name: name,
            result: result,
@@ -405,11 +407,11 @@ defmodule Wardrik.Event.Codec do
        ),
        do: completed(id, name, result, false, served_by, cost)
 
-  defp tool(%Event.ToolReplayed{call_id: id, name: name, result: result}, _event, _opts),
+  defp tool(%Bus.ToolReplayed{call_id: id, name: name, result: result}, _event, _opts),
     do: completed(id, name, result, true, nil, nil)
 
   defp tool(
-         %Event.ToolDenied{call_id: id, name: name, reason: reason, decided_by: decided_by},
+         %Bus.ToolDenied{call_id: id, name: name, reason: reason, decided_by: decided_by},
          _event,
          _opts
        ) do
@@ -422,7 +424,7 @@ defmodule Wardrik.Event.Codec do
   end
 
   defp tool(
-         %Event.ToolProgress{call_id: id, name: name, progress: progress, total: total},
+         %Bus.ToolProgress{call_id: id, name: name, progress: progress, total: total},
          _event,
          _opts
        ) do

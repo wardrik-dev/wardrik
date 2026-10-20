@@ -1,35 +1,22 @@
 defmodule MyAppWeb.Session do
   @moduledoc """
-  Knows a request to the agents' API by a token this app gave its user,
-  signed with the endpoint's secret.
+  The token this app gives a user for the agents' API, signed with the
+  endpoint's secret, and the user a request presents one for.
   """
 
-  @enforce_keys [:endpoint]
-  defstruct [:endpoint]
+  @day 86_400
 
   @doc "A token `user` presents as `Authorization: Bearer TOKEN`."
   def token(%MyApp.Accounts.User{} = user),
     do: Phoenix.Token.sign(MyAppWeb.Endpoint, "agents", user)
-end
 
-defimpl WardrikHTTP.Authenticator, for: MyAppWeb.Session do
-  import Plug.Conn
-
-  @day 86_400
-
-  def authenticate(session, conn) do
-    with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         {:ok, user} <- Phoenix.Token.verify(session.endpoint, "agents", token, max_age: @day) do
-      token = %Wardrik.Token{
-        principal: MyApp.Issuer.principal(user),
-        scope: MyApp.Issuer.scope(user.org, to_string(user.id))
-      }
-
-      {:ok, %WardrikHTTP.Caller{id: "session/#{user.id}", name: user.email, token: token}}
+  @doc "The user `conn`'s token is for, or `:error`."
+  def user(conn) do
+    with ["Bearer " <> token] <- Plug.Conn.get_req_header(conn, "authorization"),
+         {:ok, user} <- Phoenix.Token.verify(MyAppWeb.Endpoint, "agents", token, max_age: @day) do
+      {:ok, user}
     else
-      _no_session -> {:error, :unauthorized}
+      _no_session -> :error
     end
   end
-
-  def challenge(_session), do: ~s(Bearer realm="my_app")
 end

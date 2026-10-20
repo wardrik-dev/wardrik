@@ -20,7 +20,6 @@ defmodule WardrikDaemon.JudgeReplay do
 
   alias Wardrik.AgentID
   alias Wardrik.Definition
-  alias Wardrik.Event.Log.Entry
   alias Wardrik.LLM.Config
   alias Wardrik.Run
   alias Wardrik.Scope
@@ -127,9 +126,9 @@ defmodule WardrikDaemon.JudgeReplay do
   end
 
   # Each call that ran whole, once, with who let it run where a person did.
-  defp calls(entries, judge) do
+  defp calls(events, judge) do
     {started, resolved} =
-      Enum.reduce(entries, {%{}, %{}}, fn %Entry{log: log, event: event}, {started, resolved} ->
+      Enum.reduce(events, {%{}, %{}}, fn %{source: log, cloudevent: event}, {started, resolved} ->
         case event do
           %{"type" => "wardrik.tool_call.started", "data" => data} ->
             {Map.put_new(started, {log, data["tool"]["call"]["id"]}, {event, data}), resolved}

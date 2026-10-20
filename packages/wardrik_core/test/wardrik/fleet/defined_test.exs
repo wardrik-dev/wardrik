@@ -6,7 +6,7 @@ defmodule Wardrik.Fleet.DefinedTest do
   alias DurableServer.StorageBackend
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.Fleet
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
@@ -34,10 +34,10 @@ defmodule Wardrik.Fleet.DefinedTest do
              Fleet.list(Wardrik.AgentID.resource(key), host: Wardrik.Test.host())
 
     LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Hello.")])
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     :ok = Agent.ask(key, "hi", host: Wardrik.Test.host())
 
-    assert_receive %Event{payload: %Event.TurnFinished{}}, 2_000
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}, 2_000
     assert Fleet.stored?(key)
   end
 

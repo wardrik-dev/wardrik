@@ -13,10 +13,10 @@ defmodule WardrikChannel.Replies.Follower do
   use Wardrik.Listener
 
   @impl Wardrik.Listener
-  def handle(entry, %Wardrik.Listener{options: opts} = listener) do
+  def handle(event, %Wardrik.Listener{options: opts} = listener) do
     GenServer.call(
       Keyword.fetch!(opts, :server),
-      {:entry, Keyword.fetch!(opts, :thread), entry, listener.cursor},
+      {:event, Keyword.fetch!(opts, :thread), event, listener.cursor},
       :infinity
     )
   end

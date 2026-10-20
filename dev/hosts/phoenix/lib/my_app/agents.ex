@@ -1,89 +1,27 @@
 defmodule MyApp.Agents do
-  @moduledoc "Wardrik in this app: where it keeps everything, what runs, and what users do with agents."
+  @moduledoc "Wardrik in this app: who each user is to it, and what they may do with agents."
 
-  alias Wardrik.AgentID
+  use Wardrik, otp_app: :my_app
 
-  def store, do: Wardrik.store(repo: MyApp.Repo)
+  @impl Wardrik
+  def principal(%MyApp.Accounts.User{org: org, id: id, email: email}),
+    do: %{org: org, id: id, name: email}
 
-  def wardrik do
-    vault = vault()
+  # Each user owns their own agents, and reads and messages their org's.
+  @impl Wardrik
+  def grants(_who), do: [owner: :own, reader: :org, messenger: :org]
 
-    Wardrik.new(
-      store: store(),
-      issuer: %MyApp.Issuer{},
-      credentials: vault,
-      connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault}
-    )
-    |> WardrikMCP.attach(
-      servers: [
-        github: [
-          transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
-          credential: "github"
-        ]
-      ]
-    )
-    |> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
-    |> WardrikChannel.attach(MyApp.Slack.settings())
-    |> WardrikHTTP.attach(
-      port: 4850,
-      authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}
-    )
-  end
+  @impl Wardrik
+  def authenticate(conn), do: MyAppWeb.Session.user(conn)
 
-  def vault,
-    do:
-      WardrikVault.new(
-        store: store(),
-        keys: [System.fetch_env!("WARDRIK_VAULT_KEY")],
-        grants: oauth()
-      )
-
-  def oauth do
-    WardrikOAuth.new(
-      client: [name: "My app"],
-      providers: [
-        github: [
-          resource: "https://api.githubcopilot.com/mcp/",
-          issuer: "https://github.com/login/oauth",
-          client_id: System.get_env("GITHUB_CLIENT_ID"),
-          client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
-          scopes: ~w(repo)
-        ]
-      ],
-      redirect: [url: System.get_env("MY_APP_URL", "http://localhost:4000") <> "/oauth"]
-    )
-  end
-
-  def children, do: [{WardrikStore, store()}, {Wardrik, wardrik()}, {MyApp.Agents.Runs, wardrik()}]
-
-  def define(user, name, definition) do
-    agent = AgentID.new!(name, org: user.org, user: to_string(user.id))
-    Wardrik.agent_define(scope(user), agent, definition)
-  end
-
-  def ask(user, agent, text), do: Wardrik.agent_ask(scope(user), agent, text)
-
-  def subscribe(user, agent),
-    do: Wardrik.subscribe(scope(user), resources: [AgentID.resource(agent)])
-
-  def events(user, agent, cursor),
-    do:
-      Wardrik.events(scope(user),
-        resources: [AgentID.resource(agent)],
-        after: cursor,
-        follow: true
-      )
-
+  @doc "What `user`'s `agent` is doing, as someone would say it."
   def doing(user, agent) do
-    with {:ok, snapshot} <- Wardrik.agent_read(scope(user), agent) do
-      {:ok, Wardrik.Agent.Activity.Presenter.label(%Wardrik.Agent.Activity.English{}, snapshot.status.activity)}
+    with {:ok, snapshot} <- get(user, agent) do
+      {:ok,
+       Wardrik.Agent.Activity.Presenter.label(
+         %Wardrik.Agent.Activity.English{},
+         snapshot.status.activity
+       )}
     end
   end
-
-  def connect(user, provider),
-    do: Wardrik.connections_connect(scope(user), MyApp.Issuer.own(user), provider)
-
-  def connections(user), do: Wardrik.connections_list(scope(user), MyApp.Issuer.own(user))
-
-  defp scope(user), do: Wardrik.as(wardrik(), MyApp.Issuer.principal(user))
 end

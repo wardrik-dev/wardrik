@@ -4,10 +4,10 @@ defmodule Wardrik.Call.PipelineTest do
   import ExUnit.CaptureLog
   import Wardrik.Test, only: [host: 0, host: 1]
 
+  alias Wardrik.Bus
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
   alias Wardrik.Conversation
-  alias Wardrik.Event
   alias Wardrik.Ledger
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Request
@@ -118,7 +118,7 @@ defmodule Wardrik.Call.PipelineTest do
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
-    :ok = Event.Bus.subscribe(agent_id)
+    :ok = Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end
 
@@ -286,8 +286,8 @@ defmodule Wardrik.Call.PipelineTest do
       ledgered = %{ledgered | hooks: saying(:pass)}
       assert %Call{state: :done} = ledgered |> call("call_2", "echo") |> Pipeline.run()
 
-      assert_received %Event{
-        payload: %Event.ToolReplayed{call_id: "call_2", name: "echo", result: {:ok, "hi"}}
+      assert_received %Bus.Event{
+        payload: %Bus.ToolReplayed{call_id: "call_2", name: "echo", result: {:ok, "hi"}}
       }
 
       refute_received {:settled, _call}
@@ -300,8 +300,8 @@ defmodule Wardrik.Call.PipelineTest do
       |> call("call_1", "echo")
       |> Pipeline.run()
 
-      assert_received %Event{
-        payload: %Event.ToolStarted{
+      assert_received %Bus.Event{
+        payload: %Bus.ToolStarted{
           call_id: "call_1",
           name: "echo",
           arguments: %{},
@@ -309,8 +309,8 @@ defmodule Wardrik.Call.PipelineTest do
         }
       }
 
-      assert_received %Event{
-        payload: %Event.ToolFinished{
+      assert_received %Bus.Event{
+        payload: %Bus.ToolFinished{
           call_id: "call_1",
           name: "echo",
           result: {:ok, "hi"},
@@ -320,8 +320,8 @@ defmodule Wardrik.Call.PipelineTest do
 
       run(agent_id, tools: [served]) |> call("call_2", "echo") |> Pipeline.run()
 
-      assert_received %Event{
-        payload: %Event.ToolStarted{
+      assert_received %Bus.Event{
+        payload: %Bus.ToolStarted{
           call_id: "call_2",
           name: "echo",
           arguments: %{},
@@ -333,8 +333,8 @@ defmodule Wardrik.Call.PipelineTest do
       |> call("call_3", "echo")
       |> Pipeline.run()
 
-      assert_received %Event{
-        payload: %Event.ToolDenied{
+      assert_received %Bus.Event{
+        payload: %Bus.ToolDenied{
           call_id: "call_3",
           name: "echo",
           reason: "No.",
@@ -357,8 +357,8 @@ defmodule Wardrik.Call.PipelineTest do
       assert prompt =~ "The worker went away before it answered."
       assert_received {:ran, "refund", false}
 
-      assert_received %Event{
-        payload: %Event.ToolParked{call_id: "call_1", name: "refund", prompt: ^prompt}
+      assert_received %Bus.Event{
+        payload: %Bus.ToolParked{call_id: "call_1", name: "refund", prompt: ^prompt}
       }
 
       assert {:ok, %Ledger.Entry{result: nil}} =
@@ -376,8 +376,8 @@ defmodule Wardrik.Call.PipelineTest do
       assert_received {:ran, false, key}
       assert_received {:ran, true, ^key}
 
-      assert_received %Event{
-        payload: %Event.ToolFinished{
+      assert_received %Bus.Event{
+        payload: %Bus.ToolFinished{
           call_id: "call_1",
           name: "refund",
           result: {:ok, _},
@@ -416,8 +416,8 @@ defmodule Wardrik.Call.PipelineTest do
       assert_received {:ran, "refund", false}
       assert_received {:ran, "refund", true}
 
-      assert_received %Event{
-        payload: %Event.ToolStarted{
+      assert_received %Bus.Event{
+        payload: %Bus.ToolStarted{
           call_id: "call_1",
           name: "refund",
           decided_by: %{by: :person, hooks: []}
@@ -435,8 +435,8 @@ defmodule Wardrik.Call.PipelineTest do
 
       waiting |> Call.under(run) |> Pipeline.answer({:deny, "Leave it."}) |> Pipeline.run()
 
-      assert_received %Event{
-        payload: %Event.ToolDenied{
+      assert_received %Bus.Event{
+        payload: %Bus.ToolDenied{
           call_id: "call_1",
           name: "refund",
           reason: reason,

@@ -23,7 +23,6 @@ defmodule WardrikChannel.Replies.Server do
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Activity.Presenter
   alias Wardrik.AgentAddress
-  alias Wardrik.Event.Log.Entry
   alias Wardrik.Principal
   alias Wardrik.Thread
   alias WardrikChannel.Channel
@@ -91,13 +90,13 @@ defmodule WardrikChannel.Replies.Server do
   # A change in what an agent is doing says only that it changed: what it
   # is doing is read from the agent as it is shown.
   def handle_call(
-        {:entry, thread, %Entry{event: %{"type" => "wardrik.activity.changed"}}, _cursor},
+        {:event, thread, %Wardrik.Event.ActivityChanged{}, _cursor},
         _from,
         state
       ),
       do: {:reply, :ok, changed(state, thread)}
 
-  def handle_call({:entry, thread, %Entry{event: event}, cursor}, from, state),
+  def handle_call({:event, thread, %{cloudevent: event}, cursor}, from, state),
     do: posting(state, thread, {event, cursor, from}, 1)
 
   @impl DurableServer

@@ -62,8 +62,8 @@ process of its own, on its agent's definition. The fleet is listed and stopped
 by `Wardrik.Resource` pattern, as `acme/agent/*`, and watched whole.
 
 `ask/2` returns at once. The agent takes its messages one turn at a time, and
-what it does arrives as `Wardrik.Event`s: the text as it streams, each tool
-call, and how each turn ended. `Wardrik.Event.ActivityChanged` says what it
+what it does arrives as `Wardrik.Bus.Event`s: the text as it streams, each tool
+call, and how each turn ended. `Wardrik.Bus.ActivityChanged` says what it
 is doing now, a `Wardrik.Agent.Activity`, each time that changes, and a
 `Wardrik.Agent.Activity.Presenter` puts it in words, such as `running
 web_search and fetch_page`. `Wardrik.Agent.snapshot/1` gives a client that
@@ -254,7 +254,7 @@ Wardrik.LLM.Config.new(history: %Wardrik.History.All{})   # never
 ```
 
 It happens as a turn begins, before the messages it answers join the history,
-and is reported as `Wardrik.Event.ContextCompacted`, with the messages and
+and is reported as `Wardrik.Bus.ContextCompacted`, with the messages and
 tokens before and after. The summary is a model call of the turn's like any
 other, so a budget counts it, and interrupting the turn interrupts it. Compaction is the default `Wardrik.History`: a struct of your
 own that implements it can keep the history its way instead.
@@ -339,7 +339,7 @@ without notice.
 | Agents and the fleet | `Wardrik.Core`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.LLM.Retry`, `Wardrik.LLM.Retry.Backoff`, `Wardrik.History`, `Wardrik.History.All`, `Wardrik.Compaction`, `Wardrik.TimeZone` |
 | Who acts, and what `Wardrik` answers them | `Wardrik.Token`, `Wardrik.Statement`, `Wardrik.Role`, `Wardrik.Resource`, `Wardrik.Error`, `Wardrik.JSON`, `Wardrik.Agent.Message`, `Wardrik.Deployment.Nodes` |
 | What people changed | `Wardrik.Audit` |
-| Following what agents do | `Wardrik.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Event.Bus`, `Wardrik.Event.Cursor`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Conversation` and the modules under it |
+| Following what agents do | `Wardrik.Bus.Event`, `Wardrik.Agent.Activity`, `Wardrik.Agent.Activity.Presenter`, `Wardrik.Agent.Activity.English`, `Wardrik.Bus`, `Wardrik.Event.Cursor`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Conversation` and the modules under it |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.Call.Pipeline`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Tools`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |
 

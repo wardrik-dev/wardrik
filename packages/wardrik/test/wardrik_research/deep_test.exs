@@ -1,7 +1,7 @@
 defmodule WardrikResearch.DeepTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.LLM.Config
   alias Wardrik.Run
   alias Wardrik.Test.Calls
@@ -12,7 +12,7 @@ defmodule WardrikResearch.DeepTest do
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
-    :ok = Event.Bus.subscribe(agent_id)
+    :ok = Bus.subscribe(agent_id)
 
     config = Config.new(tools: [SearchTool, Deep])
 
@@ -374,7 +374,7 @@ defmodule WardrikResearch.DeepTest do
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing"]}, run, [])
 
-      assert_receive %Event{payload: %Event.Result{}} = event
+      assert_receive %Bus.Event{payload: %Bus.Result{}} = event
       assert event.source.agent_id == agent_id
     end
   end
@@ -442,8 +442,8 @@ defmodule WardrikResearch.DeepTest do
 
   defp collect_spans(acc \\ []) do
     receive do
-      %Event{payload: %Event.Result{}, source: source} -> collect_spans([source.trace | acc])
-      %Event{} -> collect_spans(acc)
+      %Bus.Event{payload: %Bus.Result{}, source: source} -> collect_spans([source.trace | acc])
+      %Bus.Event{} -> collect_spans(acc)
     after
       0 -> acc
     end

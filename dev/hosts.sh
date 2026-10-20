@@ -4,8 +4,8 @@
 # Phoenix app running the code of the embedding and listening guides, kept in
 # dev/hosts/phoenix and renamed for it, which keeps Wardrik in its own Repo,
 # starts it in its own tree with what the guides add, and follows the agents'
-# events into tables of its own, and a bare Mix app that keeps it in an
-# S3 bucket. Neither depends on :ekv, and the bare one not on :ecto_sql
+# events into tables of its own, and a bare Mix app, with `use Wardrik`, that
+# keeps it in an S3 bucket. Neither depends on :ekv, and the bare one not on :ecto_sql
 # either, so each shows Wardrik compiling and running without what it leaves
 # out. First it builds the Hex packages as mix hex.build has them, and
 # compiles Wardrik's alone, from those, without its optional dependencies,
@@ -86,6 +86,9 @@ check() {
 
 phoenix() {
   say "Making a Phoenix app, host, that keeps Wardrik in its Repo"
+  # What the app's config reads as it starts, which its mix tasks do too.
+  export WARDRIK_VAULT_KEY=${WARDRIK_VAULT_KEY:-$(openssl rand -base64 32)}
+  export SLACK_CLIENT_ID=hosts SLACK_CLIENT_SECRET=hosts SLACK_SIGNING_SECRET=hosts
   mix archive.install hex phx_new --force >/dev/null
   rm -rf "$dir/host"
   (cd "$dir" && mix phx.new host --no-assets --no-dashboard --no-gettext --no-html \
@@ -102,10 +105,11 @@ phoenix() {
     sed 's/MyAppWeb/HostWeb/g; s/MyApp/Host/g; s/my_app/host/g' "$repo/dev/hosts/phoenix/$file" >"$target"
   done
 
-  perl -0pi -e 's/(      Host\.Repo),\n/$1\n    ] ++ Host.Agents.children() ++ [\n/; s/strategy: :one_for_one/strategy: :rest_for_one/' lib/host/application.ex
-  grep -q 'Host.Agents.children()' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
-  perl -0pi -e 's/(  scope "\/api", HostWeb do\n    pipe_through :api\n  end\n)/$1\n  scope "\/oauth", HostWeb do\n    get "\/callback\/:provider", OAuthController, :callback\n  end\n/' lib/host_web/router.ex
-  grep -q 'OAuthController' lib/host_web/router.ex || die "host's router has no /api scope to put the sign-in callback after"
+  perl -0pi -e 's/(      Host\.Repo,\n)/$1      Host.Agents,\n      Host.Agents.Runs,\n/; s/strategy: :one_for_one/strategy: :rest_for_one/' lib/host/application.ex
+  grep -q 'Host.Agents.Runs' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
+  perl -0pi -e 's/(  scope "\/api", HostWeb do\n    pipe_through :api\n  end\n)/$1\n  forward "\/agents", WardrikHTTP.Plug, agents: Host.Agents\n/' lib/host_web/router.ex
+  grep -q 'WardrikHTTP.Plug' lib/host_web/router.ex || die "host's router has no /api scope to forward the agents' API after"
+  sed 's/MyAppWeb/HostWeb/g; s/MyApp/Host/g; s/my_app/host/g' "$repo/dev/hosts/phoenix/config/runtime.exs" >>config/runtime.exs
 
   perl -0pi -e 's/(# Import environment specific config)/config :os_mon, start_cpu_sup: false, start_disksup: false, start_memsup: false\n\n$1/' config/config.exs
   printf '\nconfig :host, Host.Repo, url: "%s"\nconfig :logger, level: :warning\n' \
@@ -118,9 +122,7 @@ phoenix() {
   cd "$repo"
 
   WARDRIK_HOST=Host.Agents WARDRIK_HOST_STORE=WardrikEcto.Store WARDRIK_HOST_WITHOUT=EKV \
-    WARDRIK_HOST_REPO=Host.Repo WARDRIK_HOST_TREE=agents WARDRIK_HOST_APP=Host \
-    WARDRIK_VAULT_KEY=$(openssl rand -base64 32) SLACK_CLIENT_ID=hosts SLACK_CLIENT_SECRET=hosts \
-    SLACK_SIGNING_SECRET=hosts check host
+    WARDRIK_HOST_REPO=Host.Repo WARDRIK_HOST_TREE=agents WARDRIK_HOST_APP=Host check host
 }
 
 bare() {
@@ -141,13 +143,16 @@ bare() {
 
   cd "$dir/bare"
   WARDRIK_REPO=$repo perl -0pi -e 's/# \{:dep_from_hexpm, "~> 0.3.0"\},/{:wardrik, path: "$ENV{WARDRIK_REPO}\/packages\/wardrik"},/' mix.exs
-  perl -0pi -e 's/(    children = \[\n)/$1      {WardrikStore, Bare.Wardrik.store()},\n      {Wardrik, Wardrik.new(store: Bare.Wardrik.store())},\n/' lib/bare/application.ex
-  grep -q 'Bare.Wardrik.store()' lib/bare/application.ex || die "bare's application has no children to start Wardrik among"
-  cat >lib/wardrik.ex <<'EOF'
-defmodule Bare.Wardrik do
-  @moduledoc "Wardrik's store, as the application's config names it."
+  perl -0pi -e 's/(    children = \[\n)/$1      Bare.Agents,\n/' lib/bare/application.ex
+  grep -q 'Bare.Agents' lib/bare/application.ex || die "bare's application has no children to start Wardrik among"
+  cat >lib/bare/agents.ex <<'EOF'
+defmodule Bare.Agents do
+  @moduledoc "Wardrik in this application, kept where its config says."
 
-  def store, do: Wardrik.store(Application.fetch_env!(:bare, :store))
+  use Wardrik, otp_app: :bare
+
+  @impl Wardrik
+  def principal(%{org: org, id: id}), do: %{org: org, id: id}
 end
 EOF
   mkdir -p config
@@ -161,18 +166,20 @@ EOF
 import Config
 
 # Wardrik, kept in a bucket under a prefix of this run's own.
-config :bare, :store,
-  bucket: System.fetch_env!("WARDRIK_TEST_S3_BUCKET"),
-  endpoint: System.fetch_env!("WARDRIK_TEST_S3_ENDPOINT"),
-  region: System.fetch_env!("WARDRIK_TEST_S3_REGION"),
-  access_key_id: System.fetch_env!("WARDRIK_TEST_S3_ACCESS_KEY_ID"),
-  secret_access_key: System.fetch_env!("WARDRIK_TEST_S3_SECRET_ACCESS_KEY"),
-  prefix: "hosts-#{System.system_time(:millisecond)}"
+config :bare, Bare.Agents,
+  store: [
+    bucket: System.fetch_env!("WARDRIK_TEST_S3_BUCKET"),
+    endpoint: System.fetch_env!("WARDRIK_TEST_S3_ENDPOINT"),
+    region: System.fetch_env!("WARDRIK_TEST_S3_REGION"),
+    access_key_id: System.fetch_env!("WARDRIK_TEST_S3_ACCESS_KEY_ID"),
+    secret_access_key: System.fetch_env!("WARDRIK_TEST_S3_SECRET_ACCESS_KEY"),
+    prefix: "hosts-#{System.system_time(:millisecond)}"
+  ]
 EOF
 
   cd "$repo"
 
-  WARDRIK_HOST=Bare.Wardrik WARDRIK_HOST_STORE=WardrikS3.Store \
+  WARDRIK_HOST=Bare.Agents WARDRIK_HOST_STORE=WardrikS3.Store \
     WARDRIK_HOST_WITHOUT=EKV,Ecto,Postgrex check bare
 }
 

@@ -2,7 +2,7 @@ defmodule Wardrik.RunTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.LLM.Config
   alias Wardrik.Run
   alias Wardrik.Test.EchoTool
@@ -12,7 +12,7 @@ defmodule Wardrik.RunTest do
 
   defp subscribed do
     agent_id = Wardrik.Test.Fleet.id()
-    :ok = Event.Bus.subscribe(agent_id)
+    :ok = Bus.subscribe(agent_id)
     Run.root(Config.new(), agent_id, name: "turn")
   end
 
@@ -56,7 +56,7 @@ defmodule Wardrik.RunTest do
     run = subscribed()
     Run.child(run, name: "quiet")
 
-    refute_receive %Event{}
+    refute_receive %Bus.Event{}
   end
 
   describe "span/3" do
@@ -65,9 +65,9 @@ defmodule Wardrik.RunTest do
 
       assert Run.span(run, "echo", fn _branch -> {:ok, :done} end) == {:ok, :done}
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}} = started
+      assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "echo"}} = started
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok, duration_ms: ms}} =
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: :ok, duration_ms: ms}} =
                        finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
@@ -89,7 +89,7 @@ defmodule Wardrik.RunTest do
 
       assert Run.span(run, "echo", fn _ -> {:error, :nope} end) == {:error, :nope}
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :nope}}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: {:error, :nope}}}
     end
 
     test "a raise closes the span and is re-raised" do
@@ -99,7 +99,7 @@ defmodule Wardrik.RunTest do
         Run.span(run, "echo", fn _ -> raise "boom" end)
       end
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, %RuntimeError{}}}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: {:error, %RuntimeError{}}}}
     end
 
     test "an exit closes the span and is re-raised" do
@@ -107,7 +107,7 @@ defmodule Wardrik.RunTest do
 
       catch_exit(Run.span(run, "echo", fn _ -> exit(:crashed) end))
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :crashed}}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: {:error, :crashed}}}
     end
   end
 
@@ -116,12 +116,14 @@ defmodule Wardrik.RunTest do
       run = subscribed()
       branch = Run.open(run, "echo")
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
+      assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "echo"}}
 
       task = Task.async(fn -> Run.close(branch, {:error, :timeout}) end)
       Task.await(task)
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :timeout}}} = finished
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: {:error, :timeout}}} =
+                       finished
+
       assert finished.source.trace.span_id == branch.source.trace.span_id
     end
 
@@ -131,8 +133,8 @@ defmodule Wardrik.RunTest do
       branch = Run.open(run, "echo")
       assert Run.closing(branch, fn _ -> {:ok, :done} end) == {:ok, :done}
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
+      assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "echo"}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: :ok}}
     end
   end
 

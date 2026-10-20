@@ -81,15 +81,21 @@ defmodule Wardrik.Host do
   | `:sources` | the tool sources a definition names as `name/*`, by that name: each a module implementing `Wardrik.Tool`'s `tools/1`, handed the agent's ID, or a value of a package's own, as `WardrikDefinition.Source` reads them |
   | `:settings` | what a package's module is handed as it runs, such as a key a tool searches with, by the module: held here, never in the store |
   | `:routes` | what the host serves over HTTP, each a plug and its options, by the segments of its path |
+  | `:issuers` | what issues the token of someone a package names, as `slack:T0123/U024BE7LH`, each a value implementing `Wardrik.Issuer`, by the provider before the `:` |
+  | `:sign_ins` | what people may sign in to beyond the host's own accounts, such as the servers they add, each a value the sign-in package reads, by a name of the package's own |
   | `:children` | what `Wardrik` starts after its own, in order, each `{module, opts}` |
 
   A package adds to them in an `attach/2` of its own, which takes the host
   and the package's options, checked with `Keyword.validate!/2`, and answers
-  the host with what it adds, through `register/3` and `child/2`. One
+  the host with what it adds, through `register/3` and `child/2`, and with
+  the seams it brings through `put/3`: it is a `Wardrik.Plugin`. One
   attached after another starts after it:
 
       defmodule MyApp.Search do
-        def attach(host, opts \\ []) do
+        @behaviour Wardrik.Plugin
+
+        @impl true
+        def attach(host, opts) do
           opts = Keyword.validate!(opts, [:index])
 
           host
@@ -122,6 +128,8 @@ defmodule Wardrik.Host do
             sources: %{},
             settings: %{},
             routes: [],
+            issuers: %{},
+            sign_ins: %{},
             children: [],
             audit: Wardrik.Audit,
             expires: @expires
@@ -146,6 +154,8 @@ defmodule Wardrik.Host do
           sources: %{String.t() => module() | struct()},
           settings: %{module() => keyword()},
           routes: [route()],
+          issuers: %{String.t() => Wardrik.Issuer.t()},
+          sign_ins: %{String.t() => term()},
           children: [{module(), keyword()}],
           audit: GenServer.name(),
           expires: [api: pos_integer(), session: pos_integer()]
@@ -263,13 +273,25 @@ defmodule Wardrik.Host do
   @spec routes(t()) :: [route()]
   def routes(%__MODULE__{routes: routes}), do: routes
 
+  @doc """
+  What issues the token of someone a package names as `provider:subject`,
+  by the provider, as a package registered each under `:issuers`.
+  """
+  @spec issuers(t()) :: %{String.t() => Wardrik.Issuer.t()}
+  def issuers(%__MODULE__{issuers: issuers}), do: issuers
+
+  @doc "What people may sign in to beyond the host's own accounts, as packages registered it under `:sign_ins`."
+  @spec sign_ins(t()) :: %{String.t() => term()}
+  def sign_ins(%__MODULE__{sign_ins: sign_ins}), do: sign_ins
+
   @doc "What `Wardrik` starts after its own, in order."
   @spec children(t()) :: [{module(), keyword()}]
   def children(%__MODULE__{children: children}), do: children
 
   @doc """
-  `host` with `entries` added to `field`: to `:tools`, `:sources` or
-  `:routes`, each a name and its value; to `:settings`, each a module and
+  `host` with `entries` added to `field`: to `:tools`, `:sources`,
+  `:routes`, `:issuers` or `:sign_ins`, each a name and its value; to
+  `:settings`, each a module and
   what it is handed; to `:runtimes`, each a runtime, named by its
   `Wardrik.Runtime.key/1`, after those it runs. Raises where a name is
   taken.
@@ -280,9 +302,11 @@ defmodule Wardrik.Host do
   @spec register(t(), :sources, [{String.t(), module() | struct()}]) :: t()
   @spec register(t(), :settings, [{module(), keyword()}]) :: t()
   @spec register(t(), :routes, [route()]) :: t()
+  @spec register(t(), :issuers, [{String.t(), Wardrik.Issuer.t()}]) :: t()
+  @spec register(t(), :sign_ins, [{String.t(), term()}]) :: t()
   @spec register(t(), :runtimes, [Wardrik.Runtime.t()]) :: t()
   def register(%__MODULE__{} = host, field, entries)
-      when field in [:tools, :sources, :settings, :routes, :runtimes] do
+      when field in [:tools, :sources, :settings, :routes, :runtimes, :issuers, :sign_ins] do
     held = Map.fetch!(host, field)
     names = Enum.map(Enum.to_list(held) ++ entries, &name(field, &1))
 
@@ -297,6 +321,15 @@ defmodule Wardrik.Host do
 
   defp added(field, held, entries) when field in [:routes, :runtimes], do: held ++ entries
   defp added(_field, held, entries), do: Map.merge(held, Map.new(entries))
+
+  @doc """
+  `host` offering `value` as its `seam`, one of those `new/1` takes, in
+  place of what it offered. A plugin sets the seams it brings this way:
+
+      Wardrik.Host.put(host, :tokens, %WardrikHTTP.Tokens{store: Wardrik.Host.store(host)})
+  """
+  @spec put(t(), atom(), term()) :: t()
+  def put(%__MODULE__{} = host, seam, value) when seam in @seams, do: Map.put(host, seam, value)
 
   @doc """
   `host` with `child` among its children, after those added before it.

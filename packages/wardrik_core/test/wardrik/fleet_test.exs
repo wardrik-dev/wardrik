@@ -4,10 +4,10 @@ defmodule Wardrik.FleetTest do
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
+  alias Wardrik.Bus
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.User
-  alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.LLM.Config
   alias Wardrik.Resource
@@ -88,9 +88,9 @@ defmodule Wardrik.FleetTest do
     test "restarts an agent on the target node with the conversation it had" do
       key = Wardrik.Test.Fleet.id()
       pid = start(key, config: Script.new(runner(self())))
-      Event.Bus.subscribe(key)
+      Bus.subscribe(key)
       Agent.ask(pid, "hello")
-      assert_receive %Event{payload: %Event.TurnFinished{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
 
       {:ok, moved} = Fleet.move(key, node())
 
@@ -126,10 +126,10 @@ defmodule Wardrik.FleetTest do
     test "an agent reports that it is running, then parked" do
       key = Wardrik.Test.Fleet.id()
       pid = start(key, config: Script.new(parking_runner(self())))
-      Event.Bus.subscribe(key)
+      Bus.subscribe(key)
 
       Agent.ask(pid, "deploy")
-      assert_receive %Event{payload: %Event.TurnParked{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
       # A call is a barrier: the callback that parked has returned, so the
       # metadata it published is in the registry.
       assert [{_call, _prompt}] = Agent.parked(pid)
@@ -153,20 +153,20 @@ defmodule Wardrik.FleetTest do
           config: Script.new({Wardrik.Test.AgentRunners, :delegating, [self(), "pricing"]})
         )
 
-      Event.Bus.subscribe(key, level: :lifecycle)
+      Bus.subscribe(key, level: :lifecycle)
 
       assert %{outcome: nil} = Fleet.lookup(key, host: Wardrik.Test.host())
 
       Agent.ask(pid, "go")
       assert_receive {:delegating, branch}
 
-      assert_receive %Event{
+      assert_receive %Bus.Event{
         source: %{trace: %{name: "pricing"}},
-        payload: %Event.DelegationStarted{prompt: "look into pricing"}
+        payload: %Bus.DelegationStarted{prompt: "look into pricing"}
       }
 
       send(branch, :release)
-      assert_receive %Event{payload: %Event.TurnFinished{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
 
       assert Wardrik.Test.Fleet.await_update(fn ->
                match?(%{outcome: :ok}, Fleet.lookup(key, host: Wardrik.Test.host()))
@@ -177,10 +177,10 @@ defmodule Wardrik.FleetTest do
     test "a failed turn is reported as the last outcome" do
       key = Wardrik.Test.Fleet.id()
       pid = start(key, config: Script.new({Wardrik.Test.AgentRunners, :failing, [:boom]}))
-      Event.Bus.subscribe(key, level: :lifecycle)
+      Bus.subscribe(key, level: :lifecycle)
 
       Agent.ask(pid, "go")
-      assert_receive %Event{payload: %Event.TurnFailed{reason: :boom}}
+      assert_receive %Bus.Event{payload: %Bus.TurnFailed{reason: :boom}}
 
       assert Wardrik.Test.Fleet.await_update(fn ->
                Fleet.lookup(key, host: Wardrik.Test.host()).outcome == :failed
@@ -219,10 +219,10 @@ defmodule Wardrik.FleetTest do
     test "an agent comes back with the conversation it had" do
       key = Wardrik.Test.Fleet.id()
       pid = start(key, config: Script.new(runner(self())))
-      Event.Bus.subscribe(key)
+      Bus.subscribe(key)
 
       Agent.ask(pid, "hello")
-      assert_receive %Event{payload: %Event.TurnFinished{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
 
       :ok = Fleet.stop(key)
       assert Fleet.held_pid(key, wake: false) == nil
@@ -239,10 +239,10 @@ defmodule Wardrik.FleetTest do
     test "a parked turn is still parked after a restart" do
       key = Wardrik.Test.Fleet.id()
       pid = start(key, config: Script.new(parking_runner(self())))
-      Event.Bus.subscribe(key)
+      Bus.subscribe(key)
 
       Agent.ask(pid, "deploy it")
-      assert_receive %Event{payload: %Event.TurnParked{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
       assert [{_call, _prompt}] = Agent.parked(pid)
 
       :ok = Fleet.stop(key)

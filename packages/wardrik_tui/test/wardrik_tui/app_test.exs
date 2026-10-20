@@ -4,8 +4,9 @@ defmodule WardrikTUI.AppTest do
 
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
-  alias Wardrik.Event
-  alias Wardrik.Event.Source
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Event
+  alias Wardrik.Bus.Source
   alias Wardrik.Fleet
   alias WardrikTUI.App
 
@@ -100,17 +101,17 @@ defmodule WardrikTUI.AppTest do
 
   # What the agent says it is doing, as `Wardrik.Agent` announces it.
   defp doing(source, doing),
-    do: emit(source, [%Event.ActivityChanged{activity: %Activity{doing: doing, since: 0}}])
+    do: emit(source, [%Bus.ActivityChanged{activity: %Activity{doing: doing, since: 0}}])
 
   defp model,
-    do: %Event.ModelStarted{
+    do: %Bus.ModelStarted{
       message_id: "m0",
       model_spec: "m",
       decided_by: %{by: :default, hooks: []}
     }
 
   defp started(name),
-    do: %Event.ToolStarted{
+    do: %Bus.ToolStarted{
       call_id: "call_#{name}",
       name: name,
       arguments: %{},
@@ -123,7 +124,7 @@ defmodule WardrikTUI.AppTest do
 
   # A model call that answered, having used `usage` and cost `micro_usd`.
   defp finished(usage, micro_usd) do
-    %Event.ModelFinished{
+    %Bus.ModelFinished{
       message_id: "m0",
       outcome: :ok,
       duration_ms: 10,
@@ -159,7 +160,7 @@ defmodule WardrikTUI.AppTest do
       session: session,
       turn: turn
     } do
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("first")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("first")]}])
       assert screen(session) =~ "Enter steers the turn at its next boundary"
       submit(session, "second thought")
 
@@ -170,8 +171,8 @@ defmodule WardrikTUI.AppTest do
 
     test "a line sent while parked queues behind the decision", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("first")]},
-        %Event.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
+        %Bus.TurnStarted{messages: [Message.new("first")]},
+        %Bus.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
       ])
 
       assert screen(session) =~ "Enter queues behind the parked turn"
@@ -243,7 +244,7 @@ defmodule WardrikTUI.AppTest do
       refute_receive {:"$gen_cast", :interrupt}
       assert screen(session) =~ "#{agent_id} is taking no turn"
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       submit(session, "/stop")
       assert_receive {:"$gen_cast", :interrupt}
 
@@ -366,13 +367,13 @@ defmodule WardrikTUI.AppTest do
 
     test "an answer to a parked call is not history", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
       ])
 
       submit(session, "y")
       assert_receive {:"$gen_cast", {:resume, _decisions}}
-      emit(turn, [%Event.TurnFinished{messages: []}])
+      emit(turn, [%Bus.TurnFinished{messages: []}])
 
       up(session)
       refute screen(session) =~ "› y"
@@ -445,7 +446,7 @@ defmodule WardrikTUI.AppTest do
       refute text =~ "Approve a parked call"
       Breeze.Test.input(session, "Escape")
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       ctrl(session, "p")
       screen(session)
       type(session, "stop")
@@ -453,7 +454,7 @@ defmodule WardrikTUI.AppTest do
       Breeze.Test.input(session, "Enter")
       assert_receive {:"$gen_cast", :interrupt}
 
-      emit(turn, [%Event.TurnParked{calls: [{call("deploy"), "Ship it?"}]}])
+      emit(turn, [%Bus.TurnParked{calls: [{call("deploy"), "Ship it?"}]}])
       ctrl(session, "p")
       screen(session)
       type(session, "approve")
@@ -468,8 +469,8 @@ defmodule WardrikTUI.AppTest do
       calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.TurnParked{calls: calls}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.TurnParked{calls: calls}
       ])
 
       ctrl(session, "p")
@@ -508,8 +509,8 @@ defmodule WardrikTUI.AppTest do
   describe "approvals" do
     test "one parked call takes a bare answer", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
       ])
 
       text = screen(session)
@@ -527,8 +528,8 @@ defmodule WardrikTUI.AppTest do
       %{session: session, turn: turn} = ctx
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
       ])
 
       stub(Fleet, :whereis, fn _id, _opts -> nil end)
@@ -544,8 +545,8 @@ defmodule WardrikTUI.AppTest do
       session = Breeze.Test.resize(session, {70, 30})
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.TurnParked{calls: calls}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.TurnParked{calls: calls}
       ])
 
       text = screen(session)
@@ -567,7 +568,7 @@ defmodule WardrikTUI.AppTest do
       submit(session, "n 1 not that one")
       refute_receive {:"$gen_cast", {:resume, _decisions}}
       assert screen(session) =~ "no decision sent"
-      emit(turn, [%Event.TurnParked{calls: [{call("drop_table"), "Drop it?"}]}])
+      emit(turn, [%Bus.TurnParked{calls: [{call("drop_table"), "Drop it?"}]}])
 
       submit(session, "n 1 not that one")
       assert_receive {:"$gen_cast", {:resume, %{"call_drop_table" => {:deny, "not that one"}}}}
@@ -580,13 +581,13 @@ defmodule WardrikTUI.AppTest do
     test "a resumed turn is running again, whoever answered it", %{session: session, turn: turn} do
       calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
       session = Breeze.Test.resize(session, {100, 14})
-      parked = %Event.TurnParked{calls: calls}
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}, parked])
+      parked = %Bus.TurnParked{calls: calls}
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}, parked])
       doing(turn, parked)
 
       assert screen(session) =~ "? waiting on a person to approve deploy and drop_table"
 
-      resumed = %Event.TurnResumed{decisions: %{"call_deploy" => :approve}}
+      resumed = %Bus.TurnResumed{decisions: %{"call_deploy" => :approve}}
       emit(turn, [resumed])
       doing(turn, resumed)
 
@@ -596,7 +597,7 @@ defmodule WardrikTUI.AppTest do
       assert text =~ "Enter steers the turn"
 
       # The other call is still parked, and the turn says so again.
-      parked = %Event.TurnParked{calls: [{call("drop_table"), "Drop it?"}]}
+      parked = %Bus.TurnParked{calls: [{call("drop_table"), "Drop it?"}]}
       emit(turn, [parked])
       doing(turn, parked)
       assert screen(session) =~ "waiting on a person to approve drop_table"
@@ -606,8 +607,8 @@ defmodule WardrikTUI.AppTest do
       calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.TurnParked{calls: calls}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.TurnParked{calls: calls}
       ])
 
       submit(session, "/deny all not today")
@@ -624,8 +625,8 @@ defmodule WardrikTUI.AppTest do
 
     test "a number that picks nothing is said so", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.TurnParked{calls: [{call("deploy"), "Ship it?"}]}
       ])
 
       submit(session, "/approve 4")
@@ -644,14 +645,14 @@ defmodule WardrikTUI.AppTest do
       Breeze.Test.input(session, "Escape")
       refute_receive {:"$gen_cast", :interrupt}
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       assert screen(session) =~ "Esc stops it"
       Breeze.Test.input(session, "Escape")
       assert_receive {:"$gen_cast", :interrupt}
     end
 
     test "Escape from another pane only returns to the prompt", %{session: session, turn: turn} do
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       Breeze.Test.focus(session, "log")
       Breeze.Test.input(session, "Escape")
 
@@ -660,7 +661,7 @@ defmodule WardrikTUI.AppTest do
     end
 
     test "Ctrl-X then s stops the turn from any pane", %{session: session, turn: turn} do
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       Breeze.Test.focus(session, "log")
       ctrl(session, "x")
       assert screen(session) =~ "s stop · Esc cancel"
@@ -712,8 +713,8 @@ defmodule WardrikTUI.AppTest do
       assert screen(session) =~ "› unsent"
 
       # In the transcript the same key scrolls half a page.
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
-      emit(turn, for(i <- 1..40, do: %Event.Result{text: "line #{i}\n"}))
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, for(i <- 1..40, do: %Bus.Result{text: "line #{i}\n"}))
       Breeze.Test.focus(session, "log")
       ctrl(session, "u")
       text = screen(session)
@@ -736,11 +737,11 @@ defmodule WardrikTUI.AppTest do
       refute screen(session) =~ "[trace]"
 
       Breeze.Test.input(session, %{"key" => "t", "ctrlKey" => true})
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       assert screen(session) =~ "[trace]"
 
       Breeze.Test.input(session, %{"key" => "t", "ctrlKey" => true})
-      emit(turn, [%Event.TurnFinished{messages: []}])
+      emit(turn, [%Bus.TurnFinished{messages: []}])
       refute screen(session) =~ "[trace]"
     end
   end
@@ -748,8 +749,8 @@ defmodule WardrikTUI.AppTest do
   describe "the transcript" do
     test "renders the answer as markdown, a line at a time", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Result{text: "## Findings\n- a **bold** point\nunfinished"}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.Result{text: "## Findings\n- a **bold** point\nunfinished"}
       ])
 
       text = screen(session)
@@ -763,16 +764,16 @@ defmodule WardrikTUI.AppTest do
       %{session: session, turn: turn} = ctx
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Result{text: "a **bold**"}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.Result{text: "a **bold**"}
       ])
 
       assert screen(session) =~ "⏺ a bold"
 
-      emit(turn, [%Event.Result{text: " claim"}])
+      emit(turn, [%Bus.Result{text: " claim"}])
       assert screen(session) =~ "⏺ a bold claim"
 
-      emit(turn, [%Event.Result{text: "\nand the next line"}])
+      emit(turn, [%Bus.Result{text: "\nand the next line"}])
       text = screen(session)
       assert text =~ "⏺ a bold claim"
       assert text =~ "  and the next line"
@@ -781,10 +782,10 @@ defmodule WardrikTUI.AppTest do
 
     test "the line still arriving leaves once its own line takes over", ctx do
       %{session: session, turn: turn} = ctx
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}, %Event.Result{text: "half"}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}, %Bus.Result{text: "half"}])
       assert screen(session) =~ "⏺ half"
 
-      emit(turn, [%Event.TurnFinished{messages: []}])
+      emit(turn, [%Bus.TurnFinished{messages: []}])
       text = screen(session)
       assert text =~ "⏺ half"
       refute text =~ "half\n  half"
@@ -792,8 +793,8 @@ defmodule WardrikTUI.AppTest do
 
     test "the answer is a bullet block set off by a blank line", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Result{text: "first line\nsecond line\n"}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.Result{text: "first line\nsecond line\n"}
       ])
 
       assert screen(session) =~ ~r/\n\s*\n⏺ first line\s*\n  second line/
@@ -801,9 +802,9 @@ defmodule WardrikTUI.AppTest do
 
     test "the last line lands when the turn ends", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Result{text: "no newline"},
-        %Event.TurnFinished{messages: []}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.Result{text: "no newline"},
+        %Bus.TurnFinished{messages: []}
       ])
 
       assert screen(session) =~ "no newline"
@@ -811,11 +812,11 @@ defmodule WardrikTUI.AppTest do
 
     test "text streamed by delegated work stays out of the prose", %{session: session, turn: turn} do
       branch = Source.child(turn, name: "researcher")
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
 
       emit(branch, [
-        %Event.SpanStarted{name: "researcher"},
-        %Event.Result{text: "private findings\n"}
+        %Bus.SpanStarted{name: "researcher"},
+        %Bus.Result{text: "private findings\n"}
       ])
 
       text = screen(session)
@@ -827,15 +828,15 @@ defmodule WardrikTUI.AppTest do
       tool = Source.child(turn, name: "deep_research")
       angle = Source.child(tool, name: "pricing")
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
-      emit(tool, [%Event.SpanStarted{name: "deep_research"}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
+      emit(tool, [%Bus.SpanStarted{name: "deep_research"}])
 
       emit(angle, [
-        %Event.SpanStarted{name: "pricing"},
-        %Event.SpanFinished{outcome: {:error, :timeout}, duration_ms: 5_000}
+        %Bus.SpanStarted{name: "pricing"},
+        %Bus.SpanFinished{outcome: {:error, :timeout}, duration_ms: 5_000}
       ])
 
-      emit(tool, [%Event.SpanFinished{outcome: :ok, duration_ms: 6_000}])
+      emit(tool, [%Bus.SpanFinished{outcome: :ok, duration_ms: 6_000}])
 
       text = screen(session)
       assert text =~ "  · deep_research"
@@ -850,17 +851,17 @@ defmodule WardrikTUI.AppTest do
       drop = Source.child(turn, name: "drop")
       decided = %{by: :default, hooks: []}
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
 
       emit(search, [
-        %Event.ToolStarted{
+        %Bus.ToolStarted{
           call_id: "call_1",
           name: "web_search",
           arguments: %{},
           idempotency_key: "k",
           decided_by: decided
         },
-        %Event.ToolFinished{
+        %Bus.ToolFinished{
           call_id: "call_1",
           name: "web_search",
           result: {:ok, %{"hits" => 3}},
@@ -870,7 +871,7 @@ defmodule WardrikTUI.AppTest do
       ])
 
       emit(drop, [
-        %Event.ToolDenied{call_id: "call_2", name: "drop", reason: "Never.", decided_by: decided}
+        %Bus.ToolDenied{call_id: "call_2", name: "drop", reason: "Never.", decided_by: decided}
       ])
 
       text = screen(session)
@@ -885,11 +886,11 @@ defmodule WardrikTUI.AppTest do
       reason =
         {:no_findings, Enum.map(1..5, &%{"angle" => "angle number #{&1}", "reason" => ":killed"})}
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
 
       emit(tool, [
-        %Event.SpanStarted{name: "deep_research"},
-        %Event.SpanFinished{outcome: {:error, reason}, duration_ms: 1_000}
+        %Bus.SpanStarted{name: "deep_research"},
+        %Bus.SpanFinished{outcome: {:error, reason}, duration_ms: 1_000}
       ])
 
       text = screen(session)
@@ -901,11 +902,11 @@ defmodule WardrikTUI.AppTest do
       long = String.duplicate("lemonade ", 20)
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.ToolCall{call: tool_call("web_search", %{"query" => "lemonade"})}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.ToolCall{call: tool_call("web_search", %{"query" => "lemonade"})}
       ])
 
-      emit(turn, [%Event.ToolCall{call: tool_call("web_search", %{"query" => long})}])
+      emit(turn, [%Bus.ToolCall{call: tool_call("web_search", %{"query" => long})}])
 
       text = screen(session)
       assert text =~ ~s(⇢ web_search {"query":"lemonade"})
@@ -915,16 +916,16 @@ defmodule WardrikTUI.AppTest do
 
     test "a partial tool call, without arguments, draws nothing", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.ToolCall{call: tool_call("web_search", %{})}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.ToolCall{call: tool_call("web_search", %{})}
       ])
 
       refute screen(session) =~ "⇢"
     end
 
     test "stays pinned to the newest line as it grows", %{session: session, turn: turn} do
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
-      emit(turn, for(i <- 1..40, do: %Event.Result{text: "line #{i}\n"}))
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, for(i <- 1..40, do: %Bus.Result{text: "line #{i}\n"}))
 
       text = screen(session)
       assert text =~ "line 40"
@@ -935,8 +936,8 @@ defmodule WardrikTUI.AppTest do
       session: session,
       turn: turn
     } do
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
-      emit(turn, for(i <- 1..40, do: %Event.Result{text: "line #{i}\n"}))
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, for(i <- 1..40, do: %Bus.Result{text: "line #{i}\n"}))
       assert screen(session) =~ "line 40"
 
       Breeze.Test.wheel(session, "log", :up)
@@ -944,7 +945,7 @@ defmodule WardrikTUI.AppTest do
       assert text =~ "line 37"
       refute text =~ "line 40"
 
-      emit(turn, [%Event.Result{text: "line 41\n"}])
+      emit(turn, [%Bus.Result{text: "line 41\n"}])
       refute screen(session) =~ "line 41"
 
       Enum.each(1..3, fn _ -> Breeze.Test.wheel(session, "log", :down) end)
@@ -953,8 +954,8 @@ defmodule WardrikTUI.AppTest do
 
     test "rows re-wrap when the terminal is resized", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Result{text: String.duplicate("word ", 20) <> "\n"}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.Result{text: String.duplicate("word ", 20) <> "\n"}
       ])
 
       assert screen(session) =~ ~r/^⏺ word word.*\n  (word )+/m
@@ -967,8 +968,8 @@ defmodule WardrikTUI.AppTest do
 
     test "an interrupt and a failure are both reported", %{session: session, turn: turn} do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.TurnInterrupted{
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.TurnInterrupted{
           stats: %{resolution: :killed, elapsed_ms: 1_500, dropped: 2, kept: 0}
         }
       ])
@@ -977,8 +978,8 @@ defmodule WardrikTUI.AppTest do
       assert text =~ "■ stopped · 1.5s · killed · 2 queued messages dropped"
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("again")]},
-        %Event.TurnFailed{reason: :boom}
+        %Bus.TurnStarted{messages: [Message.new("again")]},
+        %Bus.TurnFailed{reason: :boom}
       ])
 
       assert screen(session) =~ "✗ :boom"
@@ -993,14 +994,14 @@ defmodule WardrikTUI.AppTest do
     end
 
     defp lines(turn, range),
-      do: emit(turn, for(i <- range, do: %Event.Result{text: "line #{i}\n"}))
+      do: emit(turn, for(i <- range, do: %Bus.Result{text: "line #{i}\n"}))
 
     test "/ in the transcript searches it, Enter goes to the match, n and N step", ctx do
       %{session: session, turn: turn} = ctx
       session = Breeze.Test.resize(session, {70, 30})
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       lines(turn, 1..40)
-      emit(turn, [%Event.TurnFinished{messages: []}])
+      emit(turn, [%Bus.TurnFinished{messages: []}])
 
       Breeze.Test.focus(session, "log")
       screen(session)
@@ -1037,8 +1038,8 @@ defmodule WardrikTUI.AppTest do
       assert status_row(session) =~ "nothing searched for yet · / searches"
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Result{text: "the lemonade stand\n"}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.Result{text: "the lemonade stand\n"}
       ])
 
       Breeze.Test.focus(session, "prompt")
@@ -1061,7 +1062,7 @@ defmodule WardrikTUI.AppTest do
 
     test "new output while scrolled up is announced until End follows it", ctx do
       %{session: session, turn: turn} = ctx
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       lines(turn, 1..30)
       Breeze.Test.focus(session, "log")
       screen(session)
@@ -1082,9 +1083,9 @@ defmodule WardrikTUI.AppTest do
       answer = "Run this:\n```sh\necho one\n```\nthen\n```sh\necho two\n```\n"
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Result{text: answer},
-        %Event.TurnFinished{messages: []}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.Result{text: answer},
+        %Bus.TurnFinished{messages: []}
       ])
 
       Breeze.Test.focus(session, "log")
@@ -1104,9 +1105,9 @@ defmodule WardrikTUI.AppTest do
       assert status_row(session) =~ "nothing to copy · no answer yet"
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Result{text: "prose only"},
-        %Event.TurnFinished{messages: []}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.Result{text: "prose only"},
+        %Bus.TurnFinished{messages: []}
       ])
 
       submit(session, "/copy code")
@@ -1118,17 +1119,17 @@ defmodule WardrikTUI.AppTest do
       session = Breeze.Test.resize(session, {80, 24})
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.ToolCall{call: tool_call("web_search", %{"query" => "lemonade"})},
-        %Event.ToolFinished{
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.ToolCall{call: tool_call("web_search", %{"query" => "lemonade"})},
+        %Bus.ToolFinished{
           call_id: "call_1",
           name: "web_search",
           result: {:ok, %{"hits" => 3, "top" => "stand"}},
           served_by: nil,
           cost: nil
         },
-        %Event.ToolCall{call: tool_call("deep_research", %{"topic" => "citrus"})},
-        %Event.TurnFinished{messages: []}
+        %Bus.ToolCall{call: tool_call("deep_research", %{"topic" => "citrus"})},
+        %Bus.TurnFinished{messages: []}
       ])
 
       Breeze.Test.focus(session, "log")
@@ -1154,7 +1155,7 @@ defmodule WardrikTUI.AppTest do
       assert Breeze.Test.focused(session) == "log"
 
       emit(turn, [
-        %Event.ToolDenied{
+        %Bus.ToolDenied{
           call_id: "call_2",
           name: "deep_research",
           reason: "not during the freeze",
@@ -1217,11 +1218,11 @@ defmodule WardrikTUI.AppTest do
       assert Breeze.Test.element(session, "activity") ==
                {:error, {:element_not_found, "activity"}}
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       screen(session)
       assert {:ok, %Breeze.Viewport{}} = Breeze.Test.element(session, "activity")
 
-      emit(turn, [%Event.TurnFinished{messages: []}])
+      emit(turn, [%Bus.TurnFinished{messages: []}])
       screen(session)
 
       assert Breeze.Test.element(session, "activity") ==
@@ -1229,7 +1230,7 @@ defmodule WardrikTUI.AppTest do
     end
 
     test "a notice takes the row from the spinner while it shows", %{session: session, turn: turn} do
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       screen(session)
 
       Breeze.Test.focus(session, "log")
@@ -1241,9 +1242,9 @@ defmodule WardrikTUI.AppTest do
     end
 
     test "says what the agent is doing, as it changes", %{session: session, turn: turn} do
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
 
-      retry = %Event.ModelRetrying{
+      retry = %Bus.ModelRetrying{
         message_id: "m0",
         attempt: 2,
         attempts: 6,
@@ -1255,7 +1256,7 @@ defmodule WardrikTUI.AppTest do
             {model(), "thinking"},
             {[started("web_search"), started("fetch_page")], "running web_search and fetch_page"},
             {retry, "retrying the model, 2 of 6"},
-            {%Event.SpanStarted{name: "compacting history"}, "compacting history"}
+            {%Bus.SpanStarted{name: "compacting history"}, "compacting history"}
           ] do
         doing(turn, doing)
         assert screen(session) =~ words
@@ -1266,16 +1267,16 @@ defmodule WardrikTUI.AppTest do
     test "takes its words from the presenter it was given", %{session: session, turn: turn} do
       assert screen(session) =~ "resting · type a"
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       doing(turn, model())
 
       assert screen(session) =~ "busy"
     end
 
     test "shows the newest reasoning while the model is asked", %{session: session, turn: turn} do
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       doing(turn, model())
-      emit(turn, [%Event.Thinking{text: "I should look this up carefully"}])
+      emit(turn, [%Bus.Thinking{text: "I should look this up carefully"}])
 
       assert screen(session) =~ "thinking · I should look this up carefully"
 
@@ -1285,15 +1286,15 @@ defmodule WardrikTUI.AppTest do
       refute text =~ "look this up"
 
       doing(turn, model())
-      emit(turn, [%Event.Thinking{text: " and then decide"}])
+      emit(turn, [%Bus.Thinking{text: " and then decide"}])
 
       assert screen(session) =~ "thinking · I should look this up carefully and then decide"
     end
 
     test "a chunk ending in a space still separates words", %{session: session, turn: turn} do
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       doing(turn, model())
-      emit(turn, [%Event.Thinking{text: "I should "}, %Event.Thinking{text: "rank these"}])
+      emit(turn, [%Bus.Thinking{text: "I should "}, %Bus.Thinking{text: "rank these"}])
 
       assert screen(session) =~ "thinking · I should rank these"
     end
@@ -1304,9 +1305,9 @@ defmodule WardrikTUI.AppTest do
     } do
       words = Enum.map_join(1..30, " ", &"word#{&1}")
 
-      emit(turn, [%Event.TurnStarted{messages: [Message.new("hi")]}])
+      emit(turn, [%Bus.TurnStarted{messages: [Message.new("hi")]}])
       doing(turn, model())
-      emit(turn, [%Event.Thinking{text: words}])
+      emit(turn, [%Bus.Thinking{text: words}])
 
       [row] = session |> screen() |> String.split("\n") |> Enum.filter(&(&1 =~ "thinking ·"))
 
@@ -1319,14 +1320,14 @@ defmodule WardrikTUI.AppTest do
       turn: turn
     } do
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.Thinking{text: "secret plan\n"}
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.Thinking{text: "secret plan\n"}
       ])
 
       refute screen(session) =~ "┊ secret plan"
 
       Breeze.Test.input(session, %{"key" => "t", "ctrlKey" => true})
-      emit(turn, [%Event.Thinking{text: "open plan\n"}])
+      emit(turn, [%Bus.Thinking{text: "open plan\n"}])
       assert screen(session) =~ "┊ open plan"
     end
   end
@@ -1336,8 +1337,8 @@ defmodule WardrikTUI.AppTest do
       branch = Source.child(turn, name: "researcher")
 
       emit(turn, [
-        %Event.TurnStarted{messages: [Message.new("hi")]},
-        %Event.ModelStarted{
+        %Bus.TurnStarted{messages: [Message.new("hi")]},
+        %Bus.ModelStarted{
           message_id: "m0",
           model_spec: "m",
           decided_by: %{by: :default, hooks: []}
@@ -1345,7 +1346,7 @@ defmodule WardrikTUI.AppTest do
       ])
 
       emit(branch, [
-        %Event.ModelStarted{
+        %Bus.ModelStarted{
           message_id: "m0",
           model_spec: "m",
           decided_by: %{by: :default, hooks: []}

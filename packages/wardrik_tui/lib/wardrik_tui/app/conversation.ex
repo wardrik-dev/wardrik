@@ -11,11 +11,13 @@ defmodule WardrikTUI.App.Conversation do
   draft, transcript, usage, and scroll position belong to the saved display.
   """
 
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.ToolError
   alias Wardrik.Conversation.ToolResult
   alias Wardrik.Conversation.User
-  alias Wardrik.Event
   alias WardrikConsole.Markdown
   alias WardrikConsole.Table
   alias WardrikTUI.Activity
@@ -225,7 +227,7 @@ defmodule WardrikTUI.App.Conversation do
     do: append_lines_projection(projection, ["", View.question(text)])
 
   # A turn starts a fresh tree.
-  defp fold_projection(projection, %Event{payload: %Event.TurnStarted{}} = event) do
+  defp fold_projection(projection, %Event{payload: %Bus.TurnStarted{}} = event) do
     projection
     |> assign(
       delegations: Delegation.fold(projection.state.delegations, event),
@@ -249,7 +251,7 @@ defmodule WardrikTUI.App.Conversation do
 
   # -- turn lifecycle
 
-  defp handle_projection(%Event{payload: %Event.TurnStarted{}} = event, projection) do
+  defp handle_projection(%Event{payload: %Bus.TurnStarted{}} = event, projection) do
     projection
     |> assign(running?: true, parked: [], started_at: projection.now)
     |> trace(event)
@@ -258,7 +260,7 @@ defmodule WardrikTUI.App.Conversation do
   # Answered calls leave the parked list, and the turn is running again; what
   # is still parked comes back with the next `:turn_parked`.
   defp handle_projection(
-         %Event{payload: %Event.TurnResumed{decisions: decisions}} = event,
+         %Event{payload: %Bus.TurnResumed{decisions: decisions}} = event,
          projection
        ) do
     parked =
@@ -271,12 +273,12 @@ defmodule WardrikTUI.App.Conversation do
     |> trace(event)
   end
 
-  defp handle_projection(%Event{payload: %Event.TurnFinished{}} = event, projection) do
+  defp handle_projection(%Event{payload: %Bus.TurnFinished{}} = event, projection) do
     projection |> settle_projection() |> trace(event) |> assign(running?: false, parked: [])
   end
 
   defp handle_projection(
-         %Event{payload: %Event.TurnInterrupted{stats: stats}} = event,
+         %Event{payload: %Bus.TurnInterrupted{stats: stats}} = event,
          projection
        ) do
     projection
@@ -286,7 +288,7 @@ defmodule WardrikTUI.App.Conversation do
     |> assign(running?: false, parked: [])
   end
 
-  defp handle_projection(%Event{payload: %Event.TurnParked{calls: calls}} = event, projection) do
+  defp handle_projection(%Event{payload: %Bus.TurnParked{calls: calls}} = event, projection) do
     projection
     |> settle_projection()
     |> trace(event)
@@ -294,7 +296,7 @@ defmodule WardrikTUI.App.Conversation do
     |> assign(running?: false, parked: calls)
   end
 
-  defp handle_projection(%Event{payload: %Event.TurnFailed{reason: reason}} = event, projection) do
+  defp handle_projection(%Event{payload: %Bus.TurnFailed{reason: reason}} = event, projection) do
     projection
     |> settle_projection()
     |> trace(event)
@@ -304,20 +306,20 @@ defmodule WardrikTUI.App.Conversation do
 
   # -- the tree
 
-  defp handle_projection(%Event{payload: %Event.SpanStarted{}} = event, projection),
+  defp handle_projection(%Event{payload: %Bus.SpanStarted{}} = event, projection),
     do: span(projection, event)
 
-  defp handle_projection(%Event{payload: %Event.SpanFinished{}} = event, projection),
+  defp handle_projection(%Event{payload: %Bus.SpanFinished{}} = event, projection),
     do: span(projection, event)
 
-  defp handle_projection(%Event{payload: %Event.ToolStarted{}} = event, projection),
+  defp handle_projection(%Event{payload: %Bus.ToolStarted{}} = event, projection),
     do: projection |> span(event) |> trace(event)
 
   defp handle_projection(%Event{payload: %kind{}} = event, projection)
-       when kind in [Event.ToolReplayed, Event.ToolParked],
+       when kind in [Bus.ToolReplayed, Bus.ToolParked],
        do: projection |> trace(event) |> span(event)
 
-  defp handle_projection(%Event{payload: %Event.ToolCall{call: call}} = event, projection) do
+  defp handle_projection(%Event{payload: %Bus.ToolCall{call: call}} = event, projection) do
     case tool_call(call) do
       nil ->
         projection
@@ -335,7 +337,7 @@ defmodule WardrikTUI.App.Conversation do
   end
 
   defp handle_projection(
-         %Event{payload: %Event.ToolFinished{call_id: id, name: name, result: result}} = event,
+         %Event{payload: %Bus.ToolFinished{call_id: id, name: name, result: result}} = event,
          projection
        ) do
     {output, ok?} =
@@ -351,7 +353,7 @@ defmodule WardrikTUI.App.Conversation do
   end
 
   defp handle_projection(
-         %Event{payload: %Event.ToolDenied{call_id: id, name: name, reason: reason}} = event,
+         %Event{payload: %Bus.ToolDenied{call_id: id, name: name, reason: reason}} = event,
          projection
        ) do
     projection
@@ -362,7 +364,7 @@ defmodule WardrikTUI.App.Conversation do
 
   # -- streaming, root span only
 
-  defp handle_projection(%Event{payload: %Event.Result{text: text}} = event, projection) do
+  defp handle_projection(%Event{payload: %Bus.Result{text: text}} = event, projection) do
     if Event.root?(event) do
       {lines, answer} = Markdown.push(projection.state.answer, text)
 
@@ -378,7 +380,7 @@ defmodule WardrikTUI.App.Conversation do
     end
   end
 
-  defp handle_projection(%Event{payload: %Event.Thinking{text: text}} = event, projection) do
+  defp handle_projection(%Event{payload: %Bus.Thinking{text: text}} = event, projection) do
     projection = assign(projection, thinking: tail(projection.state.thinking <> text))
 
     if Event.root?(event) do
@@ -395,7 +397,7 @@ defmodule WardrikTUI.App.Conversation do
 
   # -- usage
 
-  defp handle_projection(%Event{payload: %Event.ModelFinished{}} = event, projection) do
+  defp handle_projection(%Event{payload: %Bus.ModelFinished{}} = event, projection) do
     projection
     |> assign(usage: Usage.settle(projection.state.usage, event))
     |> trace(event)

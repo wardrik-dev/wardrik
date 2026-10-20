@@ -3,10 +3,10 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
   import Wardrik.Test, only: [host: 1]
 
+  alias Wardrik.Bus
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.User
-  alias Wardrik.Event
   alias Wardrik.Ledger
   alias Wardrik.LLM
   alias Wardrik.Run
@@ -23,7 +23,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
-    :ok = Event.Bus.subscribe(agent_id)
+    :ok = Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id, llm: TestLLM.start()}
   end
 
@@ -145,8 +145,8 @@ defmodule Wardrik.LLM.TurnJournalTest do
     assert %LLM.Turn{state: :done, messages: messages} = replay(run, checkpoint)
     refute_received :refunded
 
-    assert_received %Event{
-      payload: %Event.ToolReplayed{call_id: "call_1", name: "refund", result: {:ok, _result}}
+    assert_received %Bus.Event{
+      payload: %Bus.ToolReplayed{call_id: "call_1", name: "refund", result: {:ok, _result}}
     }
 
     assert %Assistant{} = List.last(messages)

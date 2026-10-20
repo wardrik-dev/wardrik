@@ -42,8 +42,9 @@
       "Wardrik.Definition",
       "Wardrik.Definitions",
       "Wardrik.Error",
+      "Wardrik.Bus.Event",
       "Wardrik.Event",
-      "Wardrik.Event.Bus",
+      "Wardrik.Bus",
       "Wardrik.Event.Codec.Value",
       "Wardrik.Event.Cursor",
       "Wardrik.Event.Log.Entry",
@@ -100,7 +101,7 @@
       "Wardrik.LLM.ToolRunner",
       "Wardrik.LLM.Catalog",
       "Wardrik.Fleet.Supervisor",
-      "Wardrik.Event.Source",
+      "Wardrik.Bus.Source",
       "Wardrik.Trace"
     ],
     internal_callers: [
@@ -111,7 +112,7 @@
       {"Wardrik.LLM.ToolRunner", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.LLM.Catalog", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
-      {"Wardrik.Event.Source", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Bus.Source", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]
   ],
