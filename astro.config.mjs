@@ -113,6 +113,7 @@ export default defineConfig({
 										},
 										'build/http-api',
 										'build/embed',
+										'build/listen',
 										'build/triggers',
 										'build/delegation',
 										'build/notices',
