@@ -268,6 +268,7 @@ defmodule Wardrik.Instance do
     |> Kernel.++(vault(config[:vault], store))
     |> Kernel.++(Keyword.take(config, [:expires]))
     |> Wardrik.new()
+    |> Host.register(:settings, [{__MODULE__, module: module}])
     |> plugins(config[:plugins])
   end
 
@@ -302,8 +303,9 @@ defmodule Wardrik.Instance do
 
   defp valid(_module, _opts, :ok), do: :ok
 
-  defp valid(module, opts, {:error, message}),
-    do: raise(ArgumentError, "#{inspect(module)}'s options #{inspect(opts)}: #{message}")
+  # Not the options themselves, which may hold a secret.
+  defp valid(module, _opts, {:error, message}),
+    do: raise(ArgumentError, "#{inspect(module)}'s options in plugins: #{message}")
 
   @doc false
   def put(module, %Host{} = host), do: :persistent_term.put({__MODULE__, module}, host)
@@ -319,7 +321,20 @@ defmodule Wardrik.Instance do
     end
   end
 
+  # The instance a plugin's host belongs to, or nil for one built without
+  # `use Wardrik`.
+  @doc false
+  def of(%Host{} = host), do: Host.settings(host, __MODULE__)[:module]
+
   # -- acting ---------------------------------------------------------------------
+
+  # The scope `user` acts in, for what acts on the instance's behalf, such
+  # as a request to its HTTP API.
+  @doc false
+  def as(module, user) do
+    {scope, _who} = scope(module, user)
+    scope
+  end
 
   # The scope `user` acts in on `module`'s agents, and the org and id they
   # are known by there.

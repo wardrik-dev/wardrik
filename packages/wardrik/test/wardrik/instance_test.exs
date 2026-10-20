@@ -158,10 +158,15 @@ defmodule Wardrik.InstanceTest do
     test "attaches each plugin in order, once its options check" do
       host = Wardrik.Instance.build(Agents, config(plugins: [{Search, name: "find"}]))
       assert %{"find" => Wardrik.Test.SearchTool} = Wardrik.Host.tools(host)
+      assert Wardrik.Instance.of(host) == Agents
+      assert Wardrik.Instance.of(Wardrik.Test.host()) == nil
 
-      assert_raise ArgumentError, ~r/it names its tool/, fn ->
-        Wardrik.Instance.build(Agents, config(plugins: [{Search, name: 1}]))
-      end
+      error =
+        assert_raise ArgumentError, ~r/it names its tool/, fn ->
+          Wardrik.Instance.build(Agents, config(plugins: [{Search, name: 1, key: "s3cret"}]))
+        end
+
+      refute Exception.message(error) =~ "s3cret"
 
       assert_raise ArgumentError, ~r/is not a plugin/, fn ->
         Wardrik.Instance.build(Agents, config(plugins: [String]))
