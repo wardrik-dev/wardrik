@@ -92,11 +92,10 @@ defmodule Wardrik.Event do
             |> Enum.reduce(&quote(do: unquote(&1) | unquote(&2)))
           )
 
-  @doc """
-  The struct of a log `entry`'s event, with the cursor past it moved from
-  `cursor`, as `Wardrik.events/2` hands each on. With no cursor, it names
-  the entry's log alone. An entry of the audit has no cursor.
-  """
+  # The struct of a log entry's event, with the cursor past it moved from
+  # `cursor`. With no cursor, it names the entry's log alone; an audit
+  # entry has none.
+  @doc false
   @spec decode(Entry.t(), String.t() | :head) :: t()
   def decode(%Entry{log: log, event: %{"type" => type} = event} = entry, cursor \\ "") do
     data =
