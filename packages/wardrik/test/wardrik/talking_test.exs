@@ -10,6 +10,7 @@ defmodule Wardrik.TalkingTest do
   alias Wardrik.AgentID
   alias Wardrik.Bus
   alias Wardrik.Error
+  alias Wardrik.Event.EventsDropped
   alias Wardrik.Event.Log
   alias Wardrik.Fleet.Member
   alias Wardrik.Principal
@@ -131,23 +132,21 @@ defmodule Wardrik.TalkingTest do
     resources = [AgentID.resource(id)]
 
     assert {:ok, events} = Wardrik.events(scope(), resources: resources)
-    assert [%Log.Entry{sequence: 1, follows: 0}, %Log.Entry{sequence: 2}] = Enum.take(events, 2)
+    assert [first, second] = Enum.take(events, 2)
+    assert {:ok, %{^id => 1}} = Wardrik.Event.Cursor.decode(first.cursor)
+    assert {:ok, %{^id => 2}} = Wardrik.Event.Cursor.decode(second.cursor)
 
     :ok = Log.trim(store(), id, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
     assert {:ok, events} = Wardrik.events(scope(), resources: resources)
-
-    assert [%Log.Entry{sequence: nil, follows: 2, event: dropped}, %Log.Entry{sequence: 3}] =
-             Enum.take(events, 2)
-
-    assert %{"type" => "wardrik.events.dropped", "data" => %{"after" => 0, "oldest" => 3}} =
-             dropped
+    assert [%EventsDropped{after: 0, oldest: 3} = dropped, third] = Enum.take(events, 2)
+    assert {:ok, %{^id => 2}} = Wardrik.Event.Cursor.decode(dropped.cursor)
+    assert {:ok, %{^id => 3}} = Wardrik.Event.Cursor.decode(third.cursor)
 
     assert {:ok, events} =
              Wardrik.events(scope(), resources: resources, types: ["wardrik.run.completed"])
 
-    assert [%Log.Entry{event: %{"type" => "wardrik.events.dropped"}} | _rest] =
-             Enum.to_list(events)
+    assert [%EventsDropped{} | _rest] = Enum.to_list(events)
   end
 
   describe "an authorization" do

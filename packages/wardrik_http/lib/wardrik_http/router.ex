@@ -714,7 +714,7 @@ defmodule WardrikHTTP.Router do
   defp page(conn, events, cursor, limit) do
     events = Enum.take(events, limit)
     next = Enum.reduce(events, cursor, &Wardrik.cursor(&2, &1))
-    json(conn, 200, %{"events" => Enum.map(events, & &1.event), "next" => next})
+    json(conn, 200, %{"events" => Enum.map(events, & &1.cloudevent), "next" => next})
   end
 
   defp stream(conn, events, cursor) do

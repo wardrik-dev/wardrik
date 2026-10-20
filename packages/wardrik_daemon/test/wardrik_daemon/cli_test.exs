@@ -455,11 +455,21 @@ defmodule WardrikDaemon.CLITest do
     resource = Wardrik.AgentAddress.resource(key)
     :ok = Group.monitor(Wardrik.Event.Log, key.agent.org)
     terminal = watching(["watch", key, "--json"])
-    assert_receive {:group, [%Group.Event{type: :joined, meta: %{^resource => :all}} | _], _info}
+
+    assert_receive {:group,
+                    [%Group.Event{type: :joined, meta: %{{^resource, :entries} => :all}} | _],
+                    _info}
 
     # Whatever else the agent writes as it settles is a line of its own, so
     # the test waits for this one.
-    event = %{"type" => "wardrik.message.delta", "data" => %{"delta" => "hi"}}
+    event = %{
+      "id" => "e1",
+      "type" => "wardrik.message.delta",
+      "time" => "2026-10-20T12:00:00.000000Z",
+      "traceparent" => "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+      "data" => %{"delta" => "hi"}
+    }
+
     line = JSON.encode!(event) <> "\n"
     Wardrik.Event.Log.publish(%Wardrik.Event.Log.Entry{log: key, event: event, follows: 0})
     assert_receive {:written, ^line}

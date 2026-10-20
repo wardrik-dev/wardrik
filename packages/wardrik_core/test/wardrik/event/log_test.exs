@@ -131,6 +131,28 @@ defmodule Wardrik.Event.LogTest do
       refute_received %Entry{}
     end
 
+    test "delivers each entry as its event to a subscriber that takes events, and as both to one that takes both",
+         %{agent_id: agent_id, source: source} do
+      resources = [Wardrik.AgentAddress.resource(agent_id)]
+      :ok = Log.unsubscribe(agent_id)
+      :ok = Log.subscribe(resources, ["wardrik.run.started"], :events)
+      writer = agent_id |> open() |> append!(source, %Bus.TurnStarted{messages: []})
+
+      assert_receive %Wardrik.Event.RunStarted{source: ^agent_id, cursor: cursor}
+      assert {:ok, %{^agent_id => 2}} = Wardrik.Event.Cursor.decode(cursor)
+      refute_received %Entry{}
+
+      :ok = Log.subscribe(resources, :all)
+      writer = append!(writer, source, %Bus.TurnStarted{messages: []})
+      assert_receive %Wardrik.Event.RunStarted{}
+      assert_receive %Entry{event: %{"type" => "wardrik.run.started"}}
+
+      :ok = Log.unsubscribe(resources, :events)
+      append!(writer, source, %Bus.TurnStarted{messages: []})
+      assert_receive %Entry{}
+      refute_received %Wardrik.Event.RunStarted{}
+    end
+
     test "an entry says whether it comes after the log read through a number", %{
       agent_id: agent_id
     } do

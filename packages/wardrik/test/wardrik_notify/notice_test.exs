@@ -10,11 +10,14 @@ defmodule WardrikNotify.NoticeTest do
   alias WardrikNotify.Notice
 
   @time "2026-10-19T12:04:09.611000Z"
+  @trace "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 
-  defp entry(type, data, agent \\ ~A"acme/triage"),
-    do: %Entry{log: agent, event: %{"type" => type, "time" => @time, "data" => data}, follows: 0}
+  defp entry(type, data, agent \\ ~A"acme/triage") do
+    event = %{"id" => "e1", "type" => type, "time" => @time, "traceparent" => @trace, "data" => data}
+    %Entry{log: agent, event: event, follows: 0}
+  end
 
-  defp from(entry), do: Notice.from_entry(entry, host: Wardrik.Test.host())
+  defp from(entry), do: Notice.from_event(Wardrik.Event.decode(entry), host: Wardrik.Test.host())
 
   # An agent waiting on the call "call_1", and the entry of its log for the
   # turn that parked.

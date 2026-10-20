@@ -250,6 +250,35 @@ defmodule Wardrik.Event.CodecTest do
           {:ok, event} <- [encode(source, payload)],
           do: valid!(event)
     end
+
+    test "decodes to the struct of its type, holding its data and the event whole" do
+      for {source, payload} <- fixtures(), {:ok, event} <- [encode(source, payload)] do
+        entry = %Wardrik.Event.Log.Entry{
+          log: source.agent_id,
+          event: event,
+          sequence: 41,
+          follows: 40
+        }
+
+        decoded = Wardrik.Event.decode(entry)
+
+        assert decoded.__struct__ |> Module.split() |> List.last() ==
+                 event["type"]
+                 |> String.trim_leading("wardrik.")
+                 |> String.replace(".", "_")
+                 |> Macro.camelize()
+
+        assert %{id: id, source: agent, cloudevent: ^event, time: %DateTime{}} = decoded
+        assert id == event["id"]
+        assert agent == source.agent_id
+        assert {:ok, %{^agent => 41}} = Wardrik.Event.Cursor.decode(decoded.cursor)
+        assert "00-" <> rest = event["traceparent"]
+        assert String.starts_with?(rest, decoded.trace)
+
+        for {key, value} <- event["data"],
+            do: assert(Map.fetch!(decoded, String.to_existing_atom(key)) == value)
+      end
+    end
   end
 
   describe "every change" do

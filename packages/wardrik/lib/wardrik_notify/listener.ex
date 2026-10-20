@@ -27,19 +27,18 @@ defmodule WardrikNotify.Listener do
 
   require Logger
 
-  alias Wardrik.Event.Log.Entry
   alias WardrikDefinition.Route
   alias WardrikNotify.Notice
 
   @attempts 3
 
   @impl Wardrik.Listener
-  def handle(%Entry{log: agent} = entry, %Wardrik.Listener{options: opts} = listener) do
+  def handle(%{source: agent} = event, %Wardrik.Listener{options: opts} = listener) do
     host = Keyword.fetch!(opts, :host)
 
     with {:ok, %Wardrik.Definition{notify: %Route{} = route}} <-
            Wardrik.Definitions.get(Wardrik.Host.definitions(host), agent),
-         {:ok, notice} <- Notice.from_entry(entry, host: host),
+         {:ok, notice} <- Notice.from_event(event, host: host),
          true <- notice.kind in route.on do
       Enum.each(route.targets ++ route.rooms, &tell(&1, notice, opts, 1))
     end

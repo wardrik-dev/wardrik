@@ -663,16 +663,16 @@ defmodule Wardrik do
   @resources_opts NimbleOptions.new!(Keyword.take(@following, [:resources]))
 
   @doc """
-  Sends this process each entry the agents `:resources` covers write from
-  now on, durable and live, as `%Wardrik.Event.Log.Entry{}` messages: once
-  however many of its patterns cover the agent, in the order each agent
-  wrote them, from any node. An entry's `log` is its agent, and its `event`
-  the CloudEvent.
+  Sends this process each event the agents `:resources` covers write from
+  now on, durable and live, as `Wardrik.Event` structs: once however many
+  of its patterns cover the agent, in the order each agent wrote them, from
+  any node. An event's `source` is its agent, and its `cursor` names that
+  agent's log alone; `cursor/2` folds several into one.
 
       :ok = Wardrik.subscribe(scope, resources: [Wardrik.Resource.parse!("acme/agent/*")])
 
       receive do
-        %Wardrik.Event.Log.Entry{log: agent, event: %{"type" => "wardrik.run.completed"}} -> agent
+        %Wardrik.Event.RunCompleted{source: agent} -> agent
       end
 
   The token is checked once, here. A process that subscribes again follows
@@ -689,11 +689,11 @@ defmodule Wardrik do
     opts = NimbleOptions.validate!(opts, @subscribe_opts)
 
     with {:ok, resources} <- readable(scope, opts),
-         do: Log.subscribe(resources, Keyword.get(opts, :types, :all))
+         do: Log.subscribe(resources, Keyword.get(opts, :types, :all), :events)
   end
 
   @doc """
-  Stops sending this process the entries of the patterns `:resources`
+  Stops sending this process the events of the patterns `:resources`
   names, as it subscribed to them, and goes on with the rest.
 
   ## Options
@@ -704,16 +704,16 @@ defmodule Wardrik do
   @spec unsubscribe(Scope.t(), keyword()) :: :ok
   def unsubscribe(%Scope{} = scope, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @resources_opts)
-    Log.unsubscribe(Keyword.get_lazy(opts, :resources, fn -> readable_by(scope) end))
+    Log.unsubscribe(Keyword.get_lazy(opts, :resources, fn -> readable_by(scope) end), :events)
   end
 
   @doc """
   The logs of the agents `:resources` covers as a lazy `Stream` of
-  `Wardrik.Event.Log.Entry`s: every one written after the cursor `:after`,
+  `Wardrik.Event` structs: every one written after the cursor `:after`,
   read page by page, a log at a time, then, with `follow: true`, each as an
   agent writes it, until the process taking it stops. Following, it
-  subscribes the process taking it while it runs, so it takes each entry
-  once, in order, and drops the entries sent it as it stops.
+  subscribes the process taking it while it runs, so it takes each event
+  once, in order, and drops the events sent it as it stops.
 
       {:ok, message} = Wardrik.agent_ask(scope, agent, "Summarise the inbox")
 
@@ -724,34 +724,43 @@ defmodule Wardrik do
           follow: true
         )
 
-      Enum.find(events, &(&1.event["type"] == "wardrik.run.completed"))
+      Enum.find(events, &match?(%Wardrik.Event.RunCompleted{}, &1))
 
-  Wardrik keeps no reader's place: a reader keeps its cursor, moved past
-  each entry by `cursor/2`, and reads on from it, or from the cursor of
+  Wardrik keeps no reader's place. Each event's `cursor` is where the
+  stream stands past it, across every log it reads, so a reader keeps the
+  last one it handled and reads on from there; or from the cursor of
   `agent_read/2`'s snapshot or `agent_ask/4`'s message. One that starts
   from what is written next, and keeps its place, starts from
-  `events_head/2`'s cursor, as `Wardrik.Listener` does. Where a log was trimmed
-  past the cursor, the stream takes a `wardrik.events.dropped` entry naming
-  the sequence it was after and the oldest the log still held, whatever
-  `:types` names, and reads on from there.
+  `events_head/2`'s cursor, as `Wardrik.Listener` does. Where a log was
+  trimmed past the cursor, the stream takes a
+  `Wardrik.Event.EventsDropped` naming the sequence it was after and the
+  oldest the log still held, whatever `:types` names, and reads on from
+  there.
 
   ## Options
 
   #{NimbleOptions.docs(@events_opts)}
   """
   @doc group: "Events"
-  @spec events(Scope.t(), keyword()) :: {:ok, Enumerable.t(Entry.t())} | {:error, Error.t()}
+  @spec events(Scope.t(), keyword()) ::
+          {:ok, Enumerable.t(Wardrik.Event.t())} | {:error, Error.t()}
   def events(%Scope{} = scope, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @events_opts)
 
     with {:ok, resources} <- readable(scope, opts),
          {:ok, positions} <- positions(opts[:after]) do
       {:ok,
-       Log.stream(Host.store(scope.host), resources,
+       scope.host
+       |> Host.store()
+       |> Log.stream(resources,
          after: positions,
          follow: opts[:follow],
          types: Keyword.get(opts, :types, :all)
-       )}
+       )
+       |> Stream.transform(opts[:after], fn entry, cursor ->
+         event = Wardrik.Event.decode(entry, cursor)
+         {[event], event.cursor}
+       end)}
     end
   end
 
@@ -785,20 +794,22 @@ defmodule Wardrik do
   end
 
   @doc """
-  `cursor` moved past `entry`: the cursor `events/2` reads on from after it.
-  A cursor of `:head` names the logs of the entries it has been moved past
-  alone, and reads the rest from their start, so one that resumes across
-  many agents is moved from `events_head/2`'s.
+  `cursor` moved past `event` in its agent's log: the cursor `events/2`
+  reads on from after it. It folds the events `subscribe/2` sends into one
+  cursor across all their agents. A cursor of `:head` names the logs of the
+  events it has been moved past alone, and reads the rest from their start,
+  so one that resumes across many agents is moved from `events_head/2`'s.
 
-      cursor = Enum.reduce(entries, cursor, &Wardrik.cursor(&2, &1))
+      cursor = Enum.reduce(events, cursor, &Wardrik.cursor(&2, &1))
   """
   @doc group: "Events"
-  @spec cursor(String.t() | :head, Entry.t()) :: String.t()
-  def cursor(:head, entry), do: cursor("", entry)
+  @spec cursor(String.t() | :head, Wardrik.Event.t()) :: String.t()
+  def cursor(:head, event), do: cursor("", event)
 
-  def cursor(cursor, %Entry{log: log} = entry) do
+  def cursor(cursor, %{source: log, cursor: past}) when is_binary(past) do
     {:ok, positions} = Cursor.decode(cursor)
-    Cursor.encode(Map.put(positions, log, entry.sequence || entry.follows))
+    {:ok, %{^log => at}} = Cursor.decode(past)
+    Cursor.encode(Map.put(positions, log, at))
   end
 
   # The patterns `opts` names, or those the scope's token allows
@@ -2214,7 +2225,7 @@ defmodule Wardrik do
 
   @doc "As `events/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Events"
-  @spec events!(Scope.t(), keyword()) :: Enumerable.t(Entry.t())
+  @spec events!(Scope.t(), keyword()) :: Enumerable.t(Wardrik.Event.t())
   def events!(scope, opts \\ []), do: unwrap(events(scope, opts))
 
   @doc "As `events_head/2`, answering the value, or raising the `Wardrik.Error`."

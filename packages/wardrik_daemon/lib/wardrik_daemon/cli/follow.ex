@@ -62,7 +62,7 @@ defmodule WardrikDaemon.CLI.Follow do
 
     # The events are taken by a task of its own, writing to the same
     # terminal, while this process waits for the terminal to go.
-    task = Task.async(fn -> Enum.each(events, &IO.puts(JSON.encode!(&1.event))) end)
+    task = Task.async(fn -> Enum.each(events, &IO.puts(JSON.encode!(&1.cloudevent))) end)
 
     receive do
       {:DOWN, ^watching, :process, _pid, _reason} -> Task.shutdown(task, :brutal_kill)

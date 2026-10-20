@@ -62,7 +62,7 @@ defmodule Wardrik.Wait do
         {:cont, {:run, run}}
 
       {:run, ^run} when type in @ends ->
-        {:halt, ended(type, data, agent, run, Wardrik.cursor(cursor, entry))}
+        {:halt, ended(type, data, agent, run, Cursor.past(cursor, entry))}
 
       _other ->
         {:cont, awaited}

@@ -10,7 +10,7 @@ defmodule MyApp.Agents.Runs do
   import Ecto.Query
 
   alias MyApp.Repo
-  alias Wardrik.Event.Log.Entry
+  alias Wardrik.Event.EventsDropped
 
   @doc "The child that runs it, after Wardrik, on `wardrik`."
   def child_spec(wardrik) do
@@ -25,12 +25,12 @@ defmodule MyApp.Agents.Runs do
   # The log was trimmed past the cursor, so the events between are gone:
   # keep what the agent says of itself now in their place.
   @impl true
-  def handle(%Entry{event: %{"type" => "wardrik.events.dropped"} = event} = entry, listener) do
-    {:ok, snapshot} = Wardrik.agent_read(listener.scope, entry.log)
-    keep(entry, %{event | "data" => %{"status" => to_string(snapshot.status.state)}}, listener.cursor)
+  def handle(%EventsDropped{source: agent} = event, listener) do
+    {:ok, snapshot} = Wardrik.agent_read(listener.scope, agent)
+    keep(event, %{"status" => to_string(snapshot.status.state)}, listener.cursor)
   end
 
-  def handle(%Entry{event: event} = entry, listener), do: keep(entry, event, listener.cursor)
+  def handle(event, listener), do: keep(event, event.cloudevent["data"], listener.cursor)
 
   # The first start reads from the head of every log, kept at once so a
   # restart before the first event misses nothing.
@@ -44,9 +44,14 @@ defmodule MyApp.Agents.Runs do
 
   # An event comes again after a restart that cut its transaction short; the
   # id it is kept under drops the repeat.
-  defp keep(entry, event, cursor) do
-    {:ok, at, 0} = DateTime.from_iso8601(event["time"])
-    row = %{id: event["id"], agent: to_string(entry.log), type: event["type"], data: event["data"], at: at}
+  defp keep(event, data, cursor) do
+    row = %{
+      id: event.id,
+      agent: to_string(event.source),
+      type: event.cloudevent["type"],
+      data: data,
+      at: event.time
+    }
 
     {:ok, _cursor} =
       Repo.transaction(fn ->

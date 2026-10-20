@@ -11,7 +11,6 @@ defmodule WardrikNotify.Notice do
     * `:finished` - a turn answered, and `text` is what it said last
   """
 
-  alias Wardrik.Event.Log.Entry
 
   @enforce_keys [:agent, :kind, :at]
   defstruct [:agent, :kind, :at, :reason, :text, calls: []]
@@ -36,18 +35,16 @@ defmodule WardrikNotify.Notice do
         }
 
   @doc """
-  The notice `entry` of an agent's log makes, at the time its event was
-  written, or `:none` for one nobody is told about. A parked turn's calls
+  The notice an agent's `event` makes, at the time it was written, or
+  `:none` for one nobody is told about. A parked turn's calls
   are read from the agent on `:host` as it is told of, as
   `Wardrik.Agent.parked/2` answers them, since the log does not say what a
   call asks: those it no longer waits on are left out, and a turn that
   waits on none of them makes none.
   """
-  @spec from_entry(Entry.t(), host: Wardrik.Host.t()) :: {:ok, t()} | :none
-  def from_entry(%Entry{log: agent, event: %{"type" => type} = event}, opts) do
-    {:ok, at, 0} = DateTime.from_iso8601(event["time"])
-    notice(type, event["data"], %{agent: agent, at: at}, Keyword.fetch!(opts, :host))
-  end
+  @spec from_event(Wardrik.Event.t(), host: Wardrik.Host.t()) :: {:ok, t()} | :none
+  def from_event(%{source: agent, time: at, cloudevent: %{"type" => type} = event}, opts),
+    do: notice(type, event["data"], %{agent: agent, at: at}, Keyword.fetch!(opts, :host))
 
   defp notice("wardrik.run.interrupted", %{"interrupts" => interrupts}, base, host) do
     ids = for %{"id" => id} <- interrupts, do: id

@@ -135,7 +135,7 @@ defmodule WardrikHost.GuideTest do
 
     assert {:ok, %Wardrik.Agent.Message{}} = agents().ask(user, agent, "What changed this week?")
 
-    assert_receive %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.started"}}, 10_000
+    assert_receive %Wardrik.Event.RunStarted{}, 10_000
     assert {:ok, doing} = agents().doing(user, agent)
     assert is_binary(doing)
   end
