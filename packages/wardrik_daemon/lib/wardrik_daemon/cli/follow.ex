@@ -12,7 +12,7 @@ defmodule WardrikDaemon.CLI.Follow do
   to go.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Event
   alias Wardrik.Event.Bus
   alias WardrikConsole.Printer
@@ -26,7 +26,7 @@ defmodule WardrikDaemon.CLI.Follow do
   until the turn ends or waits on a person. What `start` answers other than
   `:ok` is answered as it is, and nothing is followed.
   """
-  @spec turn(Wardrik.AgentID.t(), Terminal.t(), (-> :ok | term())) :: outcome() | term()
+  @spec turn(AgentAddress.t(), Terminal.t(), (-> :ok | term())) :: outcome() | term()
   def turn(key, %Terminal{} = terminal, start) do
     :ok = Bus.subscribe(key)
 
@@ -41,7 +41,7 @@ defmodule WardrikDaemon.CLI.Follow do
   end
 
   @doc "Writes `first` once subscribed to `key`'s events, then follows them until the terminal goes."
-  @spec events(Wardrik.AgentID.t(), Terminal.t(), Owl.Data.t()) :: :gone
+  @spec events(AgentAddress.t(), Terminal.t(), Owl.Data.t()) :: :gone
   def events(key, %Terminal{} = terminal, first) do
     :ok = Bus.subscribe(key)
     Terminal.puts(terminal, first)
@@ -54,12 +54,12 @@ defmodule WardrikDaemon.CLI.Follow do
   Writes each CloudEvent `key`'s log takes from now on, as `scope` reads it,
   a line of JSON each, until the terminal goes.
   """
-  @spec json(Wardrik.Scope.t(), AgentID.t()) :: :gone
-  def json(scope, %AgentID{} = key) do
+  @spec json(Wardrik.Scope.t(), AgentAddress.t()) :: :gone
+  def json(scope, key) do
     watching = watched()
 
     events =
-      Wardrik.events!(scope, resources: [AgentID.resource(key)], after: :head, follow: true)
+      Wardrik.events!(scope, resources: [AgentAddress.resource(key)], after: :head, follow: true)
 
     # The events are taken by a task of its own, writing to the same
     # terminal, while this process waits for the terminal to go.

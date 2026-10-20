@@ -445,15 +445,15 @@ defmodule WardrikDaemon.CLITest do
     assert live(["watch", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
   end
 
-  test "watch --json writes each event of the log as a line of JSON" do
-    key = Wardrik.Test.Fleet.id()
+  test "watch --json writes each event of the log as a line of JSON, a thread's too" do
+    key = Wardrik.Thread.new!(Wardrik.Test.Fleet.id(), "C1-1.1")
     :ok = Wardrik.Event.Log.subscribe(key)
     {^key, _agent} = Wardrik.Test.Fleet.start_agent([], key)
     # Its start is in its log before anything watches it, so no late write
     # reaches a terminal that has closed.
     assert_receive %Wardrik.Event.Log.Entry{sequence: 1}
-    resource = Wardrik.AgentID.resource(key)
-    :ok = Group.monitor(Wardrik.Event.Log, key.org)
+    resource = Wardrik.AgentAddress.resource(key)
+    :ok = Group.monitor(Wardrik.Event.Log, key.agent.org)
     terminal = watching(["watch", key, "--json"])
     assert_receive {:group, [%Group.Event{type: :joined, meta: %{^resource => :all}} | _], _info}
 
