@@ -119,5 +119,5 @@ node, or after a person decides, keeps its trace.
 - **Span tree.** `parentspanid` says which span an event's span is beneath, so a turn's events form
   a tree.
 - **Notices aren't events.** An agent can tell someone when it parks, fails or answers, in Slack or
-  with a signed webhook. A notice is sent once, from the node holding the agent, to the targets its
-  file routes to. See [Send notices](/build/notices/).
+  with a signed webhook. One node of the cluster reads the events and sends each notice to the
+  targets the agent's file routes to. See [Send notices](/build/notices/).

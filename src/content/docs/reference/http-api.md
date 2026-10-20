@@ -93,6 +93,7 @@ answers an agent with is its key.
 | `DELETE /v1/agents?resource=` | removes every agent the pattern covers but those agent files declare; answers which went, which stayed and why |
 | `GET /v1/interrupts` | the calls agents `?resource=` covers, or those the token's one resource covers, wait on a person for |
 | `GET /v1/events` | the events of the agents each `?resources=` covers, as server-sent events with `Accept: text/event-stream`, otherwise a page as JSON; see [Events](#events) |
+| `GET /v1/events/head` | the cursor where the log of each agent `?resources=` covers stands, `{"cursor": ...}` |
 | `GET /v1/agents/{key}` | the agent's snapshot, with `cursor`, where its log stands |
 | `PUT /v1/agents/{key}` | starts the agent a definition describes, or brings the one running to it; answers its snapshot |
 | `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, with the tools it names that offer nothing yet as `missing` |
@@ -172,6 +173,10 @@ has got to in each agent's log. A stream starts after `Last-Event-ID` or `?after
 either at what is written next; a page starts after `?after=`, at the start by default, takes
 `?limit=` up to 500, and answers `{"events": [...], "next": ...}`, the cursor after them. A
 snapshot's `cursor`, and a message's, read on from there. The server keeps no reader's place.
+
+`GET /v1/events/head` answers the cursor at the head of every log the patterns cover. A reader
+that starts from what is written next starts from it, so the cursor it keeps names every agent it
+reads, and resumes in each. A stream opened without a cursor starts there itself.
 
 A cursor is about 50 bytes for each agent it names, so a `Last-Event-ID` holds the place of 150 to
 200 agents; read more as pages. Where a log was trimmed past the cursor, a

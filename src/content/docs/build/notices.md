@@ -101,7 +101,9 @@ const ok =
 
 ## Details
 
-- A notice is sent once, from the node holding the agent.
+- One node of the cluster sends the notices, and keeps its place in the agents' logs. After a
+  restart it carries on from there, so a notice whose delivery was cut short comes again: tell a
+  repeat by its `agent`, `event` and `at`.
 - A turn waiting on several calls sends a notice again when some are decided and others still wait.
 - A definition [sent over HTTP](/build/http-api/#define-an-agent) takes `notify` in the same forms,
   as `"notify": {"to": ["ops"], "on": ["finished"]}`. It holds while the agent sleeps and after a
