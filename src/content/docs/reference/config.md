@@ -75,7 +75,8 @@ set them.
 | [`notify`](#notify) | where agents' notices go |
 | [`workspace`](#workspace) | the trees of files agents beyond their owners may share |
 | [`tokens`](#tokens) | how long tokens last |
-| [`vault`](#vault) | the vault's keys, and the secrets every agent may read |
+| [`vault`](#vault) | the vault's keys |
+| [`brave`](#brave) | the key web search searches with |
 | [`storage`](#storage) | the store everything is kept in |
 | [`cluster`](#cluster) | the other daemons this one runs with |
 | [`http`](#http) | where the HTTP API listens |
@@ -115,9 +116,6 @@ orgs:
   growth:
     mcp: [github]
     channels: [growth-slack]
-
-vault:
-  shared: [SEARCH_API_KEY]
 ```
 
 - An org's entry takes `mcp`, `channels` and `notify`, each a list of names, and `policy`. An
@@ -133,7 +131,7 @@ vault:
   `orgs` is refused, as is a name its section doesn't define.
 
 Each org's agents reach a server with their org's own credential, so payments and growth each seal a
-`GITHUB_TOKEN` of their own. `vault.shared` lets every org use the deployment's `SEARCH_API_KEY`. See
+`GITHUB_TOKEN` of their own, and a `SEARCH_API_KEY` for the server every org uses. See
 [Credentials](#credentials).
 
 ## base_url
@@ -205,10 +203,10 @@ for. See
 
 A credential is sealed in the vault and found for each call as the agent's owner holds it: the user
 it works for (`wardrik vault put NAME --user USER`), or its org (`--org ORG`) for an agent that
-works for nobody. One owner never reads another's. The deployment's own (`wardrik vault put NAME`),
-and the daemon's environment variable of that name, reach an agent only where
-[`vault.shared`](#vault) names them. Where the owner holds none and `oauth` has a provider of the
-same name, the owner is asked to connect an account. See [Connect
+works for nobody. One owner never reads another's. The deployment's own (`wardrik vault put NAME`)
+and the daemon's environment reach no agent: they are for model providers' keys and `${NAME}` in
+this file. Where the owner holds none and `oauth` has a provider of the same name, the owner is
+asked to connect an account. See [Connect
 accounts](/build/accounts/).
 
 ## oauth
@@ -299,12 +297,17 @@ workspace:
 `keys` lists the vault's keys. Without them, or `WARDRIK_VAULT_KEY`, the key is `vault_key` in the
 data home, which the first `wardrik vault put` offers to make.
 
-`shared` names the deployment's secrets every agent may read, such as a search tool's key:
+## brave
+
+`api_key` is the key `web_search` searches with, for every agent the daemon runs:
 
 ```yaml
-vault:
-  shared: [SEARCH_API_KEY]
+brave:
+  api_key: ${BRAVE_API_KEY}
 ```
+
+`${BRAVE_API_KEY}` reads the environment, else the deployment's secret, which `wardrik vault put
+BRAVE_API_KEY` seals. Without `brave`, a search answers that the key is missing.
 
 ## tokens
 

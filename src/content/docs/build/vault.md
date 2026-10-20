@@ -1,6 +1,6 @@
 ---
 title: Keep secrets in the vault
-description: "Seal API keys and tokens in the vault, for a user, an org or every agent, so no file holds a secret."
+description: "Seal API keys and tokens in the vault, for a user or an org, so no file holds a secret."
 sidebar:
   order: 2.5
 ---
@@ -29,21 +29,19 @@ agent that needs the org's account asks the org's agent, which its own policy ho
 A secret the owner holds is found before an OAuth provider of the same name is asked for, so it
 stands in for an account they would otherwise [connect](/build/accounts/).
 
-## Shared secrets
+## The deployment's secrets
 
-A secret put with no owner is the deployment's. It reaches agents only by name:
+A secret put with no owner is the deployment's, for the daemon's own use: a model provider's key, or
+a `${NAME}` in `config.yaml`, such as web search's
+[`brave.api_key`](/reference/config/#brave), which every agent searches with. No agent's call reads
+it otherwise. For a tool key every org's agents use, seal it for each org:
 
 ```sh
-wardrik vault put linear
+wardrik vault put PAGERDUTY_TOKEN --org acme
+wardrik vault put PAGERDUTY_TOKEN --org globex
 ```
 
-```yaml title="~/.config/wardrik/config.yaml"
-vault:
-  shared: [linear]    # every agent may read the deployment's linear
-```
-
-A name `shared` lists is also read from the daemon's environment variable of that name, where the
-vault holds none.
+A user's own agents read only what the user holds, so each user who needs it seals their own.
 
 ## The vault's key
 

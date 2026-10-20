@@ -15,7 +15,7 @@ deployment waits. A budget caps its daily spend.
 
 - the daemon, [installed](/getting-started/install/), with a model provider's key from the
   [Quickstart](/getting-started/quickstart/);
-- a key for `web_search`;
+- a key for `web_search`, in `BRAVE_API_KEY`, which [`brave.api_key`](/reference/config/#brave) reads;
 - GitHub's MCP server, with a token for a machine account that can read the repository and open
   issues;
 - an app of your own offering the ad platform's tools, with the
@@ -40,6 +40,9 @@ mcp:
 tools:
   web_search:
     price: 0.005
+
+brave:
+  api_key: ${BRAVE_API_KEY}
 
 channels:
   slack:

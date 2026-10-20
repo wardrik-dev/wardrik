@@ -88,15 +88,15 @@ Each kind of record has its own namespace:
 
 | Namespace | What |
 | --- | --- |
-| `durable` | agents, as `agents/<key>`; triggers; budget meters; each node's heartbeat |
+| `durable` | agents, as `agents/<resource name>`; triggers; budget meters; each node's heartbeat |
 | `events` | each agent's event log, for 30 days |
 | `files` | agents' files, as `<tree>//<path>` |
 | `claims` | the ledger, until each turn ends |
 | `tokens` | the HTTP API's tokens, as hashes |
-| `vault` | sealed credentials |
+| `vault` | sealed credentials, as `<resource name>`: `acme/@jon/secret/github` |
 | `mcp_tools` | the tools each MCP server listed |
 | `oauth_clients` | the clients the daemon registered with OAuth providers |
 | `declared` | each node's inventory: the agents its agent files declared when last read, and which file each came from |
 
 In a bucket a record is the object `<prefix>/<namespace>/<key>`, so an agent is
-`wardrik/durable/agents/acme/@jon/triage`. In Postgres, `ns` is the namespace and `key` the key.
+`wardrik/durable/agents/acme/@jon/agent/triage`. In Postgres, `ns` is the namespace and `key` the key.
