@@ -42,7 +42,7 @@ defmodule WardrikMCP.MixProject do
       # WardrikMCP.Supervisor starts.
       {:finch, "~> 0.23"},
       # Test only: serves the stub servers the suite reaches over HTTP.
-      {:bandit, "~> 1.8", only: :test},
+      {:bandit, "~> 1.13", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end
