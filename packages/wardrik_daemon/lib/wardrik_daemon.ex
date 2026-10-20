@@ -140,7 +140,8 @@ defmodule WardrikDaemon do
   owners add (see
   `WardrikMCP.attach/2`); where a provider is configured, or the vault has
   a key, the pages a sign-in comes back to; the notify targets and the
-  channels configured; and the HTTP API, and the tool workers', `workers`.
+  channels configured; and the HTTP API, on port 4747 unless `http` names
+  another, and the tool workers', `workers`.
   """
   @spec attach(Wardrik.Host.t(), Config.t()) :: Wardrik.Host.t()
   def attach(host, %Config{} = config) do
@@ -162,7 +163,10 @@ defmodule WardrikDaemon do
         ])
     )
     |> WardrikHTTP.attach(
-      Keyword.take(Config.section(config, WardrikHTTP), [:port, :ip, :workers])
+      Keyword.merge(
+        [port: 4747],
+        Keyword.take(Config.section(config, WardrikHTTP), [:port, :ip, :workers])
+      )
     )
   end
 

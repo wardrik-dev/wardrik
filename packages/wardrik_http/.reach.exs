@@ -49,6 +49,8 @@
       "Wardrik.JSON",
       "Wardrik.Hook",
       "Wardrik.Host",
+      # What the plug reaches a `use Wardrik` instance through.
+      "Wardrik.Instance",
       "Wardrik.LLM.Answer",
       "Wardrik.LLM.Client",
       "Wardrik.LLM.Config",

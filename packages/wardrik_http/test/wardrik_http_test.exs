@@ -6,6 +6,8 @@ defmodule WardrikHTTPTest do
     host = WardrikHTTP.attach(Wardrik.Host.new(store: store), port: 0, workers: [trusted: true])
 
     assert Wardrik.Host.sources(host) == %{"workers" => WardrikHTTP.Workers}
+    assert Wardrik.Host.tokens(host) == %WardrikHTTP.Tokens{store: store}
+    assert Wardrik.Host.settings(host, WardrikHTTP) == [workers: [trusted: true]]
 
     assert Wardrik.Host.children(host) == [
              {WardrikHTTP.Access, store: store},
@@ -14,6 +16,25 @@ defmodule WardrikHTTPTest do
            ]
 
     assert_raise ArgumentError, fn -> WardrikHTTP.attach(Wardrik.Host.new(), mounts: []) end
+  end
+
+  test "listens only on a port it is given, leaving the app to forward to it otherwise" do
+    store = Wardrik.Test.store()
+    host = WardrikHTTP.attach(Wardrik.Host.new(store: store))
+
+    assert Wardrik.Host.children(host) == [
+             {WardrikHTTP.Access, store: store},
+             {WardrikHTTP.Workers, []}
+           ]
+
+    assert Wardrik.Host.settings(host, WardrikHTTP) == [workers: []]
+  end
+
+  test "checks a plugin's options before anything starts" do
+    assert WardrikHTTP.validate([]) == :ok
+    assert WardrikHTTP.validate(port: 4850, workers: [trusted: true]) == :ok
+    assert WardrikHTTP.validate(port: "4850") == {:error, "port is a port number"}
+    assert {:error, ":mounts: expected" <> _} = WardrikHTTP.validate(mounts: [])
   end
 
   test "reads config.yaml's http, and says where it does not read" do
