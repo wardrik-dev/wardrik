@@ -25,7 +25,7 @@
     "check": "node scripts/generate.ts --check && tsc --noEmit && npm test"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.1.0"
+    "@modelcontextprotocol/server": "^2.3.1"
   },
   "peerDependencies": {
     "zod": "^4.2.0"
