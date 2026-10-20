@@ -51,8 +51,57 @@ defmodule WardrikChannelTest do
       assert Wardrik.Host.settings(host, WardrikNotify)[:rooms] ==
                %WardrikChannel.Notices{settings: kept}
 
+      assert Wardrik.Host.issuers(host) == %{
+               "one" => %WardrikChannel.Issuer{
+                 channel: {WardrikChannel.Test.Adapter, test: self()},
+                 installations: settings[:installations]
+               }
+             }
+
       assert WardrikChannel.attach(host(), channels: []) == host()
       assert_raise ArgumentError, fn -> WardrikChannel.attach(host(), mounts: []) end
+    end
+  end
+
+  describe "WardrikChannel.Issuer" do
+    setup do
+      installations = %WardrikChannel.Test.Installations{
+        agent: start_supervised!({Agent, fn -> %{} end})
+      }
+
+      :ok =
+        Installations.put(installations, %Installation{
+          installation()
+          | channel: "chat",
+            owner: Resource.parse!("acme"),
+            approvers: %Approvers.Named{names: ["U2"]}
+        })
+
+      issuer = %WardrikChannel.Issuer{
+        channel: {WardrikChannel.Test.Adapter, test: self()},
+        installations: installations
+      }
+
+      %{token: &Wardrik.Issuer.issue(issuer, Wardrik.Principal.new("chat:#{&1}"), [])}
+    end
+
+    test "reads and messages the agents of the org the workspace serves", %{token: token} do
+      books = Wardrik.AgentID.parse!("acme/books")
+      someone = token.("T1/U1")
+
+      assert Wardrik.Token.authorize(someone, "agent.ask", books) == :ok
+      assert {:error, _not_an_approver} = Wardrik.Token.authorize(someone, "agent.decide", books)
+      refute Wardrik.Token.reaches?(someone, Wardrik.AgentID.parse!("globex/books"))
+      refute Wardrik.Token.reaches?(someone, Wardrik.AgentID.parse!("acme/@jon/books"))
+    end
+
+    test "decides where the installation's approvers name them", %{token: token} do
+      books = Wardrik.AgentID.parse!("acme/books")
+      assert Wardrik.Token.authorize(token.("T1/U2"), "agent.decide", books) == :ok
+    end
+
+    test "gives someone in a workspace it isn't installed in nothing", %{token: token} do
+      assert %Wardrik.Token{scope: []} = token.("T9/U2")
     end
   end
 

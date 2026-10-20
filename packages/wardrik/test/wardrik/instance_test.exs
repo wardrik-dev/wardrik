@@ -74,6 +74,25 @@ defmodule Wardrik.InstanceTest do
       do: if(is_binary(opts[:name]), do: :ok, else: {:error, "it names its tool"})
   end
 
+  # Names the people of a chat it runs, and issues them reader on acme's agents.
+  defmodule Chat do
+    @moduledoc false
+    @behaviour Wardrik.Plugin
+
+    defstruct []
+
+    @impl true
+    def attach(host, _opts), do: Wardrik.Host.register(host, :issuers, [{"chat", %Chat{}}])
+
+    defimpl Wardrik.Issuer do
+      def issue(_chat, principal, _opts),
+        do: %Wardrik.Token{
+          principal: principal,
+          scope: [Wardrik.Role.bind([:reader], [Wardrik.Resource.parse!("acme/agent/*")])]
+        }
+    end
+  end
+
   defmodule Runs do
     @moduledoc false
     use Wardrik.Listener
@@ -422,6 +441,16 @@ defmodule Wardrik.InstanceTest do
       assert [%{actions: ["agent.events", "agent.read"]}] = scope(Agents, "deployment")
       assert scope(Agents, "slack:T1/U2") == []
       assert scope(Agents, "acme/agent/front/trigger/hook") == []
+    end
+
+    # Granting's grants/1 raises where the test names no grants.
+    test "someone a plugin names holds what its issuer says, and grants/1 never sees them" do
+      issuer = Wardrik.Host.issuer(Wardrik.Instance.build(Granting, config(plugins: [Chat])))
+      scope = &Wardrik.Issuer.issue(issuer, Wardrik.Principal.new(&1), []).scope
+
+      assert reaches(scope.("chat:T1/U2")) == ["acme/agent/*"]
+      assert scope.("slack:T1/U2") == []
+      assert scope.("oauth:github") == []
     end
 
     test "a grant that isn't one raises, naming it" do

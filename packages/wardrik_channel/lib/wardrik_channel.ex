@@ -235,7 +235,9 @@ defmodule WardrikChannel do
   @doc """
   Returns `host` running the channels `settings` name. The host serves what
   each medium sends at `/v1/channels/{channel}/`, starts the channels, and
-  posts room notices through them. Naming no channels, it returns `host`.
+  posts room notices through them. Each channel issues its people their
+  tokens (`WardrikChannel.Issuer`), among the host's `:issuers`. Naming no
+  channels, it returns `host`.
 
       WardrikChannel.attach(host,
         channels: [slack: {WardrikSlack, signing_secret: "…"}],
@@ -269,8 +271,16 @@ defmodule WardrikChannel do
         |> Wardrik.Host.register(:settings, [
           {WardrikNotify, rooms: %WardrikChannel.Notices{settings: settings}}
         ])
+        |> Wardrik.Host.register(:issuers, issuers(settings))
         |> Wardrik.Host.child({WardrikChannel.Replies, settings: settings})
         |> Wardrik.Host.child({WardrikChannel.Supervisor, settings: settings})
+  end
+
+  defp issuers(settings) do
+    for {name, channel} <- settings[:channels],
+        do:
+          {to_string(name),
+           %WardrikChannel.Issuer{channel: channel, installations: settings[:installations]}}
   end
 
   @doc """

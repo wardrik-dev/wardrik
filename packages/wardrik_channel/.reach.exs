@@ -4,7 +4,12 @@
 # internals, which only core calls.
 [
   layers: [
-    channel: ["WardrikChannel", "WardrikChannel.*", "WardrikNotify.Rooms.WardrikChannel.Notices"]
+    channel: [
+      "WardrikChannel",
+      "WardrikChannel.*",
+      "WardrikNotify.Rooms.WardrikChannel.Notices",
+      "Wardrik.Issuer.WardrikChannel.Issuer"
+    ]
   ],
   boundaries: [
     public: [

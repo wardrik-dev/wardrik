@@ -270,7 +270,16 @@ defmodule Wardrik.Instance do
     |> Wardrik.new()
     |> Host.register(:settings, [{__MODULE__, module: module}])
     |> plugins(config[:plugins])
+    |> issuing(module)
   end
+
+  # Issuing the people plugins name as their plugins say, once all are attached.
+  defp issuing(host, module),
+    do:
+      Host.put(host, :issuer, %Wardrik.Instance.Issuer{
+        module: module,
+        issuers: Host.issuers(host)
+      })
 
   defp policies(policies),
     do:
