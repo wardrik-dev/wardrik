@@ -14,7 +14,7 @@ Your notes stay files in a folder, so Obsidian, or any editor, works with them a
 ## What it takes
 
 - the daemon, [installed](/getting-started/install/), with a model provider's key;
-- a key for `web_search`;
+- a key for `web_search`, in `BRAVE_API_KEY`, which [`brave.api_key`](/reference/config/#brave) reads;
 - [Node.js](https://nodejs.org/) for the filesystem server, and a notes folder, here
   `~/Notes`.
 
@@ -27,6 +27,9 @@ mcp:
   notes:
     command: npx
     args: [-y, "@modelcontextprotocol/server-filesystem", /home/jo/Notes]
+
+brave:
+  api_key: ${BRAVE_API_KEY}
 ```
 
 The [filesystem server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem)

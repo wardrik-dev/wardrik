@@ -69,8 +69,6 @@ Each team's credentials are sealed for its org, where no other team's agents can
 wardrik vault put STRIPE_AGENT_KEY --org payments
 wardrik vault put GITHUB_TOKEN --org payments
 wardrik vault put GITHUB_TOKEN --org growth
-wardrik vault put SEARCH_API_KEY --org payments
-wardrik vault put SEARCH_API_KEY --org growth
 ```
 
 See [Orgs](/run/orgs/) for everything an org keeps apart.

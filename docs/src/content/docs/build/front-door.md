@@ -121,9 +121,9 @@ there before each call. See [Slack](/channels/slack/).
 - A task it hands a worker comes back to it as a message, which it passes on.
 - `self/*` lets it read its own definition.
 - `MEMORY.md` holds who it works for, what they want more or less of, and the work it set up and why.
-- `web_search` works once its key is in the vault for the front door's org, as `wardrik vault put
-  NAME --org ORG` seals it. A search without one tells the front door which key it lacks, and it
-  tells you.
+- `web_search` works once `config.yaml` gives it a key, as
+  [`brave.api_key`](/reference/config/#brave), for every agent. A search without one tells the front
+  door the key is missing, and it tells you.
 - The budget counts tokens because a dollar budget refuses a model the catalog can't price, such as
   one a subscription pays for. Where yours is priced, `usd: 3.00` counts dollars instead. Workers'
   spend is held to the front door's budget ahead of their own, counted on their own. See

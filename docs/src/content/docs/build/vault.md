@@ -32,12 +32,13 @@ stands in for an account they would otherwise [connect](/build/accounts/).
 ## The deployment's secrets
 
 A secret put with no owner is the deployment's, for the daemon's own use: a model provider's key, or
-a `${NAME}` in `config.yaml`. No agent's call reads it. For a key every org's agents use, such as a
-search tool's, seal it for each org:
+a `${NAME}` in `config.yaml`, such as web search's
+[`brave.api_key`](/reference/config/#brave), which every agent searches with. No agent's call reads
+it otherwise. For a tool key every org's agents use, seal it for each org:
 
 ```sh
-wardrik vault put SEARCH_API_KEY --org acme
-wardrik vault put SEARCH_API_KEY --org globex
+wardrik vault put PAGERDUTY_TOKEN --org acme
+wardrik vault put PAGERDUTY_TOKEN --org globex
 ```
 
 A user's own agents read only what the user holds, so each user who needs it seals their own.

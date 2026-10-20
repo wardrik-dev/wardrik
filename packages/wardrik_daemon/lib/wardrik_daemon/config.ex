@@ -56,6 +56,7 @@ defmodule WardrikDaemon.Config do
 
   @vault ~w(keys)a
   @listener ~w(port ip)a
+  @brave ~w(api_key)a
   @stores %{
     "postgres" => {WardrikEcto.Store, ~w(url), ~w(url)},
     "s3" =>
@@ -68,10 +69,11 @@ defmodule WardrikDaemon.Config do
     "endpoint" => {~w(http https), "an https:// URL"}
   }
 
-  @settings Map.new(@vault ++ @listener ++ @store_settings, &{Atom.to_string(&1), &1})
+  @settings Map.new(@vault ++ @listener ++ @brave ++ @store_settings, &{Atom.to_string(&1), &1})
 
   @vault_keys Enum.map(@vault, &Atom.to_string/1)
   @listener_keys Enum.map(@listener, &Atom.to_string/1)
+  @brave_keys Enum.map(@brave, &Atom.to_string/1)
 
   # The sections a read gives no name from the vault, and why.
   @environment_only %{
@@ -374,6 +376,9 @@ defmodule WardrikDaemon.Config do
       {"vault", vault} ->
         {WardrikVault, vault(table!(vault, ["vault"]))}
 
+      {"brave", brave} ->
+        {WardrikBrave, options(brave, @brave_keys, ["brave"])}
+
       {"ssh", ssh} ->
         {WardrikDaemon.SSH, listener(ssh, "ssh")}
 
@@ -402,8 +407,8 @@ defmodule WardrikDaemon.Config do
       {section, _value} ->
         invalid!(
           [section],
-          "is not a section; expected org, orgs, tools, defaults, mcp, oauth, vault, ssh, http, " <>
-            "channels, notify, workspace, tokens, cluster or storage"
+          "is not a section; expected org, orgs, tools, defaults, mcp, oauth, vault, brave, " <>
+            "ssh, http, channels, notify, workspace, tokens, cluster or storage"
         )
     end)
   end
@@ -853,7 +858,7 @@ defmodule WardrikDaemon.Config do
     do:
       invalid!(
         ["the file"],
-        "is a set of sections: org, tools, defaults, mcp, oauth, vault, ssh, http, " <>
+        "is a set of sections: org, tools, defaults, mcp, oauth, vault, brave, ssh, http, " <>
           "channels, notify, workspace, tokens, cluster, storage"
       )
 

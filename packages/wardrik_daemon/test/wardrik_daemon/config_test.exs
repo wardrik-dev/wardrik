@@ -186,8 +186,9 @@ defmodule WardrikDaemon.ConfigTest do
       assert opts[:headers] == %{"authorization" => "Bearer lin_secret"}
     end
 
-    test "oauth and vault settings keep their shape", context do
+    test "oauth, vault and brave settings keep their shape", context do
       key = env("a-vault-key")
+      brave = env("a-brave-key")
 
       assert {:ok, settings} =
                read(
@@ -202,10 +203,15 @@ defmodule WardrikDaemon.ConfigTest do
                        scopes: [repo]
                  vault:
                    keys: ["${#{key}}"]
+                 brave:
+                   api_key: "${#{brave}}"
                  """,
                  context
                )
 
+      assert Keyword.fetch!(settings, WardrikBrave) == [api_key: "a-brave-key"]
+      assert {:error, message} = read("brave:\n  key: k\n", context)
+      assert message =~ "brave.key is not a setting"
       oauth = Keyword.fetch!(settings, WardrikOAuth)
       assert oauth[:client] == [name: "Acme agents"]
       assert oauth[:providers][:github][:scopes] == ["repo"]

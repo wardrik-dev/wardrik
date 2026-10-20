@@ -135,8 +135,8 @@ defmodule WardrikDaemon do
 
   @doc """
   `host` with what the daemon ships attached, and the packages `config`
-  configures, each with its own section as options: web search, deep
-  research and Lua among its tools; the MCP servers configured and those
+  configures, each with its own section as options: web search, with the
+  key `brave.api_key` gives it, deep research and Lua among its tools; the MCP servers configured and those
   owners add (see
   `WardrikMCP.attach/2`); where a provider is configured, or the vault has
   a key, the pages a sign-in comes back to; the notify targets and the
@@ -145,7 +145,7 @@ defmodule WardrikDaemon do
   @spec attach(Wardrik.Host.t(), Config.t()) :: Wardrik.Host.t()
   def attach(host, %Config{} = config) do
     host
-    |> WardrikBrave.attach()
+    |> WardrikBrave.attach(Config.section(config, WardrikBrave))
     |> WardrikResearch.attach()
     |> WardrikLua.attach()
     |> WardrikMCP.attach([stderr: {:file, stderr(config)}] ++ Config.section(config, WardrikMCP))

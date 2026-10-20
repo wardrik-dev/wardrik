@@ -68,6 +68,7 @@ set them.
 | [`workspace`](#workspace) | the trees of files agents beyond their owners may share |
 | [`tokens`](#tokens) | how long tokens last |
 | [`vault`](#vault) | the vault's keys |
+| [`brave`](#brave) | the key web search searches with |
 | [`storage`](#storage) | the store everything is kept in |
 | [`cluster`](#cluster) | the other daemons this one runs with |
 | [`http`](#http) | where the HTTP API listens |
@@ -287,6 +288,18 @@ workspace:
 
 `keys` lists the vault's keys. Without them, or `WARDRIK_VAULT_KEY`, the key is `vault_key` in the
 data home, which the first `wardrik vault put` offers to make.
+
+## brave
+
+`api_key` is the key `web_search` searches with, for every agent the daemon runs:
+
+```yaml
+brave:
+  api_key: ${BRAVE_API_KEY}
+```
+
+`${BRAVE_API_KEY}` reads the environment, else the deployment's secret, which `wardrik vault put
+BRAVE_API_KEY` seals. Without `brave`, a search answers that the key is missing.
 
 ## tokens
 
