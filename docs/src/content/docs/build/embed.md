@@ -5,13 +5,14 @@ sidebar:
   order: 4.5
 ---
 
-Wardrik is a set of Elixir libraries, so a Phoenix app can run agents itself. Your app keeps Wardrik
-in its own database, starts it in its own tree, and decides what each of its users may do.
+Sometimes you want agents in the app you already have, not in a service beside it. Let's add
+Wardrik to a Phoenix app. It keeps its data in your Postgres and starts in your supervision tree,
+and your app decides what each user may do.
 
-This guide builds one example from start to end. Its users are `%MyApp.Accounts.User{}` structs
-with an `id`, an `org` and an `email`, as your own sign-in gives them. Each user gets agents of
-their own. Then, if you want them, you add the HTTP API and let users connect their GitHub
-accounts.
+We'll build one example from start to finish. Users are `%MyApp.Accounts.User{}` structs with an
+`id`, an `org` and an `email`, the way your sign-in already hands them over. Each user gets agents
+of their own. At the end, if you want them, we'll add the HTTP API and let users connect their
+GitHub accounts.
 
 ## 1. Add the package
 
