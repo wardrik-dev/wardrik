@@ -49,6 +49,7 @@ oauth_config:
       - channels:history
       - channels:read
       - chat:write
+      - chat:write.public
       - groups:history
       - groups:read
       - reactions:write
@@ -180,10 +181,10 @@ can always answer. Without approvers, only they can, and a trigger's turn is ans
 - **Bot events:** `member_joined_channel`, `channel_left` and `group_left` report invites and
   removals; `message.channels` and `message.groups` carry posts; `app_uninstalled` and
   `tokens_revoked` say the app was taken out.
-- **Bot scopes:** read and post, mark messages, and find people by `@handle`. `users:read.email` is
-  only needed for approvers named by email.
-- **Notices in a room:** a [notice](/build/notices/#post-in-a-room) posts in a channel the bot was
-  invited to. Add `chat:write.public` to post in any public channel without inviting it.
+- **Bot scopes:** read and post, post in any public channel, mark messages, and find people by
+  `@handle`. `users:read.email` is only needed for approvers named by email.
+- **Notices in a room:** with `chat:write.public`, a [notice](/build/notices/#post-in-a-room) posts
+  in any public channel without the bot invited. A private channel needs it invited.
 - **Messages Tab:** where approvers are asked. Direct messages to the app aren't answered.
 
 No user scopes are needed; the app acts as itself. A new scope means installing the app again.
@@ -216,10 +217,14 @@ Without `signing_secret` or `app_token`, a parked notice says which `wardrik app
 
 ### One app in many workspaces
 
-The daemon runs one app in the one workspace its `token` reaches. An app [embedded](/build/embed/)
-in your own service can be installed in many, one for each org: give the channel `client_id` and
-`client_secret` from **Basic Information › App Credentials** in place of `token`, set the app's
-**Redirect URL** to your install route, and send each org's admin to
-`WardrikChannel.install_url/3`. Your route hands Slack's redirect to `WardrikChannel.install/3` for
-the org they act for, and your `WardrikChannel.Installations` keeps each workspace's token. Each
-workspace offers that org's agents alone.
+The daemon runs one app in the one workspace its `token` reaches. An app
+[embedded](/build/embed/#answer-in-slack) in your service can be installed in many, one for each
+org.
+
+Give the channel `client_id` and `client_secret` from **Basic Information › App Credentials**, in
+place of `token`. Set the app's **Redirect URL** to your install route. Send each org's admin to
+`WardrikChannel.install_url/3`, and hand Slack's redirect to `WardrikChannel.install/3`.
+
+Your `WardrikChannel.Installations` keeps each workspace's token and approvers. Each workspace
+offers its org's agents alone. `WardrikChannel.attach/2`'s `offering:` and `deciding:` put what the
+app says in your own words.
