@@ -7,7 +7,13 @@ defmodule WardrikChannel.InstallationTest do
   alias WardrikChannel.Installation
 
   defp installed(owner),
-    do: %Installation{channel: "slack", workspace: "T1", owner: owner, token: "xoxb-test"}
+    do: %Installation{
+      channel: "slack",
+      workspace: "T1",
+      owner: owner,
+      token: "xoxb-test",
+      approvers: %WardrikChannel.Approvers.Anyone{}
+    }
 
   test "an agent reads after the prefix it was installed for" do
     org = installed(Resource.parse!("acme"))

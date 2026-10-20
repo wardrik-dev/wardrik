@@ -661,7 +661,7 @@ defmodule WardrikDaemon.Config do
 
   # Each channel offers the agents of the orgs `orgs` has use it, and is
   # installed in the workspace its token reaches, for its one org, or for
-  # `*`, every org, where it offers several.
+  # `*`, every org, where it offers several, with its approvers deciding.
   defp offering(channels, owners) do
     {tokens, channels} = Keyword.pop!(channels, :tokens)
 
@@ -674,7 +674,8 @@ defmodule WardrikDaemon.Config do
         orgs: orgs,
         installations:
           WardrikChannel.Installations.Config.new(
-            for {name, token} <- tokens, do: {name, token, owner(orgs[name])}
+            for {name, token} <- tokens,
+                do: {name, token, owner(orgs[name]), channels[:approvers][name]}
           )
       ]
   end

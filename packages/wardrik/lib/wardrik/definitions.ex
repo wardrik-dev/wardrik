@@ -183,24 +183,34 @@ defmodule Wardrik.Definitions do
   end
 
   @doc """
-  Reads every definition again, in one pass on this node: what the files
-  the contexts read declare now is kept, a definition a file declared that
-  no file declares any more is retired, as its agent stops and keeps its
-  conversation, and every other is read again from its fields under its
-  owner's context as it is now. A file that does not read leaves what it
-  declared as it was.
+  Reads the definitions of the agents `:resources` covers again, in one
+  pass on this node, and builds those awake on `:host` again. Answers the
+  agents read, and why each file, definition or agent failed.
 
-  Every agent awake on `:host` a definition is kept for is then built
-  again from it; one asleep takes its definition as it wakes. Answers the
-  agents whose definitions were read, and why each file, definition or
-  agent that did not read or build did not.
+    * `:host` - the `Wardrik.Host` the agents run on
+    * `:resources` - `Wardrik.Resource` patterns, as `acme/*`; every agent
+      by default
+
+  What the contexts' files declare now is kept. A definition no file
+  declares any more is retired: its agent stops and keeps its
+  conversation. Every other is read again under its owner's context. A
+  file that doesn't read keeps what it declared, and is reported whatever
+  `:resources` covers.
   """
-  @spec reload(t(), host: Wardrik.Host.t()) :: %{reloaded: [AgentID.t()], failed: [String.t()]}
+  @spec reload(t(), keyword()) :: %{reloaded: [AgentID.t()], failed: [String.t()]}
   def reload(%__MODULE__{contexts: contexts} = definitions, opts) do
-    files = Contexts.reload(contexts, opts)
-    declared = for {_path, {:ok, definition}} <- files, into: %{}, do: {definition.id, definition}
+    opts = Keyword.validate!(opts, [:host, resources: [Resource.parse!("*")]])
+    {host, patterns} = {Keyword.fetch!(opts, :host), opts[:resources]}
+    files = Contexts.reload(contexts, host: host)
+
+    declared =
+      for {_path, {:ok, definition}} <- files,
+          Enum.any?(patterns, &Resource.covers?(&1, AgentAddress.resource(definition.id))),
+          into: %{},
+          do: {definition.id, definition}
+
     unread = for {path, {:error, _message}} <- files, do: path
-    kept = list(definitions, Resource.parse!("*"))
+    kept = patterns |> Enum.flat_map(&list(definitions, &1)) |> Enum.uniq_by(& &1.id)
 
     for %Definition{id: id, source: {:file, path}} <- kept,
         not is_map_key(declared, id) and path not in unread,
@@ -213,7 +223,8 @@ defmodule Wardrik.Definitions do
       reloaded: Enum.sort_by(for({:ok, %Definition{id: id}} <- read, do: id), &to_string/1),
       failed:
         for({_path, {:error, message}} <- files, do: message) ++
-          for({:error, message} <- read, do: message) ++ rebuild(definitions, opts)
+          for({:error, message} <- read, do: message) ++
+          rebuild(definitions, patterns, host)
     }
   end
 
@@ -235,12 +246,12 @@ defmodule Wardrik.Definitions do
     end
   end
 
-  # Builds every agent awake on `:host` a definition is kept for again: why
-  # each that does not build does not.
-  defp rebuild(definitions, opts) do
-    host = Keyword.fetch!(opts, :host)
+  # Builds every agent awake on `host` that `patterns` cover, and a
+  # definition is kept for, again: why each that does not build does not.
+  defp rebuild(definitions, patterns, host) do
+    awake = patterns |> Enum.flat_map(&Fleet.list(&1, host: host)) |> Enum.uniq_by(& &1.id)
 
-    for %{id: id, asleep: false} <- Fleet.list(Resource.parse!("*"), host: host),
+    for %{id: id, asleep: false} <- awake,
         message <- rebuilt(definitions, id, host),
         do: message
   end

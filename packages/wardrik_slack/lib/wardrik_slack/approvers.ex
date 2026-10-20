@@ -1,8 +1,8 @@
 defmodule WardrikSlack.Approvers do
   @moduledoc """
-  A channel's approvers as Slack knows them: each as its `config.yaml` names
-  them, by `@handle`, email address or Slack user id, found as the member
-  a message to them is posted to.
+  A workspace's approvers as Slack knows them. Each is named by
+  `@handle`, email address or Slack user id, and found as the member a
+  message to them is posted to.
 
   A user id is taken as it is. An email address is looked up with
   `users.lookupByEmail`, which needs the bot token scope `users:read.email`,

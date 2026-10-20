@@ -5,7 +5,8 @@ defmodule WardrikChannel.Test.Adapter do
   refuses a post in `#nowhere`, and, given `:refusals`, an `Agent` holding a
   count, refuses that many posts first; given `unshown: true`, it refuses
   every status. It answers a request with what it was sent, and installs in
-  the workspace a request's `workspace` names.
+  the workspace a request's `workspace` names, with the channel's
+  approvers.
   """
 
   alias WardrikChannel.Installation
@@ -58,7 +59,8 @@ defmodule WardrikChannel.Test.Adapter do
       channel: context.channel,
       workspace: request.query["workspace"],
       owner: owner,
-      token: "token-" <> request.query["workspace"]
+      token: "token-" <> request.query["workspace"],
+      approvers: context.approvers
     }
 
     case Installations.put(context.installations, installation) do

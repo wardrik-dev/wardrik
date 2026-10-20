@@ -311,6 +311,38 @@ defmodule Wardrik.DefinitionsTest do
     assert {:ok, _definition} = Definitions.get(definitions, id)
   end
 
+  test "reload reads again, and builds again, only the agents the patterns cover",
+       %{org: org, definitions: definitions} = test do
+    other = "other-#{org}"
+    on_exit(fn -> Fleet.forget_under(Resource.parse!(other <> "/agent/*")) end)
+    ours = AgentID.parse!("#{org}/defined")
+    users = AgentID.parse!("#{org}/@jon/defined")
+    theirs = AgentID.parse!("#{other}/defined")
+
+    for id <- [ours, users, theirs] do
+      {:ok, spec} = put(definitions, id, %{"policy" => "careful"})
+      {:ok, _pid} = Fleet.put(spec)
+    end
+
+    on_exit(fn -> Fleet.forget_under(Resource.parse!(org <> "/@jon/agent/*")) end)
+    patterns = [Resource.parse!(org <> "/*"), Resource.parse!(org <> "/agent/*")]
+
+    assert %{reloaded: [^users, ^ours], failed: []} =
+             Definitions.reload(definitions, host: host(), resources: patterns)
+
+    without = definitions(%{test.context | policies: %{}})
+
+    assert %{reloaded: [], failed: failed} =
+             Definitions.reload(without, host: host(), resources: patterns)
+
+    assert Enum.map(failed, &String.replace(&1, ~r/careful.*/, "careful")) == [
+             "#{users} does not read: policy names careful",
+             "#{ours} does not read: policy names careful",
+             "#{users} does not build from its definition: policy names careful",
+             "#{ours} does not build from its definition: policy names careful"
+           ]
+  end
+
   test "reload keeps what files declare now, retires what none does, and reads the rest again",
        %{org: org, context: context} do
     [api, kept, unread, retired, added] =

@@ -146,19 +146,21 @@ defmodule WardrikChannel.Workspace do
     end
   end
 
-  @doc "How an agent comes to answer in the workspace's rooms, as said where none does."
+  @doc """
+  The sentence said in a room no agent answers in: how one comes to. The
+  host words it with `WardrikChannel.attach/2`'s `:offering`.
+  """
   @spec offering(t()) :: String.t()
-  def offering(%__MODULE__{context: context}),
-    do:
-      "Whoever runs Wardrik can offer an agent here by adding `channels: [#{context.channel}]` " <>
-        "to its definition."
+  def offering(%__MODULE__{context: context}), do: context.offering
 
-  @doc "Who else may decide what an agent asks there, as said to someone refused."
+  @doc """
+  The sentence said to someone who may not decide a call: who else may.
+  The host words it with `WardrikChannel.attach/2`'s `:deciding`.
+  """
   @spec deciding(t()) :: String.t()
-  def deciding(%__MODULE__{}),
-    do: "The channel's approvers name who else may, and whoever runs Wardrik answers it too."
+  def deciding(%__MODULE__{context: context}), do: context.deciding
 
-  @doc "Who decides what an agent asks in the workspace's threads."
+  @doc "Who decides what agents wait on in the workspace: its installation's approvers."
   @spec approvers(t()) :: WardrikChannel.Approvers.t()
-  def approvers(%__MODULE__{context: context}), do: context.approvers
+  def approvers(%__MODULE__{installation: installation}), do: installation.approvers
 end

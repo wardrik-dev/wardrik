@@ -1,19 +1,22 @@
 defprotocol WardrikChannel.Approvers do
   @moduledoc """
-  Who in a channel may decide what its agents wait on: the people it
-  names, `WardrikChannel.Approvers.Named`, or anyone in the channel,
-  `WardrikChannel.Approvers.Anyone`. A host reads them from its own
-  settings, as the daemon reads a channel's `approvers` in `config.yaml`:
+  Who may decide what agents wait on in a workspace: the people named,
+  `WardrikChannel.Approvers.Named`, or anyone there,
+  `WardrikChannel.Approvers.Anyone`.
+
+      %WardrikChannel.Approvers.Named{names: ["@maria", "ana@example.com"]}
+      %WardrikChannel.Approvers.Anyone{}
+
+  Each `WardrikChannel.Installation` carries its own. The daemon reads them
+  from a channel's `approvers` in `config.yaml`:
 
       channels:
         slack:
           type: slack
-          approvers: ["@maria", "ana@example.com"]   # these people
-          # approvers: anyone                        # anyone in the channel
+          approvers: ["@maria", "ana@example.com"]   # or: anyone
 
-  and its `Wardrik.Issuer` asks `decides?/2` whether someone decides, with
-  whether names include them, as the channel's adapter says, through
-  `WardrikChannel.include?/3`. Naming nobody, a channel's approvers leave
+  Your `Wardrik.Issuer` asks `decides?/2` whether someone decides, with
+  `WardrikChannel.include?/3` matching names to them. Naming nobody leaves
   who decides to the host.
   """
 

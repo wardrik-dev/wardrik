@@ -21,15 +21,17 @@ defmodule WardrikChannel do
   ## Workspaces
 
   A channel is installed in workspaces, such as the Slack workspaces a
-  Slack app was added to. Each is a `WardrikChannel.Installation`, owned by
-  whom it was installed for, whose agents alone it offers, holding the
-  token the channel acts there with, and kept where the host keeps such
-  secrets, as its `WardrikChannel.Installations` say. A channel whose
-  config names a `token` is installed in the one workspace that token
-  reaches, `WardrikChannel.Installations.Config`. A host that serves many
-  owners installs one app in each of their workspaces: it sends someone to
-  `install_url/3` for their own, and hands the medium's answer to
-  `install/3`.
+  Slack app was added to. Each is a `WardrikChannel.Installation`. It
+  offers only its owner's agents, says who decides there, and holds the
+  token the channel acts with. Your `WardrikChannel.Installations` keeps
+  them, as it keeps your other secrets.
+
+  A channel whose config names a `token` is installed in the one workspace
+  that token reaches, and its `approvers` decide there; see
+  `WardrikChannel.Installations.Config`. To serve many owners, install one
+  app in each of their workspaces. Send someone to `install_url/3`, then
+  hand the medium's answer to `install/3`. Each workspace's approvers are
+  whom you name for it.
 
   Everything an adapter hears is of one workspace, and it acts there
   through a `WardrikChannel.Workspace`: rooms, threads and people are
@@ -90,10 +92,9 @@ defmodule WardrikChannel do
   a room answers with, or decide what an agent asks: they act through
   `Wardrik` in the `Wardrik.Scope` `Wardrik.as/3` makes them on the host
   its context carries. A host whose tokens allow someone nothing has every
-  room ignore what they post, saying why. A host that issues tokens by what
-  `config.yaml` names people, as a channel's approvers, asks `include?/3`
-  with the channel's adapter and options, and `WardrikChannel.Approvers`
-  whether they decide.
+  room ignore what they post, saying why. To find whether someone is among
+  an installation's approvers, ask `WardrikChannel.Approvers.decides?/2`
+  with `include?/3`.
 
   ## Starting channels
 
@@ -165,7 +166,18 @@ defmodule WardrikChannel do
   @typedoc "The channels a node runs, by name."
   @type channels() :: %{String.t() => Channel.t()}
 
-  @settings [:installations, :org, channels: [], orgs: [], creates: [], approvers: []]
+  @deciding "The channel's approvers name who else may, and whoever runs Wardrik answers it too."
+
+  @settings [
+    :installations,
+    :org,
+    :offering,
+    deciding: @deciding,
+    channels: [],
+    orgs: [],
+    creates: [],
+    approvers: []
+  ]
 
   # What Wardrik's own principals are known by, before the `:` of their
   # names: a channel named so would name its people as them.
@@ -219,19 +231,26 @@ defmodule WardrikChannel do
   @callback install(owner :: Resource.t(), Request.t(), keyword()) :: Response.t()
 
   @doc """
-  `host` running the channels `settings` name, where it names any: among
-  its routes, `/v1/channels/`, where `WardrikChannel.Requests` answers what
-  each channel's medium sends it; among its children
-  `WardrikChannel.Replies` and `WardrikChannel.Supervisor`, which run them;
-  and as `WardrikNotify`'s `:rooms`, `WardrikChannel.Notices`, which posts
-  in the rooms agents' routes name.
+  Returns `host` running the channels `settings` name. The host serves what
+  each medium sends at `/v1/channels/{channel}/`, starts the channels, and
+  posts room notices through them. Naming no channels, it returns `host`.
+
+      WardrikChannel.attach(host,
+        channels: [slack: {WardrikSlack, signing_secret: "…"}],
+        installations: %MyApp.Slack{},
+        offering: "An admin can offer one by turning on Slack in the agent's settings.",
+        deciding: "Your org's admins name the approvers in its Slack settings."
+      )
 
     * `:channels` - each channel's adapter and the options its `config/1`
-      answered, by the channel's name
-    * `:installations` - the `WardrikChannel.Installations` the workspaces
-      each is installed in are kept in
-    * `:orgs`, `:creates` and `:approvers` - each channel's, by its name,
-      and `:org`, every channel's, as `WardrikChannel.Context` says of them
+      answered, by name
+    * `:installations` - your `WardrikChannel.Installations`
+    * `:orgs`, `:creates` and `:approvers` - each channel's, by name, and
+      `:org`, as `WardrikChannel.Context` says of them
+    * `:offering` - what a room no agent answers in says. By default, to
+      add the channel to an agent's `channels`.
+    * `:deciding` - what someone who may not decide a call is told. By
+      default, that the channel's approvers and whoever runs Wardrik may.
   """
   @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
   def attach(%Wardrik.Host{} = host, settings) do
@@ -261,11 +280,11 @@ defmodule WardrikChannel do
   beginning with a letter, and none of `shell`, `ssh`, `terminal` or
   `oauth`, which Wardrik's own principals are known by.
 
-  Every channel takes `type`, `token`, the one its installation in the
-  workspace that token reaches acts with, `create`, `approvers` and
-  `admins`, who may change the agents of its orgs, and its adapter's
-  `config/1` reads the rest. `:tokens` and `:admins` are each channel's by
-  its name, for the host to install and to issue tokens with.
+  Every channel takes `type`, `token`, `create`, `approvers` and `admins`.
+  Its adapter's `config/1` reads the rest. `token` installs it in the one
+  workspace it reaches, where `approvers` decide. `admins` may change the
+  agents of its orgs. The host installs each channel's `:tokens` with its
+  `:approvers`, and issues tokens with `:admins`.
   """
   @spec config(map() | nil, %{String.t() => module()}) ::
           {:ok, keyword()} | {:error, [String.t()], String.t()}
@@ -407,13 +426,21 @@ defmodule WardrikChannel do
   def channels(settings, opts) do
     settings = Keyword.validate!(settings, @settings)
     opts = Keyword.validate!(opts, [:host, :replies])
-    shared = Keyword.take(settings, [:installations, :org]) ++ opts
+    shared = Keyword.take(settings, [:installations, :org, :deciding]) ++ opts
 
     for {name, {adapter, options}} <- settings[:channels], into: %{} do
       name = to_string(name)
-      context = struct!(Context, [channel: name] ++ shared ++ own(settings, name))
+      said = [channel: name, offering: offering(settings, name)]
+      context = struct!(Context, said ++ shared ++ own(settings, name))
       {name, %Channel{name: name, adapter: adapter, options: options, context: context}}
     end
+  end
+
+  defp offering(settings, name) do
+    Keyword.get_lazy(settings, :offering, fn ->
+      "Whoever runs Wardrik can offer an agent here by adding `channels: [#{name}]` " <>
+        "to its definition."
+    end)
   end
 
   # What `settings` say of the channel `name`, each by the channel's name.

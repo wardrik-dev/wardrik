@@ -70,7 +70,11 @@ defmodule WardrikSlack.ThreadsTest do
 
     settings = [
       channels: [{name, {WardrikSlack, req_options: @req_options}}],
-      installations: Installations.Config.new([{name, "xoxb-test", Wardrik.Resource.parse!("*")}])
+      installations:
+        Installations.Config.new([
+          {name, "xoxb-test", Wardrik.Resource.parse!("*"),
+           %WardrikChannel.Approvers.Named{names: []}}
+        ])
     ]
 
     start_supervised!({Replies, name: replies, host: host, settings: settings})

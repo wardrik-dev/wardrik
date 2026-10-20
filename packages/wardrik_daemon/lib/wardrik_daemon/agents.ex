@@ -10,7 +10,7 @@ defmodule WardrikDaemon.Agents do
   read under the context `config.yaml` gives, with the policies the store
   keeps, so every node reads the same ones, holding its agent to those
   `config.yaml` holds the agent's org to. `wardrik reload`, as
-  `Wardrik.deployment_reload/1` does, reads the files on the node it is
+  `Wardrik.deployment_reload/2` does, reads the files on the node it is
   asked of, in one pass, through `reload/1`: the policies first, kept in the
   store, then each agent file's `Wardrik.Definition`. So every node of a
   deployment keeps `agents/` and `policies/` alike, as a release does. The

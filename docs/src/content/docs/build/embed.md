@@ -156,7 +156,9 @@ end
 
 Pass it as `context: %MyApp.Contexts{base: Wardrik.context(policies: policies)}`. All of an org's
 agents, its users' too, spend from one allowance together. An agent reads its owner's context as it
-starts, so an allowance you change holds from its next start, or from `Wardrik.deployment_reload/1`.
+starts. So a changed allowance holds from each agent's next start. To apply it sooner, read that
+org's agents again: `Wardrik.deployment_reload/2` with
+`resources: [Wardrik.Resource.parse!("acme/*")]`.
 
 `Wardrik.new/1` answers the `Wardrik.Host` everything runs on. A package adds what it brings to it
 through an `attach/2` of its own, before Wardrik starts: its tools, what it serves over HTTP, and
@@ -486,6 +488,281 @@ the call carries on once she signs in. GitHub's tools that change something wait
 person to approve them; see [Approvals](/concepts/approvals/).
 
 [Connect accounts](/build/accounts/) covers whose credentials a call uses.
+
+## Answer in Slack
+
+Your users already talk in Slack, and they won't edit agent files. Let's have each org's agents
+answer in that org's own Slack workspace, through one Slack app of yours. Add the package:
+
+```elixir title="mix.exs"
+{:wardrik_slack, "~> 0.1"}
+```
+
+### Make the Slack app
+
+Make the app from the [manifest](/channels/slack/#a-slack-app). Put your app's address in place of
+`agents.example.com`, so Slack sends its events to the API. Under **OAuth & Permissions**, set the
+**Redirect URL** to `https://myapp.example.com/slack/installed`. Under **Manage Distribution**, let
+other workspaces install it.
+
+Then set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` and `SLACK_SIGNING_SECRET` from **Basic
+Information › App Credentials**.
+
+### Keep each workspace
+
+Each workspace answers for one org. Let's keep them in a table of our own:
+
+```elixir title="priv/repo/migrations/20261020000000_add_slack_workspaces.exs"
+defmodule MyApp.Repo.Migrations.AddSlackWorkspaces do
+  use Ecto.Migration
+
+  def change do
+    create table(:slack_workspaces, primary_key: false) do
+      add :team, :text, primary_key: true
+      add :org, :text, null: false
+      add :approvers, {:array, :text}, null: false, default: []
+    end
+  end
+end
+```
+
+```elixir title="lib/my_app/slack/workspace.ex"
+defmodule MyApp.Slack.Workspace do
+  @moduledoc "A Slack workspace the app is added to: the org it answers for, and who approves there."
+
+  use Ecto.Schema
+
+  @primary_key {:team, :string, autogenerate: false}
+  schema "slack_workspaces" do
+    field :org, :string
+    field :approvers, {:array, :string}, default: []
+  end
+end
+```
+
+Notice `approvers`. Each org's admins name who approves in their own workspace.
+
+Now we tell Wardrik where the workspaces are. `MyApp.Slack` holds the channel's settings, and it's
+the `WardrikChannel.Installations` that finds each workspace:
+
+```elixir title="lib/my_app/slack.ex"
+defmodule MyApp.Slack do
+  @moduledoc """
+  The app's Slack app, in each org's own workspace: the channel's settings,
+  what someone in a workspace may do, and, as its
+  `WardrikChannel.Installations`, the workspaces it was added to. Bot
+  tokens are sealed in the vault as the deployment's, so no agent's call
+  reaches them.
+  """
+
+  import Ecto.Query
+
+  alias MyApp.Slack.Workspace
+
+  defstruct []
+
+  @doc "The channel's settings, as `WardrikChannel.attach/2` takes them."
+  def settings do
+    [
+      channels: [slack: adapter()],
+      installations: %__MODULE__{},
+      offering: "An admin of your org can offer one by turning on Slack in the agent's settings.",
+      deciding: "Your org's admins name the approvers in its Slack settings."
+    ]
+  end
+
+  @doc "The channel, as Wardrik runs it."
+  def channel,
+    do: Map.fetch!(WardrikChannel.channels(settings(), host: MyApp.Agents.wardrik()), "slack")
+
+  @doc """
+  The token of someone in a workspace: reader and messenger on its org's
+  agents, and approver where its approvers name them.
+  """
+  def token(principal) do
+    {"slack", team, id} = WardrikChannel.person(principal)
+
+    case WardrikChannel.Installations.fetch(%__MODULE__{}, "slack", team) do
+      {:ok, installation} ->
+        member = WardrikChannel.Member.new(installation, id)
+        include? = &WardrikChannel.include?(adapter(), &1, member)
+        approves? = WardrikChannel.Approvers.decides?(installation.approvers, include?)
+        roles = if approves?, do: [:reader, :messenger, :approver], else: [:reader, :messenger]
+        agents = Wardrik.Resource.parse!("#{installation.owner}/agent/*")
+        %Wardrik.Token{principal: principal, scope: [Wardrik.Role.bind(roles, [agents])]}
+
+      :error ->
+        %Wardrik.Token{principal: principal}
+    end
+  end
+
+  @doc "Has `names`, each a `@handle`, an email address or a member ID, approve in `team`'s workspace."
+  def approvers(team, names),
+    do:
+      MyApp.Repo.update_all(from(w in Workspace, where: w.team == ^team), set: [approvers: names])
+
+  defp adapter do
+    {:ok, options} =
+      WardrikSlack.config(%{
+        "client_id" => System.fetch_env!("SLACK_CLIENT_ID"),
+        "client_secret" => System.fetch_env!("SLACK_CLIENT_SECRET"),
+        "signing_secret" => System.fetch_env!("SLACK_SIGNING_SECRET")
+      })
+
+    {WardrikSlack, options}
+  end
+end
+
+defimpl WardrikChannel.Installations, for: MyApp.Slack do
+  import Ecto.Query
+
+  alias MyApp.Slack.Workspace
+  alias Wardrik.Resource
+  alias WardrikChannel.Installation
+
+  def fetch(_slack, channel, team) do
+    with %Workspace{} = workspace <- MyApp.Repo.get(Workspace, team),
+         {:ok, token} <- token(team) do
+      {:ok, installation(channel, workspace, token)}
+    else
+      _not_added -> :error
+    end
+  end
+
+  def owned(_slack, channel, owner) do
+    for workspace <- MyApp.Repo.all(from(w in Workspace, where: w.org == ^to_string(owner))),
+        {:ok, token} <- [token(workspace.team)],
+        do: installation(channel, workspace, token)
+  end
+
+  def put(_slack, %Installation{workspace: team, owner: owner, token: token}) do
+    org = to_string(owner)
+
+    case MyApp.Repo.get(Workspace, team) do
+      %Workspace{org: other} when other != org ->
+        {:error, "That Slack workspace answers for another org. Remove the app there first."}
+
+      _ours_or_new ->
+        :ok =
+          WardrikVault.put(MyApp.Agents.vault(), name(team), Resource.deployment(), value: token)
+
+        MyApp.Repo.insert!(%Workspace{team: team, org: org}, on_conflict: :nothing)
+        :ok
+    end
+  end
+
+  def delete(_slack, _channel, team) do
+    MyApp.Repo.delete_all(from(w in Workspace, where: w.team == ^team))
+    :ok = WardrikVault.forget(MyApp.Agents.vault(), name(team), Resource.deployment())
+  end
+
+  defp token(team),
+    do: WardrikVault.fetch(MyApp.Agents.vault(), name(team), Resource.deployment())
+
+  defp name(team), do: "slack-" <> team
+
+  defp installation(channel, workspace, token),
+    do: %Installation{
+      channel: channel,
+      workspace: workspace.team,
+      owner: Resource.parse!(workspace.org),
+      token: token,
+      approvers: %WardrikChannel.Approvers.Named{names: workspace.approvers}
+    }
+end
+```
+
+Notice `installation/3` at the bottom. Each installation carries its workspace's approvers, so every
+org decides for itself. The bot token is sealed in the vault as the deployment's, so no agent's call
+can reach it.
+
+Notice `offering:` and `deciding:` in `settings/0`, too. They're what Slack says in a room no agent
+answers in, and to someone who may not approve. Leave them out, and Slack tells people to edit the
+agent's definition, as the daemon does.
+
+### Attach it
+
+In `MyApp.Agents`, attach the channel before the API:
+
+```elixir title="lib/my_app/agents.ex"
+|> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
+|> WardrikChannel.attach(MyApp.Slack.settings())
+|> WardrikHTTP.attach(
+```
+
+Someone in a workspace is a principal named like `slack:T0123/U024BE7LH`. Let's give them a token in
+our issuer:
+
+```elixir title="lib/my_app/issuer.ex"
+defimpl Wardrik.Issuer, for: MyApp.Issuer do
+  def issue(_issuer, principal, _opts) do
+    case String.split(Wardrik.Principal.id(principal), "/") do
+      ["deployment"] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.deployment()}
+      ["slack:" <> _team, _id] -> MyApp.Slack.token(principal)
+      [org, "@" <> id] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.scope(org, id)}
+      _other -> %Wardrik.Token{principal: principal}
+    end
+  end
+end
+```
+
+Notice the `slack:` clause comes before the user's. `MyApp.Slack.token/1` lets them read and
+message their org's agents. They approve only where their workspace's approvers name them.
+
+### Add it to a workspace
+
+An org's admin adds the app from your settings, signed in:
+
+```elixir title="lib/my_app_web/router.ex"
+scope "/slack", MyAppWeb do
+  pipe_through :browser
+
+  get "/add", SlackController, :add
+  get "/installed", SlackController, :installed
+end
+```
+
+```elixir title="lib/my_app_web/controllers/slack_controller.ex"
+defmodule MyAppWeb.SlackController do
+  use MyAppWeb, :controller
+
+  def add(conn, _params) do
+    {:ok, url} =
+      WardrikChannel.install_url(MyApp.Slack.channel(), org(conn), return_to: "/settings")
+
+    redirect(conn, external: url)
+  end
+
+  def installed(conn, _params) do
+    response =
+      WardrikChannel.install(MyApp.Slack.channel(), org(conn), %{
+        method: conn.method,
+        path: conn.path_info,
+        query: conn.query_params,
+        headers: conn.req_headers,
+        body: ""
+      })
+
+    conn |> merge_resp_headers(response.headers) |> send_resp(response.status, response.body)
+  end
+
+  # The org the signed-in admin acts for.
+  defp org(conn), do: Wardrik.Resource.parse!(conn.assigns.current_user.org)
+end
+```
+
+Send the admin to `/slack/add`. Slack sends them back to `/slack/installed`, and the workspace
+answers for their org from then on. When the admin names approvers, keep them:
+
+```elixir
+MyApp.Slack.approvers("T0123", ["@maria", "jon@acme.example"])
+```
+
+Now give an agent `"channels" => ["slack"]` in its definition, and invite the app into a Slack
+channel. The agent answers there. With no approvers named, whoever asked for a turn approves it.
+
+Reach for this when your users live in Slack and never touch agent files. Running the daemon for one
+team? Give its channel a `token` in `config.yaml` instead; see [Slack](/channels/slack/).
 
 ## Details
 

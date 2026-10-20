@@ -17,16 +17,25 @@ defmodule WardrikChannel.Installations.Config do
   @type t() :: %__MODULE__{installations: %{String.t() => Installation.t()}}
 
   @doc """
-  The installations of the channels `tokens` names, each with its token and
-  the owner it is for.
+  Returns the installations of the channels `tokens` names: each with its
+  token, the owner it is for, and the channel's approvers.
   """
-  @spec new([{atom() | String.t(), String.t(), Wardrik.Resource.t()}]) :: t()
+  @spec new([
+          {atom() | String.t(), String.t(), Wardrik.Resource.t(), WardrikChannel.Approvers.t()}
+        ]) :: t()
   def new(tokens) do
     installations =
-      for {channel, token, owner} <- tokens, into: %{} do
+      for {channel, token, owner, approvers} <- tokens, into: %{} do
         channel = to_string(channel)
 
-        {channel, %Installation{channel: channel, workspace: channel, owner: owner, token: token}}
+        {channel,
+         %Installation{
+           channel: channel,
+           workspace: channel,
+           owner: owner,
+           token: token,
+           approvers: approvers
+         }}
       end
 
     %__MODULE__{installations: installations}

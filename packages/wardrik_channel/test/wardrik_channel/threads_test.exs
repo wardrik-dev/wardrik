@@ -71,8 +71,11 @@ defmodule WardrikChannel.ThreadsTest do
          {WardrikChannel.Test.Adapter,
           test: self(), refusals: opts[:refusals], unshown: opts[:unshown]}}
       ],
-      installations: Installations.Config.new([{name, "token", Resource.parse!("*")}]),
-      approvers: [{name, %Approvers.Named{names: Keyword.get(opts, :approvers, [])}}]
+      installations:
+        Installations.Config.new([
+          {name, "token", Resource.parse!("*"),
+           %Approvers.Named{names: Keyword.get(opts, :approvers, [])}}
+        ])
     ]
 
     start_supervised!(
@@ -169,7 +172,7 @@ defmodule WardrikChannel.ThreadsTest do
     assert_receive {:delivered, %Outbound{thread: "2.2", body: {:reply, "Here.", ["2.2"]}}, _}
   end
 
-  test "asks the channel's approvers directly the calls a thread's run waits on" do
+  test "asks the workspace's approvers directly the calls a thread's run waits on" do
     {context, _room} =
       bound({AgentRunners, :parking, [self(), "call_1"]}, ["3.1"], approvers: ["@maria"])
 
@@ -223,7 +226,12 @@ defmodule WardrikChannel.ThreadsTest do
         %Context{
           host: Wardrik.Host.new(store: Wardrik.Test.store()),
           channel: "chat-none",
-          installations: Installations.Config.new([{"chat-none", "token", Resource.parse!("*")}])
+          installations:
+            Installations.Config.new([
+              {"chat-none", "token", Resource.parse!("*"), %Approvers.Named{names: []}}
+            ]),
+          offering: "Offered.",
+          deciding: "Decided."
         },
         "T1"
       )

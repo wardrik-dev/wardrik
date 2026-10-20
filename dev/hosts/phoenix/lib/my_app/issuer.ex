@@ -40,6 +40,7 @@ defimpl Wardrik.Issuer, for: MyApp.Issuer do
   def issue(_issuer, principal, _opts) do
     case String.split(Wardrik.Principal.id(principal), "/") do
       ["deployment"] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.deployment()}
+      ["slack:" <> _team, _id] -> MyApp.Slack.token(principal)
       [org, "@" <> id] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.scope(org, id)}
       _other -> %Wardrik.Token{principal: principal}
     end

@@ -1,36 +1,43 @@
 defmodule WardrikChannel.Installation do
   @moduledoc """
-  A channel installed in one workspace: a Slack workspace the app was added
-  to, say. It is owned by the agents' owner it was installed for, whose
-  agents alone answer there (`covers?/2`), and holds the token the channel
-  acts there with, which is left out of how it is inspected.
+  A channel installed in one workspace, such as a Slack workspace your app
+  was added to. Your `WardrikChannel.Installations` builds one for each
+  workspace it keeps:
+
+      %WardrikChannel.Installation{
+        channel: "slack",
+        workspace: "T0123",
+        owner: Wardrik.Resource.parse!("acme"),
+        token: "xoxb-…",
+        approvers: %WardrikChannel.Approvers.Named{names: ["@maria"]}
+      }
+
+  Notice `approvers`. Each workspace says who decides there, so each org
+  names its own.
 
     * `:channel` - the channel's name
-    * `:workspace` - the workspace's id, as the installation names it
-    * `:owner` - whom it was installed for, as `Wardrik.Resource` names
-      them: an org, a user in one, or `*`, every org, as a deployment
-      installs a channel that offers several
-    * `:token` - what the channel acts in the workspace with
-
-  The host keeps installations; see `WardrikChannel.Installations`.
-
-  An agent is written in the workspace by `shown/2`: its ID after the
-  owner's, which every agent offered there shares, so a workspace installed
-  for an org reads `triage`, not the org's id before it.
+    * `:workspace` - the workspace's id, as the medium gives it
+    * `:owner` - whom it was installed for: an org, a user in one, or `*`,
+      every org. Only the owner's agents answer there; see `covers?/2`.
+    * `:token` - what the channel acts with there. `inspect/1` leaves it out.
+    * `:approvers` - who decides what agents wait on there, as
+      `WardrikChannel.Approvers`. Naming nobody, whoever asked for a turn
+      decides it.
   """
 
   alias Wardrik.AgentAddress
   alias Wardrik.Resource
 
   @derive {Inspect, except: [:token]}
-  @enforce_keys [:channel, :workspace, :owner, :token]
-  defstruct [:channel, :workspace, :owner, :token]
+  @enforce_keys [:channel, :workspace, :owner, :token, :approvers]
+  defstruct [:channel, :workspace, :owner, :token, :approvers]
 
   @type t() :: %__MODULE__{
           channel: String.t(),
           workspace: String.t(),
           owner: Wardrik.Resource.t(),
-          token: String.t()
+          token: String.t(),
+          approvers: WardrikChannel.Approvers.t()
         }
 
   @doc """
