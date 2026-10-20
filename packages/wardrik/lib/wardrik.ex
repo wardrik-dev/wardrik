@@ -1,106 +1,74 @@
 defmodule Wardrik do
   @moduledoc """
-  Wardrik inside an application: agents kept in the application's own store,
-  started in its own tree, and reached as the people it knows.
+  Agents inside your Elixir app. They're kept in your store, run in your
+  supervision tree, and every call is made as someone.
 
-  `new/1` reads the options once, into the `Wardrik.Host` the application
-  starts Wardrik on and makes its callers with:
+      import Wardrik.AgentID, only: [sigil_A: 2]
 
       store = Wardrik.store(repo: MyApp.Repo)
-
-      wardrik =
-        Wardrik.new(store: store, issuer: %MyApp.Issuer{}, tools: [MyApp.Tools.Search])
+      wardrik = Wardrik.new(store: store, issuer: %MyApp.Issuer{}, tools: [MyApp.Tools.Search])
 
       children = [MyApp.Repo, {WardrikStore, store}, {Wardrik, wardrik}, MyAppWeb.Endpoint]
 
-      scope = Wardrik.as(wardrik, maria)
+      scope = Wardrik.as(wardrik, Wardrik.Principal.new("acme/@maria"))
+      agent = ~A"acme/@maria/assistant"
+
       {:ok, _snapshot} = Wardrik.agent_define(scope, agent, %{"instructions" => "Be brief."})
       {:ok, message} = Wardrik.agent_ask(scope, agent, "Where is order 1001?")
 
-  The application starts the store, `{WardrikStore, store}`, as it starts
-  its Repo. `{Wardrik, wardrik}` starts, in order, under `:rest_for_one`, so
-  a restart of one restarts everything after it:
+  `MyApp.Issuer` is your `Wardrik.Issuer`, and `MyApp.Tools.Search` is a
+  `Wardrik.Tool` of yours. Notice the store starts on its own, before
+  Wardrik, the same way your Repo does. `new/1` lists every option.
 
-  | Child | What it runs |
+  ## Calling it
+
+  Every function takes a `Wardrik.Scope` first: your host, plus the
+  `Wardrik.Token` that says who is acting and what they may do. Wardrik
+  checks the token before it does anything, and records each change in the
+  audit log.
+
+  Names are noun first, then verb: `agent_ask/4`, `servers_add/3`. The
+  action a token must allow is the same name with dots: `agent.ask`,
+  `servers.add`. Each function returns `{:ok, value}`, `:ok` or
+  `{:error, %Wardrik.Error{}}`, and has a `!` version that raises.
+
+  | A call that… | Returns |
+  | --- | --- |
+  | reads | what it read: `agent_read/2` gives a snapshot |
+  | makes something | what it made: `agent_define/4` gives the agent's snapshot |
+  | starts work | that the work is queued: `agent_ask/4` gives the message. `subscribe/2` and `events/2` follow what happens next. |
+  | removes something | what it removed, as it was |
+  | can't know the outcome yet | `:ok`, as `agent_cancel/2` and `agent_forget/2` do |
+  | previews a change, as `agent_move_preview/3` | what the change would do, checked the same way. It records and holds nothing. |
+
+  A function on one agent takes a `Wardrik.Thread` of it too, except those
+  on its definition and triggers.
+
+  ## What it starts
+
+  `{Wardrik, wardrik}` starts these under `:rest_for_one`, so a restart
+  restarts everything after it:
+
+  | Child | Runs |
   | --- | --- |
   | `Wardrik.Core` | the agents |
-  | the meters | what budgets count in |
+  | the meters | what budgets count |
   | the triggers | clocks, feeds and webhooks |
-  | the host's children | what the packages attached to it start, in the order they were attached |
+  | attached packages | their children, in the order you attached them |
 
-  Each agent's definition is kept in the store, read against what
-  `:context` lets it name and the tools and sources the host holds, and so
-  are the files it works on.
+  ## Adding to it
 
-  The store is a value of its own, made by `store/1`, so a seam that keeps
-  something, such as a vault of credentials, is made with the same one. So
-  is the context, made by `context/1`, so an application can read it
-  differently for each agent. A package adds tools, sources and children to
-  the host with an `attach/2` of its own, before Wardrik starts; see
-  `Wardrik.Host`:
+  A package adds tools, sources and children with its own `attach/2`, before
+  Wardrik starts. See `Wardrik.Host`.
 
       wardrik = Wardrik.new(store: store) |> MyApp.Search.attach()
 
-  A surface the application starts after Wardrik, such as the HTTP API,
-  takes the same host, and so does a `Wardrik.Listener`, which follows the
-  agents' events into the application's own work. A node runs one Wardrik, since core's own processes
-  are registered under their module names.
+  Surfaces you start after Wardrik, such as the HTTP API, take the same
+  host. Reach for a `Wardrik.Listener` to act on what your agents do.
 
-  ## Acting on the agents
+  ## Limits
 
-  Everything an application does with its agents goes through this module,
-  in a `Wardrik.Scope`, its first argument: the host, and the
-  `Wardrik.Token` saying who acts and what they may do. Each function is
-  named for what it acts on, then what it does, as `agent_ask/4` and
-  `servers_add/3`, checks that the token allows its action, the same name
-  written `agent.ask` and `servers.add`, before anything happens, and
-  records what it changes in the audit:
-
-    * a read answers what it read, such as `agent_read/2`'s snapshot
-    * a change answers what it made, such as `agent_define/4`'s agent
-    * a change whose outcome the agent's log shows answers that it was
-      taken, as `agent_ask/4` answers the message queued; `subscribe/2`
-      and `events/2` follow what happens next
-    * a removal answers what it removed, as it was, as an Ecto delete does
-    * a change whose outcome nothing can answer at once answers `:ok`, as
-      `agent_cancel/2` and `agent_forget/2` do
-    * a preview, as `agent_move_preview/3`, makes the same check as its
-      change and answers what the change would do, recording nothing, so a
-      surface can show it and ask first; the change works it out again
-
-  Each answers `{:ok, value}`, `:ok` or `{:error, %Wardrik.Error{}}`, and
-  has a variant ending in `!` that answers the value or raises the error.
-
-  A function on one agent acts on a `Wardrik.Thread` of it too, but for
-  those on its definition and triggers, `agent_define/4`,
-  `agent_definition_read/2`, `agent_trigger_set/4` and
-  `agent_trigger_remove/3`: a thread runs on its agent's, so they refuse
-  one, naming the agent to act on instead.
-
-  ## Options
-
-    * `:store` - where everything is kept, as `store/1` makes it, which the
-      application starts. Required.
-    * `:context` - what each agent's definition may name beyond the host's
-      tools and sources: `context/1`'s, or a value of the application's own
-      implementing `WardrikDefinition.Contexts`, which gives each agent its
-      context. `context([])` by default.
-    * `:tools` - the tools a definition may name, each a module
-      implementing `Wardrik.Tool`, by its tool's name. A definition may name
-      `self/*`, an agent's operations on itself, and `agents/*`, those on
-      the other agents of its org, besides.
-    * `:runtimes` - the `Wardrik.Runtime`s that read a definition's
-      settings and run its agent's turns; `Wardrik.LLM.Runtime`'s by
-      default.
-    * `:issuer`, `:credentials`, `:connections`, `:servers`, `:tokens`,
-      `:triggers`, `:dispatch`, `:llm` - the host's seams, each a value
-      implementing core's protocol of that name, as `Wardrik.Host` lists
-      them. One left out is that protocol's default: tokens allowing
-      nothing, no credentials, every model call made through ReqLLM, and so
-      on.
-    * `:expires` - how long tokens last, in seconds: `api:`, those
-      `tokens_create/4` makes, 90 days by default; `session:`, those
-      `as/3` issues, 12 hours by default.
+  One Wardrik per node.
   """
 
   use Supervisor
@@ -160,8 +128,31 @@ defmodule Wardrik do
   ]
 
   @doc """
-  The `Wardrik.Host` `opts` describe, made without starting anything. Raises
-  where an option is not one of those above, or where `:store` is missing.
+  The `Wardrik.Host` `opts` describe. It starts nothing: start it with
+  `{Wardrik, wardrik}`. Raises on an option not listed here, or without
+  `:store`.
+
+  ## Options
+
+    * `:store` - where everything is kept, as `store/1` makes it. Required.
+    * `:context` - what definitions may name beyond the host's tools and
+      sources: `context/1`'s, or your own value implementing
+      `WardrikDefinition.Contexts`, which gives each agent its own.
+      `context([])` by default.
+    * `:tools` - modules implementing `Wardrik.Tool`, each named by its
+      tool's name. Definitions may also name `self/*`, an agent's
+      operations on itself, and `agents/*`, those on the other agents of
+      its org.
+    * `:runtimes` - the `Wardrik.Runtime`s that run agents' turns.
+      `[%Wardrik.LLM.Runtime{}]` by default.
+    * `:issuer`, `:credentials`, `:connections`, `:servers`, `:tokens`,
+      `:triggers`, `:dispatch`, `:llm` - the host's seams, each a value
+      implementing core's protocol of that name, as `Wardrik.Host` lists
+      them. A seam left out gets its protocol's default: tokens that allow
+      nothing, no credentials, model calls through ReqLLM, and so on.
+    * `:expires` - how long tokens last, in seconds. `api:` for those
+      `tokens_create/4` makes, 90 days by default. `session:` for those
+      `as/3` issues, 12 hours by default.
   """
   @spec new(keyword()) :: Host.t()
   def new(opts) do
@@ -203,6 +194,9 @@ defmodule Wardrik do
   holds. Raises where `settings` name no store, or more than one.
 
       Wardrik.store(repo: MyApp.Repo)
+
+  The store is a value of its own, so a seam that keeps something, such as
+  a vault of credentials, is made with the same one.
   """
   @spec store(keyword()) :: WardrikStore.t()
   def store(settings) do
@@ -223,6 +217,9 @@ defmodule Wardrik do
   `defaults` every agent takes, and so on.
 
       Wardrik.context(policies: %{"careful" => policy})
+
+  The context is a value too, so your app can give each agent a different
+  one through `new/1`'s `:context`.
   """
   @spec context(keyword()) :: Context.t()
   def context(fields), do: struct!(Context, fields)
@@ -721,6 +718,9 @@ defmodule Wardrik do
   names, ahead of its own; the host's definitions keep both with it, and
   find that policy by its name each time it starts.
 
+  A thread runs on its agent's definition, so this refuses a
+  `Wardrik.Thread`, naming the agent to define instead.
+
   ## Options
 
   #{NimbleOptions.docs(@define_opts)}
@@ -761,7 +761,11 @@ defmodule Wardrik do
   defp refused({:error, message}), do: {:error, Error.new(:invalid, message)}
   defp refused(ok), do: ok
 
-  @doc "`agent`'s definition as it was last put, and the tools it names that offer nothing yet."
+  @doc """
+  `agent`'s definition as it was last put, and the tools it names that
+  offer nothing yet. Refuses a `Wardrik.Thread`, naming its agent: a thread
+  has no definition of its own.
+  """
   @doc group: "Agent lifecycle"
   @spec agent_definition_read(Scope.t(), AgentAddress.t()) ::
           {:ok, %{definition: Definition.t(), missing: [String.t()]}} | {:error, Error.t()}
@@ -1148,7 +1152,7 @@ defmodule Wardrik do
   Sets `agent`'s trigger `name` to `fields`, as `WardrikProtocol`'s
   `trigger_definition.json` describes one, and answers the trigger. A
   trigger is part of the agent's definition, so the host's definitions set
-  it.
+  it, and a `Wardrik.Thread` is refused, naming its agent.
   """
   @doc group: "Triggers"
   @spec agent_trigger_set(Scope.t(), AgentAddress.t(), String.t(), map()) ::
@@ -1168,7 +1172,10 @@ defmodule Wardrik do
     end
   end
 
-  @doc "Removes `agent`'s trigger `name`, and answers it as `agent_trigger_set/4` would."
+  @doc """
+  Removes `agent`'s trigger `name`, and answers it as `agent_trigger_set/4`
+  would. Refuses a `Wardrik.Thread`, naming its agent.
+  """
   @doc group: "Triggers"
   @spec agent_trigger_remove(Scope.t(), AgentAddress.t(), String.t()) ::
           {:ok, map()} | {:error, Error.t()}
