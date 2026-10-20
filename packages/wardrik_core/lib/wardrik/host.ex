@@ -85,12 +85,15 @@ defmodule Wardrik.Host do
 
   A package adds to them in an `attach/2` of its own, which takes the host
   and the package's options, checked with `Keyword.validate!/2`, and answers
-  the host with what it adds, through `register/3` and `child/2`: it is a
-  `Wardrik.Plugin`. One
+  the host with what it adds, through `register/3` and `child/2`, and with
+  the seams it brings through `put/3`: it is a `Wardrik.Plugin`. One
   attached after another starts after it:
 
       defmodule MyApp.Search do
-        def attach(host, opts \\ []) do
+        @behaviour Wardrik.Plugin
+
+        @impl true
+        def attach(host, opts) do
           opts = Keyword.validate!(opts, [:index])
 
           host
@@ -298,6 +301,15 @@ defmodule Wardrik.Host do
 
   defp added(field, held, entries) when field in [:routes, :runtimes], do: held ++ entries
   defp added(_field, held, entries), do: Map.merge(held, Map.new(entries))
+
+  @doc """
+  `host` offering `value` as its `seam`, one of those `new/1` takes, in
+  place of what it offered. A plugin sets the seams it brings this way:
+
+      Wardrik.Host.put(host, :tokens, %WardrikHTTP.Tokens{store: Wardrik.Host.store(host)})
+  """
+  @spec put(t(), atom(), term()) :: t()
+  def put(%__MODULE__{} = host, seam, value) when seam in @seams, do: Map.put(host, seam, value)
 
   @doc """
   `host` with `child` among its children, after those added before it.
