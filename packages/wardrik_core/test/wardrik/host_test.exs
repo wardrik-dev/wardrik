@@ -56,6 +56,7 @@ defmodule Wardrik.HostTest do
       Host.new()
       |> Host.register(:tools, [{"search", MyApp.Search}])
       |> Host.register(:sources, [{"workers", MyApp.Workers}])
+      |> Host.register(:settings, [{MyApp.Search, api_key: "k"}])
       |> Host.register(:routes, [{["v1", "hooks"], {MyApp.Hooks, []}}])
       |> Host.register(:runtimes, [%Wardrik.Test.Runtime{}])
       |> Host.child({MyApp.Index, name: :a})
@@ -63,6 +64,8 @@ defmodule Wardrik.HostTest do
 
     assert Host.tools(host) == %{"search" => MyApp.Search}
     assert Host.sources(host) == %{"workers" => MyApp.Workers}
+    assert Host.settings(host, MyApp.Search) == [api_key: "k"]
+    assert Host.settings(host, MyApp.Workers) == []
     assert Host.routes(host) == [{["v1", "hooks"], {MyApp.Hooks, []}}]
     assert Host.runtimes(host) == Wardrik.Test.runtimes()
     assert Host.children(host) == [{MyApp.Index, name: :a}, {MyApp.Index, name: :b}]

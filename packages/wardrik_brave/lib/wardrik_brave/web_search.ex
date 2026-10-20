@@ -13,9 +13,9 @@ defmodule WardrikBrave.WebSearch do
   What it answers is pages anyone could have written, so it is labelled
   `"outside"`; see `Wardrik.Tool.Annotations`.
 
-  Its key is the credential `BRAVE_API_KEY`, which the
-  `Wardrik.Credentials` of the host resolve for each call, such as `WardrikVault`
-  holding it for the agent's owner.
+  It searches with the key `WardrikBrave.attach/2` gives the host, the
+  deployment's own, for every agent alike, read from the host each call is
+  made on.
   """
 
   use Wardrik.Tool
@@ -40,11 +40,9 @@ defmodule WardrikBrave.WebSearch do
   Returns each source's URL, title, extracted passages, and the page's date where it is known. An empty result means nothing relevant was found, not that the search failed.
   """
 
-  @credential "BRAVE_API_KEY"
-
-  @doc "The pages a search finds are content from outside, and a search needs the key."
+  @doc "The pages a search finds are content from outside."
   @impl true
-  def annotations(_name), do: %{labels: ["outside"], credentials: [@credential]}
+  def annotations(_name), do: %{labels: ["outside"]}
 
   @impl true
   def tool do
@@ -101,12 +99,13 @@ defmodule WardrikBrave.WebSearch do
   def validate_between(value), do: {:error, "expected a string, got: #{inspect(value)}"}
 
   @doc """
-  Runs one search and reports the outcome to the model: with the key the call
-  resolved, handed its `Wardrik.Tool.Context`, or as `config` says.
+  Runs one search and reports the outcome to the model: with the key the
+  host of the call's run holds, handed its `Wardrik.Tool.Context`, or as
+  `config` says.
   """
   @spec run(map() | keyword(), Wardrik.Tool.Context.t() | Config.t()) :: Result.t()
-  def run(params, %Wardrik.Tool.Context{credentials: credentials}),
-    do: run(params, Config.new(api_key: key(credentials[@credential])))
+  def run(params, %Wardrik.Tool.Context{run: run}),
+    do: run(params, Config.new(Wardrik.Host.settings(run.host, __MODULE__)))
 
   def run(params, %Config{} = config) do
     case window(Map.new(params)) do
@@ -114,9 +113,6 @@ defmodule WardrikBrave.WebSearch do
       {:error, message} -> Result.error(:conflicting_dates, message)
     end
   end
-
-  defp key(nil), do: nil
-  defp key(credential), do: Wardrik.Credential.reveal(credential)
 
   defp search(params, config) do
     case Client.search(config, body(params)) do

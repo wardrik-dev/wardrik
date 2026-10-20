@@ -3,8 +3,6 @@ defmodule WardrikBrave.WebSearchTest do
 
   alias WardrikBrave.WebSearch
 
-  import Wardrik.Credential, only: [secret: 1]
-
   @body %{"grounding" => %{"generic" => [%{"url" => "https://a.test", "snippets" => ["hi"]}]}}
 
   defp validate(args), do: Wardrik.LLM.Tools.validate(WebSearch.tool(), args)
@@ -21,8 +19,8 @@ defmodule WardrikBrave.WebSearchTest do
       assert Wardrik.Tool.annotations(WebSearch, "web_search").labels == ["outside"]
     end
 
-    test "needs the key, as a credential the call resolves" do
-      assert Wardrik.Tool.annotations(WebSearch, "web_search").credentials == ["BRAVE_API_KEY"]
+    test "names no credential: it searches with the key its host holds" do
+      assert Wardrik.Tool.annotations(WebSearch, "web_search").credentials == []
     end
 
     test "requires only a query" do
@@ -75,29 +73,29 @@ defmodule WardrikBrave.WebSearchTest do
       assert error["code"] == "brave_rate_limited"
     end
 
-    test "a call searches with the key its credential resolved, and an empty one is none" do
-      run = Wardrik.Test.run(tools: [WebSearch])
-      context = Wardrik.Test.context(run, credentials: %{"BRAVE_API_KEY" => secret("")})
+    test "a call searches with the key the host of its run holds, for any agent" do
+      stub_json(200, @body)
+      settings = Map.to_list(Map.from_struct(config()))
+      host = Wardrik.Host.register(Wardrik.Test.host(), :settings, [{WebSearch, settings}])
 
-      assert {:ok, %{"ok" => false, "error" => error}} = WebSearch.run(%{query: "x"}, context)
-      assert error["code"] == "missing_brave_api_key"
-      refute_received {:req, _conn, _body}
+      for id <- [Wardrik.AgentID.new!("a", org: "acme"), Wardrik.AgentID.new!("b", org: "globex")] do
+        run = Wardrik.Test.run(tools: [WebSearch], id: id, host: host)
+
+        assert %Wardrik.Call{state: :done, result: {:ok, %{"ok" => true}}} =
+                 Wardrik.Test.call(run, "web_search", %{"query" => "x"})
+
+        assert_received {:req, conn, _body}
+        assert Plug.Conn.get_req_header(conn, "x-subscription-token") == ["test-brave-api-key"]
+      end
     end
 
-    test "a call with no key resolved reports the missing key" do
-      context = Wardrik.Test.context(Wardrik.Test.run(tools: [WebSearch]))
-
-      assert {:ok, %{"ok" => false, "error" => error}} = WebSearch.run(%{query: "x"}, context)
-      assert error["code"] == "missing_brave_api_key"
-    end
-
-    test "a run that resolves no credentials is told why, and nothing runs" do
+    test "a call on a host given no key reports the missing key, and nothing runs" do
       run = Wardrik.Test.run(tools: [WebSearch])
 
       assert %Wardrik.Call{state: :done, result: {:ok, %{"ok" => false, "error" => error}}} =
                Wardrik.Test.call(run, "web_search", %{"query" => "x"})
 
-      assert error["message"] =~ "BRAVE_API_KEY"
+      assert error["code"] == "missing_brave_api_key"
       refute_received {:req, _conn, _body}
     end
   end
