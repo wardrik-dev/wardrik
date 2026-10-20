@@ -597,7 +597,7 @@ defmodule WardrikDaemon.CLI do
         with(
           {:ok, read} <-
             Wardrik.deployment_audit(opts[:as], after: opts[:after] || 0, limit: limit),
-          do: {:ok, %{"changes" => Enum.map(read, & &1.event)}}
+          do: {:ok, %{"changes" => Enum.map(read, & &1.cloudevent)}}
         ),
       else: {:error, "--limit is a number from 1 to 500"}
   end

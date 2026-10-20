@@ -5,7 +5,8 @@ defmodule Wardrik.InstanceTest do
   alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentID
   alias Wardrik.Error
-  alias Wardrik.Event.Log.Entry
+  alias Wardrik.Event.MessageDelta
+  alias Wardrik.Reply
 
   defmodule User do
     @moduledoc false
@@ -213,11 +214,27 @@ defmodule Wardrik.InstanceTest do
 
       assert :ok = Agents.subscribe(maria, name)
       assert {:ok, %Message{}} = Agents.ask(maria, name, "What changed this week?")
-      assert_receive %Entry{log: ^agent}, 5_000
+      assert_receive %{source: ^agent, cloudevent: %{}}, 5_000
       assert :ok = Agents.unsubscribe(maria, name)
 
       assert {:ok, events} = Agents.events(maria, name, after: "")
-      assert Enum.any?(Enum.take(events, 1), &match?(%Entry{log: ^agent}, &1))
+      assert Enum.any?(Enum.take(events, 1), &match?(%{source: ^agent}, &1))
+    end
+
+    test "waits for the reply, and streams it to a subscriber as it comes" do
+      maria = user("acme")
+      name = name()
+      {:ok, %Snapshot{agent: agent}} = Agents.define(maria, name, fields())
+      answers = for text <- ["Monday.", "Still Monday."], do: Wardrik.Test.LLM.final_answer(text)
+      Wardrik.Test.LLM.stream(Wardrik.Test.llm(), answers)
+
+      assert :ok = Agents.subscribe(maria, name, types: ["wardrik.message.delta"])
+
+      assert {:ok, %Reply{agent: ^agent, text: "Monday."}} =
+               Agents.ask(maria, name, "When did order 1001 ship?", wait: 5_000)
+
+      assert_receive %MessageDelta{source: ^agent, delta: "Monday."}, 5_000
+      assert %Reply{text: "Still Monday."} = Agents.ask!(maria, name, "Again?", wait: 5_000)
     end
 
     test "nobody else reaches it, in their org or another" do
@@ -373,8 +390,8 @@ defmodule Wardrik.InstanceTest do
   describe "acting as your app" do
     test "reads the nodes and the audit, reloads, and moves an agent" do
       assert {:ok, %Wardrik.Deployment.Nodes{}} = Agents.nodes()
-      assert {:ok, entries} = Agents.audit()
-      assert is_list(entries)
+      assert {:ok, changes} = Agents.audit()
+      assert Enum.all?(changes, &match?(%{source: :audit, cloudevent: %{}}, &1))
       assert {:ok, %{reloaded: _reloaded, failed: _failed}} = Agents.reload()
 
       {:ok, %Snapshot{agent: agent}} = Agents.define(user("acme"), name(), fields())
@@ -394,7 +411,7 @@ defmodule Wardrik.InstanceTest do
     )
 
     {:ok, %Message{}} = Agents.ask(maria, name, "Anything new?")
-    assert_receive {:handled, %Entry{log: ^agent}}, 5_000
+    assert_receive {:handled, %{source: ^agent}}, 5_000
   end
 
   test "a definition is read from a keyword list, all the way down" do

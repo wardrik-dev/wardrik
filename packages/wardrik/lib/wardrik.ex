@@ -246,24 +246,48 @@ defmodule Wardrik do
   Sends `agent` `text` from the user, and answers the message queued. Its
   `cursor` is where the agent's log stood, so `c:events/3` after it reads
   the turn that answers it.
+
+  With `wait:`, in milliseconds, it waits for that turn instead:
+
+      case MyApp.Agents.ask(maria, "support", "Where is order 1001?", wait: :timer.seconds(30)) do
+        {:ok, %Wardrik.Reply{text: text}} -> text
+        {:waiting, %Wardrik.Waiting{calls: calls}} -> calls
+        {:error, %Wardrik.Error{type: :timeout}} -> "Still working on it."
+      end
+
+  A turn that fails or is stopped answers a `:failed` or `:cancelled`
+  error. Waiting needs the user to read the agent's events. `id:` names
+  the message.
   """
   @doc group: "Talking to an agent"
-  @callback ask(user(), agent(), text :: String.t(), opts :: keyword()) :: result(Message.t())
+  @callback ask(user(), agent(), text :: String.t(), opts :: keyword()) ::
+              result(Message.t() | Reply.t()) | {:waiting, Waiting.t()}
 
-  @doc "Runs the call, or calls, `agent` waits on a person for. `note:` is what the agent is told."
+  @doc """
+  Runs the call, or calls, `agent` waits on a person for. `note:` is what
+  the agent is told. With `wait:`, it answers how the turn it carries on
+  ends, as `c:ask/4` does.
+  """
   @doc group: "Talking to an agent"
   @callback approve(user(), agent(), calls :: String.t() | [String.t()], opts :: keyword()) ::
-              result(%{String.t() => decision()})
+              decided()
 
-  @doc "Refuses the call, or calls, `agent` waits on a person for. `reason:` is what the agent is told."
+  @doc """
+  Refuses the call, or calls, `agent` waits on a person for. `reason:` is
+  what the agent is told. With `wait:`, it answers how the turn it carries
+  on ends, as `c:ask/4` does.
+  """
   @doc group: "Talking to an agent"
   @callback deny(user(), agent(), calls :: String.t() | [String.t()], opts :: keyword()) ::
-              result(%{String.t() => decision()})
+              decided()
 
-  @doc "Decides several calls at once, by id: `:approve`, `{:approve, note}` or `{:deny, reason}`."
+  @doc """
+  Decides several calls at once, by id: `:approve`, `{:approve, note}` or
+  `{:deny, reason}`. With `wait:`, it answers how the turn it carries on
+  ends, as `c:ask/4` does.
+  """
   @doc group: "Talking to an agent"
-  @callback decide(user(), agent(), %{String.t() => decision()}) ::
-              result(%{String.t() => decision()})
+  @callback decide(user(), agent(), %{String.t() => decision()}, opts :: keyword()) :: decided()
 
   @doc """
   Every call the user's agents wait on a person for, with its agent.
@@ -293,7 +317,7 @@ defmodule Wardrik do
 
   @doc """
   Sends this process every event `agent` writes from now on, or every agent
-  the user reads, with `:all`.
+  the user reads, with `:all`, each as its `Wardrik.Event` struct.
 
   #{Wardrik.Instance.options(:subscribe)}
   """
@@ -305,12 +329,15 @@ defmodule Wardrik do
   @callback unsubscribe(user(), agent() | :all) :: :ok
 
   @doc """
-  `agent`'s events, or those of every agent the user reads, as a lazy stream.
+  `agent`'s events, or those of every agent the user reads, as a lazy stream
+  of `Wardrik.Event` structs. Each one's `cursor` is where to read on from
+  after it, as `after:`.
 
   #{Wardrik.Instance.options(:events)}
   """
   @doc group: "Events"
-  @callback events(user(), agent() | :all, opts :: keyword()) :: result(Enumerable.t())
+  @callback events(user(), agent() | :all, opts :: keyword()) ::
+              result(Enumerable.t(Wardrik.Event.t()))
 
   @doc """
   The MCP servers the user added.
@@ -358,9 +385,12 @@ defmodule Wardrik do
   @doc group: "Your app"
   @callback nodes() :: result(Nodes.t())
 
-  @doc "A page of the audit, what people changed, as your app: `after:` a sequence, `limit:` how many."
+  @doc """
+  A page of the audit, what people changed, as `Wardrik.Event` structs, as
+  your app: `after:` a sequence, `limit:` how many.
+  """
   @doc group: "Your app"
-  @callback audit(opts :: keyword()) :: result([Entry.t()])
+  @callback audit(opts :: keyword()) :: result([Wardrik.Event.t()])
 
   @doc "Starts `agent`, by its ID, again on `node`, as your app."
   @doc group: "Your app"
@@ -1929,15 +1959,16 @@ defmodule Wardrik do
 
   @doc """
   A page of the audit, what people changed across the deployment: the
-  entries after `:after`, oldest first, or a `:gap` error whose `details`
-  hold `oldest` where those were dropped.
+  changes after `:after`, oldest first, as `Wardrik.Event` structs, or a
+  `:gap` error whose `details` hold `oldest` where those were dropped.
 
   ## Options
 
   #{NimbleOptions.docs(@page_opts)}
   """
   @doc group: "Deployment"
-  @spec deployment_audit(Scope.t(), keyword()) :: {:ok, [Entry.t()]} | {:error, Error.t()}
+  @spec deployment_audit(Scope.t(), keyword()) ::
+          {:ok, [Wardrik.Event.t()]} | {:error, Error.t()}
   def deployment_audit(%Scope{} = scope, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @page_opts)
 
@@ -1945,8 +1976,12 @@ defmodule Wardrik do
       store = Host.store(scope.host)
 
       case Log.read(store, :audit, starting_after: opts[:after], limit: opts[:limit]) do
-        {:ok, events} -> {:ok, Entry.numbered(events, :audit, opts[:after])}
-        {:gap, oldest} -> {:error, Error.gap(oldest)}
+        {:ok, events} ->
+          {:ok,
+           events |> Entry.numbered(:audit, opts[:after]) |> Enum.map(&Wardrik.Event.decode/1)}
+
+        {:gap, oldest} ->
+          {:error, Error.gap(oldest)}
       end
     end
   end
@@ -2235,7 +2270,7 @@ defmodule Wardrik do
 
   @doc "As `deployment_audit/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Deployment"
-  @spec deployment_audit!(Scope.t(), keyword()) :: [Entry.t()]
+  @spec deployment_audit!(Scope.t(), keyword()) :: [Wardrik.Event.t()]
   def deployment_audit!(scope, opts \\ []), do: unwrap(deployment_audit(scope, opts))
 
   defp unwrap({:ok, value}), do: value

@@ -4,23 +4,26 @@ defmodule Wardrik.Event do
 
   Each type of event has a struct of its own: `Wardrik.Event.RunCompleted`
   for `wardrik.run.completed`, `Wardrik.Event.MessageDelta` for
-  `wardrik.message.delta`, and so on. `Wardrik.subscribe/2` sends them to
-  your process as plain messages, so a LiveView matches the ones it shows:
+  `wardrik.message.delta`, and so on. Your instance's `subscribe` sends
+  them to your process as plain messages, so a LiveView matches the ones it
+  shows:
 
-      def mount(%{"agent" => name}, _session, socket) do
-        agent = Wardrik.AgentID.new!(name, org: "acme")
-        resources = [Wardrik.AgentAddress.resource(agent)]
-        :ok = Wardrik.subscribe(socket.assigns.scope, resources: resources)
-        {:ok, assign(socket, text: "", done: false)}
+      defmodule MyAppWeb.SupportLive do
+        use MyAppWeb, :live_view
+
+        def mount(_params, _session, socket) do
+          :ok = MyApp.Agents.subscribe(socket.assigns.current_user, "support")
+          {:ok, assign(socket, text: "", done: false)}
+        end
+
+        def handle_info(%Wardrik.Event.MessageDelta{delta: delta}, socket),
+          do: {:noreply, update(socket, :text, &(&1 <> delta))}
+
+        def handle_info(%Wardrik.Event.RunCompleted{}, socket),
+          do: {:noreply, assign(socket, done: true)}
+
+        def handle_info(_event, socket), do: {:noreply, socket}
       end
-
-      def handle_info(%Wardrik.Event.MessageDelta{delta: delta}, socket),
-        do: {:noreply, update(socket, :text, &(&1 <> delta))}
-
-      def handle_info(%Wardrik.Event.RunCompleted{}, socket),
-        do: {:noreply, assign(socket, done: true)}
-
-      def handle_info(_event, socket), do: {:noreply, socket}
 
   Notice the last clause: an agent writes more kinds of event than a page
   shows.
@@ -31,16 +34,16 @@ defmodule Wardrik.Event do
 
     * `id` - the event's id; a reader handed an event twice drops the
       repeat by it
-    * `source` - the `Wardrik.AgentID` of the agent that wrote it, or
-      `:audit` for a change someone made
+    * `source` - the agent that wrote it, or `:audit` for a change someone
+      made
     * `time` - when it happened, as a `DateTime`
     * `trace` - the id of the trace it is part of, which is the run's id
       for what a run did
-    * `cursor` - where `Wardrik.events/2` reads on from after it; none for
-      a change in the audit
+    * `cursor` - where `events` reads on from after it, as its `after:`;
+      none for a change in the audit
     * `cloudevent` - the whole event, as the HTTP API sends it
 
-  `decode/2` makes one from an entry of an agent's log.
+  `events` streams them, and `audit` answers the changes as them too.
   """
 
   alias Wardrik.Event.Cursor
@@ -90,13 +93,9 @@ defmodule Wardrik.Event do
           )
 
   @doc """
-  The struct of `entry`'s event, with the cursor past it moved from
+  The struct of a log `entry`'s event, with the cursor past it moved from
   `cursor`, as `Wardrik.events/2` hands each on. With no cursor, it names
-  the entry's log alone. An entry of the audit, as
-  `Wardrik.deployment_audit/2` answers them, has no cursor.
-
-      {:ok, entries} = Wardrik.deployment_audit(scope, limit: 10)
-      changes = Enum.map(entries, &Wardrik.Event.decode/1)
+  the entry's log alone. An entry of the audit has no cursor.
   """
   @spec decode(Entry.t(), String.t() | :head) :: t()
   def decode(%Entry{log: log, event: %{"type" => type} = event} = entry, cursor \\ "") do

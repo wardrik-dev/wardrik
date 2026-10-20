@@ -128,7 +128,7 @@ defmodule Wardrik.Instance do
     ask: [:user, :agent, :text, {:opts, []}],
     approve: [:user, :agent, :calls, {:opts, []}],
     deny: [:user, :agent, :calls, {:opts, []}],
-    decide: [:user, :agent, :decisions],
+    decide: [:user, :agent, :decisions, {:opts, []}],
     waiting: [:user, {:opts, []}],
     authorization: [:user, :agent, :call],
     cancel: [:user, :agent],
@@ -435,8 +435,8 @@ defmodule Wardrik.Instance do
     do: on(module, user, agent, &Wardrik.agent_deny(&1, &2, calls, opts))
 
   @doc false
-  def decide(module, user, agent, decisions),
-    do: on(module, user, agent, &Wardrik.agent_decide(&1, &2, decisions))
+  def decide(module, user, agent, decisions, opts),
+    do: on(module, user, agent, &Wardrik.agent_decide(&1, &2, decisions, opts))
 
   @doc false
   def waiting(module, user, opts), do: under(module, user, opts, &Wardrik.agents_parked/2)
@@ -553,6 +553,7 @@ defmodule Wardrik.Instance do
 
   @doc false
   def unwrap({:ok, value}), do: value
+  def unwrap({:waiting, waiting}), do: waiting
   def unwrap(:ok), do: :ok
   def unwrap({:error, error}), do: raise(error)
 end

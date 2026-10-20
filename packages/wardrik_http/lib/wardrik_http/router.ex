@@ -661,7 +661,7 @@ defmodule WardrikHTTP.Router do
         conn,
         200,
         Wardrik.deployment_audit(scope(conn), after: starting_after || 0, limit: limit),
-        &%{"changes" => Enum.map(&1, fn entry -> entry.event end)}
+        &%{"changes" => Enum.map(&1, fn change -> change.cloudevent end)}
       )
     else
       {:error, message} -> invalid(conn, message)
