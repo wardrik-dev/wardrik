@@ -1727,7 +1727,7 @@ defmodule Wardrik do
 
   @doc "As `agents_forget/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agents_forget!(Scope.t(), Resource.t()) :: %{AgentID.t() => outcome()}
+  @spec agents_forget!(Scope.t(), Resource.t()) :: %{AgentAddress.t() => outcome()}
   def agents_forget!(scope, pattern), do: unwrap(agents_forget(scope, pattern))
 
   @doc "As `agent_forget_preview/2`, answering the value, or raising the `Wardrik.Error`."
