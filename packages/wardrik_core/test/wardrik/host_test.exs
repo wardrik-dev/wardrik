@@ -66,6 +66,8 @@ defmodule Wardrik.HostTest do
       |> Host.register(:settings, [{MyApp.Search, api_key: "k"}])
       |> Host.register(:routes, [{["v1", "hooks"], {MyApp.Hooks, []}}])
       |> Host.register(:runtimes, [%Wardrik.Test.Runtime{}])
+      |> Host.register(:issuers, [{"chat", %Issued{}}])
+      |> Host.register(:sign_ins, [{"servers", MyApp.Servers}])
       |> Host.child({MyApp.Index, name: :a})
       |> Host.child({MyApp.Index, name: :b})
 
@@ -75,6 +77,9 @@ defmodule Wardrik.HostTest do
     assert Host.settings(host, MyApp.Workers) == []
     assert Host.routes(host) == [{["v1", "hooks"], {MyApp.Hooks, []}}]
     assert Host.runtimes(host) == Wardrik.Test.runtimes()
+    assert Host.issuers(host) == %{"chat" => %Issued{}}
+    assert Host.sign_ins(host) == %{"servers" => MyApp.Servers}
+    assert Host.issuers(Host.new()) == %{}
     assert Host.children(host) == [{MyApp.Index, name: :a}, {MyApp.Index, name: :b}]
 
     assert_raise ArgumentError, ~r/tools has "search" already/, fn ->
