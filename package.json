@@ -26,5 +26,8 @@
     "typedoc": "^0.28.20",
     "typedoc-plugin-markdown": "^4.14.0",
     "typescript": "~5.9"
+  },
+  "overrides": {
+    "postcss-nested": "^7.0.2"
   }
 }
