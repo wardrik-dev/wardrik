@@ -18,8 +18,65 @@ defmodule WardrikOAuth.ConfigTest do
     host = WardrikOAuth.attach(Wardrik.Host.new(), oauth: oauth)
 
     assert Wardrik.Host.routes(host) == Callback.pages(oauth)
+    assert Wardrik.Host.settings(host, WardrikOAuth) == [oauth: oauth]
     assert Wardrik.Host.children(host) == [{WardrikOAuth.Supervisor, []}]
-    assert_raise ArgumentError, fn -> WardrikOAuth.attach(Wardrik.Host.new(), redirect: []) end
+    assert_raise ArgumentError, fn -> WardrikOAuth.attach(Wardrik.Host.new(), oath: oauth) end
+  end
+
+  describe "as a plugin" do
+    @settings [
+      redirect: [url: "https://myapp.example.com/agents/oauth"],
+      providers: [github: [resource: "https://api.githubcopilot.com/mcp/", scopes: ~w(repo)]]
+    ]
+
+    defp vaulted do
+      vault = WardrikVault.new(store: Wardrik.Test.store(), keys: [WardrikVault.generate_key()])
+      Wardrik.Host.new(store: Wardrik.Test.store(), credentials: vault)
+    end
+
+    test "builds itself from its settings, granting through the host's vault" do
+      host = WardrikOAuth.attach(vaulted(), @settings)
+
+      assert %WardrikVault{grants: %WardrikOAuth{} = oauth} =
+               vault = Wardrik.Host.credentials(host)
+
+      assert [github: _provider] = oauth.providers
+
+      assert Wardrik.Host.connections(host) == %WardrikOAuth.Connections{
+               oauth: oauth,
+               vault: vault
+             }
+
+      assert Wardrik.Host.settings(host, WardrikOAuth) == [oauth: oauth]
+
+      assert [["agents", "oauth", "callback"], ["agents", "oauth", "check"]] =
+               Enum.map(Wardrik.Host.routes(host), &elem(&1, 0))
+    end
+
+    test "won't run without a vault to keep tokens in, nor with a WardrikOAuth and settings" do
+      assert_raise ArgumentError, ~r/give the instance one, as vault:/, fn ->
+        WardrikOAuth.attach(Wardrik.Host.new(), @settings)
+      end
+
+      assert_raise ArgumentError, ~r/not both/, fn ->
+        WardrikOAuth.attach(vaulted(), [oauth: WardrikOAuth.new()] ++ @settings)
+      end
+    end
+
+    test "checks its redirect before anything starts" do
+      assert WardrikOAuth.validate(@settings) == :ok
+      assert {:error, "redirect names" <> _} = WardrikOAuth.validate(providers: [])
+
+      assert {:error, message} =
+               WardrikOAuth.validate(
+                 Keyword.put(@settings, :redirect, url: "http://myapp.example.com")
+               )
+
+      assert message =~ "https, or http on loopback"
+
+      assert {:error, "providers is" <> _} =
+               WardrikOAuth.validate(Keyword.put(@settings, :providers, "github"))
+    end
   end
 
   test "reads the client, the redirect and the providers in their shape" do
