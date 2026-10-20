@@ -95,6 +95,8 @@ defmodule Wardrik.Run do
   """
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias Wardrik.Trace
 
@@ -278,14 +280,14 @@ defmodule Wardrik.Run do
   @spec open(t(), String.t()) :: t()
   def open(%__MODULE__{} = run, name) do
     branch = child(run, name: name)
-    Bus.Event.emit(branch.source, %Bus.SpanStarted{name: name})
+    Event.emit(branch.source, %Bus.SpanStarted{name: name})
     branch
   end
 
   @doc "Ends a span opened by `open/2`, reporting how it went and how long it took."
   @spec close(t(), outcome()) :: :ok
   def close(%__MODULE__{source: source}, outcome) do
-    Bus.Event.emit(source, %Bus.SpanFinished{
+    Event.emit(source, %Bus.SpanFinished{
       outcome: outcome,
       duration_ms: Trace.elapsed_ms(source.trace)
     })

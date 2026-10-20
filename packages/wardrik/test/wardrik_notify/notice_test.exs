@@ -13,7 +13,14 @@ defmodule WardrikNotify.NoticeTest do
   @trace "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 
   defp entry(type, data, agent \\ ~A"acme/triage") do
-    event = %{"id" => "e1", "type" => type, "time" => @time, "traceparent" => @trace, "data" => data}
+    event = %{
+      "id" => "e1",
+      "type" => type,
+      "time" => @time,
+      "traceparent" => @trace,
+      "data" => data
+    }
+
     %Entry{log: agent, event: event, follows: 0}
   end
 

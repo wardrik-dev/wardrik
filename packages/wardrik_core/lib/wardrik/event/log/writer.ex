@@ -41,6 +41,8 @@ defmodule Wardrik.Event.Log.Writer do
   require Logger
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
@@ -80,8 +82,8 @@ defmodule Wardrik.Event.Log.Writer do
   Finds the head of the log and writes `started`, the agent's
   `Wardrik.Bus.AgentStarted` event, after it, ahead of the bus.
   """
-  @spec open(WardrikStore.t(), t(), Bus.Event.t()) :: t()
-  def open(store, %__MODULE__{} = writer, %Bus.Event{payload: %Bus.AgentStarted{}} = started) do
+  @spec open(WardrikStore.t(), t(), Event.t()) :: t()
+  def open(store, %__MODULE__{} = writer, %Event{payload: %Bus.AgentStarted{}} = started) do
     with {:error, reason} <- Log.opened(store, writer.agent_id),
          do: Logger.warning("Could not list #{writer.agent_id}'s log: #{inspect(reason)}")
 
@@ -107,16 +109,16 @@ defmodule Wardrik.Event.Log.Writer do
   delivered when it is live, and dropped when `Wardrik.Event.Codec` does not send
   it. An event written ahead of the bus is passed over.
   """
-  @spec append(WardrikStore.t(), t(), Bus.Event.t()) :: result()
-  def append(store, %__MODULE__{} = writer, %Bus.Event{id: id} = event) do
+  @spec append(WardrikStore.t(), t(), Event.t()) :: result()
+  def append(store, %__MODULE__{} = writer, %Event{id: id} = event) do
     if id in writer.ahead,
       do: {:ok, %{writer | ahead: List.delete(writer.ahead, id)}},
       else: write(store, writer, event)
   end
 
   @doc "Appends an event the agent has yet to publish. Its copy from the bus is passed over."
-  @spec append_ahead(WardrikStore.t(), t(), Bus.Event.t()) :: result()
-  def append_ahead(store, %__MODULE__{} = writer, %Bus.Event{} = event) do
+  @spec append_ahead(WardrikStore.t(), t(), Event.t()) :: result()
+  def append_ahead(store, %__MODULE__{} = writer, %Event{} = event) do
     with {:ok, writer} <- write(store, writer, event), do: {:ok, ahead(writer, event)}
   end
 
@@ -127,17 +129,17 @@ defmodule Wardrik.Event.Log.Writer do
   defp write(store, writer, event) do
     writer = follow(writer, event)
 
-    if Codec.durable?(Bus.Event.type(event)),
+    if Codec.durable?(Event.type(event)),
       do: durable(store, writer, event),
       else: live(writer, event)
   end
 
-  defp follow(writer, %Bus.Event{payload: %Bus.ModelStarted{message_id: message_id}} = event),
+  defp follow(writer, %Event{payload: %Bus.ModelStarted{message_id: message_id}} = event),
     do: %{writer | messages: Map.put(writer.messages, span(event), message_id)}
 
   defp follow(
          writer,
-         %Bus.Event{payload: %Bus.ModelFinished{}} = event
+         %Event{payload: %Bus.ModelFinished{}} = event
        ),
        do: %{writer | messages: Map.delete(writer.messages, span(event))}
 
@@ -198,7 +200,7 @@ defmodule Wardrik.Event.Log.Writer do
 
   # -- live ------------------------------------------------------------------
 
-  defp live(writer, %Bus.Event{payload: %kind{}} = event) when kind in @deltas do
+  defp live(writer, %Event{payload: %kind{}} = event) when kind in @deltas do
     case Map.fetch(writer.messages, span(event)) do
       {:ok, message_id} -> deliver(writer, event, message_id: message_id)
       :error -> {:ok, writer}

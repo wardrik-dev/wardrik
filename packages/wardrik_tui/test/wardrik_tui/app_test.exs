@@ -5,6 +5,7 @@ defmodule WardrikTUI.AppTest do
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias Wardrik.Fleet
   alias WardrikTUI.App
@@ -94,7 +95,7 @@ defmodule WardrikTUI.AppTest do
   end
 
   defp emit(source, payloads) when is_list(payloads),
-    do: Enum.each(payloads, &Bus.Event.emit(source, &1))
+    do: Enum.each(payloads, &Event.emit(source, &1))
 
   defp call(name), do: %{id: "call_#{name}", name: name, arguments: %{}}
 

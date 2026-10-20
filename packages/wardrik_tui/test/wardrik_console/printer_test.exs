@@ -4,6 +4,8 @@ defmodule WardrikConsole.PrinterTest do
   import Wardrik.AgentID, only: [sigil_A: 2]
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias WardrikConsole.Printer
 
@@ -24,8 +26,8 @@ defmodule WardrikConsole.PrinterTest do
 
   defp lines(payloads, printer) do
     Enum.flat_map_reduce(payloads, printer, fn
-      %Bus.Event{} = event, printer -> Printer.event(printer, event)
-      payload, printer -> Printer.event(printer, Bus.Event.new(root(), payload))
+      %Event{} = event, printer -> Printer.event(printer, event)
+      payload, printer -> Printer.event(printer, Event.new(root(), payload))
     end)
   end
 
@@ -55,8 +57,8 @@ defmodule WardrikConsole.PrinterTest do
     nested = Source.child(root())
 
     assert print([
-             Bus.Event.new(nested, %Bus.Result{text: "from a subagent\n"}),
-             Bus.Event.new(nested, %Bus.Thinking{text: "its thinking\n"})
+             Event.new(nested, %Bus.Result{text: "from a subagent\n"}),
+             Event.new(nested, %Bus.Thinking{text: "its thinking\n"})
            ]) == []
   end
 

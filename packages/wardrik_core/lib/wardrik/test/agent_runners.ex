@@ -6,6 +6,7 @@ defmodule Wardrik.Test.AgentRunners do
   """
 
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.ToolCall
@@ -67,11 +68,11 @@ defmodule Wardrik.Test.AgentRunners do
   """
   def delegating(test_pid, name, %Turn{run: run} = turn) do
     Wardrik.Run.span(run, name, fn branch ->
-      Wardrik.Bus.Event.emit(branch.source, %Bus.DelegationStarted{prompt: "look into #{name}"})
+      Event.emit(branch.source, %Bus.DelegationStarted{prompt: "look into #{name}"})
       send(test_pid, {:delegating, self()})
       receive do: (:release -> :ok)
 
-      Wardrik.Bus.Event.emit(branch.source, %Bus.DelegationFinished{
+      Event.emit(branch.source, %Bus.DelegationFinished{
         outcome: {:ok, "found #{name}"},
         duration_ms: 5
       })
@@ -87,7 +88,7 @@ defmodule Wardrik.Test.AgentRunners do
 
   @doc "Emits on the run it was given before answering."
   def emitting(text, %Turn{run: run} = turn) do
-    Wardrik.Bus.Event.emit(run.source, %Bus.Result{text: text})
+    Event.emit(run.source, %Bus.Result{text: text})
     Turn.done(turn, [Assistant.new("ok")])
   end
 

@@ -5,10 +5,11 @@ defmodule WardrikTUI.ActivityTest do
 
   alias Wardrik.Agent.Message
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias WardrikTUI.Activity
 
-  defp event(source, payload), do: Bus.Event.new(source, payload)
+  defp event(source, payload), do: Event.new(source, payload)
 
   defp fold(activity, source, payload, now \\ 0) do
     Activity.fold(activity, event(source, payload), now: now)

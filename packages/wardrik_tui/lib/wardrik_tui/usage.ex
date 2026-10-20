@@ -10,7 +10,7 @@ defmodule WardrikTUI.Usage do
   adds nothing.
   """
 
-  alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.ModelFinished
   alias Wardrik.LLM.Answer
 
@@ -30,12 +30,12 @@ defmodule WardrikTUI.Usage do
   def new, do: %__MODULE__{}
 
   @doc "Adds the model call a `Wardrik.Bus.ModelFinished` reports, where it answered."
-  @spec settle(t(), Bus.Event.t()) :: t()
-  def settle(%__MODULE__{} = usage, %Bus.Event{payload: %ModelFinished{answer: nil}}), do: usage
+  @spec settle(t(), Event.t()) :: t()
+  def settle(%__MODULE__{} = usage, %Event{payload: %ModelFinished{answer: nil}}), do: usage
 
   def settle(
         %__MODULE__{} = usage,
-        %Bus.Event{payload: %ModelFinished{answer: %Answer{usage: used}, cost: cost}}
+        %Event{payload: %ModelFinished{answer: %Answer{usage: used}, cost: cost}}
       ) do
     used = used || %Wardrik.LLM.Usage{}
 

@@ -63,9 +63,10 @@ defmodule Wardrik.Event.Codec do
   alias Wardrik.AgentAddress
   alias Wardrik.Audit
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Call.Pipeline
-  alias Wardrik.Event
   alias Wardrik.Event.Codec.Value
+  alias Wardrik.Event.Log
   alias Wardrik.LLM.Answer
   alias Wardrik.Resource
 
@@ -104,14 +105,14 @@ defmodule Wardrik.Event.Codec do
     * `:sequence` - the event's place in its log
     * `:message_id` - the message a text or reasoning delta belongs to
   """
-  @spec encode(Bus.Event.t() | Audit.t(), keyword()) :: {:ok, map()} | :skip
+  @spec encode(Event.t() | Audit.t(), keyword()) :: {:ok, map()} | :skip
   def encode(event, opts \\ [])
 
-  def encode(%Bus.Event{} = event, opts) do
-    if Bus.Event.type(event) in @skipped do
+  def encode(%Event{} = event, opts) do
+    if Event.type(event) in @skipped do
       :skip
     else
-      {type, subject, data} = describe(Bus.Event.type(event), event, opts)
+      {type, subject, data} = describe(Event.type(event), event, opts)
       source = source(event.source.agent_id)
       {:ok, envelope(event, source, event.source.trace, {type, subject, data}, opts)}
     end
@@ -133,7 +134,7 @@ defmodule Wardrik.Event.Codec do
   def durable?(type) when is_atom(type), do: type not in @live and type not in @skipped
 
   @doc "The CloudEvents `source` of a log's events: an agent's, or `:audit`."
-  @spec source(Event.Log.log()) :: String.t()
+  @spec source(Log.log()) :: String.t()
   def source(:audit), do: "wardrik://local/audit"
   def source(agent_id), do: "wardrik://local/agents/#{agent_id}"
 

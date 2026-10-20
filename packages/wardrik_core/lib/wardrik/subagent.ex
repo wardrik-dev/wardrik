@@ -53,6 +53,8 @@ defmodule Wardrik.Subagent do
   """
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Conversation
   alias Wardrik.Conversation.User
   alias Wardrik.LLM.Config
@@ -74,10 +76,10 @@ defmodule Wardrik.Subagent do
 
   defp delegate(delegate, prompt) do
     started_at = System.monotonic_time()
-    Bus.Event.emit(delegate.source, %Bus.DelegationStarted{prompt: prompt})
+    Event.emit(delegate.source, %Bus.DelegationStarted{prompt: prompt})
     outcome = answer(delegate, prompt)
 
-    Bus.Event.emit(delegate.source, %Bus.DelegationFinished{
+    Event.emit(delegate.source, %Bus.DelegationFinished{
       outcome: outcome,
       duration_ms: Trace.elapsed_ms(started_at)
     })

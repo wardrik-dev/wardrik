@@ -27,6 +27,8 @@ defmodule Wardrik.Tool.Context do
   """
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Call
   alias Wardrik.Run
 
@@ -64,7 +66,7 @@ defmodule Wardrik.Tool.Context do
       credentials: credentials,
       in_doubt: Keyword.get(opts, :in_doubt, false),
       progress: fn progress, total ->
-        Bus.Event.emit(source, %Bus.ToolProgress{
+        Event.emit(source, %Bus.ToolProgress{
           call_id: id,
           name: name,
           progress: progress,

@@ -5,6 +5,7 @@ defmodule Wardrik.Event.FollowingTest do
 
   alias Wardrik.AgentID
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
@@ -34,7 +35,7 @@ defmodule Wardrik.Event.FollowingTest do
     at = fn n -> if n <= old, do: long_ago, else: System.system_time(:microsecond) end
 
     started =
-      Bus.Event.new(Source.root(agent_id), %Bus.AgentStarted{
+      Event.new(Source.root(agent_id), %Bus.AgentStarted{
         node: node(),
         status: :idle,
         generation: "g1"
@@ -43,7 +44,7 @@ defmodule Wardrik.Event.FollowingTest do
     writer = Writer.open(store(), Writer.new(agent_id), %{started | at: at.(old)})
 
     Enum.reduce(1..count//1, writer, fn n, writer ->
-      event = Bus.Event.new(Source.root(agent_id), %Bus.TurnStarted{messages: []})
+      event = Event.new(Source.root(agent_id), %Bus.TurnStarted{messages: []})
       {:ok, writer} = Writer.append(store(), writer, %{event | at: at.(n)})
       writer
     end)

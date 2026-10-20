@@ -94,6 +94,7 @@ defmodule Wardrik.Agent.State do
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias Wardrik.Conversation
   alias Wardrik.Event.Log.Writer
@@ -404,8 +405,8 @@ defmodule Wardrik.Agent.State do
   what it is doing now, on the event's span, where that changed. See
   `Wardrik.Agent.Activity`.
   """
-  @spec heard(t(), Bus.Event.t()) :: {t(), [effect()]}
-  def heard(%__MODULE__{activity: activity} = state, %Bus.Event{} = event) do
+  @spec heard(t(), Event.t()) :: {t(), [effect()]}
+  def heard(%__MODULE__{activity: activity} = state, %Event{} = event) do
     case Activity.fold(activity, event) do
       ^activity ->
         {state, []}

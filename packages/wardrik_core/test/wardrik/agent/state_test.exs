@@ -10,6 +10,7 @@ defmodule Wardrik.Agent.StateTest do
   alias Wardrik.Agent.State.View
   alias Wardrik.Agent.State.Waiting
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.Text
@@ -744,12 +745,12 @@ defmodule Wardrik.Agent.StateTest do
       source = run().source
       asked = %Bus.TurnStarted{messages: []}
 
-      {state, effects} = State.heard(state(), Bus.Event.new(source, asked))
+      {state, effects} = State.heard(state(), Event.new(source, asked))
 
       assert [{:emit, ^source, %Bus.ActivityChanged{activity: %Activity{doing: ^asked}}}] =
                effects
 
-      assert {^state, []} = State.heard(state, Bus.Event.new(source, %Bus.Result{text: "Hel"}))
+      assert {^state, []} = State.heard(state, Event.new(source, %Bus.Result{text: "Hel"}))
       assert View.status(state).activity == state.activity
     end
   end

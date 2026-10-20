@@ -26,6 +26,8 @@ defmodule Wardrik.Agent.Activity do
 
   alias Wardrik.Bus
 
+  alias Wardrik.Bus.Event
+
   @enforce_keys [:doing, :since]
   defstruct [:doing, :since, pending: 0]
 
@@ -61,8 +63,8 @@ defmodule Wardrik.Agent.Activity do
   @settled [Bus.ToolFinished, Bus.ToolDenied, Bus.ToolReplayed]
 
   @doc "The activity after `event`."
-  @spec fold(t(), Bus.Event.t()) :: t()
-  def fold(%__MODULE__{doing: current} = activity, %Bus.Event{payload: payload, at: at}) do
+  @spec fold(t(), Event.t()) :: t()
+  def fold(%__MODULE__{doing: current} = activity, %Event{payload: payload, at: at}) do
     activity = %{activity | pending: max(activity.pending + queued(payload), 0)}
 
     case doing(current, payload) do

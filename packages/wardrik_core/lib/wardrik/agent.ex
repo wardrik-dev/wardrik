@@ -188,6 +188,7 @@ defmodule Wardrik.Agent do
   alias Wardrik.Agent.State.View
   alias Wardrik.AgentAddress
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias Wardrik.Conversation
   alias Wardrik.Conversation.User
@@ -535,7 +536,7 @@ defmodule Wardrik.Agent do
       for {call, _prompt} <- Turn.waiting(turn),
           Map.has_key?(decisions, call.id),
           do:
-            Bus.Event.new(run.source, %Bus.CallDecided{
+            Event.new(run.source, %Bus.CallDecided{
               call_id: call.id,
               decision: decisions[call.id],
               by: by
@@ -548,7 +549,7 @@ defmodule Wardrik.Agent do
   end
 
   defp carry_on(state, run, turn, decisions, started_at) do
-    Bus.Event.emit(run.source, %Bus.TurnResumed{decisions: decisions})
+    Event.emit(run.source, %Bus.TurnResumed{decisions: decisions})
     task = tethered(fn -> turn |> Turn.under(run) |> Turn.resume(decisions) end)
 
     state
@@ -586,7 +587,7 @@ defmodule Wardrik.Agent do
     :ok = Bus.subscribe(state.agent_id)
 
     started =
-      Bus.Event.new(
+      Event.new(
         Source.root(state.agent_id),
         %Bus.AgentStarted{
           node: node(),
@@ -674,12 +675,12 @@ defmodule Wardrik.Agent do
 
   # The agent's own events, which it writes to its log and folds into what it
   # is doing.
-  def handle_info(%Bus.Event{source: %{agent_id: id}} = event, %State{agent_id: id} = state) do
+  def handle_info(%Event{source: %{agent_id: id}} = event, %State{agent_id: id} = state) do
     {state, effects} = state |> log(event) |> State.heard(event)
     {:noreply, perform(state, effects)}
   end
 
-  def handle_info(%Bus.Event{}, state), do: {:noreply, state}
+  def handle_info(%Event{}, state), do: {:noreply, state}
 
   def handle_info(message, state) do
     Logger.debug("Unhandled message: #{inspect(message)}")
@@ -729,7 +730,7 @@ defmodule Wardrik.Agent do
   # fleet does not undo; the next caller wakes it.
   defp sleep(state) do
     stopped =
-      Bus.Event.new(Source.root(state.agent_id), %Bus.AgentStopped{node: node(), reason: :idle})
+      Event.new(Source.root(state.agent_id), %Bus.AgentStopped{node: node(), reason: :idle})
 
     state = log(state, stopped)
     :ok = Bus.publish(stopped)
@@ -759,7 +760,7 @@ defmodule Wardrik.Agent do
     runtime = Host.runtime(state.host, Settings.key(state.config))
     history = state.history
 
-    Bus.Event.emit(run.source, %Bus.TurnStarted{messages: messages})
+    Event.emit(run.source, %Bus.TurnStarted{messages: messages})
 
     task =
       tethered(fn ->
@@ -771,7 +772,7 @@ defmodule Wardrik.Agent do
 
   defp replay(state, run, checkpoint) do
     run = journaled(run)
-    Bus.Event.emit(run.source, %Bus.TurnStarted{messages: []})
+    Event.emit(run.source, %Bus.TurnStarted{messages: []})
     task = tethered(fn -> checkpoint |> Turn.under(run) |> Turn.recover() end)
 
     State.replayed(state, task, run, checkpoint, System.monotonic_time())
@@ -828,7 +829,7 @@ defmodule Wardrik.Agent do
   defp perform(state, effects), do: Enum.reduce(effects, state, &apply_effect/2)
 
   defp apply_effect({:emit, source, payload}, state) do
-    Bus.Event.emit(source, payload)
+    Event.emit(source, payload)
     state
   end
 

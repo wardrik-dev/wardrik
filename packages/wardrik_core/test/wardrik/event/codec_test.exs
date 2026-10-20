@@ -5,6 +5,7 @@ defmodule Wardrik.Event.CodecTest do
   alias Wardrik.Agent.Message
   alias Wardrik.Audit
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.Text
@@ -237,11 +238,11 @@ defmodule Wardrik.Event.CodecTest do
   end
 
   defp encode(source, payload, opts \\ [sequence: 41, message_id: "m0"]),
-    do: Codec.encode(Bus.Event.new(source, payload), opts)
+    do: Codec.encode(Event.new(source, payload), opts)
 
   describe "every payload" do
     test "has a fixture here" do
-      assert Enum.sort(kinds(Bus.Event, :payload)) ==
+      assert Enum.sort(kinds(Event, :payload)) ==
                fixtures() |> Enum.map(&elem(&1, 1).__struct__) |> Enum.uniq() |> Enum.sort()
     end
 
@@ -374,7 +375,7 @@ defmodule Wardrik.Event.CodecTest do
       source = within(turn(), "deploy")
 
       event =
-        Bus.Event.new(source, %Bus.ToolDenied{
+        Event.new(source, %Bus.ToolDenied{
           call_id: "call_1",
           name: "deploy",
           reason: "No.",

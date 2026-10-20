@@ -2,6 +2,8 @@ defmodule WardrikTUI.ScrollTest do
   use ExUnit.Case, async: false
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias WardrikTUI.App
 
@@ -24,8 +26,8 @@ defmodule WardrikTUI.ScrollTest do
     on_exit(fn -> Breeze.Test.stop(session) end)
 
     turn = Source.root(agent_id, name: "turn")
-    Bus.Event.emit(turn, %Bus.TurnStarted{messages: [Wardrik.Agent.Message.new("hi")]})
-    Enum.each(1..40, &Bus.Event.emit(turn, %Bus.Result{text: "line #{&1}\n"}))
+    Event.emit(turn, %Bus.TurnStarted{messages: [Wardrik.Agent.Message.new("hi")]})
+    Enum.each(1..40, &Event.emit(turn, %Bus.Result{text: "line #{&1}\n"}))
     screen(session)
     Breeze.Test.focus(session, "log")
 

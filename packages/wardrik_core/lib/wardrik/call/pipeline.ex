@@ -65,6 +65,8 @@ defmodule Wardrik.Call.Pipeline do
   require Logger
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Call
   alias Wardrik.Call.Model
   alias Wardrik.Call.Tool
@@ -628,5 +630,5 @@ defmodule Wardrik.Call.Pipeline do
 
   defp announced(call), do: call
 
-  defp emit(%Call{run: %Run{source: source}}, payload), do: Bus.Event.emit(source, payload)
+  defp emit(%Call{run: %Run{source: source}}, payload), do: Event.emit(source, payload)
 end

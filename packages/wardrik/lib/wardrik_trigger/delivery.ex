@@ -10,6 +10,7 @@ defmodule WardrikTrigger.Delivery do
   alias Wardrik.Agent
   alias Wardrik.AgentID
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Fleet
   alias WardrikTrigger.Item
 
@@ -49,5 +50,5 @@ defmodule WardrikTrigger.Delivery do
   @doc "Says on `agent`'s topic that its trigger `name` came to `outcome`."
   @spec announce(AgentID.t(), String.t(), WardrikTrigger.outcome()) :: :ok
   def announce(%AgentID{} = agent, name, outcome),
-    do: Bus.Event.announce(agent, %Bus.TriggerFired{name: name, outcome: outcome})
+    do: Event.announce(agent, %Bus.TriggerFired{name: name, outcome: outcome})
 end

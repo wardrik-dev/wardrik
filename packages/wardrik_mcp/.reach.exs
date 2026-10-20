@@ -39,6 +39,7 @@
       "Wardrik.Definitions",
       "Wardrik.Error",
       "Wardrik.Bus.Event",
+      "Wardrik.Event",
       "Wardrik.Bus",
       "Wardrik.Event.Codec.Value",
       "Wardrik.Event.Cursor",

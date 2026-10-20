@@ -11,7 +11,6 @@ defmodule WardrikNotify.Notice do
     * `:finished` - a turn answered, and `text` is what it said last
   """
 
-
   @enforce_keys [:agent, :kind, :at]
   defstruct [:agent, :kind, :at, :reason, :text, calls: []]
 

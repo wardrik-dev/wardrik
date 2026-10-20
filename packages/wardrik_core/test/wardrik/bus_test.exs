@@ -2,6 +2,8 @@ defmodule Wardrik.BusTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias Wardrik.Test.Fleet
 
@@ -11,7 +13,7 @@ defmodule Wardrik.BusTest do
     {:ok, agent_id: Fleet.id()}
   end
 
-  defp emit(agent_id, payload), do: agent_id |> Source.root() |> Bus.Event.emit(payload)
+  defp emit(agent_id, payload), do: agent_id |> Source.root() |> Event.emit(payload)
 
   test "publish reaches every subscriber and no one else", %{agent_id: agent_id} do
     other_agent = Fleet.id()
@@ -20,17 +22,17 @@ defmodule Wardrik.BusTest do
 
     emit(agent_id, %Bus.Result{text: "a"})
 
-    assert_receive %Bus.Event{payload: %Bus.Result{text: "a"}}
-    refute_receive %Bus.Event{payload: %Bus.Result{text: "b"}}
+    assert_receive %Event{payload: %Bus.Result{text: "a"}}
+    refute_receive %Event{payload: %Bus.Result{text: "b"}}
   end
 
   test "the published event carries the source it was emitted on", %{agent_id: agent_id} do
     :ok = Bus.subscribe(agent_id)
     source = Source.root(agent_id, name: "turn")
 
-    Bus.Event.emit(source, %Bus.Result{text: "a"})
+    Event.emit(source, %Bus.Result{text: "a"})
 
-    assert_receive %Bus.Event{source: ^source, payload: %Bus.Result{text: "a"}, at: at}
+    assert_receive %Event{source: ^source, payload: %Bus.Result{text: "a"}, at: at}
     assert is_integer(at)
   end
 
@@ -46,7 +48,7 @@ defmodule Wardrik.BusTest do
     assert Bus.subscribers(agent_id) == []
 
     emit(agent_id, %Bus.Result{text: "a"})
-    refute_receive %Bus.Event{}
+    refute_receive %Event{}
   end
 
   test "a dead subscriber does not affect the others" do
@@ -66,7 +68,7 @@ defmodule Wardrik.BusTest do
     assert_receive {:DOWN, ^ref, :process, ^dead, _reason}
 
     emit(agent_id, %Bus.Result{text: "a"})
-    assert_receive %Bus.Event{payload: %Bus.Result{text: "a"}}
+    assert_receive %Event{payload: %Bus.Result{text: "a"}}
   end
 
   describe "levels" do
@@ -76,8 +78,8 @@ defmodule Wardrik.BusTest do
       emit(agent_id, %Bus.ToolCall{call: @call})
       emit(agent_id, %Bus.Result{text: "a"})
 
-      assert_receive %Bus.Event{payload: %Bus.Result{text: "a"}}
-      refute_received %Bus.Event{payload: %Bus.ToolCall{call: @call}}
+      assert_receive %Event{payload: %Bus.Result{text: "a"}}
+      refute_received %Event{payload: %Bus.ToolCall{call: @call}}
     end
 
     test "raw takes each tool call as it streams too", %{agent_id: agent_id} do
@@ -86,8 +88,8 @@ defmodule Wardrik.BusTest do
       emit(agent_id, %Bus.ToolCall{call: @call})
       emit(agent_id, %Bus.Result{text: "a"})
 
-      assert_receive %Bus.Event{payload: %Bus.ToolCall{call: @call}}
-      assert_receive %Bus.Event{payload: %Bus.Result{text: "a"}}
+      assert_receive %Event{payload: %Bus.ToolCall{call: @call}}
+      assert_receive %Event{payload: %Bus.Result{text: "a"}}
     end
 
     test "each subscriber has its own", %{agent_id: agent_id} do
@@ -96,7 +98,7 @@ defmodule Wardrik.BusTest do
       spawn_link(fn ->
         Bus.subscribe(agent_id, level: :raw)
         send(test_pid, :ready)
-        receive do: (%Bus.Event{payload: %Bus.ToolCall{}} = e -> send(test_pid, {:other, e}))
+        receive do: (%Event{payload: %Bus.ToolCall{}} = e -> send(test_pid, {:other, e}))
       end)
 
       assert_receive :ready
@@ -104,8 +106,8 @@ defmodule Wardrik.BusTest do
 
       emit(agent_id, %Bus.ToolCall{call: @call})
 
-      assert_receive {:other, %Bus.Event{payload: %Bus.ToolCall{call: @call}}}
-      refute_received %Bus.Event{payload: %Bus.ToolCall{call: @call}}
+      assert_receive {:other, %Event{payload: %Bus.ToolCall{call: @call}}}
+      refute_received %Event{payload: %Bus.ToolCall{call: @call}}
     end
 
     test "an unknown level is a mistake worth hearing about", %{agent_id: agent_id} do
@@ -137,7 +139,7 @@ defmodule Wardrik.BusTest do
 
     source = Source.root(agent_id) |> Source.child()
 
-    Bus.Event.emit(source, %Bus.ToolStarted{
+    Event.emit(source, %Bus.ToolStarted{
       call_id: "call_1",
       name: "echo",
       arguments: %{},
@@ -151,7 +153,7 @@ defmodule Wardrik.BusTest do
     assert metadata.trace_id == source.trace.trace_id
     assert metadata.span_id == source.trace.span_id
     assert metadata.parent_span_id == source.trace.parent_span_id
-    assert %Bus.Event{payload: %Bus.ToolStarted{call_id: "call_1", name: "echo"}} = metadata.event
+    assert %Event{payload: %Bus.ToolStarted{call_id: "call_1", name: "echo"}} = metadata.event
   end
 
   describe "levels as topics" do
@@ -160,12 +162,12 @@ defmodule Wardrik.BusTest do
       :ok = Bus.subscribe(agent_id, level: :raw)
       source = Source.root(agent_id)
 
-      Bus.Event.emit(source, %Bus.Result{text: "activity"})
-      Bus.Event.emit(source, %Bus.ToolCall{call: @call})
+      Event.emit(source, %Bus.Result{text: "activity"})
+      Event.emit(source, %Bus.ToolCall{call: @call})
 
-      assert_receive %Bus.Event{payload: %Bus.Result{text: "activity"}}
-      assert_receive %Bus.Event{payload: %Bus.ToolCall{call: @call}}
-      refute_receive %Bus.Event{}
+      assert_receive %Event{payload: %Bus.Result{text: "activity"}}
+      assert_receive %Event{payload: %Bus.ToolCall{call: @call}}
+      refute_receive %Event{}
     end
 
     test "unsubscribing leaves both levels" do

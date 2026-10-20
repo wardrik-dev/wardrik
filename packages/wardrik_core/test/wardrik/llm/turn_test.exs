@@ -4,6 +4,8 @@ defmodule Wardrik.LLM.TurnTest do
   import ExUnit.CaptureLog
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Call
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
@@ -162,9 +164,9 @@ defmodule Wardrik.LLM.TurnTest do
     # assistant(tool_use) -> tool(result) -> assistant(final), in order, and the
     # pre-existing user message is NOT re-reported: this is a delta.
     assert authors(messages) == [Assistant, ToolResult, Assistant]
-    assert_receive %Bus.Event{payload: %Bus.ToolStarted{call_id: "call_1", name: "echo"}}
+    assert_receive %Event{payload: %Bus.ToolStarted{call_id: "call_1", name: "echo"}}
 
-    assert_receive %Bus.Event{
+    assert_receive %Event{
       payload: %Bus.ToolFinished{
         call_id: "call_1",
         name: "echo",
@@ -183,9 +185,9 @@ defmodule Wardrik.LLM.TurnTest do
     assert %LLM.Turn{state: :done, messages: _messages} =
              capture(fn -> turn(run(agent_id, llm), Conversation.new()) end)
 
-    assert_receive %Bus.Event{payload: %Bus.Thinking{text: "thinking"}}
-    assert_receive %Bus.Event{payload: %Bus.Result{text: "result"}}
-    assert_receive %Bus.Event{payload: %Bus.ToolCall{call: ^call}}
+    assert_receive %Event{payload: %Bus.Thinking{text: "thinking"}}
+    assert_receive %Event{payload: %Bus.Result{text: "result"}}
+    assert_receive %Event{payload: %Bus.ToolCall{call: ^call}}
   end
 
   test "the model request announces both ends", %{agent_id: agent_id, llm: llm} do
@@ -194,8 +196,8 @@ defmodule Wardrik.LLM.TurnTest do
     assert %LLM.Turn{state: :done, messages: _messages} =
              turn(run(agent_id, llm), Conversation.new())
 
-    assert_receive %Bus.Event{payload: %Bus.ModelStarted{}}
-    assert_receive %Bus.Event{payload: %Bus.ModelFinished{outcome: :ok}}
+    assert_receive %Event{payload: %Bus.ModelStarted{}}
+    assert_receive %Event{payload: %Bus.ModelFinished{outcome: :ok}}
   end
 
   describe "what a call cost" do
@@ -213,7 +215,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       turn(run(agent_id, llm), Conversation.new())
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ModelFinished{outcome: :ok, cost: %{micro_usd: 12_300, source: :provider}}
       }
     end
@@ -227,7 +229,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       micro_usd = 10_000
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ModelFinished{
           outcome: :ok,
           cost: %{micro_usd: ^micro_usd, source: :catalog}
@@ -244,7 +246,7 @@ defmodule Wardrik.LLM.TurnTest do
         turn(priced_run(agent_id, llm, "nowhere:no-such-model"), Conversation.new())
       end)
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ModelFinished{outcome: :ok, answer: %LLM.Answer{}, cost: nil}
       }
     end
@@ -278,11 +280,11 @@ defmodule Wardrik.LLM.TurnTest do
       |> Run.root(agent_id, name: "turn", host: host(llm))
       |> turn(Conversation.new())
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ToolFinished{call_id: "call_1", cost: %{micro_usd: 10_000}}
       }
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ToolFinished{
           call_id: "call_2",
           result: {:error, _},
@@ -290,7 +292,7 @@ defmodule Wardrik.LLM.TurnTest do
         }
       }
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ToolFinished{call_id: "call_3", cost: %{micro_usd: 2_000}}
       }
     end
@@ -311,7 +313,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       turn(run(agent_id, llm, [tool]), Conversation.new())
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ToolFinished{
           call_id: "call_1",
           name: "charge",
@@ -338,7 +340,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       turn(run(agent_id, llm, [tool]), Conversation.new())
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ToolFinished{
           call_id: "call_1",
           name: "search",
@@ -356,9 +358,9 @@ defmodule Wardrik.LLM.TurnTest do
     {_result, _log} =
       ExUnit.CaptureLog.with_log(fn -> turn(failing(agent_id, llm), Conversation.new()) end)
 
-    assert_receive %Bus.Event{payload: %Bus.ModelStarted{}}
+    assert_receive %Event{payload: %Bus.ModelStarted{}}
 
-    assert_receive %Bus.Event{
+    assert_receive %Event{
       payload: %Bus.ModelFinished{outcome: {:error, @rate_limited}}
     }
   end
@@ -380,14 +382,14 @@ defmodule Wardrik.LLM.TurnTest do
                  turn(retrying(agent_id, llm, attempts: 1), Conversation.new([User.new("hi")]))
       end)
 
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{}}
+      assert_receive %Event{payload: %Bus.ModelStarted{}}
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ModelFinished{outcome: {:error, @timeout}}
       }
 
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{}}
-      assert_receive %Bus.Event{payload: %Bus.ModelFinished{outcome: :ok}}
+      assert_receive %Event{payload: %Bus.ModelStarted{}}
+      assert_receive %Event{payload: %Bus.ModelFinished{outcome: :ok}}
     end
 
     test "says before each wait which try comes next, of how many, and why",
@@ -399,15 +401,15 @@ defmodule Wardrik.LLM.TurnTest do
                  turn(retrying(agent_id, llm, attempts: 3), Conversation.new([User.new("hi")]))
       end)
 
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{message_id: first}}
-      assert_receive %Bus.Event{payload: %Bus.ModelRetrying{} = once} = event
+      assert_receive %Event{payload: %Bus.ModelStarted{message_id: first}}
+      assert_receive %Event{payload: %Bus.ModelRetrying{} = once} = event
       assert event.source.trace.span_id <> ".m0" == first
 
       assert %{message_id: ^first, attempt: 1, attempts: 3, wait_ms: 0, reason: @timeout} =
                once
 
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{message_id: second}}
-      assert_receive %Bus.Event{payload: %Bus.ModelRetrying{message_id: ^second, attempt: 2}}
+      assert_receive %Event{payload: %Bus.ModelStarted{message_id: second}}
+      assert_receive %Event{payload: %Bus.ModelRetrying{message_id: ^second, attempt: 2}}
     end
 
     test "is asked again after a stream breaks in any way, and the turn answers",
@@ -420,7 +422,7 @@ defmodule Wardrik.LLM.TurnTest do
                  turn(retrying(agent_id, llm, attempts: 1), Conversation.new([User.new("hi")]))
       end)
 
-      assert_receive %Bus.Event{payload: %Bus.ModelRetrying{reason: ^broken}}
+      assert_receive %Event{payload: %Bus.ModelRetrying{reason: ^broken}}
     end
 
     test "fails the turn once its tries are spent, where the retry says to fail",
@@ -448,7 +450,7 @@ defmodule Wardrik.LLM.TurnTest do
                  turn(run, Conversation.new([User.new("hi")]))
       end)
 
-      refute_received %Bus.Event{payload: %Bus.ModelRetrying{}}
+      refute_received %Event{payload: %Bus.ModelRetrying{}}
     end
 
     test "parks once its tries are spent, asking a person to try again, and says why",
@@ -486,8 +488,8 @@ defmodule Wardrik.LLM.TurnTest do
       %LLM.Turn{state: {:waiting, :model}} =
         parked = capture(fn -> turn(run, Conversation.new([User.new("hi")])) end)
 
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{message_id: first}}
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{message_id: second}}
+      assert_receive %Event{payload: %Bus.ModelStarted{message_id: first}}
+      assert_receive %Event{payload: %Bus.ModelStarted{message_id: second}}
 
       TestLLM.stream(llm, [@timeout, TestLLM.final_answer("done")])
       [{call, _prompt}] = LLM.Turn.waiting(parked)
@@ -497,9 +499,9 @@ defmodule Wardrik.LLM.TurnTest do
                  resume(run, parked, %{call.id => :approve})
       end)
 
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{message_id: third, decided_by: by}}
-      assert_receive %Bus.Event{payload: %Bus.ModelRetrying{attempt: 1, attempts: 1}}
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{message_id: fourth}}
+      assert_receive %Event{payload: %Bus.ModelStarted{message_id: third, decided_by: by}}
+      assert_receive %Event{payload: %Bus.ModelRetrying{attempt: 1, attempts: 1}}
+      assert_receive %Event{payload: %Bus.ModelStarted{message_id: fourth}}
       assert by == %{by: :person, hooks: []}
       assert third == "#{first}.#{call.id}"
       assert fourth == third <> ".2"
@@ -529,10 +531,10 @@ defmodule Wardrik.LLM.TurnTest do
                  turn(retrying(agent_id, llm, attempts: 1), Conversation.new([User.new("hi")]))
       end)
 
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{message_id: first}}
-      assert_receive %Bus.Event{payload: %Bus.ModelFinished{outcome: {:error, @closed}}}
-      assert_receive %Bus.Event{payload: %Bus.ModelStarted{message_id: second}}
-      assert_receive %Bus.Event{payload: %Bus.ModelFinished{outcome: :ok}}
+      assert_receive %Event{payload: %Bus.ModelStarted{message_id: first}}
+      assert_receive %Event{payload: %Bus.ModelFinished{outcome: {:error, @closed}}}
+      assert_receive %Event{payload: %Bus.ModelStarted{message_id: second}}
+      assert_receive %Event{payload: %Bus.ModelFinished{outcome: :ok}}
       assert second == first <> ".2"
     end
 
@@ -600,7 +602,7 @@ defmodule Wardrik.LLM.TurnTest do
                  turn(run, Conversation.new([User.new("hi")]))
       end)
 
-      refute_received %Bus.Event{payload: %Bus.ModelRetrying{}}
+      refute_received %Event{payload: %Bus.ModelRetrying{}}
     end
   end
 
@@ -655,7 +657,7 @@ defmodule Wardrik.LLM.TurnTest do
     assert %LLM.Turn{state: :done, messages: _messages} =
              turn(run(Wardrik.Test.Fleet.id(), llm), Conversation.new())
 
-    refute_receive %Bus.Event{}
+    refute_receive %Event{}
     assert Bus.subscribers(agent_id) == [self()]
   end
 
@@ -686,7 +688,7 @@ defmodule Wardrik.LLM.TurnTest do
     assert %LLM.Turn{state: :done, messages: [%Assistant{parts: [^searched]}]} =
              turn(run(agent_id, llm), Conversation.new())
 
-    refute_receive %Bus.Event{payload: %Bus.ToolStarted{}}
+    refute_receive %Event{payload: %Bus.ToolStarted{}}
   end
 
   test "the iteration cap ends a model that never stops calling tools with an answer", %{
@@ -836,7 +838,7 @@ defmodule Wardrik.LLM.TurnTest do
       :ok = Signal.interrupt(self())
       turn(run(agent_id, llm), Conversation.new())
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ModelFinished{outcome: {:error, :interrupted}}
       }
     end
@@ -1196,7 +1198,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       assert log =~ "over_budget"
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ModelFinished{outcome: {:error, :over_budget}}
       }
     end
@@ -1219,7 +1221,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert [{%{name: "model", id: "model_" <> _id}, "Spent $5.00 of $5.00 today."}] =
                LLM.Turn.waiting(parked)
 
-      refute_received %Bus.Event{payload: %Bus.ModelStarted{}}
+      refute_received %Event{payload: %Bus.ModelStarted{}}
     end
 
     test "approving it makes the call, and tells the hook with its memo", %{
@@ -1293,7 +1295,7 @@ defmodule Wardrik.LLM.TurnTest do
         end)
 
       assert log =~ "deadline"
-      assert_receive %Bus.Event{payload: %Bus.DeadlineReached{message_count: 0}}
+      assert_receive %Event{payload: %Bus.DeadlineReached{message_count: 0}}
     end
   end
 
@@ -1331,7 +1333,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       assert Enum.any?(messages, &match?(%ToolResult{}, &1))
       assert %Assistant{} = List.last(messages)
-      assert_receive %Bus.Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
+      assert_receive %Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
     end
 
     test "a call that crashes once approved is answered with why, and the turn carries on", %{
@@ -1357,13 +1359,13 @@ defmodule Wardrik.LLM.TurnTest do
       {resumed, _log} = with_log(fn -> resume(run, parked, %{"call_1" => :approve}) end)
 
       assert %LLM.Turn{state: :done, messages: [_call, %ToolError{}, %Assistant{}]} = resumed
-      assert_receive %Bus.Event{payload: %Bus.ToolStarted{call_id: "call_1"}} = started
+      assert_receive %Event{payload: %Bus.ToolStarted{call_id: "call_1"}} = started
 
-      assert_receive %Bus.Event{payload: %Bus.ToolFinished{call_id: "call_1"} = payload} =
+      assert_receive %Event{payload: %Bus.ToolFinished{call_id: "call_1"} = payload} =
                        finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
-      assert {:error, "Tool crashed: " <> _why} = Bus.Event.ended(payload)
+      assert {:error, "Tool crashed: " <> _why} = Event.ended(payload)
     end
 
     test "approving with a note hands the model the note beside the call's answer", %{
@@ -1443,7 +1445,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{state: :done, messages: _messages} =
                resume(run, parked, %{"call_1" => :perhaps})
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ToolDenied{call_id: "call_1", name: "deploy", reason: reason}
       }
 
@@ -1479,7 +1481,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{state: :done, labels: []} =
                turn(allowing_deploy(agent_id, llm), Conversation.new([User.new("deploy")]))
 
-      assert_receive %Bus.Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
+      assert_receive %Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
     end
 
     test "waits on a person once the turn has read content from outside, and keeps the label", %{
@@ -1497,7 +1499,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       assert [{%{id: "call_2", name: "deploy"}, prompt}] = LLM.Turn.waiting(parked)
       assert prompt =~ "this run has read content from outside"
-      refute_received %Bus.Event{payload: %Bus.ToolStarted{call_id: "call_2"}}
+      refute_received %Event{payload: %Bus.ToolStarted{call_id: "call_2"}}
 
       assert %LLM.Turn{labels: ["outside"]} = LLM.Turn.under(parked, nil)
     end
@@ -1515,7 +1517,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{state: :done, labels: ["outside"]} =
                turn(run, Conversation.new([User.new("read it")]))
 
-      assert_receive %Bus.Event{payload: %Bus.ToolFinished{call_id: "call_2", name: "deploy"}}
+      assert_receive %Event{payload: %Bus.ToolFinished{call_id: "call_2", name: "deploy"}}
     end
   end
 
@@ -1535,7 +1537,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{state: :done, messages: _messages} =
                resume(loosened, parked, %{"call_1" => {:deny, "Not now."}})
 
-      assert_receive %Bus.Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
+      assert_receive %Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
     end
 
     test "a call the new hooks deny is refused, whatever was decided", %{
@@ -1557,11 +1559,11 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{state: :done, messages: _messages} =
                resume(frozen, parked, %{"call_1" => :approve})
 
-      assert_receive %Bus.Event{
+      assert_receive %Event{
         payload: %Bus.ToolDenied{call_id: "call_1", name: "deploy", reason: "Frozen."}
       }
 
-      refute_received %Bus.Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
+      refute_received %Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
     end
 
     test "a call the new hooks ask about waits again under them", %{agent_id: agent_id, llm: llm} do
@@ -1584,7 +1586,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       assert again.revision == Wardrik.Hook.revision(new)
       assert [{%{id: "call_1"}, "This ships to production."}] = LLM.Turn.waiting(again)
-      refute_received %Bus.Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
+      refute_received %Event{payload: %Bus.ToolFinished{call_id: "call_1", name: "deploy"}}
     end
 
     test "a model call is asked about again", %{agent_id: agent_id, llm: llm} do

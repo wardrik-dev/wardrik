@@ -25,6 +25,8 @@ defmodule WardrikTUI.Delegation do
 
   alias Wardrik.Bus
 
+  alias Wardrik.Bus.Event
+
   @typedoc "Whether a delegation is still going, and how it went if not."
   @type status() :: :running | :ok | :error
 
@@ -64,10 +66,10 @@ defmodule WardrikTUI.Delegation do
   def new, do: %__MODULE__{}
 
   @doc "Applies one event."
-  @spec fold(t(), Bus.Event.t()) :: t()
-  def fold(%__MODULE__{}, %Bus.Event{payload: %Bus.TurnStarted{}}), do: new()
+  @spec fold(t(), Event.t()) :: t()
+  def fold(%__MODULE__{}, %Event{payload: %Bus.TurnStarted{}}), do: new()
 
-  def fold(%__MODULE__{} = delegations, %Bus.Event{source: source, payload: payload, at: at}) do
+  def fold(%__MODULE__{} = delegations, %Event{source: source, payload: payload, at: at}) do
     now = div(at, 1_000)
 
     delegations
@@ -234,7 +236,7 @@ defmodule WardrikTUI.Delegation do
   end
 
   defp absorb(delegations, span_id, payload, now) do
-    case Bus.Event.ended(payload) do
+    case Event.ended(payload) do
       nil ->
         delegations
 

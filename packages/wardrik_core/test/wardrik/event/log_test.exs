@@ -5,6 +5,8 @@ defmodule Wardrik.Event.LogTest do
   use Mimic
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
@@ -22,7 +24,7 @@ defmodule Wardrik.Event.LogTest do
 
   defp started(agent_id),
     do:
-      Bus.Event.new(Source.root(agent_id), %Bus.AgentStarted{
+      Event.new(Source.root(agent_id), %Bus.AgentStarted{
         node: node(),
         status: :idle,
         generation: "g1"
@@ -32,7 +34,7 @@ defmodule Wardrik.Event.LogTest do
     do: Writer.open(store(), Writer.new(agent_id, head), started(agent_id))
 
   defp append!(writer, source, payload) do
-    {:ok, writer} = Writer.append(store(), writer, Bus.Event.new(source, payload))
+    {:ok, writer} = Writer.append(store(), writer, Event.new(source, payload))
     writer
   end
 
@@ -167,7 +169,7 @@ defmodule Wardrik.Event.LogTest do
 
     test "writes an event appended ahead of the bus once", %{agent_id: agent_id, source: source} do
       decided =
-        Bus.Event.new(source, %Bus.CallDecided{call_id: "call_1", decision: :approve, by: nil})
+        Event.new(source, %Bus.CallDecided{call_id: "call_1", decision: :approve, by: nil})
 
       {:ok, writer} = Writer.append_ahead(store(), open(agent_id), decided)
       {:ok, _writer} = Writer.append(store(), writer, decided)
@@ -200,11 +202,11 @@ defmodule Wardrik.Event.LogTest do
                Writer.append(
                  store(),
                  first,
-                 Bus.Event.new(source, %Bus.TurnStarted{messages: []})
+                 Event.new(source, %Bus.TurnStarted{messages: []})
                )
 
       assert {:error, :fenced, _first} =
-               Writer.append(store(), first, Bus.Event.new(source, %Bus.Result{text: "x"}))
+               Writer.append(store(), first, Event.new(source, %Bus.Result{text: "x"}))
 
       append!(second, source, %Bus.TurnResumed{decisions: %{}})
 
@@ -244,7 +246,7 @@ defmodule Wardrik.Event.LogTest do
                Writer.append(
                  store(),
                  writer,
-                 Bus.Event.new(source, %Bus.TurnStarted{messages: []})
+                 Event.new(source, %Bus.TurnStarted{messages: []})
                )
 
       append!(writer, source, %Bus.TurnResumed{decisions: %{}})
@@ -282,7 +284,7 @@ defmodule Wardrik.Event.LogTest do
                Writer.append(
                  store(),
                  writer,
-                 Bus.Event.new(source, %Bus.TurnStarted{messages: []})
+                 Event.new(source, %Bus.TurnStarted{messages: []})
                )
 
       append!(writer, source, %Bus.TurnResumed{decisions: %{}})
@@ -313,7 +315,7 @@ defmodule Wardrik.Event.LogTest do
 
   describe "trimming" do
     setup %{agent_id: agent_id, source: source} do
-      old = fn payload -> %{Bus.Event.new(source, payload) | at: days_ago(31)} end
+      old = fn payload -> %{Event.new(source, payload) | at: days_ago(31)} end
       writer = Writer.open(store(), Writer.new(agent_id), %{started(agent_id) | at: days_ago(31)})
 
       writer =

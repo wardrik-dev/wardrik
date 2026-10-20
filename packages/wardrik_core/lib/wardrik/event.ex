@@ -47,10 +47,11 @@ defmodule Wardrik.Event do
   alias Wardrik.Event.Log.Entry
 
   @envelope [:id, :source, :time, :trace, :cursor, :cloudevent]
-  @dir Path.expand("../../priv/v1", __DIR__)
+  @glob "../../priv/v1" |> Path.expand(__DIR__) |> Path.join("*.json")
+  @files @glob |> Path.wildcard() |> Enum.sort()
 
   types =
-    for file <- @dir |> Path.join("*.json") |> Path.wildcard() |> Enum.sort(),
+    for file <- @files,
         %{"title" => "wardrik." <> name = type} = schema <- [:json.decode(File.read!(file))] do
       @external_resource file
       module = Module.concat(__MODULE__, Macro.camelize(String.replace(name, ".", "_")))
@@ -118,6 +119,10 @@ defmodule Wardrik.Event do
   @doc "The CloudEvent type of each struct, as `\"wardrik.run.completed\"`."
   @spec types() :: [String.t()]
   def types, do: Map.keys(@modules)
+
+  # Compiles again when a schema is added or removed, as well as changed.
+  @doc false
+  def __mix_recompile__?, do: @glob |> Path.wildcard() |> Enum.sort() != @files
 
   defp past(_cursor, %Entry{log: :audit}), do: nil
   defp past(cursor, entry), do: Cursor.past(cursor, entry)

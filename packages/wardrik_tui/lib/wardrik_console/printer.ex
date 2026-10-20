@@ -25,6 +25,8 @@ defmodule WardrikConsole.Printer do
   """
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias WardrikConsole.Markdown
   alias WardrikConsole.Table
 
@@ -44,9 +46,9 @@ defmodule WardrikConsole.Printer do
   def new(opts \\ []), do: %__MODULE__{width: Keyword.get(opts, :width, 80)}
 
   @doc "The lines `event` completes, and the printer to give the next event to."
-  @spec event(t(), Bus.Event.t()) :: {[Owl.Data.t()], t()}
-  def event(%__MODULE__{} = printer, %Bus.Event{payload: %Bus.Result{text: text}} = event) do
-    if Bus.Event.root?(event) do
+  @spec event(t(), Event.t()) :: {[Owl.Data.t()], t()}
+  def event(%__MODULE__{} = printer, %Event{payload: %Bus.Result{text: text}} = event) do
+    if Event.root?(event) do
       {settled, printer} = settle(printer, :reasoning)
       {lines, answer} = Markdown.push(printer.answer, text)
       {settled ++ answer(lines, printer), %{printer | answer: answer}}
@@ -55,8 +57,8 @@ defmodule WardrikConsole.Printer do
     end
   end
 
-  def event(%__MODULE__{} = printer, %Bus.Event{payload: %Bus.Thinking{text: text}} = event) do
-    if Bus.Event.root?(event) do
+  def event(%__MODULE__{} = printer, %Event{payload: %Bus.Thinking{text: text}} = event) do
+    if Event.root?(event) do
       {settled, printer} = settle(printer, :answer)
       {lines, reasoning} = Markdown.push(printer.reasoning, text)
       {settled ++ reasoning(lines, printer), %{printer | reasoning: reasoning}}
@@ -65,7 +67,7 @@ defmodule WardrikConsole.Printer do
     end
   end
 
-  def event(%__MODULE__{} = printer, %Bus.Event{payload: payload}) do
+  def event(%__MODULE__{} = printer, %Event{payload: payload}) do
     case said(payload) do
       nil ->
         {[], printer}

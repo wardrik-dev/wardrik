@@ -14,6 +14,7 @@ defmodule WardrikDaemon.CLI.Follow do
 
   alias Wardrik.AgentAddress
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias WardrikConsole.Printer
   alias WardrikDaemon.CLI.Terminal
 
@@ -77,7 +78,7 @@ defmodule WardrikDaemon.CLI.Follow do
 
   defp printing(printer, terminal, ends, watching) do
     receive do
-      %Bus.Event{} = event ->
+      %Event{} = event ->
         {lines, printer} = Printer.event(printer, event)
         Enum.each(lines, &Terminal.puts(terminal, &1))
 
@@ -95,8 +96,8 @@ defmodule WardrikDaemon.CLI.Follow do
   defp watched, do: Process.monitor(Process.group_leader())
 
   # How the turn's own events end it; its delegated work ending does not.
-  defp ended(%Bus.Event{payload: payload} = event) do
-    if Bus.Event.root?(event), do: outcome(payload)
+  defp ended(%Event{payload: payload} = event) do
+    if Event.root?(event), do: outcome(payload)
   end
 
   defp outcome(%Bus.TurnFinished{}), do: :finished

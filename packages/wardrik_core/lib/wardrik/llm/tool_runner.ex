@@ -53,6 +53,7 @@ defmodule Wardrik.LLM.ToolRunner do
   could be stopped.
   """
   alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
   alias Wardrik.Call.Tool
@@ -271,7 +272,7 @@ defmodule Wardrik.LLM.ToolRunner do
   defp reap(call, span, reason) do
     reaped = Call.answer(call, {:error, "Tool crashed: #{inspect(reason)}"})
 
-    Bus.Event.emit(span.source, %Bus.ToolFinished{
+    Event.emit(span.source, %Bus.ToolFinished{
       call_id: call.id,
       name: Call.name(call),
       result: reaped.result,

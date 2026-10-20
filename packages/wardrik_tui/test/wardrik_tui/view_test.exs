@@ -4,6 +4,8 @@ defmodule WardrikTUI.ViewTest do
   import Wardrik.AgentID, only: [sigil_A: 2]
 
   alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Bus.Source
   alias WardrikTUI.Activity
   alias WardrikTUI.Text
@@ -16,7 +18,7 @@ defmodule WardrikTUI.ViewTest do
   defp sequences(_other), do: []
 
   defp fold(activity, source, payload, now \\ 0) do
-    Activity.fold(activity, Bus.Event.new(source, payload), now: now)
+    Activity.fold(activity, Event.new(source, payload), now: now)
   end
 
   setup do

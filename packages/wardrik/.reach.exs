@@ -166,6 +166,7 @@
       "Wardrik.Specs.None",
       "Wardrik.Error",
       "Wardrik.Bus.Event",
+      "Wardrik.Event",
       "Wardrik.Event.Codec.Value",
       "Wardrik.Event.Cursor",
       "Wardrik.Event.Log.Entry",
@@ -235,8 +236,8 @@
       {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Bus.Source", ["Wardrik", "Wardrik.*"]},
       # The agents' logs are read and followed through Wardrik alone, which
-      # checks the token first.
-      {"Wardrik.Event.Log", ["Wardrik"]},
+      # checks the token first, and its wait: once it has.
+      {"Wardrik.Event.Log", ["Wardrik", "Wardrik.Wait"]},
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]
   ],

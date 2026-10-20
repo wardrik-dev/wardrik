@@ -25,6 +25,8 @@ defmodule WardrikTUI.Activity do
 
   alias Wardrik.Bus
 
+  alias Wardrik.Bus.Event
+
   @typedoc "Whether a span is still going, and how it went if not."
   @type status() :: :running | :ok | :error | :parked
 
@@ -54,8 +56,8 @@ defmodule WardrikTUI.Activity do
 
   Options: `:now`, the current time in milliseconds.
   """
-  @spec fold(t(), Bus.Event.t(), keyword()) :: t()
-  def fold(%__MODULE__{} = activity, %Bus.Event{source: source, payload: payload}, opts \\ []) do
+  @spec fold(t(), Event.t(), keyword()) :: t()
+  def fold(%__MODULE__{} = activity, %Event{source: source, payload: payload}, opts \\ []) do
     now = Keyword.get_lazy(opts, :now, &now/0)
 
     activity
@@ -124,7 +126,7 @@ defmodule WardrikTUI.Activity do
   end
 
   defp absorb(activity, span_id, %kind{} = payload, now) when kind in @settled do
-    close(activity, span_id, Bus.Event.ended(payload), since(activity, span_id, now))
+    close(activity, span_id, Event.ended(payload), since(activity, span_id, now))
   end
 
   defp absorb(activity, span_id, %Bus.TurnStarted{}, now) do

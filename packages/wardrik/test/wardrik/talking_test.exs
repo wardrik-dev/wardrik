@@ -10,6 +10,7 @@ defmodule Wardrik.TalkingTest do
   alias Wardrik.AgentID
   alias Wardrik.Bus
   alias Wardrik.Error
+  alias Wardrik.Event.Cursor
   alias Wardrik.Event.EventsDropped
   alias Wardrik.Event.Log
   alias Wardrik.Fleet.Member
@@ -133,15 +134,15 @@ defmodule Wardrik.TalkingTest do
 
     assert {:ok, events} = Wardrik.events(scope(), resources: resources)
     assert [first, second] = Enum.take(events, 2)
-    assert {:ok, %{^id => 1}} = Wardrik.Event.Cursor.decode(first.cursor)
-    assert {:ok, %{^id => 2}} = Wardrik.Event.Cursor.decode(second.cursor)
+    assert {:ok, %{^id => 1}} = Cursor.decode(first.cursor)
+    assert {:ok, %{^id => 2}} = Cursor.decode(second.cursor)
 
     :ok = Log.trim(store(), id, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
     assert {:ok, events} = Wardrik.events(scope(), resources: resources)
     assert [%EventsDropped{after: 0, oldest: 3} = dropped, third] = Enum.take(events, 2)
-    assert {:ok, %{^id => 2}} = Wardrik.Event.Cursor.decode(dropped.cursor)
-    assert {:ok, %{^id => 3}} = Wardrik.Event.Cursor.decode(third.cursor)
+    assert {:ok, %{^id => 2}} = Cursor.decode(dropped.cursor)
+    assert {:ok, %{^id => 3}} = Cursor.decode(third.cursor)
 
     assert {:ok, events} =
              Wardrik.events(scope(), resources: resources, types: ["wardrik.run.completed"])
@@ -190,7 +191,7 @@ defmodule Wardrik.TalkingTest do
       assert {:ok, %Message{id: "m1", cursor: cursor}} =
                Wardrik.agent_ask(scope(), id, "hi", id: "m1")
 
-      assert {:ok, %{^id => sequence}} = Wardrik.Event.Cursor.decode(cursor)
+      assert {:ok, %{^id => sequence}} = Cursor.decode(cursor)
       assert is_integer(sequence)
       assert_receive %Bus.Event{payload: %Bus.MessageQueued{message: %{sender: sender}}}
       assert Principal.id(sender) == "acme/@jon"
