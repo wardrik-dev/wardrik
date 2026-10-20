@@ -44,6 +44,70 @@ defmodule WardrikMCP.ConfigTest do
 
       assert_raise ArgumentError, fn -> WardrikMCP.attach(Wardrik.Host.new(), servrs: []) end
     end
+
+    test "reads a server named by its url or command as config.yaml's" do
+      host =
+        WardrikMCP.attach(Wardrik.Host.new(store: Wardrik.Test.store()),
+          servers: [
+            github: [url: "https://api.githubcopilot.com/mcp/", credential: "github", timeout: 5],
+            notes: [command: "notes-mcp", args: ["--quiet"]]
+          ]
+        )
+
+      assert %{"github" => github, "notes" => notes} = Wardrik.Host.sources(host)
+
+      assert {:streamable_http, [mcp_path: "/mcp/", base_url: "https://api.githubcopilot.com"]} =
+               github.transport
+
+      assert github.credential == "github"
+      assert github.timeout == 5_000
+      assert {:stdio, stdio} = notes.transport
+      assert Enum.take(stdio[:args], -2) == ["notes-mcp", "--quiet"]
+
+      assert_raise ArgumentError, ~r/the MCP server docs has both command and url/, fn ->
+        WardrikMCP.attach(Wardrik.Host.new(),
+          servers: [docs: [url: "https://docs.example.com/mcp", command: "docs-mcp"]]
+        )
+      end
+    end
+
+    defp vaulted(seams \\ []) do
+      store = Wardrik.Test.store()
+      vault = WardrikVault.new(store: store, keys: [WardrikVault.generate_key()])
+      Wardrik.Host.new([store: store, credentials: vault] ++ seams)
+    end
+
+    test "offers the servers owners add where the host keeps credentials in a vault" do
+      host = WardrikMCP.attach(vaulted())
+
+      assert %WardrikMCP.Servers{vault: vault, oauth: oauth} = Wardrik.Host.servers(host)
+      assert vault == Wardrik.Host.credentials(host)
+      assert oauth.providers == []
+
+      assert Wardrik.Host.servers(WardrikMCP.attach(Wardrik.Host.new())) ==
+               %Wardrik.Servers.None{}
+    end
+
+    test "signs in to added servers as the WardrikOAuth attached before it" do
+      settings = [redirect: [url: "https://myapp.example.com/oauth"], providers: [github: []]]
+      host = vaulted() |> WardrikOAuth.attach(settings) |> WardrikMCP.attach()
+
+      assert %WardrikMCP.Servers{oauth: oauth, vault: vault} = Wardrik.Host.servers(host)
+      assert [oauth: ^oauth] = Wardrik.Host.settings(host, WardrikOAuth)
+      assert vault == Wardrik.Host.credentials(host)
+    end
+
+    test "keeps the servers a host offers of its own" do
+      offered = %WardrikMCP.Servers{
+        store: Wardrik.Test.store(),
+        oauth: WardrikOAuth.new(),
+        vault: nil
+      }
+
+      host = WardrikMCP.attach(vaulted(servers: offered))
+
+      assert Wardrik.Host.servers(host) == offered
+    end
   end
 
   describe "config/1" do

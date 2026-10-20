@@ -66,6 +66,8 @@ defmodule WardrikMCP do
   `config/1` reads `config.yaml`'s `mcp` into the servers.
   """
 
+  @behaviour Wardrik.Plugin
+
   use Wardrik.Tool
 
   alias Wardrik.Credential
@@ -94,11 +96,29 @@ defmodule WardrikMCP do
   children, `WardrikMCP.Supervisor`, which connects to them, with the
   servers owners add kept in the host's store. `:servers`, `:stderr`,
   `:first_retry`, `:refresh_after` and `:check` are the supervisor's.
+
+  A server is named by its `transport`, or by a `url` or a `command`, as
+  `config/1` reads one:
+
+      config :my_app, MyApp.Agents,
+        store: [repo: MyApp.Repo],
+        vault: [keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]],
+        plugins: [
+          {WardrikMCP,
+           servers: [github: [url: "https://api.githubcopilot.com/mcp/", credential: "github"]]}
+        ]
+
+  Where the host keeps credentials in a vault and offers no servers of its
+  own, people add servers of their own too, kept in its store
+  (`WardrikMCP.Servers`). List it after `WardrikOAuth`, so they sign in as
+  it does.
   """
   @spec attach(Host.t(), keyword()) :: Host.t()
+  @impl Wardrik.Plugin
   def attach(%Host{} = host, opts \\ []) do
     opts = Keyword.validate!(opts, [:stderr, :first_retry, :refresh_after, :check, servers: []])
-    opts = [store: Host.store(host)] ++ opts
+    servers = Enum.map(opts[:servers], &reached/1)
+    opts = [store: Host.store(host)] ++ Keyword.put(opts, :servers, servers)
 
     configured =
       for server <- WardrikMCP.Supervisor.configured(opts),
@@ -107,6 +127,31 @@ defmodule WardrikMCP do
     host
     |> Host.register(:sources, [{"servers", WardrikMCP.Added} | configured])
     |> Host.child({WardrikMCP.Supervisor, opts})
+    |> added()
+  end
+
+  # A server named by its url or command reads as config.yaml's does.
+  defp reached({name, server}) do
+    if Keyword.has_key?(server, :url) or Keyword.has_key?(server, :command),
+      do: {name, server!(Atom.to_string(name), Map.new(server, &stringified/1))},
+      else: {name, server}
+  catch
+    {:invalid, path, message} ->
+      raise ArgumentError, "the MCP server #{Enum.join(path, ".")} #{message}"
+  end
+
+  defp stringified({key, value}), do: {Atom.to_string(key), value}
+
+  defp added(host) do
+    case {Host.servers(host), Host.credentials(host)} do
+      {%Wardrik.Servers.None{}, %WardrikVault{} = vault} ->
+        oauth = Keyword.get_lazy(Host.settings(host, WardrikOAuth), :oauth, &WardrikOAuth.new/0)
+        servers = %WardrikMCP.Servers{store: Host.store(host), oauth: oauth, vault: vault}
+        Host.put(host, :servers, servers)
+
+      _offered_or_no_vault ->
+        host
+    end
   end
 
   @doc """
