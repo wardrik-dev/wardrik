@@ -182,6 +182,8 @@ can always answer. Without approvers, only they can, and a trigger's turn is ans
   `tokens_revoked` say the app was taken out.
 - **Bot scopes:** read and post, mark messages, and find people by `@handle`. `users:read.email` is
   only needed for approvers named by email.
+- **Notices in a room:** a [notice](/build/notices/#post-in-a-room) posts in a channel the bot was
+  invited to. Add `chat:write.public` to post in any public channel without inviting it.
 - **Messages Tab:** where approvers are asked. Direct messages to the app aren't answered.
 
 No user scopes are needed; the app acts as itself. A new scope means installing the app again.

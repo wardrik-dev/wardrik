@@ -69,7 +69,9 @@ Whoever asked for a turn can always answer. Without approvers,
 only they can, and a trigger's turn is answered from a shell. See
 [Who approves](/channels/slack/#who-approves).
 
-A [notice target](/build/notices/) can post into a room too, with its own approvers.
+A [notice target](/build/notices/) can post into a room too, with its own approvers. An agent's
+`notify` can also name a room itself, as `slack:#updates`; it posts in the workspace of the agent's
+org. See [Post in a room](/build/notices/#post-in-a-room).
 
 ## Details
 

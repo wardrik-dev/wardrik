@@ -367,7 +367,7 @@ The body of PUT /v1/agents/{key}, and the definition GET /v1/agents/{key}/defini
 | `retries.on_exhausted` | string |  | What happens once the tries are spent: ask a person whether to try again, or fail the turn. ask unless set. One of `ask`, `fail`. |
 | `compaction` | `false` or object |  | When the agent summarises its older history, as shares of the model's window; false never does. |
 | `triggers` | array of object |  | The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. A trigger on a clock has every, and a timezone a cron expression is read in; a webhook has webhook in its place, holding its secret and how a request is verified, and is sent requests at POST /v1/hooks/{key}/{trigger}. |
-| `notify` | string or array of string or object |  | Who hears when the agent parks, fails or answers: a target config.yaml's notify names, a list of them, or to and on. A target tells only the agents of the orgs it serves. |
+| `notify` | string or array of string or object |  | Who hears when the agent parks, fails or answers: a target config.yaml's notify names or a room in a channel, as slack:#updates; a list of them; or to and on. A target tells only the agents of the orgs it serves, and a room is posted in a workspace of the agent's own owner. |
 | `channels` | array of string |  | The chat channels, as config.yaml names them, it may be chosen to answer in. |
 
 ### `agent_snapshot`
