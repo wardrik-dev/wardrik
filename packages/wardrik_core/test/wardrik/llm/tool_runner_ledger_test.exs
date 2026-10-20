@@ -320,7 +320,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     run = run(agent_id, [])
     key = Ledger.Key.idempotency(run, call("call_1", "refund"))
 
-    assert key == "#{agent_id}//#{run.source.trace.trace_id}/call_1"
+    assert key == "#{Wardrik.AgentID.resource(agent_id)}//#{run.source.trace.trace_id}/call_1"
     refute key == Ledger.Key.idempotency(run(agent_id, []), call("call_1", "refund"))
   end
 end

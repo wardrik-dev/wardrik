@@ -26,7 +26,7 @@ defmodule Wardrik.JSON do
        "run": {"id": "4bf92f35…"},
        "interrupts": [{"id": "toolu_01", "reason": "tool_approval", "message": "…", "tool_call_id": "toolu_01"}],
        "messages": [{"role": "user", "parts": [{"type": "text", "content": "…"}]}],
-       "outcome": "ok", "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"}
+       "outcome": "ok", "cursor": "eyJhY21lL2FnZW50L3RyaWFnZSI6NDF9"}
 
   `run` is `null` between runs, and `cursor` is where the agent's log
   stands: read and follow it from there. `activity` is what
@@ -126,14 +126,14 @@ defmodule Wardrik.JSON do
   @spec tokens([Entry.t()]) :: map()
   def tokens(entries), do: %{"tokens" => Enum.map(entries, &token/1)}
 
-  @doc "The connections an owner is offered, and what holds each."
+  @doc "The connections an owner is offered, and whether they hold each."
   @spec connections([Connection.t()]) :: map()
   def connections(connections), do: %{"connections" => Enum.map(connections, &connection/1)}
 
-  @doc "One connection: its provider, and what holds it."
+  @doc "One connection: its provider, and whether the owner holds it."
   @spec connection(Connection.t()) :: map()
-  def connection(%Connection{provider: provider, held_by: held_by}),
-    do: %{"provider" => provider, "held_by" => Atom.to_string(held_by)}
+  def connection(%Connection{provider: provider, connected: connected}),
+    do: %{"provider" => provider, "connected" => connected}
 
   @doc "A connection asked for: held already, or where to authorize it."
   @spec connecting(Connection.t()) :: map()

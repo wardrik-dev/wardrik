@@ -125,6 +125,20 @@ defmodule Wardrik.AgentIDTest do
     end
   end
 
+  test "from_resource/1 reads back the agent resource/1 names, and nothing else" do
+    for id <- [
+          ~A"acme/triage",
+          ~A"acme/@jon/triage",
+          ~A"acme/triage/1696.1234",
+          ~A"acme/@jon/a/b"
+        ],
+        do: assert(AgentID.from_resource(AgentID.resource(id)) == {:ok, id})
+
+    for text <- ~w(acme acme/@jon acme/server/crm acme/agent/triage/trigger/hook acme/agent/*) do
+      assert AgentID.from_resource(Wardrik.Resource.parse!(text)) == :error
+    end
+  end
+
   test "segment?/1 says what can be one part of an ID" do
     assert AgentID.segment?("acme")
     assert AgentID.segment?("1696.1234")

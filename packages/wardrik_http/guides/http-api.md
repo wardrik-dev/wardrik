@@ -154,7 +154,7 @@ conversation.
 GET /v1/events?resources=acme/agent/*&types=wardrik.run.completed
 Accept: text/event-stream
 
-id: eyJhY21lL3RyaWFnZSI6NDF9
+id: eyJhY21lL2FnZW50L3RyaWFnZSI6NDF9
 data: {"specversion":"1.0","type":"wardrik.run.completed",…}
 ```
 
@@ -185,7 +185,7 @@ POST /v1/agents/acme/triage/messages
 
 `content` in place of `parts` is the text alone. `id` is optional, and a message sent again under
 the same `id` is taken once. The answer names it, with the cursor its turn is read after:
-`{"message": {"id": "msg_01", "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"}}`.
+`{"message": {"id": "msg_01", "cursor": "eyJhY21lL2FnZW50L3RyaWFnZSI6NDF9"}}`.
 
 ### Decisions
 
@@ -236,8 +236,8 @@ answers as the chat app expects; `404` where no channel of that name takes reque
 ```http
 GET /v1/connections?owner=acme/@jon
 
-{"connections": [{"provider": "github", "held_by": "own"},
-                 {"provider": "linear", "held_by": "none"}]}
+{"connections": [{"provider": "github", "connected": true},
+                 {"provider": "linear", "connected": false}]}
 ```
 
 ```http
@@ -248,9 +248,9 @@ POST /v1/connections/linear?owner=acme/@jon
 ```
 
 `owner` names a person, `acme/@jon`, or an org, `acme`. The token must reach the owner's
-agents. `held_by` is what a call of the owner's agents would use: `own`, `shared` where they
-hold none and the deployment shares one, or `none`; an org's account is not its people's. The
-account is held once the person has authorized it at the link. A secret's value is never
+agents. `connected` says whether the owner holds it, which is what a call of their agents would
+use; an org's account is not its people's. The account is held once the person has authorized it at
+the link. A secret's value is never
 answered.
 
 ### Servers

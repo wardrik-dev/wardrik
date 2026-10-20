@@ -201,7 +201,7 @@ defmodule Wardrik.FleetTest do
       key = AgentID.new!("watched", org: org)
       start(key, config: Script.new(runner(self())))
 
-      assert joined?(to_string(key))
+      assert joined?(to_string(AgentID.resource(key)))
     end
   end
 

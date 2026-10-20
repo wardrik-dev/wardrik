@@ -40,10 +40,10 @@ A credential nobody holds yet can be asked for instead, by giving the vault
 WardrikVault.new(store: store, keys: keys, grants: oauth)
 ```
 
-An agent reads only what its owner holds: its user's, or its org's. A
-deployment shares a credential with every agent by naming it, its own sealed
-secret of that name or, where it holds none, the environment variable:
+An agent reads only what its owner holds: its user's, or its org's. The
+deployment's own secrets, and the node's environment, reach no agent's call: a
+key every org's agents use is sealed for each org.
 
 ```elixir
-WardrikVault.new(store: store, keys: keys, shared: ["SEARCH_API_KEY"])
+WardrikVault.put(vault, "SEARCH_API_KEY", Wardrik.Resource.parse!("acme"), value: key)
 ```

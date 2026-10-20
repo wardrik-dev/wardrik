@@ -102,6 +102,16 @@ defmodule Wardrik.Resource do
   def org(%__MODULE__{name: name}),
     do: %__MODULE__{name: name |> String.split("/", parts: 2) |> hd()}
 
+  @doc """
+  What every name `pattern` covers begins with: its text up to its first
+  wildcard, all of it for a name. A store keyed by names finds what a
+  pattern covers among the keys that begin with it.
+
+      Wardrik.Resource.prefix(Wardrik.Resource.parse!("acme/agent/*"))  #=> "acme/agent/"
+  """
+  @spec prefix(t()) :: String.t()
+  def prefix(%__MODULE__{name: name}), do: name |> String.split(["*", "?"], parts: 2) |> hd()
+
   @doc "The name `resource` ends in: `crm` of `acme/server/crm`."
   @spec basename(t()) :: String.t()
   def basename(%__MODULE__{name: name}), do: name |> String.split("/") |> List.last()

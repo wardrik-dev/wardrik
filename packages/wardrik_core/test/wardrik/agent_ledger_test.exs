@@ -212,7 +212,7 @@ defmodule Wardrik.AgentLedgerTest do
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts([]), key)
     Agent.ask(agent, "ship it")
     assert_receive {:began, "deploy", tool}, 5_000
-    assert [_claim] = WardrikStore.keys(store(), :claims, "#{key}//")
+    assert [_claim] = WardrikStore.keys(store(), :claims, "#{Wardrik.AgentID.resource(key)}//")
     send(tool, :finish)
 
     assert_receive %Event{
@@ -222,6 +222,6 @@ defmodule Wardrik.AgentLedgerTest do
                    5_000
 
     assert_receive {:forgotten, %{agent_id: ^key, trace_id: ^trace_id, answer: :ok}}, 5_000
-    assert WardrikStore.keys(store(), :claims, "#{key}//") == []
+    assert WardrikStore.keys(store(), :claims, "#{Wardrik.AgentID.resource(key)}//") == []
   end
 end

@@ -3,7 +3,7 @@ defmodule WardrikHTTP.EventStream do
   The entries of `Wardrik.events/2` as server-sent events, until the client
   goes.
 
-      id: eyJhY21lL3RyaWFnZSI6NDJ9
+      id: eyJhY21lL2FnZW50L3RyaWFnZSI6NDJ9
       data: {"specversion":"1.0","type":"wardrik.interrupt.resolved",…}
 
       data: {"specversion":"1.0","type":"wardrik.message.delta",…}

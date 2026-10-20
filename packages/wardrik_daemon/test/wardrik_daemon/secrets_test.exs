@@ -22,9 +22,10 @@ defmodule WardrikDaemon.SecretsTest do
 
   defp vault, do: Settings.held_vault()
 
-  test "reads an agent's secret as its user's, its org's, the deployment's, then the environment's" do
+  test "reads an agent's secret as its owner holds it, and no other" do
     name = "HOOK_SECRET_#{System.unique_integer([:positive])}"
     jon = Wardrik.AgentID.parse!("acme/@jon/triage")
+    ann = Wardrik.AgentID.parse!("acme/@ann/triage")
     acme = Wardrik.AgentID.parse!("acme/triage")
     globex = Wardrik.AgentID.parse!("globex/triage")
 
@@ -35,17 +36,15 @@ defmodule WardrikDaemon.SecretsTest do
           do: WardrikVault.forget(vault(), name, owner)
     end)
 
-    assert Secrets.for_agent(vault(), name, acme) == nil
     System.put_env(name, "environment's")
-    assert Secrets.for_agent(vault(), name, acme) == "environment's"
-
     :ok = WardrikVault.put(vault(), name, Wardrik.Resource.deployment(), value: "deployment's")
     :ok = WardrikVault.put(vault(), name, Wardrik.Resource.parse!("acme"), value: "acme's")
     :ok = WardrikVault.put(vault(), name, Wardrik.Resource.parse!("acme/@jon"), value: "jon's")
 
     assert Secrets.for_agent(vault(), name, jon) == "jon's"
     assert Secrets.for_agent(vault(), name, acme) == "acme's"
-    assert Secrets.for_agent(vault(), name, globex) == "deployment's"
+    assert Secrets.for_agent(vault(), name, ann) == nil
+    assert Secrets.for_agent(vault(), name, globex) == nil
   end
 
   test "knows a provider's key variable from any other name" do

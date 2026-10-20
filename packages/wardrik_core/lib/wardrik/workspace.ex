@@ -19,7 +19,7 @@ defprotocol Wardrik.Workspace do
   gives, and what keeps two writers from losing each other's changes.
 
   A tree is named by a string the implementation treats as opaque:
-  `agents/<org>/<user>/<name>` for an agent's own, and `shared/<name>` for a
+  `agents/<resource name>` for an agent's own, and `shared/<name>` for a
   tree agents share. Opaque means one tree never holds another's files, even
   where its name begins the other's: `shared/acme` and `shared/acme/runbooks`
   are two trees.

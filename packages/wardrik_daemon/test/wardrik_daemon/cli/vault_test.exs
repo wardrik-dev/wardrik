@@ -85,6 +85,11 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
   defp ns(text), do: Wardrik.Resource.parse!(text)
 
+  defp sealed(name),
+    do:
+      "Sealed #{name}, the deployment's, which no agent's call reads; " <>
+        "--org ORG seals one for an org's agents.\n"
+
   # What the audit log says of the secret `name`: each change, and whose it was.
   defp changes(name) do
     for %{"subject" => subject, "type" => "wardrik." <> type, "data" => data} <- Audit.all(),
@@ -95,7 +100,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
   describe "vault put" do
     test "seals each NAME=VALUE as the deployment's", %{name: name} do
       assert command(["vault", "put", "#{name}=one", "#{name}_B=two=three"]) ==
-               {"Sealed #{name}.\nSealed #{name}_B.\n", 0}
+               {sealed(name) <> sealed(name <> "_B"), 0}
 
       assert WardrikVault.fetch(vault(), name, Wardrik.Resource.deployment()) == {:ok, "one"}
 
@@ -176,7 +181,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
       {output, 0} = live(["vault", "put", name], "s3cret\n")
 
-      assert output == "#{name}, which is not shown as you type: Sealed #{name}.\n"
+      assert output == "#{name}, which is not shown as you type: " <> sealed(name)
       assert WardrikVault.fetch(vault(), name, Wardrik.Resource.deployment()) == {:ok, "s3cret"}
 
       assert live(["vault", "put", name], "\n") ==
@@ -184,11 +189,11 @@ defmodule WardrikDaemon.CLI.VaultTest do
     end
 
     test "reads a value piped in, less the line ending it ends with", %{name: name} do
-      assert live(["vault", "put", name], "piped\n", piped: true) == {"Sealed #{name}.\n", 0}
+      assert live(["vault", "put", name], "piped\n", piped: true) == {sealed(name), 0}
       assert WardrikVault.fetch(vault(), name, Wardrik.Resource.deployment()) == {:ok, "piped"}
 
       assert live(["vault", "put", name], "two\nlines\r\n", piped: true) ==
-               {"Sealed #{name}.\n", 0}
+               {sealed(name), 0}
 
       assert WardrikVault.fetch(vault(), name, Wardrik.Resource.deployment()) ==
                {:ok, "two\nlines"}
@@ -240,12 +245,12 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert output =~ "openssl rand -base64 32 > #{dir}/vault_key"
       assert output =~ "WARDRIK_VAULT_KEY in the daemon's environment"
       assert output =~ "Make one? [Yn]: Made a vault key, in #{dir}/vault_key.\n" <> restart()
-      assert output =~ "Sealed #{name}.\n"
+      assert output =~ sealed(name)
 
       assert File.stat!(Path.join(dir, "vault_key")).mode |> Bitwise.band(0o777) == 0o600
       assert WardrikVault.fetch(vault(), name, Wardrik.Resource.deployment()) == {:ok, "v"}
 
-      assert command(["vault", "put", "#{name}=again"]) == {restart() <> "Sealed #{name}.\n", 0}
+      assert command(["vault", "put", "#{name}=again"]) == {restart() <> sealed(name), 0}
     end
 
     test "makes it before asking for the value", %{name: name} do
@@ -253,7 +258,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
       assert output =~
                "Made a vault key, in #{VaultKey.file()}.\n" <>
-                 restart() <> "#{name}, which is not shown as you type: Sealed #{name}.\n"
+                 restart() <> "#{name}, which is not shown as you type: " <> sealed(name)
     end
 
     test "makes none where told not to", %{name: name, tmp_dir: dir} do
@@ -265,7 +270,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
     test "makes one with --yes, without asking", %{name: name, tmp_dir: dir} do
       assert command(["vault", "put", "#{name}=v", "--yes"]) ==
-               {"Made a vault key, in #{dir}/vault_key.\n" <> restart() <> "Sealed #{name}.\n", 0}
+               {"Made a vault key, in #{dir}/vault_key.\n" <> restart() <> sealed(name), 0}
     end
 
     test "says model calls read a key it seals once the daemon restarts with the key it made" do
@@ -290,7 +295,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
     test "reads a key file written since the daemon started", %{name: name, tmp_dir: dir} do
       File.write!(Path.join(dir, "vault_key"), WardrikVault.generate_key())
 
-      assert command(["vault", "put", "#{name}=v"]) == {restart() <> "Sealed #{name}.\n", 0}
+      assert command(["vault", "put", "#{name}=v"]) == {restart() <> sealed(name), 0}
     end
 
     test "says why a key file holds no key, or a key set is not one", %{name: name, tmp_dir: dir} do

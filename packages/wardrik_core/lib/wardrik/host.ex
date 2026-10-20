@@ -79,6 +79,7 @@ defmodule Wardrik.Host do
   | --- | --- |
   | `:tools` | the tools a definition names, each a module implementing `Wardrik.Tool`, by its name |
   | `:sources` | the tool sources a definition names as `name/*`, by that name: each a module implementing `Wardrik.Tool`'s `tools/1`, handed the agent's ID, or a value of a package's own, as `WardrikDefinition.Source` reads them |
+  | `:settings` | what a package's module is handed as it runs, such as a key a tool searches with, by the module: held here, never in the store |
   | `:routes` | what the host serves over HTTP, each a plug and its options, by the segments of its path |
   | `:children` | what `Wardrik` starts after its own, in order, each `{module, opts}` |
 
@@ -119,6 +120,7 @@ defmodule Wardrik.Host do
             runtimes: [%Wardrik.LLM.Runtime{}],
             tools: %{},
             sources: %{},
+            settings: %{},
             routes: [],
             children: [],
             audit: Wardrik.Audit,
@@ -142,6 +144,7 @@ defmodule Wardrik.Host do
           runtimes: [Wardrik.Runtime.t()],
           tools: %{String.t() => module()},
           sources: %{String.t() => module() | struct()},
+          settings: %{module() => keyword()},
           routes: [route()],
           children: [{module(), keyword()}],
           audit: GenServer.name(),
@@ -248,6 +251,14 @@ defmodule Wardrik.Host do
   @spec sources(t()) :: %{String.t() => module() | struct()}
   def sources(%__MODULE__{sources: sources}), do: sources
 
+  @doc """
+  What the host hands `module` as it runs, as a package registered it
+  under `:settings`, or nothing where it registered none. A tool reads its
+  own through the host of the run it is called in.
+  """
+  @spec settings(t(), module()) :: keyword()
+  def settings(%__MODULE__{settings: settings}, module), do: Map.get(settings, module, [])
+
   @doc "What the host serves over HTTP, in the order it was registered."
   @spec routes(t()) :: [route()]
   def routes(%__MODULE__{routes: routes}), do: routes
@@ -258,18 +269,20 @@ defmodule Wardrik.Host do
 
   @doc """
   `host` with `entries` added to `field`: to `:tools`, `:sources` or
-  `:routes`, each a name and its value; to `:runtimes`, each a runtime,
-  named by its `Wardrik.Runtime.key/1`, after those it runs. Raises where a
-  name is taken.
+  `:routes`, each a name and its value; to `:settings`, each a module and
+  what it is handed; to `:runtimes`, each a runtime, named by its
+  `Wardrik.Runtime.key/1`, after those it runs. Raises where a name is
+  taken.
 
       Wardrik.Host.register(host, :sources, [{"workers", WardrikHTTP.Workers}])
   """
   @spec register(t(), :tools, [{String.t(), module()}]) :: t()
   @spec register(t(), :sources, [{String.t(), module() | struct()}]) :: t()
+  @spec register(t(), :settings, [{module(), keyword()}]) :: t()
   @spec register(t(), :routes, [route()]) :: t()
   @spec register(t(), :runtimes, [Wardrik.Runtime.t()]) :: t()
   def register(%__MODULE__{} = host, field, entries)
-      when field in [:tools, :sources, :routes, :runtimes] do
+      when field in [:tools, :sources, :settings, :routes, :runtimes] do
     held = Map.fetch!(host, field)
     names = Enum.map(Enum.to_list(held) ++ entries, &name(field, &1))
 

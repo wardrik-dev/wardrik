@@ -33,7 +33,7 @@ defmodule WardrikOAuth.ConnectionsTest do
 
   defp list(scope, mine) do
     {:ok, connections} = Wardrik.connections_list(scope, mine)
-    Map.new(connections, &{&1.provider, &1.held_by})
+    Map.new(connections, &{&1.provider, &1.connected})
   end
 
   defp authorize(scope, mine, provider) do
@@ -44,17 +44,17 @@ defmodule WardrikOAuth.ConnectionsTest do
   test "lists what the person holds, and what they do not", %{jon: jon, mine: mine} do
     authorize(jon, mine, "github")
 
-    assert list(jon, mine) == %{"github" => :own, "linear" => :none}
+    assert list(jon, mine) == %{"github" => true, "linear" => false}
   end
 
   test "connecting answers a link, and once the browser is back the account is held",
        %{jon: jon, mine: mine, org: org} do
     assert {:ok, %{authorization: %{url: url}}} = Wardrik.connections_connect(jon, mine, "linear")
 
-    assert list(jon, mine)["linear"] == :none
+    assert list(jon, mine)["linear"] == false
     assert {:ok, "linear"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-    assert list(jon, mine)["linear"] == :own
+    assert list(jon, mine)["linear"] == true
     assert {:ok, %{authorization: nil}} = Wardrik.connections_connect(jon, mine, "linear")
 
     jon_id = to_string(mine)
@@ -69,10 +69,10 @@ defmodule WardrikOAuth.ConnectionsTest do
        %{jon: jon, mine: mine} do
     authorize(jon, mine, "linear")
 
-    assert {:ok, %Wardrik.Connections.Connection{provider: "linear", held_by: :own}} =
+    assert {:ok, %Wardrik.Connections.Connection{provider: "linear", connected: true}} =
              Wardrik.connections_disconnect(jon, mine, "linear")
 
-    assert list(jon, mine)["linear"] == :none
+    assert list(jon, mine)["linear"] == false
 
     jon_id = to_string(mine)
 
@@ -94,7 +94,7 @@ defmodule WardrikOAuth.ConnectionsTest do
              Wardrik.connections_disconnect(jon, globex, "github")
 
     assert {:error, %Error{type: :not_found}} = Wardrik.connections_connect(jon, globex, "github")
-    assert list(jon, mine)["github"] == :own
+    assert list(jon, mine)["github"] == true
   end
 
   test "an org's account is the org's own, and none of its people's",
@@ -103,7 +103,7 @@ defmodule WardrikOAuth.ConnectionsTest do
     {:ok, %{authorization: %{url: url}}} = Wardrik.connections_connect(jon, org, "linear")
     {:ok, "linear"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-    assert list(jon, org)["linear"] == :own
-    assert list(jon, mine)["linear"] == :none
+    assert list(jon, org)["linear"] == true
+    assert list(jon, mine)["linear"] == false
   end
 end

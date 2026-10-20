@@ -34,10 +34,11 @@ defmodule WardrikStore do
   The fleet is kept by `DurableServer`, whose supervisors each write under a
   prefix of their own: `agents/<key>` for agents, and, where triggers and
   budgets run, `triggers/` and `meters/`, with each node's heartbeat under
-  `<prefix>__nodes/`. Through `WardrikStore.Durable` they sit in the
-  `:durable` namespace, so an agent in a bucket is
-  `wardrik/durable/agents/acme/@jon/triage`. On EKV, DurableServer's own backend
-  writes them beside the namespaces, as `agents/acme/@jon/triage`.
+  `<prefix>__nodes/`. An agent's key is its resource name. Through
+  `WardrikStore.Durable` they sit in the `:durable` namespace, so an agent in
+  a bucket is `wardrik/durable/agents/acme/@jon/agent/triage`. On EKV,
+  DurableServer's own backend writes them beside the namespaces, as
+  `agents/acme/@jon/agent/triage`.
 
   ## Versions
 

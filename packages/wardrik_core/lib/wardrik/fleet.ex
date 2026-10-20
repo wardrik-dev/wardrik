@@ -58,7 +58,8 @@ defmodule Wardrik.Fleet do
   Agents are `DurableServer` processes: one per ID across the cluster under a
   lock, state written to the store on every change that matters, and restarted
   on another node when theirs is lost. See `Wardrik.Agent.State` for what survives
-  a restart and what does not. The registry knows each agent by its ID's text.
+  a restart and what does not. The registry and the store know each agent by
+  its resource name.
   """
 
   alias Wardrik.Agent
@@ -125,7 +126,9 @@ defmodule Wardrik.Fleet do
   end
 
   defp child(id, opts),
-    do: {Agent, key: to_string(id), initial_state: Agent.initial_state(opts, id)}
+    do: {Agent, key: key(id), initial_state: Agent.initial_state(opts, id)}
+
+  defp key(id), do: to_string(AgentID.resource(id))
 
   defp start(child, nil), do: DurableServer.Supervisor.ensure_started_child(@name, child)
 
@@ -148,7 +151,7 @@ defmodule Wardrik.Fleet do
   """
   @spec stop(AgentID.t()) :: :ok | {:error, term()}
   def stop(%AgentID{} = id) do
-    DurableServer.Supervisor.terminate_child_permanent(@name, to_string(id))
+    DurableServer.Supervisor.terminate_child_permanent(@name, key(id))
   end
 
   @doc "Whether an agent is kept under `id`, running or stopped."
@@ -167,7 +170,7 @@ defmodule Wardrik.Fleet do
 
   # A forgotten agent can leave a tombstone, which is no agent.
   defp info(id) do
-    case DurableServer.Supervisor.get_server_info(@name, to_string(id)) do
+    case DurableServer.Supervisor.get_server_info(@name, key(id)) do
       {:ok, %{status: :deleting}} -> {:error, :not_found}
       {:ok, info} -> {:ok, info}
       {:error, :not_found} -> {:error, :not_found}
@@ -177,7 +180,7 @@ defmodule Wardrik.Fleet do
   @doc "Stops an agent and deletes everything it had, permanently."
   @spec forget(AgentID.t()) :: :ok | {:error, term()}
   def forget(%AgentID{} = id),
-    do: DurableServer.Supervisor.terminate_and_delete_child(@name, to_string(id))
+    do: DurableServer.Supervisor.terminate_and_delete_child(@name, key(id))
 
   @doc "Forgets every agent `pattern` covers, awake or asleep, and returns how many."
   @spec forget_under(Resource.t()) :: non_neg_integer()
@@ -217,7 +220,7 @@ defmodule Wardrik.Fleet do
   """
   @spec held_pid(AgentID.t(), wake: boolean()) :: pid() | nil
   def held_pid(%AgentID{} = id, opts \\ []) do
-    case DurableServer.Supervisor.lookup(@name, to_string(id)) do
+    case DurableServer.Supervisor.lookup(@name, key(id)) do
       {pid, _meta} -> pid
       nil -> if Keyword.get(opts, :wake, true) and stored?(id), do: wake(id)
     end
@@ -240,7 +243,7 @@ defmodule Wardrik.Fleet do
   def lookup(%AgentID{} = id, opts) do
     host = Keyword.fetch!(opts, :host)
 
-    case DurableServer.Supervisor.lookup(@name, to_string(id)) do
+    case DurableServer.Supervisor.lookup(@name, key(id)) do
       {pid, meta} -> Member.new(id, pid, meta)
       nil -> asleep(id, host)
     end
@@ -311,8 +314,10 @@ defmodule Wardrik.Fleet do
   end
 
   defp under(pattern, key) do
-    with {:ok, id} <- AgentID.parse(key),
-         true <- Resource.covers?(pattern, AgentID.resource(id)) do
+    resource = Resource.parse!(key)
+
+    with true <- Resource.covers?(pattern, resource),
+         {:ok, id} <- AgentID.from_resource(resource) do
       [id]
     else
       _elsewhere -> []
@@ -324,9 +329,9 @@ defmodule Wardrik.Fleet do
   stops, or changes what it is doing.
 
   Messages arrive as `{:group, [%Group.Event{}], info}`, where each event's
-  `key` is the agent ID's text. A state change re-registers metadata, so a
-  `:registered` event carrying `previous_meta` is a change rather than a new
-  agent.
+  `key` is the agent's resource name, which `Wardrik.AgentID.from_resource/1`
+  reads. A state change re-registers metadata, so a `:registered` event
+  carrying `previous_meta` is a change rather than a new agent.
   """
   @spec watch() :: :ok
   def watch, do: Group.monitor(@name, :all)

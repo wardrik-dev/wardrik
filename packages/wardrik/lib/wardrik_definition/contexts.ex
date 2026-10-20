@@ -1,20 +1,25 @@
 defprotocol WardrikDefinition.Contexts do
   @moduledoc """
   The `WardrikDefinition.Context` each agent's definition is read under,
-  chosen by the agent that owns it.
+  chosen by the owner of the agent: its org, or a user in it, as
+  `Wardrik.Resource` names a namespace.
 
   A host that reads every definition alike passes one
-  `WardrikDefinition.Context`, which answers itself. One that holds an org's
-  agents to its own policies, tools or ceilings, or changes them while it
-  runs, passes a struct of its own that builds the context for the owner it
-  is asked about:
+  `WardrikDefinition.Context`, which answers itself. One that holds each
+  org's agents to a policy of its own, or changes it while it runs, passes a
+  struct of its own that builds the context for the owner it is asked
+  about, as one holding each org to the allowance it pays for:
 
       defimpl WardrikDefinition.Contexts, for: MyApp.Contexts do
         def context(%MyApp.Contexts{base: base}, owner),
-          do: %{base | policies: MyApp.Policies.for_org(owner.org)}
+          do: %{base | held: base.held ++ [MyApp.Billing.allowance(Wardrik.Resource.org(owner))]}
 
         def reload(_contexts, _opts), do: []
       end
+
+  `MyApp.Billing.allowance/1` answers a `WardrikPolicy` with a budget, so
+  every agent of the org spends from it together (see `held` in
+  `WardrikDefinition.Context`).
 
   A definition is read under the context as it is put, and keeps what it
   read until it is read again, as `Wardrik.deployment_reload/1` reads every
@@ -22,8 +27,8 @@ defprotocol WardrikDefinition.Contexts do
   starts.
   """
 
-  @doc "The context the definition of the agent `owner` is read under."
-  @spec context(t(), Wardrik.AgentID.t()) :: WardrikDefinition.Context.t()
+  @doc "The context the definitions of the agents `owner` owns are read under."
+  @spec context(t(), Wardrik.Resource.t()) :: WardrikDefinition.Context.t()
   def context(contexts, owner)
 
   @doc """

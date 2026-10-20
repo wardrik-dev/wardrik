@@ -9,11 +9,12 @@ defmodule WardrikDaemon.CLI.Vault do
   in the shell's history and, while the command runs, in the list of
   processes. Neither prints the value back.
 
-  A secret is the deployment's, which an agent's `credential: NAME` reads
-  only where `vault.shared` in `config.yaml` names it. `--org ORG` seals it
-  for an org, whose own agents read it, and `--user USER` for a user, whose
-  agents read it: within `--org ORG`, or the deployment's org without it. An
-  agent reads its owner's alone, never its org's for a user's agent. An org or a user is one segment of an agent's
+  A secret is the deployment's, for the daemon's own use: a model
+  provider's key, or what `${NAME}` names in `config.yaml`. No agent's call
+  reads it. `--org ORG` seals it for an org, whose own agents read it, and
+  `--user USER` for a user, whose agents read it: within `--org ORG`, or the
+  deployment's org without it. An agent reads its owner's alone, never its
+  org's for a user's agent. An org or a user is one segment of an agent's
   key, and is shown as the key shows it, `acme` or `acme/@jon`. An account a
   user connects is kept in the vault too, and listed with the rest.
 
@@ -50,9 +51,10 @@ defmodule WardrikDaemon.CLI.Vault do
         details: [
           "NAME alone asks for its value without showing it, or reads it from standard",
           "input where that is not a terminal. NAME=VALUE stays in your shell's history.",
-          "A secret is the deployment's, which agents read only where vault.shared names it.",
-          "--org ORG seals it for an org, whose own agents read it, and --user USER for a",
-          "user, whose agents read it, within --org ORG or the deployment's org.",
+          "A secret is the deployment's, for model providers' keys and ${NAME} in config.yaml;",
+          "no agent's call reads it. --org ORG seals it for an org, whose own agents read",
+          "it, and --user USER for a user, whose agents read it, within --org ORG or the",
+          "deployment's org.",
           "Where the vault has no key, it asks to make one; --yes makes it without asking."
         ],
         switches: [yes: :boolean] ++ @owner,
@@ -205,7 +207,8 @@ defmodule WardrikDaemon.CLI.Vault do
         "Sealed #{name}. config.yaml's ${#{name}} reads it when the daemon next starts."
 
       true ->
-        "Sealed #{name}."
+        "Sealed #{name}, the deployment's, which no agent's call reads; " <>
+          "--org ORG seals one for an org's agents."
     end
   end
 

@@ -8,11 +8,13 @@ defmodule WardrikBrave.Config do
   given, and `:req_options`, merged into every request, which is the seam a
   test routes requests to a stub through so no socket is opened.
 
-  `WardrikBrave.WebSearch` builds one for each call, with the key the call's
-  credential resolved. A config with no key is a normal state: the client
-  reports the missing key at call time.
+  `WardrikBrave.WebSearch` builds one for each call, from what
+  `WardrikBrave.attach/2` gave the host. A config with no key is a normal
+  state: the client reports the missing key at call time. Its inspected
+  form never shows the key.
   """
 
+  @derive {Inspect, except: [:api_key]}
   defstruct [:base_url, :api_key, req_options: []]
 
   @type t() :: %__MODULE__{

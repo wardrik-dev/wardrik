@@ -22,7 +22,7 @@ defmodule WardrikWorkspace.SpecTest do
                  "runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"}
                })
 
-      assert spec.tree == %Mount{tree: "agents/acme/triage"}
+      assert spec.tree == %Mount{tree: "agents/acme/agent/triage"}
 
       assert spec.shared == [
                %Mount{name: "runbooks", tree: "shared/acme/runbooks", mode: :read},

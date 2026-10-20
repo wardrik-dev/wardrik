@@ -248,15 +248,19 @@ defmodule Wardrik.DefinitionTest do
              read(%{}, context, AgentID.parse!("acme/triage/t1"))
   end
 
-  test "an org's policies come ahead of the agent's own policy", %{context: context, id: id} do
+  test "the policies an owner's agents are held to come ahead of the agent's own",
+       %{context: context, id: id} do
     {:ok, base} = WardrikPolicy.decode(%{"deny" => ["run_lua"]})
+    allowance = WardrikPolicy.decode!(%{"budget" => %{"usd" => 5, "per" => "total"}}, "allowance")
     policies = Map.put(context.policies, "base", base)
-    context = %{context | policies: policies, ceilings: %{"*" => "base", "acme" => "careful"}}
+    context = %{context | policies: policies, held: ["base", "careful", allowance]}
 
     assert {:ok, spec} = spec(%{"policy" => %{"ask" => ["web_search"]}}, context, id)
-    assert ["orgs/*/base", "orgs/acme/careful", "policy"] = Enum.map(spec.hooks, & &1.name)
 
-    context = %{context | ceilings: %{"acme" => "missing"}}
+    assert ["held/base", "held/careful", "held/allowance", "held/allowance/budget", "policy"] =
+             Enum.map(spec.hooks, & &1.name)
+
+    context = %{context | held: ["missing"]}
 
     assert {:error,
             "Mode holds acme's agents to the policy missing, which is not a policy in " <>

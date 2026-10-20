@@ -7,7 +7,8 @@ defmodule Wardrik.AgentID do
   An agent's ID is its address across the cluster and its topic on the event
   bus. It is built once, where a host or a person names an agent, and carried
   as this value from there on; its text is written only where something
-  outside the BEAM needs it, such as a store key, an HTTP path or an event.
+  outside the BEAM needs it, such as an HTTP path or an event. A store key
+  names the agent by its `resource/1`, which `from_resource/1` reads back.
 
   | Text | The agent |
   | --- | --- |
@@ -106,6 +107,28 @@ defmodule Wardrik.AgentID do
     thread = if external_id, do: ["thread", external_id], else: []
     %Resource{name: Enum.join(owner ++ ["agent", name] ++ thread, "/")}
   end
+
+  @doc """
+  The agent `resource` names, as `resource/1` names it, or `:error` where it
+  names none.
+
+      Wardrik.AgentID.from_resource(Wardrik.Resource.parse!("acme/@jon/agent/triage"))
+      #=> {:ok, ~A"acme/@jon/triage"}
+  """
+  @spec from_resource(Resource.t()) :: {:ok, t()} | :error
+  def from_resource(%Resource{name: name}) do
+    case String.split(name, "/") do
+      [org, "@" <> _name = user | agent] -> agent([org, user], agent)
+      [org | agent] -> agent([org], agent)
+    end
+  end
+
+  defp agent(owner, ["agent", name]), do: from_segments(owner ++ [name])
+
+  defp agent(owner, ["agent", name, "thread", external_id]),
+    do: from_segments(owner ++ [name, external_id])
+
+  defp agent(_owner, _other), do: :error
 
   @doc """
   The ID `text` writes, as `to_string/1` writes one.

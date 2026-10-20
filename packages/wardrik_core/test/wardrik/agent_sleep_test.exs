@@ -259,7 +259,13 @@ defmodule Wardrik.AgentSleepTest do
   test "an agent forgotten after it was found stored does not come back empty" do
     key = start_agent(config: Script.new(runner(self())))
     asleep(key)
-    {:ok, info} = DurableServer.Supervisor.get_server_info(Wardrik.Fleet, to_string(key))
+
+    {:ok, info} =
+      DurableServer.Supervisor.get_server_info(
+        Wardrik.Fleet,
+        to_string(Wardrik.AgentID.resource(key))
+      )
+
     :ok = Fleet.forget(key)
 
     # The store answers as it did before the agent was forgotten, once: the

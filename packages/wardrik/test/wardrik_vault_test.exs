@@ -76,14 +76,15 @@ defmodule WardrikVaultTest do
               {"github", Resource.deployment()},
               {"github", ns("acme/@jon")},
               {"github", ns("globex/@jon")},
-              {"git hub", ns("jon")},
-              {"git_hub", ns("jon")}
+              {"git_hub", ns("jon")},
+              {"git-hub", ns("jon")}
             ],
             do: WardrikVault.path(name, owner)
 
       assert length(Enum.uniq(paths)) == length(paths)
-      assert WardrikVault.path("github", ns("jon")) == "jon/github"
-      assert WardrikVault.path("github", ns("acme/@jon")) == "acme%2F%40jon/github"
+      assert WardrikVault.path("github", ns("jon")) == "jon/secret/github"
+      assert WardrikVault.path("github", ns("acme/@jon")) == "acme/@jon/secret/github"
+      assert_raise ArgumentError, fn -> WardrikVault.path("git hub", ns("jon")) end
     end
   end
 
@@ -270,45 +271,20 @@ defmodule WardrikVaultTest do
       assert {:error, :not_found} = Credential.resolve(call(org: "acme", user: user), "nothing")
     end
 
-    test "a shared name is the deployment's, where the owner holds none", %{user: user} do
-      :ok = WardrikVault.put(vault(), "linear", Resource.deployment(), value: "deployment")
-      Process.put(:vault, %{vault() | shared: ["linear"]})
-
-      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), "linear")
-
-      assert {Credential.reveal(credential), credential.owner} ==
-               {"deployment", Resource.deployment()}
-
-      :ok = WardrikVault.put(vault(), "linear", person("acme", user), value: "sealed")
-      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), "linear")
-      assert Credential.reveal(credential) == "sealed"
-    end
-
-    test "a shared name the vault holds none of is the node's environment variable", %{user: user} do
+    test "the deployment's secret, or the node's environment variable, reaches no agent",
+         %{user: user} do
       name = environment_variable("from-the-environment")
-      Process.put(:vault, %{vault() | shared: [name]})
-
-      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
-
-      assert {Credential.reveal(credential), credential.owner} ==
-               {"from-the-environment", Resource.deployment()}
-    end
-
-    test "a shared name resolves where the vault has no key", %{user: user} do
-      name = environment_variable("keyless")
-      Process.put(:vault, %{vault() | keys: [], shared: [name]})
-
-      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
-      assert Credential.reveal(credential) == "keyless"
-      assert {:error, :no_key} = Credential.resolve(call(org: "acme", user: user), "github")
-    end
-
-    test "a name the deployment does not share reaches no agent", %{user: user} do
-      name = environment_variable("unnamed")
       :ok = WardrikVault.put(vault(), name, Resource.deployment(), value: "deployment")
 
       assert {:error, :not_found} = Credential.resolve(call(org: "acme", user: user), name)
       assert {:error, :not_found} = Credential.resolve(call(org: "acme"), name)
+    end
+
+    test "nothing resolves where the vault has no key", %{user: user} do
+      name = environment_variable("keyless")
+      Process.put(:vault, %{vault() | keys: []})
+
+      assert {:error, :no_key} = Credential.resolve(call(org: "acme", user: user), name)
     end
 
     test "a grant is handed to the grants module to answer, and to renew", %{user: user} do
@@ -401,9 +377,9 @@ defmodule WardrikVaultTest do
   describe "names/1, list/0 and forget/2" do
     test "list what an owner holds, without reading any of it", %{user: user} do
       :ok = WardrikVault.put(vault(), "github", ns(user), value: "a")
-      :ok = WardrikVault.put(vault(), "git_hub key", ns(user), value: "b")
+      :ok = WardrikVault.put(vault(), "git_hub.key", ns(user), value: "b")
 
-      assert Enum.sort(WardrikVault.names(vault(), ns(user))) == ["git_hub key", "github"]
+      assert Enum.sort(WardrikVault.names(vault(), ns(user))) == ["git_hub.key", "github"]
     end
 
     test "list every credential, with each owner written as text", %{user: user} do
@@ -426,46 +402,6 @@ defmodule WardrikVaultTest do
       assert :ok = WardrikVault.forget(vault(), "github", ns(user))
       assert {:error, :not_found} = WardrikVault.fetch(vault(), "github", ns(user))
       refute WardrikVault.has?(vault(), "github", ns(user))
-    end
-  end
-
-  describe "held_by/3" do
-    test "is the owner's own, and never their org's", %{user: user} do
-      org = "org-#{user}"
-      :ok = WardrikVault.put(vault(), "github", ns(org), value: "org-token", kind: :grant)
-
-      assert WardrikVault.held_by(vault(), "github", ns(org)) == :own
-      assert WardrikVault.held_by(vault(), "github", person(org, user)) == :none
-
-      :ok = WardrikVault.put(vault(), "github", person(org, user), value: "user-token")
-      assert WardrikVault.held_by(vault(), "github", person(org, user)) == :own
-    end
-
-    test "is shared where the owner holds none and a call would find the deployment's",
-         %{user: user} do
-      sealed = "linear-#{user}"
-      granted = "github-#{user}"
-      variable = environment_variable("from-the-environment")
-      :ok = WardrikVault.put(vault(), sealed, Resource.deployment(), value: "deployment")
-      :ok = WardrikVault.put(vault(), granted, Resource.deployment(), value: "t", kind: :grant)
-
-      assert WardrikVault.held_by(vault(), sealed, person("acme", user)) == :none
-
-      Process.put(:vault, %{vault() | shared: [sealed, granted, variable, "unset-#{user}"]})
-
-      assert WardrikVault.held_by(vault(), sealed, person("acme", user)) == :shared
-      assert WardrikVault.held_by(vault(), variable, ns("acme")) == :shared
-      assert WardrikVault.held_by(vault(), granted, ns("acme")) == :none
-      assert WardrikVault.held_by(vault(), "unset-#{user}", ns("acme")) == :none
-    end
-
-    test "needs no key", %{user: user} do
-      sealed = "linear-#{user}"
-      :ok = WardrikVault.put(vault(), sealed, Resource.deployment(), value: "deployment")
-      locked = %{vault() | keys: [], shared: [sealed]}
-
-      assert WardrikVault.held_by(locked, sealed, person("acme", user)) == :shared
-      assert WardrikVault.held_by(locked, sealed, Resource.deployment()) == :own
     end
   end
 

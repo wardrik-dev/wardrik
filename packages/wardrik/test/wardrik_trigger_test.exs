@@ -379,13 +379,12 @@ defmodule WardrikTriggerTest do
     end
   end
 
-  # Secrets are read for the agent a trigger asks, as a daemon's vault keeps
-  # one for each org, and from the environment past that.
+  # Secrets are read as the agent a trigger asks has its owner hold them, as
+  # a vault keeps one for each org: the test org's alone holds the hook's.
   defp deliver(key, name, request) do
     secrets = fn
-      "WARDRIK_TEST_VAULTED", %Wardrik.AgentID{org: "acme"} -> "acme's"
-      "WARDRIK_TEST_VAULTED", %Wardrik.AgentID{org: "globex"} -> "globex's"
-      name, _agent -> System.get_env(name)
+      "WARDRIK_TEST_HOOK", %Wardrik.AgentID{org: "test", user: nil} -> "s3cret"
+      _name, _agent -> nil
     end
 
     Wardrik.Triggers.deliver(%WardrikTrigger.Deliveries{secrets: secrets}, key, name,
@@ -395,9 +394,6 @@ defmodule WardrikTriggerTest do
 
   describe "deliver/4" do
     setup %{key: key} do
-      System.put_env("WARDRIK_TEST_HOOK", "s3cret")
-      on_exit(fn -> System.delete_env("WARDRIK_TEST_HOOK") end)
-
       put = fn opts ->
         hook =
           WardrikTrigger.Webhook.new(
@@ -480,16 +476,26 @@ defmodule WardrikTriggerTest do
       assert deliver(key, "issues", request("d-1", "{}")) == {:error, :not_found}
     end
 
-    test "becomes the other kind when put under the same name", %{key: key, put: put} do
+    test "becomes the other kind when put under the same name, each named for its trigger", %{
+      key: key,
+      put: put
+    } do
       {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
       {:ok, _pid} = put.([])
       spawn_agent(key, {__MODULE__, :labelled, [self()]})
 
-      assert [%WardrikTrigger.Status{schedule: "on request"}] = WardrikTrigger.for_agent(key)
+      trigger = "#{Wardrik.AgentID.resource(key)}/trigger/issues"
+
+      assert [%WardrikTrigger.Status{schedule: "on request", key: webhook}] =
+               WardrikTrigger.for_agent(key)
+
+      assert webhook == trigger <> "/webhook"
       assert deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}
 
       {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
-      assert [%WardrikTrigger.Status{schedule: "@daily Etc/UTC"}] = WardrikTrigger.for_agent(key)
+
+      assert [%WardrikTrigger.Status{schedule: "@daily Etc/UTC", key: ^trigger}] =
+               WardrikTrigger.for_agent(key)
     end
   end
 

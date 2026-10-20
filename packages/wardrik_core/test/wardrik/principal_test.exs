@@ -55,6 +55,11 @@ defmodule Wardrik.PrincipalTest do
         do: refute(Principal.provider?(text))
   end
 
+  test "subject?/1 says what can name someone where they reached Wardrik" do
+    for text <- ~w(jon T0123/U024BE7LH a:b), do: assert(Principal.subject?(text))
+    for text <- ["", "jon doe", " jon", "jon\t", :jon], do: refute(Principal.subject?(text))
+  end
+
   test "same?/2 is the same name, whatever each goes by, and nobody is never anyone" do
     assert Principal.same?(Principal.new("shell:jon", name: "Jon"), Principal.new("shell:jon"))
     refute Principal.same?(Principal.new("shell:jon"), Principal.new("ssh:jon"))

@@ -25,7 +25,7 @@ defmodule WardrikDaemon.Config do
   `config.yaml` is merged over:
 
   ```elixir
-  config :wardrik_daemon, WardrikVault, shared: ["SEARCH_API_KEY"]
+  config :wardrik_daemon, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
   ```
   """
 
@@ -39,6 +39,8 @@ defmodule WardrikDaemon.Config do
   # The channel types a channel's `type` names.
   @adapters %{"slack" => WardrikSlack}
 
+  # Sections hold what `${NAME}` resolved to, secrets among them.
+  @derive {Inspect, only: [:config_dir, :data_dir, :state_dir]}
   @enforce_keys [:config_dir, :data_dir, :state_dir]
   defstruct [:config_dir, :data_dir, :state_dir, sections: [], adapters: @adapters]
 
@@ -54,8 +56,9 @@ defmodule WardrikDaemon.Config do
           adapters: %{String.t() => module()}
         }
 
-  @vault ~w(keys shared)a
+  @vault ~w(keys)a
   @listener ~w(port ip)a
+  @brave ~w(api_key)a
   @stores %{
     "postgres" => {WardrikEcto.Store, ~w(url), ~w(url)},
     "s3" =>
@@ -68,10 +71,11 @@ defmodule WardrikDaemon.Config do
     "endpoint" => {~w(http https), "an https:// URL"}
   }
 
-  @settings Map.new(@vault ++ @listener ++ @store_settings, &{Atom.to_string(&1), &1})
+  @settings Map.new(@vault ++ @listener ++ @brave ++ @store_settings, &{Atom.to_string(&1), &1})
 
   @vault_keys Enum.map(@vault, &Atom.to_string/1)
   @listener_keys Enum.map(@listener, &Atom.to_string/1)
+  @brave_keys Enum.map(@brave, &Atom.to_string/1)
 
   # The sections a read gives no name from the vault, and why.
   @environment_only %{
@@ -117,12 +121,13 @@ defmodule WardrikDaemon.Config do
     do: config |> section(WardrikDaemon) |> Keyword.get_lazy(:orgs, fn -> [org(config)] end)
 
   @doc """
-  The policy of `policies/` each org's agents are held to, ahead of their
-  own, by org, with `*`'s holding every org's: `orgs.<org>.policy`.
+  The policies of `policies/` each org's agents are held to, ahead of their
+  own, by org: `orgs."*".policy`, which holds every org, then
+  `orgs.<org>.policy`.
   """
-  @spec ceilings(t()) :: %{String.t() => String.t()}
-  def ceilings(%__MODULE__{} = config),
-    do: config |> section(WardrikDaemon) |> Keyword.get(:ceilings, %{})
+  @spec held(t()) :: %{Wardrik.Resource.t() => [String.t()]}
+  def held(%__MODULE__{} = config),
+    do: config |> section(WardrikDaemon) |> Keyword.get(:held, %{})
 
   @doc "Whether `org` is one `config` declares, or why not, with the nearest that is."
   @spec declared(t(), String.t()) :: :ok | {:error, String.t()}
@@ -205,11 +210,7 @@ defmodule WardrikDaemon.Config do
         keys -> keys
       end
 
-    WardrikVault.new(
-      store: store,
-      keys: keys,
-      shared: Keyword.get(settings, :shared, [])
-    )
+    WardrikVault.new(store: store, keys: keys)
   end
 
   @doc "Each module's settings in `over`, merged over its settings in `base`."
@@ -336,7 +337,7 @@ defmodule WardrikDaemon.Config do
     orgs = Enum.uniq([org | Enum.sort(Map.keys(uses) -- ["*"])])
 
     [
-      {WardrikDaemon, [org: org, orgs: orgs, ceilings: ceilings_of(uses)] ++ base_url}
+      {WardrikDaemon, [org: org, orgs: orgs, held: held_of(uses, orgs)] ++ base_url}
       | document
         |> sections({org, uses}, orgs, adapters)
         |> through_channels()
@@ -377,6 +378,9 @@ defmodule WardrikDaemon.Config do
       {"vault", vault} ->
         {WardrikVault, vault(table!(vault, ["vault"]))}
 
+      {"brave", brave} ->
+        {WardrikBrave, options(brave, @brave_keys, ["brave"])}
+
       {"ssh", ssh} ->
         {WardrikDaemon.SSH, listener(ssh, "ssh")}
 
@@ -405,8 +409,8 @@ defmodule WardrikDaemon.Config do
       {section, _value} ->
         invalid!(
           [section],
-          "is not a section; expected org, orgs, tools, defaults, mcp, oauth, vault, ssh, http, " <>
-            "channels, notify, workspace, tokens, cluster or storage"
+          "is not a section; expected org, orgs, tools, defaults, mcp, oauth, vault, brave, " <>
+            "ssh, http, channels, notify, workspace, tokens, cluster or storage"
         )
     end)
   end
@@ -508,9 +512,15 @@ defmodule WardrikDaemon.Config do
   defp policy!(name, _path) when is_binary(name) and name != "", do: name
   defp policy!(_name, path), do: invalid!(path, "is the name of a policy in policies/")
 
-  # The policy each org is held to, `*`'s holding every org.
-  defp ceilings_of(uses) do
-    for {owner, %{"policy" => name}} <- uses, name != nil, into: %{}, do: {owner, name}
+  # The policies each org is held to: `*`'s, which holds every org, then its own.
+  defp held_of(uses, orgs) do
+    every = List.wrap(get_in(uses, ["*", "policy"]))
+
+    for org <- orgs,
+        held = Enum.uniq(every ++ List.wrap(get_in(uses, [org, "policy"]))),
+        held != [],
+        into: %{},
+        do: {Wardrik.Resource.parse!(org), held}
   end
 
   defp used!(names, section, document, path) do
@@ -613,19 +623,7 @@ defmodule WardrikDaemon.Config do
 
   # -- vault -----------------------------------------------------------------
 
-  defp vault(vault) do
-    vault = options(vault, @vault_keys, ["vault"])
-
-    case Keyword.get(vault, :shared, []) do
-      names when is_list(names) ->
-        if Enum.all?(names, &is_binary/1),
-          do: vault,
-          else: invalid!(["vault", "shared"], "is a list of credential names")
-
-      _other ->
-        invalid!(["vault", "shared"], "is a list of credential names")
-    end
-  end
+  defp vault(vault), do: options(vault, @vault_keys, ["vault"])
 
   # -- listeners -------------------------------------------------------------
 
@@ -862,7 +860,7 @@ defmodule WardrikDaemon.Config do
     do:
       invalid!(
         ["the file"],
-        "is a set of sections: org, tools, defaults, mcp, oauth, vault, ssh, http, " <>
+        "is a set of sections: org, tools, defaults, mcp, oauth, vault, brave, ssh, http, " <>
           "channels, notify, workspace, tokens, cluster, storage"
       )
 

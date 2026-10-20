@@ -21,10 +21,8 @@ defmodule Wardrik.ConnectionsTest do
 
     def list(_connections, owner) do
       for provider <- Process.get(:offered, []),
-          do: %Connection{provider: provider, held_by: held_by(provider, owner)}
+          do: %Connection{provider: provider, connected: held?(provider, owner)}
     end
-
-    defp held_by(provider, owner), do: if(held?(provider, owner), do: :own, else: :none)
 
     def connect(_connections, provider, owner, by: by) do
       send(self(), {:connect, provider, owner, by})
@@ -70,12 +68,12 @@ defmodule Wardrik.ConnectionsTest do
   end
 
   describe "listing" do
-    test "says what holds each account offered, never a value", %{provider: provider} do
+    test "says whether the owner holds each account offered, never a value", %{provider: provider} do
       assert {:ok, connections} = Wardrik.connections_list(scope("acme/@jon/*"), @mine)
 
       assert connections == [
-               %Connection{provider: "github", held_by: :own},
-               %Connection{provider: provider, held_by: :none}
+               %Connection{provider: "github", connected: true},
+               %Connection{provider: provider, connected: false}
              ]
     end
 
@@ -104,7 +102,7 @@ defmodule Wardrik.ConnectionsTest do
 
       assert_received {:connect, ^provider, @mine, @jon}
 
-      assert {:ok, %Connection{provider: "github", held_by: :own, authorization: nil}} =
+      assert {:ok, %Connection{provider: "github", connected: true, authorization: nil}} =
                Wardrik.connections_connect(scope("acme/@jon/*"), @mine, "github")
     end
 
@@ -122,13 +120,13 @@ defmodule Wardrik.ConnectionsTest do
   end
 
   test "disconnecting forgets the owner's account, recorded as the scope's principal" do
-    assert {:ok, %Connection{provider: "github", held_by: :own}} =
+    assert {:ok, %Connection{provider: "github", connected: true}} =
              Wardrik.connections_disconnect(scope("acme/@jon/*"), @mine, "github")
 
     assert {"secret.removed", %{"id" => "acme/@jon"}} =
              List.last(Audit.about("acme/@jon/secret/github"))
 
-    assert {:ok, [%Connection{provider: "github", held_by: :none} | _]} =
+    assert {:ok, [%Connection{provider: "github", connected: false} | _]} =
              Wardrik.connections_list(scope("acme/@jon/*"), @mine)
 
     assert {:error, %Error{type: :not_found}} =

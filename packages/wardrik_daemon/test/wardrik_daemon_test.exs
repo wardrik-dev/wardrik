@@ -51,6 +51,17 @@ defmodule WardrikDaemonTest do
     {started, config, host}
   end
 
+  test "searches the web for every agent with the key config.yaml gives, held in the host",
+       %{tmp_dir: dir} do
+    File.write!(Path.join(dir, "config.yaml"), "brave:\n  api_key: the-brave-key\n")
+    {:ok, config} = load(dir)
+    host = WardrikDaemon.host(config, store: store())
+
+    assert [api_key: key] = Wardrik.Host.settings(host, WardrikBrave.WebSearch)
+    assert Wardrik.Credential.reveal(key) == "the-brave-key"
+    assert %{"web_search" => WardrikBrave.WebSearch} = Wardrik.Host.tools(host)
+  end
+
   test "starts with no config.yaml at all, running the agent files, the servers people add and the HTTP API",
        %{tmp_dir: dir} do
     assert {{:ok, pid}, _config, host} = daemon(dir)

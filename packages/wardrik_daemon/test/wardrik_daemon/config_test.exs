@@ -40,12 +40,12 @@ defmodule WardrikDaemon.ConfigTest do
     test "org is the deployment's org, default unless it says", context do
       assert {:ok,
               [
-                {WardrikDaemon, [org: "default", orgs: ["default"], ceilings: %{}]},
+                {WardrikDaemon, [org: "default", orgs: ["default"], held: %{}]},
                 {WardrikDaemon.SSH, _ssh}
               ]} =
                read_all("ssh: {port: 2223}\n", context)
 
-      assert {:ok, [{WardrikDaemon, [org: "acme", orgs: ["acme"], ceilings: %{}]}]} =
+      assert {:ok, [{WardrikDaemon, [org: "acme", orgs: ["acme"], held: %{}]}]} =
                read_all("org: acme\n", context)
 
       for org <- ["_acme", "@acme", "a/b", "deployment"] do
@@ -102,9 +102,10 @@ defmodule WardrikDaemon.ConfigTest do
 
       assert {:ok, settings} = read_all(yaml, context)
 
-      assert settings[WardrikDaemon][:ceilings] == %{
-               "*" => "base",
-               "payments" => "payments-strict"
+      assert settings[WardrikDaemon][:held] == %{
+               Wardrik.Resource.parse!("default") => ["base"],
+               Wardrik.Resource.parse!("growth") => ["base"],
+               Wardrik.Resource.parse!("payments") => ["base", "payments-strict"]
              }
 
       assert {:error, message} = read_all("orgs:\n  payments: {policy: [a]}\n", context)
@@ -185,8 +186,9 @@ defmodule WardrikDaemon.ConfigTest do
       assert opts[:headers] == %{"authorization" => "Bearer lin_secret"}
     end
 
-    test "oauth and vault settings keep their shape", context do
+    test "oauth, vault and brave settings keep their shape", context do
       key = env("a-vault-key")
+      brave = env("a-brave-key")
 
       assert {:ok, settings} =
                read(
@@ -201,15 +203,20 @@ defmodule WardrikDaemon.ConfigTest do
                        scopes: [repo]
                  vault:
                    keys: ["${#{key}}"]
-                   shared: [linear]
+                 brave:
+                   api_key: "${#{brave}}"
                  """,
                  context
                )
 
+      assert Keyword.fetch!(settings, WardrikBrave) == [api_key: "a-brave-key"]
+      refute inspect(Config.new(sections: settings)) =~ "a-brave-key"
+      assert {:error, message} = read("brave:\n  key: k\n", context)
+      assert message =~ "brave.key is not a setting"
       oauth = Keyword.fetch!(settings, WardrikOAuth)
       assert oauth[:client] == [name: "Acme agents"]
       assert oauth[:providers][:github][:scopes] == ["repo"]
-      assert Keyword.fetch!(settings, WardrikVault) == [keys: ["a-vault-key"], shared: ["linear"]]
+      assert Keyword.fetch!(settings, WardrikVault) == [keys: ["a-vault-key"]]
     end
 
     test "workspace.shared names who beyond a tree's owner may mount it", context do
@@ -247,9 +254,9 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "all"
     end
 
-    test "vault.shared is a list of credential names", context do
-      assert {:error, message} = read(~s(vault:\n  shared: linear\n), context)
-      assert message =~ "vault.shared is a list of credential names"
+    test "vault shares nothing with every agent", context do
+      assert {:error, message} = read(~s(vault:\n  shared: [linear]\n), context)
+      assert message =~ "vault.shared is not a setting"
     end
 
     test "a variable that is not set says which value names it", context do
@@ -626,7 +633,7 @@ defmodule WardrikDaemon.ConfigTest do
                  [
                    org: "default",
                    orgs: ["default"],
-                   ceilings: %{},
+                   held: %{},
                    base_url: "https://agents.example.com"
                  ]},
                 {WardrikOAuth, [redirect: [open: false]]}
@@ -891,7 +898,7 @@ defmodule WardrikDaemon.ConfigTest do
       System.put_env("KEYED", key)
       on_exit(fn -> System.delete_env("KEYED") end)
 
-      base = [{WardrikVault, shared: ["SEARCH_API_KEY"]}, {WardrikMCP, servers: []}]
+      base = [{WardrikVault, keys: ["the release's"]}, {WardrikMCP, servers: []}]
 
       assert {:ok, %Config{} = config} =
                Config.load(
@@ -902,7 +909,6 @@ defmodule WardrikDaemon.ConfigTest do
                )
 
       assert Config.org(config) == "acme"
-      assert Config.section(config, WardrikVault)[:shared] == ["SEARCH_API_KEY"]
       assert Config.section(config, WardrikVault)[:keys] == [key]
       assert Config.section(config, WardrikMCP) == [servers: []]
       assert config.config_dir == dir

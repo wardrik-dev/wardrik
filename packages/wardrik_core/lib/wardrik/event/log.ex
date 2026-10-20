@@ -70,7 +70,7 @@ defmodule Wardrik.Event.Log do
 
   @ns :events
 
-  # Each agent whose log has been opened, by its ID's text.
+  # Each agent whose log has been opened, by its resource name.
   @logs :event_logs
 
   @retention_days 30
@@ -142,25 +142,30 @@ defmodule Wardrik.Event.Log do
   """
   @spec opened(WardrikStore.t(), AgentID.t()) :: :ok | {:error, term()}
   def opened(store, %AgentID{} = agent_id) do
-    with {:ok, _vsn} <- WardrikStore.put(store, @logs, to_string(agent_id), true), do: :ok
+    with {:ok, _vsn} <- WardrikStore.put(store, @logs, name(agent_id), true), do: :ok
   end
 
-  @doc "Every log written to: `:audit`, then each agent's, by its ID's text."
+  @doc "Every log written to: `:audit`, then each agent's, by its resource name."
   @spec logs(WardrikStore.t()) :: [log()]
   def logs(store) do
-    agents = store |> WardrikStore.keys(@logs) |> Enum.sort() |> Enum.map(&AgentID.parse!/1)
+    agents = store |> WardrikStore.keys(@logs) |> Enum.sort() |> Enum.map(&agent!/1)
     [:audit | agents]
   end
 
-  # The logs of the agents `resources` covers, by ID: every one written to,
-  # a forgotten agent's included.
+  # The logs of the agents `resources` covers, by name: every one written
+  # to, a forgotten agent's included.
   defp covered(store, resources) do
-    for prefix <- resources |> Enum.map(&prefix/1) |> Enum.uniq(),
-        text <- store |> WardrikStore.keys(@logs, prefix) |> Enum.sort(),
-        id = AgentID.parse!(text),
-        covers?(resources, id),
+    for prefix <- resources |> Enum.map(&Resource.prefix/1) |> Enum.uniq(),
+        key <- store |> WardrikStore.keys(@logs, prefix) |> Enum.sort(),
+        resource = Resource.parse!(key),
+        Enum.any?(resources, &Resource.covers?(&1, resource)),
         uniq: true,
-        do: id
+        do: agent!(key)
+  end
+
+  defp agent!(key) do
+    {:ok, id} = key |> Resource.parse!() |> AgentID.from_resource()
+    id
   end
 
   @doc """
@@ -173,18 +178,6 @@ defmodule Wardrik.Event.Log do
     Map.new(covered(store, resources), fn log ->
       {log, head(store, log, oldest(store, log, consistent: true) - 1)}
     end)
-  end
-
-  defp prefix(pattern) do
-    case topic(pattern) do
-      @every_org -> ""
-      org -> org <> "/"
-    end
-  end
-
-  defp covers?(resources, id) do
-    resource = AgentID.resource(id)
-    Enum.any?(resources, &Resource.covers?(&1, resource))
   end
 
   @doc false
@@ -468,9 +461,12 @@ defmodule Wardrik.Event.Log do
   @doc "The store key the event of `log` at `sequence` is written under."
   @spec key(log(), pos_integer()) :: WardrikStore.key()
   def key(log, sequence),
-    do: "#{log}//" <> String.pad_leading(Integer.to_string(sequence), @padding, "0")
+    do: name(log) <> "//" <> String.pad_leading(Integer.to_string(sequence), @padding, "0")
 
-  defp dropped_key(log), do: "#{log}//dropped"
+  defp dropped_key(log), do: name(log) <> "//dropped"
+
+  defp name(:audit), do: "audit"
+  defp name(%AgentID{} = agent_id), do: to_string(AgentID.resource(agent_id))
 
   @doc "The namespace events are written under in `WardrikStore`."
   @spec namespace() :: WardrikStore.ns()

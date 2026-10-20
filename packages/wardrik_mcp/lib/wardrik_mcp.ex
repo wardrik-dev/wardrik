@@ -409,8 +409,8 @@ defmodule WardrikMCP do
   # A server everyone shares is reached over the deployment's own connection.
   # One reached with a credential needs a connection for whoever the
   # credential resolved belongs to, carrying theirs and no one else's: a
-  # user's, an org's, or the deployment's, over one of its own rather than
-  # the one that lists the server's tools.
+  # user's or an org's, over one of its own rather than the one that lists
+  # the server's tools.
   defp connected(%Server{credential: nil}, _credential), do: {:ok, :deployment}
 
   defp connected(%Server{} = server, nil),

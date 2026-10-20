@@ -8,7 +8,8 @@ defmodule WardrikWorkspace.Spec do
         "runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"}
       })
 
-  The agent's own tree is `agents/<id>`, seen at the root of its paths. A
+  The agent's own tree is `agents/` and its resource name, as
+  `agents/acme/@jon/agent/triage`, seen at the root of its paths. A
   shared tree is named by its owner, an org or a user in it, with a name
   after it, and is reachable by the owner's agents, `<owner>/agent/*`:
   `acme` and `acme/runbooks` by acme's own agents, none of its users', and
@@ -69,7 +70,7 @@ defmodule WardrikWorkspace.Spec do
     end)
     |> case do
       {:ok, mounts} ->
-        {:ok, %__MODULE__{tree: %Mount{tree: "agents/#{id}"}, shared: Enum.reverse(mounts)}}
+        {:ok, %__MODULE__{tree: own(id), shared: Enum.reverse(mounts)}}
 
       error ->
         error
@@ -77,6 +78,8 @@ defmodule WardrikWorkspace.Spec do
   end
 
   def new(_id, _shared, _opts), do: {:error, "shared is a map of names to trees"}
+
+  defp own(id), do: %Mount{tree: "agents/#{AgentID.resource(id)}"}
 
   defp mount(id, name, %{"tree" => tree} = settings, shares) do
     with :ok <- known(name, settings),

@@ -10,26 +10,20 @@ def deps do
 end
 ```
 
-Attach it to the `Wardrik.Host` agents run on, before Wardrik starts, and
-a definition names it as `web_search`:
+Attach it to the `Wardrik.Host` agents run on, before Wardrik starts, with
+the key it searches with, and a definition names it as `web_search`:
 
 ```elixir
-host = WardrikBrave.attach(host)
+host = WardrikBrave.attach(host, api_key: System.fetch_env!("BRAVE_API_KEY"))
 ```
 
 Results are kept small, since each one becomes part of the turn that asked
 for it.
 
-Its key is the credential `BRAVE_API_KEY`, which the host's
-`Wardrik.Credentials` resolve for each call. With
-[the vault](../wardrik/guides/vault.md) that is the deployment's secret of that name
-(`wardrik vault put BRAVE_API_KEY`), or the environment variable where the
-vault holds none, where the vault shares it with every agent:
-
-```elixir
-vault = WardrikVault.new(store: store, keys: [key], shared: ["BRAVE_API_KEY"])
-host = Wardrik.Host.new(store: store, credentials: vault)
-```
+The key is the deployment's, for every agent the host runs, whatever org
+it is in. The host holds it, never the store; without one, a search answers
+that the key is missing. The daemon attaches it with `config.yaml`'s
+`brave.api_key`.
 
 The pages it returns are ones anyone could have written, so a search is
 labelled `outside`: once a turn has read one, a policy holds its gated tools'

@@ -4,7 +4,7 @@ defmodule Wardrik.Event.Cursor do
   of each, as one opaque string, which `Wardrik.events/2` reads on from and
   `Wardrik.cursor/2` moves past an entry.
 
-      Wardrik.Event.Cursor.encode(%{~A"acme/triage" => 41})  #=> "eyJhY21lL3RyaWFnZSI6NDF9"
+      Wardrik.Event.Cursor.encode(%{~A"acme/triage" => 41})  #=> "eyJhY21lL2FnZW50L3RyaWFnZSI6NDF9"
 
   A log it does not name is read from its start, so `""`, naming none,
   reads every event. It is URL-safe base64 of JSON, about 50 bytes for each
@@ -13,6 +13,7 @@ defmodule Wardrik.Event.Cursor do
   """
 
   alias Wardrik.AgentID
+  alias Wardrik.Resource
 
   @typedoc "The last sequence taken of each agent's log."
   @type positions() :: %{AgentID.t() => non_neg_integer()}
@@ -23,7 +24,7 @@ defmodule Wardrik.Event.Cursor do
 
   def encode(positions) do
     positions
-    |> Map.new(fn {id, sequence} -> {to_string(id), sequence} end)
+    |> Map.new(fn {id, sequence} -> {to_string(AgentID.resource(id)), sequence} end)
     |> JSON.encode!()
     |> Base.url_encode64(padding: false)
   end
@@ -39,7 +40,8 @@ defmodule Wardrik.Event.Cursor do
            for(
              {text, at} <- named,
              position?(at),
-             {:ok, id} <- [AgentID.parse(text)],
+             {:ok, resource} <- [Resource.parse(text)],
+             {:ok, id} <- [AgentID.from_resource(resource)],
              into: %{},
              do: {id, at}
            ),
