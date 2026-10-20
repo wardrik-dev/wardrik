@@ -9,6 +9,10 @@ defmodule Wardrik.InstanceTest do
   alias Wardrik.Error
   alias Wardrik.Event.MessageDelta
   alias Wardrik.Reply
+  alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Fleet
+  alias Wardrik.Test.LLM
+  alias Wardrik.Test.Script
   alias Wardrik.Waiting
 
   defmodule User do
@@ -228,8 +232,8 @@ defmodule Wardrik.InstanceTest do
       maria = user("acme")
       name = name()
       {:ok, %Snapshot{agent: agent}} = Agents.define(maria, name, fields())
-      answers = for text <- ["Monday.", "Still Monday."], do: Wardrik.Test.LLM.final_answer(text)
-      Wardrik.Test.LLM.stream(Wardrik.Test.llm(), answers)
+      answers = for text <- ["Monday.", "Still Monday."], do: LLM.final_answer(text)
+      LLM.stream(Wardrik.Test.llm(), answers)
 
       assert :ok = Agents.subscribe(maria, name, types: ["wardrik.message.delta"])
 
@@ -244,7 +248,7 @@ defmodule Wardrik.InstanceTest do
       maria = user("acme")
       name = name()
       {:ok, %Snapshot{agent: agent}} = Agents.define(maria, name, fields())
-      Wardrik.Test.LLM.stream(Wardrik.Test.llm(), [Wardrik.Test.LLM.final_answer("Done.")])
+      LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Done.")])
 
       assert {:ok, %Message{agent: ^agent} = message} = Agents.send(maria, name, "Summarise it")
       assert %Reply{text: "Done."} = Agents.await!(maria, message)
@@ -261,12 +265,11 @@ defmodule Wardrik.InstanceTest do
       agent = AgentID.new!(name, org: "acme", user: to_string(maria.id))
 
       config =
-        Wardrik.Test.Script.new({Wardrik.Test.AgentRunners, :parking, [self(), "call_1"]},
-          resume:
-            {Wardrik.Test.AgentRunners, :resuming, [self(), {:ok, [Assistant.new("Shipped.")]}]}
+        Script.new({AgentRunners, :parking, [self(), "call_1"]},
+          resume: {AgentRunners, :resuming, [self(), {:ok, [Assistant.new("Shipped.")]}]}
         )
 
-      {^agent, _pid} = Wardrik.Test.Fleet.start_agent([config: config], agent)
+      {^agent, _pid} = Fleet.start_agent([config: config], agent)
 
       assert {:waiting, %Waiting{calls: [%{id: "call_1"}]}} = Agents.ask(maria, name, "Ship it")
 
