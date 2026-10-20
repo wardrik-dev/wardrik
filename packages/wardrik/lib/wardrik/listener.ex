@@ -22,12 +22,8 @@ defmodule Wardrik.Listener do
       end
 
       children = [
-        {Wardrik, wardrik},
-        {MyApp.Runs,
-         host: wardrik,
-         principal: Wardrik.Principal.deployment(),
-         resources: [Wardrik.Resource.parse!("acme/agent/*")],
-         types: ["wardrik.run.completed", "wardrik.run.failed"]}
+        MyApp.Agents,
+        {MyApp.Runs, agents: MyApp.Agents, types: ["wardrik.run.completed", "wardrik.run.failed"]}
       ]
 
   `use Wardrik.Listener` makes the module a child: `child_spec/1` and
@@ -35,8 +31,9 @@ defmodule Wardrik.Listener do
   which `handle/2` reads in `options`. It runs as a permanent `Task` under
   whatever supervisor the host starts it in.
 
-  As it starts, it acts as `:principal`, in the scope `Wardrik.as/3`
-  makes on `:host`, so each start, a restart's included, has a token of
+  As it starts, it acts as your app on the agents of `:agents`, your `use
+  Wardrik` instance, or as `:principal` on `:host`, in the scope
+  `Wardrik.as/3` makes, so each start, a restart's included, has a token of
   its own. It asks `c:cursor/1` where to read from, by default the
   `:after` it was started with, and follows `Wardrik.events/2` from there.
   A cursor of `:head` is taken as `Wardrik.events_head/2`'s, so the
@@ -63,9 +60,13 @@ defmodule Wardrik.Listener do
 
   ## Options
 
-    * `:host` - the `Wardrik.Host` the agents run on. Required.
+    * `:agents` - your `use Wardrik` instance, whose agents it follows as
+      your app. Or name `:host` and `:principal` instead.
+    * `:host` - the `Wardrik.Host` the agents run on, where `:agents` is
+      not given.
     * `:principal` - the `Wardrik.Principal` it acts as, which the host's
-      `Wardrik.Issuer` allows `agent.events` on what it reads. Required.
+      `Wardrik.Issuer` allows `agent.events` on what it reads; your app
+      itself, `Wardrik.Principal.deployment/0`, with `:agents`.
     * `:after` - the cursor `c:cursor/1` answers by default; `:head`, from
       what is written next, unless given.
     * `:resources` - the agents it follows, as `Wardrik.events/2` takes
@@ -127,13 +128,23 @@ defmodule Wardrik.Listener do
 
   @doc """
   Starts `module`'s listener with `opts`, linked to the caller. Raises
-  where `:host` or `:principal` is missing.
+  where neither `:agents` nor `:host` and `:principal` are given.
   """
   @spec start_link(module(), keyword()) :: {:ok, pid()}
   def start_link(module, opts) when is_atom(module) and is_list(opts) do
-    %Wardrik.Host{} = host = Keyword.fetch!(opts, :host)
-    principal = Keyword.fetch!(opts, :principal)
+    {host, principal} = acting(opts)
     Task.start_link(fn -> listen(module, host, principal, opts) end)
+  end
+
+  defp acting(opts) do
+    case Keyword.fetch(opts, :agents) do
+      {:ok, instance} ->
+        {Wardrik.Instance.host(instance),
+         Keyword.get(opts, :principal, Wardrik.Principal.deployment())}
+
+      :error ->
+        {%Wardrik.Host{} = Keyword.fetch!(opts, :host), Keyword.fetch!(opts, :principal)}
+    end
   end
 
   defp listen(module, host, principal, opts) do

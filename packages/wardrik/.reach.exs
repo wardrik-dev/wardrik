@@ -11,6 +11,9 @@
       "Wardrik.Catalog",
       "Wardrik.Catalog.*",
       "Wardrik.Forgetting",
+      "Wardrik.Instance",
+      "Wardrik.Instance.*",
+      "Wardrik.Issuer.Wardrik.Instance.Issuer",
       "Wardrik.Listener",
       "Wardrik.Migration",
       "Wardrik.Moving",
@@ -237,7 +240,8 @@
   calls: [
     forbidden: [
       # Each takes its settings as the options it is made or started with, and
-      # reads no application environment, its own or another's.
+      # reads no application environment, its own or another's. A `use
+      # Wardrik` instance reads its own app's, as `Wardrik.Instance` does.
       {["Wardrik", "Wardrik.Migration", "WardrikNotify", "WardrikNotify.*", "WardrikVault", "WardrikVault.*"],
        ["Application.get_env", "Application.fetch_env", "Application.fetch_env!", "Application.put_env", "Application.delete_env"]},
       {["WardrikResearch", "WardrikResearch.*", "WardrikWorkspace", "WardrikWorkspace.*"],

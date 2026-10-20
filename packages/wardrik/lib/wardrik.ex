@@ -1,74 +1,84 @@
 defmodule Wardrik do
   @moduledoc """
-  Agents inside your Elixir app. They're kept in your store, run in your
-  supervision tree, and every call is made as someone.
+  Agents inside your Elixir app. Define an instance once, start it in your
+  supervision tree, and call it as your users.
 
-      import Wardrik.AgentID, only: [sigil_A: 2]
+      defmodule MyApp.Agents do
+        use Wardrik, otp_app: :my_app
 
-      store = Wardrik.store(repo: MyApp.Repo)
-      wardrik = Wardrik.new(store: store, issuer: %MyApp.Issuer{}, tools: [MyApp.Tools.Search])
+        @impl Wardrik
+        def principal(%MyApp.Accounts.User{org: org, id: id, email: email}),
+          do: %{org: org, id: id, name: email}
+      end
 
-      children = [MyApp.Repo, {WardrikStore, store}, {Wardrik, wardrik}, MyAppWeb.Endpoint]
+  Tell it where to keep everything, in `config/runtime.exs`:
 
-      scope = Wardrik.as(wardrik, Wardrik.Principal.new("acme/@maria"))
-      agent = ~A"acme/@maria/assistant"
+      config :my_app, MyApp.Agents, store: [repo: MyApp.Repo]
 
-      {:ok, _snapshot} = Wardrik.agent_define(scope, agent, %{"instructions" => "Be brief."})
-      {:ok, message} = Wardrik.agent_ask(scope, agent, "Where is order 1001?")
+  Then start it after your Repo:
 
-  `MyApp.Issuer` is your `Wardrik.Issuer`, and `MyApp.Tools.Search` is a
-  `Wardrik.Tool` of yours. Notice the store starts on its own, before
-  Wardrik, the same way your Repo does. `new/1` lists every option.
+      children = [MyApp.Repo, MyApp.Agents, MyAppWeb.Endpoint]
 
-  ## Calling it
+  Now act as a user:
 
-  Every function takes a `Wardrik.Scope` first: your host, plus the
-  `Wardrik.Token` that says who is acting and what they may do. Wardrik
-  checks the token before it does anything, and records each change in the
-  audit log.
+      maria = %MyApp.Accounts.User{org: "acme", id: 42, email: "maria@acme.example"}
 
-  Names are noun first, then verb: `agent_ask/4`, `servers_add/3`. The
-  action a token must allow is the same name with dots: `agent.ask`,
-  `servers.add`. Each function returns `{:ok, value}`, `:ok` or
-  `{:error, %Wardrik.Error{}}`, and has a `!` version that raises.
+      {:ok, _snapshot} =
+        MyApp.Agents.define(maria, "support",
+          model: "anthropic:claude-sonnet-5",
+          instructions: "Answer questions about orders in two sentences."
+        )
 
-  | A call that… | Returns |
+      {:ok, _message} = MyApp.Agents.ask(maria, "support", "Where is order 1001?")
+
+  Notice `"support"` is Maria's own agent. Nobody else reaches it unless
+  your `c:grants/1` says so.
+
+  ## Who may do what
+
+  `c:principal/1` says who a user is. `c:grants/1` says what they may do,
+  as roles. Each user owns their own agents and accounts by default:
+
+      @impl Wardrik
+      def grants(%{org: _org, id: _id}), do: [owner: :own, reader: :org, messenger: :org]
+
+  | Role | May |
   | --- | --- |
-  | reads | what it read: `agent_read/2` gives a snapshot |
-  | makes something | what it made: `agent_define/4` gives the agent's snapshot |
-  | starts work | that the work is queued: `agent_ask/4` gives the message. `subscribe/2` and `events/2` follow what happens next. |
-  | removes something | what it removed, as it was |
-  | can't know the outcome yet | `:ok`, as `agent_cancel/2` and `agent_forget/2` do |
-  | previews a change, as `agent_move_preview/3` | what the change would do, checked the same way. It records and holds nothing. |
+  | `reader` | read agents, their events and their definitions |
+  | `messenger` | ask, cancel and clear |
+  | `approver` | decide the calls agents wait on |
+  | `definer` | define, start, stop and forget agents, and add servers and accounts |
+  | `owner` | everything |
 
-  A function on one agent takes a `Wardrik.Thread` of it too, except those
-  on its definition and triggers.
+  `:own` is the user's own agents and accounts. `:org` is their org's
+  agents. The functions that take no user, such as `c:reload/0`, act as your
+  app itself.
+
+  ## Naming agents
+
+  | You pass | The agent |
+  | --- | --- |
+  | `"support"` | the user's own `support` |
+  | `{:org, "triage"}` | their org's `triage` |
+
+  ## Config
+
+  #{NimbleOptions.docs(Wardrik.Instance.schema())}
 
   ## What it starts
 
-  `{Wardrik, wardrik}` starts these under `:rest_for_one`, so a restart
-  restarts everything after it:
-
-  | Child | Runs |
-  | --- | --- |
-  | `Wardrik.Core` | the agents |
-  | the meters | what budgets count |
-  | the triggers | clocks, feeds and webhooks |
-  | attached packages | their children, in the order you attached them |
-
-  ## Adding to it
-
-  A package adds tools, sources and children with its own `attach/2`, before
-  Wardrik starts. See `Wardrik.Host`.
-
-      wardrik = Wardrik.new(store: store) |> MyApp.Search.attach()
-
-  Surfaces you start after Wardrik, such as the HTTP API, take the same
-  host. Reach for a `Wardrik.Listener` to act on what your agents do.
+  The instance starts its store, then the agents, the meters budgets count,
+  the triggers, and each plugin's children in order, under `:rest_for_one`:
+  a restart restarts everything after it.
 
   ## Limits
 
-  One Wardrik per node.
+  One instance per node.
+
+  ## Underneath
+
+  The functions below take a `Wardrik.Scope` instead of a user. An instance
+  calls them for you. The HTTP API and the daemon call them directly.
   """
 
   use Supervisor
@@ -113,6 +123,266 @@ defmodule Wardrik do
 
   @typedoc "What became of an agent a forget reached: removed, kept with why, or not removed with why."
   @type outcome() :: :forgotten | {:kept, String.t()} | {:failed, String.t()}
+
+  # -- use Wardrik -------------------------------------------------------------------
+
+  @typedoc "Whoever acts: your own user, as `c:principal/1` reads it."
+  @type user() :: term()
+
+  @typedoc """
+  Who a user is: their org, their id in it, and the name to show where you
+  have one. Neither org nor id holds `/`, whitespace, `*`, `?` or `:`, nor
+  begins with `@` or `_`.
+  """
+  @type principal() :: %{
+          required(:org) => String.t() | atom() | integer(),
+          required(:id) => String.t() | atom() | integer(),
+          optional(:name) => String.t()
+        }
+
+  @typedoc "A user as `c:grants/1` is handed them: their org and id, as text."
+  @type who() :: %{org: String.t(), id: String.t()}
+
+  @typedoc """
+  A role, on the user's own agents and accounts (`:own`), their org's agents
+  (`:org`), or the agents a pattern names, such as `"acme/agent/*"`.
+  """
+  @type grant() :: {Wardrik.Role.t(), :own | :org | String.t()}
+
+  @typedoc "An agent: the user's own by name, their org's as `{:org, name}`, or its ID."
+  @type agent() :: String.t() | {:org, String.t()} | AgentAddress.t()
+
+  @typedoc "What an agent is: a keyword list or a map, with the fields an agent file takes."
+  @type fields() :: keyword() | map()
+
+  @typedoc "What a function answers: its value, or why not."
+  @type result(value) :: {:ok, value} | {:error, Error.t()}
+
+  @doc "Who `user` is. Required."
+  @doc group: "Your callbacks"
+  @callback principal(user()) :: principal()
+
+  @doc """
+  What the user `who` names may do. Each user owns their own agents and
+  accounts by default, `[owner: :own]`.
+  """
+  @doc group: "Your callbacks"
+  @callback grants(who()) :: [grant()]
+
+  @doc "The user a request to the HTTP API comes from, or `:error` to refuse it."
+  @doc group: "Your callbacks"
+  @callback authenticate(conn :: term()) :: {:ok, user()} | :error
+
+  @optional_callbacks grants: 1, authenticate: 1
+
+  @doc "Starts the instance, with `opts` over its config."
+  @doc group: "Running"
+  @callback start_link(opts :: keyword()) :: Supervisor.on_start()
+
+  @doc "The instance's config, as it starts with it."
+  @doc group: "Running"
+  @callback config() :: keyword()
+
+  @doc """
+  Defines `agent` with `fields`, or defines it again, and answers its
+  snapshot. `fields` are what an agent file takes, as a keyword list or a map:
+
+      MyApp.Agents.define(maria, "support", model: "anthropic:claude-sonnet-5", instructions: "Be brief.")
+  """
+  @doc group: "Agents"
+  @callback define(user(), agent(), fields(), opts :: keyword()) :: result(Snapshot.t())
+
+  @doc "`agent`'s definition as it was last put, and the tools it names that offer nothing yet."
+  @doc group: "Agents"
+  @callback definition(user(), agent()) ::
+              result(%{definition: Definition.t(), missing: [String.t()]})
+
+  @doc "`agent`'s snapshot: what it is doing, what it waits on, and its conversation."
+  @doc group: "Agents"
+  @callback get(user(), agent()) :: result(Snapshot.t())
+
+  @doc """
+  The agents the user reaches, awake or asleep: their own, then their org's.
+
+  #{Wardrik.Instance.options(:only)}
+  """
+  @doc group: "Agents"
+  @callback list(user(), opts :: keyword()) :: result([Member.t()])
+
+  @doc "Starts `agent`: one asleep wakes, and one never defined starts from your `defaults`."
+  @doc group: "Agents"
+  @callback start(user(), agent()) :: result(Spawned.t())
+
+  @doc "Stops `agent` now, keeping its conversation. It wakes when something asks it."
+  @doc group: "Agents"
+  @callback stop(user(), agent()) :: result(Member.t())
+
+  @doc "Empties `agent`'s conversation. Its files, triggers and config stay."
+  @doc group: "Agents"
+  @callback clear(user(), agent()) :: result(Snapshot.t())
+
+  @doc "Removes `agent`, with everything it had."
+  @doc group: "Agents"
+  @callback forget(user(), agent()) :: :ok | {:error, Error.t()}
+
+  @doc "Sets `agent`'s trigger `name` to `fields`, as an agent file writes one, and answers it."
+  @doc group: "Agents"
+  @callback put_trigger(user(), agent(), name :: String.t() | atom(), fields()) :: result(map())
+
+  @doc "Removes `agent`'s trigger `name`, and answers it."
+  @doc group: "Agents"
+  @callback delete_trigger(user(), agent(), name :: String.t() | atom()) :: result(map())
+
+  @doc """
+  Sends `agent` `text` from the user, and answers the message queued. Its
+  `cursor` is where the agent's log stood, so `c:events/3` after it reads
+  the turn that answers it.
+  """
+  @doc group: "Talking to an agent"
+  @callback ask(user(), agent(), text :: String.t(), opts :: keyword()) :: result(Message.t())
+
+  @doc "Runs the call, or calls, `agent` waits on a person for. `note:` is what the agent is told."
+  @doc group: "Talking to an agent"
+  @callback approve(user(), agent(), calls :: String.t() | [String.t()], opts :: keyword()) ::
+              result(%{String.t() => decision()})
+
+  @doc "Refuses the call, or calls, `agent` waits on a person for. `reason:` is what the agent is told."
+  @doc group: "Talking to an agent"
+  @callback deny(user(), agent(), calls :: String.t() | [String.t()], opts :: keyword()) ::
+              result(%{String.t() => decision()})
+
+  @doc "Decides several calls at once, by id: `:approve`, `{:approve, note}` or `{:deny, reason}`."
+  @doc group: "Talking to an agent"
+  @callback decide(user(), agent(), %{String.t() => decision()}) ::
+              result(%{String.t() => decision()})
+
+  @doc """
+  Every call the user's agents wait on a person for, with its agent.
+
+  #{Wardrik.Instance.options(:only)}
+  """
+  @doc group: "Talking to an agent"
+  @callback waiting(user(), opts :: keyword()) ::
+              result([{AgentAddress.t(), {Wardrik.Tool.call(), String.t()}}])
+
+  @doc "Where a person authorizes the call `call` that `agent` waits on."
+  @doc group: "Talking to an agent"
+  @callback authorization(user(), agent(), call :: String.t()) :: result(Wardrik.Call.Ask.link())
+
+  @doc "Ends the turn `agent` is taking, and what is queued behind it."
+  @doc group: "Talking to an agent"
+  @callback cancel(user(), agent()) :: :ok | {:error, Error.t()}
+
+  @doc "The tool calls `agent` is running now."
+  @doc group: "Talking to an agent"
+  @callback calls(user(), agent()) ::
+              result([%{call_id: String.t(), name: String.t(), elapsed_ms: non_neg_integer()}])
+
+  @doc "Stops the tool call `call` that `agent` is running. The rest of the turn goes on."
+  @doc group: "Talking to an agent"
+  @callback kill_call(user(), agent(), call :: String.t()) :: :ok | {:error, Error.t()}
+
+  @doc """
+  Sends this process every event `agent` writes from now on, or every agent
+  the user reads, with `:all`.
+
+  #{Wardrik.Instance.options(:subscribe)}
+  """
+  @doc group: "Events"
+  @callback subscribe(user(), agent() | :all, opts :: keyword()) :: :ok | {:error, Error.t()}
+
+  @doc "Stops sending this process `agent`'s events, or every agent's, with `:all`."
+  @doc group: "Events"
+  @callback unsubscribe(user(), agent() | :all) :: :ok
+
+  @doc """
+  `agent`'s events, or those of every agent the user reads, as a lazy stream.
+
+  #{Wardrik.Instance.options(:events)}
+  """
+  @doc group: "Events"
+  @callback events(user(), agent() | :all, opts :: keyword()) :: result(Enumerable.t())
+
+  @doc """
+  The MCP servers the user added.
+
+  #{Wardrik.Instance.options(:org)}
+  """
+  @doc group: "Servers and accounts"
+  @callback servers(user(), opts :: keyword()) :: result([Server.t()])
+
+  @doc """
+  Adds the MCP server `server`, by its `name`, `url` and `auth`, for the
+  user's agents, and answers it.
+
+  #{Wardrik.Instance.options(:org)}
+  """
+  @doc group: "Servers and accounts"
+  @callback add_server(user(), server :: Server.t() | keyword(), opts :: keyword()) ::
+              result(Server.t())
+
+  @doc """
+  Removes the MCP server `name`, and answers it as it was.
+
+  #{Wardrik.Instance.options(:org)}
+  """
+  @doc group: "Servers and accounts"
+  @callback remove_server(user(), name :: String.t(), opts :: keyword()) :: result(Server.t())
+
+  @doc "The accounts the user may connect, and which they hold."
+  @doc group: "Servers and accounts"
+  @callback connections(user()) :: result([Connection.t()])
+
+  @doc "Connects the user's account at `provider`, answering where to sign in where they hold none."
+  @doc group: "Servers and accounts"
+  @callback connect(user(), provider :: String.t()) :: result(Connection.t())
+
+  @doc "Forgets the user's account at `provider`."
+  @doc group: "Servers and accounts"
+  @callback disconnect(user(), provider :: String.t()) :: result(Connection.t())
+
+  @doc "Reads every agent's definition again, as your app."
+  @doc group: "Your app"
+  @callback reload() :: result(%{reloaded: [AgentID.t()], failed: [String.t()]})
+
+  @doc "The nodes, each with how many agents run on it, and how many sleep, as your app."
+  @doc group: "Your app"
+  @callback nodes() :: result(Nodes.t())
+
+  @doc "A page of the audit, what people changed, as your app: `after:` a sequence, `limit:` how many."
+  @doc group: "Your app"
+  @callback audit(opts :: keyword()) :: result([Entry.t()])
+
+  @doc "Starts `agent`, by its ID, again on `node`, as your app."
+  @doc group: "Your app"
+  @callback move(AgentAddress.t() | String.t(), node()) :: result(Member.t())
+
+  @doc false
+  defmacro __using__(opts) do
+    otp_app =
+      Keyword.get(opts, :otp_app) ||
+        raise ArgumentError,
+              "use Wardrik takes the app whose config holds this instance's, as use Wardrik, otp_app: :my_app"
+
+    quote do
+      @behaviour Wardrik
+
+      @doc false
+      def child_spec(opts),
+        do: %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}, type: :supervisor}
+
+      def start_link(opts \\ []),
+        do: Wardrik.Instance.start_link(__MODULE__, unquote(otp_app), opts)
+
+      def config, do: Wardrik.Instance.config(__MODULE__, unquote(otp_app), [])
+
+      def grants(_who), do: [owner: :own]
+
+      defoverridable child_spec: 1, grants: 1
+
+      unquote(Wardrik.Instance.functions())
+    end
+  end
 
   # What a thread runs on of its agent's, read and changed on the agent.
   @agents_own ~w(agent.define agent.definition.read agent.trigger.set agent.trigger.remove)
@@ -192,13 +462,16 @@ defmodule Wardrik do
 
   `discovery_interval_ms` is how often a node looks for agents no node
   holds. Raises where `settings` name no store, or more than one.
+  `:memory` keeps everything in this node's memory, for tests.
 
       Wardrik.store(repo: MyApp.Repo)
 
   The store is a value of its own, so a seam that keeps something, such as
   a vault of credentials, is made with the same one.
   """
-  @spec store(keyword()) :: WardrikStore.t()
+  @spec store(keyword() | :memory) :: WardrikStore.t()
+  def store(:memory), do: WardrikStore.new(adapter: WardrikStore.Memory)
+
   def store(settings) do
     case Enum.uniq(for {key, store} <- @stores, Keyword.has_key?(settings, key), do: store) do
       [adapter] ->
