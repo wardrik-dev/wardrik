@@ -85,7 +85,8 @@ defmodule Wardrik.Host do
 
   A package adds to them in an `attach/2` of its own, which takes the host
   and the package's options, checked with `Keyword.validate!/2`, and answers
-  the host with what it adds, through `register/3` and `child/2`. One
+  the host with what it adds, through `register/3` and `child/2`: it is a
+  `Wardrik.Plugin`. One
   attached after another starts after it:
 
       defmodule MyApp.Search do
