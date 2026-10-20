@@ -51,7 +51,7 @@ defmodule Wardrik.JSON do
   def agent(%Member{} = member) do
     %{
       "id" => to_string(member.id),
-      "name" => member.id.name,
+      "name" => Wardrik.AgentAddress.agent(member.id).name,
       "status" => to_string(member.status),
       "pending" => member.pending,
       "asleep" => member.asleep
@@ -66,7 +66,7 @@ defmodule Wardrik.JSON do
     {provider, model} = Value.model(snapshot.status.model)
 
     %{
-      "agent" => %{"id" => to_string(id), "name" => id.name},
+      "agent" => %{"id" => to_string(id), "name" => Wardrik.AgentAddress.agent(id).name},
       "conversation" => %{"id" => "#{id}/#{snapshot.generation}"},
       "status" => to_string(snapshot.status.state),
       "pending" => snapshot.status.pending,
@@ -161,7 +161,7 @@ defmodule Wardrik.JSON do
     do: %{"server" => name, "connected" => false, "authorization" => authorization(link)}
 
   @doc "The calls agents wait on a person for, each as an interrupt with the agent it is for."
-  @spec interrupts([{Wardrik.AgentID.t(), {Wardrik.Tool.call(), String.t()}}]) :: map()
+  @spec interrupts([{Wardrik.AgentAddress.t(), {Wardrik.Tool.call(), String.t()}}]) :: map()
   def interrupts(parked) do
     %{
       "interrupts" =>
@@ -177,7 +177,7 @@ defmodule Wardrik.JSON do
   with why, and those not removed with why, each by ID.
   """
   @spec forgotten(%{
-          Wardrik.AgentID.t() => :forgotten | {:kept, String.t()} | {:failed, String.t()}
+          Wardrik.AgentAddress.t() => :forgotten | {:kept, String.t()} | {:failed, String.t()}
         }) :: map()
   def forgotten(outcomes) do
     sorted = Enum.sort_by(outcomes, fn {id, _outcome} -> to_string(id) end)
@@ -223,7 +223,7 @@ defmodule Wardrik.JSON do
   end
 
   @doc "The agents a cancel stopped."
-  @spec cancelled([Wardrik.AgentID.t()]) :: map()
+  @spec cancelled([Wardrik.AgentAddress.t()]) :: map()
   def cancelled(ids), do: %{"cancelled" => Enum.map(ids, &to_string/1)}
 
   @types %{

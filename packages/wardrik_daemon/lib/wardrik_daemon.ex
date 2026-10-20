@@ -289,9 +289,11 @@ defmodule WardrikDaemon do
   writes on `host` gives it, as its budgets say it; nothing where none is
   kept.
   """
-  @spec spent(Wardrik.Host.t(), Wardrik.AgentID.t()) :: [String.t()]
+  @spec spent(Wardrik.Host.t(), Wardrik.AgentAddress.t()) :: [String.t()]
   def spent(host, key) do
-    case Wardrik.Definitions.spec(Wardrik.Host.definitions(host), key, host: host) do
+    agent = Wardrik.AgentAddress.agent(key)
+
+    case Wardrik.Definitions.spec(Wardrik.Host.definitions(host), agent, host: host) do
       {:ok, spec} -> spent_by(spec, key)
       {:error, _reason} -> []
     end
@@ -305,7 +307,7 @@ defmodule WardrikDaemon do
   budgets say it, each named for its policy where it has more than one. An
   org's policy says what all of the org's agents have spent together.
   """
-  @spec spent_by(Wardrik.Agent.Spec.t() | nil, Wardrik.AgentID.t()) :: [String.t()]
+  @spec spent_by(Wardrik.Agent.Spec.t() | nil, Wardrik.AgentAddress.t()) :: [String.t()]
   def spent_by(%Wardrik.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do
     budgets = for %Wardrik.Hook{module: module} = hook <- hooks, module in @budgets, do: hook
 
@@ -325,7 +327,7 @@ defmodule WardrikDaemon do
   How long until a trigger next asks the agent `key`, in milliseconds, or
   `nil` where none does on a clock.
   """
-  @spec next_in(Wardrik.AgentID.t()) :: non_neg_integer() | nil
+  @spec next_in(Wardrik.AgentAddress.t()) :: non_neg_integer() | nil
   def next_in(key) do
     case Enum.flat_map(WardrikTrigger.for_agent(key), & &1.next) do
       [] ->

@@ -2,22 +2,17 @@ defmodule Wardrik.AgentIDTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
+  alias Wardrik.Thread
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
   describe "new/2" do
-    test "names the org, the user marked with @, and the external ID last" do
+    test "names the org, then the user marked with @" do
       assert {:ok, id} = AgentID.new("researcher", org: "acme")
       assert to_string(id) == "acme/researcher"
 
       assert to_string(AgentID.new!("researcher", org: "acme", user: "jon")) ==
                "acme/@jon/researcher"
-
-      assert to_string(AgentID.new!("books", org: "acme", external_id: "1696.1234")) ==
-               "acme/books/1696.1234"
-
-      assert to_string(AgentID.new!("books", org: "acme", user: "jon", external_id: "t1")) ==
-               "acme/@jon/books/t1"
     end
 
     test "writes host values down through Wardrik.AgentID.Segment" do
@@ -36,8 +31,6 @@ defmodule Wardrik.AgentIDTest do
             [org: "@acme"],
             [org: "acme", user: "jo n"],
             [org: "acme", user: ""],
-            [org: "acme", external_id: "a/b"],
-            [org: "acme", external_id: "a*"],
             [org: "acme", user: "j?n"]
           ] do
         assert {:error, message} = AgentID.new("researcher", opts)
@@ -58,31 +51,21 @@ defmodule Wardrik.AgentIDTest do
     end
   end
 
-  test "put_external_id/2 answers for one external ID" do
-    id = ~A"acme/books" |> AgentID.put_external_id(1696)
-
-    assert id == ~A"acme/books/1696"
-    assert AgentID.put_external_id(id, nil) == ~A"acme/books"
-    assert_raise ArgumentError, fn -> AgentID.put_external_id(id, "a b") end
-  end
-
   describe "parse/1" do
     test "reads what to_string/1 writes" do
-      for text <- ["acme/researcher", "acme/@jon/researcher", "acme/books/t1", "acme/@jon/b/t1"] do
+      for text <- ["acme/researcher", "acme/@jon/researcher"] do
         assert {:ok, id} = AgentID.parse(text)
         assert to_string(id) == text
       end
 
-      assert {:ok, %AgentID{org: "acme", user: "jon", name: "researcher", external_id: nil}} =
+      assert {:ok, %AgentID{org: "acme", user: "jon", name: "researcher"}} =
                AgentID.parse("acme/@jon/researcher")
-
-      assert {:ok, %AgentID{org: "acme", user: nil, name: "books", external_id: "t1"}} =
-               AgentID.parse("acme/books/t1")
     end
 
     test "refuses anything new/2 would not have built" do
       for text <- [
             "researcher",
+            "acme/books/t1",
             "a/b/c/d",
             "a/@b/c/d/e",
             "_/x",
@@ -101,15 +84,29 @@ defmodule Wardrik.AgentIDTest do
     end
   end
 
+  test "address/1 reads an agent's text or a thread's" do
+    assert AgentID.address("acme/@jon/books") == {:ok, ~A"acme/@jon/books"}
+    assert AgentID.address("acme/@jon/books/t1") == {:ok, Thread.new!(~A"acme/@jon/books", "t1")}
+    assert AgentID.address!("acme/books/t1") == Thread.new!(~A"acme/books", "t1")
+
+    for text <- ["acme", "a/@b/c/d/e", "acme/books/t 1", "acme/@jon"] do
+      assert {:error, message} = AgentID.address(text)
+      assert message =~ "not an agent ID"
+    end
+  end
+
   describe "expand/2" do
     test "finds a name, or a user's name, in the org it is given" do
       assert AgentID.expand("triage", "default") == {:ok, ~A"default/triage"}
       assert AgentID.expand("@jon/triage", "default") == {:ok, ~A"default/@jon/triage"}
     end
 
-    test "takes a whole ID as it is" do
+    test "takes a whole ID as it is, a thread's among them" do
       assert AgentID.expand("acme/triage", "default") == {:ok, ~A"acme/triage"}
       assert AgentID.expand("acme/@jon/triage", nil) == {:ok, ~A"acme/@jon/triage"}
+
+      assert AgentID.expand("acme/triage/C1-17.1", "default") ==
+               {:ok, Thread.new!(~A"acme/triage", "C1-17.1")}
     end
 
     test "needs an org where the text names none" do
@@ -122,20 +119,6 @@ defmodule Wardrik.AgentIDTest do
         assert {:error, message} = AgentID.expand(text, "default")
         assert message =~ "not an agent ID"
       end
-    end
-  end
-
-  test "from_resource/1 reads back the agent resource/1 names, and nothing else" do
-    for id <- [
-          ~A"acme/triage",
-          ~A"acme/@jon/triage",
-          ~A"acme/triage/1696.1234",
-          ~A"acme/@jon/a/b"
-        ],
-        do: assert(AgentID.from_resource(AgentID.resource(id)) == {:ok, id})
-
-    for text <- ~w(acme acme/@jon acme/server/crm acme/agent/triage/trigger/hook acme/agent/*) do
-      assert AgentID.from_resource(Wardrik.Resource.parse!(text)) == :error
     end
   end
 

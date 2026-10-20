@@ -138,14 +138,14 @@ defmodule Wardrik.CatalogTest do
                {"trigger.set", %{"id" => to_string(AgentID.resource(agent))}}
     end
 
-    test "a conversation's call changes its agent", %{agent: agent} do
+    test "a thread's call changes its agent", %{agent: agent} do
       define(agent, %{"triggers" => [Map.put(@trigger, "name", "rivals")]})
       assert triggers(agent) == ["rivals"]
-      conversation = AgentID.put_external_id(agent, "thread-1")
+      thread = [id: Wardrik.Thread.new!(agent, "thread-1")]
 
       assert %Call{state: :done, result: {:ok, "done"}} =
-               conversation
-               |> run(Self, allowing(["self_trigger_remove"]))
+               agent
+               |> run(Self, allowing(["self_trigger_remove"]) ++ thread)
                |> Wardrik.Test.call("self_trigger_remove", %{"name" => "rivals"})
 
       assert triggers(agent) == []
@@ -349,6 +349,23 @@ defmodule Wardrik.CatalogTest do
                front
                |> run(Agents)
                |> Wardrik.Test.call("agent_read", %{"agent" => "a/b/c/d/e"})
+    end
+
+    test "names a thread's agent where the call is on its definition or triggers" do
+      books = acme("books")
+      thread = "#{books}/C1-17.1"
+
+      assert %Call{state: :done, result: {:error, %{"error" => error}}} =
+               acme("front")
+               |> run(Agents)
+               |> Wardrik.Test.call("agent_definition_read", %{"agent" => thread})
+
+      assert error == %{
+               "type" => "invalid_request",
+               "message" =>
+                 "#{thread} is a thread of #{books}, which holds its definition and triggers; " <>
+                   "name #{books} instead."
+             }
     end
 
     test "reads and messages only what whoever asked may, and changes as itself" do

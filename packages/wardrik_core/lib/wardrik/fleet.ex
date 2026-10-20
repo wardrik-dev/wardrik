@@ -15,9 +15,9 @@ defmodule Wardrik.Fleet do
   | `held_pid/2` | the same for an agent already started, without a host |
   | `stored?/1` | whether the store holds an agent, running or stopped |
 
-  An agent is addressed by its `Wardrik.AgentID`, and the fleet is sliced by
-  `Wardrik.Resource` patterns, which each agent's `Wardrik.AgentID.resource/1`
-  is matched against:
+  An agent, or a thread of it, is addressed by its `Wardrik.AgentAddress`,
+  and the fleet is sliced by `Wardrik.Resource` patterns, which each one's
+  `Wardrik.AgentAddress.resource/1` is matched against:
 
       Wardrik.Fleet.list(Wardrik.Resource.parse!("*"), host: host)       # everything
       Wardrik.Fleet.list(Wardrik.Resource.parse!("acme/*"), host: host)  # one tenant
@@ -30,7 +30,7 @@ defmodule Wardrik.Fleet do
   registry: `list/2` reads it from the store, as it wrote itself down. One
   the host defines that has not started, or whose state this release cannot
   read, is listed asleep and idle, from the host's
-  `c:Wardrik.Specs.defined/2`.
+  `c:Wardrik.Specs.defined/2`. A thread is listed once it has started.
 
   ## Waking
 
@@ -43,7 +43,7 @@ defmodule Wardrik.Fleet do
   sleeping agent is given a new definition.
 
   An agent the store does not hold, but the host defines, starts from its
-  definition the same way. So does one whose state this release cannot
+  definition the same way, as does a thread of it. So does one whose state this release cannot
   read, as after a change to what an agent writes down: a warning names it,
   and it starts with an empty history, its log kept and any turn it parked
   on a person lost. One with neither is not found.
@@ -64,7 +64,7 @@ defmodule Wardrik.Fleet do
 
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Fleet.Member
   alias Wardrik.Resource
 
@@ -90,8 +90,8 @@ defmodule Wardrik.Fleet do
       {:ok, pid} = Wardrik.Fleet.spawn(Wardrik.AgentID.new!("researcher", org: "acme"), config: config)
       {:ok, pid} = Wardrik.Fleet.spawn(id, config: config, node: :"wardrik_b@host")
   """
-  @spec spawn(AgentID.t(), keyword()) :: {:ok, pid()} | {:error, term()}
-  def spawn(%AgentID{} = id, opts \\ []) do
+  @spec spawn(AgentAddress.t(), keyword()) :: {:ok, pid()} | {:error, term()}
+  def spawn(id, opts \\ []) do
     {node, opts} = Keyword.pop(opts, :node)
     id |> child(opts) |> start(node) |> started()
   end
@@ -118,8 +118,8 @@ defmodule Wardrik.Fleet do
 
       {:ok, pid} = Wardrik.Fleet.move(~A"acme/@jon/researcher", :"wardrik_b@host")
   """
-  @spec move(AgentID.t(), node()) :: {:ok, pid()} | {:error, term()}
-  def move(%AgentID{} = id, node) when is_atom(node) do
+  @spec move(AgentAddress.t(), node()) :: {:ok, pid()} | {:error, term()}
+  def move(id, node) when is_atom(node) do
     @name
     |> DurableServer.Supervisor.rehome_child(child(id, []), target_node: node)
     |> started()
@@ -128,7 +128,7 @@ defmodule Wardrik.Fleet do
   defp child(id, opts),
     do: {Agent, key: key(id), initial_state: Agent.initial_state(opts, id)}
 
-  defp key(id), do: to_string(AgentID.resource(id))
+  defp key(id), do: to_string(AgentAddress.resource(id))
 
   defp start(child, nil), do: DurableServer.Supervisor.ensure_started_child(@name, child)
 
@@ -149,22 +149,22 @@ defmodule Wardrik.Fleet do
   The stop is permanent: a graceful one would leave the agent eligible for
   the supervisor's own restart.
   """
-  @spec stop(AgentID.t()) :: :ok | {:error, term()}
-  def stop(%AgentID{} = id) do
+  @spec stop(AgentAddress.t()) :: :ok | {:error, term()}
+  def stop(id) do
     DurableServer.Supervisor.terminate_child_permanent(@name, key(id))
   end
 
   @doc "Whether an agent is kept under `id`, running or stopped."
-  @spec stored?(AgentID.t()) :: boolean()
-  def stored?(%AgentID{} = id), do: match?({:ok, _info}, info(id))
+  @spec stored?(AgentAddress.t()) :: boolean()
+  def stored?(id), do: match?({:ok, _info}, info(id))
 
   @doc """
   What a stopped agent wrote down as it stopped, read without starting it.
   One running writes itself down as it goes, so what this reads of it may
   already be behind.
   """
-  @spec written(AgentID.t()) :: {:ok, Wardrik.Agent.State.Stored.t()} | {:error, :not_found}
-  def written(%AgentID{} = id) do
+  @spec written(AgentAddress.t()) :: {:ok, Wardrik.Agent.State.Stored.t()} | {:error, :not_found}
+  def written(id) do
     with {:ok, info} <- info(id), do: {:ok, info.user_state}
   end
 
@@ -178,8 +178,8 @@ defmodule Wardrik.Fleet do
   end
 
   @doc "Stops an agent and deletes everything it had, permanently."
-  @spec forget(AgentID.t()) :: :ok | {:error, term()}
-  def forget(%AgentID{} = id),
+  @spec forget(AgentAddress.t()) :: :ok | {:error, term()}
+  def forget(id),
     do: DurableServer.Supervisor.terminate_and_delete_child(@name, key(id))
 
   @doc "Forgets every agent `pattern` covers, awake or asleep, and returns how many."
@@ -200,8 +200,8 @@ defmodule Wardrik.Fleet do
 
       pid = Wardrik.Fleet.whereis(id, host: host)
   """
-  @spec whereis(AgentID.t(), host: Wardrik.Host.t()) :: pid() | nil
-  def whereis(%AgentID{} = id, opts) do
+  @spec whereis(AgentAddress.t(), host: Wardrik.Host.t()) :: pid() | nil
+  def whereis(id, opts) do
     host = Keyword.fetch!(opts, :host)
 
     case held_pid(id) do
@@ -218,8 +218,8 @@ defmodule Wardrik.Fleet do
   `wake: false` an agent asleep answers `nil`, for a caller with nothing to
   ask of it.
   """
-  @spec held_pid(AgentID.t(), wake: boolean()) :: pid() | nil
-  def held_pid(%AgentID{} = id, opts \\ []) do
+  @spec held_pid(AgentAddress.t(), wake: boolean()) :: pid() | nil
+  def held_pid(id, opts \\ []) do
     case DurableServer.Supervisor.lookup(@name, key(id)) do
       {pid, _meta} -> pid
       nil -> if Keyword.get(opts, :wake, true) and stored?(id), do: wake(id)
@@ -239,8 +239,8 @@ defmodule Wardrik.Fleet do
   One agent as the fleet sees it, awake or asleep, or `nil` when neither the
   fleet nor the definitions of the `:host` given hold that ID.
   """
-  @spec lookup(AgentID.t(), host: Wardrik.Host.t()) :: Member.t() | nil
-  def lookup(%AgentID{} = id, opts) do
+  @spec lookup(AgentAddress.t(), host: Wardrik.Host.t()) :: Member.t() | nil
+  def lookup(id, opts) do
     host = Keyword.fetch!(opts, :host)
 
     case DurableServer.Supervisor.lookup(@name, key(id)) do
@@ -260,7 +260,7 @@ defmodule Wardrik.Fleet do
     do:
       match?(
         {:ok, _spec},
-        Wardrik.Specs.current(Wardrik.Host.definitions(host), id, host: host)
+        Wardrik.Specs.current(Wardrik.Host.definitions(host), AgentAddress.agent(id), host: host)
       )
 
   # -- the fleet -------------------------------------------------------------
@@ -317,7 +317,7 @@ defmodule Wardrik.Fleet do
     resource = Resource.parse!(key)
 
     with true <- Resource.covers?(pattern, resource),
-         {:ok, id} <- AgentID.from_resource(resource) do
+         {:ok, id} <- Resource.address(resource) do
       [id]
     else
       _elsewhere -> []
@@ -329,8 +329,8 @@ defmodule Wardrik.Fleet do
   stops, or changes what it is doing.
 
   Messages arrive as `{:group, [%Group.Event{}], info}`, where each event's
-  `key` is the agent's resource name, which `Wardrik.AgentID.from_resource/1`
-  reads. A state change re-registers metadata, so a `:registered` event
+  `key` is the agent's or thread's resource name, which
+  `Wardrik.Resource.address/1` reads. A state change re-registers metadata, so a `:registered` event
   carrying `previous_meta` is a change rather than a new agent.
   """
   @spec watch() :: :ok

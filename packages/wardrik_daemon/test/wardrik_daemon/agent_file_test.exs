@@ -29,7 +29,7 @@ defmodule WardrikDaemon.AgentFileTest do
   # The spec that definition writes.
   defp definition(context, id, fields: fields) do
     with {:ok, definition} <- read_definition(context, id, fields),
-         do: Definition.spec(definition, id, context: context, host: host())
+         do: Definition.spec(definition, context: context, host: host())
   end
 
   setup do
@@ -222,7 +222,7 @@ defmodule WardrikDaemon.AgentFileTest do
 
       {:ok, definition} = read_definition(ctx(), id, fields, {:api, token})
 
-      assert Definition.spec(definition, id, context: ctx(), host: host()) ==
+      assert Definition.spec(definition, context: ctx(), host: host()) ==
                {:error,
                 "workspace shared team: acme belongs to acme/agent/*, which the token does not reach"}
     end

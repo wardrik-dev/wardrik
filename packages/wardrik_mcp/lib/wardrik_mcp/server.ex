@@ -188,10 +188,13 @@ defmodule WardrikMCP.Server do
     {:ok, {layer, Keyword.put(opts, :headers, Map.put(headers, server.credential_header, value))}}
   end
 
-  @doc "Whether the agent `id` may call this server's tools: one of `:serves` covers it."
-  @spec serves?(t(), Wardrik.AgentID.t()) :: boolean()
-  def serves?(%__MODULE__{serves: serves}, %Wardrik.AgentID{} = id),
-    do: Enum.any?(serves, &Wardrik.Resource.covers?(&1, Wardrik.AgentID.resource(id)))
+  @doc """
+  Whether the agent `id`, or the `Wardrik.Thread` of one, may call this
+  server's tools: one of `:serves` covers it.
+  """
+  @spec serves?(t(), Wardrik.AgentAddress.t()) :: boolean()
+  def serves?(%__MODULE__{serves: serves}, id),
+    do: Enum.any?(serves, &Wardrik.Resource.covers?(&1, Wardrik.AgentAddress.resource(id)))
 
   @doc "Whether a remote tool name is one this server offers to an agent."
   @spec offers?(t(), String.t()) :: boolean()

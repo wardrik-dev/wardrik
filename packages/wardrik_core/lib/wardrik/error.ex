@@ -45,7 +45,7 @@ defmodule Wardrik.Error do
     do: %__MODULE__{type: type, message: message, details: details}
 
   @doc "The error for the agent `id`, where none runs, or none the caller reaches."
-  @spec no_agent(Wardrik.AgentID.t()) :: t()
+  @spec no_agent(Wardrik.AgentAddress.t()) :: t()
   def no_agent(id), do: new(:not_found, "No agent runs under #{id}.")
 
   @doc "The error for events asked for before `oldest`, the first a log still keeps."

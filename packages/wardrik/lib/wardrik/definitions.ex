@@ -11,7 +11,7 @@ defmodule Wardrik.Definitions do
   `Wardrik` reads a definition with `Wardrik.Definition.read/2` under
   `context/2`, and keeps it with `put/2`. As an agent starts or wakes it
   asks the host's `Wardrik.Specs`, which these definitions are, for the
-  spec it runs on, `spec/2`, so a definition kept while it slept is the one
+  spec it runs on, `spec/3`, so a definition kept while it slept is the one
   it wakes with.
 
   An agent file declares the agents whose definitions came from it: `put/2`
@@ -24,13 +24,12 @@ defmodule Wardrik.Definitions do
   `WardrikNotify` as each event comes, so a definition kept is routed as it
   is from its next event.
 
-  An agent with an external ID has no definition of its own. It is one
-  conversation of the agent without one, and runs on that agent's
-  definition: `acme/books/1696.1234` is `acme/books`, in a thread of its
-  own.
+  A `Wardrik.Thread` has no definition of its own: it runs on its agent's,
+  so `acme/books/1696.1234` is `acme/books`, in a thread of its own.
   """
 
   alias Wardrik.Agent.Spec
+  alias Wardrik.AgentAddress
   alias Wardrik.AgentID
   alias Wardrik.Definition
   alias Wardrik.Fleet
@@ -66,9 +65,9 @@ defmodule Wardrik.Definitions do
   defp writable(_definitions, %Definition{source: {:file, _path}}), do: :ok
   defp writable(definitions, %Definition{id: id}), do: editable(definitions, id)
 
-  @doc "The definition kept for the agent `id`."
-  @spec get(t(), AgentID.t()) :: {:ok, Definition.t()} | {:error, :not_found}
-  def get(%__MODULE__{store: store}, %AgentID{} = id) do
+  @doc "The definition kept for the agent `id`; a `Wardrik.Thread` has none."
+  @spec get(t(), AgentAddress.t()) :: {:ok, Definition.t()} | {:error, :not_found}
+  def get(%__MODULE__{store: store}, id) do
     case WardrikStore.get(store, @ns, key(id)) do
       %Definition{} = definition -> {:ok, definition}
       nil -> {:error, :not_found}
@@ -79,8 +78,8 @@ defmodule Wardrik.Definitions do
   Forgets the definition kept for the agent `id`, and the triggers it lists,
   or `{:error, :not_found}` where none is kept.
   """
-  @spec delete(t(), AgentID.t()) :: :ok | {:error, :not_found}
-  def delete(%__MODULE__{store: store} = definitions, %AgentID{} = id) do
+  @spec delete(t(), AgentAddress.t()) :: :ok | {:error, :not_found}
+  def delete(%__MODULE__{store: store} = definitions, id) do
     with {:ok, _definition} <- get(definitions, id) do
       :ok = WardrikTrigger.sync(id, [])
       :ok = WardrikStore.delete(store, @ns, key(id))
@@ -104,25 +103,25 @@ defmodule Wardrik.Definitions do
     for key <- Enum.sort(WardrikStore.keys(store, @ns, Resource.prefix(pattern))),
         resource = Resource.parse!(key),
         Resource.covers?(pattern, resource),
-        {:ok, id} = AgentID.from_resource(resource),
+        {:ok, id} = Resource.address(resource),
         do: id
   end
 
-  defp key(id), do: to_string(AgentID.resource(id))
+  defp key(id), do: to_string(AgentAddress.resource(id))
 
   @doc """
-  The spec the agent `id` runs on now: that the definition kept for it, or
-  for the agent it is a conversation of, writes under its owner's context
-  on the `:host` given, whose tools, sources and runtimes it names; see
-  `Wardrik.Definition.spec/3`. `{:error, :not_found}` where none is kept,
-  and a message where it does not build.
+  The spec the agent `id` runs on now: that the definition kept for it
+  writes under its owner's context on the `:host` given, whose tools,
+  sources and runtimes it names; see `Wardrik.Definition.spec/2`.
+  `{:error, :not_found}` where none is kept, and a message where it does
+  not build.
   """
   @spec spec(t(), AgentID.t(), host: Wardrik.Host.t()) ::
           {:ok, Spec.t()} | {:error, :not_found} | {:error, String.t()}
   def spec(%__MODULE__{} = definitions, %AgentID{} = id, opts) do
-    with {:ok, definition} <- get(definitions, owner(id)),
+    with {:ok, definition} <- get(definitions, id),
          do:
-           Definition.spec(definition, id,
+           Definition.spec(definition,
              context: context(definitions, id),
              host: Keyword.fetch!(opts, :host)
            )
@@ -132,8 +131,8 @@ defmodule Wardrik.Definitions do
   `:ok` where the agent `id` may be changed or forgotten by anything but its
   agent file, or a conflict naming the file that declares it.
   """
-  @spec editable(t(), AgentID.t()) :: :ok | {:error, :conflict, String.t()}
-  def editable(%__MODULE__{} = definitions, %AgentID{} = id) do
+  @spec editable(t(), AgentAddress.t()) :: :ok | {:error, :conflict, String.t()}
+  def editable(%__MODULE__{} = definitions, id) do
     case get(definitions, id) do
       {:ok, %Definition{source: {:file, path}}} ->
         {:error, :conflict,
@@ -247,8 +246,8 @@ defmodule Wardrik.Definitions do
   end
 
   defp rebuilt(definitions, id, host) do
-    with {:ok, spec} <- spec(definitions, id, host: host),
-         {:ok, _pid} <- Fleet.put(spec) do
+    with {:ok, spec} <- spec(definitions, AgentAddress.agent(id), host: host),
+         {:ok, _pid} <- Fleet.put(%{spec | id: id}) do
       []
     else
       {:error, :not_found} ->
@@ -261,8 +260,6 @@ defmodule Wardrik.Definitions do
         ["#{id} did not start: #{inspect(reason)}"]
     end
   end
-
-  defp owner(id), do: AgentID.put_external_id(id, nil)
 end
 
 defimpl Wardrik.Specs, for: Wardrik.Definitions do

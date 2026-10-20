@@ -60,8 +60,8 @@ defmodule WardrikPolicy.Ceiling do
   `$12.40 of $20.00 today across acme`. Read beside each agent's own
   budgets, as `WardrikPolicy.Budget.spending/2` gives them.
   """
-  @spec spending(t(), Wardrik.AgentID.t()) :: String.t() | nil
-  def spending(%__MODULE__{} = ceiling, %Wardrik.AgentID{}) do
+  @spec spending(t(), Wardrik.AgentAddress.t()) :: String.t() | nil
+  def spending(%__MODULE__{} = ceiling, _agent) do
     case spent(ceiling) do
       nil ->
         nil

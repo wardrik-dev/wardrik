@@ -126,7 +126,7 @@ defmodule WardrikSlack.ThreadsTest do
     opts = bound({AgentRunners, :echo, [self(), "Two **cases**."]})
 
     assert {:asked, agent} = Threads.event(message(%{}), opts)
-    assert agent.external_id == "C1-1.1"
+    assert %Wardrik.Thread{id: "C1-1.1"} = agent
 
     assert %{"user" => "U1"} = called("/api/users.info")
 

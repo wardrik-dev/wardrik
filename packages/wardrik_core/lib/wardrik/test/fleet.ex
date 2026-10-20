@@ -60,7 +60,7 @@ defmodule Wardrik.Test.Fleet do
   end
 
   @doc "Starts an agent under `id` and returns the ID and pid."
-  @spec start_agent(keyword(), Wardrik.AgentID.t()) :: {Wardrik.AgentID.t(), pid()}
+  @spec start_agent(keyword(), Wardrik.AgentAddress.t()) :: {Wardrik.AgentAddress.t(), pid()}
   def start_agent(opts \\ [], id \\ id()) do
     {:ok, pid} = Fleet.spawn(id, opts)
     ExUnit.Callbacks.on_exit(fn -> Fleet.forget(id) end)

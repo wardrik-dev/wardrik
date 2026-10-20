@@ -80,7 +80,7 @@ defmodule WardrikVault do
 
   require Logger
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Credential
   alias Wardrik.Resource
   alias Wardrik.Run
@@ -173,7 +173,7 @@ defmodule WardrikVault do
   end
 
   # The owner of the agent a run is for.
-  defp owner(%Run{} = run), do: Resource.owner(AgentID.resource(Run.agent_id(run)))
+  defp owner(%Run{} = run), do: Resource.owner(AgentAddress.resource(Run.agent_id(run)))
 
   defp unreadable(name, owner, reason) do
     Logger.warning(

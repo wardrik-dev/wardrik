@@ -122,7 +122,7 @@ defmodule WardrikChannel.ThreadsTest do
                inbound(context, id: "1.1", text: "How much Barolo is left?")
              )
 
-    assert agent == AgentID.put_external_id(binding.agent, "C1-1.1")
+    assert agent == Wardrik.Thread.new!(binding.agent, "C1-1.1")
     assert agent == WardrikChannel.conversation(binding, "1.1")
 
     installation = context.installation

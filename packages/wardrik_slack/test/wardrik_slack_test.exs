@@ -109,7 +109,7 @@ defmodule WardrikSlackTest do
 
   test "posts a notice in a thread, naming the agent the thread is under" do
     opts = posting()
-    agent = Wardrik.AgentID.parse!("acme/books/C1-1.1")
+    agent = Wardrik.Thread.parse!("acme/books/C1-1.1")
 
     notice = %WardrikNotify.Notice{
       agent: agent,

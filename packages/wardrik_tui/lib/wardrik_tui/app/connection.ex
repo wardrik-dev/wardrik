@@ -5,7 +5,6 @@ defmodule WardrikTUI.App.Connection do
   import Breeze.View, only: [assign: 2, reset: 2, put_implicit: 4]
 
   alias Wardrik.Agent
-  alias Wardrik.AgentID
   alias Wardrik.Event.Bus
   alias Wardrik.Fleet
   alias Wardrik.Resource
@@ -97,7 +96,7 @@ defmodule WardrikTUI.App.Connection do
   # The fleet names each agent by its resource name.
   def follow_registered(term, events) do
     for %Group.Event{type: :registered, key: key} <- events,
-        {:ok, id} = key |> Resource.parse!() |> AgentID.from_resource(),
+        {:ok, id} = key |> Resource.parse!() |> Resource.address(),
         id != term.assigns.agent_id,
         not Map.has_key?(term.assigns.followed, id),
         reduce: term do

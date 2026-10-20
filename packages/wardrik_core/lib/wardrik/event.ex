@@ -113,8 +113,8 @@ defmodule Wardrik.Event do
   end
 
   @doc "Publishes `payload` on the agent `agent`'s topic, at the root of a trace of its own."
-  @spec announce(Wardrik.AgentID.t(), payload()) :: :ok
-  def announce(%Wardrik.AgentID{} = agent, payload), do: emit(Source.root(agent), payload)
+  @spec announce(Wardrik.AgentAddress.t(), payload()) :: :ok
+  def announce(agent, payload), do: emit(Source.root(agent), payload)
 
   @types %{
     __MODULE__.TurnStarted => :turn_started,

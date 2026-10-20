@@ -17,7 +17,7 @@ defmodule Wardrik.Fleet.Member do
   @type status() :: :idle | :running | :parked
 
   @type t() :: %__MODULE__{
-          id: Wardrik.AgentID.t(),
+          id: Wardrik.AgentAddress.t(),
           pid: pid() | nil,
           node: node() | nil,
           asleep: boolean(),
@@ -55,12 +55,8 @@ defmodule Wardrik.Fleet.Member do
   end
 
   @doc false
-  @spec new(Wardrik.AgentID.t(), pid(), Wardrik.Agent.State.View.meta()) :: t()
-  def new(
-        %Wardrik.AgentID{} = id,
-        pid,
-        %{status: status, pending: pending, waiting_on: waiting_on} = meta
-      ) do
+  @spec new(Wardrik.AgentAddress.t(), pid(), Wardrik.Agent.State.View.meta()) :: t()
+  def new(id, pid, %{status: status, pending: pending, waiting_on: waiting_on} = meta) do
     %__MODULE__{
       id: id,
       pid: pid,
@@ -73,8 +69,8 @@ defmodule Wardrik.Fleet.Member do
   end
 
   @doc false
-  @spec asleep(Wardrik.AgentID.t()) :: t()
-  def asleep(%Wardrik.AgentID{} = id),
+  @spec asleep(Wardrik.AgentAddress.t()) :: t()
+  def asleep(id),
     do: %__MODULE__{
       id: id,
       pid: nil,
@@ -86,8 +82,8 @@ defmodule Wardrik.Fleet.Member do
     }
 
   @doc false
-  @spec asleep(Wardrik.AgentID.t(), Wardrik.Agent.State.Stored.t()) :: t()
-  def asleep(%Wardrik.AgentID{} = id, dumped) do
+  @spec asleep(Wardrik.AgentAddress.t(), Wardrik.Agent.State.Stored.t()) :: t()
+  def asleep(id, dumped) do
     meta = Wardrik.Agent.State.View.meta_at_rest(dumped)
 
     %__MODULE__{

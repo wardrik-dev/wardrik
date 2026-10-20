@@ -26,6 +26,9 @@ streams and workers.
 ## Agents
 
 An agent's key is `org/name`, or `org/@user/name` for one that works for a user.
+A thread a channel starts for a conversation, as `acme/triage/C1-1696.1234`, has
+no key: `wardrik.agents.list()` lists it and its events are read, but no `Agent`
+reaches it.
 
 ```ts
 const agent = await wardrik.agents.put("acme/triage", {

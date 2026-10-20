@@ -135,7 +135,7 @@ defmodule WardrikSlack.Notices do
   # An agent answering in a thread is named as the one the thread is under,
   # as the workspace reads it; its buttons and commands carry the thread's own.
   defp shown(agent, opts) do
-    agent = Wardrik.AgentID.put_external_id(agent, nil)
+    agent = Wardrik.AgentAddress.agent(agent)
 
     case opts[:installation] do
       nil -> to_string(agent)

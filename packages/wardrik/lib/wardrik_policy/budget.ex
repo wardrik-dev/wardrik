@@ -253,13 +253,12 @@ defmodule WardrikPolicy.Budget do
   What an agent has spent in `budget`'s period now, given the run of one of
   its turns, or its ID for a budget that is not per turn.
   """
-  @spec spent(t(), Wardrik.Run.t() | Wardrik.AgentID.t()) :: Spend.t() | nil
-  def spent(%__MODULE__{per: :turn}, %Wardrik.AgentID{}), do: nil
+  @spec spent(t(), Wardrik.Run.t() | Wardrik.AgentAddress.t()) :: Spend.t() | nil
+  def spent(%__MODULE__{} = budget, %Wardrik.Run{} = run), do: run |> spend_key(budget) |> read()
+  def spent(%__MODULE__{per: :turn}, _agent), do: nil
 
-  def spent(%__MODULE__{} = budget, %Wardrik.AgentID{} = agent),
+  def spent(%__MODULE__{} = budget, agent),
     do: agent |> Spend.key(budget.meter, window(budget, "", DateTime.utc_now())) |> read()
-
-  def spent(%__MODULE__{} = budget, run), do: run |> spend_key(budget) |> read()
 
   @doc """
   What has been spent against `budget` under the meter `key`, or `nil` where
@@ -277,7 +276,7 @@ defmodule WardrikPolicy.Budget do
   What an agent has spent against `budget`, as a phrase: `$1.20 of $5.00 and
   12000 of 200000 tokens today`.
   """
-  @spec spending(t(), Wardrik.AgentID.t()) :: String.t() | nil
+  @spec spending(t(), Wardrik.AgentAddress.t()) :: String.t() | nil
   def spending(%__MODULE__{} = budget, agent) do
     case spent(budget, agent) do
       nil -> nil

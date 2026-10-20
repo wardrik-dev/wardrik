@@ -89,10 +89,11 @@ defmodule WardrikTUI.FleetTest do
       assert plain(row(member(id: ~A"default/mine"), ~A"default/mine")) =~ "› ○ mine"
     end
 
-    test "names an agent with the external ID it answers for" do
-      assert plain(row(member(id: ~A"acme/@jon/triage/1696.1234"))) =~ "○ triage/1696.1234"
+    test "names a thread with the ID it answers for" do
+      thread = Wardrik.Thread.parse!("acme/@jon/triage/1696.1234")
+      assert plain(row(member(id: thread))) =~ "○ triage/1696.1234"
 
-      assert plain(row(member(id: ~A"acme/triage/1696.1234"), ~A"acme/@jon/mine", 40)) =~
+      assert plain(row(member(id: Wardrik.Thread.parse!("acme/triage/1696.1234")), thread, 40)) =~
                "○ acme/triage/1696.1234"
     end
 

@@ -74,7 +74,9 @@ An agent's key is its path under `/v1/agents/`: `org/name` for an org's own agen
 
 A client percent-encodes each segment on its own and joins them with `/`; `@` may be sent as it is
 or as `%40`. A segment that decodes to a `/`, as `%2F` does, is refused with `400`. The `id` the API
-answers an agent with is its key.
+answers an agent with is its key. A thread a channel starts for a conversation, as
+`acme/triage/C1-1696.1234`, has no key: it is listed, and its events and the calls it waits on are
+read, but no path reaches it.
 
 ## Routes
 

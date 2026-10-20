@@ -191,14 +191,12 @@ defmodule WardrikPolicy.BudgetTest do
       assert Budget.spending(budget, run.source.agent_id) == "$1.20 of $1.50 today"
     end
 
-    test "an agent's conversations spend from one budget, and a grant frees them all", context do
+    test "an agent's threads spend from one budget, and a grant frees them all", context do
       %{budget: budget, run: run, request: request} = context
       agent = run.source.agent_id
 
-      thread = fn external_id ->
-        Run.root(Config.new(), Wardrik.AgentID.put_external_id(agent, external_id),
-          hooks: run.hooks
-        )
+      thread = fn id ->
+        Run.root(Config.new(), Wardrik.Thread.new!(agent, id), hooks: run.hooks)
       end
 
       one = thread.("C1-1.0")

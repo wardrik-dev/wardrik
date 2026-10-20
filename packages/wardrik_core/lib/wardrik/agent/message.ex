@@ -54,7 +54,7 @@ defmodule Wardrik.Agent.Message do
           text: String.t(),
           sender: Principal.t() | nil,
           labels: [Wardrik.Label.t()],
-          reply_to: [Wardrik.AgentID.t()],
+          reply_to: [Wardrik.AgentAddress.t()],
           cursor: String.t() | nil
         }
 
@@ -66,7 +66,7 @@ defmodule Wardrik.Agent.Message do
   @spec new(String.t(), String.t() | nil,
           sender: Principal.t() | nil,
           labels: [Wardrik.Label.t()],
-          reply_to: [Wardrik.AgentID.t()]
+          reply_to: [Wardrik.AgentAddress.t()]
         ) ::
           t()
   def new(text, id \\ nil, opts \\ []) when is_binary(text) and (is_binary(id) or is_nil(id)) do

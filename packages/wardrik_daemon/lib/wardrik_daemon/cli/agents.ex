@@ -176,9 +176,11 @@ defmodule WardrikDaemon.CLI.Agents do
     host = opts[:as].host
     definitions = Wardrik.Host.definitions(host)
 
-    case Definitions.get(definitions, Wardrik.AgentID.put_external_id(key, nil)) do
+    agent = Wardrik.AgentAddress.agent(key)
+
+    case Definitions.get(definitions, agent) do
       {:ok, definition} ->
-        {definition, Definitions.spec(definitions, key, host: host),
+        {definition, Definitions.spec(definitions, agent, host: host),
          Wardrik.Definition.missing(definition, host: host)}
 
       {:error, :not_found} ->

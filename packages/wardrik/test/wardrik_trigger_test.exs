@@ -513,16 +513,11 @@ defmodule WardrikTriggerTest do
       assert DateTime.compare(next, DateTime.utc_now()) == :gt
     end
 
-    test "finds an agent's triggers and none of its conversations'", %{key: key} do
-      conversation = Wardrik.AgentID.put_external_id(key, "thread-1")
-      on_exit(fn -> :ok = WardrikTrigger.sync(conversation, []) end)
-
+    test "finds an agent's triggers, by name", %{key: key} do
       {:ok, _pid} = WardrikTrigger.put(key, "b", every: "@daily", prompt: "Look.")
       {:ok, _pid} = WardrikTrigger.put(key, "a", every: "@daily", prompt: "Look.")
-      {:ok, _pid} = WardrikTrigger.put(conversation, "c", every: "@daily", prompt: "Look.")
 
       assert [%{name: "a"}, %{name: "b"}] = WardrikTrigger.for_agent(key)
-      assert [%{name: "c", agent: ^conversation}] = WardrikTrigger.for_agent(conversation)
 
       :ok = WardrikTrigger.delete(key, "a")
       assert [%{name: "b"}] = WardrikTrigger.for_agent(key)

@@ -21,6 +21,7 @@ defmodule WardrikTUI.Fleet do
   taken.
   """
 
+  alias Wardrik.AgentAddress
   alias Wardrik.AgentID
   alias Wardrik.Fleet.Member
   alias WardrikTUI.Delegation
@@ -75,7 +76,7 @@ defmodule WardrikTUI.Fleet do
   Whether an agent needs a person: it is waiting on a call, or `unseen` holds
   how a turn ended while the client was elsewhere.
   """
-  @spec attention?(Member.t(), %{AgentID.t() => term()}) :: boolean()
+  @spec attention?(Member.t(), %{AgentAddress.t() => term()}) :: boolean()
   def attention?(%Member{status: :parked}, _unseen), do: true
   def attention?(%Member{id: id}, unseen), do: Map.has_key?(unseen, id)
 
@@ -83,7 +84,7 @@ defmodule WardrikTUI.Fleet do
   @spec ambiguous([Member.t()]) :: MapSet.t(String.t())
   def ambiguous(members) do
     members
-    |> Enum.frequencies_by(& &1.id.name)
+    |> Enum.frequencies_by(&AgentAddress.agent(&1.id).name)
     |> Enum.filter(fn {_name, count} -> count > 1 end)
     |> MapSet.new(fn {name, _count} -> name end)
   end
@@ -98,7 +99,7 @@ defmodule WardrikTUI.Fleet do
   `:delegations`, how many its turn has going and has started, as
   `WardrikTUI.Delegation.summary/1` counts them.
   """
-  @spec row(Member.t(), AgentID.t(), pos_integer(), keyword()) :: String.t()
+  @spec row(Member.t(), AgentAddress.t(), pos_integer(), keyword()) :: String.t()
   def row(%Member{} = member, attached, width, opts \\ []) do
     row = Text.truncate(text(member, attached, opts), width)
     Render.line(if(Keyword.get(opts, :pad?, false), do: fill(row, width), else: row))
@@ -172,19 +173,20 @@ defmodule WardrikTUI.Fleet do
   # The name alone inside the attached agent's org and user; the whole ID
   # anywhere else, and wherever two agents go by the same name.
   defp label(%Member{id: id} = member, attached, ambiguous) do
-    named = Text.tag(name(id), name_colour(member, attached))
+    agent = AgentAddress.agent(id)
+    named = Text.tag(name(id, agent), name_colour(member, attached))
+    %AgentID{org: org, user: user} = AgentAddress.agent(attached)
 
-    if {id.org, id.user} == {attached.org, attached.user} and
-         not MapSet.member?(ambiguous, id.name),
-       do: named,
-       else: [Text.tag(scope(id), @faint), named]
+    if {agent.org, agent.user} == {org, user} and not MapSet.member?(ambiguous, agent.name),
+      do: named,
+      else: [Text.tag(scope(agent), @faint), named]
   end
 
   defp scope(%AgentID{org: org, user: nil}), do: org <> "/"
   defp scope(%AgentID{org: org, user: user}), do: "#{org}/@#{user}/"
 
-  defp name(%AgentID{name: name, external_id: nil}), do: name
-  defp name(%AgentID{name: name, external_id: external_id}), do: name <> "/" <> external_id
+  # The agent's name, and a thread's own ID after it.
+  defp name(id, agent), do: String.replace_prefix(to_string(id), scope(agent), "")
 
   defp name_colour(%Member{id: id}, id), do: [:bright]
   defp name_colour(_member, _attached), do: []

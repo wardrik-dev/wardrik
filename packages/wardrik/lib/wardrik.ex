@@ -71,6 +71,12 @@ defmodule Wardrik do
   Each answers `{:ok, value}`, `:ok` or `{:error, %Wardrik.Error{}}`, and
   has a variant ending in `!` that answers the value or raises the error.
 
+  A function on one agent acts on a `Wardrik.Thread` of it too, but for
+  those on its definition and triggers, `agent_define/4`,
+  `agent_definition_read/2`, `agent_trigger_set/4` and
+  `agent_trigger_remove/3`: a thread runs on its agent's, so they refuse
+  one, naming the agent to act on instead.
+
   ## Options
 
     * `:store` - where everything is kept, as `store/1` makes it, which the
@@ -104,6 +110,7 @@ defmodule Wardrik do
   alias Wardrik.Agent
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
+  alias Wardrik.AgentAddress
   alias Wardrik.AgentID
   alias Wardrik.Audit
   alias Wardrik.Connections
@@ -128,6 +135,7 @@ defmodule Wardrik do
   alias Wardrik.Servers.Server
   alias Wardrik.Spawned
   alias Wardrik.Statement
+  alias Wardrik.Thread
   alias Wardrik.Token
   alias Wardrik.Tokens
   alias WardrikDefinition.Context
@@ -137,6 +145,9 @@ defmodule Wardrik do
 
   @typedoc "What became of an agent a forget reached: removed, kept with why, or not removed with why."
   @type outcome() :: :forgotten | {:kept, String.t()} | {:failed, String.t()}
+
+  # What a thread runs on of its agent's, read and changed on the agent.
+  @agents_own ~w(agent.define agent.definition.read agent.trigger.set agent.trigger.remove)
 
   @seams [:issuer, :credentials, :connections, :servers, :tokens, :triggers, :dispatch, :llm]
 
@@ -280,9 +291,9 @@ defmodule Wardrik do
   #{NimbleOptions.docs(@ask_opts)}
   """
   @doc group: "Talking to an agent"
-  @spec agent_ask(Scope.t(), AgentID.t(), String.t(), keyword()) ::
+  @spec agent_ask(Scope.t(), AgentAddress.t(), String.t(), keyword()) ::
           {:ok, Message.t()} | {:error, Error.t()}
-  def agent_ask(%Scope{} = scope, %AgentID{} = agent, text, opts \\ [])
+  def agent_ask(%Scope{} = scope, agent, text, opts \\ [])
       when is_binary(text) do
     opts = NimbleOptions.validate!(opts, @ask_opts)
 
@@ -399,7 +410,7 @@ defmodule Wardrik do
 
       {:ok, events} =
         Wardrik.events(scope,
-          resources: [Wardrik.AgentID.resource(agent)],
+          resources: [Wardrik.AgentAddress.resource(agent)],
           after: message.cursor,
           follow: true
         )
@@ -476,7 +487,7 @@ defmodule Wardrik do
   @spec cursor(String.t() | :head, Entry.t()) :: String.t()
   def cursor(:head, entry), do: cursor("", entry)
 
-  def cursor(cursor, %Entry{log: %AgentID{} = log} = entry) do
+  def cursor(cursor, %Entry{log: log} = entry) do
     {:ok, positions} = Cursor.decode(cursor)
     Cursor.encode(Map.put(positions, log, entry.sequence || entry.follows))
   end
@@ -509,9 +520,9 @@ defmodule Wardrik do
   #{NimbleOptions.docs(@approve_opts)}
   """
   @doc group: "Talking to an agent"
-  @spec agent_approve(Scope.t(), AgentID.t(), String.t() | [String.t()], keyword()) ::
+  @spec agent_approve(Scope.t(), AgentAddress.t(), String.t() | [String.t()], keyword()) ::
           {:ok, %{String.t() => decision()}} | {:error, Error.t()}
-  def agent_approve(%Scope{} = scope, %AgentID{} = agent, calls, opts \\ []) do
+  def agent_approve(%Scope{} = scope, agent, calls, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @approve_opts)
     decide(scope, agent, calls, if(opts[:note], do: {:approve, opts[:note]}, else: :approve))
   end
@@ -533,9 +544,9 @@ defmodule Wardrik do
   #{NimbleOptions.docs(@deny_opts)}
   """
   @doc group: "Talking to an agent"
-  @spec agent_deny(Scope.t(), AgentID.t(), String.t() | [String.t()], keyword()) ::
+  @spec agent_deny(Scope.t(), AgentAddress.t(), String.t() | [String.t()], keyword()) ::
           {:ok, %{String.t() => decision()}} | {:error, Error.t()}
-  def agent_deny(%Scope{} = scope, %AgentID{} = agent, calls, opts \\ []) do
+  def agent_deny(%Scope{} = scope, agent, calls, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @deny_opts)
     decide(scope, agent, calls, {:deny, opts[:reason]})
   end
@@ -555,9 +566,9 @@ defmodule Wardrik do
   says, and answers anyone else `:forbidden`.
   """
   @doc group: "Talking to an agent"
-  @spec agent_decide(Scope.t(), AgentID.t(), %{String.t() => decision()}) ::
+  @spec agent_decide(Scope.t(), AgentAddress.t(), %{String.t() => decision()}) ::
           {:ok, %{String.t() => decision()}} | {:error, Error.t()}
-  def agent_decide(%Scope{} = scope, %AgentID{} = agent, decisions) when is_map(decisions) do
+  def agent_decide(%Scope{} = scope, agent, decisions) when is_map(decisions) do
     scope = refreshed(scope)
 
     with :ok <- authorize(scope, "agent.read", agent) do
@@ -599,9 +610,9 @@ defmodule Wardrik do
   event, so only a scope that may decide the call reads it.
   """
   @doc group: "Talking to an agent"
-  @spec agent_authorization_read(Scope.t(), AgentID.t(), String.t()) ::
+  @spec agent_authorization_read(Scope.t(), AgentAddress.t(), String.t()) ::
           {:ok, Wardrik.Call.Ask.link()} | {:error, Error.t()}
-  def agent_authorization_read(%Scope{} = scope, %AgentID{} = agent, call) do
+  def agent_authorization_read(%Scope{} = scope, agent, call) do
     with :ok <- authorize(scope, "agent.authorization.read", agent),
          {:ok, calls} <- parked(agent, scope.host),
          do: authorization(Enum.find(calls, &(elem(&1, 0).id == call)), agent, call)
@@ -624,8 +635,8 @@ defmodule Wardrik do
 
   @doc "`agent`'s snapshot: what it is doing, what it waits on, and its conversation."
   @doc group: "Talking to an agent"
-  @spec agent_read(Scope.t(), AgentID.t()) :: {:ok, Snapshot.t()} | {:error, Error.t()}
-  def agent_read(%Scope{} = scope, %AgentID{} = agent) do
+  @spec agent_read(Scope.t(), AgentAddress.t()) :: {:ok, Snapshot.t()} | {:error, Error.t()}
+  def agent_read(%Scope{} = scope, agent) do
     with :ok <- authorize(scope, "agent.read", agent), do: agent_snapshot(agent, scope.host)
   end
 
@@ -642,8 +653,8 @@ defmodule Wardrik do
   it runs a turn or waits on a person.
   """
   @doc group: "Talking to an agent"
-  @spec agent_clear(Scope.t(), AgentID.t()) :: {:ok, Snapshot.t()} | {:error, Error.t()}
-  def agent_clear(%Scope{} = scope, %AgentID{} = agent) do
+  @spec agent_clear(Scope.t(), AgentAddress.t()) :: {:ok, Snapshot.t()} | {:error, Error.t()}
+  def agent_clear(%Scope{} = scope, agent) do
     with :ok <- authorize(scope, "agent.clear", agent),
          :ok <- cleared(Agent.clear(agent, host: scope.host), agent) do
       audit(scope, [{:agent_cleared, agent}])
@@ -679,7 +690,7 @@ defmodule Wardrik do
   """
   @doc group: "Talking to an agent"
   @spec agents_parked(Scope.t(), Resource.t()) ::
-          {:ok, [{AgentID.t(), {Wardrik.Tool.call(), String.t()}}]} | {:error, Error.t()}
+          {:ok, [{AgentAddress.t(), {Wardrik.Tool.call(), String.t()}}]} | {:error, Error.t()}
   def agents_parked(%Scope{} = scope, pattern) do
     with :ok <- authorize(scope, "agents.parked", pattern) do
       {:ok,
@@ -715,9 +726,9 @@ defmodule Wardrik do
   #{NimbleOptions.docs(@define_opts)}
   """
   @doc group: "Agent lifecycle"
-  @spec agent_define(Scope.t(), AgentID.t(), map(), keyword()) ::
+  @spec agent_define(Scope.t(), AgentAddress.t(), map(), keyword()) ::
           {:ok, Snapshot.t()} | {:error, Error.t()}
-  def agent_define(%Scope{} = scope, %AgentID{} = agent, definition, opts \\ [])
+  def agent_define(%Scope{} = scope, agent, definition, opts \\ [])
       when is_map(definition) do
     opts = NimbleOptions.validate!(opts, @define_opts)
     scope = refreshed(scope)
@@ -740,7 +751,7 @@ defmodule Wardrik do
     with {:ok, definition} <-
            refused(Definition.read(fields, [id: agent, context: context] ++ opts)),
          {:ok, spec} <-
-           refused(Definition.spec(definition, agent, context: context, host: scope.host)),
+           refused(Definition.spec(definition, context: context, host: scope.host)),
          :ok <- refused(Definitions.put(definitions, definition)),
          do: {:ok, spec}
   end
@@ -752,9 +763,9 @@ defmodule Wardrik do
 
   @doc "`agent`'s definition as it was last put, and the tools it names that offer nothing yet."
   @doc group: "Agent lifecycle"
-  @spec agent_definition_read(Scope.t(), AgentID.t()) ::
+  @spec agent_definition_read(Scope.t(), AgentAddress.t()) ::
           {:ok, %{definition: Definition.t(), missing: [String.t()]}} | {:error, Error.t()}
-  def agent_definition_read(%Scope{} = scope, %AgentID{} = agent) do
+  def agent_definition_read(%Scope{} = scope, agent) do
     definitions = Host.definitions(scope.host)
 
     with :ok <- authorize(scope, "agent.definition.read", agent) do
@@ -786,16 +797,18 @@ defmodule Wardrik do
   Starts `agent`, and answers it as the fleet lists it, with what it started
   from: one running already runs on, one asleep wakes, one the host defines
   starts on its definition, and one nothing defines yet is defined from the
-  `defaults` of its owner's context, which is kept for it.
+  `defaults` of its owner's context, which is kept for it. A
+  `Wardrik.Thread` starts on its agent's definition, and one whose agent
+  nothing defines is refused: define the agent first.
 
   ## Options
 
   #{NimbleOptions.docs(@spawn_opts)}
   """
   @doc group: "Agent lifecycle"
-  @spec agent_spawn(Scope.t(), AgentID.t(), keyword()) ::
+  @spec agent_spawn(Scope.t(), AgentAddress.t(), keyword()) ::
           {:ok, Spawned.t()} | {:error, Error.t()}
-  def agent_spawn(%Scope{} = scope, %AgentID{} = agent, opts \\ []) do
+  def agent_spawn(%Scope{} = scope, agent, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @spawn_opts)
 
     with :ok <- spawning(scope, agent, opts[:node]),
@@ -821,10 +834,12 @@ defmodule Wardrik do
   end
 
   defp from(scope, agent) do
+    definitions = Host.definitions(scope.host)
+
     case {Fleet.lookup(agent, host: scope.host),
-          Definitions.spec(Host.definitions(scope.host), agent, host: scope.host)} do
+          Definitions.spec(definitions, AgentAddress.agent(agent), host: scope.host)} do
       {%Member{asleep: false}, _spec} -> {:running, nil}
-      {_member, {:ok, spec}} -> {:definition, spec}
+      {_member, {:ok, spec}} -> {:definition, %{spec | id: agent}}
       {%Member{asleep: true}, _none} -> {:store, nil}
       {nil, _none} -> {:new, nil}
     end
@@ -839,12 +854,15 @@ defmodule Wardrik do
 
   defp spawn(_scope, agent, {:definition, spec}, node), do: spec |> put(node) |> spawned(agent)
 
-  defp spawn(scope, agent, {:new, nil}, node) do
+  defp spawn(scope, %AgentID{} = agent, {:new, nil}, node) do
     defaults = Definitions.context(Host.definitions(scope.host), agent).defaults
 
     with {:ok, spec} <- defined(scope, agent, defaults, source: :defaults),
          do: spec |> put(node) |> spawned(agent)
   end
+
+  defp spawn(_scope, thread, {:new, nil}, _node),
+    do: {:error, undefined(AgentAddress.agent(thread))}
 
   # An agent bound for a node is started there first, then given its spec.
   defp put(spec, nil), do: Fleet.put(spec)
@@ -873,8 +891,8 @@ defmodule Wardrik do
   the deployment's to say.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_move(Scope.t(), AgentID.t(), node()) :: {:ok, Member.t()} | {:error, Error.t()}
-  def agent_move(%Scope{} = scope, %AgentID{} = agent, node) when is_atom(node) do
+  @spec agent_move(Scope.t(), AgentAddress.t(), node()) :: {:ok, Member.t()} | {:error, Error.t()}
+  def agent_move(%Scope{} = scope, agent, node) when is_atom(node) do
     with {:ok, moving} <- moving(scope, agent, node),
          {:ok, actions} <- moved(moving) do
       audit(scope, actions)
@@ -887,9 +905,9 @@ defmodule Wardrik do
   where it goes, and what it is doing, which a move interrupts.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_move_preview(Scope.t(), AgentID.t(), node()) ::
+  @spec agent_move_preview(Scope.t(), AgentAddress.t(), node()) ::
           {:ok, Moving.t()} | {:error, Error.t()}
-  def agent_move_preview(%Scope{} = scope, %AgentID{} = agent, node) when is_atom(node) do
+  def agent_move_preview(%Scope{} = scope, agent, node) when is_atom(node) do
     moving(scope, agent, node)
   end
 
@@ -927,8 +945,8 @@ defmodule Wardrik do
   left as it is.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_cancel(Scope.t(), AgentID.t()) :: :ok | {:error, Error.t()}
-  def agent_cancel(%Scope{} = scope, %AgentID{} = agent) do
+  @spec agent_cancel(Scope.t(), AgentAddress.t()) :: :ok | {:error, Error.t()}
+  def agent_cancel(%Scope{} = scope, agent) do
     with :ok <- authorize(scope, "agent.cancel", agent),
          {:ok, member} <- member(agent, scope.host),
          do: audit(scope, for(id <- cancelled([member]), do: {:agent_cancelled, id}))
@@ -936,7 +954,7 @@ defmodule Wardrik do
 
   @doc "Ends the turn of every agent `pattern` covers, and answers those it ended."
   @doc group: "Agent lifecycle"
-  @spec agents_cancel(Scope.t(), Resource.t()) :: {:ok, [AgentID.t()]} | {:error, Error.t()}
+  @spec agents_cancel(Scope.t(), Resource.t()) :: {:ok, [AgentAddress.t()]} | {:error, Error.t()}
   def agents_cancel(%Scope{} = scope, pattern) do
     with :ok <- authorize(scope, "agents.cancel", pattern) do
       cancelled = cancelled(Fleet.list(pattern, host: scope.host))
@@ -960,8 +978,8 @@ defmodule Wardrik do
   left as it is.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_stop(Scope.t(), AgentID.t()) :: {:ok, Member.t()} | {:error, Error.t()}
-  def agent_stop(%Scope{} = scope, %AgentID{} = agent) do
+  @spec agent_stop(Scope.t(), AgentAddress.t()) :: {:ok, Member.t()} | {:error, Error.t()}
+  def agent_stop(%Scope{} = scope, agent) do
     with :ok <- authorize(scope, "agent.stop", agent),
          {:ok, member} <- member(agent, scope.host) do
       :ok = stopped(scope, member)
@@ -986,8 +1004,8 @@ defmodule Wardrik do
   asleep, or a definition of it is.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_forget(Scope.t(), AgentID.t()) :: :ok | {:error, Error.t()}
-  def agent_forget(%Scope{} = scope, %AgentID{} = agent) do
+  @spec agent_forget(Scope.t(), AgentAddress.t()) :: :ok | {:error, Error.t()}
+  def agent_forget(%Scope{} = scope, agent) do
     with {:ok, _forgetting} <- forgetting(scope, agent) do
       kept = Definitions.delete(Host.definitions(scope.host), agent) == :ok
       forgotten(scope, agent, kept)
@@ -1005,9 +1023,9 @@ defmodule Wardrik do
 
   @doc "What `agent_forget/2` would do, checked as it checks."
   @doc group: "Agent lifecycle"
-  @spec agent_forget_preview(Scope.t(), AgentID.t()) ::
+  @spec agent_forget_preview(Scope.t(), AgentAddress.t()) ::
           {:ok, Forgetting.t()} | {:error, Error.t()}
-  def agent_forget_preview(%Scope{} = scope, %AgentID{} = agent) do
+  def agent_forget_preview(%Scope{} = scope, agent) do
     forgetting(scope, agent)
   end
 
@@ -1032,7 +1050,7 @@ defmodule Wardrik do
   """
   @doc group: "Agent lifecycle"
   @spec agents_forget(Scope.t(), Resource.t()) ::
-          {:ok, %{AgentID.t() => outcome()}} | {:error, Error.t()}
+          {:ok, %{AgentAddress.t() => outcome()}} | {:error, Error.t()}
   def agents_forget(%Scope{} = scope, pattern) do
     with {:ok, %Forgetting{agents: agents, kept: kept}} <- forgetting_under(scope, pattern) do
       outcomes = Map.new(agents, &{&1, forget(scope.host, &1)})
@@ -1084,10 +1102,10 @@ defmodule Wardrik do
   and how long it has run. An agent asleep runs none, and is not found.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_calls(Scope.t(), AgentID.t()) ::
+  @spec agent_calls(Scope.t(), AgentAddress.t()) ::
           {:ok, [%{call_id: String.t(), name: String.t(), elapsed_ms: non_neg_integer()}]}
           | {:error, Error.t()}
-  def agent_calls(%Scope{} = scope, %AgentID{} = agent) do
+  def agent_calls(%Scope{} = scope, agent) do
     with :ok <- authorize(scope, "agent.calls", agent),
          {:ok, node} <- awake(agent) do
       calls = :erpc.call(node, ToolRunner, :in_flight, [agent])
@@ -1101,8 +1119,8 @@ defmodule Wardrik do
   is not running, or an agent asleep, is not found.
   """
   @doc group: "Agent lifecycle"
-  @spec agent_call_kill(Scope.t(), AgentID.t(), String.t()) :: :ok | {:error, Error.t()}
-  def agent_call_kill(%Scope{} = scope, %AgentID{} = agent, call_id)
+  @spec agent_call_kill(Scope.t(), AgentAddress.t(), String.t()) :: :ok | {:error, Error.t()}
+  def agent_call_kill(%Scope{} = scope, agent, call_id)
       when is_binary(call_id) do
     with :ok <- authorize(scope, "agent.call.kill", agent),
          {:ok, node} <- awake(agent) do
@@ -1133,9 +1151,9 @@ defmodule Wardrik do
   it.
   """
   @doc group: "Triggers"
-  @spec agent_trigger_set(Scope.t(), AgentID.t(), String.t(), map()) ::
+  @spec agent_trigger_set(Scope.t(), AgentAddress.t(), String.t(), map()) ::
           {:ok, map()} | {:error, Error.t()}
-  def agent_trigger_set(%Scope{} = scope, %AgentID{} = agent, name, fields)
+  def agent_trigger_set(%Scope{} = scope, agent, name, fields)
       when is_binary(name) and is_map(fields) do
     with :ok <- authorize(scope, "agent.trigger.set", agent),
          {:ok, trigger} <- trigger_set(scope, agent, name, fields),
@@ -1152,9 +1170,9 @@ defmodule Wardrik do
 
   @doc "Removes `agent`'s trigger `name`, and answers it as `agent_trigger_set/4` would."
   @doc group: "Triggers"
-  @spec agent_trigger_remove(Scope.t(), AgentID.t(), String.t()) ::
+  @spec agent_trigger_remove(Scope.t(), AgentAddress.t(), String.t()) ::
           {:ok, map()} | {:error, Error.t()}
-  def agent_trigger_remove(%Scope{} = scope, %AgentID{} = agent, name) when is_binary(name) do
+  def agent_trigger_remove(%Scope{} = scope, agent, name) when is_binary(name) do
     with :ok <- authorize(scope, "agent.trigger.remove", agent),
          {:ok, trigger} <- trigger_removed(scope, agent, name),
          do: audited(scope, [{:trigger_removed, agent, name}], trigger)
@@ -1549,6 +1567,15 @@ defmodule Wardrik do
 
   # -- checking and recording -------------------------------------------------------
 
+  defp authorize(_scope, action, %Thread{agent: agent} = thread) when action in @agents_own,
+    do:
+      {:error,
+       Error.new(
+         :invalid,
+         "#{thread} is a thread of #{agent}, which holds its definition and triggers; " <>
+           "name #{agent} instead."
+       )}
+
   defp authorize(scope, action, target),
     do: Token.authorize(refreshed(scope).token, action, target)
 
@@ -1594,13 +1621,13 @@ defmodule Wardrik do
 
   @doc "As `agent_ask/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_ask!(Scope.t(), AgentID.t(), String.t(), keyword()) :: Message.t()
+  @spec agent_ask!(Scope.t(), AgentAddress.t(), String.t(), keyword()) :: Message.t()
   def agent_ask!(scope, agent, text, opts \\ []),
     do: unwrap(agent_ask(scope, agent, text, opts))
 
   @doc "As `agent_approve/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_approve!(Scope.t(), AgentID.t(), String.t() | [String.t()], keyword()) :: %{
+  @spec agent_approve!(Scope.t(), AgentAddress.t(), String.t() | [String.t()], keyword()) :: %{
           String.t() => decision()
         }
   def agent_approve!(scope, agent, calls, opts \\ []),
@@ -1608,7 +1635,7 @@ defmodule Wardrik do
 
   @doc "As `agent_deny/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_deny!(Scope.t(), AgentID.t(), String.t() | [String.t()], keyword()) :: %{
+  @spec agent_deny!(Scope.t(), AgentAddress.t(), String.t() | [String.t()], keyword()) :: %{
           String.t() => decision()
         }
   def agent_deny!(scope, agent, calls, opts \\ []),
@@ -1616,25 +1643,26 @@ defmodule Wardrik do
 
   @doc "As `agent_decide/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_decide!(Scope.t(), AgentID.t(), %{String.t() => decision()}) ::
+  @spec agent_decide!(Scope.t(), AgentAddress.t(), %{String.t() => decision()}) ::
           %{String.t() => decision()}
   def agent_decide!(scope, agent, decisions),
     do: unwrap(agent_decide(scope, agent, decisions))
 
   @doc "As `agent_authorization_read/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_authorization_read!(Scope.t(), AgentID.t(), String.t()) :: Wardrik.Call.Ask.link()
+  @spec agent_authorization_read!(Scope.t(), AgentAddress.t(), String.t()) ::
+          Wardrik.Call.Ask.link()
   def agent_authorization_read!(scope, agent, call),
     do: unwrap(agent_authorization_read(scope, agent, call))
 
   @doc "As `agent_read/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_read!(Scope.t(), AgentID.t()) :: Snapshot.t()
+  @spec agent_read!(Scope.t(), AgentAddress.t()) :: Snapshot.t()
   def agent_read!(scope, agent), do: unwrap(agent_read(scope, agent))
 
   @doc "As `agent_clear/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_clear!(Scope.t(), AgentID.t()) :: Snapshot.t()
+  @spec agent_clear!(Scope.t(), AgentAddress.t()) :: Snapshot.t()
   def agent_clear!(scope, agent), do: unwrap(agent_clear(scope, agent))
 
   @doc "As `agents_list/2`, answering the value, or raising the `Wardrik.Error`."
@@ -1645,66 +1673,66 @@ defmodule Wardrik do
   @doc "As `agents_parked/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
   @spec agents_parked!(Scope.t(), Resource.t()) :: [
-          {AgentID.t(), {Wardrik.Tool.call(), String.t()}}
+          {AgentAddress.t(), {Wardrik.Tool.call(), String.t()}}
         ]
   def agents_parked!(scope, pattern), do: unwrap(agents_parked(scope, pattern))
 
   @doc "As `agent_define/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_define!(Scope.t(), AgentID.t(), map(), keyword()) :: Snapshot.t()
+  @spec agent_define!(Scope.t(), AgentAddress.t(), map(), keyword()) :: Snapshot.t()
   def agent_define!(scope, agent, definition, opts \\ []),
     do: unwrap(agent_define(scope, agent, definition, opts))
 
   @doc "As `agent_definition_read/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_definition_read!(Scope.t(), AgentID.t()) ::
+  @spec agent_definition_read!(Scope.t(), AgentAddress.t()) ::
           %{definition: Definition.t(), missing: [String.t()]}
   def agent_definition_read!(scope, agent), do: unwrap(agent_definition_read(scope, agent))
 
   @doc "As `agent_spawn/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_spawn!(Scope.t(), AgentID.t(), keyword()) :: Spawned.t()
+  @spec agent_spawn!(Scope.t(), AgentAddress.t(), keyword()) :: Spawned.t()
   def agent_spawn!(scope, agent, opts \\ []), do: unwrap(agent_spawn(scope, agent, opts))
 
   @doc "As `agent_move/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_move!(Scope.t(), AgentID.t(), node()) :: Member.t()
+  @spec agent_move!(Scope.t(), AgentAddress.t(), node()) :: Member.t()
   def agent_move!(scope, agent, node), do: unwrap(agent_move(scope, agent, node))
 
   @doc "As `agent_move_preview/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_move_preview!(Scope.t(), AgentID.t(), node()) :: Moving.t()
+  @spec agent_move_preview!(Scope.t(), AgentAddress.t(), node()) :: Moving.t()
   def agent_move_preview!(scope, agent, node),
     do: unwrap(agent_move_preview(scope, agent, node))
 
   @doc "As `agent_cancel/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_cancel!(Scope.t(), AgentID.t()) :: :ok
+  @spec agent_cancel!(Scope.t(), AgentAddress.t()) :: :ok
   def agent_cancel!(scope, agent), do: unwrap(agent_cancel(scope, agent))
 
   @doc "As `agents_cancel/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agents_cancel!(Scope.t(), Resource.t()) :: [AgentID.t()]
+  @spec agents_cancel!(Scope.t(), Resource.t()) :: [AgentAddress.t()]
   def agents_cancel!(scope, pattern), do: unwrap(agents_cancel(scope, pattern))
 
   @doc "As `agent_stop/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_stop!(Scope.t(), AgentID.t()) :: Member.t()
+  @spec agent_stop!(Scope.t(), AgentAddress.t()) :: Member.t()
   def agent_stop!(scope, agent), do: unwrap(agent_stop(scope, agent))
 
   @doc "As `agent_forget/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_forget!(Scope.t(), AgentID.t()) :: :ok
+  @spec agent_forget!(Scope.t(), AgentAddress.t()) :: :ok
   def agent_forget!(scope, agent), do: unwrap(agent_forget(scope, agent))
 
   @doc "As `agents_forget/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agents_forget!(Scope.t(), Resource.t()) :: %{AgentID.t() => outcome()}
+  @spec agents_forget!(Scope.t(), Resource.t()) :: %{AgentAddress.t() => outcome()}
   def agents_forget!(scope, pattern), do: unwrap(agents_forget(scope, pattern))
 
   @doc "As `agent_forget_preview/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_forget_preview!(Scope.t(), AgentID.t()) :: Forgetting.t()
+  @spec agent_forget_preview!(Scope.t(), AgentAddress.t()) :: Forgetting.t()
   def agent_forget_preview!(scope, agent), do: unwrap(agent_forget_preview(scope, agent))
 
   @doc "As `agents_forget_preview/2`, answering the value, or raising the `Wardrik.Error`."
@@ -1715,26 +1743,26 @@ defmodule Wardrik do
 
   @doc "As `agent_calls/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_calls!(Scope.t(), AgentID.t()) :: [
+  @spec agent_calls!(Scope.t(), AgentAddress.t()) :: [
           %{call_id: String.t(), name: String.t(), elapsed_ms: non_neg_integer()}
         ]
   def agent_calls!(scope, agent), do: unwrap(agent_calls(scope, agent))
 
   @doc "As `agent_call_kill/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_call_kill!(Scope.t(), AgentID.t(), String.t()) :: :ok
+  @spec agent_call_kill!(Scope.t(), AgentAddress.t(), String.t()) :: :ok
   def agent_call_kill!(scope, agent, call_id),
     do: unwrap(agent_call_kill(scope, agent, call_id))
 
   @doc "As `agent_trigger_set/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Triggers"
-  @spec agent_trigger_set!(Scope.t(), AgentID.t(), String.t(), map()) :: map()
+  @spec agent_trigger_set!(Scope.t(), AgentAddress.t(), String.t(), map()) :: map()
   def agent_trigger_set!(scope, agent, name, fields),
     do: unwrap(agent_trigger_set(scope, agent, name, fields))
 
   @doc "As `agent_trigger_remove/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Triggers"
-  @spec agent_trigger_remove!(Scope.t(), AgentID.t(), String.t()) :: map()
+  @spec agent_trigger_remove!(Scope.t(), AgentAddress.t(), String.t()) :: map()
   def agent_trigger_remove!(scope, agent, name),
     do: unwrap(agent_trigger_remove(scope, agent, name))
 

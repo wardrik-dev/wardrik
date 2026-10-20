@@ -27,7 +27,7 @@ defmodule WardrikSlack.Threads do
   Acts on a `message` event: asks the agent of its thread, or passes it
   over. `opts` are as `WardrikSlack.Dispatch` hands them on.
   """
-  @spec event(map(), keyword()) :: {:asked, Wardrik.AgentID.t()} | :ignored | {:error, term()}
+  @spec event(map(), keyword()) :: {:asked, Wardrik.Thread.t()} | :ignored | {:error, term()}
   def event(%{"type" => "message", "user" => user, "channel" => room, "ts" => ts} = event, opts)
       when is_binary(user) do
     if posted?(event, opts), do: ask(event, user, room, ts, opts), else: :ignored

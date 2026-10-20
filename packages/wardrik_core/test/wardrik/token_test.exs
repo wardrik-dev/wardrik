@@ -21,7 +21,7 @@ defmodule Wardrik.TokenTest do
     statement = Role.bind([:reader], acme())
 
     assert Statement.reaches?(statement, ~A"acme/triage")
-    assert Statement.reaches?(statement, ~A"acme/triage/t1")
+    assert Statement.reaches?(statement, Wardrik.Thread.parse!("acme/triage/t1"))
     refute Statement.reaches?(statement, ~A"acme/@jon/triage")
     refute Statement.reaches?(statement, ~A"globex/triage")
     refute Statement.reaches?(statement, ~A"acmecorp/triage")
@@ -31,7 +31,7 @@ defmodule Wardrik.TokenTest do
 
     one = Role.bind([:reader], [r("acme/@jon/agent/triage"), r("acme/@jon/agent/triage/*")])
     assert Statement.reaches?(one, ~A"acme/@jon/triage")
-    assert Statement.reaches?(one, ~A"acme/@jon/triage/t1")
+    assert Statement.reaches?(one, Wardrik.Thread.parse!("acme/@jon/triage/t1"))
     refute Statement.reaches?(one, ~A"acme/@jon/triage2")
   end
 

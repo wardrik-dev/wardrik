@@ -1,8 +1,6 @@
 defmodule WardrikSlack.ApproversTest do
   use ExUnit.Case, async: true
 
-  import Wardrik.AgentID, only: [sigil_A: 2]
-
   alias WardrikChannel.Outbound
   alias WardrikNotify.Notice
   alias WardrikSlack.Approvers
@@ -58,7 +56,7 @@ defmodule WardrikSlack.ApproversTest do
 
   defp parked do
     %Notice{
-      agent: ~A"acme/books/C1-1.1",
+      agent: Wardrik.Thread.parse!("acme/books/C1-1.1"),
       kind: :parked,
       at: ~U[2026-10-09 09:30:00Z],
       calls: [

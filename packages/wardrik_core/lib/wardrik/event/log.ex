@@ -7,7 +7,7 @@ defmodule Wardrik.Event.Log do
 
       {:ok, events} = Wardrik.Event.Log.read(store, ~A"acme/triage", starting_after: 40)
 
-  A log is an agent's, named by its ID, or `:audit`, what people changed,
+  A log is an agent's or a thread's, named by its `Wardrik.AgentAddress`, or `:audit`, what people changed,
   which `Wardrik.Audit` writes. Each is read and trimmed alike, and an
   agent's is followed.
 
@@ -63,7 +63,7 @@ defmodule Wardrik.Event.Log do
   it has.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Log.Entry
   alias Wardrik.Resource
@@ -82,13 +82,11 @@ defmodule Wardrik.Event.Log do
   # The topic of the patterns that name no org.
   @every_org "*"
 
-  @typedoc "A log: an agent's, by its ID, or `:audit`."
-  @type log() :: AgentID.t() | :audit
+  @typedoc "A log: an agent's or a thread's, by its address, or `:audit`."
+  @type log() :: AgentAddress.t() | :audit
 
   @typedoc "The CloudEvent types a reader takes, or every one."
   @type types() :: [String.t()] | :all
-
-  defguardp log?(log) when is_struct(log, AgentID) or log == :audit
 
   @doc false
   def child_spec([]), do: Group.child_spec(name: __MODULE__)
@@ -103,7 +101,7 @@ defmodule Wardrik.Event.Log do
   # after `:starting_after` have been dropped.
   @doc false
   @spec read(WardrikStore.t(), log(), keyword()) :: {:ok, [map()]} | {:gap, pos_integer()}
-  def read(store, log, opts \\ []) when log?(log) do
+  def read(store, log, opts \\ []) do
     next = Keyword.get(opts, :starting_after, 0) + 1
     oldest = oldest(store, log)
 
@@ -140,12 +138,12 @@ defmodule Wardrik.Event.Log do
   Writes `agent_id` down among the logs a reader lists. Its writer's to call
   as it opens the log.
   """
-  @spec opened(WardrikStore.t(), AgentID.t()) :: :ok | {:error, term()}
-  def opened(store, %AgentID{} = agent_id) do
+  @spec opened(WardrikStore.t(), AgentAddress.t()) :: :ok | {:error, term()}
+  def opened(store, agent_id) do
     with {:ok, _vsn} <- WardrikStore.put(store, @logs, name(agent_id), true), do: :ok
   end
 
-  @doc "Every log written to: `:audit`, then each agent's, by its resource name."
+  @doc "Every log written to: `:audit`, then each agent's and thread's, by its resource name."
   @spec logs(WardrikStore.t()) :: [log()]
   def logs(store) do
     agents = store |> WardrikStore.keys(@logs) |> Enum.sort() |> Enum.map(&agent!/1)
@@ -164,8 +162,8 @@ defmodule Wardrik.Event.Log do
   end
 
   defp agent!(key) do
-    {:ok, id} = key |> Resource.parse!() |> AgentID.from_resource()
-    id
+    {:ok, address} = key |> Resource.parse!() |> Resource.address()
+    address
   end
 
   @doc """
@@ -181,8 +179,8 @@ defmodule Wardrik.Event.Log do
   end
 
   @doc false
-  @spec subscribe(AgentID.t()) :: :ok
-  def subscribe(%AgentID{} = agent_id), do: subscribe([AgentID.resource(agent_id)], :all)
+  @spec subscribe(AgentAddress.t()) :: :ok
+  def subscribe(agent_id), do: subscribe([AgentAddress.resource(agent_id)], :all)
 
   @doc false
   @spec subscribe([Resource.t()], types()) :: :ok
@@ -200,8 +198,8 @@ defmodule Wardrik.Event.Log do
   defp both(_pattern, types, more), do: Enum.uniq(types ++ more)
 
   @doc false
-  @spec unsubscribe(AgentID.t() | [Resource.t()]) :: :ok
-  def unsubscribe(%AgentID{} = agent_id), do: unsubscribe([AgentID.resource(agent_id)])
+  @spec unsubscribe(AgentAddress.t() | [Resource.t()]) :: :ok
+  def unsubscribe(%_{} = agent_id), do: unsubscribe([AgentAddress.resource(agent_id)])
 
   def unsubscribe(resources) do
     for {topic, resources} <- Enum.group_by(resources, &topic/1) do
@@ -230,11 +228,11 @@ defmodule Wardrik.Event.Log do
 
   @doc false
   @spec publish(Entry.t()) :: :ok
-  def publish(%Entry{log: %AgentID{} = agent_id, event: %{"type" => type}} = entry) do
-    resource = AgentID.resource(agent_id)
+  def publish(%Entry{log: agent_id, event: %{"type" => type}} = entry) do
+    resource = AgentAddress.resource(agent_id)
 
     pids =
-      for topic <- [@every_org, agent_id.org],
+      for topic <- [@every_org, topic(resource)],
           {pid, held} <- Group.members(__MODULE__, topic),
           Enum.any?(held, fn {pattern, types} ->
             takes?(types, type) and Resource.covers?(pattern, resource)
@@ -362,7 +360,7 @@ defmodule Wardrik.Event.Log do
   """
   @spec trim(WardrikStore.t(), log(), through: non_neg_integer(), before: DateTime.t()) ::
           :ok | {:error, term()}
-  def trim(store, log, opts) when log?(log) do
+  def trim(store, log, opts) do
     opts = Keyword.validate!(opts, [:through, :before])
     %DateTime{} = cutoff = Keyword.fetch!(opts, :before)
     through = Keyword.fetch!(opts, :through)
@@ -418,7 +416,7 @@ defmodule Wardrik.Event.Log do
   been dropped. `consistent: true` reads it through consensus.
   """
   @spec oldest(WardrikStore.t(), log(), keyword()) :: pos_integer()
-  def oldest(store, log, opts \\ []) when log?(log),
+  def oldest(store, log, opts \\ []),
     do: (WardrikStore.get(store, @ns, dropped_key(log), opts) || 0) + 1
 
   defp lookup_dropped(store, log) do
@@ -436,7 +434,7 @@ defmodule Wardrik.Event.Log do
   finds a number past the head, and a bisection back finds the head.
   """
   @spec head(WardrikStore.t(), log(), non_neg_integer()) :: non_neg_integer()
-  def head(store, log, known) when log?(log) and is_integer(known) and known >= 0,
+  def head(store, log, known) when is_integer(known) and known >= 0,
     do: gallop(store, log, known, 1)
 
   defp gallop(store, log, known, step) do
@@ -466,7 +464,7 @@ defmodule Wardrik.Event.Log do
   defp dropped_key(log), do: name(log) <> "//dropped"
 
   defp name(:audit), do: "audit"
-  defp name(%AgentID{} = agent_id), do: to_string(AgentID.resource(agent_id))
+  defp name(agent_id), do: to_string(AgentAddress.resource(agent_id))
 
   @doc "The namespace events are written under in `WardrikStore`."
   @spec namespace() :: WardrikStore.ns()

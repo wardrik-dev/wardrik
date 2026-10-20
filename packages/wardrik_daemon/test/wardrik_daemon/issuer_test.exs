@@ -150,8 +150,8 @@ defmodule WardrikDaemon.IssuerTest do
     assert roles(token) == [{"*/agent/*", ["agent.events"]}]
 
     for agent <- ~w(acme/triage acme/@jon/assistant globex/front/thread-1) do
-      assert Token.authorize(token, "agent.events", AgentID.parse!(agent)) == :ok
-      assert {:error, _reason} = Token.authorize(token, "agent.read", AgentID.parse!(agent))
+      assert Token.authorize(token, "agent.events", AgentID.address!(agent)) == :ok
+      assert {:error, _reason} = Token.authorize(token, "agent.read", AgentID.address!(agent))
     end
   end
 

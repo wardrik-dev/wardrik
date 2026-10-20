@@ -26,15 +26,17 @@ defprotocol Wardrik.LLM.Dispatch do
 
       defimpl Wardrik.LLM.Dispatch, for: MyApp.Gateway do
         def admit(gateway, request, run: run) do
-          org = Wardrik.Run.agent_id(run).org
+          org = Wardrik.AgentAddress.agent(Wardrik.Run.agent_id(run)).org
 
           with {:ok, key, model} <- MyApp.Keys.for(gateway.keys, org, request.model_spec) do
             {:ok, request |> Request.put_model(model) |> Request.put_opts(api_key: key)}
           end
         end
 
-        def settle(_gateway, request, outcome: {:ok, answer}, run: run),
-          do: MyApp.Billing.record(Wardrik.Run.agent_id(run).org, request.model_spec, answer.usage)
+        def settle(_gateway, request, outcome: {:ok, answer}, run: run) do
+          org = Wardrik.AgentAddress.agent(Wardrik.Run.agent_id(run)).org
+          MyApp.Billing.record(org, request.model_spec, answer.usage)
+        end
 
         def settle(_gateway, _request, _opts), do: :ok
       end

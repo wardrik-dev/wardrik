@@ -120,7 +120,7 @@ defmodule WardrikTUI.SSH do
   `org`, `{:error, message}`.
   """
   @spec choose([Fleet.Member.t()], String.t() | charlist(), String.t() | nil) ::
-          {:attach | :start, AgentID.t()} | {:error, String.t()}
+          {:attach, Wardrik.AgentAddress.t()} | {:start, AgentID.t()} | {:error, String.t()}
   def choose(members, username, org) do
     case Enum.sort_by(members, &to_string(&1.id)) do
       [first | _rest] -> {:attach, first.id}

@@ -27,7 +27,7 @@ defmodule Wardrik.Event.Source do
   Options are passed to `Wardrik.Trace.root/1`.
   """
   @spec root(Wardrik.Event.Bus.agent_id(), keyword()) :: t()
-  def root(%Wardrik.AgentID{} = agent_id, opts \\ []) do
+  def root(agent_id, opts \\ []) do
     %__MODULE__{agent_id: agent_id, trace: Trace.root(opts)}
   end
 

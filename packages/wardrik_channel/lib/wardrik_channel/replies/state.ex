@@ -10,7 +10,7 @@ defmodule WardrikChannel.Replies.State do
   supervisor its threads' followers run under; none of them is kept.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.Thread
 
   @enforce_keys [:channel, :workspace, :room]
   defstruct [
@@ -27,7 +27,7 @@ defmodule WardrikChannel.Replies.State do
 
   @typedoc "A thread followed: its agent, the cursor past what is posted, and its runs under way."
   @type thread() :: %{
-          agent: AgentID.t(),
+          agent: Thread.t(),
           cursor: String.t(),
           runs: %{String.t() => [String.t()]}
         }
@@ -101,8 +101,8 @@ defmodule WardrikChannel.Replies.State do
   Follows `agent` in `thread`, posting what its log holds after `cursor`,
   unless the thread is followed already.
   """
-  @spec follow(t(), String.t(), AgentID.t(), String.t()) :: t()
-  def follow(%__MODULE__{} = state, thread, %AgentID{} = agent, cursor) do
+  @spec follow(t(), String.t(), Thread.t(), String.t()) :: t()
+  def follow(%__MODULE__{} = state, thread, %Thread{} = agent, cursor) do
     followed = %{agent: agent, cursor: cursor, runs: %{}}
     %{state | threads: Map.put_new(state.threads, thread, followed)}
   end

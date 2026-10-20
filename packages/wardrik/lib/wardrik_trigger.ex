@@ -509,9 +509,9 @@ defmodule WardrikTrigger do
     end)
   end
 
-  @doc "The triggers of `agent`, by name."
-  @spec for_agent(AgentID.t()) :: [Status.t()]
-  def for_agent(%AgentID{} = agent) do
+  @doc "The triggers of `agent`, by name; a `Wardrik.Thread` has none."
+  @spec for_agent(Wardrik.AgentAddress.t()) :: [Status.t()]
+  def for_agent(agent) do
     for {_pid, %{key: key}} <- Group.members(@name, group(agent)),
         {pid, meta} <- [DurableServer.Supervisor.lookup(@name, key)] do
       Status.new(key, pid, meta)
@@ -524,7 +524,7 @@ defmodule WardrikTrigger do
   def join(%AgentID{} = agent, trigger),
     do: Group.join(@name, group(agent), %{key: Kind.key(trigger, agent)})
 
-  defp group(agent), do: to_string(AgentID.resource(agent))
+  defp group(agent), do: to_string(Wardrik.AgentAddress.resource(agent))
 
   @doc """
   Every trigger of the agents the `Wardrik.Resource` pattern covers, across

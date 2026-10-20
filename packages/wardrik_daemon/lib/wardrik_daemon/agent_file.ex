@@ -2,7 +2,7 @@ defmodule WardrikDaemon.AgentFile do
   @moduledoc """
   Reads an agent file, one in `agents/` under the config directory, into the
   `Wardrik.Definition` it writes, under the context `context/1` builds, from
-  which `Wardrik.Definition.spec/3` builds the `Wardrik.Agent.Spec` it
+  which `Wardrik.Definition.spec/2` builds the `Wardrik.Agent.Spec` it
   writes on the daemon's host, naming the tools and sources
   `WardrikDaemon.attach/2` attaches, the MCP servers `config.yaml`
   configures among them. The [Agent files](agent-files.md) guide is every
@@ -72,10 +72,7 @@ defmodule WardrikDaemon.AgentFile do
           {:ok, Spec.t()} | {:error, String.t()}
   def read(context, path, opts) do
     with {:ok, definition} <- parse(context, path) do
-      case Definition.spec(definition, definition.id,
-             context: context,
-             host: Keyword.fetch!(opts, :host)
-           ) do
+      case Definition.spec(definition, context: context, host: Keyword.fetch!(opts, :host)) do
         {:ok, spec} -> {:ok, spec}
         {:error, message} -> {:error, "#{path}: #{message}"}
       end

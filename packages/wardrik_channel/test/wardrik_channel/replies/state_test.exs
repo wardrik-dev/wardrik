@@ -1,10 +1,9 @@
 defmodule WardrikChannel.Replies.StateTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.AgentID
   alias WardrikChannel.Replies.State
 
-  @agent AgentID.parse!("acme/books/C1-1.1")
+  @agent Wardrik.Thread.parse!("acme/books/C1-1.1")
 
   defp followed(cursor \\ ""),
     do: State.follow(State.new("chat", "T1", "C1"), "1.1", @agent, cursor)

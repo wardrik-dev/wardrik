@@ -15,12 +15,12 @@ defprotocol Wardrik.Specs do
   """
 
   @doc """
-  The spec the agent `id` runs on now, from the definition kept of it, or of
-  the agent it is a conversation of, on the `:host` asking, whose tools,
-  sources and runtimes it names; or `:none` where none is kept. An agent
-  takes it as it starts, wakes, or restarts on another node, so a definition
-  changed while it slept is the one it wakes with, and `Wardrik.Fleet`
-  starts from it an agent the store does not hold.
+  The spec the agent `id` runs on now, from the definition kept of it, on
+  the `:host` asking, whose tools, sources and runtimes it names; or `:none`
+  where none is kept. An agent, and each `Wardrik.Thread` of it, takes it as
+  it starts, wakes, or restarts on another node, so a definition changed
+  while it slept is the one it wakes with, and `Wardrik.Fleet` starts from
+  it an agent or thread the store does not hold.
   """
   @spec current(t(), Wardrik.AgentID.t(), host: Wardrik.Host.t()) ::
           {:ok, Wardrik.Agent.Spec.t()} | :none

@@ -20,6 +20,7 @@ defmodule WardrikChannel.Workspace do
   alias Wardrik.Fleet
   alias Wardrik.Host
   alias Wardrik.Principal
+  alias Wardrik.Thread
   alias WardrikChannel.Context
   alias WardrikChannel.Installation
   alias WardrikChannel.Installations
@@ -88,7 +89,7 @@ defmodule WardrikChannel.Workspace do
            }),
          read = Definitions.context(definitions, id),
          {:ok, definition} <- Definition.read(fields, id: id, source: :defaults, context: read),
-         {:ok, spec} <- Definition.spec(definition, id, context: read, host: context.host),
+         {:ok, spec} <- Definition.spec(definition, context: read, host: context.host),
          :ok <- Definitions.put(definitions, definition),
          {:ok, _pid} <- Fleet.put(spec) do
       :ok = Wardrik.Audit.record(Host.audit(context.host), {:agent_defined, id}, by: opts[:by])
@@ -129,13 +130,13 @@ defmodule WardrikChannel.Workspace do
     do: Definitions.context(Host.definitions(context.host), id).defaults
 
   @doc """
-  Starts `agent`, which answers in a thread of the workspace's, where it is
-  not running: it takes the spec its definition, or that of the agent it is
-  a conversation of, writes as it starts. One neither running nor defined
-  is not started.
+  Starts `agent`, the `Wardrik.Thread` that answers in a thread of the
+  workspace's, where it is not running: it takes the spec its agent's
+  definition writes as it starts. One neither running nor defined is not
+  started.
   """
-  @spec start(t(), AgentID.t()) :: {:ok, pid()} | {:error, String.t()}
-  def start(%__MODULE__{context: context, installation: installation}, %AgentID{} = agent) do
+  @spec start(t(), Thread.t()) :: {:ok, pid()} | {:error, String.t()}
+  def start(%__MODULE__{context: context, installation: installation}, %Thread{} = agent) do
     with %Fleet.Member{} <- Fleet.lookup(agent, host: context.host),
          {:ok, pid} <- Fleet.spawn(agent) do
       {:ok, pid}

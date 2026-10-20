@@ -533,6 +533,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["__agent_file", "#{org}/helper"]) ==
                {Path.join(dir, "agents/helper.md") <> "\n", 0}
 
+      assert command(["__agent_file", "#{org}/helper/C1-17.1"]) ==
+               {Path.join(dir, "agents/helper.md") <> "\n", 0}
+
       assert command(["__agent_file", loose]) ==
                {"No file declares #{loose}: it was defined over the HTTP API, or from " <>
                   "config.yaml's defaults, so there is none to edit; wardrik agent spawn loose " <>

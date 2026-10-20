@@ -40,6 +40,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   where the file is with `file/1`.
   """
 
+  alias Wardrik.AgentAddress
   alias Wardrik.AgentID
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
@@ -306,17 +307,19 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   # which answer only that they were made, so the line can say what each
   # found.
   defp member(key, scope) do
-    {:ok, members} = Wardrik.agents_list(scope, AgentID.resource(key))
+    {:ok, members} = Wardrik.agents_list(scope, AgentAddress.resource(key))
     Enum.find(members, &(&1.id == key))
   end
 
   defp stopped(key, true),
-    do: "#{key} is asleep already. It wakes when something asks it, or with #{spawn_line(key)}."
+    do:
+      "#{key} is asleep already. It wakes when something asks it, or with " <>
+        "#{spawn_line(AgentAddress.agent(key))}."
 
   defp stopped(key, false),
     do:
       "Stopped #{key}, and kept its conversation. It wakes when something asks it, or with " <>
-        "#{spawn_line(key)}."
+        "#{spawn_line(AgentAddress.agent(key))}."
 
   defp spawn_line(%AgentID{org: org, user: user, name: name}) do
     Enum.join(
@@ -352,8 +355,8 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp forgetting(%AgentID{} = key, scope), do: Wardrik.agent_forget_preview(scope, key)
-  defp forgetting(pattern, scope), do: Wardrik.agents_forget_preview(scope, pattern)
+  defp forgetting(%Resource{} = pattern, scope), do: Wardrik.agents_forget_preview(scope, pattern)
+  defp forgetting(key, scope), do: Wardrik.agent_forget_preview(scope, key)
 
   defp rm_confirmed(target, forgetting, terminal, scope) do
     Terminal.puts(terminal, removing(forgetting))
@@ -380,11 +383,11 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   # An agent is removed on its own, answered with what became of it as one
   # a pattern covers is.
-  defp forget(%AgentID{} = key, scope) do
+  defp forget(%Resource{} = pattern, scope), do: Wardrik.agents_forget(scope, pattern)
+
+  defp forget(key, scope) do
     with :ok <- Wardrik.agent_forget(scope, key), do: {:ok, %{key => :forgotten}}
   end
-
-  defp forget(pattern, scope), do: Wardrik.agents_forget(scope, pattern)
 
   defp removed(target, scope) do
     with {:ok, outcomes} <- forget(target, scope) do
@@ -513,13 +516,16 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   # -- edit ---------------------------------------------------------------------
 
   @doc """
-  Where the file that declares the agent under `key` is, for `bin/wardrik` to
-  open in an editor, or why there is none, asking the definitions of the
-  `:host` given for one no file declares.
+  Where the file that declares the agent under `key` is, the agent's where
+  `key` is one of its threads, for `bin/wardrik` to open in an editor, or
+  why there is none, asking the definitions of the `:host` given for one no
+  file declares.
   """
-  @spec file(Wardrik.AgentID.t(), host: Wardrik.Host.t()) ::
+  @spec file(Wardrik.AgentAddress.t(), host: Wardrik.Host.t()) ::
           {:ok, Path.t()} | {:error, String.t()}
   def file(key, opts) do
+    key = AgentAddress.agent(key)
+
     case {declared()[key], Fleet.lookup(key, opts)} do
       {{path, _spec}, _member} ->
         {:ok, path}

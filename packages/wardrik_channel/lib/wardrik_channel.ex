@@ -123,9 +123,9 @@ defmodule WardrikChannel do
 
   An adapter hands each message posted in a room to `received/2`, with its
   workspace. Each
-  thread in a room is a conversation of its own with the room's agent: an
-  agent under the room's agent's ID, answering for the room and the thread,
-  so every thread runs on one definition and no two rooms share one. A
+  thread in a room is a conversation of its own with the room's agent: a
+  `Wardrik.Thread` of it, answering for the room and the thread, so every
+  thread runs on one definition and no two rooms share one. A
   message posted in the room itself starts a thread where it mentions the
   bot, or where the room's agent answers everything; a reply in a thread
   reaches its agent where that thread has one already, or mentions the bot,
@@ -136,9 +136,10 @@ defmodule WardrikChannel do
   a room through a channel's adapter.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Error
   alias Wardrik.Resource
+  alias Wardrik.Thread
   alias WardrikChannel.Binding
   alias WardrikChannel.Channel
   alias WardrikChannel.Context
@@ -469,7 +470,7 @@ defmodule WardrikChannel do
   neither started nor asked.
   """
   @spec received(Workspace.t(), Inbound.t()) ::
-          {:asked, AgentID.t()} | :ignored | {:error, String.t()}
+          {:asked, Thread.t()} | :ignored | {:error, String.t()}
   def received(%Workspace{} = workspace, %Inbound{} = inbound) do
     thread = inbound.thread || inbound.id
     room = Room.new(workspace, inbound.room)
@@ -508,14 +509,14 @@ defmodule WardrikChannel do
         {:ok, scope}
 
       {:error, _unreached} ->
-        {:error, "#{AgentID.put_external_id(agent, nil)} is not one you may reach from here."}
+        {:error, "#{AgentAddress.agent(agent)} is not one you may reach from here."}
     end
   end
 
-  @doc "The agent that answers in `thread` of the room `binding` binds."
-  @spec conversation(Binding.t(), String.t()) :: AgentID.t()
+  @doc "The thread of the agent the room `binding` binds that answers in `thread`."
+  @spec conversation(Binding.t(), String.t()) :: Thread.t()
   def conversation(%Binding{room: room, agent: agent}, thread),
-    do: AgentID.put_external_id(agent, room <> "-" <> thread)
+    do: Thread.new!(agent, room <> "-" <> thread)
 
   defp answers?(_binding, %Inbound{mentioned?: true}, _agent), do: true
   defp answers?(%Binding{answers: :everything}, _inbound, _agent), do: true

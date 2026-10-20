@@ -12,11 +12,11 @@ defmodule Wardrik.Event.Cursor do
   150 to 200 agents.
   """
 
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Resource
 
-  @typedoc "The last sequence taken of each agent's log."
-  @type positions() :: %{AgentID.t() => non_neg_integer()}
+  @typedoc "The last sequence taken of each agent's and thread's log."
+  @type positions() :: %{Wardrik.AgentAddress.t() => non_neg_integer()}
 
   @doc "The cursor at `positions`."
   @spec encode(positions()) :: String.t()
@@ -24,7 +24,7 @@ defmodule Wardrik.Event.Cursor do
 
   def encode(positions) do
     positions
-    |> Map.new(fn {id, sequence} -> {to_string(AgentID.resource(id)), sequence} end)
+    |> Map.new(fn {id, sequence} -> {to_string(AgentAddress.resource(id)), sequence} end)
     |> JSON.encode!()
     |> Base.url_encode64(padding: false)
   end
@@ -41,7 +41,7 @@ defmodule Wardrik.Event.Cursor do
              {text, at} <- named,
              position?(at),
              {:ok, resource} <- [Resource.parse(text)],
-             {:ok, id} <- [AgentID.from_resource(resource)],
+             {:ok, id} <- [Resource.address(resource)],
              into: %{},
              do: {id, at}
            ),

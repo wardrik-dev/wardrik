@@ -134,21 +134,6 @@ defmodule Wardrik.DefinitionsTest do
     assert Wardrik.Specs.current(without, id, host: host()) == :none
   end
 
-  test "a conversation runs on the definition of its agent",
-       %{org: org, definitions: definitions} do
-    {:ok, _spec} =
-      put(definitions, AgentID.parse!("#{org}/defined"), %{"tools" => ["web_search"]})
-
-    thread = AgentID.parse!("#{org}/defined/1696.1234")
-
-    assert {:ok, spec} = Wardrik.Specs.current(definitions, thread, host: host())
-    assert spec.id == thread
-    assert spec.config.tools == [Search]
-
-    assert Wardrik.Specs.current(definitions, AgentID.parse!("#{org}/nobody"), host: host()) ==
-             :none
-  end
-
   test "reads each definition under the context its agent's owner is given",
        %{org: org} = test do
     other = "#{org}-other"

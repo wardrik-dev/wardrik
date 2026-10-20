@@ -22,9 +22,10 @@ defmodule WardrikChannel.Replies.Server do
   alias Wardrik.Agent
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Activity.Presenter
-  alias Wardrik.AgentID
+  alias Wardrik.AgentAddress
   alias Wardrik.Event.Log.Entry
   alias Wardrik.Principal
+  alias Wardrik.Thread
   alias WardrikChannel.Channel
   alias WardrikChannel.Outbound
   alias WardrikChannel.Replies.Follower
@@ -72,12 +73,12 @@ defmodule WardrikChannel.Replies.Server do
 
   # A new thread posts what its agent's log holds from where it stands now.
   @impl DurableServer
-  def handle_call({:follow, thread, %AgentID{} = agent}, _from, state) do
+  def handle_call({:follow, thread, %Thread{} = agent}, _from, state) do
     if State.followed?(state, thread) do
       {:reply, :ok, state}
     else
       scope = Wardrik.as(host(state), Principal.deployment())
-      head = Wardrik.events_head!(scope, resources: [AgentID.resource(agent)])
+      head = Wardrik.events_head!(scope, resources: [AgentAddress.resource(agent)])
       state = State.follow(state, thread, agent, head)
       follow(state, thread)
       {:reply, :ok, state, sync: true}
@@ -136,7 +137,7 @@ defmodule WardrikChannel.Replies.Server do
       {Follower,
        host: host(state),
        principal: Principal.deployment(),
-       resources: [AgentID.resource(state.threads[thread].agent)],
+       resources: [AgentAddress.resource(state.threads[thread].agent)],
        types: @types,
        server: self(),
        thread: thread}

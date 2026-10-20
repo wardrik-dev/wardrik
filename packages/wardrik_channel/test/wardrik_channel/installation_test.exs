@@ -14,7 +14,7 @@ defmodule WardrikChannel.InstallationTest do
 
     assert Installation.shown(org, ~A"acme/triage") == "triage"
     assert Installation.shown(org, ~A"acme/@jon/triage") == "@jon/triage"
-    assert Installation.shown(org, ~A"acme/triage/C1-1.2") == "triage/C1-1.2"
+    assert Installation.shown(org, Wardrik.Thread.parse!("acme/triage/C1-1.2")) == "triage/C1-1.2"
 
     assert Installation.shown(
              installed(Resource.parse!("acme/@jon")),
@@ -34,7 +34,7 @@ defmodule WardrikChannel.InstallationTest do
     acme = installed(Resource.parse!("acme"))
 
     assert Installation.covers?(acme, ~A"acme/triage")
-    assert Installation.covers?(acme, ~A"acme/@jon/triage/C1-1.2")
+    assert Installation.covers?(acme, Wardrik.Thread.parse!("acme/@jon/triage/C1-1.2"))
     refute Installation.covers?(acme, ~A"globex/triage")
     refute Installation.covers?(acme, ~A"acme-labs/triage")
 

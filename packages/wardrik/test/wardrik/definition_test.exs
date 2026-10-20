@@ -78,15 +78,12 @@ defmodule Wardrik.DefinitionTest do
   # host/1 unless `:host` names another.
   defp spec(fields, context, id, opts \\ []) do
     with {:ok, definition} <- read(fields, context, id),
-         do: built(definition, id, context, opts)
+         do: built(definition, context, opts)
   end
 
-  defp built(definition, id, context, opts \\ []),
+  defp built(definition, context, opts \\ []),
     do:
-      Definition.spec(definition, id,
-        context: context,
-        host: Keyword.get_lazy(opts, :host, &host/0)
-      )
+      Definition.spec(definition, context: context, host: Keyword.get_lazy(opts, :host, &host/0))
 
   test "takes the keys its schema lists, in order" do
     schema =
@@ -121,7 +118,7 @@ defmodule Wardrik.DefinitionTest do
     assert %WardrikDefinition.Route{targets: ["pager"]} = definition.notify
     assert definition.fields == fields
 
-    assert {:ok, spec} = built(definition, id, context)
+    assert {:ok, spec} = built(definition, context)
     assert spec.display_name == "triage"
     assert spec.config.system == "Watch the queue."
     assert spec.config.tools == [Clock, {Source, Resource.parse!("deployment/server/books")}]
@@ -166,7 +163,7 @@ defmodule Wardrik.DefinitionTest do
     assert definition.idle_timeout == :timer.seconds(60)
 
     later = %{context | defaults: %{"idle_timeout" => 5}}
-    assert {:ok, %{idle_timeout: 60_000}} = built(definition, id, later)
+    assert {:ok, %{idle_timeout: 60_000}} = built(definition, later)
     assert {:ok, %{idle_timeout: 5_000}} = read(definition.fields, later, id)
   end
 
@@ -176,13 +173,13 @@ defmodule Wardrik.DefinitionTest do
     assert named.policy == "careful"
 
     assert {:error, "policy names careful, which is not a policy in the org's policies"} =
-             built(named, id, %{context | policies: %{}})
+             built(named, %{context | policies: %{}})
 
     assert {:ok, inline} = read(%{"policy" => %{"deny" => ["clock"]}}, context, id)
     assert %WardrikPolicy{} = inline.policy
 
     assert {:ok, %{hooks: [%Wardrik.Hook{}]}} =
-             built(inline, id, %{context | policies: %{}})
+             built(inline, %{context | policies: %{}})
   end
 
   test "names a server or a source only where the host has them", %{context: context, id: id} do
@@ -243,9 +240,6 @@ defmodule Wardrik.DefinitionTest do
     assert {:error,
             "policy cannot allow_after in a definition; name a policy in the org's policies that does"} =
              read(%{"policy" => %{"allow_after" => %{}}}, context, id)
-
-    assert {:error, "acme/triage/t1 is a conversation of acme/triage; define acme/triage"} =
-             read(%{}, context, AgentID.parse!("acme/triage/t1"))
   end
 
   test "the policies an owner's agents are held to come ahead of the agent's own",
