@@ -1083,6 +1083,52 @@ defmodule WardrikHTTP.RouterTest do
                Req.get(reader, url: "/v1/events", params: [after: next])
     end
 
+    test "a stream over many agents, opened with no cursor, resumes in each after its id",
+         %{api: api} do
+      user = "resume#{System.unique_integer([:positive])}"
+      reader = client(api, "test/@#{user}/agent/*", [:reader])
+      query = "/v1/events?" <> URI.encode_query(resources: "test/@#{user}/agent/*")
+
+      [{one, first}, {two, second}] =
+        for name <- ~w(one two) do
+          {key, agent} =
+            Fleet.start_agent(
+              [config: Script.new({AgentRunners, :echo, [self(), "ok"]})],
+              AgentID.new!(name, org: "test", user: user)
+            )
+
+          :ok = Event.Bus.subscribe(key, level: :lifecycle)
+          Agent.ask(agent, "hi")
+          settled(agent)
+          {key, agent}
+        end
+
+      assert {:ok, %{status: 200, body: %{"cursor" => head}}} =
+               Req.get(reader,
+                 url: "/v1/events/head",
+                 params: [resources: "test/@#{user}/agent/*"]
+               )
+
+      assert {:ok, %{^one => 4, ^two => 4}} = Cursor.decode(head)
+
+      stream = open(reader, query, [])
+      Agent.ask(first, "again")
+      assert {[{id, "wardrik.message.created"}], stream} = kept(stream, 1)
+      Req.cancel_async_response(stream.response)
+      settled(first)
+
+      assert {:ok, %{^one => 5, ^two => 4}} = Cursor.decode(id)
+
+      stream = open(reader, query, [{"last-event-id", id}])
+      Agent.ask(second, "again")
+
+      assert {[{_run, "wardrik.run.started"}, {_done, "wardrik.run.completed"}, {resumed, type}],
+              stream} = kept(stream, 3)
+
+      assert {type, at(resumed, two)} == {"wardrik.message.created", 5}
+      Req.cancel_async_response(stream.response)
+    end
+
     test "refuse a pattern that is none, one past the token, and a token that reads none",
          %{api: api} do
       assert {:ok, %{status: 400}} =
@@ -1091,8 +1137,14 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 404}} =
                Req.get(api, url: "/v1/events", params: [resources: "other/*"])
 
+      assert {:ok, %{status: 404}} =
+               Req.get(api, url: "/v1/events/head", params: [resources: "other/*"])
+
       assert {:ok, %{status: 403}} =
                Req.get(client(api, "test/agent/*", [:messenger]), url: "/v1/events")
+
+      assert {:ok, %{status: 403}} =
+               Req.get(client(api, "test/agent/*", [:messenger]), url: "/v1/events/head")
     end
   end
 

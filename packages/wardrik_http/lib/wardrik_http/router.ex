@@ -146,16 +146,16 @@ defmodule WardrikHTTP.Router do
   # The events of the agents each ?resources= covers, of each type ?types=
   # names: every agent's the caller's token reads, of every type, by default.
   get "/v1/events" do
-    named = &for({^&1, value} <- URI.query_decoder(conn.query_string), do: value)
+    filtered(conn, &events(conn, &1))
+  end
 
-    case patterns(named.("resources")) do
-      {:ok, resources} ->
-        filters = [resources: resources, types: named.("types")]
-        events(conn, Enum.reject(filters, &match?({_name, []}, &1)))
-
-      {:error, error} ->
-        error(conn, error)
-    end
+  # Where the log of each agent ?resources= covers stands, as a cursor: every
+  # agent's the caller's token reads by default.
+  get "/v1/events/head" do
+    filtered(conn, fn filters ->
+      head = Wardrik.events_head(scope(conn), Keyword.take(filters, [:resources]))
+      reply(conn, 200, head, &%{"cursor" => &1})
+    end)
   end
 
   # The connections, and the MCP servers, of the owner ?owner= names: an
@@ -670,14 +670,29 @@ defmodule WardrikHTTP.Router do
 
   # -- events ----------------------------------------------------------------
 
+  # The patterns each ?resources= names, and the types each ?types= does,
+  # handed to `fun` as the filters `Wardrik.events/2` takes.
+  defp filtered(conn, fun) do
+    named = &for({^&1, value} <- URI.query_decoder(conn.query_string), do: value)
+
+    case patterns(named.("resources")) do
+      {:ok, resources} ->
+        filters = [resources: resources, types: named.("types")]
+        fun.(Enum.reject(filters, &match?({_name, []}, &1)))
+
+      {:error, error} ->
+        error(conn, error)
+    end
+  end
+
   # A page is read after ?after=, from the start by default; a stream after
   # Last-Event-ID or ?after=, from what is written next by default, and holds
   # its caller's credential while it runs, so revoking the credential ends it.
   defp events(conn, filters) do
     follow = stream?(conn)
-    cursor = cursor(conn, if(follow, do: :head, else: ""))
 
     with {:ok, limit} <- limit(conn.query_params),
+         {:ok, cursor} <- cursor(conn, filters, follow),
          {:ok, events} <- Wardrik.events(scope(conn), [after: cursor, follow: follow] ++ filters) do
       if follow, do: stream(conn, events, cursor), else: page(conn, events, cursor, limit)
     else
@@ -686,10 +701,13 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  defp cursor(conn, default) do
-    case get_req_header(conn, "last-event-id") do
-      [cursor | _] -> cursor
-      [] -> Map.get(conn.query_params, "after", default)
+  # A stream with no cursor starts at the head of every log it reads, so the
+  # cursor in each event's id resumes in all of them.
+  defp cursor(conn, filters, follow) do
+    case get_req_header(conn, "last-event-id") ++ List.wrap(conn.query_params["after"]) do
+      [cursor | _] -> {:ok, cursor}
+      [] when follow -> Wardrik.events_head(scope(conn), Keyword.take(filters, [:resources]))
+      [] -> {:ok, ""}
     end
   end
 

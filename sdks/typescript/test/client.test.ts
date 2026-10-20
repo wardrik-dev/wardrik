@@ -258,14 +258,101 @@ describe("events", () => {
     await server.close();
   });
 
-  test("follow every agent the token reads, from what is written next", async () => {
-    server.on("GET", "/v1/events", stream([event("run.completed", {}, { sequence: 3 })], { end: false }));
+  test("follow every agent the patterns cover from the head of each, and resume there", async () => {
+    server.on("GET", "/v1/events/head", (_request, response) => json(response, 200, { cursor: "h0" }));
+    server.on("GET", "/v1/events", stream([event("run.completed", {}, { sequence: 3 })]));
+    server.on("GET", "/v1/events", stream([event("run.started", {}, { sequence: 4 })], { end: false }));
 
-    const events = wardrik.events({ follow: true });
+    const events = wardrik.events({ resources: ["acme/agent/*"], follow: true });
 
-    assert.deepEqual((await collect(events, 1)).map((event) => event.type), ["wardrik.run.completed"]);
-    assert.equal(server.received[0]!.headers["last-event-id"], undefined);
-    assert.equal(events.cursor, "000000000003");
+    assert.deepEqual(
+      (await collect(events, 2)).map((event) => event.type),
+      ["wardrik.run.completed", "wardrik.run.started"],
+    );
+
+    assert.deepEqual(
+      server.received.map((request) => [request.path, request.headers["last-event-id"]]),
+      [
+        ["/v1/events/head?resources=acme%2Fagent%2F*", undefined],
+        ["/v1/events?resources=acme%2Fagent%2F*", "h0"],
+        ["/v1/events?resources=acme%2Fagent%2F*", "000000000003"],
+      ],
+    );
+
+    assert.equal(events.cursor, "000000000004");
+    await server.close();
+  });
+});
+
+describe("listen", () => {
+  test("hands each event to its type's handler with the cursor past it, one after another", async () => {
+    server.on("GET", "/v1/events/head", (_request, response) => json(response, 200, { cursor: "h0" }));
+    server.on(
+      "GET",
+      "/v1/events",
+      stream(
+        [
+          event("run.completed", { run: { id: "r1" }, messages: [] }, { sequence: 3 }),
+          event("run.failed", { run: { id: "r2" }, error: { type: "x", message: "No." } }, { sequence: 4 }),
+        ],
+        { end: false },
+      ),
+    );
+
+    const stop = new AbortController();
+    const handled: string[] = [];
+    let busy = false;
+
+    const slow = async (name: string, cursor: string) => {
+      assert.equal(busy, false);
+      busy = true;
+      await new Promise((resolve) => setImmediate(resolve));
+      handled.push(`${name} ${cursor}`);
+      busy = false;
+    };
+
+    await wardrik.listen(
+      {
+        "wardrik.run.completed": (event, cursor) => slow(event.data.run.id, cursor),
+        "wardrik.run.failed": async (event, cursor) => {
+          await slow(event.data.error.message, cursor);
+          stop.abort();
+        },
+      },
+      { resources: ["acme/agent/*"], signal: stop.signal },
+    );
+
+    assert.deepEqual(handled, ["r1 000000000003", "No. 000000000004"]);
+
+    assert.deepEqual(
+      server.received.map((request) => [request.path, request.headers["last-event-id"]]),
+      [
+        ["/v1/events/head?resources=acme%2Fagent%2F*", undefined],
+        [
+          "/v1/events?resources=acme%2Fagent%2F*&types=wardrik.run.completed&types=wardrik.run.failed",
+          "h0",
+        ],
+      ],
+    );
+
+    await server.close();
+  });
+
+  test("carries on after the cursor given, and rejects with what a handler throws", async () => {
+    const completed = event("run.completed", { run: { id: "r1" }, messages: [] }, { sequence: 7 });
+    server.on("GET", "/v1/events", stream([completed], { end: false }));
+
+    const listening = wardrik.listen(
+      {
+        "wardrik.run.completed": () => {
+          throw new Error("the database is down");
+        },
+      },
+      { after: "c6" },
+    );
+
+    await assert.rejects(listening, /the database is down/);
+    assert.equal(server.received[0]!.headers["last-event-id"], "c6");
     await server.close();
   });
 });

@@ -1,7 +1,8 @@
 defmodule MyApp.Issuer do
   @moduledoc """
   The token each signed-in user acts with: reader and messenger on their
-  org's agents, and owner of their own.
+  org's agents, and owner of their own; and the app's own, as the
+  deployment, reading every agent's events.
   """
 
   alias Wardrik.Resource
@@ -23,11 +24,22 @@ defmodule MyApp.Issuer do
       Role.bind([:owner], [Resource.parse!("#{org}/@#{id}/*")])
     ]
   end
+
+  @doc "What the app itself reads, as the deployment: every agent's events, and where it stands."
+  def deployment do
+    [
+      %Wardrik.Statement{
+        actions: ["agent.events", "agent.read"],
+        resources: [Resource.parse!("*/agent/*")]
+      }
+    ]
+  end
 end
 
 defimpl Wardrik.Issuer, for: MyApp.Issuer do
   def issue(_issuer, principal, _opts) do
     case String.split(Wardrik.Principal.id(principal), "/") do
+      ["deployment"] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.deployment()}
       [org, "@" <> id] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.scope(org, id)}
       _other -> %Wardrik.Token{principal: principal}
     end

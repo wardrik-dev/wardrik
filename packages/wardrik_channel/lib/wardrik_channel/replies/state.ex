@@ -1,12 +1,13 @@
 defmodule WardrikChannel.Replies.State do
   @moduledoc """
   What one room's `WardrikChannel.Replies` keeps: each thread it answers in,
-  the agent answering there, the last event of that agent's log it has
-  posted, and the messages each run under way answers. `retries` counts the
-  attempts at each thread's next post, `posting` is the
-  `WardrikChannel.Channel` it posts through, `showing` how it shows what
-  each thread's agent is doing, as `WardrikChannel.Replies` takes it, and
-  `statuses` where each thread's status stands; none of them is kept.
+  the agent answering there, the cursor past what of that agent's log it
+  has posted, and the messages each run under way answers. `retries` holds
+  each thread's post being tried again, with its attempts, `posting` is
+  the `WardrikChannel.Channel` it posts through, `showing` how it shows
+  what each thread's agent is doing, as `WardrikChannel.Replies` takes it,
+  `statuses` where each thread's status stands, and `followers` the
+  supervisor its threads' followers run under; none of them is kept.
   """
 
   alias Wardrik.AgentID
@@ -18,17 +19,24 @@ defmodule WardrikChannel.Replies.State do
     :room,
     :posting,
     :showing,
+    :followers,
     threads: %{},
     retries: %{},
     statuses: %{}
   ]
 
-  @typedoc "A thread followed: its agent, how far its log is posted, and its runs under way."
+  @typedoc "A thread followed: its agent, the cursor past what is posted, and its runs under way."
   @type thread() :: %{
           agent: AgentID.t(),
-          through: non_neg_integer(),
+          cursor: String.t(),
           runs: %{String.t() => [String.t()]}
         }
+
+  @typedoc """
+  A post being tried again: the attempts made, the event and the cursor
+  past it, and the follower waiting on it.
+  """
+  @type retry() :: {pos_integer(), {map(), String.t(), GenServer.from()}}
 
   @typedoc """
   How it shows what each thread's agent is doing: the presenter that words
@@ -55,8 +63,9 @@ defmodule WardrikChannel.Replies.State do
           room: String.t(),
           posting: WardrikChannel.Channel.t() | nil,
           showing: showing() | nil,
+          followers: pid() | nil,
           threads: %{String.t() => thread()},
-          retries: %{String.t() => pos_integer()},
+          retries: %{String.t() => retry()},
           statuses: %{String.t() => status()}
         }
 
@@ -80,18 +89,21 @@ defmodule WardrikChannel.Replies.State do
   def new(channel, workspace, room),
     do: %__MODULE__{channel: channel, workspace: workspace, room: room}
 
-  @doc "The same room, posting through `channel`, and showing statuses as `showing` says."
-  @spec posting(t(), WardrikChannel.Channel.t(), showing()) :: t()
-  def posting(%__MODULE__{} = state, channel, showing),
-    do: %{state | posting: channel, showing: showing}
+  @doc """
+  The same room, posting through `channel`, showing statuses as `showing`
+  says, with its threads' followers under the supervisor `followers`.
+  """
+  @spec posting(t(), WardrikChannel.Channel.t(), showing(), pid()) :: t()
+  def posting(%__MODULE__{} = state, channel, showing, followers),
+    do: %{state | posting: channel, showing: showing, followers: followers}
 
   @doc """
-  Follows `agent` in `thread`, posting what its log holds after `through`,
+  Follows `agent` in `thread`, posting what its log holds after `cursor`,
   unless the thread is followed already.
   """
-  @spec follow(t(), String.t(), AgentID.t(), non_neg_integer()) :: t()
-  def follow(%__MODULE__{} = state, thread, %AgentID{} = agent, through) do
-    followed = %{agent: agent, through: through, runs: %{}}
+  @spec follow(t(), String.t(), AgentID.t(), String.t()) :: t()
+  def follow(%__MODULE__{} = state, thread, %AgentID{} = agent, cursor) do
+    followed = %{agent: agent, cursor: cursor, runs: %{}}
     %{state | threads: Map.put_new(state.threads, thread, followed)}
   end
 
@@ -99,30 +111,16 @@ defmodule WardrikChannel.Replies.State do
   @spec followed?(t(), String.t()) :: boolean()
   def followed?(%__MODULE__{threads: threads}, thread), do: Map.has_key?(threads, thread)
 
-  @doc "The thread whose agent is `agent`, where one is followed."
-  @spec thread_of(t(), AgentID.t()) :: String.t() | nil
-  def thread_of(%__MODULE__{threads: threads}, %AgentID{} = agent) do
-    Enum.find_value(threads, fn {thread, followed} -> if followed.agent == agent, do: thread end)
-  end
-
   @doc """
   What `event`, the next in `thread`'s log, asks to be posted, and the state
-  once it has been.
+  once it has been, with `cursor`, past it.
   """
-  @spec take(t(), String.t(), map()) :: {post(), t()}
-  def take(%__MODULE__{} = state, thread, %{"sequence" => sequence} = event) do
+  @spec take(t(), String.t(), map(), String.t()) :: {post(), t()}
+  def take(%__MODULE__{} = state, thread, event, cursor) do
     followed = Map.fetch!(state.threads, thread)
     {post, runs} = post(event, followed.runs)
-    followed = %{followed | through: String.to_integer(sequence), runs: runs}
+    followed = %{followed | cursor: cursor, runs: runs}
     {post, %{state | threads: Map.put(state.threads, thread, followed)}}
-  end
-
-  @doc "Moves `thread` past what its log no longer holds, to just before `oldest`."
-  @spec skip(t(), String.t(), pos_integer()) :: t()
-  def skip(%__MODULE__{} = state, thread, oldest) do
-    followed = Map.fetch!(state.threads, thread)
-    followed = %{followed | through: max(followed.through, oldest - 1)}
-    %{state | threads: Map.put(state.threads, thread, followed)}
   end
 
   defp post(%{"type" => "wardrik.run.started", "data" => %{"run" => run}}, runs),

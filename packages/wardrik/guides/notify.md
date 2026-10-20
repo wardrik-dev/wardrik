@@ -33,16 +33,24 @@ notify:
 notify: {to: [ops], on: [parked, failed, finished]}
 ```
 
-A notice is sent once from the node that holds the agent, however many nodes
-the cluster has.
+One process in the cluster sends the notices, reading each agent's route from
+its definition as its events come. It keeps its place in the agents' logs, so
+after a restart, on any node, it carries on from there: a notice whose
+delivery was cut short comes again, and a receiver tells a repeat by its
+`agent`, `event` and `at`.
 
-Outside the daemon, a host starts it with its targets, and a target of your
+Outside the daemon, a host attaches it with its targets, and a target of your
 own is a module; see `WardrikNotify`:
 
 ```elixir
-children = [
-  Wardrik,
-  {WardrikNotify.Supervisor,
-   targets: [audit: {WardrikNotify.Webhook, url: "https://hooks.example.com/wardrik"}]}
-]
+wardrik =
+  Wardrik.new(store: store, issuer: %MyApp.Issuer{})
+  |> WardrikNotify.attach(
+    targets: [audit: {WardrikNotify.Webhook, url: "https://hooks.example.com/wardrik"}]
+  )
 ```
+
+It follows every agent's log as the deployment itself,
+`Wardrik.Principal.deployment/0`, so the host's issuer gives `deployment`
+`agent.events` on `*/agent/*`; see `Wardrik.Issuer`. A host whose issuer does
+not fails to start it.

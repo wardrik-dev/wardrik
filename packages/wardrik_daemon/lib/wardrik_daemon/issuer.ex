@@ -13,9 +13,13 @@ defmodule WardrikDaemon.Issuer do
       `messenger` on its owner's agents, `acme/agent/*` or
       `acme/@jon/agent/*`, so a turn one agent asks of another reads and
       messages for it what it could itself
+    * the deployment itself, `deployment` - `agent.events` on every agent,
+      `*/agent/*`, and nothing else: what follows agents' logs as the
+      deployment, as `WardrikNotify` and `WardrikChannel.Replies` do, reads
+      them, and acts on nothing
     * anyone else - nothing, as a request to a trigger,
-      `acme/agent/front/trigger/hook`, an authorization that finished,
-      `oauth:github`, or the deployment itself, `deployment`
+      `acme/agent/front/trigger/hook`, or an authorization that finished,
+      `oauth:github`
 
   Each lasts as long as `config.yaml`'s `tokens.expires.session` says; one
   held past that is refreshed here as it is used, so a change to `channels`
@@ -43,6 +47,7 @@ defmodule WardrikDaemon.Issuer do
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Role
+  alias Wardrik.Statement
   alias Wardrik.Token
   alias WardrikChannel.Approvers.Named
   alias WardrikDaemon.Agents
@@ -79,6 +84,12 @@ defmodule WardrikDaemon.Issuer do
         %Token{principal: principal}
     end
   end
+
+  defp issued(["deployment"], principal, _agents),
+    do: %Token{
+      principal: principal,
+      scope: [%Statement{actions: ["agent.events"], resources: [agents_of("*")]}]
+    }
 
   # After its owner, an agent's resource is agent/<name>, and a thread's
   # thread/<id> after that.

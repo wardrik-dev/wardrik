@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { WardrikError } from "./errors.ts";
 import type { Http, Request } from "./http.ts";
-import type { EventsPage, WardrikEvent } from "./protocol.ts";
+import type { EventOf, EventsPage, EventType, WardrikEvent } from "./protocol.ts";
 import { messages } from "./sse.ts";
 
 /** Where `agent.events` starts following an agent's log. */
@@ -29,6 +29,20 @@ export interface EventsOptions extends FollowOptions {
    * a page at a time.
    */
   follow?: boolean | undefined;
+}
+
+/**
+ * What `wardrik.listen` hands each event of a type to: the event, and the
+ * cursor past it, to keep with what the handler does.
+ */
+export type Handlers = {
+  [T in EventType]?: (event: EventOf<T>, cursor: string) => unknown;
+};
+
+/** Where `wardrik.listen` reads from, and until when. */
+export interface ListenOptions extends FollowOptions {
+  /** The agents each pattern covers, as `"acme/agent/*"`; every agent the token reads where left out. */
+  resources?: string[] | undefined;
 }
 
 const firstDelay = 250;

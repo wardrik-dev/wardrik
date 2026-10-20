@@ -3,10 +3,10 @@ import { Agent } from "./agent.ts";
 import { Connections } from "./connections.ts";
 import { Servers } from "./servers.ts";
 import { Deployment } from "./deployment.ts";
-import { EventStream, type EventsOptions } from "./events.ts";
+import { EventStream, type EventsOptions, type Handlers, type ListenOptions } from "./events.ts";
 import { Tokens } from "./tokens.ts";
 import { agentPath, Http } from "./http.ts";
-import type { AgentDefinition, AgentSummary, Interrupt } from "./protocol.ts";
+import type { AgentDefinition, AgentSummary, Interrupt, WardrikEvent } from "./protocol.ts";
 import { Worker, type ToolDefinition, type WorkOptions } from "./worker.ts";
 
 /** This SDK's version. */
@@ -75,13 +75,61 @@ export class Wardrik {
   /**
    * The events of the agents `resources` covers, of `types`, after `after`:
    * those kept, or with `follow`, then each as it is written. The server keeps
-   * no reader's place: keep `cursor`, and read on from it.
+   * no reader's place: keep `cursor`, and read on from it. Following with no
+   * `after`, it starts from `eventsHead`, so `cursor` resumes in every agent it reads.
    *
    *     const events = wardrik.events({ resources: ["acme/agent/*"], after: saved, follow: true });
    *     for await (const event of events) save(event, events.cursor);
    */
   events(options: EventsOptions = {}): EventStream {
-    return new EventStream(this.#http, "/v1/events", options);
+    return new EventStream(this.#http, "/v1/events", options, () => this.eventsHead(options));
+  }
+
+  /**
+   * Follows the events of the agents `resources` covers, handing each to the
+   * handler of its type with the cursor past it, and waiting for it before
+   * the next. Keep the cursor where the handler keeps its work, and pass it
+   * as `after` to carry on from there: each event is handled at least once,
+   * so drop a repeat by its `id`. Without `after`, it starts from what is
+   * written next. A handler for `wardrik.events.dropped` hears of a log
+   * trimmed past the cursor, whatever the other handlers are.
+   *
+   *     await wardrik.listen(
+   *       {
+   *         "wardrik.run.completed": async (event, cursor) => {
+   *           await db.transaction(async (tx) => {
+   *             await tx.insertRun(event.id, event.data);
+   *             await tx.saveCursor("runs", cursor);
+   *           });
+   *         },
+   *       },
+   *       { resources: ["acme/agent/*"], after: await db.cursor("runs") },
+   *     );
+   *
+   * It resolves once `signal` aborts, and rejects with what a handler throws.
+   */
+  async listen(handlers: Handlers, options: ListenOptions = {}): Promise<void> {
+    const types = Object.keys(handlers);
+    const events = this.events({ ...options, types, follow: true });
+
+    for await (const event of events) {
+      const handler = handlers[event.type] as ((event: WardrikEvent, cursor: string) => unknown) | undefined;
+      // Following, the stream starts from a cursor, so it holds one.
+      await handler?.(event, events.cursor as string);
+    }
+  }
+
+  /**
+   * The cursor where the log of every agent `resources` covers stands now, or
+   * of every agent the token reads: reading after it takes what is written
+   * from now on, and a cursor moved from it resumes in each of them.
+   */
+  async eventsHead(options: Pick<EventsOptions, "resources"> = {}): Promise<string> {
+    const answer = await this.#http.json<{ cursor: string }>("GET", "/v1/events/head", {
+      query: { resources: options.resources },
+    });
+
+    return answer.cursor;
   }
 
   /**

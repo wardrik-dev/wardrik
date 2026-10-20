@@ -113,7 +113,7 @@ defmodule Wardrik.Definition do
           idle_timeout: timeout() | nil,
           retry: Backoff.t(),
           triggers: [WardrikTrigger.trigger()],
-          notify: WardrikNotify.Route.t() | nil,
+          notify: WardrikDefinition.Route.t() | nil,
           channels: [String.t()],
           source: source(),
           held: [Wardrik.Hook.t()],
@@ -780,7 +780,7 @@ defmodule Wardrik.Definition do
     targets = fields |> Map.get("to") |> List.wrap()
     if targets == [], do: invalid!("notify names no target")
 
-    %WardrikNotify.Route{
+    %WardrikDefinition.Route{
       targets: Enum.map(targets, &target!/1),
       on: fields |> Map.get("on", ~w(parked failed)) |> List.wrap() |> Enum.map(&kind!/1)
     }
@@ -792,7 +792,7 @@ defmodule Wardrik.Definition do
   defp target!(name), do: invalid!("notify names #{inspect(name)}, which is not a target")
 
   defp kind!(kind) do
-    case Enum.find(WardrikNotify.Route.kinds(), &(Atom.to_string(&1) == kind)) do
+    case Enum.find(WardrikDefinition.Route.kinds(), &(Atom.to_string(&1) == kind)) do
       nil -> invalid!("notify on lists #{inspect(kind)}; expected parked, failed or finished")
       found -> found
     end

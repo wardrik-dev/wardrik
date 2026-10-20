@@ -6,9 +6,12 @@ defmodule WardrikChannel.Replies do
   Each room is a `DurableServer` keyed by its channel, its workspace and its
   name, so one
   process in the cluster posts there, and it carries on from its store on
-  another node when its own is lost. `follow/4` has it follow the agent
-  answering in a thread from the end of that agent's log, and it posts, in
-  the thread, as each comes:
+  another node when its own is lost. `follow/3` has it follow the agent
+  answering in a thread from the end of that agent's log, with a
+  `Wardrik.Listener` of the thread's own acting as the deployment,
+  `Wardrik.Principal.deployment/0`, which the host's `Wardrik.Issuer`
+  allows `agent.events` on the agent. It posts, in the thread, as each
+  comes:
 
     * what a run answered, with the messages it answers
     * the calls a run waits on, with buttons to answer them, where they are
@@ -33,8 +36,8 @@ defmodule WardrikChannel.Replies do
   message that arrived behind them, which the agent will not read until
   they are answered.
 
-  It writes down the last event of each log it has posted, so after a
-  restart it posts from there: each at least once. What it posts through,
+  It writes down the cursor past what it has posted in each thread, so
+  after a restart it posts from there: each at least once. What it posts through,
   each `WardrikChannel.Channel`, is handed to it as it starts, and never
   written down; the installation of the room's workspace, with its token,
   is found as each post is made, so a workspace taken out has nothing

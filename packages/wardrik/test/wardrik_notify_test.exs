@@ -14,15 +14,14 @@ defmodule WardrikNotifyTest do
   end
 
   test "attaches a supervisor delivering to its targets, where it has any" do
-    host = Wardrik.Host.new(definitions: %Wardrik.Definitions{store: nil, contexts: nil})
+    host = Wardrik.Host.new([])
 
     assert WardrikNotify.attach(host) == host
 
     assert [{WardrikNotify.Supervisor, opts}] =
-             WardrikNotify.attach(host, targets: @targets).children
+             WardrikNotify.attach(host, targets: @targets, backoff: 0).children
 
-    assert opts[:targets] == @targets
-    assert opts[:routes] == {Wardrik.Definitions, :routes, [Wardrik.Host.definitions(host)]}
+    assert opts == [targets: @targets, backoff: 0]
     assert_raise ArgumentError, fn -> WardrikNotify.attach(host, room: "#ops") end
   end
 

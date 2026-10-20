@@ -2,7 +2,9 @@
 # `mix run check.exs`, so it runs against the application as it runs: the
 # store it keeps Wardrik in passes WardrikStore.Conformance, an agent spawned
 # in its fleet is kept there, what it leaves out of its dependencies is not
-# loaded, and the budgets and triggers Wardrik runs keep in that store.
+# loaded, and the budgets and triggers Wardrik runs keep in that store; and,
+# with the guides' code, what a user does, and what the app's listener keeps
+# of it in tables of the app's own.
 #
 #   WARDRIK_HOST           the application's module whose store/0 is Wardrik's store
 #   WARDRIK_HOST_STORE     the adapter the application configured
@@ -127,6 +129,36 @@ defmodule WardrikHost.GuideTest do
     assert {:ok, %Wardrik.Agent.Message{}} = agents().ask(user, agent, "What changed this week?")
 
     assert_receive %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.started"}}, 10_000
+    assert {:ok, doing} = agents().doing(user, agent)
+    assert is_binary(doing)
+  end
+
+  test "the app's listener keeps the agent's runs in its own tables, with its place",
+       %{user: user, agent: agent} do
+    repo = Module.concat([System.fetch_env!("WARDRIK_HOST_REPO")])
+    assert {:ok, %Wardrik.Agent.Message{}} = agents().ask(user, agent, "Anything new?")
+
+    assert eventually(fn ->
+             %{rows: rows} =
+               repo.query!("SELECT type FROM agent_events WHERE agent = $1", [to_string(agent)])
+
+             ["wardrik.run.started"] in rows
+           end),
+           "the app's listener kept no run of #{agent}"
+
+    assert %{rows: [[cursor]]} = repo.query!("SELECT cursor FROM wardrik_cursors WHERE name = 'runs'")
+    assert {:ok, %{^agent => _sequence}} = Wardrik.Event.Cursor.decode(cursor)
+  end
+
+  # Whether `check` comes to hold within ten seconds, asked every 50ms.
+  defp eventually(check, tries \\ 200) do
+    cond do
+      check.() -> true
+      tries == 0 -> false
+      true ->
+        Process.sleep(50)
+        eventually(check, tries - 1)
+    end
   end
 
   test "nobody else reaches it, in its org or another", %{agent: agent} do

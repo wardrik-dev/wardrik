@@ -672,7 +672,7 @@ defmodule WardrikDaemon.CLI do
         {:error, no_agent(key)}
 
       {_member, true} ->
-        Follow.json(key)
+        Follow.json(opts[:as], key)
         :ok
 
       {member, _json?} ->

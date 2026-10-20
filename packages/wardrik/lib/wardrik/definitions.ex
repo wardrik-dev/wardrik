@@ -20,10 +20,9 @@ defmodule Wardrik.Definitions do
 
   A definition's `triggers` are its agent's, brought to what it lists as it
   is kept, with `WardrikTrigger.sync/2`, so a host that keeps definitions
-  starts `WardrikTrigger`. Where its notices go is put to `WardrikNotify`
-  on this node and on every node `:nodes` gives as a definition is kept or
-  forgotten, so an agent is routed wherever it runs; a node not running
-  `WardrikNotify.Supervisor` routes nothing.
+  starts `WardrikTrigger`. Where its notices go, its `notify`, is read by
+  `WardrikNotify` as each event comes, so a definition kept is routed as it
+  is from its next event.
 
   An agent with an external ID has no definition of its own. It is one
   conversation of the agent without one, and runs on that agent's
@@ -41,17 +40,10 @@ defmodule Wardrik.Definitions do
   @ns :definitions
 
   @enforce_keys [:store, :contexts]
-  defstruct [:store, :contexts, nodes: &Node.list/0]
+  defstruct [:store, :contexts]
 
-  @typedoc """
-  Definitions kept in `:store`, each read under what `:contexts` gives its
-  agent's owner; `:nodes` are the other nodes routes are put to.
-  """
-  @type t() :: %__MODULE__{
-          store: WardrikStore.t(),
-          contexts: Contexts.t(),
-          nodes: (-> [node()])
-        }
+  @typedoc "Definitions kept in `:store`, each read under what `:contexts` gives its agent's owner."
+  @type t() :: %__MODULE__{store: WardrikStore.t(), contexts: Contexts.t()}
 
   @doc "The context the definition of the agent `id`, or of its owner, is read under."
   @spec context(t(), AgentID.t()) :: WardrikDefinition.Context.t()
@@ -59,16 +51,15 @@ defmodule Wardrik.Definitions do
     do: Contexts.context(contexts, owner(id))
 
   @doc """
-  Keeps `definition`, in place of any its agent had, brings its agent's
-  triggers to those it lists, and routes its notices. One that came from
-  no agent file is refused in place of one that did.
+  Keeps `definition`, in place of any its agent had, and brings its agent's
+  triggers to those it lists. One that came from no agent file is refused
+  in place of one that did.
   """
   @spec put(t(), Definition.t()) :: :ok | {:error, :conflict, String.t()}
   def put(%__MODULE__{store: store} = definitions, %Definition{id: id} = definition) do
     with :ok <- writable(definitions, definition) do
       {:ok, _vsn} = WardrikStore.put(store, @ns, to_string(id), definition)
       :ok = WardrikTrigger.sync(id, definition.triggers)
-      route(definitions)
     end
   end
 
@@ -85,15 +76,14 @@ defmodule Wardrik.Definitions do
   end
 
   @doc """
-  Forgets the definition kept for the agent `id`, the triggers it lists and
-  its route, or `{:error, :not_found}` where none is kept.
+  Forgets the definition kept for the agent `id`, and the triggers it lists,
+  or `{:error, :not_found}` where none is kept.
   """
   @spec delete(t(), AgentID.t()) :: :ok | {:error, :not_found}
   def delete(%__MODULE__{store: store} = definitions, %AgentID{} = id) do
     with {:ok, _definition} <- get(definitions, id) do
       :ok = WardrikTrigger.sync(id, [])
       :ok = WardrikStore.delete(store, @ns, to_string(id))
-      route(definitions)
     end
   end
 
@@ -240,18 +230,14 @@ defmodule Wardrik.Definitions do
     end
   end
 
-  # Builds every agent awake on `:host` a definition is kept for again, and
-  # puts the routes again: why each that does not build does not.
+  # Builds every agent awake on `:host` a definition is kept for again: why
+  # each that does not build does not.
   defp rebuild(definitions, opts) do
     host = Keyword.fetch!(opts, :host)
 
-    messages =
-      for %{id: id, asleep: false} <- Fleet.list(Resource.parse!("*"), host: host),
-          message <- rebuilt(definitions, id, host),
-          do: message
-
-    :ok = route(definitions)
-    messages
+    for %{id: id, asleep: false} <- Fleet.list(Resource.parse!("*"), host: host),
+        message <- rebuilt(definitions, id, host),
+        do: message
   end
 
   defp rebuilt(definitions, id, host) do
@@ -268,23 +254,6 @@ defmodule Wardrik.Definitions do
       {:error, reason} ->
         ["#{id} did not start: #{inspect(reason)}"]
     end
-  end
-
-  @doc "Where the notices of each agent whose definition routes them go."
-  @spec routes(t()) :: %{AgentID.t() => WardrikNotify.Route.t()}
-  def routes(%__MODULE__{} = definitions) do
-    for %Definition{id: id, notify: %WardrikNotify.Route{} = route} <-
-          list(definitions, Resource.parse!("*")),
-        into: %{},
-        do: {id, route}
-  end
-
-  @doc "Puts `routes/1` to `WardrikNotify` on this node, then on every node `:nodes` gives."
-  @spec route(t()) :: :ok
-  def route(%__MODULE__{nodes: nodes} = definitions) do
-    routes = routes(definitions)
-    :ok = WardrikNotify.put_routes(routes)
-    :erpc.multicast(nodes.(), WardrikNotify, :put_routes, [routes])
   end
 
   defp owner(id), do: AgentID.put_external_id(id, nil)

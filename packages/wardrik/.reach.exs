@@ -11,6 +11,7 @@
       "Wardrik.Catalog",
       "Wardrik.Catalog.*",
       "Wardrik.Forgetting",
+      "Wardrik.Listener",
       "Wardrik.Migration",
       "Wardrik.Moving",
       "Wardrik.Scope",
@@ -28,10 +29,13 @@
     research: ["WardrikResearch", "WardrikResearch.*"]
   ],
   # What the packages folded in here depended on, kept: each layer calls only
-  # the ones its package depended on, and none calls Wardrik itself.
+  # the ones its package depended on, and none calls Wardrik itself but
+  # notify, which follows the agents' logs through Wardrik.Listener and reads
+  # each agent's route from its definition.
   deps: [
     forbidden: [
       {:definition, :wardrik},
+      {:definition, :notify},
       {:definition, :vault},
       {:definition, :ecto},
       {:definition, :s3},
@@ -67,8 +71,6 @@
       {:workspace, :s3},
       {:workspace, :workflow},
       {:workspace, :research},
-      {:notify, :wardrik},
-      {:notify, :definition},
       {:notify, :policy},
       {:notify, :triggers},
       {:notify, :workspace},
@@ -157,10 +159,8 @@
       "Wardrik.Specs.None",
       "Wardrik.Error",
       "Wardrik.Event",
-      "Wardrik.Event.Bus",
       "Wardrik.Event.Codec.Value",
       "Wardrik.Event.Cursor",
-      "Wardrik.Event.Log",
       "Wardrik.Event.Log.Entry",
       "Wardrik.Fleet",
       "Wardrik.Fleet.Member",
@@ -214,6 +214,7 @@
       "Wardrik.LLM.Catalog",
       "Wardrik.Fleet.Supervisor",
       "Wardrik.Event.Source",
+      "Wardrik.Event.Log",
       "Wardrik.Trace"
     ],
     internal_callers: [
@@ -225,6 +226,9 @@
       {"Wardrik.LLM.Catalog", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Event.Source", ["Wardrik", "Wardrik.*"]},
+      # The agents' logs are read and followed through Wardrik alone, which
+      # checks the token first.
+      {"Wardrik.Event.Log", ["Wardrik"]},
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]
   ],
@@ -250,7 +254,7 @@
     layer_coverage: [
       require_all_modules: true,
       forbid_multiple_matches: true,
-      ignore: ["Wardrik.Test.*", "Wardrik.OrgIssuer", "Wardrik.ByOrg"]
+      ignore: ["Wardrik.Test.*", "Wardrik.OrgIssuer", "Wardrik.DeploymentIssuer", "Wardrik.ByOrg"]
     ]
   ]
 ]

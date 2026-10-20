@@ -44,13 +44,15 @@ end
 Wardrik knows a user as a `Wardrik.Principal`, named as the namespace they own things under, as
 `acme/@42`, and asks your app for the token they act with. A token's statements each allow some
 actions on some agents, and a role is a named set of actions. Here, a user may read and message
-their org's agents, and own their own:
+their org's agents, and own their own. Your app itself acts as the deployment, `deployment`, and
+reads every agent's events:
 
 ```elixir title="lib/my_app/issuer.ex"
 defmodule MyApp.Issuer do
   @moduledoc """
   The token each signed-in user acts with: reader and messenger on their
-  org's agents, and owner of their own.
+  org's agents, and owner of their own; and the app's own, as the
+  deployment, reading every agent's events.
   """
 
   alias Wardrik.Resource
@@ -72,11 +74,22 @@ defmodule MyApp.Issuer do
       Role.bind([:owner], [Resource.parse!("#{org}/@#{id}/*")])
     ]
   end
+
+  @doc "What the app itself reads, as the deployment: every agent's events, and where it stands."
+  def deployment do
+    [
+      %Wardrik.Statement{
+        actions: ["agent.events", "agent.read"],
+        resources: [Resource.parse!("*/agent/*")]
+      }
+    ]
+  end
 end
 
 defimpl Wardrik.Issuer, for: MyApp.Issuer do
   def issue(_issuer, principal, _opts) do
     case String.split(Wardrik.Principal.id(principal), "/") do
+      ["deployment"] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.deployment()}
       [org, "@" <> id] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.scope(org, id)}
       _other -> %Wardrik.Token{principal: principal}
     end
@@ -86,6 +99,10 @@ end
 
 Maria, user 42 of `acme`, owns everything of `acme/@42`'s, such as the agent `acme/@42/support`,
 whose resource is `acme/@42/agent/support`. A user of another org reaches none of them. [Agents](/concepts/agents/) explains IDs.
+
+What follows agents' logs acts as `deployment`: [notices](/build/notices/) and a
+[channel](/channels/)'s replies, which need `agent.events` on `*/agent/*` and fail without it, and
+your own [listeners](/build/listen/), which read on from where they stopped.
 
 A token your issuer issues expires after 12 hours, or as `Wardrik.new/1`'s
 `expires: [session: seconds]` says. Each function of `Wardrik` refreshes one past that through your
@@ -223,6 +240,7 @@ Enum.find(events, &(&1.event["type"] == "wardrik.run.completed"))
 Wardrik keeps no reader's place. Keep your own: `Wardrik.cursor/2` moves a cursor past each entry,
 and `events/2` reads on from it, then follows. A log trimmed past your cursor gives a
 `wardrik.events.dropped` entry, and reading goes on from the oldest event it still holds.
+[Follow events into your app](/build/listen/) keeps the place for you, in your own tables.
 
 ## Serve the HTTP API
 

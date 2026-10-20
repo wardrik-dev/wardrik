@@ -160,6 +160,17 @@ defmodule Wardrik.Event.FollowingTest do
 
       assert [] = Enum.to_list(stream([ctx.pattern], after: :head))
     end
+
+    test "the heads are the last sequence of each log a pattern covers, past what was dropped",
+         ctx do
+      written(ctx.a, 4, 2)
+      written(ctx.b, 0)
+      cutoff = DateTime.add(DateTime.utc_now(), -30, :day)
+      :ok = Log.trim(store(), ctx.a, through: 5, before: cutoff)
+
+      assert Log.heads(store(), [ctx.pattern]) == %{ctx.a => 5, ctx.b => 1}
+      assert [] = Enum.to_list(stream([ctx.pattern], after: Log.heads(store(), [ctx.pattern])))
+    end
   end
 
   describe "following" do

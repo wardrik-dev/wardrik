@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
 # Checks Wardrik inside applications that depend on this checkout by path: a
-# Phoenix app running the embedding guide's code, kept in dev/hosts/phoenix
-# and renamed for it, which keeps Wardrik in its own Repo and starts it in its
-# own tree with what the guide adds, and a bare Mix app that keeps it in an
+# Phoenix app running the code of the embedding and listening guides, kept in
+# dev/hosts/phoenix and renamed for it, which keeps Wardrik in its own Repo,
+# starts it in its own tree with what the guides add, and follows the agents'
+# events into tables of its own, and a bare Mix app that keeps it in an
 # S3 bucket. Neither depends on :ekv, and the bare one not on :ecto_sql
 # either, so each shows Wardrik compiling and running without what it leaves
 # out. First it builds the Hex packages as mix hex.build has them, and
@@ -93,8 +94,9 @@ phoenix() {
   cd "$dir/host"
   WARDRIK_REPO=$repo perl -0pi -e 's/(\{:phoenix, )/join("", map { "{:$_, path: \"$ENV{WARDRIK_REPO}\/packages\/$_\"},\n      " } qw(wardrik wardrik_http wardrik_oauth wardrik_mcp)) . $1/e' mix.exs
 
-  # The guide's own code, as dev/hosts/phoenix keeps it, named for this app.
-  (cd "$repo/dev/hosts/phoenix" && find lib -name '*.ex') | while read -r file; do
+  # The guides' own code and migrations, as dev/hosts/phoenix keeps them,
+  # named for this app.
+  (cd "$repo/dev/hosts/phoenix" && find lib priv -name '*.ex' -o -name '*.exs') | while read -r file; do
     target=$(echo "$file" | sed 's/my_app/host/g')
     mkdir -p "$(dirname "$target")"
     sed 's/MyAppWeb/HostWeb/g; s/MyApp/Host/g; s/my_app/host/g' "$repo/dev/hosts/phoenix/$file" >"$target"
@@ -108,15 +110,6 @@ phoenix() {
   perl -0pi -e 's/(# Import environment specific config)/config :os_mon, start_cpu_sup: false, start_disksup: false, start_memsup: false\n\n$1/' config/config.exs
   printf '\nconfig :host, Host.Repo, url: "%s"\nconfig :logger, level: :warning\n' \
     "$database_url" >>config/dev.exs
-
-  cat >priv/repo/migrations/20260929000000_add_wardrik.exs <<'EOF'
-defmodule Host.Repo.Migrations.AddWardrik do
-  use Ecto.Migration
-
-  def up, do: Wardrik.Migration.up(version: 1)
-  def down, do: Wardrik.Migration.down(version: 1)
-end
-EOF
 
   quietly mix deps.get
   quietly mix ecto.drop

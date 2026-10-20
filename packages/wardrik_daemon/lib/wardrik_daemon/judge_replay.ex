@@ -8,10 +8,10 @@ defmodule WardrikDaemon.JudgeReplay do
   it, so its thresholds can be changed and tried again before a reload.
 
   The calls are those agents' logs keep with their arguments, which are the
-  calls that ran (`tool_call.started`): a log keeps no arguments of a call
-  refused, or of one still waiting on a person. Of those, the calls a
-  question of the judge names, the newest first, each once however many
-  times it ran.
+  calls that ran (`tool_call.started`), read with `Wardrik.events/2` in the
+  scope of whoever asks: a log keeps no arguments of a call refused, or of
+  one still waiting on a person. Of those, the calls a question of the
+  judge names, the newest first, each once however many times it ran.
 
   The judge is asked about each call as one of its agent's model calls on
   the host, so the host's dispatch admits it and its credentials hold the
@@ -20,14 +20,14 @@ defmodule WardrikDaemon.JudgeReplay do
 
   alias Wardrik.AgentID
   alias Wardrik.Definition
-  alias Wardrik.Event.Log
-  alias Wardrik.Host
+  alias Wardrik.Event.Log.Entry
   alias Wardrik.LLM.Config
   alias Wardrik.Run
+  alias Wardrik.Scope
   alias WardrikDaemon.Agents
   alias WardrikPolicy.Judge
 
-  @page 500
+  @types ~w(wardrik.tool_call.started wardrik.interrupt.resolved)
 
   @typedoc """
   A call tried: where and when it ran, its tool as the agent knows it and its
@@ -102,28 +102,21 @@ defmodule WardrikDaemon.JudgeReplay do
   end
 
   @doc """
-  The newest `opts[:last]` calls kept in `host`'s store by the agents the
-  patterns `opts[:under]` cover that a question of `judge` names, each tried
-  on it, newest first.
+  The newest `opts[:last]` calls the agents the patterns `opts[:under]`
+  cover have kept, as `scope` reads them, that a question of `judge` names,
+  each tried on it, newest first.
   """
-  @spec tried(Host.t(), Judge.t(), under: [Wardrik.Resource.t()], last: pos_integer()) ::
+  @spec tried(Scope.t(), Judge.t(), under: [Wardrik.Resource.t()], last: pos_integer()) ::
           [tried()]
-  def tried(%Host{} = host, %Judge{} = judge, opts) do
+  def tried(%Scope{} = scope, %Judge{} = judge, opts) do
     opts = Keyword.validate!(opts, [:under, :last])
-    patterns = Keyword.fetch!(opts, :under)
-    last = Keyword.fetch!(opts, :last)
-    store = Host.store(host)
 
-    for(
-      log <- Log.logs(store),
-      log != :audit,
-      Enum.any?(patterns, &Wardrik.Resource.covers?(&1, AgentID.resource(log))),
-      call <- calls(store, log, judge),
-      do: call
-    )
+    scope
+    |> Wardrik.events!(resources: Keyword.fetch!(opts, :under), types: @types)
+    |> calls(judge)
     |> Enum.sort_by(& &1.time, :desc)
-    |> Enum.take(last)
-    |> Task.async_stream(&judged(host, judge, &1), timeout: :timer.minutes(2))
+    |> Enum.take(Keyword.fetch!(opts, :last))
+    |> Task.async_stream(&judged(scope.host, judge, &1), timeout: :timer.minutes(2))
     |> Enum.map(fn {:ok, tried} -> tried end)
   end
 
@@ -133,25 +126,24 @@ defmodule WardrikDaemon.JudgeReplay do
     Map.merge(call, %{answers: answers, judged: Judge.judged(call.questions, answers)})
   end
 
-  # Each call of `log` that ran whole, once, with who let it run where a person did.
-  defp calls(store, log, judge) do
+  # Each call that ran whole, once, with who let it run where a person did.
+  defp calls(entries, judge) do
     {started, resolved} =
-      store
-      |> events(log)
-      |> Enum.reduce({%{}, %{}}, fn event, {started, resolved} ->
+      Enum.reduce(entries, {%{}, %{}}, fn %Entry{log: log, event: event}, {started, resolved} ->
         case event do
           %{"type" => "wardrik.tool_call.started", "data" => data} ->
-            {Map.put_new(started, data["tool"]["call"]["id"], {event, data}), resolved}
+            {Map.put_new(started, {log, data["tool"]["call"]["id"]}, {event, data}), resolved}
 
           %{"type" => "wardrik.interrupt.resolved", "data" => data} ->
-            {started, Map.put(resolved, data["interrupt"]["id"], data["resolved_by"])}
+            {started, Map.put(resolved, {log, data["interrupt"]["id"]}, data["resolved_by"])}
 
-          _other ->
+          _dropped ->
             {started, resolved}
         end
       end)
 
-    for {id, {event, %{"tool" => %{"name" => tool, "call" => call}} = data}} <- started,
+    for {{log, id} = key, {event, %{"tool" => %{"name" => tool, "call" => call}} = data}} <-
+          started,
         not Map.get(call, "truncated", false),
         questions = Judge.asked(judge, tool),
         questions != [] do
@@ -161,7 +153,7 @@ defmodule WardrikDaemon.JudgeReplay do
         time: event["time"],
         tool: tool,
         arguments: Map.get(call, "arguments", %{}),
-        decided: put_resolver(data["decided"], resolved[id]),
+        decided: put_resolver(data["decided"], resolved[key]),
         questions: questions
       }
     end
@@ -169,21 +161,4 @@ defmodule WardrikDaemon.JudgeReplay do
 
   defp put_resolver(decided, nil), do: decided
   defp put_resolver(decided, by), do: Map.put(decided, "resolved_by", by)
-
-  # Every event `log` holds, a page at a time.
-  defp events(store, log) do
-    Stream.unfold(0, fn
-      nil ->
-        nil
-
-      after_sequence ->
-        case Log.read(store, log, starting_after: after_sequence, limit: @page) do
-          {:ok, []} -> nil
-          {:ok, events} when length(events) < @page -> {events, nil}
-          {:ok, events} -> {events, String.to_integer(List.last(events)["sequence"])}
-          {:gap, oldest} -> {[], oldest - 1}
-        end
-    end)
-    |> Stream.concat()
-  end
 end

@@ -2,19 +2,19 @@ defmodule WardrikDaemon.CLI.Follow do
   @moduledoc """
   An agent's events on the terminal a live command came from, a line at a
   time as `WardrikConsole.Printer` completes each, or for `--json` each as the
-  CloudEvent the HTTP API streams.
+  CloudEvent the HTTP API streams, read with `Wardrik.events/2` in the
+  caller's scope.
 
   `turn/3` follows until the turn under way ends or waits on a person, and
-  `events/2` and `json/1` until the person stops watching. The terminal
+  `events/2` and `json/2` until the person stops watching. The terminal
   belongs to the caller's VM, on another node: Ctrl-C there ends that VM, and
   this process stops with it, rather than waiting for an event with nowhere
   to go.
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.Event
   alias Wardrik.Event.Bus
-  alias Wardrik.Event.Log
-  alias Wardrik.Event.Log.Entry
   alias WardrikConsole.Printer
   alias WardrikDaemon.CLI.Terminal
 
@@ -50,12 +50,25 @@ defmodule WardrikDaemon.CLI.Follow do
     :gone
   end
 
-  @doc "Writes each CloudEvent `key`'s log numbers, a line of JSON each, until the terminal goes."
-  @spec json(Wardrik.AgentID.t()) :: :gone
-  def json(key) do
-    :ok = Log.subscribe(key)
-    :gone = json_lines(watched())
-    Log.unsubscribe(key)
+  @doc """
+  Writes each CloudEvent `key`'s log takes from now on, as `scope` reads it,
+  a line of JSON each, until the terminal goes.
+  """
+  @spec json(Wardrik.Scope.t(), AgentID.t()) :: :gone
+  def json(scope, %AgentID{} = key) do
+    watching = watched()
+
+    events =
+      Wardrik.events!(scope, resources: [AgentID.resource(key)], after: :head, follow: true)
+
+    # The events are taken by a task of its own, writing to the same
+    # terminal, while this process waits for the terminal to go.
+    task = Task.async(fn -> Enum.each(events, &IO.puts(JSON.encode!(&1.event))) end)
+
+    receive do
+      {:DOWN, ^watching, :process, _pid, _reason} -> Task.shutdown(task, :brutal_kill)
+    end
+
     :gone
   end
 
@@ -73,17 +86,6 @@ defmodule WardrikDaemon.CLI.Follow do
           nil -> printing(printer, terminal, ends, watching)
           outcome -> outcome
         end
-
-      {:DOWN, ^watching, :process, _pid, _reason} ->
-        :gone
-    end
-  end
-
-  defp json_lines(watching) do
-    receive do
-      %Entry{event: event} ->
-        IO.puts(JSON.encode!(event))
-        json_lines(watching)
 
       {:DOWN, ^watching, :process, _pid, _reason} ->
         :gone

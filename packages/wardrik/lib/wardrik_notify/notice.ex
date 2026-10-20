@@ -1,6 +1,7 @@
 defmodule WardrikNotify.Notice do
   @moduledoc """
-  One thing a person should hear about, read from an agent's event.
+  One thing a person should hear about, read from an entry of an agent's
+  log.
 
     * `:parked` - a turn stopped on `calls`, each with the question a person
       is asked about it, `authorization: true` for one waiting on a person to
@@ -10,8 +11,7 @@ defmodule WardrikNotify.Notice do
     * `:finished` - a turn answered, and `text` is what it said last
   """
 
-  alias Wardrik.Conversation
-  alias Wardrik.Event
+  alias Wardrik.Event.Log.Entry
 
   @enforce_keys [:agent, :kind, :at]
   defstruct [:agent, :kind, :at, :reason, :text, calls: []]
@@ -28,32 +28,56 @@ defmodule WardrikNotify.Notice do
 
   @type t() :: %__MODULE__{
           agent: Wardrik.AgentID.t(),
-          kind: WardrikNotify.Route.kind(),
+          kind: WardrikDefinition.Route.kind(),
           at: DateTime.t(),
           calls: [call()],
           reason: term(),
           text: String.t() | nil
         }
 
-  @doc "The notice `event` makes, or `:none` for an event nobody is told about."
-  @spec from_event(Wardrik.Event.t()) :: {:ok, t()} | :none
-  def from_event(%Wardrik.Event{source: source, payload: payload, at: at}) do
-    base = %{agent: source.agent_id, at: DateTime.from_unix!(at, :microsecond)}
+  @doc """
+  The notice `entry` of an agent's log makes, at the time its event was
+  written, or `:none` for one nobody is told about. A parked turn's calls
+  are read from the agent on `:host` as it is told of, as
+  `Wardrik.Agent.parked/2` answers them, since the log does not say what a
+  call asks: those it no longer waits on are left out, and a turn that
+  waits on none of them makes none.
+  """
+  @spec from_entry(Entry.t(), host: Wardrik.Host.t()) :: {:ok, t()} | :none
+  def from_entry(%Entry{log: agent, event: %{"type" => type} = event}, opts) do
+    {:ok, at, 0} = DateTime.from_iso8601(event["time"])
+    notice(type, event["data"], %{agent: agent, at: at}, Keyword.fetch!(opts, :host))
+  end
 
-    case payload do
-      %Event.TurnParked{calls: calls} ->
-        {:ok, %{parked(source.agent_id, calls) | at: base.at}}
+  defp notice("wardrik.run.interrupted", %{"interrupts" => interrupts}, base, host) do
+    ids = for %{"id" => id} <- interrupts, do: id
 
-      %Event.TurnFailed{reason: reason} ->
-        {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :failed, reason: reason}))}
-
-      %Event.TurnFinished{messages: messages} ->
-        text = Conversation.answer(messages)
-        {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :finished, text: text}))}
-
-      _other ->
-        :none
+    case waiting(Wardrik.Agent.parked(base.agent, host: host), ids) do
+      [] -> :none
+      calls -> {:ok, %{parked(base.agent, calls) | at: base.at}}
     end
+  end
+
+  defp notice("wardrik.run.failed", %{"error" => error}, base, _host),
+    do: {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :failed, reason: error["message"]}))}
+
+  defp notice("wardrik.run.completed", %{"messages" => messages}, base, _host),
+    do: {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :finished, text: last_said(messages)}))}
+
+  defp notice(_type, _data, _base, _host), do: :none
+
+  defp waiting({:error, :not_found}, _ids), do: []
+  defp waiting(parked, ids), do: Enum.filter(parked, fn {call, _prompt} -> call.id in ids end)
+
+  # What the last of the assistant's messages that says something says.
+  defp last_said(messages) do
+    said =
+      for %{"role" => "assistant", "parts" => parts} <- messages,
+          text = for(%{"type" => "text", "content" => text} <- parts, into: "", do: text),
+          text != "",
+          do: text
+
+    List.last(said, "")
   end
 
   @doc """

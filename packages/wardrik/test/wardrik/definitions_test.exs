@@ -166,21 +166,25 @@ defmodule Wardrik.DefinitionsTest do
     assert Definitions.editable(definitions, AgentID.parse!("#{org}/nobody")) == :ok
   end
 
-  test "routes the agents whose definitions name a target, until they are forgotten",
+  test "keeps where an agent's notices go with its definition, until it is forgotten",
        %{org: org, definitions: definitions} do
     id = AgentID.parse!("#{org}/defined")
 
+    route = fn ->
+      with {:ok, definition} <- Definitions.get(definitions, id), do: definition.notify
+    end
+
     {:ok, _spec} = put(definitions, id, %{"notify" => "audit"})
-    assert %{^id => %WardrikNotify.Route{targets: ["audit"]}} = Definitions.routes(definitions)
+    assert %WardrikDefinition.Route{targets: ["audit"]} = route.()
 
     {:ok, _spec} = put(definitions, id, %{})
-    refute is_map_key(Definitions.routes(definitions), id)
+    assert route.() == nil
 
     {:ok, _spec} = put(definitions, id, %{"notify" => %{"to" => "audit", "on" => ["finished"]}})
-    assert %{^id => %WardrikNotify.Route{on: [:finished]}} = Definitions.routes(definitions)
+    assert %WardrikDefinition.Route{on: [:finished]} = route.()
 
     :ok = Definitions.delete(definitions, id)
-    refute is_map_key(Definitions.routes(definitions), id)
+    assert route.() == {:error, :not_found}
   end
 
   test "brings an agent to the triggers its definition lists",
