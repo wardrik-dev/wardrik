@@ -37,11 +37,11 @@ defmodule WardrikSlack do
   from what it would have answered. Slack drops a status left two minutes,
   and `WardrikChannel.Replies` shows it again before then.
 
-  The calls a thread's agent waits on are asked of the channel's approvers
-  directly, where it names any: each is sent them in the app's own messages
-  with them, with a link to the thread, and the thread says who it waits
-  on. `WardrikSlack.Approvers` finds each as a member. Where none can be
-  reached, the calls are asked in the thread.
+  The calls a thread's agent waits on are asked directly of the
+  workspace's approvers, where its installation names any. Each gets them
+  in the app's messages, with a link to the thread, and the thread says
+  who it waits on. `WardrikSlack.Approvers` finds each as a member. Where
+  it reaches none, the calls are asked in the thread.
 
   Over Socket Mode, the app should be Wardrik's alone: Slack spreads an
   app's Socket Mode envelopes across every connection open for it, and each

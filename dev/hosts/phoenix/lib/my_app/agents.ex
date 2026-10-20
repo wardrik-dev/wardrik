@@ -23,6 +23,7 @@ defmodule MyApp.Agents do
       ]
     )
     |> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
+    |> WardrikChannel.attach(MyApp.Slack.settings())
     |> WardrikHTTP.attach(
       port: 4850,
       authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}

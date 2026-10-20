@@ -195,6 +195,38 @@ defmodule WardrikHost.GuideTest do
     assert {:ok, [%{provider: "github", connected: false}]} = agents().connections(user)
   end
 
+  test "a Slack workspace answers for its org, where the approvers the app keeps decide" do
+    slack = app(".Slack")
+    team = "T#{System.unique_integer([:positive])}"
+
+    # Built as the test runs: an app without the guide's code has no channel.
+    installation =
+      struct!(WardrikChannel.Installation,
+        channel: "slack",
+        workspace: team,
+        owner: Wardrik.Resource.parse!("acme"),
+        token: "xoxb-" <> team,
+        approvers: struct!(WardrikChannel.Approvers.Named, names: [])
+      )
+
+    assert :ok = WardrikChannel.Installations.put(struct!(slack), installation)
+    globex = %{installation | owner: Wardrik.Resource.parse!("globex")}
+    assert {:error, _taken} = WardrikChannel.Installations.put(struct!(slack), globex)
+    slack.approvers(team, ["U2"])
+
+    {:ok, workspace} = WardrikChannel.Workspace.new(slack.channel().context, team)
+    assert WardrikChannel.Workspace.approvers(workspace).names == ["U2"]
+    assert WardrikChannel.Workspace.offering(workspace) =~ "turning on Slack in the agent's settings"
+
+    books = Wardrik.AgentID.parse!("acme/books")
+    token = &Wardrik.as(agents().wardrik(), Wardrik.Principal.new("slack:#{team}/#{&1}")).token
+
+    assert Wardrik.Token.authorize(token.("U2"), "agent.decide", books) == :ok
+    assert {:error, _not_named} = Wardrik.Token.authorize(token.("U1"), "agent.decide", books)
+    assert Wardrik.Token.authorize(token.("U1"), "agent.ask", books) == :ok
+    refute Wardrik.Token.reaches?(token.("U1"), Wardrik.AgentID.parse!("globex/books"))
+  end
+
   test "the sign-in callback is the app's own route" do
     endpoint = app("Web.Endpoint")
     conn = Plug.Test.conn(:get, "/oauth/callback/github") |> endpoint.call(endpoint.init([]))

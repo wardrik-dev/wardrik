@@ -9,6 +9,7 @@ defmodule WardrikDaemon.IssuerTest do
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Token
+  alias WardrikChannel.Approvers.Named
   alias WardrikDaemon.Agents
   alias WardrikDaemon.Test.Host
 
@@ -19,15 +20,19 @@ defmodule WardrikDaemon.IssuerTest do
     do: Wardrik.Issuer.issue(Wardrik.Host.issuer(Host.host(Host.agents())), principal, [])
 
   # The test channel knows people by their id alone, in the one workspace
-  # its token reaches.
+  # its token reaches, where its approvers decide, as config.yaml installs it.
   defp channel(settings) do
+    approvers = Keyword.get(settings, :approvers, chat: %Named{names: []})
+
     Host.put_section(
       WardrikChannel,
       Keyword.merge(
         [
           channels: [chat: {WardrikDaemon.Test.Channel, []}],
           installations:
-            WardrikChannel.Installations.Config.new([{:chat, "token", Resource.parse!("*")}])
+            WardrikChannel.Installations.Config.new([
+              {:chat, "token", Resource.parse!("*"), approvers[:chat]}
+            ])
         ],
         settings
       )
@@ -72,7 +77,7 @@ defmodule WardrikDaemon.IssuerTest do
              {"globex/agent/*", bound([:reader, :messenger])}
            ]
 
-    channel(orgs: [chat: :all], approvers: [chat: %WardrikChannel.Approvers.Named{names: ["U2"]}])
+    channel(orgs: [chat: :all], approvers: [chat: %Named{names: ["U2"]}])
     assert roles(in_chat("U1")) == [{"*/agent/*", bound([:reader, :messenger])}]
     assert roles(in_chat("U2")) == [{"*/agent/*", bound([:reader, :messenger, :approver])}]
   end
@@ -112,7 +117,7 @@ defmodule WardrikDaemon.IssuerTest do
   test "an admin defines only under the policy the defaults name", %{dir: dir} do
     channel(
       orgs: [chat: ["acme"]],
-      approvers: [chat: %WardrikChannel.Approvers.Named{names: ["U2"]}],
+      approvers: [chat: %Named{names: ["U2"]}],
       admins: [chat: ["U1"]]
     )
 

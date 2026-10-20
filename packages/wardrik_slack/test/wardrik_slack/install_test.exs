@@ -33,7 +33,8 @@ defmodule WardrikSlack.InstallTest do
             slack:
               {WardrikSlack, client_id: "1.2", client_secret: "shh", req_options: @req_options}
           ],
-          installations: installations
+          installations: installations,
+          approvers: [slack: %WardrikChannel.Approvers.Named{names: ["@maria"]}]
         ],
         host: Wardrik.Host.new(store: Wardrik.Test.store())
       )
@@ -45,12 +46,13 @@ defmodule WardrikSlack.InstallTest do
 
   defp state(url), do: URI.decode_query(URI.parse(url).query)["state"]
 
-  test "sends someone to add the app, and installs it for the owner it was asked for",
+  test "sends someone to add the app, and installs it for the owner it was asked for, with the channel's approvers",
        %{channel: channel, installations: installations, acme: acme} do
     assert {:ok, url} = WardrikChannel.install_url(channel, acme, return_to: "/settings/slack")
     assert %URI{host: "slack.com", path: "/oauth/v2/authorize", query: query} = URI.parse(url)
     assert %{"client_id" => "1.2", "scope" => scope} = URI.decode_query(query)
     assert String.split(scope, ",") == WardrikSlack.Install.scopes()
+    assert "chat:write.public" in WardrikSlack.Install.scopes()
 
     assert %Response{status: 302, headers: [{"location", "/settings/slack"}]} =
              WardrikChannel.install(channel, acme, back(%{"code" => "c1", "state" => state(url)}))
@@ -58,14 +60,15 @@ defmodule WardrikSlack.InstallTest do
     assert_received {:slack, "/api/oauth.v2.access",
                      %{"client_id" => "1.2", "client_secret" => "shh", "code" => "c1"}}
 
-    assert {:ok, %Installation{workspace: "T7", owner: ^acme, token: "xoxb-T7"}} =
-             Installations.fetch(installations, "slack", "T7")
+    assert {:ok,
+            %Installation{
+              workspace: "T7",
+              owner: ^acme,
+              token: "xoxb-T7",
+              approvers: %WardrikChannel.Approvers.Named{names: ["@maria"]}
+            } = installed} = Installations.fetch(installations, "slack", "T7")
 
-    assert {:ok, "UBOT7"} =
-             WardrikSlack.bot(
-               %Installation{channel: "slack", workspace: "T7", owner: acme, token: "x"},
-               []
-             )
+    assert {:ok, "UBOT7"} = WardrikSlack.bot(%{installed | token: "x"}, [])
   end
 
   test "says it is added where it was asked to go nowhere after", %{channel: channel, acme: acme} do

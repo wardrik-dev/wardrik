@@ -3,7 +3,6 @@ defmodule WardrikSlack.RoomsTest do
 
   alias Wardrik.AgentID
   alias Wardrik.Test.Audit
-  alias WardrikChannel.Context
   alias WardrikChannel.Installations
   alias WardrikChannel.Offer
   alias WardrikChannel.Room
@@ -51,12 +50,15 @@ defmodule WardrikSlack.RoomsTest do
             "description" => offer.description
           })
 
-    context = %Context{
-      host: host,
-      channel: channel,
-      org: org,
-      installations: Installations.Config.new([])
-    }
+    %{^channel => %{context: context}} =
+      WardrikChannel.channels(
+        [
+          channels: [{channel, {WardrikSlack, req_options: @req_options}}],
+          installations: Installations.Config.new([]),
+          org: org
+        ],
+        host: host
+      )
 
     workspace = %Workspace{
       context: context,
@@ -132,13 +134,14 @@ defmodule WardrikSlack.RoomsTest do
              [{"room.bound", %{"id" => person(opts, "U1")}}]
   end
 
-  test "says who approves, where the channel names approvers" do
-    opts = opts([books()])
+  test "says who approves, where the workspace's installation names approvers" do
+    approvers = %WardrikChannel.Approvers.Named{names: ["@maria", "U5"]}
 
     opts =
-      with_context(
-        opts,
-        &%{&1 | approvers: %WardrikChannel.Approvers.Named{names: ["@maria", "U5"]}}
+      Keyword.update!(
+        opts([books()]),
+        :workspace,
+        &%{&1 | installation: %{&1.installation | approvers: approvers}}
       )
 
     assert :ok = Rooms.event(joined("C1"), opts)
@@ -238,6 +241,14 @@ defmodule WardrikSlack.RoomsTest do
 
     assert %{"response_type" => "ephemeral", "text" => "Agents are not created from here" <> _} =
              replaced()
+  end
+
+  test "says how an agent comes to answer here, as the host words it" do
+    offering = "An owner or admin of the org can offer one in the agent's settings."
+    opts = with_context(opts([]), &%{&1 | offering: offering})
+    assert :ok = Rooms.event(joined("C1"), opts)
+
+    assert posted()["text"] == "No agent answers in Slack here yet. " <> offering
   end
 
   test "switches between every message and mentions, offers another agent, and stops" do

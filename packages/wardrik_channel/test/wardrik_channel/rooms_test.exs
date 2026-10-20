@@ -5,8 +5,8 @@ defmodule WardrikChannel.RoomsTest do
   alias Wardrik.Principal
   alias Wardrik.Resource
   alias Wardrik.Test.Audit
+  alias WardrikChannel.Approvers
   alias WardrikChannel.Binding
-  alias WardrikChannel.Context
   alias WardrikChannel.Inbound
   alias WardrikChannel.Installation
   alias WardrikChannel.Installations
@@ -17,6 +17,7 @@ defmodule WardrikChannel.RoomsTest do
   alias WardrikChannel.Workspace
 
   @maria Principal.new("slack:T1/U1", name: "maria")
+  @nobody %Approvers.Named{names: []}
 
   setup do
     org = "acme-#{System.unique_integer([:positive])}"
@@ -43,22 +44,37 @@ defmodule WardrikChannel.RoomsTest do
             "description" => description
           })
 
-    workspace(%Context{
+    test.channel
+    |> context_of(
       host: host,
-      channel: test.channel,
       org: test.org,
-      installations: Installations.Config.new([{test.channel, "token", Resource.parse!("*")}])
-    })
+      installations:
+        Installations.Config.new([{test.channel, "token", Resource.parse!("*"), @nobody}])
+    )
+    |> workspace()
   end
 
-  # The workspaces T1, T2… of a channel `context` writes, each installed
-  # for the next of `owners`.
-  defp installed(owners, context) do
+  # The context of the channel `name`, as `WardrikChannel.channels/2` makes
+  # it from `settings` on their `:host`.
+  defp context_of(name, settings) do
+    {host, settings} = Keyword.pop!(settings, :host)
+    adapter = {WardrikChannel.Test.Adapter, test: self()}
+
+    %{^name => channel} =
+      WardrikChannel.channels([channels: [{name, adapter}]] ++ settings, host: host)
+
+    channel.context
+  end
+
+  # The workspaces T1, T2… of the `:channel` `settings` name, each
+  # installed for the next of `owners`, naming no approvers.
+  defp installed(owners, settings) do
     installations = %WardrikChannel.Test.Installations{
       agent: start_supervised!({Agent, fn -> %{} end})
     }
 
-    context = struct!(Context, [installations: installations] ++ context)
+    {channel, settings} = Keyword.pop!(settings, :channel)
+    context = context_of(channel, [installations: installations] ++ settings)
 
     for {owner, n} <- Enum.with_index(owners, 1) do
       :ok =
@@ -66,7 +82,8 @@ defmodule WardrikChannel.RoomsTest do
           channel: context.channel,
           workspace: "T#{n}",
           owner: Resource.parse!(owner),
-          token: "token-T#{n}"
+          token: "token-T#{n}",
+          approvers: @nobody
         })
 
       {:ok, workspace} = Workspace.new(context, "T#{n}")
@@ -185,26 +202,41 @@ defmodule WardrikChannel.RoomsTest do
              ["room.bound", "room.bound", "room.unbound"]
   end
 
-  test "offers none, creates none, and names no approvers where the host says nothing" do
-    workspace = %Workspace{
-      context: %Context{
-        host: Defined.host(),
-        channel: "chat-#{System.unique_integer([:positive])}",
-        installations: Installations.Config.new([])
-      },
-      installation: %Installation{
-        channel: "chat",
-        workspace: "T1",
-        owner: Resource.parse!("*"),
-        token: "token"
-      }
-    }
+  test "offers none, creates none, and says what the daemon does where the host says nothing",
+       test do
+    [workspace] = installed(["*"], host: Defined.host(), channel: test.channel)
 
     assert Workspace.offered(workspace) == []
     refute Workspace.creatable?(workspace)
-    assert Workspace.approvers(workspace) == %WardrikChannel.Approvers.Named{names: []}
-    assert Workspace.offering(workspace) =~ "by adding `channels: [chat-"
+    assert Workspace.offering(workspace) =~ "by adding `channels: [#{test.channel}]`"
     assert Workspace.deciding(workspace) =~ "The channel's approvers name who else may"
+  end
+
+  test "says how an agent comes to answer, and who else decides, as the host words them",
+       test do
+    [workspace] =
+      installed(["*"],
+        host: Defined.host(),
+        channel: test.channel,
+        offering: "Turn on Answers in Slack in the agent's settings.",
+        deciding: "Your org's admins name the approvers."
+      )
+
+    assert Workspace.offering(workspace) == "Turn on Answers in Slack in the agent's settings."
+    assert Workspace.deciding(workspace) == "Your org's admins name the approvers."
+
+    assert {:error, "Agents are not created from here. Turn on Answers in Slack" <> _} =
+             Rooms.create(Room.new(workspace, "C1"), "books", by: @maria)
+  end
+
+  test "says who decides in each workspace as its installation does, of one channel", test do
+    [one, two] = installed([test.org, test.org], host: Defined.host(), channel: test.channel)
+    maria = %Approvers.Named{names: ["@maria"]}
+    :ok = Installations.put(one.context.installations, %{two.installation | approvers: maria})
+
+    assert Workspace.approvers(one) == @nobody
+    assert {:ok, two} = Workspace.new(two.context, "T2")
+    assert Workspace.approvers(two) == maria
   end
 
   test "keeps a room of each workspace apart, of the same id", test do

@@ -37,9 +37,9 @@ notify: {to: [ops, "slack:#updates"], on: [parked, failed, finished]}
 no target: where the channel offers the agent's org, it is posted in the
 workspace the channel is installed in for the agent's own owner, so each org's
 agents post in their own, and one whose owner has none posts nothing, with a
-warning in the log. The bot must be able to post
-in the room: in Slack, invited into it, or the app holding `chat:write.public`.
-It names nobody to answer: who may is what the host's issuer allows.
+warning in the log. In Slack, the bot posts in any public channel with
+`chat:write.public`. Invite it into a private one. It names nobody to answer:
+who may is what the host's issuer allows.
 
 One process in the cluster sends the notices, reading each agent's route from
 its definition as its events come. It keeps its place in the agents' logs, so

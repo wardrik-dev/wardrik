@@ -14,10 +14,9 @@ defmodule WardrikChannel.Replies do
   comes:
 
     * what a run answered, with the messages it answers
-    * the calls a run waits on, with buttons to answer them, where they are
-      still waiting as it posts: asked of each of the channel's approvers
-      directly, with who it waits on said in the thread, where the channel
-      names approvers
+    * the calls a run waits on, with buttons to answer them, while they
+      still wait. Each of the workspace's approvers is asked directly, and
+      the thread says who it waits on.
     * why a run failed
     * that someone connected an account a call waited on
     * who decided a call, and how, wherever they decided it

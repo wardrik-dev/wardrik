@@ -22,8 +22,8 @@ defprotocol WardrikDefinition.Contexts do
   `WardrikDefinition.Context`).
 
   A definition is read under the context as it is put, and keeps what it
-  read until it is read again, as `Wardrik.deployment_reload/1` reads every
-  one; the policies it names are found in the context each time its agent
+  read until it is read again, as `Wardrik.deployment_reload/2` reads
+  them; the policies it names are found in the context each time its agent
   starts.
   """
 
@@ -33,7 +33,7 @@ defprotocol WardrikDefinition.Contexts do
 
   @doc """
   Reads again what the contexts are read from, on this node, with the
-  `:host` asking, as `Wardrik.deployment_reload/1` asks before the
+  `:host` asking, as `Wardrik.deployment_reload/2` asks before the
   definitions are read again, and answers the files that declare agents:
   each with the definition it reads into, under the context as it is now,
   or why it does not read. A host that declares agents in no files answers

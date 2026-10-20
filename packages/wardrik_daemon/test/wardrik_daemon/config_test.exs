@@ -519,7 +519,7 @@ defmodule WardrikDaemon.ConfigTest do
 
       yaml = """
       channels:
-        chat: {type: test, token: xoxb-1}
+        chat: {type: test, token: xoxb-1, approvers: ["@maria"]}
         acme: {type: test, token: xoxb-2}
         all: {type: test, token: xoxb-3}
       orgs:
@@ -531,12 +531,17 @@ defmodule WardrikDaemon.ConfigTest do
       installations = settings[:installations]
       assert {:ok, chat} = WardrikChannel.Installations.fetch(installations, "chat", "T1")
 
-      assert %WardrikChannel.Installation{channel: "chat", workspace: "chat", token: "xoxb-1"} =
-               chat
+      assert %WardrikChannel.Installation{
+               channel: "chat",
+               workspace: "chat",
+               token: "xoxb-1",
+               approvers: %Named{names: ["@maria"]}
+             } = chat
 
       assert to_string(chat.owner) == "default"
       assert {:ok, acme} = WardrikChannel.Installations.fetch(installations, "acme", "T1")
       assert to_string(acme.owner) == "acme"
+      assert acme.approvers == %Named{names: []}
       assert {:ok, all} = WardrikChannel.Installations.fetch(installations, "all", "T1")
       assert all.owner == Wardrik.Resource.parse!("*")
       refute Keyword.has_key?(settings[:channels][:chat] |> elem(1), :token)
@@ -582,7 +587,8 @@ defmodule WardrikDaemon.ConfigTest do
                  channel: "chat",
                  workspace: "chat",
                  owner: Wardrik.Resource.parse!("default"),
-                 token: "xoxb-1"
+                 token: "xoxb-1",
+                 approvers: %Named{names: []}
                },
                orgs: ["default"],
                room: "#ops"

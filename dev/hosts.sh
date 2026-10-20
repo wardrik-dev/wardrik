@@ -92,7 +92,7 @@ phoenix() {
     --no-live --no-mailer --no-install >/dev/null)
 
   cd "$dir/host"
-  WARDRIK_REPO=$repo perl -0pi -e 's/(\{:phoenix, )/join("", map { "{:$_, path: \"$ENV{WARDRIK_REPO}\/packages\/$_\"},\n      " } qw(wardrik wardrik_http wardrik_oauth wardrik_mcp)) . $1/e' mix.exs
+  WARDRIK_REPO=$repo perl -0pi -e 's/(\{:phoenix, )/join("", map { "{:$_, path: \"$ENV{WARDRIK_REPO}\/packages\/$_\"},\n      " } qw(wardrik wardrik_http wardrik_oauth wardrik_mcp wardrik_slack)) . $1/e' mix.exs
 
   # The guides' own code and migrations, as dev/hosts/phoenix keeps them,
   # named for this app.
@@ -119,7 +119,8 @@ phoenix() {
 
   WARDRIK_HOST=Host.Agents WARDRIK_HOST_STORE=WardrikEcto.Store WARDRIK_HOST_WITHOUT=EKV \
     WARDRIK_HOST_REPO=Host.Repo WARDRIK_HOST_TREE=agents WARDRIK_HOST_APP=Host \
-    WARDRIK_VAULT_KEY=$(openssl rand -base64 32) check host
+    WARDRIK_VAULT_KEY=$(openssl rand -base64 32) SLACK_CLIENT_ID=hosts SLACK_CLIENT_SECRET=hosts \
+    SLACK_SIGNING_SECRET=hosts check host
 }
 
 bare() {

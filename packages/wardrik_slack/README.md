@@ -42,7 +42,7 @@ For testing without a public address, `app_token`, an app-level token with
 node opens out to Slack. That app should be Wardrik's alone: Slack spreads an
 app's Socket Mode envelopes across every connection open for it.
 
-`token` installs the app in the one workspace it reaches. A host that installs
-one app in many workspaces, one for each owner, names its `client_id` and
-`client_secret` instead, and keeps each workspace's token in its
-`WardrikChannel.Installations`; see `WardrikSlack.Install`.
+`token` installs the app in the one workspace it reaches. To install one app in
+many workspaces, one for each owner, name its `client_id` and `client_secret`
+instead. Your `WardrikChannel.Installations` keeps each workspace's token and
+approvers; see `WardrikSlack.Install`.

@@ -47,9 +47,11 @@ host =
   )
 ```
 
-A host keeps the workspaces each channel is installed in, with their
-tokens, as its `WardrikChannel.Installations` say, and serves what each
-medium sends over HTTP at `/v1/channels/`, among its routes, which hand it
-to `WardrikChannel.request/2`. The agents a channel offers in a workspace are
-those whose definitions name it, of the owner it was installed for. See
-`WardrikChannel` for the callbacks.
+A host keeps the workspaces each channel is installed in, as its
+`WardrikChannel.Installations` say. Each holds its token and who decides
+there. The host serves what each medium sends at `/v1/channels/`, and hands it
+to `WardrikChannel.request/2`. In a workspace, a channel offers the agents
+whose definitions name it, of the owner it was installed for.
+
+Where your people never edit a definition, word what a room says with
+`offering:` and `deciding:`. See `WardrikChannel` for the callbacks.

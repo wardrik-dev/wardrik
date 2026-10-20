@@ -25,7 +25,11 @@ defprotocol WardrikChannel.Installations do
   @spec owned(t(), String.t(), Wardrik.Resource.t()) :: [WardrikChannel.Installation.t()]
   def owned(installations, channel, owner)
 
-  @doc "Keeps `installation`, in place of any of the same channel and workspace."
+  @doc """
+  Keeps `installation`, in place of any of the same channel and workspace.
+  A new one carries the channel's approvers. Keep your own for the
+  workspace instead where your app names them.
+  """
   @spec put(t(), WardrikChannel.Installation.t()) :: :ok | {:error, String.t()}
   def put(installations, installation)
 

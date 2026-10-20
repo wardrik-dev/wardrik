@@ -19,20 +19,22 @@ defmodule WardrikChannel.Context do
     * `:creates` - whether someone in a room may create an agent to answer
       there, from the `defaults` of its org's definitions, which must name
       a policy its calls are held to; yes by default
-    * `:approvers` - who decides what an agent asks in its threads, as
-      `WardrikChannel.Approvers`; nobody named by default. They are asked
-      directly, and the room where it names nobody; who may answer is what
-      the token the host's `Wardrik.Issuer` issues them allows
+    * `:approvers` - the approvers of a workspace installed with
+      `WardrikChannel.install/3`; nobody named by default
+    * `:offering` - what a room no agent answers in says
+    * `:deciding` - what someone who may not decide a call is told
     * `:replies` - the name of the `WardrikChannel.Replies` that posts what
       agents answer in its threads; `WardrikChannel.Replies.supervisor/0`
       by default
   """
 
-  @enforce_keys [:channel, :host, :installations]
+  @enforce_keys [:channel, :host, :installations, :offering, :deciding]
   defstruct [
     :channel,
     :host,
     :installations,
+    :offering,
+    :deciding,
     orgs: :all,
     org: "default",
     creates: true,
@@ -48,6 +50,8 @@ defmodule WardrikChannel.Context do
           org: String.t(),
           creates: boolean(),
           approvers: WardrikChannel.Approvers.t(),
+          offering: String.t(),
+          deciding: String.t(),
           replies: atom()
         }
 

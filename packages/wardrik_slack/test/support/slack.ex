@@ -25,14 +25,15 @@ defmodule WardrikSlack.Test do
     id
   end
 
-  @doc "The installation of the channel `slack` in the workspace T1, with `token`."
+  @doc "The installation of the channel `slack` in the workspace T1, with `token`, naming no approvers."
   @spec installation(String.t()) :: Installation.t()
   def installation(token \\ "xoxb-test"),
     do: %Installation{
       channel: "slack",
       workspace: "T1",
       owner: Wardrik.Resource.parse!("*"),
-      token: token
+      token: token,
+      approvers: %WardrikChannel.Approvers.Named{names: []}
     }
 end
 

@@ -1525,20 +1525,38 @@ defmodule Wardrik do
     end
   end
 
+  @reload_opts NimbleOptions.new!(
+                 resources: [
+                   type: {:list, {:struct, Resource}},
+                   doc:
+                     "the agents whose definitions it reads, as `Wardrik.Resource` patterns: " <>
+                       "`acme/*` is an org's and its users'. Every agent's by default."
+                 ]
+               )
+
   @doc """
-  Reads every agent's definition again, in one pass on this node, as
-  `Wardrik.Definitions.reload/2` does: the files that declare agents, which
-  every node of the deployment keeps alike, and every other definition,
-  under the context as it is now. Every agent awake takes what it reads
-  into; one asleep takes it as it wakes. Answers the agents whose
-  definitions were read, and why each that did not read or build did not.
+  Reads agents' definitions again on this node, under the context as it is
+  now, and answers the agents read and why each that failed did. Agents
+  awake take the new definition now; those asleep, as they wake.
+
+      Wardrik.deployment_reload(scope, resources: [Wardrik.Resource.parse!("acme/*")])
+
+  Reach for `:resources` when one org's context changed, such as its
+  allowance. The token must allow `deployment.reload`. See
+  `Wardrik.Definitions.reload/2`.
+
+  ## Options
+
+  #{NimbleOptions.docs(@reload_opts)}
   """
   @doc group: "Deployment"
-  @spec deployment_reload(Scope.t()) ::
+  @spec deployment_reload(Scope.t(), keyword()) ::
           {:ok, %{reloaded: [AgentID.t()], failed: [String.t()]}} | {:error, Error.t()}
-  def deployment_reload(%Scope{} = scope) do
+  def deployment_reload(%Scope{} = scope, opts \\ []) do
+    opts = NimbleOptions.validate!(opts, @reload_opts)
+
     with :ok <- on_deployment(scope, "deployment.reload") do
-      reloaded = Definitions.reload(Host.definitions(scope.host), host: scope.host)
+      reloaded = Definitions.reload(Host.definitions(scope.host), [host: scope.host] ++ opts)
       audited(scope, [{:agents_reloaded, [node()]}], reloaded)
     end
   end
@@ -1832,10 +1850,13 @@ defmodule Wardrik do
   @spec deployment_nodes!(Scope.t()) :: Nodes.t()
   def deployment_nodes!(scope), do: unwrap(deployment_nodes(scope))
 
-  @doc "As `deployment_reload/1`, answering the value, or raising the `Wardrik.Error`."
+  @doc "As `deployment_reload/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Deployment"
-  @spec deployment_reload!(Scope.t()) :: %{reloaded: [AgentID.t()], failed: [String.t()]}
-  def deployment_reload!(scope), do: unwrap(deployment_reload(scope))
+  @spec deployment_reload!(Scope.t(), keyword()) :: %{
+          reloaded: [AgentID.t()],
+          failed: [String.t()]
+        }
+  def deployment_reload!(scope, opts \\ []), do: unwrap(deployment_reload(scope, opts))
 
   @doc "As `subscribe/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Events"

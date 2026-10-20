@@ -61,7 +61,8 @@ defmodule WardrikSlack.HTTPTest do
         channel: "slack",
         workspace: workspace,
         owner: Wardrik.Resource.parse!("acme"),
-        token: "xoxb-" <> workspace
+        token: "xoxb-" <> workspace,
+        approvers: %WardrikChannel.Approvers.Named{names: []}
       })
   end
 

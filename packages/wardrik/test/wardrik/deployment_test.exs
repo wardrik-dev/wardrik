@@ -105,6 +105,21 @@ defmodule Wardrik.DeploymentTest do
 
       assert {:error, %Error{type: :forbidden}} = Wardrik.deployment_reload(scope())
     end
+
+    test "reads again only the agents the patterns cover, saying still what does not read" do
+      :persistent_term.put({Reloads, :test}, self())
+      nobody = Resource.parse!("nobody-#{System.unique_integer([:positive])}/*")
+
+      assert {:ok, %{reloaded: [], failed: ["agents/broken.md: tools is a list"]}} =
+               Wardrik.deployment_reload(root(), resources: [nobody])
+
+      assert {:error, %Error{type: :forbidden}} =
+               Wardrik.deployment_reload(scope(), resources: [nobody])
+
+      assert_raise NimbleOptions.ValidationError, fn ->
+        Wardrik.deployment_reload(root(), resources: ["acme/*"])
+      end
+    end
   end
 
   test "the nodes count the agents running on each, and those asleep" do

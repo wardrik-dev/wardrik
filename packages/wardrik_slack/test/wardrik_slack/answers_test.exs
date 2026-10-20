@@ -53,16 +53,20 @@ defmodule WardrikSlack.AnswersTest do
     :ok
   end
 
-  # The channel's options a press is answered with.
-  defp answering do
-    context = %WardrikChannel.Context{
-      channel: "slack",
-      host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %Held{}),
-      installations: WardrikChannel.Installations.Config.new([])
-    }
+  # The channel's options a press is answered with, as `settings` say of
+  # the channel.
+  defp answering(settings \\ []) do
+    %{"slack" => channel} =
+      WardrikChannel.channels(
+        [
+          channels: [slack: {WardrikSlack, req_options: @req_options}],
+          installations: WardrikChannel.Installations.Config.new([])
+        ] ++ settings,
+        host: Wardrik.Host.new(store: Wardrik.Test.store(), issuer: %Held{})
+      )
 
     workspace = %WardrikChannel.Workspace{
-      context: context,
+      context: channel.context,
       installation: WardrikSlack.Test.installation()
     }
 
@@ -112,6 +116,14 @@ defmodule WardrikSlack.AnswersTest do
                  "answers it too."
 
       refute text =~ "WDJB-MJHT"
+    end
+
+    test "is refused saying who else may, as the host words it", %{key: key} do
+      deciding = "The org's owners and admins name the approvers in its settings."
+      assert :ok = Answers.answer(press(key, "wardrik_link", "U2"), answering(deciding: deciding))
+
+      assert_receive {:slack, _host, _path, %{"text" => text}}
+      assert text == "Only whoever asked, or the approvers here, can answer that. " <> deciding
     end
 
     test "says so once nothing waits on a connection", %{key: key} do

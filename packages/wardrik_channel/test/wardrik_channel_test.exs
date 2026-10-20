@@ -2,6 +2,7 @@ defmodule WardrikChannelTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Resource
+  alias WardrikChannel.Approvers
   alias WardrikChannel.Channel
   alias WardrikChannel.Installation
   alias WardrikChannel.Installations
@@ -14,7 +15,8 @@ defmodule WardrikChannelTest do
       channel: "named",
       workspace: "T1",
       owner: Resource.parse!("*"),
-      token: "token"
+      token: "token",
+      approvers: %Approvers.Named{names: []}
     }
 
   defp host, do: Wardrik.Host.new(store: Wardrik.Test.store())
@@ -171,7 +173,8 @@ defmodule WardrikChannelTest do
                 channel: "chat",
                 workspace: "T-" <> org,
                 owner: Resource.parse!(org),
-                token: "token"
+                token: "token",
+                approvers: %Approvers.Named{names: []}
               })
 
       %{host: rooms_host(installations: installations)}
@@ -233,7 +236,10 @@ defmodule WardrikChannelTest do
     test "posts only the agents of the orgs the channel offers, every org's installation or not" do
       host =
         rooms_host(
-          installations: Installations.Config.new([{:chat, "token", Resource.parse!("*")}]),
+          installations:
+            Installations.Config.new([
+              {:chat, "token", Resource.parse!("*"), %Approvers.Named{names: []}}
+            ]),
           orgs: [chat: ["acme"]]
         )
 
@@ -286,7 +292,7 @@ defmodule WardrikChannelTest do
   test "makes each channel, its context from what its settings say of it" do
     host = host()
     installations = Installations.Config.new([])
-    approvers = %WardrikChannel.Approvers.Anyone{}
+    approvers = %Approvers.Anyone{}
 
     assert %{
              "one" => %Channel{
@@ -307,7 +313,9 @@ defmodule WardrikChannelTest do
                  org: "acme",
                  orgs: [one: ["acme", "globex"]],
                  creates: [one: false],
-                 approvers: [one: approvers]
+                 approvers: [one: approvers],
+                 offering: "Turn on Answers in Slack in the agent's settings.",
+                 deciding: "Your org's admins name the approvers."
                ],
                host: host,
                replies: :elsewhere
@@ -321,10 +329,40 @@ defmodule WardrikChannelTest do
              orgs: ["acme", "globex"],
              creates: false,
              approvers: ^approvers,
+             offering: "Turn on Answers in Slack in the agent's settings.",
+             deciding: "Your org's admins name the approvers.",
              replies: :elsewhere
            } = context
 
-    assert %WardrikChannel.Context{orgs: :all, creates: true, approvers: %{names: []}} = two
+    assert %WardrikChannel.Context{
+             orgs: :all,
+             creates: true,
+             approvers: %{names: []},
+             offering: "Turn on Answers in Slack in the agent's settings."
+           } = two
+  end
+
+  test "says how an agent comes to answer, and who else decides, as the daemon does unless told" do
+    %{"one" => %Channel{context: one}, "two" => %Channel{context: two}} =
+      WardrikChannel.channels(
+        [
+          channels: [
+            one: {WardrikChannel.Test.Adapter, test: :me},
+            two: {WardrikChannel.Test.Adapter, test: :you}
+          ],
+          installations: Installations.Config.new([])
+        ],
+        host: host()
+      )
+
+    assert one.offering ==
+             "Whoever runs Wardrik can offer an agent here by adding `channels: [one]` " <>
+               "to its definition."
+
+    assert two.offering =~ "`channels: [two]`"
+
+    assert one.deciding ==
+             "The channel's approvers name who else may, and whoever runs Wardrik answers it too."
   end
 
   test "hands a request the medium sent to the channel's adapter, as it was sent" do
@@ -363,7 +401,8 @@ defmodule WardrikChannelTest do
       WardrikChannel.channels(
         [
           channels: [one: {WardrikChannel.Test.Adapter, test: self()}],
-          installations: installations
+          installations: installations,
+          approvers: [one: %Approvers.Anyone{}]
         ],
         host: host()
       )
@@ -382,15 +421,21 @@ defmodule WardrikChannelTest do
                body: ""
              })
 
-    assert {:ok, %Installation{owner: ^acme, token: "token-T7"}} =
+    assert {:ok, %Installation{owner: ^acme, token: "token-T7", approvers: %Approvers.Anyone{}}} =
              Installations.fetch(installations, "one", "T7")
   end
 
   test "installs nothing more than its config names, from its config" do
-    config = Installations.Config.new([{:slack, "xoxb-1", Resource.parse!("*")}])
+    approvers = %Approvers.Named{names: ["@maria"]}
+    config = Installations.Config.new([{:slack, "xoxb-1", Resource.parse!("*"), approvers}])
 
-    assert {:ok, %Installation{channel: "slack", workspace: "slack", token: "xoxb-1"}} =
-             Installations.fetch(config, "slack", "T0123")
+    assert {:ok,
+            %Installation{
+              channel: "slack",
+              workspace: "slack",
+              token: "xoxb-1",
+              approvers: ^approvers
+            }} = Installations.fetch(config, "slack", "T0123")
 
     assert :error = Installations.fetch(config, "other", "T0123")
 

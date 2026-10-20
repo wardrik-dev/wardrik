@@ -49,7 +49,6 @@ defmodule WardrikDaemon.Issuer do
   alias Wardrik.Role
   alias Wardrik.Statement
   alias Wardrik.Token
-  alias WardrikChannel.Approvers.Named
   alias WardrikDaemon.Agents
   alias WardrikDaemon.Config
 
@@ -135,9 +134,7 @@ defmodule WardrikDaemon.Issuer do
   defp decides?(agents, %WardrikChannel.Member{installation: installation} = member) do
     include? = &include?(agents, &1, member)
 
-    approvers = setting(agents, :approvers, installation.channel, %Named{names: []})
-
-    WardrikChannel.Approvers.decides?(approvers, include?) or
+    WardrikChannel.Approvers.decides?(installation.approvers, include?) or
       include?.(notifying(agents, installation.channel))
   end
 

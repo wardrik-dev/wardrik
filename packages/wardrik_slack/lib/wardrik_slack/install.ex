@@ -1,18 +1,20 @@
 defmodule WardrikSlack.Install do
   @moduledoc """
-  Installing a channel's app in a workspace, as Slack's OAuth has it: the
-  channel's `client_id` and `client_secret` send someone to add the app to
-  a workspace of theirs, and Slack sends them back to the app's Redirect
-  URL, under **OAuth & Permissions**, with a code that is exchanged for
-  the workspace's bot token.
+  How Slack installs the app in a workspace, behind
+  `WardrikChannel.install_url/3` and `WardrikChannel.install/3`.
 
-  Where they are sent carries, signed with the client secret, the owner it
-  was asked for, where to go once it is installed, and when it expires,
-  ten minutes on. Coming back, the host hands it over as someone acting for
-  an owner, and the app is installed for them only where it was asked for
-  that owner: so a link someone else started cannot install a workspace
-  for them. The installation is kept with the context's
-  `WardrikChannel.Installations`, which may refuse it.
+  Give the channel `client_id` and `client_secret`. Set the app's
+  **Redirect URL**, under **OAuth & Permissions**, to your install route.
+  The app asks for `scopes/0`.
+
+  The link `WardrikChannel.install_url/3` gives lasts ten minutes. It
+  carries the owner it was asked for, signed with the client secret.
+  Slack's answer installs the app only for that owner, so someone else's
+  link can't install a workspace for you.
+
+  The new installation carries the channel's approvers. Your
+  `WardrikChannel.Installations` keeps it, keeps your own approvers
+  instead, or refuses it.
   """
 
   alias Wardrik.Resource
@@ -24,9 +26,10 @@ defmodule WardrikSlack.Install do
   @authorize "https://slack.com/oauth/v2/authorize"
 
   # What the app does: read and post in the Slack channels it is invited
-  # into, mark the messages it answers, and find people by handle or email.
-  @scopes ~w(channels:history channels:read chat:write groups:history groups:read
-             reactions:write users:read users:read.email)
+  # into, post notices in any public one, mark the messages it answers, and
+  # find people by handle or email.
+  @scopes ~w(channels:history channels:read chat:write chat:write.public groups:history
+             groups:read reactions:write users:read users:read.email)
 
   # How long, in seconds, an install may take.
   @expires 600
@@ -102,7 +105,8 @@ defmodule WardrikSlack.Install do
           channel: Keyword.fetch!(opts, :name),
           workspace: team,
           owner: owner,
-          token: token
+          token: token,
+          approvers: Keyword.fetch!(opts, :context).approvers
         }
 
         if bot = access["bot_user_id"],
