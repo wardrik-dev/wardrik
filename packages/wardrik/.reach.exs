@@ -165,7 +165,7 @@
       "Wardrik.Specs",
       "Wardrik.Specs.None",
       "Wardrik.Error",
-      "Wardrik.Event",
+      "Wardrik.Bus.Event",
       "Wardrik.Event.Codec.Value",
       "Wardrik.Event.Cursor",
       "Wardrik.Event.Log.Entry",
@@ -221,7 +221,7 @@
       "Wardrik.LLM.ToolRunner",
       "Wardrik.LLM.Catalog",
       "Wardrik.Fleet.Supervisor",
-      "Wardrik.Event.Source",
+      "Wardrik.Bus.Source",
       "Wardrik.Event.Log",
       "Wardrik.Trace"
     ],
@@ -233,7 +233,7 @@
       {"Wardrik.LLM.ToolRunner", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.LLM.Catalog", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
-      {"Wardrik.Event.Source", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Bus.Source", ["Wardrik", "Wardrik.*"]},
       # The agents' logs are read and followed through Wardrik alone, which
       # checks the token first.
       {"Wardrik.Event.Log", ["Wardrik"]},

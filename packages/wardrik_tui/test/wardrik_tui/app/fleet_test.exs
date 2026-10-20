@@ -4,6 +4,8 @@ defmodule WardrikTUI.App.FleetTest do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Source
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.Text
@@ -11,9 +13,6 @@ defmodule WardrikTUI.App.FleetTest do
   alias Wardrik.Conversation.ToolError
   alias Wardrik.Conversation.ToolResult
   alias Wardrik.Conversation.User
-  alias Wardrik.Event
-  alias Wardrik.Event.Bus
-  alias Wardrik.Event.Source
   alias Wardrik.Fleet
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
@@ -257,7 +256,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/spawn asked look into it")
 
     assert screen(session) =~ "› look into it"
-    assert_receive %Event{payload: %Event.MessageQueued{message: %{text: "look into it"}}}
+    assert_receive %Bus.Event{payload: %Bus.MessageQueued{message: %{text: "look into it"}}}
   end
 
   test "/connect moves this client onto another agent", %{session: session, org: org} do
@@ -348,14 +347,14 @@ defmodule WardrikTUI.App.FleetTest do
     other = spawn_and_ask(org, "other", "what is up")
     :ok = Bus.subscribe(agent_id)
     submit(session, "hello from here")
-    assert_receive %Event{payload: %Event.TurnFinished{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
 
     submit(session, "/connect other")
     refute screen(session) =~ "hello from here"
 
     # The first agent carries on without this client watching.
     Agent.ask(agent_id, "while you were out", host: Wardrik.Test.host())
-    assert_receive %Event{payload: %Event.TurnFinished{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
     :ok = Bus.unsubscribe(agent_id)
 
     submit(session, "/connect watched")
@@ -451,7 +450,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "└ ◐ pricing"
 
     send(branch, :release)
-    assert_receive %Event{payload: %Event.TurnFinished{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
     assert eventually(session, fn -> screen(session) =~ "└ ✓ pricing" end)
 
     # Nothing is still going, so the tick asks for no more.
@@ -471,7 +470,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     Agent.ask(pid, "go")
     assert_receive {:delegating, branch}
-    assert_receive %Event{payload: %Event.DelegationStarted{}}
+    assert_receive %Bus.Event{payload: %Bus.DelegationStarted{}}
     assert eventually(session, fn -> screen(session) =~ "◐ other sub 1/1" end)
     assert screen(session) =~ "└ ◐ pricing"
     assert session.pid in Bus.subscribers(other)
@@ -490,7 +489,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "j/k scroll · i prompt · Esc back"
 
     send(branch, :release)
-    assert_receive %Event{payload: %Event.TurnFinished{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
     assert eventually(session, fn -> screen(session) =~ "✓ done" end)
     assert screen(session) =~ "found pricing"
 
@@ -682,10 +681,10 @@ defmodule WardrikTUI.App.FleetTest do
 
     Breeze.Test.info(
       session,
-      Event.new(stale, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("stale")]})
+      Bus.Event.new(stale, %Bus.TurnStarted{messages: [Wardrik.Agent.Message.new("stale")]})
     )
 
-    Breeze.Test.info(session, Event.new(stale, %Event.Result{text: "stale words\n"}))
+    Breeze.Test.info(session, Bus.Event.new(stale, %Bus.Result{text: "stale words\n"}))
 
     text = screen(session)
     refute text =~ "stale words"
@@ -756,8 +755,8 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "› ○ watched"
     assert Fleet.whereis(key, host: Wardrik.Test.host())
 
-    assert_receive %Event{
-      payload: %Event.MessageQueued{message: %{text: "look into it", sender: sender}}
+    assert_receive %Bus.Event{
+      payload: %Bus.MessageQueued{message: %{text: "look into it", sender: sender}}
     }
 
     assert Wardrik.Principal.id(sender) == "ssh:ops"
@@ -894,7 +893,7 @@ defmodule WardrikTUI.App.FleetTest do
     :ok = Bus.subscribe(key)
 
     Agent.ask(pid, question)
-    assert_receive %Event{payload: %Event.TurnFinished{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
     :ok = Bus.unsubscribe(key)
 
     key
@@ -1094,7 +1093,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/stop busy")
 
     assert screen(session) =~ "asked #{key} to stop"
-    assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
+    assert_receive %Bus.Event{payload: %Bus.TurnInterrupted{}}, 5_000
     assert Fleet.whereis(key, host: Wardrik.Test.host())
     assert Audit.about(key) == [{"agent.cancelled", @ops}]
   end
@@ -1119,7 +1118,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/stop #{org}/agent/*")
 
     assert screen(session) =~ "asked 1 under #{org}/agent/* to stop"
-    assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
+    assert_receive %Bus.Event{payload: %Bus.TurnInterrupted{}}, 5_000
     subject = to_string(AgentID.resource(key))
 
     assert [%{"data" => %{"resource" => resource, "actor" => @ops}}] =
@@ -1139,7 +1138,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     submit(session, "/stop")
 
-    assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
+    assert_receive %Bus.Event{payload: %Bus.TurnInterrupted{}}, 5_000
     assert Audit.about(key) == [{"agent.cancelled", @ops}]
   end
 

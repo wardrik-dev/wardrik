@@ -2,7 +2,7 @@ defmodule WardrikSlack.AnswersTest do
   use ExUnit.Case, async: false
 
   alias Wardrik.Agent
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.Fleet
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Script
@@ -87,9 +87,9 @@ defmodule WardrikSlack.AnswersTest do
         )
 
       on_exit(fn -> Fleet.forget(key) end)
-      :ok = Event.Bus.subscribe(key, level: :lifecycle)
+      :ok = Bus.subscribe(key, level: :lifecycle)
       :ok = Agent.ask(key, "Open an issue.", host: Wardrik.Test.host())
-      assert_receive %Event{payload: %Event.TurnParked{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
 
       %{key: key}
     end
@@ -156,7 +156,7 @@ defmodule WardrikSlack.AnswersTest do
         )
 
       on_exit(fn -> Fleet.forget(key) end)
-      :ok = Event.Bus.subscribe(key, level: :lifecycle)
+      :ok = Bus.subscribe(key, level: :lifecycle)
 
       asker =
         WardrikSlack.Test.installation()
@@ -164,7 +164,7 @@ defmodule WardrikSlack.AnswersTest do
         |> WardrikChannel.principal(name: "maria")
 
       :ok = Agent.ask(key, "Ship it.", sender: asker, host: Wardrik.Test.host())
-      assert_receive %Event{payload: %Event.TurnParked{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
 
       %{key: key}
     end
@@ -188,9 +188,9 @@ defmodule WardrikSlack.AnswersTest do
         )
 
       on_exit(fn -> Fleet.forget(key) end)
-      :ok = Event.Bus.subscribe(key, level: :lifecycle)
+      :ok = Bus.subscribe(key, level: :lifecycle)
       :ok = Agent.ask(key, "Ship it.", host: Wardrik.Test.host())
-      assert_receive %Event{payload: %Event.TurnParked{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
 
       %{key: key}
     end
@@ -226,8 +226,8 @@ defmodule WardrikSlack.AnswersTest do
 
       jon = Wardrik.Principal.new("slack:T1/U1", name: "jon")
 
-      assert_receive %Event{
-        payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: ^jon}
+      assert_receive %Bus.Event{
+        payload: %Bus.CallDecided{call_id: "call_1", decision: :approve, by: ^jon}
       }
 
       assert_receive {:slack, "hooks.slack.com", "/actions/r", reply}

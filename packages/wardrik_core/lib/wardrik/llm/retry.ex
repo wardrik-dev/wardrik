@@ -33,7 +33,7 @@ defprotocol Wardrik.LLM.Retry do
         def settle(_failover, _request, _opts), do: :ok
       end
 
-  The turn holds the wait, and publishes a `Wardrik.Event.ModelRetrying`
+  The turn holds the wait, and publishes a `Wardrik.Bus.ModelRetrying`
   before it: `:interrupt` ends the wait, and a turn past its deadline fails
   with the call's reason rather than waiting.
 

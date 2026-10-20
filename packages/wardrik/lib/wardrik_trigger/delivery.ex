@@ -4,12 +4,12 @@ defmodule WardrikTrigger.Delivery do
   whether the agent can be asked now, as the trigger's `overlap` says, the
   asking, with what was found under the prompt and labelled as it is, and
   what came of it, announced on the agent's topic as
-  `Wardrik.Event.TriggerFired`.
+  `Wardrik.Bus.TriggerFired`.
   """
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.Fleet
   alias WardrikTrigger.Item
 
@@ -49,5 +49,5 @@ defmodule WardrikTrigger.Delivery do
   @doc "Says on `agent`'s topic that its trigger `name` came to `outcome`."
   @spec announce(AgentID.t(), String.t(), WardrikTrigger.outcome()) :: :ok
   def announce(%AgentID{} = agent, name, outcome),
-    do: Event.announce(agent, %Event.TriggerFired{name: name, outcome: outcome})
+    do: Bus.Event.announce(agent, %Bus.TriggerFired{name: name, outcome: outcome})
 end

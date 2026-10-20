@@ -4,11 +4,11 @@ defmodule WardrikTUI.ActivityTest do
   import Wardrik.AgentID, only: [sigil_A: 2]
 
   alias Wardrik.Agent.Message
-  alias Wardrik.Event
-  alias Wardrik.Event.Source
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Source
   alias WardrikTUI.Activity
 
-  defp event(source, payload), do: Event.new(source, payload)
+  defp event(source, payload), do: Bus.Event.new(source, payload)
 
   defp fold(activity, source, payload, now \\ 0) do
     Activity.fold(activity, event(source, payload), now: now)
@@ -21,7 +21,7 @@ defmodule WardrikTUI.ActivityTest do
 
   describe "opening" do
     test "a turn opens the root span", %{turn: turn} do
-      activity = Activity.new() |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
+      activity = Activity.new() |> fold(turn, %Bus.TurnStarted{messages: [Message.new("hi")]})
 
       assert [span] = Activity.spans(activity)
       assert span.span_id == turn.trace.span_id
@@ -32,8 +32,8 @@ defmodule WardrikTUI.ActivityTest do
     test "span_started opens a child", %{turn: turn, tool: tool} do
       activity =
         Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-        |> fold(tool, %Event.SpanStarted{name: "deep_research"})
+        |> fold(turn, %Bus.TurnStarted{messages: [Message.new("hi")]})
+        |> fold(tool, %Bus.SpanStarted{name: "deep_research"})
 
       assert [_turn, span] = Activity.spans(activity)
       assert span.name == "deep_research"
@@ -41,7 +41,7 @@ defmodule WardrikTUI.ActivityTest do
     end
 
     test "a span first seen mid-flight is opened where it was seen", %{tool: tool} do
-      activity = Activity.new() |> fold(tool, %Event.Result{text: "already going"})
+      activity = Activity.new() |> fold(tool, %Bus.Result{text: "already going"})
 
       assert [span] = Activity.spans(activity)
       assert span.span_id == tool.trace.span_id
@@ -54,10 +54,10 @@ defmodule WardrikTUI.ActivityTest do
 
       activity =
         Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-        |> fold(one, %Event.SpanStarted{name: "one"})
-        |> fold(two, %Event.SpanStarted{name: "two"})
-        |> fold(one, %Event.Result{text: "still going"})
+        |> fold(turn, %Bus.TurnStarted{messages: [Message.new("hi")]})
+        |> fold(one, %Bus.SpanStarted{name: "one"})
+        |> fold(two, %Bus.SpanStarted{name: "two"})
+        |> fold(one, %Bus.Result{text: "still going"})
 
       assert Enum.map(Activity.spans(activity), & &1.name) == ["turn", "one", "two"]
     end
@@ -67,9 +67,9 @@ defmodule WardrikTUI.ActivityTest do
     test "span_finished settles a span with the duration it reported", %{turn: turn, tool: tool} do
       activity =
         Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-        |> fold(tool, %Event.SpanStarted{name: "deep_research"})
-        |> fold(tool, %Event.SpanFinished{outcome: :ok, duration_ms: 1234})
+        |> fold(turn, %Bus.TurnStarted{messages: [Message.new("hi")]})
+        |> fold(tool, %Bus.SpanStarted{name: "deep_research"})
+        |> fold(tool, %Bus.SpanFinished{outcome: :ok, duration_ms: 1234})
 
       span = Activity.fetch(activity, tool.trace.span_id)
 
@@ -80,8 +80,8 @@ defmodule WardrikTUI.ActivityTest do
     test "a failed span settles as an error", %{tool: tool} do
       activity =
         Activity.new()
-        |> fold(tool, %Event.SpanStarted{name: "deep_research"})
-        |> fold(tool, %Event.SpanFinished{outcome: {:error, :timeout}, duration_ms: 50})
+        |> fold(tool, %Bus.SpanStarted{name: "deep_research"})
+        |> fold(tool, %Bus.SpanFinished{outcome: {:error, :timeout}, duration_ms: 50})
 
       assert Activity.fetch(activity, tool.trace.span_id).status == :error
     end
@@ -91,7 +91,7 @@ defmodule WardrikTUI.ActivityTest do
     } do
       call = Source.child(turn, name: "echo")
 
-      started = %Event.ToolStarted{
+      started = %Bus.ToolStarted{
         call_id: "c1",
         name: "echo",
         arguments: %{},
@@ -100,21 +100,21 @@ defmodule WardrikTUI.ActivityTest do
       }
 
       for {payload, status} <- [
-            {%Event.ToolFinished{
+            {%Bus.ToolFinished{
                call_id: "c1",
                name: "echo",
                result: {:ok, %{}},
                served_by: nil,
                cost: nil
              }, :ok},
-            {%Event.ToolReplayed{call_id: "c1", name: "echo", result: {:error, :gone}}, :error},
-            {%Event.ToolDenied{
+            {%Bus.ToolReplayed{call_id: "c1", name: "echo", result: {:error, :gone}}, :error},
+            {%Bus.ToolDenied{
                call_id: "c1",
                name: "echo",
                reason: "Never.",
                decided_by: %{by: :default, hooks: []}
              }, :error},
-            {%Event.ToolParked{call_id: "c1", name: "echo", prompt: "Ship?"}, :parked}
+            {%Bus.ToolParked{call_id: "c1", name: "echo", prompt: "Ship?"}, :parked}
           ] do
         activity =
           Activity.new()
@@ -129,9 +129,9 @@ defmodule WardrikTUI.ActivityTest do
     test "the first close wins, because a reaped branch may close twice", %{tool: tool} do
       activity =
         Activity.new()
-        |> fold(tool, %Event.SpanStarted{name: "slow"})
-        |> fold(tool, %Event.SpanFinished{outcome: {:error, :crashed}, duration_ms: 10})
-        |> fold(tool, %Event.SpanFinished{outcome: {:error, :timeout}, duration_ms: 999})
+        |> fold(tool, %Bus.SpanStarted{name: "slow"})
+        |> fold(tool, %Bus.SpanFinished{outcome: {:error, :crashed}, duration_ms: 10})
+        |> fold(tool, %Bus.SpanFinished{outcome: {:error, :timeout}, duration_ms: 999})
 
       span = Activity.fetch(activity, tool.trace.span_id)
 
@@ -142,8 +142,8 @@ defmodule WardrikTUI.ActivityTest do
     test "a turn closes on its own events", %{turn: turn} do
       activity =
         Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]}, 100)
-        |> fold(turn, %Event.TurnFinished{messages: []}, 350)
+        |> fold(turn, %Bus.TurnStarted{messages: [Message.new("hi")]}, 100)
+        |> fold(turn, %Bus.TurnFinished{messages: []}, 350)
 
       span = Activity.fetch(activity, turn.trace.span_id)
 
@@ -154,8 +154,8 @@ defmodule WardrikTUI.ActivityTest do
     test "a failed turn closes as an error", %{turn: turn} do
       activity =
         Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-        |> fold(turn, %Event.TurnFailed{reason: :rate_limited})
+        |> fold(turn, %Bus.TurnStarted{messages: [Message.new("hi")]})
+        |> fold(turn, %Bus.TurnFailed{reason: :rate_limited})
 
       assert Activity.fetch(activity, turn.trace.span_id).status == :error
     end
@@ -167,9 +167,9 @@ defmodule WardrikTUI.ActivityTest do
 
       activity =
         Activity.new()
-        |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]})
-        |> fold(tool, %Event.SpanStarted{name: "deep_research"})
-        |> fold(branch, %Event.SpanStarted{name: "pricing"})
+        |> fold(turn, %Bus.TurnStarted{messages: [Message.new("hi")]})
+        |> fold(tool, %Bus.SpanStarted{name: "deep_research"})
+        |> fold(branch, %Bus.SpanStarted{name: "pricing"})
 
       assert Activity.depth(activity, turn.trace.span_id) == 0
       assert Activity.depth(activity, tool.trace.span_id) == 1
@@ -177,7 +177,7 @@ defmodule WardrikTUI.ActivityTest do
     end
 
     test "a span whose parent was never seen counts what it can", %{tool: tool} do
-      activity = Activity.new() |> fold(tool, %Event.SpanStarted{name: "deep_research"})
+      activity = Activity.new() |> fold(tool, %Bus.SpanStarted{name: "deep_research"})
 
       assert Activity.depth(activity, tool.trace.span_id) == 1
     end
@@ -190,7 +190,7 @@ defmodule WardrikTUI.ActivityTest do
   describe "elapsed_ms/2" do
     test "a running span counts from when it started", %{turn: turn} do
       activity =
-        Activity.new() |> fold(turn, %Event.TurnStarted{messages: [Message.new("hi")]}, 100)
+        Activity.new() |> fold(turn, %Bus.TurnStarted{messages: [Message.new("hi")]}, 100)
 
       assert Activity.fetch(activity, turn.trace.span_id) |> Activity.elapsed_ms(450) == 350
     end
@@ -198,8 +198,8 @@ defmodule WardrikTUI.ActivityTest do
     test "a settled span reports what it took, whatever the clock says", %{tool: tool} do
       activity =
         Activity.new()
-        |> fold(tool, %Event.SpanStarted{name: "echo"}, 100)
-        |> fold(tool, %Event.SpanFinished{outcome: :ok, duration_ms: 25}, 450)
+        |> fold(tool, %Bus.SpanStarted{name: "echo"}, 100)
+        |> fold(tool, %Bus.SpanFinished{outcome: :ok, duration_ms: 25}, 450)
 
       assert Activity.fetch(activity, tool.trace.span_id) |> Activity.elapsed_ms(9_999) == 25
     end

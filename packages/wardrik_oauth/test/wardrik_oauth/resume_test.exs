@@ -3,8 +3,8 @@ defmodule WardrikOAuth.ResumeTest do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
+  alias Wardrik.Bus
   alias Wardrik.Credential
-  alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Run
   alias Wardrik.Test.AgentRunners
@@ -46,9 +46,9 @@ defmodule WardrikOAuth.ResumeTest do
           )
       )
 
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     Agent.ask(agent, "go")
-    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, _prompt}]}}
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{calls: [{%{id: "call_1"}, _prompt}]}}
 
     %{agent: agent, url: link.url}
   end
@@ -68,12 +68,12 @@ defmodule WardrikOAuth.ResumeTest do
 
       assert {:ok, "github"} = finish(url)
 
-      assert_receive %Event{
-        payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
+      assert_receive %Bus.Event{
+        payload: %Bus.CallDecided{call_id: "call_1", decision: :approve, by: by}
       }
 
       assert by == authorizer()
-      assert_receive %Event{payload: %Event.TurnResumed{decisions: %{"call_1" => :approve}}}
+      assert_receive %Bus.Event{payload: %Bus.TurnResumed{decisions: %{"call_1" => :approve}}}
       assert_receive {:resumed, %{"call_1" => :approve}}
     end
 
@@ -87,7 +87,7 @@ defmodule WardrikOAuth.ResumeTest do
       assert {:ok, "github"} = finish(theirs.url)
 
       assert [{%{id: "call_1"}, _prompt}] = Agent.parked(agent)
-      refute_received %Event{payload: %Event.TurnResumed{}}
+      refute_received %Bus.Event{payload: %Bus.TurnResumed{}}
     end
 
     test "stays parked, on the same link, while the token endpoint refuses", %{owner: owner} do

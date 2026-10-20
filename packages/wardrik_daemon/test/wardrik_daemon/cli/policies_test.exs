@@ -9,9 +9,9 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
 
   import ExUnit.CaptureIO
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Source
   alias Wardrik.Event.Log.Writer
-  alias Wardrik.Event.Source
   alias WardrikDaemon.CLI
 
   @moduletag :tmp_dir
@@ -75,15 +75,15 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
       Writer.open(
         Wardrik.Test.store(),
         Writer.new(id),
-        Event.new(source, %Event.AgentStarted{node: node(), status: :idle, generation: "g1"})
+        Bus.Event.new(source, %Bus.AgentStarted{node: node(), status: :idle, generation: "g1"})
       )
 
     Enum.reduce(calls, writer, fn
       {:approved, call_id, by}, writer ->
-        appended(writer, source, %Event.CallDecided{call_id: call_id, decision: :approve, by: by})
+        appended(writer, source, %Bus.CallDecided{call_id: call_id, decision: :approve, by: by})
 
       {call_id, tool, arguments, decided_by}, writer ->
-        appended(writer, source, %Event.ToolStarted{
+        appended(writer, source, %Bus.ToolStarted{
           call_id: call_id,
           name: tool,
           arguments: arguments,
@@ -94,7 +94,7 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
   end
 
   defp appended(writer, source, payload) do
-    {:ok, writer} = Writer.append(Wardrik.Test.store(), writer, Event.new(source, payload))
+    {:ok, writer} = Writer.append(Wardrik.Test.store(), writer, Bus.Event.new(source, payload))
     writer
   end
 

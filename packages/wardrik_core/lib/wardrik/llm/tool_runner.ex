@@ -15,9 +15,9 @@ defmodule Wardrik.LLM.ToolRunner do
   finds its place in the tree and how a tool with an outside effect finds an
   idempotency key.
 
-  A call's own events open and close its span, as `Wardrik.Event.ended/1`
+  A call's own events open and close its span, as `Wardrik.Bus.Event.ended/1`
   reads them, rather than span events of their own; a call killed at the
-  timeout is answered by the caller with `Wardrik.Event.ToolFinished` on its
+  timeout is answered by the caller with `Wardrik.Bus.ToolFinished` on its
   span.
 
   A batch runs under the longest timeout any tool in it declares, narrowed by
@@ -52,13 +52,13 @@ defmodule Wardrik.LLM.ToolRunner do
   the model is never left with an unanswered call. `in_flight/1` lists what
   could be stopped.
   """
+  alias Wardrik.Bus
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
   alias Wardrik.Call.Tool
   alias Wardrik.Conversation.Text
   alias Wardrik.Conversation.ToolError
   alias Wardrik.Conversation.ToolResult
-  alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Run
 
@@ -214,7 +214,7 @@ defmodule Wardrik.LLM.ToolRunner do
   it is killed, the model is answered with an error result, and everything else
   the turn asked for carries on.
   """
-  @spec kill_call(Event.Bus.agent_id(), String.t()) :: :ok | {:error, :not_found}
+  @spec kill_call(Bus.agent_id(), String.t()) :: :ok | {:error, :not_found}
   def kill_call(agent_id, call_id) do
     case Registry.match(@registry, agent_id, %{call_id: call_id}) do
       [] -> {:error, :not_found}
@@ -223,7 +223,7 @@ defmodule Wardrik.LLM.ToolRunner do
   end
 
   @doc "Every tool call this agent has in flight right now."
-  @spec in_flight(Event.Bus.agent_id()) :: [running()]
+  @spec in_flight(Bus.agent_id()) :: [running()]
   def in_flight(agent_id) do
     for {pid, meta} <- Registry.lookup(@registry, agent_id) do
       %{
@@ -271,7 +271,7 @@ defmodule Wardrik.LLM.ToolRunner do
   defp reap(call, span, reason) do
     reaped = Call.answer(call, {:error, "Tool crashed: #{inspect(reason)}"})
 
-    Event.emit(span.source, %Event.ToolFinished{
+    Bus.Event.emit(span.source, %Bus.ToolFinished{
       call_id: call.id,
       name: Call.name(call),
       result: reaped.result,

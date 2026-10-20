@@ -1,4 +1,4 @@
-defmodule Wardrik.Event.Source do
+defmodule Wardrik.Bus.Source do
   @moduledoc """
   Who is emitting: the topic subscribers watch, and the span the work sits in.
 
@@ -7,8 +7,8 @@ defmodule Wardrik.Event.Source do
   a child span, which is what puts a subagent's events in its parent's stream
   without a second subscription.
 
-      source = Wardrik.Event.Source.root(~A"acme/@jon/assistant", name: "turn")
-      branch = Wardrik.Event.Source.child(source, name: "web_search")
+      source = Wardrik.Bus.Source.root(~A"acme/@jon/assistant", name: "turn")
+      branch = Wardrik.Bus.Source.child(source, name: "web_search")
 
       branch.agent_id == source.agent_id
   """
@@ -19,14 +19,14 @@ defmodule Wardrik.Event.Source do
   defstruct [:agent_id, :trace]
 
   @typedoc "An agent id to publish under, and the span the events belong to."
-  @type t() :: %__MODULE__{agent_id: Wardrik.Event.Bus.agent_id(), trace: Trace.t()}
+  @type t() :: %__MODULE__{agent_id: Wardrik.Bus.agent_id(), trace: Trace.t()}
 
   @doc """
   A source at the root of a new trace.
 
   Options are passed to `Wardrik.Trace.root/1`.
   """
-  @spec root(Wardrik.Event.Bus.agent_id(), keyword()) :: t()
+  @spec root(Wardrik.Bus.agent_id(), keyword()) :: t()
   def root(agent_id, opts \\ []) do
     %__MODULE__{agent_id: agent_id, trace: Trace.root(opts)}
   end

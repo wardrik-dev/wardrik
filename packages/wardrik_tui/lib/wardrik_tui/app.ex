@@ -16,7 +16,7 @@ defmodule WardrikTUI.App do
   import WardrikTUI.Components.Inspector, only: [inspector: 1]
   import WardrikTUI.Components.Palette, only: [palette_box: 1]
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.Fleet
   alias WardrikConsole.Filter
   alias WardrikTUI.App.Commands
@@ -676,18 +676,18 @@ defmodule WardrikTUI.App do
 
   @impl Breeze.View
   def handle_info(
-        %Event{source: %{agent_id: id}, payload: %Event.ActivityChanged{activity: activity}},
+        %Bus.Event{source: %{agent_id: id}, payload: %Bus.ActivityChanged{activity: activity}},
         %{assigns: %{agent_id: id}} = term
       ) do
     {:noreply, term |> assign(agent_activity: activity) |> Frames.frame_due(), invalidate: false}
   end
 
-  def handle_info(%Event{source: %{agent_id: id}} = event, %{assigns: %{agent_id: id}} = term) do
+  def handle_info(%Bus.Event{source: %{agent_id: id}} = event, %{assigns: %{agent_id: id}} = term) do
     {:noreply, term |> Display.apply_event(event) |> Frames.frame_due(), invalidate: false}
   end
 
   # A lifecycle event from an agent this client follows in the panel.
-  def handle_info(%Event{source: %{agent_id: id}} = event, term) do
+  def handle_info(%Bus.Event{source: %{agent_id: id}} = event, term) do
     case term.assigns.followed do
       %{^id => delegations} ->
         followed = Map.put(term.assigns.followed, id, Delegation.fold(delegations, event))

@@ -1,14 +1,14 @@
 defmodule WardrikWorkflowTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.LLM.Config
   alias Wardrik.Run
   alias WardrikWorkflow.Test.Steps
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
-    :ok = Event.Bus.subscribe(agent_id)
+    :ok = Bus.subscribe(agent_id)
 
     {:ok, agent_id: agent_id, run: Run.root(Config.new(), agent_id, name: "turn")}
   end
@@ -205,7 +205,7 @@ defmodule WardrikWorkflowTest do
 
   test "nested work keeps one topic and deepens the tree", %{run: run, agent_id: agent_id} do
     inner = fn _input, run ->
-      Event.emit(run.source, %Event.Result{text: "inner"})
+      Bus.Event.emit(run.source, %Bus.Result{text: "inner"})
       {:ok, run.source.trace}
     end
 
@@ -213,7 +213,7 @@ defmodule WardrikWorkflowTest do
 
     [{:branch, {:ok, [{:leaf, {:ok, leaf}}]}}] = WardrikWorkflow.fan_out(run, [:branch], outer)
 
-    assert_receive %Event{payload: %Event.Result{text: "inner"}} = event
+    assert_receive %Bus.Event{payload: %Bus.Result{text: "inner"}} = event
     assert event.source.agent_id == agent_id
     assert leaf.trace_id == run.source.trace.trace_id
     refute leaf.parent_span_id == run.source.trace.span_id
@@ -223,8 +223,8 @@ defmodule WardrikWorkflowTest do
     test "a branch announces both ends of its own span", %{run: run} do
       WardrikWorkflow.fan_out(run, [:only], Steps.Echo)
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "only"}} = started
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}} = finished
+      assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "only"}} = started
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: :ok}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
       assert started.source.trace.parent_span_id == run.source.trace.span_id
@@ -233,7 +233,7 @@ defmodule WardrikWorkflowTest do
     test "a branch that errors closes as a failure", %{run: run} do
       WardrikWorkflow.fan_out(run, [:only], Steps.Boom)
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :boom}}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: {:error, :boom}}}
     end
 
     test "a branch killed at the timeout is closed by the fan-out", %{run: run} do
@@ -244,8 +244,10 @@ defmodule WardrikWorkflowTest do
           WardrikWorkflow.fan_out(run, [:slow], step, timeout: 20)
         end)
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "slow"}} = started
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :timeout}}} = finished
+      assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "slow"}} = started
+
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: {:error, :timeout}}} =
+                       finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
     end
@@ -253,17 +255,17 @@ defmodule WardrikWorkflowTest do
     test "each stage of a sequence announces its own span", %{run: run} do
       WardrikWorkflow.sequence(run, :in, [Steps.Echo, Steps.Echo])
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
-      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
+      assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "echo"}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: :ok}}
+      assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "echo"}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: :ok}}
     end
 
     test "a sequence stops at the first failed stage", %{run: run} do
       WardrikWorkflow.sequence(run, :in, [Steps.Boom, Steps.Echo])
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :boom}}}
-      refute_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: {:error, :boom}}}
+      refute_receive %Bus.Event{payload: %Bus.SpanStarted{name: "echo"}}
     end
   end
 

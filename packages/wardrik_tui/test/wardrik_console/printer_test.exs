@@ -3,8 +3,8 @@ defmodule WardrikConsole.PrinterTest do
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
-  alias Wardrik.Event
-  alias Wardrik.Event.Source
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Source
   alias WardrikConsole.Printer
 
   defp plain(data), do: data |> Owl.Data.untag() |> IO.chardata_to_string()
@@ -24,19 +24,19 @@ defmodule WardrikConsole.PrinterTest do
 
   defp lines(payloads, printer) do
     Enum.flat_map_reduce(payloads, printer, fn
-      %Event{} = event, printer -> Printer.event(printer, event)
-      payload, printer -> Printer.event(printer, Event.new(root(), payload))
+      %Bus.Event{} = event, printer -> Printer.event(printer, event)
+      payload, printer -> Printer.event(printer, Bus.Event.new(root(), payload))
     end)
   end
 
   test "the answer is returned a line at a time, as markdown, and the rest when the turn ends" do
-    assert print([%Event.Result{text: "# Tri"}, %Event.Result{text: "age\nsome **bold"}]) == [
+    assert print([%Bus.Result{text: "# Tri"}, %Bus.Result{text: "age\nsome **bold"}]) == [
              "Triage"
            ]
 
     assert print([
-             %Event.Result{text: "# Triage\nsome **bold**"},
-             %Event.TurnFinished{messages: []}
+             %Bus.Result{text: "# Triage\nsome **bold**"},
+             %Bus.TurnFinished{messages: []}
            ]) == [
              "Triage",
              "some bold"
@@ -45,7 +45,7 @@ defmodule WardrikConsole.PrinterTest do
 
   test "reasoning is faint behind a bar, and settled before the answer that follows it" do
     {lines, _printer} =
-      lines([%Event.Thinking{text: "hmm"}, %Event.Result{text: "answer\n"}], Printer.new())
+      lines([%Bus.Thinking{text: "hmm"}, %Bus.Result{text: "answer\n"}], Printer.new())
 
     assert Enum.map(lines, &plain/1) == ["┊ hmm", "answer"]
     assert :faint in sequences(hd(lines))
@@ -55,43 +55,43 @@ defmodule WardrikConsole.PrinterTest do
     nested = Source.child(root())
 
     assert print([
-             Event.new(nested, %Event.Result{text: "from a subagent\n"}),
-             Event.new(nested, %Event.Thinking{text: "its thinking\n"})
+             Bus.Event.new(nested, %Bus.Result{text: "from a subagent\n"}),
+             Bus.Event.new(nested, %Bus.Thinking{text: "its thinking\n"})
            ]) == []
   end
 
   test "a tool call is a line when it starts and when it ends, after the text before it" do
     assert print([
-             %Event.Result{text: "Looking"},
-             %Event.ToolStarted{
+             %Bus.Result{text: "Looking"},
+             %Bus.ToolStarted{
                call_id: "call_1",
                name: "github/search",
                arguments: %{"q" => "flaky"},
                idempotency_key: "key",
                decided_by: %{by: :default, hooks: []}
              },
-             %Event.ToolFinished{
+             %Bus.ToolFinished{
                call_id: "call_1",
                name: "github/search",
                result: {:ok, "3 issues"},
                served_by: nil,
                cost: nil
              },
-             %Event.ToolStarted{
+             %Bus.ToolStarted{
                call_id: "call_2",
                name: "clock",
                arguments: %{},
                idempotency_key: "key",
                decided_by: %{by: :default, hooks: []}
              },
-             %Event.ToolFinished{
+             %Bus.ToolFinished{
                call_id: "call_2",
                name: "clock",
                result: {:error, :timeout},
                served_by: nil,
                cost: nil
              },
-             %Event.ToolDenied{
+             %Bus.ToolDenied{
                call_id: "call_3",
                name: "shell",
                reason: "Not on a Friday.",
@@ -109,15 +109,15 @@ defmodule WardrikConsole.PrinterTest do
 
   test "a model call asked again, and history compacted, are lines of their own" do
     assert print([
-             %Event.Result{text: "Looking"},
-             %Event.ModelRetrying{
+             %Bus.Result{text: "Looking"},
+             %Bus.ModelRetrying{
                message_id: "m0",
                attempt: 2,
                attempts: 6,
                wait_ms: 3_200,
                reason: %Wardrik.LLM.Error{status: 529, message: "overloaded"}
              },
-             %Event.SpanStarted{name: "compacting history"}
+             %Bus.SpanStarted{name: "compacting history"}
            ]) == [
              "Looking",
              "  ↻ model failed: overloaded, again in 4s (2 of 6)",
@@ -129,7 +129,7 @@ defmodule WardrikConsole.PrinterTest do
     [line] =
       print(
         [
-          %Event.ToolDenied{
+          %Bus.ToolDenied{
             call_id: "call_1",
             name: "shell",
             reason: String.duplicate("x", 50),
@@ -145,7 +145,7 @@ defmodule WardrikConsole.PrinterTest do
 
   test "why a turn failed is written whole, however long" do
     reason = {:provider_build_failed, String.duplicate("x", 60)}
-    [line] = print([%Event.TurnFailed{reason: reason}], Printer.new(width: 30))
+    [line] = print([%Bus.TurnFailed{reason: reason}], Printer.new(width: 30))
 
     assert line == "✗ the turn failed: #{inspect(reason)}"
   end
@@ -156,23 +156,23 @@ defmodule WardrikConsole.PrinterTest do
       {%{id: "call_2", name: "shell", arguments: %{}}, "This runs a command."}
     ]
 
-    assert print([%Event.TurnParked{calls: calls}]) == [
+    assert print([%Bus.TurnParked{calls: calls}]) == [
              "Waiting on a person for 2 calls:",
              "  ? github/create_issue  call_1  This opens an issue.",
              "  ? shell  call_2  This runs a command."
            ]
 
-    assert print([%Event.TurnParked{calls: Enum.take(calls, 1)}]) |> hd() ==
+    assert print([%Bus.TurnParked{calls: Enum.take(calls, 1)}]) |> hd() ==
              "Waiting on a person for 1 call:"
   end
 
   test "a turn that fails or is stopped says so after what it had written" do
-    assert print([%Event.Result{text: "half"}, %Event.TurnFailed{reason: :rate_limited}]) == [
+    assert print([%Bus.Result{text: "half"}, %Bus.TurnFailed{reason: :rate_limited}]) == [
              "half",
              "✗ the turn failed: :rate_limited"
            ]
 
-    assert print([%Event.TurnInterrupted{stats: %{}}]) == ["■ stopped"]
+    assert print([%Bus.TurnInterrupted{stats: %{}}]) == ["■ stopped"]
   end
 
   test "a table is laid out at the printer's width once it ends" do
@@ -180,8 +180,8 @@ defmodule WardrikConsole.PrinterTest do
       lines =
       print(
         [
-          %Event.Result{text: "| a | b |\n|---|---|\n| one two three | 4 |\n"},
-          %Event.TurnFinished{messages: []}
+          %Bus.Result{text: "| a | b |\n|---|---|\n| one two three | 4 |\n"},
+          %Bus.TurnFinished{messages: []}
         ],
         Printer.new(width: 16)
       )
@@ -192,10 +192,10 @@ defmodule WardrikConsole.PrinterTest do
 
   test "events that say nothing return no lines" do
     assert print([
-             %Event.ToolCall{
+             %Bus.ToolCall{
                call: %Wardrik.Conversation.ToolCall{id: "c", name: "n", arguments: %{}}
              },
-             %Event.SpanStarted{name: "x"}
+             %Bus.SpanStarted{name: "x"}
            ]) == []
   end
 end

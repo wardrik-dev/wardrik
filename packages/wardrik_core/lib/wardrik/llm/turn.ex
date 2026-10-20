@@ -104,7 +104,7 @@ defmodule Wardrik.LLM.Turn do
   `Wardrik.Compaction`, summarises the older part of a history that has
   outgrown the model's window, with the agent's own model. A history
   rewritten is handed to the run's journal to keep, as a batch is, before the
-  turn runs on it, and `Wardrik.Event.ContextCompacted` reports it on the
+  turn runs on it, and `Wardrik.Bus.ContextCompacted` reports it on the
   turn's trace. A history that cannot be rewritten, `{:error, reason}`, is
   kept as it was, and the turn runs regardless.
 
@@ -146,8 +146,8 @@ defmodule Wardrik.LLM.Turn do
   again and after how long, and what happens once it asks again no more:
   `Wardrik.LLM.Retry.Backoff` by default. Each try goes through the hooks and
   the dispatch, which may send it to another model, and is its own
-  `Wardrik.Event.ModelStarted` and `Wardrik.Event.ModelFinished`, with a
-  `Wardrik.Event.ModelRetrying` before each wait. A retry answers under the
+  `Wardrik.Bus.ModelStarted` and `Wardrik.Bus.ModelFinished`, with a
+  `Wardrik.Bus.ModelRetrying` before each wait. A retry answers under the
   message id of the first try with the try's number added, `.2` for the
   second, and a call a person approved under the id of their call added, so
   what a failed try had streamed is never taken for an answer. Once the
@@ -164,11 +164,11 @@ defmodule Wardrik.LLM.Turn do
   """
   require Logger
 
+  alias Wardrik.Bus
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
-  alias Wardrik.Event
   alias Wardrik.History
   alias Wardrik.Hook
   alias Wardrik.Host
@@ -251,7 +251,7 @@ defmodule Wardrik.LLM.Turn do
         {:ok, kept} ->
           context = Conversation.append(kept, asked)
           :ok = keep(run.journal, context)
-          Event.emit(run.source, %Event.ContextCompacted{stats: stats(history, kept)})
+          Bus.Event.emit(run.source, %Bus.ContextCompacted{stats: stats(history, kept)})
           context
 
         :keep ->
@@ -465,7 +465,7 @@ defmodule Wardrik.LLM.Turn do
 
   defp out_of_time(turn) do
     Logger.warning("Turn reached its deadline, stopping with what it has")
-    Event.emit(turn.run.source, %Event.DeadlineReached{message_count: length(turn.messages)})
+    Bus.Event.emit(turn.run.source, %Bus.DeadlineReached{message_count: length(turn.messages)})
     done(turn)
   end
 
@@ -640,7 +640,7 @@ defmodule Wardrik.LLM.Turn do
       {:again, wait, attempts} ->
         Logger.warning("Model call failed, asking again in #{wait}ms: #{inspect(reason)}")
 
-        Event.emit(run.source, %Event.ModelRetrying{
+        Bus.Event.emit(run.source, %Bus.ModelRetrying{
           message_id: tried_id(message_id, request),
           attempt: length(tried.attempts),
           attempts: attempts,
@@ -678,9 +678,9 @@ defmodule Wardrik.LLM.Turn do
   defp make(%Call{run: %Run{source: source}} = call, message_id) do
     started_at = System.monotonic_time()
 
-    Event.emit(
+    Bus.Event.emit(
       source,
-      %Event.ModelStarted{
+      %Bus.ModelStarted{
         message_id: message_id,
         model_spec: call.target.model_spec,
         decided_by: Call.decided_by(call)
@@ -693,9 +693,9 @@ defmodule Wardrik.LLM.Turn do
     made = Pipeline.run(call, &streamed/1)
     result = unsettled(made)
 
-    Event.emit(
+    Bus.Event.emit(
       source,
-      %Event.ModelFinished{
+      %Bus.ModelFinished{
         message_id: message_id,
         outcome: outcome(result),
         duration_ms: Trace.elapsed_ms(started_at),
@@ -770,11 +770,14 @@ defmodule Wardrik.LLM.Turn do
 
   defp published({:text, text}, source) do
     Process.put(@streamed, [text | Process.get(@streamed, [])])
-    Event.emit(source, %Event.Result{text: text})
+    Bus.Event.emit(source, %Bus.Result{text: text})
   end
 
-  defp published({:reasoning, text}, source), do: Event.emit(source, %Event.Thinking{text: text})
-  defp published({:tool_call, call}, source), do: Event.emit(source, %Event.ToolCall{call: call})
+  defp published({:reasoning, text}, source),
+    do: Bus.Event.emit(source, %Bus.Thinking{text: text})
+
+  defp published({:tool_call, call}, source),
+    do: Bus.Event.emit(source, %Bus.ToolCall{call: call})
 
   defimpl Wardrik.Turn do
     alias Wardrik.LLM.Turn

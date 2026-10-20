@@ -8,10 +8,10 @@ defmodule Wardrik.LifecycleTest do
   alias Wardrik.Agent
   alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentID
+  alias Wardrik.Bus
   alias Wardrik.Definition
   alias Wardrik.Definitions
   alias Wardrik.Error
-  alias Wardrik.Event
   alias Wardrik.Fleet.Member
   alias Wardrik.Forgetting
   alias Wardrik.Moving
@@ -87,7 +87,7 @@ defmodule Wardrik.LifecycleTest do
         id
       )
 
-    :ok = Event.Bus.subscribe(id, level: :lifecycle)
+    :ok = Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "wait")
     assert_receive {:turn, _messages, turn}
 
@@ -268,7 +268,7 @@ defmodule Wardrik.LifecycleTest do
       {id, _turn} = busy_agent()
 
       assert :ok = Wardrik.agent_cancel(scope(), id)
-      assert_receive %Event{payload: %Event.TurnInterrupted{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnInterrupted{}}
       assert Audit.about(id) == [{"agent.cancelled", @jon}]
 
       assert {:error, %Error{type: :not_found}} =

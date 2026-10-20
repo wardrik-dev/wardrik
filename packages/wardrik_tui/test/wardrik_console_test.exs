@@ -3,7 +3,7 @@ defmodule WardrikConsoleTest do
 
   import ExUnit.CaptureIO
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.Test.Events
   alias Wardrik.Test.Fleet
   alias WardrikConsole, as: Console
@@ -22,23 +22,23 @@ defmodule WardrikConsoleTest do
   test "prints each line an event completes" do
     output =
       render(Fleet.id(), [
-        %Event.Thinking{text: "hmm"},
-        %Event.Result{text: "the answer"},
-        %Event.ToolStarted{
+        %Bus.Thinking{text: "hmm"},
+        %Bus.Result{text: "the answer"},
+        %Bus.ToolStarted{
           call_id: "call_1",
           name: "echo",
           arguments: %{},
           idempotency_key: "key",
           decided_by: %{by: :default, hooks: []}
         },
-        %Event.ToolFinished{
+        %Bus.ToolFinished{
           call_id: "call_1",
           name: "echo",
           result: {:ok, "done"},
           served_by: nil,
           cost: nil
         },
-        %Event.TurnFailed{reason: :rate_limited}
+        %Bus.TurnFailed{reason: :rate_limited}
       ])
 
     assert output ==
@@ -48,7 +48,7 @@ defmodule WardrikConsoleTest do
   test "ignores events it does not render" do
     output =
       render(Fleet.id(), [
-        %Event.ToolCall{call: %Wardrik.Conversation.ToolCall{id: "c", name: "n", arguments: %{}}}
+        %Bus.ToolCall{call: %Wardrik.Conversation.ToolCall{id: "c", name: "n", arguments: %{}}}
       ])
 
     assert output == ""
@@ -61,8 +61,8 @@ defmodule WardrikConsoleTest do
     output =
       capture_io(fn ->
         {:ok, console} = Console.start_link(agent_id: mine)
-        Events.emit(theirs, %Event.Result{text: "not mine\n"})
-        Events.emit(mine, %Event.Result{text: "mine\n"})
+        Events.emit(theirs, %Bus.Result{text: "not mine\n"})
+        Events.emit(mine, %Bus.Result{text: "mine\n"})
         :sys.get_state(console)
       end)
 
@@ -79,7 +79,7 @@ defmodule WardrikConsoleTest do
 
         Events.emit(
           agent_id,
-          %Event.ToolDenied{
+          %Bus.ToolDenied{
             call_id: "call_1",
             name: "shell",
             reason: String.duplicate("x", 40),

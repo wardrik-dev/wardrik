@@ -17,7 +17,7 @@ defmodule WardrikTrigger do
   and it carries on from its store on another node when its own is lost.
   When it comes due it checks its source, and where that found something
   calls `Wardrik.Agent.ask/3`, and it announces what happened on the
-  agent's topic as `Wardrik.Event.TriggerFired`. It also joins a group of
+  agent's topic as `Wardrik.Bus.TriggerFired`. It also joins a group of
   its agent's, so `for_agent/1` finds an agent's triggers by its ID rather
   than by looking through every trigger in the cluster.
 

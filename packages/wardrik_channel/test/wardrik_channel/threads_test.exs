@@ -2,8 +2,8 @@ defmodule WardrikChannel.ThreadsTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
+  alias Wardrik.Bus.ToolStarted
   alias Wardrik.Conversation.Assistant
-  alias Wardrik.Event.ToolStarted
   alias Wardrik.Fleet
   alias Wardrik.LLM.Turn
   alias Wardrik.Principal
@@ -35,7 +35,7 @@ defmodule WardrikChannel.ThreadsTest do
   defp work(turn) do
     receive do
       {:call, name} ->
-        Wardrik.Event.emit(turn.run.source, %ToolStarted{
+        Wardrik.Bus.Event.emit(turn.run.source, %ToolStarted{
           call_id: name,
           name: name,
           arguments: %{},

@@ -4,7 +4,7 @@ defmodule Wardrik.AgentRetryTest do
   import ExUnit.CaptureLog
 
   alias Wardrik.Agent
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.LLM.Error
   alias Wardrik.LLM.Retry.Backoff
   alias Wardrik.Test.LLM
@@ -12,14 +12,14 @@ defmodule Wardrik.AgentRetryTest do
   test "a turn whose model call keeps failing parks for a person, and goes on once approved" do
     key = Wardrik.Test.Fleet.id("retry")
     {^key, agent} = Wardrik.Test.Fleet.start_agent([retry: %Backoff{attempts: 0}], key)
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     LLM.stream(Wardrik.Test.llm(), [%Error{message: "timeout"}])
 
     capture_log(fn ->
       Agent.ask(agent, "Reconcile last week.")
 
-      assert_receive %Event{
-                       payload: %Event.TurnParked{
+      assert_receive %Bus.Event{
+                       payload: %Bus.TurnParked{
                          calls: [
                            {%{name: "model"}, "The model failed once: timeout. Try again?"}
                          ]
@@ -33,7 +33,7 @@ defmodule Wardrik.AgentRetryTest do
     LLM.stream(Wardrik.Test.llm(), [LLM.final_answer("Reconciled.")])
     :ok = Agent.resume(agent, %{id => :approve})
 
-    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}, 5_000
     assert Agent.parked(agent) == []
   end
 end

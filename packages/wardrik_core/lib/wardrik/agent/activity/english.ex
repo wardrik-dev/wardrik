@@ -6,10 +6,10 @@ defmodule Wardrik.Agent.Activity.English do
   | Doing | Label |
   | --- | --- |
   | a model call, a turn starting or carrying on, a tool call just ended | `thinking` |
-  | `Wardrik.Event.ModelRetrying` | `retrying the model, 2 of 6` |
+  | `Wardrik.Bus.ModelRetrying` | `retrying the model, 2 of 6` |
   | tool calls | `running web_search and fetch_page` |
-  | `Wardrik.Event.SpanStarted` | its name, such as `compacting history` |
-  | `Wardrik.Event.TurnParked` | `waiting on a person to approve send_email` |
+  | `Wardrik.Bus.SpanStarted` | its name, such as `compacting history` |
+  | `Wardrik.Bus.TurnParked` | `waiting on a person to approve send_email` |
   | `:idle` | `idle` |
 
   Messages waiting follow, as `thinking, 1 message waiting`, or stand alone
@@ -25,7 +25,7 @@ end
 
 defimpl Wardrik.Agent.Activity.Presenter, for: Wardrik.Agent.Activity.English do
   alias Wardrik.Agent.Activity
-  alias Wardrik.Event
+  alias Wardrik.Bus
 
   def label(_english, %Activity{doing: :idle, pending: 0}), do: "idle"
   def label(_english, %Activity{doing: :idle, pending: pending}), do: waiting(pending)
@@ -39,12 +39,12 @@ defimpl Wardrik.Agent.Activity.Presenter, for: Wardrik.Agent.Activity.English do
 
   defp doing([_ | _] = calls), do: "running " <> listed(Enum.map(calls, & &1.name))
 
-  defp doing(%Event.ModelRetrying{} = retry),
+  defp doing(%Bus.ModelRetrying{} = retry),
     do: "retrying the model, #{retry.attempt} of #{retry.attempts}"
 
-  defp doing(%Event.SpanStarted{name: name}), do: name
+  defp doing(%Bus.SpanStarted{name: name}), do: name
 
-  defp doing(%Event.TurnParked{calls: calls}),
+  defp doing(%Bus.TurnParked{calls: calls}),
     do: "waiting on a person to approve " <> listed(Enum.map(calls, &called/1))
 
   defp doing(_thinking), do: "thinking"

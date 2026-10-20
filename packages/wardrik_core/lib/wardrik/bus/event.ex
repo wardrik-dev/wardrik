@@ -1,4 +1,4 @@
-defmodule Wardrik.Event do
+defmodule Wardrik.Bus.Event do
   @moduledoc """
   One thing that happened, and where it happened.
 
@@ -6,14 +6,14 @@ defmodule Wardrik.Event do
   fields, so a subscriber matches the fields it reads and a field added later
   touches no one who does not read it; this struct is the envelope around it.
 
-      def handle_info(%Wardrik.Event{payload: %Wardrik.Event.ToolFinished{name: name}}, state)
+      def handle_info(%Wardrik.Bus.Event{payload: %Wardrik.Bus.ToolFinished{name: name}}, state)
 
   `root?/1` separates the turn's own events from work it spawned, which is
   what lets one subscription render a whole tree.
   """
 
-  alias Wardrik.Event.Bus
-  alias Wardrik.Event.Source
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Source
   alias Wardrik.Trace
 
   @enforce_keys [:source, :payload, :at]
@@ -26,62 +26,62 @@ defmodule Wardrik.Event do
   Every payload core emits is listed here. A package emits these and no
   others; `Wardrik.Tool.Context.progress/3` is how a tool reports progress.
 
-    * Agent lifecycle, on the turn's root span: `Wardrik.Event.TurnStarted`,
-      `Wardrik.Event.TurnFinished`, `Wardrik.Event.TurnFailed`,
-      `Wardrik.Event.TurnInterrupted`, `Wardrik.Event.TurnParked`,
-      `Wardrik.Event.TurnResumed`, `Wardrik.Event.CallDecided`,
-      `Wardrik.Event.ContextCompacted`.
+    * Agent lifecycle, on the turn's root span: `Wardrik.Bus.TurnStarted`,
+      `Wardrik.Bus.TurnFinished`, `Wardrik.Bus.TurnFailed`,
+      `Wardrik.Bus.TurnInterrupted`, `Wardrik.Bus.TurnParked`,
+      `Wardrik.Bus.TurnResumed`, `Wardrik.Bus.CallDecided`,
+      `Wardrik.Bus.ContextCompacted`.
     * Agent lifecycle, each on the root of a trace of its own:
-      `Wardrik.Event.MessageQueued`, `Wardrik.Event.AgentStarted`,
-      `Wardrik.Event.AgentStopped`, `Wardrik.Event.ContextCleared`,
-      `Wardrik.Event.TriggerFired`.
+      `Wardrik.Bus.MessageQueued`, `Wardrik.Bus.AgentStarted`,
+      `Wardrik.Bus.AgentStopped`, `Wardrik.Bus.ContextCleared`,
+      `Wardrik.Bus.TriggerFired`.
     * What the agent is doing, on the span of the event that changed it:
-      `Wardrik.Event.ActivityChanged`.
+      `Wardrik.Bus.ActivityChanged`.
     * Spans other than a tool call's, and delegations, on their own span:
-      `Wardrik.Event.SpanStarted`, `Wardrik.Event.SpanFinished`,
-      `Wardrik.Event.DelegationStarted`, `Wardrik.Event.DelegationFinished`.
-    * Model calls: `Wardrik.Event.ModelStarted`,
-      `Wardrik.Event.ModelFinished`, `Wardrik.Event.ModelRetrying`,
-      `Wardrik.Event.Result`, `Wardrik.Event.Thinking`,
-      `Wardrik.Event.ToolCall`, `Wardrik.Event.DeadlineReached`.
-    * Tool calls, on the call's span: `Wardrik.Event.ToolStarted`,
-      `Wardrik.Event.ToolFinished`, `Wardrik.Event.ToolReplayed`,
-      `Wardrik.Event.ToolDenied`, `Wardrik.Event.ToolParked`,
-      `Wardrik.Event.ToolProgress`. The first of them opens the span, and
+      `Wardrik.Bus.SpanStarted`, `Wardrik.Bus.SpanFinished`,
+      `Wardrik.Bus.DelegationStarted`, `Wardrik.Bus.DelegationFinished`.
+    * Model calls: `Wardrik.Bus.ModelStarted`,
+      `Wardrik.Bus.ModelFinished`, `Wardrik.Bus.ModelRetrying`,
+      `Wardrik.Bus.Result`, `Wardrik.Bus.Thinking`,
+      `Wardrik.Bus.ToolCall`, `Wardrik.Bus.DeadlineReached`.
+    * Tool calls, on the call's span: `Wardrik.Bus.ToolStarted`,
+      `Wardrik.Bus.ToolFinished`, `Wardrik.Bus.ToolReplayed`,
+      `Wardrik.Bus.ToolDenied`, `Wardrik.Bus.ToolParked`,
+      `Wardrik.Bus.ToolProgress`. The first of them opens the span, and
       the one that settles the call closes it; see `ended/1`.
   """
   @type payload() ::
-          __MODULE__.TurnStarted.t()
-          | __MODULE__.TurnFinished.t()
-          | __MODULE__.TurnFailed.t()
-          | __MODULE__.TurnInterrupted.t()
-          | __MODULE__.TurnParked.t()
-          | __MODULE__.TurnResumed.t()
-          | __MODULE__.CallDecided.t()
-          | __MODULE__.MessageQueued.t()
-          | __MODULE__.AgentStarted.t()
-          | __MODULE__.AgentStopped.t()
-          | __MODULE__.ContextCompacted.t()
-          | __MODULE__.ContextCleared.t()
-          | __MODULE__.TriggerFired.t()
-          | __MODULE__.ActivityChanged.t()
-          | __MODULE__.SpanStarted.t()
-          | __MODULE__.SpanFinished.t()
-          | __MODULE__.DelegationStarted.t()
-          | __MODULE__.DelegationFinished.t()
-          | __MODULE__.ModelStarted.t()
-          | __MODULE__.ModelFinished.t()
-          | __MODULE__.ModelRetrying.t()
-          | __MODULE__.Result.t()
-          | __MODULE__.Thinking.t()
-          | __MODULE__.ToolCall.t()
-          | __MODULE__.DeadlineReached.t()
-          | __MODULE__.ToolStarted.t()
-          | __MODULE__.ToolFinished.t()
-          | __MODULE__.ToolReplayed.t()
-          | __MODULE__.ToolDenied.t()
-          | __MODULE__.ToolParked.t()
-          | __MODULE__.ToolProgress.t()
+          Wardrik.Bus.TurnStarted.t()
+          | Wardrik.Bus.TurnFinished.t()
+          | Wardrik.Bus.TurnFailed.t()
+          | Wardrik.Bus.TurnInterrupted.t()
+          | Wardrik.Bus.TurnParked.t()
+          | Wardrik.Bus.TurnResumed.t()
+          | Wardrik.Bus.CallDecided.t()
+          | Wardrik.Bus.MessageQueued.t()
+          | Wardrik.Bus.AgentStarted.t()
+          | Wardrik.Bus.AgentStopped.t()
+          | Wardrik.Bus.ContextCompacted.t()
+          | Wardrik.Bus.ContextCleared.t()
+          | Wardrik.Bus.TriggerFired.t()
+          | Wardrik.Bus.ActivityChanged.t()
+          | Wardrik.Bus.SpanStarted.t()
+          | Wardrik.Bus.SpanFinished.t()
+          | Wardrik.Bus.DelegationStarted.t()
+          | Wardrik.Bus.DelegationFinished.t()
+          | Wardrik.Bus.ModelStarted.t()
+          | Wardrik.Bus.ModelFinished.t()
+          | Wardrik.Bus.ModelRetrying.t()
+          | Wardrik.Bus.Result.t()
+          | Wardrik.Bus.Thinking.t()
+          | Wardrik.Bus.ToolCall.t()
+          | Wardrik.Bus.DeadlineReached.t()
+          | Wardrik.Bus.ToolStarted.t()
+          | Wardrik.Bus.ToolFinished.t()
+          | Wardrik.Bus.ToolReplayed.t()
+          | Wardrik.Bus.ToolDenied.t()
+          | Wardrik.Bus.ToolParked.t()
+          | Wardrik.Bus.ToolProgress.t()
 
   @typedoc """
   A payload, who emitted it, and when, under an id of its own: a UUIDv7 that
@@ -117,40 +117,40 @@ defmodule Wardrik.Event do
   def announce(agent, payload), do: emit(Source.root(agent), payload)
 
   @types %{
-    __MODULE__.TurnStarted => :turn_started,
-    __MODULE__.TurnFinished => :turn_finished,
-    __MODULE__.TurnFailed => :turn_failed,
-    __MODULE__.TurnInterrupted => :turn_interrupted,
-    __MODULE__.TurnParked => :turn_parked,
-    __MODULE__.TurnResumed => :turn_resumed,
-    __MODULE__.CallDecided => :call_decided,
-    __MODULE__.MessageQueued => :message_queued,
-    __MODULE__.AgentStarted => :agent_started,
-    __MODULE__.AgentStopped => :agent_stopped,
-    __MODULE__.ContextCompacted => :context_compacted,
-    __MODULE__.ContextCleared => :context_cleared,
-    __MODULE__.TriggerFired => :trigger_fired,
-    __MODULE__.ActivityChanged => :activity_changed,
-    __MODULE__.SpanStarted => :span_started,
-    __MODULE__.SpanFinished => :span_finished,
-    __MODULE__.DelegationStarted => :delegation_started,
-    __MODULE__.DelegationFinished => :delegation_finished,
-    __MODULE__.ModelStarted => :model_started,
-    __MODULE__.ModelFinished => :model_finished,
-    __MODULE__.ModelRetrying => :model_retrying,
-    __MODULE__.Result => :result,
-    __MODULE__.Thinking => :thinking,
-    __MODULE__.ToolCall => :tool_call,
-    __MODULE__.DeadlineReached => :deadline_reached,
-    __MODULE__.ToolStarted => :tool_started,
-    __MODULE__.ToolFinished => :tool_finished,
-    __MODULE__.ToolReplayed => :tool_replayed,
-    __MODULE__.ToolDenied => :tool_denied,
-    __MODULE__.ToolParked => :tool_parked,
-    __MODULE__.ToolProgress => :tool_progress
+    Wardrik.Bus.TurnStarted => :turn_started,
+    Wardrik.Bus.TurnFinished => :turn_finished,
+    Wardrik.Bus.TurnFailed => :turn_failed,
+    Wardrik.Bus.TurnInterrupted => :turn_interrupted,
+    Wardrik.Bus.TurnParked => :turn_parked,
+    Wardrik.Bus.TurnResumed => :turn_resumed,
+    Wardrik.Bus.CallDecided => :call_decided,
+    Wardrik.Bus.MessageQueued => :message_queued,
+    Wardrik.Bus.AgentStarted => :agent_started,
+    Wardrik.Bus.AgentStopped => :agent_stopped,
+    Wardrik.Bus.ContextCompacted => :context_compacted,
+    Wardrik.Bus.ContextCleared => :context_cleared,
+    Wardrik.Bus.TriggerFired => :trigger_fired,
+    Wardrik.Bus.ActivityChanged => :activity_changed,
+    Wardrik.Bus.SpanStarted => :span_started,
+    Wardrik.Bus.SpanFinished => :span_finished,
+    Wardrik.Bus.DelegationStarted => :delegation_started,
+    Wardrik.Bus.DelegationFinished => :delegation_finished,
+    Wardrik.Bus.ModelStarted => :model_started,
+    Wardrik.Bus.ModelFinished => :model_finished,
+    Wardrik.Bus.ModelRetrying => :model_retrying,
+    Wardrik.Bus.Result => :result,
+    Wardrik.Bus.Thinking => :thinking,
+    Wardrik.Bus.ToolCall => :tool_call,
+    Wardrik.Bus.DeadlineReached => :deadline_reached,
+    Wardrik.Bus.ToolStarted => :tool_started,
+    Wardrik.Bus.ToolFinished => :tool_finished,
+    Wardrik.Bus.ToolReplayed => :tool_replayed,
+    Wardrik.Bus.ToolDenied => :tool_denied,
+    Wardrik.Bus.ToolParked => :tool_parked,
+    Wardrik.Bus.ToolProgress => :tool_progress
   }
 
-  @doc "The name of the event, as an atom: `:tool_finished` for a `Wardrik.Event.ToolFinished`."
+  @doc "The name of the event, as an atom: `:tool_finished` for a `Wardrik.Bus.ToolFinished`."
   @spec type(t()) :: atom()
   def type(%__MODULE__{payload: %kind{}}), do: Map.fetch!(@types, kind)
 
@@ -160,7 +160,7 @@ defmodule Wardrik.Event do
     * `:lifecycle` - the shape of the work: turns starting and ending, spans
       opening and closing, a tool call's events among them, and delegations
       starting and ending, with what the agent is doing now as
-      `Wardrik.Event.ActivityChanged`
+      `Wardrik.Bus.ActivityChanged`
     * `:activity` - what the agent is doing inside that shape: model requests,
       a tool call's progress, answer text and reasoning
     * `:raw` - everything, including each tool call as the model streams it
@@ -226,10 +226,10 @@ defmodule Wardrik.Event do
   an error, so a surface can say the call did not do its job.
   """
   @spec ended(payload()) :: Wardrik.Run.outcome() | nil
-  def ended(%__MODULE__.ToolFinished{result: result}), do: answered(result)
-  def ended(%__MODULE__.ToolReplayed{result: result}), do: answered(result)
-  def ended(%__MODULE__.ToolDenied{reason: reason}), do: {:error, reason}
-  def ended(%__MODULE__.ToolParked{}), do: {:error, :parked}
+  def ended(%Wardrik.Bus.ToolFinished{result: result}), do: answered(result)
+  def ended(%Wardrik.Bus.ToolReplayed{result: result}), do: answered(result)
+  def ended(%Wardrik.Bus.ToolDenied{reason: reason}), do: {:error, reason}
+  def ended(%Wardrik.Bus.ToolParked{}), do: {:error, :parked}
   def ended(_payload), do: nil
 
   defp answered({:error, reason}), do: {:error, reason}

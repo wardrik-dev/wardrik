@@ -1,8 +1,8 @@
 defmodule WardrikTUI.UsageTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Event
-  alias Wardrik.Event.ModelFinished
+  alias Wardrik.Bus
+  alias Wardrik.Bus.ModelFinished
   alias Wardrik.LLM.Usage, as: Used
   alias WardrikTUI.Usage
 
@@ -20,7 +20,7 @@ defmodule WardrikTUI.UsageTest do
       cost: cost
     }
 
-    %Event{source: nil, payload: payload, at: 0}
+    %Bus.Event{source: nil, payload: payload, at: 0}
   end
 
   test "starts at zero and says so" do

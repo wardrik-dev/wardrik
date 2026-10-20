@@ -8,8 +8,8 @@ defmodule Wardrik.TalkingTest do
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentID
+  alias Wardrik.Bus
   alias Wardrik.Error
-  alias Wardrik.Event
   alias Wardrik.Event.Log
   alias Wardrik.Fleet.Member
   alias Wardrik.Principal
@@ -43,9 +43,9 @@ defmodule Wardrik.TalkingTest do
           )
       )
 
-    :ok = Event.Bus.subscribe(id, level: :lifecycle)
+    :ok = Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "ship it", sender: sender)
-    assert_receive %Event{payload: %Event.TurnParked{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
     id
   end
 
@@ -57,7 +57,7 @@ defmodule Wardrik.TalkingTest do
         id
       )
 
-    :ok = Event.Bus.subscribe(id, level: :lifecycle)
+    :ok = Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "wait")
     assert_receive {:turn, _messages, turn}
 
@@ -117,7 +117,7 @@ defmodule Wardrik.TalkingTest do
 
       assert {:error, %Error{type: :conflict}} = Wardrik.agent_clear(scope(), id)
       send(turn, :release)
-      assert_receive %Event{payload: %Event.TurnFinished{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
 
       assert {:ok, %Snapshot{}} = Wardrik.agent_clear(scope(), id)
     end
@@ -125,9 +125,9 @@ defmodule Wardrik.TalkingTest do
 
   test "events after a cursor, and where the log now starts" do
     {id, agent} = Fleet.start_agent(config: Script.new({AgentRunners, :echo, [self(), "ok"]}))
-    :ok = Event.Bus.subscribe(id, level: :lifecycle)
+    :ok = Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "hi")
-    assert_receive %Event{payload: %Event.TurnFinished{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
     resources = [AgentID.resource(id)]
 
     assert {:ok, events} = Wardrik.events(scope(), resources: resources)
@@ -159,9 +159,9 @@ defmodule Wardrik.TalkingTest do
           config: Script.new({AgentRunners, :connecting, [self(), "call_1", link]})
         )
 
-      :ok = Event.Bus.subscribe(id, level: :lifecycle)
+      :ok = Bus.subscribe(id, level: :lifecycle)
       Agent.ask(agent, "open an issue")
-      assert_receive %Event{payload: %Event.TurnParked{}}
+      assert_receive %Bus.Event{payload: %Bus.TurnParked{}}
 
       assert {:ok, ^link} = Wardrik.agent_authorization_read(scope(), id, "call_1")
 
@@ -186,14 +186,14 @@ defmodule Wardrik.TalkingTest do
   describe "asking" do
     test "sends the agent the message from the scope, and says where its log stood" do
       {id, _agent} = Fleet.start_agent(config: Script.new({AgentRunners, :echo, [self(), "ok"]}))
-      :ok = Event.Bus.subscribe(id)
+      :ok = Bus.subscribe(id)
 
       assert {:ok, %Message{id: "m1", cursor: cursor}} =
                Wardrik.agent_ask(scope(), id, "hi", id: "m1")
 
       assert {:ok, %{^id => sequence}} = Wardrik.Event.Cursor.decode(cursor)
       assert is_integer(sequence)
-      assert_receive %Event{payload: %Event.MessageQueued{message: %{sender: sender}}}
+      assert_receive %Bus.Event{payload: %Bus.MessageQueued{message: %{sender: sender}}}
       assert Principal.id(sender) == "acme/@jon"
       assert_receive {:turn, _messages}
 
@@ -216,7 +216,7 @@ defmodule Wardrik.TalkingTest do
       assert {:ok, %{"call_1" => {:deny, "No."}}} =
                Wardrik.agent_deny(scope(), id, "call_1", reason: "No.")
 
-      assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: by}}
+      assert_receive %Bus.Event{payload: %Bus.CallDecided{call_id: "call_1", by: by}}
       assert Principal.id(by) == "acme/@jon"
 
       assert {:error, %Error{type: :conflict}} = Wardrik.agent_approve(scope(), id, "call_1")
@@ -248,7 +248,7 @@ defmodule Wardrik.TalkingTest do
 
       asker = Scope.new(Wardrik.Test.host(), token)
       assert {:ok, _decided} = Wardrik.agent_approve(asker, id, "call_1")
-      assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: ^maria}}
+      assert_receive %Bus.Event{payload: %Bus.CallDecided{call_id: "call_1", by: ^maria}}
     end
 
     test "says so where the agent cannot record the decision" do
@@ -282,7 +282,7 @@ defmodule Wardrik.TalkingTest do
       assert {:ok, _decided} =
                Wardrik.agent_approve(held(%Wardrik.OrgIssuer{org: "test"}, scope()), id, "call_1")
 
-      assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: by}}
+      assert_receive %Bus.Event{payload: %Bus.CallDecided{call_id: "call_1", by: by}}
       assert Principal.id(by) == "acme/@jon"
     end
 

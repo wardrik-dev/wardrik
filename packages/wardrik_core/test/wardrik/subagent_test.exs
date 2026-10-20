@@ -1,7 +1,7 @@
 defmodule Wardrik.SubagentTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.Host
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Error
@@ -15,7 +15,7 @@ defmodule Wardrik.SubagentTest do
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
-    :ok = Event.Bus.subscribe(agent_id)
+    :ok = Bus.subscribe(agent_id)
 
     config = Config.new(tools: [EchoTool, SearchTool])
 
@@ -59,9 +59,9 @@ defmodule Wardrik.SubagentTest do
 
     {:ok, _text} = Subagent.run(run, "pricing?")
 
-    assert_receive %Event{payload: %Event.Result{}} = event
+    assert_receive %Bus.Event{payload: %Bus.Result{}} = event
     assert event.source.trace.parent_span_id == run.source.trace.span_id
-    refute Event.root?(event)
+    refute Bus.Event.root?(event)
   end
 
   describe "what a delegate read" do
@@ -89,7 +89,7 @@ defmodule Wardrik.SubagentTest do
       assert Subagent.run(run, "Ship it.", except_tools: ["echo"]) ==
                {:error, :approval_required}
 
-      refute_received %Event{payload: %Event.ToolStarted{call_id: "call_1"}}
+      refute_received %Bus.Event{payload: %Bus.ToolStarted{call_id: "call_1"}}
     end
 
     test "a delegate begins with the labels of its run", %{run: run} do
@@ -119,22 +119,22 @@ defmodule Wardrik.SubagentTest do
 
       {:ok, _text} = Subagent.run(run, "pricing?", name: "pricing")
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "pricing"}} = opened
-      assert_receive %Event{payload: %Event.DelegationStarted{prompt: "pricing?"}} = started
+      assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "pricing"}} = opened
+      assert_receive %Bus.Event{payload: %Bus.DelegationStarted{prompt: "pricing?"}} = started
 
-      assert_receive %Event{
-                       payload: %Event.DelegationFinished{
+      assert_receive %Bus.Event{
+                       payload: %Bus.DelegationFinished{
                          outcome: {:ok, "about $20"},
                          duration_ms: ms
                        }
                      } = finished
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: :ok}}
 
       assert started.source.trace.span_id == opened.source.trace.span_id
       assert finished.source.trace.span_id == opened.source.trace.span_id
       assert is_integer(ms) and ms >= 0
-      assert Event.level(:delegation_started) == :lifecycle
+      assert Bus.Event.level(:delegation_started) == :lifecycle
     end
 
     test "repeated unnamed delegations have distinct identities", %{run: run} do
@@ -143,8 +143,8 @@ defmodule Wardrik.SubagentTest do
       {:ok, _text} = Subagent.run(run, "pricing?")
       {:ok, _text} = Subagent.run(run, "competitors?")
 
-      assert_receive %Event{payload: %Event.DelegationStarted{prompt: "pricing?"}} = started
-      assert_receive %Event{payload: %Event.DelegationStarted{prompt: "competitors?"}} = second
+      assert_receive %Bus.Event{payload: %Bus.DelegationStarted{prompt: "pricing?"}} = started
+      assert_receive %Bus.Event{payload: %Bus.DelegationStarted{prompt: "competitors?"}} = second
       assert started.source.trace.parent_span_id == run.source.trace.span_id
       refute started.source.trace.span_id == second.source.trace.span_id
     end
@@ -165,13 +165,13 @@ defmodule Wardrik.SubagentTest do
     assert Subagent.run(%{run | hooks: [Wardrik.Hook.new("ask", AskHook)]}, "echo") ==
              {:error, :approval_required}
 
-    assert_receive %Event{payload: %Event.DelegationStarted{prompt: "echo"}}
+    assert_receive %Bus.Event{payload: %Bus.DelegationStarted{prompt: "echo"}}
 
-    assert_receive %Event{
-      payload: %Event.DelegationFinished{outcome: {:error, :approval_required}}
+    assert_receive %Bus.Event{
+      payload: %Bus.DelegationFinished{outcome: {:error, :approval_required}}
     }
 
-    refute_receive %Event{payload: %Event.ToolStarted{call_id: "blocked"}}
+    refute_receive %Bus.Event{payload: %Bus.ToolStarted{call_id: "blocked"}}
   end
 
   describe "with a config of its own" do
@@ -289,9 +289,9 @@ defmodule Wardrik.SubagentTest do
 
       {:ok, _text} = Subagent.run(run, "pricing?", name: "researcher")
 
-      assert_receive %Event{payload: %Event.Result{}} = event
+      assert_receive %Bus.Event{payload: %Bus.Result{}} = event
 
-      refute Event.root?(event)
+      refute Bus.Event.root?(event)
       assert event.source.agent_id == run.source.agent_id
       assert event.source.trace.trace_id == run.source.trace.trace_id
       assert event.source.trace.parent_span_id == run.source.trace.span_id
@@ -303,8 +303,8 @@ defmodule Wardrik.SubagentTest do
 
       {:ok, _text} = Subagent.run(run, "pricing?", name: "researcher")
 
-      assert_receive %Event{payload: %Event.SpanStarted{name: "researcher"}} = started
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}} = finished
+      assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "researcher"}} = started
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: :ok}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
     end
@@ -316,7 +316,7 @@ defmodule Wardrik.SubagentTest do
         Subagent.run(failing(run), "pricing?", name: "researcher")
       end)
 
-      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, @rate_limited}}}
+      assert_receive %Bus.Event{payload: %Bus.SpanFinished{outcome: {:error, @rate_limited}}}
     end
   end
 
@@ -325,7 +325,7 @@ defmodule Wardrik.SubagentTest do
 
     {:ok, _text} = Subagent.run(run, "pricing?")
 
-    assert_receive %Event{payload: %Event.SpanStarted{name: "turn"}} = event
+    assert_receive %Bus.Event{payload: %Bus.SpanStarted{name: "turn"}} = event
     refute event.source.trace.span_id == run.source.trace.span_id
   end
 

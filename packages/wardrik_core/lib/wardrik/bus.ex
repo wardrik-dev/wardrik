@@ -1,4 +1,4 @@
-defmodule Wardrik.Event.Bus do
+defmodule Wardrik.Bus do
   @moduledoc """
   Fan-out for agent events.
 
@@ -31,8 +31,8 @@ defmodule Wardrik.Event.Bus do
   `t:Wardrik.Event.level/0`. `:activity` is what an agent is doing; `:raw` adds
   the provider's own stream records, which repeat it token by token.
 
-      Wardrik.Event.Bus.subscribe(~A"acme/assistant")                  # :activity
-      Wardrik.Event.Bus.subscribe(~A"acme/assistant", level: :raw)     # everything
+      Wardrik.Bus.subscribe(~A"acme/assistant")                # :activity
+      Wardrik.Bus.subscribe(~A"acme/assistant", level: :raw)   # everything
 
   `Wardrik.Event.level/1` decides where a type sits, so a type added later
   reaches existing subscribers without them naming it. Each level is its own
@@ -43,7 +43,7 @@ defmodule Wardrik.Event.Bus do
   event itself.
   """
 
-  alias Wardrik.Event
+  alias Wardrik.Bus.Event
 
   @group __MODULE__
 

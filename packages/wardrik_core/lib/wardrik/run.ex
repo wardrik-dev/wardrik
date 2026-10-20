@@ -10,7 +10,7 @@ defmodule Wardrik.Run do
   the things that change each time.
 
       run = Wardrik.Run.root(config, ~A"acme/@jon/assistant", name: "turn")
-      Wardrik.Event.emit(run.source, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hello")]})
+      Wardrik.Bus.Event.emit(run.source, %Bus.TurnStarted{messages: [Wardrik.Agent.Message.new("hello")]})
 
   Work the turn spawns takes a child run, so its events land in the same
   stream under a child span and it inherits the same authority:
@@ -75,8 +75,8 @@ defmodule Wardrik.Run do
         Search.run(query, branch)
       end)
 
-  It emits `Wardrik.Event.SpanStarted`, runs the function, and emits
-  `Wardrik.Event.SpanFinished` whether the function returns,
+  It emits `Wardrik.Bus.SpanStarted`, runs the function, and emits
+  `Wardrik.Bus.SpanFinished` whether the function returns,
   raises, throws or exits.
 
   `open/2` and `close/2` are the same two ends apart, for a combinator whose
@@ -94,9 +94,8 @@ defmodule Wardrik.Run do
   later one.
   """
 
-  alias Wardrik.Event
-  alias Wardrik.Event.Bus
-  alias Wardrik.Event.Source
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Source
   alias Wardrik.Trace
 
   @enforce_keys [:config, :source, :host]
@@ -147,7 +146,7 @@ defmodule Wardrik.Run do
 
   Options:
 
-    * `:name` - what to call the span, passed to `Wardrik.Event.Source.root/2`
+    * `:name` - what to call the span, passed to `Wardrik.Bus.Source.root/2`
     * `:sender` - the `Wardrik.Principal` who asked for the work, or `nil`
       where nobody did
     * `:host` - the `Wardrik.Host` the work runs on, `Wardrik.Host.new/1`
@@ -183,7 +182,7 @@ defmodule Wardrik.Run do
 
   Mints the span without announcing it; `span/3` is what announces one.
 
-  Options are passed to `Wardrik.Event.Source.child/2`, and `:timeout` narrows the
+  Options are passed to `Wardrik.Bus.Source.child/2`, and `:timeout` narrows the
   deadline for this branch alone.
 
   The child has no journal: work a turn spawns, a delegation's own turns
@@ -279,14 +278,14 @@ defmodule Wardrik.Run do
   @spec open(t(), String.t()) :: t()
   def open(%__MODULE__{} = run, name) do
     branch = child(run, name: name)
-    Event.emit(branch.source, %Event.SpanStarted{name: name})
+    Bus.Event.emit(branch.source, %Bus.SpanStarted{name: name})
     branch
   end
 
   @doc "Ends a span opened by `open/2`, reporting how it went and how long it took."
   @spec close(t(), outcome()) :: :ok
   def close(%__MODULE__{source: source}, outcome) do
-    Event.emit(source, %Event.SpanFinished{
+    Bus.Event.emit(source, %Bus.SpanFinished{
       outcome: outcome,
       duration_ms: Trace.elapsed_ms(source.trace)
     })

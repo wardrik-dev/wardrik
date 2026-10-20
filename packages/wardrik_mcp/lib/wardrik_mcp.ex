@@ -296,7 +296,7 @@ defmodule WardrikMCP do
   runtime hands it; see `Wardrik.Tool`.
 
   The call reports the server's progress as
-  `Wardrik.Event.ToolProgress` on the turn's event
+  `Wardrik.Bus.ToolProgress` on the turn's event
   stream, and is cancelled on the server if this process is stopped before the
   server answers.
 
