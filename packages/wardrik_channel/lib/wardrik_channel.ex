@@ -143,6 +143,8 @@ defmodule WardrikChannel do
   the room, as by being invited into it.
   """
 
+  @behaviour Wardrik.Plugin
+
   alias Wardrik.AgentAddress
   alias Wardrik.Error
   alias Wardrik.Resource
@@ -253,6 +255,7 @@ defmodule WardrikChannel do
       default, that the channel's approvers and whoever runs Wardrik may.
   """
   @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
+  @impl true
   def attach(%Wardrik.Host{} = host, settings) do
     settings = Keyword.validate!(settings, @settings)
 
