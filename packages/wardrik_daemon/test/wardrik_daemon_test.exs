@@ -57,7 +57,8 @@ defmodule WardrikDaemonTest do
     {:ok, config} = load(dir)
     host = WardrikDaemon.host(config, store: store())
 
-    assert Wardrik.Host.settings(host, WardrikBrave.WebSearch) == [api_key: "the-brave-key"]
+    assert [api_key: key] = Wardrik.Host.settings(host, WardrikBrave.WebSearch)
+    assert Wardrik.Credential.reveal(key) == "the-brave-key"
     assert %{"web_search" => WardrikBrave.WebSearch} = Wardrik.Host.tools(host)
   end
 

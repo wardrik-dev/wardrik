@@ -75,7 +75,8 @@ defmodule WardrikBrave.WebSearchTest do
 
     test "a call searches with the key the host of its run holds, for any agent" do
       stub_json(200, @body)
-      settings = Map.to_list(Map.from_struct(config()))
+      key = Wardrik.Credential.secret("test-brave-api-key")
+      settings = Keyword.put(Map.to_list(Map.from_struct(config())), :api_key, key)
       host = Wardrik.Host.register(Wardrik.Test.host(), :settings, [{WebSearch, settings}])
 
       for id <- [Wardrik.AgentID.new!("a", org: "acme"), Wardrik.AgentID.new!("b", org: "globex")] do

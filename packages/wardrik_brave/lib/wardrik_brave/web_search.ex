@@ -104,8 +104,14 @@ defmodule WardrikBrave.WebSearch do
   `config` says.
   """
   @spec run(map() | keyword(), Wardrik.Tool.Context.t() | Config.t()) :: Result.t()
-  def run(params, %Wardrik.Tool.Context{run: run}),
-    do: run(params, Config.new(Wardrik.Host.settings(run.host, __MODULE__)))
+  def run(params, %Wardrik.Tool.Context{run: run}) do
+    settings = Wardrik.Host.settings(run.host, __MODULE__)
+
+    run(
+      params,
+      Config.new(Keyword.replace_lazy(settings, :api_key, &Wardrik.Credential.reveal/1))
+    )
+  end
 
   def run(params, %Config{} = config) do
     case window(Map.new(params)) do

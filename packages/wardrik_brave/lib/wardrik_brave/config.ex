@@ -10,9 +10,11 @@ defmodule WardrikBrave.Config do
 
   `WardrikBrave.WebSearch` builds one for each call, from what
   `WardrikBrave.attach/2` gave the host. A config with no key is a normal
-  state: the client reports the missing key at call time.
+  state: the client reports the missing key at call time. Its inspected
+  form never shows the key.
   """
 
+  @derive {Inspect, except: [:api_key]}
   defstruct [:base_url, :api_key, req_options: []]
 
   @type t() :: %__MODULE__{
