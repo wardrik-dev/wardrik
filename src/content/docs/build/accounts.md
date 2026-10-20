@@ -37,15 +37,15 @@ The vault finds a credential for each call as the agent's owner holds it:
 
 Nothing falls back from one owner to another. A user's agent never reads its org's, and an org's
 agent never reads a user's, so whoever may ask an agent may use what its owner holds and nothing
-else. The deployment's own secrets reach an agent only where `vault.shared` names them; see
-[Shared secrets](/build/vault/#shared-secrets).
+else. The deployment's own secrets reach no agent; see
+[The deployment's secrets](/build/vault/#the-deployments-secrets).
 
 Where the owner holds none and `oauth.providers` names a provider of the same name, the owner is
 asked to connect an account: the user, or the org for an agent that works for nobody. The account
 is kept in the vault from then on, as theirs, and acts as them, so only their agents reach it.
 
-So a deployment can let each user connect GitHub as themselves, give an org's own agents one key,
-and share a single search key with every agent, all through `credential` and `vault.shared`.
+So a deployment can let each user connect GitHub as themselves and give an org's own agents one key,
+all through `credential`.
 
 ## Connecting
 

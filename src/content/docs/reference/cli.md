@@ -302,7 +302,7 @@ Seal secrets in the vault, asking for a value not given.
 wardrik vault put NAME[=VALUE]... [--org ORG] [--user USER] [--yes]
 ```
 
-NAME alone asks for its value without showing it, or reads it from standard input where that is not a terminal. NAME=VALUE stays in your shell's history. A secret is the deployment's, which agents read only where vault.shared names it. `--org ORG` seals it for an org, whose own agents read it, and `--user USER` for a user, whose agents read it, within `--org ORG` or the deployment's org. Where the vault has no key, it asks to make one; `--yes` makes it without asking.
+NAME alone asks for its value without showing it, or reads it from standard input where that is not a terminal. NAME=VALUE stays in your shell's history. A secret is the deployment's, for model providers' keys and ${NAME} in `config.yaml`; no agent's call reads it. `--org ORG` seals it for an org, whose own agents read it, and `--user USER` for a user, whose agents read it, within `--org ORG` or the deployment's org. Where the vault has no key, it asks to make one; `--yes` makes it without asking.
 
 ### wardrik vault ls
 

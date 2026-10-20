@@ -123,4 +123,4 @@ the agent's notes gets around the policy.
 - **Seeing an agent's files.** The CLI and the HTTP API don't read or write them; ask the agent. A
   tree belongs to the agent's key, so an agent removed and started again under the same key finds
   its files. Files are kept in the store's `files` namespace: an agent's `MEMORY.md` is
-  `agents/acme/@jon/triage//MEMORY.md`. See [Storage](/run/storage/).
+  `agents/acme/@jon/agent/triage//MEMORY.md`. See [Storage](/run/storage/).
