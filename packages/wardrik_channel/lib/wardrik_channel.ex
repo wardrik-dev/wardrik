@@ -136,8 +136,9 @@ defmodule WardrikChannel do
 
   `WardrikChannel.Notices` posts notices in a room through a channel's
   adapter: as a `WardrikNotify` target, and in the rooms agents' routes
-  name, `slack:#updates`, each in a workspace of the agent's own owner, so
-  every org's agents post in their own. The bot must be able to post in
+  name, `slack:#updates`, where the channel offers the agent's org, each in
+  a workspace of the agent's own owner, so every org's agents post in
+  their own. The bot must be able to post in
   the room, as by being invited into it.
   """
 
@@ -243,17 +244,11 @@ defmodule WardrikChannel do
         |> Wardrik.Host.register(:routes, [
           {["v1", "channels"], {WardrikChannel.Requests, settings}}
         ])
-        |> Wardrik.Host.register(:settings, [{WardrikNotify, rooms: notices(settings)}])
+        |> Wardrik.Host.register(:settings, [
+          {WardrikNotify, rooms: %WardrikChannel.Notices{settings: settings}}
+        ])
         |> Wardrik.Host.child({WardrikChannel.Replies, settings: settings})
         |> Wardrik.Host.child({WardrikChannel.Supervisor, settings: settings})
-  end
-
-  defp notices(settings) do
-    %WardrikChannel.Notices{
-      channels:
-        Map.new(settings[:channels], fn {name, channel} -> {to_string(name), channel} end),
-      installations: settings[:installations]
-    }
   end
 
   @doc """

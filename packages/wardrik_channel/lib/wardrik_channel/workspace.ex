@@ -47,7 +47,7 @@ defmodule WardrikChannel.Workspace do
     for %Definition{id: id, channels: channels, description: description} <-
           Definitions.list(Host.definitions(context.host), Wardrik.Resource.parse!("*")),
         context.channel in channels,
-        context.orgs == :all or id.org in context.orgs,
+        Context.offers?(context, id),
         Installation.covers?(installation, id),
         do: %Offer{agent: id, description: description}
   end

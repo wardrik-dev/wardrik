@@ -223,8 +223,9 @@ notify: {to: [ops], on: [parked, failed, finished]}
 
 `on` lists what is sent: `parked` for a call waiting on a person, `failed`, and `finished` for what
 a turn answered. A target tells only the agents of the orgs it serves, and one `config.yaml` doesn't
-name tells nothing; `wardrik status` lists the names it doesn't. A room is posted in the workspace
-the channel is installed in for the agent's org, or for every org, and nowhere else.
+name tells nothing; `wardrik status` lists the names it doesn't. A room is posted where the channel
+serves the agent's org, in the workspace it is installed in for that org, or for every org, and
+nowhere else.
 
 ## channels
 

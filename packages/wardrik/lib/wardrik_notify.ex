@@ -42,10 +42,10 @@ defmodule WardrikNotify do
 
   A room a route names, `slack:#updates`, is posted in through the
   `WardrikNotify.Rooms` the host holds as this module's `:rooms` setting,
-  which `wardrik_channel` registers as it attaches: in a workspace the
-  channel is installed in for the agent's own owner, so each org's agents
-  post in their own, and one whose owner has none posts nothing, with a
-  warning. It asks nobody: who may answer is what the token the host's
+  which `wardrik_channel` registers as it attaches: where the channel
+  offers the agent's org, in a workspace the channel is installed in for
+  the agent's own owner, so each org's agents post in their own, and one
+  whose owner has none posts nothing, with a warning. It asks nobody: who may answer is what the token the host's
   `Wardrik.Issuer` issues them allows.
 
   `WardrikNotify.Keeper`, one in the cluster, follows every agent's log

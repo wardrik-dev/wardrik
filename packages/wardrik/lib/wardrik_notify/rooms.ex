@@ -12,8 +12,9 @@ defprotocol WardrikNotify.Rooms do
   """
 
   @doc """
-  Posts `notice` in `room`, in a workspace of the agent's own owner, with
-  `:req_options` merged into every HTTP request it makes. Answers
+  Posts `notice` in `room`, in a workspace of the agent's own owner, as
+  told on `:host`, with `:req_options` merged into every HTTP request it
+  makes. Answers
   `{:skip, why}` where there is none to post in, which is logged and not
   tried again.
   """

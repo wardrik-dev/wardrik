@@ -39,8 +39,9 @@ Name a room of a channel as `channel:room`, with no target in `config.yaml`:
 notify: {to: ["slack:#updates"], on: [parked, failed, finished]}
 ```
 
-It posts in the workspace the channel is installed in for the agent's org, or for every org. An agent
-never posts in another org's workspace. Where there is none, nothing is posted, and the log says so.
+It posts where the channel [offers the agent's org](/channels/#which-agents-a-channel-offers), in the
+workspace the channel is installed in for that org, or for every org. An agent never posts in another
+org's workspace. Where there is none, nothing is posted, and the log says so.
 
 The bot must be able to post in the room: invite it, or give the Slack app `chat:write.public`. A
 room notice asks nobody by name; whoever may decide the agent's calls can answer it. Like every

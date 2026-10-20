@@ -46,8 +46,8 @@ defmodule WardrikChannelTest do
 
       assert kept == routed
 
-      assert %WardrikChannel.Notices{channels: %{"one" => {WardrikChannel.Test.Adapter, _test}}} =
-               Wardrik.Host.settings(host, WardrikNotify)[:rooms]
+      assert Wardrik.Host.settings(host, WardrikNotify)[:rooms] ==
+               %WardrikChannel.Notices{settings: kept}
 
       assert WardrikChannel.attach(host(), channels: []) == host()
       assert_raise ArgumentError, fn -> WardrikChannel.attach(host(), mounts: []) end
@@ -174,57 +174,74 @@ defmodule WardrikChannelTest do
                 token: "token"
               })
 
-      host =
-        WardrikChannel.attach(host(),
-          channels: [chat: {WardrikChannel.Test.Adapter, test: self()}],
-          installations: installations
-        )
-
-      %{rooms: Wardrik.Host.settings(host, WardrikNotify)[:rooms]}
+      %{host: rooms_host(installations: installations)}
     end
 
-    defp notice(agent), do: %{notice() | agent: Wardrik.AgentID.parse!(agent)}
+    defp rooms_host(settings),
+      do:
+        WardrikChannel.attach(
+          host(),
+          [channels: [chat: {WardrikChannel.Test.Adapter, test: self()}]] ++ settings
+        )
 
-    test "posts in a workspace of the agent's own owner, never another's", %{rooms: rooms} do
-      room = %WardrikDefinition.Room{channel: "chat", room: "#updates"}
+    # Posts a notice of `agent`'s in `room` through the rooms `host` holds.
+    defp post(host, agent, room) do
+      [channel, room] = String.split(room, ":")
+      notice = %{notice() | agent: Wardrik.AgentID.parse!(agent)}
 
+      Wardrik.Host.settings(host, WardrikNotify)[:rooms]
+      |> WardrikNotify.Rooms.post(
+        %WardrikDefinition.Room{channel: channel, room: room},
+        notice,
+        host: host,
+        req_options: [retry: false]
+      )
+    end
+
+    test "posts in a workspace of the agent's own owner, never another's", %{host: host} do
       for {agent, workspace} <- [
             {"acme/triage", "T-acme"},
             {"globex/triage", "T-globex"},
             {"acme/@jon/triage", "T-acme"}
           ] do
-        notice = notice(agent)
-        assert :ok = WardrikNotify.Rooms.post(rooms, room, notice, req_options: [retry: false])
+        assert :ok = post(host, agent, "chat:#updates")
 
         assert_received {:delivered,
                          %Outbound{
                            installation: %Installation{workspace: ^workspace},
                            room: "#updates",
-                           body: {:notice, ^notice},
+                           body: {:notice, %Notice{agent: posted}},
                            approvers: []
                          }, channel}
 
+        assert to_string(posted) == agent
         assert channel[:req_options] == [retry: false]
       end
     end
 
     test "posts nothing where its owner has the channel in no workspace, or there is none",
-         %{rooms: rooms} do
+         %{host: host} do
       assert {:skip, "but chat is installed in no workspace of its owner's"} =
-               WardrikNotify.Rooms.post(
-                 rooms,
-                 %WardrikDefinition.Room{channel: "chat", room: "#updates"},
-                 notice("initech/triage"),
-                 []
-               )
+               post(host, "initech/triage", "chat:#updates")
 
       assert {:skip, "which names no channel of this host's"} =
-               WardrikNotify.Rooms.post(
-                 rooms,
-                 %WardrikDefinition.Room{channel: "other", room: "#updates"},
-                 notice("acme/triage"),
-                 []
-               )
+               post(host, "acme/triage", "other:#updates")
+
+      refute_received {:delivered, _outbound, _channel}
+    end
+
+    test "posts only the agents of the orgs the channel offers, every org's installation or not" do
+      host =
+        rooms_host(
+          installations: Installations.Config.new([{:chat, "token", Resource.parse!("*")}]),
+          orgs: [chat: ["acme"]]
+        )
+
+      assert :ok = post(host, "acme/triage", "chat:#updates")
+      assert_received {:delivered, %Outbound{installation: %Installation{workspace: "chat"}}, _}
+
+      assert {:skip, "but chat does not offer globex's agents"} =
+               post(host, "globex/triage", "chat:#updates")
 
       refute_received {:delivered, _outbound, _channel}
     end

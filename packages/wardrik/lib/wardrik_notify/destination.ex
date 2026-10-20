@@ -40,6 +40,6 @@ defimpl WardrikNotify.Destination, for: WardrikDefinition.Room do
     |> Keyword.fetch!(:host)
     |> Wardrik.Host.settings(WardrikNotify)
     |> Keyword.get(:rooms, %WardrikNotify.Rooms.None{})
-    |> WardrikNotify.Rooms.post(room, notice, Keyword.take(opts, [:req_options]))
+    |> WardrikNotify.Rooms.post(room, notice, Keyword.take(opts, [:host, :req_options]))
   end
 end

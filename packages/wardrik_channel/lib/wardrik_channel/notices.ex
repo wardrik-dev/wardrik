@@ -20,26 +20,23 @@ defmodule WardrikChannel.Notices do
   channel names people. Who may answer it is what the token the host's
   `Wardrik.Issuer` issues them allows.
 
-  As the rooms, it holds the host's `:channels`, by name, and their
-  `:installations`, and `WardrikChannel.attach/2` registers it on the
-  host. A route to `slack:#updates` posts in `#updates` through the
-  channel `slack`, in a workspace `WardrikChannel.Installations.owned/3`
-  answers for the owner nearest the agent: its user, its org, then every
-  org, `*`. Where there is none, it posts nothing. It asks nobody.
+  As the rooms, it holds the `:settings` `WardrikChannel.attach/2` takes,
+  and that registers it on the host. A route to `slack:#updates` posts in
+  `#updates` through the channel `slack`, where the channel offers the
+  agent's org, as `WardrikChannel.Context.offers?/2` says, in a workspace
+  `WardrikChannel.Installations.owned/3` answers for the owner nearest the
+  agent: its user, its org, then every org, `*`. Where there is none, it
+  posts nothing. It asks nobody.
   """
 
   @behaviour WardrikNotify
 
-  alias WardrikChannel.Installations
   alias WardrikChannel.Outbound
 
-  @enforce_keys [:channels, :installations]
-  defstruct [:channels, :installations]
+  @enforce_keys [:settings]
+  defstruct [:settings]
 
-  @type t() :: %__MODULE__{
-          channels: %{String.t() => WardrikChannel.channel()},
-          installations: Installations.t()
-        }
+  @type t() :: %__MODULE__{settings: keyword()}
 
   @impl WardrikNotify
   def deliver(notice, opts) do
@@ -61,23 +58,31 @@ defmodule WardrikChannel.Notices do
     alias Wardrik.AgentAddress
     alias Wardrik.AgentID
     alias Wardrik.Resource
+    alias WardrikChannel.Context
+    alias WardrikChannel.Installations
 
-    def post(notices, %{channel: channel, room: room}, notice, opts) do
-      with {:ok, adapter} <- Map.fetch(notices.channels, channel),
-           [installation | _] <- holding(notices.installations, channel, notice.agent) do
+    def post(%{settings: settings}, %{channel: name, room: room}, notice, opts) do
+      {host, opts} = Keyword.pop!(opts, :host)
+      agent = AgentAddress.agent(notice.agent)
+
+      with {:ok, channel} <- Map.fetch(WardrikChannel.channels(settings, host: host), name),
+           true <- Context.offers?(channel.context, agent),
+           [installation | _] <- holding(channel.context, agent) do
         WardrikChannel.Notices.deliver(
           notice,
-          [channel: adapter, installation: installation, room: room] ++ opts
+          [channel: {channel.adapter, channel.options}, installation: installation, room: room] ++
+            opts
         )
       else
         :error -> {:skip, "which names no channel of this host's"}
-        [] -> {:skip, "but #{channel} is installed in no workspace of its owner's"}
+        false -> {:skip, "but #{name} does not offer #{agent.org}'s agents"}
+        [] -> {:skip, "but #{name} is installed in no workspace of its owner's"}
       end
     end
 
     # The owner nearest the agent first: its user, its org, every org.
-    defp holding(installations, channel, agent) do
-      resource = agent |> AgentAddress.agent() |> AgentID.resource()
+    defp holding(%Context{channel: channel, installations: installations}, agent) do
+      resource = AgentID.resource(agent)
 
       [Resource.owner(resource), Resource.org(resource), Resource.parse!("*")]
       |> Enum.uniq()

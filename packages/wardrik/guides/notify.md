@@ -34,9 +34,10 @@ notify: {to: [ops, "slack:#updates"], on: [parked, failed, finished]}
 ```
 
 `slack:#updates` is a room of a channel, written `channel:room`, which needs
-no target: it is posted in the workspace the channel is installed in for the
-agent's own owner, so each org's agents post in their own, and one whose owner
-has none posts nothing, with a warning in the log. The bot must be able to post
+no target: where the channel offers the agent's org, it is posted in the
+workspace the channel is installed in for the agent's own owner, so each org's
+agents post in their own, and one whose owner has none posts nothing, with a
+warning in the log. The bot must be able to post
 in the room: in Slack, invited into it, or the app holding `chat:write.public`.
 It names nobody to answer: who may is what the host's issuer allows.
 
