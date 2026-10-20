@@ -30,6 +30,23 @@ notify: {to: [ops], on: [parked, failed, finished]}
 
 `on` is `parked`, `failed`, and `finished` for what a turn answered; `[parked, failed]` unless set.
 
+## Post in a room
+
+Name a room of a channel as `channel:room`, with no target in `config.yaml`:
+
+```yaml
+# in an agent file
+notify: {to: ["slack:#updates"], on: [parked, failed, finished]}
+```
+
+It posts where the channel [offers the agent's org](/channels/#which-agents-a-channel-offers), in the
+workspace the channel is installed in for that org, or for every org. An agent never posts in another
+org's workspace. Where there is none, nothing is posted, and the log says so.
+
+The bot must be able to post in the room: invite it, or give the Slack app `chat:write.public`. A
+room notice asks nobody by name; whoever may decide the agent's calls can answer it. Like every
+notice, it is sent at least once; see [Details](#details).
+
 ## What a notice says
 
 - **Parked:** the agent, and for each waiting call its tool, the question, its arguments, and
