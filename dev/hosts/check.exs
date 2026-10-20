@@ -6,7 +6,8 @@
 # with the guides' code, what a user does, and what the app's listener keeps
 # of it in tables of the app's own.
 #
-#   WARDRIK_HOST           the application's module whose store/0 is Wardrik's store
+#   WARDRIK_HOST           the application's `use Wardrik` instance, or its module
+#                          whose store/0 is Wardrik's store
 #   WARDRIK_HOST_STORE     the adapter the application configured
 #   WARDRIK_HOST_WITHOUT   modules it must not have, separated by commas
 #   WARDRIK_HOST_REPO      the application's repo, where the store is kept in it
@@ -18,7 +19,13 @@ ExUnit.start(autorun: false)
 
 defmodule WardrikHost do
   @moduledoc false
-  def store, do: Module.concat([System.fetch_env!("WARDRIK_HOST")]).store()
+  def store do
+    host = Code.ensure_loaded!(Module.concat([System.fetch_env!("WARDRIK_HOST")]))
+
+    if function_exported?(host, :store, 0),
+      do: host.store(),
+      else: Wardrik.Host.store(Wardrik.Instance.host(host))
+  end
 
   def tree?(part), do: part in String.split(System.get_env("WARDRIK_HOST_TREE", ""), ",")
 end

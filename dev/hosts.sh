@@ -4,8 +4,8 @@
 # Phoenix app running the code of the embedding and listening guides, kept in
 # dev/hosts/phoenix and renamed for it, which keeps Wardrik in its own Repo,
 # starts it in its own tree with what the guides add, and follows the agents'
-# events into tables of its own, and a bare Mix app that keeps it in an
-# S3 bucket. Neither depends on :ekv, and the bare one not on :ecto_sql
+# events into tables of its own, and a bare Mix app, with `use Wardrik`, that
+# keeps it in an S3 bucket. Neither depends on :ekv, and the bare one not on :ecto_sql
 # either, so each shows Wardrik compiling and running without what it leaves
 # out. First it builds the Hex packages as mix hex.build has them, and
 # compiles Wardrik's alone, from those, without its optional dependencies,
@@ -141,13 +141,16 @@ bare() {
 
   cd "$dir/bare"
   WARDRIK_REPO=$repo perl -0pi -e 's/# \{:dep_from_hexpm, "~> 0.3.0"\},/{:wardrik, path: "$ENV{WARDRIK_REPO}\/packages\/wardrik"},/' mix.exs
-  perl -0pi -e 's/(    children = \[\n)/$1      {WardrikStore, Bare.Wardrik.store()},\n      {Wardrik, Wardrik.new(store: Bare.Wardrik.store())},\n/' lib/bare/application.ex
-  grep -q 'Bare.Wardrik.store()' lib/bare/application.ex || die "bare's application has no children to start Wardrik among"
-  cat >lib/wardrik.ex <<'EOF'
-defmodule Bare.Wardrik do
-  @moduledoc "Wardrik's store, as the application's config names it."
+  perl -0pi -e 's/(    children = \[\n)/$1      Bare.Agents,\n/' lib/bare/application.ex
+  grep -q 'Bare.Agents' lib/bare/application.ex || die "bare's application has no children to start Wardrik among"
+  cat >lib/bare/agents.ex <<'EOF'
+defmodule Bare.Agents do
+  @moduledoc "Wardrik in this application, kept where its config says."
 
-  def store, do: Wardrik.store(Application.fetch_env!(:bare, :store))
+  use Wardrik, otp_app: :bare
+
+  @impl Wardrik
+  def principal(%{org: org, id: id}), do: %{org: org, id: id}
 end
 EOF
   mkdir -p config
@@ -161,18 +164,20 @@ EOF
 import Config
 
 # Wardrik, kept in a bucket under a prefix of this run's own.
-config :bare, :store,
-  bucket: System.fetch_env!("WARDRIK_TEST_S3_BUCKET"),
-  endpoint: System.fetch_env!("WARDRIK_TEST_S3_ENDPOINT"),
-  region: System.fetch_env!("WARDRIK_TEST_S3_REGION"),
-  access_key_id: System.fetch_env!("WARDRIK_TEST_S3_ACCESS_KEY_ID"),
-  secret_access_key: System.fetch_env!("WARDRIK_TEST_S3_SECRET_ACCESS_KEY"),
-  prefix: "hosts-#{System.system_time(:millisecond)}"
+config :bare, Bare.Agents,
+  store: [
+    bucket: System.fetch_env!("WARDRIK_TEST_S3_BUCKET"),
+    endpoint: System.fetch_env!("WARDRIK_TEST_S3_ENDPOINT"),
+    region: System.fetch_env!("WARDRIK_TEST_S3_REGION"),
+    access_key_id: System.fetch_env!("WARDRIK_TEST_S3_ACCESS_KEY_ID"),
+    secret_access_key: System.fetch_env!("WARDRIK_TEST_S3_SECRET_ACCESS_KEY"),
+    prefix: "hosts-#{System.system_time(:millisecond)}"
+  ]
 EOF
 
   cd "$repo"
 
-  WARDRIK_HOST=Bare.Wardrik WARDRIK_HOST_STORE=WardrikS3.Store \
+  WARDRIK_HOST=Bare.Agents WARDRIK_HOST_STORE=WardrikS3.Store \
     WARDRIK_HOST_WITHOUT=EKV,Ecto,Postgrex check bare
 }
 
