@@ -29,6 +29,7 @@ defmodule WardrikChannel.Rooms do
   alias Wardrik.AgentID
   alias Wardrik.Audit
   alias WardrikChannel.Binding
+  alias WardrikChannel.Installation
   alias WardrikChannel.Offer
   alias WardrikChannel.Room
   alias WardrikChannel.Workspace
@@ -42,9 +43,21 @@ defmodule WardrikChannel.Rooms do
           | {:create, String.t()}
           | :none
 
-  @doc "What the room is bound to, where it is bound."
+  @doc """
+  What the room is bound to, where it is bound to an agent its workspace's
+  installation covers: a room of a workspace installed again, for another
+  owner, is not bound to the agent it was before.
+  """
   @spec get(Room.t()) :: Binding.t() | nil
-  def get(%Room{} = room), do: room |> store() |> WardrikStore.get(@ns, Room.key(room))
+  def get(%Room{workspace: workspace} = room) do
+    case room |> store() |> WardrikStore.get(@ns, Room.key(room)) do
+      %Binding{agent: agent} = binding ->
+        if Installation.covers?(workspace.installation, agent), do: binding
+
+      nil ->
+        nil
+    end
+  end
 
   @doc """
   The bot was invited into the room: binds it to the one agent the

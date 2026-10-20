@@ -27,7 +27,7 @@ defmodule WardrikDaemon.IssuerTest do
         [
           channels: [chat: {WardrikDaemon.Test.Channel, []}],
           installations:
-            WardrikChannel.Installations.Config.new([{:chat, "token", Resource.deployment()}])
+            WardrikChannel.Installations.Config.new([{:chat, "token", Resource.parse!("*")}])
         ],
         settings
       )

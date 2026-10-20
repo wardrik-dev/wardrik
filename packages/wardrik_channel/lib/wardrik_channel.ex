@@ -22,12 +22,12 @@ defmodule WardrikChannel do
 
   A channel is installed in workspaces, such as the Slack workspaces a
   Slack app was added to. Each is a `WardrikChannel.Installation`, owned by
-  whom it was installed for, holding the token the channel acts there with,
-  and kept where the host keeps such secrets, as its
-  `WardrikChannel.Installations` say. A channel whose config names a
-  `token` is installed in the one workspace that token reaches,
-  `WardrikChannel.Installations.Config`. A host that serves many owners
-  installs one app in each of their workspaces: it sends someone to
+  whom it was installed for, whose agents alone it offers, holding the
+  token the channel acts there with, and kept where the host keeps such
+  secrets, as its `WardrikChannel.Installations` say. A channel whose
+  config names a `token` is installed in the one workspace that token
+  reaches, `WardrikChannel.Installations.Config`. A host that serves many
+  owners installs one app in each of their workspaces: it sends someone to
   `install_url/3` for their own, and hands the medium's answer to
   `install/3`.
 

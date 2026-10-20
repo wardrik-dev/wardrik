@@ -7,6 +7,7 @@ defmodule WardrikChannel.RoomsTest do
   alias Wardrik.Test.Audit
   alias WardrikChannel.Binding
   alias WardrikChannel.Context
+  alias WardrikChannel.Inbound
   alias WardrikChannel.Installation
   alias WardrikChannel.Installations
   alias WardrikChannel.Offer
@@ -46,8 +47,31 @@ defmodule WardrikChannel.RoomsTest do
       host: host,
       channel: test.channel,
       org: test.org,
-      installations: Installations.Config.new([{test.channel, "token", Resource.deployment()}])
+      installations: Installations.Config.new([{test.channel, "token", Resource.parse!("*")}])
     })
+  end
+
+  # The workspaces T1, T2… of a channel `context` writes, each installed
+  # for the next of `owners`.
+  defp installed(owners, context) do
+    installations = %WardrikChannel.Test.Installations{
+      agent: start_supervised!({Agent, fn -> %{} end})
+    }
+
+    context = struct!(Context, [installations: installations] ++ context)
+
+    for {owner, n} <- Enum.with_index(owners, 1) do
+      :ok =
+        Installations.put(installations, %Installation{
+          channel: context.channel,
+          workspace: "T#{n}",
+          owner: Resource.parse!(owner),
+          token: "token-T#{n}"
+        })
+
+      {:ok, workspace} = Workspace.new(context, "T#{n}")
+      workspace
+    end
   end
 
   defp workspace(context) do
@@ -171,7 +195,7 @@ defmodule WardrikChannel.RoomsTest do
       installation: %Installation{
         channel: "chat",
         workspace: "T1",
-        owner: Resource.deployment(),
+        owner: Resource.parse!("*"),
         token: "token"
       }
     }
@@ -184,32 +208,74 @@ defmodule WardrikChannel.RoomsTest do
   end
 
   test "keeps a room of each workspace apart, of the same id", test do
-    channel = test.channel
-
-    installations = %WardrikChannel.Test.Installations{
-      agent: start_supervised!({Agent, fn -> %{} end})
-    }
-
-    for workspace <- ["T1", "T2"] do
-      :ok =
-        Installations.put(installations, %Installation{
-          channel: channel,
-          workspace: workspace,
-          owner: Resource.deployment(),
-          token: "token-" <> workspace
-        })
-    end
-
     host = Defined.host()
-    Defined.define(host, books(test).agent, %{"channels" => [channel]})
-    context = %Context{host: host, channel: channel, installations: installations}
-
-    {:ok, one} = Workspace.new(context, "T1")
-    {:ok, two} = Workspace.new(context, "T2")
-    assert :error = Workspace.new(context, "T3")
+    Defined.define(host, books(test).agent, %{"channels" => [test.channel]})
+    [one, two] = installed([test.org, test.org], host: host, channel: test.channel)
+    assert :error = Workspace.new(one.context, "T3")
 
     {:bound, _room, _offer} = Rooms.joined(Room.new(one, "C1"), name: "books", by: @maria)
     assert %Binding{workspace: "T1"} = Rooms.get(Room.new(one, "C1"))
     assert Rooms.get(Room.new(two, "C1")) == nil
+  end
+
+  test "offers and binds in a workspace only the agents of the owner it was installed for",
+       test do
+    globex = "globex-#{test.org}"
+    host = Defined.host()
+    books = books(test).agent
+    jons = AgentID.new!("triage", org: test.org, user: "jon")
+    ledger = AgentID.new!("ledger", org: globex)
+
+    for agent <- [books, jons, ledger],
+        do: Defined.define(host, agent, %{"channels" => [test.channel]})
+
+    [acme, other] = installed([test.org, globex], host: host, channel: test.channel)
+
+    assert Enum.map(Workspace.offered(acme), & &1.agent) == [jons, books]
+    assert Enum.map(Workspace.offered(other), & &1.agent) == [ledger]
+    assert Rooms.chose(Room.new(other, "C1"), books, by: @maria) == {:error, :not_offered}
+
+    assert {:bound, %Binding{agent: ^ledger}, _offer} =
+             Rooms.joined(Room.new(other, "C1"), name: "ops", by: @maria)
+  end
+
+  test "creates an agent only in a workspace whose owner covers the org it is created in",
+       test do
+    {:ok, careful} = WardrikPolicy.decode(%{"ask" => ["*"]})
+
+    host =
+      Defined.host(
+        policies: %{"careful" => careful},
+        defaults: %{"model" => "anthropic:claude-sonnet-5", "policy" => "careful"}
+      )
+
+    context = [host: host, channel: test.channel, org: test.org]
+    [acme, other] = installed([test.org, "globex-#{test.org}"], context)
+
+    refute Workspace.creatable?(other)
+    assert Rooms.joined(Room.new(other, "C1"), name: "books", by: @maria) == :none
+
+    assert {:error, "Agents are not created from here" <> _} =
+             Rooms.create(Room.new(other, "C1"), "books", by: @maria)
+
+    assert Workspace.creatable?(acme)
+    assert {:ok, %Binding{agent: agent}, _offer} = Rooms.create(Room.new(acme, "C1"), "books")
+    assert agent == books(test).agent
+  end
+
+  test "answers in no room bound to an agent its workspace's owner does not cover", test do
+    host = Defined.host()
+    Defined.define(host, books(test).agent, %{"channels" => [test.channel]})
+    [acme] = installed([test.org], host: host, channel: test.channel)
+    {:bound, _room, _offer} = Rooms.joined(Room.new(acme, "C1"), name: "books", by: @maria)
+
+    globex = %{acme.installation | owner: Resource.parse!("globex-#{test.org}")}
+    :ok = Installations.put(acme.context.installations, globex)
+    {:ok, other} = Workspace.new(acme.context, "T1")
+
+    assert Rooms.get(Room.new(other, "C1")) == nil
+
+    inbound = %Inbound{room: "C1", id: "1.1", sender: @maria, text: "Hi.", mentioned?: true}
+    assert WardrikChannel.received(other, inbound) == :ignored
   end
 end

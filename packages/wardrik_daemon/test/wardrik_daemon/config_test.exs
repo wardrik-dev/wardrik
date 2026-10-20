@@ -531,7 +531,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:ok, acme} = WardrikChannel.Installations.fetch(installations, "acme", "T1")
       assert to_string(acme.owner) == "acme"
       assert {:ok, all} = WardrikChannel.Installations.fetch(installations, "all", "T1")
-      assert all.owner == Wardrik.Resource.deployment()
+      assert all.owner == Wardrik.Resource.parse!("*")
       refute Keyword.has_key?(settings[:channels][:chat] |> elem(1), :token)
 
       assert {:error, message} = read("channels:\n  chat: {type: test, token: 1}\n", context)

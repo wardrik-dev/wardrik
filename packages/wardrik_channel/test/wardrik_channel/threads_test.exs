@@ -71,7 +71,7 @@ defmodule WardrikChannel.ThreadsTest do
          {WardrikChannel.Test.Adapter,
           test: self(), refusals: opts[:refusals], unshown: opts[:unshown]}}
       ],
-      installations: Installations.Config.new([{name, "token", Resource.deployment()}]),
+      installations: Installations.Config.new([{name, "token", Resource.parse!("*")}]),
       approvers: [{name, %Approvers.Named{names: Keyword.get(opts, :approvers, [])}}]
     ]
 
@@ -223,7 +223,7 @@ defmodule WardrikChannel.ThreadsTest do
         %Context{
           host: Wardrik.Host.new(store: Wardrik.Test.store()),
           channel: "chat-none",
-          installations: Installations.Config.new([{"chat-none", "token", Resource.deployment()}])
+          installations: Installations.Config.new([{"chat-none", "token", Resource.parse!("*")}])
         },
         "T1"
       )

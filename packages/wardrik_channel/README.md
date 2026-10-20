@@ -50,5 +50,6 @@ host =
 A host keeps the workspaces each channel is installed in, with their
 tokens, as its `WardrikChannel.Installations` say, and serves what each
 medium sends over HTTP at `/v1/channels/`, among its routes, which hand it
-to `WardrikChannel.request/2`. The agents a channel offers are those whose
-definitions name it. See `WardrikChannel` for the callbacks.
+to `WardrikChannel.request/2`. The agents a channel offers in a workspace are
+those whose definitions name it, of the owner it was installed for. See
+`WardrikChannel` for the callbacks.

@@ -1,14 +1,15 @@
 defmodule WardrikChannel.Installation do
   @moduledoc """
   A channel installed in one workspace: a Slack workspace the app was added
-  to, say. It is owned by the agents' owner it was installed for, and holds
-  the token the channel acts there with, which is left out of how it is
-  inspected.
+  to, say. It is owned by the agents' owner it was installed for, whose
+  agents alone answer there (`covers?/2`), and holds the token the channel
+  acts there with, which is left out of how it is inspected.
 
     * `:channel` - the channel's name
     * `:workspace` - the workspace's id, as the installation names it
-    * `:owner` - the namespace it was installed for, as `Wardrik.Resource`
-      names one: an org, or the deployment for every org
+    * `:owner` - whom it was installed for, as `Wardrik.Resource` names
+      them: an org, a user in one, or `*`, every org, as a deployment
+      installs a channel that offers several
     * `:token` - what the channel acts in the workspace with
 
   The host keeps installations; see `WardrikChannel.Installations`.
@@ -19,6 +20,7 @@ defmodule WardrikChannel.Installation do
   """
 
   alias Wardrik.AgentID
+  alias Wardrik.Resource
 
   @derive {Inspect, except: [:token]}
   @enforce_keys [:channel, :workspace, :owner, :token]
@@ -39,4 +41,12 @@ defmodule WardrikChannel.Installation do
   @spec shown(t(), AgentID.t()) :: String.t()
   def shown(%__MODULE__{owner: owner}, %AgentID{} = agent),
     do: String.replace_prefix(to_string(agent), "#{owner}/", "")
+
+  @doc """
+  Whether `agent` is the owner's: an agent of the org it was installed
+  for, its users' among them, or of the user; any agent, for `*`.
+  """
+  @spec covers?(t(), AgentID.t()) :: boolean()
+  def covers?(%__MODULE__{owner: owner}, %AgentID{} = agent),
+    do: Resource.covers?(Resource.parse!("#{owner}/*"), AgentID.resource(agent))
 end
