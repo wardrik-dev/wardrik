@@ -3,8 +3,10 @@ defmodule WardrikTUI.App.ConversationTest do
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
-  alias Wardrik.Event
-  alias Wardrik.Event.Source
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
+  alias Wardrik.Bus.Source
   alias WardrikTUI.App.Conversation
   alias WardrikTUI.Transcript
 
@@ -17,7 +19,7 @@ defmodule WardrikTUI.App.ConversationTest do
     state =
       Conversation.new(60)
       |> Conversation.apply_event(
-        Event.new(root, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hello")]}),
+        Event.new(root, %Bus.TurnStarted{messages: [Wardrik.Agent.Message.new("hello")]}),
         @options
       )
 
@@ -27,11 +29,11 @@ defmodule WardrikTUI.App.ConversationTest do
     state =
       state
       |> Conversation.apply_event(
-        Event.new(child, %Event.Result{text: "private child answer"}),
+        Event.new(child, %Bus.Result{text: "private child answer"}),
         @options
       )
       |> Conversation.apply_event(
-        Event.new(root, %Event.Result{text: "visible answer"}),
+        Event.new(root, %Bus.Result{text: "visible answer"}),
         @options
       )
 
@@ -42,7 +44,7 @@ defmodule WardrikTUI.App.ConversationTest do
     state =
       Conversation.apply_event(
         state,
-        Event.new(root, %Event.TurnFinished{messages: []}),
+        Event.new(root, %Bus.TurnFinished{messages: []}),
         @options
       )
 

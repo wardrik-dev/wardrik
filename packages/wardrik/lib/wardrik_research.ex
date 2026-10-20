@@ -8,8 +8,11 @@ defmodule WardrikResearch do
   `WardrikResearch.Deep` is the tool, and says how a sweep runs.
   """
 
+  @behaviour Wardrik.Plugin
+
   @doc "`host` with `WardrikResearch.Deep` among its tools, as `deep_research`. It takes no options."
   @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
+  @impl true
   def attach(%Wardrik.Host{} = host, opts \\ []) do
     Keyword.validate!(opts, [])
     Wardrik.Host.register(host, :tools, [{"deep_research", WardrikResearch.Deep}])

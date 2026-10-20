@@ -1,10 +1,10 @@
 defmodule MyApp.Slack do
   @moduledoc """
   The app's Slack app, in each org's own workspace: the channel's settings,
-  what someone in a workspace may do, and, as its
-  `WardrikChannel.Installations`, the workspaces it was added to. Bot
-  tokens are sealed in the vault as the deployment's, so no agent's call
-  reaches them.
+  and, as its `WardrikChannel.Installations`, the workspaces it was added
+  to. Bot tokens are sealed in the vault as the deployment's, so no agent's
+  call reaches them. What someone in a workspace may do, the channel says
+  (`WardrikChannel.Issuer`).
   """
 
   import Ecto.Query
@@ -25,28 +25,19 @@ defmodule MyApp.Slack do
 
   @doc "The channel, as Wardrik runs it."
   def channel,
-    do: Map.fetch!(WardrikChannel.channels(settings(), host: MyApp.Agents.wardrik()), "slack")
+    do:
+      Map.fetch!(
+        WardrikChannel.channels(settings(), host: Wardrik.Instance.host(MyApp.Agents)),
+        "slack"
+      )
 
-  @doc """
-  The token of someone in a workspace: reader and messenger on its org's
-  agents, and approver where its approvers name them.
-  """
-  def token(principal) do
-    {"slack", team, id} = WardrikChannel.person(principal)
-
-    case WardrikChannel.Installations.fetch(%__MODULE__{}, "slack", team) do
-      {:ok, installation} ->
-        member = WardrikChannel.Member.new(installation, id)
-        include? = &WardrikChannel.include?(adapter(), &1, member)
-        approves? = WardrikChannel.Approvers.decides?(installation.approvers, include?)
-        roles = if approves?, do: [:reader, :messenger, :approver], else: [:reader, :messenger]
-        agents = Wardrik.Resource.parse!("#{installation.owner}/agent/*")
-        %Wardrik.Token{principal: principal, scope: [Wardrik.Role.bind(roles, [agents])]}
-
-      :error ->
-        %Wardrik.Token{principal: principal}
-    end
-  end
+  @doc "The vault the bot tokens are sealed in, with the key the agents' credentials are."
+  def vault,
+    do:
+      WardrikVault.new(
+        store: Wardrik.store(repo: MyApp.Repo),
+        keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
+      )
 
   @doc "Has `names`, each a `@handle`, an email address or a member ID, approve in `team`'s workspace."
   def approvers(team, names),
@@ -96,7 +87,7 @@ defimpl WardrikChannel.Installations, for: MyApp.Slack do
 
       _ours_or_new ->
         :ok =
-          WardrikVault.put(MyApp.Agents.vault(), name(team), Resource.deployment(), value: token)
+          WardrikVault.put(MyApp.Slack.vault(), name(team), Resource.deployment(), value: token)
 
         MyApp.Repo.insert!(%Workspace{team: team, org: org}, on_conflict: :nothing)
         :ok
@@ -105,11 +96,11 @@ defimpl WardrikChannel.Installations, for: MyApp.Slack do
 
   def delete(_slack, _channel, team) do
     MyApp.Repo.delete_all(from(w in Workspace, where: w.team == ^team))
-    :ok = WardrikVault.forget(MyApp.Agents.vault(), name(team), Resource.deployment())
+    :ok = WardrikVault.forget(MyApp.Slack.vault(), name(team), Resource.deployment())
   end
 
   defp token(team),
-    do: WardrikVault.fetch(MyApp.Agents.vault(), name(team), Resource.deployment())
+    do: WardrikVault.fetch(MyApp.Slack.vault(), name(team), Resource.deployment())
 
   defp name(team), do: "slack-" <> team
 

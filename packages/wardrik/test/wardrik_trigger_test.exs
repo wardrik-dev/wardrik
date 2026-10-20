@@ -31,7 +31,7 @@ end
 defmodule WardrikTriggerTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.Fleet
   alias Wardrik.LLM.Turn
   alias Wardrik.Test.AgentRunners
@@ -73,7 +73,7 @@ defmodule WardrikTriggerTest do
 
   defp spawn_agent(key, runner) do
     {:ok, _pid} = Fleet.spawn(key, config: Script.new(runner))
-    :ok = Event.Bus.subscribe(key, level: :lifecycle)
+    :ok = Bus.subscribe(key, level: :lifecycle)
   end
 
   describe "new/2" do
@@ -265,7 +265,7 @@ defmodule WardrikTriggerTest do
       {:ok, _pid} = WardrikTrigger.put(key, "tick", every: @every, prompt: "Check the queue.")
 
       assert_receive {:turn, [user: "Check the queue."]}
-      assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :asked}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "tick", outcome: :asked}}
     end
 
     test "leaves a running agent be when it skips overlaps", %{key: key} do
@@ -274,8 +274,8 @@ defmodule WardrikTriggerTest do
       {:ok, _pid} = WardrikTrigger.put(key, "tick", every: @every, prompt: "Check the queue.")
 
       assert_receive {:turn, _context, turn}
-      assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :asked}}
-      assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :busy}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "tick", outcome: :asked}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "tick", outcome: :busy}}
       send(turn, :release)
     end
 
@@ -290,17 +290,17 @@ defmodule WardrikTriggerTest do
         )
 
       assert_receive {:turn, _context, turn}
-      assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :asked}}
-      assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :asked}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "tick", outcome: :asked}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "tick", outcome: :asked}}
       send(turn, :release)
     end
 
     test "says there is no agent to ask when none runs under the key", %{key: key} do
-      :ok = Event.Bus.subscribe(key, level: :lifecycle)
+      :ok = Bus.subscribe(key, level: :lifecycle)
 
       {:ok, _pid} = WardrikTrigger.put(key, "tick", every: @every, prompt: "Check the queue.")
 
-      assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :no_agent}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "tick", outcome: :no_agent}}
     end
   end
 
@@ -333,10 +333,10 @@ defmodule WardrikTriggerTest do
 
       assert_receive {:asked, text, ["outside"]}
       assert text == "What is new?\n\n## Acme on the front page\nhttps://example.com/1"
-      assert_receive %Event{payload: %Event.TriggerFired{name: "mentions", outcome: :asked}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "mentions", outcome: :asked}}
 
-      assert_receive %Event{
-        payload: %Event.TriggerFired{name: "mentions", outcome: :nothing_new}
+      assert_receive %Bus.Event{
+        payload: %Bus.TriggerFired{name: "mentions", outcome: :nothing_new}
       }
 
       refute_received {:asked, _text, _labels}
@@ -359,14 +359,14 @@ defmodule WardrikTriggerTest do
         )
 
       assert_receive {:checked, nil}
-      assert_receive %Event{payload: %Event.TriggerFired{name: "mentions", outcome: :busy}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "mentions", outcome: :busy}}
       assert_receive {:checked, nil}
       send(turn, :release)
     end
 
     test "fails a run its source could not check", %{key: key, name: name} do
       {:ok, _pid} = Watch.answers(name, [fn _cursor -> {:error, "the feed did not answer"} end])
-      :ok = Event.Bus.subscribe(key, level: :lifecycle)
+      :ok = Bus.subscribe(key, level: :lifecycle)
 
       {:ok, _pid} =
         WardrikTrigger.put(key, "mentions",
@@ -375,7 +375,7 @@ defmodule WardrikTriggerTest do
           source: {Watch, Atom.to_string(name)}
         )
 
-      assert_receive %Event{payload: %Event.TriggerFired{name: "mentions", outcome: :failed}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "mentions", outcome: :failed}}
     end
   end
 
@@ -435,7 +435,7 @@ defmodule WardrikTriggerTest do
 
       assert_receive {:asked, text, ["outside"]}
       assert text =~ ~r/\AAn event is below.\n\n## \S+\n\{"action":"opened"\}\z/
-      assert_receive %Event{payload: %Event.TriggerFired{name: "issues", outcome: :asked}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "issues", outcome: :asked}}
 
       assert deliver(key, "issues", request) == {:ok, :seen}
       refute_receive {:asked, _text, _labels}, 100
@@ -462,7 +462,7 @@ defmodule WardrikTriggerTest do
       assert {:error, :unavailable, "The agent is busy" <> _rest} =
                deliver(key, "issues", request("d-1", "{}"))
 
-      assert_receive %Event{payload: %Event.TriggerFired{name: "issues", outcome: :busy}}
+      assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "issues", outcome: :busy}}
 
       {:ok, _pid} = put.(overlap: :queue)
       assert deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}

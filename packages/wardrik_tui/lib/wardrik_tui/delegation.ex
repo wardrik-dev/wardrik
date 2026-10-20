@@ -4,9 +4,9 @@ defmodule WardrikTUI.Delegation do
 
   A delegation is one `Wardrik.Subagent.run/3`: it is identified by its own span
   and it is known from the
-  `Wardrik.Event.DelegationStarted` and `Wardrik.Event.DelegationFinished`
+  `Wardrik.Bus.DelegationStarted` and `Wardrik.Bus.DelegationFinished`
   events the subagent emits there. Spans are followed too, a tool call's as
-  its events open and close it (see `Wardrik.Event.ended/1`), so a
+  its events open and close it (see `Wardrik.Bus.Event.ended/1`), so a
   delegation's depth under other delegations and the work under it are known.
 
       delegations = Enum.reduce(events, WardrikTUI.Delegation.new(), &WardrikTUI.Delegation.fold(&2, &1))
@@ -14,7 +14,7 @@ defmodule WardrikTUI.Delegation do
       WardrikTUI.Delegation.summary(delegations)   #=> %{active: 2, total: 4}
       WardrikTUI.Delegation.list(delegations)      # every delegation, oldest first
 
-  `Wardrik.Event.TurnStarted` starts over. A turn ending with delegations still
+  `Wardrik.Bus.TurnStarted` starts over. A turn ending with delegations still
   running closes them as interrupted, and a span closed as an error with a
   delegation running on it closes the delegation the same way, which is how a
   branch killed by its fan-out is settled.
@@ -23,7 +23,9 @@ defmodule WardrikTUI.Delegation do
   the turn at any depth, and `depth/2` says how many delegations sit above one.
   """
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
 
   @typedoc "Whether a delegation is still going, and how it went if not."
   @type status() :: :running | :ok | :error
@@ -65,7 +67,7 @@ defmodule WardrikTUI.Delegation do
 
   @doc "Applies one event."
   @spec fold(t(), Event.t()) :: t()
-  def fold(%__MODULE__{}, %Event{payload: %Event.TurnStarted{}}), do: new()
+  def fold(%__MODULE__{}, %Event{payload: %Bus.TurnStarted{}}), do: new()
 
   def fold(%__MODULE__{} = delegations, %Event{source: source, payload: payload, at: at}) do
     now = div(at, 1_000)
@@ -162,14 +164,14 @@ defmodule WardrikTUI.Delegation do
     end
   end
 
-  defp absorb(delegations, span_id, %Event.SpanStarted{name: name}, now) do
+  defp absorb(delegations, span_id, %Bus.SpanStarted{name: name}, now) do
     update_span(delegations, span_id, &%{&1 | name: name, started_at: now})
   end
 
-  defp absorb(delegations, span_id, %Event.SpanFinished{outcome: outcome, duration_ms: ms}, now),
+  defp absorb(delegations, span_id, %Bus.SpanFinished{outcome: outcome, duration_ms: ms}, now),
     do: closed(delegations, span_id, outcome, ms, now)
 
-  defp absorb(delegations, span_id, %Event.DelegationStarted{prompt: task}, now) do
+  defp absorb(delegations, span_id, %Bus.DelegationStarted{prompt: task}, now) do
     if Map.has_key?(delegations.records, span_id) do
       delegations
     else
@@ -198,7 +200,7 @@ defmodule WardrikTUI.Delegation do
   defp absorb(
          delegations,
          span_id,
-         %Event.DelegationFinished{outcome: outcome, duration_ms: ms},
+         %Bus.DelegationFinished{outcome: outcome, duration_ms: ms},
          _now
        ) do
     update_record(delegations, span_id, fn
@@ -214,7 +216,7 @@ defmodule WardrikTUI.Delegation do
   end
 
   defp absorb(delegations, _span_id, %ended{}, now)
-       when ended in [Event.TurnFinished, Event.TurnFailed, Event.TurnInterrupted] do
+       when ended in [Bus.TurnFinished, Bus.TurnFailed, Bus.TurnInterrupted] do
     records =
       Map.new(delegations.records, fn
         {id, %{status: :running} = record} ->

@@ -39,23 +39,72 @@ defmodule WardrikHTTP do
       host = WardrikHTTP.attach(host, port: 4747, workers: [trusted: true])
   """
 
+  @behaviour Wardrik.Plugin
+
   @doc """
   `host` served over HTTP: among its tool sources, `workers`, the tools the
-  connected tool workers offer, `WardrikHTTP.Workers`; and among its
-  children, `WardrikHTTP.Access` over the host's store, the workers' group,
-  and `WardrikHTTP.Listener`, which serves the API and the host's routes,
-  with its `:port`, `:ip`, `:workers` and `:authenticator` from `opts`.
+  connected tool workers offer, `WardrikHTTP.Workers`; as its tokens, the
+  API's, kept in its store (`WardrikHTTP.Tokens`); and among its children,
+  `WardrikHTTP.Access` over that store and the workers' group.
+
+  Given a `:port`, it runs `WardrikHTTP.Listener` among them too, which
+  serves the API and the host's routes there, with `:ip`, `:workers` and
+  `:authenticator` from `opts`. Without one, an app serves it where it
+  forwards `WardrikHTTP.Plug`:
+
+      config :my_app, MyApp.Agents,
+        store: [repo: MyApp.Repo],
+        plugins: [{WardrikHTTP, workers: [trusted: false]}]
+
+  On an instance of `use Wardrik`, the listener knows each request by the
+  instance's `c:Wardrik.authenticate/1`, as the plug does.
   """
   @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
+  @impl true
   def attach(%Wardrik.Host{} = host, opts \\ []) do
     opts = Keyword.validate!(opts, [:port, :ip, :workers, :authenticator])
+    store = Wardrik.Host.store(host)
 
     host
+    |> Wardrik.Host.put(:tokens, %WardrikHTTP.Tokens{store: store})
     |> Wardrik.Host.register(:sources, [{"workers", WardrikHTTP.Workers}])
-    |> Wardrik.Host.child({WardrikHTTP.Access, store: Wardrik.Host.store(host)})
+    |> Wardrik.Host.register(:settings, [{__MODULE__, workers: Keyword.get(opts, :workers, [])}])
+    |> Wardrik.Host.child({WardrikHTTP.Access, store: store})
     |> Wardrik.Host.child({WardrikHTTP.Workers, []})
-    |> Wardrik.Host.child({WardrikHTTP.Listener, opts})
+    |> listening(opts)
   end
+
+  defp listening(host, opts) do
+    if Keyword.has_key?(opts, :port),
+      do: Wardrik.Host.child(host, {WardrikHTTP.Listener, known(host, opts)}),
+      else: host
+  end
+
+  defp known(host, opts) do
+    case Wardrik.Instance.of(host) do
+      nil -> opts
+      agents -> Keyword.put_new(opts, :authenticator, WardrikHTTP.Plug.authenticator!(agents))
+    end
+  end
+
+  @doc """
+  `:ok` where a plugin's `opts` are `attach/2`'s, with a port to listen on
+  where they name one, or why not.
+  """
+  @spec validate(keyword()) :: :ok | {:error, String.t()}
+  @impl true
+  def validate(opts) do
+    case Keyword.validate(opts, [:port, :ip, :workers, :authenticator]) do
+      {:ok, opts} ->
+        port(Keyword.get(opts, :port, 0))
+
+      {:error, keys} ->
+        {:error, "#{Enum.map_join(keys, ", ", &inspect/1)}: expected port, ip, workers"}
+    end
+  end
+
+  defp port(port) when is_integer(port) and port in 0..65_535, do: :ok
+  defp port(_port), do: {:error, "port is a port number"}
 
   @doc """
   Reads `config.yaml`'s `http` into the options `attach/2` takes, or the

@@ -3,8 +3,8 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
 
   import Wardrik.Test, only: [host: 0, host: 1, store: 0]
 
+  alias Wardrik.Bus
   alias Wardrik.Call
-  alias Wardrik.Event
   alias Wardrik.Ledger
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
@@ -76,7 +76,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
-    :ok = Event.Bus.subscribe(agent_id)
+    :ok = Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end
 
@@ -122,8 +122,8 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     assert %Call{state: :done, result: ^first} = ToolRunner.execute(call, run)
     refute_received {:ran, "refund"}
 
-    assert_received %Event{
-      payload: %Event.ToolReplayed{
+    assert_received %Bus.Event{
+      payload: %Bus.ToolReplayed{
         call_id: "call_1",
         name: "refund",
         result: {:ok, %{"done" => true}}
@@ -232,8 +232,8 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     assert %Call{id: "call_1", state: :done} = ToolRunner.execute(call, run)
     refute_received {:ran, "refund"}
 
-    assert_received %Event{
-      payload: %Event.ToolDenied{call_id: "call_1", name: "refund", reason: reason}
+    assert_received %Bus.Event{
+      payload: %Bus.ToolDenied{call_id: "call_1", name: "refund", reason: reason}
     }
 
     assert reason =~ "could not record this call before running it"
@@ -257,8 +257,8 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
       assert %Call{state: :done} =
                ToolRunner.refuse(call("call_1", "deploy"), run, "Not today.")
 
-      assert_received %Event{
-        payload: %Event.ToolDenied{call_id: "call_1", name: "deploy", reason: "Not today."}
+      assert_received %Bus.Event{
+        payload: %Bus.ToolDenied{call_id: "call_1", name: "deploy", reason: "Not today."}
       }
     end
 
@@ -269,11 +269,11 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
 
       assert %Call{state: :done, result: ^ran} = ToolRunner.refuse(call, run, "Not today.")
 
-      assert_received %Event{
-        payload: %Event.ToolReplayed{call_id: "call_1", name: "deploy", result: {:ok, _result}}
+      assert_received %Bus.Event{
+        payload: %Bus.ToolReplayed{call_id: "call_1", name: "deploy", result: {:ok, _result}}
       }
 
-      refute_received %Event{payload: %Event.ToolDenied{call_id: "call_1", name: "deploy"}}
+      refute_received %Bus.Event{payload: %Bus.ToolDenied{call_id: "call_1", name: "deploy"}}
     end
 
     test "that began and never finished tells the model it may have run", %{agent_id: agent_id} do
@@ -284,8 +284,8 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
 
       ToolRunner.refuse(call, run, "Not today.")
 
-      assert_received %Event{
-        payload: %Event.ToolDenied{call_id: "call_1", name: "deploy", reason: reason}
+      assert_received %Bus.Event{
+        payload: %Bus.ToolDenied{call_id: "call_1", name: "deploy", reason: reason}
       }
 
       assert reason =~ "may already have done what it does"

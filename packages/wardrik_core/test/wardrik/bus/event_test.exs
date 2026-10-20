@@ -1,27 +1,29 @@
-defmodule Wardrik.EventTest do
+defmodule Wardrik.Bus.EventTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Event
-  alias Wardrik.Event.Source
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
+  alias Wardrik.Bus.Source
 
   setup do
     {:ok, source: Source.root(Wardrik.Test.Fleet.id(), name: "turn")}
   end
 
   test "new/2 wraps a payload without publishing it", %{source: source} do
-    :ok = Event.Bus.subscribe(source.agent_id)
+    :ok = Bus.subscribe(source.agent_id)
 
-    event = Event.new(source, %Event.Result{text: "a"})
+    event = Event.new(source, %Bus.Result{text: "a"})
 
-    assert event.payload == %Event.Result{text: "a"}
+    assert event.payload == %Bus.Result{text: "a"}
     assert event.source == source
     refute_receive %Event{}
   end
 
   test "type/1 names the event from its payload", %{source: source} do
-    assert Event.new(source, %Event.Thinking{text: "a"}) |> Event.type() == :thinking
+    assert Event.new(source, %Bus.Thinking{text: "a"}) |> Event.type() == :thinking
 
-    assert Event.new(source, %Event.ToolFinished{
+    assert Event.new(source, %Bus.ToolFinished{
              call_id: "1",
              name: "echo",
              result: :ok,
@@ -35,23 +37,23 @@ defmodule Wardrik.EventTest do
   test "root?/1 separates a turn's own events from work it spawned", %{source: source} do
     nested = Source.child(source, name: "echo")
 
-    assert source |> Event.new(%Event.Result{text: "a"}) |> Event.root?()
-    refute nested |> Event.new(%Event.Result{text: "a"}) |> Event.root?()
+    assert source |> Event.new(%Bus.Result{text: "a"}) |> Event.root?()
+    refute nested |> Event.new(%Bus.Result{text: "a"}) |> Event.root?()
   end
 
   test "emit/2 publishes to the source's agent", %{source: source} do
-    :ok = Event.Bus.subscribe(source.agent_id)
+    :ok = Bus.subscribe(source.agent_id)
 
-    assert Event.emit(source, %Event.Result{text: "a"}) == :ok
-    assert_receive %Event{payload: %Event.Result{text: "a"}}
+    assert Event.emit(source, %Bus.Result{text: "a"}) == :ok
+    assert_receive %Event{payload: %Bus.Result{text: "a"}}
   end
 
   test "nested work publishes to the same agent as its parent", %{source: source} do
-    :ok = Event.Bus.subscribe(source.agent_id)
+    :ok = Bus.subscribe(source.agent_id)
 
-    source |> Source.child(name: "echo") |> Event.emit(%Event.Result{text: "nested"})
+    source |> Source.child(name: "echo") |> Event.emit(%Bus.Result{text: "nested"})
 
-    assert_receive %Event{payload: %Event.Result{text: "nested"}} = event
+    assert_receive %Event{payload: %Bus.Result{text: "nested"}} = event
     refute Event.root?(event)
     assert event.source.trace.trace_id == source.trace.trace_id
   end
@@ -59,28 +61,28 @@ defmodule Wardrik.EventTest do
   describe "ended/1" do
     test "reads how a tool call ended from the event that settles it" do
       for {payload, ended} <- [
-            {%Event.ToolFinished{
+            {%Bus.ToolFinished{
                call_id: "c",
                name: "x",
                result: {:ok, %{"n" => 1}},
                served_by: nil,
                cost: nil
              }, :ok},
-            {%Event.ToolReplayed{call_id: "c", name: "x", result: {:error, :gone}},
+            {%Bus.ToolReplayed{call_id: "c", name: "x", result: {:error, :gone}},
              {:error, :gone}},
-            {%Event.ToolReplayed{
+            {%Bus.ToolReplayed{
                call_id: "c",
                name: "x",
                result: Wardrik.Tool.Result.error(:nope)
              }, {:error, %{"code" => "nope", "message" => "nope"}}},
-            {%Event.ToolDenied{
+            {%Bus.ToolDenied{
                call_id: "c",
                name: "x",
                reason: "Never.",
                decided_by: %{by: :default, hooks: []}
              }, {:error, "Never."}},
-            {%Event.ToolParked{call_id: "c", name: "x", prompt: "Ship?"}, {:error, :parked}},
-            {%Event.SpanFinished{outcome: :ok, duration_ms: 1}, nil}
+            {%Bus.ToolParked{call_id: "c", name: "x", prompt: "Ship?"}, {:error, :parked}},
+            {%Bus.SpanFinished{outcome: :ok, duration_ms: 1}, nil}
           ] do
         assert Event.ended(payload) == ended
       end

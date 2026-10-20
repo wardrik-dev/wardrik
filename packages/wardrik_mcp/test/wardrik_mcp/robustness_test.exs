@@ -3,7 +3,7 @@ defmodule WardrikMCP.RobustnessTest do
 
   alias Wardrik.Resource
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Run
@@ -11,7 +11,7 @@ defmodule WardrikMCP.RobustnessTest do
 
   setup %{key: key} do
     agent_id = Wardrik.Test.Fleet.id()
-    :ok = Event.Bus.subscribe(agent_id)
+    :ok = Bus.subscribe(agent_id)
 
     run =
       Config.new(tools: [{WardrikMCP, key}])
@@ -71,8 +71,8 @@ defmodule WardrikMCP.RobustnessTest do
 
       assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, run)
 
-      assert_receive %Event{
-                       payload: %Event.ToolProgress{
+      assert_receive %Bus.Event{
+                       payload: %Bus.ToolProgress{
                          call_id: "call_noisy",
                          name: ^name,
                          progress: 1,
@@ -81,8 +81,8 @@ defmodule WardrikMCP.RobustnessTest do
                      },
                      5_000
 
-      assert_receive %Event{
-                       payload: %Event.ToolProgress{
+      assert_receive %Bus.Event{
+                       payload: %Bus.ToolProgress{
                          call_id: "call_noisy",
                          name: ^name,
                          progress: 3,
@@ -96,7 +96,7 @@ defmodule WardrikMCP.RobustnessTest do
       assert {:ok, %{"result" => %{"content" => "done in 2"}}} =
                WardrikMCP.call(key, "noisy", %{}, context())
 
-      refute_receive %Event{payload: %Event.ToolProgress{}}, 100
+      refute_receive %Bus.Event{payload: %Bus.ToolProgress{}}, 100
     end
   end
 
@@ -142,7 +142,9 @@ defmodule WardrikMCP.RobustnessTest do
   # `slow` answers nothing and reports progress once, so its progress event is
   # the only word that the server has the request.
   defp await_reached_server(call_id) do
-    assert_receive %Event{payload: %Event.ToolProgress{call_id: ^call_id, progress: 1, total: 1}},
+    assert_receive %Bus.Event{
+                     payload: %Bus.ToolProgress{call_id: ^call_id, progress: 1, total: 1}
+                   },
                    5_000
   end
 

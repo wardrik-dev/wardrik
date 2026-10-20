@@ -4,11 +4,13 @@ defmodule Wardrik.Event.LogTest do
   import Wardrik.Test, only: [store: 0]
   use Mimic
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
+  alias Wardrik.Bus.Source
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
   alias Wardrik.Event.Log.Writer
-  alias Wardrik.Event.Source
   alias Wardrik.Test.EventLog
 
   setup :verify_on_exit!
@@ -22,7 +24,7 @@ defmodule Wardrik.Event.LogTest do
 
   defp started(agent_id),
     do:
-      Event.new(Source.root(agent_id), %Event.AgentStarted{
+      Event.new(Source.root(agent_id), %Bus.AgentStarted{
         node: node(),
         status: :idle,
         generation: "g1"
@@ -49,7 +51,7 @@ defmodule Wardrik.Event.LogTest do
       agent_id: agent_id,
       source: source
     } do
-      agent_id |> open() |> append!(source, %Event.TurnStarted{messages: []})
+      agent_id |> open() |> append!(source, %Bus.TurnStarted{messages: []})
 
       assert {:ok,
               [
@@ -67,31 +69,31 @@ defmodule Wardrik.Event.LogTest do
       |> open()
       |> append!(
         source,
-        %Event.ModelStarted{
+        %Bus.ModelStarted{
           message_id: "s1.m0",
           model_spec: "anthropic:claude-sonnet-5",
           decided_by: %{by: :default, hooks: []}
         }
       )
-      |> append!(source, %Event.ToolCall{
+      |> append!(source, %Bus.ToolCall{
         call: %Wardrik.Conversation.ToolCall{id: "call_1", name: "search", arguments: %{}}
       })
-      |> append!(source, %Event.Thinking{text: "hmm"})
-      |> append!(source, %Event.Result{text: "Hel"})
-      |> append!(source, %Event.ToolProgress{
+      |> append!(source, %Bus.Thinking{text: "hmm"})
+      |> append!(source, %Bus.Result{text: "Hel"})
+      |> append!(source, %Bus.ToolProgress{
         call_id: "call_1",
         name: "search",
         progress: 1,
         total: 2
       })
-      |> append!(source, %Event.ModelFinished{
+      |> append!(source, %Bus.ModelFinished{
         message_id: "s1.m0",
         outcome: :ok,
         duration_ms: 5,
         answer: nil,
         cost: nil
       })
-      |> append!(source, %Event.Result{text: "lo"})
+      |> append!(source, %Bus.Result{text: "lo"})
 
       assert EventLog.types(agent_id) == [
                "wardrik.agent.started",
@@ -126,9 +128,31 @@ defmodule Wardrik.Event.LogTest do
       assert_receive %Entry{sequence: 1}
 
       :ok = Log.unsubscribe(agent_id)
-      append!(writer, source, %Event.TurnStarted{messages: []})
+      append!(writer, source, %Bus.TurnStarted{messages: []})
 
       refute_received %Entry{}
+    end
+
+    test "delivers each entry as its event to a subscriber that takes events, and as both to one that takes both",
+         %{agent_id: agent_id, source: source} do
+      resources = [Wardrik.AgentAddress.resource(agent_id)]
+      :ok = Log.unsubscribe(agent_id)
+      :ok = Log.subscribe(resources, ["wardrik.run.started"], :events)
+      writer = agent_id |> open() |> append!(source, %Bus.TurnStarted{messages: []})
+
+      assert_receive %Wardrik.Event.RunStarted{source: ^agent_id, cursor: cursor}
+      assert {:ok, %{^agent_id => 2}} = Wardrik.Event.Cursor.decode(cursor)
+      refute_received %Entry{}
+
+      :ok = Log.subscribe(resources, :all)
+      writer = append!(writer, source, %Bus.TurnStarted{messages: []})
+      assert_receive %Wardrik.Event.RunStarted{}
+      assert_receive %Entry{event: %{"type" => "wardrik.run.started"}}
+
+      :ok = Log.unsubscribe(resources, :events)
+      append!(writer, source, %Bus.TurnStarted{messages: []})
+      assert_receive %Entry{}
+      refute_received %Wardrik.Event.RunStarted{}
     end
 
     test "an entry says whether it comes after the log read through a number", %{
@@ -145,7 +169,7 @@ defmodule Wardrik.Event.LogTest do
 
     test "writes an event appended ahead of the bus once", %{agent_id: agent_id, source: source} do
       decided =
-        Event.new(source, %Event.CallDecided{call_id: "call_1", decision: :approve, by: nil})
+        Event.new(source, %Bus.CallDecided{call_id: "call_1", decision: :approve, by: nil})
 
       {:ok, writer} = Writer.append_ahead(store(), open(agent_id), decided)
       {:ok, _writer} = Writer.append(store(), writer, decided)
@@ -160,7 +184,7 @@ defmodule Wardrik.Event.LogTest do
       source: source
     } do
       Enum.reduce(1..20, open(agent_id), fn _n, writer ->
-        append!(writer, source, %Event.TurnStarted{messages: []})
+        append!(writer, source, %Bus.TurnStarted{messages: []})
       end)
 
       open(agent_id)
@@ -175,12 +199,16 @@ defmodule Wardrik.Event.LogTest do
       second = open(agent_id)
 
       assert {:error, :fenced, first} =
-               Writer.append(store(), first, Event.new(source, %Event.TurnStarted{messages: []}))
+               Writer.append(
+                 store(),
+                 first,
+                 Event.new(source, %Bus.TurnStarted{messages: []})
+               )
 
       assert {:error, :fenced, _first} =
-               Writer.append(store(), first, Event.new(source, %Event.Result{text: "x"}))
+               Writer.append(store(), first, Event.new(source, %Bus.Result{text: "x"}))
 
-      append!(second, source, %Event.TurnResumed{decisions: %{}})
+      append!(second, source, %Bus.TurnResumed{decisions: %{}})
 
       assert EventLog.types(agent_id) == [
                "wardrik.agent.started",
@@ -215,9 +243,13 @@ defmodule Wardrik.Event.LogTest do
       end)
 
       assert {:error, :unavailable, writer} =
-               Writer.append(store(), writer, Event.new(source, %Event.TurnStarted{messages: []}))
+               Writer.append(
+                 store(),
+                 writer,
+                 Event.new(source, %Bus.TurnStarted{messages: []})
+               )
 
-      append!(writer, source, %Event.TurnResumed{decisions: %{}})
+      append!(writer, source, %Bus.TurnResumed{decisions: %{}})
 
       assert EventLog.types(agent_id) == [
                "wardrik.agent.started",
@@ -249,9 +281,13 @@ defmodule Wardrik.Event.LogTest do
       expect(WardrikStore, :put, fn _store, _ns, _key, _event, _opts -> {:error, :unavailable} end)
 
       assert {:error, :unavailable, writer} =
-               Writer.append(store(), writer, Event.new(source, %Event.TurnStarted{messages: []}))
+               Writer.append(
+                 store(),
+                 writer,
+                 Event.new(source, %Bus.TurnStarted{messages: []})
+               )
 
-      append!(writer, source, %Event.TurnResumed{decisions: %{}})
+      append!(writer, source, %Bus.TurnResumed{decisions: %{}})
 
       assert EventLog.types(agent_id) == ["wardrik.agent.started", "wardrik.run.resumed"]
       assert sequences(agent_id) == [1, 2]
@@ -264,7 +300,7 @@ defmodule Wardrik.Event.LogTest do
       source: source
     } do
       Enum.reduce(1..4, open(agent_id), fn _n, writer ->
-        append!(writer, source, %Event.TurnStarted{messages: []})
+        append!(writer, source, %Bus.TurnStarted{messages: []})
       end)
 
       assert {:ok, [%{"sequence" => "000000000003"}, %{"sequence" => "000000000004"}]} =
@@ -284,7 +320,7 @@ defmodule Wardrik.Event.LogTest do
 
       writer =
         Enum.reduce(
-          [old.(%Event.TurnStarted{messages: []}), old.(%Event.TurnFinished{messages: []})],
+          [old.(%Bus.TurnStarted{messages: []}), old.(%Bus.TurnFinished{messages: []})],
           writer,
           fn event, w ->
             {:ok, w} = Writer.append(store(), w, event)
@@ -294,8 +330,8 @@ defmodule Wardrik.Event.LogTest do
 
       writer =
         writer
-        |> append!(source, %Event.TurnStarted{messages: []})
-        |> append!(source, %Event.TurnFinished{messages: []})
+        |> append!(source, %Bus.TurnStarted{messages: []})
+        |> append!(source, %Bus.TurnFinished{messages: []})
 
       %{writer: writer, cutoff: DateTime.add(DateTime.utc_now(), -30, :day)}
     end

@@ -28,6 +28,13 @@ defmodule Wardrik.HostTest do
     assert_raise ArgumentError, fn -> Host.new(ledger: %Issued{}) end
   end
 
+  test "a plugin puts a seam in place of the one the host offered" do
+    host = Host.put(Host.new(), :issuer, %Issued{})
+
+    assert Host.issuer(host) == %Issued{}
+    assert Host.tokens(host) == %Wardrik.Tokens.None{}
+  end
+
   test "lasts each kind of token as :expires says, and the others as by default" do
     assert Host.expires(Host.new(), :api) == 90 * 86_400
     assert Host.expires(Host.new(), :session) == 12 * 3_600
@@ -59,6 +66,8 @@ defmodule Wardrik.HostTest do
       |> Host.register(:settings, [{MyApp.Search, api_key: "k"}])
       |> Host.register(:routes, [{["v1", "hooks"], {MyApp.Hooks, []}}])
       |> Host.register(:runtimes, [%Wardrik.Test.Runtime{}])
+      |> Host.register(:issuers, [{"chat", %Issued{}}])
+      |> Host.register(:sign_ins, [{"servers", MyApp.Servers}])
       |> Host.child({MyApp.Index, name: :a})
       |> Host.child({MyApp.Index, name: :b})
 
@@ -68,6 +77,9 @@ defmodule Wardrik.HostTest do
     assert Host.settings(host, MyApp.Workers) == []
     assert Host.routes(host) == [{["v1", "hooks"], {MyApp.Hooks, []}}]
     assert Host.runtimes(host) == Wardrik.Test.runtimes()
+    assert Host.issuers(host) == %{"chat" => %Issued{}}
+    assert Host.sign_ins(host) == %{"servers" => MyApp.Servers}
+    assert Host.issuers(Host.new()) == %{}
     assert Host.children(host) == [{MyApp.Index, name: :a}, {MyApp.Index, name: :b}]
 
     assert_raise ArgumentError, ~r/tools has "search" already/, fn ->

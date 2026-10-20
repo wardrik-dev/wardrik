@@ -2,7 +2,7 @@ defmodule WardrikTUI.Components.Chrome do
   @moduledoc "Header, activity hints, prompt hints, and usage footer."
   use Breeze.Component
   alias Wardrik.Agent.Activity.Presenter
-  alias Wardrik.Event
+  alias Wardrik.Bus
   alias WardrikTUI.{Render, Text, Usage, View}
   @faint [:faint, :light_black]
 
@@ -225,7 +225,7 @@ defmodule WardrikTUI.Components.Chrome do
 
   # The newest words of the reasoning while the model is asked, in the room
   # left on the row.
-  defp reasoning(%Event.ModelStarted{}, thinking, room) when thinking != "" do
+  defp reasoning(%Bus.ModelStarted{}, thinking, room) when thinking != "" do
     Text.tag([" · ", Text.tag(newest(thinking, max(room, 8)), :italic)], @faint)
   end
 

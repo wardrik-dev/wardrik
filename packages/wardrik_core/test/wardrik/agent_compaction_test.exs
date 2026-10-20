@@ -6,11 +6,11 @@ defmodule Wardrik.AgentCompactionTest do
   alias Wardrik.Agent
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
+  alias Wardrik.Bus
   alias Wardrik.Compaction
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.User
-  alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Error
   alias Wardrik.Test.AgentRunners
@@ -39,7 +39,7 @@ defmodule Wardrik.AgentCompactionTest do
         key
       )
 
-    :ok = Event.Bus.subscribe(key)
+    :ok = Bus.subscribe(key)
     {key, agent}
   end
 
@@ -64,12 +64,12 @@ defmodule Wardrik.AgentCompactionTest do
     {_key, agent} = start([])
     Agent.ask(agent, "third question")
 
-    compacting = %Event.SpanStarted{name: "compacting history"}
-    assert_receive %Event{payload: ^compacting}, 5_000
-    assert_receive %Event{payload: %Event.ActivityChanged{activity: %{doing: ^compacting}}}
+    compacting = %Bus.SpanStarted{name: "compacting history"}
+    assert_receive %Bus.Event{payload: ^compacting}, 5_000
+    assert_receive %Bus.Event{payload: %Bus.ActivityChanged{activity: %{doing: ^compacting}}}
 
-    assert_receive %Event{
-                     payload: %Event.ContextCompacted{
+    assert_receive %Bus.Event{
+                     payload: %Bus.ContextCompacted{
                        stats: %{messages_before: 4, messages_after: 4}
                      }
                    },
@@ -86,7 +86,7 @@ defmodule Wardrik.AgentCompactionTest do
                    5_000
 
     assert summary =~ "Two questions were asked and answered."
-    assert_receive %Event{payload: %Event.TurnFinished{}}
+    assert_receive %Bus.Event{payload: %Bus.TurnFinished{}}
 
     assert [kept | _rest] = agent |> Agent.history() |> Conversation.to_list()
     assert Conversation.text(kept) =~ "Two questions were asked and answered."
@@ -109,7 +109,7 @@ defmodule Wardrik.AgentCompactionTest do
     assert_receive :summarising, 5_000
     :ok = Agent.interrupt(agent)
 
-    assert_receive %Event{payload: %Event.TurnInterrupted{stats: %{resolution: :killed}}}, 5_000
+    assert_receive %Bus.Event{payload: %Bus.TurnInterrupted{stats: %{resolution: :killed}}}, 5_000
     refute_received :summarising
   end
 
@@ -121,7 +121,7 @@ defmodule Wardrik.AgentCompactionTest do
 
     assert_receive {:turn, turn}, 5_000
     assert [_, _, _, _, _] = turn
-    refute_received %Event{payload: %Event.ContextCompacted{}}
+    refute_received %Bus.Event{payload: %Bus.ContextCompacted{}}
   end
 
   defmodule Broken do
@@ -137,7 +137,7 @@ defmodule Wardrik.AgentCompactionTest do
       {_key, agent} = start(config: Config.new(history: %Broken{}))
       Agent.ask(agent, "third question")
 
-      assert_receive %Event{payload: %Event.TurnFailed{}}, 5_000
+      assert_receive %Bus.Event{payload: %Bus.TurnFailed{}}, 5_000
     end)
   end
 

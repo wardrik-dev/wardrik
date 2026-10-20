@@ -9,7 +9,7 @@ defmodule WardrikTUI.Activity do
 
       WardrikTUI.Activity.depth(activity, span_id)
 
-  A span opens on `Wardrik.Event.SpanStarted` and closes on `Wardrik.Event.SpanFinished`; a turn opens and closes on its own events. A span first
+  A span opens on `Wardrik.Bus.SpanStarted` and closes on `Wardrik.Bus.SpanFinished`; a turn opens and closes on its own events. A span first
   seen mid-flight is opened where it was seen, so a client attaching late still
   draws a tree.
 
@@ -17,13 +17,15 @@ defmodule WardrikTUI.Activity do
   closed itself.
 
   A tool call's span opens on the first of its events, and closes on the one
-  that settles it, as `Wardrik.Event.ended/1` reads it.
+  that settles it, as `Wardrik.Bus.Event.ended/1` reads it.
 
   Pure: the clock is passed in, so a surface renders the same thing in a test
   as it does at three in the morning.
   """
 
-  alias Wardrik.Event
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
 
   @typedoc "Whether a span is still going, and how it went if not."
   @type status() :: :running | :ok | :error | :parked
@@ -43,7 +45,7 @@ defmodule WardrikTUI.Activity do
 
   defstruct spans: %{}, order: []
 
-  @settled [Event.ToolFinished, Event.ToolReplayed, Event.ToolDenied, Event.ToolParked]
+  @settled [Bus.ToolFinished, Bus.ToolReplayed, Bus.ToolDenied, Bus.ToolParked]
 
   @doc "An empty tree. One per turn."
   @spec new() :: t()
@@ -115,11 +117,11 @@ defmodule WardrikTUI.Activity do
     end
   end
 
-  defp absorb(activity, span_id, %Event.SpanStarted{name: name}, now) do
+  defp absorb(activity, span_id, %Bus.SpanStarted{name: name}, now) do
     update(activity, span_id, &%{&1 | name: name, started_at: now})
   end
 
-  defp absorb(activity, span_id, %Event.SpanFinished{outcome: outcome, duration_ms: ms}, _now) do
+  defp absorb(activity, span_id, %Bus.SpanFinished{outcome: outcome, duration_ms: ms}, _now) do
     close(activity, span_id, outcome, ms)
   end
 
@@ -127,15 +129,15 @@ defmodule WardrikTUI.Activity do
     close(activity, span_id, Event.ended(payload), since(activity, span_id, now))
   end
 
-  defp absorb(activity, span_id, %Event.TurnStarted{}, now) do
+  defp absorb(activity, span_id, %Bus.TurnStarted{}, now) do
     update(activity, span_id, &%{&1 | name: &1.name || "turn", started_at: now})
   end
 
-  defp absorb(activity, span_id, %Event.TurnFinished{}, now) do
+  defp absorb(activity, span_id, %Bus.TurnFinished{}, now) do
     close(activity, span_id, :ok, since(activity, span_id, now))
   end
 
-  defp absorb(activity, span_id, %Event.TurnFailed{reason: reason}, now) do
+  defp absorb(activity, span_id, %Bus.TurnFailed{reason: reason}, now) do
     close(activity, span_id, {:error, reason}, since(activity, span_id, now))
   end
 

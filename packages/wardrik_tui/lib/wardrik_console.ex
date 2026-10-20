@@ -24,8 +24,7 @@ defmodule WardrikConsole do
   """
   use GenServer
 
-  alias Wardrik.Event
-  alias Wardrik.Event.Bus
+  alias Wardrik.Bus
   alias WardrikConsole.Printer
 
   @doc "Starts a subscriber printing `:agent_id`'s events, laid out to `:width` columns."
@@ -43,7 +42,7 @@ defmodule WardrikConsole do
   end
 
   @impl true
-  def handle_info(%Event{} = event, printer) do
+  def handle_info(%Bus.Event{} = event, printer) do
     {lines, printer} = Printer.event(printer, event)
     Enum.each(lines, &Owl.IO.puts/1)
     {:noreply, printer}

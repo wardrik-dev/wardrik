@@ -4,8 +4,8 @@ defmodule Wardrik.Test.Events do
   without running one.
   """
 
-  alias Wardrik.Event
-  alias Wardrik.Event.Source
+  alias Wardrik.Bus.Event
+  alias Wardrik.Bus.Source
 
   @doc "Publish `payload` on a fresh root span for `agent_id`."
   def emit(agent_id, payload), do: agent_id |> Source.root() |> Event.emit(payload)

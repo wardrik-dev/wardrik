@@ -54,7 +54,7 @@ server connects on its own, so one that is down offers no tools and holds up
 nothing else.
 
 A tool call that is stopped is cancelled on the server too, and a server's
-progress reaches the turn's events as a `Wardrik.Event.ToolProgress`.
+progress reaches the turn's events as a `Wardrik.Bus.ToolProgress`.
 
 ## Per-user servers
 

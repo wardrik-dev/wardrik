@@ -1,245 +1,134 @@
 defmodule Wardrik.Event do
   @moduledoc """
-  One thing that happened, and where it happened.
+  Something an agent did, or a change someone made, as a struct to match on.
 
-  The payload is a struct of its own for each kind of event, with named
-  fields, so a subscriber matches the fields it reads and a field added later
-  touches no one who does not read it; this struct is the envelope around it.
+  Each type of event has a struct of its own: `Wardrik.Event.RunCompleted`
+  for `wardrik.run.completed`, `Wardrik.Event.MessageDelta` for
+  `wardrik.message.delta`, and so on. Your instance's `subscribe` sends
+  them to your process as plain messages, so a LiveView matches the ones it
+  shows:
 
-      def handle_info(%Wardrik.Event{payload: %Wardrik.Event.ToolFinished{name: name}}, state)
+      defmodule MyAppWeb.SupportLive do
+        use MyAppWeb, :live_view
 
-  `root?/1` separates the turn's own events from work it spawned, which is
-  what lets one subscription render a whole tree.
+        def mount(_params, _session, socket) do
+          :ok = MyApp.Agents.subscribe(socket.assigns.current_user, "support")
+          {:ok, assign(socket, text: "", done: false)}
+        end
+
+        def handle_info(%Wardrik.Event.MessageDelta{delta: delta}, socket),
+          do: {:noreply, update(socket, :text, &(&1 <> delta))}
+
+        def handle_info(%Wardrik.Event.RunCompleted{}, socket),
+          do: {:noreply, assign(socket, done: true)}
+
+        def handle_info(_event, socket), do: {:noreply, socket}
+      end
+
+  Notice the last clause: an agent writes more kinds of event than a page
+  shows.
+
+  A struct's fields are the event's data, named as the protocol's schema
+  for its type names them. A value that is an object stays a map with
+  string keys. Every struct also has:
+
+    * `id` - the event's id; a reader handed an event twice drops the
+      repeat by it
+    * `source` - the agent that wrote it, or `:audit` for a change someone
+      made
+    * `time` - when it happened, as a `DateTime`
+    * `trace` - the id of the trace it is part of, which is the run's id
+      for what a run did
+    * `cursor` - where `events` reads on from after it, as its `after:`;
+      none for a change in the audit
+    * `cloudevent` - the whole event, as the HTTP API sends it
+
+  `events` streams them, and `audit` answers the changes as them too.
   """
 
-  alias Wardrik.Event.Bus
-  alias Wardrik.Event.Source
-  alias Wardrik.Trace
+  alias Wardrik.Event.Cursor
+  alias Wardrik.Event.Log.Entry
 
-  @enforce_keys [:source, :payload, :at]
-  defstruct [:id, :source, :payload, :at]
+  @envelope [:id, :source, :time, :trace, :cursor, :cloudevent]
+  @glob "../../priv/v1" |> Path.expand(__DIR__) |> Path.join("*.json")
+  @files @glob |> Path.wildcard() |> Enum.sort()
 
-  @typedoc """
-  An event payload: one of the structs below, each named for its kind, as
-  `type/1` names it.
+  types =
+    for file <- @files,
+        %{"title" => "wardrik." <> name = type} = schema <- [:json.decode(File.read!(file))] do
+      @external_resource file
+      module = Module.concat(__MODULE__, Macro.camelize(String.replace(name, ".", "_")))
+      fields = schema |> Map.get("properties", %{}) |> Map.keys() |> Enum.sort()
+      fields = Enum.map(fields, &String.to_atom/1)
 
-  Every payload core emits is listed here. A package emits these and no
-  others; `Wardrik.Tool.Context.progress/3` is how a tool reports progress.
+      if clash = Enum.find(fields, &(&1 in @envelope)),
+        do: raise(CompileError, description: "#{type}'s data has #{clash}, which every event has")
 
-    * Agent lifecycle, on the turn's root span: `Wardrik.Event.TurnStarted`,
-      `Wardrik.Event.TurnFinished`, `Wardrik.Event.TurnFailed`,
-      `Wardrik.Event.TurnInterrupted`, `Wardrik.Event.TurnParked`,
-      `Wardrik.Event.TurnResumed`, `Wardrik.Event.CallDecided`,
-      `Wardrik.Event.ContextCompacted`.
-    * Agent lifecycle, each on the root of a trace of its own:
-      `Wardrik.Event.MessageQueued`, `Wardrik.Event.AgentStarted`,
-      `Wardrik.Event.AgentStopped`, `Wardrik.Event.ContextCleared`,
-      `Wardrik.Event.TriggerFired`.
-    * What the agent is doing, on the span of the event that changed it:
-      `Wardrik.Event.ActivityChanged`.
-    * Spans other than a tool call's, and delegations, on their own span:
-      `Wardrik.Event.SpanStarted`, `Wardrik.Event.SpanFinished`,
-      `Wardrik.Event.DelegationStarted`, `Wardrik.Event.DelegationFinished`.
-    * Model calls: `Wardrik.Event.ModelStarted`,
-      `Wardrik.Event.ModelFinished`, `Wardrik.Event.ModelRetrying`,
-      `Wardrik.Event.Result`, `Wardrik.Event.Thinking`,
-      `Wardrik.Event.ToolCall`, `Wardrik.Event.DeadlineReached`.
-    * Tool calls, on the call's span: `Wardrik.Event.ToolStarted`,
-      `Wardrik.Event.ToolFinished`, `Wardrik.Event.ToolReplayed`,
-      `Wardrik.Event.ToolDenied`, `Wardrik.Event.ToolParked`,
-      `Wardrik.Event.ToolProgress`. The first of them opens the span, and
-      the one that settles the call closes it; see `ended/1`.
-  """
-  @type payload() ::
-          __MODULE__.TurnStarted.t()
-          | __MODULE__.TurnFinished.t()
-          | __MODULE__.TurnFailed.t()
-          | __MODULE__.TurnInterrupted.t()
-          | __MODULE__.TurnParked.t()
-          | __MODULE__.TurnResumed.t()
-          | __MODULE__.CallDecided.t()
-          | __MODULE__.MessageQueued.t()
-          | __MODULE__.AgentStarted.t()
-          | __MODULE__.AgentStopped.t()
-          | __MODULE__.ContextCompacted.t()
-          | __MODULE__.ContextCleared.t()
-          | __MODULE__.TriggerFired.t()
-          | __MODULE__.ActivityChanged.t()
-          | __MODULE__.SpanStarted.t()
-          | __MODULE__.SpanFinished.t()
-          | __MODULE__.DelegationStarted.t()
-          | __MODULE__.DelegationFinished.t()
-          | __MODULE__.ModelStarted.t()
-          | __MODULE__.ModelFinished.t()
-          | __MODULE__.ModelRetrying.t()
-          | __MODULE__.Result.t()
-          | __MODULE__.Thinking.t()
-          | __MODULE__.ToolCall.t()
-          | __MODULE__.DeadlineReached.t()
-          | __MODULE__.ToolStarted.t()
-          | __MODULE__.ToolFinished.t()
-          | __MODULE__.ToolReplayed.t()
-          | __MODULE__.ToolDenied.t()
-          | __MODULE__.ToolParked.t()
-          | __MODULE__.ToolProgress.t()
+      contents =
+        quote do
+          @moduledoc """
+          `#{unquote(type)}`: #{unquote(schema["description"])}
 
-  @typedoc """
-  A payload, who emitted it, and when, under an id of its own: a UUIDv7 that
-  every copy of the event carries, and that `Wardrik.Event.Codec` sends as the
-  CloudEvent's `id`.
-  """
-  @type t() :: %__MODULE__{
-          id: String.t() | nil,
-          source: Source.t(),
-          payload: payload(),
-          at: integer()
-        }
+          Its fields are its data's, and those `Wardrik.Event` says every
+          event has.
+          """
 
-  @doc "Build an event without publishing it."
-  @spec new(Source.t(), payload()) :: t()
-  def new(%Source{} = source, %_kind{} = payload) do
-    %__MODULE__{
-      id: Wardrik.UUID.v7(),
-      source: source,
-      payload: payload,
-      at: System.system_time(:microsecond)
-    }
+          defstruct unquote(@envelope ++ fields)
+
+          @type t() :: %__MODULE__{}
+        end
+
+      Module.create(module, contents, Macro.Env.location(__ENV__))
+      {type, module}
+    end
+
+  @modules Map.new(types)
+
+  @typedoc "Any of the event structs, each named for its type."
+  @type t() ::
+          unquote(
+            types
+            |> Enum.map(fn {_type, module} -> quote(do: unquote(module).t()) end)
+            |> Enum.reduce(&quote(do: unquote(&1) | unquote(&2)))
+          )
+
+  # The struct of a log entry's event, with the cursor past it moved from
+  # `cursor`. With no cursor, it names the entry's log alone; an audit
+  # entry has none.
+  @doc false
+  @spec decode(Entry.t(), String.t() | :head) :: t()
+  def decode(%Entry{log: log, event: %{"type" => type} = event} = entry, cursor \\ "") do
+    data =
+      for {key, value} <- Map.get(event, "data", %{}), do: {String.to_existing_atom(key), value}
+
+    struct!(
+      Map.fetch!(@modules, type),
+      [
+        id: event["id"],
+        source: log,
+        time: time(event["time"]),
+        trace: trace(event["traceparent"]),
+        cursor: past(cursor, entry),
+        cloudevent: event
+      ] ++ data
+    )
   end
 
-  @doc "Build an event and publish it to everyone watching the source's topic."
-  @spec emit(Source.t(), payload()) :: :ok
-  def emit(%Source{} = source, payload) do
-    source |> new(payload) |> Bus.publish()
+  @doc "The CloudEvent type of each struct, as `\"wardrik.run.completed\"`."
+  @spec types() :: [String.t()]
+  def types, do: Map.keys(@modules)
+
+  # Compiles again when a schema is added or removed, as well as changed.
+  @doc false
+  def __mix_recompile__?, do: @glob |> Path.wildcard() |> Enum.sort() != @files
+
+  defp past(_cursor, %Entry{log: :audit}), do: nil
+  defp past(cursor, entry), do: Cursor.past(cursor, entry)
+
+  defp time(time) do
+    {:ok, time, _offset} = DateTime.from_iso8601(time)
+    time
   end
 
-  @doc "Publishes `payload` on the agent `agent`'s topic, at the root of a trace of its own."
-  @spec announce(Wardrik.AgentAddress.t(), payload()) :: :ok
-  def announce(agent, payload), do: emit(Source.root(agent), payload)
-
-  @types %{
-    __MODULE__.TurnStarted => :turn_started,
-    __MODULE__.TurnFinished => :turn_finished,
-    __MODULE__.TurnFailed => :turn_failed,
-    __MODULE__.TurnInterrupted => :turn_interrupted,
-    __MODULE__.TurnParked => :turn_parked,
-    __MODULE__.TurnResumed => :turn_resumed,
-    __MODULE__.CallDecided => :call_decided,
-    __MODULE__.MessageQueued => :message_queued,
-    __MODULE__.AgentStarted => :agent_started,
-    __MODULE__.AgentStopped => :agent_stopped,
-    __MODULE__.ContextCompacted => :context_compacted,
-    __MODULE__.ContextCleared => :context_cleared,
-    __MODULE__.TriggerFired => :trigger_fired,
-    __MODULE__.ActivityChanged => :activity_changed,
-    __MODULE__.SpanStarted => :span_started,
-    __MODULE__.SpanFinished => :span_finished,
-    __MODULE__.DelegationStarted => :delegation_started,
-    __MODULE__.DelegationFinished => :delegation_finished,
-    __MODULE__.ModelStarted => :model_started,
-    __MODULE__.ModelFinished => :model_finished,
-    __MODULE__.ModelRetrying => :model_retrying,
-    __MODULE__.Result => :result,
-    __MODULE__.Thinking => :thinking,
-    __MODULE__.ToolCall => :tool_call,
-    __MODULE__.DeadlineReached => :deadline_reached,
-    __MODULE__.ToolStarted => :tool_started,
-    __MODULE__.ToolFinished => :tool_finished,
-    __MODULE__.ToolReplayed => :tool_replayed,
-    __MODULE__.ToolDenied => :tool_denied,
-    __MODULE__.ToolParked => :tool_parked,
-    __MODULE__.ToolProgress => :tool_progress
-  }
-
-  @doc "The name of the event, as an atom: `:tool_finished` for a `Wardrik.Event.ToolFinished`."
-  @spec type(t()) :: atom()
-  def type(%__MODULE__{payload: %kind{}}), do: Map.fetch!(@types, kind)
-
-  @typedoc """
-  How much of an agent's stream to take.
-
-    * `:lifecycle` - the shape of the work: turns starting and ending, spans
-      opening and closing, a tool call's events among them, and delegations
-      starting and ending, with what the agent is doing now as
-      `Wardrik.Event.ActivityChanged`
-    * `:activity` - what the agent is doing inside that shape: model requests,
-      a tool call's progress, answer text and reasoning
-    * `:raw` - everything, including each tool call as the model streams it
-  """
-  @type level() :: :lifecycle | :activity | :raw
-
-  @levels [:lifecycle, :activity, :raw]
-
-  @lifecycle [
-    :turn_started,
-    :turn_finished,
-    :turn_failed,
-    :turn_interrupted,
-    :turn_parked,
-    :turn_resumed,
-    :call_decided,
-    :message_queued,
-    :agent_started,
-    :agent_stopped,
-    :trigger_fired,
-    :activity_changed,
-    :span_started,
-    :span_finished,
-    :tool_started,
-    :tool_finished,
-    :tool_replayed,
-    :tool_denied,
-    :tool_parked,
-    :delegation_started,
-    :delegation_finished
-  ]
-
-  @raw [:tool_call]
-
-  @doc "Every level, from least to most."
-  @spec levels() :: [level()]
-  def levels, do: @levels
-
-  @doc """
-  The lowest level at which `type` is delivered.
-
-  `:tool_call` repeats what `:tool_started` reports with the call resolved.
-  A type nobody has classified is activity.
-  """
-  @spec level(atom()) :: level()
-  def level(type) when type in @lifecycle, do: :lifecycle
-  def level(type) when type in @raw, do: :raw
-  def level(_type), do: :activity
-
-  @doc "Whether a subscriber at `level` is sent events of `type`."
-  @spec delivers?(level(), atom()) :: boolean()
-  def delivers?(level, type) when level in @levels do
-    rank(level) >= rank(level(type))
-  end
-
-  defp rank(level), do: Enum.find_index(@levels, &(&1 == level))
-
-  @doc """
-  How the tool call whose span `payload` closes ended, or `nil` for a payload
-  that closes no tool call's span: answered, answered from the ledger,
-  refused, or parked on a person, as `{:error, :parked}`. A tool that reports
-  its own failure (see `Wardrik.Tool.Result`) answers the model, and ends as
-  an error, so a surface can say the call did not do its job.
-  """
-  @spec ended(payload()) :: Wardrik.Run.outcome() | nil
-  def ended(%__MODULE__.ToolFinished{result: result}), do: answered(result)
-  def ended(%__MODULE__.ToolReplayed{result: result}), do: answered(result)
-  def ended(%__MODULE__.ToolDenied{reason: reason}), do: {:error, reason}
-  def ended(%__MODULE__.ToolParked{}), do: {:error, :parked}
-  def ended(_payload), do: nil
-
-  defp answered({:error, reason}), do: {:error, reason}
-
-  defp answered({:ok, %{"error" => error}} = result),
-    do: if(Wardrik.Tool.Result.ok?(result), do: :ok, else: {:error, error})
-
-  defp answered(_result), do: :ok
-
-  @doc "Whether the event came from a turn itself rather than work the turn spawned."
-  @spec root?(t()) :: boolean()
-  def root?(%__MODULE__{source: %Source{trace: trace}}), do: Trace.root?(trace)
+  defp trace("00-" <> <<trace::binary-size(32), "-", _rest::binary>>), do: trace
 end

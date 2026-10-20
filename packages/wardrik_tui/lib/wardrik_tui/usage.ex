@@ -1,7 +1,7 @@
 defmodule WardrikTUI.Usage do
   @moduledoc """
   Token and cost totals for one agent, folded from its
-  `Wardrik.Event.ModelFinished` events.
+  `Wardrik.Bus.ModelFinished` events.
 
   Each model call that answered adds what it used, as its
   `Wardrik.LLM.Answer` reports it, and what it cost, as the event carries
@@ -10,8 +10,8 @@ defmodule WardrikTUI.Usage do
   adds nothing.
   """
 
-  alias Wardrik.Event
-  alias Wardrik.Event.ModelFinished
+  alias Wardrik.Bus.Event
+  alias Wardrik.Bus.ModelFinished
   alias Wardrik.LLM.Answer
 
   @type t() :: %__MODULE__{
@@ -29,7 +29,7 @@ defmodule WardrikTUI.Usage do
   @spec new() :: t()
   def new, do: %__MODULE__{}
 
-  @doc "Adds the model call a `Wardrik.Event.ModelFinished` reports, where it answered."
+  @doc "Adds the model call a `Wardrik.Bus.ModelFinished` reports, where it answered."
   @spec settle(t(), Event.t()) :: t()
   def settle(%__MODULE__{} = usage, %Event{payload: %ModelFinished{answer: nil}}), do: usage
 

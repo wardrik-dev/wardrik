@@ -5,9 +5,9 @@ defmodule WardrikDaemon.AgentsTest do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
+  alias Wardrik.Bus
   alias Wardrik.Definition
   alias Wardrik.Definitions
-  alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.Resource
   alias Wardrik.Thread
@@ -433,7 +433,7 @@ defmodule WardrikDaemon.AgentsTest do
       %Wardrik.LLM.Error{message: "offline"}
     end)
 
-    :ok = Event.Bus.subscribe(defined, level: :lifecycle)
+    :ok = Bus.subscribe(defined, level: :lifecycle)
 
     {:ok, _pid} =
       WardrikTrigger.put(defined, "tick",
@@ -441,8 +441,8 @@ defmodule WardrikDaemon.AgentsTest do
         prompt: "Look."
       )
 
-    assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :asked}}, 2_000
-    assert_receive %Event{payload: %Event.TurnFailed{}}, 2_000
+    assert_receive %Bus.Event{payload: %Bus.TriggerFired{name: "tick", outcome: :asked}}, 2_000
+    assert_receive %Bus.Event{payload: %Bus.TurnFailed{}}, 2_000
 
     assert %Fleet.Member{asleep: false} =
              Fleet.lookup(defined, host: Host.host())
@@ -503,9 +503,9 @@ defmodule WardrikDaemon.AgentsTest do
       write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-sonnet-5\n")
       Host.start_agents(context.dir)
       key = AgentID.parse!("#{org}/alpha")
-      :ok = Wardrik.Event.Bus.subscribe(key)
+      :ok = Wardrik.Bus.subscribe(key)
       assert %{} = Agent.status(key, host: Host.host())
-      assert_receive %Wardrik.Event{payload: %Event.AgentStopped{reason: :idle}}, 3_000
+      assert_receive %Wardrik.Bus.Event{payload: %Bus.AgentStopped{reason: :idle}}, 3_000
       assert Wardrik.Test.Fleet.await_update(fn -> Fleet.held_pid(key, wake: false) == nil end)
 
       write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-haiku-4-5\n")

@@ -1,6 +1,6 @@
-# The payloads core emits, one struct per kind; see `Wardrik.Event`.
+# The payloads core emits, one struct per kind; see `Wardrik.Bus.Event`.
 
-defmodule Wardrik.Event.TurnStarted do
+defmodule Wardrik.Bus.TurnStarted do
   @moduledoc "A turn began, answering `messages`, the `Wardrik.Agent.Message`s it takes."
   @enforce_keys ~w(messages)a
   defstruct @enforce_keys
@@ -10,7 +10,7 @@ defmodule Wardrik.Event.TurnStarted do
         }
 end
 
-defmodule Wardrik.Event.TurnFinished do
+defmodule Wardrik.Bus.TurnFinished do
   @moduledoc "A turn answered, with the messages it added."
   @enforce_keys ~w(messages)a
   defstruct @enforce_keys
@@ -20,7 +20,7 @@ defmodule Wardrik.Event.TurnFinished do
         }
 end
 
-defmodule Wardrik.Event.TurnFailed do
+defmodule Wardrik.Bus.TurnFailed do
   @moduledoc "A turn failed, and why."
   @enforce_keys ~w(reason)a
   defstruct @enforce_keys
@@ -30,7 +30,7 @@ defmodule Wardrik.Event.TurnFailed do
         }
 end
 
-defmodule Wardrik.Event.TurnInterrupted do
+defmodule Wardrik.Bus.TurnInterrupted do
   @moduledoc "A turn was stopped, with what it had done."
   @enforce_keys ~w(stats)a
   defstruct @enforce_keys
@@ -40,7 +40,7 @@ defmodule Wardrik.Event.TurnInterrupted do
         }
 end
 
-defmodule Wardrik.Event.TurnParked do
+defmodule Wardrik.Bus.TurnParked do
   @moduledoc "A turn waits on a person, for each call with the prompt it was held with."
   @enforce_keys ~w(calls)a
   defstruct @enforce_keys
@@ -50,7 +50,7 @@ defmodule Wardrik.Event.TurnParked do
         }
 end
 
-defmodule Wardrik.Event.TurnResumed do
+defmodule Wardrik.Bus.TurnResumed do
   @moduledoc "A parked turn carries on, with what was decided of each call."
   @enforce_keys ~w(decisions)a
   defstruct @enforce_keys
@@ -60,7 +60,7 @@ defmodule Wardrik.Event.TurnResumed do
         }
 end
 
-defmodule Wardrik.Event.CallDecided do
+defmodule Wardrik.Bus.CallDecided do
   @moduledoc "A person answered the parked call `call_id`, with the `Wardrik.Principal` who did, or `nil` where no caller said."
   @enforce_keys ~w(call_id decision by)a
   defstruct @enforce_keys
@@ -72,7 +72,7 @@ defmodule Wardrik.Event.CallDecided do
         }
 end
 
-defmodule Wardrik.Event.MessageQueued do
+defmodule Wardrik.Bus.MessageQueued do
   @moduledoc "A `Wardrik.Agent.Message` the agent will answer, with who sent it where that is known."
   @enforce_keys ~w(message)a
   defstruct @enforce_keys
@@ -82,7 +82,7 @@ defmodule Wardrik.Event.MessageQueued do
         }
 end
 
-defmodule Wardrik.Event.AgentStarted do
+defmodule Wardrik.Bus.AgentStarted do
   @moduledoc "The agent was loaded on `node`, as it stood."
   @enforce_keys ~w(node status generation)a
   defstruct @enforce_keys
@@ -94,7 +94,7 @@ defmodule Wardrik.Event.AgentStarted do
         }
 end
 
-defmodule Wardrik.Event.AgentStopped do
+defmodule Wardrik.Bus.AgentStopped do
   @moduledoc "The agent stopped on `node`: `:idle` where it went to sleep for having had nothing to do."
   @enforce_keys ~w(node reason)a
   defstruct @enforce_keys
@@ -105,7 +105,7 @@ defmodule Wardrik.Event.AgentStopped do
         }
 end
 
-defmodule Wardrik.Event.ActivityChanged do
+defmodule Wardrik.Bus.ActivityChanged do
   @moduledoc """
   What the agent is doing changed, as `Wardrik.Agent.Activity` says, on the
   span of the event that changed it. Live: folded from the events before it,
@@ -119,7 +119,7 @@ defmodule Wardrik.Event.ActivityChanged do
         }
 end
 
-defmodule Wardrik.Event.ContextCompacted do
+defmodule Wardrik.Bus.ContextCompacted do
   @moduledoc "The agent's history was rewritten before a turn, as `Wardrik.History` reports it."
   @enforce_keys ~w(stats)a
   defstruct @enforce_keys
@@ -129,7 +129,7 @@ defmodule Wardrik.Event.ContextCompacted do
         }
 end
 
-defmodule Wardrik.Event.ContextCleared do
+defmodule Wardrik.Bus.ContextCleared do
   @moduledoc "The agent's history was emptied, with how many messages it held."
   @enforce_keys ~w(dropped)a
   defstruct @enforce_keys
@@ -139,7 +139,7 @@ defmodule Wardrik.Event.ContextCleared do
         }
 end
 
-defmodule Wardrik.Event.TriggerFired do
+defmodule Wardrik.Bus.TriggerFired do
   @moduledoc """
   A trigger came due, or was delivered a request, with what came of it, as
   `WardrikTrigger` announces it.
@@ -153,7 +153,7 @@ defmodule Wardrik.Event.TriggerFired do
         }
 end
 
-defmodule Wardrik.Event.SpanStarted do
+defmodule Wardrik.Bus.SpanStarted do
   @moduledoc "A span opened, on its own span."
   @enforce_keys ~w(name)a
   defstruct @enforce_keys
@@ -163,7 +163,7 @@ defmodule Wardrik.Event.SpanStarted do
         }
 end
 
-defmodule Wardrik.Event.SpanFinished do
+defmodule Wardrik.Bus.SpanFinished do
   @moduledoc "A span closed, with how it ended."
   @enforce_keys ~w(outcome duration_ms)a
   defstruct @enforce_keys
@@ -174,7 +174,7 @@ defmodule Wardrik.Event.SpanFinished do
         }
 end
 
-defmodule Wardrik.Event.DelegationStarted do
+defmodule Wardrik.Bus.DelegationStarted do
   @moduledoc "A delegation began, on its own span."
   @enforce_keys ~w(prompt)a
   defstruct @enforce_keys
@@ -184,7 +184,7 @@ defmodule Wardrik.Event.DelegationStarted do
         }
 end
 
-defmodule Wardrik.Event.DelegationFinished do
+defmodule Wardrik.Bus.DelegationFinished do
   @moduledoc "A delegation ended, with what it returned."
   @enforce_keys ~w(outcome duration_ms)a
   defstruct @enforce_keys
@@ -195,7 +195,7 @@ defmodule Wardrik.Event.DelegationFinished do
         }
 end
 
-defmodule Wardrik.Event.ModelStarted do
+defmodule Wardrik.Bus.ModelStarted do
   @moduledoc "A model call began, answering with the assistant message `message_id` names, with who let it go ahead, as `t:Wardrik.Call.decider/0`."
   @enforce_keys ~w(message_id model_spec decided_by)a
   defstruct @enforce_keys
@@ -207,7 +207,7 @@ defmodule Wardrik.Event.ModelStarted do
         }
 end
 
-defmodule Wardrik.Event.ModelFinished do
+defmodule Wardrik.Bus.ModelFinished do
   @moduledoc "A model call ended. `answer` is the `Wardrik.LLM.Answer` it answered with, or `nil` for a call that did not answer, and `cost` what it cost, as `t:Wardrik.Call.cost/0`, or `nil` where it cannot be priced."
   @enforce_keys ~w(message_id outcome duration_ms answer cost)a
   defstruct @enforce_keys
@@ -221,7 +221,7 @@ defmodule Wardrik.Event.ModelFinished do
         }
 end
 
-defmodule Wardrik.Event.ModelRetrying do
+defmodule Wardrik.Bus.ModelRetrying do
   @moduledoc "A model call failed and is asked again after `wait_ms`, as the `attempt`th of `attempts` tries after the first. `message_id` names the try that failed, and `reason` is why it failed."
   @enforce_keys ~w(message_id attempt attempts wait_ms reason)a
   defstruct @enforce_keys
@@ -235,7 +235,7 @@ defmodule Wardrik.Event.ModelRetrying do
         }
 end
 
-defmodule Wardrik.Event.Result do
+defmodule Wardrik.Bus.Result do
   @moduledoc "Answer text, as it streams."
   @enforce_keys ~w(text)a
   defstruct @enforce_keys
@@ -245,7 +245,7 @@ defmodule Wardrik.Event.Result do
         }
 end
 
-defmodule Wardrik.Event.Thinking do
+defmodule Wardrik.Bus.Thinking do
   @moduledoc "Reasoning text, as it streams."
   @enforce_keys ~w(text)a
   defstruct @enforce_keys
@@ -255,7 +255,7 @@ defmodule Wardrik.Event.Thinking do
         }
 end
 
-defmodule Wardrik.Event.ToolCall do
+defmodule Wardrik.Bus.ToolCall do
   @moduledoc "A tool call as the model streams it, with no arguments yet where they are still to come."
   @enforce_keys ~w(call)a
   defstruct @enforce_keys
@@ -265,7 +265,7 @@ defmodule Wardrik.Event.ToolCall do
         }
 end
 
-defmodule Wardrik.Event.DeadlineReached do
+defmodule Wardrik.Bus.DeadlineReached do
   @moduledoc "A turn reached its deadline, with how many messages it had."
   @enforce_keys ~w(message_count)a
   defstruct @enforce_keys
@@ -275,7 +275,7 @@ defmodule Wardrik.Event.DeadlineReached do
         }
 end
 
-defmodule Wardrik.Event.ToolStarted do
+defmodule Wardrik.Bus.ToolStarted do
   @moduledoc "A tool call began, with who let it go ahead, as `t:Wardrik.Call.decider/0`, again each time it runs."
   @enforce_keys ~w(call_id name arguments idempotency_key decided_by)a
   defstruct @enforce_keys
@@ -289,7 +289,7 @@ defmodule Wardrik.Event.ToolStarted do
         }
 end
 
-defmodule Wardrik.Event.ToolFinished do
+defmodule Wardrik.Bus.ToolFinished do
   @moduledoc "A tool call answered, with what answered it and what it cost where its tool said, as `t:Wardrik.Call.served/0` and `t:Wardrik.Call.cost/0`."
   @enforce_keys ~w(call_id name result served_by cost)a
   defstruct @enforce_keys
@@ -303,7 +303,7 @@ defmodule Wardrik.Event.ToolFinished do
         }
 end
 
-defmodule Wardrik.Event.ToolReplayed do
+defmodule Wardrik.Bus.ToolReplayed do
   @moduledoc "A tool call answered from the ledger without running again."
   @enforce_keys ~w(call_id name result)a
   defstruct @enforce_keys
@@ -315,7 +315,7 @@ defmodule Wardrik.Event.ToolReplayed do
         }
 end
 
-defmodule Wardrik.Event.ToolDenied do
+defmodule Wardrik.Bus.ToolDenied do
   @moduledoc "A tool call was refused, with why and who refused it."
   @enforce_keys ~w(call_id name reason decided_by)a
   defstruct @enforce_keys
@@ -328,7 +328,7 @@ defmodule Wardrik.Event.ToolDenied do
         }
 end
 
-defmodule Wardrik.Event.ToolParked do
+defmodule Wardrik.Bus.ToolParked do
   @moduledoc "A tool call waits on a person, who is shown `prompt`."
   @enforce_keys ~w(call_id name prompt)a
   defstruct @enforce_keys
@@ -340,7 +340,7 @@ defmodule Wardrik.Event.ToolParked do
         }
 end
 
-defmodule Wardrik.Event.ToolProgress do
+defmodule Wardrik.Bus.ToolProgress do
   @moduledoc "How far a tool call has got, where `total` is `nil` for work with no known end; see `Wardrik.Tool.Context.progress/3`."
   @enforce_keys ~w(call_id name progress total)a
   defstruct @enforce_keys

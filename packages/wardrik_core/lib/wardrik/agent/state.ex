@@ -93,10 +93,11 @@ defmodule Wardrik.Agent.State do
 
   alias Wardrik.Agent.Activity
   alias Wardrik.Agent.Message
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Event
+  alias Wardrik.Bus.Source
   alias Wardrik.Conversation
-  alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
-  alias Wardrik.Event.Source
   alias Wardrik.LLM.Config
   alias Wardrik.Principal
   alias Wardrik.Run
@@ -229,7 +230,7 @@ defmodule Wardrik.Agent.State do
 
   @type t() :: %__MODULE__{
           generation: String.t(),
-          agent_id: Event.Bus.agent_id(),
+          agent_id: Bus.agent_id(),
           log: Writer.t(),
           host: Wardrik.Host.t(),
           config: Wardrik.Runtime.Settings.t(),
@@ -271,7 +272,7 @@ defmodule Wardrik.Agent.State do
       answered to an agent that asked it
   """
   @type effect() ::
-          {:emit, Source.t(), Wardrik.Event.payload()}
+          {:emit, Source.t(), Wardrik.Bus.Event.payload()}
           | {:ask_to_stop, pid()}
           | {:stop_now, pid()}
           | {:arm_kill, reference(), pos_integer(), non_neg_integer()}
@@ -294,7 +295,7 @@ defmodule Wardrik.Agent.State do
 
   `agent_id` names the agent, and who the work is for.
   """
-  @spec new(keyword(), Event.Bus.agent_id()) :: t()
+  @spec new(keyword(), Bus.agent_id()) :: t()
   def new(opts, agent_id) do
     %__MODULE__{
       generation: generation(),
@@ -412,7 +413,7 @@ defmodule Wardrik.Agent.State do
 
       changed ->
         {%{state | activity: changed},
-         [{:emit, event.source, %Event.ActivityChanged{activity: changed}}]}
+         [{:emit, event.source, %Bus.ActivityChanged{activity: changed}}]}
     end
   end
 
@@ -459,7 +460,7 @@ defmodule Wardrik.Agent.State do
 
       {queued,
        [
-         {:emit, Source.root(state.agent_id), %Event.MessageQueued{message: message}}
+         {:emit, Source.root(state.agent_id), %Bus.MessageQueued{message: message}}
          | nudge(state.mode, message)
        ]}
     end
@@ -613,10 +614,10 @@ defmodule Wardrik.Agent.State do
        disarm(running) ++ reply(running, state, messages, labels)}
   end
 
-  defp finish(%Running{stopping: nil}, messages), do: %Event.TurnFinished{messages: messages}
+  defp finish(%Running{stopping: nil}, messages), do: %Bus.TurnFinished{messages: messages}
 
   defp finish(%Running{stopping: stopping} = running, messages),
-    do: %Event.TurnInterrupted{
+    do: %Bus.TurnInterrupted{
       stats: stats(running.started_at, stopping.dropped, length(messages), :stopped)
     }
 
@@ -636,7 +637,7 @@ defmodule Wardrik.Agent.State do
     dropped = length(state.history.messages)
 
     {:ok, %{state | history: Conversation.new(), labels: []},
-     [{:emit, Source.root(state.agent_id), %Event.ContextCleared{dropped: dropped}}]}
+     [{:emit, Source.root(state.agent_id), %Bus.ContextCleared{dropped: dropped}}]}
   end
 
   def clear(%__MODULE__{}), do: {:error, :busy}
@@ -651,7 +652,7 @@ defmodule Wardrik.Agent.State do
       started_at: running.started_at
     }
 
-    announcement = {:emit, running.run.source, %Event.TurnParked{calls: Turn.waiting(turn)}}
+    announcement = {:emit, running.run.source, %Bus.TurnParked{calls: Turn.waiting(turn)}}
 
     {%{state | mode: waiting}, [announcement | disarm(running)]}
   end
@@ -660,7 +661,7 @@ defmodule Wardrik.Agent.State do
   @spec failed(t(), term()) :: {t(), [effect()]}
   def failed(%__MODULE__{mode: %Running{} = running} = state, reason) do
     {idle(%{state | outcome: :failed}),
-     [{:emit, running.run.source, %Event.TurnFailed{reason: reason}}, close(running.run)] ++
+     [{:emit, running.run.source, %Bus.TurnFailed{reason: reason}}, close(running.run)] ++
        disarm(running) ++ answer(state, state.answering, &failed/1, [])}
   end
 
@@ -695,7 +696,7 @@ defmodule Wardrik.Agent.State do
 
     {idle(%{drained | outcome: :interrupted}),
      [
-       {:emit, source, %Event.TurnInterrupted{stats: stats(nil, dropped, 0, :abandoned)}},
+       {:emit, source, %Bus.TurnInterrupted{stats: stats(nil, dropped, 0, :abandoned)}},
        close(%{turn_run(state, due.sender) | source: source})
        | unanswered(state)
      ]}
@@ -707,7 +708,7 @@ defmodule Wardrik.Agent.State do
 
     {idle(%{drained | outcome: :interrupted}),
      [
-       {:emit, waiting.source, %Event.TurnInterrupted{stats: stats}},
+       {:emit, waiting.source, %Bus.TurnInterrupted{stats: stats}},
        close(%{turn_run(state, waiting.sender) | source: waiting.source})
        | unanswered(state)
      ]}
@@ -723,7 +724,7 @@ defmodule Wardrik.Agent.State do
 
     {idle(drained),
      [
-       {:emit, Source.root(state.agent_id), %Event.TurnInterrupted{stats: stats}}
+       {:emit, Source.root(state.agent_id), %Bus.TurnInterrupted{stats: stats}}
        | unanswered(state)
      ]}
   end
@@ -753,7 +754,7 @@ defmodule Wardrik.Agent.State do
     {:kill, idle(%{state | outcome: :interrupted}),
      [
        {:shutdown, running.task},
-       {:emit, running.run.source, %Event.TurnInterrupted{stats: stats}},
+       {:emit, running.run.source, %Bus.TurnInterrupted{stats: stats}},
        close(running.run)
        | answer(state, state.answering, &stopped/1, [])
      ]}

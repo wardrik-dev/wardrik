@@ -1,6 +1,6 @@
 defmodule WardrikHTTP.EventStream do
   @moduledoc """
-  The entries of `Wardrik.events/2` as server-sent events, until the client
+  The events of `Wardrik.events/2` as server-sent events, until the client
   goes.
 
       id: eyJhY21lL2FnZW50L3RyaWFnZSI6NDJ9
@@ -8,12 +8,12 @@ defmodule WardrikHTTP.EventStream do
 
       data: {"specversion":"1.0","type":"wardrik.message.delta",…}
 
-  An event that moves the reader's cursor, as `Wardrik.cursor/2` moves it, is
+  An event that moves the reader's cursor, as its `cursor` says, is
   sent with that cursor as its `id`, so a client's `Last-Event-ID` resumes
   after it. One that leaves it where it was, a delta or tool progress, is
   sent without one. Each event is one `data:` line holding the CloudEvent.
 
-  A process of the stream's own takes the entries, handing each over as the
+  A process of the stream's own takes the events, handing each over as the
   one before it is sent, so the stream can send a comment every 15 seconds,
   which keeps an idle stream open through proxies and finds a client that
   has gone. It follows them before the response opens, so a client that
@@ -27,12 +27,12 @@ defmodule WardrikHTTP.EventStream do
   @keepalive :timer.seconds(15)
 
   @doc "Streams `events`, which `Wardrik.events/2` reads after `opts[:after]`, on `conn`."
-  @spec serve(Plug.Conn.t(), Enumerable.t(Wardrik.Event.Log.Entry.t()), after: String.t()) ::
+  @spec serve(Plug.Conn.t(), Enumerable.t(Wardrik.Event.t()), after: String.t()) ::
           Plug.Conn.t()
   def serve(conn, events, opts) do
     stream = self()
 
-    # A suspended reduce opens the entries, which follows them, and the
+    # A suspended reduce opens the events, which follows them, and the
     # taker goes on from there once the stream knows.
     task =
       Task.async(fn ->
@@ -64,8 +64,8 @@ defmodule WardrikHTTP.EventStream do
     end
   end
 
-  defp hand(stream, entry, nil) do
-    send(stream, {self(), entry})
+  defp hand(stream, event, nil) do
+    send(stream, {self(), event})
 
     receive do
       :taken -> {:cont, nil}
@@ -74,10 +74,9 @@ defmodule WardrikHTTP.EventStream do
 
   defp follow(conn, taker, cursor) do
     receive do
-      {^taker, entry} ->
+      {^taker, event} ->
         send(taker, :taken)
-        moved = Wardrik.cursor(cursor, entry)
-        sent(conn, frame(entry.event, cursor, moved), taker, moved)
+        sent(conn, frame(event.cloudevent, cursor, event.cursor), taker, event.cursor)
 
       {:EXIT, _from, _reason} ->
         conn
@@ -100,7 +99,7 @@ defmodule WardrikHTTP.EventStream do
 
   defp flush(taker) do
     receive do
-      {^taker, _entry} -> :ok
+      {^taker, _event} -> :ok
     after
       0 -> :ok
     end

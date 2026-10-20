@@ -9,12 +9,13 @@ defmodule Wardrik.Agent.StateTest do
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.View
   alias Wardrik.Agent.State.Waiting
+  alias Wardrik.Bus
+  alias Wardrik.Bus.Event
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.Text
   alias Wardrik.Conversation.ToolResult
   alias Wardrik.Conversation.User
-  alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
   alias Wardrik.Run
@@ -103,7 +104,7 @@ defmodule Wardrik.Agent.StateTest do
     test "a message arriving while idle waits for nobody" do
       {state, effects} = State.queue(state(), Message.new("hello"))
 
-      assert [{:emit, _source, %Event.MessageQueued{message: %Message{text: "hello"}}}] = effects
+      assert [{:emit, _source, %Bus.MessageQueued{message: %Message{text: "hello"}}}] = effects
       assert View.status(state).pending == 1
     end
 
@@ -118,7 +119,7 @@ defmodule Wardrik.Agent.StateTest do
     test "a message arriving mid-turn asks that turn to wrap up" do
       {_state, effects} = State.queue(running(), Message.new("and another thing"))
 
-      assert [{:emit, _source, %Event.MessageQueued{}}, {:ask_to_stop, pid}] = effects
+      assert [{:emit, _source, %Bus.MessageQueued{}}, {:ask_to_stop, pid}] = effects
       assert pid == self()
     end
 
@@ -181,8 +182,8 @@ defmodule Wardrik.Agent.StateTest do
       {_state, own} = State.queue(asked_by(maria()), Message.new("more", nil, sender: maria()))
       {_state, other} = State.queue(asked_by(maria()), Message.new("me too", nil, sender: jon()))
 
-      assert [{:emit, _source, %Event.MessageQueued{}}, {:ask_to_stop, _pid}] = own
-      assert [{:emit, _source, %Event.MessageQueued{}}] = other
+      assert [{:emit, _source, %Bus.MessageQueued{}}, {:ask_to_stop, _pid}] = own
+      assert [{:emit, _source, %Bus.MessageQueued{}}] = other
     end
 
     test "a parked turn waits as its sender's, and resumes as theirs" do
@@ -239,7 +240,7 @@ defmodule Wardrik.Agent.StateTest do
     test "a waiting turn is abandoned outright" do
       {state, effects} = State.interrupt(waiting())
 
-      assert [{:emit, source, %Event.TurnInterrupted{stats: stats}}, {:close_turn, run}] =
+      assert [{:emit, source, %Bus.TurnInterrupted{stats: stats}}, {:close_turn, run}] =
                effects
 
       assert stats.resolution == :abandoned
@@ -248,7 +249,7 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "an idle agent says there was nothing to stop" do
-      {_state, [{:emit, _source, %Event.TurnInterrupted{stats: stats}}]} =
+      {_state, [{:emit, _source, %Bus.TurnInterrupted{stats: stats}}]} =
         State.interrupt(state())
 
       assert stats.resolution == :idle
@@ -268,7 +269,7 @@ defmodule Wardrik.Agent.StateTest do
 
       assert [
                {:shutdown, _task},
-               {:emit, _source, %Event.TurnInterrupted{stats: stats}},
+               {:emit, _source, %Bus.TurnInterrupted{stats: stats}},
                {:close_turn, _run}
              ] = effects
 
@@ -301,7 +302,7 @@ defmodule Wardrik.Agent.StateTest do
     test "empties the history and its mark, and says how much it held" do
       {state, _effects} = State.settled(running(), [Assistant.new("read it")], ["outside"])
 
-      assert {:ok, cleared, [{:emit, _source, %Event.ContextCleared{dropped: 1}}]} =
+      assert {:ok, cleared, [{:emit, _source, %Bus.ContextCleared{dropped: 1}}]} =
                State.clear(state)
 
       assert cleared.history.messages == []
@@ -321,7 +322,7 @@ defmodule Wardrik.Agent.StateTest do
       {state, [{:emit, source, event}, {:close_turn, run}]} =
         State.settled(running(), messages, [])
 
-      assert event == %Event.TurnFinished{messages: messages}
+      assert event == %Bus.TurnFinished{messages: messages}
       assert run.source == source
       assert Conversation.to_list(state.history) |> length() == 1
     end
@@ -331,7 +332,7 @@ defmodule Wardrik.Agent.StateTest do
       {_state, effects} = State.settled(stopping(), messages, [])
 
       assert [
-               {:emit, _source, %Event.TurnInterrupted{stats: stats}},
+               {:emit, _source, %Bus.TurnInterrupted{stats: stats}},
                {:close_turn, _run},
                {:cancel_kill, _timer}
              ] = effects
@@ -363,7 +364,7 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "parking announces the calls a person has to answer" do
-      {state, [{:emit, _source, %Event.TurnParked{calls: calls}} | _rest]} =
+      {state, [{:emit, _source, %Bus.TurnParked{calls: calls}} | _rest]} =
         State.parked(running(), parked_turn())
 
       assert [{%{id: "call_1"}, "Really?"}] = calls
@@ -550,7 +551,7 @@ defmodule Wardrik.Agent.StateTest do
       {state, _effects} = State.queue(reload(running()), Message.new("hello"))
 
       assert {%State{mode: :idle, pending: []},
-              [{:emit, _source, %Event.TurnInterrupted{stats: %{resolution: :idle, dropped: 1}}}]} =
+              [{:emit, _source, %Bus.TurnInterrupted{stats: %{resolution: :idle, dropped: 1}}}]} =
                State.interrupt(state)
     end
 
@@ -606,7 +607,7 @@ defmodule Wardrik.Agent.StateTest do
     test "interrupting a turn due to resume abandons it" do
       assert {%State{mode: :idle, outcome: :interrupted},
               [
-                {:emit, _source, %Event.TurnInterrupted{stats: %{resolution: :abandoned}}},
+                {:emit, _source, %Bus.TurnInterrupted{stats: %{resolution: :abandoned}}},
                 {:close_turn, _run}
               ]} =
                State.interrupt(reload(resumed()))
@@ -689,7 +690,7 @@ defmodule Wardrik.Agent.StateTest do
 
       assert {%State{mode: :idle, outcome: :interrupted},
               [
-                {:emit, _source, %Event.TurnInterrupted{stats: %{resolution: :abandoned}}},
+                {:emit, _source, %Bus.TurnInterrupted{stats: %{resolution: :abandoned}}},
                 {:close_turn, _run}
               ]} =
                State.interrupt(reload(state))
@@ -723,7 +724,7 @@ defmodule Wardrik.Agent.StateTest do
     test "what it is doing is never written, and is read back from what it waits on" do
       refute Map.has_key?(Stored.dump(waiting()), :activity)
 
-      assert %Activity{doing: %Event.TurnParked{calls: [{%{id: "call_1"}, "Really?"}]}} =
+      assert %Activity{doing: %Bus.TurnParked{calls: [{%{id: "call_1"}, "Really?"}]}} =
                reload(waiting()).activity
 
       assert %Activity{doing: :idle, pending: 2} = reload(queued(state(), 2)).activity
@@ -742,14 +743,14 @@ defmodule Wardrik.Agent.StateTest do
   describe "what it is doing" do
     test "an event that changes it is announced on that event's span, and one that does not is not" do
       source = run().source
-      asked = %Event.TurnStarted{messages: []}
+      asked = %Bus.TurnStarted{messages: []}
 
       {state, effects} = State.heard(state(), Event.new(source, asked))
 
-      assert [{:emit, ^source, %Event.ActivityChanged{activity: %Activity{doing: ^asked}}}] =
+      assert [{:emit, ^source, %Bus.ActivityChanged{activity: %Activity{doing: ^asked}}}] =
                effects
 
-      assert {^state, []} = State.heard(state, Event.new(source, %Event.Result{text: "Hel"}))
+      assert {^state, []} = State.heard(state, Event.new(source, %Bus.Result{text: "Hel"}))
       assert View.status(state).activity == state.activity
     end
   end

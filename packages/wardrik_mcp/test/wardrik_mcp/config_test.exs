@@ -44,6 +44,44 @@ defmodule WardrikMCP.ConfigTest do
 
       assert_raise ArgumentError, fn -> WardrikMCP.attach(Wardrik.Host.new(), servrs: []) end
     end
+
+    test "reads a server named by its url or command as config.yaml's" do
+      host =
+        WardrikMCP.attach(Wardrik.Host.new(store: Wardrik.Test.store()),
+          servers: [
+            github: [url: "https://api.githubcopilot.com/mcp/", credential: "github", timeout: 5],
+            notes: [command: "notes-mcp", args: ["--quiet"]]
+          ]
+        )
+
+      assert %{"github" => github, "notes" => notes} = Wardrik.Host.sources(host)
+
+      assert {:streamable_http, [mcp_path: "/mcp/", base_url: "https://api.githubcopilot.com"]} =
+               github.transport
+
+      assert github.credential == "github"
+      assert github.timeout == 5_000
+      assert {:stdio, stdio} = notes.transport
+      assert Enum.take(stdio[:args], -2) == ["notes-mcp", "--quiet"]
+
+      assert_raise ArgumentError, ~r/the MCP server docs has both command and url/, fn ->
+        WardrikMCP.attach(Wardrik.Host.new(),
+          servers: [docs: [url: "https://docs.example.com/mcp", command: "docs-mcp"]]
+        )
+      end
+    end
+
+    test "registers the servers people add as what they may sign in to" do
+      store = Wardrik.Test.store()
+      host = WardrikMCP.attach(Wardrik.Host.new(store: store))
+
+      assert Wardrik.Host.sign_ins(host) == %{
+               "servers" => %WardrikMCP.Servers.Providers{store: store}
+             }
+
+      # A host built without `use Wardrik` offers the servers it wires itself.
+      assert Wardrik.Host.servers(host) == %Wardrik.Servers.None{}
+    end
   end
 
   describe "config/1" do

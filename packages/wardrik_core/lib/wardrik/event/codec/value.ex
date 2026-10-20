@@ -11,6 +11,7 @@ defmodule Wardrik.Event.Codec.Value do
   #{64 * 1024} bytes once encoded is cut and marked `"truncated": true`.
   """
 
+  alias Wardrik.Bus
   alias Wardrik.Conversation
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.Blob
@@ -22,7 +23,6 @@ defmodule Wardrik.Event.Codec.Value do
   alias Wardrik.Conversation.ToolResult
   alias Wardrik.Conversation.Uri
   alias Wardrik.Conversation.User
-  alias Wardrik.Event
   alias Wardrik.LLM.Usage
   alias Wardrik.Principal
   alias Wardrik.Tool.Result
@@ -178,16 +178,16 @@ defmodule Wardrik.Event.Codec.Value do
 
   defp doing(:idle), do: []
   defp doing([_ | _] = calls), do: Enum.flat_map(calls, &doing/1)
-  defp doing(%Event.TurnStarted{}), do: [%{"type" => "wardrik.run.started"}]
-  defp doing(%Event.TurnResumed{}), do: [%{"type" => "wardrik.run.resumed"}]
+  defp doing(%Bus.TurnStarted{}), do: [%{"type" => "wardrik.run.started"}]
+  defp doing(%Bus.TurnResumed{}), do: [%{"type" => "wardrik.run.resumed"}]
 
-  defp doing(%Event.TurnParked{calls: calls}),
+  defp doing(%Bus.TurnParked{calls: calls}),
     do: [%{"type" => "wardrik.run.interrupted", "interrupts" => Enum.map(calls, &interrupt/1)}]
 
-  defp doing(%Event.ModelStarted{message_id: id}),
+  defp doing(%Bus.ModelStarted{message_id: id}),
     do: [%{"type" => "wardrik.message.started", "message" => %{"id" => id}}]
 
-  defp doing(%Event.ModelRetrying{} = retry) do
+  defp doing(%Bus.ModelRetrying{} = retry) do
     [
       %{
         "type" => "wardrik.message.retrying",
@@ -199,13 +199,13 @@ defmodule Wardrik.Event.Codec.Value do
     ]
   end
 
-  defp doing(%Event.SpanStarted{name: name}),
+  defp doing(%Bus.SpanStarted{name: name}),
     do: [%{"type" => "wardrik.step.started", "step" => %{"name" => name}}]
 
-  defp doing(%Event.ToolStarted{} = call), do: [tool("wardrik.tool_call.started", call)]
-  defp doing(%Event.ToolDenied{} = call), do: [tool("wardrik.tool_call.denied", call)]
-  defp doing(%Event.ToolFinished{} = call), do: [tool("wardrik.tool_call.completed", call)]
-  defp doing(%Event.ToolReplayed{} = call), do: [tool("wardrik.tool_call.completed", call)]
+  defp doing(%Bus.ToolStarted{} = call), do: [tool("wardrik.tool_call.started", call)]
+  defp doing(%Bus.ToolDenied{} = call), do: [tool("wardrik.tool_call.denied", call)]
+  defp doing(%Bus.ToolFinished{} = call), do: [tool("wardrik.tool_call.completed", call)]
+  defp doing(%Bus.ToolReplayed{} = call), do: [tool("wardrik.tool_call.completed", call)]
 
   defp tool(type, call),
     do: %{"type" => type, "tool" => %{"name" => call.name, "call" => %{"id" => call.call_id}}}

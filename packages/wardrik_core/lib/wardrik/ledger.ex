@@ -86,7 +86,7 @@ defmodule Wardrik.Ledger do
   turn's trace id, the batch the call was asked for in, and the id the model
   gave it, as `Wardrik.Ledger.Key.of/2` builds it.
   """
-  @type key() :: {Wardrik.Event.Bus.agent_id(), call_id :: String.t()}
+  @type key() :: {Wardrik.Bus.agent_id(), call_id :: String.t()}
 
   @typedoc "What the ledger says about one call."
   @type claim() ::
@@ -168,7 +168,7 @@ defmodule Wardrik.Ledger do
   `[:wardrik, :ledger, :forgotten]` is emitted once the store has answered,
   with the agent id, the trace id and the answer in its metadata.
   """
-  @spec forget(WardrikStore.t(), Wardrik.Event.Bus.agent_id(), trace: String.t()) ::
+  @spec forget(WardrikStore.t(), Wardrik.Bus.agent_id(), trace: String.t()) ::
           :ok | {:error, term()}
   def forget(store, agent_id, opts) do
     trace_id = Keyword.fetch!(opts, :trace)

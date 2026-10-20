@@ -8,6 +8,9 @@ defmodule Wardrik.Instance.Issuer do
   #     messenger on its owner's agents, as it could itself
   #   * the app itself, `deployment`: reading every agent and its events,
   #     what notices, channels' replies and listeners follow
+  #   * someone a plugin names, as `slack:T0123/U024BE7LH`: what the issuer
+  #     it registered for that provider among the host's issuers says, so
+  #     grants/1 never sees them
   #   * anyone else, such as a request to a trigger: nothing
 
   alias Wardrik.Principal
@@ -17,13 +20,24 @@ defmodule Wardrik.Instance.Issuer do
   alias Wardrik.Token
 
   @enforce_keys [:module]
-  defstruct [:module]
+  defstruct [:module, issuers: %{}]
 
-  @type t() :: %__MODULE__{module: module()}
+  @type t() :: %__MODULE__{module: module(), issuers: %{String.t() => Wardrik.Issuer.t()}}
 
   @doc false
-  def issue(%__MODULE__{module: module}, principal),
-    do: %Token{principal: principal, scope: scope(module, Principal.id(principal))}
+  def issue(%__MODULE__{} = issuer, principal, opts) do
+    case String.split(Principal.id(principal), ":", parts: 2) do
+      [provider, _subject] -> provided(issuer.issuers, provider, principal, opts)
+      [id] -> %Token{principal: principal, scope: scope(issuer.module, id)}
+    end
+  end
+
+  defp provided(issuers, provider, principal, opts) do
+    case Map.fetch(issuers, provider) do
+      {:ok, issuer} -> Wardrik.Issuer.issue(issuer, principal, opts)
+      :error -> %Token{principal: principal}
+    end
+  end
 
   defp scope(_module, "deployment"),
     do: [
@@ -85,5 +99,5 @@ defmodule Wardrik.Instance.Issuer do
 end
 
 defimpl Wardrik.Issuer, for: Wardrik.Instance.Issuer do
-  def issue(issuer, principal, _opts), do: Wardrik.Instance.Issuer.issue(issuer, principal)
+  defdelegate issue(issuer, principal, opts), to: Wardrik.Instance.Issuer
 end

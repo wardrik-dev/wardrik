@@ -17,8 +17,12 @@
       "Wardrik.Listener",
       "Wardrik.Migration",
       "Wardrik.Moving",
+      "Wardrik.Decided",
+      "Wardrik.Reply",
       "Wardrik.Scope",
-      "Wardrik.Spawned"
+      "Wardrik.Spawned",
+      "Wardrik.Wait",
+      "Wardrik.Waiting"
     ],
     definition: ["Wardrik.Definition", "Wardrik.Definitions", "Wardrik.Specs.Wardrik.Definitions", "WardrikDefinition.*", "String.Chars.WardrikDefinition.Room"],
     policy: ["WardrikPolicy", "WardrikPolicy.*"],
@@ -162,6 +166,7 @@
       "Wardrik.Specs",
       "Wardrik.Specs.None",
       "Wardrik.Error",
+      "Wardrik.Bus.Event",
       "Wardrik.Event",
       "Wardrik.Event.Codec.Value",
       "Wardrik.Event.Cursor",
@@ -218,7 +223,7 @@
       "Wardrik.LLM.ToolRunner",
       "Wardrik.LLM.Catalog",
       "Wardrik.Fleet.Supervisor",
-      "Wardrik.Event.Source",
+      "Wardrik.Bus.Source",
       "Wardrik.Event.Log",
       "Wardrik.Trace"
     ],
@@ -230,10 +235,10 @@
       {"Wardrik.LLM.ToolRunner", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.LLM.Catalog", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
-      {"Wardrik.Event.Source", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Bus.Source", ["Wardrik", "Wardrik.*"]},
       # The agents' logs are read and followed through Wardrik alone, which
-      # checks the token first.
-      {"Wardrik.Event.Log", ["Wardrik"]},
+      # checks the token first, and its wait: once it has.
+      {"Wardrik.Event.Log", ["Wardrik", "Wardrik.Wait"]},
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]
   ],

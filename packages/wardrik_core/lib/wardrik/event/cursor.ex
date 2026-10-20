@@ -29,6 +29,18 @@ defmodule Wardrik.Event.Cursor do
     |> Base.url_encode64(padding: false)
   end
 
+  @doc """
+  `cursor` moved past `entry`, in the log `entry` is in. `:head` names that
+  log alone.
+  """
+  @spec past(String.t() | :head, Wardrik.Event.Log.Entry.t()) :: String.t()
+  def past(:head, entry), do: past("", entry)
+
+  def past(cursor, %Wardrik.Event.Log.Entry{log: log} = entry) do
+    {:ok, positions} = decode(cursor)
+    encode(Map.put(positions, log, entry.sequence || entry.follows))
+  end
+
   @doc "The positions `cursor` holds, or `:error` where it is not one `encode/1` wrote."
   @spec decode(String.t()) :: {:ok, positions()} | :error
   def decode(""), do: {:ok, %{}}

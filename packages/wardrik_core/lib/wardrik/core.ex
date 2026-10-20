@@ -3,7 +3,7 @@ defmodule Wardrik.Core do
   Everything core runs, under one supervisor, kept in the store started
   before it. In order:
 
-    * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
+    * `Wardrik.LLM.Catalog`, `Wardrik.Bus`, `Wardrik.Event.Log`,
       `Wardrik.Credential`, which tells a call parked on a credential it is
       available, `Wardrik.Audit`, which writes to the host's store,
       `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
@@ -71,7 +71,7 @@ defmodule Wardrik.Core do
     children =
       [
         Wardrik.LLM.Catalog,
-        Wardrik.Event.Bus,
+        Wardrik.Bus,
         Wardrik.Event.Log,
         Wardrik.Credential,
         {Wardrik.Audit, store: Wardrik.Host.store(host), name: Wardrik.Host.audit(host)},

@@ -98,6 +98,16 @@ defmodule Wardrik.Instance do
 
   @subscribe NimbleOptions.new!(@following)
 
+  @id [type: {:or, [:string, nil]}, doc: "the message's id; a new one by default"]
+  @timeout [
+    type: :timeout,
+    default: 60_000,
+    doc: "how long to wait, in milliseconds, or `:infinity`"
+  ]
+
+  @send NimbleOptions.new!(id: @id)
+  @ask NimbleOptions.new!(id: @id, timeout: @timeout)
+
   @events NimbleOptions.new!(
             @following ++
               [
@@ -126,6 +136,8 @@ defmodule Wardrik.Instance do
     put_trigger: [:user, :agent, :name, :fields],
     delete_trigger: [:user, :agent, :name],
     ask: [:user, :agent, :text, {:opts, []}],
+    send: [:user, :agent, :text, {:opts, []}],
+    await: [:user, :sent, {:opts, []}],
     approve: [:user, :agent, :calls, {:opts, []}],
     deny: [:user, :agent, :calls, {:opts, []}],
     decide: [:user, :agent, :decisions],
@@ -256,8 +268,18 @@ defmodule Wardrik.Instance do
     |> Kernel.++(vault(config[:vault], store))
     |> Kernel.++(Keyword.take(config, [:expires]))
     |> Wardrik.new()
+    |> Host.register(:settings, [{__MODULE__, module: module}])
     |> plugins(config[:plugins])
+    |> issuing(module)
   end
+
+  # Issuing the people plugins name as their plugins say, once all are attached.
+  defp issuing(host, module),
+    do:
+      Host.put(host, :issuer, %Wardrik.Instance.Issuer{
+        module: module,
+        issuers: Host.issuers(host)
+      })
 
   defp policies(policies),
     do:
@@ -290,8 +312,9 @@ defmodule Wardrik.Instance do
 
   defp valid(_module, _opts, :ok), do: :ok
 
-  defp valid(module, opts, {:error, message}),
-    do: raise(ArgumentError, "#{inspect(module)}'s options #{inspect(opts)}: #{message}")
+  # Not the options themselves, which may hold a secret.
+  defp valid(module, _opts, {:error, message}),
+    do: raise(ArgumentError, "#{inspect(module)}'s options in plugins: #{message}")
 
   @doc false
   def put(module, %Host{} = host), do: :persistent_term.put({__MODULE__, module}, host)
@@ -307,7 +330,20 @@ defmodule Wardrik.Instance do
     end
   end
 
+  # The instance a plugin's host belongs to, or nil for one built without
+  # `use Wardrik`.
+  @doc false
+  def of(%Host{} = host), do: Host.settings(host, __MODULE__)[:module]
+
   # -- acting ---------------------------------------------------------------------
+
+  # The scope `user` acts in, for what acts on the instance's behalf, such
+  # as a request to its HTTP API.
+  @doc false
+  def as(module, user) do
+    {scope, _who} = scope(module, user)
+    scope
+  end
 
   # The scope `user` acts in on `module`'s agents, and the org and id they
   # are known by there.
@@ -423,8 +459,24 @@ defmodule Wardrik.Instance do
   def list(module, user, opts), do: under(module, user, opts, &Wardrik.agents_list/2)
 
   @doc false
-  def ask(module, user, agent, text, opts),
-    do: on(module, user, agent, &Wardrik.agent_ask(&1, &2, text, opts))
+  def ask(module, user, agent, text, opts) do
+    opts = NimbleOptions.validate!(opts, @ask)
+
+    with {:ok, message} <- send(module, user, agent, text, Keyword.take(opts, [:id])),
+         do: await(module, user, message, Keyword.take(opts, [:timeout]))
+  end
+
+  @doc false
+  def send(module, user, agent, text, opts) do
+    opts = NimbleOptions.validate!(opts, @send)
+    on(module, user, agent, &Wardrik.agent_ask(&1, &2, text, opts))
+  end
+
+  @doc false
+  def await(module, user, sent, opts) do
+    {scope, _who} = scope(module, user)
+    Wardrik.agent_await(scope, sent, opts)
+  end
 
   @doc false
   def approve(module, user, agent, calls, opts),
@@ -553,6 +605,7 @@ defmodule Wardrik.Instance do
 
   @doc false
   def unwrap({:ok, value}), do: value
+  def unwrap({:waiting, waiting}), do: waiting
   def unwrap(:ok), do: :ok
   def unwrap({:error, error}), do: raise(error)
 end

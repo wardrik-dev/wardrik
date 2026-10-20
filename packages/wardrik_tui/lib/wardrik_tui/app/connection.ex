@@ -5,7 +5,7 @@ defmodule WardrikTUI.App.Connection do
   import Breeze.View, only: [assign: 2, reset: 2, put_implicit: 4]
 
   alias Wardrik.Agent
-  alias Wardrik.Event.Bus
+  alias Wardrik.Bus
   alias Wardrik.Fleet
   alias Wardrik.Resource
   alias WardrikConsole.Filter
@@ -114,7 +114,7 @@ defmodule WardrikTUI.App.Connection do
   # replay of the whole conversation. `agent_id` is what the events are
   # published under.
   def attach(term, agent, agent_id) do
-    # `:raw` delivers `Wardrik.Event.ToolCall` with its arguments.
+    # `:raw` delivers `Wardrik.Bus.ToolCall` with its arguments.
     :ok = Bus.subscribe(agent_id, level: :raw)
 
     case snapshot(agent, term.assigns.host) do

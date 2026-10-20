@@ -29,7 +29,7 @@ defmodule Wardrik.Call.Pipeline do
   A tool call reports what happens to it on its span: `:tool_parked` when it
   waits on a person, `:tool_denied` when it is refused, `:tool_replayed` when
   the ledger answers it, and `:tool_started` and `:tool_finished` around its
-  tool, naming who decided it and what served it. See `Wardrik.Event`.
+  tool, naming who decided it and what served it. See `Wardrik.Bus.Event`.
 
   A call the ledger holds as settled is answered with what it returned then,
   without running. A tool that stops to ask before doing anything waits on
@@ -64,11 +64,13 @@ defmodule Wardrik.Call.Pipeline do
 
   require Logger
 
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Call
   alias Wardrik.Call.Model
   alias Wardrik.Call.Tool
   alias Wardrik.Credential
-  alias Wardrik.Event
   alias Wardrik.Hook
   alias Wardrik.Host
   alias Wardrik.Ledger
@@ -281,7 +283,7 @@ defmodule Wardrik.Call.Pipeline do
   defp refused(%Call{state: :denied, target: %Tool{}} = call) do
     case held(call) do
       %Call{state: :denied, denied: denied} = call ->
-        emit(call, %Event.ToolDenied{
+        emit(call, %Bus.ToolDenied{
           call_id: call.id,
           name: Call.name(call),
           reason: denied.reason,
@@ -410,7 +412,7 @@ defmodule Wardrik.Call.Pipeline do
   defp handed(%Call{target: %Tool{name: name, arguments: args}} = call) do
     emit(
       call,
-      %Event.ToolStarted{
+      %Bus.ToolStarted{
         call_id: call.id,
         name: name,
         arguments: args,
@@ -600,12 +602,12 @@ defmodule Wardrik.Call.Pipeline do
   # -- events ------------------------------------------------------------------
 
   defp replayed(call, result) do
-    emit(call, %Event.ToolReplayed{call_id: call.id, name: Call.name(call), result: result})
+    emit(call, %Bus.ToolReplayed{call_id: call.id, name: Call.name(call), result: result})
     Call.answer(call, result)
   end
 
   defp finished(%Call{target: %Tool{}} = call) do
-    emit(call, %Event.ToolFinished{
+    emit(call, %Bus.ToolFinished{
       call_id: call.id,
       name: Call.name(call),
       result: call.result,
@@ -617,7 +619,7 @@ defmodule Wardrik.Call.Pipeline do
   end
 
   defp announced(%Call{state: :waiting, target: %Tool{}} = call) do
-    emit(call, %Event.ToolParked{
+    emit(call, %Bus.ToolParked{
       call_id: call.id,
       name: Call.name(call),
       prompt: Call.prompt(call)

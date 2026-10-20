@@ -40,13 +40,14 @@ defmodule Wardrik.Event.Log.Writer do
 
   require Logger
 
-  alias Wardrik.Event
-  alias Wardrik.Event.Bus
+  alias Wardrik.Bus
+
+  alias Wardrik.Bus.Event
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
 
-  @deltas [Event.Result, Event.Thinking]
+  @deltas [Bus.Result, Bus.Thinking]
 
   # Writes the store could not confirm, remembered so one found committed is
   # taken as this writer's own.
@@ -79,10 +80,10 @@ defmodule Wardrik.Event.Log.Writer do
 
   @doc """
   Finds the head of the log and writes `started`, the agent's
-  `Wardrik.Event.AgentStarted` event, after it, ahead of the bus.
+  `Wardrik.Bus.AgentStarted` event, after it, ahead of the bus.
   """
   @spec open(WardrikStore.t(), t(), Event.t()) :: t()
-  def open(store, %__MODULE__{} = writer, %Event{payload: %Event.AgentStarted{}} = started) do
+  def open(store, %__MODULE__{} = writer, %Event{payload: %Bus.AgentStarted{}} = started) do
     with {:error, reason} <- Log.opened(store, writer.agent_id),
          do: Logger.warning("Could not list #{writer.agent_id}'s log: #{inspect(reason)}")
 
@@ -133,12 +134,12 @@ defmodule Wardrik.Event.Log.Writer do
       else: live(writer, event)
   end
 
-  defp follow(writer, %Event{payload: %Event.ModelStarted{message_id: message_id}} = event),
+  defp follow(writer, %Event{payload: %Bus.ModelStarted{message_id: message_id}} = event),
     do: %{writer | messages: Map.put(writer.messages, span(event), message_id)}
 
   defp follow(
          writer,
-         %Event{payload: %Event.ModelFinished{}} = event
+         %Event{payload: %Bus.ModelFinished{}} = event
        ),
        do: %{writer | messages: Map.delete(writer.messages, span(event))}
 
