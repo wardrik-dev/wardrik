@@ -39,6 +39,8 @@ defmodule WardrikDaemon.Config do
   # The channel types a channel's `type` names.
   @adapters %{"slack" => WardrikSlack}
 
+  # Sections hold what `${NAME}` resolved to, secrets among them.
+  @derive {Inspect, only: [:config_dir, :data_dir, :state_dir]}
   @enforce_keys [:config_dir, :data_dir, :state_dir]
   defstruct [:config_dir, :data_dir, :state_dir, sections: [], adapters: @adapters]
 

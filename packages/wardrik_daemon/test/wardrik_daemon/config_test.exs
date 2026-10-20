@@ -210,6 +210,7 @@ defmodule WardrikDaemon.ConfigTest do
                )
 
       assert Keyword.fetch!(settings, WardrikBrave) == [api_key: "a-brave-key"]
+      refute inspect(Config.new(sections: settings)) =~ "a-brave-key"
       assert {:error, message} = read("brave:\n  key: k\n", context)
       assert message =~ "brave.key is not a setting"
       oauth = Keyword.fetch!(settings, WardrikOAuth)
