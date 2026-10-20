@@ -62,11 +62,11 @@ defmodule WardrikDaemonTest do
     assert %{"web_search" => WardrikBrave.WebSearch} = Wardrik.Host.tools(host)
   end
 
-  test "starts with no config.yaml at all, running the agent files, the servers people add and the HTTP API",
+  test "starts with no config.yaml at all, running the agent files, the servers people add, notices and the HTTP API",
        %{tmp_dir: dir} do
     assert {{:ok, pid}, _config, host} = daemon(dir)
 
-    assert [WardrikDaemon, WardrikHTTP.Listener, WardrikMCP.Supervisor] =
+    assert [WardrikDaemon, WardrikHTTP.Listener, WardrikMCP.Supervisor, WardrikNotify.Supervisor] =
              pid |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
 
     assert [WardrikDaemon.Host, WardrikDaemon | _packages] = Enum.map(host.children, &elem(&1, 0))
@@ -259,6 +259,26 @@ defmodule WardrikDaemonTest do
 
     assert WardrikDaemon.status(host, config) =~
              "#{org}/counter  idle  #{node()}  0 of 500 tokens today"
+  end
+
+  test "status/0 lists the names a definition gives that config.yaml does not configure",
+       %{tmp_dir: dir} do
+    org = "named-#{System.unique_integer([:positive])}"
+    on_exit(fn -> Wardrik.Fleet.forget_under(Wardrik.Resource.parse!(org <> "/*")) end)
+
+    File.write!(Path.join(dir, "config.yaml"), "orgs:\n  #{org}: {}\n")
+    File.mkdir_p!(Path.join(dir, "agents"))
+
+    File.write!(
+      Path.join([dir, "agents", "loud.md"]),
+      ~s(---\norg: #{org}\nchannels: [teams]\nnotify: [pager, "chat:#updates"]\n---\nYou shout.\n)
+    )
+
+    {{:ok, _pid}, config, host} = daemon(dir)
+    status = WardrikDaemon.status(host, config)
+
+    for {what, name} <- [{"channel", "teams"}, {"notify target", "pager"}, {"channel", "chat"}],
+        do: assert(status =~ "#{org}/loud names the #{what} #{name}, which config.yaml does not")
   end
 
   test "status/0 names the node and counts the fleet", %{tmp_dir: dir} do

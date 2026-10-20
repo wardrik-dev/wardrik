@@ -13,10 +13,10 @@ defmodule WardrikNotifyTest do
     assert WardrikNotify.target(@targets, "missing") == :error
   end
 
-  test "attaches a supervisor delivering to its targets, where it has any" do
+  test "attaches a supervisor delivering to its targets and the host's rooms" do
     host = Wardrik.Host.new([])
 
-    assert WardrikNotify.attach(host) == host
+    assert [{WardrikNotify.Supervisor, [targets: []]}] = WardrikNotify.attach(host).children
 
     assert [{WardrikNotify.Supervisor, opts}] =
              WardrikNotify.attach(host, targets: @targets, backoff: 0).children
@@ -46,6 +46,8 @@ defmodule WardrikNotifyTest do
     for {section, path, message} <- [
           {[], [], "is a set of keys"},
           {%{"ops" => %{"email" => %{}}}, ["ops"], "is a webhook, or a channel and a room in it"},
+          {%{"slack:#ops" => %{"webhook" => %{"url" => "x"}}}, ["slack:#ops"],
+           "is not a target's name: one holds no :, which writes a room"},
           {%{"ops" => %{"channel" => "chat"}}, ["ops", "room"], "is required"},
           {%{"ops" => %{"channel" => "chat", "room" => "#ops", "colour" => "red"}},
            ["ops", "colour"], "is not a setting; expected one of channel, room, approvers"},

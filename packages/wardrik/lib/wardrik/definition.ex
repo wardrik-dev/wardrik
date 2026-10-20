@@ -28,9 +28,11 @@ defmodule Wardrik.Definition do
   and the defaults every agent takes. It names no module: a tool or a
   source is the host's to register, as a package's `attach/2` does, and a
   hook the agent is held to is given as `:held`. The channels and notify
-  targets it names are read as names: a channel offers only the agents of
-  the orgs it serves, and a target tells only those of the orgs it is kept
-  for.
+  targets it names are read as names, and the rooms it routes notices to,
+  `slack:#updates`, as `WardrikDefinition.Room`s: a channel offers only
+  the agents of the orgs it serves, a target tells only those of the orgs
+  it is kept for, and a room is posted in the workspace of the agent's own
+  owner.
 
   Where it came from, the source, says what it may say:
 
@@ -97,7 +99,7 @@ defmodule Wardrik.Definition do
   @typedoc """
   A definition, read: the agent's `id`, the name a person calls it by, its
   name unless given, what it is for and its instructions; the `tools` and
-  `channels` it names, and its `notify` route, as names; its `policy`, by
+  `channels` it names, as names, and its `notify` route; its `policy`, by
   name or as it reads; its `timeout`, `idle_timeout` and `retry`, the
   context's where it says none; its `triggers`; where it came from, the
   hooks it is `held` to ahead of its own, and its `fields`, as written,
@@ -762,11 +764,13 @@ defmodule Wardrik.Definition do
       [key | _] -> invalid!("notify #{key} is not a setting; expected to or on")
     end
 
-    targets = fields |> Map.get("to") |> List.wrap()
-    if targets == [], do: invalid!("notify names no target")
+    to = fields |> Map.get("to") |> List.wrap() |> Enum.map(&target!/1)
+    if to == [], do: invalid!("notify names no target")
+    {rooms, targets} = Enum.split_with(to, &String.contains?(&1, ":"))
 
     %WardrikDefinition.Route{
-      targets: Enum.map(targets, &target!/1),
+      targets: targets,
+      rooms: Enum.map(rooms, &room!/1),
       on: fields |> Map.get("on", ~w(parked failed)) |> List.wrap() |> Enum.map(&kind!/1)
     }
   end
@@ -775,6 +779,18 @@ defmodule Wardrik.Definition do
 
   defp target!(name) when is_binary(name), do: name
   defp target!(name), do: invalid!("notify names #{inspect(name)}, which is not a target")
+
+  defp room!(entry) do
+    case String.split(entry, ":", parts: 2) do
+      [channel, room] when channel != "" and room != "" ->
+        %WardrikDefinition.Room{channel: channel, room: room}
+
+      _parts ->
+        invalid!(
+          "notify names #{inspect(entry)}; a room is its channel, : and the room, as slack:#updates"
+        )
+    end
+  end
 
   defp kind!(kind) do
     case Enum.find(WardrikDefinition.Route.kinds(), &(Atom.to_string(&1) == kind)) do

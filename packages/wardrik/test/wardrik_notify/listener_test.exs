@@ -145,7 +145,7 @@ defmodule WardrikNotify.ListenerTest do
     end)
 
     listen(context)
-    route = %{"notify" => ["audit", "missing"]}
+    route = %{"notify" => ["audit", "missing", "chat:#updates"]}
     {key, pid} = agent(context, {AgentRunners, :parking, [self(), "call_1"]}, route)
 
     log =
@@ -159,6 +159,27 @@ defmodule WardrikNotify.ListenerTest do
     assert log =~ "Could not tell audit that #{key} parked: {:status, 400}; trying again"
     assert log =~ "Could not tell audit that #{key} parked: {:status, 400}; giving up"
     assert log =~ "#{key} routes to missing, which config.yaml does not configure"
+    assert log =~ "#{key} routes to chat:#updates, but this host runs no channels"
+  end
+
+  test "posts in a route's rooms through the rooms the host's channels registered", context do
+    rooms = %WardrikNotify.Test.Rooms{test: self()}
+
+    listen(%{
+      context
+      | host: Wardrik.Host.register(context.host, :settings, [{WardrikNotify, rooms: rooms}])
+    })
+
+    route = %{"notify" => ["chat:#updates", "audit"]}
+    {key, pid} = agent(context, {AgentRunners, :parking, [self(), "call_1"]}, route)
+
+    :ok = Wardrik.Agent.ask(pid, "Ship it.")
+    _cursor = saved(key)
+
+    assert_received {:posted, %WardrikDefinition.Room{channel: "chat", room: "#updates"},
+                     %WardrikNotify.Notice{agent: ^key, kind: :parked}}
+
+    assert_received {:notice, %{"event" => "turn_parked"}}
   end
 
   test "tries a delivery that crashed again", context do

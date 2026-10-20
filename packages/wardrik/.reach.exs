@@ -17,7 +17,7 @@
       "Wardrik.Scope",
       "Wardrik.Spawned"
     ],
-    definition: ["Wardrik.Definition", "Wardrik.Definitions", "Wardrik.Specs.Wardrik.Definitions", "WardrikDefinition.*"],
+    definition: ["Wardrik.Definition", "Wardrik.Definitions", "Wardrik.Specs.Wardrik.Definitions", "WardrikDefinition.*", "String.Chars.WardrikDefinition.Room"],
     policy: ["WardrikPolicy", "WardrikPolicy.*"],
     triggers: ["WardrikTrigger", "WardrikTrigger.*", "Wardrik.Triggers.WardrikTrigger.Deliveries"],
     workspace: ["WardrikWorkspace", "WardrikWorkspace.*", "Wardrik.Workspace.WardrikWorkspace.Backend.Store"],

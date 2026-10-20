@@ -132,8 +132,13 @@ defmodule WardrikChannel do
   or the room's agent answers everything. What the agent answers is posted
   in the thread by `WardrikChannel.Replies`.
 
-  `WardrikChannel.Notices` is a `WardrikNotify` target that posts notices in
-  a room through a channel's adapter.
+  ## Notices
+
+  `WardrikChannel.Notices` posts notices in a room through a channel's
+  adapter: as a `WardrikNotify` target, and in the rooms agents' routes
+  name, `slack:#updates`, each in a workspace of the agent's own owner, so
+  every org's agents post in their own. The bot must be able to post in
+  the room, as by being invited into it.
   """
 
   alias Wardrik.AgentAddress
@@ -215,8 +220,10 @@ defmodule WardrikChannel do
   @doc """
   `host` running the channels `settings` name, where it names any: among
   its routes, `/v1/channels/`, where `WardrikChannel.Requests` answers what
-  each channel's medium sends it, and among its children
-  `WardrikChannel.Replies` and `WardrikChannel.Supervisor`, which run them.
+  each channel's medium sends it; among its children
+  `WardrikChannel.Replies` and `WardrikChannel.Supervisor`, which run them;
+  and as `WardrikNotify`'s `:rooms`, `WardrikChannel.Notices`, which posts
+  in the rooms agents' routes name.
 
     * `:channels` - each channel's adapter and the options its `config/1`
       answered, by the channel's name
@@ -236,8 +243,17 @@ defmodule WardrikChannel do
         |> Wardrik.Host.register(:routes, [
           {["v1", "channels"], {WardrikChannel.Requests, settings}}
         ])
+        |> Wardrik.Host.register(:settings, [{WardrikNotify, rooms: notices(settings)}])
         |> Wardrik.Host.child({WardrikChannel.Replies, settings: settings})
         |> Wardrik.Host.child({WardrikChannel.Supervisor, settings: settings})
+  end
+
+  defp notices(settings) do
+    %WardrikChannel.Notices{
+      channels:
+        Map.new(settings[:channels], fn {name, channel} -> {to_string(name), channel} end),
+      installations: settings[:installations]
+    }
   end
 
   @doc """

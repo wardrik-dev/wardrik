@@ -388,14 +388,14 @@ export interface AgentDefinition {
     [k: string]: unknown;
   }[];
   /**
-   * Who hears when the agent parks, fails or answers: a target config.yaml's notify names, a list of them, or to and on. A target tells only the agents of the orgs it serves.
+   * Who hears when the agent parks, fails or answers: a target config.yaml's notify names or a room in a channel, as slack:#updates; a list of them; or to and on. A target tells only the agents of the orgs it serves, and a room is posted in a workspace of the agent's own owner.
    */
   notify?:
     | string
     | string[]
     | {
         /**
-         * The targets, as config.yaml's notify names them.
+         * The targets, as config.yaml's notify names them, and rooms in channels, as slack:#updates.
          */
         to: string | string[];
         /**

@@ -640,7 +640,7 @@ defmodule Wardrik.Definition.ReadingTest do
              read("---\nchannels: [1]\n---\n", context)
   end
 
-  test "notify routes the agent's notices to targets by name, each telling the orgs it serves",
+  test "notify routes the agent's notices to targets by name, and to rooms in channels",
        context do
     assert %WardrikDefinition.Route{targets: ["ops"], on: [:parked, :failed]} =
              route("---\nnotify: ops\n---\n", context)
@@ -648,6 +648,11 @@ defmodule Wardrik.Definition.ReadingTest do
     assert %WardrikDefinition.Route{targets: ["ops", "audit"], on: [:finished]} =
              route("---\nnotify: {to: [ops, audit], on: [finished]}\n---\n", context)
 
+    assert %WardrikDefinition.Route{targets: ["ops"], rooms: [room]} =
+             route(~s(---\nnotify: ["slack:#updates", ops]\n---\n), context)
+
+    assert room == %WardrikDefinition.Room{channel: "slack", room: "#updates"}
+    assert to_string(room) == "slack:#updates"
     assert nil == route("---\n---\n", context)
 
     for {settings, refusal} <- [
@@ -655,6 +660,8 @@ defmodule Wardrik.Definition.ReadingTest do
           {"{to: []}", "notify names no target"},
           {"{to: ops, when: now}", "notify when is not a setting; expected to or on"},
           {"[1]", "notify names 1, which is not a target"},
+          {~s(":#ops"), ~s(notify names ":#ops"; a room is its channel, : and the room)},
+          {~s("slack:"), ~s(notify names "slack:"; a room is its channel)},
           {"5", "notify is a target, a list of them, or to and on"}
         ] do
       assert {:error, message} = route("---\nnotify: #{settings}\n---\n", context)

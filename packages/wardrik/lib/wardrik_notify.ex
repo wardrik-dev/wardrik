@@ -4,8 +4,10 @@ defmodule WardrikNotify do
   parked on a question, one that failed, and, when asked for, what a turn
   answered.
 
-  `config.yaml` names targets, and an agent's definition routes it to them. A
-  target in a chat medium is a room in one of `config.yaml`'s `channels`:
+  `config.yaml` names targets, and an agent's definition routes it to them,
+  or to a room of one of `config.yaml`'s `channels`, as `<channel>:<room>`.
+  A target in a chat medium is a room of a channel too, and names whom it
+  asks:
 
       notify:
         ops:
@@ -18,7 +20,7 @@ defmodule WardrikNotify do
             secret: ${WARDRIK_WEBHOOK_SECRET}
 
       # agents/triage.md
-      notify: {to: [ops], on: [parked, failed, finished]}
+      notify: {to: [ops, "slack:#updates"], on: [parked, failed, finished]}
 
   A target is a module implementing this behaviour and its options.
   `WardrikNotify.Webhook` ships with the package, `WardrikChannel.Notices`
@@ -37,6 +39,14 @@ defmodule WardrikNotify do
 
   A target's `:orgs` is the orgs whose agents it tells, every org's unless it
   says. `config/1` reads `config.yaml`'s `notify` into the targets.
+
+  A room a route names, `slack:#updates`, is posted in through the
+  `WardrikNotify.Rooms` the host holds as this module's `:rooms` setting,
+  which `wardrik_channel` registers as it attaches: in a workspace the
+  channel is installed in for the agent's own owner, so each org's agents
+  post in their own, and one whose owner has none posts nothing, with a
+  warning. It asks nobody: who may answer is what the token the host's
+  `Wardrik.Issuer` issues them allows.
 
   `WardrikNotify.Keeper`, one in the cluster, follows every agent's log
   as the deployment, `Wardrik.Principal.deployment/0`, so the host's
@@ -58,16 +68,14 @@ defmodule WardrikNotify do
 
   @doc """
   `host` with `WardrikNotify.Supervisor` among its children, delivering to
-  `:targets`, where it names any, as the agents' definitions on the host
-  route them. `:req_options`, `:backoff` and `:name` are the supervisor's.
+  `:targets` and the rooms of the host's channels, as the agents'
+  definitions on the host route them. `:req_options`, `:backoff` and
+  `:name` are the supervisor's.
   """
   @spec attach(Wardrik.Host.t(), keyword()) :: Wardrik.Host.t()
   def attach(%Wardrik.Host{} = host, opts \\ []) do
     opts = Keyword.validate!(opts, [:req_options, :backoff, :name, targets: []])
-
-    if opts[:targets] == [],
-      do: host,
-      else: Wardrik.Host.child(host, {WardrikNotify.Supervisor, opts})
+    Wardrik.Host.child(host, {WardrikNotify.Supervisor, opts})
   end
 
   @doc """
@@ -124,8 +132,13 @@ defmodule WardrikNotify do
 
   defp target!(name, _target), do: invalid!([name], @target)
 
-  # reach:disable-next-line unsafe_atom_creation -- config.yaml's own target names
-  defp named(name), do: String.to_atom(name)
+  defp named(name) do
+    if String.contains?(name, ":"),
+      do: invalid!([name], "is not a target's name: one holds no :, which writes a room")
+
+    # reach:disable-next-line unsafe_atom_creation -- config.yaml's own target names
+    String.to_atom(name)
+  end
 
   defp known!(table, keys, path) do
     case Map.keys(table) -- keys do

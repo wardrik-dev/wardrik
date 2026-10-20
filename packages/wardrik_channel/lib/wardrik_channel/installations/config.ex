@@ -4,8 +4,9 @@ defmodule WardrikChannel.Installations.Config do
   names a token, in the one workspace that token reaches, which is named as
   the channel is, since the config does not say which it is. `fetch/3`
   answers a channel's for every workspace the medium names, since its
-  token reaches one only; installing more is refused, and deleting one
-  leaves the config as it is.
+  token reaches one only, and `owned/3` answers it for the owner it was
+  installed for; installing more is refused, and deleting one leaves the
+  config as it is.
   """
 
   alias WardrikChannel.Installation
@@ -34,6 +35,9 @@ defmodule WardrikChannel.Installations.Config do
   defimpl WardrikChannel.Installations do
     def fetch(%{installations: installations}, channel, _workspace),
       do: Map.fetch(installations, channel)
+
+    def owned(%{installations: installations}, channel, owner),
+      do: for({^channel, %Installation{owner: ^owner} = held} <- installations, do: held)
 
     def put(_config, %Installation{channel: channel}),
       do: {:error, "#{channel} is installed from its token in the config, and in no other way."}

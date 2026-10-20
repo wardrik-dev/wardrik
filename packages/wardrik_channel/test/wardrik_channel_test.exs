@@ -45,6 +45,10 @@ defmodule WardrikChannelTest do
                Wardrik.Host.children(host)
 
       assert kept == routed
+
+      assert %WardrikChannel.Notices{channels: %{"one" => {WardrikChannel.Test.Adapter, _test}}} =
+               Wardrik.Host.settings(host, WardrikNotify)[:rooms]
+
       assert WardrikChannel.attach(host(), channels: []) == host()
       assert_raise ArgumentError, fn -> WardrikChannel.attach(host(), mounts: []) end
     end
@@ -153,6 +157,77 @@ defmodule WardrikChannelTest do
 
     assert {:error, :no_room} =
              WardrikChannel.Notices.deliver(notice, Keyword.put(opts, :room, "#nowhere"))
+  end
+
+  describe "the rooms agents' routes name" do
+    setup do
+      {:ok, held} = Agent.start_link(fn -> %{} end)
+      installations = %WardrikChannel.Test.Installations{agent: held}
+
+      for org <- ["acme", "globex"],
+          do:
+            :ok =
+              Installations.put(installations, %Installation{
+                channel: "chat",
+                workspace: "T-" <> org,
+                owner: Resource.parse!(org),
+                token: "token"
+              })
+
+      host =
+        WardrikChannel.attach(host(),
+          channels: [chat: {WardrikChannel.Test.Adapter, test: self()}],
+          installations: installations
+        )
+
+      %{rooms: Wardrik.Host.settings(host, WardrikNotify)[:rooms]}
+    end
+
+    defp notice(agent), do: %{notice() | agent: Wardrik.AgentID.parse!(agent)}
+
+    test "posts in a workspace of the agent's own owner, never another's", %{rooms: rooms} do
+      room = %WardrikDefinition.Room{channel: "chat", room: "#updates"}
+
+      for {agent, workspace} <- [
+            {"acme/triage", "T-acme"},
+            {"globex/triage", "T-globex"},
+            {"acme/@jon/triage", "T-acme"}
+          ] do
+        notice = notice(agent)
+        assert :ok = WardrikNotify.Rooms.post(rooms, room, notice, req_options: [retry: false])
+
+        assert_received {:delivered,
+                         %Outbound{
+                           installation: %Installation{workspace: ^workspace},
+                           room: "#updates",
+                           body: {:notice, ^notice},
+                           approvers: []
+                         }, channel}
+
+        assert channel[:req_options] == [retry: false]
+      end
+    end
+
+    test "posts nothing where its owner has the channel in no workspace, or there is none",
+         %{rooms: rooms} do
+      assert {:skip, "but chat is installed in no workspace of its owner's"} =
+               WardrikNotify.Rooms.post(
+                 rooms,
+                 %WardrikDefinition.Room{channel: "chat", room: "#updates"},
+                 notice("initech/triage"),
+                 []
+               )
+
+      assert {:skip, "which names no channel of this host's"} =
+               WardrikNotify.Rooms.post(
+                 rooms,
+                 %WardrikDefinition.Room{channel: "other", room: "#updates"},
+                 notice("acme/triage"),
+                 []
+               )
+
+      refute_received {:delivered, _outbound, _channel}
+    end
   end
 
   test "starts each channel's own, under its name" do
@@ -301,6 +376,11 @@ defmodule WardrikChannelTest do
              Installations.fetch(config, "slack", "T0123")
 
     assert :error = Installations.fetch(config, "other", "T0123")
+
+    assert [%Installation{channel: "slack"}] =
+             Installations.owned(config, "slack", Resource.parse!("*"))
+
+    assert [] = Installations.owned(config, "slack", Resource.parse!("acme"))
     assert {:error, _why} = Installations.put(config, %{installation() | channel: "slack"})
     assert :ok = Installations.delete(config, "slack", "slack")
     assert {:ok, _still} = Installations.fetch(config, "slack", "slack")
