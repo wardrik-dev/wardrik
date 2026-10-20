@@ -1,8 +1,10 @@
 defmodule Wardrik.WaitTest do
   use ExUnit.Case, async: true
 
+  alias Wardrik.Agent.Message
   alias Wardrik.Conversation.Assistant
   alias Wardrik.Conversation.ToolCall
+  alias Wardrik.Decided
   alias Wardrik.Error
   alias Wardrik.LLM.Turn
   alias Wardrik.Principal
@@ -52,12 +54,21 @@ defmodule Wardrik.WaitTest do
     end
   end
 
-  describe "asking with wait:" do
-    test "answers the agent's reply once its run completes" do
+  # Sends `text` to `agent`, then waits for its turn.
+  defp asked(scope, agent, text, opts \\ []) do
+    {:ok, message} = Wardrik.agent_ask(scope, agent, text)
+    Wardrik.agent_await(scope, message, opts)
+  end
+
+  describe "awaiting" do
+    test "a message answers the agent's reply once its turn completes" do
       agent = agent({AgentRunners, :echo, [self(), "Order 1001 left on Monday."]})
 
+      assert {:ok, %Message{agent: ^agent} = message} =
+               Wardrik.agent_ask(scope(), agent, "Where is order 1001?")
+
       assert {:ok, %Reply{agent: ^agent, text: "Order 1001 left on Monday."} = reply} =
-               Wardrik.agent_ask(scope(), agent, "Where is order 1001?", wait: 5_000)
+               Wardrik.agent_await(scope(), message)
 
       assert [%{"role" => "assistant"}] = reply.messages
       resources = [Wardrik.AgentAddress.resource(agent)]
@@ -65,53 +76,56 @@ defmodule Wardrik.WaitTest do
       assert Enum.to_list(events) == []
     end
 
-    test "answers the calls its run waits on, and carries on once they are decided" do
+    test "a message answers the calls its turn waits on, and a decision the turn it carries on" do
       agent =
         agent({AgentRunners, :parking, [self(), "call_1"]},
           resume: {AgentRunners, :resuming, [self(), @shipped]}
         )
 
-      assert {:waiting, %Waiting{run: run, calls: [call]}} =
-               Wardrik.agent_ask(scope(), agent, "Ship it", wait: 5_000)
-
+      assert {:waiting, %Waiting{run: run, calls: [call]}} = asked(scope(), agent, "Ship it")
       assert %{id: "call_1", reason: :tool_approval, name: "deploy", message: _prompt} = call
 
-      assert {:ok, %Reply{run: ^run, text: "Shipped."}} =
-               Wardrik.agent_approve(scope(), agent, "call_1", wait: 5_000)
+      assert {:ok,
+              %Decided{agent: ^agent, run: ^run, decisions: %{"call_1" => :approve}} = decided} =
+               Wardrik.agent_approve(scope(), agent, "call_1")
+
+      assert {:ok, %Reply{run: ^run, text: "Shipped."}} = Wardrik.agent_await(scope(), decided)
     end
 
-    test "answers the calls a decision leaves waiting" do
-      agent =
-        agent({__MODULE__, :parking_two, []}, resume: {__MODULE__, :deciding, []})
+    test "a decision answers the calls it leaves waiting" do
+      agent = agent({__MODULE__, :parking_two, []}, resume: {__MODULE__, :deciding, []})
 
       assert {:waiting, %Waiting{run: run, calls: [_one, _two]}} =
-               Wardrik.agent_ask(scope(), agent, "Ship both", wait: 5_000)
+               asked(scope(), agent, "Ship both")
+
+      {:ok, denied} = Wardrik.agent_deny(scope(), agent, "call_1")
 
       assert {:waiting, %Waiting{run: ^run, calls: [%{id: "call_2"}]}} =
-               Wardrik.agent_deny(scope(), agent, "call_1", wait: 5_000)
+               Wardrik.agent_await(scope(), denied)
 
-      assert %Reply{text: "Shipped."} =
-               Wardrik.agent_approve!(scope(), agent, "call_2", wait: 5_000)
+      approved = Wardrik.agent_approve!(scope(), agent, "call_2")
+      assert %Reply{text: "Shipped."} = Wardrik.agent_await!(scope(), approved)
     end
 
-    test "answers a run that fails, or is stopped, as an error" do
+    test "a turn that fails, or is stopped, answers an error" do
       agent = agent({AgentRunners, :failing, [:no_model]})
 
       assert {:error, %Error{type: :failed, details: %{"error" => %{"message" => _why}}}} =
-               Wardrik.agent_ask(scope(), agent, "Hi", wait: 5_000)
+               asked(scope(), agent, "Hi")
 
       agent = agent({AgentRunners, :blocking, [self(), "ok"]}, grace: 10)
-      waiting = Task.async(fn -> Wardrik.agent_ask(scope(), agent, "Hi", wait: 5_000) end)
+      {:ok, message} = Wardrik.agent_ask(scope(), agent, "Hi")
+      waiting = Task.async(fn -> Wardrik.agent_await(scope(), message) end)
       assert_receive {:turn, _messages, _turn}
       assert :ok = Wardrik.agent_cancel(scope(), agent)
 
       assert {:error, %Error{type: :cancelled}} = Task.await(waiting)
     end
 
-    test "stops waiting after its time, and the agent carries on" do
+    test "stops after its timeout, and the agent carries on" do
       agent = agent({AgentRunners, :blocking, [self(), "Done."]})
 
-      assert {:error, %Error{type: :timeout}} = Wardrik.agent_ask(scope(), agent, "Hi", wait: 50)
+      assert {:error, %Error{type: :timeout}} = asked(scope(), agent, "Hi", timeout: 50)
       assert_receive {:turn, _messages, turn}
       send(turn, :release)
 
@@ -123,13 +137,15 @@ defmodule Wardrik.WaitTest do
       assert Wardrik.Conversation.text(List.last(history.messages)) == "Done."
     end
 
-    test "needs agent.events on the agent, and sends nothing without it" do
+    test "needs agent.events on the agent" do
       agent = agent({AgentRunners, :echo, [self(), "ok"]})
+      {:ok, message} = Wardrik.agent_ask(scope([:messenger]), agent, "Hi")
 
       assert {:error, %Error{type: :forbidden}} =
-               Wardrik.agent_ask(scope([:messenger]), agent, "Hi", wait: 5_000)
+               Wardrik.agent_await(scope([:messenger]), message)
 
-      assert {:ok, %{history: %{messages: []}}} = Wardrik.agent_read(scope(), agent)
+      assert_raise Error, fn -> Wardrik.agent_await!(scope([:messenger]), message) end
+      assert {:ok, %Reply{}} = Wardrik.agent_await(scope(), message)
     end
   end
 end

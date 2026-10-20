@@ -397,7 +397,7 @@ defmodule WardrikHTTP.Router do
      &with(
        {:ok, decisions} <- decisions(conn.body_params),
        do: Wardrik.agent_decide(&1, &2, decisions)
-     ), &JSON.decisions/1}
+     ), &JSON.decisions(&1.decisions)}
   end
 
   defp route("GET", ["interrupts", id, "authorization"], _conn),

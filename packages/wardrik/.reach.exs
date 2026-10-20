@@ -17,6 +17,7 @@
       "Wardrik.Listener",
       "Wardrik.Migration",
       "Wardrik.Moving",
+      "Wardrik.Decided",
       "Wardrik.Reply",
       "Wardrik.Scope",
       "Wardrik.Spawned",

@@ -1,7 +1,7 @@
 defmodule Wardrik.Wait do
   @moduledoc false
-  # Follows an agent's log from a cursor to the end of one run, for the
-  # `wait:` of `Wardrik.agent_ask/4` and `Wardrik.agent_decide/4`.
+  # Follows an agent's log from a cursor to the end of one run, for
+  # `Wardrik.agent_await/3`.
 
   alias Wardrik.AgentAddress
   alias Wardrik.Error

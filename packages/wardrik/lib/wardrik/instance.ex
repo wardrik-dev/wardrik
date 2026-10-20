@@ -98,6 +98,16 @@ defmodule Wardrik.Instance do
 
   @subscribe NimbleOptions.new!(@following)
 
+  @id [type: {:or, [:string, nil]}, doc: "the message's id; a new one by default"]
+  @timeout [
+    type: :timeout,
+    default: 60_000,
+    doc: "how long to wait, in milliseconds, or `:infinity`"
+  ]
+
+  @send NimbleOptions.new!(id: @id)
+  @ask NimbleOptions.new!(id: @id, timeout: @timeout)
+
   @events NimbleOptions.new!(
             @following ++
               [
@@ -126,9 +136,11 @@ defmodule Wardrik.Instance do
     put_trigger: [:user, :agent, :name, :fields],
     delete_trigger: [:user, :agent, :name],
     ask: [:user, :agent, :text, {:opts, []}],
+    send: [:user, :agent, :text, {:opts, []}],
+    await: [:user, :sent, {:opts, []}],
     approve: [:user, :agent, :calls, {:opts, []}],
     deny: [:user, :agent, :calls, {:opts, []}],
-    decide: [:user, :agent, :decisions, {:opts, []}],
+    decide: [:user, :agent, :decisions],
     waiting: [:user, {:opts, []}],
     authorization: [:user, :agent, :call],
     cancel: [:user, :agent],
@@ -423,8 +435,24 @@ defmodule Wardrik.Instance do
   def list(module, user, opts), do: under(module, user, opts, &Wardrik.agents_list/2)
 
   @doc false
-  def ask(module, user, agent, text, opts),
-    do: on(module, user, agent, &Wardrik.agent_ask(&1, &2, text, opts))
+  def ask(module, user, agent, text, opts) do
+    opts = NimbleOptions.validate!(opts, @ask)
+
+    with {:ok, message} <- send(module, user, agent, text, Keyword.take(opts, [:id])),
+         do: await(module, user, message, Keyword.take(opts, [:timeout]))
+  end
+
+  @doc false
+  def send(module, user, agent, text, opts) do
+    opts = NimbleOptions.validate!(opts, @send)
+    on(module, user, agent, &Wardrik.agent_ask(&1, &2, text, opts))
+  end
+
+  @doc false
+  def await(module, user, sent, opts) do
+    {scope, _who} = scope(module, user)
+    Wardrik.agent_await(scope, sent, opts)
+  end
 
   @doc false
   def approve(module, user, agent, calls, opts),
@@ -435,8 +463,8 @@ defmodule Wardrik.Instance do
     do: on(module, user, agent, &Wardrik.agent_deny(&1, &2, calls, opts))
 
   @doc false
-  def decide(module, user, agent, decisions, opts),
-    do: on(module, user, agent, &Wardrik.agent_decide(&1, &2, decisions, opts))
+  def decide(module, user, agent, decisions),
+    do: on(module, user, agent, &Wardrik.agent_decide(&1, &2, decisions))
 
   @doc false
   def waiting(module, user, opts), do: under(module, user, opts, &Wardrik.agents_parked/2)

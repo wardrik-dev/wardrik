@@ -200,17 +200,17 @@ defmodule Wardrik.APITest do
     assert {:error, %Error{type: :not_found}} =
              Wardrik.agent_authorization_read(scope, agent, "call_1")
 
-    assert {:ok, %{"call_1" => {:approve, "Only staging."}}} =
+    assert {:ok, %Wardrik.Decided{decisions: %{"call_1" => {:approve, "Only staging."}}}} =
              Wardrik.agent_approve(scope, agent, "call_1", note: "Only staging.")
 
     denied = parked(scope)
 
-    assert {:ok, %{"call_1" => {:deny, "Not now."}}} =
+    assert {:ok, %Wardrik.Decided{decisions: %{"call_1" => {:deny, "Not now."}}}} =
              Wardrik.agent_deny(scope, denied, ["call_1"], reason: "Not now.")
 
     decided = parked(scope)
 
-    assert {:ok, %{"call_1" => {:approve, "Fine."}}} =
+    assert {:ok, %Wardrik.Decided{decisions: %{"call_1" => {:approve, "Fine."}}}} =
              Wardrik.agent_decide(scope, decided, %{"call_1" => {:approve, "Fine."}})
   end
 
@@ -315,12 +315,18 @@ defmodule Wardrik.APITest do
     assert :ok = Wardrik.agent_forget!(scope, agent)
 
     parked = parked(scope)
-    assert %{"call_1" => :approve} = Wardrik.agent_approve!(scope, parked, "call_1")
+
+    assert %Wardrik.Decided{decisions: %{"call_1" => :approve}} =
+             Wardrik.agent_approve!(scope, parked, "call_1")
+
     denied = parked(scope)
-    assert %{"call_1" => {:deny, _reason}} = Wardrik.agent_deny!(scope, denied, "call_1")
+
+    assert %Wardrik.Decided{decisions: %{"call_1" => {:deny, _reason}}} =
+             Wardrik.agent_deny!(scope, denied, "call_1")
+
     decided = parked(scope)
 
-    assert %{"call_1" => :approve} =
+    assert %Wardrik.Decided{decisions: %{"call_1" => :approve}} =
              Wardrik.agent_decide!(scope, decided, %{"call_1" => :approve})
 
     echo = start({AgentRunners, :echo, [self(), "ok"]})

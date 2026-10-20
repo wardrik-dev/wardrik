@@ -61,7 +61,7 @@ defmodule MyApp.Agents do
     Wardrik.agent_define(scope(user), agent, definition)
   end
 
-  def ask(user, agent, text), do: Wardrik.agent_ask(scope(user), agent, text)
+  def send(user, agent, text), do: Wardrik.agent_ask(scope(user), agent, text)
 
   def subscribe(user, agent),
     do: Wardrik.subscribe(scope(user), resources: [AgentID.resource(agent)])

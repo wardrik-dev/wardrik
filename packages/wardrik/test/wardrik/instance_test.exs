@@ -4,9 +4,12 @@ defmodule Wardrik.InstanceTest do
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentID
+  alias Wardrik.Conversation.Assistant
+  alias Wardrik.Decided
   alias Wardrik.Error
   alias Wardrik.Event.MessageDelta
   alias Wardrik.Reply
+  alias Wardrik.Waiting
 
   defmodule User do
     @moduledoc false
@@ -213,7 +216,7 @@ defmodule Wardrik.InstanceTest do
       {:ok, %Snapshot{agent: agent}} = Agents.define(maria, name, fields())
 
       assert :ok = Agents.subscribe(maria, name)
-      assert {:ok, %Message{}} = Agents.ask(maria, name, "What changed this week?")
+      assert {:ok, %Message{}} = Agents.send(maria, name, "What changed this week?")
       assert_receive %{source: ^agent, cloudevent: %{}}, 5_000
       assert :ok = Agents.unsubscribe(maria, name)
 
@@ -221,7 +224,7 @@ defmodule Wardrik.InstanceTest do
       assert Enum.any?(Enum.take(events, 1), &match?(%{source: ^agent}, &1))
     end
 
-    test "waits for the reply, and streams it to a subscriber as it comes" do
+    test "asks and waits for the reply, which streams to a subscriber as it comes" do
       maria = user("acme")
       name = name()
       {:ok, %Snapshot{agent: agent}} = Agents.define(maria, name, fields())
@@ -231,10 +234,46 @@ defmodule Wardrik.InstanceTest do
       assert :ok = Agents.subscribe(maria, name, types: ["wardrik.message.delta"])
 
       assert {:ok, %Reply{agent: ^agent, text: "Monday."}} =
-               Agents.ask(maria, name, "When did order 1001 ship?", wait: 5_000)
+               Agents.ask(maria, name, "When did order 1001 ship?")
 
       assert_receive %MessageDelta{source: ^agent, delta: "Monday."}, 5_000
-      assert %Reply{text: "Still Monday."} = Agents.ask!(maria, name, "Again?", wait: 5_000)
+      assert %Reply{text: "Still Monday."} = Agents.ask!(maria, name, "Again?", timeout: 5_000)
+    end
+
+    test "sends at once, and awaits the reply later, or stops waiting after its timeout" do
+      maria = user("acme")
+      name = name()
+      {:ok, %Snapshot{agent: agent}} = Agents.define(maria, name, fields())
+      Wardrik.Test.LLM.stream(Wardrik.Test.llm(), [Wardrik.Test.LLM.final_answer("Done.")])
+
+      assert {:ok, %Message{agent: ^agent} = message} = Agents.send(maria, name, "Summarise it")
+      assert %Reply{text: "Done."} = Agents.await!(maria, message)
+
+      assert %Message{} = message = Agents.send!(maria, name, "And again", id: "m2")
+      assert message.id == "m2"
+      assert {:error, %Error{type: :timeout}} = Agents.await(maria, message, timeout: 0)
+      assert {:error, %Error{type: :timeout}} = Agents.ask(maria, name, "Once more", timeout: 0)
+    end
+
+    test "approves a call its agent waits on, and awaits the turn it carries on" do
+      maria = user("acme")
+      name = name()
+      agent = AgentID.new!(name, org: "acme", user: to_string(maria.id))
+
+      config =
+        Wardrik.Test.Script.new({Wardrik.Test.AgentRunners, :parking, [self(), "call_1"]},
+          resume:
+            {Wardrik.Test.AgentRunners, :resuming, [self(), {:ok, [Assistant.new("Shipped.")]}]}
+        )
+
+      {^agent, _pid} = Wardrik.Test.Fleet.start_agent([config: config], agent)
+
+      assert {:waiting, %Waiting{calls: [%{id: "call_1"}]}} = Agents.ask(maria, name, "Ship it")
+
+      assert {:ok, %Decided{decisions: %{"call_1" => :approve}} = decided} =
+               Agents.approve(maria, name, "call_1")
+
+      assert {:ok, %Reply{text: "Shipped."}} = Agents.await(maria, decided)
     end
 
     test "nobody else reaches it, in their org or another" do
@@ -243,7 +282,7 @@ defmodule Wardrik.InstanceTest do
 
       for other <- [user("acme"), user("globex")] do
         assert {:error, %Error{type: :not_found}} = Agents.get(other, agent)
-        assert {:error, %Error{type: :not_found}} = Team.ask(other, agent, "Hello?")
+        assert {:error, %Error{type: :not_found}} = Team.send(other, agent, "Hello?")
       end
 
       assert_raise Error, fn -> Agents.get!(user("acme"), agent) end
@@ -263,7 +302,7 @@ defmodule Wardrik.InstanceTest do
       {:ok, _snapshot} = Wardrik.agent_define(root, agent, Wardrik.Instance.fields(fields()))
 
       assert {:ok, %Snapshot{agent: ^agent}} = Team.get(maria, {:org, name})
-      assert {:ok, %Message{}} = Team.ask(maria, {:org, name}, "Hello?")
+      assert {:ok, %Message{}} = Team.send(maria, {:org, name}, "Hello?")
       assert {:error, %Error{type: :forbidden}} = Team.define(maria, {:org, name}, fields())
 
       assert {:error, %Error{type: :not_found}} = Agents.get(maria, {:org, name})
@@ -410,7 +449,7 @@ defmodule Wardrik.InstanceTest do
        agents: Agents, test: self(), after: "", resources: [Wardrik.AgentAddress.resource(agent)]}
     )
 
-    {:ok, %Message{}} = Agents.ask(maria, name, "Anything new?")
+    {:ok, %Message{}} = Agents.send(maria, name, "Anything new?")
     assert_receive {:handled, %{source: ^agent}}, 5_000
   end
 

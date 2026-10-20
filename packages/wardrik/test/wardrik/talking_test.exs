@@ -213,7 +213,7 @@ defmodule Wardrik.TalkingTest do
     test "decides a call the agent waits on, as the scope's principal" do
       id = parked_agent()
 
-      assert {:ok, %{"call_1" => {:deny, "No."}}} =
+      assert {:ok, %Wardrik.Decided{decisions: %{"call_1" => {:deny, "No."}}}} =
                Wardrik.agent_deny(scope(), id, "call_1", reason: "No.")
 
       assert_receive %Bus.Event{payload: %Bus.CallDecided{call_id: "call_1", by: by}}

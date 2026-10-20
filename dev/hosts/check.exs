@@ -133,7 +133,7 @@ defmodule WardrikHost.GuideTest do
   test "a user defines an agent of their own, and asks it", %{user: user, agent: agent} do
     :ok = agents().subscribe(user, agent)
 
-    assert {:ok, %Wardrik.Agent.Message{}} = agents().ask(user, agent, "What changed this week?")
+    assert {:ok, %Wardrik.Agent.Message{}} = agents().send(user, agent, "What changed this week?")
 
     assert_receive %Wardrik.Event.RunStarted{}, 10_000
     assert {:ok, doing} = agents().doing(user, agent)
@@ -143,7 +143,7 @@ defmodule WardrikHost.GuideTest do
   test "the app's listener keeps the agent's runs in its own tables, with its place",
        %{user: user, agent: agent} do
     repo = Module.concat([System.fetch_env!("WARDRIK_HOST_REPO")])
-    assert {:ok, %Wardrik.Agent.Message{}} = agents().ask(user, agent, "Anything new?")
+    assert {:ok, %Wardrik.Agent.Message{}} = agents().send(user, agent, "Anything new?")
 
     assert eventually(fn ->
              %{rows: rows} =
@@ -172,7 +172,7 @@ defmodule WardrikHost.GuideTest do
     for other <- [user("acme"), user("globex")],
         do:
           assert(
-            {:error, %Wardrik.Error{type: :not_found}} = agents().ask(other, agent, "Hello?")
+            {:error, %Wardrik.Error{type: :not_found}} = agents().send(other, agent, "Hello?")
           )
   end
 

@@ -19,7 +19,7 @@ defmodule Wardrik.Error do
 
   `details` holds whatever else a surface may answer beside the message.
 
-  The last three come only from a function's `wait:`, which the HTTP API
+  The last three come only from `Wardrik.agent_await/3`, which the HTTP API
   does not offer.
 
   It is an exception, so a function that answers it in `{:error, error}` has

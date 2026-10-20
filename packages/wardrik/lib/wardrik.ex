@@ -29,7 +29,8 @@ defmodule Wardrik do
           instructions: "Answer questions about orders in two sentences."
         )
 
-      {:ok, _message} = MyApp.Agents.ask(maria, "support", "Where is order 1001?")
+      {:ok, reply} = MyApp.Agents.ask(maria, "support", "Where is order 1001?")
+      reply.text
 
   Notice `"support"` is Maria's own agent. Nobody else reaches it unless
   your `c:grants/1` says so.
@@ -93,6 +94,7 @@ defmodule Wardrik do
   alias Wardrik.Audit
   alias Wardrik.Connections
   alias Wardrik.Connections.Connection
+  alias Wardrik.Decided
   alias Wardrik.Definition
   alias Wardrik.Definitions
   alias Wardrik.Deployment.Nodes
@@ -124,11 +126,8 @@ defmodule Wardrik do
   @typedoc "A decision on a call an agent waits on."
   @type decision() :: :approve | {:approve, String.t()} | {:deny, String.t()}
 
-  @typedoc "What deciding answers: the decisions taken, or with `wait:`, how the run ended."
-  @type decided() ::
-          {:ok, %{String.t() => decision()} | Reply.t()}
-          | {:waiting, Waiting.t()}
-          | {:error, Error.t()}
+  @typedoc "How a turn ended, as `agent_await/3` answers it."
+  @type awaited() :: {:ok, Reply.t()} | {:waiting, Waiting.t()} | {:error, Error.t()}
 
   @typedoc "What became of an agent a forget reached: removed, kept with why, or not removed with why."
   @type outcome() :: :forgotten | {:kept, String.t()} | {:failed, String.t()}
@@ -243,51 +242,64 @@ defmodule Wardrik do
   @callback delete_trigger(user(), agent(), name :: String.t() | atom()) :: result(map())
 
   @doc """
-  Sends `agent` `text` from the user, and answers the message queued. Its
-  `cursor` is where the agent's log stood, so `c:events/3` after it reads
-  the turn that answers it.
+  Sends `agent` `text` from the user, and waits for the turn that answers
+  it: `c:send/4`, then `c:await/3`.
 
-  With `wait:`, in milliseconds, it waits for that turn instead:
+      {:ok, %Wardrik.Reply{text: text}} = MyApp.Agents.ask(maria, "support", "Where is order 1001?")
 
-      case MyApp.Agents.ask(maria, "support", "Where is order 1001?", wait: :timer.seconds(30)) do
-        {:ok, %Wardrik.Reply{text: text}} -> text
-        {:waiting, %Wardrik.Waiting{calls: calls}} -> calls
-        {:error, %Wardrik.Error{type: :timeout}} -> "Still working on it."
-      end
-
-  A turn that fails or is stopped answers a `:failed` or `:cancelled`
-  error. Waiting needs the user to read the agent's events. `id:` names
-  the message.
+  It answers as `c:await/3` does. `id:` names the message, and `timeout:`
+  is how long to wait, 60 seconds unless given.
   """
   @doc group: "Talking to an agent"
-  @callback ask(user(), agent(), text :: String.t(), opts :: keyword()) ::
-              result(Message.t() | Reply.t()) | {:waiting, Waiting.t()}
+  @callback ask(user(), agent(), text :: String.t(), opts :: keyword()) :: awaited()
 
   @doc """
-  Runs the call, or calls, `agent` waits on a person for. `note:` is what
-  the agent is told. With `wait:`, it answers how the turn it carries on
-  ends, as `c:ask/4` does.
+  Sends `agent` `text` from the user, and answers the message queued, at
+  once. Hand it to `c:await/3` to wait for the turn that answers it. `id:`
+  names the message.
+  """
+  @doc group: "Talking to an agent"
+  @callback send(user(), agent(), text :: String.t(), opts :: keyword()) :: result(Message.t())
+
+  @doc """
+  How the turn ends that `sent` started: a message `c:send/4` answered, or
+  the `Wardrik.Decided` of `c:approve/4`, `c:deny/4` or `c:decide/3`.
+
+      {:ok, message} = MyApp.Agents.send(maria, "support", "Summarise the inbox")
+      {:ok, %Wardrik.Reply{text: text}} = MyApp.Agents.await(maria, message)
+
+  It answers the turn's `Wardrik.Reply`, or `{:waiting, %Wardrik.Waiting{}}`
+  where it stopped to ask a person. A turn that fails or is stopped answers
+  a `:failed` or `:cancelled` error. One still going after `timeout:`, 60
+  seconds unless given, answers a `:timeout` error, and carries on.
+  Waiting needs the user to read the agent's events.
+  """
+  @doc group: "Talking to an agent"
+  @callback await(user(), sent :: Message.t() | Decided.t(), opts :: keyword()) :: awaited()
+
+  @doc """
+  Runs the call, or calls, `agent` waits on a person for, and answers the
+  `Wardrik.Decided` at once. `note:` is what the agent is told. Hand the
+  answer to `c:await/3` to see how the turn it carries on ends.
   """
   @doc group: "Talking to an agent"
   @callback approve(user(), agent(), calls :: String.t() | [String.t()], opts :: keyword()) ::
-              decided()
+              result(Decided.t())
 
   @doc """
-  Refuses the call, or calls, `agent` waits on a person for. `reason:` is
-  what the agent is told. With `wait:`, it answers how the turn it carries
-  on ends, as `c:ask/4` does.
+  Refuses the call, or calls, `agent` waits on a person for, and answers
+  the `Wardrik.Decided` at once. `reason:` is what the agent is told.
   """
   @doc group: "Talking to an agent"
   @callback deny(user(), agent(), calls :: String.t() | [String.t()], opts :: keyword()) ::
-              decided()
+              result(Decided.t())
 
   @doc """
   Decides several calls at once, by id: `:approve`, `{:approve, note}` or
-  `{:deny, reason}`. With `wait:`, it answers how the turn it carries on
-  ends, as `c:ask/4` does.
+  `{:deny, reason}`, and answers the `Wardrik.Decided` at once.
   """
   @doc group: "Talking to an agent"
-  @callback decide(user(), agent(), %{String.t() => decision()}, opts :: keyword()) :: decided()
+  @callback decide(user(), agent(), %{String.t() => decision()}) :: result(Decided.t())
 
   @doc """
   Every call the user's agents wait on a person for, with its agent.
@@ -584,34 +596,17 @@ defmodule Wardrik do
               id: [
                 type: {:or, [:string, nil]},
                 doc: "the message's id, which the agent takes once; a new UUIDv7 by default"
-              ],
-              wait: [
-                type: :timeout,
-                doc:
-                  "how long, in milliseconds, to wait for the run that answers the message. " <>
-                    "It then answers how the run ended: its `Wardrik.Reply`, or the " <>
-                    "`Wardrik.Waiting` calls it stopped to ask a person about. Needs " <>
-                    "`agent.events` on the agent."
               ]
             )
 
   @doc """
   Sends `agent` `text` from whoever acts with the scope's token, its
   `Wardrik.Token.actor/1`, which it answers in a turn of its own.
-  Acknowledged with the `Wardrik.Agent.Message` queued, whose `cursor` is
-  where the agent's log stood: the turn that answers it is written after
-  it, so `events/2` after it reads that turn. An agent's scope, as
-  `Wardrik.Scope.agent/2` makes it, is answered back.
-
-  With `wait:`, it answers how the run that answers the message ended:
-
-      case Wardrik.agent_ask(scope, agent, "Where is order 1001?", wait: :timer.seconds(30)) do
-        {:ok, %Wardrik.Reply{text: text}} -> text
-        {:waiting, %Wardrik.Waiting{calls: calls}} -> calls
-        {:error, %Wardrik.Error{type: :timeout}} -> "Still working on it."
-      end
-
-  A run that fails or is stopped answers a `:failed` or `:cancelled` error.
+  Acknowledged at once with the `Wardrik.Agent.Message` queued, whose
+  `cursor` is where the agent's log stood: the turn that answers it is
+  written after it, so `agent_await/3` waits for that turn, and `events/2`
+  after it reads it. An agent's scope, as `Wardrik.Scope.agent/2` makes it,
+  is answered back.
 
   ## Options
 
@@ -619,24 +614,18 @@ defmodule Wardrik do
   """
   @doc group: "Talking to an agent"
   @spec agent_ask(Scope.t(), AgentAddress.t(), String.t(), keyword()) ::
-          {:ok, Message.t() | Reply.t()} | {:waiting, Waiting.t()} | {:error, Error.t()}
+          {:ok, Message.t()} | {:error, Error.t()}
   def agent_ask(%Scope{} = scope, agent, text, opts \\ [])
       when is_binary(text) do
     opts = NimbleOptions.validate!(opts, @ask_opts)
 
     with :ok <- said(text, opts[:id]),
-         :ok <- authorize(scope, "agent.ask", agent) do
-      case opts[:wait] do
-        nil -> asked(scope, agent, text, opts[:id])
-        ms -> asked_then(scope, agent, text, opts[:id], ms)
-      end
-    end
-  end
+         :ok <- authorize(scope, "agent.ask", agent),
+         {:ok, %Snapshot{cursor: cursor}} <- agent_snapshot(agent, scope.host) do
+      message =
+        Message.new(text, opts[:id], sender: Token.actor(scope.token), reply_to: scope.reply_to)
 
-  defp asked(scope, agent, text, id) do
-    with {:ok, %Snapshot{cursor: cursor}} <- agent_snapshot(agent, scope.host) do
-      message = Message.new(text, id, sender: Token.actor(scope.token), reply_to: scope.reply_to)
-      message = %{message | cursor: cursor}
+      message = %{message | agent: agent, cursor: cursor}
 
       case Agent.queue(agent, message, host: scope.host) do
         :ok -> {:ok, message}
@@ -645,11 +634,48 @@ defmodule Wardrik do
     end
   end
 
-  defp asked_then(scope, agent, text, id, ms) do
+  @await_opts NimbleOptions.new!(
+                timeout: [
+                  type: :timeout,
+                  default: 60_000,
+                  doc: "how long to wait, in milliseconds, or `:infinity`"
+                ]
+              )
+
+  @doc """
+  How the turn ends that `sent` started: the `Wardrik.Agent.Message`
+  `agent_ask/4` answered, or the `Wardrik.Decided` of a decision. It
+  answers the turn's `Wardrik.Reply`, or the `Wardrik.Waiting` calls it
+  stopped to ask a person about. A turn that fails or is stopped answers a
+  `:failed` or `:cancelled` error, and one that has not ended in time a
+  `:timeout` error, while it carries on.
+
+      {:ok, message} = Wardrik.agent_ask(scope, agent, "Where is order 1001?")
+      {:ok, %Wardrik.Reply{text: text}} = Wardrik.agent_await(scope, message)
+
+  The scope's token must allow `agent.events` on the agent, since the turn
+  may answer other people's messages too.
+
+  ## Options
+
+  #{NimbleOptions.docs(@await_opts)}
+  """
+  @doc group: "Talking to an agent"
+  @spec agent_await(Scope.t(), Message.t() | Decided.t(), keyword()) ::
+          {:ok, Reply.t()} | {:waiting, Waiting.t()} | {:error, Error.t()}
+  def agent_await(%Scope{} = scope, sent, opts \\ []) do
+    opts = NimbleOptions.validate!(opts, @await_opts)
+    {agent, cursor, awaited} = awaited(sent)
+
     with :ok <- authorize(scope, "agent.events", agent),
-         {:ok, message} <- asked(scope, agent, text, id),
-         do: Wait.answer(Host.store(scope.host), agent, message.cursor, {:asked, message.id}, ms)
+         do: Wait.answer(Host.store(scope.host), agent, cursor, awaited, opts[:timeout])
   end
+
+  defp awaited(%Message{agent: %_{} = agent, id: id, cursor: cursor}),
+    do: {agent, cursor, {:asked, id}}
+
+  defp awaited(%Decided{agent: agent, run: run, cursor: cursor}),
+    do: {agent, cursor, {:resumed, run}}
 
   defp said("", _id), do: {:error, Error.new(:invalid, "A message has text to send")}
   defp said(_text, ""), do: {:error, Error.new(:invalid, "A message's id is text")}
@@ -858,23 +884,12 @@ defmodule Wardrik do
 
   defp readable_by(%Scope{token: token}), do: Token.resources(token, "agent.events")
 
-  @decided_wait [
-    type: :timeout,
-    doc:
-      "how long, in milliseconds, to wait for the run the decisions carry on, answered as " <>
-        "`agent_ask/4` answers with `wait:`. A run left waiting on calls nobody decided " <>
-        "answers them as `Wardrik.Waiting`. Needs `agent.events` on the agent."
-  ]
-
-  @approve_opts NimbleOptions.new!(
-                  note: [type: :string, doc: "what the agent is told with it"],
-                  wait: @decided_wait
-                )
+  @approve_opts NimbleOptions.new!(note: [type: :string, doc: "what the agent is told with it"])
 
   @doc """
   Runs the call, or each of the calls, `agent` waits on a person for.
-  Acknowledged with the decisions taken, by call id; the agent's log says
-  what its turn does next.
+  Acknowledged at once with the `Wardrik.Decided`, which `agent_await/3`
+  takes to wait for what the turn does next.
 
   ## Options
 
@@ -882,11 +897,10 @@ defmodule Wardrik do
   """
   @doc group: "Talking to an agent"
   @spec agent_approve(Scope.t(), AgentAddress.t(), String.t() | [String.t()], keyword()) ::
-          decided()
+          {:ok, Decided.t()} | {:error, Error.t()}
   def agent_approve(%Scope{} = scope, agent, calls, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @approve_opts)
-    decision = if(opts[:note], do: {:approve, opts[:note]}, else: :approve)
-    decide(scope, agent, calls, decision, opts)
+    decide(scope, agent, calls, if(opts[:note], do: {:approve, opts[:note]}, else: :approve))
   end
 
   @deny_opts NimbleOptions.new!(
@@ -894,13 +908,12 @@ defmodule Wardrik do
                  type: :string,
                  default: "A person refused this call.",
                  doc: "why, as the agent is told"
-               ],
-               wait: @decided_wait
+               ]
              )
 
   @doc """
   Refuses the call, or each of the calls, `agent` waits on a person for.
-  Acknowledged with the decisions taken, by call id.
+  Acknowledged at once with the `Wardrik.Decided`, as `agent_approve/4` is.
 
   ## Options
 
@@ -908,63 +921,41 @@ defmodule Wardrik do
   """
   @doc group: "Talking to an agent"
   @spec agent_deny(Scope.t(), AgentAddress.t(), String.t() | [String.t()], keyword()) ::
-          decided()
+          {:ok, Decided.t()} | {:error, Error.t()}
   def agent_deny(%Scope{} = scope, agent, calls, opts \\ []) do
     opts = NimbleOptions.validate!(opts, @deny_opts)
-    decide(scope, agent, calls, {:deny, opts[:reason]}, opts)
+    decide(scope, agent, calls, {:deny, opts[:reason]})
   end
 
-  defp decide(scope, agent, calls, decision, opts) do
-    decisions = Map.new(List.wrap(calls), &{&1, decision})
-    agent_decide(scope, agent, decisions, Keyword.take(opts, [:wait]))
-  end
-
-  @decide_opts NimbleOptions.new!(wait: @decided_wait)
+  defp decide(scope, agent, calls, decision),
+    do: agent_decide(scope, agent, Map.new(List.wrap(calls), &{&1, decision}))
 
   @doc """
   Decides several of the calls `agent` waits on at once, each by its id:
   `:approve`, `{:approve, note}` or `{:deny, reason}`, as `agent_approve/4`
-  and `agent_deny/4` decide one kind. Acknowledged with the decisions taken;
-  calls left out stay waiting.
+  and `agent_deny/4` decide one kind. Acknowledged at once with the
+  `Wardrik.Decided`; calls left out stay waiting.
 
   A scope that may read the agent may ask; the agent takes the decisions
   from one whose token allows `agent.decide` on it, or whose principal asked
   for the turn that waits and acts directly, as `Wardrik.Agent.decide/3`
   says, and answers anyone else `:forbidden`.
-
-  ## Options
-
-  #{NimbleOptions.docs(@decide_opts)}
   """
   @doc group: "Talking to an agent"
-  @spec agent_decide(Scope.t(), AgentAddress.t(), %{String.t() => decision()}, keyword()) ::
-          decided()
-  def agent_decide(%Scope{} = scope, agent, decisions, opts \\ []) when is_map(decisions) do
-    opts = NimbleOptions.validate!(opts, @decide_opts)
+  @spec agent_decide(Scope.t(), AgentAddress.t(), %{String.t() => decision()}) ::
+          {:ok, Decided.t()} | {:error, Error.t()}
+  def agent_decide(%Scope{} = scope, agent, decisions) when is_map(decisions) do
     scope = refreshed(scope)
 
-    with :ok <- authorize(scope, "agent.read", agent) do
-      case opts[:wait] do
-        nil -> decided(scope, agent, decisions)
-        ms -> decided_then(scope, agent, decisions, ms)
+    # The run the decisions carry on is the one waiting, which the snapshot
+    # names before they are taken.
+    with :ok <- authorize(scope, "agent.read", agent),
+         {:ok, %Snapshot{trace_id: run, cursor: cursor}} <- agent_snapshot(agent, scope.host) do
+      case Agent.decide(agent, decisions, token: scope.token, host: scope.host) do
+        :ok -> {:ok, %Decided{agent: agent, run: run, decisions: decisions, cursor: cursor}}
+        {:error, reason} -> {:error, undecided(reason, agent, decisions)}
       end
     end
-  end
-
-  defp decided(scope, agent, decisions) do
-    case Agent.decide(agent, decisions, token: scope.token, host: scope.host) do
-      :ok -> {:ok, decisions}
-      {:error, reason} -> {:error, undecided(reason, agent, decisions)}
-    end
-  end
-
-  # The run the decisions carry on is the one waiting, which the snapshot
-  # names before they are taken.
-  defp decided_then(scope, agent, decisions, ms) do
-    with :ok <- authorize(scope, "agent.events", agent),
-         {:ok, %Snapshot{trace_id: run, cursor: cursor}} <- agent_snapshot(agent, scope.host),
-         {:ok, _decisions} <- decided(scope, agent, decisions),
-         do: Wait.answer(Host.store(scope.host), agent, cursor, {:resumed, run}, ms)
   end
 
   defp undecided(:not_found, agent, _decisions), do: Error.no_agent(agent)
@@ -2042,31 +2033,33 @@ defmodule Wardrik do
 
   @doc "As `agent_ask/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_ask!(Scope.t(), AgentAddress.t(), String.t(), keyword()) ::
-          Message.t() | Reply.t() | Waiting.t()
+  @spec agent_ask!(Scope.t(), AgentAddress.t(), String.t(), keyword()) :: Message.t()
   def agent_ask!(scope, agent, text, opts \\ []),
     do: unwrap(agent_ask(scope, agent, text, opts))
+
+  @doc "As `agent_await/3`, answering the `Wardrik.Reply` or `Wardrik.Waiting`, or raising the `Wardrik.Error`."
+  @doc group: "Talking to an agent"
+  @spec agent_await!(Scope.t(), Message.t() | Decided.t(), keyword()) :: Reply.t() | Waiting.t()
+  def agent_await!(scope, sent, opts \\ []), do: unwrap(agent_await(scope, sent, opts))
 
   @doc "As `agent_approve/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
   @spec agent_approve!(Scope.t(), AgentAddress.t(), String.t() | [String.t()], keyword()) ::
-          %{String.t() => decision()} | Reply.t() | Waiting.t()
+          Decided.t()
   def agent_approve!(scope, agent, calls, opts \\ []),
     do: unwrap(agent_approve(scope, agent, calls, opts))
 
   @doc "As `agent_deny/4`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
   @spec agent_deny!(Scope.t(), AgentAddress.t(), String.t() | [String.t()], keyword()) ::
-          %{String.t() => decision()} | Reply.t() | Waiting.t()
+          Decided.t()
   def agent_deny!(scope, agent, calls, opts \\ []),
     do: unwrap(agent_deny(scope, agent, calls, opts))
 
-  @doc "As `agent_decide/4`, answering the value, or raising the `Wardrik.Error`."
+  @doc "As `agent_decide/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_decide!(Scope.t(), AgentAddress.t(), %{String.t() => decision()}, keyword()) ::
-          %{String.t() => decision()} | Reply.t() | Waiting.t()
-  def agent_decide!(scope, agent, decisions, opts \\ []),
-    do: unwrap(agent_decide(scope, agent, decisions, opts))
+  @spec agent_decide!(Scope.t(), AgentAddress.t(), %{String.t() => decision()}) :: Decided.t()
+  def agent_decide!(scope, agent, decisions), do: unwrap(agent_decide(scope, agent, decisions))
 
   @doc "As `agent_authorization_read/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"

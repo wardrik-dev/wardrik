@@ -1,15 +1,17 @@
 defmodule Wardrik.Waiting do
   @moduledoc """
-  The calls an agent waits on a person for, when you asked it with `wait:`
-  and its run stopped to ask.
+  The calls an agent waits on a person for, where the turn `ask` or `await`
+  waited for stopped to ask.
 
       maria = %MyApp.Accounts.User{org: "acme", id: 42, email: "maria@acme.example"}
 
-      {:waiting, %Wardrik.Waiting{calls: [%{id: id}]}} =
-        MyApp.Agents.ask(maria, "release", "Ship it", wait: :timer.seconds(30))
+      {:waiting, %Wardrik.Waiting{calls: [%{id: id}]}} = MyApp.Agents.ask(maria, "release", "Ship it")
 
-      {:ok, %Wardrik.Reply{text: text}} =
-        MyApp.Agents.approve(maria, "release", id, wait: :timer.seconds(30))
+      {:ok, decided} = MyApp.Agents.approve(maria, "release", id)
+      {:ok, %Wardrik.Reply{text: text}} = MyApp.Agents.await(maria, decided)
+
+  Notice `approve` answers at once: `await` waits for what the turn does
+  next.
 
   Each call has its `id`, to approve or deny it by, the `message` a person
   reads, the tool's `name`, where it is a tool's, and the `reason` it
