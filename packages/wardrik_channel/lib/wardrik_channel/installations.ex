@@ -6,7 +6,9 @@ defprotocol WardrikChannel.Installations do
 
   An adapter finds the installation of each workspace it hears from with
   `fetch/3`, by the id the medium gives the workspace; `put/2` keeps one
-  someone has just installed, and `delete/3` forgets one taken out.
+  someone has just installed, and `delete/3` forgets one taken out. A
+  notice posted in a room finds the workspace of the agent's own owner
+  with `owned/3`.
   `WardrikChannel.Installations.Config` is the installations a
   deployment's config names, one per channel.
   """
@@ -14,6 +16,14 @@ defprotocol WardrikChannel.Installations do
   @doc "The installation of `channel` in the workspace the medium knows as `workspace`."
   @spec fetch(t(), String.t(), String.t()) :: {:ok, WardrikChannel.Installation.t()} | :error
   def fetch(installations, channel, workspace)
+
+  @doc """
+  Where `channel` was installed for `owner` itself, as each installation's
+  `:owner` names it: the workspaces a notice for one of its agents may be
+  posted in.
+  """
+  @spec owned(t(), String.t(), Wardrik.Resource.t()) :: [WardrikChannel.Installation.t()]
+  def owned(installations, channel, owner)
 
   @doc "Keeps `installation`, in place of any of the same channel and workspace."
   @spec put(t(), WardrikChannel.Installation.t()) :: :ok | {:error, String.t()}

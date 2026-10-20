@@ -554,7 +554,7 @@
             "type": "string"
           },
           "notify": {
-            "description": "Who hears when the agent parks, fails or answers: a target config.yaml's notify names, a list of them, or to and on. A target tells only the agents of the orgs it serves.",
+            "description": "Who hears when the agent parks, fails or answers: a target config.yaml's notify names or a room in a channel, as slack:#updates; a list of them; or to and on. A target tells only the agents of the orgs it serves, and a room is posted in a workspace of the agent's own owner.",
             "oneOf": [
               {
                 "type": "string"
@@ -581,7 +581,7 @@
                     "type": "array"
                   },
                   "to": {
-                    "description": "The targets, as config.yaml's notify names them.",
+                    "description": "The targets, as config.yaml's notify names them, and rooms in channels, as slack:#updates.",
                     "oneOf": [
                       {
                         "type": "string"

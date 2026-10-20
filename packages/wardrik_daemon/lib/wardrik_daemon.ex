@@ -20,10 +20,10 @@ defmodule WardrikDaemon do
       `log/mcp.log` in the state directory.
     * `WardrikOAuth.Supervisor`, when a provider is configured, or the vault
       has a key to keep the tokens of servers people add and sign in to.
-    * `WardrikNotify.Supervisor`, when a notify target is configured. It
-      follows every agent's log as `deployment`, which
-      `WardrikDaemon.Issuer` allows `agent.events`, reading each agent's
-      route from its definition as its events come.
+    * `WardrikNotify.Supervisor`, which follows every agent's log as
+      `deployment`, which `WardrikDaemon.Issuer` allows `agent.events`,
+      reading each agent's route from its definition as its events come,
+      and tells its targets and posts in its rooms.
     * `WardrikChannel.Replies`, which posts what agents answer in the rooms'
       threads, and `WardrikChannel.Supervisor`, which runs what each
       channel's adapter runs, such as its connection to the medium, when a
@@ -190,7 +190,8 @@ defmodule WardrikDaemon do
   it has been up, which of its cluster's nodes are connected, each agent in
   the fleet with what it is doing, on which node, and when a trigger asks it
   next, each agent or policy file that does not read, and each channel or
-  notify target a definition names that `config.yaml` does not configure.
+  notify target a definition names, a room's channel among them, that
+  `config.yaml` does not configure.
   """
   @spec status(Wardrik.Host.t(), Config.t()) :: String.t()
   def status(host, config) do
@@ -249,7 +250,7 @@ defmodule WardrikDaemon do
           Wardrik.Definitions.list(Wardrik.Host.definitions(host), Wardrik.Resource.parse!("*")),
         {what, name, known} <-
           Enum.map(definition.channels, &{"channel", &1, channels}) ++
-            Enum.map(routed(definition.notify), &{"notify target", &1, targets}),
+            routed(definition.notify, targets, channels),
         name not in known,
         do: "  #{definition.id} names the #{what} #{name}, which config.yaml does not configure"
   end
@@ -261,8 +262,13 @@ defmodule WardrikDaemon do
         do: Atom.to_string(name)
       )
 
-  defp routed(nil), do: []
-  defp routed(%WardrikDefinition.Route{targets: targets}), do: targets
+  # The targets a route names, and the channels of the rooms it names.
+  defp routed(nil, _targets, _channels), do: []
+
+  defp routed(%WardrikDefinition.Route{targets: names, rooms: rooms}, targets, channels),
+    do:
+      Enum.map(names, &{"notify target", &1, targets}) ++
+        Enum.map(rooms, &{"channel", &1.channel, channels})
 
   @doc """
   The agent files that read, by the ID of the agent each declares, with its

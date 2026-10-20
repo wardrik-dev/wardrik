@@ -50,4 +50,9 @@ defmodule WardrikChannel.Context do
           approvers: WardrikChannel.Approvers.t(),
           replies: atom()
         }
+
+  @doc "Whether the channel offers the agents of `agent`'s org, as its `:orgs` say."
+  @spec offers?(t(), Wardrik.AgentID.t()) :: boolean()
+  def offers?(%__MODULE__{orgs: orgs}, %Wardrik.AgentID{org: org}),
+    do: orgs == :all or org in orgs
 end

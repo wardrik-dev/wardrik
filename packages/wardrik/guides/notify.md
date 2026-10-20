@@ -30,8 +30,16 @@ notify:
 
 ```yaml
 # in an agent file
-notify: {to: [ops], on: [parked, failed, finished]}
+notify: {to: [ops, "slack:#updates"], on: [parked, failed, finished]}
 ```
+
+`slack:#updates` is a room of a channel, written `channel:room`, which needs
+no target: where the channel offers the agent's org, it is posted in the
+workspace the channel is installed in for the agent's own owner, so each org's
+agents post in their own, and one whose owner has none posts nothing, with a
+warning in the log. The bot must be able to post
+in the room: in Slack, invited into it, or the app holding `chat:write.public`.
+It names nobody to answer: who may is what the host's issuer allows.
 
 One process in the cluster sends the notices, reading each agent's route from
 its definition as its events come. It keeps its place in the agents' logs, so
@@ -40,7 +48,8 @@ delivery was cut short comes again, and a receiver tells a repeat by its
 `agent`, `event` and `at`.
 
 Outside the daemon, a host attaches it with its targets, and a target of your
-own is a module; see `WardrikNotify`:
+own is a module; see `WardrikNotify`. The rooms are those of the channels
+`WardrikChannel.attach/2` runs, in the workspaces their installations hold:
 
 ```elixir
 wardrik =
@@ -48,6 +57,7 @@ wardrik =
   |> WardrikNotify.attach(
     targets: [audit: {WardrikNotify.Webhook, url: "https://hooks.example.com/wardrik"}]
   )
+  |> WardrikChannel.attach(channels: [slack: {WardrikSlack, options}], installations: installations)
 ```
 
 It follows every agent's log as the deployment itself,

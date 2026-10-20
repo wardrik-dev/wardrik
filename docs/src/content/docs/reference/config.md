@@ -273,8 +273,9 @@ notify:
 
 A room target takes `channel`, which names a `token` to post with, `room`, and `approvers`, who may
 answer it. A webhook takes `url` and
-optionally `secret`. A target tells the agents of the orgs that [`orgs`](#orgs) lists it for. See
-[Send notices](/build/notices/).
+optionally `secret`. A target tells the agents of the orgs that [`orgs`](#orgs) lists it for. An
+agent's `notify` may also name a room of a channel itself, as `slack:#updates`, with no target
+here. See [Send notices](/build/notices/).
 
 ## workspace
 

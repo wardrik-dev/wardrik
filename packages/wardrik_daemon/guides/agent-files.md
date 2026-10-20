@@ -212,17 +212,20 @@ triggers` prints, and the agent is asked about each once, with its body under th
 
 ## notify
 
-Routes the agent's notices to targets `config.yaml`'s [`notify`](config.md#notify) names:
+Routes the agent's notices to targets `config.yaml`'s [`notify`](config.md#notify) names, or to a
+room of one of its [`channels`](config.md#channels), as `channel:room`:
 
 ```yaml
 notify: ops                      # waiting and failed turns, to ops
-notify: [ops, audit]
+notify: [ops, "slack:#updates"]
 notify: {to: [ops], on: [parked, failed, finished]}
 ```
 
 `on` lists what is sent: `parked` for a call waiting on a person, `failed`, and `finished` for what
 a turn answered. A target tells only the agents of the orgs it serves, and one `config.yaml` doesn't
-name tells nothing; `wardrik status` lists the names it doesn't.
+name tells nothing; `wardrik status` lists the names it doesn't. A room is posted where the channel
+serves the agent's org, in the workspace it is installed in for that org, or for every org, and
+nowhere else.
 
 ## channels
 

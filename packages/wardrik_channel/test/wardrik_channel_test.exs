@@ -45,6 +45,10 @@ defmodule WardrikChannelTest do
                Wardrik.Host.children(host)
 
       assert kept == routed
+
+      assert Wardrik.Host.settings(host, WardrikNotify)[:rooms] ==
+               %WardrikChannel.Notices{settings: kept}
+
       assert WardrikChannel.attach(host(), channels: []) == host()
       assert_raise ArgumentError, fn -> WardrikChannel.attach(host(), mounts: []) end
     end
@@ -153,6 +157,94 @@ defmodule WardrikChannelTest do
 
     assert {:error, :no_room} =
              WardrikChannel.Notices.deliver(notice, Keyword.put(opts, :room, "#nowhere"))
+  end
+
+  describe "the rooms agents' routes name" do
+    setup do
+      {:ok, held} = Agent.start_link(fn -> %{} end)
+      installations = %WardrikChannel.Test.Installations{agent: held}
+
+      for org <- ["acme", "globex"],
+          do:
+            :ok =
+              Installations.put(installations, %Installation{
+                channel: "chat",
+                workspace: "T-" <> org,
+                owner: Resource.parse!(org),
+                token: "token"
+              })
+
+      %{host: rooms_host(installations: installations)}
+    end
+
+    defp rooms_host(settings),
+      do:
+        WardrikChannel.attach(
+          host(),
+          [channels: [chat: {WardrikChannel.Test.Adapter, test: self()}]] ++ settings
+        )
+
+    # Posts a notice of `agent`'s in `room` through the rooms `host` holds.
+    defp post(host, agent, room) do
+      [channel, room] = String.split(room, ":")
+      notice = %{notice() | agent: Wardrik.AgentID.parse!(agent)}
+
+      Wardrik.Host.settings(host, WardrikNotify)[:rooms]
+      |> WardrikNotify.Rooms.post(
+        %WardrikDefinition.Room{channel: channel, room: room},
+        notice,
+        host: host,
+        req_options: [retry: false]
+      )
+    end
+
+    test "posts in a workspace of the agent's own owner, never another's", %{host: host} do
+      for {agent, workspace} <- [
+            {"acme/triage", "T-acme"},
+            {"globex/triage", "T-globex"},
+            {"acme/@jon/triage", "T-acme"}
+          ] do
+        assert :ok = post(host, agent, "chat:#updates")
+
+        assert_received {:delivered,
+                         %Outbound{
+                           installation: %Installation{workspace: ^workspace},
+                           room: "#updates",
+                           body: {:notice, %Notice{agent: posted}},
+                           approvers: []
+                         }, channel}
+
+        assert to_string(posted) == agent
+        assert channel[:req_options] == [retry: false]
+      end
+    end
+
+    test "posts nothing where its owner has the channel in no workspace, or there is none",
+         %{host: host} do
+      assert {:skip, "but chat is installed in no workspace of its owner's"} =
+               post(host, "initech/triage", "chat:#updates")
+
+      assert {:skip, "which names no channel of this host's"} =
+               post(host, "acme/triage", "other:#updates")
+
+      refute_received {:delivered, _outbound, _channel}
+    end
+
+    test "posts only the agents of the orgs the channel offers, every org's installation or not" do
+      host =
+        rooms_host(
+          installations: Installations.Config.new([{:chat, "token", Resource.parse!("*")}]),
+          orgs: [chat: ["acme"]]
+        )
+
+      assert :ok = post(host, "acme/triage", "chat:#updates")
+      assert_received {:delivered, %Outbound{installation: %Installation{workspace: "chat"}}, _}
+
+      assert {:skip, "but chat does not offer globex's agents"} =
+               post(host, "globex/triage", "chat:#updates")
+
+      refute_received {:delivered, _outbound, _channel}
+    end
   end
 
   test "starts each channel's own, under its name" do
@@ -301,6 +393,11 @@ defmodule WardrikChannelTest do
              Installations.fetch(config, "slack", "T0123")
 
     assert :error = Installations.fetch(config, "other", "T0123")
+
+    assert [%Installation{channel: "slack"}] =
+             Installations.owned(config, "slack", Resource.parse!("*"))
+
+    assert [] = Installations.owned(config, "slack", Resource.parse!("acme"))
     assert {:error, _why} = Installations.put(config, %{installation() | channel: "slack"})
     assert :ok = Installations.delete(config, "slack", "slack")
     assert {:ok, _still} = Installations.fetch(config, "slack", "slack")
