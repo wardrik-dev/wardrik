@@ -456,8 +456,7 @@ defmodule WardrikChannel do
   it: what `install_url/3` and `install/3` take.
 
       channel = WardrikChannel.channel(MyApp.Agents, "slack")
-      acme = Wardrik.Resource.parse!("acme")
-      {:ok, url} = WardrikChannel.install_url(channel, acme, return_to: "/settings")
+      {:ok, url} = WardrikChannel.install_url(channel, "acme", return_to: "/settings")
 
   Raises where the instance attaches no channels, or none by that name.
   """
@@ -511,26 +510,33 @@ defmodule WardrikChannel do
     do: channel.adapter.request(struct!(Request, request), Channel.options(channel))
 
   @doc """
-  Where someone acting for `owner` is sent to install `channel` in a
-  workspace of theirs. Options: `:return_to`, where the browser goes once
-  it is installed.
+  Where someone acting for the org `org`, as `"acme"`, is sent to install
+  `channel` in a workspace of theirs. Options: `:return_to`, where the
+  browser goes once it is installed.
   """
-  @spec install_url(Channel.t(), Resource.t(), keyword()) ::
+  @spec install_url(Channel.t(), String.t(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def install_url(%Channel{} = channel, %Resource{} = owner, opts \\ []) do
+  def install_url(%Channel{} = channel, org, opts \\ []) do
     opts = Keyword.validate!(opts, [:return_to])
-    channel.adapter.install_url(owner, Channel.options(channel) ++ opts)
+    channel.adapter.install_url(owner!(org), Channel.options(channel) ++ opts)
   end
 
   @doc """
-  Answers the medium sending someone acting for `owner` back from
-  installing `channel`, as `request/2` takes a request: installs it in
-  their workspace, for `owner`, where `install_url/3` was asked for
-  `owner`.
+  Answers the medium sending someone acting for `org` back from installing
+  `channel`, as `request/2` takes a request: installs it in their
+  workspace, for `org`, where `install_url/3` was asked for `org`.
   """
-  @spec install(Channel.t(), Resource.t(), map()) :: Response.t()
-  def install(%Channel{} = channel, %Resource{} = owner, request) when is_map(request),
-    do: channel.adapter.install(owner, struct!(Request, request), Channel.options(channel))
+  @spec install(Channel.t(), String.t(), map()) :: Response.t()
+  def install(%Channel{} = channel, org, request) when is_map(request),
+    do: channel.adapter.install(owner!(org), struct!(Request, request), Channel.options(channel))
+
+  defp owner!(org) do
+    unless Wardrik.AgentID.org?(org),
+      do:
+        raise(ArgumentError, "a workspace is installed for an org, as \"acme\": #{inspect(org)}")
+
+    Resource.parse!(org)
+  end
 
   @doc """
   A message was posted in a room of the workspace: asks the agent of

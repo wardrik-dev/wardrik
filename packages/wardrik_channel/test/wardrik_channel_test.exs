@@ -491,10 +491,14 @@ defmodule WardrikChannelTest do
     acme = Resource.parse!("acme")
 
     assert {:ok, "https://chat.example/install?owner=acme&return_to=/settings"} =
-             WardrikChannel.install_url(channel, acme, return_to: "/settings")
+             WardrikChannel.install_url(channel, "acme", return_to: "/settings")
+
+    assert_raise ArgumentError, ~r/installed for an org/, fn ->
+      WardrikChannel.install_url(channel, "acme/@42")
+    end
 
     assert %Response{status: 302} =
-             WardrikChannel.install(channel, acme, %{
+             WardrikChannel.install(channel, "acme", %{
                method: "GET",
                path: ["install"],
                query: %{"workspace" => "T7"},

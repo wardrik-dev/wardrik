@@ -22,5 +22,5 @@ defmodule MyAppWeb.SlackController do
   end
 
   # The org the signed-in admin acts for.
-  defp org(conn), do: Wardrik.Resource.parse!(conn.assigns.current_user.org)
+  defp org(conn), do: conn.assigns.current_user.org
 end
