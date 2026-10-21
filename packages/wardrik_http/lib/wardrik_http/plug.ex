@@ -66,16 +66,18 @@ defmodule WardrikHTTP.Plug do
   end
 
   @impl Plug
-  def call(%Plug.Conn{body_params: %Plug.Conn.Unfetched{}} = conn, {at, agents}) do
-    if List.starts_with?(conn.path_info, at) do
-      rest = Enum.drop(conn.path_info, length(at))
-      conn |> Plug.forward(rest, WardrikHTTP.Router, options(agents)) |> Plug.Conn.halt()
-    else
-      conn
-    end
+  def call(%Plug.Conn{} = conn, {at, agents}) do
+    if List.starts_with?(conn.path_info, at),
+      do: served(conn, at, agents),
+      else: conn
   end
 
-  def call(%Plug.Conn{}, {at, agents}) do
+  defp served(%Plug.Conn{body_params: %Plug.Conn.Unfetched{}} = conn, at, agents) do
+    rest = Enum.drop(conn.path_info, length(at))
+    conn |> Plug.forward(rest, WardrikHTTP.Router, options(agents)) |> Plug.Conn.halt()
+  end
+
+  defp served(%Plug.Conn{}, at, agents) do
     raise ArgumentError, """
     WardrikHTTP.Plug got a request whose body was already parsed, so it can't \
     check a signature over what was sent. Mount it in your endpoint, before \

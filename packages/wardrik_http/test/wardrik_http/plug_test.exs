@@ -50,6 +50,9 @@ defmodule WardrikHTTP.PlugTest do
 
     plug Plug.Parsers, parsers: [:json], json_decoder: JSON, pass: ["*/*"]
     plug WardrikHTTP.Plug, at: "/agents", agents: Agents
+    plug :own
+
+    def own(conn, _opts), do: send_resp(conn, 200, "the app's own page")
   end
 
   defmodule Page do
@@ -142,14 +145,14 @@ defmodule WardrikHTTP.PlugTest do
     assert conn.body_params == %{"a" => 1}
   end
 
-  test "says where to mount it when a body was parsed before it" do
+  test "mounted after a parser, says where to mount it, and passes the rest of the app on" do
     started(Agents, plugins: [WardrikHTTP])
+    json = &put_req_header(conn(:post, &1, "{}"), "content-type", "application/json")
 
-    conn =
-      put_req_header(conn(:post, "/agents/v1/agents", "{}"), "content-type", "application/json")
+    assert Parsed.call(json.("/api/things"), Parsed.init([])).resp_body == "the app's own page"
 
     assert_raise ArgumentError, ~r/plug WardrikHTTP.Plug, at: "\/agents", agents: /, fn ->
-      Parsed.call(conn, Parsed.init([]))
+      Parsed.call(json.("/agents/v1/agents"), Parsed.init([]))
     end
   end
 
