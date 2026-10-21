@@ -61,6 +61,38 @@ defmodule WardrikChannelTest do
       assert WardrikChannel.attach(host(), channels: []) == host()
       assert_raise ArgumentError, fn -> WardrikChannel.attach(host(), mounts: []) end
     end
+
+    test "finds the channel an instance runs by its name, for installing it" do
+      settings = [
+        channels: [one: {WardrikChannel.Test.Adapter, test: self()}],
+        installations: Installations.Config.new([])
+      ]
+
+      host = WardrikChannel.attach(host(), settings)
+      agents = instance(host)
+
+      assert %Channel{name: "one", adapter: WardrikChannel.Test.Adapter} =
+               channel = WardrikChannel.channel(agents, :one)
+
+      assert channel.context.host == host
+      assert WardrikChannel.channel(agents, "one") == channel
+
+      assert_raise ArgumentError, ~r/runs no channel two/, fn ->
+        WardrikChannel.channel(agents, "two")
+      end
+
+      assert_raise ArgumentError, ~r/runs no channel one/, fn ->
+        WardrikChannel.channel(instance(host()), "one")
+      end
+    end
+  end
+
+  # An instance of `use Wardrik` on `host`, as one keeps it once started.
+  defp instance(host) do
+    agents = Module.concat(__MODULE__, "Agents#{System.unique_integer([:positive])}")
+    Wardrik.Instance.put(agents, host)
+    on_exit(fn -> :persistent_term.erase({Wardrik.Instance, agents}) end)
+    agents
   end
 
   describe "WardrikChannel.Issuer" do

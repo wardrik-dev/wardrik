@@ -30,8 +30,9 @@ defmodule WardrikChannel do
   that token reaches, and its `approvers` decide there; see
   `WardrikChannel.Installations.Config`. To serve many owners, install one
   app in each of their workspaces. Send someone to `install_url/3`, then
-  hand the medium's answer to `install/3`. Each workspace's approvers are
-  whom you name for it.
+  hand the medium's answer to `install/3`, each with the channel
+  `channel/2` finds among your instance's plugins. Each workspace's
+  approvers are whom you name for it.
 
   Everything an adapter hears is of one workspace, and it acts there
   through a `WardrikChannel.Workspace`: rooms, threads and people are
@@ -269,7 +270,8 @@ defmodule WardrikChannel do
           {["v1", "channels"], {WardrikChannel.Requests, settings}}
         ])
         |> Wardrik.Host.register(:settings, [
-          {WardrikNotify, rooms: %WardrikChannel.Notices{settings: settings}}
+          {WardrikNotify, rooms: %WardrikChannel.Notices{settings: settings}},
+          {__MODULE__, settings: settings}
         ])
         |> Wardrik.Host.register(:issuers, issuers(settings))
         |> Wardrik.Host.child({WardrikChannel.Replies, settings: settings})
@@ -446,6 +448,31 @@ defmodule WardrikChannel do
       said = [channel: name, offering: offering(settings, name)]
       context = struct!(Context, said ++ shared ++ own(settings, name))
       {name, %Channel{name: name, adapter: adapter, options: options, context: context}}
+    end
+  end
+
+  @doc """
+  The channel `name` your instance `agents` runs, as its `plugins:` attach
+  it: what `install_url/3` and `install/3` take.
+
+      channel = WardrikChannel.channel(MyApp.Agents, "slack")
+      acme = Wardrik.Resource.parse!("acme")
+      {:ok, url} = WardrikChannel.install_url(channel, acme, return_to: "/settings")
+
+  Raises where the instance attaches no channels, or none by that name.
+  """
+  @spec channel(module(), String.t() | atom()) :: Channel.t()
+  def channel(agents, name) when is_atom(agents) do
+    host = Wardrik.Instance.host(agents)
+
+    with [settings: settings] <- Wardrik.Host.settings(host, __MODULE__),
+         {:ok, channel} <- Map.fetch(channels(settings, host: host), to_string(name)) do
+      channel
+    else
+      _none ->
+        raise ArgumentError,
+              "#{inspect(agents)} runs no channel #{name}: add it to WardrikChannel's " <>
+                "channels among its plugins"
     end
   end
 

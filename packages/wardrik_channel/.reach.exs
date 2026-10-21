@@ -53,6 +53,7 @@
       "Wardrik.JSON",
       "Wardrik.Hook",
       "Wardrik.Host",
+      "Wardrik.Instance",
       "Wardrik.LLM.Answer",
       "Wardrik.LLM.Client",
       "Wardrik.LLM.Config",

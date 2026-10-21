@@ -23,13 +23,8 @@ defmodule MyApp.Slack do
     ]
   end
 
-  @doc "The channel, as Wardrik runs it."
-  def channel,
-    do:
-      Map.fetch!(
-        WardrikChannel.channels(settings(), host: Wardrik.Instance.host(MyApp.Agents)),
-        "slack"
-      )
+  @doc "The channel, as the app's instance runs it."
+  def channel, do: WardrikChannel.channel(MyApp.Agents, "slack")
 
   @doc "The vault the bot tokens are sealed in, with the key the agents' credentials are."
   def vault,
