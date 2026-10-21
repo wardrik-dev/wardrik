@@ -107,8 +107,8 @@ phoenix() {
 
   perl -0pi -e 's/(      Host\.Repo,\n)/$1      Host.Agents,\n      Host.Agents.Runs,\n/; s/strategy: :one_for_one/strategy: :rest_for_one/' lib/host/application.ex
   grep -q 'Host.Agents.Runs' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
-  perl -0pi -e 's/(  scope "\/api", HostWeb do\n    pipe_through :api\n  end\n)/$1\n  forward "\/agents", WardrikHTTP.Plug, agents: Host.Agents\n/' lib/host_web/router.ex
-  grep -q 'WardrikHTTP.Plug' lib/host_web/router.ex || die "host's router has no /api scope to forward the agents' API after"
+  perl -0pi -e 's/(  plug Plug\.Parsers,)/  plug WardrikHTTP.Plug, at: "\/agents", agents: Host.Agents\n\n$1/' lib/host_web/endpoint.ex
+  grep -q 'WardrikHTTP.Plug' lib/host_web/endpoint.ex || die "host's endpoint has no Plug.Parsers to mount the agents' API before"
   sed 's/MyAppWeb/HostWeb/g; s/MyApp/Host/g; s/my_app/host/g' "$repo/dev/hosts/phoenix/config/runtime.exs" >>config/runtime.exs
 
   perl -0pi -e 's/(# Import environment specific config)/config :os_mon, start_cpu_sup: false, start_disksup: false, start_memsup: false\n\n$1/' config/config.exs

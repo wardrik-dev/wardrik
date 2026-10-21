@@ -22,8 +22,8 @@ defmodule WardrikHTTP.Router do
   and asking no credential, its path as it came, with the host in its
   `:wardrik_host` private. A route's path is the request's from where the
   API is served, as a channel's is, or the whole of it, as a sign-in's
-  under its redirect URL, so both hold where an app forwards a path to
-  `WardrikHTTP.Plug`.
+  under its redirect URL, so both hold where an app mounts
+  `WardrikHTTP.Plug` at a path.
   """
 
   use Plug.Router, copy_opts_to_assign: :options

@@ -24,9 +24,10 @@ defmodule WardrikOAuth.Plug do
            ]}
         ]
 
-  Notice the forward's path is the redirect URL's. An app that forwards
-  `WardrikHTTP.Plug` needs none of this: it serves the same pages, under a
-  redirect URL beneath its own path.
+  Notice the forward's path is the redirect URL's. A sign-in comes back as a
+  GET, so it reads no body, and a router's `forward` serves it. An app that
+  mounts `WardrikHTTP.Plug` needs none of this: it serves the same pages,
+  under a redirect URL beneath its `at`.
   """
 
   @behaviour Plug

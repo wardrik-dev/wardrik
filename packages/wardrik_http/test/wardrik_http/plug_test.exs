@@ -31,16 +31,25 @@ defmodule WardrikHTTP.PlugTest do
     def principal(%{org: org, id: id}), do: %{org: org, id: id}
   end
 
-  # An app's router, serving the API under /agents.
-  defmodule Router do
+  # An app's endpoint, serving the API under /agents ahead of its parsers.
+  defmodule Endpoint do
     @moduledoc false
-    use Plug.Router
+    use Plug.Builder
 
-    plug :match
-    plug :dispatch
+    plug WardrikHTTP.Plug, at: "/agents", agents: Agents
+    plug Plug.Parsers, parsers: [:json], json_decoder: JSON, pass: ["*/*"]
+    plug :own
 
-    forward "/agents", to: WardrikHTTP.Plug, init_opts: [agents: Agents]
-    match _, do: send_resp(conn, 404, "the app's own 404")
+    def own(conn, _opts), do: send_resp(conn, 404, "the app's own 404")
+  end
+
+  # An endpoint that parses bodies before it mounts the API.
+  defmodule Parsed do
+    @moduledoc false
+    use Plug.Builder
+
+    plug Plug.Parsers, parsers: [:json], json_decoder: JSON, pass: ["*/*"]
+    plug WardrikHTTP.Plug, at: "/agents", agents: Agents
   end
 
   defmodule Page do
@@ -52,7 +61,8 @@ defmodule WardrikHTTP.PlugTest do
 
     @impl Plug
     def call(conn, test: test) do
-      send(test, {:routed, conn.script_name, conn.path_info})
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test, {:routed, conn.script_name, conn.path_info, body})
       Plug.Conn.send_resp(conn, 200, "page")
     end
   end
@@ -73,10 +83,11 @@ defmodule WardrikHTTP.PlugTest do
     host
   end
 
-  defp request(method, path, user \\ nil) do
-    conn = conn(method, path)
+  defp request(method, path, user \\ nil, body \\ nil) do
+    conn = conn(method, path, body)
     conn = if user, do: put_req_header(conn, "x-user", user), else: conn
-    Router.call(conn, Router.init([]))
+    conn = put_req_header(conn, "content-type", "application/json")
+    Endpoint.call(conn, Endpoint.init([]))
   end
 
   test "serves an instance's agents to the user its authenticate/1 knows" do
@@ -113,18 +124,46 @@ defmodule WardrikHTTP.PlugTest do
       ])
     )
 
-    assert request(:post, "/agents/v1/channels/chat/events").resp_body == "page"
-    assert_received {:routed, ["agents"], ["v1", "channels", "chat", "events"]}
+    signed = ~s({"type":"event_callback","event":{"text":"hi"}})
+    assert request(:post, "/agents/v1/channels/chat/events", nil, signed).resp_body == "page"
+    assert_received {:routed, ["agents"], ["v1", "channels", "chat", "events"], ^signed}
 
     assert request(:get, "/agents/oauth/callback/github").resp_body == "page"
-    assert_received {:routed, ["agents"], ["oauth", "callback", "github"]}
+    assert_received {:routed, ["agents"], ["oauth", "callback", "github"], ""}
 
     assert request(:get, "/oauth/callback/github").resp_body == "the app's own 404"
   end
 
+  test "passes on every request it doesn't serve, its body unread" do
+    started(Agents, plugins: [WardrikHTTP])
+
+    conn = request(:post, "/api/things", nil, ~s({"a":1}))
+    assert conn.resp_body == "the app's own 404"
+    assert conn.body_params == %{"a" => 1}
+  end
+
+  test "says where to mount it when a body was parsed before it" do
+    started(Agents, plugins: [WardrikHTTP])
+
+    conn =
+      put_req_header(conn(:post, "/agents/v1/agents", "{}"), "content-type", "application/json")
+
+    assert_raise ArgumentError, ~r/plug WardrikHTTP.Plug, at: "\/agents", agents: /, fn ->
+      Parsed.call(conn, Parsed.init([]))
+    end
+  end
+
+  test "serves a path, never the whole endpoint" do
+    assert_raise ArgumentError, ~r/the path it serves/, fn ->
+      WardrikHTTP.Plug.init(at: "/", agents: Agents)
+    end
+
+    assert_raise KeyError, ~r/:at/, fn -> WardrikHTTP.Plug.init(agents: Agents) end
+  end
+
   test "won't serve an instance that says nothing of who a request comes from" do
     assert_raise ArgumentError, ~r/def authenticate\(conn\)/, fn ->
-      WardrikHTTP.Plug.init(agents: Unauthenticated)
+      WardrikHTTP.Plug.init(at: "/agents", agents: Unauthenticated)
     end
   end
 
@@ -132,7 +171,10 @@ defmodule WardrikHTTP.PlugTest do
     started(Agents, [])
 
     assert_raise ArgumentError, ~r/add WardrikHTTP to its plugins/, fn ->
-      WardrikHTTP.Plug.call(conn(:get, "/v1/agents"), WardrikHTTP.Plug.init(agents: Agents))
+      WardrikHTTP.Plug.call(
+        conn(:get, "/agents/v1/agents"),
+        WardrikHTTP.Plug.init(at: "/agents", agents: Agents)
+      )
     end
   end
 

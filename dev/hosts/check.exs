@@ -170,7 +170,7 @@ defmodule WardrikHost.GuideTest do
           )
   end
 
-  # A request as the app's endpoint takes it, at the path its router forwards.
+  # A request as the app's endpoint takes it, at the path it mounts the API.
   defp api(path, token \\ nil) do
     endpoint = app("Web.Endpoint")
     conn = Plug.Test.conn(:get, path)
@@ -233,7 +233,25 @@ defmodule WardrikHost.GuideTest do
     refute Wardrik.Token.reaches?(token.("U1"), Wardrik.AgentID.parse!("globex/books"))
   end
 
-  test "the sign-in callback is served where the app forwards the API" do
+  test "Slack's signed events reach its channel with the body as sent" do
+    body = JSON.encode!(%{"type" => "url_verification", "challenge" => "hosts"})
+    at = to_string(System.os_time(:second))
+    secret = System.fetch_env!("SLACK_SIGNING_SECRET")
+    mac = :crypto.mac(:hmac, :sha256, secret, "v0:#{at}:#{body}")
+    endpoint = app("Web.Endpoint")
+
+    conn =
+      Plug.Test.conn(:post, "/agents/v1/channels/slack/events", body)
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.put_req_header("x-slack-request-timestamp", at)
+      |> Plug.Conn.put_req_header("x-slack-signature", "v0=" <> Base.encode16(mac, case: :lower))
+      |> endpoint.call(endpoint.init([]))
+
+    assert conn.status == 200, "Slack's request was answered #{conn.status}: #{conn.resp_body}"
+    assert JSON.decode!(conn.resp_body) == %{"challenge" => "hosts"}
+  end
+
+  test "the sign-in callback is served where the app mounts the API" do
     conn = api("/agents/oauth/callback/github")
     assert conn.status == 400
     assert conn.resp_body =~ "carried no code"

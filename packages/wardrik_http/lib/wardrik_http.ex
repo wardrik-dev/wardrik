@@ -50,7 +50,7 @@ defmodule WardrikHTTP do
   Given a `:port`, it runs `WardrikHTTP.Listener` among them too, which
   serves the API and the host's routes there, with `:ip`, `:workers` and
   `:authenticator` from `opts`. Without one, an app serves it where it
-  forwards `WardrikHTTP.Plug`:
+  mounts `WardrikHTTP.Plug`:
 
       config :my_app, MyApp.Agents,
         store: [repo: MyApp.Repo],

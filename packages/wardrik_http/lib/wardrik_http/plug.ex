@@ -1,11 +1,11 @@
 defmodule WardrikHTTP.Plug do
   @moduledoc """
-  Wardrik's HTTP API inside your Phoenix app. Forward a path to it, and it
-  serves your instance's agents there, to each request as the user your
-  instance's `c:Wardrik.authenticate/1` says it comes from:
+  Wardrik's HTTP API inside your Phoenix app. Mount it in your endpoint at
+  a path, and it serves your instance's agents there, to each request as
+  the user your instance's `c:Wardrik.authenticate/1` says it comes from:
 
-      # lib/my_app_web/router.ex
-      forward "/agents", WardrikHTTP.Plug, agents: MyApp.Agents
+      # lib/my_app_web/endpoint.ex, before Plug.Parsers
+      plug WardrikHTTP.Plug, at: "/agents", agents: MyApp.Agents
 
       # config/runtime.exs
       config :my_app, MyApp.Agents,
@@ -31,40 +31,75 @@ defmodule WardrikHTTP.Plug do
         end
       end
 
-  Notice the user `authenticate/1` answers is the one you call your
-  instance as: `c:Wardrik.principal/1` and `c:Wardrik.grants/1` decide what
-  a request may do, as they decide what your own code may. A program
-  reaches the API under the path you forwarded, as the TypeScript SDK does
-  with `https://myapp.example.com/agents` as its base URL.
+  Notice it goes before `Plug.Parsers`: a webhook's or Slack's signature is
+  over the body as it was sent, so the body must reach it unread. It
+  answers requests under `at` and passes every other one on to the rest of
+  your endpoint.
+
+  The user `authenticate/1` answers is the one you call your instance as:
+  `c:Wardrik.principal/1` and `c:Wardrik.grants/1` decide what a request
+  may do, as they decide what your own code may. A program reaches the API
+  under `at`, as the TypeScript SDK does with
+  `https://myapp.example.com/agents` as its base URL.
 
   It also serves what your plugins add there: the pages a sign-in comes
-  back to, where `WardrikOAuth`'s redirect URL is under the path, and what
-  a chat channel's medium sends. `WardrikHTTP`, among your plugins, runs
-  what the API needs.
+  back to, where `WardrikOAuth`'s redirect URL is under `at`, and what a
+  chat channel's medium sends. `WardrikHTTP`, among your plugins, runs what
+  the API needs.
 
-  Your router doesn't compile where the instance has no `authenticate/1`.
+  Your endpoint doesn't compile where the instance has no `authenticate/1`.
+
+  ## Options
+
+    * `:at` - the path it serves, as `"/agents"`. Required.
+    * `:agents` - your `use Wardrik` instance. Required.
   """
 
   @behaviour Plug
 
   @impl Plug
   def init(opts) do
-    agents = opts |> Keyword.validate!([:agents]) |> Keyword.fetch!(:agents)
+    opts = Keyword.validate!(opts, [:at, :agents])
+    agents = Keyword.fetch!(opts, :agents)
     authenticator!(agents)
-    agents
+    {segments(Keyword.fetch!(opts, :at)), agents}
   end
 
   @impl Plug
-  def call(conn, agents) do
+  def call(%Plug.Conn{body_params: %Plug.Conn.Unfetched{}} = conn, {at, agents}) do
+    if List.starts_with?(conn.path_info, at) do
+      rest = Enum.drop(conn.path_info, length(at))
+      conn |> Plug.forward(rest, WardrikHTTP.Router, options(agents)) |> Plug.Conn.halt()
+    else
+      conn
+    end
+  end
+
+  def call(%Plug.Conn{}, {at, agents}) do
+    raise ArgumentError, """
+    WardrikHTTP.Plug got a request whose body was already parsed, so it can't \
+    check a signature over what was sent. Mount it in your endpoint, before \
+    Plug.Parsers:
+
+        plug WardrikHTTP.Plug, at: "/#{Enum.join(at, "/")}", agents: #{inspect(agents)}
+    """
+  end
+
+  defp segments(at) when is_binary(at) do
+    case String.split(at, "/", trim: true) do
+      [] -> raise ArgumentError, ~s(WardrikHTTP.Plug's at: is the path it serves, as "/agents")
+      segments -> segments
+    end
+  end
+
+  defp options(agents) do
     host = Wardrik.Instance.host(agents)
 
-    options = [
+    WardrikHTTP.Router.init(
       host: host,
       authenticator: %WardrikHTTP.Instance{agents: agents},
       workers: workers!(host, agents)
-    ]
-
-    WardrikHTTP.Router.call(conn, WardrikHTTP.Router.init(options))
+    )
   end
 
   @doc false

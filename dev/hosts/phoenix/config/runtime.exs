@@ -2,7 +2,7 @@
 # Wardrik in this app: kept in its Repo, its people's tokens sealed with the
 # vault's key, signing in to GitHub, offering GitHub's MCP server, answering
 # in each org's own Slack workspace, and serving its HTTP API where the
-# router forwards /agents.
+# endpoint mounts it, at /agents.
 config :my_app, MyApp.Agents,
   store: [repo: MyApp.Repo],
   vault: [keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]],
