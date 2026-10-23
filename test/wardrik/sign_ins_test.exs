@@ -121,6 +121,11 @@ defmodule Wardrik.SignInsTest do
              Enum.map(changes, & &1.type)
   end
 
+  test "gives the sign-in pages to mount only where it signs people in", %{wardrik: wardrik} do
+    assert Wardrik.sign_in_pages(wardrik) == {WardrikOAuth.Plug, Wardrik.oauth(wardrik)}
+    assert Wardrik.sign_in_pages(Wardrik.new(name: MyApp.Wardrik)) == nil
+  end
+
   test "keeps credentials only when given keys" do
     assert %Wardrik{keys: [], oauth: nil} = Wardrik.new(name: MyApp.Wardrik)
 

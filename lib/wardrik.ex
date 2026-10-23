@@ -224,6 +224,19 @@ defmodule Wardrik do
     WardrikCore.start_agent(agents(wardrik), Setup.agent(wardrik, opts))
   end
 
+  @doc """
+  Returns the plug that serves the pages a sign-in comes back to, with its options, for a surface
+  to mount at the `:oauth` `page`. Returns `nil` where the Wardrik `instance` signs no one in.
+
+      Wardrik.sign_in_pages(MyApp.Wardrik)
+      #=> {WardrikOAuth.Plug, MyApp.Wardrik.OAuth}
+  """
+  @spec sign_in_pages(atom() | t()) :: {module(), term()} | nil
+  def sign_in_pages(instance), do: instance |> Instance.fetch!() |> pages()
+
+  defp pages(%__MODULE__{oauth: nil}), do: nil
+  defp pages(wardrik), do: {WardrikOAuth.Plug, WardrikOAuth.Plug.init(oauth: oauth(wardrik))}
+
   @doc false
   @spec agents(t()) :: atom()
   def agents(%__MODULE__{name: name}), do: Module.concat(name, Agents)
