@@ -70,6 +70,52 @@ defmodule Wardrik.WorkersTest do
     assert tools(wardrik, "rivals/triage") == []
   end
 
+  test "leaves out what doesn't read as an MCP tool", %{wardrik: wardrik} do
+    listed = [
+      %{"name" => "plain"},
+      %{"name" => "odd", "description" => 42, "title" => ["x"], "annotations" => "yes"},
+      %{"name" => "bad_schema", "inputSchema" => %{"type" => "object", "properties" => 1}},
+      %{"name" => "not_object", "inputSchema" => "string"},
+      %{"description" => "nameless"},
+      "a tool"
+    ]
+
+    worker(wardrik, "acme/@shop", ["acme/agent/*"], listed)
+
+    assert Enum.sort(tools(wardrik, "acme/triage")) == ["workers__odd", "workers__plain"]
+
+    worker(wardrik, "acme/@other", ["acme/agent/*"], %{"not" => "a list"})
+    assert Enum.sort(tools(wardrik, "acme/triage")) == ["workers__odd", "workers__plain"]
+  end
+
+  test "reads whatever a worker answers without failing", %{wardrik: wardrik} do
+    answers = [
+      %{"result" => %{"content" => "not a list"}},
+      %{
+        "result" => %{"content" => [1, %{"type" => "text", "text" => %{}}, %{"type" => "image"}]}
+      },
+      %{"result" => "not a map"},
+      %{"error" => %{"message" => 42}},
+      [1, 2]
+    ]
+
+    {:ok, queue} = Agent.start_link(fn -> answers end)
+    next = fn _call -> Agent.get_and_update(queue, fn [answer | rest] -> {answer, rest} end) end
+    worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup], next)
+
+    [tool] = Wardrik.Workers.tools(%Context{agent_id: "acme/triage"}, wardrik: wardrik.name)
+    context = %Context{agent_id: "acme/triage", step: {:tool_call, %{id: "call_1"}}}
+
+    assert {:ok, "", _context} = tool.run.(%{}, context)
+
+    assert {:ok, text, _context} = tool.run.(%{}, context)
+    assert text =~ "isn't shown here"
+
+    assert {:error, "The worker answered with neither" <> _} = tool.run.(%{}, context)
+    assert {:error, "The worker answered with neither" <> _} = tool.run.(%{}, context)
+    assert {:error, "The worker answered with neither" <> _} = tool.run.(%{}, context)
+  end
+
   test "gives a tool to the principal whose worker offered it first", %{wardrik: wardrik} do
     worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup])
     worker(wardrik, "acme/@other", ["acme/agent/*"], [%{@lookup | "description" => "Mine."}])

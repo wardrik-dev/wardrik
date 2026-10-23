@@ -27,17 +27,19 @@ defmodule Wardrik.Workers do
   @prefix "workers__"
   @name ~r/^[A-Za-z0-9_-]{1,55}$/
   @timeout 60_000
+  @hints ~w(readOnlyHint idempotentHint destructiveHint openWorldHint)
 
   @type call() :: {pid(), reference()}
 
   @doc """
   Offers the tools a worker lists, in MCP's `tools/list` shape, from the calling process, in place
-  of what it offered before, until it exits. Tools whose names a model can't take are left out.
+  of what it offered before, until it exits. A tool whose name a model can't take, or that doesn't
+  read as MCP describes it, is left out.
   """
-  @spec offer(Scope.t(), [map()]) :: :ok | {:error, term()}
+  @spec offer(Scope.t(), term()) :: :ok | {:error, term()}
   def offer(%Scope{wardrik: instance} = scope, listed) do
     group = group(instance)
-    meta = %{scope: %{scope | wardrik: Instance.name(instance)}, tools: named(listed)}
+    meta = %{scope: %{scope | wardrik: Instance.name(instance)}, tools: readable(listed)}
     Group.join(group, @group, Map.put(meta, :since, since(group)))
   end
 
@@ -62,10 +64,46 @@ defmodule Wardrik.Workers do
     |> Enum.map(fn {name, offers} -> tool(wardrik.name, name, offers) end)
   end
 
-  defp named(listed), do: Enum.filter(listed, &named?/1)
+  defp readable(listed) when is_list(listed), do: Enum.flat_map(listed, &readable_tool/1)
+  defp readable(_listed), do: []
 
-  defp named?(%{"name" => name}) when is_binary(name), do: Regex.match?(@name, name)
-  defp named?(_listed), do: false
+  defp readable_tool(%{"name" => name} = tool) when is_binary(name) do
+    with true <- Regex.match?(@name, name),
+         {:ok, schema} <- schema(tool["inputSchema"]) do
+      [
+        %{
+          "name" => name,
+          "description" => described(tool["description"], tool["title"], name),
+          "inputSchema" => schema,
+          "annotations" => hints(tool["annotations"])
+        }
+      ]
+    else
+      _unreadable -> []
+    end
+  end
+
+  defp readable_tool(_tool), do: []
+
+  defp schema(nil), do: {:ok, %{"type" => "object", "properties" => %{}}}
+
+  defp schema(%{"type" => "object"} = schema) do
+    case JSV.build(schema) do
+      {:ok, _root} -> {:ok, schema}
+      {:error, _reason} -> :error
+    end
+  end
+
+  defp schema(_schema), do: :error
+
+  defp described(description, _title, _name) when is_binary(description), do: description
+  defp described(_description, title, _name) when is_binary(title), do: title
+  defp described(_description, _title, name), do: name
+
+  defp hints(%{} = annotations),
+    do: Map.filter(annotations, fn {hint, holds} -> hint in @hints and is_boolean(holds) end)
+
+  defp hints(_annotations), do: %{}
 
   defp since(group) do
     case List.keyfind(Group.local_members(group, @group), self(), 0) do
@@ -102,14 +140,12 @@ defmodule Wardrik.Workers do
   defp tool(instance, name, [first | _rest] = offers) do
     WardrikCore.Tool.new!(
       name: @prefix <> name,
-      description: description(first.tool) <> "\n\nFrom a tool worker.",
-      schema: first.tool["inputSchema"] || %{"type" => "object", "properties" => %{}},
+      description: first.tool["description"] <> "\n\nFrom a tool worker.",
+      schema: first.tool["inputSchema"],
       annotations: annotations(offers),
       run: fn arguments, context -> call(instance, name, arguments, context) end
     )
   end
-
-  defp description(tool), do: tool["description"] || tool["title"] || tool["name"]
 
   defp annotations(offers) do
     read_only = every?(offers, "readOnlyHint")
@@ -123,7 +159,7 @@ defmodule Wardrik.Workers do
   end
 
   defp every?(offers, hint, holds \\ true),
-    do: Enum.all?(offers, fn offer -> get_in(offer.tool, ["annotations", hint]) == holds end)
+    do: Enum.all?(offers, fn offer -> offer.tool["annotations"][hint] == holds end)
 
   defp call(instance, name, arguments, %Context{agent_id: id} = context) do
     offers =
@@ -179,7 +215,8 @@ defmodule Wardrik.Workers do
   defp answered(%{"result" => %{} = result}, context),
     do: {:ok, text(result), measured(context, result)}
 
-  defp answered(%{"error" => %{"message" => message}}, _context), do: {:error, message}
+  defp answered(%{"error" => %{"message" => message}}, _context) when is_binary(message),
+    do: {:error, message}
 
   defp answered(_response, _context),
     do: {:error, "The worker answered with neither a result nor an error."}
@@ -189,9 +226,18 @@ defmodule Wardrik.Workers do
 
   defp measured(context, _result), do: context
 
-  defp text(result), do: result |> Map.get("content", []) |> Enum.map_join("\n", &part/1)
+  defp text(%{"content" => content}) when is_list(content),
+    do: Enum.map_join(content, "\n", &part/1)
 
-  defp part(%{"type" => "text", "text" => text}), do: text
-  defp part(%{"type" => "resource", "resource" => %{"text" => text}}), do: text
-  defp part(%{"type" => type}), do: "[A part of type #{type} isn't shown here.]"
+  defp text(_result), do: ""
+
+  defp part(%{"type" => "text", "text" => text}) when is_binary(text), do: text
+
+  defp part(%{"type" => "resource", "resource" => %{"text" => text}}) when is_binary(text),
+    do: text
+
+  defp part(%{"type" => type}) when is_binary(type),
+    do: "[A part of type #{type} isn't shown here.]"
+
+  defp part(_part), do: "[A part that doesn't read isn't shown here.]"
 end
