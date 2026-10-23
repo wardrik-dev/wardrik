@@ -81,8 +81,6 @@ defmodule Wardrik.Listener.Events do
 
   use WardrikEvents.Listener
 
-  alias WardrikEvents.Cursor
-
   @impl WardrikEvents.Listener
   def handle(event, listener),
     do: module(listener).handle(Wardrik.Event.from_json(event), ours(listener))
@@ -101,7 +99,4 @@ defmodule Wardrik.Listener.Events do
       options: options
     }
   end
-
-  defp encoded(nil), do: nil
-  defp encoded(cursor), do: Cursor.encode(cursor)
 end
