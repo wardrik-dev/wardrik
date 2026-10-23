@@ -76,42 +76,7 @@ defmodule Wardrik do
   """
   @callback init(config :: keyword()) :: {:ok, keyword()}
 
-  defmacro __using__(opts) do
-    otp_app = Keyword.get(opts, :otp_app)
-
-    quote do
-      @behaviour Wardrik
-
-      @doc "Starts this Wardrik, with the options its config doesn't give. See `Wardrik.start_link/1`."
-      @spec start_link(keyword()) :: Supervisor.on_start()
-      def start_link(opts \\ []) do
-        {:ok, config} = init(Keyword.merge(unquote(app_config(otp_app)), opts))
-        Wardrik.start_link([name: __MODULE__] ++ Keyword.delete(config, :name))
-      end
-
-      @doc false
-      def child_spec(opts),
-        do: %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}, type: :supervisor}
-
-      @doc "Returns the scope `principal` acts in here. See `Wardrik.as/3`."
-      @spec as(WardrikCore.Principal.t() | String.t(), term()) :: Wardrik.Scope.t()
-      def as(principal, grants \\ []), do: Wardrik.as(__MODULE__, principal, grants)
-
-      @doc "Returns the scope an API token's `secret` acts in here. See `Wardrik.authenticate/2`."
-      @spec authenticate(String.t()) :: {:ok, Wardrik.Scope.t()} | {:error, Wardrik.Error.t()}
-      def authenticate(secret), do: Wardrik.authenticate(__MODULE__, secret)
-
-      @impl Wardrik
-      def init(config), do: {:ok, config}
-
-      defoverridable init: 1
-    end
-  end
-
-  defp app_config(nil), do: []
-
-  defp app_config(otp_app),
-    do: quote(do: Application.get_env(unquote(otp_app), __MODULE__, []))
+  defmacro __using__(opts), do: Wardrik.Instance.using(Keyword.get(opts, :otp_app))
 
   @doc """
   Starts a Wardrik. Takes `:name`, and where it keeps agents and events: `:data_dir`, a directory
@@ -172,6 +137,46 @@ defmodule Wardrik do
     do: Wardrik.Operations.Tokens.authenticate(Instance.fetch!(instance), secret)
 
   @doc """
+  Seals `value` as the secret `name` of `owner`, an org, as `acme`, or a person, as `acme/@maria`,
+  for their agents' tools and servers, and records it in the audit. It needs `:keys`, and takes
+  `if_vsn:`, to write over only the version read.
+
+      :ok = Wardrik.put_secret(MyApp.Wardrik, "acme", "crm-key", System.fetch_env!("CRM_KEY"))
+  """
+  @spec put_secret(atom() | t(), String.t(), String.t(), binary(), keyword()) ::
+          :ok | {:error, term()}
+  def put_secret(instance, owner, name, value, opts \\ []),
+    do: Wardrik.Secrets.put(instance, owner, name, value, opts)
+
+  @doc "Unseals the secret `name` of `owner`."
+  @spec fetch_secret(atom() | t(), String.t(), String.t()) :: {:ok, binary()} | {:error, term()}
+  def fetch_secret(instance, owner, name), do: Wardrik.Secrets.fetch(instance, owner, name)
+
+  @doc """
+  Unseals the secret `name` of `owner`, with its kind, `:secret` or `:grant` for an account someone
+  connected, and its version, for `put_secret/5`'s `if_vsn:`.
+  """
+  @spec lookup_secret(atom() | t(), String.t(), String.t()) ::
+          {:ok, WardrikVault.kind(), binary(), term()}
+          | {:error, term()}
+          | {:error, WardrikVault.kind(), term()}
+  def lookup_secret(instance, owner, name), do: Wardrik.Secrets.lookup(instance, owner, name)
+
+  @doc "Removes the secret `name` of `owner`, and records it in the audit. Removing none is `:ok`."
+  @spec delete_secret(atom() | t(), String.t(), String.t()) :: :ok | {:error, term()}
+  def delete_secret(instance, owner, name), do: Wardrik.Secrets.delete(instance, owner, name)
+
+  @doc """
+  Lists every secret as `{owner, name, kind}`, or the names `owner` holds. It reads no secret, and
+  needs no key.
+  """
+  @spec list_secrets(atom() | t()) :: [{String.t(), String.t(), WardrikVault.kind()}]
+  def list_secrets(instance), do: Wardrik.Secrets.list(instance)
+
+  @spec list_secrets(atom() | t(), String.t()) :: [String.t()]
+  def list_secrets(instance, owner), do: Wardrik.Secrets.list(instance, owner)
+
+  @doc """
   Allows `scope` more, as `Wardrik.Statement.new/1` takes it.
 
       MyApp.Wardrik.as("acme/@maria") |> Wardrik.grant(roles: [:approver], resources: ["acme/agent/*"])
@@ -204,10 +209,10 @@ defmodule Wardrik do
 
   @doc """
   Starts the agent `opts` describe, as `WardrikCore.start_agent/2` takes them, writing its events
-  to `wardrik`'s. `:policy` is the agent's own `WardrikPolicy`, or the rules to build it from. The
-  agent is held to it and to `wardrik`'s, and the strictest decides.
+  to the Wardrik `instance`'s. `:policy` is the agent's own `WardrikPolicy`, or the rules to build it
+  from. The agent is held to it and to the Wardrik's, and the strictest decides.
 
-      Wardrik.start_agent(wardrik,
+      Wardrik.start_agent(MyApp.Wardrik,
         agent_id: "acme/books",
         model: "anthropic:claude-haiku-4-5",
         policy: [ask: ["books/pay_bill"]]
@@ -219,36 +224,27 @@ defmodule Wardrik do
     WardrikCore.start_agent(agents(wardrik), Setup.agent(wardrik, opts))
   end
 
-  @doc "Returns the name of `wardrik`'s `WardrikCore` instance."
+  @doc false
   @spec agents(t()) :: atom()
   def agents(%__MODULE__{name: name}), do: Module.concat(name, Agents)
 
-  @doc "Returns the name of `wardrik`'s `WardrikEvents`."
+  @doc false
   @spec events(t()) :: atom()
   def events(%__MODULE__{name: name}), do: Module.concat(name, Events)
 
-  @doc "Returns the name of `wardrik`'s `WardrikVault`, which it runs when given `:keys`."
+  @doc false
   @spec vault(t()) :: atom()
   def vault(%__MODULE__{name: name}), do: Module.concat(name, Vault)
 
-  @doc "Returns the name of `wardrik`'s `WardrikOAuth`, which it runs when given `:oauth`."
+  @doc false
   @spec oauth(t()) :: atom()
   def oauth(%__MODULE__{name: name}), do: Module.concat(name, OAuth)
 
-  @doc """
-  Returns the name of `wardrik`'s `WardrikMCP`, which it runs when given `:mcp`. Give an agent a
-  server's tools by it:
-
-      Wardrik.start_agent(wardrik,
-        agent_id: "acme/triage",
-        model: "anthropic:claude-haiku-4-5",
-        capabilities: [{WardrikMCP, name: Wardrik.mcp(wardrik), servers: [:github]}]
-      )
-  """
+  @doc false
   @spec mcp(t()) :: atom()
   def mcp(%__MODULE__{name: name}), do: Module.concat(name, MCP)
 
-  @doc "Returns the name of `wardrik`'s `WardrikTriggers`."
+  @doc false
   @spec triggers(t()) :: atom()
   def triggers(%__MODULE__{name: name}), do: Module.concat(name, Triggers)
 

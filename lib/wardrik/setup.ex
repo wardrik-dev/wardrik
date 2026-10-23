@@ -3,7 +3,7 @@ defmodule Wardrik.Setup do
   Builds a Wardrik from its options, and the options each agent it starts begins with.
   """
 
-  @doc "Builds a Wardrik from `opts`, as `Wardrik.new/1` takes them."
+  @doc "Builds a Wardrik from `opts`, as `Wardrik.start_link/1` takes them."
   @spec wardrik(keyword()) :: Wardrik.t()
   def wardrik(opts) do
     opts =

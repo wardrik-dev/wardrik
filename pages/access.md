@@ -1,21 +1,25 @@
 # Who may do what
 
-Every operation runs in a scope: who acts, and what they're allowed.
+Every operation runs in a scope: the Wardrik, who acts, and what they're allowed. Nothing is allowed
+unless it's granted.
 
-## Scopes and statements
-
-Statements allow actions on resources, as IAM's do. The agent `acme/books` is the resource
-`acme/agent/books`, and `acme/@jon/notes` is `acme/@jon/agent/notes`. What an owner holds is under
-them too: `acme/mcp_server/linear` is the org's server, and `acme/@jon/connection/github` is Jon's
-account:
+## Scopes and grants
 
 ```elixir
-scope =
-  Wardrik.as(wardrik, "acme/@maria", [
-    Wardrik.Statement.new(roles: [:reader, :messenger], resources: ["acme/agent/*"]),
-    Wardrik.Statement.new(roles: [:owner], resources: ["acme/@maria/*"])
-  ])
+scope = MyApp.Wardrik.as("acme/@maria", roles: [:reader, :messenger], resources: ["acme/agent/*"])
+
+scope = Wardrik.grant(scope, roles: [:owner], resources: ["acme/@maria/*"])
 ```
+
+`as/2` takes a principal by id, or a `WardrikCore.Principal` with attributes your authorizer reads,
+and grants: the options of one statement, or a list of `Wardrik.Statement`s. `Wardrik.grant/2` adds
+one more.
+
+A statement allows actions on resources, as IAM's do. The agent `acme/books` is the resource
+`acme/agent/books`, and `acme/@jon/notes` is `acme/@jon/agent/notes`. What an owner holds is under
+them too: `acme/mcp_server/linear` is the org's server, and `acme/@jon/connection/github` is Jon's
+account. The deployment's own operations, its tokens, nodes, audit and reloading, are on
+`deployment`.
 
 | Role | Actions |
 | --- | --- |
@@ -25,15 +29,30 @@ scope =
 | `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `connection.connect`, `mcp_server.add` |
 | `:owner` | every action |
 
-A principal is who acts, by id, or a `WardrikCore.Principal` with attributes your authorizer
-reads. Notice that an agent no statement reaches is one the scope can't see: operations on it answer
+Notice that an agent no statement reaches is one the scope can't see: operations on it answer
 `not_found`, and lists leave it out. An agent a statement reaches without the action answers
 `forbidden`.
 
+## API tokens
+
+People and programs reaching Wardrik over HTTP present a token. Make one, and its secret is given
+this once:
+
+```elixir
+{:ok, %Wardrik.TokenIssued{token: %Wardrik.Token{id: id}, secret: secret}} =
+  Wardrik.Tokens.create(scope, name: "ci", roles: ["reader", "messenger"], resources: ["acme/agent/*"])
+
+{:ok, scope} = MyApp.Wardrik.authenticate(secret)
+```
+
+A token acts for whoever made it, works for 90 days unless `expires_in` says, and is kept as the
+SHA-256 of its secret. `policy:` names a policy every agent it defines is held to, ahead of the
+agent's own: a definition can narrow it, never widen it. `Wardrik.Tokens.list/1` lists them, and
+`Wardrik.Tokens.revoke/2` refuses one from then on.
+
 ## Write your own authorizer
 
-Reach for this when your app already decides who may do what. Implement `Wardrik.Authorizer`, and
-give it to Wardrik:
+Reach for this when your app already decides who may do what:
 
 ```elixir
 defmodule MyApp.Authorizer do
@@ -45,9 +64,9 @@ defmodule MyApp.Authorizer do
   end
 end
 
-Wardrik.new(name: MyApp.Wardrik, data_dir: "/var/lib/my_app", authorizer: {MyApp.Authorizer, []})
+config :my_app, MyApp.Wardrik, authorizer: {MyApp.Authorizer, []}
 ```
 
 It answers `:ok`, `{:error, :not_found}` where the scope can't see the resource, or
 `{:error, :forbidden}` where it can without the action. Your grants are in the scope's `grants`, as
-you gave them to `Wardrik.as/3`.
+you gave them.

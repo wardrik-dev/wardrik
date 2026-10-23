@@ -1,43 +1,84 @@
 # Run Wardrik
 
-One `Wardrik` runs your agents, keeps what they do, and holds them to your policies.
-
-## Start it
+One Wardrik runs your agents, keeps what they do, and holds them to your policies. Make it a module
+of your app:
 
 ```elixir
-wardrik = Wardrik.new(name: MyApp.Wardrik, data_dir: "/var/lib/my_app", deployment: "acme-prod")
-
-children = [{Wardrik, wardrik}]
+defmodule MyApp.Wardrik do
+  use Wardrik, otp_app: :my_app
+end
 ```
+
+Add it to your supervision tree, ahead of anything that uses it:
+
+```elixir
+children = [MyApp.Wardrik]
+```
+
+Everything else names it: `MyApp.Wardrik.as/2` makes a scope, and every operation takes one.
+
+## Configure it
+
+It reads `config :my_app, MyApp.Wardrik`, then the options it's started with, as
+`{MyApp.Wardrik, deployment: "acme-prod"}`, then its `init/1`, for what's only known as it runs:
+
+```elixir
+defmodule MyApp.Wardrik do
+  use Wardrik, otp_app: :my_app
+
+  @impl Wardrik
+  def init(config), do: {:ok, Keyword.put(config, :keys, [System.fetch_env!("WARDRIK_KEY")])}
+end
+```
+
+Each test can start it as it starts in production, or point it elsewhere in `config/test.exs`.
 
 | Key | Takes | Unless set |
 | --- | --- | --- |
-| `name` | the name Wardrik runs by | required |
 | `data_dir` | the directory agents and their events are kept in | in memory |
 | `deployment` | the deployment's name, in each event's `source` | `"local"` |
-| `policy` | the policy every agent is held to | none |
+| `policy` | the policy every agent is held to; see [Policies](policies.md) | none |
 | `keys` | the keys credentials are sealed with; see [Credentials](credentials.md) | none |
 | `oauth` | the services people sign in to; see [Credentials](credentials.md) | none |
-| `capabilities`, `policies`, `mcp`, `middleware`, `idle_timeout` | what definitions name; see [Define agents](definitions.md) | none |
-| `authorizer` | a `Wardrik.Authorizer` as `{module, config}` | `{Wardrik.Statements, []}` |
+| `mcp` | the MCP servers it starts with; see [MCP servers](servers.md) | none |
+| `capabilities`, `policies`, `middleware`, `idle_timeout` | what definitions name; see [Define agents](definitions.md) | none |
+| `listeners` | the listeners it starts; see [Events](events.md) | none |
+| `triggers` | `req_options` for reading feeds; see [Trigger agents](triggers.md) | none |
+| `authorizer` | a `Wardrik.Authorizer` as `{module, config}`; see [Who may do what](access.md) | statements |
 | `retention` | the days events are kept, or `:infinity` | 30 |
 | `store` | a `WardrikStore` you run yourself, in place of `data_dir` | none |
-| `backend` | where agents are kept, if not with their events | with their events |
+
+These are set as it starts. What changes as it runs, like agents, triggers, servers, accounts and
+tokens, goes through its operations, kept in its store for every node.
 
 ## Where agents are kept
 
-Given a `data_dir`, Wardrik keeps agents and their events on disk there, and on each node when
-clustered. Given neither a `data_dir` nor a `store`, it keeps them in memory, and they're gone when
-it stops. Reach for that in development and tests.
+Given a `data_dir`, it keeps agents and their events on disk there, and on each node when
+clustered. Given neither a `data_dir` nor a `store`, it keeps them in memory, gone when it stops:
+reach for that in development and tests. To keep them somewhere else, like Postgres, run a
+[WardrikStore](https://hexdocs.pm/wardrik_store) yourself and give it as `store`.
 
-To keep them somewhere else, like Postgres, run a [WardrikStore](https://hexdocs.pm/wardrik_store)
-yourself and give it as `store`. Wardrik starts the store it builds, and leaves one you give it to
-you.
+## Nodes
 
-## Start an agent
+In a cluster, each agent runs on one node at a time, and any node reaches it:
 
 ```elixir
-Wardrik.start_agent(wardrik,
+{:ok, %Wardrik.Nodes{nodes: [%Wardrik.Node{name: name, agents: count} | _rest], asleep: asleep}} =
+  Wardrik.Deployment.nodes(scope)
+
+{:ok, %Wardrik.Agent{node: ^name}} = Wardrik.Agent.move(scope, "acme/triage", node: name)
+```
+
+Moving an agent ends a turn it's taking, and abandons what it waits on. `Wardrik.Deployment.reload/1`
+has every agent take its definition as it reads now.
+
+## Agents started in code
+
+Most agents are defined, as data; see [Define agents](definitions.md). To start one from code
+instead, with modules of your own:
+
+```elixir
+Wardrik.start_agent(MyApp.Wardrik,
   agent_id: "acme/books",
   model: "anthropic:claude-haiku-4-5",
   capabilities: [MyApp.Books],
@@ -45,8 +86,5 @@ Wardrik.start_agent(wardrik,
 )
 ```
 
-It takes what `WardrikCore.start_agent/2` takes, and `policy`, the agent's own. See
-[Policies](policies.md).
-
-An agent started this way runs until you stop it. To describe agents as data, so people and programs
-can define them and they sleep when idle, see [Define agents](definitions.md).
+It takes what `WardrikCore.start_agent/2` takes, and `policy`, the agent's own. An agent started
+this way runs until you stop it.

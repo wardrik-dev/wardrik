@@ -8,32 +8,31 @@ agent's tools the ones its principal holds, and sends a person to sign in when t
 Give Wardrik keys to seal credentials with:
 
 ```elixir
-Wardrik.new(
-  name: MyApp.Wardrik,
-  data_dir: "/var/lib/my_app",
-  keys: [System.fetch_env!("WARDRIK_KEY")]
-)
+config :my_app, MyApp.Wardrik, keys: [System.fetch_env!("WARDRIK_KEY")]
 ```
 
 Make a key with `WardrikVault.generate_key/0`. The first key seals, and any of them unseals. To
 rotate, put a new key first, and keep the old one behind it until nothing needs it.
 
-Every agent then reads its principal's credentials, and nothing else. Put a secret in for someone:
+Every agent then reads its principal's credentials, and nothing else. Keep a secret for an org or a
+person:
 
 ```elixir
-maria = %WardrikCore.Principal{id: "acme/@maria"}
-
-WardrikVault.put(Wardrik.vault(wardrik), maria, "github", "ghp_...")
+:ok = MyApp.Wardrik.put_secret("acme/@maria", "github", "ghp_...")
+{:ok, "ghp_..."} = MyApp.Wardrik.fetch_secret("acme/@maria", "github")
+["github"] = MyApp.Wardrik.list_secrets("acme/@maria")
+:ok = MyApp.Wardrik.delete_secret("acme/@maria", "github")
 ```
+
+`lookup_secret/2` adds its kind, `:secret`, or `:grant` for an account someone connected, and its
+version, for `put_secret/4`'s `if_vsn:`. Keeping and removing one is recorded in the audit.
 
 ## Let people sign in
 
 Give Wardrik your OAuth apps, one per service, named like the credential each grants:
 
 ```elixir
-Wardrik.new(
-  name: MyApp.Wardrik,
-  data_dir: "/var/lib/my_app",
+config :my_app, MyApp.Wardrik,
   keys: [System.fetch_env!("WARDRIK_KEY")],
   oauth: [
     page: "https://agents.example.com/oauth",
@@ -46,7 +45,6 @@ Wardrik.new(
       ]
     ]
   ]
-)
 ```
 
 When a tool needs a credential its principal hasn't granted, its call waits on a sign-in.

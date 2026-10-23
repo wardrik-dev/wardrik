@@ -4,12 +4,11 @@ A policy decides each tool call before it runs: the call runs, waits on a person
 and the model is told why. Hold every agent to the deployment's policy, and each to its own:
 
 ```elixir
-wardrik = Wardrik.new(name: MyApp.Wardrik, data_dir: "/var/lib/my_app", policy: [deny: ["shell/*"]])
+config :my_app, MyApp.Wardrik, policy: [deny: ["shell/*"]]
 
-Wardrik.start_agent(wardrik,
-  agent_id: "acme/books",
+Wardrik.Agent.define(scope, "acme/books",
   model: "anthropic:claude-haiku-4-5",
-  capabilities: [MyApp.Books],
+  tools: ["books/*"],
   policy: [
     allow: ["books/list_*"],
     ask: %{"books/pay_bill(amount >= 1000)" => "A bill this size needs a person."},

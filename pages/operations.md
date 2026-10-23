@@ -16,8 +16,9 @@ Each operation is a function, named by its ID. `agent.ask` is `Wardrik.Agent.ask
 :ok = Wardrik.Agent.cancel(scope, "acme/books")
 ```
 
-Each takes the scope, then the operation's path parameters, then the rest of its input as a keyword
-list. Each answers a struct, a list of them, or `:ok`, and `{:error, %Wardrik.Error{}}` with the
+Each takes the scope, then the operation's path parameters, each as text or as the struct it names,
+like `%Wardrik.Agent{}` for an agent or `%Wardrik.Interrupt{}` for a call it waits on, then the rest
+of its input as a keyword list. Each answers a struct, a list of them, or `:ok`, and `{:error, %Wardrik.Error{}}` with the
 error's `type` and `message` when it can't. Operations that can be streamed have a `stream_`
 function too; see [Events and the audit](events.md).
 

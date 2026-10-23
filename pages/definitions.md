@@ -10,13 +10,10 @@ HTTP, from a CLI, or from your code.
 Give Wardrik the tools and policies a definition may name:
 
 ```elixir
-Wardrik.new(
-  name: MyApp.Wardrik,
-  data_dir: "/var/lib/my_app",
+config :my_app, MyApp.Wardrik,
   capabilities: [files: {MyApp.Files, []}, run_lua: MyApp.Lua],
   policies: [careful: [ask: ["github/*"], deny: ["shell/*"]]],
   mcp: [github: [transport: {:stdio, command: "github-mcp-server", args: ["stdio"]}]]
-)
 ```
 
 | Option | Takes | Unless set |

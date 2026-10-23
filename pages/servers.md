@@ -6,16 +6,13 @@ and let each org and person add their own as it runs.
 ## Servers Wardrik starts with
 
 ```elixir
-Wardrik.new(
-  name: MyApp.Wardrik,
-  data_dir: "/var/lib/my_app",
+config :my_app, MyApp.Wardrik,
   mcp: [
     github: [
       transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
       credential_name: "github"
     ]
   ]
-)
 ```
 
 A definition names a server's tools as `github/*`. With `credential_name`, each person's agents reach

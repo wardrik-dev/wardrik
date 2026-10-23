@@ -76,8 +76,7 @@ defmodule Wardrik.SignInsTest do
     scope: scope
   } do
     answers([answer("Triaged.")])
-    acme = %WardrikCore.Principal{id: "acme"}
-    {:ok, _vsn} = WardrikVault.put(Wardrik.vault(wardrik), acme, "HOOK", "s3cret")
+    :ok = Wardrik.put_secret(wardrik, "acme", "HOOK", "s3cret")
 
     {:ok, %Wardrik.Agent{}} =
       Wardrik.Agent.define(scope, "acme/hooks",
@@ -99,6 +98,27 @@ defmodule Wardrik.SignInsTest do
                body: "{}",
                headers: %{}
              )
+  end
+
+  test "keeps, reads and removes an owner's secrets, and records it", %{
+    wardrik: wardrik,
+    scope: scope
+  } do
+    assert :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "s3cret")
+    assert {:ok, "s3cret"} = Wardrik.fetch_secret(wardrik, "acme", "crm-key")
+    assert {:ok, :secret, "s3cret", vsn} = Wardrik.lookup_secret(wardrik, "acme", "crm-key")
+    assert :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "rotated", if_vsn: vsn)
+
+    assert {"acme", "crm-key", :secret} in Wardrik.list_secrets(wardrik)
+    assert Wardrik.list_secrets(wardrik, "acme") == ["crm-key"]
+
+    assert :ok = Wardrik.delete_secret(wardrik, "acme", "crm-key")
+    assert {:error, :not_found} = Wardrik.fetch_secret(wardrik, "acme", "crm-key")
+
+    {:ok, %Wardrik.Page{events: changes}} = Wardrik.Audit.list(scope)
+
+    assert ["wardrik.secret.stored", "wardrik.secret.stored", "wardrik.secret.removed"] =
+             Enum.map(changes, & &1.type)
   end
 
   test "keeps credentials only when given keys" do

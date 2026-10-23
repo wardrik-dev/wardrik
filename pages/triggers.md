@@ -49,7 +49,7 @@ unless `missed: skip`.
 
 A trigger with `feed` asks only when a feed holds entries it hasn't seen, with up to 20 of them
 under the prompt. Its first run only notes what each feed holds. Give `triggers: [req_options: ...]`
-to `Wardrik.new/1` to change how feeds are read.
+to your Wardrik's config to change how feeds are read.
 
 ## Receiving a webhook
 

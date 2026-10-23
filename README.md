@@ -5,6 +5,23 @@
 Run agents in your Elixir app with rules the model can't rewrite, approvals from the people you
 choose, budgets that cap what they spend, and a record of everything they did.
 
+## Try it
+
+```elixir
+Mix.install([{:wardrik, "~> 0.1"}])
+
+defmodule Demo.Wardrik, do: use(Wardrik)
+{:ok, _pid} = Demo.Wardrik.start_link()
+
+me = Demo.Wardrik.as("me", roles: [:owner], resources: ["me/*"])
+{:ok, assistant} = Wardrik.Agent.define(me, "me/assistant", model: "anthropic:claude-haiku-4-5")
+
+me |> Wardrik.Agent.stream(assistant, "Tell me a short story.") |> Enum.each(&IO.write/1)
+```
+
+That's an agent kept in memory, a scope that owns it, and its answer streamed into your IEx session
+as it's written.
+
 ## Install
 
 ```elixir
@@ -17,46 +34,57 @@ end
 
 ## Start it
 
-Describe your Wardrik, add it to your supervision tree, and start an agent held to a policy:
+Make your Wardrik a module, configure it, and add it to your supervision tree:
 
 ```elixir
-wardrik = Wardrik.new(name: MyApp.Wardrik, data_dir: "/var/lib/my_app", policy: [deny: ["shell/*"]])
+defmodule MyApp.Wardrik do
+  use Wardrik, otp_app: :my_app
+end
 
-children = [{Wardrik, wardrik}]
+# config/runtime.exs
+config :my_app, MyApp.Wardrik,
+  data_dir: "/var/lib/my_app",
+  policy: [deny: ["shell/*"]]
 
-Wardrik.start_agent(wardrik,
-  agent_id: "acme/books",
-  model: "anthropic:claude-haiku-4-5",
-  capabilities: [MyApp.Books],
-  policy: [ask: ["books/pay_bill(amount >= 1000)"], budget: [usd: 5.00, per: :day]]
-)
+# application.ex
+children = [MyApp.Wardrik]
 ```
 
-Then ask it something, as a person allowed to:
+Then act as someone, and talk to agents:
 
 ```elixir
-owner = Wardrik.Statement.new(roles: [:owner], resources: ["*"])
-scope = Wardrik.as(wardrik, "acme/@maria", [owner])
+scope = MyApp.Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 
-{:ok, %Wardrik.Message{}} = Wardrik.Agent.ask(scope, "acme/books", "Which bills are due this week?")
+{:ok, notes} =
+  Wardrik.Agent.define(scope, "acme/@maria/notes",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You keep Maria's notes.",
+    policy: [budget: [usd: 1.00, per: :day]]
+  )
+
+{:ok, %Wardrik.Reply{text: text}} = Wardrik.Agent.reply(scope, notes, "What did I note yesterday?")
 ```
 
 ## Guides
 
-- [Run Wardrik](pages/running-wardrik.md): options, where agents are kept, and starting agents.
+- [Run Wardrik](pages/running-wardrik.md): the instance module, its options, where agents are kept,
+  and its nodes.
+- [Talk to agents](pages/talking.md): asking, streaming answers, and replies.
 - [Define agents](pages/definitions.md): what agents are and may do, as data, and how they sleep and
   wake.
 - [Trigger agents](pages/triggers.md): asking agents on a clock, from a feed, or from a webhook.
 - [Policies](pages/policies.md): rules the model can't rewrite, held at once by the deployment and
   each agent, and budgets.
-- [Who may do what](pages/access.md): scopes, statements and roles, and your own authorizer.
-- [Operations](pages/operations.md): asking, reading and cancelling, as functions or by ID.
+- [Who may do what](pages/access.md): scopes, grants and roles, API tokens, and your own
+  authorizer.
+- [Operations](pages/operations.md): every operation as a function, taking and answering structs.
 - [Approvals](pages/approvals.md): deciding the calls agents wait on.
 - [MCP servers](pages/servers.md): the servers agents call, those Wardrik starts with and those an
   org or person adds as it runs.
 - [Credentials and sign-ins](pages/credentials.md): sealed credentials, and people signing in to
   give agents their accounts.
-- [Events and the audit](pages/events.md): following what agents do, and what people did.
+- [Events and the audit](pages/events.md): following what agents do into your app, and what people
+  did.
 
 ## License
 

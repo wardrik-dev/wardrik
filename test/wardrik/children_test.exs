@@ -47,4 +47,12 @@ defmodule Wardrik.ChildrenTest do
 
     assert WardrikMCP.tools(nil, name: Wardrik.mcp(wardrik), servers: :down) == []
   end
+
+  test "keeps no secret without keys to seal it with", %{test: test} do
+    start_supervised!({Wardrik, name: :"keyless #{test}"}, id: :keyless)
+    assert {:error, :no_keys} = Wardrik.put_secret(:"keyless #{test}", "acme", "HOOK", "s3cret")
+    assert {:error, :no_keys} = Wardrik.fetch_secret(:"keyless #{test}", "acme", "HOOK")
+    assert Wardrik.list_secrets(:"keyless #{test}") == []
+    assert Wardrik.list_secrets(:"keyless #{test}", "acme") == []
+  end
 end
