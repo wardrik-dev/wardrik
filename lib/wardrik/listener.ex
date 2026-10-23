@@ -95,7 +95,7 @@ defmodule Wardrik.Listener.Events do
 
     %Wardrik.Listener{
       wardrik: listener.options[:wardrik],
-      cursor: encoded(listener.cursor),
+      cursor: listener.cursor,
       options: options
     }
   end
