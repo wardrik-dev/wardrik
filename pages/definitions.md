@@ -57,7 +57,7 @@ the same one.
 | --- | --- |
 | `model` | the model, as `provider:model`; required |
 | `instructions` | the system prompt, sent with every model call |
-| `tools` | what it may call: a capability by name, `server/*` for every tool of an MCP server, or `*` for all of them |
+| `tools` | what it may call: a capability by name, `server/*` for every tool of an MCP server, `workers/*` for the tools workers offer it, or `*` for all of them |
 | `policy` | a policy by name, or its rules written in place, a budget and judge included |
 | `timeout` | the seconds a turn may take |
 | `max_iterations` | the rounds of tool calls a turn may make; 25 unless set |
