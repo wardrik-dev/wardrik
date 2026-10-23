@@ -18,8 +18,9 @@ scope =
 | Role | Actions |
 | --- | --- |
 | `:reader` | `agent.read`, `agent.events` |
-| `:messenger` | `agent.ask`, `agent.cancel` |
+| `:messenger` | `agent.ask`, `agent.cancel`, `agent.clear` |
 | `:approver` | `agent.decide` |
+| `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget` |
 | `:owner` | every action |
 
 A principal is who acts, by id, or a `WardrikCore.Principal` with attributes your authorizer

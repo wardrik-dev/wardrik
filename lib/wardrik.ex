@@ -16,6 +16,7 @@ defmodule Wardrik do
   alias Wardrik.Error
   alias Wardrik.Runner
   alias Wardrik.Scope
+  alias Wardrik.Setup
   alias WardrikCore.Principal
 
   @derive {Inspect, except: [:keys, :oauth, :mcp]}
@@ -31,6 +32,10 @@ defmodule Wardrik do
     :retention,
     :backend,
     :policy,
+    :capabilities,
+    :policies,
+    :middleware,
+    :idle_timeout,
     :catalog
   ]
   defstruct @enforce_keys
@@ -47,6 +52,10 @@ defmodule Wardrik do
           retention: pos_integer() | :infinity,
           backend: {module(), keyword()},
           policy: WardrikPolicy.t() | nil,
+          capabilities: %{String.t() => WardrikCore.Context.entry()},
+          policies: %{String.t() => WardrikPolicy.t()},
+          middleware: [WardrikCore.Context.entry()],
+          idle_timeout: pos_integer() | :infinity,
           catalog: Catalog.t()
         }
 
@@ -66,42 +75,15 @@ defmodule Wardrik do
 
   Given `:mcp`, the MCP servers its agents may call, as `WardrikMCP` takes its `:servers`, it
   connects to each.
+
+  What a definition names, it finds here: `:capabilities`, the tools it offers by name, as
+  `[files: {MyApp.Files, []}]`, and `:policies`, as `[careful: [ask: ["github/*"]]]`. Each MCP
+  server is a tool too, as `github/*`. `:middleware` wraps every agent's calls, and `:idle_timeout`
+  is how many seconds a defined agent may have nothing to do before it sleeps, 900 unless set, or
+  `:infinity`.
   """
   @spec new(keyword()) :: t()
-  def new(opts) do
-    opts =
-      Keyword.validate!(opts, [
-        :name,
-        :store,
-        :data_dir,
-        :backend,
-        :policy,
-        :oauth,
-        :mcp,
-        keys: [],
-        deployment: "local",
-        authorizer: {Wardrik.Statements, []},
-        retention: 30
-      ])
-
-    name = Keyword.fetch!(opts, :name)
-    {store, own_store} = store(name, opts[:store], opts[:data_dir])
-
-    %__MODULE__{
-      name: name,
-      store: store,
-      own_store: own_store,
-      keys: opts[:keys],
-      oauth: oauth(opts[:oauth], opts[:keys]),
-      mcp: opts[:mcp],
-      deployment: opts[:deployment],
-      authorizer: opts[:authorizer],
-      retention: opts[:retention],
-      backend: opts[:backend] || {WardrikStore.Durable, store: store},
-      policy: policy(opts[:policy]),
-      catalog: Catalog.new()
-    }
-  end
+  def new(opts), do: Setup.wardrik(opts)
 
   @doc "Starts what `wardrik` runs: its store, unless you run it, its agents, and their events."
   @spec start_link(t()) :: Supervisor.on_start()
@@ -147,18 +129,8 @@ defmodule Wardrik do
       )
   """
   @spec start_agent(t(), keyword()) :: {:ok, pid()} | {:error, term()}
-  def start_agent(%__MODULE__{} = wardrik, opts) do
-    {policy, opts} = Keyword.pop(opts, :policy)
-    policies = Enum.reject([wardrik.policy, policy(policy)], &is_nil/1)
-
-    opts =
-      opts
-      |> Keyword.put(:events, {WardrikEvents, events(wardrik)})
-      |> credentials(wardrik)
-      |> governed(policies)
-
-    WardrikCore.start_agent(agents(wardrik), opts)
-  end
+  def start_agent(%__MODULE__{} = wardrik, opts),
+    do: WardrikCore.start_agent(agents(wardrik), Setup.agent(wardrik, opts))
 
   @doc "Returns the name of `wardrik`'s `WardrikCore` instance."
   @spec agents(t()) :: atom()
@@ -188,39 +160,6 @@ defmodule Wardrik do
   """
   @spec mcp(t()) :: atom()
   def mcp(%__MODULE__{name: name}), do: Module.concat(name, MCP)
-
-  defp store(name, nil, nil), do: {WardrikStore.ETS.new(name: Module.concat(name, Store)), true}
-
-  defp store(name, nil, data_dir),
-    do: {WardrikStore.EKV.new(name: Module.concat(name, Store), data_dir: data_dir), true}
-
-  defp store(_name, store, nil), do: {store, false}
-
-  defp store(_name, _store, _data_dir),
-    do: raise(ArgumentError, "Give Wardrik a :store or a :data_dir, not both.")
-
-  defp oauth(nil, _keys), do: nil
-
-  defp oauth(_oauth, []),
-    do: raise(ArgumentError, "Give Wardrik :keys to seal what people sign in with.")
-
-  defp oauth(oauth, _keys), do: Keyword.validate!(oauth, [:page, :providers, req_options: []])
-
-  defp credentials(opts, %__MODULE__{keys: []}), do: opts
-
-  defp credentials(opts, wardrik),
-    do: Keyword.put_new(opts, :credentials, {WardrikVault, vault(wardrik)})
-
-  defp policy(nil), do: nil
-  defp policy(%WardrikPolicy{} = policy), do: policy
-  defp policy(rules), do: WardrikPolicy.new!(rules)
-
-  defp governed(opts, []), do: opts
-
-  defp governed(opts, policies) do
-    middleware = {WardrikPolicy.Middleware, policies}
-    Keyword.update(opts, :middleware, [middleware], &[middleware | &1])
-  end
 
   @impl Supervisor
   def init(wardrik),

@@ -40,6 +40,7 @@ defmodule Wardrik.MixProject do
       extras: [
         "README.md",
         "pages/running-wardrik.md",
+        "pages/definitions.md",
         "pages/policies.md",
         "pages/access.md",
         "pages/operations.md",

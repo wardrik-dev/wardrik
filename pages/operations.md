@@ -23,8 +23,8 @@ keys. Each answers `{:ok, output}`, or `{:error, %Wardrik.Error{}}` with the err
 
 | Module | Operations |
 | --- | --- |
-| `Wardrik.Agent` | one agent: ask, read, cancel, decide, approve, deny, its events, timeline and runs |
-| `Wardrik.Agents` | the agents a scope can see |
+| `Wardrik.Agent` | one agent: define, ask, read, cancel, decide, approve, deny, stop, spawn, clear, forget, its calls, events, timeline and runs |
+| `Wardrik.Agents` | the agents a scope can see: list, cancel and forget them |
 | `Wardrik.Interrupts` | what they wait on |
 | `Wardrik.Events` | their events |
 | `Wardrik.Audit` | what people did |

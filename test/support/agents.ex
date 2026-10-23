@@ -82,3 +82,36 @@ defmodule Wardrik.Test.Mail do
     ]
   end
 end
+
+defmodule Wardrik.Test.Blocking do
+  @moduledoc "A capability with `block`, a tool that tells the test it runs, and waits to be released."
+  @behaviour WardrikCore.Capability
+
+  @impl true
+  def tools(_context, test) do
+    [
+      WardrikCore.Tool.new!(
+        name: "block",
+        description: "Blocks until released",
+        schema: [],
+        run: fn _args, %{step: {:tool_call, call}} ->
+          send(test, {:running, call.id, self()})
+          receive do: (:release -> {:ok, "released"})
+        end
+      )
+    ]
+  end
+end
+
+defmodule Wardrik.Test.Tell do
+  @moduledoc "Middleware that tells the test of each model call, for the deployment's middleware."
+  @behaviour WardrikCore.Middleware
+
+  @impl true
+  def call(%WardrikCore.Context{step: :generate, agent_id: id} = context, next, test) do
+    send(test, {:middleware, id})
+    next.(context)
+  end
+
+  def call(context, next, _test), do: next.(context)
+end

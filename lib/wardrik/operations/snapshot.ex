@@ -2,6 +2,7 @@ defmodule Wardrik.Operations.Snapshot do
   @moduledoc "What operations read of agents: their status from their activity, and their logs."
 
   alias Wardrik.Error
+  alias Wardrik.Operations.Running
   alias Wardrik.Scope
 
   @doc "Returns the agent `id`'s name, the last part of its ID."
@@ -27,12 +28,44 @@ defmodule Wardrik.Operations.Snapshot do
     end)
   end
 
-  @doc "Returns the running agent `id`, or a `not_found` error."
-  @spec running(Scope.t(), String.t()) :: {:ok, pid()} | {:error, Error.t()}
-  def running(%Scope{wardrik: wardrik}, id) do
-    case WardrikCore.whereis(Wardrik.agents(wardrik), id) do
-      nil -> {:error, Error.new(:not_found, "There's no agent #{id}.")}
-      pid -> {:ok, pid}
+  @doc "Returns whether the agent `id` sleeps, or else what its activity says it's doing."
+  @spec state(Wardrik.t(), String.t(), map()) :: String.t()
+  def state(wardrik, id, activity) do
+    case Running.whereis(wardrik, id) do
+      nil -> "asleep"
+      _pid -> status(activity)
+    end
+  end
+
+  @doc "Returns the agent `id` as lists show it."
+  @spec summary(Wardrik.t(), String.t()) :: map()
+  def summary(wardrik, id) do
+    activity = WardrikEvents.activity(Wardrik.events(wardrik), id)
+
+    %{
+      "id" => id,
+      "name" => name(id),
+      "status" => state(wardrik, id, activity),
+      "pending" => activity["pending"]
+    }
+  end
+
+  @doc "Returns `:ok` if `wardrik` knows the agent `id`, or a `not_found` error."
+  @spec known(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
+  def known(wardrik, id) do
+    if Running.known?(wardrik, id),
+      do: :ok,
+      else: {:error, Error.new(:not_found, "There's no agent #{id}.")}
+  end
+
+  @doc "Returns the running agent `id`, or a `not_found` error while it sleeps."
+  @spec running(Wardrik.t(), String.t()) :: {:ok, pid()} | {:error, Error.t()}
+  def running(wardrik, id) do
+    with :ok <- known(wardrik, id) do
+      case Running.whereis(wardrik, id) do
+        nil -> {:error, Error.new(:not_found, "#{id} sleeps.")}
+        pid -> {:ok, pid}
+      end
     end
   end
 

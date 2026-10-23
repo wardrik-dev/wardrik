@@ -3,6 +3,8 @@ defmodule Wardrik.Operations.Agent do
 
   alias Wardrik.Error
   alias Wardrik.JSON
+  alias Wardrik.Operations.Changes
+  alias Wardrik.Operations.Running
   alias Wardrik.Operations.Snapshot
   alias WardrikCore.Authorization
   alias WardrikEvents.Cursor
@@ -12,14 +14,14 @@ defmodule Wardrik.Operations.Agent do
   @doc "Reads what the agent is doing now."
   @spec read(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def read(scope, %{"agent" => id}) do
-    with {:ok, _pid} <- Snapshot.running(scope, id) do
+    with :ok <- Snapshot.known(scope.wardrik, id) do
       events = Wardrik.events(scope.wardrik)
       activity = WardrikEvents.activity(events, id)
 
       {:ok,
        %{
          "agent" => %{"id" => id, "name" => Snapshot.name(id)},
-         "status" => Snapshot.status(activity),
+         "status" => Snapshot.state(scope.wardrik, id, activity),
          "pending" => activity["pending"],
          "activity" => activity,
          "interrupts" => Snapshot.interrupts(activity),
@@ -31,7 +33,7 @@ defmodule Wardrik.Operations.Agent do
   @doc "Sends the agent a message, and answers its id with the cursor its answer comes after."
   @spec ask(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def ask(scope, %{"agent" => id} = input) do
-    with {:ok, pid} <- Snapshot.running(scope, id) do
+    with {:ok, pid} <- Running.awake(scope.wardrik, id) do
       message_id = input["id"] || message_id()
       cursor = WardrikEvents.head(Wardrik.events(scope.wardrik), [id])
       :ok = WardrikCore.ask(pid, text(input), %{id: message_id, principal: scope.principal})
@@ -42,8 +44,9 @@ defmodule Wardrik.Operations.Agent do
   @doc "Approves or rejects the calls the agent waits on, together."
   @spec decide(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def decide(scope, %{"agent" => id, "decisions" => decisions}) do
-    with {:ok, pid} <- Snapshot.running(scope, id),
+    with :ok <- Snapshot.known(scope.wardrik, id),
          :ok <- waiting_on(scope, id, decisions),
+         {:ok, pid} <- Running.awake(scope.wardrik, id),
          :ok <- resume(pid, decisions, scope) do
       {:ok, %{"decisions" => Enum.map(decisions, &decided/1)}}
     end
@@ -66,7 +69,7 @@ defmodule Wardrik.Operations.Agent do
   @doc "Returns where a person signs in for a call that waits on it."
   @spec authorization(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def authorization(scope, %{"agent" => id, "interrupt" => interrupt}) do
-    with {:ok, pid} <- Snapshot.running(scope, id) do
+    with {:ok, pid} <- Running.awake(scope.wardrik, id) do
       case sign_in(WardrikCore.parked(pid), interrupt) do
         %Authorization{url: url} -> {:ok, %{"url" => url}}
         nil -> {:error, Error.new(:not_found, "#{id} waits on no sign-in for #{interrupt}.")}
@@ -77,9 +80,24 @@ defmodule Wardrik.Operations.Agent do
   @doc "Stops what the agent is doing, and drops what's queued behind it."
   @spec cancel(Wardrik.Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def cancel(scope, %{"agent" => id}) do
-    with {:ok, pid} <- Snapshot.running(scope, id) do
-      _stopped_or_idle = WardrikCore.interrupt(pid)
+    with :ok <- Snapshot.known(scope.wardrik, id) do
+      cancelled(scope, id, Running.whereis(scope.wardrik, id))
       {:ok, nil}
+    end
+  end
+
+  @doc "Stops what the running agent `id` is doing, and records it. Returns whether it was doing anything."
+  @spec cancelled(Wardrik.Scope.t(), String.t(), pid() | nil) :: boolean()
+  def cancelled(_scope, _id, nil), do: false
+
+  def cancelled(scope, id, pid) do
+    case WardrikCore.interrupt(pid) do
+      :ok ->
+        Changes.record(scope, "agent.cancelled", id)
+        true
+
+      {:error, :idle} ->
+        false
     end
   end
 

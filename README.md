@@ -44,6 +44,8 @@ Wardrik.Agent.ask(scope, "acme/books", %{"content" => "Which bills are due this 
 ## Guides
 
 - [Run Wardrik](pages/running-wardrik.md): options, where agents are kept, and starting agents.
+- [Define agents](pages/definitions.md): what agents are and may do, as data, and how they sleep and
+  wake.
 - [Policies](pages/policies.md): rules the model can't rewrite, held at once by the deployment and
   each agent, and budgets.
 - [Who may do what](pages/access.md): scopes, statements and roles, and your own authorizer.

@@ -1,6 +1,10 @@
 defmodule Wardrik.Operations.Agents do
   @moduledoc "The operations over the agents resource patterns cover: listing them, and their events."
 
+  alias Wardrik.Operations.Agent
+  alias Wardrik.Operations.Changes
+  alias Wardrik.Operations.Lifecycle
+  alias Wardrik.Operations.Running
   alias Wardrik.Operations.Snapshot
   alias Wardrik.Operations.Visible
   alias Wardrik.Scope
@@ -9,19 +13,39 @@ defmodule Wardrik.Operations.Agents do
   @doc "Lists the agents."
   @spec list(Scope.t(), map()) :: {:ok, map()}
   def list(scope, input) do
-    agents =
-      for id <- Visible.agents(scope, input) do
-        activity = WardrikEvents.activity(Wardrik.events(scope.wardrik), id)
-
-        %{
-          "id" => id,
-          "name" => Snapshot.name(id),
-          "status" => Snapshot.status(activity),
-          "pending" => activity["pending"]
-        }
-      end
-
+    agents = Enum.map(Visible.agents(scope, input), &Snapshot.summary(scope.wardrik, &1))
     {:ok, %{"agents" => agents}}
+  end
+
+  @doc "Stops what each of the agents is doing, and answers those whose turn ended."
+  @spec cancel(Scope.t(), map()) :: {:ok, map()}
+  def cancel(scope, input) do
+    cancelled =
+      Enum.filter(Visible.agents(scope, input), fn id ->
+        Agent.cancelled(scope, id, Running.whereis(scope.wardrik, id))
+      end)
+
+    {:ok, %{"cancelled" => cancelled}}
+  end
+
+  @doc "Forgets each of the agents, and answers which went, and which couldn't, with why."
+  @spec forget(Scope.t(), map()) :: {:ok, map()}
+  def forget(scope, input) do
+    {forgotten, failed} =
+      scope
+      |> Visible.agents(input)
+      |> Enum.map(&{&1, Lifecycle.forgotten(scope.wardrik, &1)})
+      |> Enum.split_with(fn {_id, outcome} -> outcome == :ok end)
+
+    Enum.each(forgotten, fn {id, :ok} -> Changes.record(scope, "agent.forgotten", id) end)
+
+    {:ok,
+     %{
+       "forgotten" => Enum.map(forgotten, fn {id, :ok} -> id end),
+       "kept" => [],
+       "failed" =>
+         Enum.map(failed, fn {id, {:error, error}} -> %{"id" => id, "why" => error.message} end)
+     }}
   end
 
   @doc "Lists the calls the agents wait on a person for."

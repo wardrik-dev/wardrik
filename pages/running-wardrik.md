@@ -18,6 +18,7 @@ children = [{Wardrik, wardrik}]
 | `policy` | the policy every agent is held to | none |
 | `keys` | the keys credentials are sealed with; see [Credentials](credentials.md) | none |
 | `oauth` | the services people sign in to; see [Credentials](credentials.md) | none |
+| `capabilities`, `policies`, `mcp`, `middleware`, `idle_timeout` | what definitions name; see [Define agents](definitions.md) | none |
 | `authorizer` | a `Wardrik.Authorizer` as `{module, config}` | `{Wardrik.Statements, []}` |
 | `retention` | the days events are kept, or `:infinity` | 30 |
 | `store` | a `WardrikStore` you run yourself, in place of `data_dir` | none |
@@ -46,3 +47,6 @@ Wardrik.start_agent(wardrik,
 
 It takes what `WardrikCore.start_agent/2` takes, and `policy`, the agent's own. See
 [Policies](policies.md).
+
+An agent started this way runs until you stop it. To describe agents as data, so people and programs
+can define them and they sleep when idle, see [Define agents](definitions.md).

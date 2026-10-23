@@ -1,7 +1,8 @@
 defmodule Wardrik.Children do
   @moduledoc """
   What a Wardrik runs, in the order it starts them: its store, unless you run it, its vault and
-  sign-ins, when it keeps credentials, its MCP servers, then its agents' events, and its agents.
+  sign-ins, when it keeps credentials, its MCP servers, then its agents' events, its agents, and
+  what puts them to sleep.
   """
 
   @doc "Returns the children `wardrik` runs, in order."
@@ -9,7 +10,9 @@ defmodule Wardrik.Children do
   def children(wardrik),
     do:
       store(wardrik) ++
-        vault(wardrik) ++ oauth(wardrik) ++ mcp(wardrik) ++ [events(wardrik), agents(wardrik)]
+        vault(wardrik) ++
+        oauth(wardrik) ++
+        mcp(wardrik) ++ [events(wardrik), agents(wardrik), {Wardrik.Sleeper, wardrik}]
 
   defp store(%Wardrik{own_store: true, store: store}), do: [{WardrikStore, store}]
   defp store(_wardrik), do: []

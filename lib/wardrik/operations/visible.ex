@@ -4,18 +4,18 @@ defmodule Wardrik.Operations.Visible do
   may act on, and of their events and cursors only theirs.
   """
 
+  alias Wardrik.Definitions
   alias Wardrik.Resource
   alias Wardrik.Scope
   alias WardrikEvents.Pattern
 
   @everything ["*"]
 
-  @doc "Returns the IDs of the agents running that `input`'s patterns cover and `scope` reaches."
+  @doc "Returns the IDs of the agents, saved or defined, that `input`'s patterns cover and `scope` reaches."
   @spec agents(Scope.t(), map()) :: [String.t()]
   def agents(%Scope{wardrik: wardrik} = scope, input) do
-    wardrik
-    |> Wardrik.agents()
-    |> WardrikCore.list()
+    (WardrikCore.list(Wardrik.agents(wardrik)) ++ Definitions.ids(wardrik))
+    |> Enum.uniq()
     |> Enum.filter(&visible?(scope, patterns(input), &1))
     |> Enum.sort()
   end
