@@ -46,8 +46,18 @@ defmodule Wardrik.Operations.Snapshot do
       "id" => id,
       "name" => name(id),
       "status" => state(wardrik, id, activity),
+      "node" => placed(wardrik, id),
       "pending" => activity["pending"]
     }
+  end
+
+  @doc "Returns the node the agent `id` runs on, or `nil` while it sleeps."
+  @spec placed(Wardrik.t(), String.t()) :: String.t() | nil
+  def placed(wardrik, id) do
+    case Running.whereis(wardrik, id) do
+      nil -> nil
+      pid -> to_string(node(pid))
+    end
   end
 
   @doc "Returns `:ok` if `wardrik` knows the agent `id`, or a `not_found` error."

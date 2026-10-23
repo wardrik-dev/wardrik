@@ -37,6 +37,21 @@ defmodule Wardrik.Statement do
     owner: ["*"]
   }
 
+  @doc "Returns the role a name writes, as `\"reader\"` for `:reader`, or `:error`."
+  @spec role(String.t()) :: {:ok, atom()} | :error
+  def role(name),
+    do: Map.fetch(Map.new(@roles, fn {role, _actions} -> {Atom.to_string(role), role} end), name)
+
+  @doc "Reads a statement from the protocol's JSON."
+  @spec from_json(map()) :: t()
+  def from_json(%{"actions" => actions, "resources" => resources}),
+    do: %__MODULE__{actions: actions, resources: resources}
+
+  @doc "Writes the statement as the protocol's JSON."
+  @spec to_json(t()) :: map()
+  def to_json(%__MODULE__{actions: actions, resources: resources}),
+    do: %{"actions" => actions, "resources" => resources}
+
   @doc "Builds a statement from `:actions` and `:roles`, on `:resources`."
   @spec new(keyword()) :: t()
   def new(opts) do

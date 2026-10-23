@@ -18,4 +18,7 @@ defmodule Wardrik.Authorizer do
   @spec authorize(Scope.t(), String.t(), String.t()) :: :ok | {:error, :forbidden | :not_found}
   def authorize(%Scope{wardrik: %{authorizer: {module, config}}} = scope, action, resource),
     do: module.authorize(config, scope, action, resource)
+
+  def authorize(%Scope{wardrik: instance} = scope, action, resource),
+    do: authorize(%{scope | wardrik: Wardrik.Instance.fetch!(instance)}, action, resource)
 end

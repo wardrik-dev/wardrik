@@ -17,9 +17,12 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.MCPServer
   alias Wardrik.MCPServerAdded
   alias Wardrik.Message
+  alias Wardrik.Nodes
   alias Wardrik.Page
   alias Wardrik.Runs
   alias Wardrik.Timeline
+  alias Wardrik.Token
+  alias Wardrik.TokenIssued
   alias Wardrik.Trigger
   alias Wardrik.Type
 
@@ -28,6 +31,17 @@ defmodule Wardrik.Operations.Types do
   @answered_nothing ~w(agent.cancel agent.forget agent.kill hook.deliver hook.deliver_with_secret)
   @triggers ~w(agent.trigger_set agent.trigger_remove)
   @pages ~w(agent.events events.list audit.list)
+
+  @doc "Returns what a path names: the text given, or the id or name of the struct given."
+  @spec path(String.t() | struct()) :: String.t()
+  def path(text) when is_binary(text), do: text
+  def path(%Agent{id: id}), do: id
+  def path(%Interrupt{id: id}), do: id
+  def path(%Call{id: id}), do: id
+  def path(%Trigger{name: name}), do: name
+  def path(%MCPServer{name: name}), do: name
+  def path(%Connection{provider: provider}), do: provider
+  def path(%Token{id: id}), do: id
 
   @doc "Turns `input`, as an Elixir caller gives it, into the operation's JSON input."
   @spec encode(String.t(), term()) :: map()
@@ -75,6 +89,15 @@ defmodule Wardrik.Operations.Types do
     do: {:ok, Enum.map(listed, &Interrupt.from_listed/1)}
 
   def decode("events.head", %{"cursor" => cursor}), do: {:ok, cursor}
+
+  def decode("tokens.list", %{"tokens" => tokens}),
+    do: {:ok, Enum.map(tokens, &Token.from_json/1)}
+
+  def decode("tokens.create", output), do: {:ok, TokenIssued.from_json(output)}
+  def decode("tokens.revoke", output), do: {:ok, Token.from_json(output)}
+  def decode("deployment.reload", %{"reloaded" => nodes}), do: {:ok, nodes}
+  def decode("deployment.nodes", output), do: {:ok, Nodes.from_json(output)}
+  def decode("agent.move", %{"agent" => agent}), do: {:ok, Agent.from_summary(agent)}
 
   def decode("connections.list", %{"connections" => connections}),
     do: {:ok, Enum.map(connections, &Connection.from_json/1)}

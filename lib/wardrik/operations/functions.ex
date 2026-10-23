@@ -74,8 +74,9 @@ defmodule Wardrik.Operations.Functions do
   defp define(operation, name, lead, ok, body) do
     parameters = path(operation)
     arguments = Enum.map(parameters, &Macro.var(String.to_atom(&1), __MODULE__))
-    types = Enum.map(parameters, fn _parameter -> quote(do: String.t()) end)
-    path_input = {:%{}, [], Enum.zip(parameters, arguments)}
+    types = Enum.map(parameters, fn _parameter -> quote(do: String.t() | struct()) end)
+    named = Enum.map(arguments, fn argument -> quote(do: Types.path(unquote(argument))) end)
+    path_input = {:%{}, [], Enum.zip(parameters, named)}
     scope = Macro.var(:scope, __MODULE__)
     given = Macro.var(:input, __MODULE__)
 

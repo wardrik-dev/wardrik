@@ -18,4 +18,10 @@ defmodule Wardrik.Operations.Changes do
     change = {type, subject, Map.put(data, "owner", owner)}
     :ok = WardrikEvents.record(Wardrik.events(wardrik), change, actor: principal)
   end
+
+  @doc "Records the change `type`, like `token.created`, that `scope` made to the deployment."
+  @spec record_deployment(Scope.t(), String.t(), String.t(), map()) :: :ok
+  def record_deployment(%Scope{wardrik: wardrik, principal: principal}, type, subject, data) do
+    :ok = WardrikEvents.record(Wardrik.events(wardrik), {type, subject, data}, actor: principal)
+  end
 end

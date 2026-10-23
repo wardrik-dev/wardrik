@@ -74,7 +74,11 @@ defmodule Wardrik.FunctionsTest do
       Wardrik.Connection,
       Wardrik.Connecting,
       Wardrik.MCPServer,
-      Wardrik.MCPServerAdded
+      Wardrik.MCPServerAdded,
+      Wardrik.Token,
+      Wardrik.TokenIssued,
+      Wardrik.Nodes,
+      Wardrik.Node
     ]
 
     for type <- types do

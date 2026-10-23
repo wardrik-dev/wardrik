@@ -7,10 +7,12 @@ defmodule Wardrik.StatementsTest do
 
   @wardrik Wardrik.new(name: :statements, store: nil)
 
+  defp scope(statements),
+    do: %{Wardrik.as(@wardrik, Wardrik.Test.Wardrik.maria(), statements) | wardrik: @wardrik}
+
   defp authorize(statements, action, agent) do
     {:ok, resource} = Resource.agent(agent)
-    scope = Wardrik.as(@wardrik, Wardrik.Test.Wardrik.maria(), statements)
-    Authorizer.authorize(scope, action, resource)
+    Authorizer.authorize(scope(statements), action, resource)
   end
 
   test "allows what a statement's actions or roles name, on what its patterns cover" do
@@ -38,11 +40,8 @@ defmodule Wardrik.StatementsTest do
 
     assert authorize(statements, "agent.decide", "globex/triage") == :ok
 
-    assert Authorizer.authorize(
-             Wardrik.as(@wardrik, Wardrik.Test.Wardrik.maria(), statements),
-             "deployment.audit",
-             Resource.deployment()
-           ) == {:error, :forbidden}
+    assert Authorizer.authorize(scope(statements), "deployment.audit", Resource.deployment()) ==
+             {:error, :forbidden}
   end
 
   test "names an agent's resource by its ID" do

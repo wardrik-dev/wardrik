@@ -22,6 +22,7 @@ defmodule Wardrik.Operations.Agent do
        %{
          "agent" => %{"id" => id, "name" => Snapshot.name(id)},
          "status" => Snapshot.state(scope.wardrik, id, activity),
+         "node" => Snapshot.placed(scope.wardrik, id),
          "pending" => activity["pending"],
          "activity" => activity,
          "interrupts" => Snapshot.interrupts(activity),

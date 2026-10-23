@@ -20,9 +20,22 @@ defmodule Wardrik.Definitions do
     end
   end
 
-  @doc "Removes the agent `id`'s definition. Removing none is `:ok`."
+  @doc "Removes the agent `id`'s definition, and its boundary. Removing none is `:ok`."
   @spec delete(Wardrik.t(), String.t()) :: :ok | {:error, term()}
-  def delete(wardrik, id), do: WardrikStore.delete(store(wardrik), @prefix <> id)
+  def delete(wardrik, id) do
+    with :ok <- WardrikStore.delete(store(wardrik), @prefix <> id),
+         do: WardrikStore.delete(store(wardrik), "boundaries/" <> id)
+  end
+
+  @doc "Keeps the policy named `name` as the agent `id`'s boundary: the token that defined it named it."
+  @spec put_boundary(Wardrik.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  def put_boundary(wardrik, id, name) do
+    with {:ok, _vsn} <- WardrikStore.put(store(wardrik), "boundaries/" <> id, name), do: :ok
+  end
+
+  @doc "Returns the name of the policy that bounds the agent `id`, or `nil`."
+  @spec boundary(Wardrik.t(), String.t()) :: String.t() | nil
+  def boundary(wardrik, id), do: WardrikStore.get(store(wardrik), "boundaries/" <> id)
 
   @doc "Returns the IDs of the agents with a definition."
   @spec ids(Wardrik.t()) :: [String.t()]

@@ -67,7 +67,8 @@ defmodule Wardrik.Definition do
          {:ok, model} <- model(definition),
          {:ok, rounds} <- rounds(definition["max_iterations"]),
          {:ok, capabilities} <- capabilities(wardrik, Map.get(definition, "tools", [])),
-         {:ok, policy} <- policy(wardrik, definition["policy"]) do
+         {:ok, policy} <- policy(wardrik, definition["policy"]),
+         {:ok, boundary} <- policy(wardrik, Wardrik.Definitions.boundary(wardrik, id)) do
       {:ok,
        [
          agent_id: id,
@@ -75,7 +76,7 @@ defmodule Wardrik.Definition do
          instructions: definition["instructions"],
          capabilities: capabilities,
          principal: principal(id),
-         policy: policy,
+         policy: Enum.reject([boundary, policy], &is_nil/1),
          timeout: seconds(definition["timeout"]),
          max_rounds: rounds
        ]}

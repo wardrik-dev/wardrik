@@ -19,7 +19,8 @@ defmodule Wardrik.Operations.Lifecycle do
   def define(%Scope{wardrik: wardrik} = scope, %{"agent" => id} = input) do
     definition = input |> Map.delete("agent") |> Definition.named()
 
-    with {:ok, opts} <- Definition.resolve(wardrik, id, definition),
+    with :ok <- bounded(wardrik, id, scope.policy),
+         {:ok, opts} <- Definition.resolve(wardrik, id, definition),
          {:ok, _pid} <- Running.bring(wardrik, opts),
          :ok <- Definitions.put(wardrik, id, definition),
          :ok <-
@@ -132,6 +133,9 @@ defmodule Wardrik.Operations.Lifecycle do
         {:error, Error.new(:unavailable, "#{id} wasn't forgotten: #{inspect(reason)}")}
     end
   end
+
+  defp bounded(_wardrik, _id, nil), do: :ok
+  defp bounded(wardrik, id, name), do: Definitions.put_boundary(wardrik, id, name)
 
   defp stopped(_scope, _id, nil), do: :ok
 

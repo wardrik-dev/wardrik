@@ -3,8 +3,6 @@ defmodule Wardrik.Setup do
   Builds a Wardrik from its options, and the options each agent it starts begins with.
   """
 
-  alias Wardrik.Catalog
-
   @doc "Builds a Wardrik from `opts`, as `Wardrik.new/1` takes them."
   @spec wardrik(keyword()) :: Wardrik.t()
   def wardrik(opts) do
@@ -17,6 +15,7 @@ defmodule Wardrik.Setup do
         :policy,
         :oauth,
         :mcp,
+        listeners: [],
         triggers: [],
         keys: [],
         deployment: "local",
@@ -38,6 +37,7 @@ defmodule Wardrik.Setup do
       keys: opts[:keys],
       oauth: oauth(opts[:oauth], opts[:keys]),
       mcp: opts[:mcp],
+      listeners: opts[:listeners],
       triggers: Keyword.validate!(opts[:triggers], [:req_options, :reconcile]),
       deployment: opts[:deployment],
       authorizer: opts[:authorizer],
@@ -49,8 +49,7 @@ defmodule Wardrik.Setup do
       policies:
         Map.new(opts[:policies], fn {name, rules} -> {to_string(name), policy(rules)} end),
       middleware: opts[:middleware],
-      idle_timeout: opts[:idle_timeout],
-      catalog: Catalog.new()
+      idle_timeout: opts[:idle_timeout]
     }
   end
 
@@ -62,7 +61,7 @@ defmodule Wardrik.Setup do
   @spec agent(Wardrik.t(), keyword()) :: keyword()
   def agent(%Wardrik{} = wardrik, opts) do
     {policy, opts} = Keyword.pop(opts, :policy)
-    policies = Enum.reject([wardrik.policy, policy(policy)], &is_nil/1)
+    policies = Enum.reject([wardrik.policy | policies(policy)], &is_nil/1)
 
     opts
     |> Keyword.put(:events, {WardrikEvents, Wardrik.events(wardrik)})
@@ -70,6 +69,13 @@ defmodule Wardrik.Setup do
     |> wrapped(wardrik.middleware)
     |> governed(policies)
   end
+
+  defp policies(nil), do: []
+  defp policies([]), do: []
+  defp policies(%WardrikPolicy{} = policy), do: [policy]
+
+  defp policies([%WardrikPolicy{} | _rest] = policies), do: policies
+  defp policies(rules), do: [policy(rules)]
 
   @doc "Builds a policy from its rules, or returns the one given."
   @spec policy(WardrikPolicy.t() | keyword() | map() | nil) :: WardrikPolicy.t() | nil

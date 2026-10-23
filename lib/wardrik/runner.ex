@@ -7,15 +7,19 @@ defmodule Wardrik.Runner do
   alias Wardrik.Authorizer
   alias Wardrik.Catalog
   alias Wardrik.Error
+  alias Wardrik.Instance
   alias Wardrik.Resource
   alias Wardrik.Scope
 
   @doc "Runs the operation `id` in `scope` with `input`, through the handlers `kind` names."
   @spec run(Scope.t(), String.t(), map(), :handlers | :streams) ::
           {:ok, term()} | {:error, Error.t()}
-  def run(%Scope{wardrik: wardrik} = scope, id, input, kind) do
-    with {:ok, operation, root} <- operation(wardrik.catalog, id),
-         {:ok, handler} <- handler(wardrik.catalog, kind, id),
+  def run(%Scope{wardrik: instance} = scope, id, input, kind) do
+    catalog = Catalog.new()
+    scope = %{scope | wardrik: Instance.fetch!(instance)}
+
+    with {:ok, operation, root} <- operation(catalog, id),
+         {:ok, handler} <- handler(catalog, kind, id),
          {:ok, input} <- validate(input, root),
          :ok <- authorize(scope, operation, input) do
       handler.(%{scope | operation: operation}, input)

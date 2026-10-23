@@ -17,8 +17,26 @@ defmodule WardrikTest do
   end
 
   test "makes a scope of who acts, and what they're granted", %{wardrik: wardrik} do
-    assert %Wardrik.Scope{wardrik: ^wardrik, principal: %{id: "acme/@maria"}, grants: [:all]} =
+    name = wardrik.name
+
+    assert %Wardrik.Scope{wardrik: ^name, principal: %{id: "acme/@maria"}, grants: [:all]} =
              Wardrik.as(wardrik, maria(), [:all])
+
+    assert %Wardrik.Scope{grants: [%Wardrik.Statement{actions: ["*"], resources: ["acme/*"]}]} =
+             Wardrik.as(name, "acme/@maria", roles: [:owner], resources: ["acme/*"])
+
+    assert %Wardrik.Scope{
+             grants: [%Wardrik.Statement{}, %Wardrik.Statement{actions: ["agent.decide"]}]
+           } =
+             wardrik
+             |> Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/*"])
+             |> Wardrik.grant(roles: [:approver], resources: ["globex/*"])
+
+    assert %Wardrik.Scope{grants: []} = Wardrik.as(name, "acme/@maria")
+
+    assert_raise ArgumentError, ~r/^Elsewhere.Wardrik isn't started/, fn ->
+      Wardrik.Instance.fetch!(Elsewhere.Wardrik)
+    end
 
     assert %Wardrik.Scope{principal: %WardrikCore.Principal{id: "acme/@jon"}} =
              Wardrik.as(wardrik, "acme/@jon")
