@@ -1,0 +1,56 @@
+defmodule Wardrik.Catalog do
+  @moduledoc """
+  The catalog joins each operation of `WardrikProtocol` to the function that does it, and to its
+  input schema, built once. Every surface runs operations through it, with `Wardrik.run/3`.
+  """
+
+  alias Wardrik.Operations.Agent
+  alias Wardrik.Operations.Agents
+  alias Wardrik.Operations.Deployment
+
+  @enforce_keys [:operations, :handlers, :streams]
+  defstruct @enforce_keys
+
+  @type handler() :: (Wardrik.Scope.t(), map() -> {:ok, term()} | {:error, Wardrik.Error.t()})
+
+  @type t() :: %__MODULE__{
+          operations: %{String.t() => {WardrikProtocol.operation(), JSV.Root.t()}},
+          handlers: %{String.t() => handler()},
+          streams: %{String.t() => handler()}
+        }
+
+  @operations Map.new(WardrikProtocol.operations(), &{&1.id, {&1, JSV.build!(&1.input)}})
+
+  @doc "Returns the catalog of Wardrik's own operations."
+  @spec new() :: t()
+  def new do
+    %__MODULE__{
+      operations: @operations,
+      handlers: %{
+        "agents.list" => &Agents.list/2,
+        "interrupts.list" => &Agents.interrupts/2,
+        "events.list" => &Agents.events/2,
+        "events.head" => &Agents.head/2,
+        "agent.read" => &Agent.read/2,
+        "agent.ask" => &Agent.ask/2,
+        "agent.decide" => &Agent.decide/2,
+        "agent.approve" => &Agent.approve/2,
+        "agent.deny" => &Agent.deny/2,
+        "agent.authorization" => &Agent.authorization/2,
+        "agent.cancel" => &Agent.cancel/2,
+        "agent.events" => &Agent.events/2,
+        "agent.timeline" => &Agent.timeline/2,
+        "agent.runs" => &Agent.runs/2,
+        "audit.list" => &Deployment.audit/2
+      },
+      streams: %{
+        "events.list" => &Agents.stream/2,
+        "agent.events" => &Agent.stream/2
+      }
+    }
+  end
+
+  @doc "Returns the operation `id` names, with its input schema built, or `:error`."
+  @spec fetch(t(), String.t()) :: {:ok, {WardrikProtocol.operation(), JSV.Root.t()}} | :error
+  def fetch(%__MODULE__{operations: operations}, id), do: Map.fetch(operations, id)
+end
