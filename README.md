@@ -49,6 +49,8 @@ Wardrik.Agent.ask(scope, "acme/books", %{"content" => "Which bills are due this 
 - [Who may do what](pages/access.md): scopes, statements and roles, and your own authorizer.
 - [Operations](pages/operations.md): asking, reading and cancelling, as functions or by ID.
 - [Approvals](pages/approvals.md): deciding the calls agents wait on.
+- [Credentials and sign-ins](pages/credentials.md): sealed credentials, and people signing in to
+  give agents their accounts.
 - [Events and the audit](pages/events.md): following what agents do, and what people did.
 
 ## License

@@ -16,6 +16,8 @@ children = [{Wardrik, wardrik}]
 | `data_dir` | the directory agents and their events are kept in | in memory |
 | `deployment` | the deployment's name, in each event's `source` | `"local"` |
 | `policy` | the policy every agent is held to | none |
+| `keys` | the keys credentials are sealed with; see [Credentials](credentials.md) | none |
+| `oauth` | the services people sign in to; see [Credentials](credentials.md) | none |
 | `authorizer` | a `Wardrik.Authorizer` as `{module, config}` | `{Wardrik.Statements, []}` |
 | `retention` | the days events are kept, or `:infinity` | 30 |
 | `store` | a `WardrikStore` you run yourself, in place of `data_dir` | none |

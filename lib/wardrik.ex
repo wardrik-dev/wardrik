@@ -18,10 +18,14 @@ defmodule Wardrik do
   alias Wardrik.Scope
   alias WardrikCore.Principal
 
+  @derive {Inspect, except: [:keys, :oauth, :mcp]}
   @enforce_keys [
     :name,
     :store,
     :own_store,
+    :keys,
+    :oauth,
+    :mcp,
     :deployment,
     :authorizer,
     :retention,
@@ -35,6 +39,9 @@ defmodule Wardrik do
           name: atom(),
           store: WardrikStore.t(),
           own_store: boolean(),
+          keys: [String.t()],
+          oauth: keyword() | nil,
+          mcp: keyword() | nil,
           deployment: String.t(),
           authorizer: {module(), term()},
           retention: pos_integer() | :infinity,
@@ -52,6 +59,13 @@ defmodule Wardrik do
   `{module, config}` (`Wardrik.Statements` unless set), `:retention`, the days events are kept (30
   unless set), `:backend`, where agents are kept (the store unless set), and `:policy`, the
   `WardrikPolicy` every agent is held to, or the rules to build it from.
+
+  Given `:keys`, it keeps credentials sealed with them, and gives them to every agent's tools. Given
+  `:oauth` too, as `WardrikOAuth` takes its `:page`, `:providers` and `:req_options`, people sign in
+  to give agents their accounts, and the calls waiting on a sign-in carry on once it's done.
+
+  Given `:mcp`, the MCP servers its agents may call, as `WardrikMCP` takes its `:servers`, it
+  connects to each.
   """
   @spec new(keyword()) :: t()
   def new(opts) do
@@ -62,6 +76,9 @@ defmodule Wardrik do
         :data_dir,
         :backend,
         :policy,
+        :oauth,
+        :mcp,
+        keys: [],
         deployment: "local",
         authorizer: {Wardrik.Statements, []},
         retention: 30
@@ -74,6 +91,9 @@ defmodule Wardrik do
       name: name,
       store: store,
       own_store: own_store,
+      keys: opts[:keys],
+      oauth: oauth(opts[:oauth], opts[:keys]),
+      mcp: opts[:mcp],
       deployment: opts[:deployment],
       authorizer: opts[:authorizer],
       retention: opts[:retention],
@@ -134,6 +154,7 @@ defmodule Wardrik do
     opts =
       opts
       |> Keyword.put(:events, {WardrikEvents, events(wardrik)})
+      |> credentials(wardrik)
       |> governed(policies)
 
     WardrikCore.start_agent(agents(wardrik), opts)
@@ -147,6 +168,27 @@ defmodule Wardrik do
   @spec events(t()) :: atom()
   def events(%__MODULE__{name: name}), do: Module.concat(name, Events)
 
+  @doc "Returns the name of `wardrik`'s `WardrikVault`, which it runs when given `:keys`."
+  @spec vault(t()) :: atom()
+  def vault(%__MODULE__{name: name}), do: Module.concat(name, Vault)
+
+  @doc "Returns the name of `wardrik`'s `WardrikOAuth`, which it runs when given `:oauth`."
+  @spec oauth(t()) :: atom()
+  def oauth(%__MODULE__{name: name}), do: Module.concat(name, OAuth)
+
+  @doc """
+  Returns the name of `wardrik`'s `WardrikMCP`, which it runs when given `:mcp`. Give an agent a
+  server's tools by it:
+
+      Wardrik.start_agent(wardrik,
+        agent_id: "acme/triage",
+        model: "anthropic:claude-haiku-4-5",
+        capabilities: [{WardrikMCP, name: Wardrik.mcp(wardrik), servers: [:github]}]
+      )
+  """
+  @spec mcp(t()) :: atom()
+  def mcp(%__MODULE__{name: name}), do: Module.concat(name, MCP)
+
   defp store(name, nil, nil), do: {WardrikStore.ETS.new(name: Module.concat(name, Store)), true}
 
   defp store(name, nil, data_dir),
@@ -156,6 +198,18 @@ defmodule Wardrik do
 
   defp store(_name, _store, _data_dir),
     do: raise(ArgumentError, "Give Wardrik a :store or a :data_dir, not both.")
+
+  defp oauth(nil, _keys), do: nil
+
+  defp oauth(_oauth, []),
+    do: raise(ArgumentError, "Give Wardrik :keys to seal what people sign in with.")
+
+  defp oauth(oauth, _keys), do: Keyword.validate!(oauth, [:page, :providers, req_options: []])
+
+  defp credentials(opts, %__MODULE__{keys: []}), do: opts
+
+  defp credentials(opts, wardrik),
+    do: Keyword.put_new(opts, :credentials, {WardrikVault, vault(wardrik)})
 
   defp policy(nil), do: nil
   defp policy(%WardrikPolicy{} = policy), do: policy
@@ -169,19 +223,6 @@ defmodule Wardrik do
   end
 
   @impl Supervisor
-  def init(wardrik) do
-    events =
-      {WardrikEvents,
-       name: events(wardrik),
-       store: wardrik.store,
-       deployment: wardrik.deployment,
-       retention: wardrik.retention}
-
-    agents = {WardrikCore, name: agents(wardrik), backend: wardrik.backend}
-
-    Supervisor.init(stores(wardrik) ++ [events, agents], strategy: :rest_for_one)
-  end
-
-  defp stores(%__MODULE__{own_store: true, store: store}), do: [{WardrikStore, store}]
-  defp stores(_wardrik), do: []
+  def init(wardrik),
+    do: Supervisor.init(Wardrik.Children.children(wardrik), strategy: :rest_for_one)
 end

@@ -44,6 +44,7 @@ defmodule Wardrik.MixProject do
         "pages/access.md",
         "pages/operations.md",
         "pages/approvals.md",
+        "pages/credentials.md",
         "pages/events.md",
         "CHANGELOG.md"
       ]
@@ -82,6 +83,9 @@ defmodule Wardrik.MixProject do
       {:wardrik_protocol, path: "../wardrik_protocol"},
       {:wardrik_events, path: "../wardrik_events"},
       {:wardrik_policy, path: "../wardrik_policy"},
+      {:wardrik_vault, path: "../wardrik_vault"},
+      {:wardrik_oauth, path: "../wardrik_oauth"},
+      {:wardrik_mcp, path: "../wardrik_mcp"},
       {:ekv, "~> 0.4.8"},
       {:jsv, "~> 0.26"},
       {:mimic, "~> 2.4", only: :test},

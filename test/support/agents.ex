@@ -62,3 +62,23 @@ defmodule Wardrik.Test.LLM do
   defp response(message),
     do: %ReqLLM.Response{id: "resp", model: "test", context: nil, message: message}
 end
+
+defmodule Wardrik.Test.Mail do
+  @moduledoc "A capability with `mail`, a tool that reads the inbox with the principal's `mail` credential."
+  @behaviour WardrikCore.Capability
+
+  @impl true
+  def tools(_context, _opts) do
+    [
+      WardrikCore.Tool.new!(
+        name: "mail",
+        description: "Reads the inbox",
+        schema: [],
+        run: fn _args, context ->
+          with {:ok, token} <- WardrikCore.Credentials.fetch(context, "mail"),
+               do: {:ok, "Read with #{token}."}
+        end
+      )
+    ]
+  end
+end

@@ -1,4 +1,4 @@
-defmodule Wardrik.StoreTest do
+defmodule Wardrik.ChildrenTest do
   use ExUnit.Case, async: false
 
   test "keeps agents in memory unless told where", %{test: test} do
@@ -32,5 +32,19 @@ defmodule Wardrik.StoreTest do
     assert_raise ArgumentError, fn ->
       Wardrik.new(name: MyApp.Wardrik, store: :store, data_dir: "/tmp/wardrik")
     end
+  end
+
+  test "connects to the MCP servers it's given", %{test: test} do
+    wardrik =
+      Wardrik.new(
+        name: :"mcp #{test}",
+        mcp: [down: [transport: {:stdio, command: "no-such-mcp-server"}]]
+      )
+
+    start_supervised!({Wardrik, wardrik}, id: :mcp)
+
+    assert Process.whereis(Wardrik.mcp(wardrik))
+
+    assert WardrikMCP.tools(nil, name: Wardrik.mcp(wardrik), servers: :down) == []
   end
 end
