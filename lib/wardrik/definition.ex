@@ -1,8 +1,7 @@
 defmodule Wardrik.Definition do
   @moduledoc """
-  A definition says what an agent is and what it may do, as an agent file's frontmatter does. It's
-  a map with string keys, as the protocol's `agent_definition` describes it. Build one in Elixir
-  with `new!/1`:
+  A definition says what an agent is and what it may do, as an agent file's frontmatter does, with
+  the keys the protocol's `agent_definition` gives it. Build one with `new!/1`:
 
       definition =
         Wardrik.Definition.new!(
@@ -12,15 +11,37 @@ defmodule Wardrik.Definition do
           policy: [ask: ["linear/*"]]
         )
 
-      Wardrik.Agent.define(scope, "acme/triage", definition)
+      {:ok, %Wardrik.Agent{}} = Wardrik.Agent.define(scope, "acme/triage", definition)
 
-  Each tool and policy it names is one the Wardrik offers; see `Wardrik.new/1`.
+  Each tool and policy it names is one the Wardrik offers; see `Wardrik.new/1`. `policy`,
+  `workspace`, `context`, `retries`, `compaction`, `triggers` and `notify` are kept as the protocol
+  writes them.
   """
 
-  alias Wardrik.Error
-  alias WardrikCore.Principal
+  use Wardrik.Type,
+    schema: ["agent_definition"],
+    fields: [
+      display_name: "display_name",
+      description: "description",
+      instructions: "instructions",
+      model: "model",
+      tools: "tools",
+      workspace: "workspace",
+      context: "context",
+      policy: "policy",
+      timeout: "timeout",
+      idle_timeout: {"idle_timeout", :infinity},
+      max_iterations: {"max_iterations", :infinity},
+      retries: "retries",
+      compaction: "compaction",
+      triggers: "triggers",
+      notify: "notify",
+      channels: "channels"
+    ]
 
-  @type t() :: %{String.t() => term()}
+  alias Wardrik.Error
+  alias Wardrik.Type
+  alias WardrikCore.Principal
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
   @unsupported ~w(workspace context retries compaction triggers notify channels)
@@ -30,16 +51,26 @@ defmodule Wardrik.Definition do
   @doc "Builds a definition from a keyword list or a map. Raises if it doesn't read."
   @spec new!(keyword() | map()) :: t()
   def new!(fields) do
-    definition = stringify(fields)
+    json = Type.json(fields)
 
-    case JSV.validate(definition, @schema) do
-      {:ok, _valid} -> definition
+    case JSV.validate(json, @schema) do
+      {:ok, _valid} -> from_json(json)
       {:error, error} -> raise ArgumentError, Exception.message(error)
     end
   end
 
-  @doc "Returns the options the agent `id` starts with in `wardrik`, as `definition` describes it."
-  @spec resolve(Wardrik.t(), String.t(), t()) :: {:ok, keyword()} | {:error, Error.t()}
+  @doc "Writes the definition as the protocol's JSON, leaving out what it doesn't set."
+  @spec to_json(t()) :: map()
+  def to_json(%__MODULE__{} = definition) do
+    definition
+    |> Map.from_struct()
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+    |> Type.json()
+  end
+
+  @doc "Returns the options the agent `id` starts with in `wardrik`, as the JSON `definition` describes it."
+  @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
     with :ok <- supported(definition),
          {:ok, model} <- model(definition),
@@ -61,7 +92,7 @@ defmodule Wardrik.Definition do
   end
 
   @doc "Returns the tools `definition` names that offer nothing yet, like an MCP server that's down."
-  @spec missing(Wardrik.t(), t()) :: [String.t()]
+  @spec missing(Wardrik.t(), map()) :: [String.t()]
   def missing(wardrik, definition) do
     for tool <- expanded(wardrik, Map.get(definition, "tools", [])),
         {:ok, server} <- [server(wardrik, tool)],
@@ -70,20 +101,9 @@ defmodule Wardrik.Definition do
   end
 
   @doc "Returns how long the agent may have nothing to do before it sleeps, in milliseconds."
-  @spec idle_timeout(Wardrik.t(), t()) :: pos_integer() | :infinity
+  @spec idle_timeout(Wardrik.t(), map()) :: pos_integer() | :infinity
   def idle_timeout(wardrik, definition),
     do: seconds(Map.get(definition, "idle_timeout", wardrik.idle_timeout))
-
-  defp stringify(fields) when is_map(fields),
-    do: Map.new(fields, fn {key, value} -> {to_string(key), stringify(value)} end)
-
-  defp stringify([{key, _value} | _rest] = fields) when is_atom(key),
-    do: fields |> Map.new() |> stringify()
-
-  defp stringify(values) when is_list(values), do: Enum.map(values, &stringify/1)
-  defp stringify(value) when is_boolean(value) or is_nil(value), do: value
-  defp stringify(value) when is_atom(value), do: Atom.to_string(value)
-  defp stringify(value), do: value
 
   defp supported(definition) do
     case Enum.find(@unsupported, &Map.has_key?(definition, &1)) do

@@ -9,8 +9,8 @@ Read events from a cursor, or follow them. Operations that can be streamed have 
 function, which reads on and then follows, as `{event, cursor}`:
 
 ```elixir
-{:ok, %{"cursor" => cursor}} = Wardrik.Events.head(scope)
-{:ok, stream} = Wardrik.Events.stream_list(scope, %{"after" => cursor, "resources" => ["acme/*"]})
+{:ok, cursor} = Wardrik.Events.head(scope)
+{:ok, stream} = Wardrik.Events.stream_list(scope, after: cursor, resources: ["acme/*"])
 
 for {event, cursor} <- stream do
   MyApp.show(event, cursor)
@@ -25,5 +25,5 @@ those agents.
 Everything people did through Wardrik, for the deployment:
 
 ```elixir
-{:ok, %{"events" => events, "next" => next}} = Wardrik.Audit.list(scope, %{"limit" => 50})
+{:ok, %Wardrik.Page{events: changes, next: next}} = Wardrik.Audit.list(scope, limit: 50)
 ```

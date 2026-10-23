@@ -39,11 +39,12 @@ definition =
     timeout: 600
   )
 
-{:ok, %{"status" => "idle"}} = Wardrik.Agent.define(scope, "acme/digest", definition)
+{:ok, %Wardrik.Agent{status: :idle}} = Wardrik.Agent.define(scope, "acme/digest", definition)
 ```
 
-Notice a definition is a map with string keys, as the protocol writes it, so a YAML file's
-frontmatter, JSON over HTTP, and `Wardrik.Definition.new!/1` all give the same one.
+`define/3` takes a keyword list too. Notice a definition is written as the protocol's JSON over
+HTTP and in the store, so a YAML file's frontmatter, JSON, and `Wardrik.Definition.new!/1` all give
+the same one.
 
 | Key | Means |
 | --- | --- |
@@ -68,8 +69,7 @@ org, as `acme/digest`, acts as the org.
 ## Read it back
 
 ```elixir
-{:ok, %{"definition" => definition, "missing" => missing}} =
-  Wardrik.Agent.definition(scope, "acme/digest")
+{:ok, %Wardrik.Definition{} = definition, missing} = Wardrik.Agent.definition(scope, "acme/digest")
 ```
 
 `missing` lists the tools it names that offer nothing yet, like an MCP server that's down.

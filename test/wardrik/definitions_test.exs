@@ -137,20 +137,78 @@ defmodule Wardrik.DefinitionsTest do
     end
 
     test "builds a definition in Elixir" do
-      assert %{
+      definition =
+        Definition.new!(
+          model: @model,
+          tools: ["github/*"],
+          idle_timeout: :infinity,
+          policy: [ask: ["github/*"], budget: [usd: 5, per: :day]]
+        )
+
+      assert %Definition{
+               model: @model,
+               tools: ["github/*"],
+               idle_timeout: :infinity,
+               policy: %{"ask" => ["github/*"], "budget" => %{"usd" => 5, "per" => "day"}}
+             } = definition
+
+      assert Definition.to_json(definition) == %{
                "model" => @model,
                "tools" => ["github/*"],
                "idle_timeout" => "infinity",
                "policy" => %{"ask" => ["github/*"], "budget" => %{"usd" => 5, "per" => "day"}}
-             } =
-               Definition.new!(
-                 model: @model,
-                 tools: ["github/*"],
-                 idle_timeout: :infinity,
-                 policy: [ask: ["github/*"], budget: [usd: 5, per: :day]]
-               )
+             }
 
       assert_raise ArgumentError, fn -> Definition.new!(model: @model, colour: "blue") end
+    end
+  end
+
+  describe "in Elixir" do
+    test "defines, reads and decides with structs", %{scope: scope} do
+      answers([
+        calling([call("call_1", "echo", %{}), call("call_2", "echo", %{})]),
+        answer("Done.")
+      ])
+
+      definition = Definition.new!(model: @model, tools: ["tools"], policy: "careful")
+
+      assert {:ok, %Wardrik.Agent{id: "acme/triage", status: :idle}} =
+               Wardrik.Agent.define(scope, "acme/triage", definition)
+
+      assert {:ok, ^definition, []} = Wardrik.Agent.definition(scope, "acme/triage")
+
+      Wardrik.Agent.ask(scope, "acme/triage", "Echo twice")
+      until("wardrik.run.interrupted")
+
+      assert {:ok, [%Wardrik.Interrupt{agent_id: "acme/triage"}, %Wardrik.Interrupt{}]} =
+               Wardrik.Interrupts.list(scope)
+
+      assert {:ok,
+              [%Wardrik.Decision{decision: :approved}, %Wardrik.Decision{decision: :rejected}]} =
+               Wardrik.Agent.decide(scope, "acme/triage", %{
+                 "call_1" => {:approve, "Go."},
+                 "call_2" => {:deny, "No."}
+               })
+
+      until("wardrik.run.completed")
+
+      assert {:ok, %Wardrik.Agent{status: :asleep}} = Wardrik.Agent.stop(scope, "acme/triage")
+      until("wardrik.agent.stopped")
+      assert {:ok, %Wardrik.Agent{status: :idle}} = Wardrik.Agent.spawn(scope, "acme/triage")
+      assert {:ok, []} = Wardrik.Agent.calls(scope, "acme/triage")
+
+      assert {:ok, %Wardrik.Forgotten{forgotten: ["acme/triage"], kept: [], failed: []}} =
+               Wardrik.Agents.forget(scope, resources: ["acme/*"])
+    end
+
+    test "defines from a keyword list", %{scope: scope} do
+      assert {:ok, %Wardrik.Agent{status: :idle}} =
+               Wardrik.Agent.define(scope, "acme/triage",
+                 model: @model,
+                 instructions: "Be brief."
+               )
+
+      assert {:ok, []} = Wardrik.Agents.cancel(scope)
     end
   end
 

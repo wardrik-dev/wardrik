@@ -56,10 +56,10 @@ defmodule Wardrik.SignInsTest do
         capabilities: [Wardrik.Test.Mail]
       )
 
-    Wardrik.Agent.ask(scope, "acme/@maria/mail", %{"content" => "Read my mail"})
+    Wardrik.Agent.ask(scope, "acme/@maria/mail", "Read my mail")
     until("wardrik.run.interrupted")
 
-    assert {:ok, %{"url" => url}} =
+    assert {:ok, %Wardrik.Authorization{url: url}} =
              Wardrik.Agent.authorization(scope, "acme/@maria/mail", "call_1")
 
     %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()

@@ -47,13 +47,15 @@ defmodule Wardrik.PolicyTest do
     answers([calling([call("call_1", "echo", %{"text" => "hi"})]), answer("Done.")])
     start_books(wardrik, ask: %{"echo" => "Echo this?"})
 
-    Wardrik.Agent.ask(scope, "acme/books", %{"content" => "Echo hi"})
+    Wardrik.Agent.ask(scope, "acme/books", "Echo hi")
     until("wardrik.run.interrupted")
 
-    assert {:ok, %{"interrupts" => [%{"id" => "call_1", "message" => "Echo this?"}]}} =
+    assert {:ok,
+            %Wardrik.Agent{interrupts: [%Wardrik.Interrupt{id: "call_1", message: "Echo this?"}]}} =
              Wardrik.Agent.read(scope, "acme/books")
 
-    Wardrik.Agent.approve(scope, "acme/books", "call_1")
+    assert {:ok, [%Wardrik.Decision{id: "call_1", decision: :approved}]} =
+             Wardrik.Agent.approve(scope, "acme/books", "call_1")
 
     assert %{"data" => %{"status" => "ok"}} = until("wardrik.tool_call.completed")
     until("wardrik.run.completed")
@@ -66,7 +68,7 @@ defmodule Wardrik.PolicyTest do
     answers([calling([call("call_1", "inbox", %{})]), answer("Done.")])
     start_books(wardrik, allow: ["inbox"])
 
-    Wardrik.Agent.ask(scope, "acme/books", %{"content" => "Read my mail"})
+    Wardrik.Agent.ask(scope, "acme/books", "Read my mail")
 
     assert %{"data" => %{"status" => "error"}} = until("wardrik.tool_call.completed")
     until("wardrik.run.completed")

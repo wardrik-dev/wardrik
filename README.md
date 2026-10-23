@@ -38,7 +38,7 @@ Then ask it something, as a person allowed to:
 owner = Wardrik.Statement.new(roles: [:owner], resources: ["*"])
 scope = Wardrik.as(wardrik, "acme/@maria", [owner])
 
-Wardrik.Agent.ask(scope, "acme/books", %{"content" => "Which bills are due this week?"})
+{:ok, %Wardrik.Message{}} = Wardrik.Agent.ask(scope, "acme/books", "Which bills are due this week?")
 ```
 
 ## Guides

@@ -6,6 +6,7 @@ defmodule Wardrik.FunctionsTest do
   import Wardrik.Test.Wardrik
 
   alias Wardrik.Operations.Functions
+  alias Wardrik.Operations.Types
 
   test "does every operation with a function taking its path parameters" do
     for operation <- WardrikProtocol.operations() do
@@ -36,7 +37,50 @@ defmodule Wardrik.FunctionsTest do
 
       Module.create(module, using, Macro.Env.location(__ENV__))
 
-      assert module.__info__(:functions) == Functions.module(prefix).__info__(:functions)
+      generated = MapSet.new(module.__info__(:functions))
+      assert MapSet.subset?(generated, MapSet.new(Functions.module(prefix).__info__(:functions)))
+      assert MapSet.size(generated) > 0
+    end
+  end
+
+  test "decodes every answer the protocol gives an example of" do
+    for %{id: id, output: %{"examples" => examples}} <- WardrikProtocol.operations(),
+        example <- examples do
+      assert elem(Types.decode(id, example), 0) == :ok, id
+    end
+  end
+
+  test "reads every property of the schema each type is of" do
+    types = [
+      Wardrik.Agent,
+      Wardrik.Activity,
+      Wardrik.Interrupt,
+      Wardrik.Message,
+      Wardrik.Decision,
+      Wardrik.Authorization,
+      Wardrik.Call,
+      Wardrik.Event,
+      Wardrik.Page,
+      Wardrik.Timeline,
+      Wardrik.Run,
+      Wardrik.Runs,
+      Wardrik.Runs.Totals,
+      Wardrik.Forgotten,
+      Wardrik.Definition
+    ]
+
+    for type <- types do
+      [name | path] = type.__schema__()
+      schema = Enum.reduce(path, WardrikProtocol.schema(name), &Map.fetch!(&2, &1))
+      properties = Map.fetch!(schema, "properties")
+
+      read =
+        for {_field, spec} <- type.__fields__(),
+            path = Wardrik.Type.path(spec),
+            into: MapSet.new(),
+            do: hd(path)
+
+      assert read == MapSet.new(Map.keys(properties)), inspect(type)
     end
   end
 
@@ -52,33 +96,43 @@ defmodule Wardrik.FunctionsTest do
       %{scope: owner(wardrik)}
     end
 
-    test "runs the operation with its path parameters", %{scope: scope} do
-      assert {:ok, %{"cursor" => cursor}} = Wardrik.Events.head(scope)
+    test "runs the operation, and answers in structs", %{scope: scope} do
+      assert {:ok, cursor} = Wardrik.Events.head(scope)
 
-      assert {:ok, %{"message" => %{"id" => "msg_1"}}} =
-               Wardrik.Agent.ask(scope, "acme/triage", %{"id" => "msg_1", "content" => "Hi"})
+      assert {:ok, %Wardrik.Message{id: "msg_1", cursor: _cursor}} =
+               Wardrik.Agent.ask(scope, "acme/triage", content: "Hi", id: "msg_1")
 
       until("wardrik.run.completed")
 
-      assert {:ok, %{"agent" => %{"id" => "acme/triage"}, "status" => "idle"}} =
+      assert {:ok,
+              %Wardrik.Agent{id: "acme/triage", status: :idle, activity: %Wardrik.Activity{}}} =
                Wardrik.Agent.read(scope, "acme/triage")
 
-      assert {:ok, %{"agents" => [%{"id" => "acme/triage"}]}} = Wardrik.Agents.list(scope)
-      assert {:ok, %{"interrupts" => []}} = Wardrik.Interrupts.list(scope)
-      assert {:ok, %{"events" => _events}} = Wardrik.Audit.list(scope, %{"limit" => 1})
+      assert {:ok, [%Wardrik.Agent{id: "acme/triage", status: :idle}]} =
+               Wardrik.Agents.list(scope)
+
+      assert {:ok, []} = Wardrik.Interrupts.list(scope)
+      assert {:ok, %Wardrik.Page{events: [], next: 0}} = Wardrik.Audit.list(scope, limit: 1)
+
+      assert {:ok, %Wardrik.Timeline{items: [%{"kind" => "user"}, %{"kind" => "run"}]}} =
+               Wardrik.Agent.timeline(scope, "acme/triage")
+
+      assert {:ok, %Wardrik.Runs{runs: [%Wardrik.Run{status: :completed}]}} =
+               Wardrik.Agent.runs(scope, "acme/triage")
 
       assert {:ok, stream} =
-               Wardrik.Events.stream_list(scope, %{
-                 "after" => cursor,
-                 "types" => ["wardrik.run.completed"]
-               })
+               Wardrik.Events.stream_list(scope, after: cursor, types: ["wardrik.run.completed"])
 
-      assert [{%{"type" => "wardrik.run.completed"}, _cursor}] = Enum.take(stream, 1)
+      assert [{%Wardrik.Event{type: "wardrik.run.completed", time: %DateTime{}}, _cursor}] =
+               Enum.take(stream, 1)
+
+      assert :ok = Wardrik.Agent.cancel(scope, "acme/triage")
+      assert {:ok, %Wardrik.Message{}} = Wardrik.Agent.ask(scope, "acme/triage", "Hi again")
     end
 
     test "takes path parameters over the same ones in input", %{scope: scope} do
       assert {:error, %Wardrik.Error{type: :not_found}} =
-               Wardrik.Agent.read(scope, "acme/missing", %{"agent" => "acme/triage"})
+               Wardrik.Agent.read(scope, "acme/missing", agent: "acme/triage")
     end
   end
 end
