@@ -86,6 +86,7 @@ Wardrik.Agent.reply(scope, notes, "What did I note yesterday?")
   give agents their accounts.
 - [Events and the audit](pages/events.md): following what agents do into your app, and what people
   did.
+- [Over HTTP](https://hexdocs.pm/wardrik_http): every operation as a route, with `wardrik_http`.
 
 ## License
 
