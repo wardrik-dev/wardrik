@@ -45,7 +45,17 @@ transaction, and drop a repeat by the event's `id`. A `handle/2` that raises res
 
 ```elixir
 {:ok, cursor} = Wardrik.Events.head(scope)
-{:ok, %Wardrik.Page{events: events, next: next}} = Wardrik.Events.list(scope, after: cursor)
+
+Wardrik.Events.list(scope, after: cursor, limit: 2)
+#=> {:ok,
+#=>  %Wardrik.Page{
+#=>    events: [
+#=>      %Wardrik.Event{type: "wardrik.run.started", subject: "runs/0af76519...", time: ~U[2026-10-23 09:00:01Z], data: %{"run" => ...}, ...},
+#=>      %Wardrik.Event{type: "wardrik.message.started", ...}
+#=>    ],
+#=>    next: "eyJhY21lL3RyaWFnZSI6NDN9"
+#=>  }}
+
 {:ok, stream} = Wardrik.Events.stream_list(scope, after: cursor, resources: ["acme/*"])
 
 for {%Wardrik.Event{type: type}, cursor} <- stream, do: IO.puts(type)
@@ -59,5 +69,10 @@ only ever sees the events of the agents it can see, and a cursor only names thos
 Everything people did through Wardrik, for the deployment:
 
 ```elixir
-{:ok, %Wardrik.Page{events: changes, next: next}} = Wardrik.Audit.list(scope, limit: 50)
+Wardrik.Audit.list(scope, limit: 50)
+#=> {:ok,
+#=>  %Wardrik.Page{
+#=>    events: [%Wardrik.Event{type: "wardrik.agent.defined", data: %{"actor" => %{"id" => "acme/@maria"}, ...}, ...}],
+#=>    next: 1
+#=>  }}
 ```

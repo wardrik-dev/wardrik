@@ -70,10 +70,19 @@ From Elixir, deliver the request as it came, raw body and headers:
 Define the agent again to give it the triggers it lists then. To change one at a time:
 
 ```elixir
-{:ok, %Wardrik.Trigger{}} =
-  Wardrik.Agent.trigger_set(scope, "acme/digest", "daily", every: "0 8 * * *", prompt: "Write it.")
+Wardrik.Agent.trigger_set(scope, "acme/digest", "daily", every: "0 8 * * *", prompt: "Write it.")
+#=> {:ok,
+#=>  %Wardrik.Trigger{
+#=>    name: "daily",
+#=>    every: "0 8 * * *",
+#=>    prompt: "Write it.",
+#=>    overlap: :skip,
+#=>    missed: :run_once,
+#=>    ...
+#=>  }}
 
-{:ok, _removed} = Wardrik.Agent.trigger_remove(scope, "acme/digest", "daily")
+Wardrik.Agent.trigger_remove(scope, "acme/digest", "daily")
+#=> {:ok, %Wardrik.Trigger{name: "daily", ...}}
 ```
 
 A trigger whose `every` and `timezone` stay keeps its next run. Each change is recorded in the

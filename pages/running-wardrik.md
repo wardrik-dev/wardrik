@@ -63,10 +63,18 @@ reach for that in development and tests. To keep them somewhere else, like Postg
 In a cluster, each agent runs on one node at a time, and any node reaches it:
 
 ```elixir
-{:ok, %Wardrik.Nodes{nodes: [%Wardrik.Node{name: name, agents: count} | _rest], asleep: asleep}} =
-  Wardrik.Deployment.nodes(scope)
+Wardrik.Deployment.nodes(scope)
+#=> {:ok,
+#=>  %Wardrik.Nodes{
+#=>    nodes: [
+#=>      %Wardrik.Node{name: "wardrik@box1", agents: 12},
+#=>      %Wardrik.Node{name: "wardrik@box2", agents: 9}
+#=>    ],
+#=>    asleep: 40
+#=>  }}
 
-{:ok, %Wardrik.Agent{node: ^name}} = Wardrik.Agent.move(scope, "acme/triage", node: name)
+Wardrik.Agent.move(scope, "acme/triage", node: "wardrik@box2")
+#=> {:ok, %Wardrik.Agent{id: "acme/triage", status: :idle, node: "wardrik@box2", ...}}
 ```
 
 Moving an agent ends a turn it's taking, and abandons what it waits on. `Wardrik.Deployment.reload/1`

@@ -39,10 +39,22 @@ People and programs reaching Wardrik over HTTP present a token. Make one, and it
 this once:
 
 ```elixir
-{:ok, %Wardrik.TokenIssued{token: %Wardrik.Token{id: id}, secret: secret}} =
+{:ok, issued} =
   Wardrik.Tokens.create(scope, name: "ci", roles: ["reader", "messenger"], resources: ["acme/agent/*"])
+#=> {:ok,
+#=>  %Wardrik.TokenIssued{
+#=>    token: %Wardrik.Token{
+#=>      id: "3f9a61c0d4e2",
+#=>      name: "ci",
+#=>      principal: "acme/@maria",
+#=>      statements: [%Wardrik.Statement{actions: ["agent.read", ...], resources: ["acme/agent/*"]}],
+#=>      expires: ~U[2027-01-21 09:00:00Z],
+#=>      ...
+#=>    },
+#=>    secret: "wrk_3f9a61c0d4e2_9c1e..."
+#=>  }}
 
-{:ok, scope} = MyApp.Wardrik.authenticate(secret)
+{:ok, ci} = MyApp.Wardrik.authenticate(issued.secret)
 ```
 
 A token acts for whoever made it, works for 90 days unless `expires_in` says, and is kept as the

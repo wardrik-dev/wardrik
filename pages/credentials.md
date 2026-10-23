@@ -56,13 +56,19 @@ and every call waiting on it carries on. They only sign in once.
 A person, or an org, connects an account before any agent asks:
 
 ```elixir
-{:ok, [%Wardrik.Connection{provider: "github", connected: false}]} =
-  Wardrik.Connections.list(scope, owner: "acme/@jon")
+Wardrik.Connections.list(scope, owner: "acme/@jon")
+#=> {:ok, [%Wardrik.Connection{provider: "github", connected: false}]}
 
-{:ok, %Wardrik.Connecting{authorization: %Wardrik.Authorization{url: url}}} =
-  Wardrik.Connections.connect(scope, "github", owner: "acme/@jon")
+Wardrik.Connections.connect(scope, "github", owner: "acme/@jon")
+#=> {:ok,
+#=>  %Wardrik.Connecting{
+#=>    provider: "github",
+#=>    connected: false,
+#=>    authorization: %Wardrik.Authorization{url: "https://github.com/login/oauth/authorize?...", code: nil}
+#=>  }}
 
-{:ok, %Wardrik.Connection{}} = Wardrik.Connections.disconnect(scope, "github", owner: "acme/@jon")
+Wardrik.Connections.disconnect(scope, "github", owner: "acme/@jon")
+#=> {:ok, %Wardrik.Connection{provider: "github", connected: true}}
 ```
 
 An account is the owner's own: a person's agents reach their person's, and an org's agents reach

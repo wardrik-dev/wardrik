@@ -62,7 +62,8 @@ scope = MyApp.Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/@mari
     policy: [budget: [usd: 1.00, per: :day]]
   )
 
-{:ok, %Wardrik.Reply{text: text}} = Wardrik.Agent.reply(scope, notes, "What did I note yesterday?")
+Wardrik.Agent.reply(scope, notes, "What did I note yesterday?")
+#=> {:ok, %Wardrik.Reply{message: "msg_Xq3f...", run: "0af76519...", text: "You noted the Q3 numbers..."}}
 ```
 
 ## Guides

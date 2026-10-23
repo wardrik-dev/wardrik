@@ -11,7 +11,8 @@ defmodule Wardrik.Definition do
           policy: [ask: ["linear/*"]]
         )
 
-      {:ok, %Wardrik.Agent{}} = Wardrik.Agent.define(scope, "acme/triage", definition)
+      Wardrik.Agent.define(scope, "acme/triage", definition)
+      #=> {:ok, %Wardrik.Agent{id: "acme/triage", status: :idle, ...}}
 
   Each tool and policy it names is one the Wardrik offers; see `Wardrik.start_link/1`. `policy`,
   `workspace`, `context`, `retries`, `compaction` and `notify` are kept as the protocol writes them,

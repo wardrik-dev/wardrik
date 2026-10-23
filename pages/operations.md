@@ -8,12 +8,24 @@ code, HTTP, Slack or a terminal.
 Each operation is a function, named by its ID. `agent.ask` is `Wardrik.Agent.ask/3`:
 
 ```elixir
-{:ok, %Wardrik.Message{id: id, cursor: cursor}} =
-  Wardrik.Agent.ask(scope, "acme/books", "Which bills are due this week?")
+Wardrik.Agent.ask(scope, "acme/books", "Which bills are due this week?")
+#=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "eyJhY21lL2Jvb2tzIjo0MX0"}}
 
-{:ok, %Wardrik.Agent{status: :idle}} = Wardrik.Agent.read(scope, "acme/books")
-{:ok, %Wardrik.Timeline{items: items}} = Wardrik.Agent.timeline(scope, "acme/books")
-:ok = Wardrik.Agent.cancel(scope, "acme/books")
+Wardrik.Agent.read(scope, "acme/books")
+#=> {:ok,
+#=>  %Wardrik.Agent{
+#=>    id: "acme/books",
+#=>    name: "books",
+#=>    status: :running,
+#=>    node: "wardrik@box1",
+#=>    pending: 0,
+#=>    activity: %Wardrik.Activity{doing: [%{"type" => "wardrik.message.started", ...}], ...},
+#=>    interrupts: [],
+#=>    cursor: "eyJhY21lL2Jvb2tzIjo0M30"
+#=>  }}
+
+Wardrik.Agent.cancel(scope, "acme/books")
+#=> :ok
 ```
 
 Each takes the scope, then the operation's path parameters, each as text or as the struct it names,

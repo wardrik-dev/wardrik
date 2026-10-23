@@ -36,7 +36,17 @@ definition =
     timeout: 600
   )
 
-{:ok, %Wardrik.Agent{status: :idle}} = Wardrik.Agent.define(scope, "acme/digest", definition)
+{:ok, digest} = Wardrik.Agent.define(scope, "acme/digest", definition)
+#=> {:ok,
+#=>  %Wardrik.Agent{
+#=>    id: "acme/digest",
+#=>    name: "digest",
+#=>    status: :idle,
+#=>    node: "wardrik@box1",
+#=>    pending: 0,
+#=>    interrupts: [],
+#=>    ...
+#=>  }}
 ```
 
 `define/3` takes a keyword list too. Notice a definition is written as the protocol's JSON over
@@ -67,7 +77,15 @@ org, as `acme/digest`, acts as the org.
 ## Read it back
 
 ```elixir
-{:ok, %Wardrik.Definition{} = definition, missing} = Wardrik.Agent.definition(scope, "acme/digest")
+Wardrik.Agent.definition(scope, "acme/digest")
+#=> {:ok,
+#=>  %Wardrik.Definition{
+#=>    model: "anthropic:claude-haiku-4-5",
+#=>    tools: ["github/*", "files"],
+#=>    policy: %{"ask" => ["github/create_*"], "budget" => %{"tokens" => 400000, "per" => "day"}},
+#=>    timeout: 600,
+#=>    ...
+#=>  }, ["github/*"]}
 ```
 
 `missing` lists the tools it names that offer nothing yet, like an MCP server that's down.

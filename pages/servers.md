@@ -26,13 +26,18 @@ An org or a person adds a server for their own agents while Wardrik runs, and ev
 it:
 
 ```elixir
-{:ok, %Wardrik.MCPServerAdded{connected: false, authorization: %Wardrik.Authorization{url: url}}} =
-  Wardrik.MCPServers.add(scope,
-    owner: "acme",
-    name: "linear",
-    url: "https://mcp.linear.app/mcp",
-    auth: %{oauth: %{}}
-  )
+Wardrik.MCPServers.add(scope,
+  owner: "acme",
+  name: "linear",
+  url: "https://mcp.linear.app/mcp",
+  auth: %{oauth: %{}}
+)
+#=> {:ok,
+#=>  %Wardrik.MCPServerAdded{
+#=>    server: "linear",
+#=>    connected: false,
+#=>    authorization: %Wardrik.Authorization{url: "https://mcp.linear.app/authorize?...", code: nil}
+#=>  }}
 ```
 
 - **An org's server** serves its own agents and every agent of its people. **A person's** serves

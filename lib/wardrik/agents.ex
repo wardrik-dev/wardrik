@@ -2,7 +2,8 @@ defmodule Wardrik.Agents do
   @moduledoc """
   The operations on the agents a scope can see.
 
-      {:ok, [%Wardrik.Agent{} | _agents]} = Wardrik.Agents.list(scope, resources: ["acme/agent/*"])
+      Wardrik.Agents.list(scope, resources: ["acme/agent/*"])
+      #=> {:ok, [%Wardrik.Agent{id: "acme/triage", status: :idle, node: "wardrik@box1", ...}]}
   """
 
   use Wardrik.Operations.Functions, prefix: "agents"

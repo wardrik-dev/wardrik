@@ -2,8 +2,8 @@ defmodule Wardrik.Connections do
   @moduledoc """
   The accounts an org or a person connects for their agents, by provider.
 
-      {:ok, %Wardrik.Connecting{authorization: %Wardrik.Authorization{url: url}}} =
-        Wardrik.Connections.connect(scope, "github", owner: "acme/@jon")
+      Wardrik.Connections.connect(scope, "github", owner: "acme/@jon")
+      #=> {:ok, %Wardrik.Connecting{provider: "github", connected: false, authorization: %Wardrik.Authorization{...}}}
   """
 
   use Wardrik.Operations.Functions, prefix: "connections"

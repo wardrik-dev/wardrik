@@ -194,8 +194,8 @@ defmodule Wardrik do
   Runs the operation `id`, like `agent.ask`, in `scope`, with `input` as the operation's input
   schema describes it.
 
-      {:ok, %{"message" => %{"cursor" => cursor}}} =
-        Wardrik.run(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "What's on fire?"})
+      Wardrik.run(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "What's on fire?"})
+      #=> {:ok, %{"message" => %{"id" => "msg_Xq3f...", "cursor" => "eyJhY21lL3RyaWFnZSI6NDF9"}}}
   """
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
   def run(%Scope{} = scope, id, input), do: Runner.run(scope, id, input, :handlers)

@@ -2,8 +2,11 @@ defmodule Wardrik.Agent do
   @moduledoc """
   An agent, and the operations on one, from defining it and asking it to deciding what it waits on.
 
-      {:ok, %Wardrik.Message{cursor: cursor}} = Wardrik.Agent.ask(scope, "acme/triage", "What's on fire?")
-      {:ok, %Wardrik.Agent{status: :idle}} = Wardrik.Agent.read(scope, "acme/triage")
+      Wardrik.Agent.ask(scope, "acme/triage", "What's on fire?")
+      #=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "eyJhY21lL3RyaWFnZSI6NDF9"}}
+
+      Wardrik.Agent.read(scope, "acme/triage")
+      #=> {:ok, %Wardrik.Agent{id: "acme/triage", status: :running, node: "wardrik@box1", pending: 0, ...}}
 
   An agent is its `id` and `name`, its `status`, `:idle`, `:running`, `:parked` or `:asleep`, the
   messages `pending` behind what it does, its `activity`, the `interrupts` it waits on a person
@@ -48,7 +51,8 @@ defmodule Wardrik.Agent do
   Sends the agent a message, and returns its answer once its run ends: `{:ok, %Wardrik.Reply{}}`,
   or `{:waiting, interrupts}` where it waits on a person first.
 
-      {:ok, %Wardrik.Reply{text: text}} = Wardrik.Agent.reply(scope, "acme/triage", "What's on fire?")
+      Wardrik.Agent.reply(scope, "acme/triage", "What's on fire?")
+      #=> {:ok, %Wardrik.Reply{message: "msg_Xq3f...", run: "0af76519...", text: "Nothing's on fire."}}
   """
   @spec reply(Wardrik.Scope.t(), String.t() | t(), term(), keyword()) ::
           {:ok, Wardrik.Reply.t()}

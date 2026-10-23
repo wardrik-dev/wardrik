@@ -4,8 +4,18 @@ A call a policy asks about waits on a person, who approves or denies it. What an
 its interrupts:
 
 ```elixir
-{:ok, [%Wardrik.Interrupt{agent_id: "acme/books", id: "call_1", message: message} | _rest]} =
-  Wardrik.Interrupts.list(scope)
+{:ok, interrupts} = Wardrik.Interrupts.list(scope)
+#=> {:ok,
+#=>  [
+#=>    %Wardrik.Interrupt{
+#=>      id: "call_1",
+#=>      agent_id: "acme/books",
+#=>      reason: :tool_approval,
+#=>      message: "A bill this size needs a person.",
+#=>      name: "books__pay_bill",
+#=>      tool_call_id: "call_1"
+#=>    }
+#=>  ]}
 
 Wardrik.Agent.approve(scope, "acme/books", "call_1", note: "Pay it from the ops account.")
 Wardrik.Agent.deny(scope, "acme/books", "call_2", reason: "Not before the 1st.")
@@ -20,11 +30,15 @@ To decide several calls at once, reach for `Wardrik.Agent.decide/3`, with each c
 its id:
 
 ```elixir
-{:ok, [%Wardrik.Decision{decision: :approved}, %Wardrik.Decision{decision: :rejected}]} =
-  Wardrik.Agent.decide(scope, "acme/books", %{
-    "call_1" => {:approve, "Pay it from the ops account."},
-    "call_2" => {:deny, "Not before the 1st."}
-  })
+Wardrik.Agent.decide(scope, "acme/books", %{
+  "call_1" => {:approve, "Pay it from the ops account."},
+  "call_2" => {:deny, "Not before the 1st."}
+})
+#=> {:ok,
+#=>  [
+#=>    %Wardrik.Decision{id: "call_1", decision: :approved},
+#=>    %Wardrik.Decision{id: "call_2", decision: :rejected}
+#=>  ]}
 ```
 
 Deciding a call the agent doesn't wait on, or no longer does, answers `conflict`.

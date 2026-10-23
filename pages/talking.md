@@ -18,6 +18,13 @@ It raises a `Wardrik.Error` where the scope can't reach the agent.
 ## Wait for a reply
 
 ```elixir
+Wardrik.Agent.reply(scope, "acme/triage", "What's on fire?")
+#=> {:ok, %Wardrik.Reply{message: "msg_Xq3f...", run: "0af76519...", text: "Nothing's on fire."}}
+```
+
+Handle each way it can end:
+
+```elixir
 case Wardrik.Agent.reply(scope, "acme/triage", "What's on fire?") do
   {:ok, %Wardrik.Reply{text: text}} -> text
   {:waiting, interrupts} -> ask_someone(interrupts)
@@ -48,7 +55,8 @@ or `{:failed, reason}`.
 for following it yourself:
 
 ```elixir
-{:ok, %Wardrik.Message{id: id, cursor: cursor}} = Wardrik.Agent.ask(scope, "acme/triage", "Hi")
+Wardrik.Agent.ask(scope, "acme/triage", "Hi")
+#=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "eyJhY21lL3RyaWFnZSI6NDF9"}}
 ```
 
 It takes text, or `content:`, `parts:` and your own `id:`.
