@@ -14,6 +14,7 @@ defmodule Wardrik.Statement do
   | `:messenger` | `agent.ask`, `agent.cancel`, `agent.clear` |
   | `:approver` | `agent.decide` |
   | `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `connection.connect`, `mcp_server.add` |
+  | `:worker` | `agent.serve`, offering tools to the agents it covers |
   | `:owner` | every action |
   """
 
@@ -34,6 +35,7 @@ defmodule Wardrik.Statement do
       "connection.connect",
       "mcp_server.add"
     ],
+    worker: ["agent.serve"],
     owner: ["*"]
   }
 

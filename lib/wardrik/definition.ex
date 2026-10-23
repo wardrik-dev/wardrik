@@ -46,7 +46,7 @@ defmodule Wardrik.Definition do
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
   @unsupported ~w(workspace context retries compaction notify channels)
-  @reserved ~w(self/* agents/* workers/*)
+  @reserved ~w(self/* agents/*)
   @rounds 25
 
   @doc "Builds a definition from a keyword list or a map. Raises if it doesn't read."
@@ -181,7 +181,9 @@ defmodule Wardrik.Definition do
   defp expanded(wardrik, tools), do: Enum.flat_map(tools, &expand(wardrik, &1))
 
   defp expand(wardrik, "*"),
-    do: Map.keys(wardrik.capabilities) ++ Enum.map(started(wardrik), &"#{&1}/*") ++ ["servers/*"]
+    do:
+      Map.keys(wardrik.capabilities) ++
+        Enum.map(started(wardrik), &"#{&1}/*") ++ ["servers/*", "workers/*"]
 
   defp expand(_wardrik, tool), do: [tool]
 
@@ -189,6 +191,7 @@ defmodule Wardrik.Definition do
     do: {:error, Error.new(:not_supported, "#{tool} isn't supported here yet.")}
 
   defp named(_wardrik, "servers/*"), do: :all_servers
+  defp named(wardrik, "workers/*"), do: {:capability, {Wardrik.Workers, wardrik: wardrik.name}}
 
   defp named(wardrik, tool) do
     case {Map.fetch(wardrik.capabilities, tool), String.split(tool, "/")} do
