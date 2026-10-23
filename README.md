@@ -1,21 +1,56 @@
 # Wardrik
 
-**TODO: Add description**
+**Agents, governed.**
 
-## Installation
+Run agents in your Elixir app with rules the model can't rewrite, approvals from the people you
+choose, budgets that cap what they spend, and a record of everything they did.
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `wardrik` to your list of dependencies in `mix.exs`:
+## Install
 
 ```elixir
 def deps do
   [
-    {:wardrik, "~> 0.1.0"}
+    {:wardrik, "~> 0.1"}
   ]
 end
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/wardrik>.
+## Start it
 
+Describe your Wardrik, add it to your supervision tree, and start an agent held to a policy:
+
+```elixir
+wardrik = Wardrik.new(name: MyApp.Wardrik, data_dir: "/var/lib/my_app", policy: [deny: ["shell/*"]])
+
+children = [{Wardrik, wardrik}]
+
+Wardrik.start_agent(wardrik,
+  agent_id: "acme/books",
+  model: "anthropic:claude-haiku-4-5",
+  capabilities: [MyApp.Books],
+  policy: [ask: ["books/pay_bill(amount >= 1000)"], budget: [usd: 5.00, per: :day]]
+)
+```
+
+Then ask it something, as a person allowed to:
+
+```elixir
+owner = Wardrik.Statement.new(roles: [:owner], resources: ["*"])
+scope = Wardrik.as(wardrik, "acme/@maria", [owner])
+
+Wardrik.Agent.ask(scope, "acme/books", %{"content" => "Which bills are due this week?"})
+```
+
+## Guides
+
+- [Run Wardrik](pages/running-wardrik.md): options, where agents are kept, and starting agents.
+- [Policies](pages/policies.md): rules the model can't rewrite, held at once by the deployment and
+  each agent, and budgets.
+- [Who may do what](pages/access.md): scopes, statements and roles, and your own authorizer.
+- [Operations](pages/operations.md): asking, reading and cancelling, as functions or by ID.
+- [Approvals](pages/approvals.md): deciding the calls agents wait on.
+- [Events and the audit](pages/events.md): following what agents do, and what people did.
+
+## License
+
+Apache-2.0

@@ -1,12 +1,13 @@
 defmodule Wardrik do
   @moduledoc """
-  Agents your app runs, and the operations people and programs reach them through.
+  Agents, governed: the agents your app runs, the policies they're held to, and the operations
+  people and programs reach them through.
 
-      wardrik = Wardrik.new(name: MyApp.Wardrik, store: store, deployment: "acme-prod")
+      wardrik = Wardrik.new(name: MyApp.Wardrik, data_dir: "/var/lib/my_app")
 
-      children = [{WardrikStore, store}, {Wardrik, wardrik}]
+      children = [{Wardrik, wardrik}]
 
-      scope = Wardrik.as(wardrik, principal, statements)
+      scope = Wardrik.as(wardrik, "acme/@maria", statements)
   """
 
   use Supervisor
@@ -17,23 +18,40 @@ defmodule Wardrik do
   alias Wardrik.Scope
   alias WardrikCore.Principal
 
-  @enforce_keys [:name, :store, :deployment, :authorizer, :retention, :backend, :catalog]
+  @enforce_keys [
+    :name,
+    :store,
+    :own_store,
+    :deployment,
+    :authorizer,
+    :retention,
+    :backend,
+    :policy,
+    :catalog
+  ]
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
           name: atom(),
           store: WardrikStore.t(),
+          own_store: boolean(),
           deployment: String.t(),
           authorizer: {module(), term()},
           retention: pos_integer() | :infinity,
           backend: {module(), keyword()},
+          policy: WardrikPolicy.t() | nil,
           catalog: Catalog.t()
         }
 
   @doc """
-  Describes a Wardrik. Takes `:name`, `:store`, `:deployment` (`"local"` unless set), `:authorizer`,
-  a `Wardrik.Authorizer` as `{module, config}` (`Wardrik.Statements` unless set), `:retention`, the
-  days events are kept (30 unless set), and `:backend`, where agents are kept (the store unless set).
+  Describes a Wardrik. Takes `:name`, and where it keeps agents and events: `:data_dir`, a directory
+  on disk, or `:store`, a `WardrikStore` you run yourself. Given neither, it keeps them in memory,
+  gone when it stops.
+
+  It also takes `:deployment` (`"local"` unless set), `:authorizer`, a `Wardrik.Authorizer` as
+  `{module, config}` (`Wardrik.Statements` unless set), `:retention`, the days events are kept (30
+  unless set), `:backend`, where agents are kept (the store unless set), and `:policy`, the
+  `WardrikPolicy` every agent is held to, or the rules to build it from.
   """
   @spec new(keyword()) :: t()
   def new(opts) do
@@ -41,34 +59,44 @@ defmodule Wardrik do
       Keyword.validate!(opts, [
         :name,
         :store,
+        :data_dir,
         :backend,
+        :policy,
         deployment: "local",
         authorizer: {Wardrik.Statements, []},
         retention: 30
       ])
 
-    store = Keyword.fetch!(opts, :store)
+    name = Keyword.fetch!(opts, :name)
+    {store, own_store} = store(name, opts[:store], opts[:data_dir])
 
     %__MODULE__{
-      name: Keyword.fetch!(opts, :name),
+      name: name,
       store: store,
+      own_store: own_store,
       deployment: opts[:deployment],
       authorizer: opts[:authorizer],
       retention: opts[:retention],
       backend: opts[:backend] || {WardrikStore.Durable, store: store},
+      policy: policy(opts[:policy]),
       catalog: Catalog.new()
     }
   end
 
-  @doc "Starts what `wardrik` runs: its agents, and their events."
+  @doc "Starts what `wardrik` runs: its store, unless you run it, its agents, and their events."
   @spec start_link(t()) :: Supervisor.on_start()
   def start_link(%__MODULE__{name: name} = wardrik),
     do: Supervisor.start_link(__MODULE__, wardrik, name: name)
 
   @doc "Returns the scope `principal` acts in, allowed what `grants` say to the authorizer."
-  @spec as(t(), Principal.t(), term()) :: Scope.t()
-  def as(%__MODULE__{} = wardrik, %Principal{} = principal, grants \\ []),
+  @spec as(t(), Principal.t() | String.t(), term()) :: Scope.t()
+  def as(wardrik, principal, grants \\ [])
+
+  def as(%__MODULE__{} = wardrik, %Principal{} = principal, grants),
     do: %Scope{wardrik: wardrik, principal: principal, grants: grants}
+
+  def as(%__MODULE__{} = wardrik, id, grants) when is_binary(id),
+    do: as(wardrik, %Principal{id: id}, grants)
 
   @doc """
   Runs the operation `id`, like `agent.ask`, in `scope`, with `input` as the operation's input
@@ -89,15 +117,27 @@ defmodule Wardrik do
 
   @doc """
   Starts the agent `opts` describe, as `WardrikCore.start_agent/2` takes them, writing its events
-  to `wardrik`'s.
+  to `wardrik`'s. `:policy` is the agent's own `WardrikPolicy`, or the rules to build it from. The
+  agent is held to it and to `wardrik`'s, and the strictest decides.
+
+      Wardrik.start_agent(wardrik,
+        agent_id: "acme/books",
+        model: "anthropic:claude-haiku-4-5",
+        policy: [ask: ["books/pay_bill"]]
+      )
   """
   @spec start_agent(t(), keyword()) :: {:ok, pid()} | {:error, term()}
-  def start_agent(%__MODULE__{} = wardrik, opts),
-    do:
-      WardrikCore.start_agent(
-        agents(wardrik),
-        Keyword.put(opts, :events, {WardrikEvents, events(wardrik)})
-      )
+  def start_agent(%__MODULE__{} = wardrik, opts) do
+    {policy, opts} = Keyword.pop(opts, :policy)
+    policies = Enum.reject([wardrik.policy, policy(policy)], &is_nil/1)
+
+    opts =
+      opts
+      |> Keyword.put(:events, {WardrikEvents, events(wardrik)})
+      |> governed(policies)
+
+    WardrikCore.start_agent(agents(wardrik), opts)
+  end
 
   @doc "Returns the name of `wardrik`'s `WardrikCore` instance."
   @spec agents(t()) :: atom()
@@ -107,17 +147,41 @@ defmodule Wardrik do
   @spec events(t()) :: atom()
   def events(%__MODULE__{name: name}), do: Module.concat(name, Events)
 
+  defp store(name, nil, nil), do: {WardrikStore.ETS.new(name: Module.concat(name, Store)), true}
+
+  defp store(name, nil, data_dir),
+    do: {WardrikStore.EKV.new(name: Module.concat(name, Store), data_dir: data_dir), true}
+
+  defp store(_name, store, nil), do: {store, false}
+
+  defp store(_name, _store, _data_dir),
+    do: raise(ArgumentError, "Give Wardrik a :store or a :data_dir, not both.")
+
+  defp policy(nil), do: nil
+  defp policy(%WardrikPolicy{} = policy), do: policy
+  defp policy(rules), do: WardrikPolicy.new!(rules)
+
+  defp governed(opts, []), do: opts
+
+  defp governed(opts, policies) do
+    middleware = {WardrikPolicy.Middleware, policies}
+    Keyword.update(opts, :middleware, [middleware], &[middleware | &1])
+  end
+
   @impl Supervisor
   def init(wardrik) do
-    children = [
+    events =
       {WardrikEvents,
        name: events(wardrik),
        store: wardrik.store,
        deployment: wardrik.deployment,
-       retention: wardrik.retention},
-      {WardrikCore, name: agents(wardrik), backend: wardrik.backend}
-    ]
+       retention: wardrik.retention}
 
-    Supervisor.init(children, strategy: :rest_for_one)
+    agents = {WardrikCore, name: agents(wardrik), backend: wardrik.backend}
+
+    Supervisor.init(stores(wardrik) ++ [events, agents], strategy: :rest_for_one)
   end
+
+  defp stores(%__MODULE__{own_store: true, store: store}), do: [{WardrikStore, store}]
+  defp stores(_wardrik), do: []
 end

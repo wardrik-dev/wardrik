@@ -22,7 +22,7 @@ defmodule Wardrik.Test.Tools do
 end
 
 defmodule Wardrik.Test.Approval do
-  @moduledoc "Middleware that parks each `echo` call until a person answers, and `inbox` on a sign-in."
+  @moduledoc "Middleware that parks each `echo` call until a person answers it, and `inbox` on a sign-in."
   @behaviour WardrikCore.Middleware
 
   alias WardrikCore.Authorization
@@ -30,25 +30,26 @@ defmodule Wardrik.Test.Approval do
   alias WardrikCore.Resume
 
   @impl true
-  def call(
-        %Context{step: {:tool_call, call}, resume: %Resume{input: input}} = context,
-        next,
-        _opts
-      )
-      when is_map(input) do
-    case Map.get(input, call.id) do
+  def call(%Context{step: {:tool_call, call}} = context, next, _opts) do
+    case answer(context, call) do
+      nil -> park(context, call)
       {:deny, reason} -> {:ok, %{context | response: {:error, reason}}}
       _approved -> next.(context)
     end
   end
 
-  def call(%Context{step: {:tool_call, %{name: "inbox"}}} = context, _next, _opts),
+  def call(context, next, _opts), do: next.(context)
+
+  defp answer(%Context{resume: %Resume{input: input}}, call) when is_map(input),
+    do: Map.get(input, call.id)
+
+  defp answer(_context, _call), do: nil
+
+  defp park(context, %{name: "inbox"}),
     do: {:park, %Authorization{url: "https://example.com/sign-in", credential: "mail"}, context}
 
-  def call(%Context{step: {:tool_call, _call}} = context, _next, _opts),
+  defp park(context, _call),
     do: {:park, %{interrupt: "tool_approval", message: "Run echo?"}, context}
-
-  def call(context, next, _opts), do: next.(context)
 end
 
 defmodule Wardrik.Test.LLM do

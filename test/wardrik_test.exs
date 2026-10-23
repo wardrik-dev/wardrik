@@ -1,5 +1,5 @@
 defmodule WardrikTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import Wardrik.Test.Wardrik
 
@@ -19,6 +19,9 @@ defmodule WardrikTest do
   test "makes a scope of who acts, and what they're granted", %{wardrik: wardrik} do
     assert %Wardrik.Scope{wardrik: ^wardrik, principal: %{id: "acme/@maria"}, grants: [:all]} =
              Wardrik.as(wardrik, maria(), [:all])
+
+    assert %Wardrik.Scope{principal: %WardrikCore.Principal{id: "acme/@jon"}} =
+             Wardrik.as(wardrik, "acme/@jon")
   end
 
   test "describes itself, with its agents kept in its store unless told otherwise" do

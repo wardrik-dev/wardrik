@@ -7,9 +7,9 @@ defmodule Wardrik.MixProject do
       version: "0.1.0",
       elixir: "~> 1.20",
       description:
-        "Agents your app runs, and one set of operations every surface offers them through.",
+        "Agents, governed: rules the model can't rewrite, approvals, budgets, and a record of what they did.",
       package: package(),
-      docs: [main: "readme", extras: ["README.md"]],
+      docs: docs(),
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
@@ -34,11 +34,27 @@ defmodule Wardrik.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
 
+  defp docs do
+    [
+      main: "readme",
+      extras: [
+        "README.md",
+        "pages/running-wardrik.md",
+        "pages/policies.md",
+        "pages/access.md",
+        "pages/operations.md",
+        "pages/approvals.md",
+        "pages/events.md",
+        "CHANGELOG.md"
+      ]
+    ]
+  end
+
   defp package do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/wardrik-dev/wardrik"},
-      files: ~w(lib mix.exs README.md LICENSE)
+      files: ~w(lib pages mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end
 
@@ -65,6 +81,8 @@ defmodule Wardrik.MixProject do
       {:wardrik_store, path: "../wardrik_store"},
       {:wardrik_protocol, path: "../wardrik_protocol"},
       {:wardrik_events, path: "../wardrik_events"},
+      {:wardrik_policy, path: "../wardrik_policy"},
+      {:ekv, "~> 0.4.8"},
       {:jsv, "~> 0.26"},
       {:mimic, "~> 2.4", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},

@@ -102,6 +102,33 @@ defmodule Wardrik.OperationsTest do
     end
   end
 
+  test "waits on each call until it's decided, in any order", %{wardrik: wardrik, scope: scope} do
+    calls = [
+      call("call_1", "echo", %{"text" => "one"}),
+      call("call_2", "echo", %{"text" => "two"})
+    ]
+
+    answers([calling(calls), answer("Done.")])
+    start_agent(wardrik, "acme/triage")
+    run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Echo twice"})
+    until("wardrik.run.interrupted")
+
+    run!(scope, "agent.approve", %{"agent" => "acme/triage", "interrupt" => "call_2"})
+    until("wardrik.run.interrupted")
+
+    assert %{"status" => "parked", "interrupts" => [%{"id" => "call_1"}]} =
+             run!(scope, "agent.read", %{"agent" => "acme/triage"})
+
+    assert refused(scope, "agent.deny", %{"agent" => "acme/triage", "interrupt" => "call_2"}) ==
+             :conflict
+
+    run!(scope, "agent.approve", %{"agent" => "acme/triage", "interrupt" => "call_1"})
+    until("wardrik.run.completed")
+
+    assert %{"status" => "idle", "interrupts" => []} =
+             run!(scope, "agent.read", %{"agent" => "acme/triage"})
+  end
+
   describe "answering a call an agent waits on" do
     setup %{wardrik: wardrik, scope: scope} do
       answers([calling([call("call_1", "echo", %{"text" => "hi"})]), answer("Done.")])

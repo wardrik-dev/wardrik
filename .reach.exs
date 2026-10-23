@@ -14,6 +14,9 @@
        ]}
     ]
   ],
+  smells: [
+    ignore: [modules: ["Wardrik.Operations.Functions"]]
+  ],
   checks: [
     layer_coverage: [require_all_modules: true, forbid_multiple_matches: true]
   ]
