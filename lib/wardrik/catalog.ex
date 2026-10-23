@@ -8,6 +8,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Agents
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Lifecycle
+  alias Wardrik.Operations.Owners
   alias Wardrik.Operations.Triggers
 
   @enforce_keys [:operations, :handlers, :streams]
@@ -55,6 +56,12 @@ defmodule Wardrik.Catalog do
         "agent.trigger_set" => &Triggers.set/2,
         "agent.trigger_remove" => &Triggers.remove/2,
         "hook.deliver" => &Triggers.deliver/2,
+        "connections.list" => &Owners.connections/2,
+        "connections.connect" => &Owners.connect/2,
+        "connections.disconnect" => &Owners.disconnect/2,
+        "mcp_servers.list" => &Owners.servers/2,
+        "mcp_servers.add" => &Owners.add/2,
+        "mcp_servers.remove" => &Owners.remove/2,
         "hook.deliver_with_secret" => &Triggers.deliver/2,
         "agents.forget" => &Agents.forget/2,
         "audit.list" => &Deployment.audit/2

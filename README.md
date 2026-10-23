@@ -52,6 +52,8 @@ scope = Wardrik.as(wardrik, "acme/@maria", [owner])
 - [Who may do what](pages/access.md): scopes, statements and roles, and your own authorizer.
 - [Operations](pages/operations.md): asking, reading and cancelling, as functions or by ID.
 - [Approvals](pages/approvals.md): deciding the calls agents wait on.
+- [MCP servers](pages/servers.md): the servers agents call, those Wardrik starts with and those an
+  org or person adds as it runs.
 - [Credentials and sign-ins](pages/credentials.md): sealed credentials, and people signing in to
   give agents their accounts.
 - [Events and the audit](pages/events.md): following what agents do, and what people did.

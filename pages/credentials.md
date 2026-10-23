@@ -53,6 +53,25 @@ When a tool needs a credential its principal hasn't granted, its call waits on a
 `Wardrik.Agent.authorization/4` gives the link. Once the person has signed in, the token is sealed,
 and every call waiting on it carries on. They only sign in once.
 
+## Connect ahead of time
+
+A person, or an org, connects an account before any agent asks:
+
+```elixir
+{:ok, [%Wardrik.Connection{provider: "github", connected: false}]} =
+  Wardrik.Connections.list(scope, owner: "acme/@jon")
+
+{:ok, %Wardrik.Connecting{authorization: %Wardrik.Authorization{url: url}}} =
+  Wardrik.Connections.connect(scope, "github", owner: "acme/@jon")
+
+{:ok, %Wardrik.Connection{}} = Wardrik.Connections.disconnect(scope, "github", owner: "acme/@jon")
+```
+
+An account is the owner's own: a person's agents reach their person's, and an org's agents reach
+the org's. Nothing falls back from one to the other. Forgetting one is recorded in the audit.
+
+## Mount the sign-in pages
+
 A sign-in comes back to your app, so mount its pages at `page`. In a Phoenix router:
 
 ```elixir

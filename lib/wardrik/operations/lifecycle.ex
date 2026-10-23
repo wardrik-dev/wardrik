@@ -34,7 +34,8 @@ defmodule Wardrik.Operations.Lifecycle do
   @spec definition(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def definition(%Scope{wardrik: wardrik}, %{"agent" => id}) do
     with {:ok, definition} <- Running.definition(wardrik, id) do
-      {:ok, %{"definition" => definition, "missing" => Definition.missing(wardrik, definition)}}
+      {:ok,
+       %{"definition" => definition, "missing" => Definition.missing(wardrik, id, definition)}}
     end
   end
 

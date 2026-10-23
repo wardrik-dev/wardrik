@@ -5,7 +5,9 @@ Every operation runs in a scope: who acts, and what they're allowed.
 ## Scopes and statements
 
 Statements allow actions on resources, as IAM's do. The agent `acme/books` is the resource
-`acme/agent/books`, and `acme/@jon/notes` is `acme/@jon/agent/notes`:
+`acme/agent/books`, and `acme/@jon/notes` is `acme/@jon/agent/notes`. What an owner holds is under
+them too: `acme/mcp_server/linear` is the org's server, and `acme/@jon/connection/github` is Jon's
+account:
 
 ```elixir
 scope =
@@ -17,10 +19,10 @@ scope =
 
 | Role | Actions |
 | --- | --- |
-| `:reader` | `agent.read`, `agent.events` |
+| `:reader` | `agent.read`, `agent.events`, `connection.read`, `mcp_server.read` |
 | `:messenger` | `agent.ask`, `agent.cancel`, `agent.clear` |
 | `:approver` | `agent.decide` |
-| `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget` |
+| `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `connection.connect`, `mcp_server.add` |
 | `:owner` | every action |
 
 A principal is who acts, by id, or a `WardrikCore.Principal` with attributes your authorizer

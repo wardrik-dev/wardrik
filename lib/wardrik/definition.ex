@@ -116,12 +116,20 @@ defmodule Wardrik.Definition do
     end
   end
 
-  @doc "Returns the tools `definition` names that offer nothing yet, like an MCP server that's down."
-  @spec missing(Wardrik.t(), map()) :: [String.t()]
-  def missing(wardrik, definition) do
+  @doc """
+  Returns the servers the agent `id`'s definition names that offer nothing yet: one its owner hasn't
+  added, or one that's down.
+  """
+  @spec missing(Wardrik.t(), String.t(), map()) :: [String.t()]
+  def missing(wardrik, id, definition) do
+    mcp = Wardrik.mcp(wardrik)
+
     for tool <- expanded(wardrik, Map.get(definition, "tools", [])),
-        {:ok, server} <- [server(wardrik, tool)],
-        WardrikMCP.tools(nil, name: Wardrik.mcp(wardrik), servers: server) == [],
+        {:server, name} <- [named(wardrik, tool)],
+        WardrikMCP.tools(nil,
+          name: mcp,
+          servers: Wardrik.MCPTools.picked(mcp, id, names: [name])
+        ) == [],
         do: tool
   end
 
@@ -171,44 +179,36 @@ defmodule Wardrik.Definition do
   defp expanded(wardrik, tools), do: Enum.flat_map(tools, &expand(wardrik, &1))
 
   defp expand(wardrik, "*"),
-    do: Map.keys(wardrik.capabilities) ++ Enum.map(servers(wardrik), &"#{&1}/*")
+    do: Map.keys(wardrik.capabilities) ++ Enum.map(started(wardrik), &"#{&1}/*") ++ ["servers/*"]
 
   defp expand(_wardrik, tool), do: [tool]
 
   defp named(_wardrik, tool) when tool in @reserved,
     do: {:error, Error.new(:not_supported, "#{tool} isn't supported here yet.")}
 
+  defp named(_wardrik, "servers/*"), do: :all_servers
+
   defp named(wardrik, tool) do
-    with :error <- capability(wardrik, tool),
-         :error <- server(wardrik, tool) do
-      {:error, Error.new(:invalid_request, "There's no tool or MCP server #{tool} here.")}
+    case {Map.fetch(wardrik.capabilities, tool), String.split(tool, "/")} do
+      {{:ok, entry}, _parts} -> {:capability, entry}
+      {:error, [name, "*"]} when name != "" -> {:server, name}
+      {:error, _parts} -> {:error, Error.new(:invalid_request, "There's no tool #{tool} here.")}
     end
   end
 
-  defp capability(wardrik, tool) do
-    with {:ok, entry} <- Map.fetch(wardrik.capabilities, tool), do: {:capability, entry}
-  end
-
-  defp server(wardrik, tool) do
-    case String.split(tool, "/") do
-      [name, "*"] ->
-        Enum.find_value(servers(wardrik), :error, &(Atom.to_string(&1) == name && {:ok, &1}))
-
-      _not_a_server ->
-        :error
-    end
-  end
-
-  defp servers(%Wardrik{mcp: nil}), do: []
-  defp servers(%Wardrik{mcp: mcp}), do: Keyword.keys(mcp)
+  defp started(%Wardrik{mcp: nil}), do: []
+  defp started(%Wardrik{mcp: mcp}), do: Enum.map(Keyword.keys(mcp), &to_string/1)
 
   defp entries(wardrik, named) do
     capabilities = for {:capability, entry} <- named, uniq: true, do: entry
+    servers = for {:server, name} <- named, uniq: true, do: name
+    all = :all_servers in named
 
-    case for({:ok, server} <- named, uniq: true, do: server) do
-      [] -> capabilities
-      servers -> capabilities ++ [{WardrikMCP, name: Wardrik.mcp(wardrik), servers: servers}]
-    end
+    if servers == [] and not all,
+      do: capabilities,
+      else:
+        capabilities ++
+          [{Wardrik.MCPTools, mcp: Wardrik.mcp(wardrik), names: servers, all: all}]
   end
 
   defp policy(_wardrik, nil), do: {:ok, nil}

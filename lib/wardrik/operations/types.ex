@@ -7,11 +7,15 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Agent
   alias Wardrik.Authorization
   alias Wardrik.Call
+  alias Wardrik.Connecting
+  alias Wardrik.Connection
   alias Wardrik.Decision
   alias Wardrik.Definition
   alias Wardrik.Event
   alias Wardrik.Forgotten
   alias Wardrik.Interrupt
+  alias Wardrik.MCPServer
+  alias Wardrik.MCPServerAdded
   alias Wardrik.Message
   alias Wardrik.Page
   alias Wardrik.Runs
@@ -71,6 +75,18 @@ defmodule Wardrik.Operations.Types do
     do: {:ok, Enum.map(listed, &Interrupt.from_listed/1)}
 
   def decode("events.head", %{"cursor" => cursor}), do: {:ok, cursor}
+
+  def decode("connections.list", %{"connections" => connections}),
+    do: {:ok, Enum.map(connections, &Connection.from_json/1)}
+
+  def decode("connections.connect", output), do: {:ok, Connecting.from_json(output)}
+  def decode("connections.disconnect", output), do: {:ok, Connection.from_json(output)}
+
+  def decode("mcp_servers.list", %{"servers" => servers}),
+    do: {:ok, Enum.map(servers, &MCPServer.from_json/1)}
+
+  def decode("mcp_servers.add", output), do: {:ok, MCPServerAdded.from_json(output)}
+  def decode("mcp_servers.remove", output), do: {:ok, MCPServer.from_json(output)}
 
   @doc "Turns a streamed event and its cursor into what an Elixir caller gets."
   @spec event({map(), String.t()}) :: {Event.t(), String.t()}

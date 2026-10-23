@@ -10,10 +10,10 @@ defmodule Wardrik.Statement do
 
   | Role | Actions |
   | --- | --- |
-  | `:reader` | `agent.read`, `agent.events` |
+  | `:reader` | `agent.read`, `agent.events`, `connection.read`, `mcp_server.read` |
   | `:messenger` | `agent.ask`, `agent.cancel`, `agent.clear` |
   | `:approver` | `agent.decide` |
-  | `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget` |
+  | `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `connection.connect`, `mcp_server.add` |
   | `:owner` | every action |
   """
 
@@ -23,10 +23,17 @@ defmodule Wardrik.Statement do
   @type t() :: %__MODULE__{actions: [String.t()], resources: [String.t()]}
 
   @roles %{
-    reader: ["agent.read", "agent.events"],
+    reader: ["agent.read", "agent.events", "connection.read", "mcp_server.read"],
     messenger: ["agent.ask", "agent.cancel", "agent.clear"],
     approver: ["agent.decide"],
-    definer: ["agent.define", "agent.spawn", "agent.stop", "agent.forget"],
+    definer: [
+      "agent.define",
+      "agent.spawn",
+      "agent.stop",
+      "agent.forget",
+      "connection.connect",
+      "mcp_server.add"
+    ],
     owner: ["*"]
   }
 

@@ -54,6 +54,12 @@ defmodule Wardrik.Runner do
   defp authorize(_scope, %{subject: "agents"}, _input), do: :ok
   defp authorize(_scope, %{subject: "hook"}, _input), do: :ok
 
+  defp authorize(scope, %{subject: "owner", action: action}, %{"owner" => owner} = input) do
+    [kind, _verb] = String.split(action, ".")
+    resource = Resource.owned(owner, kind, input["provider"] || input["server"] || input["name"])
+    refused(Authorizer.authorize(scope, action, resource), "#{kind} of #{owner}")
+  end
+
   defp refused(:ok, _what), do: :ok
 
   defp refused({:error, :not_found}, what),

@@ -1,7 +1,7 @@
 defmodule Wardrik.Children do
   @moduledoc """
   What a Wardrik runs, in the order it starts them: its store, unless you run it, its vault and
-  sign-ins, when it keeps credentials, its MCP servers, then its agents' events, its agents, their
+  sign-ins, when it keeps credentials, the MCP servers its agents reach, then its agents' events, its agents, their
   triggers, and what puts them to sleep.
   """
 
@@ -39,14 +39,17 @@ defmodule Wardrik.Children do
     options = [
       name: Wardrik.oauth(wardrik),
       vault: Wardrik.vault(wardrik),
+      store: wardrik.store,
       on_granted: {Wardrik.SignIns, :granted, [Wardrik.agents(wardrik)]}
     ]
 
     [{WardrikOAuth, options ++ wardrik.oauth}]
   end
 
-  defp mcp(%Wardrik{mcp: nil}), do: []
-  defp mcp(wardrik), do: [{WardrikMCP, name: Wardrik.mcp(wardrik), servers: wardrik.mcp}]
+  defp mcp(wardrik),
+    do: [
+      {WardrikMCP, name: Wardrik.mcp(wardrik), servers: wardrik.mcp || [], store: wardrik.store}
+    ]
 
   defp events(wardrik) do
     {WardrikEvents,

@@ -46,6 +46,7 @@ defmodule Wardrik.MixProject do
         "pages/access.md",
         "pages/operations.md",
         "pages/approvals.md",
+        "pages/servers.md",
         "pages/credentials.md",
         "pages/events.md",
         "CHANGELOG.md"

@@ -3,6 +3,8 @@ defmodule Wardrik.Operations.Functions do
 
   alias Wardrik.Operations.Types
 
+  @modules %{"mcp_servers" => "MCPServers"}
+
   defmacro __using__(prefix: prefix) do
     for operation <- WardrikProtocol.operations(),
         prefix(operation) == prefix,
@@ -13,7 +15,8 @@ defmodule Wardrik.Operations.Functions do
 
   @doc "Returns the module whose functions do the operations named `prefix.*`."
   @spec module(String.t()) :: module()
-  def module(prefix), do: Module.concat(Wardrik, Macro.camelize(prefix))
+  def module(prefix),
+    do: Module.concat(Wardrik, Map.get(@modules, prefix, Macro.camelize(prefix)))
 
   @doc "Returns the prefix of `operation`'s ID, which names its module."
   @spec prefix(WardrikProtocol.operation()) :: String.t()

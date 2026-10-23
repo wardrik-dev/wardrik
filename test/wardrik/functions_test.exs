@@ -70,7 +70,11 @@ defmodule Wardrik.FunctionsTest do
       Wardrik.Forgotten,
       Wardrik.Definition,
       Wardrik.Trigger,
-      Wardrik.Trigger.Webhook
+      Wardrik.Trigger.Webhook,
+      Wardrik.Connection,
+      Wardrik.Connecting,
+      Wardrik.MCPServer,
+      Wardrik.MCPServerAdded
     ]
 
     for type <- types do
