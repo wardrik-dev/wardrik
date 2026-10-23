@@ -71,6 +71,36 @@ defmodule Wardrik.SignInsTest do
     until("wardrik.run.completed")
   end
 
+  test "asks an agent about a webhook request that proves itself with the secret it holds", %{
+    wardrik: wardrik,
+    scope: scope
+  } do
+    answers([answer("Triaged.")])
+    acme = %WardrikCore.Principal{id: "acme"}
+    {:ok, _vsn} = WardrikVault.put(Wardrik.vault(wardrik), acme, "HOOK", "s3cret")
+
+    {:ok, %Wardrik.Agent{}} =
+      Wardrik.Agent.define(scope, "acme/hooks",
+        model: "anthropic:claude-haiku-4-5",
+        triggers: [%{name: "issues", webhook: %{secret: "${HOOK}"}, prompt: "Triage it."}]
+      )
+
+    assert :ok =
+             Wardrik.Hook.deliver(scope, "acme/hooks", "issues",
+               body: "{\"action\":\"opened\"}",
+               headers: %{"Authorization" => "Bearer s3cret"}
+             )
+
+    assert %{"data" => %{"status" => "asked"}} = until("wardrik.trigger.fired")
+    until("wardrik.run.completed")
+
+    assert {:error, %Wardrik.Error{type: :not_found}} =
+             Wardrik.Hook.deliver_with_secret(scope, "acme/hooks", "issues", "nope",
+               body: "{}",
+               headers: %{}
+             )
+  end
+
   test "keeps credentials only when given keys" do
     assert %Wardrik{keys: [], oauth: nil} = Wardrik.new(name: MyApp.Wardrik)
 

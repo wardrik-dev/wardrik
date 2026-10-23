@@ -117,8 +117,15 @@ defmodule Wardrik.DefinitionsTest do
       assert refused(scope, "agent.define", Map.put(base, "max_iterations", "infinity")) ==
                :not_supported
 
-      trigger = [%{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Go."}]
-      assert refused(scope, "agent.define", Map.put(base, "triggers", trigger)) == :not_supported
+      assert refused(scope, "agent.define", Map.put(base, "notify", "ops")) == :not_supported
+
+      from_file = [%{"every" => "30m", "prompt_file" => "HEARTBEAT.md"}]
+
+      assert refused(scope, "agent.define", Map.put(base, "triggers", from_file)) ==
+               :not_supported
+
+      unread = [%{"every" => "often", "prompt" => "Go."}]
+      assert refused(scope, "agent.define", Map.put(base, "triggers", unread)) == :invalid_request
 
       assert refused(scope, "agent.definition", %{"agent" => "acme/triage"}) == :not_found
     end
@@ -287,10 +294,133 @@ defmodule Wardrik.DefinitionsTest do
       pid = WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage")
       assert WardrikCore.history(pid) == []
 
+      assert %{"items" => []} = run!(scope, "agent.timeline", %{"agent" => "acme/triage"})
+
       run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Echo"})
       until("wardrik.run.interrupted")
 
       assert refused(scope, "agent.clear", %{"agent" => "acme/triage"}) == :conflict
+    end
+  end
+
+  describe "triggers" do
+    defp trigger_due(wardrik, id, name) do
+      store = WardrikStore.scope(wardrik.store, "wardrik_triggers")
+      key = "triggers/" <> URI.encode_www_form(id) <> "/" <> name
+      {record, _vsn} = WardrikStore.lookup(store, key)
+      past = DateTime.utc_now() |> DateTime.add(-5) |> DateTime.to_iso8601()
+      {:ok, _vsn} = WardrikStore.put(store, key, %{record | "next_at" => past})
+      :ok = WardrikTriggers.reconcile(Wardrik.triggers(wardrik))
+    end
+
+    test "gives a defined agent its triggers, and asks it when one comes due, asleep or not", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      answers([answer("Today's update.")])
+
+      define(scope, "acme/digest", %{
+        "model" => @model,
+        "triggers" => [%{"every" => "0 9 * * *", "prompt" => "Write it."}]
+      })
+
+      assert [{%WardrikTriggers.Trigger{name: "trigger-1"}, %DateTime{}}] =
+               WardrikTriggers.list(Wardrik.triggers(wardrik), "acme/digest")
+
+      run!(scope, "agent.stop", %{"agent" => "acme/digest"})
+      until("wardrik.agent.stopped")
+
+      trigger_due(wardrik, "acme/digest", "trigger-1")
+
+      assert %{"data" => %{"trigger" => %{"name" => "trigger-1"}, "status" => "asked"}} =
+               until("wardrik.trigger.fired")
+
+      assert_receive {:prompted, messages}
+      assert %{role: :user} = List.last(messages)
+      until("wardrik.run.completed")
+    end
+
+    test "sets and removes one, keeping the definition in step", %{wardrik: wardrik, scope: scope} do
+      define(scope, "acme/digest", %{"model" => @model})
+
+      assert %{"name" => "daily", "every" => "1d"} =
+               run!(scope, "agent.trigger_set", %{
+                 "agent" => "acme/digest",
+                 "trigger" => "daily",
+                 "every" => "1d",
+                 "prompt" => "Go."
+               })
+
+      assert %{"definition" => %{"triggers" => [%{"name" => "daily"}]}} =
+               run!(scope, "agent.definition", %{"agent" => "acme/digest"})
+
+      assert %{"name" => "daily"} =
+               run!(scope, "agent.trigger_remove", %{
+                 "agent" => "acme/digest",
+                 "trigger" => "daily"
+               })
+
+      assert WardrikTriggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
+
+      assert refused(scope, "agent.trigger_remove", %{
+               "agent" => "acme/digest",
+               "trigger" => "daily"
+             }) ==
+               :not_found
+
+      assert refused(scope, "agent.trigger_set", %{
+               "agent" => "acme/other",
+               "trigger" => "x",
+               "every" => "1d",
+               "prompt" => "Go."
+             }) ==
+               :not_found
+
+      assert refused(scope, "agent.trigger_set", %{
+               "agent" => "acme/digest",
+               "trigger" => "x",
+               "every" => "often",
+               "prompt" => "Go."
+             }) ==
+               :invalid_request
+
+      assert %{"events" => changes} = run!(scope, "audit.list", %{})
+      assert "wardrik.trigger.set" in Enum.map(changes, & &1["type"])
+      assert "wardrik.trigger.removed" in Enum.map(changes, & &1["type"])
+    end
+
+    test "forgets an agent's triggers with it", %{wardrik: wardrik, scope: scope} do
+      define(scope, "acme/digest", %{
+        "model" => @model,
+        "triggers" => [%{"every" => "1d", "prompt" => "Go."}]
+      })
+
+      run!(scope, "agent.forget", %{"agent" => "acme/digest"})
+
+      assert WardrikTriggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
+    end
+
+    test "turns away a webhook request it can't prove", %{scope: scope} do
+      define(scope, "acme/digest", %{
+        "model" => @model,
+        "triggers" => [
+          %{"name" => "issues", "webhook" => %{"secret" => "${HOOK}"}, "prompt" => "Triage it."}
+        ]
+      })
+
+      request = %{
+        "agent" => "acme/digest",
+        "trigger" => "issues",
+        "body" => "{}",
+        "headers" => %{}
+      }
+
+      assert refused(scope, "hook.deliver", request) == :not_found
+
+      assert refused(scope, "hook.deliver_with_secret", Map.put(request, "secret", "nope")) ==
+               :not_found
+
+      assert refused(scope, "hook.deliver", %{request | "trigger" => "missing"}) == :not_found
     end
   end
 

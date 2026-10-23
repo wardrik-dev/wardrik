@@ -8,6 +8,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Agents
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Lifecycle
+  alias Wardrik.Operations.Triggers
 
   @enforce_keys [:operations, :handlers, :streams]
   defstruct @enforce_keys
@@ -51,6 +52,10 @@ defmodule Wardrik.Catalog do
         "agent.calls" => &Lifecycle.calls/2,
         "agent.kill" => &Lifecycle.kill/2,
         "agents.cancel" => &Agents.cancel/2,
+        "agent.trigger_set" => &Triggers.set/2,
+        "agent.trigger_remove" => &Triggers.remove/2,
+        "hook.deliver" => &Triggers.deliver/2,
+        "hook.deliver_with_secret" => &Triggers.deliver/2,
         "agents.forget" => &Agents.forget/2,
         "audit.list" => &Deployment.audit/2
       },

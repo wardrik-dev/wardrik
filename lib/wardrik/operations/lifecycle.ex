@@ -17,11 +17,13 @@ defmodule Wardrik.Operations.Lifecycle do
   @doc "Starts the agent a definition describes, or brings the one running to it."
   @spec define(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def define(%Scope{wardrik: wardrik} = scope, %{"agent" => id} = input) do
-    definition = Map.delete(input, "agent")
+    definition = input |> Map.delete("agent") |> Definition.named()
 
     with {:ok, opts} <- Definition.resolve(wardrik, id, definition),
          {:ok, _pid} <- Running.bring(wardrik, opts),
-         :ok <- Definitions.put(wardrik, id, definition) do
+         :ok <- Definitions.put(wardrik, id, definition),
+         :ok <-
+           WardrikTriggers.put(Wardrik.triggers(wardrik), id, Map.get(definition, "triggers", [])) do
       Sleeper.watch(wardrik, id)
       Changes.record(scope, "agent.defined", id)
       Agent.read(scope, %{"agent" => id})
@@ -73,8 +75,11 @@ defmodule Wardrik.Operations.Lifecycle do
          :ok <- idle(wardrik, id),
          {:ok, definition} <- Running.definition(wardrik, id),
          {:ok, opts} <- Definition.resolve(wardrik, id, definition),
+         before = messages(wardrik, id),
          :ok <- WardrikCore.delete(Wardrik.agents(wardrik), id),
          {:ok, _pid} <- Running.bring(wardrik, opts) do
+      cleared = {"conversation.cleared", "agents/" <> id, %{"messages_before" => before}}
+      :ok = WardrikEvents.append(Wardrik.events(wardrik), id, cleared)
       Changes.record(scope, "agent.cleared", id)
       Agent.read(scope, %{"agent" => id})
     end
@@ -118,7 +123,8 @@ defmodule Wardrik.Operations.Lifecycle do
   @spec forgotten(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
   def forgotten(wardrik, id) do
     with :ok <- WardrikCore.delete(Wardrik.agents(wardrik), id),
-         :ok <- Definitions.delete(wardrik, id) do
+         :ok <- Definitions.delete(wardrik, id),
+         :ok <- WardrikTriggers.put(Wardrik.triggers(wardrik), id, []) do
       :ok
     else
       {:error, reason} ->
@@ -137,6 +143,13 @@ defmodule Wardrik.Operations.Lifecycle do
     case Snapshot.status(WardrikEvents.activity(Wardrik.events(wardrik), id)) do
       "idle" -> :ok
       status -> {:error, Error.new(:conflict, "#{id} is #{status}; clear it once it's idle.")}
+    end
+  end
+
+  defp messages(wardrik, id) do
+    case Running.whereis(wardrik, id) do
+      nil -> 0
+      pid -> length(WardrikCore.history(pid))
     end
   end
 

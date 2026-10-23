@@ -27,6 +27,7 @@ defmodule Wardrik do
     :keys,
     :oauth,
     :mcp,
+    :triggers,
     :deployment,
     :authorizer,
     :retention,
@@ -47,6 +48,7 @@ defmodule Wardrik do
           keys: [String.t()],
           oauth: keyword() | nil,
           mcp: keyword() | nil,
+          triggers: keyword(),
           deployment: String.t(),
           authorizer: {module(), term()},
           retention: pos_integer() | :infinity,
@@ -74,7 +76,8 @@ defmodule Wardrik do
   to give agents their accounts, and the calls waiting on a sign-in carry on once it's done.
 
   Given `:mcp`, the MCP servers its agents may call, as `WardrikMCP` takes its `:servers`, it
-  connects to each.
+  connects to each. `:triggers` takes `WardrikTriggers`' `:req_options`, for reading feeds, and
+  `:reconcile`.
 
   What a definition names, it finds here: `:capabilities`, the tools it offers by name, as
   `[files: {MyApp.Files, []}]`, and `:policies`, as `[careful: [ask: ["github/*"]]]`. Each MCP
@@ -160,6 +163,10 @@ defmodule Wardrik do
   """
   @spec mcp(t()) :: atom()
   def mcp(%__MODULE__{name: name}), do: Module.concat(name, MCP)
+
+  @doc "Returns the name of `wardrik`'s `WardrikTriggers`."
+  @spec triggers(t()) :: atom()
+  def triggers(%__MODULE__{name: name}), do: Module.concat(name, Triggers)
 
   @impl Supervisor
   def init(wardrik),

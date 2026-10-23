@@ -46,7 +46,9 @@ defmodule Wardrik.FunctionsTest do
   test "decodes every answer the protocol gives an example of" do
     for %{id: id, output: %{"examples" => examples}} <- WardrikProtocol.operations(),
         example <- examples do
-      assert elem(Types.decode(id, example), 0) == :ok, id
+      decoded = Types.decode(id, example)
+      assert elem(decoded, 0) == :ok, id
+      assert wardriks?(decoded), "#{id} answers a struct from outside Wardrik.*"
     end
   end
 
@@ -66,7 +68,9 @@ defmodule Wardrik.FunctionsTest do
       Wardrik.Runs,
       Wardrik.Runs.Totals,
       Wardrik.Forgotten,
-      Wardrik.Definition
+      Wardrik.Definition,
+      Wardrik.Trigger,
+      Wardrik.Trigger.Webhook
     ]
 
     for type <- types do
@@ -81,6 +85,29 @@ defmodule Wardrik.FunctionsTest do
             do: hd(path)
 
       assert read == MapSet.new(Map.keys(properties)), inspect(type)
+    end
+  end
+
+  defp wardriks?(%DateTime{}), do: true
+
+  defp wardriks?(%module{} = value),
+    do:
+      String.starts_with?(Atom.to_string(module), "Elixir.Wardrik.") and
+        wardriks?(Map.from_struct(value))
+
+  defp wardriks?(value) when is_map(value),
+    do: Enum.all?(value, fn {_key, item} -> wardriks?(item) end)
+
+  defp wardriks?(value) when is_list(value), do: Enum.all?(value, &wardriks?/1)
+  defp wardriks?(value) when is_tuple(value), do: value |> Tuple.to_list() |> wardriks?()
+  defp wardriks?(_value), do: true
+
+  test "writes each type back as the protocol's JSON it was read from" do
+    for %{id: id, output: %{"examples" => examples}} <- WardrikProtocol.operations(),
+        id in ~w(agent.read agent.trigger_set),
+        example <- examples do
+      {:ok, decoded} = Types.decode(id, example)
+      assert decoded.__struct__.to_json(decoded) == example, id
     end
   end
 

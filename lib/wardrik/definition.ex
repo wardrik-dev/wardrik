@@ -14,8 +14,8 @@ defmodule Wardrik.Definition do
       {:ok, %Wardrik.Agent{}} = Wardrik.Agent.define(scope, "acme/triage", definition)
 
   Each tool and policy it names is one the Wardrik offers; see `Wardrik.new/1`. `policy`,
-  `workspace`, `context`, `retries`, `compaction`, `triggers` and `notify` are kept as the protocol
-  writes them.
+  `workspace`, `context`, `retries`, `compaction` and `notify` are kept as the protocol writes them,
+  and each of `triggers` is a `Wardrik.Trigger`.
   """
 
   use Wardrik.Type,
@@ -34,7 +34,7 @@ defmodule Wardrik.Definition do
       max_iterations: {"max_iterations", :infinity},
       retries: "retries",
       compaction: "compaction",
-      triggers: "triggers",
+      triggers: {"triggers", [Wardrik.Trigger]},
       notify: "notify",
       channels: "channels"
     ]
@@ -44,7 +44,7 @@ defmodule Wardrik.Definition do
   alias WardrikCore.Principal
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
-  @unsupported ~w(workspace context retries compaction triggers notify channels)
+  @unsupported ~w(workspace context retries compaction notify channels)
   @reserved ~w(self/* agents/* workers/*)
   @rounds 25
 
@@ -59,20 +59,11 @@ defmodule Wardrik.Definition do
     end
   end
 
-  @doc "Writes the definition as the protocol's JSON, leaving out what it doesn't set."
-  @spec to_json(t()) :: map()
-  def to_json(%__MODULE__{} = definition) do
-    definition
-    |> Map.from_struct()
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-    |> Map.new()
-    |> Type.json()
-  end
-
   @doc "Returns the options the agent `id` starts with in `wardrik`, as the JSON `definition` describes it."
   @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
     with :ok <- supported(definition),
+         :ok <- triggers(Map.get(definition, "triggers", [])),
          {:ok, model} <- model(definition),
          {:ok, rounds} <- rounds(definition["max_iterations"]),
          {:ok, capabilities} <- capabilities(wardrik, Map.get(definition, "tools", [])),
@@ -88,6 +79,40 @@ defmodule Wardrik.Definition do
          timeout: seconds(definition["timeout"]),
          max_rounds: rounds
        ]}
+    end
+  end
+
+  @doc "Returns the definition with each of its triggers named, `trigger-1` and so on by its place unless it says."
+  @spec named(map()) :: map()
+  def named(%{"triggers" => triggers} = definition) do
+    named =
+      triggers
+      |> Enum.with_index(1)
+      |> Enum.map(fn {trigger, index} -> Map.put_new(trigger, "name", "trigger-#{index}") end)
+
+    %{definition | "triggers" => named}
+  end
+
+  def named(definition), do: definition
+
+  @doc "Returns `:ok` if the trigger `fields` describe reads, and is one Wardrik supports."
+  @spec trigger(map(), pos_integer()) :: :ok | {:error, Error.t()}
+  def trigger(%{"prompt_file" => _file}, _index),
+    do: {:error, Error.new(:not_supported, "A trigger's prompt_file isn't supported here yet.")}
+
+  def trigger(fields, index) do
+    case WardrikTriggers.Trigger.decode(fields, index) do
+      {:ok, _trigger} -> :ok
+      {:error, why} -> {:error, Error.new(:invalid_request, "A trigger doesn't read: #{why}.")}
+    end
+  end
+
+  @doc "Returns who the agent `id` acts as: its user, as `acme/@maria`, or its org, as `acme`."
+  @spec principal(String.t()) :: Principal.t()
+  def principal(id) do
+    case String.split(id, "/") do
+      [org, "@" <> _user = user, _name] -> %Principal{id: org <> "/" <> user}
+      [org, _name] -> %Principal{id: org}
     end
   end
 
@@ -113,6 +138,13 @@ defmodule Wardrik.Definition do
       key ->
         {:error, Error.new(:not_supported, "A definition's #{key} isn't supported here yet.")}
     end
+  end
+
+  defp triggers(triggers) do
+    triggers
+    |> Enum.with_index(1)
+    |> Enum.map(fn {fields, index} -> trigger(fields, index) end)
+    |> Enum.find(:ok, &match?({:error, _error}, &1))
   end
 
   defp model(%{"model" => model}), do: {:ok, model}
@@ -195,13 +227,6 @@ defmodule Wardrik.Definition do
 
       {:error, message} ->
         {:error, Error.new(:invalid_request, "The policy doesn't read: #{message}")}
-    end
-  end
-
-  defp principal(id) do
-    case String.split(id, "/") do
-      [org, "@" <> _user = user, _name] -> %Principal{id: org <> "/" <> user}
-      [org, _name] -> %Principal{id: org}
     end
   end
 

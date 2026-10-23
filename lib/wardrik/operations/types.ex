@@ -16,11 +16,13 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Page
   alias Wardrik.Runs
   alias Wardrik.Timeline
+  alias Wardrik.Trigger
   alias Wardrik.Type
 
   @snapshots ~w(agent.read agent.define agent.clear)
   @decided ~w(agent.decide agent.approve agent.deny)
-  @answered_nothing ~w(agent.cancel agent.forget agent.kill)
+  @answered_nothing ~w(agent.cancel agent.forget agent.kill hook.deliver hook.deliver_with_secret)
+  @triggers ~w(agent.trigger_set agent.trigger_remove)
   @pages ~w(agent.events events.list audit.list)
 
   @doc "Turns `input`, as an Elixir caller gives it, into the operation's JSON input."
@@ -48,6 +50,7 @@ defmodule Wardrik.Operations.Types do
   def decode(id, %{"agent" => agent}) when id in ~w(agent.spawn agent.stop),
     do: {:ok, Agent.from_summary(agent)}
 
+  def decode(id, output) when id in @triggers, do: {:ok, Trigger.from_json(output)}
   def decode("agent.ask", %{"message" => message}), do: {:ok, Message.from_json(message)}
   def decode("agent.authorization", output), do: {:ok, Authorization.from_json(output)}
   def decode("agent.calls", %{"calls" => calls}), do: {:ok, Enum.map(calls, &Call.from_json/1)}

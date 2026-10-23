@@ -52,6 +52,7 @@ defmodule Wardrik.Runner do
     do: refused(Authorizer.authorize(scope, action, Resource.deployment()), "deployment")
 
   defp authorize(_scope, %{subject: "agents"}, _input), do: :ok
+  defp authorize(_scope, %{subject: "hook"}, _input), do: :ok
 
   defp refused(:ok, _what), do: :ok
 
