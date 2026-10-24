@@ -40,6 +40,7 @@ defmodule Wardrik.Definition do
       channels: "channels"
     ]
 
+  alias Wardrik.AgentID
   alias Wardrik.Error
   alias Wardrik.Type
   alias WardrikCore.Principal
@@ -69,7 +70,8 @@ defmodule Wardrik.Definition do
          {:ok, rounds} <- rounds(definition["max_iterations"]),
          {:ok, capabilities} <- capabilities(wardrik, Map.get(definition, "tools", [])),
          {:ok, policy} <- policy(wardrik, definition["policy"]),
-         {:ok, boundary} <- policy(wardrik, Wardrik.Definitions.boundary(wardrik, id)) do
+         {:ok, boundary} <-
+           policy(wardrik, Wardrik.Definitions.boundary(wardrik, AgentID.agent(id))) do
       {:ok,
        [
          agent_id: id,
@@ -112,10 +114,8 @@ defmodule Wardrik.Definition do
   @doc "Returns who the agent `id` acts as: its user, as `acme/@maria`, or its org, as `acme`."
   @spec principal(String.t()) :: Principal.t()
   def principal(id) do
-    case String.split(id, "/") do
-      [org, "@" <> _user = user, _name] -> %Principal{id: org <> "/" <> user}
-      [org, _name] -> %Principal{id: org}
-    end
+    {:ok, %AgentID{owner: owner}} = AgentID.parse(id)
+    %Principal{id: owner}
   end
 
   @doc """

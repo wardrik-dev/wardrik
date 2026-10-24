@@ -1,13 +1,17 @@
 defmodule Wardrik.Operations.Snapshot do
   @moduledoc "What operations read of agents: their status from their activity, and their logs."
 
+  alias Wardrik.AgentID
   alias Wardrik.Error
   alias Wardrik.Operations.Running
   alias Wardrik.Scope
 
-  @doc "Returns the agent `id`'s name, the last part of its ID."
+  @doc "Returns the agent `id`'s name: a conversation's is its agent's."
   @spec name(String.t()) :: String.t()
-  def name(id), do: id |> String.split("/") |> List.last()
+  def name(id) do
+    {:ok, %AgentID{name: name}} = AgentID.parse(id)
+    name
+  end
 
   @doc "Returns whether an agent waits for a message, answers one, or waits on a person."
   @spec status(map()) :: String.t()

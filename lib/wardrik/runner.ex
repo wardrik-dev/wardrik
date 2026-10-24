@@ -57,6 +57,7 @@ defmodule Wardrik.Runner do
 
   defp authorize(_scope, %{subject: "agents"}, _input), do: :ok
   defp authorize(_scope, %{subject: "hook"}, _input), do: :ok
+  defp authorize(_scope, %{subject: "channel"}, _input), do: :ok
 
   defp authorize(scope, %{subject: "owner", action: action}, %{"owner" => owner} = input) do
     [kind, _verb] = String.split(action, ".")

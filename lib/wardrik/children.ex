@@ -2,8 +2,8 @@ defmodule Wardrik.Children do
   @moduledoc """
   What a Wardrik runs, in the order it starts them: its store, unless you run it, its vault and
   sign-ins, when it keeps credentials, the MCP servers its agents reach, then its agents' events,
-  the workers that offer them tools, its agents, their triggers, what puts them to sleep, and the
-  listeners it's given.
+  the workers that offer them tools, its agents, their triggers, what puts them to sleep, its
+  channels, and the listeners it's given.
   """
 
   @doc "Returns the children `wardrik` runs, in order."
@@ -21,6 +21,7 @@ defmodule Wardrik.Children do
           triggers(wardrik),
           {Wardrik.Sleeper, wardrik}
         ] ++
+        channels(wardrik) ++
         listeners(wardrik)
 
   defp store(%Wardrik{own_store: true, store: store}), do: [{WardrikStore, store}]
@@ -78,6 +79,13 @@ defmodule Wardrik.Children do
   end
 
   defp workers(wardrik), do: {Group, name: Wardrik.Workers.group(wardrik), log: false}
+
+  defp channels(wardrik) do
+    for {name, {module, opts}} <- wardrik.channels do
+      opts = Wardrik.Operations.Channels.options(wardrik, name, opts)
+      Supervisor.child_spec(module.child_spec(opts), id: {Wardrik.Channel, name})
+    end
+  end
 
   defp listeners(wardrik), do: Enum.map(wardrik.listeners, &listener(&1, wardrik.name))
 

@@ -6,15 +6,25 @@ defmodule Wardrik.Resource do
   the deployment.
   """
 
+  alias Wardrik.AgentID
+
   @deployment "deployment"
 
-  @doc "Returns the resource of the agent `id`, or `:error` when it isn't an agent's ID."
+  @doc """
+  Returns the resource of the agent `id`, or `:error` when it isn't an agent's ID. A conversation's
+  is its agent's with the conversation after it, as `acme/agent/triage/conversation/C1-1696.1234`.
+  """
   @spec agent(String.t()) :: {:ok, String.t()} | :error
   def agent(id) do
-    case String.split(id, "/") do
-      [org, "@" <> _user = user, name] -> named([org, user], name)
-      [org, name] -> named([org], name)
-      _other -> :error
+    case AgentID.parse(id) do
+      {:ok, %AgentID{owner: owner, name: name, conversation: nil}} ->
+        {:ok, owner <> "/agent/" <> name}
+
+      {:ok, %AgentID{owner: owner, name: name, conversation: conversation}} ->
+        {:ok, owner <> "/agent/" <> name <> "/conversation/" <> conversation}
+
+      :error ->
+        :error
     end
   end
 
@@ -26,12 +36,4 @@ defmodule Wardrik.Resource do
   @doc "Returns the deployment's resource."
   @spec deployment() :: String.t()
   def deployment, do: @deployment
-
-  defp named(owner, name) do
-    if Enum.all?([name | owner], &segment?/1),
-      do: {:ok, Enum.join(owner ++ ["agent", name], "/")},
-      else: :error
-  end
-
-  defp segment?(segment), do: segment != "" and not String.contains?(segment, ["*", "?"])
 end

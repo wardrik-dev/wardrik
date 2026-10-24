@@ -34,6 +34,7 @@ defmodule Wardrik do
     :oauth,
     :mcp,
     :listeners,
+    :channels,
     :triggers,
     :deployment,
     :authorizer,
@@ -55,6 +56,7 @@ defmodule Wardrik do
           oauth: keyword() | nil,
           mcp: keyword() | nil,
           listeners: [module() | {module(), keyword()}],
+          channels: %{String.t() => {module(), keyword()}},
           triggers: keyword(),
           deployment: String.t(),
           authorizer: {module(), term()},
@@ -93,7 +95,8 @@ defmodule Wardrik do
   to give agents their accounts, and the calls waiting on a sign-in carry on once it's done.
 
   Given `:mcp`, the MCP servers its agents may call, as `WardrikMCP` takes its `:servers`, it
-  connects to each. `:triggers` takes `WardrikTriggers`' `:req_options`, for reading feeds, and
+  connects to each. `:channels` are the chat apps people reach agents through, by name, each a
+  `Wardrik.Channel` as `{module, opts}`. `:triggers` takes `WardrikTriggers`' `:req_options`, for reading feeds, and
   `:reconcile`.
 
   What a definition names, it finds here: `:capabilities`, the tools it offers by name, as

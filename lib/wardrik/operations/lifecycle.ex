@@ -19,7 +19,8 @@ defmodule Wardrik.Operations.Lifecycle do
   def define(%Scope{wardrik: wardrik} = scope, %{"agent" => id} = input) do
     definition = input |> Map.delete("agent") |> Definition.named()
 
-    with :ok <- bounded(wardrik, id, scope.policy),
+    with :ok <- Running.definable(id),
+         :ok <- bounded(wardrik, id, scope.policy),
          {:ok, opts} <- Definition.resolve(wardrik, id, definition),
          {:ok, _pid} <- Running.bring(wardrik, opts),
          :ok <- Definitions.put(wardrik, id, definition),
@@ -121,10 +122,14 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc "Stops the agent and deletes everything it had. Returns `:ok`, or why it couldn't."
+  @doc """
+  Stops the agent and deletes everything it had, its conversations too. Returns `:ok`, or why it
+  couldn't.
+  """
   @spec forgotten(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
   def forgotten(wardrik, id) do
-    with :ok <- WardrikCore.delete(Wardrik.agents(wardrik), id),
+    with :ok <- conversations_deleted(wardrik, id),
+         :ok <- WardrikCore.delete(Wardrik.agents(wardrik), id),
          :ok <- Definitions.delete(wardrik, id),
          :ok <- WardrikTriggers.put(Wardrik.triggers(wardrik), id, []) do
       :ok
@@ -132,6 +137,17 @@ defmodule Wardrik.Operations.Lifecycle do
       {:error, reason} ->
         {:error, Error.new(:unavailable, "#{id} wasn't forgotten: #{inspect(reason)}")}
     end
+  end
+
+  defp conversations_deleted(wardrik, id) do
+    agents = Wardrik.agents(wardrik)
+
+    deleted =
+      for conversation <- WardrikCore.list(agents),
+          String.starts_with?(conversation, id <> "/"),
+          do: WardrikCore.delete(agents, conversation)
+
+    Enum.find(deleted, :ok, &(&1 != :ok))
   end
 
   defp bounded(_wardrik, _id, nil), do: :ok

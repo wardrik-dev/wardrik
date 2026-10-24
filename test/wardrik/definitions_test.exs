@@ -257,6 +257,86 @@ defmodule Wardrik.DefinitionsTest do
     end
   end
 
+  describe "conversations" do
+    test "runs one on its agent's definition, with a history of its own", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      answers([answer("Hello.")])
+      define(scope, "acme/triage", %{"model" => @model, "instructions" => "Be brief."})
+
+      run!(scope, "agent.ask", %{"agent" => "acme/triage/C1-1696.1234", "content" => "Hi"})
+      assert_receive {:prompted, messages}
+      assert system(messages) == "Be brief."
+      until("wardrik.run.completed")
+
+      conversation = WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage/C1-1696.1234")
+      assert [_asked, _answered] = WardrikCore.history(conversation)
+
+      assert WardrikCore.history(WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage")) ==
+               []
+
+      assert %{"agent" => %{"id" => "acme/triage/C1-1696.1234", "name" => "triage"}} =
+               run!(scope, "agent.read", %{"agent" => "acme/triage/C1-1696.1234"})
+    end
+
+    test "has no definition or triggers of its own", %{scope: scope} do
+      define(scope, "acme/triage", %{"model" => @model})
+      conversation = "acme/triage/C1-1696.1234"
+
+      assert refused(scope, "agent.define", %{"agent" => conversation, "model" => @model}) ==
+               :invalid_request
+
+      assert refused(scope, "agent.trigger_set", %{
+               "agent" => conversation,
+               "trigger" => "daily",
+               "every" => "1d",
+               "prompt" => "Go."
+             }) == :invalid_request
+
+      assert refused(scope, "agent.ask", %{"agent" => "acme/other/C1", "content" => "Hi"}) ==
+               :not_found
+    end
+
+    test "is reached only where a statement covers it", %{wardrik: wardrik, scope: scope} do
+      answers([answer("Hello.")])
+      define(scope, "acme/triage", %{"model" => @model})
+      input = %{"agent" => "acme/triage/C1", "content" => "Hi"}
+
+      agent_only =
+        Wardrik.as(wardrik, "acme/@jon", roles: [:messenger], resources: ["acme/agent/triage"])
+
+      assert refused(agent_only, "agent.ask", input) == :not_found
+
+      conversations =
+        Wardrik.as(wardrik, "acme/@jon", roles: [:messenger], resources: ["acme/agent/triage/*"])
+
+      run!(conversations, "agent.ask", input)
+      until("wardrik.run.completed")
+    end
+
+    test "forgets an agent's conversations with it", %{wardrik: wardrik, scope: scope} do
+      answers([answer("Hello.")])
+      define(scope, "acme/triage", %{"model" => @model})
+      run!(scope, "agent.ask", %{"agent" => "acme/triage/C1", "content" => "Hi"})
+      until("wardrik.run.completed")
+
+      run!(scope, "agent.forget", %{"agent" => "acme/triage"})
+
+      assert WardrikCore.list(Wardrik.agents(wardrik)) == []
+      assert refused(scope, "agent.read", %{"agent" => "acme/triage/C1"}) == :not_found
+    end
+
+    @tag idle_timeout: 0.05
+    test "sleeps once it has had nothing to do", %{scope: scope} do
+      answers([answer("Hello.")])
+      define(scope, "acme/triage", %{"model" => @model})
+      run!(scope, "agent.ask", %{"agent" => "acme/triage/C1", "content" => "Hi"})
+
+      assert_receive {WardrikEvents, "acme/triage/C1", %{"type" => "wardrik.agent.stopped"}}
+    end
+  end
+
   describe "forgetting and clearing" do
     test "forgets an agent, and records who did", %{scope: scope} do
       define(scope, "acme/triage", %{"model" => @model})

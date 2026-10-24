@@ -7,6 +7,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Agent
   alias Wardrik.Authorization
   alias Wardrik.Call
+  alias Wardrik.ChannelResponse
   alias Wardrik.Connecting
   alias Wardrik.Connection
   alias Wardrik.Decision
@@ -70,6 +71,7 @@ defmodule Wardrik.Operations.Types do
 
   def decode(id, output) when id in @triggers, do: {:ok, Trigger.from_json(output)}
   def decode("agent.ask", %{"message" => message}), do: {:ok, Message.from_json(message)}
+  def decode("channel.deliver", output), do: {:ok, ChannelResponse.from_json(output)}
   def decode("agent.authorization", output), do: {:ok, Authorization.from_json(output)}
   def decode("agent.calls", %{"calls" => calls}), do: {:ok, Enum.map(calls, &Call.from_json/1)}
 

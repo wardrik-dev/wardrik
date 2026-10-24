@@ -17,6 +17,7 @@ defmodule Wardrik.Workers do
 
   @behaviour WardrikCore.Capability
 
+  alias Wardrik.AgentID
   alias Wardrik.Authorizer
   alias Wardrik.Instance
   alias Wardrik.Resource
@@ -196,11 +197,22 @@ defmodule Wardrik.Workers do
   end
 
   defp agent(id) do
-    case String.split(id, "/") do
-      [org, "@" <> user, name] -> %{"key" => id, "org" => org, "user" => user, "name" => name}
-      [org, name] -> %{"key" => id, "org" => org, "name" => name}
+    {:ok, %AgentID{owner: owner, name: name, conversation: conversation}} = AgentID.parse(id)
+
+    %{"key" => id, "name" => name}
+    |> Map.merge(owner(owner))
+    |> Map.merge(conversation(conversation))
+  end
+
+  defp owner(owner) do
+    case String.split(owner, "/@") do
+      [org, user] -> %{"org" => org, "user" => user}
+      [org] -> %{"org" => org}
     end
   end
+
+  defp conversation(nil), do: %{}
+  defp conversation(conversation), do: %{"conversation" => conversation}
 
   defp principal(nil), do: %{}
   defp principal(%{id: id}), do: %{"principal" => id}

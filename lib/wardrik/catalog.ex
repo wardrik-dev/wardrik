@@ -6,6 +6,7 @@ defmodule Wardrik.Catalog do
 
   alias Wardrik.Operations.Agent
   alias Wardrik.Operations.Agents
+  alias Wardrik.Operations.Channels
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Lifecycle
   alias Wardrik.Operations.Owners
@@ -70,6 +71,7 @@ defmodule Wardrik.Catalog do
         "mcp_servers.add" => &Owners.add/2,
         "mcp_servers.remove" => &Owners.remove/2,
         "hook.deliver_with_secret" => &Triggers.deliver/2,
+        "channel.deliver" => &Channels.deliver/2,
         "agents.forget" => &Agents.forget/2,
         "audit.list" => &Deployment.audit/2
       },

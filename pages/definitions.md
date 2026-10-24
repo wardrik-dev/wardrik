@@ -101,10 +101,26 @@ doesn't: it answers `asleep`.
 | `Wardrik.Agent.stop/3` | puts it to sleep now |
 | `Wardrik.Agent.spawn/3` | wakes it without asking it anything |
 | `Wardrik.Agent.clear/3` | empties its conversation; `conflict` while it runs or waits on a person |
-| `Wardrik.Agent.forget/3` | stops it and deletes its conversation and definition |
+| `Wardrik.Agent.forget/3` | stops it and deletes its conversations and definition |
 | `Wardrik.Agent.calls/3` | the tool calls it's running, each with how long it has run |
 | `Wardrik.Agent.kill/4` | stops one call; the model gets an error for it, and the turn goes on |
 | `Wardrik.Agents.cancel/2` | stops what every agent the patterns cover is doing |
 | `Wardrik.Agents.forget/2` | forgets every agent the patterns cover |
 
 Each change is recorded in the audit, with who made it.
+
+## Conversations
+
+One agent can hold many conversations at once, as a chat app holds one for each thread. Each is
+the agent's ID with one more segment, as `acme/triage/C1-1696.1234`, and runs on the agent's
+definition with a history, log and queue of its own. It comes to be when something asks it, sleeps
+as the agent does, and goes when the agent is forgotten. It has no definition or triggers of its
+own: defining one answers `invalid_request`.
+
+```elixir
+Wardrik.Agent.ask(scope, "acme/triage/C1-1696.1234", "Is staging up?")
+```
+
+Its resource is the agent's with the conversation after it, `acme/agent/triage/conversation/C1-1696.1234`,
+so a statement on `acme/agent/triage` alone doesn't reach it; `acme/agent/triage/*` does. Over HTTP
+no route reaches a conversation; its events are read with the agent's org.

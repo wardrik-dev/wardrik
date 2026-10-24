@@ -3,6 +3,7 @@ defmodule Wardrik.Operations.Running do
   Finds the agents operations act on: running, woken from their definition, or known though asleep.
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.Definition
   alias Wardrik.Definitions
   alias Wardrik.Error
@@ -24,17 +25,30 @@ defmodule Wardrik.Operations.Running do
   @doc "Returns whether `wardrik` knows the agent `id`: running, saved, or defined."
   @spec known?(Wardrik.t(), String.t()) :: boolean()
   def known?(wardrik, id) do
-    whereis(wardrik, id) != nil or Definitions.fetch(wardrik, id) != :error or
+    whereis(wardrik, id) != nil or Definitions.fetch(wardrik, AgentID.agent(id)) != :error or
       id in WardrikCore.list(Wardrik.agents(wardrik))
   end
 
-  @doc "Returns the agent `id`'s definition, or a `not_found` error."
-  @spec definition(Wardrik.t(), String.t()) :: {:ok, Definition.t()} | {:error, Error.t()}
+  @doc "Returns the definition the agent `id` runs on, its agent's for a conversation, or a `not_found` error."
+  @spec definition(Wardrik.t(), String.t()) :: {:ok, map()} | {:error, Error.t()}
   def definition(wardrik, id) do
-    case Definitions.fetch(wardrik, id) do
+    case Definitions.fetch(wardrik, AgentID.agent(id)) do
       {:ok, definition} -> {:ok, definition}
       :error -> {:error, Error.new(:not_found, "There's no definition of #{id}.")}
     end
+  end
+
+  @doc "Returns `:ok` if the agent `id` takes a definition of its own, as a conversation doesn't."
+  @spec definable(String.t()) :: :ok | {:error, Error.t()}
+  def definable(id) do
+    if AgentID.conversation?(id),
+      do:
+        {:error,
+         Error.new(
+           :invalid_request,
+           "#{id} is a conversation. It runs on #{AgentID.agent(id)}'s definition."
+         )},
+      else: :ok
   end
 
   @doc """
