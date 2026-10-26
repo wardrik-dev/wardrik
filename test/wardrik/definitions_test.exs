@@ -262,6 +262,28 @@ defmodule Wardrik.DefinitionsTest do
     end
   end
 
+  describe "defaults" do
+    test "gives a definition what the Wardrik's defaults say, where it says nothing", context do
+      store = WardrikStore.ETS.new(name: :"defaults store #{context.test}")
+
+      wardrik =
+        Wardrik.new(
+          name: :"defaults #{context.test}",
+          store: store,
+          defaults: %{model: @model, idle_timeout: 60}
+        )
+
+      start_supervised!({WardrikStore, store}, id: :defaults_store)
+
+      assert {:ok, opts} =
+               Definition.resolve(wardrik, "acme/worker", %{"instructions" => "Work."})
+
+      assert opts[:model] == @model
+      assert Definition.idle_timeout(wardrik, %{}) == 60_000
+      assert Definition.idle_timeout(wardrik, %{"idle_timeout" => 5}) == 5_000
+    end
+  end
+
   describe "conversations" do
     test "runs one on its agent's definition, with a history of its own", %{
       wardrik: wardrik,

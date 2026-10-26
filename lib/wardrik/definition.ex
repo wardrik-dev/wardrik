@@ -63,6 +63,8 @@ defmodule Wardrik.Definition do
   @doc "Returns the options the agent `id` starts with in `wardrik`, as the JSON `definition` describes it."
   @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
+    definition = Map.merge(wardrik.defaults, definition)
+
     with :ok <- supported(definition),
          :ok <- triggers(Map.get(definition, "triggers", [])),
          {:ok, model} <- model(definition),
@@ -142,7 +144,14 @@ defmodule Wardrik.Definition do
   @doc "Returns how long the agent may have nothing to do before it sleeps, in milliseconds."
   @spec idle_timeout(Wardrik.t(), map()) :: pos_integer() | :infinity
   def idle_timeout(wardrik, definition),
-    do: seconds(Map.get(definition, "idle_timeout", wardrik.idle_timeout))
+    do:
+      seconds(
+        Map.get(
+          definition,
+          "idle_timeout",
+          Map.get(wardrik.defaults, "idle_timeout", wardrik.idle_timeout)
+        )
+      )
 
   defp supported(definition) do
     case Enum.find(@unsupported, &Map.has_key?(definition, &1)) do

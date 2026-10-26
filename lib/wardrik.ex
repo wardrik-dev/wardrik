@@ -37,6 +37,7 @@ defmodule Wardrik do
     :channels,
     :declarations,
     :workspace,
+    :defaults,
     :triggers,
     :deployment,
     :authorizer,
@@ -61,6 +62,7 @@ defmodule Wardrik do
           channels: %{String.t() => {module(), keyword()}},
           declarations: {module(), term()} | nil,
           workspace: %{String.t() => %{read: [String.t()], write: [String.t()]}},
+          defaults: map(),
           triggers: keyword(),
           deployment: String.t(),
           authorizer: {module(), term()},
@@ -109,7 +111,8 @@ defmodule Wardrik do
   `[files: {MyApp.Files, []}]`, and `:policies`, as `[careful: [ask: ["github/*"]]]`. Each MCP
   server is a tool too, as `github/*`. `:middleware` wraps every agent's calls, and `:idle_timeout`
   is how many seconds a defined agent may have nothing to do before it sleeps, 900 unless set, or
-  `:infinity`.
+  `:infinity`. `:defaults` is what every definition is given where it says nothing, as
+  `%{"model" => "anthropic:claude-haiku-4-5"}`, however it was defined.
   """
   @spec start_link(keyword() | t()) :: Supervisor.on_start()
   def start_link(%__MODULE__{name: name} = wardrik),
