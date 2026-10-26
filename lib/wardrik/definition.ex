@@ -203,7 +203,7 @@ defmodule Wardrik.Definition do
   end
 
   defp started(%Wardrik{mcp: nil}), do: []
-  defp started(%Wardrik{mcp: mcp}), do: Enum.map(Keyword.keys(mcp), &to_string/1)
+  defp started(%Wardrik{mcp: mcp}), do: Enum.map(mcp, fn {name, _opts} -> to_string(name) end)
 
   defp entries(wardrik, named) do
     capabilities = for {:capability, entry} <- named, uniq: true, do: entry

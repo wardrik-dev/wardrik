@@ -133,7 +133,7 @@ defmodule Wardrik.DefinitionsTest do
       assert refused(scope, "agent.definition", %{"agent" => "acme/triage"}) == :not_found
     end
 
-    @tag mcp: [down: [transport: {:stdio, command: "no-such-mcp-server"}]]
+    @tag mcp: [{"down", [transport: {:stdio, command: "no-such-mcp-server"}]}]
     test "gives every tool and server for *, and says which offer nothing yet", %{scope: scope} do
       answers([answer("Hi.")])
       define(scope, "acme/@maria/notes", %{"model" => @model, "tools" => ["*"], "timeout" => 60})
