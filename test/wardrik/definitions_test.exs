@@ -119,6 +119,9 @@ defmodule Wardrik.DefinitionsTest do
 
       assert refused(scope, "agent.define", Map.put(base, "notify", "ops")) == :not_supported
 
+      assert refused(scope, "agent.define", Map.put(base, "channels", ["slack"])) ==
+               :invalid_request
+
       from_file = [%{"every" => "30m", "prompt_file" => "HEARTBEAT.md"}]
 
       assert refused(scope, "agent.define", Map.put(base, "triggers", from_file)) ==
@@ -196,6 +199,9 @@ defmodule Wardrik.DefinitionsTest do
                  "call_1" => {:approve, "Go."},
                  "call_2" => {:deny, "No."}
                })
+
+      assert %{"data" => %{"resolved_by" => %{"id" => "acme/@maria"}}} =
+               until("wardrik.interrupt.resolved")
 
       until("wardrik.run.completed")
 

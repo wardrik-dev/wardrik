@@ -8,7 +8,7 @@ defmodule Wardrik.Channel do
   Each channel runs as a child of the Wardrik, and is handed what its chat app sends to
   `POST /v1/channels/{channel}/{path}` as it came, to check by what it carries, such as a
   signature over the body. Both callbacks take the channel's options with `:wardrik`, the instance,
-  and `:channel`, its name.
+  `:channel`, its name, and `:store`, the Wardrik's store, to scope by the package's name.
 
       {:ok, answer} = Wardrik.Channel.deliver(scope, "slack", "events", body: body, headers: headers)
   """

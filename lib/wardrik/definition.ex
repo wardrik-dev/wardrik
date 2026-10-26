@@ -46,7 +46,7 @@ defmodule Wardrik.Definition do
   alias WardrikCore.Principal
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
-  @unsupported ~w(workspace context retries compaction notify channels)
+  @unsupported ~w(workspace context retries compaction notify)
   @reserved ~w(self/* agents/*)
   @rounds 25
 
@@ -69,6 +69,7 @@ defmodule Wardrik.Definition do
          {:ok, model} <- model(definition),
          {:ok, rounds} <- rounds(definition["max_iterations"]),
          {:ok, capabilities} <- capabilities(wardrik, Map.get(definition, "tools", [])),
+         :ok <- channels(wardrik, Map.get(definition, "channels", [])),
          {:ok, policy} <- policy(wardrik, definition["policy"]),
          {:ok, boundary} <-
            policy(wardrik, Wardrik.Definitions.boundary(wardrik, AgentID.agent(id))) do
@@ -214,6 +215,13 @@ defmodule Wardrik.Definition do
       else:
         capabilities ++
           [{Wardrik.MCPTools, mcp: Wardrik.mcp(wardrik), names: servers, all: all}]
+  end
+
+  defp channels(wardrik, names) do
+    case Enum.reject(names, &Map.has_key?(wardrik.channels, &1)) do
+      [] -> :ok
+      [name | _rest] -> {:error, Error.new(:invalid_request, "There's no channel #{name} here.")}
+    end
   end
 
   defp policy(_wardrik, nil), do: {:ok, nil}

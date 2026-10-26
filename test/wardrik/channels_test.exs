@@ -57,6 +57,33 @@ defmodule Wardrik.ChannelsTest do
     assert refused(scope, "channel.deliver", %{request | "channel" => "teams"}) == :not_found
   end
 
+  test "takes a definition that names it", %{name: name} do
+    scope = Wardrik.as(name, "acme/@maria", roles: [:owner], resources: ["*"])
+    definition = [model: "anthropic:claude-haiku-4-5", channels: ["slack"]]
+
+    assert {:ok, %Wardrik.Agent{id: "acme/triage"}} =
+             Wardrik.Agent.define(scope, "acme/triage", definition)
+  end
+
+  test "records what a package changes in the audit", %{name: name} do
+    scope = Wardrik.as(name, "slack:T1/U2", roles: [:owner], resources: ["*"])
+
+    data = %{
+      "channel" => "slack",
+      "room" => "C1",
+      "agent" => %{"id" => "acme/triage"},
+      "answers" => "mentions"
+    }
+
+    assert Wardrik.Audit.record(scope, "room.bound", "channels/slack/C1", data) == :ok
+
+    assert {:ok,
+            %Wardrik.Page{events: [%Wardrik.Event{type: "wardrik.room.bound", data: recorded}]}} =
+             Wardrik.Audit.list(scope)
+
+    assert recorded["actor"] == %{"id" => "slack:T1/U2"}
+  end
+
   test "answers in Elixir", %{scope: scope} do
     assert {:ok, %Wardrik.ChannelResponse{status: 200, body: "actions: hi ()"}} =
              Wardrik.Channel.deliver(scope, "slack", "actions", body: "hi", headers: %{})

@@ -63,10 +63,11 @@ the same one.
 | `max_iterations` | the rounds of tool calls a turn may make; 25 unless set |
 | `idle_timeout` | the seconds it may have nothing to do before it sleeps, or `infinity` |
 | `triggers` | what asks it something on a clock, from a feed, or from a webhook; see [Trigger agents](triggers.md) |
+| `channels` | the chat apps it may answer in, by the names the Wardrik's `:channels` give them |
 | `display_name`, `description` | what a person calls it, and what it's for |
 
 A name it gives that Wardrik doesn't offer answers `invalid_request`. `workspace`, `context`,
-`retries`, `compaction`, `notify` and `channels` are part of the definition, and answer
+`retries`, `compaction` and `notify` are part of the definition, and answer
 `not_supported` until the packages behind them land. Nothing in a definition is ignored.
 
 Define it again to change it. A running agent takes the new definition from its next turn.
