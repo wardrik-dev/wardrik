@@ -37,7 +37,7 @@ defmodule Wardrik.Operations.Agent do
     with {:ok, pid} <- Running.awake(scope.wardrik, id) do
       message_id = input["id"] || message_id()
       cursor = WardrikEvents.head(Wardrik.events(scope.wardrik), [id])
-      :ok = WardrikCore.ask(pid, text(input), %{id: message_id, principal: scope.principal})
+      :ok = WardrikCore.ask(pid, text(input), metadata(scope, message_id))
       {:ok, %{"message" => %{"id" => message_id, "cursor" => cursor}}}
     end
   end
@@ -196,4 +196,9 @@ defmodule Wardrik.Operations.Agent do
   end
 
   defp sign_in(_parked, _interrupt), do: nil
+
+  defp metadata(%Wardrik.Scope{labels: []} = scope, id), do: %{id: id, principal: scope.principal}
+
+  defp metadata(scope, id),
+    do: %{id: id, principal: scope.principal, labels: scope.labels}
 end

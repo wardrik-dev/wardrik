@@ -11,7 +11,13 @@ defmodule Wardrik.AgentToolsTest do
 
   setup context do
     store = WardrikStore.ETS.new(name: :"store #{context.test}")
-    wardrik = Wardrik.new(name: :"wardrik #{context.test}", store: store)
+
+    wardrik =
+      Wardrik.new(
+        name: :"wardrik #{context.test}",
+        store: store,
+        policies: [relay: [allow_after: %{"outside" => ["agent_ask"]}]]
+      )
 
     start_supervised!({WardrikStore, store})
     start_supervised!({Wardrik, wardrik})
@@ -173,6 +179,46 @@ defmodule Wardrik.AgentToolsTest do
                    5_000
 
     assert rest =~ "4"
+  end
+
+  test "a message an agent sends carries what its run had read, and so does the answer", %{
+    scope: scope
+  } do
+    model([
+      {"Ask the worker",
+       calling([call("a1", "agent_ask", %{"agent" => "worker", "message" => "Sum 2 and 2"})])},
+      {"msg_", answer("Asked.")},
+      {"Sum 2 and 2", answer("4")},
+      {"From agent acme/worker", answer("It's 4.")}
+    ])
+
+    define(scope, "acme/worker", %{"model" => @model})
+
+    define(scope, "acme/front", %{"model" => @model, "tools" => ["agents/*"], "policy" => "relay"})
+
+    run!(%{scope | labels: ["outside"]}, "agent.ask", %{
+      "agent" => "acme/front",
+      "content" => "Ask the worker"
+    })
+
+    assert_receive {:prompted, "From agent acme/worker" <> _rest}, 5_000
+
+    for _turn <- 1..2,
+        do: assert_receive({WardrikEvents, "acme/front", %{"type" => "wardrik.run.completed"}})
+
+    assert [%{metadata: %{labels: ["outside"]}} | _rest] = history(scope, "acme/worker")
+
+    answer =
+      scope
+      |> history("acme/front")
+      |> Enum.find(&(&1.metadata[:id] |> to_string() |> String.starts_with?("answer_")))
+
+    assert %{metadata: %{labels: ["outside"]}} = answer
+  end
+
+  defp history(scope, id) do
+    wardrik = Wardrik.Instance.fetch!(scope.wardrik)
+    wardrik |> Wardrik.Operations.Running.whereis(id) |> WardrikCore.history()
   end
 
   test "names agents within the org, and lists them without their conversations", %{scope: scope} do

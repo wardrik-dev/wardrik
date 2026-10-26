@@ -41,7 +41,7 @@ defmodule Wardrik.CompactionTest do
 
   defp history do
     [
-      ReqLLM.Context.user(String.duplicate("a", 100)),
+      ReqLLM.Context.user(String.duplicate("a", 100), %{labels: ["outside"]}),
       ReqLLM.Context.assistant(String.duplicate("b", 100)),
       ReqLLM.Context.user(String.duplicate("c", 100)),
       ReqLLM.Context.assistant(String.duplicate("d", 100)),
@@ -65,6 +65,7 @@ defmodule Wardrik.CompactionTest do
 
     assert [%{role: :user, content: [%{text: text}]}, %{role: :user} = kept] = compacted.messages
     assert text =~ "They talked."
+    assert Context.labels(compacted) == ["outside"]
     assert kept == List.last(history())
     assert %{input_tokens: 100, output_tokens: 3} = compacted.measurements
     assert compacted.instructions == nil

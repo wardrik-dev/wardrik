@@ -38,6 +38,35 @@ one waits for a person to allow more:
 
 > This agent has spent $5.02 of $5.00 today. Approve to allow $5.00 more.
 
+## Gated tools
+
+A gated tool can change something: an MCP server's tool it doesn't mark read-only, a worker's, and
+`agents/*`' changes. Its calls wait for a person unless a rule allows them by name, so an agent with
+no policy still asks before one.
+
+## After content from outside
+
+Once a run has read content from outside, every gated call waits for a person, whatever `allow`
+says, since what it read may be what asked for it:
+
+> linear/create_issue is allowed, but this run has read content from outside, which may be what
+> asked for it.
+
+Content from outside is what nobody on the agent's side wrote: `web_search`'s results, an MCP
+server's answers unless its `trusted` option says otherwise, a worker's unless the Wardrik's
+`:trusted_workers` does, what a feed or webhook trigger brings, and an answer or message from an
+agent that had read any of these. The label stays with the conversation until it's cleared. The
+waiting call's `Wardrik.Interrupt` carries it as `labels`.
+
+`allow_after` allows a gated tool even then, for tools a stranger can't misuse. An `ask` or `deny`
+still wins over it. Only an agent a file declares writes it in place; any other names a policy in
+the Wardrik's `:policies` that has it:
+
+```elixir
+config :my_app, MyApp.Wardrik,
+  policies: [triage: [allow: ["linear/*"], allow_after: %{"outside" => ["github/add_labels"]}]]
+```
+
 ## Every rule
 
 Rules can name a tool, what a call acts on, or its arguments, and a judge can ask a model what a

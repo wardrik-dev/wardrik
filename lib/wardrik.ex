@@ -47,7 +47,8 @@ defmodule Wardrik do
     :capabilities,
     :policies,
     :middleware,
-    :idle_timeout
+    :idle_timeout,
+    :trusted_workers
   ]
   defstruct @enforce_keys
 
@@ -72,7 +73,8 @@ defmodule Wardrik do
           capabilities: %{String.t() => WardrikCore.Context.entry()},
           policies: %{String.t() => WardrikPolicy.t()},
           middleware: [WardrikCore.Context.entry()],
-          idle_timeout: pos_integer() | :infinity
+          idle_timeout: pos_integer() | :infinity,
+          trusted_workers: boolean()
         }
 
   @doc """
@@ -112,7 +114,8 @@ defmodule Wardrik do
   server is a tool too, as `github/*`. `:middleware` wraps every agent's calls, and `:idle_timeout`
   is how many seconds a defined agent may have nothing to do before it sleeps, 900 unless set, or
   `:infinity`. `:defaults` is what every definition is given where it says nothing, as
-  `%{"model" => "anthropic:claude-haiku-4-5"}`, however it was defined.
+  `%{"model" => "anthropic:claude-haiku-4-5"}`, however it was defined. `:trusted_workers` is
+  `true` where tool workers' answers are the deployment's own, so they aren't labelled `"outside"`.
   """
   @spec start_link(keyword() | t()) :: Supervisor.on_start()
   def start_link(%__MODULE__{name: name} = wardrik),

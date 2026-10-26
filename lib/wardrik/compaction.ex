@@ -6,7 +6,8 @@ defmodule Wardrik.Compaction do
   It takes `:at`, `0.6` unless set, `:keep`, `0.25` unless set, and `:window`, the window in tokens
   where the model catalog gives none, or 128,000. The summary is the agent's own model, called in a
   `compaction` step, so policy and budgets see it as any other model call. History is cut only where
-  a person's message begins, and a turn resuming isn't compacted. If the summary fails, the history
+  a person's message begins, and a turn resuming isn't compacted. The summary keeps the labels of what
+  it summarises, so a run that read content from outside still carries the label. If the summary fails, the history
   stays as it was and the turn runs anyway. Each compaction emits `[:wardrik, :conversation,
   :compacted]` with the message and token counts before and after.
   """
@@ -42,7 +43,7 @@ defmodule Wardrik.Compaction do
   defp summarized(context, keep) do
     with {[_ | _] = older, kept} <- split(context.messages, keep),
          {:ok, summarized} <- summarize(context, older) do
-      replaced(context, summarized, [summary(summarized.response) | kept])
+      replaced(context, summarized, [summary(summarized.response, older) | kept])
     else
       _unchanged -> context
     end
@@ -78,11 +79,12 @@ defmodule Wardrik.Compaction do
     Context.run(summarizing, {:step, "compaction"}, &WardrikCore.generate/1)
   end
 
-  defp summary(response),
-    do:
-      ReqLLM.Context.user(
-        "A summary of the conversation before this point:\n\n" <> ReqLLM.Response.text(response)
-      )
+  defp summary(response, older) do
+    ReqLLM.Context.user(
+      "A summary of the conversation before this point:\n\n" <> ReqLLM.Response.text(response),
+      %{labels: Context.labels(older)}
+    )
+  end
 
   defp emit(context, messages) do
     WardrikCore.Event.emit(context, [:wardrik, :conversation, :compacted], %{}, %{

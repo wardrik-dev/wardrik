@@ -42,8 +42,15 @@ defmodule Wardrik.TriggerTarget do
     if opts[:overlap] == :skip and WardrikCore.status(pid) != :idle do
       :busy
     else
-      :ok = WardrikCore.ask(pid, prompt, %{trigger: opts[:trigger]})
+      :ok = WardrikCore.ask(pid, prompt, metadata(opts))
       :asked
+    end
+  end
+
+  defp metadata(opts) do
+    case Keyword.get(opts, :labels, []) do
+      [] -> %{trigger: opts[:trigger]}
+      labels -> %{trigger: opts[:trigger], labels: labels}
     end
   end
 end

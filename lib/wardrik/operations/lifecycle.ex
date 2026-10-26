@@ -21,6 +21,7 @@ defmodule Wardrik.Operations.Lifecycle do
 
     with :ok <- Running.definable(id),
          :ok <- bounded(wardrik, id, scope.policy),
+         :ok <- written_after(wardrik, id, definition["policy"]),
          {:ok, opts} <- Definition.resolve(wardrik, id, definition),
          {:ok, _pid} <- Running.bring(wardrik, opts),
          :ok <- Definitions.put(wardrik, id, definition),
@@ -150,6 +151,19 @@ defmodule Wardrik.Operations.Lifecycle do
 
     Enum.find(deleted, :ok, &(&1 != :ok))
   end
+
+  defp written_after(wardrik, id, %{"allow_after" => _rules}) do
+    if Wardrik.Declarations.declared?(wardrik, id),
+      do: :ok,
+      else:
+        {:error,
+         Error.new(
+           :invalid_request,
+           "A definition writes allow_after only in an agent file; name a policy that has it."
+         )}
+  end
+
+  defp written_after(_wardrik, _id, _policy), do: :ok
 
   @doc "Returns `:ok` unless the agent `id` is declared outside the API, which forgetting can't undo."
   @spec undeclared(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}

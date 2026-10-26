@@ -10,12 +10,16 @@ defmodule Wardrik.Delegation do
   It notes each question in the store, follows the run that takes it up, and asks the asker once
   that run finishes, fails or stops. A run waiting on a person tells nothing yet. As it starts, it
   reads the logs of the agents it waits on, so a run that ended while it was down is answered too.
-  An answer is asked under an id of its own, so one delivered twice is taken once.
+  An answer is asked under an id of its own, so one delivered twice is taken once. It carries the
+  labels of what the answering agent's conversation holds, or `"outside"` where that agent isn't
+  running to say.
   """
 
   use GenServer
 
   alias Wardrik.AgentID
+  alias Wardrik.Operations.Running
+  alias WardrikCore.Context
   alias WardrikCore.Principal
 
   @doc "Starts bringing answers back for `wardrik`."
@@ -119,7 +123,15 @@ defmodule Wardrik.Delegation do
   defp scope(wardrik, log, asker) do
     {:ok, from} = Wardrik.Resource.agent(log)
     {:ok, to} = Wardrik.Resource.agent(asker)
-    Wardrik.as(wardrik.name, %Principal{id: from}, roles: [:messenger], resources: [to])
+    scope = Wardrik.as(wardrik.name, %Principal{id: from}, roles: [:messenger], resources: [to])
+    %{scope | labels: labels(wardrik, log)}
+  end
+
+  defp labels(wardrik, log) do
+    case Running.whereis(wardrik, log) do
+      nil -> ["outside"]
+      pid -> pid |> WardrikCore.history() |> Context.labels()
+    end
   end
 
   defp last_said(messages) do

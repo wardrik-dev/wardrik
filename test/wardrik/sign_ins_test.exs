@@ -93,6 +93,9 @@ defmodule Wardrik.SignInsTest do
     assert %{"data" => %{"status" => "asked"}} = until("wardrik.trigger.fired")
     until("wardrik.run.completed")
 
+    pid = Wardrik.Operations.Running.whereis(wardrik, "acme/hooks")
+    assert [%{metadata: %{labels: ["outside"]}} | _rest] = WardrikCore.history(pid)
+
     assert {:error, %Wardrik.Error{type: :not_found}} =
              Wardrik.Hook.deliver_with_secret(scope, "acme/hooks", "issues", "nope",
                body: "{}",

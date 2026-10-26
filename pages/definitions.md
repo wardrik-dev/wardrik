@@ -60,7 +60,7 @@ the same one.
 | `tools` | what it may call: a capability by name, `files` for a tree of files of its own, `agents/*` to work with its org's agents and `self/*` with itself (see `Wardrik.AgentTools`), `server/*` for every tool of an MCP server, `workers/*` for the tools workers offer it, or `*` for all of them but `agents/*` and `self/*` |
 | `context` | files read into every turn, as `[MEMORY.md]`, or `{files: [...], max_bytes: 65536}`; see `Wardrik.Workspaces` |
 | `workspace` | trees of files shared with it, each under `shared/<name>/`, as `{shared: {team: acme}}` |
-| `policy` | a policy by name, or its rules written in place, a budget and judge included |
+| `policy` | a policy by name, or its rules written in place, a budget and judge included; only an agent a file declares writes `allow_after` in place, and any other names a policy that has it |
 | `timeout` | the seconds a turn may take |
 | `max_iterations` | the rounds of tool calls a turn may make; 25 unless set |
 | `idle_timeout` | the seconds it may have nothing to do before it sleeps, or `infinity` |

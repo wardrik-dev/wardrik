@@ -11,7 +11,9 @@ defmodule Wardrik.Workers do
   A surface holds each worker's connection in a process of its own. It offers what the worker lists
   with `offer/2`. It's sent each call as `{Wardrik.Workers, :call, call, name, arguments, meta}`,
   and answers it with `answer/2`. It's sent `{Wardrik.Workers, :cancel, call}` for a call Wardrik
-  stopped waiting on. A call's `meta` holds the `agent` it's for, the `principal` it acts for, and
+  stopped waiting on. A tool is gated unless every worker offering it marks it read-only, and its
+  answers are labelled `"outside"` unless Wardrik's `:trusted_workers` says otherwise. A call's
+  `meta` holds the `agent` it's for, the `principal` it acts for, and
   an `idempotencyKey` that stays the same when the call is repeated.
   """
 
@@ -62,7 +64,7 @@ defmodule Wardrik.Workers do
     wardrik
     |> offered(id)
     |> Enum.group_by(fn offer -> offer.tool["name"] end)
-    |> Enum.map(fn {name, offers} -> tool(wardrik.name, name, offers) end)
+    |> Enum.map(fn {name, offers} -> tool(wardrik, name, offers) end)
   end
 
   defp readable(listed) when is_list(listed), do: Enum.flat_map(listed, &readable_tool/1)
@@ -138,26 +140,31 @@ defmodule Wardrik.Workers do
     first.principal == offer.principal
   end
 
-  defp tool(instance, name, [first | _rest] = offers) do
+  defp tool(wardrik, name, [first | _rest] = offers) do
     WardrikCore.Tool.new!(
       name: @prefix <> name,
       description: first.tool["description"] <> "\n\nFrom a tool worker.",
       schema: first.tool["inputSchema"],
-      annotations: annotations(offers),
-      run: fn arguments, context -> call(instance, name, arguments, context) end
+      annotations: annotations(offers, wardrik.trusted_workers),
+      run: fn arguments, context -> call(wardrik.name, name, arguments, context) end
     )
   end
 
-  defp annotations(offers) do
+  defp annotations(offers, trusted) do
     read_only = every?(offers, "readOnlyHint")
 
     [
       read_only: read_only,
       idempotent: read_only or every?(offers, "idempotentHint"),
       destructive: not read_only and not every?(offers, "destructiveHint", false),
+      gated: not read_only,
+      labels: labels(trusted),
       timeout: @timeout + 5_000
     ]
   end
+
+  defp labels(true), do: []
+  defp labels(false), do: ["outside"]
 
   defp every?(offers, hint, holds \\ true),
     do: Enum.all?(offers, fn offer -> offer.tool["annotations"][hint] == holds end)

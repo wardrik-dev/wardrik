@@ -13,7 +13,8 @@ defmodule Wardrik.AgentTools do
   | `agent_define` | defines a worker, or defines one again |
   | `agent_trigger_set`, `agent_trigger_remove`, `self_trigger_set`, `self_trigger_remove` | changes triggers |
 
-  An agent is named within the org, as `reconciler`, or `@jon/reconciler` for one that works for a
+  A message `agent_ask` sends carries the labels of what the asking run had read. An agent is named
+  within the org, as `reconciler`, or `@jon/reconciler` for one that works for a
   user. Reads run freely. Every change is `gated`: it waits on a person unless the agent's policy
   allows it by name, as `allow: [agent_ask]`. A worker an agent defines is held to the policy of the
   agent that defined it.
@@ -23,6 +24,7 @@ defmodule Wardrik.AgentTools do
 
   alias Wardrik.AgentID
   alias Wardrik.Delegation
+  alias WardrikCore.Context
   alias WardrikCore.Principal
   alias WardrikCore.Tool
 
@@ -36,7 +38,14 @@ defmodule Wardrik.AgentTools do
   @impl WardrikCore.Capability
   def tools(%WardrikCore.Context{agent_id: id}, opts) do
     wardrik = Keyword.fetch!(opts, :wardrik)
-    offered(Keyword.fetch!(opts, :reach), %{wardrik: wardrik, id: id, org: org(id), policy: nil})
+
+    offered(Keyword.fetch!(opts, :reach), %{
+      wardrik: wardrik,
+      id: id,
+      org: org(id),
+      policy: nil,
+      labels: []
+    })
   end
 
   defp offered(:agents, me) do
@@ -60,7 +69,7 @@ defmodule Wardrik.AgentTools do
         "agent_ask",
         "Send an agent a message. This answers at once; the agent's answer comes back to you later as a message of its own.",
         [agent: @agent, message: [type: :string, required: true, doc: "What you ask it"]],
-        &asked(me, named(me, &1.agent), &1.message)
+        &asked(me, named(me, &1.agent), &1.message, &2)
       ),
       change(
         "agent_define",
@@ -140,10 +149,13 @@ defmodule Wardrik.AgentTools do
       name: name,
       description: description,
       schema: schema,
-      run: fn args, _context -> run.(args) end,
+      run: fn args, context -> called(run, args, context) end,
       annotations: annotations
     )
   end
+
+  defp called(run, args, _context) when is_function(run, 1), do: run.(args)
+  defp called(run, args, context), do: run.(args, context)
 
   defp listed(me) do
     with {:ok, %{"agents" => agents}} <-
@@ -160,8 +172,9 @@ defmodule Wardrik.AgentTools do
     end
   end
 
-  defp asked(me, agent, message) do
+  defp asked(me, agent, message, context) do
     id = "msg_" <> Base.url_encode64(:crypto.strong_rand_bytes(12), padding: false)
+    me = %{me | labels: Context.labels(context)}
 
     with :ok <- Delegation.asked(me.wardrik, me.id, agent, id),
          do: run(me, "agent.ask", %{"agent" => agent, "content" => message, "id" => id})
@@ -205,7 +218,7 @@ defmodule Wardrik.AgentTools do
     end
   end
 
-  defp scope(%{wardrik: wardrik, id: id, org: org, policy: policy}) do
+  defp scope(%{wardrik: wardrik, id: id, org: org, policy: policy, labels: labels}) do
     {:ok, resource} = Wardrik.Resource.agent(id)
 
     scope =
@@ -214,7 +227,7 @@ defmodule Wardrik.AgentTools do
         resources: [org <> "/*"]
       )
 
-    %{scope | policy: policy}
+    %{scope | policy: policy, labels: labels}
   end
 
   defp named(me, "@" <> _user = name), do: me.org <> "/" <> name

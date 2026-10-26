@@ -47,6 +47,23 @@ defmodule Wardrik.DeclarationsTest do
              run!(scope, "agents.forget", %{"resources" => ["acme/*"]})
   end
 
+  test "lets only a declared agent write allow_after in place", %{scope: scope} do
+    policy = %{"allow_after" => %{"outside" => ["github/add_labels"]}}
+
+    assert %{} =
+             run!(scope, "agent.define", %{
+               "agent" => "acme/triage",
+               "model" => @model,
+               "policy" => policy
+             })
+
+    assert refused(scope, "agent.define", %{
+             "agent" => "acme/notes",
+             "model" => @model,
+             "policy" => policy
+           }) == :invalid_request
+  end
+
   test "reads its declarations again as the deployment reloads", %{scope: scope} do
     run!(scope, "deployment.reload", %{})
     assert_received :reloaded

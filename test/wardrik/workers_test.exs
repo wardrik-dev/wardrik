@@ -123,6 +123,22 @@ defmodule Wardrik.WorkersTest do
     [tool] = Wardrik.Workers.tools(%Context{agent_id: "acme/triage"}, wardrik: wardrik.name)
     assert tool.description =~ "Looks an order up."
     assert WardrikCore.Tool.annotation(tool, :read_only)
+    refute WardrikCore.Tool.annotation(tool, :gated)
+    assert WardrikCore.Tool.annotation(tool, :labels) == ["outside"]
+  end
+
+  test "gates a tool unless it's read-only, and trusts what workers say only where told to", %{
+    wardrik: wardrik
+  } do
+    changing = %{@lookup | "annotations" => %{}}
+    worker(wardrik, "acme/@shop", ["acme/agent/*"], [changing])
+
+    [tool] = Wardrik.Workers.tools(%Context{agent_id: "acme/triage"}, wardrik: wardrik.name)
+    assert WardrikCore.Tool.annotation(tool, :gated)
+
+    trusting = %{Wardrik.Instance.fetch!(wardrik.name) | trusted_workers: true}
+    [tool] = Wardrik.Workers.tools(%Context{agent_id: "acme/triage"}, wardrik: trusting)
+    assert WardrikCore.Tool.annotation(tool, :labels) == []
   end
 
   test "runs a call on a worker, and tells the model what it answered", %{
