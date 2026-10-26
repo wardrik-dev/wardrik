@@ -25,6 +25,18 @@ defmodule Wardrik.Channel do
           body: String.t()
         }
 
+  @doc """
+  Returns the channel the Wardrik `instance` runs as `name`: its module, and the options its
+  callbacks take. Returns `:error` where it runs none by that name.
+  """
+  @spec fetch(atom(), String.t()) :: {:ok, {module(), keyword()}} | :error
+  def fetch(instance, name) do
+    wardrik = Wardrik.Instance.fetch!(instance)
+
+    with {:ok, {module, opts}} <- Map.fetch(wardrik.channels, name),
+         do: {:ok, {module, Wardrik.Operations.Channels.options(wardrik, name, opts)}}
+  end
+
   @doc "Returns what the channel runs."
   @callback child_spec(opts :: keyword()) :: Supervisor.child_spec()
 

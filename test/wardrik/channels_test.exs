@@ -84,6 +84,13 @@ defmodule Wardrik.ChannelsTest do
     assert recorded["actor"] == %{"id" => "slack:T1/U2"}
   end
 
+  test "hands a channel's options to whoever asks for it by name", %{name: name} do
+    assert {:ok, {Wardrik.Test.Echo, opts}} = Wardrik.Channel.fetch(name, "slack")
+    assert opts[:channel] == "slack"
+    assert opts[:wardrik] == name
+    assert Wardrik.Channel.fetch(name, "teams") == :error
+  end
+
   test "answers in Elixir", %{scope: scope} do
     assert {:ok, %Wardrik.ChannelResponse{status: 200, body: "actions: hi ()"}} =
              Wardrik.Channel.deliver(scope, "slack", "actions", body: "hi", headers: %{})
