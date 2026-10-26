@@ -31,9 +31,13 @@ defmodule Wardrik.Operations.Agents do
   @doc "Forgets each of the agents, and answers which went, and which couldn't, with why."
   @spec forget(Scope.t(), map()) :: {:ok, map()}
   def forget(scope, input) do
-    {forgotten, failed} =
+    {kept, covered} =
       scope
       |> Visible.agents(input)
+      |> Enum.split_with(&Wardrik.Declarations.declared?(scope.wardrik, &1))
+
+    {forgotten, failed} =
+      covered
       |> Enum.map(&{&1, Lifecycle.forgotten(scope.wardrik, &1)})
       |> Enum.split_with(fn {_id, outcome} -> outcome == :ok end)
 
@@ -42,7 +46,7 @@ defmodule Wardrik.Operations.Agents do
     {:ok,
      %{
        "forgotten" => Enum.map(forgotten, fn {id, :ok} -> id end),
-       "kept" => [],
+       "kept" => Enum.map(kept, &%{"id" => &1, "why" => "declared by a file"}),
        "failed" =>
          Enum.map(failed, fn {id, {:error, error}} -> %{"id" => id, "why" => error.message} end)
      }}

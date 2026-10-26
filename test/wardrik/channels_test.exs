@@ -21,7 +21,7 @@ defmodule Wardrik.Test.Echo do
 end
 
 defmodule Wardrik.ChannelsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import Wardrik.Test.Wardrik
 
@@ -89,6 +89,13 @@ defmodule Wardrik.ChannelsTest do
     assert opts[:channel] == "slack"
     assert opts[:wardrik] == name
     assert Wardrik.Channel.fetch(name, "teams") == :error
+  end
+
+  test "says a Wardrik with no keys seals no secrets", %{name: name} do
+    scope = Wardrik.as(name, "acme/@maria", roles: [:owner], resources: ["*"])
+
+    assert {:error, %Wardrik.Error{type: :not_supported}} =
+             Wardrik.Secrets.list(scope, owner: "acme")
   end
 
   test "answers in Elixir", %{scope: scope} do

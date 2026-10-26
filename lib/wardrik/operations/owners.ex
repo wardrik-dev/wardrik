@@ -1,7 +1,7 @@
 defmodule Wardrik.Operations.Owners do
   @moduledoc """
-  The operations on what an org or a person holds for their agents: the accounts they connect, and
-  the MCP servers they add.
+  The operations on what an org or a person holds for their agents: the accounts they connect, the
+  secrets they seal, and the MCP servers they add.
   """
 
   alias Wardrik.Error
@@ -49,6 +49,48 @@ defmodule Wardrik.Operations.Owners do
       {:ok, %{"provider" => provider, "connected" => connected}}
     end
   end
+
+  @doc "Lists the secrets the owner holds, by name, and whether each is sealed or connected."
+  @spec secrets(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
+  def secrets(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
+    with :ok <- keeps_secrets(wardrik) do
+      secrets =
+        for {^owner, name, kind} <- Wardrik.Sealed.list(wardrik),
+            do: %{"name" => name, "kind" => Atom.to_string(kind)}
+
+      {:ok, %{"secrets" => Enum.sort_by(secrets, & &1["name"])}}
+    end
+  end
+
+  @doc "Seals a secret as the owner's, in place of any of the same name."
+  @spec put_secret(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
+  def put_secret(%Scope{wardrik: wardrik} = scope, %{
+        "owner" => owner,
+        "name" => name,
+        "value" => value
+      }) do
+    with :ok <- keeps_secrets(wardrik),
+         :ok <- Wardrik.Sealed.put(wardrik, owner, name, value, actor: scope.principal),
+         do: {:ok, nil}
+  end
+
+  @doc "Removes the owner's secret of a name. Removing none is as removing one."
+  @spec delete_secret(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
+  def delete_secret(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "name" => name}) do
+    with :ok <- keeps_secrets(wardrik),
+         :ok <- Wardrik.Sealed.delete(wardrik, owner, name, scope.principal),
+         do: {:ok, nil}
+  end
+
+  defp keeps_secrets(%Wardrik{keys: []}),
+    do:
+      {:error,
+       Error.new(
+         :not_supported,
+         "This Wardrik keeps no secrets. Give it :keys to seal them with."
+       )}
+
+  defp keeps_secrets(_wardrik), do: :ok
 
   @doc "Lists the MCP servers the owner added."
   @spec servers(Scope.t(), map()) :: {:ok, map()}

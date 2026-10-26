@@ -45,6 +45,7 @@ defmodule Wardrik.Operations.Lifecycle do
   @spec forget(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def forget(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
     with :ok <- Snapshot.known(wardrik, id),
+         :ok <- undeclared(wardrik, id),
          :ok <- forgotten(wardrik, id) do
       Changes.record(scope, "agent.forgotten", id)
       {:ok, nil}
@@ -148,6 +149,19 @@ defmodule Wardrik.Operations.Lifecycle do
           do: WardrikCore.delete(agents, conversation)
 
     Enum.find(deleted, :ok, &(&1 != :ok))
+  end
+
+  @doc "Returns `:ok` unless the agent `id` is declared outside the API, which forgetting can't undo."
+  @spec undeclared(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
+  def undeclared(wardrik, id) do
+    if Wardrik.Declarations.declared?(wardrik, id),
+      do:
+        {:error,
+         Error.new(
+           :conflict,
+           "#{id} is declared by a file. Remove the file and reload to forget it."
+         )},
+      else: :ok
   end
 
   defp bounded(_wardrik, _id, nil), do: :ok

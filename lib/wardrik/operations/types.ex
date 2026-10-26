@@ -21,6 +21,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Nodes
   alias Wardrik.Page
   alias Wardrik.Runs
+  alias Wardrik.Secret
   alias Wardrik.Timeline
   alias Wardrik.Token
   alias Wardrik.TokenIssued
@@ -29,9 +30,37 @@ defmodule Wardrik.Operations.Types do
 
   @snapshots ~w(agent.read agent.define agent.clear)
   @decided ~w(agent.decide agent.approve agent.deny)
-  @answered_nothing ~w(agent.cancel agent.forget agent.kill hook.deliver hook.deliver_with_secret)
+  @answered_nothing ~w(agent.cancel agent.forget agent.kill hook.deliver hook.deliver_with_secret
+                       secrets.put secrets.delete)
   @triggers ~w(agent.trigger_set agent.trigger_remove)
   @pages ~w(agent.events events.list audit.list)
+
+  @structs %{
+    "channel.deliver" => ChannelResponse,
+    "agent.authorization" => Authorization,
+    "agent.timeline" => Timeline,
+    "agent.runs" => Runs,
+    "agents.forget" => Forgotten,
+    "tokens.create" => TokenIssued,
+    "tokens.revoke" => Token,
+    "deployment.nodes" => Nodes,
+    "connections.connect" => Connecting,
+    "connections.disconnect" => Connection,
+    "mcp_servers.add" => MCPServerAdded,
+    "mcp_servers.remove" => MCPServer
+  }
+
+  @lists %{
+    "agent.calls" => {"calls", Call, :from_json},
+    "agents.list" => {"agents", Agent, :from_summary},
+    "interrupts.list" => {"interrupts", Interrupt, :from_listed},
+    "tokens.list" => {"tokens", Token, :from_json},
+    "connections.list" => {"connections", Connection, :from_json},
+    "mcp_servers.list" => {"servers", MCPServer, :from_json},
+    "secrets.list" => {"secrets", Secret, :from_json}
+  }
+
+  @listed Map.keys(@lists)
 
   @doc "Returns what a path names: the text given, or the id or name of the struct given."
   @spec path(String.t() | struct()) :: String.t()
@@ -65,53 +94,27 @@ defmodule Wardrik.Operations.Types do
 
   def decode(id, nil) when id in @answered_nothing, do: :ok
   def decode(id, output) when id in @pages, do: {:ok, Page.from_json(output)}
+  def decode(id, output) when id in @triggers, do: {:ok, Trigger.from_json(output)}
 
-  def decode(id, %{"agent" => agent}) when id in ~w(agent.spawn agent.stop),
+  def decode(id, output) when is_map_key(@structs, id),
+    do: {:ok, Map.fetch!(@structs, id).from_json(output)}
+
+  def decode(id, output) when id in @listed do
+    {key, type, read} = Map.fetch!(@lists, id)
+    {:ok, Enum.map(Map.fetch!(output, key), &apply(type, read, [&1]))}
+  end
+
+  def decode(id, %{"agent" => agent}) when id in ~w(agent.spawn agent.stop agent.move),
     do: {:ok, Agent.from_summary(agent)}
 
-  def decode(id, output) when id in @triggers, do: {:ok, Trigger.from_json(output)}
   def decode("agent.ask", %{"message" => message}), do: {:ok, Message.from_json(message)}
-  def decode("channel.deliver", output), do: {:ok, ChannelResponse.from_json(output)}
-  def decode("agent.authorization", output), do: {:ok, Authorization.from_json(output)}
-  def decode("agent.calls", %{"calls" => calls}), do: {:ok, Enum.map(calls, &Call.from_json/1)}
 
   def decode("agent.definition", %{"definition" => definition, "missing" => missing}),
     do: {:ok, Definition.from_json(definition), missing}
 
-  def decode("agent.timeline", output), do: {:ok, Timeline.from_json(output)}
-  def decode("agent.runs", output), do: {:ok, Runs.from_json(output)}
-
-  def decode("agents.list", %{"agents" => agents}),
-    do: {:ok, Enum.map(agents, &Agent.from_summary/1)}
-
   def decode("agents.cancel", %{"cancelled" => cancelled}), do: {:ok, cancelled}
-  def decode("agents.forget", output), do: {:ok, Forgotten.from_json(output)}
-
-  def decode("interrupts.list", %{"interrupts" => listed}),
-    do: {:ok, Enum.map(listed, &Interrupt.from_listed/1)}
-
   def decode("events.head", %{"cursor" => cursor}), do: {:ok, cursor}
-
-  def decode("tokens.list", %{"tokens" => tokens}),
-    do: {:ok, Enum.map(tokens, &Token.from_json/1)}
-
-  def decode("tokens.create", output), do: {:ok, TokenIssued.from_json(output)}
-  def decode("tokens.revoke", output), do: {:ok, Token.from_json(output)}
   def decode("deployment.reload", %{"reloaded" => nodes}), do: {:ok, nodes}
-  def decode("deployment.nodes", output), do: {:ok, Nodes.from_json(output)}
-  def decode("agent.move", %{"agent" => agent}), do: {:ok, Agent.from_summary(agent)}
-
-  def decode("connections.list", %{"connections" => connections}),
-    do: {:ok, Enum.map(connections, &Connection.from_json/1)}
-
-  def decode("connections.connect", output), do: {:ok, Connecting.from_json(output)}
-  def decode("connections.disconnect", output), do: {:ok, Connection.from_json(output)}
-
-  def decode("mcp_servers.list", %{"servers" => servers}),
-    do: {:ok, Enum.map(servers, &MCPServer.from_json/1)}
-
-  def decode("mcp_servers.add", output), do: {:ok, MCPServerAdded.from_json(output)}
-  def decode("mcp_servers.remove", output), do: {:ok, MCPServer.from_json(output)}
 
   @doc "Turns a streamed event and its cursor into what an Elixir caller gets."
   @spec event({map(), String.t()}) :: {Event.t(), String.t()}

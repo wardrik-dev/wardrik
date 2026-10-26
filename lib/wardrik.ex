@@ -35,6 +35,7 @@ defmodule Wardrik do
     :mcp,
     :listeners,
     :channels,
+    :declarations,
     :triggers,
     :deployment,
     :authorizer,
@@ -57,6 +58,7 @@ defmodule Wardrik do
           mcp: keyword() | nil,
           listeners: [module() | {module(), keyword()}],
           channels: %{String.t() => {module(), keyword()}},
+          declarations: {module(), term()} | nil,
           triggers: keyword(),
           deployment: String.t(),
           authorizer: {module(), term()},
@@ -96,7 +98,8 @@ defmodule Wardrik do
 
   Given `:mcp`, the MCP servers its agents may call, as `WardrikMCP` takes its `:servers`, it
   connects to each. `:channels` are the chat apps people reach agents through, by name, each a
-  `Wardrik.Channel` as `{module, opts}`. `:triggers` takes `WardrikTriggers`' `:req_options`, for reading feeds, and
+  `Wardrik.Channel` as `{module, opts}`. `:declarations` are agents something outside the API
+  defines, as `Wardrik.Declarations` describes. `:triggers` takes `WardrikTriggers`' `:req_options`, for reading feeds, and
   `:reconcile`.
 
   What a definition names, it finds here: `:capabilities`, the tools it offers by name, as
@@ -149,11 +152,11 @@ defmodule Wardrik do
   @spec put_secret(atom() | t(), String.t(), String.t(), binary(), keyword()) ::
           :ok | {:error, term()}
   def put_secret(instance, owner, name, value, opts \\ []),
-    do: Wardrik.Secrets.put(instance, owner, name, value, opts)
+    do: Wardrik.Sealed.put(instance, owner, name, value, opts)
 
   @doc "Unseals the secret `name` of `owner`."
   @spec fetch_secret(atom() | t(), String.t(), String.t()) :: {:ok, binary()} | {:error, term()}
-  def fetch_secret(instance, owner, name), do: Wardrik.Secrets.fetch(instance, owner, name)
+  def fetch_secret(instance, owner, name), do: Wardrik.Sealed.fetch(instance, owner, name)
 
   @doc """
   Unseals the secret `name` of `owner`, with its kind, `:secret` or `:grant` for an account someone
@@ -163,21 +166,21 @@ defmodule Wardrik do
           {:ok, WardrikVault.kind(), binary(), term()}
           | {:error, term()}
           | {:error, WardrikVault.kind(), term()}
-  def lookup_secret(instance, owner, name), do: Wardrik.Secrets.lookup(instance, owner, name)
+  def lookup_secret(instance, owner, name), do: Wardrik.Sealed.lookup(instance, owner, name)
 
   @doc "Removes the secret `name` of `owner`, and records it in the audit. Removing none is `:ok`."
   @spec delete_secret(atom() | t(), String.t(), String.t()) :: :ok | {:error, term()}
-  def delete_secret(instance, owner, name), do: Wardrik.Secrets.delete(instance, owner, name)
+  def delete_secret(instance, owner, name), do: Wardrik.Sealed.delete(instance, owner, name)
 
   @doc """
   Lists every secret as `{owner, name, kind}`, or the names `owner` holds. It reads no secret, and
   needs no key.
   """
   @spec list_secrets(atom() | t()) :: [{String.t(), String.t(), WardrikVault.kind()}]
-  def list_secrets(instance), do: Wardrik.Secrets.list(instance)
+  def list_secrets(instance), do: Wardrik.Sealed.list(instance)
 
   @spec list_secrets(atom() | t(), String.t()) :: [String.t()]
-  def list_secrets(instance, owner), do: Wardrik.Secrets.list(instance, owner)
+  def list_secrets(instance, owner), do: Wardrik.Sealed.list(instance, owner)
 
   @doc """
   Allows `scope` more, as `Wardrik.Statement.new/1` takes it.

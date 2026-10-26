@@ -16,9 +16,14 @@ defmodule Wardrik.Operations.Deployment do
     {:ok, %{"events" => events, "next" => next}}
   end
 
-  @doc "Has every agent take its definition as it reads now, and reads servers and triggers again."
+  @doc """
+  Reads the Wardrik's declarations again, has every agent take its definition as it reads now, and
+  reads servers and triggers again.
+  """
   @spec reload(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def reload(%Wardrik.Scope{wardrik: wardrik} = scope, _input) do
+    :ok = Wardrik.Declarations.reload(wardrik)
+
     for id <- Definitions.ids(wardrik), Running.whereis(wardrik, id) != nil do
       with {:ok, definition} <- Definitions.fetch(wardrik, id),
            {:ok, opts} <- Definition.resolve(wardrik, id, definition),

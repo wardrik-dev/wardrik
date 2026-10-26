@@ -97,6 +97,43 @@ defmodule Wardrik.OwnersTest do
     end
   end
 
+  describe "secrets" do
+    test "seals, lists and removes an owner's secrets, never answering a value", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      {:ok, _vsn} =
+        WardrikVault.put(Wardrik.vault(wardrik), %Principal{id: "acme"}, "mail", "t",
+          kind: :grant
+        )
+
+      assert run!(scope, "secrets.put", %{
+               "owner" => "acme",
+               "name" => "GITHUB_TOKEN",
+               "value" => "ghp_1"
+             }) == nil
+
+      assert %{
+               "secrets" => [%{"name" => "GITHUB_TOKEN", "kind" => "secret"}, %{"name" => "mail"}]
+             } =
+               run!(scope, "secrets.list", %{"owner" => "acme"})
+
+      assert Wardrik.fetch_secret(wardrik, "acme", "GITHUB_TOKEN") == {:ok, "ghp_1"}
+      assert %{"secrets" => []} = run!(scope, "secrets.list", %{"owner" => "acme/@jon"})
+
+      assert run!(scope, "secrets.delete", %{"owner" => "acme", "name" => "GITHUB_TOKEN"}) == nil
+      assert run!(scope, "secrets.delete", %{"owner" => "acme", "name" => "GITHUB_TOKEN"}) == nil
+
+      secrets = Enum.filter(types(scope), &String.starts_with?(&1, "wardrik.secret."))
+      assert secrets == ~w(wardrik.secret.stored wardrik.secret.removed wardrik.secret.removed)
+
+      assert {:ok, [%Wardrik.Secret{name: "mail", kind: :grant}]} =
+               Wardrik.Secrets.list(scope, owner: "acme")
+
+      assert Wardrik.Secrets.put(scope, "DEPLOY", owner: "deployment", value: "d") == :ok
+    end
+  end
+
   describe "servers" do
     test "adds, lists and removes an owner's servers", %{wardrik: wardrik, scope: scope} do
       server = %{
