@@ -15,7 +15,7 @@ defmodule Wardrik.SignIns do
     |> WardrikCore.list()
     |> Enum.map(&WardrikCore.whereis(agents, &1))
     |> Enum.filter(&waits_on?(&1, credential, principal))
-    |> Enum.each(&WardrikCore.resume(&1, %{}, %{principal: principal}))
+    |> Enum.each(&WardrikCore.resume(&1, %{}, %{by: principal}))
   end
 
   defp waits_on?(nil, _credential, _principal), do: false

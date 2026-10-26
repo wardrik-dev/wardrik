@@ -169,7 +169,7 @@ defmodule Wardrik.Operations.Agent do
   defp resume(pid, decisions, scope) do
     answers = Map.new(decisions, &{&1["id"], answer(&1)})
 
-    case WardrikCore.resume(pid, answers, %{principal: scope.principal}) do
+    case WardrikCore.resume(pid, answers, %{by: scope.principal}) do
       :ok -> :ok
       {:error, :not_parked} -> {:error, Error.new(:conflict, "The agent waits on nothing.")}
     end

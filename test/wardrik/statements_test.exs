@@ -48,7 +48,12 @@ defmodule Wardrik.StatementsTest do
     assert Resource.agent("acme/triage") == {:ok, "acme/agent/triage"}
     assert Resource.agent("acme/@jon/triage") == {:ok, "acme/@jon/agent/triage"}
 
-    for id <- ["acme", "acme/triage/extra", "acme/*", "acme/", "acme/@jon/", "a/b/c/d"],
+    assert Resource.agent("acme/triage/C1") == {:ok, "acme/agent/triage/conversation/C1"}
+
+    assert Resource.agent("acme/@jon/triage/C1") ==
+             {:ok, "acme/@jon/agent/triage/conversation/C1"}
+
+    for id <- ["acme", "acme/triage/*", "acme/*", "acme/", "acme/@jon/", "a/b/c/d"],
         do: assert(Resource.agent(id) == :error)
   end
 end
