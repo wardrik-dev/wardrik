@@ -124,7 +124,18 @@ defmodule Wardrik.DefinitionsTest do
       from_file = [%{"every" => "30m", "prompt_file" => "HEARTBEAT.md"}]
 
       assert refused(scope, "agent.define", Map.put(base, "triggers", from_file)) ==
-               :not_supported
+               :invalid_request
+
+      for trigger <- [
+            %{"every" => "30m", "prompt_file" => "/etc/passwd"},
+            %{"every" => "30m", "prompt_file" => "H.md", "prompt" => "Go."}
+          ] do
+        assert refused(
+                 scope,
+                 "agent.define",
+                 Map.merge(base, %{"tools" => ["files"], "triggers" => [trigger]})
+               ) == :invalid_request
+      end
 
       unread = [%{"every" => "often", "prompt" => "Go."}]
       assert refused(scope, "agent.define", Map.put(base, "triggers", unread)) == :invalid_request
@@ -445,6 +456,33 @@ defmodule Wardrik.DefinitionsTest do
       assert_receive {:prompted, messages}
       assert %{role: :user} = List.last(messages)
       until("wardrik.run.completed")
+    end
+
+    test "asks an agent with files to follow its prompt_file", %{wardrik: wardrik, scope: scope} do
+      answers([answer("Done.")])
+
+      define(scope, "acme/digest", %{
+        "model" => @model,
+        "tools" => ["files"],
+        "triggers" => [
+          %{"name" => "heartbeat", "every" => "30m", "prompt_file" => "HEARTBEAT.md"}
+        ]
+      })
+
+      trigger_due(wardrik, "acme/digest", "heartbeat")
+
+      assert %{"data" => %{"status" => "asked"}} = until("wardrik.trigger.fired")
+      assert_receive {:prompted, messages}
+      assert %{role: :user, content: [%{text: text}]} = List.last(messages)
+      assert text =~ "Read HEARTBEAT.md"
+      until("wardrik.run.completed")
+
+      assert refused(scope, "agent.trigger_set", %{
+               "agent" => "acme/digest",
+               "trigger" => "x",
+               "every" => "1d",
+               "prompt_file" => "../up.md"
+             }) == :invalid_request
     end
 
     test "sets and removes one, keeping the definition in step", %{wardrik: wardrik, scope: scope} do

@@ -66,7 +66,7 @@ defmodule Wardrik.Definition do
     definition = Map.merge(wardrik.defaults, definition)
 
     with :ok <- supported(definition),
-         :ok <- triggers(Map.get(definition, "triggers", [])),
+         :ok <- triggers(wardrik, definition),
          {:ok, model} <- model(definition),
          {:ok, rounds} <- rounds(definition["max_iterations"]),
          {:ok, capabilities} <- capabilities(wardrik, Map.get(definition, "tools", [])),
@@ -105,15 +105,14 @@ defmodule Wardrik.Definition do
 
   def named(definition), do: definition
 
-  @doc "Returns `:ok` if the trigger `fields` describe reads, and is one Wardrik supports."
-  @spec trigger(map(), pos_integer()) :: :ok | {:error, Error.t()}
-  def trigger(%{"prompt_file" => _file}, _index),
-    do: {:error, Error.new(:not_supported, "A trigger's prompt_file isn't supported here yet.")}
-
-  def trigger(fields, index) do
-    case WardrikTriggers.Trigger.decode(fields, index) do
-      {:ok, _trigger} -> :ok
-      {:error, why} -> {:error, Error.new(:invalid_request, "A trigger doesn't read: #{why}.")}
+  @doc "Returns `:ok` if the trigger `fields` describe reads, and the agent `definition` can follow it."
+  @spec trigger(Wardrik.t(), map(), map(), pos_integer()) :: :ok | {:error, Error.t()}
+  def trigger(wardrik, definition, fields, index) do
+    with :ok <- prompted(fields, files?(wardrik, Map.merge(wardrik.defaults, definition))) do
+      case WardrikTriggers.Trigger.decode(fields, index) do
+        {:ok, _trigger} -> :ok
+        {:error, why} -> {:error, Error.new(:invalid_request, "A trigger doesn't read: #{why}.")}
+      end
     end
   end
 
@@ -163,12 +162,34 @@ defmodule Wardrik.Definition do
     end
   end
 
-  defp triggers(triggers) do
-    triggers
+  defp triggers(wardrik, definition) do
+    definition
+    |> Map.get("triggers", [])
     |> Enum.with_index(1)
-    |> Enum.map(fn {fields, index} -> trigger(fields, index) end)
+    |> Enum.map(fn {fields, index} -> trigger(wardrik, definition, fields, index) end)
     |> Enum.find(:ok, &match?({:error, _error}, &1))
   end
+
+  defp prompted(%{"prompt_file" => _file, "prompt" => _prompt}, _files?),
+    do:
+      {:error, Error.new(:invalid_request, "A trigger has a prompt or a prompt_file, not both.")}
+
+  defp prompted(%{"prompt_file" => _file}, false),
+    do:
+      {:error,
+       Error.new(
+         :invalid_request,
+         "A trigger's prompt_file names a file, and tools names no files to read it with."
+       )}
+
+  defp prompted(%{"prompt_file" => file}, true) do
+    case WardrikWorkspace.Path.normalize(file) do
+      {:ok, _path} -> :ok
+      {:error, why} -> {:error, Error.new(:invalid_request, "A trigger's prompt_file: #{why}.")}
+    end
+  end
+
+  defp prompted(_fields, _files?), do: :ok
 
   defp model(%{"model" => model}), do: {:ok, model}
 

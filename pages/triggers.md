@@ -29,14 +29,13 @@ found the agent busy, or failed.
 | `every` | a cron expression, as `0 9 * * 1` or `@daily`, or an interval of at least a minute, as `30m`, `2h` or `1d` |
 | `timezone` | the time zone a cron expression is read in, as `Europe/Berlin`; `Etc/UTC` unless set |
 | `prompt` | what the agent is asked |
+| `prompt_file` | in place of `prompt`, a file in the agent's workspace it reads and follows each run, so it can edit its own checklist; needs `files` |
 | `name` | the trigger's name; `trigger-1`, `trigger-2` and so on by its place unless set |
 | `overlap` | `skip` leaves a busy agent be, `queue` asks it anyway; `skip` unless set, `queue` for a webhook |
 | `missed` | `run_once` runs once for what was missed while nothing ran, `skip` lets it go |
 | `jitter` | up to this many seconds added to each run |
 | `feed` | an RSS or Atom feed's URL, or a list of them |
 | `webhook` | `secret`, as `${NAME}`, and `verify`, `shared` or `standard`, in place of `every` |
-
-`prompt_file` answers `not_supported` until agents have files.
 
 ## On a clock
 

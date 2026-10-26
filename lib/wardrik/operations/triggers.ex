@@ -19,7 +19,7 @@ defmodule Wardrik.Operations.Triggers do
 
     with :ok <- Running.definable(id),
          {:ok, definition} <- Running.definition(wardrik, id),
-         :ok <- Definition.trigger(fields, 1),
+         :ok <- Definition.trigger(wardrik, definition, fields, 1),
          {:ok, trigger} <- set_trigger(wardrik, id, fields),
          :ok <-
            Definitions.put(
