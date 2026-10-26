@@ -47,7 +47,6 @@ defmodule Wardrik.Definition do
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
   @unsupported ~w(retries compaction notify)
-  @reserved ~w(self/* agents/*)
   @rounds 25
 
   @doc "Builds a definition from a keyword list or a map. Raises if it doesn't read."
@@ -73,6 +72,7 @@ defmodule Wardrik.Definition do
            Wardrik.Workspaces.resolve(wardrik, id, definition, files?(wardrik, definition)),
          :ok <- channels(wardrik, Map.get(definition, "channels", [])),
          {:ok, policy} <- policy(wardrik, definition["policy"]),
+         policy = gating(policy),
          {:ok, boundary} <-
            policy(wardrik, Wardrik.Definitions.boundary(wardrik, AgentID.agent(id))) do
       {:ok,
@@ -191,11 +191,15 @@ defmodule Wardrik.Definition do
 
   defp expand(_wardrik, tool), do: [tool]
 
-  defp named(_wardrik, tool) when tool in @reserved,
-    do: {:error, Error.new(:not_supported, "#{tool} isn't supported here yet.")}
-
   defp named(_wardrik, "servers/*"), do: :all_servers
   defp named(_wardrik, "files"), do: :files
+
+  defp named(wardrik, "agents/*"),
+    do: {:capability, {Wardrik.AgentTools, wardrik: wardrik.name, reach: :agents}}
+
+  defp named(wardrik, "self/*"),
+    do: {:capability, {Wardrik.AgentTools, wardrik: wardrik.name, reach: :self}}
+
   defp named(wardrik, "workers/*"), do: {:capability, {Wardrik.Workers, wardrik: wardrik.name}}
 
   defp named(wardrik, tool) do
@@ -223,6 +227,11 @@ defmodule Wardrik.Definition do
 
   defp files?(wardrik, definition),
     do: "files" in expanded(wardrik, Map.get(definition, "tools", []))
+
+  defp gating(nil), do: WardrikPolicy.new!(default: [gated: :ask])
+
+  defp gating(%WardrikPolicy{by_annotation: by_annotation} = policy),
+    do: %{policy | by_annotation: Map.put_new(by_annotation, "gated", :ask)}
 
   defp channels(wardrik, names) do
     case Enum.reject(names, &Map.has_key?(wardrik.channels, &1)) do

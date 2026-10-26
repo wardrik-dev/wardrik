@@ -28,13 +28,13 @@ defmodule Wardrik.Definitions do
   end
 
   @doc "Keeps the policy named `name` as the agent `id`'s boundary: the token that defined it named it."
-  @spec put_boundary(Wardrik.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  @spec put_boundary(Wardrik.t(), String.t(), String.t() | map()) :: :ok | {:error, term()}
   def put_boundary(wardrik, id, name) do
     with {:ok, _vsn} <- WardrikStore.put(store(wardrik), "boundaries/" <> id, name), do: :ok
   end
 
   @doc "Returns the name of the policy that bounds the agent `id`, or `nil`."
-  @spec boundary(Wardrik.t(), String.t()) :: String.t() | nil
+  @spec boundary(Wardrik.t(), String.t()) :: String.t() | map() | nil
   def boundary(wardrik, id), do: WardrikStore.get(store(wardrik), "boundaries/" <> id)
 
   @doc "Returns the IDs of the agents with a definition."

@@ -57,7 +57,7 @@ the same one.
 | --- | --- |
 | `model` | the model, as `provider:model`; required |
 | `instructions` | the system prompt, sent with every model call |
-| `tools` | what it may call: a capability by name, `files` for a tree of files of its own, `server/*` for every tool of an MCP server, `workers/*` for the tools workers offer it, or `*` for all of them |
+| `tools` | what it may call: a capability by name, `files` for a tree of files of its own, `agents/*` to work with its org's agents and `self/*` with itself (see `Wardrik.AgentTools`), `server/*` for every tool of an MCP server, `workers/*` for the tools workers offer it, or `*` for all of them but `agents/*` and `self/*` |
 | `context` | files read into every turn, as `[MEMORY.md]`, or `{files: [...], max_bytes: 65536}`; see `Wardrik.Workspaces` |
 | `workspace` | trees of files shared with it, each under `shared/<name>/`, as `{shared: {team: acme}}` |
 | `policy` | a policy by name, or its rules written in place, a budget and judge included |

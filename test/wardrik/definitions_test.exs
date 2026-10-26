@@ -112,7 +112,6 @@ defmodule Wardrik.DefinitionsTest do
                :invalid_request
 
       assert refused(scope, "agent.define", Map.delete(base, "model")) == :invalid_request
-      assert refused(scope, "agent.define", Map.put(base, "tools", ["self/*"])) == :not_supported
 
       assert refused(scope, "agent.define", Map.put(base, "max_iterations", "infinity")) ==
                :not_supported

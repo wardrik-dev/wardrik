@@ -17,7 +17,7 @@ defmodule Wardrik.Scope do
           principal: Principal.t(),
           operation: WardrikProtocol.operation() | nil,
           grants: term(),
-          policy: String.t() | nil
+          policy: String.t() | map() | nil
         }
 
   @doc "Returns whether the operation running in `scope` may act on `resource`."
