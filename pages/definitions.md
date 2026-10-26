@@ -64,13 +64,14 @@ the same one.
 | `timeout` | the seconds a turn may take |
 | `max_iterations` | the rounds of tool calls a turn may make; 25 unless set |
 | `idle_timeout` | the seconds it may have nothing to do before it sleeps, or `infinity` |
+| `compaction` | when it summarises its older history, as shares of its model's window: `{at: 0.6, keep: 0.25}` unless set, `window` where the catalog gives none, or `false` never to; see `Wardrik.Compaction` |
 | `triggers` | what asks it something on a clock, from a feed, or from a webhook; see [Trigger agents](triggers.md) |
 | `channels` | the chat apps it may answer in, by the names the Wardrik's `:channels` give them |
 | `display_name`, `description` | what a person calls it, and what it's for |
 
-A name it gives that Wardrik doesn't offer answers `invalid_request`. `retries`,
-`compaction` and `notify` are part of the definition, and answer
-`not_supported` until the packages behind them land. Nothing in a definition is ignored.
+A name it gives that Wardrik doesn't offer answers `invalid_request`. `retries` and
+`notify` are part of the definition, and answer `not_supported` until the packages behind them
+land. Nothing in a definition is ignored.
 
 Define it again to change it. A running agent takes the new definition from its next turn.
 

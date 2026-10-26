@@ -421,6 +421,31 @@ defmodule Wardrik.DefinitionsTest do
     end
   end
 
+  describe "compaction" do
+    test "summarises an agent's older history as a turn begins", %{scope: scope} do
+      answers([answer("Noted."), answer("You sent a long note."), answer("Done.")])
+
+      define(scope, "acme/notes", %{"model" => @model, "compaction" => %{"window" => 20}})
+
+      run!(scope, "agent.ask", %{"agent" => "acme/notes", "content" => String.duplicate("x", 100)})
+
+      until("wardrik.run.completed")
+
+      run!(scope, "agent.ask", %{"agent" => "acme/notes", "content" => "Again."})
+
+      assert %{"data" => %{"messages_before" => 3, "messages_after" => 2}} =
+               until("wardrik.conversation.compacted")
+
+      until("wardrik.run.completed")
+      assert_receive {:prompted, _first}
+      assert_receive {:prompted, _summarising}
+      assert_receive {:prompted, messages}
+
+      assert [%{content: [%{text: "A summary of the conversation" <> _rest}]}, %{role: :user}] =
+               Enum.reject(messages, &(&1.role == :system))
+    end
+  end
+
   describe "triggers" do
     defp trigger_due(wardrik, id, name) do
       store = WardrikStore.scope(wardrik.store, "wardrik_triggers")

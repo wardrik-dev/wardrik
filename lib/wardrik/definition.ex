@@ -46,7 +46,7 @@ defmodule Wardrik.Definition do
   alias WardrikCore.Principal
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
-  @unsupported ~w(retries compaction notify)
+  @unsupported ~w(retries notify)
   @rounds 25
 
   @doc "Builds a definition from a keyword list or a map. Raises if it doesn't read."
@@ -83,7 +83,7 @@ defmodule Wardrik.Definition do
          model: model,
          instructions: definition["instructions"],
          capabilities: capabilities ++ workspace[:capabilities],
-         middleware: workspace[:middleware],
+         middleware: workspace[:middleware] ++ compaction(definition["compaction"]),
          principal: principal(id),
          policy: Enum.reject([boundary, policy], &is_nil/1),
          timeout: seconds(definition["timeout"]),
@@ -257,6 +257,16 @@ defmodule Wardrik.Definition do
 
   defp files?(wardrik, definition),
     do: "files" in expanded(wardrik, Map.get(definition, "tools", []))
+
+  defp compaction(false), do: []
+  defp compaction(nil), do: [{Wardrik.Compaction, []}]
+
+  defp compaction(settings),
+    do: [{Wardrik.Compaction, for({key, value} <- settings, do: {compaction_key(key), value})}]
+
+  defp compaction_key("at"), do: :at
+  defp compaction_key("keep"), do: :keep
+  defp compaction_key("window"), do: :window
 
   defp gating(nil), do: WardrikPolicy.new!(default: [gated: :ask])
 
