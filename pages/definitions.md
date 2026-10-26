@@ -57,7 +57,9 @@ the same one.
 | --- | --- |
 | `model` | the model, as `provider:model`; required |
 | `instructions` | the system prompt, sent with every model call |
-| `tools` | what it may call: a capability by name, `server/*` for every tool of an MCP server, `workers/*` for the tools workers offer it, or `*` for all of them |
+| `tools` | what it may call: a capability by name, `files` for a tree of files of its own, `server/*` for every tool of an MCP server, `workers/*` for the tools workers offer it, or `*` for all of them |
+| `context` | files read into every turn, as `[MEMORY.md]`, or `{files: [...], max_bytes: 65536}`; see `Wardrik.Workspaces` |
+| `workspace` | trees of files shared with it, each under `shared/<name>/`, as `{shared: {team: acme}}` |
 | `policy` | a policy by name, or its rules written in place, a budget and judge included |
 | `timeout` | the seconds a turn may take |
 | `max_iterations` | the rounds of tool calls a turn may make; 25 unless set |
@@ -66,8 +68,8 @@ the same one.
 | `channels` | the chat apps it may answer in, by the names the Wardrik's `:channels` give them |
 | `display_name`, `description` | what a person calls it, and what it's for |
 
-A name it gives that Wardrik doesn't offer answers `invalid_request`. `workspace`, `context`,
-`retries`, `compaction` and `notify` are part of the definition, and answer
+A name it gives that Wardrik doesn't offer answers `invalid_request`. `retries`,
+`compaction` and `notify` are part of the definition, and answer
 `not_supported` until the packages behind them land. Nothing in a definition is ignored.
 
 Define it again to change it. A running agent takes the new definition from its next turn.

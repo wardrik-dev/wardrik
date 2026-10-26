@@ -46,7 +46,7 @@ defmodule Wardrik.Definition do
   alias WardrikCore.Principal
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
-  @unsupported ~w(workspace context retries compaction notify)
+  @unsupported ~w(retries compaction notify)
   @reserved ~w(self/* agents/*)
   @rounds 25
 
@@ -69,6 +69,8 @@ defmodule Wardrik.Definition do
          {:ok, model} <- model(definition),
          {:ok, rounds} <- rounds(definition["max_iterations"]),
          {:ok, capabilities} <- capabilities(wardrik, Map.get(definition, "tools", [])),
+         {:ok, workspace} <-
+           Wardrik.Workspaces.resolve(wardrik, id, definition, files?(wardrik, definition)),
          :ok <- channels(wardrik, Map.get(definition, "channels", [])),
          {:ok, policy} <- policy(wardrik, definition["policy"]),
          {:ok, boundary} <-
@@ -78,7 +80,8 @@ defmodule Wardrik.Definition do
          agent_id: id,
          model: model,
          instructions: definition["instructions"],
-         capabilities: capabilities,
+         capabilities: capabilities ++ workspace[:capabilities],
+         middleware: workspace[:middleware],
          principal: principal(id),
          policy: Enum.reject([boundary, policy], &is_nil/1),
          timeout: seconds(definition["timeout"]),
@@ -184,7 +187,7 @@ defmodule Wardrik.Definition do
   defp expand(wardrik, "*"),
     do:
       Map.keys(wardrik.capabilities) ++
-        Enum.map(started(wardrik), &"#{&1}/*") ++ ["servers/*", "workers/*"]
+        Enum.map(started(wardrik), &"#{&1}/*") ++ ["servers/*", "workers/*", "files"]
 
   defp expand(_wardrik, tool), do: [tool]
 
@@ -192,6 +195,7 @@ defmodule Wardrik.Definition do
     do: {:error, Error.new(:not_supported, "#{tool} isn't supported here yet.")}
 
   defp named(_wardrik, "servers/*"), do: :all_servers
+  defp named(_wardrik, "files"), do: :files
   defp named(wardrik, "workers/*"), do: {:capability, {Wardrik.Workers, wardrik: wardrik.name}}
 
   defp named(wardrik, tool) do
@@ -216,6 +220,9 @@ defmodule Wardrik.Definition do
         capabilities ++
           [{Wardrik.MCPTools, mcp: Wardrik.mcp(wardrik), names: servers, all: all}]
   end
+
+  defp files?(wardrik, definition),
+    do: "files" in expanded(wardrik, Map.get(definition, "tools", []))
 
   defp channels(wardrik, names) do
     case Enum.reject(names, &Map.has_key?(wardrik.channels, &1)) do
