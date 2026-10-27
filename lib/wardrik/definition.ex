@@ -83,9 +83,8 @@ defmodule Wardrik.Definition do
          model: model,
          instructions: definition["instructions"],
          capabilities: capabilities ++ workspace[:capabilities],
-         middleware:
-           workspace[:middleware] ++
-             compaction(definition["compaction"]) ++ retries(definition["retries"]),
+         middleware: workspace[:middleware] ++ compaction(definition["compaction"]),
+         retries: retries(definition["retries"]),
          principal: principal(id),
          policy: Enum.reject([boundary, policy], &is_nil/1),
          timeout: seconds(definition["timeout"]),
@@ -260,13 +259,11 @@ defmodule Wardrik.Definition do
   defp files?(wardrik, definition),
     do: "files" in expanded(wardrik, Map.get(definition, "tools", []))
 
-  defp retries(nil), do: [{Wardrik.Retries, []}]
-
-  defp retries(settings),
-    do: [{Wardrik.Retries, for({key, value} <- settings, do: retry_setting(key, value))}]
+  defp retries(nil), do: []
+  defp retries(settings), do: for({key, value} <- settings, do: retry_setting(key, value))
 
   defp retry_setting("attempts", attempts), do: {:attempts, attempts}
-  defp retry_setting("max_wait", seconds), do: {:max_wait, seconds}
+  defp retry_setting("max_wait", seconds), do: {:max_wait, :timer.seconds(seconds)}
   defp retry_setting("on_exhausted", "ask"), do: {:on_exhausted, :ask}
   defp retry_setting("on_exhausted", "fail"), do: {:on_exhausted, :fail}
 

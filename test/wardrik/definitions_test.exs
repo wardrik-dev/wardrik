@@ -440,6 +440,33 @@ defmodule Wardrik.DefinitionsTest do
 
       until("wardrik.run.completed")
     end
+
+    test "waits on a person once the tries are spent, and tries again once they approve", %{
+      scope: scope
+    } do
+      {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+      stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
+        case Agent.get_and_update(calls, &{&1, &1 + 1}) do
+          0 -> {:error, %ReqLLM.Error.API.Stream{reason: "Stream failed: :timeout"}}
+          _later -> {:ok, answer("Here.")}
+        end
+      end)
+
+      define(scope, "acme/patient", %{"model" => @model, "retries" => %{"attempts" => 0}})
+      run!(scope, "agent.ask", %{"agent" => "acme/patient", "content" => "Hi"})
+
+      assert %{
+               "data" => %{
+                 "interrupts" => [%{"id" => "model", "reason" => "model_approval"} = asked]
+               }
+             } =
+               until("wardrik.run.interrupted")
+
+      assert asked["message"] =~ "The model failed once"
+      run!(scope, "agent.approve", %{"agent" => "acme/patient", "interrupt" => "model"})
+      until("wardrik.run.completed")
+    end
   end
 
   describe "compaction" do

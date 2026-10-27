@@ -64,7 +64,7 @@ the same one.
 | `timeout` | the seconds a turn may take |
 | `max_iterations` | the rounds of tool calls a turn may make; 25 unless set |
 | `idle_timeout` | the seconds it may have nothing to do before it sleeps, or `infinity` |
-| `retries` | how a failed model call is tried again, as `attempts` (6), `max_wait` in seconds (60) and `on_exhausted`, `ask` a person or `fail`; see `Wardrik.Retries` |
+| `retries` | how a failed model call is tried again, as `attempts` (6), `max_wait` in seconds (60) and `on_exhausted`, `ask` a person or `fail`; see `WardrikCore.Retry` |
 | `compaction` | when it summarises its older history, as shares of its model's window: `{at: 0.6, keep: 0.25}` unless set, `window` where the catalog gives none, or `false` never to; see `Wardrik.Compaction` |
 | `triggers` | what asks it something on a clock, from a feed, or from a webhook; see [Trigger agents](triggers.md) |
 | `channels` | the chat apps it may answer in, by the names the Wardrik's `:channels` give them |
