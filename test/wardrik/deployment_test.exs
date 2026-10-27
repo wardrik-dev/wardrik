@@ -96,6 +96,112 @@ defmodule Wardrik.DeploymentTest do
                )
     end
 
+    test "makes a token no wider than its maker, nor laxer or longer lived", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      keeper = Wardrik.Statement.new(actions: ["deployment.tokens"], resources: ["deployment"])
+      acme = Wardrik.Statement.new(roles: [:reader, :messenger], resources: ["acme/agent/*"])
+      admin = Wardrik.as(wardrik, "acme/@maria", [keeper, acme])
+
+      assert {:ok, _issued} =
+               Wardrik.Tokens.create(admin,
+                 name: "ci",
+                 roles: ["reader"],
+                 resources: ["acme/agent/deploy"]
+               )
+
+      for {roles, resources} <- [
+            {["definer"], ["acme/agent/*"]},
+            {["reader"], ["acme/*"]},
+            {["reader"], ["globex/agent/*"]},
+            {["owner"], ["acme/agent/deploy"]}
+          ] do
+        assert {:error, %Wardrik.Error{type: :forbidden}} =
+                 Wardrik.Tokens.create(admin, name: "wide", roles: roles, resources: resources)
+      end
+
+      {:ok, %Wardrik.TokenIssued{secret: secret}} =
+        Wardrik.Tokens.create(scope,
+          name: "keeper",
+          roles: ["owner"],
+          resources: ["*"],
+          policy: "careful",
+          expires_in: 3600
+        )
+
+      {:ok, held} = Wardrik.authenticate(wardrik, secret)
+
+      assert {:error,
+              %Wardrik.Error{
+                type: :forbidden,
+                message: "A token made by one held to careful is held to careful too."
+              }} =
+               Wardrik.Tokens.create(held,
+                 name: "lax",
+                 roles: ["reader"],
+                 resources: ["*"],
+                 policy: "other"
+               )
+
+      assert {:error,
+              %Wardrik.Error{type: :invalid_request, message: "A token can't outlast" <> _rest}} =
+               Wardrik.Tokens.create(held, name: "long", roles: ["reader"], resources: ["*"])
+
+      assert {:ok, %Wardrik.TokenIssued{token: %Wardrik.Token{policy: "careful"}}} =
+               Wardrik.Tokens.create(held,
+                 name: "brief",
+                 roles: ["reader"],
+                 resources: ["*"],
+                 expires_in: 600
+               )
+    end
+
+    test "lists the tokens whose every resource the patterns cover", %{scope: scope} do
+      for {name, resources} <- [
+            ci: ["acme/agent/*"],
+            deploy: ["acme/agent/deploy"],
+            wide: ["*"],
+            mixed: ["acme/agent/*", "globex/agent/*"]
+          ] do
+        {:ok, _issued} =
+          Wardrik.Tokens.create(scope,
+            name: to_string(name),
+            roles: ["reader"],
+            resources: resources
+          )
+      end
+
+      assert {:ok, tokens} = Wardrik.Tokens.list(scope, resources: ["acme/agent/*"])
+      assert Enum.map(tokens, & &1.name) == ["ci", "deploy"]
+
+      assert {:ok, all} = Wardrik.Tokens.list(scope)
+      assert Enum.map(all, & &1.name) == ["ci", "deploy", "wide", "mixed"]
+    end
+
+    test "reads one pattern as within another only where every name it covers, the other does" do
+      for {inner, outer} <- [
+            {"acme/agent/*", "acme/*"},
+            {"acme/agent/deploy", "acme/agent/*"},
+            {"acme/a?", "acme/a*"},
+            {"agent.read", "agent.*"},
+            {"anything", "*"},
+            {"*", "*"}
+          ] do
+        assert Wardrik.Statements.within?(inner, outer), "#{inner} within #{outer}"
+      end
+
+      for {inner, outer} <- [
+            {"acme/*", "acme/agent/*"},
+            {"acme/a*", "acme/a?"},
+            {"*", "acme/*"},
+            {"acme/agent/*", "acme/agent/deploy"},
+            {"globex/agent/*", "acme/*"}
+          ] do
+        refute Wardrik.Statements.within?(inner, outer), "#{inner} not within #{outer}"
+      end
+    end
+
     test "holds every agent a token defines to the policy it names", %{
       wardrik: wardrik,
       scope: scope

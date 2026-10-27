@@ -59,8 +59,23 @@ this once:
 
 A token acts for whoever made it, works for 90 days unless `expires_in` says, and is kept as the
 SHA-256 of its secret. `policy:` names a policy every agent it defines is held to, ahead of the
-agent's own: a definition can narrow it, never widen it. `Wardrik.Tokens.list/1` lists them, and
-`Wardrik.Tokens.revoke/2` refuses one from then on.
+agent's own: a definition can narrow it, never widen it. `Wardrik.Tokens.list/2` lists them, or
+with `resources:` only those whose every resource the patterns cover, as `["acme/agent/*"]` lists
+acme's own. `Wardrik.Tokens.revoke/2` refuses one from then on.
+
+A token is never wider than whoever makes it. Each action its roles allow, on each resource it
+names, is one its maker may take there, so an org's admin, holding `deployment.tokens` and their
+org's statements, makes tokens over their org alone. A token made by one held to a policy is held
+to it too, and one made by a token expires no later than that token does:
+
+```elixir
+keeper = Wardrik.Statement.new(actions: ["deployment.tokens"], resources: ["deployment"])
+admin = MyApp.Wardrik.as("acme/@maria", [keeper, Wardrik.Statement.new(roles: [:reader, :messenger], resources: ["acme/agent/*"])])
+
+{:ok, _issued} = Wardrik.Tokens.create(admin, name: "ci", roles: ["messenger"], resources: ["acme/agent/deploy"])
+Wardrik.Tokens.create(admin, name: "wide", roles: ["definer"], resources: ["acme/agent/*"])
+#=> {:error, %Wardrik.Error{type: :forbidden, message: "A token can't do more than the one that makes it, on more of it."}}
+```
 
 ## Write your own authorizer
 

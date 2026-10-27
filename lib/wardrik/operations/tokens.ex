@@ -6,11 +6,13 @@ defmodule Wardrik.Operations.Tokens do
   as `*/agent/*`, reaches whichever do.
   """
 
+  alias Wardrik.Authorizer
   alias Wardrik.Error
   alias Wardrik.Operations.Changes
   alias Wardrik.Orgs
   alias Wardrik.Scope
   alias Wardrik.Statement
+  alias Wardrik.Statements
   alias WardrikCore.Principal
 
   @lifetime 90 * 24 * 60 * 60
@@ -19,12 +21,17 @@ defmodule Wardrik.Operations.Tokens do
   @doc "Makes a token that acts for whoever makes it, and answers it with its secret, this once."
   @spec create(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def create(%Scope{wardrik: wardrik, principal: principal} = scope, input) do
+    now = DateTime.utc_now()
+    expires = DateTime.add(now, Map.get(input, "expires_in", @lifetime))
+
     with {:ok, statement} <- statement(input),
+         :ok <- held(scope, statement),
+         :ok <- bounded(scope, input["policy"]),
+         :ok <- lasting(scope, expires),
          :ok <- known_orgs(wardrik, input["resources"]),
          :ok <- named_policy(wardrik, input["policy"] || scope.policy) do
       id = random(6)
       secret = "wrk_" <> id <> "_" <> random(32)
-      now = DateTime.utc_now()
 
       token = %{
         "id" => id,
@@ -32,8 +39,7 @@ defmodule Wardrik.Operations.Tokens do
         "principal" => %{"id" => principal.id},
         "statements" => [Statement.to_json(statement)],
         "policy" => input["policy"] || scope.policy,
-        "expires" =>
-          now |> DateTime.add(Map.get(input, "expires_in", @lifetime)) |> DateTime.to_iso8601(),
+        "expires" => DateTime.to_iso8601(expires),
         "created_at" => DateTime.to_iso8601(now)
       }
 
@@ -45,6 +51,44 @@ defmodule Wardrik.Operations.Tokens do
     end
   end
 
+  defp within?(_token, nil), do: true
+
+  defp within?(%{"statements" => statements}, patterns) do
+    resources = for %{"resources" => resources} <- statements, resource <- resources, do: resource
+
+    Enum.all?(resources, fn resource -> Enum.any?(patterns, &Statements.within?(resource, &1)) end)
+  end
+
+  defp held(scope, statement) do
+    if Authorizer.holds?(scope, statement),
+      do: :ok,
+      else:
+        {:error,
+         Error.new(:forbidden, "A token can't do more than the one that makes it, on more of it.")}
+  end
+
+  defp bounded(%Scope{policy: nil}, _policy), do: :ok
+  defp bounded(%Scope{policy: policy}, policy), do: :ok
+  defp bounded(%Scope{policy: _held}, nil), do: :ok
+
+  defp bounded(%Scope{policy: held}, _policy),
+    do:
+      {:error,
+       Error.new(:forbidden, "A token made by one held to #{held} is held to #{held} too.")}
+
+  defp lasting(%Scope{expires: nil}, _expires), do: :ok
+
+  defp lasting(%Scope{expires: limit}, expires) do
+    if DateTime.compare(expires, limit) == :gt,
+      do:
+        {:error,
+         Error.new(
+           :invalid_request,
+           "A token can't outlast the one that makes it, which expires at #{DateTime.to_iso8601(limit)}."
+         )},
+      else: :ok
+  end
+
   defp known_orgs(wardrik, resources) do
     resources
     |> Enum.map(&Orgs.org/1)
@@ -54,9 +98,9 @@ defmodule Wardrik.Operations.Tokens do
     |> Enum.find(:ok, &match?({:error, _error}, &1))
   end
 
-  @doc "Lists every token, oldest first, never a secret."
+  @doc "Lists every token, oldest first, never a secret, or those whose resources `resources` all cover."
   @spec list(Scope.t(), map()) :: {:ok, map()}
-  def list(%Scope{wardrik: wardrik}, _input) do
+  def list(%Scope{wardrik: wardrik}, input) do
     store = store(wardrik)
 
     tokens =
@@ -64,6 +108,7 @@ defmodule Wardrik.Operations.Tokens do
       |> WardrikStore.keys(@prefix)
       |> Enum.map(&WardrikStore.get(store, &1))
       |> Enum.sort_by(& &1["created_at"])
+      |> Enum.filter(&within?(&1, input["resources"]))
       |> Enum.map(&shown/1)
 
     {:ok, %{"tokens" => tokens}}
@@ -126,11 +171,14 @@ defmodule Wardrik.Operations.Tokens do
   end
 
   defp scoped(wardrik, token) do
+    {:ok, expires, _offset} = DateTime.from_iso8601(token["expires"])
+
     %Scope{
       wardrik: wardrik.name,
       principal: %Principal{id: token["principal"]["id"]},
       grants: Enum.map(token["statements"], &Statement.from_json/1),
-      policy: token["policy"]
+      policy: token["policy"],
+      expires: expires
     }
   end
 
