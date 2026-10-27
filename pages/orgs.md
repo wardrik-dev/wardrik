@@ -40,7 +40,7 @@ A server Wardrik starts with, under `:mcp`, serves every org unless its own `org
 whose agents reach it:
 
 ```elixir
-mcp: [stripe: [orgs: ["payments"], transport: {:streamable_http, url: "https://mcp.stripe.com"}]]
+mcp: [stripe: [orgs: ["payments"], transport: {:streamable_http, base_url: "https://mcp.stripe.com"}]]
 ```
 
 Wardrik asks for an org's settings each time one of its agents starts, wakes or is defined. Settings
