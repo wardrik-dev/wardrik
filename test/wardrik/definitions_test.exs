@@ -421,6 +421,27 @@ defmodule Wardrik.DefinitionsTest do
     end
   end
 
+  describe "retries" do
+    test "tries a model call that failed again, and says so in the log", %{scope: scope} do
+      {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+      stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
+        case Agent.get_and_update(calls, &{&1, &1 + 1}) do
+          0 -> {:error, %ReqLLM.Error.API.Stream{reason: "Stream failed: :timeout"}}
+          _later -> {:ok, answer("Here.")}
+        end
+      end)
+
+      define(scope, "acme/patient", %{"model" => @model, "retries" => %{"max_wait" => 0}})
+      run!(scope, "agent.ask", %{"agent" => "acme/patient", "content" => "Hi"})
+
+      assert %{"data" => %{"attempt" => 1, "attempts" => 6, "error" => %{"type" => "Stream"}}} =
+               until("wardrik.message.retrying")
+
+      until("wardrik.run.completed")
+    end
+  end
+
   describe "compaction" do
     test "summarises an agent's older history as a turn begins", %{scope: scope} do
       answers([answer("Noted."), answer("You sent a long note."), answer("Done.")])
