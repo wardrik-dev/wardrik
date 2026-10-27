@@ -56,6 +56,10 @@ defmodule Wardrik.PricesTest do
       Wardrik.Setup.price("x:y", input: 1.0, output: 1.0, per: :day)
     end
 
+    assert_raise ArgumentError, "x:y's markup is a number.", fn ->
+      Wardrik.Setup.price("x:y", input: 1.0, output: 1.0, markup: "lots")
+    end
+
     assert_raise ArgumentError, "x:y's price is another model's or its own.", fn ->
       Wardrik.Setup.price("x:y", priced_as: "zai:glm-5.1", input: 1.0)
     end

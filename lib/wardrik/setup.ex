@@ -80,8 +80,11 @@ defmodule Wardrik.Setup do
   @spec price(String.t(), keyword()) :: WardrikCore.Usage.price()
   def price(spec, price) do
     {markup, price} = Keyword.pop(price, :markup, 0)
-    for {kind, rate} <- priced(spec, price), do: {kind, rate * (1 + markup)}
+    for {kind, rate} <- priced(spec, price), do: {kind, rate * (1 + marked_up(spec, markup))}
   end
+
+  defp marked_up(_spec, markup) when is_number(markup), do: markup
+  defp marked_up(spec, _markup), do: raise(ArgumentError, "#{spec}'s markup is a number.")
 
   defp priced(spec, price) do
     case Keyword.split(price, [:priced_as]) do
