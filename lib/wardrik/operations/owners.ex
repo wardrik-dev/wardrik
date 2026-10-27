@@ -10,6 +10,15 @@ defmodule Wardrik.Operations.Owners do
   alias Wardrik.Scope
   alias WardrikCore.Principal
 
+  @app %{
+    "issuer" => :issuer,
+    "authorization_endpoint" => :authorization_endpoint,
+    "token_endpoint" => :token_endpoint,
+    "client_id" => :client_id,
+    "client_auth" => :client_auth
+  }
+  @client_auths %{"post" => :post, "basic" => :basic}
+
   @doc "Lists the accounts the owner is offered, and whether they hold each."
   @spec connections(Scope.t(), map()) :: {:ok, map()}
   def connections(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
@@ -253,12 +262,45 @@ defmodule Wardrik.Operations.Owners do
   defp reached(%Wardrik{oauth: nil}, _owner, _key, %{"auth" => %{"oauth" => _oauth}}),
     do: {:error, Error.new(:not_supported, "Signing in to a server needs Wardrik's oauth.")}
 
-  defp reached(wardrik, _owner, key, %{"auth" => %{"oauth" => oauth}, "url" => url}) do
-    opts = [resource: url, scopes: Map.get(oauth, "scopes", [])]
+  defp reached(wardrik, owner, key, %{"auth" => %{"oauth" => oauth}, "url" => url}) do
+    with {:ok, secret} <- client_secret(wardrik, owner, oauth["client_secret"]),
+         :ok <- added_provider(wardrik, key, app(url, oauth) ++ secret),
+         do: {:ok, [credential_name: key], "oauth"}
+  end
 
+  defp client_secret(_wardrik, _owner, nil), do: {:ok, []}
+
+  defp client_secret(%Wardrik{keys: []}, _owner, _secret),
+    do:
+      {:error,
+       Error.new(:not_supported, "An app's client secret needs Wardrik to keep credentials.")}
+
+  defp client_secret(wardrik, owner, %{"name" => name}) do
+    case WardrikVault.fetch(Wardrik.vault(wardrik), %Principal{id: owner}, name) do
+      {:ok, value} ->
+        {:ok, [client_secret: value]}
+
+      {:error, _reason} ->
+        {:error, Error.new(:invalid_request, "#{owner} holds no secret #{name}.")}
+    end
+  end
+
+  defp app(url, oauth) do
+    given =
+      oauth
+      |> Map.take(Map.keys(@app))
+      |> Enum.map(fn {field, value} -> app_option(field, value) end)
+
+    [resource: url, scopes: Map.get(oauth, "scopes", [])] ++ given
+  end
+
+  defp app_option("client_auth", how), do: {:client_auth, Map.fetch!(@client_auths, how)}
+  defp app_option(field, value), do: {Map.fetch!(@app, field), value}
+
+  defp added_provider(wardrik, key, opts) do
     case WardrikOAuth.add_provider(Wardrik.oauth(wardrik), key, opts) do
       :ok ->
-        {:ok, [credential_name: key], "oauth"}
+        :ok
 
       {:error, why} ->
         {:error, Error.new(:invalid_request, "The server can't be signed in to: #{why}")}

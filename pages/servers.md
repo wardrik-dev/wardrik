@@ -57,7 +57,15 @@ How the agents sign in to it:
 | --- | --- |
 | `%{none: %{}}` | it takes no credential |
 | `%{secret: %{name: "crm-key"}}` | a key the owner keeps in the vault, sent as `authorization: Bearer <key>`; `header` and `scheme` change that |
-| `%{oauth: %{scopes: [...]}}` | each person signs in as themselves, through the server's own authorization server; Wardrik registers itself there |
+| `%{oauth: %{scopes: [...]}}` | each person signs in as themselves, through the server's own authorization server; Wardrik becomes its client itself |
+| `%{oauth: %{issuer: ..., client_id: ..., client_secret: %{name: "CRM_APP"}}}` | the same, through an OAuth app the owner registered there, for a service Wardrik can't find or register with |
+
+An owner's own app names its authorization server by `issuer`, or by `authorization_endpoint` and
+`token_endpoint` where it publishes no metadata, and its `client_id`. Its client secret is a secret
+the owner keeps in the vault, by name; it's sealed apart from theirs as the server is added, so no
+agent can name it, and sent only to the token endpoint, in the form or, with `client_auth:
+"basic"`, as HTTP Basic. Each owner's server is a sign-in of its own, so two orgs' servers of one
+name each sign in with their own app.
 
 `only` and `except` narrow the tools it offers. `Wardrik.MCPServers.list/2` and
 `Wardrik.MCPServers.remove/3` list and remove an owner's servers, and removing one forgets the

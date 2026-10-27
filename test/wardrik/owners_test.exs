@@ -205,6 +205,56 @@ defmodule Wardrik.OwnersTest do
       refute "acme:crm" in WardrikOAuth.providers(Wardrik.oauth(wardrik))
     end
 
+    test "signs in with an owner's own OAuth app, its client secret read from their vault", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      hold(wardrik, "acme", "CRM_APP_SECRET", "app-secret")
+
+      server = %{
+        "owner" => "acme",
+        "name" => "crm",
+        "url" => "https://crm.test/mcp",
+        "auth" => %{
+          "oauth" => %{
+            "authorization_endpoint" => "https://crm-auth.test/authorize",
+            "token_endpoint" => "https://crm-auth.test/token",
+            "client_id" => "acme-app",
+            "client_secret" => %{"name" => "CRM_APP_SECRET"},
+            "client_auth" => "basic",
+            "scopes" => ["read"]
+          }
+        }
+      }
+
+      assert %{"connected" => false, "authorization" => %{"url" => url}} =
+               run!(scope, "mcp_servers.add", server)
+
+      assert "https://crm-auth.test/authorize?" <> query = url
+      assert %{"client_id" => "acme-app", "scope" => "read"} = URI.decode_query(query)
+    end
+
+    test "refuses an owner's OAuth app whose secret they don't hold, or that names no client", %{
+      scope: scope
+    } do
+      app = %{"issuer" => "https://auth.test", "client_id" => "acme-app"}
+      server = %{"owner" => "acme", "name" => "crm", "url" => "https://crm.test/mcp"}
+
+      missing = Map.put(app, "client_secret", %{"name" => "NOPE"})
+
+      assert {:error, %Wardrik.Error{message: "acme holds no secret NOPE."}} =
+               Wardrik.run(
+                 scope,
+                 "mcp_servers.add",
+                 Map.put(server, "auth", %{"oauth" => missing})
+               )
+
+      unnamed = Map.delete(missing, "client_id")
+
+      assert refused(scope, "mcp_servers.add", Map.put(server, "auth", %{"oauth" => unnamed})) ==
+               :invalid_request
+    end
+
     test "gives a person's agents their own servers first, then their org's", %{
       wardrik: wardrik,
       scope: scope
