@@ -22,7 +22,7 @@ defmodule Wardrik.Operations.Deployment do
   """
   @spec reload(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def reload(%Wardrik.Scope{wardrik: wardrik} = scope, _input) do
-    :ok = Wardrik.Declarations.reload(wardrik)
+    problems = Wardrik.Declarations.reload(wardrik)
 
     for id <- Definitions.ids(wardrik), Running.whereis(wardrik, id) != nil do
       with {:ok, definition} <- Definitions.fetch(wardrik, id),
@@ -35,7 +35,7 @@ defmodule Wardrik.Operations.Deployment do
 
     here = to_string(node())
     Changes.record_deployment(scope, "agents.reloaded", "deployment", %{"nodes" => [here]})
-    {:ok, %{"reloaded" => [here]}}
+    {:ok, %{"reloaded" => [here], "problems" => problems}}
   end
 
   @doc "Lists the deployment's nodes, each with how many agents run on it, and how many sleep."

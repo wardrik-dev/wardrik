@@ -8,7 +8,7 @@ defmodule Wardrik.Test.Files do
   @impl Wardrik.Declarations
   def reload(test) do
     send(test, :reloaded)
-    :ok
+    ["acme/broken: There's no tool nope here."]
   end
 end
 
@@ -65,7 +65,9 @@ defmodule Wardrik.DeclarationsTest do
   end
 
   test "reads its declarations again as the deployment reloads", %{scope: scope} do
-    run!(scope, "deployment.reload", %{})
+    assert %{"problems" => ["acme/broken: There's no tool nope here."]} =
+             run!(scope, "deployment.reload", %{})
+
     assert_received :reloaded
   end
 end
