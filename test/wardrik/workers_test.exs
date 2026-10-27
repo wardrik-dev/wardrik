@@ -172,6 +172,8 @@ defmodule Wardrik.WorkersTest do
     assert %{"agent" => %{"key" => "acme/triage", "org" => "acme"}, "idempotencyKey" => "call_1"} =
              meta
 
+    assert meta["run"] =~ ~r/^[0-9a-f]{32}$/
+
     assert %{"data" => %{"status" => "ok"}} = until("wardrik.tool_call.completed")
     until("wardrik.run.completed")
   end
@@ -189,7 +191,6 @@ defmodule Wardrik.WorkersTest do
 
     Process.unlink(refusing)
     Process.exit(refusing, :kill)
-    assert {:error, message} = tool.run.(%{}, context)
-    assert message =~ ~r/No worker offers lookup now|went away before it answered/
+    assert {:error, "No worker offers lookup now, so it didn't run."} = tool.run.(%{}, context)
   end
 end

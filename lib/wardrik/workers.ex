@@ -13,8 +13,8 @@ defmodule Wardrik.Workers do
   and answers it with `answer/2`. It's sent `{Wardrik.Workers, :cancel, call}` for a call Wardrik
   stopped waiting on. A tool is gated unless every worker offering it marks it read-only, and its
   answers are labelled `"outside"` unless Wardrik's `:trusted_workers` says otherwise. A call's
-  `meta` holds the `agent` it's for, the `principal` it acts for, and
-  an `idempotencyKey` that stays the same when the call is repeated.
+  `meta` holds the `agent` it's for, the `run` it's part of, the `principal` it acts for,
+  and an `idempotencyKey` that stays the same when the call is repeated.
   """
 
   @behaviour WardrikCore.Capability
@@ -188,6 +188,9 @@ defmodule Wardrik.Workers do
         Process.demonitor(ref, [:flush])
         answered(response, context)
 
+      {:DOWN, ^ref, :process, _worker, :noproc} ->
+        {:error, "No worker offers #{name} now, so it didn't run."}
+
       {:DOWN, ^ref, :process, _worker, _reason} ->
         {:error, "The worker running #{name} went away before it answered. It may have run."}
     after
@@ -200,8 +203,12 @@ defmodule Wardrik.Workers do
 
   defp meta(%Context{agent_id: id, step: {:tool_call, call}} = context) do
     %{"agent" => agent(id), "idempotencyKey" => call.id}
+    |> Map.merge(run(context.span))
     |> Map.merge(principal(Context.acting_for(context)))
   end
+
+  defp run(%WardrikCore.Span{trace: trace}), do: %{"run" => trace}
+  defp run(nil), do: %{}
 
   defp agent(id) do
     {:ok, %AgentID{owner: owner, name: name, conversation: conversation}} = AgentID.parse(id)
