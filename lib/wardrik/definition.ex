@@ -42,6 +42,7 @@ defmodule Wardrik.Definition do
 
   alias Wardrik.AgentID
   alias Wardrik.Error
+  alias Wardrik.Orgs
   alias Wardrik.Type
   alias WardrikCore.Principal
 
@@ -59,9 +60,20 @@ defmodule Wardrik.Definition do
     end
   end
 
-  @doc "Returns the options the agent `id` starts with in `wardrik`, as the JSON `definition` describes it."
+  @doc """
+  Returns the options the agent `id` starts with in `wardrik`, as the JSON `definition` describes
+  it, under its org's settings.
+  """
   @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
+    org = Orgs.org(id)
+
+    with {:ok, settings} <- Orgs.settings(wardrik, org),
+         {:ok, opts} <- resolved(Orgs.within(wardrik, settings), id, definition),
+         do: {:ok, Orgs.hold(opts, wardrik, org, settings)}
+  end
+
+  defp resolved(wardrik, id, definition) do
     definition = Map.merge(wardrik.defaults, definition)
 
     with :ok <- triggers(wardrik, definition),
@@ -140,17 +152,15 @@ defmodule Wardrik.Definition do
         do: tool
   end
 
-  @doc "Returns how long the agent may have nothing to do before it sleeps, in milliseconds."
-  @spec idle_timeout(Wardrik.t(), map()) :: pos_integer() | :infinity
-  def idle_timeout(wardrik, definition),
-    do:
-      seconds(
-        Map.get(
-          definition,
-          "idle_timeout",
-          Map.get(wardrik.defaults, "idle_timeout", wardrik.idle_timeout)
-        )
-      )
+  @doc "Returns how long the agent `id` may have nothing to do before it sleeps, in milliseconds."
+  @spec idle_timeout(Wardrik.t(), String.t(), map()) :: pos_integer() | :infinity
+  def idle_timeout(wardrik, id, definition) do
+    defaults = Orgs.defaults(wardrik, id)
+
+    seconds(
+      Map.get(definition, "idle_timeout", Map.get(defaults, "idle_timeout", wardrik.idle_timeout))
+    )
+  end
 
   defp triggers(wardrik, definition) do
     definition

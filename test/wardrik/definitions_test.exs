@@ -292,8 +292,8 @@ defmodule Wardrik.DefinitionsTest do
                Definition.resolve(wardrik, "acme/worker", %{"instructions" => "Work."})
 
       assert opts[:model] == @model
-      assert Definition.idle_timeout(wardrik, %{}) == 60_000
-      assert Definition.idle_timeout(wardrik, %{"idle_timeout" => 5}) == 5_000
+      assert Definition.idle_timeout(wardrik, "acme/worker", %{}) == 60_000
+      assert Definition.idle_timeout(wardrik, "acme/worker", %{"idle_timeout" => 5}) == 5_000
     end
   end
 

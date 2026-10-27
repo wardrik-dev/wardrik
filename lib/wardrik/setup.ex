@@ -18,6 +18,7 @@ defmodule Wardrik.Setup do
         :declarations,
         :workspace,
         :notify,
+        :orgs,
         defaults: %{},
         listeners: [],
         channels: [],
@@ -48,6 +49,7 @@ defmodule Wardrik.Setup do
       channels: Map.new(opts[:channels], fn {name, entry} -> {to_string(name), entry} end),
       notify: Wardrik.Notify.settings(opts[:notify]),
       declarations: opts[:declarations],
+      orgs: opts[:orgs],
       workspace: Wardrik.Workspaces.settings(opts[:workspace]),
       defaults: Wardrik.Type.json(opts[:defaults]),
       triggers: Keyword.validate!(opts[:triggers], [:req_options, :reconcile]),
@@ -84,12 +86,15 @@ defmodule Wardrik.Setup do
     |> governed(policies)
   end
 
-  defp policies(nil), do: []
-  defp policies([]), do: []
-  defp policies(%WardrikPolicy{} = policy), do: [policy]
+  @doc "Returns the policies an agent's `:policy` names: none, one, or a list of them."
+  @spec policies(WardrikPolicy.t() | [WardrikPolicy.t()] | keyword() | map() | nil) ::
+          [WardrikPolicy.t()]
+  def policies(nil), do: []
+  def policies([]), do: []
+  def policies(%WardrikPolicy{} = policy), do: [policy]
 
-  defp policies([%WardrikPolicy{} | _rest] = policies), do: policies
-  defp policies(rules), do: [policy(rules)]
+  def policies([%WardrikPolicy{} | _rest] = policies), do: policies
+  def policies(rules), do: [policy(rules)]
 
   @doc "Builds a policy from its rules, or returns the one given."
   @spec policy(WardrikPolicy.t() | keyword() | map() | nil) :: WardrikPolicy.t() | nil

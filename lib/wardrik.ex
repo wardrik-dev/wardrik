@@ -37,6 +37,7 @@ defmodule Wardrik do
     :channels,
     :notify,
     :declarations,
+    :orgs,
     :workspace,
     :defaults,
     :triggers,
@@ -65,6 +66,7 @@ defmodule Wardrik do
           channels: %{String.t() => {module(), keyword()}},
           notify: %{targets: %{String.t() => {module(), keyword()}}, retries: keyword()},
           declarations: {module(), term()} | nil,
+          orgs: {module(), term()} | nil,
           workspace: %{String.t() => %{read: [String.t()], write: [String.t()]}},
           defaults: map(),
           triggers: keyword(),
@@ -110,7 +112,8 @@ defmodule Wardrik do
   connects to each. `:channels` are the chat apps people reach agents through, by name, each a
   `Wardrik.Channel` as `{module, opts}`. `:notify` names where agents' notices may go, as
   `Wardrik.Notify` describes. `:declarations` are agents something outside the API defines, as
-  `Wardrik.Declarations` describes. `:workspace` shares trees of files beyond their owners, as
+  `Wardrik.Declarations` describes. `:orgs` gives each org settings of its own, as `Wardrik.Orgs`
+  describes. `:workspace` shares trees of files beyond their owners, as
   `Wardrik.Workspaces` describes. `:triggers` takes `WardrikTriggers`' `:req_options`, for reading
   feeds, and `:reconcile`.
 
@@ -232,7 +235,7 @@ defmodule Wardrik do
   @doc """
   Starts the agent `opts` describe, as `WardrikCore.start_agent/2` takes them, writing its events
   to the Wardrik `instance`'s. `:policy` is the agent's own `WardrikPolicy`, or the rules to build it
-  from. The agent is held to it and to the Wardrik's, and the strictest decides.
+  from. The agent is held to it, to its org's, and to the Wardrik's, and the strictest decides.
 
       Wardrik.start_agent(MyApp.Wardrik,
         agent_id: "acme/books",
@@ -243,7 +246,25 @@ defmodule Wardrik do
   @spec start_agent(atom() | t(), keyword()) :: {:ok, pid()} | {:error, term()}
   def start_agent(instance, opts) do
     wardrik = Instance.fetch!(instance)
-    WardrikCore.start_agent(agents(wardrik), Setup.agent(wardrik, opts))
+    org = Wardrik.Orgs.org(Keyword.fetch!(opts, :agent_id))
+
+    with {:ok, settings} <- Wardrik.Orgs.settings(wardrik, org) do
+      held = Wardrik.Orgs.hold(opts, wardrik, org, settings)
+      WardrikCore.start_agent(agents(wardrik), Setup.agent(wardrik, held))
+    end
+  end
+
+  @doc """
+  Brings the awake agents of the org `:org` to its settings as `:orgs` gives them now, and returns
+  what it couldn't, a line each. Those asleep take them as they wake.
+
+      Wardrik.refresh(MyApp.Wardrik, org: "acme")
+      #=> []
+  """
+  @spec refresh(atom() | t(), keyword()) :: [String.t()]
+  def refresh(instance, opts) do
+    opts = Keyword.validate!(opts, [:org])
+    Wardrik.Orgs.refresh(Instance.fetch!(instance), Keyword.fetch!(opts, :org))
   end
 
   @doc """

@@ -29,7 +29,7 @@ Notice the rules live outside the prompt. Nothing the model reads can widen them
 
 Every agent is held to the deployment's policy and its own, and the strictest decides: deny, then
 ask, then allow. An agent's own policy can add caution but never remove it, so the agent above can't
-allow `shell/*`.
+allow `shell/*`. An org's policy sits between them; see [Orgs](orgs.md).
 
 ## Budgets
 

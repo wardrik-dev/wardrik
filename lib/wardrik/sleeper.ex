@@ -53,7 +53,7 @@ defmodule Wardrik.Sleeper do
 
   defp arm(%{wardrik: wardrik} = state, id) do
     with {:ok, definition} <- Running.definition(wardrik, id),
-         ms when is_integer(ms) <- Definition.idle_timeout(wardrik, definition) do
+         ms when is_integer(ms) <- Definition.idle_timeout(wardrik, id, definition) do
       ref = make_ref()
       Process.send_after(self(), {:sleep, id, ref}, ms)
       %{state | timers: Map.put(state.timers, id, ref)}

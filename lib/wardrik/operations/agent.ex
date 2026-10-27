@@ -48,7 +48,8 @@ defmodule Wardrik.Operations.Agent do
   @spec decide(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def decide(scope, %{"agent" => id, "decisions" => decisions}) do
     with :ok <- Snapshot.known(scope.wardrik, id),
-         :ok <- waiting_on(scope, id, decisions),
+         {:ok, waiting} <- waiting_on(scope, id, decisions),
+         :ok <- approvable(scope, id, waiting, decisions),
          {:ok, pid} <- Running.awake(scope.wardrik, id),
          :ok <- resume(pid, decisions, scope) do
       {:ok, %{"decisions" => Enum.map(decisions, &decided/1)}}
@@ -157,14 +158,40 @@ defmodule Wardrik.Operations.Agent do
       |> Wardrik.events()
       |> WardrikEvents.activity(id)
       |> Snapshot.interrupts()
-      |> MapSet.new(& &1["id"])
+      |> Map.new(&{&1["id"], &1})
 
-    case Enum.reject(decisions, &MapSet.member?(waiting, &1["id"])) do
+    case Enum.reject(decisions, &Map.has_key?(waiting, &1["id"])) do
       [] ->
-        :ok
+        {:ok, waiting}
 
       [%{"id" => call} | _rest] ->
         {:error, Error.new(:conflict, "#{id} doesn't wait on #{call}.")}
+    end
+  end
+
+  defp approvable(scope, id, waiting, decisions) do
+    past_ceiling? =
+      Enum.any?(decisions, fn decision ->
+        decision["decision"] == "approve" and
+          waiting[decision["id"]]["reason"] == "ceiling_approval"
+      end)
+
+    if past_ceiling?, do: ceiling_approver(scope, Wardrik.Orgs.org(id)), else: :ok
+  end
+
+  defp ceiling_approver(scope, org) do
+    resource = Wardrik.Resource.owned(org, "ceiling", nil)
+
+    case Wardrik.Authorizer.authorize(scope, "ceiling.approve", resource) do
+      :ok ->
+        :ok
+
+      {:error, _refused} ->
+        {:error,
+         Error.new(
+           :forbidden,
+           "Approving past #{org}'s ceiling needs ceiling.approve on #{resource}."
+         )}
     end
   end
 
