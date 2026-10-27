@@ -33,12 +33,16 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc "Reads the agent's definition, and the tools it names that offer nothing yet."
+  @doc "Reads the agent's definition, the tools it names that offer nothing yet, and when each trigger runs next."
   @spec definition(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def definition(%Scope{wardrik: wardrik}, %{"agent" => id}) do
     with {:ok, definition} <- Running.definition(wardrik, id) do
       {:ok,
-       %{"definition" => definition, "missing" => Definition.missing(wardrik, id, definition)}}
+       %{
+         "definition" => definition,
+         "missing" => Definition.missing(wardrik, id, definition),
+         "next_runs" => Snapshot.next_runs(wardrik, id)
+       }}
     end
   end
 

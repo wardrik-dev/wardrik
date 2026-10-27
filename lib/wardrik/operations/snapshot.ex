@@ -51,8 +51,30 @@ defmodule Wardrik.Operations.Snapshot do
       "name" => name(id),
       "status" => state(wardrik, id, activity),
       "node" => placed(wardrik, id),
-      "pending" => activity["pending"]
+      "pending" => activity["pending"],
+      "next_run" => next_run(wardrik, id),
+      "spent_today" => Wardrik.Spending.today(wardrik, id)
     }
+  end
+
+  @doc "Returns when each of the agent `id`'s triggers runs next, by name, `nil` for a webhook's."
+  @spec next_runs(Wardrik.t(), String.t()) :: %{String.t() => String.t() | nil}
+  def next_runs(wardrik, id) do
+    for {trigger, next_at} <- WardrikTriggers.list(Wardrik.triggers(wardrik), id),
+        into: %{},
+        do: {trigger.name, next_at && DateTime.to_iso8601(next_at)}
+  end
+
+  @doc "Returns when the next of the agent `id`'s triggers on a clock runs, or `nil`."
+  @spec next_run(Wardrik.t(), String.t()) :: String.t() | nil
+  def next_run(wardrik, id) do
+    wardrik
+    |> Wardrik.triggers()
+    |> WardrikTriggers.list(id)
+    |> Enum.map(fn {_trigger, next_at} -> next_at end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.min(DateTime, fn -> nil end)
+    |> then(&(&1 && DateTime.to_iso8601(&1)))
   end
 
   @doc "Returns the node the agent `id` runs on, or `nil` while it sleeps."

@@ -24,6 +24,8 @@ defmodule Wardrik.Operations.Agent do
          "status" => Snapshot.state(scope.wardrik, id, activity),
          "node" => Snapshot.placed(scope.wardrik, id),
          "pending" => activity["pending"],
+         "next_run" => Snapshot.next_run(scope.wardrik, id),
+         "spent_today" => Wardrik.Spending.today(scope.wardrik, id),
          "activity" => activity,
          "interrupts" => Snapshot.interrupts(activity),
          "cursor" => WardrikEvents.head(events, [id])

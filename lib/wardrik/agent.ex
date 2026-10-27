@@ -9,8 +9,8 @@ defmodule Wardrik.Agent do
       #=> {:ok, %Wardrik.Agent{id: "acme/triage", status: :running, node: "wardrik@box1", pending: 0, ...}}
 
   An agent is its `id` and `name`, its `status`, `:idle`, `:running`, `:parked` or `:asleep`, the
-  messages `pending` behind what it does, its `activity`, the `interrupts` it waits on a person
-  for, and the `cursor` where its log stands. A list of agents leaves out what it doesn't read.
+  messages `pending` behind what it does, when its `next_run` is, what it has `spent_today`, its
+  `activity`, the `interrupts` it waits on a person for, and the `cursor` where its log stands. A list of agents leaves out what it doesn't read.
   """
 
   use Wardrik.Type,
@@ -21,6 +21,8 @@ defmodule Wardrik.Agent do
       status: {"status", [:idle, :running, :parked, :asleep]},
       node: "node",
       pending: "pending",
+      next_run: {"next_run", :datetime},
+      spent_today: "spent_today",
       activity: {"activity", Wardrik.Activity},
       interrupts: {"interrupts", [Wardrik.Interrupt]},
       cursor: "cursor"
@@ -71,6 +73,8 @@ defmodule Wardrik.Agent do
         "agent" => %{"id" => id, "name" => name},
         "status" => summary["status"],
         "node" => summary["node"],
-        "pending" => summary["pending"]
+        "pending" => summary["pending"],
+        "next_run" => summary["next_run"],
+        "spent_today" => summary["spent_today"]
       })
 end

@@ -67,8 +67,8 @@ defmodule Wardrik.Setup do
 
   @doc """
   Returns the options `WardrikCore.start_agent/2` takes for the agent `opts` describe: its events
-  written to `wardrik`'s, its credentials from `wardrik`'s vault, and wrapped in `wardrik`'s
-  middleware and policies, its own `:policy` among them.
+  written to `wardrik`'s, its credentials from `wardrik`'s vault, its spending counted, and wrapped
+  in `wardrik`'s middleware and policies, its own `:policy` among them.
   """
   @spec agent(Wardrik.t(), keyword()) :: keyword()
   def agent(%Wardrik{} = wardrik, opts) do
@@ -78,7 +78,7 @@ defmodule Wardrik.Setup do
     opts
     |> Keyword.put(:events, {WardrikEvents, Wardrik.events(wardrik)})
     |> credentials(wardrik)
-    |> wrapped(wardrik.middleware)
+    |> wrapped([{Wardrik.Spending, wardrik.name} | wardrik.middleware])
     |> governed(policies)
   end
 
@@ -116,8 +116,6 @@ defmodule Wardrik.Setup do
 
   defp credentials(opts, wardrik),
     do: Keyword.put_new(opts, :credentials, {WardrikVault, Wardrik.vault(wardrik)})
-
-  defp wrapped(opts, []), do: opts
 
   defp wrapped(opts, middleware),
     do: Keyword.update(opts, :middleware, middleware, &(middleware ++ &1))
