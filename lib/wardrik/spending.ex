@@ -2,7 +2,8 @@ defmodule Wardrik.Spending do
   @moduledoc """
   Spending is what each agent's model calls and tools spent today, by the UTC day: the tokens they
   took, and the dollars where they had a price. Every agent a Wardrik starts counts it, as
-  middleware around each model call and tool call, and a list of agents shows it.
+  middleware around each model call and tool call, and a list of agents shows it. A subagent's
+  calls count in the tool call that ran it.
   """
 
   @behaviour WardrikCore.Middleware
@@ -10,6 +11,9 @@ defmodule Wardrik.Spending do
   alias WardrikCore.Context
 
   @impl WardrikCore.Middleware
+  def call(%Context{subagent: name} = context, next, _instance) when is_binary(name),
+    do: next.(context)
+
   def call(%Context{step: :generate} = context, next, instance),
     do: counted(context, next, instance)
 

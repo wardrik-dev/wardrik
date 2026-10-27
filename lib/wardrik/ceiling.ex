@@ -17,7 +17,8 @@ defmodule Wardrik.Ceiling do
   the budget's `grant` more to every agent of the org for that period. `:deny` refuses the call.
   `:continue` lets it run, so work always carries on, and emits `[:wardrik, :ceiling, :reached]`
   as the limit is reached, as every ceiling does. A ceiling in dollars refuses a model with no
-  price, as a budget does, unless it continues.
+  price, as a budget does, unless it continues. A subagent's model calls are held to it too, and
+  count in the tool call that ran it.
   """
 
   @behaviour WardrikCore.Middleware
@@ -153,6 +154,9 @@ defmodule Wardrik.Ceiling do
       _exhausted -> Budget.grant(ceiling.budget, spent)
     end
   end
+
+  defp counted(%Context{subagent: name} = context, next, _held) when is_binary(name),
+    do: next.(context)
 
   defp counted(context, next, held) do
     case next.(context) do

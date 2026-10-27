@@ -16,7 +16,7 @@ defmodule Wardrik.SpendingTest do
       Wardrik.new(
         name: :"wardrik #{context.test}",
         store: store,
-        capabilities: [priced: Wardrik.Test.Priced]
+        capabilities: [priced: Wardrik.Test.Priced, delegating: Wardrik.Test.Delegating]
       )
 
     start_supervised!({WardrikStore, store})
@@ -58,6 +58,27 @@ defmodule Wardrik.SpendingTest do
 
     assert spent == %{"tokens" => 180, "usd" => 0.01}
     assert %{"spent_today" => ^spent} = run!(scope, "agent.read", %{"agent" => "acme/scout"})
+  end
+
+  test "counts what a subagent spent once, as the call that ran it", %{scope: scope} do
+    answers([
+      used(calling([call("call_1", "delegate", %{})]), 100, 20),
+      used(answer("Done it."), 40, 8),
+      used(answer("Done."), 50, 10)
+    ])
+
+    run!(scope, "agent.define", %{
+      "agent" => "acme/scout",
+      "model" => @model,
+      "tools" => ["delegating"]
+    })
+
+    run!(scope, "agent.ask", %{"agent" => "acme/scout", "content" => "Delegate"})
+    until("wardrik.subagent.completed")
+    until("wardrik.run.completed")
+
+    assert %{"spent_today" => %{"tokens" => 228}} =
+             run!(scope, "agent.read", %{"agent" => "acme/scout"})
   end
 
   test "says when each trigger runs next, and the soonest", %{scope: scope} do
