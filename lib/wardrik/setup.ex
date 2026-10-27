@@ -168,7 +168,8 @@ defmodule Wardrik.Setup do
   defp oauth(_oauth, []),
     do: raise(ArgumentError, "Give Wardrik :keys to seal what people sign in with.")
 
-  defp oauth(oauth, _keys), do: Keyword.validate!(oauth, [:page, :providers, req_options: []])
+  defp oauth(oauth, _keys),
+    do: Keyword.validate!(oauth, [:page, :providers, :client_name, req_options: []])
 
   defp credentials(opts, %Wardrik{keys: []}), do: opts
 

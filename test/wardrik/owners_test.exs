@@ -19,6 +19,7 @@ defmodule Wardrik.OwnersTest do
         egress: &Wardrik.Egress.any/1,
         oauth: [
           page: "https://agents.test/oauth",
+          client_name: "Acme Agents",
           req_options: [plug: {Req.Test, __MODULE__}],
           providers: [
             mail: [
@@ -58,6 +59,13 @@ defmodule Wardrik.OwnersTest do
   defp types(scope) do
     %{"events" => changes} = run!(scope, "audit.list", %{})
     Enum.map(changes, & &1["type"])
+  end
+
+  test "names the client a service shows people signing in as the Wardrik's oauth says", %{
+    wardrik: wardrik
+  } do
+    {WardrikOAuth.Plug, oauth} = Wardrik.sign_in_pages(wardrik)
+    assert %{"client_name" => "Acme Agents"} = WardrikOAuth.client_document(oauth)
   end
 
   describe "connections" do

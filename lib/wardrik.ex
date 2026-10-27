@@ -107,8 +107,9 @@ defmodule Wardrik do
   `WardrikPolicy` every agent is held to, or the rules to build it from.
 
   Given `:keys`, it keeps credentials sealed with them, and gives them to every agent's tools. Given
-  `:oauth` too, as `WardrikOAuth` takes its `:page`, `:providers` and `:req_options`, people sign in
-  to give agents their accounts, and the calls waiting on a sign-in carry on once it's done.
+  `:oauth` too, as `WardrikOAuth` takes its `:page`, `:providers`, `:client_name` and
+  `:req_options`, people sign in to give agents their accounts, and the calls waiting on a sign-in
+  carry on once it's done.
 
   Given `:mcp`, the MCP servers its agents may call, as `WardrikMCP` takes its `:servers`, it
   connects to each; a server's own `:orgs` lists the orgs whose agents reach it, every org's
