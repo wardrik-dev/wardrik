@@ -181,6 +181,9 @@ defmodule Wardrik.OrgsTest do
       assert %{"data" => %{"interrupts" => [%{"id" => "model", "reason" => "ceiling_approval"}]}} =
                until("wardrik.run.interrupted")
 
+      assert {:ok, [%Wardrik.Interrupt{reason: :ceiling_approval, agent_id: "acme/second"}]} =
+               Wardrik.Interrupts.list(scope)
+
       approval = %{"agent" => "acme/second", "interrupt" => "model"}
       assert refused(approver, "agent.approve", approval) == :forbidden
 

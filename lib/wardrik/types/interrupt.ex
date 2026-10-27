@@ -1,14 +1,16 @@
 defmodule Wardrik.Interrupt do
   @moduledoc """
   A call an agent waits on a person for, by its `id`, and why: `:tool_approval`, `:model_approval`,
-  `:authorization` or `:in_doubt`. `agent_id` names the agent, where a list of many gives it.
+  `:ceiling_approval`, `:authorization` or `:in_doubt`. `agent_id` names the agent, where a list of many gives it.
   """
 
   use Wardrik.Type,
     schema: ["defs", "$defs", "interrupt"],
     fields: [
       id: "id",
-      reason: {"reason", [:tool_approval, :model_approval, :authorization, :in_doubt]},
+      reason:
+        {"reason",
+         [:tool_approval, :model_approval, :ceiling_approval, :authorization, :in_doubt]},
       message: "message",
       name: "name",
       tool_call_id: "tool_call_id",
