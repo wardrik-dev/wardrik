@@ -53,11 +53,12 @@ makes does as `on_exhausted` says:
 - `:continue` lets it run, so work always carries on.
 
 Each ceiling's limit, as it's reached, is a `wardrik.ceiling.reached` event in the agent's log. Read
-what an org has spent against each:
+what an org has spent against each with `ceilings.list`, which needs `ceiling.read` on
+`acme/ceiling`, as a reader has, from any surface, as `GET /v1/ceilings?owner=acme` over HTTP:
 
 ```elixir
-Wardrik.Orgs.spent(MyApp.Wardrik, "acme")
-#=> {:ok, %{"plan" => %{limit: %{usd: 20.0, tokens: nil}, spent: %{usd: 12.4, tokens: 81_200}, ...}}}
+Wardrik.Ceilings.list(scope, owner: "acme")
+#=> {:ok, [%Wardrik.Spend{ceiling: "plan", per: :month, limit: %Wardrik.Amount{usd: 20.0}, ...}]}
 ```
 
 A ceiling in dollars refuses a model with no price, unless it continues.

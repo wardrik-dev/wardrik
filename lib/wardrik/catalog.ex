@@ -68,6 +68,7 @@ defmodule Wardrik.Catalog do
         "connections.connect" => &Owners.connect/2,
         "connections.disconnect" => &Owners.disconnect/2,
         "secrets.list" => &Owners.secrets/2,
+        "ceilings.list" => &Owners.ceilings/2,
         "secrets.put" => &Owners.put_secret/2,
         "secrets.delete" => &Owners.delete_secret/2,
         "mcp_servers.list" => &Owners.servers/2,

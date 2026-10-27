@@ -84,6 +84,7 @@ defmodule Wardrik.Ceiling do
       spent: Map.take(spent, [:usd, :tokens]),
       granted: spent.granted,
       on_exhausted: ceiling.on_exhausted,
+      per: budget.per,
       starts_over: starts_over(period)
     }
   end

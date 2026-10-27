@@ -22,6 +22,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Page
   alias Wardrik.Runs
   alias Wardrik.Secret
+  alias Wardrik.Spend
   alias Wardrik.Timeline
   alias Wardrik.Token
   alias Wardrik.TokenIssued
@@ -57,7 +58,8 @@ defmodule Wardrik.Operations.Types do
     "tokens.list" => {"tokens", Token, :from_json},
     "connections.list" => {"connections", Connection, :from_json},
     "mcp_servers.list" => {"servers", MCPServer, :from_json},
-    "secrets.list" => {"secrets", Secret, :from_json}
+    "secrets.list" => {"secrets", Secret, :from_json},
+    "ceilings.list" => {"ceilings", Spend, :from_json}
   }
 
   @listed Map.keys(@lists)

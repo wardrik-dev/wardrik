@@ -47,6 +47,7 @@ defmodule Wardrik.Type do
   @doc "Turns keyword lists, maps, atoms and Wardrik's structs into the protocol's JSON."
   @spec json(term()) :: term()
   def json(%DateTime{} = value), do: DateTime.to_iso8601(value)
+  def json(%Date{} = value), do: Date.to_iso8601(value)
 
   def json(%module{} = value) do
     if function_exported?(module, :to_json, 1), do: module.to_json(value), else: value
@@ -86,6 +87,7 @@ defmodule Wardrik.Type do
   defp cast(nil, _cast), do: nil
   defp cast(values, [module]) when is_list(values), do: Enum.map(values, &module.from_json/1)
   defp cast(value, :datetime), do: datetime(value)
+  defp cast(value, :date), do: Date.from_iso8601!(value)
   defp cast("infinity", :infinity), do: :infinity
   defp cast(value, :infinity), do: value
   defp cast(values, :reasons), do: Enum.map(values, &{&1["id"], &1["why"]})

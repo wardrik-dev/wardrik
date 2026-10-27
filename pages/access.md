@@ -23,7 +23,7 @@ account. The deployment's own operations, its tokens, nodes, audit and reloading
 
 | Role | Actions |
 | --- | --- |
-| `:reader` | `agent.read`, `agent.events`, `connection.read`, `mcp_server.read` |
+| `:reader` | `agent.read`, `agent.events`, `connection.read`, `mcp_server.read`, `ceiling.read` |
 | `:messenger` | `agent.ask`, `agent.cancel`, `agent.clear` |
 | `:approver` | `agent.decide` |
 | `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `connection.connect`, `mcp_server.add` |

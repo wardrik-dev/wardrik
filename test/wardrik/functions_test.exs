@@ -78,7 +78,9 @@ defmodule Wardrik.FunctionsTest do
       Wardrik.Token,
       Wardrik.TokenIssued,
       Wardrik.Nodes,
-      Wardrik.Node
+      Wardrik.Node,
+      Wardrik.Spend,
+      Wardrik.Amount
     ]
 
     for type <- types do
@@ -97,6 +99,7 @@ defmodule Wardrik.FunctionsTest do
   end
 
   defp wardriks?(%DateTime{}), do: true
+  defp wardriks?(%Date{}), do: true
 
   defp wardriks?(%module{} = value),
     do:

@@ -194,6 +194,46 @@ defmodule Wardrik.OrgsTest do
                Wardrik.Orgs.spent(wardrik, "acme")
     end
 
+    test "says what the org's agents have spent against each, to those who may read it", %{
+      wardrik: wardrik,
+      scope: scope,
+      orgs: orgs,
+      approver: approver
+    } do
+      ceilings = %{"cap" => [tokens: 100, per: :week], "plan" => [usd: 20.0, per: :total]}
+      set(orgs, "acme", {:ok, %OrgSettings{ceilings: ceilings}})
+      answers([used(answer("Done."), 30, 10)])
+      {:ok, _agent} = define(scope, "acme/first")
+      ask(scope, "acme/first")
+      until("wardrik.run.completed")
+
+      assert %{"ceilings" => [cap, plan]} = run!(scope, "ceilings.list", %{"owner" => "acme"})
+
+      assert %{
+               "ceiling" => "cap",
+               "per" => "week",
+               "on_exhausted" => "ask",
+               "limit" => %{"tokens" => 100},
+               "spent" => %{"tokens" => 40},
+               "granted" => %{},
+               "starts_over" => _monday
+             } = cap
+
+      refute Map.has_key?(plan, "starts_over")
+
+      reader =
+        Wardrik.as(wardrik, "acme/@ana", [Statement.new(roles: [:reader], resources: ["acme/*"])])
+
+      assert {:ok,
+              [%Wardrik.Spend{ceiling: "cap", per: :week, starts_over: %Date{}} = spend, _plan]} =
+               Wardrik.Ceilings.list(reader, owner: "acme")
+
+      assert spend.limit == %Wardrik.Amount{tokens: 100}
+      assert refused(approver, "ceilings.list", %{"owner" => "acme"}) == :not_found
+      assert refused(scope, "ceilings.list", %{"owner" => "acme/@maria"}) == :invalid_request
+      assert run!(scope, "ceilings.list", %{"owner" => "globex"}) == %{"ceilings" => []}
+    end
+
     test "refuses past it where it denies", %{scope: scope, orgs: orgs} do
       set(
         orgs,

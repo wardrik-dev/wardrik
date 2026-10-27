@@ -62,6 +62,41 @@ defmodule Wardrik.Operations.Owners do
     end
   end
 
+  @doc "Lists the org's ceilings, each with what its agents have spent against it in its period now."
+  @spec ceilings(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
+  def ceilings(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
+    with :ok <- an_org(owner),
+         {:ok, spent} <- Wardrik.Orgs.spent(wardrik, owner) do
+      ceilings = for {name, spend} <- Enum.sort(spent), do: ceiling(name, spend)
+      {:ok, %{"ceilings" => ceilings}}
+    end
+  end
+
+  defp an_org(owner) do
+    case String.split(owner, "/") do
+      [_org] ->
+        :ok
+
+      [org | _person] ->
+        {:error, Error.new(:invalid_request, "Ceilings are an org's: ask for #{org}'s.")}
+    end
+  end
+
+  defp ceiling(name, spend) do
+    Wardrik.Type.json(%{
+      ceiling: name,
+      per: spend.per,
+      on_exhausted: spend.on_exhausted,
+      limit: amount(spend.limit),
+      spent: amount(spend.spent),
+      granted: amount(spend.granted),
+      starts_over: spend.starts_over
+    })
+    |> Map.reject(fn {_key, value} -> value == nil end)
+  end
+
+  defp amount(amount), do: Map.reject(amount, fn {_kind, value} -> value == nil end)
+
   @doc "Seals a secret as the owner's, in place of any of the same name."
   @spec put_secret(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def put_secret(%Scope{wardrik: wardrik} = scope, %{
