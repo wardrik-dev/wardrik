@@ -32,7 +32,8 @@ defmodule Wardrik.Setup do
         middleware: [],
         idle_timeout: 900,
         trusted_workers: false,
-        egress: &Wardrik.Egress.public/1
+        egress: &Wardrik.Egress.public/1,
+        prices: %{}
       ])
 
     name = Keyword.fetch!(opts, :name)
@@ -65,8 +66,54 @@ defmodule Wardrik.Setup do
       middleware: opts[:middleware],
       idle_timeout: opts[:idle_timeout],
       trusted_workers: opts[:trusted_workers],
-      egress: opts[:egress]
+      egress: opts[:egress],
+      prices:
+        Map.new(opts[:prices], fn {spec, price} -> {to_string(spec), price(spec, price)} end)
     }
+  end
+
+  @doc """
+  Returns what the model `spec` costs, in US dollars per million tokens, as `price` gives it: its
+  own `:input` and `:output`, and `:cache_read` and `:cache_write`, or another model's catalog
+  price, as `priced_as: "zai:glm-5.1"`, and either with a `:markup`, `0.1` for 10% more.
+  """
+  @spec price(String.t(), keyword()) :: WardrikCore.Usage.price()
+  def price(spec, price) do
+    {markup, price} = Keyword.pop(price, :markup, 0)
+    for {kind, rate} <- priced(spec, price), do: {kind, rate * (1 + markup)}
+  end
+
+  defp priced(spec, price) do
+    case Keyword.split(price, [:priced_as]) do
+      {[], rates} ->
+        rated(spec, rates)
+
+      {[priced_as: model], []} ->
+        twin(spec, model)
+
+      {_priced_as, _rates} ->
+        raise ArgumentError, "#{spec}'s price is another model's or its own."
+    end
+  end
+
+  defp twin(spec, model) do
+    case WardrikCore.price(model) do
+      nil -> raise ArgumentError, "#{model} has no price in dollars to price #{spec} as."
+      price -> price
+    end
+  end
+
+  defp rated(spec, rates) do
+    case Keyword.split(rates, [:input, :output, :cache_read, :cache_write]) do
+      {rates, []} -> both(spec, rates)
+      {_rates, [{key, _value} | _rest]} -> raise ArgumentError, "#{spec}'s price has no #{key}."
+    end
+  end
+
+  defp both(spec, rates) do
+    if Keyword.has_key?(rates, :input) and Keyword.has_key?(rates, :output),
+      do: rates,
+      else: raise(ArgumentError, "#{spec}'s price gives its input and output.")
   end
 
   @doc """
@@ -81,6 +128,7 @@ defmodule Wardrik.Setup do
 
     opts
     |> Keyword.put(:events, {WardrikEvents, Wardrik.events(wardrik)})
+    |> Keyword.put_new(:prices, wardrik.prices)
     |> credentials(wardrik)
     |> wrapped([{Wardrik.Spending, wardrik.name} | wardrik.middleware])
     |> governed(policies)

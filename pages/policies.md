@@ -38,6 +38,10 @@ one waits for a person to allow more:
 
 > This agent has spent $5.02 of $5.00 today. Approve to allow $5.00 more.
 
+A budget in dollars counts each call at its model's price: the Wardrik's `:prices` for it, as
+`%{"zai_coding_plan:glm-5.1" => [priced_as: "zai:glm-5.1", markup: 0.1]}`, else the model catalog's.
+A model with neither is refused, since the budget can't hold it.
+
 ## Gated tools
 
 A gated tool can change something: an MCP server's tool it doesn't mark read-only, a worker's, and

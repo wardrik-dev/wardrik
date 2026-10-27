@@ -51,7 +51,8 @@ defmodule Wardrik do
     :middleware,
     :idle_timeout,
     :trusted_workers,
-    :egress
+    :egress,
+    :prices
   ]
   defstruct @enforce_keys
 
@@ -80,7 +81,8 @@ defmodule Wardrik do
           middleware: [WardrikCore.Context.entry()],
           idle_timeout: pos_integer() | :infinity,
           trusted_workers: boolean(),
-          egress: (String.t() -> :ok | {:error, String.t()})
+          egress: (String.t() -> :ok | {:error, String.t()}),
+          prices: %{String.t() => WardrikCore.Usage.price()}
         }
 
   @doc """
@@ -125,7 +127,13 @@ defmodule Wardrik do
   `%{"model" => "anthropic:claude-haiku-4-5"}`, however it was defined. `:trusted_workers` is
   `true` where tool workers' answers are the deployment's own, so they aren't labelled `"outside"`.
   `:egress` says which URLs it reaches where its users name them, as the servers an owner adds and
-  the sign-ins they lead to: `Wardrik.Egress.public/1` unless set.
+  the sign-ins they lead to: `Wardrik.Egress.public/1` unless set. `:prices` says what models cost
+  where the model catalog has no price, or not the one to count, by spec, as `Wardrik.Setup.price/2`
+  reads each:
+
+      prices: %{"zai_coding_plan:glm-5.1" => [priced_as: "zai:glm-5.1", markup: 0.1]}
+
+  Every agent's spending, budgets, ceilings and events count them.
   """
   @spec start_link(keyword() | t()) :: Supervisor.on_start()
   def start_link(%__MODULE__{name: name} = wardrik),
