@@ -1,13 +1,15 @@
 defmodule Wardrik.Runner do
   @moduledoc """
   Runs an operation the same way for every surface: it finds it in the catalog, checks the input
-  against its schema, asks the authorizer, and calls its handler.
+  against its schema, asks the authorizer, checks that the org an owner's operation names is one
+  the Wardrik's orgs know, and calls its handler.
   """
 
   alias Wardrik.Authorizer
   alias Wardrik.Catalog
   alias Wardrik.Error
   alias Wardrik.Instance
+  alias Wardrik.Orgs
   alias Wardrik.Resource
   alias Wardrik.Scope
 
@@ -21,7 +23,8 @@ defmodule Wardrik.Runner do
     with {:ok, operation, root} <- operation(catalog, id),
          {:ok, handler} <- handler(catalog, kind, id),
          {:ok, input} <- validate(input, root),
-         :ok <- authorize(scope, operation, input) do
+         :ok <- authorize(scope, operation, input),
+         :ok <- known(scope, operation, input) do
       handler.(%{scope | operation: operation}, input)
     end
   end
@@ -64,6 +67,11 @@ defmodule Wardrik.Runner do
     resource = Resource.owned(owner, kind, input["provider"] || input["server"] || input["name"])
     refused(Authorizer.authorize(scope, action, resource), "#{kind} of #{owner}")
   end
+
+  defp known(%Scope{wardrik: wardrik}, %{subject: "owner"}, %{"owner" => owner}),
+    do: Orgs.known(wardrik, Orgs.org(owner))
+
+  defp known(_scope, _operation, _input), do: :ok
 
   defp refused(:ok, _what), do: :ok
 

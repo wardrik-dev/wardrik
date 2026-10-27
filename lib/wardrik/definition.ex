@@ -79,7 +79,7 @@ defmodule Wardrik.Definition do
     with :ok <- triggers(wardrik, definition),
          {:ok, model} <- model(definition),
          {:ok, rounds} <- rounds(definition["max_iterations"]),
-         {:ok, capabilities} <- capabilities(wardrik, Map.get(definition, "tools", [])),
+         {:ok, capabilities} <- capabilities(wardrik, id, Map.get(definition, "tools", [])),
          {:ok, workspace} <-
            Wardrik.Workspaces.resolve(wardrik, id, definition, files?(wardrik, definition)),
          :ok <- channels(wardrik, Map.get(definition, "channels", [])),
@@ -147,7 +147,11 @@ defmodule Wardrik.Definition do
         {:server, name} <- [named(wardrik, tool)],
         WardrikMCP.tools(nil,
           name: mcp,
-          servers: Wardrik.MCPTools.picked(mcp, id, names: [name])
+          servers:
+            Wardrik.MCPTools.picked(mcp, id,
+              names: [name],
+              served: Wardrik.MCPTools.served(wardrik, id)
+            )
         ) == [],
         do: tool
   end
@@ -203,11 +207,11 @@ defmodule Wardrik.Definition do
     do:
       {:error, Error.new(:not_supported, "max_iterations of infinity isn't supported here yet.")}
 
-  defp capabilities(wardrik, tools) do
+  defp capabilities(wardrik, id, tools) do
     named = Enum.map(expanded(wardrik, tools), &named(wardrik, &1))
 
     case Enum.find(named, &match?({:error, _error}, &1)) do
-      nil -> {:ok, entries(wardrik, named)}
+      nil -> {:ok, entries(wardrik, id, named)}
       error -> error
     end
   end
@@ -243,7 +247,7 @@ defmodule Wardrik.Definition do
   defp started(%Wardrik{mcp: nil}), do: []
   defp started(%Wardrik{mcp: mcp}), do: Enum.map(mcp, fn {name, _opts} -> to_string(name) end)
 
-  defp entries(wardrik, named) do
+  defp entries(wardrik, id, named) do
     capabilities = for {:capability, entry} <- named, uniq: true, do: entry
     servers = for {:server, name} <- named, uniq: true, do: name
     all = :all_servers in named
@@ -252,7 +256,13 @@ defmodule Wardrik.Definition do
       do: capabilities,
       else:
         capabilities ++
-          [{Wardrik.MCPTools, mcp: Wardrik.mcp(wardrik), names: servers, all: all}]
+          [
+            {Wardrik.MCPTools,
+             mcp: Wardrik.mcp(wardrik),
+             names: servers,
+             all: all,
+             served: Wardrik.MCPTools.served(wardrik, id)}
+          ]
   end
 
   defp files?(wardrik, definition),

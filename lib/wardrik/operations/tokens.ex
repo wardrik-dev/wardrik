@@ -1,11 +1,14 @@
 defmodule Wardrik.Operations.Tokens do
   @moduledoc """
   The operations on the deployment's API tokens: making, listing and revoking them. A token is kept
-  as the SHA-256 of its secret, and its secret is given once, as it's made.
+  as the SHA-256 of its secret, and its secret is given once, as it's made. A token's resources
+  that name an org, as `acme/agent/*`, name one the Wardrik's orgs know; one that leaves it open,
+  as `*/agent/*`, reaches whichever do.
   """
 
   alias Wardrik.Error
   alias Wardrik.Operations.Changes
+  alias Wardrik.Orgs
   alias Wardrik.Scope
   alias Wardrik.Statement
   alias WardrikCore.Principal
@@ -17,6 +20,7 @@ defmodule Wardrik.Operations.Tokens do
   @spec create(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def create(%Scope{wardrik: wardrik, principal: principal} = scope, input) do
     with {:ok, statement} <- statement(input),
+         :ok <- known_orgs(wardrik, input["resources"]),
          :ok <- named_policy(wardrik, input["policy"] || scope.policy) do
       id = random(6)
       secret = "wrk_" <> id <> "_" <> random(32)
@@ -39,6 +43,15 @@ defmodule Wardrik.Operations.Tokens do
       Changes.record_deployment(scope, "token.created", "tokens/" <> id, created(token))
       {:ok, %{"token" => shown(token), "secret" => secret}}
     end
+  end
+
+  defp known_orgs(wardrik, resources) do
+    resources
+    |> Enum.map(&Orgs.org/1)
+    |> Enum.reject(&String.contains?(&1, ["*", "?"]))
+    |> Enum.uniq()
+    |> Enum.map(&Orgs.known(wardrik, &1))
+    |> Enum.find(:ok, &match?({:error, _error}, &1))
   end
 
   @doc "Lists every token, oldest first, never a secret."

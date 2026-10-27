@@ -27,7 +27,21 @@ config :my_app, MyApp.Wardrik, orgs: {MyApp.Orgs, []}
 
 Every agent of the org is held to its `policy`, after the deployment's and before its own, and the
 strictest decides. Its definitions may name its `policies` beside the deployment's, though not one
-with a deployment policy's name, and are given its `defaults` over the deployment's.
+with a deployment policy's name, and are given its `defaults` over the deployment's. `policy` may be
+a list, each held to in turn.
+
+An org there's no such thing as answers `{:error, %Wardrik.Error{}}`, as
+`Wardrik.Error.new(:not_found, "There's no org globex here.")`. Its agents aren't defined or
+started, and nothing is kept for it: a secret, a server or a connection of its owners, or a token
+whose resources name it, as `globex/agent/*`. A pattern that leaves the org open, as `*/agent/*`,
+reaches the orgs that are.
+
+A server Wardrik starts with, under `:mcp`, serves every org unless its own `orgs:` lists the ones
+whose agents reach it:
+
+```elixir
+mcp: [stripe: [orgs: ["payments"], transport: {:streamable_http, url: "https://mcp.stripe.com"}]]
+```
 
 Wardrik asks for an org's settings each time one of its agents starts, wakes or is defined. Settings
 that don't read keep the agent from starting, and say why. Bring the org's awake agents to settings

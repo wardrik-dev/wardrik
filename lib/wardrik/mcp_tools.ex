@@ -1,8 +1,9 @@
 defmodule Wardrik.MCPTools do
   @moduledoc """
   The tools of the MCP servers an agent names, found as each turn starts: its owner's own server of
-  each name first, then its org's, then the one Wardrik started with. With `all`, every server its
-  owner adds too. A server added or removed reaches the agent from its next turn.
+  each name first, then its org's, then the one Wardrik started with, where that one serves its
+  org. With `all`, every server its owner adds too. A server added or removed reaches the agent
+  from its next turn.
   """
 
   @behaviour WardrikCore.Capability
@@ -20,7 +21,8 @@ defmodule Wardrik.MCPTools do
   def picked(mcp, id, opts) do
     available = MapSet.new(WardrikMCP.servers(mcp))
     owners = owners(id)
-    named = Enum.flat_map(Keyword.get(opts, :names, []), &first(available, owners, &1))
+    served = Keyword.get(opts, :served, :all)
+    named = Enum.flat_map(Keyword.get(opts, :names, []), &first(available, owners, served, &1))
     Enum.uniq(named ++ owned(available, owners, Keyword.get(opts, :all, false)))
   end
 
@@ -43,13 +45,29 @@ defmodule Wardrik.MCPTools do
     end
   end
 
-  defp first(available, owners, name) do
+  @doc """
+  Returns the names of the servers the Wardrik started with that the agent `id`'s org reaches: each
+  whose `:orgs` lists it, or that has none.
+  """
+  @spec served(Wardrik.t(), String.t()) :: [String.t()]
+  def served(wardrik, id) do
+    org = Wardrik.Orgs.org(id)
+    for {name, opts} <- wardrik.mcp || [], serves?(opts[:orgs], org), do: to_string(name)
+  end
+
+  defp serves?(nil, _org), do: true
+  defp serves?(orgs, org), do: org in orgs
+
+  defp first(available, owners, served, name) do
     owners
     |> Enum.map(&key(&1, name))
-    |> Kernel.++([name])
+    |> Kernel.++(started(served, name))
     |> Enum.find(&MapSet.member?(available, &1))
     |> List.wrap()
   end
+
+  defp started(:all, name), do: [name]
+  defp started(served, name), do: if(name in served, do: [name], else: [])
 
   defp owned(_available, _owners, false), do: []
 

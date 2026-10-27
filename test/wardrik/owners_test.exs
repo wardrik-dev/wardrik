@@ -255,6 +255,13 @@ defmodule Wardrik.OwnersTest do
                :invalid_request
     end
 
+    test "reaches a server Wardrik started with from the orgs it serves alone" do
+      wardrik = %{Wardrik.new(name: :served) | mcp: [docs: [orgs: ["acme"]], wiki: []]}
+
+      assert Wardrik.MCPTools.served(wardrik, "acme/@maria/notes") == ["docs", "wiki"]
+      assert Wardrik.MCPTools.served(wardrik, "globex/triage") == ["wiki"]
+    end
+
     test "gives a person's agents their own servers first, then their org's", %{
       wardrik: wardrik,
       scope: scope

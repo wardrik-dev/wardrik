@@ -112,6 +112,50 @@ defmodule Wardrik.OrgsTest do
       assert message == "acme's settings didn't read: :down"
     end
 
+    test "hold its agents to each of its policies in turn", %{scope: scope, orgs: orgs} do
+      set(
+        orgs,
+        "acme",
+        {:ok, %OrgSettings{policy: [%{"default" => "allow"}, %{"deny" => ["search"]}]}}
+      )
+
+      answers([calling([call("call_1", "search", %{})]), answer("Done.")])
+
+      {:ok, _agent} = define(scope, "acme/scout", %{"tools" => ["priced"]})
+      ask(scope, "acme/scout")
+
+      until("wardrik.tool_call.denied")
+      until("wardrik.run.completed")
+    end
+
+    test "refuse what an org there's no such thing as would keep", %{scope: scope, orgs: orgs} do
+      set(orgs, "globex", {:error, Wardrik.Error.new(:not_found, "There's no org globex here.")})
+      no_org = %Wardrik.Error{type: :not_found, message: "There's no org globex here."}
+
+      assert {:error, ^no_org} = define(scope, "globex/scout")
+
+      assert {:error, ^no_org} =
+               Wardrik.run(scope, "secrets.put", %{
+                 "owner" => "globex/@ada",
+                 "name" => "KEY",
+                 "value" => "v"
+               })
+
+      assert {:error, ^no_org} =
+               Wardrik.run(scope, "tokens.create", %{
+                 "name" => "ci",
+                 "resources" => ["acme/agent/*", "globex/agent/*"],
+                 "roles" => ["reader"]
+               })
+
+      assert %{"secret" => _secret} =
+               run!(scope, "tokens.create", %{
+                 "name" => "ci",
+                 "resources" => ["*/agent/*"],
+                 "roles" => ["reader"]
+               })
+    end
+
     test "reach its awake agents as they're refreshed", %{
       wardrik: wardrik,
       scope: scope,

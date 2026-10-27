@@ -63,7 +63,8 @@ defmodule Wardrik.Children do
     do: [
       {WardrikMCP,
        name: Wardrik.mcp(wardrik),
-       servers: wardrik.mcp || [],
+       servers:
+         Enum.map(wardrik.mcp || [], fn {name, opts} -> {name, Keyword.delete(opts, :orgs)} end),
        store: wardrik.store,
        check: wardrik.egress}
     ]

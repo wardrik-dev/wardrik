@@ -111,7 +111,8 @@ defmodule Wardrik do
   to give agents their accounts, and the calls waiting on a sign-in carry on once it's done.
 
   Given `:mcp`, the MCP servers its agents may call, as `WardrikMCP` takes its `:servers`, it
-  connects to each. `:channels` are the chat apps people reach agents through, by name, each a
+  connects to each; a server's own `:orgs` lists the orgs whose agents reach it, every org's
+  unless it says. `:channels` are the chat apps people reach agents through, by name, each a
   `Wardrik.Channel` as `{module, opts}`. `:notify` names where agents' notices may go, as
   `Wardrik.Notify` describes. `:declarations` are agents something outside the API defines, as
   `Wardrik.Declarations` describes. `:orgs` gives each org settings of its own, as `Wardrik.Orgs`

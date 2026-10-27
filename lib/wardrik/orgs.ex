@@ -18,6 +18,10 @@ defmodule Wardrik.Orgs do
   an org's settings each time one of its agents starts, wakes or is defined, so an agent never runs
   on settings older than its start. `Wardrik.refresh/2` brings an org's awake agents to its
   settings as they read now. Settings that don't read keep the agent from starting, and say why.
+
+  Answer `{:error, %Wardrik.Error{}}` for an org there's no such thing as, as
+  `Wardrik.Error.new(:not_found, "There's no org globex here.")`: its agents don't start or get
+  defined, and nothing is kept for it, as a secret, a server or a token over its agents.
   """
 
   alias Wardrik.Ceiling
@@ -48,9 +52,23 @@ defmodule Wardrik.Orgs do
       {:ok, %OrgSettings{} = settings} ->
         read(wardrik, org, settings)
 
+      {:error, %Error{} = error} ->
+        {:error, error}
+
       {:error, reason} ->
         {:error, Error.new(:unavailable, "#{org}'s settings didn't read: #{inspect(reason)}")}
     end
+  end
+
+  @doc """
+  Returns `:ok` where the org `org` is one the Wardrik's orgs know, or the error they answer. The
+  deployment's own namespace, `deployment`, is always known.
+  """
+  @spec known(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
+  def known(_wardrik, "deployment"), do: :ok
+
+  def known(wardrik, org) do
+    with {:ok, _settings} <- settings(wardrik, org), do: :ok
   end
 
   @doc "Returns `wardrik` as the org's definitions read it: with its policies and defaults too."
@@ -171,6 +189,19 @@ defmodule Wardrik.Orgs do
   end
 
   defp policy(_org, _what, nil), do: {:ok, nil}
+
+  defp policy(org, what, [first | _rest] = policies) when not is_tuple(first) do
+    read =
+      policies
+      |> Enum.with_index(1)
+      |> Enum.map(fn {policy, n} -> policy(org, "#{what} #{n}", policy) end)
+
+    case Enum.find(read, &match?({:error, _error}, &1)) do
+      nil -> {:ok, Enum.map(read, fn {:ok, policy} -> policy end)}
+      error -> error
+    end
+  end
+
   defp policy(_org, _what, %WardrikPolicy{} = policy), do: {:ok, policy}
 
   defp policy(org, what, rules) when is_map(rules) do
