@@ -55,7 +55,7 @@ defmodule Wardrik.Delegation do
     do: Enum.each(Map.get(run, "message_ids", []), &taken(wardrik, log, run["id"], &1))
 
   defp seen(wardrik, log, %{"type" => "wardrik.run.completed", "data" => data}),
-    do: answered(wardrik, log, data["run"]["id"], "#{last_said(data["messages"])}")
+    do: answered(wardrik, log, data["run"]["id"], "#{Wardrik.Reply.text(data["messages"])}")
 
   defp seen(wardrik, log, %{"type" => "wardrik.run.failed", "data" => data}),
     do:
@@ -132,14 +132,6 @@ defmodule Wardrik.Delegation do
       nil -> ["outside"]
       pid -> pid |> WardrikCore.history() |> Context.labels()
     end
-  end
-
-  defp last_said(messages) do
-    messages
-    |> Enum.filter(&(&1["role"] == "assistant"))
-    |> Enum.flat_map(&Map.get(&1, "parts", []))
-    |> Enum.filter(&(&1["type"] == "text"))
-    |> Enum.map_join(& &1["content"])
   end
 
   defp store(%Wardrik{store: store}), do: WardrikStore.scope(store, "wardrik")

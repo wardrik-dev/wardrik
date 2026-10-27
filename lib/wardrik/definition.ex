@@ -46,7 +46,6 @@ defmodule Wardrik.Definition do
   alias WardrikCore.Principal
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
-  @unsupported ~w(notify)
   @rounds 25
 
   @doc "Builds a definition from a keyword list or a map. Raises if it doesn't read."
@@ -65,14 +64,14 @@ defmodule Wardrik.Definition do
   def resolve(wardrik, id, definition) do
     definition = Map.merge(wardrik.defaults, definition)
 
-    with :ok <- supported(definition),
-         :ok <- triggers(wardrik, definition),
+    with :ok <- triggers(wardrik, definition),
          {:ok, model} <- model(definition),
          {:ok, rounds} <- rounds(definition["max_iterations"]),
          {:ok, capabilities} <- capabilities(wardrik, Map.get(definition, "tools", [])),
          {:ok, workspace} <-
            Wardrik.Workspaces.resolve(wardrik, id, definition, files?(wardrik, definition)),
          :ok <- channels(wardrik, Map.get(definition, "channels", [])),
+         :ok <- Wardrik.Notify.check(wardrik, AgentID.agent(id), definition),
          {:ok, policy} <- policy(wardrik, definition["policy"]),
          policy = gating(policy),
          {:ok, boundary} <-
@@ -152,16 +151,6 @@ defmodule Wardrik.Definition do
           Map.get(wardrik.defaults, "idle_timeout", wardrik.idle_timeout)
         )
       )
-
-  defp supported(definition) do
-    case Enum.find(@unsupported, &Map.has_key?(definition, &1)) do
-      nil ->
-        :ok
-
-      key ->
-        {:error, Error.new(:not_supported, "A definition's #{key} isn't supported here yet.")}
-    end
-  end
 
   defp triggers(wardrik, definition) do
     definition

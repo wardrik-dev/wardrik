@@ -3,8 +3,8 @@ defmodule Wardrik.Children do
   What a Wardrik runs, in the order it starts them: its store, unless you run it, its vault and
   sign-ins, when it keeps credentials, the MCP servers its agents reach, then its agents' events,
   the workers that offer them tools, its agents, their triggers, what puts them to sleep, its
-  channels, the listeners it's given, and what brings delegated answers back, last, so restarting it
-  restarts nothing else.
+  channels, the listeners it's given, what sends notices, and what brings delegated answers back,
+  last, so restarting it restarts nothing else.
   """
 
   @doc "Returns the children `wardrik` runs, in order."
@@ -24,6 +24,7 @@ defmodule Wardrik.Children do
         ] ++
         channels(wardrik) ++
         listeners(wardrik) ++
+        Wardrik.Notify.Server.children(wardrik) ++
         [{Wardrik.Delegation, wardrik}]
 
   defp store(%Wardrik{own_store: true, store: store}), do: [{WardrikStore, store}]

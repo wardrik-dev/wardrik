@@ -92,6 +92,8 @@ defmodule Wardrik.MixProject do
       {:wardrik_mcp, path: "../wardrik_mcp"},
       {:wardrik_triggers, path: "../wardrik_triggers"},
       {:wardrik_workspace, path: "../wardrik_workspace"},
+      {:durable_server, "~> 0.1.6"},
+      {:req, "~> 0.7"},
       {:ekv, "~> 0.4.8"},
       {:jsv, "~> 0.26"},
       {:mimic, "~> 2.4", only: :test},

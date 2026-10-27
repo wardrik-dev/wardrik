@@ -35,6 +35,7 @@ defmodule Wardrik do
     :mcp,
     :listeners,
     :channels,
+    :notify,
     :declarations,
     :workspace,
     :defaults,
@@ -61,6 +62,7 @@ defmodule Wardrik do
           mcp: keyword() | nil,
           listeners: [module() | {module(), keyword()}],
           channels: %{String.t() => {module(), keyword()}},
+          notify: %{targets: %{String.t() => {module(), keyword()}}, retries: keyword()},
           declarations: {module(), term()} | nil,
           workspace: %{String.t() => %{read: [String.t()], write: [String.t()]}},
           defaults: map(),
@@ -104,10 +106,11 @@ defmodule Wardrik do
 
   Given `:mcp`, the MCP servers its agents may call, as `WardrikMCP` takes its `:servers`, it
   connects to each. `:channels` are the chat apps people reach agents through, by name, each a
-  `Wardrik.Channel` as `{module, opts}`. `:declarations` are agents something outside the API
-  defines, as `Wardrik.Declarations` describes. `:workspace` shares trees of files beyond their
-  owners, as `Wardrik.Workspaces` describes. `:triggers` takes `WardrikTriggers`' `:req_options`, for reading feeds, and
-  `:reconcile`.
+  `Wardrik.Channel` as `{module, opts}`. `:notify` names where agents' notices may go, as
+  `Wardrik.Notify` describes. `:declarations` are agents something outside the API defines, as
+  `Wardrik.Declarations` describes. `:workspace` shares trees of files beyond their owners, as
+  `Wardrik.Workspaces` describes. `:triggers` takes `WardrikTriggers`' `:req_options`, for reading
+  feeds, and `:reconcile`.
 
   What a definition names, it finds here: `:capabilities`, the tools it offers by name, as
   `[files: {MyApp.Files, []}]`, and `:policies`, as `[careful: [ask: ["github/*"]]]`. Each MCP

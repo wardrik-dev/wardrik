@@ -116,7 +116,7 @@ defmodule Wardrik.DefinitionsTest do
       assert refused(scope, "agent.define", Map.put(base, "max_iterations", "infinity")) ==
                :not_supported
 
-      assert refused(scope, "agent.define", Map.put(base, "notify", "ops")) == :not_supported
+      assert refused(scope, "agent.define", Map.put(base, "notify", "ops")) == :invalid_request
 
       assert refused(scope, "agent.define", Map.put(base, "channels", ["slack"])) ==
                :invalid_request

@@ -42,4 +42,19 @@ defmodule Wardrik.Channel do
 
   @doc "Answers what the chat app sent the channel."
   @callback request(opts :: keyword(), request()) :: response()
+
+  @doc """
+  Posts `notice` in `room`, asking `approvers` by name, as the channel names people, about the calls
+  a parked turn waits on. Returns `{:skip, why}` where there's nowhere to post it. A channel that
+  doesn't define it posts no notices; see `Wardrik.Notify`.
+  """
+  @callback notify(
+              opts :: keyword(),
+              room :: String.t(),
+              Wardrik.Notice.t(),
+              approvers :: [String.t()]
+            ) ::
+              :ok | {:skip, String.t()} | {:error, term()}
+
+  @optional_callbacks notify: 4
 end
