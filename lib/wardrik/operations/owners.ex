@@ -19,14 +19,18 @@ defmodule Wardrik.Operations.Owners do
   }
   @client_auths %{"post" => :post, "basic" => :basic}
 
-  @doc "Lists the accounts the owner is offered, and whether they hold each."
+  @doc """
+  Lists the accounts the owner is offered, and whether they hold each: the Wardrik's providers,
+  and each server the owner added that they sign in to in a browser, by its name, in place of a
+  provider of that name.
+  """
   @spec connections(Scope.t(), map()) :: {:ok, map()}
   def connections(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
     held = held(wardrik, owner)
 
     connections =
-      for provider <- providers(wardrik),
-          do: %{"provider" => provider, "connected" => provider in held}
+      for {provider, key} <- offered(wardrik, owner),
+          do: %{"provider" => provider, "connected" => key in held}
 
     {:ok, %{"connections" => connections}}
   end
@@ -34,24 +38,24 @@ defmodule Wardrik.Operations.Owners do
   @doc "Answers that the owner holds an account, or where they authorize it."
   @spec connect(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def connect(%Scope{wardrik: wardrik}, %{"owner" => owner, "provider" => provider}) do
-    with :ok <- offered(wardrik, provider) do
-      if provider in held(wardrik, owner),
+    with {:ok, key} <- offered(wardrik, owner, provider) do
+      if key in held(wardrik, owner),
         do: {:ok, %{"provider" => provider, "connected" => true}},
-        else: authorizing(wardrik, provider, %Principal{id: owner}, %{"provider" => provider})
+        else: authorizing(wardrik, key, %Principal{id: owner}, %{"provider" => provider})
     end
   end
 
   @doc "Forgets an account the owner holds, so the next call that needs it asks again."
   @spec disconnect(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def disconnect(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "provider" => provider}) do
-    with :ok <- offered(wardrik, provider) do
-      connected = provider in held(wardrik, owner)
+    with {:ok, key} <- offered(wardrik, owner, provider) do
+      connected = key in held(wardrik, owner)
 
       if connected do
-        :ok = WardrikVault.delete(Wardrik.vault(wardrik), %Principal{id: owner}, provider)
+        :ok = WardrikVault.delete(Wardrik.vault(wardrik), %Principal{id: owner}, key)
 
-        Changes.record_owned(scope, "secret.removed", owner, "secrets/" <> provider, %{
-          "secret" => %{"name" => provider}
+        Changes.record_owned(scope, "secret.removed", owner, "secrets/" <> key, %{
+          "secret" => %{"name" => key}
         })
       end
 
@@ -169,7 +173,7 @@ defmodule Wardrik.Operations.Owners do
            WardrikStore.put(store(wardrik), prefix(owner) <> name, record(input, kind)) do
       data = %{"server" => %{"name" => name, "url" => url}}
       Changes.record_owned(scope, "server.added", owner, "servers/" <> name, data)
-      answered(wardrik, scope.principal, key, kind, name)
+      answered(wardrik, %Principal{id: owner}, key, kind, name)
     end
   end
 
@@ -208,10 +212,29 @@ defmodule Wardrik.Operations.Owners do
   defp held(%Wardrik{keys: []}, _owner), do: []
   defp held(wardrik, owner), do: WardrikVault.names(Wardrik.vault(wardrik), %Principal{id: owner})
 
-  defp offered(wardrik, provider) do
-    if provider in providers(wardrik),
-      do: :ok,
-      else: {:error, Error.new(:not_found, "There's no account #{provider} to connect.")}
+  defp offered(wardrik, owner) do
+    servers = for name <- signed_in_servers(wardrik, owner), do: {name, MCPTools.key(owner, name)}
+    named = Enum.map(servers, &elem(&1, 0))
+
+    providers =
+      for provider <- providers(wardrik), provider not in named, do: {provider, provider}
+
+    providers ++ servers
+  end
+
+  defp offered(wardrik, owner, provider) do
+    case List.keyfind(offered(wardrik, owner), provider, 0) do
+      {^provider, key} -> {:ok, key}
+      nil -> {:error, Error.new(:not_found, "There's no account #{provider} to connect.")}
+    end
+  end
+
+  defp signed_in_servers(wardrik, owner) do
+    store = store(wardrik)
+
+    for key <- WardrikStore.keys(store, prefix(owner)),
+        %{"name" => name, "auth" => "oauth"} <- [WardrikStore.get(store, key)],
+        do: name
   end
 
   defp authorizing(wardrik, provider, principal, answer) do

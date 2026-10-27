@@ -74,6 +74,10 @@ Wardrik.Connections.disconnect(scope, "github", owner: "acme/@jon")
 An account is the owner's own: a person's agents reach their person's, and an org's agents reach
 the org's. Nothing falls back from one to the other. Forgetting one is recorded in the audit.
 
+A server the owner added that their agents sign in to in a browser is among their accounts too,
+by the server's name, so they sign in to it, or sign out, before any agent calls it. Adding it
+asks the owner to sign in, whoever adds it: an org's admin signs the org in.
+
 ## Mount the sign-in pages
 
 A sign-in comes back to your app, so mount its pages at `page`. In a Phoenix router:

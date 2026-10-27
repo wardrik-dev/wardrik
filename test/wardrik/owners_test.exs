@@ -205,6 +205,41 @@ defmodule Wardrik.OwnersTest do
       refute "acme:crm" in WardrikOAuth.providers(Wardrik.oauth(wardrik))
     end
 
+    test "offers an owner's server signed in to in a browser among their accounts, signed in as them",
+         %{wardrik: wardrik, scope: scope} do
+      server = %{
+        "owner" => "acme",
+        "name" => "crm",
+        "url" => "https://crm.test/mcp",
+        "auth" => %{"oauth" => %{"scopes" => ["read"]}}
+      }
+
+      assert %{"connected" => false, "authorization" => %{"url" => _url}} =
+               run!(scope, "mcp_servers.add", server)
+
+      assert %{"connections" => connections} =
+               run!(scope, "connections.list", %{"owner" => "acme"})
+
+      assert %{"provider" => "crm", "connected" => false} in connections
+
+      assert %{"provider" => "crm", "connected" => false, "authorization" => %{"url" => _again}} =
+               run!(scope, "connections.connect", %{"owner" => "acme", "provider" => "crm"})
+
+      hold(wardrik, "acme", "acme:crm", "token")
+
+      assert %{"provider" => "crm", "connected" => true} =
+               run!(scope, "connections.connect", %{"owner" => "acme", "provider" => "crm"})
+
+      assert %{"provider" => "crm", "connected" => true} =
+               run!(scope, "connections.disconnect", %{"owner" => "acme", "provider" => "crm"})
+
+      assert %{"connections" => connections} =
+               run!(scope, "connections.list", %{"owner" => "acme"})
+
+      assert %{"provider" => "crm", "connected" => false} in connections
+      refute Enum.any?(connections, &(&1["provider"] == "acme:crm"))
+    end
+
     test "signs in with an owner's own OAuth app, its client secret read from their vault", %{
       wardrik: wardrik,
       scope: scope
