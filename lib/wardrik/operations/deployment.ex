@@ -7,6 +7,8 @@ defmodule Wardrik.Operations.Deployment do
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Running
   alias Wardrik.Operations.Snapshot
+  alias Wardrik.Resource
+  alias WardrikEvents.Pattern
 
   @doc "Reads a page of what people changed across the deployment."
   @spec audit(Wardrik.Scope.t(), map()) :: {:ok, map()}
@@ -17,14 +19,15 @@ defmodule Wardrik.Operations.Deployment do
   end
 
   @doc """
-  Reads the Wardrik's declarations again, has every agent take its definition as it reads now, and
-  reads servers and triggers again.
+  Reads the Wardrik's declarations again, has every agent take its definition as it reads now, or
+  each the `resources` patterns cover, and reads servers and triggers again.
   """
   @spec reload(Wardrik.Scope.t(), map()) :: {:ok, map()}
-  def reload(%Wardrik.Scope{wardrik: wardrik} = scope, _input) do
+  def reload(%Wardrik.Scope{wardrik: wardrik} = scope, input) do
     problems = Wardrik.Declarations.reload(wardrik)
+    covered = covered(input["resources"])
 
-    for id <- Definitions.ids(wardrik), Running.whereis(wardrik, id) != nil do
+    for id <- Definitions.ids(wardrik), covered.(id), Running.whereis(wardrik, id) != nil do
       with {:ok, definition} <- Definitions.fetch(wardrik, id),
            {:ok, opts} <- Definition.resolve(wardrik, id, definition),
            do: Running.bring(wardrik, opts)
@@ -36,6 +39,15 @@ defmodule Wardrik.Operations.Deployment do
     here = to_string(node())
     Changes.record_deployment(scope, "agents.reloaded", "deployment", %{"nodes" => [here]})
     {:ok, %{"reloaded" => [here], "problems" => problems}}
+  end
+
+  defp covered(nil), do: fn _id -> true end
+
+  defp covered(patterns) do
+    fn id ->
+      {:ok, resource} = Resource.agent(id)
+      Enum.any?(patterns, &Pattern.covers?(&1, resource))
+    end
   end
 
   @doc "Lists the deployment's nodes, each with how many agents run on it, and how many sleep."

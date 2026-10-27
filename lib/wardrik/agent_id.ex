@@ -1,7 +1,9 @@
 defmodule Wardrik.AgentID do
   @moduledoc """
   Reads agent IDs: `acme/triage`, `acme/@jon/triage`, and a conversation of either, as
-  `acme/triage/C1-1696.1234`, which runs on its agent's definition with a history of its own.
+  `acme/triage/C1-1696.1234`, which runs on its agent's definition with a history of its own. No
+  segment holds `:`, which names a person known elsewhere, as `slack:T0123/U024BE7LH`, nor `*` or
+  `?`, which patterns take.
   """
 
   @enforce_keys [:owner, :name, :conversation]
@@ -41,5 +43,5 @@ defmodule Wardrik.AgentID do
       else: :error
   end
 
-  defp segment?(segment), do: segment != "" and not String.contains?(segment, ["*", "?"])
+  defp segment?(segment), do: segment != "" and not String.contains?(segment, ["*", "?", ":"])
 end

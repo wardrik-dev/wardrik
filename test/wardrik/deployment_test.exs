@@ -144,5 +144,33 @@ defmodule Wardrik.DeploymentTest do
 
       {:ok, %Wardrik.Agent{node: nil}} = Wardrik.Agent.stop(scope, "acme/bot")
     end
+
+    test "brings only the agents the patterns cover to their definitions, where they're given", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      test = self()
+
+      stub(ReqLLM, :stream_text, fn _model, [system | _messages], _opts ->
+        %ReqLLM.Message{role: :system, content: [part | _rest]} = system
+        send(test, {:instructions, part.text})
+        {:ok, answer("Done.")}
+      end)
+
+      for id <- ["acme/a", "acme/b"] do
+        {:ok, _agent} = Wardrik.Agent.define(scope, id, model: @model, instructions: "Old.")
+
+        :ok =
+          Wardrik.Definitions.put(wardrik, id, %{"model" => @model, "instructions" => "New."})
+      end
+
+      assert {:ok, _nodes} = Wardrik.Deployment.reload(scope, resources: ["acme/agent/a"])
+
+      {:ok, _reply} = Wardrik.Agent.reply(scope, "acme/a", "Go")
+      assert_receive {:instructions, "New."}
+
+      {:ok, _reply} = Wardrik.Agent.reply(scope, "acme/b", "Go")
+      assert_receive {:instructions, "Old."}
+    end
   end
 end
