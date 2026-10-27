@@ -30,7 +30,8 @@ defmodule Wardrik.Setup do
         policies: [],
         middleware: [],
         idle_timeout: 900,
-        trusted_workers: false
+        trusted_workers: false,
+        egress: &Wardrik.Egress.public/1
       ])
 
     name = Keyword.fetch!(opts, :name)
@@ -61,7 +62,8 @@ defmodule Wardrik.Setup do
         Map.new(opts[:policies], fn {name, rules} -> {to_string(name), policy(rules)} end),
       middleware: opts[:middleware],
       idle_timeout: opts[:idle_timeout],
-      trusted_workers: opts[:trusted_workers]
+      trusted_workers: opts[:trusted_workers],
+      egress: opts[:egress]
     }
   end
 

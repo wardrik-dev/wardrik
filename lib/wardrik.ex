@@ -49,7 +49,8 @@ defmodule Wardrik do
     :policies,
     :middleware,
     :idle_timeout,
-    :trusted_workers
+    :trusted_workers,
+    :egress
   ]
   defstruct @enforce_keys
 
@@ -76,7 +77,8 @@ defmodule Wardrik do
           policies: %{String.t() => WardrikPolicy.t()},
           middleware: [WardrikCore.Context.entry()],
           idle_timeout: pos_integer() | :infinity,
-          trusted_workers: boolean()
+          trusted_workers: boolean(),
+          egress: (String.t() -> :ok | {:error, String.t()})
         }
 
   @doc """
@@ -119,6 +121,8 @@ defmodule Wardrik do
   `:infinity`. `:defaults` is what every definition is given where it says nothing, as
   `%{"model" => "anthropic:claude-haiku-4-5"}`, however it was defined. `:trusted_workers` is
   `true` where tool workers' answers are the deployment's own, so they aren't labelled `"outside"`.
+  `:egress` says which URLs it reaches where its users name them, as the servers an owner adds and
+  the sign-ins they lead to: `Wardrik.Egress.public/1` unless set.
   """
   @spec start_link(keyword() | t()) :: Supervisor.on_start()
   def start_link(%__MODULE__{name: name} = wardrik),

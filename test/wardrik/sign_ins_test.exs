@@ -17,6 +17,7 @@ defmodule Wardrik.SignInsTest do
       Wardrik.new(
         name: :"wardrik #{context.test}",
         keys: [WardrikVault.generate_key()],
+        egress: &Wardrik.Egress.any/1,
         oauth: [
           page: "https://agents.test/oauth",
           req_options: [plug: {Req.Test, __MODULE__}],

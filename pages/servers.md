@@ -46,6 +46,10 @@ Wardrik.MCPServers.add(scope,
   with. **`servers/*`** gives every server its owner adds, as they add them. A server added or
   removed reaches the agent from its next turn, without defining it again.
 - **A server not added yet** offers nothing, and the definition lists it as `missing`.
+- **Its URL is `https`, at a public address.** Wardrik checks it as it's added, and as each
+  connection to it starts, and the authorization server it names, and the endpoints that lists,
+  as each sign-in reaches them. `:egress` changes what it reaches, as `&Wardrik.Egress.any/1` for a
+  Wardrik whose operator alone adds servers.
 
 How the agents sign in to it:
 

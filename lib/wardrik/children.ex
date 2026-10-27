@@ -52,7 +52,8 @@ defmodule Wardrik.Children do
       name: Wardrik.oauth(wardrik),
       vault: Wardrik.vault(wardrik),
       store: wardrik.store,
-      on_granted: {Wardrik.SignIns, :granted, [Wardrik.agents(wardrik)]}
+      on_granted: {Wardrik.SignIns, :granted, [Wardrik.agents(wardrik)]},
+      check: wardrik.egress
     ]
 
     [{WardrikOAuth, options ++ wardrik.oauth}]
@@ -60,7 +61,11 @@ defmodule Wardrik.Children do
 
   defp mcp(wardrik),
     do: [
-      {WardrikMCP, name: Wardrik.mcp(wardrik), servers: wardrik.mcp || [], store: wardrik.store}
+      {WardrikMCP,
+       name: Wardrik.mcp(wardrik),
+       servers: wardrik.mcp || [],
+       store: wardrik.store,
+       check: wardrik.egress}
     ]
 
   defp events(wardrik) do

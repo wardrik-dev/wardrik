@@ -112,6 +112,7 @@ defmodule Wardrik.Operations.Owners do
     key = MCPTools.key(owner, name)
 
     with :ok <- unused(wardrik, owner, name),
+         :ok <- reachable(wardrik, url),
          {:ok, reached, kind} <- reached(wardrik, owner, key, input),
          :ok <-
            added(
@@ -184,6 +185,16 @@ defmodule Wardrik.Operations.Owners do
     if WardrikStore.get(store(wardrik), prefix(owner) <> name) == nil,
       do: :ok,
       else: {:error, Error.new(:conflict, "#{owner} has a server #{name} already.")}
+  end
+
+  defp reachable(wardrik, url) do
+    case wardrik.egress.(url) do
+      :ok ->
+        :ok
+
+      {:error, why} ->
+        {:error, Error.new(:invalid_request, "The server can't be reached: #{why}.")}
+    end
   end
 
   defp reached(_wardrik, _owner, _key, %{"auth" => %{"none" => _none}}), do: {:ok, [], "none"}
