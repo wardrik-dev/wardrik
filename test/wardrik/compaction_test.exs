@@ -113,7 +113,7 @@ defmodule Wardrik.CompactionTest do
   end
 
   test "is on unless a definition turns it off", context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Test.Store.new(:"store #{context.test}")
     wardrik = Wardrik.new(name: :"wardrik #{context.test}", store: store)
     start_supervised!({WardrikStore, store})
     start_supervised!({Wardrik, wardrik})

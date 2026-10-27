@@ -26,7 +26,7 @@ defmodule Wardrik.ChannelsTest do
   import Wardrik.Test.Wardrik
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Test.Store.new(:"store #{context.test}")
     name = :"wardrik #{context.test}"
     channels = [slack: {Wardrik.Test.Echo, test: self()}]
 

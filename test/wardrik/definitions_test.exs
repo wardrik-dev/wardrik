@@ -12,7 +12,7 @@ defmodule Wardrik.DefinitionsTest do
   setup :set_mimic_global
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Test.Store.new(:"store #{context.test}")
 
     wardrik =
       Wardrik.new(
@@ -265,17 +265,19 @@ defmodule Wardrik.DefinitionsTest do
     end
 
     @tag idle_timeout: 0.05
-    test "puts an agent to sleep once it has had nothing to do", %{scope: scope} do
+    test "puts an agent to sleep once it has had nothing to do", %{scope: scope} = context do
       define(scope, "acme/triage", %{"model" => @model})
+      ref = Process.monitor(Wardrik.Operations.Running.whereis(context.wardrik, "acme/triage"))
 
       until("wardrik.agent.stopped")
+      assert_receive {:DOWN, ^ref, :process, _pid, _reason}
       assert %{"status" => "asleep"} = run!(scope, "agent.read", %{"agent" => "acme/triage"})
     end
   end
 
   describe "defaults" do
     test "gives a definition what the Wardrik's defaults say, where it says nothing", context do
-      store = WardrikStore.ETS.new(name: :"defaults store #{context.test}")
+      store = Wardrik.Test.Store.new(:"defaults store #{context.test}")
 
       wardrik =
         Wardrik.new(

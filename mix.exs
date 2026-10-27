@@ -96,6 +96,8 @@ defmodule Wardrik.MixProject do
       {:req, "~> 0.7"},
       {:ekv, "~> 0.4.8"},
       {:jsv, "~> 0.26"},
+      {:ecto_sql, "~> 3.13", only: :test},
+      {:postgrex, "~> 0.22", only: :test},
       {:mimic, "~> 2.4", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

@@ -44,7 +44,7 @@ defmodule Wardrik.NotifyTest do
   setup {Req.Test, :set_req_test_to_shared}
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Test.Store.new(:"store #{context.test}")
     {:ok, answers} = Agent.start_link(fn -> Map.get(context, :answers, []) end)
 
     targets = [

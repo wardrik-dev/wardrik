@@ -8,7 +8,7 @@ defmodule Wardrik.Test.Wardrik do
   alias WardrikCore.Principal
 
   def start_wardrik(context) do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Test.Store.new(:"store #{context.test}")
     wardrik = Wardrik.new(name: :"wardrik #{context.test}", store: store, deployment: "test")
 
     start_supervised!({WardrikStore, store})

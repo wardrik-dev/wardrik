@@ -20,7 +20,7 @@ defmodule Wardrik.DeclarationsTest do
   @model "anthropic:claude-haiku-4-5"
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Test.Store.new(:"store #{context.test}")
     name = :"wardrik #{context.test}"
 
     start_supervised!({WardrikStore, store})

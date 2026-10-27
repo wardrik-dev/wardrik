@@ -29,7 +29,7 @@ defmodule Wardrik.SpendingTest do
   setup :set_mimic_global
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Test.Store.new(:"store #{context.test}")
 
     wardrik =
       Wardrik.new(
