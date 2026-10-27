@@ -11,7 +11,12 @@ defmodule Wardrik.Workers do
   A surface holds each worker's connection in a process of its own. It offers what the worker lists
   with `offer/2`. It's sent each call as `{Wardrik.Workers, :call, call, name, arguments, meta}`,
   and answers it with `answer/2`. It's sent `{Wardrik.Workers, :cancel, call}` for a call Wardrik
-  stopped waiting on. A tool is gated unless every worker offering it marks it read-only, and its
+  stopped waiting on.
+
+  A call no worker is there for raises `Wardrik.Workers.Unavailable`, and one whose worker went away
+  or didn't answer in time raises `Wardrik.Workers.Lost`, so the tool runner tries it again, on
+  whichever worker offers it then, where every worker offering the tool marks it read-only or
+  idempotent. Any other call that may have run waits on a person as `:in_doubt`. A tool is gated unless every worker offering it marks it read-only, and its
   answers are labelled `"outside"` unless Wardrik's `:trusted_workers` says otherwise. A call's
   `meta` holds the `agent` it's for, the `run` it's part of, the `principal` it acts for,
   and an `idempotencyKey` that stays the same when the call is repeated.
@@ -24,6 +29,8 @@ defmodule Wardrik.Workers do
   alias Wardrik.Instance
   alias Wardrik.Resource
   alias Wardrik.Scope
+  alias Wardrik.Workers.Lost
+  alias Wardrik.Workers.Unavailable
   alias WardrikCore.Context
 
   @group "workers"
@@ -141,12 +148,15 @@ defmodule Wardrik.Workers do
   end
 
   defp tool(wardrik, name, [first | _rest] = offers) do
+    annotations = annotations(offers, wardrik.trusted_workers)
+    repeatable = annotations[:idempotent]
+
     WardrikCore.Tool.new!(
       name: @prefix <> name,
       description: first.tool["description"] <> "\n\nFrom a tool worker.",
       schema: first.tool["inputSchema"],
-      annotations: annotations(offers, wardrik.trusted_workers),
-      run: fn arguments, context -> call(wardrik.name, name, arguments, context) end
+      annotations: annotations,
+      run: fn arguments, context -> call(wardrik.name, name, arguments, context, repeatable) end
     )
   end
 
@@ -169,15 +179,26 @@ defmodule Wardrik.Workers do
   defp every?(offers, hint, holds \\ true),
     do: Enum.all?(offers, fn offer -> offer.tool["annotations"][hint] == holds end)
 
-  defp call(instance, name, arguments, %Context{agent_id: id} = context) do
+  defp call(instance, name, arguments, %Context{agent_id: id} = context, repeatable) do
     offers =
       for %{tool: %{"name" => ^name}} = offer <- offered(Instance.fetch!(instance), id), do: offer
 
     case offers do
-      [] -> {:error, "No worker offers #{name} now, so it didn't run."}
-      offers -> ask(Enum.random(offers).worker, name, arguments, context)
+      [] ->
+        raise Unavailable, "No worker offers #{name} now, so it didn't run."
+
+      offers ->
+        offers
+        |> Enum.random()
+        |> Map.fetch!(:worker)
+        |> ask(name, arguments, context)
+        |> lost(repeatable)
     end
   end
+
+  defp lost({:lost, message}, true), do: raise(Lost, message)
+  defp lost({:lost, _message}, false), do: {:park, :in_doubt}
+  defp lost(answer, _repeatable), do: answer
 
   defp ask(worker, name, arguments, context) do
     ref = Process.monitor(worker)
@@ -189,15 +210,15 @@ defmodule Wardrik.Workers do
         answered(response, context)
 
       {:DOWN, ^ref, :process, _worker, :noproc} ->
-        {:error, "No worker offers #{name} now, so it didn't run."}
+        raise Unavailable, "No worker offers #{name} now, so it didn't run."
 
       {:DOWN, ^ref, :process, _worker, _reason} ->
-        {:error, "The worker running #{name} went away before it answered. It may have run."}
+        {:lost, "The worker running #{name} went away before it answered. It may have run."}
     after
       @timeout ->
         Process.demonitor(ref, [:flush])
         send(worker, {__MODULE__, :cancel, {self(), ref}})
-        {:error, "#{name} didn't answer in time. It may have run."}
+        {:lost, "#{name} didn't answer in time. It may have run."}
     end
   end
 
@@ -266,4 +287,14 @@ defmodule Wardrik.Workers do
     do: "[A part of type #{type} isn't shown here.]"
 
   defp part(_part), do: "[A part that doesn't read isn't shown here.]"
+end
+
+defmodule Wardrik.Workers.Unavailable do
+  @moduledoc "No worker offered a tool when it was called, so the call didn't run."
+  defexception [:message]
+end
+
+defmodule Wardrik.Workers.Lost do
+  @moduledoc "A worker went away, or didn't answer in time, while it ran a call, which may have run."
+  defexception [:message]
 end

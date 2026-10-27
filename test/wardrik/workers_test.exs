@@ -50,13 +50,18 @@ defmodule Wardrik.WorkersTest do
     receive do
       {Wardrik.Workers, :call, call, name, arguments, meta} = message ->
         send(test, {:called, name, arguments, meta})
-        respond(call, answer.(message))
+        respond(test, call, answer.(message))
         serve(test, answer)
     end
   end
 
-  defp respond(_call, nil), do: :ok
-  defp respond(call, response), do: Wardrik.Workers.answer(call, response)
+  defp respond(test, _call, :gone) do
+    Process.unlink(test)
+    exit(:gone)
+  end
+
+  defp respond(_test, _call, nil), do: :ok
+  defp respond(_test, call, response), do: Wardrik.Workers.answer(call, response)
 
   defp tools(wardrik, id) do
     tools = Wardrik.Workers.tools(%Context{agent_id: id}, wardrik: wardrik.name)
@@ -191,6 +196,89 @@ defmodule Wardrik.WorkersTest do
 
     Process.unlink(refusing)
     Process.exit(refusing, :kill)
-    assert {:error, "No worker offers lookup now, so it didn't run."} = tool.run.(%{}, context)
+
+    assert_raise Wardrik.Workers.Unavailable,
+                 "No worker offers lookup now, so it didn't run.",
+                 fn ->
+                   tool.run.(%{}, context)
+                 end
+  end
+
+  @shipped %{"result" => %{"content" => [%{"type" => "text", "text" => "Shipped."}]}}
+
+  defp define(scope, id) do
+    {:ok, agent} =
+      Wardrik.Agent.define(scope, id,
+        model: "anthropic:claude-haiku-4-5",
+        tools: ["workers/*"],
+        retries: %{"max_wait" => 1}
+      )
+
+    agent
+  end
+
+  test "runs a call again where its worker went away, where every worker may run it twice", %{
+    wardrik: wardrik,
+    scope: scope
+  } do
+    first = worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup], fn _call -> :gone end)
+
+    answers([
+      calling([call("call_1", "workers__lookup", %{"order" => "A1"})]),
+      answer("Shipped.")
+    ])
+
+    agent = define(scope, "acme/retried")
+    ref = Process.monitor(first)
+    {:ok, _message} = Wardrik.Agent.ask(scope, agent, "Where's A1?")
+
+    assert_receive {:called, "lookup", _arguments, %{"idempotencyKey" => "call_1"}}
+    assert_receive {:DOWN, ^ref, :process, ^first, :gone}
+    worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup], fn _call -> @shipped end)
+
+    assert %{"data" => %{"status" => "error"}} = until("wardrik.tool_call.completed")
+    until("wardrik.tool_call.retrying")
+
+    assert_receive {:called, "lookup", _arguments, %{"idempotencyKey" => "call_1"}}, 10_000
+    assert %{"data" => %{"status" => "ok"}} = until_completed()
+  end
+
+  test "waits on a person where a call that may not run twice was lost, and runs it again once approved",
+       %{wardrik: wardrik, scope: scope} do
+    changing = %{@lookup | "annotations" => %{}}
+    first = worker(wardrik, "acme/@shop", ["acme/agent/*"], [changing], fn _call -> :gone end)
+
+    answers([
+      calling([call("call_1", "workers__lookup", %{"order" => "A1"})]),
+      answer("Shipped.")
+    ])
+
+    agent = define(scope, "acme/doubtful")
+    {:ok, _message} = Wardrik.Agent.ask(scope, agent, "Where's A1?")
+
+    assert %{"data" => %{"interrupts" => [%{"reason" => "tool_approval"}]}} =
+             until("wardrik.run.interrupted")
+
+    {:ok, _decided} = Wardrik.Agent.approve(scope, agent, "call_1")
+    assert_receive {:called, "lookup", _arguments, _meta}
+
+    assert %{"data" => %{"interrupts" => [%{"id" => "call_1", "reason" => "in_doubt"}]}} =
+             until("wardrik.run.interrupted")
+
+    refute Process.alive?(first)
+    worker(wardrik, "acme/@shop", ["acme/agent/*"], [changing], fn _call -> @shipped end)
+    {:ok, _decided} = Wardrik.Agent.approve(scope, agent, "call_1")
+
+    assert_receive {:called, "lookup", _arguments, %{"idempotencyKey" => "call_1"}}
+    assert %{"data" => %{"status" => "ok"}} = until_completed()
+  end
+
+  defp until_completed do
+    receive do
+      {WardrikEvents, _log, %{"type" => "wardrik.tool_call.completed"} = event} -> event
+      {WardrikEvents, _log, _event} -> until_completed()
+    after
+      10_000 -> flunk("No wardrik.tool_call.completed came.")
+    end
   end
 end
