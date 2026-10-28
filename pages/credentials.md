@@ -27,6 +27,24 @@ person:
 `lookup_secret/2` adds its kind, `:secret`, or `:grant` for an account someone connected, and its
 version, for `put_secret/4`'s `if_vsn:`. Keeping and removing one is recorded in the audit.
 
+## Keep keys
+
+A key is what the code you installed calls a service with: a model provider's, `ZAI_API_KEY`, or
+web search's, `BRAVE_API_KEY`. Seal it as a secret of the deployment's, and every agent's code reads
+it:
+
+```elixir
+:ok = MyApp.Wardrik.put_secret("deployment", "ZAI_API_KEY", "...")
+```
+
+An org or a person brings its own by sealing one of the same name, which its agents read first: a
+person's agent reads theirs, then its org's, then the deployment's. Each model call reads its
+provider's key as it's made, so a new one takes effect at once. Where none is sealed, the code
+finds its own, as ReqLLM reads the environment. See `WardrikCore.Keys`.
+
+A key reaches no tool's credentials, and the deployment's reach no owner's: a server an org adds
+can't name `ZAI_API_KEY` and be sent the deployment's.
+
 ## Let people sign in
 
 Give Wardrik your OAuth apps, one per service, named like the credential each grants:
