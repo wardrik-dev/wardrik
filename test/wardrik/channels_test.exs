@@ -75,7 +75,11 @@ defmodule Wardrik.ChannelsTest do
       "answers" => "mentions"
     }
 
-    assert Wardrik.Audit.record(scope, "room.bound", "channels/slack/C1", data) == :ok
+    events = name |> Wardrik.Instance.fetch!() |> Wardrik.events()
+
+    assert WardrikEvents.record(events, {"room.bound", "channels/slack/C1", data},
+             actor: scope.principal
+           ) == :ok
 
     assert {:ok,
             %Wardrik.Page{events: [%Wardrik.Event{type: "wardrik.room.bound", data: recorded}]}} =
@@ -85,10 +89,10 @@ defmodule Wardrik.ChannelsTest do
   end
 
   test "hands a channel's options to whoever asks for it by name", %{name: name} do
-    assert {:ok, {Wardrik.Test.Echo, opts}} = Wardrik.Channel.fetch(name, "slack")
+    assert {:ok, {Wardrik.Test.Echo, opts}} = Wardrik.Operations.Channels.fetch(name, "slack")
     assert opts[:channel] == "slack"
     assert opts[:wardrik] == name
-    assert Wardrik.Channel.fetch(name, "teams") == :error
+    assert Wardrik.Operations.Channels.fetch(name, "teams") == :error
   end
 
   test "says a Wardrik with no keys seals no secrets", %{name: name} do

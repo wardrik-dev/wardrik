@@ -119,15 +119,15 @@ defmodule Wardrik.CompactionTest do
     start_supervised!({Wardrik, wardrik})
     base = %{"model" => "anthropic:claude-haiku-4-5"}
 
-    assert {:ok, opts} = Wardrik.Definition.resolve(wardrik, "acme/a", base)
+    assert {:ok, opts} = Wardrik.Resolution.resolve(wardrik, "acme/a", base)
     assert {Compaction, []} in opts[:middleware]
 
     tuned = Map.put(base, "compaction", %{"at" => 0.5, "keep" => 0.2, "window" => 1000})
-    assert {:ok, opts} = Wardrik.Definition.resolve(wardrik, "acme/a", tuned)
+    assert {:ok, opts} = Wardrik.Resolution.resolve(wardrik, "acme/a", tuned)
     assert {Compaction, [at: 0.5, keep: 0.2, window: 1000]} in opts[:middleware]
 
     assert {:ok, opts} =
-             Wardrik.Definition.resolve(wardrik, "acme/a", Map.put(base, "compaction", false))
+             Wardrik.Resolution.resolve(wardrik, "acme/a", Map.put(base, "compaction", false))
 
     refute Enum.any?(opts[:middleware], &match?({Compaction, _opts}, &1))
   end

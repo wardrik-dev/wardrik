@@ -119,7 +119,12 @@ defmodule Wardrik.Children do
   defp channels(wardrik) do
     for {name, {module, opts}} <- wardrik.channels do
       opts
-      |> Keyword.merge(wardrik: wardrik.name, channel: name, store: wardrik.store)
+      |> Keyword.merge(
+        server: Wardrik,
+        wardrik: wardrik.name,
+        channel: name,
+        store: wardrik.store
+      )
       |> module.child_spec()
       |> Supervisor.child_spec(id: {Wardrik.Channel, name})
       |> started({__MODULE__, :channel_spec, [wardrik, name, module, opts]})

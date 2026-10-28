@@ -4,7 +4,6 @@ defmodule Wardrik.Operations.Triggers do
   sends a webhook trigger.
   """
 
-  alias Wardrik.Definition
   alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Operations.Changes
@@ -19,7 +18,7 @@ defmodule Wardrik.Operations.Triggers do
 
     with :ok <- Running.definable(id),
          {:ok, definition} <- Running.definition(wardrik, id),
-         :ok <- Definition.trigger(wardrik, definition, fields, 1),
+         :ok <- Wardrik.Resolution.trigger(wardrik, definition, fields, 1),
          {:ok, trigger} <- set_trigger(wardrik, id, fields),
          :ok <-
            Definitions.put(

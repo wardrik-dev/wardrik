@@ -25,7 +25,6 @@ defmodule Wardrik.Orgs do
   """
 
   alias Wardrik.Ceiling
-  alias Wardrik.Definition
   alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Operations.Running
@@ -118,7 +117,7 @@ defmodule Wardrik.Orgs do
 
   defp refreshed(wardrik, id) do
     with {:ok, definition} <- Running.definition(wardrik, id),
-         {:ok, opts} <- Definition.resolve(wardrik, id, definition),
+         {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
          do: Running.bring(wardrik, opts)
   end
 

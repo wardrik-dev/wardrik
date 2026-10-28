@@ -174,6 +174,7 @@ defmodule Wardrik.Operations.Tokens do
     {:ok, expires, _offset} = DateTime.from_iso8601(token["expires"])
 
     %Scope{
+      server: Wardrik,
       wardrik: wardrik.name,
       principal: %Principal{id: token["principal"]["id"]},
       grants: Enum.map(token["statements"], &Statement.from_json/1),

@@ -34,7 +34,8 @@ defmodule Wardrik.Operations.Visible do
   def visible?(scope, patterns, id) do
     case Resource.agent(id) do
       {:ok, resource} ->
-        Enum.any?(patterns, &Pattern.covers?(&1, resource)) and Scope.allows?(scope, resource)
+        Enum.any?(patterns, &Pattern.covers?(&1, resource)) and
+          Wardrik.Authorizer.allows?(scope, resource)
 
       :error ->
         false

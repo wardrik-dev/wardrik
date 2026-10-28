@@ -6,7 +6,6 @@ defmodule Wardrik.Sleeper do
 
   use GenServer
 
-  alias Wardrik.Definition
   alias Wardrik.Operations.Running
 
   @idle ~w(wardrik.agent.started wardrik.run.completed wardrik.run.failed wardrik.run.cancelled
@@ -53,7 +52,7 @@ defmodule Wardrik.Sleeper do
 
   defp arm(%{wardrik: wardrik} = state, id) do
     with {:ok, definition} <- Running.definition(wardrik, id),
-         ms when is_integer(ms) <- Definition.idle_timeout(wardrik, id, definition) do
+         ms when is_integer(ms) <- Wardrik.Resolution.idle_timeout(wardrik, id, definition) do
       ref = make_ref()
       Process.send_after(self(), {:sleep, id, ref}, ms)
       %{state | timers: Map.put(state.timers, id, ref)}

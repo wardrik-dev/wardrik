@@ -4,7 +4,6 @@ defmodule Wardrik.Operations.Running do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.Definition
   alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Setup
@@ -70,7 +69,7 @@ defmodule Wardrik.Operations.Running do
 
   defp wake(wardrik, id) do
     with {:ok, definition} <- definition(wardrik, id),
-         {:ok, opts} <- Definition.resolve(wardrik, id, definition),
+         {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
          do: bring(wardrik, opts)
   end
 

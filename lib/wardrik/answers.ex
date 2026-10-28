@@ -4,7 +4,6 @@ defmodule Wardrik.Answers do
   ends. It follows from before the message is sent, so it misses nothing.
   """
 
-  alias Wardrik.Error
   alias Wardrik.Instance
   alias Wardrik.Operations.Types
   alias Wardrik.Reply
@@ -27,32 +26,6 @@ defmodule Wardrik.Answers do
       &next(&1, timeout),
       &stopped/1
     )
-  end
-
-  @doc "Sends `input` to the agent, and returns its answer once its run ends."
-  @spec reply(Scope.t(), String.t() | struct(), term(), keyword()) ::
-          {:ok, Reply.t()} | {:waiting, [Wardrik.Interrupt.t()]} | {:error, Error.t()}
-  def reply(scope, agent, input, opts) do
-    scope
-    |> follow(agent, input, opts)
-    |> Enum.reduce(nil, &ended/2)
-  rescue
-    error in Error -> {:error, error}
-  end
-
-  @doc "Sends what the agent's answer brings to `pid`, as `{Wardrik, ref, item}`, and returns `ref`."
-  @spec send_to(Scope.t(), String.t() | struct(), term(), pid(), keyword()) :: {:ok, reference()}
-  def send_to(scope, agent, input, pid, opts) do
-    ref = make_ref()
-
-    {:ok, _task} =
-      Task.start(fn ->
-        scope
-        |> follow(agent, input, opts)
-        |> Enum.each(&send(pid, {Wardrik, ref, &1}))
-      end)
-
-    {:ok, ref}
   end
 
   defp started(%Scope{wardrik: instance} = scope, id, agent, input) do
@@ -131,12 +104,4 @@ defmodule Wardrik.Answers do
 
   defp trace(%{"traceparent" => "00-" <> rest}), do: rest |> String.split("-", parts: 2) |> hd()
   defp trace(_event), do: nil
-
-  defp ended({:done, reply}, _acc), do: {:ok, reply}
-  defp ended({:waiting, interrupts}, _acc), do: {:waiting, interrupts}
-
-  defp ended({:failed, reason}, _acc),
-    do: {:error, Error.new(:unavailable, "The run failed: #{inspect(reason)}")}
-
-  defp ended({:text, _chunk}, acc), do: acc
 end

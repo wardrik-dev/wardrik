@@ -1,7 +1,6 @@
 defmodule Wardrik.Operations.Deployment do
   @moduledoc "The operations on the deployment itself: its audit, its nodes, and reading definitions again."
 
-  alias Wardrik.Definition
   alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Operations.Changes
@@ -29,7 +28,7 @@ defmodule Wardrik.Operations.Deployment do
 
     for id <- Definitions.ids(wardrik), covered.(id), Running.whereis(wardrik, id) != nil do
       with {:ok, definition} <- Definitions.fetch(wardrik, id),
-           {:ok, opts} <- Definition.resolve(wardrik, id, definition),
+           {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
            do: Running.bring(wardrik, opts)
     end
 

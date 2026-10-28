@@ -22,7 +22,7 @@ defmodule Wardrik.Operations.Lifecycle do
     with :ok <- Running.definable(id),
          :ok <- bounded(wardrik, id, scope.policy),
          :ok <- written_after(wardrik, id, definition["policy"]),
-         {:ok, opts} <- Definition.resolve(wardrik, id, definition),
+         {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
          {:ok, _pid} <- Running.bring(wardrik, opts),
          :ok <- Definitions.put(wardrik, id, definition),
          :ok <-
@@ -40,7 +40,7 @@ defmodule Wardrik.Operations.Lifecycle do
       {:ok,
        %{
          "definition" => definition,
-         "missing" => Definition.missing(wardrik, id, definition),
+         "missing" => Wardrik.Resolution.missing(wardrik, id, definition),
          "next_runs" => Snapshot.next_runs(wardrik, id)
        }}
     end
@@ -83,7 +83,7 @@ defmodule Wardrik.Operations.Lifecycle do
     with :ok <- Snapshot.known(wardrik, id),
          :ok <- idle(wardrik, id),
          {:ok, definition} <- Running.definition(wardrik, id),
-         {:ok, opts} <- Definition.resolve(wardrik, id, definition),
+         {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
          before = messages(wardrik, id),
          :ok <- WardrikCore.delete(Wardrik.agents(wardrik), id),
          {:ok, _pid} <- Running.bring(wardrik, opts) do

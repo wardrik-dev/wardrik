@@ -289,11 +289,13 @@ defmodule Wardrik.DefinitionsTest do
       start_supervised!({WardrikStore, store}, id: :defaults_store)
 
       assert {:ok, opts} =
-               Definition.resolve(wardrik, "acme/worker", %{"instructions" => "Work."})
+               Wardrik.Resolution.resolve(wardrik, "acme/worker", %{"instructions" => "Work."})
 
       assert opts[:model] == @model
-      assert Definition.idle_timeout(wardrik, "acme/worker", %{}) == 60_000
-      assert Definition.idle_timeout(wardrik, "acme/worker", %{"idle_timeout" => 5}) == 5_000
+      assert Wardrik.Resolution.idle_timeout(wardrik, "acme/worker", %{}) == 60_000
+
+      assert Wardrik.Resolution.idle_timeout(wardrik, "acme/worker", %{"idle_timeout" => 5}) ==
+               5_000
     end
   end
 

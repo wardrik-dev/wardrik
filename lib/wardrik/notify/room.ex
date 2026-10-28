@@ -15,7 +15,8 @@ defmodule Wardrik.Notify.Room do
   def deliver(notice, opts) do
     channel = Keyword.fetch!(opts, :channel)
 
-    with {:ok, {module, channel_opts}} <- Wardrik.Channel.fetch(opts[:wardrik], channel),
+    with {:ok, {module, channel_opts}} <-
+           Wardrik.Operations.Channels.fetch(opts[:wardrik], channel),
          true <- posts?(module) do
       module.notify(
         channel_opts,

@@ -16,6 +16,8 @@ defmodule Wardrik do
   with, then `c:init/1`. See `start_link/1` for every option.
   """
 
+  @behaviour Wardrik.Server
+
   use Supervisor
 
   alias Wardrik.Error
@@ -156,10 +158,8 @@ defmodule Wardrik do
   @spec as(atom() | t(), Principal.t() | String.t(), term()) :: Scope.t()
   def as(instance, principal, grants \\ [])
 
-  def as(instance, %Principal{} = principal, grants),
-    do: %Scope{wardrik: Instance.name(instance), principal: principal, grants: statements(grants)}
-
-  def as(instance, id, grants) when is_binary(id), do: as(instance, %Principal{id: id}, grants)
+  def as(instance, principal, grants),
+    do: Scope.new(__MODULE__, Instance.name(instance), principal, grants)
 
   @doc """
   Returns the scope an API token's `secret` acts in on the Wardrik `instance`, or an `unauthorized`
@@ -168,6 +168,7 @@ defmodule Wardrik do
       {:ok, scope} = Wardrik.authenticate(MyApp.Wardrik, secret)
   """
   @spec authenticate(atom() | t(), String.t()) :: {:ok, Scope.t()} | {:error, Error.t()}
+  @impl Wardrik.Server
   def authenticate(instance, secret),
     do: Wardrik.Operations.Tokens.authenticate(Instance.fetch!(instance), secret)
 
@@ -217,13 +218,7 @@ defmodule Wardrik do
       MyApp.Wardrik.as("acme/@maria") |> Wardrik.grant(roles: [:approver], resources: ["acme/agent/*"])
   """
   @spec grant(Scope.t(), keyword()) :: Scope.t()
-  def grant(%Scope{grants: grants} = scope, opts) when is_list(grants),
-    do: %{scope | grants: grants ++ [Wardrik.Statement.new(opts)]}
-
-  defp statements([{key, _value} | _rest] = opts) when key in [:roles, :actions, :resources],
-    do: [Wardrik.Statement.new(opts)]
-
-  defp statements(grants), do: grants
+  def grant(scope, opts), do: Scope.grant(scope, opts)
 
   @doc """
   Runs the operation `id`, like `agent.ask`, in `scope`, with `input` as the operation's input
@@ -233,6 +228,7 @@ defmodule Wardrik do
       #=> {:ok, %{"message" => %{"id" => "msg_Xq3f...", "cursor" => "eyJhY21lL3RyaWFnZSI6NDF9"}}}
   """
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
+  @impl Wardrik.Server
   def run(%Scope{} = scope, id, input), do: Runner.run(scope, id, input, :handlers)
 
   @doc """
@@ -240,7 +236,17 @@ defmodule Wardrik do
   operation that can be streamed, like `events.list`.
   """
   @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
+  @impl Wardrik.Server
   def stream(%Scope{} = scope, id, input), do: Runner.run(scope, id, input, :streams)
+
+  @impl Wardrik.Server
+  def follow(scope, agent, input, opts), do: Wardrik.Answers.follow(scope, agent, input, opts)
+
+  @impl Wardrik.Server
+  def offer(scope, tools), do: Wardrik.Workers.offer(scope, tools)
+
+  @impl Wardrik.Server
+  def answer(call, message), do: Wardrik.Workers.answer(call, message)
 
   @doc """
   Starts the agent `opts` describe, as `WardrikCore.start_agent/2` takes them, writing its events

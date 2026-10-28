@@ -37,6 +37,11 @@ defmodule Wardrik.Authorizer do
   defp each_allowed?(scope, %Wardrik.Statement{actions: actions, resources: resources}),
     do: Enum.all?(for(a <- actions, r <- resources, do: authorize(scope, a, r) == :ok))
 
+  @doc "Returns whether the operation running in `scope` may act on `resource`."
+  @spec allows?(Scope.t(), String.t()) :: boolean()
+  def allows?(%Scope{operation: %{action: action}} = scope, resource),
+    do: authorize(scope, action, resource) == :ok
+
   @doc "Asks `scope`'s authorizer whether it may take `action` on `resource`."
   @spec authorize(Scope.t(), String.t(), String.t()) :: :ok | {:error, :forbidden | :not_found}
   def authorize(%Scope{wardrik: %{authorizer: {module, config}}} = scope, action, resource),

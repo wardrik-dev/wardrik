@@ -21,14 +21,37 @@ defmodule Wardrik.Operations.Channels do
   end
 
   @doc """
+  Returns the channel the Wardrik `instance` runs as `name`: its module, and the options its
+  callbacks take. Returns `:error` where it runs none by that name.
+  """
+  @spec fetch(atom(), String.t()) :: {:ok, {module(), keyword()}} | :error
+  def fetch(instance, name) do
+    wardrik = Wardrik.Instance.fetch!(instance)
+
+    with {:ok, {module, opts}} <- Map.fetch(wardrik.channels, name),
+         do: {:ok, {module, options(wardrik, name, opts)}}
+  end
+
+  @doc """
   Returns the options a channel's callbacks take: its own, each `{:secret, name}` read from the
-  deployment's secrets, with the instance, its name and the store.
+  deployment's secrets, with the server that runs its operations, the instance, its events and
+  vault, its name and the store.
   """
   @spec options(Wardrik.t(), String.t(), keyword()) :: keyword()
   def options(wardrik, name, opts),
     do:
       Wardrik.Sealed.resolved(wardrik, "the channel #{name}", opts) ++
-        [wardrik: wardrik.name, channel: name, store: wardrik.store]
+        [
+          server: Wardrik,
+          wardrik: wardrik.name,
+          events: Wardrik.events(wardrik),
+          vault: vault(wardrik),
+          channel: name,
+          store: wardrik.store
+        ]
+
+  defp vault(%Wardrik{keys: []}), do: nil
+  defp vault(wardrik), do: Wardrik.vault(wardrik)
 
   defp headers(headers),
     do: Map.new(headers, fn {name, value} -> {String.downcase(name), value} end)
