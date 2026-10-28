@@ -45,6 +45,22 @@ finds its own, as ReqLLM reads the environment. See `WardrikCore.Keys`.
 A key reaches no tool's credentials, and the deployment's reach no owner's: a server an org adds
 can't name `ZAI_API_KEY` and be sent the deployment's.
 
+The options Wardrik takes that hold a secret take `{:secret, name}` in its place, the deployment's
+secret of that name, so your config holds none:
+
+```elixir
+config :my_app, MyApp.Wardrik,
+  channels: [slack: {WardrikSlack, signing_secret: {:secret, "SLACK_SIGNING_SECRET"}, ...}],
+  notify: [targets: [audit: {Wardrik.Notify.Webhook, url: url, secret: {:secret, "HOOK_SECRET"}}]],
+  mcp: [linear: [url: url, headers: %{"authorization" => {:secret, "LINEAR_TOKEN"}}]],
+  oauth: [providers: [github: [client_id: id, client_secret: {:secret, "GITHUB_CLIENT_SECRET"}]]]
+```
+
+A channel's and a notice target's are read as they're used, and an OAuth provider's as each sign-in
+needs it, so a new one takes effect at once. A channel's processes, like Slack's Socket Mode, and
+the MCP servers read theirs as they start, so restart Wardrik after changing those. One sealed
+nowhere is `nil`, and logged.
+
 ## Let people sign in
 
 Give Wardrik your OAuth apps, one per service, named like the credential each grants:

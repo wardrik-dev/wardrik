@@ -62,6 +62,26 @@ defmodule Wardrik.KeysTest do
     assert_receive {:api_key, "sk-new"}
   end
 
+  test "an MCP server's headers name the deployment's secrets, read as its servers start", %{
+    wardrik: wardrik
+  } do
+    :ok = Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "lin_123")
+
+    wardrik = %{
+      wardrik
+      | mcp: [
+          linear: [
+            url: "https://mcp.linear.test/mcp",
+            headers: %{"authorization" => {:secret, "LINEAR_TOKEN"}, "x-plain" => "kept"}
+          ]
+        ]
+    }
+
+    %{start: {WardrikMCP, :start_link, [opts]}} = Wardrik.Children.mcp_spec(wardrik)
+    assert [linear: linear] = opts[:servers]
+    assert linear[:headers] == %{"authorization" => "lin_123", "x-plain" => "kept"}
+  end
+
   test "an owner's keys reach no tool's credentials, and the deployment's reach no owner", %{
     wardrik: wardrik
   } do

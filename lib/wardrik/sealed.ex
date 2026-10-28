@@ -1,6 +1,8 @@
 defmodule Wardrik.Sealed do
   @moduledoc false
 
+  require Logger
+
   alias WardrikCore.Principal
 
   @spec put(atom() | Wardrik.t(), String.t(), String.t(), binary(), keyword()) ::
@@ -54,6 +56,37 @@ defmodule Wardrik.Sealed do
       {:error, :no_keys} -> []
     end
   end
+
+  @doc """
+  Returns `opts` with each value written `{:secret, name}` read from the deployment's secrets, as
+  `WardrikVault.value/2` reads one, for `what` the options are, as `the channel slack`. A value
+  sealed nowhere is `nil`, and logged.
+  """
+  @spec resolved(Wardrik.t(), String.t(), keyword() | map()) :: keyword() | map()
+  def resolved(wardrik, what, opts) when is_map(opts),
+    do: Map.new(opts, &resolved_pair(wardrik, what, &1))
+
+  def resolved(wardrik, what, opts) when is_list(opts),
+    do: Enum.map(opts, &resolved_pair(wardrik, what, &1))
+
+  defp resolved_pair(wardrik, what, {key, {:secret, name} = ref}) when is_binary(name) do
+    case value(wardrik, ref) do
+      {:ok, value} ->
+        {key, value}
+
+      {:error, _reason} ->
+        Logger.warning(
+          "#{what}'s #{key} names the secret #{name}, which the deployment hasn't sealed"
+        )
+
+        {key, nil}
+    end
+  end
+
+  defp resolved_pair(_wardrik, _what, pair), do: pair
+
+  defp value(%Wardrik{keys: []}, _ref), do: {:error, :no_keys}
+  defp value(wardrik, ref), do: WardrikVault.value(Wardrik.vault(wardrik), ref)
 
   defp sealing(instance) do
     case Wardrik.Instance.fetch!(instance) do

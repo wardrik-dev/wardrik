@@ -20,10 +20,15 @@ defmodule Wardrik.Operations.Channels do
     end
   end
 
-  @doc "Returns the options a channel's callbacks take: its own, with the instance, its name and the store."
+  @doc """
+  Returns the options a channel's callbacks take: its own, each `{:secret, name}` read from the
+  deployment's secrets, with the instance, its name and the store.
+  """
   @spec options(Wardrik.t(), String.t(), keyword()) :: keyword()
   def options(wardrik, name, opts),
-    do: opts ++ [wardrik: wardrik.name, channel: name, store: wardrik.store]
+    do:
+      Wardrik.Sealed.resolved(wardrik, "the channel #{name}", opts) ++
+        [wardrik: wardrik.name, channel: name, store: wardrik.store]
 
   defp headers(headers),
     do: Map.new(headers, fn {name, value} -> {String.downcase(name), value} end)

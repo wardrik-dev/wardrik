@@ -108,7 +108,12 @@ defmodule Wardrik.Notify do
 
       {:target, module, opts} ->
         if tells?(opts, notice.agent),
-          do: module.deliver(notice, [wardrik: wardrik.name, target: name] ++ opts),
+          do:
+            module.deliver(
+              notice,
+              [wardrik: wardrik.name, target: name] ++
+                Wardrik.Sealed.resolved(wardrik, "the target #{name}", opts)
+            ),
           else: {:skip, "which doesn't tell #{org(notice.agent)}'s agents"}
 
       :error ->

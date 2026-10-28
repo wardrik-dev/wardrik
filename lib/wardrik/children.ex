@@ -59,15 +59,42 @@ defmodule Wardrik.Children do
     [{WardrikOAuth, options ++ wardrik.oauth}]
   end
 
-  defp mcp(wardrik),
-    do: [
-      {WardrikMCP,
-       name: Wardrik.mcp(wardrik),
-       servers:
-         Enum.map(wardrik.mcp || [], fn {name, opts} -> {name, Keyword.delete(opts, :orgs)} end),
-       store: wardrik.store,
-       check: wardrik.egress}
-    ]
+  defp mcp(wardrik), do: [started(mcp_spec(wardrik, & &1), {__MODULE__, :mcp_spec, [wardrik]})]
+
+  @doc false
+  def mcp_spec(wardrik), do: mcp_spec(wardrik, &headers(wardrik, &1))
+
+  defp mcp_spec(wardrik, headers) do
+    servers =
+      Enum.map(wardrik.mcp || [], fn {name, opts} ->
+        {name, opts |> Keyword.delete(:orgs) |> headers.()}
+      end)
+
+    WardrikMCP.child_spec(
+      name: Wardrik.mcp(wardrik),
+      servers: servers,
+      store: wardrik.store,
+      check: wardrik.egress
+    )
+  end
+
+  defp headers(wardrik, opts) do
+    case Keyword.fetch(opts, :headers) do
+      {:ok, headers} ->
+        Keyword.put(opts, :headers, Wardrik.Sealed.resolved(wardrik, "an MCP server", headers))
+
+      :error ->
+        opts
+    end
+  end
+
+  @doc false
+  def start_built({module, function, args}) do
+    %{start: {start_module, start_function, start_args}} = apply(module, function, args)
+    apply(start_module, start_function, start_args)
+  end
+
+  defp started(spec, build), do: %{spec | start: {__MODULE__, :start_built, [build]}}
 
   defp events(wardrik) do
     {WardrikEvents,
@@ -91,10 +118,17 @@ defmodule Wardrik.Children do
 
   defp channels(wardrik) do
     for {name, {module, opts}} <- wardrik.channels do
-      opts = Wardrik.Operations.Channels.options(wardrik, name, opts)
-      Supervisor.child_spec(module.child_spec(opts), id: {Wardrik.Channel, name})
+      opts
+      |> Keyword.merge(wardrik: wardrik.name, channel: name, store: wardrik.store)
+      |> module.child_spec()
+      |> Supervisor.child_spec(id: {Wardrik.Channel, name})
+      |> started({__MODULE__, :channel_spec, [wardrik, name, module, opts]})
     end
   end
+
+  @doc false
+  def channel_spec(wardrik, name, module, opts),
+    do: module.child_spec(Wardrik.Operations.Channels.options(wardrik, name, opts))
 
   defp listeners(wardrik), do: Enum.map(wardrik.listeners, &listener(&1, wardrik.name))
 

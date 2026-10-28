@@ -53,7 +53,7 @@ defmodule Wardrik.NotifyTest do
       hook:
         {Wardrik.Notify.Webhook,
          url: "https://hooks.example.com/wardrik",
-         secret: "shh",
+         secret: {:secret, "HOOK_SECRET"},
          req_options: [plug: {Req.Test, __MODULE__}]},
       ops: {Wardrik.Notify.Room, channel: "board", room: "#ops", approvers: ["@maria"]}
     ]
@@ -62,6 +62,7 @@ defmodule Wardrik.NotifyTest do
       Wardrik.new(
         name: :"wardrik #{context.test}",
         store: store,
+        keys: [WardrikVault.generate_key()],
         capabilities: [tools: Wardrik.Test.Tools],
         channels: [board: {Wardrik.Test.Board, test: self()}],
         notify: [targets: targets, retries: [attempts: 2, max_wait: 0]],
@@ -70,6 +71,7 @@ defmodule Wardrik.NotifyTest do
 
     start_supervised!({WardrikStore, store})
     start_supervised!({Wardrik, wardrik})
+    :ok = Wardrik.put_secret(wardrik, "deployment", "HOOK_SECRET", "shh")
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
