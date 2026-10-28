@@ -61,7 +61,7 @@ defmodule Wardrik.AgentToolsTest do
          })
        ])},
       {"\"id\"",
-       calling([call("c2", "agent_ask", %{"agent" => "watcher", "message" => "What's new?"})])},
+       calling([call("c2", "agent_ask", %{"agent" => "watcher", "content" => "What's new?"})])},
       {"msg_", answer("I asked the watcher.")},
       {"What's new?", answer("Two posts.")},
       {"From agent acme/watcher", answer("The watcher found two posts.")}
@@ -154,7 +154,7 @@ defmodule Wardrik.AgentToolsTest do
   test "brings back an answer that came while it wasn't running", %{scope: scope} do
     model([
       {"Ask the worker",
-       calling([call("a1", "agent_ask", %{"agent" => "worker", "message" => "Sum 2 and 2"})])},
+       calling([call("a1", "agent_ask", %{"agent" => "worker", "content" => "Sum 2 and 2"})])},
       {"msg_", answer("Asked.")},
       {"Sum 2 and 2", answer("4")},
       {"From agent acme/worker", answer("It's 4.")}
@@ -186,7 +186,7 @@ defmodule Wardrik.AgentToolsTest do
   } do
     model([
       {"Ask the worker",
-       calling([call("a1", "agent_ask", %{"agent" => "worker", "message" => "Sum 2 and 2"})])},
+       calling([call("a1", "agent_ask", %{"agent" => "worker", "content" => "Sum 2 and 2"})])},
       {"msg_", answer("Asked.")},
       {"Sum 2 and 2", answer("4")},
       {"From agent acme/worker", answer("It's 4.")}

@@ -68,8 +68,8 @@ defmodule Wardrik.AgentTools do
       change(
         "agent_ask",
         "Send an agent a message. This answers at once; the agent's answer comes back to you later as a message of its own.",
-        [agent: @agent, message: [type: :string, required: true, doc: "What you ask it"]],
-        &asked(me, named(me, &1.agent), &1.message, &2)
+        [agent: @agent, content: [type: :string, required: true, doc: "What you ask it"]],
+        &asked(me, named(me, &1.agent), &1.content, &2)
       ),
       change(
         "agent_define",
