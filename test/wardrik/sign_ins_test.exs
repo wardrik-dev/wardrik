@@ -130,6 +130,13 @@ defmodule Wardrik.SignInsTest do
     assert Wardrik.sign_in_pages(Wardrik.new(name: MyApp.Wardrik)) == nil
   end
 
+  test "finishes a sign-in for an app that serves the page itself", %{wardrik: wardrik} do
+    assert Wardrik.finish_sign_in(wardrik, %{"state" => "nope", "code" => "c"}) ==
+             {:error, :no_such_flow}
+
+    assert %{"client_id" => "https://agents.test/oauth/client"} = Wardrik.client_document(wardrik)
+  end
+
   test "keeps credentials only when given keys" do
     assert %Wardrik{keys: [], oauth: nil} = Wardrik.new(name: MyApp.Wardrik)
 

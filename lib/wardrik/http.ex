@@ -21,6 +21,15 @@ defmodule Wardrik.HTTP do
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts), do: opts |> served() |> WardrikHTTP.child_spec()
 
+  @doc """
+  Returns the body reader `Plug.Parsers` takes as `:body_reader`, so a webhook's body is checked as
+  it came where your app parses bodies first.
+
+      plug Plug.Parsers, parsers: [:json], json_decoder: JSON, body_reader: Wardrik.HTTP.body_reader()
+  """
+  @spec body_reader() :: {module(), atom(), list()}
+  def body_reader, do: {WardrikHTTP.BodyReader, :read_body, []}
+
   @impl Plug
   def init(opts), do: opts |> served() |> WardrikHTTP.init()
 

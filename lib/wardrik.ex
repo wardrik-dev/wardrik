@@ -100,12 +100,13 @@ defmodule Wardrik do
 
   @doc """
   Starts a Wardrik. Takes `:name`, and where it keeps agents and events: `:data_dir`, a directory
-  on disk, or `:store`, a `WardrikStore` you run yourself. Given neither, it keeps them in memory,
-  gone when it stops.
+  on disk, `:store`, one `store/1` builds, as `[repo: MyApp.Repo]`, which it runs itself, or a
+  store you run yourself. Given neither, it keeps them in memory, gone when it stops.
 
   It also takes `:deployment` (`"local"` unless set), `:authorizer`, a `Wardrik.Authorizer` as
   `{module, config}` (`Wardrik.Statements` unless set), `:retention`, the days events are kept (30
-  unless set), `:backend`, where agents are kept (the store unless set), and `:policy`, the
+  unless set), `:backend`, where agents are kept (the store unless set), `:discovery_interval_ms`,
+  how often a node looks in the store for agents no node runs (30 seconds unless set), and `:policy`, the
   `WardrikPolicy` every agent is held to, or the rules to build it from.
 
   Given `:keys`, it keeps credentials sealed with them, and gives them to every agent's tools. Given
@@ -148,6 +149,63 @@ defmodule Wardrik do
   @doc false
   @spec new(keyword()) :: t()
   def new(opts), do: Setup.wardrik(opts)
+
+  @doc """
+  Returns a store for a Wardrik to keep everything in: your app's own Postgres, through its Ecto
+  repo, as `[repo: MyApp.Repo]`, or a database of its own, as `[url: "postgres://..."]`. Give it as
+  `:store`, and the Wardrik runs it.
+  """
+  @spec store(keyword()) :: WardrikStore.t()
+  def store(opts), do: WardrikStore.Ecto.new(opts)
+
+  @doc """
+  Returns the principal `id` names, as `acme/@maria`, with `attributes`, such as a name to show.
+
+      Wardrik.principal("acme/@maria", %{name: "Maria"})
+  """
+  @spec principal(String.t(), map()) :: Principal.t()
+  def principal(id, attributes \\ %{}), do: %Principal{id: id, attributes: attributes}
+
+  @doc """
+  Returns the name of the key a call to `model` takes, as its provider names it, or `nil`. A key of
+  that name in the vault, the deployment's or an owner's, is what the call is made with.
+
+      Wardrik.key_name("zai_coding_plan:glm-5.1")
+      #=> "ZAI_API_KEY"
+  """
+  @spec key_name(String.t()) :: String.t() | nil
+  def key_name(model), do: WardrikCore.Keys.key_name(model)
+
+  @doc """
+  Returns the cursor that stands past `positions`, each log's last sequence read, by its agent's or
+  conversation's ID, for `events.list` to read on from.
+  """
+  @spec cursor(%{String.t() => non_neg_integer()}) :: String.t()
+  def cursor(positions), do: WardrikEvents.Cursor.encode(positions)
+
+  @doc "Returns the positions a cursor stands past, each log's last sequence read, by its ID."
+  @spec positions(String.t()) :: {:ok, %{String.t() => non_neg_integer()}} | :error
+  def positions(cursor) do
+    case WardrikEvents.Cursor.decode(cursor) do
+      {:ok, positions} -> {:ok, positions}
+      {:error, _reason} -> :error
+    end
+  end
+
+  @doc """
+  Returns `:ok` where a definition's `policy` reads, or what it would refuse, as defining the agent
+  would say it.
+
+      Wardrik.check_policy(%{"judge" => %{"questions" => [%{"question" => "Publish?"}]}})
+      #=> {:error, "a question decides nothing; give it deny, ask or allow"}
+  """
+  @spec check_policy(map()) :: :ok | {:error, String.t()}
+  def check_policy(policy) do
+    case WardrikPolicy.decode(policy) do
+      {:ok, _policy} -> :ok
+      {:error, message} -> {:error, message}
+    end
+  end
 
   @doc """
   Returns the scope `principal` acts in on the Wardrik `instance`, allowed what `grants` say: a list
@@ -292,6 +350,22 @@ defmodule Wardrik do
   """
   @spec sign_in_pages(atom() | t()) :: {module(), term()} | nil
   def sign_in_pages(instance), do: instance |> Instance.fetch!() |> pages()
+
+  @doc """
+  Finishes the browser sign-in a callback's `params` name, with the `state` and `code` or `error` it
+  carried, for an app that serves the page itself. Returns the provider signed in to.
+  """
+  @spec finish_sign_in(atom() | t(), map()) :: {:ok, String.t()} | {:error, term()}
+  def finish_sign_in(instance, params),
+    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.finish(params)
+
+  @doc """
+  Returns the Client ID Metadata Document a service reads the Wardrik by, served at its sign-in
+  page's `/client`, for an app that serves it itself.
+  """
+  @spec client_document(atom() | t()) :: map()
+  def client_document(instance),
+    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.client_document()
 
   defp pages(%__MODULE__{oauth: nil}), do: nil
   defp pages(wardrik), do: {WardrikOAuth.Plug, WardrikOAuth.Plug.init(oauth: oauth(wardrik))}

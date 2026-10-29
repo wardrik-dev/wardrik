@@ -4,7 +4,7 @@ defmodule Wardrik.Slack.InstallTest do
 
   import Wardrik.Test.Slack
 
-  alias WardrikChannel.Installation
+  alias Wardrik.Channel.Installation
   alias WardrikSlack.Install
 
   setup :set_mimic_global
@@ -64,6 +64,35 @@ defmodule Wardrik.Slack.InstallTest do
     callback = %{type: "event_callback", team_id: "T7", event: %{type: "tokens_revoked"}}
     deliver(context, "events", JSON.encode!(callback))
     assert WardrikChannel.Channel.installation(channel, "T7") == :error
+  end
+
+  @tag slack: [
+         token: nil,
+         installations: :stored,
+         client_id: "1.2",
+         client_secret: "c13nt",
+         redirect_uri: "https://myapp.example.com/slack/installed"
+       ]
+  test "is added to a workspace, and taken out, through the Wardrik", context do
+    wardrik = context.wardrik
+
+    assert {:ok, url} = Wardrik.Channels.install_url(wardrik, "slack", "globex", return_to: "/s")
+    assert url =~ "client_id=1.2"
+
+    assert {:ok, %Installation{workspace: "T7", name: "Globex", owner: "globex"}, "/s"} =
+             Wardrik.Channels.installed(wardrik, "slack", "globex", %{
+               "code" => "good",
+               "state" => state(url)
+             })
+
+    assert Wardrik.Channels.uninstall(wardrik, "slack", "T7") == :ok
+    assert_received {:slack, "apps.uninstall", %{"client_id" => "1.2"}}
+
+    assert {:ok, channel} = Wardrik.Test.Channel.fetch(wardrik, "slack")
+    assert WardrikChannel.Channel.installation(channel, "T7") == :error
+
+    assert Wardrik.Channels.install_url(wardrik, "teams", "globex") ==
+             {:error, "There's no channel teams here."}
   end
 
   test "is refused for a channel added with its token alone", context do

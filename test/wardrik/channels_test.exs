@@ -36,6 +36,11 @@ defmodule Wardrik.ChannelsTest do
     %{name: name, scope: Wardrik.as(name, "anonymous")}
   end
 
+  test "says where a channel's chat app can't be added to workspaces", %{name: name} do
+    assert Wardrik.Channels.install_url(name, "slack", "acme") ==
+             {:error, "The channel slack isn't added to workspaces this way."}
+  end
+
   test "runs each channel it's given", %{name: name} do
     assert_receive {:started, ^name, "slack"}
   end

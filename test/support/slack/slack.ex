@@ -209,7 +209,12 @@ defmodule Wardrik.Test.Slack do
   defp reply("auth.test", _params), do: %{ok: true, user: "wardrik", team: "Acme"}
 
   defp reply("oauth.v2.access", %{"code" => "good"}),
-    do: %{ok: true, access_token: "xoxb-globex", team: %{id: "T7"}, bot_user_id: "UBOT"}
+    do: %{
+      ok: true,
+      access_token: "xoxb-globex",
+      team: %{id: "T7", name: "Globex"},
+      bot_user_id: "UBOT"
+    }
 
   defp reply("oauth.v2.access", _params), do: %{ok: false, error: "invalid_code"}
   defp reply(_method, _params), do: %{ok: true}

@@ -19,6 +19,7 @@ defmodule Wardrik.Setup do
         :workspace,
         :notify,
         :orgs,
+        :discovery_interval_ms,
         defaults: %{},
         listeners: [],
         channels: [],
@@ -57,7 +58,7 @@ defmodule Wardrik.Setup do
       deployment: opts[:deployment],
       authorizer: opts[:authorizer],
       retention: opts[:retention],
-      backend: opts[:backend] || {WardrikStore.Durable, store: store},
+      backend: opts[:backend] || backend(store, opts[:discovery_interval_ms]),
       policy: policy(opts[:policy]),
       capabilities:
         Map.new(opts[:capabilities], fn {name, entry} -> {to_string(name), entry} end),
@@ -158,10 +159,16 @@ defmodule Wardrik.Setup do
   defp store(name, nil, data_dir),
     do: {WardrikStore.EKV.new(name: Module.concat(name, Store), data_dir: data_dir), true}
 
+  defp store(_name, settings, nil) when is_list(settings), do: {Wardrik.store(settings), true}
   defp store(_name, store, nil), do: {store, false}
 
   defp store(_name, _store, _data_dir),
     do: raise(ArgumentError, "Give Wardrik a :store or a :data_dir, not both.")
+
+  defp backend(store, nil), do: {WardrikStore.Durable, store: store}
+
+  defp backend(store, interval),
+    do: {WardrikStore.Durable, store: store, discovery_interval_ms: interval}
 
   defp oauth(nil, _keys), do: nil
 

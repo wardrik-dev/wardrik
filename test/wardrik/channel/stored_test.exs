@@ -1,8 +1,8 @@
 defmodule Wardrik.Channel.StoredTest do
   use ExUnit.Case, async: false
 
+  alias Wardrik.Channel.Installation
   alias WardrikChannel.Channel
-  alias WardrikChannel.Installation
 
   setup context do
     store = WardrikStore.ETS.new(name: :"store #{context.test}")
