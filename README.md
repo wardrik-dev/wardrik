@@ -2,25 +2,7 @@
 
 **Agents, governed.**
 
-Run agents in your Elixir app with rules the model can't rewrite, approvals from the people you
-choose, budgets that cap what they spend, and a record of everything they did.
-
-## Try it
-
-```elixir
-Mix.install([{:wardrik, "~> 0.1"}])
-
-defmodule Demo.Wardrik, do: use(Wardrik)
-{:ok, _pid} = Demo.Wardrik.start_link()
-
-me = Demo.Wardrik.as("me", roles: [:owner], resources: ["me/*"])
-{:ok, assistant} = Wardrik.Agent.define(me, "me/assistant", model: "anthropic:claude-haiku-4-5")
-
-me |> Wardrik.Agent.stream(assistant, "Tell me a short story.") |> Enum.each(&IO.write/1)
-```
-
-That's an agent kept in memory, a scope that owns it, and its answer streamed into your IEx session
-as it's written.
+Run agents with rules the model can't rewrite, approvals from the people you choose, budgets that cap what they spend, and a record of everything they did.
 
 ## Install
 
@@ -34,36 +16,45 @@ end
 
 ## Start it
 
-Make your Wardrik a module, configure it, and add it to your supervision tree:
+Define a module that uses `Wardrik`, configure it, and add it to your supervision tree:
 
 ```elixir
-defmodule MyApp.Wardrik do
+defmodule MyApp.Runtime do
   use Wardrik, otp_app: :my_app
 end
 
 # config/runtime.exs
-config :my_app, MyApp.Wardrik,
+config :my_app, MyApp.Runtime,
   data_dir: "/var/lib/my_app",
   policy: [deny: ["shell/*"]]
 
 # application.ex
-children = [MyApp.Wardrik]
+children = [MyApp.Runtime]
 ```
 
 Then act as someone, and talk to agents:
 
 ```elixir
-scope = MyApp.Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 
-{:ok, notes} =
-  Wardrik.Agent.define(scope, "acme/@maria/notes",
+{:ok, notes_agent} =
+  Wardrik.Agent.define(scope, "acme/@maria/assistant",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You keep Maria's notes.",
     policy: [budget: [usd: 1.00, per: :day]]
   )
 
-Wardrik.Agent.reply(scope, notes, "What did I note yesterday?")
+Wardrik.Agent.reply(scope, notes_agent, "What did I note yesterday?")
 #=> {:ok, %Wardrik.Reply{message: "msg_Xq3f...", run: "0af76519...", text: "You noted the Q3 numbers..."}}
+```
+
+Or Stream the results:
+
+```elixir
+
+scope
+|> Wardrik.Agent.stream(notes_agent, "Summarize yesterday's notes.")
+|> Enum.each(&IO.write/1)
 ```
 
 ## Guides
