@@ -18,6 +18,9 @@ defmodule Wardrik do
 
   @behaviour Wardrik.Server
 
+  @typedoc "Who acts through a Wardrik, or for whom an agent works, as `principal/2` gives one."
+  @type principal() :: WardrikCore.Principal.t()
+
   use Supervisor
 
   alias Wardrik.Error
@@ -163,7 +166,7 @@ defmodule Wardrik do
 
       Wardrik.principal("acme/@maria", %{name: "Maria"})
   """
-  @spec principal(String.t(), map()) :: Principal.t()
+  @spec principal(String.t(), map()) :: principal()
   def principal(id, attributes \\ %{}), do: %Principal{id: id, attributes: attributes}
 
   @doc """
