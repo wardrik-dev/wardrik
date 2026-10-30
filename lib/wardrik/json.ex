@@ -1,7 +1,12 @@
 defmodule Wardrik.JSON do
-  @moduledoc "Turns what a view returns into what an operation answers: string keys, and atoms as strings."
+  @moduledoc "Turns view results into JSON-ready operation results."
 
-  @doc "Returns `value` with its keys and atoms as strings."
+  @doc """
+  Returns `value` with every key and atom as a string. Leaves `true`, `false` and `nil` alone.
+
+      Wardrik.JSON.json(%{status: :idle})
+      #=> %{"status" => "idle"}
+  """
   @spec json(term()) :: term()
   def json(%{} = map), do: Map.new(map, fn {key, value} -> {to_string(key), json(value)} end)
   def json(list) when is_list(list), do: Enum.map(list, &json/1)

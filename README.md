@@ -9,7 +9,7 @@ Run agents with rules the model can't rewrite, approvals from the people you cho
 ```elixir
 def deps do
   [
-    {:wardrik, "~> 0.1"}
+    {:wardrik, "~> 0.1.0-rc.1"}
   ]
 end
 ```
@@ -25,7 +25,7 @@ end
 
 # config/runtime.exs
 config :my_app, MyApp.Runtime,
-  data_dir: "/var/lib/my_app",
+  store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
   policy: [deny: ["shell/*"]]
 
 # application.ex

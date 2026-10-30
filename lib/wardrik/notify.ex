@@ -1,7 +1,8 @@
 defmodule Wardrik.Notify do
   @moduledoc """
-  Notify tells people when an agent parks, fails or answers while nobody watches. A Wardrik takes
-  its targets in `:notify`, each by a name of your own:
+  Tells people when an agent parks, fails or finishes while nobody is watching.
+
+  Name your targets in Wardrik's `:notify` option:
 
       notify: [
         targets: [
@@ -10,31 +11,49 @@ defmodule Wardrik.Notify do
         ]
       ]
 
-  An agent's definition routes its notices with `notify`: a target's name, or a room of one of the
-  Wardrik's channels, as `slack:#updates`; a list of them; or `to` and `on`, the kinds of
-  `Wardrik.Notice` sent, `parked` and `failed` unless set:
+  An agent's definition routes its notices with `notify`:
 
-      Wardrik.Agent.define(scope, "acme/triage", model: model, notify: %{to: ["ops"], on: ["finished"]})
+      # A target
+      notify: "ops"
 
-  A target with `:orgs` tells only those orgs' agents, and a definition that routes another org's
-  agent to it is refused. A conversation of an agent is routed nowhere.
+      # A room in one of Wardrik's channels
+      notify: "slack:#updates"
 
-  One process in the cluster follows every agent's log and sends each notice at least once: after
-  a restart it carries on from where it was, so tell a repeat by its agent, kind and `at`. A
-  delivery that fails is tried again as `:retries` say, 3 more times, each waiting up to 10 seconds
-  unless set (see `WardrikCore.Retry`), then logged and dropped.
+      # Several
+      notify: ["ops", "slack:#updates"]
+
+      # Which kinds of `Wardrik.Notice` to send. `["parked", "failed"]` unless set.
+      notify: %{to: ["ops"], on: ["finished"]}
+
+  Conversations aren't routed anywhere.
+
+  ## Options
+
+    * `:targets` - targets by name, as `{module, opts}`. A target's `:orgs` limits it to those
+      orgs' agents. Routing another org's agent to it is refused.
+    * `:retries` - how failed deliveries are retried. See `WardrikCore.Retry`.
+      `[attempts: 3, max_wait: 10_000]` unless set. After that, the notice is logged and dropped.
+
+  ## Delivery
+
+  One process in the cluster follows every agent's log. Each notice is sent at least once: after
+  a restart it picks up where it left off. Tell repeats apart by agent, kind and `at`.
   """
 
   alias Wardrik.Error
   alias Wardrik.Notice
 
-  @typedoc "Where an agent's notices go, and which of them."
+  @typedoc "Where an agent's notices go (`:to`), and which kinds are sent (`:on`)."
   @type route() :: %{to: [String.t()], on: [Notice.kind()]}
 
-  @doc "Sends `notice`. `opts` are the target's, with `:wardrik`, the instance, and `:target`, its name."
+  @doc """
+  Sends `notice`. Returns `{:skip, why}` if it shouldn't be sent, or `{:error, reason}` to retry.
+
+  `opts` are the target's own, plus `:wardrik`, the instance, and `:target`, the target's name.
+  """
   @callback deliver(Notice.t(), opts :: keyword()) :: :ok | {:skip, String.t()} | {:error, term()}
 
-  @doc "Returns `:notify`'s targets by name, and how a failed delivery is tried again."
+  @doc "Returns the `:notify` option's targets by name, and its retries."
   @spec settings(keyword() | nil) :: %{
           targets: %{String.t() => {module(), keyword()}},
           retries: keyword()
@@ -51,7 +70,7 @@ defmodule Wardrik.Notify do
   end
 
   @doc """
-  Returns the route the agent `definition`'s `notify` says, or `nil` for none.
+  Returns the route in `definition`'s `notify`, or `nil`.
 
       Wardrik.Notify.route(%{"notify" => "ops"})
       #=> %{to: ["ops"], on: [:parked, :failed]}
@@ -69,7 +88,7 @@ defmodule Wardrik.Notify do
   defp kind("failed"), do: :failed
   defp kind("finished"), do: :finished
 
-  @doc "Returns `:ok` where each place the agent `id`'s `definition` routes to tells it."
+  @doc "Returns `:ok` if every place `definition` routes to exists and accepts the agent `id`."
   @spec check(Wardrik.t(), String.t(), map()) :: :ok | {:error, Error.t()}
   def check(wardrik, id, definition) do
     case route(definition) do
@@ -96,8 +115,9 @@ defmodule Wardrik.Notify do
   defp invalid(message), do: {:error, Error.new(:invalid_request, message)}
 
   @doc """
-  Sends `notice` to `name`, a target or a channel's room. Returns `{:skip, why}` where there's
-  nowhere to send it, which isn't tried again.
+  Sends `notice` to `name`, a target or a channel's room.
+
+  Returns `{:skip, why}` if there's nowhere to send it. Skips aren't retried.
   """
   @spec deliver(Wardrik.t(), String.t(), Notice.t()) ::
           :ok | {:skip, String.t()} | {:error, term()}

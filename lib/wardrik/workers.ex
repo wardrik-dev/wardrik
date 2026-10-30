@@ -1,25 +1,42 @@
 defmodule Wardrik.Workers do
   @moduledoc """
-  The tools workers offer: programs that connect to Wardrik and run calls in their own process, as
-  MCP servers do. A definition names them as `workers/*`, and the model sees each as
+  Tools offered by workers: programs that connect to Wardrik and run tool calls in their own
+  process, like MCP servers.
+
+  A definition names them as `workers/*`. The model sees each tool as, for example,
   `workers__refund_order`.
 
-  An agent is offered the tools of every worker whose scope may `agent.serve` it, as the `:worker`
-  role allows. Workers of one principal that offer the same tool share its calls. Where another's
-  offer it too, the agent gets the one whose worker connected first.
+  ## Which workers an agent gets
 
-  A surface holds each worker's connection in a process of its own. It offers what the worker lists
-  with `offer/2`. It's sent each call as `{Wardrik.Workers, :call, call, name, arguments, meta}`,
-  and answers it with `answer/2`. It's sent `{Wardrik.Workers, :cancel, call}` for a call Wardrik
-  stopped waiting on.
+  An agent gets the tools of every worker whose scope may `agent.serve` it. The `:worker` role
+  allows that. Workers of the same principal that offer the same tool share its calls. If several
+  principals offer it, the agent gets the one whose worker connected first.
 
-  A call no worker is there for raises `Wardrik.Workers.Unavailable`, and one whose worker went away
-  or didn't answer in time raises `Wardrik.Workers.Lost`, so the tool runner tries it again, on
-  whichever worker offers it then, where every worker offering the tool marks it read-only or
-  idempotent. Any other call that may have run waits on a person as `:in_doubt`. A tool is gated unless every worker offering it marks it read-only, and its
-  answers are labelled `"outside"` unless Wardrik's `:trusted_workers` says otherwise. A call's
-  `meta` holds the `agent` it's for, the `run` it's part of, the `principal` it acts for,
-  and an `idempotencyKey` that stays the same when the call is repeated.
+  ## Serving a worker
+
+  A surface holds each worker's connection in its own process, which:
+
+    1. Offers the worker's tools with `offer/2`.
+    2. Receives each call as `{Wardrik.Workers, :call, call, name, arguments, meta}`.
+    3. Answers it with `answer/2`.
+    4. Receives `{Wardrik.Workers, :cancel, call}` if Wardrik stops waiting.
+
+  A call's `meta` holds the `agent` it's for, the `run` it's part of, the `principal` it acts for,
+  and an `idempotencyKey` that stays the same if the call is retried.
+
+  ## Failures
+
+    * No worker for the call raises `Wardrik.Workers.Unavailable`.
+    * A worker that goes away or times out raises `Wardrik.Workers.Lost`.
+
+  The tool runner retries either on whichever worker offers the tool then, if every worker
+  offering it marks it read-only or idempotent. Otherwise a call that may have run waits on a
+  person as `:in_doubt`.
+
+  ## Trust
+
+  A tool is gated unless every worker offering it marks it read-only. Its results are labelled
+  `"outside"` unless Wardrik's `:trusted_workers` is `true`.
   """
 
   @behaviour WardrikCore.Capability
@@ -42,9 +59,10 @@ defmodule Wardrik.Workers do
   @type call() :: {pid(), reference()}
 
   @doc """
-  Offers the tools a worker lists, in MCP's `tools/list` shape, from the calling process, in place
-  of what it offered before, until it exits. A tool whose name a model can't take, or that doesn't
-  read as MCP describes it, is left out.
+  Offers a worker's tools from the calling process, until it exits.
+
+  `listed` is in MCP's `tools/list` shape. It replaces what the process offered before. Tools with
+  invalid names or definitions are left out.
   """
   @spec offer(Scope.t(), term()) :: :ok | {:error, term()}
   def offer(%Scope{wardrik: instance} = scope, listed) do
@@ -53,7 +71,7 @@ defmodule Wardrik.Workers do
     Group.join(group, @group, Map.put(meta, :since, since(group)))
   end
 
-  @doc "Answers `call` with the worker's JSON-RPC response to `tools/call`."
+  @doc "Answers `call` with the worker's JSON-RPC `tools/call` response."
   @spec answer(call(), map()) :: :ok
   def answer({caller, ref}, response) do
     send(caller, {ref, response})
@@ -290,11 +308,11 @@ defmodule Wardrik.Workers do
 end
 
 defmodule Wardrik.Workers.Unavailable do
-  @moduledoc "No worker offered a tool when it was called, so the call didn't run."
+  @moduledoc "Raised when no worker offers a tool as it's called. The call didn't run."
   defexception [:message]
 end
 
 defmodule Wardrik.Workers.Lost do
-  @moduledoc "A worker went away, or didn't answer in time, while it ran a call, which may have run."
+  @moduledoc "Raised when a worker goes away or times out during a call. The call may have run."
   defexception [:message]
 end

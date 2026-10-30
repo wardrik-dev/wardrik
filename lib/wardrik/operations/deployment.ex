@@ -1,5 +1,5 @@
 defmodule Wardrik.Operations.Deployment do
-  @moduledoc "The operations on the deployment itself: its audit, its nodes, and reading definitions again."
+  @moduledoc "Operations on the deployment: the audit, nodes, moving agents and reloading."
 
   alias Wardrik.Definitions
   alias Wardrik.Error
@@ -9,7 +9,7 @@ defmodule Wardrik.Operations.Deployment do
   alias Wardrik.Resource
   alias WardrikEvents.Pattern
 
-  @doc "Reads a page of what people changed across the deployment."
+  @doc "Returns a page of the deployment's audit."
   @spec audit(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def audit(scope, input) do
     opts = [after: input["starting_after"] || 0, limit: input["limit"] || 100]
@@ -18,8 +18,14 @@ defmodule Wardrik.Operations.Deployment do
   end
 
   @doc """
-  Reads the Wardrik's declarations again, has every agent take its definition as it reads now, or
-  each the `resources` patterns cover, and reads servers and triggers again.
+  Reloads the deployment:
+
+    1. Reloads the declarations. See `Wardrik.Declarations`.
+    2. Updates running agents to their current definitions. Only those `"resources"` covers, if
+       given.
+    3. Reconciles MCP servers and triggers.
+
+  Returns the node reloaded, and a line for each declaration problem.
   """
   @spec reload(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def reload(%Wardrik.Scope{wardrik: wardrik} = scope, input) do
@@ -49,7 +55,7 @@ defmodule Wardrik.Operations.Deployment do
     end
   end
 
-  @doc "Lists the deployment's nodes, each with how many agents run on it, and how many sleep."
+  @doc "Lists the deployment's nodes with how many agents run on each, and how many are asleep."
   @spec nodes(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def nodes(%Wardrik.Scope{wardrik: wardrik}, _input) do
     agents = Wardrik.agents(wardrik)
@@ -63,7 +69,7 @@ defmodule Wardrik.Operations.Deployment do
     {:ok, %{"nodes" => nodes, "asleep" => Map.get(counts, nil, 0)}}
   end
 
-  @doc "Starts an agent again on another node, as it was."
+  @doc "Moves an agent to another node."
   @spec move(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def move(%Wardrik.Scope{wardrik: wardrik} = scope, %{"agent" => id, "node" => node}) do
     case WardrikCore.move(Wardrik.agents(wardrik), id, node) do

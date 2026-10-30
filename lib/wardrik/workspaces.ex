@@ -1,8 +1,9 @@
 defmodule Wardrik.Workspaces do
   @moduledoc """
-  Workspaces give agents files: a tree of their own, kept in the Wardrik's store, trees shared with
-  them, and files read into every turn. A definition names `files` among its `tools`, shares trees
-  under `workspace`, and names files to read under `context`:
+  Gives agents files: a tree of their own, shared trees, and files read into every turn.
+
+  In a definition, `files` in `tools` adds the file tools, `context` lists files to read into
+  every turn, and `workspace.shared` mounts shared trees:
 
       tools: [files]
       context: [MEMORY.md]
@@ -11,14 +12,19 @@ defmodule Wardrik.Workspaces do
           team: acme
           runbooks: {tree: acme/runbooks, mode: read}
 
-  A tree is named `org`, `org/name` or `org/@user/name`, and is reachable by the agents of the
-  owner its name begins with: `acme` and `acme/runbooks` by acme's own agents, `acme/@jon/notes` by
-  jon's. Anyone else mounts one only where the Wardrik's `:workspace` shares it, by resource
-  pattern:
+  Trees are named `org`, `org/name` or `org/@user/name`. The owner the name starts with can mount
+  it: acme's agents can mount `acme` and `acme/runbooks`, and jon's can mount `acme/@jon/notes`.
+
+  Other agents can only mount a tree that Wardrik's `:workspace` option shares, by resource pattern:
 
       workspace: [shared: %{"acme/runbooks" => [read: ["acme/*"], write: ["acme/agent/ops", "acme/agent/ops/*"]]}]
 
   An agent's conversations share its tree.
+
+  ## Context
+
+  `context` lists at most 20 files. As a map, it takes `files` and `max_bytes`, from 1024 to
+  262144. `max_bytes` is `16384` unless set.
   """
 
   alias Wardrik.AgentID
@@ -31,8 +37,10 @@ defmodule Wardrik.Workspaces do
   @bytes 1_024..262_144
 
   @doc """
-  Returns what the agent `id` gets of its definition's workspace: the file tools where `files?`,
-  and the middleware that reads its `context` into every turn, or why they don't read.
+  Returns the capabilities and middleware for the agent `id`'s workspace.
+
+  Capabilities hold the file tools if `files?` is `true`. Middleware reads `context` into every
+  turn. Returns an `invalid_request` error if the workspace or `context` is invalid.
   """
   @spec resolve(Wardrik.t(), String.t(), map(), boolean()) ::
           {:ok, [capabilities: list(), middleware: list()]} | {:error, Error.t()}
@@ -49,14 +57,14 @@ defmodule Wardrik.Workspaces do
     end
   end
 
-  @doc "Returns the tree the agent `id` keeps its own files in, its agent's for a conversation."
+  @doc "Returns the agent `id`'s own tree. A conversation uses its agent's."
   @spec tree(String.t()) :: String.t()
   def tree(id) do
     {:ok, resource} = id |> AgentID.agent() |> Resource.agent()
     "agents/" <> resource
   end
 
-  @doc "Returns the Wardrik's `:workspace` option as it keeps it: each shared tree's read and write patterns."
+  @doc "Returns the `:workspace` option as each shared tree's read and write patterns."
   @spec settings(keyword() | nil) :: %{String.t() => %{read: [String.t()], write: [String.t()]}}
   def settings(nil), do: %{}
 

@@ -1,18 +1,23 @@
 defmodule Wardrik.Delegation do
   @moduledoc """
-  Delegation brings an agent's answer back to the agent that asked for it with `agent_ask`, as a
-  message that starts a turn of its own:
+  Sends an agent's answer back to the agent that asked with `agent_ask`.
+
+  The answer arrives as a new message, which starts a turn:
 
       From agent acme/reconciler:
       In answer to your message msg_x1:
       Two deposits match no invoice: …
 
-  It notes each question in the store, follows the run that takes it up, and asks the asker once
-  that run finishes, fails or stops. A run waiting on a person tells nothing yet. As it starts, it
-  reads the logs of the agents it waits on, so a run that ended while it was down is answered too.
-  An answer is asked under an id of its own, so one delivered twice is taken once. It carries the
-  labels of what the answering agent's conversation holds, or `"outside"` where that agent isn't
-  running to say.
+  How it works:
+
+    1. Each question is saved in the store.
+    2. It follows the run that takes the question up.
+    3. When that run completes, fails or is cancelled, it sends the result to the asker. A run
+       waiting on a person sends nothing yet.
+
+  On start it catches up on the logs it waits on, so runs that ended while it was down are still
+  answered. Each answer has its own message ID, so a repeat is dropped. The answer carries the
+  labels of the answering agent's conversation, or `"outside"` if that agent isn't running.
   """
 
   use GenServer
@@ -22,12 +27,12 @@ defmodule Wardrik.Delegation do
   alias WardrikCore.Context
   alias WardrikCore.Principal
 
-  @doc "Starts bringing answers back for `wardrik`."
+  @doc "Starts delegation."
   @spec start_link(Wardrik.t()) :: GenServer.on_start()
   def start_link(wardrik),
     do: GenServer.start_link(__MODULE__, wardrik, name: Module.concat(wardrik.name, Delegation))
 
-  @doc "Notes that `asker` asked `agent` the message `id`, so the answer comes back to it."
+  @doc "Records that `asker` sent `agent` the message `id`, so the answer goes back to `asker`."
   @spec asked(atom() | Wardrik.t(), String.t(), String.t(), String.t()) :: :ok
   def asked(instance, asker, agent, id) do
     wardrik = Wardrik.Instance.fetch!(instance)

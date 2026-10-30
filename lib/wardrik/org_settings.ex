@@ -1,15 +1,23 @@
 defmodule Wardrik.OrgSettings do
   @moduledoc """
-  What an org's agents are given and held to, as a `Wardrik.Orgs` answers for it.
+  An org's settings, as `c:Wardrik.Orgs.settings/2` returns them.
 
-    * `policy` - the `WardrikPolicy` every agent of the org is held to, after the deployment's and
-      before its own, or the rules to build it from, or a list of them, held to in turn.
-    * `policies` - the policies the org's definitions may name, by name, beside the deployment's.
-      A name the deployment's policies have already is refused.
-    * `defaults` - what the org's definitions are given where they say nothing, over the
+      %Wardrik.OrgSettings{
+        policy: [deny: ["shell/*"]],
+        policies: %{"careful" => [ask: ["github/*"]]},
+        defaults: %{"model" => "anthropic:claude-haiku-4-5"},
+        ceilings: %{"spending-cap" => [usd: 20.00, per: :day]}
+      }
+
+  ## Fields
+
+    * `:policy` - the `WardrikPolicy` every agent in the org is held to, or its rules, or a list
+      of them. Checked after the deployment's policy and before the agent's own.
+    * `:policies` - named policies the org's definitions may use, alongside the deployment's.
+      A name the deployment already uses is refused.
+    * `:defaults` - what the org's definitions get where they say nothing. Overrides the
       deployment's `:defaults`.
-    * `ceilings` - budgets every agent of the org spends from together, by name, as
-      `Wardrik.Ceiling` describes.
+    * `:ceilings` - named budgets the org's agents share. See `Wardrik.Ceiling`.
   """
 
   defstruct policy: nil, policies: %{}, defaults: %{}, ceilings: %{}

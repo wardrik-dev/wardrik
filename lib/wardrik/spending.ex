@@ -1,9 +1,9 @@
 defmodule Wardrik.Spending do
   @moduledoc """
-  Spending is what each agent's model calls and tools spent today, by the UTC day: the tokens they
-  took, and the dollars where they had a price. Every agent a Wardrik starts counts it, as
-  middleware around each model call and tool call, and a list of agents shows it. A subagent's
-  calls count in the tool call that ran it.
+  Counts what each agent spends per UTC day, in tokens and, where priced, dollars.
+
+  Every agent Wardrik starts has it as middleware around model and tool calls. Agent lists show
+  it. Subagents' calls count as part of the tool call that ran them.
   """
 
   @behaviour WardrikCore.Middleware
@@ -33,7 +33,12 @@ defmodule Wardrik.Spending do
     end
   end
 
-  @doc "Returns what the agent `id` spent today: its `tokens`, and `usd` where its calls had a price."
+  @doc """
+  Returns what the agent `id` spent today.
+
+      Wardrik.Spending.today(wardrik, "acme/triage")
+      #=> %{"tokens" => 12_400, "usd" => 0.03}
+  """
   @spec today(Wardrik.t(), String.t()) :: %{String.t() => number()}
   def today(wardrik, id) do
     today = today()

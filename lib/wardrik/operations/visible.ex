@@ -1,7 +1,9 @@
 defmodule Wardrik.Operations.Visible do
   @moduledoc """
-  What an operation over many agents shows: the agents its resource patterns cover that the scope
-  may act on, and of their events and cursors only theirs.
+  Limits operations over many agents to what the scope may see.
+
+  Only agents that the input's resource patterns cover, and the scope may act on, are shown. The
+  same goes for their events and cursors.
   """
 
   alias Wardrik.Definitions
@@ -11,7 +13,7 @@ defmodule Wardrik.Operations.Visible do
 
   @everything ["*"]
 
-  @doc "Returns the IDs of the agents, saved or defined, that `input`'s patterns cover and `scope` reaches."
+  @doc "Returns the IDs of saved or defined agents that `input`'s patterns cover and `scope` may see."
   @spec agents(Scope.t(), map()) :: [String.t()]
   def agents(%Scope{wardrik: wardrik} = scope, input) do
     (WardrikCore.list(Wardrik.agents(wardrik)) ++ Definitions.ids(wardrik))
@@ -20,7 +22,7 @@ defmodule Wardrik.Operations.Visible do
     |> Enum.sort()
   end
 
-  @doc "Returns the patterns of the logs that hold every agent `input`'s patterns could cover."
+  @doc "Returns the log patterns that hold every agent `input`'s patterns could cover."
   @spec logs(map()) :: [String.t()]
   def logs(input) do
     input
@@ -29,7 +31,7 @@ defmodule Wardrik.Operations.Visible do
     |> Enum.uniq()
   end
 
-  @doc "Returns whether `scope` may see the agent `id`, among those `patterns` cover."
+  @doc "Returns whether `patterns` cover the agent `id` and `scope` may see it."
   @spec visible?(Scope.t(), [String.t()], String.t()) :: boolean()
   def visible?(scope, patterns, id) do
     case Resource.agent(id) do
@@ -42,14 +44,14 @@ defmodule Wardrik.Operations.Visible do
     end
   end
 
-  @doc "Returns the ID of the agent whose log `event` is in."
+  @doc "Returns the ID of the agent whose log holds `event`."
   @spec agent_id(map()) :: String.t()
   def agent_id(%{"source" => source}) do
     [_deployment, id] = String.split(source, "/agents/", parts: 2)
     id
   end
 
-  @doc "Returns `input`'s resource patterns, or every resource."
+  @doc ~S|Returns `input`'s `"resources"` patterns, or `["*"]`.|
   @spec patterns(map()) :: [String.t()]
   def patterns(input), do: Map.get(input, "resources", @everything)
 

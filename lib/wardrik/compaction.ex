@@ -1,15 +1,26 @@
 defmodule Wardrik.Compaction do
   @moduledoc """
-  The middleware that summarises an agent's older history as a turn begins, once the history
-  passes `at` of its model's context window, keeping the last `keep` of the window word for word.
+  Middleware that summarises an agent's older history when a turn starts.
 
-  It takes `:at`, `0.6` unless set, `:keep`, `0.25` unless set, and `:window`, the window in tokens
-  where the model catalog gives none, or 128,000. The summary is the agent's own model, called in a
-  `compaction` step, so policy and budgets see it as any other model call. History is cut only where
-  a person's message begins, and a turn resuming isn't compacted. The summary keeps the labels of what
-  it summarises, so a run that read content from outside still carries the label. If the summary fails, the history
-  stays as it was and the turn runs anyway. Each compaction emits `[:wardrik, :conversation,
-  :compacted]` with the message and token counts before and after.
+  It runs once the history passes `:at` of the model's context window. The most recent `:keep`
+  of the window stays word for word.
+
+  ## Options
+
+    * `:at` - the share of the window that triggers compaction. `0.6` unless set.
+    * `:keep` - the share of the window kept word for word. `0.25` unless set.
+    * `:window` - the window in tokens, if the model catalog has none. `128_000` unless set.
+
+  ## Behaviour
+
+    * The agent's own model writes the summary, in a `compaction` step. Policy and budgets apply
+      as for any model call.
+    * History is only cut where a person's message starts.
+    * Resumed turns aren't compacted.
+    * The summary keeps the labels of what it replaces, such as `"outside"`.
+    * If summarising fails, the history is left as it is and the turn runs anyway.
+    * Each compaction emits `[:wardrik, :conversation, :compacted]` with message and token counts
+      before and after.
   """
 
   @behaviour WardrikCore.Middleware

@@ -1,12 +1,18 @@
 defmodule Wardrik.Notify.Room do
   @moduledoc """
-  Posts each notice in a room of one of the Wardrik's channels, through the channel's
-  `c:Wardrik.Channel.notify/4`:
+  Posts notices to a room in one of Wardrik's channels, with `c:Wardrik.Channel.notify/4`.
 
       ops: {Wardrik.Notify.Room, channel: "slack", room: "#ops", approvers: ["@maria"]}
 
-  `approvers` are whom a parked turn's notice asks, as the channel names people. A route to
-  `slack:#updates` posts there the same way, asking nobody by name.
+  A route to `slack:#updates` posts the same way, with no approvers.
+
+  ## Options
+
+    * `:channel` - required. The channel's name.
+    * `:room` - required. The room, as the channel names it.
+    * `:approvers` - people a parked turn's notice asks, as the channel names them. `[]` unless set.
+
+  Skips the notice if the channel doesn't exist or doesn't implement `notify/4`.
   """
 
   @behaviour Wardrik.Notify

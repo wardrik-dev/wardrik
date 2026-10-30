@@ -1,12 +1,19 @@
 defmodule Wardrik.Keys do
   @moduledoc """
-  The keys an agent's installed code calls services with, as `WardrikCore.Keys`, from the vault:
-  the agent's owner's, then its org's for a person's agent, then the deployment's.
+  Finds the API keys an agent's code calls services with. Implements `WardrikCore.Keys`.
 
-  So an org, or a person, brings its own key by sealing a secret of that name, as
-  `Wardrik.put_secret(MyApp.Wardrik, "acme", "ZAI_API_KEY", key)`, and the deployment's serves every
-  owner that holds none. Where none of them holds it, the code finds its own, as ReqLLM reads the
-  environment. Only secrets count: an account someone connected is a credential, never a key.
+  Keys are secrets in the vault. Wardrik looks in this order:
+
+    1. The person, for a person's agent.
+    2. The org.
+    3. The deployment.
+
+  An org or person brings its own key by sealing a secret with the key's name:
+
+      Wardrik.put_secret(MyApp.Wardrik, "acme", "ZAI_API_KEY", key)
+
+  If no one holds it, the code finds its own, as ReqLLM reads the environment. Only secrets
+  count. A connected account is a credential, never a key.
   """
 
   @behaviour WardrikCore.Keys
@@ -19,7 +26,7 @@ defmodule Wardrik.Keys do
     Enum.find_value(owners(principal), :error, &held(vault, &1, name))
   end
 
-  @doc "Returns whose keys an agent working for `principal` reads, nearest first."
+  @doc "Returns the owners whose keys an agent working for `principal` uses, nearest first."
   @spec owners(Principal.t() | nil) :: [String.t()]
   def owners(%Principal{id: id}) do
     case String.split(id, "/@", parts: 2) do

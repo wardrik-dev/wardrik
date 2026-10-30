@@ -1,5 +1,5 @@
 defmodule Wardrik.Operations.Agents do
-  @moduledoc "The operations over the agents resource patterns cover: listing them, and their events."
+  @moduledoc "Operations over the agents that resource patterns cover: listing them and their events."
 
   alias Wardrik.Operations.Agent
   alias Wardrik.Operations.Changes
@@ -17,7 +17,7 @@ defmodule Wardrik.Operations.Agents do
     {:ok, %{"agents" => agents}}
   end
 
-  @doc "Stops what each of the agents is doing, and answers those whose turn ended."
+  @doc "Cancels what each agent is doing. Returns those that were cancelled."
   @spec cancel(Scope.t(), map()) :: {:ok, map()}
   def cancel(scope, input) do
     cancelled =
@@ -28,7 +28,10 @@ defmodule Wardrik.Operations.Agents do
     {:ok, %{"cancelled" => cancelled}}
   end
 
-  @doc "Forgets each of the agents, and answers which went, and which couldn't, with why."
+  @doc """
+  Forgets each agent. Returns those forgotten, those kept because they're declared, and those
+  that failed, with why.
+  """
   @spec forget(Scope.t(), map()) :: {:ok, map()}
   def forget(scope, input) do
     {kept, covered} =
@@ -64,7 +67,7 @@ defmodule Wardrik.Operations.Agents do
     {:ok, %{"interrupts" => interrupts}}
   end
 
-  @doc "Reads a page of the agents' events."
+  @doc "Returns a page of the agents' events."
   @spec events(Scope.t(), map()) :: {:ok, map()} | {:error, Wardrik.Error.t()}
   def events(scope, input) do
     opts = [after: input["after"], limit: input["limit"]]
@@ -87,7 +90,7 @@ defmodule Wardrik.Operations.Agents do
     {:ok, %{"cursor" => visible_cursor(scope, input, cursor)}}
   end
 
-  @doc "Streams the agents' events, as `{event, cursor}`, reading on and then following."
+  @doc "Streams the agents' events as `{event, cursor}`. Reads what's there, then follows new events."
   @spec stream(Scope.t(), map()) :: {:ok, Enumerable.t()} | {:error, Wardrik.Error.t()}
   def stream(scope, input) do
     patterns = Visible.patterns(input)

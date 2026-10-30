@@ -1,7 +1,6 @@
 defmodule Wardrik.Sleeper do
   @moduledoc """
-  Puts each defined agent to sleep once it has had nothing to do for its idle timeout. It wakes
-  when something asks it.
+  Puts defined agents to sleep after their idle timeout. An agent wakes when something asks it.
   """
 
   use GenServer
@@ -13,12 +12,12 @@ defmodule Wardrik.Sleeper do
   @busy ~w(wardrik.message.created wardrik.run.started wardrik.run.resumed wardrik.run.interrupted
            wardrik.agent.stopped)
 
-  @doc "Starts putting `wardrik`'s idle agents to sleep."
+  @doc "Starts the sleeper."
   @spec start_link(Wardrik.t()) :: GenServer.on_start()
   def start_link(wardrik),
     do: GenServer.start_link(__MODULE__, wardrik, name: Module.concat(wardrik.name, Sleeper))
 
-  @doc "Watches the agent `id`, just defined, so it sleeps once it has had nothing to do."
+  @doc "Starts the idle timer for the newly defined agent `id`."
   @spec watch(Wardrik.t(), String.t()) :: :ok
   def watch(wardrik, id), do: GenServer.cast(Module.concat(wardrik.name, Sleeper), {:watch, id})
 

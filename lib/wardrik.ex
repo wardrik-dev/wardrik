@@ -12,13 +12,26 @@ defmodule Wardrik do
       scope = MyApp.Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
       Wardrik.Agent.stream(scope, "acme/@maria/assistant", "What's on today?") |> Enum.each(&IO.write/1)
 
-  `use Wardrik` reads its options from `config :my_app, MyApp.Wardrik`, then those it's started
-  with, then `c:init/1`. See `start_link/1` for every option.
+  ## Options
+
+  Each place overrides the one before it:
+
+      # 1. config/runtime.exs
+      config :my_app, MyApp.Wardrik, store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
+
+      # 2. The supervision tree
+      children = [{MyApp.Wardrik, deployment: "production"}]
+
+      # 3. init/1, for what's only known at runtime
+      @impl Wardrik
+      def init(config), do: {:ok, Keyword.put(config, :keys, [System.fetch_env!("WARDRIK_KEY")])}
+
+  See `start_link/1` for every option.
   """
 
   @behaviour Wardrik.Server
 
-  @typedoc "Who acts through a Wardrik, or for whom an agent works, as `principal/2` gives one."
+  @typedoc "Who acts through Wardrik, or whom an agent works for. Build one with `principal/2`."
   @type principal() :: WardrikCore.Principal.t()
 
   use Supervisor
@@ -34,7 +47,6 @@ defmodule Wardrik do
   @enforce_keys [
     :name,
     :store,
-    :own_store,
     :keys,
     :oauth,
     :mcp,
@@ -64,7 +76,6 @@ defmodule Wardrik do
   @type t() :: %__MODULE__{
           name: atom(),
           store: WardrikStore.t(),
-          own_store: boolean(),
           keys: [String.t()],
           oauth: keyword() | nil,
           mcp: keyword() | nil,
@@ -91,8 +102,7 @@ defmodule Wardrik do
         }
 
   @doc """
-  Runs as a Wardrik made with `use Wardrik` starts, with its options, to give those only known as it
-  runs, like a secret from the environment.
+  Fills in options only known at runtime, before the module starts.
 
       @impl Wardrik
       def init(config), do: {:ok, Keyword.put(config, :keys, [System.fetch_env!("WARDRIK_KEY")])}
@@ -102,46 +112,66 @@ defmodule Wardrik do
   defmacro __using__(opts), do: Wardrik.Instance.using(Keyword.get(opts, :otp_app))
 
   @doc """
-  Starts a Wardrik. Takes `:name`, and where it keeps agents and events: `:data_dir`, a directory
-  on disk, `:store`, one `store/1` builds, as `[repo: MyApp.Repo]`, which it runs itself, or a
-  store you run yourself. Given neither, it keeps them in memory, gone when it stops.
+  Starts Wardrik.
 
-  It also takes `:deployment` (`"local"` unless set), `:authorizer`, a `Wardrik.Authorizer` as
-  `{module, config}` (`Wardrik.Statements` unless set), `:retention`, the days events are kept (30
-  unless set), `:backend`, where agents are kept (the store unless set), `:discovery_interval_ms`,
-  how often a node looks in the store for agents no node runs (30 seconds unless set), and `:policy`, the
-  `WardrikPolicy` every agent is held to, or the rules to build it from.
+      Wardrik.start_link(
+        name: MyApp.Wardrik,
+        store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
+        keys: [System.fetch_env!("WARDRIK_KEY")],
+        policy: [deny: ["shell/*"]]
+      )
 
-  Given `:keys`, it keeps credentials sealed with them, and gives them to every agent's tools. Given
-  `:oauth` too, as `WardrikOAuth` takes its `:page`, `:providers`, `:client_name` and
-  `:req_options`, people sign in to give agents their accounts, and the calls waiting on a sign-in
-  carry on once it's done.
+  ## Store
 
-  Given `:mcp`, the MCP servers its agents may call, as `WardrikMCP` takes its `:servers`, it
-  connects to each; a server's own `:orgs` lists the orgs whose agents reach it, every org's
-  unless it says. `:channels` are the chat apps people reach agents through, by name, each a
-  `Wardrik.Channel` as `{module, opts}`. `:notify` names where agents' notices may go, as
-  `Wardrik.Notify` describes. `:declarations` are agents something outside the API defines, as
-  `Wardrik.Declarations` describes. `:orgs` gives each org settings of its own, as `Wardrik.Orgs`
-  describes. `:workspace` shares trees of files beyond their owners, as
-  `Wardrik.Workspaces` describes. `:triggers` takes `WardrikTriggers`' `:req_options`, for reading
-  feeds, and `:reconcile`.
+  Where agents and their events are kept. In memory unless set, and gone when it stops.
 
-  What a definition names, it finds here: `:capabilities`, the tools it offers by name, as
-  `[files: {MyApp.Files, []}]`, and `:policies`, as `[careful: [ask: ["github/*"]]]`. Each MCP
-  server is a tool too, as `github/*`. `:middleware` wraps every agent's calls, and `:idle_timeout`
-  is how many seconds a defined agent may have nothing to do before it sleeps, 900 unless set, or
-  `:infinity`. `:defaults` is what every definition is given where it says nothing, as
-  `%{"model" => "anthropic:claude-haiku-4-5"}`, however it was defined. `:trusted_workers` is
-  `true` where tool workers' answers are the deployment's own, so they aren't labelled `"outside"`.
-  `:egress` says which URLs it reaches where its users name them, as the servers an owner adds and
-  the sign-ins they lead to: `Wardrik.Egress.public/1` unless set. `:prices` says what models cost
-  where the model catalog has no price, or not the one to count, by spec, as `Wardrik.Setup.price/2`
-  reads each:
+      # On disk
+      store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
 
-      prices: %{"zai_coding_plan:glm-5.1" => [priced_as: "zai:glm-5.1", markup: 0.1]}
+      # In your app's Postgres; create the table with WardrikStore.Ecto.Migration
+      store: {WardrikStore.Ecto, repo: MyApp.Repo}
 
-  Every agent's spending, budgets, ceilings and events count them.
+      # In a Postgres of its own, which migrates itself
+      store: {WardrikStore.Ecto, url: "postgres://user:pass@db.example.com/my_app"}
+
+      # A store you've built; one already running is left as it is
+      store: WardrikStore.EKV.new(name: MyApp.Store, data_dir: "/var/lib/my_app")
+
+  `WardrikStore.Ecto` needs `:ecto_sql` and `:postgrex` in your deps.
+
+  ## Options
+
+    * `:name` - required. What Wardrik is reached by.
+    * `:store` - see above.
+    * `:deployment` - the deployment's name in each event's `source`. `"local"` unless set.
+    * `:policy` - the `WardrikPolicy` every agent is held to, or its rules, as `[deny: ["shell/*"]]`.
+    * `:keys` - keys to seal credentials with. Without them, no secrets are kept.
+    * `:oauth` - services people sign in to, as `[page: ..., providers: ..., client_name: ...]`.
+      Needs `:keys`. See `WardrikOAuth`.
+    * `:mcp` - MCP servers agents may call, as `[github: [transport: ..., orgs: ["acme"]]]`.
+      See `WardrikMCP`.
+    * `:capabilities` - tools definitions name, as `[files: {MyApp.Files, []}]`.
+    * `:policies` - policies definitions name, as `[careful: [ask: ["github/*"]]]`.
+    * `:defaults` - what every definition gets where it says nothing, as
+      `%{"model" => "anthropic:claude-haiku-4-5"}`.
+    * `:middleware` - wraps every agent's calls.
+    * `:idle_timeout` - seconds a defined agent idles before it sleeps, or `:infinity`. `900`.
+    * `:channels` - chat apps, as `[slack: {WardrikSlack, opts}]`. See `Wardrik.Channel`.
+    * `:notify` - where notices go. See `Wardrik.Notify`.
+    * `:declarations` - agents defined outside the API. See `Wardrik.Declarations`.
+    * `:orgs` - per-org settings. See `Wardrik.Orgs`.
+    * `:workspace` - file trees shared beyond their owners. See `Wardrik.Workspaces`.
+    * `:triggers` - `[req_options: ..., reconcile: ...]`. See `WardrikTriggers`.
+    * `:listeners` - listeners to start. See `Wardrik.Listener`.
+    * `:authorizer` - `{module, config}`. `{Wardrik.Statements, []}` unless set.
+    * `:retention` - days events are kept, or `:infinity`. `30`.
+    * `:backend` - where agents are kept. The store unless set.
+    * `:discovery_interval_ms` - how often a node looks for agents no node runs. `30_000`.
+    * `:trusted_workers` - `true` to treat tool workers' answers as the deployment's own. `false`.
+    * `:egress` - which URLs users may point it at. `&Wardrik.Egress.public/1` unless set.
+    * `:prices` - model prices the catalog lacks, per million tokens. See `Wardrik.Setup.price/2`.
+
+          prices: %{"zai_coding_plan:glm-5.1" => [priced_as: "zai:glm-5.1", markup: 0.1]}
   """
   @spec start_link(keyword() | t()) :: Supervisor.on_start()
   def start_link(%__MODULE__{name: name} = wardrik),
@@ -154,15 +184,7 @@ defmodule Wardrik do
   def new(opts), do: Setup.wardrik(opts)
 
   @doc """
-  Returns a store for a Wardrik to keep everything in: your app's own Postgres, through its Ecto
-  repo, as `[repo: MyApp.Repo]`, or a database of its own, as `[url: "postgres://..."]`. Give it as
-  `:store`, and the Wardrik runs it.
-  """
-  @spec store(keyword()) :: WardrikStore.t()
-  def store(opts), do: WardrikStore.Ecto.new(opts)
-
-  @doc """
-  Returns the principal `id` names, as `acme/@maria`, with `attributes`, such as a name to show.
+  Returns the principal with `id`, such as `"acme/@maria"`, and optional `attributes`.
 
       Wardrik.principal("acme/@maria", %{name: "Maria"})
   """
@@ -170,8 +192,9 @@ defmodule Wardrik do
   def principal(id, attributes \\ %{}), do: %Principal{id: id, attributes: attributes}
 
   @doc """
-  Returns the name of the key a call to `model` takes, as its provider names it, or `nil`. A key of
-  that name in the vault, the deployment's or an owner's, is what the call is made with.
+  Returns the name of the API key `model`'s provider needs, or `nil`.
+
+  Calls to `model` use the secret of that name, the owner's or the deployment's.
 
       Wardrik.key_name("zai_coding_plan:glm-5.1")
       #=> "ZAI_API_KEY"
@@ -180,13 +203,16 @@ defmodule Wardrik do
   def key_name(model), do: WardrikCore.Keys.key_name(model)
 
   @doc """
-  Returns the cursor that stands past `positions`, each log's last sequence read, by its agent's or
-  conversation's ID, for `events.list` to read on from.
+  Returns a cursor for `events.list` to read on from.
+
+  `positions` maps each agent or conversation ID to the last sequence read from its log.
+
+      Wardrik.cursor(%{"acme/triage" => 41})
   """
   @spec cursor(%{String.t() => non_neg_integer()}) :: String.t()
   def cursor(positions), do: WardrikEvents.Cursor.encode(positions)
 
-  @doc "Returns the positions a cursor stands past, each log's last sequence read, by its ID."
+  @doc "Returns the positions in `cursor`, or `:error` if it isn't one. The reverse of `cursor/1`."
   @spec positions(String.t()) :: {:ok, %{String.t() => non_neg_integer()}} | :error
   def positions(cursor) do
     case WardrikEvents.Cursor.decode(cursor) do
@@ -196,8 +222,9 @@ defmodule Wardrik do
   end
 
   @doc """
-  Returns `:ok` where a definition's `policy` reads, or what it would refuse, as defining the agent
-  would say it.
+  Checks a definition's `policy`.
+
+  Returns `:ok`, or the error defining the agent would give.
 
       Wardrik.check_policy(%{"judge" => %{"questions" => [%{"question" => "Publish?"}]}})
       #=> {:error, "a question decides nothing; give it deny, ask or allow"}
@@ -211,8 +238,10 @@ defmodule Wardrik do
   end
 
   @doc """
-  Returns the scope `principal` acts in on the Wardrik `instance`, allowed what `grants` say: a list
-  of `Wardrik.Statement`s, or the options of one. Nothing is allowed unless it's granted.
+  Returns the scope `principal` acts in on `instance`.
+
+  `grants` is a list of `Wardrik.Statement`s, or the options for one. Nothing is allowed unless
+  it's granted.
 
       scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:reader], resources: ["acme/agent/*"])
   """
@@ -223,8 +252,9 @@ defmodule Wardrik do
     do: Scope.new(__MODULE__, Instance.name(instance), principal, grants)
 
   @doc """
-  Returns the scope an API token's `secret` acts in on the Wardrik `instance`, or an `unauthorized`
-  error where it isn't one, or has expired.
+  Returns the scope of the API token `secret` on `instance`.
+
+  Returns an `unauthorized` error if the token is unknown or has expired.
 
       {:ok, scope} = Wardrik.authenticate(MyApp.Wardrik, secret)
   """
@@ -234,24 +264,31 @@ defmodule Wardrik do
     do: Wardrik.Operations.Tokens.authenticate(Instance.fetch!(instance), secret)
 
   @doc """
-  Seals `value` as the secret `name` of `owner`, an org, as `acme`, or a person, as `acme/@maria`,
-  for their agents' tools and servers, and records it in the audit. It needs `:keys`, and takes
-  `if_vsn:`, to write over only the version read.
+  Seals `value` as `owner`'s secret `name`, and records it in the audit.
+
+  `owner` is an org, as `"acme"`, or a person, as `"acme/@maria"`. Their agents' tools and servers
+  can use the secret. Returns `{:error, :no_keys}` if Wardrik was started without `:keys`.
 
       :ok = Wardrik.put_secret(MyApp.Wardrik, "acme", "crm-key", System.fetch_env!("CRM_KEY"))
+
+  ## Options
+
+    * `:if_vsn` - only write if the secret is still at this version. See `lookup_secret/3`.
   """
   @spec put_secret(atom() | t(), String.t(), String.t(), binary(), keyword()) ::
           :ok | {:error, term()}
   def put_secret(instance, owner, name, value, opts \\ []),
     do: Wardrik.Sealed.put(instance, owner, name, value, opts)
 
-  @doc "Unseals the secret `name` of `owner`."
+  @doc "Returns `owner`'s secret `name`, unsealed."
   @spec fetch_secret(atom() | t(), String.t(), String.t()) :: {:ok, binary()} | {:error, term()}
   def fetch_secret(instance, owner, name), do: Wardrik.Sealed.fetch(instance, owner, name)
 
   @doc """
-  Unseals the secret `name` of `owner`, with its kind, `:secret` or `:grant` for an account someone
-  connected, and its version, for `put_secret/5`'s `if_vsn:`.
+  Returns `owner`'s secret `name`, unsealed, with its kind and version.
+
+  The kind is `:secret`, or `:grant` for an account someone connected. Pass the version to
+  `put_secret/5` as `:if_vsn`.
   """
   @spec lookup_secret(atom() | t(), String.t(), String.t()) ::
           {:ok, WardrikVault.kind(), binary(), term()}
@@ -259,13 +296,14 @@ defmodule Wardrik do
           | {:error, WardrikVault.kind(), term()}
   def lookup_secret(instance, owner, name), do: Wardrik.Sealed.lookup(instance, owner, name)
 
-  @doc "Removes the secret `name` of `owner`, and records it in the audit. Removing none is `:ok`."
+  @doc "Removes `owner`'s secret `name`, and records it in the audit. Returns `:ok` if there's none."
   @spec delete_secret(atom() | t(), String.t(), String.t()) :: :ok | {:error, term()}
   def delete_secret(instance, owner, name), do: Wardrik.Sealed.delete(instance, owner, name)
 
   @doc """
-  Lists every secret as `{owner, name, kind}`, or the names `owner` holds. It reads no secret, and
-  needs no key.
+  Lists every secret as `{owner, name, kind}`, or with `owner`, the names of theirs.
+
+  Values aren't unsealed. Returns `[]` if Wardrik was started without `:keys`.
   """
   @spec list_secrets(atom() | t()) :: [{String.t(), String.t(), WardrikVault.kind()}]
   def list_secrets(instance), do: Wardrik.Sealed.list(instance)
@@ -274,7 +312,7 @@ defmodule Wardrik do
   def list_secrets(instance, owner), do: Wardrik.Sealed.list(instance, owner)
 
   @doc """
-  Allows `scope` more, as `Wardrik.Statement.new/1` takes it.
+  Adds a statement to `scope`. `opts` are as `Wardrik.Statement.new/1` takes them.
 
       MyApp.Wardrik.as("acme/@maria") |> Wardrik.grant(roles: [:approver], resources: ["acme/agent/*"])
   """
@@ -282,8 +320,9 @@ defmodule Wardrik do
   def grant(scope, opts), do: Scope.grant(scope, opts)
 
   @doc """
-  Runs the operation `id`, like `agent.ask`, in `scope`, with `input` as the operation's input
-  schema describes it.
+  Runs the operation `id`, such as `"agent.ask"`, in `scope`.
+
+  `input` follows the operation's input schema.
 
       Wardrik.run(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "What's on fire?"})
       #=> {:ok, %{"message" => %{"id" => "msg_Xq3f...", "cursor" => "eyJhY21lL3RyaWFnZSI6NDF9"}}}
@@ -293,8 +332,11 @@ defmodule Wardrik do
   def run(%Scope{} = scope, id, input), do: Runner.run(scope, id, input, :handlers)
 
   @doc """
-  Streams what the operation `id` reads, as `{event, cursor}`, reading on and then following, for an
-  operation that can be streamed, like `events.list`.
+  Streams the operation `id`, such as `"events.list"`, in `scope`.
+
+  The stream yields `{event, cursor}`. It reads what's there, then follows new events.
+
+      {:ok, stream} = Wardrik.stream(scope, "events.list", %{"resources" => ["acme/*"]})
   """
   @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
   @impl Wardrik.Server
@@ -310,9 +352,11 @@ defmodule Wardrik do
   def answer(call, message), do: Wardrik.Workers.answer(call, message)
 
   @doc """
-  Starts the agent `opts` describe, as `WardrikCore.start_agent/2` takes them, writing its events
-  to the Wardrik `instance`'s. `:policy` is the agent's own `WardrikPolicy`, or the rules to build it
-  from. The agent is held to it, to its org's, and to the Wardrik's, and the strictest decides.
+  Starts an agent on `instance`.
+
+  `opts` are as `WardrikCore.start_agent/2` takes them. `:policy` is the agent's own
+  `WardrikPolicy`, or its rules. The agent is held to its own policy, its org's and Wardrik's.
+  The strictest decides.
 
       Wardrik.start_agent(MyApp.Wardrik,
         agent_id: "acme/books",
@@ -332,8 +376,9 @@ defmodule Wardrik do
   end
 
   @doc """
-  Brings the awake agents of the org `:org` to its settings as `:orgs` gives them now, and returns
-  what it couldn't, a line each. Those asleep take them as they wake.
+  Applies the org's current settings to its awake agents.
+
+  Sleeping agents pick them up when they wake. Returns a line for each agent it couldn't update.
 
       Wardrik.refresh(MyApp.Wardrik, org: "acme")
       #=> []
@@ -345,8 +390,9 @@ defmodule Wardrik do
   end
 
   @doc """
-  Returns the plug that serves the pages a sign-in comes back to, with its options, for a surface
-  to mount at the `:oauth` `page`. Returns `nil` where the Wardrik `instance` signs no one in.
+  Returns the plug for sign-in callback pages, as `{plug, opts}`, or `nil` without `:oauth`.
+
+  Mount it at the `:oauth` option's `page`.
 
       Wardrik.sign_in_pages(MyApp.Wardrik)
       #=> {WardrikOAuth.Plug, MyApp.Wardrik.OAuth}
@@ -355,16 +401,19 @@ defmodule Wardrik do
   def sign_in_pages(instance), do: instance |> Instance.fetch!() |> pages()
 
   @doc """
-  Finishes the browser sign-in a callback's `params` name, with the `state` and `code` or `error` it
-  carried, for an app that serves the page itself. Returns the provider signed in to.
+  Finishes a browser sign-in from its callback `params`. Returns the provider signed in to.
+
+  Use it if your app serves the callback page itself. `params` holds `"state"`, and `"code"` or
+  `"error"`.
   """
   @spec finish_sign_in(atom() | t(), map()) :: {:ok, String.t()} | {:error, term()}
   def finish_sign_in(instance, params),
     do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.finish(params)
 
   @doc """
-  Returns the Client ID Metadata Document a service reads the Wardrik by, served at its sign-in
-  page's `/client`, for an app that serves it itself.
+  Returns Wardrik's OAuth Client ID Metadata Document.
+
+  The sign-in pages serve it at `/client`. Use it if your app serves the document itself.
   """
   @spec client_document(atom() | t()) :: map()
   def client_document(instance),

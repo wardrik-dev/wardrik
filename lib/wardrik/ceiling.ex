@@ -1,7 +1,6 @@
 defmodule Wardrik.Ceiling do
   @moduledoc """
-  A ceiling is a budget every agent of an org spends from together, as an org's
-  `Wardrik.OrgSettings` names them:
+  A budget all of an org's agents share. Set ceilings in the org's `Wardrik.OrgSettings`:
 
       ceilings: %{
         "spending-cap" => [usd: 20.00, per: :day],
@@ -9,16 +8,23 @@ defmodule Wardrik.Ceiling do
         "watch" => [tokens: 2_000_000, per: :month, on_exhausted: :continue]
       }
 
-  Each takes what a `WardrikPolicy.Budget` takes, but for `per: :turn`, and Wardrik's store counts
-  what the org's model calls and tool calls spent against it, by its period. Once they've spent
-  its limit together, the next model call any of the org's agents makes does as `on_exhausted`
-  says. `:ask`, unless set, waits on a `ceiling_approval`, which only a scope allowed
-  `ceiling.approve` on the org's `acme/ceiling` may approve, as an owner is, and approving it allows
-  the budget's `grant` more to every agent of the org for that period. `:deny` refuses the call.
-  `:continue` lets it run, so work always carries on, and emits `[:wardrik, :ceiling, :reached]`
-  as the limit is reached, as every ceiling does. A ceiling in dollars refuses a model with no
-  price, as a budget does, unless it continues. A subagent's model calls are held to it too, and
-  count in the tool call that ran it.
+  A ceiling takes the same settings as `WardrikPolicy.Budget`, except `per: :turn`. It must set
+  `:usd`, `:tokens` or both. Wardrik counts what the org's model and tool calls spend in each
+  period.
+
+  Once the limit is reached, the next model call by any of the org's agents does what
+  `:on_exhausted` says:
+
+    * `:ask` - the default. The call waits on a `ceiling_approval` interrupt. Only a scope allowed
+      `ceiling.approve` on the org's ceiling resource, such as `acme/ceiling`, may approve it.
+      Owners can. Approving adds the budget's `grant` for every agent in the org, for that period.
+    * `:deny` - the call is refused.
+    * `:continue` - the call runs.
+
+  Every ceiling emits `[:wardrik, :ceiling, :reached]` when its limit is reached.
+
+  A ceiling in dollars refuses models with no price, unless it's `:continue`. Subagents' model
+  calls count too, as part of the tool call that ran them.
   """
 
   @behaviour WardrikCore.Middleware
@@ -39,7 +45,7 @@ defmodule Wardrik.Ceiling do
 
   @modes %{"ask" => :ask, "deny" => :deny, "continue" => :continue}
 
-  @doc "Reads the ceiling `name` from a budget's settings, as a keyword list or a map with string keys."
+  @doc "Builds the ceiling `name` from budget settings, as a keyword list or a string-keyed map."
   @spec new(String.t(), keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new(name, settings) when is_list(settings) do
     {mode, settings} = Keyword.pop(settings, :on_exhausted, :ask)
@@ -71,8 +77,18 @@ defmodule Wardrik.Ceiling do
   defp stopping(budget, _mode), do: budget
 
   @doc """
-  Returns what the org's agents have spent against `ceiling` in its period now: its limits, what
-  they spent, what approvals granted, and the day it starts over, `nil` for a ceiling in `:total`.
+  Returns what `org`'s agents have spent against `ceiling` in the current period.
+
+      %{
+        limit: %{usd: 20.0, tokens: nil},
+        spent: %{usd: 3.5, tokens: 120_000},
+        granted: %{},
+        on_exhausted: :ask,
+        per: :day,
+        starts_over: ~D[2026-10-31]
+      }
+
+  `:starts_over` is `nil` for a `per: :total` ceiling.
   """
   @spec spent(Wardrik.t(), String.t(), t()) :: map()
   def spent(wardrik, org, %__MODULE__{budget: budget} = ceiling) do

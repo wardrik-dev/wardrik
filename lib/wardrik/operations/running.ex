@@ -1,7 +1,5 @@
 defmodule Wardrik.Operations.Running do
-  @moduledoc """
-  Finds the agents operations act on: running, woken from their definition, or known though asleep.
-  """
+  @moduledoc "Finds the agents operations act on, waking them from their definitions if needed."
 
   alias Wardrik.AgentID
   alias Wardrik.Definitions
@@ -12,7 +10,7 @@ defmodule Wardrik.Operations.Running do
   @spec whereis(Wardrik.t(), String.t()) :: pid() | nil
   def whereis(wardrik, id), do: WardrikCore.whereis(Wardrik.agents(wardrik), id)
 
-  @doc "Returns the agent `id`, woken from its definition if it sleeps, or a `not_found` error."
+  @doc "Returns the agent `id`, waking it from its definition if needed, or a `not_found` error."
   @spec awake(Wardrik.t(), String.t()) :: {:ok, pid()} | {:error, Error.t()}
   def awake(wardrik, id) do
     case whereis(wardrik, id) do
@@ -21,14 +19,16 @@ defmodule Wardrik.Operations.Running do
     end
   end
 
-  @doc "Returns whether `wardrik` knows the agent `id`: running, saved, or defined."
+  @doc "Returns whether the agent `id` is running, saved or defined."
   @spec known?(Wardrik.t(), String.t()) :: boolean()
   def known?(wardrik, id) do
     whereis(wardrik, id) != nil or Definitions.fetch(wardrik, AgentID.agent(id)) != :error or
       id in WardrikCore.list(Wardrik.agents(wardrik))
   end
 
-  @doc "Returns the definition the agent `id` runs on, its agent's for a conversation, or a `not_found` error."
+  @doc """
+  Returns the agent `id`'s definition, or a `not_found` error. A conversation uses its agent's.
+  """
   @spec definition(Wardrik.t(), String.t()) :: {:ok, map()} | {:error, Error.t()}
   def definition(wardrik, id) do
     case Definitions.fetch(wardrik, AgentID.agent(id)) do
@@ -37,7 +37,7 @@ defmodule Wardrik.Operations.Running do
     end
   end
 
-  @doc "Returns `:ok` if the agent `id` takes a definition of its own, as a conversation doesn't."
+  @doc "Returns `:ok` if the agent `id` can have its own definition. Conversations can't."
   @spec definable(String.t()) :: :ok | {:error, Error.t()}
   def definable(id) do
     if AgentID.conversation?(id),
@@ -51,8 +51,9 @@ defmodule Wardrik.Operations.Running do
   end
 
   @doc """
-  Starts the agent `opts` describe, or brings the one running to them from its next turn. An agent
-  that was saved before takes them as it loads.
+  Starts the agent `opts` describe, or reconfigures it if it's running.
+
+  A running agent uses the new options from its next turn. A saved agent uses them as it loads.
   """
   @spec bring(Wardrik.t(), keyword()) :: {:ok, pid()} | {:error, Error.t()}
   def bring(wardrik, opts) do

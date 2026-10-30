@@ -1,7 +1,7 @@
 defmodule Wardrik.Instance do
   @moduledoc false
 
-  @doc "Returns the Wardrik `instance` names, as it started, raising where it hasn't."
+  @doc "Returns the running `%Wardrik{}` for `instance`. Raises `ArgumentError` if it isn't started."
   @spec fetch!(atom() | Wardrik.t()) :: Wardrik.t()
   def fetch!(%Wardrik{} = wardrik), do: wardrik
 
@@ -15,16 +15,16 @@ defmodule Wardrik.Instance do
               __STACKTRACE__
   end
 
-  @doc "Returns the name a Wardrik is reached by."
+  @doc "Returns `instance`'s name."
   @spec name(atom() | Wardrik.t()) :: atom()
   def name(%Wardrik{name: name}), do: name
   def name(instance) when is_atom(instance), do: instance
 
-  @doc "Returns the registry that holds the Wardrik `instance`, and the processes it names."
+  @doc "Returns the name of the registry that holds `instance` and its named processes."
   @spec registry(atom()) :: atom()
   def registry(instance), do: Module.concat(instance, Registry)
 
-  @doc "Returns the code `use Wardrik` puts in a module, reading its config from `otp_app`."
+  @doc "Returns the code `use Wardrik` injects. Config is read from `otp_app`."
   @spec using(atom() | nil) :: Macro.t()
   def using(otp_app), do: {:__block__, [], [started(otp_app), scopes(), secrets()]}
 
@@ -32,7 +32,7 @@ defmodule Wardrik.Instance do
     quote do
       @behaviour Wardrik
 
-      @doc "Starts this Wardrik, with the options its config doesn't give. See `Wardrik.start_link/1`."
+      @doc "Starts Wardrik with `opts` over this module's config. See `Wardrik.start_link/1`."
       @spec start_link(keyword()) :: Supervisor.on_start()
       def start_link(opts \\ []) do
         {:ok, config} = init(Keyword.merge(unquote(app_config(otp_app)), opts))
@@ -52,11 +52,11 @@ defmodule Wardrik.Instance do
 
   defp scopes do
     quote do
-      @doc "Returns the scope `principal` acts in here. See `Wardrik.as/3`."
+      @doc "Returns the scope `principal` acts in. See `Wardrik.as/3`."
       @spec as(WardrikCore.Principal.t() | String.t(), term()) :: Wardrik.Scope.t()
       def as(principal, grants \\ []), do: Wardrik.as(__MODULE__, principal, grants)
 
-      @doc "Returns the scope an API token's `secret` acts in here. See `Wardrik.authenticate/2`."
+      @doc "Returns the scope of the API token `secret`. See `Wardrik.authenticate/2`."
       @spec authenticate(String.t()) :: {:ok, Wardrik.Scope.t()} | {:error, Wardrik.Error.t()}
       def authenticate(secret), do: Wardrik.authenticate(__MODULE__, secret)
     end
@@ -64,20 +64,20 @@ defmodule Wardrik.Instance do
 
   defp secrets do
     quote do
-      @doc "Seals a secret of `owner`'s. See `Wardrik.put_secret/5`."
+      @doc "Seals one of `owner`'s secrets. See `Wardrik.put_secret/5`."
       def put_secret(owner, name, value, opts \\ []),
         do: Wardrik.put_secret(__MODULE__, owner, name, value, opts)
 
-      @doc "Unseals a secret of `owner`'s. See `Wardrik.fetch_secret/3`."
+      @doc "Returns one of `owner`'s secrets. See `Wardrik.fetch_secret/3`."
       def fetch_secret(owner, name), do: Wardrik.fetch_secret(__MODULE__, owner, name)
 
-      @doc "Unseals a secret of `owner`'s, with its kind and version. See `Wardrik.lookup_secret/3`."
+      @doc "Returns one of `owner`'s secrets with its kind and version. See `Wardrik.lookup_secret/3`."
       def lookup_secret(owner, name), do: Wardrik.lookup_secret(__MODULE__, owner, name)
 
-      @doc "Removes a secret of `owner`'s. See `Wardrik.delete_secret/3`."
+      @doc "Removes one of `owner`'s secrets. See `Wardrik.delete_secret/3`."
       def delete_secret(owner, name), do: Wardrik.delete_secret(__MODULE__, owner, name)
 
-      @doc "Lists the secrets, or `owner`'s. See `Wardrik.list_secrets/2`."
+      @doc "Lists every secret, or `owner`'s. See `Wardrik.list_secrets/2`."
       def list_secrets, do: Wardrik.list_secrets(__MODULE__)
       def list_secrets(owner), do: Wardrik.list_secrets(__MODULE__, owner)
     end

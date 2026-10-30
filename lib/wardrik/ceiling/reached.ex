@@ -1,5 +1,5 @@
 defmodule Wardrik.Ceiling.Reached do
-  @moduledoc "What a model call waits on when its org's agents have spent a ceiling's limit together."
+  @moduledoc "The interrupt a model call waits on once its org's agents reach a ceiling's limit."
 
   defstruct interrupt: "ceiling_approval", message: nil, labels: []
 

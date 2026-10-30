@@ -1,10 +1,18 @@
 defmodule Wardrik.Channels do
   @moduledoc """
-  Adds a Wardrik's chat apps to the workspaces people use, for your app's own pages: where to send
-  someone to add one, what to do once the chat app sends them back, and taking it out again. The
-  channel's adapter does each, where it can, such as `WardrikSlack`.
+  Installs Wardrik's chat apps into people's workspaces, from your app's own pages.
 
+      # 1. Send the person to the chat app
       {:ok, url} = Wardrik.Channels.install_url(MyApp.Wardrik, "slack", "acme", return_to: "/settings")
+
+      # 2. When the chat app sends them back
+      {:ok, installation, next} = Wardrik.Channels.installed(MyApp.Wardrik, "slack", "acme", params)
+
+      # 3. To remove it
+      :ok = Wardrik.Channels.uninstall(MyApp.Wardrik, "slack", installation.workspace)
+
+  The channel's adapter, such as `WardrikSlack`, does the work. Returns an error if the adapter
+  doesn't support it.
   """
 
   alias Wardrik.Channel.Installation
@@ -12,8 +20,11 @@ defmodule Wardrik.Channels do
   @arities %{install_url: 3, installed: 3, uninstall: 2}
 
   @doc """
-  Returns where someone acting for `owner` adds the channel `name`'s chat app to a workspace of
-  theirs. Takes `:return_to`, where they're sent once it's added.
+  Returns the URL where someone acting for `owner` installs the channel `name`'s chat app.
+
+  ## Options
+
+    * `:return_to` - where they're sent once it's installed.
   """
   @spec install_url(atom(), String.t(), String.t(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
@@ -21,16 +32,16 @@ defmodule Wardrik.Channels do
     do: adapted(instance, name, :install_url, &[&1, owner, opts])
 
   @doc """
-  Adds the channel `name`'s chat app to the workspace it sent someone acting for `owner` back from,
-  given the query it sent. Returns the installation, with the workspace's name, and where to send
-  them next.
+  Completes an install from the chat app's callback `query`.
+
+  Returns the installation and where to send the person next.
   """
   @spec installed(atom(), String.t(), String.t(), map()) ::
           {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}
   def installed(instance, name, owner, query),
     do: adapted(instance, name, :installed, &[&1, owner, query])
 
-  @doc "Takes the channel `name`'s chat app out of `workspace`, and forgets the workspace."
+  @doc "Uninstalls the channel `name`'s chat app from `workspace`, and forgets the workspace."
   @spec uninstall(atom(), String.t(), String.t()) :: :ok | {:error, String.t()}
   def uninstall(instance, name, workspace),
     do: adapted(instance, name, :uninstall, &[&1, workspace])

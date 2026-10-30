@@ -1,17 +1,27 @@
 defmodule Wardrik.Children do
   @moduledoc """
-  What a Wardrik runs, in the order it starts them: its store, unless you run it, its vault and
-  sign-ins, when it keeps credentials, the MCP servers its agents reach, then its agents' events,
-  the workers that offer them tools, its agents, their triggers, what puts them to sleep, its
-  channels, the listeners it's given, what sends notices, and what brings delegated answers back,
-  last, so restarting it restarts nothing else.
+  The processes Wardrik supervises, in start order:
+
+    1. The store, unless it's already running.
+    2. The vault, with `:keys`.
+    3. Sign-ins, with `:oauth`.
+    4. MCP servers.
+    5. Events.
+    6. Tool workers.
+    7. Agents.
+    8. Triggers.
+    9. The sleeper. See `Wardrik.Sleeper`.
+    10. Channels.
+    11. Listeners.
+    12. Notices. See `Wardrik.Notify`.
+    13. Delegation. See `Wardrik.Delegation`. It's last, so restarting it restarts nothing else.
   """
 
-  @doc "Returns the children `wardrik` runs, in order."
+  @doc "Returns Wardrik's children, in start order."
   @spec children(Wardrik.t()) :: [Supervisor.child_spec() | {module(), term()}]
   def children(wardrik),
     do:
-      store(wardrik) ++
+      [{WardrikStore, wardrik.store}] ++
         vault(wardrik) ++
         oauth(wardrik) ++
         mcp(wardrik) ++
@@ -26,9 +36,6 @@ defmodule Wardrik.Children do
         listeners(wardrik) ++
         Wardrik.Notify.Server.children(wardrik) ++
         [{Wardrik.Delegation, wardrik}]
-
-  defp store(%Wardrik{own_store: true, store: store}), do: [{WardrikStore, store}]
-  defp store(_wardrik), do: []
 
   defp vault(%Wardrik{keys: []}), do: []
 

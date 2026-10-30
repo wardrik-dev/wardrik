@@ -1,8 +1,8 @@
 defmodule Wardrik.Orgs do
   @moduledoc """
-  Orgs give their agents settings of their own beside the deployment's, as `Wardrik.OrgSettings`
-  describes: a policy they're held to, policies and defaults their definitions may use, and
-  ceilings they spend from together. A Wardrik takes them as `orgs: {module, config}`:
+  Gives each org its own settings, alongside the deployment's. See `Wardrik.OrgSettings`.
+
+      Wardrik.start_link(name: MyApp.Wardrik, orgs: {MyApp.Orgs, []})
 
       defmodule MyApp.Orgs do
         @behaviour Wardrik.Orgs
@@ -14,14 +14,17 @@ defmodule Wardrik.Orgs do
         end
       end
 
-  An agent's org is the first part of its ID: `acme` for `acme/@maria/assistant`. Wardrik asks for
-  an org's settings each time one of its agents starts, wakes or is defined, so an agent never runs
-  on settings older than its start. `Wardrik.refresh/2` brings an org's awake agents to its
-  settings as they read now. Settings that don't read keep the agent from starting, and say why.
+  An agent's org is the first part of its ID: `acme` for `acme/@maria/assistant`.
 
-  Answer `{:error, %Wardrik.Error{}}` for an org there's no such thing as, as
-  `Wardrik.Error.new(:not_found, "There's no org globex here.")`: its agents don't start or get
-  defined, and nothing is kept for it, as a secret, a server or a token over its agents.
+  Wardrik reads an org's settings each time one of its agents starts, wakes or is defined. To
+  apply new settings to awake agents, call `Wardrik.refresh/2`. Invalid settings stop the agent
+  from starting, with the reason.
+
+  For an org that doesn't exist, return an error:
+
+      {:error, Wardrik.Error.new(:not_found, "There's no org globex here.")}
+
+  Its agents then can't start or be defined, and no secrets, servers or tokens can be stored for it.
   """
 
   alias Wardrik.Ceiling
@@ -31,7 +34,7 @@ defmodule Wardrik.Orgs do
   alias Wardrik.OrgSettings
   alias Wardrik.Setup
 
-  @doc "Returns the settings of the org `org`, or an error saying why there are none."
+  @doc "Returns `org`'s settings, or an error if it doesn't exist."
   @callback settings(org :: String.t(), config :: term()) ::
               {:ok, OrgSettings.t()} | {:error, term()}
 
@@ -40,8 +43,9 @@ defmodule Wardrik.Orgs do
   def org(id), do: id |> String.split("/", parts: 2) |> hd()
 
   @doc """
-  Returns the settings of the org `org`, each policy and ceiling built, or an error saying why they
-  don't read. A Wardrik without `:orgs` gives every org none.
+  Returns `org`'s settings, with each policy and ceiling built, or an error if they're invalid.
+
+  Without `:orgs`, every org gets empty settings.
   """
   @spec settings(Wardrik.t(), String.t()) :: {:ok, OrgSettings.t()} | {:error, Error.t()}
   def settings(%Wardrik{orgs: nil}, _org), do: {:ok, %OrgSettings{}}
@@ -60,8 +64,9 @@ defmodule Wardrik.Orgs do
   end
 
   @doc """
-  Returns `:ok` where the org `org` is one the Wardrik's orgs know, or the error they answer. The
-  deployment's own namespace, `deployment`, is always known.
+  Returns `:ok` if `org` exists, or the error `c:settings/2` returns.
+
+  `"deployment"`, the deployment's own namespace, always exists.
   """
   @spec known(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
   def known(_wardrik, "deployment"), do: :ok
@@ -70,7 +75,7 @@ defmodule Wardrik.Orgs do
     with {:ok, _settings} <- settings(wardrik, org), do: :ok
   end
 
-  @doc "Returns `wardrik` as the org's definitions read it: with its policies and defaults too."
+  @doc "Returns `wardrik` with the org's policies and defaults merged in."
   @spec within(Wardrik.t(), OrgSettings.t()) :: Wardrik.t()
   def within(wardrik, %OrgSettings{policies: policies, defaults: defaults}),
     do: %{
@@ -79,7 +84,7 @@ defmodule Wardrik.Orgs do
         defaults: Map.merge(wardrik.defaults, defaults)
     }
 
-  @doc "Returns what the agent `id`'s definition is given where it says nothing: the deployment's defaults, under its org's."
+  @doc "Returns the agent `id`'s defaults: the deployment's, overridden by its org's."
   @spec defaults(Wardrik.t(), String.t()) :: map()
   def defaults(wardrik, id) do
     case settings(wardrik, org(id)) do
@@ -88,7 +93,7 @@ defmodule Wardrik.Orgs do
     end
   end
 
-  @doc "Returns `opts` for an agent of the org `org`, held to its settings' policy and ceilings too."
+  @doc "Returns `opts` with the org's policy and ceilings added."
   @spec hold(keyword(), Wardrik.t(), String.t(), OrgSettings.t()) :: keyword()
   def hold(opts, wardrik, org, %OrgSettings{policy: policy, ceilings: ceilings}) do
     held = List.wrap(policy)
@@ -105,7 +110,7 @@ defmodule Wardrik.Orgs do
     Keyword.update(opts, :middleware, [ceiling], &(&1 ++ [ceiling]))
   end
 
-  @doc "Brings the org's awake agents to its settings as they read now, and returns what it couldn't, a line each."
+  @doc "Applies the org's current settings to its awake agents. Returns a line for each failure."
   @spec refresh(Wardrik.t(), String.t()) :: [String.t()]
   def refresh(wardrik, org) do
     for id <- Definitions.ids(wardrik),
@@ -122,8 +127,8 @@ defmodule Wardrik.Orgs do
   end
 
   @doc """
-  Returns what the org's agents have spent against each of its ceilings, by name, as
-  `Wardrik.Ceiling.spent/3` gives it.
+  Returns what the org's agents have spent against each ceiling, by name. See
+  `Wardrik.Ceiling.spent/3`.
 
       Wardrik.Orgs.spent(MyApp.Wardrik, "acme")
       #=> {:ok, %{"spending-cap" => %{limit: %{usd: 20.0, tokens: nil}, spent: %{usd: 12.4, tokens: 81_200}, ...}}}

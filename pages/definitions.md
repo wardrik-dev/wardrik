@@ -1,13 +1,15 @@
 # Define agents
 
-A definition says what an agent is and what it may do: its model, its instructions, its tools and
-its policy. Define an agent, and Wardrik starts it, keeps the definition, and starts it again from
-the definition whenever it wakes. It's the same definition an agent file's frontmatter writes, over
-HTTP, from a CLI, or from your code.
+A definition says what an agent is and what it may do: its model, instructions, tools and policy.
+Define an agent and Wardrik starts it, keeps the definition, and starts it from the definition
+again each time it wakes.
+
+A definition is the same whether it comes from an agent file's frontmatter, HTTP, a CLI or your
+code.
 
 ## Offer what agents may use
 
-Give Wardrik the tools and policies a definition may name:
+Give Wardrik the tools and policies definitions may name:
 
 ```elixir
 config :my_app, MyApp.Wardrik,
@@ -16,13 +18,12 @@ config :my_app, MyApp.Wardrik,
   mcp: [github: [transport: {:stdio, command: "github-mcp-server", args: ["stdio"]}]]
 ```
 
-| Option | Takes | Unless set |
-| --- | --- | --- |
-| `capabilities` | the tools a definition names, each a `WardrikCore.Capability` | none |
-| `policies` | the policies a definition names, each as its rules | none |
-| `mcp` | the MCP servers a definition names as `github/*` | none |
-| `middleware` | what wraps every agent's calls | none |
-| `idle_timeout` | the seconds a defined agent may have nothing to do before it sleeps, or `:infinity` | 900 |
+  * `:capabilities` - tools a definition names, each a `WardrikCore.Capability`.
+  * `:policies` - policies a definition names, each as its rules.
+  * `:mcp` - MCP servers a definition names, as `github/*`.
+  * `:middleware` - wraps every agent's calls.
+  * `:idle_timeout` - seconds a defined agent idles before it sleeps, or `:infinity`. `900` unless
+    set.
 
 ## Define one
 
@@ -36,7 +37,7 @@ definition =
     timeout: 600
   )
 
-{:ok, digest} = Wardrik.Agent.define(scope, "acme/digest", definition)
+Wardrik.Agent.define(scope, "acme/digest", definition)
 #=> {:ok,
 #=>  %Wardrik.Agent{
 #=>    id: "acme/digest",
@@ -49,34 +50,48 @@ definition =
 #=>  }}
 ```
 
-`define/3` takes a keyword list too. Notice a definition is written as the protocol's JSON over
-HTTP and in the store, so a YAML file's frontmatter, JSON, and `Wardrik.Definition.new!/1` all give
-the same one.
-
-| Key | Means |
-| --- | --- |
-| `model` | the model, as `provider:model`; required |
-| `instructions` | the system prompt, sent with every model call |
-| `tools` | what it may call: a capability by name, `files` for a tree of files of its own, `agents/*` to work with its org's agents and `self/*` with itself (see `Wardrik.AgentTools`), `server/*` for every tool of an MCP server, `workers/*` for the tools workers offer it, or `*` for all of them but `agents/*` and `self/*` |
-| `context` | files read into every turn, as `[MEMORY.md]`, or `{files: [...], max_bytes: 65536}`; see `Wardrik.Workspaces` |
-| `workspace` | trees of files shared with it, each under `shared/<name>/`, as `{shared: {team: acme}}` |
-| `policy` | a policy by name, or its rules written in place, a budget and judge included; only an agent a file declares writes `allow_after` in place, and any other names a policy that has it |
-| `timeout` | the seconds a turn may take |
-| `max_iterations` | the rounds of tool calls a turn may make; 25 unless set |
-| `idle_timeout` | the seconds it may have nothing to do before it sleeps, or `infinity` |
-| `retries` | how a failed model call is tried again, as `attempts` (6), `max_wait` in seconds (60) and `on_exhausted`, `ask` a person or `fail`; see `WardrikCore.Retry` |
-| `compaction` | when it summarises its older history, as shares of its model's window: `{at: 0.6, keep: 0.25}` unless set, `window` where the catalog gives none, or `false` never to; see `Wardrik.Compaction` |
-| `triggers` | what asks it something on a clock, from a feed, or from a webhook; see [Trigger agents](triggers.md) |
-| `channels` | the chat apps it may answer in, by the names the Wardrik's `:channels` give them |
-| `display_name`, `description` | what a person calls it, and what it's for |
-
-A name it gives that Wardrik doesn't offer answers `invalid_request`. `notify` is
-part of the definition, and answers `not_supported` until the package behind it lands. Nothing in a definition is ignored.
+`Wardrik.Agent.define/3` takes a keyword list too. A definition is stored as the protocol's JSON,
+so YAML frontmatter, JSON and `Wardrik.Definition.new!/1` all give the same one.
 
 Define it again to change it. A running agent takes the new definition from its next turn.
 
-An agent of a user, as `acme/@maria/notes`, acts as `acme/@maria`, with her credentials. One of an
-org, as `acme/digest`, acts as the org.
+A user's agent, as `acme/@maria/notes`, acts as `acme/@maria`, with her credentials. An org's
+agent, as `acme/digest`, acts as the org.
+
+### Keys
+
+| Key | Means |
+| --- | --- |
+| `model` | Required. The model, as `provider:model`. |
+| `instructions` | The system prompt, sent with every model call. |
+| `tools` | What it may call. See below. |
+| `context` | Files read into every turn, as `[MEMORY.md]` or `{files: [...], max_bytes: 65536}`. See `Wardrik.Workspaces`. |
+| `workspace` | File trees shared with it, each under `shared/<name>/`, as `{shared: {team: acme}}`. |
+| `policy` | A policy by name, or its rules in place, budget and judge included. See [Policies](policies.md). |
+| `timeout` | Seconds a turn may take. |
+| `max_iterations` | Rounds of tool calls a turn may make. `25` unless set. |
+| `idle_timeout` | Seconds it idles before it sleeps, or `infinity`. |
+| `retries` | How a failed model call is retried: `attempts` (`6`), `max_wait` in seconds (`60`), and `on_exhausted`, `ask` or `fail`. See `WardrikCore.Retry`. |
+| `compaction` | When older history is summarised, as shares of the model's window. `{at: 0.6, keep: 0.25}` unless set. Give `window` where the catalog has none, or `false` to never compact. See `Wardrik.Compaction`. |
+| `triggers` | What asks it something on a clock, from a feed or from a webhook. See [Trigger agents](triggers.md). |
+| `channels` | Chat apps it may answer in, by their names in Wardrik's `:channels`. |
+| `notify` | Where its notices go. See `Wardrik.Notify`. |
+| `display_name`, `description` | What a person calls it, and what it's for. |
+
+`tools` takes:
+
+  * a capability by name, as `"files"` for a file tree of its own.
+  * `"server/*"` for every tool of an MCP server.
+  * `"workers/*"` for the tools workers offer it.
+  * `"agents/*"` to work with its org's agents, and `"self/*"` to work with itself. See
+    `Wardrik.AgentTools`.
+  * `"*"` for everything except `agents/*` and `self/*`.
+
+Only an agent declared in a file writes `allow_after` in its policy in place. Any other names a
+policy that has it.
+
+Nothing in a definition is ignored. A name Wardrik doesn't offer returns `invalid_request`. A key
+it doesn't support yet returns `not_supported`, naming the key.
 
 ## Read it back
 
@@ -92,39 +107,44 @@ Wardrik.Agent.definition(scope, "acme/digest")
 #=>  }, ["github/*"]}
 ```
 
-`missing` lists the tools it names that offer nothing yet, like an MCP server that's down.
+The third element lists the tools it names that offer nothing yet, like an MCP server that's down.
 
 ## Sleep and wake
 
-A defined agent sleeps once it has had nothing to do for its `idle_timeout`, and wakes when
-something asks it, keeping its conversation. Asking, deciding and signing in wake it. Reading it
-doesn't: it answers `asleep`.
+A defined agent sleeps after `idle_timeout` with nothing to do. It wakes, with its conversation,
+when something asks it. Asking, deciding and signing in wake it. Reading it doesn't; it returns
+`asleep`.
 
 | Function | Does |
 | --- | --- |
-| `Wardrik.Agent.stop/3` | puts it to sleep now |
-| `Wardrik.Agent.spawn/3` | wakes it without asking it anything |
-| `Wardrik.Agent.clear/3` | empties its conversation; `conflict` while it runs or waits on a person |
-| `Wardrik.Agent.forget/3` | stops it and deletes its conversations and definition |
-| `Wardrik.Agent.calls/3` | the tool calls it's running, each with how long it has run |
-| `Wardrik.Agent.kill/4` | stops one call; the model gets an error for it, and the turn goes on |
-| `Wardrik.Agents.cancel/2` | stops what every agent the patterns cover is doing |
-| `Wardrik.Agents.forget/2` | forgets every agent the patterns cover |
+| `Wardrik.Agent.stop/3` | Puts it to sleep now. |
+| `Wardrik.Agent.spawn/3` | Wakes it without asking anything. |
+| `Wardrik.Agent.clear/3` | Empties its conversation. Returns `conflict` while it runs or waits on a person. |
+| `Wardrik.Agent.forget/3` | Stops it, and deletes its conversations and definition. |
+| `Wardrik.Agent.calls/3` | Lists the tool calls it's running, with how long each has run. |
+| `Wardrik.Agent.kill/4` | Stops one call. The model gets an error for it, and the turn goes on. |
+| `Wardrik.Agents.cancel/2` | Stops what every agent the patterns cover is doing. |
+| `Wardrik.Agents.forget/2` | Forgets every agent the patterns cover. |
 
 Each change is recorded in the audit, with who made it.
 
 ## Conversations
 
-One agent can hold many conversations at once, as a chat app holds one for each thread. Each is
-the agent's ID with one more segment, as `acme/triage/C1-1696.1234`, and runs on the agent's
-definition with a history, log and queue of its own. It comes to be when something asks it, sleeps
-as the agent does, and goes when the agent is forgotten. It has no definition or triggers of its
-own: defining one answers `invalid_request`.
+One agent can hold many conversations at once, as a chat app holds one per thread. A
+conversation's ID is the agent's ID plus one segment:
 
 ```elixir
 Wardrik.Agent.ask(scope, "acme/triage/C1-1696.1234", "Is staging up?")
 ```
 
-Its resource is the agent's with the conversation after it, `acme/agent/triage/conversation/C1-1696.1234`,
-so a statement on `acme/agent/triage` alone doesn't reach it; `acme/agent/triage/*` does. Over HTTP
-no route reaches a conversation; its events are read with the agent's org.
+A conversation:
+
+  * runs on the agent's definition, with its own history, log and queue.
+  * starts when something asks it, sleeps as the agent does, and goes when the agent is forgotten.
+  * has no definition or triggers of its own. Defining one returns `invalid_request`.
+
+Its resource is the agent's plus the conversation, as
+`acme/agent/triage/conversation/C1-1696.1234`. A statement on `acme/agent/triage` doesn't reach
+it; `acme/agent/triage/*` does.
+
+No HTTP route reaches a conversation. Read its events through the agent's org.

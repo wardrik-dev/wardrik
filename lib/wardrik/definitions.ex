@@ -1,11 +1,9 @@
 defmodule Wardrik.Definitions do
-  @moduledoc """
-  Keeps each agent's definition in Wardrik's store, as it was put.
-  """
+  @moduledoc "Stores each agent's definition as it was given."
 
   @prefix "definitions/"
 
-  @doc "Keeps `definition` as the agent `id`'s."
+  @doc "Stores `definition` for the agent `id`."
   @spec put(Wardrik.t(), String.t(), map()) :: :ok | {:error, term()}
   def put(wardrik, id, definition) do
     with {:ok, _vsn} <- WardrikStore.put(store(wardrik), @prefix <> id, definition), do: :ok
@@ -27,7 +25,7 @@ defmodule Wardrik.Definitions do
          do: WardrikStore.delete(store(wardrik), "boundaries/" <> id)
   end
 
-  @doc "Keeps the policy named `name` as the agent `id`'s boundary: the token that defined it named it."
+  @doc "Stores the agent `id`'s boundary: the policy named by the token that defined it."
   @spec put_boundary(Wardrik.t(), String.t(), String.t() | map()) :: :ok | {:error, term()}
   def put_boundary(wardrik, id, name) do
     with {:ok, _vsn} <- WardrikStore.put(store(wardrik), "boundaries/" <> id, name), do: :ok

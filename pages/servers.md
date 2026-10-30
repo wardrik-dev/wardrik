@@ -1,7 +1,7 @@
 # MCP servers
 
-Agents call the tools of MCP servers. Give Wardrik the servers every agent may reach as it starts,
-and let each org and person add their own as it runs.
+Agents call the tools of MCP servers. Give Wardrik the servers every agent may reach when it
+starts. Orgs and people add their own while it runs.
 
 ## Servers Wardrik starts with
 
@@ -15,15 +15,16 @@ config :my_app, MyApp.Wardrik,
   ]
 ```
 
-A definition names a server's tools as `github/*`. With `credential_name`, each person's agents reach
-it with their own account, and someone who hasn't connected one is asked to sign in the first time
-an agent of theirs calls it; see [Credentials](credentials.md). Until anyone has, the server offers
-one tool, `github__connect`, so an agent can begin.
+A definition names the server's tools as `github/*`. See `WardrikMCP.Server` for every option.
+
+With `credential_name`, each person's agents reach the server with that person's own account.
+Someone who hasn't connected one is asked to sign in the first time one of their agents calls it;
+see [Credentials](credentials.md). Until anyone has, the server offers one tool, `github__connect`,
+so an agent can begin.
 
 ## Servers an org or a person adds
 
-An org or a person adds a server for their own agents while Wardrik runs, and every node reaches
-it:
+An org or a person adds a server for their own agents while Wardrik runs. Every node reaches it:
 
 ```elixir
 Wardrik.MCPServers.add(scope,
@@ -40,35 +41,46 @@ Wardrik.MCPServers.add(scope,
 #=>  }}
 ```
 
-- **An org's server** serves its own agents and every agent of its people. **A person's** serves
-  their agents alone, and comes first where both have one of the same name.
-- **`linear/*`** names the agent's owner's server first, then its org's, then one Wardrik started
-  with. **`servers/*`** gives every server its owner adds, as they add them. A server added or
-  removed reaches the agent from its next turn, without defining it again.
-- **A server not added yet** offers nothing, and the definition lists it as `missing`.
-- **Its URL is `https`, at a public address.** Wardrik checks it as it's added, and as each
-  connection to it starts, and the authorization server it names, and the endpoints that lists,
-  as each sign-in reaches them. `:egress` changes what it reaches, as `&Wardrik.Egress.any/1` for a
-  Wardrik whose operator alone adds servers.
+  * An org's server serves the org's agents and every agent of its people. A person's server
+    serves their agents alone, and wins where both have one of the same name.
+  * `linear/*` names the agent owner's server first, then its org's, then one Wardrik started
+    with.
+  * `servers/*` gives every server the owner adds, as they add them.
+  * A server added or removed reaches the agent from its next turn, without defining it again.
+  * A server not added yet offers nothing, and the definition lists it as missing.
+  * `only` and `except` narrow the tools it offers, by the server's own tool names.
 
-How the agents sign in to it:
+### Where it may be
+
+The URL must be `https`, at a public address. Wardrik checks it when the server is added and when
+each connection starts. It checks the authorization server it names, and the endpoints that lists,
+as each sign-in reaches them.
+
+Wardrik's `:egress` option changes what may be reached. Use `&Wardrik.Egress.any/1` when only the
+operator adds servers.
+
+### How agents sign in to it
 
 | `auth` | Means |
 | --- | --- |
-| `%{none: %{}}` | it takes no credential |
-| `%{secret: %{name: "crm-key"}}` | a key the owner keeps in the vault, sent as `authorization: Bearer <key>`; `header` and `scheme` change that |
-| `%{oauth: %{scopes: [...]}}` | each person signs in as themselves, through the server's own authorization server; Wardrik becomes its client itself |
-| `%{oauth: %{issuer: ..., client_id: ..., client_secret: %{name: "CRM_APP"}}}` | the same, through an OAuth app the owner registered there, for a service Wardrik can't find or register with |
+| `%{none: %{}}` | It takes no credential. |
+| `%{secret: %{name: "crm-key"}}` | A key the owner keeps in the vault, sent as `authorization: Bearer <key>`. `header` and `scheme` change that. |
+| `%{oauth: %{scopes: [...]}}` | Each person signs in as themselves, through the server's own authorization server. Wardrik registers itself as the client. |
+| `%{oauth: %{issuer: ..., client_id: ..., client_secret: %{name: "CRM_APP"}}}` | The same, through an OAuth app the owner registered there, for a service Wardrik can't discover or register with. |
 
-An owner's own app names its authorization server by `issuer`, or by `authorization_endpoint` and
-`token_endpoint` where it publishes no metadata, and its `client_id`. Its client secret is a secret
-the owner keeps in the vault, by name; it's sealed apart from theirs as the server is added, so no
-agent can name it, and sent only to the token endpoint, in the form or, with `client_auth:
-"basic"`, as HTTP Basic. Each owner's server is a sign-in of its own, so two orgs' servers of one
-name each sign in with their own app.
+An owner's own OAuth app takes:
 
-`only` and `except` narrow the tools it offers. `Wardrik.MCPServers.list/2` and
-`Wardrik.MCPServers.remove/3` list and remove an owner's servers, and removing one forgets the
-sign-ins to it. Each change is recorded in the audit.
+  * `issuer`, or `authorization_endpoint` and `token_endpoint` where it publishes no metadata.
+  * `client_id`.
+  * `client_secret`, the name of a secret the owner keeps in the vault. It's sealed apart from the
+    owner's secrets when the server is added, so no agent can name it. It's sent only to the token
+    endpoint: in the form, or as HTTP Basic with `client_auth: "basic"`.
 
-Notice a server's answers are written by others. Hold its tools to a [policy](policies.md).
+Each owner's server signs in on its own. Two orgs' servers of the same name each use their own app.
+
+### Listing and removing
+
+`Wardrik.MCPServers.list/2` lists an owner's servers. `Wardrik.MCPServers.remove/3` removes one and
+forgets the sign-ins to it. Each change is recorded in the audit.
+
+A server's answers are written by others. Hold its tools to a [policy](policies.md).

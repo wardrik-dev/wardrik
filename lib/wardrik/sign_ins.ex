@@ -1,12 +1,10 @@
 defmodule Wardrik.SignIns do
-  @moduledoc """
-  Carries on the calls that wait on a sign-in, once the person has signed in.
-  """
+  @moduledoc "Resumes calls that wait on a sign-in, once the person signs in."
 
   alias WardrikCore.Authorization
   alias WardrikCore.Principal
 
-  @doc "Resumes each of `agents` that waits on `principal` signing in to `provider`."
+  @doc "Resumes each agent that waits on `principal` signing in to `provider`."
   @spec granted(atom() | String.t(), Principal.t(), atom()) :: :ok
   def granted(provider, %Principal{} = principal, agents) do
     credential = to_string(provider)

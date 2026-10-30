@@ -1,7 +1,8 @@
 defmodule Wardrik.Answers do
   @moduledoc """
-  Follows the run that answers a message, from the agent's log: its text as it streams, and how it
-  ends. It follows from before the message is sent, so it misses nothing.
+  Follows the run that answers a message, through the agent's log.
+
+  It subscribes before sending the message, so it misses nothing.
   """
 
   alias Wardrik.Instance
@@ -13,8 +14,17 @@ defmodule Wardrik.Answers do
   @timeout :timer.minutes(10)
 
   @doc """
-  Sends `input` to the agent, and returns what its answer brings, in order: `{:text, chunk}`, then
-  `{:done, %Wardrik.Reply{}}`, `{:waiting, interrupts}` or `{:failed, reason}`.
+  Sends `input` to `agent`, and returns a stream of its answer.
+
+  The stream yields `{:text, chunk}` as text arrives, then one of:
+
+    * `{:done, %Wardrik.Reply{}}` - the run completed.
+    * `{:waiting, interrupts}` - the run waits on a person.
+    * `{:failed, reason}` - the run failed, was cancelled, or timed out.
+
+  ## Options
+
+    * `:timeout` - milliseconds to wait for each event. 10 minutes unless set.
   """
   @spec follow(Scope.t(), String.t() | struct(), term(), keyword()) :: Enumerable.t()
   def follow(scope, agent, input, opts) do

@@ -1,5 +1,5 @@
 defmodule Wardrik.Operations.Agent do
-  @moduledoc "The operations on one agent: talking to it, answering what it waits on, and reading it."
+  @moduledoc "Operations on one agent: messaging it, deciding what it waits on, and reading it."
 
   alias Wardrik.Error
   alias Wardrik.JSON
@@ -11,7 +11,7 @@ defmodule Wardrik.Operations.Agent do
   alias WardrikEvents.Runs
   alias WardrikEvents.Timeline
 
-  @doc "Reads what the agent is doing now."
+  @doc "Returns what the agent is doing now."
   @spec read(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def read(scope, %{"agent" => id}) do
     with :ok <- Snapshot.known(scope.wardrik, id) do
@@ -33,7 +33,7 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
-  @doc "Sends the agent a message, and answers its id with the cursor its answer comes after."
+  @doc "Sends the agent a message. Returns the message's ID, and the cursor its answer comes after."
   @spec ask(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def ask(scope, %{"agent" => id} = input) do
     with {:ok, pid} <- Running.awake(scope.wardrik, id) do
@@ -44,7 +44,7 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
-  @doc "Approves or rejects the calls the agent waits on, together."
+  @doc "Approves or rejects the calls the agent waits on, all at once."
   @spec decide(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def decide(scope, %{"agent" => id, "decisions" => decisions}) do
     with :ok <- Snapshot.known(scope.wardrik, id),
@@ -70,7 +70,7 @@ defmodule Wardrik.Operations.Agent do
     decide(scope, %{"agent" => id, "decisions" => [decision]})
   end
 
-  @doc "Returns where a person signs in for a call that waits on it."
+  @doc "Returns the sign-in URL for a call that waits on a person signing in."
   @spec authorization(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def authorization(scope, %{"agent" => id, "interrupt" => interrupt}) do
     with {:ok, pid} <- Running.awake(scope.wardrik, id) do
@@ -81,7 +81,7 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
-  @doc "Stops what the agent is doing, and drops what's queued behind it."
+  @doc "Cancels what the agent is doing, and drops its queued messages."
   @spec cancel(Wardrik.Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def cancel(scope, %{"agent" => id}) do
     with :ok <- Snapshot.known(scope.wardrik, id) do
@@ -90,7 +90,7 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
-  @doc "Stops what the running agent `id` is doing, and records it. Returns whether it was doing anything."
+  @doc "Cancels what the agent `id` is doing, and records it. Returns whether there was anything."
   @spec cancelled(Wardrik.Scope.t(), String.t(), pid() | nil) :: boolean()
   def cancelled(_scope, _id, nil), do: false
 
@@ -105,7 +105,7 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
-  @doc "Reads a page of the agent's log."
+  @doc "Returns a page of the agent's log."
   @spec events(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def events(scope, %{"agent" => id} = input) do
     with {:ok, page} <- Snapshot.page(scope, [id], after: input["after"], limit: input["limit"]) do
@@ -114,7 +114,7 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
-  @doc "Streams the agent's log, as `{event, cursor}`, reading on and then following."
+  @doc "Streams the agent's log as `{event, cursor}`. Reads what's there, then follows new events."
   @spec stream(Wardrik.Scope.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
   def stream(scope, %{"agent" => id} = input) do
     opts = [after: input["after"], types: input["types"] || :all]
@@ -123,14 +123,14 @@ defmodule Wardrik.Operations.Agent do
          do: {:ok, Stream.map(stream, fn {event, cursor} -> {event, Cursor.encode(cursor)} end)}
   end
 
-  @doc "Reads the agent's conversation as a person reads it."
+  @doc "Returns the agent's conversation as a timeline for people to read."
   @spec timeline(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def timeline(scope, %{"agent" => id}) do
     {timeline, cursor} = WardrikEvents.view(Wardrik.events(scope.wardrik), id, Timeline)
     {:ok, %{"items" => JSON.json(Timeline.items(timeline)), "cursor" => Cursor.encode(cursor)}}
   end
 
-  @doc "Reads what the agent's runs did and cost."
+  @doc "Returns the agent's runs, with what each did and cost."
   @spec runs(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def runs(scope, %{"agent" => id}) do
     {runs, cursor} = WardrikEvents.view(Wardrik.events(scope.wardrik), id, Runs)

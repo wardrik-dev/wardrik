@@ -1,16 +1,13 @@
 defmodule Wardrik.Setup do
-  @moduledoc """
-  Builds a Wardrik from its options, and the options each agent it starts begins with.
-  """
+  @moduledoc "Builds `%Wardrik{}` from `Wardrik.start_link/1`'s options, and each agent's options."
 
-  @doc "Builds a Wardrik from `opts`, as `Wardrik.start_link/1` takes them."
+  @doc "Builds a `%Wardrik{}` from `Wardrik.start_link/1`'s options."
   @spec wardrik(keyword()) :: Wardrik.t()
   def wardrik(opts) do
     opts =
       Keyword.validate!(opts, [
         :name,
         :store,
-        :data_dir,
         :backend,
         :policy,
         :oauth,
@@ -38,12 +35,11 @@ defmodule Wardrik.Setup do
       ])
 
     name = Keyword.fetch!(opts, :name)
-    {store, own_store} = store(name, opts[:store], opts[:data_dir])
+    store = store(name, opts[:store])
 
     %Wardrik{
       name: name,
       store: store,
-      own_store: own_store,
       keys: opts[:keys],
       oauth: oauth(opts[:oauth], opts[:keys]),
       mcp: opts[:mcp],
@@ -74,9 +70,22 @@ defmodule Wardrik.Setup do
   end
 
   @doc """
-  Returns what the model `spec` costs, in US dollars per million tokens, as `price` gives it: its
-  own `:input` and `:output`, and `:cache_read` and `:cache_write`, or another model's catalog
-  price, as `priced_as: "zai:glm-5.1"`, and either with a `:markup`, `0.1` for 10% more.
+  Returns the price of the model `spec`, in US dollars per million tokens.
+
+      # Its own rates
+      Wardrik.Setup.price("acme:model-1", input: 0.5, output: 1.5)
+
+      # Another model's catalog price, 10% more
+      Wardrik.Setup.price("zai_coding_plan:glm-5.1", priced_as: "zai:glm-5.1", markup: 0.1)
+
+  ## Options
+
+    * `:input` and `:output` - rates. Both required unless `:priced_as` is set.
+    * `:cache_read` and `:cache_write` - optional rates.
+    * `:priced_as` - a model whose catalog price to use. Can't be combined with rates.
+    * `:markup` - added on top, as `0.1` for 10%. `0` unless set.
+
+  Raises `ArgumentError` if the price is invalid.
   """
   @spec price(String.t(), keyword()) :: WardrikCore.Usage.price()
   def price(spec, price) do
@@ -121,9 +130,10 @@ defmodule Wardrik.Setup do
   end
 
   @doc """
-  Returns the options `WardrikCore.start_agent/2` takes for the agent `opts` describe: its events
-  written to `wardrik`'s, its credentials and keys from `wardrik`'s vault, its spending counted, and wrapped
-  in `wardrik`'s middleware and policies, its own `:policy` among them.
+  Returns the options `WardrikCore.start_agent/2` takes for the agent `opts` describe.
+
+  Adds Wardrik's events, prices, credentials and keys, spending, middleware and policies. The
+  agent's own `:policy` is held alongside Wardrik's.
   """
   @spec agent(Wardrik.t(), keyword()) :: keyword()
   def agent(%Wardrik{} = wardrik, opts) do
@@ -138,7 +148,7 @@ defmodule Wardrik.Setup do
     |> governed(policies)
   end
 
-  @doc "Returns the policies an agent's `:policy` names: none, one, or a list of them."
+  @doc "Returns an agent's `:policy` as a list of policies. `nil` is `[]`."
   @spec policies(WardrikPolicy.t() | [WardrikPolicy.t()] | keyword() | map() | nil) ::
           [WardrikPolicy.t()]
   def policies(nil), do: []
@@ -148,22 +158,36 @@ defmodule Wardrik.Setup do
   def policies([%WardrikPolicy{} | _rest] = policies), do: policies
   def policies(rules), do: [policy(rules)]
 
-  @doc "Builds a policy from its rules, or returns the one given."
+  @doc "Builds a policy from its rules. Returns a `WardrikPolicy` or `nil` as given."
   @spec policy(WardrikPolicy.t() | keyword() | map() | nil) :: WardrikPolicy.t() | nil
   def policy(nil), do: nil
   def policy(%WardrikPolicy{} = policy), do: policy
   def policy(rules), do: WardrikPolicy.new!(rules)
 
-  defp store(name, nil, nil), do: {WardrikStore.ETS.new(name: Module.concat(name, Store)), true}
+  defp store(_name, %WardrikStore{} = store), do: store
+  defp store(name, nil), do: store(name, {WardrikStore.ETS, []})
 
-  defp store(name, nil, data_dir),
-    do: {WardrikStore.EKV.new(name: Module.concat(name, Store), data_dir: data_dir), true}
+  defp store(name, {adapter, opts}) when is_atom(adapter) and is_list(opts),
+    do: built(adapter, Keyword.put_new(opts, :name, Module.concat(name, Store)))
 
-  defp store(_name, settings, nil) when is_list(settings), do: {Wardrik.store(settings), true}
-  defp store(_name, store, nil), do: {store, false}
+  defp store(_name, store) do
+    raise ArgumentError,
+          "Give Wardrik's :store as {adapter, opts}, as {WardrikStore.EKV, data_dir: \"/var/lib/my_app\"}, " <>
+            "or a built %WardrikStore{}, got: #{inspect(store)}"
+  end
 
-  defp store(_name, _store, _data_dir),
-    do: raise(ArgumentError, "Give Wardrik a :store or a :data_dir, not both.")
+  defp built(adapter, opts) do
+    if Code.ensure_loaded?(adapter),
+      do: adapter.new(opts),
+      else: raise(ArgumentError, unavailable(adapter))
+  end
+
+  defp unavailable(WardrikStore.Ecto),
+    do:
+      "WardrikStore.Ecto is only compiled alongside :ecto_sql and :postgrex; add them to your deps."
+
+  defp unavailable(adapter),
+    do: "#{inspect(adapter)} isn't compiled; add the dependency it comes with to your deps."
 
   defp backend(store, nil), do: {WardrikStore.Durable, store: store}
 

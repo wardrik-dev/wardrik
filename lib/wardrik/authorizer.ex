@@ -1,29 +1,35 @@
 defmodule Wardrik.Authorizer do
   @moduledoc """
-  An authorizer decides whether a scope may take an action on a resource. Wardrik asks it once for
-  each operation, and for each agent an operation over many covers.
+  Decides whether a scope may take an action on a resource.
 
-  It answers `{:error, :not_found}` where nothing the scope holds reaches the resource, so a caller
-  learns nothing of what it can't see, and `{:error, :forbidden}` where it reaches it without the
-  action. `Wardrik.Statements` is the one Wardrik uses unless told otherwise.
+      Wardrik.start_link(name: MyApp.Wardrik, authorizer: {MyApp.Authorizer, []})
 
-  `holds?/3` says whether a scope holds everything a statement allows, so a token it makes is no
-  wider than itself. An authorizer that doesn't implement it holds a statement where it allows each
-  of its actions on each of its patterns, read as a resource's name.
+  Wardrik asks once per operation, and once per agent for operations over many agents.
+  `Wardrik.Statements` is used unless set.
+
+  `c:authorize/4` returns:
+
+    * `:ok` - allowed.
+    * `{:error, :not_found}` - the scope can't reach the resource. Callers learn nothing about
+      what they can't see.
+    * `{:error, :forbidden}` - the scope reaches the resource but not the action.
+
+  `c:holds?/3` is optional. It stops a scope from making a token wider than itself. Without it,
+  a scope holds a statement if `c:authorize/4` allows each of its actions on each of its patterns.
   """
 
   alias Wardrik.Scope
 
-  @doc "Decides whether `scope` may take `action`, like `agent.ask`, on `resource`."
+  @doc "Decides whether `scope` may take `action`, such as `\"agent.ask\"`, on `resource`."
   @callback authorize(config :: term(), Scope.t(), action :: String.t(), resource :: String.t()) ::
               :ok | {:error, :forbidden | :not_found}
 
-  @doc "Says whether `scope` holds every action `statement` allows on every resource it covers."
+  @doc "Returns whether `scope` holds every action `statement` allows, on every resource it covers."
   @callback holds?(config :: term(), Scope.t(), Wardrik.Statement.t()) :: boolean()
 
   @optional_callbacks holds?: 3
 
-  @doc "Asks `scope`'s authorizer whether it holds everything `statement` allows."
+  @doc "Returns whether `scope` holds everything `statement` allows. See `c:holds?/3`."
   @spec holds?(Scope.t(), Wardrik.Statement.t()) :: boolean()
   def holds?(%Scope{wardrik: %{authorizer: {module, config}}} = scope, statement) do
     if function_exported?(module, :holds?, 3),
@@ -42,7 +48,7 @@ defmodule Wardrik.Authorizer do
   def allows?(%Scope{operation: %{action: action}} = scope, resource),
     do: authorize(scope, action, resource) == :ok
 
-  @doc "Asks `scope`'s authorizer whether it may take `action` on `resource`."
+  @doc "Returns whether `scope` may take `action` on `resource`. See `c:authorize/4`."
   @spec authorize(Scope.t(), String.t(), String.t()) :: :ok | {:error, :forbidden | :not_found}
   def authorize(%Scope{wardrik: %{authorizer: {module, config}}} = scope, action, resource),
     do: module.authorize(config, scope, action, resource)

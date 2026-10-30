@@ -1,9 +1,10 @@
 defmodule Wardrik.Operations.Tokens do
   @moduledoc """
-  The operations on the deployment's API tokens: making, listing and revoking them. A token is kept
-  as the SHA-256 of its secret, and its secret is given once, as it's made. A token's resources
-  that name an org, as `acme/agent/*`, name one the Wardrik's orgs know; one that leaves it open,
-  as `*/agent/*`, reaches whichever do.
+  Operations on the deployment's API tokens: creating, listing and revoking.
+
+  Only the SHA-256 of a token's secret is stored. The secret is returned once, when the token is
+  created. A resource that names an org, as `acme/agent/*`, must name a known org. A wildcard org,
+  as `*/agent/*`, covers whichever orgs exist.
   """
 
   alias Wardrik.Authorizer
@@ -18,7 +19,11 @@ defmodule Wardrik.Operations.Tokens do
   @lifetime 90 * 24 * 60 * 60
   @prefix "tokens/"
 
-  @doc "Makes a token that acts for whoever makes it, and answers it with its secret, this once."
+  @doc """
+  Creates a token that acts for the scope's principal. Returns the token and its secret.
+
+  The token can't do more than `scope`, be held to a different policy, or outlast it.
+  """
   @spec create(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def create(%Scope{wardrik: wardrik, principal: principal} = scope, input) do
     now = DateTime.utc_now()
@@ -98,7 +103,11 @@ defmodule Wardrik.Operations.Tokens do
     |> Enum.find(:ok, &match?({:error, _error}, &1))
   end
 
-  @doc "Lists every token, oldest first, never a secret, or those whose resources `resources` all cover."
+  @doc """
+  Lists tokens, oldest first, without secrets.
+
+  With `"resources"`, lists only the tokens whose resources those patterns all cover.
+  """
   @spec list(Scope.t(), map()) :: {:ok, map()}
   def list(%Scope{wardrik: wardrik}, input) do
     store = store(wardrik)
@@ -114,7 +123,7 @@ defmodule Wardrik.Operations.Tokens do
     {:ok, %{"tokens" => tokens}}
   end
 
-  @doc "Revokes a token, which is refused from then on, and answers it as it was."
+  @doc "Revokes a token. Returns the revoked token."
   @spec revoke(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def revoke(%Scope{wardrik: wardrik} = scope, %{"token" => id}) do
     case WardrikStore.get(store(wardrik), @prefix <> id) do
@@ -132,7 +141,7 @@ defmodule Wardrik.Operations.Tokens do
     end
   end
 
-  @doc "Returns the scope a token's `secret` acts in, or an `unauthorized` error."
+  @doc "Returns the scope of the token `secret`, or an `unauthorized` error."
   @spec authenticate(Wardrik.t(), String.t()) :: {:ok, Scope.t()} | {:error, Error.t()}
   def authenticate(wardrik, "wrk_" <> rest = secret) do
     with [id, _random] <- String.split(rest, "_", parts: 2),

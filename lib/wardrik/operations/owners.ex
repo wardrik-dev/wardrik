@@ -1,7 +1,7 @@
 defmodule Wardrik.Operations.Owners do
   @moduledoc """
-  The operations on what an org or a person holds for their agents: the accounts they connect, the
-  secrets they seal, and the MCP servers they add.
+  Operations on what an org or person holds for their agents: connected accounts, secrets and
+  MCP servers.
   """
 
   alias Wardrik.Error
@@ -20,9 +20,10 @@ defmodule Wardrik.Operations.Owners do
   @client_auths %{"post" => :post, "basic" => :basic}
 
   @doc """
-  Lists the accounts the owner is offered, and whether they hold each: the Wardrik's providers,
-  and each server the owner added that they sign in to in a browser, by its name, in place of a
-  provider of that name.
+  Lists the accounts the owner can connect, and whether each is connected.
+
+  These are Wardrik's OAuth providers, plus each server the owner added that uses browser
+  sign-in. A server replaces a provider of the same name.
   """
   @spec connections(Scope.t(), map()) :: {:ok, map()}
   def connections(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
@@ -35,7 +36,7 @@ defmodule Wardrik.Operations.Owners do
     {:ok, %{"connections" => connections}}
   end
 
-  @doc "Answers that the owner holds an account, or where they authorize it."
+  @doc "Returns that the account is connected, or where the owner signs in to connect it."
   @spec connect(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def connect(%Scope{wardrik: wardrik}, %{"owner" => owner, "provider" => provider}) do
     with {:ok, key} <- offered(wardrik, owner, provider) do
@@ -45,7 +46,7 @@ defmodule Wardrik.Operations.Owners do
     end
   end
 
-  @doc "Forgets an account the owner holds, so the next call that needs it asks again."
+  @doc "Disconnects an account. The next call that needs it asks the owner to sign in again."
   @spec disconnect(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def disconnect(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "provider" => provider}) do
     with {:ok, key} <- offered(wardrik, owner, provider) do
@@ -63,7 +64,7 @@ defmodule Wardrik.Operations.Owners do
     end
   end
 
-  @doc "Lists the secrets the owner holds, by name, and whether each is sealed or connected."
+  @doc "Lists the owner's secrets by name, with each one's kind: a secret or a connected account."
   @spec secrets(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def secrets(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
     with :ok <- keeps_secrets(wardrik) do
@@ -75,7 +76,7 @@ defmodule Wardrik.Operations.Owners do
     end
   end
 
-  @doc "Lists the org's ceilings, each with what its agents have spent against it in its period now."
+  @doc "Lists the org's ceilings, with what its agents have spent in the current period."
   @spec ceilings(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def ceilings(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
     with :ok <- an_org(owner),
@@ -110,7 +111,7 @@ defmodule Wardrik.Operations.Owners do
 
   defp amount(amount), do: Map.reject(amount, fn {_kind, value} -> value == nil end)
 
-  @doc "Seals a secret as the owner's, in place of any of the same name."
+  @doc "Seals a secret for the owner, replacing any with the same name."
   @spec put_secret(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def put_secret(%Scope{wardrik: wardrik} = scope, %{
         "owner" => owner,
@@ -122,7 +123,7 @@ defmodule Wardrik.Operations.Owners do
          do: {:ok, nil}
   end
 
-  @doc "Removes the owner's secret of a name. Removing none is as removing one."
+  @doc "Removes one of the owner's secrets. Succeeds if there's none."
   @spec delete_secret(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def delete_secret(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "name" => name}) do
     with :ok <- keeps_secrets(wardrik),
@@ -151,7 +152,7 @@ defmodule Wardrik.Operations.Owners do
     {:ok, %{"servers" => servers}}
   end
 
-  @doc "Adds an MCP server for the owner's agents, and answers whether they can call it now."
+  @doc "Adds an MCP server for the owner's agents. Returns whether they can call it now."
   @spec add(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def add(
         %Scope{wardrik: wardrik} = scope,
@@ -177,7 +178,7 @@ defmodule Wardrik.Operations.Owners do
     end
   end
 
-  @doc "Removes an MCP server the owner added, with the sign-ins to it, and answers it as it was."
+  @doc "Removes an MCP server the owner added, and its sign-ins. Returns the removed server."
   @spec remove(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def remove(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "server" => name}) do
     store = store(wardrik)

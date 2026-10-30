@@ -1,7 +1,9 @@
 defmodule Wardrik.Listener do
   @moduledoc """
-  A listener follows agents' events into your app. It hands each event to your module with the
-  cursor past it, so you keep your place with your own work, and carry on from it after a restart.
+  Follows agents' events into your app.
+
+  Each event comes with the cursor just past it. Save the cursor with your work, and the listener
+  picks up from it after a restart.
 
       defmodule MyApp.Runs do
         use Wardrik.Listener, wardrik: MyApp.Wardrik, types: ["wardrik.run.completed"]
@@ -20,14 +22,26 @@ defmodule Wardrik.Listener do
         def cursor(_listener), do: MyApp.Cursors.get("runs")
       end
 
-  Start it after its Wardrik, or let the Wardrik start it, with `listeners: [MyApp.Runs]`. It takes
-  `:wardrik`, `:resources` (every agent unless set), `:types` (every type unless set) and `:after`,
-  the cursor `cursor/1` returns unless you define it, in `use` or as it starts, and your module's
-  own options beside them. Without a cursor, it reads from what's written once it starts.
+  Start it after Wardrik in your supervision tree, or have Wardrik start it:
 
-  Each event is handed over at least once: keep the cursor with what `handle/2` did, in one
-  transaction, and drop a repeat by the event's `id`. A `handle/2` that raises or returns anything
-  but `:ok` restarts the listener, which asks `cursor/1` again.
+      Wardrik.start_link(name: MyApp.Wardrik, listeners: [MyApp.Runs])
+
+  ## Options
+
+  Give options to `use`, or as it starts. Your own options are kept alongside them.
+
+    * `:wardrik` - required. The module to follow, as `MyApp.Wardrik`.
+    * `:resources` - patterns of the agents to follow. Every agent unless set.
+    * `:types` - event types to follow. Every type unless set.
+    * `:after` - the cursor to start after, if you don't define `c:cursor/1`.
+
+  Without a cursor, it starts with events written after it starts.
+
+  ## Delivery
+
+  Each event is delivered at least once. Save the cursor in the same transaction as your work,
+  and drop repeats by the event's `id`. If `c:handle/2` raises or returns anything but `:ok`, the
+  listener restarts and calls `c:cursor/1` again.
   """
 
   alias Wardrik.Instance
@@ -35,13 +49,13 @@ defmodule Wardrik.Listener do
   @enforce_keys [:wardrik, :cursor, :options]
   defstruct [:wardrik, :cursor, :options]
 
-  @typedoc "The Wardrik it follows, the cursor past the event being handled, and its options."
+  @typedoc "The listener: the `:wardrik` it follows, the cursor past the current event, and its options."
   @type t() :: %__MODULE__{wardrik: atom(), cursor: String.t() | nil, options: keyword()}
 
-  @doc "Does what your app does with `event`, and returns `:ok` once it's done."
+  @doc "Handles `event`. Returns `:ok` when done."
   @callback handle(Wardrik.Event.t(), t()) :: :ok
 
-  @doc "Returns the cursor to read after as the listener starts, or `nil` for what's written next."
+  @doc "Returns the cursor to start after, or `nil` to start with new events. Defaults to `:after`."
   @callback cursor(t()) :: String.t() | nil
 
   defmacro __using__(opts) do
@@ -65,7 +79,7 @@ defmodule Wardrik.Listener do
     end
   end
 
-  @doc "Starts `module`'s listener, following the Wardrik its `:wardrik` names."
+  @doc "Starts `module` as a listener. See the module docs for `opts`."
   @spec start_link(module(), keyword()) :: {:ok, pid()}
   def start_link(module, opts) do
     instance = Keyword.fetch!(opts, :wardrik)

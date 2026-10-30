@@ -1,19 +1,19 @@
 defmodule Wardrik.Operations.Snapshot do
-  @moduledoc "What operations read of agents: their status from their activity, and their logs."
+  @moduledoc "Reads agents' status and logs for operations."
 
   alias Wardrik.AgentID
   alias Wardrik.Error
   alias Wardrik.Operations.Running
   alias Wardrik.Scope
 
-  @doc "Returns the agent `id`'s name: a conversation's is its agent's."
+  @doc "Returns the agent `id`'s name. A conversation has its agent's name."
   @spec name(String.t()) :: String.t()
   def name(id) do
     {:ok, %AgentID{name: name}} = AgentID.parse(id)
     name
   end
 
-  @doc "Returns whether an agent waits for a message, answers one, or waits on a person."
+  @doc ~S|Returns `"idle"`, `"running"`, or `"parked"` when waiting on a person.|
   @spec status(map()) :: String.t()
   def status(%{"doing" => []}), do: "idle"
 
@@ -23,7 +23,7 @@ defmodule Wardrik.Operations.Snapshot do
       else: "running"
   end
 
-  @doc "Returns the calls an agent's activity says it waits on a person for."
+  @doc "Returns the calls the agent waits on a person for."
   @spec interrupts(map()) :: [map()]
   def interrupts(%{"doing" => doing}) do
     Enum.flat_map(doing, fn
@@ -32,7 +32,7 @@ defmodule Wardrik.Operations.Snapshot do
     end)
   end
 
-  @doc "Returns whether the agent `id` sleeps, or else what its activity says it's doing."
+  @doc "Returns `\"asleep\"` if the agent `id` isn't running, or else its `status/1`."
   @spec state(Wardrik.t(), String.t(), map()) :: String.t()
   def state(wardrik, id, activity) do
     case Running.whereis(wardrik, id) do
@@ -41,7 +41,7 @@ defmodule Wardrik.Operations.Snapshot do
     end
   end
 
-  @doc "Returns the agent `id` as lists show it."
+  @doc "Returns the agent `id`'s summary, as lists show it."
   @spec summary(Wardrik.t(), String.t()) :: map()
   def summary(wardrik, id) do
     activity = WardrikEvents.activity(Wardrik.events(wardrik), id)
@@ -57,7 +57,7 @@ defmodule Wardrik.Operations.Snapshot do
     }
   end
 
-  @doc "Returns when each of the agent `id`'s triggers runs next, by name, `nil` for a webhook's."
+  @doc "Returns when each of the agent `id`'s triggers runs next, by name. Webhooks are `nil`."
   @spec next_runs(Wardrik.t(), String.t()) :: %{String.t() => String.t() | nil}
   def next_runs(wardrik, id) do
     for {trigger, next_at} <- WardrikTriggers.list(Wardrik.triggers(wardrik), id),
@@ -65,7 +65,7 @@ defmodule Wardrik.Operations.Snapshot do
         do: {trigger.name, next_at && DateTime.to_iso8601(next_at)}
   end
 
-  @doc "Returns when the next of the agent `id`'s triggers on a clock runs, or `nil`."
+  @doc "Returns when the agent `id`'s next scheduled trigger runs, or `nil`."
   @spec next_run(Wardrik.t(), String.t()) :: String.t() | nil
   def next_run(wardrik, id) do
     wardrik
@@ -77,7 +77,7 @@ defmodule Wardrik.Operations.Snapshot do
     |> then(&(&1 && DateTime.to_iso8601(&1)))
   end
 
-  @doc "Returns the node the agent `id` runs on, or `nil` while it sleeps."
+  @doc "Returns the node the agent `id` runs on, or `nil` if it's asleep."
   @spec placed(Wardrik.t(), String.t()) :: String.t() | nil
   def placed(wardrik, id) do
     case Running.whereis(wardrik, id) do
@@ -86,7 +86,7 @@ defmodule Wardrik.Operations.Snapshot do
     end
   end
 
-  @doc "Returns `:ok` if `wardrik` knows the agent `id`, or a `not_found` error."
+  @doc "Returns `:ok` if the agent `id` exists, or a `not_found` error."
   @spec known(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
   def known(wardrik, id) do
     if Running.known?(wardrik, id),
@@ -94,7 +94,7 @@ defmodule Wardrik.Operations.Snapshot do
       else: {:error, Error.new(:not_found, "There's no agent #{id}.")}
   end
 
-  @doc "Returns the running agent `id`, or a `not_found` error while it sleeps."
+  @doc "Returns the running agent `id`, or a `not_found` error if it's asleep."
   @spec running(Wardrik.t(), String.t()) :: {:ok, pid()} | {:error, Error.t()}
   def running(wardrik, id) do
     with :ok <- known(wardrik, id) do
@@ -105,13 +105,13 @@ defmodule Wardrik.Operations.Snapshot do
     end
   end
 
-  @doc "Returns whether `event` is of one of `types`, or `types` is `nil`."
+  @doc "Returns whether `event` is one of `types`. Always `true` if `types` is `nil`."
   @spec typed?(map(), [String.t()] | nil) :: boolean()
   def typed?(_event, nil), do: true
   def typed?(%{"type" => "wardrik.events.dropped"}, _types), do: true
   def typed?(%{"type" => type}, types), do: type in types
 
-  @doc "Reads a page of the logs `patterns` cover."
+  @doc "Returns a page of the logs `patterns` cover."
   @spec page(Scope.t(), [String.t()], keyword()) :: {:ok, map()} | {:error, Error.t()}
   def page(%Scope{wardrik: wardrik}, patterns, opts) do
     wardrik

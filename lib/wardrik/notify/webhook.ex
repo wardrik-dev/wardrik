@@ -1,12 +1,18 @@
 defmodule Wardrik.Notify.Webhook do
   @moduledoc """
-  Posts each notice as JSON to a URL, `Wardrik.Notice.json/1`, naming its event in
-  `x-wardrik-event`:
+  Posts notices as JSON to a URL.
 
       audit: {Wardrik.Notify.Webhook, url: "https://hooks.example.com/wardrik", secret: secret}
 
-  With a `:secret`, `x-wardrik-signature` is `sha256=` and the hex HMAC-SHA256 of the body under
-  it. An answer other than 2xx is a failure. `:req_options` are merged into the request.
+  The body is `Wardrik.Notice.json/1`. The `x-wardrik-event` header names the event. Any status
+  other than 2xx is a failure.
+
+  ## Options
+
+    * `:url` - required. Where to post.
+    * `:secret` - signs the body. The `x-wardrik-signature` header is then `sha256=` followed by
+      the hex HMAC-SHA256 of the body. See `sign/2`.
+    * `:req_options` - merged into the `Req` request.
   """
 
   @behaviour Wardrik.Notify
@@ -39,7 +45,12 @@ defmodule Wardrik.Notify.Webhook do
     end
   end
 
-  @doc "Returns the signature of `body` under `secret`, as `x-wardrik-signature` carries it."
+  @doc """
+  Returns the `x-wardrik-signature` value for `body` signed with `secret`.
+
+      Wardrik.Notify.Webhook.sign(secret, body)
+      #=> "sha256=9f86d0..."
+  """
   @spec sign(String.t(), iodata()) :: String.t()
   def sign(secret, body),
     do: "sha256=" <> Base.encode16(:crypto.mac(:hmac, :sha256, secret, body), case: :lower)

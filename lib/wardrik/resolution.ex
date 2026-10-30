@@ -8,10 +8,7 @@ defmodule Wardrik.Resolution do
 
   @rounds 25
 
-  @doc """
-  Returns the options the agent `id` starts with in `wardrik`, as the JSON `definition` describes
-  it, under its org's settings.
-  """
+  @doc "Returns the agent `id`'s start options, from its JSON `definition` and its org's settings."
   @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
     org = Orgs.org(id)
@@ -52,7 +49,7 @@ defmodule Wardrik.Resolution do
     end
   end
 
-  @doc "Returns `:ok` if the trigger `fields` describe reads, and the agent `definition` can follow it."
+  @doc "Returns `:ok` if the trigger in `fields` is valid for the agent `definition`."
   @spec trigger(Wardrik.t(), map(), map(), pos_integer()) :: :ok | {:error, Error.t()}
   def trigger(wardrik, definition, fields, index) do
     with :ok <- prompted(fields, files?(wardrik, Map.merge(wardrik.defaults, definition))) do
@@ -63,10 +60,7 @@ defmodule Wardrik.Resolution do
     end
   end
 
-  @doc """
-  Returns the servers the agent `id`'s definition names that offer nothing yet: one its owner hasn't
-  added, or one that's down.
-  """
+  @doc "Returns the servers the definition names that aren't available: not added, or down."
   @spec missing(Wardrik.t(), String.t(), map()) :: [String.t()]
   def missing(wardrik, id, definition) do
     mcp = Wardrik.mcp(wardrik)
@@ -84,7 +78,7 @@ defmodule Wardrik.Resolution do
         do: tool
   end
 
-  @doc "Returns how long the agent `id` may have nothing to do before it sleeps, in milliseconds."
+  @doc "Returns how long the agent `id` idles before it sleeps, in milliseconds, or `:infinity`."
   @spec idle_timeout(Wardrik.t(), String.t(), map()) :: pos_integer() | :infinity
   def idle_timeout(wardrik, id, definition) do
     defaults = Orgs.defaults(wardrik, id)

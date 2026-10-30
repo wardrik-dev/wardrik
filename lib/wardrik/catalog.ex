@@ -1,7 +1,8 @@
 defmodule Wardrik.Catalog do
   @moduledoc """
-  The catalog joins each operation of `WardrikProtocol` to the function that does it, and to its
-  input schema, built once. Every surface runs operations through it, with `Wardrik.run/3`.
+  Maps each `WardrikProtocol` operation to its handler and its compiled input schema.
+
+  Every surface runs operations through it, with `Wardrik.run/3`.
   """
 
   alias Wardrik.Operations.Agent
@@ -86,7 +87,7 @@ defmodule Wardrik.Catalog do
     }
   end
 
-  @doc "Returns the operation `id` names, with its input schema built, or `:error`."
+  @doc "Returns the operation `id` with its compiled input schema, or `:error`."
   @spec fetch(t(), String.t()) :: {:ok, {WardrikProtocol.operation(), JSV.Root.t()}} | :error
   def fetch(%__MODULE__{operations: operations}, id), do: Map.fetch(operations, id)
 end

@@ -1,20 +1,20 @@
 defmodule Wardrik.HostTest do
   use ExUnit.Case, async: true
 
-  test "builds a store over the app's repo, which a Wardrik given its settings runs itself" do
-    assert %WardrikStore{adapter: WardrikStore.Ecto} =
-             Wardrik.store(url: "postgres://localhost/x")
-
+  test "builds a Postgres store" do
     wardrik =
       Wardrik.new(
         name: MyApp.Wardrik,
-        store: [url: "postgres://localhost/x"],
+        store: {WardrikStore.Ecto, url: "postgres://localhost/x"},
         discovery_interval_ms: 5_000
       )
 
-    assert %Wardrik{own_store: true, store: %WardrikStore{adapter: WardrikStore.Ecto}} = wardrik
+    assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.Ecto} = store} = wardrik
     assert {WardrikStore.Durable, opts} = wardrik.backend
     assert opts[:discovery_interval_ms] == 5_000
+
+    assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.Ecto, config: MyApp.Repo}} =
+             Wardrik.new(name: MyApp.Wardrik, store: {WardrikStore.Ecto, repo: MyApp.Repo})
   end
 
   test "names a principal, and the key a model's calls take" do

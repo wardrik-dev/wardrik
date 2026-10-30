@@ -1,8 +1,12 @@
 defmodule Wardrik.Runner do
   @moduledoc """
-  Runs an operation the same way for every surface: it finds it in the catalog, checks the input
-  against its schema, asks the authorizer, checks that the org an owner's operation names is one
-  the Wardrik's orgs know, and calls its handler.
+  Runs operations the same way for every surface:
+
+    1. Finds the operation in the catalog.
+    2. Validates the input against its schema.
+    3. Asks the authorizer.
+    4. For an owner's operation, checks the org is known. See `Wardrik.Orgs`.
+    5. Calls the handler.
   """
 
   alias Wardrik.Authorizer
@@ -13,7 +17,7 @@ defmodule Wardrik.Runner do
   alias Wardrik.Resource
   alias Wardrik.Scope
 
-  @doc "Runs the operation `id` in `scope` with `input`, through the handlers `kind` names."
+  @doc "Runs the operation `id` in `scope`, with its handler (`:handlers`) or stream (`:streams`)."
   @spec run(Scope.t(), String.t(), map(), :handlers | :streams) ::
           {:ok, term()} | {:error, Error.t()}
   def run(%Scope{wardrik: instance} = scope, id, input, kind) do

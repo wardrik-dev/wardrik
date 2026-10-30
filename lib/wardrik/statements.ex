@@ -1,9 +1,10 @@
 defmodule Wardrik.Statements do
   @moduledoc """
-  The authorizer that decides by the `Wardrik.Statement`s a scope holds as its grants. Anything no
-  statement allows is refused.
+  The default `Wardrik.Authorizer`. Allows what the scope's `Wardrik.Statement`s allow.
 
-      scope = Wardrik.as(wardrik, principal, [Wardrik.Statement.new(roles: [:reader], resources: ["acme/agent/*"])])
+      scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:reader], resources: ["acme/agent/*"])
+
+  Anything no statement allows is refused.
   """
 
   @behaviour Wardrik.Authorizer
@@ -36,8 +37,16 @@ defmodule Wardrik.Statements do
     do: covers?(actions, action) and covers?(resources, resource)
 
   @doc """
-  Returns whether every name the pattern `inner` covers, `outer` covers too, as `acme/*` covers
-  `acme/agent/*` and `acme/a*` covers `acme/a?`, though `acme/a?` doesn't cover `acme/a*`.
+  Returns whether `outer` covers every name the pattern `inner` covers.
+
+      Wardrik.Statements.within?("acme/agent/*", "acme/*")
+      #=> true
+
+      Wardrik.Statements.within?("acme/a?", "acme/a*")
+      #=> true
+
+      Wardrik.Statements.within?("acme/a*", "acme/a?")
+      #=> false
   """
   @spec within?(String.t(), String.t()) :: boolean()
   def within?(inner, outer), do: contained(outer, inner)

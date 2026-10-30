@@ -1,7 +1,7 @@
 defmodule Wardrik.Operations.Lifecycle do
   @moduledoc """
-  The operations that make an agent what it is: defining, starting, stopping, clearing and
-  forgetting it, and stopping a call it runs.
+  Operations on an agent's lifecycle: defining, starting, stopping, clearing and forgetting it,
+  and killing its tool calls.
   """
 
   alias Wardrik.Definition
@@ -14,7 +14,7 @@ defmodule Wardrik.Operations.Lifecycle do
   alias Wardrik.Scope
   alias Wardrik.Sleeper
 
-  @doc "Starts the agent a definition describes, or brings the one running to it."
+  @doc "Defines an agent. Starts it, or reconfigures it if it's running."
   @spec define(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def define(%Scope{wardrik: wardrik} = scope, %{"agent" => id} = input) do
     definition = input |> Map.delete("agent") |> Definition.named()
@@ -33,7 +33,10 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc "Reads the agent's definition, the tools it names that offer nothing yet, and when each trigger runs next."
+  @doc """
+  Returns the agent's definition, the tools it names that aren't available yet, and when each
+  trigger runs next.
+  """
   @spec definition(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def definition(%Scope{wardrik: wardrik}, %{"agent" => id}) do
     with {:ok, definition} <- Running.definition(wardrik, id) do
@@ -68,7 +71,7 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc "Stops the agent, keeping its conversation, so it sleeps until something asks it."
+  @doc "Stops the agent but keeps its conversation. It sleeps until something asks it."
   @spec stop(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def stop(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
     with :ok <- Snapshot.known(wardrik, id) do
@@ -77,7 +80,7 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc "Empties the agent's conversation, and starts it again from its definition."
+  @doc "Clears the agent's conversation, and restarts it from its definition."
   @spec clear(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def clear(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
     with :ok <- Snapshot.known(wardrik, id),
@@ -94,7 +97,7 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc "Lists the tool calls the agent is running, each with how long it has run."
+  @doc "Lists the tool calls the agent is running, with how long each has run."
   @spec calls(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def calls(%Scope{wardrik: wardrik}, %{"agent" => id}) do
     with {:ok, _pid} <- Snapshot.running(wardrik, id) do
@@ -113,7 +116,7 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc "Stops one tool call the agent is running. The model is answered with an error for it."
+  @doc "Kills one of the agent's running tool calls. The model gets an error as its result."
   @spec kill(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def kill(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "call" => call}) do
     with {:ok, pid} <- Snapshot.running(wardrik, id) do
@@ -128,10 +131,7 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc """
-  Stops the agent and deletes everything it had, its conversations too. Returns `:ok`, or why it
-  couldn't.
-  """
+  @doc "Stops the agent and deletes all its data, including its conversations."
   @spec forgotten(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
   def forgotten(wardrik, id) do
     with :ok <- conversations_deleted(wardrik, id),
@@ -169,7 +169,7 @@ defmodule Wardrik.Operations.Lifecycle do
 
   defp written_after(_wardrik, _id, _policy), do: :ok
 
-  @doc "Returns `:ok` unless the agent `id` is declared outside the API, which forgetting can't undo."
+  @doc "Returns `:ok`, or a `conflict` error if the agent `id` is declared outside the API."
   @spec undeclared(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
   def undeclared(wardrik, id) do
     if Wardrik.Declarations.declared?(wardrik, id),

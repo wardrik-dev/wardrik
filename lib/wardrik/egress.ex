@@ -1,9 +1,11 @@
 defmodule Wardrik.Egress do
   @moduledoc """
-  Says which URLs a Wardrik reaches when its users name them, as an org adds an MCP server: `https`
-  at a host whose every address is public. A URL is checked as it's named and as each connection
-  to it starts, not on each request, so a host that resolves elsewhere between the two is reached
-  where it resolves then.
+  Decides which URLs users may point Wardrik at, such as when an org adds an MCP server.
+
+      Wardrik.start_link(name: MyApp.Wardrik, egress: &Wardrik.Egress.public/1)
+
+  A URL is checked when it's given and when each connection to it starts, not on each request.
+  A host that resolves somewhere else between checks is reached where it resolves then.
   """
 
   @not_public_v4 [
@@ -33,7 +35,7 @@ defmodule Wardrik.Egress do
   ]
 
   @doc """
-  Answers `:ok` where `url` is `https` at a host whose every address is public, or says why not.
+  Returns `:ok` if `url` is `https` and every address of its host is public. The default.
 
       Wardrik.Egress.public("https://10.0.0.5/mcp")
       #=> {:error, "10.0.0.5 is a private address"}
@@ -46,11 +48,11 @@ defmodule Wardrik.Egress do
     end
   end
 
-  @doc "Answers `:ok` for every URL, for a Wardrik whose operator alone names them, as a daemon's."
+  @doc "Returns `:ok` for every URL. Use it when only the operator names URLs, as in a daemon."
   @spec any(String.t()) :: :ok
   def any(_url), do: :ok
 
-  @doc "Says whether `address` is reached on the public internet, and an IPv6 address wrapping one."
+  @doc "Returns whether `address` is public. Checks the IPv4 address inside IPv6 forms that wrap one."
   @spec public?(:inet.ip_address()) :: boolean()
   def public?({_a, _b, _c, _d} = address),
     do: not Enum.any?(@not_public_v4, &within?(address, &1))

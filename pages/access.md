@@ -1,6 +1,6 @@
 # Who may do what
 
-Every operation runs in a scope: the Wardrik, who acts, and what they're allowed. Nothing is allowed
+Every operation runs in a scope: Wardrik, who acts, and what they're allowed. Nothing is allowed
 unless it's granted.
 
 ## Scopes and grants
@@ -11,15 +11,19 @@ scope = MyApp.Wardrik.as("acme/@maria", roles: [:reader, :messenger], resources:
 scope = Wardrik.grant(scope, roles: [:owner], resources: ["acme/@maria/*"])
 ```
 
-`as/2` takes a principal by id, or a `WardrikCore.Principal` with attributes your authorizer reads,
-and grants: the options of one statement, or a list of `Wardrik.Statement`s. `Wardrik.grant/2` adds
-one more.
+`as/2` takes a principal and its grants. The principal is an ID, or a `WardrikCore.Principal` with
+attributes your authorizer reads. The grants are one statement's options, or a list of
+`Wardrik.Statement`s. `Wardrik.grant/2` adds one more statement.
 
-A statement allows actions on resources, as IAM's do. The agent `acme/books` is the resource
-`acme/agent/books`, and `acme/@jon/notes` is `acme/@jon/agent/notes`. What an owner holds is under
-them too: `acme/mcp_server/linear` is the org's server, and `acme/@jon/connection/github` is Jon's
-account. The deployment's own operations, its tokens, nodes, audit and reloading, are on
-`deployment`.
+A statement allows actions on resources, as IAM statements do:
+
+| Thing | Resource |
+| --- | --- |
+| The agent `acme/books` | `acme/agent/books` |
+| The agent `acme/@jon/notes` | `acme/@jon/agent/notes` |
+| The org's MCP server `linear` | `acme/mcp_server/linear` |
+| Jon's GitHub account | `acme/@jon/connection/github` |
+| Tokens, nodes, the audit, reloading | `deployment` |
 
 | Role | Actions |
 | --- | --- |
@@ -27,16 +31,16 @@ account. The deployment's own operations, its tokens, nodes, audit and reloading
 | `:messenger` | `agent.ask`, `agent.cancel`, `agent.clear` |
 | `:approver` | `agent.decide` |
 | `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `connection.connect`, `mcp_server.add` |
+| `:worker` | `agent.serve`, to offer tools to the agents it covers |
 | `:owner` | every action |
 
-Notice that an agent no statement reaches is one the scope can't see: operations on it answer
-`not_found`, and lists leave it out. An agent a statement reaches without the action answers
-`forbidden`.
+An agent no statement reaches is invisible to the scope. Operations on it return `not_found`, and
+lists leave it out. An agent a statement reaches, without the action, returns `forbidden`.
 
 ## API tokens
 
-People and programs reaching Wardrik over HTTP present a token. Make one, and its secret is given
-this once:
+People and programs reach Wardrik over HTTP with a token. The secret is returned once, when the
+token is made:
 
 ```elixir
 {:ok, issued} =
@@ -57,29 +61,48 @@ this once:
 {:ok, ci} = MyApp.Wardrik.authenticate(issued.secret)
 ```
 
-A token acts for whoever made it, works for 90 days unless `expires_in` says, and is kept as the
-SHA-256 of its secret. `policy:` names a policy every agent it defines is held to, ahead of the
-agent's own: a definition can narrow it, never widen it. `Wardrik.Tokens.list/2` lists them, or
-with `resources:` only those whose every resource the patterns cover, as `["acme/agent/*"]` lists
-acme's own. `Wardrik.Tokens.revoke/2` refuses one from then on.
+A token acts for whoever made it, and is stored as the SHA-256 of its secret.
 
-A token is never wider than whoever makes it. Each action its roles allow, on each resource it
-names, is one its maker may take there, so an org's admin, holding `deployment.tokens` and their
-org's statements, makes tokens over their org alone. A token made by one held to a policy is held
-to it too, and one made by a token expires no later than that token does:
+### Options
+
+  * `:name` - required. What it's listed as.
+  * `:roles` - required. What it may do.
+  * `:resources` - required. Resource patterns it reaches.
+  * `:expires_in` - seconds it works for. 90 days unless set.
+  * `:policy` - a policy every agent it defines is held to, ahead of the agent's own. A definition
+    can narrow it, never widen it.
+
+`Wardrik.Tokens.list/2` lists tokens. With `resources:`, it lists only those whose every resource
+the patterns cover, so `["acme/agent/*"]` lists tokens over acme's own agents.
+`Wardrik.Tokens.revoke/3` refuses a token from then on. Agents it defined keep running, under the
+policy they were defined with.
+
+### No wider than its maker
+
+A token can't do more than whoever makes it:
+
+  * Each action its roles allow, on each resource it names, must be one its maker may take there.
+  * A token made by someone held to a policy is held to it too.
+  * A token made by a token expires no later than that token.
+
+So an org admin holding `deployment.tokens` and their org's statements makes tokens over their org
+alone:
 
 ```elixir
 keeper = Wardrik.Statement.new(actions: ["deployment.tokens"], resources: ["deployment"])
-admin = MyApp.Wardrik.as("acme/@maria", [keeper, Wardrik.Statement.new(roles: [:reader, :messenger], resources: ["acme/agent/*"])])
+team = Wardrik.Statement.new(roles: [:reader, :messenger], resources: ["acme/agent/*"])
+admin = MyApp.Wardrik.as("acme/@maria", [keeper, team])
 
-{:ok, _issued} = Wardrik.Tokens.create(admin, name: "ci", roles: ["messenger"], resources: ["acme/agent/deploy"])
+{:ok, _issued} =
+  Wardrik.Tokens.create(admin, name: "ci", roles: ["messenger"], resources: ["acme/agent/deploy"])
+
 Wardrik.Tokens.create(admin, name: "wide", roles: ["definer"], resources: ["acme/agent/*"])
 #=> {:error, %Wardrik.Error{type: :forbidden, message: "A token can't do more than the one that makes it, on more of it."}}
 ```
 
 ## Write your own authorizer
 
-Reach for this when your app already decides who may do what:
+Use one when your app already decides who may do what:
 
 ```elixir
 defmodule MyApp.Authorizer do
@@ -94,6 +117,11 @@ end
 config :my_app, MyApp.Wardrik, authorizer: {MyApp.Authorizer, []}
 ```
 
-It answers `:ok`, `{:error, :not_found}` where the scope can't see the resource, or
-`{:error, :forbidden}` where it can without the action. Your grants are in the scope's `grants`, as
-you gave them.
+`authorize/4` returns:
+
+  * `:ok` - allowed.
+  * `{:error, :not_found}` - the scope can't see the resource.
+  * `{:error, :forbidden}` - it can see it, but lacks the action.
+
+The grants you gave are in the scope's `grants`. Implement the optional `holds?/3` to decide which
+tokens a scope may make; see `Wardrik.Authorizer`.

@@ -78,6 +78,6 @@ defmodule Wardrik.PolicyTest do
     policy = WardrikPolicy.new!(deny: ["shell/*"])
 
     assert %Wardrik{policy: ^policy} =
-             Wardrik.new(name: MyApp.Wardrik, store: :store, policy: policy)
+             Wardrik.new(name: MyApp.Wardrik, policy: policy)
   end
 end

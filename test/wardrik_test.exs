@@ -43,13 +43,14 @@ defmodule WardrikTest do
   end
 
   test "describes itself, with its agents kept in its store unless told otherwise" do
-    wardrik = Wardrik.new(name: MyApp.Wardrik, store: :store)
+    store = WardrikStore.ETS.new(name: MyApp.Store)
+    wardrik = Wardrik.new(name: MyApp.Wardrik, store: store)
 
     assert %Wardrik{
              deployment: "local",
              retention: 30,
              authorizer: {Wardrik.Statements, []},
-             backend: {WardrikStore.Durable, store: :store}
+             backend: {WardrikStore.Durable, store: ^store}
            } = wardrik
 
     assert Wardrik.agents(wardrik) == MyApp.Wardrik.Agents

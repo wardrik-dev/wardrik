@@ -1,23 +1,27 @@
 defmodule Wardrik.AgentTools do
   @moduledoc """
-  The tools that let an agent work with agents: `agents/*`, over the other agents of its org, and
-  `self/*`, over itself. Each runs an operation of the catalog through `Wardrik.run/3`, as the agent,
-  so its tools reach what any surface's would and nothing more.
+  Tools that let an agent work with agents: `agents/*` for the other agents in its org, and
+  `self/*` for itself.
 
-  | Tool | Operation |
+  Each tool runs a catalog operation through `Wardrik.run/3`, as the agent. It can reach what any
+  surface can, and nothing more.
+
+  | Tool | What it does |
   | --- | --- |
-  | `agents_list` | lists the agents of the org, and what each is doing |
-  | `agent_read`, `self_read` | reads a snapshot: its status, what it waits on |
-  | `agent_definition_read`, `self_definition_read` | reads a definition |
-  | `agent_ask` | sends one a message; its answer comes back later as a message |
-  | `agent_define` | defines a worker, or defines one again |
-  | `agent_trigger_set`, `agent_trigger_remove`, `self_trigger_set`, `self_trigger_remove` | changes triggers |
+  | `agents_list` | Lists the org's agents and what each is doing. |
+  | `agent_read`, `self_read` | Reads an agent's status and what it waits on. |
+  | `agent_definition_read`, `self_definition_read` | Reads a definition. |
+  | `agent_ask` | Sends an agent a message. The answer comes back later as a message. |
+  | `agent_define` | Defines or redefines a worker. |
+  | `agent_trigger_set`, `agent_trigger_remove`, `self_trigger_set`, `self_trigger_remove` | Changes triggers. |
 
-  A message `agent_ask` sends carries the labels of what the asking run had read. An agent is named
-  within the org, as `reconciler`, or `@jon/reconciler` for one that works for a
-  user. Reads run freely. Every change is `gated`: it waits on a person unless the agent's policy
-  allows it by name, as `allow: [agent_ask]`. A worker an agent defines is held to the policy of the
-  agent that defined it.
+  Agents are named within the org, as `reconciler`, or `@jon/reconciler` for a person's agent.
+
+    * Reads always run.
+    * Changes are `gated`: they wait on a person unless the agent's policy allows them by name,
+      as `allow: [agent_ask]`.
+    * `agent_ask` messages carry the labels of what the asking run has read.
+    * A worker an agent defines is held to its definer's policy.
   """
 
   @behaviour WardrikCore.Capability

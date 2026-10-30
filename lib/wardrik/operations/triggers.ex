@@ -1,8 +1,5 @@
 defmodule Wardrik.Operations.Triggers do
-  @moduledoc """
-  The operations on an agent's triggers: setting and removing one, and delivering what a service
-  sends a webhook trigger.
-  """
+  @moduledoc "Operations on an agent's triggers: setting, removing, and delivering webhooks."
 
   alias Wardrik.Definitions
   alias Wardrik.Error
@@ -11,7 +8,7 @@ defmodule Wardrik.Operations.Triggers do
   alias Wardrik.Scope
   alias WardrikTriggers.Trigger
 
-  @doc "Sets one of the agent's triggers, and keeps it in its definition."
+  @doc "Sets one of the agent's triggers, and saves it in the agent's definition."
   @spec set(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def set(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "trigger" => name} = input) do
     fields = input |> Map.drop(["agent", "trigger"]) |> Map.put("name", name)
@@ -31,7 +28,7 @@ defmodule Wardrik.Operations.Triggers do
     end
   end
 
-  @doc "Removes one of the agent's triggers, and answers it as it was."
+  @doc "Removes one of the agent's triggers. Returns the removed trigger."
   @spec remove(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def remove(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "trigger" => name}) do
     with :ok <- Running.definable(id),
@@ -49,7 +46,7 @@ defmodule Wardrik.Operations.Triggers do
     end
   end
 
-  @doc "Asks the agent about a request a service sent its webhook trigger, once it proves itself."
+  @doc "Passes a webhook request to the agent's trigger. The trigger checks the request first."
   @spec deliver(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def deliver(%Scope{wardrik: wardrik}, %{"agent" => id, "trigger" => name} = input) do
     request = %{

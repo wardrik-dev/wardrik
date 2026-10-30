@@ -1,9 +1,15 @@
 defmodule Wardrik.MCPTools do
   @moduledoc """
-  The tools of the MCP servers an agent names, found as each turn starts: its owner's own server of
-  each name first, then its org's, then the one Wardrik started with, where that one serves its
-  org. With `all`, every server its owner adds too. A server added or removed reaches the agent
-  from its next turn.
+  Gives an agent the tools of the MCP servers it names. Implements `WardrikCore.Capability`.
+
+  Servers are looked up at the start of each turn, so added or removed servers apply from the
+  next turn. For each name, the first match wins:
+
+    1. The owner's server of that name.
+    2. The org's, for a person's agent.
+    3. The server Wardrik started with, if it serves the agent's org.
+
+  With `all: true`, the agent also gets every server its owners added.
   """
 
   @behaviour WardrikCore.Capability
@@ -16,7 +22,7 @@ defmodule Wardrik.MCPTools do
     WardrikMCP.tools(context, name: mcp, servers: picked(mcp, id, opts))
   end
 
-  @doc "Returns the servers the agent `id` reaches for what it names in `opts`, as `WardrikMCP` names them."
+  @doc "Returns the `WardrikMCP` names of the servers the agent `id` gets for `opts`."
   @spec picked(atom(), String.t(), keyword()) :: [String.t()]
   def picked(mcp, id, opts) do
     available = MapSet.new(WardrikMCP.servers(mcp))
@@ -26,11 +32,16 @@ defmodule Wardrik.MCPTools do
     Enum.uniq(named ++ owned(available, owners, Keyword.get(opts, :all, false)))
   end
 
-  @doc "Returns the name `WardrikMCP` knows the server `name` that `owner` added by."
+  @doc """
+  Returns the `WardrikMCP` name of the server `name` that `owner` added.
+
+      Wardrik.MCPTools.key("acme", "github")
+      #=> "acme:github"
+  """
   @spec key(String.t(), String.t()) :: String.t()
   def key(owner, name), do: owner <> ":" <> name
 
-  @doc "Returns the owners whose servers the agent `id` reaches, its own first: a person, then their org."
+  @doc "Returns the owners whose servers the agent `id` can use: its owner, then the org for a person."
   @spec owners(String.t()) :: [String.t()]
   def owners(id) do
     case Definition.principal(id).id do
@@ -46,8 +57,9 @@ defmodule Wardrik.MCPTools do
   end
 
   @doc """
-  Returns the names of the servers the Wardrik started with that the agent `id`'s org reaches: each
-  whose `:orgs` lists it, or that has none.
+  Returns the names of Wardrik's own servers that serve the agent `id`'s org.
+
+  A server serves an org if its `:orgs` lists it, or it has no `:orgs`.
   """
   @spec served(Wardrik.t(), String.t()) :: [String.t()]
   def served(wardrik, id) do

@@ -1,10 +1,10 @@
 defmodule Wardrik.Operations.Channels do
-  @moduledoc "Hands what chat apps send to the channels the Wardrik runs."
+  @moduledoc "Passes chat apps' requests to Wardrik's channels."
 
   alias Wardrik.Error
   alias Wardrik.Scope
 
-  @doc "Hands a chat app's request to the channel it names, and answers what the channel says."
+  @doc "Passes a chat app's request to the channel it names. Returns the channel's response."
   @spec deliver(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def deliver(%Scope{wardrik: wardrik}, %{"channel" => name} = input) do
     case Map.fetch(wardrik.channels, name) do
@@ -21,8 +21,9 @@ defmodule Wardrik.Operations.Channels do
   end
 
   @doc """
-  Returns the channel the Wardrik `instance` runs as `name`: its module, and the options its
-  callbacks take. Returns `:error` where it runs none by that name.
+  Returns the channel `name` as `{module, opts}`, or `:error` if there's none.
+
+  `opts` are what the channel's callbacks take. See `options/3`.
   """
   @spec fetch(atom(), String.t()) :: {:ok, {module(), keyword()}} | :error
   def fetch(instance, name) do
@@ -33,9 +34,17 @@ defmodule Wardrik.Operations.Channels do
   end
 
   @doc """
-  Returns the options a channel's callbacks take: its own, each `{:secret, name}` read from the
-  deployment's secrets, with the server that runs its operations, the instance, its events and
-  vault, its name and the store.
+  Returns the options a channel's callbacks take.
+
+  They're the channel's own options, with each `{:secret, name}` replaced by the deployment's
+  secret, plus:
+
+    * `:server` - `Wardrik`, which runs its operations.
+    * `:wardrik` - the instance's name.
+    * `:events` - the event log.
+    * `:vault` - the vault, or `nil` without `:keys`.
+    * `:channel` - the channel's name.
+    * `:store` - the store.
   """
   @spec options(Wardrik.t(), String.t(), keyword()) :: keyword()
   def options(wardrik, name, opts),
