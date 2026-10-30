@@ -206,7 +206,7 @@ mcp:
 | Key | Means |
 | --- | --- |
 | `command`, `args`, `env` | the program that runs the server over stdio |
-| `url`, `headers` | where the server is reached over Streamable HTTP |
+| `url`, `headers` | where the server is reached over Streamable HTTP: its full endpoint, as `https://mcp.linear.app/mcp`, used exactly as given |
 | `only`, `except` | the server's tools to offer, or to leave out, by the names it gives them; every tool unless set |
 | `prefix` | what its tool names start with; the server's name unless set |
 | `timeout` | seconds a call may take; `60` unless set |
