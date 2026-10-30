@@ -244,6 +244,35 @@ defmodule Wardrik.DefinitionsTest do
 
       assert {:ok, []} = Wardrik.Agents.cancel(scope)
     end
+
+    test "defines with a policy built in Elixir", %{scope: scope} do
+      answers([calling([call("call_1", "echo", %{})]), answer("Done.")])
+
+      policy =
+        WardrikPolicy.new!(
+          ask: %{"echo" => "Echo needs a person."},
+          default: [read_only: :allow, else: :deny],
+          budget: [usd: 5.00, per: :week]
+        )
+
+      assert {:ok, %Wardrik.Agent{status: :idle}} =
+               Wardrik.Agent.define(scope, "acme/triage",
+                 model: @model,
+                 tools: ["tools"],
+                 policy: policy
+               )
+
+      assert {:ok, %Definition{policy: json}, []} =
+               Wardrik.Agent.definition(scope, "acme/triage")
+
+      assert {:ok, ^policy} = WardrikPolicy.decode(json)
+
+      Wardrik.Agent.ask(scope, "acme/triage", "Echo")
+      until("wardrik.run.interrupted")
+
+      assert {:ok, [%Wardrik.Interrupt{message: "Echo needs a person."}]} =
+               Wardrik.Interrupts.list(scope)
+    end
   end
 
   describe "sleeping" do
