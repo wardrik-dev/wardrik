@@ -57,6 +57,21 @@ scope
 |> Enum.each(&IO.write/1)
 ```
 
+## See it in action
+
+Start with [Wardrik in ten minutes](notebooks/tour.livemd): an agent that looks up orders, asks
+before it refunds, keeps a record and stops at its budget. Each notebook runs in Livebook.
+
+- [Rules the model can't rewrite](notebooks/policies.livemd): policies that allow, ask or refuse.
+- [A person in the loop](notebooks/approvals.livemd): approve or deny the calls an agent waits on.
+- [Give agents tools](notebooks/tools.livemd): tools that say what they do, and what they cost.
+- [Spend you can cap](notebooks/budgets.livemd): budgets per agent and ceilings per org.
+- [Agents that survive a crash](notebooks/durability.livemd): kill an agent mid-call and watch it
+  come back.
+- [Agents that wake themselves](notebooks/triggers.livemd): triggers on a clock and from a webhook.
+- [See everything an agent did](notebooks/events.livemd): follow events and read a run back.
+- [Who may do what](notebooks/access.livemd): grants, roles and API tokens.
+
 ## Guides
 
 - [Run Wardrik](pages/running-wardrik.md): the instance module, its options, where agents are kept,

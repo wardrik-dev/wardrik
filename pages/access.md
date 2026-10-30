@@ -3,6 +3,8 @@
 Every operation runs in a scope: Wardrik, who acts, and what they're allowed. Nothing is allowed
 unless it's granted.
 
+> See it in action: [Who may do what](../notebooks/access.livemd)
+
 ## Setup
 
 In a fresh IEx session:

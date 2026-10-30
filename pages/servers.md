@@ -3,6 +3,8 @@
 Agents call the tools of MCP servers. Give Wardrik the servers every agent may reach when it
 starts. Orgs and people add their own while it runs.
 
+> See it in action: [Give agents tools](../notebooks/tools.livemd)
+
 ## Setup
 
 In a fresh IEx session, start Wardrik with GitHub's MCP server, and an OAuth app people sign in to

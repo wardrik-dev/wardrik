@@ -3,6 +3,8 @@
 A trigger asks an agent something without anyone typing: on a clock, when a feed has new entries,
 or when a service sends a webhook.
 
+> See it in action: [Agents that wake themselves](../notebooks/triggers.livemd)
+
 ## Setup
 
 In a fresh IEx session, start Wardrik with a key to seal secrets, act as Maria, and keep the secret

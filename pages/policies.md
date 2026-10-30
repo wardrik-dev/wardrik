@@ -3,6 +3,8 @@
 A policy decides each tool call before it runs. The call runs, waits for a person, or is refused,
 and the model is told why.
 
+> See it in action: [Rules the model can't rewrite](../notebooks/policies.livemd)
+
 ## Setup
 
 In a fresh IEx session:
@@ -82,6 +84,8 @@ waits for a person to allow more:
 A budget in dollars prices each call from the model catalog. Give a model the catalog lacks a price
 with Wardrik's `:prices` option; see `Wardrik.start_link/1`. A call to a model with no price is
 refused, since the budget can't count it.
+
+See budgets ask and an org's ceiling refuse in [Spend you can cap](../notebooks/budgets.livemd).
 
 ## Gated tools
 

@@ -3,6 +3,8 @@
 A call a policy asks about waits for a person to approve or deny it. The calls an agent waits on
 are its interrupts.
 
+> See it in action: [A person in the loop](../notebooks/approvals.livemd)
+
 ## Setup
 
 In a fresh IEx session, define a tool, start Wardrik with it, and define an agent whose policy asks
@@ -48,29 +50,19 @@ Ask for two large payments. The run stops and returns the calls it waits on:
 {:waiting, [initech, globex]} =
   Wardrik.Agent.reply(scope, "acme/@maria/books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
 
-Wardrik.Interrupts.list(scope)
-#=> {:ok,
-#=>  [
-#=>    %Wardrik.Interrupt{
-#=>      id: "toolu_01...",
-#=>      agent_id: "acme/@maria/books",
-#=>      reason: :tool_approval,
-#=>      message: "A bill this size needs a person.",
-#=>      name: "pay_bill",
-#=>      ...
-#=>    },
-#=>    %Wardrik.Interrupt{id: "toolu_02...", ...}
-#=>  ]}
+initech
+#=> %Wardrik.Interrupt{id: "toolu_01...", agent_id: "acme/@maria/books", reason: :tool_approval,
+#=>   name: "pay_bill", message: "A bill this size needs a person.", ...}
 ```
+
+`Wardrik.Interrupts.list/2` returns the calls waiting across every agent the scope can see.
 
 Approve one, with a note, and deny the other, with a reason:
 
 ```elixir
 Wardrik.Agent.approve(scope, "acme/@maria/books", initech.id, note: "Pay it from the ops account.")
 #=> {:ok, [%Wardrik.Decision{id: "toolu_01...", decision: :approved}]}
-```
 
-```elixir
 Wardrik.Agent.deny(scope, "acme/@maria/books", globex.id, reason: "Not before the 1st.")
 #=> {:ok, [%Wardrik.Decision{id: "toolu_02...", decision: :rejected}]}
 ```

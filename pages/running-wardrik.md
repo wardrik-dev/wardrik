@@ -1,5 +1,7 @@
 # Run Wardrik
 
+> See it in action: [Agents that survive a crash](../notebooks/durability.livemd)
+
 Wardrik runs your agents, keeps what they do, and holds them to your policies. Make it a module of
 your app:
 
