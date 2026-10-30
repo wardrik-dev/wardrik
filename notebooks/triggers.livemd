@@ -1,0 +1,182 @@
+# Agents that wake themselves
+
+```elixir
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}, {:kino, "~> 0.19"}])
+```
+
+## What you'll build
+
+By the end, an agent wakes every minute on its own, and again whenever a signed webhook arrives.
+A table beside it fills in as it wakes, saying what woke it and what it said.
+
+Add your Anthropic key as `ANTHROPIC_API_KEY` in the Secrets panel (the key icon on the left).
+Each wake is one small model call. Leaving the clock running for ten minutes costs about a cent.
+
+```elixir
+System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
+```
+
+## Start Wardrik
+
+A webhook checks requests with a secret, kept sealed in Wardrik's vault. `:keys` is what seals it:
+
+```elixir
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, keys: [WardrikVault.generate_key()])
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+```
+
+In your app, keep the key in config, not in code. A key generated here is gone when the runtime
+stops, and so is everything it sealed.
+
+## Keep the webhook's secret
+
+The webhook will be signed as [Standard Webhooks](https://www.standardwebhooks.com/) describes.
+Its secret is `whsec_` and a base64 key:
+
+```elixir
+hook_secret = "whsec_" <> Base.encode64(:crypto.strong_rand_bytes(24))
+
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme/@maria", "ORDERS_HOOK_SECRET", hook_secret)
+```
+
+The sender keeps the same secret. Wardrik never returns it.
+
+## Define the agent and its triggers
+
+```elixir
+{:ok, agent} =
+  Wardrik.Agent.define(scope, "acme/@maria/watcher",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You watch Acme's orders. Answer in one short line.",
+    policy: [budget: [usd: 0.25, per: :day]],
+    triggers: [
+      %{name: "heartbeat", every: "1m", prompt: "Say you're awake and watching."},
+      %{
+        name: "orders",
+        webhook: %{secret: "${ORDERS_HOOK_SECRET}", verify: "standard"},
+        prompt: "A new order came in. Summarise it."
+      }
+    ]
+  )
+
+agent.next_run
+```
+
+* `heartbeat` runs every minute, counted from now. `every` also takes cron, as `"0 9 * * 1"`.
+* `orders` runs when a request signed with `ORDERS_HOOK_SECRET` arrives. `${NAME}` names a secret
+  in the vault.
+
+## Watch it wake
+
+Each wake writes `wardrik.trigger.fired` to the agent's log. Its timeline holds what it was asked
+and what it answered. This table reads both every two seconds:
+
+```elixir
+woke = fn ->
+  {:ok, page} = Wardrik.Agent.events(scope, agent, types: ["wardrik.trigger.fired"])
+
+  for event <- page.events do
+    %{
+      time: Calendar.strftime(event.time, "%H:%M:%S"),
+      trigger: event.data["trigger"]["name"],
+      status: event.data["status"]
+    }
+  end
+end
+
+said = fn ->
+  {:ok, timeline} = Wardrik.Agent.timeline(scope, agent)
+
+  for %{"kind" => "run"} = run <- timeline.items do
+    %{
+      time: run["started_at"] && String.slice(run["started_at"], 11, 8),
+      status: run["status"],
+      answer: Enum.map_join(run["steps"], &(&1["text"] || ""))
+    }
+  end
+end
+
+Kino.animate(2000, fn _tick ->
+  Kino.Layout.grid(
+    [
+      Kino.DataTable.new(woke.(), keys: [:time, :trigger, :status], name: "What woke it"),
+      Kino.DataTable.new(said.(), keys: [:time, :status, :answer], name: "What it said")
+    ],
+    columns: 1
+  )
+end)
+```
+
+Leave this running. A `heartbeat` row appears each minute. Status `asked` means it asked the
+agent. A clock that comes due while the agent is still busy is `busy`, and skipped.
+
+## Send it a webhook
+
+A service sends its request to `POST /v1/hooks/acme/@maria/watcher/orders`. Here the notebook
+plays the service. It signs the raw body with the secret and delivers it, as the HTTP route would:
+
+```elixir
+sign = fn body ->
+  "whsec_" <> key = hook_secret
+  id = "msg_" <> Base.url_encode64(:crypto.strong_rand_bytes(9))
+  timestamp = Integer.to_string(System.os_time(:second))
+  signature = :crypto.mac(:hmac, :sha256, Base.decode64!(key), "#{id}.#{timestamp}.#{body}")
+
+  %{
+    "webhook-id" => id,
+    "webhook-timestamp" => timestamp,
+    "webhook-signature" => "v1," <> Base.encode64(signature)
+  }
+end
+
+body = ~s({"order": "A-3", "customer": "Initech", "total": "$1,240.00"})
+headers = sign.(body)
+
+Wardrik.Hook.deliver(scope, agent, "orders", body: body, headers: headers)
+```
+
+An `orders` row appears in the table. The body goes under the trigger's prompt.
+
+A request that doesn't prove itself returns `not_found`, the same as a trigger that isn't there:
+
+```elixir
+Wardrik.Hook.deliver(scope, agent, "orders",
+  body: ~s({"order": "A-3", "total": "$1.00"}),
+  headers: headers
+)
+```
+
+The service may send the same request twice. Each `webhook-id` is asked about once, so this adds
+no row:
+
+```elixir
+Wardrik.Hook.deliver(scope, agent, "orders", body: body, headers: headers)
+```
+
+## Change a trigger
+
+Change one trigger without defining the agent again:
+
+```elixir
+Wardrik.Agent.trigger_set(scope, agent, "heartbeat",
+  every: "2m",
+  prompt: "Say you're still awake."
+)
+```
+
+## Stop the clock
+
+The heartbeat runs while this runtime runs. Remove it when you're done:
+
+```elixir
+Wardrik.Agent.trigger_remove(scope, agent, "heartbeat")
+```
+
+## Where next
+
+* [Trigger agents](https://hexdocs.pm/wardrik/triggers.html): every trigger key, feeds, and
+  triggers in a cluster.
+* [Credentials](https://hexdocs.pm/wardrik/credentials.html): the vault, and secrets agents use.
+* [Events notebook](events.livemd): follow every event an agent writes.
+* [Tools notebook](tools.livemd): give the agent something to do when it wakes.

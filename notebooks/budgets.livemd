@@ -1,0 +1,236 @@
+# Spend you can cap
+
+```elixir
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}, {:kino, "~> 0.19"}])
+```
+
+## What you'll build
+
+Two agents share acme's ceiling of two cents a day. The writer also has a budget of its own, one
+cent a day. You'll watch their spend climb in a live table. The writer stops to ask for more, and
+the ceiling refuses the editor outright.
+
+The whole notebook spends about three cents of model calls.
+
+## What a call costs
+
+Wardrik prices each model call from the model catalog, in dollars per million tokens:
+
+```elixir
+{:ok, haiku} = ReqLLM.model("anthropic:claude-haiku-4-5")
+haiku.cost
+```
+
+So a call that reads 400 tokens and writes 700 costs:
+
+```elixir
+(400 * haiku.cost.input + 700 * haiku.cost.output) / 1_000_000
+```
+
+A budget in dollars refuses a model the catalog has no price for, since it can't count it. Give
+one a price with Wardrik's `:prices` option.
+
+## A budget on paper
+
+A budget caps what one agent spends on its model. `WardrikPolicy.Budget.check/2` shows what it
+makes of what was spent so far, with no model involved:
+
+```elixir
+asks = WardrikPolicy.new!(budget: [usd: 0.01, per: :day]).budget
+denies = WardrikPolicy.new!(budget: [usd: 0.01, per: :day, on_exhausted: :deny]).budget
+
+for usd <- [0.004, 0.009, 0.012] do
+  %{
+    spent: usd,
+    asks: WardrikPolicy.Budget.check(asks, %{usd: usd}),
+    denies: WardrikPolicy.Budget.check(denies, %{usd: usd})
+  }
+end
+```
+
+The call that crosses the limit runs. The next one does what `on_exhausted` says:
+
+* `:ask` - the default. The call waits for a person. Approving allows the budget's `grant` more,
+  another limit's worth unless set.
+* `:deny` - the call is refused.
+
+Messages round to the cent.
+
+## Setup
+
+An org's ceilings come from your `Wardrik.Orgs` module. Here acme's agents share two cents a day,
+and the ceiling refuses calls past it:
+
+```elixir
+defmodule MyApp.Orgs do
+  @behaviour Wardrik.Orgs
+
+  @impl true
+  def settings("acme", _config) do
+    {:ok,
+     %Wardrik.OrgSettings{
+       ceilings: %{"plan" => [usd: 0.02, per: :day, on_exhausted: :deny]}
+     }}
+  end
+
+  def settings(org, _config),
+    do: {:error, Wardrik.Error.new(:not_found, "There's no org #{org} here.")}
+end
+
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, orgs: {MyApp.Orgs, []})
+
+scope =
+  Wardrik.as(MyApp.AgentRuntime, "acme/@maria",
+    roles: [:owner],
+    resources: ["acme/@maria/*", "acme/ceiling"]
+  )
+```
+
+`acme/ceiling` lets the scope read the org's ceilings and approve calls past them.
+
+## Two agents
+
+The agents call a model. Add `ANTHROPIC_API_KEY` in the Secrets panel first.
+
+```elixir
+System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
+
+{:ok, _} =
+  Wardrik.Agent.define(scope, "acme/@maria/writer",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You write short stories about office life.",
+    policy: [budget: [usd: 0.01, per: :day]]
+  )
+
+{:ok, _} =
+  Wardrik.Agent.define(scope, "acme/@maria/editor",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You write short memos about office life."
+  )
+```
+
+The editor has no budget of its own. The ceiling holds it all the same.
+
+## Live spend
+
+`Wardrik.Agents.list/2` returns what each agent spent today. `Wardrik.Ceilings.list/2` returns
+what the org spent against each ceiling. Both tables refresh every second:
+
+```elixir
+dollars = fn usd -> Float.round(usd / 1, 4) end
+
+agent_rows = fn ->
+  {:ok, agents} = Wardrik.Agents.list(scope)
+
+  for agent <- agents do
+    %{
+      agent: agent.id,
+      status: agent.status,
+      tokens: agent.spent_today["tokens"],
+      usd: dollars.(agent.spent_today["usd"])
+    }
+  end
+end
+
+ceiling_rows = fn ->
+  {:ok, ceilings} = Wardrik.Ceilings.list(scope, owner: "acme")
+
+  for spend <- ceilings do
+    %{
+      ceiling: spend.ceiling,
+      limit_usd: spend.limit.usd,
+      spent_usd: dollars.(spend.spent.usd),
+      spent_tokens: spend.spent.tokens,
+      on_exhausted: spend.on_exhausted,
+      starts_over: spend.starts_over
+    }
+  end
+end
+
+agents_table =
+  Kino.DataTable.new(agent_rows.(), name: "Agents today", keys: [:agent, :status, :tokens, :usd])
+
+ceilings_table =
+  Kino.DataTable.new(ceiling_rows.(),
+    name: "acme's ceilings",
+    keys: [:ceiling, :limit_usd, :spent_usd, :spent_tokens, :on_exhausted, :starts_over]
+  )
+
+Kino.listen(1_000, fn _tick ->
+  Kino.DataTable.update(agents_table, agent_rows.())
+  Kino.DataTable.update(ceilings_table, ceiling_rows.())
+end)
+
+Kino.Layout.grid([agents_table, ceilings_table])
+```
+
+## The writer's budget asks
+
+Ask the writer for stories until a reply doesn't come back. Keep an eye on the tables above:
+
+```elixir
+Enum.reduce_while(1..10, nil, fn n, _ ->
+  case Wardrik.Agent.reply(scope, "acme/@maria/writer", "Write story #{n}, in about 300 words.") do
+    {:ok, _reply} -> {:cont, n}
+    stopped -> {:halt, stopped}
+  end
+end)
+```
+
+The writer crossed its cent, so its next model call waits on a `:model_approval` interrupt. The
+writer is `:parked` in the table. To let it finish the story, allow another cent:
+
+```elixir
+allow = Kino.Control.button("Allow the writer one cent more")
+outcome = Kino.Frame.new()
+
+Kino.listen(allow, fn _click ->
+  result = Wardrik.Agent.approve(scope, "acme/@maria/writer", "model")
+  Kino.Frame.render(outcome, Kino.Text.new(inspect(result)))
+end)
+
+Kino.Layout.grid([allow, outcome])
+```
+
+## The org's ceiling refuses
+
+The editor has no budget, but it spends from acme's ceiling with the writer. Ask it for memos:
+
+```elixir
+Enum.reduce_while(1..10, nil, fn n, _ ->
+  case Wardrik.Agent.reply(scope, "acme/@maria/editor", "Write memo #{n}, in about 300 words.") do
+    {:ok, _reply} -> {:cont, n}
+    stopped -> {:halt, stopped}
+  end
+end)
+```
+
+Once acme's agents spent the two cents, the next model call of any of them is refused. The run
+fails with the ceiling's message. Wardrik also writes `wardrik.ceiling.reached` to the agent's log:
+
+```elixir
+{:ok, page} = Wardrik.Agent.events(scope, "acme/@maria/editor")
+
+for %{type: "wardrik.ceiling.reached", data: data} <- page.events, do: data
+```
+
+The ceiling holds every agent of the org. Click the writer's button now, and its run fails the
+same way.
+
+A ceiling's `on_exhausted` is one of:
+
+* `:ask` - the default. Waits on a `:ceiling_approval` interrupt for someone allowed
+  `ceiling.approve` on `acme/ceiling`, as an owner is. Approving allows the ceiling's `grant` more
+  to the whole org for that period.
+* `:deny` - refuses the call, as here.
+* `:continue` - lets it run, so work always carries on. It still writes `wardrik.ceiling.reached`.
+
+A ceiling takes what a budget takes, except `per: :turn`. Its period starts over on the day in the
+`starts_over` column.
+
+## Where next
+
+* [Orgs guide](https://hexdocs.pm/wardrik/orgs.html) - org settings, defaults and ceilings.
+* [Policies guide](https://hexdocs.pm/wardrik/policies.html) - budgets beside the other rules.
+* [Rules the model can't rewrite](policies.livemd) - a policy playground.
+* [A person in the loop](approvals.livemd) - approve or deny waiting calls in a form.

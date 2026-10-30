@@ -39,6 +39,15 @@ defmodule Wardrik.MixProject do
       main: "readme",
       extras: [
         "README.md",
+        "notebooks/tour.livemd",
+        "notebooks/policies.livemd",
+        "notebooks/approvals.livemd",
+        "notebooks/tools.livemd",
+        "notebooks/budgets.livemd",
+        "notebooks/durability.livemd",
+        "notebooks/triggers.livemd",
+        "notebooks/events.livemd",
+        "notebooks/access.livemd",
         "pages/running-wardrik.md",
         "pages/talking.md",
         "pages/definitions.md",
@@ -52,6 +61,10 @@ defmodule Wardrik.MixProject do
         "pages/credentials.md",
         "pages/events.md",
         "CHANGELOG.md"
+      ],
+      groups_for_extras: [
+        "See it in action": ~r"notebooks/",
+        Guides: ~r"pages/"
       ]
     ]
   end
@@ -60,7 +73,7 @@ defmodule Wardrik.MixProject do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/wardrik-dev/wardrik"},
-      files: ~w(lib pages mix.exs README.md CHANGELOG.md LICENSE)
+      files: ~w(lib pages notebooks mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end
 

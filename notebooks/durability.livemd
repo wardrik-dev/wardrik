@@ -1,0 +1,256 @@
+# Agents that survive a crash
+
+```elixir
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}, {:kino, "~> 0.19"}])
+```
+
+## Pull the plug
+
+Kill an agent while its tool runs, and it comes back where it was. A stock lookup simply runs
+again. A card charge that may already have gone through doesn't: it waits for a person, so nobody
+pays twice.
+
+Add your Anthropic key as a secret named `ANTHROPIC_API_KEY` in the Secrets panel. A run costs well
+under a cent on Claude Haiku.
+
+```elixir
+System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
+
+# Wardrik logs each agent it starts. Keep the cells to what matters.
+Logger.configure(level: :warning)
+```
+
+Before each tool call, the agent saves its turn. After a crash, it carries on from there:
+
+```mermaid
+flowchart LR
+  model[Model asks for a call] --> saved[Turn saved]
+  saved --> tool[Tool runs]
+  tool -- crash --> back[Agent comes back from the saved turn]
+  back --> safe{Idempotent?}
+  safe -- yes --> tool
+  safe -- no --> doubt[Waits for a person: in doubt]
+  doubt -- approve --> tool
+  doubt -- deny --> told[Model reads your reason]
+```
+
+## Two slow tools
+
+`check_stock` is safe to repeat, so it's marked `idempotent`. `charge_card` isn't. Both take three
+seconds, which leaves time to kill the agent mid-call. A table counts how often each one runs:
+
+```elixir
+:ets.new(:tool_runs, [:named_table, :public])
+
+defmodule MyApp.Shop do
+  @behaviour WardrikCore.Capability
+
+  @impl true
+  def tools(_context, _opts) do
+    [
+      WardrikCore.Tool.new!(
+        name: "check_stock",
+        description: "Says how many of a product the warehouse has.",
+        schema: [sku: [type: :string, required: true]],
+        annotations: [read_only: true, idempotent: true],
+        run: fn %{sku: sku}, _context ->
+          ran("check_stock")
+          {:ok, "#{sku}: 3 in stock."}
+        end
+      ),
+      WardrikCore.Tool.new!(
+        name: "charge_card",
+        description: "Charges the customer's card, in dollars.",
+        schema: [amount: [type: :integer, required: true]],
+        run: fn %{amount: amount}, _context ->
+          ran("charge_card")
+          {:ok, "Charged $#{amount}."}
+        end
+      )
+    ]
+  end
+
+  defp ran(tool) do
+    :ets.update_counter(:tool_runs, tool, 1, {tool, 0})
+    Process.sleep(3_000)
+  end
+end
+```
+
+## Start Wardrik on disk
+
+Keep agents in a directory, so they outlive Wardrik itself. Wardrik looks for agents no process
+runs, and brings them back. Have it look every second, not every thirty:
+
+```elixir
+dir = Path.join(System.tmp_dir!(), "wardrik-#{System.unique_integer([:positive])}")
+
+opts = [
+  name: MyApp.AgentRuntime,
+  capabilities: [shop: MyApp.Shop],
+  store: {WardrikStore.EKV, data_dir: dir},
+  discovery_interval_ms: 1_000
+]
+
+{:ok, wardrik} = Wardrik.start_link(opts)
+
+scope =
+  Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+
+{:ok, agent} =
+  Wardrik.Agent.define(scope, "acme/@maria/shop",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You run Maria's shop. Use your tools. Be brief.",
+    tools: ["shop"]
+  )
+```
+
+Two helpers. One waits for the agent to start a tool call. The other follows the agent's log until
+its run ends:
+
+```elixir
+running = fn agent ->
+  Stream.repeatedly(fn ->
+    Process.sleep(100)
+    Wardrik.Agent.calls(scope, agent)
+  end)
+  |> Stream.take(300)
+  |> Enum.find_value(fn
+    {:ok, [call | _]} -> call
+    _none -> nil
+  end)
+end
+
+run_end = fn agent, cursor ->
+  {:ok, events} = Wardrik.Agent.stream_events(scope, agent, after: cursor)
+  ends = ~w(wardrik.run.completed wardrik.run.interrupted wardrik.run.failed)
+
+  Enum.find_value(events, fn {event, _cursor} -> if event.type in ends, do: event end)
+end
+```
+
+## Kill it mid-lookup
+
+Ask a question, wait for the lookup to start, then kill the agent's process:
+
+```elixir
+{:ok, _message} = Wardrik.Agent.ask(scope, agent, "How many SKU-7 do we have?")
+running.(agent)
+```
+
+```elixir
+pid = WardrikCore.whereis(MyApp.AgentRuntime.Agents, "acme/@maria/shop")
+Process.exit(pid, :kill)
+```
+
+The agent is gone, and its lookup with it. Its turn was saved mid-call, so within a second it's
+back and carries on by itself. Nothing has to ask for it:
+
+```elixir
+{:ok, cursor} = Wardrik.Events.head(scope)
+
+%{data: %{"messages" => messages}} = run_end.(agent, cursor)
+%{"parts" => [%{"content" => answer} | _]} = List.last(messages)
+
+answer
+```
+
+The lookup ran twice. The model never knew:
+
+```elixir
+:ets.tab2list(:tool_runs)
+```
+
+The log shows the crash in the middle of the run, between two starts of the same call:
+
+```elixir
+{:ok, page} = Wardrik.Agent.events(scope, agent)
+
+page.events
+|> Enum.map(fn event ->
+  %{time: event.time, type: event.type, tool: get_in(event.data, ["tool", "name"])}
+end)
+|> Kino.DataTable.new(name: "Events")
+```
+
+## Restart Wardrik mid-charge
+
+Now a charge. Stop all of Wardrik while it runs, as a deploy would, and start it again. The agent
+comes back with it:
+
+```elixir
+{:ok, _message} = Wardrik.Agent.ask(scope, agent, "Charge Maria's card $40 for order 1042.")
+running.(agent)
+```
+
+```elixir
+:ok = Supervisor.stop(wardrik)
+{:ok, wardrik} = Wardrik.start_link(opts)
+
+{:ok, cursor} = Wardrik.Events.head(scope)
+
+run_end.(agent, cursor).type
+```
+
+The charge started once, and may have gone through before the restart. Charging again could
+charge twice, so the agent asks:
+
+```elixir
+{:ok, [in_doubt]} = Wardrik.Interrupts.list(scope)
+
+in_doubt
+```
+
+## Decide
+
+You know what the bank says. The agent doesn't:
+
+```elixir
+outcome = Kino.Frame.new()
+
+decide = fn decision ->
+  {:ok, cursor} = Wardrik.Events.head(scope)
+
+  decided =
+    case decision do
+      :approve -> Wardrik.Agent.approve(scope, agent, in_doubt.id)
+      {:deny, reason} -> Wardrik.Agent.deny(scope, agent, in_doubt.id, reason: reason)
+    end
+
+  case decided do
+    {:ok, _decisions} ->
+      %{data: %{"messages" => messages}} = run_end.(agent, cursor)
+      %{"parts" => [%{"content" => answer} | _]} = List.last(messages)
+      runs = :ets.lookup_element(:tool_runs, "charge_card", 2)
+      Kino.Frame.render(outcome, Kino.Text.new("#{answer}\n\nTimes charge_card ran: #{runs}"))
+
+    {:error, error} ->
+      Kino.Frame.render(outcome, Kino.Text.new(error.message))
+  end
+end
+
+went_through = Kino.Control.button("It went through")
+charge_again = Kino.Control.button("Charge again")
+
+Kino.listen(went_through, fn _click ->
+  decide.({:deny, "It went through. I checked the bank."})
+end)
+
+Kino.listen(charge_again, fn _click -> decide.(:approve) end)
+
+Kino.Layout.grid([Kino.Layout.grid([went_through, charge_again], columns: 2), outcome], gap: 12)
+```
+
+"It went through" tells the model the charge happened, in your words. "Charge again" runs the call
+as the model wrote it.
+
+To make a tool safe to repeat, give it an idempotency key, as a payment API does, and mark it
+`idempotent: true`.
+
+## Where next
+
+* [Define agents](https://hexdocs.pm/wardrik/definitions.html): how agents sleep and wake.
+* [Approvals](https://hexdocs.pm/wardrik/approvals.html): deciding the calls agents wait on.
+* [Run Wardrik](https://hexdocs.pm/wardrik/running-wardrik.html): stores, and running on several
+  nodes.
+* [Wardrik in ten minutes](tour.livemd): tools, policies, approvals and budgets in one tour.

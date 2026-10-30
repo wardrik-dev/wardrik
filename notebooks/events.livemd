@@ -1,0 +1,218 @@
+# See everything an agent did
+
+```elixir
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}, {:kino, "~> 0.19"}])
+```
+
+## What you'll build
+
+By the end, you watch an agent's events arrive as it works, read its run back step by step, see
+who changed what, and have your own module react when a run ends.
+
+## Setup
+
+Give the agent one tool, so its run has a step to show:
+
+```elixir
+defmodule MyApp.Notes do
+  @behaviour WardrikCore.Capability
+
+  @impl true
+  def tools(_context, _opts) do
+    [
+      WardrikCore.Tool.new!(
+        name: "list_notes",
+        description: "Lists Maria's notes.",
+        run: fn _args, _context -> {:ok, ["Call Initech about the Q3 invoice.", "Book Berlin trip."]} end,
+        annotations: [read_only: true]
+      )
+    ]
+  end
+end
+
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, capabilities: [notes: MyApp.Notes])
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+
+{:ok, agent} =
+  Wardrik.Agent.define(scope, "acme/@maria/assistant",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You keep Maria's notes. Be brief.",
+    tools: ["notes"],
+    policy: [budget: [usd: 0.25, per: :day]]
+  )
+```
+
+## React to events in your own module
+
+A listener hands your module each event it follows, with the cursor past it. This one posts a line
+to a frame each time a run ends:
+
+```elixir
+defmodule MyApp.RunAlerts do
+  use Wardrik.Listener,
+    wardrik: MyApp.AgentRuntime,
+    types: ["wardrik.run.completed", "wardrik.run.failed"]
+
+  @impl true
+  def handle(%Wardrik.Event{} = event, listener) do
+    line = "**#{event.type}** for `#{event.subject}` at #{Calendar.strftime(event.time, "%H:%M:%S")}"
+    Kino.Frame.append(listener.options[:frame], Kino.Markdown.new(line))
+    :ok
+  end
+end
+
+alerts = Kino.Frame.new() |> Kino.render()
+{:ok, _} = Kino.start_child({MyApp.RunAlerts, frame: alerts})
+
+Kino.nothing()
+```
+
+The frame stays empty until a run ends. Options you start it with, such as `frame:`, reach
+`handle/2` in `listener.options`.
+
+In your app, save `listener.cursor` with your work and return it from `cursor/1`. The listener
+then carries on from it after a restart. See
+[Events and the audit](https://hexdocs.pm/wardrik/events.html).
+
+## Watch events as they're written
+
+Take the cursor where the log stands. Then follow every event after it into a table:
+
+```elixir
+{:ok, cursor} = Wardrik.Events.head(scope)
+
+live = Kino.Frame.new() |> Kino.render()
+
+row = fn event ->
+  %{
+    time: Calendar.strftime(event.time, "%H:%M:%S.%f"),
+    type: event.type,
+    subject: event.subject
+  }
+end
+
+Kino.start_child(
+  {Task,
+   fn ->
+     {:ok, events} = Wardrik.Events.stream_list(scope, after: cursor, resources: ["acme/@maria/*"])
+
+     events
+     |> Stream.reject(fn {event, _cursor} -> String.ends_with?(event.type, ".delta") end)
+     |> Enum.reduce([], fn {event, _cursor}, rows ->
+       rows = rows ++ [row.(event)]
+       Kino.Frame.render(live, Kino.DataTable.new(rows, keys: [:time, :type, :subject]))
+       rows
+     end)
+   end}
+)
+
+Kino.nothing()
+```
+
+The stream never ends. It leaves out `message.delta` events, one per chunk of text, to keep the
+table short.
+
+Now ask the agent something. This calls a model, so add your Anthropic key as `ANTHROPIC_API_KEY`
+in the Secrets panel (the key icon on the left). It's two small calls, under a cent.
+
+```elixir
+System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
+```
+
+Watch the table above fill:
+
+```elixir
+{:ok, reply} = Wardrik.Agent.reply(scope, agent, "What's on my notes?")
+reply.text
+```
+
+The run starts, calls the model, calls `list_notes`, calls the model again, and completes. The
+listener's frame shows `wardrik.run.completed`.
+
+## Read a run back
+
+The timeline is the conversation as a person reads it. Each run lists its steps:
+
+```elixir
+{:ok, timeline} = Wardrik.Agent.timeline(scope, agent)
+
+steps =
+  for %{"kind" => "run"} = run <- timeline.items, step <- run["steps"] do
+    %{
+      run: String.slice(run["id"], 0, 12),
+      step: step["type"],
+      detail: step["name"] || step["text"],
+      status: step["status"]
+    }
+  end
+
+Kino.DataTable.new(steps, keys: [:run, :step, :detail, :status], name: "Steps")
+```
+
+`Wardrik.Agent.runs/3` sums each run up:
+
+```elixir
+{:ok, runs} = Wardrik.Agent.runs(scope, agent)
+
+Kino.DataTable.new(
+  Enum.map(runs.runs, &Map.from_struct/1),
+  keys: [:status, :model, :duration_ms, :tool_calls, :input_tokens, :output_tokens, :cost_micro_usd],
+  name: "Runs"
+)
+```
+
+## Read the log back
+
+Every event is kept. Read them back a page at a time, after a cursor or from the start:
+
+```elixir
+{:ok, page} = Wardrik.Agent.events(scope, agent, limit: 100)
+
+page.events
+|> Enum.frequencies_by(& &1.type)
+|> Enum.map(fn {type, count} -> %{type: type, count: count} end)
+|> Kino.DataTable.new(keys: [:type, :count], name: "Events by type")
+```
+
+Each event is a [CloudEvent](https://cloudevents.io). Its `data` has the shape the protocol gives
+its type. Pass `page.next` as `after:` to read the next page.
+
+## Who changed what
+
+Agents' events say what agents did. The audit says what people did: defining, deciding, granting.
+Change Maria's agent, then read the audit. It needs a grant on `deployment`:
+
+```elixir
+{:ok, _agent} =
+  Wardrik.Agent.define(scope, "acme/@maria/assistant",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You keep Maria's notes. Answer in bullet points.",
+    tools: ["notes"],
+    policy: [budget: [usd: 0.25, per: :day]]
+  )
+
+operator = Wardrik.grant(scope, roles: [:owner], resources: ["deployment"])
+
+{:ok, audit} = Wardrik.Audit.list(operator, limit: 50)
+
+audit.events
+|> Enum.map(fn event ->
+  %{
+    time: Calendar.strftime(event.time, "%H:%M:%S"),
+    type: event.type,
+    actor: event.data["actor"]["id"],
+    subject: event.subject
+  }
+end)
+|> Kino.DataTable.new(keys: [:time, :type, :actor, :subject], name: "Audit")
+```
+
+## Where next
+
+* [Events and the audit](https://hexdocs.pm/wardrik/events.html): cursors, listeners in your
+  supervision tree, and trimmed logs.
+* [Who may do what](https://hexdocs.pm/wardrik/access.html): the grants that decide which events a
+  scope sees.
+* [Tools notebook](tools.livemd): tools that report their own cost.
+* [Triggers notebook](triggers.livemd): agents that wake on a clock or a webhook.

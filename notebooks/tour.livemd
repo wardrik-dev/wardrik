@@ -1,0 +1,278 @@
+# Wardrik in ten minutes
+
+```elixir
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}, {:kino, "~> 0.19"}])
+```
+
+## Your first governed agent
+
+By the end, a support agent looks up orders and streams its answers as it writes them. It asks you
+before it refunds anyone, and you answer with a button. Every step is on the record, and it stops
+at the budget you set.
+
+Add your Anthropic key as a secret named `ANTHROPIC_API_KEY` in the Secrets panel. The whole
+notebook costs about a cent on Claude Haiku.
+
+```elixir
+System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
+
+# Wardrik logs each agent it starts. Keep the cells to what matters.
+Logger.configure(level: :warning)
+```
+
+## Give it tools
+
+An agent can only do what its tools let it. These look up an order and refund one:
+
+```elixir
+defmodule MyApp.Orders do
+  @behaviour WardrikCore.Capability
+
+  @orders %{
+    "1042" => %{item: "Walnut desk", total: "$640", status: "delivered yesterday"},
+    "1043" => %{item: "Desk lamp", total: "$85", status: "in transit"}
+  }
+
+  @impl true
+  def tools(_context, _opts) do
+    [
+      WardrikCore.Tool.new!(
+        name: "look_up_order",
+        description: "Looks up an order by its number.",
+        schema: [id: [type: :string, required: true]],
+        annotations: [read_only: true],
+        run: fn %{id: id}, _context -> {:ok, Map.get(@orders, id, "There's no order #{id}.")} end
+      ),
+      WardrikCore.Tool.new!(
+        name: "refund_order",
+        description: "Refunds an order in full.",
+        schema: [id: [type: :string, required: true]],
+        run: fn %{id: id}, _context -> {:ok, "Refunded order #{id}."} end
+      )
+    ]
+  end
+end
+```
+
+## Start Wardrik
+
+```elixir
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, capabilities: [orders: MyApp.Orders])
+
+scope =
+  Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+```
+
+Wardrik keeps its agents in memory here. `scope` is Maria: every call you make below acts as her,
+and reaches only her agents.
+
+## Write the rules
+
+A policy decides each tool call before it runs. It is data, so you can check it before any model
+is involved:
+
+```elixir
+policy = [
+  ask: %{"refund_order" => "Refunds need a person."},
+  budget: [usd: 0.05, per: :day]
+]
+
+rules = WardrikPolicy.new!(policy)
+
+%{
+  "look_up_order" => WardrikPolicy.decide(rules, "look_up_order"),
+  "refund_order" => WardrikPolicy.decide(rules, "refund_order")
+}
+```
+
+Lookups run. Refunds wait for a person. The budget caps what the agent spends on its model each
+day.
+
+## Define the agent
+
+```elixir
+{:ok, agent} =
+  Wardrik.Agent.define(scope, "acme/@maria/support",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You answer questions about Acme orders. Be brief.",
+    tools: ["orders"],
+    policy: policy
+  )
+```
+
+The policy lives outside the prompt. Nothing the model reads can widen it.
+
+## Ask it
+
+`Wardrik.Agent.stream/4` returns the answer's text as it's written. Render each chunk into a
+frame:
+
+```elixir
+frame = Kino.Frame.new() |> Kino.render()
+
+scope
+|> Wardrik.Agent.stream(agent, "Where's my order 1042?")
+|> Enum.reduce("", fn chunk, text ->
+  text = text <> chunk
+  Kino.Frame.render(frame, Kino.Text.new(text))
+  text
+end)
+
+Kino.nothing()
+```
+
+The agent called `look_up_order` on its own, then answered.
+
+## Approve a refund
+
+Ask for a refund. The run stops at the call the policy asks about, and returns it:
+
+```elixir
+{:waiting, [refund]} =
+  Wardrik.Agent.reply(scope, agent, "The desk from 1042 arrived cracked. Refund it.")
+
+refund
+```
+
+The agent waits, with its turn saved, until someone decides. This helper decides, then follows
+the agent's log until the run ends and shows what the agent said:
+
+```elixir
+decide = fn agent, interrupt, decision, frame ->
+  {:ok, cursor} = Wardrik.Events.head(scope)
+
+  decided =
+    case decision do
+      :approve -> Wardrik.Agent.approve(scope, agent, interrupt.id)
+      {:deny, reason} -> Wardrik.Agent.deny(scope, agent, interrupt.id, reason: reason)
+    end
+
+  with {:ok, _decisions} <- decided,
+       {:ok, events} <- Wardrik.Agent.stream_events(scope, agent, after: cursor) do
+    Enum.find_value(events, fn
+      {%{type: "wardrik.run.completed", data: %{"messages" => messages}}, _cursor} ->
+        %{"parts" => parts} = List.last(messages)
+        text = for %{"content" => text} <- parts, into: "", do: text
+        Kino.Frame.render(frame, Kino.Text.new(text))
+
+      {%{type: "wardrik.run." <> ended}, _cursor}
+      when ended in ["interrupted", "failed", "cancelled"] ->
+        Kino.Frame.render(frame, Kino.Text.new("Run #{ended}."))
+
+      _event ->
+        nil
+    end)
+  else
+    {:error, error} -> Kino.Frame.render(frame, Kino.Text.new(error.message))
+  end
+end
+```
+
+Decide with a button:
+
+```elixir
+outcome = Kino.Frame.new()
+approve = Kino.Control.button("Approve refund")
+deny = Kino.Control.button("Deny")
+
+Kino.listen(approve, fn _click -> decide.(agent, refund, :approve, outcome) end)
+
+Kino.listen(deny, fn _click ->
+  decide.(agent, refund, {:deny, "Send it to the carrier first."}, outcome)
+end)
+
+Kino.Layout.grid([Kino.Layout.grid([approve, deny], columns: 2), outcome], gap: 12)
+```
+
+An approval runs the call as the model wrote it. A denial reaches the model as an error, with your
+reason. Either way, the decision is recorded as Maria's.
+
+## Read the record
+
+Every step the agent took is an event in its log:
+
+```elixir
+about = fn
+  %{"tool" => %{"name" => name}} -> name
+  %{"message" => %{"parts" => [%{"content" => text} | _]}} -> text
+  %{"interrupts" => [%{"message" => message} | _]} -> message
+  %{"decision" => decision} -> decision
+  _data -> ""
+end
+
+{:ok, page} = Wardrik.Agent.events(scope, agent)
+
+page.events
+|> Enum.map(&%{time: &1.time, type: &1.type, about: about.(&1.data)})
+|> Kino.DataTable.new(name: "Events")
+```
+
+Each event is a CloudEvent. Follow them into your app with `Wardrik.Listener`.
+
+## Watch what it spends
+
+Each run's tokens and cost, priced from the model catalog:
+
+```elixir
+{:ok, %Wardrik.Runs{runs: runs}} = Wardrik.Agent.runs(scope, agent)
+
+runs
+|> Enum.map(fn run ->
+  %{
+    started: run.started_at,
+    status: run.status,
+    tool_calls: run.tool_calls,
+    tokens: run.input_tokens + run.output_tokens,
+    usd: run.cost_micro_usd / 1_000_000
+  }
+end)
+|> Kino.DataTable.new(name: "Runs")
+```
+
+And what it spent today, against its $0.05 budget:
+
+```elixir
+{:ok, %Wardrik.Agent{spent_today: spent}} = Wardrik.Agent.read(scope, agent)
+
+spent
+```
+
+## Hit the budget
+
+Give a second agent a budget of 200 tokens a day. Its first model call runs and crosses it. The
+next one waits:
+
+```elixir
+{:ok, frugal} =
+  Wardrik.Agent.define(scope, "acme/@maria/frugal",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You answer questions about Acme orders. Be brief.",
+    tools: ["orders"],
+    policy: [budget: [tokens: 200, per: :day]]
+  )
+
+{:waiting, [over_budget]} = Wardrik.Agent.reply(scope, frugal, "Where's order 1043?")
+
+over_budget.message
+```
+
+The model call waits for a person, like the refund did. No prompt gets it past the limit. Allow
+more:
+
+```elixir
+budget_outcome = Kino.Frame.new()
+allow = Kino.Control.button("Allow 200 more tokens")
+
+Kino.listen(allow, fn _click -> decide.(frugal, over_budget, :approve, budget_outcome) end)
+
+Kino.Layout.grid([allow, budget_outcome], gap: 12)
+```
+
+## Where next
+
+* [Talk to agents](https://hexdocs.pm/wardrik/talking.html): streaming, replies, and answers sent
+  to a process.
+* [Policies](https://hexdocs.pm/wardrik/policies.html): every rule, several policies, and budgets.
+* [Approvals](https://hexdocs.pm/wardrik/approvals.html): deciding the calls agents wait on.
+* [Events and the audit](https://hexdocs.pm/wardrik/events.html): following events into your app.
+* [Agents that survive a crash](durability.livemd): kill an agent mid-call and watch it come back.

@@ -1,0 +1,226 @@
+# Who may do what
+
+```elixir
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}, {:kino, "~> 0.19"}])
+```
+
+## What you'll build
+
+By the end, Maria owns an agent, Jon can read it but not stop it, and Sam can't even see it.
+Then you make an API token, use it, and revoke it. Nothing here calls a model, so you need no key.
+
+## Setup
+
+Start Wardrik, act as Maria, and define her agent:
+
+```elixir
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime)
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+
+{:ok, _agent} =
+  Wardrik.Agent.define(scope, "acme/@maria/books",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You keep Maria's books."
+  )
+```
+
+A scope is three things: Wardrik, who acts, and what they're granted. Every operation takes one.
+Maria is `:owner` of everything under `acme/@maria/`.
+
+## Two more people
+
+Jon may read and message Maria's agents. Sam has no grants at all:
+
+```elixir
+jon =
+  Wardrik.as(MyApp.AgentRuntime, "acme/@jon",
+    roles: [:reader, :messenger],
+    resources: ["acme/@maria/agent/*"]
+  )
+
+sam = Wardrik.as(MyApp.AgentRuntime, "acme/@sam")
+```
+
+A resource names what's acted on. The agent `acme/@maria/books` is the resource
+`acme/@maria/agent/books`.
+
+## Try it
+
+Each person tries the same four things on Maria's agent:
+
+```elixir
+people = [maria: scope, jon: jon, sam: sam]
+
+tries = [
+  read: &Wardrik.Agent.read(&1, "acme/@maria/books"),
+  events: &Wardrik.Agent.events(&1, "acme/@maria/books"),
+  stop: &Wardrik.Agent.stop(&1, "acme/@maria/books"),
+  define: &Wardrik.Agent.define(&1, "acme/@maria/books", model: "anthropic:claude-haiku-4-5")
+]
+
+answer = fn
+  {:error, %Wardrik.Error{type: type}} -> Atom.to_string(type)
+  _ok -> "ok"
+end
+
+may = fn people ->
+  for {name, person} <- people do
+    Map.new([{:person, name} | for({action, try} <- tries, do: {action, answer.(try.(person))})])
+  end
+  |> Kino.DataTable.new(keys: [:person | Keyword.keys(tries)], name: "Who may do what")
+end
+
+may.(people)
+```
+
+* Maria may do all of it.
+* Jon may read, but `stop` and `define` are `forbidden`. A statement reaches the agent, without
+  the action.
+* Sam gets `not_found` for everything. No statement reaches the agent, so for him it isn't there.
+
+The two errors read differently:
+
+```elixir
+{Wardrik.Agent.stop(jon, "acme/@maria/books"), Wardrik.Agent.read(sam, "acme/@maria/books")}
+```
+
+`not_found` keeps Sam from learning the agent exists.
+
+## Grant one more thing
+
+`Wardrik.grant/2` adds a statement to a scope. Let Jon define this one agent:
+
+```elixir
+jon = Wardrik.grant(jon, roles: [:definer], resources: ["acme/@maria/agent/books"])
+
+may.(maria: scope, jon: jon, sam: sam)
+```
+
+Jon may now stop and define `books`. His grant names one agent, so Maria's other agents stay as
+they were.
+
+| Role | Actions |
+| --- | --- |
+| `:reader` | `agent.read`, `agent.events`, `connection.read`, `mcp_server.read`, `ceiling.read` |
+| `:messenger` | `agent.ask`, `agent.cancel`, `agent.clear` |
+| `:approver` | `agent.decide` |
+| `:definer` | `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `connection.connect`, `mcp_server.add` |
+| `:worker` | `agent.serve` |
+| `:owner` | every action |
+
+## API tokens
+
+Programs reach Wardrik over HTTP with a token. Making tokens needs `deployment.tokens` on
+`deployment`:
+
+```elixir
+admin = Wardrik.grant(scope, actions: ["deployment.tokens"], resources: ["deployment"])
+
+{:ok, issued} =
+  Wardrik.Tokens.create(admin,
+    name: "ci",
+    roles: ["reader", "messenger"],
+    resources: ["acme/@maria/agent/*"],
+    expires_in: 3600
+  )
+
+issued.secret
+```
+
+The secret is returned once, now. Wardrik keeps only its SHA-256.
+
+The token acts for Maria. Turn its secret back into a scope, and use it:
+
+```elixir
+{:ok, ci} = Wardrik.authenticate(MyApp.AgentRuntime, issued.secret)
+
+{ci.principal.id, answer.(Wardrik.Agent.read(ci, "acme/@maria/books")),
+ answer.(Wardrik.Agent.stop(ci, "acme/@maria/books"))}
+```
+
+It may read, as `reader` allows. It may not stop the agent.
+
+## Make tokens from a form
+
+A token can't do more than whoever makes it. Pick a role and the resources it reaches. The table
+below lists every token:
+
+```elixir
+tokens = Kino.Frame.new()
+
+show_tokens = fn ->
+  {:ok, list} = Wardrik.Tokens.list(admin)
+
+  rows =
+    for token <- list do
+      %{
+        id: token.id,
+        name: token.name,
+        for: token.principal,
+        actions: Enum.flat_map(token.statements, & &1.actions) |> Enum.join(", "),
+        resources: Enum.flat_map(token.statements, & &1.resources) |> Enum.uniq() |> Enum.join(", "),
+        expires: token.expires
+      }
+    end
+
+  Kino.Frame.render(
+    tokens,
+    Kino.DataTable.new(rows, keys: [:id, :name, :for, :actions, :resources, :expires], name: "Tokens")
+  )
+end
+
+form =
+  Kino.Control.form(
+    [
+      name: Kino.Input.text("Name", default: "deploy-bot"),
+      role: Kino.Input.select("Role", [{"definer", "definer"}, {"reader", "reader"}, {"owner", "owner"}]),
+      resources: Kino.Input.text("Resources", default: "acme/@maria/agent/*")
+    ],
+    submit: "Make token"
+  )
+
+result = Kino.Frame.new()
+
+make_token = fn %{data: %{name: name, role: role, resources: resources}} ->
+  case Wardrik.Tokens.create(admin, name: name, roles: [role], resources: [resources]) do
+    {:ok, issued} ->
+      Kino.Frame.render(result, Kino.Markdown.new("Made **#{name}**. Its secret: `#{issued.secret}`"))
+
+    {:error, error} ->
+      Kino.Frame.render(result, Kino.Markdown.new("**#{error.type}**: #{error.message}"))
+  end
+
+  show_tokens.()
+end
+
+Kino.listen(form, make_token)
+show_tokens.()
+
+Kino.Layout.grid([form, result, tokens], columns: 1)
+```
+
+Try `acme/agent/*` as the resources. Maria owns `acme/@maria/*` alone, so that token is
+`forbidden`: it would reach agents she can't.
+
+## Revoke a token
+
+A revoked token is refused from then on:
+
+```elixir
+{:ok, _token} = Wardrik.Tokens.revoke(admin, issued.token)
+show_tokens.()
+
+Wardrik.authenticate(MyApp.AgentRuntime, issued.secret)
+```
+
+The `ci` row leaves the table. Agents a token defined keep running, under the policy they were
+defined with.
+
+## Where next
+
+* [Who may do what](https://hexdocs.pm/wardrik/access.html): every resource, token options, and
+  writing your own authorizer.
+* [Orgs](https://hexdocs.pm/wardrik/orgs.html): agents and settings an org shares.
+* [Events notebook](events.livemd): the audit records each token made and revoked.
+* [Tools notebook](tools.livemd): give agents tools, and decide which calls wait for a person.
