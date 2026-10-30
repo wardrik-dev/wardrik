@@ -350,7 +350,7 @@ config :my_app, MyApp.AgentRuntime,
   # 3. The server, called with each user's own GitHub account
   mcp: [
     github: [
-      transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
+      transport: {:streamable_http, url: "https://api.githubcopilot.com/mcp/"},
       credential_name: "github"
     ]
   ]
