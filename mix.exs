@@ -96,19 +96,19 @@ defmodule Wardrik.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:wardrik_core, path: "../wardrik_core"},
-      {:wardrik_store, path: "../wardrik_store"},
-      {:wardrik_protocol, path: "../wardrik_protocol"},
-      {:wardrik_events, path: "../wardrik_events"},
-      {:wardrik_policy, path: "../wardrik_policy"},
-      {:wardrik_vault, path: "../wardrik_vault"},
-      {:wardrik_oauth, path: "../wardrik_oauth"},
-      {:wardrik_mcp, path: "../wardrik_mcp"},
-      {:wardrik_triggers, path: "../wardrik_triggers"},
-      {:wardrik_workspace, path: "../wardrik_workspace"},
-      {:wardrik_http, path: "../wardrik_http"},
-      {:wardrik_channel, path: "../wardrik_channel"},
-      {:wardrik_slack, path: "../wardrik_slack", only: :test},
+      sibling(:wardrik_core),
+      sibling(:wardrik_store),
+      sibling(:wardrik_protocol),
+      sibling(:wardrik_events),
+      sibling(:wardrik_policy),
+      sibling(:wardrik_vault),
+      sibling(:wardrik_oauth),
+      sibling(:wardrik_mcp),
+      sibling(:wardrik_triggers),
+      sibling(:wardrik_workspace),
+      sibling(:wardrik_http),
+      sibling(:wardrik_channel),
+      sibling(:wardrik_slack, only: :test),
       {:durable_server, "~> 0.1.6"},
       {:req, "~> 0.7"},
       {:ekv, "~> 0.4.8"},
@@ -124,5 +124,13 @@ defmodule Wardrik.MixProject do
       {:reach, "~> 2.8", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
+  end
+
+  # Wardrik's own packages come from Hex, or from their checkouts beside this one with
+  # WARDRIK_LOCAL=1.
+  defp sibling(name, opts \\ []) do
+    if System.get_env("WARDRIK_LOCAL"),
+      do: {name, Keyword.put(opts, :path, "../#{name}")},
+      else: {name, "~> 0.1.0-rc.1", opts}
   end
 end
