@@ -61,6 +61,26 @@ defmodule Wardrik.PolicyTest do
     until("wardrik.run.completed")
   end
 
+  test "decides each waiting call on its own, one right after another", %{
+    wardrik: wardrik,
+    scope: scope
+  } do
+    calls = [call("call_1", "echo", %{"text" => "hi"}), call("call_2", "echo", %{"text" => "yo"})]
+    answers([calling(calls), answer("Done.")])
+    start_books(wardrik, ask: %{"echo" => "Echo this?"})
+
+    Wardrik.Agent.ask(scope, "acme/books", "Echo hi and yo")
+    until("wardrik.run.interrupted")
+
+    assert {:ok, [%Wardrik.Decision{id: "call_1", decision: :approved}]} =
+             Wardrik.Agent.approve(scope, "acme/books", "call_1")
+
+    assert {:ok, [%Wardrik.Decision{id: "call_2", decision: :rejected}]} =
+             Wardrik.Agent.deny(scope, "acme/books", "call_2")
+
+    until("wardrik.run.completed")
+  end
+
   test "refuses what the deployment denies, though the agent allows it", %{
     wardrik: wardrik,
     scope: scope

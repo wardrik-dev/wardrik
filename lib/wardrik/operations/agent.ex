@@ -48,9 +48,9 @@ defmodule Wardrik.Operations.Agent do
   @spec decide(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def decide(scope, %{"agent" => id, "decisions" => decisions}) do
     with :ok <- Snapshot.known(scope.wardrik, id),
-         {:ok, waiting} <- waiting_on(scope, id, decisions),
-         :ok <- approvable(scope, id, waiting, decisions),
          {:ok, pid} <- Running.awake(scope.wardrik, id),
+         {:ok, waiting} <- waiting_on(pid, id, decisions),
+         :ok <- approvable(scope, id, waiting, decisions),
          :ok <- resume(pid, decisions, scope) do
       {:ok, %{"decisions" => Enum.map(decisions, &decided/1)}}
     end
@@ -152,13 +152,8 @@ defmodule Wardrik.Operations.Agent do
   defp message_id,
     do: "msg_" <> (12 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
 
-  defp waiting_on(scope, id, decisions) do
-    waiting =
-      scope.wardrik
-      |> Wardrik.events()
-      |> WardrikEvents.activity(id)
-      |> Snapshot.interrupts()
-      |> Map.new(&{&1["id"], &1})
+  defp waiting_on(pid, id, decisions) do
+    waiting = pid |> WardrikCore.parked() |> waiting()
 
     case Enum.reject(decisions, &Map.has_key?(waiting, &1["id"])) do
       [] ->
@@ -169,11 +164,18 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
+  defp waiting(nil), do: %{}
+
+  defp waiting({:tool_calls, results}),
+    do: Map.new(for {call, {:park, reason}} <- results, do: {call.id, reason})
+
+  defp waiting(reason), do: %{"model" => reason}
+
   defp approvable(scope, id, waiting, decisions) do
     past_ceiling? =
       Enum.any?(decisions, fn decision ->
         decision["decision"] == "approve" and
-          waiting[decision["id"]]["reason"] == "ceiling_approval"
+          match?(%Wardrik.Ceiling.Reached{}, waiting[decision["id"]])
       end)
 
     if past_ceiling?, do: ceiling_approver(scope, Wardrik.Orgs.org(id)), else: :ok
