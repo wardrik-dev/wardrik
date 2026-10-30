@@ -9,7 +9,7 @@ defmodule Wardrik.HostTest do
         discovery_interval_ms: 5_000
       )
 
-    assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.Ecto} = store} = wardrik
+    assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.Ecto}} = wardrik
     assert {WardrikStore.Durable, opts} = wardrik.backend
     assert opts[:discovery_interval_ms] == 5_000
 
