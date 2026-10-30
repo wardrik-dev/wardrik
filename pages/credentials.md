@@ -103,13 +103,25 @@ Your config then holds none:
 config :my_app, MyApp.AgentRuntime,
   channels: [slack: {WardrikSlack, signing_secret: {:secret, "SLACK_SIGNING_SECRET"}, ...}],
   notify: [targets: [audit: {Wardrik.Notify.Webhook, url: url, secret: {:secret, "HOOK_SECRET"}}]],
+  mcp: [
+    linear: [
+      transport:
+        {:streamable_http, base_url: url, headers: %{"authorization" => {:secret, "LINEAR_TOKEN"}}}
+    ]
+  ],
   oauth: [providers: [github: [client_id: id, client_secret: {:secret, "GITHUB_CLIENT_SECRET"}]]]
 ```
 
   * A channel's and a notify target's secrets are read each time they're used.
   * An OAuth provider's are read at each sign-in.
-  * A channel's processes, like Slack's Socket Mode, read theirs when they start. Restart Wardrik
-    after changing those.
+  * A channel's processes, like Slack's Socket Mode, and the MCP servers read theirs when they
+    start. Restart Wardrik after changing those.
+
+A header takes the secret as sealed, so seal Linear's token with its scheme:
+
+```elixir
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, "deployment", "LINEAR_TOKEN", "Bearer lin_api_...")
+```
 
 A secret sealed nowhere is `nil`, and logged.
 

@@ -74,7 +74,7 @@ defmodule Wardrik.Children do
   defp mcp_spec(wardrik, headers) do
     servers =
       Enum.map(wardrik.mcp || [], fn {name, opts} ->
-        {name, opts |> Keyword.delete(:orgs) |> headers.()}
+        headers.({name, Keyword.delete(opts, :orgs)})
       end)
 
     WardrikMCP.child_spec(
@@ -85,13 +85,15 @@ defmodule Wardrik.Children do
     )
   end
 
-  defp headers(wardrik, opts) do
-    case Keyword.fetch(opts, :headers) do
-      {:ok, headers} ->
-        Keyword.put(opts, :headers, Wardrik.Sealed.resolved(wardrik, "an MCP server", headers))
+  defp headers(wardrik, {name, opts}) do
+    case opts[:transport] do
+      {:streamable_http, http} ->
+        resolved = &Wardrik.Sealed.resolved(wardrik, "the MCP server #{name}", &1)
+        http = Keyword.replace_lazy(http, :headers, resolved)
+        {name, Keyword.put(opts, :transport, {:streamable_http, http})}
 
-      :error ->
-        opts
+      _stdio ->
+        {name, opts}
     end
   end
 
