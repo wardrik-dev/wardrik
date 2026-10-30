@@ -3,19 +3,60 @@
 Agents call the tools of MCP servers. Give Wardrik the servers every agent may reach when it
 starts. Orgs and people add their own while it runs.
 
-## Servers Wardrik starts with
+## Setup
+
+In a fresh IEx session, start Wardrik with GitHub's MCP server, and an OAuth app people sign in to
+it with:
 
 ```elixir
-config :my_app, MyApp.Wardrik,
-  mcp: [
-    github: [
-      transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
-      credential_name: "github"
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.Wardrik,
+    keys: [WardrikVault.generate_key()],
+    oauth: [
+      page: "https://agents.example.com/oauth",
+      providers: [
+        github: [
+          authorization_endpoint: "https://github.com/login/oauth/authorize",
+          token_endpoint: "https://github.com/login/oauth/access_token",
+          client_id: "Iv1.your-client-id",
+          client_secret: "your-client-secret"
+        ]
+      ]
+    ],
+    mcp: [
+      github: [
+        transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
+        credential_name: "github"
+      ]
     ]
-  ]
+  )
+
+scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 ```
 
-A definition names the server's tools as `github/*`. See `WardrikMCP.Server` for every option.
+The client ID and secret stand for your GitHub OAuth app's. Nothing on this page calls a model.
+Adding a server reaches it over the network.
+
+## Servers Wardrik starts with
+
+`:mcp` names the servers every agent may reach. A definition names a server's tools as `github/*`:
+
+```elixir
+{:ok, _agent} =
+  Wardrik.Agent.define(scope, "acme/@maria/assistant",
+    model: "anthropic:claude-haiku-4-5",
+    tools: ["github/*", "linear/*"]
+  )
+
+Wardrik.Agent.definition(scope, "acme/@maria/assistant")
+#=> {:ok, %Wardrik.Definition{tools: ["github/*", "linear/*"], ...}, ["linear/*"]}
+```
+
+The last element lists what the definition names that isn't there yet. `linear` is added below.
+See `WardrikMCP.Server` for every option of a server.
 
 With `credential_name`, each person's agents reach the server with that person's own account.
 Someone who hasn't connected one is asked to sign in the first time one of their agents calls it;
@@ -28,7 +69,7 @@ An org or a person adds a server for their own agents while Wardrik runs. Every 
 
 ```elixir
 Wardrik.MCPServers.add(scope,
-  owner: "acme",
+  owner: "acme/@maria",
   name: "linear",
   url: "https://mcp.linear.app/mcp",
   auth: %{oauth: %{}}
@@ -39,7 +80,12 @@ Wardrik.MCPServers.add(scope,
 #=>    connected: false,
 #=>    authorization: %Wardrik.Authorization{url: "https://mcp.linear.app/authorize?...", code: nil}
 #=>  }}
+
+Wardrik.Agent.definition(scope, "acme/@maria/assistant")
+#=> {:ok, %Wardrik.Definition{...}, []}
 ```
+
+Open the URL to sign in.
 
   * An org's server serves the org's agents and every agent of its people. A person's server
     serves their agents alone, and wins where both have one of the same name.
@@ -65,8 +111,10 @@ operator adds servers.
 | --- | --- |
 | `%{none: %{}}` | It takes no credential. |
 | `%{secret: %{name: "crm-key"}}` | A key the owner keeps in the vault, sent as `authorization: Bearer <key>`. `header` and `scheme` change that. |
-| `%{oauth: %{scopes: [...]}}` | Each person signs in as themselves, through the server's own authorization server. Wardrik registers itself as the client. |
+| `%{oauth: %{scopes: [...]}}` | Each person signs in as themselves, through the server's own authorization server. Wardrik registers itself as the client. Needs Wardrik's `:oauth`. |
 | `%{oauth: %{issuer: ..., client_id: ..., client_secret: %{name: "CRM_APP"}}}` | The same, through an OAuth app the owner registered there, for a service Wardrik can't discover or register with. |
+
+The owner keeps a key with `Wardrik.put_secret/5`; see [Credentials](credentials.md).
 
 An owner's own OAuth app takes:
 
@@ -80,7 +128,14 @@ Each owner's server signs in on its own. Two orgs' servers of the same name each
 
 ### Listing and removing
 
-`Wardrik.MCPServers.list/2` lists an owner's servers. `Wardrik.MCPServers.remove/3` removes one and
-forgets the sign-ins to it. Each change is recorded in the audit.
+```elixir
+Wardrik.MCPServers.list(scope, owner: "acme/@maria")
+#=> {:ok, [%Wardrik.MCPServer{name: "linear", url: "https://mcp.linear.app/mcp", auth: :oauth}]}
+
+Wardrik.MCPServers.remove(scope, "linear", owner: "acme/@maria")
+#=> {:ok, %Wardrik.MCPServer{name: "linear", url: "https://mcp.linear.app/mcp", auth: :oauth}}
+```
+
+Removing a server forgets the sign-ins to it. Each change is recorded in the audit.
 
 A server's answers are written by others. Hold its tools to a [policy](policies.md).

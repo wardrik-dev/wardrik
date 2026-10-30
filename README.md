@@ -35,7 +35,7 @@ children = [MyApp.Runtime]
 Then act as someone, and talk to agents:
 
 ```elixir
-scope = Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = MyApp.Runtime.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 
 {:ok, notes_agent} =
   Wardrik.Agent.define(scope, "acme/@maria/assistant",

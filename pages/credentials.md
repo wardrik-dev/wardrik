@@ -4,32 +4,72 @@ A tool that acts as a person needs their token. Wardrik keeps credentials sealed
 agent's tools only the credentials its principal holds. When there's none yet, it sends the person
 to sign in.
 
+## Setup
+
+In a fresh IEx session, start Wardrik with a key to seal credentials with, and an OAuth app for
+GitHub:
+
+```elixir
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.Wardrik,
+    keys: [WardrikVault.generate_key()],
+    oauth: [
+      page: "https://agents.example.com/oauth",
+      providers: [
+        github: [
+          authorization_endpoint: "https://github.com/login/oauth/authorize",
+          token_endpoint: "https://github.com/login/oauth/access_token",
+          client_id: "Iv1.your-client-id",
+          client_secret: {:secret, "GITHUB_CLIENT_SECRET"},
+          scopes: ~w(repo)
+        ]
+      ]
+    ]
+  )
+
+scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+```
+
+`"Iv1.your-client-id"` stands for your GitHub OAuth app's client ID. Nothing on this page calls a
+model.
+
 ## Keep credentials
 
-Give Wardrik keys to seal credentials with:
+`:keys` seals every credential. Make a key with `WardrikVault.generate_key/0`, and keep it outside
+your code:
 
 ```elixir
 config :my_app, MyApp.Wardrik, keys: [System.fetch_env!("WARDRIK_KEY")]
 ```
 
-Make a key with `WardrikVault.generate_key/0`. The first key seals, and any key unseals. To rotate,
-put the new key first and keep the old one after it until nothing needs it.
+The first key seals, and any key unseals. To rotate, put the new key first and keep the old one
+after it until nothing needs it.
 
-Keep a secret for an org or a person:
+Keep a secret for an org, as `"acme"`, or a person, as `"acme/@maria"`:
 
 ```elixir
-:ok = MyApp.Wardrik.put_secret("acme/@maria", "github", "ghp_...")
-{:ok, "ghp_..."} = MyApp.Wardrik.fetch_secret("acme/@maria", "github")
-["github"] = MyApp.Wardrik.list_secrets("acme/@maria")
-:ok = MyApp.Wardrik.delete_secret("acme/@maria", "github")
+:ok = Wardrik.put_secret(MyApp.Wardrik, "acme/@maria", "crm-key", "crm_live_...")
+
+Wardrik.fetch_secret(MyApp.Wardrik, "acme/@maria", "crm-key")
+#=> {:ok, "crm_live_..."}
+
+Wardrik.list_secrets(MyApp.Wardrik, "acme/@maria")
+#=> ["crm-key"]
+
+{:ok, :secret, "crm_live_...", vsn} = Wardrik.lookup_secret(MyApp.Wardrik, "acme/@maria", "crm-key")
+:ok = Wardrik.put_secret(MyApp.Wardrik, "acme/@maria", "crm-key", "crm_live_2...", if_vsn: vsn)
+
+:ok = Wardrik.delete_secret(MyApp.Wardrik, "acme/@maria", "crm-key")
 ```
 
-Every agent reads its principal's credentials, and nothing else. Putting and deleting a secret is
-recorded in the audit.
-
-`lookup_secret/2` also returns the secret's kind and version. The kind is `:secret`, or `:grant` for
-an account someone connected. Pass the version as `put_secret/4`'s `if_vsn:` to write over only the
-version you read.
+  * Every agent reads its principal's credentials, and nothing else.
+  * Putting and deleting a secret is recorded in the audit.
+  * `lookup_secret/3` also returns the kind and version. The kind is `:secret`, or `:grant` for an
+    account someone connected.
+  * `if_vsn:` writes over only the version you read.
 
 ## Keep API keys
 
@@ -37,7 +77,7 @@ An API key is what installed code calls a service with, like a model provider's 
 web search's `BRAVE_API_KEY`. Seal it as a deployment secret, and every agent's code reads it:
 
 ```elixir
-:ok = MyApp.Wardrik.put_secret("deployment", "ZAI_API_KEY", "...")
+:ok = Wardrik.put_secret(MyApp.Wardrik, "deployment", "ZAI_API_KEY", "zai-...")
 ```
 
 An org or a person brings their own by sealing a key of the same name. A person's agent reads the
@@ -50,8 +90,14 @@ org adds can't name `ZAI_API_KEY` and be sent the deployment's.
 
 ## Secrets in config
 
-An option that holds a secret takes `{:secret, name}` instead, naming a deployment secret. Your
-config then holds none:
+An option that holds a secret takes `{:secret, name}` instead, naming a deployment secret. The
+setup's GitHub app does, so seal its client secret:
+
+```elixir
+:ok = Wardrik.put_secret(MyApp.Wardrik, "deployment", "GITHUB_CLIENT_SECRET", "your-client-secret")
+```
+
+Your config then holds none:
 
 ```elixir
 config :my_app, MyApp.Wardrik,
@@ -69,23 +115,8 @@ A secret sealed nowhere is `nil`, and logged.
 
 ## Let people sign in
 
-Give Wardrik one OAuth app per service, each named after the credential it grants:
-
-```elixir
-config :my_app, MyApp.Wardrik,
-  keys: [System.fetch_env!("WARDRIK_KEY")],
-  oauth: [
-    page: "https://agents.example.com/oauth",
-    providers: [
-      github: [
-        issuer: "https://github.com/login/oauth",
-        client_id: System.fetch_env!("GITHUB_CLIENT_ID"),
-        client_secret: System.fetch_env!("GITHUB_CLIENT_SECRET"),
-        scopes: ~w(repo)
-      ]
-    ]
-  ]
-```
+Each provider in `:oauth` is named after the credential it grants. The setup's `github` grants
+`"github"`.
 
 When a tool needs a credential its principal hasn't granted, its call waits on a sign-in.
 `Wardrik.Agent.authorization/4` returns the link. Once the person signs in, the token is sealed and
@@ -96,19 +127,23 @@ every call waiting on it carries on. They sign in once.
 A person or an org can connect an account before any agent asks:
 
 ```elixir
-Wardrik.Connections.list(scope, owner: "acme/@jon")
+Wardrik.Connections.list(scope, owner: "acme/@maria")
 #=> {:ok, [%Wardrik.Connection{provider: "github", connected: false}]}
 
-Wardrik.Connections.connect(scope, "github", owner: "acme/@jon")
+Wardrik.Connections.connect(scope, "github", owner: "acme/@maria")
 #=> {:ok,
 #=>  %Wardrik.Connecting{
 #=>    provider: "github",
 #=>    connected: false,
 #=>    authorization: %Wardrik.Authorization{url: "https://github.com/login/oauth/authorize?...", code: nil}
 #=>  }}
+```
 
-Wardrik.Connections.disconnect(scope, "github", owner: "acme/@jon")
-#=> {:ok, %Wardrik.Connection{provider: "github", connected: true}}
+Open the URL to sign in. Once the person has, `disconnect/3` forgets the account:
+
+```elixir
+Wardrik.Connections.disconnect(scope, "github", owner: "acme/@maria")
+#=> {:ok, %Wardrik.Connection{provider: "github", connected: false}}
 ```
 
 `disconnect` returns `connected: true` when there was an account to forget. Forgetting one is
@@ -123,12 +158,18 @@ asks the owner to sign in, whoever adds it: an org's admin signs the org in.
 
 ## Mount the sign-in pages
 
-A sign-in comes back to your app, so mount its pages at `page`. In a Phoenix router:
+A sign-in comes back to your app, so mount its pages at `page`:
+
+```elixir
+Wardrik.sign_in_pages(MyApp.Wardrik)
+#=> {WardrikOAuth.Plug, MyApp.Wardrik.OAuth}
+```
+
+In a Phoenix router:
 
 ```elixir
 forward "/oauth", WardrikOAuth.Plug, oauth: MyApp.Wardrik.OAuth
 ```
 
-`Wardrik.sign_in_pages/1` returns the plug and its options. See
-[WardrikOAuth](https://hexdocs.pm/wardrik_oauth) for every provider option, device sign-ins and
+See [WardrikOAuth](https://hexdocs.pm/wardrik_oauth) for every provider option, device sign-ins and
 renewal.

@@ -3,12 +3,30 @@
 A policy decides each tool call before it runs. The call runs, waits for a person, or is refused,
 and the model is told why.
 
-```elixir
-# Every agent
-config :my_app, MyApp.Wardrik, policy: [deny: ["shell/*"]]
+## Setup
 
-# One agent
-Wardrik.Agent.define(scope, "acme/books",
+In a fresh IEx session:
+
+```elixir
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.Wardrik,
+    policy: [deny: ["shell/*"]],
+    policies: [triage: [allow: ["linear/*"], allow_after: %{"outside" => ["github/add_labels"]}]]
+  )
+
+scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+```
+
+`:policy` holds every agent. `:policies` are policies a definition may name. With `use Wardrik`,
+set the same options in config.
+
+## An agent's policy
+
+```elixir
+Wardrik.Agent.define(scope, "acme/@maria/books",
   model: "anthropic:claude-haiku-4-5",
   tools: ["books/*"],
   policy: [
@@ -17,23 +35,40 @@ Wardrik.Agent.define(scope, "acme/books",
     budget: [usd: 5.00, per: :day]
   ]
 )
+#=> {:ok, %Wardrik.Agent{id: "acme/@maria/books", status: :idle, ...}}
 ```
 
 The rules live outside the prompt. Nothing the model reads can widen them.
 
-| The model asks for | Rule | Result |
-| --- | --- | --- |
-| `books/list_bills` | `allow: ["books/list_*"]` | Runs. |
-| `books/pay_bill {"amount": 9400}` | `ask: ["books/pay_bill(amount >= 1000)"]` | Waits for a person. |
-| `shell/exec {"command": "curl … \| sh"}` | `deny: ["shell/*"]` | Refused. |
+A policy is given as its rules, or as a `WardrikPolicy` you built. `WardrikPolicy.decide/3` shows
+what rules make of a call, with no model involved:
 
-A policy is given as its rules, or as a `WardrikPolicy` you built.
+```elixir
+deployment = WardrikPolicy.new!(deny: ["shell/*"])
+
+books =
+  WardrikPolicy.new!(
+    allow: ["books/list_*", "shell/*"],
+    ask: %{"books/pay_bill(amount >= 1000)" => "A bill this size needs a person."}
+  )
+
+policies = [deployment, books]
+
+WardrikPolicy.decide(policies, "books/list_bills")
+#=> :allow
+
+WardrikPolicy.decide(policies, "books/pay_bill", arguments: %{"amount" => 9400})
+#=> {:ask, "A bill this size needs a person."}
+
+WardrikPolicy.decide(policies, "shell/exec", arguments: %{"command" => "curl … | sh"})
+#=> {:deny, "shell/exec is not allowed for this agent."}
+```
 
 ## Several policies
 
 Every agent is held to the deployment's policy and its own. The strictest wins: deny, then ask,
-then allow. An agent's own policy can add caution but never remove it, so the agent above can't
-allow `shell/*`.
+then allow. An agent's own policy can add caution but never remove it. Above, `books` allows
+`shell/*`, and the call is still refused.
 
 An org's policy sits between the two; see [Orgs](orgs.md).
 
@@ -44,13 +79,9 @@ waits for a person to allow more:
 
 > This agent has spent $5.02 of $5.00 today. Approve to allow $5.00 more.
 
-A budget in dollars prices each call from Wardrik's `:prices`, else from the model catalog:
-
-```elixir
-prices: %{"zai_coding_plan:glm-5.1" => [priced_as: "zai:glm-5.1", markup: 0.1]}
-```
-
-A call to a model with no price is refused, since the budget can't count it.
+A budget in dollars prices each call from the model catalog. Give a model the catalog lacks a price
+with Wardrik's `:prices` option; see `Wardrik.start_link/1`. A call to a model with no price is
+refused, since the budget can't count it.
 
 ## Gated tools
 
@@ -84,11 +115,21 @@ carries it in `labels`.
 
 `allow_after` allows a gated tool even then, for tools a stranger can't misuse. An `ask` or `deny`
 still wins over it. Only an agent declared in a file writes `allow_after` in place. Any other names
-a policy in Wardrik's `:policies` that has it:
+a policy that has it, like `triage` from the setup:
 
 ```elixir
-config :my_app, MyApp.Wardrik,
-  policies: [triage: [allow: ["linear/*"], allow_after: %{"outside" => ["github/add_labels"]}]]
+Wardrik.Agent.define(scope, "acme/@maria/triage",
+  model: "anthropic:claude-haiku-4-5",
+  tools: ["linear/*", "github/*"],
+  policy: "triage"
+)
+#=> {:ok, %Wardrik.Agent{id: "acme/@maria/triage", ...}}
+
+Wardrik.Agent.define(scope, "acme/@maria/triage",
+  model: "anthropic:claude-haiku-4-5",
+  policy: [allow_after: %{"outside" => ["github/add_labels"]}]
+)
+#=> {:error, %Wardrik.Error{type: :invalid_request, message: "A definition writes allow_after only in an agent file; name a policy that has it."}}
 ```
 
 ## Every rule

@@ -9,21 +9,47 @@ code.
 
 ## Offer what agents may use
 
-Give Wardrik the tools and policies definitions may name:
+Definitions name tools and policies; Wardrik's options say what those names are. In a fresh IEx
+session, paste a tool module, then start Wardrik with it:
 
 ```elixir
-config :my_app, MyApp.Wardrik,
-  capabilities: [files: {MyApp.Files, []}, run_lua: MyApp.Lua],
-  policies: [careful: [ask: ["github/*"], deny: ["shell/*"]]],
-  mcp: [github: [transport: {:stdio, command: "github-mcp-server", args: ["stdio"]}]]
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+
+defmodule MyApp.Orders do
+  @behaviour WardrikCore.Capability
+
+  @impl true
+  def tools(_context, orders) do
+    [
+      WardrikCore.Tool.new!(
+        name: "order_status",
+        description: "Says where an order is.",
+        schema: [order_id: [type: :string, required: true]],
+        run: fn %{order_id: id}, _context -> {:ok, Map.get(orders, id, "unknown")} end
+      )
+    ]
+  end
+end
+
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.Wardrik,
+    capabilities: [orders: {MyApp.Orders, %{"A-1" => "shipped"}}],
+    policies: [careful: [ask: ["order_*"], deny: ["shell/*"]]]
+  )
+
+scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 ```
 
   * `:capabilities` - tools a definition names, each a `WardrikCore.Capability`.
   * `:policies` - policies a definition names, each as its rules.
-  * `:mcp` - MCP servers a definition names, as `github/*`.
+  * `:mcp` - MCP servers a definition names, as `github/*`. See [MCP servers](servers.md).
   * `:middleware` - wraps every agent's calls.
   * `:idle_timeout` - seconds a defined agent idles before it sleeps, or `:infinity`. `900` unless
     set.
+
+In your app, set them in config instead:
+`config :my_app, MyApp.Wardrik, capabilities: [...], policies: [...]`.
 
 ## Define one
 
@@ -31,19 +57,19 @@ config :my_app, MyApp.Wardrik,
 definition =
   Wardrik.Definition.new!(
     model: "anthropic:claude-haiku-4-5",
-    instructions: "You write the daily update on what landed on main.",
-    tools: ["github/*", "files"],
-    policy: [ask: ["github/create_*"], budget: [tokens: 400_000, per: :day]],
+    instructions: "You answer questions about Maria's orders.",
+    tools: ["orders", "files"],
+    policy: [ask: ["order_status"], budget: [tokens: 400_000, per: :day]],
     timeout: 600
   )
 
-Wardrik.Agent.define(scope, "acme/digest", definition)
+Wardrik.Agent.define(scope, "acme/@maria/assistant", definition)
 #=> {:ok,
 #=>  %Wardrik.Agent{
-#=>    id: "acme/digest",
-#=>    name: "digest",
+#=>    id: "acme/@maria/assistant",
+#=>    name: "assistant",
 #=>    status: :idle,
-#=>    node: "wardrik@box1",
+#=>    node: "nonode@nohost",
 #=>    pending: 0,
 #=>    interrupts: [],
 #=>    ...
@@ -53,9 +79,17 @@ Wardrik.Agent.define(scope, "acme/digest", definition)
 `Wardrik.Agent.define/3` takes a keyword list too. A definition is stored as the protocol's JSON,
 so YAML frontmatter, JSON and `Wardrik.Definition.new!/1` all give the same one.
 
-Define it again to change it. A running agent takes the new definition from its next turn.
+Define it again to change it. A running agent takes the new definition from its next turn:
 
-A user's agent, as `acme/@maria/notes`, acts as `acme/@maria`, with her credentials. An org's
+```elixir
+Wardrik.Agent.define(scope, "acme/@maria/assistant",
+  model: "anthropic:claude-haiku-4-5",
+  tools: ["orders"],
+  policy: "careful"
+)
+```
+
+A user's agent, as `acme/@maria/assistant`, acts as `acme/@maria`, with her credentials. An org's
 agent, as `acme/digest`, acts as the org.
 
 ### Keys
@@ -80,7 +114,7 @@ agent, as `acme/digest`, acts as the org.
 
 `tools` takes:
 
-  * a capability by name, as `"files"` for a file tree of its own.
+  * a capability by name, as `"orders"` above, or `"files"` for a file tree of its own.
   * `"server/*"` for every tool of an MCP server.
   * `"workers/*"` for the tools workers offer it.
   * `"agents/*"` to work with its org's agents, and `"self/*"` to work with itself. See
@@ -96,15 +130,14 @@ it doesn't support yet returns `not_supported`, naming the key.
 ## Read it back
 
 ```elixir
-Wardrik.Agent.definition(scope, "acme/digest")
+Wardrik.Agent.definition(scope, "acme/@maria/assistant")
 #=> {:ok,
 #=>  %Wardrik.Definition{
 #=>    model: "anthropic:claude-haiku-4-5",
-#=>    tools: ["github/*", "files"],
-#=>    policy: %{"ask" => ["github/create_*"], "budget" => %{"tokens" => 400000, "per" => "day"}},
-#=>    timeout: 600,
+#=>    tools: ["orders"],
+#=>    policy: "careful",
 #=>    ...
-#=>  }, ["github/*"]}
+#=>  }, []}
 ```
 
 The third element lists the tools it names that offer nothing yet, like an MCP server that's down.
@@ -113,7 +146,13 @@ The third element lists the tools it names that offer nothing yet, like an MCP s
 
 A defined agent sleeps after `idle_timeout` with nothing to do. It wakes, with its conversation,
 when something asks it. Asking, deciding and signing in wake it. Reading it doesn't; it returns
-`asleep`.
+`asleep`:
+
+```elixir
+Wardrik.Agent.stop(scope, "acme/@maria/assistant")
+Wardrik.Agent.read(scope, "acme/@maria/assistant")
+#=> {:ok, %Wardrik.Agent{id: "acme/@maria/assistant", status: :asleep, ...}}
+```
 
 | Function | Does |
 | --- | --- |
@@ -131,10 +170,12 @@ Each change is recorded in the audit, with who made it.
 ## Conversations
 
 One agent can hold many conversations at once, as a chat app holds one per thread. A
-conversation's ID is the agent's ID plus one segment:
+conversation's ID is the agent's ID plus one segment. Asking one calls the model, so set
+`ANTHROPIC_API_KEY` first:
 
 ```elixir
-Wardrik.Agent.ask(scope, "acme/triage/C1-1696.1234", "Is staging up?")
+Wardrik.Agent.ask(scope, "acme/@maria/assistant/C1-1696.1234", "Where's order A-1?")
+#=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "..."}}
 ```
 
 A conversation:
@@ -144,7 +185,7 @@ A conversation:
   * has no definition or triggers of its own. Defining one returns `invalid_request`.
 
 Its resource is the agent's plus the conversation, as
-`acme/agent/triage/conversation/C1-1696.1234`. A statement on `acme/agent/triage` doesn't reach
-it; `acme/agent/triage/*` does.
+`acme/@maria/agent/assistant/conversation/C1-1696.1234`. A statement on
+`acme/@maria/agent/assistant` doesn't reach it; `acme/@maria/agent/assistant/*` does.
 
 No HTTP route reaches a conversation. Read its events through the agent's org.

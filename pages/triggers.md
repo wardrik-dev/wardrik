@@ -1,12 +1,31 @@
 # Trigger agents
 
 A trigger asks an agent something without anyone typing: on a clock, when a feed has new entries,
-or when a service sends a webhook. Triggers are part of a definition:
+or when a service sends a webhook.
+
+## Setup
+
+In a fresh IEx session, start Wardrik with a key to seal secrets, act as Maria, and keep the secret
+her webhook checks. Triggered runs call the model, so set your Anthropic key in place of
+`"sk-ant-..."`:
 
 ```elixir
-Wardrik.Agent.define(scope, "acme/digest",
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
+
+{:ok, _} = Wardrik.start_link(name: MyApp.Wardrik, keys: [WardrikVault.generate_key()])
+scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+
+:ok = Wardrik.put_secret(MyApp.Wardrik, "acme/@maria", "ISSUES_HOOK_SECRET", "hook-s3cret")
+```
+
+## Define them
+
+Triggers are part of a definition. Replace the feed's URL with one you follow:
+
+```elixir
+Wardrik.Agent.define(scope, "acme/@maria/digest",
   model: "anthropic:claude-haiku-4-5",
-  tools: ["github/*"],
   triggers: [
     %{
       name: "daily",
@@ -14,10 +33,11 @@ Wardrik.Agent.define(scope, "acme/digest",
       timezone: "America/Los_Angeles",
       prompt: "Write today's update."
     },
-    %{name: "rivals", every: "6h", feed: ["https://rivalco.example/rss"], prompt: "What changed?"},
+    %{name: "rivals", every: "6h", feed: ["https://example.com/feed.xml"], prompt: "What changed?"},
     %{name: "issues", webhook: %{secret: "${ISSUES_HOOK_SECRET}"}, prompt: "Triage it."}
   ]
 )
+#=> {:ok, %Wardrik.Agent{id: "acme/@maria/digest", next_run: ~U[...], ...}}
 ```
 
 A triggered run is an ordinary message to the agent, and wakes an agent that sleeps. Each run
@@ -69,7 +89,11 @@ request is asked about once.
 From Elixir, deliver the request as it came, with its raw body and headers:
 
 ```elixir
-:ok = Wardrik.Hook.deliver(scope, "acme/triage", "issues", body: body, headers: headers)
+Wardrik.Hook.deliver(scope, "acme/@maria/digest", "issues",
+  body: ~s({"action":"opened"}),
+  headers: %{"authorization" => "Bearer hook-s3cret"}
+)
+#=> :ok
 ```
 
 `unavailable` means the agent can't be asked now. The service should send it again later.
@@ -79,7 +103,7 @@ From Elixir, deliver the request as it came, with its raw body and headers:
 Define the agent again to replace its triggers. To change one at a time:
 
 ```elixir
-Wardrik.Agent.trigger_set(scope, "acme/digest", "daily", every: "0 8 * * *", prompt: "Write it.")
+Wardrik.Agent.trigger_set(scope, "acme/@maria/digest", "daily", every: "0 8 * * *", prompt: "Write it.")
 #=> {:ok,
 #=>  %Wardrik.Trigger{
 #=>    name: "daily",
@@ -90,7 +114,7 @@ Wardrik.Agent.trigger_set(scope, "acme/digest", "daily", every: "0 8 * * *", pro
 #=>    ...
 #=>  }}
 
-Wardrik.Agent.trigger_remove(scope, "acme/digest", "daily")
+Wardrik.Agent.trigger_remove(scope, "acme/@maria/digest", "daily")
 #=> {:ok, %Wardrik.Trigger{name: "daily", ...}}
 ```
 

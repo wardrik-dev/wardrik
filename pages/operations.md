@@ -3,30 +3,52 @@
 Everything people and programs do with agents is an operation. Each is defined once, and works the
 same from your code, HTTP, Slack or a terminal.
 
-## As functions
+## Setup
 
-Each operation is a function named by its ID. `agent.ask` is `Wardrik.Agent.ask/3`:
+In a fresh IEx session:
 
 ```elixir
-Wardrik.Agent.ask(scope, "acme/books", "Which bills are due this week?")
-#=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "eyJhY21lL2Jvb2tzIjo0MX0"}}
+Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
 
-Wardrik.Agent.read(scope, "acme/books")
+{:ok, _} = Wardrik.start_link(name: MyApp.Wardrik)
+scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+```
+
+## As functions
+
+Each operation is a function named by its ID. `agent.define` is `Wardrik.Agent.define/3`:
+
+```elixir
+{:ok, books} =
+  Wardrik.Agent.define(scope, "acme/@maria/books",
+    model: "anthropic:claude-haiku-4-5",
+    instructions: "You keep Maria's books."
+  )
+
+Wardrik.Agent.read(scope, books)
 #=> {:ok,
 #=>  %Wardrik.Agent{
-#=>    id: "acme/books",
+#=>    id: "acme/@maria/books",
 #=>    name: "books",
-#=>    status: :running,
-#=>    node: "wardrik@box1",
+#=>    status: :idle,
+#=>    node: "nonode@nohost",
 #=>    pending: 0,
-#=>    activity: %Wardrik.Activity{doing: [%{"type" => "wardrik.message.started", ...}], ...},
+#=>    activity: %Wardrik.Activity{doing: [], ...},
 #=>    interrupts: [],
-#=>    cursor: "eyJhY21lL2Jvb2tzIjo0M30"
+#=>    cursor: "eyJhY21lL0BtYXJpYS9ib29rcyI6MX0"
 #=>  }}
 
-Wardrik.Agent.cancel(scope, "acme/books")
+Wardrik.Agents.list(scope)
+#=> {:ok, [%Wardrik.Agent{id: "acme/@maria/books", status: :idle, ...}]}
+
+Wardrik.Agent.cancel(scope, books)
 #=> :ok
+
+Wardrik.Agent.read(scope, "acme/@maria/ledger")
+#=> {:error, %Wardrik.Error{type: :not_found, message: "There's no agent acme/@maria/ledger."}}
 ```
+
+`agent.ask` is `Wardrik.Agent.ask/3`, and needs the model's API key; see [Talk to agents](talking.md).
 
 Each function takes, in order:
 
@@ -73,6 +95,12 @@ their shape depends on their type.
 a surface you build reaches operations:
 
 ```elixir
-Wardrik.run(scope, "agent.ask", %{"agent" => "acme/books", "content" => "What's due?"})
-#=> {:ok, %{"message" => %{"id" => "msg_Xq3f...", "cursor" => "eyJhY21lL2Jvb2tzIjo0MX0"}}}
+Wardrik.run(scope, "agent.read", %{"agent" => "acme/@maria/books"})
+#=> {:ok,
+#=>  %{
+#=>    "agent" => %{"id" => "acme/@maria/books", "name" => "books"},
+#=>    "status" => "idle",
+#=>    "cursor" => "eyJhY21lL0BtYXJpYS9ib29rcyI6MX0",
+#=>    ...
+#=>  }}
 ```
