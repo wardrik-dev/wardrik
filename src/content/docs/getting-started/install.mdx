@@ -14,7 +14,7 @@ Install Wardrik, write its first files with `wardrik init`, and start the daemon
 	<TabItem label="Install script">
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.1/install.sh | WARDRIK_VERSION=0.1.0-rc.1 sh
 ```
 
 This installs `wardrik` into `~/.local` (or `/opt/wardrik` as root) and puts it on your `PATH`.
@@ -24,7 +24,7 @@ This installs `wardrik` into `~/.local` (or `/opt/wardrik` as root) and puts it 
 
 ```sh
 docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
-  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.1
 docker exec -it wardrik wardrik init
 ```
 
@@ -111,11 +111,22 @@ Your data stays in `~/.local/share/wardrik` until you delete it.
 
 ### The install script
 
-It checks the release against `SHA256SUMS`, and installs `rik` beside `wardrik` unless another
-`rik` is on your `PATH`. It needs glibc 2.35+ and OpenSSL 3.
+It downloads `wardrik-VERSION-linux-ARCH.tar.gz` and `SHA256SUMS` from the
+[GitHub release](https://github.com/wardrik-dev/wardrik_daemon/releases), checks the one against
+the other, and runs the release once before it installs it. It keeps the version before, and
+installs `rik` beside `wardrik` unless another `rik` is on your `PATH`. It needs glibc 2.35+ and
+OpenSSL 3.
 
-- `WARDRIK_VERSION=0.1.0-rc.1` installs a specific version.
-- `sh install.sh wardrik-0.1.0-rc.1-linux-x86_64.tar.gz` installs a tarball you have.
+| Variable | Does |
+| --- | --- |
+| `WARDRIK_VERSION` | the version to install, as `0.1.0-rc.1`. The newest release, pre-releases included, unless set. |
+| `WARDRIK_INSTALL_DIR` | where releases go: `~/.local/lib/wardrik`, or `/opt/wardrik` as root |
+| `WARDRIK_BIN_DIR` | where `wardrik` goes: `~/.local/bin`, or `/usr/local/bin` as root |
+| `WARDRIK_REPO` | the GitHub repository releases come from: `wardrik-dev/wardrik_daemon` |
+| `WARDRIK_DOWNLOAD_URL` | where the tarball and `SHA256SUMS` are in place of the release, `file://` too. Needs `WARDRIK_VERSION`. |
+
+`sh install.sh wardrik-0.1.0-rc.1-linux-x86_64.tar.gz` installs a tarball you have, checked
+against a `SHA256SUMS` beside it.
 
 ### Docker
 
