@@ -3,7 +3,7 @@
 Every agent's events are kept, to read back, follow, or carry into your app. Everything people did
 through Wardrik is in the audit.
 
-> See it in action: [See everything an agent did](../notebooks/events.livemd)
+> See it in action: [See everything an agent did](../notebooks/events-demo.livemd)
 
 ## Setup
 

@@ -4,7 +4,7 @@ An org is the first segment of an agent's ID: `acme` for `acme/triage` and `acme
 Give each org its own settings with a `Wardrik.Orgs` module. It reads them from wherever your app
 keeps orgs. Here, a map stands in for your billing plans.
 
-> See it in action: [Spend you can cap](../notebooks/budgets.livemd)
+> See it in action: [Spend you can cap](../notebooks/budgets-demo.livemd)
 
 ## Setup
 

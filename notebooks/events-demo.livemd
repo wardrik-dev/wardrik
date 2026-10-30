@@ -214,5 +214,5 @@ end)
   supervision tree, and trimmed logs.
 * [Who may do what](https://hexdocs.pm/wardrik/access.html): the grants that decide which events a
   scope sees.
-* [Tools notebook](tools.livemd): tools that report their own cost.
-* [Triggers notebook](triggers.livemd): agents that wake on a clock or a webhook.
+* [Tools notebook](tools-demo.livemd): tools that report their own cost.
+* [Triggers notebook](triggers-demo.livemd): agents that wake on a clock or a webhook.

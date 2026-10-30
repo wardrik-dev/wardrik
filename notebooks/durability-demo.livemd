@@ -253,4 +253,4 @@ To make a tool safe to repeat, give it an idempotency key, as a payment API does
 * [Approvals](https://hexdocs.pm/wardrik/approvals.html): deciding the calls agents wait on.
 * [Run Wardrik](https://hexdocs.pm/wardrik/running-wardrik.html): stores, and running on several
   nodes.
-* [Wardrik in ten minutes](tour.livemd): tools, policies, approvals and budgets in one tour.
+* [Wardrik in ten minutes](tour-demo.livemd): tools, policies, approvals and budgets in one tour.

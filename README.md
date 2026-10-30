@@ -59,18 +59,18 @@ scope
 
 ## See it in action
 
-Start with [Wardrik in ten minutes](notebooks/tour.livemd): an agent that looks up orders, asks
+Start with [Wardrik in ten minutes](notebooks/tour-demo.livemd): an agent that looks up orders, asks
 before it refunds, keeps a record and stops at its budget. Each notebook runs in Livebook.
 
-- [Rules the model can't rewrite](notebooks/policies.livemd): policies that allow, ask or refuse.
-- [A person in the loop](notebooks/approvals.livemd): approve or deny the calls an agent waits on.
-- [Give agents tools](notebooks/tools.livemd): tools that say what they do, and what they cost.
-- [Spend you can cap](notebooks/budgets.livemd): budgets per agent and ceilings per org.
-- [Agents that survive a crash](notebooks/durability.livemd): kill an agent mid-call and watch it
+- [Rules the model can't rewrite](notebooks/policies-demo.livemd): policies that allow, ask or refuse.
+- [A person in the loop](notebooks/approvals-demo.livemd): approve or deny the calls an agent waits on.
+- [Give agents tools](notebooks/tools-demo.livemd): tools that say what they do, and what they cost.
+- [Spend you can cap](notebooks/budgets-demo.livemd): budgets per agent and ceilings per org.
+- [Agents that survive a crash](notebooks/durability-demo.livemd): kill an agent mid-call and watch it
   come back.
-- [Agents that wake themselves](notebooks/triggers.livemd): triggers on a clock and from a webhook.
-- [See everything an agent did](notebooks/events.livemd): follow events and read a run back.
-- [Who may do what](notebooks/access.livemd): grants, roles and API tokens.
+- [Agents that wake themselves](notebooks/triggers-demo.livemd): triggers on a clock and from a webhook.
+- [See everything an agent did](notebooks/events-demo.livemd): follow events and read a run back.
+- [Who may do what](notebooks/access-demo.livemd): grants, roles and API tokens.
 
 ## Guides
 

@@ -184,7 +184,7 @@ A message sent while the agent runs waits its turn, so this reply comes after th
 MyApp.Orders.status("A-2")
 ```
 
-See the [approvals notebook](approvals.livemd) to decide calls with buttons.
+See the [approvals notebook](approvals-demo.livemd) to decide calls with buttons.
 
 ## What it cost
 
@@ -272,5 +272,5 @@ tools. See [Policies](https://hexdocs.pm/wardrik/policies.html).
 * [Policies](https://hexdocs.pm/wardrik/policies.html): rules, defaults and budgets.
 * [MCP servers](https://hexdocs.pm/wardrik/servers.html): servers that need a sign-in, and those an
   org adds as it runs.
-* [Approvals notebook](approvals.livemd): approve and deny waiting calls with buttons.
-* [Events notebook](events.livemd): see everything an agent did.
+* [Approvals notebook](approvals-demo.livemd): approve and deny waiting calls with buttons.
+* [Events notebook](events-demo.livemd): see everything an agent did.

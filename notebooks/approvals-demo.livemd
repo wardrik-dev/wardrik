@@ -217,5 +217,5 @@ Deciding a call the agent no longer waits on returns a `conflict` error.
 
 * [Approvals guide](https://hexdocs.pm/wardrik/approvals.html) - every way to decide a call.
 * [Events guide](https://hexdocs.pm/wardrik/events.html) - following agents into your app.
-* [Rules the model can't rewrite](policies.livemd) - the policies that make an agent ask.
-* [Spend you can cap](budgets.livemd) - budgets that ask before spending more.
+* [Rules the model can't rewrite](policies-demo.livemd) - the policies that make an agent ask.
+* [Spend you can cap](budgets-demo.livemd) - budgets that ask before spending more.

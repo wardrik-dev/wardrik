@@ -232,5 +232,5 @@ A ceiling takes what a budget takes, except `per: :turn`. Its period starts over
 
 * [Orgs guide](https://hexdocs.pm/wardrik/orgs.html) - org settings, defaults and ceilings.
 * [Policies guide](https://hexdocs.pm/wardrik/policies.html) - budgets beside the other rules.
-* [Rules the model can't rewrite](policies.livemd) - a policy playground.
-* [A person in the loop](approvals.livemd) - approve or deny waiting calls in a form.
+* [Rules the model can't rewrite](policies-demo.livemd) - a policy playground.
+* [A person in the loop](approvals-demo.livemd) - approve or deny waiting calls in a form.

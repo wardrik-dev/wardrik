@@ -7,7 +7,7 @@ again each time it wakes.
 A definition is the same whether it comes from an agent file's frontmatter, HTTP, a CLI or your
 code.
 
-> See it in action: [Give agents tools](../notebooks/tools.livemd)
+> See it in action: [Give agents tools](../notebooks/tools-demo.livemd)
 
 ## Offer what agents may use
 

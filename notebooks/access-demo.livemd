@@ -222,5 +222,5 @@ defined with.
 * [Who may do what](https://hexdocs.pm/wardrik/access.html): every resource, token options, and
   writing your own authorizer.
 * [Orgs](https://hexdocs.pm/wardrik/orgs.html): agents and settings an org shares.
-* [Events notebook](events.livemd): the audit records each token made and revoked.
-* [Tools notebook](tools.livemd): give agents tools, and decide which calls wait for a person.
+* [Events notebook](events-demo.livemd): the audit records each token made and revoked.
+* [Tools notebook](tools-demo.livemd): give agents tools, and decide which calls wait for a person.

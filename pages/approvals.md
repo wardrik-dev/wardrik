@@ -3,7 +3,7 @@
 A call a policy asks about waits for a person to approve or deny it. The calls an agent waits on
 are its interrupts.
 
-> See it in action: [A person in the loop](../notebooks/approvals.livemd)
+> See it in action: [A person in the loop](../notebooks/approvals-demo.livemd)
 
 ## Setup
 

@@ -178,5 +178,5 @@ Wardrik.Agent.trigger_remove(scope, agent, "heartbeat")
 * [Trigger agents](https://hexdocs.pm/wardrik/triggers.html): every trigger key, feeds, and
   triggers in a cluster.
 * [Credentials](https://hexdocs.pm/wardrik/credentials.html): the vault, and secrets agents use.
-* [Events notebook](events.livemd): follow every event an agent writes.
-* [Tools notebook](tools.livemd): give the agent something to do when it wakes.
+* [Events notebook](events-demo.livemd): follow every event an agent writes.
+* [Tools notebook](tools-demo.livemd): give the agent something to do when it wakes.

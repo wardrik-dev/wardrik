@@ -275,4 +275,4 @@ Kino.Layout.grid([allow, budget_outcome], gap: 12)
 * [Policies](https://hexdocs.pm/wardrik/policies.html): every rule, several policies, and budgets.
 * [Approvals](https://hexdocs.pm/wardrik/approvals.html): deciding the calls agents wait on.
 * [Events and the audit](https://hexdocs.pm/wardrik/events.html): following events into your app.
-* [Agents that survive a crash](durability.livemd): kill an agent mid-call and watch it come back.
+* [Agents that survive a crash](durability-demo.livemd): kill an agent mid-call and watch it come back.

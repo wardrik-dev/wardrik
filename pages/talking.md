@@ -3,7 +3,7 @@
 Each function here sends an agent a message and follows the run that answers it. Each takes a
 scope, the agent by its ID or as a `%Wardrik.Agent{}`, and what to say.
 
-> See it in action: [Wardrik in ten minutes](../notebooks/tour.livemd)
+> See it in action: [Wardrik in ten minutes](../notebooks/tour-demo.livemd)
 
 ## Setup
 

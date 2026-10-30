@@ -3,7 +3,7 @@
 A trigger asks an agent something without anyone typing: on a clock, when a feed has new entries,
 or when a service sends a webhook.
 
-> See it in action: [Agents that wake themselves](../notebooks/triggers.livemd)
+> See it in action: [Agents that wake themselves](../notebooks/triggers-demo.livemd)
 
 ## Setup
 
