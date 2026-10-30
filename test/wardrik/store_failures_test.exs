@@ -36,6 +36,20 @@ defmodule Wardrik.StoreFailuresTest do
     assert message =~ "acme/digest wasn't saved"
   end
 
+  test "a trigger the store can't set is unavailable", %{store: store, scope: scope} do
+    assert {:ok, _agent} = define(scope, [@trigger])
+    FailingStore.fail(store, "wardrik_triggers")
+
+    assert {:error, %Wardrik.Error{type: :unavailable, message: message}} =
+             Wardrik.run(
+               scope,
+               "agent.trigger_set",
+               Map.merge(@trigger, %{"agent" => "acme/digest", "trigger" => "daily"})
+             )
+
+    assert message =~ "acme/digest's triggers weren't saved"
+  end
+
   test "a trigger the store can't remove is unavailable", %{store: store, scope: scope} do
     assert {:ok, _agent} = define(scope, [@trigger])
     FailingStore.fail(store, "wardrik_triggers")

@@ -61,8 +61,14 @@ defmodule Wardrik.Operations.Triggers do
 
   defp set_trigger(wardrik, id, fields) do
     case WardrikTriggers.set(Wardrik.triggers(wardrik), id, fields) do
-      {:ok, trigger} -> {:ok, trigger}
-      {:error, why} -> {:error, Error.new(:invalid_request, "The trigger doesn't read: #{why}.")}
+      {:ok, trigger} ->
+        {:ok, trigger}
+
+      {:error, why} when is_binary(why) ->
+        {:error, Error.new(:invalid_request, "The trigger doesn't read: #{why}.")}
+
+      {:error, reason} ->
+        unsaved(id, reason)
     end
   end
 
