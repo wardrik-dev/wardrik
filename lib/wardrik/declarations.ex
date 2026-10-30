@@ -2,7 +2,7 @@ defmodule Wardrik.Declarations do
   @moduledoc """
   Agents defined outside the API, such as agent files a daemon reads.
 
-      Wardrik.start_link(name: MyApp.Wardrik, declarations: {MyApp.AgentFiles, dir: "agents"})
+      Wardrik.start_link(name: MyApp.AgentRuntime, declarations: {MyApp.AgentFiles, dir: "agents"})
 
   The API refuses to forget a declared agent, since its declaration would bring it back.
   `Wardrik.Deployment.reload/2` reloads declarations before it updates agents to their definitions.

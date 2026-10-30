@@ -14,7 +14,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
 
 {:ok, _} =
   Wardrik.start_link(
-    name: MyApp.Wardrik,
+    name: MyApp.AgentRuntime,
     keys: [WardrikVault.generate_key()],
     oauth: [
       page: "https://agents.example.com/oauth",
@@ -30,7 +30,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
     ]
   )
 
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 ```
 
 `"Iv1.your-client-id"` stands for your GitHub OAuth app's client ID. Nothing on this page calls a
@@ -42,7 +42,7 @@ model.
 your code:
 
 ```elixir
-config :my_app, MyApp.Wardrik, keys: [System.fetch_env!("WARDRIK_KEY")]
+config :my_app, MyApp.AgentRuntime, keys: [System.fetch_env!("WARDRIK_KEY")]
 ```
 
 The first key seals, and any key unseals. To rotate, put the new key first and keep the old one
@@ -51,18 +51,18 @@ after it until nothing needs it.
 Keep a secret for an org, as `"acme"`, or a person, as `"acme/@maria"`:
 
 ```elixir
-:ok = Wardrik.put_secret(MyApp.Wardrik, "acme/@maria", "crm-key", "crm_live_...")
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key", "crm_live_...")
 
-Wardrik.fetch_secret(MyApp.Wardrik, "acme/@maria", "crm-key")
+Wardrik.fetch_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key")
 #=> {:ok, "crm_live_..."}
 
-Wardrik.list_secrets(MyApp.Wardrik, "acme/@maria")
+Wardrik.list_secrets(MyApp.AgentRuntime, "acme/@maria")
 #=> ["crm-key"]
 
-{:ok, :secret, "crm_live_...", vsn} = Wardrik.lookup_secret(MyApp.Wardrik, "acme/@maria", "crm-key")
-:ok = Wardrik.put_secret(MyApp.Wardrik, "acme/@maria", "crm-key", "crm_live_2...", if_vsn: vsn)
+{:ok, :secret, "crm_live_...", vsn} = Wardrik.lookup_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key")
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key", "crm_live_2...", if_vsn: vsn)
 
-:ok = Wardrik.delete_secret(MyApp.Wardrik, "acme/@maria", "crm-key")
+:ok = Wardrik.delete_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key")
 ```
 
   * Every agent reads its principal's credentials, and nothing else.
@@ -77,7 +77,7 @@ An API key is what installed code calls a service with, like a model provider's 
 web search's `BRAVE_API_KEY`. Seal it as a deployment secret, and every agent's code reads it:
 
 ```elixir
-:ok = Wardrik.put_secret(MyApp.Wardrik, "deployment", "ZAI_API_KEY", "zai-...")
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, "deployment", "ZAI_API_KEY", "zai-...")
 ```
 
 An org or a person brings their own by sealing a key of the same name. A person's agent reads the
@@ -94,13 +94,13 @@ An option that holds a secret takes `{:secret, name}` instead, naming a deployme
 setup's GitHub app does, so seal its client secret:
 
 ```elixir
-:ok = Wardrik.put_secret(MyApp.Wardrik, "deployment", "GITHUB_CLIENT_SECRET", "your-client-secret")
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, "deployment", "GITHUB_CLIENT_SECRET", "your-client-secret")
 ```
 
 Your config then holds none:
 
 ```elixir
-config :my_app, MyApp.Wardrik,
+config :my_app, MyApp.AgentRuntime,
   channels: [slack: {WardrikSlack, signing_secret: {:secret, "SLACK_SIGNING_SECRET"}, ...}],
   notify: [targets: [audit: {Wardrik.Notify.Webhook, url: url, secret: {:secret, "HOOK_SECRET"}}]],
   oauth: [providers: [github: [client_id: id, client_secret: {:secret, "GITHUB_CLIENT_SECRET"}]]]
@@ -161,14 +161,14 @@ asks the owner to sign in, whoever adds it: an org's admin signs the org in.
 A sign-in comes back to your app, so mount its pages at `page`:
 
 ```elixir
-Wardrik.sign_in_pages(MyApp.Wardrik)
-#=> {WardrikOAuth.Plug, MyApp.Wardrik.OAuth}
+Wardrik.sign_in_pages(MyApp.AgentRuntime)
+#=> {WardrikOAuth.Plug, MyApp.AgentRuntime.OAuth}
 ```
 
 In a Phoenix router:
 
 ```elixir
-forward "/oauth", WardrikOAuth.Plug, oauth: MyApp.Wardrik.OAuth
+forward "/oauth", WardrikOAuth.Plug, oauth: MyApp.AgentRuntime.OAuth
 ```
 
 See [WardrikOAuth](https://hexdocs.pm/wardrik_oauth) for every provider option, device sign-ins and

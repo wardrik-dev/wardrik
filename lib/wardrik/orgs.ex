@@ -2,7 +2,7 @@ defmodule Wardrik.Orgs do
   @moduledoc """
   Gives each org its own settings, alongside the deployment's. See `Wardrik.OrgSettings`.
 
-      Wardrik.start_link(name: MyApp.Wardrik, orgs: {MyApp.Orgs, []})
+      Wardrik.start_link(name: MyApp.AgentRuntime, orgs: {MyApp.Orgs, []})
 
       defmodule MyApp.Orgs do
         @behaviour Wardrik.Orgs
@@ -130,7 +130,7 @@ defmodule Wardrik.Orgs do
   Returns what the org's agents have spent against each ceiling, by name. See
   `Wardrik.Ceiling.spent/3`.
 
-      Wardrik.Orgs.spent(MyApp.Wardrik, "acme")
+      Wardrik.Orgs.spent(MyApp.AgentRuntime, "acme")
       #=> {:ok, %{"spending-cap" => %{limit: %{usd: 20.0, tokens: nil}, spent: %{usd: 12.4, tokens: 81_200}, ...}}}
   """
   @spec spent(atom() | Wardrik.t(), String.t()) ::

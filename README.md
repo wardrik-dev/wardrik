@@ -19,23 +19,23 @@ end
 Define a module that uses `Wardrik`, configure it, and add it to your supervision tree:
 
 ```elixir
-defmodule MyApp.Runtime do
+defmodule MyApp.AgentRuntime do
   use Wardrik, otp_app: :my_app
 end
 
 # config/runtime.exs
-config :my_app, MyApp.Runtime,
+config :my_app, MyApp.AgentRuntime,
   store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
   policy: [deny: ["shell/*"]]
 
 # application.ex
-children = [MyApp.Runtime]
+children = [MyApp.AgentRuntime]
 ```
 
 Then act as someone, and talk to agents:
 
 ```elixir
-scope = MyApp.Runtime.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = MyApp.AgentRuntime.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 
 {:ok, notes_agent} =
   Wardrik.Agent.define(scope, "acme/@maria/assistant",

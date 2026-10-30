@@ -3,13 +3,13 @@ defmodule Wardrik.Channels do
   Installs Wardrik's chat apps into people's workspaces, from your app's own pages.
 
       # 1. Send the person to the chat app
-      {:ok, url} = Wardrik.Channels.install_url(MyApp.Wardrik, "slack", "acme", return_to: "/settings")
+      {:ok, url} = Wardrik.Channels.install_url(MyApp.AgentRuntime, "slack", "acme", return_to: "/settings")
 
       # 2. When the chat app sends them back
-      {:ok, installation, next} = Wardrik.Channels.installed(MyApp.Wardrik, "slack", "acme", params)
+      {:ok, installation, next} = Wardrik.Channels.installed(MyApp.AgentRuntime, "slack", "acme", params)
 
       # 3. To remove it
-      :ok = Wardrik.Channels.uninstall(MyApp.Wardrik, "slack", installation.workspace)
+      :ok = Wardrik.Channels.uninstall(MyApp.AgentRuntime, "slack", installation.workspace)
 
   The channel's adapter, such as `WardrikSlack`, does the work. Returns an error if the adapter
   doesn't support it.

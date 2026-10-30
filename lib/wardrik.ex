@@ -3,13 +3,13 @@ defmodule Wardrik do
   Agents, governed: the agents your app runs, the policies they're held to, and the operations
   people and programs reach them through.
 
-      defmodule MyApp.Wardrik do
+      defmodule MyApp.AgentRuntime do
         use Wardrik, otp_app: :my_app
       end
 
-      children = [MyApp.Wardrik]
+      children = [MyApp.AgentRuntime]
 
-      scope = MyApp.Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+      scope = MyApp.AgentRuntime.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
       Wardrik.Agent.stream(scope, "acme/@maria/assistant", "What's on today?") |> Enum.each(&IO.write/1)
 
   ## Options
@@ -17,10 +17,10 @@ defmodule Wardrik do
   Each place overrides the one before it:
 
       # 1. config/runtime.exs
-      config :my_app, MyApp.Wardrik, store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
+      config :my_app, MyApp.AgentRuntime, store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
 
       # 2. The supervision tree
-      children = [{MyApp.Wardrik, deployment: "production"}]
+      children = [{MyApp.AgentRuntime, deployment: "production"}]
 
       # 3. init/1, for what's only known at runtime
       @impl Wardrik
@@ -115,7 +115,7 @@ defmodule Wardrik do
   Starts Wardrik.
 
       Wardrik.start_link(
-        name: MyApp.Wardrik,
+        name: MyApp.AgentRuntime,
         store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
         keys: [System.fetch_env!("WARDRIK_KEY")],
         policy: [deny: ["shell/*"]]
@@ -243,7 +243,7 @@ defmodule Wardrik do
   `grants` is a list of `Wardrik.Statement`s, or the options for one. Nothing is allowed unless
   it's granted.
 
-      scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:reader], resources: ["acme/agent/*"])
+      scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:reader], resources: ["acme/agent/*"])
   """
   @spec as(atom() | t(), Principal.t() | String.t(), term()) :: Scope.t()
   def as(instance, principal, grants \\ [])
@@ -256,7 +256,7 @@ defmodule Wardrik do
 
   Returns an `unauthorized` error if the token is unknown or has expired.
 
-      {:ok, scope} = Wardrik.authenticate(MyApp.Wardrik, secret)
+      {:ok, scope} = Wardrik.authenticate(MyApp.AgentRuntime, secret)
   """
   @spec authenticate(atom() | t(), String.t()) :: {:ok, Scope.t()} | {:error, Error.t()}
   @impl Wardrik.Server
@@ -269,7 +269,7 @@ defmodule Wardrik do
   `owner` is an org, as `"acme"`, or a person, as `"acme/@maria"`. Their agents' tools and servers
   can use the secret. Returns `{:error, :no_keys}` if Wardrik was started without `:keys`.
 
-      :ok = Wardrik.put_secret(MyApp.Wardrik, "acme", "crm-key", System.fetch_env!("CRM_KEY"))
+      :ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme", "crm-key", System.fetch_env!("CRM_KEY"))
 
   ## Options
 
@@ -314,7 +314,7 @@ defmodule Wardrik do
   @doc """
   Adds a statement to `scope`. `opts` are as `Wardrik.Statement.new/1` takes them.
 
-      MyApp.Wardrik.as("acme/@maria") |> Wardrik.grant(roles: [:approver], resources: ["acme/agent/*"])
+      MyApp.AgentRuntime.as("acme/@maria") |> Wardrik.grant(roles: [:approver], resources: ["acme/agent/*"])
   """
   @spec grant(Scope.t(), keyword()) :: Scope.t()
   def grant(scope, opts), do: Scope.grant(scope, opts)
@@ -358,7 +358,7 @@ defmodule Wardrik do
   `WardrikPolicy`, or its rules. The agent is held to its own policy, its org's and Wardrik's.
   The strictest decides.
 
-      Wardrik.start_agent(MyApp.Wardrik,
+      Wardrik.start_agent(MyApp.AgentRuntime,
         agent_id: "acme/books",
         model: "anthropic:claude-haiku-4-5",
         policy: [ask: ["books/pay_bill"]]
@@ -380,7 +380,7 @@ defmodule Wardrik do
 
   Sleeping agents pick them up when they wake. Returns a line for each agent it couldn't update.
 
-      Wardrik.refresh(MyApp.Wardrik, org: "acme")
+      Wardrik.refresh(MyApp.AgentRuntime, org: "acme")
       #=> []
   """
   @spec refresh(atom() | t(), keyword()) :: [String.t()]
@@ -394,8 +394,8 @@ defmodule Wardrik do
 
   Mount it at the `:oauth` option's `page`.
 
-      Wardrik.sign_in_pages(MyApp.Wardrik)
-      #=> {WardrikOAuth.Plug, MyApp.Wardrik.OAuth}
+      Wardrik.sign_in_pages(MyApp.AgentRuntime)
+      #=> {WardrikOAuth.Plug, MyApp.AgentRuntime.OAuth}
   """
   @spec sign_in_pages(atom() | t()) :: {module(), term()} | nil
   def sign_in_pages(instance), do: instance |> Instance.fetch!() |> pages()

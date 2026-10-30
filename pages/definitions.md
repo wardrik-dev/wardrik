@@ -33,12 +33,12 @@ end
 
 {:ok, _} =
   Wardrik.start_link(
-    name: MyApp.Wardrik,
+    name: MyApp.AgentRuntime,
     capabilities: [orders: {MyApp.Orders, %{"A-1" => "shipped"}}],
     policies: [careful: [ask: ["order_*"], deny: ["shell/*"]]]
   )
 
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 ```
 
   * `:capabilities` - tools a definition names, each a `WardrikCore.Capability`.
@@ -49,7 +49,7 @@ scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["a
     set.
 
 In your app, set them in config instead:
-`config :my_app, MyApp.Wardrik, capabilities: [...], policies: [...]`.
+`config :my_app, MyApp.AgentRuntime, capabilities: [...], policies: [...]`.
 
 ## Define one
 

@@ -12,15 +12,15 @@ defmodule Wardrik.HTTP do
 
   Run it as a child, with Bandit:
 
-      children = [MyApp.Wardrik, {Wardrik.HTTP, wardrik: MyApp.Wardrik, port: 4000}]
+      children = [MyApp.AgentRuntime, {Wardrik.HTTP, wardrik: MyApp.AgentRuntime, port: 4000}]
 
   Or forward to it from your router, as a `Plug`:
 
-      forward "/agents", Wardrik.HTTP, wardrik: MyApp.Wardrik
+      forward "/agents", Wardrik.HTTP, wardrik: MyApp.AgentRuntime
 
   ## Options
 
-    * `:wardrik` - required. The module to serve, as `MyApp.Wardrik`.
+    * `:wardrik` - required. The module to serve, as `MyApp.AgentRuntime`.
     * `:authenticator` - see `WardrikHTTP`.
     * `:keepalive` - see `WardrikHTTP`.
 
@@ -56,5 +56,6 @@ defmodule Wardrik.HTTP do
     do: [server: {Wardrik, wardrik}, sign_in: {Wardrik, :sign_in_pages, [wardrik]}] ++ opts
 
   defp served_as(_none),
-    do: raise(ArgumentError, "Wardrik.HTTP serves a Wardrik. Give it wardrik: MyApp.Wardrik.")
+    do:
+      raise(ArgumentError, "Wardrik.HTTP serves a Wardrik. Give it wardrik: MyApp.AgentRuntime.")
 end

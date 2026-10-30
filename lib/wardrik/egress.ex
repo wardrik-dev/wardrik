@@ -2,7 +2,7 @@ defmodule Wardrik.Egress do
   @moduledoc """
   Decides which URLs users may point Wardrik at, such as when an org adds an MCP server.
 
-      Wardrik.start_link(name: MyApp.Wardrik, egress: &Wardrik.Egress.public/1)
+      Wardrik.start_link(name: MyApp.AgentRuntime, egress: &Wardrik.Egress.public/1)
 
   A URL is checked when it's given and when each connection to it starts, not on each request.
   A host that resolves somewhere else between checks is reached where it resolves then.

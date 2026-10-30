@@ -4,7 +4,7 @@ defmodule Wardrik.HostTest do
   test "builds a Postgres store" do
     wardrik =
       Wardrik.new(
-        name: MyApp.Wardrik,
+        name: MyApp.AgentRuntime,
         store: {WardrikStore.Ecto, url: "postgres://localhost/x"},
         discovery_interval_ms: 5_000
       )
@@ -14,7 +14,7 @@ defmodule Wardrik.HostTest do
     assert opts[:discovery_interval_ms] == 5_000
 
     assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.Ecto, config: MyApp.Repo}} =
-             Wardrik.new(name: MyApp.Wardrik, store: {WardrikStore.Ecto, repo: MyApp.Repo})
+             Wardrik.new(name: MyApp.AgentRuntime, store: {WardrikStore.Ecto, repo: MyApp.Repo})
   end
 
   test "names a principal, and the key a model's calls take" do

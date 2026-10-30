@@ -2,7 +2,7 @@ defmodule Wardrik.Statements do
   @moduledoc """
   The default `Wardrik.Authorizer`. Allows what the scope's `Wardrik.Statement`s allow.
 
-      scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:reader], resources: ["acme/agent/*"])
+      scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:reader], resources: ["acme/agent/*"])
 
   Anything no statement allows is refused.
   """

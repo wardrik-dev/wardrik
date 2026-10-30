@@ -10,8 +10,8 @@ In a fresh IEx session:
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
 
-{:ok, _} = Wardrik.start_link(name: MyApp.Wardrik)
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime)
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 
 {:ok, _} = Wardrik.Agent.define(scope, "acme/@maria/books", model: "anthropic:claude-haiku-4-5")
 ```
@@ -23,7 +23,7 @@ agents:
 
 ```elixir
 jon =
-  Wardrik.as(MyApp.Wardrik, "acme/@jon",
+  Wardrik.as(MyApp.AgentRuntime, "acme/@jon",
     roles: [:reader, :messenger],
     resources: ["acme/@maria/agent/*"]
   )
@@ -65,7 +65,7 @@ An agent no statement reaches is invisible to the scope. Operations on it return
 lists leave it out. An agent a statement reaches, without the action, returns `forbidden`:
 
 ```elixir
-sam = Wardrik.as(MyApp.Wardrik, "acme/@sam")
+sam = Wardrik.as(MyApp.AgentRuntime, "acme/@sam")
 
 Wardrik.Agent.read(sam, "acme/@maria/books")
 #=> {:error, %Wardrik.Error{type: :not_found, message: "There's no agent acme/@maria/books."}}
@@ -98,7 +98,7 @@ admin = Wardrik.grant(scope, actions: ["deployment.tokens"], resources: ["deploy
 #=>    secret: "wrk_3f9a61c0d4e2_9c1e..."
 #=>  }}
 
-{:ok, ci} = Wardrik.authenticate(MyApp.Wardrik, issued.secret)
+{:ok, ci} = Wardrik.authenticate(MyApp.AgentRuntime, issued.secret)
 
 {:ok, _agent} = Wardrik.Agent.read(ci, "acme/@maria/books")
 ```
@@ -127,7 +127,7 @@ policy they were defined with:
 ```elixir
 {:ok, _token} = Wardrik.Tokens.revoke(admin, issued.token)
 
-Wardrik.authenticate(MyApp.Wardrik, issued.secret)
+Wardrik.authenticate(MyApp.AgentRuntime, issued.secret)
 #=> {:error, %Wardrik.Error{type: :unauthorized, ...}}
 ```
 
@@ -165,8 +165,8 @@ end
 Start Wardrik with it, in a fresh IEx session:
 
 ```elixir
-{:ok, _} = Wardrik.start_link(name: MyApp.Wardrik, authorizer: {MyApp.Authorizer, []})
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria")
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.Authorizer, []})
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 Wardrik.Agent.define(scope, "acme/@maria/books", model: "anthropic:claude-haiku-4-5")
 #=> {:ok, %Wardrik.Agent{id: "acme/@maria/books", ...}}

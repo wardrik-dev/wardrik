@@ -10,8 +10,8 @@ In a fresh IEx session:
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
 
-{:ok, _} = Wardrik.start_link(name: MyApp.Wardrik)
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime)
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 ```
 
 Nothing on this page calls a model, so no provider key is needed.
@@ -71,7 +71,7 @@ listener carries on from it after a restart:
 
 ```elixir
 defmodule MyApp.Started do
-  use Wardrik.Listener, wardrik: MyApp.Wardrik, types: ["wardrik.agent.started"]
+  use Wardrik.Listener, wardrik: MyApp.AgentRuntime, types: ["wardrik.agent.started"]
 
   @impl true
   def handle(%Wardrik.Event{} = event, listener) do
@@ -97,17 +97,17 @@ In your app, save the cursor where you save the work, in the same transaction, a
 `MyApp.Repo.transaction/1`. Have Wardrik start the listener, so it starts after what it follows:
 
 ```elixir
-config :my_app, MyApp.Wardrik, listeners: [MyApp.Started]
+config :my_app, MyApp.AgentRuntime, listeners: [MyApp.Started]
 ```
 
-Or add it to your own supervision tree, after `MyApp.Wardrik`.
+Or add it to your own supervision tree, after `MyApp.AgentRuntime`.
 
 Each event is handed over at least once. Drop repeats by the event's `id`. If `handle/2` raises or
 returns anything but `:ok`, the listener restarts from `cursor/1`.
 
 ### Options
 
-  * `:wardrik` - required. The module that uses Wardrik, as `MyApp.Wardrik`.
+  * `:wardrik` - required. The module that uses Wardrik, as `MyApp.AgentRuntime`.
   * `:resources` - agents to follow. Every agent unless set.
   * `:types` - event types to follow. Every type unless set.
   * `:after` - the cursor to start after, unless you define `cursor/1`. Without one, it reads

@@ -10,7 +10,7 @@ defmodule Wardrik.Keys do
 
   An org or person brings its own key by sealing a secret with the key's name:
 
-      Wardrik.put_secret(MyApp.Wardrik, "acme", "ZAI_API_KEY", key)
+      Wardrik.put_secret(MyApp.AgentRuntime, "acme", "ZAI_API_KEY", key)
 
   If no one holds it, the code finds its own, as ReqLLM reads the environment. Only secrets
   count. A connected account is a credential, never a key.

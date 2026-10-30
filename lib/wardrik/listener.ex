@@ -6,7 +6,7 @@ defmodule Wardrik.Listener do
   picks up from it after a restart.
 
       defmodule MyApp.Runs do
-        use Wardrik.Listener, wardrik: MyApp.Wardrik, types: ["wardrik.run.completed"]
+        use Wardrik.Listener, wardrik: MyApp.AgentRuntime, types: ["wardrik.run.completed"]
 
         @impl true
         def handle(%Wardrik.Event{} = event, listener) do
@@ -24,13 +24,13 @@ defmodule Wardrik.Listener do
 
   Start it after Wardrik in your supervision tree, or have Wardrik start it:
 
-      Wardrik.start_link(name: MyApp.Wardrik, listeners: [MyApp.Runs])
+      Wardrik.start_link(name: MyApp.AgentRuntime, listeners: [MyApp.Runs])
 
   ## Options
 
   Give options to `use`, or as it starts. Your own options are kept alongside them.
 
-    * `:wardrik` - required. The module to follow, as `MyApp.Wardrik`.
+    * `:wardrik` - required. The module to follow, as `MyApp.AgentRuntime`.
     * `:resources` - patterns of the agents to follow. Every agent unless set.
     * `:types` - event types to follow. Every type unless set.
     * `:after` - the cursor to start after, if you don't define `c:cursor/1`.

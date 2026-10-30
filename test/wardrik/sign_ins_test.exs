@@ -127,7 +127,7 @@ defmodule Wardrik.SignInsTest do
 
   test "gives the sign-in pages to mount only where it signs people in", %{wardrik: wardrik} do
     assert Wardrik.sign_in_pages(wardrik) == {WardrikOAuth.Plug, Wardrik.oauth(wardrik)}
-    assert Wardrik.sign_in_pages(Wardrik.new(name: MyApp.Wardrik)) == nil
+    assert Wardrik.sign_in_pages(Wardrik.new(name: MyApp.AgentRuntime)) == nil
   end
 
   test "finishes a sign-in for an app that serves the page itself", %{wardrik: wardrik} do
@@ -138,15 +138,18 @@ defmodule Wardrik.SignInsTest do
   end
 
   test "keeps credentials only when given keys" do
-    assert %Wardrik{keys: [], oauth: nil} = Wardrik.new(name: MyApp.Wardrik)
+    assert %Wardrik{keys: [], oauth: nil} = Wardrik.new(name: MyApp.AgentRuntime)
 
     assert_raise ArgumentError, fn ->
-      Wardrik.new(name: MyApp.Wardrik, oauth: [page: "https://agents.test/oauth", providers: []])
+      Wardrik.new(
+        name: MyApp.AgentRuntime,
+        oauth: [page: "https://agents.test/oauth", providers: []]
+      )
     end
   end
 
   test "keeps keys and secrets out of what it shows" do
-    wardrik = Wardrik.new(name: MyApp.Wardrik, keys: ["secret key"])
+    wardrik = Wardrik.new(name: MyApp.AgentRuntime, keys: ["secret key"])
 
     refute inspect(wardrik) =~ "secret key"
   end

@@ -2,7 +2,7 @@ defmodule Wardrik.Authorizer do
   @moduledoc """
   Decides whether a scope may take an action on a resource.
 
-      Wardrik.start_link(name: MyApp.Wardrik, authorizer: {MyApp.Authorizer, []})
+      Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.Authorizer, []})
 
   Wardrik asks once per operation, and once per agent for operations over many agents.
   `Wardrik.Statements` is used unless set.

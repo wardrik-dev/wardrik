@@ -12,8 +12,8 @@ the model, so set your Anthropic key in place of `"sk-ant-..."`:
 Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
-{:ok, _} = Wardrik.start_link(name: MyApp.Wardrik)
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime)
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 
 {:ok, agent} =
   Wardrik.Agent.define(scope, "acme/@maria/assistant",

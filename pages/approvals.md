@@ -29,8 +29,8 @@ defmodule MyApp.Books do
   end
 end
 
-{:ok, _} = Wardrik.start_link(name: MyApp.Wardrik, capabilities: [books: MyApp.Books])
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, capabilities: [books: MyApp.Books])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 
 {:ok, _agent} =
   Wardrik.Agent.define(scope, "acme/@maria/books",

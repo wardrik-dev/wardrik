@@ -13,10 +13,10 @@ her webhook checks. Triggered runs call the model, so set your Anthropic key in 
 Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
-{:ok, _} = Wardrik.start_link(name: MyApp.Wardrik, keys: [WardrikVault.generate_key()])
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, keys: [WardrikVault.generate_key()])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 
-:ok = Wardrik.put_secret(MyApp.Wardrik, "acme/@maria", "ISSUES_HOOK_SECRET", "hook-s3cret")
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme/@maria", "ISSUES_HOOK_SECRET", "hook-s3cret")
 ```
 
 ## Define them

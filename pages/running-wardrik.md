@@ -4,7 +4,7 @@ Wardrik runs your agents, keeps what they do, and holds them to your policies. M
 your app:
 
 ```elixir
-defmodule MyApp.Wardrik do
+defmodule MyApp.AgentRuntime do
   use Wardrik, otp_app: :my_app
 end
 ```
@@ -12,20 +12,20 @@ end
 In your app, add it to your supervision tree, ahead of anything that uses it:
 
 ```elixir
-children = [MyApp.Wardrik]
+children = [MyApp.AgentRuntime]
 ```
 
 To try it, paste the module into a fresh IEx session started with
 `Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])`, then start it and act as someone:
 
 ```elixir
-{:ok, _} = MyApp.Wardrik.start_link()
+{:ok, _} = MyApp.AgentRuntime.start_link()
 
 scope =
-  MyApp.Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*", "deployment"])
+  MyApp.AgentRuntime.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*", "deployment"])
 ```
 
-Every operation takes a scope. `MyApp.Wardrik.as/2` is `Wardrik.as/3` with the instance filled in.
+Every operation takes a scope. `MyApp.AgentRuntime.as/2` is `Wardrik.as/3` with the instance filled in.
 
 ## Configure it
 
@@ -33,13 +33,13 @@ Each place overrides the one before it:
 
 ```elixir
 # 1. config/runtime.exs
-config :my_app, MyApp.Wardrik, store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
+config :my_app, MyApp.AgentRuntime, store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
 
 # 2. The supervision tree
-children = [{MyApp.Wardrik, deployment: "acme-prod"}]
+children = [{MyApp.AgentRuntime, deployment: "acme-prod"}]
 
 # 3. init/1, for what's only known at runtime
-defmodule MyApp.Wardrik do
+defmodule MyApp.AgentRuntime do
   use Wardrik, otp_app: :my_app
 
   @impl Wardrik
@@ -77,13 +77,13 @@ In memory unless `:store` is set, and gone when Wardrik stops. That suits develo
 
 ```elixir
 # On disk
-config :my_app, MyApp.Wardrik, store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
+config :my_app, MyApp.AgentRuntime, store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
 
 # In your app's Postgres; create the table with WardrikStore.Ecto.Migration
-config :my_app, MyApp.Wardrik, store: {WardrikStore.Ecto, repo: MyApp.Repo}
+config :my_app, MyApp.AgentRuntime, store: {WardrikStore.Ecto, repo: MyApp.Repo}
 
 # In a Postgres of its own, which migrates itself
-config :my_app, MyApp.Wardrik,
+config :my_app, MyApp.AgentRuntime,
   store: {WardrikStore.Ecto, url: "postgres://user:pass@db.example.com/my_app"}
 ```
 
@@ -96,7 +96,7 @@ second finds it running and leaves it be:
 store = WardrikStore.EKV.new(name: MyApp.Store, data_dir: "/var/lib/my_app")
 
 children = [
-  {MyApp.Wardrik, store: store},
+  {MyApp.AgentRuntime, store: store},
   {WardrikStore, store}
 ]
 ```
@@ -159,7 +159,7 @@ defmodule MyApp.Books do
   end
 end
 
-Wardrik.start_agent(MyApp.Wardrik,
+Wardrik.start_agent(MyApp.AgentRuntime,
   agent_id: "acme/@maria/books",
   model: "anthropic:claude-haiku-4-5",
   capabilities: [MyApp.Books],

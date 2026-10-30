@@ -13,7 +13,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
 
 {:ok, _} =
   Wardrik.start_link(
-    name: MyApp.Wardrik,
+    name: MyApp.AgentRuntime,
     keys: [WardrikVault.generate_key()],
     oauth: [
       page: "https://agents.example.com/oauth",
@@ -34,7 +34,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
     ]
   )
 
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 ```
 
 The client ID and secret stand for your GitHub OAuth app's. Nothing on this page calls a model.

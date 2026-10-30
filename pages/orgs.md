@@ -34,10 +34,10 @@ defmodule MyApp.Orgs do
   end
 end
 
-{:ok, _} = Wardrik.start_link(name: MyApp.Wardrik, orgs: {MyApp.Orgs, []})
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, orgs: {MyApp.Orgs, []})
 
 scope =
-  Wardrik.as(MyApp.Wardrik, "acme/@maria",
+  Wardrik.as(MyApp.AgentRuntime, "acme/@maria",
     roles: [:owner],
     resources: ["acme/@maria/*", "acme/ceiling"]
   )
@@ -63,7 +63,7 @@ Settings that don't read keep the agent from starting, and say why.
 To bring the org's awake agents to settings that changed:
 
 ```elixir
-Wardrik.refresh(MyApp.Wardrik, org: "acme")
+Wardrik.refresh(MyApp.AgentRuntime, org: "acme")
 #=> []
 ```
 
@@ -76,7 +76,7 @@ wake.
 started:
 
 ```elixir
-sam = Wardrik.as(MyApp.Wardrik, "globex/@sam", roles: [:owner], resources: ["globex/@sam/*"])
+sam = Wardrik.as(MyApp.AgentRuntime, "globex/@sam", roles: [:owner], resources: ["globex/@sam/*"])
 
 Wardrik.Agent.define(sam, "globex/@sam/assistant", model: "anthropic:claude-haiku-4-5")
 #=> {:error, %Wardrik.Error{type: :not_found, message: "There's no org globex here."}}

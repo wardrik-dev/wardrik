@@ -12,12 +12,12 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
 
 {:ok, _} =
   Wardrik.start_link(
-    name: MyApp.Wardrik,
+    name: MyApp.AgentRuntime,
     policy: [deny: ["shell/*"]],
     policies: [triage: [allow: ["linear/*"], allow_after: %{"outside" => ["github/add_labels"]}]]
   )
 
-scope = Wardrik.as(MyApp.Wardrik, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 ```
 
 `:policy` holds every agent. `:policies` are policies a definition may name. With `use Wardrik`,
