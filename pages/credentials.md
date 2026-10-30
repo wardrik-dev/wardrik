@@ -106,7 +106,7 @@ config :my_app, MyApp.AgentRuntime,
   mcp: [
     linear: [
       transport:
-        {:streamable_http, base_url: url, headers: %{"authorization" => {:secret, "LINEAR_TOKEN"}}}
+        {:streamable_http, url: url, headers: %{"authorization" => {:secret, "LINEAR_TOKEN"}}}
     ]
   ],
   oauth: [providers: [github: [client_id: id, client_secret: {:secret, "GITHUB_CLIENT_SECRET"}]]]

@@ -28,7 +28,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
     ],
     mcp: [
       github: [
-        transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
+        transport: {:streamable_http, url: "https://api.githubcopilot.com/mcp/"},
         credential_name: "github"
       ]
     ]

@@ -167,7 +167,7 @@ defmodule Wardrik.Operations.Owners do
            added(
              wardrik,
              key,
-             [transport: {:streamable_http, base_url: url}, prefix: name] ++
+             [transport: {:streamable_http, url: url}, prefix: name] ++
                narrowed(input) ++ reached
            ),
          {:ok, _vsn} <-

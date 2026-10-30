@@ -81,8 +81,7 @@ defmodule Wardrik.KeysTest do
       linear: [
         transport:
           {:streamable_http,
-           base_url: url,
-           headers: %{"authorization" => {:secret, "LINEAR_TOKEN"}, "x-plain" => "kept"}}
+           url: url, headers: %{"authorization" => {:secret, "LINEAR_TOKEN"}, "x-plain" => "kept"}}
       ]
     ]
 
