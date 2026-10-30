@@ -46,24 +46,44 @@ one.
 
 ### wardrik init
 
-Write `config.yaml` and the front door, keeping any file that's already there.
+Set up the front door, its model and key, and the daemon to run it. It asks what it needs, says
+what it does, and keeps any file that's already there.
 
 ```sh
-wardrik init [--org ORG] [--model MODEL]
+wardrik init [--org ORG] [--provider PROVIDER] [--model MODEL] [--key-from-env VAR] [--yes] \
+  [--no-service] [--no-ask]
 ```
 
 | Option | Means |
 | --- | --- |
 | `--org ORG` | the deployment's org; `default` unless set |
-| `--model MODEL` | the model in `defaults`; `anthropic:claude-haiku-4-5` unless set |
+| `--provider PROVIDER` | the model provider, as `anthropic`; asked at a terminal, and needed without one |
+| `--model MODEL` | the provider's model, as `claude-sonnet-5`; `claude-haiku-4-5` for Anthropic unless set, or else the provider's newest |
+| `--key-from-env VAR` | the provider's key, from the variable `VAR` |
+| `--yes` | run the daemon as a systemd user service, where there's no terminal to ask |
+| `--no-service` | start the daemon with `wardrik start`, not systemd |
+| `--no-ask` | don't ask the front door anything |
 
-It writes three files in the config directory:
+In order, it:
+
+1. says which model providers' keys the environment sets.
+2. asks for the provider, those with a key here first, and the model.
+3. reads the provider's key without showing it, unless the env file or the environment sets it.
+   Without a terminal, `--key-from-env` or the environment gives it.
+4. writes three files in the config directory, keeping any already there.
+5. starts the daemon: as a systemd user service where there's one and you say so, or else with
+   `wardrik start`. A daemon already running reads the new front door's file.
+6. seals the key in the vault as the deployment's secret, unless the env file sets it.
+7. asks the front door one short question.
 
 | File | Holds |
 | --- | --- |
 | `config.yaml` | the org, the default model, and `http.port: 4747` |
 | `agents/assistant.md` | the front door; see [The front door](/build/front-door/) |
-| `env` | a commented line for `ANTHROPIC_API_KEY`; only you can read it |
+| `env` | commented lines for `ANTHROPIC_API_KEY` and `BRAVE_API_KEY`; only you can read it |
+
+The front door has `web_search` where `BRAVE_API_KEY` is set. Elsewhere `config.yaml` says how to
+turn it on.
 
 ### wardrik doctor
 
@@ -345,7 +365,7 @@ wardrik server add NAME --url URL [--secret NAME | --oauth [--scope SCOPE]...] [
 
 | Option | Means |
 | --- | --- |
-| `--url` | required. The server's `https` URL, reached over Streamable HTTP |
+| `--url` | required. The server's full `https` endpoint, as `https://mcp.linear.app/mcp`, reached over Streamable HTTP as given |
 | `--secret NAME` | sign in with the owner's secret of that name from the vault |
 | `--oauth` | sign in in a browser |
 | `--scope` | a scope `--oauth` asks for; give it once for each |

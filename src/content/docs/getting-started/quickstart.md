@@ -9,14 +9,13 @@ give an agent a tool from your own code.
 ## 1. Install
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.1/install.sh | WARDRIK_VERSION=0.1.0-rc.1 sh
 wardrik init
-echo "ANTHROPIC_API_KEY=sk-ant-..." >> ~/.config/wardrik/env
-wardrik start
 ```
 
-`wardrik init` writes `config.yaml`, the env file and the front door,
-`~/.config/wardrik/agents/assistant.md`. [Install](/getting-started/install/) covers Docker,
+`wardrik init` asks for your model provider and its key, writes `config.yaml`, the env file and
+the front door, `~/.config/wardrik/agents/assistant.md`, starts the daemon, seals the key in the
+vault and asks the front door one question. [Install](/getting-started/install/) covers Docker,
 systemd and other models.
 
 :::tip[rik is wardrik]

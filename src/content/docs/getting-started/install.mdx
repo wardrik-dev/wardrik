@@ -44,37 +44,55 @@ on them carries on. See [Docker](#docker).
 wardrik init
 ```
 
+It asks which model provider (those whose key is set here first), which model
+(`claude-haiku-4-5` for Anthropic unless you name another), and the provider's key, which it
+doesn't show as you type. Then it writes three files, starts the daemon, seals the key in the
+vault and asks the front door one question:
+
 ```text
+Found no model provider's key here.
+Which model provider?
+...
 Wrote /home/me/.config/wardrik/config.yaml
 Wrote /home/me/.config/wardrik/agents/assistant.md
 Wrote /home/me/.config/wardrik/env
+Run the daemon as a systemd user service? [Yn]:
+Sealed ANTHROPIC_API_KEY.
+Asking the front door: In two short sentences, and without calling a tool, say what you can do for me.
 ```
 
-`wardrik init` writes three files. It never overwrites one, so it's safe to run again.
+It never overwrites a file, so it's safe to run again.
 
 | File | What it is |
 | --- | --- |
 | `config.yaml` | The daemon's settings: the org, the default model and the HTTP port |
 | `agents/assistant.md` | The [front door](/build/front-door/), the agent you ask for outcomes |
-| `env` | Variables the daemon reads, such as your model provider's key. Only you can read it. |
+| `env` | Variables the daemon reads. Only you can read it. |
 
-The model is `anthropic:claude-haiku-4-5` unless you pass `--model`. The org is `default` unless
-you pass `--org`.
+The org is `default` unless you pass `--org`. The front door has `web_search` where
+`BRAVE_API_KEY` is set; elsewhere `config.yaml` says how to turn it on.
 
-## 3. Give it your model key
+### Without a terminal
+
+Flags answer what it would ask, as in a script or `docker exec` without `-it`:
+
+```sh
+wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service --no-ask
+```
+
+`--yes` runs the daemon as a systemd user service, and `--no-service` starts it with
+`wardrik start`. See [`wardrik init`](/reference/cli/#wardrik-init).
+
+### Keep the key yourself
+
+Put the key in the env file before you run `init`, and `init` reads it from there rather than
+asking or sealing it:
 
 ```sh title="~/.config/wardrik/env"
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-## 4. Start it
-
-```sh
-wardrik service install    # a systemd user service, started now
-wardrik start              # or in the background, until wardrik stop
-```
-
-## 5. Check it
+## 3. Check it
 
 ```sh
 wardrik doctor
