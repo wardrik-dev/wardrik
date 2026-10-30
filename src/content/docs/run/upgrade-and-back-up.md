@@ -10,10 +10,11 @@ the vault's key and the store. The daemon makes the rest again.
 
 ## Upgrade
 
-Run the install script again, then restart:
+Run the install script again, then restart. Without `WARDRIK_VERSION` it installs the newest
+release, pre-releases included:
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.1/install.sh | sh
 systemctl --user restart wardrik    # or: wardrik stop && wardrik start
 ```
 
@@ -21,7 +22,7 @@ A running daemon keeps its release until it restarts. To install a particular re
 `WARDRIK_VERSION`:
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | WARDRIK_VERSION=0.1.0-rc.1 sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.1/install.sh | WARDRIK_VERSION=0.1.0-rc.1 sh
 ```
 
 `wardrik version` prints the release you're running.
@@ -36,13 +37,13 @@ still installed, it's switched back without unpacking.
 Pull the new image and start a new container on the same volume:
 
 ```sh
-docker pull ghcr.io/wardrik-dev/wardrik
+docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.1
 docker rm -f wardrik
-docker run -d --name wardrik -p 127.0.0.1:4747:4747 -v wardrik:/data ghcr.io/wardrik-dev/wardrik
+docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.1
 ```
 
-Images are tagged with each version and `latest`. `ghcr.io/wardrik-dev/wardrik:0.1.0-rc.1` stays on
-one.
+Images are tagged with each version, and `latest` with the newest that isn't a pre-release.
 
 ## Back up
 
