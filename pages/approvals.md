@@ -75,8 +75,8 @@ Wardrik.Agent.deny(scope, "acme/@maria/books", globex.id, reason: "Not before th
 #=> {:ok, [%Wardrik.Decision{id: "toolu_02...", decision: :rejected}]}
 ```
 
-  * Each waiting call is decided on its own, in any order. The agent carries on once all are
-    decided.
+  * Each waiting call is decided on its own, in any order. An approved call runs straight away,
+    and the model reads the results once all are decided.
   * An approval runs the call as the model wrote it. A `note` reaches the model beside the result.
   * A denial reaches the model as an error, with your `reason`.
   * Each decision is recorded as the scope's principal's.
