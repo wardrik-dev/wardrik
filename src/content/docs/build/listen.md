@@ -49,7 +49,7 @@ defmodule MyApp.Agents.Runs do
   """
 
   use Wardrik.Listener,
-    wardrik: MyApp.Wardrik,
+    wardrik: MyApp.AgentRuntime,
     types: ~w(wardrik.run.started wardrik.run.completed wardrik.run.failed)
 
   import Ecto.Query
@@ -103,7 +103,7 @@ defmodule MyApp.Agents.Runs do
   defp agent(event), do: String.replace(event.source, ~r{^.*?/agents/}, "")
 
   # Reads every agent, for snapshots and the head of the logs.
-  defp reader, do: MyApp.Wardrik.as("deployment", roles: [:reader], resources: ["*"])
+  defp reader, do: MyApp.AgentRuntime.as("deployment", roles: [:reader], resources: ["*"])
 end
 ```
 
@@ -116,7 +116,7 @@ explained in the embed guide's [Say who may do what](/build/embed/#4-say-who-may
 Give it to Wardrik's `listeners`, and Wardrik starts it:
 
 ```elixir title="config/config.exs"
-config :my_app, MyApp.Wardrik, listeners: [MyApp.Agents.Runs]
+config :my_app, MyApp.AgentRuntime, listeners: [MyApp.Agents.Runs]
 ```
 
 Ask an agent something, and its run is in `agent_events`:
