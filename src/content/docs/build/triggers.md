@@ -23,18 +23,18 @@ You watch the incident queue.
 ```
 
 ```sh
-wardrik reload
-wardrik triggers
+wardrik reload             # 1. read the agent files again
+wardrik trigger ls triage  # 2. list the agent's triggers
 ```
 
 ```text
-2 triggers:
-  default/triage/digest  0 17 * * 1-5 Etc/UTC  next in 3h 12m  not run yet
-  default/triage/sweep  every 30m  next in 29m  not run yet
+TRIGGER  RUNS                  NEXT       ASKS
+digest   every 0 17 * * 1-5    in 3h 12m  Write up what happened today.
+sweep    every 30m             in 29m     Check the incident queue, and say what is new.
 ```
 
-A triggered run is an ordinary message to the agent: it shows in its history, and `wardrik watch`
-follows it. Every key a trigger takes is in [Agent files](/reference/agent-files/#triggers).
+A triggered run is an ordinary message to the agent. It shows in its history, and
+`wardrik follow triage` follows it. Every key a trigger takes is in [Agent files](/reference/agent-files/#triggers).
 
 ## On a clock
 
@@ -62,8 +62,8 @@ Quote a cron expression: YAML reads a leading `*` as something else. An interval
 the trigger was set or last ran, so `1d` set at 14:20 runs at 14:20. A new trigger first runs when
 it next comes round.
 
-By default a run skips an agent that is busy, and `wardrik triggers` says so. `overlap: queue` asks
-it anyway, once the running turn ends or the waiting call is decided.
+By default a run skips an agent that is busy, and its log records the run as `busy`.
+`overlap: queue` asks it anyway, once the running turn ends or the waiting call is decided.
 
 ## Watching a feed
 
@@ -106,8 +106,8 @@ triggers:
     prompt: An event is below. If it is a new issue, label it and say who should look.
 ```
 
-The service sends to the trigger's address under `config.yaml`'s `base_url`, which
-`wardrik triggers` prints:
+The service sends to the trigger's address under `config.yaml`'s `base_url`:
+`/v1/hooks/`, the agent's ID, then the trigger's name.
 
 ```text
 https://agents.acme.example/v1/hooks/acme/triage/issues
@@ -172,8 +172,8 @@ allows it.
 tools: [web_search, files, self/*]
 ```
 
-This works for agents defined over the HTTP API. An agent declared in a file keeps the triggers its
-file lists.
+This suits agents defined over the HTTP API. An agent declared in a file gets the triggers its file
+lists back on the next `wardrik reload`.
 
 ## Hearing what it did
 
@@ -187,8 +187,17 @@ See [Send notices](/build/notices/).
 
 ## Changing and removing triggers
 
-`wardrik reload` gives each agent the triggers its file lists now and removes the rest. A changed
-`every` or `timezone` starts counting from the reload; other changes keep the next run where it was.
+`wardrik reload` gives each agent the triggers its file lists now, and removes the rest. A changed
+`every` or `timezone` starts counting from the reload. Other changes keep the next run where it was.
+
+From the command line, set or remove one trigger at a time:
+
+```sh
+wardrik trigger set triage digest --every "0 17 * * 1-5" --prompt "Write up what happened today."
+wardrik trigger rm triage digest
+```
+
+`trigger set` takes `--every`, `--timezone`, `--prompt`, `--prompt-file`, `--feed` and `--overlap`.
 
 ## Over HTTP
 
@@ -209,18 +218,17 @@ See [HTTP API](/reference/http-api/#triggers) for the routes and their answers.
 ## Details
 
 **Clock.** Cron has five fields, read on `timezone`'s clock, UTC unless it names another: minute,
-hour, day of the month, month, day of the week (0 and 7 are Sunday). Fields take `*`, numbers, ranges like `1-5`, steps like `*/15`, and lists; names
-like `MON` aren't read. Where both day fields are given, a day matching either runs. `jitter: 120`
-adds up to that many seconds to each run, so triggers on the same minute don't all fire at once.
+hour, day of the month, month, day of the week (0 and 7 are Sunday). Fields take `*`, numbers,
+ranges like `1-5`, steps like `*/15`, and lists. `@reboot` isn't a time. `jitter: 120` adds up to
+that many seconds to each run, so triggers on the same minute don't all fire at once.
 
 **Clock changes.** Where a zone's clocks go forward, a time they skip, such as 02:30, runs once at
 the first instant after the gap. Where they go back, a time they repeat runs on its first pass only,
 so `*/15` makes no run in the repeated hour. An interval counts elapsed time and takes no
 `timezone`. A changed `timezone` starts counting from the reload, as a changed `every` does.
 
-**Busy agents.** With `overlap: queue`, a running turn stops at its next step and the triggered
-message is answered in the turn after. A webhook trigger queues by default; with `overlap: skip` it
-answers `503` while the agent is busy.
+**Busy agents.** With `overlap: queue`, the triggered message waits behind the running turn. A
+webhook trigger queues by default. With `overlap: skip` it answers `503` while the agent is busy.
 
 **Missed runs.** A run more than a minute late, because the daemon was down, runs once when the
 trigger next runs, however many were missed. `missed: skip` drops them.
@@ -229,8 +237,8 @@ trigger next runs, however many were missed. `missed: skip` drops them.
 are counted at the end. A feed that hasn't changed answers with nothing. A feed that can't be read
 is tried again next run; the run fails only when none can be read.
 
-**Webhook secrets.** `secret` names a secret as `${NAME}`, read for the agent as a tool's credential
-is; see [Whose credential](/build/accounts/#whose-credential). `wardrik vault put
+**Webhook secrets.** `secret` names a secret as `${NAME}`. It's read from the vault as the agent's
+owner holds it, as a tool's credential is; see [Whose credential](/build/accounts/#whose-credential). `wardrik vault put
 ISSUES_HOOK_SECRET --org acme` gives each org its own. The address names the agent by its ID, as
 `/v1/agents/` does, so it reaches only that agent's triggers. Services' own signatures, such as
 GitHub's or Sentry's, aren't checked; leave GitHub's secret field empty or set, as you like.
@@ -247,17 +255,17 @@ with why.
 reads them a gated tool's calls wait on a person. See
 [Content from outside](/concepts/outside-content/).
 
-**Self-set triggers.** The audit records the agent as who set a trigger, and `wardrik triggers`
+**Self-set triggers.** The audit records the agent as who set a trigger, and `wardrik trigger ls`
 lists it like any other.
 
-**Cluster.** A trigger runs once in the cluster, on the node that holds it. Its next run is written
-to the store before the agent is asked, so a lost node's triggers carry on from another.
+**Restarts.** A trigger's next run is written to the store before the agent is asked, so triggers
+carry on after the daemon restarts.
 
-**Seeing triggers.** `wardrik status` and `wardrik ls` show when each agent next runs; `wardrik show`
+**Seeing triggers.** `wardrik ls` shows when each agent next runs. `wardrik trigger ls AGENT`
 lists its triggers.
 
 **Over HTTP.** Putting a whole definition again gives the agent the triggers it lists then. The body
 of a single-trigger `PUT` is the trigger without its `name`, which comes from the path.
-`GET .../definition` lists the triggers as they stand. An agent with no definition kept answers
-`404`, and a file-declared agent's triggers can't be changed over HTTP (`409`). Removing `triggers`
-from a file removes all of that agent's triggers.
+`GET .../definition` lists the triggers as they stand, with `next_runs`. An agent with no definition
+kept answers `404`. A file-declared agent's triggers can be changed over HTTP, but its file's come
+back on the next reload. Removing `triggers` from a file removes all of that agent's triggers.

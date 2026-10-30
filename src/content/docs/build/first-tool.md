@@ -12,30 +12,15 @@ proposes a post, you approve it, and your app posts it.
 You need the daemon [installed](/getting-started/install/), Node 22.18 or later, and a
 [Statuspage](https://developer.statuspage.io/) page ID and API key.
 
-## 1. Get the SDK
-
-The SDK isn't on npm yet. Build it from the repository and pack it:
-
-```sh
-git clone https://github.com/wardrik-dev/wardrik
-cd wardrik/sdks/typescript
-npm ci && npm run build && npm pack
-```
-
-`npm pack` writes `wardrik-sdk-0.0.0.tgz`.
-
-## 2. Start an app
+## 1. Start an app
 
 ```sh
 mkdir statuspage && cd statuspage
 npm init -y && npm pkg set type=module
-cp ../wardrik/sdks/typescript/wardrik-sdk-0.0.0.tgz .
-npm install zod ./wardrik-sdk-0.0.0.tgz
+npm install @wardrik/sdk@0.1.0-rc.1 zod
 ```
 
-The package file sits in the app, so a container build finds it too.
-
-## 3. Write the tool
+## 2. Write the tool
 
 ```ts title="statuspage.ts"
 import { Wardrik } from "@wardrik/sdk";
@@ -84,7 +69,7 @@ await wardrik.work({ signal: stop.signal });
 - It returns only the incident's id and link. The model doesn't need the rest.
 - `signal` aborts when the call is stopped, which ends the request.
 
-## 4. Connect it
+## 3. Connect it
 
 Make a token that may serve tools to the deployment's agents:
 
@@ -92,17 +77,20 @@ Make a token that may serve tools to the deployment's agents:
 wardrik token create statuspage --resource 'default/agent/*' --role worker
 ```
 
+`default` is the org of every agent file, unless `config.yaml` names another `org`. The secret is
+printed once.
+
 Run the app with it:
 
 ```sh
 export STATUSPAGE_PAGE_ID=... STATUSPAGE_API_KEY=...
-WARDRIK_TOKEN=wardrik_... node statuspage.ts
+WARDRIK_TOKEN=wrk_... node statuspage.ts
 ```
 
-It runs until stopped, and opens no port. The Statuspage key stays in your app; the daemon never
+It runs until stopped, and opens no port. The Statuspage key stays in your app. The daemon never
 sees it.
 
-## 5. Give an agent the tool
+## 4. Give an agent the tool
 
 ```markdown title="~/.config/wardrik/agents/status.md"
 ---
@@ -119,39 +107,47 @@ words, with no internal names.
 The call would wait without the `ask`, as the tool isn't `readOnly`. The `ask` gives the person
 deciding a reason to read.
 
-## 6. Try it
+## 5. Try it
 
 ```sh
 wardrik reload
 wardrik ask status "Checkout is failing for some customers. Post that we're investigating."
 ```
 
-The model calls `post_status`, and the call waits:
+The model calls `post_status`, and the call waits. List what waits:
 
 ```sh
-wardrik parked
+wardrik approval ls
 ```
 
 ```text
-1 waiting:
-  default/status  call_7c2e…  workers/post_status  This posts publicly on the status page.
+AGENT           CALL        TOOL                  WHY
+default/status  call_7c2e…  workers__post_status  This posts publicly on the status page.
 ```
+
+Approve it by its call ID:
 
 ```sh
-wardrik approve status
+wardrik approval approve status call_7c2e…
 ```
 
-Your app posts it. The agent is given the incident's link, and says so. Deny it instead with a
-reason, and the agent reads why. With a [Slack](/channels/slack/) notify target, the same call
-shows in a channel with **Approve** and **Deny**.
+Your app posts it. The agent is given the incident's link, and says so. To refuse it, give a
+reason, and the agent reads why:
 
-## 7. Run it as a service
+```sh
+wardrik approval deny status call_7c2e… --reason "We don't post until it's confirmed."
+```
+
+With a [Slack](/channels/slack/) notify target, the same call shows in a channel with
+**Approve** and **Deny**.
+
+## 6. Run it as a service
 
 On the daemon's machine, run the app as a systemd user service, as the daemon runs. Put its
 settings in a file only you can read:
 
 ```ini title="~/.config/statuspage.env"
-WARDRIK_TOKEN=wardrik_...
+WARDRIK_TOKEN=wrk_...
 STATUSPAGE_PAGE_ID=...
 STATUSPAGE_API_KEY=...
 ```
@@ -183,7 +179,7 @@ On another machine, or in a container, see [Host your tools](/build/host-tools/)
 
 ## What you built
 
-- **Your key, your process.** The daemon decides the call; your app makes it.
+- **Your key, your process.** The daemon decides the call. Your app makes it.
 - **Nothing posts without a person.** The policy holds every post until someone approves it.
 - **No double posts.** If your app restarts during a post, the call isn't run again on its own: it
   waits for a person. See [Deploys and restarts](/build/host-tools/#deploys-and-restarts).

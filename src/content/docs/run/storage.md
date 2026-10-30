@@ -1,30 +1,26 @@
 ---
 title: Storage
-description: "Keep agents, events, files and secrets on the daemon's own disk, in Postgres, or in an S3 bucket."
+description: "Keep agents, events, files and secrets on the daemon's own disk, or in Postgres."
 sidebar:
   order: 1
 ---
 
 The daemon keeps everything in one store: agents and conversations, triggers, events, files, the
-ledger, tokens and sealed credentials. Where the store lives decides what a node needs to keep
-going.
+ledger, tokens and sealed credentials. `storage` in `config.yaml` says where.
 
-| Store | Kept | A cluster needs |
+| Store | Where it lives | Pick it when |
 | --- | --- | --- |
-| On disk, the default | on each node, copied to the others | more than half its nodes up |
-| Postgres | in one table | the database |
-| An S3 bucket | under one prefix | the bucket |
+| On disk, the default | SQLite under `~/.local/share/wardrik/store` | one machine you back up |
+| Postgres | one table, `wardrik_store` | the store should outlive the machine |
 
-`storage` in `config.yaml` names the store. It's read as the daemon starts, and `wardrik doctor`
-checks it, running or not.
+The daemon reads `storage` as it starts. `wardrik doctor` checks it, running or not.
 
 ## On disk
 
-Without `storage`, the store is SQLite under `~/.local/share/wardrik/store`, or `WARDRIK_DATA_DIR`.
+Leave `storage` out. The store is SQLite under `~/.local/share/wardrik/store`. `WARDRIK_DATA_DIR`
+moves it.
 
-In a cluster every node holds everything. A write lands once more than half the nodes have it, so
-three nodes carry on with one lost, and two stop when either is. See
-[Run a cluster](/run/cluster/#quorum).
+Back it up as [Upgrade and back up](/run/upgrade-and-back-up/#a-store-on-disk) shows.
 
 ## In Postgres
 
@@ -34,69 +30,46 @@ storage:
     url: ${DATABASE_URL}    # postgres://user:pass@host/db
 ```
 
-The daemon creates its table as it starts. Point it at the primary: it reads what it just wrote, and
-a replica may not have it yet. Add `?ssl=true` to the URL for TLS.
-
-## In an S3 bucket
-
-```yaml title="~/.config/wardrik/config.yaml"
-storage:
-  s3:
-    bucket: wardrik
-    endpoint: https://<account>.r2.cloudflarestorage.com
-    region: auto
-    access_key_id: ${R2_ACCESS_KEY_ID}
-    secret_access_key: ${R2_SECRET_ACCESS_KEY}
-```
-
-The bucket must refuse a write whose condition fails, or two nodes could lose each other's writes.
-The daemon checks this as it starts, and refuses a bucket that doesn't. Cloudflare R2 and MinIO
-pass.
+- The daemon creates its table as it starts.
+- Point it at the primary. The daemon reads what it just wrote, and a replica may not have it yet.
+- Add `?ssl=true` to the URL for TLS. The certificate is checked against the system's.
+- `${NAME}` in `storage` comes from the environment or the env file, never the vault, since the
+  vault lives in the store.
 
 ## Move to a new machine
 
-On Postgres or a bucket, the daemon keeps nothing of the store on its disk. Point a new machine at
-the same store and it carries on with its agents.
+On Postgres, the store isn't on the daemon's disk. Point a new machine at the same database and
+it carries on with its agents.
 
-There's no tool to move a store from one kind to another.
+The vault's key is still on the old machine. Give the new one the same key, or it can't read the
+credentials the old one sealed. Do one of:
+
+- Copy `~/.local/share/wardrik/vault_key` across.
+- Set the same `WARDRIK_VAULT_KEY` in the new machine's env file.
+- List the key under `vault.keys` in `config.yaml`.
+
+There's no tool to move a store from disk to Postgres, or back.
 
 ## Details
 
-### Postgres
+### What `wardrik doctor` checks
 
-The daemon connects with a pool of its own. It creates `wardrik_records` and records the migration
-in `wardrik_schema_migrations`. With `?ssl=true` the certificate is checked against the system's.
+```
+ok    storage        keeps everything in Postgres at db.internal:5432/wardrik
+```
+
+For Postgres, it checks that the host answers on its port. It doesn't log in. For the disk, it
+names the directory.
+
+### Postgres tables
+
+| Table | Holds |
+| --- | --- |
+| `wardrik_store` | every record, as `key`, `value` and `vsn` |
+| `wardrik_store_migrations` | the migrations the daemon has run on it |
+
+The daemon connects with a pool of its own.
 
 ### Buckets
 
-- `region` is `us-east-1` unless set.
-- Everything is kept under `wardrik/`, or `prefix`.
-- Requests are path-style, to `endpoint/bucket/key`.
-- The start-up check writes a probe under `wardrik/probe/`, and makes sure the bucket refuses to
-  overwrite it without its current version. A bucket that fails says what it did:
-
-  ```
-  the bucket wardrik at https://...: the bucket wrote a key where one was already written, so it cannot hold the store
-  ```
-
-- A bucket that ignores the condition on a delete, as MinIO does, gets deletes written as empty
-  records, which stay in the bucket.
-
-### What is kept where
-
-Each kind of record has its own namespace:
-
-| Namespace | What |
-| --- | --- |
-| `durable` | agents, as `agents/<resource name>`; triggers; budget meters; each node's heartbeat |
-| `events` | each agent's event log, for 30 days |
-| `files` | agents' files, as `<tree>//<path>` |
-| `claims` | the ledger, until each turn ends |
-| `tokens` | the HTTP API's tokens, as hashes |
-| `vault` | sealed credentials, as `<resource name>`: `acme/@jon/secret/github` |
-| `mcp_tools` | the tools each MCP server listed |
-| `oauth_clients` | the clients the daemon registered with OAuth providers |
-| `declared` | each node's inventory: the agents its agent files declared when last read, and which file each came from |
-
-In a bucket a record is the object `<prefix>/<namespace>/<key>`, so an agent is
-`wardrik/durable/agents/acme/@jon/agent/triage`. In Postgres, `ns` is the namespace and `key` the key.
+The daemon doesn't keep its store in a bucket. It refuses `storage.s3` as it starts.

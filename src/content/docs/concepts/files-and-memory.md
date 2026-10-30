@@ -5,9 +5,9 @@ sidebar:
   order: 5
 ---
 
-An agent with `files` in its tools has a tree of files of its own. The tree is kept in the store, so
-its notes survive the node it was on. Name a file in `context`, and the agent reads it at the start
-of every turn: that's its memory.
+An agent with `files` in its tools has a tree of files of its own. The tree is kept in the store,
+so its notes survive the node it was on. Name a file in `context`, and the agent reads it at the
+start of every turn. That's its memory.
 
 ```yaml
 tools: [files]
@@ -120,7 +120,6 @@ the agent's notes gets around the policy.
 - **Policy on files.** A rule names a file tool's call by its path, or by the glob for `list_files`
   and `search_files`, as in `allow: [write_file(notes/*)]`. No file tool is gated. See
   [Writing rules](/concepts/rules/#what-a-call-acts-on).
-- **Seeing an agent's files.** The CLI and the HTTP API don't read or write them; ask the agent. A
-  tree belongs to the agent's key, so an agent removed and started again under the same key finds
-  its files. Files are kept in the store's `files` namespace: an agent's `MEMORY.md` is
-  `agents/acme/@jon/agent/triage//MEMORY.md`. See [Storage](/run/storage/).
+- **Seeing an agent's files.** The CLI and the HTTP API don't read or write them; ask the agent.
+- **Whose tree.** A tree belongs to the agent's ID, and its conversations, such as Slack threads,
+  share it. Files are kept in the store; see [Storage](/run/storage/).

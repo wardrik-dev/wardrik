@@ -1,12 +1,9 @@
 ---
 title: "Policies"
 description: "A policy decides each tool call an agent makes before it runs: the call runs, waits on a person, or is refused, and the model is told why."
-editUrl: "https://github.com/wardrik-dev/wardrik/edit/main/packages/wardrik/guides/policies.md"
 sidebar:
   order: 4
 ---
-
-<!-- Written by mix wardrik.docs from packages/wardrik/guides/policies.md. Edit it there, not here. -->
 
 A policy decides each tool call an agent makes before it runs: the call runs, waits on a person, or
 is refused, and the model is told why.
@@ -21,8 +18,12 @@ default: allow
 ```
 
 A policy is a file in `policies/` under the config directory, which an agent names, or rules an
-agent file writes in place. See [Policy and approvals](/concepts/policy/)
-for how to choose them.
+agent file writes in place. See [Policy and approvals](/concepts/policy/) for how to choose them.
+
+- A file is `NAME.yaml` or `NAME.yml`, and an agent names it as `policy: NAME`.
+- The daemon reads `policies/` as it starts, so restart it after a change. A file that doesn't read
+  stops the daemon, and says why.
+- An empty file doesn't read. A policy that allows every call says `default: allow`.
 
 ## Keys
 
@@ -31,7 +32,7 @@ for how to choose them.
 | `allow` | patterns, or a map of pattern to message | calls that run |
 | `ask` | patterns, or a map of pattern to message | calls that wait on a person |
 | `deny` | patterns, or a map of pattern to message | calls that are refused |
-| `default` | `allow`, `ask` or `deny` | what decides a call no rule names; `allow` unless set |
+| `default` | `allow`, `ask` or `deny`, or a map of annotation to one of them | what decides a call no rule names; `allow` unless set; see [Defaults by annotation](#defaults-by-annotation) |
 | `allow_after` | a map of label to patterns, or to a map of pattern to message | calls allowed by name even after the run has read what the label marks; see [After content from outside](#after-content-from-outside) |
 | `budget` | a budget | what the agent may spend; see [Budgets](#budgets) |
 | `judge` | a judge | questions a model answers about each call; see [Judges](#judges) |
@@ -43,7 +44,8 @@ says "github/create_issue needs your approval." and a deny "shell/exec is not al
 
 A pattern names tools. A tool of an MCP server is named as `server/tool`, so `github/*` is every
 tool of the server `config.yaml` calls `github`, and `*` alone is every tool. `*` stands for any run
-of characters, `/` included, and is the only wildcard.
+of characters, `/` included, and is the only wildcard. The model sees a server's tool as
+`github__create_issue`; a pattern names it either way.
 
 | Pattern | Names |
 | --- | --- |
@@ -102,6 +104,22 @@ call no rule names is decided by `default`.
 A rule naming what a call acts on decides it when it is a `deny` or an `ask`. An `allow` lets the
 call run only where allow rules name everything it acts on; otherwise `default` decides.
 
+### Defaults by annotation
+
+`default` may depend on the tool's annotations, as a map of annotation to `allow`, `ask` or `deny`:
+
+```yaml
+allow: [write_file(notes/*)]
+default:
+  read_only: allow
+  else: ask
+```
+
+Where a tool has several of the annotations, the strictest decides. `else` decides a tool with none
+of them, and is `allow` unless set.
+
+### Model calls
+
 The rules decide tool calls only. Every model call passes them, and a [budget](#budgets) is what
 limits model calls.
 
@@ -147,6 +165,7 @@ budget:
 | `per` | `turn`, `day`, `week`, `month`, or `total` for the agent's whole life; `day` unless set |
 | `timezone` | the time zone a day, week or month begins in, by its IANA name, as `Europe/Berlin`; `Etc/UTC` unless set |
 | `grant` | how much more a person's approval allows, as `usd` and `tokens`; another of each limit unless set |
+| `price` | dollars per million tokens, as `input` and `output`, for a model call that reports no cost |
 | `on_exhausted` | `ask` parks the agent until a person approves more; `deny` ends the turn; `ask` unless set |
 
 A budget sets `usd`, `tokens`, or both, and is spent when either is. Days, weeks and months are
@@ -155,8 +174,12 @@ is 23 or 25 hours long, and a changed `timezone` can start the current period ov
 
 The limits are checked before each model call against what the calls before it spent, so the call
 that crosses one runs and the next stops. Tool calls are counted and never refused. A budget in
-dollars refuses a model whose price isn't known; a token limit governs one, or one a subscription
-pays for.
+dollars refuses a model whose price isn't known, unless it sets `price`; a token limit governs one,
+or one a subscription pays for. `config.yaml`'s [`models`](/reference/config/#models) prices a model
+the catalog lacks.
+
+A policy an org is held to, through `config.yaml`'s [`orgs`](/reference/config/#orgs), has one
+budget all of the org's agents spend from together. `GET /v1/ceilings` reads what they've spent.
 
 ## Judges
 
@@ -180,11 +203,13 @@ judge:
 | `model` | an evaluation model, `typesafe:jev-latest` unless set |
 | `questions` | the questions; each takes the keys below |
 | `question` | what the model is asked about the call |
-| `tools` | the patterns of the calls it is asked about; every call unless set |
-| `deny` | refuse the call at or above this probability |
+| `tools` | the tools it is asked about, as `books/*`, without arguments; every tool unless set |
+| `deny` | refuse the call at or above this probability, from 0 to 1 |
 | `ask` | ask a person first at or above this probability |
 | `allow` | allow the call by name below this probability, where the run has read nothing from outside |
 | `message` | what the person is asked, or the model told, in place of the question |
+
+A question needs at least one of `deny`, `ask` and `allow`.
 
 Across questions and rules, deny is over ask over allow: a judge's allow never lifts a call a rule
 asks about or denies. A judge that can't answer asks a person where one of its questions could ask

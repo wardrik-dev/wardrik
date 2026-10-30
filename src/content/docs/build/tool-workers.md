@@ -7,7 +7,7 @@ sidebar:
 ---
 
 A tool worker is your own app offering agents tools. The tools run in your process, with your code,
-data and keys. Your app dials the daemon, so the daemon needs no way to reach it.
+data and keys. Your app connects to the daemon, so the daemon needs no way to reach it.
 
 ```ts
 import { Wardrik } from "@wardrik/sdk";
@@ -27,8 +27,9 @@ wardrik.tool({
 await wardrik.work();
 ```
 
-An agent whose file lists `workers/*` can now call `refund_order`. Its policy decides each call
-first, so a refund waits for a person unless the policy allows it.
+An agent whose file lists `workers/*`, and that the worker's token reaches, can now call
+`refund_order`. Its policy decides each call first, so a refund waits for a person unless the policy
+allows it.
 
 | Who | Does |
 | --- | --- |
@@ -36,8 +37,14 @@ first, so a refund waits for a person unless the policy allows it.
 | The daemon | decides each call by the agent's policy, and records it |
 | A person | approves or denies the calls that wait |
 
-The SDK is `@wardrik/sdk`, for Node 22.18 or later, Bun or Deno, with `zod` 4. It isn't on npm yet:
-[Your first tool](/build/first-tool/#1-get-the-sdk) builds it from the repository.
+Install the SDK and `zod` 4.2 or later. It runs on Node 22.18 or later, Bun or Deno:
+
+```sh
+npm install @wardrik/sdk@0.1.0-rc.1 zod
+```
+
+Give the app a token with the `worker` role, as `WARDRIK_TOKEN`. [Your first
+tool](/build/first-tool/#3-connect-it) makes one.
 
 ## In this section
 

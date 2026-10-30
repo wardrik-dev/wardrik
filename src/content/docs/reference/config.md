@@ -1,12 +1,9 @@
 ---
 title: "config.yaml"
 description: "What the daemon reads as it starts: the deployment's orgs and address, the MCP servers and channels agents reach, where secrets and the store are kept, and the defaults agents are given."
-editUrl: "https://github.com/wardrik-dev/wardrik/edit/main/packages/wardrik_daemon/guides/config.md"
 sidebar:
   order: 2
 ---
-
-<!-- Written by mix wardrik.docs from packages/wardrik_daemon/guides/config.md. Edit it there, not here. -->
 
 What the daemon reads as it starts: the deployment's orgs and address, the MCP servers and channels
 agents reach, where secrets and the store are kept, and the defaults agents are given.
@@ -37,7 +34,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    admins: ["@jon"]
+    approvers: ["@maria"]
 
 notify:
   ops:
@@ -46,19 +43,21 @@ notify:
     approvers: ["@maria"]
 ```
 
-The file is `config.yaml` or `config.yml`, in YAML 1.2; a directory holding both is refused. The
-daemon reads it as it starts, so restart it after a change. It refuses a file with a variable that
-isn't set, a key nothing takes, or a name it doesn't define, and says where.
+- The file is `config.yaml` in the config directory. Without it, every key takes its default.
+- The daemon reads it as it starts, so restart the daemon after a change.
+- A key it doesn't know, a value of the wrong shape, or a `${NAME}` nothing sets stops the daemon,
+  and it says where. `wardrik doctor` checks the file without starting anything.
 
 ## Secrets
 
-`${NAME}` in any string is replaced with that environment variable or, where the environment doesn't
-set it, the deployment's secret of that name in the vault, which `wardrik vault put NAME` seals.
-Either way the file holds no secret.
+`${NAME}` in any string is replaced with, in order:
 
-`storage`, `cluster`, `http` and `vault` read the environment alone, since they are read before the
-vault can be opened. The environment is the daemon's, with the env file's variables where it doesn't
-set them.
+1. the environment variable `NAME`, or one the [env file](#directories) sets;
+2. the deployment's secret `NAME` in the vault, which `echo "$VALUE" | wardrik vault put NAME`
+   seals.
+
+So the file holds no secret. `vault`, `http` and `storage` are read before the vault opens, so
+they take the environment and env file alone.
 
 ## Keys
 
@@ -67,25 +66,26 @@ set them.
 | [`org`](#org) | the deployment's org |
 | [`orgs`](#orgs) | the other orgs, what each uses, and the policy each is held to |
 | [`base_url`](#base_url) | the address people and services reach the daemon at |
-| [`defaults`](#defaults) | what an agent is given where nothing else says |
-| [`tools`](#tools) | what calls to a tool cost |
+| [`defaults`](#defaults) | what an agent is given where its definition says nothing |
+| [`models`](#models) | prices for models the catalog lacks |
 | [`mcp`](#mcp) | MCP servers whose tools agents may call |
 | [`oauth`](#oauth) | providers people connect accounts with |
-| [`channels`](#channels) | chat media agents are reached through, such as Slack |
+| [`channels`](#channels) | chat apps agents are reached through, such as Slack |
 | [`notify`](#notify) | where agents' notices go |
 | [`workspace`](#workspace) | the trees of files agents beyond their owners may share |
-| [`tokens`](#tokens) | how long tokens last |
-| [`vault`](#vault) | the vault's keys |
 | [`brave`](#brave) | the key web search searches with |
-| [`storage`](#storage) | the store everything is kept in |
-| [`cluster`](#cluster) | the other daemons this one runs with |
+| [`vault`](#vault) | the vault's keys |
 | [`http`](#http) | where the HTTP API listens |
-| [`ssh`](#ssh) | where the terminal client listens |
+| [`storage`](#storage) | the store everything is kept in |
+
+`tools`, `tokens`, `cluster` and `ssh` are [not read yet](#keys-not-read-yet).
 
 ## org
 
-The org an agent belongs to where its file names none, and the one the CLI finds an agent in when
-it is named without an org. `default` unless set.
+The deployment's org. `default` unless set.
+
+- An agent file belongs to it. A file that names another `org` doesn't read.
+- The CLI finds an agent named without an org in it.
 
 ## orgs
 
@@ -118,57 +118,79 @@ orgs:
     channels: [growth-slack]
 ```
 
-- An org's entry takes `mcp`, `channels` and `notify`, each a list of names, and `policy`. An
-  entry may be empty, `growth: {}`.
-- `policy` names a policy in `policies/` that every agent of the org is held to, ahead of its own,
-  whether a file, the HTTP API or a channel defined it. A definition can narrow it, never widen it.
-  Its budget is the org's: all of the org's agents spend from it together.
-  An org whose policy `policies/` doesn't hold runs none of its agents.
-- `"*"` lists what every org uses, and its `policy` holds every org, beside the org's own; each
-  org spends its budget apart.
+| Key | Means |
+| --- | --- |
+| `mcp` | the servers of `mcp` the org's agents use, by name |
+| `channels` | the channels of `channels` that serve the org's agents, by name |
+| `notify` | the targets of `notify` that tell the org's agents, by name |
+| `policy` | a policy in `policies/` every agent of the org is held to |
+
+- An org's name is letters, digits, `_`, `.` and `-`. `deployment` is taken. An entry may be
+  empty: `growth: {}`.
+- `"*"` is every org. What it lists, every org uses, and its `policy` holds every org beside the
+  org's own.
 - A server, channel or target no entry lists is the deployment's own org's.
-- An agent, a secret, a token's scope or a shared tree in an org that is neither `org` nor in
-  `orgs` is refused, as is a name its section doesn't define.
+- A channel serves one org, or every org where `"*"` lists it. Two orgs listing one channel is an
+  error.
+- `policy` holds every agent of the org, ahead of its own, however it was defined. A definition can
+  narrow it, never widen it. An org whose policy `policies/` doesn't hold runs none of its agents.
+- A policy's budget is the org's: all of its agents spend from it together. Each org spends `"*"`'s
+  budget apart from the others. A budget `per: turn` stays each agent's own.
+- An agent, secret or token in an org that is neither `org` nor in `orgs` is refused.
 
 Each org's agents reach a server with their org's own credential, so payments and growth each seal a
-`GITHUB_TOKEN` of their own, and a `SEARCH_API_KEY` for the server every org uses. See
-[Credentials](#credentials).
+`GITHUB_TOKEN` of their own. See [Credentials](#credentials).
 
 ## base_url
 
-The deployment's address as people and services reach it through whatever is in front of the
-daemon: an `https://` URL, or `http://` on loopback. Webhook triggers are sent requests under it, at
-`/v1/hooks/`, and a provider sends a browser back to `{base_url}/oauth` unless `oauth.redirect.url`
-says otherwise. Without it the deployment is this machine's loopback.
+Where people and services reach the deployment, through whatever is in front of the daemon. The
+HTTP API's own URL unless set.
+
+- Webhook triggers are sent requests under it, at `/v1/hooks/`.
+- A provider sends a browser back to `{base_url}/oauth` after a sign-in.
 
 ## defaults
 
-What an agent is given where its file says nothing, what an agent nothing defines starts from, and
-what `wardrik agent spawn --file` writes into a new file. It takes `model`, `tools`, `policy`, `timeout`, `idle_timeout`, `max_iterations`, `retries` and
-`compaction`, as an [agent file](/reference/agent-files/) does. Where neither sets them, `idle_timeout` is
-900 seconds, and [`retries`](/reference/agent-files/#retries) tries a failed model call six more times,
-waiting at most a minute between tries, then asks a person. `wardrik init` writes `model`.
+What every agent is given where its definition says nothing. It takes the keys an
+[agent file](/reference/agent-files/) does, such as `model`, `tools` and `policy`. It holds agent
+files and definitions sent over the HTTP API alike. `wardrik init` writes `model`.
 
-## tools
+Where neither the definition nor `defaults` sets them:
 
-What one call to a tool costs, in US dollars, for a tool that doesn't report its own cost, such as
-an MCP server's. A budget counts it.
+| Key | Default |
+| --- | --- |
+| `idle_timeout` | `900` seconds |
+| `max_iterations` | `25` |
+| `timeout` | none |
+| [`retries`](/reference/agent-files/#retries) | `attempts: 6`, `max_wait: 60`, `on_exhausted: ask` |
+
+## models
+
+Prices for models the catalog lacks, by model spec, in US dollars per million tokens. A budget in
+dollars counts them.
 
 ```yaml
-tools:
-  web_search:
-    price: 0.005
-  github/*:
-    price: 0.001
+models:
+  zai:glm-5.1:
+    input: 0.60
+    output: 2.20
+  zai_coding_plan:glm-5.1:
+    priced_as: zai:glm-5.1
+    markup: 0.1
 ```
 
-A tool is named as a [policy](/reference/policies/) names one. A name given whole wins
-over a pattern, and a longer pattern over a shorter.
+| Key | Means |
+| --- | --- |
+| `input`, `output` | dollars per million input and output tokens |
+| `cache_read`, `cache_write` | dollars per million cached tokens read and written |
+| `priced_as` | another model whose price this one takes, in place of the rates |
+| `markup` | a share added to the price, as `0.1` for 10% |
 
 ## mcp
 
-MCP servers, each by a name of the deployment's own, which is how agents and policies name its
-tools: `linear/*`. A server is run as a command, with `command`, or reached over HTTP, with `url`.
+MCP servers, each by a name of your own, which is how agents and policies name its tools:
+`linear/*`. A server is run as a command, with `command`, or reached over HTTP, with `url`; not
+both.
 
 ```yaml
 mcp:
@@ -183,81 +205,99 @@ mcp:
 
 | Key | Means |
 | --- | --- |
-| `command`, `args`, `env`, `cwd` | the command that runs the server |
-| `url`, `headers` | where the server is reached over HTTP |
-| `only`, `except` | the tools it offers, by the names the server gives them |
+| `command`, `args`, `env` | the program that runs the server over stdio |
+| `url`, `headers` | where the server is reached over Streamable HTTP |
+| `only`, `except` | the server's tools to offer, or to leave out, by the names it gives them; every tool unless set |
 | `prefix` | what its tool names start with; the server's name unless set |
-| `timeout` | seconds a call may take; 60 unless set |
-| `max_result_bytes` | how much of a call's answer reaches the model; 128 KB unless set |
-| `gated` | the tools whose calls wait on a person unless a rule allows them by name; `true` or `false` for all or none; every tool the server doesn't mark read-only unless set |
-| `trusted` | `true` where the server's answers are the deployment's own, so they aren't labelled `outside` |
-| `credential` | the name of the credential the server is reached with |
-| `credential_header`, `credential_scheme` | the header a credential is sent in and its scheme; `authorization` and `Bearer` unless set |
+| `timeout` | seconds a call may take; `60` unless set |
+| `max_result_bytes` | how much of a call's answer reaches the model; `131072` unless set |
+| `gated` | the tools whose calls wait on a person unless a rule allows them by name, as `[create_*]`; `true` or `false` for all or none; every tool the server doesn't mark read-only unless set |
+| `trusted` | `true` where the server's answers are the deployment's own, so they aren't labelled `outside`; `false` unless set |
+| `credential` | the name of the credential each owner reaches the server with |
+| `credential_header`, `credential_scheme` | the header a credential is sent in, and its scheme; `authorization` and `Bearer` unless set |
 | `credential_env` | the variable a credential is given to a command in |
 
-A server's name and `prefix` may not hold `__`. It serves the orgs that [`orgs`](#orgs) lists it
-for. See
+A server serves the orgs that [`orgs`](#orgs) lists it for. `cwd` isn't supported yet. See
 [Connect MCP servers](/build/mcp/).
 
 ### Credentials
 
-A credential is sealed in the vault and found for each call as the agent's owner holds it: the user
-it works for (`wardrik vault put NAME --user USER`), or its org (`--org ORG`) for an agent that
-works for nobody. One owner never reads another's. The deployment's own (`wardrik vault put NAME`)
-and the daemon's environment reach no agent: they are for model providers' keys and `${NAME}` in
-this file. Where the owner holds none and `oauth` has a provider of the same name, the owner is
-asked to connect an account. See [Connect
-accounts](/build/accounts/).
+A credential is sealed in the vault, and found for each call as the agent's owner holds it:
+
+- an agent that works for a user takes the user's (`wardrik vault put NAME --user USER`);
+- any other agent takes its org's (`--org ORG`).
+
+One owner never reads another's. The deployment's own secrets (`wardrik vault put NAME`) and the
+daemon's environment reach no agent: they are for model providers' keys and `${NAME}` in this file.
+Where the owner holds none and `oauth` has a provider of the same name, the owner is asked to
+connect an account. See [Connect accounts](/build/accounts/).
 
 ## oauth
+
+`providers` names a provider for each credential people connect, named like the credential.
 
 ```yaml
 oauth:
   providers:
     github:
-      resource: https://api.githubcopilot.com/mcp/
       issuer: https://github.com/login/oauth
       client_id: ${GITHUB_CLIENT_ID}
       client_secret: ${GITHUB_CLIENT_SECRET}
       scopes: [repo]
+      flow: device
 ```
-
-`providers` names a provider for each credential people connect, `client` what a provider's consent
-screen shows (`name`, `client_uri`, `logo_uri` and the like), and `redirect` where a provider sends
-the browser back. `redirect.url` is an `https://` URL served by something in front of the daemon,
-which passes requests on to the HTTP API as they came; each provider is under `callback/NAME`.
-Without it, the callback is `{base_url}/oauth`, which the HTTP API serves. See [A public
-address](/run/public-address/).
-
-## channels
-
-Chat media agents are reached through, each by a name of the deployment's own: lower-case letters,
-digits and `-`, beginning with a letter, and none of `shell`, `ssh`, `terminal` or `oauth`. Its
-people are known by it, as `slack:T0123/U024BE7LH`.
 
 | Key | Means |
 | --- | --- |
-| `type` | the kind of channel, such as `slack` |
-| `token` | the token it acts with in the one workspace it reaches, such as a Slack bot token; without one, nothing is posted |
-| `approvers` | who decides what an agent waits on in its rooms: the people named, or `anyone` in the channel; where none are named, whoever asked for the turn decides, and a shell decides the rest |
-| `admins` | who may change its orgs' agents, where `defaults` name a policy, which holds every agent they define |
-| `create` | `false` stops people creating an agent in a room that has none; where `defaults` name a policy, one is made from them unless set |
+| `issuer` | the authorization server's issuer URL |
+| `resource` | the resource the token is for |
+| `client_id`, `client_secret` | the OAuth app registered with the provider |
+| `authorization_endpoint`, `token_endpoint` | the provider's endpoints, where the issuer publishes no metadata |
+| `scopes` | the scopes to ask for |
+| `flow` | `browser` or `device` |
+| `client_auth` | how the client secret is sent: `post` or `basic` |
 
-The rest of a channel's keys are its kind's, such as Slack's `signing_secret` and `app_token`. What
-its medium sends it over HTTP reaches the daemon at `/v1/channels/NAME/`; see [`http`](#http). A
-channel
-offers the agents of the orgs that [`orgs`](#orgs) lists it for. An agent is offered in a channel's
-rooms where its definition lists the channel.
+A provider sends a browser back to `{base_url}/oauth`, which the HTTP API serves. `oauth.client`
+and `oauth.redirect` aren't supported yet. See [A public address](/run/public-address/).
 
-Everyone in a channel holds the roles `reader` and `messenger` on the agents of its orgs: they read
-them and send them messages. Its approvers hold `approver` too, and its admins `approver` and
-`definer`. A role is a named set of actions; see [`tokens`](#tokens). See
-[Channels](/channels/) and
-[Slack](/channels/slack/).
+## channels
+
+Chat apps agents are reached through, each by a name of your own: lower-case letters, digits and
+`-`, starting with a letter. `shell`, `ssh`, `terminal` and `oauth` are taken.
+
+```yaml
+channels:
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}
+    app_token: ${SLACK_APP_TOKEN}
+    approvers: ["@maria"]
+```
+
+| Key | Means |
+| --- | --- |
+| `type` | required. The kind of channel: `slack` |
+| `token` | the bot's token for the one workspace it reaches; without one, the channel keeps a token in the vault for each workspace it's added to |
+| `approvers` | who may decide what agents wait on: `@handle`s, or `anyone`; `[]` unless set |
+| `signing_secret` | Slack's signing secret, to take its requests over HTTP at `/v1/channels/NAME/` |
+| `app_token` | a Slack app-level token, to take its requests over Socket Mode instead |
+| `client_id`, `client_secret`, `redirect_uri` | a Slack app added to many workspaces |
+
+- Everyone in a channel may read and message the agents it serves.
+- Its approvers may also decide what those agents wait on. Whoever asked for a turn may decide what
+  that turn waits on.
+- An agent is offered in a channel's rooms where its definition's
+  [`channels`](/reference/agent-files/#channels) lists the channel.
+- A channel serves the deployment's own org, unless [`orgs`](#orgs) gives it to another, or to
+  every org.
+- `admins` and `create` aren't supported yet.
+
+See [Channels](/channels/) and [Slack](/channels/slack/).
 
 ## notify
 
-Targets an agent's `notify` sends notices to, each a room of a channel or a webhook.
+Targets an agent's [`notify`](/reference/agent-files/#notify) sends notices to, each a room of a
+channel or a webhook. A target's name can't hold `:`.
 
 ```yaml
 notify:
@@ -271,17 +311,20 @@ notify:
       secret: ${WARDRIK_WEBHOOK_SECRET}
 ```
 
-A room target takes `channel`, which names a `token` to post with, `room`, and `approvers`, who may
-answer it. A webhook takes `url` and
-optionally `secret`. A target tells the agents of the orgs that [`orgs`](#orgs) lists it for. An
+| Target | Keys |
+| --- | --- |
+| a room | `channel`, one of `channels`; `room`; and optional `approvers`, who may answer it |
+| a webhook | `webhook`, with `url` and an optional `secret` |
+
+A target tells the deployment's own org's agents, unless [`orgs`](#orgs) lists it for others. An
 agent's `notify` may also name a room of a channel itself, as `slack:#updates`, with no target
 here. See [Send notices](/build/notices/).
 
 ## workspace
 
 `shared` names the trees agents beyond their owners may mount, each with the agents, by resource
-pattern, that may `read` it and those that may `write` it. An agent still names each tree it mounts in its
-own [`workspace`](/reference/agent-files/#workspace).
+pattern, that may `read` it and those that may `write` it. An agent still names each tree it mounts
+in its own [`workspace`](/reference/agent-files/#workspace).
 
 ```yaml
 org: acme
@@ -290,114 +333,95 @@ workspace:
   shared:
     acme/runbooks:
       read: ["acme/*"]                             # every agent in acme, its users' included
-      write: [acme/agent/ops, "acme/agent/ops/*"]  # the org's ops agent, in every thread
+      write: [acme/agent/ops, "acme/agent/ops/*"]  # the org's ops agent, in every conversation
 ```
-
-## vault
-
-`keys` lists the vault's keys. Without them, or `WARDRIK_VAULT_KEY`, the key is `vault_key` in the
-data home, which the first `wardrik vault put` offers to make.
 
 ## brave
 
-`api_key` is the key `web_search` searches with, for every agent the daemon runs:
+`api_key` is the key `web_search` searches with, for every agent the daemon runs.
 
 ```yaml
 brave:
   api_key: ${BRAVE_API_KEY}
 ```
 
-`${BRAVE_API_KEY}` reads the environment, else the deployment's secret, which `wardrik vault put
-BRAVE_API_KEY` seals. Without `brave`, a search answers that the key is missing.
+`${BRAVE_API_KEY}` reads the environment, else the deployment's secret, which
+`wardrik vault put BRAVE_API_KEY` seals. Without `brave`, a search answers that the key is missing.
 
-## tokens
+## vault
 
-A token says who acts and what they may do. Each of its statements allows some actions, such as
-`agent.ask`, on the resources a pattern covers, and anything none allows is denied. A resource is
-named as IAM names one: `acme/agent/triage` is acme's agent `triage`, `acme/@jon/secret/github`
-jon's GitHub account, `deployment/token/…` a token. In a pattern `*` matches anything, `/` too, and
-`?` one character: `acme/agent/*` is acme's own agents, `acme/*` everything of acme's and its
-users', `*` everything. A role is a named set of actions: `reader`, `messenger`, `approver`,
-`definer`, `worker` and `owner`, which is every action. A shell on the server holds `owner` on `*`.
-`wardrik token create` makes a token for the HTTP API, which acts for whoever made it:
-
-```sh
-wardrik token create ci --resource 'acme/agent/*' --role reader,messenger --expires 30d
-```
-
-A token may name a policy of `policies/`, with `--policy`: every agent it defines runs under it,
-ahead of its own, read by its name each time the agent starts. It is what IAM calls a permissions
-boundary.
-
-Every token expires. Each setting is a duration, as `90d`, `12h`, `30m` or `45s`:
-
-- `expires.api` is how long a token for the HTTP API lasts where `--expires` doesn't say. `90d`
-  unless set. Once expired, it is refused.
-- `expires.session` is how long a token the daemon issues lasts: a shell's, the terminal client's,
-  someone's in a channel, or an agent's. `12h` unless set. Once expired, it is refreshed as it is
-  used, never wider than it was and holding only what `config.yaml` gives now, so a change that
-  takes something away holds at its next use.
+`keys` lists the vault's keys. Without them, the key is `WARDRIK_VAULT_KEY`, or else `vault_key` in
+the data home, which the daemon makes the first time it starts.
 
 ```yaml
-tokens:
-  expires:
-    api: 30d
-    session: 1h
+vault:
+  keys: ["${WARDRIK_VAULT_KEY}"]
 ```
-
-## storage
-
-The store everything is kept in, one of:
-
-- `postgres`, with `url`, a `postgres://` URL. The daemon creates its table as it starts.
-- `s3`, with `bucket`, `endpoint`, `access_key_id` and `secret_access_key`, and optionally `region`
-  and `prefix`.
-
-```yaml
-storage:
-  s3:
-    bucket: wardrik
-    endpoint: https://<account>.r2.cloudflarestorage.com
-    region: auto
-    access_key_id: ${R2_ACCESS_KEY_ID}
-    secret_access_key: ${R2_SECRET_ACCESS_KEY}
-```
-
-Without `storage`, the store is on the node's disk under `WARDRIK_DATA_DIR`. See
-[Storage](/run/storage/).
-
-## cluster
-
-`nodes` lists the cluster's nodes, or `dns` names a DNS name each node's address is found at, with
-`size` the number of nodes there should be. A store kept on the nodes counts a quorum over them. See
-[Run a cluster](/run/cluster/).
 
 ## http
 
-`port` and `ip` for the HTTP API, `127.0.0.1:4747` unless set, and `trusted_workers: true` where
-tool workers' answers are the deployment's own. See [HTTP API](/reference/http-api/).
-Beside the API, it serves what each channel's medium sends under `/v1/channels/`, what services
-send webhook triggers under `/v1/hooks/`, and the page a provider sends a browser back to under
-the redirect URL's path, `/oauth/` by default; see
+Where the HTTP API listens. See [HTTP API](/reference/http-api/).
+
+| Key | Means |
+| --- | --- |
+| `port` | the port; `4747` unless set |
+| `ip` | the address to listen on, as `0.0.0.0`; `127.0.0.1` unless set |
+| `trusted_workers` | `true` where tool workers' answers are the deployment's own, so they aren't labelled `outside`; `false` unless set |
+
+Beside the API, it serves what each channel's chat app sends under `/v1/channels/`, webhook
+triggers under `/v1/hooks/`, and the page a provider sends a browser back to under `/oauth/`. See
 [A public address](/run/public-address/).
 
-## ssh
+## storage
 
-`port` and `ip` for the terminal client. See
-[The terminal client](/build/tui/).
+The store everything is kept in. Without `storage`, it's on the node's disk under
+`WARDRIK_DATA_DIR`.
+
+```yaml
+storage:
+  postgres:
+    url: postgres://wardrik:${PGPASSWORD}@db.internal:5432/wardrik
+```
+
+`postgres` takes `url`, a `postgres://` URL. The daemon creates its table as it starts. See
+[Storage](/run/storage/).
+
+## Keys not read yet
+
+These keys are passed over with a warning in the log:
+
+| Key | Was for |
+| --- | --- |
+| `tools` | what one call to a tool costs, for a budget |
+| `tokens` | how long tokens last |
+| `cluster` | the other daemons this one runs with |
+| `ssh` | where the terminal client listens |
+
+### tools
+
+`tools` isn't read yet. A tool call is priced only where the tool reports its own cost.
 
 ## Directories
 
-The daemon follows the XDG base directories, so what a person writes stays apart from what the
-daemon writes. Each is moved by its environment variable.
+The daemon follows the XDG base directories, so what you write stays apart from what the daemon
+writes. Each is moved by its environment variable.
 
 | Variable | Default | Holds |
 | --- | --- | --- |
 | `WARDRIK_CONFIG_DIR` | `~/.config/wardrik` | `config.yaml`, `agents/` and `policies/` |
-| `WARDRIK_DATA_DIR` | `~/.local/share/wardrik/store` | the store |
-| `WARDRIK_DATA_HOME` | `~/.local/share/wardrik` | `vault_key`, where no vault key is configured |
-| `WARDRIK_COOKIE_FILE` | `~/.local/share/wardrik/cookie` | the node's cluster cookie |
-| `WARDRIK_STATE_DIR` | `~/.local/state/wardrik` | `log/wardrik.log`, and `log/mcp.log` for what MCP commands write to stderr |
-| `WARDRIK_ENV_FILE` | `env` in `WARDRIK_CONFIG_DIR` | variables the daemon sets where its environment doesn't, one `NAME=value` a line |
+| `WARDRIK_DATA_DIR` | `~/.local/share/wardrik/store` | the store, where `storage` isn't set |
+| `WARDRIK_DATA_HOME` | `~/.local/share/wardrik` | `vault_key`, `cli_token` and `cookie` |
+| `WARDRIK_COOKIE_FILE` | `cookie` in `WARDRIK_DATA_HOME` | the node's Erlang cookie |
+| `WARDRIK_STATE_DIR` | `~/.local/state/wardrik` | `log/erlang.log.*`, what `wardrik start` logs |
+| `WARDRIK_ENV_FILE` | `env` in `WARDRIK_CONFIG_DIR` | variables the daemon sets where its environment doesn't |
 
 Each default follows `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME` and `$XDG_STATE_HOME` where they are set.
+
+The env file holds one `NAME=value` a line, with an optional `export` and optional quotes. Blank
+lines and `#` comments are skipped. The `wardrik` script warns where others can read it.
+
+```sh
+# ~/.config/wardrik/env
+ANTHROPIC_API_KEY=sk-ant-...
+export SLACK_BOT_TOKEN="xoxb-..."
+```

@@ -57,12 +57,12 @@ notify:
   search would make every bill wait for a person, however small.
 - `approvers` are the accountants, who may press Approve and Deny.
 
-Seal the keys and restart:
+Seal the keys while the daemon runs. `vault put` reads the value from stdin:
 
 ```sh
-wardrik vault put QUICKBOOKS_CLIENT_ID      # and the secret, refresh token and realm id
-systemctl --user restart wardrik
-wardrik doctor
+echo "$QUICKBOOKS_CLIENT_ID" | wardrik vault put QUICKBOOKS_CLIENT_ID
+# and the same for QUICKBOOKS_CLIENT_SECRET, QUICKBOOKS_REFRESH_TOKEN, QUICKBOOKS_REALM_ID,
+# SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET
 ```
 
 ### The policy
@@ -124,9 +124,12 @@ that doesn't reconcile.
 
 ## Try it
 
+Restart the daemon to read `config.yaml` and the policy, and check what it reads:
+
 ```sh
-wardrik reload
-wardrik ask books "Enter the March invoice from Northwind Freight: $640 for deliveries."
+systemctl --user restart wardrik
+wardrik doctor
+wardrik ask books 'Enter the March invoice from Northwind Freight: $640 for deliveries.'
 ```
 
 It looks up the vendor, enters the bill, and posts it, since every line is under $1,000. Ask for a

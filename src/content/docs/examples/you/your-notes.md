@@ -5,8 +5,8 @@ sidebar:
   order: 3
 ---
 
-Ask this agent a question and it researches it, then writes what it found into your notes folder:
-a note per topic, with sources, linked to what you already have. Later, ask it what you know about
+Ask this agent a question and it researches it. It files what it found into your notes folder: a
+note per topic, with sources, linked to what you already have. Later, ask it what you know about
 something, and it answers from your notes first.
 
 Your notes stay files in a folder, so Obsidian, or any editor, works with them as before.
@@ -74,7 +74,7 @@ When I ask what I know about something, answer from my notes, and say which ones
 ## Try it
 
 ```sh
-wardrik reload
+systemctl --user restart wardrik     # read config.yaml and the policy
 wardrik ask notes "Research heat pumps for a 1930s house: cost, noise, and grants in the UK."
 wardrik ask notes "What do I know about heat pumps?"
 ```
@@ -91,8 +91,8 @@ The first answer comes with a new note in `~/Notes`. The second answers from it.
 
 ### Notes and outside content
 
-The agent's notes are written from what it read on the web, so reading them back counts as outside
-content too: the filesystem server isn't marked `trusted`, and that's right for notes a web page
+The agent's notes are written from what it read on the web. Reading them back counts as outside
+content too, because the filesystem server isn't marked `trusted`. That's right for notes a web page
 could have shaped. Here it changes nothing, since the agent can only write notes. An agent with
 more power should use its own [files](/concepts/files-and-memory/), which keep the label of what
 the turns that wrote them had read.

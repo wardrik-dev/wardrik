@@ -6,9 +6,9 @@ sidebar:
   label: Overview
 ---
 
-A *channel* is a chat app your agents are reached through, such as a Slack app in your workspace. A
-*room* is a place in it, such as a Slack channel. Invite the bot into a room, and an agent answers
-there.
+A *channel* is a chat app your agents are reached through, such as a Slack app in your workspace.
+A *room* is a place in it, such as a Slack channel. Invite the bot into a room, and an agent
+answers there.
 
 ```yaml title="~/.config/wardrik/config.yaml"
 channels:
@@ -18,10 +18,13 @@ channels:
     signing_secret: ${SLACK_SIGNING_SECRET}
 ```
 
-The name, `slack`, is yours. `type` is the kind of channel; today that's [Slack](/channels/slack/).
-`token` is what it acts with in your workspace. What the chat app sends reaches the daemon at
-`/v1/channels/slack/`, so the daemon needs a [public address](/run/public-address/).
-Every key is in [config.yaml › channels](/reference/config/#channels).
+- **`slack`** is the channel's name, of your choosing: lower-case letters, digits and `-`.
+- **`type`** is the kind of chat app. Today that's [Slack](/channels/slack/).
+- **`token`** is what the bot acts with in your workspace.
+
+The chat app sends to the daemon at `/v1/channels/slack/`, so the daemon needs a
+[public address](/run/public-address/). Every key is in
+[config.yaml › channels](/reference/config/#channels).
 
 ## Which agents a channel offers
 
@@ -32,8 +35,9 @@ An agent is offered in a channel when its file lists it:
 channels: [slack]
 ```
 
-A channel offers your deployment's [org](/concepts/agents/#keys-and-orgs). To offer another org's
-agents, list it under that org in `orgs`, or under `"*"` for every org:
+A channel offers your deployment's own [org](/concepts/agents/#keys-and-orgs)'s agents, not its
+users' agents. To give a channel to another org, list it under that org in `orgs`, or under `"*"`
+for every org:
 
 ```yaml
 channels:
@@ -44,46 +48,51 @@ orgs:
     channels: [globex-slack]
 ```
 
+A channel serves one org, or every org under `"*"`.
+
 ## A room's agent
 
 Invite the bot, and it says what happens next:
 
-- **One agent offered:** it answers when mentioned. A button makes it answer every message.
+- **One agent offered:** it answers there now, when mentioned. A button makes it answer every
+  message.
 - **Several:** a button to use each.
-- **None:** a button to create one from `config.yaml`'s `defaults`, when they name a policy.
-  `create: false` turns this off.
+- **None:** it says how to offer one, with a button to look again.
 
 Remove the bot to unbind the room.
 
 ## Threads
 
-Mention the bot to start a thread; replies in it reach the agent without a mention. Each thread is
-its own conversation, but [files and memory](/concepts/files-and-memory/) are shared across all of
-them. Calls the [policy](/concepts/policy/) holds are asked in the thread, with buttons.
+Mention the bot to start a thread. Replies in it reach the agent without a mention.
+
+Each thread is its own conversation, with an ID of its own under the agent's, as
+`acme/triage/slack.T0123.C024BE91L.1696.1234`. Every thread runs on the agent's one definition,
+and shares its [files and memory](/concepts/files-and-memory/). Calls the
+[policy](/concepts/policy/) holds are asked in the thread, with buttons.
 
 ## Who may answer
 
-`approvers` may answer what an agent waits on; `approvers: anyone` lets everyone. `admins` may also
-answer, and change the org's agents where `defaults` names a policy, which holds what they define.
-Whoever asked for a turn can always answer. Without approvers,
-only they can, and a trigger's turn is answered from a shell. See
-[Who approves](/channels/slack/#who-approves).
+| Who | May decide |
+| --- | --- |
+| `approvers` | what any of the channel's agents wait on |
+| `approvers: anyone` | everyone in the workspace may decide |
+| whoever asked for the turn | what their own thread waits on, always |
 
-A [notice target](/build/notices/) can post into a room too, with its own approvers. An agent's
-`notify` can also name a room itself, as `slack:#updates`; it posts in the workspace of the agent's
-org. See [Post in a room](/build/notices/#post-in-a-room).
+A trigger's turn has nobody who asked. Without approvers, decide it from a shell with
+`wardrik approval approve`. See [Who approves](/channels/slack/#who-approves).
+
+An agent's `notify` can post into a room too, as `slack:#updates`. See
+[Post in a room](/build/notices/#post-in-a-room).
 
 ## Details
 
-- **Who can message an agent:** everyone in a channel can message the agents of the orgs it offers,
-  but not their users' agents. Others get a reply saying so.
-- **Every thread** runs on the agent's one definition, and every message names who sent it.
-- **Replies survive restarts:** they come from the agent's [event log](/concepts/events/), so one
-  delayed by a restart is posted when the daemon can. A waiting question is posted again if a new
-  message arrives behind it.
-- **Created agents** are named after the room and kept like an [HTTP API](/build/http-api/)
-  definition, so you can change them later.
-- **Audit:** bindings and created agents are recorded with who made them, as `wardrik.room.bound`,
-  `wardrik.room.unbound` and `wardrik.agent.defined` [events](/reference/events/).
-- **New kinds of channel** are packages that name themselves in their application's environment, as
-  `wardrik_slack` names `type: slack`.
+- **Who can message an agent:** everyone in the workspace can message the agents the channel
+  offers.
+- **Every message** names who sent it, as the chat app knows them.
+- **Replies survive restarts.** They come from the conversation's [event log](/concepts/events/),
+  so one delayed by a restart is posted when the daemon can. A waiting question is posted again
+  when a new message arrives behind it.
+- **Audit:** bindings are recorded with who made them, as `wardrik.room.bound` and
+  `wardrik.room.unbound` [events](/reference/events/). `wardrik audit` lists them.
+- **New kinds of channel** are Elixir packages that `use WardrikChannel`, as `wardrik_slack` does.
+  The daemon's `type` takes `slack`.

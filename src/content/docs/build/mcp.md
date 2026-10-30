@@ -20,17 +20,18 @@ mcp:
     only: [read_file, list_directory]
 ```
 
-`${NAME}` reads the environment, else the vault, so the file holds no secret:
-`wardrik vault put LINEAR_TOKEN` seals one. Restart the daemon after changing `config.yaml`:
+`${NAME}` reads the environment, else the deployment's secret in the vault. So the file holds no
+secret:
 
 ```sh
-systemctl --user restart wardrik    # or: wardrik stop, then wardrik start
-wardrik doctor                      # each server, and whether it can be reached
+echo "$LINEAR_TOKEN" | wardrik vault put LINEAR_TOKEN   # 1. seal the token
+systemctl --user restart wardrik                       # 2. or: wardrik stop && wardrik start
+wardrik doctor                                         # 3. checks each server can be reached
 ```
 
 Every key a server takes is in [`config.yaml` › mcp](/reference/config/#mcp).
 
-## Giving an agent the tools
+## Give an agent the tools
 
 An agent file names a server's tools as `server/*`:
 
@@ -64,8 +65,7 @@ orgs:
     mcp: [globex-crm]
 ```
 
-A name `mcp` doesn't define is refused, as is an org that isn't declared. See
-[`orgs`](/reference/config/#orgs).
+A name that `mcp` doesn't define is refused. See [`orgs`](/reference/config/#orgs).
 
 A server's `headers` and `env` are the deployment's credentials, shared by every org it serves. To
 reach a service as each org or user, use a `credential`; see [Connect accounts](/build/accounts/).
@@ -89,10 +89,31 @@ mcp:
 See [Gated tools](/concepts/rules/#gated-tools) and
 [Content from outside](/concepts/outside-content/).
 
-## Servers added at runtime
+## Add a server while the daemon runs
 
-An org or a person can add an MCP server for their own agents while the daemon runs, with no change
-to `config.yaml`. Maria works with a token for her own agents:
+An org or a person can add an MCP server for their own agents, with no change to `config.yaml`.
+From the command line:
+
+```sh
+wardrik server add linear --url https://mcp.linear.app/mcp --oauth --user maria
+wardrik server ls --user maria
+wardrik server rm linear --user maria
+```
+
+`server add` prints where to sign in. Its agents sign in with one of:
+
+| Flag | How |
+| --- | --- |
+| `--oauth`, with a `--scope` for each scope | the owner signs in in a browser |
+| `--secret NAME` | a secret the owner holds in the [vault](/build/vault/) |
+| neither | nothing |
+
+`--only` takes the server's tool names, with commas. With no `--org` or `--user`, the server is the
+deployment's org's.
+
+### From the SDK
+
+Maria works with a token for her own agents:
 
 ```sh
 wardrik token create maria --resource 'acme/@maria/*' --role reader,messenger,definer
@@ -105,8 +126,10 @@ says so:
 import { Wardrik } from "@wardrik/sdk";
 
 const wardrik = new Wardrik({ token: process.env.MARIA_TOKEN });
+const triage = wardrik.agent("acme/@maria/triage");
 
-const triage = await wardrik.agents.put("acme/@maria/triage", {
+await triage.define({
+  model: "anthropic:claude-haiku-4-5",
   instructions: "Triage new Linear issues and label each by area.",
   tools: ["linear/*"],
 });
@@ -117,62 +140,63 @@ console.log((await triage.definition()).missing); // [ 'linear/*' ]
 She adds Linear's hosted server, and signs in to Linear at the link it answers:
 
 ```ts
-const added = await wardrik.servers.add("acme/@maria", {
+const added = await wardrik.mcpServers.add({
+  owner: "acme/@maria",
   name: "linear",
   url: "https://mcp.linear.app/mcp",
   auth: { oauth: {} },
 });
 
 console.log(added.authorization?.url); // where she signs in to Linear
-console.log((await triage.definition()).missing); // []
 ```
 
-Once she has signed in, her agent calls Linear's tools on its next turn, without being defined
-again:
+Once she has signed in, her agent calls Linear's tools on its next turn. It isn't defined again:
 
 ```ts
-for await (const event of triage.ask("What came in overnight?")) {
+for await (const event of triage.stream("What came in overnight?")) {
   if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
 }
 ```
 
-- A server serves its owner's agents alone. Maria's, added for `acme/@maria`, serves her agents;
-  one added for `acme` serves the org's own agents. A person's agents don't reach
-  the org's servers.
-- `linear/*` names the owner's server first, else one `config.yaml` names. `servers/*` gives an
-  agent the tools of every server its owner adds, as they add them.
-- `wardrik show` lists a server the agent names and its owner hasn't added as `missing`.
-- `wardrik.servers.remove("acme/@maria", "linear")` takes its tools away on the next turn, and
-  forgets her sign-in.
-- A server signs in with nothing, in a browser, or with a secret its owner keeps in the vault; see
-  [Servers](/reference/http-api/#servers). What it answers is content from outside, and every tool
-  it doesn't mark read-only waits on a person.
+To take the tools away on the next turn, and forget her sign-in:
+
+```ts
+await wardrik.mcpServers.remove("linear", { owner: "acme/@maria" });
+```
+
+### Whose server an agent gets
+
+For each `server/*` an agent names, the first match wins:
+
+1. The server its owner added.
+2. The server its org added, for a user's agent.
+3. The server `config.yaml` names, if it serves the agent's org.
+
+`servers/*` gives an agent the tools of every server its owners add, as they add them. A user's
+agent gets the org's servers too.
+
+- `wardrik agent show` lists a server the agent names that offers nothing yet as `missing`.
+- A server added at runtime is reached over Streamable HTTP. Its answers are content from outside,
+  and every tool it doesn't mark read-only waits on a person.
+- See [Servers](/reference/http-api/#servers) for the operations.
 
 ## Details
 
 ### Names
 
-- `*` in an agent file gives every server the agent can reach, with everything else.
-- A file can't name one tool of a server; narrow it with `only` or `except`, by the server's own
+- `*` in an agent file gives every server the agent can reach, with every other tool.
+- A file can't name one tool of a server. Narrow it with `only` or `except`, by the server's own
   tool names.
 - The model sees each tool as `server__tool`, such as `linear__search_issues`, with the server's own
   description and JSON Schema.
-- `prefix` renames the server's tools for the model and policies; an agent file still names the
+- `prefix` renames the server's tools for the model and policies. An agent file still names the
   server by its own name.
-- `wardrik reload` reads agent and policy files only, never `config.yaml`.
-
-### Orgs
-
-- A file naming a server its org isn't served by doesn't read, and says why; `wardrik status` lists
-  it.
-- A call from another org's agent is refused, whatever it was given.
+- `wardrik reload` reads the agent files again, never `config.yaml`.
 
 ### Commands
 
-- `command` takes `args`, `env` and `cwd`.
-- The command sees only `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`,
-  `TMPDIR` and `USER` from the daemon's environment, plus its `env`. The daemon's keys stay with it.
-- Its standard error goes to `~/.local/state/wardrik/log/mcp.log`.
+- `command` takes `args` and `env`.
+- The command inherits the daemon's environment, plus its `env`.
 - The service runs with systemd's `PATH`, not your shell's. Name a program under your home
   directory, as `npx` often is, by its full path.
 - In Docker, the program must be in the image: build `FROM ghcr.io/wardrik-dev/wardrik`.
@@ -191,7 +215,7 @@ mcp:
 - `url` is the server's Streamable HTTP endpoint, with `headers` sent on every request.
 - A key in `headers` is the deployment's: every agent reaches the server as the deployment.
 - To reach it as each org, seal its key for each, `wardrik vault put linear --org acme`, and name it
-  as `credential: linear`, sent as `authorization: Bearer <token>`.
+  as `credential: linear`. It's sent as `authorization: Bearer <token>`.
 
 ### Gating and trust
 
@@ -210,8 +234,7 @@ mcp:
 
 ### When a server is down
 
-- A server that's down offers no tools; its agents carry on without them.
+- A server that's down offers no tools. Its agents carry on without them.
 - The daemon reconnects by itself, waiting longer each time, up to a minute.
 - A server that says its tools changed is asked for them again.
-- A call stopped before it answers, by a timeout or a stopped turn, is cancelled on the server too.
-- A server's progress reaches the event stream as `tool_call.progress`.
+- A failed call that reads or can be repeated is retried.

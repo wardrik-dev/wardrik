@@ -30,19 +30,19 @@ I'll set up a watcher on that feed. Plan:
 Nothing runs for this yet, so I'll define a new worker.
 Waiting on a person for 1 call:
   ? agent_define  call_8d2ebbfe28aa4ee1a269dee2  agent_define is gated, so it a…
-wardrik approve default/assistant, or deny, decides it.
+Decide with: wardrik approval approve default/assistant ID, or wardrik approval deny default/assistant ID
 ```
 
 Approve the call, and it runs as the front door wrote it. Or deny it with a reason, and the front
 door proposes again:
 
 ```sh
-wardrik approve assistant call_8d2ebbfe28aa4ee1a269dee2
-wardrik deny assistant call_8d2ebbfe28aa4ee1a269dee2 "Once an hour is enough."
+wardrik approval approve assistant call_8d2ebbfe28aa4ee1a269dee2
+wardrik approval deny assistant call_8d2ebbfe28aa4ee1a269dee2 --reason "Once an hour is enough."
 ```
 
-`wardrik parked` lists what waits, without arguments, so the front door's plan says what each call
-does. Slack and the [webhook](/build/notices/#webhooks) show arguments. See
+`wardrik approval ls` lists what waits, without arguments, so the front door's plan says what each
+call does. Slack and the [webhook](/build/notices/#webhooks) show arguments. See
 [Approvals](/concepts/approvals/).
 
 ## See what runs
@@ -51,9 +51,9 @@ The front door sets up standing work as workers: agents of your org, with the tr
 them. They're agents like any other:
 
 ```sh
-wardrik ls                  # each worker, when it runs next, what it has spent today
-wardrik triggers            # when each runs next, and how it last ran
-wardrik show elixir-blog-watch
+wardrik ls                                  # each agent, and what it's doing
+wardrik trigger ls elixir-blog-watch        # its triggers, and when each runs
+wardrik agent show elixir-blog-watch        # what it is, and what it does now
 ```
 
 Or ask the front door, "What are you doing for me?"
@@ -69,19 +69,18 @@ It proposes changes of its own too, such as a check that has found nothing for w
 ## Where results go
 
 A worker's answers are kept in its history. Ask the front door what came of a piece of work, or run
-`wardrik history NAME`. See [Delegate to other agents](/build/delegation/).
+`wardrik agent history NAME`. See [Delegate to other agents](/build/delegation/).
 
 ## What it may do
 
-`init` writes `~/.config/wardrik/agents/assistant.md` with the model you chose:
+`init` writes `~/.config/wardrik/agents/assistant.md`:
 
 ```markdown title="~/.config/wardrik/agents/assistant.md"
 ---
 description: "The front door: turns what people ask for into work that runs."
-model: anthropic:claude-sonnet-5
-tools: [self/*, agents/*, files, web_search]
+tools: [self/*, agents/*, files, web_search, run_lua]
 context: [MEMORY.md]
-policy: {budget: {per: day, tokens: 2000000}}
+policy: {budget: {tokens: 2000000, per: day}}
 idle_timeout: infinity
 ---
 You are Wardrik, the one place the people of this org come to get things done. …
@@ -93,6 +92,9 @@ You are Wardrik, the one place the people of this org come to get things done. �
 - **`agents/*`** lets it read the agents of its org, hand them tasks, define workers and change their
   triggers. Reads run freely; each change waits on a person.
 - **`files`** gives it a tree of files; `MEMORY.md` is read into every turn.
+- **`run_lua`** runs Lua in a sealed sandbox, for arithmetic, reshaping data and the current time.
+- **No `model`**, so it runs the model `config.yaml`'s `defaults` give, the one `wardrik init
+  --model` wrote.
 - **The budget** allows 2,000,000 tokens a day, then asks. Every worker it defines is held to the
   same policy and budget.
 

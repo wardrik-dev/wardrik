@@ -6,14 +6,13 @@ sidebar:
 ---
 
 This agent labels and comments on a public repository's issues, with a token that can write them.
-Invite anyone to take it over: whatever an issue makes it try arrives in Slack as a waiting call.
-Its prompt has no warnings; its calls are decided outside the model.
+Invite anyone to take it over. Whatever an issue makes it try arrives in Slack as a call waiting
+for you. Its prompt has no warnings: its calls are decided outside the model.
 
 ## What it takes
 
-- the daemon, [installed](/getting-started/install/), with a model provider's key from the
-  [Quickstart](/getting-started/quickstart/#1-install);
-- a public repository, and a fine-grained GitHub token for it alone that can read and write its
+- the daemon, [installed](/getting-started/install/), with a model provider's key;
+- a public repository, and a fine-grained GitHub token that can read and write that repository's
   issues and nothing else, so a mistaken approval can reach no further;
 - a [Slack app](/channels/slack/#a-slack-app) with a bot token and a signing secret.
 
@@ -43,7 +42,14 @@ notify:
     approvers: ["@maria"]
 ```
 
-Both write tools are gated, so after reading an issue they wait for a person.
+Both write tools are gated. Once the agent has read an issue, a gated call waits for a person.
+
+Seal the keys while the daemon runs. `vault put` reads the value from stdin:
+
+```sh
+echo "$GITHUB_TOKEN" | wardrik vault put GITHUB_TOKEN
+# and the same for SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET
+```
 
 ### The agent
 
@@ -70,21 +76,24 @@ thank whoever filed it, and say what you would need from them to act on it. Keep
 last issue you triaged in TRIAGE.md.
 ```
 
-The policy allows its tools, but they wait anyway: the turn has read issues. `default: deny` refuses
-the rest, and the budget caps what a stranger can make it spend.
+- `allow` lets its tools run, but the gated ones still wait: the turn has read issues.
+- `default: deny` refuses every other tool.
+- The budget caps what a stranger can make it spend.
 
 ## Try it
 
+Restart the daemon to read `config.yaml`, then check the agent:
+
 ```sh
-wardrik reload
-wardrik show issues
+systemctl --user restart wardrik
+wardrik agent show issues
 ```
 
 Open an issue inviting anyone to hijack it, then watch `#triage`:
 
-> **default/issues** is waiting on you.
+> `issues` waits on @maria to approve `github__issue_write`.
 >
-> `github__issue_write`  policy allows github__issue_write, but this run has read content from
+> `github__issue_write`  github/issue_write is allowed, but this run has read content from
 > outside, which may be what asked for it.
 > _It has read content from outside, which may be what asked for this._
 >
@@ -92,13 +101,13 @@ Open an issue inviting anyone to hijack it, then watch `#triage`:
 > {"issue_number":14,"labels":["bug"],"method":"update","owner":"acme","repo":"widgets"}
 > ```
 
-If an issue fools the model into closing everything, each close is a waiting call. If one asks it to
-leak its instructions, the comment waits unseen.
+If an issue fools the model into closing everything, each close is a call waiting for you. If one
+asks it to leak its instructions, the comment waits unseen.
 
 ## What it shows
 
-- **Labels** hold every gated call after outside content, until `wardrik clear issues`. See
-  [Content from outside](/concepts/outside-content/).
+- **Labels** hold every gated call after outside content, until `wardrik agent clear issues`
+  empties the conversation. See [Content from outside](/concepts/outside-content/).
 - **Files remember** their label, so notes can't carry an instruction forward. See
   [Files and memory](/concepts/files-and-memory/#content-from-outside).
 - **Rules outside the prompt**, which no issue can change. See [Policy](/concepts/policy/).

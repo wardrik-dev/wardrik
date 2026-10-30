@@ -6,29 +6,64 @@ sidebar:
   order: 1
 ---
 
-<!-- Written by mix wardrik.docs from WardrikDaemon.CLI.commands/0. Edit it there, not here. -->
+Every command `wardrik` takes. `rik` is the same command, shorter: `rik ls` is `wardrik ls`.
 
-rik is a short name for wardrik: `rik ls` is `wardrik ls`.
+```sh
+wardrik agent ls
+wardrik ask triage "What's new?"
+wardrik approval approve triage toolu_01 --note "Only this once."
+```
 
-The daemon reads `config.yaml`, and the agents in `agents/`, from
-`~/.config/wardrik`. `wardrik help COMMAND` says more about one.
+`wardrik help` lists every command. `wardrik help COMMAND`, or `COMMAND --help`, says more about
+one.
 
-Where `config.yaml` describes a cluster, `--node NAME`, or `WARDRIK_NODE`, is which
-of its nodes a command is for. serve, start, stop, remote, logs, pid, doctor
-and service need one when this install runs several; every other command asks
-whichever node answers, since each speaks for the whole cluster.
+## How commands work
+
+- Each command runs an operation on the daemon over its [HTTP API](/reference/http-api/). It acts
+  with the owner token the daemon writes to `cli_token` in the data home each time it starts.
+- `serve`, `start`, `stop`, `pid`, `logs` and `service` run the daemon itself, so the `wardrik`
+  script handles them without the API.
+- Every command takes `--json`, and then prints the operation's JSON answer.
+- An option a command doesn't take is refused.
+- An agent is named by its ID, as `acme/triage` or `acme/@jon/notes`, or without the deployment's
+  org, as `triage` or `@jon/notes`. The deployment's org is `config.yaml`'s
+  [`org`](/reference/config/#org).
+
+| Variable | Means |
+| --- | --- |
+| `WARDRIK_URL`, `WARDRIK_TOKEN` | reach another daemon with this URL and token; both must be set |
+| `WARDRIK_CONFIG_DIR`, `WARDRIK_DATA_HOME`, `WARDRIK_STATE_DIR`, `WARDRIK_ENV_FILE` | move the directories; see [Directories](/reference/config/#directories) |
+
+## Shortcuts
+
+| Shortcut | Command |
+| --- | --- |
+| `wardrik ls` | `wardrik agent ls` |
+| `wardrik ask` | `wardrik agent ask` |
+| `wardrik follow` | `wardrik agent follow` |
 
 ## Set up
 
 ### wardrik init
 
-Set up the front door agent, its model and key, and the daemon to run it.
+Write `config.yaml` and the front door, keeping any file that's already there.
 
 ```sh
-wardrik init [--provider P] [--model M] [--agent NAME] [--key-from-env VAR] [--yes] [--no-service] [--no-ask]
+wardrik init [--org ORG] [--model MODEL]
 ```
 
-It asks what it needs, says what it does, and writes no file that is there already. Without a terminal, `--provider`, `--model`, `--agent` and `--key-from-env VAR` answer, and `--yes` says yes. `--no-service` starts the daemon without systemd, and `--no-ask` asks the agent nothing.
+| Option | Means |
+| --- | --- |
+| `--org ORG` | the deployment's org; `default` unless set |
+| `--model MODEL` | the model in `defaults`; `anthropic:claude-haiku-4-5` unless set |
+
+It writes three files in the config directory:
+
+| File | Holds |
+| --- | --- |
+| `config.yaml` | the org, the default model, and `http.port: 4747` |
+| `agents/assistant.md` | the front door; see [The front door](/build/front-door/) |
+| `env` | a commented line for `ANTHROPIC_API_KEY`; only you can read it |
 
 ### wardrik doctor
 
@@ -38,20 +73,16 @@ Check what the daemon reads, running or not.
 wardrik doctor
 ```
 
-### wardrik reload
+It prints a line for each check: the env file, `config.yaml`, the store, the vault, each MCP
+server, each channel, and the agent and policy files. It exits with `1` if any check fails.
 
-Read the agent and policy files again, for every node.
+### wardrik version
 
-```sh
-wardrik reload
-```
-
-### wardrik help
-
-Every command, or one in full.
+Print the version.
 
 ```sh
-wardrik help [COMMAND]
+wardrik version
+#=> wardrik 0.1.0-rc.1
 ```
 
 ### wardrik completion
@@ -62,7 +93,7 @@ Completion for bash, zsh or fish, to install.
 wardrik completion SHELL
 ```
 
-It completes commands, options, and the keys and calls of the agents running.
+It completes commands and their options, for `wardrik` and `rik`:
 
 ```sh
 wardrik completion bash > ~/.local/share/bash-completion/completions/wardrik
@@ -70,220 +101,327 @@ wardrik completion zsh > "${fpath[1]}/_wardrik"
 wardrik completion fish > ~/.config/fish/completions/wardrik.fish
 ```
 
-## Talk to agents
+## Agents
 
-### wardrik ask
+### wardrik agent ls
+
+List the agents, and what each is doing.
+
+```sh
+wardrik agent ls [QUERY] [--all]
+```
+
+It shows each agent's status, queued messages, next trigger run, and what it spent today. An
+agent's conversations, such as a Slack thread's, are counted under it; `--all` lists them too.
+
+A QUERY is words that must all match:
+
+| Word | Matches |
+| --- | --- |
+| any text | agents whose ID holds it |
+| `name:NAME` | agents of that name |
+| `org:ORG` | agents of that org |
+| `user:USER` | agents that work for that user, as `user:jon` |
+| `node:NODE` | agents running on that node |
+| `status:STATUS` | `idle`, `running`, `parked` or `asleep` |
+| `attention` | agents waiting on a person |
+
+### wardrik agent show
+
+What an agent is, and what it does now.
+
+```sh
+wardrik agent show AGENT
+```
+
+It shows the agent's status, description, model, tools, policy, triggers and channels, the
+tools it names that offer nothing yet, and the calls it waits on a person for.
+
+### wardrik agent ask
 
 Send an agent a message, and follow its answer.
 
 ```sh
-wardrik ask KEY MESSAGE [--no-wait]
+wardrik agent ask AGENT MESSAGE [--no-wait]
 ```
 
-It follows the turn as it goes, until it ends or waits on a person; Ctrl-C stops following, and the agent carries on. `--no-wait` only sends it.
+It shows the agent's reasoning faintly as it comes, then its answer, with each tool call it makes.
+It follows the turn until the turn ends or waits on a person.
 
-### wardrik watch
+- Ctrl-C stops following. The agent carries on.
+- `--no-wait` only sends the message.
+
+### wardrik agent follow
 
 Follow what an agent does, until Ctrl-C.
 
 ```sh
-wardrik watch KEY [--json]
+wardrik agent follow AGENT
 ```
 
-With `--json`, each event as `GET /v1/agents/KEY/events` streams it, a line each.
+With `--json`, it prints each [event](/reference/events/) as the HTTP API streams it, a line each.
 
-### wardrik history
+### wardrik agent history
 
-What an agent has said.
+An agent's conversation.
 
 ```sh
-wardrik history KEY
+wardrik agent history AGENT
 ```
 
-With `--json`, the agent as `GET /v1/agents/KEY` answers with it.
+### wardrik agent clear
 
-### wardrik clear
-
-Empty an agent's conversation, and the labels of what it read.
+Empty an agent's conversation.
 
 ```sh
-wardrik clear KEY
+wardrik agent clear AGENT
 ```
 
-An agent whose conversation holds content from outside asks a person before each gated call until it is cleared. Its files, triggers and config stay. Refused while it runs a turn or waits on a person.
+It also clears the labels of what the agent read, such as `outside`. It's refused while the agent
+runs a turn or waits on a person.
 
-### wardrik attach
+### wardrik agent start
 
-The TUI, over SSH to HOST, localhost by default.
+Start an agent that sleeps.
 
 ```sh
-wardrik attach [HOST]
+wardrik agent start AGENT
 ```
-
-## Decide
-
-### wardrik parked
-
-The calls agents are waiting on a person for.
-
-```sh
-wardrik parked
-```
-
-With `--json`, each call as an interrupt, with the agent it is for.
-
-### wardrik approve
-
-Run a parked call, with a note for the agent.
-
-```sh
-wardrik approve [KEY [CALL [NOTE]]]
-```
-
-### wardrik deny
-
-Refuse a parked call, saying why.
-
-```sh
-wardrik deny [KEY [CALL [REASON]]]
-```
-
-### wardrik policy judge
-
-Try a policy's judge on the calls agents have made.
-
-```sh
-wardrik policy judge NAME [--agent KEY|PATTERN] [--last N]
-```
-
-Its model answers each question again, and what that decides is set beside how the call was decided; ! marks where they differ. The policy is read from its file as it is now, and nothing is decided or changed. The calls are those of the agents that run under the policy, or those `--agent` names, newest first, `--last` 20 by default. Only calls that ran are kept with their arguments, so a call refused, or waiting on a person, is not tried. With `--json`, each call with its answers, what they decide, and how it was decided.
-
-## Manage agents
-
-### wardrik ls
-
-The agents, or those a query picks.
-
-```sh
-wardrik ls [QUERY]
-```
-
-A query is words that must all match: TEXT in the key, name:, org:, user:, node:, status:idle, status:running or status:parked, and attention, an agent waiting on a person. With `--json`, the agents as `GET /v1/agents` lists them.
-
-### wardrik show
-
-One agent in full: what it has and what it is doing.
-
-```sh
-wardrik show KEY
-```
-
-### wardrik triggers
-
-When each trigger runs next, and how it last ran.
-
-```sh
-wardrik triggers [PATTERN]
-```
-
-### wardrik agent spawn
-
-Start an agent, from `config.yaml`'s defaults if nothing defines it.
-
-```sh
-wardrik agent spawn NAME [--org ORG] [--user USER] [--on NODE] [--file]
-```
-
-It starts the agent `agents/NAME.md` declares, or one nothing defines from `config.yaml`'s defaults. `--file` writes `agents/NAME.md` from them first, and reads the files again, as `wardrik reload` does. `--org` and `--user` put it in an org, or with one of its users, and `--on NODE` starts it on that node. An agent `wardrik agent stop` stopped comes back with its conversation.
-
-### wardrik agent cancel
-
-End the turn an agent is taking; it keeps running.
-
-```sh
-wardrik agent cancel KEY|PATTERN [--all]
-```
-
-The messages waiting behind the turn go too, and a turn waiting on a person is abandoned. A PATTERN, such as `acme/agent/*`, ends the turns of every agent it covers, and `--all` those of every agent there is.
 
 ### wardrik agent stop
 
-Stop an agent now, keeping its conversation; it wakes when asked again.
+Stop an agent until something wakes it.
 
 ```sh
-wardrik agent stop KEY
+wardrik agent stop AGENT
 ```
 
-Anything asked of it by its key wakes it, as does `wardrik agent spawn`. `wardrik agent rm` removes it for good once no file declares it.
+It keeps its conversation. A message, a trigger or `wardrik agent start` wakes it.
+
+### wardrik agent cancel
+
+Stop the turn an agent runs or waits in.
+
+```sh
+wardrik agent cancel AGENT|PATTERN [--all]
+```
+
+- The messages waiting behind the turn go too.
+- A PATTERN, as `acme/agent/*`, stops the turns of every agent it covers.
+- `--all`, given alone, stops the turns of every agent there is.
 
 ### wardrik agent rm
 
-Remove an agent, its conversation and its triggers, for good.
+Remove an agent, and everything it had.
 
 ```sh
-wardrik agent rm KEY|PATTERN [--yes]
+wardrik agent rm AGENT
 ```
 
-It lists what it removes and asks first; `--yes` removes without asking. A PATTERN, such as `acme/agent/*`, removes every agent it covers. An agent a file declares is left: remove the file, then `wardrik reload` removes it.
-
-### wardrik agent move
-
-Restart an agent on another node, with its conversation.
-
-```sh
-wardrik agent move KEY [NODE] [--yes]
-```
-
-Without NODE it asks which. Moving ends a turn the agent is taking, and abandons what it waits on a person for, so it asks first; `--yes` moves it without asking.
+It removes the agent's conversation, definition and triggers. An agent a file declares stays:
+remove its file, then run `wardrik reload`.
 
 ### wardrik agent calls
 
-The tool calls an agent is running, and how long each has run.
+The tool calls an agent is running now, and how long each has run.
 
 ```sh
-wardrik agent calls KEY
+wardrik agent calls AGENT
 ```
 
-With `--json`, the calls as `GET /v1/agents/KEY/calls` answers them.
+### wardrik agent kill
 
-### wardrik agent kill-call
-
-Stop one tool call an agent is running; the rest of its turn goes on.
+Stop one tool call an agent is running.
 
 ```sh
-wardrik agent kill-call KEY CALL_ID
+wardrik agent kill AGENT CALL
 ```
 
-The model is answered with an error, as if the tool had failed. `wardrik agent calls` lists the calls; `wardrik agent cancel` ends the whole turn instead.
+The model is answered with an error, as if the tool had failed, and the turn goes on.
+`wardrik agent calls` lists the calls. `wardrik agent cancel` ends the whole turn instead.
 
-### wardrik agent edit
+### wardrik agent move
 
-Edit the file that declares an agent, then read the files again.
+Start an agent again on another node of the cluster, with its conversation.
 
 ```sh
-wardrik agent edit KEY
+wardrik agent move AGENT NODE
 ```
 
-It opens the file in $VISUAL, or $EDITOR, or vi.
+A turn it's taking ends, and what it waits on a person for is abandoned.
 
-## Tokens and secrets
+## Approvals
+
+### wardrik approval ls
+
+The calls agents wait on a person for.
+
+```sh
+wardrik approval ls
+```
+
+A call held because its run read content from outside says so.
+
+### wardrik approval approve
+
+Let a call run.
+
+```sh
+wardrik approval approve AGENT CALL [--note NOTE]
+```
+
+`--note` reaches the model beside the call's result. The call runs as the model wrote it.
+
+### wardrik approval deny
+
+Refuse a call.
+
+```sh
+wardrik approval deny AGENT CALL [--reason REASON]
+```
+
+`--reason` reaches the model as the call's error.
+
+## Triggers
+
+### wardrik trigger ls
+
+An agent's triggers, and when each runs next.
+
+```sh
+wardrik trigger ls AGENT
+```
+
+### wardrik trigger set
+
+Set one of an agent's triggers.
+
+```sh
+wardrik trigger set AGENT NAME [--every EVERY] [--timezone TIMEZONE] [--prompt PROMPT] \
+  [--prompt-file FILE] [--feed URL] [--overlap OVERLAP]
+```
+
+| Option | Means |
+| --- | --- |
+| `--every` | a cron expression, as `"0 9 * * 1-5"`, or an interval, as `30m` |
+| `--timezone` | the time zone a cron expression is read in, as `Europe/Berlin` |
+| `--prompt` | what the trigger asks |
+| `--prompt-file` | a file of the agent's to read and follow, in place of `--prompt` |
+| `--feed` | an RSS or Atom feed to watch |
+| `--overlap` | `skip` or `queue` |
+
+An agent a file declares takes its file's triggers again on the next reload. See
+[triggers](/reference/agent-files/#triggers) for each key.
+
+### wardrik trigger rm
+
+Remove one of an agent's triggers.
+
+```sh
+wardrik trigger rm AGENT NAME
+```
+
+## MCP servers
+
+These act for the deployment's org, unless given `--org ORG`, or `--user USER` for a user of the
+deployment's org.
+
+### wardrik server ls
+
+The MCP servers an owner added for their agents.
+
+```sh
+wardrik server ls [--org ORG] [--user USER]
+```
+
+### wardrik server add
+
+Add an MCP server for an owner's agents.
+
+```sh
+wardrik server add NAME --url URL [--secret NAME | --oauth [--scope SCOPE]...] [--only TOOLS] \
+  [--org ORG] [--user USER]
+```
+
+| Option | Means |
+| --- | --- |
+| `--url` | required. The server's `https` URL, reached over Streamable HTTP |
+| `--secret NAME` | sign in with the owner's secret of that name from the vault |
+| `--oauth` | sign in in a browser |
+| `--scope` | a scope `--oauth` asks for; give it once for each |
+| `--only` | the server's tools to take, by name, with commas |
+
+Without `--secret` or `--oauth`, agents reach it with no credential. Agents name its tools as
+`NAME/*` in their [`tools`](/reference/agent-files/#tools).
+
+### wardrik server rm
+
+Remove an MCP server an owner added.
+
+```sh
+wardrik server rm NAME [--org ORG] [--user USER]
+```
+
+## Connections
+
+These act for the deployment's org, unless given `--org ORG` or `--user USER`.
+
+### wardrik connection ls
+
+The accounts an owner is offered, and which they hold.
+
+```sh
+wardrik connection ls [--org ORG] [--user USER]
+```
+
+### wardrik connection connect
+
+Sign an owner in to an account, for their agents to use.
+
+```sh
+wardrik connection connect PROVIDER [--org ORG] [--user USER]
+```
+
+It prints the link to sign in at, or says the account is connected already.
+
+### wardrik connection disconnect
+
+Forget an owner's account.
+
+```sh
+wardrik connection disconnect PROVIDER [--org ORG] [--user USER]
+```
+
+## Tokens
 
 ### wardrik token create
 
-A token for the HTTP API, printed once.
+Make a token for the HTTP API, and show its secret once.
 
 ```sh
-wardrik token create NAME --resource PATTERN... --role ROLES [--policy NAME] [--expires 30d]
+wardrik token create NAME --resource PATTERN... --role ROLES [--expires DURATION] [--policy NAME]
 ```
 
-`--resource PATTERN`, once or more, is what it reaches: `org/agent/*` (the org's own agents), `org/@user/*` (a user's), `org/*` (the org and all its users'), `org/agent/name` (one agent), or * (everything). `--role ROLES` is what it may do there, some of reader,messenger,approver,definer,worker,owner. `--policy NAME`, one of `policies/`, holds every agent it defines. `--expires` is how long it works, as 30d or 12h; tokens.expires.api by default. It acts for whoever made it.
+| Option | Means |
+| --- | --- |
+| `--resource` | what it reaches, as `acme/*`; give it once for each pattern |
+| `--role` | a role, or several with commas: `reader`, `messenger`, `approver`, `definer`, `worker` or `owner` |
+| `--expires` | how long it lasts, as `30d`, `12h`, `15m` or `45s`; 90 days unless set |
+| `--policy` | a policy in `policies/` every agent it defines is held to |
 
-### wardrik token list
-
-The HTTP API's tokens.
+A token acts for whoever made it, and is no wider than its maker. See [Tokens](/reference/http-api/#tokens)
+for resource patterns and roles.
 
 ```sh
-wardrik token list
+wardrik token create ci --resource 'acme/agent/*' --role reader,messenger --expires 30d
+```
+
+### wardrik token ls
+
+The tokens, and when each expires.
+
+```sh
+wardrik token ls
 ```
 
 ### wardrik token revoke
@@ -294,35 +432,41 @@ Stop a token working.
 wardrik token revoke ID
 ```
 
+## Vault
+
+These act for the deployment, unless given `--org ORG` or `--user USER`.
+
 ### wardrik vault put
 
-Seal secrets in the vault, asking for a value not given.
+Seal a secret, reading its value from standard input.
 
 ```sh
-wardrik vault put NAME[=VALUE]... [--org ORG] [--user USER] [--yes]
+echo "$VALUE" | wardrik vault put NAME [--org ORG] [--user USER]
 ```
 
-NAME alone asks for its value without showing it, or reads it from standard input where that is not a terminal. NAME=VALUE stays in your shell's history. A secret is the deployment's, for model providers' keys and ${NAME} in `config.yaml`; no agent's call reads it. `--org ORG` seals it for an org, whose own agents read it, and `--user USER` for a user, whose agents read it, within `--org ORG` or the deployment's org. Where the vault has no key, it asks to make one; `--yes` makes it without asking.
+| Owner | Who reads it |
+| --- | --- |
+| the deployment | `${NAME}` in `config.yaml`, and model providers' keys; no agent's call |
+| `--org ORG` | the org's agents |
+| `--user USER` | the user's agents, in the deployment's org |
 
 ### wardrik vault ls
 
-The vault's secrets and whose they are, never their values.
+The names of the secrets held, never their values.
 
 ```sh
 wardrik vault ls [--org ORG] [--user USER]
 ```
 
-`--org ORG` or `--user USER` lists one owner's. With `--json`, each as its name, kind and owner; the deployment's say whether the daemon's environment sets them.
-
 ### wardrik vault rm
 
-Remove a secret from the vault.
+Remove a secret.
 
 ```sh
 wardrik vault rm NAME [--org ORG] [--user USER]
 ```
 
-## Run the daemon
+## Daemon
 
 ### wardrik serve
 
@@ -342,78 +486,10 @@ wardrik start
 
 ### wardrik stop
 
-Stop the daemon, and wait until it has.
+Stop the daemon.
 
 ```sh
 wardrik stop
-```
-
-### wardrik status
-
-What the daemon, or its cluster, is running.
-
-```sh
-wardrik status
-```
-
-With `--json`, the nodes as `GET /v1/deployment/nodes` lists them.
-
-### wardrik audit
-
-What people changed, oldest first.
-
-```sh
-wardrik audit [--after N] [--limit N]
-```
-
-Up to `--limit` changes, 100 unless given, after the change numbered `--after`. With `--json`, the page as `GET /v1/deployment/audit` answers it.
-
-### wardrik service install
-
-Run the daemon under your user's systemd.
-
-```sh
-wardrik service install
-```
-
-### wardrik service uninstall
-
-Stop the service, and remove its unit.
-
-```sh
-wardrik service uninstall
-```
-
-### wardrik service status
-
-How systemd has the service.
-
-```sh
-wardrik service status
-```
-
-### wardrik service unit
-
-Print the unit install writes.
-
-```sh
-wardrik service unit
-```
-
-### wardrik remote
-
-An IEx shell on the daemon.
-
-```sh
-wardrik remote
-```
-
-### wardrik logs
-
-Follow the daemon's log.
-
-```sh
-wardrik logs
 ```
 
 ### wardrik pid
@@ -424,10 +500,62 @@ The daemon's process id.
 wardrik pid
 ```
 
-### wardrik version
+### wardrik logs
 
-Print the version.
+Follow what the daemon logs, from its last 100 lines.
 
 ```sh
-wardrik version
+wardrik logs
 ```
+
+### wardrik service install
+
+Run the daemon as a systemd user service, `wardrik`.
+
+```sh
+wardrik service install
+```
+
+It writes `~/.config/systemd/user/wardrik.service`, then enables and starts it.
+
+### wardrik service uninstall
+
+Stop running the daemon as a service, and remove its unit.
+
+```sh
+wardrik service uninstall
+```
+
+### wardrik status
+
+Where the daemon runs, and how many agents each node holds.
+
+```sh
+wardrik status
+```
+
+It also counts the agents asleep. With `--json`, the answer of
+[`GET /v1/deployment/nodes`](/reference/http-api/#routes).
+
+### wardrik reload
+
+Read the agent files again, on every node.
+
+```sh
+wardrik reload [PATTERN...]
+```
+
+Each PATTERN, as `acme/agent/*`, narrows the agents brought to their definitions to those it
+covers. It prints what didn't read. `config.yaml` and `policies/` are read only as the daemon
+starts, so restart it after changing them.
+
+### wardrik audit
+
+What people changed, oldest first.
+
+```sh
+wardrik audit
+```
+
+It shows when, what, who and on what for each change. With `--json`, the answer of
+[`GET /v1/deployment/audit`](/reference/http-api/#routes).

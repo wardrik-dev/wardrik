@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-Each weekday morning this agent reads your calendar, your inbox and your task list, and posts the
+Each weekday morning this agent reads your calendar, your inbox and your task list. It posts the
 day's plan: what's on, what to prepare, what's overdue. It blocks focus time on your own calendar
 and drafts the emails your meetings need. Anything that invites someone else waits for you.
 
@@ -14,9 +14,20 @@ and drafts the emails your meetings need. Anything that invites someone else wai
 - the Google setup from [Inbox triage](/examples/you/inbox-triage/): the `gmail` and `gcal` servers
   and the `google` provider in `config.yaml`;
 - a [Slack app](/channels/slack/#a-slack-app) in a workspace of your own, and a channel for it,
-  here `#week`, as a `notify` target named `week`.
+  here `#week`.
 
 ## The files
+
+### config.yaml
+
+Add a `notify` target for `#week` beside the Inbox triage setup:
+
+```yaml title="~/.config/wardrik/config.yaml"
+notify:
+  week:
+    channel: slack
+    room: "#week"
+```
 
 ### The policy
 
@@ -52,7 +63,8 @@ policy: week
 notify: {to: [week], on: [parked, failed, finished]}
 triggers:
   - name: plan
-    every: "30 6 * * 1-5"        # 06:30 UTC on weekdays
+    every: "30 6 * * 1-5"        # 06:30 on weekdays
+    timezone: Europe/London
     prompt: Plan my day.
 ---
 You are my chief of staff. TASKS.md is my task list; keep it current as I tell you things.
@@ -67,7 +79,7 @@ If two meetings clash, propose which to move. Never invite anyone without asking
 ## Try it
 
 ```sh
-wardrik reload
+systemctl --user restart wardrik     # read config.yaml and the policy
 wardrik ask week "Add to TASKS.md: send the Q3 numbers to Priya by Thursday."
 wardrik ask week "Plan my day."
 ```
