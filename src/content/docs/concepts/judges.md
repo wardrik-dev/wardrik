@@ -42,9 +42,6 @@ A judge is a second opinion beside the rules, not a replacement.
 - **Exact matters go in rules.** A tool's name or a file's path is a rule's job.
 :::
 
-Try a judge on calls agents already made with `wardrik policy judge`; see
-[Tuning a judge](#tuning-a-judge).
-
 ## Tuning a judge
 
 Uncertain calls land mid-range. Asked "Does this call send money outside the company?", one model
@@ -62,33 +59,14 @@ a `deny` at 0.8.
 - **Watch for a judge that can't answer:** a run of asks saying so.
 - **Retest when the model changes.** A `latest` model can move.
 
-`wardrik policy judge NAME` asks the judge again about calls agents made, without changing anything.
-It reads the policy file as it is now, so you can adjust before `wardrik reload`, and marks with `!`
-each call it would decide differently:
-
-```text
-$ wardrik policy judge books
-books's judge on 2 calls of the agents under books, newest first; 1 decided otherwise than it would.
-
-! books/send_payment  acme/books  2026-10-09 14:02:11Z
-    arguments  {"amount":1200,"to":"Northwind"}
-    0.72       Does this call send money to a person or an account outside the company?
-    judge      asks a person
-    decided    allowed by books
-```
-
-It tries the agents whose definitions name the policy, or those `--agent` names (an agent, or a
-pattern as `acme/agent/*`), so you can test a judge before any agent uses it. `--last N` sets how many calls,
-20 by default; `--json` gives the full answers. Only calls that ran are tried, and the log doesn't
-record whether a run had read outside content, so an allow is shown as for a run that hadn't.
-
 ## Details
 
 ### How a judge decides
 
-The questions whose `tools` name a call, or all questions without `tools`, are asked together in one
-request, with the tool's name and arguments. The call is allowed only if every question with an
+The questions whose `tools` name a call, and all questions without `tools`, are asked together in
+one request, with the tool's name and arguments. The call is allowed only if every question with an
 `allow` is below its own. A refusal gives `message`, or the question, as the reason. A judge that
 can't answer, because its model is unreachable or replies with nothing usable, asks a person if any
-of its questions could ask or deny; otherwise it stays silent. `model` defaults to
-`typesafe:jev-latest`; seal its key as any model key: `wardrik vault put TYPESAFE_API_KEY`.
+of its questions could ask or deny. Otherwise it stays silent. `model` defaults to
+`typesafe:jev-latest`. Give it its key as any model key, such as `TYPESAFE_API_KEY` in the env
+file or the vault.

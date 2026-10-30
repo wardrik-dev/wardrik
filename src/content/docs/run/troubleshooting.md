@@ -5,28 +5,30 @@ sidebar:
   order: 8
 ---
 
-Three commands answer most questions: `wardrik status` for what the daemon runs, `wardrik doctor`
+Three commands answer most questions: `wardrik status` for whether the daemon runs, `wardrik doctor`
 for whether its config will work, and `wardrik logs` for what it said.
 
-## See what it runs
+## See whether it runs
 
 ```sh
 wardrik status
 ```
 
 ```
-wardrik 0.1.0 on wardrikd@localhost, up 3h 12m
-2 agents
-  default/triage  idle  wardrikd@localhost  $0.84 of $5.00 today  next run in 12m
-  acme/deploy  parked  wardrikd@localhost
-
-1 file does not read:
-  /home/me/.config/wardrik/agents/notes.md: tools names notes/*, but config.yaml configures no server notes; it has github, linear
+Wardrik runs at http://127.0.0.1:4747.
+NODE               AGENTS
+wardrik@localhost  3
+2 asleep
 ```
 
-It lists the node, the cluster's nodes if any, each agent and what it's doing, and each file that
-doesn't read, with why. `wardrik ls`, `wardrik show KEY` and `wardrik parked` say more about agents;
-`wardrik watch KEY` follows one.
+When nothing answers, it says so and exits with 1:
+
+```
+wardrik: Nothing answers at http://127.0.0.1:4747. Start the daemon with `wardrik start`.
+```
+
+For the agents themselves, `wardrik ls` lists each with what it's doing, and
+`wardrik agent show AGENT` says more about one. `wardrik follow AGENT` follows what it does.
 
 ## Check its config
 
@@ -35,16 +37,18 @@ wardrik doctor
 ```
 
 ```
-ok    config      /home/me/.config/wardrik/config.yaml reads
-ok    store       on this node's disk, at /home/me/.local/share/wardrik/store
-ok    vault       1 key, which seals
-ok    mcp github  answers at api.githubcopilot.com:443; each user authorizes it
-FAIL  mcp files   runs npx, which is not on this machine's PATH
-ok    agents      2 agent files and 1 policy read
+ok    env            /home/me/.config/wardrik/env sets 3 variables
+ok    config         /home/me/.config/wardrik/config.yaml reads
+ok    storage        keeps everything on this node's disk, under /home/me/.local/share/wardrik/store
+ok    vault          1 key from /home/me/.local/share/wardrik/vault_key, which seals
+warn  brave          web_search has no key; give it brave.api_key
+ok    mcp github     answers at api.githubcopilot.com:443
+FAIL  mcp notes      runs npx, which isn't on this machine's PATH
+ok    agents         2 agent files and 1 policy read
 ```
 
-It checks the config, the store, the vault's keys, each MCP server, and every agent and policy file.
-It runs on its own, so it works on a daemon that won't start.
+It reads what the daemon reads, in a process of its own, so it works on a daemon that won't start.
+It exits with 1 when a check fails.
 
 ## Read its log
 
@@ -52,79 +56,89 @@ It runs on its own, so it works on a daemon that won't start.
 wardrik logs
 ```
 
-This follows `~/.local/state/wardrik/log/wardrik.log`. What MCP servers run as commands write to
-standard error is in `mcp.log`, beside it.
+This follows the log of a daemon `wardrik start` started, in `~/.local/state/wardrik/log/`. Where
+else the log goes depends on how the daemon runs:
+
+| Started with | The log is |
+| --- | --- |
+| `wardrik start` | `wardrik logs` |
+| `wardrik serve` | the terminal |
+| `wardrik service install` | `journalctl --user -u wardrik -f` |
+
+What an MCP server run as a command writes to standard error is in the same log.
 
 ## Common problems
 
-**`wardrik start` says it didn't start.** It prints the end of the log. Usually `config.yaml`
-doesn't read, and the log says where:
+**The daemon doesn't start.** `wardrik start` returns before the daemon is up, so check with
+`wardrik status`. Then run `wardrik doctor`. Usually `config.yaml` doesn't read, and the line says
+where:
 
 ```
-config.yaml: mcp.linear.headers.authorization names ${LINEAR_TOKEN}, which is not set
+FAIL  config         /home/me/.config/wardrik/config.yaml: http.port: is a port number
 ```
 
-Seal the name with `wardrik vault put LINEAR_TOKEN`, or set it in `~/.config/wardrik/env`, and start
-again.
+**`config.yaml` names a `${NAME}` nothing sets.** The daemon won't start, and
+`wardrik vault put` needs a running daemon. Set the name in `~/.config/wardrik/env`, and start
+again. `wardrik doctor` lists names it expects the vault to hold:
 
-**An agent file isn't running as written.** `wardrik status` lists files that don't read. Fix the
-file and run `wardrik reload`. Until then, the agent carries on as it was.
+```
+ok    config         /home/me/.config/wardrik/config.yaml reads; the vault must hold LINEAR_TOKEN
+```
 
-**An agent lacks a server's tools.** `config.yaml` is read at start, so a new server needs a
-restart. A server that's down offers no tools until it's back.
+**An agent file isn't running as written.** `wardrik doctor` names each file that doesn't read,
+and why. Fix the file and run `wardrik reload`, which prints what still doesn't read. Until then,
+the agent carries on as it was.
 
-**A node waits, and commands say the store is unavailable.** It's waiting for a quorum.
-`wardrik status` says how many more nodes it needs; see [Run a cluster](/run/cluster/#quorum).
+**An agent lacks a server's tools.** The daemon reads `config.yaml` as it starts, so a new server
+needs a restart. A server that's down offers no tools until it's back.
 
-**The HTTP API or terminal client doesn't answer.** Another process holds its port. The log says so,
-and the daemon retries every five seconds.
+**A policy change didn't take.** The daemon reads `policies/` as it starts. Restart it.
 
-**An agent stopped answering.** `wardrik ls attention` lists agents waiting on a person, and
-`wardrik parked` shows what each waits on: a call, an account to connect, a spent budget, or a model
-that kept failing. `wardrik show KEY` says why its last turn failed.
+**The HTTP API doesn't answer.** Another process may hold port 4747. Set `http.port` in
+`config.yaml`, and restart.
 
-**A trigger didn't run.** `wardrik triggers` says how each last ran: asked, nothing new, skipped
-while busy, or a missed run let go.
+**An agent stopped answering.** `wardrik ls attention` lists agents waiting on a person.
+`wardrik approval ls` shows each call they wait on. `wardrik agent history AGENT` shows how its last
+turns ended.
 
-**A token gets `503`.** The node can't read tokens from the store right now, as in a cluster
-without a quorum.
+**A trigger didn't run.** `wardrik trigger ls AGENT` lists its triggers, how each runs, and when it
+runs next.
+
+**`wardrik` says the daemon hasn't started here yet.** The command reads its token from
+`~/.local/share/wardrik/cli_token`, which the daemon writes as it starts. Start the daemon, or set
+`WARDRIK_URL` and `WARDRIK_TOKEN` to reach one elsewhere.
 
 ## Details
 
-### `wardrik status`
-
-It exits with 3, saying `wardrik is not running`, when no daemon answers.
-
 ### `wardrik doctor`'s checks
 
-- **`config`**: that `config.yaml` reads. If it doesn't, this is the only line.
-- **`store`**: that the store is there and behaves as needed. For a bucket it writes a probe under
-  `wardrik/probe/`; for Postgres it connects.
-- **`vault`**: that each key, from `vault.keys`, `WARDRIK_VAULT_KEY` or
-  `~/.local/share/wardrik/vault_key`, is one the vault can use, and that there is one where OAuth or
-  a server's credential needs it.
-- **`mcp NAME`**: for a command, that its program is on the `PATH`; over HTTP, that its host
-  answers. It doesn't start the server or speak MCP.
-- **`agents`**: that every agent and policy file reads, with a line for each that doesn't.
+| Check | What it looks at |
+| --- | --- |
+| `env` | that the env file is yours alone, and every line sets a variable |
+| `config` | that `config.yaml` reads. If it doesn't, no later check runs. |
+| `storage` | for Postgres, that its host answers; for the disk, where the store is |
+| `vault` | that each key, from `vault.keys`, `WARDRIK_VAULT_KEY` or `vault_key`, is 32 bytes of base64 |
+| `brave` | whether `web_search` has a key |
+| `mcp NAME` | for a command, that it's on the `PATH`; over HTTP, that its host answers. It doesn't start the server or speak MCP. |
+| `channel NAME` | how the channel takes Slack's events, its tokens, and who decides |
+| `oauth` | that `base_url` reaches the daemon, once a provider needs a callback. See [A public address](/run/public-address/). |
+| `agents` | that every agent and policy file reads, as the daemon would start it |
 
-It exits with 1 when a check fails. It runs with your shell's environment and `PATH`, which may
-differ from the service's. For a daemon that runs, it also asks whether the vault holds each name.
-
-### Logs
-
-- The log rotates at 10 MB, keeping five.
-- `wardrik serve` logs to the terminal, and the Docker image to `docker logs`.
-- `WARDRIK_LOG` names another file, or `-` for the terminal.
-- Each HTTP request is logged with its `request-id`, the header every answer carries.
+It runs with your shell's environment and `PATH`, which may differ from the service's.
 
 ### Environment and secrets
 
-A name the environment doesn't set is read from the vault, when the daemon next starts. `storage`,
-`cluster`, `http` and `vault` read the environment alone. Every `wardrik` command, and the service,
-reads `~/.config/wardrik/env`, one `NAME=value` a line, for what the shell doesn't set.
+- A `${NAME}` the environment doesn't set comes from the env file, then from the vault, as the
+  daemon starts.
+- `storage`, `http` and `vault` read the environment and the env file alone.
+- The env file is one `NAME=value` a line, with an optional `export` and optional quotes.
+- Every `wardrik` command, and the daemon, reads it for what the shell doesn't set.
 
 ### Servers and `PATH`
 
-A server's log lines are in `wardrik.log`, and what a command wrote is in `mcp.log`. A program
-`wardrik doctor` finds but the service doesn't is on your shell's `PATH` and not systemd's: name it
-by its full path.
+A program `wardrik doctor` finds but the service doesn't is on your shell's `PATH` and not
+systemd's. Name it by its full path.
+
+### Requests
+
+Each HTTP answer carries a `request-id` header. A request that sends one gets its own back.

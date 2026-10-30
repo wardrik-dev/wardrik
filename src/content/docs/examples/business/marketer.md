@@ -59,9 +59,16 @@ notify:
     approvers: ["@maria"]
 ```
 
-- Kit signs in with OAuth, and registers Wardrik as a client itself. Acme connects it once. See
+- Kit signs in with OAuth, and registers Wardrik as a client itself. See
   [Connect accounts](/build/accounts/).
 - Google's [Analytics server](https://github.com/googleanalytics/google-analytics-mcp) is read-only.
+
+Seal the keys while the daemon runs. `vault put` reads the value from stdin:
+
+```sh
+echo "$BUFFER_API_KEY" | wardrik vault put BUFFER_API_KEY
+# and the same for SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET
+```
 
 ### The policy
 
@@ -117,8 +124,13 @@ Buffer drafts. Post a short plan in Slack: what you drafted and why, with one nu
 
 ## Try it
 
+1. Restart the daemon to read `config.yaml` and the policy.
+2. Connect Kit for Acme's agents, and open the link it prints.
+3. Ask the agent to plan.
+
 ```sh
-wardrik reload
+systemctl --user restart wardrik
+wardrik connection connect kit --org acme
 wardrik ask marketer "Plan this week."
 ```
 

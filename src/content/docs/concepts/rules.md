@@ -62,8 +62,11 @@ mcp:
     gated: [create_*, issue_write]   # or true for every tool, false for none
 ```
 
-A [tool worker](/build/tool-workers/)'s tools are gated unless marked read-only. The tools the daemon
-ships are not gated.
+A [tool worker](/build/tool-workers/)'s tools are gated unless marked read-only. Of the tools
+Wardrik ships:
+
+- **Not gated:** the file tools, `web_search`, `deep_research` and `run_lua`.
+- **Gated:** the `agents/*` and `self/*` tools that change something, such as `agent_define`.
 
 ## Details
 
@@ -93,14 +96,24 @@ YAML reads a rule before the policy does:
 - **`: ` ends a key**, even inside double quotes. Single-quote the whole rule:
   `- 'books/*(memo = "re: invoice")'`.
 
-### Policy files and reload
+### Defaults by annotation
 
-An agent whose policy doesn't read doesn't read either; one already running keeps the policy it
-had.
+`default` can depend on what a tool says of itself:
+
+```yaml
+default: {read_only: allow, else: ask}
+```
+
+The strictest annotation a tool has wins. `else` covers a tool with none of them.
+
+### Policy files
+
+A policy file is read as the daemon starts; restart it after a change. An agent file that names a
+policy `policies/` doesn't hold isn't defined.
 
 ### In Elixir
 
-A policy is a `Wardrik.Hook`. An application using Wardrik as a library can give an agent its own
-hooks: each sees every tool call and model call first, and can deny it, ask a person, or let it
-run. `WardrikPolicy.hooks/1` turns a policy written as data into hooks, and an agent file can name a
-hook module as its `policy`. A tool written in Elixir can declare itself gated.
+A policy is a `WardrikPolicy`, which `WardrikPolicy.Middleware` holds an agent to. An application
+using Wardrik as a library sets the policies agents name with Wardrik's `:policies` option, and the
+one every agent is held to with `:policy`. A tool written in Elixir is gated by the annotation
+`gated: true`.

@@ -6,9 +6,9 @@ sidebar:
 ---
 
 Every chargeback has a deadline and a pile of evidence to gather. This agent starts the moment
-Stripe opens a dispute: it pulls the order, the shipment and the customer's messages from your own
-app, writes the evidence, and proposes the submission in Slack. You read it, approve it, and it's
-filed.
+Stripe opens a dispute. It pulls the order, the shipment and the customer's messages from your own
+app, and writes the evidence. It proposes the submission in Slack, and once you approve it, the
+case is filed.
 
 Reading runs alone. Submitting to Stripe waits for a person. Each dispute is its own turn, with its
 own budget and a record of who approved what.
@@ -52,19 +52,27 @@ notify:
   writes are [gated](/concepts/rules/#gated-tools).
 - `credential` sends acme's key as a bearer token. `base_url` is where Stripe sends webhooks.
 
-Seal acme's secrets and restart:
+Seal acme's secrets. `vault put` reads the value from stdin:
 
 ```sh
-wardrik vault put STRIPE_AGENT_KEY --org acme
-wardrik vault put STRIPE_HOOK_SECRET --org acme
-systemctl --user restart wardrik
+echo "$STRIPE_AGENT_KEY" | wardrik vault put STRIPE_AGENT_KEY --org acme
+openssl rand -hex 32 | wardrik vault put STRIPE_HOOK_SECRET --org acme
 ```
 
-`STRIPE_HOOK_SECRET` is any long random string. Stripe sends it back at the end of the webhook's URL.
+- `--org acme` seals them for acme's agents. A `credential` and a webhook's secret are looked up
+  for the agent's org.
+- `STRIPE_HOOK_SECRET` is any long random string. Stripe sends it back at the end of the webhook's
+  URL, so keep a copy for that.
 
 ### Your shop's tools
 
-Your app answers from your own data. Here `shop` stands for your database and helpdesk:
+Your app answers from your own data. Add the SDK to it:
+
+```sh
+npm install @wardrik/sdk@0.1.0-rc.1 zod
+```
+
+Here `shop` stands for your database and helpdesk:
 
 ```ts title="disputes.ts"
 import { Wardrik } from "@wardrik/sdk";
@@ -103,7 +111,7 @@ Start it with a token that serves acme's agents:
 
 ```sh
 wardrik token create disputes --resource 'acme/agent/*' --role worker
-WARDRIK_TOKEN=wardrik_... node disputes.ts
+WARDRIK_TOKEN=wrk_... node disputes.ts
 ```
 
 These three can run inside your shop's own app, beside its web server, using its database code. See
@@ -160,21 +168,26 @@ See [Receiving a webhook](/build/triggers/#receiving-a-webhook).
 
 ## Try it
 
-Read the agent file, and print the trigger's address:
+1. Restart the daemon, so it reads `config.yaml`, the policy and the agent, and check the trigger:
 
-```sh
-wardrik reload
-wardrik triggers
-```
+   ```sh
+   systemctl --user restart wardrik
+   wardrik trigger ls disputes
+   ```
 
-The address is under `base_url`, as `https://agents.acme.example/v1/hooks/acme/disputes/stripe`.
-In Stripe, under **Developers › Webhooks**, add an endpoint at that address with your secret on the
-end, `…/stripe/<STRIPE_HOOK_SECRET>`, for the event `charge.dispute.created`. Then make a test
-dispute with the [Stripe CLI](https://docs.stripe.com/stripe-cli):
+2. In Stripe, under **Developers › Webhooks**, add an endpoint for the event
+   `charge.dispute.created`. Its address is the trigger's, under `base_url`, with your secret on the
+   end:
 
-```sh
-stripe trigger charge.dispute.created
-```
+   ```text
+   https://agents.acme.example/v1/hooks/acme/disputes/stripe/<STRIPE_HOOK_SECRET>
+   ```
+
+3. Make a test dispute with the [Stripe CLI](https://docs.stripe.com/stripe-cli):
+
+   ```sh
+   stripe trigger charge.dispute.created
+   ```
 
 The case appears in `#disputes` as a call waiting for you: the Stripe write, with the evidence it
 would file as its arguments, and **Approve** and **Deny**. Approve it, and the evidence is filed.
@@ -193,16 +206,24 @@ Deny it with a reason, and the agent reads why.
 
 ### How retries are recognised
 
-A request that presents the secret is known by its `Idempotency-Key` header, or by the SHA-256 of
-its body when it sends none. Stripe sends none and resends the same event, so a retry matches the
-first delivery and is asked about once. A request the daemon can't take now gets `503`, and Stripe
+A request that presents the secret is known by the first of these it has:
+
+- its `Idempotency-Key` header;
+- its `webhook-id` header, as Standard Webhooks senders send;
+- the SHA-256 of its body.
+
+Stripe sends neither header, and resends the same event. So a retry matches the first delivery and
+is asked about once. A request the daemon can't take now gets `503`, and Stripe
 tries again later.
 
 ### Why the secret is in the URL
 
-Stripe signs its webhooks its own way, with `Stripe-Signature`. Wardrik checks a secret the sender
-presents, or a [Standard Webhooks](https://www.standardwebhooks.com/) signature. Stripe can't send
-an `Authorization` header, so the secret goes at the end of the URL, over HTTPS. A sender that signs
+Stripe signs its webhooks its own way, with `Stripe-Signature`. Wardrik checks one of two things:
+
+- a secret the sender presents, as `Authorization: Bearer <secret>` or at the end of the URL;
+- a [Standard Webhooks](https://www.standardwebhooks.com/) signature.
+
+Stripe can't send an `Authorization` header, so the secret goes at the end of the URL, over HTTPS. A sender that signs
 with Standard Webhooks, such as Clerk or Resend, uses `verify: standard` with its signing secret
 instead:
 

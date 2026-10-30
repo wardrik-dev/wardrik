@@ -23,10 +23,10 @@ Slack sends the app's events to the daemon over HTTPS, so the daemon needs a
 
 Give the daemon its own app.
 
-1. At [api.slack.com/apps](https://api.slack.com/apps), choose **Create New App**, **From a
-   manifest**, pick your workspace, and paste the manifest below. Change `Wardrik` to the name your
+1. At [api.slack.com/apps](https://api.slack.com/apps), choose **Create New App**, then **From a
+   manifest**. Pick your workspace, and paste the manifest below. Change `Wardrik` to the name your
    team will see, and `agents.example.com` to the daemon's address.
-2. **Install to Workspace**, then copy the **Bot User OAuth Token** (`xoxb-...`) from **OAuth &
+2. Choose **Install to Workspace**. Copy the **Bot User OAuth Token** (`xoxb-...`) from **OAuth &
    Permissions**. This is `token`.
 3. Under **Basic Information › App Credentials**, copy the **Signing Secret**. This is
    `signing_secret`.
@@ -77,23 +77,26 @@ settings:
 `slack` in each URL is the channel's name in `config.yaml`. Slack checks the events URL as you save
 the manifest, so the daemon must be running and reachable at that address first.
 
-Seal both secrets in the vault and restart the daemon:
+Seal both secrets in the vault, and restart the daemon:
 
 ```sh
-wardrik vault put SLACK_BOT_TOKEN        # xoxb-...
-wardrik vault put SLACK_SIGNING_SECRET
-systemctl --user restart wardrik
+echo "xoxb-..." | wardrik vault put SLACK_BOT_TOKEN
+echo "..." | wardrik vault put SLACK_SIGNING_SECRET
+wardrik stop && wardrik start
 ```
 
-Invite the app into a Slack channel with `/invite @yourapp`. It always replies; if it doesn't, see
+Invite the app into a Slack channel with `/invite @yourapp`. It always replies. If it doesn't, see
 [The app says nothing](#the-app-says-nothing).
 
 ### Testing with Socket Mode
 
-Slack's Socket Mode is for testing: events arrive over a connection the daemon opens to Slack, so it
-needs no public address. In the manifest, set `socket_mode_enabled: true` and drop both
-`request_url` lines. Under **Basic Information › App-Level Tokens**, make a token with the scope
-`connections:write` (`xapp-...`), and name it `app_token` in place of `signing_secret`:
+Slack's Socket Mode is for testing. Events arrive over a connection the daemon opens to Slack, so
+it needs no public address.
+
+1. In the manifest, set `socket_mode_enabled: true` and drop both `request_url` lines.
+2. Under **Basic Information › App-Level Tokens**, make a token with the scope `connections:write`
+   (`xapp-...`).
+3. Name it `app_token`, in place of `signing_secret`:
 
 ```yaml
 channels:
@@ -103,7 +106,7 @@ channels:
     app_token: ${SLACK_APP_TOKEN}
 ```
 
-Give each daemon its own app here: Slack splits an app's Socket Mode events and button presses
+Give each daemon its own app here. Slack spreads an app's Socket Mode events and button presses
 across every connection it has.
 
 ## An agent in a Slack channel
@@ -117,14 +120,17 @@ channels: [slack]
 
 Invite the app, and it introduces the agent:
 
-> :wave: **acme/books** answers here now.
+> :wave: **books** answers here now.
 > _Keeps the books: reconciles Square deposits and posts to QuickBooks._
-> Mention @Wardrik and it answers in a thread under your message. A call that needs approval waits
-> here for someone to approve it.
+> Mention @Wardrik, and it answers in a thread under your message. A call that needs approval
+> waits in its thread for whoever asked.
 > `[Answer every message]` `[⋯]`
 
-**Answer every message** makes the channel the agent's own; ⋯ switches agents or stops it. With
-approvers named, the last line names them. For several agents or none, see
+- **Answer every message** has the agent answer each message in the channel, each in a thread of
+  its own.
+- **⋯** has **Use another agent** and **Stop answering here**.
+
+With approvers named, the last line names them. For several agents or none, see
 [Channels](/channels/#a-rooms-agent).
 
 ## Threads in Slack
@@ -136,17 +142,16 @@ answers again without a mention.
 > ↳ **Wardrik:** Two cases, both 2019.
 
 The app marks a message :eyes: when the agent takes it, and :white_check_mark: once it answers.
-While the agent works, the thread shows what it's doing, as *Wardrik is running web_search…*;
-stopping the turn clears that and takes the :eyes: away. See [Channels](/channels/#threads) for how
-threads work.
+While the agent works, the thread's status shows what it's doing. Stopping the turn clears it. See
+[Channels](/channels/#threads) for how threads work.
 
 ## What a notice says in Slack
 
-A waiting call shows its tool, the policy's question, its arguments, and whether the turn had read
-outside content, with **Approve**, **Deny** and a box for a note. The message updates to say who
-decided.
+A waiting call shows its tool, the policy's question and its arguments. It says so if the turn had
+read content from outside. Below are **Approve**, **Deny** and a box for a note. Once someone
+decides, the buttons give way to who decided:
 
-> Denied in Slack by jon: Deploy to staging first, and show me the diff.
+> Denied `deploy` by @jon: Deploy to staging first, and show me the diff.
 
 A denial passes the note to the model as the reason. An approval runs the call as written, with the
 note beside the result. A finished turn's answer is posted as Markdown.
@@ -154,7 +159,7 @@ note beside the result. A finished turn's answer is posted as Markdown.
 ## Who approves
 
 `approvers` lists who may press the buttons, by `@handle`, email address or Slack member ID.
-`approvers: anyone` lets everyone in the channel answer.
+`approvers: anyone` lets everyone answer.
 
 ```yaml
 channels:
@@ -163,68 +168,70 @@ channels:
     approvers: ["@maria", "@jon"]   # these people; or: anyone
 ```
 
-Each approver is asked in the app's messages, with a link, and the thread says who it waits on:
+1. Each approver is asked in the app's Messages tab, with a link to the thread.
+2. The thread says who it waits on:
 
-> ↳ **Wardrik:** Waiting on @maria or @jon to approve `create_bill`.
+   > ↳ **Wardrik:** Waiting on @maria or @jon to approve `create_bill`.
 
-The first to answer decides, and the thread says who and what they wrote. Whoever asked for the turn
-can always answer. Without approvers, only they can, and a trigger's turn is answered with
-`wardrik approve` on the server; `wardrik doctor` says which a channel does.
+3. The first to answer decides.
+
+Whoever asked for the turn can always answer. Without approvers, only they can. A trigger's turn is
+answered with `wardrik approval approve` on the server. `wardrik doctor` says who decides in each
+channel.
 
 ## Details
 
 ### What the manifest asks for
 
 - **Event Subscriptions and Interactivity:** Slack sends events to `/events` and button presses to
-  `/actions`, under `/v1/channels/slack/`, each signed with the signing secret. The daemon refuses
-  any request Slack didn't sign, or signed more than five minutes before.
+  `/actions`, under `/v1/channels/slack/`. Each is signed with the signing secret. The daemon
+  refuses a request Slack didn't sign, or signed more than five minutes before.
 - **Bot events:** `member_joined_channel`, `channel_left` and `group_left` report invites and
-  removals; `message.channels` and `message.groups` carry posts; `app_uninstalled` and
+  removals. `message.channels` and `message.groups` carry posts. `app_uninstalled` and
   `tokens_revoked` say the app was taken out.
 - **Bot scopes:** read and post, post in any public channel, mark messages, and find people by
   `@handle`. `users:read.email` is only needed for approvers named by email.
-- **Notices in a room:** with `chat:write.public`, a [notice](/build/notices/#post-in-a-room) posts
-  in any public channel without the bot invited. A private channel needs it invited.
-- **Messages Tab:** where approvers are asked. Direct messages to the app aren't answered.
+- **Notices in a room:** with `chat:write.public`, a [notice](/build/notices/#post-in-a-room)
+  posts in any public channel without the bot invited. A private channel needs it invited.
+- **Messages tab:** where approvers are asked.
 
 No user scopes are needed; the app acts as itself. A new scope means installing the app again.
 
 ### The app says nothing
 
-The daemon binds a channel when it hears the app arrive. If it was invited while the daemon was down,
-or before events were on, `/remove @yourapp` and invite it again. Otherwise check the bot events
-above, that **Event Subscriptions** shows the request URL verified, and the daemon's log.
+The daemon binds a channel when it hears the app arrive. If it was invited while the daemon was
+down, or before events were on, `/remove @yourapp` and invite it again. Otherwise check:
+
+- the bot events above;
+- that **Event Subscriptions** shows the request URL verified;
+- `wardrik doctor`, which checks the tokens with Slack;
+- `wardrik logs`.
 
 ### Messages and accounts
 
-- The agent reads each message as from its sender's Slack name and member ID. It skips edits,
-  deletions, other bots, and people from another workspace.
-- A call waiting for an account shows **Show link**, visible only to whoever pressed it. See
+- The agent reads each message as from its sender, as Slack names them. It skips other bots, and
+  workspaces the app isn't added to.
+- A call waiting for an account shows **Show link**. Its link goes only to whoever pressed it. See
   [Connect accounts](/build/accounts/).
 - Bindings are recorded with who made them, as `wardrik.room.bound` and `wardrik.room.unbound`
   [events](/reference/events/).
 
 ### Finding approvers
 
-Approvers are found by `@handle`, email or member ID (**Copy member ID** in a Slack profile). One
-that can't be found is still named in the thread and logged. If the app can message none of them, it
-asks in the thread. `admins` and [notice target](/build/notices/) approvers may also answer.
-
-### Without buttons
-
-Without `signing_secret` or `app_token`, a parked notice says which `wardrik approve` or
-`wardrik deny` to run. The bot token alone can post.
+Approvers are found by `@handle`, email or member ID (**Copy member ID** in a Slack profile). If
+Slack reaches none of them, the call is asked in the thread instead.
 
 ### One app in many workspaces
 
 The daemon runs one app in the one workspace its `token` reaches. An app
-[embedded](/build/embed/#answer-in-slack) in your service can be installed in many, one for each
-org.
+[embedded](/build/embed/#answer-in-slack) in your service can be added to many, one for each org.
 
-Give the channel `client_id` and `client_secret` from **Basic Information › App Credentials**, in
-place of `token`. Set the app's **Redirect URL** to your install route. Send each org's admin to
-`WardrikChannel.install_url/3`, and hand Slack's redirect to `WardrikChannel.install/3`.
+1. Give the channel `client_id` and `client_secret`, from **Basic Information › App
+   Credentials**, in place of `token`, with `installations: :stored`.
+2. Set the app's **Redirect URL** to a route in your app, and pass it as `redirect_uri`.
+3. Send someone acting for the org to `Wardrik.Channels.install_url/4`.
+4. In your redirect route, hand Slack's query to `Wardrik.Channels.installed/4`.
 
-Your `WardrikChannel.Installations` keeps each workspace's token and approvers. Each workspace
-offers its org's agents alone. `WardrikChannel.attach/2`'s `offering:` and `deciding:` put what the
-app says in your own words.
+Each workspace's token is sealed with Wardrik's `:keys`, and the workspace offers its org's agents
+alone. `WardrikChannel`'s `:offering` and `:deciding` options put what the app says in your own
+words.

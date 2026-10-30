@@ -57,19 +57,23 @@ orgs:
 ```
 
 - **Each team is declared once,** under `orgs`, with what it uses and the policy it's held to. A
-  misspelt org or server is refused at startup, with the nearest name.
+  server, channel or target an entry names but nothing defines is refused at startup, by name.
 - **Servers are defined once.** Stripe serves Payments alone; GitHub serves both, each with its own
   token.
 - **Each team has its own Slack app,** offering only its own org's agents.
 - **No deployment secret reaches an agent.** Each team's agents read only what their org holds.
 
-Each team's credentials are sealed for its org, where no other team's agents can read them:
+Each team's credentials are sealed for its org, where no other team's agents can read them.
+`vault put` reads the value from stdin:
 
 ```sh
-wardrik vault put STRIPE_AGENT_KEY --org payments
-wardrik vault put GITHUB_TOKEN --org payments
-wardrik vault put GITHUB_TOKEN --org growth
+echo "$PAYMENTS_STRIPE_KEY" | wardrik vault put STRIPE_AGENT_KEY --org payments
+echo "$PAYMENTS_GITHUB_TOKEN" | wardrik vault put GITHUB_TOKEN --org payments
+echo "$GROWTH_GITHUB_TOKEN" | wardrik vault put GITHUB_TOKEN --org growth
 ```
+
+The Slack tokens and signing secrets in `config.yaml` are the deployment's: seal them without
+`--org`.
 
 See [Orgs](/run/orgs/) for everything an org keeps apart.
 
@@ -105,6 +109,13 @@ wardrik token create growth-platform --resource 'growth/agent/*' --role reader,m
 
 ## Try it
 
+Restart the daemon to read `config.yaml` and the policies:
+
+```sh
+systemctl --user restart wardrik
+wardrik doctor
+```
+
 The Payments team defines an agent with its token, over the [HTTP API](/build/http-api/):
 
 ```sh
@@ -126,8 +137,8 @@ agents can't reach Stripe at all.
 
 - **Isolation by org.** Agents, credentials, tokens and channels stay inside their team.
 - **Self-service within limits.** Teams build their own agents; the platform team's policy holds
-  every one, from the API, files or Slack.
-- **Spend limits per agent,** set once for a whole team.
+  every one, from the API or from files.
+- **Spend limits per team,** set once in the org's policy.
 - **One audit trail.** Every change people make, and every call and decision agents make, is on
   record.
 

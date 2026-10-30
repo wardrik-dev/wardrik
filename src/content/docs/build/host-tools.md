@@ -40,18 +40,18 @@ process.on("SIGTERM", () => {
 await wardrik.work({ signal: stop.signal });
 ```
 
-Each copy of your app connects, and each call goes to one of them. They share one token.
+Each copy of your app connects with the same token, and each call goes to one of them.
 
 ## On its own
 
 A worker of its own is a small Node app, run like any service. [Your first
-tool](/build/first-tool/#7-run-it-as-a-service) runs one with systemd on the daemon's machine. In a
+tool](/build/first-tool/#6-run-it-as-a-service) runs one with systemd on the daemon's machine. In a
 container:
 
 ```dockerfile title="Dockerfile"
 FROM node:24-slim
 WORKDIR /app
-COPY package.json package-lock.json wardrik-sdk-0.0.0.tgz ./
+COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY statuspage.ts ./
 USER node
@@ -114,8 +114,8 @@ Then point the worker at it:
 WARDRIK_URL=https://agents.acme.example
 ```
 
-The SDK opens a WebSocket to `wss://agents.acme.example/v1/workers`, and Caddy passes it on. Only
-that path is open, and it takes only tokens with the `worker` role.
+The SDK opens a WebSocket to `wss://agents.acme.example/v1/workers`, and Caddy passes it on. A
+worker's tools reach only the agents its token's `worker` role covers.
 
 ## Tokens and keys
 
@@ -123,7 +123,7 @@ that path is open, and it takes only tokens with the `worker` role.
   [Tokens](/run/tokens/).
 - The tools' own keys, such as Statuspage's, stay in the app's environment. The daemon never sees
   them.
-- Revoke the token to cut the app off at once: its connection closes.
+- Revoke the token to cut the app off. Its connection closes within 15 seconds.
 
 | Resource | Agents that get the tools |
 | --- | --- |
@@ -155,17 +155,21 @@ The model is never told it failed, so it never retries under a new key. See
 
 ### Several workers
 
-- Workers under one token offering a tool of the same name share its calls; each call goes to one.
-- A tool is bound to the token that offers it. Where a second token's workers offer the same name to
-  the same agent, the first to connect keeps it, the second is refused, and the daemon logs it.
-- A call's events name the token that served it.
-- `*` in an agent file includes `workers/*`. A file can't list one worker tool; a policy decides.
+- A token acts for whoever made it. Workers whose tokens act for the same person share a tool's
+  calls, and each call goes to one of them.
+- Where workers acting for two different people offer a tool of the same name to one agent, the
+  agent gets the tool of the one that connected first.
+- `*` in an agent file includes `workers/*`. A file can't list one worker tool. Name it in a policy
+  instead.
 
 ### The connection
 
 - `new Wardrik()` reads `WARDRIK_URL`, `http://127.0.0.1:4747` unless set, and `WARDRIK_TOKEN`.
+  It throws without a token.
 - `work` opens a WebSocket to `/v1/workers` and answers calls as an MCP server.
-- A refused token throws a `WardrikError`. Revoking the token closes the connection.
+- `work` pings the daemon every 15 seconds, and reconnects where a ping isn't answered in as long
+  again. `keepalive` changes it, in milliseconds.
+- A refused token throws a `WardrikError`, with its `status`, `type` and `requestId`.
 
 ### On a private network
 

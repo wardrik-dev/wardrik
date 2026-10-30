@@ -37,10 +37,6 @@ mcp:
     only: [get_file_contents, search_code, search_issues, issue_write]
     gated: [issue_write]
 
-tools:
-  web_search:
-    price: 0.005
-
 brave:
   api_key: ${BRAVE_API_KEY}
 
@@ -61,19 +57,23 @@ notify:
 - `only` limits GitHub to reading and `issue_write`, so nothing it reads can get it to push, merge
   or close.
 - `gated` makes `issue_write` wait on a person unless a rule allows it by name.
-- `tools` prices `web_search`, so the budget counts searching.
 - `approvers` are who may press Approve and Deny. See [Who approves](/channels/slack/#who-approves).
 
-Restart the daemon and check the server:
+Check that it reads:
 
 ```sh
-systemctl --user restart wardrik
 wardrik doctor
 ```
 
 ### The ad platform's tools
 
-Your app offers them and runs them, with your keys. Here `ads` stands for the platform's client:
+Your app offers them and runs them, with your keys. Add the SDK to it:
+
+```sh
+npm install @wardrik/sdk@0.1.0-rc.1 zod
+```
+
+Here `ads` stands for the platform's client:
 
 ```ts title="growth.ts"
 import { Wardrik } from "@wardrik/sdk";
@@ -142,7 +142,7 @@ Start it with a token that can serve acme's agents:
 
 ```sh
 wardrik token create growth --resource 'acme/agent/*' --role worker
-WARDRIK_TOKEN=wardrik_... node growth.ts
+WARDRIK_TOKEN=wrk_... node growth.ts
 ```
 
 ### The policy
@@ -184,8 +184,8 @@ budget:
 - **Over $200 a day is refused.** A call without `daily_budget` still asks. See
   [Conditions on arguments](/reference/policies/#conditions-on-arguments).
 - **Anything unnamed asks**, including a tool added later.
-- **$10 a day,** counting model calls, priced searches and reported costs. Then the next model call
-  waits in `#growth` for another $10. See [Budgets](/reference/policies/#budgets).
+- **$10 a day,** counting model calls and the costs tools report. Then the next model call waits in
+  `#growth` for another $10. See [Budgets](/reference/policies/#budgets).
 
 ### The agent
 
@@ -257,12 +257,15 @@ Step 4 makes it act rather than report: a waiting call is the work, held until s
 
 ## Try it
 
-Read the files again, tell it who to watch, and hand it a launch:
-
 ```sh
-wardrik reload
+# 1. Read config.yaml, the policy and the agent
+systemctl --user restart wardrik
+
+# 2. Tell it who to watch
 wardrik ask growth "Our competitors are Rivalco (rivalco.com) and Billwise (billwise.io).
 Write WATCHLIST.md with what matters about each, and a HEARTBEAT.md for your Monday sweeps."
+
+# 3. Hand it a launch
 wardrik ask growth "Rivalco launched a free plan for teams of up to three today, at
 rivalco.com/pricing. Do what you would do."
 ```
@@ -296,10 +299,18 @@ and its arguments. Any approver decides each call on its own, in any order.
 - **Deny** refuses it with a reason: "Denied in Slack by maria: We are not competing on price." To
   change a call, deny it and say what to do instead.
 
-Once every call is decided, the run carries on, records the decisions in `DECISIONS.md`, and posts
-its brief. Allowed calls, such as the draft campaign, already ran. From a terminal, `wardrik parked`,
-`wardrik approve` and `wardrik deny` do the same, with a note or a reason. See
-[Waiting on a person](/concepts/approvals/).
+Once every call is decided, the run carries on. It records the decisions in `DECISIONS.md` and posts
+its brief. Allowed calls, such as the draft campaign, already ran.
+
+From a terminal:
+
+```sh
+wardrik approval ls
+wardrik approval approve growth CALL --note "Launch it on Monday."
+wardrik approval deny growth CALL --reason "We are not competing on price."
+```
+
+See [Waiting on a person](/concepts/approvals/).
 
 ### Another signal: a webhook
 
@@ -315,8 +326,10 @@ triggers:
       on it as you would on a launch. Otherwise answer in one line.
 ```
 
-Seal the secret with `wardrik vault put CRM_HOOK_SECRET --org acme`. Give the CRM the address
-`wardrik triggers` prints; the CRM must be able to reach it. What a service sends is outside
+Seal the secret for acme's agents with
+`openssl rand -hex 32 | wardrik vault put CRM_HOOK_SECRET --org acme`, and keep a copy for the CRM.
+Give the CRM the trigger's address, `<base_url>/v1/hooks/acme/growth/lost-deal`, with the secret
+as a bearer token or on the end of the URL. The CRM must be able to reach it. What a service sends is outside
 content, like a feed. See [Receiving a webhook](/build/triggers/#receiving-a-webhook).
 
 ### Letting it choose what it watches
@@ -327,20 +340,24 @@ Each change is a gated call, proposed and approved like any other:
 ```yaml title="~/.config/wardrik/policies/growth.yaml"
 allow:
   # ...the rules above, and:
-  - agent_definition_read
+  - self_definition_read
 ask:
   # ...the rules above, and:
-  agent_trigger_set: This changes what it watches.
-  agent_trigger_remove: This stops one of its triggers.
+  self_trigger_set: This changes what it watches.
+  self_trigger_remove: This stops one of its triggers.
 ```
 
-A file's agent keeps the file's triggers, so define this one over the HTTP API. Remove `growth.md`
-from `agents/` and run `wardrik reload`; the agent stops, keeping its conversation. Save the file's
-body as `instructions.md` and define it with a token held to the policy:
+An agent a file declares gets the file's triggers back on every reload. So define this one over the
+HTTP API instead:
+
+1. Save the file's body as `instructions.md`.
+2. Remove `growth.md` from `agents/` and run `wardrik reload`. Wardrik forgets the agent and its
+   conversation. Its files, such as `WATCHLIST.md`, stay.
+3. Define it again with a token held to the policy:
 
 ```sh
 wardrik token create growth-admin --resource 'acme/agent/*' --role definer --policy growth
-export TOKEN=wardrik_...
+export TOKEN=wrk_...
 
 jq -n --rawfile instructions instructions.md '{
   description: "Hears when a competitor moves, does what follows, and proposes the rest as calls.",
@@ -352,6 +369,7 @@ jq -n --rawfile instructions instructions.md '{
   policy: "growth",
   timeout: 900,
   channels: ["slack"],
+  notify: {to: ["growth"], on: ["parked", "failed", "finished"]},
   triggers: [
     {name: "launches", every: "30m", prompt: "New from the competitors you watch, below.",
      feed: ["https://rivalco.example/changelog.rss", "https://billwise.example/blog/atom.xml",
@@ -367,12 +385,10 @@ when one has told you nothing worth acting on for a month, remove it." The team 
 `#growth`:
 
 > **maria:** @Wardrik Billwise has a changelog feed now, billwise.example/changelog.rss. Watch it.
-> ↳ **Wardrik:** Waiting on @maria or @sam to approve `agent_trigger_set`.
+> ↳ **Wardrik:** Waiting on @maria or @sam to approve `self_trigger_set`.
 
-Approved, `wardrik triggers` lists the trigger and `wardrik audit` records the agent as its setter.
-A definition sent over HTTP has no `notify`, so its triggered runs post nothing to `#growth`; use
-`wardrik parked`, the [terminal client](/build/tui/) or the HTTP API. Slack threads still ask the
-approvers.
+Once it's approved, `wardrik trigger ls growth` lists the trigger, and `wardrik audit` records the
+agent as its setter.
 
 ### Steering it in a thread
 
@@ -390,14 +406,18 @@ Threads share the agent's files. See [Threads in Slack](/channels/slack/#threads
 
 Every message, call, decision and refusal is an event:
 
-- `tool_call.started` says who let a call run, a person or the policy;
-- `interrupt.resolved` says who approved or denied it, and what they wrote;
-- `tool_call.denied` says why a rule refused it;
-- `tool_call.completed` says what it cost.
+- `wardrik.tool_call.started` says who let a call run, a person or the policy;
+- `wardrik.interrupt.resolved` says who approved or denied it, and what they wrote;
+- `wardrik.tool_call.denied` says why a rule refused it;
+- `wardrik.tool_call.completed` says what it cost.
 
-`wardrik watch growth --json` follows them, one a line. `wardrik audit` lists changes and who made
-them: an agent defined, a trigger set, a token made. `wardrik show growth` shows what it has spent
-this period. See [The event stream](/concepts/events/).
+```sh
+wardrik follow growth --json    # its events as they happen, one a line
+wardrik audit                   # changes and who made them: an agent defined, a trigger set, a token made
+wardrik ls growth               # what it has spent today
+```
+
+See [The event stream](/concepts/events/).
 
 ### Trusting it with more
 
@@ -417,11 +437,15 @@ deny:
   workers/update_campaign(daily_budget > 200): A campaign over $200 a day goes through the marketing lead.
 ```
 
-The rest of the policy stays as it was. The `ask` rule names only calls over $50, because an ask
-beats an `allow_after` naming the same call. A call with no `daily_budget`, such as a plain launch
-or pause, matches neither, so it waits as a gated call does. `wardrik reload` applies the rules to
-the running agent, and a waiting call they now allow runs. See
-[Changing the policy while it waits](/concepts/approvals/#changing-the-policy-while-it-waits).
+The rest of the policy stays as it was.
+
+- The `ask` rule names only calls over $50, because an ask beats an `allow_after` naming the same
+  call.
+- A call with no `daily_budget`, such as a plain launch or pause, matches neither. It waits as a
+  gated call does.
+- The daemon reads policies as it starts, so restart it to apply the rules:
+  `systemctl --user restart wardrik`. A call already waiting keeps waiting until someone decides
+  it. See [Changing the policy while it waits](/concepts/approvals/#changing-the-policy-while-it-waits).
 
 As it gets more rope:
 

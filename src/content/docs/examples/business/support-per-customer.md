@@ -26,6 +26,9 @@ Thousands of these cost almost nothing: an agent nobody is talking to sleeps unt
 ```yaml title="~/.config/wardrik/config.yaml"
 org: shop
 
+http:
+  trusted_workers: true
+
 channels:
   slack:
     type: slack
@@ -38,6 +41,10 @@ notify:
     room: "#support"
     approvers: ["@maria", "@sam"]
 ```
+
+`trusted_workers: true` treats your app's answers as your own, not
+[content from outside](/concepts/outside-content/). Without it, a refund after an order lookup
+would wait for a person, however small.
 
 ### The policy
 
@@ -62,8 +69,9 @@ budget:
 ```ts title="support.ts"
 import { Wardrik } from "@wardrik/sdk";
 import { z } from "zod";
+import { db, payments } from "./app.ts"; // your app's own
 
-const wardrik = new Wardrik({ name: "support" });
+export const wardrik = new Wardrik({ name: "support" });
 
 wardrik.tool({
   name: "list_orders",
@@ -90,7 +98,7 @@ wardrik.tool({
     payments.refund({ order_id, customer: agent?.user, amount }, { idempotencyKey }),
 });
 
-await wardrik.work();
+void wardrik.work();
 ```
 
 - `agent.user` is the customer the agent works for, taken from its key, never from what the model
@@ -100,11 +108,16 @@ await wardrik.work();
 
 ### Talking to a customer's agent
 
-When a customer writes in, your app makes sure their agent exists, then asks it:
+When a customer writes in, your app defines their agent, then asks it. Defining it again is
+harmless: a definition put again replaces the last.
 
 ```ts title="chat.ts"
+import { wardrik } from "./support.ts";
+
 export async function answer(customerId: string, text: string, reply: (delta: string) => void) {
-  const agent = await wardrik.agents.put(`shop/@${customerId}/support`, {
+  const agent = wardrik.agent(`shop/@${customerId}/support`);
+
+  await agent.define({
     description: "Support for one customer.",
     instructions: "You help this customer with their orders. Be brief and kind.",
     tools: ["workers/*"],
@@ -112,7 +125,7 @@ export async function answer(customerId: string, text: string, reply: (delta: st
     notify: { to: ["support"], on: ["parked"] },
   });
 
-  for await (const event of agent.ask(text)) {
+  for await (const event of agent.stream(text)) {
     if (event.type === "wardrik.message.delta") reply(event.data.delta);
   }
 }
@@ -124,12 +137,20 @@ Make the app's token so it can define these agents only under the policy, and se
 wardrik token create shop --resource 'shop/*' --role reader,messenger,definer,worker --policy support
 ```
 
-`--policy` is the token's policy: no agent it defines can do more than `support.yaml` allows. See
-[Tokens](/run/tokens/).
+`--policy` is the token's policy: no agent it defines can do more than `support.yaml` allows. Its
+secret starts `wrk_`; give it to your app as `WARDRIK_TOKEN`. See [Tokens](/run/tokens/).
 
 ## Try it
 
-Run `support.ts`, then call `answer("cus_123", "Where's my order?", process.stdout.write)`. Ask it
+1. Restart the daemon to read `config.yaml` and the policy.
+2. Add the SDK to your app.
+
+```sh
+systemctl --user restart wardrik
+npm install @wardrik/sdk@0.1.0-rc.1 zod
+```
+
+Run your app, then call `answer("cus_123", "Where's my order?", (delta) => process.stdout.write(delta))`. Ask it
 for a $20 refund and it's done. Ask for $200 and it says a person will look; the request waits in
 `#support` with **Approve** and **Deny**.
 
@@ -146,8 +167,9 @@ for a $20 refund and it's done. Ask for $200 and it says a person will look; the
 
 ### Why the key matters
 
-A token reaches agents by resource pattern, `shop/*`, and a tool learns the agent from its key. A customer can tell
-their agent to look up someone else's order, and the tool still answers only for them.
+A token reaches agents by resource pattern, `shop/*`. A tool learns the agent from its key, never
+from what the model wrote. A customer can tell their agent to look up someone else's order, and
+the tool still answers only for them.
 
 ### Taking it further
 

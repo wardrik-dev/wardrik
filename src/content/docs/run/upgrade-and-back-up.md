@@ -6,7 +6,7 @@ sidebar:
 ---
 
 A new release installs beside the old one, so going back is one command. Back up what you wrote,
-the vault's key and the store; the daemon makes the rest again.
+the vault's key and the store. The daemon makes the rest again.
 
 ## Upgrade
 
@@ -21,8 +21,10 @@ A running daemon keeps its release until it restarts. To install a particular re
 `WARDRIK_VERSION`:
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | WARDRIK_VERSION=0.1.0 sh
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | WARDRIK_VERSION=0.1.0-rc.1 sh
 ```
+
+`wardrik version` prints the release you're running.
 
 ## Go back
 
@@ -39,58 +41,49 @@ docker rm -f wardrik
 docker run -d --name wardrik -p 127.0.0.1:4747:4747 -v wardrik:/data ghcr.io/wardrik-dev/wardrik
 ```
 
-Images are tagged with each version and `latest`; `ghcr.io/wardrik-dev/wardrik:0.1.0` stays on one.
+Images are tagged with each version and `latest`. `ghcr.io/wardrik-dev/wardrik:0.1.0-rc.1` stays on
+one.
 
 ## Back up
 
 | What | Where | Why |
 | --- | --- | --- |
-| What you write | `~/.config/wardrik`: `config.yaml`, `agents/`, `policies/`, `ssh/authorized_keys`, `env` | the daemon only reads it |
+| What you write | `~/.config/wardrik`: `config.yaml`, `agents/`, `policies/`, `env` | the daemon only reads it |
 | The vault's key | `~/.local/share/wardrik/vault_key`, or wherever you keep `WARDRIK_VAULT_KEY` | without it, sealed credentials can't be read |
-| The store | `~/.local/share/wardrik/store`, or the database or bucket `storage` names | agents, conversations, triggers, files, tokens and credentials |
-| The cookie | `~/.local/share/wardrik/cookie` | a cluster's nodes need the same one |
-| The SSH host key | `~/.local/share/wardrik/ssh` | without it, clients see a changed host key |
+| The store | `~/.local/share/wardrik/store`, or the database `storage` names | agents, conversations, triggers, files, tokens and credentials |
 
 Keep the vault's key apart from the store's backups. Together they open every credential.
 
+The daemon makes the rest again as it starts: the cookie, and the `wardrik` command's token.
+
 ### A store on disk
 
-Stop the daemon, copy the store, and start it again:
-
 ```sh
+# 1. Stop the daemon, so the store is still.
 wardrik stop
+
+# 2. Copy the store.
 tar -czf wardrik-store-$(date +%F).tar.gz -C ~/.local/share/wardrik store
+
+# 3. Start it again.
 wardrik start
 ```
 
-To restore, stop the daemon, put the copy back, and start it.
+To restore, stop the daemon, put the copy back in `~/.local/share/wardrik/store`, and start it.
 
-### Postgres or a bucket
+### Postgres
 
-The store isn't on the daemon's disk. Back up the database or bucket with its own tools: `pg_dump`,
-or the bucket's versioning or replication.
+The store isn't on the daemon's disk. Back up the database with its own tools, such as `pg_dump`.
 
 ## Details
 
 - The script checks the release against its `SHA256SUMS` and runs it once before installing it.
-  It points `current`, and so `wardrik`, at the new release, keeps the one before, and removes older
-  ones unless a node still runs from them.
+  It points `current`, and so `wardrik`, at the new release. It keeps the one before, and removes
+  older ones.
 - The service runs `current`, so a restart starts the new release.
-- A release can change how it writes agents down, and needs no cleanup when it does. An agent the
-  new release can't read starts again from its file or definition. Its conversation starts empty,
-  its log is kept, and a turn it had parked on a person is lost.
-- The vault keeps the deployment's secrets under `deployment/NAME` and users' under their namespace,
-  `acme/@jon`. Secrets kept before it named owners this way, the deployment's under `_/NAME` and
-  users' under a hash, aren't read: after upgrading, `wardrik vault put` them again, and users
-  connect their accounts again.
-- An HTTP API token names what it reaches by resource pattern, as `acme/agent/*`. A token made
-  before tokens named resources this way doesn't read: make it again with `wardrik token create`.
-- Two releases running at once, as in a blue-green deploy, can't read each other's agents. For the
-  minute both run, each treats the other's agents as absent.
+- An agent a new release can't read starts again from its file or definition. Its conversation
+  starts empty, and a turn it had parked on a person is lost.
 - `~/.config/wardrik` holds only what a person writes, so it can live in a dotfiles repository.
   Leave `env` out: it holds keys.
-- In a cluster, every node holds everything. A copy of one stopped node's store is a copy of the
-  cluster's, up to the writes that node had. The others carry on while it's stopped, as long as more
-  than half the nodes are up.
-- In Docker, the `/data` volume holds the store, the cookie and the host key, and `/config` holds
-  whatever you mounted there.
+- To rotate the vault's key, list the new key first under `vault.keys`, with the old one after it.
+  The first key seals. Any listed key unseals.

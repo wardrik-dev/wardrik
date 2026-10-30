@@ -43,7 +43,7 @@ import RikMark from '../../components/RikMark.astro';
 <span class="node"><span></span>box1</span>
 </div>
 <h3>Keeps working</h3>
-<p>A turn survives a lost node. Finished calls aren’t run again.</p>
+<p>A turn survives a lost node. A call that may have run waits for you before it runs again.</p>
 <p class="pillar-links"><a href="/examples/pull-the-plug/">Pull the plug yourself</a></p>
 </div>
 <div class="pillar">
@@ -108,8 +108,9 @@ import RikMark from '../../components/RikMark.astro';
 <div class="tools-layout">
 <div>
 
-```ts title="shop/tools.ts" mark={9}
+```ts title="shop/tools.ts" mark={10}
 import { Wardrik } from "@wardrik/sdk";
+import { z } from "zod";
 
 const wardrik = new Wardrik({ name: "shop" });
 
@@ -185,7 +186,7 @@ await wardrik.work();
 
 ```sh wrap
 curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
-rik init
+wardrik init
 ```
 
 [All installation options](/getting-started/install/)

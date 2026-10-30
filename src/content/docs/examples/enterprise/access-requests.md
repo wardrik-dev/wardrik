@@ -51,12 +51,11 @@ channels:
   and removing group members.
 - `approvers` are who may grant access: a fixed list for the channel, here IT and security leads.
 
-Seal the keys and restart:
+Seal the keys while the daemon runs. `vault put` reads the value from stdin:
 
 ```sh
-wardrik vault put OKTA_CLIENT_ID       # and OKTA_KEY_ID, OKTA_PRIVATE_KEY
-systemctl --user restart wardrik
-wardrik doctor
+echo "$OKTA_CLIENT_ID" | wardrik vault put OKTA_CLIENT_ID
+# and the same for OKTA_KEY_ID, OKTA_PRIVATE_KEY, SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET
 ```
 
 ### The policy
@@ -112,21 +111,24 @@ expires.
 
 ## Try it
 
-Write `CATALOG.md` with the agent, invite the bot to `#access`, and ask:
+1. Restart the daemon to read `config.yaml` and the policy.
+2. Have the agent write `CATALOG.md`.
+3. Invite the bot to `#access`.
 
 ```sh
-wardrik reload
+systemctl --user restart wardrik
+wardrik doctor
 wardrik ask access "Write CATALOG.md: payments-repo-write is for payments engineers, up to 8 hours.
 billing-readonly is for anyone in finance, up to 7 days."
 ```
 
-In `#access`:
+Then ask in the channel:
 
 > **@Wardrik** I need payments-repo-write for the afternoon to ship the refund fix.
 
-It replies in the thread with the grant it proposes, as a call waiting for an approver with
-**Approve** and **Deny**. Once it's approved, the person is in the group. Four hours later, the
-sweep removes them.
+It proposes the grant in the thread. The call goes to each approver in the app's Messages tab,
+with **Approve** and **Deny**, and the thread says who it waits on. Once it's approved, the person
+is in the group. Four hours later, the sweep removes them.
 
 ## What it shows
 

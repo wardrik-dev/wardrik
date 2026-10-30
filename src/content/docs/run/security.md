@@ -11,61 +11,50 @@ with accounts you don't trust.
 
 More on who reaches what:
 
-- [Tokens](/run/tokens/): what each HTTP API token may reach and do, and when tokens expire.
+- [Tokens](/run/tokens/): what each HTTP API token may reach and do, and when it expires.
 - [Orgs](/run/orgs/): how agents of different orgs and users are kept apart.
 
 ## What listens
 
-Everything listens on loopback unless you say otherwise.
-
-| | Port | Who gets in | Beyond loopback |
+| | Port | Listens on | Who gets in |
 | --- | --- | --- | --- |
-| The HTTP API | 4747 | a request with a [token](/run/tokens/), or a browser a provider sends back to `/oauth/` | `http.ip`, or `WARDRIK_HTTP_IP`, behind HTTPS; see [A public address](/run/public-address/) |
-| The terminal client, over SSH | 2222 | a key in `ssh/authorized_keys` | `ssh.ip`, or `WARDRIK_SSH_IP` |
-| Erlang distribution, and epmd | 4369, and one it chooses | anything holding the cookie | `WARDRIK_DIST_INTERFACE`, with `WARDRIK_DIST_EXPOSED=1` |
+| The HTTP API | 4747 | loopback, or `http.ip` | a request with a [token](/run/tokens/), and the [public paths](/run/public-address/#what-is-exposed) |
+| Erlang distribution | one the node picks | every interface | anything holding the cookie |
+| epmd | 4369 | every interface | anyone; it names the node and its port |
 
-The HTTP API speaks plain HTTP. To reach it across a network, put a proxy in front that ends TLS; a
-token sent over plain HTTP can be read on the way.
+The HTTP API speaks plain HTTP. To reach it across a network, put a proxy in front that ends TLS. A
+token sent over plain HTTP can be read on the way. See [A public address](/run/public-address/).
 
 ## Distribution
 
-The `wardrik` command and `wardrik remote` reach the daemon over Erlang distribution, as cluster
-nodes reach each other. It checks only the cookie: 48 random characters in
-`~/.local/share/wardrik/cookie`, readable by the daemon's user.
+`wardrik stop` and `wardrik pid` reach the node over Erlang distribution. It checks only the cookie:
+64 random hex characters in `~/.local/share/wardrik/cookie`, readable by the daemon's user alone.
 
-Anything holding the cookie that reaches the port can run any code on the node, and the traffic
-isn't encrypted. Listen beyond loopback only on a private network that authenticates and encrypts,
-such as Tailscale or WireGuard. See [Run a cluster](/run/cluster/#on-several-machines).
+Anything that holds the cookie and reaches the port can run any code on the node. The traffic isn't
+encrypted. Block port 4369 and the distribution port at the host's firewall, so only the machine
+itself reaches them.
 
-## The terminal client
+## The `wardrik` command
 
-The client is served once `~/.config/wardrik/ssh/authorized_keys` lists a key. A listed key reaches
-every agent and everything the client does, including removing agents. See
-[The terminal client](/build/tui/).
-
-## Tokens expire
-
-Every token expires. A token for the HTTP API lasts 90 days, `tokens.expires.api`, then is refused.
-One the daemon issues, as a shell's or someone's in a channel, lasts 12 hours,
-`tokens.expires.session`, then is refreshed as it is used, holding only what `config.yaml` gives
-now, so access you take away is gone at its next use. See [Tokens](/run/tokens/#when-it-expires).
+The `wardrik` command reaches the daemon over the HTTP API, not distribution. Each time the daemon
+starts, it writes an owner token on every resource to `~/.local/share/wardrik/cli_token`, readable
+by its user alone. Anyone who reads that file can do anything the daemon can.
 
 ## Secrets
 
-- **Keys and tokens** come from the environment, or from the vault for names it doesn't set.
-  `${NAME}` in `config.yaml` reads one, so the file holds no secret.
+- **Keys and tokens** come from the environment, the env file, or the vault. `${NAME}` in
+  `config.yaml` reads one, so the file holds no secret.
 - **Credentials and OAuth tokens** are sealed with AES-256-GCM before they're stored. Keep the
-  vault's key apart from the store with `WARDRIK_VAULT_KEY` or `vault.keys`. See
+  vault's key apart from the store: set `WARDRIK_VAULT_KEY`, or `vault.keys`. See
   [Connect accounts](/build/accounts/).
-- **An MCP server run as a command** gets only a short list of the daemon's environment, so the
-  daemon's keys stay with it.
+- **The env file**, `~/.config/wardrik/env`, holds keys. Keep it readable by you alone.
+  `wardrik doctor` fails while others can read it.
 
 ## What agents may do
 
 An agent can do what its tools can do, and anything a tool returns can steer the model. A policy
-decides each call, whoever asked for it. Once an agent has read outside content, its gated tools
-wait for a person. See [Policy](/concepts/policy/) and
-[Content from outside](/concepts/outside-content/).
+decides each call, whoever asked for it. Once a run reads outside content, its gated tools wait for
+a person. See [Policy](/concepts/policy/) and [Content from outside](/concepts/outside-content/).
 
 ## Report a vulnerability
 
@@ -74,50 +63,42 @@ a public issue.
 
 ## Details
 
-### Docker
+### In a container
 
-The image listens for the API and the terminal client on every interface of the container, since
-its loopback is reachable from nowhere else. The ports you publish decide who reaches them:
-`-p 127.0.0.1:4747:4747` keeps the API to the host. Distribution stays inside the container.
+Inside a container, the API must listen on every interface, `http.ip: 0.0.0.0`, since the
+container's loopback is reachable from nowhere else. The ports you publish decide who reaches it:
+`-p 127.0.0.1:4747:4747` keeps the API to the host. Don't publish 4369 or the distribution port.
 
 ### The cookie
 
-An account on the host that can list processes can read the cookie from a command line. A cluster
-across machines is refused unless `WARDRIK_DIST_EXPOSED=1` is set beside `WARDRIK_DIST_INTERFACE`.
-Never listen on a public interface.
-
-### The terminal client's keys
-
-A key logs in only under the names it's listed for: its `principals` option, or else its comment's
-name before any `@`. Other key options, such as `from=` and `command=`, aren't applied. There are no
-passwords, and no commands, subsystems or forwarding: only the client.
+The daemon makes the cookie at first start. `RELEASE_COOKIE` sets another, and
+`WARDRIK_COOKIE_FILE` moves the file.
 
 ### More on secrets
 
-- `storage`, `cluster`, `http` and `vault` read the environment alone.
-- A key from the vault goes into the daemon's settings, never its environment.
-- Every `wardrik` command reads `~/.config/wardrik/env`. Keep it readable by the daemon's user only;
-  `wardrik doctor` checks.
-- Without a configured key, the first `wardrik vault put` makes `vault_key` beside the store. Anyone
-  who can read both reads every secret. The daemon never puts the key in its environment.
-- An MCP server run as a command gets only `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`,
-  `SHELL`, `TERM`, `TMPDIR` and `USER`, beside its own config. It runs as the daemon's user, so it
-  can read what the daemon can.
+- `vault`, `http` and `storage` in `config.yaml` read the environment and the env file alone.
+- Without a configured key, the daemon makes `vault_key` beside the store as it first starts.
+  Anyone who can read both reads every secret.
+- Every `wardrik` command, and the daemon, sets each variable in the env file that its environment
+  doesn't. So the daemon's environment holds the env file's keys.
+- An MCP server run as a command starts with the daemon's environment, its own `env` beside it. It
+  runs as the daemon's user, so it can read what the daemon can. Run only servers you trust.
 
 ### Files
 
 | Directory | What it holds | Who can read it |
 | --- | --- | --- |
-| `~/.config/wardrik` | `config.yaml`, agent and policy files, `ssh/authorized_keys`, `env` | as you set it |
-| `~/.local/share/wardrik` | the store, the cookie, the SSH host key, the vault's key | the daemon's user |
+| `~/.config/wardrik` | `config.yaml`, `agents/`, `policies/`, `env` | as you set it; `env` you alone |
+| `~/.local/share/wardrik` | the store, the cookie, `vault_key`, `cli_token` | the daemon's user |
 | `~/.local/state/wardrik` | logs | the daemon's user |
 
-The daemon writes with umask 077, and makes its data and state directories private again at each
-start.
+`WARDRIK_CONFIG_DIR`, `WARDRIK_DATA_HOME` and `WARDRIK_STATE_DIR` move them. The daemon writes
+`cookie`, `vault_key`, `cli_token` and `env` readable by its user alone. Set the directories'
+modes yourself.
 
 ### Calls after outside content
 
 An agent that reads outside content, reaches what is private and changes things needs a person for
-all three. Its gated tools wait unless an `allow_after` rule the operator wrote names them, until
-`wardrik clear` empties its conversation. MCP servers' and tool workers' tools are gated unless
-marked read-only.
+all three. Once a run carries the `outside` label, its gated tools wait for a person, unless an
+`allow_after` rule names them. MCP servers' tools are gated unless marked read-only, or the
+server's `gated` says otherwise.

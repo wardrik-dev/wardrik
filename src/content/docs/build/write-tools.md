@@ -24,8 +24,9 @@ wardrik.tool({
 
 | Key | |
 | --- | --- |
-| `name` | letters, digits, `_` and `-`, up to 55 |
-| `description` | what the model is told the tool does |
+| `name` | 1 to 55 letters, digits, `_` and `-` |
+| `description` | what the model is told the tool does; `title`, then `name`, unless set |
+| `title` | a short name for people |
 | `input` | a schema for its arguments, such as a `zod` object |
 | `readOnly` | whether it changes nothing |
 | `idempotent` | whether running a call twice is safe |
@@ -33,8 +34,8 @@ wardrik.tool({
 
 ## Give agents the tools
 
-An agent gets a worker's tools where its file lists `workers/*` and its key is under the worker
-token's scope:
+An agent gets a worker's tools where its file lists `workers/*`, and the worker's token reaches
+it:
 
 ```yaml
 tools: [workers/*, linear/*]
@@ -46,7 +47,7 @@ A policy names a tool as `workers/find_order`. A tool that isn't `readOnly` is
 ## Results and errors
 
 `run` returns an object, or a string, as the call's result. Return what the model needs, not the
-whole record: it reads every word.
+whole record. It reads every word.
 
 A thrown error is a failed call. The model is told its message, and the turn carries on, so say
 what went wrong in words it can act on:
@@ -63,7 +64,7 @@ run: async ({ order_id }) => {
 
 ## Whose call it is
 
-`agent` names the agent the call is for, from its key, never from what the model sent. So one
+`agent` names the agent the call is for, from its ID, never from what the model sent. So one
 worker can serve an agent per customer, each seeing only its own data:
 
 ```ts
@@ -76,7 +77,8 @@ wardrik.tool({
 });
 ```
 
-Here each customer's agent is `shop/@<customer id>/support`.
+Here each customer's agent is `shop/@<customer id>/support`. `agent` holds its `key`, `org`,
+`name`, and `user` where it works for one.
 
 ## What a call cost
 
@@ -139,9 +141,9 @@ ends. Pass it to `fetch` and anything else that takes one.
 
 ## Details
 
-- A tool with an invalid name is left out.
+- A tool with an invalid name, or an `input` that isn't an object schema, is left out.
 - The model sees each tool as `workers__find_order`.
-- A call may take 60 seconds. Longer, it's cancelled, `signal` aborts, and the call is in doubt.
+- A call may take 60 seconds. After that, `signal` aborts and the call is in doubt.
 - `run` in the call context is the run's id, the one its events carry.
-- `cost` said more than once adds up. A call that throws after saying it is reported failed at that
-  cost. On the wire it's `_meta.costUsd`.
+- `cost` said more than once adds up. A negative amount throws. A call that throws after saying it
+  is reported failed at that cost. On the wire it's `_meta.costUsd`.

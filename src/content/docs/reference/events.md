@@ -6,9 +6,9 @@ sidebar:
   order: 6
 ---
 
-<!-- Written by mix wardrik.docs from packages/wardrik_core/priv/v1. Edit it there, not here. -->
-
 Every event is a CloudEvent: the envelope below, with the event's own data under `data`.
+
+Read them with [`GET /v1/events`](/reference/http-api/#events), or `wardrik agent follow AGENT --json`. An event marked "Live" is sent as it happens and never stored.
 
 ## The envelope
 
@@ -157,6 +157,17 @@ Someone stopped a tool call an agent was running; the model is answered with an 
 | `call.id` | string | yes | The tool call's id. |
 | `actor` | [principal](#principal) |  |  |
 | `assumed_by` | [assumed_by](#assumed_by) |  |  |
+
+### `wardrik.ceiling.reached`
+
+A call of the agent's took its org's agents to a ceiling's limit, which they spend from together.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `org` | string | yes |  |
+| `ceiling` | string | yes | The ceiling's name. |
+| `on_exhausted` | string | yes | What the org's next model call does: waits on a ceiling_approval, is refused, or runs. One of `ask`, `deny`, `continue`. |
+| `message` | string | yes |  |
 
 ### `wardrik.conversation.cleared`
 
@@ -427,7 +438,7 @@ A named step began.
 
 ### `wardrik.subagent.completed`
 
-A subagent answered.
+A subagent answered, with what it did and cost along the way: its events stay out of the log, so these are the whole of it.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -436,10 +447,13 @@ A subagent answered.
 | `agent.name` | string |  |  |
 | `message` | [message](#message) | yes |  |
 | `duration_ms` | [duration_ms](#duration_ms) | yes |  |
+| `tool_calls` | integer |  | How many tool calls it made. |
+| `usage` | [usage](#usage) |  | The tokens its model calls read and wrote, together. |
+| `cost` | [cost](#cost) or null |  | What its model calls and tools cost, together, which counts as the calling tool's; null where nothing priced them. |
 
 ### `wardrik.subagent.failed`
 
-A subagent failed.
+A subagent failed, with what it did and cost before it did: its events stay out of the log, so these are the whole of it.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -448,6 +462,21 @@ A subagent failed.
 | `agent.name` | string |  |  |
 | `error` | [error](#error) | yes |  |
 | `duration_ms` | [duration_ms](#duration_ms) | yes |  |
+| `tool_calls` | integer |  | How many tool calls it made. |
+| `usage` | [usage](#usage) |  | The tokens its model calls read and wrote, together. |
+| `cost` | [cost](#cost) or null |  | What its model calls and tools cost, together, which counts as the calling tool's; null where nothing priced them. |
+
+### `wardrik.subagent.progress`
+
+A subagent began a tool call, and how many it has begun. It carries the span subagent.started did. Live: never stored.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string |  |  |
+| `agent.name` | string |  |  |
+| `tool` | [tool](#tool) | yes |  |
+| `tool_calls` | integer | yes | How many tool calls it has begun, this one too. |
 
 ### `wardrik.subagent.started`
 
@@ -496,7 +525,7 @@ A tool call answered, or was answered from the ledger when replayed.
 | `tool` | [tool](#tool) | yes |  |
 | `status` | string | yes | One of `ok`, `error`. |
 | `error` | [error](#error) |  |  |
-| `replayed` | boolean | yes |  |
+| `replayed` | boolean | yes | Always `false`: a call is never answered from a ledger. |
 | `served_by` | [served_by](#served_by) |  |  |
 | `cost` | [cost](#cost) |  |  |
 
@@ -519,6 +548,18 @@ A tool call reported progress. Live: never stored.
 | `tool` | [tool](#tool) | yes |  |
 | `progress` | number | yes |  |
 | `total` | number |  |  |
+
+### `wardrik.tool_call.retrying`
+
+A tool call that may run twice crashed or ran out of time, and runs again after a wait.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `tool` | [tool](#tool) | yes |  |
+| `attempt` | integer | yes | Which try after the first comes next. |
+| `attempts` | integer | yes | How many tries after the first there may be. |
+| `wait_ms` | [duration_ms](#duration_ms) | yes |  |
+| `error` | [error](#error) | yes |  |
 
 ### `wardrik.tool_call.started`
 
@@ -665,7 +706,7 @@ Who decided a call.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `by` | string | yes | hook where hooks allowed the call by name or one refused it, person where a person answered it, default where no hook named it and nothing asked, ledger where the ledger could not record it. One of `hook`, `person`, `default`, `ledger`. |
+| `by` | string | yes | hook where hooks allowed the call by name or one refused it, person where a person answered it, default where no hook named it and nothing asked, ledger where the ledger could not record it. One of `hook`, `person`, `default`, `ledger`. Nothing sends `ledger` now. |
 | `hooks` | array of string |  | The hooks that allowed the call, refused it, or asked a person about it. |
 
 ### `served_by`
@@ -710,7 +751,7 @@ A call a run waits on a person for.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | string | yes |  |
-| `reason` | string | yes | One of `tool_approval`, `model_approval`, `authorization`, `in_doubt`. |
+| `reason` | string | yes | One of `tool_approval`, `model_approval`, `ceiling_approval`, `authorization`, `in_doubt`. |
 | `message` | string | yes |  |
 | `tool_call_id` | string |  |  |
 | `name` | string |  | The tool the call is for, as the agent names it; none for a model's approval. |
@@ -722,7 +763,7 @@ One thing an agent is doing, as the type of the event that set it, with what tha
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `type` | string | yes | The type of the event that set it. One of `wardrik.run.started`, `wardrik.run.resumed`, `wardrik.run.interrupted`, `wardrik.message.started`, `wardrik.message.retrying`, `wardrik.step.started`, `wardrik.tool_call.started`, `wardrik.tool_call.completed`, `wardrik.tool_call.denied`. |
+| `type` | string | yes | The type of the event that set it. One of `wardrik.run.started`, `wardrik.run.resumed`, `wardrik.run.interrupted`, `wardrik.message.started`, `wardrik.message.retrying`, `wardrik.step.started`, `wardrik.tool_call.started`, `wardrik.tool_call.retrying`, `wardrik.tool_call.completed`, `wardrik.tool_call.denied`. |
 | `message` | [message_ref](#message_ref) |  |  |
 | `attempt` | integer |  | Which try after the first comes next. |
 | `attempts` | integer |  | How many tries after the first there may be. |
@@ -733,6 +774,7 @@ One thing an agent is doing, as the type of the event that set it, with what tha
 | `tool.name` | string | yes |  |
 | `tool.call` | object | yes |  |
 | `tool.call.id` | string | yes |  |
+| `since` | string (date-time) |  | When the tool call began. |
 | `interrupts` | array of [interrupt](#interrupt) |  |  |
 
 ### `activity`
@@ -744,3 +786,21 @@ What an agent is doing now.
 | `doing` | array of [doing](#doing) | yes | Every tool call running, oldest first, or the one thing it is doing otherwise; none when it is idle. |
 | `since` | string (date-time) | yes | When it began what it is doing. |
 | `pending` | integer | yes | How many messages wait behind it. |
+
+### `spent`
+
+What an agent's model calls and tools spent today, by the UTC day.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `tokens` | integer | yes | The tokens its model calls took. |
+| `usd` | number | yes | The dollars its model calls and tools cost, where they had a price. |
+
+### `amount`
+
+An amount in dollars, tokens or both. A limit leaves out what it doesn't limit.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `usd` | number |  | US dollars. |
+| `tokens` | integer |  | Tokens, input and output together. |

@@ -28,7 +28,13 @@ notify: [ops, audit]
 notify: {to: [ops], on: [parked, failed, finished]}
 ```
 
-`on` is `parked`, `failed`, and `finished` for what a turn answered; `[parked, failed]` unless set.
+`on` takes any of these, and is `[parked, failed]` unless set:
+
+| Kind | Sent when |
+| --- | --- |
+| `parked` | a turn waits on a person |
+| `failed` | a turn fails |
+| `finished` | a turn answers |
 
 ## Post in a room
 
@@ -120,7 +126,7 @@ const ok =
 
 ## Details
 
-- One node of the cluster sends the notices, and keeps its place in the agents' logs. After a
+- One process sends the notices, and keeps its place in the agents' logs. After a
   restart it carries on from there, so a notice whose delivery was cut short comes again: tell a
   repeat by its `agent`, `event` and `at`.
 - A turn waiting on several calls sends a notice again when some are decided and others still wait.

@@ -5,10 +5,10 @@ sidebar:
   order: 4
 ---
 
-Run Wardrik on the box under your desk, and this agent keeps an eye on everything else running
-there. Every fifteen minutes it checks your containers. When one is down or unhealthy, it reads the
-logs, tells you what went wrong, and proposes the fix: restart it, or recreate it. You approve from
-your phone.
+Run Wardrik on the box under your desk, and this agent keeps an eye on the containers running
+there. It checks them every fifteen minutes. When one is down or unhealthy, it reads the logs and
+says what went wrong. It proposes the fix as a call you approve from your phone: restart the
+container, or recreate it.
 
 Reading runs alone. Stopping, starting and recreating wait for you. Deleting is refused.
 
@@ -68,7 +68,7 @@ budget:
   per: day
 ```
 
-- The Docker server has no restart tool: a restart is a stop, then a start. Each waits for you.
+- The Docker server has no restart tool. A restart is a stop and a start, and each waits for you.
 - Container logs are written by the programs in them, and by whoever sent those programs requests,
   so they're outside content. Nothing in a log can get the agent to act on its own.
 
@@ -97,10 +97,13 @@ If everything is fine, answer "All good." and nothing else.
 ## Try it
 
 ```sh
-wardrik reload
-docker stop jellyfin
-wardrik ask homelab "Check every container."
+systemctl --user restart wardrik                 # 1. read config.yaml, the policy and the agent
+docker stop jellyfin                             # 2. break something
+wardrik ask homelab "Check every container."     # 3. don't wait fifteen minutes
 ```
+
+The daemon reads `config.yaml` and `policies/` as it starts, so a change to either needs a restart.
+`wardrik reload` is enough for a change to an agent file.
 
 `#homelab` gets what it found and a waiting call to start `jellyfin` again, with **Approve** and
 **Deny**.

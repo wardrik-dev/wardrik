@@ -66,7 +66,8 @@ systemctl --user restart wardrik
 wardrik doctor
 ```
 
-Agent and policy files need only `wardrik reload`.
+Agent files need only `wardrik reload`. The daemon reads `policies/` as it starts, so a policy
+change needs a restart too.
 
 ## Ship a new release
 
@@ -78,11 +79,11 @@ stay, and so does the release before; see [Upgrade and back up](/run/upgrade-and
 
 Everything the team has is in `~wardrik/.local/share/wardrik` on the server: conversations,
 connected accounts and the vault, with the vault's key beside the store. A rented server's disk
-goes when the server does. Back up that directory, or keep the store elsewhere with
-[Storage](/run/storage/).
+goes when the server does. Back up that directory, or keep the store in
+[Postgres](/run/storage/#in-postgres).
 
-Give the vault its own key in the env file too. A server rebuilt over the same store can then read
-what the last one sealed.
+Give the vault its own key in the env file too, as `WARDRIK_VAULT_KEY`. A server rebuilt over the
+same store can then read what the last one sealed.
 
 ## Details
 

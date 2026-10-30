@@ -6,24 +6,26 @@ sidebar:
 ---
 
 Sometimes you want agents in the app you already have, not in a service beside it. Let's add
-Wardrik to a Phoenix app. It keeps its data in your Postgres and starts in your supervision tree,
-and your app decides what each user may do.
+Wardrik to a Phoenix app. It keeps its data in your Postgres, starts in your supervision tree, and
+your app decides what each user may do.
 
 We'll build one example from start to finish. Users are `%MyApp.Accounts.User{}` structs with an
 `id`, an `org` and an `email`, the way your sign-in already hands them over. Each user gets agents
-of their own. At the end, if you want them, we'll add the HTTP API and let users connect their
-GitHub accounts.
+of their own. At the end, if you want them, we'll add the HTTP API, let users connect their GitHub
+accounts, and answer in Slack.
 
 ## 1. Add the package
 
 ```elixir title="mix.exs"
 defp deps do
   [
-    {:wardrik, "~> 0.1"}
+    {:wardrik, "~> 0.1.0-rc.1"}
     # ...
   ]
 end
 ```
+
+A Phoenix app already has `:ecto_sql` and `:postgrex`, which the Postgres store needs.
 
 ## 2. Create its table
 
@@ -33,461 +35,364 @@ Wardrik keeps everything in one table. Create it from a migration of your own:
 defmodule MyApp.Repo.Migrations.AddWardrik do
   use Ecto.Migration
 
-  def up, do: Wardrik.Migration.up(version: 1)
-  def down, do: Wardrik.Migration.down(version: 1)
+  def up, do: WardrikStore.Ecto.Migration.up(version: 1)
+  def down, do: WardrikStore.Ecto.Migration.down(version: 1)
 end
 ```
 
-[Storage](/run/storage/#postgres) says what goes in it.
+When a release adds a version, add a migration that runs it. [Storage](/run/storage/) says what
+goes in the table.
 
-## 3. Say who may do what
+## 3. Start it in your tree
 
-Wardrik knows a user as a `Wardrik.Principal`, named as the namespace they own things under, as
-`acme/@42`, and asks your app for the token they act with. A token's statements each allow some
-actions on some agents, and a role is a named set of actions. Here, a user may read and message
-their org's agents, and own their own. Your app itself acts as the deployment, `deployment`, and
-reads every agent's events:
+Make Wardrik a module of your app:
 
-```elixir title="lib/my_app/issuer.ex"
-defmodule MyApp.Issuer do
-  @moduledoc """
-  The token each signed-in user acts with: reader and messenger on their
-  org's agents, and owner of their own; and the app's own, as the
-  deployment, reading every agent's events.
-  """
-
-  alias Wardrik.Resource
-  alias Wardrik.Role
-
-  defstruct []
-
-  @doc "Who `user` is to Wardrik: a person in their org, as `acme/@42`."
-  def principal(%MyApp.Accounts.User{} = user),
-    do: Wardrik.Principal.new("#{user.org}/@#{user.id}", name: user.email)
-
-  @doc "Who `user` is as an owner of accounts and agents: `acme/@42`."
-  def own(%MyApp.Accounts.User{} = user), do: Resource.parse!("#{user.org}/@#{user.id}")
-
-  @doc "What the user `id` of `org` may do."
-  def scope(org, id) do
-    [
-      Role.bind([:reader, :messenger], [Resource.parse!("#{org}/agent/*")]),
-      Role.bind([:owner], [Resource.parse!("#{org}/@#{id}/*")])
-    ]
-  end
-
-  @doc "What the app itself reads, as the deployment: every agent's events, and where it stands."
-  def deployment do
-    [
-      %Wardrik.Statement{
-        actions: ["agent.events", "agent.read"],
-        resources: [Resource.parse!("*/agent/*")]
-      }
-    ]
-  end
-end
-
-defimpl Wardrik.Issuer, for: MyApp.Issuer do
-  def issue(_issuer, principal, _opts) do
-    case String.split(Wardrik.Principal.id(principal), "/") do
-      ["deployment"] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.deployment()}
-      [org, "@" <> id] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.scope(org, id)}
-      _other -> %Wardrik.Token{principal: principal}
-    end
-  end
+```elixir title="lib/my_app/wardrik.ex"
+defmodule MyApp.Wardrik do
+  use Wardrik, otp_app: :my_app
 end
 ```
 
-Maria, user 42 of `acme`, owns everything of `acme/@42`'s, such as the agent `acme/@42/support`,
-whose resource is `acme/@42/agent/support`. A user of another org reaches none of them. [Agents](/concepts/agents/) explains IDs.
+Point it at your `Repo`:
 
-What follows agents' logs acts as `deployment`: [notices](/build/notices/) and a
-[channel](/channels/)'s replies, which need `agent.events` on `*/agent/*` and fail without it, and
-your own [listeners](/build/listen/), which read on from where they stopped.
-
-A token your issuer issues expires after 12 hours, or as `Wardrik.new/1`'s
-`expires: [session: seconds]` says. Each function of `Wardrik` refreshes one past that through your
-issuer as it uses it, never wider than it was, so what you take away from a user holds at their
-next call.
-
-## 4. Describe Wardrik
-
-`Wardrik.new/1` takes everything Wardrik needs from your app: the store in your `Repo`, and your
-issuer. Keep it in one module:
-
-```elixir title="lib/my_app/agents.ex"
-defmodule MyApp.Agents do
-  @moduledoc "Wardrik in this app: where it keeps everything, what runs, and what users do with agents."
-
-  alias Wardrik.AgentID
-
-  def store, do: Wardrik.store(repo: MyApp.Repo)
-
-  def wardrik, do: Wardrik.new(store: store(), issuer: %MyApp.Issuer{})
-end
+```elixir title="config/config.exs"
+config :my_app, MyApp.Wardrik, store: {WardrikStore.Ecto, repo: MyApp.Repo}
 ```
 
-Each agent's definition is kept in the store, and so are the files it works on. `tools:` names the
-tools your app ships, which a definition names by name: `tools: [MyApp.Tools.Search]`. `context:`
-says what else a definition may name, such as the policies it may hold to:
-`context: Wardrik.context(policies: policies)`. A value of your own implementing
-`WardrikDefinition.Contexts` gives each agent a context of its own, such as one per org.
-
-To hold each org's agents to the allowance its plan pays for, give its context a policy with a
-budget in `held`:
-
-```elixir title="lib/my_app/contexts.ex"
-defmodule MyApp.Contexts do
-  @moduledoc "Each org's context: the base, holding its agents to the allowance it pays for."
-
-  defstruct [:base]
-
-  defimpl WardrikDefinition.Contexts do
-    def context(%{base: base}, owner) do
-      org = to_string(Wardrik.Resource.org(owner))
-      budget = %{"usd" => MyApp.Billing.allowance_usd(org), "per" => "month"}
-      %{base | held: base.held ++ [WardrikPolicy.decode!(%{"budget" => budget}, "allowance")]}
-    end
-
-    def reload(_contexts, _opts), do: []
-  end
-end
-```
-
-Pass it as `context: %MyApp.Contexts{base: Wardrik.context(policies: policies)}`. All of an org's
-agents, its users' too, spend from one allowance together. An agent reads its owner's context as it
-starts. So a changed allowance holds from each agent's next start. To apply it sooner, read that
-org's agents again: `Wardrik.deployment_reload/2` with
-`resources: [Wardrik.Resource.parse!("acme/*")]`.
-
-`Wardrik.new/1` answers the `Wardrik.Host` everything runs on. A package adds what it brings to it
-through an `attach/2` of its own, before Wardrik starts: its tools, what it serves over HTTP, and
-what it runs, as `Wardrik.new(...) |> WardrikHTTP.attach(port: 4850)`. Wardrik starts what each
-attached in the order they were attached.
-
-## 5. Start it in your tree
-
-List what runs, its store first, then start it after your `Repo`:
-
-```elixir title="lib/my_app/agents.ex"
-def children, do: [{WardrikStore, store()}, {Wardrik, wardrik()}]
-```
+Start it after your `Repo`, and before anything that uses it:
 
 ```elixir title="lib/my_app/application.ex"
-children =
-  [MyAppWeb.Telemetry, MyApp.Repo] ++
-    MyApp.Agents.children() ++
-    [{Phoenix.PubSub, name: MyApp.PubSub}, MyAppWeb.Endpoint]
+children = [
+  MyAppWeb.Telemetry,
+  MyApp.Repo,
+  MyApp.Wardrik,
+  {Phoenix.PubSub, name: MyApp.PubSub},
+  MyAppWeb.Endpoint
+]
 
 Supervisor.start_link(children, strategy: :rest_for_one, name: MyApp.Supervisor)
 ```
 
-`{WardrikStore, ...}` keeps everything Wardrik keeps in your `Repo`, started as your `Repo` is.
-`{Wardrik, ...}` runs, in order:
+Notice `:rest_for_one`. A restart of `MyApp.Wardrik` restarts what comes after it, so your endpoint
+never runs against a Wardrik that went away.
 
-| Part | What it runs |
-| --- | --- |
-| The agents | the fleet, its event log and its audit log |
-| The meters | what [budgets](/concepts/budgets/) count in |
-| The triggers | [triggers](/build/triggers/): clocks, feeds and webhooks |
-| The packages | what each package attached to it runs, in the order they were attached |
+Options come from three places. Each overrides the one before:
 
-Under `:rest_for_one`, a restart of one restarts everything after it, so what you start after
-Wardrik always runs on the Wardrik before it.
+```elixir
+# 1. config/config.exs or config/runtime.exs
+config :my_app, MyApp.Wardrik, store: {WardrikStore.Ecto, repo: MyApp.Repo}
 
-## 6. Define an agent and ask it
+# 2. The supervision tree
+children = [{MyApp.Wardrik, deployment: "production"}]
 
-Your code acts as the signed-in user, in a scope `Wardrik.as/3` makes. Each function of
-`Wardrik` checks their token, and records what it changed in the audit log:
-
-```elixir title="lib/my_app/agents.ex"
-def define(user, name, definition) do
-  agent = AgentID.new!(name, org: user.org, user: to_string(user.id))
-  Wardrik.agent_define(scope(user), agent, definition)
-end
-
-def ask(user, agent, text), do: Wardrik.agent_ask(scope(user), agent, text)
-
-def subscribe(user, agent),
-  do: Wardrik.subscribe(scope(user), resources: [AgentID.resource(agent)])
-
-def events(user, agent, cursor),
-  do:
-    Wardrik.events(scope(user),
-      resources: [AgentID.resource(agent)],
-      after: cursor,
-      follow: true
-    )
-
-defp scope(user), do: Wardrik.as(wardrik(), MyApp.Issuer.principal(user))
+# 3. init/1 in MyApp.Wardrik, for what's only known at runtime
+@impl Wardrik
+def init(config), do: {:ok, Keyword.put(config, :keys, [System.fetch_env!("WARDRIK_KEY")])}
 ```
 
-Define Maria's support agent, ask it something, and read the answer from its log. The model's key
-is `ANTHROPIC_API_KEY` in your environment:
+`Wardrik.start_link/1` lists every option.
+
+## 4. Say who may do what
+
+Your code acts as the signed-in user, in a *scope*. A scope names who acts, the *principal*, and the
+statements that say what they may do. Each statement allows some actions on the resources its
+patterns match. A role is a named set of actions.
+
+Here a user owns everything of their own, and may read and message their org's agents:
+
+```elixir title="lib/my_app/agents.ex"
+defmodule MyApp.Agents do
+  @moduledoc "What users do with agents."
+
+  @doc "The scope `user` acts in: owner of their own agents, reader and messenger on their org's."
+  def scope(%MyApp.Accounts.User{} = user) do
+    MyApp.Wardrik.as(principal(user), roles: [:owner], resources: ["#{owner(user)}/*"])
+    |> Wardrik.grant(roles: [:reader, :messenger], resources: ["#{user.org}/agent/*"])
+  end
+
+  @doc "Who `user` is to Wardrik: `acme/@42`, named by their email."
+  def principal(user), do: Wardrik.principal(owner(user), %{name: user.email})
+
+  @doc "The namespace `user` owns agents and accounts under, as `acme/@42`."
+  def owner(user), do: "#{user.org}/@#{user.id}"
+end
+```
+
+Maria, user 42 of `acme`, owns the agent `acme/@42/support`, whose resource is
+`acme/@42/agent/support`. Her org's own agents, as `acme/triage`, are `acme/agent/triage`, so she
+may read and message them. She reaches no other user's agents, and no other org's. Anything she
+can't reach answers `not_found`, so she learns nothing about it.
+
+| Role | Allows |
+| --- | --- |
+| `:reader` | reading an agent, its events, its accounts and servers |
+| `:messenger` | asking, cancelling and clearing |
+| `:approver` | deciding the calls an agent waits on |
+| `:definer` | defining, starting, stopping and forgetting agents; connecting accounts; adding servers |
+| `:owner` | every action |
+
+Nothing is allowed unless a statement grants it. [Who may do what](https://hexdocs.pm/wardrik/access.html)
+covers actions, patterns and writing your own `Wardrik.Authorizer`.
+
+## 5. Define an agent and ask it
+
+Define Maria's support agent, and ask it something:
 
 ```elixir
 maria = %MyApp.Accounts.User{id: 42, org: "acme", email: "maria@acme.example"}
+scope = MyApp.Agents.scope(maria)
 
-{:ok, _snapshot} =
-  MyApp.Agents.define(maria, "support", %{
-    "model" => "anthropic:claude-sonnet-5",
-    "instructions" => "Answer questions about orders in two sentences."
-  })
+{:ok, agent} =
+  Wardrik.Agent.define(scope, "acme/@42/support",
+    model: "anthropic:claude-sonnet-5",
+    instructions: "Answer questions about orders in two sentences."
+  )
 
-agent = Wardrik.AgentID.new!("support", org: "acme", user: "42")
-:ok = MyApp.Agents.subscribe(maria, agent)
-{:ok, %Wardrik.Agent.Message{}} = MyApp.Agents.ask(maria, agent, "Where is order 1001?")
+{:ok, %Wardrik.Reply{text: text}} = Wardrik.Agent.reply(scope, agent, "Where is order 1001?")
+```
 
-receive do
-  %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.completed", "data" => data}} ->
-    for %{"role" => "assistant", "parts" => parts} <- data["messages"],
-        %{"type" => "text", "content" => text} <- parts,
-        do: IO.puts(text)
+The model's key is `ANTHROPIC_API_KEY` in your environment. Every call through a scope checks its
+statements, and what it changes is recorded in the audit.
 
-  %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.failed", "data" => data}} ->
-    IO.inspect(data["error"])
+`reply/4` waits for the run to end. It returns one of:
+
+- `{:ok, %Wardrik.Reply{}}`: the run finished.
+- `{:waiting, interrupts}`: a call waits on a person. See [Approvals](/concepts/approvals/).
+- `{:error, %Wardrik.Error{}}`: the agent can't be reached, or the run failed.
+
+To show a turn as it streams, say in a LiveView, send the answer to the process:
+
+```elixir title="lib/my_app_web/live/support_live.ex"
+def handle_event("ask", %{"text" => text}, socket) do
+  scope = MyApp.Agents.scope(socket.assigns.current_user)
+  {:ok, _ref} = Wardrik.Agent.stream(scope, "acme/@42/support", text, to: self())
+  {:noreply, assign(socket, answer: "")}
+end
+
+def handle_info({Wardrik, _ref, {:text, chunk}}, socket),
+  do: {:noreply, update(socket, :answer, &(&1 <> chunk))}
+
+def handle_info({Wardrik, _ref, _ended}, socket), do: {:noreply, socket}
+```
+
+Each message is `{Wardrik, ref, item}`. The items are `{:text, chunk}`, then one of
+`{:done, %Wardrik.Reply{}}`, `{:waiting, interrupts}` or `{:failed, reason}`. Without `to:`,
+`stream/4` returns the text as an `Enumerable`.
+
+## 6. Follow what it does
+
+Every agent writes its events to a log: each model call, tool call and run. Read it from a cursor:
+
+```elixir
+{:ok, message} = Wardrik.Agent.ask(scope, "acme/@42/support", "Where is order 1001?")
+{:ok, %Wardrik.Page{events: events, next: next}} =
+  Wardrik.Agent.events(scope, "acme/@42/support", after: message.cursor)
+
+Enum.find(events, &(&1.type == "wardrik.run.completed"))
+```
+
+Notice `message.cursor`. It's where the log stood as the message was sent, so the turn that answers
+it comes after. Read on from `next`.
+
+To follow many agents as they write, stream them:
+
+```elixir
+{:ok, stream} =
+  Wardrik.Events.stream_list(scope, resources: ["acme/@42/*"], types: ["wardrik.run.completed"])
+
+Enum.each(stream, fn {%Wardrik.Event{} = event, cursor} -> MyApp.Runs.record(event, cursor) end)
+```
+
+It reads what's there, then follows new events. Wardrik keeps no reader's place, so keep the cursor
+with your work. [Follow events into your app](/build/listen/) does that for you, in your own
+tables, with a `Wardrik.Listener`. [Events](/concepts/events/) lists the types.
+
+## Hold each org to its plan
+
+Each org's agents can spend from one allowance together, the one its plan pays for. Give Wardrik
+your orgs:
+
+```elixir title="lib/my_app/orgs.ex"
+defmodule MyApp.Orgs do
+  @moduledoc "Each org's settings: one ceiling, the allowance its plan pays for."
+
+  @behaviour Wardrik.Orgs
+
+  @impl true
+  def settings(org, _config) do
+    usd = MyApp.Billing.allowance_usd(org)
+    {:ok, %Wardrik.OrgSettings{ceilings: %{"plan" => [usd: usd, per: :month]}}}
+  end
 end
 ```
 
-Every event an agent writes reaches its subscribers, so a LiveView can show a turn as it streams.
-[Events](/concepts/events/) lists them. `resources:` takes patterns, as `acme/agent/*`, and
-`types:` the event types to take. Nobody else reaches Maria's agent: reading `acme/agent/*`
-reaches the org's own agents, not its users'. Anyone else is told it isn't there.
-
-A subscription takes what is written from then on. To read what was written before, or to pick
-up after a restart, read the log from a cursor. A message says where the log stood as it was
-sent, so the turn that answers it comes after:
-
-```elixir
-{:ok, message} = MyApp.Agents.ask(maria, agent, "Where is order 1001?")
-{:ok, events} = MyApp.Agents.events(maria, agent, message.cursor)
-
-Enum.find(events, &(&1.event["type"] == "wardrik.run.completed"))
+```elixir title="config/config.exs"
+config :my_app, MyApp.Wardrik,
+  store: {WardrikStore.Ecto, repo: MyApp.Repo},
+  orgs: {MyApp.Orgs, []}
 ```
 
-Wardrik keeps no reader's place. Keep your own: `Wardrik.cursor/2` moves a cursor past each entry,
-and `events/2` reads on from it, then follows. A log trimmed past your cursor gives a
-`wardrik.events.dropped` entry, and reading goes on from the oldest event it still holds.
-[Follow events into your app](/build/listen/) keeps the place for you, in your own tables.
+Every agent of `acme`, its users' too, spends from `acme`'s `plan`. Once it's spent, the next model
+call waits for someone allowed `ceiling.approve` on `acme/ceiling`, such as an owner of
+`acme/*`, to approve more. `on_exhausted: :deny` refuses it instead.
+
+Wardrik reads an org's settings as each of its agents starts, wakes or is defined. When a plan
+changes, bring the org's awake agents to it at once:
+
+```elixir
+Wardrik.refresh(MyApp.Wardrik, org: "acme")
+#=> []
+```
+
+`Wardrik.OrgSettings` also takes a policy every agent in the org is held to, policies its
+definitions may name, and defaults. See [Budgets](/concepts/budgets/).
 
 ## Serve the HTTP API
 
-To let other programs reach the agents, such as the TypeScript SDK, add `{:wardrik_http, "~> 0.1"}`.
-The API knows each request by an authenticator of yours. This one reads a token your app gives
-its user, signed with your endpoint's secret:
+To let other programs reach the agents, such as the TypeScript SDK, serve the API from your router.
+It knows each request by an authenticator of yours. This one reads a token your app gives its user,
+signed with your endpoint's secret:
 
-```elixir title="lib/my_app_web/session.ex"
-defmodule MyAppWeb.Session do
-  @moduledoc """
-  Knows a request to the agents' API by a token this app gave its user,
-  signed with the endpoint's secret.
-  """
+```elixir title="lib/my_app_web/agents_auth.ex"
+defmodule MyAppWeb.AgentsAuth do
+  @moduledoc "Knows a request to the agents' API by a token this app gave its user."
 
-  @enforce_keys [:endpoint]
-  defstruct [:endpoint]
-
-  @doc "A token `user` presents as `Authorization: Bearer TOKEN`."
-  def token(%MyApp.Accounts.User{} = user),
-    do: Phoenix.Token.sign(MyAppWeb.Endpoint, "agents", user)
-end
-
-defimpl WardrikHTTP.Authenticator, for: MyAppWeb.Session do
-  import Plug.Conn
+  @behaviour WardrikHTTP.Authenticator
 
   @day 86_400
 
-  def authenticate(session, conn) do
-    with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         {:ok, user} <- Phoenix.Token.verify(session.endpoint, "agents", token, max_age: @day) do
-      token = %Wardrik.Token{
-        principal: MyApp.Issuer.principal(user),
-        scope: MyApp.Issuer.scope(user.org, to_string(user.id))
-      }
+  @doc "A token `user` presents as `Authorization: Bearer TOKEN`."
+  def token(user), do: Phoenix.Token.sign(MyAppWeb.Endpoint, "agents", user.id)
 
-      {:ok, %WardrikHTTP.Caller{id: "session/#{user.id}", name: user.email, token: token}}
+  @impl true
+  def authenticate(conn, _server, _config) do
+    with ["Bearer " <> token] <- Plug.Conn.get_req_header(conn, "authorization"),
+         {:ok, id} <- Phoenix.Token.verify(MyAppWeb.Endpoint, "agents", token, max_age: @day) do
+      {:ok, MyApp.Agents.scope(MyApp.Accounts.get_user!(id))}
     else
-      _no_session -> {:error, :unauthorized}
+      _not_signed_in -> {:error, Wardrik.Error.new(:unauthorized, "Sign in first.")}
     end
   end
-
-  def challenge(_session), do: ~s(Bearer realm="my_app")
 end
 ```
 
-A request reaches the user's own agents, as its token says. Attach the API to Wardrik, which runs
-its listener on a port of its own:
+Forward a path to it:
 
-```elixir title="lib/my_app/agents.ex"
-def wardrik do
-  Wardrik.new(store: store(), issuer: %MyApp.Issuer{})
-  |> WardrikHTTP.attach(
-    port: 4850,
-    authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}
-  )
-end
+```elixir title="lib/my_app_web/router.ex"
+forward "/agents", Wardrik.HTTP,
+  wardrik: MyApp.Wardrik,
+  authenticator: {MyAppWeb.AgentsAuth, []}
 ```
 
-`children/0` stays as it is. The API also offers your agents the tools of programs that connect to
-it as [tool workers](/build/tool-workers/), which a definition names as `workers/*`.
+Your endpoint parses bodies before the router. Have it keep the raw body too, so Wardrik can check
+the signatures of webhooks and chat apps:
 
-Have your proxy forward `/v1/` to port 4850. Then Maria's programs list her agents with the token
-your app gave her:
+```elixir title="lib/my_app_web/endpoint.ex"
+plug Plug.Parsers,
+  parsers: [:urlencoded, :multipart, :json],
+  pass: ["*/*"],
+  json_decoder: Phoenix.json_library(),
+  body_reader: Wardrik.HTTP.body_reader()
+```
+
+Now Maria's programs list her agents with the token your app gave her:
 
 ```sh
-curl -H "Authorization: Bearer $TOKEN" https://myapp.example.com/v1/agents
+curl -H "Authorization: Bearer $TOKEN" https://myapp.example.com/agents/v1/agents
 ```
 
-The [HTTP API guide](/build/http-api/) is every route.
+A request acts in the scope your authenticator returns, so it reaches what Maria reaches. The API
+also offers your agents the tools of programs that connect to it as
+[tool workers](/build/tool-workers/), which a definition names as `workers/*`.
+
+To serve it on a port of its own instead, start it as a child after `MyApp.Wardrik`:
+`{Wardrik.HTTP, wardrik: MyApp.Wardrik, port: 4850}`. The [HTTP API guide](/build/http-api/) walks
+through the routes.
 
 ## Let people connect accounts
 
-An agent can call GitHub's MCP server as the user it works for. Each user connects their own
-GitHub account once, and their agents use it from then on. Add the packages:
-
-```elixir title="mix.exs"
-{:wardrik_oauth, "~> 0.1"},
-{:wardrik_mcp, "~> 0.1"}
-```
+An agent can call GitHub's MCP server as the user it works for. Each user connects their own GitHub
+account once, and their agents use it from then on.
 
 ### Give it a key and a GitHub app
 
-Tokens are kept in the store, sealed with a key you hold. Make one, and keep it as
-`WARDRIK_VAULT_KEY` wherever the app runs:
+Accounts are kept in the store, sealed with a key you hold. Make one:
 
 ```sh
 mix run -e 'IO.puts(WardrikVault.generate_key())'
 ```
 
-Register an OAuth app on GitHub. Its callback URL is your app's URL, then `/oauth/callback/github`,
-such as `https://myapp.example.com/oauth/callback/github`. Set `MY_APP_URL`, `GITHUB_CLIENT_ID` and
-`GITHUB_CLIENT_SECRET`.
+Keep it as `WARDRIK_KEY` wherever the app runs. Then:
 
-### Offer the vault and the sign-in
+1. Register an OAuth app on GitHub.
+2. Set its callback URL to `https://myapp.example.com/agents/oauth/callback`.
+3. Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
 
-The vault keeps each user's token in the store, and asks them to sign in where they have none. In
-`MyApp.Agents`, `wardrik/0` becomes:
+### Give Wardrik the sign-in and the server
 
-```elixir title="lib/my_app/agents.ex"
-def wardrik do
-  vault = vault()
-
-  Wardrik.new(
-    store: store(),
-    issuer: %MyApp.Issuer{},
-    credentials: vault,
-    connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault}
-  )
-  |> WardrikMCP.attach(
-    servers: [
-      github: [
-        transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
-        credential: "github"
-      ]
-    ]
-  )
-  |> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
-  |> WardrikHTTP.attach(
-    port: 4850,
-    authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}
-  )
-end
-
-def vault,
-  do:
-    WardrikVault.new(
-      store: store(),
-      keys: [System.fetch_env!("WARDRIK_VAULT_KEY")],
-      grants: oauth()
-    )
-
-def oauth do
-  WardrikOAuth.new(
-    client: [name: "My app"],
+```elixir title="config/runtime.exs"
+config :my_app, MyApp.Wardrik,
+  # 1. Seals accounts and secrets
+  keys: [System.fetch_env!("WARDRIK_KEY")],
+  # 2. What people sign in to
+  oauth: [
+    page: "https://myapp.example.com/agents/oauth",
+    client_name: "My app",
     providers: [
       github: [
-        resource: "https://api.githubcopilot.com/mcp/",
         issuer: "https://github.com/login/oauth",
-        client_id: System.get_env("GITHUB_CLIENT_ID"),
-        client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
+        client_id: System.fetch_env!("GITHUB_CLIENT_ID"),
+        client_secret: System.fetch_env!("GITHUB_CLIENT_SECRET"),
         scopes: ~w(repo)
       ]
-    ],
-    redirect: [url: System.get_env("MY_APP_URL", "http://localhost:4000") <> "/oauth"]
-  )
-end
+    ]
+  ],
+  # 3. The server, called with each user's own GitHub account
+  mcp: [
+    github: [
+      transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
+      credential_name: "github"
+    ]
+  ]
 ```
 
-`WardrikMCP.attach/2` lets a definition name the server's tools as `github/*`, and runs its
-connections, after Wardrik's own; `WardrikOAuth.Supervisor` runs the sign-ins under way.
-`credential: "github"` makes each call with the token of the user the agent works for.
-
-### Take GitHub's callback in your app
-
-GitHub sends the browser back to your app, at the redirect URL above. Your router takes it:
-
-```elixir title="lib/my_app_web/router.ex"
-scope "/oauth", MyAppWeb do
-  get "/callback/:provider", OAuthController, :callback
-end
-```
-
-```elixir title="lib/my_app_web/controllers/oauth_controller.ex"
-defmodule MyAppWeb.OAuthController do
-  use MyAppWeb, :controller
-
-  def callback(conn, %{"provider" => provider, "state" => state, "code" => code} = params) do
-    case WardrikOAuth.finish(state, code, provider: provider, iss: params["iss"]) do
-      {:ok, _provider} ->
-        text(conn, "Connected. Go back to your agent.")
-
-      {:error, _reason} ->
-        conn |> put_status(400) |> text("That sign-in did not finish. Open its link again.")
-    end
-  end
-
-  def callback(conn, _params),
-    do: conn |> put_status(400) |> text("This is where a sign-in comes back to.")
-end
-```
+- `page` is where the sign-in pages are served. `Wardrik.HTTP` serves them at `/oauth` under its
+  path, so the API's mount gives them `/agents/oauth`.
+- `credential_name: "github"` makes each call with the account of the user the agent works for. It
+  names the provider that grants it.
+- A definition names the server's tools as `github/*`.
 
 ### Connect, then use it
-
-Add two functions to `MyApp.Agents`:
-
-```elixir title="lib/my_app/agents.ex"
-def connect(user, provider),
-  do: Wardrik.connections_connect(scope(user), MyApp.Issuer.own(user), provider)
-
-def connections(user), do: Wardrik.connections_list(scope(user), MyApp.Issuer.own(user))
-```
 
 Give Maria an agent that uses GitHub, and the link to connect her account:
 
 ```elixir
-{:ok, _snapshot} =
-  MyApp.Agents.define(maria, "triage", %{
-    "model" => "anthropic:claude-sonnet-5",
-    "instructions" => "Sort new issues in acme/shop by how urgent they are.",
-    "tools" => ["github/*"]
-  })
+{:ok, _agent} =
+  Wardrik.Agent.define(scope, "acme/@42/triage",
+    model: "anthropic:claude-sonnet-5",
+    instructions: "Sort new issues in acme/shop by how urgent they are.",
+    tools: ["github/*"]
+  )
 
-{:ok, %Wardrik.Connections.Connection{authorization: %{url: url}}} =
-  MyApp.Agents.connect(maria, "github")
+{:ok, %Wardrik.Connecting{connected: false, authorization: %Wardrik.Authorization{url: url}}} =
+  Wardrik.Connections.connect(scope, "github", owner: "acme/@42")
 ```
 
-Show her `url`. She signs in at GitHub, comes back to `/oauth/callback/github`, and the vault keeps
-her token. Her connections then say she holds it:
+Show her `url`. She signs in at GitHub, and comes back to `/agents/oauth/callback`. Her connections
+then say she holds it:
 
 ```elixir
-{:ok, [%Wardrik.Connections.Connection{provider: "github", connected: true}]} =
-  MyApp.Agents.connections(maria)
+{:ok, [%Wardrik.Connection{provider: "github", connected: true}]} =
+  Wardrik.Connections.list(scope, owner: "acme/@42")
 ```
 
-If her agent calls GitHub before she connects, the call waits. `connect/2` gives her a link, and
-the call carries on once she signs in. GitHub's tools that change something wait for a
-person to approve them; see [Approvals](/concepts/approvals/).
+If her agent calls GitHub before she connects, the call waits on an `:authorization` interrupt.
+`Wardrik.Agent.authorization/4` gives its link, and the call carries on once she signs in. GitHub's
+tools that change something wait for a person to approve them; see [Approvals](/concepts/approvals/).
 
-[Connect accounts](/build/accounts/) covers whose credentials a call uses.
+To serve the callback from a controller of your own, pass its params to
+`Wardrik.finish_sign_in(MyApp.Wardrik, params)`. [Connect accounts](/build/accounts/) covers whose
+account a call uses.
 
 ## Answer in Slack
 
@@ -495,219 +400,45 @@ Your users already talk in Slack, and they won't edit agent files. Let's have ea
 answer in that org's own Slack workspace, through one Slack app of yours. Add the package:
 
 ```elixir title="mix.exs"
-{:wardrik_slack, "~> 0.1"}
+{:wardrik_slack, "~> 0.1.0-rc.1"}
 ```
 
 ### Make the Slack app
 
-Make the app from the [manifest](/channels/slack/#a-slack-app). Put your app's address in place of
-`agents.example.com`, so Slack sends its events to the API. Under **OAuth & Permissions**, set the
-**Redirect URL** to `https://myapp.example.com/slack/installed`. Under **Manage Distribution**, let
-other workspaces install it.
+1. Make the app from the [manifest](/channels/slack/#a-slack-app).
+2. Put `https://myapp.example.com/agents` in place of the manifest's address, so Slack sends its
+   events to `/agents/v1/channels/slack/events` and its button presses to
+   `/agents/v1/channels/slack/actions`.
+3. Under **OAuth & Permissions**, set the **Redirect URL** to `https://myapp.example.com/slack/installed`.
+4. Under **Manage Distribution**, let other workspaces install it.
+5. Set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` and `SLACK_SIGNING_SECRET` from **Basic
+   Information › App Credentials**.
 
-Then set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` and `SLACK_SIGNING_SECRET` from **Basic
-Information › App Credentials**.
+### Give Wardrik the channel
 
-### Keep each workspace
-
-Each workspace answers for one org. Let's keep them in a table of our own:
-
-```elixir title="priv/repo/migrations/20261020000000_add_slack_workspaces.exs"
-defmodule MyApp.Repo.Migrations.AddSlackWorkspaces do
-  use Ecto.Migration
-
-  def change do
-    create table(:slack_workspaces, primary_key: false) do
-      add :team, :text, primary_key: true
-      add :org, :text, null: false
-      add :approvers, {:array, :text}, null: false, default: []
-    end
-  end
-end
+```elixir title="config/runtime.exs"
+config :my_app, MyApp.Wardrik,
+  channels: [
+    slack:
+      {WardrikSlack,
+       client_id: System.fetch_env!("SLACK_CLIENT_ID"),
+       client_secret: System.fetch_env!("SLACK_CLIENT_SECRET"),
+       signing_secret: System.fetch_env!("SLACK_SIGNING_SECRET"),
+       redirect_uri: "https://myapp.example.com/slack/installed",
+       installations: :stored,
+       offering: "An admin of your org can turn on Slack in the agent's settings.",
+       deciding: "Your org's admins name who approves in its Slack settings."}
+  ]
 ```
 
-```elixir title="lib/my_app/slack/workspace.ex"
-defmodule MyApp.Slack.Workspace do
-  @moduledoc "A Slack workspace the app is added to: the org it answers for, and who approves there."
+- `installations: :stored` keeps each workspace in Wardrik's store, with its bot token sealed by
+  your `:keys`.
+- `offering` is what a room with no agent is told. `deciding` is what someone who may not approve is
+  told.
 
-  use Ecto.Schema
-
-  @primary_key {:team, :string, autogenerate: false}
-  schema "slack_workspaces" do
-    field :org, :string
-    field :approvers, {:array, :string}, default: []
-  end
-end
-```
-
-Notice `approvers`. Each org's admins name who approves in their own workspace.
-
-Now we tell Wardrik where the workspaces are. `MyApp.Slack` holds the channel's settings, and it's
-the `WardrikChannel.Installations` that finds each workspace:
-
-```elixir title="lib/my_app/slack.ex"
-defmodule MyApp.Slack do
-  @moduledoc """
-  The app's Slack app, in each org's own workspace: the channel's settings,
-  what someone in a workspace may do, and, as its
-  `WardrikChannel.Installations`, the workspaces it was added to. Bot
-  tokens are sealed in the vault as the deployment's, so no agent's call
-  reaches them.
-  """
-
-  import Ecto.Query
-
-  alias MyApp.Slack.Workspace
-
-  defstruct []
-
-  @doc "The channel's settings, as `WardrikChannel.attach/2` takes them."
-  def settings do
-    [
-      channels: [slack: adapter()],
-      installations: %__MODULE__{},
-      offering: "An admin of your org can offer one by turning on Slack in the agent's settings.",
-      deciding: "Your org's admins name the approvers in its Slack settings."
-    ]
-  end
-
-  @doc "The channel, as Wardrik runs it."
-  def channel,
-    do: Map.fetch!(WardrikChannel.channels(settings(), host: MyApp.Agents.wardrik()), "slack")
-
-  @doc """
-  The token of someone in a workspace: reader and messenger on its org's
-  agents, and approver where its approvers name them.
-  """
-  def token(principal) do
-    {"slack", team, id} = WardrikChannel.person(principal)
-
-    case WardrikChannel.Installations.fetch(%__MODULE__{}, "slack", team) do
-      {:ok, installation} ->
-        member = WardrikChannel.Member.new(installation, id)
-        include? = &WardrikChannel.include?(adapter(), &1, member)
-        approves? = WardrikChannel.Approvers.decides?(installation.approvers, include?)
-        roles = if approves?, do: [:reader, :messenger, :approver], else: [:reader, :messenger]
-        agents = Wardrik.Resource.parse!("#{installation.owner}/agent/*")
-        %Wardrik.Token{principal: principal, scope: [Wardrik.Role.bind(roles, [agents])]}
-
-      :error ->
-        %Wardrik.Token{principal: principal}
-    end
-  end
-
-  @doc "Has `names`, each a `@handle`, an email address or a member ID, approve in `team`'s workspace."
-  def approvers(team, names),
-    do:
-      MyApp.Repo.update_all(from(w in Workspace, where: w.team == ^team), set: [approvers: names])
-
-  defp adapter do
-    {:ok, options} =
-      WardrikSlack.config(%{
-        "client_id" => System.fetch_env!("SLACK_CLIENT_ID"),
-        "client_secret" => System.fetch_env!("SLACK_CLIENT_SECRET"),
-        "signing_secret" => System.fetch_env!("SLACK_SIGNING_SECRET")
-      })
-
-    {WardrikSlack, options}
-  end
-end
-
-defimpl WardrikChannel.Installations, for: MyApp.Slack do
-  import Ecto.Query
-
-  alias MyApp.Slack.Workspace
-  alias Wardrik.Resource
-  alias WardrikChannel.Installation
-
-  def fetch(_slack, channel, team) do
-    with %Workspace{} = workspace <- MyApp.Repo.get(Workspace, team),
-         {:ok, token} <- token(team) do
-      {:ok, installation(channel, workspace, token)}
-    else
-      _not_added -> :error
-    end
-  end
-
-  def owned(_slack, channel, owner) do
-    for workspace <- MyApp.Repo.all(from(w in Workspace, where: w.org == ^to_string(owner))),
-        {:ok, token} <- [token(workspace.team)],
-        do: installation(channel, workspace, token)
-  end
-
-  def put(_slack, %Installation{workspace: team, owner: owner, token: token}) do
-    org = to_string(owner)
-
-    case MyApp.Repo.get(Workspace, team) do
-      %Workspace{org: other} when other != org ->
-        {:error, "That Slack workspace answers for another org. Remove the app there first."}
-
-      _ours_or_new ->
-        :ok =
-          WardrikVault.put(MyApp.Agents.vault(), name(team), Resource.deployment(), value: token)
-
-        MyApp.Repo.insert!(%Workspace{team: team, org: org}, on_conflict: :nothing)
-        :ok
-    end
-  end
-
-  def delete(_slack, _channel, team) do
-    MyApp.Repo.delete_all(from(w in Workspace, where: w.team == ^team))
-    :ok = WardrikVault.forget(MyApp.Agents.vault(), name(team), Resource.deployment())
-  end
-
-  defp token(team),
-    do: WardrikVault.fetch(MyApp.Agents.vault(), name(team), Resource.deployment())
-
-  defp name(team), do: "slack-" <> team
-
-  defp installation(channel, workspace, token),
-    do: %Installation{
-      channel: channel,
-      workspace: workspace.team,
-      owner: Resource.parse!(workspace.org),
-      token: token,
-      approvers: %WardrikChannel.Approvers.Named{names: workspace.approvers}
-    }
-end
-```
-
-Notice `installation/3` at the bottom. Each installation carries its workspace's approvers, so every
-org decides for itself. The bot token is sealed in the vault as the deployment's, so no agent's call
-can reach it.
-
-Notice `offering:` and `deciding:` in `settings/0`, too. They're what Slack says in a room no agent
-answers in, and to someone who may not approve. Leave them out, and Slack tells people to edit the
-agent's definition, as the daemon does.
-
-### Attach it
-
-In `MyApp.Agents`, attach the channel before the API:
-
-```elixir title="lib/my_app/agents.ex"
-|> Wardrik.Host.child({WardrikOAuth.Supervisor, []})
-|> WardrikChannel.attach(MyApp.Slack.settings())
-|> WardrikHTTP.attach(
-```
-
-Someone in a workspace is a principal named like `slack:T0123/U024BE7LH`. Let's give them a token in
-our issuer:
-
-```elixir title="lib/my_app/issuer.ex"
-defimpl Wardrik.Issuer, for: MyApp.Issuer do
-  def issue(_issuer, principal, _opts) do
-    case String.split(Wardrik.Principal.id(principal), "/") do
-      ["deployment"] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.deployment()}
-      ["slack:" <> _team, _id] -> MyApp.Slack.token(principal)
-      [org, "@" <> id] -> %Wardrik.Token{principal: principal, scope: MyApp.Issuer.scope(org, id)}
-      _other -> %Wardrik.Token{principal: principal}
-    end
-  end
-end
-```
-
-Notice the `slack:` clause comes before the user's. `MyApp.Slack.token/1` lets them read and
-message their org's agents. They approve only where their workspace's approvers name them.
+Someone in a workspace acts as a principal like `slack:T0123/U024BE7LH`. They may read and message
+the agents of the org that added the workspace. Whoever asked for a turn may decide what it waits
+on.
 
 ### Add it to a workspace
 
@@ -715,7 +446,7 @@ An org's admin adds the app from your settings, signed in:
 
 ```elixir title="lib/my_app_web/router.ex"
 scope "/slack", MyAppWeb do
-  pipe_through :browser
+  pipe_through [:browser, :require_org_admin]
 
   get "/add", SlackController, :add
   get "/installed", SlackController, :installed
@@ -728,59 +459,79 @@ defmodule MyAppWeb.SlackController do
 
   def add(conn, _params) do
     {:ok, url} =
-      WardrikChannel.install_url(MyApp.Slack.channel(), org(conn), return_to: "/settings")
+      Wardrik.Channels.install_url(MyApp.Wardrik, "slack", org(conn), return_to: "/settings")
 
     redirect(conn, external: url)
   end
 
   def installed(conn, _params) do
-    response =
-      WardrikChannel.install(MyApp.Slack.channel(), org(conn), %{
-        method: conn.method,
-        path: conn.path_info,
-        query: conn.query_params,
-        headers: conn.req_headers,
-        body: ""
-      })
-
-    conn |> merge_resp_headers(response.headers) |> send_resp(response.status, response.body)
+    case Wardrik.Channels.installed(MyApp.Wardrik, "slack", org(conn), conn.query_params) do
+      {:ok, _installation, return_to} -> redirect(conn, to: return_to || "/settings")
+      {:error, message} -> conn |> put_status(400) |> text(message)
+    end
   end
 
   # The org the signed-in admin acts for.
-  defp org(conn), do: Wardrik.Resource.parse!(conn.assigns.current_user.org)
+  defp org(conn), do: conn.assigns.current_user.org
 end
 ```
 
-Send the admin to `/slack/add`. Slack sends them back to `/slack/installed`, and the workspace
-answers for their org from then on. When the admin names approvers, keep them:
+Notice `:require_org_admin`. `install_url/4` adds the workspace for whatever org it's given, so only
+let an org's admins reach it. The URL lasts ten minutes, and nobody else's URL adds a workspace for
+that org.
+
+### Give an agent the channel
+
+The workspace answers for the org's own agents, as `acme/support`. Let an admin define them, with
+`"slack"` among its channels:
 
 ```elixir
-MyApp.Slack.approvers("T0123", ["@maria", "jon@acme.example"])
+admin = MyApp.Agents.scope(maria) |> Wardrik.grant(roles: [:definer], resources: ["acme/agent/*"])
+
+{:ok, _agent} =
+  Wardrik.Agent.define(admin, "acme/support",
+    model: "anthropic:claude-sonnet-5",
+    instructions: "Answer questions about orders in two sentences.",
+    channels: ["slack"]
+  )
 ```
 
-Now give an agent `"channels" => ["slack"]` in its definition, and invite the app into a Slack
-channel. The agent answers there. With no approvers named, whoever asked for a turn approves it.
+Invite the app into a Slack channel, and mention it. The agent answers in a thread.
 
 Reach for this when your users live in Slack and never touch agent files. Running the daemon for one
 team? Give its channel a `token` in `config.yaml` instead; see [Slack](/channels/slack/).
 
 ## Details
 
-### One Wardrik per node
+### Approvers in each workspace
 
-Wardrik's own processes are registered under their module names, so a node runs one. To run
-several on one machine, run several nodes.
+With `installations: :stored`, every new workspace gets the channel's `:approvers`, `[]` unless
+set. To let each org name its own, keep workspaces in your own tables: pass
+`installations: {MyApp.SlackWorkspaces, []}`, a module implementing
+`Wardrik.Channel.Installations`. Each `Wardrik.Channel.Installation` it returns carries its
+`approvers`.
 
 ### Keeping it elsewhere
 
-`Wardrik.store/1` keeps everything in your `Repo` with `repo:`, in an S3 bucket with `bucket:`,
-or on each node's disk with `data_dir:`, which needs `{:ekv, "~> 0.4.3"}` among your
-dependencies. [Storage](/run/storage/) compares them.
+`:store` takes:
+
+```elixir
+# In memory, gone when it stops: the default, for development and tests
+store: {WardrikStore.ETS, []}
+
+# On each node's disk
+store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
+
+# In a Postgres of its own, which creates its table itself
+store: {WardrikStore.Ecto, url: "postgres://user:pass@db.example.com/my_app"}
+```
+
+[Storage](/run/storage/) compares them.
 
 ### A new release
 
-A release that writes agents differently needs no cleanup, and two releases running at once can't
-read each other's agents. See [Upgrade and back up](/run/upgrade-and-back-up/#details).
+A release that writes agents differently needs no cleanup. See
+[Upgrade and back up](/run/upgrade-and-back-up/#details).
 
 ### Logs
 

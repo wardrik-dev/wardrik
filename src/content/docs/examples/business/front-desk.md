@@ -63,9 +63,17 @@ notify:
 ```
 
 - Google's server signs in with an OAuth client you make in Google Cloud. Register
-  `https://agents.acme.example/oauth/callback/gmail` as its redirect URI. Acme connects the shared
-  inbox once. See [Connect accounts](/build/accounts/).
+  `https://agents.acme.example/oauth/callback` as its redirect URI. See
+  [Connect accounts](/build/accounts/).
 - Square's server has one tool, `make_api_request`, that names the Square service and method.
+
+Seal the keys while the daemon runs. `vault put` reads the value from stdin:
+
+```sh
+echo "$SQUARE_ACCESS_TOKEN" | wardrik vault put SQUARE_ACCESS_TOKEN
+# and the same for GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SLACK_BOT_TOKEN,
+# SLACK_SIGNING_SECRET and TYPESAFE_API_KEY, the judge's key
+```
 
 ### The policy
 
@@ -108,8 +116,7 @@ judge:
 - **Money is refused.** No email, however it's worded, gets a refund or a payment made.
 - **Replies are drafts.** Google's Gmail server has no send tool; your staff send what it drafts.
 - **A draft that promises a refund waits.** The prompt says never to; a [judge](/concepts/judges/)
-  checks each draft anyway, and one it judges likely to promise a refund waits for your staff. Seal
-  its model's key with `wardrik vault put TYPESAFE_API_KEY`.
+  checks each draft anyway, and one it judges likely to promise a refund waits for your staff.
 
 ### The agent
 
@@ -135,8 +142,13 @@ promise a refund; say a person will look at it, and label the thread Complaint.
 
 ## Try it
 
+1. Restart the daemon to read `config.yaml` and the policy.
+2. Connect the shared inbox for Acme's agents, and open the link it prints.
+3. Ask the agent to start.
+
 ```sh
-wardrik reload
+systemctl --user restart wardrik
+wardrik connection connect gmail --org acme
 wardrik ask front-desk "Work through new mail in the inbox."
 ```
 
