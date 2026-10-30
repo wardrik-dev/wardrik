@@ -23,7 +23,6 @@ defmodule Wardrik.Resolution do
 
     with :ok <- triggers(wardrik, definition),
          {:ok, model} <- model(definition),
-         {:ok, rounds} <- rounds(definition["max_iterations"]),
          {:ok, capabilities} <- capabilities(wardrik, id, Map.get(definition, "tools", [])),
          {:ok, workspace} <-
            Wardrik.Workspaces.resolve(wardrik, id, definition, files?(wardrik, definition)),
@@ -44,7 +43,7 @@ defmodule Wardrik.Resolution do
          principal: Definition.principal(id),
          policy: Enum.reject([boundary, policy], &is_nil/1),
          timeout: seconds(definition["timeout"]),
-         max_rounds: rounds
+         max_rounds: rounds(definition["max_iterations"])
        ]}
     end
   end
@@ -122,12 +121,9 @@ defmodule Wardrik.Resolution do
   defp model(_definition),
     do: {:error, Error.new(:invalid_request, "A definition names a model.")}
 
-  defp rounds(nil), do: {:ok, @rounds}
-  defp rounds(rounds) when is_integer(rounds), do: {:ok, rounds}
-
-  defp rounds("infinity"),
-    do:
-      {:error, Error.new(:not_supported, "max_iterations of infinity isn't supported here yet.")}
+  defp rounds(nil), do: @rounds
+  defp rounds("infinity"), do: :infinity
+  defp rounds(rounds) when is_integer(rounds), do: rounds
 
   defp capabilities(wardrik, id, tools) do
     named = Enum.map(expanded(wardrik, tools), &named(wardrik, &1))

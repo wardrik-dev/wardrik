@@ -103,7 +103,7 @@ agent, as `acme/digest`, acts as the org.
 | `workspace` | File trees shared with it, each under `shared/<name>/`, as `{shared: {team: acme}}`. |
 | `policy` | A policy by name, or its rules in place, budget and judge included. See [Policies](policies.md). |
 | `timeout` | Seconds a turn may take. |
-| `max_iterations` | Rounds of tool calls a turn may make. `25` unless set. |
+| `max_iterations` | Rounds of tool calls a turn may make, or `infinity`. `25` unless set. |
 | `idle_timeout` | Seconds it idles before it sleeps, or `infinity`. |
 | `retries` | How a failed model call is retried: `attempts` (`6`), `max_wait` in seconds (`60`), and `on_exhausted`, `ask` or `fail`. See `WardrikCore.Retry`. |
 | `compaction` | When older history is summarised, as shares of the model's window. `{at: 0.6, keep: 0.25}` unless set. Give `window` where the catalog has none, or `false` to never compact. See `Wardrik.Compaction`. |

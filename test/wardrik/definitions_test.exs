@@ -99,7 +99,21 @@ defmodule Wardrik.DefinitionsTest do
                run!(scope, "agent.read", %{"agent" => "acme/triage"})
     end
 
-    test "refuses what it doesn't know, or doesn't support yet", %{scope: scope} do
+    test "makes 25 rounds of tool calls unless max_iterations says, or infinity for no limit", %{
+      wardrik: wardrik
+    } do
+      definition = %{"model" => @model}
+      assert {:ok, opts} = Wardrik.Resolution.resolve(wardrik, "acme/triage", definition)
+      assert opts[:max_rounds] == 25
+
+      for {iterations, rounds} <- [{3, 3}, {"infinity", :infinity}] do
+        definition = Map.put(definition, "max_iterations", iterations)
+        assert {:ok, opts} = Wardrik.Resolution.resolve(wardrik, "acme/triage", definition)
+        assert opts[:max_rounds] == rounds
+      end
+    end
+
+    test "refuses what it doesn't know", %{scope: scope} do
       base = %{"agent" => "acme/triage", "model" => @model}
 
       assert refused(scope, "agent.define", Map.put(base, "tools", ["nope"])) == :invalid_request
@@ -112,9 +126,6 @@ defmodule Wardrik.DefinitionsTest do
                :invalid_request
 
       assert refused(scope, "agent.define", Map.delete(base, "model")) == :invalid_request
-
-      assert refused(scope, "agent.define", Map.put(base, "max_iterations", "infinity")) ==
-               :not_supported
 
       assert refused(scope, "agent.define", Map.put(base, "notify", "ops")) == :invalid_request
 
