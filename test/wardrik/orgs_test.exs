@@ -286,9 +286,15 @@ defmodule Wardrik.OrgsTest do
       )
 
       answers([used(answer("Done."), 80, 40)])
-      spend_it(scope)
+      {:ok, _agent} = define(scope, "acme/first")
+      ask(scope, "acme/first")
+      until("wardrik.run.completed")
+      {:ok, _agent} = define(scope, "acme/second")
 
-      until("wardrik.run.failed")
+      assert {:error,
+              %Wardrik.Error{
+                message: "The run failed: acme's agents have used 120 of 100 tokens today."
+              }} = Wardrik.Agent.reply(scope, "acme/second", "Go")
     end
 
     test "lets work carry on where it continues, and says it was reached", %{

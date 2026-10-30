@@ -20,7 +20,7 @@ defmodule Wardrik.Answers do
 
     * `{:done, %Wardrik.Reply{}}` - the run completed.
     * `{:waiting, interrupts}` - the run waits on a person.
-    * `{:failed, reason}` - the run failed, was cancelled, or timed out.
+    * `{:failed, why}` - the run failed, was cancelled, or timed out, and why, for people.
 
   ## Options
 
@@ -62,7 +62,7 @@ defmodule Wardrik.Answers do
     receive do
       {WardrikEvents, ^agent, event} -> seen(event, state)
     after
-      timeout -> {[{:failed, :timeout}], %{state | done: true}}
+      timeout -> {[{:failed, "Nothing came for #{timeout} ms."}], %{state | done: true}}
     end
   end
 
@@ -95,9 +95,14 @@ defmodule Wardrik.Answers do
           %{state | done: true}}
 
   defp ours(%{"type" => type, "data" => data}, state) when type in @ended,
-    do: {[{:failed, Map.get(data, "error", type)}], %{state | done: true}}
+    do: {[{:failed, why(type, data)}], %{state | done: true}}
 
   defp ours(_event, state), do: {[], state}
+
+  defp why("wardrik.run.failed", %{"error" => %{"message" => message}}), do: message
+  defp why("wardrik.run.failed", _data), do: "It failed."
+  defp why("wardrik.run.cancelled", _data), do: "It was cancelled."
+  defp why("wardrik.run.deadline_exceeded", _data), do: "It ran past its timeout."
 
   defp stopped(%{events: events, agent: agent}) do
     :ok = WardrikEvents.unsubscribe(events, [agent])
