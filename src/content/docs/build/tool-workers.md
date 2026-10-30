@@ -37,7 +37,7 @@ allows it.
 | The daemon | decides each call by the agent's policy, and records it |
 | A person | approves or denies the calls that wait |
 
-Install the SDK and `zod` 4.2 or later. It runs on Node 22.18 or later, Bun or Deno:
+Install the SDK and `zod` 4.6.6 or later. It runs on Node 22.18 or later, Bun or Deno:
 
 ```sh
 npm install @wardrik/sdk@0.1.0-rc.1 zod
