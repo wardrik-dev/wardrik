@@ -1,5 +1,5 @@
 defmodule Wardrik.EgressTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import Wardrik.Test.Wardrik
 
