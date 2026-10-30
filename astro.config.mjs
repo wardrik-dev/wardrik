@@ -57,7 +57,7 @@ export default defineConfig({
 				},
 			},
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/wardrik-dev/wardrik' }],
-			editLink: { baseUrl: 'https://github.com/wardrik-dev/wardrik/edit/main/docs/' },
+			editLink: { baseUrl: 'https://github.com/wardrik-dev/wardrik_docs/edit/main/' },
 			// Three topics, each with a sidebar of its own; the header shows them as tabs.
 			plugins: [
 				starlightSidebarTopics(
@@ -152,13 +152,13 @@ export default defineConfig({
 				// show by name, and TypeDoc does not check the program. Constructors the
 				// client calls are @internal.
 				starlightTypeDoc({
-					entryPoints: ['../sdks/typescript/src/index.ts'],
-					tsconfig: '../sdks/typescript/tsconfig.json',
+					entryPoints: ['../wardrik_typescript/src/index.ts'],
+					tsconfig: '../wardrik_typescript/tsconfig.json',
 					output: 'sdk/typescript',
 					sidebar: { label: 'TypeScript SDK', collapsed: true },
 					typeDoc: {
 						name: 'TypeScript SDK',
-						readme: '../sdks/typescript/README.md',
+						readme: '../wardrik_typescript/README.md',
 						plugin: ['./typedoc-readme.mjs'],
 						useCodeBlocks: true,
 						parametersFormat: 'table',
