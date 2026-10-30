@@ -24,12 +24,23 @@ defmodule Wardrik.Operations.Lifecycle do
          :ok <- written_after(wardrik, id, definition["policy"]),
          {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
          {:ok, _pid} <- Running.bring(wardrik, opts),
-         :ok <- Definitions.put(wardrik, id, definition),
-         :ok <-
-           WardrikTriggers.put(Wardrik.triggers(wardrik), id, Map.get(definition, "triggers", [])) do
+         :ok <- saved(wardrik, id, definition) do
       Sleeper.watch(wardrik, id)
       Changes.record(scope, "agent.defined", id)
       Agent.read(scope, %{"agent" => id})
+    end
+  end
+
+  defp saved(wardrik, id, definition) do
+    triggers = Map.get(definition, "triggers", [])
+
+    with :ok <- Definitions.put(wardrik, id, definition),
+         :ok <- WardrikTriggers.put(Wardrik.triggers(wardrik), id, triggers) do
+      :ok
+    else
+      {:error, reason} ->
+        {:error,
+         Error.new(:unavailable, "#{id} wasn't saved: #{inspect(reason)}. Define it again.")}
     end
   end
 

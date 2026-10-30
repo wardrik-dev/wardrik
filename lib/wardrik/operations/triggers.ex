@@ -17,12 +17,7 @@ defmodule Wardrik.Operations.Triggers do
          {:ok, definition} <- Running.definition(wardrik, id),
          :ok <- Wardrik.Resolution.trigger(wardrik, definition, fields, 1),
          {:ok, trigger} <- set_trigger(wardrik, id, fields),
-         :ok <-
-           Definitions.put(
-             wardrik,
-             id,
-             Map.put(definition, "triggers", replaced(definition, fields))
-           ) do
+         :ok <- saved(wardrik, id, Map.put(definition, "triggers", replaced(definition, fields))) do
       Changes.record(scope, "trigger.set", id, %{"trigger" => %{"name" => name}})
       {:ok, Trigger.encode(trigger)}
     end
@@ -34,13 +29,8 @@ defmodule Wardrik.Operations.Triggers do
     with :ok <- Running.definable(id),
          {:ok, definition} <- Running.definition(wardrik, id),
          {:ok, trigger} <- kept(wardrik, id, name),
-         :ok <- WardrikTriggers.remove(Wardrik.triggers(wardrik), id, name),
-         :ok <-
-           Definitions.put(
-             wardrik,
-             id,
-             Map.put(definition, "triggers", without(definition, name))
-           ) do
+         :ok <- removed(wardrik, id, name),
+         :ok <- saved(wardrik, id, Map.put(definition, "triggers", without(definition, name))) do
       Changes.record(scope, "trigger.removed", id, %{"trigger" => %{"name" => name}})
       {:ok, Trigger.encode(trigger)}
     end
@@ -75,6 +65,31 @@ defmodule Wardrik.Operations.Triggers do
       {:error, why} -> {:error, Error.new(:invalid_request, "The trigger doesn't read: #{why}.")}
     end
   end
+
+  defp removed(wardrik, id, name) do
+    case WardrikTriggers.remove(Wardrik.triggers(wardrik), id, name) do
+      :ok ->
+        :ok
+
+      {:error, :not_found} ->
+        {:error, Error.new(:not_found, "There's no trigger #{name} of #{id}.")}
+
+      {:error, reason} ->
+        unsaved(id, reason)
+    end
+  end
+
+  defp saved(wardrik, id, definition) do
+    case Definitions.put(wardrik, id, definition) do
+      :ok -> :ok
+      {:error, reason} -> unsaved(id, reason)
+    end
+  end
+
+  defp unsaved(id, reason),
+    do:
+      {:error,
+       Error.new(:unavailable, "#{id}'s triggers weren't saved: #{inspect(reason)}. Try again.")}
 
   defp kept(wardrik, id, name) do
     case Enum.find(WardrikTriggers.list(Wardrik.triggers(wardrik), id), fn {trigger, _next_at} ->
