@@ -47,8 +47,8 @@ goes in the table.
 
 Make Wardrik a module of your app:
 
-```elixir title="lib/my_app/wardrik.ex"
-defmodule MyApp.Wardrik do
+```elixir title="lib/my_app/agent_runtime.ex"
+defmodule MyApp.AgentRuntime do
   use Wardrik, otp_app: :my_app
 end
 ```
@@ -56,7 +56,7 @@ end
 Point it at your `Repo`:
 
 ```elixir title="config/config.exs"
-config :my_app, MyApp.Wardrik, store: {WardrikStore.Ecto, repo: MyApp.Repo}
+config :my_app, MyApp.AgentRuntime, store: {WardrikStore.Ecto, repo: MyApp.Repo}
 ```
 
 Start it after your `Repo`, and before anything that uses it:
@@ -65,7 +65,7 @@ Start it after your `Repo`, and before anything that uses it:
 children = [
   MyAppWeb.Telemetry,
   MyApp.Repo,
-  MyApp.Wardrik,
+  MyApp.AgentRuntime,
   {Phoenix.PubSub, name: MyApp.PubSub},
   MyAppWeb.Endpoint
 ]
@@ -73,19 +73,19 @@ children = [
 Supervisor.start_link(children, strategy: :rest_for_one, name: MyApp.Supervisor)
 ```
 
-Notice `:rest_for_one`. A restart of `MyApp.Wardrik` restarts what comes after it, so your endpoint
+Notice `:rest_for_one`. A restart of `MyApp.AgentRuntime` restarts what comes after it, so your endpoint
 never runs against a Wardrik that went away.
 
 Options come from three places. Each overrides the one before:
 
 ```elixir
 # 1. config/config.exs or config/runtime.exs
-config :my_app, MyApp.Wardrik, store: {WardrikStore.Ecto, repo: MyApp.Repo}
+config :my_app, MyApp.AgentRuntime, store: {WardrikStore.Ecto, repo: MyApp.Repo}
 
 # 2. The supervision tree
-children = [{MyApp.Wardrik, deployment: "production"}]
+children = [{MyApp.AgentRuntime, deployment: "production"}]
 
-# 3. init/1 in MyApp.Wardrik, for what's only known at runtime
+# 3. init/1 in MyApp.AgentRuntime, for what's only known at runtime
 @impl Wardrik
 def init(config), do: {:ok, Keyword.put(config, :keys, [System.fetch_env!("WARDRIK_KEY")])}
 ```
@@ -106,7 +106,7 @@ defmodule MyApp.Agents do
 
   @doc "The scope `user` acts in: owner of their own agents, reader and messenger on their org's."
   def scope(%MyApp.Accounts.User{} = user) do
-    MyApp.Wardrik.as(principal(user), roles: [:owner], resources: ["#{owner(user)}/*"])
+    MyApp.AgentRuntime.as(principal(user), roles: [:owner], resources: ["#{owner(user)}/*"])
     |> Wardrik.grant(roles: [:reader, :messenger], resources: ["#{user.org}/agent/*"])
   end
 
@@ -227,7 +227,7 @@ end
 ```
 
 ```elixir title="config/config.exs"
-config :my_app, MyApp.Wardrik,
+config :my_app, MyApp.AgentRuntime,
   store: {WardrikStore.Ecto, repo: MyApp.Repo},
   orgs: {MyApp.Orgs, []}
 ```
@@ -240,7 +240,7 @@ Wardrik reads an org's settings as each of its agents starts, wakes or is define
 changes, bring the org's awake agents to it at once:
 
 ```elixir
-Wardrik.refresh(MyApp.Wardrik, org: "acme")
+Wardrik.refresh(MyApp.AgentRuntime, org: "acme")
 #=> []
 ```
 
@@ -280,7 +280,7 @@ Forward a path to it:
 
 ```elixir title="lib/my_app_web/router.ex"
 forward "/agents", Wardrik.HTTP,
-  wardrik: MyApp.Wardrik,
+  wardrik: MyApp.AgentRuntime,
   authenticator: {MyAppWeb.AgentsAuth, []}
 ```
 
@@ -305,8 +305,8 @@ A request acts in the scope your authenticator returns, so it reaches what Maria
 also offers your agents the tools of programs that connect to it as
 [tool workers](/build/tool-workers/), which a definition names as `workers/*`.
 
-To serve it on a port of its own instead, start it as a child after `MyApp.Wardrik`:
-`{Wardrik.HTTP, wardrik: MyApp.Wardrik, port: 4850}`. The [HTTP API guide](/build/http-api/) walks
+To serve it on a port of its own instead, start it as a child after `MyApp.AgentRuntime`:
+`{Wardrik.HTTP, wardrik: MyApp.AgentRuntime, port: 4850}`. The [HTTP API guide](/build/http-api/) walks
 through the routes.
 
 ## Let people connect accounts
@@ -331,7 +331,7 @@ Keep it as `WARDRIK_KEY` wherever the app runs. Then:
 ### Give Wardrik the sign-in and the server
 
 ```elixir title="config/runtime.exs"
-config :my_app, MyApp.Wardrik,
+config :my_app, MyApp.AgentRuntime,
   # 1. Seals accounts and secrets
   keys: [System.fetch_env!("WARDRIK_KEY")],
   # 2. What people sign in to
@@ -391,7 +391,7 @@ If her agent calls GitHub before she connects, the call waits on an `:authorizat
 tools that change something wait for a person to approve them; see [Approvals](/concepts/approvals/).
 
 To serve the callback from a controller of your own, pass its params to
-`Wardrik.finish_sign_in(MyApp.Wardrik, params)`. [Connect accounts](/build/accounts/) covers whose
+`Wardrik.finish_sign_in(MyApp.AgentRuntime, params)`. [Connect accounts](/build/accounts/) covers whose
 account a call uses.
 
 ## Answer in Slack
@@ -417,7 +417,7 @@ answer in that org's own Slack workspace, through one Slack app of yours. Add th
 ### Give Wardrik the channel
 
 ```elixir title="config/runtime.exs"
-config :my_app, MyApp.Wardrik,
+config :my_app, MyApp.AgentRuntime,
   channels: [
     slack:
       {WardrikSlack,
@@ -459,13 +459,13 @@ defmodule MyAppWeb.SlackController do
 
   def add(conn, _params) do
     {:ok, url} =
-      Wardrik.Channels.install_url(MyApp.Wardrik, "slack", org(conn), return_to: "/settings")
+      Wardrik.Channels.install_url(MyApp.AgentRuntime, "slack", org(conn), return_to: "/settings")
 
     redirect(conn, external: url)
   end
 
   def installed(conn, _params) do
-    case Wardrik.Channels.installed(MyApp.Wardrik, "slack", org(conn), conn.query_params) do
+    case Wardrik.Channels.installed(MyApp.AgentRuntime, "slack", org(conn), conn.query_params) do
       {:ok, _installation, return_to} -> redirect(conn, to: return_to || "/settings")
       {:error, message} -> conn |> put_status(400) |> text(message)
     end
