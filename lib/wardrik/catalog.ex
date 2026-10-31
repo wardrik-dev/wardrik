@@ -10,6 +10,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Channels
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Lifecycle
+  alias Wardrik.Operations.NotifyTargets
   alias Wardrik.Operations.Owners
   alias Wardrik.Operations.Providers
   alias Wardrik.Operations.Tokens
@@ -79,6 +80,9 @@ defmodule Wardrik.Catalog do
         "providers.list" => &Providers.list/2,
         "providers.add" => &Providers.add/2,
         "providers.remove" => &Providers.remove/2,
+        "notify_targets.list" => &NotifyTargets.list/2,
+        "notify_targets.add" => &NotifyTargets.add/2,
+        "notify_targets.remove" => &NotifyTargets.remove/2,
         "hook.deliver_with_secret" => &Triggers.deliver/2,
         "channel.deliver" => &Channels.deliver/2,
         "agents.forget" => &Agents.forget/2,

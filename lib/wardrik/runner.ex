@@ -68,7 +68,8 @@ defmodule Wardrik.Runner do
 
   defp authorize(scope, %{subject: "owner", action: action}, %{"owner" => owner} = input) do
     [kind, _verb] = String.split(action, ".")
-    resource = Resource.owned(owner, kind, input["provider"] || input["server"] || input["name"])
+    named = input["provider"] || input["server"] || input["target"] || input["name"]
+    resource = Resource.owned(owner, kind, named)
     refused(Authorizer.authorize(scope, action, resource), "#{kind} of #{owner}")
   end
 

@@ -81,7 +81,11 @@ defmodule Wardrik do
           mcp: keyword() | nil,
           listeners: [module() | {module(), keyword()}],
           channels: %{String.t() => {module(), keyword()}},
-          notify: %{targets: %{String.t() => {module(), keyword()}}, retries: keyword()},
+          notify: %{
+            targets: %{String.t() => {module(), keyword()}},
+            retries: keyword(),
+            req_options: keyword()
+          },
           declarations: {module(), term()} | nil,
           orgs: {module(), term()} | nil,
           workspace: %{String.t() => %{read: [String.t()], write: [String.t()]}},

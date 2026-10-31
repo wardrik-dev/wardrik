@@ -18,6 +18,16 @@
 - An MCP server's secrets are named in its headers and read as each connection starts, an owner's
   server reading that owner's alone. Putting or deleting a secret connects its servers again on
   every node, so a new value takes effect without adding the server again or restarting.
+- `notify_targets.list`, `notify_targets.add` and `notify_targets.remove`: webhooks an org or
+  person adds for their agents' notices. `notify: "ops"` routes to the nearest `ops` along the
+  agent's owner's chain: their own, their org's, the deployment's, then those in `:notify`. A
+  target's secret is named by reference, read from its owner's vault as each notice is sent, and
+  never answered. Its URL passes `:egress` as it's added and as each notice is sent, and no
+  redirect is followed.
+- `c:Wardrik.Notify.schema/0`: each target's options are checked as Wardrik starts, which
+  raises naming the target. `Wardrik.Notify.Webhook` and `Wardrik.Notify.Room` implement it.
+- `:notify` takes `:req_options`, for the webhooks orgs and people add.
+- `Wardrik.Notify.options/2` is gone: a target's `deliver/2` gets options already checked.
 - An error from a server's own sign-in names the server.
 
 ## 0.1.0-rc.1 (2026-10-30)

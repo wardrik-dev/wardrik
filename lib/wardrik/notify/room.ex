@@ -26,12 +26,12 @@ defmodule Wardrik.Notify.Room do
   @behaviour Wardrik.Notify
 
   @impl Wardrik.Notify
-  def deliver(notice, opts) do
-    with {:ok, opts} <- Wardrik.Notify.options(opts, @options),
-         do: posted(notice, opts, opts[:channel])
-  end
+  def schema, do: @options
 
-  defp posted(notice, opts, channel) do
+  @impl Wardrik.Notify
+  def deliver(notice, opts) do
+    channel = opts[:channel]
+
     with {:ok, {module, channel_opts}} <-
            Wardrik.Operations.Channels.fetch(opts[:wardrik], channel),
          true <- posts?(module) do

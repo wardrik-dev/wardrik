@@ -112,7 +112,8 @@ config :my_app, MyApp.AgentRuntime,
   oauth: [providers: [github: [client_id: id, client_secret: {:secret, "GITHUB_CLIENT_SECRET"}]]]
 ```
 
-  * A channel's and a notify target's secrets are read each time they're used.
+  * A channel's and a notify target's secrets are read each time they're used. A webhook an org
+    or person adds with `notify_targets.add` names a secret it holds, read from its vault.
   * An OAuth provider's are read at each sign-in.
   * An MCP server's are read as each connection starts. Putting or deleting one connects the
     servers that name it again.
