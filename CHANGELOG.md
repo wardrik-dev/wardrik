@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- `Wardrik.start_link/1` validates its options with NimbleOptions, and documents them from the
+  schema. A bad option raises `NimbleOptions.ValidationError`, not `ArgumentError`, and `nil` no
+  longer stands for an unset option.
+- `Wardrik.Setup.oauth_schema/0` is gone. `:oauth` is documented with `Wardrik.start_link/1`.
+- `Wardrik.Setup.wardrik/1` takes options `Wardrik.start_link/1` has validated.
+- `:credentials`, `:key_source` and `:grants` replace the vault, `Wardrik.Keys` and `WardrikOAuth`
+  for every agent.
+- An agent falls back to the deployment's API keys only with `deployment_keys: true`. A person's
+  agent still falls back to their org's.
+- `Wardrik.Keys` takes `vault:` and `deployment:` options, and `Wardrik.Keys.owners/2` whether
+  the deployment's count.
+- `Wardrik.Orgs.org/1` reads an agent ID or owner through `Wardrik.Owners`.
 - `providers.list`, `providers.add` and `providers.remove`: OAuth apps an org or person adds for
   their people. A person signs in with the nearest of a name: their own, their org's, then the
   deployment's. An app's client secret is named by reference, and never answered.

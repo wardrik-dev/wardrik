@@ -21,7 +21,7 @@ defmodule Wardrik.DefinitionsTest do
         capabilities: [tools: Wardrik.Test.Tools, block: {Wardrik.Test.Blocking, self()}],
         policies: [careful: [ask: ["echo"]]],
         middleware: [{Wardrik.Test.Tell, self()}],
-        mcp: Map.get(context, :mcp),
+        mcp: Map.get(context, :mcp, []),
         idle_timeout: Map.get(context, :idle_timeout, 900)
       )
 

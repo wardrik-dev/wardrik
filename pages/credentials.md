@@ -74,19 +74,31 @@ Wardrik.list_secrets(MyApp.AgentRuntime, "acme/@maria")
 ## Keep API keys
 
 An API key is what installed code calls a service with, like a model provider's `ZAI_API_KEY` or
-web search's `BRAVE_API_KEY`. Seal it as a deployment secret, and every agent's code reads it:
+web search's `BRAVE_API_KEY`. An org or a person seals one under the key's name:
 
 ```elixir
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme", "ZAI_API_KEY", "zai-...")
+```
+
+A person's agent reads the person's key first, then the org's. Each model call reads its
+provider's key as it's made, so a new key takes effect at once. Where none is sealed, the code
+finds its own, as ReqLLM reads the environment. See `WardrikCore.Keys`.
+
+To let every agent fall back to keys the deployment holds, start Wardrik with
+`deployment_keys: true` and seal them as the deployment's:
+
+```elixir
+Wardrik.start_link(name: MyApp.AgentRuntime, keys: [key], deployment_keys: true)
+
 :ok = Wardrik.put_secret(MyApp.AgentRuntime, "deployment", "ZAI_API_KEY", "zai-...")
 ```
 
-An org or a person brings their own by sealing a key of the same name. A person's agent reads the
-person's key first, then the org's, then the deployment's. Each model call reads its provider's key
-as it's made, so a new key takes effect at once. Where none is sealed, the code finds its own, as
-ReqLLM reads the environment. See `WardrikCore.Keys`.
+Without it, no agent reads the deployment's keys. Keys never reach a tool's credentials, and a
+server an org adds can't name `ZAI_API_KEY` and be sent the deployment's.
 
-Keys never reach a tool's credentials, and the deployment's keys never reach an owner: a server an
-org adds can't name `ZAI_API_KEY` and be sent the deployment's.
+To find keys elsewhere, give `key_source: {MyApp.Keys, opts}`, a `WardrikCore.Keys`. To give
+tools credentials from elsewhere, give `credentials: {MyApp.Tokens, opts}`, a
+`WardrikCore.Credentials`.
 
 ## Secrets in config
 

@@ -14,12 +14,13 @@ defmodule Wardrik.Test.HTTP do
     start_supervised!(
       {Wardrik,
        Wardrik.new(
-         name: name,
-         store: store,
-         deployment: "test",
-         keys: [WardrikVault.generate_key()],
-         oauth: Map.get(context, :oauth),
-         channels: Map.get(context, :channels, [])
+         [
+           name: name,
+           store: store,
+           deployment: "test",
+           keys: [WardrikVault.generate_key()],
+           channels: Map.get(context, :channels, [])
+         ] ++ Keyword.take(Map.to_list(context), [:oauth])
        )}
     )
 

@@ -59,7 +59,7 @@ defmodule Wardrik.MCPTools do
   @doc "Returns Wardrik's own servers that serve `org`, as configured. Every one for `nil`."
   @spec serving(Wardrik.t(), String.t() | nil) :: keyword()
   def serving(wardrik, org),
-    do: for({_name, opts} = server <- wardrik.mcp || [], serves?(opts[:orgs], org), do: server)
+    do: for({_name, opts} = server <- wardrik.mcp, serves?(opts[:orgs], org), do: server)
 
   defp serves?(nil, _org), do: true
   defp serves?(_orgs, nil), do: true

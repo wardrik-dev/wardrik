@@ -5,7 +5,7 @@ defmodule Wardrik.StatementsTest do
   alias Wardrik.Resource
   alias Wardrik.Statement
 
-  @wardrik Wardrik.new(name: :statements, store: nil)
+  @wardrik Wardrik.new(name: :statements)
 
   defp scope(statements),
     do: %{Wardrik.as(@wardrik, Wardrik.Test.Wardrik.maria(), statements) | wardrik: @wardrik}
