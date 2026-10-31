@@ -7,14 +7,16 @@ defmodule Wardrik.MCPTools do
 
     1. The owner's server of that name.
     2. The org's, for a person's agent.
-    3. The server Wardrik started with, if it serves the agent's org.
+    3. The deployment's, added at runtime.
+    4. The server Wardrik started with, if it serves the agent's org.
 
-  With `all: true`, the agent also gets every server its owners added.
+  With `all: true`, the agent also gets every server its owners added. See `Wardrik.Owners`.
   """
 
   @behaviour WardrikCore.Capability
 
   alias Wardrik.Definition
+  alias Wardrik.Owners
 
   @impl WardrikCore.Capability
   def tools(%WardrikCore.Context{agent_id: id} = context, opts) do
@@ -41,20 +43,9 @@ defmodule Wardrik.MCPTools do
   @spec key(String.t(), String.t()) :: String.t()
   def key(owner, name), do: owner <> ":" <> name
 
-  @doc "Returns the owners whose servers the agent `id` can use: its owner, then the org for a person."
+  @doc "Returns the owners whose servers the agent `id` can use, nearest first."
   @spec owners(String.t()) :: [String.t()]
-  def owners(id) do
-    case Definition.principal(id).id do
-      owner when owner != "" -> [owner | org(owner)]
-    end
-  end
-
-  defp org(owner) do
-    case String.split(owner, "/") do
-      [org, _user] -> [org]
-      [_org] -> []
-    end
-  end
+  def owners(id), do: Owners.chain(Definition.principal(id).id)
 
   @doc """
   Returns the names of Wardrik's own servers that serve the agent `id`'s org.

@@ -44,6 +44,7 @@ defmodule Wardrik.Workers do
   alias Wardrik.AgentID
   alias Wardrik.Authorizer
   alias Wardrik.Instance
+  alias Wardrik.Owners
   alias Wardrik.Resource
   alias Wardrik.Scope
   alias Wardrik.Workers.Lost
@@ -258,9 +259,9 @@ defmodule Wardrik.Workers do
   end
 
   defp owner(owner) do
-    case String.split(owner, "/@") do
-      [org, user] -> %{"org" => org, "user" => user}
-      [org] -> %{"org" => org}
+    case Owners.parse(owner) do
+      {:ok, %{org: org, person: nil}} -> %{"org" => org}
+      {:ok, %{org: org, person: person}} -> %{"org" => org, "user" => person}
     end
   end
 

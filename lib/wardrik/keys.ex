@@ -18,6 +18,7 @@ defmodule Wardrik.Keys do
 
   @behaviour WardrikCore.Keys
 
+  alias Wardrik.Owners
   alias Wardrik.Resource
   alias WardrikCore.Principal
 
@@ -28,12 +29,7 @@ defmodule Wardrik.Keys do
 
   @doc "Returns the owners whose keys an agent working for `principal` uses, nearest first."
   @spec owners(Principal.t() | nil) :: [String.t()]
-  def owners(%Principal{id: id}) do
-    case String.split(id, "/@", parts: 2) do
-      [org, _person] -> [id, org, Resource.deployment()]
-      [org] -> [org, Resource.deployment()]
-    end
-  end
+  def owners(%Principal{id: id}), do: Owners.chain(id)
 
   def owners(nil), do: [Resource.deployment()]
 

@@ -42,6 +42,7 @@ defmodule Wardrik.Notify do
 
   alias Wardrik.Error
   alias Wardrik.Notice
+  alias Wardrik.Orgs
 
   @typedoc "Where an agent's notices go (`:to`), and which kinds are sent (`:on`)."
   @type route() :: %{to: [String.t()], on: [Notice.kind()]}
@@ -105,7 +106,7 @@ defmodule Wardrik.Notify do
       {:target, _module, opts} ->
         if tells?(opts, id),
           do: nil,
-          else: invalid("The notify target #{name} doesn't tell #{org(id)}'s agents.")
+          else: invalid("The notify target #{name} doesn't tell #{Orgs.org(id)}'s agents.")
 
       :error ->
         invalid("There's no notify target #{name} here, nor a channel that posts in it.")
@@ -134,7 +135,7 @@ defmodule Wardrik.Notify do
               [wardrik: wardrik.name, target: name] ++
                 Wardrik.Sealed.resolved(wardrik, "the target #{name}", opts)
             ),
-          else: {:skip, "which doesn't tell #{org(notice.agent)}'s agents"}
+          else: {:skip, "which doesn't tell #{Orgs.org(notice.agent)}'s agents"}
 
       :error ->
         {:skip, "which isn't a target or a channel's room here"}
@@ -155,9 +156,7 @@ defmodule Wardrik.Notify do
   defp tells?(opts, id) do
     case Keyword.get(opts, :orgs, :all) do
       :all -> true
-      orgs -> org(id) in orgs
+      orgs -> Orgs.org(id) in orgs
     end
   end
-
-  defp org(id), do: id |> String.split("/", parts: 2) |> hd()
 end

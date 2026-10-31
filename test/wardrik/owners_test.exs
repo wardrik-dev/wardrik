@@ -342,6 +342,59 @@ defmodule Wardrik.OwnersTest do
              ]
     end
 
+    test "gives every agent the deployment's servers, after its owners'", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      mcp = Wardrik.mcp(wardrik)
+
+      for owner <- ["deployment", "acme"], name <- ["docs"] do
+        run!(scope, "mcp_servers.add", %{
+          "owner" => owner,
+          "name" => name,
+          "url" => "https://docs.test/mcp",
+          "auth" => %{"none" => %{}}
+        })
+      end
+
+      assert MCPTools.picked(mcp, "acme/@maria/notes", names: ["docs"]) == ["acme:docs"]
+      assert MCPTools.picked(mcp, "globex/triage", names: ["docs"]) == ["deployment:docs"]
+      assert MCPTools.picked(mcp, "globex/triage", all: true) == ["deployment:docs"]
+    end
+
+    test "offers a person the servers that serve them, each signed in to as themselves", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      for {owner, name} <- [{"acme", "crm"}, {"deployment", "mail2"}] do
+        run!(scope, "mcp_servers.add", %{
+          "owner" => owner,
+          "name" => name,
+          "url" => "https://#{name}.test/mcp",
+          "auth" => %{"oauth" => %{}}
+        })
+      end
+
+      hold(wardrik, "acme", "acme:crm", "the org's token")
+
+      assert %{"connections" => connections} =
+               run!(scope, "connections.list", %{"owner" => "acme/@maria"})
+
+      assert %{"provider" => "crm", "connected" => false} in connections
+      assert %{"provider" => "mail2", "connected" => false} in connections
+
+      hold(wardrik, "acme/@maria", "acme:crm", "maria's token")
+
+      assert %{"provider" => "crm", "connected" => true} =
+               run!(scope, "connections.connect", %{"owner" => "acme/@maria", "provider" => "crm"})
+
+      assert %{"connections" => connections} =
+               run!(scope, "connections.list", %{"owner" => "globex"})
+
+      refute Enum.any?(connections, &(&1["provider"] == "crm"))
+      assert %{"provider" => "mail2", "connected" => false} in connections
+    end
+
     test "names a server before it's added, as missing", %{scope: scope} do
       run!(scope, "agent.define", %{
         "agent" => "acme/@maria/notes",
@@ -351,6 +404,44 @@ defmodule Wardrik.OwnersTest do
 
       assert %{"missing" => ["linear/*"]} =
                run!(scope, "agent.definition", %{"agent" => "acme/@maria/notes"})
+    end
+  end
+
+  describe "isolation" do
+    test "an owner's accounts and secrets reach no other owner, nearer or farther", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      run!(scope, "mcp_servers.add", %{
+        "owner" => "acme",
+        "name" => "crm",
+        "url" => "https://crm.test/mcp",
+        "auth" => %{"oauth" => %{}}
+      })
+
+      hold(wardrik, "acme", "acme:crm", "token")
+      :ok = Wardrik.put_secret(wardrik, "acme", "CRM_KEY", "secret")
+      :ok = Wardrik.put_secret(wardrik, "deployment", "MAIL_KEY", "secret")
+
+      for owner <- ["acme/@maria", "globex", "globex/@lee", "deployment"] do
+        assert %{"connections" => connections} =
+                 run!(scope, "connections.list", %{"owner" => owner})
+
+        refute %{"provider" => "crm", "connected" => true} in connections
+        refute Enum.any?(connections, &(&1["provider"] =~ ":"))
+
+        assert %{"secrets" => secrets} = run!(scope, "secrets.list", %{"owner" => owner})
+        names = Enum.map(secrets, & &1["name"])
+        refute "CRM_KEY" in names
+        refute "acme:crm" in names
+        if owner != "deployment", do: refute("MAIL_KEY" in names)
+      end
+
+      vault = Wardrik.vault(wardrik)
+
+      for owner <- ["acme/@maria", "globex", "deployment"], name <- ["acme:crm", "CRM_KEY"] do
+        assert WardrikVault.lookup(vault, %Principal{id: owner}, name) == {:error, :not_found}
+      end
     end
   end
 
