@@ -11,7 +11,7 @@ In a fresh IEx session, start Wardrik, act as Maria, and define her assistant. A
 the model, so set your Anthropic key in place of `"sk-ant-..."`:
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
 {:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime)

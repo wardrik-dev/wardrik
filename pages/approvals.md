@@ -11,7 +11,7 @@ In a fresh IEx session, define a tool, start Wardrik with it, and define an agen
 about large bills. The agent calls a model, so set your Anthropic key first:
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 

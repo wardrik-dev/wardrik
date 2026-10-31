@@ -15,7 +15,7 @@ Definitions name tools and policies; Wardrik's options say what those names are.
 session, paste a tool module, then start Wardrik with it:
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
 defmodule MyApp.Orders do
   @behaviour WardrikCore.Capability

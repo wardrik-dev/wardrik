@@ -9,7 +9,7 @@ Run agents with rules the model can't rewrite, approvals from the people you cho
 ```elixir
 def deps do
   [
-    {:wardrik, "~> 0.1.0-rc.1"}
+    {:wardrik, "~> 0.1.0-rc.2"}
   ]
 end
 ```
