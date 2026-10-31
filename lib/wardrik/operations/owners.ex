@@ -5,12 +5,15 @@ defmodule Wardrik.Operations.Owners do
   """
 
   alias Wardrik.Error
+  alias Wardrik.MCPServer
   alias Wardrik.MCPTools
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Providers
   alias Wardrik.Owners
   alias Wardrik.Scope
   alias WardrikCore.Principal
+
+  @auth %{"oauth" => :oauth, "secret" => :secret, "none" => :none}
 
   @doc """
   Lists the accounts the owner can connect, and whether each is connected.
@@ -37,7 +40,8 @@ defmodule Wardrik.Operations.Owners do
     with {:ok, key} <- offered(wardrik, owner, provider) do
       if key in held(wardrik, owner),
         do: {:ok, %{"provider" => provider, "connected" => true}},
-        else: authorizing(wardrik, key, %Principal{id: owner}, %{"provider" => provider})
+        else:
+          authorizing(wardrik, key, %Principal{id: owner}, %{"provider" => provider}, provider)
     end
   end
 
@@ -136,16 +140,59 @@ defmodule Wardrik.Operations.Owners do
 
   defp keeps_secrets(_wardrik), do: :ok
 
-  @doc "Lists the MCP servers the owner added."
+  @doc """
+  Lists the MCP servers the owner's agents reach: their own, then those from further out.
+
+  The nearest server of a name wins, as `Wardrik.MCPTools` gives it to agents: a person's, their
+  org's, the deployment's, then one Wardrik started with that serves the org. A server Wardrik
+  started with is listed without its headers.
+  """
   @spec servers(Scope.t(), map()) :: {:ok, map()}
   def servers(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
+    servers =
+      owner
+      |> Owners.chain()
+      |> Enum.flat_map(&runtime_servers(wardrik, &1))
+      |> Kernel.++(config_servers(wardrik, owner))
+      |> Enum.uniq_by(& &1.name)
+
+    {:ok, %{"servers" => Enum.map(servers, &MCPServer.to_json/1)}}
+  end
+
+  defp runtime_servers(wardrik, owner) do
     store = store(wardrik)
 
-    servers =
-      for key <- WardrikStore.keys(store, prefix(owner)), do: listed(WardrikStore.get(store, key))
-
-    {:ok, %{"servers" => servers}}
+    for key <- WardrikStore.keys(store, prefix(owner)),
+        do: listed(owner, WardrikStore.get(store, key))
   end
+
+  defp config_servers(wardrik, owner) do
+    {:ok, %{org: org}} = Owners.parse(owner)
+
+    for {name, opts} <- MCPTools.serving(wardrik, org) do
+      %MCPServer{
+        owner: "deployment",
+        name: to_string(name),
+        source: :config,
+        url: url(opts[:transport]),
+        auth: config_auth(opts)
+      }
+    end
+  end
+
+  defp url({:streamable_http, http}), do: http[:url]
+  defp url(_stdio), do: nil
+
+  defp config_auth(opts) do
+    cond do
+      opts[:credential_name] -> :oauth
+      headers?(opts[:transport]) -> :secret
+      true -> :none
+    end
+  end
+
+  defp headers?({:streamable_http, http}), do: Enum.any?(http[:headers] || %{})
+  defp headers?(_stdio), do: false
 
   @doc "Adds an MCP server for the owner's agents. Returns whether they can call it now."
   @spec add(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
@@ -163,7 +210,7 @@ defmodule Wardrik.Operations.Owners do
            added(
              wardrik,
              key,
-             [transport: {:streamable_http, url: url}, prefix: name] ++
+             [transport: {:streamable_http, url: url}, prefix: name, owner: owner] ++
                narrowed(input) ++ reached
            ),
          {:ok, _vsn} <-
@@ -174,7 +221,11 @@ defmodule Wardrik.Operations.Owners do
     end
   end
 
-  @doc "Removes an MCP server the owner added, and its sign-ins. Returns the removed server."
+  @doc """
+  Removes one of the owner's own MCP servers, and its sign-ins. Returns the removed server.
+
+  A server from further out, or one Wardrik started with, isn't the owner's to remove.
+  """
   @spec remove(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def remove(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "server" => name}) do
     store = store(wardrik)
@@ -182,7 +233,7 @@ defmodule Wardrik.Operations.Owners do
 
     case WardrikStore.get(store, prefix(owner) <> name) do
       nil ->
-        {:error, Error.new(:not_found, "#{owner} has no server #{name}.")}
+        not_removed(wardrik, owner, name)
 
       record ->
         WardrikMCP.remove(Wardrik.mcp(wardrik), key)
@@ -193,8 +244,16 @@ defmodule Wardrik.Operations.Owners do
           "server" => %{"name" => name}
         })
 
-        {:ok, listed(record)}
+        {:ok, MCPServer.to_json(listed(owner, record))}
     end
+  end
+
+  defp not_removed(wardrik, owner, name) do
+    if owner == "deployment" and Enum.any?(config_servers(wardrik, owner), &(&1.name == name)),
+      do:
+        {:error,
+         Error.new(:invalid_request, "#{name} is an MCP server the deployment starts with.")},
+      else: {:error, Error.new(:not_found, "#{owner} has no server #{name}.")}
   end
 
   defp held(%Wardrik{keys: []}, _owner), do: []
@@ -235,14 +294,14 @@ defmodule Wardrik.Operations.Owners do
         do: name
   end
 
-  defp authorizing(wardrik, provider, principal, answer) do
-    case WardrikOAuth.authorize(Wardrik.oauth(wardrik), provider, principal) do
+  # `key` is the credential, which for a server's own sign-in is its key, not its `name`.
+  defp authorizing(wardrik, key, principal, answer, name) do
+    case WardrikOAuth.authorize(Wardrik.oauth(wardrik), key, principal) do
       {:ok, url} ->
         {:ok, Map.merge(answer, %{"connected" => false, "authorization" => %{"url" => url}})}
 
       {:error, reason} ->
-        {:error,
-         Error.new(:unavailable, "#{provider} can't be signed in to now: #{inspect(reason)}")}
+        {:error, Error.new(:unavailable, "#{name} can't be signed in to now: #{inspect(reason)}")}
     end
   end
 
@@ -268,15 +327,13 @@ defmodule Wardrik.Operations.Owners do
     do:
       {:error, Error.new(:not_supported, "A server's secret needs Wardrik to keep credentials.")}
 
+  # The header names the secret, read as each connection starts, so a new value takes effect.
   defp reached(wardrik, owner, _key, %{"auth" => %{"secret" => %{"name" => name} = secret}}) do
-    case WardrikVault.fetch(Wardrik.vault(wardrik), %Principal{id: owner}, name) do
-      {:ok, value} ->
-        header = Map.get(secret, "header", "authorization")
-        sent = String.trim("#{Map.get(secret, "scheme", "Bearer")} #{value}")
-        {:ok, headers(header, sent), "secret"}
-
-      {:error, _reason} ->
-        {:error, Error.new(:invalid_request, "#{owner} holds no secret #{name}.")}
+    if name in held(wardrik, owner) do
+      sent = sent(Map.get(secret, "scheme", "Bearer"), name)
+      {:ok, headers(Map.get(secret, "header", "authorization"), sent), "secret"}
+    else
+      {:error, Error.new(:invalid_request, "#{owner} holds no secret #{name}.")}
     end
   end
 
@@ -290,11 +347,15 @@ defmodule Wardrik.Operations.Owners do
       else: {:error, Error.new(:invalid_request, "#{owner} has no OAuth app #{provider}.")}
   end
 
-  defp reached(wardrik, owner, key, %{"auth" => %{"oauth" => oauth}, "url" => url}) do
-    with {:ok, opts} <- Providers.options(wardrik, owner, Map.put(oauth, "resource", url)),
-         :ok <- Providers.added(wardrik, owner, key, opts),
+  defp reached(wardrik, owner, key, %{"auth" => %{"oauth" => oauth}} = input) do
+    with {:ok, opts} <-
+           Providers.options(wardrik, owner, Map.put(oauth, "resource", input["url"])),
+         :ok <- Providers.added(wardrik, owner, key, opts, input["name"]),
          do: {:ok, [credential_name: key], "oauth"}
   end
+
+  defp sent("", name), do: {:secret, name}
+  defp sent(scheme, name), do: [scheme <> " ", {:secret, name}]
 
   defp headers(header, sent), do: [headers: %{header => sent}]
 
@@ -324,7 +385,7 @@ defmodule Wardrik.Operations.Owners do
   defp answered(wardrik, principal, credential, "oauth", name) do
     if credential in held(wardrik, principal.id),
       do: {:ok, %{"server" => name, "connected" => true}},
-      else: authorizing(wardrik, credential, principal, %{"server" => name})
+      else: authorizing(wardrik, credential, principal, %{"server" => name}, name)
   end
 
   defp answered(_wardrik, _principal, _key, _kind, name),
@@ -352,7 +413,15 @@ defmodule Wardrik.Operations.Owners do
     end
   end
 
-  defp listed(record), do: Map.take(record, ["name", "url", "auth"])
+  defp listed(owner, record) do
+    %MCPServer{
+      owner: owner,
+      name: record["name"],
+      source: :runtime,
+      url: record["url"],
+      auth: Map.fetch!(@auth, record["auth"])
+    }
+  end
 
   defp prefix(owner), do: "servers/" <> URI.encode_www_form(owner) <> "/"
 

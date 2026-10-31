@@ -96,7 +96,12 @@ defmodule Wardrik.Sealed do
     end
   end
 
+  # The owner's servers whose headers name the secret connect again, to read it as it is now:
+  # here before answering, and on the cluster's other nodes as the message reaches them.
   defp recorded(wardrik, type, owner, name, actor) do
+    mcp = Wardrik.mcp(wardrik)
+    :ok = WardrikMCP.reconnect(mcp, owner, name)
+    :ok = :erpc.multicast(Node.list(), WardrikMCP, :reconnect, [mcp, owner, name])
     change = {type, "secrets/" <> name, %{"secret" => %{"name" => name}, "owner" => owner}}
     WardrikEvents.record(Wardrik.events(wardrik), change, actor: actor)
   end

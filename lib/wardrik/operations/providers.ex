@@ -119,15 +119,19 @@ defmodule Wardrik.Operations.Providers do
     end
   end
 
-  @doc "Adds `owner`'s OAuth app `name` with `opts`, refusing options WardrikOAuth refuses."
-  @spec added(Wardrik.t(), Wardrik.Owners.t(), String.t(), keyword()) :: :ok | {:error, Error.t()}
-  def added(wardrik, owner, name, opts) do
+  @doc """
+  Adds `owner`'s OAuth app `name` with `opts`, refusing options WardrikOAuth refuses. An error
+  names it as `called`: a server's own app by the server's name.
+  """
+  @spec added(Wardrik.t(), Wardrik.Owners.t(), String.t(), keyword(), String.t() | nil) ::
+          :ok | {:error, Error.t()}
+  def added(wardrik, owner, name, opts, called \\ nil) do
     case WardrikOAuth.add_provider(Wardrik.oauth(wardrik), owner, name, opts) do
       :ok ->
         :ok
 
       {:error, why} ->
-        {:error, Error.new(:invalid_request, "#{name} can't be signed in with: #{why}")}
+        {:error, Error.new(:invalid_request, "#{called || name} can't be signed in with: #{why}")}
     end
   end
 

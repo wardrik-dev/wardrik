@@ -112,7 +112,7 @@ operator adds servers.
 | `auth` | Means |
 | --- | --- |
 | `%{none: %{}}` | It takes no credential. |
-| `%{secret: %{name: "crm-key"}}` | A key the owner keeps in the vault, sent as `authorization: Bearer <key>`. `header` and `scheme` change that. |
+| `%{secret: %{name: "crm-key"}}` | A key the owner keeps in the vault, sent as `authorization: Bearer <key>`. `header` and `scheme` change that. It's read as each connection starts, so a new value takes effect at once. |
 | `%{oauth: %{scopes: [...]}}` | Each person signs in as themselves, through the server's own authorization server. Wardrik registers itself as the client. Needs Wardrik's `:oauth`. |
 | `%{oauth: %{provider: "google"}}` | The same, through an OAuth app the owner can use: their own, their org's or the deployment's. See [Credentials](credentials.md). |
 | `%{oauth: %{issuer: ..., client_id: ..., client_secret: %{name: "CRM_APP"}}}` | The same, through an OAuth app the owner registered there, for a service Wardrik can't discover or register with. |
@@ -137,13 +137,21 @@ once covers every server that names it.
 
 ```elixir
 Wardrik.MCPServers.list(scope, owner: "acme/@maria")
-#=> {:ok, [%Wardrik.MCPServer{name: "linear", url: "https://mcp.linear.app/mcp", auth: :oauth}]}
+#=> {:ok,
+#=>  [
+#=>    %Wardrik.MCPServer{owner: "acme/@maria", name: "linear", source: :runtime, auth: :oauth, ...},
+#=>    %Wardrik.MCPServer{owner: "deployment", name: "github", source: :config, auth: :oauth, ...}
+#=>  ]}
 
 Wardrik.MCPServers.remove(scope, "linear", owner: "acme/@maria")
-#=> {:ok, %Wardrik.MCPServer{name: "linear", url: "https://mcp.linear.app/mcp", auth: :oauth}}
+#=> {:ok, %Wardrik.MCPServer{owner: "acme/@maria", name: "linear", source: :runtime, ...}}
 ```
 
-Removing a server forgets the sign-ins to it, unless it names an app. Each change is recorded in
-the audit.
+The list holds the servers the owner's agents reach, the nearest of each name: their own, their
+org's, the deployment's, then those Wardrik started with. `source` is `:config` for those, which
+are listed without their headers.
+
+An owner removes their own servers alone. Removing one forgets the sign-ins to it, unless it names
+an app. Each change is recorded in the audit.
 
 A server's answers are written by others. Hold its tools to a [policy](policies.md).

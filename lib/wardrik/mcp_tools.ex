@@ -53,12 +53,16 @@ defmodule Wardrik.MCPTools do
   A server serves an org if its `:orgs` lists it, or it has no `:orgs`.
   """
   @spec served(Wardrik.t(), String.t()) :: [String.t()]
-  def served(wardrik, id) do
-    org = Wardrik.Orgs.org(id)
-    for {name, opts} <- wardrik.mcp || [], serves?(opts[:orgs], org), do: to_string(name)
-  end
+  def served(wardrik, id),
+    do: for({name, _opts} <- serving(wardrik, Wardrik.Orgs.org(id)), do: to_string(name))
+
+  @doc "Returns Wardrik's own servers that serve `org`, as configured. Every one for `nil`."
+  @spec serving(Wardrik.t(), String.t() | nil) :: keyword()
+  def serving(wardrik, org),
+    do: for({_name, opts} = server <- wardrik.mcp || [], serves?(opts[:orgs], org), do: server)
 
   defp serves?(nil, _org), do: true
+  defp serves?(_orgs, nil), do: true
   defp serves?(orgs, org), do: org in orgs
 
   defp first(available, owners, served, name) do

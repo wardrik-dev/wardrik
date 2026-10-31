@@ -12,6 +12,13 @@
   value takes effect without adding the server again.
 - OAuth apps added at runtime in rc.1, for servers' sign-ins, are kept under new keys. Add those
   servers again.
+- `mcp_servers.list` answers the servers the owner's agents reach: their own, then those from
+  further out, including those Wardrik started with, each with `owner` and `source`. Never
+  headers. `mcp_servers.remove` removes the owner's own alone.
+- An MCP server's secrets are named in its headers and read as each connection starts, an owner's
+  server reading that owner's alone. Putting or deleting a secret connects its servers again on
+  every node, so a new value takes effect without adding the server again or restarting.
+- An error from a server's own sign-in names the server.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

@@ -66,35 +66,22 @@ defmodule Wardrik.Children do
     [{WardrikOAuth, options ++ wardrik.oauth}]
   end
 
-  defp mcp(wardrik), do: [started(mcp_spec(wardrik, & &1), {__MODULE__, :mcp_spec, [wardrik]})]
+  defp mcp(wardrik), do: [mcp_spec(wardrik)]
 
+  # The deployment's servers read the deployment's secrets, each owner's server its owner's.
   @doc false
-  def mcp_spec(wardrik), do: mcp_spec(wardrik, &headers(wardrik, &1))
-
-  defp mcp_spec(wardrik, headers) do
+  def mcp_spec(wardrik) do
     servers =
-      Enum.map(wardrik.mcp || [], fn {name, opts} ->
-        headers.({name, Keyword.delete(opts, :orgs)})
-      end)
+      for {name, opts} <- wardrik.mcp || [],
+          do: {name, opts |> Keyword.delete(:orgs) |> Keyword.put(:owner, "deployment")}
 
     WardrikMCP.child_spec(
       name: Wardrik.mcp(wardrik),
       servers: servers,
       store: wardrik.store,
-      check: wardrik.egress
+      check: wardrik.egress,
+      secret: &Wardrik.Sealed.fetch(wardrik, &1, &2)
     )
-  end
-
-  defp headers(wardrik, {name, opts}) do
-    case opts[:transport] do
-      {:streamable_http, http} ->
-        resolved = &Wardrik.Sealed.resolved(wardrik, "the MCP server #{name}", &1)
-        http = Keyword.replace_lazy(http, :headers, resolved)
-        {name, Keyword.put(opts, :transport, {:streamable_http, http})}
-
-      _stdio ->
-        {name, opts}
-    end
   end
 
   @doc false
