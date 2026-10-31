@@ -7,6 +7,7 @@ defmodule Wardrik.Operations.Owners do
   alias Wardrik.Error
   alias Wardrik.MCPTools
   alias Wardrik.Operations.Changes
+  alias Wardrik.Owners
   alias Wardrik.Scope
   alias WardrikCore.Principal
 
@@ -22,8 +23,10 @@ defmodule Wardrik.Operations.Owners do
   @doc """
   Lists the accounts the owner can connect, and whether each is connected.
 
-  These are Wardrik's OAuth providers, plus each server the owner added that uses browser
-  sign-in. A server replaces a provider of the same name.
+  These are Wardrik's OAuth providers, plus each server that uses browser sign-in and serves the
+  owner: their own, their org's for a person, and the deployment's. The nearest server of a name
+  wins, and a server replaces a provider of the same name. Each account is the owner's own,
+  whoever added its server. See `Wardrik.Owners`.
   """
   @spec connections(Scope.t(), map()) :: {:ok, map()}
   def connections(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
@@ -87,12 +90,12 @@ defmodule Wardrik.Operations.Owners do
   end
 
   defp an_org(owner) do
-    case String.split(owner, "/") do
-      [_org] ->
-        :ok
-
-      [org | _person] ->
+    case Owners.parse(owner) do
+      {:ok, %{org: org, person: person}} when is_binary(org) and is_binary(person) ->
         {:error, Error.new(:invalid_request, "Ceilings are an org's: ask for #{org}'s.")}
+
+      _org ->
+        :ok
     end
   end
 
@@ -214,7 +217,14 @@ defmodule Wardrik.Operations.Owners do
   defp held(wardrik, owner), do: WardrikVault.names(Wardrik.vault(wardrik), %Principal{id: owner})
 
   defp offered(wardrik, owner) do
-    servers = for name <- signed_in_servers(wardrik, owner), do: {name, MCPTools.key(owner, name)}
+    servers =
+      owner
+      |> Owners.chain()
+      |> Enum.flat_map(fn added_by ->
+        for name <- signed_in_servers(wardrik, added_by), do: {name, MCPTools.key(added_by, name)}
+      end)
+      |> Enum.uniq_by(&elem(&1, 0))
+
     named = Enum.map(servers, &elem(&1, 0))
 
     providers =
