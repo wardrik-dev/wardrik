@@ -134,6 +134,29 @@ When a tool needs a credential its principal hasn't granted, its call waits on a
 `Wardrik.Agent.authorization/4` returns the link. Once the person signs in, the token is sealed and
 every call waiting on it carries on. They sign in once.
 
+## Add OAuth apps as it runs
+
+An org or person adds an OAuth app for their people, its client secret named by reference:
+
+```elixir
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme", "GOOGLE_CLIENT_SECRET", "GOCSPX-...")
+
+Wardrik.Providers.add(scope,
+  owner: "acme",
+  name: "google",
+  issuer: "https://accounts.google.com",
+  client_id: "868288504182-example.apps.googleusercontent.com",
+  client_secret: %{name: "GOOGLE_CLIENT_SECRET"},
+  scopes: ["https://www.googleapis.com/auth/adwords"],
+  authorization_params: %{access_type: "offline"}
+)
+#=> {:ok, %Wardrik.Provider{owner: "acme", name: "google", source: :runtime, ...}}
+```
+
+A person signs in with the nearest app of a name: their own, their org's, then the deployment's.
+`Wardrik.Providers.list/2` lists them in that order, and `remove/3` removes the owner's own. The
+client secret is read each time it's needed, and never answered.
+
 ## Connect ahead of time
 
 A person or an org can connect an account before any agent asks:
@@ -162,7 +185,8 @@ Wardrik.Connections.disconnect(scope, "github", owner: "acme/@maria")
 recorded in the audit.
 
 An account belongs to its owner. A person's agents reach the person's accounts, and an org's agents
-reach the org's. Nothing falls back from one to the other.
+reach the org's. Nothing falls back from one to the other. The apps they connect with do: a person
+is offered their own, their org's and the deployment's.
 
 A server the owner added, whose agents sign in in a browser, is one of their accounts too, by the
 server's name. The owner can sign in to it, or out, before any agent calls it. Adding the server

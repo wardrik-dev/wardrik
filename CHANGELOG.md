@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- `providers.list`, `providers.add` and `providers.remove`: OAuth apps an org or person adds for
+  their people. A person signs in with the nearest of a name: their own, their org's, then the
+  deployment's. An app's client secret is named by reference, and never answered.
+- `connections.list` offers a person their own, their org's and the deployment's apps.
+- An MCP server's `auth.oauth` can name an app as `provider`, so connecting the app once covers
+  the server. An inline app takes `authorization_params`.
+- An inline app's client secret is read from the owner's vault each time it's needed, so a new
+  value takes effect without adding the server again.
+- OAuth apps added at runtime in rc.1, for servers' sign-ins, are kept under new keys. Add those
+  servers again.
+
 ## 0.1.0-rc.1 (2026-10-30)
 
 - `use Wardrik`: one module in your supervision tree that runs agents, keeps them in a

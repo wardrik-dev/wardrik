@@ -114,6 +114,7 @@ operator adds servers.
 | `%{none: %{}}` | It takes no credential. |
 | `%{secret: %{name: "crm-key"}}` | A key the owner keeps in the vault, sent as `authorization: Bearer <key>`. `header` and `scheme` change that. |
 | `%{oauth: %{scopes: [...]}}` | Each person signs in as themselves, through the server's own authorization server. Wardrik registers itself as the client. Needs Wardrik's `:oauth`. |
+| `%{oauth: %{provider: "google"}}` | The same, through an OAuth app the owner can use: their own, their org's or the deployment's. See [Credentials](credentials.md). |
 | `%{oauth: %{issuer: ..., client_id: ..., client_secret: %{name: "CRM_APP"}}}` | The same, through an OAuth app the owner registered there, for a service Wardrik can't discover or register with. |
 
 The owner keeps a key with `Wardrik.put_secret/5`; see [Credentials](credentials.md).
@@ -122,11 +123,15 @@ An owner's own OAuth app takes:
 
   * `issuer`, or `authorization_endpoint` and `token_endpoint` where it publishes no metadata.
   * `client_id`.
-  * `client_secret`, the name of a secret the owner keeps in the vault. It's sealed apart from the
-    owner's secrets when the server is added, so no agent can name it. It's sent only to the token
-    endpoint: in the form, or as HTTP Basic with `client_auth: "basic"`.
+  * `client_secret`, the name of a secret the owner keeps in the vault. It's read each time it's
+    needed, so a new value takes effect at once. It's sent only to the token endpoint: in the
+    form, or as HTTP Basic with `client_auth: "basic"`.
+  * `authorization_params`, extra parameters for the sign-in, as `%{access_type: "offline"}`.
 
 Each owner's server signs in on its own. Two orgs' servers of the same name each use their own app.
+
+A server that names an app signs in as the app: its account is the app's, so connecting the app
+once covers every server that names it.
 
 ### Listing and removing
 
@@ -138,6 +143,7 @@ Wardrik.MCPServers.remove(scope, "linear", owner: "acme/@maria")
 #=> {:ok, %Wardrik.MCPServer{name: "linear", url: "https://mcp.linear.app/mcp", auth: :oauth}}
 ```
 
-Removing a server forgets the sign-ins to it. Each change is recorded in the audit.
+Removing a server forgets the sign-ins to it, unless it names an app. Each change is recorded in
+the audit.
 
 A server's answers are written by others. Hold its tools to a [policy](policies.md).
