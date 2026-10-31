@@ -62,20 +62,6 @@ defmodule Wardrik.KeysTest do
     assert_receive {:api_key, "sk-new"}
   end
 
-  defmodule Headers do
-    @moduledoc false
-    @behaviour Plug
-
-    @impl Plug
-    def init(test), do: test
-
-    @impl Plug
-    def call(conn, test) do
-      send(test, {:authorization, Plug.Conn.get_req_header(conn, "authorization")})
-      Plug.Conn.send_resp(conn, 503, "")
-    end
-  end
-
   defp linear(url),
     do: [
       linear: [
@@ -85,33 +71,39 @@ defmodule Wardrik.KeysTest do
       ]
     ]
 
-  test "an MCP server's headers name the deployment's secrets, read as its servers start", %{
+  test "an MCP server it starts names the deployment's secrets in its headers, unread", %{
     wardrik: wardrik
   } do
     :ok = Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "lin_123")
     wardrik = %{wardrik | mcp: linear("https://mcp.linear.test/mcp")}
 
     %{start: {WardrikMCP, :start_link, [opts]}} = Wardrik.Children.mcp_spec(wardrik)
-    assert [linear: [transport: {:streamable_http, transport}]] = opts[:servers]
-    assert transport[:headers] == %{"authorization" => "lin_123", "x-plain" => "kept"}
+    assert [linear: server] = opts[:servers]
+    assert server[:owner] == "deployment"
+    assert {:streamable_http, transport} = server[:transport]
+
+    assert transport[:headers] == %{
+             "authorization" => {:secret, "LINEAR_TOKEN"},
+             "x-plain" => "kept"
+           }
+
+    assert opts[:secret].("deployment", "LINEAR_TOKEN") == {:ok, "lin_123"}
   end
 
-  test "an MCP server it starts is reached with the secret its headers name", %{
-    wardrik: wardrik
-  } do
-    server = start_supervised!({Bandit, plug: {Headers, self()}, ip: :loopback, port: 0})
-    {:ok, {_ip, port}} = ThousandIsland.listener_info(server)
+  test "an MCP server it starts reads the secret its headers name as it connects, so a new one takes effect at once",
+       %{wardrik: wardrik} do
+    url = Wardrik.Test.Headers.start("/mcp")
     :ok = stop_supervised!(Wardrik)
-    store = Wardrik.Test.Store.new(:"linear #{wardrik.name}")
-    start_supervised!({WardrikStore, store})
-    wardrik = %{wardrik | store: store, backend: {WardrikStore.Durable, store: store}}
+    start_supervised!({Wardrik, %{wardrik | mcp: linear(url)}})
 
-    start_supervised!({Wardrik, wardrik})
     :ok = Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "Bearer lin_123")
-    :ok = stop_supervised!(Wardrik)
+    assert_receive {:authorization, "/mcp", ["Bearer lin_123"]}, 5_000
 
-    start_supervised!({Wardrik, %{wardrik | mcp: linear("http://localhost:#{port}/mcp")}})
-    assert_receive {:authorization, ["Bearer lin_123"]}, 1_000
+    :ok = Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "Bearer lin_456")
+    assert_receive {:authorization, "/mcp", ["Bearer lin_456"]}, 5_000
+
+    :ok = Wardrik.put_secret(wardrik, "acme", "LINEAR_TOKEN", "Bearer acme")
+    refute_receive {:authorization, "/mcp", ["Bearer acme"]}, 500
   end
 
   test "an owner's keys reach no tool's credentials, and the deployment's reach no owner", %{

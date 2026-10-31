@@ -207,18 +207,160 @@ defmodule Wardrik.OwnersTest do
       assert ["wardrik.server.added", "wardrik.server.removed"] = types(scope)
     end
 
-    test "reaches a server with a secret its owner keeps", %{wardrik: wardrik, scope: scope} do
+    test "reaches a server with a secret its owner keeps, read as each connection starts", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
       server = %{
         "owner" => "acme",
         "name" => "crm",
-        "url" => "https://crm.test/mcp",
+        "url" => Wardrik.Test.Headers.start("/acme"),
         "auth" => %{"secret" => %{"name" => "crm-key"}}
       }
 
-      assert refused(scope, "mcp_servers.add", server) == :invalid_request
+      assert {:error, %Wardrik.Error{message: "acme holds no secret crm-key."}} =
+               Wardrik.run(scope, "mcp_servers.add", server)
 
-      hold(wardrik, "acme", "crm-key", "s3cret")
+      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "one")
       assert %{"server" => "crm", "connected" => true} = run!(scope, "mcp_servers.add", server)
+      assert_receive {:authorization, "/acme", ["Bearer one"]}, 5_000
+
+      stored =
+        WardrikStore.get(WardrikStore.scope(wardrik.store, "wardrik_mcp"), "servers/acme:crm")
+
+      assert {:streamable_http, http} = stored[:transport]
+      assert http[:headers] == %{"authorization" => ["Bearer ", {:secret, "crm-key"}]}
+
+      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "two")
+      assert_receive {:authorization, "/acme", ["Bearer two"]}, 5_000
+
+      raw = %{
+        server
+        | "name" => "raw",
+          "auth" => %{"secret" => %{"name" => "crm-key", "header" => "x-key", "scheme" => ""}}
+      }
+
+      run!(scope, "mcp_servers.add", raw)
+
+      stored =
+        WardrikStore.get(WardrikStore.scope(wardrik.store, "wardrik_mcp"), "servers/acme:raw")
+
+      assert {:streamable_http, http} = stored[:transport]
+      assert http[:headers] == %{"x-key" => {:secret, "crm-key"}}
+    end
+
+    test "reaches another org's server with that org's secret alone", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "acme's")
+
+      server = %{
+        "owner" => "globex",
+        "name" => "crm",
+        "url" => Wardrik.Test.Headers.start("/globex"),
+        "auth" => %{"secret" => %{"name" => "crm-key"}}
+      }
+
+      assert {:error, %Wardrik.Error{message: "globex holds no secret crm-key."}} =
+               Wardrik.run(scope, "mcp_servers.add", server)
+
+      :ok = Wardrik.put_secret(wardrik, "globex", "crm-key", "globex's")
+      run!(scope, "mcp_servers.add", server)
+      assert_receive {:authorization, "/globex", ["Bearer globex's"]}, 5_000
+
+      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "acme's again")
+      :ok = Wardrik.delete_secret(wardrik, "globex", "crm-key")
+      refute_receive {:authorization, "/globex", _authorization}, 500
+    end
+
+    test "lists the servers an owner's agents reach, nearest first, with who holds each", %{
+      wardrik: wardrik
+    } do
+      :ok = stop_supervised!(Wardrik)
+
+      config = [
+        docs: [
+          transport:
+            {:streamable_http,
+             url: "https://docs.test/mcp", headers: %{"authorization" => {:secret, "DOCS"}}},
+          orgs: ["acme"]
+        ],
+        wiki: [transport: {:streamable_http, url: "https://wiki.test/mcp"}, orgs: ["globex"]],
+        git: [transport: {:stdio, command: "git-mcp-server"}, credential_name: "git"]
+      ]
+
+      wardrik = %{wardrik | mcp: config}
+      start_supervised!({Wardrik, wardrik})
+      scope = owner(wardrik)
+
+      for {owner, name} <- [{"deployment", "search"}, {"acme", "crm"}, {"acme/@maria", "crm"}] do
+        run!(scope, "mcp_servers.add", %{
+          "owner" => owner,
+          "name" => name,
+          "url" => "https://#{name}.test/mcp",
+          "auth" => %{"none" => %{}}
+        })
+      end
+
+      listed = fn owner ->
+        %{"servers" => servers} = run!(scope, "mcp_servers.list", %{"owner" => owner})
+        Enum.map(servers, &{&1["owner"], &1["name"], &1["source"]})
+      end
+
+      assert listed.("acme/@maria") == [
+               {"acme/@maria", "crm", "runtime"},
+               {"deployment", "search", "runtime"},
+               {"deployment", "docs", "config"},
+               {"deployment", "git", "config"}
+             ]
+
+      assert listed.("globex") == [
+               {"deployment", "search", "runtime"},
+               {"deployment", "wiki", "config"},
+               {"deployment", "git", "config"}
+             ]
+
+      assert %{"servers" => servers} =
+               run!(scope, "mcp_servers.list", %{"owner" => "deployment"})
+
+      assert Enum.map(servers, & &1["name"]) == ["search", "docs", "wiki", "git"]
+
+      assert %{
+               "owner" => "deployment",
+               "name" => "docs",
+               "source" => "config",
+               "url" => "https://docs.test/mcp",
+               "auth" => "secret"
+             } in servers
+
+      assert %{"owner" => "deployment", "name" => "git", "source" => "config", "auth" => "oauth"} in servers
+      refute inspect(servers) =~ "DOCS"
+
+      assert {:ok, [%Wardrik.MCPServer{owner: "acme/@maria", source: :runtime} | _rest]} =
+               Wardrik.MCPServers.list(scope, owner: "acme/@maria")
+
+      for {owner, name, type} <- [
+            {"acme/@maria", "search", :not_found},
+            {"acme", "docs", :not_found},
+            {"deployment", "docs", :invalid_request},
+            {"deployment", "nope", :not_found}
+          ] do
+        assert refused(scope, "mcp_servers.remove", %{"owner" => owner, "server" => name}) ==
+                 type
+      end
+
+      assert {:error,
+              %Wardrik.Error{message: "docs is an MCP server the deployment starts with."}} =
+               Wardrik.run(scope, "mcp_servers.remove", %{
+                 "owner" => "deployment",
+                 "server" => "docs"
+               })
+
+      assert %{"owner" => "acme/@maria", "name" => "crm", "source" => "runtime"} =
+               run!(scope, "mcp_servers.remove", %{"owner" => "acme/@maria", "server" => "crm"})
+
+      assert {"acme", "crm", "runtime"} in listed.("acme/@maria")
     end
 
     test "registers with a server's own sign-in, and says where each person signs in", %{
@@ -397,6 +539,32 @@ defmodule Wardrik.OwnersTest do
 
       assert refused(scope, "mcp_servers.add", Map.put(server, "auth", %{"oauth" => unnamed})) ==
                :invalid_request
+    end
+
+    test "names a server, not its key, where its own sign-in fails", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      Req.Test.stub(__MODULE__, &Plug.Conn.send_resp(&1, 500, ""))
+
+      server = %{
+        "owner" => "acme",
+        "name" => "crm",
+        "url" => "https://crm.test/mcp",
+        "auth" => %{"oauth" => %{"scopes" => ["read"]}}
+      }
+
+      assert {:error,
+              %Wardrik.Error{type: :unavailable, message: "crm can't be signed in to now: " <> _}} =
+               Wardrik.run(scope, "mcp_servers.add", server)
+
+      assert {:error, %Wardrik.Error{message: "crm can't be signed in to now: " <> _}} =
+               Wardrik.run(scope, "connections.connect", %{"owner" => "acme", "provider" => "crm"})
+
+      params = [authorization_params: %{"scope" => "read"}]
+
+      assert {:error, %Wardrik.Error{message: "crm can't be signed in with: " <> _}} =
+               Wardrik.Operations.Providers.added(wardrik, "acme", "acme:crm", params, "crm")
     end
 
     test "reaches a server Wardrik started with from the orgs it serves alone" do

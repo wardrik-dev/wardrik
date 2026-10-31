@@ -114,8 +114,10 @@ config :my_app, MyApp.AgentRuntime,
 
   * A channel's and a notify target's secrets are read each time they're used.
   * An OAuth provider's are read at each sign-in.
-  * A channel's processes, like Slack's Socket Mode, and the MCP servers read theirs when they
-    start. Restart Wardrik after changing those.
+  * An MCP server's are read as each connection starts. Putting or deleting one connects the
+    servers that name it again.
+  * A channel's processes, like Slack's Socket Mode, read theirs when they start. Restart Wardrik
+    after changing those.
 
 A header takes the secret as sealed, so seal Linear's token with its scheme:
 
@@ -123,7 +125,10 @@ A header takes the secret as sealed, so seal Linear's token with its scheme:
 :ok = Wardrik.put_secret(MyApp.AgentRuntime, "deployment", "LINEAR_TOKEN", "Bearer lin_api_...")
 ```
 
-A secret sealed nowhere is `nil`, and logged.
+Or give the scheme in the header, as `["Bearer ", {:secret, "LINEAR_TOKEN"}]`.
+
+An MCP server whose secret is sealed nowhere is down until it is. Any other secret sealed nowhere
+is `nil`, and logged.
 
 ## Let people sign in
 

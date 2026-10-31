@@ -96,7 +96,9 @@ defmodule Wardrik.Sealed do
     end
   end
 
+  # The owner's servers whose headers name the secret connect again, to read it as it is now.
   defp recorded(wardrik, type, owner, name, actor) do
+    :ok = WardrikMCP.reconnect(Wardrik.mcp(wardrik), owner, name)
     change = {type, "secrets/" <> name, %{"secret" => %{"name" => name}, "owner" => owner}}
     WardrikEvents.record(Wardrik.events(wardrik), change, actor: actor)
   end
