@@ -113,6 +113,7 @@ defmodule Wardrik.MixProject do
       {:req, "~> 0.7"},
       {:ekv, "~> 0.4.8"},
       {:jsv, "~> 0.26"},
+      {:nimble_options, "~> 1.1"},
       {:ecto_sql, "~> 3.13", optional: true},
       {:postgrex, "~> 0.22", only: :test},
       {:mimic, "~> 2.4", only: :test},

@@ -146,8 +146,8 @@ defmodule Wardrik do
     * `:deployment` - the deployment's name in each event's `source`. `"local"` unless set.
     * `:policy` - the `WardrikPolicy` every agent is held to, or its rules, as `[deny: ["shell/*"]]`.
     * `:keys` - keys to seal credentials with. Without them, no secrets are kept.
-    * `:oauth` - services people sign in to, as `[page: ..., providers: ..., client_name: ...]`.
-      Needs `:keys`. See `WardrikOAuth`.
+    * `:oauth` - services people sign in to, as `[page: ..., providers: ...]`. Needs `:keys`.
+      See `Wardrik.Setup.oauth_schema/0`.
     * `:mcp` - MCP servers agents may call, as `[github: [transport: ..., orgs: ["acme"]]]`.
       See `WardrikMCP`.
     * `:capabilities` - tools definitions name, as `[files: {MyApp.Files, []}]`.

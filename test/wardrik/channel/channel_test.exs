@@ -262,16 +262,14 @@ defmodule Wardrik.Channel.PackageTest do
 
   describe "channels" do
     test "is named in lower-case letters, digits and -, and says where it's added" do
+      passed = [server: Wardrik, wardrik: :w, events: :e, store: nil]
+
       assert_raise ArgumentError, ~r/lower-case/, fn ->
-        WardrikChannel.channel(Wardrik.Test.Channel.Chat, channel: "Chat", token: "t")
+        WardrikChannel.channel(Wardrik.Test.Channel.Chat, [channel: "Chat", token: "t"] ++ passed)
       end
 
       assert_raise ArgumentError, ~r/token/, fn ->
-        WardrikChannel.channel(Wardrik.Test.Channel.Chat,
-          channel: "chat",
-          wardrik: :w,
-          store: nil
-        )
+        WardrikChannel.channel(Wardrik.Test.Channel.Chat, [channel: "chat"] ++ passed)
       end
     end
 
