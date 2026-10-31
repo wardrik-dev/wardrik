@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `Wardrik.schema/0` returns the options `Wardrik.start_link/1` takes, for a host that reads them
+  from a file.
 - `Wardrik.start_link/1` validates its options with NimbleOptions, and documents them from the
   schema. A bad option raises `NimbleOptions.ValidationError`, not `ArgumentError`, and `nil` no
   longer stands for an unset option.
