@@ -1,4 +1,14 @@
 defmodule Wardrik.Notify.Room do
+  @options [
+    channel: [type: :string, required: true, doc: "The channel's name."],
+    room: [type: :string, required: true, doc: "The room, as the channel names it."],
+    approvers: [
+      type: {:list, :string},
+      default: [],
+      doc: "People a parked turn's notice asks, as the channel names them."
+    ]
+  ]
+
   @moduledoc """
   Posts notices to a room in one of Wardrik's channels, with `c:Wardrik.Channel.notify/4`.
 
@@ -8,9 +18,7 @@ defmodule Wardrik.Notify.Room do
 
   ## Options
 
-    * `:channel` - required. The channel's name.
-    * `:room` - required. The room, as the channel names it.
-    * `:approvers` - people a parked turn's notice asks, as the channel names them. `[]` unless set.
+  #{NimbleOptions.docs(@options)}
 
   Skips the notice if the channel doesn't exist or doesn't implement `notify/4`.
   """
@@ -19,17 +27,15 @@ defmodule Wardrik.Notify.Room do
 
   @impl Wardrik.Notify
   def deliver(notice, opts) do
-    channel = Keyword.fetch!(opts, :channel)
+    with {:ok, opts} <- Wardrik.Notify.options(opts, @options),
+         do: posted(notice, opts, opts[:channel])
+  end
 
+  defp posted(notice, opts, channel) do
     with {:ok, {module, channel_opts}} <-
            Wardrik.Operations.Channels.fetch(opts[:wardrik], channel),
          true <- posts?(module) do
-      module.notify(
-        channel_opts,
-        Keyword.fetch!(opts, :room),
-        notice,
-        Keyword.get(opts, :approvers, [])
-      )
+      module.notify(channel_opts, opts[:room], notice, opts[:approvers])
     else
       :error -> {:skip, "but there's no channel #{channel} here"}
       false -> {:skip, "but the channel #{channel} posts no notices"}

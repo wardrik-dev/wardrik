@@ -1,4 +1,24 @@
 defmodule Wardrik.Notify do
+  @schema NimbleOptions.new!(
+            targets: [
+              type:
+                {:list, {:tuple, [{:or, [:atom, :string]}, {:tuple, [:atom, :keyword_list]}]}},
+              default: [],
+              doc: """
+              Targets by name, as `{module, opts}`. A target's `:orgs` limits it to those orgs'
+              agents. Routing another org's agent to it is refused.
+              """
+            ],
+            retries: [
+              type: :keyword_list,
+              default: [attempts: 3, max_wait: 10_000],
+              doc: """
+              How failed deliveries are retried. See `WardrikCore.Retry`. After that, the notice
+              is logged and dropped.
+              """
+            ]
+          )
+
   @moduledoc """
   Tells people when an agent parks, fails or finishes while nobody is watching.
 
@@ -29,10 +49,7 @@ defmodule Wardrik.Notify do
 
   ## Options
 
-    * `:targets` - targets by name, as `{module, opts}`. A target's `:orgs` limits it to those
-      orgs' agents. Routing another org's agent to it is refused.
-    * `:retries` - how failed deliveries are retried. See `WardrikCore.Retry`.
-      `[attempts: 3, max_wait: 10_000]` unless set. After that, the notice is logged and dropped.
+  #{NimbleOptions.docs(@schema)}
 
   ## Delivery
 
@@ -44,6 +61,8 @@ defmodule Wardrik.Notify do
   alias Wardrik.Notice
   alias Wardrik.Orgs
 
+  @passed [wardrik: [type: :atom], target: [type: :string], orgs: [type: {:list, :string}]]
+
   @typedoc "Where an agent's notices go (`:to`), and which kinds are sent (`:on`)."
   @type route() :: %{to: [String.t()], on: [Notice.kind()]}
 
@@ -54,6 +73,19 @@ defmodule Wardrik.Notify do
   """
   @callback deliver(Notice.t(), opts :: keyword()) :: :ok | {:skip, String.t()} | {:error, term()}
 
+  @doc """
+  Returns `opts` checked against a target's `schema`, or `{:skip, why}`.
+
+  The schema needn't name `:wardrik`, `:target` or `:orgs`, which Wardrik passes every target.
+  """
+  @spec options(keyword(), keyword()) :: {:ok, keyword()} | {:skip, String.t()}
+  def options(opts, schema) do
+    case NimbleOptions.validate(opts, schema ++ @passed) do
+      {:ok, opts} -> {:ok, opts}
+      {:error, error} -> {:skip, "but its options are invalid: #{Exception.message(error)}"}
+    end
+  end
+
   @doc "Returns the `:notify` option's targets by name, and its retries."
   @spec settings(keyword() | nil) :: %{
           targets: %{String.t() => {module(), keyword()}},
@@ -62,7 +94,7 @@ defmodule Wardrik.Notify do
   def settings(nil), do: settings([])
 
   def settings(opts) do
-    opts = Keyword.validate!(opts, targets: [], retries: [attempts: 3, max_wait: 10_000])
+    opts = NimbleOptions.validate!(opts, @schema)
 
     %{
       targets: Map.new(opts[:targets], fn {name, target} -> {to_string(name), target} end),

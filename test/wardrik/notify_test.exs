@@ -238,4 +238,22 @@ defmodule Wardrik.NotifyTest do
              } = call
     end
   end
+
+  describe "options" do
+    test "refuses an option it doesn't take" do
+      assert_raise NimbleOptions.ValidationError, ~r/unknown options \[:target\]/, fn ->
+        Wardrik.Notify.settings(target: [])
+      end
+    end
+
+    test "skips a notice to a target whose options are invalid, saying why" do
+      passed = [wardrik: :w, target: "hook"]
+
+      assert {:skip, "but its options are invalid: unknown options [:uri]" <> _} =
+               Wardrik.Notify.Webhook.deliver(nil, [uri: "https://hooks.test"] ++ passed)
+
+      assert {:skip, "but its options are invalid: required :room" <> _} =
+               Wardrik.Notify.Room.deliver(nil, [channel: "board"] ++ passed)
+    end
+  end
 end
