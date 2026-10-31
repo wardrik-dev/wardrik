@@ -2,10 +2,10 @@ defmodule Wardrik.Notify.Webhook do
   @options [
     url: [type: :string, required: true, doc: "Where to post."],
     secret: [
-      type: {:or, [:string, nil]},
+      type: {:or, [:string, {:tuple, [{:in, [:secret]}, :string]}, nil]},
       doc: """
-      Signs the body. The `x-wardrik-signature` header is then `sha256=` followed by the hex
-      HMAC-SHA256 of the body. See `sign/2`.
+      Signs the body, as a string or `{:secret, name}`. The `x-wardrik-signature` header is then
+      `sha256=` followed by the hex HMAC-SHA256 of the body. See `sign/2`.
       """
     ],
     req_options: [type: :keyword_list, default: [], doc: "Merged into the `Req` request."]
@@ -14,10 +14,13 @@ defmodule Wardrik.Notify.Webhook do
   @moduledoc """
   Posts notices as JSON to a URL.
 
-      audit: {Wardrik.Notify.Webhook, url: "https://hooks.example.com/wardrik", secret: secret}
+      audit: {Wardrik.Notify.Webhook, url: "https://hooks.example.com/wardrik", secret: {:secret, "HOOK_SECRET"}}
 
   The body is `Wardrik.Notice.json/1`. The `x-wardrik-event` header names the event. Any status
   other than 2xx is a failure.
+
+  A target an org or person adds with `notify_targets.add` is a webhook too, posting with the
+  `:notify` option's `:req_options` and following no redirect. See `Wardrik.Notify`.
 
   ## Options
 
@@ -29,11 +32,10 @@ defmodule Wardrik.Notify.Webhook do
   alias Wardrik.Notice
 
   @impl Wardrik.Notify
-  def deliver(notice, opts) do
-    with {:ok, opts} <- Wardrik.Notify.options(opts, @options), do: posted(notice, opts)
-  end
+  def schema, do: @options
 
-  defp posted(notice, opts) do
+  @impl Wardrik.Notify
+  def deliver(notice, opts) do
     body = notice |> Notice.json() |> JSON.encode!()
 
     options =
@@ -48,7 +50,7 @@ defmodule Wardrik.Notify.Webhook do
           retry: false,
           receive_timeout: 10_000
         ],
-        opts[:req_options]
+        Keyword.get(opts, :req_options, [])
       )
 
     case Req.post(opts[:url], options) do
