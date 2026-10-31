@@ -3,6 +3,14 @@ defmodule Wardrik.SetupTest do
 
   alias Wardrik.Setup
 
+  describe "wardrik/1's oauth" do
+    test "needs the page sign-ins come back to" do
+      assert_raise NimbleOptions.ValidationError, ~r/required :page/, fn ->
+        Setup.wardrik(name: MyApp.AgentRuntime, keys: ["key"], oauth: [providers: []])
+      end
+    end
+  end
+
   describe "wardrik/1's store" do
     test "is in memory, named after the Wardrik, unless set" do
       wardrik = Setup.wardrik(name: MyApp.AgentRuntime)

@@ -1,6 +1,36 @@
 defmodule Wardrik.Setup do
   @moduledoc "Builds `%Wardrik{}` from `Wardrik.start_link/1`'s options, and each agent's options."
 
+  @oauth NimbleOptions.new!(
+           page: [
+             type: :string,
+             required: true,
+             doc: "Where sign-ins come back to, as `\"https://agents.example.com/oauth\"`."
+           ],
+           providers: [
+             type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
+             default: [],
+             doc: "Providers to start with, by name. See `WardrikOAuth.Provider`."
+           ],
+           client_name: [
+             type: :string,
+             doc: "The name a service shows for a client Wardrik registers."
+           ],
+           req_options: [
+             type: :keyword_list,
+             default: [],
+             doc: "Extra options for every `Req` request."
+           ]
+         )
+
+  @doc """
+  The `:oauth` option of `Wardrik.start_link/1`.
+
+  #{NimbleOptions.docs(@oauth)}
+  """
+  @spec oauth_schema() :: NimbleOptions.t()
+  def oauth_schema, do: @oauth
+
   @doc "Builds a `%Wardrik{}` from `Wardrik.start_link/1`'s options."
   @spec wardrik(keyword()) :: Wardrik.t()
   def wardrik(opts) do
@@ -200,7 +230,7 @@ defmodule Wardrik.Setup do
     do: raise(ArgumentError, "Give Wardrik :keys to seal what people sign in with.")
 
   defp oauth(oauth, _keys),
-    do: Keyword.validate!(oauth, [:page, :providers, :client_name, req_options: []])
+    do: NimbleOptions.validate!(oauth, @oauth)
 
   defp credentials(opts, %Wardrik{keys: []}), do: opts
 

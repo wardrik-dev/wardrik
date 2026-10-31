@@ -1,4 +1,16 @@
 defmodule Wardrik.Notify.Webhook do
+  @options [
+    url: [type: :string, required: true, doc: "Where to post."],
+    secret: [
+      type: {:or, [:string, nil]},
+      doc: """
+      Signs the body. The `x-wardrik-signature` header is then `sha256=` followed by the hex
+      HMAC-SHA256 of the body. See `sign/2`.
+      """
+    ],
+    req_options: [type: :keyword_list, default: [], doc: "Merged into the `Req` request."]
+  ]
+
   @moduledoc """
   Posts notices as JSON to a URL.
 
@@ -9,10 +21,7 @@ defmodule Wardrik.Notify.Webhook do
 
   ## Options
 
-    * `:url` - required. Where to post.
-    * `:secret` - signs the body. The `x-wardrik-signature` header is then `sha256=` followed by
-      the hex HMAC-SHA256 of the body. See `sign/2`.
-    * `:req_options` - merged into the `Req` request.
+  #{NimbleOptions.docs(@options)}
   """
 
   @behaviour Wardrik.Notify
@@ -21,6 +30,10 @@ defmodule Wardrik.Notify.Webhook do
 
   @impl Wardrik.Notify
   def deliver(notice, opts) do
+    with {:ok, opts} <- Wardrik.Notify.options(opts, @options), do: posted(notice, opts)
+  end
+
+  defp posted(notice, opts) do
     body = notice |> Notice.json() |> JSON.encode!()
 
     options =
@@ -35,10 +48,10 @@ defmodule Wardrik.Notify.Webhook do
           retry: false,
           receive_timeout: 10_000
         ],
-        Keyword.get(opts, :req_options, [])
+        opts[:req_options]
       )
 
-    case Req.post(Keyword.fetch!(opts, :url), options) do
+    case Req.post(opts[:url], options) do
       {:ok, %Req.Response{status: status}} when status in 200..299 -> :ok
       {:ok, %Req.Response{status: status}} -> {:error, {:status, status}}
       {:error, reason} -> {:error, reason}
