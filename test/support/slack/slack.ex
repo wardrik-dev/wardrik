@@ -56,7 +56,7 @@ defmodule Wardrik.Test.Slack do
          channels: [slack: {WardrikSlack, slack}],
          capabilities: [tools: Wardrik.Test.Slack.Tools],
          policies: [careful: [ask: ["echo"]]],
-         notify: Map.get(context, :notify),
+         notify: Map.get(context, :notify, []),
          defaults: %{"retries" => %{"attempts" => 0, "on_exhausted" => "fail"}}
        )}
     )

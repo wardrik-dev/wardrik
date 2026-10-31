@@ -45,12 +45,9 @@ defmodule Wardrik.Children do
        name: Wardrik.vault(wardrik),
        store: wardrik.store,
        keys: wardrik.keys,
-       grants: grants(wardrik)}
+       grants: wardrik.grants}
     ]
   end
-
-  defp grants(%Wardrik{oauth: nil}), do: nil
-  defp grants(wardrik), do: {WardrikOAuth, Wardrik.oauth(wardrik)}
 
   defp oauth(%Wardrik{oauth: nil}), do: []
 
@@ -72,7 +69,7 @@ defmodule Wardrik.Children do
   @doc false
   def mcp_spec(wardrik) do
     servers =
-      for {name, opts} <- wardrik.mcp || [],
+      for {name, opts} <- wardrik.mcp,
           do: {name, opts |> Keyword.delete(:orgs) |> Keyword.put(:owner, "deployment")}
 
     WardrikMCP.child_spec(

@@ -43,11 +43,191 @@ defmodule Wardrik do
   alias Wardrik.Setup
   alias WardrikCore.Principal
 
+  @entry {:or, [:atom, {:tuple, [:atom, :any]}]}
+  @named {:or,
+          [
+            {:list, {:tuple, [{:or, [:atom, :string]}, :any]}},
+            {:map, {:or, [:atom, :string]}, :any}
+          ]}
+  @timeout {:or, [:pos_integer, {:in, [:infinity]}]}
+
+  @schema NimbleOptions.new!(
+            name: [type: :atom, required: true, doc: "What Wardrik is reached by."],
+            store: [
+              type: {:or, [{:struct, WardrikStore}, {:tuple, [:atom, :keyword_list]}]},
+              doc: "Where agents and their events are kept, as `{adapter, opts}`. See above."
+            ],
+            deployment: [
+              type: :string,
+              default: "local",
+              doc: "The deployment's name in each event's `source`."
+            ],
+            policy: [
+              type: {:or, [{:struct, WardrikPolicy}, :keyword_list, {:map, :any, :any}]},
+              doc:
+                "The `WardrikPolicy` every agent is held to, or its rules, as `[deny: [\"shell/*\"]]`."
+            ],
+            keys: [
+              type: {:list, :string},
+              default: [],
+              doc: "Keys to seal secrets with. Without them, no secrets are kept."
+            ],
+            credentials: [
+              type: @entry,
+              doc:
+                "The `WardrikCore.Credentials` tools fetch a person's credentials from, as " <>
+                  "`{module, opts}`. The vault unless set."
+            ],
+            key_source: [
+              type: @entry,
+              doc:
+                "The `WardrikCore.Keys` code fetches API keys from, as `{module, opts}`. " <>
+                  "`Wardrik.Keys` unless set."
+            ],
+            deployment_keys: [
+              type: :boolean,
+              default: false,
+              doc:
+                "`true` to let every agent use the deployment's API keys where its owner holds " <>
+                  "none. A host that doesn't set it gets no fallback. Read by `Wardrik.Keys`."
+            ],
+            grants: [
+              type: {:tuple, [:atom, :any]},
+              doc:
+                "The `WardrikVault.Grants` that renews and asks for accounts people connect, as " <>
+                  "`{module, opts}`. `WardrikOAuth` with `:oauth`, unless set."
+            ],
+            oauth: [
+              type: :keyword_list,
+              doc: "Services people sign in to. Needs `:keys`.",
+              keys: [
+                page: [
+                  type: :string,
+                  required: true,
+                  doc: "Where sign-ins come back to, as `\"https://agents.example.com/oauth\"`."
+                ],
+                providers: [
+                  type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
+                  default: [],
+                  doc: "Providers to start with, by name. See `WardrikOAuth.Provider`."
+                ],
+                client_name: [
+                  type: :string,
+                  doc: "The name a service shows for a client Wardrik registers."
+                ],
+                req_options: [
+                  type: :keyword_list,
+                  default: [],
+                  doc: "Extra options for every `Req` request."
+                ]
+              ]
+            ],
+            mcp: [
+              type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
+              default: [],
+              doc:
+                "MCP servers agents may call, as `[github: [transport: ..., orgs: [\"acme\"]]]`. " <>
+                  "See `WardrikMCP`."
+            ],
+            capabilities: [
+              type: @named,
+              default: [],
+              doc: "Tools definitions name, as `[files: {MyApp.Files, []}]`."
+            ],
+            policies: [
+              type: @named,
+              default: [],
+              doc: "Policies definitions name, as `[careful: [ask: [\"github/*\"]]]`."
+            ],
+            defaults: [
+              type: {:map, {:or, [:atom, :string]}, :any},
+              default: %{},
+              doc:
+                "What every definition gets where it says nothing, as " <>
+                  "`%{\"model\" => \"anthropic:claude-haiku-4-5\"}`."
+            ],
+            middleware: [type: {:list, @entry}, default: [], doc: "Wraps every agent's calls."],
+            idle_timeout: [
+              type: {:or, [:pos_integer, :float, {:in, [:infinity]}]},
+              default: 900,
+              doc: "Seconds a defined agent idles before it sleeps, or `:infinity`."
+            ],
+            channels: [
+              type: @named,
+              default: [],
+              doc: "Chat apps, as `[slack: {WardrikSlack, opts}]`. See `Wardrik.Channel`."
+            ],
+            notify: [
+              type: :keyword_list,
+              default: [],
+              doc: "Where notices go. See `Wardrik.Notify`."
+            ],
+            declarations: [
+              type: :mod_arg,
+              doc: "Agents defined outside the API. See `Wardrik.Declarations`."
+            ],
+            orgs: [type: :mod_arg, doc: "Per-org settings. See `Wardrik.Orgs`."],
+            workspace: [
+              type: :keyword_list,
+              doc: "File trees shared beyond their owners. See `Wardrik.Workspaces`."
+            ],
+            triggers: [
+              type: :keyword_list,
+              default: [],
+              doc: "Options for `WardrikTriggers`.",
+              keys: [
+                req_options: [type: :keyword_list, doc: "`Req` options for reading feeds."],
+                reconcile: [
+                  type: @timeout,
+                  doc:
+                    "Milliseconds between each node reading every trigger again, or `:infinity`."
+                ]
+              ]
+            ],
+            listeners: [
+              type: {:list, @entry},
+              default: [],
+              doc: "Listeners to start. See `Wardrik.Listener`."
+            ],
+            authorizer: [
+              type: :mod_arg,
+              default: {Wardrik.Statements, []},
+              doc: "Decides what each scope may do, as `{module, config}`."
+            ],
+            retention: [type: @timeout, default: 30, doc: "Days events are kept, or `:infinity`."],
+            backend: [
+              type: {:tuple, [:atom, :keyword_list]},
+              doc: "Where agents are kept. The store unless set."
+            ],
+            discovery_interval_ms: [
+              type: :pos_integer,
+              doc: "How often a node looks for agents no node runs. `30_000` unless set."
+            ],
+            trusted_workers: [
+              type: :boolean,
+              default: false,
+              doc: "`true` to treat tool workers' answers as the deployment's own."
+            ],
+            egress: [
+              type: {:fun, 1},
+              default: &Wardrik.Egress.public/1,
+              doc: "Which URLs users may point it at."
+            ],
+            prices: [
+              type: {:map, {:or, [:atom, :string]}, :keyword_list},
+              default: %{},
+              doc: "Model prices the catalog lacks, per million tokens. See below."
+            ]
+          )
+
   @derive {Inspect, except: [:keys, :oauth, :mcp]}
   @enforce_keys [
     :name,
     :store,
     :keys,
+    :credentials,
+    :key_source,
+    :grants,
     :oauth,
     :mcp,
     :listeners,
@@ -77,8 +257,11 @@ defmodule Wardrik do
           name: atom(),
           store: WardrikStore.t(),
           keys: [String.t()],
+          credentials: WardrikCore.Context.entry() | nil,
+          key_source: WardrikCore.Context.entry() | nil,
+          grants: {module(), term()} | nil,
           oauth: keyword() | nil,
-          mcp: keyword() | nil,
+          mcp: [{atom() | String.t(), keyword()}],
           listeners: [module() | {module(), keyword()}],
           channels: %{String.t() => {module(), keyword()}},
           notify: %{
@@ -99,7 +282,7 @@ defmodule Wardrik do
           capabilities: %{String.t() => WardrikCore.Context.entry()},
           policies: %{String.t() => WardrikPolicy.t()},
           middleware: [WardrikCore.Context.entry()],
-          idle_timeout: pos_integer() | :infinity,
+          idle_timeout: number() | :infinity,
           trusted_workers: boolean(),
           egress: (String.t() -> :ok | {:error, String.t()}),
           prices: %{String.t() => WardrikCore.Usage.price()}
@@ -145,47 +328,23 @@ defmodule Wardrik do
 
   ## Options
 
-    * `:name` - required. What Wardrik is reached by.
-    * `:store` - see above.
-    * `:deployment` - the deployment's name in each event's `source`. `"local"` unless set.
-    * `:policy` - the `WardrikPolicy` every agent is held to, or its rules, as `[deny: ["shell/*"]]`.
-    * `:keys` - keys to seal credentials with. Without them, no secrets are kept.
-    * `:oauth` - services people sign in to, as `[page: ..., providers: ...]`. Needs `:keys`.
-      See `Wardrik.Setup.oauth_schema/0`.
-    * `:mcp` - MCP servers agents may call, as `[github: [transport: ..., orgs: ["acme"]]]`.
-      See `WardrikMCP`.
-    * `:capabilities` - tools definitions name, as `[files: {MyApp.Files, []}]`.
-    * `:policies` - policies definitions name, as `[careful: [ask: ["github/*"]]]`.
-    * `:defaults` - what every definition gets where it says nothing, as
-      `%{"model" => "anthropic:claude-haiku-4-5"}`.
-    * `:middleware` - wraps every agent's calls.
-    * `:idle_timeout` - seconds a defined agent idles before it sleeps, or `:infinity`. `900`.
-    * `:channels` - chat apps, as `[slack: {WardrikSlack, opts}]`. See `Wardrik.Channel`.
-    * `:notify` - where notices go. See `Wardrik.Notify`.
-    * `:declarations` - agents defined outside the API. See `Wardrik.Declarations`.
-    * `:orgs` - per-org settings. See `Wardrik.Orgs`.
-    * `:workspace` - file trees shared beyond their owners. See `Wardrik.Workspaces`.
-    * `:triggers` - `[req_options: ..., reconcile: ...]`. See `WardrikTriggers`.
-    * `:listeners` - listeners to start. See `Wardrik.Listener`.
-    * `:authorizer` - `{module, config}`. `{Wardrik.Statements, []}` unless set.
-    * `:retention` - days events are kept, or `:infinity`. `30`.
-    * `:backend` - where agents are kept. The store unless set.
-    * `:discovery_interval_ms` - how often a node looks for agents no node runs. `30_000`.
-    * `:trusted_workers` - `true` to treat tool workers' answers as the deployment's own. `false`.
-    * `:egress` - which URLs users may point it at. `&Wardrik.Egress.public/1` unless set.
-    * `:prices` - model prices the catalog lacks, per million tokens. See `Wardrik.Setup.price/2`.
+  #{NimbleOptions.docs(@schema)}
 
-          prices: %{"zai_coding_plan:glm-5.1" => [priced_as: "zai:glm-5.1", markup: 0.1]}
+  ### Prices
+
+      prices: %{"zai_coding_plan:glm-5.1" => [priced_as: "zai:glm-5.1", markup: 0.1]}
+
+  See `Wardrik.Setup.price/2`.
   """
   @spec start_link(keyword() | t()) :: Supervisor.on_start()
   def start_link(%__MODULE__{name: name} = wardrik),
     do: Supervisor.start_link(__MODULE__, wardrik, name: name)
 
-  def start_link(opts) when is_list(opts), do: opts |> Setup.wardrik() |> start_link()
+  def start_link(opts) when is_list(opts), do: opts |> new() |> start_link()
 
   @doc false
   @spec new(keyword()) :: t()
-  def new(opts), do: Setup.wardrik(opts)
+  def new(opts), do: opts |> NimbleOptions.validate!(@schema) |> Setup.wardrik()
 
   @doc """
   Returns the principal with `id`, such as `"acme/@maria"`, and optional `attributes`.
@@ -198,7 +357,8 @@ defmodule Wardrik do
   @doc """
   Returns the name of the API key `model`'s provider needs, or `nil`.
 
-  Calls to `model` use the secret of that name, the owner's or the deployment's.
+  Calls to `model` use the owner's secret of that name, or the deployment's with
+  `deployment_keys: true`. See `Wardrik.Keys`.
 
       Wardrik.key_name("zai_coding_plan:glm-5.1")
       #=> "ZAI_API_KEY"

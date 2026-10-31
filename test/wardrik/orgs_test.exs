@@ -59,6 +59,15 @@ defmodule Wardrik.OrgsTest do
 
   defp ask(scope, id), do: run!(scope, "agent.ask", %{"agent" => id, "content" => "Look"})
 
+  test "an agent's or owner's org is read through Wardrik.Owners" do
+    assert Enum.map(
+             ["acme/@maria/assistant", "acme/triage/C1", "acme/@maria", "acme", "deployment"],
+             &Wardrik.Orgs.org/1
+           ) == ["acme", "acme", "acme", "acme", "deployment"]
+
+    assert Wardrik.Orgs.org("slack:T0123/U024BE7LH") == "slack:T0123/U024BE7LH"
+  end
+
   describe "an org's settings" do
     test "give its definitions its defaults, and policies they may name", %{
       scope: scope,

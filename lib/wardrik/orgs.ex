@@ -27,20 +27,43 @@ defmodule Wardrik.Orgs do
   Its agents then can't start or be defined, and no secrets, servers or tokens can be stored for it.
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.Ceiling
   alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Operations.Running
   alias Wardrik.OrgSettings
+  alias Wardrik.Owners
+  alias Wardrik.Resource
   alias Wardrik.Setup
 
   @doc "Returns `org`'s settings, or an error if it doesn't exist."
   @callback settings(org :: String.t(), config :: term()) ::
               {:ok, OrgSettings.t()} | {:error, term()}
 
-  @doc "Returns the org of the agent `id`."
+  @doc """
+  Returns the org of the agent or owner `id`.
+
+      Wardrik.Orgs.org("acme/@maria/assistant")
+      #=> "acme"
+
+  The deployment's is `"deployment"`. An `id` that's neither is returned as it is.
+  """
   @spec org(String.t()) :: String.t()
-  def org(id), do: id |> String.split("/", parts: 2) |> hd()
+  def org(id) do
+    case id |> owner() |> Owners.parse() do
+      {:ok, %{org: nil}} -> Resource.deployment()
+      {:ok, %{org: org}} -> org
+      :error -> id
+    end
+  end
+
+  defp owner(id) do
+    case AgentID.parse(id) do
+      {:ok, %AgentID{owner: owner}} -> owner
+      :error -> id
+    end
+  end
 
   @doc """
   Returns `org`'s settings, with each policy and ceiling built, or an error if they're invalid.

@@ -12,7 +12,13 @@ defmodule Wardrik.KeysTest do
   setup :set_mimic_global
 
   setup context do
-    wardrik = Wardrik.new(name: :"wardrik #{context.test}", keys: [WardrikVault.generate_key()])
+    wardrik =
+      Wardrik.new(
+        name: :"wardrik #{context.test}",
+        keys: [WardrikVault.generate_key()],
+        deployment_keys: Map.get(context, :deployment_keys, false)
+      )
+
     start_supervised!({Wardrik, wardrik})
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     %{wardrik: wardrik, scope: owner(wardrik)}
@@ -32,6 +38,7 @@ defmodule Wardrik.KeysTest do
     key
   end
 
+  @tag deployment_keys: true
   test "a model call takes its owner's key, then its org's, then the deployment's", %{
     wardrik: wardrik,
     scope: scope
@@ -48,6 +55,23 @@ defmodule Wardrik.KeysTest do
     :ok = Wardrik.put_secret(wardrik, "acme/@maria", "ANTHROPIC_API_KEY", "sk-maria")
     assert key_used(scope, "acme/@maria/fifth") == "sk-maria"
     assert key_used(scope, "globex/sixth") == "sk-deployment"
+  end
+
+  test "a model call takes its owner's key, then its org's, and never the deployment's unless the host says so",
+       %{wardrik: wardrik, scope: scope} do
+    :ok = Wardrik.put_secret(wardrik, "deployment", "ANTHROPIC_API_KEY", "sk-deployment")
+    assert key_used(scope, "acme/first") == nil
+
+    :ok = Wardrik.put_secret(wardrik, "acme", "ANTHROPIC_API_KEY", "sk-acme")
+    assert key_used(scope, "acme/@maria/second") == "sk-acme"
+
+    vault = Wardrik.vault(wardrik)
+    principal = %Principal{id: "deployment"}
+
+    assert Wardrik.Keys.fetch("ANTHROPIC_API_KEY", principal, vault: vault) ==
+             {:ok, "sk-deployment"}
+
+    assert Wardrik.Keys.fetch("ANTHROPIC_API_KEY", nil, vault: vault) == :error
   end
 
   test "a key is read as it's used, so a new one takes effect at once", %{
@@ -106,6 +130,7 @@ defmodule Wardrik.KeysTest do
     refute_receive {:authorization, "/mcp", ["Bearer acme"]}, 500
   end
 
+  @tag deployment_keys: true
   test "an owner's keys reach no tool's credentials, and the deployment's reach no owner", %{
     wardrik: wardrik
   } do
@@ -114,7 +139,9 @@ defmodule Wardrik.KeysTest do
 
     assert {:error, _none} = WardrikVault.resolve("ZAI_API_KEY", %Principal{id: "acme"}, vault)
 
-    assert Wardrik.Keys.fetch("ZAI_API_KEY", %Principal{id: "acme"}, vault) ==
-             {:ok, "sk-deployment"}
+    assert Wardrik.Keys.fetch("ZAI_API_KEY", %Principal{id: "acme"},
+             vault: vault,
+             deployment: true
+           ) == {:ok, "sk-deployment"}
   end
 end

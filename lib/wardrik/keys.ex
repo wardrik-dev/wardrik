@@ -6,7 +6,7 @@ defmodule Wardrik.Keys do
 
     1. The person, for a person's agent.
     2. The org.
-    3. The deployment.
+    3. The deployment, only if Wardrik starts with `deployment_keys: true`.
 
   An org or person brings its own key by sealing a secret with the key's name:
 
@@ -14,6 +14,11 @@ defmodule Wardrik.Keys do
 
   If no one holds it, the code finds its own, as ReqLLM reads the environment. Only secrets
   count. A connected account is a credential, never a key.
+
+  ## Options
+
+    * `:vault` - required. The vault the keys are sealed in.
+    * `:deployment` - `true` to fall back to the deployment's keys. `false` unless set.
   """
 
   @behaviour WardrikCore.Keys
@@ -23,15 +28,28 @@ defmodule Wardrik.Keys do
   alias WardrikCore.Principal
 
   @impl WardrikCore.Keys
-  def fetch(name, principal, vault) do
-    Enum.find_value(owners(principal), :error, &held(vault, &1, name))
+  def fetch(name, principal, opts) do
+    vault = Keyword.fetch!(opts, :vault)
+    owners = owners(principal, Keyword.get(opts, :deployment, false))
+    Enum.find_value(owners, :error, &held(vault, &1, name))
   end
 
-  @doc "Returns the owners whose keys an agent working for `principal` uses, nearest first."
-  @spec owners(Principal.t() | nil) :: [String.t()]
-  def owners(%Principal{id: id}), do: Owners.chain(id)
+  @doc """
+  Returns the owners whose keys an agent working for `principal` uses, nearest first.
 
-  def owners(nil), do: [Resource.deployment()]
+      Wardrik.Keys.owners(%WardrikCore.Principal{id: "acme/@jon"}, false)
+      #=> ["acme/@jon", "acme"]
+  """
+  @spec owners(Principal.t() | nil, boolean()) :: [String.t()]
+  def owners(%Principal{id: id}, true), do: Owners.chain(id)
+
+  def owners(%Principal{id: id}, false) do
+    [nearest | further] = Owners.chain(id)
+    [nearest | List.delete(further, Resource.deployment())]
+  end
+
+  def owners(nil, true), do: [Resource.deployment()]
+  def owners(nil, false), do: []
 
   defp held(vault, owner, name) do
     case WardrikVault.lookup(vault, %Principal{id: owner}, name) do

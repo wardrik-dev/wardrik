@@ -162,7 +162,6 @@ defmodule Wardrik.Resolution do
     end
   end
 
-  defp started(%Wardrik{mcp: nil}), do: []
   defp started(%Wardrik{mcp: mcp}), do: Enum.map(mcp, fn {name, _opts} -> to_string(name) end)
 
   defp entries(wardrik, id, named) do

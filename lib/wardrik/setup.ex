@@ -1,76 +1,22 @@
 defmodule Wardrik.Setup do
   @moduledoc "Builds `%Wardrik{}` from `Wardrik.start_link/1`'s options, and each agent's options."
 
-  @oauth NimbleOptions.new!(
-           page: [
-             type: :string,
-             required: true,
-             doc: "Where sign-ins come back to, as `\"https://agents.example.com/oauth\"`."
-           ],
-           providers: [
-             type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
-             default: [],
-             doc: "Providers to start with, by name. See `WardrikOAuth.Provider`."
-           ],
-           client_name: [
-             type: :string,
-             doc: "The name a service shows for a client Wardrik registers."
-           ],
-           req_options: [
-             type: :keyword_list,
-             default: [],
-             doc: "Extra options for every `Req` request."
-           ]
-         )
-
-  @doc """
-  The `:oauth` option of `Wardrik.start_link/1`.
-
-  #{NimbleOptions.docs(@oauth)}
-  """
-  @spec oauth_schema() :: NimbleOptions.t()
-  def oauth_schema, do: @oauth
-
-  @doc "Builds a `%Wardrik{}` from `Wardrik.start_link/1`'s options."
+  @doc "Builds a `%Wardrik{}` from `Wardrik.start_link/1`'s options, once they're validated."
   @spec wardrik(keyword()) :: Wardrik.t()
   def wardrik(opts) do
-    opts =
-      Keyword.validate!(opts, [
-        :name,
-        :store,
-        :backend,
-        :policy,
-        :oauth,
-        :mcp,
-        :declarations,
-        :workspace,
-        :notify,
-        :orgs,
-        :discovery_interval_ms,
-        defaults: %{},
-        listeners: [],
-        channels: [],
-        triggers: [],
-        keys: [],
-        deployment: "local",
-        authorizer: {Wardrik.Statements, []},
-        retention: 30,
-        capabilities: [],
-        policies: [],
-        middleware: [],
-        idle_timeout: 900,
-        trusted_workers: false,
-        egress: &Wardrik.Egress.public/1,
-        prices: %{}
-      ])
-
     name = Keyword.fetch!(opts, :name)
     store = store(name, opts[:store])
+    vault = Module.concat(name, Vault)
 
     %Wardrik{
       name: name,
       store: store,
       keys: opts[:keys],
+      credentials: opts[:credentials] || vaulted(opts[:keys], {WardrikVault, vault}),
+      key_source:
+        opts[:key_source] ||
+          vaulted(opts[:keys], {Wardrik.Keys, vault: vault, deployment: opts[:deployment_keys]}),
+      grants: opts[:grants] || grants(opts[:oauth], Module.concat(name, OAuth)),
       oauth: oauth(opts[:oauth], opts[:keys]),
       mcp: opts[:mcp],
       listeners: opts[:listeners],
@@ -80,7 +26,7 @@ defmodule Wardrik.Setup do
       orgs: opts[:orgs],
       workspace: Wardrik.Workspaces.settings(opts[:workspace]),
       defaults: Wardrik.Type.json(opts[:defaults]),
-      triggers: Keyword.validate!(opts[:triggers], [:req_options, :reconcile]),
+      triggers: opts[:triggers],
       deployment: opts[:deployment],
       authorizer: opts[:authorizer],
       retention: opts[:retention],
@@ -162,7 +108,7 @@ defmodule Wardrik.Setup do
   @doc """
   Returns the options `WardrikCore.start_agent/2` takes for the agent `opts` describe.
 
-  Adds Wardrik's events, prices, credentials and keys, spending, middleware and policies. The
+  Adds Wardrik's events, prices, credentials and key source, spending, middleware and policies. The
   agent's own `:policy` is held alongside Wardrik's.
   """
   @spec agent(Wardrik.t(), keyword()) :: keyword()
@@ -197,14 +143,8 @@ defmodule Wardrik.Setup do
   defp store(_name, %WardrikStore{} = store), do: store
   defp store(name, nil), do: store(name, {WardrikStore.ETS, []})
 
-  defp store(name, {adapter, opts}) when is_atom(adapter) and is_list(opts),
+  defp store(name, {adapter, opts}),
     do: built(adapter, Keyword.put_new(opts, :name, Module.concat(name, Store)))
-
-  defp store(_name, store) do
-    raise ArgumentError,
-          "Give Wardrik's :store as {adapter, opts}, as {WardrikStore.EKV, data_dir: \"/var/lib/my_app\"}, " <>
-            "or a built %WardrikStore{}, got: #{inspect(store)}"
-  end
 
   defp built(adapter, opts) do
     if Code.ensure_loaded?(adapter),
@@ -229,18 +169,22 @@ defmodule Wardrik.Setup do
   defp oauth(_oauth, []),
     do: raise(ArgumentError, "Give Wardrik :keys to seal what people sign in with.")
 
-  defp oauth(oauth, _keys),
-    do: NimbleOptions.validate!(oauth, @oauth)
+  defp oauth(oauth, _keys), do: oauth
 
-  defp credentials(opts, %Wardrik{keys: []}), do: opts
+  defp vaulted([], _entry), do: nil
+  defp vaulted(_keys, entry), do: entry
+
+  defp grants(nil, _oauth), do: nil
+  defp grants(_oauth, name), do: {WardrikOAuth, name}
 
   defp credentials(opts, wardrik) do
-    vault = Wardrik.vault(wardrik)
-
     opts
-    |> Keyword.put_new(:credentials, {WardrikVault, vault})
-    |> Keyword.put_new(:keys, {Wardrik.Keys, vault})
+    |> given(:credentials, wardrik.credentials)
+    |> given(:keys, wardrik.key_source)
   end
+
+  defp given(opts, _key, nil), do: opts
+  defp given(opts, key, entry), do: Keyword.put_new(opts, key, entry)
 
   defp wrapped(opts, middleware),
     do: Keyword.update(opts, :middleware, middleware, &(middleware ++ &1))

@@ -96,12 +96,15 @@ defmodule Wardrik.Operations.Tokens do
 
   defp known_orgs(wardrik, resources) do
     resources
-    |> Enum.map(&Orgs.org/1)
+    |> Enum.map(&org/1)
     |> Enum.reject(&String.contains?(&1, ["*", "?"]))
     |> Enum.uniq()
     |> Enum.map(&Orgs.known(wardrik, &1))
     |> Enum.find(:ok, &match?({:error, _error}, &1))
   end
+
+  # A resource pattern's first segment is its org, as `acme` in `acme/@jon/agent/*`.
+  defp org(resource), do: resource |> String.split("/", parts: 2) |> hd()
 
   @doc """
   Lists tokens, oldest first, without secrets.

@@ -46,7 +46,7 @@ defmodule Wardrik.AgentTools do
     offered(Keyword.fetch!(opts, :reach), %{
       wardrik: wardrik,
       id: id,
-      org: org(id),
+      org: Wardrik.Orgs.org(id),
       policy: nil,
       labels: []
     })
@@ -236,6 +236,4 @@ defmodule Wardrik.AgentTools do
 
   defp named(me, "@" <> _user = name), do: me.org <> "/" <> name
   defp named(me, name), do: me.org <> "/" <> String.trim_leading(name, me.org <> "/")
-
-  defp org(id), do: id |> String.split("/", parts: 2) |> hd()
 end
