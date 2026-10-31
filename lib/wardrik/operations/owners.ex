@@ -7,26 +7,18 @@ defmodule Wardrik.Operations.Owners do
   alias Wardrik.Error
   alias Wardrik.MCPTools
   alias Wardrik.Operations.Changes
+  alias Wardrik.Operations.Providers
   alias Wardrik.Owners
   alias Wardrik.Scope
   alias WardrikCore.Principal
 
-  @app %{
-    "issuer" => :issuer,
-    "authorization_endpoint" => :authorization_endpoint,
-    "token_endpoint" => :token_endpoint,
-    "client_id" => :client_id,
-    "client_auth" => :client_auth
-  }
-  @client_auths %{"post" => :post, "basic" => :basic}
-
   @doc """
   Lists the accounts the owner can connect, and whether each is connected.
 
-  These are Wardrik's OAuth providers, plus each server that uses browser sign-in and serves the
-  owner: their own, their org's for a person, and the deployment's. The nearest server of a name
-  wins, and a server replaces a provider of the same name. Each account is the owner's own,
-  whoever added its server. See `Wardrik.Owners`.
+  These are the OAuth apps the owner signs in with, plus each server that makes its own sign-in
+  and serves the owner: their own, their org's for a person, and the deployment's. The nearest
+  app or server of a name wins, and a server replaces an app of the same name. Each account is
+  the owner's own, whoever added its app or server. See `Wardrik.Owners`.
   """
   @spec connections(Scope.t(), map()) :: {:ok, map()}
   def connections(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
@@ -166,6 +158,7 @@ defmodule Wardrik.Operations.Owners do
     with :ok <- unused(wardrik, owner, name),
          :ok <- reachable(wardrik, url),
          {:ok, reached, kind} <- reached(wardrik, owner, key, input),
+         credential = reached[:credential_name],
          :ok <-
            added(
              wardrik,
@@ -177,7 +170,7 @@ defmodule Wardrik.Operations.Owners do
            WardrikStore.put(store(wardrik), prefix(owner) <> name, record(input, kind)) do
       data = %{"server" => %{"name" => name, "url" => url}}
       Changes.record_owned(scope, "server.added", owner, "servers/" <> name, data)
-      answered(wardrik, %Principal{id: owner}, key, kind, name)
+      answered(wardrik, %Principal{id: owner}, credential, kind, name)
     end
   end
 
@@ -193,7 +186,7 @@ defmodule Wardrik.Operations.Owners do
 
       record ->
         WardrikMCP.remove(Wardrik.mcp(wardrik), key)
-        forget_sign_ins(wardrik, key, record["auth"])
+        forget_sign_ins(wardrik, owner, key, record)
         :ok = WardrikStore.delete(store, prefix(owner) <> name)
 
         Changes.record_owned(scope, "server.removed", owner, "servers/" <> name, %{
@@ -203,15 +196,6 @@ defmodule Wardrik.Operations.Owners do
         {:ok, listed(record)}
     end
   end
-
-  defp providers(%Wardrik{oauth: nil}), do: []
-
-  defp providers(wardrik),
-    do:
-      wardrik
-      |> Wardrik.oauth()
-      |> WardrikOAuth.providers()
-      |> Enum.reject(&String.contains?(&1, ":"))
 
   defp held(%Wardrik{keys: []}, _owner), do: []
   defp held(wardrik, owner), do: WardrikVault.names(Wardrik.vault(wardrik), %Principal{id: owner})
@@ -228,7 +212,9 @@ defmodule Wardrik.Operations.Owners do
     named = Enum.map(servers, &elem(&1, 0))
 
     providers =
-      for provider <- providers(wardrik), provider not in named, do: {provider, provider}
+      for %{name: provider} <- Providers.offered(wardrik, owner),
+          provider not in named,
+          do: {provider, provider}
 
     providers ++ servers
   end
@@ -244,7 +230,8 @@ defmodule Wardrik.Operations.Owners do
     store = store(wardrik)
 
     for key <- WardrikStore.keys(store, prefix(owner)),
-        %{"name" => name, "auth" => "oauth"} <- [WardrikStore.get(store, key)],
+        %{"name" => name, "auth" => "oauth"} = record <- [WardrikStore.get(store, key)],
+        not Map.has_key?(record, "provider"),
         do: name
   end
 
@@ -296,49 +283,17 @@ defmodule Wardrik.Operations.Owners do
   defp reached(%Wardrik{oauth: nil}, _owner, _key, %{"auth" => %{"oauth" => _oauth}}),
     do: {:error, Error.new(:not_supported, "Signing in to a server needs Wardrik's oauth.")}
 
+  # A server naming an OAuth app signs in with it, so connecting the app once covers the server.
+  defp reached(wardrik, owner, _key, %{"auth" => %{"oauth" => %{"provider" => provider}}}) do
+    if Enum.any?(Providers.offered(wardrik, owner), &(&1.name == provider)),
+      do: {:ok, [credential_name: provider], "oauth"},
+      else: {:error, Error.new(:invalid_request, "#{owner} has no OAuth app #{provider}.")}
+  end
+
   defp reached(wardrik, owner, key, %{"auth" => %{"oauth" => oauth}, "url" => url}) do
-    with {:ok, secret} <- client_secret(wardrik, owner, oauth["client_secret"]),
-         :ok <- added_provider(wardrik, key, app(url, oauth) ++ secret),
+    with {:ok, opts} <- Providers.options(wardrik, owner, Map.put(oauth, "resource", url)),
+         :ok <- Providers.added(wardrik, owner, key, opts),
          do: {:ok, [credential_name: key], "oauth"}
-  end
-
-  defp client_secret(_wardrik, _owner, nil), do: {:ok, []}
-
-  defp client_secret(%Wardrik{keys: []}, _owner, _secret),
-    do:
-      {:error,
-       Error.new(:not_supported, "An app's client secret needs Wardrik to keep credentials.")}
-
-  defp client_secret(wardrik, owner, %{"name" => name}) do
-    case WardrikVault.fetch(Wardrik.vault(wardrik), %Principal{id: owner}, name) do
-      {:ok, value} ->
-        {:ok, [client_secret: value]}
-
-      {:error, _reason} ->
-        {:error, Error.new(:invalid_request, "#{owner} holds no secret #{name}.")}
-    end
-  end
-
-  defp app(url, oauth) do
-    given =
-      oauth
-      |> Map.take(Map.keys(@app))
-      |> Enum.map(fn {field, value} -> app_option(field, value) end)
-
-    [resource: url, scopes: Map.get(oauth, "scopes", [])] ++ given
-  end
-
-  defp app_option("client_auth", how), do: {:client_auth, Map.fetch!(@client_auths, how)}
-  defp app_option(field, value), do: {Map.fetch!(@app, field), value}
-
-  defp added_provider(wardrik, key, opts) do
-    case WardrikOAuth.add_provider(Wardrik.oauth(wardrik), key, opts) do
-      :ok ->
-        :ok
-
-      {:error, why} ->
-        {:error, Error.new(:invalid_request, "The server can't be signed in to: #{why}")}
-    end
   end
 
   defp headers(header, sent), do: [headers: %{header => sent}]
@@ -366,27 +321,37 @@ defmodule Wardrik.Operations.Owners do
         do: {key, value}
   end
 
-  defp answered(wardrik, principal, key, "oauth", name) do
-    if key in held(wardrik, principal.id),
+  defp answered(wardrik, principal, credential, "oauth", name) do
+    if credential in held(wardrik, principal.id),
       do: {:ok, %{"server" => name, "connected" => true}},
-      else: authorizing(wardrik, key, principal, %{"server" => name})
+      else: authorizing(wardrik, credential, principal, %{"server" => name})
   end
 
   defp answered(_wardrik, _principal, _key, _kind, name),
     do: {:ok, %{"server" => name, "connected" => true}}
 
-  defp forget_sign_ins(wardrik, key, "oauth") do
+  # A server that names an OAuth app leaves the app, and the accounts connected with it, alone.
+  defp forget_sign_ins(wardrik, owner, key, %{"auth" => "oauth"} = record)
+       when not is_map_key(record, "provider") do
     vault = Wardrik.vault(wardrik)
 
     for {id, ^key, _kind} <- WardrikVault.list(vault),
         do: WardrikVault.delete(vault, %Principal{id: id}, key)
 
-    WardrikOAuth.remove_provider(Wardrik.oauth(wardrik), key)
+    WardrikOAuth.remove_provider(Wardrik.oauth(wardrik), owner, key)
   end
 
-  defp forget_sign_ins(_wardrik, _key, _kind), do: :ok
+  defp forget_sign_ins(_wardrik, _owner, _key, _record), do: :ok
 
-  defp record(input, kind), do: %{"name" => input["name"], "url" => input["url"], "auth" => kind}
+  defp record(input, kind) do
+    record = %{"name" => input["name"], "url" => input["url"], "auth" => kind}
+
+    case input["auth"] do
+      %{"oauth" => %{"provider" => provider}} -> Map.put(record, "provider", provider)
+      _auth -> record
+    end
+  end
+
   defp listed(record), do: Map.take(record, ["name", "url", "auth"])
 
   defp prefix(owner), do: "servers/" <> URI.encode_www_form(owner) <> "/"

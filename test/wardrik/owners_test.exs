@@ -10,7 +10,8 @@ defmodule Wardrik.OwnersTest do
   setup {Req.Test, :set_req_test_to_shared}
 
   setup context do
-    Req.Test.stub(__MODULE__, &authorization_server/1)
+    test = self()
+    Req.Test.stub(__MODULE__, &authorization_server(&1, test))
 
     wardrik =
       Wardrik.new(
@@ -25,7 +26,8 @@ defmodule Wardrik.OwnersTest do
             mail: [
               authorization_endpoint: "https://mail.test/authorize",
               token_endpoint: "https://mail.test/token",
-              client_id: "wardrik"
+              client_id: "wardrik",
+              client_secret: "mail-secret"
             ]
           ]
         ]
@@ -35,7 +37,7 @@ defmodule Wardrik.OwnersTest do
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 
-  defp authorization_server(conn) do
+  defp authorization_server(conn, test) do
     case {conn.method, conn.request_path} do
       {"GET", "/.well-known/oauth-protected-resource/mcp"} ->
         Req.Test.json(conn, %{"authorization_servers" => ["https://auth.test"]})
@@ -50,7 +52,36 @@ defmodule Wardrik.OwnersTest do
 
       {"POST", "/register"} ->
         conn |> Plug.Conn.put_status(201) |> Req.Test.json(%{"client_id" => "registered"})
+
+      {"POST", "/token"} ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        basic = Plug.Conn.get_req_header(conn, "authorization")
+        send(test, {:exchanged, conn.host, URI.decode_query(body), basic})
+        Req.Test.json(conn, %{"access_token" => "token", "expires_in" => 3600})
     end
+  end
+
+  defp signed_in(wardrik, url) do
+    state = URI.decode_query(URI.parse(url).query)["state"]
+    WardrikOAuth.finish(Wardrik.oauth(wardrik), %{"state" => state, "code" => "c0de"})
+  end
+
+  defp app(owner, name, host, fields \\ %{}) do
+    Map.merge(
+      %{
+        "owner" => owner,
+        "name" => name,
+        "authorization_endpoint" => "https://#{host}/authorize",
+        "token_endpoint" => "https://#{host}/token",
+        "client_id" => "#{name}-app"
+      },
+      fields
+    )
+  end
+
+  defp listed(scope, owner) do
+    %{"providers" => providers} = run!(scope, "providers.list", %{"owner" => owner})
+    Enum.map(providers, &{&1["owner"], &1["name"]})
   end
 
   defp hold(wardrik, owner, name, value),
@@ -210,7 +241,10 @@ defmodule Wardrik.OwnersTest do
       assert %{"name" => "crm", "auth" => "oauth"} =
                run!(scope, "mcp_servers.remove", %{"owner" => "acme", "server" => "crm"})
 
-      refute "acme:crm" in WardrikOAuth.providers(Wardrik.oauth(wardrik))
+      refute "acme:crm" in Enum.map(
+               WardrikOAuth.providers(Wardrik.oauth(wardrik), "acme"),
+               & &1.name
+             )
     end
 
     test "offers an owner's server signed in to in a browser among their accounts, signed in as them",
@@ -275,6 +309,73 @@ defmodule Wardrik.OwnersTest do
 
       assert "https://crm-auth.test/authorize?" <> query = url
       assert %{"client_id" => "acme-app", "scope" => "read"} = URI.decode_query(query)
+
+      assert [%WardrikOAuth.Provider{owner: "acme", client_secret: {:secret, "CRM_APP_SECRET"}}] =
+               wardrik
+               |> Wardrik.oauth()
+               |> WardrikOAuth.providers("acme")
+               |> Enum.filter(&(&1.name == "acme:crm"))
+
+      assert {:ok, "acme:crm"} = signed_in(wardrik, url)
+      assert_received {:exchanged, "crm-auth.test", %{"code" => "c0de"}, [first]}
+      assert first == "Basic " <> Base.encode64("acme-app:app-secret")
+
+      hold(wardrik, "acme", "CRM_APP_SECRET", "rotated")
+      run!(scope, "connections.disconnect", %{"owner" => "acme", "provider" => "crm"})
+
+      assert %{"authorization" => %{"url" => url}} =
+               run!(scope, "connections.connect", %{"owner" => "acme", "provider" => "crm"})
+
+      assert {:ok, "acme:crm"} = signed_in(wardrik, url)
+      assert_received {:exchanged, "crm-auth.test", _form, [rotated]}
+      assert rotated == "Basic " <> Base.encode64("acme-app:rotated")
+    end
+
+    test "signs in with an OAuth app the owner can use, connected once for every server naming it",
+         %{wardrik: wardrik, scope: scope} do
+      run!(scope, "providers.add", app("acme", "google", "google.test"))
+
+      server = %{
+        "owner" => "acme/@maria",
+        "name" => "ads",
+        "url" => "https://ads.test/mcp",
+        "auth" => %{"oauth" => %{"provider" => "google"}}
+      }
+
+      assert %{"server" => "ads", "connected" => false, "authorization" => %{"url" => url}} =
+               run!(scope, "mcp_servers.add", server)
+
+      assert "https://google.test/authorize?" <> query = url
+      assert %{"client_id" => "google-app"} = URI.decode_query(query)
+      assert {:ok, "google"} = signed_in(wardrik, url)
+
+      analytics = %{server | "name" => "analytics", "url" => "https://analytics.test/mcp"}
+
+      assert %{"server" => "analytics", "connected" => true} =
+               run!(scope, "mcp_servers.add", analytics)
+
+      assert %{"connections" => connections} =
+               run!(scope, "connections.list", %{"owner" => "acme/@maria"})
+
+      assert %{"provider" => "google", "connected" => true} in connections
+      refute Enum.any?(connections, &(&1["provider"] in ["ads", "analytics"]))
+
+      assert %{"name" => "ads", "auth" => "oauth"} =
+               run!(scope, "mcp_servers.remove", %{"owner" => "acme/@maria", "server" => "ads"})
+
+      assert {"acme", "google"} in listed(scope, "acme/@maria")
+      assert "google" in WardrikVault.names(Wardrik.vault(wardrik), %Principal{id: "acme/@maria"})
+
+      for {owner, provider} <- [{"globex", "google"}, {"acme", "nope"}] do
+        assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
+                 Wardrik.run(scope, "mcp_servers.add", %{
+                   server
+                   | "owner" => owner,
+                     "auth" => %{"oauth" => %{"provider" => provider}}
+                 })
+
+        assert message == "#{owner} has no OAuth app #{provider}."
+      end
     end
 
     test "refuses an owner's OAuth app whose secret they don't hold, or that names no client", %{
@@ -407,6 +508,163 @@ defmodule Wardrik.OwnersTest do
     end
   end
 
+  describe "providers" do
+    test "lists an owner's OAuth apps, then those from further out, the nearest of each name", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      hold(wardrik, "acme", "GOOGLE_SECRET", "s3cret")
+
+      run!(scope, "providers.add", app("deployment", "google", "google.test"))
+
+      run!(
+        scope,
+        "providers.add",
+        app("acme", "google", "acme-google.test", %{
+          "client_secret" => %{"name" => "GOOGLE_SECRET"},
+          "client_auth" => "basic",
+          "scopes" => ["ads"],
+          "authorization_params" => %{"access_type" => "offline"}
+        })
+      )
+
+      run!(scope, "providers.add", app("acme/@jon", "notes", "notes.test"))
+
+      assert listed(scope, "acme/@jon") == [
+               {"acme/@jon", "notes"},
+               {"acme", "google"},
+               {"deployment", "mail"}
+             ]
+
+      assert listed(scope, "globex") == [{"deployment", "google"}, {"deployment", "mail"}]
+
+      assert %{"providers" => [_notes, google, mail]} =
+               run!(scope, "providers.list", %{"owner" => "acme/@jon"})
+
+      assert google == %{
+               "owner" => "acme",
+               "name" => "google",
+               "source" => "runtime",
+               "authorization_endpoint" => "https://acme-google.test/authorize",
+               "token_endpoint" => "https://acme-google.test/token",
+               "client_id" => "google-app",
+               "client_secret" => %{"name" => "GOOGLE_SECRET"},
+               "client_auth" => "basic",
+               "scopes" => ["ads"],
+               "flow" => "browser",
+               "authorization_params" => %{"access_type" => "offline"}
+             }
+
+      assert %{"source" => "config", "client_id" => "wardrik"} = mail
+      refute Map.has_key?(mail, "client_secret")
+
+      refute inspect(run!(scope, "providers.list", %{"owner" => "acme"})) =~
+               ~r/s3cret|mail-secret/
+
+      assert {:ok, [%Wardrik.Provider{owner: "acme", client_secret: "GOOGLE_SECRET"} | _rest]} =
+               Wardrik.Providers.list(scope, owner: "acme")
+    end
+
+    test "adds and removes an owner's own, which no other owner sees or removes", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      google = app("acme", "google", "google.test")
+
+      assert %{"owner" => "acme", "name" => "google", "source" => "runtime"} =
+               run!(scope, "providers.add", google)
+
+      assert refused(scope, "providers.add", google) == :conflict
+      assert refused(scope, "providers.add", app("deployment", "mail", "mail.test")) == :conflict
+
+      assert %{"owner" => "acme/@jon", "name" => "google"} =
+               run!(scope, "providers.add", %{google | "owner" => "acme/@jon"})
+
+      refute {"acme", "google"} in listed(scope, "globex")
+
+      assert refused(scope, "providers.remove", %{"owner" => "globex", "provider" => "google"}) ==
+               :not_found
+
+      assert %{"owner" => "acme", "name" => "google", "client_id" => "google-app"} =
+               run!(scope, "providers.remove", %{"owner" => "acme", "provider" => "google"})
+
+      assert refused(scope, "providers.remove", %{"owner" => "acme", "provider" => "google"}) ==
+               :not_found
+
+      assert refused(scope, "providers.remove", %{"owner" => "deployment", "provider" => "mail"}) ==
+               :invalid_request
+
+      assert {"acme/@jon", "google"} in listed(scope, "acme/@jon")
+
+      assert {:error, %Wardrik.Error{message: "acme holds no secret NOPE."}} =
+               Wardrik.run(
+                 scope,
+                 "providers.add",
+                 Map.put(google, "client_secret", %{"name" => "NOPE"})
+               )
+
+      assert Enum.filter(types(scope), &String.starts_with?(&1, "wardrik.provider.")) ==
+               ~w(wardrik.provider.added wardrik.provider.added wardrik.provider.removed)
+
+      :ok = Wardrik.put_secret(wardrik, "acme", "GOOGLE_SECRET", "s3cret")
+
+      assert {:ok, %Wardrik.Provider{owner: "acme", client_secret: "GOOGLE_SECRET"}} =
+               Wardrik.Providers.add(scope,
+                 owner: "acme",
+                 name: "google",
+                 issuer: "https://accounts.google.com",
+                 client_id: "google-app",
+                 client_secret: %{name: "GOOGLE_SECRET"},
+                 authorization_params: %{access_type: "offline"}
+               )
+
+      assert {:ok,
+              %Wardrik.Provider{
+                name: "google",
+                authorization_params: %{"access_type" => "offline"}
+              }} =
+               Wardrik.Providers.remove(scope, "google", owner: "acme")
+    end
+
+    test "offers an org's OAuth app to its people, each signing in as themselves", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      run!(scope, "providers.add", app("acme", "linear", "linear.test"))
+
+      for person <- ["acme/@maria", "acme/@jon"] do
+        assert %{"connections" => connections} =
+                 run!(scope, "connections.list", %{"owner" => person})
+
+        assert %{"provider" => "linear", "connected" => false} in connections
+      end
+
+      assert %{"connections" => connections} =
+               run!(scope, "connections.list", %{"owner" => "globex/@lee"})
+
+      refute Enum.any?(connections, &(&1["provider"] == "linear"))
+
+      assert %{"authorization" => %{"url" => "https://linear.test/authorize?" <> _query = url}} =
+               run!(scope, "connections.connect", %{
+                 "owner" => "acme/@maria",
+                 "provider" => "linear"
+               })
+
+      assert {:ok, "linear"} = signed_in(wardrik, url)
+      assert_received {:exchanged, "linear.test", %{"client_id" => "linear-app"}, []}
+
+      assert %{"connections" => connections} =
+               run!(scope, "connections.list", %{"owner" => "acme/@maria"})
+
+      assert %{"provider" => "linear", "connected" => true} in connections
+
+      assert %{"connections" => connections} =
+               run!(scope, "connections.list", %{"owner" => "acme/@jon"})
+
+      assert %{"provider" => "linear", "connected" => false} in connections
+    end
+  end
+
   describe "isolation" do
     test "an owner's accounts and secrets reach no other owner, nearer or farther", %{
       wardrik: wardrik,
@@ -462,5 +720,33 @@ defmodule Wardrik.OwnersTest do
 
     assert refused(reader, "mcp_servers.add", server) == :forbidden
     assert refused(reader, "mcp_servers.list", %{"owner" => "acme"}) == :not_found
+
+    assert %{"providers" => [%{"name" => "mail"}]} =
+             run!(reader, "providers.list", %{"owner" => "acme/@maria"})
+
+    assert refused(reader, "providers.add", app("acme/@maria", "notes", "notes.test")) ==
+             :forbidden
+
+    assert refused(reader, "providers.remove", %{"owner" => "acme/@maria", "provider" => "mail"}) ==
+             :forbidden
+
+    assert refused(reader, "providers.list", %{"owner" => "acme"}) == :not_found
+  end
+
+  test "lets a definer add and remove their own OAuth apps, and no one else's", %{
+    wardrik: wardrik
+  } do
+    definer =
+      Wardrik.as(wardrik, "acme/@maria", [
+        Statement.new(roles: [:reader, :definer], resources: ["acme/@maria/*"])
+      ])
+
+    assert %{"name" => "notes"} =
+             run!(definer, "providers.add", app("acme/@maria", "notes", "notes.test"))
+
+    assert %{"name" => "notes"} =
+             run!(definer, "providers.remove", %{"owner" => "acme/@maria", "provider" => "notes"})
+
+    assert refused(definer, "providers.add", app("acme", "notes", "notes.test")) == :not_found
   end
 end
