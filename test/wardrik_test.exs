@@ -56,4 +56,12 @@ defmodule WardrikTest do
     assert Wardrik.agents(wardrik) == MyApp.AgentRuntime.Agents
     assert Wardrik.events(wardrik) == MyApp.AgentRuntime.Events
   end
+
+  test "gives the options it takes, so a host can check them before it starts" do
+    assert {:error, %NimbleOptions.ValidationError{key: :deployment_keys}} =
+             NimbleOptions.validate(
+               [name: MyApp.AgentRuntime, deployment_keys: "yes"],
+               Wardrik.schema()
+             )
+  end
 end

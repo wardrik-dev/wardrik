@@ -346,6 +346,10 @@ defmodule Wardrik do
   @spec new(keyword()) :: t()
   def new(opts), do: opts |> NimbleOptions.validate!(@schema) |> Setup.wardrik()
 
+  @doc "Returns the options `start_link/1` takes, as a `NimbleOptions` schema, for a host that reads them from a file."
+  @spec schema() :: NimbleOptions.t()
+  def schema, do: @schema
+
   @doc """
   Returns the principal with `id`, such as `"acme/@maria"`, and optional `attributes`.
 
