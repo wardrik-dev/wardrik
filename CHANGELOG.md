@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.0-rc.2 (2026-11-01)
+
+- Kinds that say what a secret is for: `:api_key`, `:client_secret`, `:header`,
+  `:signing_secret` and `:token`, beside `:grant` and `:secret`. Each is sealed with its value, so
+  it can't be relabelled.
+- `fetch/4` takes `kind:`, and reads a value only of that kind, so a client secret is never read
+  as an API key.
+
+### Breaking
+
+- `put/5` raises on a kind it doesn't know.
+
 ## 0.1.0-rc.1 (2026-10-30)
 
 - `WardrikVault`, which keeps credentials sealed at rest with AES-256-GCM, in a `WardrikStore`.

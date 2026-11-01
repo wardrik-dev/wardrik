@@ -85,6 +85,33 @@ defmodule WardrikVaultTest do
     assert WardrikVault.fetch(vault, @jon, "github") == {:error, :not_found}
   end
 
+  test "reads a value for one purpose only as that kind", %{vault: vault} do
+    {:ok, _vsn} = WardrikVault.put(vault, @acme, "GOOGLE_SECRET", "app", kind: :client_secret)
+    {:ok, _vsn} = WardrikVault.put(vault, @acme, "ANTHROPIC_API_KEY", "key", kind: :api_key)
+    {:ok, _vsn} = WardrikVault.put(vault, @acme, "LOOSE", "loose")
+
+    assert WardrikVault.fetch(vault, @acme, "GOOGLE_SECRET", kind: :api_key) ==
+             {:error, :wrong_kind}
+
+    assert WardrikVault.fetch(vault, @acme, "LOOSE", kind: :api_key) == {:error, :wrong_kind}
+    assert WardrikVault.fetch(vault, @acme, "ANTHROPIC_API_KEY", kind: :api_key) == {:ok, "key"}
+    assert WardrikVault.fetch(vault, @acme, "GOOGLE_SECRET", kind: :client_secret) == {:ok, "app"}
+
+    assert_raise ArgumentError, ~r/:password isn't a vault kind/, fn ->
+      WardrikVault.put(vault, @acme, "X", "x", kind: :password)
+    end
+  end
+
+  test "won't unseal a value relabelled as another kind", %{vault: vault, store: store} do
+    {:ok, _vsn} = WardrikVault.put(vault, @acme, "GOOGLE_SECRET", "app", kind: :client_secret)
+    scoped = WardrikStore.scope(store, "wardrik_vault")
+    sealed = WardrikStore.get(scoped, "org%3Aacme/GOOGLE_SECRET")
+    {:ok, _vsn} = WardrikStore.put(scoped, "org%3Aacme/GOOGLE_SECRET", %{sealed | kind: :api_key})
+
+    assert WardrikVault.fetch(vault, @acme, "GOOGLE_SECRET", kind: :api_key) ==
+             {:error, :undecipherable}
+  end
+
   test "won't unseal a value moved to another principal", %{vault: vault, store: store} do
     {:ok, _vsn} = WardrikVault.put(vault, @acme, "github", "acme's")
     scoped = WardrikStore.scope(store, "wardrik_vault")

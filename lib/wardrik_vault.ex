@@ -32,8 +32,26 @@ defmodule WardrikVault do
   @typedoc "A vault, by the name your app gave it."
   @type t() :: atom()
 
-  @typedoc "A secret someone put in, or a grant someone gave by authorizing."
-  @type kind() :: :secret | :grant
+  @typedoc """
+  What a value is for. Each is sealed with its value, so it can't be relabelled.
+
+    * `:grant` - an account someone connected by signing in.
+    * `:api_key` - a key code calls a service with, such as a model provider's.
+    * `:client_secret` - an OAuth app's client secret.
+    * `:header` - a value sent in a request header, such as an MCP server's.
+    * `:signing_secret` - a secret that signs or checks a webhook.
+    * `:token` - a token a chat app gave on install.
+    * `:secret` - a secret for no one purpose. Only a fetch that names no `:kind` reads it.
+
+  A fetch that names a kind reads only a value of that kind, so a client secret can never be
+  read as an API key.
+  """
+  @type kind() :: :secret | :grant | purpose()
+
+  @typedoc "A kind that says what a secret is for."
+  @type purpose() :: :api_key | :client_secret | :header | :signing_secret | :token
+
+  @kinds [:secret, :grant, :api_key, :client_secret, :header, :signing_secret, :token]
 
   @typedoc "An option that holds a secret: the secret itself, or `{:secret, name}` for one of the deployment's."
   @type value() :: String.t() | {:secret, String.t()} | nil
@@ -75,13 +93,14 @@ defmodule WardrikVault do
 
   ## Options
 
-    * `:kind` - `:secret` or `:grant`. `:secret` unless set.
+    * `:kind` - what it's for. See `t:kind/0`. `:secret` unless set.
     * `:if_vsn` - writes only over this version. See `WardrikStore.put/4`.
   """
   @spec put(t(), Principal.t(), String.t(), binary(), kind: kind(), if_vsn: WardrikStore.vsn()) ::
           {:ok, WardrikStore.vsn()} | {:error, term()}
   def put(vault, %Principal{} = principal, name, value, opts \\ []) when is_binary(value) do
     {kind, opts} = Keyword.pop(opts, :kind, :secret)
+    unless kind in @kinds, do: raise(ArgumentError, "#{inspect(kind)} isn't a vault kind")
     %{store: store, keys: keys} = settings(vault)
     path = path(principal, name)
 
@@ -98,11 +117,19 @@ defmodule WardrikVault do
       #=> {:ok, "ghp_..."}
 
   Returns `{:error, :not_found}` if there's none, and `{:error, :no_key}` without keys.
+
+  ## Options
+
+    * `:kind` - reads the value only if it's of this kind, and returns `{:error, :wrong_kind}`
+      otherwise. Name the kind wherever a value is used for one purpose. See `t:kind/0`.
   """
-  @spec fetch(t(), Principal.t(), String.t()) :: {:ok, binary()} | {:error, term()}
-  def fetch(vault, principal, name) do
+  @spec fetch(t(), Principal.t(), String.t(), kind: kind()) :: {:ok, binary()} | {:error, term()}
+  def fetch(vault, principal, name, opts \\ []) do
+    kind = Keyword.get(opts, :kind)
+
     case lookup(vault, principal, name) do
-      {:ok, _kind, value, _vsn} -> {:ok, value}
+      {:ok, held, value, _vsn} when kind in [nil, held] -> {:ok, value}
+      {:ok, _other, _value, _vsn} -> {:error, :wrong_kind}
       {:error, _kind, reason} -> {:error, reason}
       {:error, reason} -> {:error, reason}
     end

@@ -7,7 +7,7 @@ defmodule WardrikVault.Sealed do
   @typedoc "A sealed secret or grant."
   @type t() :: %__MODULE__{
           version: pos_integer(),
-          kind: :secret | :grant,
+          kind: WardrikVault.kind(),
           nonce: binary(),
           ciphertext: binary(),
           tag: binary()
@@ -17,7 +17,7 @@ defmodule WardrikVault.Sealed do
   @nonce_bytes 12
 
   @doc "Seals `value` with `key`. Binds it to `path` and `kind`, so it can't be moved or relabelled."
-  @spec seal(binary(), String.t(), :secret | :grant, binary()) :: t()
+  @spec seal(binary(), String.t(), WardrikVault.kind(), binary()) :: t()
   def seal(key, path, kind, value) do
     nonce = :crypto.strong_rand_bytes(@nonce_bytes)
 
