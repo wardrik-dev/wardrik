@@ -306,7 +306,7 @@ defmodule Wardrik.Notify do
   defp signing(_wardrik, _owner, nil), do: {:ok, nil}
 
   defp signing(wardrik, owner, {:secret, name}) do
-    case Wardrik.Sealed.fetch(wardrik, owner, name) do
+    case Wardrik.Sealed.fetch(wardrik, owner, name, kind: :signing_secret) do
       {:ok, secret} -> {:ok, secret}
       {:error, _reason} -> {:skip, "but #{owner} holds no secret #{name} to sign it with"}
     end

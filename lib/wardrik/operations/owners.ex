@@ -115,10 +115,13 @@ defmodule Wardrik.Operations.Owners do
   def put_secret(%Scope{wardrik: wardrik} = scope, %{
         "owner" => owner,
         "name" => name,
-        "value" => value
+        "value" => value,
+        "purpose" => purpose
       }) do
+    opts = [actor: scope.principal, kind: String.to_existing_atom(purpose)]
+
     with :ok <- keeps_secrets(wardrik),
-         :ok <- Wardrik.Sealed.put(wardrik, owner, name, value, actor: scope.principal),
+         :ok <- Wardrik.Sealed.put(wardrik, owner, name, value, opts),
          do: {:ok, nil}
   end
 
@@ -329,11 +332,12 @@ defmodule Wardrik.Operations.Owners do
 
   # The header names the secret, read as each connection starts, so a new value takes effect.
   defp reached(wardrik, owner, _key, %{"auth" => %{"secret" => %{"name" => name} = secret}}) do
-    if name in held(wardrik, owner) do
+    if Wardrik.Sealed.holds?(wardrik, owner, name, :header) do
       sent = sent(Map.get(secret, "scheme", "Bearer"), name)
       {:ok, headers(Map.get(secret, "header", "authorization"), sent), "secret"}
     else
-      {:error, Error.new(:invalid_request, "#{owner} holds no secret #{name}.")}
+      {:error,
+       Error.new(:invalid_request, "#{owner} holds no secret #{name} sealed as a header.")}
     end
   end
 

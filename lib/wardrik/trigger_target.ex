@@ -33,7 +33,9 @@ defmodule Wardrik.TriggerTarget do
   def resolve_secret(%Wardrik{keys: []}, _agent_id, _name), do: :error
 
   def resolve_secret(wardrik, agent_id, name) do
-    case WardrikVault.fetch(Wardrik.vault(wardrik), Definition.principal(agent_id), name) do
+    vault = Wardrik.vault(wardrik)
+
+    case WardrikVault.fetch(vault, Definition.principal(agent_id), name, kind: :signing_secret) do
       {:ok, secret} -> {:ok, secret}
       {:error, _reason} -> :error
     end

@@ -437,10 +437,12 @@ defmodule Wardrik do
   `owner` is an org, as `"acme"`, or a person, as `"acme/@maria"`. Their agents' tools and servers
   can use the secret. Returns `{:error, :no_keys}` if Wardrik was started without `:keys`.
 
-      :ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme", "crm-key", System.fetch_env!("CRM_KEY"))
+      :ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme", "ANTHROPIC_API_KEY", key, kind: :api_key)
 
   ## Options
 
+    * `:kind` - what it's for, as `:api_key` or `:client_secret`. It's read only for that. See
+      `t:WardrikVault.kind/0`.
     * `:if_vsn` - only write if the secret is still at this version. See `lookup_secret/3`.
   """
   @spec put_secret(atom() | t(), String.t(), String.t(), binary(), keyword()) ::
@@ -560,23 +562,28 @@ defmodule Wardrik do
   @doc """
   Returns the plug for sign-in callback pages, as `{plug, opts}`, or `nil` without `:oauth`.
 
-  Mount it at the `:oauth` option's `page`.
+  Mount it at the `:oauth` option's `page`. `principal` is `{module, function, args}`, called with
+  the conn, returning who your app knows is at the browser, or `nil`. See `WardrikOAuth.Plug`.
 
-      Wardrik.sign_in_pages(MyApp.AgentRuntime)
-      #=> {WardrikOAuth.Plug, MyApp.AgentRuntime.OAuth}
+      Wardrik.sign_in_pages(MyApp.AgentRuntime, {MyApp.Session, :principal, []})
   """
-  @spec sign_in_pages(atom() | t()) :: {module(), term()} | nil
-  def sign_in_pages(instance), do: instance |> Instance.fetch!() |> pages()
+  @spec sign_in_pages(atom() | t(), mfa()) :: {module(), term()} | nil
+  def sign_in_pages(instance, principal),
+    do: instance |> Instance.fetch!() |> pages(principal)
 
   @doc """
-  Finishes a browser sign-in from its callback `params`. Returns the provider signed in to.
+  Finishes a browser sign-in from its callback `params`, for the principal `as` names.
+
+      Wardrik.finish_sign_in(MyApp.AgentRuntime, params, as: current_principal)
+      #=> {:ok, %{provider: "github", principal: %WardrikCore.Principal{id: "acme/@jon"}}}
 
   Use it if your app serves the callback page itself. `params` holds `"state"`, and `"code"` or
-  `"error"`.
+  `"error"`. Only the principal who started the sign-in can finish it. See `WardrikOAuth.finish/3`.
   """
-  @spec finish_sign_in(atom() | t(), map()) :: {:ok, String.t()} | {:error, term()}
-  def finish_sign_in(instance, params),
-    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.finish(params)
+  @spec finish_sign_in(atom() | t(), map(), keyword()) ::
+          {:ok, %{provider: String.t(), principal: Principal.t()}} | {:error, term()}
+  def finish_sign_in(instance, params, opts),
+    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.finish(params, opts)
 
   @doc """
   Returns Wardrik's OAuth Client ID Metadata Document.
@@ -587,8 +594,10 @@ defmodule Wardrik do
   def client_document(instance),
     do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.client_document()
 
-  defp pages(%__MODULE__{oauth: nil}), do: nil
-  defp pages(wardrik), do: {WardrikOAuth.Plug, WardrikOAuth.Plug.init(oauth: oauth(wardrik))}
+  defp pages(%__MODULE__{oauth: nil}, _principal), do: nil
+
+  defp pages(wardrik, principal),
+    do: {WardrikOAuth.Plug, WardrikOAuth.Plug.init(oauth: oauth(wardrik), principal: principal)}
 
   @doc false
   @spec agents(t()) :: atom()

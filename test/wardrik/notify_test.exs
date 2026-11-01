@@ -77,7 +77,7 @@ defmodule Wardrik.NotifyTest do
 
     start_supervised!({WardrikStore, store})
     start_supervised!({Wardrik, wardrik})
-    :ok = Wardrik.put_secret(wardrik, "deployment", "HOOK_SECRET", "shh")
+    :ok = Wardrik.put_secret(wardrik, "deployment", "HOOK_SECRET", "shh", kind: :signing_secret)
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
@@ -318,7 +318,7 @@ defmodule Wardrik.NotifyTest do
       wardrik: wardrik,
       scope: scope
     } do
-      :ok = Wardrik.put_secret(wardrik, "acme", "OPS_SECRET", "acme-shh")
+      :ok = Wardrik.put_secret(wardrik, "acme", "OPS_SECRET", "acme-shh", kind: :signing_secret)
 
       assert run!(
                scope,
@@ -375,7 +375,8 @@ defmodule Wardrik.NotifyTest do
       assert refused(scope, "notify_targets.add", target("deployment", "ops", "x.test")) ==
                :conflict
 
-      assert {:error, %Wardrik.Error{message: "acme holds no secret NOPE."}} =
+      assert {:error,
+              %Wardrik.Error{message: "acme holds no secret NOPE sealed as a signing_secret."}} =
                Wardrik.run(
                  scope,
                  "notify_targets.add",
@@ -411,7 +412,7 @@ defmodule Wardrik.NotifyTest do
     } do
       hooked()
       model({:error, :boom})
-      :ok = Wardrik.put_secret(wardrik, "acme", "OPS_SECRET", "acme-shh")
+      :ok = Wardrik.put_secret(wardrik, "acme", "OPS_SECRET", "acme-shh", kind: :signing_secret)
 
       run!(
         scope,
@@ -486,7 +487,7 @@ defmodule Wardrik.NotifyTest do
       wardrik: wardrik,
       scope: scope
     } do
-      :ok = Wardrik.put_secret(wardrik, "acme", "OPS_SECRET", "acme-shh")
+      :ok = Wardrik.put_secret(wardrik, "acme", "OPS_SECRET", "acme-shh", kind: :signing_secret)
 
       run!(
         scope,

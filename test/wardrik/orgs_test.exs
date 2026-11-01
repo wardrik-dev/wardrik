@@ -147,7 +147,8 @@ defmodule Wardrik.OrgsTest do
                Wardrik.run(scope, "secrets.put", %{
                  "owner" => "globex/@ada",
                  "name" => "KEY",
-                 "value" => "v"
+                 "value" => "v",
+                 "purpose" => "api_key"
                })
 
       assert {:error, ^no_org} =
