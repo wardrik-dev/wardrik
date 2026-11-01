@@ -2,6 +2,11 @@
 
 ## 0.1.0-rc.2 (2026-10-31)
 
+- `:resolver`, `Wardrik.Resolver`: the host says what each agent gets, as `Wardrik.Resolved`:
+  who it acts for, its policies, defaults and middleware, and the MCP servers and notify targets
+  its definition's names reach. A name it isn't resolved with reaches nothing, whatever is started
+  by that name. Without `:resolver`, `Wardrik.Owners.Resolver` resolves along the owner chain.
+- `Wardrik.refresh/2` takes `agents:`, or nothing for every awake agent.
 - Settings resolve along the owner chain, `Wardrik.Owners.chain/1`: a person's own, their org's,
   then the deployment's, the nearest of a name winning. Agents get MCP servers, OAuth apps and
   notify targets this way.
@@ -27,6 +32,9 @@
 
 ### Breaking
 
+- A notify target another org's agents use reads as one that isn't there, and `*` and
+  `servers/*` reach the servers an agent is resolved with: Wardrik's own that serve its org, and
+  those its owners added.
 - `finish_sign_in/3` takes `as:`, the principal finishing the sign-in, and `sign_in_pages/2` and
   `Wardrik.HTTP`'s `:principal` say who is at the browser. Without them, no callback finishes.
 - `secrets.put` takes a `purpose`: `api_key`, `client_secret`, `header` or `signing_secret`. Each

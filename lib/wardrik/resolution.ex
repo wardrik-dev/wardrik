@@ -2,32 +2,50 @@ defmodule Wardrik.Resolution do
   @moduledoc false
 
   alias Wardrik.AgentID
-  alias Wardrik.Definition
   alias Wardrik.Error
-  alias Wardrik.Orgs
+  alias Wardrik.Operations.Running
+  alias Wardrik.Resolved
+  alias Wardrik.Resolver
+  alias Wardrik.Setup
 
   @rounds 25
 
-  @doc "Returns the agent `id`'s start options, from its JSON `definition` and its org's settings."
+  @doc "Returns the agent `id`'s start options, from its JSON `definition` and what it resolves to."
   @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
-    org = Orgs.org(id)
-
-    with {:ok, settings} <- Orgs.settings(wardrik, org),
-         {:ok, opts} <- resolved(Orgs.within(wardrik, settings), id, definition),
-         do: {:ok, Orgs.hold(opts, wardrik, org, settings)}
+    with {:ok, resolved} <- Resolver.resolve(wardrik, id, definition),
+         {:ok, opts} <- resolved(within(wardrik, resolved), id, definition, resolved),
+         do: {:ok, hold(opts, resolved)}
   end
 
-  defp resolved(wardrik, id, definition) do
-    definition = Map.merge(wardrik.defaults, definition)
+  @doc "Returns `opts` held to the policy and middleware the agent resolved to."
+  @spec hold(keyword(), Resolved.t()) :: keyword()
+  def hold(opts, %Resolved{policy: policy, middleware: middleware}) do
+    held = List.wrap(policy)
 
-    with :ok <- triggers(wardrik, definition),
+    opts
+    |> Keyword.update(:policy, held, &(held ++ Setup.policies(&1)))
+    |> Keyword.update(:middleware, middleware, &(&1 ++ middleware))
+  end
+
+  defp within(wardrik, %Resolved{policies: policies, defaults: defaults}),
+    do: %{
+      wardrik
+      | policies: Map.merge(wardrik.policies, policies),
+        defaults: Map.merge(wardrik.defaults, defaults)
+    }
+
+  defp resolved(wardrik, id, definition, resolved) do
+    definition = Map.merge(wardrik.defaults, definition)
+    servers = resolved.servers
+
+    with :ok <- triggers(definition),
          {:ok, model} <- model(definition),
-         {:ok, capabilities} <- capabilities(wardrik, id, Map.get(definition, "tools", [])),
+         {:ok, capabilities} <- capabilities(wardrik, servers, definition),
          {:ok, workspace} <-
-           Wardrik.Workspaces.resolve(wardrik, id, definition, files?(wardrik, definition)),
+           Wardrik.Workspaces.resolve(wardrik, id, definition, files?(definition)),
          :ok <- channels(wardrik, Map.get(definition, "channels", [])),
-         :ok <- Wardrik.Notify.check(wardrik, AgentID.agent(id), definition),
+         :ok <- Wardrik.Notify.check(wardrik, resolved.notify, definition),
          {:ok, policy} <- policy(wardrik, definition["policy"]),
          policy = gating(policy),
          {:ok, boundary} <-
@@ -40,7 +58,7 @@ defmodule Wardrik.Resolution do
          capabilities: capabilities ++ workspace[:capabilities],
          middleware: workspace[:middleware] ++ compaction(definition["compaction"]),
          retries: retries(definition["retries"]),
-         principal: Definition.principal(id),
+         principal: resolved.principal,
          policy: Enum.reject([boundary, policy], &is_nil/1),
          timeout: seconds(definition["timeout"]),
          max_rounds: rounds(definition["max_iterations"])
@@ -48,10 +66,31 @@ defmodule Wardrik.Resolution do
     end
   end
 
+  @doc "Refreshes each awake agent of `ids`, or every awake one. Returns a line for each failure."
+  @spec refresh(Wardrik.t(), [String.t()] | :all) :: [String.t()]
+  def refresh(wardrik, ids) do
+    for id <- refreshing(wardrik, ids),
+        Running.whereis(wardrik, id) != nil,
+        {:error, error} <- [refreshed(wardrik, id)],
+        do: "#{id}: #{error.message}"
+  end
+
+  defp refreshing(wardrik, :all), do: Wardrik.Definitions.ids(wardrik)
+  defp refreshing(_wardrik, ids), do: ids
+
+  defp refreshed(wardrik, id) do
+    with {:ok, definition} <- Running.definition(wardrik, id),
+         {:ok, opts} <- resolve(wardrik, id, definition),
+         do: Running.bring(wardrik, opts)
+  end
+
   @doc "Returns `:ok` if the trigger in `fields` is valid for the agent `definition`."
   @spec trigger(Wardrik.t(), map(), map(), pos_integer()) :: :ok | {:error, Error.t()}
-  def trigger(wardrik, definition, fields, index) do
-    with :ok <- prompted(fields, files?(wardrik, Map.merge(wardrik.defaults, definition))) do
+  def trigger(wardrik, definition, fields, index),
+    do: trigger(fields, index, files?(Map.merge(wardrik.defaults, definition)))
+
+  defp trigger(fields, index, files?) do
+    with :ok <- prompted(fields, files?) do
       case WardrikTriggers.Trigger.decode(fields, index) do
         {:ok, _trigger} -> :ok
         {:error, why} -> {:error, Error.new(:invalid_request, "A trigger doesn't read: #{why}.")}
@@ -59,20 +98,22 @@ defmodule Wardrik.Resolution do
     end
   end
 
-  @doc "Returns the servers the definition names that aren't available: not added, or down."
+  @doc "Returns the servers the definition names that aren't available: not resolved, or down."
   @spec missing(Wardrik.t(), String.t(), map()) :: [String.t()]
   def missing(wardrik, id, definition) do
+    servers =
+      case Resolver.resolve(wardrik, id, definition) do
+        {:ok, resolved} -> resolved.servers
+        {:error, _error} -> %{}
+      end
+
     mcp = Wardrik.mcp(wardrik)
 
-    for tool <- expanded(wardrik, Map.get(definition, "tools", [])),
+    for tool <- expanded(wardrik, servers, Map.get(definition, "tools", [])),
         {:server, name} <- [named(wardrik, tool)],
         WardrikMCP.tools(nil,
           name: mcp,
-          servers:
-            Wardrik.MCPTools.picked(mcp, id,
-              names: [name],
-              served: Wardrik.MCPTools.served(wardrik, id)
-            )
+          servers: Wardrik.MCPTools.picked(mcp, servers, names: [name])
         ) == [],
         do: tool
   end
@@ -80,18 +121,24 @@ defmodule Wardrik.Resolution do
   @doc "Returns how long the agent `id` idles before it sleeps, in milliseconds, or `:infinity`."
   @spec idle_timeout(Wardrik.t(), String.t(), map()) :: pos_integer() | :infinity
   def idle_timeout(wardrik, id, definition) do
-    defaults = Orgs.defaults(wardrik, id)
+    defaults =
+      case Resolver.resolve(wardrik, id, definition) do
+        {:ok, resolved} -> Map.merge(wardrik.defaults, resolved.defaults)
+        {:error, _error} -> wardrik.defaults
+      end
 
     seconds(
       Map.get(definition, "idle_timeout", Map.get(defaults, "idle_timeout", wardrik.idle_timeout))
     )
   end
 
-  defp triggers(wardrik, definition) do
+  defp triggers(definition) do
+    files? = files?(definition)
+
     definition
     |> Map.get("triggers", [])
     |> Enum.with_index(1)
-    |> Enum.map(fn {fields, index} -> trigger(wardrik, definition, fields, index) end)
+    |> Enum.map(fn {fields, index} -> trigger(fields, index, files?) end)
     |> Enum.find(:ok, &match?({:error, _error}, &1))
   end
 
@@ -125,23 +172,24 @@ defmodule Wardrik.Resolution do
   defp rounds("infinity"), do: :infinity
   defp rounds(rounds) when is_integer(rounds), do: rounds
 
-  defp capabilities(wardrik, id, tools) do
-    named = Enum.map(expanded(wardrik, tools), &named(wardrik, &1))
+  defp capabilities(wardrik, servers, definition) do
+    named =
+      Enum.map(expanded(wardrik, servers, Map.get(definition, "tools", [])), &named(wardrik, &1))
 
     case Enum.find(named, &match?({:error, _error}, &1)) do
-      nil -> {:ok, entries(wardrik, id, named)}
+      nil -> {:ok, entries(wardrik, definition, named)}
       error -> error
     end
   end
 
-  defp expanded(wardrik, tools), do: Enum.flat_map(tools, &expand(wardrik, &1))
+  defp expanded(wardrik, servers, tools), do: Enum.flat_map(tools, &expand(wardrik, servers, &1))
 
-  defp expand(wardrik, "*"),
+  defp expand(wardrik, servers, "*"),
     do:
       Map.keys(wardrik.capabilities) ++
-        Enum.map(started(wardrik), &"#{&1}/*") ++ ["servers/*", "workers/*", "files"]
+        Enum.map(Map.keys(servers), &"#{&1}/*") ++ ["servers/*", "workers/*", "files"]
 
-  defp expand(_wardrik, tool), do: [tool]
+  defp expand(_wardrik, _servers, tool), do: [tool]
 
   defp named(_wardrik, "servers/*"), do: :all_servers
   defp named(_wardrik, "files"), do: :files
@@ -162,9 +210,7 @@ defmodule Wardrik.Resolution do
     end
   end
 
-  defp started(%Wardrik{mcp: mcp}), do: Enum.map(mcp, fn {name, _opts} -> to_string(name) end)
-
-  defp entries(wardrik, id, named) do
+  defp entries(wardrik, definition, named) do
     capabilities = for {:capability, entry} <- named, uniq: true, do: entry
     servers = for {:server, name} <- named, uniq: true, do: name
     all = :all_servers in named
@@ -176,14 +222,17 @@ defmodule Wardrik.Resolution do
           [
             {Wardrik.MCPTools,
              mcp: Wardrik.mcp(wardrik),
+             wardrik: wardrik.name,
+             definition: definition,
              names: servers,
-             all: all,
-             served: Wardrik.MCPTools.served(wardrik, id)}
+             all: all}
           ]
   end
 
-  defp files?(wardrik, definition),
-    do: "files" in expanded(wardrik, Map.get(definition, "tools", []))
+  defp files?(definition) do
+    tools = Map.get(definition, "tools", [])
+    "files" in tools or "*" in tools
+  end
 
   defp retries(nil), do: []
   defp retries(settings), do: for({key, value} <- settings, do: retry_setting(key, value))

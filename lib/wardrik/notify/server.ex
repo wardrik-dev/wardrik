@@ -148,8 +148,9 @@ defmodule Wardrik.Notify.Server do
 
   defp told(state, agent, notice) do
     with {:ok, definition} <- Wardrik.Definitions.fetch(state.wardrik, agent),
-         %{to: to, on: on} <-
-           Notify.route(Map.merge(Wardrik.Orgs.defaults(state.wardrik, agent), definition)),
+         {:ok, resolved} <- Wardrik.Resolver.resolve(state.wardrik, agent, definition),
+         defaults = Map.merge(state.wardrik.defaults, resolved.defaults),
+         %{to: to, on: on} <- Notify.route(Map.merge(defaults, definition)),
          true <- notice.kind in on,
          do: Enum.each(to, &tell(state, &1, notice))
 
