@@ -65,8 +65,8 @@ defmodule Wardrik.SignInsTest do
 
     %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
-    assert {:ok, _provider} =
-             WardrikOAuth.finish(Wardrik.oauth(wardrik), %{"state" => state, "code" => "c"})
+    assert {:ok, _signed_in} =
+             Wardrik.finish_sign_in(wardrik, %{"state" => state, "code" => "c"}, as: maria())
 
     assert %{"data" => %{"status" => "ok"}} = until("wardrik.tool_call.completed")
     until("wardrik.run.completed")
@@ -77,7 +77,7 @@ defmodule Wardrik.SignInsTest do
     scope: scope
   } do
     answers([answer("Triaged.")])
-    :ok = Wardrik.put_secret(wardrik, "acme", "HOOK", "s3cret")
+    :ok = Wardrik.put_secret(wardrik, "acme", "HOOK", "s3cret", kind: :signing_secret)
 
     {:ok, %Wardrik.Agent{}} =
       Wardrik.Agent.define(scope, "acme/hooks",
@@ -126,12 +126,16 @@ defmodule Wardrik.SignInsTest do
   end
 
   test "gives the sign-in pages to mount only where it signs people in", %{wardrik: wardrik} do
-    assert Wardrik.sign_in_pages(wardrik) == {WardrikOAuth.Plug, Wardrik.oauth(wardrik)}
-    assert Wardrik.sign_in_pages(Wardrik.new(name: MyApp.AgentRuntime)) == nil
+    nobody = {Wardrik.HTTP, :nobody, []}
+
+    assert Wardrik.sign_in_pages(wardrik, nobody) ==
+             {WardrikOAuth.Plug, %{oauth: Wardrik.oauth(wardrik), principal: nobody}}
+
+    assert Wardrik.sign_in_pages(Wardrik.new(name: MyApp.AgentRuntime), nobody) == nil
   end
 
   test "finishes a sign-in for an app that serves the page itself", %{wardrik: wardrik} do
-    assert Wardrik.finish_sign_in(wardrik, %{"state" => "nope", "code" => "c"}) ==
+    assert Wardrik.finish_sign_in(wardrik, %{"state" => "nope", "code" => "c"}, as: maria()) ==
              {:error, :no_such_flow}
 
     assert %{"client_id" => "https://agents.test/oauth/client"} = Wardrik.client_document(wardrik)

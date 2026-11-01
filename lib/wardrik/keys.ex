@@ -8,12 +8,13 @@ defmodule Wardrik.Keys do
     2. The org.
     3. The deployment, only if Wardrik starts with `deployment_keys: true`.
 
-  An org or person brings its own key by sealing a secret with the key's name:
+  An org or person brings its own key by sealing it with the key's name, as an `:api_key`:
 
-      Wardrik.put_secret(MyApp.AgentRuntime, "acme", "ZAI_API_KEY", key)
+      Wardrik.put_secret(MyApp.AgentRuntime, "acme", "ZAI_API_KEY", key, kind: :api_key)
 
-  If no one holds it, the code finds its own, as ReqLLM reads the environment. Only secrets
-  count. A connected account is a credential, never a key.
+  If no one holds it, the code finds its own, as ReqLLM reads the environment. Only `:api_key`
+  secrets count, so a client secret, header or signing secret is never read as a key. A connected
+  account is a credential, never a key.
 
   ## Options
 
@@ -52,8 +53,8 @@ defmodule Wardrik.Keys do
   def owners(nil, false), do: []
 
   defp held(vault, owner, name) do
-    case WardrikVault.lookup(vault, %Principal{id: owner}, name) do
-      {:ok, :secret, key, _vsn} -> {:ok, key}
+    case WardrikVault.fetch(vault, %Principal{id: owner}, name, kind: :api_key) do
+      {:ok, key} -> {:ok, key}
       _none -> nil
     end
   end

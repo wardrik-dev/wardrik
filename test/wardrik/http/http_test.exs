@@ -87,7 +87,7 @@ defmodule Wardrik.HTTPTest do
 
   describe "webhooks" do
     setup context do
-      :ok = Wardrik.put_secret(context.wardrik, "acme", "HOOK", "s3cret")
+      :ok = Wardrik.put_secret(context.wardrik, "acme", "HOOK", "s3cret", kind: :signing_secret)
 
       request(context, "PUT", "/v1/agents/acme/hooks", %{
         "model" => "anthropic:claude-haiku-4-5",
@@ -204,6 +204,13 @@ defmodule Wardrik.HTTPTest do
       conn = request(context, "GET", "/oauth/device/nope")
       assert conn.status == 404
       assert conn.resp_body =~ "Sign-in not found"
+    end
+
+    @tag oauth: [page: "http://localhost/oauth", providers: []]
+    test "finishes no sign-in where the app doesn't say who is at the browser", context do
+      conn = request(context, "GET", "/oauth/callback?state=s&code=c")
+      assert conn.status == 401
+      assert conn.resp_body =~ "can't tell who you are"
     end
   end
 

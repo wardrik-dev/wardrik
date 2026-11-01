@@ -27,6 +27,11 @@
 
 ### Breaking
 
+- `finish_sign_in/3` takes `as:`, the principal finishing the sign-in, and `sign_in_pages/2` and
+  `Wardrik.HTTP`'s `:principal` say who is at the browser. Without them, no callback finishes.
+- `secrets.put` takes a `purpose`: `api_key`, `client_secret`, `header` or `signing_secret`. Each
+  secret is read only for its purpose, so an API key is only ever an `api_key`, and
+  `deployment_keys` gives no client secret, header or signing secret as a key.
 - `Wardrik.start_link/1` raises `NimbleOptions.ValidationError` on a bad option, not
   `ArgumentError`, and `nil` no longer stands for an unset option.
 - An agent falls back to the deployment's API keys only with `deployment_keys: true`. A person's

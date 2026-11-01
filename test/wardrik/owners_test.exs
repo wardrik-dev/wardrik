@@ -61,9 +61,13 @@ defmodule Wardrik.OwnersTest do
     end
   end
 
-  defp signed_in(wardrik, url) do
+  defp signed_in(wardrik, url, owner) do
     state = URI.decode_query(URI.parse(url).query)["state"]
-    WardrikOAuth.finish(Wardrik.oauth(wardrik), %{"state" => state, "code" => "c0de"})
+    params = %{"state" => state, "code" => "c0de"}
+
+    with {:ok, %{provider: provider}} <-
+           WardrikOAuth.finish(Wardrik.oauth(wardrik), params, as: %Principal{id: owner}),
+         do: {:ok, provider}
   end
 
   defp app(owner, name, host, fields \\ %{}) do
@@ -84,8 +88,10 @@ defmodule Wardrik.OwnersTest do
     Enum.map(providers, &{&1["owner"], &1["name"]})
   end
 
-  defp hold(wardrik, owner, name, value),
-    do: {:ok, _vsn} = WardrikVault.put(Wardrik.vault(wardrik), %Principal{id: owner}, name, value)
+  defp hold(wardrik, owner, name, value, kind \\ :grant),
+    do:
+      {:ok, _vsn} =
+        WardrikVault.put(Wardrik.vault(wardrik), %Principal{id: owner}, name, value, kind: kind)
 
   defp types(scope) do
     %{"events" => changes} = run!(scope, "audit.list", %{})
@@ -95,7 +101,9 @@ defmodule Wardrik.OwnersTest do
   test "names the client a service shows people signing in as the Wardrik's oauth says", %{
     wardrik: wardrik
   } do
-    {WardrikOAuth.Plug, oauth} = Wardrik.sign_in_pages(wardrik)
+    {WardrikOAuth.Plug, %{oauth: oauth}} =
+      Wardrik.sign_in_pages(wardrik, {Wardrik.HTTP, :nobody, []})
+
     assert %{"client_name" => "Acme Agents"} = WardrikOAuth.client_document(oauth)
   end
 
@@ -150,11 +158,12 @@ defmodule Wardrik.OwnersTest do
       assert run!(scope, "secrets.put", %{
                "owner" => "acme",
                "name" => "GITHUB_TOKEN",
-               "value" => "ghp_1"
+               "value" => "ghp_1",
+               "purpose" => "header"
              }) == nil
 
       assert %{
-               "secrets" => [%{"name" => "GITHUB_TOKEN", "kind" => "secret"}, %{"name" => "mail"}]
+               "secrets" => [%{"name" => "GITHUB_TOKEN", "kind" => "header"}, %{"name" => "mail"}]
              } =
                run!(scope, "secrets.list", %{"owner" => "acme"})
 
@@ -170,7 +179,11 @@ defmodule Wardrik.OwnersTest do
       assert {:ok, [%Wardrik.Secret{name: "mail", kind: :grant}]} =
                Wardrik.Secrets.list(scope, owner: "acme")
 
-      assert Wardrik.Secrets.put(scope, "DEPLOY", owner: "deployment", value: "d") == :ok
+      assert Wardrik.Secrets.put(scope, "DEPLOY",
+               owner: "deployment",
+               value: "d",
+               purpose: "api_key"
+             ) == :ok
     end
   end
 
@@ -218,10 +231,10 @@ defmodule Wardrik.OwnersTest do
         "auth" => %{"secret" => %{"name" => "crm-key"}}
       }
 
-      assert {:error, %Wardrik.Error{message: "acme holds no secret crm-key."}} =
+      assert {:error, %Wardrik.Error{message: "acme holds no secret crm-key sealed as a header."}} =
                Wardrik.run(scope, "mcp_servers.add", server)
 
-      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "one")
+      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "one", kind: :header)
       assert %{"server" => "crm", "connected" => true} = run!(scope, "mcp_servers.add", server)
       assert_receive {:authorization, "/acme", ["Bearer one"]}, 5_000
 
@@ -231,7 +244,7 @@ defmodule Wardrik.OwnersTest do
       assert {:streamable_http, http} = stored[:transport]
       assert http[:headers] == %{"authorization" => ["Bearer ", {:secret, "crm-key"}]}
 
-      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "two")
+      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "two", kind: :header)
       assert_receive {:authorization, "/acme", ["Bearer two"]}, 5_000
 
       raw = %{
@@ -253,7 +266,7 @@ defmodule Wardrik.OwnersTest do
       wardrik: wardrik,
       scope: scope
     } do
-      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "acme's")
+      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "acme's", kind: :header)
 
       server = %{
         "owner" => "globex",
@@ -262,14 +275,15 @@ defmodule Wardrik.OwnersTest do
         "auth" => %{"secret" => %{"name" => "crm-key"}}
       }
 
-      assert {:error, %Wardrik.Error{message: "globex holds no secret crm-key."}} =
+      assert {:error,
+              %Wardrik.Error{message: "globex holds no secret crm-key sealed as a header."}} =
                Wardrik.run(scope, "mcp_servers.add", server)
 
-      :ok = Wardrik.put_secret(wardrik, "globex", "crm-key", "globex's")
+      :ok = Wardrik.put_secret(wardrik, "globex", "crm-key", "globex's", kind: :header)
       run!(scope, "mcp_servers.add", server)
       assert_receive {:authorization, "/globex", ["Bearer globex's"]}, 5_000
 
-      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "acme's again")
+      :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "acme's again", kind: :header)
       :ok = Wardrik.delete_secret(wardrik, "globex", "crm-key")
       refute_receive {:authorization, "/globex", _authorization}, 500
     end
@@ -428,7 +442,7 @@ defmodule Wardrik.OwnersTest do
       wardrik: wardrik,
       scope: scope
     } do
-      hold(wardrik, "acme", "CRM_APP_SECRET", "app-secret")
+      hold(wardrik, "acme", "CRM_APP_SECRET", "app-secret", :client_secret)
 
       server = %{
         "owner" => "acme",
@@ -458,17 +472,18 @@ defmodule Wardrik.OwnersTest do
                |> WardrikOAuth.providers("acme")
                |> Enum.filter(&(&1.name == "acme:crm"))
 
-      assert {:ok, "acme:crm"} = signed_in(wardrik, url)
+      assert {:error, :wrong_principal} = signed_in(wardrik, url, "acme/@mallory")
+      assert {:ok, "acme:crm"} = signed_in(wardrik, url, "acme")
       assert_received {:exchanged, "crm-auth.test", %{"code" => "c0de"}, [first]}
       assert first == "Basic " <> Base.encode64("acme-app:app-secret")
 
-      hold(wardrik, "acme", "CRM_APP_SECRET", "rotated")
+      hold(wardrik, "acme", "CRM_APP_SECRET", "rotated", :client_secret)
       run!(scope, "connections.disconnect", %{"owner" => "acme", "provider" => "crm"})
 
       assert %{"authorization" => %{"url" => url}} =
                run!(scope, "connections.connect", %{"owner" => "acme", "provider" => "crm"})
 
-      assert {:ok, "acme:crm"} = signed_in(wardrik, url)
+      assert {:ok, "acme:crm"} = signed_in(wardrik, url, "acme")
       assert_received {:exchanged, "crm-auth.test", _form, [rotated]}
       assert rotated == "Basic " <> Base.encode64("acme-app:rotated")
     end
@@ -489,7 +504,7 @@ defmodule Wardrik.OwnersTest do
 
       assert "https://google.test/authorize?" <> query = url
       assert %{"client_id" => "google-app"} = URI.decode_query(query)
-      assert {:ok, "google"} = signed_in(wardrik, url)
+      assert {:ok, "google"} = signed_in(wardrik, url, "acme/@maria")
 
       analytics = %{server | "name" => "analytics", "url" => "https://analytics.test/mcp"}
 
@@ -528,7 +543,8 @@ defmodule Wardrik.OwnersTest do
 
       missing = Map.put(app, "client_secret", %{"name" => "NOPE"})
 
-      assert {:error, %Wardrik.Error{message: "acme holds no secret NOPE."}} =
+      assert {:error,
+              %Wardrik.Error{message: "acme holds no secret NOPE sealed as a client_secret."}} =
                Wardrik.run(
                  scope,
                  "mcp_servers.add",
@@ -681,7 +697,7 @@ defmodule Wardrik.OwnersTest do
       wardrik: wardrik,
       scope: scope
     } do
-      hold(wardrik, "acme", "GOOGLE_SECRET", "s3cret")
+      hold(wardrik, "acme", "GOOGLE_SECRET", "s3cret", :client_secret)
 
       run!(scope, "providers.add", app("deployment", "google", "google.test"))
 
@@ -764,7 +780,8 @@ defmodule Wardrik.OwnersTest do
 
       assert {"acme/@jon", "google"} in listed(scope, "acme/@jon")
 
-      assert {:error, %Wardrik.Error{message: "acme holds no secret NOPE."}} =
+      assert {:error,
+              %Wardrik.Error{message: "acme holds no secret NOPE sealed as a client_secret."}} =
                Wardrik.run(
                  scope,
                  "providers.add",
@@ -774,7 +791,7 @@ defmodule Wardrik.OwnersTest do
       assert Enum.filter(types(scope), &String.starts_with?(&1, "wardrik.provider.")) ==
                ~w(wardrik.provider.added wardrik.provider.added wardrik.provider.removed)
 
-      :ok = Wardrik.put_secret(wardrik, "acme", "GOOGLE_SECRET", "s3cret")
+      :ok = Wardrik.put_secret(wardrik, "acme", "GOOGLE_SECRET", "s3cret", kind: :client_secret)
 
       assert {:ok, %Wardrik.Provider{owner: "acme", client_secret: "GOOGLE_SECRET"}} =
                Wardrik.Providers.add(scope,
@@ -818,7 +835,7 @@ defmodule Wardrik.OwnersTest do
                  "provider" => "linear"
                })
 
-      assert {:ok, "linear"} = signed_in(wardrik, url)
+      assert {:ok, "linear"} = signed_in(wardrik, url, "acme/@maria")
       assert_received {:exchanged, "linear.test", %{"client_id" => "linear-app"}, []}
 
       assert %{"connections" => connections} =

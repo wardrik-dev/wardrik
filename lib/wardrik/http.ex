@@ -21,6 +21,9 @@ defmodule Wardrik.HTTP do
   ## Options
 
     * `:wardrik` - required. The module to serve, as `MyApp.AgentRuntime`.
+    * `:principal` - `{module, function, args}`, called with a sign-in callback's conn, returning
+      who is at the browser, or `nil`. A sign-in finishes only for the principal who started it,
+      so without this, callbacks never finish. See `WardrikOAuth.Plug`.
     * `:authenticator` - see `WardrikHTTP`.
     * `:keepalive` - see `WardrikHTTP`.
 
@@ -50,12 +53,20 @@ defmodule Wardrik.HTTP do
   @impl Plug
   def call(conn, settings), do: WardrikHTTP.call(conn, settings)
 
-  defp served(opts), do: opts |> Keyword.pop(:wardrik) |> served_as()
+  defp served(opts) do
+    {principal, opts} = Keyword.pop(opts, :principal, {__MODULE__, :nobody, []})
+    opts |> Keyword.pop(:wardrik) |> served_as(principal)
+  end
 
-  defp served_as({wardrik, opts}) when is_atom(wardrik) and not is_nil(wardrik),
-    do: [server: {Wardrik, wardrik}, sign_in: {Wardrik, :sign_in_pages, [wardrik]}] ++ opts
+  @doc false
+  def nobody(_conn), do: nil
 
-  defp served_as(_none),
+  defp served_as({wardrik, opts}, principal) when is_atom(wardrik) and not is_nil(wardrik),
+    do:
+      [server: {Wardrik, wardrik}, sign_in: {Wardrik, :sign_in_pages, [wardrik, principal]}] ++
+        opts
+
+  defp served_as(_none, _principal),
     do:
       raise(ArgumentError, "Wardrik.HTTP serves a Wardrik. Give it wardrik: MyApp.AgentRuntime.")
 end

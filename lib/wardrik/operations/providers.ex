@@ -110,12 +110,18 @@ defmodule Wardrik.Operations.Providers do
        Error.new(:not_supported, "An app's client secret needs Wardrik to keep credentials.")}
 
   defp client_secret(wardrik, owner, %{"name" => name}) do
-    case WardrikVault.fetch(Wardrik.vault(wardrik), %Principal{id: owner}, name) do
+    vault = Wardrik.vault(wardrik)
+
+    case WardrikVault.fetch(vault, %Principal{id: owner}, name, kind: :client_secret) do
       {:ok, _value} ->
         {:ok, [client_secret: {:secret, name}]}
 
       {:error, _reason} ->
-        {:error, Error.new(:invalid_request, "#{owner} holds no secret #{name}.")}
+        {:error,
+         Error.new(
+           :invalid_request,
+           "#{owner} holds no secret #{name} sealed as a client_secret."
+         )}
     end
   end
 

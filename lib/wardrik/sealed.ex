@@ -17,10 +17,11 @@ defmodule Wardrik.Sealed do
     end
   end
 
-  @spec fetch(atom() | Wardrik.t(), String.t(), String.t()) :: {:ok, binary()} | {:error, term()}
-  def fetch(instance, owner, name) do
+  @spec fetch(atom() | Wardrik.t(), String.t(), String.t(), keyword()) ::
+          {:ok, binary()} | {:error, term()}
+  def fetch(instance, owner, name, opts \\ []) do
     with {:ok, wardrik} <- sealing(instance),
-         do: WardrikVault.fetch(Wardrik.vault(wardrik), principal(owner), name)
+         do: WardrikVault.fetch(Wardrik.vault(wardrik), principal(owner), name, opts)
   end
 
   @spec lookup(atom() | Wardrik.t(), String.t(), String.t()) ::
@@ -48,6 +49,10 @@ defmodule Wardrik.Sealed do
       {:error, :no_keys} -> []
     end
   end
+
+  @doc "Returns whether `owner` holds the secret `name` sealed as `kind`. Needs no key."
+  @spec holds?(atom() | Wardrik.t(), String.t(), String.t(), WardrikVault.kind()) :: boolean()
+  def holds?(instance, owner, name, kind), do: {owner, name, kind} in list(instance)
 
   @spec list(atom() | Wardrik.t(), String.t()) :: [String.t()]
   def list(instance, owner) do

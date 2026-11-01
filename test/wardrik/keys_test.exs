@@ -45,24 +45,52 @@ defmodule Wardrik.KeysTest do
   } do
     assert key_used(scope, "acme/first") == nil
 
-    :ok = Wardrik.put_secret(wardrik, "deployment", "ANTHROPIC_API_KEY", "sk-deployment")
+    :ok =
+      Wardrik.put_secret(wardrik, "deployment", "ANTHROPIC_API_KEY", "sk-deployment",
+        kind: :api_key
+      )
+
     assert key_used(scope, "acme/second") == "sk-deployment"
 
-    :ok = Wardrik.put_secret(wardrik, "acme", "ANTHROPIC_API_KEY", "sk-acme")
+    :ok = Wardrik.put_secret(wardrik, "acme", "ANTHROPIC_API_KEY", "sk-acme", kind: :api_key)
     assert key_used(scope, "acme/third") == "sk-acme"
     assert key_used(scope, "acme/@maria/fourth") == "sk-acme"
 
-    :ok = Wardrik.put_secret(wardrik, "acme/@maria", "ANTHROPIC_API_KEY", "sk-maria")
+    :ok =
+      Wardrik.put_secret(wardrik, "acme/@maria", "ANTHROPIC_API_KEY", "sk-maria", kind: :api_key)
+
     assert key_used(scope, "acme/@maria/fifth") == "sk-maria"
     assert key_used(scope, "globex/sixth") == "sk-deployment"
   end
 
+  @tag deployment_keys: true
+  test "gives no secret sealed for another purpose as a key, even the deployment's", %{
+    wardrik: wardrik
+  } do
+    for {name, kind} <- [
+          {"X_CLIENT_SECRET", :client_secret},
+          {"MCP_HEADER", :header},
+          {"HOOK_SECRET", :signing_secret},
+          {"LOOSE", :secret}
+        ] do
+      :ok = Wardrik.put_secret(wardrik, "deployment", name, "value", kind: kind)
+      :ok = Wardrik.put_secret(wardrik, "acme", name, "value", kind: kind)
+
+      opts = [vault: Wardrik.vault(wardrik), deployment: true]
+      assert Wardrik.Keys.fetch(name, %Principal{id: "acme/@maria"}, opts) == :error
+    end
+  end
+
   test "a model call takes its owner's key, then its org's, and never the deployment's unless the host says so",
        %{wardrik: wardrik, scope: scope} do
-    :ok = Wardrik.put_secret(wardrik, "deployment", "ANTHROPIC_API_KEY", "sk-deployment")
+    :ok =
+      Wardrik.put_secret(wardrik, "deployment", "ANTHROPIC_API_KEY", "sk-deployment",
+        kind: :api_key
+      )
+
     assert key_used(scope, "acme/first") == nil
 
-    :ok = Wardrik.put_secret(wardrik, "acme", "ANTHROPIC_API_KEY", "sk-acme")
+    :ok = Wardrik.put_secret(wardrik, "acme", "ANTHROPIC_API_KEY", "sk-acme", kind: :api_key)
     assert key_used(scope, "acme/@maria/second") == "sk-acme"
 
     vault = Wardrik.vault(wardrik)
@@ -78,10 +106,10 @@ defmodule Wardrik.KeysTest do
     wardrik: wardrik,
     scope: scope
   } do
-    :ok = Wardrik.put_secret(wardrik, "acme", "ANTHROPIC_API_KEY", "sk-old")
+    :ok = Wardrik.put_secret(wardrik, "acme", "ANTHROPIC_API_KEY", "sk-old", kind: :api_key)
     assert key_used(scope, "acme/bot") == "sk-old"
 
-    :ok = Wardrik.put_secret(wardrik, "acme", "ANTHROPIC_API_KEY", "sk-new")
+    :ok = Wardrik.put_secret(wardrik, "acme", "ANTHROPIC_API_KEY", "sk-new", kind: :api_key)
     {:ok, %Wardrik.Reply{}} = Wardrik.Agent.reply(scope, "acme/bot", "Again")
     assert_receive {:api_key, "sk-new"}
   end
@@ -98,7 +126,7 @@ defmodule Wardrik.KeysTest do
   test "an MCP server it starts names the deployment's secrets in its headers, unread", %{
     wardrik: wardrik
   } do
-    :ok = Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "lin_123")
+    :ok = Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "lin_123", kind: :header)
     wardrik = %{wardrik | mcp: linear("https://mcp.linear.test/mcp")}
 
     %{start: {WardrikMCP, :start_link, [opts]}} = Wardrik.Children.mcp_spec(wardrik)
@@ -120,13 +148,17 @@ defmodule Wardrik.KeysTest do
     :ok = stop_supervised!(Wardrik)
     start_supervised!({Wardrik, %{wardrik | mcp: linear(url)}})
 
-    :ok = Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "Bearer lin_123")
+    :ok =
+      Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "Bearer lin_123", kind: :header)
+
     assert_receive {:authorization, "/mcp", ["Bearer lin_123"]}, 5_000
 
-    :ok = Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "Bearer lin_456")
+    :ok =
+      Wardrik.put_secret(wardrik, "deployment", "LINEAR_TOKEN", "Bearer lin_456", kind: :header)
+
     assert_receive {:authorization, "/mcp", ["Bearer lin_456"]}, 5_000
 
-    :ok = Wardrik.put_secret(wardrik, "acme", "LINEAR_TOKEN", "Bearer acme")
+    :ok = Wardrik.put_secret(wardrik, "acme", "LINEAR_TOKEN", "Bearer acme", kind: :header)
     refute_receive {:authorization, "/mcp", ["Bearer acme"]}, 500
   end
 
@@ -134,7 +166,9 @@ defmodule Wardrik.KeysTest do
   test "an owner's keys reach no tool's credentials, and the deployment's reach no owner", %{
     wardrik: wardrik
   } do
-    :ok = Wardrik.put_secret(wardrik, "deployment", "ZAI_API_KEY", "sk-deployment")
+    :ok =
+      Wardrik.put_secret(wardrik, "deployment", "ZAI_API_KEY", "sk-deployment", kind: :api_key)
+
     vault = Wardrik.vault(wardrik)
 
     assert {:error, _none} = WardrikVault.resolve("ZAI_API_KEY", %Principal{id: "acme"}, vault)

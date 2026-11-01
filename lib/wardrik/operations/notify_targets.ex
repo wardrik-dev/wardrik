@@ -86,9 +86,14 @@ defmodule Wardrik.Operations.NotifyTargets do
       {:error, Error.new(:not_supported, "A target's secret needs Wardrik to keep credentials.")}
 
   defp secret(wardrik, owner, %{"name" => name}) do
-    if name in Wardrik.Sealed.list(wardrik, owner),
+    if Wardrik.Sealed.holds?(wardrik, owner, name, :signing_secret),
       do: {:ok, [secret: {:secret, name}]},
-      else: {:error, Error.new(:invalid_request, "#{owner} holds no secret #{name}.")}
+      else:
+        {:error,
+         Error.new(
+           :invalid_request,
+           "#{owner} holds no secret #{name} sealed as a signing_secret."
+         )}
   end
 
   # A target from `:notify` is summed up: its options may hold what only the deployment sees.
