@@ -18,7 +18,7 @@ children = [MyApp.AgentRuntime]
 ```
 
 To try it, paste the module into a fresh IEx session started with
-`Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])`, then start it and act as someone:
+`Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])`, then start it and act as someone:
 
 ```elixir
 {:ok, _} = MyApp.AgentRuntime.start_link()

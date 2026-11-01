@@ -4,7 +4,7 @@ defmodule Wardrik.MixProject do
   def project do
     [
       app: :wardrik,
-      version: "0.1.0-rc.1",
+      version: "0.1.0-rc.2",
       elixir: "~> 1.20",
       description:
         "Agents, governed: rules the model can't rewrite, approvals, budgets, and a record of what they did.",
@@ -96,19 +96,19 @@ defmodule Wardrik.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      sibling(:wardrik_core),
-      sibling(:wardrik_store),
-      sibling(:wardrik_protocol),
-      sibling(:wardrik_events),
-      sibling(:wardrik_policy),
-      sibling(:wardrik_vault),
-      sibling(:wardrik_oauth),
-      sibling(:wardrik_mcp),
-      sibling(:wardrik_triggers),
-      sibling(:wardrik_workspace),
-      sibling(:wardrik_http),
-      sibling(:wardrik_channel),
-      sibling(:wardrik_slack, only: :test),
+      sibling(:wardrik_core, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_store, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_protocol, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_events, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_policy, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_vault, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_oauth, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_mcp, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_triggers, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_workspace, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_http, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_channel, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_slack, "~> 0.1.0-rc.2", only: :test),
       {:durable_server, "~> 0.1.6"},
       {:req, "~> 0.7"},
       {:ekv, "~> 0.4.8"},
@@ -129,9 +129,9 @@ defmodule Wardrik.MixProject do
 
   # Wardrik's own packages come from Hex, or from their checkouts beside this one with
   # WARDRIK_LOCAL=1.
-  defp sibling(name, opts \\ []) do
+  defp sibling(name, requirement, opts \\ []) do
     if System.get_env("WARDRIK_LOCAL"),
       do: {name, Keyword.put(opts, :path, "../#{name}")},
-      else: {name, "~> 0.1.0-rc.1", opts}
+      else: {name, requirement, opts}
   end
 end

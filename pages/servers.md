@@ -11,7 +11,7 @@ In a fresh IEx session, start Wardrik with GitHub's MCP server, and an OAuth app
 it with:
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
 {:ok, _} =
   Wardrik.start_link(

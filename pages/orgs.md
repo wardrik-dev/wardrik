@@ -11,7 +11,7 @@ keeps orgs. Here, a map stands in for your billing plans.
 In a fresh IEx session:
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
 defmodule MyApp.Orgs do
   @behaviour Wardrik.Orgs

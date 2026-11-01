@@ -10,7 +10,7 @@ and the model is told why.
 In a fresh IEx session:
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
 {:ok, _} =
   Wardrik.start_link(

@@ -1,7 +1,7 @@
 # Agents that wake themselves
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.1"}, {:kino, "~> 0.19"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.2"}, {:kino, "~> 0.19"}])
 ```
 
 ## What you'll build

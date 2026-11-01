@@ -10,7 +10,7 @@ In a fresh IEx session, start Wardrik with a key to seal credentials with, and a
 GitHub:
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.1"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
 {:ok, _} =
   Wardrik.start_link(
