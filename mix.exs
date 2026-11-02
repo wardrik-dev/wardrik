@@ -4,7 +4,7 @@ defmodule WardrikResearch.MixProject do
   def project do
     [
       app: :wardrik_research,
-      version: "0.1.0-rc.1",
+      version: "0.1.0-rc.2",
       elixir: "~> 1.20",
       description:
         "Deep research for agents: a topic split across angles, a subagent researching each at once, and one report from what they found.",
@@ -59,7 +59,7 @@ defmodule WardrikResearch.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_core),
+      sibling(:wardrik_core, "~> 0.1.0-rc.2"),
       {:mimic, "~> 2.4", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -73,9 +73,9 @@ defmodule WardrikResearch.MixProject do
 
   # Wardrik's own packages come from Hex, or from their checkouts beside this one with
   # WARDRIK_LOCAL=1.
-  defp sibling(name, opts \\ []) do
+  defp sibling(name, requirement, opts \\ []) do
     if System.get_env("WARDRIK_LOCAL"),
       do: {name, Keyword.put(opts, :path, "../#{name}")},
-      else: {name, "~> 0.1.0-rc.1", opts}
+      else: {name, requirement, opts}
   end
 end

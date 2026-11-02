@@ -1,11 +1,9 @@
 defmodule WardrikResearch.Deep do
   @moduledoc """
-  The `deep_research` tool.
+  The `deep_research` tool. Researchers run at once, then a subagent with no tools combines their
+  findings.
 
-  Each angle goes to a researcher: a subagent with the caller's tools, except this one. Researchers
-  run at the same time. A last subagent, with no tools, combines their findings into one report.
-
-  The tool returns `%{"topic" => ..., "report" => ..., "gaps" => [%{"angle" => ..., "reason" => ...}]}`.
+  Returns `%{"topic" => ..., "report" => ..., "gaps" => [%{"angle" => ..., "reason" => ...}]}`.
   """
 
   alias WardrikCore.Context
@@ -42,7 +40,7 @@ defmodule WardrikResearch.Deep do
   Say what's established, where the reports disagree, and what's still unknown. Carry each claim's source through. Leave out an angle that added nothing rather than padding the report with it, and never add a finding the reports don't support.
   """
 
-  @doc "Returns the tool. Raises `ArgumentError` if an angle isn't `%{angle: name, prompt: note}`. See `WardrikResearch` for `opts`."
+  @doc "Returns the tool. Raises `ArgumentError` on a bad angle. See `WardrikResearch` for `opts`."
   @spec tool(keyword()) :: WardrikCore.Tool.t()
   def tool(opts) do
     opts =

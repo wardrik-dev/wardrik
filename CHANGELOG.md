@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.2 (2026-11-02)
+
+- Requires `wardrik_core` 0.1.0-rc.2.
+
 ## 0.1.0-rc.1 (2026-10-30)
 
 - `deep_research`, a tool that splits a topic into angles, researches each in its own subagent at
