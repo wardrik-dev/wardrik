@@ -4,15 +4,17 @@ defmodule WardrikHTTP.Routes do
   """
 
   segment = fn
-    "{agent}" -> :agent
     "{" <> name -> {:param, String.trim_trailing(name, "}")}
     literal -> literal
   end
 
+  pattern = fn path -> path |> String.split("/", trim: true) |> Enum.map(segment) end
+
   @routes WardrikProtocol.operations()
-          |> Enum.map(fn operation ->
-            pattern = operation.path |> String.split("/", trim: true) |> Enum.map(segment)
-            {String.upcase(operation.method), pattern, operation}
+          |> Enum.flat_map(fn operation ->
+            for path <- [operation.path, operation.conversation],
+                path != nil,
+                do: {String.upcase(operation.method), pattern.(path), operation}
           end)
           |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
 
@@ -20,14 +22,14 @@ defmodule WardrikHTTP.Routes do
   Returns the operation for `method` and the decoded path `segments`, with its path parameters, or
   `:error`.
 
-  An agent ID takes two segments, or three if the second starts with `@`. A conversation follows
-  it as `conversations/ID`.
+  Each parameter takes one segment. An operation on a conversation matches its conversation route
+  too, which gives `"conversation"`.
 
-      WardrikHTTP.Routes.match("POST", ["v1", "agents", "acme", "@jon", "triage", "messages"])
-      #=> {:ok, %{id: "agent.ask", ...}, %{"agent" => "acme/@jon/triage"}}
+      WardrikHTTP.Routes.match("POST", ["v1", "agents", "agt_1", "messages"])
+      #=> {:ok, %{id: "agent.ask", ...}, %{"agent" => "agt_1"}}
 
-      WardrikHTTP.Routes.match("GET", ~w(v1 agents acme triage conversations C1 timeline))
-      #=> {:ok, %{id: "agent.timeline", ...}, %{"agent" => "acme/triage/C1"}}
+      WardrikHTTP.Routes.match("GET", ~w(v1 agents agt_1 conversations C1 timeline))
+      #=> {:ok, %{id: "agent.timeline", ...}, %{"agent" => "agt_1", "conversation" => "C1"}}
   """
   @spec match(String.t(), [String.t()]) ::
           {:ok, WardrikProtocol.operation(), %{String.t() => String.t()}} | :error
@@ -48,11 +50,6 @@ defmodule WardrikHTTP.Routes do
 
   defp params([], [], params), do: {:ok, params}
 
-  defp params([:agent | pattern], segments, params) do
-    with {:ok, agent, rest} <- agent(segments),
-         do: params(pattern, rest, Map.put(params, "agent", agent))
-  end
-
   defp params([{:param, name} | pattern], [value | segments], params),
     do: params(pattern, segments, Map.put(params, name, value))
 
@@ -60,13 +57,4 @@ defmodule WardrikHTTP.Routes do
     do: params(pattern, segments, params)
 
   defp params(_pattern, _segments, _params), do: :error
-
-  defp agent([org, "@" <> _ = user, name | rest]), do: conversation([org, user, name], rest)
-  defp agent([org, name | rest]), do: conversation([org, name], rest)
-  defp agent(_segments), do: :error
-
-  defp conversation(key, ["conversations", id | rest]),
-    do: {:ok, Enum.join(key ++ [id], "/"), rest}
-
-  defp conversation(key, rest), do: {:ok, Enum.join(key, "/"), rest}
 end

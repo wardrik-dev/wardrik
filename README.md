@@ -71,24 +71,30 @@ Define an agent, send it a message, and follow its log:
 ```sh
 export TOKEN=...  # what your authenticator takes
 
-curl -X PUT localhost:4000/v1/agents/acme/triage \
+curl -X PUT localhost:4000/v1/agents/agt_01JF8X5RQ2 \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"model": "anthropic:claude-haiku-4-5", "instructions": "You watch the incident queue."}'
 
-curl -X POST localhost:4000/v1/agents/acme/triage/messages \
+curl -X POST localhost:4000/v1/agents/agt_01JF8X5RQ2/messages \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"content": "What is on fire?"}'
-#=> {"message": {"id": "msg_Xq3f...", "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"}}
+#=> {"message": {"id": "msg_Xq3f...", "cursor": "W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ"}}
 
-curl -N localhost:4000/v1/agents/acme/triage/events?after=eyJhY21lL3RyaWFnZSI6NDF9 \
+curl -N localhost:4000/v1/agents/agt_01JF8X5RQ2/events?after=W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Accept: text/event-stream"
-#=> id: eyJhY21lL3RyaWFnZSI6NDN9
+#=> id: W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDNdXQ
 #=> data: {"specversion":"1.0","type":"wardrik.run.completed",...}
 ```
 
-An agent's ID is its path: `acme/triage` for an org's agent, `acme/@maria/notes` for a person's.
-Percent-encode each segment on its own.
+An agent's ID is whatever your app gave it, sent as one percent-encoded path segment. A
+conversation of the agent adds `conversations/{conversation}`:
+
+```sh
+curl -X POST localhost:4000/v1/agents/agt_01JF8X5RQ2/conversations/C1-1696.1234/messages \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"content": "And now?"}'
+```
 
 Event streams:
 
@@ -118,13 +124,13 @@ authenticator. The request proves itself with the trigger's secret:
     kind: :signing_secret
   )
 
-Wardrik.Agent.define(scope, "acme/triage",
+Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
   model: "anthropic:claude-haiku-4-5",
   triggers: [%{name: "issues", webhook: %{secret: "${ISSUES_HOOK}"}, prompt: "Triage it."}]
 )
 ```
 
-Point the service at `https://agents.example.com/v1/hooks/acme/triage/issues`. See
+Point the service at `https://agents.example.com/v1/hooks/agt_01JF8X5RQ2/issues`. See
 [Trigger agents](https://hexdocs.pm/wardrik/triggers.html) for how requests are verified.
 
 ## Run tools in your own process
@@ -141,15 +147,15 @@ code, data and keys. The worker connects to Wardrik, so Wardrik never needs to r
    ```json
    {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
     "params": {"name": "refund_order", "arguments": {"order": "A1"},
-               "_meta": {"agent": {"key": "acme/triage", "org": "acme", "name": "triage"},
+               "_meta": {"agent": {"key": "agt_01JF8X5RQ2"},
                          "run": "4bf92f3577b34da6a3ce929d0e0e4736",
-                         "principal": "acme/@maria", "idempotencyKey": "call_1"}}}
+                         "principal": "user_42", "idempotencyKey": "call_1"}}}
    ```
 
 3. Agents name workers' tools as `workers/*`:
 
    ```elixir
-   Wardrik.Agent.define(scope, "acme/triage",
+   Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
      model: "anthropic:claude-haiku-4-5",
      tools: ["workers/*"],
      policy: [ask: ["workers/refund_order"]]
@@ -204,7 +210,7 @@ forward "/agents", Wardrik.HTTP,
   authenticator: {MyAppWeb.WardrikSession, []}
 ```
 
-Routes are then under `/agents`, as `/agents/v1/agents/acme/triage`. Sign-in pages are at
+Routes are then under `/agents`, as `/agents/v1/agents/agt_01JF8X5RQ2`. Sign-in pages are at
 `/agents/oauth`.
 
 Webhook signatures cover the exact bytes sent. If your endpoint parses bodies first, have

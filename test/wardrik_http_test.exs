@@ -5,7 +5,7 @@ defmodule WardrikHTTPTest do
   import Plug.Test
   import WardrikHTTP.Test
 
-  @notes "/v1/agents/acme/@maria/notes"
+  @notes "/v1/agents/acme%2F%40maria%2Fnotes"
 
   defmodule Pages do
     @moduledoc "The sign-in pages a test's server has."
@@ -39,8 +39,8 @@ defmodule WardrikHTTPTest do
       assert_received {:ran, "agent.define",
                        %{"agent" => "acme/@maria/notes", "model" => "anthropic:claude-haiku-4-5"}}
 
-      request(context, "GET", "/v1/agents?agents=acme/@maria/notes&agents=acme/triage")
-      assert_received {:ran, "agents.list", %{"agents" => ["acme/@maria/notes", "acme/triage"]}}
+      request(context, "GET", "/v1/agents?agents=acme%2F%40maria%2Fnotes&agents=agt_1")
+      assert_received {:ran, "agents.list", %{"agents" => ["acme/@maria/notes", "agt_1"]}}
     end
 
     test "answers nothing where the operation answers nothing", context do
@@ -77,7 +77,7 @@ defmodule WardrikHTTPTest do
     end
 
     test "answers the protocol's error where an operation fails", context do
-      conn = request(context, "GET", "/v1/agents/acme/missing")
+      conn = request(context, "GET", "/v1/agents/missing")
       assert {conn.status, body(conn)["error"]["type"]} == {404, "not_found"}
     end
 
@@ -91,8 +91,14 @@ defmodule WardrikHTTPTest do
       assert request(context, "PUT", @notes, "{").status == 400
     end
 
-    test "refuses a path segment that holds a slash", context do
-      assert request(context, "GET", "/v1/agents/acme%2Fnotes/x").status == 400
+    test "takes an agent and a conversation each as one segment, slashes and all", context do
+      conn = request(context, "GET", "/v1/agents/acme%2Fnotes/conversations/C1%2F2/timeline")
+      assert conn.status == 200
+
+      assert_received {:ran, "agent.timeline",
+                       %{"agent" => "acme/notes", "conversation" => "C1/2"}}
+
+      assert request(context, "GET", "/v1/agents/acme/notes/timeline").status == 404
     end
 
     test "won't start without a server, or without an authenticator" do
@@ -114,15 +120,15 @@ defmodule WardrikHTTPTest do
 
   describe "webhooks" do
     test "hands a request to its trigger with no token, as whoever it is", context do
-      conn = hook(context, "/v1/hooks/acme/hooks/issues", [{"authorization", "Bearer s3cret"}])
+      conn = hook(context, "/v1/hooks/agt_hooks/issues", [{"authorization", "Bearer s3cret"}])
       assert {conn.status, conn.resp_body} == {202, ""}
 
       assert_received {:ran, "hook.deliver",
-                       %{"agent" => "acme/hooks", "trigger" => "issues", "body" => body}}
+                       %{"agent" => "agt_hooks", "trigger" => "issues", "body" => body}}
 
       assert body == ~s({"action":"opened"})
 
-      assert hook(context, "/v1/hooks/acme/hooks/issues/s3cret", []).status == 202
+      assert hook(context, "/v1/hooks/agt_hooks/issues/s3cret", []).status == 202
       assert_received {:ran, "hook.deliver_with_secret", %{"secret" => "s3cret"}}
     end
 
@@ -135,7 +141,7 @@ defmodule WardrikHTTPTest do
         )
 
       "POST"
-      |> conn("/v1/hooks/acme/hooks/issues", ~s({"action": "opened"}))
+      |> conn("/v1/hooks/agt_hooks/issues", ~s({"action": "opened"}))
       |> put_req_header("content-type", "application/json")
       |> Plug.Parsers.call(parsers)
       |> WardrikHTTP.call(settings(context))
@@ -148,7 +154,7 @@ defmodule WardrikHTTPTest do
 
       conn =
         "POST"
-        |> conn("/v1/hooks/acme/hooks/issues", ~s({"action":"opened"}))
+        |> conn("/v1/hooks/agt_hooks/issues", ~s({"action":"opened"}))
         |> put_req_header("content-type", "application/json")
         |> Plug.Parsers.call(parsers)
         |> WardrikHTTP.call(settings(context))

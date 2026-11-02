@@ -4,6 +4,9 @@
 
 ### Breaking
 
+- Each path parameter is one segment, so an agent ID is one percent-encoded segment, `/` and
+  all. An operation on a conversation also matches its route under
+  `/v1/agents/{agent}/conversations/{conversation}`, which gives `"conversation"`.
 - `:authenticator` is required, and `WardrikHTTP.Bearer` and API tokens are gone. Options are
   checked with `NimbleOptions`.
 - `c:WardrikHTTP.Authenticator.authenticate/2` takes a `WardrikHTTP.Authenticator.Request`, with

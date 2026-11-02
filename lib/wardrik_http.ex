@@ -135,14 +135,8 @@ defmodule WardrikHTTP do
   defp sign_in(conn, _rest, nil), do: Response.error(conn, no_route())
   defp sign_in(conn, rest, {plug, opts}), do: Plug.forward(conn, rest, plug, opts)
 
-  defp segments(path_info) do
-    decoded = Enum.map(path_info, &URI.decode/1)
-
-    case Enum.any?(decoded, &String.contains?(&1, "/")) do
-      false -> {:ok, decoded}
-      true -> {:error, Error.new(:invalid_request, "A path segment can't hold a /.")}
-    end
-  end
+  # Each segment is one parameter, whatever it holds once decoded.
+  defp segments(path_info), do: {:ok, Enum.map(path_info, &URI.decode/1)}
 
   defp route(method, segments) do
     case Routes.match(method, segments) do

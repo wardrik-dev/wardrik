@@ -24,10 +24,10 @@ defmodule WardrikHTTP.EventStreamTest do
   end
 
   test "streams what its server streams, each event with its cursor as its id", context do
-    stream = open(context, "/v1/agents/acme/triage/events?types=wardrik.run.completed")
+    stream = open(context, "/v1/agents/agt_1/events?types=wardrik.run.completed")
 
     assert_receive {:streamed, "agent.events",
-                    %{"agent" => "acme/triage", "types" => ["wardrik.run.completed"]}}
+                    %{"agent" => "agt_1", "types" => ["wardrik.run.completed"]}}
 
     assert until(stream, "wardrik.run.completed") =~ ~r/^id: cursor-1\ndata: \{/m
   end
@@ -47,9 +47,9 @@ defmodule WardrikHTTP.EventStreamTest do
   end
 
   test "answers a page as JSON without Accept: text/event-stream", context do
-    conn = request(context, "GET", "/v1/agents/acme/triage/events")
+    conn = request(context, "GET", "/v1/agents/agt_1/events")
     assert %{"events" => _events} = body(conn)
-    assert_received {:ran, "agent.events", %{"agent" => "acme/triage"}}
+    assert_received {:ran, "agent.events", %{"agent" => "agt_1"}}
   end
 
   test "answers why it can't stream as the protocol's error", context do
