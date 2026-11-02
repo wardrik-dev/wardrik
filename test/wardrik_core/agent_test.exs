@@ -277,12 +277,12 @@ defmodule WardrikCore.AgentTest do
       assert here in WardrikCore.nodes()
       assert %{{^id, nil} => ^here} = WardrikCore.placements()
 
-      assert {:ok, moved} = WardrikCore.move({id, nil}, to: here)
+      assert {:ok, moved} = WardrikCore.move(id, to: here)
       refute moved == agent
       assert %{agent_id: ^id, state: :idle} = agent_state(moved)
 
-      assert {:error, :no_such_node} = WardrikCore.move({id, nil}, to: "nowhere@nohost")
-      assert {:error, :not_found} = WardrikCore.move({"agent-never", nil}, to: here)
+      assert {:error, :no_such_node} = WardrikCore.move(id, to: "nowhere@nohost")
+      assert {:error, :not_found} = WardrikCore.move("agent-never", to: here)
 
       :ok = WardrikCore.stop(moved)
       assert %{{^id, nil} => nil} = WardrikCore.placements()
@@ -294,11 +294,11 @@ defmodule WardrikCore.AgentTest do
       {id, agent} = start_agent()
       ref = Process.monitor(agent)
 
-      assert :ok = WardrikCore.delete({id, nil})
+      assert :ok = WardrikCore.delete(id)
       assert_receive {:DOWN, ^ref, :process, _pid, _reason}
 
       refute {id, nil} in WardrikCore.list()
-      assert :ok = WardrikCore.delete({id, nil})
+      assert :ok = WardrikCore.delete(id)
     end
   end
 
@@ -508,8 +508,8 @@ defmodule WardrikCore.AgentTest do
   test "whereis/1 finds a running agent by id" do
     {id, agent} = start_agent()
 
-    assert ^agent = WardrikCore.whereis({id, nil})
-    assert nil == WardrikCore.whereis({"no-such-agent", nil})
+    assert ^agent = WardrikCore.whereis(id)
+    assert nil == WardrikCore.whereis("no-such-agent")
   end
 
   test "keeps each conversation apart from its agent, whatever its ids hold" do
@@ -519,7 +519,7 @@ defmodule WardrikCore.AgentTest do
 
     refute held == agent
     assert ^held = WardrikCore.whereis({id, "C1/1696.1234"})
-    assert ^agent = WardrikCore.whereis({id, nil})
+    assert ^agent = WardrikCore.whereis(id)
     assert nil == WardrikCore.whereis({id, "C1"})
     assert {id, nil} in WardrikCore.list()
     assert {id, "C1/1696.1234"} in WardrikCore.list()
@@ -530,7 +530,7 @@ defmodule WardrikCore.AgentTest do
     assert_receive {[:turn, :stop], %{agent_id: ^id, conversation: "C1/1696.1234"}}
 
     assert :ok = WardrikCore.delete({id, "C1/1696.1234"})
-    assert ^agent = WardrikCore.whereis({id, nil})
+    assert ^agent = WardrikCore.whereis(id)
   end
 
   test "start_agent/1 metadata reaches middleware" do

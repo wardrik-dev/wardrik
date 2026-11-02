@@ -44,7 +44,13 @@ A conversation runs on the same options, with a history of its own. Name it with
 ```
 
 The agent ID and the conversation ID are your app's. Each `{agent_id, conversation}` is one agent.
-The agent's own history is `{agent_id, nil}`.
+The agent's own history is `{agent_id, nil}`. Functions that find an agent take its ID alone for
+its own history:
+
+```elixir
+WardrikCore.whereis("support")
+WardrikCore.whereis({"support", "C1"})
+```
 
 ## Where agents are kept
 

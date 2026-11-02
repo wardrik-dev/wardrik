@@ -40,6 +40,9 @@ defmodule WardrikCore do
   @typedoc "An agent's id and its conversation's, `nil` for the agent's own history."
   @type key() :: {String.t(), String.t() | nil}
 
+  @typedoc "An agent's id, for its own history, or a `t:key/0` for one of its conversations."
+  @type agent() :: String.t() | key()
+
   @doc """
   Runs agents under your supervision tree.
 
@@ -182,10 +185,15 @@ defmodule WardrikCore do
     |> Enum.flat_map(fn info -> key(info.key) end)
   end
 
-  @doc "Returns the running agent for `key`, or `nil`."
-  @spec whereis(atom(), key()) :: pid() | nil
-  def whereis(instance \\ __MODULE__, key) do
-    case DurableServer.Supervisor.lookup(agents(instance), durable(key)) do
+  @doc """
+  Returns the running agent, or `nil`.
+
+      WardrikCore.whereis("support")
+      WardrikCore.whereis({"support", "C1"})
+  """
+  @spec whereis(atom(), agent()) :: pid() | nil
+  def whereis(instance \\ __MODULE__, agent) do
+    case DurableServer.Supervisor.lookup(agents(instance), durable(agent)) do
       {pid, _meta} -> pid
       nil -> nil
     end
@@ -250,16 +258,16 @@ defmodule WardrikCore do
   @doc """
   Restarts the agent on the node `:to`, with its saved state.
 
-      WardrikCore.move({"triage", nil}, to: "wardrik@10.0.0.2")
+      WardrikCore.move("triage", to: "wardrik@10.0.0.2")
 
   Ends the turn it's taking, and abandons anything it's waiting on. Returns
   `{:error, :no_such_node}` or `{:error, :not_found}` if the node or the agent doesn't exist.
   """
-  @spec move(atom(), key(), to: String.t()) :: {:ok, pid()} | {:error, term()}
-  def move(instance \\ __MODULE__, key, args) do
+  @spec move(atom(), agent(), to: String.t()) :: {:ok, pid()} | {:error, term()}
+  def move(instance \\ __MODULE__, agent, args) do
     with {:ok, target} <- node(Keyword.fetch!(args, :to), nodes(instance)),
-         :ok <- saved(instance, key) do
-      child = {WardrikCore.Agent, key: durable(key), initial_state: %{}}
+         :ok <- saved(instance, keyed(agent)) do
+      child = {WardrikCore.Agent, key: durable(agent), initial_state: %{}}
 
       case DurableServer.Supervisor.rehome_child(agents(instance), child, target_node: target) do
         {:ok, {pid, _meta}} -> {:ok, pid}
@@ -269,9 +277,9 @@ defmodule WardrikCore do
   end
 
   @doc "Stops the agent and deletes its saved state. Returns `:ok` if there's no such agent."
-  @spec delete(atom(), key()) :: :ok | {:error, term()}
-  def delete(instance \\ __MODULE__, key) do
-    case DurableServer.Supervisor.terminate_and_delete_child(agents(instance), durable(key)) do
+  @spec delete(atom(), agent()) :: :ok | {:error, term()}
+  def delete(instance \\ __MODULE__, agent) do
+    case DurableServer.Supervisor.terminate_and_delete_child(agents(instance), durable(agent)) do
       :ok -> :ok
       {:error, :not_found} -> :ok
       {:error, reason} -> {:error, reason}
@@ -451,8 +459,12 @@ defmodule WardrikCore do
     if key in list(instance), do: :ok, else: {:error, :not_found}
   end
 
+  defp keyed(agent_id) when is_binary(agent_id), do: {agent_id, nil}
+  defp keyed({_agent_id, _conversation} = key), do: key
+
   # DurableServer keys are binaries: each id is encoded on its own, so no id is ever split.
-  defp durable({agent_id, conversation}) do
+  defp durable(agent) do
+    {agent_id, conversation} = keyed(agent)
     ids = Enum.reject([agent_id, conversation], &is_nil/1)
     Enum.map_join(["agents" | Enum.map(ids, &URI.encode_www_form/1)], "/", & &1)
   end
