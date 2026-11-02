@@ -7,41 +7,27 @@ defmodule Wardrik.Channel.Installation do
         workspace: "T0123",
         name: "Acme",
         owner: "acme",
-        token: "xoxb-...",
-        approvers: ["@maria"]
+        token: "xoxb-..."
       }
 
   ## Fields
 
     * `:channel` - the channel's name, as `"slack"`.
     * `:workspace` - the workspace's ID in the chat app.
-    * `:owner` - whose agents answer there: an org, as `"acme"`, or a person, as `"acme/@jon"`.
+    * `:owner` - who added it, as your app names them. Wardrik passes it to your authorizer.
     * `:token` - the chat app's token for the workspace. Hidden from `inspect/2`.
     * `:name` - the workspace's name in the chat app, if it gave one.
-    * `:approvers` - who may decide the calls those agents wait on, named as the chat app names
-      people, or `:anyone`. With `[]`, the person who started the turn decides.
   """
 
   @derive {Inspect, except: [:token]}
   @enforce_keys [:channel, :workspace, :owner, :token]
-  defstruct [:channel, :workspace, :owner, :token, :name, approvers: []]
+  defstruct [:channel, :workspace, :owner, :token, :name]
 
   @type t() :: %__MODULE__{
           channel: String.t(),
           workspace: String.t(),
           owner: String.t(),
           token: String.t(),
-          name: String.t() | nil,
-          approvers: [String.t()] | :anyone
+          name: String.t() | nil
         }
-
-  @doc """
-  Returns whether the agent or conversation `id` is the installation owner's own.
-
-      Wardrik.Channel.Installation.owns?(installation, "acme/triage/C1-1696.1234")
-      #=> true
-  """
-  @spec owns?(t(), String.t()) :: boolean()
-  def owns?(%__MODULE__{owner: owner}, id),
-    do: match?({:ok, %Wardrik.AgentID{owner: ^owner}}, Wardrik.AgentID.parse(id))
 end

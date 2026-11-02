@@ -55,7 +55,7 @@ defmodule Wardrik.Scope do
         wardrik: MyApp.AgentRuntime,
         principal: "acme/@maria",
         actor: {:channel, "slack"},
-        context: %{approver: true}
+        context: %{asked_by: "acme/@jon"}
       )
 
   `:principal` is a `WardrikCore.Principal` or its ID. `:actor` is `nil` and `:context` `%{}`

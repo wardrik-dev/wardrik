@@ -1,19 +1,14 @@
 defmodule Wardrik.Channel.Notification do
   @moduledoc """
-  What `c:Wardrik.Channel.notify/2` posts: `notice`, in `room`, asking `approvers` to decide the
-  calls a parked turn waits on.
+  What `c:Wardrik.Channel.notify/2` posts: `notice`, in `room` of `workspace`.
 
-      %Wardrik.Channel.Notification{room: "#ops", notice: notice, approvers: ["U024BE7LH"]}
+      %Wardrik.Channel.Notification{workspace: "T0123", room: "#ops", notice: notice}
 
-  `approvers` are named as the chat app names people.
+  `workspace` is the one the agent's resolver gives for the channel. See `Wardrik.Resolved`.
   """
 
-  @enforce_keys [:room, :notice]
-  defstruct [:room, :notice, approvers: []]
+  @enforce_keys [:workspace, :room, :notice]
+  defstruct [:workspace, :room, :notice]
 
-  @type t() :: %__MODULE__{
-          room: String.t(),
-          notice: Wardrik.Notice.t(),
-          approvers: [String.t()]
-        }
+  @type t() :: %__MODULE__{workspace: String.t(), room: String.t(), notice: Wardrik.Notice.t()}
 end

@@ -41,9 +41,7 @@ defmodule Wardrik.Definition do
       channels: "channels"
     ]
 
-  alias Wardrik.AgentID
   alias Wardrik.Type
-  alias WardrikCore.Principal
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
 
@@ -74,15 +72,4 @@ defmodule Wardrik.Definition do
   end
 
   def named(definition), do: definition
-
-  @doc """
-  Returns the principal the agent `id` acts as: its user, as `acme/@maria`, or its org, as `acme`.
-
-  Raises `MatchError` if `id` isn't an agent ID.
-  """
-  @spec principal(String.t()) :: Principal.t()
-  def principal(id) do
-    {:ok, %AgentID{owner: owner}} = AgentID.parse(id)
-    %Principal{id: owner}
-  end
 end

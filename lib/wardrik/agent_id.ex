@@ -12,12 +12,10 @@ defmodule Wardrik.AgentID do
     * `acme/triage/C1-1696.1234` or `acme/@jon/triage/C1-1696.1234` - a conversation. It runs on
       its agent's definition, with its own history.
 
-  The owner reads as `Wardrik.Owners.parse/1` reads it, and only an owner holds a `/@` segment.
-  The name and conversation may not be empty or contain `:`, `*` or `?`. `:` marks people known
+  Only the owner holds a `/@` segment. No segment may be empty or contain `:`, `*` or `?`, and an
+  owner's segments may not contain `@` beyond the person's leading one. `:` marks people known
   elsewhere, as `slack:T0123/U024BE7LH`. `*` and `?` are for patterns.
   """
-
-  alias Wardrik.Owners
 
   @enforce_keys [:owner, :name, :conversation]
   defstruct @enforce_keys
@@ -29,7 +27,7 @@ defmodule Wardrik.AgentID do
   def parse(id) do
     {owner, rest} = id |> String.split("/") |> owner()
 
-    with {:ok, _owner} <- Owners.parse(owner), do: new(owner, rest)
+    if owner?(owner), do: new(owner, rest), else: :error
   end
 
   @doc """
@@ -54,6 +52,15 @@ defmodule Wardrik.AgentID do
 
   defp owner([org, "@" <> _person = person | rest]), do: {org <> "/" <> person, rest}
   defp owner([org | rest]), do: {org, rest}
+
+  defp owner?(owner) do
+    case String.split(owner, "/") do
+      [org] -> owned?(org)
+      [org, "@" <> person] -> owned?(org) and owned?(person)
+    end
+  end
+
+  defp owned?(segment), do: segment?(segment) and not String.contains?(segment, ["/", "@"])
 
   defp new(owner, [name]), do: new(owner, [name, nil])
 

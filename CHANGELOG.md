@@ -2,8 +2,6 @@
 
 ## 0.1.0-rc.2 (2026-10-31)
 
-- `Wardrik.Owners`: parses an owner, reads an agent's or owner's org, and gives the chain its
-  settings resolve along, nearest first, for every package that keeps settings by owner.
 - The events `wardrik.provider.added`, `wardrik.provider.removed`,
   `wardrik.notify_target.added` and `wardrik.notify_target.removed`, which `wardrik_daemon`
   records as an org or person adds or removes an OAuth app or a webhook.
@@ -29,15 +27,19 @@
   `Wardrik.Connection`, `Wardrik.Connecting`, the schemas `provider_input`, `provider`,
   `providers`, `connection`, `connections` and `connecting` are gone. No operation's `subject`
   is `"owner"`.
-- `Wardrik.AgentID.parse/1` reads the owner with `Wardrik.Owners.parse/1`, so an ID like
+- `Wardrik.AgentID.parse/1` refuses `@` in an owner beyond a person's leading one, so an ID like
   `ac@me/triage` or `acme/@jon` is `:error`.
+- No tenancy: `Wardrik.Resource`, `Wardrik.Definition.principal/1`,
+  `Wardrik.Channel.Installation`'s `approvers` and `agents/1`, and
+  `Wardrik.Channel.Notification`'s `approvers` are gone. A notification names the `workspace` to
+  post in. An agent definition's `workspace.shared` mounts other agents' workspaces, each by
+  `agent` ID.
 - No grants or tokens: `Wardrik.Statement`, `Wardrik.Tokens`, `Wardrik.Token`, the `tokens.*`
   operations and their schemas, `c:Wardrik.Server.authenticate/2`, and `Wardrik.Resource`'s
   `agent/1` and `owned/2` are gone. `Wardrik.Scope.new/2` takes the server, then `:wardrik`,
   `:principal`, `:actor` and `:context` by name. `agents.list`, `agents.forget`,
   `agents.cancel`, `interrupts.list`, `events.list`, `events.head` and `deployment.reload` take
-  `agents`, exact agent IDs, for `resources`. `Wardrik.Channel.Installation.owns?/2` replaces
-  `agents/1`.
+  `agents`, exact agent IDs, for `resources`.
 - An operation's function with two or more path parameters takes them by name in its input, as
   `Wardrik.Agent.approve(scope, agent: "acme/books", interrupt: "call_1")`: `Wardrik.Agent`'s
   `approve/2`, `deny/2`, `kill/2`, `authorization/2`, `trigger_set/2` and `trigger_remove/2`,

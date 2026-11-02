@@ -39,16 +39,16 @@
             "oneOf": [
               {
                 "type": "string",
-                "description": "A tree: org, org/name or org/@user/name."
+                "description": "An agent's ID, whose workspace it mounts."
               },
               {
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
-                  "tree"
+                  "agent"
                 ],
                 "properties": {
-                  "tree": {
+                  "agent": {
                     "type": "string"
                   },
                   "mode": {
@@ -61,10 +61,10 @@
               }
             ]
           },
-          "description": "The trees shared with the agent, by the name each is seen under at shared/<name>/: a tree, or a tree and a mode, write unless it says read."
+          "description": "Other agents' workspaces the agent mounts, by the name each is seen under at shared/<name>/: an agent's ID, or an ID and a mode. The resolver gives each with read or write access; mode read mounts a write share read only."
         }
       },
-      "description": "The trees the agent shares with other agents. Only trees the token's scope covers, and tools names files to reach them."
+      "description": "Other agents' workspaces the agent mounts. Only those its resolver shares, and tools names files to reach them."
     },
     "context": {
       "oneOf": [
@@ -345,7 +345,7 @@
       ],
       "workspace": {
         "shared": {
-          "team": "acme"
+          "team": "acme/runbooks"
         }
       },
       "context": [
