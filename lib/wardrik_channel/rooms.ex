@@ -42,7 +42,7 @@ defmodule WardrikChannel.Rooms do
   def get(%Workspace{installation: installation} = workspace, room) do
     with %{"agent" => agent, "answers" => answers} <-
            WardrikStore.get(store(workspace), key(workspace, room)),
-         true <- covers?(installation, agent) do
+         true <- Installation.owns?(installation, agent) do
       %Binding{room: room, agent: agent, answers: answers(answers)}
     else
       _unbound -> nil
@@ -165,14 +165,4 @@ defmodule WardrikChannel.Rooms do
 
   defp place(%Workspace{channel: channel, installation: installation}, room),
     do: Enum.join([channel.name, installation.workspace, room], "/")
-
-  defp covers?(installation, agent) do
-    case Wardrik.Resource.agent(agent) do
-      {:ok, resource} ->
-        WardrikEvents.Pattern.covers?(Installation.agents(installation), resource)
-
-      :error ->
-        false
-    end
-  end
 end

@@ -48,13 +48,15 @@ config :my_app, MyApp.AgentRuntime,
 The chat app posts to `POST /v1/channels/slack/{path}`. Serve it with `Wardrik.HTTP`:
 
 ```elixir
-forward "/", Wardrik.HTTP, wardrik: MyApp.AgentRuntime
+forward "/", Wardrik.HTTP,
+  wardrik: MyApp.AgentRuntime,
+  authenticator: {MyAppWeb.WardrikSession, []}
 ```
 
 List the channel in an agent's definition:
 
 ```elixir
-scope = MyApp.AgentRuntime.as("acme/@maria", roles: [:owner], resources: ["acme/*"])
+scope = MyApp.AgentRuntime.as("acme/@maria")
 
 Wardrik.Agent.define(scope, "acme/triage",
   model: "anthropic:claude-haiku-4-5",
@@ -77,21 +79,31 @@ Each thread is its own conversation with the agent, with its own history:
 acme/triage/slack.T0123.C024BE91L.1696.1234
 ```
 
-Anyone in the workspace may message the owner's agents. They act as themselves, as
-`slack:T0123/U024BE7LH`.
+People in the workspace act as themselves, as `slack:T0123/U024BE7LH`, with the channel as
+their actor, `{:channel, "slack"}`. Wardrik's `:authorizer` decides whether they may read and
+message the owner's agents. Its request's `context` holds the `installation`, as
+`%{owner: "acme", workspace: "T0123"}`.
 
 Replies are read from the agents' logs. Each room has one process in your cluster, kept in
 Wardrik's store. A reply delayed by a restart is still posted.
 
 ## Approvals
 
-When an agent waits on a call, the call and its arguments are posted in the thread. These people
-may decide it:
+When an agent waits on a call, the call and its arguments are posted in the thread. When someone
+decides it, the authorizer's request `context` also says:
 
-* anyone in `approvers`, as the chat app names people, or everyone with `approvers: :anyone`
-* whoever asked for that turn
+* `approver` - whether they're in `approvers`, as the chat app names people, or `true` for
+  everyone with `approvers: :anyone`
+* `asked_by` - the principal ID that asked for that turn, where known
 
-Anyone else is told who may decide.
+An authorizer that allows only approvers and the asker gives the usual rule:
+
+```elixir
+def authorize(%{actor: {:channel, _name}, action: "agent.decide", context: context} = request, _opts),
+  do: if(context[:approver] || context[:asked_by] == request.principal.id, do: :ok, else: {:error, :forbidden})
+```
+
+Anyone refused is told who may decide.
 
 ## Many workspaces
 

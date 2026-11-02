@@ -37,6 +37,22 @@ defmodule WardrikChannel.Test do
 
   alias WardrikTesting.Server
 
+  @doc """
+  Allows everything but deciding, which only an approver or whoever asked may do, as a host's
+  authorizer would. Tells `test` each request it decides.
+  """
+  def deciders(test, %{operation: "agent." <> verb, scope: scope} = request)
+      when verb in ["approve", "deny"] do
+    send(test, {:authorizing, request})
+    %{principal: principal, actor: {:channel, _name}, context: context} = scope
+
+    if context[:approver] || context[:asked_by] == principal.id,
+      do: :ok,
+      else: {:error, :forbidden}
+  end
+
+  def deciders(_test, _request), do: :ok
+
   def start_channel(context) do
     n = System.unique_integer([:positive])
     name = :"wardrik #{n}"
@@ -51,7 +67,13 @@ defmodule WardrikChannel.Test do
       {WardrikEvents, name: events, store: store, deployment: "test", retention: :infinity}
     )
 
-    :ok = Server.start(name, offered: Map.get(context, :offered, [{"acme/triage", [channel]}]))
+    test = self()
+
+    :ok =
+      Server.start(name,
+        authorize: &deciders(test, &1),
+        offered: Map.get(context, :offered, [{"acme/triage", [channel]}])
+      )
 
     opts = [
       server: Server,

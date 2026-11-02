@@ -242,8 +242,8 @@ defmodule WardrikChannel do
   Build the `WardrikChannel.Answer` from what the adapter put on the button, from a
   `WardrikChannel.Waiting`.
 
-  Approvers may decide, and so may whoever asked. Anyone else gets `{:error, deciding}`, the
-  channel's `:deciding` message.
+  The authorizer decides, from the context `WardrikChannel.Workspace.deciding_scope/2` gives it.
+  A refusal is `{:error, deciding}`, the channel's `:deciding` message.
   """
   @spec decide(Workspace.t(), Answer.t()) :: {:ok, Wardrik.Decision.t()} | {:error, String.t()}
   def decide(

@@ -4,18 +4,20 @@ defmodule WardrikChannel.Workspace do
 
   Adapters get one for each request with `WardrikChannel.workspace/2`.
 
-  People in the workspace act in Wardrik as themselves:
+  People in the workspace act in Wardrik as themselves, with the channel as their actor,
+  `{:channel, name}`. Wardrik's `Wardrik.Authorizer` decides what they may do, from what the
+  channel puts in the scope's `context`:
 
-    * Everyone may read and message the installation owner's agents.
-    * Approvers may also decide what those agents wait on. The adapter is asked whether someone
-      is an approver only when they decide.
+    * `:installation` - `%{owner: owner, workspace: workspace}`, always.
+    * `:asked_by` - when deciding, the principal ID that asked in the conversation, where known.
+    * `:approver` - when deciding, whether the member is one of the installation's approvers.
+      The adapter is asked only then.
 
   The workspace offers the owner's agents whose definitions list the channel in `channels`.
   """
 
   alias Wardrik.AgentID
   alias Wardrik.Channel.Installation
-  alias Wardrik.Statement
   alias WardrikChannel.Answer
   alias WardrikChannel.Channel
   alias WardrikChannel.Member
@@ -34,60 +36,41 @@ defmodule WardrikChannel.Workspace do
          do: {:ok, %__MODULE__{channel: channel, installation: installation}}
   end
 
-  @doc "Returns the channel's own scope. It may read the owner's agents."
+  @doc "Returns the channel's own scope, as the workspace, `slack:T0123`, with the channel as actor."
   @spec scope(t()) :: Wardrik.Scope.t()
-  def scope(%__MODULE__{channel: channel, installation: installation}) do
-    principal = %Principal{id: channel.name <> ":" <> installation.workspace}
-    grants = [Statement.new(roles: [:reader], resources: [Installation.agents(installation)])]
+  def scope(%__MODULE__{channel: channel, installation: installation} = workspace),
+    do: acting(workspace, %Principal{id: channel.name <> ":" <> installation.workspace}, %{})
 
+  @doc "Returns `member`'s scope, with the channel as actor."
+  @spec member_scope(t(), Member.t()) :: Wardrik.Scope.t()
+  def member_scope(workspace, member), do: acting(workspace, principal(workspace, member), %{})
+
+  @doc """
+  Returns the scope `answer`'s member decides calls in: `member_scope/2`, with `:asked_by` and
+  `:approver` in its context.
+  """
+  @spec deciding_scope(t(), Answer.t()) :: Wardrik.Scope.t()
+  def deciding_scope(workspace, %Answer{member: member, asked_by: asked_by}) do
+    known = if asked_by, do: %{asked_by: asked_by}, else: %{}
+
+    acting(
+      workspace,
+      principal(workspace, member),
+      Map.put(known, :approver, approver?(workspace, member))
+    )
+  end
+
+  defp acting(%__MODULE__{channel: channel, installation: installation}, principal, context) do
     Wardrik.Scope.new(channel.server,
       wardrik: channel.wardrik,
       principal: principal,
-      grants: grants
+      actor: {:channel, channel.name},
+      context:
+        Map.put(context, :installation, %{
+          owner: installation.owner,
+          workspace: installation.workspace
+        })
     )
-  end
-
-  @doc "Returns `member`'s scope. They may read and message the owner's agents."
-  @spec member_scope(t(), Member.t()) :: Wardrik.Scope.t()
-  def member_scope(%__MODULE__{channel: channel, installation: installation} = workspace, member) do
-    agents = Installation.agents(installation)
-    grants = [Statement.new(roles: [:reader, :messenger], resources: [agents])]
-
-    Wardrik.Scope.new(channel.server,
-      wardrik: channel.wardrik,
-      principal: principal(workspace, member),
-      grants: grants
-    )
-  end
-
-  @doc """
-  Returns the scope `answer`'s member decides calls in.
-
-    * An approver may decide what any of the owner's agents wait on.
-    * Whoever `asked_by` names may decide what the answer's conversation waits on.
-    * Anyone else gets `member_scope/2`, and may decide nothing.
-  """
-  @spec deciding_scope(t(), Answer.t()) :: Wardrik.Scope.t()
-  def deciding_scope(
-        %__MODULE__{installation: installation} = workspace,
-        %Answer{member: member, conversation: conversation, asked_by: asked_by}
-      ) do
-    scope = member_scope(workspace, member)
-
-    cond do
-      approver?(workspace, member) ->
-        Wardrik.Scope.grant(scope,
-          roles: [:approver],
-          resources: [Installation.agents(installation)]
-        )
-
-      asked_by == principal(workspace, member).id ->
-        {:ok, resource} = Wardrik.Resource.agent(conversation)
-        Wardrik.Scope.grant(scope, roles: [:approver], resources: [resource])
-
-      true ->
-        scope
-    end
   end
 
   @doc "Returns who `member` is to Wardrik, as `slack:T0123/U024BE7LH`."
@@ -117,10 +100,11 @@ defmodule WardrikChannel.Workspace do
   @spec offered(t()) :: [Offer.t()]
   def offered(%__MODULE__{installation: installation} = workspace) do
     scope = scope(workspace)
-    {:ok, agents} = Wardrik.Agents.list(scope, resources: [Installation.agents(installation)])
+    {:ok, agents} = Wardrik.Agents.list(scope)
 
     agents
     |> Enum.map(& &1.id)
+    |> Enum.filter(&Installation.owns?(installation, &1))
     |> Enum.reject(&AgentID.conversation?/1)
     |> Enum.flat_map(&offer(scope, workspace, &1))
   end

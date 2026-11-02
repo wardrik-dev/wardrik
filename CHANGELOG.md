@@ -9,6 +9,9 @@
 
 ### Breaking
 
+- Members act with the channel as their actor, `{:channel, name}`, and no grants: the host's
+  authorizer decides from the scope's `context`, its `installation`, and when deciding,
+  `asked_by` and `approver`.
 - `WardrikChannel` callbacks take what they act on, then the `WardrikChannel.Channel`:
   `deliver/2` the outbound, `include?/2` a `WardrikChannel.Membership`, `install_url/2` and
   `installed/2` a `WardrikChannel.Install`, and `uninstall/2` the workspace. The installation

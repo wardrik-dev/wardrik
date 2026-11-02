@@ -230,6 +230,24 @@ defmodule WardrikChannelTest do
       assert WardrikChannel.decide(context.workspace, answer) ==
                {:error, context.channel.deciding}
 
+      channel = context.channel.name
+
+      assert_received {:authorizing,
+                       %{
+                         operation: "agent.deny",
+                         scope: %{
+                           principal: %{id: jon},
+                           actor: {:channel, ^channel},
+                           context: %{
+                             asked_by: ^asked_by,
+                             approver: false,
+                             installation: %{owner: "acme", workspace: "T1"}
+                           }
+                         }
+                       }}
+
+      assert jon == "#{channel}:T1/#{@jon.id}"
+
       assert {:ok, %Wardrik.Decision{decision: :rejected}} =
                WardrikChannel.decide(context.workspace, %{
                  answer
@@ -464,8 +482,35 @@ defmodule WardrikChannelTest do
     end
   end
 
-  test "an installation names its owner's agents", %{workspace: workspace} do
-    assert Installation.agents(workspace.installation) == "acme/agent/*"
+  test "acts as the channel: as the workspace for itself, as a member for them", %{
+    workspace: workspace
+  } do
+    installation = %{owner: "acme", workspace: "T1"}
+    name = workspace.channel.name
+    id = "#{name}:T1"
+
+    assert %Wardrik.Scope{
+             principal: %{id: ^id},
+             actor: {:channel, ^name},
+             context: %{installation: ^installation}
+           } = Workspace.scope(workspace)
+
+    assert %Wardrik.Scope{actor: {:channel, ^name}, context: context} =
+             Workspace.member_scope(workspace, @jon)
+
+    assert context == %{installation: installation}
+
+    answer = %Answer{
+      member: @maria,
+      conversation: "acme/triage/x",
+      interrupt: "call_1",
+      decision: {:approve, nil}
+    }
+
+    assert %Wardrik.Scope{context: %{approver: true, installation: ^installation} = deciding} =
+             Workspace.deciding_scope(workspace, answer)
+
+    refute Map.has_key?(deciding, :asked_by)
   end
 
   defp channel_options(context) do
