@@ -31,7 +31,7 @@ setup context do
 end
 
 test "asks the agent", %{scope: scope} do
-  {:ok, _message} = Wardrik.Agent.ask(scope, "acme/triage", content: "Hi", conversation: "t1")
+  {:ok, _message} = Wardrik.Agent.ask(scope, "acme/triage", "Hi", conversation: "t1")
   assert_received {:asked, {"acme/triage", "t1"}, "Hi", "user_42"}
 end
 ```
