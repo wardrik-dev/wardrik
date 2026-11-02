@@ -69,7 +69,7 @@ before it refunds, keeps a record and stops at its budget. Each notebook runs in
 - [Rules the model can't rewrite](notebooks/policies-demo.livemd): policies that allow, ask or refuse.
 - [A person in the loop](notebooks/approvals-demo.livemd): approve or deny the calls an agent waits on.
 - [Give agents tools](notebooks/tools-demo.livemd): tools that say what they do, and what they cost.
-- [Spend you can cap](notebooks/budgets-demo.livemd): budgets per agent and ceilings per org.
+- [Spend you can cap](notebooks/budgets-demo.livemd): budgets per agent.
 - [Agents that survive a crash](notebooks/durability-demo.livemd): kill an agent mid-call and watch it
   come back.
 - [Agents that wake themselves](notebooks/triggers-demo.livemd): triggers on a clock and from a webhook.

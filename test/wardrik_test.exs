@@ -84,12 +84,12 @@ defmodule WardrikTest do
   end
 
   test "gives the options it takes, so a host can check them before it starts" do
-    assert {:error, %NimbleOptions.ValidationError{key: :deployment_keys}} =
+    assert {:error, %NimbleOptions.ValidationError{key: :idle_timeout}} =
              NimbleOptions.validate(
                [
                  name: MyApp.AgentRuntime,
                  authorizer: {Wardrik.Test.Allow, []},
-                 deployment_keys: "yes"
+                 idle_timeout: "yes"
                ],
                Wardrik.schema()
              )

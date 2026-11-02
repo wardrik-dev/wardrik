@@ -13,9 +13,7 @@ defmodule Wardrik.Setup do
       store: store,
       keys: opts[:keys],
       credentials: opts[:credentials] || vaulted(opts[:keys], {WardrikVault, vault}),
-      key_source:
-        opts[:key_source] ||
-          vaulted(opts[:keys], {Wardrik.Keys, vault: vault, deployment: opts[:deployment_keys]}),
+      key_source: opts[:key_source],
       grants: opts[:grants] || grants(opts[:oauth], Module.concat(name, OAuth)),
       oauth: oauth(opts[:oauth], opts[:keys]),
       mcp: opts[:mcp],
@@ -24,7 +22,6 @@ defmodule Wardrik.Setup do
       notify: Wardrik.Notify.settings(opts[:notify]),
       declarations: opts[:declarations],
       resolver: opts[:resolver],
-      orgs: opts[:orgs],
       workspace: Wardrik.Workspaces.settings(opts[:workspace]),
       defaults: Wardrik.Type.json(opts[:defaults]),
       triggers: opts[:triggers],

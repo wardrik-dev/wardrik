@@ -4,20 +4,6 @@ defmodule Wardrik.Sealed do
   require Logger
 
   alias WardrikCore.Principal
-  alias WardrikVault.Secret
-
-  @spec put(atom() | Wardrik.t(), keyword()) :: :ok | {:error, term()}
-  def put(instance, args) do
-    {owner, name, args} = named(args)
-    {value, args} = Keyword.pop!(args, :value)
-    {actor, opts} = Keyword.pop(args, :actor)
-    secret = %Secret{principal: principal(owner), name: name, value: value}
-
-    with {:ok, wardrik} <- sealing(instance),
-         {:ok, _vsn} <- WardrikVault.put(Wardrik.vault(wardrik), secret, opts) do
-      recorded(wardrik, "secret.stored", owner, name, actor)
-    end
-  end
 
   @spec fetch(atom() | Wardrik.t(), keyword()) :: {:ok, binary()} | {:error, term()}
   def fetch(instance, args) do
@@ -25,28 +11,6 @@ defmodule Wardrik.Sealed do
 
     with {:ok, wardrik} <- sealing(instance),
          do: WardrikVault.fetch(Wardrik.vault(wardrik), principal(owner), name, opts)
-  end
-
-  @spec lookup(atom() | Wardrik.t(), owner: String.t(), name: String.t()) ::
-          {:ok, WardrikVault.kind(), binary(), term()}
-          | {:error, term()}
-          | {:error, WardrikVault.kind(), term()}
-  def lookup(instance, args) do
-    {owner, name, _args} = named(args)
-
-    with {:ok, wardrik} <- sealing(instance),
-         do: WardrikVault.lookup(Wardrik.vault(wardrik), principal(owner), name)
-  end
-
-  @spec delete(atom() | Wardrik.t(), keyword()) :: :ok | {:error, term()}
-  def delete(instance, args) do
-    {owner, name, args} = named(args)
-    actor = Keyword.get(args, :actor)
-
-    with {:ok, wardrik} <- sealing(instance),
-         :ok <- WardrikVault.delete(Wardrik.vault(wardrik), principal(owner), name) do
-      recorded(wardrik, "secret.removed", owner, name, actor)
-    end
   end
 
   @spec list(atom() | Wardrik.t()) :: [{String.t(), String.t(), WardrikVault.kind()}]
@@ -62,14 +26,6 @@ defmodule Wardrik.Sealed do
   def holds?(instance, args) do
     {owner, name, args} = named(args)
     {owner, name, Keyword.fetch!(args, :kind)} in list(instance)
-  end
-
-  @spec list(atom() | Wardrik.t(), String.t()) :: [String.t()]
-  def list(instance, owner) do
-    case sealing(instance) do
-      {:ok, wardrik} -> WardrikVault.names(Wardrik.vault(wardrik), principal(owner))
-      {:error, :no_keys} -> []
-    end
   end
 
   @doc """
@@ -109,18 +65,6 @@ defmodule Wardrik.Sealed do
       %Wardrik{keys: []} -> {:error, :no_keys}
       wardrik -> {:ok, wardrik}
     end
-  end
-
-  # The owner's servers whose headers name the secret connect again, to read it as it is now:
-  # here before answering, and on the cluster's other nodes as the message reaches them.
-  defp recorded(wardrik, type, owner, name, actor) do
-    mcp = Wardrik.mcp(wardrik)
-    changed = [owner: owner, secret: name]
-    :ok = WardrikMCP.reconnect(mcp, changed)
-    :ok = :erpc.multicast(Node.list(), WardrikMCP, :reconnect, [mcp, changed])
-
-    change = {type, "secrets/" <> name, %{"secret" => %{"name" => name}, "owner" => owner}}
-    WardrikEvents.record(Wardrik.events(wardrik), change, actor: actor)
   end
 
   defp named(args) do

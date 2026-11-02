@@ -146,46 +146,6 @@ defmodule Wardrik.OwnersTest do
     end
   end
 
-  describe "secrets" do
-    test "seals, lists and removes an owner's secrets, never answering a value", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      secret = %Secret{principal: %Principal{id: "acme"}, name: "mail", value: "t"}
-      {:ok, _vsn} = WardrikVault.put(Wardrik.vault(wardrik), secret, kind: :grant)
-
-      assert run!(scope, "secrets.put", %{
-               "owner" => "acme",
-               "name" => "GITHUB_TOKEN",
-               "value" => "ghp_1",
-               "purpose" => "header"
-             }) == nil
-
-      assert %{
-               "secrets" => [%{"name" => "GITHUB_TOKEN", "kind" => "header"}, %{"name" => "mail"}]
-             } =
-               run!(scope, "secrets.list", %{"owner" => "acme"})
-
-      assert Wardrik.fetch_secret(wardrik, owner: "acme", name: "GITHUB_TOKEN") == {:ok, "ghp_1"}
-      assert %{"secrets" => []} = run!(scope, "secrets.list", %{"owner" => "acme/@jon"})
-
-      assert run!(scope, "secrets.delete", %{"owner" => "acme", "name" => "GITHUB_TOKEN"}) == nil
-      assert run!(scope, "secrets.delete", %{"owner" => "acme", "name" => "GITHUB_TOKEN"}) == nil
-
-      secrets = Enum.filter(types(scope), &String.starts_with?(&1, "wardrik.secret."))
-      assert secrets == ~w(wardrik.secret.stored wardrik.secret.removed wardrik.secret.removed)
-
-      assert {:ok, [%Wardrik.Secret{name: "mail", kind: :grant}]} =
-               Wardrik.Secrets.list(scope, owner: "acme")
-
-      assert Wardrik.Secrets.put(scope, "DEPLOY",
-               owner: "deployment",
-               value: "d",
-               purpose: "api_key"
-             ) == :ok
-    end
-  end
-
   describe "servers" do
     test "adds, lists and removes an owner's servers", %{wardrik: wardrik, scope: scope} do
       server = %{
@@ -234,7 +194,7 @@ defmodule Wardrik.OwnersTest do
                Wardrik.run(scope, "mcp_servers.add", server)
 
       :ok =
-        Wardrik.put_secret(wardrik, owner: "acme", name: "crm-key", value: "one", kind: :header)
+        seal(wardrik, {"acme", "crm-key"}, "one", :header)
 
       assert %{"server" => "crm", "connected" => true} = run!(scope, "mcp_servers.add", server)
       assert_receive {:authorization, "/acme", ["Bearer one"]}, 5_000
@@ -246,7 +206,7 @@ defmodule Wardrik.OwnersTest do
       assert http[:headers] == %{"authorization" => ["Bearer ", {:secret, "crm-key"}]}
 
       :ok =
-        Wardrik.put_secret(wardrik, owner: "acme", name: "crm-key", value: "two", kind: :header)
+        seal(wardrik, {"acme", "crm-key"}, "two", :header)
 
       assert_receive {:authorization, "/acme", ["Bearer two"]}, 5_000
 
@@ -270,12 +230,7 @@ defmodule Wardrik.OwnersTest do
       scope: scope
     } do
       :ok =
-        Wardrik.put_secret(wardrik,
-          owner: "acme",
-          name: "crm-key",
-          value: "acme's",
-          kind: :header
-        )
+        seal(wardrik, {"acme", "crm-key"}, "acme's", :header)
 
       server = %{
         "owner" => "globex",
@@ -289,25 +244,15 @@ defmodule Wardrik.OwnersTest do
                Wardrik.run(scope, "mcp_servers.add", server)
 
       :ok =
-        Wardrik.put_secret(wardrik,
-          owner: "globex",
-          name: "crm-key",
-          value: "globex's",
-          kind: :header
-        )
+        seal(wardrik, {"globex", "crm-key"}, "globex's", :header)
 
       run!(scope, "mcp_servers.add", server)
       assert_receive {:authorization, "/globex", ["Bearer globex's"]}, 5_000
 
       :ok =
-        Wardrik.put_secret(wardrik,
-          owner: "acme",
-          name: "crm-key",
-          value: "acme's again",
-          kind: :header
-        )
+        seal(wardrik, {"acme", "crm-key"}, "acme's again", :header)
 
-      :ok = Wardrik.delete_secret(wardrik, owner: "globex", name: "crm-key")
+      :ok = unseal(wardrik, {"globex", "crm-key"})
       refute_receive {:authorization, "/globex", _authorization}, 500
     end
 
@@ -824,12 +769,7 @@ defmodule Wardrik.OwnersTest do
                ~w(wardrik.provider.added wardrik.provider.added wardrik.provider.removed)
 
       :ok =
-        Wardrik.put_secret(wardrik,
-          owner: "acme",
-          name: "GOOGLE_SECRET",
-          value: "s3cret",
-          kind: :client_secret
-        )
+        seal(wardrik, {"acme", "GOOGLE_SECRET"}, "s3cret", :client_secret)
 
       assert {:ok, %Wardrik.Provider{owner: "acme", client_secret: "GOOGLE_SECRET"}} =
                Wardrik.Providers.add(scope,
@@ -901,8 +841,7 @@ defmodule Wardrik.OwnersTest do
       })
 
       hold(wardrik, "acme", "acme:crm", "token")
-      :ok = Wardrik.put_secret(wardrik, owner: "acme", name: "CRM_KEY", value: "secret")
-      :ok = Wardrik.put_secret(wardrik, owner: "deployment", name: "MAIL_KEY", value: "secret")
+      :ok = seal(wardrik, {"acme", "CRM_KEY"}, "secret")
 
       for owner <- ["acme/@maria", "globex", "globex/@lee", "deployment"] do
         assert %{"connections" => connections} =
@@ -910,12 +849,6 @@ defmodule Wardrik.OwnersTest do
 
         refute %{"provider" => "crm", "connected" => true} in connections
         refute Enum.any?(connections, &(&1["provider"] =~ ":"))
-
-        assert %{"secrets" => secrets} = run!(scope, "secrets.list", %{"owner" => owner})
-        names = Enum.map(secrets, & &1["name"])
-        refute "CRM_KEY" in names
-        refute "acme:crm" in names
-        if owner != "deployment", do: refute("MAIL_KEY" in names)
       end
 
       vault = Wardrik.vault(wardrik)

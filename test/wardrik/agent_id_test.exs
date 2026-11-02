@@ -32,6 +32,6 @@ defmodule Wardrik.AgentIDTest do
     input = %{"agent" => "acme/tri:age", "model" => "anthropic:claude-haiku-4-5"}
 
     assert refused(scope, "agent.define", input) == :invalid_request
-    assert refused(scope, "secrets.list", %{"owner" => "slack:T0123"}) == :invalid_request
+    assert refused(scope, "mcp_servers.list", %{"owner" => "slack:T0123"}) == :invalid_request
   end
 end

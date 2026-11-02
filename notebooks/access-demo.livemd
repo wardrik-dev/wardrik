@@ -209,6 +209,5 @@ an `authenticator:`, a `WardrikHTTP.Authenticator` that turns each request into 
 
 * [Who may do what](https://hexdocs.pm/wardrik/access.html): every resource and action, operations
   over many agents, and authenticating over HTTP.
-* [Orgs](https://hexdocs.pm/wardrik/orgs.html): agents and settings an org shares.
 * [Events notebook](events-demo.livemd): the audit records what each person did.
 * [Tools notebook](tools-demo.livemd): give agents tools, and decide which calls wait for a person.

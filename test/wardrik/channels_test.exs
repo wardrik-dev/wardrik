@@ -109,13 +109,6 @@ defmodule Wardrik.ChannelsTest do
     assert Wardrik.Operations.Channels.fetch(name, "teams") == :error
   end
 
-  test "says a Wardrik with no keys seals no secrets", %{name: name} do
-    scope = Wardrik.as(name, "acme/@maria")
-
-    assert {:error, %Wardrik.Error{type: :not_supported}} =
-             Wardrik.Secrets.list(scope, owner: "acme")
-  end
-
   test "answers in Elixir", %{scope: scope} do
     assert {:ok, %Wardrik.ChannelResponse{status: 200, body: "actions: hi ()"}} =
              Wardrik.Channel.deliver(scope,

@@ -4,8 +4,8 @@ defmodule Wardrik.Owners.Resolver do
   `Wardrik.Resolver`.
 
   An agent acts for its owner, the part of its ID before its name: `acme/@maria` for
-  `acme/@maria/notes`. Its org's settings (`Wardrik.Orgs`) give its policies, defaults and
-  ceilings.
+  `acme/@maria/notes`. It gets no policy, defaults or middleware here; a host's own resolver gives
+  those.
 
   A name its definition uses reaches the nearest server or notify target of that name along
   `Wardrik.Owners.chain/1`: the person's own, their org's, the deployment's, then the one Wardrik
@@ -16,7 +16,6 @@ defmodule Wardrik.Owners.Resolver do
   alias Wardrik.Definition
   alias Wardrik.MCPTools
   alias Wardrik.Notify
-  alias Wardrik.Orgs
   alias Wardrik.Owners
   alias Wardrik.Resolved
 
@@ -24,20 +23,12 @@ defmodule Wardrik.Owners.Resolver do
   @spec resolve(Wardrik.t(), Wardrik.Resolver.Request.t()) ::
           {:ok, Resolved.t()} | {:error, Wardrik.Error.t()}
   def resolve(wardrik, %Wardrik.Resolver.Request{agent: id}) do
-    org = Orgs.org(id)
-
-    with {:ok, settings} <- Orgs.settings(wardrik, org) do
-      {:ok,
-       %Resolved{
-         principal: Definition.principal(id),
-         policy: settings.policy,
-         policies: settings.policies,
-         defaults: settings.defaults,
-         middleware: Orgs.middleware(wardrik, org, settings),
-         servers: servers(wardrik, id, org),
-         notify: notify(wardrik, id)
-       }}
-    end
+    {:ok,
+     %Resolved{
+       principal: Definition.principal(id),
+       servers: servers(wardrik, id, Owners.org(id)),
+       notify: notify(wardrik, id)
+     }}
   end
 
   defp servers(wardrik, id, org) do

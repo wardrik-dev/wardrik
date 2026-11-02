@@ -195,7 +195,7 @@ WardrikPolicy.decide(policies, "shell__exec")
 ```
 
 Deny beats ask, and ask beats allow. An agent's policy can add caution but never remove it. An
-org's policy sits between the two; see the Orgs guide.
+org's policy sits between the two, from your app's `Wardrik.Resolver`.
 
 ## Content from outside
 
@@ -293,7 +293,6 @@ the call's error, and nothing it wrote could change that.
 ## Where next
 
 * [Policies guide](https://hexdocs.pm/wardrik/policies.html) - every option, gated tools and budgets.
-* [Orgs guide](https://hexdocs.pm/wardrik/orgs.html) - a policy for every agent of an org.
 * [WardrikPolicy](https://hexdocs.pm/wardrik_policy) - every rule, and judges.
 * [A person in the loop](approvals-demo.livemd) - approve or deny the calls a policy asks about.
-* [Spend you can cap](budgets-demo.livemd) - budgets and org ceilings.
+* [Spend you can cap](budgets-demo.livemd) - budgets that ask and refuse.

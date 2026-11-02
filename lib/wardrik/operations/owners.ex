@@ -1,7 +1,6 @@
 defmodule Wardrik.Operations.Owners do
   @moduledoc """
-  Operations on what an org or person holds for their agents: connected accounts, secrets and
-  MCP servers.
+  Operations on what an org or person holds for their agents: connected accounts and MCP servers.
   """
 
   alias Wardrik.Error
@@ -67,87 +66,6 @@ defmodule Wardrik.Operations.Owners do
       {:ok, %{"provider" => provider, "connected" => connected}}
     end
   end
-
-  @doc "Lists the owner's secrets by name, with each one's kind: a secret or a connected account."
-  @spec secrets(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def secrets(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
-    with :ok <- keeps_secrets(wardrik) do
-      secrets =
-        for {^owner, name, kind} <- Wardrik.Sealed.list(wardrik),
-            do: %{"name" => name, "kind" => Atom.to_string(kind)}
-
-      {:ok, %{"secrets" => Enum.sort_by(secrets, & &1["name"])}}
-    end
-  end
-
-  @doc "Lists the org's ceilings, with what its agents have spent in the current period."
-  @spec ceilings(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def ceilings(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
-    with :ok <- an_org(owner),
-         {:ok, spent} <- Wardrik.Orgs.spent(wardrik, owner) do
-      ceilings = for {name, spend} <- Enum.sort(spent), do: ceiling(name, spend)
-      {:ok, %{"ceilings" => ceilings}}
-    end
-  end
-
-  defp an_org(owner) do
-    case Owners.parse(owner) do
-      {:ok, %{org: org, person: person}} when is_binary(org) and is_binary(person) ->
-        {:error, Error.new(:invalid_request, "Ceilings are an org's: ask for #{org}'s.")}
-
-      _org ->
-        :ok
-    end
-  end
-
-  defp ceiling(name, spend) do
-    Wardrik.Type.json(%{
-      ceiling: name,
-      per: spend.per,
-      on_exhausted: spend.on_exhausted,
-      limit: amount(spend.limit),
-      spent: amount(spend.spent),
-      granted: amount(spend.granted),
-      starts_over: spend.starts_over
-    })
-    |> Map.reject(fn {_key, value} -> value == nil end)
-  end
-
-  defp amount(amount), do: Map.reject(amount, fn {_kind, value} -> value == nil end)
-
-  @doc "Seals a secret for the owner, replacing any with the same name."
-  @spec put_secret(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
-  def put_secret(%Scope{wardrik: wardrik} = scope, %{
-        "owner" => owner,
-        "name" => name,
-        "value" => value,
-        "purpose" => purpose
-      }) do
-    kind = String.to_existing_atom(purpose)
-    args = [owner: owner, name: name, value: value, actor: scope.principal, kind: kind]
-
-    with :ok <- keeps_secrets(wardrik),
-         :ok <- Wardrik.Sealed.put(wardrik, args),
-         do: {:ok, nil}
-  end
-
-  @doc "Removes one of the owner's secrets. Succeeds if there's none."
-  @spec delete_secret(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
-  def delete_secret(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "name" => name}) do
-    with :ok <- keeps_secrets(wardrik),
-         :ok <- Wardrik.Sealed.delete(wardrik, owner: owner, name: name, actor: scope.principal),
-         do: {:ok, nil}
-  end
-
-  defp keeps_secrets(%Wardrik{keys: []}),
-    do:
-      {:error,
-       Error.new(
-         :not_supported,
-         "This Wardrik keeps no secrets. Give it :keys to seal them with."
-       )}
-
-  defp keeps_secrets(_wardrik), do: :ok
 
   @doc """
   Lists the MCP servers the owner's agents reach: their own, then those from further out.

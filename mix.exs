@@ -53,7 +53,6 @@ defmodule Wardrik.MixProject do
         "pages/definitions.md",
         "pages/triggers.md",
         "pages/policies.md",
-        "pages/orgs.md",
         "pages/access.md",
         "pages/operations.md",
         "pages/approvals.md",

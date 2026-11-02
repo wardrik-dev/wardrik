@@ -89,7 +89,7 @@ defmodule Wardrik.SetupTest do
   end
 
   describe "new/1's seams" do
-    test "are the vault, Wardrik.Keys and WardrikOAuth unless set" do
+    test "are the vault and WardrikOAuth unless set, and no key source" do
       wardrik =
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
@@ -100,9 +100,7 @@ defmodule Wardrik.SetupTest do
 
       assert wardrik.credentials == {WardrikVault, MyApp.AgentRuntime.Vault}
 
-      assert wardrik.key_source ==
-               {Wardrik.Keys, vault: MyApp.AgentRuntime.Vault, deployment: false}
-
+      assert wardrik.key_source == nil
       assert wardrik.grants == {WardrikOAuth, MyApp.AgentRuntime.OAuth}
     end
 
@@ -128,19 +126,6 @@ defmodule Wardrik.SetupTest do
       opts = Wardrik.Setup.agent(wardrik, agent_id: "acme/bot")
       assert opts[:credentials] == MyApp.Tokens
       assert opts[:keys] == {MyApp.Keys, region: "eu"}
-    end
-
-    test "fall back to the deployment's keys only when the host says so" do
-      wardrik =
-        Wardrik.new(
-          authorizer: {Wardrik.Test.Allow, []},
-          name: MyApp.AgentRuntime,
-          keys: ["key"],
-          deployment_keys: true
-        )
-
-      assert wardrik.key_source ==
-               {Wardrik.Keys, vault: MyApp.AgentRuntime.Vault, deployment: true}
     end
   end
 end

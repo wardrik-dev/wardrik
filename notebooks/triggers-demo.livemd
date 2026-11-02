@@ -52,11 +52,15 @@ Its secret is `whsec_` and a base64 key:
 ```elixir
 hook_secret = "whsec_" <> Base.encode64(:crypto.strong_rand_bytes(24))
 
-:ok =
-  Wardrik.put_secret(MyApp.AgentRuntime,
-    owner: "acme/@maria",
-    name: "ORDERS_HOOK_SECRET",
-    value: hook_secret
+{:ok, _vsn} =
+  WardrikVault.put(
+    MyApp.AgentRuntime.Vault,
+    %WardrikVault.Secret{
+      principal: Wardrik.principal("acme/@maria"),
+      name: "ORDERS_HOOK_SECRET",
+      value: hook_secret
+    },
+    kind: :signing_secret
   )
 ```
 

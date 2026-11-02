@@ -15,6 +15,8 @@ end
 defmodule Wardrik.SealedOptionsTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.Test.Wardrik, only: [seal: 3]
+
   test "reads a channel's {:secret, name} from the deployment's secrets as it starts and answers",
        context do
     store = Wardrik.Test.Store.new(:"sealed store #{context.test}")
@@ -45,7 +47,7 @@ defmodule Wardrik.SealedOptionsTest do
 
     assert_receive {:started_with, "first"}
 
-    :ok = Wardrik.put_secret(name, owner: "deployment", name: "SIGNING", value: "second")
+    :ok = seal(name, {"deployment", "SIGNING"}, "second")
     request = %{"channel" => "slack", "path" => "events", "body" => "{}", "headers" => %{}}
 
     assert {:ok, %{"body" => "second"}} =

@@ -81,7 +81,7 @@ Every agent is held to the deployment's policy and its own. The strictest wins: 
 then allow. An agent's own policy can add caution but never remove it. Above, `books` allows
 `shell/*`, and the call is still refused.
 
-An org's policy sits between the two; see [Orgs](orgs.md).
+An org's policy sits between the two, from your `Wardrik.Resolver`.
 
 ## Budgets
 
@@ -94,7 +94,7 @@ A budget in dollars prices each call from the model catalog. Give a model the ca
 with Wardrik's `:prices` option; see `Wardrik.start_link/1`. A call to a model with no price is
 refused, since the budget can't count it.
 
-See budgets ask and an org's ceiling refuse in [Spend you can cap](../notebooks/budgets-demo.livemd).
+See a budget ask and another refuse in [Spend you can cap](../notebooks/budgets-demo.livemd).
 
 ## Gated tools
 
