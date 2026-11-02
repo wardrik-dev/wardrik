@@ -14,13 +14,17 @@ defmodule Wardrik.Runner do
   alias Wardrik.Error
   alias Wardrik.Instance
   alias Wardrik.Orgs
-  alias Wardrik.Resource
   alias Wardrik.Scope
 
-  @doc "Runs the operation `id` in `scope`, with its handler (`:handlers`) or stream (`:streams`)."
-  @spec run(Scope.t(), String.t(), map(), :handlers | :streams) ::
-          {:ok, term()} | {:error, Error.t()}
-  def run(%Scope{wardrik: instance} = scope, id, input, kind) do
+  @doc "Runs the operation `id` in `scope`, with its handler."
+  @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
+  def run(scope, id, input), do: ran(scope, id, input, :handlers)
+
+  @doc "Streams the operation `id` in `scope`. Returns a `not_supported` error if it can't be."
+  @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
+  def stream(scope, id, input), do: ran(scope, id, input, :streams)
+
+  defp ran(%Scope{wardrik: instance} = scope, id, input, kind) do
     catalog = Catalog.new()
     scope = %{scope | wardrik: Instance.fetch!(instance)}
 
@@ -54,13 +58,23 @@ defmodule Wardrik.Runner do
     end
   end
 
-  defp authorize(scope, %{subject: "agent", action: action}, %{"agent" => id}) do
-    {:ok, resource} = Resource.agent(id)
-    refused(Authorizer.authorize(scope, action, resource), "agent #{id}")
-  end
+  defp authorize(scope, %{subject: "agent", action: action}, %{"agent" => id}),
+    do:
+      refused(Authorizer.authorize(scope, action: action, resource: {:agent, id}), "agent #{id}")
 
-  defp authorize(scope, %{subject: "deployment", action: action}, _input),
-    do: refused(Authorizer.authorize(scope, action, Resource.deployment()), "deployment")
+  defp authorize(
+         %Scope{wardrik: wardrik} = scope,
+         %{subject: "deployment", action: action},
+         _input
+       ),
+       do:
+         refused(
+           Authorizer.authorize(scope,
+             action: action,
+             resource: {:deployment, wardrik.deployment}
+           ),
+           "deployment"
+         )
 
   defp authorize(_scope, %{subject: "agents"}, _input), do: :ok
   defp authorize(_scope, %{subject: "hook"}, _input), do: :ok
@@ -69,8 +83,15 @@ defmodule Wardrik.Runner do
   defp authorize(scope, %{subject: "owner", action: action}, %{"owner" => owner} = input) do
     [kind, _verb] = String.split(action, ".")
     named = input["provider"] || input["server"] || input["target"] || input["name"]
-    resource = Resource.owned(owner, kind, named)
-    refused(Authorizer.authorize(scope, action, resource), "#{kind} of #{owner}")
+
+    refused(
+      Authorizer.authorize(scope,
+        action: action,
+        resource: {:owner, owner},
+        context: %{name: named}
+      ),
+      "#{kind} of #{owner}"
+    )
   end
 
   defp known(%Scope{wardrik: wardrik}, %{subject: "owner"}, %{"owner" => owner}),

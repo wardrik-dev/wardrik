@@ -1,5 +1,9 @@
 defmodule Wardrik.Slack.PartsTest do
   use ExUnit.Case, async: false
+
+  defp membership(installation, names, member),
+    do: %WardrikChannel.Membership{installation: installation, names: names, member: member}
+
   use Mimic
 
   import Wardrik.Test.Slack
@@ -56,10 +60,15 @@ defmodule Wardrik.Slack.PartsTest do
       installation = workspace.installation
       maria = %Member{id: "U1"}
 
-      assert WardrikSlack.include?(channel, installation, ["U1"], maria)
-      assert WardrikSlack.include?(channel, installation, ["@maria"], maria)
-      assert WardrikSlack.include?(channel, installation, ["maria@example.com"], maria)
-      refute WardrikSlack.include?(channel, installation, ["@jon"], maria)
+      assert WardrikSlack.include?(membership(installation, ["U1"], maria), channel)
+      assert WardrikSlack.include?(membership(installation, ["@maria"], maria), channel)
+
+      assert WardrikSlack.include?(
+               membership(installation, ["maria@example.com"], maria),
+               channel
+             )
+
+      refute WardrikSlack.include?(membership(installation, ["@jon"], maria), channel)
     end
   end
 

@@ -96,7 +96,7 @@ defmodule Wardrik.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      sibling(:wardrik_core, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_core, "~> 0.1.0-rc.2"),
       sibling(:wardrik_store, "~> 0.1.0-rc.1"),
       sibling(:wardrik_protocol, "~> 0.1.0-rc.2"),
       sibling(:wardrik_events, "~> 0.1.0-rc.1"),
@@ -104,9 +104,9 @@ defmodule Wardrik.MixProject do
       sibling(:wardrik_vault, "~> 0.1.0-rc.2"),
       sibling(:wardrik_oauth, "~> 0.1.0-rc.2"),
       sibling(:wardrik_mcp, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_triggers, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_triggers, "~> 0.1.0-rc.2"),
       sibling(:wardrik_workspace, "~> 0.1.0-rc.1"),
-      sibling(:wardrik_http, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_http, "~> 0.1.0-rc.2"),
       sibling(:wardrik_channel, "~> 0.1.0-rc.2"),
       sibling(:wardrik_slack, "~> 0.1.0-rc.2", only: :test),
       {:durable_server, "~> 0.1.6"},

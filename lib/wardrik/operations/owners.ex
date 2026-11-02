@@ -54,9 +54,14 @@ defmodule Wardrik.Operations.Owners do
       if connected do
         :ok = WardrikVault.delete(Wardrik.vault(wardrik), %Principal{id: owner}, key)
 
-        Changes.record_owned(scope, "secret.removed", owner, "secrets/" <> key, %{
-          "secret" => %{"name" => key}
-        })
+        Changes.record_owned(scope,
+          type: "secret.removed",
+          owner: owner,
+          subject: "secrets/" <> key,
+          data: %{
+            "secret" => %{"name" => key}
+          }
+        )
       end
 
       {:ok, %{"provider" => provider, "connected" => connected}}
@@ -118,10 +123,11 @@ defmodule Wardrik.Operations.Owners do
         "value" => value,
         "purpose" => purpose
       }) do
-    opts = [actor: scope.principal, kind: String.to_existing_atom(purpose)]
+    kind = String.to_existing_atom(purpose)
+    args = [owner: owner, name: name, value: value, actor: scope.principal, kind: kind]
 
     with :ok <- keeps_secrets(wardrik),
-         :ok <- Wardrik.Sealed.put(wardrik, owner, name, value, opts),
+         :ok <- Wardrik.Sealed.put(wardrik, args),
          do: {:ok, nil}
   end
 
@@ -129,7 +135,7 @@ defmodule Wardrik.Operations.Owners do
   @spec delete_secret(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def delete_secret(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "name" => name}) do
     with :ok <- keeps_secrets(wardrik),
-         :ok <- Wardrik.Sealed.delete(wardrik, owner, name, scope.principal),
+         :ok <- Wardrik.Sealed.delete(wardrik, owner: owner, name: name, actor: scope.principal),
          do: {:ok, nil}
   end
 
@@ -223,7 +229,14 @@ defmodule Wardrik.Operations.Owners do
          {:ok, _vsn} <-
            WardrikStore.put(store(wardrik), prefix(owner) <> name, record(input, kind)) do
       data = %{"server" => %{"name" => name, "url" => url}}
-      Changes.record_owned(scope, "server.added", owner, "servers/" <> name, data)
+
+      Changes.record_owned(scope,
+        type: "server.added",
+        owner: owner,
+        subject: "servers/" <> name,
+        data: data
+      )
+
       answered(wardrik, %Principal{id: owner}, credential, kind, name)
     end
   end
@@ -247,9 +260,14 @@ defmodule Wardrik.Operations.Owners do
         forget_sign_ins(wardrik, owner, key, record)
         :ok = WardrikStore.delete(store, prefix(owner) <> name)
 
-        Changes.record_owned(scope, "server.removed", owner, "servers/" <> name, %{
-          "server" => %{"name" => name}
-        })
+        Changes.record_owned(scope,
+          type: "server.removed",
+          owner: owner,
+          subject: "servers/" <> name,
+          data: %{
+            "server" => %{"name" => name}
+          }
+        )
 
         {:ok, MCPServer.to_json(listed(owner, record))}
     end
@@ -336,7 +354,7 @@ defmodule Wardrik.Operations.Owners do
 
   # The header names the secret, read as each connection starts, so a new value takes effect.
   defp reached(wardrik, owner, _key, %{"auth" => %{"secret" => %{"name" => name} = secret}}) do
-    if Wardrik.Sealed.holds?(wardrik, owner, name, :header) do
+    if Wardrik.Sealed.holds?(wardrik, owner: owner, name: name, kind: :header) do
       sent = sent(Map.get(secret, "scheme", "Bearer"), name)
       {:ok, headers(Map.get(secret, "header", "authorization"), sent), "secret"}
     else
@@ -358,7 +376,7 @@ defmodule Wardrik.Operations.Owners do
   defp reached(wardrik, owner, key, %{"auth" => %{"oauth" => oauth}} = input) do
     with {:ok, opts} <-
            Providers.options(wardrik, owner, Map.put(oauth, "resource", input["url"])),
-         :ok <- Providers.added(wardrik, owner, key, opts, input["name"]),
+         :ok <- Providers.added(wardrik, [owner: owner, name: key, called: input["name"]] ++ opts),
          do: {:ok, [credential_name: key], "oauth"}
   end
 
@@ -407,7 +425,7 @@ defmodule Wardrik.Operations.Owners do
     for {id, ^key, _kind} <- WardrikVault.list(vault),
         do: WardrikVault.delete(vault, %Principal{id: id}, key)
 
-    WardrikOAuth.remove_provider(Wardrik.oauth(wardrik), owner, key)
+    WardrikOAuth.remove_provider(Wardrik.oauth(wardrik), owner: owner, name: key)
   end
 
   defp forget_sign_ins(_wardrik, _owner, _key, _record), do: :ok

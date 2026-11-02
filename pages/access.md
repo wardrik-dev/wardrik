@@ -150,17 +150,21 @@ Wardrik.Tokens.create(admin, name: "wide", roles: ["definer"], resources: ["acme
 
 ## Write your own authorizer
 
-Use one when your app already decides who may do what. This one lets each person act on what's
-under their own ID, and nothing else:
+Use one when your app already decides who may do what. Your app knows who owns each agent, so it
+looks that up, never reading it from the ID. This one keeps owners in a map:
 
 ```elixir
 defmodule MyApp.Authorizer do
   @behaviour Wardrik.Authorizer
 
+  @owners %{"acme/books" => "user_maria"}
+
   @impl true
-  def authorize(_config, %Wardrik.Scope{principal: principal}, _action, resource) do
-    if String.starts_with?(resource, principal.id <> "/"), do: :ok, else: {:error, :not_found}
+  def authorize(%Wardrik.Authorizer.Request{principal: principal, resource: {:agent, id}}, _opts) do
+    if Map.get(@owners, id) == principal.id, do: :ok, else: {:error, :not_found}
   end
+
+  def authorize(_request, _opts), do: {:error, :forbidden}
 end
 ```
 
@@ -168,20 +172,20 @@ Start Wardrik with it, in a fresh IEx session:
 
 ```elixir
 {:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.Authorizer, []})
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
-
-Wardrik.Agent.define(scope, "acme/@maria/books", model: "anthropic:claude-haiku-4-5")
-#=> {:ok, %Wardrik.Agent{id: "acme/@maria/books", ...}}
+scope = Wardrik.as(MyApp.AgentRuntime, "user_maria")
 
 Wardrik.Agent.define(scope, "acme/books", model: "anthropic:claude-haiku-4-5")
-#=> {:error, %Wardrik.Error{type: :not_found, message: "There's no agent acme/books."}}
+#=> {:ok, %Wardrik.Agent{id: "acme/books", ...}}
+
+Wardrik.Agent.define(scope, "acme/triage", model: "anthropic:claude-haiku-4-5")
+#=> {:error, %Wardrik.Error{type: :not_found, message: "There's no agent acme/triage."}}
 ```
 
-`authorize/4` returns:
+`authorize/2` takes a `Wardrik.Authorizer.Request`: the principal, the action, the resource as
+`{kind, id}`, and the scope, with the grants you gave. It returns:
 
   * `:ok` - allowed.
-  * `{:error, :not_found}` - the scope can't see the resource.
+  * `{:error, :not_found}` - the principal can't see the resource.
   * `{:error, :forbidden}` - it can see it, but lacks the action.
 
-The grants you gave are in the scope's `grants`. Implement the optional `holds?/3` to decide which
-tokens a scope may make; see `Wardrik.Authorizer`.
+Only `Wardrik.Statements` lets a scope make tokens.

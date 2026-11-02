@@ -64,18 +64,17 @@ defmodule Wardrik.Instance do
 
   defp secrets do
     quote do
-      @doc "Seals one of `owner`'s secrets. See `Wardrik.put_secret/5`."
-      def put_secret(owner, name, value, opts \\ []),
-        do: Wardrik.put_secret(__MODULE__, owner, name, value, opts)
+      @doc "Seals one of `:owner`'s secrets. See `Wardrik.put_secret/2`."
+      def put_secret(args), do: Wardrik.put_secret(__MODULE__, args)
 
-      @doc "Returns one of `owner`'s secrets. See `Wardrik.fetch_secret/3`."
-      def fetch_secret(owner, name), do: Wardrik.fetch_secret(__MODULE__, owner, name)
+      @doc "Returns one of `:owner`'s secrets. See `Wardrik.fetch_secret/2`."
+      def fetch_secret(args), do: Wardrik.fetch_secret(__MODULE__, args)
 
-      @doc "Returns one of `owner`'s secrets with its kind and version. See `Wardrik.lookup_secret/3`."
-      def lookup_secret(owner, name), do: Wardrik.lookup_secret(__MODULE__, owner, name)
+      @doc "Returns one of `:owner`'s secrets with its kind and version. See `Wardrik.lookup_secret/2`."
+      def lookup_secret(args), do: Wardrik.lookup_secret(__MODULE__, args)
 
-      @doc "Removes one of `owner`'s secrets. See `Wardrik.delete_secret/3`."
-      def delete_secret(owner, name), do: Wardrik.delete_secret(__MODULE__, owner, name)
+      @doc "Removes one of `:owner`'s secrets. See `Wardrik.delete_secret/2`."
+      def delete_secret(args), do: Wardrik.delete_secret(__MODULE__, args)
 
       @doc "Lists every secret, or `owner`'s. See `Wardrik.list_secrets/2`."
       def list_secrets, do: Wardrik.list_secrets(__MODULE__)

@@ -259,7 +259,7 @@ defmodule Wardrik.WorkersTest do
     assert %{"data" => %{"interrupts" => [%{"reason" => "tool_approval"}]}} =
              until("wardrik.run.interrupted")
 
-    {:ok, _decided} = Wardrik.Agent.approve(scope, agent, "call_1")
+    {:ok, _decided} = Wardrik.Agent.approve(scope, agent: agent, interrupt: "call_1")
     assert_receive {:called, "lookup", _arguments, _meta}
 
     assert %{"data" => %{"interrupts" => [%{"id" => "call_1", "reason" => "in_doubt"}]}} =
@@ -267,7 +267,7 @@ defmodule Wardrik.WorkersTest do
 
     refute Process.alive?(first)
     worker(wardrik, "acme/@shop", ["acme/agent/*"], [changing], fn _call -> @shipped end)
-    {:ok, _decided} = Wardrik.Agent.approve(scope, agent, "call_1")
+    {:ok, _decided} = Wardrik.Agent.approve(scope, agent: agent, interrupt: "call_1")
 
     assert_receive {:called, "lookup", _arguments, %{"idempotencyKey" => "call_1"}}
     assert %{"data" => %{"status" => "ok"}} = until_completed()

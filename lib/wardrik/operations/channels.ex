@@ -10,7 +10,7 @@ defmodule Wardrik.Operations.Channels do
     case Map.fetch(wardrik.channels, name) do
       {:ok, {module, opts}} ->
         request = %{path: input["path"], body: input["body"], headers: headers(input["headers"])}
-        response = module.request(options(wardrik, name, opts), request)
+        response = module.request(request, options(wardrik, name, opts))
 
         {:ok,
          %{"status" => response.status, "headers" => response.headers, "body" => response.body}}

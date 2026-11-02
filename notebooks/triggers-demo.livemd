@@ -37,7 +37,12 @@ Its secret is `whsec_` and a base64 key:
 ```elixir
 hook_secret = "whsec_" <> Base.encode64(:crypto.strong_rand_bytes(24))
 
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme/@maria", "ORDERS_HOOK_SECRET", hook_secret)
+:ok =
+  Wardrik.put_secret(MyApp.AgentRuntime,
+    owner: "acme/@maria",
+    name: "ORDERS_HOOK_SECRET",
+    value: hook_secret
+  )
 ```
 
 The sender keeps the same secret. Wardrik never returns it.
@@ -133,7 +138,7 @@ end
 body = ~s({"order": "A-3", "customer": "Initech", "total": "$1,240.00"})
 headers = sign.(body)
 
-Wardrik.Hook.deliver(scope, agent, "orders", body: body, headers: headers)
+Wardrik.Hook.deliver(scope, agent: agent, trigger: "orders", body: body, headers: headers)
 ```
 
 An `orders` row appears in the table. The body goes under the trigger's prompt.
@@ -141,7 +146,9 @@ An `orders` row appears in the table. The body goes under the trigger's prompt.
 A request that doesn't prove itself returns `not_found`, the same as a trigger that isn't there:
 
 ```elixir
-Wardrik.Hook.deliver(scope, agent, "orders",
+Wardrik.Hook.deliver(scope,
+  agent: agent,
+  trigger: "orders",
   body: ~s({"order": "A-3", "total": "$1.00"}),
   headers: headers
 )
@@ -151,7 +158,7 @@ The service may send the same request twice. Each `webhook-id` is asked about on
 no row:
 
 ```elixir
-Wardrik.Hook.deliver(scope, agent, "orders", body: body, headers: headers)
+Wardrik.Hook.deliver(scope, agent: agent, trigger: "orders", body: body, headers: headers)
 ```
 
 ## Change a trigger
@@ -159,7 +166,9 @@ Wardrik.Hook.deliver(scope, agent, "orders", body: body, headers: headers)
 Change one trigger without defining the agent again:
 
 ```elixir
-Wardrik.Agent.trigger_set(scope, agent, "heartbeat",
+Wardrik.Agent.trigger_set(scope,
+  agent: agent,
+  trigger: "heartbeat",
   every: "2m",
   prompt: "Say you're still awake."
 )
@@ -170,7 +179,7 @@ Wardrik.Agent.trigger_set(scope, agent, "heartbeat",
 The heartbeat runs while this runtime runs. Remove it when you're done:
 
 ```elixir
-Wardrik.Agent.trigger_remove(scope, agent, "heartbeat")
+Wardrik.Agent.trigger_remove(scope, agent: agent, trigger: "heartbeat")
 ```
 
 ## Where next

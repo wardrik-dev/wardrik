@@ -3,7 +3,7 @@ defmodule Wardrik.Test.Resolver do
   @behaviour Wardrik.Resolver
 
   @impl true
-  def resolve(id, _definition, agent),
+  def resolve(%Wardrik.Resolver.Request{agent: id}, agent),
     do: Agent.get(agent, &Map.get(&1, id, {:ok, %Wardrik.Resolved{}}))
 end
 

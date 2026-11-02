@@ -20,7 +20,10 @@ defmodule Wardrik.MCPTools do
   defp resolved(id, opts) do
     wardrik = Wardrik.Instance.fetch!(Keyword.fetch!(opts, :wardrik))
 
-    case Wardrik.Resolver.resolve(wardrik, id, Keyword.fetch!(opts, :definition)) do
+    case Wardrik.Resolver.resolve(wardrik, %Wardrik.Resolver.Request{
+           agent: id,
+           definition: Keyword.fetch!(opts, :definition)
+         }) do
       {:ok, resolved} -> resolved.servers
       {:error, _error} -> %{}
     end

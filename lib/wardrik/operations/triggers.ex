@@ -18,7 +18,12 @@ defmodule Wardrik.Operations.Triggers do
          :ok <- Wardrik.Resolution.trigger(wardrik, definition, fields, 1),
          {:ok, trigger} <- set_trigger(wardrik, id, fields),
          :ok <- saved(wardrik, id, Map.put(definition, "triggers", replaced(definition, fields))) do
-      Changes.record(scope, "trigger.set", id, %{"trigger" => %{"name" => name}})
+      Changes.record(scope,
+        type: "trigger.set",
+        agent: id,
+        data: %{"trigger" => %{"name" => name}}
+      )
+
       {:ok, Trigger.encode(trigger)}
     end
   end
@@ -31,7 +36,12 @@ defmodule Wardrik.Operations.Triggers do
          {:ok, trigger} <- kept(wardrik, id, name),
          :ok <- removed(wardrik, id, name),
          :ok <- saved(wardrik, id, Map.put(definition, "triggers", without(definition, name))) do
-      Changes.record(scope, "trigger.removed", id, %{"trigger" => %{"name" => name}})
+      Changes.record(scope,
+        type: "trigger.removed",
+        agent: id,
+        data: %{"trigger" => %{"name" => name}}
+      )
+
       {:ok, Trigger.encode(trigger)}
     end
   end
@@ -46,7 +56,9 @@ defmodule Wardrik.Operations.Triggers do
       path_secret: input["secret"]
     }
 
-    case WardrikTriggers.deliver(Wardrik.triggers(wardrik), id, name, request) do
+    delivery = [agent_id: id, name: name, request: request]
+
+    case WardrikTriggers.deliver(Wardrik.triggers(wardrik), delivery) do
       :ok ->
         {:ok, nil}
 
@@ -73,7 +85,7 @@ defmodule Wardrik.Operations.Triggers do
   end
 
   defp removed(wardrik, id, name) do
-    case WardrikTriggers.remove(Wardrik.triggers(wardrik), id, name) do
+    case WardrikTriggers.remove(Wardrik.triggers(wardrik), agent_id: id, name: name) do
       :ok ->
         :ok
 

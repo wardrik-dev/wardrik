@@ -27,7 +27,7 @@ defmodule Wardrik.Answers do
     * `:timeout` - milliseconds to wait for each event. 10 minutes unless set.
   """
   @spec follow(Scope.t(), String.t() | struct(), term(), keyword()) :: Enumerable.t()
-  def follow(scope, agent, input, opts) do
+  def follow(scope, agent, input, opts \\ []) do
     id = Types.path(agent)
     timeout = Keyword.get(opts, :timeout, @timeout)
 

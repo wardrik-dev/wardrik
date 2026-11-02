@@ -26,7 +26,7 @@ defmodule Wardrik.Operations.Lifecycle do
          {:ok, _pid} <- Running.bring(wardrik, opts),
          :ok <- saved(wardrik, id, definition) do
       Sleeper.watch(wardrik, id)
-      Changes.record(scope, "agent.defined", id)
+      Changes.record(scope, type: "agent.defined", agent: id)
       Agent.read(scope, %{"agent" => id})
     end
   end
@@ -66,7 +66,7 @@ defmodule Wardrik.Operations.Lifecycle do
     with :ok <- Snapshot.known(wardrik, id),
          :ok <- undeclared(wardrik, id),
          :ok <- forgotten(wardrik, id) do
-      Changes.record(scope, "agent.forgotten", id)
+      Changes.record(scope, type: "agent.forgotten", agent: id)
       {:ok, nil}
     end
   end
@@ -77,7 +77,7 @@ defmodule Wardrik.Operations.Lifecycle do
     asleep? = Running.whereis(wardrik, id) == nil
 
     with {:ok, _pid} <- Running.awake(wardrik, id) do
-      if asleep?, do: Changes.record(scope, "agent.spawned", id)
+      if asleep?, do: Changes.record(scope, type: "agent.spawned", agent: id)
       {:ok, %{"agent" => Snapshot.summary(wardrik, id)}}
     end
   end
@@ -103,7 +103,7 @@ defmodule Wardrik.Operations.Lifecycle do
          {:ok, _pid} <- Running.bring(wardrik, opts) do
       cleared = {"conversation.cleared", "agents/" <> id, %{"messages_before" => before}}
       :ok = WardrikEvents.append(Wardrik.events(wardrik), id, cleared)
-      Changes.record(scope, "agent.cleared", id)
+      Changes.record(scope, type: "agent.cleared", agent: id)
       Agent.read(scope, %{"agent" => id})
     end
   end
@@ -133,7 +133,12 @@ defmodule Wardrik.Operations.Lifecycle do
     with {:ok, pid} <- Snapshot.running(wardrik, id) do
       case WardrikCore.kill(pid, call) do
         :ok ->
-          Changes.record(scope, "call.killed", id, %{"call" => %{"id" => call}})
+          Changes.record(scope,
+            type: "call.killed",
+            agent: id,
+            data: %{"call" => %{"id" => call}}
+          )
+
           {:ok, nil}
 
         {:error, :not_running} ->
@@ -200,7 +205,7 @@ defmodule Wardrik.Operations.Lifecycle do
 
   defp stopped(scope, id, pid) do
     :ok = WardrikCore.stop(pid)
-    Changes.record(scope, "agent.stopped", id)
+    Changes.record(scope, type: "agent.stopped", agent: id)
   end
 
   defp idle(wardrik, id) do

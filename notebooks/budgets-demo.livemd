@@ -185,7 +185,7 @@ allow = Kino.Control.button("Allow the writer one cent more")
 outcome = Kino.Frame.new()
 
 Kino.listen(allow, fn _click ->
-  result = Wardrik.Agent.approve(scope, "acme/@maria/writer", "model")
+  result = Wardrik.Agent.approve(scope, agent: "acme/@maria/writer", interrupt: "model")
   Kino.Frame.render(outcome, Kino.Text.new(inspect(result)))
 end)
 

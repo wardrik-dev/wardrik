@@ -76,22 +76,32 @@ defmodule Wardrik.Slack.InstallTest do
   test "is added to a workspace, and taken out, through the Wardrik", context do
     wardrik = context.wardrik
 
-    assert {:ok, url} = Wardrik.Channels.install_url(wardrik, "slack", "globex", return_to: "/s")
+    assert {:ok, url} =
+             Wardrik.Channels.install_url(wardrik,
+               channel: "slack",
+               owner: "globex",
+               return_to: "/s"
+             )
+
     assert url =~ "client_id=1.2"
 
     assert {:ok, %Installation{workspace: "T7", name: "Globex", owner: "globex"}, "/s"} =
-             Wardrik.Channels.installed(wardrik, "slack", "globex", %{
-               "code" => "good",
-               "state" => state(url)
-             })
+             Wardrik.Channels.installed(wardrik,
+               channel: "slack",
+               owner: "globex",
+               query: %{
+                 "code" => "good",
+                 "state" => state(url)
+               }
+             )
 
-    assert Wardrik.Channels.uninstall(wardrik, "slack", "T7") == :ok
+    assert Wardrik.Channels.uninstall(wardrik, channel: "slack", workspace: "T7") == :ok
     assert_received {:slack, "apps.uninstall", %{"client_id" => "1.2"}}
 
     assert {:ok, channel} = Wardrik.Test.Channel.fetch(wardrik, "slack")
     assert WardrikChannel.Channel.installation(channel, "T7") == :error
 
-    assert Wardrik.Channels.install_url(wardrik, "teams", "globex") ==
+    assert Wardrik.Channels.install_url(wardrik, channel: "teams", owner: "globex") ==
              {:error, "There's no channel teams here."}
   end
 

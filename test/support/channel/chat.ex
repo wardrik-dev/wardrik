@@ -4,10 +4,10 @@ defmodule Wardrik.Test.Channel.Chat do
   use WardrikChannel
 
   @impl Wardrik.Channel
-  def request(_opts, %{body: body}), do: %{status: 200, headers: %{}, body: body}
+  def request(%{body: body}, _opts), do: %{status: 200, headers: %{}, body: body}
 
   @impl WardrikChannel
-  def deliver(channel, %{body: {:reply, _text, _answering}} = outbound) do
+  def deliver(%{body: {:reply, _text, _answering}} = outbound, channel) do
     refusals = channel.options[:refusals]
 
     if :counters.get(refusals, 1) > 0 do
@@ -19,7 +19,7 @@ defmodule Wardrik.Test.Channel.Chat do
     end
   end
 
-  def deliver(channel, outbound), do: delivered(channel, outbound)
+  def deliver(outbound, channel), do: delivered(channel, outbound)
 
   defp delivered(channel, outbound) do
     send(channel.options[:test], {:delivered, outbound})
@@ -27,7 +27,7 @@ defmodule Wardrik.Test.Channel.Chat do
   end
 
   @impl WardrikChannel
-  def include?(_channel, _installation, names, member), do: ("@" <> member.name) in names
+  def include?(%{names: names, member: member}, _channel), do: ("@" <> member.name) in names
 end
 
 defmodule Wardrik.Test.Channel.Tools do

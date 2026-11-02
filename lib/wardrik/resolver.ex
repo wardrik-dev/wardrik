@@ -10,7 +10,7 @@ defmodule Wardrik.Resolver do
         @behaviour Wardrik.Resolver
 
         @impl true
-        def resolve(id, _definition, _config) do
+        def resolve(%Wardrik.Resolver.Request{agent: id}, _opts) do
           agent = MyApp.Agents.get!(id)
 
           {:ok,
@@ -35,28 +35,29 @@ defmodule Wardrik.Resolver do
 
   alias Wardrik.Error
   alias Wardrik.Resolved
+  alias Wardrik.Resolver.Request
   alias WardrikCore.Principal
 
-  @doc "Returns what the agent `id`, defined as `definition`, gets."
-  @callback resolve(id :: String.t(), definition :: map(), config :: term()) ::
-              {:ok, Resolved.t()} | {:error, term()}
+  @doc "Returns what the request's agent gets. See `Wardrik.Resolver.Request`."
+  @callback resolve(Request.t(), opts :: term()) :: {:ok, Resolved.t()} | {:error, term()}
 
   @doc """
-  Returns what the agent `id` gets, with each policy built, or an error if it doesn't resolve.
+  Returns what the request's agent gets, with each policy built, or an error if it doesn't
+  resolve.
   """
-  @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, Resolved.t()} | {:error, Error.t()}
-  def resolve(%Wardrik{resolver: nil} = wardrik, id, definition),
-    do: wardrik |> Wardrik.Owners.Resolver.resolve(id, definition) |> read(wardrik, id)
+  @spec resolve(Wardrik.t(), Request.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
+  def resolve(%Wardrik{resolver: nil} = wardrik, %Request{agent: id} = request),
+    do: wardrik |> Wardrik.Owners.Resolver.resolve(request) |> read(wardrik, id)
 
-  def resolve(%Wardrik{resolver: {module, config}} = wardrik, id, definition),
-    do: id |> module.resolve(definition, config) |> read(wardrik, id)
+  def resolve(%Wardrik{resolver: {module, opts}} = wardrik, %Request{agent: id} = request),
+    do: request |> module.resolve(opts) |> read(wardrik, id)
 
   @doc "Returns what the agent `id` gets, as it's defined now, or as defined by nothing."
   @spec defined(Wardrik.t(), String.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
   def defined(wardrik, id) do
     case Wardrik.Operations.Running.definition(wardrik, id) do
-      {:ok, definition} -> resolve(wardrik, id, definition)
-      {:error, _none} -> resolve(wardrik, id, %{})
+      {:ok, definition} -> resolve(wardrik, %Request{agent: id, definition: definition})
+      {:error, _none} -> resolve(wardrik, %Request{agent: id})
     end
   end
 

@@ -180,7 +180,7 @@ defmodule Wardrik.AgentTools do
     id = "msg_" <> Base.url_encode64(:crypto.strong_rand_bytes(12), padding: false)
     me = %{me | labels: Context.labels(context)}
 
-    with :ok <- Delegation.asked(me.wardrik, me.id, agent, id),
+    with :ok <- Delegation.asked(me.wardrik, asker: me.id, agent: agent, message: id),
          do: run(me, "agent.ask", %{"agent" => agent, "content" => message, "id" => id})
   end
 

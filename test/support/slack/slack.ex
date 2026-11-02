@@ -86,7 +86,9 @@ defmodule Wardrik.Test.Slack do
     scope = Wardrik.as(context.wardrik, "anonymous")
 
     {:ok, answer} =
-      Wardrik.Channel.deliver(scope, Keyword.get(opts, :channel, "slack"), path,
+      Wardrik.Channel.deliver(scope,
+        channel: Keyword.get(opts, :channel, "slack"),
+        path: path,
         body: body,
         headers: headers
       )

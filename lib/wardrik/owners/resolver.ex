@@ -20,10 +20,10 @@ defmodule Wardrik.Owners.Resolver do
   alias Wardrik.Owners
   alias Wardrik.Resolved
 
-  @doc "Returns what the agent `id` gets along its owner's chain."
-  @spec resolve(Wardrik.t(), String.t(), map()) ::
+  @doc "Returns what the request's agent gets along its owner's chain."
+  @spec resolve(Wardrik.t(), Wardrik.Resolver.Request.t()) ::
           {:ok, Resolved.t()} | {:error, Wardrik.Error.t()}
-  def resolve(wardrik, id, _definition) do
+  def resolve(wardrik, %Wardrik.Resolver.Request{agent: id}) do
     org = Orgs.org(id)
 
     with {:ok, settings} <- Orgs.settings(wardrik, org) do

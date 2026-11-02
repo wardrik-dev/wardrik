@@ -60,10 +60,18 @@ initech
 Approve one, with a note, and deny the other, with a reason:
 
 ```elixir
-Wardrik.Agent.approve(scope, "acme/@maria/books", initech.id, note: "Pay it from the ops account.")
+Wardrik.Agent.approve(scope,
+  agent: "acme/@maria/books",
+  interrupt: initech.id,
+  note: "Pay it from the ops account."
+)
 #=> {:ok, [%Wardrik.Decision{id: "toolu_01...", decision: :approved}]}
 
-Wardrik.Agent.deny(scope, "acme/@maria/books", globex.id, reason: "Not before the 1st.")
+Wardrik.Agent.deny(scope,
+  agent: "acme/@maria/books",
+  interrupt: globex.id,
+  reason: "Not before the 1st."
+)
 #=> {:ok, [%Wardrik.Decision{id: "toolu_02...", decision: :rejected}]}
 ```
 
@@ -97,9 +105,9 @@ Each value is `:approve`, `{:approve, note}` or `{:deny, reason}`.
 Deciding a call the agent doesn't wait on, or no longer waits on, returns a `conflict` error:
 
 ```elixir
-Wardrik.Agent.approve(scope, "acme/@maria/books", initech.id)
+Wardrik.Agent.approve(scope, agent: "acme/@maria/books", interrupt: initech.id)
 #=> {:error, %Wardrik.Error{type: :conflict, ...}}
 ```
 
-When an agent waits for someone to sign in, `Wardrik.Agent.authorization/4` returns the link; see
+When an agent waits for someone to sign in, `Wardrik.Agent.authorization/2` returns the link; see
 [Credentials](credentials.md).
