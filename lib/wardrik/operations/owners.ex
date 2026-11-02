@@ -407,7 +407,7 @@ defmodule Wardrik.Operations.Owners do
     for {id, ^key, _kind} <- WardrikVault.list(vault),
         do: WardrikVault.delete(vault, %Principal{id: id}, key)
 
-    WardrikOAuth.remove_provider(Wardrik.oauth(wardrik), owner, key)
+    WardrikOAuth.remove_provider(Wardrik.oauth(wardrik), owner: owner, name: key)
   end
 
   defp forget_sign_ins(_wardrik, _owner, _key, _record), do: :ok

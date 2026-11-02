@@ -52,7 +52,7 @@ defmodule Wardrik.Operations.Providers do
   def remove(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "provider" => name}) do
     case own(wardrik, owner, name) do
       %Provider{source: :runtime} = provider ->
-        :ok = WardrikOAuth.remove_provider(Wardrik.oauth(wardrik), owner, name)
+        :ok = WardrikOAuth.remove_provider(Wardrik.oauth(wardrik), owner: owner, name: name)
 
         Changes.record_owned(scope, "provider.removed", owner, "providers/" <> name, %{
           "provider" => %{"name" => name}
@@ -132,7 +132,7 @@ defmodule Wardrik.Operations.Providers do
   @spec added(Wardrik.t(), Wardrik.Owners.t(), String.t(), keyword(), String.t() | nil) ::
           :ok | {:error, Error.t()}
   def added(wardrik, owner, name, opts, called \\ nil) do
-    case WardrikOAuth.add_provider(Wardrik.oauth(wardrik), owner, name, opts) do
+    case WardrikOAuth.add_provider(Wardrik.oauth(wardrik), [owner: owner, name: name] ++ opts) do
       :ok ->
         :ok
 

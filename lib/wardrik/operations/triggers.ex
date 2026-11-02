@@ -46,7 +46,9 @@ defmodule Wardrik.Operations.Triggers do
       path_secret: input["secret"]
     }
 
-    case WardrikTriggers.deliver(Wardrik.triggers(wardrik), id, name, request) do
+    delivery = [agent_id: id, name: name, request: request]
+
+    case WardrikTriggers.deliver(Wardrik.triggers(wardrik), delivery) do
       :ok ->
         {:ok, nil}
 
@@ -73,7 +75,7 @@ defmodule Wardrik.Operations.Triggers do
   end
 
   defp removed(wardrik, id, name) do
-    case WardrikTriggers.remove(Wardrik.triggers(wardrik), id, name) do
+    case WardrikTriggers.remove(Wardrik.triggers(wardrik), agent_id: id, name: name) do
       :ok ->
         :ok
 
