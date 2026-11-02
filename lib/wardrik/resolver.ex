@@ -68,7 +68,7 @@ defmodule Wardrik.Resolver do
          {:ok, policy} <- policy("policy", resolved.policy, unread),
          {:ok, policies} <- policies(wardrik, resolved.policies, unread),
          {:ok, servers} <- named("servers", resolved.servers, unread),
-         {:ok, notify} <- named("notify", resolved.notify, unread) do
+         {:ok, notify} <- targets(resolved.notify, unread) do
       {:ok,
        %{
          resolved
@@ -98,6 +98,23 @@ defmodule Wardrik.Resolver do
   end
 
   defp named(what, _names, unread), do: {:error, unread.("its #{what} map names to names")}
+
+  defp targets(notify, unread) when is_map(notify) do
+    each(notify, fn name, target -> target(name, target, unread) end)
+  end
+
+  defp targets(_notify, unread), do: {:error, unread.("its notify map names to targets")}
+
+  defp target(name, key, _unread) when is_binary(name) and is_binary(key), do: {:ok, key}
+
+  defp target(name, target, unread) when is_binary(name) do
+    case Wardrik.Notify.given(target) do
+      {:ok, target} -> {:ok, target}
+      {:error, why} -> {:error, unread.("its notify target #{name}: #{why}")}
+    end
+  end
+
+  defp target(_name, _target, unread), do: {:error, unread.("its notify map names to targets")}
 
   defp policies(wardrik, policies, unread) do
     named = Map.new(policies, fn {name, rules} -> {to_string(name), rules} end)

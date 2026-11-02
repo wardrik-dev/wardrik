@@ -5,35 +5,36 @@
 - `:resolver`, `Wardrik.Resolver`: the host says what each agent gets, as `Wardrik.Resolved`:
   who it acts for, its policies, defaults and middleware, and the MCP servers and notify targets
   its definition's names reach. A name it isn't resolved with reaches nothing, whatever is started
-  by that name. Without `:resolver`, `Wardrik.Owners.Resolver` resolves along the owner chain.
+  by that name. Without `:resolver`, `Wardrik.Owners.Resolver` gives every agent Wardrik's own
+  servers and targets.
 - `Wardrik.refresh/2` takes `agents:`, or nothing for every awake agent.
-- `Wardrik.Notify.owned/2`: the targets one owner added, for a host's own `:resolver`.
+- `Wardrik.Resolved`'s `:notify` takes a target of your app's own as `{module, opts}`, checked
+  against its module's `c:Wardrik.Notify.schema/0` by `Wardrik.Notify.given/1`.
 - `:oauth` takes `:resolver`, the `WardrikOAuth.Resolver` that says which OAuth app each
   principal signs in with.
 - Settings resolve along the owner chain, `Wardrik.Owners.chain/1`: a person's own, their org's,
-  then the deployment's, the nearest of a name winning. Agents get MCP servers, OAuth apps and
-  notify targets this way.
+  then the deployment's, the nearest of a name winning. People get OAuth apps this way.
 - `providers.list`, `providers.add` and `providers.remove`: OAuth apps an org or person keeps for
   their people. `connections.list` offers a person each app they can sign in with.
-- An MCP server's `auth.oauth` names an app as `provider`, so connecting the app once covers the
-  server. An inline app takes `authorization_params`.
-- `notify_targets.list`, `notify_targets.add` and `notify_targets.remove`: webhooks an org or
-  person adds for their agents' notices. `notify: "ops"` goes to the nearest `ops` along the
-  agent's owner's chain, then to `:notify`'s. A target's URL passes `:egress` as it's added and as
-  each notice is sent, with no redirect followed. `:notify` takes `:req_options` for them.
-- Secrets by reference: an OAuth app's client secret, an MCP server's header secrets and a notify
-  target's secret are named, read from the owner's vault as each is used, and never answered.
-- `mcp_servers.list` answers the servers an owner's agents reach, each with `owner` and `source`,
-  and never their headers. `mcp_servers.remove` removes the owner's own.
+- Secrets by reference: an OAuth app's client secret and an MCP server's header secrets are
+  named, read from the owner's vault as each is used, and never answered.
+- `connections.list` offers each MCP server's own sign-in, an OAuth app named `owner:name`, by the
+  server's name.
 - `Wardrik.schema/0`: `Wardrik.start_link/1`'s options as a NimbleOptions schema, for a host that
   reads them from a file. Each notify target's options are checked as Wardrik starts, by
   `c:Wardrik.Notify.schema/0`.
 - `:credentials`, `:key_source` and `:grants`: where every agent's credentials, API keys and OAuth
   grants come from, in place of the vault and `WardrikOAuth`.
 - An error from a server's own sign-in names the server.
+- `Wardrik.mcp/1` takes the instance's name or struct, and returns its `WardrikMCP`, for
+  `WardrikMCP.add/3`.
 
 ### Breaking
 
+- MCP servers and notify targets that orgs and people add are `wardrik_daemon`'s:
+  `mcp_servers.*`, `notify_targets.*`, `Wardrik.Operations.NotifyTargets`, `Wardrik.Notify`'s
+  `owned/2`, `targets/2`, `key/1`, `key/2` and `:req_options`, `Wardrik.MCPTools.key/2` and
+  `serving/2`, and `:orgs` on `:mcp` servers and `:notify` targets are gone.
 - Each seam's callback takes one request struct, then its options: `authorize/2` a
   `Wardrik.Authorizer.Request`, and `resolve/2` a `Wardrik.Resolver.Request`.
 - Implements rc.2 of the packages' seams, each taking a request struct:

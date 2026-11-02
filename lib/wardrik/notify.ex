@@ -6,8 +6,7 @@ defmodule Wardrik.Notify do
               default: [],
               doc: """
               The deployment's targets by name, as `{module, opts}`, each checked against its
-              module's `c:schema/0` as Wardrik starts. A target's `:orgs` limits it to those
-              orgs' agents. Routing another org's agent to it is refused.
+              module's `c:schema/0` as Wardrik starts.
               """
             ],
             retries: [
@@ -16,14 +15,6 @@ defmodule Wardrik.Notify do
               doc: """
               How failed deliveries are retried. See `WardrikCore.Retry`. After that, the notice
               is logged and dropped.
-              """
-            ],
-            req_options: [
-              type: :keyword_list,
-              default: [],
-              doc: """
-              Merged into the `Req` request of each webhook an org or person adds. Those never
-              follow a redirect.
               """
             ]
           )
@@ -58,23 +49,20 @@ defmodule Wardrik.Notify do
 
   Conversations aren't routed anywhere.
 
-  ## Targets by owner
+  ## Targets your app gives
 
-  An org or person adds webhooks with `notify_targets.add`, and their agents route to them by
-  name. A name reaches the target the agent is resolved with (see `Wardrik.Resolver`): without
-  `:resolver`, the nearest along `Wardrik.Owners.chain/1`, a person's own, their org's, the
-  deployment's, then the targets in `:notify`.
+  A target in `:notify` reaches every agent its resolver gives it to. Your app can also give an
+  agent a target of its own, as `{module, opts}`, such as a webhook one of your customers added:
 
-      Wardrik.run(scope, "notify_targets.add", %{
-        "owner" => "acme",
-        "name" => "ops",
-        "url" => "https://hooks.acme.example/wardrik",
-        "secret" => %{"name" => "OPS_HOOK_SECRET"}
-      })
+      %Wardrik.Resolved{
+        notify: %{
+          "ops" => "ops",
+          "alerts" => {Wardrik.Notify.Webhook, url: customer.webhook_url, secret: customer.secret}
+        }
+      }
 
-  Now `notify: "ops"` posts acme's agents' notices there, in place of the deployment's `ops`.
-  The secret is read from acme's vault as each notice is sent. The URL must pass Wardrik's
-  `:egress` as it's added and as each notice is sent.
+  Its options are checked against its module's `c:schema/0` as the agent is resolved. A
+  `{:secret, name}` in them isn't read: give the secret itself. See `Wardrik.Resolver`.
 
   ## Options
 
@@ -89,25 +77,11 @@ defmodule Wardrik.Notify do
   alias Wardrik.Error
   alias Wardrik.Notice
   alias Wardrik.Notify.Room
-  alias Wardrik.Notify.Webhook
-  alias Wardrik.Owners
 
-  @passed [wardrik: [type: :atom], target: [type: :string], orgs: [type: {:list, :string}]]
+  @passed [wardrik: [type: :atom], target: [type: :string]]
 
   @typedoc "Where an agent's notices go (`:to`), and which kinds are sent (`:on`)."
   @type route() :: %{to: [String.t()], on: [Notice.kind()]}
-
-  @typedoc """
-  A target agents route to: who holds it, whether it's from `:notify` or added since, and the
-  module and options that send to it.
-  """
-  @type target() :: %{
-          owner: Owners.t(),
-          name: String.t(),
-          source: :config | :runtime,
-          module: module(),
-          opts: keyword()
-        }
 
   @doc """
   Sends `notice`. Returns `{:skip, why}` if it shouldn't be sent, or `{:error, reason}` to retry.
@@ -120,8 +94,8 @@ defmodule Wardrik.Notify do
   Returns the options a target takes, as a `NimbleOptions` schema.
 
   Wardrik checks each target's options against it as it starts, so `deliver/2` gets them checked,
-  with their defaults. It needn't name `:wardrik`, `:target` or `:orgs`. Where an option takes a
-  secret, allow `{:secret, name}`: `deliver/2` gets the deployment's secret of that name.
+  with their defaults. It needn't name `:wardrik` or `:target`. Where an option takes a secret,
+  allow `{:secret, name}`: a target in `:notify` gets the deployment's secret of that name.
   """
   @callback schema() :: keyword()
 
@@ -134,19 +108,14 @@ defmodule Wardrik.Notify do
   """
   @spec settings(keyword() | nil) :: %{
           targets: %{String.t() => {module(), keyword()}},
-          retries: keyword(),
-          req_options: keyword()
+          retries: keyword()
         }
   def settings(nil), do: settings([])
 
   def settings(opts) do
     opts = NimbleOptions.validate!(opts, @schema)
 
-    %{
-      targets: Map.new(opts[:targets], &checked/1),
-      retries: opts[:retries],
-      req_options: opts[:req_options]
-    }
+    %{targets: Map.new(opts[:targets], &checked/1), retries: opts[:retries]}
   end
 
   defp checked({name, {module, opts}}) do
@@ -166,57 +135,36 @@ defmodule Wardrik.Notify do
   end
 
   @doc """
-  Returns the targets `owner`'s agents route to, nearest first along `Wardrik.Owners.chain/1`:
-  each owner's own, then the deployment's from `:notify` that tell `owner`'s org. The nearest of a
-  name wins.
+  Checks a target your app gives as `{module, opts}` against its module's `c:schema/0`. Returns
+  it with its options' defaults, or why it doesn't fit.
   """
-  @spec targets(Wardrik.t(), Owners.t()) :: [target()]
-  def targets(wardrik, owner) do
-    {:ok, %{org: org}} = Owners.parse(owner)
-
-    owner
-    |> Owners.chain()
-    |> Enum.flat_map(&owned(wardrik, &1))
-    |> Kernel.++(for target <- configured(wardrik), tells?(target.opts, org), do: target)
-    |> Enum.uniq_by(& &1.name)
-  end
-
-  @doc "Returns the key `owner`'s target `name` is kept at, in Wardrik's own store."
-  @spec key(Owners.t(), String.t()) :: String.t()
-  def key(owner, name), do: prefix(owner) <> name
-
-  @doc "Returns the key agents are resolved with to reach `target`. See `Wardrik.Resolved`."
-  @spec key(target()) :: String.t()
-  def key(%{source: :config, name: name}), do: name
-  def key(%{source: :runtime, owner: owner, name: name}), do: key(owner, name)
-
-  @doc """
-  Returns the targets `owner` added at runtime, by name. A host with its own `:resolver` walks
-  its owners with it. See `Wardrik.Resolved`.
-  """
-  @spec owned(Wardrik.t(), Owners.t()) :: [target()]
-  def owned(wardrik, owner) do
-    store = store(wardrik)
-    prefix = prefix(owner)
-
-    for key <- WardrikStore.keys(store, prefix),
-        opts when is_list(opts) <- [WardrikStore.get(store, key)] do
-      runtime(owner, String.replace_prefix(key, prefix, ""), opts)
+  @spec given(term()) :: {:ok, {module(), keyword()}} | {:error, String.t()}
+  def given({module, opts}) when is_atom(module) and is_list(opts) do
+    with true <- Code.ensure_loaded?(module) and function_exported?(module, :deliver, 2),
+         :ok <- unsealed(opts),
+         {:ok, opts} <- options(module, opts) do
+      {:ok, {module, opts}}
+    else
+      false -> {:error, "#{inspect(module)} isn't a notify target"}
+      {:error, %NimbleOptions.ValidationError{} = error} -> {:error, Exception.message(error)}
+      {:error, why} -> {:error, why}
     end
   end
 
-  defp configured(wardrik),
-    do: for({name, entry} <- wardrik.notify.targets, do: configured(name, entry))
+  def given(other), do: {:error, "#{inspect(other)} isn't a target's name or {module, opts}"}
 
-  defp configured(name, {module, opts}),
-    do: %{owner: "deployment", name: name, source: :config, module: module, opts: opts}
+  defp unsealed(opts) do
+    case Enum.find(opts, &match?({_key, {:secret, _name}}, &1)) do
+      nil -> :ok
+      {key, _secret} -> {:error, "its #{key} names a secret, which isn't read: give the secret"}
+    end
+  end
 
-  defp runtime(owner, name, opts),
-    do: %{owner: owner, name: name, source: :runtime, module: Webhook, opts: opts}
-
-  defp prefix(owner), do: "notify_targets/" <> URI.encode_www_form(owner) <> "/"
-
-  defp store(%Wardrik{store: store}), do: WardrikStore.scope(store, "wardrik")
+  defp options(module, opts) do
+    if function_exported?(module, :schema, 0),
+      do: NimbleOptions.validate(opts, module.schema()),
+      else: {:ok, opts}
+  end
 
   @doc """
   Returns the route in `definition`'s `notify`, or `nil`.
@@ -241,7 +189,7 @@ defmodule Wardrik.Notify do
   Returns `:ok` if every place `definition` routes to is in `notify`, the targets the agent was
   resolved with, or is a channel's room.
   """
-  @spec check(Wardrik.t(), %{String.t() => String.t()}, map()) :: :ok | {:error, Error.t()}
+  @spec check(Wardrik.t(), Wardrik.Resolved.notify(), map()) :: :ok | {:error, Error.t()}
   def check(wardrik, notify, definition) do
     case route(definition) do
       nil -> :ok
@@ -280,77 +228,35 @@ defmodule Wardrik.Notify do
   defp sent(wardrik, {:room, channel, room}, notice),
     do: Room.deliver(notice, wardrik: wardrik.name, channel: channel, room: room, approvers: [])
 
-  defp sent(wardrik, {:target, %{source: :config, name: name} = target}, notice),
+  defp sent(wardrik, {:configured, name, {module, opts}}, notice),
     do:
-      target.module.deliver(
+      module.deliver(
         notice,
         [wardrik: wardrik.name, target: name] ++
-          Wardrik.Sealed.resolved(wardrik, "the target #{name}", target.opts)
+          Wardrik.Sealed.resolved(wardrik, "the target #{name}", opts)
       )
 
-  defp sent(wardrik, {:target, %{source: :runtime} = target}, notice),
-    do: posted(wardrik, target, notice)
+  # Your app's own target holds its secrets itself: the deployment's aren't read for it.
+  defp sent(wardrik, {:given, name, {module, opts}}, notice),
+    do: module.deliver(notice, [wardrik: wardrik.name, target: name] ++ opts)
 
   defp sent(_wardrik, :error, _notice),
     do: {:skip, "which isn't a target or a channel's room here"}
 
-  # A webhook an org or person added: its URL is checked again, since where it resolves can
-  # change, and its secret is read from its owner's vault.
-  defp posted(wardrik, %{owner: owner, name: name, opts: opts}, notice) do
-    with :ok <- reachable(wardrik, opts[:url]),
-         {:ok, secret} <- signing(wardrik, owner, opts[:secret]) do
-      Webhook.deliver(notice,
-        wardrik: wardrik.name,
-        target: name,
-        url: opts[:url],
-        secret: secret,
-        req_options: Keyword.merge(wardrik.notify.req_options, redirect: false)
-      )
-    end
-  end
-
-  defp reachable(wardrik, url) do
-    case wardrik.egress.(url) do
-      :ok -> :ok
-      {:error, why} -> {:skip, "but it can't be reached: #{why}"}
-    end
-  end
-
-  defp signing(_wardrik, _owner, nil), do: {:ok, nil}
-
-  defp signing(wardrik, owner, {:secret, name}) do
-    case Wardrik.Sealed.fetch(wardrik, owner: owner, name: name, kind: :signing_secret) do
-      {:ok, secret} -> {:ok, secret}
-      {:error, _reason} -> {:skip, "but #{owner} holds no secret #{name} to sign it with"}
-    end
-  end
-
   defp place(wardrik, notify, name) do
-    with {:ok, key} <- Map.fetch(notify, name),
-         {:ok, target} <- target(wardrik, key) do
-      {:target, target}
-    else
+    case Map.fetch(notify, name) do
+      {:ok, {_module, _opts} = target} -> {:given, name, target}
+      {:ok, key} -> configured(wardrik, key, name)
       :error -> room(wardrik, name)
     end
   end
 
-  defp target(wardrik, key) do
+  defp configured(wardrik, key, name) do
     case Map.fetch(wardrik.notify.targets, key) do
-      {:ok, entry} -> {:ok, configured(key, entry)}
-      :error -> added(wardrik, key)
+      {:ok, target} -> {:configured, key, target}
+      :error -> room(wardrik, name)
     end
   end
-
-  defp added(wardrik, "notify_targets/" <> held = key) do
-    with [owner, name] <- String.split(held, "/", parts: 2),
-         opts when is_list(opts) <- WardrikStore.get(store(wardrik), key) do
-      {:ok, runtime(URI.decode_www_form(owner), name, opts)}
-    else
-      _gone -> :error
-    end
-  end
-
-  defp added(_wardrik, _key), do: :error
 
   defp room(wardrik, name) do
     with [channel, room] <- String.split(name, ":", parts: 2),
@@ -358,15 +264,6 @@ defmodule Wardrik.Notify do
       {:room, channel, room}
     else
       _neither -> :error
-    end
-  end
-
-  defp tells?(_opts, nil), do: true
-
-  defp tells?(opts, org) do
-    case Keyword.get(opts, :orgs, :all) do
-      :all -> true
-      orgs -> org in orgs
     end
   end
 end

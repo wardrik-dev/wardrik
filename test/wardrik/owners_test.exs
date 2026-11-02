@@ -3,7 +3,6 @@ defmodule Wardrik.OwnersTest do
 
   import Wardrik.Test.Wardrik
 
-  alias Wardrik.MCPTools
   alias WardrikCore.Principal
   alias WardrikVault.Secret
 
@@ -146,252 +145,34 @@ defmodule Wardrik.OwnersTest do
     end
   end
 
-  describe "servers" do
-    test "adds, lists and removes an owner's servers", %{wardrik: wardrik, scope: scope} do
-      server = %{
-        "owner" => "acme",
-        "name" => "docs",
-        "url" => "https://docs.test/mcp",
-        "auth" => %{"none" => %{}}
-      }
+  # A server's own sign-in, as the app that serves it adds one: named by its key, `owner:name`.
+  defp server_app(wardrik, owner, name) do
+    :ok =
+      Wardrik.Operations.Providers.added(wardrik,
+        owner: owner,
+        name: owner <> ":" <> name,
+        called: name,
+        authorization_endpoint: "https://#{name}.test/authorize",
+        token_endpoint: "https://#{name}.test/token",
+        client_id: "wardrik"
+      )
+  end
 
-      assert %{"server" => "docs", "connected" => true} = run!(scope, "mcp_servers.add", server)
-      assert refused(scope, "mcp_servers.add", server) == :conflict
-
-      assert %{
-               "servers" => [
-                 %{"name" => "docs", "url" => "https://docs.test/mcp", "auth" => "none"}
-               ]
-             } =
-               run!(scope, "mcp_servers.list", %{"owner" => "acme"})
-
-      assert "acme:docs" in WardrikMCP.servers(Wardrik.mcp(wardrik))
-
-      assert %{"name" => "docs"} =
-               run!(scope, "mcp_servers.remove", %{"owner" => "acme", "server" => "docs"})
-
-      refute "acme:docs" in WardrikMCP.servers(Wardrik.mcp(wardrik))
-      assert %{"servers" => []} = run!(scope, "mcp_servers.list", %{"owner" => "acme"})
-
-      assert refused(scope, "mcp_servers.remove", %{"owner" => "acme", "server" => "docs"}) ==
-               :not_found
-
-      assert ["wardrik.server.added", "wardrik.server.removed"] = types(scope)
-    end
-
-    test "reaches a server with a secret its owner keeps, read as each connection starts", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      server = %{
-        "owner" => "acme",
-        "name" => "crm",
-        "url" => Wardrik.Test.Headers.start("/acme"),
-        "auth" => %{"secret" => %{"name" => "crm-key"}}
-      }
-
-      assert {:error, %Wardrik.Error{message: "acme holds no secret crm-key sealed as a header."}} =
-               Wardrik.run(scope, "mcp_servers.add", server)
-
-      :ok =
-        seal(wardrik, {"acme", "crm-key"}, "one", :header)
-
-      assert %{"server" => "crm", "connected" => true} = run!(scope, "mcp_servers.add", server)
-      assert_receive {:authorization, "/acme", ["Bearer one"]}, 5_000
-
-      stored =
-        WardrikStore.get(WardrikStore.scope(wardrik.store, "wardrik_mcp"), "servers/acme:crm")
-
-      assert {:streamable_http, http} = stored[:transport]
-      assert http[:headers] == %{"authorization" => ["Bearer ", {:secret, "crm-key"}]}
-
-      :ok =
-        seal(wardrik, {"acme", "crm-key"}, "two", :header)
-
-      assert_receive {:authorization, "/acme", ["Bearer two"]}, 5_000
-
-      raw = %{
-        server
-        | "name" => "raw",
-          "auth" => %{"secret" => %{"name" => "crm-key", "header" => "x-key", "scheme" => ""}}
-      }
-
-      run!(scope, "mcp_servers.add", raw)
-
-      stored =
-        WardrikStore.get(WardrikStore.scope(wardrik.store, "wardrik_mcp"), "servers/acme:raw")
-
-      assert {:streamable_http, http} = stored[:transport]
-      assert http[:headers] == %{"x-key" => {:secret, "crm-key"}}
-    end
-
-    test "reaches another org's server with that org's secret alone", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      :ok =
-        seal(wardrik, {"acme", "crm-key"}, "acme's", :header)
-
-      server = %{
-        "owner" => "globex",
-        "name" => "crm",
-        "url" => Wardrik.Test.Headers.start("/globex"),
-        "auth" => %{"secret" => %{"name" => "crm-key"}}
-      }
-
-      assert {:error,
-              %Wardrik.Error{message: "globex holds no secret crm-key sealed as a header."}} =
-               Wardrik.run(scope, "mcp_servers.add", server)
-
-      :ok =
-        seal(wardrik, {"globex", "crm-key"}, "globex's", :header)
-
-      run!(scope, "mcp_servers.add", server)
-      assert_receive {:authorization, "/globex", ["Bearer globex's"]}, 5_000
-
-      :ok =
-        seal(wardrik, {"acme", "crm-key"}, "acme's again", :header)
-
-      :ok = unseal(wardrik, {"globex", "crm-key"})
-      refute_receive {:authorization, "/globex", _authorization}, 500
-    end
-
-    test "lists the servers an owner's agents reach, nearest first, with who holds each", %{
-      wardrik: wardrik
-    } do
-      :ok = stop_supervised!(Wardrik)
-
-      config = [
-        docs: [
-          transport:
-            {:streamable_http,
-             url: "https://docs.test/mcp", headers: %{"authorization" => {:secret, "DOCS"}}},
-          orgs: ["acme"]
-        ],
-        wiki: [transport: {:streamable_http, url: "https://wiki.test/mcp"}, orgs: ["globex"]],
-        git: [transport: {:stdio, command: "git-mcp-server"}, credential_name: "git"]
-      ]
-
-      wardrik = %{wardrik | mcp: config}
-      start_supervised!({Wardrik, wardrik})
-      scope = owner(wardrik)
-
-      for {owner, name} <- [{"deployment", "search"}, {"acme", "crm"}, {"acme/@maria", "crm"}] do
-        run!(scope, "mcp_servers.add", %{
-          "owner" => owner,
-          "name" => name,
-          "url" => "https://#{name}.test/mcp",
-          "auth" => %{"none" => %{}}
-        })
-      end
-
-      listed = fn owner ->
-        %{"servers" => servers} = run!(scope, "mcp_servers.list", %{"owner" => owner})
-        Enum.map(servers, &{&1["owner"], &1["name"], &1["source"]})
-      end
-
-      assert listed.("acme/@maria") == [
-               {"acme/@maria", "crm", "runtime"},
-               {"deployment", "search", "runtime"},
-               {"deployment", "docs", "config"},
-               {"deployment", "git", "config"}
-             ]
-
-      assert listed.("globex") == [
-               {"deployment", "search", "runtime"},
-               {"deployment", "wiki", "config"},
-               {"deployment", "git", "config"}
-             ]
-
-      assert %{"servers" => servers} =
-               run!(scope, "mcp_servers.list", %{"owner" => "deployment"})
-
-      assert Enum.map(servers, & &1["name"]) == ["search", "docs", "wiki", "git"]
-
-      assert %{
-               "owner" => "deployment",
-               "name" => "docs",
-               "source" => "config",
-               "url" => "https://docs.test/mcp",
-               "auth" => "secret"
-             } in servers
-
-      assert %{"owner" => "deployment", "name" => "git", "source" => "config", "auth" => "oauth"} in servers
-      refute inspect(servers) =~ "DOCS"
-
-      assert {:ok, [%Wardrik.MCPServer{owner: "acme/@maria", source: :runtime} | _rest]} =
-               Wardrik.MCPServers.list(scope, owner: "acme/@maria")
-
-      for {owner, name, type} <- [
-            {"acme/@maria", "search", :not_found},
-            {"acme", "docs", :not_found},
-            {"deployment", "docs", :invalid_request},
-            {"deployment", "nope", :not_found}
-          ] do
-        assert refused(scope, "mcp_servers.remove", %{"owner" => owner, "server" => name}) ==
-                 type
-      end
-
-      assert {:error,
-              %Wardrik.Error{message: "docs is an MCP server the deployment starts with."}} =
-               Wardrik.run(scope, "mcp_servers.remove", %{
-                 "owner" => "deployment",
-                 "server" => "docs"
-               })
-
-      assert %{"owner" => "acme/@maria", "name" => "crm", "source" => "runtime"} =
-               run!(scope, "mcp_servers.remove", %{"owner" => "acme/@maria", "server" => "crm"})
-
-      assert {"acme", "crm", "runtime"} in listed.("acme/@maria")
-    end
-
-    test "registers with a server's own sign-in, and says where each person signs in", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      server = %{
-        "owner" => "acme",
-        "name" => "crm",
-        "url" => "https://crm.test/mcp",
-        "auth" => %{"oauth" => %{"scopes" => ["read"]}}
-      }
-
-      assert %{"server" => "crm", "connected" => false, "authorization" => %{"url" => url}} =
-               run!(scope, "mcp_servers.add", server)
-
-      query = URI.decode_query(URI.parse(url).query)
-      assert %{"client_id" => "registered", "scope" => "read"} = query
-
-      assert %{"name" => "crm", "auth" => "oauth"} =
-               run!(scope, "mcp_servers.remove", %{"owner" => "acme", "server" => "crm"})
-
-      refute "acme:crm" in Enum.map(
-               WardrikOAuth.providers(Wardrik.oauth(wardrik), "acme"),
-               & &1.name
-             )
-    end
-
+  describe "server sign-ins" do
     test "offers an owner's server signed in to in a browser among their accounts, signed in as them",
          %{wardrik: wardrik, scope: scope} do
-      server = %{
-        "owner" => "acme",
-        "name" => "crm",
-        "url" => "https://crm.test/mcp",
-        "auth" => %{"oauth" => %{"scopes" => ["read"]}}
-      }
-
-      assert %{"connected" => false, "authorization" => %{"url" => _url}} =
-               run!(scope, "mcp_servers.add", server)
+      server_app(wardrik, "acme", "crm")
 
       assert %{"connections" => connections} =
                run!(scope, "connections.list", %{"owner" => "acme"})
 
       assert %{"provider" => "crm", "connected" => false} in connections
 
-      assert %{"provider" => "crm", "connected" => false, "authorization" => %{"url" => _again}} =
+      assert %{"provider" => "crm", "connected" => false, "authorization" => %{"url" => url}} =
                run!(scope, "connections.connect", %{"owner" => "acme", "provider" => "crm"})
 
-      hold(wardrik, "acme", "acme:crm", "token")
+      assert {:error, :wrong_principal} = signed_in(wardrik, url, "acme/@mallory")
+      assert {:ok, "acme:crm"} = signed_in(wardrik, url, "acme")
 
       assert %{"provider" => "crm", "connected" => true} =
                run!(scope, "connections.connect", %{"owner" => "acme", "provider" => "crm"})
@@ -406,237 +187,12 @@ defmodule Wardrik.OwnersTest do
       refute Enum.any?(connections, &(&1["provider"] == "acme:crm"))
     end
 
-    test "signs in with an owner's own OAuth app, its client secret read from their vault", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      hold(wardrik, "acme", "CRM_APP_SECRET", "app-secret", :client_secret)
-
-      server = %{
-        "owner" => "acme",
-        "name" => "crm",
-        "url" => "https://crm.test/mcp",
-        "auth" => %{
-          "oauth" => %{
-            "authorization_endpoint" => "https://crm-auth.test/authorize",
-            "token_endpoint" => "https://crm-auth.test/token",
-            "client_id" => "acme-app",
-            "client_secret" => %{"name" => "CRM_APP_SECRET"},
-            "client_auth" => "basic",
-            "scopes" => ["read"]
-          }
-        }
-      }
-
-      assert %{"connected" => false, "authorization" => %{"url" => url}} =
-               run!(scope, "mcp_servers.add", server)
-
-      assert "https://crm-auth.test/authorize?" <> query = url
-      assert %{"client_id" => "acme-app", "scope" => "read"} = URI.decode_query(query)
-
-      assert [%WardrikOAuth.Provider{owner: "acme", client_secret: {:secret, "CRM_APP_SECRET"}}] =
-               wardrik
-               |> Wardrik.oauth()
-               |> WardrikOAuth.providers("acme")
-               |> Enum.filter(&(&1.name == "acme:crm"))
-
-      assert {:error, :wrong_principal} = signed_in(wardrik, url, "acme/@mallory")
-      assert {:ok, "acme:crm"} = signed_in(wardrik, url, "acme")
-      assert_received {:exchanged, "crm-auth.test", %{"code" => "c0de"}, [first]}
-      assert first == "Basic " <> Base.encode64("acme-app:app-secret")
-
-      hold(wardrik, "acme", "CRM_APP_SECRET", "rotated", :client_secret)
-      run!(scope, "connections.disconnect", %{"owner" => "acme", "provider" => "crm"})
-
-      assert %{"authorization" => %{"url" => url}} =
-               run!(scope, "connections.connect", %{"owner" => "acme", "provider" => "crm"})
-
-      assert {:ok, "acme:crm"} = signed_in(wardrik, url, "acme")
-      assert_received {:exchanged, "crm-auth.test", _form, [rotated]}
-      assert rotated == "Basic " <> Base.encode64("acme-app:rotated")
-    end
-
-    test "signs in with an OAuth app the owner can use, connected once for every server naming it",
-         %{wardrik: wardrik, scope: scope} do
-      run!(scope, "providers.add", app("acme", "google", "google.test"))
-
-      server = %{
-        "owner" => "acme/@maria",
-        "name" => "ads",
-        "url" => "https://ads.test/mcp",
-        "auth" => %{"oauth" => %{"provider" => "google"}}
-      }
-
-      assert %{"server" => "ads", "connected" => false, "authorization" => %{"url" => url}} =
-               run!(scope, "mcp_servers.add", server)
-
-      assert "https://google.test/authorize?" <> query = url
-      assert %{"client_id" => "google-app"} = URI.decode_query(query)
-      assert {:ok, "google"} = signed_in(wardrik, url, "acme/@maria")
-
-      analytics = %{server | "name" => "analytics", "url" => "https://analytics.test/mcp"}
-
-      assert %{"server" => "analytics", "connected" => true} =
-               run!(scope, "mcp_servers.add", analytics)
-
-      assert %{"connections" => connections} =
-               run!(scope, "connections.list", %{"owner" => "acme/@maria"})
-
-      assert %{"provider" => "google", "connected" => true} in connections
-      refute Enum.any?(connections, &(&1["provider"] in ["ads", "analytics"]))
-
-      assert %{"name" => "ads", "auth" => "oauth"} =
-               run!(scope, "mcp_servers.remove", %{"owner" => "acme/@maria", "server" => "ads"})
-
-      assert {"acme", "google"} in listed(scope, "acme/@maria")
-      assert "google" in WardrikVault.names(Wardrik.vault(wardrik), %Principal{id: "acme/@maria"})
-
-      for {owner, provider} <- [{"globex", "google"}, {"acme", "nope"}] do
-        assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
-                 Wardrik.run(scope, "mcp_servers.add", %{
-                   server
-                   | "owner" => owner,
-                     "auth" => %{"oauth" => %{"provider" => provider}}
-                 })
-
-        assert message == "#{owner} has no OAuth app #{provider}."
-      end
-    end
-
-    test "refuses an owner's OAuth app whose secret they don't hold, or that names no client", %{
-      scope: scope
-    } do
-      app = %{"issuer" => "https://auth.test", "client_id" => "acme-app"}
-      server = %{"owner" => "acme", "name" => "crm", "url" => "https://crm.test/mcp"}
-
-      missing = Map.put(app, "client_secret", %{"name" => "NOPE"})
-
-      assert {:error,
-              %Wardrik.Error{message: "acme holds no secret NOPE sealed as a client_secret."}} =
-               Wardrik.run(
-                 scope,
-                 "mcp_servers.add",
-                 Map.put(server, "auth", %{"oauth" => missing})
-               )
-
-      unnamed = Map.delete(missing, "client_id")
-
-      assert refused(scope, "mcp_servers.add", Map.put(server, "auth", %{"oauth" => unnamed})) ==
-               :invalid_request
-    end
-
-    test "names a server, not its key, where its own sign-in fails", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      Req.Test.stub(__MODULE__, &Plug.Conn.send_resp(&1, 500, ""))
-
-      server = %{
-        "owner" => "acme",
-        "name" => "crm",
-        "url" => "https://crm.test/mcp",
-        "auth" => %{"oauth" => %{"scopes" => ["read"]}}
-      }
-
-      assert {:error,
-              %Wardrik.Error{type: :unavailable, message: "crm can't be signed in to now: " <> _}} =
-               Wardrik.run(scope, "mcp_servers.add", server)
-
-      assert {:error, %Wardrik.Error{message: "crm can't be signed in to now: " <> _}} =
-               Wardrik.run(scope, "connections.connect", %{"owner" => "acme", "provider" => "crm"})
-
-      params = [owner: "acme", name: "acme:crm", called: "crm"]
-      params = params ++ [authorization_params: %{"scope" => "read"}]
-
-      assert {:error, %Wardrik.Error{message: "crm can't be signed in with: " <> _}} =
-               Wardrik.Operations.Providers.added(wardrik, params)
-    end
-
-    test "reaches a server Wardrik started with from the orgs it serves alone", %{
-      wardrik: wardrik
-    } do
-      wardrik = %{wardrik | mcp: [docs: [orgs: ["acme"]], wiki: []]}
-
-      assert servers(wardrik, "acme/@maria/notes") == %{"docs" => "docs", "wiki" => "wiki"}
-      assert servers(wardrik, "globex/triage") == %{"wiki" => "wiki"}
-    end
-
-    defp servers(wardrik, id) do
-      {:ok, resolved} =
-        Wardrik.Owners.Resolver.resolve(wardrik, %Wardrik.Resolver.Request{agent: id})
-
-      resolved.servers
-    end
-
-    defp picked(wardrik, id, opts),
-      do: MCPTools.picked(Wardrik.mcp(wardrik), servers(wardrik, id), opts)
-
-    test "gives a person's agents their own servers first, then their org's", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      for owner <- ["acme", "acme/@maria"], name <- ["docs"] do
-        run!(scope, "mcp_servers.add", %{
-          "owner" => owner,
-          "name" => name,
-          "url" => "https://docs.test/mcp",
-          "auth" => %{"none" => %{}}
-        })
-      end
-
-      run!(scope, "mcp_servers.add", %{
-        "owner" => "acme",
-        "name" => "wiki",
-        "url" => "https://wiki.test/mcp",
-        "auth" => %{"none" => %{}}
-      })
-
-      assert picked(wardrik, "acme/@maria/notes", names: ["docs"]) == ["acme/@maria:docs"]
-      assert picked(wardrik, "acme/triage", names: ["docs"]) == ["acme:docs"]
-      assert picked(wardrik, "acme/@maria/notes", names: ["nope"]) == []
-
-      assert Enum.sort(picked(wardrik, "acme/@maria/notes", all: true)) == [
-               "acme/@maria:docs",
-               "acme:wiki"
-             ]
-
-      assert picked(wardrik, "acme/triage", all: true) |> Enum.sort() == [
-               "acme:docs",
-               "acme:wiki"
-             ]
-    end
-
-    test "gives every agent the deployment's servers, after its owners'", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      for owner <- ["deployment", "acme"], name <- ["docs"] do
-        run!(scope, "mcp_servers.add", %{
-          "owner" => owner,
-          "name" => name,
-          "url" => "https://docs.test/mcp",
-          "auth" => %{"none" => %{}}
-        })
-      end
-
-      assert picked(wardrik, "acme/@maria/notes", names: ["docs"]) == ["acme:docs"]
-      assert picked(wardrik, "globex/triage", names: ["docs"]) == ["deployment:docs"]
-      assert picked(wardrik, "globex/triage", all: true) == ["deployment:docs"]
-    end
-
     test "offers a person the servers that serve them, each signed in to as themselves", %{
       wardrik: wardrik,
       scope: scope
     } do
-      for {owner, name} <- [{"acme", "crm"}, {"deployment", "mail2"}] do
-        run!(scope, "mcp_servers.add", %{
-          "owner" => owner,
-          "name" => name,
-          "url" => "https://#{name}.test/mcp",
-          "auth" => %{"oauth" => %{}}
-        })
-      end
-
+      server_app(wardrik, "acme", "crm")
+      server_app(wardrik, "deployment", "mail2")
       hold(wardrik, "acme", "acme:crm", "the org's token")
 
       assert %{"connections" => connections} =
@@ -657,16 +213,45 @@ defmodule Wardrik.OwnersTest do
       assert %{"provider" => "mail2", "connected" => false} in connections
     end
 
-    test "names a server before it's added, as missing", %{scope: scope} do
-      run!(scope, "agent.define", %{
-        "agent" => "acme/@maria/notes",
-        "model" => "anthropic:claude-haiku-4-5",
-        "tools" => ["linear/*", "servers/*"]
-      })
+    test "gives a person's own server's sign-in before their org's of the same name", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      server_app(wardrik, "acme", "crm")
+      server_app(wardrik, "acme/@maria", "crm")
 
-      assert %{"missing" => ["linear/*"]} =
-               run!(scope, "agent.definition", %{"agent" => "acme/@maria/notes"})
+      assert %{"authorization" => %{"url" => url}} =
+               run!(scope, "connections.connect", %{"owner" => "acme/@maria", "provider" => "crm"})
+
+      assert {:ok, "acme/@maria:crm"} = signed_in(wardrik, url, "acme/@maria")
     end
+
+    test "names a server, not its key, where its own sign-in fails", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      params = [owner: "acme", name: "acme:docs", called: "docs"]
+      params = params ++ [authorization_params: %{"scope" => "read"}]
+
+      assert {:error, %Wardrik.Error{message: "docs can't be signed in with: " <> _}} =
+               Wardrik.Operations.Providers.added(wardrik, params)
+
+      assert %{"connections" => connections} =
+               run!(scope, "connections.list", %{"owner" => "acme"})
+
+      refute Enum.any?(connections, &(&1["provider"] == "docs"))
+    end
+  end
+
+  test "names a server before it's added, as missing", %{scope: scope} do
+    run!(scope, "agent.define", %{
+      "agent" => "acme/@maria/notes",
+      "model" => "anthropic:claude-haiku-4-5",
+      "tools" => ["linear/*", "servers/*"]
+    })
+
+    assert %{"missing" => ["linear/*"]} =
+             run!(scope, "agent.definition", %{"agent" => "acme/@maria/notes"})
   end
 
   describe "providers" do
@@ -833,13 +418,7 @@ defmodule Wardrik.OwnersTest do
       wardrik: wardrik,
       scope: scope
     } do
-      run!(scope, "mcp_servers.add", %{
-        "owner" => "acme",
-        "name" => "crm",
-        "url" => "https://crm.test/mcp",
-        "auth" => %{"oauth" => %{}}
-      })
-
+      server_app(wardrik, "acme", "crm")
       hold(wardrik, "acme", "acme:crm", "token")
       :ok = seal(wardrik, {"acme", "CRM_KEY"}, "secret")
 
@@ -861,18 +440,6 @@ defmodule Wardrik.OwnersTest do
 
   test "lets a reader list, but not add or connect", %{wardrik: wardrik} do
     reader = limited(wardrik, "acme/@maria", roles: [:reader], owners: ["acme/@maria"])
-
-    assert %{"servers" => []} = run!(reader, "mcp_servers.list", %{"owner" => "acme/@maria"})
-
-    server = %{
-      "owner" => "acme/@maria",
-      "name" => "docs",
-      "url" => "https://docs.test/mcp",
-      "auth" => %{"none" => %{}}
-    }
-
-    assert refused(reader, "mcp_servers.add", server) == :forbidden
-    assert refused(reader, "mcp_servers.list", %{"owner" => "acme"}) == :not_found
 
     assert %{"providers" => [%{"name" => "mail"}]} =
              run!(reader, "providers.list", %{"owner" => "acme/@maria"})

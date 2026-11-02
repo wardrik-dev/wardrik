@@ -7,7 +7,10 @@ defmodule Wardrik.Resolved do
         policy: [deny: ["shell/*"]],
         defaults: %{"model" => "anthropic:claude-haiku-4-5"},
         servers: %{"github" => "acme:github"},
-        notify: %{"ops" => "ops"}
+        notify: %{
+          "ops" => "ops",
+          "alerts" => {Wardrik.Notify.Webhook, url: "https://hooks.acme.test", secret: secret}
+        }
       }
 
   An agent gets nothing it isn't given here: a name its definition uses that isn't in `:servers`
@@ -27,7 +30,8 @@ defmodule Wardrik.Resolved do
     * `:servers` - the MCP servers its `tools` reach, by the name they use, as the server's
       `WardrikMCP` name. `servers/*` and `*` reach every one.
     * `:notify` - the notify targets its `notify` reaches, by the name it uses, as the name of a
-      target in `:notify`, or the `Wardrik.Notify.key/2` of one added at runtime.
+      target in `:notify`, or a target of your app's own as `{module, opts}`. See
+      `Wardrik.Notify`.
   """
 
   defstruct principal: nil,
@@ -45,6 +49,12 @@ defmodule Wardrik.Resolved do
           defaults: map(),
           middleware: [WardrikCore.Context.entry()],
           servers: %{optional(String.t()) => String.t()},
-          notify: %{optional(String.t()) => String.t()}
+          notify: notify()
         }
+
+  @typedoc "Notify targets by the name an agent's definition uses."
+  @type notify() :: %{optional(String.t()) => notify_target()}
+
+  @typedoc "The name of a target in Wardrik's `:notify`, or a target of your app's own."
+  @type notify_target() :: String.t() | {module(), keyword()}
 end

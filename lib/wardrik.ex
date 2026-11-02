@@ -269,11 +269,7 @@ defmodule Wardrik do
           mcp: [{atom() | String.t(), keyword()}],
           listeners: [module() | {module(), keyword()}],
           channels: %{String.t() => {module(), keyword()}},
-          notify: %{
-            targets: %{String.t() => {module(), keyword()}},
-            retries: keyword(),
-            req_options: keyword()
-          },
+          notify: %{targets: %{String.t() => {module(), keyword()}}, retries: keyword()},
           declarations: {module(), term()} | nil,
           resolver: {module(), term()} | nil,
           workspace: %{String.t() => %{read: [String.t()], write: [String.t()]}},
@@ -575,9 +571,14 @@ defmodule Wardrik do
   @spec oauth(t()) :: atom()
   def oauth(%__MODULE__{name: name}), do: Module.concat(name, OAuth)
 
-  @doc false
-  @spec mcp(t()) :: atom()
-  def mcp(%__MODULE__{name: name}), do: Module.concat(name, MCP)
+  @doc """
+  Returns the name of the instance's `WardrikMCP`, for `WardrikMCP.add/3` and the like.
+
+      WardrikMCP.add(Wardrik.mcp(MyApp.AgentRuntime), "acme:linear", opts)
+  """
+  @spec mcp(atom() | t()) :: atom()
+  def mcp(%__MODULE__{name: name}), do: mcp(name)
+  def mcp(name) when is_atom(name), do: Module.concat(name, MCP)
 
   @doc false
   @spec triggers(t()) :: atom()

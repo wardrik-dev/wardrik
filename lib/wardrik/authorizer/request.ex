@@ -23,8 +23,7 @@ defmodule Wardrik.Authorizer.Request do
     * `:resource` - what it acts on, as `{kind, id}`:
       * `{:agent, id}` - the agent `id`, as your app named it. Wardrik never reads it.
       * `{:deployment, name}` - the deployment, by `Wardrik`'s `:deployment`.
-      * `{:owner, owner}` - an owner's providers, servers, notify targets and connections.
-        These operations move to `WardrikDaemon`.
+      * `{:owner, owner}` - an owner's OAuth apps and connected accounts.
       * `{kind, id}` - anything else your app authorizes through its authorizer, as
         `WardrikDaemon` does its own routes'.
     * `:scope` - the `Wardrik.Scope` acting.

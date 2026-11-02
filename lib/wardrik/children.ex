@@ -70,7 +70,7 @@ defmodule Wardrik.Children do
   def mcp_spec(wardrik) do
     servers =
       for {name, opts} <- wardrik.mcp,
-          do: {name, opts |> Keyword.delete(:orgs) |> Keyword.put(:owner, "deployment")}
+          do: {name, Keyword.put(opts, :owner, "deployment")}
 
     WardrikMCP.child_spec(
       name: Wardrik.mcp(wardrik),

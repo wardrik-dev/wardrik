@@ -10,7 +10,6 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Channels
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Lifecycle
-  alias Wardrik.Operations.NotifyTargets
   alias Wardrik.Operations.Owners
   alias Wardrik.Operations.Providers
   alias Wardrik.Operations.Triggers
@@ -66,15 +65,9 @@ defmodule Wardrik.Catalog do
         "connections.list" => &Owners.connections/2,
         "connections.connect" => &Owners.connect/2,
         "connections.disconnect" => &Owners.disconnect/2,
-        "mcp_servers.list" => &Owners.servers/2,
-        "mcp_servers.add" => &Owners.add/2,
-        "mcp_servers.remove" => &Owners.remove/2,
         "providers.list" => &Providers.list/2,
         "providers.add" => &Providers.add/2,
         "providers.remove" => &Providers.remove/2,
-        "notify_targets.list" => &NotifyTargets.list/2,
-        "notify_targets.add" => &NotifyTargets.add/2,
-        "notify_targets.remove" => &NotifyTargets.remove/2,
         "hook.deliver_with_secret" => &Triggers.deliver/2,
         "channel.deliver" => &Channels.deliver/2,
         "agents.forget" => &Agents.forget/2,

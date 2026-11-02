@@ -109,7 +109,7 @@ Wardrik sets both for agents and channels. See [Agents](#agents) and [Channels](
 | --- | --- | --- |
 | `{:agent, id}` | an agent or one of its conversations, by ID | `agent.read`, `agent.events`, `agent.ask`, `agent.cancel`, `agent.clear`, `agent.decide`, `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `agent.serve` |
 | `{:deployment, name}` | the deployment, by Wardrik's `:deployment` | `deployment.audit`, `deployment.nodes`, `deployment.move`, `deployment.reload` |
-| `{:owner, owner}` | an org's or person's providers, MCP servers, notify targets and connections | `provider.add`, `mcp_server.read`, `mcp_server.add`, `connection.connect`, ... |
+| `{:owner, owner}` | an org's or person's OAuth apps and connections | `provider.read`, `provider.add`, `connection.connect`, ... |
 
 A conversation's ID is its agent's plus one segment. `Wardrik.AgentID.agent/1` returns the agent's.
 

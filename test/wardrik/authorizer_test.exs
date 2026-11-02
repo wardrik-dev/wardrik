@@ -76,8 +76,8 @@ defmodule Wardrik.AuthorizerTest do
     assert {:ok, _nodes} = Wardrik.run(scope, "deployment.nodes", %{})
     assert_received {:asked, _maria, _action, {:deployment, "eu-1"}, %{}}
 
-    assert {:ok, _servers} = Wardrik.run(scope, "mcp_servers.list", %{"owner" => "acme"})
-    assert_received {:asked, _maria, "mcp_server.read", {:owner, "acme"}, %{name: nil}}
+    assert {:ok, _apps} = Wardrik.run(scope, "providers.list", %{"owner" => "acme"})
+    assert_received {:asked, _maria, "provider.read", {:owner, "acme"}, %{name: nil}}
   end
 
   test "puts the scope's actor and context in each request, the call's context over the scope's",
@@ -88,7 +88,7 @@ defmodule Wardrik.AuthorizerTest do
         context: %{approver: true, name: "scope's"}
       )
 
-    assert {:ok, _servers} = Wardrik.run(scope, "mcp_servers.list", %{"owner" => "acme"})
+    assert {:ok, _apps} = Wardrik.run(scope, "providers.list", %{"owner" => "acme"})
 
     assert_received {:request,
                      %Wardrik.Authorizer.Request{

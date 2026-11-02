@@ -132,8 +132,7 @@ config :my_app, MyApp.AgentRuntime,
   oauth: [providers: [github: [client_id: id, client_secret: {:secret, "GITHUB_CLIENT_SECRET"}]]]
 ```
 
-  * A channel's and a notify target's secrets are read each time they're used. A webhook an org
-    or person adds with `notify_targets.add` names a secret it holds, read from its vault.
+  * A channel's and a notify target's secrets are read each time they're used.
   * An OAuth provider's are read at each sign-in.
   * An MCP server's are read as each connection starts. After sealing or removing one, connect
     the servers that name it again with
@@ -212,9 +211,8 @@ An account belongs to its owner. A person's agents reach the person's accounts, 
 reach the org's. Nothing falls back from one to the other. The apps they connect with do: a person
 is offered their own, their org's and the deployment's.
 
-A server the owner added, whose agents sign in in a browser, is one of their accounts too, by the
-server's name. The owner can sign in to it, or out, before any agent calls it. Adding the server
-asks the owner to sign in, whoever adds it: an org's admin signs the org in.
+A server with its own sign-in is one of its owner's accounts too, by the server's name. The owner
+can sign in to it, or out, before any agent calls it.
 
 ## Mount the sign-in pages
 
