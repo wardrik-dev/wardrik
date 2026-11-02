@@ -10,27 +10,23 @@
 - `Wardrik.refresh/2` takes `agents:`, or nothing for every awake agent.
 - `Wardrik.Resolved`'s `:notify` takes a target of your app's own as `{module, opts}`, checked
   against its module's `c:Wardrik.Notify.schema/0` by `Wardrik.Notify.given/1`.
-- `:oauth` takes `:resolver`, the `WardrikOAuth.Resolver` that says which OAuth app each
-  principal signs in with.
-- Settings resolve along the owner chain, `Wardrik.Owners.chain/1`: a person's own, their org's,
-  then the deployment's, the nearest of a name winning. People get OAuth apps this way.
-- `providers.list`, `providers.add` and `providers.remove`: OAuth apps an org or person keeps for
-  their people. `connections.list` offers a person each app they can sign in with.
-- Secrets by reference: an OAuth app's client secret and an MCP server's header secrets are
-  named, read from the owner's vault as each is used, and never answered.
-- `connections.list` offers each MCP server's own sign-in, an OAuth app named `owner:name`, by the
-  server's name.
+- Secrets by reference: an MCP server's header secrets are named, read from the owner's vault as
+  each is used, and never answered.
 - `Wardrik.schema/0`: `Wardrik.start_link/1`'s options as a NimbleOptions schema, for a host that
   reads them from a file. Each notify target's options are checked as Wardrik starts, by
   `c:Wardrik.Notify.schema/0`.
 - `:credentials`, `:key_source` and `:grants`: where every agent's credentials, API keys and OAuth
   grants come from, in place of the vault and `WardrikOAuth`.
-- An error from a server's own sign-in names the server.
 - `Wardrik.mcp/1` takes the instance's name or struct, and returns its `WardrikMCP`, for
   `WardrikMCP.add/3`.
 
 ### Breaking
 
+- `:oauth` requires `:resolver`, the `WardrikOAuth.Resolver` that says which OAuth app each
+  principal signs in with. `:oauth`'s `:providers` is gone.
+- OAuth apps and connected accounts are `wardrik_daemon`'s: `providers.*`, `connections.*`,
+  `Wardrik.Operations.Providers`, `Wardrik.Operations.Owners` and the `{:owner, owner}` resource
+  are gone.
 - MCP servers and notify targets that orgs and people add are `wardrik_daemon`'s:
   `mcp_servers.*`, `notify_targets.*`, `Wardrik.Operations.NotifyTargets`, `Wardrik.Notify`'s
   `owned/2`, `targets/2`, `key/1`, `key/2` and `:req_options`, `Wardrik.MCPTools.key/2` and
@@ -56,8 +52,6 @@
   `Wardrik.HTTP`'s `:principal` say who is at the browser. Without them, no callback finishes.
 - `Wardrik.start_link/1` raises `NimbleOptions.ValidationError` on a bad option, not
   `ArgumentError`, and `nil` no longer stands for an unset option.
-- OAuth apps added at runtime for MCP servers' sign-ins are kept under new keys. Add those servers
-  again.
 - Secrets, API keys, ceilings and org settings move to `wardrik_daemon`: the `secrets.*` and
   `ceilings.list` operations, `put_secret/2`, `fetch_secret/2`, `lookup_secret/2`,
   `delete_secret/2` and `list_secrets/1,2`, `Wardrik.Keys` and `:deployment_keys`,
@@ -67,9 +61,8 @@
 - `Wardrik.Channels.install_url/2`, `installed/2` and `uninstall/2` take the `:channel`, then
   `:owner` and `:query`, or `:workspace`, by name. `Wardrik.Delegation.asked/2` takes `:asker`,
   `:agent` and `:message`, `Wardrik.Workspaces.resolve/2` `:agent`, `:definition` and `:files`,
-  `Wardrik.Operations.Providers.added/2` `:owner`, `:name` and `:called` with the app's options,
-  and `Wardrik.Operations.Changes`' functions the change's `:type`, `:agent`, `:owner`,
-  `:subject` and `:data`. `Wardrik.Runner.run/3` and `stream/3` run and stream an operation, and
+  and `Wardrik.Operations.Changes`' functions the change's `:type`, `:agent`, `:subject` and
+  `:data`. `Wardrik.Runner.run/3` and `stream/3` run and stream an operation, and
   `Wardrik.Answers.follow/4` takes its options last, as `[]` unless given.
 
 ## 0.1.0-rc.1 (2026-10-30)

@@ -102,14 +102,13 @@ Wardrik sets both for agents and channels. See [Agents](#agents) and [Channels](
   * `:actor` - who acts, as RFC 8693's `act`, or `nil`.
   * `:action` - what it does, as `"agent.ask"`.
   * `:resource` - what it acts on, as `{kind, id}`.
-  * `:context` - the scope's context, and an owner's item's `:name`.
+  * `:context` - the scope's context.
   * `:scope` - the `Wardrik.Scope` acting.
 
 | Resource | Is | Actions |
 | --- | --- | --- |
 | `{:agent, id}` | an agent or one of its conversations, by ID | `agent.read`, `agent.events`, `agent.ask`, `agent.cancel`, `agent.clear`, `agent.decide`, `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `agent.serve` |
 | `{:deployment, name}` | the deployment, by Wardrik's `:deployment` | `deployment.audit`, `deployment.nodes`, `deployment.move`, `deployment.reload` |
-| `{:owner, owner}` | an org's or person's OAuth apps and connections | `provider.read`, `provider.add`, `connection.connect`, ... |
 
 A conversation's ID is its agent's plus one segment. `Wardrik.AgentID.agent/1` returns the agent's.
 

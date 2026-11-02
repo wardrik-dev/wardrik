@@ -26,17 +26,7 @@ end
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
     keys: [WardrikVault.generate_key()],
-    oauth: [
-      page: "https://agents.example.com/oauth",
-      providers: [
-        github: [
-          authorization_endpoint: "https://github.com/login/oauth/authorize",
-          token_endpoint: "https://github.com/login/oauth/access_token",
-          client_id: "Iv1.your-client-id",
-          client_secret: "your-client-secret"
-        ]
-      ]
-    ],
+    oauth: [page: "https://agents.example.com/oauth", resolver: {MyApp.OAuthApps, []}],
     mcp: [
       github: [
         transport: {:streamable_http, url: "https://api.githubcopilot.com/mcp/"},
@@ -48,7 +38,8 @@ end
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
-The client ID and secret stand for your GitHub OAuth app's. Nothing on this page calls a model.
+`MyApp.OAuthApps` gives people your GitHub OAuth app, as in [Credentials](credentials.md). Nothing
+on this page calls a model.
 Adding a server reaches it over the network.
 
 ## Servers Wardrik starts with

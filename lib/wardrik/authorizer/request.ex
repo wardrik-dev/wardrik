@@ -23,12 +23,10 @@ defmodule Wardrik.Authorizer.Request do
     * `:resource` - what it acts on, as `{kind, id}`:
       * `{:agent, id}` - the agent `id`, as your app named it. Wardrik never reads it.
       * `{:deployment, name}` - the deployment, by `Wardrik`'s `:deployment`.
-      * `{:owner, owner}` - an owner's OAuth apps and connected accounts.
       * `{kind, id}` - anything else your app authorizes through its authorizer, as
         `WardrikDaemon` does its own routes'.
     * `:scope` - the `Wardrik.Scope` acting.
-    * `:context` - what else the request carries: an owner's item's `:name`, and what the actor
-      knows. A channel gives `:asked_by`, the principal ID that asked in the conversation, where
+    * `:context` - what else the request carries: what the actor knows. A channel gives `:asked_by`, the principal ID that asked in the conversation, where
       known, `:approver`, whether the member is one of the installation's approvers, and
       `:installation`, as `%{owner: owner, workspace: workspace}`.
 
@@ -45,7 +43,6 @@ defmodule Wardrik.Authorizer.Request do
   @type resource() ::
           {:agent, String.t()}
           | {:deployment, String.t()}
-          | {:owner, String.t()}
           | {atom(), String.t()}
 
   @type t() :: %__MODULE__{

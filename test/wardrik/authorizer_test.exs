@@ -70,14 +70,9 @@ defmodule Wardrik.AuthorizerTest do
     assert_received {:asked, _maria, "agent.read", {:agent, "globex/scout"}, %{}}
   end
 
-  test "names the deployment by its name, and an owner's items by owner and name", %{
-    scope: scope
-  } do
+  test "names the deployment by its name", %{scope: scope} do
     assert {:ok, _nodes} = Wardrik.run(scope, "deployment.nodes", %{})
     assert_received {:asked, _maria, _action, {:deployment, "eu-1"}, %{}}
-
-    assert {:ok, _apps} = Wardrik.run(scope, "providers.list", %{"owner" => "acme"})
-    assert_received {:asked, _maria, "provider.read", {:owner, "acme"}, %{name: nil}}
   end
 
   test "puts the scope's actor and context in each request, the call's context over the scope's",
@@ -88,13 +83,23 @@ defmodule Wardrik.AuthorizerTest do
         context: %{approver: true, name: "scope's"}
       )
 
-    assert {:ok, _apps} = Wardrik.run(scope, "providers.list", %{"owner" => "acme"})
+    assert {:ok, _nodes} = Wardrik.run(scope, "deployment.nodes", %{})
 
     assert_received {:request,
                      %Wardrik.Authorizer.Request{
                        actor: {:channel, "slack"},
-                       context: %{approver: true, name: nil}
+                       context: %{approver: true, name: "scope's"}
                      }}
+
+    assert :ok =
+             Wardrik.Authorizer.authorize(scope,
+               action: "deployment.nodes",
+               resource: {:deployment, "eu-1"},
+               context: %{name: "call's"}
+             )
+
+    assert_received {:request,
+                     %Wardrik.Authorizer.Request{context: %{approver: true, name: "call's"}}}
 
     assert {:ok, _agent} = define(Wardrik.as(wardrik, maria()), "acme/scout")
     assert_received {:request, %Wardrik.Authorizer.Request{actor: nil, context: %{}}}

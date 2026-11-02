@@ -21,19 +21,6 @@ defmodule Wardrik.Operations.Changes do
     )
   end
 
-  @doc "Records a change of `:type`, such as `\"server.added\"`, to the `:subject` `:owner` holds."
-  @spec record_owned(Scope.t(),
-          type: String.t(),
-          owner: String.t(),
-          subject: String.t(),
-          data: map()
-        ) ::
-          :ok
-  def record_owned(%Scope{} = scope, args) do
-    data = Map.put(Keyword.fetch!(args, :data), "owner", Keyword.fetch!(args, :owner))
-    recorded(scope, {Keyword.fetch!(args, :type), Keyword.fetch!(args, :subject), data})
-  end
-
   @doc "Records a change of `:type`, such as `\"agents.reloaded\"`, to the deployment's `:subject`."
   @spec record_deployment(Scope.t(), type: String.t(), subject: String.t(), data: map()) :: :ok
   def record_deployment(%Scope{} = scope, args),

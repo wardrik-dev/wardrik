@@ -90,7 +90,6 @@ their shape depends on their type.
 | `Wardrik.Interrupts` | What agents wait on. |
 | `Wardrik.Events` | Agents' events. |
 | `Wardrik.Audit` | What people did. |
-| `Wardrik.Connections` | Accounts people and orgs connect. |
 | `Wardrik.Deployment` | Nodes and reloading. |
 | `Wardrik.Hook` | Webhook requests to triggers. |
 
