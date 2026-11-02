@@ -7,8 +7,16 @@ defmodule WardrikChannel do
 
       config :my_app, MyApp.AgentRuntime,
         channels: [
-          slack: {WardrikSlack, token: "xoxb-...", signing_secret: "...", owner: "acme", approvers: ["@maria"]}
+          slack:
+            {WardrikSlack,
+             token: "xoxb-...",
+             signing_secret: "...",
+             owner: "acme",
+             identities: {MyApp.ChatMembers, []}}
         ]
+
+  Each member acts as whoever your app's `WardrikChannel.Identities` says they are. Your
+  authorizer decides what they may ask, read and decide. See `WardrikChannel.Workspace`.
 
   An agent answers in a channel when its definition lists it:
 
@@ -16,8 +24,8 @@ defmodule WardrikChannel do
 
   Mention the bot in a room to start a thread. Reply in the thread to go on. Each thread is its own
   conversation, as `acme/triage/slack.T0123.C024BE91L.1696.1234`. Calls the agent waits on are
-  posted in the thread for someone to decide. See `WardrikChannel.Rooms` and
-  `WardrikChannel.Replies`.
+  posted in the thread for someone to decide. Whoever asked may always decide their own calls, if
+  your authorizer allows it. See `WardrikChannel.Rooms` and `WardrikChannel.Replies`.
 
   ## Options
 
@@ -31,9 +39,10 @@ defmodule WardrikChannel do
 
   ## Writing an adapter
 
-  An adapter is a package, such as `wardrik_slack`, that does `use WardrikChannel`. It implements
-  `c:deliver/2` and `c:include?/2`, and `c:Wardrik.Channel.request/2` to take what the chat app
-  sends. Each callback takes what it acts on, then the `WardrikChannel.Channel`:
+  An adapter is a package, such as `wardrik_slack`, that does `use WardrikChannel`. It speaks the
+  chat app's protocol and nothing else: it implements `c:deliver/2`, and
+  `c:Wardrik.Channel.request/2` to take what the chat app sends. Each callback takes what it acts
+  on, then the `WardrikChannel.Channel`:
 
       defmodule MyChat do
         use WardrikChannel
@@ -61,10 +70,6 @@ defmodule WardrikChannel do
           # Post outbound.body in outbound.room, in outbound.thread
           :ok
         end
-
-        @impl WardrikChannel
-        def include?(%WardrikChannel.Membership{names: names, member: member}, _channel),
-          do: member.id in names
       end
 
   Hand each button press to `decide/2`. `use WardrikChannel` defines `child_spec/1`,
@@ -84,9 +89,6 @@ defmodule WardrikChannel do
 
   @doc "Posts `outbound` in its thread. Returning an error has it tried again later."
   @callback deliver(Outbound.t(), Channel.t()) :: :ok | {:error, term()}
-
-  @doc "Returns whether the member is one of the names, as the chat app names people, such as `@maria`."
-  @callback include?(WardrikChannel.Membership.t(), Channel.t()) :: boolean()
 
   @doc "Returns extra children to run, such as a connection to the chat app. `[]` by default."
   @callback children(Channel.t()) :: [Supervisor.child_spec() | {module(), term()}]
@@ -134,33 +136,27 @@ defmodule WardrikChannel do
   @doc """
   Posts a `Wardrik.Channel.Notification` through `adapter`. See `c:Wardrik.Channel.notify/2`.
 
-  Posts in the workspace of the agent's owner. That is the owning user's workspace if the channel
-  is added to one, else the org's. Returns `{:skip, why}` if it's added to neither.
+  Posts in the notification's workspace, the one the agent's resolver gives. Returns
+  `{:skip, why}` if the channel isn't added there.
   """
   @spec notify(module(), Wardrik.Channel.Notification.t(), keyword()) ::
           :ok | {:skip, String.t()} | {:error, term()}
   def notify(
         adapter,
-        %Wardrik.Channel.Notification{room: room, notice: notice, approvers: approvers},
+        %Wardrik.Channel.Notification{workspace: workspace, room: room, notice: notice},
         opts
       ) do
     channel = Channel.new(adapter, opts)
 
-    case Channel.nearest(channel, notice.agent) do
+    case Channel.installation(channel, workspace) do
       {:ok, installation} ->
         adapter.deliver(
-          %Outbound{
-            installation: installation,
-            room: room,
-            thread: nil,
-            body: {:notice, notice},
-            approvers: approvers
-          },
+          %Outbound{installation: installation, room: room, thread: nil, body: {:notice, notice}},
           channel
         )
 
       :error ->
-        {:skip, "but #{channel.name} isn't added to a workspace of its owner's"}
+        {:skip, "but #{channel.name} isn't added to the workspace #{workspace}"}
     end
   end
 
@@ -181,7 +177,8 @@ defmodule WardrikChannel do
     * the room's agent answers every message
     * the message replies in a thread the agent already answers in
 
-  Returns `{:asked, conversation}`, `:ignored` if no agent answers, or `{:error, message}`.
+  Returns `{:asked, conversation}`, `:ignored` if no agent answers, or `{:error, message}`, as
+  when your app doesn't know the sender or the authorizer refuses them.
 
   If the agent is waiting on calls, the message queues behind them and the calls are posted again.
   """
@@ -207,26 +204,23 @@ defmodule WardrikChannel do
 
   defp ask(workspace, %Binding{room: room, agent: agent}, inbound, thread) do
     conversation = Workspace.conversation(workspace, agent: agent, room: room, thread: thread)
-    scope = Workspace.member_scope(workspace, inbound.sender)
 
-    with :ok <- Rooms.start(workspace, room: room, thread: thread),
+    with {:ok, scope} <- Workspace.member_scope(workspace, inbound.sender),
+         :ok <- Rooms.start(workspace, room: room, thread: thread),
          :ok <- Replies.follow(workspace, room),
-         waiting? = waiting?(workspace, conversation),
+         waiting? = waiting?(scope, conversation),
          {:ok, _message} <-
            Wardrik.Agent.ask(scope, conversation, content: inbound.text, id: inbound.id) do
       if waiting?, do: Replies.remind(workspace, room: room, conversation: conversation)
       {:asked, conversation}
     else
       {:error, %Error{message: message}} -> {:error, message}
+      {:error, why} -> {:error, why}
     end
   end
 
-  defp waiting?(workspace, conversation) do
-    match?(
-      {:ok, %Wardrik.Agent{status: :parked}},
-      Wardrik.Agent.read(Workspace.scope(workspace), conversation)
-    )
-  end
+  defp waiting?(scope, conversation),
+    do: match?({:ok, %Wardrik.Agent{status: :parked}}, Wardrik.Agent.read(scope, conversation))
 
   @doc """
   Approves or denies a call the agent waits on, as `answer`'s member.
@@ -242,27 +236,26 @@ defmodule WardrikChannel do
   Build the `WardrikChannel.Answer` from what the adapter put on the button, from a
   `WardrikChannel.Waiting`.
 
-  The authorizer decides, from the context `WardrikChannel.Workspace.deciding_scope/2` gives it.
-  A refusal is `{:error, deciding}`, the channel's `:deciding` message.
+  The member acts as whoever the channel's `:identities` says they are. The authorizer decides,
+  from the context `WardrikChannel.Workspace.deciding_scope/2` gives it. A refusal is
+  `{:error, deciding}`, the channel's `:deciding` message. A member your app doesn't know is told
+  why.
   """
   @spec decide(Workspace.t(), Answer.t()) :: {:ok, Wardrik.Decision.t()} | {:error, String.t()}
   def decide(
         workspace,
         %Answer{conversation: conversation, interrupt: interrupt, decision: decision} = answer
       ) do
-    scope = Workspace.deciding_scope(workspace, answer)
-
-    case answered(scope, conversation, interrupt, decision) do
-      {:ok, [decision]} ->
-        {:ok, decision}
-
-      {:error, %Error{type: type}} when type in [:forbidden, :not_found] ->
-        {:error, workspace.channel.deciding}
-
-      {:error, %Error{message: message}} ->
-        {:error, message}
-    end
+    with {:ok, scope} <- Workspace.deciding_scope(workspace, answer),
+         do: decided(workspace, answered(scope, conversation, interrupt, decision))
   end
+
+  defp decided(_workspace, {:ok, [decision]}), do: {:ok, decision}
+
+  defp decided(workspace, {:error, %Error{type: type}}) when type in [:forbidden, :not_found],
+    do: {:error, workspace.channel.deciding}
+
+  defp decided(_workspace, {:error, %Error{message: message}}), do: {:error, message}
 
   defp answered(scope, conversation, interrupt, {:approve, note}),
     do:

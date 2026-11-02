@@ -4,7 +4,7 @@ defmodule WardrikChannel.Installations.Stored do
 
       slack: {WardrikSlack, installations: :stored, ...}
 
-  Each workspace's owner and approvers go in Wardrik's store. Its token is sealed in the vault, as
+  Each workspace's owner goes in Wardrik's store. Its token is sealed in the vault, as
   a secret of the owner's. Wardrik needs `:keys` to seal tokens. Without them, saving fails and no
   installation is found.
   """
@@ -18,7 +18,7 @@ defmodule WardrikChannel.Installations.Stored do
 
   @impl Wardrik.Channel.Installations
   def fetch(%Request{channel: channel, workspace: workspace}, config) do
-    with %{"owner" => owner, "approvers" => approvers} <-
+    with %{"owner" => owner} <-
            WardrikStore.get(store(config), key(channel, workspace)),
          {:ok, token} <- sealed(config, owner, secret(channel, workspace)) do
       {:ok,
@@ -26,8 +26,7 @@ defmodule WardrikChannel.Installations.Stored do
          channel: channel,
          workspace: workspace,
          owner: owner,
-         token: token,
-         approvers: approvers(approvers)
+         token: token
        }}
     else
       _missing -> :error
@@ -55,7 +54,7 @@ defmodule WardrikChannel.Installations.Stored do
         %Installation{channel: channel, workspace: workspace, owner: owner} = installation,
         config
       ) do
-    kept = %{"owner" => owner, "approvers" => kept_approvers(installation.approvers)}
+    kept = %{"owner" => owner}
 
     with {:ok, _sealed} <- seal(config, owner, secret(channel, workspace), installation.token),
          {:ok, _vsn} <- WardrikStore.put(store(config), key(channel, workspace), kept) do
@@ -76,12 +75,6 @@ defmodule WardrikChannel.Installations.Stored do
         :ok
     end
   end
-
-  defp approvers("anyone"), do: :anyone
-  defp approvers(names), do: names
-
-  defp kept_approvers(:anyone), do: "anyone"
-  defp kept_approvers(names), do: names
 
   defp sealed(config, owner, name), do: config |> vault() |> sealed_in(owner, name)
 

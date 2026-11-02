@@ -2,8 +2,8 @@ defmodule WardrikChannel.Channel do
   @moduledoc """
   One chat app Wardrik runs, under the name it's given.
 
-  Holds the adapter, the adapter's own options, and the installations that say where it's added.
-  Wardrik passes it the rest:
+  Holds the adapter, the adapter's own options, the installations that say where it's added, and
+  the identities that say who each member is. Wardrik passes it the rest:
 
     * `:server` - the `Wardrik.Server` that runs operations.
     * `:wardrik` - the instance.
@@ -14,6 +14,7 @@ defmodule WardrikChannel.Channel do
 
   alias Wardrik.Channel.Installation
   alias Wardrik.Channel.Installations.Request
+  alias WardrikChannel.Identities
   alias WardrikChannel.Installations.Stored
   alias WardrikChannel.Installations.Token
 
@@ -22,7 +23,10 @@ defmodule WardrikChannel.Channel do
       type: {:or, [:string, nil]},
       doc: "The token the channel acts with, in the one workspace it reaches. Needs `:owner`."
     ],
-    owner: [type: :string, doc: "Whose agents answer, as `\"acme\"`."],
+    owner: [
+      type: :string,
+      doc: "Who added it, as your app names them. Your authorizer reads it. Needs `:token`."
+    ],
     installations: [
       type: {:or, [{:in, [:stored]}, {:tuple, [:atom, :any]}]},
       doc: """
@@ -31,16 +35,16 @@ defmodule WardrikChannel.Channel do
       `Wardrik.Channel.Installations`.
       """
     ],
-    approvers: [
-      type: {:or, [{:list, :string}, {:in, [:anyone]}]},
-      default: [],
+    identities: [
+      type: :mod_arg,
+      required: true,
       doc: """
-      Who may decide what agents wait on, as the chat app names people, or `:anyone`. Whoever
-      asked for a turn may always decide it.
+      The `WardrikChannel.Identities` that says who each member is in your app, as
+      `{module, opts}`. A member it doesn't know can't ask or decide.
       """
     ],
     offering: [type: :string, doc: "What a room with no agent is told."],
-    deciding: [type: :string, doc: "What someone who may not decide is told."],
+    deciding: [type: :string, doc: "What a member who may not decide is told."],
     server: [type: :atom, required: true, doc: false],
     wardrik: [type: :atom, required: true, doc: false],
     events: [type: :atom, required: true, doc: false],
@@ -59,11 +63,12 @@ defmodule WardrikChannel.Channel do
     :adapter,
     :store,
     :installations,
+    :identities,
     :offering,
     :deciding,
     :options
   ]
-  defstruct [vault: nil, approvers: []] ++ @enforce_keys
+  defstruct [vault: nil] ++ @enforce_keys
 
   @type t() :: %__MODULE__{
           name: String.t(),
@@ -74,9 +79,9 @@ defmodule WardrikChannel.Channel do
           adapter: module(),
           store: WardrikStore.t(),
           installations: {module(), term()},
+          identities: {module(), term()},
           offering: String.t(),
           deciding: String.t(),
-          approvers: [String.t()] | :anyone,
           options: keyword()
         }
 
@@ -107,9 +112,9 @@ defmodule WardrikChannel.Channel do
       adapter: adapter,
       store: store,
       installations: stored(installations, vault, store),
+      identities: own[:identities],
       offering: Keyword.get(own, :offering, offering(name)),
       deciding: Keyword.get(own, :deciding, deciding()),
-      approvers: own[:approvers],
       options: options
     }
   end
@@ -123,19 +128,33 @@ defmodule WardrikChannel.Channel do
     do: module.fetch(%Request{channel: name, workspace: workspace}, config)
 
   @doc """
-  Returns the installation nearest the owner of agent `id`.
+  Returns the channel's installations whose owner is `owner`, exactly, as your app named them.
 
-  Looks first for one owned by the user, as `acme/@jon`, then by the org, as `acme`. Returns
-  `:error` if there's neither.
+      WardrikChannel.Channel.owned(channel, "acme")
+      #=> [%Wardrik.Channel.Installation{workspace: "T0123", owner: "acme", ...}]
   """
-  @spec nearest(t(), String.t()) :: {:ok, Installation.t()} | :error
-  def nearest(%__MODULE__{name: name, installations: {module, config}}, id) do
-    {:ok, %Wardrik.AgentID{owner: owner}} = Wardrik.AgentID.parse(id)
-    owners = List.delete(Wardrik.Owners.chain(owner), Wardrik.Resource.deployment())
+  @spec owned(t(), String.t()) :: [Installation.t()]
+  def owned(%__MODULE__{name: name, installations: {module, config}}, owner),
+    do: module.owned(%Request{channel: name, owner: owner}, config)
 
-    case Enum.flat_map(owners, &module.owned(%Request{channel: name, owner: &1}, config)) do
-      [installation | _rest] -> {:ok, installation}
-      [] -> :error
+  @doc """
+  Returns who `member` of `workspace` is in your app, from the channel's `:identities`, or why
+  they may not act.
+  """
+  @spec identify(t(), String.t(), WardrikChannel.Member.t()) ::
+          {:ok, WardrikCore.Principal.t()} | {:error, String.t()}
+  def identify(%__MODULE__{name: name, identities: {module, config}}, workspace, member) do
+    request = %Identities.Request{
+      channel: name,
+      workspace: workspace,
+      member: member.id,
+      name: member.name
+    }
+
+    case module.identify(request, config) do
+      {:ok, %WardrikCore.Principal{} = principal} -> {:ok, principal}
+      {:error, why} when is_binary(why) -> {:error, why}
+      _unknown -> {:error, "You aren't known to #{name} here, so you can't act through it."}
     end
   end
 
@@ -168,7 +187,7 @@ defmodule WardrikChannel.Channel do
         installations
 
       [token: _token] ->
-        {Token, Keyword.take(opts, [:token, :owner, :approvers])}
+        {Token, Keyword.take(opts, [:token, :owner])}
 
       _neither_or_both ->
         raise ArgumentError,
@@ -183,5 +202,5 @@ defmodule WardrikChannel.Channel do
     do: "An agent answers here once its definition lists #{name} among its channels."
 
   defp deciding,
-    do: "Only the channel's approvers, and whoever asked, may decide what an agent waits on."
+    do: "You may not decide what this agent waits on."
 end

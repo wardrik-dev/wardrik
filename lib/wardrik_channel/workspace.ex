@@ -4,16 +4,15 @@ defmodule WardrikChannel.Workspace do
 
   Adapters get one for each request with `WardrikChannel.workspace/2`.
 
-  People in the workspace act in Wardrik as themselves, with the channel as their actor,
-  `{:channel, name}`. Wardrik's `Wardrik.Authorizer` decides what they may do, from what the
-  channel puts in the scope's `context`:
+  Members act in Wardrik as the principal the channel's `WardrikChannel.Identities` gives, with
+  the channel as their actor, `{:channel, name}`. Wardrik's `Wardrik.Authorizer` decides what
+  they may do, from what the channel puts in the scope's `context`:
 
     * `:installation` - `%{owner: owner, workspace: workspace}`, always.
     * `:asked_by` - when deciding, the principal ID that asked in the conversation, where known.
-    * `:approver` - when deciding, whether the member is one of the installation's approvers.
-      The adapter is asked only then.
 
-  The workspace offers the owner's agents whose definitions list the channel in `channels`.
+  The workspace offers the agents the authorizer lets a member read whose definitions list the
+  channel in `channels`.
   """
 
   alias Wardrik.AgentID
@@ -36,29 +35,37 @@ defmodule WardrikChannel.Workspace do
          do: {:ok, %__MODULE__{channel: channel, installation: installation}}
   end
 
-  @doc "Returns the channel's own scope, as the workspace, `slack:T0123`, with the channel as actor."
+  @doc """
+  Returns the channel's own scope, for what no member asked, such as posting replies. It acts
+  for the installation's owner, with the channel as actor.
+  """
   @spec scope(t()) :: Wardrik.Scope.t()
-  def scope(%__MODULE__{channel: channel, installation: installation} = workspace),
-    do: acting(workspace, %Principal{id: channel.name <> ":" <> installation.workspace}, %{})
+  def scope(%__MODULE__{installation: installation} = workspace),
+    do: acting(workspace, %Principal{id: installation.owner}, %{})
 
-  @doc "Returns `member`'s scope, with the channel as actor."
-  @spec member_scope(t(), Member.t()) :: Wardrik.Scope.t()
-  def member_scope(workspace, member), do: acting(workspace, principal(workspace, member), %{})
+  @doc "Returns `member`'s scope, with the channel as actor, or what to tell them if they may not act."
+  @spec member_scope(t(), Member.t()) :: {:ok, Wardrik.Scope.t()} | {:error, String.t()}
+  def member_scope(workspace, member) do
+    with {:ok, principal} <- identify(workspace, member),
+         do: {:ok, acting(workspace, principal, %{})}
+  end
 
   @doc """
-  Returns the scope `answer`'s member decides calls in: `member_scope/2`, with `:asked_by` and
-  `:approver` in its context.
+  Returns the scope `answer`'s member decides calls in: `member_scope/2`, with `:asked_by` in its
+  context where known.
   """
-  @spec deciding_scope(t(), Answer.t()) :: Wardrik.Scope.t()
+  @spec deciding_scope(t(), Answer.t()) :: {:ok, Wardrik.Scope.t()} | {:error, String.t()}
   def deciding_scope(workspace, %Answer{member: member, asked_by: asked_by}) do
     known = if asked_by, do: %{asked_by: asked_by}, else: %{}
 
-    acting(
-      workspace,
-      principal(workspace, member),
-      Map.put(known, :approver, approver?(workspace, member))
-    )
+    with {:ok, principal} <- identify(workspace, member),
+         do: {:ok, acting(workspace, principal, known)}
   end
+
+  @doc "Returns who `member` is in your app, from the channel's `:identities`, or why they may not act."
+  @spec identify(t(), Member.t()) :: {:ok, Principal.t()} | {:error, String.t()}
+  def identify(%__MODULE__{channel: channel, installation: installation}, %Member{} = member),
+    do: Channel.identify(channel, installation.workspace, member)
 
   defp acting(%__MODULE__{channel: channel, installation: installation}, principal, context) do
     Wardrik.Scope.new(channel.server,
@@ -73,40 +80,34 @@ defmodule WardrikChannel.Workspace do
     )
   end
 
-  @doc "Returns who `member` is to Wardrik, as `slack:T0123/U024BE7LH`."
-  @spec principal(t(), Member.t()) :: Principal.t()
-  def principal(%__MODULE__{channel: channel, installation: installation}, %Member{} = member) do
-    id = "#{channel.name}:#{installation.workspace}/#{member.id}"
-    %Principal{id: id, attributes: %{name: member.name}}
+  @doc """
+  Returns the agents that may answer in the workspace's rooms, sorted by ID: those the authorizer
+  lets `member` read, or the channel's own scope without one. A member who may not act is offered
+  none.
+  """
+  @spec offered(t(), Member.t() | nil) :: [Offer.t()]
+  def offered(workspace, member \\ nil)
+
+  def offered(workspace, nil), do: offered_in(workspace, scope(workspace))
+
+  def offered(workspace, %Member{} = member) do
+    case member_scope(workspace, member) do
+      {:ok, scope} -> offered_in(workspace, scope)
+      {:error, _why} -> []
+    end
   end
 
-  @doc "Returns whether `member` is one of the installation's approvers."
-  @spec approver?(t(), Member.t()) :: boolean()
-  def approver?(%__MODULE__{installation: %Installation{approvers: :anyone}}, _member), do: true
-  def approver?(%__MODULE__{installation: %Installation{approvers: []}}, _member), do: false
+  defp offered_in(workspace, scope) do
+    case Wardrik.Agents.list(scope) do
+      {:ok, agents} ->
+        agents
+        |> Enum.map(& &1.id)
+        |> Enum.reject(&AgentID.conversation?/1)
+        |> Enum.flat_map(&offer(scope, workspace, &1))
 
-  def approver?(%__MODULE__{channel: channel, installation: installation}, member),
-    do:
-      channel.adapter.include?(
-        %WardrikChannel.Membership{
-          installation: installation,
-          names: installation.approvers,
-          member: member
-        },
-        channel
-      )
-
-  @doc "Returns the agents that may answer in the workspace's rooms, sorted by ID."
-  @spec offered(t()) :: [Offer.t()]
-  def offered(%__MODULE__{installation: installation} = workspace) do
-    scope = scope(workspace)
-    {:ok, agents} = Wardrik.Agents.list(scope)
-
-    agents
-    |> Enum.map(& &1.id)
-    |> Enum.filter(&Installation.owns?(installation, &1))
-    |> Enum.reject(&AgentID.conversation?/1)
-    |> Enum.flat_map(&offer(scope, workspace, &1))
+      {:error, _error} ->
+        []
+    end
   end
 
   defp offer(scope, %__MODULE__{channel: channel}, id) do
@@ -159,8 +160,7 @@ defmodule WardrikChannel.Workspace do
 
   @doc "Returns a pattern matching the logs of every conversation in `room`, for any agent."
   @spec logs(t(), String.t()) :: String.t()
-  def logs(%__MODULE__{installation: installation} = workspace, room),
-    do: installation.owner <> "/*/" <> prefix(workspace, room) <> "*"
+  def logs(workspace, room), do: "*/" <> prefix(workspace, room) <> "*"
 
   defp prefix(%__MODULE__{channel: channel, installation: installation}, room),
     do: Enum.join([channel.name, installation.workspace, room, ""], ".")

@@ -19,10 +19,10 @@ defmodule WardrikChannel.Rooms do
       :ok = WardrikChannel.Rooms.left(workspace, room, member)
 
   Each change is recorded in the audit as `wardrik.room.bound` or `wardrik.room.unbound`. Pass the
-  `member` who made it, or `nil` if the adapter doesn't know.
+  `member` who made it, or `nil` if the adapter doesn't know. A member is offered the agents the
+  authorizer lets them read. See `WardrikChannel.Workspace.offered/2`.
   """
 
-  alias Wardrik.Channel.Installation
   alias WardrikChannel.Binding
   alias WardrikChannel.Member
   alias WardrikChannel.Offer
@@ -35,34 +35,36 @@ defmodule WardrikChannel.Rooms do
   @doc """
   Returns `room`'s binding, or `nil` if it has none.
 
-  Returns `nil` too if the agent isn't the installation owner's. So a workspace added again for
-  another owner keeps none of its rooms' agents.
+  Returns `nil` too if the room was bound while another owner held the installation. So a
+  workspace added again for another owner keeps none of its rooms' agents.
   """
   @spec get(Workspace.t(), String.t()) :: Binding.t() | nil
   def get(%Workspace{installation: installation} = workspace, room) do
-    with %{"agent" => agent, "answers" => answers} <-
-           WardrikStore.get(store(workspace), key(workspace, room)),
-         true <- Installation.owns?(installation, agent) do
-      %Binding{room: room, agent: agent, answers: answers(answers)}
-    else
-      _unbound -> nil
+    owner = installation.owner
+
+    case WardrikStore.get(store(workspace), key(workspace, room)) do
+      %{"agent" => agent, "answers" => answers, "owner" => ^owner} ->
+        %Binding{room: room, agent: agent, answers: answers(answers)}
+
+      _unbound ->
+        nil
     end
   end
 
   @doc "Binds `room` to the agent the workspace offers, if there's one. Else returns the choices."
   @spec joined(Workspace.t(), String.t(), Member.t() | nil) :: shown()
   def joined(workspace, room, by \\ nil) do
-    case Workspace.offered(workspace) do
+    case Workspace.offered(workspace, by) do
       [offer] -> {:bound, bind(workspace, room, offer.agent, :mentions, by), offer}
       [] -> :none
       offers -> {:choose, offers}
     end
   end
 
-  @doc "Returns the agents someone may switch `room` to, or `:none`."
-  @spec choices(Workspace.t()) :: {:choose, [Offer.t()]} | :none
-  def choices(workspace) do
-    case Workspace.offered(workspace) do
+  @doc "Returns the agents `by` may switch a room to, or `:none`."
+  @spec choices(Workspace.t(), Member.t() | nil) :: {:choose, [Offer.t()]} | :none
+  def choices(workspace, by \\ nil) do
+    case Workspace.offered(workspace, by) do
       [] -> :none
       offers -> {:choose, offers}
     end
@@ -70,7 +72,7 @@ defmodule WardrikChannel.Rooms do
 
   @doc """
   Binds `:room` to `:agent`, answering when mentioned. Returns `{:error, :not_offered}` if the
-  workspace doesn't offer it.
+  workspace doesn't offer it to `:by`.
 
     * `:room` - the room. Required.
     * `:agent` - the agent's ID. Required.
@@ -83,7 +85,7 @@ defmodule WardrikChannel.Rooms do
     agent = Keyword.fetch!(opts, :agent)
     by = Keyword.get(opts, :by)
 
-    case Enum.find(Workspace.offered(workspace), &(&1.agent == agent)) do
+    case Enum.find(Workspace.offered(workspace, by), &(&1.agent == agent)) do
       %Offer{} = offer -> {:ok, bind(workspace, room, agent, :mentions, by), offer}
       nil -> {:error, :not_offered}
     end
@@ -134,8 +136,14 @@ defmodule WardrikChannel.Rooms do
   end
 
   defp bind(workspace, room, agent, answers, by) do
-    bound = %{"agent" => agent, "answers" => Atom.to_string(answers)}
+    bound = %{
+      "agent" => agent,
+      "answers" => Atom.to_string(answers),
+      "owner" => workspace.installation.owner
+    }
+
     {:ok, _vsn} = WardrikStore.put(store(workspace), key(workspace, room), bound)
+
     data = %{"agent" => %{"id" => agent}, "answers" => bound["answers"]}
     :ok = record(workspace, by, "room.bound", room, data)
     %Binding{room: room, agent: agent, answers: answers}
@@ -145,14 +153,21 @@ defmodule WardrikChannel.Rooms do
   defp answers("everything"), do: :everything
 
   defp record(%Workspace{channel: channel} = workspace, by, type, room, data) do
-    scope = scope(workspace, by)
     data = Map.merge(data, %{"channel" => channel.name, "room" => room})
     subject = "channels/#{channel.name}/rooms/#{room}"
-    :ok = WardrikEvents.record(channel.events, {type, subject, data}, actor: scope.principal)
+    actor = actor(workspace, by)
+    :ok = WardrikEvents.record(channel.events, {type, subject, data}, actor: actor)
   end
 
-  defp scope(workspace, nil), do: Workspace.scope(workspace)
-  defp scope(workspace, %Member{} = member), do: Workspace.member_scope(workspace, member)
+  # Whoever your app knows the member as, else the channel acting for the installation's owner.
+  defp actor(workspace, %Member{} = member) do
+    case Workspace.identify(workspace, member) do
+      {:ok, principal} -> principal
+      {:error, _why} -> actor(workspace, nil)
+    end
+  end
+
+  defp actor(workspace, nil), do: Workspace.scope(workspace).principal
 
   defp store(%Workspace{channel: channel}), do: channel.store
 

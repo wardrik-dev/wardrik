@@ -185,8 +185,7 @@ defmodule WardrikChannel.Replies.Server do
           installation: installation,
           room: state.room,
           thread: Workspace.thread(workspace, room: state.room, conversation: conversation),
-          body: body,
-          approvers: installation.approvers
+          body: body
         }
 
         channel.adapter.deliver(outbound, channel)

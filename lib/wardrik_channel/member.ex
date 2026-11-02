@@ -2,7 +2,7 @@ defmodule WardrikChannel.Member do
   @moduledoc """
   Someone in a workspace: the chat app's `id` for them, and the `name` it shows.
 
-  Wardrik sees them as the principal `channel:workspace/id`, as `slack:T0123/U024BE7LH`.
+  The channel's `WardrikChannel.Identities` says who they are in your app.
   """
 
   @enforce_keys [:id]

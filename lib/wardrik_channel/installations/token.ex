@@ -2,7 +2,7 @@ defmodule WardrikChannel.Installations.Token do
   @moduledoc """
   The single installation a channel's `token:` makes, in the workspace that token reaches.
 
-      slack: {WardrikSlack, token: "xoxb-...", owner: "acme", approvers: ["@maria"]}
+      slack: {WardrikSlack, token: "xoxb-...", owner: "acme", identities: {MyApp.ChatMembers, []}}
 
   Adding other installations returns an error. Forgetting one does nothing. Found by its owner,
   its workspace is `"*"`.
@@ -20,8 +20,7 @@ defmodule WardrikChannel.Installations.Token do
        channel: channel,
        workspace: workspace,
        owner: Keyword.fetch!(config, :owner),
-       token: Keyword.fetch!(config, :token),
-       approvers: Keyword.get(config, :approvers, [])
+       token: Keyword.fetch!(config, :token)
      }}
   end
 

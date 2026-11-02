@@ -13,13 +13,10 @@ defmodule WardrikChannel.Outbound do
     * `{:said, text}` - a line about what happened, such as who decided a call.
     * `{:notice, %Wardrik.Notice{}}` - what an agent did while nobody watched. Posted in the room.
       Read its calls with `WardrikChannel.Waiting.from_notice/1`.
-
-  `approvers` are who a waiting call asks, as the chat app names people. An adapter that can ask
-  each of them directly should, and say in the thread who it waits on.
   """
 
   @enforce_keys [:installation, :room, :thread, :body]
-  defstruct [:installation, :room, :thread, :body, approvers: []]
+  defstruct @enforce_keys
 
   @type body() ::
           {:reply, String.t(), [String.t()]}
@@ -34,7 +31,6 @@ defmodule WardrikChannel.Outbound do
           installation: Wardrik.Channel.Installation.t(),
           room: String.t(),
           thread: String.t() | nil,
-          body: body(),
-          approvers: [String.t()] | :anyone
+          body: body()
         }
 end
