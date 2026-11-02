@@ -186,7 +186,7 @@ defmodule WardrikDaemon.Doctor do
   defp channel({name, {adapter, opts}}, req_options) do
     with how when is_binary(how) <- taking(opts),
          {:ok, reached} <- reached(adapter, opts, req_options) do
-      {:ok, "channel #{name}", Enum.join([how, reached, deciding(opts[:approvers])], "; ")}
+      {:ok, "channel #{name}", Enum.join([how, reached, members(opts[:identities])], "; ")}
     else
       nil ->
         {:fail, "channel #{name}",
@@ -220,9 +220,12 @@ defmodule WardrikDaemon.Doctor do
     end
   end
 
-  defp deciding(:anyone), do: "anyone in it decides"
-  defp deciding([]), do: "whoever asks decides their own turn"
-  defp deciding(names), do: "#{Enum.join(names, " or ")} decides"
+  defp members({_module, opts}),
+    do:
+      "#{counted(map_size(opts[:members]), "member")} mapped to users, #{unmapped(opts[:unmapped])}"
+
+  defp unmapped(:allow), do: "others act as users of their own"
+  defp unmapped(:refuse), do: "others refused"
 
   defp oauth(%Config{oauth: nil}), do: []
 

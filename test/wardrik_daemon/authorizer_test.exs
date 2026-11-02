@@ -29,6 +29,7 @@ defmodule WardrikDaemon.AuthorizerTest do
             "subjects" => ["agent:payments/@ana/helper"]
           },
           %{"org" => "growth", "role" => "reader", "subjects" => ["group:growth-eng"]},
+          %{"org" => "payments", "role" => "reader", "subjects" => ["user:dee"]},
           %{"org" => "growth", "role" => "triager", "subjects" => ["user:bo"]}
         ],
         ["payments", "growth"]
@@ -267,59 +268,71 @@ defmodule WardrikDaemon.AuthorizerTest do
   end
 
   describe "through a channel" do
-    defp member(id, context),
+    defp member(id, context, owner \\ "payments"),
       do: [
         principal: id,
         actor: {:channel, "slack"},
-        context: Map.put(context, :installation, %{owner: "payments", workspace: "T1"})
+        context: Map.put(context, :installation, %{owner: owner, workspace: "T1"})
       ]
 
-    test "only the asker or an approver decides", %{access: access} do
+    test "a member decides as their user: with a binding that allows it, or for what they asked",
+         %{access: access} do
       decision = [action: "agent.decide", resource: {:agent, "payments/triage"}]
 
-      assert decide(access, member("U2", %{asked_by: "U1"}) ++ decision) == {:error, :forbidden}
-      assert decide(access, member("U2", %{}) ++ decision) == {:error, :forbidden}
-      assert decide(access, member("U1", %{asked_by: "U1"}) ++ decision) == :ok
-      assert decide(access, member("U2", %{asked_by: "U1", approver: true}) ++ decision) == :ok
+      assert decide(access, member("dee", %{}) ++ decision) == {:error, :forbidden}
+      assert decide(access, member("dee", %{asked_by: "ana"}) ++ decision) == {:error, :forbidden}
+      assert decide(access, member("dee", %{asked_by: "dee"}) ++ decision) == :ok
+      assert decide(access, member("ana", %{}) ++ decision) == :ok
+      assert decide(access, member("cy", %{}) ++ decision) == {:error, :not_found}
+      assert decide(access, member("cy", %{approver: true}) ++ decision) == {:error, :not_found}
     end
 
-    test "a member asks and reads the installation's agents, and nothing else", %{access: access} do
-      for action <- ["agent.ask", "agent.read", "agent.events"],
-          id <- ["payments/triage", "payments/@ana/notes"] do
-        assert decide(access, member("U1", %{}) ++ [action: action, resource: {:agent, id}]) ==
-                 :ok
-      end
+    test "a member asks and reads as their user's bindings allow", %{access: access} do
+      read = [action: "agent.read", resource: {:agent, "payments/triage"}]
+      ask = [action: "agent.ask", resource: {:agent, "payments/triage"}]
+
+      assert decide(access, member("dee", %{}) ++ read) == :ok
+      assert decide(access, member("dee", %{}) ++ ask) == {:error, :forbidden}
+      assert decide(access, member("ana", %{}) ++ ask) == :ok
+      assert decide(access, member("cy", %{}) ++ read) == {:error, :not_found}
 
       assert decide(
                access,
-               member("U1", %{}) ++
+               member("payments/@ana", %{}) ++
+                 [action: "agent.ask", resource: {:agent, "payments/@ana/notes"}]
+             ) == :ok
+    end
+
+    test "reaches only the installation owner's agents, and only to ask, read and decide",
+         %{access: access} do
+      assert decide(
+               access,
+               member("ana", %{}) ++
                  [action: "agent.define", resource: {:agent, "payments/triage"}]
-             ) ==
-               {:error, :forbidden}
+             ) == {:error, :forbidden}
+
+      growth = [action: "agent.ask", resource: {:agent, "growth/triage"}]
+      assert decide(access, member("bo", %{}) ++ growth) == {:error, :not_found}
+      assert decide(access, member("bo", %{}, "growth") ++ growth) == :ok
+      assert decide(access, member("bo", %{}, "*") ++ growth) == :ok
 
       assert decide(
                access,
-               member("U1", %{}) ++ [action: "agent.ask", resource: {:agent, "growth/triage"}]
-             ) ==
-               {:error, :not_found}
+               member("ana", %{}) ++ [action: "secret.put", resource: {:provider, "payments"}]
+             ) == {:error, :not_found}
 
       assert decide(
                access,
-               member("U1", %{}) ++ [action: "secret.put", resource: {:provider, "payments"}]
-             ) ==
-               {:error, :not_found}
+               member("ana", %{}, "payments/@ana") ++
+                 [action: "agent.ask", resource: {:agent, "payments/triage"}]
+             ) == {:error, :not_found}
+    end
 
-      person = [
-        principal: "U1",
-        actor: {:channel, "slack"},
-        context: %{installation: %{owner: "payments/@ana", workspace: "T1"}}
-      ]
+    test "the channel acting for itself is the installation's owner", %{access: access} do
+      read = [action: "agent.read", resource: {:agent, "payments/triage"}]
 
-      assert decide(
-               access,
-               person ++ [action: "agent.ask", resource: {:agent, "payments/triage"}]
-             ) ==
-               {:error, :not_found}
+      assert decide(access, member("payments", %{}) ++ read) == :ok
+      assert decide(access, member("growth", %{}, "growth") ++ read) == {:error, :not_found}
     end
   end
 end

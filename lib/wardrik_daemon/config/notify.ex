@@ -5,7 +5,7 @@ defmodule WardrikDaemon.Config.Notify do
       notify:
         retries: {attempts: 5, max_wait: 30000}
         targets:
-          ops: {channel: slack, room: "#ops", approvers: ["@maria"]}
+          ops: {channel: slack, room: "#ops"}
           audit: {webhook: {url: https://hooks.example.com/wardrik, secret: "${WEBHOOK_SECRET}"}}
 
   `notify` takes `Wardrik.Notify`'s options. `targets` holds the deployment's targets, each by a

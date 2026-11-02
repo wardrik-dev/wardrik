@@ -71,6 +71,20 @@ defmodule WardrikDaemon.Owners do
   def org(owner), do: owner |> String.split("/", parts: 2) |> hd()
 
   @doc """
+  Returns the person `owner` is, or `nil` for an org or the deployment.
+
+      WardrikDaemon.Owners.person("acme/@jon")
+      #=> "jon"
+  """
+  @spec person(String.t()) :: String.t() | nil
+  def person(owner) do
+    case String.split(owner, "/@", parts: 2) do
+      [_org, person] -> person
+      [_org] -> nil
+    end
+  end
+
+  @doc """
   Returns the org a resource is in, or `nil` if it's in none: the deployment, what the deployment
   owns, and tokens. What an owner holds is in its org: its secrets, servers, notify targets, OAuth
   apps and connections, as are an org's ceilings.

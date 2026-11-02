@@ -7,6 +7,7 @@ defmodule WardrikDaemon.Config do
   alias WardrikDaemon.Config.Options
   alias WardrikDaemon.Config.Orgs
   alias WardrikDaemon.Dirs
+  alias WardrikDaemon.Owners
 
   @wardrik [:deployment, :idle_timeout, :retention, :triggers]
 
@@ -83,8 +84,8 @@ defmodule WardrikDaemon.Config do
             workspace: [
               type: {:map, :string, :any},
               doc: """
-              `shared`: file trees agents beyond their owners may mount, each with `read` and
-              `write` lists of resource patterns.
+              `shared`: agents' workspaces other agents may mount, by the sharing agent's ID, each
+              with `read` and `write` lists of the exact IDs of the agents that mount it.
               """
             ],
             brave: [
@@ -215,7 +216,7 @@ defmodule WardrikDaemon.Config do
           oauth: keyword() | nil,
           channels: keyword(),
           notify: keyword(),
-          workspace: keyword(),
+          workspace: [shared: %{String.t() => %{read: [String.t()], write: [String.t()]}}],
           brave: String.t() | nil,
           keys: [String.t()],
           port: :inet.port_number(),
@@ -439,32 +440,38 @@ defmodule WardrikDaemon.Config do
 
   defp workspace(%{"shared" => shared} = workspace)
        when is_map(shared) and map_size(workspace) == 1 do
-    case Enum.find(shared, fn {_tree, rule} -> not rule?(rule) end) do
+    case Enum.find(shared, fn {agent, rule} -> not (agent?(agent) and rule?(rule)) end) do
       nil ->
         {:ok,
          [
            shared:
-             Map.new(shared, fn {tree, rule} ->
-               {tree, [read: Map.get(rule, "read", []), write: Map.get(rule, "write", [])]}
+             Map.new(shared, fn {agent, rule} ->
+               {agent, %{read: Map.get(rule, "read", []), write: Map.get(rule, "write", [])}}
              end)
          ]}
 
-      {tree, _rule} ->
+      {agent, _rule} ->
         {:error,
-         "workspace.shared.#{tree}: holds read and write, each a list of resource patterns"}
+         "workspace.shared.#{agent}: is an agent's ID, holding read and write, each a list of agents' IDs"}
     end
   end
 
   defp workspace(_workspace),
-    do: {:error, "workspace: holds shared, the trees agents beyond their owners may mount"}
+    do: {:error, "workspace: holds shared, the agents' workspaces other agents may mount"}
 
   defp rule?(rule) when is_map(rule),
     do:
-      Enum.all?(rule, fn {key, patterns} ->
-        key in ["read", "write"] and is_list(patterns) and Enum.all?(patterns, &is_binary/1)
+      Enum.all?(rule, fn {key, agents} ->
+        key in ["read", "write"] and is_list(agents) and Enum.all?(agents, &agent?/1)
       end)
 
   defp rule?(_rule), do: false
+
+  # An agent's ID exactly, as the daemon names agents: no patterns and no conversations.
+  defp agent?(id),
+    do:
+      is_binary(id) and match?({:ok, _owner}, Owners.owner(id)) and
+        Wardrik.AgentID.agent(id) == id
 
   defp interpolated(term, env, vault) do
     values = term |> names() |> Enum.uniq() |> Map.new(&{&1, value(&1, env, vault)})

@@ -21,7 +21,16 @@
   their own over the HTTP API.
 - `roles` and `bindings` say who may do what, in which org, as Kubernetes RBAC does. An agent gets
   its own bindings, never its owner's; everyone may do anything to what they own; a chat member
-  decides only what they asked, or as an approver. See `WardrikDaemon.Authorizer`.
+  acts as the user `channels.<name>.members` maps them to, reaching only the workspace owner's
+  agents, and may always decide the calls they asked for. See `WardrikDaemon.Authorizer` and
+  `WardrikDaemon.ChannelMembers`.
+- `channels.<name>.members` maps chat members to users, and `unmapped_members: allow` lets the
+  others act as `user:<channel>:<workspace>/<member>`. Without it they're refused. `approvers` is
+  gone.
+- `workspace.shared` names agents exactly: each sharing agent's ID, with the IDs of the agents
+  that may `read` or `write` its workspace. No patterns.
+- An agent's notices in a channel post in the workspace its owner added the channel to, else its
+  org's. See `WardrikDaemon.Resolver`.
 - The daemon keeps secrets, API keys and ceilings itself, on its own routes in front of
   `Wardrik.HTTP`, described by `priv/openapi.json`: `GET`, `PUT` and `DELETE
   /v1/owners/{owner}/secrets/{name}`, and `GET /v1/owners/{owner}/ceilings`. See

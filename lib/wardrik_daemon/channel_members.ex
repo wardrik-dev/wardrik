@@ -1,0 +1,47 @@
+defmodule WardrikDaemon.ChannelMembers do
+  @moduledoc """
+  Says who each chat member is: the daemon user `config.yaml` maps them to. It's the daemon's
+  `WardrikChannel.Identities`.
+
+      channels:
+        slack:
+          type: slack
+          token: ${SLACK_BOT_TOKEN}
+          members: {U024BE7LH: user:ana, U0G9QF9C6: user:jon}
+
+  A mapped member acts as their user, so that user's bindings decide what they may ask, read and
+  decide. See `WardrikDaemon.Authorizer`.
+
+  An unmapped member is refused, and told to ask an admin to map them. With
+  `unmapped_members: allow`, for a small deployment, they act instead as the user
+  `<channel>:<workspace>/<member>`, as `user:slack:T0123/U024BE7LH` in bindings.
+  """
+
+  @behaviour WardrikChannel.Identities
+
+  alias WardrikChannel.Identities.Request
+  alias WardrikCore.Principal
+
+  @impl WardrikChannel.Identities
+  def identify(%Request{member: member} = request, opts) do
+    case {Map.fetch(Keyword.fetch!(opts, :members), member), Keyword.fetch!(opts, :unmapped)} do
+      {{:ok, user}, _unmapped} ->
+        {:ok, %Principal{id: user, attributes: named(request)}}
+
+      {:error, :allow} ->
+        id = "#{request.channel}:#{request.workspace}/#{member}"
+        {:ok, %Principal{id: id, attributes: named(request)}}
+
+      {:error, :refuse} ->
+        {:error,
+         "You aren't mapped to a user here. Ask an admin to add you to channels.#{request.channel}.members."}
+    end
+  end
+
+  defp named(%Request{name: nil}), do: %{}
+  defp named(%Request{name: name}), do: %{name: name}
+
+  @doc false
+  def user("user:" <> id) when id != "", do: {:ok, id}
+  def user(other), do: {:error, "is a daemon user, as user:ana, not #{inspect(other)}"}
+end

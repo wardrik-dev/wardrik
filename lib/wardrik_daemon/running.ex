@@ -61,7 +61,6 @@ defmodule WardrikDaemon.Running do
           mcp: config.mcp,
           channels: config.channels,
           notify: config.notify,
-          workspace: config.workspace,
           defaults: config.defaults,
           prices: config.prices,
           policies: Map.to_list(policies),

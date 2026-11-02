@@ -146,14 +146,14 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     app_token: ${SLACK_APP_TOKEN}       # Socket Mode; or signing_secret, over HTTP
-    approvers: ["@maria"]
+    members: {U024BE7LH: user:ana}      # the user each chat member acts as
 
 brave:
   api_key: ${BRAVE_API_KEY}             # web_search; or seal it: wardrik vault put BRAVE_API_KEY --for api_key
 
 notify:
   targets:
-    ops: {channel: slack, room: "#ops", approvers: ["@maria"]}
+    ops: {channel: slack, room: "#ops"}
     audit: {webhook: {url: https://hooks.example.com/wardrik, secret: "${WEBHOOK_SECRET}"}}
 
 http:
@@ -240,16 +240,18 @@ models:
 
 ### workspace
 
-`workspace.shared` names the file trees agents beyond their owners may mount. Each lists, by
-resource pattern, the agents that may `read` it and those that may `write` it:
+`workspace.shared` names the agents whose workspaces other agents may mount. Each lists, by exact
+ID, the agents that may `read` it and those that may `write` it:
 
 ```yaml
 workspace:
   shared:
     acme/runbooks:
-      read: ["acme/*"]
-      write: [acme/agent/ops, "acme/agent/ops/*"]
+      read: [acme/triage]
+      write: [acme/ops]
 ```
+
+An agent file mounts one by its ID: `workspace: {shared: {runbooks: acme/runbooks}}`.
 
 ### notify
 
@@ -328,8 +330,11 @@ bindings:
 * Everyone may do anything to what they own: `payments/@ana` to `payments/@ana/notes`, and to
   their own secrets, servers, notify targets and OAuth apps.
 * Everyone manages their own connections, the accounts they sign in to, and no one else's.
-* A chat member asks and reads the agents of the workspace's owner, and decides only the calls
-  they asked for, or any as one of its approvers.
+* A chat member acts as the user `channels.<name>.members` maps them to, so that user's bindings
+  decide what they may ask, read and decide. They reach only the agents of the workspace's owner,
+  and only to ask, read and decide. Whoever asked for a turn may always decide its calls. An
+  unmapped member is refused, unless the channel sets `unmapped_members: allow`: then they act as
+  `user:<channel>:<workspace>/<member>`.
 * Outside the orgs their bindings name, people find nothing, not even that something's there. The
   deployment itself is in no org, nor are its secrets: only a binding in `"*"` reaches them.
 * Tokens are in no org: only a binding in `"*"` on the `token` kind reaches them. Its `names` say

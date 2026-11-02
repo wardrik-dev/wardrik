@@ -22,8 +22,14 @@ defmodule WardrikDaemon.ResolverTest do
     notify:
       targets:
         audit: {webhook: {url: "http://127.0.0.1:1/hook"}}
+    channels:
+      slack: {type: slack, signing_secret: s, client_id: "1.2", client_secret: c}
+      team: {type: slack, token: xoxb-team, signing_secret: s}
+    workspace:
+      shared:
+        payments/ledger: {read: [payments/refunds], write: [payments/@ana/refunds]}
     orgs:
-      "*": {mcp: [search], policy: base}
+      "*": {mcp: [search], channels: [team], policy: base}
       payments: {mcp: [stripe], notify: [audit], policy: strict}
       growth: {mcp: [github]}
     """)
@@ -94,6 +100,54 @@ defmodule WardrikDaemon.ResolverTest do
 
     for id <- ["../payments/refunds", "payments", "payments/a/b/c"] do
       assert {:error, %Wardrik.Error{type: :not_found}} = resolve(context, id)
+    end
+  end
+
+  test "posts each channel's notices in the owner's workspace, then its org's, never another org's",
+       context do
+    {:ok, {adapter, opts}} = Wardrik.Operations.Channels.fetch(context.wardrik, "slack")
+    slack = WardrikChannel.channel(adapter, opts)
+
+    assert {:ok, %Resolved{channels: channels}} = resolve(context, "payments/@ana/refunds")
+    assert channels == %{"team" => "*"}
+
+    for {workspace, owner} <- [{"T1", "payments"}, {"T2", "payments/@ana"}, {"T3", "growth"}] do
+      installation = %Wardrik.Channel.Installation{
+        channel: "slack",
+        workspace: workspace,
+        owner: owner,
+        token: "xoxb-#{workspace}"
+      }
+
+      :ok = WardrikChannel.Channel.install(slack, installation)
+    end
+
+    assert {:ok, %Resolved{channels: %{"slack" => "T2"}}} =
+             resolve(context, "payments/@ana/refunds")
+
+    assert {:ok, %Resolved{channels: %{"slack" => "T1"}}} =
+             resolve(context, "payments/@bo/refunds")
+
+    assert {:ok, %Resolved{channels: %{"slack" => "T1"}}} = resolve(context, "payments/refunds")
+    assert {:ok, %Resolved{channels: %{"slack" => "T3"}}} = resolve(context, "growth/leads")
+  end
+
+  test "mounts exactly the workspaces config.yaml shares with the agent, with the access given",
+       context do
+    assert {:ok, %Resolved{workspaces: %{"payments/ledger" => :read} = read}} =
+             resolve(context, "payments/refunds")
+
+    assert map_size(read) == 1
+
+    assert {:ok, %Resolved{workspaces: %{"payments/ledger" => :read}}} =
+             resolve(context, "payments/refunds/C1-1696.1234")
+
+    assert {:ok, %Resolved{workspaces: %{"payments/ledger" => :write}}} =
+             resolve(context, "payments/@ana/refunds")
+
+    for id <- ["payments/@bo/refunds", "growth/leads"] do
+      assert {:ok, %Resolved{workspaces: none}} = resolve(context, id)
+      assert none == %{}
     end
   end
 end

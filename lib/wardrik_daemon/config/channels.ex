@@ -7,16 +7,20 @@ defmodule WardrikDaemon.Config.Channels do
           type: slack
           token: ${SLACK_BOT_TOKEN}
           app_token: ${SLACK_APP_TOKEN}
-          approvers: ["@maria"]
+          members: {U024BE7LH: user:ana}
           offering: Ask for @triage here.
 
   Each channel has a name of your own: lower-case letters, digits and `-`, starting with a letter.
   `shell`, `ssh`, `terminal` and `oauth` are taken.
 
   `type` is required: `slack` is the only type so far. A channel takes `WardrikChannel`'s options
-  and its type's, as `WardrikSlack` documents them, but `owner` and `installations`:
+  and its type's, as `WardrikSlack` documents them, but `owner`, `installations` and
+  `identities`:
 
-    * `approvers` - `anyone`, or a list.
+    * `members` - the daemon user each chat member acts as, by their member ID, as `user:ana`.
+      See `WardrikDaemon.ChannelMembers`.
+    * `unmapped_members` - `refuse`, unless set, or `allow` to let a member `members` doesn't
+      map act as `user:<channel>:<workspace>/<member>`. For small deployments.
     * `token` - without one, the channel keeps a token in the vault for each workspace it's added
       to.
 
@@ -27,7 +31,20 @@ defmodule WardrikDaemon.Config.Channels do
   alias WardrikDaemon.Config.Options
 
   @types %{"slack" => WardrikSlack}
-  @managed [:owner, :installations]
+  @managed [:owner, :installations, :identities]
+
+  @members [
+    members: [
+      type: {:map, :string, {:custom, WardrikDaemon.ChannelMembers, :user, []}},
+      default: %{},
+      doc: "The daemon user each chat member acts as, by member ID."
+    ],
+    unmapped_members: [
+      type: {:in, [:refuse, :allow]},
+      default: :refuse,
+      doc: "`allow` to let unmapped members act as users of their own."
+    ]
+  ]
 
   @doc "Returns the channels `section` names, as Wardrik's `:channels` option takes them, serving `org`'s agents."
   @spec read(map(), String.t()) :: {:ok, keyword()} | {:error, String.t()}
@@ -42,7 +59,13 @@ defmodule WardrikDaemon.Config.Channels do
     with :ok <- named(name, path),
          {:ok, adapter} <- typed(type, path),
          {:ok, opts} <- Options.validate(Map.delete(channel, "type"), schema(adapter), path) do
-      {:ok, {adapter, added(opts) ++ [owner: org] ++ opts}}
+      {members, opts} = Keyword.split(opts, Keyword.keys(@members))
+
+      identities =
+        {WardrikDaemon.ChannelMembers,
+         members: members[:members], unmapped: members[:unmapped_members]}
+
+      {:ok, {adapter, added(opts) ++ [owner: org, identities: identities] ++ opts}}
     end
   end
 
@@ -52,7 +75,7 @@ defmodule WardrikDaemon.Config.Channels do
   defp schema(adapter),
     do:
       Options.public(WardrikChannel.Channel.schema(), @managed) ++
-        Options.public(adapter.schema(), @managed)
+        Options.public(adapter.schema(), @managed) ++ @members
 
   defp added(opts) do
     if is_binary(opts[:token]), do: [], else: [installations: :stored]

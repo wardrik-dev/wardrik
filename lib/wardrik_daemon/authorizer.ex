@@ -12,9 +12,12 @@ defmodule WardrikDaemon.Authorizer do
       servers, notify targets and OAuth apps: `resource.owner == principal`, in Cedar's words.
       See `WardrikDaemon.Owners`.
     * A principal acting itself always manages its own connections, the accounts it signs in to.
-    * A chat member, through a channel, may `ask`, `read` and `events` the agents within the
-      installation's owner, and `decide` only the calls they asked for or, as an approver, any.
-      Nothing else.
+    * Through a channel, a chat member acts as the user `WardrikDaemon.ChannelMembers` maps
+      them to. They reach only the agents within the installation's owner (`"*"` holds every
+      agent), and only to `ask`, `read`, `events` and `decide`. Within that, the user decides as
+      themselves: the owner rule, then their own bindings. Whoever asked for a turn may always
+      decide its calls. The channel acting for itself is the installation's owner, so the owner
+      rule reaches its agents.
     * Otherwise, a binding in the resource's org, or in `"*"`, gives one of them a role with a
       rule that matches the action's verb and the resource.
 
@@ -41,7 +44,7 @@ defmodule WardrikDaemon.Authorizer do
 
   @impl Wardrik.Authorizer
   @spec authorize(Request.t(), Access.t()) :: :ok | {:error, :forbidden | :not_found}
-  def authorize(%Request{actor: {:channel, _name}} = request, _access), do: member(request)
+  def authorize(%Request{actor: {:channel, _name}} = request, access), do: member(request, access)
 
   # A token for the admin is the admin's alone to make, whatever else may make tokens, as
   # Kubernetes' TokenRequest needs rights on the very account.
@@ -109,12 +112,13 @@ defmodule WardrikDaemon.Authorizer do
   defp verb(action), do: action |> String.split(".") |> List.last()
 
   defp member(
-         %Request{resource: {:agent, id}, context: %{installation: %{owner: within}}} = request
+         %Request{resource: {:agent, id}, context: %{installation: %{owner: within}}} = request,
+         access
        ) do
     case Owners.owner(id) do
       {:ok, owner} ->
-        if Owners.within?(owner, within),
-          do: member(verb(request.action), request),
+        if within == "*" or Owners.within?(owner, within),
+          do: member(verb(request.action), request, access),
           else: {:error, :not_found}
 
       :error ->
@@ -122,15 +126,20 @@ defmodule WardrikDaemon.Authorizer do
     end
   end
 
-  defp member(_request), do: {:error, :not_found}
+  defp member(_request, _access), do: {:error, :not_found}
 
-  defp member(verb, _request) when verb in @member, do: :ok
+  defp member(verb, request, access) when verb in @member, do: as_user(request, access)
 
-  defp member(verb, %Request{principal: principal, context: context}) when verb in @deciding do
-    if context[:approver] == true or context[:asked_by] == principal.id,
-      do: :ok,
-      else: {:error, :forbidden}
+  defp member(verb, %Request{principal: principal, context: context} = request, access)
+       when verb in @deciding do
+    if context[:asked_by] == principal.id, do: :ok, else: as_user(request, access)
   end
 
-  defp member(_verb, _request), do: {:error, :forbidden}
+  defp member(_verb, _request, _access), do: {:error, :forbidden}
+
+  # The member's user, deciding as they would themselves.
+  defp as_user(request, access) do
+    user = %{request | actor: nil}
+    if owns?(user), do: :ok, else: bound(user, access)
+  end
 end

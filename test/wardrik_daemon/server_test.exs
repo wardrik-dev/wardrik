@@ -85,10 +85,18 @@ defmodule WardrikDaemon.ServerTest do
   end
 
   test "gives an agent its files, and context read into every turn", context do
+    config = File.read!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml"))
+
+    write(
+      context,
+      "config.yaml",
+      config <> "workspace: {shared: {acme/triage: {read: [acme/notes]}}}\n"
+    )
+
     write(
       context,
       "agents/notes.md",
-      "---\ntools: [files]\ncontext: [MEMORY.md]\nworkspace: {shared: {team: acme}}\n---\nKeep notes.\n"
+      "---\ntools: [files]\ncontext: [MEMORY.md]\nworkspace: {shared: {team: acme/triage}}\n---\nKeep notes.\n"
     )
 
     context = start_daemon(context)

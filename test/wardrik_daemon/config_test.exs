@@ -38,8 +38,8 @@ defmodule WardrikDaemon.ConfigTest do
       providers:
         github: {issuer: https://github.com/login/oauth, client_id: "${GITHUB_CLIENT_ID}", scopes: [repo], flow: device}
     channels:
-      slack: {type: slack, token: xoxb-1, app_token: xapp-1, approvers: ["@maria"]}
-      ops: {type: slack, signing_secret: s, client_id: "1.2", client_secret: c, approvers: anyone}
+      slack: {type: slack, token: xoxb-1, app_token: xapp-1, members: {U1: user:maria}}
+      ops: {type: slack, signing_secret: s, client_id: "1.2", client_secret: c, unmapped_members: allow}
     brave: {api_key: "${KEY}"}
     models:
       zai_coding_plan:glm-5.1: {priced_as: zai:glm-5.1, markup: 0.1}
@@ -74,14 +74,15 @@ defmodule WardrikDaemon.ConfigTest do
 
     assert slack == [
              owner: "acme",
+             identities:
+               {WardrikDaemon.ChannelMembers, members: %{"U1" => "maria"}, unmapped: :refuse},
              req_options: [],
              app_token: "xapp-1",
-             approvers: ["@maria"],
              token: "xoxb-1"
            ]
 
     assert ops[:installations] == :stored
-    assert ops[:approvers] == :anyone
+    assert {WardrikDaemon.ChannelMembers, members: %{}, unmapped: :allow} = ops[:identities]
     assert config.brave == "k3y"
 
     assert config.prices == %{
@@ -133,7 +134,7 @@ defmodule WardrikDaemon.ConfigTest do
     notify:
       retries: {attempts: 5, max_wait: 20000}
       targets:
-        ops: {channel: slack, room: "#ops", approvers: ["@maria"]}
+        ops: {channel: slack, room: "#ops"}
         audit:
           webhook:
             url: https://hooks.example.com/wardrik
@@ -149,7 +150,7 @@ defmodule WardrikDaemon.ConfigTest do
                req_options: [retry: false],
                secret: "shh",
                url: "https://hooks.example.com/wardrik"}},
-             {"ops", {Wardrik.Notify.Room, approvers: ["@maria"], channel: "slack", room: "#ops"}}
+             {"ops", {Wardrik.Notify.Room, channel: "slack", room: "#ops"}}
            ]
 
     assert config.notify[:retries] == [attempts: 5, max_wait: 20_000]
@@ -160,9 +161,9 @@ defmodule WardrikDaemon.ConfigTest do
           {~s({channel: teams, room: "#ops"}),
            "notify.targets.ops.channel: names none of channels"},
           {~s({channel: slack, room: "#ops", to: x}),
-           "notify.targets.ops: unknown options [:to], valid options are: [:channel, :room, :approvers]"},
-          {~s({channel: slack, room: "#ops", approvers: maria}),
-           "notify.targets.ops: invalid value for :approvers option"},
+           "notify.targets.ops: unknown options [:to], valid options are: [:channel, :room]"},
+          {~s({channel: slack, room: "#ops", approvers: [maria]}),
+           "notify.targets.ops: unknown options [:approvers]"},
           {~s({webhook: {url: x, method: put}}),
            "notify.targets.ops.webhook: unknown options [:method], valid options are: [:url, :secret, :req_options]"},
           {~s({email: x}), "notify.targets.ops: is a room"},
@@ -287,13 +288,17 @@ defmodule WardrikDaemon.ConfigTest do
       {"channels: {slack: {type: teams}}", "channels.slack.type: is the kind of channel"},
       {"channels: {slack: {token: t}}", "channels.slack.type: is the kind of channel"},
       {"channels: {slack: {type: slack, owner: acme}}",
-       "channels.slack: unknown options [:owner], valid options are: [:token, :approvers,"},
+       "channels.slack: unknown options [:owner], valid options are: [:token,"},
+      {"channels: {slack: {type: slack, identities: x}}",
+       "channels.slack: unknown options [:identities]"},
       {"channels: {slack: {type: slack, zzz_colour: red}}",
        "channels.slack: unknown options [:zzz_colour], valid options are: [:token,"},
-      {"channels: {slack: {type: slack, approvers: maria}}",
-       "channels.slack: expected :approvers option to match"},
-      {"channels: {slack: {type: slack, approvers: [1]}}",
-       "channels.slack: expected :approvers option to match"},
+      {"channels: {slack: {type: slack, approvers: [maria]}}",
+       "channels.slack: unknown options [:approvers]"},
+      {"channels: {slack: {type: slack, members: {U1: ana}}}",
+       "channels.slack: invalid map in :members option"},
+      {"channels: {slack: {type: slack, unmapped_members: yes}}",
+       "channels.slack: invalid value for :unmapped_members option"},
       {"channels: {slack: {type: slack, req_options: {zzz_frob: 1}}}",
        "channels.slack.req_options.zzz_frob: isn't an option"},
       {"channels: [a]", "invalid value for :channels option: expected map"},
@@ -357,23 +362,33 @@ defmodule WardrikDaemon.ConfigTest do
     assert {:error, _why} = Config.bootstrap(dirs, context.env)
   end
 
-  test "reads the trees agents beyond their owners may mount", context do
+  test "reads the agents' workspaces other agents may mount, by exact ID", context do
     yaml = """
     workspace:
       shared:
-        acme/runbooks: {read: ["acme/*"], write: [acme/agent/ops]}
+        acme/runbooks: {read: [acme/triage], write: [acme/@jon/ops]}
     """
 
     assert {:ok,
             %Config{
               workspace: [
-                shared: %{"acme/runbooks" => [read: ["acme/*"], write: ["acme/agent/ops"]]}
+                shared: %{
+                  "acme/runbooks" => %{read: ["acme/triage"], write: ["acme/@jon/ops"]}
+                }
               ]
-            }} =
-             read(context, yaml)
+            }} = read(context, yaml)
 
-    assert {:error, why} = read(context, "workspace: {shared: {acme: {read: acme}}}")
-    assert why =~ "workspace.shared.acme: holds read and write"
+    for shared <- [
+          "{acme/runbooks: {read: acme}}",
+          "{acme/runbooks: {read: [\"acme/*\"]}}",
+          "{acme/runbooks: {write: [acme/triage/C1]}}",
+          "{\"acme/*\": {read: [acme/triage]}}",
+          "{acme: {read: [acme/triage]}}"
+        ] do
+      assert {:error, why} = read(context, "workspace: {shared: #{shared}}")
+      assert why =~ "is an agent's ID, holding read and write", shared
+    end
+
     assert {:error, why} = read(context, "workspace: {trees: {}}")
     assert why =~ "workspace: holds shared"
   end
@@ -416,7 +431,7 @@ defmodule WardrikDaemon.ConfigTest do
         type: slack
         token: ${SLACK_BOT_TOKEN}
         app_token: ${SLACK_APP_TOKEN}
-        approvers: ["@jon"]
+        members: {U1: user:jon}
     vault:
       keys: ["${WARDRIK_VAULT_KEY}"]
     brave:
@@ -456,7 +471,8 @@ defmodule WardrikDaemon.ConfigTest do
                  name: MyApp.Wardrik,
                  mcp: config.mcp,
                  channels: config.channels,
-                 authorizer: {WardrikDaemon.Authorizer, config.access}
+                 authorizer: {WardrikDaemon.Authorizer, config.access},
+                 resolver: {WardrikDaemon.Resolver, %{}}
                ] ++
                  config.wardrik ++
                  [

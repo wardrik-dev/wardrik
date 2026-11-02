@@ -52,7 +52,7 @@ defmodule WardrikDaemon.DoctorTest do
       providers:
         github: {issuer: https://github.com/login/oauth, client_id: "${GITHUB_CLIENT_ID}", client_secret: "${GITHUB_CLIENT_SECRET}", flow: device}
     channels:
-      slack: {type: slack, token: "${SLACK_BOT_TOKEN}", app_token: xapp, approvers: ["@maria"]}
+      slack: {type: slack, token: "${SLACK_BOT_TOKEN}", app_token: xapp, members: {U1: user:maria}}
     brave: {api_key: x}
     cluster: {}
     """)
@@ -79,7 +79,7 @@ defmodule WardrikDaemon.DoctorTest do
 
     assert [
              {:ok,
-              "takes Slack's events over Socket Mode; posts as @wardrik in Acme; @maria decides"}
+              "takes Slack's events over Socket Mode; posts as @wardrik in Acme; 1 member mapped to users, others refused"}
            ] =
              found(checks, "channel slack")
 
@@ -132,7 +132,7 @@ defmodule WardrikDaemon.DoctorTest do
         mail: {authorization_endpoint: https://mail.test/a, token_endpoint: https://mail.test/t, client_id: x}
     base_url: http://127.0.0.1:#{free_port()}
     channels:
-      quiet: {type: slack, token: t, approvers: anyone}
+      quiet: {type: slack, token: t, unmapped_members: allow}
       open: {type: slack, token: t, signing_secret: s}
     """)
 

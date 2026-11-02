@@ -59,6 +59,18 @@ defmodule WardrikDaemon.Doctor.Agents do
     end
   end
 
+  # Resolves as the daemon does, but nothing is installed in a channel here, so nothing's looked up.
+  defp resolving(config, policies, store) do
+    %{
+      org: config.org,
+      orgs: config.orgs,
+      policies: policies,
+      wardrik: WardrikDaemon.Doctor,
+      config: %{config | channels: []},
+      store: WardrikStore.scope(store, "wardrik_daemon")
+    }
+  end
+
   defp valid(definition, schema) do
     case JSV.validate(definition, schema) do
       {:ok, valid} ->
@@ -76,10 +88,10 @@ defmodule WardrikDaemon.Doctor.Agents do
       capabilities: WardrikDaemon.Capabilities.all(WardrikDaemon.Doctor),
       mcp: config.mcp,
       channels: config.channels,
-      workspace: config.workspace,
       defaults: config.defaults,
       policies: Map.to_list(policies),
-      authorizer: {WardrikDaemon.Authorizer, config.access}
+      authorizer: {WardrikDaemon.Authorizer, config.access},
+      resolver: {WardrikDaemon.Resolver, resolving(config, policies, store)}
     )
   end
 end
