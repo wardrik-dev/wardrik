@@ -4,7 +4,7 @@ defmodule WardrikTriggers.MixProject do
   def project do
     [
       app: :wardrik_triggers,
-      version: "0.1.0-rc.1",
+      version: "0.1.0-rc.2",
       elixir: "~> 1.20",
       description:
         "Ask agents something on a clock, when a feed has something new, or when a service sends a webhook.",

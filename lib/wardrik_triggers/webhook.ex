@@ -18,10 +18,24 @@ defmodule WardrikTriggers.Webhook do
           optional(:path_secret) => String.t() | nil
         }
 
-  @doc "Returns `:ok` if `request` verifies with `secret`, or `{:error, reason}`."
-  @spec verify(:shared | :standard, String.t(), request(), DateTime.t()) ::
+  @doc """
+  Returns `:ok` if `request` verifies with the `:secret` the way `:verify` says, at `:now`, or
+  `{:error, reason}`.
+
+      Webhook.verify(request, verify: :standard, secret: secret, now: DateTime.utc_now())
+  """
+  @spec verify(request(), verify: :shared | :standard, secret: String.t(), now: DateTime.t()) ::
           :ok | {:error, String.t()}
-  def verify(:shared, secret, request, _now) do
+  def verify(request, args) do
+    verified(
+      Keyword.fetch!(args, :verify),
+      Keyword.fetch!(args, :secret),
+      request,
+      Keyword.fetch!(args, :now)
+    )
+  end
+
+  defp verified(:shared, secret, request, _now) do
     presented = bearer(request.headers["authorization"]) || Map.get(request, :path_secret)
 
     if same?(presented, secret),
@@ -29,7 +43,7 @@ defmodule WardrikTriggers.Webhook do
       else: {:error, "it doesn't present the secret"}
   end
 
-  def verify(:standard, secret, %{headers: headers, body: body}, now) do
+  defp verified(:standard, secret, %{headers: headers, body: body}, now) do
     with {:ok, id} <- header(headers, "webhook-id"),
          {:ok, timestamp} <- header(headers, "webhook-timestamp"),
          {:ok, signatures} <- header(headers, "webhook-signature"),

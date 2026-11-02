@@ -87,12 +87,18 @@ defmodule WardrikTriggers do
   end
 
   @doc """
-  Removes the trigger `name` of `agent_id`. Returns `{:error, :not_found}` if it has none, or
+  Removes the trigger `:name` of `:agent_id`. Returns `{:error, :not_found}` if it has none, or
   `{:error, reason}` if the store fails.
+
+      :ok = WardrikTriggers.remove(MyApp.Triggers, agent_id: "acme/digest", name: "daily")
   """
-  @spec remove(atom(), String.t(), String.t()) :: :ok | {:error, :not_found | term()}
-  def remove(triggers, agent_id, name),
-    do: GenServer.call(scheduler(triggers), {:remove, agent_id, name})
+  @spec remove(atom(), agent_id: String.t(), name: String.t()) ::
+          :ok | {:error, :not_found | term()}
+  def remove(triggers, args) do
+    agent_id = Keyword.fetch!(args, :agent_id)
+    name = Keyword.fetch!(args, :name)
+    GenServer.call(scheduler(triggers), {:remove, agent_id, name})
+  end
 
   @doc "Returns the triggers of `agent_id`, each with its next run. A webhook's next run is `nil`."
   @spec list(atom(), String.t()) :: [{Trigger.t(), DateTime.t() | nil}]
@@ -100,12 +106,18 @@ defmodule WardrikTriggers do
     store = settings(triggers).store
 
     for name <- Records.of(store, agent_id),
-        {record, _vsn} <- [Records.lookup(store, agent_id, name)],
+        {record, _vsn} <- [Records.lookup(store, agent_id: agent_id, name: name)],
         do: {Records.trigger(record), Records.next_at(record)}
   end
 
   @doc """
-  Asks `agent_id` about a request sent to its webhook trigger `name`.
+  Asks `:agent_id` about the `:request` sent to its webhook trigger `:name`.
+
+      WardrikTriggers.deliver(MyApp.Triggers,
+        agent_id: "acme/digest",
+        name: "issues",
+        request: %{body: body, headers: headers}
+      )
 
   The request must verify against the trigger's secret. See `WardrikTriggers.Webhook`. A request
   already asked about returns `:ok` and asks nothing.
@@ -113,10 +125,12 @@ defmodule WardrikTriggers do
   Returns `{:error, :not_found}` if the trigger doesn't exist, isn't a webhook, or the request
   fails to verify. Otherwise returns `{:error, status}` when the agent wasn't asked.
   """
-  @spec deliver(atom(), String.t(), String.t(), WardrikTriggers.Webhook.request()) ::
-          :ok | {:error, :not_found | :busy | :no_agent | :failed}
-  def deliver(triggers, agent_id, name, request),
-    do: Run.webhook(settings(triggers), agent_id, name, request)
+  @spec deliver(atom(),
+          agent_id: String.t(),
+          name: String.t(),
+          request: WardrikTriggers.Webhook.request()
+        ) :: :ok | {:error, :not_found | :busy | :no_agent | :failed}
+  def deliver(triggers, args), do: Run.webhook(settings(triggers), args)
 
   @doc "Reads every trigger from the store again. Each node does this every `:reconcile` milliseconds."
   @spec reconcile(atom()) :: :ok
@@ -183,7 +197,7 @@ defmodule WardrikTriggers do
     Records.of(store, agent_id)
     |> Enum.reject(&(&1 in keeping))
     |> Enum.reduce_while(:ok, fn name, :ok ->
-      case remove(triggers, agent_id, name) do
+      case remove(triggers, agent_id: agent_id, name: name) do
         {:error, reason} when reason != :not_found -> {:halt, {:error, reason}}
         _removed -> {:cont, :ok}
       end

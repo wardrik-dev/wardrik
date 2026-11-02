@@ -106,8 +106,10 @@ defmodule WardrikTriggersTest do
                })
 
       assert [{%Trigger{name: "hook"}, nil}] = WardrikTriggers.list(triggers, @agent)
-      assert :ok = WardrikTriggers.remove(triggers, @agent, "hook")
-      assert {:error, :not_found} = WardrikTriggers.remove(triggers, @agent, "hook")
+      assert :ok = WardrikTriggers.remove(triggers, agent_id: @agent, name: "hook")
+
+      assert {:error, :not_found} =
+               WardrikTriggers.remove(triggers, agent_id: @agent, name: "hook")
 
       assert {:error, "a trigger has every, or a webhook"} =
                WardrikTriggers.set(triggers, @agent, %{"prompt" => "Go."})
@@ -265,28 +267,56 @@ defmodule WardrikTriggersTest do
       do: %{body: body, headers: %{"authorization" => "Bearer " <> secret}, path_secret: nil}
 
     test "asks the agent about each request once", %{triggers: triggers} do
-      assert :ok = WardrikTriggers.deliver(triggers, @agent, "issues", hook("{\"id\":1}"))
+      assert :ok =
+               WardrikTriggers.deliver(triggers,
+                 agent_id: @agent,
+                 name: "issues",
+                 request: hook("{\"id\":1}")
+               )
 
       assert_receive {:asked, @agent, "Triage it.\n\n{\"id\":1}",
                       [trigger: "issues", overlap: :queue, labels: ["outside"]]}
 
       assert_receive {:fired, @agent, "issues", :asked}
 
-      assert :ok = WardrikTriggers.deliver(triggers, @agent, "issues", hook("{\"id\":1}"))
+      assert :ok =
+               WardrikTriggers.deliver(triggers,
+                 agent_id: @agent,
+                 name: "issues",
+                 request: hook("{\"id\":1}")
+               )
+
       refute_received {:asked, _agent, _prompt, _opts}
     end
 
     test "turns away what doesn't prove itself, or isn't a webhook", %{triggers: triggers} do
       assert {:error, :not_found} =
-               WardrikTriggers.deliver(triggers, @agent, "issues", hook("{}", "nope"))
+               WardrikTriggers.deliver(triggers,
+                 agent_id: @agent,
+                 name: "issues",
+                 request: hook("{}", "nope")
+               )
 
       assert {:error, :not_found} =
-               WardrikTriggers.deliver(triggers, @agent, "signed", hook("{}"))
-
-      assert {:error, :not_found} = WardrikTriggers.deliver(triggers, @agent, "daily", hook("{}"))
+               WardrikTriggers.deliver(triggers,
+                 agent_id: @agent,
+                 name: "signed",
+                 request: hook("{}")
+               )
 
       assert {:error, :not_found} =
-               WardrikTriggers.deliver(triggers, @agent, "missing", hook("{}"))
+               WardrikTriggers.deliver(triggers,
+                 agent_id: @agent,
+                 name: "daily",
+                 request: hook("{}")
+               )
+
+      assert {:error, :not_found} =
+               WardrikTriggers.deliver(triggers,
+                 agent_id: @agent,
+                 name: "missing",
+                 request: hook("{}")
+               )
 
       refute_received {:asked, _agent, _prompt, _opts}
     end
@@ -295,8 +325,20 @@ defmodule WardrikTriggersTest do
     test "says when it can't be asked now, and asks again when it's sent again", %{
       triggers: triggers
     } do
-      assert {:error, :busy} = WardrikTriggers.deliver(triggers, @agent, "issues", hook("{}"))
-      assert {:error, :busy} = WardrikTriggers.deliver(triggers, @agent, "issues", hook("{}"))
+      assert {:error, :busy} =
+               WardrikTriggers.deliver(triggers,
+                 agent_id: @agent,
+                 name: "issues",
+                 request: hook("{}")
+               )
+
+      assert {:error, :busy} =
+               WardrikTriggers.deliver(triggers,
+                 agent_id: @agent,
+                 name: "issues",
+                 request: hook("{}")
+               )
+
       assert_receive {:asked, @agent, _prompt, _opts}
       assert_receive {:asked, @agent, _prompt, _opts}
     end

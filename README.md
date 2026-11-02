@@ -60,33 +60,35 @@ The target asks the agent, hears how each run went, and resolves webhook secrets
 defmodule MyApp.Triggered do
   @behaviour WardrikTriggers.Target
 
+  alias WardrikTriggers.Target.{Ask, Fired, Secret}
+
   require Logger
 
   @impl true
-  def ask(_config, agent_id, prompt, opts) do
-    case WardrikCore.whereis(agent_id) do
+  def ask(%Ask{agent: id} = ask, _opts) do
+    case WardrikCore.whereis(id) do
       nil -> :no_agent
-      agent -> asked(agent, prompt, opts)
+      agent -> asked(agent, ask)
     end
   end
 
   @impl true
-  def fired(_config, agent_id, trigger, status),
-    do: Logger.info("#{agent_id} ran #{trigger}: #{status}")
+  def fired(%Fired{agent: id, trigger: trigger, status: status}, _opts),
+    do: Logger.info("#{id} ran #{trigger}: #{status}")
 
   @impl true
-  def resolve_secret(_config, _agent_id, name) do
+  def resolve_secret(%Secret{name: name}, _opts) do
     case WardrikVault.fetch(MyApp.Vault, %WardrikCore.Principal{id: "acme"}, name) do
       {:ok, secret} -> {:ok, secret}
       {:error, _reason} -> :error
     end
   end
 
-  defp asked(agent, prompt, opts) do
-    if opts[:overlap] == :skip and WardrikCore.status(agent) != :idle do
+  defp asked(agent, %Ask{prompt: prompt, trigger: trigger, overlap: overlap}) do
+    if overlap == :skip and WardrikCore.status(agent) != :idle do
       :busy
     else
-      :ok = WardrikCore.ask(agent, prompt, %{trigger: opts[:trigger]})
+      :ok = WardrikCore.ask(agent, prompt, %{trigger: trigger})
       :asked
     end
   end
@@ -103,7 +105,12 @@ writes it.
 
 ```elixir
 {:ok, _agent} = WardrikCore.start_agent(agent_id: "acme/digest", model: "anthropic:claude-haiku-4-5")
-{:ok, _vsn} = WardrikVault.put(MyApp.Vault, %WardrikCore.Principal{id: "acme"}, "ISSUES_HOOK_SECRET", "s3cret")
+{:ok, _vsn} =
+  WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
+    principal: %WardrikCore.Principal{id: "acme"},
+    name: "ISSUES_HOOK_SECRET",
+    value: "s3cret"
+  })
 
 :ok =
   WardrikTriggers.put(MyApp.Triggers, "acme/digest", [
@@ -113,7 +120,7 @@ writes it.
   ])
 ```
 
-`set/3` and `remove/3` change one trigger. `list/2` returns each trigger with its next run, `nil`
+`set/3` and `remove/2` change one trigger. `list/2` returns each trigger with its next run, `nil`
 for a webhook:
 
 ```elixir
@@ -163,14 +170,16 @@ of them.
 
 ## Receiving a webhook
 
-Pass each request to `deliver/4` with its raw body and headers. In a `Plug.Router`:
+Pass each request to `deliver/2` with its raw body and headers. In a `Plug.Router`:
 
 ```elixir
 post "/hooks/:org/:name/:trigger" do
   {:ok, body, conn} = Plug.Conn.read_body(conn)
   request = %{body: body, headers: Map.new(conn.req_headers), path_secret: nil}
 
-  case WardrikTriggers.deliver(MyApp.Triggers, "#{org}/#{name}", trigger, request) do
+  delivery = [agent_id: "#{org}/#{name}", name: trigger, request: request]
+
+  case WardrikTriggers.deliver(MyApp.Triggers, delivery) do
     :ok -> send_resp(conn, 202, "")
     {:error, :not_found} -> send_resp(conn, 404, "")
     {:error, _busy} -> send_resp(conn, 503, "")

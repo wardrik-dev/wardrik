@@ -44,12 +44,12 @@ defmodule WardrikTriggers.Scheduler do
   end
 
   def handle_call({:remove, agent_id, name}, _from, state) do
-    case Records.lookup(state.settings.store, agent_id, name) do
+    case Records.lookup(state.settings.store, agent_id: agent_id, name: name) do
       nil ->
         {:reply, {:error, :not_found}, state}
 
       {_record, _vsn} ->
-        case Records.delete(state.settings.store, agent_id, name) do
+        case Records.delete(state.settings.store, agent_id: agent_id, name: name) do
           :ok -> {:reply, :ok, disarm(state, {agent_id, name})}
           error -> {:reply, error, state}
         end
@@ -72,7 +72,7 @@ defmodule WardrikTriggers.Scheduler do
   defp set(settings, agent_id, trigger) do
     now = DateTime.utc_now()
 
-    case Records.lookup(settings.store, agent_id, trigger.name) do
+    case Records.lookup(settings.store, agent_id: agent_id, name: trigger.name) do
       nil ->
         record = %{
           "agent_id" => agent_id,
@@ -102,7 +102,7 @@ defmodule WardrikTriggers.Scheduler do
 
   defp reconcile(%{settings: settings} = state) do
     Enum.reduce(Records.all(settings.store), state, fn {agent_id, name} = key, state ->
-      case Records.lookup(settings.store, agent_id, name) do
+      case Records.lookup(settings.store, agent_id: agent_id, name: name) do
         {record, _vsn} -> arm(state, key, Records.next_at(record))
         nil -> state
       end
@@ -110,7 +110,7 @@ defmodule WardrikTriggers.Scheduler do
   end
 
   defp due(%{settings: settings} = state, {agent_id, name} = key) do
-    case Records.lookup(settings.store, agent_id, name) do
+    case Records.lookup(settings.store, agent_id: agent_id, name: name) do
       nil -> state
       {record, vsn} -> claim(state, key, record, vsn, DateTime.utc_now())
     end
@@ -137,10 +137,7 @@ defmodule WardrikTriggers.Scheduler do
       :ok ->
         Task.Supervisor.start_child(settings.tasks, Run, :clock, [
           settings,
-          agent_id,
-          trigger,
-          due,
-          now
+          [agent_id: agent_id, trigger: trigger, due: due, now: now]
         ])
 
         arm(state, key, Records.next_at(claimed))
