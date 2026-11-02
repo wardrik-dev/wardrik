@@ -48,6 +48,29 @@ defmodule Wardrik.Owners do
   defp parsed(_other), do: :error
 
   @doc """
+  Returns the org of the agent or owner `id`.
+
+      Wardrik.Owners.org("acme/@maria/assistant")
+      #=> "acme"
+
+  The deployment's is `"deployment"`. An `id` that's neither is returned as it is.
+  """
+  @spec org(String.t()) :: String.t()
+  def org(id) do
+    owner =
+      case Wardrik.AgentID.parse(id) do
+        {:ok, %Wardrik.AgentID{owner: owner}} -> owner
+        :error -> id
+      end
+
+    case parse(owner) do
+      {:ok, %{org: nil}} -> Resource.deployment()
+      {:ok, %{org: org}} -> org
+      :error -> id
+    end
+  end
+
+  @doc """
   Returns the owners whose settings `owner` uses, nearest first.
 
       Wardrik.Owners.chain("acme/@jon")

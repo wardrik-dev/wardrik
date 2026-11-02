@@ -20,4 +20,13 @@ defmodule Wardrik.OwnersTest do
     assert Owners.chain("deployment") == ["deployment"]
     assert Owners.chain("slack:T0123/U024BE7LH") == ["slack:T0123/U024BE7LH", "deployment"]
   end
+
+  test "reads the org of an agent or an owner" do
+    assert Enum.map(
+             ["acme/@maria/assistant", "acme/triage/C1", "acme/@maria", "acme", "deployment"],
+             &Owners.org/1
+           ) == ["acme", "acme", "acme", "acme", "deployment"]
+
+    assert Owners.org("slack:T0123/U024BE7LH") == "slack:T0123/U024BE7LH"
+  end
 end

@@ -24,16 +24,13 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Page
   alias Wardrik.Provider
   alias Wardrik.Runs
-  alias Wardrik.Secret
-  alias Wardrik.Spend
   alias Wardrik.Timeline
   alias Wardrik.Trigger
   alias Wardrik.Type
 
   @snapshots ~w(agent.read agent.define agent.clear)
   @decided ~w(agent.decide agent.approve agent.deny)
-  @answered_nothing ~w(agent.cancel agent.forget agent.kill hook.deliver hook.deliver_with_secret
-                       secrets.put secrets.delete)
+  @answered_nothing ~w(agent.cancel agent.forget agent.kill hook.deliver hook.deliver_with_secret)
   @triggers ~w(agent.trigger_set agent.trigger_remove)
   @pages ~w(agent.events events.list audit.list)
 
@@ -61,9 +58,7 @@ defmodule Wardrik.Operations.Types do
     "connections.list" => {"connections", Connection, :from_json},
     "mcp_servers.list" => {"servers", MCPServer, :from_json},
     "providers.list" => {"providers", Provider, :from_json},
-    "notify_targets.list" => {"targets", NotifyTarget, :from_json},
-    "secrets.list" => {"secrets", Secret, :from_json},
-    "ceilings.list" => {"ceilings", Spend, :from_json}
+    "notify_targets.list" => {"targets", NotifyTarget, :from_json}
   }
 
   @listed Map.keys(@lists)

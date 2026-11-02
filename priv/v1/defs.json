@@ -483,23 +483,6 @@
       },
       "description": "What an agent's model calls and tools spent today, by the UTC day."
     },
-    "amount": {
-      "type": "object",
-      "properties": {
-        "usd": {
-          "type": "number",
-          "minimum": 0,
-          "description": "US dollars."
-        },
-        "tokens": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Tokens, input and output together."
-        }
-      },
-      "additionalProperties": false,
-      "description": "An amount in dollars, tokens or both. A limit leaves out what it doesn't limit."
-    },
     "owner": {
       "type": "string",
       "description": "Who holds it: deployment, an org as acme, or a person as acme/@jon."

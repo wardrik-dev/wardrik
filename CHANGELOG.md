@@ -2,8 +2,8 @@
 
 ## 0.1.0-rc.2 (2026-10-31)
 
-- `Wardrik.Owners`: parses an owner, and gives the chain its settings resolve along, nearest
-  first, for every package that keeps settings by owner.
+- `Wardrik.Owners`: parses an owner, reads an agent's or owner's org, and gives the chain its
+  settings resolve along, nearest first, for every package that keeps settings by owner.
 - OAuth apps people sign in with: `providers.list`, `providers.add` and `providers.remove`,
   `Wardrik.Providers` and `Wardrik.Provider`, the schemas `provider_input`, `provider` and
   `providers`, and the events `wardrik.provider.added` and `wardrik.provider.removed`.
@@ -27,7 +27,10 @@
   `Wardrik.Server.Follow`; `Wardrik.Channel`'s `request/2` the request, then the options, and
   `notify/2` a `Wardrik.Channel.Notification`; `Wardrik.Channel.Installations`' callbacks a
   `Wardrik.Channel.Installations.Request`, or the installation to `put/2`.
-- `secret_input` requires a `purpose`, and a secret's `kind` says what it's for.
+- Secrets and ceilings are `wardrik_daemon`'s own routes: `secrets.list`, `secrets.put`,
+  `secrets.delete` and `ceilings.list`, `Wardrik.Secrets`, `Wardrik.Ceilings`, `Wardrik.Secret`,
+  `Wardrik.Spend`, `Wardrik.Amount`, and the schemas `secrets`, `secret_input`, `ceilings` and
+  `defs`' `amount` are gone.
 - `Wardrik.AgentID.parse/1` reads the owner with `Wardrik.Owners.parse/1`, so an ID like
   `ac@me/triage` or `acme/@jon` is `:error`.
 - No grants or tokens: `Wardrik.Statement`, `Wardrik.Tokens`, `Wardrik.Token`, the `tokens.*`
