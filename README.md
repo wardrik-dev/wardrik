@@ -78,7 +78,7 @@ end
 Give `installations:` instead of `token:` and `owner:`:
 
 ```elixir
-installations: :stored                        # kept in Wardrik; needs Wardrik's :keys
+installations: :stored                        # kept in Wardrik; needs Wardrik's :vault_keys
 installations: {MyApp.ChatInstallations, []}  # your Wardrik.Channel.Installations
 ```
 

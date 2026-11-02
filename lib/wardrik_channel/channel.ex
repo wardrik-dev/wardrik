@@ -4,7 +4,7 @@ defmodule WardrikChannel.Channel do
   `WardrikChannel.channel/2`. See `WardrikChannel` for its options.
 
     * `:options` - the options left over for the adapter, such as Slack's `:signing_secret`.
-    * `:vault` - where tokens are sealed. `nil` without Wardrik's `:keys`.
+    * `:vault` - where tokens are sealed. `nil` without Wardrik's `:vault_keys`.
   """
 
   alias Wardrik.Channel.Installation
@@ -26,7 +26,7 @@ defmodule WardrikChannel.Channel do
       type: {:or, [{:in, [:stored]}, {:tuple, [:atom, :any]}]},
       doc: """
       Instead of `:token`, to add one app to many workspaces. `:stored` keeps them in Wardrik,
-      which needs Wardrik's `:keys`. `{module, config}` names a
+      which needs Wardrik's `:vault_keys`. `{module, config}` names a
       `Wardrik.Channel.Installations`.
       """
     ],

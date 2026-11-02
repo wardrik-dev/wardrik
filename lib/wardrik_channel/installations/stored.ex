@@ -4,8 +4,8 @@ defmodule WardrikChannel.Installations.Stored do
 
       slack: {WardrikSlack, installations: :stored, ...}
 
-  Tokens are sealed in Wardrik's vault, so Wardrik needs `:keys`. Without them, saving fails and
-  no installation is found.
+  Tokens are sealed in Wardrik's vault, so Wardrik needs `:vault_keys`. Without them, saving fails
+  and no installation is found.
   """
 
   @behaviour Wardrik.Channel.Installations
