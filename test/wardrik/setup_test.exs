@@ -2,13 +2,24 @@ defmodule Wardrik.SetupTest do
   use ExUnit.Case, async: true
 
   describe "new/1's oauth" do
+    test "needs a resolver" do
+      assert_raise NimbleOptions.ValidationError, ~r/required :resolver/, fn ->
+        Wardrik.new(
+          authorizer: {Wardrik.Test.Allow, []},
+          name: MyApp.AgentRuntime,
+          keys: ["key"],
+          oauth: [page: "https://agents.example.com/oauth"]
+        )
+      end
+    end
+
     test "needs the page sign-ins come back to" do
       assert_raise NimbleOptions.ValidationError, ~r/required :page/, fn ->
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
           name: MyApp.AgentRuntime,
           keys: ["key"],
-          oauth: [providers: []]
+          oauth: [resolver: {Wardrik.Test.OAuthApps, []}]
         )
       end
     end
@@ -95,7 +106,10 @@ defmodule Wardrik.SetupTest do
           authorizer: {Wardrik.Test.Allow, []},
           name: MyApp.AgentRuntime,
           keys: ["key"],
-          oauth: [page: "https://agents.example.com/oauth"]
+          oauth: [
+            page: "https://agents.example.com/oauth",
+            resolver: {Wardrik.Test.OAuthApps, []}
+          ]
         )
 
       assert wardrik.credentials == {WardrikVault, MyApp.AgentRuntime.Vault}

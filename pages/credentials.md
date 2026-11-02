@@ -20,23 +20,32 @@ defmodule MyApp.AllowAll do
   def authorize(_request, _opts), do: :ok
 end
 
+# Gives everyone the same GitHub app. Your app's resolver says whose app each person uses.
+defmodule MyApp.OAuthApps do
+  @behaviour WardrikOAuth.Resolver
+
+  @impl true
+  def provider(%{name: "github"}, _opts) do
+    github =
+      WardrikOAuth.Provider.new("github",
+        authorization_endpoint: "https://github.com/login/oauth/authorize",
+        token_endpoint: "https://github.com/login/oauth/access_token",
+        client_id: "Iv1.your-client-id",
+        scopes: ~w(repo)
+      )
+
+    {:ok, %{github | key: "github", client_secret: System.get_env("GITHUB_CLIENT_SECRET")}}
+  end
+
+  def provider(_request, _opts), do: {:error, :not_found}
+end
+
 {:ok, _} =
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
     keys: [WardrikVault.generate_key()],
-    oauth: [
-      page: "https://agents.example.com/oauth",
-      providers: [
-        github: [
-          authorization_endpoint: "https://github.com/login/oauth/authorize",
-          token_endpoint: "https://github.com/login/oauth/access_token",
-          client_id: "Iv1.your-client-id",
-          client_secret: {:secret, "GITHUB_CLIENT_SECRET"},
-          scopes: ~w(repo)
-        ]
-      ]
-    ]
+    oauth: [page: "https://agents.example.com/oauth", resolver: {MyApp.OAuthApps, []}]
   )
 
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
@@ -128,12 +137,10 @@ config :my_app, MyApp.AgentRuntime,
       transport:
         {:streamable_http, url: url, headers: %{"authorization" => {:secret, "LINEAR_TOKEN"}}}
     ]
-  ],
-  oauth: [providers: [github: [client_id: id, client_secret: {:secret, "GITHUB_CLIENT_SECRET"}]]]
+  ]
 ```
 
   * A channel's and a notify target's secrets are read each time they're used.
-  * An OAuth provider's are read at each sign-in.
   * An MCP server's are read as each connection starts. After sealing or removing one, connect
     the servers that name it again with
     `WardrikMCP.reconnect(MyApp.AgentRuntime.MCP, owner: owner, secret: name)`;
@@ -151,68 +158,23 @@ is `nil`, and logged.
 
 ## Let people sign in
 
-Each provider in `:oauth` is named after the credential it grants. The setup's `github` grants
-`"github"`.
+Each provider your resolver gives is named after the credential it grants. The setup's `github`
+grants `"github"`. Your resolver runs at each sign-in and refresh, so a new client secret needs no
+restart.
 
 When a tool needs a credential its principal hasn't granted, its call waits on a sign-in.
 `Wardrik.Agent.authorization/2` returns the link. Once the person signs in, the token is sealed and
 every call waiting on it carries on. They sign in once.
 
-## Add OAuth apps as it runs
-
-An org or person adds an OAuth app for their people, its client secret named by reference. Seal
-`GOOGLE_CLIENT_SECRET` for `"acme"` first, as `:client_secret`, then:
+A person can connect an account before any agent asks:
 
 ```elixir
-Wardrik.Providers.add(scope,
-  owner: "acme",
-  name: "google",
-  issuer: "https://accounts.google.com",
-  client_id: "868288504182-example.apps.googleusercontent.com",
-  client_secret: %{name: "GOOGLE_CLIENT_SECRET"},
-  scopes: ["https://www.googleapis.com/auth/adwords"],
-  authorization_params: %{access_type: "offline"}
-)
-#=> {:ok, %Wardrik.Provider{owner: "acme", name: "google", source: :runtime, ...}}
+WardrikOAuth.authorize(MyApp.AgentRuntime.OAuth, "github", Wardrik.principal("acme/@maria"))
+#=> {:ok, "https://github.com/login/oauth/authorize?..."}
 ```
 
-A person signs in with the nearest app of a name: their own, their org's, then the deployment's.
-`Wardrik.Providers.list/2` lists them in that order, and `remove/3` removes the owner's own. The
-client secret is read each time it's needed, and never answered.
-
-## Connect ahead of time
-
-A person or an org can connect an account before any agent asks:
-
-```elixir
-Wardrik.Connections.list(scope, owner: "acme/@maria")
-#=> {:ok, [%Wardrik.Connection{provider: "github", connected: false}]}
-
-Wardrik.Connections.connect(scope, "github", owner: "acme/@maria")
-#=> {:ok,
-#=>  %Wardrik.Connecting{
-#=>    provider: "github",
-#=>    connected: false,
-#=>    authorization: %Wardrik.Authorization{url: "https://github.com/login/oauth/authorize?...", code: nil}
-#=>  }}
-```
-
-Open the URL to sign in. Once the person has, `disconnect/3` forgets the account:
-
-```elixir
-Wardrik.Connections.disconnect(scope, "github", owner: "acme/@maria")
-#=> {:ok, %Wardrik.Connection{provider: "github", connected: false}}
-```
-
-`disconnect` returns `connected: true` when there was an account to forget. Forgetting one is
-recorded in the audit.
-
-An account belongs to its owner. A person's agents reach the person's accounts, and an org's agents
-reach the org's. Nothing falls back from one to the other. The apps they connect with do: a person
-is offered their own, their org's and the deployment's.
-
-A server with its own sign-in is one of its owner's accounts too, by the server's name. The owner
-can sign in to it, or out, before any agent calls it.
+An account belongs to the person who signed in. A grant is refreshed only by the app that issued
+it. If your resolver gives them another app, they sign in again.
 
 ## Mount the sign-in pages
 

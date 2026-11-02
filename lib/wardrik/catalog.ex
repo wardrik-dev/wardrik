@@ -10,8 +10,6 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Channels
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Lifecycle
-  alias Wardrik.Operations.Owners
-  alias Wardrik.Operations.Providers
   alias Wardrik.Operations.Triggers
 
   @enforce_keys [:operations, :handlers, :streams]
@@ -62,12 +60,6 @@ defmodule Wardrik.Catalog do
         "deployment.reload" => &Deployment.reload/2,
         "deployment.nodes" => &Deployment.nodes/2,
         "agent.move" => &Deployment.move/2,
-        "connections.list" => &Owners.connections/2,
-        "connections.connect" => &Owners.connect/2,
-        "connections.disconnect" => &Owners.disconnect/2,
-        "providers.list" => &Providers.list/2,
-        "providers.add" => &Providers.add/2,
-        "providers.remove" => &Providers.remove/2,
         "hook.deliver_with_secret" => &Triggers.deliver/2,
         "channel.deliver" => &Channels.deliver/2,
         "agents.forget" => &Agents.forget/2,

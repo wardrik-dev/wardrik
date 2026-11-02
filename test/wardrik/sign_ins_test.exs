@@ -22,13 +22,14 @@ defmodule Wardrik.SignInsTest do
         oauth: [
           page: "https://agents.test/oauth",
           req_options: [plug: {Req.Test, __MODULE__}],
-          providers: [
-            mail: [
-              authorization_endpoint: "https://mail.test/authorize",
-              token_endpoint: "https://mail.test/token",
-              client_id: "wardrik"
-            ]
-          ]
+          client_name: "Acme Agents",
+          resolver:
+            {Wardrik.Test.OAuthApps,
+             mail: [
+               authorization_endpoint: "https://mail.test/authorize",
+               token_endpoint: "https://mail.test/token",
+               client_id: "wardrik"
+             ]}
         ]
       )
 
@@ -128,7 +129,8 @@ defmodule Wardrik.SignInsTest do
     assert Wardrik.finish_sign_in(wardrik, %{"state" => "nope", "code" => "c"}, as: maria()) ==
              {:error, :no_such_flow}
 
-    assert %{"client_id" => "https://agents.test/oauth/client"} = Wardrik.client_document(wardrik)
+    assert %{"client_id" => "https://agents.test/oauth/client", "client_name" => "Acme Agents"} =
+             Wardrik.client_document(wardrik)
   end
 
   test "keeps credentials only when given keys" do
@@ -139,7 +141,7 @@ defmodule Wardrik.SignInsTest do
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
         name: MyApp.AgentRuntime,
-        oauth: [page: "https://agents.test/oauth", providers: []]
+        oauth: [page: "https://agents.test/oauth", resolver: {Wardrik.Test.OAuthApps, []}]
       )
     end
   end

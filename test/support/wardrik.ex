@@ -52,13 +52,11 @@ defmodule Wardrik.Test.Wardrik do
   def owner(wardrik), do: Wardrik.as(wardrik, maria())
 
   @roles %{
-    reader:
-      ~w(agent.read agent.events connection.read mcp_server.read provider.read notify_target.read),
+    reader: ~w(agent.read agent.events mcp_server.read notify_target.read),
     messenger: ~w(agent.ask agent.cancel agent.clear),
     approver: ~w(agent.decide),
     worker: ~w(agent.serve),
-    definer:
-      ~w(agent.define agent.spawn agent.stop agent.forget connection.connect mcp_server.add provider.add notify_target.add)
+    definer: ~w(agent.define agent.spawn agent.stop agent.forget mcp_server.add notify_target.add)
   }
 
   @doc """

@@ -216,14 +216,14 @@ defmodule Wardrik.HTTPTest do
       assert request(context, "GET", "/oauth/device/nope").status == 404
     end
 
-    @tag oauth: [page: "http://localhost/oauth", providers: []]
+    @tag oauth: [page: "http://localhost/oauth", resolver: {Wardrik.Test.OAuthApps, []}]
     test "serves the sign-in pages where the Wardrik signs people in", context do
       conn = request(context, "GET", "/oauth/device/nope")
       assert conn.status == 404
       assert conn.resp_body =~ "Sign-in not found"
     end
 
-    @tag oauth: [page: "http://localhost/oauth", providers: []]
+    @tag oauth: [page: "http://localhost/oauth", resolver: {Wardrik.Test.OAuthApps, []}]
     test "finishes no sign-in where the app doesn't say who is at the browser", context do
       conn = request(context, "GET", "/oauth/callback?state=s&code=c")
       assert conn.status == 401

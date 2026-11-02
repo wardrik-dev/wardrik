@@ -100,17 +100,11 @@ defmodule Wardrik do
                   doc: "Where sign-ins come back to, as `\"https://agents.example.com/oauth\"`."
                 ],
                 resolver: [
-                  type: {:or, [:mod_arg, nil]},
+                  type: :mod_arg,
+                  required: true,
                   doc:
                     "The `WardrikOAuth.Resolver` that gives each principal's providers, as " <>
-                      "`{module, config}`. Without it, they're resolved along the owner chain."
-                ],
-                providers: [
-                  type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
-                  default: [],
-                  doc:
-                    "The deployment's providers, by name, without `:resolver`. See " <>
-                      "`WardrikOAuth.Provider`."
+                      "`{module, config}`."
                 ],
                 client_name: [
                   type: :string,
