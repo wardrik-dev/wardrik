@@ -6,6 +6,7 @@ defmodule Wardrik.SetupTest do
       assert_raise NimbleOptions.ValidationError, ~r/required :resolver/, fn ->
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
           keys: ["key"],
           oauth: [page: "https://agents.example.com/oauth"]
@@ -17,6 +18,7 @@ defmodule Wardrik.SetupTest do
       assert_raise NimbleOptions.ValidationError, ~r/required :page/, fn ->
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
           keys: ["key"],
           oauth: [resolver: {Wardrik.Test.OAuthApps, []}]
@@ -27,7 +29,12 @@ defmodule Wardrik.SetupTest do
 
   describe "new/1's store" do
     test "is in memory, named after the Wardrik, unless set" do
-      wardrik = Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: MyApp.AgentRuntime)
+      wardrik =
+        Wardrik.new(
+          authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
+          name: MyApp.AgentRuntime
+        )
 
       assert wardrik.store == WardrikStore.ETS.new(name: MyApp.AgentRuntime.Store)
       assert wardrik.backend == {WardrikStore.Durable, store: wardrik.store}
@@ -37,6 +44,7 @@ defmodule Wardrik.SetupTest do
       wardrik =
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
           store: {WardrikStore.EKV, data_dir: "/tmp/wardrik"}
         )
@@ -51,6 +59,7 @@ defmodule Wardrik.SetupTest do
       wardrik =
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
           store: {WardrikStore.ETS, name: MyApp.Store}
         )
@@ -62,7 +71,12 @@ defmodule Wardrik.SetupTest do
       store = WardrikStore.ETS.new(name: MyApp.Store)
 
       wardrik =
-        Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: MyApp.AgentRuntime, store: store)
+        Wardrik.new(
+          authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
+          name: MyApp.AgentRuntime,
+          store: store
+        )
 
       assert wardrik.store == store
       assert wardrik.backend == {WardrikStore.Durable, store: store}
@@ -72,6 +86,7 @@ defmodule Wardrik.SetupTest do
       assert_raise ArgumentError, ~r/NoSuchStore isn't compiled/, fn ->
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
           store: {NoSuchStore, []}
         )
@@ -82,6 +97,7 @@ defmodule Wardrik.SetupTest do
       assert_raise NimbleOptions.ValidationError, ~r/:store/, fn ->
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
           store: "postgres://localhost/x"
         )
@@ -92,6 +108,7 @@ defmodule Wardrik.SetupTest do
       assert_raise NimbleOptions.ValidationError, ~r/data_dir/, fn ->
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
           data_dir: "/tmp/wardrik"
         )
@@ -104,6 +121,7 @@ defmodule Wardrik.SetupTest do
       wardrik =
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
           keys: ["key"],
           oauth: [
@@ -119,7 +137,12 @@ defmodule Wardrik.SetupTest do
     end
 
     test "are none without keys or oauth" do
-      wardrik = Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: MyApp.AgentRuntime)
+      wardrik =
+        Wardrik.new(
+          authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
+          name: MyApp.AgentRuntime
+        )
 
       assert {wardrik.credentials, wardrik.key_source, wardrik.grants} == {nil, nil, nil}
       assert Wardrik.Setup.agent(wardrik, agent_id: "acme/bot")[:credentials] == nil
@@ -129,6 +152,7 @@ defmodule Wardrik.SetupTest do
       wardrik =
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
           credentials: MyApp.Tokens,
           key_source: {MyApp.Keys, region: "eu"},

@@ -65,7 +65,8 @@ defmodule Wardrik.Slack.PackageTest do
       event(context, %{type: "member_joined_channel", user: "UBOT", channel: "C1", inviter: "U1"})
 
       assert_receive {:slack, "chat.postMessage",
-                      %{"channel" => "C1", "text" => ":wave: *triage* answers here now."} = posted},
+                      %{"channel" => "C1", "text" => ":wave: *acme/triage* answers here now."} =
+                        posted},
                      1_000
 
       assert JSON.encode!(posted["blocks"]) =~ "Answer every message"
@@ -86,7 +87,10 @@ defmodule Wardrik.Slack.PackageTest do
       press(context, pressed("wardrik_room_agent", %{value: "acme/two"}, "U1", name: "maria"))
 
       assert_receive {:slack, {:respond, _path},
-                      %{"replace_original" => true, "text" => ":wave: *two* answers here now."}},
+                      %{
+                        "replace_original" => true,
+                        "text" => ":wave: *acme/two* answers here now."
+                      }},
                      1_000
     end
 
@@ -155,32 +159,18 @@ defmodule Wardrik.Slack.PackageTest do
       refute_receive {:slack, "reactions.add", _params}, 200
     end
 
-    test "asks an approver about a call, and says who decided", context do
+    test "asks about a call in its thread, and says who decided", context do
       answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Done.")])
       event(context, message("<@UBOT> echo hi", "1.1"))
 
       assert_receive {:slack, "chat.postMessage",
                       %{
-                        "channel" => "U1",
-                        "text" => "`triage` is waiting on you.",
+                        "channel" => "C1",
+                        "thread_ts" => "1.1",
+                        "text" => "Waiting for someone to approve `echo`.",
                         "blocks" => blocks
                       }},
                      1_000
-
-      assert JSON.encode!(blocks) =~ "Waiting on @maria to approve `echo`."
-
-      assert JSON.encode!(blocks) =~
-               "From `triage`, in <https://acme.slack.com/archives/C1/p1.1|a thread>"
-
-      assert_receive {:slack, "chat.postMessage",
-                      %{
-                        "channel" => "C1",
-                        "thread_ts" => "1.1",
-                        "text" => "Waiting on @maria to approve `echo`."
-                      } = said},
-                     1_000
-
-      refute Map.has_key?(said, "blocks")
 
       [%{"elements" => [approve | _deny]}] =
         for %{"type" => "actions"} = block <- blocks, do: block
@@ -209,27 +199,29 @@ defmodule Wardrik.Slack.PackageTest do
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
 
-    test "tells someone who may not decide who may", context do
+    test "tells someone who may not decide so, and lets whoever asked", context do
       answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Done.")])
       event(context, message("<@UBOT> echo hi", "1.1"))
 
       assert_receive {:slack, "chat.postMessage",
-                      %{
-                        "channel" => "U1",
-                        "blocks" => blocks,
-                        "text" => "`triage` is waiting on you."
-                      }},
+                      %{"channel" => "C1", "blocks" => blocks, "text" => "Waiting" <> _}},
                      1_000
 
       [%{"elements" => [_approve, deny]}] =
         for %{"type" => "actions"} = block <- blocks, do: block
+
+      press(context, pressed("wardrik_deny", %{value: deny["value"]}, "U9", name: "stranger"))
+
+      assert_receive {:slack, {:respond, _path},
+                      %{"response_type" => "ephemeral", "text" => "Nobody here knows you yet."}},
+                     1_000
 
       press(context, pressed("wardrik_deny", %{value: deny["value"]}, "U2", name: "jon"))
 
       assert_receive {:slack, {:respond, _path},
                       %{
                         "response_type" => "ephemeral",
-                        "text" => "Only the channel's approvers" <> _
+                        "text" => "You may not decide what this agent waits on."
                       }},
                      1_000
 
@@ -238,44 +230,14 @@ defmodule Wardrik.Slack.PackageTest do
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
 
-    @tag slack: [approvers: ["maria@example.com", "U2", "@ana", "@bot", "nobody@example.com"]]
-    test "asks each approver Slack finds, by email, ID or handle", context do
-      answers([calling("call_1", "echo", %{"text" => "hi"})])
-      event(context, message("<@UBOT> echo hi", "1.1"))
-
-      for member <- ["U1", "U2", "U3"],
-          do:
-            assert_receive(
-              {:slack, "chat.postMessage", %{"channel" => ^member, "blocks" => _blocks}},
-              1_000
-            )
-
-      assert_receive {:slack, "chat.postMessage", %{"channel" => "U4"}}, 1_000
+    test "tells someone your app doesn't know why it can't ask", context do
+      event(context, message("<@UBOT> hi", "1.1", user: "U9"))
 
       assert_receive {:slack, "chat.postMessage",
-                      %{
-                        "channel" => "C1",
-                        "text" =>
-                          "Waiting on maria@example.com, <@U2>, @ana, @bot or nobody@example.com to approve `echo`."
-                      }},
-                     1_000
-    end
-
-    @tag slack: [approvers: ["@ghost", "@bot"]]
-    test "asks in the thread where it reaches no approver", context do
-      answers([calling("call_1", "echo", %{"text" => "hi"})])
-      event(context, message("<@UBOT> echo hi", "1.1"))
-
-      assert_receive {:slack, "chat.postMessage",
-                      %{
-                        "channel" => "C1",
-                        "thread_ts" => "1.1",
-                        "text" => "Waiting on @ghost or @bot" <> _,
-                        "blocks" => blocks
-                      }},
+                      %{"thread_ts" => "1.1", "text" => ":warning: Nobody here knows you yet."}},
                      1_000
 
-      assert JSON.encode!(blocks) =~ "wardrik_approve"
+      refute_received {:slack, "reactions.add", _params}
     end
 
     test "says a run stopped, and why one failed", context do
@@ -328,7 +290,7 @@ defmodule Wardrik.Slack.PackageTest do
       {:ok, _message} = Wardrik.Agent.ask(context.owner, "acme/digest", content: "Go")
 
       assert_receive {:slack, "chat.postMessage",
-                      %{"channel" => "#news", "text" => "digest: Three things happened."} =
+                      %{"channel" => "#news", "text" => "acme/digest: Three things happened."} =
                         posted},
                      1_000
 
@@ -337,10 +299,10 @@ defmodule Wardrik.Slack.PackageTest do
 
     @tag notify: [
            targets: [
-             ops: {Wardrik.Notify.Room, channel: "slack", room: "#ops", approvers: ["@maria"]}
+             ops: {Wardrik.Notify.Room, channel: "slack", room: "#ops"}
            ]
          ]
-    test "asks a target's approvers about a parked turn, in the room and directly", context do
+    test "asks about a parked turn in a target's room", context do
       define(context.owner, "acme/triage", tools: ["tools"], policy: "careful", notify: "ops")
       answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Done.")])
       {:ok, _message} = Wardrik.Agent.ask(context.owner, "acme/triage", content: "Echo hi")
@@ -348,12 +310,10 @@ defmodule Wardrik.Slack.PackageTest do
       assert_receive {:slack, "chat.postMessage",
                       %{
                         "channel" => "#ops",
-                        "text" => "`triage` waits on @maria to approve `echo`."
+                        "text" => "`acme/triage` waits for someone to approve `echo`.",
+                        "blocks" => blocks
                       }},
                      1_000
-
-      assert_receive {:slack, "chat.postMessage", %{"channel" => "U1", "blocks" => blocks}}, 1_000
-      assert JSON.encode!(blocks) =~ "a notice"
 
       [%{"elements" => [approve | _deny]}] =
         for %{"type" => "actions"} = block <- blocks, do: block

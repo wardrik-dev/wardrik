@@ -20,6 +20,15 @@ defmodule MyApp.AllowAll do
   def authorize(_request, _opts), do: :ok
 end
 
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent here works for Maria.
+  @impl true
+  def resolve(_request, _opts),
+    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+end
+
 # Gives everyone the same GitHub app. Your app's resolver says whose app each person uses.
 defmodule MyApp.OAuthApps do
   @behaviour WardrikOAuth.Resolver
@@ -44,6 +53,7 @@ end
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
+    resolver: {MyApp.Agents, []},
     keys: [WardrikVault.generate_key()],
     oauth: [page: "https://agents.example.com/oauth", resolver: {MyApp.OAuthApps, []}]
   )
@@ -98,6 +108,7 @@ name, as `Wardrik.key_name/1` gives it:
 Wardrik.start_link(
   name: MyApp.AgentRuntime,
   authorizer: {MyApp.Authorizer, []},
+  resolver: {MyApp.Agents, []},
   keys: [key],
   key_source: {MyApp.Keys, []}
 )

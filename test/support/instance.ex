@@ -8,7 +8,8 @@ defmodule Wardrik.Test.Instance do
       {:ok,
        config
        |> Keyword.put_new(:deployment, "from-init")
-       |> Keyword.put_new(:authorizer, {Wardrik.Test.Allow, []})}
+       |> Keyword.put_new(:authorizer, {Wardrik.Test.Allow, []})
+       |> Keyword.put_new(:resolver, {Wardrik.Test.Owned, __MODULE__})}
 end
 
 defmodule Wardrik.Test.Runs do

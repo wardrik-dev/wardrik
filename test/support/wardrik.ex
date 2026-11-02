@@ -12,6 +12,7 @@ defmodule Wardrik.Test.Wardrik do
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
         store: store,
         deployment: "test"

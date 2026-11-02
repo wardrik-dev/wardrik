@@ -16,6 +16,7 @@ defmodule Wardrik.SignInsTest do
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
         keys: [WardrikVault.generate_key()],
         egress: &Wardrik.Egress.any/1,
@@ -120,7 +121,11 @@ defmodule Wardrik.SignInsTest do
              {WardrikOAuth.Plug, %{oauth: Wardrik.oauth(wardrik), principal: nobody}}
 
     assert Wardrik.sign_in_pages(
-             Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: MyApp.AgentRuntime),
+             Wardrik.new(
+               authorizer: {Wardrik.Test.Allow, []},
+               resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
+               name: MyApp.AgentRuntime
+             ),
              nobody
            ) == nil
   end
@@ -135,11 +140,16 @@ defmodule Wardrik.SignInsTest do
 
   test "keeps credentials only when given keys" do
     assert %Wardrik{keys: [], oauth: nil} =
-             Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: MyApp.AgentRuntime)
+             Wardrik.new(
+               authorizer: {Wardrik.Test.Allow, []},
+               resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
+               name: MyApp.AgentRuntime
+             )
 
     assert_raise ArgumentError, fn ->
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
         name: MyApp.AgentRuntime,
         oauth: [page: "https://agents.test/oauth", resolver: {Wardrik.Test.OAuthApps, []}]
       )
@@ -150,6 +160,7 @@ defmodule Wardrik.SignInsTest do
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
         name: MyApp.AgentRuntime,
         keys: ["secret key"]
       )
@@ -165,6 +176,7 @@ defmodule Wardrik.OAuthResolverTest do
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
         keys: [WardrikVault.generate_key()],
         oauth: [page: "https://agents.test/oauth", resolver: {__MODULE__, "maria-mail"}]

@@ -18,7 +18,8 @@ defmodule Wardrik.Authorizer.Request do
       * `{:agent, id}` - an agent, through its own tools or answering another agent. The
         principal is the one its `Wardrik.Resolver` gives it.
       * `{:channel, name}` - a chat app's channel, for a member of a workspace it's added to.
-        The principal is the member's.
+        The principal is the one the channel's `WardrikChannel.Identities` gives the member, or
+        the installation's owner for what the channel does itself, such as posting replies.
     * `:action` - what they do, as `"agent.ask"`.
     * `:resource` - what it acts on, as `{kind, id}`:
       * `{:agent, id}` - the agent `id`, as your app named it. Wardrik never reads it.
@@ -26,9 +27,9 @@ defmodule Wardrik.Authorizer.Request do
       * `{kind, id}` - anything else your app authorizes through its authorizer, as
         `WardrikDaemon` does its own routes'.
     * `:scope` - the `Wardrik.Scope` acting.
-    * `:context` - what else the request carries: what the actor knows. A channel gives `:asked_by`, the principal ID that asked in the conversation, where
-      known, `:approver`, whether the member is one of the installation's approvers, and
-      `:installation`, as `%{owner: owner, workspace: workspace}`.
+    * `:context` - what else the request carries: what the actor knows. A channel gives
+      `:installation`, as `%{owner: owner, workspace: workspace}`, and when deciding,
+      `:asked_by`, the principal ID that asked in the conversation, where known.
 
   Your app knows which org or person each agent belongs to, so the resource names nothing else.
   """

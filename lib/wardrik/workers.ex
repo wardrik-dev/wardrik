@@ -21,8 +21,8 @@ defmodule Wardrik.Workers do
     3. Answers it with `answer/2`.
     4. Receives `{Wardrik.Workers, :cancel, call}` if Wardrik stops waiting.
 
-  A call's `meta` holds the `agent` it's for, the `run` it's part of, the `principal` it acts for,
-  and an `idempotencyKey` that stays the same if the call is retried.
+  A call's `meta` holds the `agent` it's for, as `%{"key" => id}`, the `run` it's part of, the
+  `principal` it acts for, and an `idempotencyKey` that stays the same if the call is retried.
 
   ## Failures
 
@@ -41,10 +41,8 @@ defmodule Wardrik.Workers do
 
   @behaviour WardrikCore.Capability
 
-  alias Wardrik.AgentID
   alias Wardrik.Authorizer
   alias Wardrik.Instance
-  alias Wardrik.Owners
   alias Wardrik.Scope
   alias Wardrik.Workers.Lost
   alias Wardrik.Workers.Unavailable
@@ -251,23 +249,8 @@ defmodule Wardrik.Workers do
   defp run(%WardrikCore.Span{trace: trace}), do: %{"run" => trace}
   defp run(nil), do: %{}
 
-  defp agent(id) do
-    {:ok, %AgentID{owner: owner, name: name, conversation: conversation}} = AgentID.parse(id)
-
-    %{"key" => id, "name" => name}
-    |> Map.merge(owner(owner))
-    |> Map.merge(conversation(conversation))
-  end
-
-  defp owner(owner) do
-    case Owners.parse(owner) do
-      {:ok, %{org: org, person: nil}} -> %{"org" => org}
-      {:ok, %{org: org, person: person}} -> %{"org" => org, "user" => person}
-    end
-  end
-
-  defp conversation(nil), do: %{}
-  defp conversation(conversation), do: %{"conversation" => conversation}
+  # The agent by its exact ID, as your app named it. Wardrik reads nothing out of it.
+  defp agent(id), do: %{"key" => id}
 
   defp principal(nil), do: %{}
   defp principal(%{id: id}), do: %{"principal" => id}

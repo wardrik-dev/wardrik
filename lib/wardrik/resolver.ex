@@ -1,8 +1,8 @@
 defmodule Wardrik.Resolver do
   @moduledoc """
   Says what each agent gets: who it acts for, the policies and middleware it's held to, its
-  defaults, and the servers and notify targets its definition's names reach. See
-  `Wardrik.Resolved`.
+  defaults, the servers, notify targets and channels its definition's names reach, and the other
+  agents' workspaces it may mount. See `Wardrik.Resolved`. Every Wardrik needs one.
 
       Wardrik.start_link(name: MyApp.AgentRuntime, resolver: {MyApp.Agents, []})
 
@@ -28,9 +28,6 @@ defmodule Wardrik.Resolver do
   defined, with the reason:
 
       {:error, Wardrik.Error.new(:not_found, "There's no agent acme/scout here.")}
-
-  Without `:resolver`, Wardrik resolves agents along the owner chain. See
-  `Wardrik.Owners.Resolver`.
   """
 
   alias Wardrik.Error
@@ -46,9 +43,6 @@ defmodule Wardrik.Resolver do
   resolve.
   """
   @spec resolve(Wardrik.t(), Request.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
-  def resolve(%Wardrik{resolver: nil} = wardrik, %Request{agent: id} = request),
-    do: wardrik |> Wardrik.Owners.Resolver.resolve(request) |> read(wardrik, id)
-
   def resolve(%Wardrik{resolver: {module, opts}} = wardrik, %Request{agent: id} = request),
     do: request |> module.resolve(opts) |> read(wardrik, id)
 
@@ -68,6 +62,8 @@ defmodule Wardrik.Resolver do
          {:ok, policy} <- policy("policy", resolved.policy, unread),
          {:ok, policies} <- policies(wardrik, resolved.policies, unread),
          {:ok, servers} <- named("servers", resolved.servers, unread),
+         {:ok, channels} <- named("channels", resolved.channels, unread),
+         {:ok, workspaces} <- workspaces(resolved.workspaces, unread),
          {:ok, notify} <- targets(resolved.notify, unread) do
       {:ok,
        %{
@@ -77,6 +73,8 @@ defmodule Wardrik.Resolver do
            defaults: Wardrik.Type.json(resolved.defaults),
            middleware: List.wrap(resolved.middleware),
            servers: servers,
+           channels: channels,
+           workspaces: workspaces,
            notify: notify
        }}
     end
@@ -98,6 +96,15 @@ defmodule Wardrik.Resolver do
   end
 
   defp named(what, _names, unread), do: {:error, unread.("its #{what} map names to names")}
+
+  defp workspaces(workspaces, unread) when is_map(workspaces) do
+    if Enum.all?(workspaces, fn {id, access} -> is_binary(id) and access in [:read, :write] end),
+      do: {:ok, workspaces},
+      else: {:error, unread.("its workspaces map agent IDs to :read or :write")}
+  end
+
+  defp workspaces(_workspaces, unread),
+    do: {:error, unread.("its workspaces map agent IDs to :read or :write")}
 
   defp targets(notify, unread) when is_map(notify) do
     each(notify, fn name, target -> target(name, target, unread) end)

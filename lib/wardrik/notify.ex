@@ -29,7 +29,7 @@ defmodule Wardrik.Notify do
           audit:
             {Wardrik.Notify.Webhook,
              url: "https://hooks.example.com/wardrik", secret: {:secret, "HOOK_SECRET"}},
-          ops: {Wardrik.Notify.Room, channel: "slack", room: "#ops", approvers: ["@maria"]}
+          ops: {Wardrik.Notify.Room, channel: "slack", room: "#ops"}
         ]
       ]
 
@@ -38,7 +38,7 @@ defmodule Wardrik.Notify do
       # A target
       notify: "ops"
 
-      # A room in one of Wardrik's channels
+      # A room in one of Wardrik's channels, in the workspace the agent's resolver gives
       notify: "slack:#updates"
 
       # Several
@@ -226,7 +226,7 @@ defmodule Wardrik.Notify do
   end
 
   defp sent(wardrik, {:room, channel, room}, notice),
-    do: Room.deliver(notice, wardrik: wardrik.name, channel: channel, room: room, approvers: [])
+    do: Room.deliver(notice, wardrik: wardrik.name, channel: channel, room: room)
 
   defp sent(wardrik, {:configured, name, {module, opts}}, notice),
     do:

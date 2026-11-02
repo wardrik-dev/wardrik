@@ -7,7 +7,6 @@ defmodule Wardrik.TriggerTarget do
 
   @behaviour WardrikTriggers.Target
 
-  alias Wardrik.Definition
   alias Wardrik.Operations.Running
   alias WardrikTriggers.Target.Ask
   alias WardrikTriggers.Target.Fired
@@ -35,12 +34,15 @@ defmodule Wardrik.TriggerTarget do
   @impl WardrikTriggers.Target
   def resolve_secret(%Secret{}, %Wardrik{keys: []}), do: :error
 
+  # The secret is the principal's the agent's resolver gives. An agent that acts for no one has none.
   def resolve_secret(%Secret{agent: agent_id, name: name}, wardrik) do
-    vault = Wardrik.vault(wardrik)
-
-    case WardrikVault.fetch(vault, Definition.principal(agent_id), name, kind: :signing_secret) do
-      {:ok, secret} -> {:ok, secret}
-      {:error, _reason} -> :error
+    with {:ok, %Wardrik.Resolved{principal: %WardrikCore.Principal{} = principal}} <-
+           Wardrik.Resolver.defined(wardrik, agent_id),
+         {:ok, secret} <-
+           WardrikVault.fetch(Wardrik.vault(wardrik), principal, name, kind: :signing_secret) do
+      {:ok, secret}
+    else
+      _none -> :error
     end
   end
 

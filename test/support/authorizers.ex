@@ -19,27 +19,47 @@ defmodule Wardrik.Test.Authorizer do
 
   @behaviour Wardrik.Authorizer
 
+  alias Wardrik.Test.Allow
+
   @impl Wardrik.Authorizer
   def authorize(request, opts) do
     send(Keyword.fetch!(opts, :test), {:authorize, request})
-    Keyword.get(opts, :decide, &Wardrik.Test.Allow.authorize(&1, [])).(request)
+    Keyword.get(opts, :decide, &Allow.authorize(&1, [])).(request)
   end
 end
 
 defmodule Wardrik.Test.Deciders do
   @moduledoc """
-  Allows everything, but lets a chat member decide only if they're an approver or asked, as a
-  host with a channel might.
+  Decides as a host with a channel might. A chat member reaches only the agents of the
+  installation's owner. Of them, only `acme/@maria`, whose own binding allows it, or whoever
+  asked may decide. Allows everything else.
   """
 
   @behaviour Wardrik.Authorizer
 
+  alias Wardrik.Test.Allow
+
   @impl Wardrik.Authorizer
-  def authorize(%{actor: {:channel, _name}, action: "agent.decide"} = request, _opts) do
-    if request.context[:approver] || request.context[:asked_by] == request.principal.id,
+  def authorize(%{actor: {:channel, _name}, resource: {:agent, id}} = request, opts) do
+    if owner(id) == request.context.installation.owner,
+      do: member(request, opts),
+      else: {:error, :not_found}
+  end
+
+  def authorize(request, opts), do: Allow.authorize(request, opts)
+
+  defp member(%{action: "agent.decide"} = request, _opts) do
+    if request.principal.id == "acme/@maria" or request.context[:asked_by] == request.principal.id,
       do: :ok,
       else: {:error, :forbidden}
   end
 
-  def authorize(request, opts), do: Wardrik.Test.Allow.authorize(request, opts)
+  defp member(request, opts), do: Allow.authorize(request, opts)
+
+  defp owner(id) do
+    case Wardrik.AgentID.parse(id) do
+      {:ok, %Wardrik.AgentID{owner: owner}} -> owner
+      :error -> nil
+    end
+  end
 end

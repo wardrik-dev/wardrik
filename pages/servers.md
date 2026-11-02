@@ -21,10 +21,25 @@ defmodule MyApp.AllowAll do
   def authorize(_request, _opts), do: :ok
 end
 
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent here works for Maria, and reaches GitHub, and acme's Linear once it's added.
+  @impl true
+  def resolve(_request, _opts),
+    do:
+      {:ok,
+       %Wardrik.Resolved{
+         principal: Wardrik.principal("acme/@maria"),
+         servers: %{"github" => "github", "linear" => "acme:linear"}
+       }}
+end
+
 {:ok, _} =
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
+    resolver: {MyApp.Agents, []},
     keys: [WardrikVault.generate_key()],
     oauth: [page: "https://agents.example.com/oauth", resolver: {MyApp.OAuthApps, []}],
     mcp: [
@@ -44,7 +59,8 @@ Adding a server reaches it over the network.
 
 ## Servers Wardrik starts with
 
-`:mcp` names the servers every agent may reach. A definition names a server's tools as `github/*`:
+`:mcp` names the servers Wardrik starts. Your resolver gives each agent the ones it reaches, by the
+name its definition uses. A definition names a server's tools as `github/*`:
 
 ```elixir
 {:ok, _agent} =
@@ -78,7 +94,7 @@ reach it through its resolver:
     owner: "acme"
   )
 
-# In your resolver: acme's agents reach it as linear/*.
+# In your resolver, as MyApp.Agents above: acme's agents reach it as linear/*.
 %Wardrik.Resolved{servers: %{"linear" => "acme:linear"}}
 ```
 

@@ -17,6 +17,7 @@ defmodule Wardrik.DefinitionsTest do
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
         store: store,
         capabilities: [tools: Wardrik.Test.Tools, block: {Wardrik.Test.Blocking, self()}],
@@ -323,6 +324,7 @@ defmodule Wardrik.DefinitionsTest do
       wardrik =
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
+          resolver: {Wardrik.Test.Owned, :"defaults #{context.test}"},
           name: :"defaults #{context.test}",
           store: store,
           defaults: %{model: @model, idle_timeout: 60}

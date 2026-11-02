@@ -46,17 +46,31 @@ defmodule WardrikTest do
              Wardrik.as(wardrik, "acme/@jon")
   end
 
-  test "won't start without an authorizer" do
+  test "won't start without an authorizer, or without a resolver" do
+    resolver = [resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime}]
+    authorizer = [authorizer: {Wardrik.Test.Allow, []}]
+
     assert_raise NimbleOptions.ValidationError, ~r/required :authorizer option not found/, fn ->
-      Wardrik.new(name: MyApp.AgentRuntime)
+      Wardrik.new([name: MyApp.AgentRuntime] ++ resolver)
     end
 
     assert_raise NimbleOptions.ValidationError, ~r/required :authorizer option not found/, fn ->
-      Wardrik.start_link(name: MyApp.AgentRuntime)
+      Wardrik.start_link([name: MyApp.AgentRuntime] ++ resolver)
+    end
+
+    assert_raise NimbleOptions.ValidationError, ~r/required :resolver option not found/, fn ->
+      Wardrik.new([name: MyApp.AgentRuntime] ++ authorizer)
+    end
+
+    assert_raise NimbleOptions.ValidationError, ~r/required :resolver option not found/, fn ->
+      Wardrik.start_link([name: MyApp.AgentRuntime] ++ authorizer)
     end
 
     assert {:error, %NimbleOptions.ValidationError{key: :authorizer}} =
-             NimbleOptions.validate([name: MyApp.AgentRuntime], Wardrik.schema())
+             NimbleOptions.validate([name: MyApp.AgentRuntime] ++ resolver, Wardrik.schema())
+
+    assert {:error, %NimbleOptions.ValidationError{key: :resolver}} =
+             NimbleOptions.validate([name: MyApp.AgentRuntime] ++ authorizer, Wardrik.schema())
   end
 
   test "has no tokens, and no operation of them" do
@@ -70,12 +84,18 @@ defmodule WardrikTest do
     store = WardrikStore.ETS.new(name: MyApp.Store)
 
     wardrik =
-      Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: MyApp.AgentRuntime, store: store)
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
+        name: MyApp.AgentRuntime,
+        store: store
+      )
 
     assert %Wardrik{
              deployment: "local",
              retention: 30,
              authorizer: {Wardrik.Test.Allow, []},
+             resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
              backend: {WardrikStore.Durable, store: ^store}
            } = wardrik
 
@@ -89,6 +109,7 @@ defmodule WardrikTest do
                [
                  name: MyApp.AgentRuntime,
                  authorizer: {Wardrik.Test.Allow, []},
+                 resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
                  idle_timeout: "yes"
                ],
                Wardrik.schema()

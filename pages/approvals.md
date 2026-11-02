@@ -21,6 +21,15 @@ defmodule MyApp.AllowAll do
   def authorize(_request, _opts), do: :ok
 end
 
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent here works for Maria.
+  @impl true
+  def resolve(_request, _opts),
+    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+end
+
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
 defmodule MyApp.Books do
@@ -43,6 +52,7 @@ end
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
+    resolver: {MyApp.Agents, []},
     capabilities: [books: MyApp.Books]
   )
 

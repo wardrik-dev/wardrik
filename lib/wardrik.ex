@@ -163,11 +163,10 @@ defmodule Wardrik do
             ],
             resolver: [
               type: :mod_arg,
-              doc: "Says what each agent gets. See `Wardrik.Resolver`."
-            ],
-            workspace: [
-              type: :keyword_list,
-              doc: "File trees shared beyond their owners. See `Wardrik.Workspaces`."
+              required: true,
+              doc:
+                "The `Wardrik.Resolver` that says what each agent gets: who it acts for, its " <>
+                  "servers, notify targets, channels and shared workspaces, as `{module, config}`."
             ],
             triggers: [
               type: :keyword_list,
@@ -234,7 +233,6 @@ defmodule Wardrik do
     :notify,
     :declarations,
     :resolver,
-    :workspace,
     :defaults,
     :triggers,
     :deployment,
@@ -265,8 +263,7 @@ defmodule Wardrik do
           channels: %{String.t() => {module(), keyword()}},
           notify: %{targets: %{String.t() => {module(), keyword()}}, retries: keyword()},
           declarations: {module(), term()} | nil,
-          resolver: {module(), term()} | nil,
-          workspace: %{String.t() => %{read: [String.t()], write: [String.t()]}},
+          resolver: {module(), term()},
           defaults: map(),
           triggers: keyword(),
           deployment: String.t(),
@@ -299,6 +296,7 @@ defmodule Wardrik do
       Wardrik.start_link(
         name: MyApp.AgentRuntime,
         authorizer: {MyApp.Authorizer, []},
+        resolver: {MyApp.Agents, []},
         store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
         keys: [System.fetch_env!("WARDRIK_KEY")],
         policy: [deny: ["shell/*"]]

@@ -31,7 +31,7 @@ defmodule Wardrik.Listener do
   Give options to `use`, or as it starts. Your own options are kept alongside them.
 
     * `:wardrik` - required. The module to follow, as `MyApp.AgentRuntime`.
-    * `:resources` - patterns of the agents to follow. Every agent unless set.
+    * `:agents` - the exact IDs of the agents to follow. Every agent unless set.
     * `:types` - event types to follow. Every type unless set.
     * `:after` - the cursor to start after, if you don't define `c:cursor/1`.
 
@@ -84,8 +84,10 @@ defmodule Wardrik.Listener do
   def start_link(module, opts) do
     instance = Keyword.fetch!(opts, :wardrik)
     events = instance |> Instance.fetch!() |> Wardrik.events()
-    started = WardrikEvents.head(events, Keyword.get(opts, :resources, ["*"]))
-    options = [events: events, listener: module, started: started] ++ opts
+    resources = Keyword.get(opts, :agents, ["*"])
+    started = WardrikEvents.head(events, resources)
+
+    options = [events: events, listener: module, started: started, resources: resources] ++ opts
     WardrikEvents.Listener.start_link(Wardrik.Listener.Events, options)
   end
 end
@@ -105,7 +107,7 @@ defmodule Wardrik.Listener.Events do
   defp module(listener), do: Keyword.fetch!(listener.options, :listener)
 
   defp ours(listener) do
-    options = Keyword.drop(listener.options, [:events, :listener, :wardrik, :started])
+    options = Keyword.drop(listener.options, [:events, :listener, :wardrik, :started, :resources])
 
     %Wardrik.Listener{
       wardrik: listener.options[:wardrik],

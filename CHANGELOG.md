@@ -2,11 +2,14 @@
 
 ## 0.1.0-rc.2 (2026-10-31)
 
-- `:resolver`, `Wardrik.Resolver`: the host says what each agent gets, as `Wardrik.Resolved`:
-  who it acts for, its policies, defaults and middleware, and the MCP servers and notify targets
-  its definition's names reach. A name it isn't resolved with reaches nothing, whatever is started
-  by that name. Without `:resolver`, `Wardrik.Owners.Resolver` gives every agent Wardrik's own
-  servers and targets.
+- `:resolver`, `Wardrik.Resolver`, required: the host says what each agent gets, as
+  `Wardrik.Resolved`: who it acts for, its policies, defaults and middleware, the MCP servers and
+  notify targets its definition's names reach, the workspace each channel posts its notices in
+  (`:channels`), and the other agents' workspaces it may mount, `:read` or `:write`
+  (`:workspaces`). A name it isn't resolved with reaches nothing, whatever is started by that
+  name.
+- `Wardrik.Channels.owned/2`: a channel's installations an owner holds, for a resolver's
+  `:channels`.
 - `Wardrik.refresh/2` takes `agents:`, or nothing for every awake agent.
 - `Wardrik.Resolved`'s `:notify` takes a target of your app's own as `{module, opts}`, checked
   against its module's `c:Wardrik.Notify.schema/0` by `Wardrik.Notify.given/1`.
@@ -43,8 +46,15 @@
   the principal, as RFC 8693 does. An agent's tools and its answers to other agents act for its
   resolved principal with `actor: {:agent, id}`. `Wardrik.Statements`, `Wardrik.grant/2`,
   `Wardrik.authenticate/2` and the `tokens.*` operations are gone, `Wardrik.as/3` takes
-  `:actor` and `:context`, the operations over many agents take `agents` for `resources`, and
-  `:workspace` shares trees by agent ID pattern.
+  `:actor` and `:context`, and the operations over many agents take `agents` for `resources`.
+- No tenancy: Wardrik reads no owner or org from an ID. `Wardrik.Owners.Resolver` and the
+  `:workspace` option are gone; a definition's `workspace.shared` mounts other agents' workspaces
+  by `agent` ID, as the resolver shares them, and an agent's own tree is `agents/<id>`. Agent tools
+  name agents by exact ID, and `agents_list` lists every agent the authorizer lets the agent read.
+  `Wardrik.Listener` takes `:agents`, exact IDs, for `:resources`. A worker call's `meta.agent` is
+  `%{"key" => id}`. A trigger's signing secret is the resolved principal's. `Wardrik.Notify.Room`
+  takes no `:approvers`, and posts in the workspace the agent's resolver gives for the channel,
+  or skips the notice.
 - A notify target another org's agents use reads as one that isn't there, and `*` and
   `servers/*` reach the servers an agent is resolved with: Wardrik's own that serve its org, and
   those its owners added.

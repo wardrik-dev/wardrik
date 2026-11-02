@@ -15,7 +15,9 @@ defmodule Wardrik.InstanceTest do
   end
 
   test "starts as a module, and is reached by its name" do
-    start_supervised!({Instance, listeners: [{Wardrik.Test.Runs, test: self()}]})
+    start_supervised!(
+      {Instance, listeners: [{Wardrik.Test.Runs, test: self(), agents: ["me/assistant"]}]}
+    )
 
     assert %Wardrik{deployment: "from-init"} = Wardrik.Instance.fetch!(Instance)
 
@@ -31,6 +33,18 @@ defmodule Wardrik.InstanceTest do
 
     assert is_binary(cursor)
     refute_received {WardrikEvents, _log, _event}
+  end
+
+  test "follows only the agents a listener names, by their exact IDs" do
+    start_supervised!(
+      {Instance, listeners: [{Wardrik.Test.Runs, test: self(), agents: ["me/elsewhere"]}]}
+    )
+
+    me = Instance.as("me")
+    {:ok, agent} = Wardrik.Agent.define(me, "me/assistant", model: "anthropic:claude-haiku-4-5")
+    assert {:ok, %Wardrik.Reply{}} = Wardrik.Agent.reply(me, agent, "Hi")
+
+    refute_receive {:handled, _event, _listener}, 200
   end
 
   test "takes its options as it starts, over its config" do
