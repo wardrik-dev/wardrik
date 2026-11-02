@@ -213,7 +213,7 @@ defmodule Wardrik.DefinitionsTest do
       Wardrik.Agent.ask(scope, "acme/triage", "Echo twice")
       until("wardrik.run.interrupted")
 
-      assert {:ok, [%Wardrik.Interrupt{agent_id: "acme/triage"}, %Wardrik.Interrupt{}]} =
+      assert {:ok, [%Wardrik.Interrupt{agent: "acme/triage"}, %Wardrik.Interrupt{}]} =
                Wardrik.Interrupts.list(scope)
 
       assert {:ok,
@@ -311,7 +311,7 @@ defmodule Wardrik.DefinitionsTest do
       define(scope, "acme/triage", %{"model" => @model})
 
       ref =
-        Process.monitor(Wardrik.Operations.Running.whereis(context.wardrik, {"acme/triage", nil}))
+        Process.monitor(Wardrik.Operations.Running.whereis(context.wardrik, "acme/triage"))
 
       until("wardrik.agent.stopped")
       assert_receive {:DOWN, ^ref, :process, _pid, _reason}
@@ -362,7 +362,7 @@ defmodule Wardrik.DefinitionsTest do
       conversation = WardrikCore.whereis(Wardrik.agents(wardrik), {"acme/triage", "C1-1696.1234"})
       assert [_asked, _answered] = WardrikCore.history(conversation)
 
-      own = WardrikCore.whereis(Wardrik.agents(wardrik), {"acme/triage", nil})
+      own = WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage")
       assert WardrikCore.history(own) == []
       assert run!(scope, "agent.timeline", %{"agent" => "acme/triage"})["items"] == []
 
@@ -462,7 +462,7 @@ defmodule Wardrik.DefinitionsTest do
       assert WardrikCore.history(WardrikCore.whereis(agents, {"acme/triage", "C1"})) == []
 
       assert [_asked, _answered] =
-               WardrikCore.history(WardrikCore.whereis(agents, {"acme/triage", nil}))
+               WardrikCore.history(WardrikCore.whereis(agents, "acme/triage"))
 
       assert %{"items" => []} = run!(scope, "agent.timeline", conversation)
 
@@ -519,7 +519,7 @@ defmodule Wardrik.DefinitionsTest do
 
       assert %{"status" => "idle"} = run!(scope, "agent.clear", %{"agent" => "acme/triage"})
 
-      pid = WardrikCore.whereis(Wardrik.agents(wardrik), {"acme/triage", nil})
+      pid = WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage")
       assert WardrikCore.history(pid) == []
 
       assert %{"items" => []} = run!(scope, "agent.timeline", %{"agent" => "acme/triage"})

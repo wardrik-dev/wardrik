@@ -132,7 +132,7 @@ defmodule Wardrik.Channel.PackageTest do
       scope = Wardrik.as(context.wardrik, "acme/@maria")
 
       {:ok, _message} =
-        Wardrik.Agent.ask(scope, "acme/triage", content: "More", conversation: "chat.T1.C1.1.1")
+        Wardrik.Agent.ask(scope, "acme/triage", "More", conversation: "chat.T1.C1.1.1")
 
       assert WardrikChannel.Replies.follow(context.workspace,
                room: "C1",

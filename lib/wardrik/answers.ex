@@ -41,10 +41,13 @@ defmodule Wardrik.Answers do
 
   defp started(%Scope{wardrik: instance} = scope, {agent, conversation} = log, input) do
     events = instance |> Instance.fetch!() |> Wardrik.events()
-    {:ok, _page} = allowed(Wardrik.Agent.events(scope, agent, held([limit: 1], conversation)))
+
+    {:ok, _page} =
+      allowed(Wardrik.Agent.events(scope, agent, [limit: 1], conversation: conversation))
+
     :ok = WardrikEvents.subscribe(events, [log])
 
-    case Wardrik.Agent.ask(scope, agent, asked(input, conversation)) do
+    case Wardrik.Agent.ask(scope, agent, input, conversation: conversation) do
       {:ok, message} ->
         %{events: events, agent: log, message: message.id, run: nil, text: [], done: false}
 
@@ -53,17 +56,6 @@ defmodule Wardrik.Answers do
         raise error
     end
   end
-
-  defp held(input, nil), do: input
-  defp held(input, conversation), do: Keyword.put(input, :conversation, conversation)
-
-  defp asked(input, nil), do: input
-
-  defp asked(text, conversation) when is_binary(text),
-    do: [content: text, conversation: conversation]
-
-  defp asked(input, conversation) when is_list(input), do: held(input, conversation)
-  defp asked(%{} = input, conversation), do: Map.put(input, "conversation", conversation)
 
   defp allowed({:ok, page}), do: {:ok, page}
   defp allowed({:error, error}), do: raise(error)

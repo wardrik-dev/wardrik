@@ -11,6 +11,7 @@
 - `Wardrik.Channels.owned/2`: a channel's installations an owner holds, for a resolver's
   `:channels`.
 - `Wardrik.refresh/2` takes `agents:`, or nothing for every awake agent.
+- `agents_list` gives each agent's definition `description`, so a model can tell agents apart.
 - `Wardrik.Resolved`'s `:notify` takes a target of your app's own as `{module, opts}`, checked
   against its module's `c:Wardrik.Notify.schema/0` by `Wardrik.Notify.given/1`.
 - Secrets by reference: an MCP server's header secrets are named, read from the owner's vault as
@@ -28,8 +29,8 @@
 - Agent IDs are your app's opaque text, as `agt_01JF8X5RQ2`. Wardrik never parses or names
   them: `Wardrik.AgentID` and the agent's `name` in snapshots and lists are gone.
 - A conversation is a field, not an ID suffix. Operations on an agent take an optional
-  `conversation`, as `Wardrik.Agent.ask(scope, "agt_1", content: "Hi", conversation: "C1")`, and
-  `Wardrik.Agent.stream/4` and `reply/4` take `conversation:`. The authorizer decides a
+  `conversation:` in their options, as `Wardrik.Agent.ask(scope, "agt_1", "Hi", conversation: "C1")`,
+  like `Wardrik.Agent.stream/4` and `reply/4`. The authorizer decides a
   conversation as its agent, `{:agent, id}`.
 - Events carry `agent` and `conversation`. `Wardrik.cursor/1` takes
   `%{{agent, conversation} => sequence}`. `agents:` filters cover each agent's conversations,
