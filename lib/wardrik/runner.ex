@@ -54,7 +54,8 @@ defmodule Wardrik.Runner do
   end
 
   defp authorize(scope, %{subject: "agent", action: action}, %{"agent" => id}),
-    do: refused(Authorizer.authorize(scope, action, {:agent, id}), "agent #{id}")
+    do:
+      refused(Authorizer.authorize(scope, action: action, resource: {:agent, id}), "agent #{id}")
 
   defp authorize(
          %Scope{wardrik: wardrik} = scope,
@@ -63,7 +64,10 @@ defmodule Wardrik.Runner do
        ),
        do:
          refused(
-           Authorizer.authorize(scope, action, {:deployment, wardrik.deployment}),
+           Authorizer.authorize(scope,
+             action: action,
+             resource: {:deployment, wardrik.deployment}
+           ),
            "deployment"
          )
 
@@ -76,7 +80,11 @@ defmodule Wardrik.Runner do
     named = input["provider"] || input["server"] || input["target"] || input["name"]
 
     refused(
-      Authorizer.authorize(scope, action, {:owner, owner}, %{name: named}),
+      Authorizer.authorize(scope,
+        action: action,
+        resource: {:owner, owner},
+        context: %{name: named}
+      ),
       "#{kind} of #{owner}"
     )
   end

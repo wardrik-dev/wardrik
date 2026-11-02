@@ -20,10 +20,10 @@ defmodule Wardrik.Test.Board do
   def child_spec(_opts), do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> nil end]}}
 
   @impl Wardrik.Channel
-  def request(_opts, _request), do: %{status: 404, headers: %{}, body: ""}
+  def request(_request, _opts), do: %{status: 404, headers: %{}, body: ""}
 
   @impl Wardrik.Channel
-  def notify(opts, room, notice, approvers) do
+  def notify(%{room: room, notice: notice, approvers: approvers}, opts) do
     send(opts[:test], {:posted, opts[:channel], room, notice, approvers})
     :ok
   end

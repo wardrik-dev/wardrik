@@ -152,7 +152,11 @@ defmodule Wardrik.Workers do
   end
 
   defp serves?(wardrik, scope, id),
-    do: Authorizer.authorize(%{scope | wardrik: wardrik}, "agent.serve", {:agent, id}) == :ok
+    do:
+      Authorizer.authorize(%{scope | wardrik: wardrik},
+        action: "agent.serve",
+        resource: {:agent, id}
+      ) == :ok
 
   defp first_offered?(offer, offers) do
     first =

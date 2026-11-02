@@ -10,7 +10,7 @@ defmodule Wardrik.Notify.Room do
   ]
 
   @moduledoc """
-  Posts notices to a room in one of Wardrik's channels, with `c:Wardrik.Channel.notify/4`.
+  Posts notices to a room in one of Wardrik's channels, with `c:Wardrik.Channel.notify/2`.
 
       ops: {Wardrik.Notify.Room, channel: "slack", room: "#ops", approvers: ["@maria"]}
 
@@ -20,7 +20,7 @@ defmodule Wardrik.Notify.Room do
 
   #{NimbleOptions.docs(@options)}
 
-  Skips the notice if the channel doesn't exist or doesn't implement `notify/4`.
+  Skips the notice if the channel doesn't exist or doesn't implement `notify/2`.
   """
 
   @behaviour Wardrik.Notify
@@ -35,7 +35,13 @@ defmodule Wardrik.Notify.Room do
     with {:ok, {module, channel_opts}} <-
            Wardrik.Operations.Channels.fetch(opts[:wardrik], channel),
          true <- posts?(module) do
-      module.notify(channel_opts, opts[:room], notice, opts[:approvers])
+      notification = %Wardrik.Channel.Notification{
+        room: opts[:room],
+        notice: notice,
+        approvers: opts[:approvers] || []
+      }
+
+      module.notify(notification, channel_opts)
     else
       :error -> {:skip, "but there's no channel #{channel} here"}
       false -> {:skip, "but the channel #{channel} posts no notices"}
@@ -44,6 +50,6 @@ defmodule Wardrik.Notify.Room do
 
   defp posts?(module) do
     Code.ensure_loaded(module)
-    function_exported?(module, :notify, 4)
+    function_exported?(module, :notify, 2)
   end
 end

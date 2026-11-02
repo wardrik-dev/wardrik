@@ -3,10 +3,10 @@ defmodule Wardrik.Test.Asked do
   @behaviour Wardrik.Authorizer
 
   @impl true
-  def authorize(principal, action, resource, context, decider) do
+  def authorize(%Wardrik.Authorizer.Request{} = request, decider) do
     {test, decide} = Agent.get(decider, & &1)
-    send(test, {:asked, principal.id, action, resource, Map.delete(context, :scope)})
-    decide.(action, resource)
+    send(test, {:asked, request.principal.id, request.action, request.resource, request.context})
+    decide.(request.action, request.resource)
   end
 end
 

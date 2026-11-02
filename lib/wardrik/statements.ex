@@ -19,29 +19,24 @@ defmodule Wardrik.Statements do
 
   @behaviour Wardrik.Authorizer
 
+  alias Wardrik.Authorizer.Request
   alias Wardrik.Resource
   alias Wardrik.Scope
   alias Wardrik.Statement
   alias WardrikEvents.Pattern
 
   @impl Wardrik.Authorizer
-  def authorize(
-        _principal,
-        action,
-        resource,
-        %{scope: %Scope{grants: statements}} = context,
-        _config
-      ) do
-    case named(action, resource, context) do
+  def authorize(%Request{action: action, scope: %Scope{grants: statements}} = request, _opts) do
+    case named(request) do
       {:ok, name} -> decide(Enum.filter(statements, &reaches?(&1, name)), action)
       :error -> {:error, :not_found}
     end
   end
 
-  defp named(_action, {:agent, id}, _context), do: Resource.agent(id)
-  defp named(_action, {:deployment, _name}, _context), do: {:ok, Resource.deployment()}
+  defp named(%Request{resource: {:agent, id}}), do: Resource.agent(id)
+  defp named(%Request{resource: {:deployment, _name}}), do: {:ok, Resource.deployment()}
 
-  defp named(action, {:owner, owner}, context) do
+  defp named(%Request{action: action, resource: {:owner, owner}, context: context}) do
     [kind, _verb] = String.split(action, ".", parts: 2)
     {:ok, Resource.owned(owner, kind, context[:name])}
   end
@@ -51,11 +46,9 @@ defmodule Wardrik.Statements do
   defp decide(reaching, action),
     do: if(Enum.any?(reaching, &allows?(&1, action)), do: :ok, else: {:error, :forbidden})
 
-  @impl Wardrik.Authorizer
-  def holds?(_config, %Scope{grants: statements}, %Statement{
-        actions: actions,
-        resources: resources
-      }) do
+  @doc "Returns whether `scope`'s statements allow every action `statement` allows, everywhere."
+  @spec holds?(Scope.t(), Statement.t()) :: boolean()
+  def holds?(%Scope{grants: statements}, %Statement{actions: actions, resources: resources}) do
     pairs = for action <- actions, resource <- resources, do: {action, resource}
     Enum.all?(pairs, fn pair -> Enum.any?(statements, &holds_pair?(&1, pair)) end)
   end

@@ -7,7 +7,7 @@ defmodule Wardrik.Test.Sealed do
     do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> started(opts) end]}}
 
   @impl Wardrik.Channel
-  def request(opts, _request), do: %{status: 200, headers: %{}, body: opts[:signing_secret]}
+  def request(_request, opts), do: %{status: 200, headers: %{}, body: opts[:signing_secret]}
 
   defp started(opts), do: send(opts[:test], {:started_with, opts[:signing_secret]})
 end

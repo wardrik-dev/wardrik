@@ -515,8 +515,11 @@ defmodule Wardrik do
       #=> {:ok, %{"message" => %{"id" => "msg_Xq3f...", "cursor" => "eyJhY21lL3RyaWFnZSI6NDF9"}}}
   """
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
-  @impl Wardrik.Server
   def run(%Scope{} = scope, id, input), do: Runner.run(scope, id, input, :handlers)
+
+  @impl Wardrik.Server
+  def run(%Wardrik.Server.Request{scope: scope, operation: id, input: input}),
+    do: run(scope, id, input)
 
   @doc """
   Streams the operation `id`, such as `"events.list"`, in `scope`.
@@ -526,11 +529,15 @@ defmodule Wardrik do
       {:ok, stream} = Wardrik.stream(scope, "events.list", %{"resources" => ["acme/*"]})
   """
   @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
-  @impl Wardrik.Server
   def stream(%Scope{} = scope, id, input), do: Runner.run(scope, id, input, :streams)
 
   @impl Wardrik.Server
-  def follow(scope, agent, input, opts), do: Wardrik.Answers.follow(scope, agent, input, opts)
+  def stream(%Wardrik.Server.Request{scope: scope, operation: id, input: input}),
+    do: stream(scope, id, input)
+
+  @impl Wardrik.Server
+  def follow(%Wardrik.Server.Follow{scope: scope, agent: agent, input: input}, opts),
+    do: Wardrik.Answers.follow(scope, agent, input, opts)
 
   @impl Wardrik.Server
   def offer(scope, tools), do: Wardrik.Workers.offer(scope, tools)
@@ -556,7 +563,9 @@ defmodule Wardrik do
     wardrik = Instance.fetch!(instance)
 
     with {:ok, resolved} <-
-           Wardrik.Resolver.resolve(wardrik, Keyword.fetch!(opts, :agent_id), %{}) do
+           Wardrik.Resolver.resolve(wardrik, %Wardrik.Resolver.Request{
+             agent: Keyword.fetch!(opts, :agent_id)
+           }) do
       held = Wardrik.Resolution.hold(opts, resolved)
       WardrikCore.start_agent(agents(wardrik), Setup.agent(wardrik, held))
     end

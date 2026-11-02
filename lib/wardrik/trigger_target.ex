@@ -9,17 +9,20 @@ defmodule Wardrik.TriggerTarget do
 
   alias Wardrik.Definition
   alias Wardrik.Operations.Running
+  alias WardrikTriggers.Target.Ask
+  alias WardrikTriggers.Target.Fired
+  alias WardrikTriggers.Target.Secret
 
   @impl WardrikTriggers.Target
-  def ask(wardrik, agent_id, prompt, opts) do
+  def ask(%Ask{agent: agent_id} = ask, wardrik) do
     case Running.awake(wardrik, agent_id) do
-      {:ok, pid} -> asked(pid, prompt, opts)
+      {:ok, pid} -> asked(pid, ask)
       {:error, _error} -> :no_agent
     end
   end
 
   @impl WardrikTriggers.Target
-  def fired(wardrik, agent_id, trigger, status) do
+  def fired(%Fired{agent: agent_id, trigger: trigger, status: status}, wardrik) do
     data = %{"trigger" => %{"name" => trigger}, "status" => Atom.to_string(status)}
 
     WardrikEvents.append(
@@ -30,9 +33,9 @@ defmodule Wardrik.TriggerTarget do
   end
 
   @impl WardrikTriggers.Target
-  def resolve_secret(%Wardrik{keys: []}, _agent_id, _name), do: :error
+  def resolve_secret(%Secret{}, %Wardrik{keys: []}), do: :error
 
-  def resolve_secret(wardrik, agent_id, name) do
+  def resolve_secret(%Secret{agent: agent_id, name: name}, wardrik) do
     vault = Wardrik.vault(wardrik)
 
     case WardrikVault.fetch(vault, Definition.principal(agent_id), name, kind: :signing_secret) do
@@ -41,19 +44,15 @@ defmodule Wardrik.TriggerTarget do
     end
   end
 
-  defp asked(pid, prompt, opts) do
-    if opts[:overlap] == :skip and WardrikCore.status(pid) != :idle do
+  defp asked(pid, %Ask{prompt: prompt, overlap: overlap} = ask) do
+    if overlap == :skip and WardrikCore.status(pid) != :idle do
       :busy
     else
-      :ok = WardrikCore.ask(pid, prompt, metadata(opts))
+      :ok = WardrikCore.ask(pid, prompt, metadata(ask))
       :asked
     end
   end
 
-  defp metadata(opts) do
-    case Keyword.get(opts, :labels, []) do
-      [] -> %{trigger: opts[:trigger]}
-      labels -> %{trigger: opts[:trigger], labels: labels}
-    end
-  end
+  defp metadata(%Ask{trigger: trigger, labels: []}), do: %{trigger: trigger}
+  defp metadata(%Ask{trigger: trigger, labels: labels}), do: %{trigger: trigger, labels: labels}
 end

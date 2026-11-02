@@ -72,7 +72,7 @@ defmodule Wardrik.Test.HTTP.Channel do
   def child_spec(_opts), do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> nil end]}}
 
   @impl Wardrik.Channel
-  def request(_opts, %{path: path, body: body, headers: headers}) do
+  def request(%{path: path, body: body, headers: headers}, _opts) do
     %{
       status: 200,
       headers: %{"content-type" => "text/plain"},

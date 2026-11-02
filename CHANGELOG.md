@@ -34,10 +34,15 @@
 
 ### Breaking
 
-- `c:Wardrik.Authorizer.authorize/5` takes the principal, the action, the resource as
-  `{kind, id}` and a context, then its config, as Cedar's requests do. An agent is `{:agent, id}`,
-  its ID as given, and the deployment `{:deployment, name}`. `Wardrik.Statements` reads its names
-  from these. A scope makes tokens only with an authorizer's `c:Wardrik.Authorizer.holds?/3`.
+- Each seam's callback takes one request struct, then its options: `authorize/2` a
+  `Wardrik.Authorizer.Request`, and `resolve/2` a `Wardrik.Resolver.Request`.
+- Implements rc.2 of the packages' seams, each taking a request struct: `Wardrik.Keys`
+  (`WardrikCore.Keys`), `Wardrik.TriggerTarget` (`WardrikTriggers.Target`), and `Wardrik` as
+  `Wardrik.Server`. A channel's `request/2` and `notify/2` take the request first.
+- A `Wardrik.Authorizer.Request` names the principal, the action and the resource as `{kind, id}`,
+  as Cedar's requests do. An agent is `{:agent, id}`, its ID as given, and the deployment
+  `{:deployment, name}`. `Wardrik.Statements` reads its names from these, and only it lets a scope
+  make tokens, so `holds?/3` is gone.
 - A notify target another org's agents use reads as one that isn't there, and `*` and
   `servers/*` reach the servers an agent is resolved with: Wardrik's own that serve its org, and
   those its owners added.

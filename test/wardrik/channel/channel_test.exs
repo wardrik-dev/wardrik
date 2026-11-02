@@ -279,8 +279,12 @@ defmodule Wardrik.Channel.PackageTest do
 
       assert installation.owner == "acme"
       refute inspect(installation) =~ "xoxb"
-      assert {:error, _why} = module.put(config, installation)
-      assert module.delete(config, "chat", "T9") == :ok
+      assert {:error, _why} = module.put(installation, config)
+
+      assert module.delete(
+               %Wardrik.Channel.Installations.Request{channel: "chat", workspace: "T9"},
+               config
+             ) == :ok
     end
 
     test "answers what the chat app sends through the Wardrik", %{wardrik: wardrik} do
@@ -302,7 +306,13 @@ defmodule Wardrik.Channel.PackageTest do
 
       {:ok, {adapter, opts}} = Wardrik.Operations.Channels.fetch(context.wardrik, "chat")
 
-      assert adapter.notify(opts, "#news", notice, ["@maria"]) == :ok
+      notification = %Wardrik.Channel.Notification{
+        room: "#news",
+        notice: notice,
+        approvers: ["@maria"]
+      }
+
+      assert adapter.notify(notification, opts) == :ok
 
       assert_receive {:delivered,
                       %Outbound{
@@ -315,7 +325,14 @@ defmodule Wardrik.Channel.PackageTest do
 
       assert outbound.installation.owner == "acme"
 
-      assert {:skip, _why} = adapter.notify(opts, "#news", %{notice | agent: "globex/digest"}, [])
+      assert {:skip, _why} =
+               adapter.notify(
+                 %Wardrik.Channel.Notification{
+                   room: "#news",
+                   notice: %{notice | agent: "globex/digest"}
+                 },
+                 opts
+               )
     end
 
     test "reads a parked turn's calls from its notice" do

@@ -593,7 +593,9 @@ defmodule Wardrik.OwnersTest do
     end
 
     defp servers(wardrik, id) do
-      {:ok, resolved} = Wardrik.Owners.Resolver.resolve(wardrik, id, %{})
+      {:ok, resolved} =
+        Wardrik.Owners.Resolver.resolve(wardrik, %Wardrik.Resolver.Request{agent: id})
+
       resolved.servers
     end
 

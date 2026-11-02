@@ -182,7 +182,7 @@ defmodule Wardrik.Operations.Agent do
   end
 
   defp ceiling_approver(scope, org) do
-    case Wardrik.Authorizer.authorize(scope, "ceiling.approve", {:owner, org}) do
+    case Wardrik.Authorizer.authorize(scope, action: "ceiling.approve", resource: {:owner, org}) do
       :ok ->
         :ok
 
