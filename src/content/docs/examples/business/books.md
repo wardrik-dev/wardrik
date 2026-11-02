@@ -1,16 +1,16 @@
 ---
 title: The books agent
-description: "Keeps the books in QuickBooks: small bills post on their own, big ones wait for an accountant, payroll is refused."
+description: "Bookkeeping in QuickBooks. Small bills post automatically, large ones need an accountant's approval, payroll is denied."
 sidebar:
   order: 1
 ---
 
-Each weekday morning this agent enters the bills that came in and reconciles yesterday's
-transactions. A bill with every line under $1,000 posts on its own. A bigger one waits for an
-accountant in Slack. Payroll is never touched.
+Each weekday morning this agent enters new bills and reconciles yesterday's transactions. A bill
+with every line under $1,000 posts without approval. Larger bills need an accountant's approval in
+Slack. Payroll calls are denied.
 
-Needs Intuit's [QuickBooks MCP server](https://github.com/intuit/quickbooks-online-mcp-server),
-built on the daemon's machine, and a [Slack app](/channels/slack/).
+Requires Intuit's [QuickBooks MCP server](https://github.com/intuit/quickbooks-online-mcp-server),
+built on the daemon's machine, and a [Slack app](/build/slack/).
 
 ## The files
 
@@ -47,9 +47,9 @@ bindings:
   - {org: acme, role: accountant, subjects: [user:acme/@maria, user:acme/@sam]}
 ```
 
-- `trusted: true` says the server's answers are your own books, not
-  [content from outside](/concepts/outside-content/). Without it, every bill would wait.
-- Maria and Sam are the accountants: they ask the agent and decide its calls.
+- `trusted: true` marks the server's results as trusted, not
+  [content from outside](/concepts/outside-content/). Without it, every bill would need approval.
+- The `accountant` role allows `@maria` and `@sam` to message the agent and approve its calls.
 
 ```yaml title="~/.config/wardrik/policies/books.yaml"
 allow:
@@ -65,8 +65,8 @@ deny:
 budget: {usd: 10.00, per: day, on_exhausted: ask}
 ```
 
-- An `allow` on a list holds only when every line matches. A `deny` holds when any line does.
-- `88` stands for your Payroll account's ID in QuickBooks.
+- On a list argument, `allow` matches only when every item matches. `deny` matches when any does.
+- `88` is a placeholder for your Payroll account ID in QuickBooks.
 
 ```markdown title="~/.config/wardrik/agents/books.md"
 ---
@@ -95,13 +95,12 @@ systemctl --user restart wardrik
 wardrik ask books 'Enter the March invoice from Northwind Freight: $640 for deliveries.'
 ```
 
-It finds the vendor and posts the bill. Ask for a $2,400 bill and it waits in `#accounting`, with
-the bill's lines as its arguments.
+It looks up the vendor and posts the bill. A $2,400 bill is posted to `#accounting` for approval,
+with the bill's lines as arguments.
 
 ## What it shows
 
-- Argument rules on real data: amounts and accounts, read from the call. See
-  [Policy](/concepts/policy/).
-- A deny no message can get around.
-- Approvals where the accountants work, each recorded with who decided.
-- Corrections land in `VENDORS.md`, read into the next turn.
+- Policy rules on call arguments: amounts and account IDs. See [Policy](/concepts/policy/).
+- A `deny` that no prompt can bypass.
+- Approvals in Slack, each recorded with the approver.
+- Corrections are written to `VENDORS.md` and loaded into the next turn.

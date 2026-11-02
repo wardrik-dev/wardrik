@@ -1,6 +1,6 @@
 ---
 title: "HTTP API"
-description: "Every route the wardrik daemon serves, with its fields, a request and a response."
+description: "Every route of the wardrik daemon, with its fields, an example request and a response."
 sidebar:
   order: 5
 ---
@@ -10,11 +10,11 @@ export WARDRIK_URL=http://127.0.0.1:4747
 curl $WARDRIK_URL/v1/agents -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
-- The daemon listens on `127.0.0.1:4747`. [`http`](/reference/config/#http) in `config.yaml` moves it.
-- Every request sends `Authorization: Bearer <token>`. Make one with [`wardrik token create`](/reference/cli/#tokens).
+- The daemon listens on `127.0.0.1:4747`. Set [`http`](/reference/config/#http) in `config.yaml` to change it.
+- Every request needs `Authorization: Bearer <token>`. Create one with [`wardrik token create`](/reference/cli/#tokens).
   Webhooks and chat apps send none.
-- Bodies are JSON, up to 8 MB. Webhooks and chat apps send their own bodies, as they are.
-- Every response has a `request-id` header. It's yours if you sent one.
+- Bodies are JSON, up to 8 MB. Webhook and chat app routes accept bodies in any format.
+- Every response has a `request-id` header, echoing yours if you sent one.
 - `GET /v1/openapi.json` returns the OpenAPI 3.1 document for the library's routes.
   The daemon's own routes (`/v1/owners/...`, `/v1/connections`, `/v1/tokens`) are in `wardrik_daemon`'s
   `priv/openapi.json`.
@@ -28,35 +28,35 @@ curl $WARDRIK_URL/v1/agents -H "Authorization: Bearer $WARDRIK_TOKEN"
 
 | `type` | Status | When |
 | --- | --- | --- |
-| `invalid_request` | `400` | the input doesn't read |
-| `unauthorized` | `401` | no token, or one unknown or expired |
-| `forbidden` | `403` | the token may not do this |
-| `not_found` | `404` | no such thing, or one the token can't reach |
-| `conflict` | `409` | it conflicts with what's there, like a call the agent doesn't wait on |
-| `internal` | `500` | a bug |
+| `invalid_request` | `400` | malformed or invalid input |
+| `unauthorized` | `401` | missing, unknown, revoked or expired token |
+| `forbidden` | `403` | the token isn't allowed to do this |
+| `not_found` | `404` | doesn't exist, or the token can't access it |
+| `conflict` | `409` | conflicts with current state: no such pending call, agent busy, or defined by a file |
+| `internal` | `500` | a server bug |
 | `not_supported` | `501` | not supported yet |
-| `unavailable` | `503` | can't be done now; try again later |
+| `unavailable` | `503` | temporarily unavailable, such as the store; retry later |
 
 ## IDs in paths
 
-- `{agent}` is an agent ID, as the daemon minted it: `agt_01JF8X5RQ2`. URL-encode it as one segment.
-- `{owner}` is one URL-encoded segment: `acme` (an org), `acme%2F%40jon` (a person), or `deployment`.
-- `?agents=` lists agent IDs, one per `agents=`. Left out, it means every agent the token reaches.
+- `{agent}` is a daemon-generated agent ID: `agt_01JF8X5RQ2`. URL-encode it as one segment.
+- `{owner}` is one URL-encoded segment: `acme` (an org), `acme%2F%40jon` (a user), or `deployment`.
+- `?agents=` takes agent IDs, one per `agents=`. If omitted, it means every agent the token can access.
 
 ### Conversations
 
-An agent can hold many conversations. Put `/conversations/{conversation}` after the agent to act on one:
+An agent has many conversations. To target one, append `/conversations/{conversation}` to the agent path:
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/conversations/C1/messages \
   -H "Authorization: Bearer $WARDRIK_TOKEN" --json '{"content": "Hi"}'
 ```
 
-These routes take the conversation form: read, clear (`DELETE .../conversations/{conversation}`),
+These routes support the conversation path: read, clear (`DELETE .../conversations/{conversation}`),
 messages, decisions, approve, deny, authorization, cancel, stop, events, timeline, runs, calls, stop a
 call, and move.
 
-- Clearing a conversation empties its history. The conversation's ID still takes messages.
+- Clearing a conversation deletes its history. The conversation ID still accepts messages.
 - In `openapi.json`, a conversation route has no `operationId`. Its `x-wardrik-operation` names the
   operation it serves, such as `agent.ask`.
 
@@ -66,7 +66,7 @@ call, and move.
 
 `GET /v1/agents`
 
-Lists the agents the token reaches.
+Lists the agents the token can access.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ Each agent has `id`, `conversation`, `status`, `pending`, `node`, `next_run` and
 
 `GET /v1/agents/{agent}`
 
-Returns what the agent is doing now.
+Returns the agent's current status and activity.
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -111,11 +111,11 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $WARDRIK_TO
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `status` | string | `idle`, `running`, `parked` (waits on a person) or `asleep` |
+| `status` | string | `idle`, `running`, `parked` (pending approval) or `asleep` |
 | `node` | string or null | the node it runs on; `null` while asleep |
 | `pending` | integer | messages queued behind the current one |
 | `activity` | object | what it's doing, as [`activity`](/reference/events/#shared-types) |
-| `interrupts` | array | calls it waits on a person for |
+| `interrupts` | array | calls pending approval |
 | `cursor` | string | where its event log stands; pass it as `after` |
 | `next_run` | string or null | when its next clock trigger runs |
 | `spent_today` | object | what it spent today |
@@ -124,10 +124,10 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $WARDRIK_TO
 
 `PUT /v1/agents/{agent}`
 
-Starts the agent the definition describes, or updates the running one from its next turn.
+Starts the agent with the definition, or updates a running agent from its next turn.
 
-The body is an [agent definition](/reference/agent-files/#keys). The daemon only takes IDs it minted, so
-make the agent with [`POST /v1/owners/{owner}/agents`](#make-an-agent) first.
+The body is an [agent definition](/reference/agent-files/#keys). The daemon only accepts IDs it generated, so
+create the agent with [`POST /v1/owners/{owner}/agents`](#make-an-agent) first.
 
 ```sh
 curl -X PUT $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $WARDRIK_TOKEN" \
@@ -140,7 +140,7 @@ Returns the agent, as [Read an agent](#read-an-agent) does. An unsupported key r
 
 `GET /v1/agents/{agent}/definition`
 
-Returns the definition last put, and the tools it names that offer nothing yet.
+Returns the current definition, and lists its tools that aren't available yet.
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/definition -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -175,7 +175,7 @@ curl -X POST $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/spawn -H "Authorization: Bear
 
 `POST /v1/agents/{agent}/stop`
 
-Puts the agent to sleep, keeping its conversation, until something asks it.
+Stops the agent's process. The conversation is kept. The next message starts it again.
 
 ```sh
 curl -X POST $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/stop -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -189,8 +189,8 @@ curl -X POST $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/stop -H "Authorization: Beare
 
 `DELETE /v1/agents/{agent}/conversation`
 
-Empties the agent's history. The agent, its definition and its other conversations stay. Returns
-`409` while it runs a turn or waits on a person.
+Clears the agent's history. The agent, its definition and its other conversations are kept. Returns
+`409` while a turn is running or pending approval.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/conversation -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -212,7 +212,7 @@ curl -X DELETE $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $
 
 `DELETE /v1/agents`
 
-Forgets each agent `?agents=` names, or every agent the token reaches.
+Removes each agent in `?agents=`, or every agent the token can access.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
@@ -232,7 +232,7 @@ curl -X DELETE "$WARDRIK_URL/v1/agents?agents=agt_01JF8X5RQ2" -H "Authorization:
 
 `POST /v1/agents/{agent}/move`
 
-Restarts the agent on another node. A turn in progress ends; ask it again once it's moved.
+Restarts the agent on another node. A running turn ends. Send the message again after the move.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -286,7 +286,7 @@ curl -X POST $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/cancel -H "Authorization: Bea
 
 `POST /v1/agents/cancel`
 
-Ends the current turn of each agent `?agents=` names, or every agent the token reaches. Returns `202`.
+Ends the current turn of each agent in `?agents=`, or every agent the token can access. Returns `202`.
 
 ```sh
 curl -X POST "$WARDRIK_URL/v1/agents/cancel?agents=agt_01JF8X5RQ2" -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -300,7 +300,7 @@ curl -X POST "$WARDRIK_URL/v1/agents/cancel?agents=agt_01JF8X5RQ2" -H "Authoriza
 
 `GET /v1/agents/{agent}/calls`
 
-Lists the tool calls the agent is running. Returns `404` while it sleeps.
+Lists the agent's running tool calls. Returns `404` while its process is stopped.
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/calls -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -314,7 +314,7 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/calls -H "Authorization: Bearer $WARD
 
 `DELETE /v1/agents/{agent}/calls/{call}`
 
-Stops one tool call. The model gets an error and the turn goes on. Returns `204`.
+Stops one tool call. The model receives an error and the turn continues. Returns `204`.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/calls/toolu_01 -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -326,7 +326,7 @@ curl -X DELETE $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/calls/toolu_01 -H "Authoriz
 
 `GET /v1/interrupts`
 
-Lists the calls agents wait on a person for.
+Lists calls pending approval.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
@@ -341,17 +341,17 @@ curl $WARDRIK_URL/v1/interrupts -H "Authorization: Bearer $WARDRIK_TOKEN"
                  "interrupt": {"id": "toolu_01", "reason": "tool_approval", "message": "Open an issue?", "tool_call_id": "toolu_01"}}]}
 ```
 
-An entry has `conversation` when the call is in one.
+An entry has `conversation` when the call is in a conversation.
 
 ### Approve a call
 
 `POST /v1/agents/{agent}/interrupts/{interrupt}/approve`
 
-Approves one call. It runs as the model wrote it.
+Approves one call. It runs with the model's arguments.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `note` | string | what the agent reads beside the call's answer |
+| `note` | string | text the model receives with the call's result |
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/interrupts/toolu_01/approve \
@@ -366,11 +366,11 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/interrupts/toolu_01/approve \
 
 `POST /v1/agents/{agent}/interrupts/{interrupt}/deny`
 
-Rejects one call.
+Denies one call.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `reason` | string | what the model is told in place of the call's answer |
+| `reason` | string | text the model receives instead of the call's result |
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/interrupts/toolu_01/deny \
@@ -385,7 +385,7 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/interrupts/toolu_01/deny \
 
 `POST /v1/agents/{agent}/decisions`
 
-Approves or rejects several waiting calls together.
+Approves or denies several pending calls at once.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -408,7 +408,7 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/decisions -H "Authorization: Bearer $
 
 `GET /v1/agents/{agent}/interrupts/{interrupt}/authorization`
 
-Returns where a person signs in, for a call waiting with reason `authorization`.
+Returns the sign-in URL for a call pending with reason `authorization`.
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/interrupts/toolu_01/authorization \
@@ -427,7 +427,7 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/interrupts/toolu_01/authorization \
 
 `GET /v1/events`
 
-Reads agents' [events](/reference/events/), as a JSON page or a server-sent event stream.
+Returns agents' [events](/reference/events/), as a JSON page or a server-sent event stream.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
@@ -456,11 +456,11 @@ id: W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDJdXQ
 data: {"specversion":"1.0","type":"wardrik.run.completed","agent":"agt_01JF8X5RQ2",...}
 ```
 
-- Each event's `id` is a cursor. Reconnect with `Last-Event-ID` or `?after=` to resume.
-- Without a cursor, a page starts at the oldest event; a stream starts at the next one written.
-- Deltas carry no `id`.
+- Each event's `id` is a cursor. To resume, reconnect with `Last-Event-ID` or `?after=`.
+- Without a cursor, a page starts at the oldest event, and a stream starts at the next new event.
+- Deltas have no `id`.
 - An idle stream sends a comment every 15 seconds.
-- If the log was trimmed past your cursor, you get `wardrik.events.dropped`, whatever `types` says.
+- If the log was trimmed past your cursor, you receive `wardrik.events.dropped`, regardless of `types`.
 
 `GET /v1/agents/{agent}/events` reads one agent's log the same way.
 
@@ -468,7 +468,7 @@ data: {"specversion":"1.0","type":"wardrik.run.completed","agent":"agt_01JF8X5RQ
 
 `GET /v1/events/head`
 
-Returns the cursor at the end of every log, to start reading from now.
+Returns the current end-of-log cursor, to read only new events.
 
 ```sh
 curl $WARDRIK_URL/v1/events/head -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -482,7 +482,7 @@ curl $WARDRIK_URL/v1/events/head -H "Authorization: Bearer $WARDRIK_TOKEN"
 
 `GET /v1/agents/{agent}/timeline`
 
-Returns the conversation as a person reads it, oldest first.
+Returns the conversation in readable form, oldest first.
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/timeline -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -505,7 +505,7 @@ A run's steps are `thinking`, `text` or `tool` (with `name`, `arguments`, `statu
 
 `GET /v1/agents/{agent}/runs`
 
-Returns each run, newest first, with what it cost, and totals.
+Returns each turn, newest first, with its cost, and totals.
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/runs -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -530,7 +530,7 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/runs -H "Authorization: Bearer $WARDR
 
 Sets or changes one trigger. Returns `404` if the agent has no definition.
 
-The body takes the keys of a [trigger](/reference/agent-files/#triggers): `every`, `timezone`, `prompt`,
+The body has the keys of a [trigger](/reference/agent-files/#triggers): `every`, `timezone`, `prompt`,
 `prompt_file`, `overlap`, `missed`, `jitter`, `feed`, `webhook`.
 
 ```sh
@@ -542,13 +542,13 @@ curl -X PUT $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/triggers/sweep -H "Authorizati
 {"every": "*/30 * * * *", "prompt": "Check the queue.", "overlap": "skip"}
 ```
 
-A trigger whose `every` and `timezone` don't change keeps its next run.
+If `every` and `timezone` are unchanged, the trigger keeps its next run time.
 
 ### Remove a trigger
 
 `DELETE /v1/agents/{agent}/triggers/{trigger}`
 
-Stops and deletes the trigger. Returns it as it was.
+Deletes the trigger. Returns its last state.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/triggers/sweep -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -562,21 +562,21 @@ curl -X DELETE $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/triggers/sweep -H "Authoriz
 
 `POST /v1/hooks/{agent}/{trigger}`
 
-Asks the agent about a request a service sent to its webhook trigger. Returns `202`.
+Sends a webhook request to the agent's webhook trigger. Returns `202`.
 
-- No token. The request proves itself with the trigger's secret, as `Authorization: Bearer` or a
+- No token. The request authenticates with the trigger's secret, as `Authorization: Bearer` or a
   Standard Webhooks signature.
-- The body is the service's own, in any content type. Wardrik takes it and its headers as sent.
-- The same request is asked about once.
-- `404` if there's no such trigger or the secret doesn't match. `503` means send it again later.
+- The body can be any content type. Wardrik passes the body and headers to the agent as sent.
+- A repeated request sends one message.
+- `404` if the trigger doesn't exist or the secret doesn't match. `503` means retry later.
 
 ```sh
 curl $WARDRIK_URL/v1/hooks/agt_01JF8X5RQ2/issues \
   -H "Authorization: Bearer s3cret" --json '{"action": "opened"}'
 ```
 
-`POST /v1/hooks/{agent}/{trigger}/{secret}` does the same with the secret at the end of the path, for a
-service that only takes a URL. Keep that URL as private as a token.
+`POST /v1/hooks/{agent}/{trigger}/{secret}` takes the secret as the last path segment, for services
+that only accept a URL. Treat that URL as a secret.
 
 ## Channels
 
@@ -584,12 +584,12 @@ service that only takes a URL. Keep that URL as private as a token.
 
 `POST /v1/channels/{channel}/{path}`
 
-Hands a chat app's request, like Slack's events, to the channel `config.yaml` names.
+Routes a chat app's request, such as a Slack event, to the named channel in `config.yaml`.
 
-- No token. The channel checks the request's signature.
-- The body is the chat app's own, in any content type.
-- The response is the channel's status, headers and body, as the chat app expects them.
-- `404` if no channel of that name takes requests.
+- No token. The channel verifies the request's signature.
+- The body can be any content type.
+- The response is the channel's status, headers and body, in the chat app's format.
+- `404` if no channel with that name accepts requests.
 
 ```sh
 curl $WARDRIK_URL/v1/channels/slack/events \
@@ -601,7 +601,7 @@ curl $WARDRIK_URL/v1/channels/slack/events \
 3eZbrw1aBm2rZgRNFdxV2595E9CY3gmdALWMmHkvFXO7tYXAYM8P
 ```
 
-See [Slack](/channels/slack/).
+See [Slack](/build/slack/).
 
 ## Deployment
 
@@ -609,7 +609,7 @@ See [Slack](/channels/slack/).
 
 `GET /v1/deployment/nodes`
 
-Lists the nodes, with how many agents run on each and how many sleep.
+Lists the nodes, with the running and stopped agent counts on each.
 
 ```sh
 curl $WARDRIK_URL/v1/deployment/nodes -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -623,7 +623,7 @@ curl $WARDRIK_URL/v1/deployment/nodes -H "Authorization: Bearer $WARDRIK_TOKEN"
 
 `POST /v1/deployment/reload`
 
-Reads every agent's definition again, or those `?agents=` names. Each agent takes it from its next turn.
+Rereads every agent's definition, or those in `?agents=`. Each applies from the agent's next turn.
 
 ```sh
 curl -X POST $WARDRIK_URL/v1/deployment/reload -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -637,7 +637,7 @@ curl -X POST $WARDRIK_URL/v1/deployment/reload -H "Authorization: Bearer $WARDRI
 
 `GET /v1/deployment/audit`
 
-Returns a page of what people changed, oldest first.
+Returns a page of the audit log, oldest first.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
@@ -652,7 +652,7 @@ curl "$WARDRIK_URL/v1/deployment/audit?starting_after=11" -H "Authorization: Bea
 {"events": [{"specversion": "1.0", "type": "wardrik.agent.defined", "...": "..."}], "next": 12}
 ```
 
-Each change is a CloudEvent, like an agent's [events](/reference/events/).
+Each entry is a CloudEvent, like an agent's [events](/reference/events/).
 
 ## Daemon: agents
 
@@ -660,7 +660,7 @@ Each change is a CloudEvent, like an agent's [events](/reference/events/).
 
 `POST /v1/owners/{owner}/agents`
 
-Mints an agent ID, keeps its record, and defines the agent. Returns `201`.
+Generates an agent ID, stores the record, and defines the agent. Returns `201`.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -682,7 +682,7 @@ curl $WARDRIK_URL/v1/owners/acme%2F%40jon/agents -H "Authorization: Bearer $WARD
 
 `GET /v1/owners/{owner}/agents`
 
-Lists the agents of the owner's org that the token may read.
+Lists the agents in the owner's org that the token can read.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
@@ -702,7 +702,7 @@ curl "$WARDRIK_URL/v1/owners/acme/agents?name=notes" -H "Authorization: Bearer $
 
 `GET /v1/owners/{owner}/secrets`
 
-Lists the owner's secret names and purposes. Never a value.
+Lists the owner's secret names and purposes, never values.
 
 ```sh
 curl $WARDRIK_URL/v1/owners/acme/secrets -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -719,7 +719,7 @@ curl $WARDRIK_URL/v1/owners/acme/secrets -H "Authorization: Bearer $WARDRIK_TOKE
 
 `PUT /v1/owners/{owner}/secrets/{name}`
 
-Seals a value under the name, replacing any old one. Returns `204`.
+Stores an encrypted value under the name, replacing any existing one. Returns `204`.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -731,13 +731,13 @@ curl -X PUT $WARDRIK_URL/v1/owners/acme/secrets/ANTHROPIC_API_KEY -H "Authorizat
   --json '{"value": "sk-ant-0123456789abcdef", "purpose": "api_key"}'
 ```
 
-The `deployment` owner's secrets are what `${NAME}` in `config.yaml` reads.
+`${NAME}` in `config.yaml` resolves the `deployment` owner's secrets.
 
 ### Remove a secret
 
 `DELETE /v1/owners/{owner}/secrets/{name}`
 
-Removes the secret. Returns `204`, even if there was none.
+Removes the secret. Returns `204`, even if it didn't exist.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/owners/acme/secrets/ANTHROPIC_API_KEY -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -749,7 +749,7 @@ curl -X DELETE $WARDRIK_URL/v1/owners/acme/secrets/ANTHROPIC_API_KEY -H "Authori
 
 `GET /v1/owners/{owner}/ceilings`
 
-Lists the org's spending ceilings, with what its agents spent this period.
+Lists the org's spending ceilings, with its agents' spend this period.
 
 ```sh
 curl $WARDRIK_URL/v1/owners/acme/ceilings -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -766,7 +766,7 @@ curl $WARDRIK_URL/v1/owners/acme/ceilings -H "Authorization: Bearer $WARDRIK_TOK
 
 `GET /v1/owners/{owner}/servers`
 
-Lists the MCP servers the owner's agents reach: the owner's own, then the org's, then the deployment's.
+Lists the MCP servers available to the owner's agents: the owner's, then the org's, then the deployment's.
 
 ```sh
 curl $WARDRIK_URL/v1/owners/acme/servers -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -781,7 +781,7 @@ curl $WARDRIK_URL/v1/owners/acme/servers -H "Authorization: Bearer $WARDRIK_TOKE
 
 `POST /v1/owners/{owner}/servers`
 
-Adds an MCP server for the owner's agents. Its tools reach them from their next turn. Returns `201`.
+Adds an MCP server for the owner's agents. Its tools are available from their next turn. Returns `201`.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -792,7 +792,7 @@ Adds an MCP server for the owner's agents. Its tools reach them from their next 
 | `except` | array | the server's tool names to leave |
 
 `oauth` takes `scopes`, and `provider` (an OAuth app's name) or `issuer`, `client_id` and `client_secret`.
-Left empty, the daemon finds the server's own sign-in.
+If empty, the daemon discovers the server's OAuth metadata.
 
 ```sh
 curl $WARDRIK_URL/v1/owners/acme/servers -H "Authorization: Bearer $WARDRIK_TOKEN" \
@@ -807,7 +807,7 @@ curl $WARDRIK_URL/v1/owners/acme/servers -H "Authorization: Bearer $WARDRIK_TOKE
 
 `DELETE /v1/owners/{owner}/servers/{name}`
 
-Removes one of the owner's own servers, and forgets the sign-ins to it.
+Removes one of the owner's servers, and deletes its sign-ins.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/owners/acme/servers/crm -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -823,7 +823,7 @@ curl -X DELETE $WARDRIK_URL/v1/owners/acme/servers/crm -H "Authorization: Bearer
 
 `GET /v1/owners/{owner}/notify_targets`
 
-Lists where the owner's agents' notices can go: the owner's own, then the org's, then the deployment's.
+Lists the notice targets available to the owner's agents: the owner's, then the org's, then the deployment's.
 
 ```sh
 curl $WARDRIK_URL/v1/owners/acme/notify_targets -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -838,7 +838,7 @@ curl $WARDRIK_URL/v1/owners/acme/notify_targets -H "Authorization: Bearer $WARDR
 
 `POST /v1/owners/{owner}/notify_targets`
 
-Adds a webhook that agents' notices are posted to. Returns `201`.
+Adds a notice webhook. Returns `201`.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -860,7 +860,7 @@ curl $WARDRIK_URL/v1/owners/acme/notify_targets -H "Authorization: Bearer $WARDR
 
 `DELETE /v1/owners/{owner}/notify_targets/{name}`
 
-Removes one of the owner's own targets. Returns it as it was.
+Removes one of the owner's targets. Returns its last state.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/owners/acme/notify_targets/ops -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -872,7 +872,7 @@ curl -X DELETE $WARDRIK_URL/v1/owners/acme/notify_targets/ops -H "Authorization:
 
 `GET /v1/owners/{owner}/providers`
 
-Lists the OAuth apps the owner's people sign in with. Never a client secret.
+Lists the owner's OAuth apps, never client secrets.
 
 ```sh
 curl $WARDRIK_URL/v1/owners/acme/providers -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -888,7 +888,7 @@ curl $WARDRIK_URL/v1/owners/acme/providers -H "Authorization: Bearer $WARDRIK_TO
 
 `POST /v1/owners/{owner}/providers`
 
-Adds an OAuth app for the owner's people. Returns `201`.
+Adds an OAuth app for the owner's users. Returns `201`.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -897,13 +897,13 @@ Adds an OAuth app for the owner's people. Returns `201`.
 | `resource` | string | the API its tokens are for; finds the issuer if none is given |
 | `authorization_endpoint`, `token_endpoint` | string | for a service without metadata |
 | `client_id` | string | the app's client ID |
-| `client_secret.name` | string | a vault secret sealed as `client_secret` |
+| `client_secret.name` | string | a vault secret stored as `client_secret` |
 | `client_auth` | string | `post` (default) or `basic` |
 | `scopes` | array | scopes to ask for |
 | `flow` | string | `browser` (default) or `device` |
 | `authorization_params` | object | extra browser sign-in params, like `access_type` |
 
-It needs `issuer`, `resource`, or both endpoints.
+It requires `issuer`, `resource`, or both endpoints.
 
 ```sh
 curl $WARDRIK_URL/v1/owners/acme/providers -H "Authorization: Bearer $WARDRIK_TOKEN" \
@@ -913,13 +913,13 @@ curl $WARDRIK_URL/v1/owners/acme/providers -H "Authorization: Bearer $WARDRIK_TO
            "scopes": ["tweet.read", "tweet.write", "offline.access"]}'
 ```
 
-Returns the app as it's kept, as [List OAuth apps](#list-oauth-apps) shows it.
+Returns the stored app, in the format of [List OAuth apps](#list-oauth-apps).
 
 ### Remove an OAuth app
 
 `DELETE /v1/owners/{owner}/providers/{name}`
 
-Removes one of the owner's own apps. Returns it as it was.
+Removes one of the owner's apps. Returns its last state.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/owners/acme/providers/x -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -927,13 +927,13 @@ curl -X DELETE $WARDRIK_URL/v1/owners/acme/providers/x -H "Authorization: Bearer
 
 ## Daemon: connections
 
-Your own connected accounts. A token always manages its own.
+The token user's connected accounts. Any token can manage its own.
 
 ### List connections
 
 `GET /v1/connections`
 
-Lists the accounts you can connect, and whether you hold each.
+Lists the available providers, and whether each is connected.
 
 ```sh
 curl $WARDRIK_URL/v1/connections -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -947,14 +947,14 @@ curl $WARDRIK_URL/v1/connections -H "Authorization: Bearer $WARDRIK_TOKEN"
 | Field | Type | Description |
 | --- | --- | --- |
 | `provider` | string | an OAuth app's name, or an MCP server's with its own sign-in |
-| `connected` | boolean | whether you hold it |
+| `connected` | boolean | whether it's connected |
 | `signing_in` | boolean | whether a sign-in you started is still under way |
 
 ### Connect an account
 
 `POST /v1/connections/{provider}`
 
-Starts your sign-in, or says you hold the account already.
+Starts a sign-in, or returns `connected: true` if already connected.
 
 ```sh
 curl -X POST $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -964,13 +964,13 @@ curl -X POST $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDR
 {"provider": "github", "connected": false, "authorization": {"url": "https://github.com/login/device", "code": "WDJB-MJHT"}}
 ```
 
-Open `authorization.url`. A device sign-in shows `code` to enter there.
+Open `authorization.url`. For a device sign-in, enter `code` there.
 
 ### Finish a browser sign-in
 
 `POST /v1/connections/{provider}/pair`
 
-Sends the code the sign-in page showed. Five wrong codes end the sign-in.
+Completes a browser sign-in with the code from its page. Five wrong codes cancel the sign-in.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -990,7 +990,7 @@ curl $WARDRIK_URL/v1/connections/linear/pair -H "Authorization: Bearer $WARDRIK_
 `DELETE /v1/connections/{provider}`
 
 Forgets your account. The next call that needs it asks you to sign in again. Returns `204`, or
-`404` if you hold no such account.
+`404` if there is no such connection.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -1002,7 +1002,7 @@ curl -X DELETE $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WAR
 
 `GET /v1/tokens`
 
-Lists every token. Never a secret.
+Lists every token, never secrets.
 
 ```sh
 curl $WARDRIK_URL/v1/tokens -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -1017,7 +1017,7 @@ curl $WARDRIK_URL/v1/tokens -H "Authorization: Bearer $WARDRIK_TOKEN"
 
 `POST /v1/tokens`
 
-Creates a token that acts as `subject`. Returns `201` with the secret, shown once.
+Creates a token that authenticates as `subject`. Returns `201` with the secret, shown once.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -1036,13 +1036,13 @@ curl $WARDRIK_URL/v1/tokens -H "Authorization: Bearer $WARDRIK_TOKEN" \
  "expires": "2026-12-01T00:00:00Z", "secret": "wdk_mzxw6ytboi_0123456789abcdef"}
 ```
 
-Only the `admin` user can make a `user:admin` token.
+Only the `admin` user can create a `user:admin` token.
 
 ### Revoke a token
 
 `DELETE /v1/tokens/{id}`
 
-Revokes the token at once. Returns `204`.
+Revokes the token immediately. Returns `204`.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/tokens/mzxw6ytboi -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -1054,6 +1054,6 @@ curl -X DELETE $WARDRIK_URL/v1/tokens/mzxw6ytboi -H "Authorization: Bearer $WARD
 
 - Messages are JSON-RPC 2.0, one per text frame, as MCP `2025-06-18`.
 - Wardrik is the client. It sends `initialize`, `tools/list`, `tools/call` and `notifications/cancelled`.
-- A call's `_meta` has the `agent` it's for and an `idempotencyKey`. Answer with `_meta.costUsd` to report cost.
-- Agents whose `tools` include `workers/*` get the worker's tools as `workers__NAME`.
-- A plain request with a working token returns `426`. The socket closes with `1008` once the token stops working.
+- A call's `_meta` has the calling `agent` and an `idempotencyKey`. Return `_meta.costUsd` to report cost.
+- Agents with `workers/*` in `tools` see the worker's tools as `workers__NAME`.
+- A non-WebSocket request with a valid token returns `426`. The socket closes with `1008` when the token is revoked or expires.

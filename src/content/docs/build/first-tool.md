@@ -5,8 +5,8 @@ sidebar:
   order: 3.1
 ---
 
-You'll build `post_status`, a tool that opens an incident on a public status page. You need the
-daemon [installed](/getting-started/install/), Node 22.18 or later, and a
+Build `post_status`, a tool that opens an incident on a status page. Requires the daemon
+[installed](/getting-started/install/), Node 22.18+, and a
 [Statuspage](https://developer.statuspage.io/) page ID and API key.
 
 ## 1. Start an app
@@ -57,12 +57,12 @@ process.on("SIGINT", () => stop.abort());
 await wardrik.work({ signal: stop.signal });
 ```
 
-- It isn't `readOnly`, so every call waits for a person unless a policy allows it.
-- A thrown error fails the call. The model reads the message.
+- It isn't `readOnly`, so every call needs approval unless a policy allows it.
+- A thrown error fails the call. The model receives the error message.
 
 ## 3. Connect it
 
-Let the user `default/@statuspage` serve tools to the org's agents:
+Allow the user `default/@statuspage` to serve tools to the org's agents:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 roles:
@@ -81,8 +81,8 @@ export STATUSPAGE_PAGE_ID=... STATUSPAGE_API_KEY=...
 WARDRIK_TOKEN=wdk_... node statuspage.ts
 ```
 
-`default` is the org `config.yaml` names, unless it names another. The app opens no port. The
-Statuspage key never leaves it.
+`default` is the `org` in `config.yaml`. The app opens no port, and the Statuspage key stays in
+the app.
 
 ## 4. Give an agent the tool
 
@@ -115,7 +115,7 @@ wardrik approval approve status call_7c2e…
 wardrik approval deny status call_7c2e… --reason "We don't post until it's confirmed."
 ```
 
-Approved, your app posts it, and the agent gets the link.
+On approval, your app posts the incident and the agent receives the link.
 
 ## 6. Run it as a service
 
@@ -140,4 +140,4 @@ systemctl --user daemon-reload
 systemctl --user enable --now statuspage
 ```
 
-Elsewhere, or in a container, see [Host your tools](/build/host-tools/).
+For other machines or containers, see [Host your tools](/build/host-tools/).

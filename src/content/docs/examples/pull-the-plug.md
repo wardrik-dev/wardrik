@@ -1,18 +1,18 @@
 ---
 title: Pull the plug, then press stop
-description: Kill -9 Wardrik mid-task and the agent finishes without doing a step twice. Stop it, and it stays stopped.
+description: Kill -9 Wardrik mid-turn and the agent resumes without repeating a tool call. Cancel it, and it stays cancelled.
 sidebar:
   order: 8
 ---
 
-An agent sets up two new hires, one tool call at a time. Kill Wardrik halfway and start it again:
-the agent finishes, with no step done twice. Stop the agent and kill Wardrik again: it stays stopped.
+An agent onboards two new hires, one tool call at a time. Kill Wardrik midway and restart it. The
+agent resumes without repeating a call. Cancel the turn and kill Wardrik again. It stays cancelled.
 
-Needs Node 22.18 or later, and `jq`.
+Requires Node 22.18+ and `jq`.
 
 ## The files
 
-Run the demo apart from any daemon you have:
+Isolate the demo from any existing daemon:
 
 ```sh
 export XDG_CONFIG_HOME=~/plug/config XDG_DATA_HOME=~/plug/data XDG_STATE_HOME=~/plug/state
@@ -32,9 +32,8 @@ bindings:
   - {org: default, role: it, subjects: [user:default/@it]}
 ```
 
-- `trusted_workers: true` treats the script's answers as your own, so later steps don't wait for a
-  person.
-- The `it` role lets the script ask the agent, follow it, and serve its tools. Nothing else.
+- `trusted_workers: true` marks the script's results as trusted, so later calls don't need approval.
+- The `it` role allows the script to message the agent, stream its events and serve its tools.
 
 ```markdown title="~/plug/config/wardrik/agents/onboarding.md"
 ---
@@ -107,7 +106,7 @@ for await (const event of agent.stream("Ana and Ben start on Monday. Please set 
 await working;
 ```
 
-`idempotent: true` lets a call that was cut off run again, under the same key.
+`idempotent: true` allows an interrupted call to be retried with the same key.
 
 ## Try it
 
@@ -118,14 +117,14 @@ wardrik token create it --subject user:default/@it --expires 1d     # copy the s
 wardrik agent show onboarding --json | jq -r .agent.agent  # the agent's ID
 ```
 
-In another terminal, in a directory of its own:
+In another terminal, in a new directory:
 
 ```sh
 npm install @wardrik/sdk@0.1.0-rc.2 zod
 WARDRIK_URL=http://127.0.0.1:4848 WARDRIK_TOKEN=... AGENT=agt_... node onboarding.ts
 ```
 
-While a step runs, pull the plug:
+While a call is running, kill the daemon:
 
 ```sh
 kill -9 "$(wardrik pid)"
@@ -141,7 +140,7 @@ wardrik start
 [agent] wardrik.run.completed
 ```
 
-One laptop each. Now clear the agent, run the script again, and stop the agent part way:
+One laptop each. Now clear the agent, run the script again, and cancel the turn midway:
 
 ```sh
 wardrik agent clear onboarding
@@ -151,15 +150,15 @@ wardrik start
 wardrik ls onboarding                # idle
 ```
 
-No call arrives. The stop was written down, so the agent comes back idle.
+No calls run. The cancellation was persisted, so the agent restarts idle.
 
 ## What it shows
 
-- Each step is written down before it runs, so a restarted Wardrik carries on from it. See
+- Each round is persisted before it runs, so a restarted Wardrik resumes from it. See
   [Durable runs](/concepts/agents/#durable-runs).
-- A finished call is answered from the log (`"replayed": true`), never run twice.
-- A call made again carries the same idempotency key.
-- Drop `idempotent: true` and pull the plug: the cut-off call waits for a person instead.
+- A completed call returns its result from the log (`"replayed": true`) and never runs twice.
+- A retried call has the same idempotency key.
+- Remove `idempotent: true` and kill the daemon. The interrupted call needs approval instead.
 - A cancelled turn stays cancelled across a crash.
 
 Clean up with `wardrik stop && rm -rf ~/plug`, then open a new shell.

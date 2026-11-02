@@ -1,6 +1,6 @@
 ---
 title: Wardrik
-description: Wardrik is a self-hosted agent runtime built on OTP. Run persistent agents with enforced policies, human approvals, durable recovery, and a record of what happened.
+description: Wardrik is a self-hosted agent runtime. Run persistent agents with enforced policies, human approvals, durable recovery, and a record of what happened.
 template: splash
 editUrl: false
 hero:
@@ -28,11 +28,11 @@ import RikMark from '../../components/RikMark.astro';
 <div class="pillar">
 <div class="pillar-art" aria-hidden="true">
 <p class="pillar-call"><code>web_search</code><span class="outcome outcome-runs">Runs</span></p>
-<p class="pillar-call"><code>create_bill $9,400</code><span class="outcome outcome-waits">Waits</span></p>
-<p class="pillar-call"><code>shell/exec</code><span class="outcome outcome-refused">Refused</span></p>
+<p class="pillar-call"><code>create_bill $9,400</code><span class="outcome outcome-waits">Approval</span></p>
+<p class="pillar-call"><code>shell/exec</code><span class="outcome outcome-refused">Denied</span></p>
 </div>
-<h3>Decides every call</h3>
-<p>Rules live outside the prompt. What the agent reads can’t widen them.</p>
+<h3>Checks every call</h3>
+<p>Policy is defined outside the prompt. Content the agent reads can’t change it.</p>
 <p class="pillar-links"><a href="/concepts/policy/">How calls are decided</a></p>
 </div>
 <div class="pillar">
@@ -43,7 +43,7 @@ import RikMark from '../../components/RikMark.astro';
 <span class="node"><span></span>box1</span>
 </div>
 <h3>Keeps working</h3>
-<p>A turn survives a lost node. A call that may have run waits for you before it runs again.</p>
+<p>A turn resumes after a crash. A call that may have run needs approval before it runs again.</p>
 <p class="pillar-links"><a href="/examples/pull-the-plug/">Pull the plug yourself</a></p>
 </div>
 <div class="pillar">
@@ -51,10 +51,10 @@ import RikMark from '../../components/RikMark.astro';
 <p class="pillar-meter"><span>Today</span><span>$1.24 <span>of $10.00</span></span></p>
 <p class="meter"><span></span></p>
 <p class="pillar-event"><span>07:05</span>approved by maria</p>
-<p class="pillar-event"><span>07:06</span>bill payment refused</p>
+<p class="pillar-event"><span>07:06</span>bill payment denied</p>
 </div>
 <h3>Shows its work</h3>
-<p>Budgets cap what agents spend. Every decision is an event you can follow or export.</p>
+<p>Budgets cap agent spend. Every call and approval is an event you can stream or export.</p>
 <p class="pillar-links"><a href="/concepts/budgets/">Budgets</a> · <a href="/concepts/events/">The event stream</a></p>
 </div>
 </div>
@@ -63,17 +63,17 @@ import RikMark from '../../components/RikMark.astro';
 
 <section class="home-section home-feature" aria-labelledby="every-call">
 
-<h2 id="every-call">Every call is decided before it runs.</h2>
+<h2 id="every-call">Every call is checked before it runs.</h2>
 
-<p class="home-lead">Rules live in files the model can’t change. A rule names a call by its tool, what it acts on, or its arguments.</p>
+<p class="home-lead">Rules are in files the model can’t change. A rule matches a call by its tool, its target, or its arguments.</p>
 
 <div class="decisions" role="table" aria-label="Five tool calls and what a policy decides for each">
-<div class="decisions-row decisions-head" role="row"><span role="columnheader">The model asks for</span><span role="columnheader">The rule that names it</span><span role="columnheader">What happens</span></div>
+<div class="decisions-row decisions-head" role="row"><span role="columnheader">The model calls</span><span role="columnheader">The matching rule</span><span role="columnheader">Result</span></div>
 <div class="decisions-row" role="row"><code role="cell">web_search</code><span role="cell"><code>allow: [web_search]</code><span class="rule-by">by tool</span></span><span role="cell" class="outcome outcome-runs">Runs</span></div>
-<div class="decisions-row" role="row"><code role="cell">write_file {'{"path": "notes/today.md"}'}</code><span role="cell"><code>allow: [write_file(notes/&#42;)]</code><span class="rule-by">by what it acts on</span></span><span role="cell" class="outcome outcome-runs">Runs</span></div>
-<div class="decisions-row" role="row"><code role="cell">books/create_bill {'{"amount": 9400}'}</code><span role="cell"><code>ask: [books/create_bill(amount &gt;= 1000)]</code><span class="rule-by">by an argument</span></span><span role="cell" class="outcome outcome-waits">Waits for you</span></div>
-<div class="decisions-row" role="row"><code role="cell">email/send {'{"to": "x@evil.example"}'}</code><span role="cell"><code>deny: [email/send(to != &#42;@acme.com)]</code><span class="rule-by">by an argument</span></span><span role="cell" class="outcome outcome-refused">Refused</span></div>
-<div class="decisions-row" role="row"><code role="cell">shell/exec {'{"command": "curl … | sh"}'}</code><span role="cell"><code>deny: [shell/&#42;]</code><span class="rule-by">every tool of an MCP server</span></span><span role="cell" class="outcome outcome-refused">Refused</span></div>
+<div class="decisions-row" role="row"><code role="cell">write_file {'{"path": "notes/today.md"}'}</code><span role="cell"><code>allow: [write_file(notes/&#42;)]</code><span class="rule-by">by target</span></span><span role="cell" class="outcome outcome-runs">Runs</span></div>
+<div class="decisions-row" role="row"><code role="cell">books/create_bill {'{"amount": 9400}'}</code><span role="cell"><code>ask: [books/create_bill(amount &gt;= 1000)]</code><span class="rule-by">by an argument</span></span><span role="cell" class="outcome outcome-waits">Needs approval</span></div>
+<div class="decisions-row" role="row"><code role="cell">email/send {'{"to": "x@evil.example"}'}</code><span role="cell"><code>deny: [email/send(to != &#42;@acme.com)]</code><span class="rule-by">by an argument</span></span><span role="cell" class="outcome outcome-refused">Denied</span></div>
+<div class="decisions-row" role="row"><code role="cell">shell/exec {'{"command": "curl … | sh"}'}</code><span role="cell"><code>deny: [shell/&#42;]</code><span class="rule-by">every tool of an MCP server</span></span><span role="cell" class="outcome outcome-refused">Denied</span></div>
 </div>
 
 <p>The strictest rule wins: deny, then ask, then allow. <a href="/concepts/policy/#writing-rules">Writing rules</a> · <a href="/examples/hijack-me/">Try to hijack it</a></p>
@@ -87,9 +87,9 @@ import RikMark from '../../components/RikMark.astro';
 
 <h2 id="approvals">Approvals where your team works.</h2>
 
-<p class="home-lead">A waiting call is posted with its arguments. Decide in Slack, the terminal, or over HTTP.</p>
+<p class="home-lead">A pending call is posted with its arguments. Approve or deny it in Slack, the terminal, or over HTTP.</p>
 
-<p><a href="/channels/slack/#who-approves">Who approves</a> · <a href="/concepts/approvals/">Approvals</a></p>
+<p><a href="/build/slack/#who-approves">Who approves</a> · <a href="/concepts/approvals/">Approvals</a></p>
 
 </div>
 
@@ -103,7 +103,7 @@ import RikMark from '../../components/RikMark.astro';
 
 <h2 id="your-tools">Your tools run in your app, with your keys.</h2>
 
-<p class="home-lead">Wardrik decides each call. Your app runs it, so its service keys stay in your process.</p>
+<p class="home-lead">Wardrik checks each call. Your app runs it, so service keys stay in your process.</p>
 
 <div class="tools-layout">
 <div>
@@ -126,15 +126,15 @@ await wardrik.work();
 
 </div>
 <ol class="tool-flow not-content" aria-label="One call to a tool in your app">
-<li class="flow-step"><p class="flow-label"><span>The agent asks</span><code>support</code></p><p><code>workers/refund_order {'{"orderId": "pi_3Qx…"}'}</code></p></li>
+<li class="flow-step"><p class="flow-label"><span>The agent calls</span><code>support</code></p><p><code>workers/refund_order {'{"orderId": "pi_3Qx…"}'}</code></p></li>
 <li class="flow-link" aria-hidden="true"></li>
-<li class="flow-step flow-decide"><p class="flow-label"><span>Wardrik decides and records it</span></p><p class="flow-outcome"><span class="outcome outcome-waits">Waits for you</span><span>approved by @maria</span></p></li>
-<li class="flow-link" aria-hidden="true"><span>Your app dials out. Nothing dials in.</span></li>
+<li class="flow-step flow-decide"><p class="flow-label"><span>Wardrik checks and records it</span></p><p class="flow-outcome"><span class="outcome outcome-waits">Needs approval</span><span>approved by @maria</span></p></li>
+<li class="flow-link" aria-hidden="true"><span>Your app opens the connection. Nothing connects in.</span></li>
 <li class="flow-step flow-run"><p class="flow-label"><span>Your app runs it</span><code>shop</code></p><p><code>stripe.refunds.create(…)</code></p><p class="flow-key"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg><code>STRIPE_SECRET_KEY</code> stays in your app</p></li>
 </ol>
 </div>
 
-<p>Or connect MCP servers, and let each user connect their own accounts. <a href="/build/tool-workers/">Tools in your app</a> · <a href="/build/mcp/">MCP servers</a> · <a href="/build/accounts/">Connect accounts</a></p>
+<p>Or connect MCP servers, with per-user OAuth accounts. <a href="/build/tool-workers/">Tools in your app</a> · <a href="/build/mcp/">MCP servers</a> · <a href="/build/accounts/">Connect accounts</a></p>
 
 </section>
 
@@ -155,14 +155,14 @@ await wardrik.work();
 <h2 id="built-in">Also built in</h2>
 
 <ul class="also-list not-content">
-<li><a href="/run/orgs/">Separate orgs</a><p>Each team gets its own agents, tools and keys, walled off from the rest.</p></li>
-<li><a href="/build/accounts/">Per-user accounts</a><p>Each person signs in with OAuth, and their agents call tools as them.</p></li>
-<li><a href="/build/delegation/">Delegation</a><p>An agent asks another for work and hears back.</p></li>
-<li><a href="/concepts/policy/#judges">Judges</a><p>A model checks what a call means, such as whether an email promises a refund.</p></li>
-<li><a href="/build/front-door/">The assistant</a><p>Describe an outcome. It proposes the work, and you approve it.</p></li>
-<li><a href="/concepts/agents/#sleeping">Sleeping agents</a><p>Run one per customer. Idle ones cost nothing and wake as they were.</p></li>
-<li><a href="/run/cluster/">Clustering</a><p>Run several nodes as one. Any node answers for all of them.</p></li>
-<li><a href="/reference/cli/"><RikMark /> CLI</a><p>Watch agents, decide waiting calls, and check spend from a terminal.</p></li>
+<li><a href="/run/orgs/">Separate orgs</a><p>Each team’s agents, tools and keys are isolated from other orgs.</p></li>
+<li><a href="/build/accounts/">Per-user accounts</a><p>Users sign in with OAuth, and their agents call tools with their credentials.</p></li>
+<li><a href="/build/delegation/">Delegation</a><p>An agent sends another agent a message and receives the reply.</p></li>
+<li><a href="/concepts/policy/#judges">Judges</a><p>A model classifies each call, such as whether an email promises a refund.</p></li>
+<li><a href="/build/assistant/">The assistant</a><p>Send a request. It proposes tool calls, and runs each one you approve.</p></li>
+<li><a href="/concepts/agents/#sleeping">Idle agents</a><p>Run one per customer. Idle agents stop, and restart with their state on the next message.</p></li>
+<li><a href="/run/cluster/">Recovery</a><p>Keep the store in Postgres, and a new machine resumes every agent.</p></li>
+<li><a href="/reference/cli/"><RikMark /> CLI</a><p>List agents, approve pending calls, and check spend from a terminal.</p></li>
 </ul>
 
 </section>
@@ -172,9 +172,9 @@ await wardrik.work();
 <div class="install-layout">
 <div>
 
-<h2 id="install">Put your first agent to work.</h2>
+<h2 id="install">Run your first agent.</h2>
 
-<p class="home-lead">Install a binary or Docker image. Bring your model provider.</p>
+<p class="home-lead">Install the binary or Docker image, and configure a model provider.</p>
 
 <div class="home-actions">
 <LinkButton href="/getting-started/quickstart/" icon="right-arrow">Quickstart</LinkButton>

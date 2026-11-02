@@ -1,16 +1,16 @@
 ---
 title: Incident responder
-description: "Paged by PagerDuty, it investigates across your monitoring and proposes the fix for on-call to approve in Slack."
+description: "A PagerDuty webhook starts the agent. It investigates your monitoring and proposes a fix for on-call to approve in Slack."
 sidebar:
   order: 1
 ---
 
-When PagerDuty pages, this agent reads the alert, checks Datadog, finds the deploy that changed
-things, and posts what it found to `#incidents`. It proposes the fix as a call: restart the pod,
-scale up, or roll back. On-call approves it from Slack.
+A PagerDuty webhook starts a turn. The agent reads the alert, queries Datadog, finds the related
+deploy, and posts its findings to `#incidents`. It proposes a fix as a tool call: restart a pod,
+scale up, or roll back. On-call approves the call in Slack.
 
-Needs a [public address](/run/public-address/) PagerDuty can reach, keys for PagerDuty, Datadog,
-GitHub and Linear, a kubeconfig, and a [Slack app](/channels/slack/).
+Requires a [public address](/run/public-address/) for PagerDuty, keys for PagerDuty, Datadog,
+GitHub and Linear, a kubeconfig, and a [Slack app](/build/slack/).
 
 ## The files
 
@@ -58,44 +58,12 @@ bindings:
   - {org: acme, role: worker, subjects: [user:acme/@statuspage]}
 ```
 
-- `members` maps each engineer's Slack ID to a user. The `on-call` binding lets them approve.
-- `worker` lets the status page app below offer its tool to `oncall`, and nothing else.
-- `only` leaves out the tools the agent never needs, such as merging or deleting a deployment.
+- `members` maps each Slack ID to a user. The `on-call` binding allows those users to approve.
+- `worker` allows the status page app below to serve tools to `oncall` only.
+- `only` excludes tools the agent doesn't need, such as merging or deleting a deployment.
 
-Statuspage has no MCP server, so a small app posts to it with the
-[TypeScript SDK](/build/tool-workers/):
-
-```ts title="statuspage.ts"
-import { Wardrik } from "@wardrik/sdk";
-import { z } from "zod";
-
-const wardrik = new Wardrik({ name: "statuspage" });
-
-wardrik.tool({
-  name: "post_status",
-  description: "Open an incident on the public status page, with its first update.",
-  input: z.object({
-    name: z.string(),
-    status: z.enum(["investigating", "identified", "monitoring", "resolved"]),
-    body: z.string(),
-  }),
-  run: async (incident, { signal }) => {
-    const url = `https://api.statuspage.io/v1/pages/${process.env.STATUSPAGE_PAGE_ID}/incidents`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { authorization: `OAuth ${process.env.STATUSPAGE_API_KEY}`, "content-type": "application/json" },
-      body: JSON.stringify({ incident }),
-      signal,
-    });
-    if (!response.ok) throw new Error(`Statuspage answered ${response.status}`);
-    return response.json();
-  },
-});
-
-await wardrik.work();
-```
-
-It isn't `readOnly`, so every post waits for a person. The Statuspage key stays in the app.
+Statuspage has no MCP server, so it uses `statuspage.ts` from
+[Your first tool](/build/first-tool/#2-write-the-tool). Every post needs approval.
 
 ```yaml title="~/.config/wardrik/policies/incident.yaml"
 allow:
@@ -154,7 +122,7 @@ wardrik doctor
 wardrik agent show oncall           # note its ID, agt_...
 ```
 
-Run the status page app with a token of its own:
+Run the status page app with its own token:
 
 ```sh
 wardrik token create statuspage --subject user:acme/@statuspage
@@ -168,7 +136,7 @@ In PagerDuty, add a Generic Webhook (v3) for `incident.triggered` at:
 https://agents.acme.example/v1/hooks/agt_.../pagerduty/<the secret>
 ```
 
-Or send one yourself:
+Or send a test request:
 
 ```sh
 curl -X POST "https://agents.acme.example/v1/hooks/agt_.../pagerduty/$(cat hook.secret)" \
@@ -176,13 +144,14 @@ curl -X POST "https://agents.acme.example/v1/hooks/agt_.../pagerduty/$(cat hook.
   -d '{"event": {"event_type": "incident.triggered", "data": {"title": "checkout-api: p99 over 2s"}}}'
 ```
 
-`#incidents` shows what it found, then the proposed fix with **Approve** and **Deny**.
+`#incidents` shows the findings, then the proposed fix with **Approve** and **Deny**.
 
 ## What it shows
 
-- A webhook starts a turn the moment PagerDuty fires. See [Trigger an agent](/build/triggers/).
-- Investigating runs alone. Every change waits for on-call, with its arguments shown.
-- Argument rules set exact limits: replicas, and which workflow.
-- Logs are outside content, so a crafted error message can't start a rollback. The postmortem is
-  the one thing `allow_after` lets through.
-- `per: turn` caps each page at $3. See [Budgets](/concepts/budgets/).
+- A webhook trigger starts a turn when PagerDuty sends the event. See [Trigger an agent](/build/triggers/).
+- Read-only calls run without approval. Every change needs on-call's approval, with its arguments
+  shown.
+- Argument rules set exact limits: replica count, and which workflow.
+- Logs are content from outside, so a crafted error message can't trigger a rollback.
+  `allow_after` allows only the postmortem.
+- `per: turn` caps each incident at $3. See [Budgets](/concepts/budgets/).

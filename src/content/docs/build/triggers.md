@@ -1,11 +1,12 @@
 ---
 title: Trigger an agent
-description: Ask an agent something on a clock, when a feed has something new, or when a service sends a webhook.
+description: Send an agent a message on a schedule, when a feed has new entries, or when a service sends a webhook.
 sidebar:
   order: 5
 ---
 
-A trigger asks an agent something without anyone typing. List triggers in the agent's file:
+A trigger sends an agent a message on a schedule, a feed update or a webhook. Define triggers in the
+agent file:
 
 ```yaml title="~/.config/wardrik/agents/triage.md"
 ---
@@ -33,36 +34,35 @@ digest   every 0 17 * * 1-5    in 3h 12m  Write up what happened today.
 sweep    every 30m             in 29m     Check the incident queue, and say what is new.
 ```
 
-A triggered run is an ordinary message. It shows in the agent's history. Every key is in
+A trigger's message is an ordinary message in the agent's history. Every key is in
 [Agent files](/reference/agent-files/#triggers).
 
-## On a clock
+## On a schedule
 
 ```yaml
-every: "*/15 * * * *"    # cron, quoted; UTC unless timezone names another
+every: "*/15 * * * *"    # cron, quoted; UTC unless timezone is set
 every: "@daily"          # also @hourly, @weekly, @monthly, @yearly
 every: 2h                # an interval: s, m, h or d, at least a minute
 ```
 
-- A run skips a busy agent. `overlap: queue` asks once the agent is free.
-- Runs missed while the daemon was down run once. `missed: skip` drops them.
-- `jitter: 120` adds up to 120 seconds to each run.
+- A run is skipped if the agent is busy, and missed runs run once on startup. `overlap`, `missed`
+  and `jitter` change that. See [triggers](/reference/agent-files/#triggers).
 
-## When a feed has something new
+## When a feed has new entries
 
 ```yaml
 triggers:
-  - name: rivals
+  - name: news
     every: 6h
     feed:
-      - https://github.com/elixir-lang/elixir/releases.atom
-      - https://hnrss.org/newest?q=elixir
-    prompt: What's new in Elixir? Keep a line on each in NOTES.md.
+      - https://github.blog/changelog/feed/
+      - https://hnrss.org/newest?q=postgres
+    prompt: Summarise each new entry in one line in NOTES.md.
 ```
 
-- The agent is asked only when a feed has new entries, with them under the prompt.
-- A run with nothing new makes no model call.
-- The first run notes what the feed holds, and asks nothing.
+- The agent receives a message only when a feed has new entries, appended to the prompt.
+- A run with no new entries makes no model call.
+- The first run records the current entries and sends nothing.
 
 ## When a service sends a webhook
 
@@ -84,14 +84,14 @@ The service posts to `{base_url}/v1/hooks/{agent}/{trigger}`:
 https://agents.acme.example/v1/hooks/agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN/issues
 ```
 
-- The request proves itself with the secret: as `Authorization: Bearer SECRET`, or at the end of
-  the path, `.../issues/SECRET`.
+- The request authenticates with the secret, as `Authorization: Bearer SECRET` or as the last path
+  segment, `.../issues/SECRET`.
 - `verify: standard` checks a [Standard Webhooks](https://www.standardwebhooks.com/) signature
   instead.
-- The secret is the agent owner's, sealed `--for signing_secret`.
-- A request that doesn't verify gets `404`. The daemon must be reachable at `base_url`: see
+- The secret belongs to the agent's owner, stored `--for signing_secret`.
+- A request that fails verification returns `404`. The daemon must be reachable at `base_url`. See
   [A public address](/run/public-address/).
-- Each request costs a model call. Subscribe to the events that matter.
+- Each request costs a model call. Subscribe only to the events you need.
 
 ## Change triggers
 
@@ -108,17 +108,17 @@ curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json
   -d '{"every": "0 17 * * 1-5", "prompt": "Write up what happened today."}'
 ```
 
-- `wardrik reload` gives a file's agent the triggers its file lists, and removes the rest.
-- `self/*` in an agent's tools lets it set its own triggers. Each change waits on a person.
+- `wardrik reload` sets a file-defined agent's triggers to those in the file, and removes the rest.
+- With `self/*` in its tools, an agent can set its own triggers. Each change needs approval.
 - `prompt_file: HEARTBEAT.md` reads the prompt from the agent's [files](/concepts/files-and-memory/),
-  which it can edit.
-- `notify: {to: [ops], on: [finished]}` sends each run's answer somewhere. See
+  so the agent can edit it.
+- `notify: {to: [ops], on: [finished]}` sends each run's reply to a target. See
   [Send notices](/build/notices/).
 
 ## Details
 
 - Feed entries and webhook bodies are [content from outside](/concepts/outside-content/).
-- A webhook repeated with the same ID is answered `202` and asked once.
-- A webhook the agent can't take now gets `503`, so the service retries.
-- The agent sees a body's first 32,768 characters.
-- A trigger's next run is in the store, so triggers carry on after a restart.
+- A webhook with a repeated ID returns `202` and sends one message.
+- If the agent can't accept the webhook, it returns `503`, so the service retries.
+- The agent receives the first 32,768 characters of a body.
+- Each trigger's next run is stored, so triggers survive a restart.

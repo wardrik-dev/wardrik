@@ -1,6 +1,6 @@
 ---
 title: "Events"
-description: "The events an agent writes to its log, as CloudEvents, and the data each carries."
+description: "The CloudEvents an agent writes to its log, and each event's data fields."
 sidebar:
   order: 6
 ---
@@ -24,9 +24,9 @@ sidebar:
 ```
 
 - Read them with [`GET /v1/events`](/reference/http-api/#read-events) or `wardrik agent follow AGENT --json`.
-- Every event is a CloudEvent. Its own fields are under `data`.
-- **Live** events stream as they happen and are never stored.
-- Each `data` schema is in `wardrik_protocol`'s `priv/v1/`, named as `dataschema` says.
+- Every event is a CloudEvent. Event-specific fields are under `data`.
+- **Live** events are streamed but never stored.
+- Each `data` schema is in `wardrik_protocol`'s `priv/v1/`, named by `dataschema`.
 
 ## Envelope
 
@@ -34,36 +34,36 @@ sidebar:
 | --- | --- | --- |
 | `specversion` | `"1.0"` | |
 | `id` | string | a UUIDv7 |
-| `source` | string | `wardrik://DEPLOYMENT/agents/AGENT`, or `wardrik://DEPLOYMENT/audit` for a change people made |
+| `source` | string | `wardrik://DEPLOYMENT/agents/AGENT`, or `wardrik://DEPLOYMENT/audit` for audit events |
 | `type` | string | the event type, below |
-| `subject` | string | what it's about, as `agents/AGENT` |
+| `subject` | string | the resource, as `agents/AGENT` |
 | `time`, `datacontenttype`, `dataschema` | string | |
-| `sequence` | string | its place in the agent's log; stored events only |
+| `sequence` | string | position in the agent's log; stored events only |
 | `agent` | string | the agent's ID |
 | `conversation` | string | the conversation's ID; absent for the agent's main conversation |
-| `traceparent`, `tracestate`, `parentspanid` | string | W3C trace context; the trace ID is the run's ID |
+| `traceparent`, `tracestate`, `parentspanid` | string | W3C trace context; the trace ID is the turn's ID |
 | `data` | object | the event's fields |
 
 ## Runs and messages
 
 | Type | `data` | When |
 | --- | --- | --- |
-| `wardrik.run.started` | `run` | a run began |
-| `wardrik.run.completed` | `run`, `messages` | a run answered |
-| `wardrik.run.failed` | `run`, `error` | a run ended without answering |
-| `wardrik.run.cancelled` | `run`, `dropped`, `kept`, `resolution`, `duration_ms` | a person stopped a run; `resolution` is `stopped`, `killed`, `idle` or `abandoned` |
-| `wardrik.run.interrupted` | `run`, `interrupts` | a run waits on a person |
-| `wardrik.run.resumed` | `run` | an interrupted run carried on |
-| `wardrik.run.deadline_exceeded` | `run`, `message_count` | a run hit its deadline |
-| `wardrik.message.created` | `message`, `sender?` | someone sent the agent a message |
-| `wardrik.message.started` | `message`, `request`, `provider?`, `decided` | the model was asked |
+| `wardrik.run.started` | `run` | a turn started |
+| `wardrik.run.completed` | `run`, `messages` | a turn completed with a reply |
+| `wardrik.run.failed` | `run`, `error` | a turn ended without a reply |
+| `wardrik.run.cancelled` | `run`, `dropped`, `kept`, `resolution`, `duration_ms` | a turn was cancelled; `resolution` is `stopped`, `killed`, `idle` or `abandoned` |
+| `wardrik.run.interrupted` | `run`, `interrupts` | a turn paused for approval |
+| `wardrik.run.resumed` | `run` | a paused turn resumed |
+| `wardrik.run.deadline_exceeded` | `run`, `message_count` | a turn exceeded its `timeout` |
+| `wardrik.message.created` | `message`, `sender?` | a message was sent to the agent |
+| `wardrik.message.started` | `message`, `request`, `provider?`, `decided` | a model call started |
 | `wardrik.message.delta` | `message`, `delta` | text as it streams. **Live** |
 | `wardrik.reasoning.delta` | `message`, `delta` | reasoning as it streams. **Live** |
-| `wardrik.message.retrying` | `message`, `attempt`, `attempts`, `wait_ms`, `error` | the model failed and is asked again |
-| `wardrik.message.completed` | `message`, `status`, `duration_ms`, `response?`, `usage?`, `cost?`, `error?` | the model answered (`ok`), failed (`error`) or was stopped (`cancelled`) |
-| `wardrik.step.started` | `step` | a named step began |
+| `wardrik.message.retrying` | `message`, `attempt`, `attempts`, `wait_ms`, `error` | a model call failed and will be retried |
+| `wardrik.message.completed` | `message`, `status`, `duration_ms`, `response?`, `usage?`, `cost?`, `error?` | a model call returned (`ok`), failed (`error`) or was cancelled (`cancelled`) |
+| `wardrik.step.started` | `step` | a named step started |
 | `wardrik.step.completed` | `status`, `duration_ms`, `error?` | a named step ended |
-| `wardrik.activity.changed` | `activity` | what the agent is doing changed. **Live** |
+| `wardrik.activity.changed` | `activity` | the agent's activity changed. **Live** |
 
 `?` marks a field that may be absent.
 
@@ -71,49 +71,49 @@ sidebar:
 
 | Type | `data` | When |
 | --- | --- | --- |
-| `wardrik.tool_call.started` | `tool`, `decided` | a tool call began |
+| `wardrik.tool_call.started` | `tool`, `decided` | a tool call started |
 | `wardrik.tool_call.progress` | `tool`, `progress`, `total?` | a tool reported progress. **Live** |
-| `wardrik.tool_call.retrying` | `tool`, `attempt`, `attempts`, `wait_ms`, `error` | a call that may run twice crashed or timed out, and runs again |
-| `wardrik.tool_call.completed` | `tool`, `status`, `replayed`, `error?`, `served_by?`, `cost?` | a tool call answered |
-| `wardrik.tool_call.denied` | `tool`, `reason`, `decided` | a call was refused without running |
-| `wardrik.interrupt.resolved` | `interrupt`, `decision`, `reason?`, `note?`, `resolved_by?` | a person approved or rejected a call |
-| `wardrik.call.killed` | `agent`, `call` | someone stopped a running tool call |
-| `wardrik.subagent.started` | `agent?`, `prompt` | a subagent was handed a task |
-| `wardrik.subagent.progress` | `agent`, `tool`, `tool_calls` | a subagent began a tool call. **Live** |
-| `wardrik.subagent.completed` | `agent?`, `message`, `duration_ms`, `tool_calls?`, `usage?`, `cost?` | a subagent answered |
+| `wardrik.tool_call.retrying` | `tool`, `attempt`, `attempts`, `wait_ms`, `error` | a retry-safe call crashed or timed out, and will be retried |
+| `wardrik.tool_call.completed` | `tool`, `status`, `replayed`, `error?`, `served_by?`, `cost?` | a tool call returned |
+| `wardrik.tool_call.denied` | `tool`, `reason`, `decided` | a call was denied without running |
+| `wardrik.interrupt.resolved` | `interrupt`, `decision`, `reason?`, `note?`, `resolved_by?` | a pending call was approved or denied |
+| `wardrik.call.killed` | `agent`, `call` | a running tool call was stopped |
+| `wardrik.subagent.started` | `agent?`, `prompt` | a subagent started a task |
+| `wardrik.subagent.progress` | `agent`, `tool`, `tool_calls` | a subagent started a tool call. **Live** |
+| `wardrik.subagent.completed` | `agent?`, `message`, `duration_ms`, `tool_calls?`, `usage?`, `cost?` | a subagent returned |
 | `wardrik.subagent.failed` | `agent?`, `error`, `duration_ms`, `tool_calls?`, `usage?`, `cost?` | a subagent failed |
 
 ## Agents and conversations
 
-Events someone caused also carry `actor?` and `assumed_by?`: who did it, and who acted for them.
+Events caused by a request also have `actor?` and `assumed_by?`: the caller, and the chain it acted through.
 
 | Type | `data` | When |
 | --- | --- | --- |
-| `wardrik.agent.defined` | `agent` | someone wrote the agent's definition |
-| `wardrik.agent.spawned` | `agent`, `node` | someone started the agent |
-| `wardrik.agent.started` | `agent`, `node`, `status`, `conversation?` | the agent was loaded: started, restarted or moved |
-| `wardrik.agent.stopped` | `agent`, `node?`, `reason?` | the agent stopped; `reason: "idle"` if it went to sleep itself |
-| `wardrik.agent.moved` | `agent`, `node` | someone moved the agent to another node |
-| `wardrik.agent.cancelled` | `agent`, `resource?` | someone dropped its turn and queue |
-| `wardrik.agent.cleared` | `agent` | someone emptied its conversation |
-| `wardrik.agent.forgotten` | `agent`, `resource?` | someone removed the agent |
-| `wardrik.agents.reloaded` | `nodes` | someone reloaded the agent files |
-| `wardrik.conversation.cleared` | `messages_before` | the conversation was emptied |
+| `wardrik.agent.defined` | `agent` | the definition was written |
+| `wardrik.agent.spawned` | `agent`, `node` | the agent was started by a request |
+| `wardrik.agent.started` | `agent`, `node`, `status`, `conversation?` | the agent's process started, restarted or moved |
+| `wardrik.agent.stopped` | `agent`, `node?`, `reason?` | the process stopped; `reason: "idle"` after `idle_timeout` |
+| `wardrik.agent.moved` | `agent`, `node` | the agent was moved to another node |
+| `wardrik.agent.cancelled` | `agent`, `resource?` | the turn and queue were dropped |
+| `wardrik.agent.cleared` | `agent` | the conversation was cleared |
+| `wardrik.agent.forgotten` | `agent`, `resource?` | the agent was removed |
+| `wardrik.agents.reloaded` | `nodes` | agent files were reloaded |
+| `wardrik.conversation.cleared` | `messages_before` | the conversation was cleared |
 | `wardrik.conversation.compacted` | `messages_before`, `messages_after`, `tokens_before`, `tokens_after` | older history was summarised |
-| `wardrik.trigger.set` | `agent`, `trigger` | someone set a trigger |
-| `wardrik.trigger.removed` | `agent`, `trigger` | someone removed a trigger |
-| `wardrik.trigger.fired` | `trigger`, `status` | a trigger came due; `status` is `asked`, `nothing_new`, `busy`, `no_agent`, `missed` or `failed` |
-| `wardrik.room.bound` | `channel`, `room`, `agent`, `answers` | an agent now answers in a chat room, on `mentions` or `everything` |
-| `wardrik.room.unbound` | `channel`, `room` | the agent in a room stopped answering |
-| `wardrik.events.dropped` | `after`, `oldest` | the log was trimmed past your cursor; sent to you alone, never stored |
+| `wardrik.trigger.set` | `agent`, `trigger` | a trigger was set |
+| `wardrik.trigger.removed` | `agent`, `trigger` | a trigger was removed |
+| `wardrik.trigger.fired` | `trigger`, `status` | a trigger ran; `status` is `asked`, `nothing_new`, `busy`, `no_agent`, `missed` or `failed` |
+| `wardrik.room.bound` | `channel`, `room`, `agent`, `answers` | a chat room was bound to an agent, replying on `mentions` or `everything` |
+| `wardrik.room.unbound` | `channel`, `room` | a chat room was unbound |
+| `wardrik.events.dropped` | `after`, `oldest` | the log was trimmed past your cursor; sent only to you, never stored |
 
 ## Daemon changes
 
-Written to the audit log. Each also carries `actor?` and `assumed_by?`. `owner` is `acme`, `acme/@jon` or `deployment`.
+Written to the audit log. Each also has `actor?` and `assumed_by?`. `owner` is `acme`, `acme/@jon` or `deployment`.
 
 | Type | `data` |
 | --- | --- |
-| `wardrik.secret.stored`, `wardrik.secret.removed` | `secret`, `owner?` (absent for the deployment's) |
+| `wardrik.secret.stored`, `wardrik.secret.removed` | `secret`, `owner?` (absent for deployment secrets) |
 | `wardrik.server.added`, `wardrik.server.removed` | `server`, `owner` |
 | `wardrik.notify_target.added`, `wardrik.notify_target.removed` | `notify_target`, `owner` |
 | `wardrik.provider.added`, `wardrik.provider.removed` | `provider`, `owner` |
@@ -135,6 +135,6 @@ Written to the audit log. Each also carries `actor?` and `assumed_by?`. `owner` 
 | `principal` | `id`, `name?` |
 | `assumed_by` | a list of `principal`, first to last |
 | `served_by` | `id`, `name?` |
-| `activity` | `doing` (what it's doing, each by the event type that set it), `since`, `pending` |
+| `activity` | `doing` (current activities, each keyed by the event type that set it), `since`, `pending` |
 | `spent` | `tokens`, `usd`, for today (UTC) |
 | `duration_ms` | integer |

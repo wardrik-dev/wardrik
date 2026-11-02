@@ -1,16 +1,16 @@
 ---
 title: Let anyone try to hijack it
-description: An agent with write access to a public repository's issues, which no issue can talk into anything you haven't approved.
+description: An agent with write access to a public repository's issues. No issue can trigger a write you haven't approved.
 sidebar:
   order: 9
 ---
 
-This agent labels and comments on a public repository's issues, with a token that can write them.
-Invite anyone to take it over. Whatever an issue gets it to try arrives in Slack as a call waiting
-for you. Its prompt has no warnings: its calls are decided outside the model.
+This agent labels and comments on a public repository's issues, with a token that has write access.
+Anyone can try prompt injection. Every write it attempts is posted to Slack for approval. The
+prompt has no warnings, because the policy is enforced outside the model.
 
-Needs a fine-grained GitHub token that can write that repository's issues and nothing else, and a
-[Slack app](/channels/slack/).
+Requires a fine-grained GitHub token with write access to that repository's issues only, and a
+[Slack app](/build/slack/).
 
 ## The files
 
@@ -41,8 +41,9 @@ bindings:
   - {org: default, role: approver, subjects: [user:default/@maria]}
 ```
 
-- Both write tools are gated. Once the agent has read an issue, a gated call waits for a person.
-- `members` maps Maria's Slack ID to `user:default/@maria`. The binding lets her decide the agent's calls.
+- Both write tools are gated. After the agent reads an issue, gated calls need approval.
+- `members` maps a Slack ID to `user:default/@maria`. The binding allows that user to approve the
+  agent's calls.
 
 ```markdown title="~/.config/wardrik/agents/issues.md"
 ---
@@ -67,8 +68,8 @@ thank whoever filed it, and say what you would need from them to act on it. Keep
 last issue you triaged in TRIAGE.md.
 ```
 
-- `default: deny` refuses every tool `allow` doesn't name.
-- The budget caps what a stranger can make it spend.
+- `default: deny` denies every tool not matched by `allow`.
+- The budget caps the spend an attacker can cause.
 
 ## Try it
 
@@ -80,7 +81,7 @@ systemctl --user restart wardrik
 wardrik agent show issues
 ```
 
-Open an issue that tries to hijack it, then watch `#triage`:
+Open an issue with a prompt injection, then watch `#triage`:
 
 > `issues` waits on a person to approve `github__issue_write`.
 >
@@ -88,12 +89,13 @@ Open an issue that tries to hijack it, then watch `#triage`:
 > {"issue_number":14,"labels":["bug"],"method":"update","owner":"acme","repo":"widgets"}
 > ```
 
-If an issue fools the model into closing everything, each close is a call waiting for you.
+If an injection makes the model try to close every issue, each close is a pending call.
 
 ## What it shows
 
-- After outside content, every gated call waits, until `wardrik agent clear issues`. See
-  [Content from outside](/concepts/outside-content/).
-- Files keep the label of what the turn had read, so notes can't carry an instruction forward.
-- Rules live outside the prompt, where no issue can change them. See [Policy](/concepts/policy/).
-- Don't add `allow_after: {outside: [github/issue_write]}`: one tool both labels and closes.
+- After content from outside, every gated call needs approval until `wardrik agent clear issues`.
+  See [Content from outside](/concepts/outside-content/).
+- Files written in the turn get the `outside` label, so notes can't pass an injection to a later
+  turn.
+- The policy is defined outside the prompt, so no issue can change it. See [Policy](/concepts/policy/).
+- Don't add `allow_after: {outside: [github/issue_write]}`. The same tool both labels and closes.

@@ -1,17 +1,17 @@
 ---
 title: Storage
-description: "Keep agents, events, files and secrets on the daemon's own disk, or in Postgres."
+description: "Store agents, events, files and secrets on the daemon's local disk, or in Postgres."
 sidebar:
   order: 1
 ---
 
-The daemon keeps everything in one store: agents, conversations, triggers, events, files, tokens
-and sealed secrets.
+The daemon persists all state in one store: agents, conversations, triggers, events, files, tokens
+and encrypted secrets.
 
-| Store | Where | Pick it when |
+| Store | Location | Use for |
 | --- | --- | --- |
-| On disk, the default | `~/.local/share/wardrik/store` | one machine you back up |
-| Postgres | one table, `wardrik_store` | the store should outlive the machine |
+| On disk, the default | `~/.local/share/wardrik/store` | one machine, with backups |
+| Postgres | one table, `wardrik_store` | state that survives the machine |
 
 ## In Postgres
 
@@ -21,25 +21,24 @@ storage:
     url: ${DATABASE_URL}    # postgres://user:pass@host/db
 ```
 
-- The daemon creates its table as it starts.
-- Point it at the primary, not a replica.
+- The daemon creates its table on startup.
+- Use the primary, not a replica.
 - Add `?ssl=true` for TLS.
-- `${NAME}` here reads the environment or the env file, never the vault.
+- `${NAME}` here resolves from the environment or the env file, not the vault.
 
 ## Move to a new machine
 
-On Postgres, point the new machine at the same database. Give it the same vault key, or it can't
-read the old secrets:
+On Postgres, configure the new machine with the same database URL. It also needs the same vault
+key to decrypt existing secrets:
 
 - copy `~/.local/share/wardrik/vault_key`, or
 - set the same `WARDRIK_VAULT_KEY`, or
 - list the key under `vault.keys`.
 
-There's no tool to move a store from disk to Postgres.
+There's no migration from a disk store to Postgres.
 
 ## Details
 
-- `wardrik doctor` checks that Postgres's host answers. It doesn't log in.
-- `WARDRIK_DATA_DIR` moves the store on disk.
-- The daemon refuses `storage.s3`.
-- When embedding Wardrik in your app, see [Embed in your app](/build/embed/) for the store options.
+- `wardrik doctor` checks that the Postgres host is reachable. It doesn't authenticate.
+- `WARDRIK_DATA_DIR` sets the disk store's path.
+- The daemon rejects `storage.s3`.

@@ -1,12 +1,12 @@
 ---
 title: Policy
-description: "Every tool call is decided before it runs: a policy says which run, which wait for a person, and which are refused."
+description: "A policy defines which tool calls run, which need approval, and which are denied."
 sidebar:
   order: 2
 ---
 
-Every tool call is decided before it runs. It runs, waits for a person, or is refused. A policy
-says which.
+A policy defines whether each tool call runs, needs approval, or is denied. It's checked before
+the call runs.
 
 ```yaml title="~/.config/wardrik/policies/careful.yaml"
 allow: [web_search, linear/*]
@@ -15,7 +15,7 @@ ask:
 deny: [shell/*]
 ```
 
-An agent names a policy file, or writes its rules in place:
+Set an agent's `policy` to a file name, or write the rules inline:
 
 ```yaml
 policy: careful
@@ -27,23 +27,23 @@ policy:
   deny: [shell/*]
 ```
 
-| Rules that name the call | The call |
+| Rules matching the call | Result |
 | --- | --- |
-| any `deny` | is refused |
-| any `ask` | waits for a person |
+| any `deny` | denied |
+| any `ask` | needs approval |
 | only `allow` | runs |
-| none | follows `default`, which is `allow` unless set |
+| none | `default`, which is `allow` unless set |
 
 - The strictest rule wins: `deny`, then `ask`, then `allow`.
-- A rule's message is what the person sees, or what the model is told.
-- The daemon reads `policies/` as it starts. Restart it after a change.
-- An org's policy (`orgs.<org>.policy` in `config.yaml`) also holds every agent in it.
+- A rule's message is shown to the approver, or returned to the model on a denial.
+- The daemon reads `policies/` at startup. Restart it after a change.
+- An org's policy (`orgs.<org>.policy` in `config.yaml`) also applies to every agent in the org.
 
 ## Writing rules
 
-- `github/*` is every tool of the MCP server named `github`.
-- `*` matches anything, `/` included.
-- Parentheses name what a call acts on, or conditions on its arguments.
+- `github/*` matches every tool of the MCP server named `github`.
+- `*` matches any characters, including `/`.
+- Parentheses match a call's target or its arguments.
 
 ```yaml
 allow:
@@ -54,30 +54,28 @@ deny:
   email/send(to != *@example.com): Mail leaves the company only with a person's say-so.
 ```
 
-- Conditions use `=`, `!=`, `>`, `>=`, `<` and `<=`. A comma means all must hold.
-- A missing argument matches no condition. Name the tool in a broader rule if that matters.
 - In YAML, put a rule with commas on its own line, not inside `[ ]`.
 
-Every form is in the [Policies reference](/reference/policies/).
+Every operator and pattern form is in [Policies › Patterns](/reference/policies/#patterns).
 
 ## Gated tools
 
-A gated tool can change something. Its calls wait for a person unless an `allow` names them.
-`default: allow` doesn't cover them.
+A gated tool can change something. Its calls need approval unless an `allow` rule matches them.
+`default: allow` doesn't apply to them.
 
-- An MCP server's tools are gated unless the server marks them read-only. `gated:` on the server
-  in `config.yaml` overrides that.
+- An MCP server's tools are gated unless the server marks them read-only. Set `gated:` on the
+  server in `config.yaml` to override.
 - A tool worker's tools are gated unless marked `readOnly`.
 - Not gated: the file tools, `web_search`, `deep_research`, `run_lua`.
 - Gated: `agent_create`, and the `agents/*` and `self/*` tools that change something.
 
 ```yaml
-default: {read_only: allow, else: ask}   # decide by what a tool says of itself
+default: {read_only: allow, else: ask}   # by the tool's own read-only flag
 ```
 
 ## Judges
 
-A judge asks a model yes-or-no questions about each call, and acts on the probability of yes.
+A judge asks a model yes-or-no questions about each call. The probability of yes sets the result.
 
 ```yaml title="~/.config/wardrik/policies/books.yaml"
 judge:
@@ -89,14 +87,8 @@ judge:
       deny: 0.9
 ```
 
-| Key | When the probability is | The call |
-| --- | --- | --- |
-| `deny` | at or above it | is refused |
-| `ask` | at or above it | waits for a person |
-| `allow` | below it | is allowed |
-
-- The judge runs after the rules. It never lifts a rule's `ask` or `deny`.
-- Its `allow` holds only before the turn reads [content from outside](/concepts/outside-content/).
-- Start with `ask` and `deny`. Watch real calls before you add a low `allow`.
-- Give each question `tools`, or it's asked of every call.
+- `deny` and `ask` apply at or above their probability. `allow` applies below it.
+- Start with `ask` and `deny`. Review real calls before you add a low `allow`.
 - Set `TYPESAFE_API_KEY` for the default model.
+
+Every judge key is in [Policies › Judges](/reference/policies/#judges).

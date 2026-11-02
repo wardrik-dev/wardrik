@@ -1,16 +1,16 @@
 ---
 title: Inbox triage
-description: "Sorts your inbox every morning, drafts replies, and puts school dates on the family calendar by itself."
+description: "Triages your inbox every morning, drafts replies, and adds school dates to the family calendar without approval."
 sidebar:
   order: 1
 ---
 
-Every morning this agent reads your new mail. It archives the noise, labels what matters, drafts
-replies for you to send, and adds school dates to the family calendar on its own. No email can get
-it to do anything else.
+Every morning this agent reads your new mail. It archives noise, labels the rest, and drafts
+replies for you to send. It adds school dates to the family calendar without approval. The policy
+denies or requires approval for everything else.
 
-Needs a Google Cloud project with the Gmail and Calendar MCP servers turned on, and a
-[Slack app](/channels/slack/).
+Requires a Google Cloud project with the Gmail and Calendar MCP servers enabled, and a
+[Slack app](/build/slack/).
 
 ## The files
 
@@ -43,9 +43,9 @@ notify:
     inbox: {channel: slack, room: "#inbox"}
 ```
 
-- Make the OAuth client in Google Cloud: a web application, with `<base_url>/oauth/callback` as its
-  redirect URI (`http://127.0.0.1:4747/oauth/callback` by default).
-- `members` maps your Slack ID to the daemon's admin, so you can approve from Slack.
+- Create the OAuth client in Google Cloud as a web application. Set its redirect URI to
+  `<base_url>/oauth/callback` (`http://127.0.0.1:4747/oauth/callback` by default).
+- `members` maps your Slack ID to the admin user, so you can approve in Slack.
 
 ```yaml title="~/.config/wardrik/policies/inbox.yaml"
 allow_after:
@@ -88,13 +88,13 @@ wardrik ask inbox "Write ME.md: I'm Jo. The family calendar is family08a2@group.
 wardrik ask inbox "Triage my inbox now."
 ```
 
-The first Google call waits with a sign-in link. Sign in once. The summary lands in `#inbox`, and
-the drafts wait in Gmail.
+The first Google call pauses with a sign-in link. Sign in once. The summary is posted to `#inbox`,
+and the drafts are saved in Gmail.
 
 ## What it shows
 
-- Reading runs. Once a turn has read an email, only what `allow_after` names runs without you. See
-  [Content from outside](/concepts/outside-content/).
-- An argument rule pins one calendar. An event on any other calendar waits for you.
-- Nothing can be sent: Google's Gmail server only drafts.
-- `ME.md` is the agent's own file, read into every turn.
+- Reads run without approval. After a turn reads an email, only tools in `allow_after` run without
+  approval. See [Content from outside](/concepts/outside-content/).
+- An argument rule limits `create_event` to one calendar. Events on other calendars need approval.
+- The Gmail server has no send tool, only drafts.
+- `ME.md` is in the agent's workspace and loaded into every turn.

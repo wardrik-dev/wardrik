@@ -1,6 +1,6 @@
 ---
 title: Write tools
-description: "Define a tool's arguments, result and errors, answer each agent with its own data, report cost, and make a call safe to run twice."
+description: "Define a tool's arguments, result and errors, scope data by agent, report cost, and make calls safe to retry."
 sidebar:
   order: 3.2
 ---
@@ -18,21 +18,21 @@ wardrik.tool({
 | Key | |
 | --- | --- |
 | `name` | 1 to 55 letters, digits, `_` and `-` |
-| `description` | what the model is told the tool does |
-| `title` | a short name for people |
-| `input` | a `zod` object schema for its arguments; `.describe()` tells the model what goes there |
-| `readOnly` | it changes nothing, so it never waits on a person |
-| `idempotent` | running a call twice is safe |
-| `run` | the function, given the arguments and `{ agent, run, idempotencyKey, signal, cost }` |
+| `description` | the description sent to the model |
+| `title` | a display name |
+| `input` | a `zod` object schema for the arguments; `.describe()` documents a field for the model |
+| `readOnly` | the tool changes nothing, so it never needs approval |
+| `idempotent` | the tool is safe to call twice with the same arguments |
+| `run` | the function; receives the arguments and `{ agent, run, idempotencyKey, signal, cost }` |
 
-- An agent gets the tools with `workers/*` in its `tools`. The model sees `workers__find_order`.
-- A policy names it as `workers/find_order`.
+- Add `workers/*` to an agent's `tools`. The model sees `workers__find_order`.
+- In a policy, it's `workers/find_order`.
 
 ## Results and errors
 
-Return an object or a string. Return only what the model needs: it reads every word.
+Return an object or a string. Return only what the model needs, since every token counts.
 
-Throw to fail the call. Say what went wrong in words the model can act on:
+Throw to fail the call. Write an error message the model can act on:
 
 ```ts
 run: async ({ order_id }) => {
@@ -42,17 +42,18 @@ run: async ({ order_id }) => {
 },
 ```
 
-## Whose call it is
+## The calling agent
 
-`agent` is the calling agent's ID, set by Wardrik, never by the model. Use it to scope data:
+`agent` is the calling agent's ID. Wardrik sets it, not the model. Use it to scope data:
 
 ```ts
 run: (_args, { agent }) => db.orders.where({ agent }),
 ```
 
-## What a call cost
+## Cost
 
-Report what a paid API cost, in US dollars. The agent's [budget](/concepts/budgets/) counts it:
+Call `cost` with a paid API's cost in US dollars. It's added to the agent's
+[budget](/concepts/budgets/):
 
 ```ts
 run: async ({ email }, { cost }) => {
@@ -62,9 +63,10 @@ run: async ({ email }, { cost }) => {
 },
 ```
 
-## Running a call twice
+## Retries
 
-`idempotencyKey` is the same each time a call runs. Pass it on, and mark the tool `idempotent`:
+`idempotencyKey` is the same on every attempt of a call. Pass it to the API, and mark the tool
+`idempotent`:
 
 ```ts
 wardrik.tool({
@@ -77,14 +79,13 @@ wardrik.tool({
 });
 ```
 
-- A call cut off by a dropped connection runs again only if the tool is `idempotent` or
-  `readOnly`. Otherwise it waits for a person. See [Calls in doubt](/build/host-tools/#calls-in-doubt).
-- For an API with no key, keep what each key did, and answer with that when it comes again.
+- Only `idempotent` or `readOnly` tools are retried. See [Durable runs](/concepts/agents/#durable-runs).
+- For an API without idempotency keys, store each key's result and return it on a repeat.
 
 ## Details
 
 - `signal` aborts when the call is stopped or times out. Pass it to `fetch`.
-- A call may take 60 seconds.
-- `run` in the context is the run's ID, as its events carry it.
-- `cost` called twice adds up.
-- A tool with a bad name, or an `input` that isn't an object schema, is left out.
+- A call times out after 60 seconds.
+- `run` in the context is the turn's ID, the same as in its events.
+- Calling `cost` twice adds both amounts.
+- A tool with an invalid name, or an `input` that isn't an object schema, is skipped.
