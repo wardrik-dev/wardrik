@@ -14,8 +14,8 @@
   as `user:<channel>:<workspace>/<member>`. See `WardrikDaemon.ChannelMembers`.
 - The daemon mints agent IDs (`agt_` and a ULID) and keeps each agent's org, owner and name.
   `POST /v1/owners/{owner}/agents` makes an agent; `GET /v1/owners/{owner}/agents?name=` finds one.
-- The `agent_create` tool makes a worker in the agent's org. `wardrik init` gives it to the front
-  door, with a `workers` role.
+- The `agent_create` tool makes a worker in the agent's org. `wardrik init` gives it to the
+  assistant, with a `workers` role.
 - Tokens are the daemon's own: `wardrik token create`, `token ls` and `token revoke`, and
   `/v1/tokens`. See `WardrikDaemon.Tokens`.
 - Secrets and ceilings have their own routes: `/v1/owners/{owner}/secrets` and

@@ -12,11 +12,11 @@ wardrik init --org acme
 
 `init` asks for a model provider, a model and its key. It then:
 
-- writes `config.yaml`, `agents/assistant.md` (the front door) and `env` to `~/.config/wardrik`.
+- writes `config.yaml`, `agents/assistant.md` (the assistant, the agent you ask for outcomes) and `env` to `~/.config/wardrik`.
   It never overwrites a file.
 - starts the daemon, as a systemd user service where there's one.
 - seals the key in the vault, unless the `env` file sets it.
-- asks the front door one short question.
+- asks the assistant one short question.
 
 Without a terminal, flags answer:
 
@@ -24,7 +24,7 @@ Without a terminal, flags answer:
 wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service --no-ask
 ```
 
-Tell the front door what you want, as "tell me when https://elixir-lang.org/atom.xml has a new
+Tell the assistant what you want, as "tell me when https://github.blog/changelog/feed/ has a new
 post". It proposes a worker and its triggers. Approve them with `wardrik approval approve`.
 
 - The release runs on Linux (x86_64 or aarch64, glibc 2.35+). It installs to `~/.local/lib/wardrik`.

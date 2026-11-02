@@ -27,7 +27,7 @@ defmodule WardrikDaemon.CLI.Init do
         no_service: :boolean,
         no_ask: :boolean
       ],
-      summary: "set up the front door, its model and key, and the daemon to run it",
+      summary: "set up the assistant, its model and key, and the daemon to run it",
       details: [
         "It asks what it needs and never overwrites a file. Without a terminal, use --provider,",
         "--model and --key-from-env VAR. --yes installs the systemd service, --no-service skips",
@@ -163,7 +163,7 @@ defmodule WardrikDaemon.CLI.Init do
       nil ->
         Context.puts(
           cx,
-          "No key, so the front door can't answer until #{cx.program} vault put #{variable} --for api_key seals one."
+          "No key, so the assistant can't answer until #{cx.program} vault put #{variable} --for api_key seals one."
         )
 
         {:ok, nil}
@@ -189,7 +189,7 @@ defmodule WardrikDaemon.CLI.Init do
       do:
         Context.puts(
           cx,
-          "config.yaml names no default model, so the front door has none. Add it:\n" <>
+          "config.yaml names no default model, so the assistant has none. Add it:\n" <>
             "  defaults:\n    model: #{model}"
         )
 
@@ -290,7 +290,7 @@ defmodule WardrikDaemon.CLI.Init do
   defp ask(%{no_ask: true}, _cx, _variable), do: :ok
 
   defp ask(_flags, cx, variable) do
-    Context.puts(cx, "Asking the front door: #{@question}")
+    Context.puts(cx, "Asking the assistant: #{@question}")
 
     answered =
       with {:ok, id} <- Context.agent(cx, "assistant"),
@@ -302,7 +302,7 @@ defmodule WardrikDaemon.CLI.Init do
 
       {:error, why} ->
         {:error,
-         "The front door didn't answer: #{why} The usual reason is its key, which " <>
+         "The assistant didn't answer: #{why} The usual reason is its key, which " <>
            "#{cx.program} vault put #{variable} --for api_key seals again."}
     end
   end
@@ -311,7 +311,7 @@ defmodule WardrikDaemon.CLI.Init do
     Context.puts(cx, """
 
     Next, tell it what you want done:
-      #{cx.program} ask assistant "Tell me when https://elixir-lang.org/atom.xml has a new post"
+      #{cx.program} ask assistant "Tell me when https://github.blog/changelog/feed/ has a new post"
     It proposes the work, and waits for you: #{cx.program} approval ls, then #{cx.program} approval approve.\
     """)
   end
@@ -327,7 +327,7 @@ defmodule WardrikDaemon.CLI.Init do
     http:
       port: 4747
 
-    # The front door makes, changes, reads and asks the org's agents, its workers. It can't
+    # The assistant makes, changes, reads and asks the org's agents, its workers. It can't
     # forget, clear, stop or cancel one.
     roles:
       workers: {rules: [{verbs: [create, define, read, ask], kinds: [agent]}]}
@@ -367,7 +367,7 @@ defmodule WardrikDaemon.CLI.Init do
 
     """
     ---
-    description: "The front door: turns what people ask for into work that runs."
+    description: "Turns what people ask for into work that runs."
     tools: [#{tools}]
     context: [MEMORY.md]
     policy: {budget: {tokens: 2000000, per: day}}

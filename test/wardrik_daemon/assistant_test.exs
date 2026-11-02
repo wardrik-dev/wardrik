@@ -1,4 +1,4 @@
-defmodule WardrikDaemon.FrontDoorTest do
+defmodule WardrikDaemon.AssistantTest do
   use ExUnit.Case, async: false
   use Mimic
 
@@ -19,21 +19,21 @@ defmodule WardrikDaemon.FrontDoorTest do
     roles:
       workers: {rules: [{verbs: [create, define, read, ask], kinds: [agent]}]}
     bindings:
-      - {org: acme, role: workers, subjects: [agent:assistant, agent:door]}
+      - {org: acme, role: workers, subjects: [agent:assistant, agent:aide]}
     """)
 
     write(context, "policies/makes.yaml", "allow: [agent_create]\n")
 
-    door = """
-    description: The front door.
+    aide = """
+    description: The assistant.
     tools: [agents/*, agent_create]
     policy: makes
     ---
     You make workers.
     """
 
-    write(context, "agents/assistant.md", "---\n" <> door)
-    write(context, "agents/door.md", "---\norg: growth\n" <> door)
+    write(context, "agents/assistant.md", "---\n" <> aide)
+    write(context, "agents/aide.md", "---\norg: growth\n" <> aide)
 
     start_daemon(context)
   end
@@ -64,10 +64,10 @@ defmodule WardrikDaemon.FrontDoorTest do
       message: ReqLLM.Context.assistant(text)
     }
 
-  defp create(context, door, args) do
+  defp create(context, aide, args) do
     answers([calling("agent_create", args), answer("Done.")])
-    {:ok, _reply} = Wardrik.Agent.reply(context.admin, door, "Watch our rivals.")
-    {:ok, timeline} = Wardrik.run(context.admin, "agent.timeline", %{"agent" => door})
+    {:ok, _reply} = Wardrik.Agent.reply(context.admin, aide, "Watch our rivals.")
+    {:ok, timeline} = Wardrik.run(context.admin, "agent.timeline", %{"agent" => aide})
     timeline
   end
 
@@ -79,9 +79,9 @@ defmodule WardrikDaemon.FrontDoorTest do
     }
   }
 
-  test "the front door makes a worker of its own org, by name", context do
-    door = id(context, "acme", "assistant")
-    create(context, door, @worker)
+  test "the assistant makes a worker of its own org, by name", context do
+    aide = id(context, "acme", "assistant")
+    create(context, aide, @worker)
 
     assert {:ok, record} = AgentRecords.named(context.daemon_store, "acme", "rivals-watch")
     assert %{org: "acme", owner: "acme"} = record
@@ -92,15 +92,15 @@ defmodule WardrikDaemon.FrontDoorTest do
     # It's held to its maker's policy, and agents_list describes it.
     agents_list = calling("agents_list", %{})
     answers([agents_list, answer("Listed.")])
-    {:ok, _reply} = Wardrik.Agent.reply(context.admin, door, "What runs?")
+    {:ok, _reply} = Wardrik.Agent.reply(context.admin, aide, "What runs?")
 
     {:ok, %{"events" => events}} =
-      Wardrik.run(context.admin, "agent.events", %{"agent" => door})
+      Wardrik.run(context.admin, "agent.events", %{"agent" => aide})
 
     assert Enum.any?(events, &(inspect(&1) =~ "rivals-watch: watches rivals."))
 
     # The name is the org's, so a second worker of the name is refused.
-    create(context, door, @worker)
+    create(context, aide, @worker)
 
     assert [_one] =
              for(
@@ -110,10 +110,10 @@ defmodule WardrikDaemon.FrontDoorTest do
              )
   end
 
-  # acme's binding names a door, but growth's door is no agent of acme.
-  test "a front door can't make a worker in an org it isn't bound in", context do
-    door = id(context, "growth", "door")
-    assert inspect(create(context, door, @worker)) =~ "You may not make agents."
+  # acme's binding names an aide, but growth's aide is no agent of acme.
+  test "an assistant can't make a worker in an org it isn't bound in", context do
+    aide = id(context, "growth", "aide")
+    assert inspect(create(context, aide, @worker)) =~ "You may not make agents."
 
     assert AgentRecords.named(context.daemon_store, "growth", "rivals-watch") == :error
     assert AgentRecords.named(context.daemon_store, "acme", "rivals-watch") == :error
@@ -125,6 +125,6 @@ defmodule WardrikDaemon.FrontDoorTest do
              "name"
 
     assert AgentRecords.named(context.daemon_store, "growth", "rivals-watch") == :error
-    assert AgentRecords.in_org(context.daemon_store, "growth") |> Enum.map(& &1.name) == ["door"]
+    assert AgentRecords.in_org(context.daemon_store, "growth") |> Enum.map(& &1.name) == ["aide"]
   end
 end

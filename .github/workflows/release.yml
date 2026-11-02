@@ -81,7 +81,7 @@ jobs:
 
       # Installed with install.sh from a directory of its own, the way a
       # release is, into a home with nothing in it, and set up by wardrik init
-      # with no terminal: the daemon starts, holds the front door and its
+      # with no terminal: the daemon starts, holds the assistant and its
       # sealed key, and distribution and epmd listen on loopback alone.
       - name: Install and boot it
         env:
@@ -113,7 +113,7 @@ jobs:
 
       # Started on named volumes, as the README runs it: the API answers on the
       # port it is run with, and refuses a request without a token. wardrik
-      # init writes the front door into the config volume and seals its key,
+      # init writes the assistant into the config volume and seals its key,
       # with no terminal, and the daemon restarts itself to read config.yaml.
       - name: Boot the image
         run: |

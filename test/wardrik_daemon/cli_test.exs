@@ -86,7 +86,7 @@ defmodule WardrikDaemon.CLITest do
 
     write(context, "config.yaml", "org: globex\n")
     assert {0, again} = wardrik(context, @init ++ ~w(--no-service))
-    assert again =~ "config.yaml names no default model, so the front door has none. Add it:"
+    assert again =~ "config.yaml names no default model, so the assistant has none. Add it:"
     assert File.read!(log) == "start\nstart\nstart\n"
   end
 
@@ -111,7 +111,7 @@ defmodule WardrikDaemon.CLITest do
     refute File.exists?(Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/assistant.md"))
   end
 
-  test "gives the front door web_search where a Brave key is set", context do
+  test "gives the assistant web_search where a Brave key is set", context do
     {context, _log} = script(context)
     write(context, "env", "ANTHROPIC_API_KEY=sk\n")
     config = Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
@@ -133,7 +133,7 @@ defmodule WardrikDaemon.CLITest do
              "tools: [self/*, agents/*, agent_create, files, web_search, run_lua]"
   end
 
-  test "writes a front door that the daemon defines, and that makes workers", context do
+  test "writes an assistant that the daemon defines, and that makes workers", context do
     {context, _log} = script(context)
     config = Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
     File.rm!(config)
@@ -326,14 +326,14 @@ defmodule WardrikDaemon.CLITest do
                "doesn't wait on call_1"
     end
 
-    test "seals the key it's given, reads the front door's file, and asks it", context do
+    test "seals the key it's given, reads the assistant's file, and asks it", context do
       answers([answer("I turn what you ask for into work that runs.")])
       context = put_in(context.env["MY_KEY"], "sk-given")
 
       assert {0, output} = wardrik(context, ~w(init --provider anthropic --key-from-env MY_KEY))
       assert output =~ "The daemon runs, and read what init wrote."
       assert output =~ "Sealed ANTHROPIC_API_KEY."
-      assert output =~ "Asking the front door: In two short sentences"
+      assert output =~ "Asking the assistant: In two short sentences"
       assert output =~ "I turn what you ask for into work that runs."
       assert {0, secrets} = wardrik(context, ["vault", "ls"])
       assert secrets =~ "ANTHROPIC_API_KEY"
