@@ -12,7 +12,7 @@ defmodule WardrikSlack.Install do
          identities: {MyApp.ChatMembers, []}}
 
   Set the app's **Redirect URL**, under **OAuth & Permissions**, to `:redirect_uri`. Tokens are
-  sealed with Wardrik's `:keys`.
+  sealed with Wardrik's `:vault_keys`.
 
       # 1. Send someone to Slack
       {:ok, url} =

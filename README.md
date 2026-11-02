@@ -170,4 +170,4 @@ slack:
    identities: {MyApp.ChatMembers, []}}
 ```
 
-Tokens are sealed in Wardrik's vault, so Wardrik needs `:keys`. See `WardrikSlack.Install`.
+Tokens are sealed in Wardrik's vault, so Wardrik needs `:vault_keys`. See `WardrikSlack.Install`.
