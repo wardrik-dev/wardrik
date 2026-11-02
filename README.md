@@ -46,7 +46,7 @@ Each search looks for `BRAVE_API_KEY` in this order:
 So an org can bring its own key, and changing the deployment's needs no restart:
 
 ```elixir
-:ok = MyApp.AgentRuntime.put_secret("deployment", "BRAVE_API_KEY", key)
+:ok = MyApp.AgentRuntime.put_secret(owner: "deployment", name: "BRAVE_API_KEY", value: key)
 ```
 
 If every agent's keys hold one, nothing needs starting. Give the capability its settings inline:

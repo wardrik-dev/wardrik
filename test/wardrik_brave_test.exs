@@ -103,8 +103,10 @@ defmodule WardrikBraveTest do
     @behaviour WardrikCore.Keys
 
     @impl true
-    def fetch("BRAVE_API_KEY", %WardrikCore.Principal{id: "acme"}, _opts), do: {:ok, "acme-key"}
-    def fetch(_name, _principal, _opts), do: :error
+    def fetch(%{name: "BRAVE_API_KEY", principal: %WardrikCore.Principal{id: "acme"}}, _opts),
+      do: {:ok, "acme-key"}
+
+    def fetch(_request, _opts), do: :error
   end
 
   test "searches with the agent's own key where its keys hold one", %{name: name, tool: tool} do
