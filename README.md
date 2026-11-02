@@ -107,11 +107,15 @@ A trigger with a `webhook` receives requests at `POST /v1/hooks/{agent}/{trigger
 authenticator. The request proves itself with the trigger's secret:
 
 ```elixir
-:ok =
-  MyApp.AgentRuntime.put_secret(
-    owner: "acme",
-    name: "ISSUES_HOOK",
-    value: System.fetch_env!("ISSUES_HOOK")
+{:ok, _vsn} =
+  WardrikVault.put(
+    MyApp.AgentRuntime.Vault,
+    %WardrikVault.Secret{
+      principal: Wardrik.principal("acme"),
+      name: "ISSUES_HOOK",
+      value: System.fetch_env!("ISSUES_HOOK")
+    },
+    kind: :signing_secret
   )
 
 Wardrik.Agent.define(scope, "acme/triage",
