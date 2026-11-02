@@ -2,22 +2,24 @@ defmodule WardrikHTTP.Worker do
   @moduledoc """
   The tool workers' WebSocket at `GET /v1/workers`. Wardrik is the MCP client over it.
 
-  A worker is an MCP server that connects in, as the principal the authenticator says. It serves
-  the agents the authorizer allows it `agent.serve` on.
+  A worker is an MCP server that connects in. It serves the agents your authorizer lets it
+  `agent.serve`. Messages are JSON-RPC 2.0, one per text frame, as MCP `2025-06-18` says:
 
-  Messages are JSON-RPC 2.0, one per text frame, as MCP `2025-06-18` specifies:
+      {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+       "params": {"name": "refund_order", "arguments": {"order": "A1"},
+                  "_meta": {"agent": {"key": "agt_1"}, "run": "4bf92f35...",
+                            "principal": "user_42", "idempotencyKey": "call_1"}}}
 
-    1. Wardrik sends `initialize`. Once the worker answers, it sends `notifications/initialized`.
-    2. Wardrik sends `tools/list` and offers the listed tools through the server's
-       `c:Wardrik.Server.offer/2`. The worker sends `notifications/tools/list_changed` to be listed
-       again.
-    3. Wardrik sends `tools/call`, with the call's `_meta`, for each call an agent makes. The
-       worker answers with a `CallToolResult`, and the call's cost as `_meta.costUsd`.
-    4. Wardrik sends `notifications/cancelled` when it stops waiting on a call, or the call is
-       stopped.
+    1. Wardrik sends `initialize`, then `notifications/initialized`.
+    2. Wardrik sends `tools/list`. Send `notifications/tools/list_changed` to be listed again.
+    3. Wardrik sends `tools/call` for each call. Answer with a `CallToolResult`, and its cost as
+       `_meta.costUsd`.
+    4. Wardrik sends `notifications/cancelled` when it stops waiting on a call.
 
-  It answers the worker's `ping`. It also pings the worker every `:keepalive` milliseconds and
-  authenticates the request again. It closes with `1008` once that fails.
+    * Agents name the tools `workers/<name>`. A tool without `readOnlyHint` counts as one that
+      changes things.
+    * Wardrik pings every `:keepalive` milliseconds and authenticates again. It closes with `1008`
+      if that fails.
   """
 
   @behaviour WebSock

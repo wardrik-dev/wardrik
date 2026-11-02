@@ -1,9 +1,6 @@
 defmodule WardrikHTTP.Authenticator do
   @moduledoc """
-  A behaviour for deciding who a request comes from, as the `Wardrik.Scope` it acts in.
-
-  `WardrikHTTP` requires one, as `authenticator: {module, opts}`. The scope it returns names the
-  principal. Wardrik's `Wardrik.Authorizer` decides what that principal may do.
+  A behaviour that turns a request into the `Wardrik.Scope` it runs in. Required.
 
       defmodule MyAppWeb.WardrikSession do
         @behaviour WardrikHTTP.Authenticator
@@ -19,8 +16,7 @@ defmodule WardrikHTTP.Authenticator do
         end
       end
 
-  It's called again periodically while an event stream or worker socket is open. The connection
-  closes once it returns an error.
+  It runs again now and then while an event stream or worker socket is open. An error closes it.
   """
 
   @doc "Returns the scope the request's `conn` acts in, or an error."

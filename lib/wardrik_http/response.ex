@@ -1,5 +1,5 @@
 defmodule WardrikHTTP.Response do
-  @moduledoc "Sends an operation's output, or the protocol's `error` with its HTTP status."
+  @moduledoc false
 
   import Plug.Conn
 

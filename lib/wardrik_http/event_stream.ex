@@ -1,19 +1,5 @@
 defmodule WardrikHTTP.EventStream do
-  @moduledoc """
-  Sends a streamed operation's events as server-sent events.
-
-      id: eyJhY21lL3RyaWFnZSI6NDF9
-      data: {"specversion":"1.0","type":"wardrik.run.completed",...}
-
-  * An event that moves the cursor is sent with the new cursor as its `id`. A client's
-    `Last-Event-ID` then resumes after it.
-  * An event that doesn't move the cursor, like a delta, has no `id`.
-  * While idle, a comment is sent every `:keepalive` milliseconds. This keeps proxies from closing
-    the stream and detects clients that have gone.
-  * Before each comment, `:alive?` is called. The stream ends if it returns `false`.
-
-  The stream also ends when the client disconnects.
-  """
+  @moduledoc false
 
   import Plug.Conn
 

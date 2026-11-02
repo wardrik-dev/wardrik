@@ -1,16 +1,17 @@
 # Changelog
 
-## 0.1.0-rc.2
+## 0.1.0-rc.2 (2026-11-02)
 
 ### Breaking
 
-- Each path parameter is one segment, so an agent ID is one percent-encoded segment, `/` and
-  all. An operation on a conversation also matches its route under
-  `/v1/agents/{agent}/conversations/{conversation}`, which gives `"conversation"`.
-- `:authenticator` is required, and `WardrikHTTP.Bearer` and API tokens are gone. Options are
-  checked with `NimbleOptions`.
-- `c:WardrikHTTP.Authenticator.authenticate/2` takes a `WardrikHTTP.Authenticator.Request`, with
-  the conn, the server and the instance, then its options.
+- Each path parameter is one segment, so an agent ID is one percent-encoded segment, `/` and all.
+- An operation on a conversation also matches its route under
+  `/v1/agents/{agent}/conversations/{conversation}`.
+- `:authenticator` is required. `WardrikHTTP.Bearer` and API tokens are gone. Options are checked
+  with `NimbleOptions`.
+- `c:WardrikHTTP.Authenticator.authenticate/2` takes a `WardrikHTTP.Authenticator.Request`, then
+  its options.
+- `WardrikHTTP.Routes`, `Input`, `Response` and `EventStream` are internal and hidden from the docs.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

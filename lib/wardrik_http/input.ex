@@ -1,16 +1,5 @@
 defmodule WardrikHTTP.Input do
-  @moduledoc """
-  Builds an operation's input from a request.
-
-  The input merges, in order, so later ones win:
-
-    1. the JSON body
-    2. the query string
-    3. the path parameters
-
-  For webhooks and channels, the input is the raw request instead: `"body"` and `"headers"`.
-  Bodies over 8 MB are refused.
-  """
+  @moduledoc false
 
   alias Plug.Conn.Unfetched
   alias Wardrik.Error

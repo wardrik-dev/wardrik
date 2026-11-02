@@ -29,9 +29,8 @@ defmodule WardrikHTTP do
           )
 
   @moduledoc """
-  Serves Wardrik's operations over HTTP.
-
-  Most apps use `Wardrik.HTTP`, which sets `:server` and `:sign_in` for you:
+  Serves Wardrik's operations over HTTP. Most apps use `Wardrik.HTTP`, which sets `:server` and
+  `:sign_in`:
 
       children = [
         MyApp.AgentRuntime,
@@ -39,7 +38,7 @@ defmodule WardrikHTTP do
          wardrik: MyApp.AgentRuntime, authenticator: {MyAppWeb.WardrikSession, []}, port: 4000}
       ]
 
-  Use `WardrikHTTP` directly to serve any `Wardrik.Server`:
+  Use `WardrikHTTP` itself to serve any `Wardrik.Server`:
 
       children = [
         {WardrikHTTP,
@@ -48,7 +47,7 @@ defmodule WardrikHTTP do
          port: 4000}
       ]
 
-  It's also a `Plug`, so your router can forward a path to it.
+  It's also a `Plug`, so your router can forward to it.
 
   ## Options
 
@@ -67,10 +66,8 @@ defmodule WardrikHTTP do
   | `POST /v1/channels/{channel}/{path}` | a chat app's request, relayed to the channel and back |
   | `/oauth/*` | sign-in pages, from `:sign_in` |
 
-  `GET /v1/workers` returns `426` to an authenticated request that isn't a WebSocket upgrade,
-  so a worker can check its credentials first.
-
-  Every response has a `request-id` header. It's the caller's own if the request sent one.
+    * `GET /v1/workers` without a WebSocket upgrade returns `426` once authenticated.
+    * Every response has a `request-id` header, the request's own if it sent one.
   """
 
   @behaviour Plug
@@ -87,14 +84,14 @@ defmodule WardrikHTTP do
   @own [:server, :authenticator, :sign_in, :keepalive]
   @request_id Plug.RequestId.init(http_header: "request-id")
 
-  @doc "Returns a child spec that serves with Bandit. Options not listed above go to Bandit."
+  @doc "Returns a child spec that serves with Bandit. Other options go to Bandit."
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
     {own, bandit} = Keyword.split(opts, @own)
     Bandit.child_spec([plug: {__MODULE__, NimbleOptions.validate!(own, @schema)}] ++ bandit)
   end
 
-  @doc "Validates `opts`. Raises `NimbleOptions.ValidationError` without `:server` or `:authenticator`."
+  @doc "Validates `opts`. Raises `NimbleOptions.ValidationError` if they're invalid."
   @impl Plug
   def init(opts), do: opts |> NimbleOptions.validate!(@schema) |> Map.new()
 

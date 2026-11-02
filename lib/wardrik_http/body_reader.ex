@@ -1,9 +1,6 @@
 defmodule WardrikHTTP.BodyReader do
   @moduledoc """
-  Keeps a request's raw body while `Plug.Parsers` reads it, so webhook signatures can be checked
-  over the exact bytes.
-
-  Use it if your app parses bodies before `WardrikHTTP` sees them:
+  Keeps a request's raw body while `Plug.Parsers` reads it, for webhook signatures.
 
       plug Plug.Parsers,
         parsers: [:json],

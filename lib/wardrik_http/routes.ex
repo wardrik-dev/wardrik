@@ -1,7 +1,5 @@
 defmodule WardrikHTTP.Routes do
-  @moduledoc """
-  Matches a request's method and path to an operation in `WardrikProtocol`'s OpenAPI document.
-  """
+  @moduledoc false
 
   segment = fn
     "{" <> name -> {:param, String.trim_trailing(name, "}")}
