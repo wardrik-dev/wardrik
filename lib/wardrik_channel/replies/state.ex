@@ -4,6 +4,7 @@ defmodule WardrikChannel.Replies.State do
 
   Saved between restarts:
 
+    * the conversations followed, as `{agent, conversation}`
     * the cursor past what's posted
     * for each conversation, the run under way, the messages it answers and who asked
     * the arguments of each conversation's calls
@@ -11,7 +12,7 @@ defmodule WardrikChannel.Replies.State do
   Not saved: the channel, the follower, and when each thread's last status was shown.
   """
 
-  @kept [:workspace, :room, :cursor, :senders, :runs, :calls]
+  @kept [:workspace, :room, :conversations, :cursor, :senders, :runs, :calls]
 
   @enforce_keys [:workspace, :room]
   defstruct [
@@ -20,6 +21,7 @@ defmodule WardrikChannel.Replies.State do
     :cursor,
     :channel,
     :follower,
+    conversations: [],
     senders: %{},
     runs: %{},
     calls: %{},
@@ -28,16 +30,20 @@ defmodule WardrikChannel.Replies.State do
 
   @type run() :: %{id: String.t(), answering: [String.t()], asked_by: String.t() | nil}
 
+  @typedoc "A conversation, as the agent's ID and the conversation's."
+  @type conversation() :: {agent :: String.t(), conversation :: String.t() | nil}
+
   @type t() :: %__MODULE__{
           workspace: String.t(),
           room: String.t(),
           cursor: String.t() | nil,
           channel: WardrikChannel.Channel.t() | nil,
           follower: pid() | nil,
+          conversations: [conversation()],
           senders: %{String.t() => String.t()},
-          runs: %{String.t() => run()},
-          calls: %{String.t() => %{String.t() => term()}},
-          shown: %{String.t() => integer()}
+          runs: %{conversation() => run()},
+          calls: %{conversation() => %{String.t() => term()}},
+          shown: %{conversation() => integer()}
         }
 
   @typedoc """
@@ -66,7 +72,7 @@ defmodule WardrikChannel.Replies.State do
   def load(dumped), do: struct!(__MODULE__, dumped)
 
   @doc "Returns what `event` of `conversation` asks to post, and the updated state."
-  @spec take(t(), String.t(), Wardrik.Event.t()) :: {post(), t()}
+  @spec take(t(), conversation(), Wardrik.Event.t()) :: {post(), t()}
   def take(state, conversation, %Wardrik.Event{type: "wardrik." <> type, data: data}),
     do: taken(state, conversation, type, data)
 
@@ -75,12 +81,12 @@ defmodule WardrikChannel.Replies.State do
 
       State.arguments(state, conversation: conversation, call: "call_1")
   """
-  @spec arguments(t(), conversation: String.t(), call: String.t() | nil) :: term()
+  @spec arguments(t(), conversation: conversation(), call: String.t() | nil) :: term()
   def arguments(state, opts),
     do: get_in(state.calls, [Keyword.fetch!(opts, :conversation), Keyword.fetch!(opts, :call)])
 
   @doc "Returns who asked for the run under way in `conversation`, or `nil` if unknown."
-  @spec asked_by(t(), String.t()) :: String.t() | nil
+  @spec asked_by(t(), conversation()) :: String.t() | nil
   def asked_by(state, conversation), do: get_in(state.runs, [conversation, :asked_by])
 
   defp taken(state, _conversation, "message.created", %{

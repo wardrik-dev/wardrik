@@ -10,6 +10,15 @@
 
 ### Breaking
 
+- A thread is a conversation of the room's agent: `{agent, conversation}`, with
+  `Workspace.conversation/2` giving `"slack.T0123.C024BE91L.1696.1234"`. It's passed to Wardrik as
+  `conversation`. `WardrikChannel.received/2` returns `{:asked, {agent, conversation}}`.
+- `WardrikChannel.Waiting` and `WardrikChannel.Answer` have `:agent` and `:conversation`, `nil`
+  for the agent's own.
+- Replies follow each thread's own conversation log, not a pattern over every log.
+  `Workspace.logs/2` is gone. `Replies.follow/2` and `Replies.remind/2` take `:room`, `:agent` and
+  `:conversation`. A room's saved replies from rc.1 start over, following threads as they're
+  asked in.
 - Members act as the principal `identities:` gives, with the channel as their actor,
   `{:channel, name}`, and no grants: the host's authorizer decides from the scope's `context`,
   its `installation`, and when deciding, `asked_by`. A room offers the agents the authorizer lets

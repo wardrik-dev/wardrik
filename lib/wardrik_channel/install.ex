@@ -8,7 +8,7 @@ defmodule WardrikChannel.Install do
 
   ## Fields
 
-    * `:owner` - who it's added for, as `acme` or `acme/@jon`.
+    * `:owner` - who it's added for, as your app names them, such as `acme`.
     * `:return_to` - where they're sent once it's added.
     * `:query` - the query string the chat app redirected back with.
   """

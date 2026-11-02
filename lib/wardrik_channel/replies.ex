@@ -3,7 +3,8 @@ defmodule WardrikChannel.Replies do
   Posts agents' answers in each room's threads.
 
   Each room has one `WardrikChannel.Replies.Server` in the cluster, kept in Wardrik's store. It
-  reads the agents' logs, so no answer is lost to a restart. It posts:
+  reads the log of each conversation its threads hold, and no other, so no answer is lost to a
+  restart. It posts:
 
     * what a run answered
     * what the agent is doing while it works
@@ -29,31 +30,51 @@ defmodule WardrikChannel.Replies do
     |> Map.put(:id, __MODULE__)
   end
 
-  @doc "Starts posting in `room`'s threads. Does nothing if it already is."
-  @spec follow(Workspace.t(), String.t()) :: :ok
-  def follow(%Workspace{channel: channel, installation: installation} = workspace, room) do
+  @doc """
+  Starts posting what `:agent` does in `:conversation`, in its thread of `:room`. Does nothing if
+  it already is.
+
+      WardrikChannel.Replies.follow(workspace,
+        room: "C024BE91L",
+        agent: "agt_01JF8X5RQ2",
+        conversation: "slack.T0123.C024BE91L.1696.1234"
+      )
+  """
+  @spec follow(Workspace.t(), room: String.t(), agent: String.t(), conversation: String.t()) ::
+          :ok
+  def follow(%Workspace{channel: channel, installation: installation} = workspace, opts) do
+    room = Keyword.fetch!(opts, :room)
+
     child =
       {Server, key: key(workspace, room), initial_state: State.new(installation.workspace, room)}
 
-    {:ok, _started} = DurableServer.Supervisor.ensure_started_child(supervisor(channel), child)
-    :ok
+    {:ok, {pid, _meta}} =
+      DurableServer.Supervisor.ensure_started_child(supervisor(channel), child)
+
+    GenServer.call(pid, {:follow, held(opts)})
   end
 
   @doc """
-  Posts the calls `:conversation` waits on again, in its thread of `:room`.
+  Posts the calls `:agent` waits on in `:conversation` again, in its thread of `:room`.
 
-      WardrikChannel.Replies.remind(workspace, room: "C024BE91L", conversation: conversation)
+      WardrikChannel.Replies.remind(workspace,
+        room: "C024BE91L",
+        agent: "agt_01JF8X5RQ2",
+        conversation: "slack.T0123.C024BE91L.1696.1234"
+      )
   """
-  @spec remind(Workspace.t(), room: String.t(), conversation: String.t()) :: :ok
+  @spec remind(Workspace.t(), room: String.t(), agent: String.t(), conversation: String.t()) ::
+          :ok
   def remind(%Workspace{channel: channel} = workspace, opts) do
     room = Keyword.fetch!(opts, :room)
-    conversation = Keyword.fetch!(opts, :conversation)
 
     case DurableServer.Supervisor.lookup(supervisor(channel), key(workspace, room)) do
-      {pid, _meta} -> GenServer.cast(pid, {:remind, conversation})
+      {pid, _meta} -> GenServer.cast(pid, {:remind, held(opts)})
       nil -> :ok
     end
   end
+
+  defp held(opts), do: {Keyword.fetch!(opts, :agent), Keyword.fetch!(opts, :conversation)}
 
   @doc "Stops posting in `room` and deletes its saved position."
   @spec forget(Workspace.t(), String.t()) :: :ok

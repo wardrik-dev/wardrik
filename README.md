@@ -72,9 +72,9 @@ forward "/", Wardrik.HTTP,
 List the channel in an agent's definition:
 
 ```elixir
-scope = MyApp.AgentRuntime.as("acme/@maria")
+scope = MyApp.AgentRuntime.as("user_42")
 
-Wardrik.Agent.define(scope, "acme/triage",
+Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
   model: "anthropic:claude-haiku-4-5",
   description: "Triages incidents.",
   channels: ["slack"]
@@ -89,10 +89,14 @@ Then invite the bot into a room:
 
 ## Threads
 
-Each thread is its own conversation with the agent, with its own history:
+Each thread is its own conversation with the agent, with its own history. The channel names it
+from the workspace, room and thread, and passes it as `conversation`:
 
-```
-acme/triage/slack.T0123.C024BE91L.1696.1234
+```elixir
+Wardrik.Agent.ask(scope, "agt_01JF8X5RQ2",
+  content: "What's on fire?",
+  conversation: "slack.T0123.C024BE91L.1696.1234"
+)
 ```
 
 People in the workspace act as the users your app says they are, with the channel as their
@@ -100,8 +104,8 @@ actor, `{:channel, "slack"}`. Your `:authorizer` decides which agents they may r
 A room offers the agents they may read. Its request's `context` holds the `installation`, as
 `%{owner: "acme", workspace: "T0123"}`.
 
-Replies are read from the agents' logs. Each room has one process in your cluster, kept in
-Wardrik's store. A reply delayed by a restart is still posted.
+Replies are read from each thread's own conversation log, and no other. Each room has one process
+in your cluster, kept in Wardrik's store. A reply delayed by a restart is still posted.
 
 ## Approvals
 

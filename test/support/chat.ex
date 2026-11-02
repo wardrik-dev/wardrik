@@ -90,7 +90,7 @@ defmodule WardrikChannel.Test do
     :ok =
       Server.start(name,
         authorize: &deciders(test, &1),
-        offered: Map.get(context, :offered, [{"acme/triage", [channel]}])
+        offered: Map.get(context, :offered, [{"agt_triage", [channel]}])
       )
 
     opts = [

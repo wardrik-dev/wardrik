@@ -10,7 +10,7 @@ defmodule WardrikChannel.Rooms do
 
       # Someone picked an agent
       {:ok, binding, offer} =
-        WardrikChannel.Rooms.chose(workspace, room: room, agent: "acme/triage", by: member)
+        WardrikChannel.Rooms.chose(workspace, room: room, agent: "agt_01JF8X5RQ2", by: member)
 
       # Answer every message, not only mentions
       {:ok, binding} = WardrikChannel.Rooms.answers(workspace, room, :everything, member)

@@ -2,15 +2,16 @@ defmodule WardrikChannel.Replies.Server do
   @moduledoc """
   Posts in one room's threads.
 
-  Follows the logs of every conversation in the room and posts what each event asks for. It saves
-  its cursor after each post, so it carries on from there after a restart.
+  Follows the log of each conversation the room's threads hold, by its `{agent, conversation}`,
+  and posts what each event asks for. It saves its cursor after each post, so it carries on from
+  there after a restart. A conversation it starts to follow is read from its end at that time.
 
   A failed post is retried with backoff, up to a minute between tries. After eight attempts it's
   dropped with a warning. Later posts wait behind it. Statuses are shown at most once every two
   seconds per thread, and are never retried.
   """
 
-  use DurableServer, vsn: 1
+  use DurableServer, vsn: 2
 
   require Logger
 
@@ -19,6 +20,7 @@ defmodule WardrikChannel.Replies.Server do
   alias WardrikChannel.Replies.State
   alias WardrikChannel.Waiting
   alias WardrikChannel.Workspace
+  alias WardrikEvents.Cursor
 
   @types ~w(wardrik.message.created wardrik.run.started wardrik.tool_call.started
             wardrik.run.completed wardrik.run.interrupted wardrik.run.failed wardrik.run.cancelled
@@ -33,18 +35,24 @@ defmodule WardrikChannel.Replies.Server do
   def dump_state(state), do: State.dump(state)
 
   @impl DurableServer
+  # Before 2, the room followed every log by a pattern, with a cursor of its own shape.
+  def load_state(1, %{workspace: workspace, room: room}), do: State.new(workspace, room)
   def load_state(_vsn, dumped), do: State.load(dumped)
 
   @impl DurableServer
   def init(%State{} = state, %{channel: channel}) do
     Process.flag(:trap_exit, true)
-    state = %{state | channel: channel}
-    {:ok, follower} = WardrikEvents.Listener.start_link(Follower, follower(state))
-    {:ok, %{state | follower: follower}}
+    {:ok, listen(%{state | channel: channel})}
   end
 
   @impl DurableServer
   def handle_call(:cursor, _from, state), do: {:reply, state.cursor, state}
+
+  def handle_call({:follow, conversation}, _from, state) do
+    if conversation in state.conversations,
+      do: {:reply, :ok, state},
+      else: {:reply, :ok, followed(state, conversation), sync: true}
+  end
 
   def handle_call({:event, event, cursor}, from, state),
     do: posting(state, {event, cursor, from}, 1)
@@ -69,26 +77,53 @@ defmodule WardrikChannel.Replies.Server do
   def handle_info(_message, state), do: {:noreply, state}
 
   @impl DurableServer
-  def terminate(_reason, %State{follower: follower}) when is_pid(follower) do
-    Process.unlink(follower)
-    Process.exit(follower, :kill)
+  def terminate(_reason, state), do: stop(state.follower)
+
+  # Reads the new conversation from its end now, then follows it with the rest.
+  defp followed(state, conversation) do
+    {:ok, read} = Cursor.decode(state.cursor || Cursor.encode(%{}))
+    {:ok, head} = Cursor.decode(WardrikEvents.head(state.channel.events, [conversation]))
+
+    listen(%{
+      state
+      | conversations: state.conversations ++ [conversation],
+        cursor: Cursor.encode(Map.merge(head, read))
+    })
   end
 
-  def terminate(_reason, _state), do: :ok
+  defp listen(%State{conversations: []} = state), do: state
 
-  defp follower(state) do
-    {:ok, workspace} = workspace(state)
+  defp listen(state) do
+    :ok = stop(state.follower)
 
-    resources = [Workspace.logs(workspace, state.room)]
-    events = state.channel.events
+    {:ok, follower} =
+      WardrikEvents.Listener.start_link(Follower,
+        events: state.channel.events,
+        resources: state.conversations,
+        types: @types,
+        server: self()
+      )
 
-    [
-      events: events,
-      resources: resources,
-      types: @types,
-      started: WardrikEvents.head(events, resources),
-      server: self()
-    ]
+    %{state | follower: follower}
+  end
+
+  defp stop(follower) when is_pid(follower) do
+    Process.unlink(follower)
+    Process.exit(follower, :kill)
+    :ok
+  end
+
+  defp stop(nil), do: :ok
+
+  # An event from a follower since replaced is read again by the new one.
+  defp posting(
+         %State{follower: follower} = state,
+         {_event, _cursor, {pid, _tag} = from},
+         _attempt
+       )
+       when pid != follower do
+    GenServer.reply(from, :ok)
+    {:noreply, state}
   end
 
   defp posting(state, {event, cursor, from} = held, attempt) do
@@ -119,10 +154,8 @@ defmodule WardrikChannel.Replies.Server do
 
   defp backoff(attempt), do: min(@first_backoff * Integer.pow(2, attempt - 1), @max_backoff)
 
-  defp conversation(%Wardrik.Event{source: source}) do
-    [_deployment, id] = String.split(source, "/agents/", parts: 2)
-    id
-  end
+  defp conversation(%Wardrik.Event{agent: agent, conversation: conversation}),
+    do: {agent, conversation}
 
   defp post(_state, _conversation, :none), do: :ok
 
@@ -145,13 +178,14 @@ defmodule WardrikChannel.Replies.Server do
 
   defp post(state, conversation, body), do: deliver(state, conversation, body)
 
-  defp waiting(state, conversation, ids, asked_by) do
+  defp waiting(state, {agent, id} = conversation, ids, asked_by) do
     with {:ok, workspace} <- workspace(state),
-         {:ok, agent} <- Wardrik.Agent.read(Workspace.scope(workspace), conversation) do
-      for interrupt <- agent.interrupts,
+         {:ok, read} <- Wardrik.Agent.read(Workspace.scope(workspace), agent, conversation: id) do
+      for interrupt <- read.interrupts,
           ids == :all or interrupt.id in ids,
           do: %Waiting{
-            conversation: conversation,
+            agent: agent,
+            conversation: id,
             interrupt: interrupt,
             arguments:
               State.arguments(state, conversation: conversation, call: interrupt.tool_call_id),
@@ -178,7 +212,7 @@ defmodule WardrikChannel.Replies.Server do
   defp shown(state, conversation, _posted),
     do: %{state | shown: Map.delete(state.shown, conversation)}
 
-  defp deliver(state, conversation, body) do
+  defp deliver(state, {_agent, conversation}, body) do
     case workspace(state) do
       {:ok, %Workspace{channel: channel, installation: installation} = workspace} ->
         outbound = %Outbound{

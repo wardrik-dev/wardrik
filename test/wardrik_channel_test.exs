@@ -35,18 +35,18 @@ defmodule WardrikChannelTest do
   end
 
   defp conversation(context, thread),
-    do: "acme/triage/#{context.channel.name}.T1.C1.#{thread}"
+    do: {"agt_triage", "#{context.channel.name}.T1.C1.#{thread}"}
 
   describe "rooms" do
     test "binds a room to the one agent offered, and records who did", context do
-      assert {:bound, %Binding{agent: "acme/triage", answers: :mentions},
-              %Offer{agent: "acme/triage", description: "Answers acme/triage."}} =
+      assert {:bound, %Binding{agent: "agt_triage", answers: :mentions},
+              %Offer{agent: "agt_triage", description: "Answers agt_triage."}} =
                Rooms.joined(context.workspace, "C1", @maria)
 
-      assert %Binding{agent: "acme/triage"} = Rooms.get(context.workspace, "C1")
+      assert %Binding{agent: "agt_triage"} = Rooms.get(context.workspace, "C1")
 
       assert [%{"type" => "wardrik.room.bound", "data" => data}] = audited(context)
-      assert %{"room" => "C1", "agent" => %{"id" => "acme/triage"}, "actor" => actor} = data
+      assert %{"room" => "C1", "agent" => %{"id" => "agt_triage"}, "actor" => actor} = data
       assert actor["id"] == "maria"
     end
 
@@ -58,20 +58,20 @@ defmodule WardrikChannelTest do
 
     test "offers a choice of the agents that answer in it, and only those", context do
       offered = [
-        {"acme/one", [context.channel.name]},
-        {"acme/two", [context.channel.name]},
-        {"acme/quiet", []}
+        {"agt_one", [context.channel.name]},
+        {"agt_two", [context.channel.name]},
+        {"agt_quiet", []}
       ]
 
       :ok = WardrikTesting.Server.offer_agents(context.name, offered)
 
-      assert {:choose, [%Offer{agent: "acme/one"}, %Offer{agent: "acme/two"}]} =
+      assert {:choose, [%Offer{agent: "agt_one"}, %Offer{agent: "agt_two"}]} =
                Rooms.joined(context.workspace, "C1")
 
-      assert {:ok, %Binding{agent: "acme/two"}, %Offer{}} =
-               Rooms.chose(context.workspace, room: "C1", agent: "acme/two")
+      assert {:ok, %Binding{agent: "agt_two"}, %Offer{}} =
+               Rooms.chose(context.workspace, room: "C1", agent: "agt_two")
 
-      assert Rooms.chose(context.workspace, room: "C1", agent: "acme/quiet") ==
+      assert Rooms.chose(context.workspace, room: "C1", agent: "agt_quiet") ==
                {:error, :not_offered}
     end
 
@@ -128,6 +128,59 @@ defmodule WardrikChannelTest do
                       %Outbound{thread: "1.1", body: {:reply, "Answered: More", ["1.2"]}}}
     end
 
+    test "follows each thread's own conversation, and no other log", context do
+      {agent, conversation} = conversation(context, "1.1")
+      WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+      assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
+
+      look_alikes = [
+        {"agt_other", conversation},
+        {agent, nil},
+        {agent, conversation <> "0"},
+        {agent, "#{context.channel.name}.T1.C2.1.1"}
+      ]
+
+      for log <- look_alikes do
+        said = %{"role" => "assistant", "parts" => [%{"type" => "text", "content" => "Not here"}]}
+        data = %{"run" => %{"id" => "r9"}, "messages" => [said]}
+        :ok = WardrikEvents.append(context.events, log, {"run.completed", "runs/r9", data})
+      end
+
+      WardrikChannel.received(context.workspace, reply("More", "1.1", "1.2"))
+      assert_receive {:delivered, %Outbound{body: {:reply, "Answered: More", ["1.2"]}}}
+      refute_received {:delivered, %Outbound{body: {:reply, "Not here", _answering}}}
+    end
+
+    test "follows a new thread from its end, and keeps following the others", context do
+      WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+      assert_receive {:delivered, %Outbound{thread: "1.1", body: {:reply, "Answered: Hi", _}}}
+
+      WardrikChannel.received(context.workspace, mention("Hey", "2.1"))
+      assert_receive {:delivered, %Outbound{thread: "2.1", body: {:reply, "Answered: Hey", _}}}
+
+      WardrikChannel.received(context.workspace, reply("More", "1.1", "1.2"))
+      assert_receive {:delivered, %Outbound{thread: "1.1", body: {:reply, "Answered: More", _}}}
+      refute_received {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
+    end
+
+    test "posts nothing a replaced follower hands it, and starts over from an rc.1 room",
+         context do
+      WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+      assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
+
+      replies = Module.concat([context.name, "Channels", context.channel.name, "Replies"])
+      {pid, _meta} = DurableServer.Supervisor.lookup(replies, "T1/C1")
+      event = %Wardrik.Event{type: "wardrik.run.failed", data: %{"error" => %{"message" => "x"}}}
+
+      assert GenServer.call(pid, {:event, event, "c"}) == :ok
+      refute_receive {:delivered, %Outbound{body: {:failed, "x"}}}, 50
+
+      saved = %{workspace: "T1", room: "C1", cursor: "old"}
+
+      assert WardrikChannel.Replies.Server.load_state(1, saved) ==
+               WardrikChannel.Replies.State.new("T1", "C1")
+    end
+
     test "shows what the agent is doing while it works", context do
       WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:status, "is thinking…"}}}
@@ -161,7 +214,8 @@ defmodule WardrikChannelTest do
     test "reminds no room that isn't posting", context do
       assert WardrikChannel.Replies.remind(context.workspace,
                room: "C9",
-               conversation: "acme/triage/x"
+               agent: "agt_triage",
+               conversation: "chat.T1.C9.x"
              ) == :ok
     end
 
@@ -190,9 +244,10 @@ defmodule WardrikChannelTest do
     end
 
     test "posts a waiting call with its arguments, and who asked", context do
-      conversation = conversation(context, "1.1")
+      {agent, conversation} = conversation(context, "1.1")
 
       assert %Waiting{
+               agent: ^agent,
                conversation: ^conversation,
                interrupt: %Wardrik.Interrupt{id: "call_1", name: "echo"},
                arguments: %{"text" => "hi"},
@@ -205,6 +260,7 @@ defmodule WardrikChannelTest do
     test "lets a member whose own binding allows it decide, and says who did", context do
       answer = %Answer{
         member: @maria,
+        agent: context.waiting.agent,
         conversation: context.waiting.conversation,
         interrupt: "call_1",
         decision: {:approve, nil}
@@ -218,10 +274,11 @@ defmodule WardrikChannelTest do
     end
 
     test "lets whoever asked decide, and nobody else", context do
-      %Waiting{conversation: conversation, asked_by: asked_by} = context.waiting
+      %Waiting{agent: agent, conversation: conversation, asked_by: asked_by} = context.waiting
 
       answer = %Answer{
         member: @jon,
+        agent: agent,
         conversation: conversation,
         interrupt: "call_1",
         asked_by: asked_by,
@@ -259,6 +316,7 @@ defmodule WardrikChannelTest do
     test "says how the decision went, with what the decider said", context do
       answer = %Answer{
         member: @maria,
+        agent: context.waiting.agent,
         conversation: context.waiting.conversation,
         interrupt: "call_1",
         decision: {:approve, "Once."}
@@ -271,7 +329,8 @@ defmodule WardrikChannelTest do
 
     test "says a run stopped before it answered", context do
       {:ok, scope} = Workspace.member_scope(context.workspace, @ana)
-      :ok = Wardrik.Agent.cancel(scope, context.waiting.conversation)
+      %Waiting{agent: agent, conversation: conversation} = context.waiting
+      :ok = Wardrik.Agent.cancel(scope, agent, conversation: conversation)
 
       assert_receive {:delivered, %Outbound{body: {:stopped, ["1.1"]}}}
     end
@@ -307,6 +366,7 @@ defmodule WardrikChannelTest do
 
       answer = %Answer{
         member: %Member{id: "U9", name: "stranger"},
+        agent: waiting.agent,
         conversation: waiting.conversation,
         interrupt: "call_1",
         asked_by: waiting.asked_by,
@@ -380,7 +440,7 @@ defmodule WardrikChannelTest do
   describe "notices" do
     test "posts a notice in the room itself, in the workspace it names", context do
       notice = %Wardrik.Notice{
-        agent: "acme/digest",
+        agent: "agt_digest",
         kind: :finished,
         at: DateTime.utc_now(),
         text: "Done."
@@ -402,7 +462,7 @@ defmodule WardrikChannelTest do
       interrupt = %Wardrik.Interrupt{id: "call_1", name: "echo"}
 
       notice = %Wardrik.Notice{
-        agent: "acme/triage",
+        agent: "agt_triage",
         kind: :parked,
         at: DateTime.utc_now(),
         calls: [%{interrupt: interrupt, arguments: %{"text" => "hi"}}]
@@ -410,11 +470,15 @@ defmodule WardrikChannelTest do
 
       assert Waiting.from_notice(notice) == [
                %Waiting{
-                 conversation: "acme/triage",
+                 agent: "agt_triage",
+                 conversation: nil,
                  interrupt: interrupt,
                  arguments: %{"text" => "hi"}
                }
              ]
+
+      assert [%Waiting{agent: "agt_triage", conversation: "C1"}] =
+               Waiting.from_notice(%{notice | conversation: "C1"})
     end
   end
 
@@ -479,10 +543,10 @@ defmodule WardrikChannelTest do
       assert Channel.owned(channel, "acme") == []
 
       acme = installed.("T1", "acme")
-      installed.("T2", "acme/@jon")
+      installed.("T2", "acme-jon")
 
       assert Channel.owned(channel, "acme") == [acme]
-      assert Channel.owned(channel, "acme/@maria") == []
+      assert Channel.owned(channel, "acme-maria") == []
     end
 
     test "post a notice only in the workspace it names, and skip one not added", context do
@@ -501,7 +565,7 @@ defmodule WardrikChannelTest do
         :ok = Channel.install(channel, installation)
       end
 
-      notice = %Wardrik.Notice{agent: "acme/digest", kind: :finished, at: DateTime.utc_now()}
+      notice = %Wardrik.Notice{agent: "agt_digest", kind: :finished, at: DateTime.utc_now()}
       notification = %Notification{workspace: "T1", room: "#news", notice: notice}
 
       assert Chat.notify(notification, opts) == :ok
@@ -554,7 +618,8 @@ defmodule WardrikChannelTest do
 
     answer = %Answer{
       member: @maria,
-      conversation: "acme/triage/x",
+      agent: "agt_triage",
+      conversation: "chat.T1.C9.x",
       interrupt: "call_1",
       decision: {:approve, nil}
     }

@@ -20,10 +20,10 @@ defmodule WardrikChannel do
 
   An agent answers in a channel when its definition lists it:
 
-      Wardrik.Agent.define(scope, "acme/triage", model: "anthropic:claude-haiku-4-5", channels: ["slack"])
+      Wardrik.Agent.define(scope, "agt_01JF8X5RQ2", model: "anthropic:claude-haiku-4-5", channels: ["slack"])
 
   Mention the bot in a room to start a thread. Reply in the thread to go on. Each thread is its own
-  conversation, as `acme/triage/slack.T0123.C024BE91L.1696.1234`. Calls the agent waits on are
+  conversation, as `slack.T0123.C024BE91L.1696.1234`, and the agent keeps a history of it. Calls the agent waits on are
   posted in the thread for someone to decide. Whoever asked may always decide their own calls, if
   your authorizer allows it. See `WardrikChannel.Rooms` and `WardrikChannel.Replies`.
 
@@ -177,13 +177,13 @@ defmodule WardrikChannel do
     * the room's agent answers every message
     * the message replies in a thread the agent already answers in
 
-  Returns `{:asked, conversation}`, `:ignored` if no agent answers, or `{:error, message}`, as
-  when your app doesn't know the sender or the authorizer refuses them.
+  Returns `{:asked, {agent, conversation}}`, `:ignored` if no agent answers, or
+  `{:error, message}`, as when your app doesn't know the sender or the authorizer refuses them.
 
   If the agent is waiting on calls, the message queues behind them and the calls are posted again.
   """
   @spec received(Workspace.t(), Inbound.t()) ::
-          {:asked, String.t()} | :ignored | {:error, String.t()}
+          {:asked, {String.t(), String.t()}} | :ignored | {:error, String.t()}
   def received(%Workspace{} = workspace, %Inbound{} = inbound) do
     thread = inbound.thread || inbound.id
 
@@ -203,31 +203,41 @@ defmodule WardrikChannel do
     do: Rooms.started?(workspace, room: binding.room, thread: thread)
 
   defp ask(workspace, %Binding{room: room, agent: agent}, inbound, thread) do
-    conversation = Workspace.conversation(workspace, agent: agent, room: room, thread: thread)
+    conversation = Workspace.conversation(workspace, room: room, thread: thread)
+    held = [room: room, agent: agent, conversation: conversation]
 
     with {:ok, scope} <- Workspace.member_scope(workspace, inbound.sender),
          :ok <- Rooms.start(workspace, room: room, thread: thread),
-         :ok <- Replies.follow(workspace, room),
-         waiting? = waiting?(scope, conversation),
+         :ok <- Replies.follow(workspace, held),
+         waiting? = waiting?(scope, agent, conversation),
          {:ok, _message} <-
-           Wardrik.Agent.ask(scope, conversation, content: inbound.text, id: inbound.id) do
-      if waiting?, do: Replies.remind(workspace, room: room, conversation: conversation)
-      {:asked, conversation}
+           Wardrik.Agent.ask(scope, agent,
+             content: inbound.text,
+             id: inbound.id,
+             conversation: conversation
+           ) do
+      if waiting?, do: Replies.remind(workspace, held)
+      {:asked, {agent, conversation}}
     else
       {:error, %Error{message: message}} -> {:error, message}
       {:error, why} -> {:error, why}
     end
   end
 
-  defp waiting?(scope, conversation),
-    do: match?({:ok, %Wardrik.Agent{status: :parked}}, Wardrik.Agent.read(scope, conversation))
+  defp waiting?(scope, agent, conversation),
+    do:
+      match?(
+        {:ok, %Wardrik.Agent{status: :parked}},
+        Wardrik.Agent.read(scope, agent, conversation: conversation)
+      )
 
   @doc """
   Approves or denies a call the agent waits on, as `answer`'s member.
 
       WardrikChannel.decide(workspace, %WardrikChannel.Answer{
         member: member,
-        conversation: conversation,
+        agent: "agt_01JF8X5RQ2",
+        conversation: "slack.T0123.C024BE91L.1696.1234",
         interrupt: "int_1",
         decision: {:approve, "Looks fine."}
       })
@@ -242,13 +252,13 @@ defmodule WardrikChannel do
   why.
   """
   @spec decide(Workspace.t(), Answer.t()) :: {:ok, Wardrik.Decision.t()} | {:error, String.t()}
-  def decide(
-        workspace,
-        %Answer{conversation: conversation, interrupt: interrupt, decision: decision} = answer
-      ) do
+  def decide(workspace, %Answer{decision: decision} = answer) do
     with {:ok, scope} <- Workspace.deciding_scope(workspace, answer),
-         do: decided(workspace, answered(scope, conversation, interrupt, decision))
+         do: decided(workspace, answered(scope, call(answer), decision))
   end
+
+  defp call(%Answer{agent: agent, conversation: conversation, interrupt: interrupt}),
+    do: [agent: agent, interrupt: interrupt] ++ given(:conversation, conversation)
 
   defp decided(_workspace, {:ok, [decision]}), do: {:ok, decision}
 
@@ -257,19 +267,11 @@ defmodule WardrikChannel do
 
   defp decided(_workspace, {:error, %Error{message: message}}), do: {:error, message}
 
-  defp answered(scope, conversation, interrupt, {:approve, note}),
-    do:
-      Wardrik.Agent.approve(
-        scope,
-        [agent: conversation, interrupt: interrupt] ++ given(:note, note)
-      )
+  defp answered(scope, call, {:approve, note}),
+    do: Wardrik.Agent.approve(scope, call ++ given(:note, note))
 
-  defp answered(scope, conversation, interrupt, {:deny, reason}),
-    do:
-      Wardrik.Agent.deny(
-        scope,
-        [agent: conversation, interrupt: interrupt] ++ given(:reason, reason)
-      )
+  defp answered(scope, call, {:deny, reason}),
+    do: Wardrik.Agent.deny(scope, call ++ given(:reason, reason))
 
   defp given(_key, nil), do: []
   defp given(key, value), do: [{key, value}]

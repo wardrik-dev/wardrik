@@ -15,7 +15,6 @@ defmodule WardrikChannel.Workspace do
   channel in `channels`.
   """
 
-  alias Wardrik.AgentID
   alias Wardrik.Channel.Installation
   alias WardrikChannel.Answer
   alias WardrikChannel.Channel
@@ -101,9 +100,8 @@ defmodule WardrikChannel.Workspace do
     case Wardrik.Agents.list(scope) do
       {:ok, agents} ->
         agents
-        |> Enum.map(& &1.id)
-        |> Enum.reject(&AgentID.conversation?/1)
-        |> Enum.flat_map(&offer(scope, workspace, &1))
+        |> Enum.filter(&(&1.conversation == nil))
+        |> Enum.flat_map(&offer(scope, workspace, &1.id))
 
       {:error, _error} ->
         []
@@ -126,41 +124,30 @@ defmodule WardrikChannel.Workspace do
   end
 
   @doc """
-  Returns the ID of the conversation `:agent` holds for `:thread` of `:room`.
+  Returns the ID of the conversation `:thread` of `:room` holds. Each agent that answers there
+  keeps its own history of it, as `{agent, conversation}`.
 
-      WardrikChannel.Workspace.conversation(workspace,
-        agent: "acme/triage",
-        room: "C024BE91L",
-        thread: "1696.1234"
-      )
-      #=> "acme/triage/slack.T0123.C024BE91L.1696.1234"
+      WardrikChannel.Workspace.conversation(workspace, room: "C024BE91L", thread: "1696.1234")
+      #=> "slack.T0123.C024BE91L.1696.1234"
   """
-  @spec conversation(t(), agent: String.t(), room: String.t(), thread: String.t()) :: String.t()
-  def conversation(workspace, opts) do
-    room = Keyword.fetch!(opts, :room)
-
-    Keyword.fetch!(opts, :agent) <>
-      "/" <> prefix(workspace, room) <> Keyword.fetch!(opts, :thread)
-  end
+  @spec conversation(t(), room: String.t(), thread: String.t()) :: String.t()
+  def conversation(workspace, opts),
+    do: prefix(workspace, Keyword.fetch!(opts, :room)) <> Keyword.fetch!(opts, :thread)
 
   @doc """
-  Returns the thread of `:room` that `:conversation` holds.
+  Returns the thread of `:room` that `:conversation`, from `conversation/2`, holds.
 
       WardrikChannel.Workspace.thread(workspace,
         room: "C024BE91L",
-        conversation: "acme/triage/slack.T0123.C024BE91L.1696.1234"
+        conversation: "slack.T0123.C024BE91L.1696.1234"
       )
       #=> "1696.1234"
   """
   @spec thread(t(), room: String.t(), conversation: String.t()) :: String.t()
   def thread(workspace, opts) do
-    {:ok, %AgentID{conversation: held}} = AgentID.parse(Keyword.fetch!(opts, :conversation))
+    held = Keyword.fetch!(opts, :conversation)
     String.replace_prefix(held, prefix(workspace, Keyword.fetch!(opts, :room)), "")
   end
-
-  @doc "Returns a pattern matching the logs of every conversation in `room`, for any agent."
-  @spec logs(t(), String.t()) :: String.t()
-  def logs(workspace, room), do: "*/" <> prefix(workspace, room) <> "*"
 
   defp prefix(%__MODULE__{channel: channel, installation: installation}, room),
     do: Enum.join([channel.name, installation.workspace, room, ""], ".")
