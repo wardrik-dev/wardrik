@@ -211,9 +211,7 @@ defmodule WardrikChannel do
          :ok <- Replies.follow(workspace, held),
          waiting? = waiting?(scope, agent, conversation),
          {:ok, _message} <-
-           Wardrik.Agent.ask(scope, agent,
-             content: inbound.text,
-             id: inbound.id,
+           Wardrik.Agent.ask(scope, agent, [content: inbound.text, id: inbound.id],
              conversation: conversation
            ) do
       if waiting?, do: Replies.remind(workspace, held)
@@ -254,11 +252,12 @@ defmodule WardrikChannel do
   @spec decide(Workspace.t(), Answer.t()) :: {:ok, Wardrik.Decision.t()} | {:error, String.t()}
   def decide(workspace, %Answer{decision: decision} = answer) do
     with {:ok, scope} <- Workspace.deciding_scope(workspace, answer),
-         do: decided(workspace, answered(scope, call(answer), decision))
+         do: decided(workspace, answered(scope, answer, decision))
   end
 
-  defp call(%Answer{agent: agent, conversation: conversation, interrupt: interrupt}),
-    do: [agent: agent, interrupt: interrupt] ++ given(:conversation, conversation)
+  defp call(%Answer{agent: agent, interrupt: interrupt}), do: [agent: agent, interrupt: interrupt]
+
+  defp held(%Answer{conversation: conversation}), do: given(:conversation, conversation)
 
   defp decided(_workspace, {:ok, [decision]}), do: {:ok, decision}
 
@@ -267,11 +266,11 @@ defmodule WardrikChannel do
 
   defp decided(_workspace, {:error, %Error{message: message}}), do: {:error, message}
 
-  defp answered(scope, call, {:approve, note}),
-    do: Wardrik.Agent.approve(scope, call ++ given(:note, note))
+  defp answered(scope, answer, {:approve, note}),
+    do: Wardrik.Agent.approve(scope, call(answer) ++ given(:note, note), held(answer))
 
-  defp answered(scope, call, {:deny, reason}),
-    do: Wardrik.Agent.deny(scope, call ++ given(:reason, reason))
+  defp answered(scope, answer, {:deny, reason}),
+    do: Wardrik.Agent.deny(scope, call(answer) ++ given(:reason, reason), held(answer))
 
   defp given(_key, nil), do: []
   defp given(key, value), do: [{key, value}]
