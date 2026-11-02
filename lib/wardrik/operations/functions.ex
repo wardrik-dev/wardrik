@@ -73,7 +73,7 @@ defmodule Wardrik.Operations.Functions do
     parameters = path(operation)
     scope = Macro.var(:scope, __MODULE__)
     given = Macro.var(:input, __MODULE__)
-    {arguments, types, input} = arguments(operation.id, parameters, given)
+    {arguments, types, input} = arguments(operation, parameters, given)
 
     quote do
       @doc unquote(doc(operation, lead, parameters))
@@ -86,13 +86,13 @@ defmodule Wardrik.Operations.Functions do
   end
 
   # Two or more path parameters are named in the input, so their IDs can't be swapped.
-  defp arguments(id, [_first, _second | _more] = parameters, given) do
+  defp arguments(%{id: id} = operation, [_first, _second | _more] = parameters, given) do
     keys = Enum.map(parameters, &String.to_atom/1)
     input = quote(do: Types.named(unquote(id), unquote(given), unquote(keys)))
-    {[given], [quote(do: keyword())], input}
+    conversation({[given], [quote(do: keyword())], input}, operation)
   end
 
-  defp arguments(id, parameters, given) do
+  defp arguments(%{id: id} = operation, parameters, given) do
     arguments = Enum.map(parameters, &Macro.var(String.to_atom(&1), __MODULE__))
     types = Enum.map(parameters, fn _parameter -> quote(do: String.t() | struct()) end)
     named = Enum.map(arguments, fn argument -> quote(do: Types.path(unquote(argument))) end)
@@ -100,16 +100,38 @@ defmodule Wardrik.Operations.Functions do
 
     input =
       quote do
-        Map.merge(Types.encode(unquote(id), unquote(given)), unquote(path_input))
+        unquote(id)
+        |> Types.encode(unquote(given))
+        |> then(&Types.checked(unquote(id), &1))
+        |> Map.merge(unquote(path_input))
       end
 
     {arguments ++ [quote(do: unquote(given) \\ [])], types ++ [quote(do: term())], input}
+    |> fieldless(operation, path_input)
+    |> conversation(operation)
+  end
+
+  # An operation with no input of its own takes none: only its path parameters, and opts.
+  defp fieldless({arguments, types, input}, operation, path_input) do
+    if Types.fields(operation) == [],
+      do: {Enum.drop(arguments, -1), Enum.drop(types, -1), path_input},
+      else: {arguments, types, input}
+  end
+
+  # An operation on a conversation takes it in `opts`, whatever form its input takes.
+  defp conversation(arguments, %{conversation: nil}), do: arguments
+
+  defp conversation({arguments, types, input}, _operation) do
+    opts = Macro.var(:opts, __MODULE__)
+
+    {arguments ++ [quote(do: unquote(opts) \\ [])], types ++ [quote(do: keyword())],
+     quote(do: Types.conversation(unquote(input), unquote(opts)))}
   end
 
   defp doc(operation, lead, parameters) do
     route = "`#{String.upcase(operation.method)} #{operation.path}`"
 
-    [lead, operation.description, named(parameters), route]
+    [lead, operation.description, named(parameters), held(operation, parameters), route]
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n\n")
   end
@@ -120,4 +142,9 @@ defmodule Wardrik.Operations.Functions do
   end
 
   defp named(_parameters), do: nil
+
+  defp held(%{conversation: nil}, _parameters), do: nil
+
+  defp held(_operation, _parameters),
+    do: "Give `conversation: id` in `opts` to act on one of the agent's conversations."
 end

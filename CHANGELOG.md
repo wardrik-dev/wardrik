@@ -52,6 +52,15 @@
   `Wardrik.Agent.approve(scope, agent: "agt_books", interrupt: "call_1")`: `Wardrik.Agent`'s
   `approve/2`, `deny/2`, `kill/2`, `authorization/2`, `trigger_set/2` and `trigger_remove/2`,
   `Wardrik.Hook.deliver/2` and `deliver_with_secret/2`, and `Wardrik.Channel.deliver/2`.
+- An operation's function that acts on a conversation takes `conversation:` in its options, and
+  only there, as `Wardrik.Agent.ask(scope, "agt_1", "Hi", conversation: "C1")` or
+  `Wardrik.Agent.approve(scope, [agent: "agt_1", interrupt: "call_1"], conversation: "C1")`.
+- An operation's input takes only its own fields. Any other key raises `ArgumentError`, as an
+  unknown option does.
+- An operation with no input of its own takes none: `Wardrik.Agent.read(scope, "agt_1")`, or
+  `read(scope, "agt_1", conversation: "C1")`. That's `read`, `definition`, `timeline`, `runs`,
+  `calls`, `cancel`, `clear`, `stop`, `spawn` and `forget`, and `Wardrik.Deployment.nodes/1`.
+- `Wardrik.Interrupt`'s `agent_id` is `agent`.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

@@ -66,13 +66,66 @@ defmodule Wardrik.Operations.Types do
   def encode(_id, input), do: Type.json(input)
 
   @doc """
+  Puts the `:conversation` in `opts` into the operation's JSON `input`. Leaves it out unless set.
+  """
+  @spec conversation(map(), keyword()) :: map()
+  def conversation(input, opts) do
+    case Keyword.validate!(opts, [:conversation]) do
+      [conversation: conversation] when is_binary(conversation) ->
+        Map.put(input, "conversation", conversation)
+
+      _none ->
+        input
+    end
+  end
+
+  @doc """
   Converts an Elixir caller's `input` to the operation's JSON input, taking the path parameters
   `keys` from it. Raises `KeyError` if one is missing.
   """
   @spec named(String.t(), keyword(), [atom()]) :: map()
   def named(id, input, keys) do
     path = Map.new(keys, &{Atom.to_string(&1), path(Keyword.fetch!(input, &1))})
-    Map.merge(encode(id, Keyword.drop(input, keys)), path)
+    id |> encode(Keyword.drop(input, keys)) |> then(&checked(id, &1)) |> Map.merge(path)
+  end
+
+  @doc """
+  Returns the caller's JSON `input` if it holds only the operation's own fields. Path parameters
+  are arguments, and a conversation is in `opts`, so neither is a field. Raises `ArgumentError`
+  for any other key, as `Keyword.validate!/2` does for options.
+  """
+  @spec checked(String.t(), map()) :: map()
+  def checked(id, input) do
+    case id |> WardrikProtocol.operation() |> fields() do
+      :any ->
+        input
+
+      fields ->
+        case Map.keys(input) -- fields do
+          [] ->
+            input
+
+          unknown ->
+            raise ArgumentError,
+                  "unknown input #{inspect(unknown)} for #{id}, which takes #{inspect(fields)}"
+        end
+    end
+  end
+
+  @doc """
+  Returns the input fields a caller gives `operation`, or `:any` where its input is open. Path
+  parameters and the conversation aren't fields.
+  """
+  @spec fields(WardrikProtocol.operation()) :: [String.t()] | :any
+  def fields(operation) do
+    case operation.input do
+      %{"additionalProperties" => false} = input ->
+        Map.keys(input["properties"] || %{}) --
+          ["conversation" | Wardrik.Operations.Functions.path(operation)]
+
+      _open ->
+        :any
+    end
   end
 
   @doc "Converts the operation's JSON output to what an Elixir caller gets."

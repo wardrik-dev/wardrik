@@ -7,12 +7,62 @@ defmodule Wardrik.FunctionsTest do
   test "does every operation with a function taking its path parameters" do
     for operation <- WardrikProtocol.operations(), not named?(operation) do
       module = Functions.module(Functions.prefix(operation))
-      arity = 2 + length(Functions.path(operation))
+      # An operation with input of its own takes it after its path parameters, optionally.
+      input = if Types.fields(operation) == [], do: 0, else: 1
+      arity = 1 + length(Functions.path(operation)) + input
 
       assert Code.ensure_loaded?(module), "There's no #{inspect(module)}."
       assert function_exported?(module, Functions.name(operation), arity), operation.id
-      assert function_exported?(module, Functions.name(operation), arity - 1), operation.id
+
+      assert function_exported?(module, Functions.name(operation), arity - input),
+             operation.id
+
+      assert function_exported?(module, Functions.name(operation), arity + 1) ==
+               (operation.conversation != nil),
+             operation.id
     end
+  end
+
+  test "takes a conversation in opts, whatever form the input takes" do
+    scope = %Wardrik.Scope{server: Wardrik.Test.Server, wardrik: self(), principal: nil}
+
+    Wardrik.Agent.ask(scope, "agt_1", "Hi.", conversation: "C1")
+
+    assert_received {:ran, "agent.ask",
+                     %{"agent" => "agt_1", "content" => "Hi.", "conversation" => "C1"}}
+
+    Wardrik.Agent.decide(scope, "agt_1", %{"call_1" => :approve}, conversation: "C1")
+    assert_received {:ran, "agent.decide", %{"conversation" => "C1", "decisions" => [_decision]}}
+
+    Wardrik.Agent.ask(scope, "agt_1", "Hi.")
+    assert_received {:ran, "agent.ask", input}
+    refute Map.has_key?(input, "conversation")
+
+    assert_raise ArgumentError, fn -> Wardrik.Agent.ask(scope, "agt_1", "Hi.", to: "C1") end
+
+    Wardrik.Agent.deny(scope, [agent: "agt_1", interrupt: "call_1"], conversation: "C1")
+
+    assert_received {:ran, "agent.deny",
+                     %{"agent" => "agt_1", "interrupt" => "call_1", "conversation" => "C1"}}
+  end
+
+  test "takes a conversation only in opts, and refuses input it doesn't know" do
+    scope = %Wardrik.Scope{server: Wardrik.Test.Server, wardrik: self(), principal: nil}
+
+    for input <- [
+          [content: "Hi.", conversation: "C1"],
+          [content: "Hi.", colour: "red"],
+          [content: "Hi.", agent: "agt_2"]
+        ] do
+      assert_raise ArgumentError, fn -> Wardrik.Agent.ask(scope, "agt_1", input) end
+    end
+
+    assert_raise ArgumentError, fn ->
+      Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", conversation: "C1")
+    end
+
+    assert_raise ArgumentError, fn -> Wardrik.Agents.list(scope, nope: true) end
+    refute_received {:ran, _operation, _input}
   end
 
   test "names two or more path parameters in the input" do
@@ -20,7 +70,10 @@ defmodule Wardrik.FunctionsTest do
       module = Code.ensure_loaded!(Functions.module(Functions.prefix(operation)))
 
       assert function_exported?(module, Functions.name(operation), 2), operation.id
-      refute function_exported?(module, Functions.name(operation), 3), operation.id
+
+      assert function_exported?(module, Functions.name(operation), 3) ==
+               (operation.conversation != nil),
+             operation.id
     end
 
     assert Types.named("agent.deny", [agent: "acme/books", interrupt: "call_1", reason: "No."], [

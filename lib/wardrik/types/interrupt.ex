@@ -3,7 +3,7 @@ defmodule Wardrik.Interrupt do
   A call an agent waits on a person for.
 
   `reason` is `:tool_approval`, `:model_approval`, `:ceiling_approval`, `:authorization` or
-  `:in_doubt`. `agent_id` and `conversation` are set only by `Wardrik.Interrupts.list/2`.
+  `:in_doubt`. `agent` and `conversation` are set only by `Wardrik.Interrupts.list/2`.
   """
 
   use Wardrik.Type,
@@ -17,12 +17,12 @@ defmodule Wardrik.Interrupt do
       name: "name",
       tool_call_id: "tool_call_id",
       labels: "labels",
-      agent_id: nil,
+      agent: nil,
       conversation: nil
     ]
 
-  @doc "Builds one from an `interrupts.list` item, with its `agent_id` and `conversation`."
+  @doc "Builds one from an `interrupts.list` item, with its `agent` and `conversation`."
   @spec from_listed(map()) :: t()
-  def from_listed(%{"agent" => %{"id" => agent_id}, "interrupt" => interrupt} = listed),
-    do: %{from_json(interrupt) | agent_id: agent_id, conversation: listed["conversation"]}
+  def from_listed(%{"agent" => %{"id" => agent}, "interrupt" => interrupt} = listed),
+    do: %{from_json(interrupt) | agent: agent, conversation: listed["conversation"]}
 end

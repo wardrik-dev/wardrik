@@ -2,6 +2,7 @@ defmodule Wardrik.ServerTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Operations.Functions
+  alias Wardrik.Operations.Types
   alias Wardrik.Scope
 
   @inputs %{
@@ -20,7 +21,7 @@ defmodule Wardrik.ServerTest do
     for %{id: id} = operation <- WardrikProtocol.operations() do
       assert Wardrik.Test.Server.answers?(operation), "The test server can't answer #{id}."
       module = Functions.module(Functions.prefix(operation))
-      args = [scope | arguments(Functions.path(operation), Map.get(@inputs, id, []))]
+      args = [scope | arguments(operation, Map.get(@inputs, id, []))]
 
       assert apply(module, Functions.name(operation), args) |> answered?(), id
       assert_received {:ran, ^id, input}
@@ -28,10 +29,13 @@ defmodule Wardrik.ServerTest do
     end
   end
 
-  defp arguments([_first, _second | _more] = path, []),
-    do: [Enum.map(path, &{String.to_atom(&1), "x"})]
-
-  defp arguments(path, input), do: Enum.map(path, fn _parameter -> "x" end) ++ [input]
+  defp arguments(operation, input) do
+    case {Functions.path(operation), Types.fields(operation)} do
+      {[_first, _second | _more] = path, _fields} -> [Enum.map(path, &{String.to_atom(&1), "x"})]
+      {path, []} -> Enum.map(path, fn _parameter -> "x" end)
+      {path, _fields} -> Enum.map(path, fn _parameter -> "x" end) ++ [input]
+    end
+  end
 
   test "streams through the scope's server as structs, each with its cursor", %{scope: scope} do
     assert {:ok, stream} = Wardrik.Agent.stream_events(scope, "acme/triage")

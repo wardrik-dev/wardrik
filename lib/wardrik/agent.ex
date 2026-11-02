@@ -8,9 +8,9 @@ defmodule Wardrik.Agent do
       Wardrik.Agent.read(scope, "agt_01JF8X5RQ2")
       #=> {:ok, %Wardrik.Agent{id: "agt_01JF8X5RQ2", status: :running, node: "wardrik@box1", pending: 0, ...}}
 
-  A conversation runs on its agent's definition, with a history of its own. Name it in the input:
+  A conversation runs on its agent's definition, with a history of its own. Name it in `opts`:
 
-      Wardrik.Agent.ask(scope, "agt_01JF8X5RQ2", content: "What's on fire?", conversation: "C1-1696.1234")
+      Wardrik.Agent.ask(scope, "agt_01JF8X5RQ2", "What's on fire?", conversation: "C1-1696.1234")
 
   ## Fields
 
