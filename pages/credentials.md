@@ -122,7 +122,12 @@ defmodule MyApp.Keys do
   @behaviour WardrikCore.Keys
 
   @impl true
-  def fetch(%WardrikCore.Keys.Request{name: name}, _opts), do: System.fetch_env(name)
+  def fetch(%WardrikCore.Keys.Request{name: name}, _opts) do
+    case System.fetch_env(name) do
+      {:ok, key} -> {:ok, key}
+      :error -> {:error, :not_found}
+    end
+  end
 end
 
 :ok = WardrikCore.configure(agent, keys: MyApp.Keys)

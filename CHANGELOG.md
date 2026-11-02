@@ -11,6 +11,8 @@
 - Event metadata and `WardrikCore.Context` carry `conversation`.
 - `WardrikCore.Credentials` and `WardrikCore.Keys` callbacks take a request struct, then their
   options: `WardrikCore.Credentials.Request` or `WardrikCore.Keys.Request`.
+- `c:WardrikCore.Keys.fetch/2` returns `{:ok, key}` or `{:error, reason}`, as the other callbacks
+  do. `{:error, :not_found}` says there's none.
 - `WardrikCore.evaluate/2` takes the context, then `:model`, `:state` and `:questions`.
 - `WardrikCore.move/3` takes the node as `to:`.
 - `WardrikCore.Retry.run/3` takes `:transient` and `:announce` by name.

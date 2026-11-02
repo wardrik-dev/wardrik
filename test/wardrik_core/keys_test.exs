@@ -12,8 +12,12 @@ defmodule WardrikCore.KeysTest do
     @behaviour WardrikCore.Keys
 
     @impl true
-    def fetch(%{name: name, principal: %Principal{id: owner}}, held),
-      do: Map.fetch(held, {owner, name})
+    def fetch(%{name: name, principal: %Principal{id: owner}}, held) do
+      case Map.fetch(held, {owner, name}) do
+        {:ok, key} -> {:ok, key}
+        :error -> {:error, :not_found}
+      end
+    end
   end
 
   defp context(held),
@@ -36,8 +40,8 @@ defmodule WardrikCore.KeysTest do
     context = context(%{{"acme", "BRAVE_API_KEY"} => "brave-acme"})
 
     assert Keys.fetch(context, "BRAVE_API_KEY") == {:ok, "brave-acme"}
-    assert Keys.fetch(context, "OTHER") == :error
-    assert Keys.fetch(%{context | keys: nil}, "BRAVE_API_KEY") == :error
+    assert Keys.fetch(context, "OTHER") == {:error, :not_found}
+    assert Keys.fetch(%{context | keys: nil}, "BRAVE_API_KEY") == {:error, :not_found}
   end
 
   test "gives a model call its provider's key, and leaves ReqLLM to find one where none is held" do

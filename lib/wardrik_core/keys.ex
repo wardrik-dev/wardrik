@@ -6,11 +6,16 @@ defmodule WardrikCore.Keys do
         @behaviour WardrikCore.Keys
 
         @impl true
-        def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, _opts),
-          do: MyApp.Secrets.key(principal, name)
+        def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, _opts) do
+          case MyApp.Secrets.key(principal.id, name) do
+            nil -> {:error, :not_found}
+            key -> {:ok, key}
+          end
+        end
       end
 
-  Give it to an agent as `keys: {MyApp.Keys, opts}`. Your code fetches what it needs:
+  Give it to an agent as `keys: {MyApp.Keys, opts}`, or to Wardrik as `key_source:`. Your code
+  fetches what it needs:
 
       with {:ok, key} <- WardrikCore.Keys.fetch(context, "BRAVE_API_KEY") do
         Brave.search(key, query)
@@ -25,12 +30,13 @@ defmodule WardrikCore.Keys do
   alias WardrikCore.Context
   alias WardrikCore.Keys.Request
 
-  @doc "Returns the key the request names, or `:error`."
-  @callback fetch(Request.t(), opts :: term()) :: {:ok, String.t()} | :error
+  @doc "Returns the key the request names, `{:error, :not_found}`, or why it can't."
+  @callback fetch(Request.t(), opts :: term()) ::
+              {:ok, String.t()} | {:error, :not_found} | {:error, term()}
 
-  @doc "Fetches the key `name` for the agent. Returns `:error` if there's none."
-  @spec fetch(Context.t(), String.t()) :: {:ok, String.t()} | :error
-  def fetch(%Context{keys: nil}, _name), do: :error
+  @doc "Fetches the key `name` for the agent. Returns `{:error, :not_found}` if there's none."
+  @spec fetch(Context.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  def fetch(%Context{keys: nil}, _name), do: {:error, :not_found}
 
   def fetch(%Context{keys: {module, opts}, principal: principal}, name),
     do: module.fetch(%Request{name: name, principal: principal}, opts)
