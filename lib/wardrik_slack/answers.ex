@@ -46,7 +46,7 @@ defmodule WardrikSlack.Answers do
   defp pressed("wardrik_link", workspace, member, button, _note) do
     with {:ok, scope} <- Workspace.member_scope(workspace, member),
          {:ok, %Wardrik.Authorization{url: url}} <-
-           Wardrik.Agent.authorization(scope, call(button)) do
+           Wardrik.Agent.authorization(scope, call(button), held(button)) do
       {:said, "Sign in at #{url}"}
     else
       {:error, %Error{message: message}} -> {:said, message}
@@ -70,13 +70,13 @@ defmodule WardrikSlack.Answers do
     end
   end
 
+  defp call(button), do: [agent: button["g"], interrupt: button["i"]]
+
   # A notice's call is in the agent's own conversation, which is named by none.
-  defp call(button),
-    do:
-      Enum.reject(
-        [agent: button["g"], conversation: button["c"], interrupt: button["i"]],
-        &match?({_key, nil}, &1)
-      )
+  defp held(%{"c" => conversation}) when is_binary(conversation),
+    do: [conversation: conversation]
+
+  defp held(_button), do: []
 
   defp decision("wardrik_approve", note), do: {:approve, note}
   defp decision("wardrik_deny", note), do: {:deny, note}
