@@ -53,20 +53,25 @@ defmodule WardrikSlack.Test do
       {WardrikVault, name: vault, store: store, keys: [WardrikVault.generate_key()]}
     )
 
-    :ok = Server.start(name)
+    :ok = Server.start(name, authorize: &deciders/1)
     start_supervised!(WardrikSlack.child_spec(options))
 
-    owner =
-      Wardrik.Scope.new(Server,
-        wardrik: name,
-        principal: "acme/@maria",
-        grants: [roles: [:owner], resources: ["*"]]
-      )
+    owner = Wardrik.Scope.new(Server, wardrik: name, principal: "acme/@maria")
 
     channel = WardrikChannel.channel(WardrikSlack, options)
 
     %{wardrik: name, owner: owner, channel: channel, options: options, events: events}
   end
+
+  @doc "Allows everything but deciding, which only approvers and whoever asked may do."
+  def deciders(%{operation: "agent." <> verb, scope: %{context: context} = scope})
+      when verb in ["approve", "deny"] do
+    if context[:approver] || context[:asked_by] == scope.principal.id,
+      do: :ok,
+      else: {:error, :forbidden}
+  end
+
+  def deciders(_request), do: :ok
 
   def define(owner, id, fields \\ []),
     do:

@@ -7,6 +7,8 @@
 
 ### Breaking
 
+- People in Slack act with the channel as their actor, and Wardrik's authorizer decides what
+  they may do, in place of the grants the channel gave them.
 - Implements `WardrikChannel` and `Wardrik.Channel` rc.2's callbacks, each taking what it acts on,
   then the channel or its options.
 - `WardrikSlack.API.post/2` and `read/2` take the method, then `:token`, `:body` or `:params`, and

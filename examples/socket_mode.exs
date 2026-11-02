@@ -21,6 +21,20 @@ defmodule Local.Clock do
   end
 end
 
+defmodule Local.Authorizer do
+  @behaviour Wardrik.Authorizer
+
+  # Everyone here may do anything, but in Slack only approvers and the asker decide.
+  @impl true
+  def authorize(%{actor: {:channel, _name}, action: "agent.decide"} = request, _opts) do
+    if request.context[:approver] || request.context[:asked_by] == request.principal.id,
+      do: :ok,
+      else: {:error, :forbidden}
+  end
+
+  def authorize(_request, _opts), do: :ok
+end
+
 defmodule Local.Wardrik do
   use Wardrik
 end
@@ -32,6 +46,7 @@ approvers = "SLACK_APPROVERS" |> System.get_env("") |> String.split(",", trim: t
 
 {:ok, wardrik} =
   Local.Wardrik.start_link(
+    authorizer: {Local.Authorizer, []},
     capabilities: [clock: Local.Clock],
     policies: [careful: [ask: ["clock"]]],
     channels: [
@@ -46,7 +61,7 @@ approvers = "SLACK_APPROVERS" |> System.get_env("") |> String.split(",", trim: t
 
 Process.unlink(wardrik)
 
-me = Local.Wardrik.as(org, roles: [:owner], resources: [org <> "/*"])
+me = Local.Wardrik.as(org)
 
 {:ok, agent} =
   Wardrik.Agent.define(me, org <> "/assistant",

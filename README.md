@@ -141,7 +141,9 @@ config :my_app, MyApp.AgentRuntime,
   ]
 ```
 
-See `WardrikSlack` for every option.
+See `WardrikSlack` for every option. People in Slack act with the channel as their actor,
+`{:channel, "slack"}`, and Wardrik's `:authorizer` decides what they may do. See
+`WardrikChannel.Workspace`.
 
 Over HTTP, serve it with `Wardrik.HTTP`. Slack signs the exact bytes it sends, so if your app
 parses bodies first, keep the raw body:
@@ -152,7 +154,9 @@ plug Plug.Parsers,
   json_decoder: JSON,
   body_reader: Wardrik.HTTP.body_reader()
 
-forward "/", Wardrik.HTTP, wardrik: MyApp.AgentRuntime
+forward "/", Wardrik.HTTP,
+  wardrik: MyApp.AgentRuntime,
+  authenticator: {MyAppWeb.WardrikSession, []}
 ```
 
 List the channel in an agent's definition:
