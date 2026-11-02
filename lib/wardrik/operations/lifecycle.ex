@@ -73,9 +73,9 @@ defmodule Wardrik.Operations.Lifecycle do
   @doc "Starts the agent from its definition, unless it's running."
   @spec spawn(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def spawn(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
-    asleep? = Running.whereis(wardrik, {id, nil}) == nil
+    asleep? = Running.whereis(wardrik, id) == nil
 
-    with {:ok, _pid} <- Running.awake(wardrik, {id, nil}) do
+    with {:ok, _pid} <- Running.awake(wardrik, id) do
       if asleep?, do: Changes.record(scope, type: "agent.spawned", agent: id)
       {:ok, %{"agent" => Snapshot.summary(wardrik, {id, nil})}}
     end

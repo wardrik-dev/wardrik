@@ -13,16 +13,21 @@ defmodule Wardrik.Operations.Running do
   @typedoc "An agent's ID and its conversation's, `nil` for the agent's own."
   @type key() :: {String.t(), String.t() | nil}
 
+  @typedoc "An agent's ID, for its own history, or a `t:key/0`."
+  @type agent() :: String.t() | key()
+
   @doc "Returns the key an operation's `input` names."
   @spec key(map()) :: key()
   def key(input), do: {Map.fetch!(input, "agent"), input["conversation"]}
 
-  @doc "Returns the running agent `key`, or `nil`."
-  @spec whereis(Wardrik.t(), key()) :: pid() | nil
-  def whereis(wardrik, key), do: WardrikCore.whereis(Wardrik.agents(wardrik), key)
+  @doc "Returns the running `agent`, or `nil`."
+  @spec whereis(Wardrik.t(), agent()) :: pid() | nil
+  def whereis(wardrik, agent), do: WardrikCore.whereis(Wardrik.agents(wardrik), agent)
 
-  @doc "Returns the agent `key`, waking it from its definition if needed, or a `not_found` error."
-  @spec awake(Wardrik.t(), key()) :: {:ok, pid()} | {:error, Error.t()}
+  @doc "Returns `agent`, waking it from its definition if needed, or a `not_found` error."
+  @spec awake(Wardrik.t(), agent()) :: {:ok, pid()} | {:error, Error.t()}
+  def awake(wardrik, agent) when is_binary(agent), do: awake(wardrik, {agent, nil})
+
   def awake(wardrik, key) do
     case whereis(wardrik, key) do
       nil -> wake(wardrik, key)

@@ -75,7 +75,7 @@ Ask for two large payments. The run stops and returns the calls it waits on:
   Wardrik.Agent.reply(scope, "agt_books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
 
 initech
-#=> %Wardrik.Interrupt{id: "toolu_01...", agent_id: "agt_books", reason: :tool_approval,
+#=> %Wardrik.Interrupt{id: "toolu_01...", agent: "agt_books", reason: :tool_approval,
 #=>   name: "pay_bill", message: "A bill this size needs a person.", ...}
 ```
 

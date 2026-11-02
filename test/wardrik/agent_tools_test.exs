@@ -238,13 +238,13 @@ defmodule Wardrik.AgentToolsTest do
 
   defp history(scope, id) do
     wardrik = Wardrik.Instance.fetch!(scope.wardrik)
-    wardrik |> Wardrik.Operations.Running.whereis({id, nil}) |> WardrikCore.history()
+    wardrik |> Wardrik.Operations.Running.whereis(id) |> WardrikCore.history()
   end
 
   test "names agents by their exact IDs, and lists those it may read without conversations", %{
     scope: scope
   } do
-    define(scope, "acme/worker", %{"model" => @model})
+    define(scope, "acme/worker", %{"model" => @model, "description" => "worker: triages"})
     define(scope, "acme/@jon/notes", %{"model" => @model})
     define(scope, "globex/other", %{"model" => @model})
     wardrik = Wardrik.Instance.fetch!(scope.wardrik)
@@ -265,9 +265,9 @@ defmodule Wardrik.AgentToolsTest do
 
     assert {:ok, %{"agents" => listed}} = tool.("agents_list").run.(%{}, nil)
 
-    assert Enum.sort(listed) == [
+    assert Enum.sort_by(listed, & &1["id"]) == [
              %{"id" => "acme/@jon/notes", "status" => "idle"},
-             %{"id" => "acme/worker", "status" => "idle"},
+             %{"id" => "acme/worker", "description" => "worker: triages", "status" => "idle"},
              %{"id" => "globex/other", "status" => "idle"}
            ]
 

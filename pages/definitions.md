@@ -196,7 +196,7 @@ One agent can hold many conversations at once, as a chat app holds one per threa
 conversation with `:conversation`. Asking one calls the model, so set `ANTHROPIC_API_KEY` first:
 
 ```elixir
-Wardrik.Agent.ask(scope, "agt_assistant", content: "Where's order A-1?", conversation: "C1")
+Wardrik.Agent.ask(scope, "agt_assistant", "Where's order A-1?", conversation: "C1")
 #=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "..."}}
 
 Wardrik.Agent.reply(scope, "agt_assistant", "And order A-2?", conversation: "C1")

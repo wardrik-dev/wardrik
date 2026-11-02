@@ -51,9 +51,14 @@ defmodule Wardrik.FunctionsTest do
       assert {:ok, %Wardrik.Message{}} = Wardrik.Agent.ask(scope, "acme/triage", "Hi again")
     end
 
-    test "takes path parameters over the same ones in input", %{scope: scope} do
-      assert {:error, %Wardrik.Error{type: :not_found}} =
-               Wardrik.Agent.read(scope, "acme/missing", agent: "acme/triage")
+    test "takes path parameters as arguments, never in input", %{scope: scope} do
+      assert_raise ArgumentError, fn ->
+        Wardrik.Agent.ask(scope, "acme/missing", content: "Hi", agent: "acme/triage")
+      end
+
+      assert_raise ArgumentError, fn ->
+        Wardrik.Agent.read(scope, "acme/missing", agent: "acme/triage")
+      end
     end
   end
 end

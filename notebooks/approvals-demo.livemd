@@ -110,7 +110,7 @@ defmodule MyApp.Inbox do
   def decide(scope, interrupt, %{decision: :deny, text: reason}),
     do: Wardrik.Agent.deny(scope, named(interrupt) ++ said(:reason, reason))
 
-  defp named(interrupt), do: [agent: interrupt.agent_id, interrupt: interrupt.id]
+  defp named(interrupt), do: [agent: interrupt.agent, interrupt: interrupt.id]
 
   defp card(scope, interrupt, arguments) do
     form =
@@ -130,7 +130,7 @@ defmodule MyApp.Inbox do
 
     Kino.Layout.grid([
       Kino.Markdown.new("""
-      **#{interrupt.name}** `#{JSON.encode!(arguments)}` on `#{interrupt.agent_id}`
+      **#{interrupt.name}** `#{JSON.encode!(arguments)}` on `#{interrupt.agent}`
 
       #{interrupt.message}
       """),

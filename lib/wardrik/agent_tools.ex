@@ -9,7 +9,7 @@ defmodule Wardrik.AgentTools do
 
   | Tool | What it does |
   | --- | --- |
-  | `agents_list` | Lists the agents it may read and what each is doing. |
+  | `agents_list` | Lists the agents it may read, with each one's description and status. |
   | `agent_read`, `self_read` | Reads an agent's status and what it waits on. |
   | `agent_definition_read`, `self_definition_read` | Reads a definition. |
   | `agent_ask` | Sends an agent a message. The answer comes back later as a message. |
@@ -56,7 +56,7 @@ defmodule Wardrik.AgentTools do
     [
       read(
         "agents_list",
-        "List the agents you may reach, and what each is doing.",
+        "List the agents you may reach: each one's ID, description and status.",
         [],
         fn _args ->
           listed(me)
@@ -171,17 +171,27 @@ defmodule Wardrik.AgentTools do
   defp called(run, args, _context) when is_function(run, 1), do: run.(args)
   defp called(run, args, context), do: run.(args, context)
 
+  # Each agent's description says what it is, since its ID may not.
   defp listed(me) do
     with {:ok, %{"agents" => agents}} <- run(me, "agents.list", %{}) do
+      wardrik = Wardrik.Instance.fetch!(me.wardrik)
+
       {:ok,
        %{
          "agents" =>
            for(
              agent <- agents,
              not Map.has_key?(agent, "conversation"),
-             do: Map.take(agent, ["id", "status"])
+             do: described(wardrik, Map.take(agent, ["id", "status"]))
            )
        }}
+    end
+  end
+
+  defp described(wardrik, %{"id" => id} = agent) do
+    case Wardrik.Definitions.fetch(wardrik, id) do
+      {:ok, %{"description" => description}} -> Map.put(agent, "description", description)
+      _undescribed -> agent
     end
   end
 

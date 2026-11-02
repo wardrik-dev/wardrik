@@ -156,7 +156,7 @@ running.(agent)
 ```
 
 ```elixir
-pid = WardrikCore.whereis(MyApp.AgentRuntime.Agents, {"agt_shop", nil})
+pid = WardrikCore.whereis(MyApp.AgentRuntime.Agents, "agt_shop")
 Process.exit(pid, :kill)
 ```
 
