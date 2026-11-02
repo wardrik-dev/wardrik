@@ -51,16 +51,26 @@ defmodule WardrikCore.Retry do
   @type t() :: keyword()
 
   @doc """
-  Runs `fun`, retrying while `transient` returns a reason for its answer.
+  Runs `fun`, retrying while `:transient` returns a reason for its answer.
 
-  `transient` returns `nil` for an answer that shouldn't be retried. `announce` is called before
+      WardrikCore.Retry.run([attempts: 3], fn -> fetch(url) end,
+        transient: &transient/1,
+        announce: &IO.inspect(&1, label: "retrying")
+      )
+
+  `:transient` returns `nil` for an answer that shouldn't be retried. `:announce` is called before
   each wait. Returns `{:ok, answer}`, or `{:spent, answer, tries}` once retries run out.
   """
-  @spec run(t(), (-> answer), (answer -> term() | nil), (map() -> any())) ::
-          {:ok, answer} | {:spent, answer, pos_integer()}
+  @spec run(t(), (-> answer),
+          transient: (answer -> term() | nil),
+          announce: (map() -> any())
+        ) :: {:ok, answer} | {:spent, answer, pos_integer()}
         when answer: term()
-  def run(retries, fun, transient, announce),
-    do: tried(settings(retries), fun, transient, announce, 1)
+  def run(retries, fun, args) do
+    transient = Keyword.fetch!(args, :transient)
+    announce = Keyword.fetch!(args, :announce)
+    tried(settings(retries), fun, transient, announce, 1)
+  end
 
   @doc "Returns the number of retries after the first try."
   @spec attempts(t()) :: non_neg_integer()

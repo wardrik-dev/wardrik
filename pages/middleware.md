@@ -112,5 +112,5 @@ so it survives restarts.
 
 ## Asking a model
 
-When middleware needs a model's judgement on a call, `WardrikCore.evaluate/4` asks an evaluation
+When middleware needs a model's judgement on a call, `WardrikCore.evaluate/2` asks an evaluation
 model. `WardrikCore.generate/1` calls the agent's own model.

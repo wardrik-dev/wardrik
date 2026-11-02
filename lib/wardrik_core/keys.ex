@@ -7,7 +7,8 @@ defmodule WardrikCore.Keys do
         @behaviour WardrikCore.Keys
 
         @impl true
-        def fetch(name, principal, _opts), do: MyApp.Vault.key(principal, name)
+        def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, _opts),
+          do: MyApp.Vault.key(principal, name)
       end
 
   Give it to an agent as `keys: {MyApp.Keys, opts}`. Keys are fetched by name, for the agent's
@@ -33,20 +34,20 @@ defmodule WardrikCore.Keys do
   """
 
   alias WardrikCore.Context
+  alias WardrikCore.Keys.Request
 
-  @doc "Returns the key `name` for `principal`, or `:error` if there's none."
-  @callback fetch(name :: String.t(), WardrikCore.Principal.t() | nil, opts :: term()) ::
-              {:ok, String.t()} | :error
+  @doc "Returns the key the request names, for its principal, or `:error` if there's none."
+  @callback fetch(Request.t(), opts :: term()) :: {:ok, String.t()} | :error
 
   @doc "Fetches the key `name` for the agent's principal. Returns `:error` if there's none."
   @spec fetch(Context.t(), String.t()) :: {:ok, String.t()} | :error
   def fetch(%Context{keys: nil}, _name), do: :error
 
   def fetch(%Context{keys: {module, opts}, principal: principal}, name),
-    do: module.fetch(name, principal, opts)
+    do: module.fetch(%Request{name: name, principal: principal}, opts)
 
   def fetch(%Context{keys: module, principal: principal}, name),
-    do: module.fetch(name, principal, [])
+    do: module.fetch(%Request{name: name, principal: principal}, [])
 
   @doc "Returns `[api_key: key]` for `model`'s provider, or `[]` if there's no key."
   @spec model_options(Context.t(), LLMDB.Model.t() | String.t()) :: keyword()

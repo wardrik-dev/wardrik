@@ -41,9 +41,9 @@ defmodule MyApp.Vault do
   @behaviour WardrikCore.Credentials
 
   @impl true
-  def resolve(_name, nil, _opts), do: {:error, "There's no one to act for."}
+  def resolve(%{principal: nil}, _opts), do: {:error, "There's no one to act for."}
 
-  def resolve(name, %WardrikCore.Principal{id: id}, opts) do
+  def resolve(%{name: name, principal: %WardrikCore.Principal{id: id}}, opts) do
     case MyApp.Tokens.get(id, name) do
       nil -> {:authorize, "#{opts[:base_url]}/connect/#{name}"}
       token -> {:ok, token}
@@ -51,18 +51,20 @@ defmodule MyApp.Vault do
   end
 
   @impl true
-  def refused(name, %WardrikCore.Principal{id: id}, _opts), do: MyApp.Tokens.delete(id, name)
+  def refused(%{name: name, principal: %WardrikCore.Principal{id: id}}, _opts),
+    do: MyApp.Tokens.delete(id, name)
 end
 ```
 
-`resolve/3` returns one of:
+Each callback takes a `WardrikCore.Credentials.Request`, naming the credential and the principal,
+then your options. `resolve/2` returns one of:
 
 - `{:ok, token}` - the token.
 - `{:authorize, url}` - the person must sign in first. The URL is a page in your app that starts
   the provider's OAuth flow for whoever is signed in.
 - `{:error, reason}` - it can't help.
 
-`refused/3` is optional. A tool calls it through `WardrikCore.Credentials.refused/2` when a service
+`refused/2` is optional. A tool calls it through `WardrikCore.Credentials.refused/2` when a service
 rejects a token, such as with a 401. This vault forgets the token, so the next fetch sends the
 person to sign in again.
 
@@ -150,7 +152,7 @@ defmodule MyApp.Keys do
   @behaviour WardrikCore.Keys
 
   @impl true
-  def fetch(name, _principal, _opts), do: System.fetch_env(name)
+  def fetch(%WardrikCore.Keys.Request{name: name}, _opts), do: System.fetch_env(name)
 end
 
 :ok = WardrikCore.configure(agent, keys: MyApp.Keys)

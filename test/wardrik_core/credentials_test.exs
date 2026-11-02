@@ -15,9 +15,9 @@ defmodule WardrikCore.CredentialsTest do
     @behaviour WardrikCore.Credentials
 
     @impl true
-    def resolve("broken", _principal, _granted), do: {:error, "The vault is sealed."}
+    def resolve(%{name: "broken"}, _granted), do: {:error, "The vault is sealed."}
 
-    def resolve(name, %Principal{id: id}, granted) do
+    def resolve(%{name: name, principal: %Principal{id: id}}, granted) do
       case :ets.lookup(granted, {name, id}) do
         [{_key, token}] -> {:ok, token}
         [] -> {:authorize, "https://example.com/sign-in/#{name}"}
@@ -25,7 +25,7 @@ defmodule WardrikCore.CredentialsTest do
     end
 
     @impl true
-    def refused(name, %Principal{id: id}, granted) do
+    def refused(%{name: name, principal: %Principal{id: id}}, granted) do
       :ets.delete(granted, {name, id})
       :ok
     end
@@ -35,7 +35,7 @@ defmodule WardrikCore.CredentialsTest do
     @behaviour WardrikCore.Credentials
 
     @impl true
-    def resolve(_name, _principal, _opts), do: {:ok, "the-only-token"}
+    def resolve(_request, _opts), do: {:ok, "the-only-token"}
   end
 
   defmodule Issues do

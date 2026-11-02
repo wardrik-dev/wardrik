@@ -140,7 +140,10 @@ defmodule WardrikCore.Turn do
   defp retried(context) do
     generate = fn -> Context.run(context, :generate, &generate/1) end
 
-    case Retry.run(context.retries, generate, &model_failure/1, &model_retrying(context, &1)) do
+    case Retry.run(context.retries, generate,
+           transient: &model_failure/1,
+           announce: &model_retrying(context, &1)
+         ) do
       {:ok, generated} -> generated
       {:spent, failed, tries} -> spent(context, failed, tries)
     end

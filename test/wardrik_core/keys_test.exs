@@ -12,7 +12,8 @@ defmodule WardrikCore.KeysTest do
     @behaviour WardrikCore.Keys
 
     @impl true
-    def fetch(name, %Principal{id: owner}, held), do: Map.fetch(held, {owner, name})
+    def fetch(%{name: name, principal: %Principal{id: owner}}, held),
+      do: Map.fetch(held, {owner, name})
   end
 
   defp context(held),
@@ -67,6 +68,10 @@ defmodule WardrikCore.KeysTest do
     context = context(%{{"acme", "ANTHROPIC_API_KEY"} => "sk-acme"})
 
     assert {:ok, %{}, _measured} =
-             WardrikCore.evaluate(context, "anthropic:claude-haiku-4-5", "state", %{})
+             WardrikCore.evaluate(context,
+               model: "anthropic:claude-haiku-4-5",
+               state: "state",
+               questions: %{}
+             )
   end
 end

@@ -113,7 +113,7 @@ defmodule WardrikCore.Context do
   def measure(%__MODULE__{measurements: measurements} = context, key, amount),
     do: %{context | measurements: Map.update(measurements, key, amount, &(&1 + amount))}
 
-  @doc "Adds each of `measurements`, such as those `WardrikCore.evaluate/4` returns."
+  @doc "Adds each of `measurements`, such as those `WardrikCore.evaluate/2` returns."
   @spec measure(t(), map()) :: t()
   def measure(%__MODULE__{} = context, measurements) do
     Enum.reduce(measurements, context, fn {key, amount}, context ->

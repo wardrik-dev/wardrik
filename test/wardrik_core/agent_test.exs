@@ -277,12 +277,12 @@ defmodule WardrikCore.AgentTest do
       assert here in WardrikCore.nodes()
       assert %{^id => ^here} = WardrikCore.placements()
 
-      assert {:ok, moved} = WardrikCore.move(id, here)
+      assert {:ok, moved} = WardrikCore.move(id, to: here)
       refute moved == agent
       assert %{agent_id: ^id, state: :idle} = agent_state(moved)
 
-      assert {:error, :no_such_node} = WardrikCore.move(id, "nowhere@nohost")
-      assert {:error, :not_found} = WardrikCore.move("agent-never", here)
+      assert {:error, :no_such_node} = WardrikCore.move(id, to: "nowhere@nohost")
+      assert {:error, :not_found} = WardrikCore.move("agent-never", to: here)
 
       :ok = WardrikCore.stop(moved)
       assert %{^id => nil} = WardrikCore.placements()

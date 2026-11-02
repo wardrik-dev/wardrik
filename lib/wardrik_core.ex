@@ -238,14 +238,16 @@ defmodule WardrikCore do
   end
 
   @doc """
-  Restarts the agent on `node`, with its saved state.
+  Restarts the agent on the node `:to`, with its saved state.
+
+      WardrikCore.move("triage", to: "wardrik@10.0.0.2")
 
   Ends the turn it's taking, and abandons anything it's waiting on. Returns
   `{:error, :no_such_node}` or `{:error, :not_found}` if the node or the agent doesn't exist.
   """
-  @spec move(atom(), String.t(), String.t()) :: {:ok, pid()} | {:error, term()}
-  def move(instance \\ __MODULE__, agent_id, node) do
-    with {:ok, target} <- node(node, nodes(instance)),
+  @spec move(atom(), String.t(), to: String.t()) :: {:ok, pid()} | {:error, term()}
+  def move(instance \\ __MODULE__, agent_id, args) do
+    with {:ok, target} <- node(Keyword.fetch!(args, :to), nodes(instance)),
          :ok <- saved(instance, agent_id) do
       child = {WardrikCore.Agent, key: agent_id, initial_state: %{}}
 
@@ -305,27 +307,37 @@ defmodule WardrikCore do
     do: GenServer.call(agent, {:resume, input, metadata})
 
   @doc """
-  Asks an evaluation model `questions` about `state`, from inside a turn.
+  Asks an evaluation `:model` the `:questions` about `:state`, from inside a turn.
 
   Use it when middleware needs a model's judgement on a call.
 
       questions = %{"urgent" => %{type: :boolean, instructions: "Is this urgent?"}}
+
       {:ok, %{"urgent" => %{"probability" => p}}, measurements} =
-        WardrikCore.evaluate(context, "typesafe:jev-latest", "The site is down.", questions)
+        WardrikCore.evaluate(context,
+          model: "typesafe:jev-latest",
+          state: "The site is down.",
+          questions: questions
+        )
 
       context = WardrikCore.Context.measure(context, measurements)
 
   Returns each answer under its question's name, and the call's measurements. Pass them to
   `WardrikCore.Context.measure/2`.
   """
-  @spec evaluate(Context.t(), String.t(), String.t() | map(), map()) ::
-          {:ok, map(), %{atom() => number()}} | {:error, term()}
-  def evaluate(%Context{} = context, model, state, questions) do
+  @spec evaluate(Context.t(),
+          model: String.t(),
+          state: String.t() | map(),
+          questions: map()
+        ) :: {:ok, map(), %{atom() => number()}} | {:error, term()}
+  def evaluate(%Context{} = context, args) do
+    model = Keyword.fetch!(args, :model)
+
     with {:ok, response} <-
            ReqLLM.evaluate(
              model,
-             state,
-             questions,
+             Keyword.fetch!(args, :state),
+             Keyword.fetch!(args, :questions),
              WardrikCore.Keys.model_options(context, model)
            ) do
       {:ok, response.object, WardrikCore.Usage.measurements(response, model, context.prices)}

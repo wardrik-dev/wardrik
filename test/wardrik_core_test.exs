@@ -81,7 +81,7 @@ defmodule WardrikCoreTest do
     end
   end
 
-  describe "evaluate/4" do
+  describe "evaluate/2" do
     test "gives each answer under its question's name, and what the call used" do
       questions = %{"urgent" => %{type: :boolean, instructions: "Is this urgent?"}}
 
@@ -102,11 +102,10 @@ defmodule WardrikCoreTest do
 
       assert {:ok, %{"urgent" => %{"probability" => 0.9}},
               %{input_tokens: 12, output_tokens: 1, usd: 0.001}} =
-               WardrikCore.evaluate(
-                 WardrikCore.Context.new([]),
-                 "anthropic:claude-haiku-4-5",
-                 "The site is down.",
-                 questions
+               WardrikCore.evaluate(WardrikCore.Context.new([]),
+                 model: "anthropic:claude-haiku-4-5",
+                 state: "The site is down.",
+                 questions: questions
                )
     end
 
@@ -114,7 +113,11 @@ defmodule WardrikCoreTest do
       expect(ReqLLM, :evaluate, fn _model, _state, _questions, _opts -> {:error, :timeout} end)
 
       assert {:error, :timeout} =
-               WardrikCore.evaluate(WardrikCore.Context.new([]), "typesafe:jev-latest", "x", %{})
+               WardrikCore.evaluate(WardrikCore.Context.new([]),
+                 model: "typesafe:jev-latest",
+                 state: "x",
+                 questions: %{}
+               )
     end
   end
 end

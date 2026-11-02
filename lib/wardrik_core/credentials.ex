@@ -9,9 +9,9 @@ defmodule WardrikCore.Credentials do
         @behaviour WardrikCore.Credentials
 
         @impl true
-        def resolve(_name, nil, _opts), do: {:error, "There's no one to act for."}
+        def resolve(%{principal: nil}, _opts), do: {:error, "There's no one to act for."}
 
-        def resolve(name, %WardrikCore.Principal{id: id}, _opts) do
+        def resolve(%{name: name, principal: %WardrikCore.Principal{id: id}}, _opts) do
           case MyApp.Tokens.get(id, name) do
             %{access_token: token} -> {:ok, token}
             nil -> {:authorize, "https://app.example.com/connect/\#{name}"}
@@ -40,21 +40,22 @@ defmodule WardrikCore.Credentials do
   """
   alias WardrikCore.Authorization
   alias WardrikCore.Context
+  alias WardrikCore.Credentials.Request
 
   @doc """
-  Returns the credential `name` for `principal`.
+  Returns the credential the request names, for its principal.
 
     * `{:ok, secret}` - the credential.
     * `{:authorize, url}` - the person must sign in at `url` first.
     * `{:error, reason}` - it can't be given.
   """
-  @callback resolve(name :: String.t(), WardrikCore.Principal.t() | nil, opts :: term()) ::
+  @callback resolve(Request.t(), opts :: term()) ::
               {:ok, secret :: term()} | {:authorize, url :: String.t()} | {:error, term()}
 
-  @doc "Called when a service refused the credential `name`. Optional."
-  @callback refused(name :: String.t(), WardrikCore.Principal.t() | nil, opts :: term()) :: :ok
+  @doc "Called when a service refused the credential the request names. Optional."
+  @callback refused(Request.t(), opts :: term()) :: :ok
 
-  @optional_callbacks refused: 3
+  @optional_callbacks refused: 2
 
   @doc """
   Fetches the credential `name` for whoever the turn acts for.
@@ -68,11 +69,11 @@ defmodule WardrikCore.Credentials do
 
   def fetch(%Context{credentials: entry} = context, name) do
     {module, opts} = Context.entry(entry)
-    principal = Context.acting_for(context)
+    request = %Request{name: name, principal: Context.acting_for(context)}
 
-    name
-    |> module.resolve(principal, opts)
-    |> fetched(name, principal)
+    request
+    |> module.resolve(opts)
+    |> fetched(request)
   end
 
   @doc "Tells the credentials module that a service refused the credential `name`, so it isn't given again."
@@ -81,17 +82,15 @@ defmodule WardrikCore.Credentials do
 
   def refused(%Context{credentials: entry} = context, name) do
     {module, opts} = Context.entry(entry)
-    told(module, name, Context.acting_for(context), opts)
-  end
+    request = %Request{name: name, principal: Context.acting_for(context)}
 
-  defp told(module, name, principal, opts) do
-    if Code.ensure_loaded?(module) and function_exported?(module, :refused, 3),
-      do: module.refused(name, principal, opts),
+    if Code.ensure_loaded?(module) and function_exported?(module, :refused, 2),
+      do: module.refused(request, opts),
       else: :ok
   end
 
-  defp fetched({:authorize, url}, name, principal),
+  defp fetched({:authorize, url}, %Request{name: name, principal: principal}),
     do: {:park, %Authorization{url: url, credential: name, principal: principal}}
 
-  defp fetched(resolved, _name, _principal), do: resolved
+  defp fetched(resolved, _request), do: resolved
 end
