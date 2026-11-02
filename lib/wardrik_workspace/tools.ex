@@ -1,6 +1,6 @@
 defmodule WardrikWorkspace.Tools do
   @moduledoc """
-  Builds the six file tools.
+  The six file tools.
 
   | Tool | Arguments | Answers |
   | --- | --- | --- |
@@ -11,13 +11,11 @@ defmodule WardrikWorkspace.Tools do
   | `search_files` | `pattern` (a regex), `glob`, `context` | Matching lines, at most 200 |
   | `delete_file` | `path` | Whether the file was there |
 
-  `write_file` needs the version read to replace an existing file. With `append`, it needs none.
-  `edit_file` needs `old` to appear exactly once, unless `all` is true.
-
-  A tool that fails answers `%{ok: false, error: %{code: ..., message: ...}}`. The turn carries on.
-
-  Each call's `:resources` is its path, or the glob it lists or searches. A policy can match it, as
-  `write_file(notes/*)`.
+    * `write_file` needs the version read to replace a file, unless it appends.
+    * `edit_file` needs `old` to appear once, unless `all` is true.
+    * Files are at most 4 MiB.
+    * A failed tool answers `%{ok: false, error: %{code: ..., message: ...}}`.
+    * Each call's resource is its path or glob, for policies like `write_file(notes/*)`.
   """
 
   alias WardrikCore.Tool

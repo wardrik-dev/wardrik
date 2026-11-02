@@ -2,24 +2,13 @@ defmodule WardrikWorkspace.Path do
   @moduledoc """
   Paths and globs within a workspace.
 
-  A path names a file, as `notes/today.md`. `normalize/1` drops `.` segments and repeated slashes.
-  It refuses a path that:
+      WardrikWorkspace.Path.normalize("notes//./today.md")
+      #=> {:ok, "notes/today.md"}
 
-    * starts with `/` or `~`
-    * contains a `..` segment
-    * contains a NUL or a backslash
-    * is longer than 1,024 bytes
-
-  Folders are just path prefixes, so there's nothing to create.
-
-  A glob matches whole paths:
-
-    * `*` - any characters within one folder.
-    * `?` - one character.
-    * `**` - any characters across folders.
-
-  For example, `notes/*.md` matches the Markdown files in `notes`, and `**/*.md` matches all of
-  them.
+    * A path is refused if it starts with `/` or `~`, holds `..`, a NUL or a backslash, or is
+      over 1,024 bytes.
+    * Folders are path prefixes. There's nothing to create.
+    * In a glob, `*` matches within one folder, `?` one character, and `**` across folders.
   """
 
   @max_bytes 1024

@@ -1,15 +1,5 @@
 defmodule WardrikWorkspace.Writes do
-  @moduledoc """
-  The file tools that change files: `write_file`, `edit_file` and `delete_file`.
-
-  Each change is made over the version read. If another writer got there first, an append, an
-  edit or a delete reads the file again and retries, up to eight times in all.
-
-  A written file gets the labels of what the writing run had read. An append or an edit also keeps
-  the file's existing labels.
-
-  Files are at most 4 MiB.
-  """
+  @moduledoc false
 
   alias WardrikCore.Context
   alias WardrikWorkspace.File

@@ -1,11 +1,13 @@
 # Changelog
 
-## 0.1.0-rc.2
+## 0.1.0-rc.2 (2026-11-02)
+
+- Requires `wardrik_core` 0.1.0-rc.2.
 
 ### Breaking
 
-- `WardrikWorkspace.Files.read/2`, `write/2` and `delete/2` take the store, then named
-  `:tree`, `:path`, `:file` and `:version`, so a tree and a path can't swap.
+- `WardrikWorkspace.Files.read/2`, `write/2` and `delete/2` take the store, then one keyword list
+  of `:tree`, `:path`, `:file` and `:version`.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

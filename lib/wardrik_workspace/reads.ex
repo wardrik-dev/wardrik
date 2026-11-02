@@ -1,9 +1,5 @@
 defmodule WardrikWorkspace.Reads do
-  @moduledoc """
-  The read-only file tools: `read_file`, `list_files` and `search_files`.
-
-  Each answer carries the labels of the files it shows, so the run that reads them carries them.
-  """
+  @moduledoc false
 
   alias WardrikWorkspace.File
   alias WardrikWorkspace.Files

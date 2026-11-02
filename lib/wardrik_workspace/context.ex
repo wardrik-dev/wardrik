@@ -1,34 +1,21 @@
 defmodule WardrikWorkspace.Context do
   @moduledoc """
-  Middleware that reads workspace files into the agent's instructions as each turn begins.
+  Middleware that reads workspace files into the agent's instructions each turn.
 
       middleware: [{WardrikWorkspace.Context, store: store, tree: tree, files: ["MEMORY.md"]}]
 
-  It appends a `# Your workspace` section to the instructions. The section holds:
-
-    1. Each of `:files`, in order, with its version.
-    2. The `:files` not written yet.
-    3. The names of the other files at the top of the agent's tree.
-    4. The trees shared with the agent.
-
-  The instructions are restored after the turn.
+    * Adds a `# Your workspace` section: each of `:files`, then the other top-level files and
+      the shared trees.
+    * A file over its share of `:max_bytes` is cut to its start and end. The agent is asked to
+      shorten it.
+    * The files' labels, such as `"outside"`, are added to the turn.
 
   ## Options
 
-  Takes `WardrikWorkspace`'s options, plus:
+  `WardrikWorkspace`'s options, plus:
 
     * `:files` - paths to read into each turn. `[]` unless set.
     * `:max_bytes` - how much of `:files` to read in total. `16_384` unless set.
-
-  ## Budget
-
-  The budget is shared out smallest file first, so one long file can't crowd out the others. A
-  file over its share is cut to its start and end. If it's in the agent's own tree, the agent is
-  asked to rewrite it shorter.
-
-  ## Labels
-
-  The labels of the files read are added to the turn's latest message, so the run carries them.
   """
 
   @behaviour WardrikCore.Middleware
@@ -76,7 +63,7 @@ defmodule WardrikWorkspace.Context do
   defp joined(nil, text), do: text
   defp joined(instructions, text), do: instructions <> "\n\n" <> text
 
-  @doc "Returns the workspace text for `spec`'s agent, reading `files` within `budget` bytes."
+  @doc "Returns the workspace section, reading `files` within `budget` bytes."
   @spec text(Spec.t(), [String.t()], pos_integer()) :: String.t()
   def text(spec, files, budget), do: told(spec, files, read(spec, files, budget))
 

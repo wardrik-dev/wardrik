@@ -2,14 +2,17 @@ defmodule WardrikWorkspace.Files do
   @moduledoc """
   Stores trees of files in a `WardrikStore`, each file with its own version.
 
-  Every change is made over a version:
+      {:ok, version} =
+        WardrikWorkspace.Files.write(store,
+          tree: "agents/agt_triage",
+          path: "notes.md",
+          file: %WardrikWorkspace.File{content: "Hi"},
+          version: nil
+        )
 
-    * `nil` - writes only where no file is.
-    * a version - writes only if the file is still at that version.
-
-  Otherwise it returns `{:error, :conflict}`. This keeps two writers from losing each other's work.
-
-  Tree names are opaque: tree `shared/acme` doesn't contain tree `shared/acme/runbooks`.
+    * `version: nil` writes only where no file is. A version writes only over that version.
+      Otherwise you get `{:error, :conflict}`.
+    * Tree names are opaque: `shared/acme` doesn't contain `shared/acme/runbooks`.
   """
 
   alias WardrikWorkspace.File
@@ -20,7 +23,7 @@ defmodule WardrikWorkspace.Files do
   @doc """
   Returns the file at `:path` in `:tree`, with its version, or `:none`.
 
-      WardrikWorkspace.Files.read(store, tree: "shared/acme/runbooks", path: "deploy.md")
+      WardrikWorkspace.Files.read(store, tree: "agents/agt_triage", path: "notes.md")
   """
   @spec read(WardrikStore.t(), tree: String.t(), path: String.t()) ::
           {:ok, File.t(), version()} | :none
@@ -31,19 +34,7 @@ defmodule WardrikWorkspace.Files do
     end
   end
 
-  @doc """
-  Writes `:file` at `:path` in `:tree`.
-
-      WardrikWorkspace.Files.write(store,
-        tree: "shared/acme/runbooks",
-        path: "deploy.md",
-        file: %WardrikWorkspace.File{content: "Roll forward."},
-        version: nil
-      )
-
-  With a `nil` `:version`, writes only where no file is. Otherwise writes only over `:version`.
-  Returns `{:error, :conflict}` if that doesn't hold.
-  """
+  @doc "Writes `:file` at `:path` in `:tree`, over `:version`, or returns `{:error, :conflict}`."
   @spec write(WardrikStore.t(),
           tree: String.t(),
           path: String.t(),
@@ -61,12 +52,6 @@ defmodule WardrikWorkspace.Files do
   @doc """
   Deletes the file at `:path` in `:tree`. Returns `{:error, :conflict}` unless it's still at
   `:version`.
-
-      WardrikWorkspace.Files.delete(store,
-        tree: "shared/acme/runbooks",
-        path: "deploy.md",
-        version: version
-      )
   """
   @spec delete(WardrikStore.t(), tree: String.t(), path: String.t(), version: version()) ::
           :ok | {:error, :conflict | term()}

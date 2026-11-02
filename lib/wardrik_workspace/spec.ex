@@ -1,10 +1,6 @@
 defmodule WardrikWorkspace.Spec do
   @moduledoc """
-  What an agent's file tools reach.
-
-    * `:store` - the `WardrikStore` the files are kept in.
-    * `:own` - the agent's own `WardrikWorkspace.Mount`.
-    * `:shared` - mounts shared with the agent, each under `shared/<name>/`.
+  What an agent's file tools reach: the `:store`, its `:own` mount, and `:shared` mounts.
   """
 
   alias WardrikWorkspace.Mount

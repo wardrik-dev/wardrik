@@ -5,7 +5,7 @@ defmodule WardrikWorkspace.File do
     * `:content` - the file's text.
     * `:by` - the agent that last wrote it.
     * `:at` - when it was last written.
-    * `:labels` - labels of what the writing runs had read, such as `"outside"`.
+    * `:labels` - labels of what the writing run had read, such as `"outside"`.
   """
 
   @enforce_keys [:content]
@@ -18,15 +18,13 @@ defmodule WardrikWorkspace.File do
           labels: [String.t()]
         }
 
-  @doc "Returns the file's labels. Returns `[]` for a file written before files kept labels."
+  @doc "Returns the file's labels, or `[]`."
   @spec labels(t()) :: [String.t()]
   def labels(%__MODULE__{} = file), do: Map.get(file, :labels, [])
 
   @doc """
-  Wraps a tool's `answer` with the labels of `files`.
-
-  Returns `{:ok, answer}` when the files have no labels, and `{:ok, %ReqLLM.ToolResult{}}` with
-  the labels in its metadata otherwise.
+  Wraps a tool's `answer` with the labels of `files`, as `{:ok, %ReqLLM.ToolResult{}}`. Returns
+  `{:ok, answer}` when there are none.
   """
   @spec labelled(map(), [t()]) :: {:ok, map() | ReqLLM.ToolResult.t()}
   def labelled(answer, files) do
