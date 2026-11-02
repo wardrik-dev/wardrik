@@ -32,6 +32,20 @@ WardrikCore.history(agent)
 
 `ask/3` returns once the message is stored. The agent answers in its own process.
 
+A conversation runs on the same options, with a history of its own. Name it with `:conversation`:
+
+```elixir
+{:ok, thread} =
+  WardrikCore.start_agent(
+    agent_id: "support",
+    conversation: "C1",
+    model: "anthropic:claude-haiku-4-5"
+  )
+```
+
+The agent ID and the conversation ID are your app's. Each `{agent_id, conversation}` is one agent.
+The agent's own history is `{agent_id, nil}`.
+
 ## Where agents are kept
 
 `WardrikCore` saves agents through a [durable_server](https://hexdocs.pm/durable_server) backend:
@@ -136,7 +150,7 @@ WardrikCore.resume(agent, %{call.id => {:deny, "It may have run already."}})
 | `configure/2` | Changes the model or settings, from the next turn |
 | `stop/1` | Stops the agent until it's started again |
 | `delete/2` | Stops the agent and deletes its saved state |
-| `list/1`, `whereis/2` | Every saved agent's id, and the running agent for an id |
+| `list/1`, `whereis/2` | Every saved agent's `{agent_id, conversation}`, and the running agent for one |
 | `nodes/1`, `placements/1` | The cluster's nodes, and the node each saved agent runs on |
 | `move/3` | Restarts an agent on another node, with its saved state |
 
@@ -145,7 +159,7 @@ WardrikCore.status(agent)
 #=> :idle
 
 WardrikCore.list()
-#=> ["support"]
+#=> [{"support", nil}, {"support", "C1"}]
 
-:ok = WardrikCore.delete("support")
+:ok = WardrikCore.delete({"support", "C1"})
 ```

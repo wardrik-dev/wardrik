@@ -13,6 +13,7 @@ defmodule WardrikCore.Context do
 
   @type t() :: %__MODULE__{
           agent_id: String.t(),
+          conversation: String.t() | nil,
           model: LLMDB.Model.t() | String.t(),
           step: step() | nil,
           messages: [ReqLLM.Message.t()],
@@ -43,6 +44,7 @@ defmodule WardrikCore.Context do
 
   defstruct [
     :agent_id,
+    :conversation,
     :model,
     :step,
     :response,

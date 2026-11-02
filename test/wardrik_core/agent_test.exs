@@ -275,17 +275,17 @@ defmodule WardrikCore.AgentTest do
       {id, agent} = start_agent()
 
       assert here in WardrikCore.nodes()
-      assert %{^id => ^here} = WardrikCore.placements()
+      assert %{{^id, nil} => ^here} = WardrikCore.placements()
 
-      assert {:ok, moved} = WardrikCore.move(id, to: here)
+      assert {:ok, moved} = WardrikCore.move({id, nil}, to: here)
       refute moved == agent
       assert %{agent_id: ^id, state: :idle} = agent_state(moved)
 
-      assert {:error, :no_such_node} = WardrikCore.move(id, to: "nowhere@nohost")
-      assert {:error, :not_found} = WardrikCore.move("agent-never", to: here)
+      assert {:error, :no_such_node} = WardrikCore.move({id, nil}, to: "nowhere@nohost")
+      assert {:error, :not_found} = WardrikCore.move({"agent-never", nil}, to: here)
 
       :ok = WardrikCore.stop(moved)
-      assert %{^id => nil} = WardrikCore.placements()
+      assert %{{^id, nil} => nil} = WardrikCore.placements()
     end
   end
 
@@ -294,11 +294,11 @@ defmodule WardrikCore.AgentTest do
       {id, agent} = start_agent()
       ref = Process.monitor(agent)
 
-      assert :ok = WardrikCore.delete(id)
+      assert :ok = WardrikCore.delete({id, nil})
       assert_receive {:DOWN, ^ref, :process, _pid, _reason}
 
-      refute id in WardrikCore.list()
-      assert :ok = WardrikCore.delete(id)
+      refute {id, nil} in WardrikCore.list()
+      assert :ok = WardrikCore.delete({id, nil})
     end
   end
 
@@ -508,8 +508,29 @@ defmodule WardrikCore.AgentTest do
   test "whereis/1 finds a running agent by id" do
     {id, agent} = start_agent()
 
-    assert ^agent = WardrikCore.whereis(id)
-    assert nil == WardrikCore.whereis("no-such-agent")
+    assert ^agent = WardrikCore.whereis({id, nil})
+    assert nil == WardrikCore.whereis({"no-such-agent", nil})
+  end
+
+  test "keeps each conversation apart from its agent, whatever its ids hold" do
+    id = "acme/triage %2F/x"
+    {^id, agent} = start_agent(agent_id: id)
+    {^id, held} = start_agent(agent_id: id, conversation: "C1/1696.1234")
+
+    refute held == agent
+    assert ^held = WardrikCore.whereis({id, "C1/1696.1234"})
+    assert ^agent = WardrikCore.whereis({id, nil})
+    assert nil == WardrikCore.whereis({id, "C1"})
+    assert {id, nil} in WardrikCore.list()
+    assert {id, "C1/1696.1234"} in WardrikCore.list()
+    assert %{agent_id: ^id, conversation: "C1/1696.1234"} = agent_state(held)
+
+    expect(ReqLLM, :stream_text, fn _, _, _ -> {:ok, answer("done")} end)
+    :ok = WardrikCore.ask(held, "hi")
+    assert_receive {[:turn, :stop], %{agent_id: ^id, conversation: "C1/1696.1234"}}
+
+    assert :ok = WardrikCore.delete({id, "C1/1696.1234"})
+    assert ^agent = WardrikCore.whereis({id, nil})
   end
 
   test "start_agent/1 metadata reaches middleware" do
@@ -548,7 +569,7 @@ defmodule WardrikCore.AgentTest do
   test "list/1 includes every saved agent" do
     {id, _agent} = start_agent()
 
-    assert id in WardrikCore.list()
+    assert {id, nil} in WardrikCore.list()
   end
 
   test "private data stays with the agent across turns and restarts" do

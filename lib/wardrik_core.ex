@@ -37,6 +37,9 @@ defmodule WardrikCore do
   alias WardrikCore.Context
   alias WardrikCore.Turn
 
+  @typedoc "An agent's id and its conversation's, `nil` for the agent's own history."
+  @type key() :: {String.t(), String.t() | nil}
+
   @doc """
   Runs agents under your supervision tree.
 
@@ -112,7 +115,10 @@ defmodule WardrikCore do
 
   ## Options
 
-    * `:agent_id` - required. The agent's id, unique within the instance.
+    * `:agent_id` - required. The agent's id.
+    * `:conversation` - the id of one of the agent's conversations, which runs on the same
+      options with a history of its own. `nil`, the agent's own history, unless set. Each
+      `{agent_id, conversation}` is one agent, unique within the instance.
     * `:model` - required. A model spec, as `"anthropic:claude-haiku-4-5"`.
     * `:instructions` - the system prompt. Sent with every model call, never kept in the history.
     * `:capabilities` - modules that give the agent its tools. See `WardrikCore.Capability`.
@@ -134,13 +140,16 @@ defmodule WardrikCore do
   def start_agent(instance \\ __MODULE__, opts) do
     opts =
       opts
-      |> Keyword.validate!([:agent_id, :model | @config])
+      |> Keyword.validate!([:agent_id, :model, :conversation | @config])
       |> Keyword.replace_lazy(:prices, &State.canonical_prices!/1)
 
-    agent_id = Keyword.fetch!(opts, :agent_id)
-    context = Context.new([agent_id: agent_id] ++ Keyword.take(opts, @config))
-    state = State.new(agent_id: agent_id, model: Keyword.fetch!(opts, :model), context: context)
-    child = {WardrikCore.Agent, key: agent_id, initial_state: state}
+    ids = [agent_id: Keyword.fetch!(opts, :agent_id), conversation: opts[:conversation]]
+    context = Context.new(ids ++ Keyword.take(opts, @config))
+    state = State.new(ids ++ [model: Keyword.fetch!(opts, :model), context: context])
+
+    child =
+      {WardrikCore.Agent,
+       key: durable({ids[:agent_id], ids[:conversation]}), initial_state: state}
 
     case DurableServer.Supervisor.start_child(agents(instance), child) do
       {:ok, {pid, _meta}} -> {:ok, pid}
@@ -151,7 +160,7 @@ defmodule WardrikCore do
   @doc """
   Changes an agent's model or settings, from its next turn.
 
-  Takes `:model` and the options of `start_agent/2`, except `:agent_id`.
+  Takes `:model` and the options of `start_agent/2`, except `:agent_id` and `:conversation`.
   """
   @spec configure(GenServer.server(), keyword()) :: :ok
   def configure(agent, opts) do
@@ -164,19 +173,19 @@ defmodule WardrikCore do
     GenServer.call(agent, {:configure, opts})
   end
 
-  @doc "Returns the id of every saved agent."
-  @spec list(atom()) :: [String.t()]
+  @doc "Returns the key of every saved agent."
+  @spec list(atom()) :: [key()]
   def list(instance \\ __MODULE__) do
     instance
     |> agents()
     |> DurableServer.Supervisor.stream_all_server_info()
-    |> Enum.map(fn info -> info.key end)
+    |> Enum.flat_map(fn info -> key(info.key) end)
   end
 
-  @doc "Returns the running agent for `agent_id`, or `nil`."
-  @spec whereis(atom(), String.t()) :: pid() | nil
-  def whereis(instance \\ __MODULE__, agent_id) do
-    case DurableServer.Supervisor.lookup(agents(instance), agent_id) do
+  @doc "Returns the running agent for `key`, or `nil`."
+  @spec whereis(atom(), key()) :: pid() | nil
+  def whereis(instance \\ __MODULE__, key) do
+    case DurableServer.Supervisor.lookup(agents(instance), durable(key)) do
       {pid, _meta} -> pid
       nil -> nil
     end
@@ -228,28 +237,29 @@ defmodule WardrikCore do
     |> Enum.sort()
   end
 
-  @doc "Returns each saved agent's id mapped to the node running it, or `nil` if it isn't running."
-  @spec placements(atom()) :: %{String.t() => String.t() | nil}
+  @doc "Returns each saved agent's key mapped to the node running it, or `nil` if it isn't running."
+  @spec placements(atom()) :: %{key() => String.t() | nil}
   def placements(instance \\ __MODULE__) do
     instance
     |> agents()
     |> DurableServer.Supervisor.stream_all_server_info()
-    |> Map.new(fn info -> {info.key, placed(info)} end)
+    |> Enum.flat_map(fn info -> Enum.map(key(info.key), &{&1, placed(info)}) end)
+    |> Map.new()
   end
 
   @doc """
   Restarts the agent on the node `:to`, with its saved state.
 
-      WardrikCore.move("triage", to: "wardrik@10.0.0.2")
+      WardrikCore.move({"triage", nil}, to: "wardrik@10.0.0.2")
 
   Ends the turn it's taking, and abandons anything it's waiting on. Returns
   `{:error, :no_such_node}` or `{:error, :not_found}` if the node or the agent doesn't exist.
   """
-  @spec move(atom(), String.t(), to: String.t()) :: {:ok, pid()} | {:error, term()}
-  def move(instance \\ __MODULE__, agent_id, args) do
+  @spec move(atom(), key(), to: String.t()) :: {:ok, pid()} | {:error, term()}
+  def move(instance \\ __MODULE__, key, args) do
     with {:ok, target} <- node(Keyword.fetch!(args, :to), nodes(instance)),
-         :ok <- saved(instance, agent_id) do
-      child = {WardrikCore.Agent, key: agent_id, initial_state: %{}}
+         :ok <- saved(instance, key) do
+      child = {WardrikCore.Agent, key: durable(key), initial_state: %{}}
 
       case DurableServer.Supervisor.rehome_child(agents(instance), child, target_node: target) do
         {:ok, {pid, _meta}} -> {:ok, pid}
@@ -259,9 +269,9 @@ defmodule WardrikCore do
   end
 
   @doc "Stops the agent and deletes its saved state. Returns `:ok` if there's no such agent."
-  @spec delete(atom(), String.t()) :: :ok | {:error, term()}
-  def delete(instance \\ __MODULE__, agent_id) do
-    case DurableServer.Supervisor.terminate_and_delete_child(agents(instance), agent_id) do
+  @spec delete(atom(), key()) :: :ok | {:error, term()}
+  def delete(instance \\ __MODULE__, key) do
+    case DurableServer.Supervisor.terminate_and_delete_child(agents(instance), durable(key)) do
       :ok -> :ok
       {:error, :not_found} -> :ok
       {:error, reason} -> {:error, reason}
@@ -437,9 +447,24 @@ defmodule WardrikCore do
       else: {:error, :no_such_node}
   end
 
-  defp saved(instance, agent_id) do
-    if agent_id in list(instance), do: :ok, else: {:error, :not_found}
+  defp saved(instance, key) do
+    if key in list(instance), do: :ok, else: {:error, :not_found}
   end
+
+  # DurableServer keys are binaries: each id is encoded on its own, so no id is ever split.
+  defp durable({agent_id, conversation}) do
+    ids = Enum.reject([agent_id, conversation], &is_nil/1)
+    Enum.map_join(["agents" | Enum.map(ids, &URI.encode_www_form/1)], "/", & &1)
+  end
+
+  defp key("agents/" <> encoded) do
+    case encoded |> String.split("/") |> Enum.map(&URI.decode_www_form/1) do
+      [agent_id] -> [{agent_id, nil}]
+      [agent_id, conversation] -> [{agent_id, conversation}]
+    end
+  end
+
+  defp key(_other), do: []
 
   defp agents(instance), do: Module.concat(instance, Agents)
 end

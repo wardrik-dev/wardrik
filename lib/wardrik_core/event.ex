@@ -37,6 +37,7 @@ defmodule WardrikCore.Event do
   """
   @spec emit(Context.t() | Context.entry() | nil, [atom()], map(), map()) :: :ok
   def emit(source, name, measurements \\ %{}, metadata) do
+    metadata = conversation(source, metadata)
     :telemetry.execute(name, measurements, metadata)
 
     source
@@ -48,6 +49,11 @@ defmodule WardrikCore.Event do
       metadata: metadata
     })
   end
+
+  defp conversation(%Context{conversation: conversation}, metadata),
+    do: Map.put_new(metadata, :conversation, conversation)
+
+  defp conversation(_source, metadata), do: metadata
 
   defp sink(%Context{events: events}), do: events
   defp sink(events), do: events

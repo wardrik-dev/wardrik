@@ -3,7 +3,8 @@ defmodule WardrikCore.Telemetry do
   The events an agent emits.
 
   Each goes to `:telemetry` and to the agent's `WardrikCore.Events` sink, as a
-  `WardrikCore.Event`. Every event's metadata has `agent_id`. Below, each event lists its other
+  `WardrikCore.Event`. Every event's metadata has `agent_id`, and
+  `conversation`, `nil` for the agent's own history. Below, each event lists its other
   metadata, then its measurements.
 
   ## Events

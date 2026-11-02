@@ -129,7 +129,7 @@ url
 ```elixir
 :ok = MyApp.Tokens.put("user:maria", "github", "gho_...")
 
-"support"
+{"support", nil}
 |> WardrikCore.whereis()
 |> WardrikCore.resume(%{}, %{by: maria})
 ```

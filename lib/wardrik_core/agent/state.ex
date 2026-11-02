@@ -6,6 +6,7 @@ defmodule WardrikCore.Agent.State do
 
   defstruct [
     :agent_id,
+    :conversation,
     :model,
     :context,
     :task,
@@ -25,6 +26,7 @@ defmodule WardrikCore.Agent.State do
 
   @persisted [
     :agent_id,
+    :conversation,
     :model,
     :messages,
     :pending_messages,
@@ -224,13 +226,15 @@ defmodule WardrikCore.Agent.State do
   def load(%{} = dumped) do
     __MODULE__
     |> struct(dumped)
-    |> Map.put(:context, load_context(dumped.context, dumped.agent_id))
+    |> Map.put(:context, load_context(dumped.context, dumped))
   end
 
-  defp load_context(nil, _agent_id), do: nil
+  defp load_context(nil, _dumped), do: nil
 
-  defp load_context(dumped, agent_id),
-    do: struct(WardrikCore.Context, Map.put(dumped, :agent_id, agent_id))
+  defp load_context(context, dumped) do
+    ids = %{agent_id: dumped.agent_id, conversation: Map.get(dumped, :conversation)}
+    struct(WardrikCore.Context, Map.merge(context, ids))
+  end
 
   @doc false
   def canonical_prices!(prices),

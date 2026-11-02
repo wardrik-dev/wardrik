@@ -275,7 +275,7 @@ defmodule WardrikCore.Agent do
   end
 
   defp emit(state, event, measurements, metadata) do
-    metadata = Map.put(metadata, :agent_id, state.agent_id)
+    metadata = Map.merge(metadata, %{agent_id: state.agent_id, conversation: state.conversation})
     Event.emit(state.context, [:wardrik_core | event], measurements, metadata)
   end
 end
