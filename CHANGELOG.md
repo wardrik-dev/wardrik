@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.2 (2026-11-02)
+
+- Requires `wardrik_core` 0.1.0-rc.2.
+
 ## 0.1.0-rc.1 (2026-10-30)
 
 - `web_search` through Brave's LLM Context API: the passages of each page that bear on the query,

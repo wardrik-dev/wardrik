@@ -1,9 +1,6 @@
 defmodule WardrikBrave.WebSearch do
   @moduledoc """
-  The `web_search` tool.
-
-  Results become part of the turn that asked for them, so they're kept small: 10 results and about
-  4,096 tokens unless the agent asks for more.
+  The `web_search` tool. Returns 10 results and about 4,096 tokens unless the agent asks for more.
   """
 
   alias WardrikBrave.Client
@@ -56,11 +53,8 @@ defmodule WardrikBrave.WebSearch do
   end
 
   @doc """
-  Runs one search.
-
-  Uses the agent's `BRAVE_API_KEY` if its keys hold one, and the settings in `brave` otherwise.
-  Returns `{:error, message}` if both `:freshness` and `:published_between` are given, or if
-  `:published_between` isn't `"YYYY-MM-DDtoYYYY-MM-DD"`.
+  Runs one search. Returns `{:error, message}` for both `:freshness` and `:published_between`, or
+  a `:published_between` that isn't `"YYYY-MM-DDtoYYYY-MM-DD"`.
   """
   @spec run(atom() | map(), map(), WardrikCore.Context.t()) ::
           {:ok, map()} | {:error, String.t()}

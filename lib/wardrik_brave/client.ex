@@ -1,11 +1,9 @@
 defmodule WardrikBrave.Client do
   @moduledoc """
-  Calls Brave's LLM Context API.
-
-  Keeps what a model can use of each result: its URL, title, passages and date.
+  Calls Brave's LLM Context API, keeping each result's URL, title, passages and date.
 
   Raises `WardrikBrave.Unavailable` on a rate limit, a 5xx or a dropped connection, so the tool
-  runner retries. See `WardrikCore.Retry`.
+  runner retries.
   """
 
   @path "/res/v1/llm/context"
@@ -51,9 +49,8 @@ defmodule WardrikBrave.Client do
   end
 
   @doc """
-  Returns the results of a response body, as `%{"results" => [...], "count" => n}`.
-
-  Each result has `"url"`, `"title"`, `"snippets"` and, where known, `"age"`.
+  Returns `%{"results" => [...], "count" => n}`. Each result has `"url"`, `"title"`, `"snippets"`
+  and, where known, `"age"`.
   """
   @spec summarized(term()) :: map()
   def summarized(%{} = body) do
