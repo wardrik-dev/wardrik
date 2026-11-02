@@ -97,7 +97,7 @@ defmodule Wardrik.Operations.Agent do
   def cancelled(scope, id, pid) do
     case WardrikCore.interrupt(pid) do
       :ok ->
-        Changes.record(scope, "agent.cancelled", id)
+        Changes.record(scope, type: "agent.cancelled", agent: id)
         true
 
       {:error, :idle} ->

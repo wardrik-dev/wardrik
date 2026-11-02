@@ -10,7 +10,12 @@ defmodule Wardrik.Keys do
 
   An org or person brings its own key by sealing it with the key's name, as an `:api_key`:
 
-      Wardrik.put_secret(MyApp.AgentRuntime, "acme", "ZAI_API_KEY", key, kind: :api_key)
+      Wardrik.put_secret(MyApp.AgentRuntime,
+        owner: "acme",
+        name: "ZAI_API_KEY",
+        value: key,
+        kind: :api_key
+      )
 
   If no one holds it, the code finds its own, as ReqLLM reads the environment. Only `:api_key`
   secrets count, so a client secret, header or signing secret is never read as a key. A connected

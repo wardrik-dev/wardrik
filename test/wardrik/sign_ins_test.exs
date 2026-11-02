@@ -61,7 +61,7 @@ defmodule Wardrik.SignInsTest do
     until("wardrik.run.interrupted")
 
     assert {:ok, %Wardrik.Authorization{url: url}} =
-             Wardrik.Agent.authorization(scope, "acme/@maria/mail", "call_1")
+             Wardrik.Agent.authorization(scope, agent: "acme/@maria/mail", interrupt: "call_1")
 
     %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
@@ -77,7 +77,14 @@ defmodule Wardrik.SignInsTest do
     scope: scope
   } do
     answers([answer("Triaged.")])
-    :ok = Wardrik.put_secret(wardrik, "acme", "HOOK", "s3cret", kind: :signing_secret)
+
+    :ok =
+      Wardrik.put_secret(wardrik,
+        owner: "acme",
+        name: "HOOK",
+        value: "s3cret",
+        kind: :signing_secret
+      )
 
     {:ok, %Wardrik.Agent{}} =
       Wardrik.Agent.define(scope, "acme/hooks",
@@ -86,7 +93,9 @@ defmodule Wardrik.SignInsTest do
       )
 
     assert :ok =
-             Wardrik.Hook.deliver(scope, "acme/hooks", "issues",
+             Wardrik.Hook.deliver(scope,
+               agent: "acme/hooks",
+               trigger: "issues",
                body: "{\"action\":\"opened\"}",
                headers: %{"Authorization" => "Bearer s3cret"}
              )
@@ -98,7 +107,10 @@ defmodule Wardrik.SignInsTest do
     assert [%{metadata: %{labels: ["outside"]}} | _rest] = WardrikCore.history(pid)
 
     assert {:error, %Wardrik.Error{type: :not_found}} =
-             Wardrik.Hook.deliver_with_secret(scope, "acme/hooks", "issues", "nope",
+             Wardrik.Hook.deliver_with_secret(scope,
+               agent: "acme/hooks",
+               trigger: "issues",
+               secret: "nope",
                body: "{}",
                headers: %{}
              )
@@ -108,16 +120,25 @@ defmodule Wardrik.SignInsTest do
     wardrik: wardrik,
     scope: scope
   } do
-    assert :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "s3cret")
-    assert {:ok, "s3cret"} = Wardrik.fetch_secret(wardrik, "acme", "crm-key")
-    assert {:ok, :secret, "s3cret", vsn} = Wardrik.lookup_secret(wardrik, "acme", "crm-key")
-    assert :ok = Wardrik.put_secret(wardrik, "acme", "crm-key", "rotated", if_vsn: vsn)
+    assert :ok = Wardrik.put_secret(wardrik, owner: "acme", name: "crm-key", value: "s3cret")
+    assert {:ok, "s3cret"} = Wardrik.fetch_secret(wardrik, owner: "acme", name: "crm-key")
+
+    assert {:ok, :secret, "s3cret", vsn} =
+             Wardrik.lookup_secret(wardrik, owner: "acme", name: "crm-key")
+
+    assert :ok =
+             Wardrik.put_secret(wardrik,
+               owner: "acme",
+               name: "crm-key",
+               value: "rotated",
+               if_vsn: vsn
+             )
 
     assert {"acme", "crm-key", :secret} in Wardrik.list_secrets(wardrik)
     assert Wardrik.list_secrets(wardrik, "acme") == ["crm-key"]
 
-    assert :ok = Wardrik.delete_secret(wardrik, "acme", "crm-key")
-    assert {:error, :not_found} = Wardrik.fetch_secret(wardrik, "acme", "crm-key")
+    assert :ok = Wardrik.delete_secret(wardrik, owner: "acme", name: "crm-key")
+    assert {:error, :not_found} = Wardrik.fetch_secret(wardrik, owner: "acme", name: "crm-key")
 
     {:ok, %Wardrik.Page{events: changes}} = Wardrik.Audit.list(scope)
 

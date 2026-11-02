@@ -312,7 +312,12 @@ defmodule Wardrik.Channel.PackageTest do
       scope = Wardrik.as(wardrik, "anonymous")
 
       assert {:ok, %Wardrik.ChannelResponse{status: 200, body: "{}"}} =
-               Wardrik.Channel.deliver(scope, "chat", "events", body: "{}", headers: %{})
+               Wardrik.Channel.deliver(scope,
+                 channel: "chat",
+                 path: "events",
+                 body: "{}",
+                 headers: %{}
+               )
     end
   end
 

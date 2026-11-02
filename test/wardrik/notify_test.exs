@@ -77,7 +77,14 @@ defmodule Wardrik.NotifyTest do
 
     start_supervised!({WardrikStore, store})
     start_supervised!({Wardrik, wardrik})
-    :ok = Wardrik.put_secret(wardrik, "deployment", "HOOK_SECRET", "shh", kind: :signing_secret)
+
+    :ok =
+      Wardrik.put_secret(wardrik,
+        owner: "deployment",
+        name: "HOOK_SECRET",
+        value: "shh",
+        kind: :signing_secret
+      )
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
@@ -318,7 +325,13 @@ defmodule Wardrik.NotifyTest do
       wardrik: wardrik,
       scope: scope
     } do
-      :ok = Wardrik.put_secret(wardrik, "acme", "OPS_SECRET", "acme-shh", kind: :signing_secret)
+      :ok =
+        Wardrik.put_secret(wardrik,
+          owner: "acme",
+          name: "OPS_SECRET",
+          value: "acme-shh",
+          kind: :signing_secret
+        )
 
       assert run!(
                scope,
@@ -412,7 +425,14 @@ defmodule Wardrik.NotifyTest do
     } do
       hooked()
       model({:error, :boom})
-      :ok = Wardrik.put_secret(wardrik, "acme", "OPS_SECRET", "acme-shh", kind: :signing_secret)
+
+      :ok =
+        Wardrik.put_secret(wardrik,
+          owner: "acme",
+          name: "OPS_SECRET",
+          value: "acme-shh",
+          kind: :signing_secret
+        )
 
       run!(
         scope,
@@ -487,7 +507,13 @@ defmodule Wardrik.NotifyTest do
       wardrik: wardrik,
       scope: scope
     } do
-      :ok = Wardrik.put_secret(wardrik, "acme", "OPS_SECRET", "acme-shh", kind: :signing_secret)
+      :ok =
+        Wardrik.put_secret(wardrik,
+          owner: "acme",
+          name: "OPS_SECRET",
+          value: "acme-shh",
+          kind: :signing_secret
+        )
 
       run!(
         scope,
@@ -495,7 +521,7 @@ defmodule Wardrik.NotifyTest do
         target("acme", "signed", "hooks.acme.test", %{"secret" => %{"name" => "OPS_SECRET"}})
       )
 
-      :ok = Wardrik.delete_secret(wardrik, "acme", "OPS_SECRET")
+      :ok = Wardrik.delete_secret(wardrik, owner: "acme", name: "OPS_SECRET")
       notice = %Notice{agent: "acme/triage", kind: :failed, at: DateTime.utc_now(), reason: "x"}
 
       assert Wardrik.Notify.deliver(wardrik, "signed", notice) ==

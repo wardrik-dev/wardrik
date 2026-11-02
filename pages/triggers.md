@@ -18,7 +18,12 @@ System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 {:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, keys: [WardrikVault.generate_key()])
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
 
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme/@maria", "ISSUES_HOOK_SECRET", "hook-s3cret")
+:ok =
+  Wardrik.put_secret(MyApp.AgentRuntime,
+    owner: "acme/@maria",
+    name: "ISSUES_HOOK_SECRET",
+    value: "hook-s3cret"
+  )
 ```
 
 ## Define them
@@ -91,7 +96,9 @@ request is asked about once.
 From Elixir, deliver the request as it came, with its raw body and headers:
 
 ```elixir
-Wardrik.Hook.deliver(scope, "acme/@maria/digest", "issues",
+Wardrik.Hook.deliver(scope,
+  agent: "acme/@maria/digest",
+  trigger: "issues",
   body: ~s({"action":"opened"}),
   headers: %{"authorization" => "Bearer hook-s3cret"}
 )
@@ -105,7 +112,12 @@ Wardrik.Hook.deliver(scope, "acme/@maria/digest", "issues",
 Define the agent again to replace its triggers. To change one at a time:
 
 ```elixir
-Wardrik.Agent.trigger_set(scope, "acme/@maria/digest", "daily", every: "0 8 * * *", prompt: "Write it.")
+Wardrik.Agent.trigger_set(scope,
+  agent: "acme/@maria/digest",
+  trigger: "daily",
+  every: "0 8 * * *",
+  prompt: "Write it."
+)
 #=> {:ok,
 #=>  %Wardrik.Trigger{
 #=>    name: "daily",
@@ -116,11 +128,11 @@ Wardrik.Agent.trigger_set(scope, "acme/@maria/digest", "daily", every: "0 8 * * 
 #=>    ...
 #=>  }}
 
-Wardrik.Agent.trigger_remove(scope, "acme/@maria/digest", "daily")
+Wardrik.Agent.trigger_remove(scope, agent: "acme/@maria/digest", trigger: "daily")
 #=> {:ok, %Wardrik.Trigger{name: "daily", ...}}
 ```
 
-`trigger_set/4` needs an agent with a definition, and returns `not_found` otherwise. A trigger
+`trigger_set/2` needs an agent with a definition, and returns `not_found` otherwise. A trigger
 whose `every` and `timezone` don't change keeps its next run. Each change is recorded in the audit.
 
 ## In a cluster

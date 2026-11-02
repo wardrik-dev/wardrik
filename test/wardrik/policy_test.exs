@@ -55,7 +55,7 @@ defmodule Wardrik.PolicyTest do
              Wardrik.Agent.read(scope, "acme/books")
 
     assert {:ok, [%Wardrik.Decision{id: "call_1", decision: :approved}]} =
-             Wardrik.Agent.approve(scope, "acme/books", "call_1")
+             Wardrik.Agent.approve(scope, agent: "acme/books", interrupt: "call_1")
 
     assert %{"data" => %{"status" => "ok"}} = until("wardrik.tool_call.completed")
     until("wardrik.run.completed")
@@ -73,10 +73,10 @@ defmodule Wardrik.PolicyTest do
     until("wardrik.run.interrupted")
 
     assert {:ok, [%Wardrik.Decision{id: "call_1", decision: :approved}]} =
-             Wardrik.Agent.approve(scope, "acme/books", "call_1")
+             Wardrik.Agent.approve(scope, agent: "acme/books", interrupt: "call_1")
 
     assert {:ok, [%Wardrik.Decision{id: "call_2", decision: :rejected}]} =
-             Wardrik.Agent.deny(scope, "acme/books", "call_2")
+             Wardrik.Agent.deny(scope, agent: "acme/books", interrupt: "call_2")
 
     until("wardrik.run.completed")
   end

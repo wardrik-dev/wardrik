@@ -44,7 +44,9 @@ defmodule Wardrik.Operations.Agents do
       |> Enum.map(&{&1, Lifecycle.forgotten(scope.wardrik, &1)})
       |> Enum.split_with(fn {_id, outcome} -> outcome == :ok end)
 
-    Enum.each(forgotten, fn {id, :ok} -> Changes.record(scope, "agent.forgotten", id) end)
+    Enum.each(forgotten, fn {id, :ok} ->
+      Changes.record(scope, type: "agent.forgotten", agent: id)
+    end)
 
     {:ok,
      %{

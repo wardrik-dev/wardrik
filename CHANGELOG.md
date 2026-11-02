@@ -59,6 +59,16 @@
   whether the deployment's keys count.
 - OAuth apps added at runtime for MCP servers' sign-ins are kept under new keys. Add those servers
   again.
+- `put_secret/2`, `fetch_secret/2`, `lookup_secret/2` and `delete_secret/2` take the secret's
+  `:owner` and `:name` by name, and `put_secret/2` its `:value`, as do the functions `use Wardrik`
+  defines: `MyApp.AgentRuntime.put_secret(owner: "acme", name: "KEY", value: key)`.
+- `Wardrik.Channels.install_url/2`, `installed/2` and `uninstall/2` take the `:channel`, then
+  `:owner` and `:query`, or `:workspace`, by name. `Wardrik.Delegation.asked/2` takes `:asker`,
+  `:agent` and `:message`, `Wardrik.Workspaces.resolve/2` `:agent`, `:definition` and `:files`,
+  `Wardrik.Operations.Providers.added/2` `:owner`, `:name` and `:called` with the app's options,
+  and `Wardrik.Operations.Changes`' functions the change's `:type`, `:agent`, `:owner`,
+  `:subject` and `:data`. `Wardrik.Runner.run/3` and `stream/3` run and stream an operation, and
+  `Wardrik.Answers.follow/4` takes its options last, as `[]` unless given.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

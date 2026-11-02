@@ -66,8 +66,13 @@ defmodule Wardrik.ChildrenTest do
 
   test "keeps no secret without keys to seal it with", %{test: test} do
     start_supervised!({Wardrik, name: :"keyless #{test}"}, id: :keyless)
-    assert {:error, :no_keys} = Wardrik.put_secret(:"keyless #{test}", "acme", "HOOK", "s3cret")
-    assert {:error, :no_keys} = Wardrik.fetch_secret(:"keyless #{test}", "acme", "HOOK")
+
+    assert {:error, :no_keys} =
+             Wardrik.put_secret(:"keyless #{test}", owner: "acme", name: "HOOK", value: "s3cret")
+
+    assert {:error, :no_keys} =
+             Wardrik.fetch_secret(:"keyless #{test}", owner: "acme", name: "HOOK")
+
     assert Wardrik.list_secrets(:"keyless #{test}") == []
     assert Wardrik.list_secrets(:"keyless #{test}", "acme") == []
   end

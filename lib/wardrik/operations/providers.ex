@@ -38,10 +38,15 @@ defmodule Wardrik.Operations.Providers do
     with :ok <- signs_in(wardrik),
          :ok <- unused(wardrik, owner, name),
          {:ok, opts} <- options(wardrik, owner, Map.drop(input, ["owner", "name"])),
-         :ok <- added(wardrik, owner, name, opts) do
-      Changes.record_owned(scope, "provider.added", owner, "providers/" <> name, %{
-        "provider" => %{"name" => name}
-      })
+         :ok <- added(wardrik, [owner: owner, name: name] ++ opts) do
+      Changes.record_owned(scope,
+        type: "provider.added",
+        owner: owner,
+        subject: "providers/" <> name,
+        data: %{
+          "provider" => %{"name" => name}
+        }
+      )
 
       {:ok, answer(own(wardrik, owner, name))}
     end
@@ -54,9 +59,14 @@ defmodule Wardrik.Operations.Providers do
       %Provider{source: :runtime} = provider ->
         :ok = WardrikOAuth.remove_provider(Wardrik.oauth(wardrik), owner: owner, name: name)
 
-        Changes.record_owned(scope, "provider.removed", owner, "providers/" <> name, %{
-          "provider" => %{"name" => name}
-        })
+        Changes.record_owned(scope,
+          type: "provider.removed",
+          owner: owner,
+          subject: "providers/" <> name,
+          data: %{
+            "provider" => %{"name" => name}
+          }
+        )
 
         {:ok, answer(provider)}
 
@@ -126,13 +136,17 @@ defmodule Wardrik.Operations.Providers do
   end
 
   @doc """
-  Adds `owner`'s OAuth app `name` with `opts`, refusing options WardrikOAuth refuses. An error
-  names it as `called`: a server's own app by the server's name.
+  Adds `:owner`'s OAuth app `:name` with the other options, refusing those WardrikOAuth refuses.
+  An error names it as `:called`, `:name` unless set: a server's own app by the server's name.
+
+      :ok = Providers.added(wardrik, owner: "acme", name: "linear", client_id: "acme-linear")
   """
-  @spec added(Wardrik.t(), Wardrik.Owners.t(), String.t(), keyword(), String.t() | nil) ::
-          :ok | {:error, Error.t()}
-  def added(wardrik, owner, name, opts, called \\ nil) do
-    case WardrikOAuth.add_provider(Wardrik.oauth(wardrik), [owner: owner, name: name] ++ opts) do
+  @spec added(Wardrik.t(), keyword()) :: :ok | {:error, Error.t()}
+  def added(wardrik, opts) do
+    {called, opts} = Keyword.pop(opts, :called)
+    name = Keyword.fetch!(opts, :name)
+
+    case WardrikOAuth.add_provider(Wardrik.oauth(wardrik), opts) do
       :ok ->
         :ok
 

@@ -454,43 +454,54 @@ defmodule Wardrik do
     do: Wardrik.Operations.Tokens.authenticate(Instance.fetch!(instance), secret)
 
   @doc """
-  Seals `value` as `owner`'s secret `name`, and records it in the audit.
+  Seals `:value` as `:owner`'s secret `:name`, and records it in the audit.
 
-  `owner` is an org, as `"acme"`, or a person, as `"acme/@maria"`. Their agents' tools and servers
-  can use the secret. Returns `{:error, :no_keys}` if Wardrik was started without `:keys`.
+  `:owner` is an org, as `"acme"`, or a person, as `"acme/@maria"`. Their agents' tools and
+  servers can use the secret. Returns `{:error, :no_keys}` if Wardrik was started without `:keys`.
 
-      :ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme", "ANTHROPIC_API_KEY", key, kind: :api_key)
+      :ok =
+        Wardrik.put_secret(MyApp.AgentRuntime,
+          owner: "acme",
+          name: "ANTHROPIC_API_KEY",
+          value: key,
+          kind: :api_key
+        )
 
   ## Options
 
     * `:kind` - what it's for, as `:api_key` or `:client_secret`. It's read only for that. See
       `t:WardrikVault.kind/0`.
-    * `:if_vsn` - only write if the secret is still at this version. See `lookup_secret/3`.
+    * `:if_vsn` - only write if the secret is still at this version. See `lookup_secret/2`.
   """
-  @spec put_secret(atom() | t(), String.t(), String.t(), binary(), keyword()) ::
-          :ok | {:error, term()}
-  def put_secret(instance, owner, name, value, opts \\ []),
-    do: Wardrik.Sealed.put(instance, owner, name, value, opts)
-
-  @doc "Returns `owner`'s secret `name`, unsealed."
-  @spec fetch_secret(atom() | t(), String.t(), String.t()) :: {:ok, binary()} | {:error, term()}
-  def fetch_secret(instance, owner, name), do: Wardrik.Sealed.fetch(instance, owner, name)
+  @spec put_secret(atom() | t(), keyword()) :: :ok | {:error, term()}
+  def put_secret(instance, args), do: Wardrik.Sealed.put(instance, args)
 
   @doc """
-  Returns `owner`'s secret `name`, unsealed, with its kind and version.
+  Returns `:owner`'s secret `:name`, unsealed.
+
+      {:ok, key} = Wardrik.fetch_secret(MyApp.AgentRuntime, owner: "acme", name: "ZAI_API_KEY")
+  """
+  @spec fetch_secret(atom() | t(), owner: String.t(), name: String.t()) ::
+          {:ok, binary()} | {:error, term()}
+  def fetch_secret(instance, args), do: Wardrik.Sealed.fetch(instance, args)
+
+  @doc """
+  Returns `:owner`'s secret `:name`, unsealed, with its kind and version.
 
   The kind is `:secret`, or `:grant` for an account someone connected. Pass the version to
-  `put_secret/5` as `:if_vsn`.
+  `put_secret/2` as `:if_vsn`.
   """
-  @spec lookup_secret(atom() | t(), String.t(), String.t()) ::
+  @spec lookup_secret(atom() | t(), owner: String.t(), name: String.t()) ::
           {:ok, WardrikVault.kind(), binary(), term()}
           | {:error, term()}
           | {:error, WardrikVault.kind(), term()}
-  def lookup_secret(instance, owner, name), do: Wardrik.Sealed.lookup(instance, owner, name)
+  def lookup_secret(instance, args), do: Wardrik.Sealed.lookup(instance, args)
 
-  @doc "Removes `owner`'s secret `name`, and records it in the audit. Returns `:ok` if there's none."
-  @spec delete_secret(atom() | t(), String.t(), String.t()) :: :ok | {:error, term()}
-  def delete_secret(instance, owner, name), do: Wardrik.Sealed.delete(instance, owner, name)
+  @doc """
+  Removes `:owner`'s secret `:name`, and records it in the audit. Returns `:ok` if there's none.
+  """
+  @spec delete_secret(atom() | t(), owner: String.t(), name: String.t()) :: :ok | {:error, term()}
+  def delete_secret(instance, args), do: Wardrik.Sealed.delete(instance, args)
 
   @doc """
   Lists every secret as `{owner, name, kind}`, or with `owner`, the names of theirs.
@@ -520,7 +531,7 @@ defmodule Wardrik do
       #=> {:ok, %{"message" => %{"id" => "msg_Xq3f...", "cursor" => "eyJhY21lL3RyaWFnZSI6NDF9"}}}
   """
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
-  def run(%Scope{} = scope, id, input), do: Runner.run(scope, id, input, :handlers)
+  def run(%Scope{} = scope, id, input), do: Runner.run(scope, id, input)
 
   @impl Wardrik.Server
   def run(%Wardrik.Server.Request{scope: scope, operation: id, input: input}),
@@ -534,7 +545,7 @@ defmodule Wardrik do
       {:ok, stream} = Wardrik.stream(scope, "events.list", %{"resources" => ["acme/*"]})
   """
   @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
-  def stream(%Scope{} = scope, id, input), do: Runner.run(scope, id, input, :streams)
+  def stream(%Scope{} = scope, id, input), do: Runner.stream(scope, id, input)
 
   @impl Wardrik.Server
   def stream(%Wardrik.Server.Request{scope: scope, operation: id, input: input}),

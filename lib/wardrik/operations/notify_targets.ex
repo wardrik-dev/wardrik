@@ -29,9 +29,14 @@ defmodule Wardrik.Operations.NotifyTargets do
          {:ok, secret} <- secret(wardrik, owner, input["secret"]),
          {:ok, _vsn} <-
            WardrikStore.put(store(wardrik), Notify.key(owner, name), [url: url] ++ secret) do
-      Changes.record_owned(scope, "notify_target.added", owner, "notify_targets/" <> name, %{
-        "notify_target" => %{"name" => name, "url" => url}
-      })
+      Changes.record_owned(scope,
+        type: "notify_target.added",
+        owner: owner,
+        subject: "notify_targets/" <> name,
+        data: %{
+          "notify_target" => %{"name" => name, "url" => url}
+        }
+      )
 
       {:ok, answer(own(wardrik, owner, name))}
     end
@@ -44,9 +49,14 @@ defmodule Wardrik.Operations.NotifyTargets do
       %{source: :runtime} = target ->
         :ok = WardrikStore.delete(store(wardrik), Notify.key(owner, name))
 
-        Changes.record_owned(scope, "notify_target.removed", owner, "notify_targets/" <> name, %{
-          "notify_target" => %{"name" => name}
-        })
+        Changes.record_owned(scope,
+          type: "notify_target.removed",
+          owner: owner,
+          subject: "notify_targets/" <> name,
+          data: %{
+            "notify_target" => %{"name" => name}
+          }
+        )
 
         {:ok, answer(target)}
 
@@ -86,7 +96,7 @@ defmodule Wardrik.Operations.NotifyTargets do
       {:error, Error.new(:not_supported, "A target's secret needs Wardrik to keep credentials.")}
 
   defp secret(wardrik, owner, %{"name" => name}) do
-    if Wardrik.Sealed.holds?(wardrik, owner, name, :signing_secret),
+    if Wardrik.Sealed.holds?(wardrik, owner: owner, name: name, kind: :signing_secret),
       do: {:ok, [secret: {:secret, name}]},
       else:
         {:error,

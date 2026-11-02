@@ -51,7 +51,12 @@ defmodule Wardrik.Operations.Tokens do
       {:ok, _vsn} =
         WardrikStore.put(store(wardrik), @prefix <> id, Map.put(token, "hash", hash(secret)))
 
-      Changes.record_deployment(scope, "token.created", "tokens/" <> id, created(token))
+      Changes.record_deployment(scope,
+        type: "token.created",
+        subject: "tokens/" <> id,
+        data: created(token)
+      )
+
       {:ok, %{"token" => shown(token), "secret" => secret}}
     end
   end
@@ -136,9 +141,13 @@ defmodule Wardrik.Operations.Tokens do
       token ->
         :ok = WardrikStore.delete(store(wardrik), @prefix <> id)
 
-        Changes.record_deployment(scope, "token.revoked", "tokens/" <> id, %{
-          "token" => %{"id" => id}
-        })
+        Changes.record_deployment(scope,
+          type: "token.revoked",
+          subject: "tokens/" <> id,
+          data: %{
+            "token" => %{"id" => id}
+          }
+        )
 
         {:ok, shown(token)}
     end

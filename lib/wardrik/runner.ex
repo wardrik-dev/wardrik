@@ -16,10 +16,15 @@ defmodule Wardrik.Runner do
   alias Wardrik.Orgs
   alias Wardrik.Scope
 
-  @doc "Runs the operation `id` in `scope`, with its handler (`:handlers`) or stream (`:streams`)."
-  @spec run(Scope.t(), String.t(), map(), :handlers | :streams) ::
-          {:ok, term()} | {:error, Error.t()}
-  def run(%Scope{wardrik: instance} = scope, id, input, kind) do
+  @doc "Runs the operation `id` in `scope`, with its handler."
+  @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
+  def run(scope, id, input), do: ran(scope, id, input, :handlers)
+
+  @doc "Streams the operation `id` in `scope`. Returns a `not_supported` error if it can't be."
+  @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
+  def stream(scope, id, input), do: ran(scope, id, input, :streams)
+
+  defp ran(%Scope{wardrik: instance} = scope, id, input, kind) do
     catalog = Catalog.new()
     scope = %{scope | wardrik: Instance.fetch!(instance)}
 

@@ -51,23 +51,39 @@ after it until nothing needs it.
 Keep a secret for an org, as `"acme"`, or a person, as `"acme/@maria"`:
 
 ```elixir
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key", "crm_live_...")
+:ok =
+  Wardrik.put_secret(MyApp.AgentRuntime,
+    owner: "acme/@maria",
+    name: "crm-key",
+    value: "crm_live_..."
+  )
 
-Wardrik.fetch_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key")
+Wardrik.fetch_secret(MyApp.AgentRuntime, owner: "acme/@maria", name: "crm-key")
 #=> {:ok, "crm_live_..."}
 
 Wardrik.list_secrets(MyApp.AgentRuntime, "acme/@maria")
 #=> ["crm-key"]
 
-{:ok, :secret, "crm_live_...", vsn} = Wardrik.lookup_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key")
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key", "crm_live_2...", if_vsn: vsn)
+{:ok, :secret, "crm_live_...", vsn} =
+  Wardrik.lookup_secret(MyApp.AgentRuntime,
+    owner: "acme/@maria",
+    name: "crm-key"
+  )
 
-:ok = Wardrik.delete_secret(MyApp.AgentRuntime, "acme/@maria", "crm-key")
+:ok =
+  Wardrik.put_secret(MyApp.AgentRuntime,
+    owner: "acme/@maria",
+    name: "crm-key",
+    value: "crm_live_2...",
+    if_vsn: vsn
+  )
+
+:ok = Wardrik.delete_secret(MyApp.AgentRuntime, owner: "acme/@maria", name: "crm-key")
 ```
 
   * Every agent reads its principal's credentials, and nothing else.
   * Putting and deleting a secret is recorded in the audit.
-  * `lookup_secret/3` also returns the kind and version. The kind is `:secret`, or `:grant` for an
+  * `lookup_secret/2` also returns the kind and version. The kind is `:secret`, or `:grant` for an
     account someone connected.
   * `if_vsn:` writes over only the version you read.
 
@@ -77,7 +93,7 @@ An API key is what installed code calls a service with, like a model provider's 
 web search's `BRAVE_API_KEY`. An org or a person seals one under the key's name:
 
 ```elixir
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme", "ZAI_API_KEY", "zai-...")
+:ok = Wardrik.put_secret(MyApp.AgentRuntime, owner: "acme", name: "ZAI_API_KEY", value: "zai-...")
 ```
 
 A person's agent reads the person's key first, then the org's. Each model call reads its
@@ -90,7 +106,12 @@ To let every agent fall back to keys the deployment holds, start Wardrik with
 ```elixir
 Wardrik.start_link(name: MyApp.AgentRuntime, keys: [key], deployment_keys: true)
 
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, "deployment", "ZAI_API_KEY", "zai-...")
+:ok =
+  Wardrik.put_secret(MyApp.AgentRuntime,
+    owner: "deployment",
+    name: "ZAI_API_KEY",
+    value: "zai-..."
+  )
 ```
 
 Without it, no agent reads the deployment's keys. Keys never reach a tool's credentials, and a
@@ -106,7 +127,12 @@ An option that holds a secret takes `{:secret, name}` instead, naming a deployme
 setup's GitHub app does, so seal its client secret:
 
 ```elixir
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, "deployment", "GITHUB_CLIENT_SECRET", "your-client-secret")
+:ok =
+  Wardrik.put_secret(MyApp.AgentRuntime,
+    owner: "deployment",
+    name: "GITHUB_CLIENT_SECRET",
+    value: "your-client-secret"
+  )
 ```
 
 Your config then holds none:
@@ -135,7 +161,12 @@ config :my_app, MyApp.AgentRuntime,
 A header takes the secret as sealed, so seal Linear's token with its scheme:
 
 ```elixir
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, "deployment", "LINEAR_TOKEN", "Bearer lin_api_...")
+:ok =
+  Wardrik.put_secret(MyApp.AgentRuntime,
+    owner: "deployment",
+    name: "LINEAR_TOKEN",
+    value: "Bearer lin_api_..."
+  )
 ```
 
 Or give the scheme in the header, as `["Bearer ", {:secret, "LINEAR_TOKEN"}]`.
@@ -149,7 +180,7 @@ Each provider in `:oauth` is named after the credential it grants. The setup's `
 `"github"`.
 
 When a tool needs a credential its principal hasn't granted, its call waits on a sign-in.
-`Wardrik.Agent.authorization/4` returns the link. Once the person signs in, the token is sealed and
+`Wardrik.Agent.authorization/2` returns the link. Once the person signs in, the token is sealed and
 every call waiting on it carries on. They sign in once.
 
 ## Add OAuth apps as it runs
@@ -157,7 +188,12 @@ every call waiting on it carries on. They sign in once.
 An org or person adds an OAuth app for their people, its client secret named by reference:
 
 ```elixir
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, "acme", "GOOGLE_CLIENT_SECRET", "GOCSPX-...")
+:ok =
+  Wardrik.put_secret(MyApp.AgentRuntime,
+    owner: "acme",
+    name: "GOOGLE_CLIENT_SECRET",
+    value: "GOCSPX-..."
+  )
 
 Wardrik.Providers.add(scope,
   owner: "acme",

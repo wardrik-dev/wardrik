@@ -38,7 +38,7 @@ defmodule Wardrik.SealedOptionsTest do
 
     assert_receive {:started_with, "first"}
 
-    :ok = Wardrik.put_secret(name, "deployment", "SIGNING", "second")
+    :ok = Wardrik.put_secret(name, owner: "deployment", name: "SIGNING", value: "second")
     request = %{"channel" => "slack", "path" => "events", "body" => "{}", "headers" => %{}}
 
     assert {:ok, %{"body" => "second"}} =

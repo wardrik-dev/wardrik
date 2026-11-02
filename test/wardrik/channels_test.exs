@@ -37,7 +37,7 @@ defmodule Wardrik.ChannelsTest do
   end
 
   test "says where a channel's chat app can't be added to workspaces", %{name: name} do
-    assert Wardrik.Channels.install_url(name, "slack", "acme") ==
+    assert Wardrik.Channels.install_url(name, channel: "slack", owner: "acme") ==
              {:error, "The channel slack isn't added to workspaces this way."}
   end
 
@@ -109,6 +109,11 @@ defmodule Wardrik.ChannelsTest do
 
   test "answers in Elixir", %{scope: scope} do
     assert {:ok, %Wardrik.ChannelResponse{status: 200, body: "actions: hi ()"}} =
-             Wardrik.Channel.deliver(scope, "slack", "actions", body: "hi", headers: %{})
+             Wardrik.Channel.deliver(scope,
+               channel: "slack",
+               path: "actions",
+               body: "hi",
+               headers: %{}
+             )
   end
 end

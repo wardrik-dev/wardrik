@@ -163,7 +163,7 @@ Wardrik.Agent.read(scope, "acme/@maria/assistant")
 | `Wardrik.Agent.clear/3` | Empties its conversation. Returns `conflict` while it runs or waits on a person. |
 | `Wardrik.Agent.forget/3` | Stops it, and deletes its conversations and definition. |
 | `Wardrik.Agent.calls/3` | Lists the tool calls it's running, with how long each has run. |
-| `Wardrik.Agent.kill/4` | Stops one call. The model gets an error for it, and the turn goes on. |
+| `Wardrik.Agent.kill/2` | Stops one call. The model gets an error for it, and the turn goes on. |
 | `Wardrik.Agents.cancel/2` | Stops what every agent the patterns cover is doing. |
 | `Wardrik.Agents.forget/2` | Forgets every agent the patterns cover. |
 

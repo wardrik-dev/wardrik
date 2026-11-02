@@ -37,14 +37,25 @@ defmodule Wardrik.Workspaces do
   @bytes 1_024..262_144
 
   @doc """
-  Returns the capabilities and middleware for the agent `id`'s workspace.
+  Returns the capabilities and middleware for the workspace of the `:agent` by its ID, from its
+  `:definition`.
 
-  Capabilities hold the file tools if `files?` is `true`. Middleware reads `context` into every
+  Capabilities hold the file tools if `:files` is `true`. Middleware reads `context` into every
   turn. Returns an `invalid_request` error if the workspace or `context` is invalid.
+
+      Wardrik.Workspaces.resolve(wardrik,
+        agent: "acme/triage",
+        definition: definition,
+        files: true
+      )
   """
-  @spec resolve(Wardrik.t(), String.t(), map(), boolean()) ::
+  @spec resolve(Wardrik.t(), agent: String.t(), definition: map(), files: boolean()) ::
           {:ok, [capabilities: list(), middleware: list()]} | {:error, Error.t()}
-  def resolve(wardrik, id, definition, files?) do
+  def resolve(wardrik, args) do
+    id = Keyword.fetch!(args, :agent)
+    definition = Keyword.fetch!(args, :definition)
+    files? = Keyword.fetch!(args, :files)
+
     with {:ok, shared} <- shared(wardrik, id, get_in(definition, ["workspace", "shared"]) || %{}),
          {:ok, context} <- context(definition["context"]) do
       base = [store: wardrik.store, tree: tree(id), shared: shared]

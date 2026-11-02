@@ -42,7 +42,13 @@ defmodule Wardrik.Operations.Deployment do
     :ok = WardrikTriggers.reconcile(Wardrik.triggers(wardrik))
 
     here = to_string(node())
-    Changes.record_deployment(scope, "agents.reloaded", "deployment", %{"nodes" => [here]})
+
+    Changes.record_deployment(scope,
+      type: "agents.reloaded",
+      subject: "deployment",
+      data: %{"nodes" => [here]}
+    )
+
     {:ok, %{"reloaded" => [here], "problems" => problems}}
   end
 
@@ -74,7 +80,7 @@ defmodule Wardrik.Operations.Deployment do
   def move(%Wardrik.Scope{wardrik: wardrik} = scope, %{"agent" => id, "node" => node}) do
     case WardrikCore.move(Wardrik.agents(wardrik), id, to: node) do
       {:ok, _pid} ->
-        Changes.record(scope, "agent.moved", id, %{"node" => node})
+        Changes.record(scope, type: "agent.moved", agent: id, data: %{"node" => node})
         {:ok, %{"agent" => Snapshot.summary(wardrik, id)}}
 
       {:error, :not_found} ->

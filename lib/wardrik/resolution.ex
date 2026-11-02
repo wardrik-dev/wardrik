@@ -44,7 +44,11 @@ defmodule Wardrik.Resolution do
          {:ok, model} <- model(definition),
          {:ok, capabilities} <- capabilities(wardrik, servers, definition),
          {:ok, workspace} <-
-           Wardrik.Workspaces.resolve(wardrik, id, definition, files?(definition)),
+           Wardrik.Workspaces.resolve(wardrik,
+             agent: id,
+             definition: definition,
+             files: files?(definition)
+           ),
          :ok <- channels(wardrik, Map.get(definition, "channels", [])),
          :ok <- Wardrik.Notify.check(wardrik, resolved.notify, definition),
          {:ok, policy} <- policy(wardrik, definition["policy"]),

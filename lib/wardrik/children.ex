@@ -77,7 +77,7 @@ defmodule Wardrik.Children do
       servers: servers,
       store: wardrik.store,
       check: wardrik.egress,
-      secret: &Wardrik.Sealed.fetch(wardrik, &1, &2, kind: :header)
+      secret: &Wardrik.Sealed.fetch(wardrik, owner: &1, name: &2, kind: :header)
     )
   end
 

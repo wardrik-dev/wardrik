@@ -32,9 +32,23 @@ defmodule Wardrik.Delegation do
   def start_link(wardrik),
     do: GenServer.start_link(__MODULE__, wardrik, name: Module.concat(wardrik.name, Delegation))
 
-  @doc "Records that `asker` sent `agent` the message `id`, so the answer goes back to `asker`."
-  @spec asked(atom() | Wardrik.t(), String.t(), String.t(), String.t()) :: :ok
-  def asked(instance, asker, agent, id) do
+  @doc """
+  Records that `:asker` sent `:agent` the `:message`, by its ID, so the answer goes back to
+  `:asker`.
+
+      :ok =
+        Wardrik.Delegation.asked(MyApp.AgentRuntime,
+          asker: "acme/ops",
+          agent: "acme/reconciler",
+          message: "msg_x1"
+        )
+  """
+  @spec asked(atom() | Wardrik.t(), asker: String.t(), agent: String.t(), message: String.t()) ::
+          :ok
+  def asked(instance, args) do
+    asker = Keyword.fetch!(args, :asker)
+    agent = Keyword.fetch!(args, :agent)
+    id = Keyword.fetch!(args, :message)
     wardrik = Wardrik.Instance.fetch!(instance)
     {:ok, _vsn} = WardrikStore.put(store(wardrik), "delegation/asked/#{agent}/#{id}", asker)
     :ok

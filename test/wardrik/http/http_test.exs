@@ -87,7 +87,13 @@ defmodule Wardrik.HTTPTest do
 
   describe "webhooks" do
     setup context do
-      :ok = Wardrik.put_secret(context.wardrik, "acme", "HOOK", "s3cret", kind: :signing_secret)
+      :ok =
+        Wardrik.put_secret(context.wardrik,
+          owner: "acme",
+          name: "HOOK",
+          value: "s3cret",
+          kind: :signing_secret
+        )
 
       request(context, "PUT", "/v1/agents/acme/hooks", %{
         "model" => "anthropic:claude-haiku-4-5",

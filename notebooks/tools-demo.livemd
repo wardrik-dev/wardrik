@@ -172,7 +172,7 @@ MyApp.Orders.status("A-2")
 Approve it. The agent carries on, and the refund runs:
 
 ```elixir
-{:ok, _decisions} = Wardrik.Agent.approve(scope, agent, refund.id)
+{:ok, _decisions} = Wardrik.Agent.approve(scope, agent: agent, interrupt: refund.id)
 
 {:ok, reply} = Wardrik.Agent.reply(scope, agent, "What's A-2's status now?")
 reply.text

@@ -81,10 +81,12 @@ defmodule MyApp.Inbox do
   end
 
   def decide(scope, interrupt, %{decision: :approve, text: note}),
-    do: Wardrik.Agent.approve(scope, interrupt.agent_id, interrupt.id, said(:note, note))
+    do: Wardrik.Agent.approve(scope, named(interrupt) ++ said(:note, note))
 
   def decide(scope, interrupt, %{decision: :deny, text: reason}),
-    do: Wardrik.Agent.deny(scope, interrupt.agent_id, interrupt.id, said(:reason, reason))
+    do: Wardrik.Agent.deny(scope, named(interrupt) ++ said(:reason, reason))
+
+  defp named(interrupt), do: [agent: interrupt.agent_id, interrupt: interrupt.id]
 
   defp card(scope, interrupt, arguments) do
     form =
@@ -198,7 +200,7 @@ the first.
 
 ## In code
 
-The forms call `Wardrik.Agent.approve/4` and `Wardrik.Agent.deny/4`. To decide several calls in
+The forms call `Wardrik.Agent.approve/2` and `Wardrik.Agent.deny/2`. To decide several calls in
 one go, `Wardrik.Agent.decide/3` takes a map of call IDs to `:approve`, `{:approve, note}` or
 `{:deny, reason}`:
 

@@ -3,13 +3,27 @@ defmodule Wardrik.Channels do
   Installs Wardrik's chat apps into people's workspaces, from your app's own pages.
 
       # 1. Send the person to the chat app
-      {:ok, url} = Wardrik.Channels.install_url(MyApp.AgentRuntime, "slack", "acme", return_to: "/settings")
+      {:ok, url} =
+        Wardrik.Channels.install_url(MyApp.AgentRuntime,
+          channel: "slack",
+          owner: "acme",
+          return_to: "/settings"
+        )
 
       # 2. When the chat app sends them back
-      {:ok, installation, next} = Wardrik.Channels.installed(MyApp.AgentRuntime, "slack", "acme", params)
+      {:ok, installation, next} =
+        Wardrik.Channels.installed(MyApp.AgentRuntime,
+          channel: "slack",
+          owner: "acme",
+          query: params
+        )
 
       # 3. To remove it
-      :ok = Wardrik.Channels.uninstall(MyApp.AgentRuntime, "slack", installation.workspace)
+      :ok =
+        Wardrik.Channels.uninstall(MyApp.AgentRuntime,
+          channel: "slack",
+          workspace: installation.workspace
+        )
 
   The channel's adapter, such as `WardrikSlack`, does the work. Returns an error if the adapter
   doesn't support it.
@@ -20,34 +34,46 @@ defmodule Wardrik.Channels do
   @arities %{install_url: 2, installed: 2, uninstall: 2}
 
   @doc """
-  Returns the URL where someone acting for `owner` installs the channel `name`'s chat app.
+  Returns the URL where someone acting for `:owner` installs the `:channel`'s chat app.
 
   ## Options
 
     * `:return_to` - where they're sent once it's installed.
   """
-  @spec install_url(atom(), String.t(), String.t(), keyword()) ::
-          {:ok, String.t()} | {:error, String.t()}
-  def install_url(instance, name, owner, opts \\ []),
-    do:
-      adapted(instance, name, :install_url, [
-        %WardrikChannel.Install{owner: owner, return_to: opts[:return_to]}
-      ])
+  @spec install_url(atom(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def install_url(instance, args) do
+    install = %WardrikChannel.Install{
+      owner: Keyword.fetch!(args, :owner),
+      return_to: args[:return_to]
+    }
+
+    adapted(instance, Keyword.fetch!(args, :channel), :install_url, [install])
+  end
 
   @doc """
-  Completes an install from the chat app's callback `query`.
+  Completes an install of the `:channel`'s chat app for `:owner`, from its callback `:query`.
 
   Returns the installation and where to send the person next.
   """
-  @spec installed(atom(), String.t(), String.t(), map()) ::
+  @spec installed(atom(), channel: String.t(), owner: String.t(), query: map()) ::
           {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}
-  def installed(instance, name, owner, query),
-    do: adapted(instance, name, :installed, [%WardrikChannel.Install{owner: owner, query: query}])
+  def installed(instance, args) do
+    install = %WardrikChannel.Install{
+      owner: Keyword.fetch!(args, :owner),
+      query: Keyword.fetch!(args, :query)
+    }
 
-  @doc "Uninstalls the channel `name`'s chat app from `workspace`, and forgets the workspace."
-  @spec uninstall(atom(), String.t(), String.t()) :: :ok | {:error, String.t()}
-  def uninstall(instance, name, workspace),
-    do: adapted(instance, name, :uninstall, [workspace])
+    adapted(instance, Keyword.fetch!(args, :channel), :installed, [install])
+  end
+
+  @doc "Uninstalls the `:channel`'s chat app from `:workspace`, and forgets the workspace."
+  @spec uninstall(atom(), channel: String.t(), workspace: String.t()) ::
+          :ok | {:error, String.t()}
+  def uninstall(instance, args),
+    do:
+      adapted(instance, Keyword.fetch!(args, :channel), :uninstall, [
+        Keyword.fetch!(args, :workspace)
+      ])
 
   defp adapted(instance, name, callback, arguments) do
     with {:ok, {adapter, opts}} <- fetched(instance, name),

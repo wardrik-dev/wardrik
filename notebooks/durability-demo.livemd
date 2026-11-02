@@ -213,8 +213,9 @@ decide = fn decision ->
 
   decided =
     case decision do
-      :approve -> Wardrik.Agent.approve(scope, agent, in_doubt.id)
-      {:deny, reason} -> Wardrik.Agent.deny(scope, agent, in_doubt.id, reason: reason)
+      :approve -> Wardrik.Agent.approve(scope, agent: agent, interrupt: in_doubt.id)
+      {:deny, reason} ->
+        Wardrik.Agent.deny(scope, agent: agent, interrupt: in_doubt.id, reason: reason)
     end
 
   case decided do

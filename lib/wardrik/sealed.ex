@@ -6,10 +6,11 @@ defmodule Wardrik.Sealed do
   alias WardrikCore.Principal
   alias WardrikVault.Secret
 
-  @spec put(atom() | Wardrik.t(), String.t(), String.t(), binary(), keyword()) ::
-          :ok | {:error, term()}
-  def put(instance, owner, name, value, opts) do
-    {actor, opts} = Keyword.pop(opts, :actor)
+  @spec put(atom() | Wardrik.t(), keyword()) :: :ok | {:error, term()}
+  def put(instance, args) do
+    {owner, name, args} = named(args)
+    {value, args} = Keyword.pop!(args, :value)
+    {actor, opts} = Keyword.pop(args, :actor)
     secret = %Secret{principal: principal(owner), name: name, value: value}
 
     with {:ok, wardrik} <- sealing(instance),
@@ -18,25 +19,30 @@ defmodule Wardrik.Sealed do
     end
   end
 
-  @spec fetch(atom() | Wardrik.t(), String.t(), String.t(), keyword()) ::
-          {:ok, binary()} | {:error, term()}
-  def fetch(instance, owner, name, opts \\ []) do
+  @spec fetch(atom() | Wardrik.t(), keyword()) :: {:ok, binary()} | {:error, term()}
+  def fetch(instance, args) do
+    {owner, name, opts} = named(args)
+
     with {:ok, wardrik} <- sealing(instance),
          do: WardrikVault.fetch(Wardrik.vault(wardrik), principal(owner), name, opts)
   end
 
-  @spec lookup(atom() | Wardrik.t(), String.t(), String.t()) ::
+  @spec lookup(atom() | Wardrik.t(), owner: String.t(), name: String.t()) ::
           {:ok, WardrikVault.kind(), binary(), term()}
           | {:error, term()}
           | {:error, WardrikVault.kind(), term()}
-  def lookup(instance, owner, name) do
+  def lookup(instance, args) do
+    {owner, name, _args} = named(args)
+
     with {:ok, wardrik} <- sealing(instance),
          do: WardrikVault.lookup(Wardrik.vault(wardrik), principal(owner), name)
   end
 
-  @spec delete(atom() | Wardrik.t(), String.t(), String.t(), Principal.t() | nil) ::
-          :ok | {:error, term()}
-  def delete(instance, owner, name, actor \\ nil) do
+  @spec delete(atom() | Wardrik.t(), keyword()) :: :ok | {:error, term()}
+  def delete(instance, args) do
+    {owner, name, args} = named(args)
+    actor = Keyword.get(args, :actor)
+
     with {:ok, wardrik} <- sealing(instance),
          :ok <- WardrikVault.delete(Wardrik.vault(wardrik), principal(owner), name) do
       recorded(wardrik, "secret.removed", owner, name, actor)
@@ -51,9 +57,12 @@ defmodule Wardrik.Sealed do
     end
   end
 
-  @doc "Returns whether `owner` holds the secret `name` sealed as `kind`. Needs no key."
-  @spec holds?(atom() | Wardrik.t(), String.t(), String.t(), WardrikVault.kind()) :: boolean()
-  def holds?(instance, owner, name, kind), do: {owner, name, kind} in list(instance)
+  @doc "Returns whether `:owner` holds the secret `:name` sealed as `:kind`. Needs no key."
+  @spec holds?(atom() | Wardrik.t(), keyword()) :: boolean()
+  def holds?(instance, args) do
+    {owner, name, args} = named(args)
+    {owner, name, Keyword.fetch!(args, :kind)} in list(instance)
+  end
 
   @spec list(atom() | Wardrik.t(), String.t()) :: [String.t()]
   def list(instance, owner) do
@@ -112,6 +121,12 @@ defmodule Wardrik.Sealed do
 
     change = {type, "secrets/" <> name, %{"secret" => %{"name" => name}, "owner" => owner}}
     WardrikEvents.record(Wardrik.events(wardrik), change, actor: actor)
+  end
+
+  defp named(args) do
+    {owner, args} = Keyword.pop!(args, :owner)
+    {name, args} = Keyword.pop!(args, :name)
+    {owner, name, args}
   end
 
   defp principal(owner), do: %Principal{id: owner}

@@ -117,7 +117,7 @@ operator adds servers.
 | `%{oauth: %{provider: "google"}}` | The same, through an OAuth app the owner can use: their own, their org's or the deployment's. See [Credentials](credentials.md). |
 | `%{oauth: %{issuer: ..., client_id: ..., client_secret: %{name: "CRM_APP"}}}` | The same, through an OAuth app the owner registered there, for a service Wardrik can't discover or register with. |
 
-The owner keeps a key with `Wardrik.put_secret/5`; see [Credentials](credentials.md).
+The owner keeps a key with `Wardrik.put_secret/2`; see [Credentials](credentials.md).
 
 An owner's own OAuth app takes:
 
