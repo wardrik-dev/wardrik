@@ -11,7 +11,7 @@ defmodule WardrikSlack do
               type: {:or, [:string, nil]},
               doc: """
               An app-level token, `xapp-...`, with `connections:write`. Takes Slack's requests over
-              Socket Mode instead, with no public address. For testing. See `WardrikSlack.Socket`.
+              Socket Mode, with no public address. For testing. See `WardrikSlack.Socket`.
               """
             ],
             client_id: [
@@ -32,10 +32,7 @@ defmodule WardrikSlack do
           )
 
   @moduledoc """
-  Slack for Wardrik. A `WardrikChannel` adapter for a Slack app of your own.
-
-  Agents answer in threads. Before a call they can't make alone, they ask there, with Approve and
-  Deny buttons.
+  Slack for Wardrik. Agents answer in threads, and ask there with Approve and Deny buttons.
 
       config :my_app, MyApp.AgentRuntime,
         channels: [
@@ -47,25 +44,16 @@ defmodule WardrikSlack do
              identities: {MyApp.ChatMembers, []}}
         ]
 
-  It speaks Slack's protocol. Who each member is, what they may do, and where an agent's notices
-  go are `WardrikChannel`'s, as for any channel.
-
   ## Options
 
-  Takes `WardrikChannel`'s options, such as `:identities`. Its `:token` is the bot token,
-  `xoxb-...`. And these:
+  Takes `WardrikChannel`'s options, with the bot token (`xoxb-...`) as `:token`, and these:
 
   #{NimbleOptions.docs(@schema)}
 
-  Over Socket Mode, give Wardrik a Slack app of its own. Slack spreads an app's events across
-  every open connection.
-
   ## In the thread
 
-    * While an agent works, the thread shows what it's doing as the app's status.
-    * A message the agent takes gets :eyes:, then :white_check_mark: once it's answered.
-    * A call the agent waits on is posted with Approve and Deny. Your authorizer decides who may
-      press them.
+    * While an agent works, the thread shows what it's doing.
+    * A message the agent takes gets :eyes:, then :white_check_mark: once answered.
   """
 
   use WardrikChannel
@@ -105,8 +93,7 @@ defmodule WardrikSlack do
       WardrikSlack.check(token: "xoxb-wrong")
       #=> {:error, "Slack refused its token: \"invalid_auth\""}
 
-  Checks `:token` with `auth.test`, and `:app_token` by opening a Socket Mode URL. Without
-  `:token`, the channel keeps a token for each workspace, and those aren't checked.
+  Without `:token`, the per-workspace tokens aren't checked.
   """
   @spec check(keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def check(opts) do

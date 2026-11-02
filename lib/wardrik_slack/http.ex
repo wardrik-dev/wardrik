@@ -7,12 +7,8 @@ defmodule WardrikSlack.HTTP do
   | `events`  | **Event Subscriptions** Request URL  |
   | `actions` | **Interactivity** Request URL        |
 
-  Each request must be signed with the channel's `:signing_secret` and be under five minutes
-  old. Otherwise it gets `401`. Without `:signing_secret`, every request gets `404`.
-
-  Slack's `url_verification` check is answered with its challenge. Everything else is handled in
-  a task. Slack gets `200` once the task is done, or after two seconds, whichever comes first.
-  Slack resends what isn't answered within three seconds. A resent message is asked only once.
+    * Unsigned or stale requests get `401`. Without `:signing_secret`, every request gets `404`.
+    * Slack gets `200` within two seconds. A message Slack resends is asked only once.
   """
 
   alias WardrikChannel.Channel
@@ -77,7 +73,7 @@ defmodule WardrikSlack.HTTP do
     end
   end
 
-  @doc "Returns the `x-slack-signature` Slack sends with `body`, signed with `secret` at Unix time `at`."
+  @doc "Returns the `x-slack-signature` for `body`, signed with `secret` at Unix time `at`."
   @spec signature(String.t(), integer(), String.t()) :: String.t()
   def signature(secret, at, body),
     do:

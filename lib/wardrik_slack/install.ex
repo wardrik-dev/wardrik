@@ -1,6 +1,6 @@
 defmodule WardrikSlack.Install do
   @moduledoc """
-  Adds one Slack app to many workspaces, one for each org.
+  Adds one Slack app to many workspaces.
 
       slack:
         {WardrikSlack,
@@ -11,13 +11,10 @@ defmodule WardrikSlack.Install do
          installations: :stored,
          identities: {MyApp.ChatMembers, []}}
 
-  `:client_id` and `:client_secret` are under **Basic Information**. Set the app's **Redirect URL**,
-  under **OAuth & Permissions**, to a route in your app, and pass the same URL as `:redirect_uri`.
-  Stored tokens are sealed with Wardrik's `:keys`.
+  Set the app's **Redirect URL**, under **OAuth & Permissions**, to `:redirect_uri`. Tokens are
+  sealed with Wardrik's `:keys`.
 
-  Reach these through `Wardrik.Channels`:
-
-      # 1. Send someone acting for the org to Slack
+      # 1. Send someone to Slack
       {:ok, url} =
         Wardrik.Channels.install_url(MyApp.AgentRuntime,
           channel: "slack",
@@ -25,7 +22,7 @@ defmodule WardrikSlack.Install do
           return_to: "/settings"
         )
 
-      # 2. In the route Slack sends them back to
+      # 2. In your :redirect_uri route
       installed =
         Wardrik.Channels.installed(MyApp.AgentRuntime,
           channel: "slack",
@@ -38,8 +35,7 @@ defmodule WardrikSlack.Install do
         {:error, message} -> send_resp(conn, 400, message)
       end
 
-  The URL lasts ten minutes. It carries the owner it was made for, signed with the client secret,
-  so nobody else's URL can add a workspace for that owner.
+  The URL lasts ten minutes, and only adds a workspace for the owner it was made for.
   """
 
   alias Wardrik.Channel.Installation
@@ -57,8 +53,6 @@ defmodule WardrikSlack.Install do
 
   @doc """
   Returns the Slack URL where someone adds the app for `owner`.
-
-  Returns `{:error, message}` if the channel has no `:client_id` and `:client_secret`.
 
   ## Options
 
@@ -90,8 +84,7 @@ defmodule WardrikSlack.Install do
   @doc """
   Adds the app to a workspace for `owner`, from the `query` Slack redirects back with.
 
-  Returns the installation and the `:return_to` given to `url/3`. Returns `{:error, message}` if
-  the URL was made for another owner, has expired, or Slack refused.
+  Returns the installation and the `:return_to` given to `url/3`, or `{:error, message}`.
   """
   @spec installed(Channel.t(), String.t(), map()) ::
           {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}

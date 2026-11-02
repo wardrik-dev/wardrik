@@ -5,8 +5,7 @@ defmodule WardrikSlack.Messages do
     * A message the agent takes gets :eyes:, then :white_check_mark: once it's answered.
     * A message the agent couldn't take gets a reply in its thread saying why.
 
-  Ignores edits, deletions, messages from bots (the app included), direct messages, and messages
-  from people in another workspace.
+  Ignores edits, deletions, bots, direct messages, and people from another workspace.
   """
 
   alias WardrikChannel.Inbound

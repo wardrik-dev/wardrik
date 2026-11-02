@@ -1,30 +1,28 @@
 # Changelog
 
-## 0.1.0-rc.2 (2026-10-31)
+## 0.1.0-rc.2 (2026-11-02)
 
 - `WardrikSlack.schema/0`: the options it takes beyond `WardrikChannel`'s, checked as the channel
   starts and documented from the schema.
 
 ### Breaking
 
-- A thread is a conversation of the room's agent, passed to Wardrik as `conversation`.
-  `WardrikSlack.Messages.event/3` returns `{:asked, {agent, conversation}}`.
-- A waiting call's buttons hold the agent (`g`) and the conversation (`c`) apart. Buttons posted
-  by rc.1 are ignored.
-- People in Slack act as the users the channel's `identities:` gives, with the channel as their
-  actor, and Wardrik's authorizer decides what they may do, deciding calls included, in place of
-  the grants the channel gave them.
-- It speaks only Slack's protocol. No approvers: `WardrikSlack.Approvers`, `include?/2`, direct
-  messages to approvers and their `users.info`, `users.list` and `users.lookupByEmail` lookups,
-  and the `users:read.email` scope are gone. A waiting call is asked in its thread for whoever
-  may decide it. `WardrikSlack.Waiting.message/1` and `WardrikSlack.Notices.message/1` take no
-  approvers. `WardrikSlack.Rooms.shown/1` shows an offer's display name, or else its agent's ID.
-- A notice posts in the workspace its notification names.
-- Implements `WardrikChannel` and `Wardrik.Channel` rc.2's callbacks, each taking what it acts on,
-  then the channel or its options.
+- Each thread is its own conversation of the room's agent. `WardrikSlack.Messages.event/3`
+  returns `{:asked, {agent, conversation}}`.
+- A waiting call's buttons hold the agent and the conversation apart. Buttons posted by rc.1 are
+  ignored.
+- Slack members act as the users `identities:` gives. Your authorizer decides what they may do,
+  including who may approve.
+- No approvers: `WardrikSlack.Approvers`, `include?/2`, direct messages to approvers, and the
+  `users:read.email` scope are gone. A waiting call is asked in its thread.
+  `WardrikSlack.Waiting.message/1` and `WardrikSlack.Notices.message/1` take only the calls or
+  notice.
+- `WardrikSlack.Rooms.shown/1` shows an offer's display name, or else its agent's ID.
+- A notice posts in the workspace the agent's resolver gives.
+- Implements the rc.2 `WardrikChannel` and `Wardrik.Channel` callbacks.
 - `WardrikSlack.API.post/2` and `read/2` take the method, then `:token`, `:body` or `:params`, and
-  `:req_options` by name. `WardrikSlack.Blocks.button/2` takes the label, then `:action_id`,
-  `:value` and `:style`.
+  `:req_options`. `WardrikSlack.Blocks.button/2` takes the label, then `:action_id`, `:value` and
+  `:style`.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

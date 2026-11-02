@@ -2,9 +2,8 @@ defmodule WardrikSlack.Answers do
   @moduledoc """
   Handles presses of the buttons `WardrikSlack.Waiting` posts.
 
-    * Approve and Deny decide the call with `WardrikChannel.decide/2`, with the note typed above
-      them. The buttons are replaced by who decided.
-    * Show link replies, to the person who pressed it only, with where to sign in.
+    * Approve and Deny call `WardrikChannel.decide/2` with the typed note, then show who decided.
+    * Show link tells only the person who pressed it where to sign in.
   """
 
   alias Wardrik.Error
@@ -46,7 +45,7 @@ defmodule WardrikSlack.Answers do
   defp pressed("wardrik_link", workspace, member, button, _note) do
     with {:ok, scope} <- Workspace.member_scope(workspace, member),
          {:ok, %Wardrik.Authorization{url: url}} <-
-           Wardrik.Agent.authorization(scope, call(button), held(button)) do
+           Wardrik.Agent.authorization(scope, call(button) ++ held(button)) do
       {:said, "Sign in at #{url}"}
     else
       {:error, %Error{message: message}} -> {:said, message}

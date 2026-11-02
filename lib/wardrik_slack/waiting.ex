@@ -2,14 +2,10 @@ defmodule WardrikSlack.Waiting do
   @moduledoc """
   Lays out the calls an agent waits on as one Slack message.
 
-    * Each call shows its tool, the policy's question and its arguments, with a note box and
-      Approve and Deny buttons.
-    * A call waiting on a sign-in has Show link instead. It shows only the person who pressed it
-      where to sign in.
-
-  Each button's value holds the agent, the conversation, the call and who asked, for
-  `WardrikSlack.Answers`.
-  This is safe because only the bot can change its own messages.
+    * Each call shows its tool, question and arguments, a note box, and Approve and Deny.
+    * A call waiting on a sign-in has Show link instead.
+    * Each button's value holds the agent, conversation, call and who asked, for
+      `WardrikSlack.Answers`. Only the bot can change its own messages.
   """
 
   alias WardrikChannel.Waiting

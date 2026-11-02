@@ -1,14 +1,13 @@
 defmodule WardrikSlack.Rooms do
   @moduledoc """
-  Binds agents to Slack channels, as `WardrikChannel.Rooms` sets out, and shows the binding there.
+  Binds agents to Slack channels with `WardrikChannel.Rooms`, and shows the binding there.
 
-  When the bot is invited into a Slack channel, it posts where things stand, offering the agents
-  the person who invited it may read:
+  When the bot is invited, it offers the agents the inviter may read:
 
-    * One agent offered - the agent answers there from now on. A button switches between every
-      message and mentions only. A menu switches agents or stops it.
-    * Several offered - a button for each.
-    * None offered - how to offer one.
+    * One - it answers there. A button toggles every message or mentions only. A menu switches
+      agents or stops.
+    * Several - a button for each.
+    * None - how to offer one.
 
   Removing the bot unbinds the room.
   """

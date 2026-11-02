@@ -2,9 +2,8 @@ defmodule WardrikSlack.API do
   @moduledoc """
   Calls Slack's Web API.
 
-  Each call merges in the channel's `:req_options`, so tests can point it at `Req.Test`.
-  Rate-limited, 5xx and dropped requests are retried up to five times, with backoff or as long as
-  Slack says to wait.
+  Merges in the channel's `:req_options`. Retries rate-limited, 5xx and dropped requests up to five
+  times.
   """
 
   require Logger
@@ -24,8 +23,7 @@ defmodule WardrikSlack.API do
     do: call(method, [json: Keyword.fetch!(args, :body)] ++ sent(args))
 
   @doc """
-  Calls `method` with `:token`, and `:params` as a form, as Slack's read methods expect. Drops
-  `nil` params. Takes `:req_options` as `post/2` does.
+  Calls `method` with `:token`, and `:params` as a form. Drops `nil` params. Takes `:req_options`.
   """
   @spec read(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def read(method, args) do

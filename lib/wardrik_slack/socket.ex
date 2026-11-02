@@ -1,14 +1,10 @@
 defmodule WardrikSlack.Socket do
   @moduledoc """
-  Connects to Slack over Socket Mode with the channel's `:app_token`. Needs no public address.
+  Connects to Slack over Socket Mode with the channel's `:app_token`. For testing; use
+  `WardrikSlack.HTTP` in production.
 
-  For testing. Slack expects apps in use to take events over HTTP. See `WardrikSlack.HTTP`.
-
-    * Each envelope is handed to `WardrikSlack.Dispatch` in a task.
-    * Messages are acknowledged after they're handled, so Slack resends one lost to a crash. Other
-      envelopes are acknowledged at once.
-    * When the connection closes, as Slack does every few hours, it reconnects. Backoff doubles
-      from one second after each failure, up to a minute.
+    * Messages are acknowledged once handled, so Slack resends one lost to a crash.
+    * Reconnects when the connection closes, with backoff up to a minute.
   """
 
   use GenServer
