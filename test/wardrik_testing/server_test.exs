@@ -33,7 +33,9 @@ defmodule WardrikTesting.ServerTest do
     assert_received {:ran, "agent.forget", %{"agent" => "acme/hidden"}}
 
     assert {:error, %Wardrik.Error{type: :forbidden}} =
-             Wardrik.Agent.approve(scope, [agent: "acme/triage", interrupt: "call_1"],
+             Wardrik.Agent.approve(scope,
+               agent: "acme/triage",
+               interrupt: "call_1",
                conversation: "t1"
              )
   end
@@ -102,16 +104,19 @@ defmodule WardrikTesting.ServerTest do
              Wardrik.Agent.read(scope, "acme/triage", conversation: "t1")
 
     assert {:error, %Wardrik.Error{type: :forbidden}} =
-             Wardrik.Agent.approve(scope, [agent: "acme/triage", interrupt: "call_1"],
+             Wardrik.Agent.approve(scope,
+               agent: "acme/triage",
+               interrupt: "call_1",
                conversation: "t1"
              )
 
     decider = %{scope | context: %{approver: true}}
 
     assert {:ok, [%Wardrik.Decision{decision: :rejected}]} =
-             Wardrik.Agent.deny(
-               decider,
-               [agent: "acme/triage", interrupt: "call_1", reason: "No."],
+             Wardrik.Agent.deny(decider,
+               agent: "acme/triage",
+               interrupt: "call_1",
+               reason: "No.",
                conversation: "t1"
              )
 
@@ -122,7 +127,7 @@ defmodule WardrikTesting.ServerTest do
              Wardrik.Agent.read(scope, "acme/triage", conversation: "t1")
 
     Wardrik.Agent.ask(scope, "acme/triage", "echo", conversation: "t3")
-    Wardrik.Agent.deny(decider, [agent: "acme/triage", interrupt: "call_1"], conversation: "t3")
+    Wardrik.Agent.deny(decider, agent: "acme/triage", interrupt: "call_1", conversation: "t3")
 
     assert_receive {WardrikEvents, {"acme/triage", "t3"},
                     %{

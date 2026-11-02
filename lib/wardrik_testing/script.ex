@@ -2,8 +2,8 @@ defmodule WardrikTesting.Script do
   @moduledoc """
   How `WardrikTesting.Server` answers messages.
 
-  Each answer is written to the conversation's log as a run's events would be. Nothing is written
-  unless the test started `WardrikEvents` under `WardrikTesting.Server.events/1`.
+  Answers are written to the conversation's log if the test started `WardrikEvents` under
+  `WardrikTesting.Server.events/1`.
 
   ## Messages
 
@@ -13,9 +13,8 @@ defmodule WardrikTesting.Script do
 
   ## Decisions
 
-    * Approving or denying `call_1` answers `"Done."`. Who may decide is the server's
-      `:authorize`'s to say.
-    * A denial without a reason is recorded as `"Rejected."`, as the hub does.
+    * Approving or denying `call_1` answers `"Done."`.
+    * A denial without a reason is recorded as `"Rejected."`.
 
   Cancelling stops the run.
   """

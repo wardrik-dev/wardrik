@@ -59,7 +59,7 @@ defmodule WardrikTesting.MixProject do
   defp deps do
     [
       sibling(:wardrik_protocol, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_events, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_events, "~> 0.1.0-rc.2"),
       sibling(:wardrik_store, "~> 0.1.0-rc.1"),
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

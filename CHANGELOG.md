@@ -1,18 +1,17 @@
 # Changelog
 
-## 0.1.0-rc.2
+## 0.1.0-rc.2 (2026-11-02)
 
 ### Breaking
 
-- `WardrikTesting.Server` takes a conversation as its own `"conversation"` field, keeps its
-  events in the log `{agent, conversation}`, and sends `{:asked, {agent, conversation}, ...}`.
-  `missing` is the agent never found.
-- `WardrikTesting.Server` implements `Wardrik.Server` rc.2: `run/1` and `stream/1` take a
+- `WardrikTesting.Server` implements rc.2's `Wardrik.Server`: `run/1` and `stream/1` take a
   `Wardrik.Server.Request`, and `follow/2` a `Wardrik.Server.Follow`.
-- `WardrikTesting.Server` takes `:authorize`, which decides each request, for `:secrets`, and
-  `authenticate/2` and `revoke/2` are gone.
-- `WardrikTesting.Server.add_agent/2` takes the agent's `:id`, `:channels` and `:description` by
-  name.
+- A conversation is the input's `"conversation"` field. Events go to the log
+  `{agent, conversation}`, and the test receives `{:asked, {agent, conversation}, text, principal_id}`.
+- `missing` is the agent never found.
+- `:authorize`, a function that decides each request, replaces `:secrets`. `authenticate/2` and
+  `revoke/2` are gone.
+- `add_agent/2` takes `:id`, `:channels` and `:description` by name.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

@@ -1,6 +1,6 @@
 defmodule WardrikTesting.Server do
   @moduledoc """
-  A `Wardrik.Server` that answers from a script, for testing packages without Wardrik.
+  A `Wardrik.Server` for tests, which answers from a script.
 
       setup do
         :ok = WardrikTesting.Server.start(:my_test)
@@ -10,7 +10,7 @@ defmodule WardrikTesting.Server do
 
   ## Messages
 
-  The calling test is sent:
+  The test receives:
 
     * `{:ran, id, input}` for each operation.
     * `{:streamed, id, input}` for each stream.
@@ -19,17 +19,15 @@ defmodule WardrikTesting.Server do
 
   ## Answers
 
-    * Each operation and stream is first put to `:authorize`. A refusal answers `:forbidden` or
-      `:not_found`.
-    * An operation returns the protocol's example output, or `nil` if it has none.
-    * `missing`, and any conversation of it, isn't found.
-    * The agents given as `:offered` are listed and defined with their channels.
-    * `agent.read` reports whether the conversation is waiting on a person, as its last turn left it.
-    * A message is answered as `WardrikTesting.Script` describes. The events are written to the
-      conversation's log if the test started `events/1`.
+    * `:authorize` decides each operation and stream first.
+    * An operation returns the protocol's example output, or `nil`.
+    * The agent `missing` is never found.
+    * The `:offered` agents are listed and defined.
+    * `agent.read` says whether the conversation waits on a person.
+    * A message is answered as `WardrikTesting.Script` says.
     * A stream with `"after" => "nope"` fails with `:invalid_request`.
-    * Following `acme/broken` fails partway. Following `acme/waiting` waits on `call_1`. Following
-      any other agent replies `"Re: "` followed by the input.
+    * Following `acme/broken` fails partway, and `acme/waiting` waits on `call_1`. Any other agent
+      replies `"Re: "` and the input.
   """
 
   @behaviour Wardrik.Server
@@ -50,16 +48,13 @@ defmodule WardrikTesting.Server do
   }
 
   @doc """
-  Starts the server for the calling test under `name`.
-
-  Registers the test process as `name`, and stops the server when the test ends.
+  Starts the server for the calling test, registering the test process as `name`.
 
   ## Options
 
-    * `:authorize` - decides each `Wardrik.Server.Request`, returning `:ok`, or
+    * `:authorize` - a function given each `Wardrik.Server.Request`. Returns `:ok` or
       `{:error, :forbidden | :not_found}`. Allows everything unless set.
-    * `:offered` - agents it offers, each as `{id, channels}` or `{id, channels, description}`.
-      `[]` unless set.
+    * `:offered` - agents, each as `{id, channels}` or `{id, channels, description}`.
   """
   @spec start(atom(), keyword()) :: :ok
   def start(name, opts \\ []) do
@@ -76,12 +71,12 @@ defmodule WardrikTesting.Server do
     :ok
   end
 
-  @doc "Returns the name to start `WardrikEvents` under, so turns are written to it."
+  @doc "Returns the name to start `WardrikEvents` under, so answers are written to logs."
   @spec events(atom()) :: atom()
   def events(name), do: Module.concat(name, Events)
 
   @doc """
-  Adds the agent `:id` to those offered, answering in `:channels`, with any `:description`.
+  Offers one more agent, with its `:id`, `:channels` and any `:description`.
 
       :ok = WardrikTesting.Server.add_agent(:my_test, id: "acme/books", channels: ["chat"])
   """
