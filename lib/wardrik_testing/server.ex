@@ -4,7 +4,7 @@ defmodule WardrikTesting.Server do
 
       setup do
         :ok = WardrikTesting.Server.start(:my_test)
-        scope = Wardrik.Scope.new(WardrikTesting.Server, wardrik: :my_test, principal: "acme/@maria")
+        scope = Wardrik.Scope.new(WardrikTesting.Server, wardrik: :my_test, principal: "user_42")
         %{scope: scope}
       end
 
@@ -14,7 +14,7 @@ defmodule WardrikTesting.Server do
 
     * `{:ran, id, input}` for each operation.
     * `{:streamed, id, input}` for each stream.
-    * `{:asked, conversation, text, principal_id}` for each message.
+    * `{:asked, {agent, conversation}, text, principal_id}` for each message.
     * `{:offered, worker, tools}` for each worker's tools.
 
   ## Answers
@@ -22,7 +22,7 @@ defmodule WardrikTesting.Server do
     * Each operation and stream is first put to `:authorize`. A refusal answers `:forbidden` or
       `:not_found`.
     * An operation returns the protocol's example output, or `nil` if it has none.
-    * `acme/missing`, and any conversation under it, isn't found.
+    * `missing`, and any conversation of it, isn't found.
     * The agents given as `:offered` are listed and defined with their channels.
     * `agent.read` reports whether the conversation is waiting on a person, as its last turn left it.
     * A message is answered as `WardrikTesting.Script` describes. The events are written to the
@@ -42,7 +42,8 @@ defmodule WardrikTesting.Server do
   @event %{
     "specversion" => "1.0",
     "id" => "1",
-    "source" => "wardrik://test/agents/acme/triage",
+    "source" => "wardrik://test/agents/agt_triage",
+    "agent" => "agt_triage",
     "type" => "wardrik.run.completed",
     "time" => "2026-10-28T12:00:00Z",
     "data" => %{"run" => %{"id" => "r1"}, "messages" => []}
@@ -95,7 +96,11 @@ defmodule WardrikTesting.Server do
   def offer_agents(name, offered), do: update(name, &%{&1 | offered: offered})
 
   @doc false
-  @spec hold(atom(), String.t(), {String.t(), [map()]}) :: :ok
+  @spec log(map()) :: WardrikEvents.log()
+  def log(input), do: {Map.fetch!(input, "agent"), input["conversation"]}
+
+  @doc false
+  @spec hold(atom(), WardrikEvents.log(), {String.t(), [map()]}) :: :ok
   def hold(name, conversation, held),
     do: update(name, &%{&1 | held: Map.put(&1.held, conversation, held)})
 
@@ -161,14 +166,14 @@ defmodule WardrikTesting.Server do
     :ok
   end
 
-  defp answer(_scope, _id, %{"agent" => "acme/missing" <> _rest = agent}),
+  defp answer(_scope, _id, %{"agent" => "missing" = agent}),
     do: {:error, Error.new(:not_found, "There's no agent #{agent}.")}
 
   defp answer(%Scope{wardrik: name}, "agents.list", _input) do
     agents =
       for offered <- state(name).offered,
           id = elem(offered, 0),
-          do: %{"id" => id, "name" => Path.basename(id)}
+          do: %{"id" => id}
 
     {:ok, %{"agents" => agents}}
   end
@@ -176,10 +181,13 @@ defmodule WardrikTesting.Server do
   defp answer(%Scope{wardrik: name}, "agent.definition", %{"agent" => agent}),
     do: name |> state() |> Map.fetch!(:offered) |> List.keyfind(agent, 0) |> defined(agent)
 
-  defp answer(%Scope{wardrik: name}, "agent.read", %{"agent" => conversation}) do
-    {status, interrupts} = Map.get(state(name).held, conversation, {"idle", []})
-    agent = %{"id" => conversation, "name" => Path.basename(conversation)}
-    {:ok, %{"agent" => agent, "status" => status, "pending" => 0, "interrupts" => interrupts}}
+  defp answer(%Scope{wardrik: name}, "agent.read", input) do
+    {agent, conversation} = log = log(input)
+    {status, interrupts} = Map.get(state(name).held, log, {"idle", []})
+
+    read = %{"agent" => %{"id" => agent}, "status" => status, "pending" => 0}
+    held = %{"interrupts" => interrupts, "conversation" => conversation}
+    {:ok, Map.merge(read, Map.reject(held, fn {_key, value} -> value == nil end))}
   end
 
   defp answer(scope, "agent.ask", input), do: Script.ask(scope, input)

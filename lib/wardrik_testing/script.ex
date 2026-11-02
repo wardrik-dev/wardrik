@@ -25,7 +25,8 @@ defmodule WardrikTesting.Script do
 
   @doc "Answers the message in `input`, as `agent.ask` does."
   @spec ask(Scope.t(), map()) :: {:ok, map()}
-  def ask(%Scope{wardrik: name} = scope, %{"agent" => conversation, "content" => text} = input) do
+  def ask(%Scope{wardrik: name} = scope, %{"content" => text} = input) do
+    conversation = Server.log(input)
     Server.tell(name, {:asked, conversation, text, scope.principal.id})
     message = input["id"] || "m-#{System.unique_integer([:positive])}"
     sender = %{"id" => scope.principal.id}
@@ -48,8 +49,9 @@ defmodule WardrikTesting.Script do
   def decide(
         %Scope{wardrik: name} = scope,
         id,
-        %{"agent" => conversation, "interrupt" => call} = input
+        %{"interrupt" => call} = input
       ) do
+    conversation = Server.log(input)
     decision = if id == "agent.approve", do: "approved", else: "rejected"
     by = %{"id" => scope.principal.id, "name" => scope.principal.attributes[:name]}
     resolved = %{"interrupt" => %{"id" => call}, "decision" => decision, "resolved_by" => by}
@@ -61,7 +63,8 @@ defmodule WardrikTesting.Script do
 
   @doc "Cancels the run in `input`, as `agent.cancel` does."
   @spec cancel(Scope.t(), map()) :: {:ok, nil}
-  def cancel(%Scope{wardrik: name} = scope, %{"agent" => conversation}) do
+  def cancel(%Scope{wardrik: name} = scope, input) do
+    conversation = Server.log(input)
     Server.hold(name, conversation, {"idle", []})
     write(scope, conversation, "run.cancelled", %{"run" => %{"id" => "r1"}})
     {:ok, nil}

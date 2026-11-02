@@ -25,14 +25,14 @@ setup context do
   name = :"server #{context.test}"
 
   :ok = WardrikTesting.Server.start(name, offered: [{"acme/triage", ["chat"]}])
-  scope = Wardrik.Scope.new(WardrikTesting.Server, wardrik: name, principal: "acme/@maria")
+  scope = Wardrik.Scope.new(WardrikTesting.Server, wardrik: name, principal: "user_42")
 
   %{scope: scope}
 end
 
 test "asks the agent", %{scope: scope} do
-  {:ok, _message} = Wardrik.Agent.ask(scope, "acme/triage/t1", "Hi")
-  assert_received {:asked, "acme/triage/t1", "Hi", "acme/@maria"}
+  {:ok, _message} = Wardrik.Agent.ask(scope, "acme/triage", content: "Hi", conversation: "t1")
+  assert_received {:asked, {"acme/triage", "t1"}, "Hi", "user_42"}
 end
 ```
 
@@ -54,7 +54,7 @@ hub passes itself.
   allows everything unless set.
 * Most operations return the protocol's own example output.
 * The `:offered` agents are listed and defined.
-* `acme/missing` is never found.
+* `missing` is never found.
 
 To have messages answered in the conversation's log, start `WardrikEvents` under
 `WardrikTesting.Server.events(name)`. Then:

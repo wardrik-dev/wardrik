@@ -4,6 +4,9 @@
 
 ### Breaking
 
+- `WardrikTesting.Server` takes a conversation as its own `"conversation"` field, keeps its
+  events in the log `{agent, conversation}`, and sends `{:asked, {agent, conversation}, ...}`.
+  `missing` is the agent never found.
 - `WardrikTesting.Server` implements `Wardrik.Server` rc.2: `run/1` and `stream/1` take a
   `Wardrik.Server.Request`, and `follow/2` a `Wardrik.Server.Follow`.
 - `WardrikTesting.Server` takes `:authorize`, which decides each request, for `:secrets`, and
