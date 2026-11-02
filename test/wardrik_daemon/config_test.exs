@@ -125,14 +125,13 @@ defmodule WardrikDaemon.ConfigTest do
              read(context, "http: {ip: 10.0.0.1}\n", env)
   end
 
-  test "reads notify's targets, each telling the org's agents", context do
+  test "reads notify's targets", context do
     yaml = """
     org: acme
     channels:
       slack: {type: slack, token: xoxb-1, app_token: xapp-1}
     notify:
       retries: {attempts: 5, max_wait: 20000}
-      req_options: {receive_timeout: 5000}
       targets:
         ops: {channel: slack, room: "#ops", approvers: ["@maria"]}
         audit:
@@ -149,15 +148,11 @@ defmodule WardrikDaemon.ConfigTest do
               {Wardrik.Notify.Webhook,
                req_options: [retry: false],
                secret: "shh",
-               url: "https://hooks.example.com/wardrik",
-               orgs: ["acme"]}},
-             {"ops",
-              {Wardrik.Notify.Room,
-               approvers: ["@maria"], channel: "slack", room: "#ops", orgs: ["acme"]}}
+               url: "https://hooks.example.com/wardrik"}},
+             {"ops", {Wardrik.Notify.Room, approvers: ["@maria"], channel: "slack", room: "#ops"}}
            ]
 
     assert config.notify[:retries] == [attempts: 5, max_wait: 20_000]
-    assert config.notify[:req_options] == [receive_timeout: 5000]
   end
 
   test "refuses a notify target that doesn't read", context do

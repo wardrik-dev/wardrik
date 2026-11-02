@@ -34,6 +34,14 @@ defmodule WardrikDaemon.Config do
                 "`true` to let agents use the API keys sealed as the deployment's where their " <>
                   "owners hold none. See `WardrikDaemon.Keys`."
             ],
+            allow_private_urls: [
+              type: :boolean,
+              default: false,
+              doc:
+                "`true` to let orgs and people add MCP servers, webhooks and OAuth apps at " <>
+                  "loopback, private and link-local addresses. For local use only. See " <>
+                  "`WardrikDaemon.Egress`."
+            ],
             base_url: [
               type: :string,
               doc:
@@ -177,6 +185,7 @@ defmodule WardrikDaemon.Config do
             access: nil,
             base_url: nil,
             deployment_keys: true,
+            allow_private_urls: false,
             defaults: %{},
             prices: %{},
             mcp: [],
@@ -199,6 +208,7 @@ defmodule WardrikDaemon.Config do
           access: Access.t(),
           base_url: String.t() | nil,
           deployment_keys: boolean(),
+          allow_private_urls: boolean(),
           defaults: map(),
           prices: %{String.t() => keyword()},
           mcp: keyword(),
@@ -340,7 +350,7 @@ defmodule WardrikDaemon.Config do
 
     with {:ok, mcp} <- MCP.read(opts[:mcp]),
          {:ok, channels} <- Channels.read(opts[:channels], org),
-         {:ok, notify} <- Notify.read(opts[:notify], org, Enum.map(channels, &elem(&1, 0))),
+         {:ok, notify} <- Notify.read(opts[:notify], Enum.map(channels, &elem(&1, 0))),
          {:ok, orgs} <- Orgs.read(opts[:orgs], defined(mcp, channels, notify)),
          {:ok, access} <- Access.read(opts[:roles], opts[:bindings], declared(orgs, org)),
          {:ok, channels} <- owned(channels, orgs, org),
@@ -352,11 +362,12 @@ defmodule WardrikDaemon.Config do
         access: access,
         base_url: opts[:base_url],
         deployment_keys: opts[:deployment_keys],
+        allow_private_urls: opts[:allow_private_urls],
         defaults: opts[:defaults],
         prices: prices,
-        mcp: served(mcp, orgs, org),
+        mcp: mcp,
         channels: channels,
-        notify: told(notify, orgs, org),
+        notify: notify,
         workspace: workspace,
         brave: opts[:brave][:api_key],
         keys: opts[:vault][:keys],
@@ -384,33 +395,6 @@ defmodule WardrikDaemon.Config do
       "notify" => Enum.map(notify[:targets], &to_string(elem(&1, 0)))
     }
   end
-
-  defp served(mcp, orgs, _org) when orgs == %{}, do: mcp
-
-  defp served(mcp, orgs, org) do
-    for {name, opts} <- mcp do
-      case Orgs.using(orgs, kind: :mcp, name: to_string(name), org: org) do
-        :all -> {name, opts}
-        using -> {name, opts ++ [orgs: using]}
-      end
-    end
-  end
-
-  defp told(notify, orgs, _org) when orgs == %{}, do: notify
-
-  defp told(notify, orgs, org) do
-    Keyword.update!(notify, :targets, fn targets ->
-      for {name, {module, opts}} <- targets do
-        {name,
-         {module,
-          Keyword.delete(opts, :orgs) ++
-            told_orgs(Orgs.using(orgs, kind: :notify, name: name, org: org))}}
-      end
-    end)
-  end
-
-  defp told_orgs(:all), do: []
-  defp told_orgs(using), do: [orgs: using]
 
   defp owned(channels, orgs, org) do
     Options.each(channels, fn name, {adapter, opts} ->

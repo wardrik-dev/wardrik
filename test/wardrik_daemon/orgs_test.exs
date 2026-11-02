@@ -5,6 +5,7 @@ defmodule WardrikDaemon.OrgsTest do
 
   alias WardrikDaemon.Ceiling
   alias WardrikDaemon.Config
+  alias WardrikDaemon.Config.Orgs
   alias WardrikDaemon.Dirs
 
   setup context, do: dirs(context)
@@ -44,20 +45,25 @@ defmodule WardrikDaemon.OrgsTest do
   test "gives each server, channel and target to the orgs that list it", context do
     assert {:ok, config} = read(context, @yaml)
 
-    orgs = Map.new(config.mcp, fn {name, opts} -> {name, opts[:orgs]} end)
+    serves = fn kind, name ->
+      for org <- ["platform", "payments", "growth", "deployment"],
+          Orgs.serves?(config, kind: kind, name: name, org: org),
+          do: org
+    end
 
-    assert orgs == %{
-             "stripe" => ["payments"],
-             "github" => ["growth", "payments"],
-             "search" => nil,
-             "wiki" => ["platform"]
+    assert Map.new(config.mcp, fn {name, _opts} -> {name, serves.(:mcp, name)} end) == %{
+             "stripe" => ["payments", "deployment"],
+             "github" => ["payments", "growth", "deployment"],
+             "search" => ["platform", "payments", "growth", "deployment"],
+             "wiki" => ["platform", "deployment"]
            }
 
     owners = Map.new(config.channels, fn {name, {_adapter, opts}} -> {name, opts[:owner]} end)
     assert owners == %{"payments-slack" => "payments", "all-slack" => "*"}
 
     assert [{"audit", {_module, opts}}] = Keyword.fetch!(config.notify, :targets)
-    assert opts[:orgs] == ["payments"]
+    refute Keyword.has_key?(opts, :orgs)
+    assert serves.(:notify, "audit") == ["payments", "deployment"]
   end
 
   test "refuses an org that names what isn't defined, a channel two orgs list, or a key it doesn't take",

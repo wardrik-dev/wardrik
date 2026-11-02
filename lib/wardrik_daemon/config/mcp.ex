@@ -24,7 +24,7 @@ defmodule WardrikDaemon.Config.MCP do
     * `credential` - `credential_name`, the credential each principal reaches it with.
     * `timeout` - seconds a call may take, not milliseconds.
 
-  These are the deployment's servers. Orgs and people add their own with `servers.add`.
+  These are the deployment's servers. Orgs and people add their own. See `WardrikDaemon.Servers`.
   """
 
   alias WardrikDaemon.Config.Options

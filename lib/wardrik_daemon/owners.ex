@@ -12,6 +12,7 @@ defmodule WardrikDaemon.Owners do
   """
 
   @deployment "deployment"
+  @held [:owner, :secret, :ceiling, :mcp_server, :notify_target]
 
   @doc """
   Returns the owner of the agent or conversation `id`, or `:error` if the daemon doesn't name it.
@@ -70,8 +71,9 @@ defmodule WardrikDaemon.Owners do
   def org(owner), do: owner |> String.split("/", parts: 2) |> hd()
 
   @doc """
-  Returns the org a resource is in, or `nil` if it's in none: the deployment, and what the
-  deployment owns. An owner's secrets are in its org, as are an org's ceilings.
+  Returns the org a resource is in, or `nil` if it's in none: the deployment, what the deployment
+  owns, and tokens. What an owner holds is in its org: its secrets, servers and notify targets, as
+  are an org's ceilings.
 
       WardrikDaemon.Owners.org_of({:agent, "acme/@jon/notes"})
       #=> "acme"
@@ -84,9 +86,10 @@ defmodule WardrikDaemon.Owners do
     end
   end
 
-  def org_of({kind, @deployment}) when kind in [:owner, :secret, :ceiling], do: nil
-  def org_of({kind, owner}) when kind in [:owner, :secret, :ceiling], do: org(owner)
+  def org_of({kind, @deployment}) when kind in @held, do: nil
+  def org_of({kind, owner}) when kind in @held, do: org(owner)
   def org_of({:deployment, _name}), do: nil
+  def org_of({:token, _id}), do: nil
 
   @doc """
   Returns whether `owner` is `within` itself, or a person in the org `within`.

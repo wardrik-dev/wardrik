@@ -15,7 +15,7 @@
     `idle_timeout`, `retention` and `triggers`.
   - `oauth`: `client_name` and `req_options`, and a provider's `authorization_params`.
   - `channels`: `offering`, `deciding` and `req_options`.
-  - `notify`: `retries` and `req_options`, and a webhook's `req_options`.
+  - `notify`: `retries`, and a webhook's `req_options`.
   - `mcp`: `cost`.
 - `oauth` starts sign-ins whenever it's set, even with no `providers`, so orgs and people can add
   their own over the HTTP API.
@@ -28,13 +28,29 @@
   `WardrikDaemon.HTTP`, `WardrikDaemon.Secrets`, `WardrikDaemon.Keys` and `WardrikDaemon.Ceiling`.
   Roles' `kinds` take `secret` and `ceiling`.
 - Tokens are the daemon's own, `WardrikDaemon.Tokens`: each a user with groups, or an agent, kept
-  as a SHA-256 hash. The `wardrik` command's acts as the deployment's admin, `user:admin`.
+  as a SHA-256 hash. The `wardrik` command's acts as the deployment's admin, `user:admin`, who
+  issues everyone else's at `GET`, `POST /v1/tokens` and `DELETE /v1/tokens/{id}`, as `wardrik
+  token create`, `token ls` and `token revoke` do. Roles' `kinds` take `token`, which only a
+  binding in `"*"` reaches. Only the admin makes a token for `user:admin`.
+- `allow_private_urls`, `false` unless set: what orgs and people add (MCP servers, webhooks and an
+  inline OAuth app's URLs) must be `https` at a public address, checked as it's added and as each
+  connection or notice is sent. Hosts `config.yaml`'s OAuth providers name are trusted. Set it to
+  `true` for local use only. See `WardrikDaemon.Egress`.
+- The daemon keeps the MCP servers and notify webhooks orgs and people add, on its own routes:
+  `GET`, `POST /v1/owners/{owner}/servers`, `DELETE /v1/owners/{owner}/servers/{name}`, and the
+  same for `notify_targets`, as `wardrik server` and `wardrik notify` reach them. It starts each
+  server on every node, as it's added and as the daemon starts, and stops it on every node as it's
+  removed. A webhook's secret is read from its owner's vault as each notice is sent. See
+  `WardrikDaemon.Servers`, `WardrikDaemon.NotifyTargets` and `WardrikDaemon.Webhook`. Roles'
+  `kinds` take `mcp_server` and `notify_target`, and the owner rule covers them.
 - A reload that finds `config.yaml` or `policies/` changed restarts the daemon to read them, so
   `wardrik init` against a running daemon, or in its container, takes effect without a restart.
 
 ### Breaking
 
-- `token create`, `token ls` and `token revoke` are gone, with the HTTP API's tokens.
+- `token create` takes `--subject`, `--groups` and `--expires`, and acts on the daemon's own
+  tokens.
+- `notify.req_options` is gone: a webhook takes its own `req_options`.
 - `reload` and `agent cancel` take agents' IDs, not patterns.
 - Agent files are defined by the deployment's admin.
 - `vault put` takes `--for`: `api_key`, `client_secret`, `header` or `signing_secret`. `vault ls`

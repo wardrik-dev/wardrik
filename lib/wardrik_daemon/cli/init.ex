@@ -351,6 +351,10 @@ defmodule WardrikDaemon.CLI.Init do
     http:
       port: 4747
 
+    # Orgs and people may add MCP servers and webhooks at public https URLs alone. For local
+    # development, with servers on this machine or network, uncomment this. Never in production.
+    # allow_private_urls: true
+
     """ <> brave(search?)
   end
 

@@ -14,6 +14,7 @@ defmodule WardrikDaemon.CLITest do
 
     write(context, "config.yaml", """
     org: acme
+    allow_private_urls: true
     http: {port: #{free_port()}}
     defaults: {model: #{model()}, retries: {attempts: 0, on_exhausted: fail}}
     """)
@@ -418,6 +419,65 @@ defmodule WardrikDaemon.CLITest do
       assert {0, "No accounts are offered.\n"} = wardrik(context, ["connection", "ls"])
       assert failing(context, ["connection", "connect", "github"]) =~ "no account github"
       assert failing(context, ["connection", "disconnect", "github", "--user", "jon"]) =~ "github"
+    end
+
+    test "adds, lists and removes an owner's notify targets", context do
+      assert {0, "No notify targets.\n"} = wardrik(context, ["notify", "ls"])
+
+      assert {0, "Added ops. Agents route to it with notify: ops.\n"} =
+               wardrik(context, ["notify", "add", "ops", "--url", "http://127.0.0.1:1/hook"])
+
+      assert {0, listed} = wardrik(context, ["notify", "ls"])
+      assert listed =~ ~r/ops\s+webhook\s+http:\/\/127.0.0.1:1\/hook/
+      assert {0, "Removed ops.\n"} = wardrik(context, ["notify", "rm", "ops"])
+
+      assert failing(context, ["notify", "add", "ops"]) =~ "Give the webhook's --url"
+
+      assert failing(context, [
+               "notify",
+               "add",
+               "signed",
+               "--url",
+               "http://127.0.0.1:1/hook",
+               "--secret",
+               "NOPE",
+               "--org",
+               "acme"
+             ]) =~ "acme holds no secret NOPE"
+    end
+
+    test "makes, lists and revokes tokens, showing a secret once", context do
+      assert {0, made} =
+               wardrik(context, [
+                 "token",
+                 "create",
+                 "laptop",
+                 "--subject",
+                 "user:ana",
+                 "--groups",
+                 "eng,ops",
+                 "--expires",
+                 "12h"
+               ])
+
+      assert [said, secret] = String.split(made, "\n", trim: true)
+      assert [_whole, id] = Regex.run(~r/^Made (\w+) for user:ana\. It's shown once:$/, said)
+      assert "wdk_" <> _rest = secret
+
+      assert {0, listed} = wardrik(context, ["token", "ls"])
+      assert listed =~ ~r/#{id}\s+laptop\s+user:ana\s+eng,ops/
+      refute listed =~ secret
+
+      assert wardrik(context, ["token", "revoke", id]) == {0, "Revoked #{id}.\n"}
+      assert {0, listed} = wardrik(context, ["token", "ls"])
+      refute listed =~ id
+
+      assert failing(context, ["token", "create", "x"]) =~ "Give the token's --subject"
+
+      assert failing(context, ["token", "create", "x", "--subject", "user:a", "--expires", "1y"]) =~
+               "--expires takes a time"
+
+      assert failing(context, ["token", "create", "x", "--subject", "group:eng"]) =~ "subject"
     end
 
     test "sends without following, and stops, clears and removes agents", context do

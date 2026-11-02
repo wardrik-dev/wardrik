@@ -17,24 +17,24 @@ defmodule WardrikDaemon.Config.Notify do
   A target's name can't hold `:`, which names a channel's room. A target tells the deployment's own
   org's agents unless `orgs` says otherwise.
 
-  These are the deployment's targets. Orgs and people add webhooks of their own with
-  `notify_targets.add`.
+  These are the deployment's targets. Orgs and people add webhooks of their own. See
+  `WardrikDaemon.NotifyTargets`.
   """
 
   alias Wardrik.Notify.Room
   alias Wardrik.Notify.Webhook
   alias WardrikDaemon.Config.Options
 
-  @doc "Returns Wardrik's `:notify` option from `section`, telling `org`'s agents. `channels` are the channels' names."
-  @spec read(map(), String.t(), [String.t()]) :: {:ok, keyword()} | {:error, String.t()}
-  def read(section, org, channels) do
+  @doc "Returns Wardrik's `:notify` option from `section`. `channels` are the channels' names."
+  @spec read(map(), [String.t()]) :: {:ok, keyword()} | {:error, String.t()}
+  def read(section, channels) do
     Options.loaded([Wardrik.Notify, WardrikCore.Retry, Req.Steps])
     {targets, own} = Map.pop(section, "targets", %{})
 
     with :ok <- untargeted(own),
          {:ok, own} <- Options.each(own, &keywords/2),
          {:ok, own} <- Options.convert(Map.new(own), [], "notify"),
-         {:ok, targets} <- targets(targets, org, channels),
+         {:ok, targets} <- targets(targets, channels),
          notify = [targets: targets] ++ own,
          {:ok, _settings} <- Options.built(fn -> Wardrik.Notify.settings(notify) end, "notify") do
       {:ok, notify}
@@ -53,14 +53,10 @@ defmodule WardrikDaemon.Config.Notify do
   defp keywords(name, map) when is_map(map), do: Options.convert(map, [], "notify.#{name}")
   defp keywords(_name, value), do: {:ok, value}
 
-  defp targets(targets, org, channels) when is_map(targets) do
-    Options.each(targets, fn name, target ->
-      with {:ok, {module, opts}} <- target(name, target, channels),
-           do: {:ok, {module, opts ++ [orgs: [org]]}}
-    end)
-  end
+  defp targets(targets, channels) when is_map(targets),
+    do: Options.each(targets, &target(&1, &2, channels))
 
-  defp targets(_targets, _org, _channels),
+  defp targets(_targets, _channels),
     do: {:error, "notify.targets: is a target for each name"}
 
   defp target(name, target, channels) do

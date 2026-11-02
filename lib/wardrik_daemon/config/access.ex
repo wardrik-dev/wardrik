@@ -1,4 +1,6 @@
 defmodule WardrikDaemon.Config.Access do
+  @kinds ~w(agent ceiling deployment mcp_server notify_target owner secret token)
+
   @rule [
     verbs: [
       type: {:list, :string},
@@ -6,11 +8,11 @@ defmodule WardrikDaemon.Config.Access do
       doc: "The actions' verbs, after the dot: `ask` for `agent.ask`, or `\"*\"` for every verb."
     ],
     kinds: [
-      type: {:list, {:in, ["agent", "ceiling", "deployment", "owner", "secret", "*"]}},
+      type: {:list, {:in, @kinds ++ ["*"]}},
       required: true,
       doc:
-        "The resources' kinds: `agent`, `ceiling`, `deployment`, `owner` or `secret`, or " <>
-          "`\"*\"` for every kind."
+        "The resources' kinds: #{Enum.map_join(@kinds, ", ", &"`#{&1}`")}, or `\"*\"` for " <>
+          "every kind."
     ],
     names: [
       type: {:list, :string},
@@ -53,10 +55,13 @@ defmodule WardrikDaemon.Config.Access do
 
   #{NimbleOptions.docs(NimbleOptions.new!(@binding))}
 
-  `admin` is every verb on every kind, and `roles` can't declare it. The deployment's admin,
-  `user:admin`, which the `wardrik` command acts as, is always bound to it in `"*"`, so no
-  config.yaml narrows it. `operator` is the same, unless `roles` declares it. Only the admin's
-  binding should need `"*"`: the deployment itself is in no org, nor are its secrets.
+  `admin` is every verb on every kind, `token` too, and `roles` can't declare it. The
+  deployment's admin, `user:admin`, which the `wardrik` command acts as, is always bound to it in
+  `"*"`, so no config.yaml narrows it. `operator` is the same, unless `roles` declares it. Only the
+  admin's binding should need `"*"`: the deployment itself is in no org, nor are its secrets or
+  tokens. A token acts as its subject, so whoever may create tokens may act as the people they name;
+  give `token` sparingly, with `names` to say which subjects. Only the admin makes one for
+  `user:admin`.
 
   See `WardrikDaemon.Authorizer` for how they decide.
   """

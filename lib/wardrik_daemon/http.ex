@@ -8,29 +8,42 @@ defmodule WardrikDaemon.HTTP do
   | `PUT /v1/owners/{owner}/secrets/{name}` | seals a secret. See `WardrikDaemon.Secrets`. |
   | `DELETE /v1/owners/{owner}/secrets/{name}` | removes one |
   | `GET /v1/owners/{owner}/ceilings` | what an org has spent against each ceiling |
+  | `GET /v1/owners/{owner}/servers` | the MCP servers the owner's agents reach. See `WardrikDaemon.Servers`. |
+  | `POST /v1/owners/{owner}/servers` | adds one, started on every node |
+  | `DELETE /v1/owners/{owner}/servers/{name}` | removes one of the owner's own |
+  | `GET /v1/owners/{owner}/notify_targets` | the webhooks the owner's agents' notices reach. See `WardrikDaemon.NotifyTargets`. |
+  | `POST /v1/owners/{owner}/notify_targets` | adds one |
+  | `DELETE /v1/owners/{owner}/notify_targets/{name}` | removes one of the owner's own |
+  | `GET /v1/tokens` | every token, never a secret. See `WardrikDaemon.Tokens`. |
+  | `POST /v1/tokens` | creates one, answering its secret once |
+  | `DELETE /v1/tokens/{id}` | revokes one |
 
   `priv/openapi.json` describes them, as `openapi/0` returns it.
 
   An owner is one path segment, encoded: `acme`, `acme%2F%40jon` or `deployment`.
 
   Its routes take the same tokens (`WardrikDaemon.Authenticator`), and are decided by the same
-  roles and bindings (`WardrikDaemon.Authorizer`), on `{:secret, owner}` and `{:ceiling, org}`.
-  They answer errors as `Wardrik.HTTP` does.
+  roles and bindings (`WardrikDaemon.Authorizer`), on `{:secret, owner}`, `{:ceiling, org}`,
+  `{:mcp_server, owner}`, `{:notify_target, owner}` and `{:token, id}`. A body is checked against
+  its schema in `priv/openapi.json`. They answer errors as `Wardrik.HTTP` does.
 
       {WardrikDaemon.HTTP,
        wardrik: name,
        authenticator: {WardrikDaemon.Authenticator, store},
        store: store,
        orgs: orgs,
+       config: config,
        port: 4747}
 
   ## Options
 
     * `:wardrik` - required. The Wardrik it serves.
     * `:authenticator` - required. As `Wardrik.HTTP` takes it.
-    * `:store` - required. The daemon's scope of the store, where ceilings' spend is kept.
+    * `:store` - required. The daemon's scope of the store, where it keeps tokens, servers,
+      notify targets and ceilings' spend.
     * `:orgs` - required. What `WardrikDaemon.Orgs` reads orgs from. An owner in an org it doesn't
       run is answered as one that isn't there.
+    * `:config` - required. `config.yaml`, as `WardrikDaemon.Config.read/3` returns it.
 
   As a child, it also takes Bandit's options, such as `:port` and `:ip`.
   """
@@ -40,16 +53,23 @@ defmodule WardrikDaemon.HTTP do
   alias Wardrik.Error
   alias WardrikCore.Principal
   alias WardrikDaemon.Ceiling
+  alias WardrikDaemon.NotifyTargets
   alias WardrikDaemon.Owners
   alias WardrikDaemon.Secrets
+  alias WardrikDaemon.Servers
+  alias WardrikDaemon.Tokens
   alias WardrikHTTP.Response
   alias WardrikVault.Secret
 
-  @own [:wardrik, :authenticator, :store, :orgs]
+  @own [:wardrik, :authenticator, :store, :orgs, :config]
   @request_id Plug.RequestId.init(http_header: "request-id")
   @openapi_path Application.app_dir(:wardrik_daemon, "priv/openapi.json")
   @external_resource @openapi_path
   @openapi @openapi_path |> File.read!() |> JSON.decode!()
+  @inputs Map.new(
+            ~w(server_input notify_target_input token_input),
+            &{&1, JSV.build!(@openapi["components"]["schemas"][&1])}
+          )
 
   @doc "Returns a child spec that serves with Bandit. Options not listed above go to Bandit."
   @spec child_spec(keyword()) :: Supervisor.child_spec()
@@ -91,14 +111,8 @@ defmodule WardrikDaemon.HTTP do
 
   @doc "Returns the daemon's own routes, as `{method, path}` in OpenAPI's form."
   @spec routes() :: [{String.t(), String.t()}]
-  def routes do
-    [
-      {"get", "/v1/owners/{owner}/secrets"},
-      {"put", "/v1/owners/{owner}/secrets/{name}"},
-      {"delete", "/v1/owners/{owner}/secrets/{name}"},
-      {"get", "/v1/owners/{owner}/ceilings"}
-    ]
-  end
+  def routes,
+    do: for(%{method: method, path: path} <- Map.values(@operations), do: {method, path})
 
   @impl Plug
   def init(opts) do
@@ -110,6 +124,7 @@ defmodule WardrikDaemon.HTTP do
       authenticator: authenticator,
       store: Keyword.fetch!(opts, :store),
       orgs: Keyword.fetch!(opts, :orgs),
+      config: Keyword.fetch!(opts, :config),
       http: Wardrik.HTTP.init(wardrik: wardrik, authenticator: authenticator)
     }
   end
@@ -143,12 +158,94 @@ defmodule WardrikDaemon.HTTP do
     served(conn, owner, {"ceiling.read", :ceiling}, fn _scope -> ceilings(conn, owner) end)
   end
 
+  get "/v1/owners/:owner/servers" do
+    served(conn, owner, {"mcp_server.read", :mcp_server}, fn _scope ->
+      {:ok, 200, %{"servers" => Servers.list(conn.assigns.daemon, owner)}}
+    end)
+  end
+
+  post "/v1/owners/:owner/servers" do
+    served(conn, owner, {"mcp_server.add", :mcp_server}, fn scope ->
+      with {:ok, input} <- input(conn, "server_input"),
+           {:ok, added} <- Servers.add(conn.assigns.daemon, {owner, input}, scope.principal),
+           do: {:ok, 201, added}
+    end)
+  end
+
+  delete "/v1/owners/:owner/servers/:name" do
+    served(conn, owner, {"mcp_server.add", :mcp_server}, fn scope ->
+      with {:ok, removed} <- Servers.remove(conn.assigns.daemon, {owner, name}, scope.principal),
+           do: {:ok, 200, removed}
+    end)
+  end
+
+  get "/v1/owners/:owner/notify_targets" do
+    served(conn, owner, {"notify_target.read", :notify_target}, fn _scope ->
+      {:ok, 200, %{"targets" => NotifyTargets.list(conn.assigns.daemon, owner)}}
+    end)
+  end
+
+  post "/v1/owners/:owner/notify_targets" do
+    served(conn, owner, {"notify_target.add", :notify_target}, fn scope ->
+      with {:ok, input} <- input(conn, "notify_target_input"),
+           {:ok, added} <- NotifyTargets.add(conn.assigns.daemon, {owner, input}, scope.principal),
+           do: {:ok, 201, added}
+    end)
+  end
+
+  delete "/v1/owners/:owner/notify_targets/:name" do
+    served(conn, owner, {"notify_target.add", :notify_target}, fn scope ->
+      with {:ok, removed} <-
+             NotifyTargets.remove(conn.assigns.daemon, {owner, name}, scope.principal),
+           do: {:ok, 200, removed}
+    end)
+  end
+
+  get "/v1/tokens" do
+    served(conn, {"token.read", {:token, "*"}}, fn _scope ->
+      {:ok, 200, %{"tokens" => Enum.map(Tokens.list(conn.assigns.daemon.store), &token/1)}}
+    end)
+  end
+
+  # The subject is checked as the resource, so a rule's names can say whom a token may act as.
+  post "/v1/tokens" do
+    conn = Plug.RequestId.call(conn, @request_id)
+
+    with {:ok, scope} <- authenticated(conn, conn.assigns.daemon),
+         {:ok, input} <- input(conn, "token_input"),
+         :ok <- authorized(scope, "token.create", {:token, input["subject"]}),
+         {:ok, created} <- created(conn.assigns.daemon.store, input) do
+      answer(conn, 201, created)
+    else
+      {:error, %Error{} = error} -> Response.error(conn, error)
+    end
+  end
+
+  delete "/v1/tokens/:id" do
+    served(conn, {"token.revoke", {:token, id}}, fn _scope ->
+      :ok = Tokens.revoke(conn.assigns.daemon.store, id)
+      {:ok, 204, nil}
+    end)
+  end
+
   match _ do
     Wardrik.HTTP.call(conn, conn.assigns.daemon.http)
   end
 
   # Who asks is checked first, so a route answers 401 to anyone without a token, whatever they
   # ask for.
+  defp served(conn, {action, resource}, run) do
+    conn = Plug.RequestId.call(conn, @request_id)
+
+    with {:ok, scope} <- authenticated(conn, conn.assigns.daemon),
+         :ok <- authorized(scope, action, resource),
+         {:ok, status, body} <- run.(scope) do
+      answer(conn, status, body)
+    else
+      {:error, %Error{} = error} -> Response.error(conn, error)
+    end
+  end
+
   defp served(conn, owner, {action, kind}, run) do
     conn = Plug.RequestId.call(conn, @request_id)
     daemon = conn.assigns.daemon
@@ -198,6 +295,51 @@ defmodule WardrikDaemon.HTTP do
 
   defp described({:secret, owner}), do: "secrets of #{owner}"
   defp described({:ceiling, owner}), do: "ceilings of #{owner}"
+  defp described({:mcp_server, owner}), do: "MCP servers of #{owner}"
+  defp described({:notify_target, owner}), do: "notify targets of #{owner}"
+  defp described({:token, _id}), do: "token"
+
+  defp input(conn, schema) do
+    with {:ok, body, _conn} <- Plug.Conn.read_body(conn),
+         {:ok, input} <- JSON.decode(body),
+         {:ok, input} <- JSV.validate(input, Map.fetch!(@inputs, schema)) do
+      {:ok, input}
+    else
+      {:error, %JSV.ValidationError{} = error} ->
+        {:error, Error.new(:invalid_request, Exception.message(error))}
+
+      _unread ->
+        {:error, Error.new(:invalid_request, "Send the body as JSON.")}
+    end
+  end
+
+  @expires_in 30 * 24 * 3600
+
+  defp created(store, input) do
+    expires = DateTime.add(DateTime.utc_now(), Map.get(input, "expires_in", @expires_in), :second)
+
+    opts = [
+      name: input["name"],
+      subject: input["subject"],
+      groups: Map.get(input, "groups", []),
+      expires: expires
+    ]
+
+    case Tokens.create(store, opts) do
+      {:ok, %{token: created, secret: secret}} -> {:ok, Map.put(token(created), "secret", secret)}
+      {:error, error} -> {:error, Error.new(:invalid_request, Exception.message(error))}
+    end
+  end
+
+  defp token(token) do
+    %{
+      "id" => token.id,
+      "name" => token.name,
+      "subject" => token.subject,
+      "groups" => token.groups,
+      "expires" => DateTime.to_iso8601(token.expires)
+    }
+  end
 
   defp sealing(conn) do
     with {:ok, body, _conn} <- Plug.Conn.read_body(conn),

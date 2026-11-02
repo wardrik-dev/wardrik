@@ -9,13 +9,17 @@ defmodule WardrikDaemon.Authorizer do
     * Anyone else is `user:ID`, and `group:NAME` for each of the principal's `:groups`
       attributes.
     * A principal acting itself may do anything to the agents it owns, to what it holds as
-      their owner, and to its secrets: `resource.owner == principal`, in Cedar's words. See
-      `WardrikDaemon.Owners`.
+      their owner, and to its secrets, MCP servers and notify targets: `resource.owner ==
+      principal`, in Cedar's words. See `WardrikDaemon.Owners`.
     * A chat member, through a channel, may `ask`, `read` and `events` the agents within the
       installation's owner, and `decide` only the calls they asked for or, as an approver, any.
       Nothing else.
     * Otherwise, a binding in the resource's org, or in `"*"`, gives one of them a role with a
       rule that matches the action's verb and the resource.
+
+  Tokens are in no org, so only a binding in `"*"` with a rule on the `token` kind reaches them.
+  The owner rule never does. A token for `user:admin` is the admin's alone to make, whatever
+  bindings say, as Kubernetes' TokenRequest needs rights on the very account it's for.
 
   Returns `{:error, :not_found}` where none of their bindings reaches the resource's org, so they
   learn nothing about it, and `{:error, :forbidden}` where one does but no rule allows the verb.
@@ -30,12 +34,26 @@ defmodule WardrikDaemon.Authorizer do
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Owners
 
+  @admin Access.admin()
   @member ~w(ask read events)
   @deciding ~w(decide approve deny)
 
   @impl Wardrik.Authorizer
   @spec authorize(Request.t(), Access.t()) :: :ok | {:error, :forbidden | :not_found}
   def authorize(%Request{actor: {:channel, _name}} = request, _access), do: member(request)
+
+  # A token for the admin is the admin's alone to make, whatever else may make tokens, as
+  # Kubernetes' TokenRequest needs rights on the very account.
+  def authorize(
+        %Request{action: "token.create", resource: {:token, "user:" <> id}} = request,
+        access
+      )
+      when id == @admin do
+    case request do
+      %Request{actor: nil, principal: %{id: @admin}} -> bound(request, access)
+      _anyone_else -> {:error, :forbidden}
+    end
+  end
 
   def authorize(%Request{} = request, access),
     do: if(owns?(request), do: :ok, else: bound(request, access))
@@ -45,7 +63,7 @@ defmodule WardrikDaemon.Authorizer do
 
   # The deployment's own is in no org, so no one owns it.
   defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {kind, id} = resource})
-       when kind in [:owner, :secret],
+       when kind in [:owner, :secret, :mcp_server, :notify_target],
        do: Owners.org_of(resource) != nil
 
   defp owns?(_request), do: false

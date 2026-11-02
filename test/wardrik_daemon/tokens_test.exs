@@ -81,8 +81,10 @@ defmodule WardrikDaemon.TokensTest do
   end
 
   test "makes tokens only for users and agents, not the deployment", %{store: store} do
+    assert {:ok, _created} = create(store, "user:ana")
+
     for subject <- ["group:eng", "user:", "user:deployment", "ana"] do
-      assert_raise NimbleOptions.ValidationError, fn -> create(store, subject) end
+      assert {:error, %NimbleOptions.ValidationError{}} = create(store, subject)
     end
   end
 end

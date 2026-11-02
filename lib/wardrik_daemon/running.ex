@@ -8,8 +8,9 @@ defmodule WardrikDaemon.Running do
     1. `WardrikBrave`, for `web_search`.
     2. Wardrik, deciding what each scope may do with `WardrikDaemon.Authorizer`.
     3. The HTTP API, as `WardrikDaemon.HTTP`, reached with `WardrikDaemon.Tokens`.
-    4. A task that defines the agents in `agents/`, writes the `wardrik` command's token, and
-       emits `[:wardrik_daemon, :started]`.
+    4. A task that starts the MCP servers orgs and people added (see `WardrikDaemon.Servers`),
+       defines the agents in `agents/`, writes the `wardrik` command's token, and emits
+       `[:wardrik_daemon, :started]`.
 
   A reload that finds `config.yaml` or `policies/` changed restarts it, to read them again. The
   HTTP API stops first, answering the requests it has, then the rest. If they don't read, it keeps
@@ -69,7 +70,7 @@ defmodule WardrikDaemon.Running do
           key_source: {WardrikDaemon.Keys, wardrik: name, deployment: config.deployment_keys},
           authorizer: {WardrikDaemon.Authorizer, config.access},
           trusted_workers: config.trusted_workers,
-          egress: &Wardrik.Egress.any/1,
+          egress: WardrikDaemon.Egress.check(config),
           declarations: {Agents, agents}
         ] ++ config.wardrik ++ oauth(config)
       )
@@ -82,6 +83,7 @@ defmodule WardrikDaemon.Running do
        authenticator: {WardrikDaemon.Authenticator, daemon},
        store: daemon,
        orgs: orgs,
+       config: config,
        port: config.port,
        ip: config.ip},
       %{
@@ -129,6 +131,7 @@ defmodule WardrikDaemon.Running do
 
   defp started(agents, dirs, config) do
     Enum.each(config.warnings, &Logger.warning("config.yaml: #{&1}"))
+    :ok = WardrikDaemon.Servers.start(agents[:wardrik], agents[:store])
     _problems = Agents.reload(agents)
     :ok = CLIToken.issue(agents[:store], Dirs.data_home(dirs, "cli_token"), Config.url(config))
     :telemetry.execute([:wardrik_daemon, :started], %{}, %{wardrik: agents[:wardrik]})

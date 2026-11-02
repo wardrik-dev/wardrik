@@ -76,6 +76,30 @@ defmodule WardrikDaemon.Config.Orgs do
     end
   end
 
+  @doc """
+  Returns whether `config.yaml` gives the `:kind` of thing called `:name` to `:org`'s agents. The
+  deployment has every one.
+
+      Orgs.serves?(config, kind: :mcp, name: "github", org: "acme")
+  """
+  @spec serves?(%{org: String.t(), orgs: %{String.t() => entry()}},
+          kind: atom(),
+          name: String.t(),
+          org: String.t()
+        ) :: boolean()
+  def serves?(%{org: own, orgs: orgs}, args) do
+    org = Keyword.fetch!(args, :org)
+
+    case using(orgs,
+           kind: Keyword.fetch!(args, :kind),
+           name: Keyword.fetch!(args, :name),
+           org: own
+         ) do
+      :all -> true
+      using -> org == "deployment" or org in using
+    end
+  end
+
   defp entry(org, nil, defined), do: entry(org, %{}, defined)
 
   defp entry(org, entry, defined) do

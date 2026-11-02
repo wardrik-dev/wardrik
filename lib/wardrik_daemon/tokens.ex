@@ -26,7 +26,11 @@ defmodule WardrikDaemon.Tokens do
         )
 
   A secret looks like `wdk_<id>_<random>`. It's shown once, as `create/2` returns it: only its
-  SHA-256 hash is kept, so neither the store nor `list/1` holds it.
+  SHA-256 hash is kept, so neither the store nor `list/1` holds it. `verify/2` compares hashes in
+  constant time.
+
+  The admin issues the rest at `/v1/tokens`, as `wardrik token create` does. See
+  `WardrikDaemon.HTTP`.
 
   ## Options
 
@@ -37,16 +41,22 @@ defmodule WardrikDaemon.Tokens do
 
   @prefix "tokens/"
 
-  @doc "Makes a token in `store`. Returns it, with its secret, which isn't kept."
-  @spec create(WardrikStore.t(), keyword()) :: {:ok, %{token: Token.t(), secret: String.t()}}
+  @doc """
+  Makes a token in `store`. Returns it, with its secret, which isn't kept, or why the options
+  don't read.
+  """
+  @spec create(WardrikStore.t(), keyword()) ::
+          {:ok, %{token: Token.t(), secret: String.t()}}
+          | {:error, NimbleOptions.ValidationError.t()}
   def create(store, opts) do
-    opts = NimbleOptions.validate!(opts, @schema)
-    id = 10 |> :crypto.strong_rand_bytes() |> Base.encode32(case: :lower, padding: false)
-    secret = "wdk_#{id}_#{Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)}"
-    token = struct!(Token, [id: id] ++ opts)
+    with {:ok, opts} <- NimbleOptions.validate(opts, @schema) do
+      id = 10 |> :crypto.strong_rand_bytes() |> Base.encode32(case: :lower, padding: false)
+      secret = "wdk_#{id}_#{Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)}"
+      token = struct!(Token, [id: id] ++ opts)
 
-    {:ok, _vsn} = WardrikStore.put(store, @prefix <> id, %{token: token, hash: hash(secret)})
-    {:ok, %{token: token, secret: secret}}
+      {:ok, _vsn} = WardrikStore.put(store, @prefix <> id, %{token: token, hash: hash(secret)})
+      {:ok, %{token: token, secret: secret}}
+    end
   end
 
   @doc "Returns the tokens in `store`, by ID, without their secrets."

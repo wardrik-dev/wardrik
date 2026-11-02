@@ -12,6 +12,7 @@ defmodule WardrikDaemon.ResolverTest do
 
     write(context, "config.yaml", """
     org: platform
+    allow_private_urls: true
     http: {port: #{free_port()}}
     defaults: {model: #{model()}}
     mcp:
@@ -51,15 +52,11 @@ defmodule WardrikDaemon.ResolverTest do
 
   test "reaches what its owner, its org and the deployment added, and nothing another org did",
        context do
-    for owner <- ["growth", "payments/@ana"] do
-      {:ok, _server} =
-        Wardrik.run(context.admin, "mcp_servers.add", %{
-          "owner" => owner,
-          "name" => "crm",
-          "url" => "http://127.0.0.1:1/crm",
-          "auth" => %{"none" => %{}}
-        })
-    end
+    {WardrikDaemon.Resolver, daemon} = Wardrik.Instance.fetch!(context.wardrik).resolver
+    server = %{"name" => "crm", "url" => "http://127.0.0.1:1/crm", "auth" => %{"none" => %{}}}
+
+    for owner <- ["growth", "payments/@ana"],
+        do: {:ok, _added} = WardrikDaemon.Servers.add(daemon, {owner, server}, nil)
 
     assert {:ok, %Resolved{servers: %{"crm" => "payments/@ana:crm"}}} =
              resolve(context, "payments/@ana/refunds")

@@ -66,6 +66,62 @@ defmodule WardrikDaemon.AuthorizerTest do
     end
   end
 
+  test "an owner holds its own servers and notify targets, and no one else's", %{access: access} do
+    for kind <- [:mcp_server, :notify_target], action <- ["#{kind}.add", "#{kind}.read"] do
+      assert decide(access,
+               principal: "growth/@cy",
+               action: action,
+               resource: {kind, "growth/@cy"}
+             ) ==
+               :ok
+
+      for theirs <- ["growth", "growth/@dee", "deployment"] do
+        assert decide(access, principal: "growth/@cy", action: action, resource: {kind, theirs}) ==
+                 {:error, :not_found}
+      end
+
+      assert decide(access, principal: "ana", action: action, resource: {kind, "payments/@bo"}) ==
+               :ok
+
+      assert decide(access, principal: "ana", action: action, resource: {kind, "growth"}) ==
+               {:error, :not_found}
+    end
+  end
+
+  test "reaches tokens only through a binding in every org, never as their owner", %{
+    access: access
+  } do
+    for {principal, resource} <- [
+          {"ana", {:token, "user:ana"}},
+          {"user:ana", {:token, "user:ana"}}
+        ] do
+      assert decide(access, principal: principal, action: "token.create", resource: resource) ==
+               {:error, :not_found}
+    end
+
+    assert decide(access,
+             principal: "admin",
+             action: "token.create",
+             resource: {:token, "user:x"}
+           ) ==
+             :ok
+
+    for {principal, actor} <- [{"ana", nil}, {"admin", {:agent, "payments/@ana/helper"}}] do
+      assert decide(access,
+               principal: principal,
+               actor: actor,
+               action: "token.create",
+               resource: {:token, "user:admin"}
+             ) == {:error, :forbidden}
+    end
+
+    assert decide(access,
+             principal: "admin",
+             action: "token.create",
+             resource: {:token, "user:admin"}
+           ) == :ok
+  end
+
   test "a binding in one org reaches nothing in another", %{access: access} do
     for action <- ["agent.read", "agent.define"] do
       assert decide(access, principal: "ana", action: action, resource: {:agent, "growth/triage"}) ==

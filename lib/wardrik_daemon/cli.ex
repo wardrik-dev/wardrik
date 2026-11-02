@@ -28,6 +28,7 @@ defmodule WardrikDaemon.CLI do
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.CLI.Help
   alias WardrikDaemon.CLI.Servers
+  alias WardrikDaemon.CLI.Tokens
   alias WardrikDaemon.CLI.Triggers
 
   @always [json: :boolean, help: :boolean]
@@ -39,7 +40,7 @@ defmodule WardrikDaemon.CLI do
       Admin.commands() ++
         Agents.commands() ++
         Approvals.commands() ++
-        Triggers.commands() ++ Servers.commands() ++ Access.commands()
+        Triggers.commands() ++ Servers.commands() ++ Access.commands() ++ Tokens.commands()
 
   @doc "Runs the command `argv` names, as `bin/wardrik` does, then halts the VM with its exit status."
   @spec halt([String.t()]) :: no_return()

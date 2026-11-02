@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.CLI.Servers do
   @moduledoc """
-  The commands on MCP servers an owner adds, and the accounts an owner connects.
+  The commands on the MCP servers and notify targets an owner adds, and the accounts an owner
+  connects. See `WardrikDaemon.Servers` and `WardrikDaemon.NotifyTargets`.
 
   Each acts for the deployment's org, unless given `--org` or `--user`.
   """
@@ -11,7 +12,7 @@ defmodule WardrikDaemon.CLI.Servers do
 
   @owner [org: :string, user: :string]
 
-  @doc "Returns the commands on MCP servers and connections."
+  @doc "Returns the commands on MCP servers, notify targets and connections."
   @spec commands() :: [Command.t()]
   def commands do
     [
@@ -47,6 +48,35 @@ defmodule WardrikDaemon.CLI.Servers do
         run: &removed/3
       },
       %Command{
+        name: "notify ls",
+        group: "Notify targets",
+        switches: @owner,
+        summary: "the webhooks and rooms an owner's agents' notices reach",
+        run: &targets/3
+      },
+      %Command{
+        name: "notify add",
+        group: "Notify targets",
+        arguments: "NAME",
+        switches: [url: :string, secret: :string] ++ @owner,
+        count: 1,
+        summary: "add a webhook at --url for an owner's agents' notices",
+        details: [
+          "--secret names the owner's secret in the vault, sealed for signing_secret, that signs",
+          "each notice. Agents route to it with notify: NAME."
+        ],
+        run: &target_added/3
+      },
+      %Command{
+        name: "notify rm",
+        group: "Notify targets",
+        arguments: "NAME",
+        switches: @owner,
+        count: 1,
+        summary: "remove a webhook an owner added",
+        run: &target_removed/3
+      },
+      %Command{
         name: "connection ls",
         group: "Connections",
         switches: @owner,
@@ -78,7 +108,7 @@ defmodule WardrikDaemon.CLI.Servers do
 
   defp servers([], flags, cx) do
     with {:ok, %{"servers" => servers} = answer} <-
-           Context.call(cx, "mcp_servers.list", %{"owner" => owner(cx, flags)}) do
+           Context.call(cx, "servers.list", %{"owner" => owner(cx, flags)}) do
       Table.show(cx, answer,
         header: ["SERVER", "URL", "SIGNS IN WITH"],
         rows: for(server <- servers, do: [server["name"], server["url"], server["auth"]]),
@@ -92,7 +122,7 @@ defmodule WardrikDaemon.CLI.Servers do
       %{"owner" => owner(cx, flags), "name" => name, "url" => url, "auth" => auth(flags)}
       |> Context.put("only", only(flags[:only]))
 
-    with {:ok, answer} <- Context.call(cx, "mcp_servers.add", input),
+    with {:ok, answer} <- Context.call(cx, "servers.add", input),
          do: Context.done(cx, answer, "Added #{name}. Agents reach it as #{name}/*.")
   end
 
@@ -106,9 +136,38 @@ defmodule WardrikDaemon.CLI.Servers do
   defp only(tools), do: String.split(tools, ",", trim: true)
 
   defp removed([name], flags, cx) do
-    input = %{"owner" => owner(cx, flags), "server" => name}
+    input = %{"owner" => owner(cx, flags), "name" => name}
 
-    with {:ok, answer} <- Context.call(cx, "mcp_servers.remove", input),
+    with {:ok, answer} <- Context.call(cx, "servers.remove", input),
+         do: Context.done(cx, answer, "Removed #{name}.")
+  end
+
+  defp targets([], flags, cx) do
+    with {:ok, %{"targets" => targets} = answer} <-
+           Context.call(cx, "notify_targets.list", %{"owner" => owner(cx, flags)}) do
+      Table.show(cx, answer,
+        header: ["TARGET", "KIND", "URL"],
+        rows: for(target <- targets, do: [target["name"], target["kind"], target["url"]]),
+        empty: "No notify targets."
+      )
+    end
+  end
+
+  defp target_added([name], %{url: url} = flags, cx) do
+    input =
+      %{"owner" => owner(cx, flags), "name" => name, "url" => url}
+      |> Context.put("secret", flags[:secret] && %{"name" => flags[:secret]})
+
+    with {:ok, answer} <- Context.call(cx, "notify_targets.add", input),
+         do: Context.done(cx, answer, "Added #{name}. Agents route to it with notify: #{name}.")
+  end
+
+  defp target_added([_name], _flags, _cx), do: {:error, "Give the webhook's --url."}
+
+  defp target_removed([name], flags, cx) do
+    input = %{"owner" => owner(cx, flags), "name" => name}
+
+    with {:ok, answer} <- Context.call(cx, "notify_targets.remove", input),
          do: Context.done(cx, answer, "Removed #{name}.")
   end
 

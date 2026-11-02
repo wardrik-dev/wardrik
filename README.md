@@ -211,7 +211,13 @@ An agent's model and tools use the API keys its owner sealed, then its org's. `d
 its own.
 
 Servers, OAuth providers and notify targets that orgs and people add as the daemon runs are kept
-apart from `config.yaml`. They're added over the HTTP API.
+apart from `config.yaml`. They're added over the HTTP API, as `wardrik server add` and `wardrik
+notify add` do. See `WardrikDaemon.Servers` and `WardrikDaemon.NotifyTargets`.
+
+Their URLs must be `https` at a public address: loopback, private, link-local and cloud metadata
+addresses are refused, as each is added and as each connection or notice is sent. Hosts
+`config.yaml`'s OAuth providers name are trusted. For local development, with servers on your own
+machine, set `allow_private_urls: true`. Never in production. See `WardrikDaemon.Egress`.
 
 ### models
 
@@ -296,8 +302,9 @@ wardrik vault put github --org payments --for header
 
 `roles` and `bindings` say who may do what, as Kubernetes RBAC does. A role's rules each allow
 `verbs`, the part of an action after the dot, as `ask` for `agent.ask`, on `kinds` of resource:
-`agent`, `secret` (an owner's secrets), `ceiling` (an org's ceilings), `owner` (what else an owner
-holds: servers, connections) or `deployment`, and, with `names`, only those IDs. A binding gives a
+`agent`, `secret` (an owner's secrets), `ceiling` (an org's ceilings), `mcp_server` and
+`notify_target` (an owner's MCP servers and webhooks), `owner` (what else an owner holds: OAuth
+apps, connections), `deployment` or `token`, and, with `names`, only those IDs. A binding gives a
 role to subjects within one org:
 
 ```yaml
@@ -313,13 +320,17 @@ bindings:
   agent.
 * An agent acting through its tools gets its own bindings, never its owner's.
 * Everyone may do anything to what they own: `payments/@ana` to `payments/@ana/notes`, and to
-  their own secrets.
+  their own secrets, servers and notify targets.
 * A chat member asks and reads the agents of the workspace's owner, and decides only the calls
   they asked for, or any as one of its approvers.
 * Outside the orgs their bindings name, people find nothing, not even that something's there. The
   deployment itself is in no org, nor are its secrets: only a binding in `"*"` reaches them.
+* Tokens are in no org: only a binding in `"*"` on the `token` kind reaches them. Its `names` say
+  which subjects a caller may make tokens for. Only the admin makes one for `user:admin`, whatever
+  the bindings say.
 * `operator` is every verb on every kind unless `roles` says otherwise. The deployment's admin,
-  `user:admin`, which the `wardrik` command and the agent files act as, holds it in `"*"`.
+  `user:admin`, which the `wardrik` command and the agent files act as, holds `admin`, every verb
+  on every kind, in `"*"`.
 
 ### The HTTP API
 
@@ -332,6 +343,9 @@ taking the same tokens, roles and bindings. `priv/openapi.json` describes its ow
 | `PUT /v1/owners/{owner}/secrets/{name}` | seals one, as `{"value": ..., "purpose": "api_key"}` |
 | `DELETE /v1/owners/{owner}/secrets/{name}` | removes one |
 | `GET /v1/owners/{owner}/ceilings` | what an org's agents have spent against each ceiling |
+| `GET`, `POST /v1/owners/{owner}/servers`, `DELETE .../servers/{name}` | the MCP servers the owner's agents reach; adds or removes one of their own |
+| `GET`, `POST /v1/owners/{owner}/notify_targets`, `DELETE .../notify_targets/{name}` | the webhooks the owner's agents' notices reach; adds or removes one of their own |
+| `GET`, `POST /v1/tokens`, `DELETE /v1/tokens/{id}` | tokens: lists them, never a secret; makes one, showing its secret once; revokes one |
 
 An owner is one path segment: `payments`, `payments%2F%40ana` or `deployment`. See
 `WardrikDaemon.HTTP`.
@@ -353,12 +367,15 @@ takes `--json`.
 | `approval ls`, `approval approve AGENT CALL`, `approval deny AGENT CALL` | the calls agents wait on a person for |
 | `trigger ls`, `trigger set`, `trigger rm` | an agent's triggers |
 | `server ls`, `server add`, `server rm` | MCP servers an owner adds |
+| `notify ls`, `notify add`, `notify rm` | webhooks an owner adds for their agents' notices |
 | `connection ls`, `connection connect`, `connection disconnect` | accounts an owner connects |
 | `vault put`, `vault ls`, `vault rm` | secrets: the deployment's, or an org's or a person's with `--org` or `--user`, each sealed `--for` one purpose |
+| `token create NAME --subject user:ana`, `token ls`, `token revoke ID` | tokens for everyone else, each acting as its subject and `--groups`, until it `--expires` |
 
 The command acts as the deployment's admin, with a token the daemon writes to `cli_token` in the
-data home each time it starts. `WARDRIK_URL` and `WARDRIK_TOKEN` point it at another daemon. Other
-tokens are made with `WardrikDaemon.Tokens`, which keeps only their hashes.
+data home each time it starts. `WARDRIK_URL` and `WARDRIK_TOKEN` point it at another daemon. The
+admin makes everyone else's with `wardrik token create`. `WardrikDaemon.Tokens` keeps only their
+hashes.
 
 ## Directories
 
