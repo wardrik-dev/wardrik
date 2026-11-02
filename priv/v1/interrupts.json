@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:interrupts",
   "title": "Calls waiting",
-  "description": "What interrupts.list answers: the calls agents wait on a person for, each with its agent.",
+  "description": "What interrupts.list answers: the calls agents wait on a person for, each with its agent and conversation.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -27,10 +27,12 @@
             ],
             "properties": {
               "id": {
-                "type": "string",
-                "description": "The agent's ID: org/name, or org/@user/name for one that works for a user."
+                "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
               }
             }
+          },
+          "conversation": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
           },
           "interrupt": {
             "$ref": "urn:wardrik:schema:v1:defs#/$defs/interrupt"
@@ -44,7 +46,7 @@
       "interrupts": [
         {
           "agent": {
-            "id": "acme/triage"
+            "id": "agt_01JF8X5RQ2"
           },
           "interrupt": {
             "id": "toolu_01",

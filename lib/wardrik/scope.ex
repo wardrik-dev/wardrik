@@ -2,17 +2,17 @@ defmodule Wardrik.Scope do
   @moduledoc """
   Who is acting through Wardrik, and on whose behalf.
 
-      scope = MyApp.AgentRuntime.as("acme/@maria")
+      scope = MyApp.AgentRuntime.as("user_42")
 
   `Wardrik.as/3` makes a scope. The host's `Wardrik.Authorizer` decides what it may do.
 
   As in RFC 8693, `:principal` is on whose behalf the scope acts, and `:actor` is who acts:
 
       # Maria herself
-      MyApp.AgentRuntime.as("acme/@maria")
+      MyApp.AgentRuntime.as("user_42")
 
       # Maria's assistant, through its own tools
-      MyApp.AgentRuntime.as("acme/@maria", actor: {:agent, "acme/@maria/assistant"})
+      MyApp.AgentRuntime.as("user_42", actor: {:agent, "agt_01JF8X5RQ2"})
 
   ## Fields
 
@@ -53,9 +53,9 @@ defmodule Wardrik.Scope do
 
       Wardrik.Scope.new(Wardrik,
         wardrik: MyApp.AgentRuntime,
-        principal: "acme/@maria",
+        principal: "user_42",
         actor: {:channel, "slack"},
-        context: %{asked_by: "acme/@jon"}
+        context: %{asked_by: "user_7"}
       )
 
   `:principal` is a `WardrikCore.Principal` or its ID. `:actor` is `nil` and `:context` `%{}`

@@ -29,7 +29,7 @@
         "wardrik@box1"
       ],
       "problems": [
-        "acme/broken: agents/broken.md: There's no tool nope here."
+        "agents/broken.md: There's no tool nope here."
       ]
     }
   ]

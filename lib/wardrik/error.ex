@@ -2,7 +2,7 @@ defmodule Wardrik.Error do
   @moduledoc """
   An operation's failure, as the protocol's `error`.
 
-      %Wardrik.Error{type: :not_found, message: "No agent acme/triage."}
+      %Wardrik.Error{type: :not_found, message: "No agent agt_01JF8X5RQ2."}
 
   `type` is one of `t:type/0`. `message` is for people to read.
   """
@@ -28,8 +28,8 @@ defmodule Wardrik.Error do
   @doc """
   Returns `error` as the protocol's JSON error body.
 
-      Wardrik.Error.json(Wardrik.Error.new(:not_found, "No agent acme/triage."))
-      #=> %{"error" => %{"type" => "not_found", "message" => "No agent acme/triage."}}
+      Wardrik.Error.json(Wardrik.Error.new(:not_found, "No agent agt_01JF8X5RQ2."))
+      #=> %{"error" => %{"type" => "not_found", "message" => "No agent agt_01JF8X5RQ2."}}
   """
   @spec json(t()) :: map()
   def json(%__MODULE__{type: type, message: message}),

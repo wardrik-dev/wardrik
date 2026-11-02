@@ -15,7 +15,7 @@
       "items": {
         "$ref": "urn:wardrik:schema:v1:cloudevent"
       },
-      "description": "Each event's source names its agent, and its sequence its place in that agent's log. Where a log was trimmed past the cursor, a wardrik.events.dropped says so."
+      "description": "Each event's agent and conversation name its log, and its sequence its place in that log. Where a log was trimmed past the cursor, a wardrik.events.dropped says so."
     },
     "next": {
       "type": "string",
@@ -25,7 +25,7 @@
   "examples": [
     {
       "events": [],
-      "next": "eyJhY21lL3RyaWFnZSI6NDF9"
+      "next": "W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ"
     }
   ]
 }

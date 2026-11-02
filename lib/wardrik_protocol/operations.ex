@@ -10,10 +10,41 @@ defmodule WardrikProtocol.Operations do
 
   @spec build(map()) :: [map()]
   def build(document) do
+    routes = routes(document)
+
     for {path, item} <- document["paths"],
-        {method, operation} <- item,
+        {method, %{"operationId" => _id} = operation} <- item,
         method in @methods do
-      described(document, path, method, operation)
+      document
+      |> described(path, method, operation)
+      |> conversation(routes, document)
+    end
+  end
+
+  # A conversation's route is a path item that names its operation, not one of its own.
+  defp routes(document) do
+    for {path, item} <- document["paths"],
+        {method, %{"x-wardrik-operation" => id}} <- item,
+        method in @methods,
+        into: %{},
+        do: {id, path}
+  end
+
+  defp conversation(operation, routes, document) do
+    case Map.fetch(routes, operation.id) do
+      {:ok, path} ->
+        parameter = document["components"]["parameters"]["conversation"]
+        schema = Map.put(parameter["schema"], "description", parameter["description"])
+        properties = Map.put(operation.input["properties"] || %{}, "conversation", schema)
+
+        %{
+          operation
+          | conversation: path,
+            input: Map.put(operation.input, "properties", properties)
+        }
+
+      :error ->
+        operation
     end
   end
 
@@ -27,6 +58,7 @@ defmodule WardrikProtocol.Operations do
       description: operation["description"],
       method: method,
       path: path,
+      conversation: nil,
       action: operation["x-wardrik-action"],
       effect: operation["x-wardrik-effect"],
       subject: operation["x-wardrik-subject"],

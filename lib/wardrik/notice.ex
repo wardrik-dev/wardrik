@@ -2,7 +2,8 @@ defmodule Wardrik.Notice do
   @moduledoc """
   Tells someone what an agent did while nobody watched.
 
-  `agent` is the agent's ID. `at` is when it happened. `kind` is one of:
+  `agent` is the agent's ID, and `conversation` its conversation's, or `nil` for the agent's own
+  history. `at` is when it happened. `kind` is one of:
 
     * `:parked` - a turn waits on a person. `calls` lists each `Wardrik.Interrupt`, with the
       `arguments` the model wrote, where known.
@@ -11,7 +12,7 @@ defmodule Wardrik.Notice do
   """
 
   @enforce_keys [:agent, :kind, :at]
-  defstruct [:agent, :kind, :at, :reason, :text, calls: []]
+  defstruct [:agent, :kind, :at, :conversation, :reason, :text, calls: []]
 
   @type kind() :: :parked | :failed | :finished
 
@@ -20,6 +21,7 @@ defmodule Wardrik.Notice do
 
   @type t() :: %__MODULE__{
           agent: String.t(),
+          conversation: String.t() | nil,
           kind: kind(),
           at: DateTime.t(),
           calls: [call()],
@@ -35,13 +37,14 @@ defmodule Wardrik.Notice do
   Returns the notice as the JSON a webhook receives.
 
       Wardrik.Notice.json(notice)
-      #=> %{"event" => "turn_failed", "agent" => "acme/triage", "reason" => "It timed out.", ...}
+      #=> %{"event" => "turn_failed", "agent" => "agt_01JF8X5RQ2", "reason" => "It timed out.", ...}
   """
   @spec json(t()) :: map()
   def json(%__MODULE__{} = notice) do
     %{
       "event" => event(notice),
       "agent" => notice.agent,
+      "conversation" => notice.conversation,
       "at" => DateTime.to_iso8601(notice.at),
       "calls" => Enum.map(notice.calls, &call/1),
       "reason" => notice.reason,

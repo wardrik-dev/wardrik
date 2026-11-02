@@ -4,7 +4,9 @@ defmodule WardrikProtocolTest do
   @event %{
     "specversion" => "1.0",
     "id" => "0199a3c2-5f1e-7c3a-9d2b-4e8f1a6b7c90",
-    "source" => "wardrik://local/agents/acme/triage",
+    "source" => "wardrik://local/agents/agt_01JF8X5RQ2",
+    "agent" => "agt_01JF8X5RQ2",
+    "conversation" => "C1-1696.1234",
     "type" => "wardrik.tool_call.started",
     "subject" => "tool_calls/call_1",
     "time" => "2026-10-01T12:04:01.540213Z",
@@ -132,37 +134,58 @@ defmodule WardrikProtocolTest do
       end
     end
 
+    test "gives the operations on a conversation its route" do
+      assert %{
+               path: "/v1/agents/{agent}/messages",
+               conversation: "/v1/agents/{agent}/conversations/{conversation}/messages"
+             } = WardrikProtocol.operation("agent.ask")
+
+      assert %{conversation: "/v1/agents/{agent}/conversations/{conversation}"} =
+               WardrikProtocol.operation("agent.clear")
+
+      assert %{conversation: nil} = WardrikProtocol.operation("agent.define")
+
+      for %{conversation: route} = operation <- WardrikProtocol.operations(), route != nil do
+        assert String.replace(route, "/conversations/{conversation}", "") == operation.path or
+                 operation.id == "agent.clear"
+
+        assert Map.has_key?(operation.input["properties"], "conversation")
+      end
+    end
+
     test "takes its parameters and body as one input" do
       input = JSV.build!(WardrikProtocol.operation("agent.ask").input)
 
-      assert {:ok, _input} = JSV.validate(%{"agent" => "acme/triage", "content" => "Hi"}, input)
+      for agent <- ["agt_01JF8X5RQ2", "acme/@jon/triage", "user 42's notes", "é"] do
+        assert {:ok, _input} = JSV.validate(%{"agent" => agent, "content" => "Hi"}, input)
+      end
 
       assert {:ok, _input} =
-               JSV.validate(%{"agent" => "acme/@jon/triage", "content" => "Hi"}, input)
+               JSV.validate(
+                 %{"agent" => "agt_1", "conversation" => "C1-1696.1234", "content" => "Hi"},
+                 input
+               )
 
-      assert {:ok, _input} =
-               JSV.validate(%{"agent" => "acme/triage/C1-1696.1234", "content" => "Hi"}, input)
-
-      assert {:ok, _input} =
-               JSV.validate(%{"agent" => "acme/@jon/triage/1696.1234", "content" => "Hi"}, input)
+      for agent <- ["", "a\nb", String.duplicate("a", 256)] do
+        refute match?({:ok, _input}, JSV.validate(%{"agent" => agent, "content" => "Hi"}, input))
+      end
 
       refute match?(
                {:ok, _input},
-               JSV.validate(%{"agent" => "a/b/c/d", "content" => "Hi"}, input)
+               JSV.validate(%{"agent" => "agt_1", "conversation" => "", "content" => "Hi"}, input)
              )
 
       refute match?({:ok, _input}, JSV.validate(%{"content" => "Hi"}, input))
-      refute match?({:ok, _input}, JSV.validate(%{"agent" => "acme", "content" => "Hi"}, input))
 
       refute match?(
                {:ok, _input},
-               JSV.validate(%{"agent" => "acme/triage", "content" => "Hi", "parts" => []}, input)
+               JSV.validate(%{"agent" => "agt_1", "content" => "Hi", "parts" => []}, input)
              )
 
       events = JSV.build!(WardrikProtocol.operation("events.list").input)
-      assert {:ok, _input} = JSV.validate(%{"agents" => ["acme/triage"], "limit" => 5}, events)
-      refute match?({:ok, _input}, JSV.validate(%{"agents" => ["acme/*"]}, events))
-      refute match?({:ok, _input}, JSV.validate(%{"resources" => ["acme/*"]}, events))
+      assert {:ok, _input} = JSV.validate(%{"agents" => ["agt_1"], "limit" => 5}, events)
+      refute match?({:ok, _input}, JSV.validate(%{"agents" => [""]}, events))
+      refute match?({:ok, _input}, JSV.validate(%{"conversation" => "C1"}, events))
       refute match?({:ok, _input}, JSV.validate(%{"limit" => 501}, events))
       refute match?({:ok, _input}, JSV.validate(%{"unknown" => 1}, events))
     end

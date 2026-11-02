@@ -24,6 +24,8 @@ defmodule WardrikProtocol do
     * `:id` - its `operationId`, as `"agent.ask"`.
     * `:summary` and `:description` - what it does.
     * `:method` and `:path` - its HTTP route.
+    * `:conversation` - its route for a conversation of the agent, or `nil` if it acts only on
+      agents. Its input then takes an optional `"conversation"`.
     * `:action` - what the caller must be allowed to do.
     * `:effect` - `"read"`, `"change"` or `"destructive"`.
     * `:subject` - what it acts on: `"agent"`, `"agents"`, `"deployment"`, `"hook"` (a request
@@ -41,6 +43,7 @@ defmodule WardrikProtocol do
           description: String.t() | nil,
           method: String.t(),
           path: String.t(),
+          conversation: String.t() | nil,
           action: String.t(),
           effect: String.t(),
           subject: String.t(),

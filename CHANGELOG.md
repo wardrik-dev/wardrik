@@ -27,8 +27,16 @@
   `Wardrik.Connection`, `Wardrik.Connecting`, the schemas `provider_input`, `provider`,
   `providers`, `connection`, `connections` and `connecting` are gone. No operation's `subject`
   is `"owner"`.
-- `Wardrik.AgentID.parse/1` refuses `@` in an owner beyond a person's leading one, so an ID like
-  `ac@me/triage` or `acme/@jon` is `:error`.
+- Agent IDs are opaque: any text of 1 to 255 characters without control characters
+  (`defs`' `agent_id`). `Wardrik.AgentID` is gone, and `agents.list` and `agent.read` answer no
+  `name`. `{agent}` in a route is one URL-encoded segment.
+- A conversation is a field (`defs`' `conversation_id`), not an ID suffix. Operations that act on
+  one take an optional `conversation`, and their routes sit under
+  `/v1/agents/{agent}/conversations/{conversation}`, listed in `openapi.json` with
+  `x-wardrik-operation`. `WardrikProtocol.operation/1` gives the route as `:conversation`.
+  `Wardrik.Server.Follow`, `Wardrik.Notice` and `Wardrik.Interrupt` carry `conversation`.
+- Events carry the `agent` and `conversation` extension attributes. A cursor encodes a list of
+  `[agent, conversation, sequence]`, and `agents` filters cover each agent's conversations.
 - No tenancy: `Wardrik.Resource`, `Wardrik.Definition.principal/1`,
   `Wardrik.Channel.Installation`'s `approvers` and `agents/1`, and
   `Wardrik.Channel.Notification`'s `approvers` are gone. A notification names the `workspace` to
@@ -41,7 +49,7 @@
   `agents.cancel`, `interrupts.list`, `events.list`, `events.head` and `deployment.reload` take
   `agents`, exact agent IDs, for `resources`.
 - An operation's function with two or more path parameters takes them by name in its input, as
-  `Wardrik.Agent.approve(scope, agent: "acme/books", interrupt: "call_1")`: `Wardrik.Agent`'s
+  `Wardrik.Agent.approve(scope, agent: "agt_books", interrupt: "call_1")`: `Wardrik.Agent`'s
   `approve/2`, `deny/2`, `kill/2`, `authorization/2`, `trigger_set/2` and `trigger_remove/2`,
   `Wardrik.Hook.deliver/2` and `deliver_with_secret/2`, and `Wardrik.Channel.deliver/2`.
 

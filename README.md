@@ -67,7 +67,24 @@ surfaces other than HTTP see one set of named fields:
 ```elixir
 %{input: input, output: output} = WardrikProtocol.operation("agent.ask")
 
-{:ok, _input} = JSV.validate(%{"agent" => "acme/triage", "content" => "Hi"}, JSV.build!(input))
+{:ok, _input} = JSV.validate(%{"agent" => "agt_01JF8X5RQ2", "content" => "Hi"}, JSV.build!(input))
 ```
 
 `parameters` lists which fields go in the HTTP path or query. The rest go in the body.
+
+## Agents and conversations
+
+Agent IDs are your app's: any text of 1 to 255 characters, without control characters. Wardrik
+never reads anything from one. In a route, `{agent}` is one URL-encoded segment.
+
+An agent can hold many conversations, each with its own history and events. An operation that
+acts on one takes an optional `conversation`, and `conversation` names its route:
+
+```elixir
+%{path: path, conversation: route} = WardrikProtocol.operation("agent.ask")
+path  #=> "/v1/agents/{agent}/messages"
+route #=> "/v1/agents/{agent}/conversations/{conversation}/messages"
+```
+
+Events carry the `agent` and `conversation` attributes. A cursor lists each log it read, as
+`[agent, conversation, sequence]`, in URL-safe base64 JSON.

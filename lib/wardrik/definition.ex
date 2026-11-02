@@ -10,8 +10,8 @@ defmodule Wardrik.Definition do
           policy: [ask: ["linear/*"]]
         )
 
-      Wardrik.Agent.define(scope, "acme/triage", definition)
-      #=> {:ok, %Wardrik.Agent{id: "acme/triage", status: :idle, ...}}
+      Wardrik.Agent.define(scope, "agt_01JF8X5RQ2", definition)
+      #=> {:ok, %Wardrik.Agent{id: "agt_01JF8X5RQ2", status: :idle, ...}}
 
   Its fields follow the protocol's `agent_definition` schema. Tools and policies it names must be
   ones Wardrik offers. See `Wardrik.start_link/1`.

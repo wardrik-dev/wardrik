@@ -18,6 +18,9 @@
         "id"
       ]
     },
+    "conversation": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
+    },
     "node": {
       "type": "string",
       "description": "The node it stopped on, where it stopped itself."

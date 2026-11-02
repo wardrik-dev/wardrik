@@ -35,7 +35,10 @@ defmodule Wardrik.ServerTest do
 
   test "streams through the scope's server as structs, each with its cursor", %{scope: scope} do
     assert {:ok, stream} = Wardrik.Agent.stream_events(scope, "acme/triage")
-    assert [{%Wardrik.Event{type: "wardrik.run.started"}, "cursor-1"}] = Enum.to_list(stream)
+
+    assert [{%Wardrik.Event{type: "wardrik.run.started", agent: "acme/triage"}, "cursor-1"}] =
+             Enum.to_list(stream)
+
     assert_received {:streamed, "agent.events", %{"agent" => "acme/triage"}}
   end
 
@@ -49,6 +52,9 @@ defmodule Wardrik.ServerTest do
              Wardrik.Agent.reply(scope, "acme/broken", "hi")
 
     assert scope |> Wardrik.Agent.stream("acme/triage", "hi") |> Enum.join() == "Re: hi"
+
+    assert {:ok, %Wardrik.Reply{text: "In C1: hi"}} =
+             Wardrik.Agent.reply(scope, "acme/triage", "hi", conversation: "C1")
 
     {:ok, ref} = Wardrik.Agent.stream(scope, "acme/triage", "hi", to: self())
     assert_receive {Wardrik, ^ref, {:done, %Wardrik.Reply{}}}

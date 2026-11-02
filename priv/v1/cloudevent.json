@@ -27,8 +27,8 @@
     },
     "source": {
       "type": "string",
-      "pattern": "^wardrik://[^/]+/(agents/.+|audit)$",
-      "description": "The agent, or audit for a change people made."
+      "pattern": "^wardrik://[^/]+/(agents/[^/]+|audit)$",
+      "description": "The agent, by its URL-encoded ID, or audit for a change people made."
     },
     "type": {
       "type": "string",
@@ -52,6 +52,12 @@
       "type": "string",
       "pattern": "^[0-9]{12}$",
       "description": "CloudEvents' sequence extension. Durable events only."
+    },
+    "agent": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
+    },
+    "conversation": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
     },
     "traceparent": {
       "type": "string",

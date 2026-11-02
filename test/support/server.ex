@@ -9,7 +9,8 @@ defmodule Wardrik.Test.Server do
   @event %{
     "specversion" => "1.0",
     "id" => "1",
-    "source" => "wardrik://local/agents/acme/triage",
+    "source" => "wardrik://local/agents/acme%2Ftriage",
+    "agent" => "acme/triage",
     "type" => "wardrik.run.started",
     "time" => "2026-10-28T12:00:00Z",
     "data" => %{"run" => %{"id" => "r1"}}
@@ -41,6 +42,9 @@ defmodule Wardrik.Test.Server do
   def follow(%{agent: "acme/waiting"}, _opts),
     do: [{:waiting, [%Wardrik.Interrupt{id: "c1", reason: :tool_approval}]}]
 
+  def follow(%{conversation: "C1", input: input}, _opts),
+    do: [{:done, %Wardrik.Reply{message: "m1", run: "r1", text: "In C1: " <> input}}]
+
   def follow(%{input: input}, _opts),
     do: [
       {:text, "Re: "},
@@ -55,7 +59,7 @@ defmodule Wardrik.Test.Server do
   def answer(_call, _message), do: :ok
 
   @answers %{
-    "agents.list" => %{"agents" => [%{"id" => "acme/triage", "name" => "triage"}]},
+    "agents.list" => %{"agents" => [%{"id" => "acme/triage", "conversation" => nil}]},
     "agent.timeline" => %{"items" => [], "next" => nil},
     "agent.runs" => %{"runs" => [], "totals" => %{}, "next" => nil}
   }

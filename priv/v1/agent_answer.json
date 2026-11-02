@@ -16,8 +16,7 @@
   "examples": [
     {
       "agent": {
-        "id": "acme/triage",
-        "name": "triage",
+        "id": "agt_01JF8X5RQ2",
         "status": "asleep",
         "pending": 0
       }

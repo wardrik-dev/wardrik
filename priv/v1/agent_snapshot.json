@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:agent_snapshot",
   "title": "An agent's snapshot",
-  "description": "What agent.read answers: what the agent is doing now, and where its log stands. Read and follow the log after cursor.",
+  "description": "What agent.read answers: what the agent or conversation is doing now, and where its log stands. Read and follow the log after cursor.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,18 +18,16 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "id",
-        "name"
+        "id"
       ],
       "properties": {
         "id": {
-          "type": "string",
-          "description": "The agent's ID: org/name, or org/@user/name for one that works for a user."
-        },
-        "name": {
-          "type": "string"
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
         }
       }
+    },
+    "conversation": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
     },
     "status": {
       "type": "string",
@@ -81,8 +79,7 @@
   "examples": [
     {
       "agent": {
-        "id": "acme/triage",
-        "name": "triage"
+        "id": "agt_01JF8X5RQ2"
       },
       "status": "parked",
       "pending": 0,
@@ -111,7 +108,7 @@
           "tool_call_id": "toolu_01"
         }
       ],
-      "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"
+      "cursor": "W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ"
     }
   ]
 }

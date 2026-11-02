@@ -2,16 +2,20 @@ defmodule Wardrik.Agent do
   @moduledoc """
   An agent, and the operations on one.
 
-      Wardrik.Agent.ask(scope, "acme/triage", "What's on fire?")
-      #=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "eyJhY21lL3RyaWFnZSI6NDF9"}}
+      Wardrik.Agent.ask(scope, "agt_01JF8X5RQ2", "What's on fire?")
+      #=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ"}}
 
-      Wardrik.Agent.read(scope, "acme/triage")
-      #=> {:ok, %Wardrik.Agent{id: "acme/triage", status: :running, node: "wardrik@box1", pending: 0, ...}}
+      Wardrik.Agent.read(scope, "agt_01JF8X5RQ2")
+      #=> {:ok, %Wardrik.Agent{id: "agt_01JF8X5RQ2", status: :running, node: "wardrik@box1", pending: 0, ...}}
+
+  A conversation runs on its agent's definition, with a history of its own. Name it in the input:
+
+      Wardrik.Agent.ask(scope, "agt_01JF8X5RQ2", content: "What's on fire?", conversation: "C1-1696.1234")
 
   ## Fields
 
-    * `:id` - the agent's ID, as `"acme/triage"`.
-    * `:name` - its name.
+    * `:id` - the agent's ID, as your app chose it.
+    * `:conversation` - the conversation's ID, or `nil` for the agent's own history.
     * `:status` - `:idle`, `:running`, `:parked` or `:asleep`.
     * `:node` - the node it runs on.
     * `:pending` - how many messages wait behind the current one.
@@ -28,7 +32,7 @@ defmodule Wardrik.Agent do
     schema: ["agent_snapshot"],
     fields: [
       id: "agent.id",
-      name: "agent.name",
+      conversation: "conversation",
       status: {"status", [:idle, :running, :parked, :asleep]},
       node: "node",
       pending: "pending",
@@ -44,7 +48,7 @@ defmodule Wardrik.Agent do
   @doc """
   Sends the agent a message and streams the text of its answer.
 
-      scope |> Wardrik.Agent.stream("acme/triage", "What's on fire?") |> Enum.each(&IO.write/1)
+      scope |> Wardrik.Agent.stream("agt_01JF8X5RQ2", "What's on fire?") |> Enum.each(&IO.write/1)
 
   The stream ends when the run ends, including when it fails. Use `reply/4` to see how it ended.
   Raises `Wardrik.Error` if the agent can't be reached.
@@ -56,6 +60,7 @@ defmodule Wardrik.Agent do
 
   ## Options
 
+    * `:conversation` - the conversation to send it to. The agent's own history unless set.
     * `:to` - a pid to send the answer to, in place of returning a stream.
     * `:timeout` - milliseconds to wait for each part of the answer. Ten minutes unless set.
   """
@@ -71,11 +76,12 @@ defmodule Wardrik.Agent do
   @doc """
   Sends the agent a message and returns its answer once the run ends.
 
-      Wardrik.Agent.reply(scope, "acme/triage", "What's on fire?")
+      Wardrik.Agent.reply(scope, "agt_01JF8X5RQ2", "What's on fire?")
       #=> {:ok, %Wardrik.Reply{message: "msg_Xq3f...", run: "0af76519...", text: "Nothing's on fire."}}
 
   Returns `{:waiting, interrupts}` if the run waits on a person. Returns `{:error, %Wardrik.Error{}}`
-  if the agent can't be reached or the run fails. Takes the `:timeout` option of `stream/4`.
+  if the agent can't be reached or the run fails. Takes the `:conversation` and `:timeout` options
+  of `stream/4`.
   """
   @spec reply(Wardrik.Scope.t(), String.t() | t(), term(), keyword()) ::
           {:ok, Wardrik.Reply.t()}
@@ -89,8 +95,19 @@ defmodule Wardrik.Agent do
     error in Wardrik.Error -> {:error, error}
   end
 
-  defp follow(%Wardrik.Scope{server: server} = scope, agent, input, opts),
-    do: server.follow(%Wardrik.Server.Follow{scope: scope, agent: agent, input: input}, opts)
+  defp follow(%Wardrik.Scope{server: server} = scope, agent, input, opts) do
+    {conversation, opts} = Keyword.pop(opts, :conversation)
+
+    server.follow(
+      %Wardrik.Server.Follow{
+        scope: scope,
+        agent: agent,
+        conversation: conversation,
+        input: input
+      },
+      opts
+    )
+  end
 
   defp send_to(scope, agent, input, pid, opts) do
     ref = make_ref()
@@ -118,10 +135,11 @@ defmodule Wardrik.Agent do
 
   @doc "Builds an agent from one item of the `agents.list` output."
   @spec from_summary(map()) :: t()
-  def from_summary(%{"id" => id, "name" => name} = summary),
+  def from_summary(%{"id" => id} = summary),
     do:
       from_json(%{
-        "agent" => %{"id" => id, "name" => name},
+        "agent" => %{"id" => id},
+        "conversation" => summary["conversation"],
         "status" => summary["status"],
         "node" => summary["node"],
         "pending" => summary["pending"],

@@ -40,7 +40,7 @@
     {
       "error": {
         "type": "not_found",
-        "message": "No agent runs under acme/triage."
+        "message": "No agent runs under agt_01JF8X5RQ2."
       }
     }
   ]

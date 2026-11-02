@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:cursor",
   "title": "A cursor",
-  "description": "What events.head answers: the cursor at the end of every log the patterns cover.",
+  "description": "What events.head answers: the cursor at the end of every log the agents cover.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,7 +15,7 @@
   },
   "examples": [
     {
-      "cursor": "eyJhY21lL3RyaWFnZSI6NDF9"
+      "cursor": "W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ"
     }
   ]
 }

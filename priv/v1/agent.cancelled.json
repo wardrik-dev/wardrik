@@ -18,6 +18,9 @@
         "id"
       ]
     },
+    "conversation": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
+    },
     "resource": {
       "type": "string",
       "description": "The pattern someone cancelled every agent it covers by at once, where it was one of them; every agent's entry from that one change shares its trace."

@@ -10,12 +10,12 @@
       "properties": {
         "id": {
           "type": "string"
-        },
-        "name": {
-          "type": "string"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
     },
     "conversation": {
       "type": "object",
@@ -27,7 +27,8 @@
       "additionalProperties": false,
       "required": [
         "id"
-      ]
+      ],
+      "description": "The conversation it holds; left out for the agent's own history."
     },
     "node": {
       "type": "string"
@@ -44,7 +45,6 @@
   "additionalProperties": false,
   "required": [
     "agent",
-    "conversation",
     "node",
     "status"
   ]

@@ -2,22 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:agent",
   "title": "An agent, listed",
-  "description": "One agent of agents.list.",
+  "description": "One agent or conversation of agents.list.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "id",
-    "name",
     "status",
     "pending"
   ],
   "properties": {
     "id": {
-      "type": "string",
-      "description": "The agent's ID: org/name, or org/@user/name for one that works for a user."
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
     },
-    "name": {
-      "type": "string"
+    "conversation": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
     },
     "status": {
       "type": "string",
@@ -55,8 +53,7 @@
   },
   "examples": [
     {
-      "id": "acme/triage",
-      "name": "triage",
+      "id": "agt_01JF8X5RQ2",
       "status": "parked",
       "pending": 0
     }
