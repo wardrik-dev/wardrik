@@ -6,6 +6,10 @@ defmodule Wardrik.WorkspacesTest do
   import Wardrik.Test.Wardrik
 
   @model "anthropic:claude-haiku-4-5"
+  @shares %{
+    "acme/ops" => %{"acme/runbooks" => :write},
+    "acme/@jon/notes" => %{"acme/runbooks" => :read}
+  }
 
   setup :set_mimic_global
 
@@ -15,16 +19,9 @@ defmodule Wardrik.WorkspacesTest do
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, {:"wardrik #{context.test}", shares: @shares}},
         name: :"wardrik #{context.test}",
-        store: store,
-        workspace: [
-          shared: %{
-            "acme/runbooks" => [
-              read: ["acme/@jon/*"],
-              write: ["acme/agent/ops", "acme/agent/ops/*"]
-            ]
-          }
-        ]
+        store: store
       )
 
     start_supervised!({WardrikStore, store})
@@ -81,62 +78,66 @@ defmodule Wardrik.WorkspacesTest do
     assert system(third) =~ ~r/<file path="MEMORY.md" version="[^"]+">\nLikes tea.\n<\/file>/
   end
 
-  test "shares trees its owner holds, and those the Wardrik shares", %{scope: scope} do
+  test "mounts only the workspaces the resolver shares, with only the access given", %{
+    scope: scope
+  } do
     files = %{"model" => @model, "tools" => ["files"]}
+    shared = &Map.put(files, "workspace", %{"shared" => &1})
+
+    assert {:ok, _agent} = define(scope, "acme/ops", shared.(%{"runbooks" => "acme/runbooks"}))
 
     assert {:ok, _agent} =
-             define(
-               scope,
-               "acme/triage",
-               Map.put(files, "workspace", %{"shared" => %{"team" => "acme"}})
-             )
+             define(scope, "acme/@jon/notes", shared.(%{"runbooks" => "acme/runbooks"}))
 
-    assert {:ok, _agent} =
-             define(
-               scope,
-               "acme/ops",
-               Map.put(files, "workspace", %{"shared" => %{"runbooks" => "acme/runbooks"}})
-             )
+    reading = %{"runbooks" => %{"agent" => "acme/runbooks", "mode" => "read"}}
+    assert {:ok, _agent} = define(scope, "acme/ops", shared.(reading))
 
-    read_only = %{"shared" => %{"runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"}}}
-
-    assert {:ok, _agent} =
-             define(scope, "acme/@jon/notes", Map.put(files, "workspace", read_only))
-
-    writing = %{"shared" => %{"runbooks" => "acme/runbooks"}}
+    writing = %{"runbooks" => %{"agent" => "acme/runbooks", "mode" => "write"}}
 
     assert {:error, %Wardrik.Error{message: why}} =
-             define(scope, "acme/@jon/notes", Map.put(files, "workspace", writing))
+             define(scope, "acme/@jon/notes", shared.(writing))
 
-    assert why =~ "acme/@jon/notes can't write the tree acme/runbooks"
+    assert why =~ "acme/@jon/notes can't write acme/runbooks's workspace"
 
-    assert {:error, _error} =
-             define(
-               scope,
-               "acme/@jon/notes",
-               Map.put(files, "workspace", %{"shared" => %{"t" => "globex"}})
-             )
+    assert {:error, %Wardrik.Error{message: why}} =
+             define(scope, "acme/triage", shared.(%{"runbooks" => "acme/runbooks"}))
 
-    assert {:error, _error} =
-             define(
-               scope,
-               "acme/triage",
-               Map.put(files, "workspace", %{"shared" => %{"t" => "acme/@jon/x"}})
-             )
+    assert why =~ "its resolver doesn't share it"
 
-    assert {:ok, _agent} =
-             define(
-               scope,
-               "acme/@jon/mine",
-               Map.put(files, "workspace", %{"shared" => %{"t" => "acme/@jon/x"}})
-             )
+    assert {:error, _error} = define(scope, "acme/ops", shared.(%{"bad name" => "acme/runbooks"}))
+  end
 
-    assert {:error, _error} =
-             define(
-               scope,
-               "acme/triage",
-               Map.put(files, "workspace", %{"shared" => %{"bad name" => "acme"}})
-             )
+  test "mounts a read share read only, and a write share as written" do
+    wardrik =
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :w},
+        name: :w
+      )
+
+    definition = %{"workspace" => %{"shared" => %{"runbooks" => "acme/runbooks"}}}
+
+    resolve =
+      &Wardrik.Workspaces.resolve(wardrik,
+        agent: &1,
+        definition: definition,
+        workspaces: &2,
+        files: true
+      )
+
+    assert {:ok, [capabilities: [{WardrikWorkspace, read}], middleware: []]} =
+             resolve.("acme/@jon/notes", %{"acme/runbooks" => :read})
+
+    assert [%WardrikWorkspace.Mount{name: "runbooks", tree: "agents/acme/runbooks", mode: :read}] =
+             read[:shared]
+
+    assert {:ok, [capabilities: [{WardrikWorkspace, written}], middleware: []]} =
+             resolve.("acme/ops/C1", %{"acme/runbooks" => :write})
+
+    assert [%WardrikWorkspace.Mount{mode: :write}] = written[:shared]
+    assert written[:tree] == "agents/acme/ops"
+
+    assert {:error, _error} = resolve.("acme/triage", %{"acme/other" => :write})
   end
 
   test "reads a budget of context, and refuses one out of range", %{scope: scope} do

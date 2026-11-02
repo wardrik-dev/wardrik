@@ -29,7 +29,17 @@ defmodule MyApp.AllowAll do
   def authorize(_request, _opts), do: :ok
 end
 
-{:ok, _} = MyApp.AgentRuntime.start_link(authorizer: {MyApp.AllowAll, []})
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent here works for Maria.
+  @impl true
+  def resolve(_request, _opts),
+    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+end
+
+{:ok, _} =
+  MyApp.AgentRuntime.start_link(authorizer: {MyApp.AllowAll, []}, resolver: {MyApp.Agents, []})
 
 scope = MyApp.AgentRuntime.as("acme/@maria")
 ```
@@ -46,6 +56,7 @@ Each place overrides the one before it:
 # 1. config/runtime.exs
 config :my_app, MyApp.AgentRuntime,
   authorizer: {MyApp.Authorizer, []},
+  resolver: {MyApp.Agents, []},
   store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
 
 # 2. The supervision tree

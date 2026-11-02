@@ -8,7 +8,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.2"}, {:kino, "~> 0.19"}])
 
 By the end, your authorizer lets Maria do anything with her agent, lets Jon read it but not stop
 it, and keeps Sam from seeing it at all. An agent acting through its tools can't forget agents,
-and in a chat only an approver or whoever asked decides a call. Nothing here calls a model, so you
+and in a chat only the owner or whoever asked decides a call. Nothing here calls a model, so you
 need no key.
 
 ## Write an authorizer
@@ -25,15 +25,13 @@ defmodule MyApp.Authorizer do
 
   alias Wardrik.Authorizer.Request
 
-  # Who belongs to which org: people, chat members, and the org itself, for its own agents.
+  # Who belongs to which org: people, and the org itself, for its own agents.
   @orgs %{
     "acme" => "acme",
     "acme/@maria" => "acme",
     "acme/@jon" => "acme",
-    "globex/@sam" => "globex",
-    "slack:T0123/U024BE7LH" => "acme",
-    "slack:T0123/U0G9QF9C6" => "acme",
-    "slack:T0123/U0FF8M3QA" => "acme"
+    "acme/@ana" => "acme",
+    "globex/@sam" => "globex"
   }
 
   # Who owns each agent.
@@ -57,9 +55,9 @@ defmodule MyApp.Authorizer do
   defp allowed(%Request{actor: {:agent, _id}, action: "agent.forget"}, _owner),
     do: {:error, :forbidden}
 
-  # In a chat, only an approver or whoever asked decides.
-  defp allowed(%Request{actor: {:channel, _name}, action: "agent.decide"} = request, _owner) do
-    if request.context[:approver] || request.context[:asked_by] == request.principal.id,
+  # In a chat, only the agent's owner or whoever asked decides.
+  defp allowed(%Request{actor: {:channel, _name}, action: "agent.decide"} = request, owner) do
+    if request.principal.id in [owner, request.context[:asked_by]],
       do: :ok,
       else: {:error, :forbidden}
   end
@@ -67,6 +65,15 @@ defmodule MyApp.Authorizer do
   defp allowed(%Request{action: action}, _owner) when action in @shared, do: :ok
   defp allowed(%Request{principal: %{id: owner}}, owner), do: :ok
   defp allowed(_request, _owner), do: {:error, :forbidden}
+end
+
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent here works for Maria.
+  @impl true
+  def resolve(_request, _opts),
+    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
 end
 ```
 
@@ -81,7 +88,11 @@ It answers:
 Start Wardrik with the authorizer, act as Maria, and define her agent:
 
 ```elixir
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.Authorizer, []})
+{:ok, _} = Wardrik.start_link(
+    name: MyApp.AgentRuntime,
+    authorizer: {MyApp.Authorizer, []},
+    resolver: {MyApp.Agents, []}
+  )
 
 maria = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
@@ -162,26 +173,21 @@ The actor lets the authorizer give an agent less than the principal it acts for.
 
 ## A chat member deciding
 
-In a chat, a member acts as themselves, as `slack:T0123/U024BE7LH`, with the channel as actor.
-When they decide a call, the channel adds who asked, and whether they're an approver. The channel
-builds this scope; here it's built by hand:
+In a chat, a member acts as whoever your app says they are, with the channel as actor. When they
+decide a call, the channel adds who asked. The channel builds this scope; here it's built by hand:
 
 ```elixir
-deciding = fn member, approver? ->
+deciding = fn member ->
   Wardrik.as(MyApp.AgentRuntime, member,
     actor: {:channel, "slack"},
-    context: %{
-      installation: %{owner: "acme", workspace: "T0123"},
-      asked_by: "slack:T0123/U024BE7LH",
-      approver: approver?
-    }
+    context: %{installation: %{owner: "acme", workspace: "T0123"}, asked_by: "acme/@jon"}
   )
 end
 
 members = [
-  asker: deciding.("slack:T0123/U024BE7LH", false),
-  approver: deciding.("slack:T0123/U0G9QF9C6", true),
-  bystander: deciding.("slack:T0123/U0FF8M3QA", false)
+  asker: deciding.("acme/@jon"),
+  owner: deciding.("acme/@maria"),
+  bystander: deciding.("acme/@ana")
 ]
 
 for {name, scope} <- members do
@@ -197,7 +203,7 @@ end
 ```
 
 `Wardrik.Authorizer.authorize/2` asks the authorizer as an operation would. The asker and the
-approver may decide; the bystander may not.
+owner may decide; the bystander may not.
 
 ## Over HTTP
 

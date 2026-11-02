@@ -28,6 +28,7 @@ defmodule Wardrik.AuthorizerTest do
       Wardrik.new(
         name: :"wardrik #{context.test}",
         authorizer: {Wardrik.Test.Asked, decider},
+        resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         deployment: "eu-1"
       )
 

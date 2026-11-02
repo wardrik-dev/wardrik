@@ -25,6 +25,15 @@ defmodule MyApp.AllowAll do
   def authorize(_request, _opts), do: :ok
 end
 
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent here works for Maria.
+  @impl true
+  def resolve(_request, _opts),
+    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+end
+
 defmodule MyApp.Orders do
   @behaviour WardrikCore.Capability
 
@@ -45,6 +54,7 @@ end
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
+    resolver: {MyApp.Agents, []},
     capabilities: [orders: {MyApp.Orders, %{"A-1" => "shipped"}}],
     policies: [careful: [ask: ["order_*"], deny: ["shell/*"]]]
   )
@@ -111,7 +121,7 @@ agent, as `acme/digest`, acts as the org.
 | `instructions` | The system prompt, sent with every model call. |
 | `tools` | What it may call. See below. |
 | `context` | Files read into every turn, as `[MEMORY.md]` or `{files: [...], max_bytes: 65536}`. See `Wardrik.Workspaces`. |
-| `workspace` | File trees shared with it, each under `shared/<name>/`, as `{shared: {team: acme}}`. |
+| `workspace` | Other agents' workspaces it mounts, each under `shared/<name>/`, as `{shared: {runbooks: acme/runbooks}}`. Only those its resolver shares. |
 | `policy` | A policy by name, or its rules in place, budget and judge included. See [Policies](policies.md). |
 | `timeout` | Seconds a turn may take. |
 | `max_iterations` | Rounds of tool calls a turn may make, or `infinity`. `25` unless set. |
@@ -128,7 +138,8 @@ agent, as `acme/digest`, acts as the org.
   * a capability by name, as `"orders"` above, or `"files"` for a file tree of its own.
   * `"server/*"` for every tool of an MCP server.
   * `"workers/*"` for the tools workers offer it.
-  * `"agents/*"` to work with its org's agents, and `"self/*"` to work with itself. See
+  * `"agents/*"` to work with the agents your authorizer lets it reach, by their IDs, and
+    `"self/*"` to work with itself. See
     `Wardrik.AgentTools`.
   * `"*"` for everything except `agents/*` and `self/*`.
 

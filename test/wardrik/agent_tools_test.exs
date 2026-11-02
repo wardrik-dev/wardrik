@@ -18,6 +18,7 @@ defmodule Wardrik.AgentToolsTest do
         authorizer:
           {Wardrik.Test.Authorizer,
            test: self(), decide: Map.get(context, :decide, &Wardrik.Test.Allow.authorize(&1, []))},
+        resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         store: store,
         policies: [relay: [allow_after: %{"outside" => ["agent_ask"]}]]
       )
@@ -59,12 +60,14 @@ defmodule Wardrik.AgentToolsTest do
       {"Watch the feed",
        calling([
          call("c1", "agent_define", %{
-           "agent" => "watcher",
+           "agent" => "acme/watcher",
            "definition" => %{"model" => @model, "instructions" => "Watch."}
          })
        ])},
       {"\"id\"",
-       calling([call("c2", "agent_ask", %{"agent" => "watcher", "content" => "What's new?"})])},
+       calling([
+         call("c2", "agent_ask", %{"agent" => "acme/watcher", "content" => "What's new?"})
+       ])},
       {"msg_", answer("I asked the watcher.")},
       {"What's new?", answer("Two posts.")},
       {"From agent acme/watcher", answer("The watcher found two posts.")}
@@ -110,15 +113,15 @@ defmodule Wardrik.AgentToolsTest do
       {"Look around",
        calling([
          call("r1", "agents_list", %{}),
-         call("r2", "agent_read", %{"agent" => "worker"}),
-         call("r3", "agent_definition_read", %{"agent" => "@jon/notes"}),
+         call("r2", "agent_read", %{"agent" => "acme/worker"}),
+         call("r3", "agent_definition_read", %{"agent" => "acme/@jon/notes"}),
          call("r4", "self_definition_read", %{})
        ])},
       {"\"missing\"", answer("Seen.")},
       {"Schedule",
        calling([
          call("t1", "agent_trigger_set", %{
-           "agent" => "worker",
+           "agent" => "acme/worker",
            "trigger" => "daily",
            "fields" => %{"every" => "1d", "prompt" => "Go."}
          }),
@@ -129,7 +132,7 @@ defmodule Wardrik.AgentToolsTest do
        ])},
       {"\"mine\"",
        calling([
-         call("t3", "agent_trigger_remove", %{"agent" => "worker", "trigger" => "daily"}),
+         call("t3", "agent_trigger_remove", %{"agent" => "acme/worker", "trigger" => "daily"}),
          call("t4", "self_trigger_remove", %{"trigger" => "mine"}),
          call("t5", "self_read", %{})
        ])},
@@ -165,7 +168,7 @@ defmodule Wardrik.AgentToolsTest do
   test "brings back an answer that came while it wasn't running", %{scope: scope} do
     model([
       {"Ask the worker",
-       calling([call("a1", "agent_ask", %{"agent" => "worker", "content" => "Sum 2 and 2"})])},
+       calling([call("a1", "agent_ask", %{"agent" => "acme/worker", "content" => "Sum 2 and 2"})])},
       {"msg_", answer("Asked.")},
       {"Sum 2 and 2", answer("4")},
       {"From agent acme/worker", answer("It's 4.")}
@@ -197,7 +200,7 @@ defmodule Wardrik.AgentToolsTest do
   } do
     model([
       {"Ask the worker",
-       calling([call("a1", "agent_ask", %{"agent" => "worker", "content" => "Sum 2 and 2"})])},
+       calling([call("a1", "agent_ask", %{"agent" => "acme/worker", "content" => "Sum 2 and 2"})])},
       {"msg_", answer("Asked.")},
       {"Sum 2 and 2", answer("4")},
       {"From agent acme/worker", answer("It's 4.")}
@@ -232,7 +235,9 @@ defmodule Wardrik.AgentToolsTest do
     wardrik |> Wardrik.Operations.Running.whereis(id) |> WardrikCore.history()
   end
 
-  test "names agents within the org, and lists them without their conversations", %{scope: scope} do
+  test "names agents by their exact IDs, and lists those it may read without conversations", %{
+    scope: scope
+  } do
     define(scope, "acme/worker", %{"model" => @model})
     define(scope, "acme/@jon/notes", %{"model" => @model})
     define(scope, "globex/other", %{"model" => @model})
@@ -250,7 +255,9 @@ defmodule Wardrik.AgentToolsTest do
     tool = fn name -> Enum.find(tools, &(&1.name == name)) end
 
     assert {:ok, %{"agents" => listed}} = tool.("agents_list").run.(%{}, nil)
-    assert Enum.map(listed, & &1["id"]) |> Enum.sort() == ["acme/@jon/notes", "acme/worker"]
+
+    assert Enum.map(listed, & &1["id"]) |> Enum.sort() ==
+             ["acme/@jon/notes", "acme/worker", "globex/other"]
 
     assert_received {:authorize,
                      %{
@@ -261,12 +268,11 @@ defmodule Wardrik.AgentToolsTest do
                      }}
 
     assert {:ok, %{"definition" => _definition}} =
-             tool.("agent_definition_read").run.(%{agent: "@jon/notes"}, nil)
+             tool.("agent_definition_read").run.(%{agent: "acme/@jon/notes"}, nil)
 
     assert {:ok, %{"status" => _status}} = tool.("agent_read").run.(%{agent: "acme/worker"}, nil)
-    assert {:error, message} = tool.("agent_read").run.(%{agent: "nobody"}, nil)
-    assert message =~ "acme/nobody"
-    assert {:error, _not_reached} = tool.("agent_read").run.(%{agent: "globex/other"}, nil)
+    assert {:error, message} = tool.("agent_read").run.(%{agent: "worker"}, nil)
+    refute message =~ "acme/worker"
 
     assert WardrikCore.Tool.annotation(tool.("agent_define"), :gated)
     assert WardrikCore.Tool.annotation(tool.("agents_list"), :read_only)
@@ -290,7 +296,7 @@ defmodule Wardrik.AgentToolsTest do
   test "acts for its resolved principal, as itself, so an authorizer can refuse an agent what its principal may do",
        %{scope: scope} do
     model([
-      {"Look", calling([call("r1", "agent_read", %{"agent" => "worker"})])},
+      {"Look", calling([call("r1", "agent_read", %{"agent" => "acme/worker"})])},
       {"may not", answer("Refused.")}
     ])
 

@@ -4,7 +4,13 @@ defmodule Wardrik.ChildrenTest do
   import Wardrik.Test.Wardrik, only: [seal: 4]
 
   test "keeps agents in memory unless told where", %{test: test} do
-    wardrik = Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: :"own #{test}")
+    wardrik =
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"own #{test}"},
+        name: :"own #{test}"
+      )
+
     start_supervised!({Wardrik, wardrik}, id: :own)
 
     assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.ETS}} = wardrik
@@ -21,6 +27,7 @@ defmodule Wardrik.ChildrenTest do
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"disk #{test}"},
         name: :"disk #{test}",
         store: {WardrikStore.EKV, data_dir: tmp_dir}
       )
@@ -41,7 +48,12 @@ defmodule Wardrik.ChildrenTest do
     start_supervised!({WardrikStore, store}, id: :store)
 
     wardrik =
-      Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: :"hosted #{test}", store: store)
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"hosted #{test}"},
+        name: :"hosted #{test}",
+        store: store
+      )
 
     start_supervised!({Wardrik, wardrik}, id: :hosted)
 
@@ -56,7 +68,12 @@ defmodule Wardrik.ChildrenTest do
     store = WardrikStore.ETS.new(name: :"unstarted #{test}")
 
     wardrik =
-      Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: :"given #{test}", store: store)
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"given #{test}"},
+        name: :"given #{test}",
+        store: store
+      )
 
     start_supervised!({Wardrik, wardrik}, id: :given)
 
@@ -67,6 +84,7 @@ defmodule Wardrik.ChildrenTest do
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"mcp #{test}"},
         name: :"mcp #{test}",
         mcp: [down: [transport: {:stdio, command: "no-such-mcp-server"}]]
       )
@@ -79,7 +97,11 @@ defmodule Wardrik.ChildrenTest do
   end
 
   test "keeps no secret without keys to seal it with", %{test: test} do
-    start_supervised!({Wardrik, name: :"keyless #{test}", authorizer: {Wardrik.Test.Allow, []}},
+    start_supervised!(
+      {Wardrik,
+       name: :"keyless #{test}",
+       authorizer: {Wardrik.Test.Allow, []},
+       resolver: {Wardrik.Test.Owned, :"keyless #{test}"}},
       id: :keyless
     )
 
@@ -102,6 +124,7 @@ defmodule Wardrik.ChildrenTest do
   defp keyed(test, mcp) do
     Wardrik.new(
       authorizer: {Wardrik.Test.Allow, []},
+      resolver: {Wardrik.Test.Owned, :"keyed #{test}"},
       name: :"keyed #{test}",
       keys: [WardrikVault.generate_key()],
       mcp: mcp

@@ -20,13 +20,12 @@ defmodule MyApp.Authorizer do
 
   alias Wardrik.Authorizer.Request
 
-  # Who belongs to which org: people, chat members, and the org itself, for its own agents.
+  # Who belongs to which org: people, and the org itself, for its own agents.
   @orgs %{
     "acme" => "acme",
     "acme/@maria" => "acme",
     "acme/@jon" => "acme",
-    "globex/@sam" => "globex",
-    "slack:T0123/U024BE7LH" => "acme"
+    "globex/@sam" => "globex"
   }
 
   # Which org each agent is in.
@@ -57,9 +56,9 @@ defmodule MyApp.Authorizer do
   # Agents never forget agents, whoever they act for.
   defp allowed(%Request{actor: {:agent, _id}, action: "agent.forget"}), do: {:error, :forbidden}
 
-  # In a chat, only an approver or whoever asked decides.
+  # In a chat, only an operator or whoever asked decides.
   defp allowed(%Request{actor: {:channel, _name}, action: "agent.decide"} = request) do
-    if request.context[:approver] || request.context[:asked_by] == request.principal.id,
+    if request.principal.id in [request.context[:asked_by] | @operators],
       do: :ok,
       else: {:error, :forbidden}
   end
@@ -67,7 +66,20 @@ defmodule MyApp.Authorizer do
   defp allowed(_request), do: :ok
 end
 
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.Authorizer, []})
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent here works for Maria.
+  @impl true
+  def resolve(_request, _opts),
+    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+end
+
+{:ok, _} = Wardrik.start_link(
+    name: MyApp.AgentRuntime,
+    authorizer: {MyApp.Authorizer, []},
+    resolver: {MyApp.Agents, []}
+  )
 maria = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, _} = Wardrik.Agent.define(maria, "acme/@maria/books", model: "anthropic:claude-haiku-4-5")
@@ -173,29 +185,26 @@ The actor lets your authorizer give an agent less than the principal it acts for
 
 ## Channels
 
-A chat member acts as themselves, as `slack:T0123/U024BE7LH`, with the channel as actor,
-`{:channel, "slack"}`. The context has `:installation`, as `%{owner: owner, workspace: workspace}`.
-Deciding a call adds:
-
-  * `:asked_by` - the principal ID that asked in the conversation, where known.
-  * `:approver` - whether the member is one of the installation's approvers.
+A chat member acts as whoever your app's `WardrikChannel.Identities` says they are, with the
+channel as actor, `{:channel, "slack"}`. The context has `:installation`, as
+`%{owner: owner, workspace: workspace}`. Deciding a call adds `:asked_by`, the principal ID that
+asked in the conversation, where known.
 
 The channel builds the scope. Built by hand, it shows what the authorizer above sees:
 
 ```elixir
 member =
-  Wardrik.as(MyApp.AgentRuntime, "slack:T0123/U024BE7LH",
+  Wardrik.as(MyApp.AgentRuntime, "acme/@jon",
     actor: {:channel, "slack"},
-    context: %{
-      installation: %{owner: "acme", workspace: "T0123"},
-      asked_by: "slack:T0123/U0G9QF9C6",
-      approver: false
-    }
+    context: %{installation: %{owner: "acme", workspace: "T0123"}, asked_by: "acme/@ana"}
   )
 
 Wardrik.Agent.approve(member, agent: "acme/@maria/books", interrupt: "toolu_01")
 #=> {:error, %Wardrik.Error{type: :forbidden, message: "You may not do this to the agent acme/@maria/books."}}
 ```
+
+Your authorizer decides as it does for Jon anywhere else. Above, only an operator or whoever asked
+decides in a chat.
 
 ## Over HTTP
 

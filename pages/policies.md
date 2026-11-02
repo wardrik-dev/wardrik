@@ -20,10 +20,20 @@ defmodule MyApp.AllowAll do
   def authorize(_request, _opts), do: :ok
 end
 
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent here works for Maria.
+  @impl true
+  def resolve(_request, _opts),
+    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+end
+
 {:ok, _} =
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
+    resolver: {MyApp.Agents, []},
     policy: [deny: ["shell/*"]],
     policies: [triage: [allow: ["linear/*"], allow_after: %{"outside" => ["github/add_labels"]}]]
   )

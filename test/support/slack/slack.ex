@@ -39,7 +39,7 @@ defmodule Wardrik.Test.Slack do
         token: "xoxb-test",
         signing_secret: "s3cret",
         owner: "acme",
-        approvers: ["@maria"],
+        identities: {Wardrik.Test.Channel.Members, members: Wardrik.Test.Channel.members()},
         req_options: [plug: {Req.Test, WardrikSlack.Test.Slack}, retry_delay: 0]
       ]
       |> Keyword.merge(Map.get(context, :slack, []))
@@ -51,6 +51,7 @@ defmodule Wardrik.Test.Slack do
       {Wardrik,
        Wardrik.new(
          authorizer: {Wardrik.Test.Deciders, []},
+         resolver: {Wardrik.Test.Owned, {name, channels: %{"slack" => "T1"}}},
          name: name,
          store: store,
          keys: [WardrikVault.generate_key()],
@@ -178,35 +179,11 @@ defmodule Wardrik.Test.Slack do
 
     %{
       ok: true,
-      user: %{id: id, name: name, profile: %{display_name: name, email: "#{name}@example.com"}}
+      user: %{id: id, name: name, profile: %{display_name: name}}
     }
   end
 
-  defp reply("chat.postMessage", %{"channel" => "U4"}), do: %{ok: false, error: "cannot_dm_bot"}
   defp reply("chat.postMessage", _params), do: %{ok: true, ts: "9.9"}
-
-  defp reply("users.list", %{"cursor" => "page-2"}),
-    do: %{ok: true, members: [%{id: "U4", name: "bot"}], response_metadata: %{next_cursor: ""}}
-
-  defp reply("users.list", _params) do
-    members = Enum.map(@people, fn {id, name} -> %{id: id, name: name} end)
-
-    %{
-      ok: true,
-      members: [%{id: "U0", name: "gone", deleted: true} | members],
-      response_metadata: %{next_cursor: "page-2"}
-    }
-  end
-
-  defp reply("users.lookupByEmail", %{"email" => email}) do
-    case Enum.find(@people, fn {_id, name} -> "#{name}@example.com" == email end) do
-      {id, _name} -> %{ok: true, user: %{id: id}}
-      nil -> %{ok: false, error: "users_not_found"}
-    end
-  end
-
-  defp reply("chat.getPermalink", %{"message_ts" => ts}),
-    do: %{ok: true, permalink: "https://acme.slack.com/archives/C1/p#{ts}"}
 
   defp reply("apps.connections.open", _params), do: %{ok: false, error: "invalid_auth"}
   defp reply("auth.test", _params), do: %{ok: true, user: "wardrik", team: "Acme"}

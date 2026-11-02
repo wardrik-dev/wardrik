@@ -9,7 +9,8 @@ defmodule Wardrik.Channel.StoredTest do
   setup context do
     store = WardrikStore.ETS.new(name: :"store #{context.test}")
     name = :"wardrik #{context.test}"
-    chat = [installations: :stored, approvers: ["@maria"], test: self()]
+    members = {Wardrik.Test.Channel.Members, members: %{}}
+    chat = [installations: :stored, identities: members, test: self()]
 
     start_supervised!({WardrikStore, store})
 
@@ -17,6 +18,7 @@ defmodule Wardrik.Channel.StoredTest do
       {Wardrik,
        Wardrik.new(
          authorizer: {Wardrik.Test.Allow, []},
+         resolver: {Wardrik.Test.Owned, name},
          name: name,
          store: store,
          keys: [WardrikVault.generate_key()],
@@ -29,15 +31,13 @@ defmodule Wardrik.Channel.StoredTest do
   end
 
   test "keeps each workspace, with its token sealed", %{channel: channel, wardrik: wardrik} do
-    assert channel.approvers == ["@maria"]
     assert Channel.installation(channel, "T1") == :error
 
     installation = %Installation{
       channel: "chat",
       workspace: "T1",
       owner: "acme",
-      token: "xoxb-acme",
-      approvers: :anyone
+      token: "xoxb-acme"
     }
 
     assert Channel.install(channel, installation) == :ok
@@ -49,7 +49,10 @@ defmodule Wardrik.Channel.StoredTest do
     assert Channel.uninstall(channel, "T1") == :ok
   end
 
-  test "finds the workspace nearest an agent's owner", %{channel: channel} do
+  test "finds the workspaces an owner holds, exactly, for a resolver", %{
+    channel: channel,
+    wardrik: wardrik
+  } do
     installed = fn workspace, owner ->
       installation = %Installation{
         channel: "chat",
@@ -62,15 +65,16 @@ defmodule Wardrik.Channel.StoredTest do
       installation
     end
 
-    assert Channel.nearest(channel, "acme/triage") == :error
+    assert Wardrik.Channels.owned(wardrik, channel: "chat", owner: "acme") == []
 
     org = installed.("T1", "acme")
     jon = installed.("T2", "acme/@jon")
     installed.("T3", "globex")
 
-    assert Channel.nearest(channel, "acme/triage") == {:ok, org}
-    assert Channel.nearest(channel, "acme/@jon/digest") == {:ok, jon}
-    assert Channel.nearest(channel, "acme/@maria/digest") == {:ok, org}
+    assert Wardrik.Channels.owned(wardrik, channel: "chat", owner: "acme") == [org]
+    assert Wardrik.Channels.owned(wardrik, channel: "chat", owner: "acme/@jon") == [jon]
+    assert Wardrik.Channels.owned(wardrik, channel: "chat", owner: "acme/@maria") == []
+    assert Wardrik.Channels.owned(wardrik, channel: "teams", owner: "acme") == []
   end
 
   test "finds no channel by a name the Wardrik doesn't run", %{wardrik: wardrik} do

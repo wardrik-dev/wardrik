@@ -36,6 +36,7 @@ defmodule Wardrik.ChannelsTest do
       {Wardrik,
        Wardrik.new(
          authorizer: {Wardrik.Test.Allow, []},
+         resolver: {Wardrik.Test.Owned, name},
          name: name,
          store: store,
          channels: channels

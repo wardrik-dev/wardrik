@@ -29,6 +29,7 @@ defmodule Wardrik.DeclarationsTest do
       {Wardrik,
        Wardrik.new(
          authorizer: {Wardrik.Test.Allow, []},
+         resolver: {Wardrik.Test.Owned, name},
          name: name,
          store: store,
          declarations: {Wardrik.Test.Files, self()}

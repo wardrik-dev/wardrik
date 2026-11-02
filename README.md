@@ -26,6 +26,7 @@ end
 # config/runtime.exs
 config :my_app, MyApp.AgentRuntime,
   authorizer: {MyApp.Authorizer, []},
+  resolver: {MyApp.Agents, []},
   store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
   policy: [deny: ["shell/*"]]
 
@@ -33,8 +34,21 @@ config :my_app, MyApp.AgentRuntime,
 children = [MyApp.AgentRuntime]
 ```
 
-`:authorizer` is required. It's your app's `Wardrik.Authorizer`, which decides who may do what;
-see [Who may do what](pages/access.md).
+`:authorizer` and `:resolver` are required. `:authorizer` is your app's `Wardrik.Authorizer`,
+which decides who may do what; see [Who may do what](pages/access.md). `:resolver` is your app's
+`Wardrik.Resolver`, which says who each agent works for and what it reaches:
+
+```elixir
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  @impl true
+  def resolve(%Wardrik.Resolver.Request{agent: id}, _opts) do
+    agent = MyApp.Repo.get!(MyApp.Agent, id)
+    {:ok, %Wardrik.Resolved{principal: Wardrik.principal(agent.owner_id)}}
+  end
+end
+```
 
 Act as someone, and talk to agents:
 

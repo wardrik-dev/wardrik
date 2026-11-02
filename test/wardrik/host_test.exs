@@ -5,6 +5,7 @@ defmodule Wardrik.HostTest do
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
         name: MyApp.AgentRuntime,
         store: {WardrikStore.Ecto, url: "postgres://localhost/x"},
         discovery_interval_ms: 5_000
@@ -17,6 +18,7 @@ defmodule Wardrik.HostTest do
     assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.Ecto, config: MyApp.Repo}} =
              Wardrik.new(
                authorizer: {Wardrik.Test.Allow, []},
+               resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
                name: MyApp.AgentRuntime,
                store: {WardrikStore.Ecto, repo: MyApp.Repo}
              )

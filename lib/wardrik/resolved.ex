@@ -10,11 +10,14 @@ defmodule Wardrik.Resolved do
         notify: %{
           "ops" => "ops",
           "alerts" => {Wardrik.Notify.Webhook, url: "https://hooks.acme.test", secret: secret}
-        }
+        },
+        channels: %{"slack" => "T0123"},
+        workspaces: %{"acme/runbooks" => :read}
       }
 
-  An agent gets nothing it isn't given here: a name its definition uses that isn't in `:servers`
-  or `:notify` reaches nothing, whatever else is started under that name.
+  An agent gets nothing it isn't given here: a name its definition uses that isn't in `:servers`,
+  `:notify` or `:channels` reaches nothing, whatever else is started under that name, and it
+  mounts no workspace that isn't in `:workspaces`.
 
   ## Fields
 
@@ -32,6 +35,11 @@ defmodule Wardrik.Resolved do
     * `:notify` - the notify targets its `notify` reaches, by the name it uses, as the name of a
       target in `:notify`, or a target of your app's own as `{module, opts}`. See
       `Wardrik.Notify`.
+    * `:channels` - the workspace each channel posts its notices in, by the channel's name, as
+      the chat app names the workspace. A definition's `notify: "slack:#ops"` posts in `#ops` of
+      that workspace. A channel not named here posts nothing for the agent.
+    * `:workspaces` - other agents' workspaces it may mount, by their IDs, each `:read` or
+      `:write`. See `Wardrik.Workspaces`.
   """
 
   defstruct principal: nil,
@@ -40,7 +48,9 @@ defmodule Wardrik.Resolved do
             defaults: %{},
             middleware: [],
             servers: %{},
-            notify: %{}
+            notify: %{},
+            channels: %{},
+            workspaces: %{}
 
   @type t() :: %__MODULE__{
           principal: WardrikCore.Principal.t() | nil,
@@ -49,7 +59,9 @@ defmodule Wardrik.Resolved do
           defaults: map(),
           middleware: [WardrikCore.Context.entry()],
           servers: %{optional(String.t()) => String.t()},
-          notify: notify()
+          notify: notify(),
+          channels: %{optional(String.t()) => String.t()},
+          workspaces: %{optional(String.t()) => :read | :write}
         }
 
   @typedoc "Notify targets by the name an agent's definition uses."

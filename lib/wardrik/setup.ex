@@ -22,7 +22,6 @@ defmodule Wardrik.Setup do
       notify: Wardrik.Notify.settings(opts[:notify]),
       declarations: opts[:declarations],
       resolver: opts[:resolver],
-      workspace: Wardrik.Workspaces.settings(opts[:workspace]),
       defaults: Wardrik.Type.json(opts[:defaults]),
       triggers: opts[:triggers],
       deployment: opts[:deployment],

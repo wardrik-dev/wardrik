@@ -17,6 +17,7 @@ defmodule Wardrik.Test.HTTP do
          [
            name: name,
            authorizer: {Wardrik.Test.Allow, []},
+           resolver: {Wardrik.Test.Owned, name},
            store: store,
            deployment: "test",
            keys: [WardrikVault.generate_key()],

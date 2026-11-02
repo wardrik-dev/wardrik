@@ -23,8 +23,11 @@ defmodule Wardrik.Test.Board do
   def request(_request, _opts), do: %{status: 404, headers: %{}, body: ""}
 
   @impl Wardrik.Channel
-  def notify(%{room: room, notice: notice, approvers: approvers}, opts) do
-    send(opts[:test], {:posted, opts[:channel], room, notice, approvers})
+  def notify(
+        %Wardrik.Channel.Notification{workspace: workspace, room: room, notice: notice},
+        opts
+      ) do
+    send(opts[:test], {:posted, opts[:channel], workspace, room, notice})
     :ok
   end
 end
@@ -62,12 +65,15 @@ defmodule Wardrik.NotifyTest do
          url: "https://hooks.example.com/wardrik",
          secret: {:secret, "HOOK_SECRET"},
          req_options: [plug: {Req.Test, __MODULE__}]},
-      ops: {Wardrik.Notify.Room, channel: "board", room: "#ops", approvers: ["@maria"]}
+      ops: {Wardrik.Notify.Room, channel: "board", room: "#ops"}
     ]
 
     wardrik =
       Wardrik.new(
         authorizer: {Wardrik.Test.Authorizer, test: self()},
+        resolver:
+          {Wardrik.Test.Owned,
+           {:"wardrik #{context.test}", channels: Map.get(context, :channels, %{"board" => "W1"})}},
         name: :"wardrik #{context.test}",
         store: store,
         keys: [WardrikVault.generate_key()],
@@ -208,13 +214,32 @@ defmodule Wardrik.NotifyTest do
       assert_receive {:told, "audit", %Notice{kind: :failed}}
     end
 
-    test "posts in a channel's room, asking a target's approvers", %{scope: scope} do
+    test "posts in a channel's room, in the workspace the agent's resolver gives", %{
+      scope: scope
+    } do
       model({:error, :boom})
       {:ok, _agent} = define(scope, ["board:#updates", "ops"])
       ask(scope)
 
-      assert_receive {:posted, "board", "#updates", %Notice{kind: :failed}, []}
-      assert_receive {:posted, "board", "#ops", %Notice{kind: :failed}, ["@maria"]}
+      assert_receive {:posted, "board", "W1", "#updates", %Notice{kind: :failed}}
+      assert_receive {:posted, "board", "W1", "#ops", %Notice{kind: :failed}}
+    end
+
+    @tag channels: %{"board" => "W2"}
+    test "posts only in the workspace the resolver gives, never another", %{wardrik: wardrik} do
+      assert Wardrik.Notify.deliver(wardrik, "board:#updates", failed()) == :ok
+      assert_receive {:posted, "board", "W2", "#updates", %Notice{}}
+      refute_received {:posted, "board", "W1", _room, _notice}
+    end
+
+    @tag channels: %{}
+    test "skips a channel's room when the agent's resolver gives it no workspace there", %{
+      wardrik: wardrik
+    } do
+      assert {:skip, why} = Wardrik.Notify.deliver(wardrik, "board:#updates", failed())
+      assert why =~ "no workspace in board"
+      assert {:skip, _why} = Wardrik.Notify.deliver(wardrik, "ops", failed())
+      refute_received {:posted, _channel, _workspace, _room, _notice}
     end
 
     test "posts signed JSON to a webhook", %{scope: scope} do
@@ -308,7 +333,7 @@ defmodule Wardrik.NotifyTest do
                )
 
       assert hook[:secret] == {:secret, "HOOK_SECRET"} and hook[:req_options] == []
-      assert ops[:approvers] == []
+      assert ops == [channel: "board", room: "#ops"]
     end
   end
 

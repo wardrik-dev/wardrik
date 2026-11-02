@@ -1,26 +1,25 @@
 defmodule Wardrik.Workspaces do
   @moduledoc """
-  Gives agents files: a tree of their own, shared trees, and files read into every turn.
+  Gives agents files: a workspace of their own, other agents' workspaces, and files read into
+  every turn.
 
   In a definition, `files` in `tools` adds the file tools, `context` lists files to read into
-  every turn, and `workspace.shared` mounts shared trees:
+  every turn, and `workspace.shared` mounts other agents' workspaces, each by its agent's ID:
 
       tools: [files]
-      context: [MEMORY.md]
+      context: [MEMORY.md, shared/runbooks/deploy.md]
       workspace:
         shared:
-          team: acme
-          runbooks: {tree: acme/runbooks, mode: read}
+          runbooks: acme/runbooks
+          notes: {agent: acme/@jon/notes, mode: read}
 
-  Trees are named `org`, `org/name` or `org/@user/name`. The owner the name starts with can mount
-  it: acme's agents can mount `acme` and `acme/runbooks`, and jon's can mount `acme/@jon/notes`.
+  An agent mounts only the workspaces its resolver shares, in `Wardrik.Resolved`'s
+  `:workspaces`, each `:read` or `:write`:
 
-  Other agents can only mount a tree that Wardrik's `:workspace` option shares, by agent ID
-  pattern, where `*` matches any run of characters, `/` included:
+      %Wardrik.Resolved{workspaces: %{"acme/runbooks" => :write, "acme/@jon/notes" => :read}}
 
-      workspace: [shared: %{"acme/runbooks" => [read: ["acme/*"], write: ["acme/ops", "acme/ops/*"]]}]
-
-  An agent's conversations share its tree.
+  A mount gets the access shared, or `mode: read` to mount a write share read only. Asking to
+  write a read share is refused. An agent's conversations share its workspace.
 
   ## Context
 
@@ -30,7 +29,6 @@ defmodule Wardrik.Workspaces do
 
   alias Wardrik.AgentID
   alias Wardrik.Error
-  alias WardrikEvents.Pattern
   alias WardrikWorkspace.Mount
 
   @max_files 20
@@ -38,7 +36,7 @@ defmodule Wardrik.Workspaces do
 
   @doc """
   Returns the capabilities and middleware for the workspace of the `:agent` by its ID, from its
-  `:definition`.
+  `:definition` and the `:workspaces` its resolver shares.
 
   Capabilities hold the file tools if `:files` is `true`. Middleware reads `context` into every
   turn. Returns an `invalid_request` error if the workspace or `context` is invalid.
@@ -46,17 +44,23 @@ defmodule Wardrik.Workspaces do
       Wardrik.Workspaces.resolve(wardrik,
         agent: "acme/triage",
         definition: definition,
+        workspaces: %{"acme/runbooks" => :read},
         files: true
       )
   """
-  @spec resolve(Wardrik.t(), agent: String.t(), definition: map(), files: boolean()) ::
-          {:ok, [capabilities: list(), middleware: list()]} | {:error, Error.t()}
+  @spec resolve(Wardrik.t(),
+          agent: String.t(),
+          definition: map(),
+          workspaces: %{String.t() => :read | :write},
+          files: boolean()
+        ) :: {:ok, [capabilities: list(), middleware: list()]} | {:error, Error.t()}
   def resolve(wardrik, args) do
     id = Keyword.fetch!(args, :agent)
     definition = Keyword.fetch!(args, :definition)
     files? = Keyword.fetch!(args, :files)
+    shares = Keyword.fetch!(args, :workspaces)
 
-    with {:ok, shared} <- shared(wardrik, id, get_in(definition, ["workspace", "shared"]) || %{}),
+    with {:ok, shared} <- shared(id, shares, get_in(definition, ["workspace", "shared"]) || %{}),
          {:ok, context} <- context(definition["context"]) do
       base = [store: wardrik.store, tree: tree(id), shared: shared]
 
@@ -70,24 +74,10 @@ defmodule Wardrik.Workspaces do
 
   @doc "Returns the agent `id`'s own tree. A conversation uses its agent's."
   @spec tree(String.t()) :: String.t()
-  def tree(id) do
-    {:ok, %AgentID{owner: owner, name: name}} = AgentID.parse(id)
-    "agents/" <> owner <> "/agent/" <> name
-  end
+  def tree(id), do: "agents/" <> AgentID.agent(id)
 
-  @doc "Returns the `:workspace` option as each shared tree's read and write patterns."
-  @spec settings(keyword() | nil) :: %{String.t() => %{read: [String.t()], write: [String.t()]}}
-  def settings(nil), do: %{}
-
-  def settings(opts) do
-    for {tree, rule} <- Keyword.get(opts, :shared, %{}), into: %{} do
-      {to_string(tree),
-       %{read: Keyword.get(rule, :read, []), write: Keyword.get(rule, :write, [])}}
-    end
-  end
-
-  defp shared(wardrik, id, shared) do
-    mounts = Enum.map(shared, fn {name, mount} -> mount(wardrik, id, name, mount) end)
+  defp shared(id, shares, shared) do
+    mounts = Enum.map(shared, fn {name, mount} -> mount(id, shares, name, mount) end)
 
     case Enum.find(mounts, &match?({:error, _error}, &1)) do
       nil -> {:ok, Enum.map(mounts, fn {:ok, mount} -> mount end)}
@@ -95,15 +85,13 @@ defmodule Wardrik.Workspaces do
     end
   end
 
-  defp mount(wardrik, id, name, tree) when is_binary(tree),
-    do: mount(wardrik, id, name, %{"tree" => tree})
+  defp mount(id, shares, name, agent) when is_binary(agent),
+    do: mount(id, shares, name, %{"agent" => agent})
 
-  defp mount(wardrik, id, name, %{"tree" => tree} = mount) do
-    mode = if mount["mode"] == "read", do: :read, else: :write
-
+  defp mount(id, shares, name, %{"agent" => agent} = mount) do
     with :ok <- named(name),
-         :ok <- reached(wardrik, id, tree, mode),
-         do: {:ok, %Mount{name: name, tree: "shared/" <> tree, mode: mode}}
+         {:ok, mode} <- access(id, Map.get(shares, agent), agent, mount["mode"]),
+         do: {:ok, %Mount{name: name, tree: tree(agent), mode: mode}}
   end
 
   defp named(name) do
@@ -112,36 +100,14 @@ defmodule Wardrik.Workspaces do
       else: invalid("A shared tree's name, #{inspect(name)}, is letters, digits, - and _.")
   end
 
-  defp reached(wardrik, id, tree, mode) do
-    {:ok, %AgentID{owner: owner}} = AgentID.parse(id)
+  defp access(id, nil, agent, _mode),
+    do: invalid("#{id} can't mount #{agent}'s workspace: its resolver doesn't share it.")
 
-    cond do
-      owner(tree) == {:ok, owner} ->
-        :ok
+  defp access(id, :read, agent, "write"),
+    do: invalid("#{id} can't write #{agent}'s workspace: its resolver shares it to read.")
 
-      shares?(Map.get(wardrik.workspace, tree), id, mode) ->
-        :ok
-
-      true ->
-        invalid(
-          "#{id} can't #{mode} the tree #{tree}: it isn't its owner's, and the Wardrik doesn't share it so."
-        )
-    end
-  end
-
-  defp owner(tree) do
-    case String.split(tree, "/") do
-      [org] -> {:ok, org}
-      [org, "@" <> _user = user, _name] -> {:ok, org <> "/" <> user}
-      [org, name] when binary_part(name, 0, 1) != "@" -> {:ok, org}
-      _other -> :error
-    end
-  end
-
-  defp shares?(nil, _id, _mode), do: false
-
-  defp shares?(rule, id, :read), do: Enum.any?(rule.read ++ rule.write, &Pattern.covers?(&1, id))
-  defp shares?(rule, id, :write), do: Enum.any?(rule.write, &Pattern.covers?(&1, id))
+  defp access(_id, _shared, _agent, "read"), do: {:ok, :read}
+  defp access(_id, shared, _agent, _mode), do: {:ok, shared}
 
   defp context(nil), do: {:ok, nil}
   defp context(files) when is_list(files), do: context(%{"files" => files})

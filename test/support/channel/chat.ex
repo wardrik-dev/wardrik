@@ -1,5 +1,5 @@
 defmodule Wardrik.Test.Channel.Chat do
-  @moduledoc "A chat app that sends the test what it's asked to post, and knows people by `@name`."
+  @moduledoc "A chat app that sends the test what it's asked to post."
 
   use WardrikChannel
 
@@ -25,9 +25,20 @@ defmodule Wardrik.Test.Channel.Chat do
     send(channel.options[:test], {:delivered, outbound})
     :ok
   end
+end
 
-  @impl WardrikChannel
-  def include?(%{names: names, member: member}, _channel), do: ("@" <> member.name) in names
+defmodule Wardrik.Test.Channel.Members do
+  @moduledoc "Knows the chat members of `:members` as their users, by member ID, as a host would."
+
+  @behaviour WardrikChannel.Identities
+
+  @impl WardrikChannel.Identities
+  def identify(%WardrikChannel.Identities.Request{member: member, name: name}, opts) do
+    case Map.fetch(Keyword.fetch!(opts, :members), member) do
+      {:ok, user} -> {:ok, %WardrikCore.Principal{id: user, attributes: %{name: name}}}
+      :error -> {:error, "Nobody here knows you yet."}
+    end
+  end
 end
 
 defmodule Wardrik.Test.Channel.Tools do
@@ -60,6 +71,11 @@ defmodule Wardrik.Test.Channel do
 
   @model "anthropic:claude-haiku-4-5"
 
+  @members %{"U1" => "acme/@maria", "U2" => "acme/@jon", "U3" => "acme/@ana"}
+
+  @doc "Returns the users the test's chat members are, by member ID."
+  def members, do: @members
+
   def start_wardrik(context) do
     store = WardrikStore.ETS.new(name: :"store #{context.test}")
     name = :"wardrik #{context.test}"
@@ -68,7 +84,7 @@ defmodule Wardrik.Test.Channel do
     chat = [
       token: "xoxb-test",
       owner: "acme",
-      approvers: ["@maria"],
+      identities: {Wardrik.Test.Channel.Members, members: @members},
       test: self(),
       refusals: refusals
     ]
@@ -79,6 +95,7 @@ defmodule Wardrik.Test.Channel do
       {Wardrik,
        Wardrik.new(
          authorizer: {Wardrik.Test.Deciders, []},
+         resolver: {Wardrik.Test.Owned, {name, channels: %{"chat" => "T1"}}},
          name: name,
          store: store,
          channels: [chat: {Wardrik.Test.Channel.Chat, chat}],

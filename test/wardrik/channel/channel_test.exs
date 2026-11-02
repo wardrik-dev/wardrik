@@ -44,7 +44,7 @@ defmodule Wardrik.Channel.PackageTest do
 
       assert [%Wardrik.Event{type: "wardrik.room.bound", data: data}] = audited(context.owner)
       assert %{"room" => "C1", "agent" => %{"id" => "acme/triage"}, "actor" => actor} = data
-      assert actor == %{"id" => "chat:T1/U1", "name" => "maria"}
+      assert actor == %{"id" => "acme/@maria", "name" => "maria"}
     end
 
     test "offers a choice of several, and nothing where none is offered", context do
@@ -197,9 +197,7 @@ defmodule Wardrik.Channel.PackageTest do
       answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Done.")])
       WardrikChannel.received(context.workspace, mention("Echo hi", "1.1"))
 
-      assert_receive {:delivered,
-                      %Outbound{approvers: ["@maria"], body: {:waiting, [%Waiting{} = waiting]}}},
-                     1_000
+      assert_receive {:delivered, %Outbound{body: {:waiting, [%Waiting{} = waiting]}}}, 1_000
 
       %{waiting: waiting}
     end
@@ -209,11 +207,11 @@ defmodule Wardrik.Channel.PackageTest do
                conversation: "acme/triage/chat.T1.C1.1.1",
                interrupt: %Wardrik.Interrupt{id: "call_1", name: "echo"},
                arguments: %{"text" => "hi"},
-               asked_by: "chat:T1/U3"
+               asked_by: "acme/@ana"
              } = waiting
     end
 
-    test "lets an approver decide, and says who did", context do
+    test "lets a member whose own binding allows it decide, and says who did", context do
       answer = %Answer{
         member: @maria,
         conversation: context.waiting.conversation,
@@ -262,28 +260,41 @@ defmodule Wardrik.Channel.PackageTest do
       assert {:asked, _conversation} =
                WardrikChannel.received(context.workspace, reply("Well?", "1.1", "1.2"))
 
-      assert_receive {:delivered,
-                      %Outbound{body: {:waiting, [%Waiting{asked_by: "chat:T1/U3"}]}}},
+      assert_receive {:delivered, %Outbound{body: {:waiting, [%Waiting{asked_by: "acme/@ana"}]}}},
                      1_000
     end
   end
 
-  describe "approvers" do
-    test "are the people named, anyone, or nobody", %{workspace: workspace} do
-      assert WardrikChannel.Workspace.approver?(workspace, @maria)
-      refute WardrikChannel.Workspace.approver?(workspace, @jon)
+  describe "members your app doesn't know" do
+    test "can't ask or decide, and are told why", context do
+      define(context.owner, "acme/triage", channels: ["chat"])
+      Rooms.joined(context.workspace, "C1")
+      stranger = %Member{id: "U9", name: "stranger"}
 
-      anyone = put_in(workspace.installation.approvers, :anyone)
-      assert WardrikChannel.Workspace.approver?(anyone, @jon)
+      assert WardrikChannel.received(context.workspace, mention("Hi", "1.1", stranger)) ==
+               {:error, "Nobody here knows you yet."}
 
-      nobody = put_in(workspace.installation.approvers, [])
-      refute WardrikChannel.Workspace.approver?(nobody, @maria)
+      answer = %Answer{
+        member: stranger,
+        conversation: "acme/triage/chat.T1.C1.1.1",
+        interrupt: "call_1",
+        decision: {:approve, nil}
+      }
+
+      assert WardrikChannel.decide(context.workspace, answer) ==
+               {:error, "Nobody here knows you yet."}
     end
   end
 
   describe "channels" do
     test "is named in lower-case letters, digits and -, and says where it's added" do
-      passed = [server: Wardrik, wardrik: :w, events: :e, store: nil]
+      passed = [
+        server: Wardrik,
+        wardrik: :w,
+        events: :e,
+        store: nil,
+        identities: {Wardrik.Test.Channel.Members, members: %{}}
+      ]
 
       assert_raise ArgumentError, ~r/lower-case/, fn ->
         WardrikChannel.channel(Wardrik.Test.Channel.Chat, [channel: "Chat", token: "t"] ++ passed)
@@ -322,7 +333,8 @@ defmodule Wardrik.Channel.PackageTest do
   end
 
   describe "notices" do
-    test "posts a notice in the room itself, through the owner's workspace", context do
+    test "posts a notice in the room itself, in the workspace the agent's resolver gives",
+         context do
       notice = %Wardrik.Notice{
         agent: "acme/digest",
         kind: :finished,
@@ -332,33 +344,14 @@ defmodule Wardrik.Channel.PackageTest do
 
       {:ok, {adapter, opts}} = Wardrik.Operations.Channels.fetch(context.wardrik, "chat")
 
-      notification = %Wardrik.Channel.Notification{
-        room: "#news",
-        notice: notice,
-        approvers: ["@maria"]
-      }
+      notification = %Wardrik.Channel.Notification{workspace: "T1", room: "#news", notice: notice}
 
       assert adapter.notify(notification, opts) == :ok
 
       assert_receive {:delivered,
-                      %Outbound{
-                        room: "#news",
-                        thread: nil,
-                        body: {:notice, ^notice},
-                        approvers: ["@maria"]
-                      } =
-                        outbound}
+                      %Outbound{room: "#news", thread: nil, body: {:notice, ^notice}} = outbound}
 
-      assert outbound.installation.owner == "acme"
-
-      assert {:skip, _why} =
-               adapter.notify(
-                 %Wardrik.Channel.Notification{
-                   room: "#news",
-                   notice: %{notice | agent: "globex/digest"}
-                 },
-                 opts
-               )
+      assert outbound.installation.workspace == "T1"
     end
 
     test "reads a parked turn's calls from its notice" do

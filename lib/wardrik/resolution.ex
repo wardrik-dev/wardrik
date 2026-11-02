@@ -47,6 +47,7 @@ defmodule Wardrik.Resolution do
            Wardrik.Workspaces.resolve(wardrik,
              agent: id,
              definition: definition,
+             workspaces: resolved.workspaces,
              files: files?(definition)
            ),
          :ok <- channels(wardrik, Map.get(definition, "channels", [])),

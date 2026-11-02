@@ -1,6 +1,6 @@
 defmodule Wardrik.AgentTools do
   @moduledoc """
-  Tools that let an agent work with agents: `agents/*` for the other agents in its org, and
+  Tools that let an agent work with agents: `agents/*` for the other agents it may reach, and
   `self/*` for itself.
 
   Each tool runs a catalog operation through `Wardrik.run/3` for the principal the agent resolves
@@ -9,14 +9,14 @@ defmodule Wardrik.AgentTools do
 
   | Tool | What it does |
   | --- | --- |
-  | `agents_list` | Lists the org's agents and what each is doing. |
+  | `agents_list` | Lists the agents it may read and what each is doing. |
   | `agent_read`, `self_read` | Reads an agent's status and what it waits on. |
   | `agent_definition_read`, `self_definition_read` | Reads a definition. |
   | `agent_ask` | Sends an agent a message. The answer comes back later as a message. |
   | `agent_define` | Defines or redefines a worker. |
   | `agent_trigger_set`, `agent_trigger_remove`, `self_trigger_set`, `self_trigger_remove` | Changes triggers. |
 
-  Agents are named within the org, as `reconciler`, or `@jon/reconciler` for a person's agent.
+  Agents are named by their exact IDs, as `acme/reconciler`.
 
     * Reads always run.
     * Changes are `gated`: they wait on a person unless the agent's policy allows them by name,
@@ -35,7 +35,7 @@ defmodule Wardrik.AgentTools do
   @agent [
     type: :string,
     required: true,
-    doc: "The agent, by its name in your org, as reconciler or @jon/reconciler"
+    doc: "The agent's ID, as agents_list gives it"
   ]
   @trigger [type: :string, required: true, doc: "The trigger's name"]
 
@@ -46,7 +46,6 @@ defmodule Wardrik.AgentTools do
     offered(Keyword.fetch!(opts, :reach), %{
       wardrik: wardrik,
       id: id,
-      org: Wardrik.Owners.org(id),
       principal: principal,
       policy: nil,
       labels: []
@@ -55,30 +54,35 @@ defmodule Wardrik.AgentTools do
 
   defp offered(:agents, me) do
     [
-      read("agents_list", "List the agents of your org, and what each is doing.", [], fn _args ->
-        listed(me)
-      end),
+      read(
+        "agents_list",
+        "List the agents you may reach, and what each is doing.",
+        [],
+        fn _args ->
+          listed(me)
+        end
+      ),
       read(
         "agent_read",
         "Read an agent's snapshot: its status, and what it waits on.",
         [agent: @agent],
-        &run(me, "agent.read", %{"agent" => named(me, &1.agent)})
+        &run(me, "agent.read", %{"agent" => &1.agent})
       ),
       read(
         "agent_definition_read",
         "Read an agent's definition.",
         [agent: @agent],
-        &run(me, "agent.definition", %{"agent" => named(me, &1.agent)})
+        &run(me, "agent.definition", %{"agent" => &1.agent})
       ),
       change(
         "agent_ask",
         "Send an agent a message. This answers at once; the agent's answer comes back to you later as a message of its own.",
         [agent: @agent, content: [type: :string, required: true, doc: "What you ask it"]],
-        &asked(me, named(me, &1.agent), &1.content, &2)
+        &asked(me, &1.agent, &1.content, &2)
       ),
       change(
         "agent_define",
-        "Define an agent of your org as a worker, or define it again: its description, instructions, tools and triggers, as a definition takes them. It's held to your policy.",
+        "Define an agent as a worker, or define it again: its description, instructions, tools and triggers, as a definition takes them. It's held to your policy.",
         [
           agent: @agent,
           definition: [
@@ -87,20 +91,20 @@ defmodule Wardrik.AgentTools do
             doc: "The definition, as model, instructions, tools, triggers and the rest"
           ]
         ],
-        &defined(me, named(me, &1.agent), &1.definition)
+        &defined(me, &1.agent, &1.definition)
       ),
       change(
         "agent_trigger_set",
         "Set one of an agent's triggers: every, with a prompt, or a feed or webhook.",
         [agent: @agent, trigger: @trigger, fields: trigger_fields()],
-        &set(me, named(me, &1.agent), &1)
+        &set(me, &1.agent, &1)
       ),
       change(
         "agent_trigger_remove",
         "Remove one of an agent's triggers.",
         [agent: @agent, trigger: @trigger],
         &run(me, "agent.trigger_remove", %{
-          "agent" => named(me, &1.agent),
+          "agent" => &1.agent,
           "trigger" => &1.trigger
         })
       )
@@ -169,7 +173,6 @@ defmodule Wardrik.AgentTools do
          "agents" =>
            for(
              agent <- agents,
-             Wardrik.Owners.org(agent["id"]) == me.org,
              not AgentID.conversation?(agent["id"]),
              do: Map.take(agent, ["id", "status"])
            )
@@ -230,7 +233,4 @@ defmodule Wardrik.AgentTools do
     scope = Wardrik.as(wardrik, principal, actor: {:agent, AgentID.agent(id)})
     %{scope | policy: policy, labels: labels}
   end
-
-  defp named(me, "@" <> _user = name), do: me.org <> "/" <> name
-  defp named(me, name), do: me.org <> "/" <> String.trim_leading(name, me.org <> "/")
 end

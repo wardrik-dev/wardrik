@@ -25,6 +25,9 @@ defmodule Wardrik.Channels do
           workspace: installation.workspace
         )
 
+      # The workspaces an owner added, as for your resolver's `:channels`
+      [installation | _rest] = Wardrik.Channels.owned(MyApp.AgentRuntime, channel: "slack", owner: "acme")
+
   The channel's adapter, such as `WardrikSlack`, does the work. Returns an error if the adapter
   doesn't support it.
   """
@@ -74,6 +77,24 @@ defmodule Wardrik.Channels do
       adapted(instance, Keyword.fetch!(args, :channel), :uninstall, [
         Keyword.fetch!(args, :workspace)
       ])
+
+  @doc """
+  Returns the `:channel`'s installations whose owner is `:owner`, exactly, as your app named them.
+  Returns `[]` if there's no such channel.
+  """
+  @spec owned(atom(), channel: String.t(), owner: String.t()) :: [Installation.t()]
+  def owned(instance, args) do
+    case fetched(instance, Keyword.fetch!(args, :channel)) do
+      {:ok, {adapter, opts}} ->
+        WardrikChannel.Channel.owned(
+          WardrikChannel.channel(adapter, opts),
+          Keyword.fetch!(args, :owner)
+        )
+
+      {:error, _why} ->
+        []
+    end
+  end
 
   defp adapted(instance, name, callback, arguments) do
     with {:ok, {adapter, opts}} <- fetched(instance, name),

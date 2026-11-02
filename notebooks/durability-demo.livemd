@@ -90,11 +90,21 @@ defmodule MyApp.AllowAll do
   def authorize(_request, _opts), do: :ok
 end
 
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent here works for Maria.
+  @impl true
+  def resolve(_request, _opts),
+    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+end
+
 dir = Path.join(System.tmp_dir!(), "wardrik-#{System.unique_integer([:positive])}")
 
 opts = [
   name: MyApp.AgentRuntime,
   authorizer: {MyApp.AllowAll, []},
+  resolver: {MyApp.Agents, []},
   capabilities: [shop: MyApp.Shop],
   store: {WardrikStore.EKV, data_dir: dir},
   discovery_interval_ms: 1_000
