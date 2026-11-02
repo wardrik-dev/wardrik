@@ -13,7 +13,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:maria, U0G9QF9C6: user:jon}
+    members: {U024BE7LH: user:default/@maria, U0G9QF9C6: user:default/@jon}
 ```
 
 Slack sends events over HTTPS, so the daemon needs a [public address](/run/public-address/). To
@@ -139,7 +139,7 @@ and a box for a note. Once decided, the buttons give way to who decided:
 roles:
   approver: {rules: [{verbs: [approve, deny, decide], kinds: [agent], names: [books]}]}
 bindings:
-  - {org: default, role: approver, subjects: [user:maria]}
+  - {org: default, role: approver, subjects: [user:default/@maria]}
 ```
 
 A trigger's turn has nobody who asked. Decide it with `wardrik approval approve`.

@@ -25,12 +25,12 @@ channels:
     type: slack
     token: ${PAYMENTS_SLACK_BOT_TOKEN}
     signing_secret: ${PAYMENTS_SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:ana}
+    members: {U024BE7LH: user:payments/@ana}
   growth-slack:
     type: slack
     token: ${GROWTH_SLACK_BOT_TOKEN}
     signing_secret: ${GROWTH_SLACK_SIGNING_SECRET}
-    members: {U0G9QF9C6: user:li}
+    members: {U0G9QF9C6: user:growth/@li}
 
 orgs:
   payments: {mcp: [stripe, github], channels: [payments-slack], policy: payments-limits}
@@ -44,7 +44,7 @@ roles:
 bindings:
   - {org: payments, role: builder, subjects: [group:payments-eng]}
   - {org: growth, role: builder, subjects: [group:growth-eng]}
-  - {org: "*", role: auditor, subjects: [user:security]}
+  - {org: "*", role: auditor, subjects: [user:platform/@security]}
 ```
 
 - `orgs` says what each team's agents use, and the policy that holds all of them.
@@ -76,7 +76,7 @@ wardrik doctor
 Give each engineer a token:
 
 ```sh
-wardrik token create ana-laptop --subject user:ana --groups payments-eng
+wardrik token create ana-laptop --subject user:payments/@ana --groups payments-eng
 ```
 
 Ana makes an agent in her team's org:

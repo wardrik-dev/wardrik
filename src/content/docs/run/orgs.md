@@ -52,10 +52,12 @@ roles:
   `connection`, `deployment` and `token`.
 - `names` lists agents by name, and anything else by ID.
 - Making an agent is `create` on `agent`. A rule with `names` doesn't allow it.
+- Removing a secret, server, webhook, OAuth app, connection or token is `delete`. Adding one
+  doesn't allow it.
 
 A binding gives a role to subjects in one org:
 
-- `user:ID`: a person, as the token names them.
+- `user:ORG/@NAME`: a person, as `user:acme/@jon`.
 - `group:NAME`: everyone whose token lists the group.
 - `agent:NAME`: the agent of that name in the binding's org, acting through its tools.
 
@@ -100,7 +102,7 @@ bindings:
 ```
 
 - `names` lists the subjects it may make tokens for.
-- Listing tokens is `read`, and revoking one is `revoke` on its ID.
+- Listing tokens is `read`, and revoking one is `delete` on its ID.
 - Only the admin makes a token for `user:admin`.
 
 ## The `wardrik` command's token

@@ -62,18 +62,18 @@ await wardrik.work({ signal: stop.signal });
 
 ## 3. Connect it
 
-Let the user `statuspage` serve tools to the org's agents:
+Let the user `default/@statuspage` serve tools to the org's agents:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 roles:
   tools: {rules: [{verbs: [serve], kinds: [agent]}]}
 bindings:
-  - {org: default, role: tools, subjects: [user:statuspage]}
+  - {org: default, role: tools, subjects: [user:default/@statuspage]}
 ```
 
 ```sh
 systemctl --user restart wardrik
-wardrik token create statuspage --subject user:statuspage
+wardrik token create statuspage --subject user:default/@statuspage
 ```
 
 ```sh

@@ -79,11 +79,11 @@ tools: [web_search, files, github/*, agents/*]
 tools: [files]
 workspace:
   shared:
-    team: runbooks                         # the runbooks agent's workspace, at shared/team/
-    notes: {agent: notes, mode: read}
+    team: agent:runbooks                   # the runbooks agent's workspace, at shared/team/
+    notes: {agent: agent:notes, mode: read}
 ```
 
-- Each entry is an agent's name in the same org, or `agent` and `mode` (`read` or `write`).
+- Each entry is an agent in the same org, as `agent:NAME`, or `agent` and `mode` (`read` or `write`).
 - It's mounted at `shared/<name>/`.
 - It mounts only what `config.yaml`'s [`workspace.shared`](/reference/config/#workspace) allows.
   `mode: read` mounts a writable share read-only.

@@ -44,10 +44,10 @@ run: async ({ order_id }) => {
 
 ## Whose call it is
 
-`agent.key` is the calling agent's ID, set by Wardrik, never by the model. Use it to scope data:
+`agent` is the calling agent's ID, set by Wardrik, never by the model. Use it to scope data:
 
 ```ts
-run: (_args, { agent }) => db.orders.where({ agent: agent?.key }),
+run: (_args, { agent }) => db.orders.where({ agent }),
 ```
 
 ## What a call cost

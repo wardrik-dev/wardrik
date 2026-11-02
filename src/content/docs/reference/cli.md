@@ -52,8 +52,8 @@ wardrik completion fish > ~/.config/fish/completions/wardrik.fish
 | `agent kill AGENT CALL` | stops one tool call |
 | `agent move AGENT NODE` | restarts it on another node |
 
-A `QUERY` is words that must all match: text in the name or ID, `name:`, `org:`, `user:`, `node:`,
-`status:idle|running|parked|asleep`, or `attention` (waiting on a person).
+A `QUERY` is words that must all match: text in the name or ID, `name:`, `org:`, `user:` (as
+`user:acme/@jon`), `node:`, `status:idle|running|parked|asleep`, or `attention` (waiting on a person).
 
 ```sh
 wardrik ls status:parked
@@ -152,13 +152,14 @@ echo "$ANTHROPIC_API_KEY" | wardrik vault put ANTHROPIC_API_KEY --for api_key --
 | `token ls` | lists tokens, never their secrets |
 | `token revoke ID` | stops a token at once |
 
-- `--subject` is `user:ID`, or `agent:NAME` for an agent's own, as `agent:growth/triage`.
+- `--subject` is a person, as `user:acme/@ana`, or `agent:NAME` for an agent's own, as
+  `agent:triage` or `agent:growth/triage`.
 - `--groups` are the groups [bindings](/reference/config/#roles-and-bindings) can name.
 - `--expires` takes `s`, `m`, `h` or `d`; `30d` unless set.
 - It needs a binding on `token` in `"*"`. Only the admin makes a `user:admin` token.
 
 ```sh
-wardrik token create ana-laptop --subject user:ana --groups payments-eng --expires 30d
+wardrik token create ana-laptop --subject user:acme/@ana --groups payments-eng --expires 30d
 wardrik token revoke mzxw6ytboi
 ```
 

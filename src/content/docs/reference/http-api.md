@@ -13,7 +13,7 @@ curl $WARDRIK_URL/v1/agents -H "Authorization: Bearer $WARDRIK_TOKEN"
 - The daemon listens on `127.0.0.1:4747`. [`http`](/reference/config/#http) in `config.yaml` moves it.
 - Every request sends `Authorization: Bearer <token>`. Make one with [`wardrik token create`](/reference/cli/#tokens).
   Webhooks and chat apps send none.
-- Bodies are JSON, up to 8 MB.
+- Bodies are JSON, up to 8 MB. Webhooks and chat apps send their own bodies, as they are.
 - Every response has a `request-id` header. It's yours if you sent one.
 - `GET /v1/openapi.json` returns the OpenAPI 3.1 document for the library's routes.
   The daemon's own routes (`/v1/owners/...`, `/v1/connections`, `/v1/tokens`) are in `wardrik_daemon`'s
@@ -55,6 +55,10 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/conversations/C1/messages \
 These routes take the conversation form: read, clear (`DELETE .../conversations/{conversation}`),
 messages, decisions, approve, deny, authorization, cancel, stop, events, timeline, runs, calls, stop a
 call, and move.
+
+- Clearing a conversation empties its history. The conversation's ID still takes messages.
+- In `openapi.json`, a conversation route has no `operationId`. Its `x-wardrik-operation` names the
+  operation it serves, such as `agent.ask`.
 
 ## Agents
 
@@ -181,11 +185,12 @@ curl -X POST $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/stop -H "Authorization: Beare
 {"agent": {"id": "agt_01JF8X5RQ2", "status": "asleep", "pending": 0}}
 ```
 
-### Clear a conversation
+### Clear an agent's history
 
 `DELETE /v1/agents/{agent}/conversation`
 
-Empties the agent's conversation. Returns `409` while it runs a turn or waits on a person.
+Empties the agent's history. The agent, its definition and its other conversations stay. Returns
+`409` while it runs a turn or waits on a person.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/conversation -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -486,7 +491,7 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/timeline -H "Authorization: Bearer $W
 ```json
 {
   "items": [
-    {"id": "msg_01", "kind": "user", "text": "What is on fire?", "sender": "user:ana"},
+    {"id": "msg_01", "kind": "user", "text": "What is on fire?", "sender": "acme/@ana"},
     {"id": "run_01", "kind": "run", "status": "completed",
      "steps": [{"id": "s1", "type": "text", "text": "Nothing right now.", "live": false}]}
   ],
@@ -561,6 +566,7 @@ Asks the agent about a request a service sent to its webhook trigger. Returns `2
 
 - No token. The request proves itself with the trigger's secret, as `Authorization: Bearer` or a
   Standard Webhooks signature.
+- The body is the service's own, in any content type. Wardrik takes it and its headers as sent.
 - The same request is asked about once.
 - `404` if there's no such trigger or the secret doesn't match. `503` means send it again later.
 
@@ -581,7 +587,8 @@ service that only takes a URL. Keep that URL as private as a token.
 Hands a chat app's request, like Slack's events, to the channel `config.yaml` names.
 
 - No token. The channel checks the request's signature.
-- The response is the channel's, as the chat app expects it.
+- The body is the chat app's own, in any content type.
+- The response is the channel's status, headers and body, as the chat app expects them.
 - `404` if no channel of that name takes requests.
 
 ```sh
@@ -982,17 +989,12 @@ curl $WARDRIK_URL/v1/connections/linear/pair -H "Authorization: Bearer $WARDRIK_
 
 `DELETE /v1/connections/{provider}`
 
-Forgets your account. The next call that needs it asks you to sign in again.
+Forgets your account. The next call that needs it asks you to sign in again. Returns `204`, or
+`404` if you hold no such account.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
-
-```json
-{"provider": "github", "connected": true, "signing_in": false}
-```
-
-`connected` says whether there was one to forget.
 
 ## Daemon: tokens
 
@@ -1007,7 +1009,7 @@ curl $WARDRIK_URL/v1/tokens -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
 ```json
-{"tokens": [{"id": "mzxw6ytboi", "name": "ana's laptop", "subject": "user:ana",
+{"tokens": [{"id": "mzxw6ytboi", "name": "ana's laptop", "subject": "user:acme/@ana",
              "groups": ["payments-eng"], "expires": "2026-12-01T00:00:00Z"}]}
 ```
 
@@ -1020,17 +1022,17 @@ Creates a token that acts as `subject`. Returns `201` with the secret, shown onc
 | Field | Type | Description |
 | --- | --- | --- |
 | `name` | string, required | what it's for |
-| `subject` | string, required | `user:ID`, or `agent:ID` for an agent's own |
+| `subject` | string, required | a person, as `user:acme/@ana`, or `agent:ID` for an agent's own |
 | `groups` | array | the user's groups, which [bindings](/reference/config/#roles-and-bindings) can name |
 | `expires_in` | integer | seconds, from 60 to a year; 30 days unless set |
 
 ```sh
 curl $WARDRIK_URL/v1/tokens -H "Authorization: Bearer $WARDRIK_TOKEN" \
-  --json '{"name": "ana laptop", "subject": "user:ana", "groups": ["payments-eng"], "expires_in": 2592000}'
+  --json '{"name": "ana laptop", "subject": "user:acme/@ana", "groups": ["payments-eng"], "expires_in": 2592000}'
 ```
 
 ```json
-{"id": "mzxw6ytboi", "name": "ana laptop", "subject": "user:ana", "groups": ["payments-eng"],
+{"id": "mzxw6ytboi", "name": "ana laptop", "subject": "user:acme/@ana", "groups": ["payments-eng"],
  "expires": "2026-12-01T00:00:00Z", "secret": "wdk_mzxw6ytboi_0123456789abcdef"}
 ```
 

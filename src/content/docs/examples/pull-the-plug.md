@@ -29,7 +29,7 @@ roles:
   it:
     rules: [{verbs: [read, events, ask, cancel, serve], kinds: [agent], names: [onboarding]}]
 bindings:
-  - {org: default, role: it, subjects: [user:it]}
+  - {org: default, role: it, subjects: [user:default/@it]}
 ```
 
 - `trusted_workers: true` treats the script's answers as your own, so later steps don't wait for a
@@ -114,7 +114,7 @@ await working;
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-...
 wardrik start
-wardrik token create it --subject user:it --expires 1d     # copy the secret
+wardrik token create it --subject user:default/@it --expires 1d     # copy the secret
 wardrik agent show onboarding --json | jq -r .agent.agent  # the agent's ID
 ```
 

@@ -28,7 +28,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:maria}
+    members: {U024BE7LH: user:default/@maria}
 
 notify:
   targets:
@@ -38,11 +38,11 @@ roles:
   approver:
     rules: [{verbs: [read, events, decide], kinds: [agent], names: [issues]}]
 bindings:
-  - {org: default, role: approver, subjects: [user:maria]}
+  - {org: default, role: approver, subjects: [user:default/@maria]}
 ```
 
 - Both write tools are gated. Once the agent has read an issue, a gated call waits for a person.
-- `members` maps Maria's Slack ID to `user:maria`. The binding lets her decide the agent's calls.
+- `members` maps Maria's Slack ID to `user:default/@maria`. The binding lets her decide the agent's calls.
 
 ```markdown title="~/.config/wardrik/agents/issues.md"
 ---

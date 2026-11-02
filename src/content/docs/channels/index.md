@@ -15,7 +15,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:ana, U0G9QF9C6: user:jon}
+    members: {U024BE7LH: user:default/@ana, U0G9QF9C6: user:default/@jon}
 ```
 
 ```yaml

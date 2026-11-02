@@ -17,7 +17,7 @@ defaults:
 roles:
   reader: {rules: [{verbs: [read, events], kinds: [agent]}]}
 bindings:
-  - {org: acme, role: operator, subjects: [user:ana, group:platform]}
+  - {org: acme, role: operator, subjects: [user:acme/@ana, group:platform]}
   - {org: acme, role: reader, subjects: [agent:triage]}
 
 mcp:
@@ -40,7 +40,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     app_token: ${SLACK_APP_TOKEN}
-    members: {U024BE7LH: user:ana}
+    members: {U024BE7LH: user:acme/@ana}
 
 notify:
   targets:
@@ -119,7 +119,7 @@ roles:
     rules:
       - {verbs: [define], kinds: [agent], names: [runbooks]}
 bindings:
-  - {org: payments, role: operator, subjects: [user:ana, group:payments-eng]}
+  - {org: payments, role: operator, subjects: [user:payments/@ana, group:payments-eng]}
   - {org: payments, role: reader, subjects: [agent:triage]}
   - {org: payments, role: runbook-editor, subjects: [group:sre]}
 ```
@@ -134,13 +134,14 @@ bindings:
 | --- | --- |
 | `org` | the org it holds in, or `"*"` for every org and the deployment |
 | `role` | a role from `roles`, or `operator` |
-| `subjects` | `user:ID`, `group:NAME`, or `agent:NAME` for that agent in the binding's org |
+| `subjects` | `user:ORG/@NAME` for a person, `group:NAME`, or `agent:NAME` for that agent in the binding's org |
 
 - `admin` is every verb on every kind. `user:admin` (the `wardrik` command) holds it in `"*"`. You can't declare it.
 - `operator` is every verb on every kind, unless `roles` declares it.
 - Everyone may do anything to what they own: their agents, secrets, servers, webhooks and OAuth apps.
 - Everyone manages their own [connections](/reference/http-api/#daemon-connections).
 - Making an agent is `create` on `agent`. A rule with `names` doesn't allow it.
+- Removing a secret, server, webhook, OAuth app, connection or token is `delete`. Adding one doesn't allow it.
 - An agent calling tools gets its own bindings (`agent:NAME`), never its owner's.
 - A chat member acts as the user [`members`](#channels) maps them to. They may only `ask`, `read`,
   `events` and decide, on the agents of the workspace's owner.
@@ -227,7 +228,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     app_token: ${SLACK_APP_TOKEN}
-    members: {U024BE7LH: user:ana, U0G9QF9C6: user:jon}
+    members: {U024BE7LH: user:acme/@ana, U0G9QF9C6: user:acme/@jon}
     unmapped_members: refuse
 ```
 
@@ -267,13 +268,13 @@ notify:
 ```yaml
 workspace:
   shared:
-    runbooks:
-      read: [triage, oncall]
-      write: [ops]
+    agent:runbooks:
+      read: [agent:triage, agent:oncall]
+      write: [agent:ops]
 ```
 
 `shared` names the agents whose workspace others may mount, each with the agents that may `read` and
-`write` it. Names are agents in the mounting agent's org.
+`write` it. Each is `agent:NAME`, an agent in the mounting agent's org.
 
 ## http
 

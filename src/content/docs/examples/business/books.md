@@ -34,7 +34,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:maria, U0G9QF9C6: user:sam}
+    members: {U024BE7LH: user:acme/@maria, U0G9QF9C6: user:acme/@sam}
 
 notify:
   targets:
@@ -44,7 +44,7 @@ roles:
   accountant:
     rules: [{verbs: [ask, read, events, decide], kinds: [agent], names: [books]}]
 bindings:
-  - {org: acme, role: accountant, subjects: [user:maria, user:sam]}
+  - {org: acme, role: accountant, subjects: [user:acme/@maria, user:acme/@sam]}
 ```
 
 - `trusted: true` says the server's answers are your own books, not

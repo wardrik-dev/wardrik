@@ -26,7 +26,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:maria, U0G9QF9C6: user:sam}
+    members: {U024BE7LH: user:shop/@maria, U0G9QF9C6: user:shop/@sam}
 
 notify:
   targets:
@@ -38,8 +38,8 @@ roles:
   support:
     rules: [{verbs: [read, events, decide], kinds: [agent]}]
 bindings:
-  - {org: shop, role: app, subjects: [user:shop-app]}
-  - {org: shop, role: support, subjects: [user:maria, user:sam]}
+  - {org: shop, role: app, subjects: [user:shop/@app]}
+  - {org: shop, role: support, subjects: [user:shop/@maria, user:shop/@sam]}
 ```
 
 - `trusted_workers: true` treats your app's answers as your own, so a lookup doesn't make every
@@ -62,7 +62,7 @@ import { db, payments } from "./app.ts"; // your app's own
 export const wardrik = new Wardrik({ name: "support" });
 
 // Wardrik says which agent is calling. Your app knows whose agent that is.
-const customerOf = (agent?: { key: string }) => db.customers.findBy({ agentId: agent?.key });
+const customerOf = (agent?: string) => db.customers.findBy({ agentId: agent });
 
 wardrik.tool({
   name: "list_orders",
@@ -121,7 +121,7 @@ export async function answer(customer: { id: string; agentId?: string }, text: s
 
 ```sh
 systemctl --user restart wardrik
-wardrik token create shop-app --subject user:shop-app     # your app's WARDRIK_TOKEN
+wardrik token create shop-app --subject user:shop/@app     # your app's WARDRIK_TOKEN
 npm install @wardrik/sdk@0.1.0-rc.2 zod
 ```
 

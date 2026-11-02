@@ -138,7 +138,7 @@ Approve a call it waits on:
 
 ```elixir
 {:waiting, [interrupt]} = Wardrik.Agent.reply(scope, id, "Refund order 1001.")
-{:ok, _} = Wardrik.Agent.approve(scope, agent: id, interrupt: interrupt.id)
+{:ok, _} = Wardrik.Agent.approve(scope, interrupt: interrupt)
 ```
 
 Read its events from a cursor:
@@ -160,8 +160,12 @@ defmodule MyApp.ModelKeys do
   @behaviour WardrikCore.Keys
 
   @impl true
-  def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, _opts),
-    do: MyApp.Billing.api_key(principal.id, name)
+  def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, _opts) do
+    case MyApp.Billing.api_key(principal.id, name) do
+      nil -> {:error, :not_found}
+      key -> {:ok, key}
+    end
+  end
 end
 ```
 
@@ -170,7 +174,7 @@ key_source: {MyApp.ModelKeys, []}
 ```
 
 - `name` is the key's name, as `"ANTHROPIC_API_KEY"`. `Wardrik.key_name/1` gives it for a model.
-- Return `{:ok, key}`, or `:error` to fall back to ReqLLM.
+- `{:error, :not_found}` falls back to ReqLLM.
 
 ## Tool credentials
 
@@ -199,8 +203,8 @@ credentials: {MyApp.ToolCredentials, []}
 
 ## Let people sign in with OAuth
 
-Without `credentials:`, Wardrik keeps sign-ins in its vault. Give it keys, a sign-in page, and the
-OAuth app each user signs in with:
+Without `credentials:`, Wardrik keeps sign-ins in its vault. Give it vault keys, a sign-in page,
+and the OAuth app each user signs in with:
 
 ```elixir
 defmodule MyApp.OAuthApps do
@@ -208,15 +212,14 @@ defmodule MyApp.OAuthApps do
 
   @impl true
   def provider(%{name: "github"}, _opts) do
-    github =
-      WardrikOAuth.Provider.new("github",
-        issuer: "https://github.com/login/oauth",
-        client_id: System.fetch_env!("GITHUB_CLIENT_ID"),
-        client_secret: System.fetch_env!("GITHUB_CLIENT_SECRET"),
-        scopes: ~w(repo)
-      )
-
-    {:ok, %{github | key: "github"}}
+    {:ok,
+     WardrikOAuth.Provider.new("github",
+       key: "github",
+       issuer: "https://github.com/login/oauth",
+       client_id: System.fetch_env!("GITHUB_CLIENT_ID"),
+       client_secret: System.fetch_env!("GITHUB_CLIENT_SECRET"),
+       scopes: ~w(repo)
+     )}
   end
 
   def provider(_request, _opts), do: {:error, :not_found}
@@ -225,7 +228,7 @@ end
 
 ```elixir title="config/runtime.exs"
 config :my_app, MyApp.AgentRuntime,
-  keys: [System.fetch_env!("WARDRIK_KEY")],
+  vault_keys: [System.fetch_env!("WARDRIK_KEY")],
   oauth: [page: "https://myapp.example.com/agents/oauth", resolver: {MyApp.OAuthApps, []}],
   mcp: [
     github: [
@@ -240,6 +243,20 @@ config :my_app, MyApp.AgentRuntime,
 - Give the server to agents in your resolver: `servers: %{"github" => "github"}`. A definition
   names its tools as `github/*`.
 - A call made before the user signs in waits on an `:authorization` interrupt.
+
+Connect an account from your own settings page:
+
+```elixir
+user = Wardrik.principal("user_42")
+
+{:ok, %{url: url}} = Wardrik.sign_in(MyApp.AgentRuntime, "github", user)
+Wardrik.signing_in?(MyApp.AgentRuntime, "github", user)
+#=> true
+```
+
+- Send the user to `url`. A device sign-in also gives a `code` to enter there.
+- The sign-in comes back to `page`. See [Serve the HTTP API](#serve-the-http-api).
+- When you delete an OAuth app, call `Wardrik.forget_client(MyApp.AgentRuntime, key)`.
 
 ## Serve the HTTP API
 
