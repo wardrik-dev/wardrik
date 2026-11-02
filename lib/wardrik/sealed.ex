@@ -54,12 +54,12 @@ defmodule Wardrik.Sealed do
 
   defp resolved_pair(_wardrik, _what, pair), do: pair
 
-  defp value(%Wardrik{keys: []}, _ref), do: {:error, :no_keys}
+  defp value(%Wardrik{vault_keys: []}, _ref), do: {:error, :no_keys}
   defp value(wardrik, ref), do: WardrikVault.value(Wardrik.vault(wardrik), ref)
 
   defp sealing(instance) do
     case Wardrik.Instance.fetch!(instance) do
-      %Wardrik{keys: []} -> {:error, :no_keys}
+      %Wardrik{vault_keys: []} -> {:error, :no_keys}
       wardrik -> {:ok, wardrik}
     end
   end

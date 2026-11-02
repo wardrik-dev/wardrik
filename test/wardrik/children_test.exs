@@ -126,7 +126,7 @@ defmodule Wardrik.ChildrenTest do
       authorizer: {Wardrik.Test.Allow, []},
       resolver: {Wardrik.Test.Owned, :"keyed #{test}"},
       name: :"keyed #{test}",
-      keys: [WardrikVault.generate_key()],
+      vault_keys: [WardrikVault.generate_key()],
       mcp: mcp
     )
   end

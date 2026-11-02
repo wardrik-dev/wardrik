@@ -28,7 +28,7 @@ defmodule Wardrik.TriggerTarget do
   end
 
   @impl WardrikTriggers.Target
-  def resolve_secret(%Secret{}, %Wardrik{keys: []}), do: :error
+  def resolve_secret(%Secret{}, %Wardrik{vault_keys: []}), do: :error
 
   # The secret is the principal's the agent's resolver gives. An agent that acts for no one has none.
   def resolve_secret(%Secret{agent: agent_id, name: name}, wardrik) do

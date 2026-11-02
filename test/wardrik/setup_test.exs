@@ -8,7 +8,7 @@ defmodule Wardrik.SetupTest do
           authorizer: {Wardrik.Test.Allow, []},
           resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
-          keys: ["key"],
+          vault_keys: ["key"],
           oauth: [page: "https://agents.example.com/oauth"]
         )
       end
@@ -20,7 +20,7 @@ defmodule Wardrik.SetupTest do
           authorizer: {Wardrik.Test.Allow, []},
           resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
-          keys: ["key"],
+          vault_keys: ["key"],
           oauth: [resolver: {Wardrik.Test.OAuthApps, []}]
         )
       end
@@ -123,7 +123,7 @@ defmodule Wardrik.SetupTest do
           authorizer: {Wardrik.Test.Allow, []},
           resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
-          keys: ["key"],
+          vault_keys: ["key"],
           oauth: [
             page: "https://agents.example.com/oauth",
             resolver: {Wardrik.Test.OAuthApps, []}

@@ -11,11 +11,11 @@ defmodule Wardrik.Setup do
     %Wardrik{
       name: name,
       store: store,
-      keys: opts[:keys],
-      credentials: opts[:credentials] || vaulted(opts[:keys], {WardrikVault, vault}),
+      vault_keys: opts[:vault_keys],
+      credentials: opts[:credentials] || vaulted(opts[:vault_keys], {WardrikVault, vault}),
       key_source: opts[:key_source],
       grants: opts[:grants] || grants(opts[:oauth], Module.concat(name, OAuth)),
-      oauth: oauth(opts[:oauth], opts[:keys]),
+      oauth: oauth(opts[:oauth], opts[:vault_keys]),
       mcp: opts[:mcp],
       listeners: opts[:listeners],
       channels: Map.new(opts[:channels], fn {name, entry} -> {to_string(name), entry} end),
@@ -161,7 +161,7 @@ defmodule Wardrik.Setup do
   defp oauth(nil, _keys), do: nil
 
   defp oauth(_oauth, []),
-    do: raise(ArgumentError, "Give Wardrik :keys to seal what people sign in with.")
+    do: raise(ArgumentError, "Give Wardrik :vault_keys to seal what people sign in with.")
 
   defp oauth(oauth, _keys), do: oauth
 

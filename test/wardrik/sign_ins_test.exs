@@ -18,7 +18,7 @@ defmodule Wardrik.SignInsTest do
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
-        keys: [WardrikVault.generate_key()],
+        vault_keys: [WardrikVault.generate_key()],
         egress: &Wardrik.Egress.any/1,
         oauth: [
           page: "https://agents.test/oauth",
@@ -114,6 +114,26 @@ defmodule Wardrik.SignInsTest do
              )
   end
 
+  test "starts a sign-in from your app, under way until it's finished", %{wardrik: wardrik} do
+    refute Wardrik.signing_in?(wardrik, "mail", maria())
+
+    assert {:ok, %{url: "https://mail.test/authorize?" <> query} = started} =
+             Wardrik.sign_in(wardrik, "mail", maria())
+
+    assert Wardrik.sign_in(wardrik, "mail", maria()) == {:ok, started}
+    assert Wardrik.signing_in?(wardrik, "mail", maria())
+    refute Wardrik.signing_in?(wardrik, "mail", Wardrik.principal("acme/@bo"))
+
+    %{"state" => state} = URI.decode_query(query)
+
+    assert {:ok, %{provider: "mail"}} =
+             Wardrik.finish_sign_in(wardrik, %{"state" => state, "code" => "c"}, as: maria())
+
+    refute Wardrik.signing_in?(wardrik, "mail", maria())
+    assert Wardrik.sign_in(wardrik, "post", maria()) == {:error, :not_found}
+    assert Wardrik.forget_client(wardrik, "mail") == :ok
+  end
+
   test "gives the sign-in pages to mount only where it signs people in", %{wardrik: wardrik} do
     nobody = {Wardrik.HTTP, :nobody, []}
 
@@ -139,7 +159,7 @@ defmodule Wardrik.SignInsTest do
   end
 
   test "keeps credentials only when given keys" do
-    assert %Wardrik{keys: [], oauth: nil} =
+    assert %Wardrik{vault_keys: [], oauth: nil} =
              Wardrik.new(
                authorizer: {Wardrik.Test.Allow, []},
                resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
@@ -162,7 +182,7 @@ defmodule Wardrik.SignInsTest do
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
         name: MyApp.AgentRuntime,
-        keys: ["secret key"]
+        vault_keys: ["secret key"]
       )
 
     refute inspect(wardrik) =~ "secret key"
@@ -178,28 +198,24 @@ defmodule Wardrik.OAuthResolverTest do
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
-        keys: [WardrikVault.generate_key()],
+        vault_keys: [WardrikVault.generate_key()],
         oauth: [page: "https://agents.test/oauth", resolver: {__MODULE__, "maria-mail"}]
       )
 
     start_supervised!({Wardrik, wardrik})
 
-    assert {:ok, url} =
-             WardrikOAuth.authorize(Wardrik.oauth(wardrik), "mail", %WardrikCore.Principal{
-               id: "acme/@maria"
-             })
+    assert {:ok, %{url: url}} = Wardrik.sign_in(wardrik, "mail", Wardrik.principal("acme/@maria"))
 
     assert URI.decode_query(URI.parse(url).query)["client_id"] == "maria-mail"
   end
 
   def provider(%{name: name}, client_id) do
-    provider =
-      WardrikOAuth.Provider.new(name,
-        authorization_endpoint: "https://mail.test/authorize",
-        token_endpoint: "https://mail.test/token",
-        client_id: client_id
-      )
-
-    {:ok, %{provider | key: client_id}}
+    {:ok,
+     WardrikOAuth.Provider.new(name,
+       key: client_id,
+       authorization_endpoint: "https://mail.test/authorize",
+       token_endpoint: "https://mail.test/token",
+       client_id: client_id
+     )}
   end
 end

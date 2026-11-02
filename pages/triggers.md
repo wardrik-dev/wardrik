@@ -7,7 +7,7 @@ arrives.
 
 ## Setup
 
-Triggered runs call the model, so set your Anthropic key. `:keys` seals the webhook's secret.
+Triggered runs call the model, so set your Anthropic key. `:vault_keys` seals the webhook's secret.
 
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
@@ -31,7 +31,7 @@ System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
     resolver: {MyApp.Agents, []},
-    keys: [WardrikVault.generate_key()]
+    vault_keys: [WardrikVault.generate_key()]
   )
 
 scope = Wardrik.as(MyApp.AgentRuntime, "maria")

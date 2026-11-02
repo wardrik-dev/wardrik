@@ -69,10 +69,10 @@ initech
 #=> %Wardrik.Interrupt{id: "toolu_01...", agent: "agt_books", name: "pay_bill",
 #=>   message: "A bill this size needs a person.", ...}
 
-Wardrik.Agent.approve(scope, agent: "agt_books", interrupt: initech.id, note: "Use the ops account.")
+Wardrik.Agent.approve(scope, interrupt: initech, note: "Use the ops account.")
 #=> {:ok, [%Wardrik.Decision{id: "toolu_01...", decision: :approved}]}
 
-Wardrik.Agent.deny(scope, agent: "agt_books", interrupt: globex.id, reason: "Not before the 1st.")
+Wardrik.Agent.deny(scope, interrupt: globex, reason: "Not before the 1st.")
 #=> {:ok, [%Wardrik.Decision{id: "toolu_02...", decision: :rejected}]}
 ```
 
@@ -80,7 +80,8 @@ Wardrik.Agent.deny(scope, agent: "agt_books", interrupt: globex.id, reason: "Not
 - The model reads a `note` beside the result, and a `reason` as the call's error.
 - Each decision is recorded as Maria's.
 - `Wardrik.Interrupts.list/2` lists waiting calls across every agent the scope can see.
-- Add `conversation: id` for a call in one of the agent's conversations.
+- An interrupt names its agent and conversation. With an ID, give `agent:` and any
+  `conversation:` too.
 
 ## Decide several at once
 
@@ -88,10 +89,13 @@ Wardrik.Agent.deny(scope, agent: "agt_books", interrupt: globex.id, reason: "Not
 {:waiting, [initech, globex]} =
   Wardrik.Agent.reply(scope, "agt_books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
 
-Wardrik.Agent.decide(scope, "agt_books", %{
-  initech.id => {:approve, "Use the ops account."},
-  globex.id => {:deny, "Not before the 1st."}
-})
+Wardrik.Agent.decide(scope,
+  agent: "agt_books",
+  decisions: %{
+    initech.id => {:approve, "Use the ops account."},
+    globex.id => {:deny, "Not before the 1st."}
+  }
+)
 #=> {:ok, [%Wardrik.Decision{decision: :approved, ...}, %Wardrik.Decision{decision: :rejected, ...}]}
 ```
 

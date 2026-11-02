@@ -174,10 +174,7 @@ defmodule Wardrik.WorkersTest do
 
     assert_receive {:called, "lookup", %{"order" => "A1"}, meta}
 
-    assert %{"agent" => %{"key" => "acme/triage"} = agent, "idempotencyKey" => "call_1"} =
-             meta
-
-    assert agent == %{"key" => "acme/triage"}
+    assert %{"agent" => "acme/triage", "idempotencyKey" => "call_1"} = meta
 
     assert meta["run"] =~ ~r/^[0-9a-f]{32}$/
 

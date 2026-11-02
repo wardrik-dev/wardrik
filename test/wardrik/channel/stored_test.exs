@@ -21,7 +21,7 @@ defmodule Wardrik.Channel.StoredTest do
          resolver: {Wardrik.Test.Owned, name},
          name: name,
          store: store,
-         keys: [WardrikVault.generate_key()],
+         vault_keys: [WardrikVault.generate_key()],
          channels: [chat: {Wardrik.Test.Channel.Chat, chat}]
        )}
     )

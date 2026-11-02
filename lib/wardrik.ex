@@ -23,7 +23,7 @@ defmodule Wardrik do
 
       # 3. init/1, for what's only known at runtime
       @impl Wardrik
-      def init(config), do: {:ok, Keyword.put(config, :keys, [System.fetch_env!("WARDRIK_KEY")])}
+      def init(config), do: {:ok, Keyword.put(config, :vault_keys, [System.fetch_env!("WARDRIK_KEY")])}
 
   See `start_link/1` for every option.
   """
@@ -65,7 +65,7 @@ defmodule Wardrik do
               type: {:or, [{:struct, WardrikPolicy}, :keyword_list, {:map, :any, :any}]},
               doc: "The policy every agent is held to, as `[deny: [\"shell/*\"]]`."
             ],
-            keys: [
+            vault_keys: [
               type: {:list, :string},
               default: [],
               doc: "Keys to seal secrets with. No secrets are kept without them."
@@ -86,7 +86,7 @@ defmodule Wardrik do
             ],
             oauth: [
               type: :keyword_list,
-              doc: "Services people sign in to. Needs `:keys`.",
+              doc: "Services people sign in to. Needs `:vault_keys`.",
               keys: [
                 page: [
                   type: :string,
@@ -203,11 +203,11 @@ defmodule Wardrik do
             ]
           )
 
-  @derive {Inspect, except: [:keys, :oauth, :mcp]}
+  @derive {Inspect, except: [:vault_keys, :oauth, :mcp]}
   @enforce_keys [
     :name,
     :store,
-    :keys,
+    :vault_keys,
     :credentials,
     :key_source,
     :grants,
@@ -238,7 +238,7 @@ defmodule Wardrik do
   @type t() :: %__MODULE__{
           name: atom(),
           store: WardrikStore.t(),
-          keys: [String.t()],
+          vault_keys: [String.t()],
           credentials: WardrikCore.Context.entry() | nil,
           key_source: WardrikCore.Context.entry() | nil,
           grants: {module(), term()} | nil,
@@ -269,7 +269,7 @@ defmodule Wardrik do
   Sets options known only at runtime.
 
       @impl Wardrik
-      def init(config), do: {:ok, Keyword.put(config, :keys, [System.fetch_env!("WARDRIK_KEY")])}
+      def init(config), do: {:ok, Keyword.put(config, :vault_keys, [System.fetch_env!("WARDRIK_KEY")])}
   """
   @callback init(config :: keyword()) :: {:ok, keyword()}
 
@@ -283,7 +283,7 @@ defmodule Wardrik do
         authorizer: {MyApp.Authorizer, []},
         resolver: {MyApp.Agents, []},
         store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
-        keys: [System.fetch_env!("WARDRIK_KEY")],
+        vault_keys: [System.fetch_env!("WARDRIK_KEY")],
         policy: [deny: ["shell/*"]],
         prices: %{"zai_coding_plan:glm-5.1" => [priced_as: "zai:glm-5.1", markup: 0.1]}
       )
@@ -463,6 +463,40 @@ defmodule Wardrik do
 
   defp refreshing(agents: ids), do: ids
   defp refreshing([]), do: :all
+
+  @doc """
+  Starts `principal`'s sign-in to `provider`, or returns the one under way.
+
+      Wardrik.sign_in(MyApp.AgentRuntime, "github", Wardrik.principal("user_42"))
+      #=> {:ok, %{url: "https://github.com/login/oauth/authorize?..."}}
+
+  Send the person to `url`. A device sign-in also gives the `code` to enter there. Needs `:oauth`.
+  """
+  @spec sign_in(atom() | t(), String.t(), Principal.t()) ::
+          {:ok, %{required(:url) => String.t(), optional(:code) => String.t()}} | {:error, term()}
+  def sign_in(instance, provider, %Principal{} = principal),
+    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.authorize(provider, principal)
+
+  @doc """
+  Returns whether `principal`'s sign-in to `provider` is under way.
+
+      Wardrik.signing_in?(MyApp.AgentRuntime, "github", Wardrik.principal("user_42"))
+      #=> true
+
+  `false` once it's finished, declined or expired.
+  """
+  @spec signing_in?(atom() | t(), String.t(), Principal.t()) :: boolean()
+  def signing_in?(instance, provider, %Principal{} = principal),
+    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.signing_in?(provider, principal)
+
+  @doc """
+  Forgets the client Wardrik registered for the OAuth app `key`. Call it when you delete that app.
+
+      :ok = Wardrik.forget_client(MyApp.AgentRuntime, "linear/app_1")
+  """
+  @spec forget_client(atom() | t(), String.t()) :: :ok | {:error, term()}
+  def forget_client(instance, key),
+    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.forget_client(key)
 
   @doc """
   Returns the sign-in pages' plug, to mount at `:oauth`'s `page`. `nil` without `:oauth`.
