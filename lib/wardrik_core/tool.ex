@@ -12,46 +12,28 @@ defmodule WardrikCore.Tool do
 
   ## Return values
 
-  `run` takes the checked arguments and the `WardrikCore.Context`, and returns:
+  `run` takes the checked arguments and the `WardrikCore.Context`. It returns:
 
     * `{:ok, answer}` or `{:error, reason}`.
-    * `{:ok, answer, context}` or `{:error, reason, context}` - with the context changed, to
-      report on the step. A call that failed after paying returns the error form.
+    * `{:ok, answer, context}` or `{:error, reason, context}`, such as with a cost measured.
     * `{:park, reason}` - waits for a person.
 
-  For example, to report what a paid API cost:
-
-      run: fn %{email: email}, context ->
-        found = Enrich.lookup(email)
-        {:ok, found, WardrikCore.Context.measure(context, :usd, 0.01)}
-      end
-
-  ## Labels
-
-  An answer can carry labels in its metadata, such as `"outside"` for text nobody on the agent's
-  side wrote. The run carries the label from then on. See `WardrikCore.Context.labels/1`.
+  An answer can carry labels, such as `"outside"` for text from a stranger:
 
       {:ok, %ReqLLM.ToolResult{output: page, metadata: %{labels: ["outside"]}}}
 
   ## Annotations
 
-  Facts about a tool that any package can read. Give them as `:annotations` to `new!/1`, or with
-  `annotate/2`.
-
     * `:read_only` - it changes nothing.
     * `:destructive` - what it changes can't be undone.
-    * `:idempotent` - a call is safe to repeat, such as a payment with an idempotency key.
-    * `:open_world` - it reaches things outside the agent's own systems, such as the web.
+    * `:idempotent` - a call is safe to repeat.
+    * `:open_world` - it reaches outside your systems, such as the web.
     * `:timeout` - how long a call may take, in milliseconds.
-    * `:resources` - what a call acts on, as a function of its arguments, such as
-      `fn args -> [args["path"]] end`.
-    * `:labels` - labels every answer carries, such as `["outside"]` for a web search.
+    * `:resources` - what a call acts on, as `fn args -> [args["path"]] end`.
+    * `:labels` - labels every answer carries.
 
-  The first four are MCP's tool annotations. A tool that doesn't set them has none of them.
-
-  A call to a tool that's `read_only` or `idempotent` is retried when it fails, and repeated when
-  it's lost in a crash. Any other call lost that way parks as `:in_doubt` until a person answers.
-  See `repeatable?/1`.
+  A `read_only` or `idempotent` call is retried, and repeated after a crash. Any other call lost in
+  a crash parks as `:in_doubt`.
   """
   use WardrikCore.Private
   alias WardrikCore.Context
@@ -78,18 +60,16 @@ defmodule WardrikCore.Tool do
   defstruct [:name, :description, :run, :req_llm, schema: [], annotations: %{}, private: %{}]
 
   @doc """
-  Builds a tool.
+  Builds a tool. Raises if a required option is missing.
 
   ## Options
 
     * `:name` - required.
     * `:description` - required. What the model reads to decide when to call it.
-    * `:run` - required. A 2-arity function of the arguments and the context.
-    * `:schema` - the arguments, as a NimbleOptions-style keyword list or a JSON Schema map.
-      `[]` unless set.
+    * `:run` - required. A function of the arguments and the context.
+    * `:schema` - the arguments, as a NimbleOptions keyword list or a JSON Schema map. `[]` by
+      default.
     * `:annotations` - see above.
-
-  Raises if a required option is missing.
   """
   @spec new!(keyword()) :: t()
   def new!(opts) do
@@ -123,9 +103,8 @@ defmodule WardrikCore.Tool do
     do: annotation(tool, :read_only) == true or annotation(tool, :idempotent) == true
 
   @doc """
-  Runs the tool `call` names, after checking its arguments against the tool's schema.
-
-  Returns `{:error, reason}` if no tool has that name or the arguments don't match.
+  Runs the tool `call` names, after checking its arguments. Returns `{:error, reason}` if there's no
+  such tool or the arguments don't match.
   """
   @spec call([t()], ToolCall.t(), Context.t()) :: answer()
   def call(tools, %ToolCall{} = call, %Context{} = context) do

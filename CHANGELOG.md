@@ -1,19 +1,18 @@
 # Changelog
 
-## 0.1.0-rc.2
+## 0.1.0-rc.2 (2026-11-02)
 
 ### Breaking
 
-- `start_agent/2` takes an optional `:conversation`. An agent is keyed by
-  `{agent_id, conversation}`, with `nil` for the agent's own history. `list/1` and
-  `placements/1` return that key. `whereis/2`, `delete/2` and `move/3` take it, or the agent's ID
-  alone for its own history. Event metadata and
-  `WardrikCore.Context` carry `conversation`.
-- `WardrikCore.Credentials` and `WardrikCore.Keys` callbacks take one request struct, then their
-  options: `resolve/2` and `refused/2` a `WardrikCore.Credentials.Request`, and `fetch/2` a
-  `WardrikCore.Keys.Request`.
-- `WardrikCore.evaluate/2` takes the context, then named `:model`, `:state` and `:questions`.
-- `WardrikCore.move/3` takes the node as `to:`, so it can't swap with the agent's id.
+- `start_agent/2` takes an optional `:conversation`. Agents are keyed by
+  `{agent_id, conversation}`; `nil` is the main history.
+- `list/1` and `placements/1` return those keys. `whereis/2`, `delete/2` and `move/3` take a key,
+  or an agent ID alone for its main history.
+- Event metadata and `WardrikCore.Context` carry `conversation`.
+- `WardrikCore.Credentials` and `WardrikCore.Keys` callbacks take a request struct, then their
+  options: `WardrikCore.Credentials.Request` or `WardrikCore.Keys.Request`.
+- `WardrikCore.evaluate/2` takes the context, then `:model`, `:state` and `:questions`.
+- `WardrikCore.move/3` takes the node as `to:`.
 - `WardrikCore.Retry.run/3` takes `:transient` and `:announce` by name.
 
 ## 0.1.0-rc.1 (2026-10-30)
@@ -34,4 +33,4 @@
 - `WardrikCore.Event`, which sends each event to `:telemetry` and to the agent's
   `WardrikCore.Events` sink. Text streams as `[:wardrik_core, :message, :delta]`.
 - Every turn a trace and every step a span, with what each tool reports it cost.
-  `WardrikCore.evaluate/4` asks an evaluation model questions about a step.
+  `WardrikCore.evaluate` asks an evaluation model questions about a step.

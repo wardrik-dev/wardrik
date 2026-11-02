@@ -1,27 +1,10 @@
-# Principals
+# Who sent a message
 
-A principal is someone or something that can act, as in IAM. An agent has its own, like a service
-account. A message can come from another, and the turn that answers acts for them.
+Tell the agent who sent each message. Your tools and middleware can then act for that person.
 
-## Setup
+Run the [setup](running-agents.md#setup) in IEx first.
 
-Paste this into a fresh IEx session. The model calls need an Anthropic key:
-
-```elixir
-Mix.install([{:wardrik_core, "~> 0.1.0-rc.1"}])
-System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
-
-children = [
-  {WardrikCore.Backends.MemoryStore, name: :agents},
-  {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
-]
-
-{:ok, _} = Supervisor.start_link(children, strategy: :rest_for_one)
-```
-
-Replace `"sk-ant-..."` with your key.
-
-## Acting for someone
+## Send a message as someone
 
 ```elixir
 alias WardrikCore.Principal
@@ -33,19 +16,16 @@ alias WardrikCore.Principal
     principal: %Principal{id: "agent:support"}
   )
 
-maria = %Principal{id: "user:maria", attributes: %{org: "acme"}}
+maria = %Principal{id: "user:maria", attributes: %{team: "billing"}}
 :ok = WardrikCore.ask(agent, "Open an issue for the login bug.", %{principal: maria})
 
 [asked | _] = WardrikCore.history(agent)
 asked.metadata.principal
-#=> %WardrikCore.Principal{id: "user:maria", attributes: %{org: "acme"}}
+#=> %WardrikCore.Principal{id: "user:maria", attributes: %{team: "billing"}}
 ```
 
-Middleware and tools find who the turn acts for with `WardrikCore.Context.acting_for/1`: whoever
-asked, or else the agent itself.
-
-A turn only answers consecutive messages from one principal. So a shared agent never mixes two
-people's authority in one turn. Every step's span records who it was for, as `"enduser.id"`.
-
-Core passes principals on but never reads their `attributes`. Those are for packages that decide by
-them, such as a vault that keys secrets by `id`.
+- `:principal` on `start_agent/2` is the agent's own identity, like a service account.
+- `WardrikCore.Context.acting_for/1` returns who the turn acts for: the sender, or else the agent.
+- A turn answers messages from one sender only, so two people's requests never mix.
+- Each step's span records the sender's ID as `"enduser.id"`.
+- IDs and `attributes` are your app's. Wardrik passes them on and never reads them.

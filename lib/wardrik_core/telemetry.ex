@@ -1,46 +1,32 @@
 defmodule WardrikCore.Telemetry do
   @moduledoc """
-  The events an agent emits.
+  The events an agent emits, to `:telemetry` and to its `WardrikCore.Events` module.
 
-  Each goes to `:telemetry` and to the agent's `WardrikCore.Events` sink, as a
-  `WardrikCore.Event`. Every event's metadata has `agent_id`, and
-  `conversation`, `nil` for the agent's own history. Below, each event lists its other
-  metadata, then its measurements.
+  Every event's metadata has `agent_id` and `conversation`. Each line lists the other metadata,
+  then the measurements.
 
   ## Events
 
     * `[:wardrik_core, :agent, :start]` - `state`
     * `[:wardrik_core, :agent, :stop]` - `reason`
-    * `[:wardrik_core, :message, :queued]` - `message`, with its `id` in its metadata. Measures
-      `queued`.
-    * `[:wardrik_core, :message, :delta]` - `span`, `kind` (`:content` or `:thinking`), and the
-      streamed `text`.
-    * `[:wardrik_core, :turn, :start]` - `kind`, `span`, the `message_ids` the turn answers, and
-      the `metadata` given to `WardrikCore.resume/3`.
-    * `[:wardrik_core, :turn, :stop]` - `kind`, `span`, `outcome`, and:
-      * `messages` - the messages an answered turn added.
-      * `reason` - why a turn parked (as `WardrikCore.parked/1` returns) or failed.
-      * `kept` and `dropped` - message counts for an interrupted or timed-out turn.
-
-      Measures `duration`.
+    * `[:wardrik_core, :message, :queued]` - `message`. Measures `queued`.
+    * `[:wardrik_core, :message, :delta]` - `span`, `kind` (`:content` or `:thinking`), `text`.
+    * `[:wardrik_core, :turn, :start]` - `kind`, `span`, `message_ids`, and the `metadata` given to
+      `WardrikCore.resume/3`.
+    * `[:wardrik_core, :turn, :stop]` - `kind`, `span`, `outcome`, and `messages` added, `reason`
+      it parked or failed, or `kept` and `dropped` when interrupted. Measures `duration`.
     * `[:wardrik_core, :turn, :checkpoint]` - measures `calls`.
     * `[:wardrik_core, :tool_call, :exit]` - `call`, `reason`.
-    * `[:wardrik_core, :step, :start]` - `step`, `span`, and `model` for a `:generate` step.
+    * `[:wardrik_core, :step, :start]` - `step`, `span`, and `model` for `:generate`.
     * `[:wardrik_core, :step, :stop]` - `step`, `span`, `status`, `attributes`, and `response` or
       `reason`. Measures `duration` and what the step measured.
     * `[:wardrik_core, :step, :exception]` - `step`, `span`, `kind`, `reason`, `stacktrace`.
     * `[:wardrik_core, :subagent, :started]` - `span`, `agent`, `prompt`.
-    * `[:wardrik_core, :subagent, :progress]` - `span`, `agent`, `call`, `tool_calls`. Emitted as
-      each tool call begins.
+    * `[:wardrik_core, :subagent, :progress]` - `span`, `agent`, `call`, `tool_calls`.
     * `[:wardrik_core, :subagent, :completed]` - `span`, `agent`, `message`, `duration_ms`,
       `tool_calls`, `measurements`.
     * `[:wardrik_core, :subagent, :failed]` - `span`, `agent`, `error`, `duration_ms`,
       `tool_calls`, `measurements`.
-
-  ## Spans
-
-  A turn's `span` is the root of its trace. It keeps the same span through a park or a restart.
-  Each step runs in a child span. See `WardrikCore.Span`.
   """
 
   alias WardrikCore.Context

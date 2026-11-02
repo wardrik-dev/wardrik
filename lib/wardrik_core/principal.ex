@@ -1,17 +1,12 @@
 defmodule WardrikCore.Principal do
   @moduledoc """
-  Someone or something that can act, such as a person, a team or a service, as in IAM.
+  Someone or something that can act, such as a person or a service.
 
-      %WardrikCore.Principal{id: "user:maria", attributes: %{org: "acme", team: "finance"}}
+      %WardrikCore.Principal{id: "user:maria", attributes: %{team: "billing"}}
 
-  Principals come from three places:
-
-    * The agent's own, given to `WardrikCore.start_agent/2` as `:principal`.
-    * A message's sender, given to `WardrikCore.ask/3`. The turn that answers acts for them.
-    * Whoever resumes a parked turn.
-
-  Core passes principals on but never reads their `attributes`. Those are yours, like IAM tags.
-  Packages decide by them, such as a vault that keys secrets by `id`.
+    * The agent's own comes from `WardrikCore.start_agent/2`'s `:principal`.
+    * A message's sender comes from `WardrikCore.ask/3`. The turn acts for them.
+    * `id` and `attributes` are your app's. Wardrik never reads them.
   """
 
   @enforce_keys [:id]

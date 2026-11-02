@@ -2,8 +2,8 @@ defmodule WardrikCore.Authorization do
   @moduledoc """
   A sign-in a person must finish before a call can run.
 
-  A call parks on one when `WardrikCore.Credentials.fetch/2` has no credential yet. Show the person
-  its `url`. Once they've signed in, resume the turn and the call runs again.
+  A call waits on one when `WardrikCore.Credentials.fetch/2` has no token yet. Show the person its
+  `url`, then resume the turn once they've signed in.
   """
 
   @enforce_keys [:url, :credential]

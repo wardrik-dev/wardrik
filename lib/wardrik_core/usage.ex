@@ -1,12 +1,7 @@
 defmodule WardrikCore.Usage do
   @moduledoc false
 
-  @type price() :: [
-          input: number(),
-          output: number(),
-          cache_read: number(),
-          cache_write: number()
-        ]
+  @type price() :: WardrikCore.price()
 
   @kinds [:input, :output, :cache_read, :cache_write]
 

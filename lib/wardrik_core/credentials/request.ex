@@ -2,7 +2,7 @@ defmodule WardrikCore.Credentials.Request do
   @moduledoc """
   What a `WardrikCore.Credentials` module is asked for: the credential `name`, for `principal`.
 
-      %WardrikCore.Credentials.Request{name: "github", principal: %WardrikCore.Principal{id: "user_42"}}
+      %WardrikCore.Credentials.Request{name: "github", principal: %WardrikCore.Principal{id: "user:maria"}}
 
   `principal` is `nil` when the turn acts for no one.
   """

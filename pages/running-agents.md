@@ -2,11 +2,10 @@
 
 ## Setup
 
-Paste this into a fresh IEx session. It keeps agents in memory, and needs an Anthropic key for the
-model calls:
+Paste this into IEx, with your Anthropic key:
 
 ```elixir
-Mix.install([{:wardrik_core, "~> 0.1.0-rc.1"}])
+Mix.install([{:wardrik_core, "~> 0.1.0-rc.2"}])
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
 children = [
@@ -17,8 +16,7 @@ children = [
 {:ok, _} = Supervisor.start_link(children, strategy: :rest_for_one)
 ```
 
-Replace `"sk-ant-..."` with your key. In an app, put the two children in your supervision tree
-instead.
+In an app, put the two children in your supervision tree.
 
 ## Start an agent
 
@@ -30,9 +28,12 @@ WardrikCore.history(agent)
 #=> [#Message<:user text>, #Message<:assistant text>]
 ```
 
-`ask/3` returns once the message is stored. The agent answers in its own process.
+- `ask/3` returns once the message is stored. The agent answers in its own process.
+- Agent IDs are your app's. Wardrik doesn't read them.
 
-A conversation runs on the same options, with a history of its own. Name it with `:conversation`:
+## Conversations
+
+A conversation runs on the agent's options, with its own history:
 
 ```elixir
 {:ok, thread} =
@@ -41,32 +42,25 @@ A conversation runs on the same options, with a history of its own. Name it with
     conversation: "C1",
     model: "anthropic:claude-haiku-4-5"
   )
-```
 
-The agent ID and the conversation ID are your app's. Each `{agent_id, conversation}` is one agent.
-The agent's own history is `{agent_id, nil}`. Functions that find an agent take its ID alone for
-its own history:
-
-```elixir
 WardrikCore.whereis("support")
 WardrikCore.whereis({"support", "C1"})
 ```
 
-## Where agents are kept
+`"support"` alone means the agent's main history, `{"support", nil}`.
 
-`WardrikCore` saves agents through a [durable_server](https://hexdocs.pm/durable_server) backend:
+## Where agents are kept
 
 | Backend | Keeps agents | Needs |
 | --- | --- | --- |
-| `MemoryStore` | In memory. Gone when the node stops. | Nothing. For tests and trying things out. |
-| `EKVStore` | On disk, and on each node when clustered. | The `ekv` dependency, and `EKV` started before `WardrikCore`. |
-| `ObjectStore` | In an S3-compatible bucket. | `bucket`, `access_key_id`, `secret_access_key`, `s3_endpoint` and `default_region`. |
-| `MirrorStore` | In two backends at once, while you migrate between them. | The two backends. |
+| `WardrikCore.Backends.MemoryStore` | In memory, until the node stops | Nothing |
+| `EKVStore` | On disk, on each node | `{:ekv, "~> 0.4"}` |
+| `ObjectStore` | In an S3-compatible bucket | Bucket and credentials |
+| `MirrorStore` | In two backends, while you migrate | The two backends |
 
-`MemoryStore` is `WardrikCore.Backends.MemoryStore`. The rest are under `DurableServer.Backends`.
+The last three are under `DurableServer.Backends`.
 
-To keep agents on disk, add `{:ekv, "~> 0.4"}` to your deps. Then start `EKV` first in your
-supervision tree:
+On disk:
 
 ```elixir
 children = [
@@ -75,7 +69,7 @@ children = [
 ]
 ```
 
-An S3-compatible bucket needs no extra dependency:
+In S3:
 
 ```elixir
 children = [
@@ -90,20 +84,17 @@ children = [
 ]
 ```
 
-To write your own backend, such as one for Postgres, implement durable_server's storage behaviour.
-That behaviour isn't a stable contract yet, so expect changes between durable_server releases.
+To keep agents in Postgres, use `WardrikStore.Durable` from
+[wardrik_store](https://hexdocs.pm/wardrik_store).
 
-## When a node dies
+## After a crash
 
-An agent that crashes comes back by itself, as does one whose node dies, with a backend that keeps
-agents. A sweep for lost agents restarts it, every `:discovery_interval_ms` (`60_000` unless set),
-and it picks its message back up. A turn lost while its tools ran resumes from its last checkpoint,
-without calling the model again. An agent stopped with `stop/1` stays stopped.
-
-A tool call lost that way may already have run:
-
-* If its tool is annotated `read_only: true` or `idempotent: true`, the call is repeated.
-* Otherwise it parks as `:in_doubt`. Answer it with `resume/3`:
+- An agent that crashes restarts and picks its message back up.
+- With a backend that keeps agents, so does one whose node died. A sweep finds it every
+  `:discovery_interval_ms` (`60_000` by default).
+- A turn resumes from its last checkpoint, without calling the model again.
+- A lost tool call runs again if its tool is `read_only` or `idempotent`. Otherwise it parks as
+  `:in_doubt`:
 
 ```elixir
 {:tool_calls, [{call, {:park, :in_doubt}}]} = WardrikCore.parked(agent)
@@ -117,24 +108,11 @@ WardrikCore.resume(agent, %{call.id => {:deny, "It may have run already."}})
 
 ## Options
 
-`start_agent/2` also takes:
+`start_agent/2` takes `:instructions`, `:capabilities`, `:middleware`, `:principal`,
+`:credentials`, `:keys`, `:events`, `:metadata`, `:timeout`, `:max_rounds`, `:retries` and
+`:prices`. See `WardrikCore.start_agent/2`.
 
-| Option | Takes | Default |
-| --- | --- | --- |
-| `instructions` | the system prompt, sent with every model call and never kept in the history | none |
-| `capabilities` | modules that give the agent its tools. See [Tools](tools.md) | `[]` |
-| `middleware` | what wraps every call. See [Middleware](middleware.md) | `[]` |
-| `principal` | who the agent acts as. See [Principals](principals.md) | none |
-| `credentials` | where tools find a person's credentials. See [Credentials](credentials.md) | none |
-| `keys` | where code finds API keys. See [Keys](credentials.md#keys) | none |
-| `events` | where its events go. See [Events](events.md) | none |
-| `metadata` | anything of yours, passed to middleware | `%{}` |
-| `timeout` | how long a turn may take, in milliseconds | `:infinity` |
-| `max_rounds` | model calls a turn may make | `25` |
-| `retries` | how failed calls are retried. See `WardrikCore.Retry` | `[]` |
-| `prices` | model prices in US dollars per million tokens, by spec. Takes precedence over the model catalog | `%{}` |
-
-`configure/2` changes them on a running agent, from its next turn:
+`configure/2` changes them from the next turn:
 
 ```elixir
 :ok =
@@ -148,17 +126,15 @@ WardrikCore.resume(agent, %{call.id => {:deny, "It may have run already."}})
 
 | Function | Does |
 | --- | --- |
-| `ask/3` | Queues a message. A running turn ends at its next step, and the next turn answers it |
+| `ask/3` | Queues a message. A running turn ends at its next step |
 | `interrupt/1` | Stops the running or parked turn |
-| `kill/2` | Stops one running tool call. The model gets an error, and the turn goes on |
-| `resume/3` | Resumes a parked turn, with who answered as metadata |
-| `status/1`, `history/1`, `parked/1` | What the agent is doing, what it has said, and what it's waiting on |
-| `configure/2` | Changes the model or settings, from the next turn |
+| `kill/2` | Stops one running tool call. The model gets an error |
+| `resume/3` | Resumes a parked turn |
+| `status/1`, `history/1`, `parked/1` | What the agent is doing, has said, and waits on |
 | `stop/1` | Stops the agent until it's started again |
-| `delete/2` | Stops the agent and deletes its saved state |
-| `list/1`, `whereis/2` | Every saved agent's `{agent_id, conversation}`, and the running agent for one |
-| `nodes/1`, `placements/1` | The cluster's nodes, and the node each saved agent runs on |
-| `move/3` | Restarts an agent on another node, with its saved state |
+| `delete/2` | Stops the agent and deletes it |
+| `list/1`, `whereis/2` | Every saved agent, and the running process for one |
+| `nodes/1`, `placements/1`, `move/3` | Cluster nodes, where each agent runs, and moving one |
 
 ```elixir
 WardrikCore.status(agent)

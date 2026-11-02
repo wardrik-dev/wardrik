@@ -1,45 +1,34 @@
 defmodule WardrikCore.Keys do
   @moduledoc """
-  Gives your code the API keys it calls services with, such as a model provider's or a search
-  API's.
+  Gives your code its API keys, such as a model provider's.
 
       defmodule MyApp.Keys do
         @behaviour WardrikCore.Keys
 
         @impl true
         def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, _opts),
-          do: MyApp.Vault.key(principal, name)
+          do: MyApp.Secrets.key(principal, name)
       end
 
-  Give it to an agent as `keys: {MyApp.Keys, opts}`. Keys are fetched by name, for the agent's
-  `WardrikCore.Principal`, so an org can bring its own. A capability or middleware fetches what it
-  needs:
+  Give it to an agent as `keys: {MyApp.Keys, opts}`. Your code fetches what it needs:
 
       with {:ok, key} <- WardrikCore.Keys.fetch(context, "BRAVE_API_KEY") do
         Brave.search(key, query)
       end
 
-  ## Model calls
-
-  Every model call fetches its provider's key by the name ReqLLM gives it, such as
-  `ANTHROPIC_API_KEY`, and passes it to that call only. If there's no keys module, or it has no
-  such key, ReqLLM finds one in its config or the environment.
-
-  ## Keys and credentials
-
-  Keys are for the code you install. A tool that acts for a person uses their credentials instead,
-  from `WardrikCore.Credentials`. That way nothing an agent's owner configures can read your keys.
-
-  Keys are never kept in the context, so they're never saved or emitted.
+    * Each model call fetches its provider's key, such as `ANTHROPIC_API_KEY`. With none, ReqLLM
+      uses its config or the environment.
+    * Keys are never saved or emitted.
+    * A person's own tokens belong in `WardrikCore.Credentials`.
   """
 
   alias WardrikCore.Context
   alias WardrikCore.Keys.Request
 
-  @doc "Returns the key the request names, for its principal, or `:error` if there's none."
+  @doc "Returns the key the request names, or `:error`."
   @callback fetch(Request.t(), opts :: term()) :: {:ok, String.t()} | :error
 
-  @doc "Fetches the key `name` for the agent's principal. Returns `:error` if there's none."
+  @doc "Fetches the key `name` for the agent. Returns `:error` if there's none."
   @spec fetch(Context.t(), String.t()) :: {:ok, String.t()} | :error
   def fetch(%Context{keys: nil}, _name), do: :error
 

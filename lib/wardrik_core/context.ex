@@ -2,9 +2,8 @@ defmodule WardrikCore.Context do
   @moduledoc """
   The state passed through a turn's middleware.
 
-  `step` says which step is running: `:turn`, `:generate` (a model call), `{:tool_call, call}`, or
-  `{:step, name}` for your own. Middleware reads and changes the rest, such as `messages`,
-  `response` and `attributes`.
+  `step` is `:turn`, `:generate` (a model call), `{:tool_call, call}`, or `{:step, name}` for your
+  own. Middleware reads and changes the rest, such as `messages`, `response` and `attributes`.
   """
   use WardrikCore.Private
 
@@ -38,7 +37,7 @@ defmodule WardrikCore.Context do
           span: WardrikCore.Span.t() | nil,
           attributes: map(),
           measurements: %{optional(term()) => number()},
-          prices: %{optional(String.t()) => WardrikCore.Usage.price()},
+          prices: %{optional(String.t()) => WardrikCore.price()},
           subagent: String.t() | nil
         }
 
@@ -105,11 +104,8 @@ defmodule WardrikCore.Context do
 
       Context.measure(context, :usd, 0.01)
 
-  Measurements add up over the turn. Each step reports its own share when it ends.
-
-  Core measures each model call's `input_tokens` and `output_tokens`. It also measures `usd` if
-  the model has a price in the agent's `prices` or the model catalog. Otherwise it counts the call
-  in `unpriced_calls`.
+  Measurements add up over the turn. Every model call measures `input_tokens`, `output_tokens`, and
+  `usd` if the model has a price, or else counts `unpriced_calls`.
   """
   @spec measure(t(), term(), number()) :: t()
   def measure(%__MODULE__{measurements: measurements} = context, key, amount),
@@ -124,10 +120,8 @@ defmodule WardrikCore.Context do
   end
 
   @doc """
-  Returns who the turn acts for.
-
-  That's the principal who sent the latest message. If it has none, it's the agent's own
-  principal, or `nil`.
+  Returns who the turn acts for: the sender of the latest message, or else the agent's own
+  `principal`, or `nil`.
   """
   @spec acting_for(t()) :: WardrikCore.Principal.t() | nil
   def acting_for(%__MODULE__{messages: messages, principal: principal}) do
@@ -141,13 +135,10 @@ defmodule WardrikCore.Context do
   defp asked_by(_message, agent), do: agent
 
   @doc """
-  Returns the labels in the turn's messages, or in `messages`, sorted and without duplicates.
+  Returns the labels in the turn's messages, or in `messages`, sorted and unique.
 
-  A label stays with the history it came in until the history is cleared. Core carries labels but
-  decides nothing from them.
-
-  `"outside"` marks content nobody on the agent's side wrote, such as a web page or an issue a
-  stranger filed. Such content may be what asks for the next call.
+  `"outside"` marks content nobody on the agent's side wrote, such as a web page. A label stays
+  until the history is cleared.
   """
   @spec labels(t() | [ReqLLM.Message.t()]) :: [String.t()]
   def labels(%__MODULE__{messages: messages}), do: labels(messages)
@@ -169,11 +160,9 @@ defmodule WardrikCore.Context do
   def entry(module) when is_atom(module), do: {module, []}
 
   @doc """
-  Runs `fun` through the middleware as `step`, in a span of its own. Then restores the outer step.
+  Runs `fun` through the middleware as `step`, in a span of its own.
 
       Context.run(context, {:step, "summarize"}, &summarize/1)
-
-  Name your own steps `{:step, name}`.
   """
   @spec run(t(), step(), WardrikCore.Middleware.next()) :: WardrikCore.Middleware.result()
   def run(%__MODULE__{} = context, step, fun) do

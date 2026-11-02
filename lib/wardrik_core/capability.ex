@@ -18,8 +18,7 @@ defmodule WardrikCore.Capability do
         end
       end
 
-  Give it to an agent as `capabilities: [{MyApp.Orders, opts}]`. `opts` is passed to `c:tools/2`,
-  so one module can serve many agents.
+  Give it to an agent as `capabilities: [{MyApp.Orders, opts}]`. `opts` goes to `c:tools/2`.
   """
   alias WardrikCore.Context
 

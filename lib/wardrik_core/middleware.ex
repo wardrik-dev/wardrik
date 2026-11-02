@@ -1,9 +1,6 @@
 defmodule WardrikCore.Middleware do
   @moduledoc """
-  Wraps every step of a turn: the turn itself, each model call, and each tool call.
-
-  Use it when every call needs the same treatment, such as policy, tracing, retries or a system
-  prompt.
+  Wraps every step of a turn: the turn, each model call and each tool call.
 
       defmodule MyApp.NoShell do
         @behaviour WardrikCore.Middleware
@@ -15,14 +12,14 @@ defmodule WardrikCore.Middleware do
         def call(context, next, _opts), do: next.(context)
       end
 
-  Give it to an agent as `middleware: [MyApp.NoShell]` or `middleware: [{MyApp.NoShell, opts}]`.
-  The first in the list runs outermost.
+  Give it to an agent as `middleware: [MyApp.NoShell]` or `[{MyApp.NoShell, opts}]`. The first runs
+  outermost.
 
   ## Return values
 
     * `next.(context)` - carries on.
-    * `{:ok, context}` - answers the step yourself, with `context.response` as the answer.
-    * `{:park, reason, context}` - waits for a person. See `WardrikCore.resume/3`.
+    * `{:ok, context}` - answers the step with `context.response`.
+    * `{:park, reason, context}` - waits for `WardrikCore.resume/3`.
     * `{:error, reason}` - ends the step.
   """
   alias WardrikCore.Context

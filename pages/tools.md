@@ -1,26 +1,10 @@
 # Tools
 
-## Setup
-
-Paste this into a fresh IEx session. The model calls need an Anthropic key:
-
-```elixir
-Mix.install([{:wardrik_core, "~> 0.1.0-rc.1"}])
-System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
-
-children = [
-  {WardrikCore.Backends.MemoryStore, name: :agents},
-  {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
-]
-
-{:ok, _} = Supervisor.start_link(children, strategy: :rest_for_one)
-```
-
-Replace `"sk-ant-..."` with your key.
+Run the [setup](running-agents.md#setup) in IEx first.
 
 ## Capabilities
 
-A capability is a module that gives an agent its tools:
+A capability is a module that returns an agent's tools:
 
 ```elixir
 defmodule MyApp.Orders do
@@ -47,23 +31,12 @@ end
   )
 
 :ok = WardrikCore.ask(agent, "Where is order 1001?")
-
-WardrikCore.history(agent)
-#=> [#Message<:user text>, #Message<:assistant ...>, #Message<:tool text>,
-#=>  #Message<:assistant text>]
 ```
 
-The orders are the capability's options, from `{MyApp.Orders, opts}`, so one module can serve many
-agents.
-
-Each tool call runs in its own process. A call that crashes or times out is answered with an error,
-and the turn carries on.
+- The second element, here the orders, is passed to `tools/2` as options.
+- Each call runs in its own process. A crash or timeout becomes an error the model sees.
 
 ## Annotations
-
-Annotations describe a tool, such as `read_only: true` or `idempotent: true`. Any package can read
-them. A policy can decide by them, and core repeats a read-only or idempotent call lost in a
-crash.
 
 ```elixir
 tool =
@@ -79,11 +52,13 @@ WardrikCore.Tool.annotation(tool, :idempotent)
 #=> true
 ```
 
-See `WardrikCore.Tool` for every annotation and return value.
+- A `read_only` or `idempotent` call is retried on failure, and repeated after a crash.
+- Other packages read them too, such as a policy that allows every `read_only` tool.
+- See `WardrikCore.Tool` for the full list.
 
 ## Reporting cost
 
-A tool that calls a paid API reports the cost by returning its context, measured:
+Return the context with a measurement added:
 
 ```elixir
 WardrikCore.Tool.new!(
@@ -91,10 +66,9 @@ WardrikCore.Tool.new!(
   description: "Find a person's company from their email.",
   schema: [email: [type: :string, required: true]],
   run: fn %{email: email}, context ->
-    found = %{email: email, company: "Acme"}
-    {:ok, found, WardrikCore.Context.measure(context, :usd, 0.01)}
+    {:ok, %{email: email, company: "Acme"}, WardrikCore.Context.measure(context, :usd, 0.01)}
   end
 )
 ```
 
-The cost is added to the tool call's measurements, and to the turn's. See [Tracing](tracing.md).
+The cost adds up on the tool call and the turn. See [Tracing](tracing.md).

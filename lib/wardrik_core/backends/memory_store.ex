@@ -1,13 +1,11 @@
 defmodule WardrikCore.Backends.MemoryStore do
   @moduledoc """
-  Keeps agents in memory, for tests and trying things out. They're gone when the node stops.
+  Keeps agents in memory, until the node stops. For tests and trying things out.
 
       children = [
-        {WardrikCore.Backends.MemoryStore, name: :agents_store},
-        {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents_store}}
+        {WardrikCore.Backends.MemoryStore, name: :agents},
+        {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
       ]
-
-      Supervisor.start_link(children, strategy: :rest_for_one)
   """
   use GenServer
 

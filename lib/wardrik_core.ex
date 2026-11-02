@@ -16,21 +16,11 @@ defmodule WardrikCore do
       :ok = WardrikCore.ask(agent, "What's on fire?")
       WardrikCore.history(agent)
 
-  `ask/3` returns once the message is stored. Agents in memory, as here, are gone when the node
-  stops. An agent that crashes comes back by itself and picks its message back up. With a backend
-  that keeps them, such as a disk or an S3 bucket, so does one whose node dies. See
-  [Run agents](running-agents.html#where-agents-are-kept) for the backends.
+    * An agent runs one turn at a time. Tools come from `WardrikCore.Capability` modules.
+    * Every model call and tool call runs through `WardrikCore.Middleware`.
+    * To run more than one instance, give each child a `:name`, and pass it as `instance`.
 
-  ## Turns
-
-  An agent runs one turn at a time. A message that arrives mid-turn ends the turn at its next
-  step, and the next turn answers it. Tools come from `WardrikCore.Capability` modules. Every
-  model call and tool call runs through `WardrikCore.Middleware`.
-
-  ## Instances
-
-  To run more than one instance, give each child a `:name`. Pass that name as the first argument
-  to the functions that take an `instance`.
+  See the [Run agents](running-agents.html) guide.
   """
 
   alias WardrikCore.Agent.State
@@ -43,21 +33,25 @@ defmodule WardrikCore do
   @typedoc "An agent's id, for its own history, or a `t:key/0` for one of its conversations."
   @type agent() :: String.t() | key()
 
+  @typedoc "A model's price in US dollars per million tokens."
+  @type price() :: [
+          input: number(),
+          output: number(),
+          cache_read: number(),
+          cache_write: number()
+        ]
+
   @doc """
   Runs agents under your supervision tree.
 
       {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
 
-  Before starting, it loads every module of `wardrik_core`, `req_llm` and each app that depends
-  on `wardrik_core`. That way a backend that decodes saved agents with `[:safe]` knows every
-  struct they name.
-
   ## Options
 
     * `:backend` - required. The durable_server backend agents are saved in.
-    * `:name` - the instance's name. `WardrikCore` unless set.
+    * `:name` - the instance's name. `WardrikCore` by default.
 
-  Any other option is passed to `DurableServer.Supervisor`.
+  Other options go to `DurableServer.Supervisor`.
   """
   def child_spec(opts) do
     {name, opts} = Keyword.pop(opts, :name, __MODULE__)
@@ -118,24 +112,23 @@ defmodule WardrikCore do
 
   ## Options
 
-    * `:agent_id` - required. The agent's id.
-    * `:conversation` - the id of one of the agent's conversations, which runs on the same
-      options with a history of its own. `nil`, the agent's own history, unless set. Each
-      `{agent_id, conversation}` is one agent, unique within the instance.
+    * `:agent_id` - required. Your ID for the agent.
     * `:model` - required. A model spec, as `"anthropic:claude-haiku-4-5"`.
-    * `:instructions` - the system prompt. Sent with every model call, never kept in the history.
+    * `:conversation` - your ID for one of the agent's conversations, with its own history.
+      `nil`, the main history, by default.
+    * `:instructions` - the system prompt. Never kept in the history.
     * `:capabilities` - modules that give the agent its tools. See `WardrikCore.Capability`.
     * `:middleware` - wraps every step. See `WardrikCore.Middleware`.
     * `:principal` - who the agent acts as. See `WardrikCore.Principal`.
-    * `:credentials` - where tools find a person's credentials. See `WardrikCore.Credentials`.
+    * `:credentials` - where tools find a person's tokens. See `WardrikCore.Credentials`.
     * `:keys` - where code finds API keys. See `WardrikCore.Keys`.
     * `:events` - where events go. See `WardrikCore.Events`.
-    * `:metadata` - anything of yours, passed to middleware. `%{}` unless set.
-    * `:timeout` - how long a turn may take, in milliseconds. `:infinity` unless set.
-    * `:max_rounds` - model calls a turn may make, or `:infinity`. `25` unless set.
-    * `:retries` - how failed calls are retried. See `WardrikCore.Retry`.
-    * `:prices` - model prices in US dollars per million tokens, by spec. Takes precedence over
-      the model catalog. `%{}` unless set.
+    * `:metadata` - your own data, passed to middleware. `%{}` by default.
+    * `:timeout` - how long a turn may take, in milliseconds. `:infinity` by default.
+    * `:max_rounds` - model calls per turn, or `:infinity`. `25` by default.
+    * `:retries` - see `WardrikCore.Retry`.
+    * `:prices` - US dollars per million tokens, by model spec, over the model catalog's.
+      `%{}` by default.
 
           prices: %{"zai_coding_plan:glm-5.1" => [input: 1.54, output: 4.84]}
   """
@@ -200,17 +193,14 @@ defmodule WardrikCore do
   end
 
   @doc """
-  Queues a message. Returns once it's stored.
-
-  A running turn ends at its next step, and the next turn answers the message.
+  Queues a message. Returns once it's stored. A running turn ends at its next step.
 
       :ok = WardrikCore.ask(agent, "Open an issue for the login bug.", %{principal: maria})
 
   ## Metadata
 
-    * `:principal` - the `WardrikCore.Principal` who asked. The turn that answers acts for them.
-      A turn only answers consecutive messages from one principal.
-    * `:id` - the message's id. Generated unless set.
+    * `:principal` - the `WardrikCore.Principal` who asked. The turn acts for them.
+    * `:id` - the message's ID. Generated by default.
   """
   @spec ask(GenServer.server(), String.t(), map()) :: :ok
   def ask(agent, text, metadata \\ %{}) when is_binary(text) and is_map(metadata),
@@ -221,12 +211,8 @@ defmodule WardrikCore do
   def history(agent), do: GenServer.call(agent, :history)
 
   @doc """
-  Returns what the agent is doing.
-
-    * `:idle` - nothing to do.
-    * `:running` - taking a turn.
-    * `:waiting` - parked, waiting on `resume/3`.
-    * `:due` - a turn is ready to run, such as one lost in a restart.
+  Returns what the agent is doing: `:idle`, `:running`, `:waiting` on `resume/3`, or `:due` to
+  run a turn.
   """
   @spec status(GenServer.server()) :: :idle | :running | :waiting | :due
   def status(agent), do: GenServer.call(agent, :status)
@@ -256,12 +242,11 @@ defmodule WardrikCore do
   end
 
   @doc """
-  Restarts the agent on the node `:to`, with its saved state.
+  Restarts the agent on the node `:to`, ending its turn.
 
       WardrikCore.move("triage", to: "wardrik@10.0.0.2")
 
-  Ends the turn it's taking, and abandons anything it's waiting on. Returns
-  `{:error, :no_such_node}` or `{:error, :not_found}` if the node or the agent doesn't exist.
+  Returns `{:error, :no_such_node}` or `{:error, :not_found}`.
   """
   @spec move(atom(), agent(), to: String.t()) :: {:ok, pid()} | {:error, term()}
   def move(instance \\ __MODULE__, agent, args) do
@@ -286,11 +271,7 @@ defmodule WardrikCore do
     end
   end
 
-  @doc """
-  Stops the running tool call `call_id`.
-
-  The model gets an error as the call's answer, and the turn goes on.
-  """
+  @doc "Stops the running tool call `call_id`. The model gets an error, and the turn goes on."
   @spec kill(GenServer.server(), String.t()) :: :ok | {:error, :not_running}
   def kill(agent, call_id) when is_binary(call_id), do: GenServer.call(agent, {:kill, call_id})
 
@@ -299,10 +280,9 @@ defmodule WardrikCore do
   def interrupt(agent), do: GenServer.call(agent, :interrupt)
 
   @doc """
-  Returns why the agent is parked, or `nil` if it isn't.
+  Returns what the agent waits on, or `nil`.
 
-  Parked tool calls return `{:tool_calls, [{call, outcome}]}`. While a resumed turn runs, it's the
-  calls it parked on that aren't answered yet.
+  Parked tool calls return `{:tool_calls, [{call, outcome}]}`.
   """
   @spec parked(GenServer.server()) :: term() | nil
   def parked(agent), do: GenServer.call(agent, :parked)
@@ -312,13 +292,9 @@ defmodule WardrikCore do
 
       WardrikCore.resume(agent, %{"call_1" => :approve}, %{by: maria})
 
-  `metadata` is yours, such as who answered. It's reported on the resumed turn's
-  `[:wardrik_core, :turn, :start]` event. Returns `{:error, :not_parked}` if the agent isn't
-  parked.
-
-  Parked tool calls may be answered one at a time, as `%{call_id => answer}`. While a resumed turn
-  runs, a call it parked on and isn't answered yet still takes an answer: the turn resumes with it
-  once it parks again.
+    * Answer parked tool calls by ID, one at a time or together.
+    * `metadata` is yours. It appears on the turn's `[:wardrik_core, :turn, :start]` event.
+    * Returns `{:error, :not_parked}` if the agent isn't waiting.
   """
   @spec resume(GenServer.server(), term(), map()) :: :ok | {:error, :not_parked}
   def resume(agent, input, metadata \\ %{}) when is_map(metadata),
@@ -326,8 +302,6 @@ defmodule WardrikCore do
 
   @doc """
   Asks an evaluation `:model` the `:questions` about `:state`, from inside a turn.
-
-  Use it when middleware needs a model's judgement on a call.
 
       questions = %{"urgent" => %{type: :boolean, instructions: "Is this urgent?"}}
 
@@ -340,8 +314,7 @@ defmodule WardrikCore do
 
       context = WardrikCore.Context.measure(context, measurements)
 
-  Returns each answer under its question's name, and the call's measurements. Pass them to
-  `WardrikCore.Context.measure/2`.
+  Returns each answer by question name, and what the call used.
   """
   @spec evaluate(Context.t(),
           model: String.t(),
@@ -363,20 +336,14 @@ defmodule WardrikCore do
   end
 
   @doc """
-  Calls the context's model once, from inside a turn.
-
-  Sends the context's instructions, messages and tools. Runs as a `:generate` step through the
-  middleware, so policy and budgets see it like any other model call. Streams nothing.
-
-  Use it when middleware needs the agent's own model, such as to summarise a long history.
+  Calls the context's model once, from inside a turn, through the middleware.
 
       summarizing = %{context | instructions: "Summarise this conversation.", tools: []}
       {:ok, summarized} = WardrikCore.generate(summarizing)
       ReqLLM.Response.text(summarized.response)
       #=> "The user asked about..."
 
-  Returns the context with `response` set, the reply added to `messages`, and the call's
-  measurements added.
+  Returns the context with `response` set and the reply added to `messages`. Streams nothing.
   """
   @spec generate(Context.t()) :: WardrikCore.Middleware.result()
   def generate(%Context{} = context), do: Turn.call_model(context)
@@ -384,41 +351,22 @@ defmodule WardrikCore do
   @doc """
   Runs `prompt` as one turn of a subagent, from inside a tool or middleware.
 
-  The subagent uses the caller's model, middleware and tools, with `prompt` as its only message.
-
       {:ok, %{text: text, labels: labels}, measurements} =
         WardrikCore.subagent(context, "Find this week's releases.", name: "researcher")
 
-  Returns its answer's `text` and the `labels` of what it read. Returns `{:error, reason,
-  measurements}` if it fails. Either way, pass the measurements to
-  `WardrikCore.Context.measure/2`.
-
-  It can't wait on a person. A call that would park ends it with an error. A subagent that crashes
-  fails with `{:exit, reason}`.
+    * Uses the caller's model, middleware and tools.
+    * Returns `{:error, reason, measurements}` if it fails. Pass the measurements to
+      `WardrikCore.Context.measure/2`.
+    * It can't wait for a person. A call that would park fails it.
+    * It emits `[:wardrik_core, :subagent, _]` events in place of its own steps'. See
+      `WardrikCore.Telemetry`.
 
   ## Options
 
-    * `:name` - its name. `"subagent"` unless set.
-    * `:instructions` - replaces the caller's.
-    * `:capabilities` - replaces the caller's.
-    * `:except_tools` - names of tools to leave out. `[]` unless set.
-    * `:max_rounds` - replaces the caller's.
-    * `:timeout` - milliseconds it may run before failing with `:timeout`. `:infinity` unless set.
-
-  ## Events
-
-  Its own steps emit nothing to the caller's events. Instead it emits:
-
-    * `[:wardrik_core, :subagent, :started]` - with its `prompt`.
-    * `[:wardrik_core, :subagent, :progress]` - as it begins each tool call.
-    * `[:wardrik_core, :subagent, :completed]` - with its `message`.
-    * `[:wardrik_core, :subagent, :failed]` - with its `error`.
-
-  See `WardrikCore.Telemetry` for their metadata.
-
-  While it runs, its context's `subagent` field holds its name. Middleware that counts what each
-  call measures can use it to skip the subagent's calls, and count the totals the caller adds
-  instead.
+    * `:name` - `"subagent"` by default. Set as the context's `subagent` while it runs.
+    * `:instructions`, `:capabilities`, `:max_rounds` - replace the caller's.
+    * `:except_tools` - tool names to leave out. `[]` by default.
+    * `:timeout` - milliseconds before it fails with `:timeout`. `:infinity` by default.
   """
   @spec subagent(Context.t(), String.t(), keyword()) ::
           {:ok, %{text: String.t(), labels: [String.t()]}, map()} | {:error, term(), map()}
@@ -426,15 +374,12 @@ defmodule WardrikCore do
     do: WardrikCore.Subagent.run(context, prompt, opts)
 
   @doc """
-  Returns `model`'s price from the model catalog, in US dollars per million tokens.
-
-  Returns `nil` if the catalog has no price in dollars. Use the result, or one built from it, in
-  an agent's `:prices`.
+  Returns `model`'s price from the model catalog, in US dollars per million tokens, or `nil`.
 
       WardrikCore.price("anthropic:claude-haiku-4-5")
       #=> [input: 1.0, output: 5.0, cache_read: 0.1, cache_write: 1.25]
   """
-  @spec price(LLMDB.Model.t() | String.t()) :: WardrikCore.Usage.price() | nil
+  @spec price(LLMDB.Model.t() | String.t()) :: price() | nil
   def price(model), do: WardrikCore.Usage.price(model)
 
   @doc "Returns `model`'s context window in tokens, from the model catalog, or `nil`."

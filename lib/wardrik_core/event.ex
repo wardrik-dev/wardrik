@@ -2,15 +2,8 @@ defmodule WardrikCore.Event do
   @moduledoc """
   Something that happened to an agent.
 
-  Each event goes to two places:
-
-    * `:telemetry`, for metrics and traces. Handlers run in the emitting process, and `:telemetry`
-      detaches a handler that raises.
-    * The agent's `WardrikCore.Events` sink, for clients that follow the agent, such as a CLI, a
-      TUI or a web page.
-
-  An event has a telemetry `name`, such as `[:wardrik_core, :turn, :stop]`, `measurements` and
-  `metadata`. See `WardrikCore.Telemetry` for core's events. Packages emit their own the same way:
+  Each event goes to `:telemetry` and to the agent's `WardrikCore.Events` module. See
+  `WardrikCore.Telemetry` for core's events. Packages emit their own:
 
       WardrikCore.Event.emit(context, [:my_package, :refused], %{}, %{call: call})
   """
@@ -27,13 +20,10 @@ defmodule WardrikCore.Event do
         }
 
   @doc """
-  Emits an event to telemetry and to a sink.
+  Emits an event to telemetry, and to the events module of `source`.
 
-  `source` is one of:
-
-    * a `WardrikCore.Context` - emits to the agent's sink.
-    * a sink, as `module` or `{module, opts}`.
-    * `nil` - emits to telemetry only.
+  `source` is a `WardrikCore.Context`, an events module as `module` or `{module, opts}`, or `nil`
+  for telemetry only.
   """
   @spec emit(Context.t() | Context.entry() | nil, [atom()], map(), map()) :: :ok
   def emit(source, name, measurements \\ %{}, metadata) do

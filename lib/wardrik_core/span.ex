@@ -1,9 +1,5 @@
 defmodule WardrikCore.Span do
-  @moduledoc """
-  A span in a turn's trace.
-
-  A turn is the root span. Each of its steps runs in a child span.
-  """
+  @moduledoc "A span in a turn's trace. The turn is the root, and each step a child."
 
   @enforce_keys [:id, :trace]
   defstruct [:id, :trace, :parent]
@@ -14,12 +10,7 @@ defmodule WardrikCore.Span do
   @spec root() :: t()
   def root, do: %__MODULE__{id: random(8), trace: random(16)}
 
-  @doc """
-  Starts a span beneath `parent`.
-
-  With `:key`, the span's id is derived from the trace and the key, so it's the same each time.
-  A tool call that runs again after a restart keeps its span this way.
-  """
+  @doc "Starts a span beneath `parent`. With `:key`, the ID is the same each time for that key."
   @spec child(t(), keyword()) :: t()
   def child(%__MODULE__{} = parent, opts \\ []),
     do: %__MODULE__{id: id(parent, opts[:key]), trace: parent.trace, parent: parent.id}

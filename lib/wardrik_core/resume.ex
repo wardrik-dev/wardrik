@@ -1,9 +1,7 @@
 defmodule WardrikCore.Resume do
   @moduledoc """
-  What a parked step sees when it runs again.
-
-  Holds the `reason` it parked, the `input` passed to `WardrikCore.resume/3`, and that call's
-  `metadata`.
+  What a parked step sees when it runs again: why it parked, and the `input` and `metadata` given
+  to `WardrikCore.resume/3`.
   """
 
   @enforce_keys [:reason, :input]

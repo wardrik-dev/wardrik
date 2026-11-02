@@ -1,6 +1,6 @@
 defmodule WardrikCore.Events do
   @moduledoc """
-  Where an agent's events go: a log, a broadcast, anything a client reads from.
+  Where an agent's events go, such as a log or a broadcast.
 
       defmodule MyApp.Events do
         @behaviour WardrikCore.Events
@@ -11,9 +11,8 @@ defmodule WardrikCore.Events do
         end
       end
 
-  Give it to an agent as `events: {MyApp.Events, opts}`. Core calls it with every
-  `WardrikCore.Event`, in the process the event happens in. Keep it quick: store or send the event,
-  and return.
+  Give it to an agent as `events: {MyApp.Events, opts}`. It runs in the agent's process, so return
+  quickly.
   """
 
   @doc "Handles one event. The return value is ignored."

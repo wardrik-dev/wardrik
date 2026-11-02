@@ -1,6 +1,6 @@
 defmodule WardrikCore.Retry do
   @moduledoc """
-  Retries model calls and tool calls that fail in a way a retry may fix.
+  Retries model calls and tool calls that a retry may fix.
 
       WardrikCore.start_agent(
         agent_id: "triage",
@@ -8,33 +8,28 @@ defmodule WardrikCore.Retry do
         retries: [attempts: 3, max_wait: :timer.seconds(10), on_exhausted: :fail]
       )
 
-  Before each retry it waits a random time of up to 1 second, then up to 2, then 4, and so on,
-  capped at `:max_wait`.
-
   ## Options
 
-    * `:attempts` - retries after the first try. `6` unless set.
-    * `:max_wait` - the longest wait, in milliseconds. `60_000` unless set.
-    * `:on_exhausted` - what a model call does once retries run out. `:ask` waits for a person to
-      say whether to try again (see `WardrikCore.Retry.Exhausted`). `:fail` fails the turn. `:ask`
-      unless set.
+    * `:attempts` - retries after the first try. `6` by default.
+    * `:max_wait` - the longest wait between tries, in milliseconds. Waits double from 1 second.
+      `60_000` by default.
+    * `:on_exhausted` - when a model call runs out of retries, `:ask` a person
+      (see `WardrikCore.Retry.Exhausted`) or `:fail` the turn. `:ask` by default.
 
   ## What's retried
 
-    * A model call that raised, such as on a timeout, a dropped stream, a rate limit or a 5xx.
-      Not a 4xx other than 408, 425 and 429, and not a call middleware refused.
+    * A model call that raised, such as on a timeout, a rate limit or a 5xx. Not a 4xx other than
+      408, 425 and 429.
     * A tool call that raised, crashed or timed out, if its tool is `idempotent` or `read_only`.
 
-  So a tool should return `{:error, reason}` for failures a retry won't fix, and raise for those
-  it might.
+  A tool should return `{:error, reason}` when a retry won't help, and raise when it might.
   """
 
   defmodule Exhausted do
     @moduledoc """
     Why a turn parks once a model call's retries run out.
 
-    Resume with `%{"model" => :approve}` to try again with fresh retries, or
-    `%{"model" => {:deny, reason}}` to fail the turn.
+    Resume with `%{"model" => :approve}` to try again, or `%{"model" => {:deny, reason}}` to fail.
     """
 
     @enforce_keys [:message]
@@ -58,8 +53,8 @@ defmodule WardrikCore.Retry do
         announce: &IO.inspect(&1, label: "retrying")
       )
 
-  `:transient` returns `nil` for an answer that shouldn't be retried. `:announce` is called before
-  each wait. Returns `{:ok, answer}`, or `{:spent, answer, tries}` once retries run out.
+  `:transient` returns `nil` to stop. `:announce` is called before each wait. Returns
+  `{:ok, answer}`, or `{:spent, answer, tries}`.
   """
   @spec run(t(), (-> answer),
           transient: (answer -> term() | nil),
