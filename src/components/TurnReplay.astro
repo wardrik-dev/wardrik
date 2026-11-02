@@ -1,5 +1,5 @@
 ---
-// Turns from four examples, as `rik watch` prints them (WardrikConsole.Printer):
+// Turns from four examples, as `wardrik follow` prints them (WardrikConsole.Printer):
 // a line when a call starts and when it finishes or is refused, the calls a
 // turn parks on, then its answer. The person decides in Slack, where the
 // notice reads as WardrikSlack.Notices posts it and, once pressed, says who
@@ -28,12 +28,11 @@ const parked = (name: string, id: string, prompt: string): Line[] => [
 const answer = (text: string): Line => ({ parts: [{ text }] });
 const later = (lines: Line[]) => lines.map((line) => ({ ...line, after: true }));
 
-// Each from its example: examples/business/books.md, team/incident-responder.md,
-// business/front-desk.md and you/your-week.md, with their tools, rules, rooms
-// and approvers.
+// Illustrative turns, after examples/business/books.md, team/incident-responder.md
+// and similar agents, with their tools, rules and rooms.
 const scenarios: Scenario[] = [
 	{
-		id: 'books', label: 'Books', agent: 'acme/books', room: '#accounting', decider: 'maria',
+		id: 'books', label: 'Books', agent: 'books', room: '#accounting', decider: 'maria',
 		tool: 'quickbooks/create-bill', prompt: 'A line of $1,000 or more.',
 		args: '{"params":{"bill":{"Line":[{"Amount":9400,…}],…}}}',
 		lines: [
@@ -50,7 +49,7 @@ const scenarios: Scenario[] = [
 		],
 	},
 	{
-		id: 'incident', label: 'Incident', agent: 'acme/oncall', room: '#incidents', decider: 'devon',
+		id: 'incident', label: 'Incident', agent: 'oncall', room: '#incidents', decider: 'devon',
 		tool: 'github/actions_run_trigger', prompt: 'This rolls back.', outside: true,
 		args: '{"method":"run_workflow","workflow_id":"rollback.yml",…}',
 		lines: [
@@ -68,7 +67,7 @@ const scenarios: Scenario[] = [
 		],
 	},
 	{
-		id: 'judge', label: 'Judge', agent: 'acme/front-desk', room: '#front-desk', decider: 'sam',
+		id: 'judge', label: 'Judge', agent: 'front-desk', room: '#front-desk', decider: 'sam',
 		tool: 'gmail/create_draft', prompt: 'Judged 94% likely: Does this draft promise the customer a refund?', outside: true,
 		args: '{"body":"Sorry about the wheel. We’ll refund the repair in full.",…}',
 		denied: 'Offer store credit instead.',
@@ -87,7 +86,7 @@ const scenarios: Scenario[] = [
 		],
 	},
 	{
-		id: 'week', label: 'Your week', agent: 'acme/@jo/week', room: '#week', decider: 'jo',
+		id: 'week', label: 'Your week', agent: 'week', room: '#week', decider: 'jo',
 		tool: 'gcal/create_event', prompt: 'This invites other people.', outside: true,
 		args: '{"summary":"Q3 review","attendeeEmails":["priya@…"],…}',
 		lines: [
@@ -107,12 +106,12 @@ const scenarios: Scenario[] = [
 ];
 ---
 
-<figure class="turn-replay not-content" data-turn-replay aria-label="Agents' turns, as rik watch shows them, with decisions in Slack">
+<figure class="turn-replay not-content" data-turn-replay aria-label="Agents' turns, as wardrik follow shows them, with decisions in Slack">
 	<div class="replay-stage">
 		{scenarios.map((scenario, index) => (
 			<div class="replay-scenario" data-scenario={scenario.id} hidden={index !== 0} data-decided data-denies={scenario.denied ? '' : undefined}>
 				<div class="replay-terminal">
-					<p class="replay-command"><span aria-hidden="true">❯</span><code>rik watch {scenario.agent}</code><span class="replay-label">Illustrative output</span></p>
+					<p class="replay-command"><span aria-hidden="true">❯</span><code>wardrik follow {scenario.agent}</code><span class="replay-label">Illustrative output</span></p>
 					<pre tabindex="0"><code>{scenario.lines.map(({ parts, band, after }) => <span class:list={['replay-line', band && `band-${band}`]} data-after={after ? '' : undefined}>{parts.map(({ text, tone }) => <span class={tone}>{text}</span>)}</span>)}</code></pre>
 				</div>
 				<div class="replay-notice">

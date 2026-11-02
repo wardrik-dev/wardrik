@@ -1,35 +1,22 @@
 ---
 title: Host your tools
-description: "Run a tool worker inside your app or on its own, on the daemon's machine, another machine or a container, and keep its tools up through deploys."
+description: "Run a tool worker inside your app or on its own, on another machine or in a container, and keep its tools up through deploys."
 sidebar:
   order: 3.3
 ---
 
-A worker is any process that calls `wardrik.work()`. It holds one connection to the daemon, and
-answers calls over it. Host it wherever your code runs: it opens no port, so it needs only a way out
-to the daemon.
-
-| Where | When |
-| --- | --- |
-| [Inside your app](#inside-your-app) | the tools use your app's code, database and settings |
-| [On its own](#on-its-own) | a few tools around an outside API, like `post_status` |
+A worker is any process that calls `wardrik.work()`. It opens no port: it needs only a way out to
+the daemon.
 
 ## Inside your app
 
-Start the worker beside your HTTP server, from the same process. Its tools call your services
-directly, with your database pool and config:
+Start it beside your HTTP server, so its tools use your app's code and database:
 
 ```ts title="server.ts"
-import express from "express";
-import { Wardrik } from "@wardrik/sdk";
-import { routes } from "./routes.ts";
-import { addTools } from "./tools.ts"; // your wardrik.tool(...) calls
-
-const app = express().use(routes);
 const server = app.listen(3000);
 
 const wardrik = new Wardrik({ name: "shop" });
-addTools(wardrik);
+addTools(wardrik); // your wardrik.tool(...) calls
 
 const stop = new AbortController();
 process.on("SIGTERM", () => {
@@ -40,13 +27,9 @@ process.on("SIGTERM", () => {
 await wardrik.work({ signal: stop.signal });
 ```
 
-Each copy of your app connects with the same token, and each call goes to one of them.
+Each copy of your app connects with the same token. Each call goes to one of them.
 
 ## On its own
-
-A worker of its own is a small Node app, run like any service. [Your first
-tool](/build/first-tool/#6-run-it-as-a-service) runs one with systemd on the daemon's machine. In a
-container:
 
 ```dockerfile title="Dockerfile"
 FROM node:24-slim
@@ -59,132 +42,53 @@ CMD ["node", "statuspage.ts"]
 ```
 
 ```sh
-docker build -t statuspage .
 docker run -d --restart unless-stopped --env-file statuspage.env statuspage
 ```
 
-`statuspage.env` holds `WARDRIK_URL`, `WARDRIK_TOKEN` and the tool's own keys. On the daemon's own
-machine, add `--network host`, so `127.0.0.1:4747` is the daemon's and not the container's.
+- `statuspage.env` holds `WARDRIK_URL`, `WARDRIK_TOKEN` and the tool's own keys.
+- On the daemon's machine, add `--network host`, so `127.0.0.1:4747` is the daemon.
+- In Kubernetes it's a Deployment, with no Service: nothing connects to it.
 
-In Kubernetes it's a Deployment, with no Service or Ingress, since nothing connects to it:
+## A daemon on another machine
 
-```yaml title="statuspage.yaml"
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: statuspage
-spec:
-  replicas: 2
-  selector:
-    matchLabels: { app: statuspage }
-  template:
-    metadata:
-      labels: { app: statuspage }
-    spec:
-      containers:
-        - name: statuspage
-          image: registry.acme.example/statuspage:1
-          envFrom:
-            - secretRef: { name: statuspage }
-```
-
-## Reach a daemon on another machine
-
-The daemon's HTTP API listens on loopback, `127.0.0.1:4747`. For a worker elsewhere, pass
-`/v1/workers` through the same Caddy that gives the daemon its
+Pass `/v1/workers` through the Caddy that gives the daemon its
 [public address](/run/public-address/):
 
 ```text title="/etc/caddy/Caddyfile"
 agents.acme.example {
-	@daemon path /oauth/* /v1/hooks/* /v1/workers
-
+	@daemon path /oauth/* /v1/hooks/* /v1/channels/* /v1/workers
 	handle @daemon {
 		reverse_proxy 127.0.0.1:4747
 	}
-
 	handle {
 		respond 404
 	}
 }
 ```
 
-Then point the worker at it:
-
 ```sh
 WARDRIK_URL=https://agents.acme.example
 ```
 
-The SDK opens a WebSocket to `wss://agents.acme.example/v1/workers`, and Caddy passes it on. A
-worker's tools reach only the agents its token's `worker` role covers.
-
-## Tokens and keys
-
-- Make one token per app, with `--role worker`, scoped to the agents that may use its tools. See
-  [Tokens](/run/tokens/).
-- The tools' own keys, such as Statuspage's, stay in the app's environment. The daemon never sees
-  them.
-- Revoke the token to cut the app off. Its connection closes within 15 seconds.
-
-| Resource | Agents that get the tools |
-| --- | --- |
-| `'acme/agent/*'` | acme's own agents, none that work for a user |
-| `'acme/*'` | acme's and its users' agents, as per-user agents need |
-| `'default/agent/*'` | agents whose file names no `org`, unless `config.yaml` names another |
-
 ## Deploys and restarts
 
-While no worker offers a tool, agents don't see it. Run two copies, and restart them one at a time,
-so one is always connected.
-
-The SDK reconnects after a drop, waiting longer each time, up to 30 seconds. A refused token makes
-`work` throw instead, so the process ends and its supervisor shows it.
+- While no worker offers a tool, agents don't see it. Run two copies, and restart one at a time.
+- The SDK reconnects after a drop, waiting up to 30 seconds.
+- A refused token makes `work` throw, so the process ends and its supervisor shows it.
+- Revoke the token to cut a worker off. Its connection closes within 15 seconds.
 
 ### Calls in doubt
 
-A call is in doubt when the daemon can't tell whether it finished: the worker went away during it,
-or answered late, or the agent's node was lost.
+A call is in doubt when the worker went away during it, or answered late.
 
-- Where every worker offering the tool marks it `idempotent` or `readOnly`, it runs again under the
-  same key, on a worker connected then.
-- Otherwise, or where it's in doubt again, it waits on a person, who can check and decide.
-
-The model is never told it failed, so it never retries under a new key. See
-[Running a call twice](/build/write-tools/#running-a-call-twice).
+- If every worker marks the tool `idempotent` or `readOnly`, it runs again under the same key.
+- Otherwise it waits on a person, who checks and decides.
 
 ## Details
 
-### Several workers
-
-- A token acts for whoever made it. Workers whose tokens act for the same person share a tool's
-  calls, and each call goes to one of them.
-- Where workers acting for two different people offer a tool of the same name to one agent, the
-  agent gets the tool of the one that connected first.
-- `*` in an agent file includes `workers/*`. A file can't list one worker tool. Name it in a policy
-  instead.
-
-### The connection
-
-- `new Wardrik()` reads `WARDRIK_URL`, `http://127.0.0.1:4747` unless set, and `WARDRIK_TOKEN`.
-  It throws without a token.
-- `work` opens a WebSocket to `/v1/workers` and answers calls as an MCP server.
-- `work` pings the daemon every 15 seconds, and reconnects where a ping isn't answered in as long
-  again. `keepalive` changes it, in milliseconds.
-- A refused token throws a `WardrikError`, with its `status`, `type` and `requestId`.
-
-### On a private network
-
-`http.ip` in `config.yaml` makes the HTTP API listen on another address, such as the machine's
-address on a private network. It's plain HTTP, so use it only on a network you trust. See
-[config.yaml](/reference/config/#http).
-
-### Outside content
-
-A worker's answers are content from outside unless `config.yaml` says otherwise:
-
-```yaml
-http:
-  trusted_workers: true
-```
-
-Without it, a turn that called a worker waits on a person before a gated call runs. See
-[Content from outside](/concepts/outside-content/).
+- Workers acting as the same user share a tool's calls.
+- If two users' workers offer a tool of the same name, the agent gets the one that connected
+  first.
+- `work` pings every 15 seconds. `keepalive` changes it, in milliseconds.
+- A worker's answers are [content from outside](/concepts/outside-content/), unless `config.yaml`
+  sets `http: {trusted_workers: true}`.

@@ -1,14 +1,12 @@
 ---
 title: Agents
-description: "An agent is a named process with a conversation, a model, tools and a policy. It answers in turns, and carries on when its node is lost."
+description: "An agent is a process with a model, tools, a policy and a conversation. It answers in turns, sleeps when idle, and survives a lost node."
 sidebar:
   order: 1
-  label: Overview
 ---
 
-An agent is a process with an ID, a conversation, and the model, tools and policy it was given. It
-answers one message at a time and keeps what was said. Its state lives in the store, so when its
-node is lost it carries on on another.
+An agent has a model, tools, a policy and a conversation. It answers one turn at a time. Its
+state is in the store, so it carries on after a restart or a lost node.
 
 ```markdown title="~/.config/wardrik/agents/triage.md"
 ---
@@ -20,79 +18,92 @@ You help the on-call engineer.
 ```
 
 ```sh
+wardrik reload
 wardrik ask triage "What changed today?"
 ```
 
-<a id="keys-and-orgs"></a>
+## IDs and names
 
-## IDs and orgs
+- Every agent has an opaque ID, such as `agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN`. The daemon makes it.
+- The daemon also keeps a name per org. The file name, `triage`, is the name.
+- The `wardrik` command takes names. `org/name` reaches another org's agent.
+- The HTTP API takes IDs: `GET /v1/agents/agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN`.
 
-Every agent belongs to an org, and may work for one of its users. Its ID says which:
+## Conversations
 
-| ID | The agent |
-| --- | --- |
-| `acme/triage` | acme's own `triage` |
-| `acme/@jon/triage` | jon's `triage`, in acme |
-| `acme/triage/C1-1696.1234` | one conversation of `acme/triage`, such as a Slack thread |
-
-An org is the boundary between agents. [Tokens](/run/tokens/),
-[shared trees](/concepts/files-and-memory/#sharing-trees),
-[MCP servers](/build/mcp/#which-orgs-a-server-serves) and
-[notice targets](/build/notices/#which-orgs-a-target-tells) each reach one org unless configured
-otherwise.
-
-The deployment's own org is `default`, unless `config.yaml` sets `org`. Other orgs are declared
-under `orgs`; see [Orgs](/run/orgs/#declare-an-org).
-
-The CLI finds an agent of the deployment's org by its name alone, and a user's by `@user/name`:
+An agent can hold many conversations, such as one per Slack thread. Each has its own history and
+shares the agent's definition and files. Name one with `conversation`:
 
 ```sh
-wardrik ask triage "What changed today?"      # acme/triage
-wardrik agent show @jon/triage                # acme/@jon/triage
-wardrik agent show globex/triage              # another org's
+wardrik ask triage "And now?" --conversation C1-1696.1234
 ```
 
-Over the HTTP API the ID is the path, always in full: `/v1/agents/acme/@jon/triage`. A
-conversation's last part follows `conversations/`, as
-`/v1/agents/acme/triage/conversations/C1-1696.1234`.
+```elixir
+Wardrik.Agent.ask(scope, "agt_01JF8X5RQ2", "And now?", conversation: "C1-1696.1234")
+```
+
+## Turns
+
+1. The agent takes the waiting messages and asks the model.
+2. It runs the tool calls the model makes, up to 8 at once.
+3. It asks the model again with the results.
+4. The turn ends when the model answers without a tool call.
+
+A call may wait for a person. That parks the turn until someone decides. See
+[Approvals](/concepts/approvals/).
+
+| Key | Default | At the limit |
+| --- | --- | --- |
+| `max_iterations` | 25 rounds | the turn fails |
+| `timeout` | none | the turn stops, as `run.deadline_exceeded` |
+| `retries` | 6 more tries | a person is asked whether to try again |
+
+```sh
+wardrik agent cancel triage        # stop the turn and drop waiting messages
+wardrik agent kill triage call_1   # stop one tool call; the turn goes on
+wardrik agent clear triage         # empty the history
+```
 
 ## Status
 
-| Status | The agent is |
-| --- | --- |
-| `idle` | waiting for a message |
-| `running` | answering one |
-| `parked` | waiting on a person |
-| `asleep` | stopped until something asks it; see [Sleeping](/concepts/agent-lifecycle/#sleeping) |
+`wardrik ls` shows each agent as `idle`, `running`, `parked` (waiting on a person) or `asleep`.
+`wardrik ls attention` lists the parked ones.
 
-`wardrik ls` shows each agent's status, its queued messages, when it next runs and what it has
-spent today:
+## Sleeping
 
-```sh
-wardrik ls                    # every agent
-wardrik ls org:acme triage    # acme's agents with triage in their ID
-wardrik ls attention          # the agents waiting on a person
+An agent idle for 15 minutes stops and costs nothing. A message, a decision or a reader wakes
+it, on any node. Set `idle_timeout` in seconds, or `infinity` to never sleep.
+
+## Changing and removing
+
+- Edit the file, then `wardrik reload`. The conversation is kept.
+- Delete the file, then `wardrik reload`, to remove the agent.
+- `wardrik agent rm triage` removes an agent the HTTP API made.
+- Restart the daemon after you change `config.yaml` or `policies/`.
+
+## Durable runs
+
+Before a round of tool calls runs, the agent writes it to the store. If the node is lost, another
+node carries on from that round.
+
+- A call that can safely run twice runs again: file reads, read-only MCP tools, `readOnly` or
+  `idempotent` worker tools.
+- Any other call waits for a person: "This call may have run, but its answer was lost."
+- Each call has an `idempotencyKey` that stays the same. Pass it to services that take one.
+
+```ts
+wardrik.tool({
+  name: "refund_order",
+  input: z.object({ orderId: z.string() }),
+  idempotent: true,
+  run: ({ orderId }, { idempotencyKey }) =>
+    stripe.refunds.create({ payment_intent: orderId }, { idempotencyKey }),
+});
 ```
 
-## In this section
+## A history that grows
 
-- [Turns](/concepts/turns/): how an agent answers, its limits, stopping a turn, its conversation,
-  and subagents.
-- [Lifecycle](/concepts/agent-lifecycle/): where agents come from, changing and removing them,
-  sleeping, and clusters.
-- [Durable runs](/concepts/durable-runs/): how a turn survives a lost node.
+At 60% of the model's context window, the agent summarises older messages. Tune it with
+`compaction: {at: 0.5, keep: 0.2}`, or turn it off with `compaction: false`.
 
-## Details
-
-- **Names.** An org, a user and a name hold no `/`, `:`, `*`, `?` or whitespace, and don't begin
-  with `@` or `_`. They appear in event sources, store keys and logs, so make a user's an id, not
-  an email address.
-- **Conversations** run on their agent's definition, with a history of their own. `wardrik ls`
-  counts each agent's conversations; `wardrik ls --all` lists them too.
-- **History.** A `running` agent may begin a turn by summarising its history; see
-  [A history that grows](/concepts/durable-runs/#a-history-that-grows).
-- **Queries.** `wardrik ls` takes words that must all match: text in the ID, `name:`, `org:`,
-  `user:`, `node:`, `status:` with any status above, and `attention`. `@jon` lists jon's agents.
-- **Resources.** Tokens and patterns name an agent as a resource: `acme/agent/triage` for
-  `acme/triage`, and `acme/@jon/agent/triage` for `acme/@jon/triage`. `acme/agent/*` covers
-  acme's own agents.
+Every key is in [Agent files](/reference/agent-files/).

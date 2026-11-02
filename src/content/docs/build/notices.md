@@ -5,97 +5,51 @@ sidebar:
   order: 7
 ---
 
-An agent nobody is watching can tell someone when it waits on a person, fails, or answers. Name the
-targets in `config.yaml`, then route each agent's notices to them. A target is a room in one of
-your [channels](/channels/), or a webhook:
+Name targets in `config.yaml`, then route an agent's notices to them:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 notify:
-  ops:
-    channel: slack
-    room: "#ops"
-    approvers: ["@maria", jon@example.com]
-  audit:
-    webhook:
-      url: https://hooks.example.com/wardrik
-      secret: ${WARDRIK_WEBHOOK_SECRET}
+  targets:
+    ops: {channel: slack, room: "#ops"}
+    audit: {webhook: {url: https://hooks.example.com/wardrik, secret: "${WEBHOOK_SECRET}"}}
 ```
 
 ```yaml
 # in an agent file
-notify: ops                                         # parked and failed turns, to ops
-notify: [ops, audit]
-notify: {to: [ops], on: [parked, failed, finished]}
+notify: ops                                         # parked and failed turns
+notify: {to: [ops, audit], on: [parked, failed, finished]}
+notify: {to: ["slack:#updates"], on: [finished]}    # a room, with no target
 ```
 
-`on` takes any of these, and is `[parked, failed]` unless set:
-
-| Kind | Sent when |
+| `on` | Sent when |
 | --- | --- |
-| `parked` | a turn waits on a person |
-| `failed` | a turn fails |
-| `finished` | a turn answers |
+| `parked` | a turn waits on a person; in Slack each call has **Approve** and **Deny** |
+| `failed` | a turn fails, with why |
+| `finished` | a turn answers, with its answer |
 
-## Post in a room
+`on` is `[parked, failed]` unless set.
 
-Name a room of a channel as `channel:room`, with no target in `config.yaml`:
+- A room posts in the workspace the channel is added to for the agent's owner, or its org.
+- A target serves the deployment's org. List it under `orgs.<org>.notify` for another.
+- One org's calls never reach another org's room.
 
-```yaml
-# in an agent file
-notify: {to: ["slack:#updates"], on: [parked, failed, finished]}
+## Webhooks people add
+
+An org or person adds a webhook for their own agents:
+
+```sh
+echo "$SECRET" | wardrik vault put HOOK_SECRET --org acme --for signing_secret
+wardrik notify add alerts --org acme --url https://hooks.acme.example/wardrik --secret HOOK_SECRET
 ```
 
-It posts where the channel [offers the agent's org](/channels/#which-agents-a-channel-offers), in the
-workspace the channel is installed in for that org, or for every org. An agent never posts in another
-org's workspace. Where there is none, nothing is posted, and the log says so.
+Agents route to it as `notify: alerts`.
 
-In Slack, the bot posts in any public channel, since the [manifest](/channels/slack/#a-slack-app)
-asks for `chat:write.public`. Invite it into a private one.
-
-A room notice asks nobody by name; whoever may decide the agent's calls can answer it. Like every
-notice, it is sent at least once; see [Details](#details).
-
-## What a notice says
-
-- **Parked:** the agent, and for each waiting call its tool, the question, its arguments, and
-  whether the turn had read content from outside. In Slack each call has
-  [Approve and Deny](/channels/slack/#what-a-notice-says-in-slack).
-- **Failed:** why the turn failed.
-- **Finished:** what the turn answered. It suits an agent a [trigger](/build/triggers/) asks.
-
-## Which orgs a target tells
-
-A target tells the deployment's [org](/concepts/agents/#keys-and-orgs). To tell another org, list it
-under that org in `orgs`, with the channel it posts through:
-
-```yaml
-channels:
-  globex-slack:
-    type: slack
-    token: ${GLOBEX_SLACK_BOT_TOKEN}
-    signing_secret: ${GLOBEX_SLACK_SIGNING_SECRET}
-
-notify:
-  globex-ops:
-    channel: globex-slack
-    room: "#globex-ops"
-
-orgs:
-  globex:
-    channels: [globex-slack]
-    notify: [globex-ops]
-```
-
-One org's calls never reach another org's room, where its people could approve them.
-
-## Webhooks
-
-A `webhook` target is sent each notice as JSON in a POST:
+## What a webhook gets
 
 ```json
 {
   "event": "turn_parked",
-  "agent": "acme/triage",
+  "agent": "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN",
   "at": "2026-10-01T12:04:09.611Z",
   "calls": [
     {
@@ -112,8 +66,8 @@ A `webhook` target is sent each notice as JSON in a POST:
 }
 ```
 
-With a `secret`, each body is signed as `x-wardrik-signature: sha256=<hex>`, the HMAC-SHA256 of the
-raw body. Check it before parsing:
+With a `secret`, the body is signed as `x-wardrik-signature: sha256=<hex>`, the HMAC-SHA256 of the
+raw body:
 
 ```js
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -126,19 +80,8 @@ const ok =
 
 ## Details
 
-- One process sends the notices, and keeps its place in the agents' logs. After a
-  restart it carries on from there, so a notice whose delivery was cut short comes again: tell a
-  repeat by its `agent`, `event` and `at`.
-- A turn waiting on several calls sends a notice again when some are decided and others still wait.
-- A definition [sent over HTTP](/build/http-api/#define-an-agent) takes `notify` in the same forms,
-  as `"notify": {"to": ["ops"], "on": ["finished"]}`. It holds while the agent sleeps and after a
-  restart, and goes when the agent is forgotten.
-- An agent file routing to another org's target doesn't read; a definition over HTTP that does is
-  refused.
-- Webhook `event` is `turn_parked`, `turn_failed` or `turn_finished`, also in the `x-wardrik-event`
-  header. `reason` is why a turn failed, `text` what it answered, and a call's `labels` what its
-  turn had read first.
-- The signature covers the body only, with no time, so a body sent again verifies again. Use `at`
-  to refuse old ones.
-- An answer other than 2xx is a failure. A failure that may pass is tried up to three more times,
-  each waiting up to 10 seconds. A notice that still fails is logged and dropped.
+- `event` is `turn_parked`, `turn_failed` or `turn_finished`, also in the `x-wardrik-event` header.
+- A notice is sent at least once. Tell a repeat by its `agent`, `event` and `at`.
+- The signature covers the body only. Use `at` to refuse old ones.
+- A failure that may pass is retried. `notify.retries` sets how.
+- A people-added webhook must be `https` at a public address.

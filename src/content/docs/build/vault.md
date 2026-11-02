@@ -1,114 +1,74 @@
 ---
 title: Keep secrets in the vault
-description: "Seal API keys and tokens in the vault, for a user or an org, so no file holds a secret."
+description: "Seal API keys and tokens in the vault, for the deployment, an org or a person, so no file holds a secret."
 sidebar:
   order: 2.5
 ---
 
-The vault keeps secrets sealed in the store, so no file holds them.
+The vault seals secrets in the store, so no file holds them:
 
 ```sh
-echo "$PD_TOKEN" | wardrik vault put pagerduty --org acme   # acme's agents'
-echo "$SENTRY" | wardrik vault put sentry --user jon        # jon's agents', in the deployment's org
-echo "$KEY" | wardrik vault put ANTHROPIC_API_KEY           # the deployment's own
-wardrik vault ls --org acme                                 # names and kinds, never values
-wardrik vault rm pagerduty --org acme
+echo "$KEY" | wardrik vault put ANTHROPIC_API_KEY --for api_key           # the deployment's
+echo "$KEY" | wardrik vault put ANTHROPIC_API_KEY --org acme --for api_key # acme's
+echo "$CRM" | wardrik vault put CRM_KEY --user jon --for header           # acme/@jon's, in the deployment's org
+wardrik vault ls --org acme                                              # names and purposes, never values
+wardrik vault rm CRM_KEY --user jon
 ```
 
-`vault put` reads the value from stdin, and needs the daemon running. Each command takes one owner:
+- `vault put` reads the value from stdin. The daemon must be running.
+- No flag is the deployment. `--org ORG` is an org. `--user NAME` is a person in the deployment's
+  org.
 
-| Flag | Owner |
+## What a secret is for
+
+Each secret is sealed `--for` one purpose, and read only for that:
+
+| `--for` | Read as |
 | --- | --- |
-| none | the deployment |
-| `--org ORG` | the org `ORG` |
-| `--user USER` | the user `USER` in the deployment's org |
+| `api_key` | a key a model or tool calls a service with |
+| `client_secret` | an OAuth app's client secret, for `wardrik provider add --secret` |
+| `header` | an MCP server's header, for `wardrik server add --secret` |
+| `signing_secret` | a webhook's signing secret, for `wardrik notify add --secret` and triggers |
 
-`vault ls` lists one owner's secrets. Its `KIND` column says `secret` for one you put, and `grant`
-for an account a person [connected](/build/accounts/).
+## API keys
 
-## Whose secret a tool reads
+An agent's model and tools look for a key by its name, as `ANTHROPIC_API_KEY`:
 
-A tool reads a secret by name, as the agent's owner holds it:
-
-- A user's agent reads that user's secrets and connected accounts.
-- An org's agent reads the org's.
-
-Nothing falls back from one owner to another. A user's agent that needs the org's account asks the
-org's agent, which the org's policy holds.
-
-A secret the owner holds is found before an OAuth provider of the same name is asked. So a sealed
-token stands in for an account the owner would otherwise [connect](/build/accounts/).
-
-## Model keys fall back
-
-A model provider's key is the exception. Wardrik looks for it by its name, such as
-`ANTHROPIC_API_KEY`, in this order:
-
-1. The user, for a user's agent.
-2. The org.
-3. The deployment.
+1. Its owner's: a person, or its org.
+2. The person's org.
+3. The deployment's, while `deployment_keys` is `true` (the default).
 4. The daemon's environment.
 
-So an org brings its own model key by sealing it under the provider's key name:
-
-```sh
-echo "$KEY" | wardrik vault put ANTHROPIC_API_KEY --org acme
-```
+So an org brings its own key by sealing it under the key's name. Set `deployment_keys: false` in
+`config.yaml` to make every org bring its own.
 
 ## The deployment's secrets
 
-A secret put with no owner is the deployment's. The daemon uses it for:
-
-- a `${NAME}` in `config.yaml` that the environment doesn't set, such as
-  [`brave.api_key`](/reference/config/#brave);
-- a model provider's key, when no user or org holds one.
-
-No agent's tool reads it. For a tool token every org's agents use, seal it for each org:
-
-```sh
-echo "$PD_TOKEN" | wardrik vault put PAGERDUTY_TOKEN --org acme
-echo "$PD_TOKEN" | wardrik vault put PAGERDUTY_TOKEN --org globex
-```
+- `${NAME}` in `config.yaml` reads the environment, the env file, then the deployment's secret
+  `NAME`.
+- No agent reads them, except API keys while `deployment_keys` is `true`.
 
 ## The vault's key
 
-The daemon makes a key the first time it starts, in `~/.local/share/wardrik/vault_key`. It looks
-for the key in this order:
+The daemon looks for its key in this order:
 
 1. `vault.keys` in `config.yaml`.
-2. `WARDRIK_VAULT_KEY` in the daemon's environment, or its env file `~/.config/wardrik/env`.
-3. `vault_key` in the data home, made if it's missing.
+2. `WARDRIK_VAULT_KEY` in the environment, or in `~/.config/wardrik/env`.
+3. `~/.local/share/wardrik/vault_key`, made the first time the daemon starts.
 
-To make a key yourself:
-
-```sh
-openssl rand -base64 32 > ~/.local/share/wardrik/vault_key
-systemctl --user restart wardrik
-```
-
-Keep the key out of the store's backups. With both, every secret can be read.
-
-## Change the key
-
-`vault.keys` takes several. The first seals, and any of them opens:
+To change it, list the new key first. The first seals, and any of them opens:
 
 ```yaml
 vault:
   keys: ["${WARDRIK_VAULT_KEY_NEW}", "${WARDRIK_VAULT_KEY}"]
 ```
 
-To move off the key the daemon made, set `WARDRIK_VAULT_KEY` to what `vault_key` holds. Then list
-the new key first.
-
 ## Details
 
-- The daemon reads its keys as it starts, so restart it after making or changing one.
-- `vault`, `http` and `storage` in `config.yaml` take `${NAME}` from the environment only, since
-  they're read before the vault opens.
-- A key is 32 bytes, base64-encoded. A key that isn't is dropped with a warning.
-- Without a key, nothing is sealed or read, and every call that needs a connected account fails.
-  Nothing falls back to plain text.
-- A token is sealed with the new key the next time it's refreshed. A secret is sealed with it the
-  next time you put it. Once a key is removed, a token sealed with it isn't read, and its user
-  connects again.
+- Restart the daemon after changing a key.
+- A key is 32 random bytes, base64-encoded: `openssl rand -base64 32`.
+- Keep the key out of the store's backups. With both, every secret can be read.
+- Without a key, nothing is sealed, and calls that need a connected account fail.
 - Names aren't sealed. Anyone who can read the store sees who holds a secret of which name.
+- Over HTTP, secrets are at `/v1/owners/{owner}/secrets`. `{owner}` is one URL-encoded segment, as
+  `acme%2F%40jon`.

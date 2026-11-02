@@ -5,24 +5,13 @@ sidebar:
   order: 4
 ---
 
-Run Wardrik on the box under your desk, and this agent keeps an eye on the containers running
-there. It checks them every fifteen minutes. When one is down or unhealthy, it reads the logs and
-says what went wrong. It proposes the fix as a call you approve from your phone: restart the
-container, or recreate it.
+This agent checks the containers on your home server every fifteen minutes. When one is down, it
+reads the logs, says what went wrong, and proposes a fix you approve from your phone.
 
-Reading runs alone. Stopping, starting and recreating wait for you. Deleting is refused.
-
-## What it takes
-
-- the daemon, [installed](/getting-started/install/) as a service, with a model provider's key;
-- [uv](https://docs.astral.sh/uv/) for the Docker server, and a daemon user that can reach Docker's
-  socket;
-- a [Slack app](/channels/slack/#a-slack-app) in a workspace of your own, and a channel for it,
-  here `#homelab`.
+Needs [uv](https://docs.astral.sh/uv/), a daemon user that can reach Docker's socket, and a
+[Slack app](/channels/slack/).
 
 ## The files
-
-### config.yaml
 
 ```yaml title="~/.config/wardrik/config.yaml"
 mcp:
@@ -35,25 +24,17 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
+    members: {U024BE7LH: user:admin}
 
 notify:
-  homelab:
-    channel: slack
-    room: "#homelab"
+  targets:
+    homelab: {channel: slack, room: "#homelab"}
 ```
-
-The [Docker server](https://github.com/ckreiling/mcp-server-docker) talks to the local Docker
-daemon. For a remote one, set `DOCKER_HOST` under the server's `env`.
-
-### The policy
 
 ```yaml title="~/.config/wardrik/policies/homelab.yaml"
 allow:
-  - docker/list_containers
+  - docker/list_*
   - docker/fetch_container_logs
-  - docker/list_images
-  - docker/list_volumes
-  - docker/list_networks
 ask:
   docker/stop_container: This stops a service.
   docker/start_container: This starts a service.
@@ -62,17 +43,8 @@ deny:
   docker/remove_*: Nothing is deleted.
   docker/run_container: New containers are started by you.
   docker/build_image: Images are built by you.
-  docker/push_image: Images are pushed by you.
-budget:
-  usd: 0.50
-  per: day
+budget: {usd: 0.50, per: day}
 ```
-
-- The Docker server has no restart tool. A restart is a stop and a start, and each waits for you.
-- Container logs are written by the programs in them, and by whoever sent those programs requests,
-  so they're outside content. Nothing in a log can get the agent to act on its own.
-
-### The agent
 
 ```markdown title="~/.config/wardrik/agents/homelab.md"
 ---
@@ -85,49 +57,26 @@ triggers:
     every: 15m
     prompt: Check every container.
 ---
-You look after the containers on my home server. On each check, list them. If one has exited,
-keeps restarting, or reports unhealthy, read its last 100 log lines and say in two sentences what
-went wrong. Then propose the smallest fix: restart it, or recreate it from its image.
-
-If everything is fine, answer "All good." and nothing else.
+List the containers. If one has exited, keeps restarting, or is unhealthy, read its last 100 log
+lines and say in two sentences what went wrong. Then propose the smallest fix: restart it, or
+recreate it from its image. If everything is fine, answer "All good."
 ```
-
-`notify` sends only waiting calls and failures, so a healthy check stays quiet.
 
 ## Try it
 
 ```sh
-systemctl --user restart wardrik                 # 1. read config.yaml, the policy and the agent
-docker stop jellyfin                             # 2. break something
-wardrik ask homelab "Check every container."     # 3. don't wait fifteen minutes
+systemctl --user restart wardrik    # reads config.yaml and policies/
+docker stop jellyfin
+wardrik ask homelab "Check every container."
 ```
 
-The daemon reads `config.yaml` and `policies/` as it starts, so a change to either needs a restart.
-`wardrik reload` is enough for a change to an agent file.
-
-`#homelab` gets what it found and a waiting call to start `jellyfin` again, with **Approve** and
-**Deny**.
+`#homelab` gets what it found, and a call to start `jellyfin` again with **Approve** and **Deny**.
+After editing only an agent file, `wardrik reload` is enough.
 
 ## What it shows
 
-- **A quiet watcher:** a check every fifteen minutes that speaks only when something's wrong.
-- **Fixes you approve** from your phone, with the call's arguments in front of you.
-- **It survives a reboot.** A turn interrupted by a power cut carries on when the daemon starts
-  again. A stop that had begun but not finished asks you again, rather than running twice. See
-  [Durable runs](/concepts/durable-runs/).
-
-## Details
-
-### Docker access
-
-The daemon runs as your user, so that user needs Docker access, usually by being in the `docker`
-group. That is root-equivalent on the machine, which is why every change waits for you, and
-anything that deletes, builds or runs a new container is refused.
-
-### Taking it further
-
-- Add Home Assistant's [MCP server](https://www.home-assistant.io/integrations/mcp_server/), at
-  `/api/mcp` on your Home Assistant, and let it turn things on and off: its tools include
-  `intent__HassTurnOn` and `intent__HassTurnOff`.
-- Back up before each recreate: give it a tool in your own code that snapshots a volume. See
-  [Tools in your app](/build/tool-workers/).
+- `notify` sends only waiting calls and failures, so a healthy check stays quiet.
+- Docker access is root on the machine, so every change waits and anything destructive is refused.
+- Logs are outside content: nothing in one gets the agent to act alone.
+- A turn cut off by a power cut carries on when the daemon starts. See
+  [Durable runs](/concepts/agents/#durable-runs).

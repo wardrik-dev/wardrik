@@ -6,8 +6,8 @@ sidebar:
   label: Overview
 ---
 
-A tool worker is your own app offering agents tools. The tools run in your process, with your code,
-data and keys. Your app connects to the daemon, so the daemon needs no way to reach it.
+A tool worker is your app offering agents tools. The tools run in your process, with your code,
+data and keys. Your app connects to the daemon, so the daemon never reaches into it.
 
 ```ts
 import { Wardrik } from "@wardrik/sdk";
@@ -27,32 +27,16 @@ wardrik.tool({
 await wardrik.work();
 ```
 
-An agent whose file lists `workers/*`, and that the worker's token reaches, can now call
-`refund_order`. Its policy decides each call first, so a refund waits for a person unless the policy
-allows it.
-
-| Who | Does |
-| --- | --- |
-| Your app | holds the code and the keys, and runs each call |
-| The daemon | decides each call by the agent's policy, and records it |
-| A person | approves or denies the calls that wait |
-
-Install the SDK and `zod` 4.6.6 or later. It runs on Node 22.18 or later, Bun or Deno:
-
-```sh
-npm install @wardrik/sdk@0.1.0-rc.1 zod
-```
-
-Give the app a token with the `worker` role, as `WARDRIK_TOKEN`. [Your first
-tool](/build/first-tool/#3-connect-it) makes one.
+- An agent with `workers/*` in its tools can call `refund_order`, if the worker's token may
+  `serve` it.
+- The agent's policy decides each call first. A refund waits for a person unless the policy allows
+  it.
+- Needs Node 22.18 or later, Bun or Deno: `npm install @wardrik/sdk@0.1.0-rc.2 zod`.
 
 ## In this section
 
-- [Your first tool, end to end](/build/first-tool/): a tool that posts to a status page, from an
-  empty folder to a service, with an agent proposing posts and a person approving them.
-- [Write tools](/build/write-tools/): arguments, results and errors; whose call it is; what a call
-  cost; running a call twice.
-- [Host your tools](/build/host-tools/): inside your app or on their own, on another machine or in a
-  container, and through deploys.
+- [Your first tool](/build/first-tool/): from an empty folder to a service.
+- [Write tools](/build/write-tools/): arguments, results, errors, cost, and running a call twice.
+- [Host your tools](/build/host-tools/): inside your app or on their own, and through deploys.
 
-Every method and option is in the [TypeScript SDK reference](/sdk/typescript/readme/).
+Every method is in the [TypeScript SDK reference](/sdk/typescript/readme/).

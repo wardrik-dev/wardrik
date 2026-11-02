@@ -1,177 +1,104 @@
 ---
 title: Agents for every team
-description: "One deployment serves every team: each its own org, credentials, Slack, budget and limits, with one audit trail."
+description: "One deployment serves every team: each its own org, credentials, Slack, roles and limits, with one audit trail."
 sidebar:
   order: 3
 ---
 
-The platform team runs one Wardrik deployment. Payments and Growth each get an org of their own:
-their own agents, credentials, Slack app and spend limits. Each team builds its agents over the API,
-but only inside a policy the platform team sets. Security reads one audit trail for all of it.
+The platform team runs one daemon. Payments and Growth each get an org: their own agents,
+credentials, Slack app, people and spend limit. Each team makes its own agents, inside a policy the
+platform team sets.
 
-This example is the setup, not one agent: `config.yaml`, a policy per team, and the tokens
-that tie them together.
-
-## What it takes
-
-- the daemon, [installed](/getting-started/install/), with a model provider's key;
-- a [Slack app](/channels/slack/#a-slack-app) per team;
-- each team's credentials for the services it uses, here Stripe for Payments and GitHub for both.
+This example is the setup, not one agent.
 
 ## The files
-
-### config.yaml
 
 ```yaml title="~/.config/wardrik/config.yaml"
 org: platform
 
 mcp:
-  stripe:
-    url: https://mcp.stripe.com
-    credential: STRIPE_AGENT_KEY
-  github:
-    url: https://api.githubcopilot.com/mcp/
-    credential: GITHUB_TOKEN
+  stripe: {url: https://mcp.stripe.com, credential: stripe}
+  github: {url: https://api.githubcopilot.com/mcp/, credential: github}
 
 channels:
   payments-slack:
     type: slack
     token: ${PAYMENTS_SLACK_BOT_TOKEN}
     signing_secret: ${PAYMENTS_SLACK_SIGNING_SECRET}
-    approvers: ["@payments-lead"]
+    members: {U024BE7LH: user:ana}
   growth-slack:
     type: slack
     token: ${GROWTH_SLACK_BOT_TOKEN}
     signing_secret: ${GROWTH_SLACK_SIGNING_SECRET}
-    approvers: ["@growth-lead"]
+    members: {U0G9QF9C6: user:li}
 
 orgs:
-  payments:
-    mcp: [stripe, github]
-    channels: [payments-slack]
-    policy: payments-limits
-  growth:
-    mcp: [github]
-    channels: [growth-slack]
-    policy: growth-limits
+  payments: {mcp: [stripe, github], channels: [payments-slack], policy: payments-limits}
+  growth: {mcp: [github], channels: [growth-slack], policy: growth-limits}
+
+roles:
+  builder:
+    rules: [{verbs: ["*"], kinds: [agent, secret, mcp_server, notify_target]}]
+  auditor:
+    rules: [{verbs: [read, events, audit], kinds: ["*"]}]
+bindings:
+  - {org: payments, role: builder, subjects: [group:payments-eng]}
+  - {org: growth, role: builder, subjects: [group:growth-eng]}
+  - {org: "*", role: auditor, subjects: [user:security]}
 ```
 
-- **Each team is declared once,** under `orgs`, with what it uses and the policy it's held to. A
-  server, channel or target an entry names but nothing defines is refused at startup, by name.
-- **Servers are defined once.** Stripe serves Payments alone; GitHub serves both, each with its own
-  token.
-- **Each team has its own Slack app,** offering only its own org's agents.
-- **No deployment secret reaches an agent.** Each team's agents read only what their org holds.
-
-Each team's credentials are sealed for its org, where no other team's agents can read them.
-`vault put` reads the value from stdin:
-
-```sh
-echo "$PAYMENTS_STRIPE_KEY" | wardrik vault put STRIPE_AGENT_KEY --org payments
-echo "$PAYMENTS_GITHUB_TOKEN" | wardrik vault put GITHUB_TOKEN --org payments
-echo "$GROWTH_GITHUB_TOKEN" | wardrik vault put GITHUB_TOKEN --org growth
-```
-
-The Slack tokens and signing secrets in `config.yaml` are the deployment's: seal them without
-`--org`.
-
-See [Orgs](/run/orgs/) for everything an org keeps apart.
-
-### A policy per team
-
-An org's policy holds every agent of the org, ahead of its own, however it was defined:
+- `orgs` says what each team's agents use, and the policy that holds all of them.
+- Each Slack app offers only its own org's agents. `members` maps chat members to users.
+- `builder` lets a team make and run agents in its own org. Another team's are answered as missing.
+- `auditor` reads every org's agents and events.
 
 ```yaml title="~/.config/wardrik/policies/payments-limits.yaml"
 ask:
   stripe/stripe_api_write: This changes money in Stripe.
-deny: [shell/*]
-budget:
-  usd: 20.00
-  per: day
-  on_exhausted: ask
+budget: {usd: 20.00, per: day, on_exhausted: ask}
 ```
 
-- **Stripe writes always wait,** whatever a team's own definition says.
-- **The team is capped** at $20 a day, all of its agents together. An agent's own definition can
-  set itself a lower limit beside it.
-- `growth-limits.yaml` is Growth's, written the same way.
-
-### A token per team
-
-```sh
-wardrik token create payments-platform --resource 'payments/agent/*' --role reader,messenger,definer
-wardrik token create growth-platform --resource 'growth/agent/*' --role reader,messenger,definer
-```
-
-- `--resource` keeps each token to its team's own agents; another team's are answered as if they
-  didn't exist.
-- The org's policy holds every agent each token defines. See [Tokens](/run/tokens/).
+Stripe writes always wait, and the whole team is capped at $20 a day. `growth-limits.yaml` is
+written the same way.
 
 ## Try it
 
-Restart the daemon to read `config.yaml` and the policies:
+Seal each team's credentials for its org, then restart:
 
 ```sh
+echo "$PAYMENTS_STRIPE_KEY" | wardrik vault put stripe --org payments --for header
+echo "$PAYMENTS_GITHUB_TOKEN" | wardrik vault put github --org payments --for header
+echo "$GROWTH_GITHUB_TOKEN" | wardrik vault put github --org growth --for header
 systemctl --user restart wardrik
 wardrik doctor
 ```
 
-The Payments team defines an agent with its token, over the [HTTP API](/build/http-api/):
+Give each engineer a token:
 
 ```sh
-curl -s -X PUT -H "authorization: Bearer $PAYMENTS_TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/payments/refunds \
+wardrik token create ana-laptop --subject user:ana --groups payments-eng
+```
+
+Ana makes an agent in her team's org:
+
+```sh
+curl -X POST -H "authorization: Bearer $ANA_TOKEN" -H "content-type: application/json" \
+  http://127.0.0.1:4747/v1/owners/payments/agents \
   -d '{
+    "name": "refunds",
     "description": "Answers refund questions for support.",
-    "instructions": "You look up charges and refunds in Stripe, and propose refunds.",
+    "instructions": "You look up charges in Stripe, and propose refunds.",
     "tools": ["stripe/*"],
     "channels": ["payments-slack"]
   }'
 ```
 
-The agent reads Stripe with Payments' key. A refund it proposes waits for an approver, because the
-policy asks about every Stripe write. The same token can't reach Growth's agents, and Growth's
-agents can't reach Stripe at all.
+The answer holds the agent's ID. It reads Stripe with Payments' key. A refund it proposes waits,
+because the org's policy asks about every Stripe write. Ana's token can't reach Growth's agents.
 
 ## What it shows
 
-- **Isolation by org.** Agents, credentials, tokens and channels stay inside their team.
-- **Self-service within limits.** Teams build their own agents; the platform team's policy holds
-  every one, from the API or from files.
-- **Spend limits per team,** set once in the org's policy.
-- **One audit trail.** Every change people make, and every call and decision agents make, is on
-  record.
-
-## Details
-
-### Feeding a SIEM
-
-A reader on `*` reads every team's events, and keeps its own place:
-
-```sh
-wardrik token create siem --resource '*' --role reader
-```
-
-```http
-GET /v1/events?limit=500
-
-GET /v1/events?limit=500&after=eyJwYXltZW50cy9hZ2VudC9yZWZ1bmRzIjo0MX0
-```
-
-Each page answers `next`, the cursor after its events: store it with them, and read on from it.
-See [Events](/reference/http-api/#events). The audit of what people changed is
-the deployment's: an `owner` token on `*` reads it too, and `wardrik audit` lists it from
-a shell.
-
-### People's own agents
-
-An agent that works for one person is keyed under them, `payments/@jon/assistant`, and reads only
-that person's credentials. A token for them is scoped the same way:
-`wardrik token create jon-laptop --resource 'payments/@jon/*' --role reader,messenger,approver`.
-
-### Taking it further
-
-- Give a third team an entry under `orgs`, with a Slack app and a policy: no other change is
-  needed.
-- Let a team's agents read a shared runbook tree with `workspace.shared`. See
-  [Sharing trees](/concepts/files-and-memory/#sharing-trees).
+- Agents, credentials and channels stay inside their org. See [Orgs](/run/orgs/).
+- Who may do what is roles and bindings, as in Kubernetes. See [Orgs, roles and tokens](/run/orgs/).
+- Teams build their own agents. The org's policy and budget hold every one.
+- `wardrik audit` lists what people changed, for every team.

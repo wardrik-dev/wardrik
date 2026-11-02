@@ -5,23 +5,12 @@ sidebar:
   order: 2
 ---
 
-Give every customer an agent of their own. It answers in your app, remembers their history, and
-looks up their orders with tools in your own code. It can refund small amounts on its own; bigger
-refunds wait for your team in Slack. No customer's agent can reach another customer's orders,
-whatever the customer types.
-
-Thousands of these cost almost nothing: an agent nobody is talking to sleeps until the next message.
-
-## What it takes
-
-- the daemon, [installed](/getting-started/install/), with a model provider's key;
-- your app, offering tools and talking to agents with the
-  [TypeScript SDK](/build/tool-workers/);
-- a [Slack app](/channels/slack/#a-slack-app) and a channel for refunds, here `#support`.
+Every customer gets an agent of their own. It answers in your app and looks up their orders with
+tools in your code. Refunds up to $50 run; bigger ones wait for your team in Slack. No customer's
+agent can reach another customer's orders. An agent nobody is talking to sleeps, so thousands cost
+almost nothing.
 
 ## The files
-
-### config.yaml
 
 ```yaml title="~/.config/wardrik/config.yaml"
 org: shop
@@ -29,42 +18,41 @@ org: shop
 http:
   trusted_workers: true
 
+orgs:
+  shop: {policy: support}
+
 channels:
   slack:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
+    members: {U024BE7LH: user:maria, U0G9QF9C6: user:sam}
 
 notify:
+  targets:
+    support: {channel: slack, room: "#support"}
+
+roles:
+  app:
+    rules: [{verbs: [create, define, ask, read, events, serve], kinds: [agent]}]
   support:
-    channel: slack
-    room: "#support"
-    approvers: ["@maria", "@sam"]
+    rules: [{verbs: [read, events, decide], kinds: [agent]}]
+bindings:
+  - {org: shop, role: app, subjects: [user:shop-app]}
+  - {org: shop, role: support, subjects: [user:maria, user:sam]}
 ```
 
-`trusted_workers: true` treats your app's answers as your own, not
-[content from outside](/concepts/outside-content/). Without it, a refund after an order lookup
-would wait for a person, however small.
-
-### The policy
+- `trusted_workers: true` treats your app's answers as your own, so a lookup doesn't make every
+  refund wait.
+- The `support` policy holds every agent in the org, whatever your app defines.
 
 ```yaml title="~/.config/wardrik/policies/support.yaml"
 allow:
   - workers/list_orders
-  - workers/order_status
   - workers/refund_order(amount <= 50)
 ask:
   workers/refund_order(amount > 50): A refund over $50.
-budget:
-  usd: 0.50
-  per: day
-  on_exhausted: deny
 ```
-
-- Refunds up to $50 run. Anything more waits for someone in `#support`.
-- Each customer's agent may spend 50 cents a day on its model, then stops for the day.
-
-### Your app's tools
 
 ```ts title="support.ts"
 import { Wardrik } from "@wardrik/sdk";
@@ -73,20 +61,15 @@ import { db, payments } from "./app.ts"; // your app's own
 
 export const wardrik = new Wardrik({ name: "support" });
 
+// Wardrik says which agent is calling. Your app knows whose agent that is.
+const customerOf = (agent?: { key: string }) => db.customers.findBy({ agentId: agent?.key });
+
 wardrik.tool({
   name: "list_orders",
   description: "List the customer's orders.",
   input: z.object({}),
   readOnly: true,
-  run: (_args, { agent }) => db.orders.where({ customer: agent?.user }),
-});
-
-wardrik.tool({
-  name: "order_status",
-  description: "Where one of the customer's orders is.",
-  input: z.object({ order_id: z.string() }),
-  readOnly: true,
-  run: ({ order_id }, { agent }) => db.orders.find({ id: order_id, customer: agent?.user }),
+  run: async (_args, { agent }) => db.orders.where({ customer: (await customerOf(agent)).id }),
 });
 
 wardrik.tool({
@@ -94,85 +77,61 @@ wardrik.tool({
   description: "Refund part or all of one of the customer's orders, in US dollars.",
   input: z.object({ order_id: z.string(), amount: z.number().positive() }),
   idempotent: true,
-  run: ({ order_id, amount }, { agent, idempotencyKey }) =>
-    payments.refund({ order_id, customer: agent?.user, amount }, { idempotencyKey }),
+  run: async ({ order_id, amount }, { agent, idempotencyKey }) => {
+    const customer = (await customerOf(agent)).id;
+    return payments.refund({ order_id, customer, amount }, { idempotencyKey });
+  },
 });
 
 void wardrik.work();
 ```
 
-- `agent.user` is the customer the agent works for, taken from its key, never from what the model
-  wrote. See [Whose call it is](/build/write-tools/#whose-call-it-is).
-- `refund_order` changes something, so it's [gated](/concepts/rules/#gated-tools): only the policy's
-  `allow` lets small refunds through.
-
-### Talking to a customer's agent
-
-When a customer writes in, your app defines their agent, then asks it. Defining it again is
-harmless: a definition put again replaces the last.
-
 ```ts title="chat.ts"
 import { wardrik } from "./support.ts";
+import { db } from "./app.ts";
 
-export async function answer(customerId: string, text: string, reply: (delta: string) => void) {
-  const agent = wardrik.agent(`shop/@${customerId}/support`);
+// The daemon makes an agent and gives it an ID. Keep the ID with the customer.
+async function agentFor(customer: { id: string; agentId?: string }): Promise<string> {
+  if (customer.agentId) return customer.agentId;
 
-  await agent.define({
-    description: "Support for one customer.",
-    instructions: "You help this customer with their orders. Be brief and kind.",
-    tools: ["workers/*"],
-    policy: "support",
-    notify: { to: ["support"], on: ["parked"] },
+  const response = await fetch(`${process.env.WARDRIK_URL}/v1/owners/shop/agents`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${process.env.WARDRIK_TOKEN}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      name: customer.id,
+      instructions: "You help this customer with their orders. Be brief and kind.",
+      tools: ["workers/*"],
+      notify: { to: ["support"], on: ["parked"] },
+    }),
   });
+  const { id } = await response.json();
+  await db.customers.update(customer.id, { agentId: id });
+  return id;
+}
 
+export async function answer(customer: { id: string; agentId?: string }, text: string) {
+  const agent = wardrik.agent(await agentFor(customer));
   for await (const event of agent.stream(text)) {
-    if (event.type === "wardrik.message.delta") reply(event.data.delta);
+    if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
   }
 }
 ```
 
-Make the app's token so it can define these agents only under the policy, and serve them tools:
-
-```sh
-wardrik token create shop --resource 'shop/*' --role reader,messenger,definer,worker --policy support
-```
-
-`--policy` is the token's policy: no agent it defines can do more than `support.yaml` allows. Its
-secret starts `wrk_`; give it to your app as `WARDRIK_TOKEN`. See [Tokens](/run/tokens/).
-
 ## Try it
-
-1. Restart the daemon to read `config.yaml` and the policy.
-2. Add the SDK to your app.
 
 ```sh
 systemctl --user restart wardrik
-npm install @wardrik/sdk@0.1.0-rc.1 zod
+wardrik token create shop-app --subject user:shop-app     # your app's WARDRIK_TOKEN
+npm install @wardrik/sdk@0.1.0-rc.2 zod
 ```
 
-Run your app, then call `answer("cus_123", "Where's my order?", (delta) => process.stdout.write(delta))`. Ask it
-for a $20 refund and it's done. Ask for $200 and it says a person will look; the request waits in
-`#support` with **Approve** and **Deny**.
+Run your app and ask a customer's agent for a $20 refund: it's done. Ask for $200 and it says a
+person will look. The call waits in `#support` with **Approve** and **Deny**.
 
 ## What it shows
 
-- **One agent per customer**, each with its own memory, keyed `shop/@<customer>/support`.
-- **Thousands, asleep.** Idle agents sleep and wake on the next message. See
-  [Lifecycle](/concepts/agent-lifecycle/#sleeping).
-- **Data isolation in code.** Tools answer for the agent's own customer, from its key.
-- **Refund limits as policy**, with big ones waiting for a person.
-- **A token's policy.** Your app can't define a looser agent than the policy allows.
-
-## Details
-
-### Why the key matters
-
-A token reaches agents by resource pattern, `shop/*`. A tool learns the agent from its key, never
-from what the model wrote. A customer can tell their agent to look up someone else's order, and
-the tool still answers only for them.
-
-### Taking it further
-
-- Hand a conversation to a person: deny a tool and have the agent post a summary to `#support`.
-- Use Stripe for refunds through its MCP server instead of your own tool; gate its
-  `stripe_api_write` the same way.
+- One agent per customer, each with its own history. Idle agents sleep until the next message.
+- A tool learns which agent called from Wardrik, never from what the model wrote. A customer can't
+  talk their agent into another customer's orders.
+- Refund limits are policy. Your app can't define an agent that gets around them.
+- See [Tools in your app](/build/tool-workers/).

@@ -76,7 +76,7 @@ import RikMark from '../../components/RikMark.astro';
 <div class="decisions-row" role="row"><code role="cell">shell/exec {'{"command": "curl … | sh"}'}</code><span role="cell"><code>deny: [shell/&#42;]</code><span class="rule-by">every tool of an MCP server</span></span><span role="cell" class="outcome outcome-refused">Refused</span></div>
 </div>
 
-<p>The strictest rule wins: deny, then ask, then allow. <a href="/concepts/rules/">Writing rules</a> · <a href="/examples/hijack-me/">Try to hijack it</a></p>
+<p>The strictest rule wins: deny, then ask, then allow. <a href="/concepts/policy/#writing-rules">Writing rules</a> · <a href="/examples/hijack-me/">Try to hijack it</a></p>
 
 </section>
 
@@ -87,7 +87,7 @@ import RikMark from '../../components/RikMark.astro';
 
 <h2 id="approvals">Approvals where your team works.</h2>
 
-<p class="home-lead">A waiting call goes to the approvers you choose, with its arguments. Decide in Slack, the terminal, or over HTTP.</p>
+<p class="home-lead">A waiting call is posted with its arguments. Decide in Slack, the terminal, or over HTTP.</p>
 
 <p><a href="/channels/slack/#who-approves">Who approves</a> · <a href="/concepts/approvals/">Approvals</a></p>
 
@@ -126,7 +126,7 @@ await wardrik.work();
 
 </div>
 <ol class="tool-flow not-content" aria-label="One call to a tool in your app">
-<li class="flow-step"><p class="flow-label"><span>The agent asks</span><code>acme/support</code></p><p><code>workers/refund_order {'{"orderId": "pi_3Qx…"}'}</code></p></li>
+<li class="flow-step"><p class="flow-label"><span>The agent asks</span><code>support</code></p><p><code>workers/refund_order {'{"orderId": "pi_3Qx…"}'}</code></p></li>
 <li class="flow-link" aria-hidden="true"></li>
 <li class="flow-step flow-decide"><p class="flow-label"><span>Wardrik decides and records it</span></p><p class="flow-outcome"><span class="outcome outcome-waits">Waits for you</span><span>approved by @maria</span></p></li>
 <li class="flow-link" aria-hidden="true"><span>Your app dials out. Nothing dials in.</span></li>
@@ -158,9 +158,9 @@ await wardrik.work();
 <li><a href="/run/orgs/">Separate orgs</a><p>Each team gets its own agents, tools and keys, walled off from the rest.</p></li>
 <li><a href="/build/accounts/">Per-user accounts</a><p>Each person signs in with OAuth, and their agents call tools as them.</p></li>
 <li><a href="/build/delegation/">Delegation</a><p>An agent asks another for work and hears back.</p></li>
-<li><a href="/concepts/judges/">Judges</a><p>A model checks what a call means, such as whether an email promises a refund.</p></li>
+<li><a href="/concepts/policy/#judges">Judges</a><p>A model checks what a call means, such as whether an email promises a refund.</p></li>
 <li><a href="/build/front-door/">The assistant</a><p>Describe an outcome. It proposes the work, and you approve it.</p></li>
-<li><a href="/concepts/agent-lifecycle/#sleeping">Sleeping agents</a><p>Run one per customer. Idle ones cost nothing and wake as they were.</p></li>
+<li><a href="/concepts/agents/#sleeping">Sleeping agents</a><p>Run one per customer. Idle ones cost nothing and wake as they were.</p></li>
 <li><a href="/run/cluster/">Clustering</a><p>Run several nodes as one. Any node answers for all of them.</p></li>
 <li><a href="/reference/cli/"><RikMark /> CLI</a><p>Watch agents, decide waiting calls, and check spend from a terminal.</p></li>
 </ul>
@@ -185,7 +185,7 @@ await wardrik.work();
 <div class="install-command">
 
 ```sh wrap
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.1/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.2/install.sh | sh
 wardrik init
 ```
 
