@@ -6,6 +6,8 @@
 
 - `WardrikTesting.Server` implements `Wardrik.Server` rc.2: `run/1` and `stream/1` take a
   `Wardrik.Server.Request`, and `follow/2` a `Wardrik.Server.Follow`.
+- `WardrikTesting.Server` takes `:authorize`, which decides each request, for `:secrets`, and
+  `authenticate/2` and `revoke/2` are gone.
 - `WardrikTesting.Server.add_agent/2` takes the agent's `:id`, `:channels` and `:description` by
   name.
 

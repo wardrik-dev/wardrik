@@ -3,7 +3,7 @@ defmodule WardrikTesting.Server do
   A `Wardrik.Server` that answers from a script, for testing packages without Wardrik.
 
       setup do
-        :ok = WardrikTesting.Server.start(:my_test, secrets: ["wrk_good"])
+        :ok = WardrikTesting.Server.start(:my_test)
         scope = Wardrik.Scope.new(WardrikTesting.Server, wardrik: :my_test, principal: "acme/@maria")
         %{scope: scope}
       end
@@ -19,6 +19,8 @@ defmodule WardrikTesting.Server do
 
   ## Answers
 
+    * Each operation and stream is first put to `:authorize`. A refusal answers `:forbidden` or
+      `:not_found`.
     * An operation returns the protocol's example output, or `nil` if it has none.
     * `acme/missing`, and any conversation under it, isn't found.
     * The agents given as `:offered` are listed and defined with their channels.
@@ -53,15 +55,16 @@ defmodule WardrikTesting.Server do
 
   ## Options
 
-    * `:secrets` - API tokens it accepts. Each acts for `acme/@maria` as an owner. `[]` unless set.
+    * `:authorize` - decides each `Wardrik.Server.Request`, returning `:ok`, or
+      `{:error, :forbidden | :not_found}`. Allows everything unless set.
     * `:offered` - agents it offers, each as `{id, channels}` or `{id, channels, description}`.
       `[]` unless set.
   """
   @spec start(atom(), keyword()) :: :ok
   def start(name, opts \\ []) do
-    opts = Keyword.validate!(opts, secrets: [], offered: [])
+    opts = Keyword.validate!(opts, authorize: &allow/1, offered: [])
     state = state_name(name)
-    initial = fn -> %{secrets: MapSet.new(opts[:secrets]), offered: opts[:offered], held: %{}} end
+    initial = fn -> %{authorize: opts[:authorize], offered: opts[:offered], held: %{}} end
 
     ExUnit.Callbacks.start_supervised!(%{
       id: state,
@@ -75,10 +78,6 @@ defmodule WardrikTesting.Server do
   @doc "Returns the name to start `WardrikEvents` under, so turns are written to it."
   @spec events(atom()) :: atom()
   def events(name), do: Module.concat(name, Events)
-
-  @doc "Revokes `secret`, so it no longer authenticates."
-  @spec revoke(atom(), String.t()) :: :ok
-  def revoke(name, secret), do: update(name, &%{&1 | secrets: MapSet.delete(&1.secrets, secret)})
 
   @doc """
   Adds the agent `:id` to those offered, answering in `:channels`, with any `:description`.
@@ -108,37 +107,34 @@ defmodule WardrikTesting.Server do
   end
 
   @impl Wardrik.Server
-  def authenticate(name, secret) do
-    case MapSet.member?(state(name).secrets, secret) do
-      true ->
-        grants = [roles: [:owner], resources: ["*"]]
-        {:ok, Scope.new(__MODULE__, wardrik: name, principal: "acme/@maria", grants: grants)}
+  def run(%Request{scope: %Scope{wardrik: name} = scope, operation: id, input: input} = request) do
+    tell(name, {:ran, id, input})
 
-      false ->
-        {:error, Error.new(:unauthorized, "That isn't a token here.")}
+    with :ok <- authorized(request), do: answer(scope, id, input)
+  end
+
+  @impl Wardrik.Server
+  def stream(%Request{scope: %Scope{wardrik: name}, operation: id, input: input} = request) do
+    tell(name, {:streamed, id, input})
+
+    with :ok <- authorized(request), do: streamed(input)
+  end
+
+  defp streamed(%{"after" => "nope"}),
+    do: {:error, Error.new(:invalid_request, "That cursor doesn't read.")}
+
+  defp streamed(_input),
+    do: {:ok, Stream.concat([{@event, "cursor-1"}], Stream.repeatedly(&quiet/0))}
+
+  defp authorized(%Request{scope: %Scope{wardrik: name}} = request) do
+    case state(name).authorize.(request) do
+      :ok -> :ok
+      {:error, :forbidden} -> {:error, Error.new(:forbidden, "You may not do that.")}
+      {:error, :not_found} -> {:error, Error.new(:not_found, "There's nothing here.")}
     end
   end
 
-  @impl Wardrik.Server
-  def run(%Request{scope: %Scope{wardrik: name} = scope, operation: id, input: input}) do
-    tell(name, {:ran, id, input})
-    answer(scope, id, input)
-  end
-
-  @impl Wardrik.Server
-  def stream(%Request{
-        scope: %Scope{wardrik: name},
-        operation: id,
-        input: %{"after" => "nope"} = input
-      }) do
-    tell(name, {:streamed, id, input})
-    {:error, Error.new(:invalid_request, "That cursor doesn't read.")}
-  end
-
-  def stream(%Request{scope: %Scope{wardrik: name}, operation: id, input: input}) do
-    tell(name, {:streamed, id, input})
-    {:ok, Stream.concat([{@event, "cursor-1"}], Stream.repeatedly(&quiet/0))}
-  end
+  defp allow(_request), do: :ok
 
   @impl Wardrik.Server
   def follow(%{agent: "acme/broken"}, _opts), do: [{:text, "Half"}, {:failed, :boom}]

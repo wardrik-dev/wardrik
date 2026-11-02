@@ -24,18 +24,8 @@ Start the server under a name unique to the test, and act through a scope on it:
 setup context do
   name = :"server #{context.test}"
 
-  :ok =
-    WardrikTesting.Server.start(name,
-      secrets: ["wrk_good"],
-      offered: [{"acme/triage", ["chat"]}]
-    )
-
-  scope =
-    Wardrik.Scope.new(WardrikTesting.Server,
-      wardrik: name,
-      principal: "acme/@maria",
-      grants: [roles: [:owner], resources: ["*"]]
-    )
+  :ok = WardrikTesting.Server.start(name, offered: [{"acme/triage", ["chat"]}])
+  scope = Wardrik.Scope.new(WardrikTesting.Server, wardrik: name, principal: "acme/@maria")
 
   %{scope: scope}
 end
@@ -60,6 +50,8 @@ hub passes itself.
 
 ## How it answers
 
+* `:authorize` decides each operation and stream first, as a `Wardrik.Authorizer` would. It
+  allows everything unless set.
 * Most operations return the protocol's own example output.
 * The `:offered` agents are listed and defined.
 * `acme/missing` is never found.

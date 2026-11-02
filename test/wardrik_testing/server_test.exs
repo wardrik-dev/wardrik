@@ -14,27 +14,26 @@ defmodule WardrikTesting.ServerTest do
        name: Server.events(name), store: store, deployment: "test", retention: :infinity}
     )
 
-    :ok = Server.start(name, secrets: ["wrk_good"], offered: [{"acme/triage", ["chat"]}])
+    :ok = Server.start(name, authorize: &deciders/1, offered: [{"acme/triage", ["chat"]}])
     :ok = WardrikEvents.subscribe(Server.events(name), ["*"])
 
-    %{
-      name: name,
-      scope:
-        Scope.new(Server,
-          wardrik: name,
-          principal: "acme/@ana",
-          grants: [roles: [:messenger, :reader], resources: ["*"]]
-        )
-    }
+    %{name: name, scope: Scope.new(Server, wardrik: name, principal: "acme/@ana")}
   end
 
-  test "knows the secrets it's given, until one is revoked", %{name: name} do
-    assert {:ok, %Scope{server: Server, principal: %{id: "acme/@maria"}}} =
-             Server.authenticate(name, "wrk_good")
+  defp deciders(%{operation: "agent." <> verb, scope: scope}) when verb in ["approve", "deny"],
+    do: if(scope.context[:approver], do: :ok, else: {:error, :forbidden})
 
-    assert {:error, %Wardrik.Error{type: :unauthorized}} = Server.authenticate(name, "wrk_nope")
-    :ok = Server.revoke(name, "wrk_good")
-    assert {:error, _refused} = Server.authenticate(name, "wrk_good")
+  defp deciders(%{operation: "agent.forget", input: %{"agent" => "acme/hidden"}}),
+    do: {:error, :not_found}
+
+  defp deciders(_request), do: :ok
+
+  test "puts each operation and stream to its authorizer", %{scope: scope} do
+    assert {:error, %Wardrik.Error{type: :not_found}} = Wardrik.Agent.forget(scope, "acme/hidden")
+    assert_received {:ran, "agent.forget", %{"agent" => "acme/hidden"}}
+
+    assert {:error, %Wardrik.Error{type: :forbidden}} =
+             Wardrik.Agent.approve(scope, agent: "acme/triage/t1", interrupt: "call_1")
   end
 
   test "answers an operation with the protocol's example, tells the test, and finds no missing agent",
@@ -101,7 +100,7 @@ defmodule WardrikTesting.ServerTest do
     assert {:error, %Wardrik.Error{type: :forbidden}} =
              Wardrik.Agent.approve(scope, agent: "acme/triage/t1", interrupt: "call_1")
 
-    decider = Wardrik.Scope.grant(scope, roles: [:approver], resources: ["acme/agent/*"])
+    decider = %{scope | context: %{approver: true}}
 
     assert {:ok, [%Wardrik.Decision{decision: :rejected}]} =
              Wardrik.Agent.deny(decider,
@@ -168,12 +167,7 @@ defmodule WardrikTesting.ServerTest do
     Process.unregister(context.name)
     :ok = Server.start(name)
 
-    scope =
-      Scope.new(Server,
-        wardrik: name,
-        principal: "acme/@ana",
-        grants: [roles: [:messenger], resources: ["*"]]
-      )
+    scope = Scope.new(Server, wardrik: name, principal: "acme/@ana")
 
     assert {:ok, %Wardrik.Message{}} = Wardrik.Agent.ask(scope, "acme/triage/t1", "Hi")
   end

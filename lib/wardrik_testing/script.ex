@@ -13,14 +13,13 @@ defmodule WardrikTesting.Script do
 
   ## Decisions
 
-    * Approving or denying `call_1` answers `"Done."`.
-    * Only a scope granted `agent.decide` on the conversation may decide. Others get `:forbidden`.
+    * Approving or denying `call_1` answers `"Done."`. Who may decide is the server's
+      `:authorize`'s to say.
     * A denial without a reason is recorded as `"Rejected."`, as the hub does.
 
   Cancelling stops the run.
   """
 
-  alias Wardrik.Error
   alias Wardrik.Scope
   alias WardrikTesting.Server
 
@@ -45,11 +44,19 @@ defmodule WardrikTesting.Script do
   end
 
   @doc "Approves or denies the call in `input`, as `agent.approve` and `agent.deny` do."
-  @spec decide(Scope.t(), String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def decide(scope, id, %{"agent" => conversation} = input) do
-    if decides?(scope, conversation),
-      do: decided(scope, id, input),
-      else: {:error, Error.new(:forbidden, "You may not decide this.")}
+  @spec decide(Scope.t(), String.t(), map()) :: {:ok, map()}
+  def decide(
+        %Scope{wardrik: name} = scope,
+        id,
+        %{"agent" => conversation, "interrupt" => call} = input
+      ) do
+    decision = if id == "agent.approve", do: "approved", else: "rejected"
+    by = %{"id" => scope.principal.id, "name" => scope.principal.attributes[:name]}
+    resolved = %{"interrupt" => %{"id" => call}, "decision" => decision, "resolved_by" => by}
+    write(scope, conversation, "interrupt.resolved", Map.merge(resolved, said(id, input)))
+    Server.hold(name, conversation, {"idle", []})
+    answered(scope, conversation, "Done.")
+    {:ok, %{"decisions" => [%{"id" => call, "decision" => decision}]}}
   end
 
   @doc "Cancels the run in `input`, as `agent.cancel` does."
@@ -60,39 +67,8 @@ defmodule WardrikTesting.Script do
     {:ok, nil}
   end
 
-  defp decided(
-         %Scope{wardrik: name} = scope,
-         id,
-         %{"agent" => conversation, "interrupt" => call} = input
-       ) do
-    decision = if id == "agent.approve", do: "approved", else: "rejected"
-    by = %{"id" => scope.principal.id, "name" => scope.principal.attributes[:name]}
-    resolved = %{"interrupt" => %{"id" => call}, "decision" => decision, "resolved_by" => by}
-
-    write(
-      scope,
-      conversation,
-      "interrupt.resolved",
-      Map.merge(resolved, said(id, input))
-    )
-
-    Server.hold(name, conversation, {"idle", []})
-    answered(scope, conversation, "Done.")
-    {:ok, %{"decisions" => [%{"id" => call, "decision" => decision}]}}
-  end
-
   defp said("agent.deny", input), do: %{"reason" => input["reason"] || "Rejected."}
   defp said(_approve, input), do: Map.take(input, ["note"])
-
-  defp decides?(%Scope{grants: grants}, conversation) do
-    {:ok, resource} = Wardrik.Resource.agent(conversation)
-    Enum.any?(grants, &decides_on?(&1, resource))
-  end
-
-  defp decides_on?(%Wardrik.Statement{actions: actions, resources: resources}, resource),
-    do:
-      Enum.any?(actions, &(&1 in ["*", "agent.decide"])) and
-        Enum.any?(resources, &WardrikEvents.Pattern.covers?(&1, resource))
 
   defp turn(%Scope{wardrik: name} = scope, conversation, "echo" <> _rest) do
     call = %{"id" => "call_1", "name" => "echo", "arguments" => %{"text" => "hi"}}
