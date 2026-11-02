@@ -5,10 +5,10 @@ defmodule WardrikWorkspace do
   A `WardrikCore.Capability` that gives an agent six tools over a tree of files: `read_file`,
   `write_file`, `edit_file`, `list_files`, `search_files` and `delete_file`.
 
-      tree = "agents/acme/agent/triage"
+      tree = "agents/agt_triage"
 
       WardrikCore.start_agent(
-        agent_id: "acme/triage",
+        agent_id: "agt_triage",
         model: "anthropic:claude-haiku-4-5",
         capabilities: [{WardrikWorkspace, store: store, tree: tree}],
         middleware: [{WardrikWorkspace.Context, store: store, tree: tree, files: ["MEMORY.md"]}]
