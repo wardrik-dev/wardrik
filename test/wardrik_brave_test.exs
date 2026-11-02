@@ -106,7 +106,7 @@ defmodule WardrikBraveTest do
     def fetch(%{name: "BRAVE_API_KEY", principal: %WardrikCore.Principal{id: "acme"}}, _opts),
       do: {:ok, "acme-key"}
 
-    def fetch(_request, _opts), do: :error
+    def fetch(_request, _opts), do: {:error, :not_found}
   end
 
   test "searches with the agent's own key where its keys hold one", %{name: name, tool: tool} do

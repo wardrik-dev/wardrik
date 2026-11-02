@@ -66,7 +66,7 @@ defmodule WardrikBrave.WebSearch do
   defp settings(brave, context) do
     case WardrikCore.Keys.fetch(context, "BRAVE_API_KEY") do
       {:ok, key} -> %{WardrikBrave.settings(brave) | api_key: key}
-      :error -> WardrikBrave.settings(brave)
+      {:error, _none} -> WardrikBrave.settings(brave)
     end
   end
 
