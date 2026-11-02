@@ -16,9 +16,16 @@ defmodule WardrikVault.Sealed do
   @key_bytes 32
   @nonce_bytes 12
 
-  @doc "Seals `value` with `key`. Binds it to `path` and `kind`, so it can't be moved or relabelled."
-  @spec seal(binary(), String.t(), WardrikVault.kind(), binary()) :: t()
-  def seal(key, path, kind, value) do
+  @doc """
+  Seals `value` with `:key`. Binds it to `:path` and `:kind`, so it can't be moved or relabelled.
+
+      WardrikVault.Sealed.seal("ghp_...", key: key, path: "acme%2F%40jon/github", kind: :secret)
+  """
+  @spec seal(binary(), key: binary(), path: String.t(), kind: WardrikVault.kind()) :: t()
+  def seal(value, args) do
+    key = Keyword.fetch!(args, :key)
+    path = Keyword.fetch!(args, :path)
+    kind = Keyword.fetch!(args, :kind)
     nonce = :crypto.strong_rand_bytes(@nonce_bytes)
 
     {ciphertext, tag} =

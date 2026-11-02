@@ -26,8 +26,11 @@ defmodule WardrikVault do
 
   require Logger
 
+  alias WardrikCore.Credentials
   alias WardrikCore.Principal
+  alias WardrikVault.Grants
   alias WardrikVault.Sealed
+  alias WardrikVault.Secret
 
   @typedoc "A vault, by the name your app gave it."
   @type t() :: atom()
@@ -86,27 +89,38 @@ defmodule WardrikVault do
   end
 
   @doc """
-  Seals `value` as `name` for `principal`. Returns `{:ok, vsn}`, or `{:error, :no_key}` without
-  keys.
+  Seals the secret's value as its `name` for its `principal`. Returns `{:ok, vsn}`, or
+  `{:error, :no_key}` without keys.
 
-      {:ok, vsn} = WardrikVault.put(MyApp.Vault, principal, "github", "ghp_...")
+      {:ok, vsn} =
+        WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
+          principal: principal,
+          name: "github",
+          value: "ghp_..."
+        })
 
   ## Options
 
     * `:kind` - what it's for. See `t:kind/0`. `:secret` unless set.
     * `:if_vsn` - writes only over this version. See `WardrikStore.put/4`.
   """
-  @spec put(t(), Principal.t(), String.t(), binary(), kind: kind(), if_vsn: WardrikStore.vsn()) ::
+  @spec put(t(), Secret.t(), kind: kind(), if_vsn: WardrikStore.vsn()) ::
           {:ok, WardrikStore.vsn()} | {:error, term()}
-  def put(vault, %Principal{} = principal, name, value, opts \\ []) when is_binary(value) do
+  def put(vault, secret, opts \\ [])
+
+  def put(vault, %Secret{principal: %Principal{} = principal, name: name, value: value}, opts)
+      when is_binary(value) do
     {kind, opts} = Keyword.pop(opts, :kind, :secret)
     unless kind in @kinds, do: raise(ArgumentError, "#{inspect(kind)} isn't a vault kind")
     %{store: store, keys: keys} = settings(vault)
     path = path(principal, name)
 
     case keys do
-      [key | _rest] -> WardrikStore.put(store, path, Sealed.seal(key, path, kind, value), opts)
-      [] -> {:error, :no_key}
+      [key | _rest] ->
+        WardrikStore.put(store, path, Sealed.seal(value, key: key, path: path, kind: kind), opts)
+
+      [] ->
+        {:error, :no_key}
     end
   end
 
@@ -164,14 +178,15 @@ defmodule WardrikVault do
   Returns the value `principal` holds as `name`, without a running vault.
 
   Use it to read a secret before the vault starts, such as while reading config. `store` and
-  `keys` are what the vault is started with.
+  `:keys` are what the vault is started with.
 
-      WardrikVault.read(store, [System.fetch_env!("VAULT_KEY")], principal, "github")
+      WardrikVault.read(store, principal, "github", keys: [System.fetch_env!("VAULT_KEY")])
       #=> {:ok, "ghp_..."}
   """
-  @spec read(WardrikStore.t(), [String.t()], Principal.t(), String.t()) ::
+  @spec read(WardrikStore.t(), Principal.t(), String.t(), keys: [String.t()]) ::
           {:ok, binary()} | {:error, term()}
-  def read(store, keys, %Principal{} = principal, name) do
+  def read(store, %Principal{} = principal, name, args) do
+    keys = Keyword.fetch!(args, :keys)
     path = path(principal, name)
 
     case WardrikStore.lookup(WardrikStore.scope(store, "wardrik_vault"), path) do
@@ -186,7 +201,12 @@ defmodule WardrikVault do
   These are your app's keys, such as a model provider's, and the secrets options name with
   `{:secret, name}`. No agent works for this principal.
 
-      {:ok, _vsn} = WardrikVault.put(MyApp.Vault, WardrikVault.deployment(), "SLACK_SIGNING_SECRET", secret)
+      {:ok, _vsn} =
+        WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
+          principal: WardrikVault.deployment(),
+          name: "SLACK_SIGNING_SECRET",
+          value: secret
+        })
   """
   @spec deployment() :: Principal.t()
   def deployment, do: @deployment
@@ -211,7 +231,7 @@ defmodule WardrikVault do
   @spec read_value(WardrikStore.t(), [String.t()], value()) ::
           {:ok, String.t() | nil} | {:error, term()}
   def read_value(store, keys, {:secret, name}) when is_binary(name),
-    do: read(store, keys, @deployment, name)
+    do: read(store, @deployment, name, keys: keys)
 
   def read_value(_store, _keys, value) when is_binary(value) or is_nil(value), do: {:ok, value}
 
@@ -251,21 +271,23 @@ defmodule WardrikVault do
   defdelegate generate_key, to: Sealed
 
   @impl WardrikCore.Credentials
-  def resolve(_name, nil, _vault), do: {:error, :no_principal}
+  def resolve(%Credentials.Request{principal: nil}, _vault), do: {:error, :no_principal}
 
-  def resolve(name, principal, vault) do
+  def resolve(%Credentials.Request{name: name, principal: principal}, vault) do
+    request = %Grants.Request{vault: vault, name: name, principal: principal}
+
     case lookup(vault, principal, name) do
       {:ok, :secret, value, _vsn} ->
         {:ok, value}
 
       {:ok, :grant, value, vsn} ->
-        grants(vault, :renew, [name, principal, %{value: value, vsn: vsn}])
+        grants(:renew, %{request | grant: %{value: value, vsn: vsn}})
 
       {:error, :not_found} ->
-        grants(vault, :ask, [name, principal])
+        grants(:ask, request)
 
       {:error, :grant, reason} ->
-        ask_again(vault, name, principal, reason)
+        ask_again(request, reason)
 
       {:error, _kind, reason} ->
         {:error, reason}
@@ -276,12 +298,15 @@ defmodule WardrikVault do
   end
 
   @impl WardrikCore.Credentials
-  def refused(_name, nil, _vault), do: :ok
+  def refused(%Credentials.Request{principal: nil}, _vault), do: :ok
 
-  def refused(name, principal, vault) do
+  def refused(%Credentials.Request{name: name, principal: principal}, vault) do
     case lookup(vault, principal, name) do
-      {:ok, :grant, _value, _vsn} -> grants(vault, :refused, [name, principal])
-      _secret_or_none -> :ok
+      {:ok, :grant, _value, _vsn} ->
+        grants(:refused, %Grants.Request{vault: vault, name: name, principal: principal})
+
+      _secret_or_none ->
+        :ok
     end
   end
 
@@ -326,17 +351,17 @@ defmodule WardrikVault do
   defp unsealed({:ok, value}, kind, vsn), do: {:ok, kind, value, vsn}
   defp unsealed({:error, reason}, kind, _vsn), do: {:error, kind, reason}
 
-  defp ask_again(vault, name, principal, reason) do
+  defp ask_again(%Grants.Request{name: name, principal: principal} = request, reason) do
     Logger.warning(
       "#{name} for #{principal.id} can't be unsealed (#{inspect(reason)}), so asking again"
     )
 
-    grants(vault, :ask, [name, principal])
+    grants(:ask, request)
   end
 
-  defp grants(vault, callback, args) do
+  defp grants(callback, %Grants.Request{vault: vault} = request) do
     case settings(vault).grants do
-      {module, opts} -> apply(module, callback, [vault | args] ++ [opts])
+      {module, opts} -> apply(module, callback, [request, opts])
       nil -> nothing_granted(callback)
     end
   end
