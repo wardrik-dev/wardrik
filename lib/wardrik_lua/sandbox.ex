@@ -2,30 +2,16 @@ defmodule WardrikLua.Sandbox do
   @moduledoc """
   Runs Lua code under limits, with no access to the node.
 
-  Built on [lua](https://hexdocs.pm/lua), a Lua 5.3 VM written in Elixir.
-
       WardrikLua.Sandbox.run("return ('%d apples'):format(3)", WardrikLua.Sandbox.Limits.new())
       #=> {:ok, "3 apples"}
 
-  Errors are returned as a sentence, since a model reads them.
-
-  ## Globals
-
-  `string`, `table`, `math`, `utf8` and the safe parts of `os` are available. `io`, `file`,
-  `os.execute`, `os.exit`, `os.getenv`, `package`, `require`, `load`, `dofile`, `print` and `debug`
-  raise when called.
-
-  ## Return values
-
-    * No value returns `nil`, one value returns itself, several return a list.
-    * A table returns a map, or a list when its keys are exactly `1..n`.
-    * Map keys become strings. Keys that collide after conversion are an error.
-    * Functions, cyclic tables and strings that aren't valid UTF-8 are an error.
-
-  ## Limits
-
-  `WardrikLua.Sandbox.Runner` enforces the deadline and memory budget. The VM enforces the step
-  budget and call depth itself. See `WardrikLua.Sandbox.Limits`.
+    * `string`, `table`, `math`, `utf8` and the safe parts of `os` work. `io`, `file`,
+      `os.execute`, `os.exit`, `os.getenv`, `package`, `require`, `load`, `dofile`, `print` and
+      `debug` raise.
+    * No value returns `nil`, one returns itself, several return a list.
+    * A table returns a map, or a list when its keys are exactly `1..n`. Map keys become strings.
+    * Functions, cyclic tables, invalid UTF-8 and colliding keys are errors.
+    * Errors are sentences, since a model reads them.
   """
 
   alias WardrikLua.Sandbox.Limits
@@ -44,11 +30,7 @@ defmodule WardrikLua.Sandbox do
     end
   end
 
-  @doc """
-  Returns `:ok` if `code` can be run, without running it.
-
-  Returns an error if `code` isn't a string or is longer than 64 KB.
-  """
+  @doc "Returns `:ok` if `code` is a string of at most 64 KB, or an error."
   @spec check(term()) :: :ok | {:error, String.t()}
   def check(code) when not is_binary(code) do
     {:error, "code must be a string, got: #{inspect(code)}"}
@@ -62,11 +44,7 @@ defmodule WardrikLua.Sandbox do
   # compilation and execution run under the caller's resource limits.
   def check(_code), do: :ok
 
-  @doc """
-  Evaluates `code` in the calling process and returns its value.
-
-  Enforces only the limits the VM checks. Use `run/2` for the deadline and memory budget.
-  """
+  @doc "Evaluates `code` in this process, under only the step and depth limits."
   @spec evaluate(String.t(), Limits.t()) :: result()
   def evaluate(code, %Limits{} = limits) do
     {results, _lua} = Lua.eval!(vm(limits), code)

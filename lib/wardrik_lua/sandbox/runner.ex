@@ -1,23 +1,12 @@
 defmodule WardrikLua.Sandbox.Runner do
   @moduledoc """
-  Runs one evaluation in a task of its own, bounded by `WardrikLua.Sandbox.Limits`.
+  Runs one evaluation in a low-priority task, bounded by `WardrikLua.Sandbox.Limits`.
 
       WardrikLua.Sandbox.Runner.run(fn -> {:ok, 4} end, WardrikLua.Sandbox.Limits.new())
       #=> {:ok, 4}
 
-  `WardrikLua.Sandbox.run/2` calls it. The VM implements the language; this module bounds the
-  process.
-
-  The task runs at low priority under its own task supervisor. It's killed when it passes its
-  deadline, outgrows its memory budget, or its caller dies.
-
-  ## Notes
-
-    * The task isn't linked to its caller. The BEAM kills a process that outgrows its heap, and a
-      link would pass that kill on to the waiting tool call. The caller monitors the task instead.
-      The task supervisor is linked to the caller, so it takes the task down if the caller dies.
-    * The heap cap is the BEAM's `:max_heap_size`. Off-heap binaries aren't counted by it, so they
-      are polled every 50ms. Either budget can be overshot by one interval's work.
+    * The task is killed past its deadline, over its memory cap, or when its caller dies.
+    * Off-heap binaries are polled every 50ms, so memory can overshoot by one interval's work.
   """
 
   alias WardrikLua.Sandbox.Limits

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.2 (2026-11-02)
+
+- Requires `wardrik_core` 0.1.0-rc.2.
+
 ## 0.1.0-rc.1 (2026-10-30)
 
 - `run_lua`, a tool that runs the Lua 5.3 an agent writes, in a sealed sandbox.

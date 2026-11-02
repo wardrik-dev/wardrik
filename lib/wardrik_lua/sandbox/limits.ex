@@ -1,17 +1,15 @@
 defmodule WardrikLua.Sandbox.Limits do
   @moduledoc """
-  Bounds for one evaluation.
+  Bounds for one run. Set any to `:infinity` to lift it.
 
       WardrikLua.Sandbox.Limits.new(timeout_ms: :timer.seconds(5), max_steps: 1_000_000)
 
   | Field | Default | Bounds |
   | --- | --- | --- |
-  | `:timeout_ms` | 30s | how long the evaluation may run |
-  | `:max_heap_bytes` | 64 MB | memory the evaluating process may hold |
+  | `:timeout_ms` | 30s | how long the run may take |
+  | `:max_heap_bytes` | 64 MB | memory the run may hold |
   | `:max_steps` | 10M | operations the code may execute |
   | `:max_depth` | 200 | nested calls the code may make |
-
-  Set any field to `:infinity` to lift that limit.
   """
 
   defstruct timeout_ms: :timer.seconds(30),
@@ -30,12 +28,7 @@ defmodule WardrikLua.Sandbox.Limits do
           max_depth: limit()
         }
 
-  @doc """
-  Returns limits, with defaults for fields not given.
-
-  Raises `KeyError` on an unknown field, and `ArgumentError` on a bound that isn't a positive
-  integer or `:infinity`.
-  """
+  @doc "Returns limits, with defaults for fields not given. Raises on a bad field."
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
     limits = struct!(__MODULE__, opts)

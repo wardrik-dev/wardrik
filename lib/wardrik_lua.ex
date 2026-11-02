@@ -1,25 +1,18 @@
 defmodule WardrikLua do
   @moduledoc """
-  Lua 5.3 for agents.
-
-  Gives agents the `run_lua` tool, which runs code in a sealed sandbox and returns the value. Use it
-  when agents need exact answers they'd otherwise work out in their heads: arithmetic, reshaping a
-  result, a loop, or the current time with `os.time` and `os.date`.
+  Lua 5.3 for agents, as the `run_lua` tool.
 
       WardrikCore.start_agent(
-        agent_id: "acme/triage",
+        agent_id: "agt_triage",
         model: "anthropic:claude-haiku-4-5",
-        capabilities: [WardrikLua]
+        capabilities: [{WardrikLua, limits: [timeout_ms: :timer.seconds(5)]}]
       )
 
-  The VM can't reach files, the network, the environment, or anything else the agent has. See
-  `WardrikLua.Sandbox`.
+  The VM can't reach files, the network or the environment. See `WardrikLua.Sandbox`.
 
   ## Options
 
     * `:limits` - bounds for each run. See `WardrikLua.Sandbox.Limits`.
-
-          {WardrikLua, limits: [timeout_ms: :timer.seconds(5)]}
   """
 
   @behaviour WardrikCore.Capability
