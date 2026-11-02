@@ -78,6 +78,7 @@ defmodule Wardrik.Test.Channel do
     start_supervised!(
       {Wardrik,
        Wardrik.new(
+         authorizer: {Wardrik.Test.Deciders, []},
          name: name,
          store: store,
          channels: [chat: {Wardrik.Test.Channel.Chat, chat}],
@@ -90,7 +91,7 @@ defmodule Wardrik.Test.Channel do
     {:ok, channel} = fetch(name, "chat")
 
     {:ok, workspace} = WardrikChannel.workspace(channel, "T1")
-    owner = Wardrik.as(name, "acme/@maria", roles: [:owner], resources: ["*"])
+    owner = Wardrik.as(name, "acme/@maria")
 
     %{
       wardrik: name,

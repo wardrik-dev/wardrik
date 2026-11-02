@@ -114,7 +114,14 @@ defmodule Wardrik.CompactionTest do
 
   test "is on unless a definition turns it off", context do
     store = Wardrik.Test.Store.new(:"store #{context.test}")
-    wardrik = Wardrik.new(name: :"wardrik #{context.test}", store: store)
+
+    wardrik =
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        name: :"wardrik #{context.test}",
+        store: store
+      )
+
     start_supervised!({WardrikStore, store})
     start_supervised!({Wardrik, wardrik})
     base = %{"model" => "anthropic:claude-haiku-4-5"}

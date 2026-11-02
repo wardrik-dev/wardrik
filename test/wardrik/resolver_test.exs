@@ -40,6 +40,7 @@ defmodule Wardrik.ResolverTest do
 
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         store: store,
         resolver: {Wardrik.Test.Resolver, resolved},

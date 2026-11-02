@@ -21,13 +21,28 @@ System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
 A webhook checks requests with a secret, kept sealed in Wardrik's vault. `:keys` is what seals it:
 
 ```elixir
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, keys: [WardrikVault.generate_key()])
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
+    keys: [WardrikVault.generate_key()]
+  )
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
 In your app, keep the key in config, not in code. A key generated here is gone when the runtime
 stops, and so is everything it sealed.
+
+`MyApp.AllowAll` lets every scope do anything. In your app, an authorizer decides who may do
+what; see [Who may do what](access-demo.livemd).
 
 ## Keep the webhook's secret
 

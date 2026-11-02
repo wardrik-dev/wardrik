@@ -53,12 +53,8 @@ defmodule Wardrik.Instance do
   defp scopes do
     quote do
       @doc "Returns the scope `principal` acts in. See `Wardrik.as/3`."
-      @spec as(WardrikCore.Principal.t() | String.t(), term()) :: Wardrik.Scope.t()
-      def as(principal, grants \\ []), do: Wardrik.as(__MODULE__, principal, grants)
-
-      @doc "Returns the scope of the API token `secret`. See `Wardrik.authenticate/2`."
-      @spec authenticate(String.t()) :: {:ok, Wardrik.Scope.t()} | {:error, Wardrik.Error.t()}
-      def authenticate(secret), do: Wardrik.authenticate(__MODULE__, secret)
+      @spec as(WardrikCore.Principal.t() | String.t(), keyword()) :: Wardrik.Scope.t()
+      def as(principal, opts \\ []), do: Wardrik.as(__MODULE__, principal, opts)
     end
   end
 

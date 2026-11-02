@@ -31,7 +31,16 @@ defmodule Wardrik.ChannelsTest do
     channels = [slack: {Wardrik.Test.Echo, test: self()}]
 
     start_supervised!({WardrikStore, store})
-    start_supervised!({Wardrik, Wardrik.new(name: name, store: store, channels: channels)})
+
+    start_supervised!(
+      {Wardrik,
+       Wardrik.new(
+         authorizer: {Wardrik.Test.Allow, []},
+         name: name,
+         store: store,
+         channels: channels
+       )}
+    )
 
     %{name: name, scope: Wardrik.as(name, "anonymous")}
   end
@@ -63,7 +72,7 @@ defmodule Wardrik.ChannelsTest do
   end
 
   test "takes a definition that names it", %{name: name} do
-    scope = Wardrik.as(name, "acme/@maria", roles: [:owner], resources: ["*"])
+    scope = Wardrik.as(name, "acme/@maria")
     definition = [model: "anthropic:claude-haiku-4-5", channels: ["slack"]]
 
     assert {:ok, %Wardrik.Agent{id: "acme/triage"}} =
@@ -71,7 +80,7 @@ defmodule Wardrik.ChannelsTest do
   end
 
   test "records what a package changes in the audit", %{name: name} do
-    scope = Wardrik.as(name, "slack:T1/U2", roles: [:owner], resources: ["*"])
+    scope = Wardrik.as(name, "slack:T1/U2")
 
     data = %{
       "channel" => "slack",
@@ -101,7 +110,7 @@ defmodule Wardrik.ChannelsTest do
   end
 
   test "says a Wardrik with no keys seals no secrets", %{name: name} do
-    scope = Wardrik.as(name, "acme/@maria", roles: [:owner], resources: ["*"])
+    scope = Wardrik.as(name, "acme/@maria")
 
     assert {:error, %Wardrik.Error{type: :not_supported}} =
              Wardrik.Secrets.list(scope, owner: "acme")

@@ -35,11 +35,25 @@ defmodule MyApp.Books do
   end
 end
 
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, capabilities: [books: MyApp.Books])
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
 
-scope =
-  Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
+    capabilities: [books: MyApp.Books]
+  )
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
+
+`MyApp.AllowAll` lets every scope do anything. In your app, an authorizer decides who may do
+what; see [Who may do what](access-demo.livemd).
 
 The agent calls a model. Add `ANTHROPIC_API_KEY` in the Secrets panel first. A run costs about a
 cent.
@@ -130,7 +144,7 @@ inbox = Kino.Frame.new()
 log = Kino.Frame.new()
 
 {:ok, cursor} = Wardrik.Events.head(scope)
-{:ok, events} = Wardrik.Events.stream_list(scope, after: cursor, resources: ["acme/@maria/*"])
+{:ok, events} = Wardrik.Events.stream_list(scope, after: cursor, agents: ["acme/@maria/books"])
 
 Kino.listen(events, %{}, fn {event, _cursor}, arguments ->
   data = event.data

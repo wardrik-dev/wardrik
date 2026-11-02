@@ -12,9 +12,18 @@ GitHub:
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
+# Allows everything. Your app's authorizer decides who may do what.
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
 {:ok, _} =
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
     keys: [WardrikVault.generate_key()],
     oauth: [
       page: "https://agents.example.com/oauth",
@@ -30,7 +39,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
     ]
   )
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
 `"Iv1.your-client-id"` stands for your GitHub OAuth app's client ID. Nothing on this page calls a
@@ -104,7 +113,12 @@ To let every agent fall back to keys the deployment holds, start Wardrik with
 `deployment_keys: true` and seal them as the deployment's:
 
 ```elixir
-Wardrik.start_link(name: MyApp.AgentRuntime, keys: [key], deployment_keys: true)
+Wardrik.start_link(
+  name: MyApp.AgentRuntime,
+  authorizer: {MyApp.Authorizer, []},
+  keys: [key],
+  deployment_keys: true
+)
 
 :ok =
   Wardrik.put_secret(MyApp.AgentRuntime,

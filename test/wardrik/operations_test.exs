@@ -6,7 +6,6 @@ defmodule Wardrik.OperationsTest do
   import Wardrik.Test.Wardrik
 
   alias Wardrik.Operations.Visible
-  alias Wardrik.Statement
   alias WardrikEvents.Cursor
 
   setup :set_mimic_global
@@ -150,7 +149,7 @@ defmodule Wardrik.OperationsTest do
                run!(scope, "interrupts.list", %{})
 
       assert %{"agents" => [%{"id" => "acme/triage", "status" => "parked"}]} =
-               run!(scope, "agents.list", %{"resources" => ["acme/agent/*"]})
+               run!(scope, "agents.list", %{"agents" => ["acme/triage"]})
 
       assert %{"decisions" => [%{"id" => "call_1", "decision" => "approved"}]} =
                run!(scope, "agent.approve", %{
@@ -223,8 +222,7 @@ defmodule Wardrik.OperationsTest do
         until("wardrik.run.completed")
       end
 
-      reader = Statement.new(roles: [:reader], resources: ["acme/agent/*"])
-      %{reader: Wardrik.as(wardrik, maria(), [reader])}
+      %{reader: limited(wardrik, maria(), roles: [:reader], agents_of: ["acme"])}
     end
 
     test "lists only those", %{scope: scope, reader: reader} do
@@ -234,11 +232,16 @@ defmodule Wardrik.OperationsTest do
       ids = for %{"id" => id} <- run!(scope, "agents.list", %{})["agents"], do: id
       assert ids == ["acme/@jon/books", "acme/triage", "globex/triage"]
 
-      ids =
-        for %{"id" => id} <- run!(scope, "agents.list", %{"resources" => ["acme/*"]})["agents"],
-            do: id
-
+      named = %{"agents" => ["acme/@jon/books", "acme/triage", "acme/nobody"]}
+      ids = for %{"id" => id} <- run!(scope, "agents.list", named)["agents"], do: id
       assert ids == ["acme/@jon/books", "acme/triage"]
+
+      named = %{"agents" => ["acme/@jon/books", "acme/triage"]}
+      ids = for %{"id" => id} <- run!(reader, "agents.list", named)["agents"], do: id
+      assert ids == ["acme/triage"]
+
+      assert refused(scope, "agents.list", %{"resources" => ["acme/*"]}) == :invalid_request
+      assert refused(scope, "agents.list", %{"agents" => ["acme/*"]}) == :invalid_request
     end
 
     test "reads only their events, and only their place in the cursor", %{
@@ -259,7 +262,7 @@ defmodule Wardrik.OperationsTest do
 
       %{"events" => completed} =
         run!(scope, "events.list", %{
-          "resources" => ["acme/*"],
+          "agents" => ["acme/@jon/books", "acme/triage"],
           "types" => ["wardrik.run.completed"]
         })
 

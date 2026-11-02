@@ -33,7 +33,14 @@ defmodule Wardrik.SealedOptionsTest do
     channels = [slack: {Wardrik.Test.Sealed, test: self(), signing_secret: {:secret, "SIGNING"}}]
 
     start_supervised!(
-      {Wardrik, Wardrik.new(name: name, store: store, keys: [key], channels: channels)}
+      {Wardrik,
+       Wardrik.new(
+         authorizer: {Wardrik.Test.Allow, []},
+         name: name,
+         store: store,
+         keys: [key],
+         channels: channels
+       )}
     )
 
     assert_receive {:started_with, "first"}

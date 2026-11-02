@@ -3,7 +3,12 @@ defmodule Wardrik.Test.Instance do
   use Wardrik
 
   @impl Wardrik
-  def init(config), do: {:ok, Keyword.put_new(config, :deployment, "from-init")}
+  def init(config),
+    do:
+      {:ok,
+       config
+       |> Keyword.put_new(:deployment, "from-init")
+       |> Keyword.put_new(:authorizer, {Wardrik.Test.Allow, []})}
 end
 
 defmodule Wardrik.Test.Runs do

@@ -10,16 +10,9 @@ defmodule Wardrik.HTTP.WorkerTest do
   setup :start_wardrik
 
   setup context do
-    server = start_supervised!({Wardrik.HTTP, wardrik: context.wardrik, port: 0, keepalive: 50})
+    server = start_supervised!({Wardrik.HTTP, http(context, port: 0, keepalive: 50)})
     {:ok, {_ip, port}} = ThousandIsland.listener_info(server)
-
-    {:ok, shop} =
-      Wardrik.Tokens.create(context.owner,
-        name: "shop",
-        roles: ["worker"],
-        resources: ["acme/agent/*"]
-      )
-
+    shop = Wardrik.Test.HTTP.Authenticator.sign_in(context.wardrik, "acme/@shop")
     %{url: "ws://localhost:#{port}/v1/workers", shop: shop}
   end
 
@@ -117,14 +110,14 @@ defmodule Wardrik.HTTP.WorkerTest do
     assert_receive {:worker, %{"id" => "w2", "error" => %{"code" => -32_601}}}
   end
 
-  test "closes the socket once its token is revoked", context do
+  test "closes the socket once it no longer authenticates", context do
     connect(context)
 
-    {:ok, _token} = Wardrik.Tokens.revoke(context.owner, context.shop.token)
-    assert_receive {:worker_closed, {:remote, 1008, "The token no longer works."}}
+    Wardrik.Test.HTTP.Authenticator.revoke(context.wardrik, context.shop)
+    assert_receive {:worker_closed, {:remote, 1008, "The request no longer authenticates."}}
   end
 
-  test "refuses a socket without a token, and asks a request with one to upgrade", context do
+  test "refuses a socket that doesn't authenticate, and asks one that does to upgrade", context do
     assert {:error, %WebSockex.RequestError{code: 401}} =
              Worker.start(context.url, "wrk_nope", self())
 
@@ -133,7 +126,7 @@ defmodule Wardrik.HTTP.WorkerTest do
   end
 
   defp connect(context) do
-    {:ok, worker} = Worker.start(context.url, context.shop.secret, self())
+    {:ok, worker} = Worker.start(context.url, context.shop, self())
 
     assert_receive {:worker, %{"method" => "initialize", "id" => id}}
 

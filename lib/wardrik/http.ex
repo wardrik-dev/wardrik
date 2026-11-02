@@ -12,11 +12,17 @@ defmodule Wardrik.HTTP do
 
   Run it as a child, with Bandit:
 
-      children = [MyApp.AgentRuntime, {Wardrik.HTTP, wardrik: MyApp.AgentRuntime, port: 4000}]
+      children = [
+        MyApp.AgentRuntime,
+        {Wardrik.HTTP,
+         wardrik: MyApp.AgentRuntime, authenticator: {MyAppWeb.WardrikSession, []}, port: 4000}
+      ]
 
   Or forward to it from your router, as a `Plug`:
 
-      forward "/agents", Wardrik.HTTP, wardrik: MyApp.AgentRuntime
+      forward "/agents", Wardrik.HTTP,
+        wardrik: MyApp.AgentRuntime,
+        authenticator: {MyAppWeb.WardrikSession, []}
 
   ## Options
 
@@ -24,7 +30,8 @@ defmodule Wardrik.HTTP do
     * `:principal` - `{module, function, args}`, called with a sign-in callback's conn, returning
       who is at the browser, or `nil`. A sign-in finishes only for the principal who started it,
       so without this, callbacks never finish. See `WardrikOAuth.Plug`.
-    * `:authenticator` - see `WardrikHTTP`.
+    * `:authenticator` - required. The `WardrikHTTP.Authenticator` that says who each request
+      comes from, as `{module, config}`. See `WardrikHTTP`.
     * `:keepalive` - see `WardrikHTTP`.
 
   As a child it also takes Bandit's options, such as `:port`. That needs `:bandit` in your deps.

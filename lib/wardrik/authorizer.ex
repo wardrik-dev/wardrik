@@ -8,6 +8,9 @@ defmodule Wardrik.Authorizer do
         @behaviour Wardrik.Authorizer
 
         @impl true
+        def authorize(%{actor: {:agent, _id}, action: "agent.forget"}, _opts),
+          do: {:error, :forbidden}
+
         def authorize(%{action: "agent." <> _verb, resource: {:agent, id}} = request, _opts) do
           if MyApp.Agents.member?(id, request.principal.id),
             do: :ok,
@@ -17,8 +20,8 @@ defmodule Wardrik.Authorizer do
         def authorize(_request, _opts), do: {:error, :forbidden}
       end
 
-  Wardrik asks once per operation, and once per agent for operations over many agents, with a
-  `Wardrik.Authorizer.Request`. `Wardrik.Statements` decides unless set.
+  Wardrik requires one. It asks once per operation, and once per agent for operations over many
+  agents, with a `Wardrik.Authorizer.Request`.
 
   `c:authorize/2` returns:
 
@@ -31,7 +34,7 @@ defmodule Wardrik.Authorizer do
   alias Wardrik.Authorizer.Request
   alias Wardrik.Scope
 
-  @doc "Decides whether the request's principal may take its action on its resource."
+  @doc "Decides whether the request's principal, through its actor, may take its action on its resource."
   @callback authorize(Request.t(), opts :: term()) :: :ok | {:error, :forbidden | :not_found}
 
   @doc """
@@ -39,16 +42,26 @@ defmodule Wardrik.Authorizer do
 
       Wardrik.Authorizer.authorize(scope, action: "agent.ask", resource: {:agent, id})
 
-  Takes the `Wardrik.Authorizer.Request` fields but `:principal` and `:scope`, which are the
-  scope's.
+  Takes the `Wardrik.Authorizer.Request` fields but `:principal`, `:actor` and `:scope`, which
+  are the scope's. `:context` is merged over the scope's.
   """
   @spec authorize(Scope.t(), keyword()) :: :ok | {:error, :forbidden | :not_found}
-  def authorize(%Scope{wardrik: %{authorizer: {module, opts}}} = scope, fields),
-    do:
-      module.authorize(
-        struct!(Request, [principal: scope.principal, scope: scope] ++ fields),
-        opts
-      )
+  def authorize(%Scope{wardrik: %{authorizer: {module, opts}}} = scope, fields) do
+    {context, fields} = Keyword.pop(fields, :context, %{})
+
+    module.authorize(
+      struct!(
+        Request,
+        [
+          principal: scope.principal,
+          actor: scope.actor,
+          scope: scope,
+          context: Map.merge(scope.context, context)
+        ] ++ fields
+      ),
+      opts
+    )
+  end
 
   def authorize(%Scope{wardrik: instance} = scope, fields),
     do: authorize(%{scope | wardrik: Wardrik.Instance.fetch!(instance)}, fields)
@@ -57,17 +70,4 @@ defmodule Wardrik.Authorizer do
   @spec allows?(Scope.t(), Request.resource()) :: boolean()
   def allows?(%Scope{operation: %{action: action}} = scope, resource),
     do: authorize(scope, action: action, resource: resource) == :ok
-
-  @doc """
-  Returns whether `scope` holds everything `statement` allows, so a token it makes is no wider
-  than itself. Only `Wardrik.Statements` says, so with another authorizer, no scope makes tokens.
-  """
-  @spec holds?(Scope.t(), Wardrik.Statement.t()) :: boolean()
-  def holds?(%Scope{wardrik: %{authorizer: {Wardrik.Statements, _opts}}} = scope, statement),
-    do: Wardrik.Statements.holds?(scope, statement)
-
-  def holds?(%Scope{wardrik: %{authorizer: _other}}, _statement), do: false
-
-  def holds?(%Scope{wardrik: instance} = scope, statement),
-    do: holds?(%{scope | wardrik: Wardrik.Instance.fetch!(instance)}, statement)
 end

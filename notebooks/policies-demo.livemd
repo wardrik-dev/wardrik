@@ -45,16 +45,26 @@ defmodule MyApp.Books do
   end
 end
 
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
 {:ok, _} =
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
     capabilities: [books: MyApp.Books],
     policy: [deny: ["shell/*"]]
   )
 
-scope =
-  Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
+
+`MyApp.AllowAll` lets every scope do anything. In your app, an authorizer decides who may do
+what; see [Who may do what](access-demo.livemd).
 
 ## Two policies
 

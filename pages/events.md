@@ -12,8 +12,16 @@ In a fresh IEx session:
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime)
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+# Allows everything. Your app's authorizer decides who may do what.
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.AllowAll, []})
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
 Nothing on this page calls a model, so no provider key is needed.
@@ -53,7 +61,8 @@ Pass `next` as `after:` to read on. `list/2` reads from the start without `after
 what's written next:
 
 ```elixir
-{:ok, stream} = Wardrik.Events.stream_list(scope, after: cursor, resources: ["acme/@maria/*"])
+{:ok, stream} =
+  Wardrik.Events.stream_list(scope, after: cursor, agents: ["acme/@maria/assistant"])
 
 Enum.take(stream, 1)
 #=> [{%Wardrik.Event{type: "wardrik.agent.started", ...}, "eyJhY21lL0BtYXJpYS9hc3Npc3RhbnQiOjF9"}]
@@ -62,7 +71,9 @@ Enum.take(stream, 1)
 The stream doesn't end. Each item is an event and the cursor past it.
 
   * Each event is a CloudEvent, with `data` shaped as the protocol describes its type.
-  * A scope only sees the events of agents it can see. A cursor only names those agents.
+  * `agents:` names the agents to read, by ID. Every agent the scope may see unless set.
+  * A scope only sees the events of agents your authorizer allows `agent.events` on. A cursor
+    only names those agents.
   * Where a log was trimmed past the cursor, a `wardrik.events.dropped` event says so. Reading goes
     on from the oldest event kept.
 
@@ -110,20 +121,19 @@ returns anything but `:ok`, the listener restarts from `cursor/1`.
 ### Options
 
   * `:wardrik` - required. The module that uses Wardrik, as `MyApp.AgentRuntime`.
-  * `:resources` - agents to follow. Every agent unless set.
+  * `:resources` - patterns of the agents to follow, as `["acme/@maria/*"]`. Every agent unless
+    set. A listener reads every agent's events as your app, not as a scope.
   * `:types` - event types to follow. Every type unless set.
   * `:after` - the cursor to start after, unless you define `cursor/1`. Without one, it reads
     what's written once it starts.
 
 ## The audit
 
-Everything people did through Wardrik, for the whole deployment. Reading it needs a grant on
-`deployment`:
+Everything people did through Wardrik, for the whole deployment. Reading it needs your authorizer
+to allow `deployment.audit` on `{:deployment, name}`, by Wardrik's `:deployment`:
 
 ```elixir
-operator = Wardrik.grant(scope, roles: [:owner], resources: ["deployment"])
-
-Wardrik.Audit.list(operator, limit: 50)
+Wardrik.Audit.list(scope, limit: 50)
 #=> {:ok,
 #=>  %Wardrik.Page{
 #=>    events: [

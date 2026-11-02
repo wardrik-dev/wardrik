@@ -12,14 +12,14 @@ defmodule Wardrik.HTTPTest do
   @notes "/v1/agents/acme/@maria/notes"
 
   describe "operations" do
-    test "runs an operation at its route, as whoever the token acts for", context do
+    test "runs an operation at its route, as whoever the authenticator says", context do
       conn = request(context, "PUT", @notes, %{"model" => "anthropic:claude-haiku-4-5"})
 
       assert conn.status == 200
       assert %{"agent" => %{"id" => "acme/@maria/notes"}} = body(conn)
       assert [_request_id] = get_resp_header(conn, "request-id")
 
-      conn = request(context, "GET", "/v1/agents?resources=acme/@maria/*&resources=acme/agent/*")
+      conn = request(context, "GET", "/v1/agents?agents=acme/@maria/notes&agents=acme/triage")
       assert %{"agents" => [%{"id" => "acme/@maria/notes"}]} = body(conn)
 
       conn = request(context, "GET", "/v1/agents/acme/%40maria/notes/definition")
@@ -34,8 +34,10 @@ defmodule Wardrik.HTTPTest do
     end
 
     test "reads integers from the query", context do
+      :ok = Wardrik.put_secret(context.wardrik, owner: "acme", name: "KEY", value: "v")
+      :ok = Wardrik.put_secret(context.wardrik, owner: "acme", name: "OTHER", value: "v")
       conn = request(context, "GET", "/v1/deployment/audit?limit=1")
-      assert %{"events" => [%{"type" => "wardrik.token.created"}]} = body(conn)
+      assert %{"events" => [%{"type" => "wardrik.secret.stored"}]} = body(conn)
 
       conn = request(context, "GET", "/v1/deployment/audit?limit=many")
       assert {conn.status, body(conn)["error"]["type"]} == {400, "invalid_request"}
@@ -43,16 +45,15 @@ defmodule Wardrik.HTTPTest do
 
     test "keeps the caller's own request id", context do
       conn =
-        request(context, "GET", "/v1/tokens", nil, [{"request-id", "req_0123456789abcdefghij"}])
+        request(context, "GET", "/v1/agents", nil, [{"request-id", "req_0123456789abcdefghij"}])
 
       assert get_resp_header(conn, "request-id") == ["req_0123456789abcdefghij"]
     end
   end
 
   describe "refusals" do
-    test "asks for a token where none is sent, or one isn't known", context do
-      conn =
-        Wardrik.HTTP.call(conn("GET", "/v1/agents"), Wardrik.HTTP.init(wardrik: context.wardrik))
+    test "asks for credentials where none are sent, or the authenticator refuses them", context do
+      conn = Wardrik.HTTP.call(conn("GET", "/v1/agents"), Wardrik.HTTP.init(http(context)))
 
       assert conn.status == 401
       assert get_resp_header(conn, "www-authenticate") == ["Bearer"]
@@ -80,8 +81,20 @@ defmodule Wardrik.HTTPTest do
       assert request(context, "GET", "/v1/agents/acme%2Fnotes/x").status == 400
     end
 
-    test "needs a Wardrik to serve" do
+    test "needs a Wardrik to serve, and an authenticator" do
       assert_raise ArgumentError, ~r/wardrik: MyApp.AgentRuntime/, fn -> Wardrik.HTTP.init([]) end
+
+      assert_raise NimbleOptions.ValidationError,
+                   ~r/required :authenticator option not found/,
+                   fn ->
+                     Wardrik.HTTP.init(wardrik: MyApp.AgentRuntime)
+                   end
+
+      assert_raise NimbleOptions.ValidationError,
+                   ~r/required :authenticator option not found/,
+                   fn ->
+                     Wardrik.HTTP.child_spec(wardrik: MyApp.AgentRuntime, port: 0)
+                   end
     end
   end
 
@@ -105,7 +118,7 @@ defmodule Wardrik.HTTPTest do
       :ok
     end
 
-    test "delivers a request that proves itself with the trigger's secret, with no token",
+    test "delivers a request that proves itself with the trigger's secret, unauthenticated",
          context do
       answers([answer("Triaged.")])
 
@@ -133,7 +146,7 @@ defmodule Wardrik.HTTPTest do
         |> conn("/v1/hooks/acme/hooks/issues/nope", ~s({"action":"opened"}))
         |> put_req_header("content-type", "application/json")
         |> Plug.Parsers.call(parsers)
-        |> Wardrik.HTTP.call(Wardrik.HTTP.init(wardrik: context.wardrik))
+        |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
 
       assert conn.status == 404
     end
@@ -146,7 +159,7 @@ defmodule Wardrik.HTTPTest do
         |> conn("/v1/hooks/acme/hooks/issues", ~s({"action":"opened"}))
         |> put_req_header("content-type", "application/json")
         |> Plug.Parsers.call(parsers)
-        |> Wardrik.HTTP.call(Wardrik.HTTP.init(wardrik: context.wardrik))
+        |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
 
       assert conn.status == 500
       assert body(conn)["error"]["message"] =~ "WardrikHTTP.BodyReader"
@@ -161,7 +174,7 @@ defmodule Wardrik.HTTPTest do
         |> put_req_header("content-type", "application/json")
         |> put_req_header("authorization", "Bearer " <> context.secret)
         |> Plug.Parsers.call(parsers)
-        |> Wardrik.HTTP.call(Wardrik.HTTP.init(wardrik: context.wardrik))
+        |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
 
       assert conn.status == 200
     end
@@ -175,7 +188,7 @@ defmodule Wardrik.HTTPTest do
         "POST"
         |> conn("/v1/channels/slack/events", ~s({"type":"url_verification"}))
         |> put_req_header("x-slack-signature", "v0=abc")
-        |> Wardrik.HTTP.call(Wardrik.HTTP.init(wardrik: context.wardrik))
+        |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
 
       assert {conn.status, conn.resp_body} == {200, ~s(events {"type":"url_verification"} v0=abc)}
       assert get_resp_header(conn, "content-type") == ["text/plain"]
@@ -183,7 +196,7 @@ defmodule Wardrik.HTTPTest do
       conn =
         Wardrik.HTTP.call(
           conn("POST", "/v1/channels/teams/events", "{}"),
-          Wardrik.HTTP.init(wardrik: context.wardrik)
+          Wardrik.HTTP.init(http(context))
         )
 
       assert conn.status == 404
@@ -195,7 +208,7 @@ defmodule Wardrik.HTTPTest do
       conn =
         Wardrik.HTTP.call(
           conn("GET", "/v1/openapi.json"),
-          Wardrik.HTTP.init(wardrik: context.wardrik)
+          Wardrik.HTTP.init(http(context))
         )
 
       assert %{"openapi" => "3.1.0"} = body(conn)
@@ -224,6 +237,6 @@ defmodule Wardrik.HTTPTest do
     "POST"
     |> conn(path, ~s({"action":"opened"}))
     |> merge_req_headers(headers)
-    |> Wardrik.HTTP.call(Wardrik.HTTP.init(wardrik: context.wardrik))
+    |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
   end
 end

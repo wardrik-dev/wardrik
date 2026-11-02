@@ -15,6 +15,7 @@ defmodule Wardrik.SignInsTest do
 
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         keys: [WardrikVault.generate_key()],
         egress: &Wardrik.Egress.any/1,
@@ -152,7 +153,10 @@ defmodule Wardrik.SignInsTest do
     assert Wardrik.sign_in_pages(wardrik, nobody) ==
              {WardrikOAuth.Plug, %{oauth: Wardrik.oauth(wardrik), principal: nobody}}
 
-    assert Wardrik.sign_in_pages(Wardrik.new(name: MyApp.AgentRuntime), nobody) == nil
+    assert Wardrik.sign_in_pages(
+             Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: MyApp.AgentRuntime),
+             nobody
+           ) == nil
   end
 
   test "finishes a sign-in for an app that serves the page itself", %{wardrik: wardrik} do
@@ -163,10 +167,12 @@ defmodule Wardrik.SignInsTest do
   end
 
   test "keeps credentials only when given keys" do
-    assert %Wardrik{keys: [], oauth: nil} = Wardrik.new(name: MyApp.AgentRuntime)
+    assert %Wardrik{keys: [], oauth: nil} =
+             Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: MyApp.AgentRuntime)
 
     assert_raise ArgumentError, fn ->
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: MyApp.AgentRuntime,
         oauth: [page: "https://agents.test/oauth", providers: []]
       )
@@ -174,7 +180,12 @@ defmodule Wardrik.SignInsTest do
   end
 
   test "keeps keys and secrets out of what it shows" do
-    wardrik = Wardrik.new(name: MyApp.AgentRuntime, keys: ["secret key"])
+    wardrik =
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        name: MyApp.AgentRuntime,
+        keys: ["secret key"]
+      )
 
     refute inspect(wardrik) =~ "secret key"
   end
@@ -186,6 +197,7 @@ defmodule Wardrik.OAuthResolverTest do
   test "signs people in with the apps its oauth resolver gives them", context do
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         keys: [WardrikVault.generate_key()],
         oauth: [page: "https://agents.test/oauth", resolver: {__MODULE__, "maria-mail"}]

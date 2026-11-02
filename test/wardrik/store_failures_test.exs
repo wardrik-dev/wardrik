@@ -10,7 +10,14 @@ defmodule Wardrik.StoreFailuresTest do
 
   setup context do
     store = FailingStore.new(:"store #{context.test}")
-    wardrik = Wardrik.new(name: :"wardrik #{context.test}", store: store)
+
+    wardrik =
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        name: :"wardrik #{context.test}",
+        store: store
+      )
+
     start_supervised!({WardrikStore, store})
     start_supervised!({Wardrik, wardrik})
     %{store: store, scope: owner(wardrik)}

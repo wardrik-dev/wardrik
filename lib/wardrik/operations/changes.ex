@@ -34,7 +34,7 @@ defmodule Wardrik.Operations.Changes do
     recorded(scope, {Keyword.fetch!(args, :type), Keyword.fetch!(args, :subject), data})
   end
 
-  @doc "Records a change of `:type`, such as `\"token.created\"`, to the deployment's `:subject`."
+  @doc "Records a change of `:type`, such as `\"agents.reloaded\"`, to the deployment's `:subject`."
   @spec record_deployment(Scope.t(), type: String.t(), subject: String.t(), data: map()) :: :ok
   def record_deployment(%Scope{} = scope, args),
     do:

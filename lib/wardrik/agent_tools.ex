@@ -3,8 +3,9 @@ defmodule Wardrik.AgentTools do
   Tools that let an agent work with agents: `agents/*` for the other agents in its org, and
   `self/*` for itself.
 
-  Each tool runs a catalog operation through `Wardrik.run/3`, as the agent. It can reach what any
-  surface can, and nothing more.
+  Each tool runs a catalog operation through `Wardrik.run/3` for the principal the agent resolves
+  to, with the agent as its actor, `{:agent, id}`. The authorizer decides what it may reach, as
+  for any surface. An agent that resolves to no principal can use none of them.
 
   | Tool | What it does |
   | --- | --- |
@@ -29,7 +30,6 @@ defmodule Wardrik.AgentTools do
   alias Wardrik.AgentID
   alias Wardrik.Delegation
   alias WardrikCore.Context
-  alias WardrikCore.Principal
   alias WardrikCore.Tool
 
   @agent [
@@ -40,13 +40,14 @@ defmodule Wardrik.AgentTools do
   @trigger [type: :string, required: true, doc: "The trigger's name"]
 
   @impl WardrikCore.Capability
-  def tools(%WardrikCore.Context{agent_id: id}, opts) do
+  def tools(%WardrikCore.Context{agent_id: id, principal: principal}, opts) do
     wardrik = Keyword.fetch!(opts, :wardrik)
 
     offered(Keyword.fetch!(opts, :reach), %{
       wardrik: wardrik,
       id: id,
       org: Wardrik.Orgs.org(id),
+      principal: principal,
       policy: nil,
       labels: []
     })
@@ -162,13 +163,13 @@ defmodule Wardrik.AgentTools do
   defp called(run, args, context), do: run.(args, context)
 
   defp listed(me) do
-    with {:ok, %{"agents" => agents}} <-
-           run(me, "agents.list", %{"resources" => [me.org <> "/*"]}) do
+    with {:ok, %{"agents" => agents}} <- run(me, "agents.list", %{}) do
       {:ok,
        %{
          "agents" =>
            for(
              agent <- agents,
+             Wardrik.Orgs.org(agent["id"]) == me.org,
              not AgentID.conversation?(agent["id"]),
              do: Map.take(agent, ["id", "status"])
            )
@@ -214,6 +215,9 @@ defmodule Wardrik.AgentTools do
         |> Map.merge(%{"agent" => agent, "trigger" => args.trigger})
       )
 
+  defp run(%{principal: nil, id: id}, _operation, _input),
+    do: {:error, "#{AgentID.agent(id)} acts for no one, so it can't reach other agents."}
+
   defp run(me, operation, input) do
     case Wardrik.run(scope(me), operation, input) do
       {:ok, nil} -> {:ok, %{"ok" => true}}
@@ -222,15 +226,8 @@ defmodule Wardrik.AgentTools do
     end
   end
 
-  defp scope(%{wardrik: wardrik, id: id, org: org, policy: policy, labels: labels}) do
-    {:ok, resource} = Wardrik.Resource.agent(id)
-
-    scope =
-      Wardrik.as(wardrik, %Principal{id: resource},
-        roles: [:reader, :messenger, :definer],
-        resources: [org <> "/*"]
-      )
-
+  defp scope(%{wardrik: wardrik, id: id, principal: principal, policy: policy, labels: labels}) do
+    scope = Wardrik.as(wardrik, principal, actor: {:agent, AgentID.agent(id)})
     %{scope | policy: policy, labels: labels}
   end
 

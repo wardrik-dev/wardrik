@@ -77,16 +77,26 @@ defmodule MyApp.Orgs do
     do: {:error, Wardrik.Error.new(:not_found, "There's no org #{org} here.")}
 end
 
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, orgs: {MyApp.Orgs, []})
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
 
-scope =
-  Wardrik.as(MyApp.AgentRuntime, "acme/@maria",
-    roles: [:owner],
-    resources: ["acme/@maria/*", "acme/ceiling"]
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
+    orgs: {MyApp.Orgs, []}
   )
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
-`acme/ceiling` lets the scope read the org's ceilings and approve calls past them.
+`MyApp.AllowAll` lets every scope do anything, so Maria may read acme's ceilings and approve calls
+past them. In your app, an authorizer decides who may do what; see
+[Who may do what](access-demo.livemd).
 
 ## Two agents
 
@@ -219,9 +229,9 @@ same way.
 
 A ceiling's `on_exhausted` is one of:
 
-* `:ask` - the default. Waits on a `:ceiling_approval` interrupt for someone allowed
-  `ceiling.approve` on `acme/ceiling`, as an owner is. Approving allows the ceiling's `grant` more
-  to the whole org for that period.
+* `:ask` - the default. Waits on a `:ceiling_approval` interrupt for someone your authorizer
+  allows `ceiling.approve` on `{:owner, "acme"}`. Approving allows the ceiling's `grant` more to
+  the whole org for that period.
 * `:deny` - refuses the call, as here.
 * `:continue` - lets it run, so work always carries on. It still writes `wardrik.ceiling.reached`.
 

@@ -32,7 +32,7 @@ defmodule Wardrik.EgressTest do
   end
 
   test "an owner can't add a server at a private address", context do
-    wardrik = Wardrik.new(name: :"wardrik #{context.test}")
+    wardrik = Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: :"wardrik #{context.test}")
     start_supervised!({Wardrik, wardrik})
 
     server = %{

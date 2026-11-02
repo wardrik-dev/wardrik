@@ -13,6 +13,14 @@ In a fresh IEx session:
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
+# Allows everything. Your app's authorizer decides who may do what.
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
 defmodule MyApp.Orgs do
   @behaviour Wardrik.Orgs
 
@@ -36,13 +44,14 @@ defmodule MyApp.Orgs do
   end
 end
 
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, orgs: {MyApp.Orgs, []})
-
-scope =
-  Wardrik.as(MyApp.AgentRuntime, "acme/@maria",
-    roles: [:owner],
-    resources: ["acme/@maria/*", "acme/ceiling"]
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
+    orgs: {MyApp.Orgs, []}
   )
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
   * `policy` - every agent of the org is held to it, after the deployment's and before its own.
@@ -78,15 +87,13 @@ wake.
 started:
 
 ```elixir
-sam = Wardrik.as(MyApp.AgentRuntime, "globex/@sam", roles: [:owner], resources: ["globex/@sam/*"])
+sam = Wardrik.as(MyApp.AgentRuntime, "globex/@sam")
 
 Wardrik.Agent.define(sam, "globex/@sam/assistant", model: "anthropic:claude-haiku-4-5")
 #=> {:error, %Wardrik.Error{type: :not_found, message: "There's no org globex here."}}
 ```
 
-Nothing is kept for it either: no secret, server or connection of its owners, and no token whose
-resources name it, as `globex/agent/*`. A pattern that leaves the org open, as `*/agent/*`, reaches
-only the orgs that exist.
+Nothing is kept for it either: no secret, server or connection of its owners.
 
 ## Servers per org
 
@@ -101,8 +108,9 @@ takes what a budget takes, except `per: :turn`.
 Once the org's agents have spent its limit, the next model call any of them makes does what
 `on_exhausted` says:
 
-  * `:ask` - the default. Waits for someone allowed `ceiling.approve` on `acme/ceiling`, as an
-    owner is. Approving allows the ceiling's `grant` more to the whole org for that period:
+  * `:ask` - the default. Waits for someone your authorizer allows `ceiling.approve` on
+    `{:owner, "acme"}`. Approving allows the ceiling's `grant` more to the whole org for that
+    period:
 
     > acme's agents have spent $20.04 of $20.00 this month. Approve to allow $20.00 more.
 
@@ -113,7 +121,7 @@ Reaching a ceiling's limit writes `wardrik.ceiling.reached` to the agent's log. 
 dollars refuses a model with no price, unless it continues.
 
 `Wardrik.Ceilings.list/2` returns what an org has spent against each ceiling. It needs
-`ceiling.read` on `acme/ceiling`, as a reader has. Over HTTP it's `GET /v1/ceilings?owner=acme`.
+`ceiling.read` on `{:owner, "acme"}`. Over HTTP it's `GET /v1/ceilings?owner=acme`.
 
 ```elixir
 Wardrik.Ceilings.list(scope, owner: "acme")

@@ -42,8 +42,13 @@
   `Wardrik.Server`. A channel's `request/2` and `notify/2` take the request first.
 - A `Wardrik.Authorizer.Request` names the principal, the action and the resource as `{kind, id}`,
   as Cedar's requests do. An agent is `{:agent, id}`, its ID as given, and the deployment
-  `{:deployment, name}`. `Wardrik.Statements` reads its names from these, and only it lets a scope
-  make tokens, so `holds?/3` is gone.
+  `{:deployment, name}`.
+- No grants or tokens: `:authorizer` is required, and the request names the `actor` as well as
+  the principal, as RFC 8693 does. An agent's tools and its answers to other agents act for its
+  resolved principal with `actor: {:agent, id}`. `Wardrik.Statements`, `Wardrik.grant/2`,
+  `Wardrik.authenticate/2` and the `tokens.*` operations are gone, `Wardrik.as/3` takes
+  `:actor` and `:context`, the operations over many agents take `agents` for `resources`, and
+  `:workspace` shares trees by agent ID pattern.
 - A notify target another org's agents use reads as one that isn't there, and `*` and
   `servers/*` reach the servers an agent is resolved with: Wardrik's own that serve its org, and
   those its owners added.

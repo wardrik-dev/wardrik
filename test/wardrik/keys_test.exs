@@ -20,6 +20,7 @@ defmodule Wardrik.KeysTest do
   setup context do
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         keys: [WardrikVault.generate_key()],
         deployment_keys: Map.get(context, :deployment_keys, false)

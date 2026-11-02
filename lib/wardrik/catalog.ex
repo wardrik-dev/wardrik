@@ -13,7 +13,6 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.NotifyTargets
   alias Wardrik.Operations.Owners
   alias Wardrik.Operations.Providers
-  alias Wardrik.Operations.Tokens
   alias Wardrik.Operations.Triggers
 
   @enforce_keys [:operations, :handlers, :streams]
@@ -61,9 +60,6 @@ defmodule Wardrik.Catalog do
         "agent.trigger_set" => &Triggers.set/2,
         "agent.trigger_remove" => &Triggers.remove/2,
         "hook.deliver" => &Triggers.deliver/2,
-        "tokens.list" => &Tokens.list/2,
-        "tokens.create" => &Tokens.create/2,
-        "tokens.revoke" => &Tokens.revoke/2,
         "deployment.reload" => &Deployment.reload/2,
         "deployment.nodes" => &Deployment.nodes/2,
         "agent.move" => &Deployment.move/2,

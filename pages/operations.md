@@ -10,8 +10,16 @@ In a fresh IEx session:
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime)
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+# Allows everything. Your app's authorizer decides who may do what.
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.AllowAll, []})
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
 ## As functions
@@ -82,7 +90,6 @@ their shape depends on their type.
 | `Wardrik.Interrupts` | What agents wait on. |
 | `Wardrik.Events` | Agents' events. |
 | `Wardrik.Audit` | What people did. |
-| `Wardrik.Tokens` | API tokens. |
 | `Wardrik.Connections` | Accounts people and orgs connect. |
 | `Wardrik.MCPServers` | MCP servers orgs and people add. |
 | `Wardrik.Ceilings` | What orgs have spent. |

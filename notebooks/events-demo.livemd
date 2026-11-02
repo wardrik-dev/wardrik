@@ -30,9 +30,21 @@ defmodule MyApp.Notes do
   end
 end
 
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, capabilities: [notes: MyApp.Notes])
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
+    capabilities: [notes: MyApp.Notes]
+  )
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, agent} =
   Wardrik.Agent.define(scope, "acme/@maria/assistant",
@@ -42,6 +54,9 @@ scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources
     policy: [budget: [usd: 0.25, per: :day]]
   )
 ```
+
+`MyApp.AllowAll` lets every scope do anything. In your app, an authorizer decides who may do
+what; see [Who may do what](access-demo.livemd).
 
 ## React to events in your own module
 
@@ -95,7 +110,8 @@ end
 Kino.start_child(
   {Task,
    fn ->
-     {:ok, events} = Wardrik.Events.stream_list(scope, after: cursor, resources: ["acme/@maria/*"])
+     {:ok, events} =
+       Wardrik.Events.stream_list(scope, after: cursor, agents: ["acme/@maria/assistant"])
 
      events
      |> Stream.reject(fn {event, _cursor} -> String.ends_with?(event.type, ".delta") end)
@@ -180,8 +196,9 @@ its type. Pass `page.next` as `after:` to read the next page.
 
 ## Who changed what
 
-Agents' events say what agents did. The audit says what people did: defining, deciding, granting.
-Change Maria's agent, then read the audit. It needs a grant on `deployment`:
+Agents' events say what agents did. The audit says what people did: defining, deciding,
+forgetting. Change Maria's agent, then read the audit. Reading it needs your authorizer to allow
+`deployment.audit` on `{:deployment, name}`, as `MyApp.AllowAll` does:
 
 ```elixir
 {:ok, _agent} =
@@ -192,9 +209,7 @@ Change Maria's agent, then read the audit. It needs a grant on `deployment`:
     policy: [budget: [usd: 0.25, per: :day]]
   )
 
-operator = Wardrik.grant(scope, roles: [:owner], resources: ["deployment"])
-
-{:ok, audit} = Wardrik.Audit.list(operator, limit: 50)
+{:ok, audit} = Wardrik.Audit.list(scope, limit: 50)
 
 audit.events
 |> Enum.map(fn event ->
@@ -212,7 +227,7 @@ end)
 
 * [Events and the audit](https://hexdocs.pm/wardrik/events.html): cursors, listeners in your
   supervision tree, and trimmed logs.
-* [Who may do what](https://hexdocs.pm/wardrik/access.html): the grants that decide which events a
-  scope sees.
+* [Who may do what](https://hexdocs.pm/wardrik/access.html): the authorizer that decides which
+  events a scope sees.
 * [Tools notebook](tools-demo.livemd): tools that report their own cost.
 * [Triggers notebook](triggers-demo.livemd): agents that wake on a clock or a webhook.

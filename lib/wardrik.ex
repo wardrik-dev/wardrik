@@ -9,7 +9,7 @@ defmodule Wardrik do
 
       children = [MyApp.AgentRuntime]
 
-      scope = MyApp.AgentRuntime.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+      scope = MyApp.AgentRuntime.as("acme/@maria")
       Wardrik.Agent.stream(scope, "acme/@maria/assistant", "What's on today?") |> Enum.each(&IO.write/1)
 
   ## Options
@@ -206,8 +206,9 @@ defmodule Wardrik do
             ],
             authorizer: [
               type: :mod_arg,
-              default: {Wardrik.Statements, []},
-              doc: "Decides what each scope may do, as `{module, config}`."
+              required: true,
+              doc:
+                "The `Wardrik.Authorizer` that decides what each scope may do, as `{module, config}`."
             ],
             retention: [type: @timeout, default: 30, doc: "Days events are kept, or `:infinity`."],
             backend: [
@@ -320,6 +321,7 @@ defmodule Wardrik do
 
       Wardrik.start_link(
         name: MyApp.AgentRuntime,
+        authorizer: {MyApp.Authorizer, []},
         store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
         keys: [System.fetch_env!("WARDRIK_KEY")],
         policy: [deny: ["shell/*"]]
@@ -423,35 +425,27 @@ defmodule Wardrik do
   end
 
   @doc """
-  Returns the scope `principal` acts in on `instance`.
+  Returns the scope `principal` acts in on `instance`. The `:authorizer` decides what it may do.
 
-  `grants` is a list of `Wardrik.Statement`s, or the options for one. Nothing is allowed unless
-  it's granted.
+      scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
-      scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:reader], resources: ["acme/agent/*"])
+  ## Options
+
+    * `:actor` - who acts for `principal`, as `{:agent, id}`. `nil`, the principal itself, unless
+      set. See `Wardrik.Scope`.
+    * `:context` - what the actor knows that the authorizer may read. `%{}` unless set.
   """
-  @spec as(atom() | t(), Principal.t() | String.t(), term()) :: Scope.t()
-  def as(instance, principal, grants \\ [])
+  @spec as(atom() | t(), Principal.t() | String.t(), keyword()) :: Scope.t()
+  def as(instance, principal, opts \\ []) do
+    opts = Keyword.validate!(opts, actor: nil, context: %{})
 
-  def as(instance, principal, grants),
-    do:
-      Scope.new(__MODULE__,
-        wardrik: Instance.name(instance),
-        principal: principal,
-        grants: grants
-      )
-
-  @doc """
-  Returns the scope of the API token `secret` on `instance`.
-
-  Returns an `unauthorized` error if the token is unknown or has expired.
-
-      {:ok, scope} = Wardrik.authenticate(MyApp.AgentRuntime, secret)
-  """
-  @spec authenticate(atom() | t(), String.t()) :: {:ok, Scope.t()} | {:error, Error.t()}
-  @impl Wardrik.Server
-  def authenticate(instance, secret),
-    do: Wardrik.Operations.Tokens.authenticate(Instance.fetch!(instance), secret)
+    Scope.new(__MODULE__,
+      wardrik: Instance.name(instance),
+      principal: principal,
+      actor: opts[:actor],
+      context: opts[:context]
+    )
+  end
 
   @doc """
   Seals `:value` as `:owner`'s secret `:name`, and records it in the audit.
@@ -515,14 +509,6 @@ defmodule Wardrik do
   def list_secrets(instance, owner), do: Wardrik.Sealed.list(instance, owner)
 
   @doc """
-  Adds a statement to `scope`. `opts` are as `Wardrik.Statement.new/1` takes them.
-
-      MyApp.AgentRuntime.as("acme/@maria") |> Wardrik.grant(roles: [:approver], resources: ["acme/agent/*"])
-  """
-  @spec grant(Scope.t(), keyword()) :: Scope.t()
-  def grant(scope, opts), do: Scope.grant(scope, opts)
-
-  @doc """
   Runs the operation `id`, such as `"agent.ask"`, in `scope`.
 
   `input` follows the operation's input schema.
@@ -542,7 +528,7 @@ defmodule Wardrik do
 
   The stream yields `{event, cursor}`. It reads what's there, then follows new events.
 
-      {:ok, stream} = Wardrik.stream(scope, "events.list", %{"resources" => ["acme/*"]})
+      {:ok, stream} = Wardrik.stream(scope, "events.list", %{"agents" => ["acme/triage"]})
   """
   @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
   def stream(%Scope{} = scope, id, input), do: Runner.stream(scope, id, input)

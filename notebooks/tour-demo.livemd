@@ -57,14 +57,26 @@ end
 ## Start Wardrik
 
 ```elixir
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, capabilities: [orders: MyApp.Orders])
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
 
-scope =
-  Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
+    capabilities: [orders: MyApp.Orders]
+  )
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
-Wardrik keeps its agents in memory here. `scope` is Maria: every call you make below acts as her,
-and reaches only her agents.
+Wardrik keeps its agents in memory here. `scope` is Maria: every call you make below acts as her.
+`MyApp.AllowAll` lets her do anything. In your app, an authorizer decides who may do what; see
+[Who may do what](access-demo.livemd).
 
 ## Write the rules
 

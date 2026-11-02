@@ -16,8 +16,7 @@ defmodule Wardrik.Ceiling do
   `:on_exhausted` says:
 
     * `:ask` - the default. The call waits on a `ceiling_approval` interrupt. Only a scope allowed
-      `ceiling.approve` on the org's ceiling resource, such as `acme/ceiling`, may approve it.
-      Owners can. Approving adds the budget's `grant` for every agent in the org, for that period.
+      `ceiling.approve` on `{:owner, org}` may approve it. Approving adds the budget's `grant` for every agent in the org, for that period.
     * `:deny` - the call is refused.
     * `:continue` - the call runs.
 

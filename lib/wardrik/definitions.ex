@@ -25,7 +25,7 @@ defmodule Wardrik.Definitions do
          do: WardrikStore.delete(store(wardrik), "boundaries/" <> id)
   end
 
-  @doc "Stores the agent `id`'s boundary: the policy named by the token that defined it."
+  @doc "Stores the agent `id`'s boundary: the policy of the scope that defined it."
   @spec put_boundary(Wardrik.t(), String.t(), String.t() | map()) :: :ok | {:error, term()}
   def put_boundary(wardrik, id, name) do
     with {:ok, _vsn} <- WardrikStore.put(store(wardrik), "boundaries/" <> id, name), do: :ok

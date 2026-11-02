@@ -19,7 +19,7 @@ defmodule Wardrik.InstanceTest do
 
     assert %Wardrik{deployment: "from-init"} = Wardrik.Instance.fetch!(Instance)
 
-    me = Instance.as("me", roles: [:owner], resources: ["*"])
+    me = Instance.as("me")
     assert %Wardrik.Scope{wardrik: Instance} = me
 
     {:ok, agent} = Wardrik.Agent.define(me, "me/assistant", model: "anthropic:claude-haiku-4-5")

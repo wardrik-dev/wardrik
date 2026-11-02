@@ -14,6 +14,7 @@ defmodule Wardrik.PricesTest do
 
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         store: store,
         prices: %{@model => [priced_as: "zai:glm-5.1", markup: 0.5]}

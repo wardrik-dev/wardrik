@@ -26,7 +26,13 @@ defmodule Wardrik.DeclarationsTest do
     start_supervised!({WardrikStore, store})
 
     start_supervised!(
-      {Wardrik, Wardrik.new(name: name, store: store, declarations: {Wardrik.Test.Files, self()})}
+      {Wardrik,
+       Wardrik.new(
+         authorizer: {Wardrik.Test.Allow, []},
+         name: name,
+         store: store,
+         declarations: {Wardrik.Test.Files, self()}
+       )}
     )
 
     scope = owner(name)
@@ -44,7 +50,7 @@ defmodule Wardrik.DeclarationsTest do
              "forgotten" => ["acme/notes"],
              "kept" => [%{"id" => "acme/triage", "why" => "declared by a file"}]
            } =
-             run!(scope, "agents.forget", %{"resources" => ["acme/*"]})
+             run!(scope, "agents.forget", %{"agents" => ["acme/notes", "acme/triage"]})
   end
 
   test "lets only a declared agent write allow_after in place", %{scope: scope} do

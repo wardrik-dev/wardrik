@@ -12,10 +12,19 @@ the model, so set your Anthropic key in place of `"sk-ant-..."`:
 
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
+
+# Allows everything. Your app's authorizer decides who may do what.
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime)
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.AllowAll, []})
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, agent} =
   Wardrik.Agent.define(scope, "acme/@maria/assistant",

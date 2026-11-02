@@ -16,23 +16,27 @@ defmodule WardrikTest do
              WardrikEvents.page(Wardrik.events(wardrik), ["acme/triage"])
   end
 
-  test "makes a scope of who acts, and what they're granted", %{wardrik: wardrik} do
+  test "makes a scope of who acts, for whom", %{wardrik: wardrik} do
     name = wardrik.name
 
-    assert %Wardrik.Scope{wardrik: ^name, principal: %{id: "acme/@maria"}, grants: [:all]} =
-             Wardrik.as(wardrik, maria(), [:all])
-
-    assert %Wardrik.Scope{grants: [%Wardrik.Statement{actions: ["*"], resources: ["acme/*"]}]} =
-             Wardrik.as(name, "acme/@maria", roles: [:owner], resources: ["acme/*"])
+    assert %Wardrik.Scope{
+             wardrik: ^name,
+             principal: %{id: "acme/@maria"},
+             actor: nil,
+             context: %{}
+           } = Wardrik.as(wardrik, maria())
 
     assert %Wardrik.Scope{
-             grants: [%Wardrik.Statement{}, %Wardrik.Statement{actions: ["agent.decide"]}]
+             principal: %{id: "acme/@maria"},
+             actor: {:agent, "acme/@maria/notes"},
+             context: %{asked_by: "acme/@maria"}
            } =
-             wardrik
-             |> Wardrik.as("acme/@maria", roles: [:owner], resources: ["acme/*"])
-             |> Wardrik.grant(roles: [:approver], resources: ["globex/*"])
+             Wardrik.as(name, "acme/@maria",
+               actor: {:agent, "acme/@maria/notes"},
+               context: %{asked_by: "acme/@maria"}
+             )
 
-    assert %Wardrik.Scope{grants: []} = Wardrik.as(name, "acme/@maria")
+    assert_raise ArgumentError, fn -> Wardrik.as(name, "acme/@maria", roles: [:owner]) end
 
     assert_raise ArgumentError, ~r/^Elsewhere.Wardrik isn't started/, fn ->
       Wardrik.Instance.fetch!(Elsewhere.Wardrik)
@@ -42,14 +46,36 @@ defmodule WardrikTest do
              Wardrik.as(wardrik, "acme/@jon")
   end
 
+  test "won't start without an authorizer" do
+    assert_raise NimbleOptions.ValidationError, ~r/required :authorizer option not found/, fn ->
+      Wardrik.new(name: MyApp.AgentRuntime)
+    end
+
+    assert_raise NimbleOptions.ValidationError, ~r/required :authorizer option not found/, fn ->
+      Wardrik.start_link(name: MyApp.AgentRuntime)
+    end
+
+    assert {:error, %NimbleOptions.ValidationError{key: :authorizer}} =
+             NimbleOptions.validate([name: MyApp.AgentRuntime], Wardrik.schema())
+  end
+
+  test "has no tokens, and no operation of them" do
+    refute Enum.any?(WardrikProtocol.operations(), &String.starts_with?(&1.id, "tokens."))
+    refute Map.has_key?(Wardrik.Catalog.new().handlers, "tokens.create")
+    refute function_exported?(Wardrik, :authenticate, 2)
+    refute function_exported?(Wardrik, :grant, 2)
+  end
+
   test "describes itself, with its agents kept in its store unless told otherwise" do
     store = WardrikStore.ETS.new(name: MyApp.Store)
-    wardrik = Wardrik.new(name: MyApp.AgentRuntime, store: store)
+
+    wardrik =
+      Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: MyApp.AgentRuntime, store: store)
 
     assert %Wardrik{
              deployment: "local",
              retention: 30,
-             authorizer: {Wardrik.Statements, []},
+             authorizer: {Wardrik.Test.Allow, []},
              backend: {WardrikStore.Durable, store: ^store}
            } = wardrik
 
@@ -60,7 +86,11 @@ defmodule WardrikTest do
   test "gives the options it takes, so a host can check them before it starts" do
     assert {:error, %NimbleOptions.ValidationError{key: :deployment_keys}} =
              NimbleOptions.validate(
-               [name: MyApp.AgentRuntime, deployment_keys: "yes"],
+               [
+                 name: MyApp.AgentRuntime,
+                 authorizer: {Wardrik.Test.Allow, []},
+                 deployment_keys: "yes"
+               ],
                Wardrik.schema()
              )
   end

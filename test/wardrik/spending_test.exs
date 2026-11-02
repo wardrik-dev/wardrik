@@ -14,6 +14,7 @@ defmodule Wardrik.SpendingTest do
 
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         store: store,
         capabilities: [priced: Wardrik.Test.Priced, delegating: Wardrik.Test.Delegating]

@@ -53,7 +53,7 @@ defmodule Wardrik.AnswersTest do
   end
 
   test "can't reach an agent it isn't allowed to", %{wardrik: wardrik} do
-    nobody = Wardrik.as(wardrik, "acme/@nobody")
+    nobody = limited(wardrik, "acme/@nobody", roles: [:reader], owners: [])
 
     assert {:error, %Wardrik.Error{type: :not_found}} =
              Wardrik.Agent.reply(nobody, "acme/triage", "Hi")
