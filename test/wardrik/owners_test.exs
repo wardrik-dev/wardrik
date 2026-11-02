@@ -4,7 +4,6 @@ defmodule Wardrik.OwnersTest do
   import Wardrik.Test.Wardrik
 
   alias Wardrik.MCPTools
-  alias Wardrik.Statement
   alias WardrikCore.Principal
   alias WardrikVault.Secret
 
@@ -16,6 +15,7 @@ defmodule Wardrik.OwnersTest do
 
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         keys: [WardrikVault.generate_key()],
         egress: &Wardrik.Egress.any/1,
@@ -927,10 +927,7 @@ defmodule Wardrik.OwnersTest do
   end
 
   test "lets a reader list, but not add or connect", %{wardrik: wardrik} do
-    reader =
-      Wardrik.as(wardrik, "acme/@maria", [
-        Statement.new(roles: [:reader], resources: ["acme/@maria/*"])
-      ])
+    reader = limited(wardrik, "acme/@maria", roles: [:reader], owners: ["acme/@maria"])
 
     assert %{"servers" => []} = run!(reader, "mcp_servers.list", %{"owner" => "acme/@maria"})
 
@@ -960,9 +957,7 @@ defmodule Wardrik.OwnersTest do
     wardrik: wardrik
   } do
     definer =
-      Wardrik.as(wardrik, "acme/@maria", [
-        Statement.new(roles: [:reader, :definer], resources: ["acme/@maria/*"])
-      ])
+      limited(wardrik, "acme/@maria", roles: [:reader, :definer], owners: ["acme/@maria"])
 
     assert %{"name" => "notes"} =
              run!(definer, "providers.add", app("acme/@maria", "notes", "notes.test"))

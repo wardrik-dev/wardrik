@@ -31,9 +31,9 @@ defmodule Wardrik.WorkersTest do
     end)
   end
 
-  defp worker(wardrik, id, resources, tools, answer \\ fn _call -> nil end) do
+  defp worker(wardrik, id, owners, tools, answer \\ fn _call -> nil end) do
     test = self()
-    scope = Wardrik.as(wardrik, id, roles: [:worker], resources: resources)
+    scope = limited(wardrik, id, roles: [:worker], agents_of: owners)
 
     worker =
       spawn_link(fn ->
@@ -69,7 +69,7 @@ defmodule Wardrik.WorkersTest do
   end
 
   test "offers an agent the tools of the workers that may serve it", %{wardrik: wardrik} do
-    worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup, %{"name" => "no spaces allowed"}])
+    worker(wardrik, "acme/@shop", ["acme"], [@lookup, %{"name" => "no spaces allowed"}])
 
     assert tools(wardrik, "acme/triage") == ["workers__lookup"]
     assert tools(wardrik, "rivals/triage") == []
@@ -85,11 +85,11 @@ defmodule Wardrik.WorkersTest do
       "a tool"
     ]
 
-    worker(wardrik, "acme/@shop", ["acme/agent/*"], listed)
+    worker(wardrik, "acme/@shop", ["acme"], listed)
 
     assert Enum.sort(tools(wardrik, "acme/triage")) == ["workers__odd", "workers__plain"]
 
-    worker(wardrik, "acme/@other", ["acme/agent/*"], %{"not" => "a list"})
+    worker(wardrik, "acme/@other", ["acme"], %{"not" => "a list"})
     assert Enum.sort(tools(wardrik, "acme/triage")) == ["workers__odd", "workers__plain"]
   end
 
@@ -106,7 +106,7 @@ defmodule Wardrik.WorkersTest do
 
     {:ok, queue} = Agent.start_link(fn -> answers end)
     next = fn _call -> Agent.get_and_update(queue, fn [answer | rest] -> {answer, rest} end) end
-    worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup], next)
+    worker(wardrik, "acme/@shop", ["acme"], [@lookup], next)
 
     [tool] = Wardrik.Workers.tools(%Context{agent_id: "acme/triage"}, wardrik: wardrik.name)
     context = %Context{agent_id: "acme/triage", step: {:tool_call, %{id: "call_1"}}}
@@ -122,8 +122,8 @@ defmodule Wardrik.WorkersTest do
   end
 
   test "gives a tool to the principal whose worker offered it first", %{wardrik: wardrik} do
-    worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup])
-    worker(wardrik, "acme/@other", ["acme/agent/*"], [%{@lookup | "description" => "Mine."}])
+    worker(wardrik, "acme/@shop", ["acme"], [@lookup])
+    worker(wardrik, "acme/@other", ["acme"], [%{@lookup | "description" => "Mine."}])
 
     [tool] = Wardrik.Workers.tools(%Context{agent_id: "acme/triage"}, wardrik: wardrik.name)
     assert tool.description =~ "Looks an order up."
@@ -136,7 +136,7 @@ defmodule Wardrik.WorkersTest do
     wardrik: wardrik
   } do
     changing = %{@lookup | "annotations" => %{}}
-    worker(wardrik, "acme/@shop", ["acme/agent/*"], [changing])
+    worker(wardrik, "acme/@shop", ["acme"], [changing])
 
     [tool] = Wardrik.Workers.tools(%Context{agent_id: "acme/triage"}, wardrik: wardrik.name)
     assert WardrikCore.Tool.annotation(tool, :gated)
@@ -150,7 +150,7 @@ defmodule Wardrik.WorkersTest do
     wardrik: wardrik,
     scope: scope
   } do
-    worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup], fn _call ->
+    worker(wardrik, "acme/@shop", ["acme"], [@lookup], fn _call ->
       %{
         "result" => %{
           "content" => [%{"type" => "text", "text" => "Shipped."}],
@@ -185,7 +185,7 @@ defmodule Wardrik.WorkersTest do
 
   test "answers an error where the worker refuses, or goes away", %{wardrik: wardrik} do
     refusing =
-      worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup], fn _call ->
+      worker(wardrik, "acme/@shop", ["acme"], [@lookup], fn _call ->
         %{"result" => %{"isError" => true, "content" => [%{"type" => "text", "text" => "No."}]}}
       end)
 
@@ -221,7 +221,7 @@ defmodule Wardrik.WorkersTest do
     wardrik: wardrik,
     scope: scope
   } do
-    first = worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup], fn _call -> :gone end)
+    first = worker(wardrik, "acme/@shop", ["acme"], [@lookup], fn _call -> :gone end)
 
     answers([
       calling([call("call_1", "workers__lookup", %{"order" => "A1"})]),
@@ -234,7 +234,7 @@ defmodule Wardrik.WorkersTest do
 
     assert_receive {:called, "lookup", _arguments, %{"idempotencyKey" => "call_1"}}
     assert_receive {:DOWN, ^ref, :process, ^first, :gone}
-    worker(wardrik, "acme/@shop", ["acme/agent/*"], [@lookup], fn _call -> @shipped end)
+    worker(wardrik, "acme/@shop", ["acme"], [@lookup], fn _call -> @shipped end)
 
     assert %{"data" => %{"status" => "error"}} = until("wardrik.tool_call.completed")
     until("wardrik.tool_call.retrying")
@@ -246,7 +246,7 @@ defmodule Wardrik.WorkersTest do
   test "waits on a person where a call that may not run twice was lost, and runs it again once approved",
        %{wardrik: wardrik, scope: scope} do
     changing = %{@lookup | "annotations" => %{}}
-    first = worker(wardrik, "acme/@shop", ["acme/agent/*"], [changing], fn _call -> :gone end)
+    first = worker(wardrik, "acme/@shop", ["acme"], [changing], fn _call -> :gone end)
 
     answers([
       calling([call("call_1", "workers__lookup", %{"order" => "A1"})]),
@@ -266,7 +266,7 @@ defmodule Wardrik.WorkersTest do
              until("wardrik.run.interrupted")
 
     refute Process.alive?(first)
-    worker(wardrik, "acme/@shop", ["acme/agent/*"], [changing], fn _call -> @shipped end)
+    worker(wardrik, "acme/@shop", ["acme"], [changing], fn _call -> @shipped end)
     {:ok, _decided} = Wardrik.Agent.approve(scope, agent: agent, interrupt: "call_1")
 
     assert_receive {:called, "lookup", _arguments, %{"idempotencyKey" => "call_1"}}

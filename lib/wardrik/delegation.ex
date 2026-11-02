@@ -18,9 +18,15 @@ defmodule Wardrik.Delegation do
   On start it catches up on the logs it waits on, so runs that ended while it was down are still
   answered. Each answer has its own message ID, so a repeat is dropped. The answer carries the
   labels of the answering agent's conversation, or `"outside"` if that agent isn't running.
+
+  The answer is sent for the principal the answering agent resolves to, with that agent as its
+  actor, `{:agent, id}`, so the authorizer decides whether it may reach the asker. An agent that
+  resolves to no principal sends nothing.
   """
 
   use GenServer
+
+  require Logger
 
   alias Wardrik.AgentID
   alias Wardrik.Operations.Running
@@ -126,24 +132,31 @@ defmodule Wardrik.Delegation do
     key = "delegation/runs/#{log}/#{run}"
 
     with %{"asker" => asker, "message" => id} <- WardrikStore.get(store, key) do
-      text = "From agent #{AgentID.agent(log)}:\nIn answer to your message #{id}:\n#{said}"
+      from = AgentID.agent(log)
+      text = "From agent #{from}:\nIn answer to your message #{id}:\n#{said}"
 
-      _asked =
-        Wardrik.run(scope(wardrik, log, asker), "agent.ask", %{
+      with {:ok, scope} <- scope(wardrik, log, from) do
+        Wardrik.run(scope, "agent.ask", %{
           "agent" => asker,
           "content" => text,
           "id" => "answer_" <> id
         })
+      end
 
       :ok = WardrikStore.delete(store, key)
     end
   end
 
-  defp scope(wardrik, log, asker) do
-    {:ok, from} = Wardrik.Resource.agent(log)
-    {:ok, to} = Wardrik.Resource.agent(asker)
-    scope = Wardrik.as(wardrik.name, %Principal{id: from}, roles: [:messenger], resources: [to])
-    %{scope | labels: labels(wardrik, log)}
+  defp scope(wardrik, log, from) do
+    case Wardrik.Resolver.defined(wardrik, from) do
+      {:ok, %Wardrik.Resolved{principal: %Principal{} = principal}} ->
+        scope = Wardrik.as(wardrik.name, principal, actor: {:agent, from})
+        {:ok, %{scope | labels: labels(wardrik, log)}}
+
+      _none ->
+        Logger.warning("#{from} acts for no one, so its answer isn't sent.")
+        :error
+    end
   end
 
   defp labels(wardrik, log) do

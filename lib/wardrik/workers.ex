@@ -8,8 +8,8 @@ defmodule Wardrik.Workers do
 
   ## Which workers an agent gets
 
-  An agent gets the tools of every worker whose scope may `agent.serve` it. The `:worker` role
-  allows that. Workers of the same principal that offer the same tool share its calls. If several
+  An agent gets the tools of every worker whose scope may `agent.serve` it.
+  The host's authorizer decides that. Workers of the same principal that offer the same tool share its calls. If several
   principals offer it, the agent gets the one whose worker connected first.
 
   ## Serving a worker

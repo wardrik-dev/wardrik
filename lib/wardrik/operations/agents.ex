@@ -1,5 +1,5 @@
 defmodule Wardrik.Operations.Agents do
-  @moduledoc "Operations over the agents that resource patterns cover: listing them and their events."
+  @moduledoc "Operations over many agents: every one the scope may see, or those the input names."
 
   alias Wardrik.Operations.Agent
   alias Wardrik.Operations.Changes
@@ -77,7 +77,7 @@ defmodule Wardrik.Operations.Agents do
     with {:ok, page} <- Snapshot.page(scope, Visible.logs(input), opts) do
       events =
         Enum.filter(page.events, fn event ->
-          Visible.visible?(scope, Visible.patterns(input), Visible.agent_id(event)) and
+          Visible.visible?(scope, input, Visible.agent_id(event)) and
             Snapshot.typed?(event, input["types"])
         end)
 
@@ -95,8 +95,7 @@ defmodule Wardrik.Operations.Agents do
   @doc "Streams the agents' events as `{event, cursor}`. Reads what's there, then follows new events."
   @spec stream(Scope.t(), map()) :: {:ok, Enumerable.t()} | {:error, Wardrik.Error.t()}
   def stream(scope, input) do
-    patterns = Visible.patterns(input)
-    visible? = &Visible.visible?(scope, patterns, &1)
+    visible? = &Visible.visible?(scope, input, &1)
     opts = [after: input["after"], types: input["types"] || :all]
 
     with {:ok, stream} <- Snapshot.stream(scope, Visible.logs(input), opts) do
@@ -109,7 +108,7 @@ defmodule Wardrik.Operations.Agents do
 
   defp visible_cursor(scope, input, text) do
     {:ok, cursor} = Cursor.decode(text)
-    encoded(cursor, &Visible.visible?(scope, Visible.patterns(input), &1))
+    encoded(cursor, &Visible.visible?(scope, input, &1))
   end
 
   defp encoded(cursor, visible?),

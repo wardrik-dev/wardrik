@@ -25,6 +25,7 @@ end
 
 # config/runtime.exs
 config :my_app, MyApp.AgentRuntime,
+  authorizer: {MyApp.Authorizer, []},
   store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
   policy: [deny: ["shell/*"]]
 
@@ -32,10 +33,13 @@ config :my_app, MyApp.AgentRuntime,
 children = [MyApp.AgentRuntime]
 ```
 
-Then act as someone, and talk to agents:
+`:authorizer` is required. It's your app's `Wardrik.Authorizer`, which decides who may do what;
+see [Who may do what](pages/access.md).
+
+Act as someone, and talk to agents:
 
 ```elixir
-scope = MyApp.AgentRuntime.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = MyApp.AgentRuntime.as("acme/@maria")
 
 {:ok, notes_agent} =
   Wardrik.Agent.define(scope, "acme/@maria/assistant",
@@ -70,7 +74,8 @@ before it refunds, keeps a record and stops at its budget. Each notebook runs in
   come back.
 - [Agents that wake themselves](notebooks/triggers-demo.livemd): triggers on a clock and from a webhook.
 - [See everything an agent did](notebooks/events-demo.livemd): follow events and read a run back.
-- [Who may do what](notebooks/access-demo.livemd): grants, roles and API tokens.
+- [Who may do what](notebooks/access-demo.livemd): an authorizer, and people, agents and chat
+  members acting through it.
 
 ## Guides
 
@@ -82,8 +87,8 @@ before it refunds, keeps a record and stops at its budget. Each notebook runs in
 - [Trigger agents](pages/triggers.md): asking agents on a clock, from a feed, or from a webhook.
 - [Policies](pages/policies.md): rules the model can't rewrite, held at once by the deployment and
   each agent, and budgets.
-- [Who may do what](pages/access.md): scopes, grants and roles, API tokens, and your own
-  authorizer.
+- [Who may do what](pages/access.md): scopes, your authorizer, agents and channels as actors, and
+  signing in over HTTP.
 - [Operations](pages/operations.md): every operation as a function, taking and answering structs.
 - [Approvals](pages/approvals.md): deciding the calls agents wait on.
 - [MCP servers](pages/servers.md): the servers agents call, those Wardrik starts with and those an

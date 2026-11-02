@@ -12,6 +12,7 @@ defmodule Wardrik.PolicyTest do
 
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         store: store,
         policy: [deny: ["inbox"]]
@@ -98,6 +99,10 @@ defmodule Wardrik.PolicyTest do
     policy = WardrikPolicy.new!(deny: ["shell/*"])
 
     assert %Wardrik{policy: ^policy} =
-             Wardrik.new(name: MyApp.AgentRuntime, policy: policy)
+             Wardrik.new(
+               authorizer: {Wardrik.Test.Allow, []},
+               name: MyApp.AgentRuntime,
+               policy: policy
+             )
   end
 end

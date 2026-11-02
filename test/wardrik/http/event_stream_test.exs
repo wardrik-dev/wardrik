@@ -8,7 +8,7 @@ defmodule Wardrik.HTTP.EventStreamTest do
   setup :start_wardrik
 
   setup context do
-    server = start_supervised!({Wardrik.HTTP, wardrik: context.wardrik, port: 0, keepalive: 20})
+    server = start_supervised!({Wardrik.HTTP, http(context, port: 0, keepalive: 20)})
     {:ok, {_ip, port}} = ThousandIsland.listener_info(server)
 
     request(context, "PUT", "/v1/agents/acme/triage", %{"model" => "anthropic:claude-haiku-4-5"})
@@ -32,15 +32,15 @@ defmodule Wardrik.HTTP.EventStreamTest do
     %{"message" => %{"cursor" => cursor}} = body(conn)
     assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.completed"}}
 
-    stream = open(context, "/v1/events?resources=acme/agent/*", [{"last-event-id", cursor}])
+    stream = open(context, "/v1/events?agents=acme/triage", [{"last-event-id", cursor}])
     assert until(stream, "wardrik.run.completed")
   end
 
-  test "keeps a quiet stream open, and ends it once its token is revoked", context do
+  test "keeps a quiet stream open, and ends it once it no longer authenticates", context do
     stream = open(context, "/v1/events")
     assert until(stream, ": keepalive")
 
-    {:ok, _token} = Wardrik.Tokens.revoke(context.owner, context.token)
+    Wardrik.Test.HTTP.Authenticator.revoke(context.wardrik, context.secret)
 
     assert ended(stream)
   end

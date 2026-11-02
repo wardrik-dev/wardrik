@@ -83,10 +83,18 @@ Keep agents in a directory, so they outlive Wardrik itself. Wardrik looks for ag
 runs, and brings them back. Have it look every second, not every thirty:
 
 ```elixir
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
 dir = Path.join(System.tmp_dir!(), "wardrik-#{System.unique_integer([:positive])}")
 
 opts = [
   name: MyApp.AgentRuntime,
+  authorizer: {MyApp.AllowAll, []},
   capabilities: [shop: MyApp.Shop],
   store: {WardrikStore.EKV, data_dir: dir},
   discovery_interval_ms: 1_000
@@ -94,8 +102,7 @@ opts = [
 
 {:ok, wardrik} = Wardrik.start_link(opts)
 
-scope =
-  Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, agent} =
   Wardrik.Agent.define(scope, "acme/@maria/shop",

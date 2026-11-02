@@ -6,6 +6,7 @@ defmodule Wardrik.Test.Asked do
   def authorize(%Wardrik.Authorizer.Request{} = request, decider) do
     {test, decide} = Agent.get(decider, & &1)
     send(test, {:asked, request.principal.id, request.action, request.resource, request.context})
+    send(test, {:request, request})
     decide.(request.action, request.resource)
   end
 end
@@ -79,12 +80,30 @@ defmodule Wardrik.AuthorizerTest do
     assert_received {:asked, _maria, "mcp_server.read", {:owner, "acme"}, %{name: nil}}
   end
 
-  test "makes no token without an authorizer that says what a scope holds", %{scope: scope} do
-    assert {:error, %Error{type: :forbidden}} =
-             Wardrik.run(scope, "tokens.create", %{
-               "name" => "ci",
-               "resources" => ["*"],
-               "roles" => ["owner"]
-             })
+  test "puts the scope's actor and context in each request, the call's context over the scope's",
+       %{wardrik: wardrik} do
+    scope =
+      Wardrik.as(wardrik, maria(),
+        actor: {:channel, "slack"},
+        context: %{approver: true, name: "scope's"}
+      )
+
+    assert {:ok, _servers} = Wardrik.run(scope, "mcp_servers.list", %{"owner" => "acme"})
+
+    assert_received {:request,
+                     %Wardrik.Authorizer.Request{
+                       actor: {:channel, "slack"},
+                       context: %{approver: true, name: nil}
+                     }}
+
+    assert {:ok, _agent} = define(Wardrik.as(wardrik, maria()), "acme/scout")
+    assert_received {:request, %Wardrik.Authorizer.Request{actor: nil, context: %{}}}
+  end
+
+  test "has no operation for tokens, so none reaches the authorizer", %{scope: scope} do
+    assert {:error, %Error{type: :not_found}} =
+             Wardrik.run(scope, "tokens.create", %{"name" => "ci"})
+
+    refute_received {:asked, _principal, _action, _resource, _context}
   end
 end

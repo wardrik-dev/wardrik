@@ -50,6 +50,7 @@ defmodule Wardrik.Test.Slack do
     start_supervised!(
       {Wardrik,
        Wardrik.new(
+         authorizer: {Wardrik.Test.Deciders, []},
          name: name,
          store: store,
          keys: [WardrikVault.generate_key()],
@@ -61,7 +62,7 @@ defmodule Wardrik.Test.Slack do
        )}
     )
 
-    owner = Wardrik.as(name, "acme/@maria", roles: [:owner], resources: ["*"])
+    owner = Wardrik.as(name, "acme/@maria")
 
     {:ok, channel} = Wardrik.Test.Channel.fetch(name, "slack")
 

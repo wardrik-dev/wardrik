@@ -37,7 +37,6 @@ defmodule Wardrik.NotifyTest do
   import Wardrik.Test.Wardrik
 
   alias Wardrik.Notice
-  alias Wardrik.Statement
 
   @model "anthropic:claude-haiku-4-5"
 
@@ -61,6 +60,7 @@ defmodule Wardrik.NotifyTest do
 
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Authorizer, test: self()},
         name: :"wardrik #{context.test}",
         store: store,
         keys: [WardrikVault.generate_key()],
@@ -170,6 +170,11 @@ defmodule Wardrik.NotifyTest do
 
       assert_receive {:told, "audit", %Notice{kind: :parked, agent: "acme/triage", calls: [call]}}
       assert %{interrupt: %Wardrik.Interrupt{name: "echo"}, arguments: %{"text" => "hi"}} = call
+
+      asked = for {:authorize, request} <- Process.info(self(), :messages) |> elem(1), do: request
+      assert asked != []
+      assert Enum.all?(asked, &(&1.principal.id == "acme/@maria"))
+      refute Enum.any?(asked, &(&1.principal.id == "wardrik:notify"))
     end
 
     test "tells of a turn that failed", %{scope: scope} do
@@ -529,10 +534,7 @@ defmodule Wardrik.NotifyTest do
     end
 
     test "lets a reader list, and a definer add and remove their own", %{wardrik: wardrik} do
-      grant =
-        &Wardrik.as(wardrik, "acme/@maria", [
-          Statement.new(roles: &1, resources: ["acme/@maria/*"])
-        ])
+      grant = &limited(wardrik, "acme/@maria", roles: &1, owners: ["acme/@maria"])
 
       reader = grant.([:reader])
       definer = grant.([:reader, :definer])

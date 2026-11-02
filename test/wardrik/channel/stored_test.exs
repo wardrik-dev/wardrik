@@ -14,6 +14,7 @@ defmodule Wardrik.Channel.StoredTest do
     start_supervised!(
       {Wardrik,
        Wardrik.new(
+         authorizer: {Wardrik.Test.Allow, []},
          name: name,
          store: store,
          keys: [WardrikVault.generate_key()],

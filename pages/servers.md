@@ -13,9 +13,18 @@ it with:
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
+# Allows everything. Your app's authorizer decides who may do what.
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
 {:ok, _} =
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
     keys: [WardrikVault.generate_key()],
     oauth: [
       page: "https://agents.example.com/oauth",
@@ -36,7 +45,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
     ]
   )
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
 The client ID and secret stand for your GitHub OAuth app's. Nothing on this page calls a model.

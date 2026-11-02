@@ -14,7 +14,6 @@ defmodule Wardrik.OrgsTest do
   import Wardrik.Test.Wardrik
 
   alias Wardrik.OrgSettings
-  alias Wardrik.Statement
 
   @model "anthropic:claude-haiku-4-5"
 
@@ -26,6 +25,7 @@ defmodule Wardrik.OrgsTest do
 
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         store: store,
         orgs: {Wardrik.Test.Orgs, orgs},
@@ -150,20 +150,6 @@ defmodule Wardrik.OrgsTest do
                  "value" => "v",
                  "purpose" => "api_key"
                })
-
-      assert {:error, ^no_org} =
-               Wardrik.run(scope, "tokens.create", %{
-                 "name" => "ci",
-                 "resources" => ["acme/agent/*", "globex/agent/*"],
-                 "roles" => ["reader"]
-               })
-
-      assert %{"secret" => _secret} =
-               run!(scope, "tokens.create", %{
-                 "name" => "ci",
-                 "resources" => ["*/agent/*"],
-                 "roles" => ["reader"]
-               })
     end
 
     test "reach its awake agents as they're refreshed", %{
@@ -203,10 +189,7 @@ defmodule Wardrik.OrgsTest do
     end
 
     defp approver(wardrik),
-      do:
-        Wardrik.as(wardrik, "acme/@sam", [
-          Statement.new(roles: [:approver, :reader], resources: ["acme/agent/*"])
-        ])
+      do: limited(wardrik, "acme/@sam", roles: [:approver, :reader], agents_of: ["acme"])
 
     defp spend_it(scope) do
       {:ok, _agent} = define(scope, "acme/first")
@@ -275,8 +258,7 @@ defmodule Wardrik.OrgsTest do
 
       refute Map.has_key?(plan, "starts_over")
 
-      reader =
-        Wardrik.as(wardrik, "acme/@ana", [Statement.new(roles: [:reader], resources: ["acme/*"])])
+      reader = limited(wardrik, "acme/@ana", roles: [:reader], owners: ["acme"])
 
       assert {:ok,
               [%Wardrik.Spend{ceiling: "cap", per: :week, starts_over: %Date{}} = spend, _plan]} =

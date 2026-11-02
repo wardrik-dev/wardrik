@@ -16,6 +16,7 @@ defmodule Wardrik.DefinitionsTest do
 
     wardrik =
       Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
         name: :"wardrik #{context.test}",
         store: store,
         capabilities: [tools: Wardrik.Test.Tools, block: {Wardrik.Test.Blocking, self()}],
@@ -232,7 +233,7 @@ defmodule Wardrik.DefinitionsTest do
       assert {:ok, []} = Wardrik.Agent.calls(scope, "acme/triage")
 
       assert {:ok, %Wardrik.Forgotten{forgotten: ["acme/triage"], kept: [], failed: []}} =
-               Wardrik.Agents.forget(scope, resources: ["acme/*"])
+               Wardrik.Agents.forget(scope, agents: ["acme/triage"])
     end
 
     test "defines from a keyword list", %{scope: scope} do
@@ -321,6 +322,7 @@ defmodule Wardrik.DefinitionsTest do
 
       wardrik =
         Wardrik.new(
+          authorizer: {Wardrik.Test.Allow, []},
           name: :"defaults #{context.test}",
           store: store,
           defaults: %{model: @model, idle_timeout: 60}
@@ -380,18 +382,25 @@ defmodule Wardrik.DefinitionsTest do
                :not_found
     end
 
-    test "is reached only where a statement covers it", %{wardrik: wardrik, scope: scope} do
+    test "is reached only where the authorizer allows the conversation itself", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
       answers([answer("Hello.")])
       define(scope, "acme/triage", %{"model" => @model})
       input = %{"agent" => "acme/triage/C1", "content" => "Hi"}
 
-      agent_only =
-        Wardrik.as(wardrik, "acme/@jon", roles: [:messenger], resources: ["acme/agent/triage"])
+      only = fn id ->
+        decide = fn %{resource: resource} ->
+          if resource == {:agent, id}, do: :ok, else: {:error, :not_found}
+        end
 
-      assert refused(agent_only, "agent.ask", input) == :not_found
+        Wardrik.as(wardrik, "acme/@jon", context: %{decide: decide})
+      end
 
-      conversations =
-        Wardrik.as(wardrik, "acme/@jon", roles: [:messenger], resources: ["acme/agent/triage/*"])
+      assert refused(only.("acme/triage"), "agent.ask", input) == :not_found
+
+      conversations = only.("acme/triage/C1")
 
       run!(conversations, "agent.ask", input)
       until("wardrik.run.completed")
@@ -713,14 +722,14 @@ defmodule Wardrik.DefinitionsTest do
                :not_found
     end
 
-    test "cancels and forgets every agent the patterns cover", %{scope: scope} do
+    test "cancels and forgets the agents it names", %{scope: scope} do
       assert %{"cancelled" => ["acme/triage"]} =
-               run!(scope, "agents.cancel", %{"resources" => ["acme/*"]})
+               run!(scope, "agents.cancel", %{"agents" => ["acme/triage"]})
 
       until("wardrik.run.cancelled")
 
       assert %{"forgotten" => ["acme/triage"], "kept" => [], "failed" => []} =
-               run!(scope, "agents.forget", %{"resources" => ["acme/*"]})
+               run!(scope, "agents.forget", %{"agents" => ["acme/triage"]})
 
       assert %{"agents" => []} = run!(scope, "agents.list", %{})
     end

@@ -6,8 +6,6 @@ defmodule Wardrik.Operations.Deployment do
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Running
   alias Wardrik.Operations.Snapshot
-  alias Wardrik.Resource
-  alias WardrikEvents.Pattern
 
   @doc "Returns a page of the deployment's audit."
   @spec audit(Wardrik.Scope.t(), map()) :: {:ok, map()}
@@ -21,7 +19,7 @@ defmodule Wardrik.Operations.Deployment do
   Reloads the deployment:
 
     1. Reloads the declarations. See `Wardrik.Declarations`.
-    2. Updates running agents to their current definitions. Only those `"resources"` covers, if
+    2. Updates running agents to their current definitions. Only those `"agents"` names, if
        given.
     3. Reconciles MCP servers and triggers.
 
@@ -30,9 +28,11 @@ defmodule Wardrik.Operations.Deployment do
   @spec reload(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def reload(%Wardrik.Scope{wardrik: wardrik} = scope, input) do
     problems = Wardrik.Declarations.reload(wardrik)
-    covered = covered(input["resources"])
+    named = input["agents"]
 
-    for id <- Definitions.ids(wardrik), covered.(id), Running.whereis(wardrik, id) != nil do
+    for id <- Definitions.ids(wardrik),
+        named == nil or id in named,
+        Running.whereis(wardrik, id) != nil do
       with {:ok, definition} <- Definitions.fetch(wardrik, id),
            {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
            do: Running.bring(wardrik, opts)
@@ -50,15 +50,6 @@ defmodule Wardrik.Operations.Deployment do
     )
 
     {:ok, %{"reloaded" => [here], "problems" => problems}}
-  end
-
-  defp covered(nil), do: fn _id -> true end
-
-  defp covered(patterns) do
-    fn id ->
-      {:ok, resource} = Resource.agent(id)
-      Enum.any?(patterns, &Pattern.covers?(&1, resource))
-    end
   end
 
   @doc "Lists the deployment's nodes with how many agents run on each, and how many are asleep."

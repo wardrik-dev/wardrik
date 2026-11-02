@@ -101,16 +101,24 @@ asks too. A rule that names a tool wins over the default.
 Start Wardrik with the capability, under the name `orders`, and define an agent that uses it:
 
 ```elixir
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
 {:ok, _} =
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
     capabilities: [orders: MyApp.Orders],
     mcp: [
       deepwiki: [transport: {:streamable_http, url: "https://mcp.deepwiki.com/mcp"}, gated: false]
     ]
   )
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, agent} =
   Wardrik.Agent.define(scope, "acme/@maria/support",
@@ -124,7 +132,8 @@ scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources
   )
 ```
 
-The `deepwiki` server is for the last section.
+The `deepwiki` server is for the last section. `MyApp.AllowAll` lets every scope do anything. In
+your app, an authorizer decides who may do what; see [Who may do what](access-demo.livemd).
 
 ## Ask it something
 

@@ -17,6 +17,14 @@ session, paste a tool module, then start Wardrik with it:
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
+# Allows everything. Your app's authorizer decides who may do what.
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
 defmodule MyApp.Orders do
   @behaviour WardrikCore.Capability
 
@@ -36,11 +44,12 @@ end
 {:ok, _} =
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
     capabilities: [orders: {MyApp.Orders, %{"A-1" => "shipped"}}],
     policies: [careful: [ask: ["order_*"], deny: ["shell/*"]]]
   )
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
   * `:capabilities` - tools a definition names, each a `WardrikCore.Capability`.
@@ -164,8 +173,8 @@ Wardrik.Agent.read(scope, "acme/@maria/assistant")
 | `Wardrik.Agent.forget/3` | Stops it, and deletes its conversations and definition. |
 | `Wardrik.Agent.calls/3` | Lists the tool calls it's running, with how long each has run. |
 | `Wardrik.Agent.kill/2` | Stops one call. The model gets an error for it, and the turn goes on. |
-| `Wardrik.Agents.cancel/2` | Stops what every agent the patterns cover is doing. |
-| `Wardrik.Agents.forget/2` | Forgets every agent the patterns cover. |
+| `Wardrik.Agents.cancel/2` | Stops what each agent it names, or every agent the scope may see, is doing. |
+| `Wardrik.Agents.forget/2` | Forgets each agent it names, or every agent the scope may see. |
 
 Each change is recorded in the audit, with who made it.
 
@@ -186,8 +195,7 @@ A conversation:
   * starts when something asks it, sleeps as the agent does, and goes when the agent is forgotten.
   * has no definition or triggers of its own. Defining one returns `invalid_request`.
 
-Its resource is the agent's plus the conversation, as
-`acme/@maria/agent/assistant/conversation/C1-1696.1234`. A statement on
-`acme/@maria/agent/assistant` doesn't reach it; `acme/@maria/agent/assistant/*` does.
+Your authorizer sees it as `{:agent, "acme/@maria/assistant/C1-1696.1234"}`.
+`Wardrik.AgentID.agent/1` returns the agent it runs on, to decide it as you decide the agent.
 
 No HTTP route reaches a conversation. Read its events through the agent's org.

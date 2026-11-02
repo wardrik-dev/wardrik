@@ -24,7 +24,7 @@ defmodule Wardrik.Orgs do
 
       {:error, Wardrik.Error.new(:not_found, "There's no org globex here.")}
 
-  Its agents then can't start or be defined, and no secrets, servers or tokens can be stored for it.
+  Its agents then can't start or be defined, and no secrets or servers can be stored for it.
   """
 
   alias Wardrik.AgentID

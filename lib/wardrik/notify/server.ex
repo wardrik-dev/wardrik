@@ -13,6 +13,7 @@ defmodule Wardrik.Notify.Server do
 
   alias Wardrik.Notice
   alias Wardrik.Notify
+  alias Wardrik.Operations.Snapshot
   alias WardrikCore.Retry
 
   @key "notifier"
@@ -130,11 +131,9 @@ defmodule Wardrik.Notify.Server do
     do: struct!(Notice, [agent: agent(event), kind: kind, at: event.time] ++ fields)
 
   defp waiting(state, agent, ids) do
-    scope = Wardrik.as(state.wardrik.name, "wardrik:notify", roles: [:reader], resources: ["*"])
-
-    case Wardrik.Agent.read(scope, agent) do
-      {:ok, %Wardrik.Agent{interrupts: interrupts}} ->
-        for interrupt <- interrupts,
+    case Snapshot.known(state.wardrik, agent) do
+      :ok ->
+        for interrupt <- interrupts(state.wardrik, agent),
             interrupt.id in ids,
             do: %{
               interrupt: interrupt,
@@ -144,6 +143,14 @@ defmodule Wardrik.Notify.Server do
       {:error, _gone} ->
         []
     end
+  end
+
+  defp interrupts(wardrik, agent) do
+    wardrik
+    |> Wardrik.events()
+    |> WardrikEvents.activity(agent)
+    |> Snapshot.interrupts()
+    |> Enum.map(&Wardrik.Interrupt.from_json/1)
   end
 
   defp told(state, agent, notice) do

@@ -13,6 +13,14 @@ about large bills. The agent calls a model, so set your Anthropic key first:
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 
+# Allows everything. Your app's authorizer decides who may do what.
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
 defmodule MyApp.Books do
@@ -31,8 +39,14 @@ defmodule MyApp.Books do
   end
 end
 
-{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, capabilities: [books: MyApp.Books])
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:owner], resources: ["acme/@maria/*"])
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.AgentRuntime,
+    authorizer: {MyApp.AllowAll, []},
+    capabilities: [books: MyApp.Books]
+  )
+
+scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, _agent} =
   Wardrik.Agent.define(scope, "acme/@maria/books",

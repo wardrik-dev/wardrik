@@ -15,6 +15,9 @@ defmodule Wardrik.AgentToolsTest do
     wardrik =
       Wardrik.new(
         name: :"wardrik #{context.test}",
+        authorizer:
+          {Wardrik.Test.Authorizer,
+           test: self(), decide: Map.get(context, :decide, &Wardrik.Test.Allow.authorize(&1, []))},
         store: store,
         policies: [relay: [allow_after: %{"outside" => ["agent_ask"]}]]
       )
@@ -86,6 +89,14 @@ defmodule Wardrik.AgentToolsTest do
                    5_000
 
     assert rest =~ "Two posts."
+
+    assert_received {:authorize,
+                     %{
+                       principal: %{id: "acme"},
+                       actor: {:agent, "acme/watcher"},
+                       action: "agent.ask",
+                       resource: {:agent, "acme/front"}
+                     }}
 
     assert %{"definition" => %{"instructions" => "Watch."}} =
              run!(scope, "agent.definition", %{"agent" => "acme/watcher"})
@@ -227,7 +238,11 @@ defmodule Wardrik.AgentToolsTest do
     define(scope, "globex/other", %{"model" => @model})
 
     tools =
-      Wardrik.AgentTools.tools(WardrikCore.Context.new(agent_id: "acme/front/C1"),
+      Wardrik.AgentTools.tools(
+        WardrikCore.Context.new(
+          agent_id: "acme/front/C1",
+          principal: %WardrikCore.Principal{id: "acme/@ops"}
+        ),
         wardrik: scope.wardrik,
         reach: :agents
       )
@@ -236,6 +251,14 @@ defmodule Wardrik.AgentToolsTest do
 
     assert {:ok, %{"agents" => listed}} = tool.("agents_list").run.(%{}, nil)
     assert Enum.map(listed, & &1["id"]) |> Enum.sort() == ["acme/@jon/notes", "acme/worker"]
+
+    assert_received {:authorize,
+                     %{
+                       principal: %{id: "acme/@ops"},
+                       actor: {:agent, "acme/front"},
+                       action: "agent.read",
+                       resource: {:agent, "acme/worker"}
+                     }}
 
     assert {:ok, %{"definition" => _definition}} =
              tool.("agent_definition_read").run.(%{agent: "@jon/notes"}, nil)
@@ -247,5 +270,47 @@ defmodule Wardrik.AgentToolsTest do
 
     assert WardrikCore.Tool.annotation(tool.("agent_define"), :gated)
     assert WardrikCore.Tool.annotation(tool.("agents_list"), :read_only)
+  end
+
+  test "can't use its tools where it acts for no one" do
+    [tool | _rest] =
+      Wardrik.AgentTools.tools(WardrikCore.Context.new(agent_id: "acme/front"),
+        wardrik: :anywhere,
+        reach: :agents
+      )
+
+    assert tool.run.(%{}, nil) ==
+             {:error, "acme/front acts for no one, so it can't reach other agents."}
+  end
+
+  def no_agents(%{actor: {:agent, _id}, action: "agent.read"}), do: {:error, :forbidden}
+  def no_agents(request), do: Wardrik.Test.Allow.authorize(request, [])
+
+  @tag decide: &__MODULE__.no_agents/1
+  test "acts for its resolved principal, as itself, so an authorizer can refuse an agent what its principal may do",
+       %{scope: scope} do
+    model([
+      {"Look", calling([call("r1", "agent_read", %{"agent" => "worker"})])},
+      {"may not", answer("Refused.")}
+    ])
+
+    define(scope, "acme/worker", %{"model" => @model})
+    define(scope, "acme/front", %{"model" => @model, "tools" => ["agents/*"]})
+    run!(scope, "agent.ask", %{"agent" => "acme/front", "content" => "Look"})
+
+    until("wardrik.run.completed")
+
+    assert_received {:authorize,
+                     %{
+                       principal: %{id: "acme"},
+                       actor: {:agent, "acme/front"},
+                       action: "agent.read",
+                       resource: {:agent, "acme/worker"}
+                     }}
+
+    acme = Wardrik.as(scope.wardrik, "acme")
+
+    assert %{"agent" => %{"id" => "acme/worker"}} =
+             run!(acme, "agent.read", %{"agent" => "acme/worker"})
   end
 end

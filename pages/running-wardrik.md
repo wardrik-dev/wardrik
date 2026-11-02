@@ -18,16 +18,25 @@ children = [MyApp.AgentRuntime]
 ```
 
 To try it, paste the module into a fresh IEx session started with
-`Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])`, then start it and act as someone:
+`Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])`, with an authorizer that allows everything. Start it
+and act as someone:
 
 ```elixir
-{:ok, _} = MyApp.AgentRuntime.start_link()
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
 
-scope =
-  MyApp.AgentRuntime.as("acme/@maria", roles: [:owner], resources: ["acme/@maria/*", "deployment"])
+  @impl true
+  def authorize(_request, _opts), do: :ok
+end
+
+{:ok, _} = MyApp.AgentRuntime.start_link(authorizer: {MyApp.AllowAll, []})
+
+scope = MyApp.AgentRuntime.as("acme/@maria")
 ```
 
-Every operation takes a scope. `MyApp.AgentRuntime.as/2` is `Wardrik.as/3` with the instance filled in.
+Every operation takes a scope, and the authorizer decides what it may do. See
+[Who may do what](access.md). `MyApp.AgentRuntime.as/2` is `Wardrik.as/3` with the instance filled
+in.
 
 ## Configure it
 
@@ -35,7 +44,9 @@ Each place overrides the one before it:
 
 ```elixir
 # 1. config/runtime.exs
-config :my_app, MyApp.AgentRuntime, store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
+config :my_app, MyApp.AgentRuntime,
+  authorizer: {MyApp.Authorizer, []},
+  store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
 
 # 2. The supervision tree
 children = [{MyApp.AgentRuntime, deployment: "acme-prod"}]
@@ -53,6 +64,8 @@ Tests can start it as production does, or point it elsewhere in `config/test.exs
 
 ## Options
 
+  * `:authorizer` - required. The `Wardrik.Authorizer` that decides what each scope may do, as
+    `{module, config}`. See [Who may do what](access.md).
   * `:store` - where agents and their events are kept, as `{adapter, opts}`. In memory unless set.
     See [Where agents are kept](#where-agents-are-kept).
   * `:deployment` - the deployment's name in each event's `source`. `"local"` unless set.
@@ -64,14 +77,12 @@ Tests can start it as production does, or point it elsewhere in `config/test.exs
     [Define agents](definitions.md).
   * `:listeners` - listeners to start. See [Events](events.md).
   * `:triggers` - `req_options` for reading feeds. See [Trigger agents](triggers.md).
-  * `:authorizer` - a `Wardrik.Authorizer`, as `{module, config}`. Statements unless set. See
-    [Who may do what](access.md).
   * `:retention` - days events are kept, or `:infinity`. `30` unless set.
 
 See `Wardrik.start_link/1` for every option.
 
 Options are read as Wardrik starts. What changes while it runs, like agents, triggers, servers,
-accounts and tokens, goes through operations, and is kept in the store for every node.
+accounts and secrets, goes through operations, and is kept in the store for every node.
 
 ## Where agents are kept
 

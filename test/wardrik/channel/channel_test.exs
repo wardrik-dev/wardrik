@@ -129,7 +129,7 @@ defmodule Wardrik.Channel.PackageTest do
       DurableServer.Supervisor.terminate_child(replies, "T1/C1")
       assert DurableServer.Supervisor.lookup(replies, "T1/C1") == nil
 
-      scope = Wardrik.as(context.wardrik, "acme/@maria", roles: [:messenger], resources: ["*"])
+      scope = Wardrik.as(context.wardrik, "acme/@maria")
       {:ok, _message} = Wardrik.Agent.ask(scope, "acme/triage/chat.T1.C1.1.1", "More")
 
       assert WardrikChannel.Replies.follow(context.workspace, "C1") == :ok

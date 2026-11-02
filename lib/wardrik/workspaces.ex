@@ -15,9 +15,10 @@ defmodule Wardrik.Workspaces do
   Trees are named `org`, `org/name` or `org/@user/name`. The owner the name starts with can mount
   it: acme's agents can mount `acme` and `acme/runbooks`, and jon's can mount `acme/@jon/notes`.
 
-  Other agents can only mount a tree that Wardrik's `:workspace` option shares, by resource pattern:
+  Other agents can only mount a tree that Wardrik's `:workspace` option shares, by agent ID
+  pattern, where `*` matches any run of characters, `/` included:
 
-      workspace: [shared: %{"acme/runbooks" => [read: ["acme/*"], write: ["acme/agent/ops", "acme/agent/ops/*"]]}]
+      workspace: [shared: %{"acme/runbooks" => [read: ["acme/*"], write: ["acme/ops", "acme/ops/*"]]}]
 
   An agent's conversations share its tree.
 
@@ -29,7 +30,6 @@ defmodule Wardrik.Workspaces do
 
   alias Wardrik.AgentID
   alias Wardrik.Error
-  alias Wardrik.Resource
   alias WardrikEvents.Pattern
   alias WardrikWorkspace.Mount
 
@@ -71,8 +71,8 @@ defmodule Wardrik.Workspaces do
   @doc "Returns the agent `id`'s own tree. A conversation uses its agent's."
   @spec tree(String.t()) :: String.t()
   def tree(id) do
-    {:ok, resource} = id |> AgentID.agent() |> Resource.agent()
-    "agents/" <> resource
+    {:ok, %AgentID{owner: owner, name: name}} = AgentID.parse(id)
+    "agents/" <> owner <> "/agent/" <> name
   end
 
   @doc "Returns the `:workspace` option as each shared tree's read and write patterns."
@@ -114,13 +114,12 @@ defmodule Wardrik.Workspaces do
 
   defp reached(wardrik, id, tree, mode) do
     {:ok, %AgentID{owner: owner}} = AgentID.parse(id)
-    {:ok, resource} = Resource.agent(id)
 
     cond do
       owner(tree) == {:ok, owner} ->
         :ok
 
-      shares?(Map.get(wardrik.workspace, tree), resource, mode) ->
+      shares?(Map.get(wardrik.workspace, tree), id, mode) ->
         :ok
 
       true ->
@@ -139,12 +138,10 @@ defmodule Wardrik.Workspaces do
     end
   end
 
-  defp shares?(nil, _resource, _mode), do: false
+  defp shares?(nil, _id, _mode), do: false
 
-  defp shares?(rule, resource, :read),
-    do: Enum.any?(rule.read ++ rule.write, &Pattern.covers?(&1, resource))
-
-  defp shares?(rule, resource, :write), do: Enum.any?(rule.write, &Pattern.covers?(&1, resource))
+  defp shares?(rule, id, :read), do: Enum.any?(rule.read ++ rule.write, &Pattern.covers?(&1, id))
+  defp shares?(rule, id, :write), do: Enum.any?(rule.write, &Pattern.covers?(&1, id))
 
   defp context(nil), do: {:ok, nil}
   defp context(files) when is_list(files), do: context(%{"files" => files})
