@@ -1,39 +1,21 @@
 # WardrikChannel
 
-Lets people talk to [Wardrik](https://hexdocs.pm/wardrik)'s agents from chat apps, such as Slack.
-It handles rooms, threads, replies and approvals.
-
-Each chat app has its own adapter package, such as [WardrikSlack](https://hexdocs.pm/wardrik_slack).
-This package holds what every adapter shares.
+Talk to [Wardrik](https://hexdocs.pm/wardrik) agents from chat apps, such as Slack. This package
+holds what every chat adapter shares: rooms, threads, replies and approvals.
 
 ## Install
 
-Add an adapter. It brings this package in.
+Add an adapter, such as [WardrikSlack](https://hexdocs.pm/wardrik_slack). It brings this package in.
 
 ```elixir
-def deps do
-  [
-    {:wardrik_slack, "~> 0.1.0-rc.2"}
-  ]
-end
+{:wardrik_slack, "~> 0.1.0-rc.2"}
 ```
 
-To write an adapter of your own, depend on this package directly:
+To write your own adapter, depend on `{:wardrik_channel, "~> 0.1.0-rc.2"}`. See `WardrikChannel`.
+
+## Set up
 
 ```elixir
-{:wardrik_channel, "~> 0.1.0-rc.2"}
-```
-
-## Wire it up
-
-A channel is one chat app Wardrik runs, under a name you choose. Give it a token, who added it,
-and the module that says who each chat member is in your app:
-
-```elixir
-defmodule MyApp.AgentRuntime do
-  use Wardrik, otp_app: :my_app
-end
-
 config :my_app, MyApp.AgentRuntime,
   channels: [
     slack:
@@ -45,12 +27,14 @@ config :my_app, MyApp.AgentRuntime,
   ]
 ```
 
+Say who each chat member is in your app. A member you return an error for is told the error.
+
 ```elixir
 defmodule MyApp.ChatMembers do
   @behaviour WardrikChannel.Identities
 
   @impl true
-  def identify(%WardrikChannel.Identities.Request{} = request, _opts) do
+  def identify(request, _opts) do
     case MyApp.Accounts.by_chat(request.channel, request.workspace, request.member) do
       %MyApp.User{} = user -> {:ok, Wardrik.principal(user.id)}
       nil -> {:error, "Link your Slack account in MyApp first."}
@@ -59,91 +43,46 @@ defmodule MyApp.ChatMembers do
 end
 ```
 
-A member your app doesn't know can't ask or decide. They're told the error.
-
-The chat app posts to `POST /v1/channels/slack/{path}`. Serve it with `Wardrik.HTTP`:
-
-```elixir
-forward "/", Wardrik.HTTP,
-  wardrik: MyApp.AgentRuntime,
-  authenticator: {MyAppWeb.WardrikSession, []}
-```
-
-List the channel in an agent's definition:
+Serve the chat app's requests with `Wardrik.HTTP`. It answers `POST /v1/channels/slack/...`.
+Then list the channel in an agent's definition:
 
 ```elixir
-scope = MyApp.AgentRuntime.as("user_42")
-
 Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
   model: "anthropic:claude-haiku-4-5",
-  description: "Triages incidents.",
   channels: ["slack"]
 )
 ```
 
-Then invite the bot into a room:
+## In the chat
 
-1. If one agent is offered, it answers in that room from then on. With several, someone picks one.
-2. Mention the bot. The agent answers in a thread under your message.
-3. Reply in the thread. The agent answers again, no mention needed.
+- Invite the bot into a room. If one agent is offered, it answers there. With several, someone picks.
+- Mention the bot. The agent answers in a thread.
+- Reply in the thread. No mention needed.
+- Each thread is its own conversation, such as `"slack.T0123.C024BE91L.1696.1234"`.
+- Calls the agent waits on are posted in the thread to approve or deny.
 
-## Threads
+## Access
 
-Each thread is its own conversation with the agent, with its own history. The channel names it
-from the workspace, room and thread, and passes it as `conversation`:
-
-```elixir
-Wardrik.Agent.ask(scope, "agt_01JF8X5RQ2",
-  content: "What's on fire?",
-  conversation: "slack.T0123.C024BE91L.1696.1234"
-)
-```
-
-People in the workspace act as the users your app says they are, with the channel as their
-actor, `{:channel, "slack"}`. Your `:authorizer` decides which agents they may read and message.
-A room offers the agents they may read. Its request's `context` holds the `installation`, as
-`%{owner: "acme", workspace: "T0123"}`.
-
-Replies are read from each thread's own conversation log, and no other. Each room has one process
-in your cluster, kept in Wardrik's store. A reply delayed by a restart is still posted.
-
-## Approvals
-
-When an agent waits on a call, the call and its arguments are posted in the thread. Your
-authorizer decides who may decide it, as it decides anything else. Its request's `context` also
-holds `asked_by`, the principal ID that asked for that turn, where known. Let whoever asked
-decide their own calls:
+Your authorizer decides what chat members may read, ask and decide. Requests from a chat have
+`actor: {:channel, "slack"}`. Their `context` has `:installation`, and `:asked_by` when deciding.
 
 ```elixir
-def authorize(%{actor: {:channel, _name}, action: "agent.decide", context: context} = request, opts) do
-  if context[:asked_by] == request.principal.id, do: :ok, else: MyApp.Access.check(request, opts)
+# Whoever asked decides their own calls.
+def authorize(%{actor: {:channel, _name}, action: "agent.decide"} = request, _opts) do
+  if request.context[:asked_by] == request.principal.id, do: :ok, else: {:error, :forbidden}
 end
 ```
 
-Anyone refused is told the channel's `:deciding` message.
-
 ## Many workspaces
 
-`token:` adds the channel to the one workspace that token reaches. To add one app to many
-workspaces, such as one per org, give the channel `installations:` instead of `token:`:
+Give `installations:` instead of `token:` and `owner:`:
 
 ```elixir
-# Kept in Wardrik: owners in its store, tokens sealed with its :keys
-installations: :stored
-
-# Kept by your app, in a module implementing Wardrik.Channel.Installations
-installations: {MyApp.ChatInstallations, []}
+installations: :stored                        # kept in Wardrik; needs Wardrik's :keys
+installations: {MyApp.ChatInstallations, []}  # your Wardrik.Channel.Installations
 ```
-
-Your adapter's docs list what else it needs, such as Slack's `:client_id`.
-
-## Rooms in the audit
-
-Binding a room is recorded in Wardrik's audit as `wardrik.room.bound`. Unbinding it is recorded as
-`wardrik.room.unbound`. Both say who did it.
 
 ## Notices
 
-A definition's `notify: "slack:#ops"` posts in `#ops` of the workspace your app's resolver gives
-the agent for the channel, as `channels: %{"slack" => "T0123"}` in `Wardrik.Resolved`. An agent
-given no workspace for the channel posts nothing there.
+`notify: "slack:#ops"` in a definition posts in `#ops`. The workspace is the one your resolver gives
+the agent, as `%Wardrik.Resolved{channels: %{"slack" => "T0123"}}`.

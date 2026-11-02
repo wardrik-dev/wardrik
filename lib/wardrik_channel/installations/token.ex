@@ -4,8 +4,7 @@ defmodule WardrikChannel.Installations.Token do
 
       slack: {WardrikSlack, token: "xoxb-...", owner: "acme", identities: {MyApp.ChatMembers, []}}
 
-  Adding other installations returns an error. Forgetting one does nothing. Found by its owner,
-  its workspace is `"*"`.
+  Adding another installation returns an error.
   """
 
   @behaviour Wardrik.Channel.Installations

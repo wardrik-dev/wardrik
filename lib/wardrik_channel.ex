@@ -1,9 +1,6 @@
 defmodule WardrikChannel do
   @moduledoc """
-  Lets people talk to Wardrik's agents from chat apps, such as Slack.
-
-  A *channel* is one chat app Wardrik runs, under a name you choose. A *room* is a place in it,
-  such as a Slack channel.
+  Talk to Wardrik agents from chat apps, such as Slack. See the README to set one up.
 
       config :my_app, MyApp.AgentRuntime,
         channels: [
@@ -15,34 +12,19 @@ defmodule WardrikChannel do
              identities: {MyApp.ChatMembers, []}}
         ]
 
-  Each member acts as whoever your app's `WardrikChannel.Identities` says they are. Your
-  authorizer decides what they may ask, read and decide. See `WardrikChannel.Workspace`.
-
-  An agent answers in a channel when its definition lists it:
-
-      Wardrik.Agent.define(scope, "agt_01JF8X5RQ2", model: "anthropic:claude-haiku-4-5", channels: ["slack"])
-
-  Mention the bot in a room to start a thread. Reply in the thread to go on. Each thread is its own
-  conversation, as `slack.T0123.C024BE91L.1696.1234`, and the agent keeps a history of it. Calls the agent waits on are
-  posted in the thread for someone to decide. Whoever asked may always decide their own calls, if
-  your authorizer allows it. See `WardrikChannel.Rooms` and `WardrikChannel.Replies`.
-
   ## Options
 
   Every channel takes these. Its adapter reads the rest.
 
   #{NimbleOptions.docs(WardrikChannel.Channel.schema())}
 
-  Raises on start if an option is invalid, if neither or both of `:token` and `:installations`
-  are given, or if the channel's name isn't lower-case letters, digits and `-`, starting with a
-  letter.
+  Give either `:token` and `:owner`, or `:installations`. The name is lower-case letters, digits
+  and `-`, starting with a letter. Raises on start otherwise.
 
   ## Writing an adapter
 
-  An adapter is a package, such as `wardrik_slack`, that does `use WardrikChannel`. It speaks the
-  chat app's protocol and nothing else: it implements `c:deliver/2`, and
-  `c:Wardrik.Channel.request/2` to take what the chat app sends. Each callback takes what it acts
-  on, then the `WardrikChannel.Channel`:
+  An adapter speaks one chat app's protocol. It does `use WardrikChannel`, takes requests in
+  `c:Wardrik.Channel.request/2`, and posts in `c:deliver/2`:
 
       defmodule MyChat do
         use WardrikChannel
@@ -72,8 +54,9 @@ defmodule WardrikChannel do
         end
       end
 
-  Hand each button press to `decide/2`. `use WardrikChannel` defines `child_spec/1`,
-  `c:children/1` and `c:Wardrik.Channel.notify/4`. Each can be overridden.
+    * Pass each approve or deny button press to `decide/2`.
+    * `use WardrikChannel` defines `child_spec/1`, `c:children/1` and
+      `c:Wardrik.Channel.notify/2`. Each can be overridden.
   """
 
   alias Wardrik.Channel.Installation
@@ -93,18 +76,18 @@ defmodule WardrikChannel do
   @doc "Returns extra children to run, such as a connection to the chat app. `[]` by default."
   @callback children(Channel.t()) :: [Supervisor.child_spec() | {module(), term()}]
 
-  @doc "Returns the URL where someone acting for the install's owner adds the chat app to their workspace."
+  @doc "Returns the URL where someone adds the chat app to their workspace."
   @callback install_url(WardrikChannel.Install.t(), Channel.t()) ::
               {:ok, String.t()} | {:error, String.t()}
 
   @doc """
-  Finishes adding the chat app to a workspace, for the install's owner, from its `query`.
-  Returns the installation and where to send the person next.
+  Finishes adding the chat app from the redirect's `query`. Returns the installation and where
+  to send the person next.
   """
   @callback installed(WardrikChannel.Install.t(), Channel.t()) ::
               {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}
 
-  @doc "Removes the chat app from `workspace`, where the chat app allows it, and forgets the workspace."
+  @doc "Removes the chat app from `workspace`, where the chat app allows it."
   @callback uninstall(workspace :: String.t(), Channel.t()) :: :ok | {:error, String.t()}
 
   @optional_callbacks install_url: 2, installed: 2, uninstall: 2
@@ -134,10 +117,9 @@ defmodule WardrikChannel do
   end
 
   @doc """
-  Posts a `Wardrik.Channel.Notification` through `adapter`. See `c:Wardrik.Channel.notify/2`.
+  Posts a `Wardrik.Channel.Notification` through `adapter`, in its workspace.
 
-  Posts in the notification's workspace, the one the agent's resolver gives. Returns
-  `{:skip, why}` if the channel isn't added there.
+  Returns `{:skip, why}` if the channel isn't added to that workspace.
   """
   @spec notify(module(), Wardrik.Channel.Notification.t(), keyword()) ::
           :ok | {:skip, String.t()} | {:error, term()}
@@ -169,18 +151,14 @@ defmodule WardrikChannel do
   def workspace(channel, id), do: Workspace.new(channel, id)
 
   @doc """
-  Sends `inbound` to the room's agent, as its sender, and has the reply posted in its thread.
+  Asks the room's agent `inbound`, and posts the reply in its thread.
 
-  The agent is asked when:
+  The agent is asked when the message mentions the bot, when the room answers every message, or
+  when it replies in a thread the agent answers in.
 
-    * the message mentions the bot
-    * the room's agent answers every message
-    * the message replies in a thread the agent already answers in
-
-  Returns `{:asked, {agent, conversation}}`, `:ignored` if no agent answers, or
-  `{:error, message}`, as when your app doesn't know the sender or the authorizer refuses them.
-
-  If the agent is waiting on calls, the message queues behind them and the calls are posted again.
+    * `{:asked, {agent, conversation}}` - asked.
+    * `:ignored` - no agent answers it.
+    * `{:error, message}` - to tell the sender, such as when your app doesn't know them.
   """
   @spec received(Workspace.t(), Inbound.t()) ::
           {:asked, {String.t(), String.t()}} | :ignored | {:error, String.t()}
@@ -230,7 +208,7 @@ defmodule WardrikChannel do
       )
 
   @doc """
-  Approves or denies a call the agent waits on, as `answer`'s member.
+  Approves or denies a call the agent waits on, as the member who pressed the button.
 
       WardrikChannel.decide(workspace, %WardrikChannel.Answer{
         member: member,
@@ -241,13 +219,8 @@ defmodule WardrikChannel do
       })
       #=> {:ok, %Wardrik.Decision{}}
 
-  Build the `WardrikChannel.Answer` from what the adapter put on the button, from a
-  `WardrikChannel.Waiting`.
-
-  The member acts as whoever the channel's `:identities` says they are. The authorizer decides,
-  from the context `WardrikChannel.Workspace.deciding_scope/2` gives it. A refusal is
-  `{:error, deciding}`, the channel's `:deciding` message. A member your app doesn't know is told
-  why.
+  Build the `WardrikChannel.Answer` from what the adapter put on the button. Returns
+  `{:error, message}` to tell the member, such as the channel's `:deciding` message if refused.
   """
   @spec decide(Workspace.t(), Answer.t()) :: {:ok, Wardrik.Decision.t()} | {:error, String.t()}
   def decide(workspace, %Answer{decision: decision} = answer) do
@@ -255,9 +228,8 @@ defmodule WardrikChannel do
          do: decided(workspace, answered(scope, answer, decision))
   end
 
-  defp call(%Answer{agent: agent, interrupt: interrupt}), do: [agent: agent, interrupt: interrupt]
-
-  defp held(%Answer{conversation: conversation}), do: given(:conversation, conversation)
+  defp call(%Answer{agent: agent, interrupt: interrupt, conversation: conversation}),
+    do: [agent: agent, interrupt: interrupt] ++ given(:conversation, conversation)
 
   defp decided(_workspace, {:ok, [decision]}), do: {:ok, decision}
 
@@ -267,10 +239,10 @@ defmodule WardrikChannel do
   defp decided(_workspace, {:error, %Error{message: message}}), do: {:error, message}
 
   defp answered(scope, answer, {:approve, note}),
-    do: Wardrik.Agent.approve(scope, call(answer) ++ given(:note, note), held(answer))
+    do: Wardrik.Agent.approve(scope, call(answer) ++ given(:note, note))
 
   defp answered(scope, answer, {:deny, reason}),
-    do: Wardrik.Agent.deny(scope, call(answer) ++ given(:reason, reason), held(answer))
+    do: Wardrik.Agent.deny(scope, call(answer) ++ given(:reason, reason))
 
   defp given(_key, nil), do: []
   defp given(key, value), do: [{key, value}]

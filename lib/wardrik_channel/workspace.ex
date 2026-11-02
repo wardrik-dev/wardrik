@@ -1,18 +1,14 @@
 defmodule WardrikChannel.Workspace do
   @moduledoc """
-  A channel in one place it's added to, such as one Slack workspace.
+  A channel in one workspace it's added to, such as one Slack workspace. Adapters get one with
+  `WardrikChannel.workspace/2`.
 
-  Adapters get one for each request with `WardrikChannel.workspace/2`.
+  A member's scope, which your `Wardrik.Authorizer` sees, has:
 
-  Members act in Wardrik as the principal the channel's `WardrikChannel.Identities` gives, with
-  the channel as their actor, `{:channel, name}`. Wardrik's `Wardrik.Authorizer` decides what
-  they may do, from what the channel puts in the scope's `context`:
-
-    * `:installation` - `%{owner: owner, workspace: workspace}`, always.
-    * `:asked_by` - when deciding, the principal ID that asked in the conversation, where known.
-
-  The workspace offers the agents the authorizer lets a member read whose definitions list the
-  channel in `channels`.
+    * `principal` - who `WardrikChannel.Identities` says the member is.
+    * `actor` - `{:channel, name}`.
+    * `context.installation` - `%{owner: owner, workspace: workspace}`.
+    * `context.asked_by` - when deciding, the ID of who asked, where known.
   """
 
   alias Wardrik.Channel.Installation
@@ -34,25 +30,19 @@ defmodule WardrikChannel.Workspace do
          do: {:ok, %__MODULE__{channel: channel, installation: installation}}
   end
 
-  @doc """
-  Returns the channel's own scope, for what no member asked, such as posting replies. It acts
-  for the installation's owner, with the channel as actor.
-  """
+  @doc "Returns the channel's own scope, used when no member asked, such as to post replies."
   @spec scope(t()) :: Wardrik.Scope.t()
   def scope(%__MODULE__{installation: installation} = workspace),
     do: acting(workspace, %Principal{id: installation.owner}, %{})
 
-  @doc "Returns `member`'s scope, with the channel as actor, or what to tell them if they may not act."
+  @doc "Returns `member`'s scope, or what to tell them if your app doesn't know them."
   @spec member_scope(t(), Member.t()) :: {:ok, Wardrik.Scope.t()} | {:error, String.t()}
   def member_scope(workspace, member) do
     with {:ok, principal} <- identify(workspace, member),
          do: {:ok, acting(workspace, principal, %{})}
   end
 
-  @doc """
-  Returns the scope `answer`'s member decides calls in: `member_scope/2`, with `:asked_by` in its
-  context where known.
-  """
+  @doc "Returns `member_scope/2` for the answer's member, with `:asked_by` in its context."
   @spec deciding_scope(t(), Answer.t()) :: {:ok, Wardrik.Scope.t()} | {:error, String.t()}
   def deciding_scope(workspace, %Answer{member: member, asked_by: asked_by}) do
     known = if asked_by, do: %{asked_by: asked_by}, else: %{}
@@ -61,7 +51,7 @@ defmodule WardrikChannel.Workspace do
          do: {:ok, acting(workspace, principal, known)}
   end
 
-  @doc "Returns who `member` is in your app, from the channel's `:identities`, or why they may not act."
+  @doc "Returns who `member` is in your app, or what to tell them if unknown."
   @spec identify(t(), Member.t()) :: {:ok, Principal.t()} | {:error, String.t()}
   def identify(%__MODULE__{channel: channel, installation: installation}, %Member{} = member),
     do: Channel.identify(channel, installation.workspace, member)
@@ -80,9 +70,8 @@ defmodule WardrikChannel.Workspace do
   end
 
   @doc """
-  Returns the agents that may answer in the workspace's rooms, sorted by ID: those the authorizer
-  lets `member` read, or the channel's own scope without one. A member who may not act is offered
-  none.
+  Returns the agents that list this channel and that `member` may read, sorted by ID. Without a
+  member, uses the channel's own scope.
   """
   @spec offered(t(), Member.t() | nil) :: [Offer.t()]
   def offered(workspace, member \\ nil)
@@ -124,8 +113,7 @@ defmodule WardrikChannel.Workspace do
   end
 
   @doc """
-  Returns the ID of the conversation `:thread` of `:room` holds. Each agent that answers there
-  keeps its own history of it, as `{agent, conversation}`.
+  Returns the conversation ID of `:thread` in `:room`.
 
       WardrikChannel.Workspace.conversation(workspace, room: "C024BE91L", thread: "1696.1234")
       #=> "slack.T0123.C024BE91L.1696.1234"
@@ -135,7 +123,7 @@ defmodule WardrikChannel.Workspace do
     do: prefix(workspace, Keyword.fetch!(opts, :room)) <> Keyword.fetch!(opts, :thread)
 
   @doc """
-  Returns the thread of `:room` that `:conversation`, from `conversation/2`, holds.
+  Returns the thread of `:room` that `:conversation` holds. The reverse of `conversation/2`.
 
       WardrikChannel.Workspace.thread(workspace,
         room: "C024BE91L",

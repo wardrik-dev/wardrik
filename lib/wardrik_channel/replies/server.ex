@@ -1,15 +1,5 @@
 defmodule WardrikChannel.Replies.Server do
-  @moduledoc """
-  Posts in one room's threads.
-
-  Follows the log of each conversation the room's threads hold, by its `{agent, conversation}`,
-  and posts what each event asks for. It saves its cursor after each post, so it carries on from
-  there after a restart. A conversation it starts to follow is read from its end at that time.
-
-  A failed post is retried with backoff, up to a minute between tries. After eight attempts it's
-  dropped with a warning. Later posts wait behind it. Statuses are shown at most once every two
-  seconds per thread, and are never retried.
-  """
+  @moduledoc false
 
   use DurableServer, vsn: 2
 

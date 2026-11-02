@@ -1,14 +1,9 @@
 defmodule WardrikChannel.Channel do
   @moduledoc """
-  One chat app Wardrik runs, under the name it's given.
+  One chat app Wardrik runs, under the name it's configured with. Adapters get it from
+  `WardrikChannel.channel/2`. See `WardrikChannel` for its options.
 
-  Holds the adapter, the adapter's own options, the installations that say where it's added, and
-  the identities that say who each member is. Wardrik passes it the rest:
-
-    * `:server` - the `Wardrik.Server` that runs operations.
-    * `:wardrik` - the instance.
-    * `:events` - where events are followed and recorded.
-    * `:store` - Wardrik's store.
+    * `:options` - the options left over for the adapter, such as Slack's `:signing_secret`.
     * `:vault` - where tokens are sealed. `nil` without Wardrik's `:keys`.
   """
 
@@ -86,12 +81,10 @@ defmodule WardrikChannel.Channel do
         }
 
   @doc """
-  Builds `adapter`'s channel from the options Wardrik passes it. See `WardrikChannel` for the
-  options. The adapter reads the ones left over, from `:options`.
+  Builds `adapter`'s channel from the options Wardrik passes it.
 
-  Raises `NimbleOptions.ValidationError` on invalid options, or `ArgumentError` if the name isn't
-  lower-case letters, digits and `-`, starting with a letter, or the options give neither or both
-  of `:token` and `:installations`.
+  Raises `NimbleOptions.ValidationError` on an invalid option, or `ArgumentError` on a bad name
+  or without exactly one of `:token` and `:installations`.
   """
   @spec new(module(), keyword()) :: t()
   def new(adapter, opts) do
@@ -128,7 +121,7 @@ defmodule WardrikChannel.Channel do
     do: module.fetch(%Request{channel: name, workspace: workspace}, config)
 
   @doc """
-  Returns the channel's installations whose owner is `owner`, exactly, as your app named them.
+  Returns the channel's installations whose owner is exactly `owner`.
 
       WardrikChannel.Channel.owned(channel, "acme")
       #=> [%Wardrik.Channel.Installation{workspace: "T0123", owner: "acme", ...}]
@@ -137,10 +130,7 @@ defmodule WardrikChannel.Channel do
   def owned(%__MODULE__{name: name, installations: {module, config}}, owner),
     do: module.owned(%Request{channel: name, owner: owner}, config)
 
-  @doc """
-  Returns who `member` of `workspace` is in your app, from the channel's `:identities`, or why
-  they may not act.
-  """
+  @doc "Returns who `member` of `workspace` is in your app, or what to tell them if unknown."
   @spec identify(t(), String.t(), WardrikChannel.Member.t()) ::
           {:ok, WardrikCore.Principal.t()} | {:error, String.t()}
   def identify(%__MODULE__{name: name, identities: {module, config}}, workspace, member) do

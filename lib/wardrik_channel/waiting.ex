@@ -6,10 +6,10 @@ defmodule WardrikChannel.Waiting do
     * `:conversation` - the conversation it's in, or `nil` for the agent's own.
     * `:interrupt` - the `Wardrik.Interrupt`.
     * `:arguments` - the call's arguments, if known.
-    * `:asked_by` - who asked for the turn. They may always decide it.
+    * `:asked_by` - the ID of who asked for the turn, if known.
 
   Put `agent`, `conversation`, the interrupt's `id` and `asked_by` on the buttons. Pass them back
-  in a `WardrikChannel.Answer` to `WardrikChannel.decide/2` when one is pressed.
+  in a `WardrikChannel.Answer` to `WardrikChannel.decide/2`.
   """
 
   @enforce_keys [:agent, :interrupt]

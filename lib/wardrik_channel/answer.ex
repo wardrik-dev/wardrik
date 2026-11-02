@@ -15,7 +15,7 @@ defmodule WardrikChannel.Answer do
     * `:agent` - the agent's ID, from the `WardrikChannel.Waiting` on the button.
     * `:conversation` - the conversation's ID, from the same. `nil` for the agent's own.
     * `:interrupt` - the interrupt's ID.
-    * `:asked_by` - who asked for the turn. Optional.
+    * `:asked_by` - the ID of who asked for the turn. Optional.
     * `:decision` - `{:approve, note}` or `{:deny, reason}`. Either may be `nil`.
   """
 

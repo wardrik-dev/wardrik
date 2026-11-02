@@ -18,9 +18,9 @@ defmodule WardrikChannel.Rooms do
       # The bot left the room
       :ok = WardrikChannel.Rooms.left(workspace, room, member)
 
-  Each change is recorded in the audit as `wardrik.room.bound` or `wardrik.room.unbound`. Pass the
-  `member` who made it, or `nil` if the adapter doesn't know. A member is offered the agents the
-  authorizer lets them read. See `WardrikChannel.Workspace.offered/2`.
+    * Each change is recorded in the audit as `wardrik.room.bound` or `wardrik.room.unbound`.
+    * Pass the `member` who made it, or `nil` if the adapter doesn't know.
+    * A member is offered the agents they may read. See `WardrikChannel.Workspace.offered/2`.
   """
 
   alias WardrikChannel.Binding
@@ -35,8 +35,7 @@ defmodule WardrikChannel.Rooms do
   @doc """
   Returns `room`'s binding, or `nil` if it has none.
 
-  Returns `nil` too if the room was bound while another owner held the installation. So a
-  workspace added again for another owner keeps none of its rooms' agents.
+  A workspace added again for another owner starts with no bindings.
   """
   @spec get(Workspace.t(), String.t()) :: Binding.t() | nil
   def get(%Workspace{installation: installation} = workspace, room) do
@@ -51,7 +50,7 @@ defmodule WardrikChannel.Rooms do
     end
   end
 
-  @doc "Binds `room` to the agent the workspace offers, if there's one. Else returns the choices."
+  @doc "Binds `room` to the one agent offered. With several, returns them to choose from."
   @spec joined(Workspace.t(), String.t(), Member.t() | nil) :: shown()
   def joined(workspace, room, by \\ nil) do
     case Workspace.offered(workspace, by) do
@@ -71,8 +70,8 @@ defmodule WardrikChannel.Rooms do
   end
 
   @doc """
-  Binds `:room` to `:agent`, answering when mentioned. Returns `{:error, :not_offered}` if the
-  workspace doesn't offer it to `:by`.
+  Binds `:room` to `:agent`, answering when mentioned. Returns `{:error, :not_offered}` if `:by`
+  isn't offered it.
 
     * `:room` - the room. Required.
     * `:agent` - the agent's ID. Required.
@@ -91,7 +90,7 @@ defmodule WardrikChannel.Rooms do
     end
   end
 
-  @doc "Sets whether `room`'s agent answers `:mentions` or `:everything`. Returns `{:error, :not_bound}` if no agent is bound."
+  @doc "Sets whether `room`'s agent answers `:mentions` or `:everything`."
   @spec answers(Workspace.t(), String.t(), Binding.answers(), Member.t() | nil) ::
           {:ok, Binding.t()} | {:error, :not_bound}
   def answers(workspace, room, answers, by \\ nil) when answers in [:mentions, :everything] do
@@ -101,7 +100,7 @@ defmodule WardrikChannel.Rooms do
     end
   end
 
-  @doc "Unbinds `room`. No agent answers there, and nothing more is posted in its threads."
+  @doc "Unbinds `room`. Nothing more is posted in its threads."
   @spec left(Workspace.t(), String.t(), Member.t() | nil) :: :ok
   def left(workspace, room, by \\ nil) do
     case get(workspace, room) do

@@ -1,7 +1,7 @@
 defmodule WardrikChannel.Install do
   @moduledoc """
-  Adding the chat app to a workspace, for `owner`: where `c:WardrikChannel.install_url/2` sends
-  them, and what `c:WardrikChannel.installed/2` finishes.
+  Adding the chat app to a workspace, for `owner`. Passed to `c:WardrikChannel.install_url/2`
+  and `c:WardrikChannel.installed/2`.
 
       %WardrikChannel.Install{owner: "acme", return_to: "/settings"}
       %WardrikChannel.Install{owner: "acme", query: conn.query_params}

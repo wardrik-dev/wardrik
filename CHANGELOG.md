@@ -1,45 +1,36 @@
 # Changelog
 
-## 0.1.0-rc.2 (2026-10-31)
+## 0.1.0-rc.2 (2026-11-02)
 
-- `identities:`, required: a `WardrikChannel.Identities` that says who each chat member is in
-  your app. A member it doesn't know can't ask or decide, and is told why.
-- `WardrikChannel.Channel.owned/2`, the installations an owner holds, exactly.
-- Options are validated with NimbleOptions, and documented from the schema. An adapter reads the
-  ones left over from `:options`.
+- `identities:`, required: a `WardrikChannel.Identities` that says who each chat member is in your
+  app. A member it doesn't know can't ask or decide, and is told why.
+- `WardrikChannel.Channel.owned/2` lists the installations an owner holds.
+- Options are validated with NimbleOptions. `WardrikChannel.Channel.new/2` raises
+  `NimbleOptions.ValidationError` on an invalid one. An adapter reads the rest from `:options`.
+- Requires `wardrik_protocol`, `wardrik_events` and `wardrik_vault` 0.1.0-rc.2.
 
 ### Breaking
 
-- A thread is a conversation of the room's agent: `{agent, conversation}`, with
-  `Workspace.conversation/2` giving `"slack.T0123.C024BE91L.1696.1234"`. It's passed to Wardrik as
-  `conversation`. `WardrikChannel.received/2` returns `{:asked, {agent, conversation}}`.
-- `WardrikChannel.Waiting` and `WardrikChannel.Answer` have `:agent` and `:conversation`, `nil`
-  for the agent's own.
-- Replies follow each thread's own conversation log, not a pattern over every log.
-  `Workspace.logs/2` is gone. `Replies.follow/2` and `Replies.remind/2` take `:room`, `:agent` and
-  `:conversation`. A room's saved replies from rc.1 start over, following threads as they're
-  asked in.
-- Members act as the principal `identities:` gives, with the channel as their actor,
-  `{:channel, name}`, and no grants: the host's authorizer decides from the scope's `context`,
-  its `installation`, and when deciding, `asked_by`. A room offers the agents the authorizer lets
-  the member read.
-- No approvers or tenancy: the `approvers` option, `include?/2`, `WardrikChannel.Membership`,
-  `Workspace.principal/2`, `Workspace.approver?/1`, `Outbound`'s `approvers`, and the `approver`
-  context key are gone. `Workspace.member_scope/2` and `Workspace.deciding_scope/2` return
-  `{:ok, scope}` or what to tell the member. The channel's own scope acts for the installation's
-  owner.
-- A notice posts in the workspace its `Wardrik.Channel.Notification` names, the one the agent's
-  resolver gives, and is skipped if the channel isn't added there.
-- `WardrikChannel` callbacks take what they act on, then the `WardrikChannel.Channel`:
-  `deliver/2` the outbound, `install_url/2` and
-  `installed/2` a `WardrikChannel.Install`, and `uninstall/2` the workspace. The installation
-  stores implement `Wardrik.Channel.Installations` rc.2.
-- An install's token is sealed as a `:token`, and read only as one.
-- `WardrikChannel.Channel.new/2` raises `NimbleOptions.ValidationError` on an invalid option.
-- Functions take named arguments: `WardrikChannel.decide/2` a `WardrikChannel.Answer`, as does
-  `Workspace.deciding_scope/2`; `Workspace.conversation/2`, `Workspace.thread/2`,
-  `Replies.remind/2`, `Rooms.start/2`, `Rooms.started?/2`, `Rooms.chose/2` and
-  `Replies.State.arguments/2` a keyword list.
+- Each thread is its own conversation of the room's agent, such as
+  `"slack.T0123.C024BE91L.1696.1234"` from `Workspace.conversation/2`.
+  `WardrikChannel.received/2` returns `{:asked, {agent, conversation}}`.
+- `WardrikChannel.Waiting` and `WardrikChannel.Answer` have `:agent` and `:conversation`.
+- Replies follow each thread's conversation only. `Workspace.logs/2` is gone. `Replies.follow/2`
+  and `Replies.remind/2` take `:room`, `:agent` and `:conversation`. Saved replies start over.
+- Your authorizer decides what members may do. Their scope has `actor: {:channel, name}`, and
+  `:installation` and `:asked_by` in its `context`. A room offers the agents a member may read.
+- Removed: the `approvers` option, the `include?/4` callback, `WardrikChannel.Membership`,
+  `Workspace.principal/2` and `Workspace.approver?/1`.
+- `Workspace.member_scope/2` and `Workspace.deciding_scope/2` return `{:ok, scope}`, or what to
+  tell the member.
+- A notice posts in the workspace the agent's resolver gives, and is skipped if the channel isn't
+  added there.
+- Callbacks take what they act on, then the channel: `deliver/2`, `install_url/2`, `installed/2`
+  (with a `WardrikChannel.Install`) and `uninstall/2`.
+- An install's token is sealed in the vault as a `:token`.
+- Functions take named arguments: `WardrikChannel.decide/2` and `Workspace.deciding_scope/2` a
+  `WardrikChannel.Answer`; `Workspace.conversation/2`, `Workspace.thread/2`, `Replies.remind/2`,
+  `Rooms.start/2`, `Rooms.started?/2` and `Rooms.chose/2` a keyword list.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

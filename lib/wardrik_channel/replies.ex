@@ -1,15 +1,10 @@
 defmodule WardrikChannel.Replies do
   @moduledoc """
-  Posts agents' answers in each room's threads.
+  Posts agents' answers in each room's threads: replies, status, calls to decide, and failures.
 
-  Each room has one `WardrikChannel.Replies.Server` in the cluster, kept in Wardrik's store. It
-  reads the log of each conversation its threads hold, and no other, so no answer is lost to a
-  restart. It posts:
-
-    * what a run answered
-    * what the agent is doing while it works
-    * the calls it waits on, and who decided them
-    * why a run failed, or that it stopped
+    * Each room has one process in the cluster. It saves its place in Wardrik's store, so no
+      answer is lost to a restart.
+    * A failed post is retried with backoff, up to eight times. Later posts wait behind it.
   """
 
   alias WardrikChannel.Channel
@@ -31,8 +26,7 @@ defmodule WardrikChannel.Replies do
   end
 
   @doc """
-  Starts posting what `:agent` does in `:conversation`, in its thread of `:room`. Does nothing if
-  it already is.
+  Starts posting what `:agent` does in `:conversation`, in its thread of `:room`. Idempotent.
 
       WardrikChannel.Replies.follow(workspace,
         room: "C024BE91L",

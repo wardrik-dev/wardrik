@@ -1,16 +1,5 @@
 defmodule WardrikChannel.Replies.State do
-  @moduledoc """
-  The state of one room's replies.
-
-  Saved between restarts:
-
-    * the conversations followed, as `{agent, conversation}`
-    * the cursor past what's posted
-    * for each conversation, the run under way, the messages it answers and who asked
-    * the arguments of each conversation's calls
-
-  Not saved: the channel, the follower, and when each thread's last status was shown.
-  """
+  @moduledoc false
 
   @kept [:workspace, :room, :conversations, :cursor, :senders, :runs, :calls]
 
