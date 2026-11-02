@@ -46,7 +46,7 @@ defmodule Wardrik.AgentTools do
     offered(Keyword.fetch!(opts, :reach), %{
       wardrik: wardrik,
       id: id,
-      org: Wardrik.Orgs.org(id),
+      org: Wardrik.Owners.org(id),
       principal: principal,
       policy: nil,
       labels: []
@@ -169,7 +169,7 @@ defmodule Wardrik.AgentTools do
          "agents" =>
            for(
              agent <- agents,
-             Wardrik.Orgs.org(agent["id"]) == me.org,
+             Wardrik.Owners.org(agent["id"]) == me.org,
              not AgentID.conversation?(agent["id"]),
              do: Map.take(agent, ["id", "status"])
            )

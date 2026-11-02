@@ -23,8 +23,10 @@ defmodule Wardrik.Authorizer.Request do
     * `:resource` - what it acts on, as `{kind, id}`:
       * `{:agent, id}` - the agent `id`, as your app named it. Wardrik never reads it.
       * `{:deployment, name}` - the deployment, by `Wardrik`'s `:deployment`.
-      * `{:owner, owner}` - an owner's providers, servers, notify targets, secrets, connections
-        and ceilings. These operations move to `WardrikDaemon`.
+      * `{:owner, owner}` - an owner's providers, servers, notify targets and connections.
+        These operations move to `WardrikDaemon`.
+      * `{kind, id}` - anything else your app authorizes through its authorizer, as
+        `WardrikDaemon` does its own routes'.
     * `:scope` - the `Wardrik.Scope` acting.
     * `:context` - what else the request carries: an owner's item's `:name`, and what the actor
       knows. A channel gives `:asked_by`, the principal ID that asked in the conversation, where
@@ -41,7 +43,11 @@ defmodule Wardrik.Authorizer.Request do
   defstruct [:principal, :actor, :action, :resource, :scope, context: %{}]
 
   @typedoc "What an action acts on, by kind and ID."
-  @type resource() :: {:agent, String.t()} | {:deployment, String.t()} | {:owner, String.t()}
+  @type resource() ::
+          {:agent, String.t()}
+          | {:deployment, String.t()}
+          | {:owner, String.t()}
+          | {atom(), String.t()}
 
   @type t() :: %__MODULE__{
           principal: Principal.t(),

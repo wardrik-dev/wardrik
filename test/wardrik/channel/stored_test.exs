@@ -1,6 +1,8 @@
 defmodule Wardrik.Channel.StoredTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.Test.Wardrik, only: [unsealed: 2]
+
   alias Wardrik.Channel.Installation
   alias WardrikChannel.Channel
 
@@ -40,7 +42,7 @@ defmodule Wardrik.Channel.StoredTest do
 
     assert Channel.install(channel, installation) == :ok
     assert Channel.installation(channel, "T1") == {:ok, installation}
-    assert Wardrik.fetch_secret(wardrik, owner: "acme", name: "chat:T1") == {:ok, "xoxb-acme"}
+    assert unsealed(wardrik, {"acme", "chat:T1"}) == {:ok, "xoxb-acme"}
 
     assert Channel.uninstall(channel, "T1") == :ok
     assert Channel.installation(channel, "T1") == :error

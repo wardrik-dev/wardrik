@@ -5,6 +5,7 @@ defmodule Wardrik.HTTPTest do
   import Plug.Conn
   import Plug.Test
   import Wardrik.Test.HTTP
+  import Wardrik.Test.Wardrik, only: [seal: 4]
 
   setup :set_mimic_global
   setup :start_wardrik
@@ -34,10 +35,12 @@ defmodule Wardrik.HTTPTest do
     end
 
     test "reads integers from the query", context do
-      :ok = Wardrik.put_secret(context.wardrik, owner: "acme", name: "KEY", value: "v")
-      :ok = Wardrik.put_secret(context.wardrik, owner: "acme", name: "OTHER", value: "v")
+      for id <- ["acme/one", "acme/two"] do
+        request(context, "PUT", "/v1/agents/" <> id, %{"model" => "anthropic:claude-haiku-4-5"})
+      end
+
       conn = request(context, "GET", "/v1/deployment/audit?limit=1")
-      assert %{"events" => [%{"type" => "wardrik.secret.stored"}]} = body(conn)
+      assert %{"events" => [%{"type" => "wardrik.agent.defined"}]} = body(conn)
 
       conn = request(context, "GET", "/v1/deployment/audit?limit=many")
       assert {conn.status, body(conn)["error"]["type"]} == {400, "invalid_request"}
@@ -101,12 +104,7 @@ defmodule Wardrik.HTTPTest do
   describe "webhooks" do
     setup context do
       :ok =
-        Wardrik.put_secret(context.wardrik,
-          owner: "acme",
-          name: "HOOK",
-          value: "s3cret",
-          kind: :signing_secret
-        )
+        seal(context.wardrik, {"acme", "HOOK"}, "s3cret", :signing_secret)
 
       request(context, "PUT", "/v1/agents/acme/hooks", %{
         "model" => "anthropic:claude-haiku-4-5",

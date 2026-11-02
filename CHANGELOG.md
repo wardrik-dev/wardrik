@@ -23,22 +23,21 @@
   each notice is sent, with no redirect followed. `:notify` takes `:req_options` for them.
 - Secrets by reference: an OAuth app's client secret, an MCP server's header secrets and a notify
   target's secret are named, read from the owner's vault as each is used, and never answered.
-  Putting or deleting a secret connects its MCP servers again on every node.
 - `mcp_servers.list` answers the servers an owner's agents reach, each with `owner` and `source`,
   and never their headers. `mcp_servers.remove` removes the owner's own.
 - `Wardrik.schema/0`: `Wardrik.start_link/1`'s options as a NimbleOptions schema, for a host that
   reads them from a file. Each notify target's options are checked as Wardrik starts, by
   `c:Wardrik.Notify.schema/0`.
 - `:credentials`, `:key_source` and `:grants`: where every agent's credentials, API keys and OAuth
-  grants come from, in place of the vault, `Wardrik.Keys` and `WardrikOAuth`.
+  grants come from, in place of the vault and `WardrikOAuth`.
 - An error from a server's own sign-in names the server.
 
 ### Breaking
 
 - Each seam's callback takes one request struct, then its options: `authorize/2` a
   `Wardrik.Authorizer.Request`, and `resolve/2` a `Wardrik.Resolver.Request`.
-- Implements rc.2 of the packages' seams, each taking a request struct: `Wardrik.Keys`
-  (`WardrikCore.Keys`), `Wardrik.TriggerTarget` (`WardrikTriggers.Target`), and `Wardrik` as
+- Implements rc.2 of the packages' seams, each taking a request struct:
+  `Wardrik.TriggerTarget` (`WardrikTriggers.Target`), and `Wardrik` as
   `Wardrik.Server`. A channel's `request/2` and `notify/2` take the request first.
 - A `Wardrik.Authorizer.Request` names the principal, the action and the resource as `{kind, id}`,
   as Cedar's requests do. An agent is `{:agent, id}`, its ID as given, and the deployment
@@ -54,20 +53,16 @@
   those its owners added.
 - `finish_sign_in/3` takes `as:`, the principal finishing the sign-in, and `sign_in_pages/2` and
   `Wardrik.HTTP`'s `:principal` say who is at the browser. Without them, no callback finishes.
-- `secrets.put` takes a `purpose`: `api_key`, `client_secret`, `header` or `signing_secret`. Each
-  secret is read only for its purpose, so an API key is only ever an `api_key`, and
-  `deployment_keys` gives no client secret, header or signing secret as a key.
 - `Wardrik.start_link/1` raises `NimbleOptions.ValidationError` on a bad option, not
   `ArgumentError`, and `nil` no longer stands for an unset option.
-- An agent falls back to the deployment's API keys only with `deployment_keys: true`. A person's
-  agent still falls back to their org's.
-- `Wardrik.Keys` takes `vault:` and `deployment:` options, and `Wardrik.Keys.owners/2`
-  whether the deployment's keys count.
 - OAuth apps added at runtime for MCP servers' sign-ins are kept under new keys. Add those servers
   again.
-- `put_secret/2`, `fetch_secret/2`, `lookup_secret/2` and `delete_secret/2` take the secret's
-  `:owner` and `:name` by name, and `put_secret/2` its `:value`, as do the functions `use Wardrik`
-  defines: `MyApp.AgentRuntime.put_secret(owner: "acme", name: "KEY", value: key)`.
+- Secrets, API keys, ceilings and org settings move to `wardrik_daemon`: the `secrets.*` and
+  `ceilings.list` operations, `put_secret/2`, `fetch_secret/2`, `lookup_secret/2`,
+  `delete_secret/2` and `list_secrets/1,2`, `Wardrik.Keys` and `:deployment_keys`,
+  `Wardrik.Ceiling`, `Wardrik.Orgs`, `Wardrik.OrgSettings`, `:orgs` and `refresh/2`'s `org:` are
+  gone. Without `:key_source`, agents get no key source, and approving past a budget needs no
+  `ceiling.approve`.
 - `Wardrik.Channels.install_url/2`, `installed/2` and `uninstall/2` take the `:channel`, then
   `:owner` and `:query`, or `:workspace`, by name. `Wardrik.Delegation.asked/2` takes `:asker`,
   `:agent` and `:message`, `Wardrik.Workspaces.resolve/2` `:agent`, `:definition` and `:files`,

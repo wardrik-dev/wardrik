@@ -45,6 +45,7 @@ defmodule Wardrik.ResolverTest do
         store: store,
         resolver: {Wardrik.Test.Resolver, resolved},
         capabilities: [priced: Wardrik.Test.Priced],
+        policies: [base: []],
         mcp: [github: [transport: {:stdio, command: "no-such-mcp-server"}]],
         notify: [targets: [audit: {Wardrik.Test.Heard, test: self()}]]
       )
@@ -150,7 +151,11 @@ defmodule Wardrik.ResolverTest do
           %Resolved{principal: "acme/@maria"},
           %Resolved{servers: %{"github" => :github}},
           %Resolved{notify: ["audit"]},
-          %Resolved{policy: [nope: ["*"]]}
+          %Resolved{policy: [nope: ["*"]]},
+          %Resolved{policy: %{"deny" => 5}},
+          %Resolved{policy: [%{"default" => "allow"}, %{"deny" => 5}]},
+          %Resolved{policies: %{careful: [nope: ["*"]]}},
+          %Resolved{policies: %{base: [deny: ["*"]]}}
         ] do
       set(resolved, @scout, {:ok, unread})
 
@@ -178,7 +183,8 @@ defmodule Wardrik.ResolverTest do
 
     {:ok, _agent} = define(scope, %{"tools" => ["priced"], "policy" => %{"default" => "allow"}})
 
-    set(resolved, @scout, {:ok, %Resolved{policy: [deny: ["search"]]}})
+    policy = [%{"default" => "allow"}, WardrikPolicy.new!(deny: ["search"])]
+    set(resolved, @scout, {:ok, %Resolved{policy: policy, policies: %{careful: [ask: ["*"]]}}})
     assert Wardrik.refresh(wardrik, agents: [@scout]) == []
 
     answers.()

@@ -33,11 +33,15 @@ System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
-:ok =
-  Wardrik.put_secret(MyApp.AgentRuntime,
-    owner: "acme/@maria",
-    name: "ISSUES_HOOK_SECRET",
-    value: "hook-s3cret"
+{:ok, _vsn} =
+  WardrikVault.put(
+    MyApp.AgentRuntime.Vault,
+    %WardrikVault.Secret{
+      principal: Wardrik.principal("acme/@maria"),
+      name: "ISSUES_HOOK_SECRET",
+      value: "hook-s3cret"
+    },
+    kind: :signing_secret
   )
 ```
 

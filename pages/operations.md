@@ -92,7 +92,6 @@ their shape depends on their type.
 | `Wardrik.Audit` | What people did. |
 | `Wardrik.Connections` | Accounts people and orgs connect. |
 | `Wardrik.MCPServers` | MCP servers orgs and people add. |
-| `Wardrik.Ceilings` | What orgs have spent. |
 | `Wardrik.Deployment` | Nodes and reloading. |
 | `Wardrik.Hook` | Webhook requests to triggers. |
 

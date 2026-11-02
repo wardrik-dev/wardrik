@@ -25,11 +25,35 @@ defmodule Wardrik.Test.Wardrik do
 
   def maria, do: %Principal{id: "acme/@maria", attributes: %{name: "Maria"}}
 
+  @doc """
+  Seals `value` as `owner`'s secret `name`, for `kind`, as a host does, and reconnects the
+  owner's servers whose headers read it.
+  """
+  def seal(wardrik, {owner, name}, value, kind \\ :secret) do
+    wardrik = Wardrik.Instance.fetch!(wardrik)
+    secret = %WardrikVault.Secret{principal: %Principal{id: owner}, name: name, value: value}
+    {:ok, _vsn} = WardrikVault.put(Wardrik.vault(wardrik), secret, kind: kind)
+    :ok = WardrikMCP.reconnect(Wardrik.mcp(wardrik), owner: owner, secret: name)
+  end
+
+  @doc "Removes `owner`'s secret `name`, as a host does, and reconnects the servers that read it."
+  def unseal(wardrik, {owner, name}) do
+    wardrik = Wardrik.Instance.fetch!(wardrik)
+    :ok = WardrikVault.delete(Wardrik.vault(wardrik), %Principal{id: owner}, name)
+    :ok = WardrikMCP.reconnect(Wardrik.mcp(wardrik), owner: owner, secret: name)
+  end
+
+  @doc "Returns `owner`'s secret `name`, unsealed."
+  def unsealed(wardrik, {owner, name}) do
+    wardrik = Wardrik.Instance.fetch!(wardrik)
+    WardrikVault.fetch(Wardrik.vault(wardrik), %Principal{id: owner}, name)
+  end
+
   def owner(wardrik), do: Wardrik.as(wardrik, maria())
 
   @roles %{
     reader:
-      ~w(agent.read agent.events connection.read mcp_server.read provider.read notify_target.read ceiling.read),
+      ~w(agent.read agent.events connection.read mcp_server.read provider.read notify_target.read),
     messenger: ~w(agent.ask agent.cancel agent.clear),
     approver: ~w(agent.decide),
     worker: ~w(agent.serve),

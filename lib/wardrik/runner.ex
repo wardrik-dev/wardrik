@@ -5,15 +5,13 @@ defmodule Wardrik.Runner do
     1. Finds the operation in the catalog.
     2. Validates the input against its schema.
     3. Asks the authorizer.
-    4. For an owner's operation, checks the org is known. See `Wardrik.Orgs`.
-    5. Calls the handler.
+    4. Calls the handler.
   """
 
   alias Wardrik.Authorizer
   alias Wardrik.Catalog
   alias Wardrik.Error
   alias Wardrik.Instance
-  alias Wardrik.Orgs
   alias Wardrik.Scope
 
   @doc "Runs the operation `id` in `scope`, with its handler."
@@ -31,8 +29,7 @@ defmodule Wardrik.Runner do
     with {:ok, operation, root} <- operation(catalog, id),
          {:ok, handler} <- handler(catalog, kind, id),
          {:ok, input} <- validate(input, root),
-         :ok <- authorize(scope, operation, input),
-         :ok <- known(scope, operation, input) do
+         :ok <- authorize(scope, operation, input) do
       handler.(%{scope | operation: operation}, input)
     end
   end
@@ -93,11 +90,6 @@ defmodule Wardrik.Runner do
       "#{kind} of #{owner}"
     )
   end
-
-  defp known(%Scope{wardrik: wardrik}, %{subject: "owner"}, %{"owner" => owner}),
-    do: Orgs.known(wardrik, Orgs.org(owner))
-
-  defp known(_scope, _operation, _input), do: :ok
 
   defp refused(:ok, _what), do: :ok
 

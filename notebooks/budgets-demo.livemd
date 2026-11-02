@@ -6,9 +6,9 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.2"}, {:kino, "~> 0.19"}])
 
 ## What you'll build
 
-Two agents share acme's ceiling of two cents a day. The writer also has a budget of its own, one
-cent a day. You'll watch their spend climb in a live table. The writer stops to ask for more, and
-the ceiling refuses the editor outright.
+A writer has a budget of one cent a day, and an editor one that refuses calls past a cent. You'll
+watch their spend climb in a live table. The writer stops to ask for more, and the editor is
+refused outright.
 
 The whole notebook spends about three cents of model calls.
 
@@ -58,25 +58,7 @@ Messages round to the cent.
 
 ## Setup
 
-An org's ceilings come from your `Wardrik.Orgs` module. Here acme's agents share two cents a day,
-and the ceiling refuses calls past it:
-
 ```elixir
-defmodule MyApp.Orgs do
-  @behaviour Wardrik.Orgs
-
-  @impl true
-  def settings("acme", _config) do
-    {:ok,
-     %Wardrik.OrgSettings{
-       ceilings: %{"plan" => [usd: 0.02, per: :day, on_exhausted: :deny]}
-     }}
-  end
-
-  def settings(org, _config),
-    do: {:error, Wardrik.Error.new(:not_found, "There's no org #{org} here.")}
-end
-
 defmodule MyApp.AllowAll do
   @behaviour Wardrik.Authorizer
 
@@ -84,19 +66,13 @@ defmodule MyApp.AllowAll do
   def authorize(_request, _opts), do: :ok
 end
 
-{:ok, _} =
-  Wardrik.start_link(
-    name: MyApp.AgentRuntime,
-    authorizer: {MyApp.AllowAll, []},
-    orgs: {MyApp.Orgs, []}
-  )
+{:ok, _} = Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.AllowAll, []})
 
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 ```
 
-`MyApp.AllowAll` lets every scope do anything, so Maria may read acme's ceilings and approve calls
-past them. In your app, an authorizer decides who may do what; see
-[Who may do what](access-demo.livemd).
+`MyApp.AllowAll` lets every scope do anything, so Maria may approve calls past a budget. In your
+app, an authorizer decides who may do what; see [Who may do what](access-demo.livemd).
 
 ## Two agents
 
@@ -115,16 +91,14 @@ System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
 {:ok, _} =
   Wardrik.Agent.define(scope, "acme/@maria/editor",
     model: "anthropic:claude-haiku-4-5",
-    instructions: "You write short memos about office life."
+    instructions: "You write short memos about office life.",
+    policy: [budget: [usd: 0.01, per: :day, on_exhausted: :deny]]
   )
 ```
 
-The editor has no budget of its own. The ceiling holds it all the same.
-
 ## Live spend
 
-`Wardrik.Agents.list/2` returns what each agent spent today. `Wardrik.Ceilings.list/2` returns
-what the org spent against each ceiling. Both tables refresh every second:
+`Wardrik.Agents.list/2` returns what each agent spent today. The table refreshes every second:
 
 ```elixir
 dollars = fn usd -> Float.round(usd / 1, 4) end
@@ -142,41 +116,17 @@ agent_rows = fn ->
   end
 end
 
-ceiling_rows = fn ->
-  {:ok, ceilings} = Wardrik.Ceilings.list(scope, owner: "acme")
-
-  for spend <- ceilings do
-    %{
-      ceiling: spend.ceiling,
-      limit_usd: spend.limit.usd,
-      spent_usd: dollars.(spend.spent.usd),
-      spent_tokens: spend.spent.tokens,
-      on_exhausted: spend.on_exhausted,
-      starts_over: spend.starts_over
-    }
-  end
-end
-
 agents_table =
   Kino.DataTable.new(agent_rows.(), name: "Agents today", keys: [:agent, :status, :tokens, :usd])
 
-ceilings_table =
-  Kino.DataTable.new(ceiling_rows.(),
-    name: "acme's ceilings",
-    keys: [:ceiling, :limit_usd, :spent_usd, :spent_tokens, :on_exhausted, :starts_over]
-  )
+Kino.listen(1_000, fn _tick -> Kino.DataTable.update(agents_table, agent_rows.()) end)
 
-Kino.listen(1_000, fn _tick ->
-  Kino.DataTable.update(agents_table, agent_rows.())
-  Kino.DataTable.update(ceilings_table, ceiling_rows.())
-end)
-
-Kino.Layout.grid([agents_table, ceilings_table])
+agents_table
 ```
 
 ## The writer's budget asks
 
-Ask the writer for stories until a reply doesn't come back. Keep an eye on the tables above:
+Ask the writer for stories until a reply doesn't come back. Keep an eye on the table above:
 
 ```elixir
 Enum.reduce_while(1..10, nil, fn n, _ ->
@@ -202,9 +152,9 @@ end)
 Kino.Layout.grid([allow, outcome])
 ```
 
-## The org's ceiling refuses
+## The editor's budget refuses
 
-The editor has no budget, but it spends from acme's ceiling with the writer. Ask it for memos:
+The editor's budget denies past its cent. Ask it for memos:
 
 ```elixir
 Enum.reduce_while(1..10, nil, fn n, _ ->
@@ -215,32 +165,14 @@ Enum.reduce_while(1..10, nil, fn n, _ ->
 end)
 ```
 
-Once acme's agents spent the two cents, the next model call of any of them is refused. The run
-fails with the ceiling's message. Wardrik also writes `wardrik.ceiling.reached` to the agent's log:
+Once it has spent the cent, its next model call is refused, and the run fails with the budget's
+message.
 
-```elixir
-{:ok, page} = Wardrik.Agent.events(scope, "acme/@maria/editor")
-
-for %{type: "wardrik.ceiling.reached", data: data} <- page.events, do: data
-```
-
-The ceiling holds every agent of the org. Click the writer's button now, and its run fails the
-same way.
-
-A ceiling's `on_exhausted` is one of:
-
-* `:ask` - the default. Waits on a `:ceiling_approval` interrupt for someone your authorizer
-  allows `ceiling.approve` on `{:owner, "acme"}`. Approving allows the ceiling's `grant` more to
-  the whole org for that period.
-* `:deny` - refuses the call, as here.
-* `:continue` - lets it run, so work always carries on. It still writes `wardrik.ceiling.reached`.
-
-A ceiling takes what a budget takes, except `per: :turn`. Its period starts over on the day in the
-`starts_over` column.
+Budgets an org's agents share are your host's to keep, as middleware its `Wardrik.Resolver`
+gives each agent. `wardrik_daemon` pools an org's policies' budgets as ceilings.
 
 ## Where next
 
-* [Orgs guide](https://hexdocs.pm/wardrik/orgs.html) - org settings, defaults and ceilings.
 * [Policies guide](https://hexdocs.pm/wardrik/policies.html) - budgets beside the other rules.
 * [Rules the model can't rewrite](policies-demo.livemd) - a policy playground.
 * [A person in the loop](approvals-demo.livemd) - approve or deny waiting calls in a form.

@@ -26,7 +26,7 @@ defmodule Wardrik.Instance do
 
   @doc "Returns the code `use Wardrik` injects. Config is read from `otp_app`."
   @spec using(atom() | nil) :: Macro.t()
-  def using(otp_app), do: {:__block__, [], [started(otp_app), scopes(), secrets()]}
+  def using(otp_app), do: {:__block__, [], [started(otp_app), scopes()]}
 
   defp started(otp_app) do
     quote do
@@ -55,26 +55,6 @@ defmodule Wardrik.Instance do
       @doc "Returns the scope `principal` acts in. See `Wardrik.as/3`."
       @spec as(WardrikCore.Principal.t() | String.t(), keyword()) :: Wardrik.Scope.t()
       def as(principal, opts \\ []), do: Wardrik.as(__MODULE__, principal, opts)
-    end
-  end
-
-  defp secrets do
-    quote do
-      @doc "Seals one of `:owner`'s secrets. See `Wardrik.put_secret/2`."
-      def put_secret(args), do: Wardrik.put_secret(__MODULE__, args)
-
-      @doc "Returns one of `:owner`'s secrets. See `Wardrik.fetch_secret/2`."
-      def fetch_secret(args), do: Wardrik.fetch_secret(__MODULE__, args)
-
-      @doc "Returns one of `:owner`'s secrets with its kind and version. See `Wardrik.lookup_secret/2`."
-      def lookup_secret(args), do: Wardrik.lookup_secret(__MODULE__, args)
-
-      @doc "Removes one of `:owner`'s secrets. See `Wardrik.delete_secret/2`."
-      def delete_secret(args), do: Wardrik.delete_secret(__MODULE__, args)
-
-      @doc "Lists every secret, or `owner`'s. See `Wardrik.list_secrets/2`."
-      def list_secrets, do: Wardrik.list_secrets(__MODULE__)
-      def list_secrets(owner), do: Wardrik.list_secrets(__MODULE__, owner)
     end
   end
 

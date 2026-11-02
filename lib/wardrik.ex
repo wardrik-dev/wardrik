@@ -81,15 +81,8 @@ defmodule Wardrik do
             key_source: [
               type: @entry,
               doc:
-                "The `WardrikCore.Keys` code fetches API keys from, as `{module, opts}`. " <>
-                  "`Wardrik.Keys` unless set."
-            ],
-            deployment_keys: [
-              type: :boolean,
-              default: false,
-              doc:
-                "`true` to let every agent use the deployment's API keys where its owner holds " <>
-                  "none. A host that doesn't set it gets no fallback. Read by `Wardrik.Keys`."
+                "The `WardrikCore.Keys` code fetches API keys from, as `{module, opts}`. Without " <>
+                  "it, code finds its own, as ReqLLM reads its config and the environment."
             ],
             grants: [
               type: {:tuple, [:atom, :any]},
@@ -178,10 +171,6 @@ defmodule Wardrik do
               type: :mod_arg,
               doc: "Says what each agent gets. See `Wardrik.Resolver`."
             ],
-            orgs: [
-              type: :mod_arg,
-              doc: "Per-org settings, without `:resolver`. See `Wardrik.Orgs`."
-            ],
             workspace: [
               type: :keyword_list,
               doc: "File trees shared beyond their owners. See `Wardrik.Workspaces`."
@@ -251,7 +240,6 @@ defmodule Wardrik do
     :notify,
     :declarations,
     :resolver,
-    :orgs,
     :workspace,
     :defaults,
     :triggers,
@@ -288,7 +276,6 @@ defmodule Wardrik do
           },
           declarations: {module(), term()} | nil,
           resolver: {module(), term()} | nil,
-          orgs: {module(), term()} | nil,
           workspace: %{String.t() => %{read: [String.t()], write: [String.t()]}},
           defaults: map(),
           triggers: keyword(),
@@ -378,10 +365,8 @@ defmodule Wardrik do
   def principal(id, attributes \\ %{}), do: %Principal{id: id, attributes: attributes}
 
   @doc """
-  Returns the name of the API key `model`'s provider needs, or `nil`.
-
-  Calls to `model` use the owner's secret of that name, or the deployment's with
-  `deployment_keys: true`. See `Wardrik.Keys`.
+  Returns the name of the API key `model`'s provider needs, or `nil`. It's the name the
+  `:key_source` is asked for.
 
       Wardrik.key_name("zai_coding_plan:glm-5.1")
       #=> "ZAI_API_KEY"
@@ -446,67 +431,6 @@ defmodule Wardrik do
       context: opts[:context]
     )
   end
-
-  @doc """
-  Seals `:value` as `:owner`'s secret `:name`, and records it in the audit.
-
-  `:owner` is an org, as `"acme"`, or a person, as `"acme/@maria"`. Their agents' tools and
-  servers can use the secret. Returns `{:error, :no_keys}` if Wardrik was started without `:keys`.
-
-      :ok =
-        Wardrik.put_secret(MyApp.AgentRuntime,
-          owner: "acme",
-          name: "ANTHROPIC_API_KEY",
-          value: key,
-          kind: :api_key
-        )
-
-  ## Options
-
-    * `:kind` - what it's for, as `:api_key` or `:client_secret`. It's read only for that. See
-      `t:WardrikVault.kind/0`.
-    * `:if_vsn` - only write if the secret is still at this version. See `lookup_secret/2`.
-  """
-  @spec put_secret(atom() | t(), keyword()) :: :ok | {:error, term()}
-  def put_secret(instance, args), do: Wardrik.Sealed.put(instance, args)
-
-  @doc """
-  Returns `:owner`'s secret `:name`, unsealed.
-
-      {:ok, key} = Wardrik.fetch_secret(MyApp.AgentRuntime, owner: "acme", name: "ZAI_API_KEY")
-  """
-  @spec fetch_secret(atom() | t(), owner: String.t(), name: String.t()) ::
-          {:ok, binary()} | {:error, term()}
-  def fetch_secret(instance, args), do: Wardrik.Sealed.fetch(instance, args)
-
-  @doc """
-  Returns `:owner`'s secret `:name`, unsealed, with its kind and version.
-
-  The kind is `:secret`, or `:grant` for an account someone connected. Pass the version to
-  `put_secret/2` as `:if_vsn`.
-  """
-  @spec lookup_secret(atom() | t(), owner: String.t(), name: String.t()) ::
-          {:ok, WardrikVault.kind(), binary(), term()}
-          | {:error, term()}
-          | {:error, WardrikVault.kind(), term()}
-  def lookup_secret(instance, args), do: Wardrik.Sealed.lookup(instance, args)
-
-  @doc """
-  Removes `:owner`'s secret `:name`, and records it in the audit. Returns `:ok` if there's none.
-  """
-  @spec delete_secret(atom() | t(), owner: String.t(), name: String.t()) :: :ok | {:error, term()}
-  def delete_secret(instance, args), do: Wardrik.Sealed.delete(instance, args)
-
-  @doc """
-  Lists every secret as `{owner, name, kind}`, or with `owner`, the names of theirs.
-
-  Values aren't unsealed. Returns `[]` if Wardrik was started without `:keys`.
-  """
-  @spec list_secrets(atom() | t()) :: [{String.t(), String.t(), WardrikVault.kind()}]
-  def list_secrets(instance), do: Wardrik.Sealed.list(instance)
-
-  @spec list_secrets(atom() | t(), String.t()) :: [String.t()]
-  def list_secrets(instance, owner), do: Wardrik.Sealed.list(instance, owner)
 
   @doc """
   Runs the operation `id`, such as `"agent.ask"`, in `scope`.
@@ -583,23 +507,17 @@ defmodule Wardrik do
 
       # These
       Wardrik.refresh(MyApp.AgentRuntime, agents: ["acme/scout"])
-
-      # An org's, without `:resolver`
-      Wardrik.refresh(MyApp.AgentRuntime, org: "acme")
       #=> []
   """
   @spec refresh(atom() | t(), keyword()) :: [String.t()]
   def refresh(instance, opts \\ []) do
-    opts = Keyword.validate!(opts, [:org, :agents])
+    opts = Keyword.validate!(opts, [:agents])
     wardrik = Instance.fetch!(instance)
-    Wardrik.Resolution.refresh(wardrik, refreshing(wardrik, opts))
+    Wardrik.Resolution.refresh(wardrik, refreshing(opts))
   end
 
-  defp refreshing(wardrik, org: org),
-    do: for(id <- Wardrik.Definitions.ids(wardrik), Wardrik.Orgs.org(id) == org, do: id)
-
-  defp refreshing(_wardrik, agents: ids), do: ids
-  defp refreshing(_wardrik, []), do: :all
+  defp refreshing(agents: ids), do: ids
+  defp refreshing([]), do: :all
 
   @doc """
   Returns the plug for sign-in callback pages, as `{plug, opts}`, or `nil` without `:oauth`.

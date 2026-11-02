@@ -1,6 +1,8 @@
 defmodule Wardrik.ChildrenTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.Test.Wardrik, only: [seal: 4]
+
   test "keeps agents in memory unless told where", %{test: test} do
     wardrik = Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: :"own #{test}")
     start_supervised!({Wardrik, wardrik}, id: :own)
@@ -82,12 +84,65 @@ defmodule Wardrik.ChildrenTest do
     )
 
     assert {:error, :no_keys} =
-             Wardrik.put_secret(:"keyless #{test}", owner: "acme", name: "HOOK", value: "s3cret")
+             Wardrik.Sealed.fetch(:"keyless #{test}", owner: "acme", name: "HOOK")
 
-    assert {:error, :no_keys} =
-             Wardrik.fetch_secret(:"keyless #{test}", owner: "acme", name: "HOOK")
+    assert Wardrik.Sealed.list(:"keyless #{test}") == []
+    refute Wardrik.Sealed.holds?(:"keyless #{test}", owner: "acme", name: "HOOK", kind: :secret)
+  end
 
-    assert Wardrik.list_secrets(:"keyless #{test}") == []
-    assert Wardrik.list_secrets(:"keyless #{test}", "acme") == []
+  defp linear(url),
+    do: [
+      linear: [
+        transport:
+          {:streamable_http,
+           url: url, headers: %{"authorization" => {:secret, "LINEAR_TOKEN"}, "x-plain" => "kept"}}
+      ]
+    ]
+
+  defp keyed(test, mcp) do
+    Wardrik.new(
+      authorizer: {Wardrik.Test.Allow, []},
+      name: :"keyed #{test}",
+      keys: [WardrikVault.generate_key()],
+      mcp: mcp
+    )
+  end
+
+  test "an MCP server it starts names the deployment's secrets in its headers, unread", %{
+    test: test
+  } do
+    wardrik = keyed(test, [])
+    start_supervised!({Wardrik, wardrik}, id: :keyed)
+    :ok = seal(wardrik, {"deployment", "LINEAR_TOKEN"}, "lin_123", :header)
+
+    wardrik = %{wardrik | mcp: linear("https://mcp.linear.test/mcp")}
+
+    %{start: {WardrikMCP, :start_link, [opts]}} = Wardrik.Children.mcp_spec(wardrik)
+    assert [linear: server] = opts[:servers]
+    assert server[:owner] == "deployment"
+    assert {:streamable_http, transport} = server[:transport]
+
+    assert transport[:headers] == %{
+             "authorization" => {:secret, "LINEAR_TOKEN"},
+             "x-plain" => "kept"
+           }
+
+    assert opts[:secret].("deployment", "LINEAR_TOKEN") == {:ok, "lin_123"}
+  end
+
+  test "an MCP server it starts reads the secret its headers name as it connects again", %{
+    test: test
+  } do
+    wardrik = keyed(test, linear(Wardrik.Test.Headers.start("/mcp")))
+    start_supervised!({Wardrik, wardrik}, id: :keyed)
+
+    :ok = seal(wardrik, {"deployment", "LINEAR_TOKEN"}, "Bearer lin_123", :header)
+    assert_receive {:authorization, "/mcp", ["Bearer lin_123"]}, 5_000
+
+    :ok = seal(wardrik, {"deployment", "LINEAR_TOKEN"}, "Bearer lin_456", :header)
+    assert_receive {:authorization, "/mcp", ["Bearer lin_456"]}, 5_000
+
+    :ok = seal(wardrik, {"acme", "LINEAR_TOKEN"}, "Bearer acme", :header)
+    refute_receive {:authorization, "/mcp", ["Bearer acme"]}, 500
   end
 end

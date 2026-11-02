@@ -99,10 +99,7 @@ defmodule Wardrik.Resolver do
 
   defp named(what, _names, unread), do: {:error, unread.("its #{what} map names to names")}
 
-  @doc false
-  @spec policies(Wardrik.t(), map(), (String.t() -> Error.t())) ::
-          {:ok, %{String.t() => WardrikPolicy.t()}} | {:error, Error.t()}
-  def policies(wardrik, policies, unread) do
+  defp policies(wardrik, policies, unread) do
     named = Map.new(policies, fn {name, rules} -> {to_string(name), rules} end)
 
     case Enum.find(Map.keys(named), &Map.has_key?(wardrik.policies, &1)) do
@@ -111,10 +108,7 @@ defmodule Wardrik.Resolver do
     end
   end
 
-  @doc false
-  @spec each(map(), (String.t(), term() -> {:ok, term()} | {:error, Error.t()})) ::
-          {:ok, map()} | {:error, Error.t()}
-  def each(named, read) do
+  defp each(named, read) do
     read = Map.new(named, fn {name, value} -> {name, read.(name, value)} end)
 
     case Enum.find(read, &match?({_name, {:error, _error}}, &1)) do
@@ -123,12 +117,9 @@ defmodule Wardrik.Resolver do
     end
   end
 
-  @doc false
-  @spec policy(String.t(), term(), (String.t() -> Error.t())) ::
-          {:ok, WardrikPolicy.t() | [WardrikPolicy.t()] | nil} | {:error, Error.t()}
-  def policy(_what, nil, _unread), do: {:ok, nil}
+  defp policy(_what, nil, _unread), do: {:ok, nil}
 
-  def policy(what, [first | _rest] = policies, unread) when not is_tuple(first) do
+  defp policy(what, [first | _rest] = policies, unread) when not is_tuple(first) do
     read =
       policies
       |> Enum.with_index(1)
@@ -140,16 +131,16 @@ defmodule Wardrik.Resolver do
     end
   end
 
-  def policy(_what, %WardrikPolicy{} = policy, _unread), do: {:ok, policy}
+  defp policy(_what, %WardrikPolicy{} = policy, _unread), do: {:ok, policy}
 
-  def policy(what, rules, unread) when is_map(rules) do
+  defp policy(what, rules, unread) when is_map(rules) do
     case WardrikPolicy.decode(rules) do
       {:ok, policy} -> {:ok, policy}
       {:error, why} -> {:error, unread.("its #{what}: #{why}")}
     end
   end
 
-  def policy(what, rules, unread) do
+  defp policy(what, rules, unread) do
     {:ok, WardrikPolicy.new!(rules)}
   rescue
     error in ArgumentError -> {:error, unread.("its #{what}: #{Exception.message(error)}")}

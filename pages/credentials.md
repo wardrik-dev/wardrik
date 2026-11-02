@@ -57,82 +57,46 @@ config :my_app, MyApp.AgentRuntime, keys: [System.fetch_env!("WARDRIK_KEY")]
 The first key seals, and any key unseals. To rotate, put the new key first and keep the old one
 after it until nothing needs it.
 
-Keep a secret for an org, as `"acme"`, or a person, as `"acme/@maria"`:
+Wardrik keeps them in its vault, `MyApp.AgentRuntime.Vault`, a `WardrikVault`. Your app seals a
+secret there for an org, as `"acme"`, a person, as `"acme/@maria"`, or the deployment, each for
+one purpose:
 
 ```elixir
-:ok =
-  Wardrik.put_secret(MyApp.AgentRuntime,
-    owner: "acme/@maria",
-    name: "crm-key",
-    value: "crm_live_..."
+{:ok, _vsn} =
+  WardrikVault.put(
+    MyApp.AgentRuntime.Vault,
+    %WardrikVault.Secret{
+      principal: Wardrik.principal("acme/@maria"),
+      name: "crm-key",
+      value: "crm_live_..."
+    },
+    kind: :header
   )
-
-Wardrik.fetch_secret(MyApp.AgentRuntime, owner: "acme/@maria", name: "crm-key")
-#=> {:ok, "crm_live_..."}
-
-Wardrik.list_secrets(MyApp.AgentRuntime, "acme/@maria")
-#=> ["crm-key"]
-
-{:ok, :secret, "crm_live_...", vsn} =
-  Wardrik.lookup_secret(MyApp.AgentRuntime,
-    owner: "acme/@maria",
-    name: "crm-key"
-  )
-
-:ok =
-  Wardrik.put_secret(MyApp.AgentRuntime,
-    owner: "acme/@maria",
-    name: "crm-key",
-    value: "crm_live_2...",
-    if_vsn: vsn
-  )
-
-:ok = Wardrik.delete_secret(MyApp.AgentRuntime, owner: "acme/@maria", name: "crm-key")
 ```
 
-  * Every agent reads its principal's credentials, and nothing else.
-  * Putting and deleting a secret is recorded in the audit.
-  * `lookup_secret/2` also returns the kind and version. The kind is `:secret`, or `:grant` for an
-    account someone connected.
-  * `if_vsn:` writes over only the version you read.
+  * Every agent's tools read its principal's credentials, and nothing else.
+  * A secret is read only for its kind, so a header is never read as an API key. See
+    `t:WardrikVault.kind/0`.
+  * `wardrik_daemon` serves an owner's secrets over HTTP, and keeps them for you.
 
 ## Keep API keys
 
 An API key is what installed code calls a service with, like a model provider's `ZAI_API_KEY` or
-web search's `BRAVE_API_KEY`. An org or a person seals one under the key's name:
-
-```elixir
-:ok = Wardrik.put_secret(MyApp.AgentRuntime, owner: "acme", name: "ZAI_API_KEY", value: "zai-...")
-```
-
-A person's agent reads the person's key first, then the org's. Each model call reads its
-provider's key as it's made, so a new key takes effect at once. Where none is sealed, the code
-finds its own, as ReqLLM reads the environment. See `WardrikCore.Keys`.
-
-To let every agent fall back to keys the deployment holds, start Wardrik with
-`deployment_keys: true` and seal them as the deployment's:
+web search's `BRAVE_API_KEY`. Code asks the `:key_source`, a `WardrikCore.Keys`, for the key by
+name, as `Wardrik.key_name/1` gives it:
 
 ```elixir
 Wardrik.start_link(
   name: MyApp.AgentRuntime,
   authorizer: {MyApp.Authorizer, []},
   keys: [key],
-  deployment_keys: true
+  key_source: {MyApp.Keys, []}
 )
-
-:ok =
-  Wardrik.put_secret(MyApp.AgentRuntime,
-    owner: "deployment",
-    name: "ZAI_API_KEY",
-    value: "zai-..."
-  )
 ```
 
-Without it, no agent reads the deployment's keys. Keys never reach a tool's credentials, and a
-server an org adds can't name `ZAI_API_KEY` and be sent the deployment's.
-
-To find keys elsewhere, give `key_source: {MyApp.Keys, opts}`, a `WardrikCore.Keys`. To give
-tools credentials from elsewhere, give `credentials: {MyApp.Tokens, opts}`, a
+Without one, the code finds its own, as ReqLLM reads its config and the environment.
+`WardrikDaemon.Keys` is one that reads an agent's owner's keys from the vault, then its org's. To
+give tools credentials from elsewhere, give `credentials: {MyApp.Tokens, opts}`, a
 `WardrikCore.Credentials`.
 
 ## Secrets in config
@@ -141,11 +105,15 @@ An option that holds a secret takes `{:secret, name}` instead, naming a deployme
 setup's GitHub app does, so seal its client secret:
 
 ```elixir
-:ok =
-  Wardrik.put_secret(MyApp.AgentRuntime,
-    owner: "deployment",
-    name: "GITHUB_CLIENT_SECRET",
-    value: "your-client-secret"
+{:ok, _vsn} =
+  WardrikVault.put(
+    MyApp.AgentRuntime.Vault,
+    %WardrikVault.Secret{
+      principal: WardrikVault.deployment(),
+      name: "GITHUB_CLIENT_SECRET",
+      value: "your-client-secret"
+    },
+    kind: :client_secret
   )
 ```
 
@@ -167,21 +135,15 @@ config :my_app, MyApp.AgentRuntime,
   * A channel's and a notify target's secrets are read each time they're used. A webhook an org
     or person adds with `notify_targets.add` names a secret it holds, read from its vault.
   * An OAuth provider's are read at each sign-in.
-  * An MCP server's are read as each connection starts. Putting or deleting one connects the
-    servers that name it again.
+  * An MCP server's are read as each connection starts. After sealing or removing one, connect
+    the servers that name it again with
+    `WardrikMCP.reconnect(MyApp.AgentRuntime.MCP, owner: owner, secret: name)`;
+    `wardrik_daemon` does.
   * A channel's processes, like Slack's Socket Mode, read theirs when they start. Restart Wardrik
     after changing those.
 
-A header takes the secret as sealed, so seal Linear's token with its scheme:
-
-```elixir
-:ok =
-  Wardrik.put_secret(MyApp.AgentRuntime,
-    owner: "deployment",
-    name: "LINEAR_TOKEN",
-    value: "Bearer lin_api_..."
-  )
-```
+A header takes the secret as sealed, so seal Linear's token with its scheme, as `:header`, the
+same way: `value: "Bearer lin_api_..."`.
 
 Or give the scheme in the header, as `["Bearer ", {:secret, "LINEAR_TOKEN"}]`.
 
@@ -199,16 +161,10 @@ every call waiting on it carries on. They sign in once.
 
 ## Add OAuth apps as it runs
 
-An org or person adds an OAuth app for their people, its client secret named by reference:
+An org or person adds an OAuth app for their people, its client secret named by reference. Seal
+`GOOGLE_CLIENT_SECRET` for `"acme"` first, as `:client_secret`, then:
 
 ```elixir
-:ok =
-  Wardrik.put_secret(MyApp.AgentRuntime,
-    owner: "acme",
-    name: "GOOGLE_CLIENT_SECRET",
-    value: "GOCSPX-..."
-  )
-
 Wardrik.Providers.add(scope,
   owner: "acme",
   name: "google",
