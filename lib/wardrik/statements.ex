@@ -5,24 +5,51 @@ defmodule Wardrik.Statements do
       scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria", roles: [:reader], resources: ["acme/agent/*"])
 
   Anything no statement allows is refused.
+
+  Statements cover resources by IAM-style name, which this reads from the agent's ID:
+
+  | Resource | Named |
+  | --- | --- |
+  | `{:agent, "acme/@jon/triage"}` | `acme/@jon/agent/triage` |
+  | `{:deployment, "local"}` | `deployment` |
+  | `{:owner, "acme"}`, acting on the `mcp_server` `linear` | `acme/mcp_server/linear` |
+
+  Statements, and the agent IDs they read, move to `WardrikDaemon`.
   """
 
   @behaviour Wardrik.Authorizer
 
+  alias Wardrik.Resource
   alias Wardrik.Scope
   alias Wardrik.Statement
   alias WardrikEvents.Pattern
 
   @impl Wardrik.Authorizer
-  def authorize(_config, %Scope{grants: statements}, action, resource) do
-    reaching = Enum.filter(statements, &reaches?(&1, resource))
-
-    cond do
-      reaching == [] -> {:error, :not_found}
-      Enum.any?(reaching, &allows?(&1, action)) -> :ok
-      true -> {:error, :forbidden}
+  def authorize(
+        _principal,
+        action,
+        resource,
+        %{scope: %Scope{grants: statements}} = context,
+        _config
+      ) do
+    case named(action, resource, context) do
+      {:ok, name} -> decide(Enum.filter(statements, &reaches?(&1, name)), action)
+      :error -> {:error, :not_found}
     end
   end
+
+  defp named(_action, {:agent, id}, _context), do: Resource.agent(id)
+  defp named(_action, {:deployment, _name}, _context), do: {:ok, Resource.deployment()}
+
+  defp named(action, {:owner, owner}, context) do
+    [kind, _verb] = String.split(action, ".", parts: 2)
+    {:ok, Resource.owned(owner, kind, context[:name])}
+  end
+
+  defp decide([], _action), do: {:error, :not_found}
+
+  defp decide(reaching, action),
+    do: if(Enum.any?(reaching, &allows?(&1, action)), do: :ok, else: {:error, :forbidden})
 
   @impl Wardrik.Authorizer
   def holds?(_config, %Scope{grants: statements}, %Statement{

@@ -182,9 +182,7 @@ defmodule Wardrik.Operations.Agent do
   end
 
   defp ceiling_approver(scope, org) do
-    resource = Wardrik.Resource.owned(org, "ceiling", nil)
-
-    case Wardrik.Authorizer.authorize(scope, "ceiling.approve", resource) do
+    case Wardrik.Authorizer.authorize(scope, "ceiling.approve", {:owner, org}) do
       :ok ->
         :ok
 
@@ -192,7 +190,7 @@ defmodule Wardrik.Operations.Agent do
         {:error,
          Error.new(
            :forbidden,
-           "Approving past #{org}'s ceiling needs ceiling.approve on #{resource}."
+           "Approving past #{org}'s ceiling needs ceiling.approve on #{org}'s ceilings."
          )}
     end
   end

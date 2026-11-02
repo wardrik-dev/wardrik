@@ -45,7 +45,6 @@ defmodule Wardrik.Workers do
   alias Wardrik.Authorizer
   alias Wardrik.Instance
   alias Wardrik.Owners
-  alias Wardrik.Resource
   alias Wardrik.Scope
   alias Wardrik.Workers.Lost
   alias Wardrik.Workers.Unavailable
@@ -142,20 +141,18 @@ defmodule Wardrik.Workers do
   end
 
   defp offered(wardrik, id) do
-    {:ok, resource} = Resource.agent(id)
-
     offers =
       for {worker, %{scope: scope, tools: tools, since: since}} <-
             Group.members(group(wardrik), @group),
-          serves?(wardrik, scope, resource),
+          serves?(wardrik, scope, id),
           tool <- tools,
           do: %{worker: worker, principal: scope.principal.id, since: since, tool: tool}
 
     Enum.filter(offers, &first_offered?(&1, offers))
   end
 
-  defp serves?(wardrik, scope, resource),
-    do: Authorizer.authorize(%{scope | wardrik: wardrik}, "agent.serve", resource) == :ok
+  defp serves?(wardrik, scope, id),
+    do: Authorizer.authorize(%{scope | wardrik: wardrik}, "agent.serve", {:agent, id}) == :ok
 
   defp first_offered?(offer, offers) do
     first =

@@ -34,6 +34,10 @@
 
 ### Breaking
 
+- `c:Wardrik.Authorizer.authorize/5` takes the principal, the action, the resource as
+  `{kind, id}` and a context, then its config, as Cedar's requests do. An agent is `{:agent, id}`,
+  its ID as given, and the deployment `{:deployment, name}`. `Wardrik.Statements` reads its names
+  from these. A scope makes tokens only with an authorizer's `c:Wardrik.Authorizer.holds?/3`.
 - A notify target another org's agents use reads as one that isn't there, and `*` and
   `servers/*` reach the servers an agent is resolved with: Wardrik's own that serve its org, and
   those its owners added.

@@ -10,10 +10,8 @@ defmodule Wardrik.StatementsTest do
   defp scope(statements),
     do: %{Wardrik.as(@wardrik, Wardrik.Test.Wardrik.maria(), statements) | wardrik: @wardrik}
 
-  defp authorize(statements, action, agent) do
-    {:ok, resource} = Resource.agent(agent)
-    Authorizer.authorize(scope(statements), action, resource)
-  end
+  defp authorize(statements, action, agent),
+    do: Authorizer.authorize(scope(statements), action, {:agent, agent})
 
   test "allows what a statement's actions or roles name, on what its patterns cover" do
     statements = [
@@ -35,12 +33,19 @@ defmodule Wardrik.StatementsTest do
     assert authorize([], "agent.read", "acme/triage") == {:error, :not_found}
   end
 
+  test "reaches no agent by an ID that isn't one, whatever its statements cover" do
+    statements = [Statement.new(roles: [:owner], resources: ["*"])]
+
+    for id <- ["acme/*", "acme/triage/*", "acme/t?", "acme", "a/b/c/d", ""],
+        do: assert(authorize(statements, "agent.read", id) == {:error, :not_found})
+  end
+
   test "takes a wildcard in actions" do
     statements = [Statement.new(actions: ["agent.*"], resources: ["*"])]
 
     assert authorize(statements, "agent.decide", "globex/triage") == :ok
 
-    assert Authorizer.authorize(scope(statements), "deployment.audit", Resource.deployment()) ==
+    assert Authorizer.authorize(scope(statements), "deployment.audit", {:deployment, "local"}) ==
              {:error, :forbidden}
   end
 
