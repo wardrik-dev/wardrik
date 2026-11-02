@@ -52,7 +52,7 @@ defmodule WardrikProtocolTest do
   test "takes an OAuth app it can find, signing in only with parameters of its own" do
     google = %{"name" => "google", "issuer" => "https://accounts.google.com"}
 
-    for name <- ["provider_input", "provider", "providers", "server_input"],
+    for name <- ["provider_input", "provider", "providers"],
         example <- WardrikProtocol.schema(name)["examples"],
         do: assert(valid?(name, example), name)
 
@@ -64,50 +64,6 @@ defmodule WardrikProtocolTest do
              "provider_input",
              Map.put(google, "authorization_endpoint", "https://accounts.google.com/auth")
            )
-  end
-
-  test "signs in to a server with an OAuth app it names, or one it gives, never both" do
-    server = %{"name" => "ads", "url" => "https://mcp.ads.example/mcp"}
-    with_auth = &Map.put(server, "auth", %{"oauth" => &1})
-
-    assert valid?("server_input", with_auth.(%{"provider" => "google"}))
-    refute valid?("server_input", with_auth.(%{"provider" => "google", "client_id" => "app"}))
-    refute valid?("server_input", with_auth.(%{"provider" => "google", "scopes" => ["read"]}))
-  end
-
-  test "says who holds each server and where it came from, and never its headers" do
-    for name <- ["server", "servers"],
-        example <- WardrikProtocol.schema(name)["examples"],
-        do: assert(valid?(name, example), name)
-
-    command = %{"owner" => "deployment", "name" => "git", "source" => "config", "auth" => "none"}
-    assert valid?("server", command)
-    refute valid?("server", Map.delete(command, "owner"))
-    refute valid?("server", Map.put(command, "source", "inline"))
-    refute valid?("server", Map.put(command, "headers", %{"authorization" => "Bearer x"}))
-
-    assert %Wardrik.MCPServer{owner: "deployment", source: :config, url: nil} =
-             Wardrik.MCPServer.from_json(command)
-  end
-
-  test "takes a webhook for an owner's notices, its secret only ever named" do
-    ops = %{"name" => "ops", "url" => "https://hooks.acme.example/wardrik"}
-
-    assert valid?("notify_target_input", Map.put(ops, "secret", %{"name" => "HOOK_SECRET"}))
-    refute valid?("notify_target_input", Map.put(ops, "secret", "shh"))
-    refute valid?("notify_target_input", Map.put(ops, "name", "slack:#ops"))
-    refute valid?("notify_target_input", Map.put(ops, "module", "Wardrik.Notify.Room"))
-    refute valid?("notify_target_input", Map.put(ops, "req_options", %{}))
-    refute valid?("notify_target_input", Map.delete(ops, "url"))
-
-    room = %{"owner" => "deployment", "name" => "pager", "source" => "config", "kind" => "room"}
-    assert valid?("notify_target", room)
-    refute valid?("notify_target", Map.put(room, "room", "#ops"))
-
-    assert %Wardrik.NotifyTarget{owner: "acme", source: :runtime, secret: "OPS_HOOK_SECRET"} =
-             Wardrik.NotifyTarget.from_json(
-               hd(WardrikProtocol.schema("notify_target")["examples"])
-             )
   end
 
   test "checks an event and its data" do
@@ -161,8 +117,6 @@ defmodule WardrikProtocolTest do
                audit.list channel.deliver connections.connect connections.disconnect connections.list
                deployment.nodes deployment.reload events.head events.list hook.deliver
                hook.deliver_with_secret interrupts.list
-               mcp_servers.add mcp_servers.list mcp_servers.remove
-               notify_targets.add notify_targets.list notify_targets.remove
                providers.add providers.list providers.remove
              )
 

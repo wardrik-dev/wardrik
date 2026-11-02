@@ -121,9 +121,7 @@ defmodule Wardrik.NamesTest do
           {%Wardrik.Interrupt{id: "c1"}, "c1"},
           {%Wardrik.Call{id: "call_1"}, "call_1"},
           {%Wardrik.Trigger{name: "weekly"}, "weekly"},
-          {%Wardrik.MCPServer{name: "linear"}, "linear"},
           {%Wardrik.Provider{name: "google"}, "google"},
-          {%Wardrik.NotifyTarget{name: "ops"}, "ops"},
           {%Wardrik.Connection{provider: "github"}, "github"}
         ] do
       assert types.path(struct) == name

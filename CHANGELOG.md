@@ -7,18 +7,11 @@
 - OAuth apps people sign in with: `providers.list`, `providers.add` and `providers.remove`,
   `Wardrik.Providers` and `Wardrik.Provider`, the schemas `provider_input`, `provider` and
   `providers`, and the events `wardrik.provider.added` and `wardrik.provider.removed`.
-- Webhooks an org or person adds for their agents' notices: `notify_targets.list`,
-  `notify_targets.add` and `notify_targets.remove`, `Wardrik.NotifyTargets` and
-  `Wardrik.NotifyTarget`, the schemas `notify_target_input`, `notify_target` and
-  `notify_targets`, and the events `wardrik.notify_target.added` and
-  `wardrik.notify_target.removed`.
-- `providers.list`, `mcp_servers.list` and `notify_targets.list` answer an owner's own and those
-  it gets from further out. Each says its `owner` and `source`, in `defs`, and `Wardrik.MCPServer`
-  has both. A server the deployment starts as a command has no `url`.
-- An MCP server's browser sign-in names an OAuth app as `provider`, or gives its own with
-  `authorization_params`.
-- Secrets are only ever named: an app's client secret, read each time it's needed, and a notify
-  target's.
+- The events `wardrik.notify_target.added` and `wardrik.notify_target.removed`, which
+  `wardrik_daemon` records as an org or person adds or removes a webhook.
+- `providers.list` answers an owner's own OAuth apps and those it gets from further out. Each
+  says its `owner` and `source`, in `defs`.
+- Secrets are only ever named: an app's client secret is read each time it's needed.
 
 ### Breaking
 
@@ -31,6 +24,11 @@
   `secrets.delete` and `ceilings.list`, `Wardrik.Secrets`, `Wardrik.Ceilings`, `Wardrik.Secret`,
   `Wardrik.Spend`, `Wardrik.Amount`, and the schemas `secrets`, `secret_input`, `ceilings` and
   `defs`' `amount` are gone.
+- MCP servers and notify targets that orgs and people add are `wardrik_daemon`'s own routes:
+  `mcp_servers.*` and `notify_targets.*`, `Wardrik.MCPServers`, `Wardrik.NotifyTargets`,
+  `Wardrik.MCPServer`, `Wardrik.MCPServerAdded`, `Wardrik.NotifyTarget`, and the schemas
+  `server_input`, `server_added`, `server`, `servers`, `notify_target_input`, `notify_target` and
+  `notify_targets` are gone.
 - `Wardrik.AgentID.parse/1` reads the owner with `Wardrik.Owners.parse/1`, so an ID like
   `ac@me/triage` or `acme/@jon` is `:error`.
 - No grants or tokens: `Wardrik.Statement`, `Wardrik.Tokens`, `Wardrik.Token`, the `tokens.*`

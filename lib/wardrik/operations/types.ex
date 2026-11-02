@@ -16,11 +16,8 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Event
   alias Wardrik.Forgotten
   alias Wardrik.Interrupt
-  alias Wardrik.MCPServer
-  alias Wardrik.MCPServerAdded
   alias Wardrik.Message
   alias Wardrik.Nodes
-  alias Wardrik.NotifyTarget
   alias Wardrik.Page
   alias Wardrik.Provider
   alias Wardrik.Runs
@@ -43,12 +40,8 @@ defmodule Wardrik.Operations.Types do
     "deployment.nodes" => Nodes,
     "connections.connect" => Connecting,
     "connections.disconnect" => Connection,
-    "mcp_servers.add" => MCPServerAdded,
-    "mcp_servers.remove" => MCPServer,
     "providers.add" => Provider,
-    "providers.remove" => Provider,
-    "notify_targets.add" => NotifyTarget,
-    "notify_targets.remove" => NotifyTarget
+    "providers.remove" => Provider
   }
 
   @lists %{
@@ -56,9 +49,7 @@ defmodule Wardrik.Operations.Types do
     "agents.list" => {"agents", Agent, :from_summary},
     "interrupts.list" => {"interrupts", Interrupt, :from_listed},
     "connections.list" => {"connections", Connection, :from_json},
-    "mcp_servers.list" => {"servers", MCPServer, :from_json},
-    "providers.list" => {"providers", Provider, :from_json},
-    "notify_targets.list" => {"targets", NotifyTarget, :from_json}
+    "providers.list" => {"providers", Provider, :from_json}
   }
 
   @listed Map.keys(@lists)
@@ -70,9 +61,7 @@ defmodule Wardrik.Operations.Types do
   def path(%Interrupt{id: id}), do: id
   def path(%Call{id: id}), do: id
   def path(%Trigger{name: name}), do: name
-  def path(%MCPServer{name: name}), do: name
   def path(%Provider{name: name}), do: name
-  def path(%NotifyTarget{name: name}), do: name
   def path(%Connection{provider: provider}), do: provider
 
   @doc "Converts an Elixir caller's `input` to the operation's JSON input."
