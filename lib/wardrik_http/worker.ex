@@ -7,7 +7,7 @@ defmodule WardrikHTTP.Worker do
 
       {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
        "params": {"name": "refund_order", "arguments": {"order": "A1"},
-                  "_meta": {"agent": {"key": "agt_1"}, "run": "4bf92f35...",
+                  "_meta": {"agent": "agt_1", "run": "4bf92f35...",
                             "principal": "user_42", "idempotencyKey": "call_1"}}}
 
     1. Wardrik sends `initialize`, then `notifications/initialized`.

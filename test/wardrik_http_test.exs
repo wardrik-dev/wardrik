@@ -132,6 +132,22 @@ defmodule WardrikHTTPTest do
       assert_received {:ran, "hook.deliver_with_secret", %{"secret" => "s3cret"}}
     end
 
+    test "takes a body of any content type, as the document says", context do
+      "POST"
+      |> conn("/v1/hooks/agt_hooks/issues", "payload=%7B%22a%22%3A1%7D")
+      |> put_req_header("content-type", "application/x-www-form-urlencoded")
+      |> put_req_header("authorization", "Bearer s3cret")
+      |> WardrikHTTP.call(settings(context))
+
+      assert_received {:ran, "hook.deliver", %{"body" => "payload=%7B%22a%22%3A1%7D"} = input}
+      assert input["headers"]["content-type"] == "application/x-www-form-urlencoded"
+
+      document = body(WardrikHTTP.call(conn("GET", "/v1/openapi.json"), settings(context)))
+
+      assert %{"content" => %{"*/*" => %{}}} =
+               document["paths"]["/v1/hooks/{agent}/{trigger}"]["post"]["requestBody"]
+    end
+
     test "hands on the body as it came where the app parsed it first", context do
       parsers =
         Plug.Parsers.init(

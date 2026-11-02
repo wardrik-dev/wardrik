@@ -11,7 +11,9 @@
   with `NimbleOptions`.
 - `c:WardrikHTTP.Authenticator.authenticate/2` takes a `WardrikHTTP.Authenticator.Request`, then
   its options.
-- `WardrikHTTP.Routes`, `Input`, `Response` and `EventStream` are internal and hidden from the docs.
+- `WardrikHTTP`'s `Routes`, `Input`, `Response` and `EventStream` are internal and hidden from
+  the docs.
+- A tool call's `_meta.agent` is the agent's ID, a string, not `{"key": id}`.
 
 ## 0.1.0-rc.1 (2026-10-30)
 
