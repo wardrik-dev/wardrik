@@ -7,7 +7,7 @@ defmodule Wardrik.Test.Sealed do
     do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> started(opts) end]}}
 
   @impl Wardrik.Channel
-  def request(opts, _request), do: %{status: 200, headers: %{}, body: opts[:signing_secret]}
+  def request(_request, opts), do: %{status: 200, headers: %{}, body: opts[:signing_secret]}
 
   defp started(opts), do: send(opts[:test], {:started_with, opts[:signing_secret]})
 end
@@ -23,7 +23,11 @@ defmodule Wardrik.SealedOptionsTest do
     start_supervised!({WardrikVault, name: :"sealing #{context.test}", store: store, keys: [key]})
 
     {:ok, _vsn} =
-      WardrikVault.put(:"sealing #{context.test}", WardrikVault.deployment(), "SIGNING", "first")
+      WardrikVault.put(:"sealing #{context.test}", %WardrikVault.Secret{
+        principal: WardrikVault.deployment(),
+        name: "SIGNING",
+        value: "first"
+      })
 
     name = :"sealed #{context.test}"
     channels = [slack: {Wardrik.Test.Sealed, test: self(), signing_secret: {:secret, "SIGNING"}}]

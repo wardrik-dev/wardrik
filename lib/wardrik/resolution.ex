@@ -6,6 +6,7 @@ defmodule Wardrik.Resolution do
   alias Wardrik.Operations.Running
   alias Wardrik.Resolved
   alias Wardrik.Resolver
+  alias Wardrik.Resolver.Request
   alias Wardrik.Setup
 
   @rounds 25
@@ -13,7 +14,7 @@ defmodule Wardrik.Resolution do
   @doc "Returns the agent `id`'s start options, from its JSON `definition` and what it resolves to."
   @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
-    with {:ok, resolved} <- Resolver.resolve(wardrik, id, definition),
+    with {:ok, resolved} <- Resolver.resolve(wardrik, %Request{agent: id, definition: definition}),
          {:ok, opts} <- resolved(within(wardrik, resolved), id, definition, resolved),
          do: {:ok, hold(opts, resolved)}
   end
@@ -102,7 +103,7 @@ defmodule Wardrik.Resolution do
   @spec missing(Wardrik.t(), String.t(), map()) :: [String.t()]
   def missing(wardrik, id, definition) do
     servers =
-      case Resolver.resolve(wardrik, id, definition) do
+      case Resolver.resolve(wardrik, %Request{agent: id, definition: definition}) do
         {:ok, resolved} -> resolved.servers
         {:error, _error} -> %{}
       end
@@ -122,7 +123,7 @@ defmodule Wardrik.Resolution do
   @spec idle_timeout(Wardrik.t(), String.t(), map()) :: pos_integer() | :infinity
   def idle_timeout(wardrik, id, definition) do
     defaults =
-      case Resolver.resolve(wardrik, id, definition) do
+      case Resolver.resolve(wardrik, %Request{agent: id, definition: definition}) do
         {:ok, resolved} -> Map.merge(wardrik.defaults, resolved.defaults)
         {:error, _error} -> wardrik.defaults
       end

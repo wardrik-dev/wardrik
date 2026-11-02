@@ -4,6 +4,7 @@ defmodule Wardrik.Channel.PackageTest do
 
   import Wardrik.Test.Channel
 
+  alias WardrikChannel.Answer
   alias WardrikChannel.Binding
   alias WardrikChannel.Inbound
   alias WardrikChannel.Member
@@ -58,9 +59,10 @@ defmodule Wardrik.Channel.PackageTest do
                Rooms.joined(context.workspace, "C1")
 
       assert {:ok, %Binding{agent: "acme/two"}, %Offer{}} =
-               Rooms.chose(context.workspace, "C1", "acme/two")
+               Rooms.chose(context.workspace, room: "C1", agent: "acme/two")
 
-      assert Rooms.chose(context.workspace, "C1", "acme/@jon/mine") == {:error, :not_offered}
+      assert Rooms.chose(context.workspace, room: "C1", agent: "acme/@jon/mine") ==
+               {:error, :not_offered}
     end
 
     test "unbinds a room the bot leaves", context do
@@ -155,7 +157,10 @@ defmodule Wardrik.Channel.PackageTest do
     end
 
     test "reminds no room that isn't posting", context do
-      assert WardrikChannel.Replies.remind(context.workspace, "C9", "acme/triage/chat.T1.C9.1") ==
+      assert WardrikChannel.Replies.remind(context.workspace,
+               room: "C9",
+               conversation: "acme/triage/chat.T1.C9.1"
+             ) ==
                :ok
     end
 
@@ -209,10 +214,15 @@ defmodule Wardrik.Channel.PackageTest do
     end
 
     test "lets an approver decide, and says who did", context do
-      button = %{conversation: context.waiting.conversation, interrupt: "call_1"}
+      answer = %Answer{
+        member: @maria,
+        conversation: context.waiting.conversation,
+        interrupt: "call_1",
+        decision: {:approve, nil}
+      }
 
       assert {:ok, %Wardrik.Decision{decision: :approved}} =
-               WardrikChannel.decide(context.workspace, @maria, button, {:approve, nil})
+               WardrikChannel.decide(context.workspace, answer)
 
       assert_receive {:delivered, %Outbound{body: {:said, "Approved by maria."}}}, 1_000
       assert_receive {:delivered, %Outbound{body: {:reply, "Done.", ["1.1"]}}}, 1_000
@@ -220,13 +230,24 @@ defmodule Wardrik.Channel.PackageTest do
 
     test "lets whoever asked decide, and nobody else", context do
       %Waiting{conversation: conversation, asked_by: asked_by} = context.waiting
-      button = %{conversation: conversation, interrupt: "call_1", asked_by: asked_by}
 
-      assert WardrikChannel.decide(context.workspace, @jon, button, {:deny, nil}) ==
+      answer = %Answer{
+        member: @jon,
+        conversation: conversation,
+        interrupt: "call_1",
+        asked_by: asked_by,
+        decision: {:deny, nil}
+      }
+
+      assert WardrikChannel.decide(context.workspace, answer) ==
                {:error, context.channel.deciding}
 
       assert {:ok, %Wardrik.Decision{decision: :rejected}} =
-               WardrikChannel.decide(context.workspace, @ana, button, {:deny, "Not now."})
+               WardrikChannel.decide(context.workspace, %{
+                 answer
+                 | member: @ana,
+                   decision: {:deny, "Not now."}
+               })
 
       assert_receive {:delivered, %Outbound{body: {:said, "Denied by ana: Not now."}}}, 1_000
     end
@@ -279,8 +300,12 @@ defmodule Wardrik.Channel.PackageTest do
 
       assert installation.owner == "acme"
       refute inspect(installation) =~ "xoxb"
-      assert {:error, _why} = module.put(config, installation)
-      assert module.delete(config, "chat", "T9") == :ok
+      assert {:error, _why} = module.put(installation, config)
+
+      assert module.delete(
+               %Wardrik.Channel.Installations.Request{channel: "chat", workspace: "T9"},
+               config
+             ) == :ok
     end
 
     test "answers what the chat app sends through the Wardrik", %{wardrik: wardrik} do
@@ -302,7 +327,13 @@ defmodule Wardrik.Channel.PackageTest do
 
       {:ok, {adapter, opts}} = Wardrik.Operations.Channels.fetch(context.wardrik, "chat")
 
-      assert adapter.notify(opts, "#news", notice, ["@maria"]) == :ok
+      notification = %Wardrik.Channel.Notification{
+        room: "#news",
+        notice: notice,
+        approvers: ["@maria"]
+      }
+
+      assert adapter.notify(notification, opts) == :ok
 
       assert_receive {:delivered,
                       %Outbound{
@@ -315,7 +346,14 @@ defmodule Wardrik.Channel.PackageTest do
 
       assert outbound.installation.owner == "acme"
 
-      assert {:skip, _why} = adapter.notify(opts, "#news", %{notice | agent: "globex/digest"}, [])
+      assert {:skip, _why} =
+               adapter.notify(
+                 %Wardrik.Channel.Notification{
+                   room: "#news",
+                   notice: %{notice | agent: "globex/digest"}
+                 },
+                 opts
+               )
     end
 
     test "reads a parked turn's calls from its notice" do

@@ -7,7 +7,7 @@ defmodule Wardrik.Test.Echo do
     do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> started(opts) end]}}
 
   @impl Wardrik.Channel
-  def request(opts, %{path: path, body: body, headers: headers}) do
+  def request(%{path: path, body: body, headers: headers}, opts) do
     %{
       status: 200,
       headers: %{"content-type" => "text/plain", "x-channel" => opts[:channel]},

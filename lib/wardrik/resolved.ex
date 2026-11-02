@@ -1,6 +1,6 @@
 defmodule Wardrik.Resolved do
   @moduledoc """
-  What an agent gets, as `c:Wardrik.Resolver.resolve/3` returns it.
+  What an agent gets, as `c:Wardrik.Resolver.resolve/2` returns it.
 
       %Wardrik.Resolved{
         principal: %WardrikCore.Principal{id: "user_42"},

@@ -14,7 +14,6 @@ defmodule Wardrik.Runner do
   alias Wardrik.Error
   alias Wardrik.Instance
   alias Wardrik.Orgs
-  alias Wardrik.Resource
   alias Wardrik.Scope
 
   @doc "Runs the operation `id` in `scope`, with its handler (`:handlers`) or stream (`:streams`)."
@@ -54,13 +53,23 @@ defmodule Wardrik.Runner do
     end
   end
 
-  defp authorize(scope, %{subject: "agent", action: action}, %{"agent" => id}) do
-    {:ok, resource} = Resource.agent(id)
-    refused(Authorizer.authorize(scope, action, resource), "agent #{id}")
-  end
+  defp authorize(scope, %{subject: "agent", action: action}, %{"agent" => id}),
+    do:
+      refused(Authorizer.authorize(scope, action: action, resource: {:agent, id}), "agent #{id}")
 
-  defp authorize(scope, %{subject: "deployment", action: action}, _input),
-    do: refused(Authorizer.authorize(scope, action, Resource.deployment()), "deployment")
+  defp authorize(
+         %Scope{wardrik: wardrik} = scope,
+         %{subject: "deployment", action: action},
+         _input
+       ),
+       do:
+         refused(
+           Authorizer.authorize(scope,
+             action: action,
+             resource: {:deployment, wardrik.deployment}
+           ),
+           "deployment"
+         )
 
   defp authorize(_scope, %{subject: "agents"}, _input), do: :ok
   defp authorize(_scope, %{subject: "hook"}, _input), do: :ok
@@ -69,8 +78,15 @@ defmodule Wardrik.Runner do
   defp authorize(scope, %{subject: "owner", action: action}, %{"owner" => owner} = input) do
     [kind, _verb] = String.split(action, ".")
     named = input["provider"] || input["server"] || input["target"] || input["name"]
-    resource = Resource.owned(owner, kind, named)
-    refused(Authorizer.authorize(scope, action, resource), "#{kind} of #{owner}")
+
+    refused(
+      Authorizer.authorize(scope,
+        action: action,
+        resource: {:owner, owner},
+        context: %{name: named}
+      ),
+      "#{kind} of #{owner}"
+    )
   end
 
   defp known(%Scope{wardrik: wardrik}, %{subject: "owner"}, %{"owner" => owner}),

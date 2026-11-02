@@ -1,5 +1,11 @@
 defmodule Wardrik.KeysTest do
   use ExUnit.Case, async: false
+
+  defp key(name, principal), do: %WardrikCore.Keys.Request{name: name, principal: principal}
+
+  defp credential(name, principal),
+    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
+
   use Mimic
 
   import Wardrik.Test.LLM
@@ -77,7 +83,8 @@ defmodule Wardrik.KeysTest do
       :ok = Wardrik.put_secret(wardrik, "acme", name, "value", kind: kind)
 
       opts = [vault: Wardrik.vault(wardrik), deployment: true]
-      assert Wardrik.Keys.fetch(name, %Principal{id: "acme/@maria"}, opts) == :error
+
+      assert Wardrik.Keys.fetch(key(name, %Principal{id: "acme/@maria"}), opts) == :error
     end
   end
 
@@ -96,10 +103,10 @@ defmodule Wardrik.KeysTest do
     vault = Wardrik.vault(wardrik)
     principal = %Principal{id: "deployment"}
 
-    assert Wardrik.Keys.fetch("ANTHROPIC_API_KEY", principal, vault: vault) ==
+    assert Wardrik.Keys.fetch(key("ANTHROPIC_API_KEY", principal), vault: vault) ==
              {:ok, "sk-deployment"}
 
-    assert Wardrik.Keys.fetch("ANTHROPIC_API_KEY", nil, vault: vault) == :error
+    assert Wardrik.Keys.fetch(key("ANTHROPIC_API_KEY", nil), vault: vault) == :error
   end
 
   test "a key is read as it's used, so a new one takes effect at once", %{
@@ -171,9 +178,10 @@ defmodule Wardrik.KeysTest do
 
     vault = Wardrik.vault(wardrik)
 
-    assert {:error, _none} = WardrikVault.resolve("ZAI_API_KEY", %Principal{id: "acme"}, vault)
+    assert {:error, _none} =
+             WardrikVault.resolve(credential("ZAI_API_KEY", %Principal{id: "acme"}), vault)
 
-    assert Wardrik.Keys.fetch("ZAI_API_KEY", %Principal{id: "acme"},
+    assert Wardrik.Keys.fetch(key("ZAI_API_KEY", %Principal{id: "acme"}),
              vault: vault,
              deployment: true
            ) == {:ok, "sk-deployment"}

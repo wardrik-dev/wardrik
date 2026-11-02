@@ -29,7 +29,7 @@ defmodule Wardrik.Keys do
   alias WardrikCore.Principal
 
   @impl WardrikCore.Keys
-  def fetch(name, principal, opts) do
+  def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, opts) do
     vault = Keyword.fetch!(opts, :vault)
     owners = owners(principal, Keyword.get(opts, :deployment, false))
     Enum.find_value(owners, :error, &held(vault, &1, name))

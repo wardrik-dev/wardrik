@@ -180,7 +180,7 @@ defmodule Wardrik.OAuthResolverTest do
     assert URI.decode_query(URI.parse(url).query)["client_id"] == "maria-mail"
   end
 
-  def provider(name, _principal, client_id) do
+  def provider(%{name: name}, client_id) do
     provider =
       WardrikOAuth.Provider.new(name,
         authorization_endpoint: "https://mail.test/authorize",

@@ -148,7 +148,11 @@ defmodule Wardrik.Notify.Server do
 
   defp told(state, agent, notice) do
     with {:ok, definition} <- Wardrik.Definitions.fetch(state.wardrik, agent),
-         {:ok, resolved} <- Wardrik.Resolver.resolve(state.wardrik, agent, definition),
+         {:ok, resolved} <-
+           Wardrik.Resolver.resolve(state.wardrik, %Wardrik.Resolver.Request{
+             agent: agent,
+             definition: definition
+           }),
          defaults = Map.merge(state.wardrik.defaults, resolved.defaults),
          %{to: to, on: on} <- Notify.route(Map.merge(defaults, definition)),
          true <- notice.kind in on,
@@ -158,11 +162,9 @@ defmodule Wardrik.Notify.Server do
   end
 
   defp tell(state, name, notice) do
-    case Retry.run(
-           state.wardrik.notify.retries,
-           fn -> attempt(state, name, notice) end,
-           &failed/1,
-           &again(name, notice, &1)
+    case Retry.run(state.wardrik.notify.retries, fn -> attempt(state, name, notice) end,
+           transient: &failed/1,
+           announce: &again(name, notice, &1)
          ) do
       {:ok, :ok} ->
         :ok
