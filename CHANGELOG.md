@@ -27,8 +27,15 @@
 - `channels.<name>.members` maps chat members to users, and `unmapped_members: allow` lets the
   others act as `user:<channel>:<workspace>/<member>`. Without it they're refused. `approvers` is
   gone.
-- `workspace.shared` names agents exactly: each sharing agent's ID, with the IDs of the agents
-  that may `read` or `write` its workspace. No patterns.
+- `workspace.shared` names agents exactly: each sharing agent's name, with the names of the
+  agents that may `read` or `write` its workspace, all in one org. No patterns.
+- The daemon mints each agent's ID, as `agt_` and a ULID, and keeps a record of its org, owner and
+  name. A name is unique in its org. `POST /v1/owners/{owner}/agents` makes one from its `name`
+  and definition, and `GET /v1/owners/{owner}/agents?name=` finds the agents of the owner's org
+  the caller may read. See `WardrikDaemon.AgentRecords` and `WardrikDaemon.HTTP`. Making an agent
+  is the verb `create` on the kind `agent`.
+- Commands on an agent take `--conversation ID` for one of its conversations, and `approval ls`
+  shows each call's conversation.
 - An agent's notices in a channel post in the workspace its owner added the channel to, else its
   org's. See `WardrikDaemon.Resolver`.
 - The daemon keeps secrets, API keys and ceilings itself, on its own routes in front of
@@ -68,10 +75,21 @@
 
 ### Breaking
 
+- Agent IDs are the daemon's own, as `agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN`, and nothing reads an org,
+  owner or conversation from one. `agent.define` refuses an ID the daemon didn't mint, so an
+  agent is made by an agent file or `POST /v1/owners/{owner}/agents`.
+- An agent file's name is its agent's name. It takes `org` and `owner` in place of `name` and
+  `user`, and keeps its ID across reloads while its name, org and owner stay. A file can't take a
+  name another agent of its org has.
+- `config.yaml` names agents by name: bindings' `agent:NAME` subjects, in the binding's org, and
+  rules' `names` for `agent`. A binding in `"*"` can't name an agent.
+- The `wardrik` command takes agents' names, as `triage` or `growth/triage`, and shows names. A
+  conversation is `--conversation ID`, not part of the agent.
+- `token create --subject agent:ID` takes the agent's ID.
 - `token create` takes `--subject`, `--groups` and `--expires`, and acts on the daemon's own
   tokens.
 - `notify.req_options` is gone: a webhook takes its own `req_options`.
-- `reload` and `agent cancel` take agents' IDs, not patterns.
+- `reload` and `agent cancel` take agents' names, not patterns.
 - Agent files are defined by the deployment's admin.
 - `vault put` takes `--for`: `api_key`, `client_secret`, `header` or `signing_secret`. `vault ls`
   says each secret's `PURPOSE`.

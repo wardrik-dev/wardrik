@@ -4,10 +4,11 @@ defmodule WardrikDaemon.Doctor.Agents do
 
   Each file's definition is checked against the protocol's schema, then as Wardrik would start
   it, with the tools, servers, channels and policies the daemon offers. Nothing is started but a
-  store in memory.
+  store in memory, which holds a record of each file's agent.
   """
 
   alias WardrikDaemon.AgentFile
+  alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Config
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.Policies
@@ -26,11 +27,14 @@ defmodule WardrikDaemon.Doctor.Agents do
   defp agents(config, dirs, policies) do
     files = dirs |> Dirs.config("agents") |> Path.join("*.md") |> Path.wildcard() |> Enum.sort()
     store = WardrikStore.ETS.new(name: :"wardrik doctor #{System.unique_integer([:positive])}")
-    {:ok, running} = Supervisor.start_link([{WardrikStore, store}], strategy: :one_for_one)
+    ulid = if Process.whereis(WardrikDaemon.ULID), do: [], else: [WardrikDaemon.ULID]
+    {:ok, running} = Supervisor.start_link([{WardrikStore, store} | ulid], strategy: :one_for_one)
 
     wardrik = wardrik(config, policies, store)
     schema = JSV.build!(WardrikProtocol.schema("agent_definition"))
-    failures = Enum.flat_map(files, &unread(&1, config, wardrik, schema))
+    records = WardrikStore.scope(store, "wardrik_daemon")
+    read = for path <- files, do: {path, recorded(records, AgentFile.read(path, config))}
+    failures = Enum.flat_map(read, &unread(&1, records, wardrik, schema))
     :ok = Supervisor.stop(running)
 
     case failures do
@@ -45,17 +49,26 @@ defmodule WardrikDaemon.Doctor.Agents do
     end
   end
 
-  defp unread(path, config, wardrik, schema) do
-    with {:ok, id, definition} <- AgentFile.read(path, config),
+  # Each file has a name of its own, so none is taken.
+  defp recorded(records, {:ok, agent, definition}) do
+    {:ok, record} = AgentRecords.create(records, owner: agent.owner, name: agent.name)
+    {:ok, record, definition}
+  end
+
+  defp recorded(_records, {:error, why}), do: {:error, why}
+
+  defp unread({path, read}, records, wardrik, schema) do
+    with {:ok, record, definition} <- read,
+         {:ok, definition} <- AgentRecords.identified(records, record.org, definition),
          {:ok, _valid} <- valid(definition, schema),
-         {:ok, _opts} <- Wardrik.Resolution.resolve(wardrik, id, definition) do
+         {:ok, _opts} <- Wardrik.Resolution.resolve(wardrik, record.id, definition) do
       []
     else
       {:error, %Wardrik.Error{message: message}} ->
         [{:fail, "agents", "#{Path.basename(path)}: #{message}"}]
 
       {:error, why} ->
-        [{:fail, "agents", why}]
+        [{:fail, "agents", "#{Path.basename(path)}: #{why}"}]
     end
   end
 
@@ -90,7 +103,9 @@ defmodule WardrikDaemon.Doctor.Agents do
       channels: config.channels,
       defaults: config.defaults,
       policies: Map.to_list(policies),
-      authorizer: {WardrikDaemon.Authorizer, config.access},
+      authorizer:
+        {WardrikDaemon.Authorizer,
+         %{access: config.access, store: WardrikStore.scope(store, "wardrik_daemon")}},
       resolver: {WardrikDaemon.Resolver, resolving(config, policies, store)}
     )
   end

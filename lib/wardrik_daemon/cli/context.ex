@@ -1,7 +1,8 @@
 defmodule WardrikDaemon.CLI.Context do
   @moduledoc """
-  What every command runs with: the directories, the environment, the deployment's org, the
-  terminal it writes to, the name it was typed as, and whether it prints JSON.
+  What every command runs with: the directories, the environment, the deployment's org and the
+  others `config.yaml` declares, the terminal it writes to, the name it was typed as, and whether
+  it prints JSON.
   """
 
   alias WardrikDaemon.CLI.Terminal
@@ -10,26 +11,32 @@ defmodule WardrikDaemon.CLI.Context do
   alias WardrikDaemon.Dirs
 
   @enforce_keys [:dirs, :env, :org, :terminal, :program]
-  defstruct @enforce_keys ++ [json?: false]
+  defstruct @enforce_keys ++ [orgs: [], json?: false]
 
   @type t() :: %__MODULE__{
           dirs: Dirs.t(),
           env: %{String.t() => String.t()},
           org: String.t(),
+          orgs: [String.t()],
           terminal: Terminal.t(),
           program: String.t(),
           json?: boolean()
         }
 
-  @doc "Returns the context for `env`, the environment. The org is `config.yaml`'s `org`, or `default`."
+  @doc """
+  Returns the context for `env`, the environment. The org is `config.yaml`'s `org`, or `default`,
+  and the others are its `orgs`.
+  """
   @spec new(%{String.t() => String.t()}) :: t()
   def new(env) do
     dirs = Dirs.new(env)
+    config = config(dirs)
 
     %__MODULE__{
       dirs: dirs,
       env: env,
-      org: org(dirs),
+      org: org(config),
+      orgs: orgs(config),
       terminal: Terminal.new(env),
       program: Map.get(env, "WARDRIK_PROGRAM", "wardrik")
     }
@@ -80,13 +87,55 @@ defmodule WardrikDaemon.CLI.Context do
     end
   end
 
-  @doc "Returns the ID `name` names: `name` itself if it holds an org, or else `name` under the deployment's org."
-  @spec agent(t(), String.t()) :: String.t()
+  @doc """
+  Returns the ID of the agent `name` names, as the daemon finds it: `triage` in the deployment's
+  org, or `growth/triage` in another.
+  """
+  @spec agent(t(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def agent(cx, name) do
-    if String.contains?(name, "/") and not String.starts_with?(name, "@"),
-      do: name,
-      else: cx.org <> "/" <> name
+    {org, name} =
+      case String.split(name, "/", parts: 2) do
+        [org, name] -> {org, name}
+        [name] -> {cx.org, name}
+      end
+
+    case call(cx, "agents.find", %{"owner" => org, "name" => name}) do
+      {:ok, %{"agents" => [%{"id" => id}]}} -> {:ok, id}
+      {:ok, %{"agents" => []}} -> {:error, "There's no agent #{name} in #{org}."}
+      {:error, why} -> {:error, why}
+    end
   end
+
+  @doc "Returns the IDs of the agents `names` names, as `agent/2` finds each."
+  @spec agents(t(), [String.t()]) :: {:ok, [String.t()]} | {:error, String.t()}
+  def agents(cx, names) do
+    found = Enum.map(names, &agent(cx, &1))
+
+    case Enum.find(found, &match?({:error, _why}, &1)) do
+      nil -> {:ok, for({:ok, id} <- found, do: id)}
+      error -> error
+    end
+  end
+
+  @doc """
+  Returns each agent's name by its ID, in the deployment's org and each org `config.yaml`
+  declares: its name in the deployment's org, and `org/name` in another.
+  """
+  @spec names(t()) :: %{String.t() => map()}
+  def names(cx) do
+    for org <- [cx.org | cx.orgs],
+        {:ok, %{"agents" => agents}} <- [call(cx, "agents.find", %{"owner" => org})],
+        agent <- agents,
+        into: %{},
+        do: {agent["id"], Map.put(agent, "shown", shown(cx, agent))}
+  end
+
+  defp shown(%{org: org}, %{"org" => org, "name" => name}), do: name
+  defp shown(_cx, %{"org" => org, "name" => name}), do: org <> "/" <> name
+
+  @doc "Puts the `--conversation` of `flags` in `input`, if it's set."
+  @spec conversation(map(), map()) :: map()
+  def conversation(input, flags), do: put(input, "conversation", flags[:conversation])
 
   @doc "Returns the owner `flags` name: `--org`, or `--user` in the deployment's org, or else `default`."
   @spec owner(t(), map(), String.t()) :: String.t()
@@ -100,10 +149,18 @@ defmodule WardrikDaemon.CLI.Context do
   def put(map, _key, nil), do: map
   def put(map, key, value), do: Map.put(map, key, value)
 
-  defp org(dirs) do
+  defp config(dirs) do
     case YamlElixir.read_from_file(Dirs.config(dirs, "config.yaml")) do
-      {:ok, %{"org" => org}} when is_binary(org) -> org
-      _none -> "default"
+      {:ok, %{} = config} -> config
+      _none -> %{}
     end
   end
+
+  defp org(%{"org" => org}) when is_binary(org), do: org
+  defp org(_config), do: "default"
+
+  defp orgs(%{"orgs" => %{} = orgs}),
+    do: orgs |> Map.keys() |> Enum.reject(&(&1 == "*")) |> Enum.sort()
+
+  defp orgs(_config), do: []
 end

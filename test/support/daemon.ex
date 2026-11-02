@@ -55,6 +55,43 @@ defmodule WardrikDaemon.Test do
       else: WardrikStore.ETS.new(name: :"store #{context.test}")
   end
 
+  @doc "Makes the agent `name` for `owner`, as the daemon's route does, and returns its ID."
+  def agent(context, owner, name, definition \\ [model: @model]) do
+    {:ok, record} =
+      WardrikDaemon.AgentRecords.create(context.daemon_store, owner: owner, name: name)
+
+    {:ok, _agent} = Wardrik.Agent.define(context.admin, record.id, definition)
+    record.id
+  end
+
+  @doc """
+  Returns the ID of a record for `label`, as `"payments/@ana/notes"`: owned by `payments/@ana`,
+  and named after the whole label, so labels never share a name. Makes it the first time.
+  """
+  def recorded(context, label) do
+    {owner, _name} = label |> String.split("/") |> Enum.split(-1)
+    owner = Enum.join(owner, "/")
+    name = label |> String.replace("@", "") |> String.replace("/", "-")
+    org = WardrikDaemon.Owners.org(owner)
+
+    case WardrikDaemon.AgentRecords.named(context.daemon_store, org, name) do
+      {:ok, record} ->
+        record.id
+
+      :error ->
+        {:ok, record} =
+          WardrikDaemon.AgentRecords.create(context.daemon_store, owner: owner, name: name)
+
+        record.id
+    end
+  end
+
+  @doc "Returns the ID of the agent called `name` in `org`."
+  def id(context, org, name) do
+    {:ok, record} = WardrikDaemon.AgentRecords.named(context.daemon_store, org, name)
+    record.id
+  end
+
   def start_daemon(context) do
     name = :"wardrik #{context.test}"
     store = store(context)

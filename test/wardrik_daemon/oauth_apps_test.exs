@@ -303,7 +303,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
              Client.run(ana, "connections.connect", %{"provider" => "nope"})
 
     # An agent's token acts for its owner, but manages no connections without a binding.
-    agent = client(context, "agent:payments/@ana/notes")
+    agent = client(context, "agent:" <> recorded(context, "payments/@ana/notes"))
     assert {:error, "not_found", _message} = Client.run(agent, "connections.list", %{})
 
     assert {:error, "not_found", _message} =

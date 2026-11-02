@@ -1,4 +1,5 @@
 defmodule WardrikDaemon.Config do
+  alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Config.Channels
   alias WardrikDaemon.Config.MCP
@@ -7,7 +8,6 @@ defmodule WardrikDaemon.Config do
   alias WardrikDaemon.Config.Options
   alias WardrikDaemon.Config.Orgs
   alias WardrikDaemon.Dirs
-  alias WardrikDaemon.Owners
 
   @wardrik [:deployment, :idle_timeout, :retention, :triggers]
 
@@ -84,8 +84,9 @@ defmodule WardrikDaemon.Config do
             workspace: [
               type: {:map, :string, :any},
               doc: """
-              `shared`: agents' workspaces other agents may mount, by the sharing agent's ID, each
-              with `read` and `write` lists of the exact IDs of the agents that mount it.
+              `shared`: agents' workspaces other agents may mount, by the sharing agent's name,
+              each with `read` and `write` lists of the names of the agents that mount it. Each
+              name is an agent's in the mounting agent's own org.
               """
             ],
             brave: [
@@ -452,7 +453,7 @@ defmodule WardrikDaemon.Config do
 
       {agent, _rule} ->
         {:error,
-         "workspace.shared.#{agent}: is an agent's ID, holding read and write, each a list of agents' IDs"}
+         "workspace.shared.#{agent}: is an agent's name, holding read and write, each a list of agents' names"}
     end
   end
 
@@ -467,11 +468,8 @@ defmodule WardrikDaemon.Config do
 
   defp rule?(_rule), do: false
 
-  # An agent's ID exactly, as the daemon names agents: no patterns and no conversations.
-  defp agent?(id),
-    do:
-      is_binary(id) and match?({:ok, _owner}, Owners.owner(id)) and
-        Wardrik.AgentID.agent(id) == id
+  # An agent's name exactly: no patterns.
+  defp agent?(name), do: AgentRecords.name?(name)
 
   defp interpolated(term, env, vault) do
     values = term |> names() |> Enum.uniq() |> Map.new(&{&1, value(&1, env, vault)})

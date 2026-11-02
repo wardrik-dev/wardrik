@@ -22,12 +22,13 @@ defmodule WardrikDaemon.TokenRoutesTest do
     bindings:
       - {org: "*", role: issuer, subjects: [user:ops]}
       - {org: "*", role: minter, subjects: [user:minty]}
-      - {org: payments, role: operator, subjects: [user:ana, agent:payments/helper]}
+      - {org: payments, role: operator, subjects: [user:ana, agent:helper]}
       - {org: payments, role: reader, subjects: [group:payments-eng]}
     """)
 
     context = start_daemon(context)
-    Map.put(context, :url, "http://127.0.0.1:#{port}")
+    helper = "agent:" <> agent(context, "payments", "helper")
+    Map.merge(context, %{url: "http://127.0.0.1:#{port}", helper: helper})
   end
 
   defp client(context, subject) do
@@ -53,7 +54,7 @@ defmodule WardrikDaemon.TokenRoutesTest do
     ops = client(context, "user:ops")
     {:ok, %{"id" => id}} = create(ops, "user:bo")
 
-    for subject <- ["user:ana", "agent:payments/helper", "user:bo"] do
+    for subject <- ["user:ana", context.helper, "user:bo"] do
       someone = client(context, subject)
       assert {:error, "not_found", _message} = create(someone, "user:bo")
       assert {:error, "not_found", _message} = Client.run(someone, "tokens.list", %{})
@@ -66,7 +67,7 @@ defmodule WardrikDaemon.TokenRoutesTest do
 
   test "no one but the admin makes a token for the admin, whatever their token bindings",
        context do
-    for subject <- ["user:ops", "user:minty", "user:ana", "agent:payments/helper"] do
+    for subject <- ["user:ops", "user:minty", "user:ana", context.helper] do
       assert {:error, "forbidden", _message} = create(client(context, subject), "user:admin")
     end
 

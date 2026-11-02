@@ -3,18 +3,27 @@ defmodule WardrikDaemon.AuthorizerTest do
 
   alias Wardrik.Authorizer.Request
   alias WardrikCore.Principal
+  alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Authorizer
   alias WardrikDaemon.Config.Access
 
-  setup do
+  # Agents by owner and name, as "payments/triage" or "payments/@ana/notes". Each gets a record.
+  @agents ~w(payments/triage payments/other payments/@ana/notes payments/@ana/helper growth/triage
+             growth/a growth/other growth/x growth/@jon/notes growth/@ana/memo growth/helper)
+
+  setup context do
     {:ok, access} =
       Access.read(
         %{
           "reader" => %{"rules" => [%{"verbs" => ["read", "events"], "kinds" => ["agent"]}]},
           "triager" => %{
             "rules" => [
-              %{"verbs" => ["ask"], "kinds" => ["agent"], "names" => ["growth/triage"]}
+              %{"verbs" => ["ask"], "kinds" => ["agent"], "names" => ["triage"]}
             ]
+          },
+          "maker" => %{"rules" => [%{"verbs" => ["create"], "kinds" => ["agent"]}]},
+          "named_maker" => %{
+            "rules" => [%{"verbs" => ["create"], "kinds" => ["agent"], "names" => ["triage"]}]
           }
         },
         [
@@ -26,21 +35,43 @@ defmodule WardrikDaemon.AuthorizerTest do
           %{
             "org" => "payments",
             "role" => "reader",
-            "subjects" => ["agent:payments/@ana/helper"]
+            "subjects" => ["agent:helper"]
           },
           %{"org" => "growth", "role" => "reader", "subjects" => ["group:growth-eng"]},
           %{"org" => "payments", "role" => "reader", "subjects" => ["user:dee"]},
-          %{"org" => "growth", "role" => "triager", "subjects" => ["user:bo"]}
+          %{"org" => "growth", "role" => "triager", "subjects" => ["user:bo"]},
+          %{"org" => "growth", "role" => "maker", "subjects" => ["user:lee"]},
+          %{"org" => "growth", "role" => "named_maker", "subjects" => ["user:mo"]}
         ],
         ["payments", "growth"]
       )
 
-    %{access: access}
+    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    start_supervised!({WardrikStore, store})
+
+    ids =
+      Map.new(@agents, fn agent ->
+        {owner, name} =
+          case String.split(agent, "/") do
+            [org, person, name] -> {org <> "/" <> person, name}
+            [org, name] -> {org, name}
+          end
+
+        {:ok, record} = AgentRecords.create(store, owner: owner, name: name)
+        {agent, record.id}
+      end)
+
+    %{access: %{access: access, store: store, ids: ids}}
   end
 
-  defp decide(access, fields) do
+  defp decide(%{ids: ids} = opts, fields) do
     {principal, fields} = Keyword.pop(fields, :principal)
     {attributes, fields} = Keyword.pop(fields, :attributes, %{})
+
+    fields =
+      fields
+      |> Keyword.update(:resource, nil, &minted(&1, ids))
+      |> Keyword.update(:actor, nil, &minted(&1, ids))
 
     request =
       struct!(
@@ -48,8 +79,11 @@ defmodule WardrikDaemon.AuthorizerTest do
         [principal: %Principal{id: principal, attributes: attributes}, scope: nil] ++ fields
       )
 
-    Authorizer.authorize(request, access)
+    Authorizer.authorize(request, Map.take(opts, [:access, :store]))
   end
+
+  defp minted({:agent, agent}, ids), do: {:agent, Map.get(ids, agent, agent)}
+  defp minted(other, _ids), do: other
 
   test "an agent gets its own bindings, never its owner's", %{access: access} do
     owner = [principal: "payments/@ana"]
@@ -172,12 +206,13 @@ defmodule WardrikDaemon.AuthorizerTest do
 
     for {action, resource} <- [
           {"agent.define", {:agent, "growth/@jon/notes"}},
-          {"agent.forget", {:agent, "growth/@jon/notes/C1"}},
+          {"agent.forget", {:agent, "growth/@jon/notes"}},
+          {"agent.create", {:agents, "growth/@jon"}},
           {"provider.add", {:provider, "growth/@jon"}}
         ],
         do: assert(decide(access, jon ++ [action: action, resource: resource]) == :ok)
 
-    assert decide(access, jon ++ [action: "agent.ask", resource: {:agent, "growth/@ana/notes"}]) ==
+    assert decide(access, jon ++ [action: "agent.ask", resource: {:agent, "growth/@ana/memo"}]) ==
              {:error, :not_found}
 
     assert decide(access,
@@ -265,6 +300,41 @@ defmodule WardrikDaemon.AuthorizerTest do
                  context: %{installation: %{owner: "payments", workspace: "T1"}}
                ]
            ) == {:error, :not_found}
+  end
+
+  test "an agent the daemon didn't mint reaches no one, the admin included", %{access: access} do
+    for principal <- ["admin", "ana", "payments"], action <- ["agent.define", "agent.read"] do
+      assert decide(access,
+               principal: principal,
+               action: action,
+               resource: {:agent, "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN"}
+             ) == {:error, :not_found}
+    end
+  end
+
+  test "making an agent is create on the kind agent, in the owner's org", %{access: access} do
+    create = fn principal, owner ->
+      decide(access, principal: principal, action: "agent.create", resource: {:agents, owner})
+    end
+
+    assert create.("growth/@jon", "growth/@jon") == :ok
+    assert create.("growth/@jon", "growth") == {:error, :not_found}
+    assert create.("lee", "growth") == :ok
+    assert create.("lee", "growth/@jon") == :ok
+    assert create.("lee", "payments") == {:error, :not_found}
+    assert create.("mo", "growth") == {:error, :forbidden}
+    assert create.("bo", "growth") == {:error, :forbidden}
+    assert create.("ana", "deployment") == {:error, :not_found}
+  end
+
+  test "a binding names an agent in its own org alone", %{access: access} do
+    read = [action: "agent.read", resource: {:agent, "payments/triage"}]
+    helper = [principal: "payments/@ana", actor: {:agent, "payments/@ana/helper"}]
+
+    assert decide(access, helper ++ read) == :ok
+
+    assert decide(access, [principal: "growth", actor: {:agent, "growth/helper"}] ++ read) ==
+             {:error, :not_found}
   end
 
   describe "through a channel" do

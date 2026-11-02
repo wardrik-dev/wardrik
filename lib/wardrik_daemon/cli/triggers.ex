@@ -48,8 +48,9 @@ defmodule WardrikDaemon.CLI.Triggers do
   end
 
   defp listed([agent], _flags, cx) do
-    with {:ok, %{"definition" => definition} = read} <-
-           Context.call(cx, "agent.definition", %{"agent" => Context.agent(cx, agent)}) do
+    with {:ok, id} <- Context.agent(cx, agent),
+         {:ok, %{"definition" => definition} = read} <-
+           Context.call(cx, "agent.definition", %{"agent" => id}) do
       triggers = Map.get(definition, "triggers", [])
       next = Map.get(read, "next_runs", %{})
 
@@ -87,16 +88,16 @@ defmodule WardrikDaemon.CLI.Triggers do
     fields =
       for {key, value} <- flags, key in @fields, into: %{}, do: {Atom.to_string(key), value}
 
-    input = Map.merge(fields, %{"agent" => Context.agent(cx, agent), "trigger" => name})
-
-    with {:ok, answer} <- Context.call(cx, "agent.trigger_set", input),
+    with {:ok, id} <- Context.agent(cx, agent),
+         input = Map.merge(fields, %{"agent" => id, "trigger" => name}),
+         {:ok, answer} <- Context.call(cx, "agent.trigger_set", input),
          do: Context.done(cx, answer, "Set #{name}.")
   end
 
   defp removed([agent, name], _flags, cx) do
-    input = %{"agent" => Context.agent(cx, agent), "trigger" => name}
-
-    with {:ok, answer} <- Context.call(cx, "agent.trigger_remove", input),
+    with {:ok, id} <- Context.agent(cx, agent),
+         {:ok, answer} <-
+           Context.call(cx, "agent.trigger_remove", %{"agent" => id, "trigger" => name}),
          do: Context.done(cx, answer, "Removed #{name}.")
   end
 end

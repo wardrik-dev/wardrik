@@ -4,6 +4,8 @@ defmodule WardrikDaemon.HTTP do
 
   | Route | Serves |
   | --- | --- |
+  | `GET /v1/owners/{owner}/agents?name=` | the agents of the owner's org the caller may read, by name. See `WardrikDaemon.AgentRecords`. |
+  | `POST /v1/owners/{owner}/agents` | makes an agent: mints its ID, keeps its record, and defines it |
   | `GET /v1/owners/{owner}/secrets` | the owner's secrets, by name and purpose, never a value |
   | `PUT /v1/owners/{owner}/secrets/{name}` | seals a secret. See `WardrikDaemon.Secrets`. |
   | `DELETE /v1/owners/{owner}/secrets/{name}` | removes one |
@@ -29,7 +31,8 @@ defmodule WardrikDaemon.HTTP do
   An owner is one path segment, encoded: `acme`, `acme%2F%40jon` or `deployment`.
 
   Its routes take the same tokens (`WardrikDaemon.Authenticator`), and are decided by the same
-  roles and bindings (`WardrikDaemon.Authorizer`), on `{:secret, owner}`, `{:ceiling, org}`,
+  roles and bindings (`WardrikDaemon.Authorizer`), on `{:agents, owner}` to make an agent, each
+  agent found, `{:secret, owner}`, `{:ceiling, org}`,
   `{:mcp_server, owner}`, `{:notify_target, owner}`, `{:provider, owner}`, `{:connection, id}`
   for the caller's own, and `{:token, id}`. A body is checked against
   its schema in `priv/openapi.json`. They answer errors as `Wardrik.HTTP` does.
@@ -59,6 +62,8 @@ defmodule WardrikDaemon.HTTP do
 
   alias Wardrik.Error
   alias WardrikCore.Principal
+  alias WardrikDaemon.AgentRecords
+  alias WardrikDaemon.Agents
   alias WardrikDaemon.Ceiling
   alias WardrikDaemon.Connections
   alias WardrikDaemon.NotifyTargets
@@ -76,7 +81,7 @@ defmodule WardrikDaemon.HTTP do
   @external_resource @openapi_path
   @openapi @openapi_path |> File.read!() |> JSON.decode!()
   @inputs Map.new(
-            ~w(server_input notify_target_input provider_input token_input),
+            ~w(agent_input server_input notify_target_input provider_input token_input),
             &{&1, JSV.build!(@openapi["components"]["schemas"][&1])}
           )
 
@@ -141,6 +146,38 @@ defmodule WardrikDaemon.HTTP do
 
   plug :match
   plug :dispatch
+
+  # Each agent is listed only where the caller may read it, so they learn of no other.
+  get "/v1/owners/:owner/agents" do
+    conn = conn |> Plug.RequestId.call(@request_id) |> Plug.Conn.fetch_query_params()
+    daemon = conn.assigns.daemon
+
+    with {:ok, scope} <- authenticated(conn, daemon),
+         :ok <- named(owner),
+         :ok <- kept(owner, daemon.orgs) do
+      agents =
+        for record <- AgentRecords.in_org(daemon.store, Owners.org(owner)),
+            conn.query_params["name"] in [nil, record.name],
+            match?({:ok, _read}, Wardrik.run(scope, "agent.read", %{"agent" => record.id})),
+            do: record(record)
+
+      answer(conn, 200, %{"agents" => agents})
+    else
+      {:error, %Error{} = error} -> Response.error(conn, error)
+    end
+  end
+
+  post "/v1/owners/:owner/agents" do
+    served(conn, owner, {"agent.create", :agents}, fn scope ->
+      with :ok <- an_owner_of_agents(owner),
+           {:ok, %{"name" => name} = input} <- input(conn, "agent_input"),
+           {:ok, record} <- create(conn.assigns.daemon, owner, name),
+           {:ok, _snapshot} <-
+             defined(conn.assigns.daemon, scope, record, Map.delete(input, "name")) do
+        {:ok, 201, record(record)}
+      end
+    end)
+  end
 
   get "/v1/owners/:owner/secrets" do
     served(conn, owner, {"secret.read", :secret}, fn _scope ->
@@ -352,6 +389,7 @@ defmodule WardrikDaemon.HTTP do
     end
   end
 
+  defp described({:agents, owner}), do: "agents of #{owner}"
   defp described({:secret, owner}), do: "secrets of #{owner}"
   defp described({:ceiling, owner}), do: "ceilings of #{owner}"
   defp described({:mcp_server, owner}), do: "MCP servers of #{owner}"
@@ -449,6 +487,46 @@ defmodule WardrikDaemon.HTTP do
 
   defp an_org(_owner, org),
     do: {:error, Error.new(:invalid_request, "Ceilings are an org's: ask for #{org}'s.")}
+
+  defp an_owner_of_agents("deployment"),
+    do: {:error, Error.new(:invalid_request, "An agent is an org's or a person's: give one.")}
+
+  defp an_owner_of_agents(_owner), do: :ok
+
+  defp create(%{wardrik: wardrik, store: store}, owner, name) do
+    gone? = &Agents.gone?([wardrik: wardrik], &1)
+
+    case AgentRecords.create(store, owner: owner, name: name, replaces: gone?) do
+      {:ok, record} ->
+        {:ok, record}
+
+      {:error, {:taken, record}} ->
+        {:error, Error.new(:conflict, "#{record.org} has an agent called #{name} already.")}
+    end
+  end
+
+  # An agent that isn't defined has no record, so its name is free.
+  defp defined(%{store: store}, scope, record, definition) do
+    with {:ok, definition} <- identified(store, record, definition),
+         {:ok, snapshot} <-
+           Wardrik.run(scope, "agent.define", Map.put(definition, "agent", record.id)) do
+      {:ok, snapshot}
+    else
+      {:error, error} ->
+        :ok = AgentRecords.delete(store, record)
+        {:error, error}
+    end
+  end
+
+  defp identified(store, record, definition) do
+    case AgentRecords.identified(store, record.org, definition) do
+      {:ok, definition} -> {:ok, definition}
+      {:error, why} -> {:error, Error.new(:invalid_request, why <> ".")}
+    end
+  end
+
+  defp record(record),
+    do: %{"id" => record.id, "name" => record.name, "org" => record.org, "owner" => record.owner}
 
   defp answer(conn, status, nil), do: Plug.Conn.send_resp(conn, status, "")
   defp answer(conn, status, body), do: Response.json(conn, status, body)

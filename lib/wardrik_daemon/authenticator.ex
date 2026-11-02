@@ -5,7 +5,7 @@ defmodule WardrikDaemon.Authenticator do
 
     * A `user:ID` token acts as the principal `ID`, with its groups as the principal's `:groups`
       attribute.
-    * An `agent:ID` token acts as the agent, for its owner, as its own tools do.
+    * An `agent:ID` token acts as the agent, by its ID, for its owner, as its own tools do.
 
   A missing, unknown, revoked or expired token is `:unauthorized`.
 
@@ -29,7 +29,7 @@ defmodule WardrikDaemon.Authenticator do
   def authenticate(%Request{conn: conn, wardrik: wardrik}, store) do
     with ["Bearer " <> secret] <- Plug.Conn.get_req_header(conn, "authorization"),
          {:ok, token} <- Tokens.verify(store, secret),
-         {:ok, scope} <- scope(wardrik, token) do
+         {:ok, scope} <- scope(store, wardrik, token) do
       {:ok, scope}
     else
       _refused ->
@@ -37,11 +37,11 @@ defmodule WardrikDaemon.Authenticator do
     end
   end
 
-  defp scope(wardrik, %Token{subject: "user:" <> id, groups: groups}),
+  defp scope(_store, wardrik, %Token{subject: "user:" <> id, groups: groups}),
     do: {:ok, Wardrik.as(wardrik, %Principal{id: id, attributes: %{groups: groups}})}
 
-  defp scope(wardrik, %Token{subject: "agent:" <> id}) do
-    with {:ok, owner} <- Owners.owner(id),
+  defp scope(store, wardrik, %Token{subject: "agent:" <> id}) do
+    with {:ok, owner} <- Owners.owner(store, id),
          do: {:ok, Wardrik.as(wardrik, owner, actor: {:agent, id})}
   end
 end

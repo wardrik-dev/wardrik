@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.TokensTest do
   use ExUnit.Case, async: true
 
+  alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Authenticator
   alias WardrikDaemon.Tokens
   alias WardrikDaemon.Tokens.Token
@@ -38,9 +39,11 @@ defmodule WardrikDaemon.TokensTest do
     assert {:ok, scope} = authenticate(store, bearer(secret))
     assert %{principal: %{id: "ana", attributes: %{groups: ["payments-eng"]}}, actor: nil} = scope
 
-    {:ok, %{secret: secret}} = create(store, "agent:payments/@ana/helper")
+    {:ok, helper} = AgentRecords.create(store, owner: "payments/@ana", name: "helper")
+    {:ok, %{secret: secret}} = create(store, "agent:" <> helper.id)
     assert {:ok, scope} = authenticate(store, bearer(secret))
-    assert %{principal: %{id: "payments/@ana"}, actor: {:agent, "payments/@ana/helper"}} = scope
+    assert %{principal: %{id: "payments/@ana"}, actor: {:agent, id}} = scope
+    assert id == helper.id
   end
 
   test "refuses a missing header, a wrong secret, and a revoked or expired token", %{store: store} do

@@ -320,7 +320,11 @@ defmodule WardrikDaemon.CLI.Init do
   defp ask(_flags, cx, variable) do
     Context.puts(cx, "Asking the front door: #{@question}")
 
-    case Follow.turn(cx, agent: Context.agent(cx, "assistant"), text: @question) do
+    answered =
+      with {:ok, id} <- Context.agent(cx, "assistant"),
+           do: Follow.turn(cx, agent: id, name: "assistant", text: @question)
+
+    case answered do
       :ok ->
         :ok
 

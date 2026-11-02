@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.OwnersTest do
   use ExUnit.Case, async: true
 
+  alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Owners
 
   test "only WardrikDaemon.Owners reads an owner's org or person" do
@@ -13,26 +14,28 @@ defmodule WardrikDaemon.OwnersTest do
     assert readers == []
   end
 
-  test "reads an agent's owner from its ID, and nothing that isn't one" do
-    assert Owners.owner("acme/triage") == {:ok, "acme"}
-    assert Owners.owner("acme/@jon/notes") == {:ok, "acme/@jon"}
-    assert Owners.owner("acme/triage/C1-1696.1234") == {:ok, "acme"}
-    assert Owners.owner("acme/@jon/notes/C1") == {:ok, "acme/@jon"}
+  test "nothing in the daemon reads an agent's ID" do
+    readers =
+      for path <- Path.wildcard("lib/**/*.ex"),
+          File.read!(path) =~ ~r{AgentID|String\.split\(id|Owners\.owner\(id},
+          do: path
 
-    for id <- [
-          "acme",
-          "acme/",
-          "/triage",
-          "acme/@/notes",
-          "acme/*",
-          "acme/t?",
-          "../globex/triage",
-          "acme/a/b/c",
-          "acme/@jon/a/b/c",
-          "acme:x/triage",
-          ""
-        ],
-        do: assert(Owners.owner(id) == :error, id)
+    assert readers == []
+  end
+
+  test "reads an agent's owner from its record, never its ID" do
+    store = WardrikStore.ETS.new(name: :"owners #{System.unique_integer()}")
+    start_supervised!({WardrikStore, store})
+    {:ok, record} = AgentRecords.create(store, owner: "acme/@jon", name: "notes")
+
+    assert "agt_" <> _ulid = record.id
+    assert Owners.owner(store, record.id) == {:ok, "acme/@jon"}
+    assert Owners.org_of(store, {:agent, record.id}) == "acme"
+
+    for id <- ["acme/@jon/notes", "acme/triage", "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", ""] do
+      assert Owners.owner(store, id) == :error, id
+      assert Owners.org_of(store, {:agent, id}) == nil, id
+    end
 
     assert Owners.chain("acme/@jon") == ["acme/@jon", "acme", "deployment"]
     assert Owners.chain("acme") == ["acme", "deployment"]

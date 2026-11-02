@@ -57,10 +57,10 @@ defmodule WardrikDaemon.ChannelMembersTest do
     assert {:ok, %Wardrik.Scope{principal: %Principal{id: "ana"}} = scope} =
              Workspace.member_scope(slack, @ana)
 
-    assert {:ok, %Wardrik.Agent{}} = Wardrik.Agent.read(scope, "acme/triage")
+    assert {:ok, %Wardrik.Agent{}} = Wardrik.Agent.read(scope, id(context, "acme", "triage"))
 
     assert {:error, %Wardrik.Error{type: :forbidden}} =
-             Wardrik.Agent.ask(scope, "acme/triage", content: "Hi")
+             Wardrik.Agent.ask(scope, id(context, "acme", "triage"), content: "Hi")
 
     assert {:error, why} = Workspace.member_scope(slack, @stranger)
     assert why =~ "Ask an admin"
@@ -73,11 +73,11 @@ defmodule WardrikDaemon.ChannelMembersTest do
     assert {:ok, %Wardrik.Scope{principal: %Principal{id: "open:T1/U9"}} = scope} =
              Workspace.member_scope(open, @stranger)
 
-    assert {:ok, %Wardrik.Agent{}} = Wardrik.Agent.read(scope, "acme/triage")
+    assert {:ok, %Wardrik.Agent{}} = Wardrik.Agent.read(scope, id(context, "acme", "triage"))
 
     {:ok, other} = Workspace.member_scope(open, %Member{id: "U8"})
 
     assert {:error, %Wardrik.Error{type: :not_found}} =
-             Wardrik.Agent.read(other, "acme/triage")
+             Wardrik.Agent.read(other, id(context, "acme", "triage"))
   end
 end

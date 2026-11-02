@@ -139,6 +139,7 @@ defmodule WardrikDaemon.DoctorTest do
     write(context, "agents/broken.md", "---\ntools: [nope]\n---\n")
     write(context, "agents/odd.md", "---\ncolour: red\n---\n")
     write(context, "agents/far.md", "---\norg: globex\n---\n")
+    write(context, "agents/lost.md", "---\nworkspace: {shared: {team: ghost}}\n---\n")
 
     checks = run(context.env)
 
@@ -159,7 +160,8 @@ defmodule WardrikDaemon.DoctorTest do
     agents = found(checks, "agents")
     assert {:fail, "broken.md: There's no tool nope here."} in agents
     assert Enum.any?(agents, fn {:fail, why} -> why =~ "odd.md" end)
-    assert Enum.any?(agents, fn {:fail, why} -> why =~ "is in the org globex" end)
+    assert Enum.any?(agents, fn {:fail, why} -> why =~ ~s(far.md: is in the org "globex") end)
+    assert {:fail, "lost.md: workspace.shared.team: names no agent of acme"} in agents
 
     capture_io(fn -> assert Doctor.print(checks) > 0 end)
 

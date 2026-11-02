@@ -60,7 +60,8 @@ defmodule WardrikDaemon.ServersTest do
     do: Client.run(client, "servers.remove", %{"owner" => owner, "name" => name})
 
   defp servers(context, id) do
-    {:ok, resolved} = Wardrik.Resolver.resolve(context.running, %Request{agent: id})
+    request = %Request{agent: recorded(context, id)}
+    {:ok, resolved} = Wardrik.Resolver.resolve(context.running, request)
     resolved.servers
   end
 

@@ -13,8 +13,9 @@ defmodule WardrikDaemon.CLI do
   are shortcuts. Each is a `WardrikDaemon.CLI.Command`, defined once for its help, its options and
   running it.
 
-  Every command takes `--json`, and then prints the operation's JSON. An agent is named by its ID,
-  as `acme/triage`, or without the deployment's org, as `triage` or `@jon/notes`.
+  Every command takes `--json`, and then prints the operation's JSON. An agent is named by its name:
+  `triage` in the deployment's org, or `growth/triage` in another. The daemon finds its ID. A
+  command on an agent takes `--conversation ID` for one of its conversations.
 
   `serve`, `start`, `stop`, `pid`, `logs` and `service` run the daemon itself, so the `bin/wardrik`
   script handles them.

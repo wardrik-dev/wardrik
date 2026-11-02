@@ -68,7 +68,7 @@ defmodule WardrikDaemon.Running do
             {WardrikDaemon.Resolver,
              Map.merge(orgs, %{wardrik: name, config: config, store: daemon})},
           key_source: {WardrikDaemon.Keys, wardrik: name, deployment: config.deployment_keys},
-          authorizer: {WardrikDaemon.Authorizer, config.access},
+          authorizer: {WardrikDaemon.Authorizer, %{access: config.access, store: daemon}},
           trusted_workers: config.trusted_workers,
           egress: WardrikDaemon.Egress.check(config),
           declarations: {Agents, agents}

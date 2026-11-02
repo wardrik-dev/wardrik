@@ -13,30 +13,41 @@ defmodule WardrikDaemon.AgentFile do
       ---
       You watch the incident queue. Summarise anything new, and say which issues need an engineer.
 
-  Three keys make the agent's ID:
+  The file's name is the agent's name, `triage` above. A name is unique in its org. Two keys say
+  whose it is:
 
-    * `name` - the file's name unless set.
-    * `org` - the deployment's `org`. A file that names another org doesn't read.
-    * `user` - the person the agent works for, if any.
+    * `org` - the org it's in: the deployment's `org`, or one `config.yaml`'s `orgs` declares.
+      Its owner's org, or else the deployment's `org`, unless set.
+    * `owner` - who it works for: its org, or a person in it, as `acme/@jon` or `"@jon"`. Its
+      org unless set.
 
-  The file above is `acme/triage`. With `user: jon`, it's `acme/@jon/triage`.
+  The daemon gives each agent an ID of its own, and keeps it as long as the file keeps its name.
+  See `WardrikDaemon.Agents`.
 
   Every other key is part of the definition. See `Wardrik.Definition`. Keys the file leaves out
   come from `config.yaml`'s `defaults`. A file with no frontmatter is all instructions.
   """
 
+  alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Config
+  alias WardrikDaemon.Owners
 
-  @doc "Reads the file at `path`. Returns the agent's ID and its definition, with `defaults` filled in."
-  @spec read(Path.t(), Config.t()) :: {:ok, String.t(), map()} | {:error, String.t()}
+  @typedoc "Whose agent a file declares, and its name."
+  @type agent() :: %{org: String.t(), owner: String.t(), name: String.t()}
+
+  @doc """
+  Reads the file at `path`. Returns whose agent it is, with its name, and its definition, with
+  `defaults` filled in.
+  """
+  @spec read(Path.t(), Config.t()) :: {:ok, agent(), map()} | {:error, String.t()}
   def read(path, %Config{} = config) do
     with {:ok, text} <- File.read(path),
          {:ok, fields, body} <- split(text),
-         {:ok, id} <- id(path, fields, config.org) do
-      {:ok, id, definition(fields, body, config.defaults)}
+         {:ok, agent} <- agent(path, fields, config) do
+      {:ok, agent, definition(fields, body, config.defaults)}
     else
-      {:error, reason} when is_atom(reason) -> {:error, "#{path}: #{:file.format_error(reason)}"}
-      {:error, why} -> {:error, "#{path}: #{why}"}
+      {:error, reason} when is_atom(reason) -> {:error, to_string(:file.format_error(reason))}
+      {:error, why} -> {:error, why}
     end
   end
 
@@ -53,24 +64,60 @@ defmodule WardrikDaemon.AgentFile do
 
   defp split(text), do: {:ok, %{}, String.trim(text)}
 
-  defp id(path, fields, org) do
-    name = Map.get(fields, "name", path |> Path.basename() |> Path.rootname())
+  defp agent(path, fields, config) do
+    name = path |> Path.basename() |> Path.rootname()
+    org = fields["org"] || org(fields["owner"], config.org)
+    owner = owner(fields["owner"], org)
 
-    case {Map.get(fields, "org", org), fields["user"]} do
-      {^org, nil} ->
-        {:ok, "#{org}/#{name}"}
-
-      {^org, user} ->
-        {:ok, "#{org}/@#{String.trim_leading(user, "@")}/#{name}"}
-
-      {other, _user} ->
-        {:error, "is in the org #{other}, and this deployment runs #{org}'s agents"}
-    end
+    with :ok <- unnamed(fields),
+         :ok <- named(name),
+         :ok <- declared(org, config),
+         :ok <- owned(owner, org, fields["owner"]),
+         do: {:ok, %{org: org, owner: owner, name: name}}
   end
+
+  defp unnamed(fields) do
+    if Map.has_key?(fields, "name") or Map.has_key?(fields, "user"),
+      do:
+        {:error,
+         "names its agent with name or user; the file's name is its name, and owner says whose"},
+      else: :ok
+  end
+
+  defp named(name) do
+    if AgentRecords.name?(name),
+      do: :ok,
+      else: {:error, "isn't named as an agent is: letters, digits, _, . and -, at most 64"}
+  end
+
+  defp declared(org, config) do
+    if org == config.org or Map.has_key?(Map.delete(config.orgs, "*"), org),
+      do: :ok,
+      else: {:error, "is in the org #{inspect(org)}, which config.yaml doesn't declare"}
+  end
+
+  defp owned(owner, org, given) do
+    if is_binary(owner) and Owners.valid?(owner) and Owners.within?(owner, org),
+      do: :ok,
+      else:
+        {:error,
+         "is owned by #{inspect(given)}: give its org, #{org}, or a person in it, as #{org}/@jon"}
+  end
+
+  # An owner a file names holds its org, unless it's a person in the file's own.
+  defp org(owner, default) when is_binary(owner) do
+    if String.starts_with?(owner, "@"), do: default, else: Owners.org(owner)
+  end
+
+  defp org(_owner, default), do: default
+
+  defp owner(nil, org), do: org
+  defp owner("@" <> person, org), do: Owners.person(org, person)
+  defp owner(owner, _org), do: owner
 
   defp definition(fields, body, defaults) do
     defaults
-    |> Map.merge(Map.drop(fields, ~w(name org user)))
+    |> Map.merge(Map.drop(fields, ~w(org owner)))
     |> instructions(body)
   end
 

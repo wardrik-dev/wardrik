@@ -4,13 +4,18 @@ defmodule WardrikDaemon.Authorizer do
   RBAC and Cedar do, with the roles and bindings `config.yaml` declares. See
   `WardrikDaemon.Config.Access`.
 
-    * An agent acting through its tools is `agent:ID`, and nothing else. It gets its own
-      bindings, never its owner's, as a Kubernetes ServiceAccount does.
+    * An agent acting through its tools is `agent:NAME`, by its name in its org, and nothing
+      else. It gets its own bindings, never its owner's, as a Kubernetes ServiceAccount does.
     * Anyone else is `user:ID`, and `group:NAME` for each of the principal's `:groups`
       attributes.
+    * An agent is reached through its record, `WardrikDaemon.AgentRecords`: its org and owner
+      decide. An agent the daemon made no record of is `{:error, :not_found}` to everyone, so the
+      API can't define an agent by an ID the daemon didn't mint.
     * A principal acting itself may do anything to the agents it owns, and to its secrets, MCP
       servers, notify targets and OAuth apps: `resource.owner == principal`, in Cedar's words.
       See `WardrikDaemon.Owners`.
+    * Making an agent is the verb `create` on the kind `agent`, in the owner's org, as
+      `{:agents, owner}`. As in Kubernetes, a rule with `names` doesn't allow it.
     * A principal acting itself always manages its own connections, the accounts it signs in to.
     * Through a channel, a chat member acts as the user `WardrikDaemon.ChannelMembers` maps
       them to. They reach only the agents within the installation's owner (`"*"` holds every
@@ -19,7 +24,8 @@ defmodule WardrikDaemon.Authorizer do
       decide its calls. The channel acting for itself is the installation's owner, so the owner
       rule reaches its agents.
     * Otherwise, a binding in the resource's org, or in `"*"`, gives one of them a role with a
-      rule that matches the action's verb and the resource.
+      rule that matches the action's verb and the resource. A binding names an agent by its name
+      in the binding's org, as `agent:triage`, and a rule names agents by their names.
 
   Tokens are in no org, so only a binding in `"*"` with a rule on the `token` kind reaches them.
   The owner rule never does. A token for `user:admin` is the admin's alone to make, whatever
@@ -29,12 +35,19 @@ defmodule WardrikDaemon.Authorizer do
   learn nothing about it, and `{:error, :forbidden}` where one does but no rule allows the verb.
 
       {:ok, config} = WardrikDaemon.Config.read(dirs, env)
-      Wardrik.start_link(name: MyAgents, authorizer: {WardrikDaemon.Authorizer, config.access})
+      Wardrik.start_link(
+        name: MyAgents,
+        authorizer: {WardrikDaemon.Authorizer, %{access: config.access, store: store}}
+      )
+
+  `store` is the daemon's own scope of the store, where `WardrikDaemon.AgentRecords` keeps
+  agents' records.
   """
 
   @behaviour Wardrik.Authorizer
 
   alias Wardrik.Authorizer.Request
+  alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Owners
 
@@ -42,104 +55,126 @@ defmodule WardrikDaemon.Authorizer do
   @member ~w(ask read events)
   @deciding ~w(decide approve deny)
 
+  @typedoc "The roles and bindings `config.yaml` declares, and where agents' records are kept."
+  @type opts() :: %{access: Access.t(), store: WardrikStore.t()}
+
   @impl Wardrik.Authorizer
-  @spec authorize(Request.t(), Access.t()) :: :ok | {:error, :forbidden | :not_found}
-  def authorize(%Request{actor: {:channel, _name}} = request, access), do: member(request, access)
+  @spec authorize(Request.t(), opts()) :: :ok | {:error, :forbidden | :not_found}
+  def authorize(%Request{resource: {:agent, id}} = request, opts) do
+    case AgentRecords.fetch(opts.store, id) do
+      {:ok, record} -> decided(request, Map.put(opts, :record, record))
+      :error -> {:error, :not_found}
+    end
+  end
+
+  def authorize(%Request{} = request, opts), do: decided(request, Map.put(opts, :record, nil))
+
+  defp decided(%Request{actor: {:channel, _name}} = request, opts), do: member(request, opts)
 
   # A token for the admin is the admin's alone to make, whatever else may make tokens, as
   # Kubernetes' TokenRequest needs rights on the very account.
-  def authorize(
-        %Request{action: "token.create", resource: {:token, "user:" <> id}} = request,
-        access
-      )
-      when id == @admin do
+  defp decided(
+         %Request{action: "token.create", resource: {:token, "user:" <> id}} = request,
+         opts
+       )
+       when id == @admin do
     case request do
-      %Request{actor: nil, principal: %{id: @admin}} -> bound(request, access)
+      %Request{actor: nil, principal: %{id: @admin}} -> bound(request, opts)
       _anyone_else -> {:error, :forbidden}
     end
   end
 
-  def authorize(%Request{} = request, access),
-    do: if(owns?(request), do: :ok, else: bound(request, access))
+  defp decided(%Request{} = request, opts),
+    do: if(owns?(request, opts), do: :ok, else: bound(request, opts))
 
-  defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {:agent, agent}}),
-    do: Owners.owner(agent) == {:ok, id}
+  defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {:agent, _id}}, opts),
+    do: opts.record.owner == id
 
-  defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {:connection, id}}), do: true
+  defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {:connection, id}}, _opts),
+    do: true
 
   # The deployment's own is in no org, so no one owns it.
-  defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {kind, id} = resource})
-       when kind in [:secret, :mcp_server, :notify_target, :provider],
-       do: Owners.org_of(resource) != nil
+  defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {kind, id} = resource}, opts)
+       when kind in [:secret, :mcp_server, :notify_target, :provider, :agents],
+       do: Owners.org_of(opts.store, resource) != nil
 
-  defp owns?(_request), do: false
+  defp owns?(_request, _opts), do: false
 
-  defp bound(request, %{roles: roles, bindings: bindings}) do
-    subjects = subjects(request)
-    org = Owners.org_of(request.resource)
+  defp bound(request, %{access: %{roles: roles, bindings: bindings}} = opts) do
+    org = Owners.org_of(opts.store, request.resource)
 
     reaching =
       for binding <- bindings,
           binding.org == "*" or binding.org == org,
+          subjects = subjects(request, binding.org, opts),
           Enum.any?(binding.subjects, &(&1 in subjects)),
           do: Map.fetch!(roles, binding.role)
 
     cond do
       reaching == [] -> {:error, :not_found}
-      Enum.any?(reaching, &allows?(&1, request)) -> :ok
+      Enum.any?(reaching, &allows?(&1, request, opts.record)) -> :ok
       true -> {:error, :forbidden}
     end
   end
 
-  defp subjects(%Request{actor: {:agent, id}}), do: ["agent:" <> id]
+  # An agent is bound by its name in the binding's org.
+  defp subjects(%Request{actor: {:agent, id}}, org, opts) do
+    case AgentRecords.fetch(opts.store, id) do
+      {:ok, %{org: ^org, name: name}} -> ["agent:" <> name]
+      _elsewhere -> []
+    end
+  end
 
-  defp subjects(%Request{actor: nil, principal: principal}),
+  defp subjects(%Request{actor: nil, principal: principal}, _org, _opts),
     do: ["user:" <> principal.id | for(group <- groups(principal), do: "group:" <> group)]
 
-  defp subjects(_request), do: []
+  defp subjects(_request, _org, _opts), do: []
 
   defp groups(%{attributes: attributes}), do: Map.get(attributes, :groups, [])
 
-  defp allows?(rules, %Request{action: action, resource: {kind, name}}) do
+  defp allows?(rules, %Request{action: action, resource: {kind, id}}, record) do
     Enum.any?(rules, fn rule ->
-      matches?(rule.verbs, verb(action)) and matches?(rule.kinds, Atom.to_string(kind)) and
-        (rule.names == nil or name in rule.names)
+      matches?(rule.verbs, verb(action)) and matches?(rule.kinds, kind(kind)) and
+        named?(rule.names, kind, record || id)
     end)
   end
+
+  defp kind(:agents), do: "agent"
+  defp kind(kind), do: Atom.to_string(kind)
+
+  # Agents are named by their names; making one names none, as Kubernetes' create.
+  defp named?(nil, _kind, _named), do: true
+  defp named?(_names, :agents, _owner), do: false
+  defp named?(names, :agent, record), do: record.name in names
+  defp named?(names, _kind, id), do: id in names
 
   defp matches?(allowed, value), do: "*" in allowed or value in allowed
 
   defp verb(action), do: action |> String.split(".") |> List.last()
 
   defp member(
-         %Request{resource: {:agent, id}, context: %{installation: %{owner: within}}} = request,
-         access
+         %Request{resource: {:agent, _id}, context: %{installation: %{owner: within}}} = request,
+         opts
        ) do
-    case Owners.owner(id) do
-      {:ok, owner} ->
-        if within == "*" or Owners.within?(owner, within),
-          do: member(verb(request.action), request, access),
-          else: {:error, :not_found}
-
-      :error ->
-        {:error, :not_found}
-    end
+    if within == "*" or Owners.within?(opts.record.owner, within),
+      do: member(verb(request.action), request, opts),
+      else: {:error, :not_found}
   end
 
-  defp member(_request, _access), do: {:error, :not_found}
+  defp member(_request, _opts), do: {:error, :not_found}
 
-  defp member(verb, request, access) when verb in @member, do: as_user(request, access)
+  defp member(verb, request, opts) when verb in @member, do: as_user(request, opts)
 
-  defp member(verb, %Request{principal: principal, context: context} = request, access)
+  defp member(verb, %Request{principal: principal, context: context} = request, opts)
        when verb in @deciding do
-    if context[:asked_by] == principal.id, do: :ok, else: as_user(request, access)
+    if context[:asked_by] == principal.id, do: :ok, else: as_user(request, opts)
   end
 
-  defp member(_verb, _request, _access), do: {:error, :forbidden}
+  defp member(_verb, _request, _opts), do: {:error, :forbidden}
 
   # The member's user, deciding as they would themselves.
-  defp as_user(request, access) do
+  defp as_user(request, opts) do
     user = %{request | actor: nil}
-    if owns?(user), do: :ok, else: bound(user, access)
+    if owns?(user, opts), do: :ok, else: bound(user, opts)
   end
 end

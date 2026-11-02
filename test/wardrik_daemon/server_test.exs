@@ -37,14 +37,14 @@ defmodule WardrikDaemon.ServerTest do
     context = start_daemon(context)
     log = context.log
 
-    assert log =~ "Wardrik didn't define acme/broken"
+    assert log =~ "Wardrik didn't define broken"
     assert log =~ "cluster isn't supported here yet"
 
     assert {:ok, %Wardrik.Definition{instructions: "You watch the queue.", policy: "careful"}, []} =
-             Wardrik.Agent.definition(context.admin, "acme/triage")
+             Wardrik.Agent.definition(context.admin, id(context, "acme", "triage"))
 
     assert {:error, %Wardrik.Error{type: :conflict}} =
-             Wardrik.Agent.forget(context.admin, "acme/triage")
+             Wardrik.Agent.forget(context.admin, id(context, "acme", "triage"))
   end
 
   test "routes an agent file's notices", context do
@@ -66,7 +66,7 @@ defmodule WardrikDaemon.ServerTest do
     context = start_daemon(context)
 
     assert {:ok, %Wardrik.Definition{notify: %{"to" => ["audit"], "on" => ["finished"]}}, []} =
-             Wardrik.Agent.definition(context.admin, "acme/digest")
+             Wardrik.Agent.definition(context.admin, id(context, "acme", "digest"))
   end
 
   test "offers the tools it ships", context do
@@ -74,7 +74,7 @@ defmodule WardrikDaemon.ServerTest do
     context = start_daemon(context)
 
     assert {:ok, %Wardrik.Definition{tools: ["run_lua"]}, []} =
-             Wardrik.Agent.definition(context.admin, "acme/clock")
+             Wardrik.Agent.definition(context.admin, id(context, "acme", "clock"))
 
     assert [
              run_lua: WardrikLua,
@@ -90,32 +90,76 @@ defmodule WardrikDaemon.ServerTest do
     write(
       context,
       "config.yaml",
-      config <> "workspace: {shared: {acme/triage: {read: [acme/notes]}}}\n"
+      config <> "workspace: {shared: {triage: {read: [notes]}}}\n"
     )
 
     write(
       context,
       "agents/notes.md",
-      "---\ntools: [files]\ncontext: [MEMORY.md]\nworkspace: {shared: {team: acme/triage}}\n---\nKeep notes.\n"
+      "---\ntools: [files]\ncontext: [MEMORY.md]\nworkspace: {shared: {team: triage}}\n---\nKeep notes.\n"
     )
 
     context = start_daemon(context)
 
-    assert {:ok, %Wardrik.Definition{tools: ["files"], context: ["MEMORY.md"]}, []} =
-             Wardrik.Agent.definition(context.admin, "acme/notes")
+    assert {:ok, %Wardrik.Definition{tools: ["files"], context: ["MEMORY.md"]} = notes, []} =
+             Wardrik.Agent.definition(context.admin, id(context, "acme", "notes"))
+
+    assert notes.workspace == %{"shared" => %{"team" => id(context, "acme", "triage")}}
   end
 
   test "reads its files again, and forgets an agent whose file is gone", context do
     context = start_daemon(context)
+    triage = id(context, "acme", "triage")
     File.rm!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/triage.md"))
     write(context, "agents/notes.md", "Keep notes.")
 
     capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
 
-    assert {:error, %Wardrik.Error{type: :not_found}} =
-             Wardrik.Agent.read(context.admin, "acme/triage")
+    assert {:error, %Wardrik.Error{type: :not_found}} = Wardrik.Agent.read(context.admin, triage)
+    assert WardrikDaemon.AgentRecords.named(context.daemon_store, "acme", "triage") == :error
 
-    assert {:ok, _definition, []} = Wardrik.Agent.definition(context.admin, "acme/notes")
+    assert {:ok, _definition, []} =
+             Wardrik.Agent.definition(context.admin, id(context, "acme", "notes"))
+  end
+
+  test "an agent file keeps its ID across reloads, and a rename takes no other agent's",
+       context do
+    context = start_daemon(context)
+    triage = id(context, "acme", "triage")
+    helper = agent(context, "acme/@ana", "helper", model: model(), instructions: "Help Ana.")
+    dir = Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents")
+
+    capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
+    assert id(context, "acme", "triage") == triage
+
+    File.rename!(Path.join(dir, "triage.md"), Path.join(dir, "helper.md"))
+    log = capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
+
+    assert log =~ "helper is the name of another agent in acme"
+    assert id(context, "acme", "helper") == helper
+
+    assert {:ok, %Wardrik.Definition{instructions: "Help Ana."}, []} =
+             Wardrik.Agent.definition(context.admin, helper)
+
+    assert {:error, %Wardrik.Error{type: :not_found}} = Wardrik.Agent.read(context.admin, triage)
+
+    File.rename!(Path.join(dir, "helper.md"), Path.join(dir, "triage.md"))
+    capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
+    assert id(context, "acme", "triage") not in [triage, helper]
+  end
+
+  test "an agent file can't hand its agent to another owner", context do
+    context = start_daemon(context)
+    triage = id(context, "acme", "triage")
+    write(context, "agents/triage.md", "---\nowner: \"@jon\"\n---\nYou watch Jon's queue.\n")
+
+    log = capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
+
+    assert log =~ "triage is acme's agent"
+    assert WardrikDaemon.Owners.owner(context.daemon_store, triage) == {:ok, "acme"}
+
+    assert {:ok, %Wardrik.Definition{instructions: "You watch the queue."}, []} =
+             Wardrik.Agent.definition(context.admin, triage)
   end
 
   test "keeps an agent whose file no longer reads at its last definition", context do
@@ -128,10 +172,10 @@ defmodule WardrikDaemon.ServerTest do
     assert log =~ "triage.md: has frontmatter that isn't YAML"
 
     assert {:ok, %Wardrik.Definition{instructions: "You watch the queue."}, []} =
-             Wardrik.Agent.definition(context.admin, "acme/triage")
+             Wardrik.Agent.definition(context.admin, id(context, "acme", "triage"))
 
     assert {:error, %Wardrik.Error{type: :conflict}} =
-             Wardrik.Agent.forget(context.admin, "acme/triage")
+             Wardrik.Agent.forget(context.admin, id(context, "acme", "triage"))
   end
 
   test "restarts to read config.yaml as it is when a reload finds it changed", context do
@@ -163,7 +207,7 @@ defmodule WardrikDaemon.ServerTest do
     end)
 
     assert {:ok, %Wardrik.Definition{model: "anthropic:claude-sonnet-4-5"}, []} =
-             Wardrik.Agent.definition(context.admin, "acme/triage")
+             Wardrik.Agent.definition(context.admin, id(context, "acme", "triage"))
   end
 
   test "makes the token the wardrik command acts with, in place of the last", context do

@@ -85,7 +85,7 @@ defmodule WardrikDaemon.EdgesTest do
           assert CLI.main(["ask", "nobody", "hi"], env: context.env) == 1
         end)
 
-      assert stderr =~ "acme/nobody"
+      assert stderr =~ "There's no agent nobody in acme."
     end
   end
 end

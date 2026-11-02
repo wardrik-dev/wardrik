@@ -16,7 +16,9 @@ defmodule WardrikDaemon.Config.Access do
     ],
     names: [
       type: {:list, :string},
-      doc: "The resources' IDs, exactly, as `payments/triage`. Every ID unless set."
+      doc:
+        "The resources, exactly: agents by name, as `triage`, and the rest by ID. Every one " <>
+          "unless set."
     ]
   ]
 
@@ -32,7 +34,9 @@ defmodule WardrikDaemon.Config.Access do
     subjects: [
       type: {:list, {:custom, __MODULE__, :subject, []}},
       required: true,
-      doc: "Who it gives the role to: `user:ID`, `group:NAME` or `agent:ID`."
+      doc:
+        "Who it gives the role to: `user:ID`, `group:NAME`, or `agent:NAME` for the agent of " <>
+          "that name in the binding's org."
     ]
   ]
 
@@ -44,10 +48,11 @@ defmodule WardrikDaemon.Config.Access do
         operator: {rules: [{verbs: ["*"], kinds: ["*"]}]}
       bindings:
         - {org: payments, role: operator, subjects: [user:ana, group:payments-eng]}
-        - {org: payments, role: reader, subjects: [agent:payments/triage]}
+        - {org: payments, role: reader, subjects: [agent:triage]}
 
   A role is a list of `rules`. A rule allows an action when its verb, its resource's kind and,
-  if `names` is set, its resource's ID all match:
+  if `names` is set, its resource's name all match: an agent's name, or any other resource's ID.
+  Making an agent is the verb `create` on `agent`, which a rule with `names` doesn't allow:
 
   #{NimbleOptions.docs(NimbleOptions.new!(@rule))}
 
@@ -98,8 +103,15 @@ defmodule WardrikDaemon.Config.Access do
   @doc false
   def subject("user:" <> id = subject) when id != "", do: {:ok, subject}
   def subject("group:" <> name = subject) when name != "", do: {:ok, subject}
-  def subject("agent:" <> id = subject) when id != "", do: {:ok, subject}
-  def subject(other), do: {:error, "#{inspect(other)} isn't user:ID, group:NAME or agent:ID"}
+
+  def subject("agent:" <> name = subject) do
+    if WardrikDaemon.AgentRecords.name?(name), do: {:ok, subject}, else: unknown(subject)
+  end
+
+  def subject(other), do: unknown(other)
+
+  defp unknown(subject),
+    do: {:error, "#{inspect(subject)} isn't user:ID, group:NAME or agent:NAME"}
 
   defp reserved(roles) do
     if Map.has_key?(roles, @admin),
@@ -135,6 +147,9 @@ defmodule WardrikDaemon.Config.Access do
 
         opts[:org] != "*" and opts[:org] not in orgs ->
           {:error, "#{path}.org: names #{opts[:org]}, which config.yaml doesn't declare"}
+
+        opts[:org] == "*" and Enum.any?(opts[:subjects], &String.starts_with?(&1, "agent:")) ->
+          {:error, "#{path}.subjects: names an agent, which is an org's; bind it in its org"}
 
         true ->
           {:ok, %{org: opts[:org], role: opts[:role], subjects: opts[:subjects]}}

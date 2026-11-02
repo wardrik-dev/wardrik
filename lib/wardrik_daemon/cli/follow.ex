@@ -22,44 +22,75 @@ defmodule WardrikDaemon.CLI.Follow do
   Asks `:agent` `:text`, then follows the run that answers it until it ends or waits on a person.
   Gives up after ten minutes with nothing new.
 
-      Follow.turn(cx, agent: "acme/triage", text: "What's on fire?")
+      Follow.turn(cx, agent: "agt_01JF8X5RQ2", name: "triage", text: "What's on fire?")
+
+  `:agent` is its ID and `:name` how it's shown. `:conversation` asks one of its conversations.
   """
-  @spec turn(Context.t(), agent: String.t(), text: String.t()) :: :ok | {:error, String.t()}
+  @spec turn(Context.t(),
+          agent: String.t(),
+          name: String.t(),
+          text: String.t(),
+          conversation: String.t() | nil
+        ) :: :ok | {:error, String.t()}
   def turn(cx, args) do
-    agent = Keyword.fetch!(args, :agent)
+    log = log(args)
     text = Keyword.fetch!(args, :text)
 
     with {:ok, client} <- Context.client(cx),
-         {:ok, stream} <- open(client, agent),
-         {:ok, %{"message" => %{"id" => id}}} <- asked(client, agent, text, stream) do
-      state = %{cx: cx, agent: agent, message: id, run: nil, said?: false, printer: printer(cx)}
+         {:ok, stream} <- open(client, log),
+         {:ok, %{"message" => %{"id" => id}}} <- asked(client, log, text, stream) do
+      state = %{
+        cx: cx,
+        name: named(args),
+        message: id,
+        run: nil,
+        said?: false,
+        printer: printer(cx)
+      }
+
       follow(stream, state, @timeout)
     end
   end
 
-  @doc "Follows what `agent` does until Ctrl-C."
-  @spec events(Context.t(), String.t()) :: :ok | {:error, String.t()}
-  def events(cx, agent) do
+  @doc """
+  Follows what `:agent`, or its `:conversation`, does until Ctrl-C. `:name` is how it's shown.
+  """
+  @spec events(Context.t(), agent: String.t(), name: String.t(), conversation: String.t() | nil) ::
+          :ok | {:error, String.t()}
+  def events(cx, args) do
     with {:ok, client} <- Context.client(cx),
-         {:ok, stream} <- open(client, agent) do
+         {:ok, stream} <- open(client, log(args)) do
       unless cx.json?,
-        do: Context.puts(cx, Owl.Data.tag("Following #{agent}. Ctrl-C stops.", :light_black))
+        do:
+          Context.puts(cx, Owl.Data.tag("Following #{args[:name]}. Ctrl-C stops.", :light_black))
 
-      follow(stream, %{cx: cx, agent: agent, run: :all, printer: printer(cx)}, :infinity)
+      follow(stream, %{cx: cx, name: named(args), run: :all, printer: printer(cx)}, :infinity)
     end
   end
 
   defp printer(cx), do: Printer.new(width: cx.terminal.width)
 
-  defp open(client, agent) do
-    case Client.open(client, "agent.events", %{"agent" => agent}) do
+  # How the agent is typed, as the hints show it.
+  defp named(args) do
+    case args[:conversation] do
+      nil -> args[:name]
+      conversation -> "#{args[:name]} --conversation #{conversation}"
+    end
+  end
+
+  # The input that names the agent, or its conversation.
+  defp log(args),
+    do: Context.conversation(%{"agent" => Keyword.fetch!(args, :agent)}, Map.new(args))
+
+  defp open(client, log) do
+    case Client.open(client, "agent.events", log) do
       {:ok, stream} -> {:ok, stream}
       {:error, _type, message} -> {:error, message}
     end
   end
 
-  defp asked(client, agent, text, stream) do
-    case Client.run(client, "agent.ask", %{"agent" => agent, "content" => text}) do
+  defp asked(client, log, text, stream) do
+    case Client.run(client, "agent.ask", Map.put(log, "content", text)) do
       {:ok, asked} ->
         {:ok, asked}
 
@@ -138,7 +169,7 @@ defmodule WardrikDaemon.CLI.Follow do
     %{state | printer: printer}
   end
 
-  defp hinted(%{"type" => "wardrik.run.interrupted"}, %{cx: %{json?: false} = cx, agent: agent}) do
+  defp hinted(%{"type" => "wardrik.run.interrupted"}, %{cx: %{json?: false} = cx, name: agent}) do
     Context.puts(
       cx,
       Owl.Data.tag(

@@ -101,12 +101,16 @@ defmodule WardrikDaemon.CLI.Admin do
   end
 
   defp reload(agents, _flags, cx) do
-    with {:ok, answer} <- Context.call(cx, "deployment.reload", covering(cx, agents)),
+    with {:ok, input} <- covering(cx, agents),
+         {:ok, answer} <- Context.call(cx, "deployment.reload", input),
          do: Context.show(cx, answer, &reloaded(cx, &1))
   end
 
-  defp covering(_cx, []), do: %{}
-  defp covering(cx, agents), do: %{"agents" => Enum.map(agents, &Context.agent(cx, &1))}
+  defp covering(_cx, []), do: {:ok, %{}}
+
+  defp covering(cx, agents) do
+    with {:ok, ids} <- Context.agents(cx, agents), do: {:ok, %{"agents" => ids}}
+  end
 
   defp reloaded(cx, %{"reloaded" => nodes} = answer) do
     Context.puts(cx, "Read the agent files again on #{Enum.join(nodes, ", ")}.")

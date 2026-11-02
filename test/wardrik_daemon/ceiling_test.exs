@@ -55,9 +55,8 @@ defmodule WardrikDaemon.CeilingTest do
     end)
   end
 
-  defp reply(context, agent) do
-    {:ok, _defined} = Wardrik.Agent.define(context.admin, agent, model: model())
-    Wardrik.Agent.reply(context.admin, agent, "Go")
+  defp reply(context, owner, name) do
+    Wardrik.Agent.reply(context.admin, agent(context, owner, name), "Go")
   end
 
   defp client(context, subject) do
@@ -78,10 +77,10 @@ defmodule WardrikDaemon.CeilingTest do
     ref = :telemetry_test.attach_event_handlers(self(), [[:wardrik, :ceiling, :reached]])
     answers([120, 30])
 
-    assert {:ok, %Wardrik.Reply{}} = reply(context, "payments/first")
-    assert {:ok, %Wardrik.Reply{}} = reply(context, "growth/first")
+    assert {:ok, %Wardrik.Reply{}} = reply(context, "payments", "first")
+    assert {:ok, %Wardrik.Reply{}} = reply(context, "growth", "first")
 
-    assert {:error, %Wardrik.Error{message: message}} = reply(context, "payments/@ana/second")
+    assert {:error, %Wardrik.Error{message: message}} = reply(context, "payments/@ana", "second")
     assert message =~ "payments's agents have used 120 of 100 tokens this month"
 
     assert_received {[:wardrik, :ceiling, :reached], ^ref, _measurements,
@@ -116,20 +115,20 @@ defmodule WardrikDaemon.CeilingTest do
   @tag cap: "budget: {tokens: 100, per: total}\n"
   test "asks past it, and whoever may decide on the agent approves more for the org", context do
     answers([120, 10])
-    assert {:ok, %Wardrik.Reply{}} = reply(context, "payments/first")
-    {:ok, _defined} = Wardrik.Agent.define(context.admin, "payments/second", model: model())
+    assert {:ok, %Wardrik.Reply{}} = reply(context, "payments", "first")
+    second = agent(context, "payments", "second")
 
-    :ok = WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
 
     {:ok, _asked} =
-      Wardrik.run(context.admin, "agent.ask", %{"agent" => "payments/second", "content" => "Go"})
+      Wardrik.run(context.admin, "agent.ask", %{"agent" => second, "content" => "Go"})
 
     assert %{"data" => %{"interrupts" => [%{"id" => "model", "reason" => "ceiling_approval"}]}} =
              until("wardrik.run.interrupted")
 
     {:ok, _approved} =
       Wardrik.run(context.admin, "agent.approve", %{
-        "agent" => "payments/second",
+        "agent" => second,
         "interrupt" => "model"
       })
 

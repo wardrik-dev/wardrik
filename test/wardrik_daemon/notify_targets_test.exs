@@ -94,12 +94,19 @@ defmodule WardrikDaemon.NotifyTargetsTest do
   end
 
   defp notify(context, id) do
-    {:ok, resolved} = Wardrik.Resolver.resolve(context.running, %Request{agent: id})
+    request = %Request{agent: recorded(context, id)}
+    {:ok, resolved} = Wardrik.Resolver.resolve(context.running, request)
     resolved.notify
   end
 
   defp deliver(context, id, name) do
-    notice = %Notice{agent: id, kind: :failed, at: DateTime.utc_now(), reason: "x"}
+    notice = %Notice{
+      agent: recorded(context, id),
+      kind: :failed,
+      at: DateTime.utc_now(),
+      reason: "x"
+    }
+
     Wardrik.Notify.deliver(context.running, name, notice)
   end
 
@@ -118,7 +125,7 @@ defmodule WardrikDaemon.NotifyTargetsTest do
 
     assert :ok = deliver(context, "payments/@bo/notes", "ops")
     assert_receive {:hooked, "/ops", _headers, body}
-    assert %{"agent" => "payments/@bo/notes"} = JSON.decode!(body)
+    assert JSON.decode!(body)["agent"] == recorded(context, "payments/@bo/notes")
 
     assert {:ok, %{"name" => "ops", "owner" => "growth"}} = remove(admin, "growth", "ops")
     assert {:skip, _why} = deliver(context, "growth/leads", "ops")

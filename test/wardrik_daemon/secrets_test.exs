@@ -24,7 +24,7 @@ defmodule WardrikDaemon.SecretsTest do
       reader: {rules: [{verbs: [read], kinds: [secret]}]}
     bindings:
       - {org: payments, role: operator, subjects: [user:ana]}
-      - {org: growth, role: reader, subjects: [agent:growth/helper]}
+      - {org: growth, role: reader, subjects: [agent:helper]}
     """)
 
     context = start_daemon(context)
@@ -92,7 +92,7 @@ defmodule WardrikDaemon.SecretsTest do
       assert {:error, "not_found", _message} = put(cy, owner, "MINE")
     end
 
-    helper = client(context, "agent:growth/helper")
+    helper = client(context, "agent:" <> agent(context, "growth", "helper"))
     assert {:ok, %{"secrets" => []}} = list(helper, "growth")
     assert {:error, "forbidden", _message} = put(helper, "growth", "BOUND")
   end

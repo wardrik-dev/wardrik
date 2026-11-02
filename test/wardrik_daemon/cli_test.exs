@@ -14,6 +14,7 @@ defmodule WardrikDaemon.CLITest do
 
     write(context, "config.yaml", """
     org: acme
+    orgs: {"*": {}, growth: {}}
     allow_private_urls: true
     http: {port: #{free_port()}}
     defaults: {model: #{model()}, retries: {attempts: 0, on_exhausted: fail}}
@@ -137,7 +138,7 @@ defmodule WardrikDaemon.CLITest do
     context = start_daemon(context)
 
     assert {:ok, %Wardrik.Definition{} = front, []} =
-             Wardrik.Agent.definition(context.admin, "acme/assistant")
+             Wardrik.Agent.definition(context.admin, id(context, "acme", "assistant"))
 
     assert front.tools == ["self/*", "agents/*", "files", "run_lua"]
     assert front.context == ["MEMORY.md"]
@@ -194,19 +195,21 @@ defmodule WardrikDaemon.CLITest do
 
     test "lists and shows agents, and their triggers", context do
       assert {0, listed} = wardrik(context, ["ls"])
-      assert listed =~ ~r/acme\/triage\s+idle/
+      assert listed =~ ~r/^triage\s+idle/m
 
       assert {0, shown} = wardrik(context, ["agent", "show", "triage"])
       assert shown =~ ~r/description\s+Triages\./
       assert shown =~ ~r/policy\s+careful/
 
       assert {0, triggers} = wardrik(context, ["trigger", "ls", "acme/triage"])
+      assert {0, ^triggers} = wardrik(context, ["trigger", "ls", "triage"])
       assert triggers =~ ~r/daily\s+every 0 9 \* \* \*\s+in \d+[hm][\dhm ]*\s+Go\./
 
       assert {0, json} = wardrik(context, ["ls", "--json"])
-      assert %{"agents" => [%{"id" => "acme/triage"}]} = JSON.decode!(json)
+      triage = id(context, "acme", "triage")
+      assert %{"agents" => [%{"id" => ^triage}]} = JSON.decode!(json)
 
-      {:ok, _agent} = Wardrik.Agent.define(context.admin, "acme/@jon/mine", model: model())
+      mine = agent(context, "acme/@jon", "mine")
 
       ids = fn query ->
         context
@@ -217,15 +220,23 @@ defmodule WardrikDaemon.CLITest do
         |> Enum.map(& &1["id"])
       end
 
-      assert ids.(["org:acme"]) == ["acme/@jon/mine", "acme/triage"]
-      assert ids.(["user:jon"]) == ["acme/@jon/mine"]
-      assert ids.(["name:triage", "status:idle"]) == ["acme/triage"]
-      assert ids.(["tri"]) == ["acme/triage"]
+      assert Enum.sort(ids.(["org:acme"])) == Enum.sort([mine, triage])
+      assert ids.(["user:jon"]) == [mine]
+      assert ids.(["name:triage", "status:idle"]) == [triage]
+      assert ids.(["tri"]) == [triage]
       assert ids.(["org:globex"]) == []
       assert ids.(["attention"]) == []
       assert {0, "No agents match.\n"} = wardrik(context, ["ls", "node:nowhere"])
 
-      assert failing(context, ["agent", "show", "nobody"]) =~ "acme/nobody"
+      assert failing(context, ["agent", "show", "nobody"]) =~ "There's no agent nobody in acme."
+
+      leads = agent(context, "growth", "leads")
+      assert {0, listed} = wardrik(context, ["ls", "org:growth"])
+      assert listed =~ ~r/^growth\/leads\s+idle/m
+      assert ids.(["leads"]) == [leads]
+      assert {0, shown} = wardrik(context, ["agent", "show", "growth/leads"])
+      assert shown =~ ~r/id\s+#{leads}/
+      assert failing(context, ["agent", "cancel", "triage", "nobody"]) =~ "no agent nobody"
       assert failing(context, ["agent", "rm", "triage"]) =~ "declared by a file"
     end
 
@@ -258,7 +269,7 @@ defmodule WardrikDaemon.CLITest do
       answers([%{answer("Two cases.") | usage: %{input_tokens: 1_200, output_tokens: 34}}])
       assert {0, "Two cases.\n"} = wardrik(context, ["ask", "triage", "How", "many?"])
       assert {0, listed} = wardrik(context, ["ls"])
-      assert listed =~ ~r/acme\/triage\s+idle\s+in \S+( \S+)?\s+1\.2k tokens/
+      assert listed =~ ~r/^triage\s+idle\s+in \S+( \S+)?\s+1\.2k tokens/m
       assert {0, history} = wardrik(context, ["agent", "history", "triage"])
       assert history =~ "› How many?"
       assert history =~ "Two cases."
@@ -268,10 +279,10 @@ defmodule WardrikDaemon.CLITest do
       assert waiting =~ ~s(→ echo {"text":"hi"})
       assert waiting =~ "Waiting on a person for 1 call:"
       assert waiting =~ "? echo  call_1"
-      assert waiting =~ "wardrik approval approve acme/triage ID"
+      assert waiting =~ "wardrik approval approve triage ID"
 
       assert {0, parked} = wardrik(context, ["approval", "ls"])
-      assert parked =~ ~r/acme\/triage\s+call_1\s+echo/
+      assert parked =~ ~r/^triage\s+call_1\s+echo/m
 
       assert {0, "Approved call_1.\n"} =
                wardrik(context, ["approval", "approve", "triage", "call_1", "--note", "Go."])
@@ -355,7 +366,7 @@ defmodule WardrikDaemon.CLITest do
 
       write(context, "agents/broken.md", "---\ntools: [nope]\n---\n")
       assert {0, reloaded} = wardrik(context, ["reload"])
-      assert reloaded =~ "! Wardrik didn't define acme/broken."
+      assert reloaded =~ "! Wardrik didn't define broken."
       assert reloaded =~ "broken.md: "
 
       assert {0, status} = wardrik(context, ["status"])
@@ -381,8 +392,8 @@ defmodule WardrikDaemon.CLITest do
       assert listed =~ ~r/hourly\s+every 1h\s+in \d+m\s+Look\./
 
       assert {0, "Removed hourly.\n"} = wardrik(context, ["trigger", "rm", "triage", "hourly"])
-      assert {0, "Stopped acme/triage.\n"} = wardrik(context, ["agent", "stop", "triage"])
-      assert {0, "Started acme/triage.\n"} = wardrik(context, ["agent", "start", "triage"])
+      assert {0, "Stopped triage.\n"} = wardrik(context, ["agent", "stop", "triage"])
+      assert {0, "Started triage.\n"} = wardrik(context, ["agent", "start", "triage"])
       assert {0, "It runs no tool calls now.\n"} = wardrik(context, ["agent", "calls", "triage"])
       assert {0, "No servers added.\n"} = wardrik(context, ["server", "ls"])
     end
@@ -533,36 +544,48 @@ defmodule WardrikDaemon.CLITest do
     test "sends without following, and stops, clears and removes agents", context do
       answers([answer("Later.")])
 
-      assert {0, "Sent it to acme/triage.\n"} =
+      assert {0, "Sent it to triage.\n"} =
                wardrik(context, ["ask", "triage", "Hi", "--no-wait"])
 
-      assert {0, "Stopped the turn of acme/triage.\n"} =
+      assert {0, "Stopped the turn of triage.\n"} =
                wardrik(context, ["agent", "cancel", "triage"])
 
       assert {0, "No agent was taking a turn.\n"} =
-               wardrik(context, ["agent", "cancel", "triage", "acme/triage/C1"])
+               wardrik(context, ["agent", "cancel", "triage", "acme/triage"])
+
+      assert {0, "Stopped the turn of triage.\n"} =
+               wardrik(context, ["agent", "cancel", "triage", "--conversation", "C1"])
+
+      assert failing(context, ["agent", "cancel", "--all", "--conversation", "C1"]) =~
+               "--all alone"
 
       assert {0, "No agent was taking a turn.\n"} = wardrik(context, ["agent", "cancel", "--all"])
       assert failing(context, ["agent", "cancel", "triage", "--all"]) =~ "--all alone"
       assert failing(context, ["agent", "cancel"]) =~ "--all alone"
 
-      assert {0, "Cleared acme/triage.\n"} = wardrik(context, ["agent", "clear", "triage"])
+      assert {0, "Cleared triage.\n"} = wardrik(context, ["agent", "clear", "triage"])
       assert failing(context, ["agent", "kill", "triage", "nope"]) =~ "nope"
       assert failing(context, ["agent", "move", "triage", "wardrik@nowhere"]) =~ "wardrik@nowhere"
 
-      {:ok, _agent} = Wardrik.Agent.define(context.admin, "acme/temp", model: model())
-      assert {0, "Removed acme/temp.\n"} = wardrik(context, ["agent", "rm", "temp"])
+      agent(context, "acme", "temp")
+      assert {0, "Removed temp.\n"} = wardrik(context, ["agent", "rm", "temp"])
     end
 
     test "reaches an agent's conversation, as a chat thread is", context do
       answers([answer("In the thread.")])
-      assert {0, "In the thread.\n"} = wardrik(context, ["ask", "acme/triage/C1", "Hi"])
-      assert {0, history} = wardrik(context, ["agent", "history", "acme/triage/C1"])
+      thread = ["--conversation", "C1"]
+      assert {0, "In the thread.\n"} = wardrik(context, ["ask", "triage", "Hi" | thread])
+      assert {0, history} = wardrik(context, ["agent", "history", "triage" | thread])
       assert history =~ "In the thread."
-      assert {0, shown} = wardrik(context, ["agent", "show", "acme/triage/C1"])
-      assert shown =~ ~r/agent\s+acme\/triage\/C1/
+      assert {0, own} = wardrik(context, ["agent", "history", "triage"])
+      refute own =~ "In the thread."
+      assert {0, shown} = wardrik(context, ["agent", "show", "triage" | thread])
+      assert shown =~ ~r/agent\s+triage/
+      assert shown =~ ~r/conversation\s+C1/
       assert {0, listed} = wardrik(context, ["ls"])
-      assert listed =~ ~r/acme\/triage\s+idle\s+in \S+( \S+)?\s+1$/m
+      assert listed =~ ~r/^triage\s+idle\s+in \S+( \S+)?\s+1$/m
+      assert {0, listed} = wardrik(context, ["ls", "--all"])
+      assert listed =~ ~r/^triage\s+idle\s+.*\s+C1$/m
     end
 
     test "reaches another daemon by its URL and token", context do
@@ -577,7 +600,7 @@ defmodule WardrikDaemon.CLITest do
         })
 
       assert {0, listed} = wardrik(%{context | env: remote}, ["ls"])
-      assert listed =~ "acme/triage"
+      assert listed =~ ~r/^triage\s+idle/m
     end
   end
 

@@ -89,15 +89,24 @@ channels: [slack]
 You watch the incident queue. Summarise anything new, and say which issues need an engineer.
 ```
 
-Its ID is the deployment's org and the file's name, as `acme/triage`. With `user: jon`, it's
-`acme/@jon/triage`. Keys the file leaves out come from `config.yaml`'s `defaults`.
+The file's name is the agent's name, `triage` here. A name is unique in its org. Keys the file
+leaves out come from `config.yaml`'s `defaults`. Two keys say whose agent it is:
+
+```yaml
+org: growth        # the deployment's org unless set
+owner: "@jon"      # its org unless set; a person in it, as growth/@jon
+```
+
+The daemon gives each agent an ID, as `agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN`. The API and SDKs take
+IDs; `config.yaml`, agent files and the `wardrik` command take names.
 
 `wardrik reload` reads the files again. If `config.yaml` or `policies/` changed, the daemon restarts
 to read them, and defines the agents as it starts. Otherwise:
 
-* a changed file's agent uses its new definition from its next turn.
-* a removed file's agent is forgotten.
+* a changed file's agent uses its new definition from its next turn, and keeps its ID.
+* a removed or renamed file's agent is forgotten. A renamed file's agent gets a new ID.
 * a file that doesn't read is logged, and `wardrik doctor` says why.
+* a file can't take a name another agent of its org has, nor hand its agent to another owner.
 
 The API can't forget an agent a file declares.
 
@@ -240,18 +249,18 @@ models:
 
 ### workspace
 
-`workspace.shared` names the agents whose workspaces other agents may mount. Each lists, by exact
-ID, the agents that may `read` it and those that may `write` it:
+`workspace.shared` names the agents whose workspaces other agents may mount. Each lists, by name,
+the agents that may `read` it and those that may `write` it. Names are of agents in one org:
 
 ```yaml
 workspace:
   shared:
-    acme/runbooks:
-      read: [acme/triage]
-      write: [acme/ops]
+    runbooks:
+      read: [triage]
+      write: [ops]
 ```
 
-An agent file mounts one by its ID: `workspace: {shared: {runbooks: acme/runbooks}}`.
+An agent file mounts one by name: `workspace: {shared: {runbooks: runbooks}}`.
 
 ### notify
 
@@ -312,8 +321,9 @@ wardrik vault put github --org payments --for header
 `verbs`, the part of an action after the dot, as `ask` for `agent.ask`, on `kinds` of resource:
 `agent`, `secret` (an owner's secrets), `ceiling` (an org's ceilings), `mcp_server` and
 `notify_target` (an owner's MCP servers and webhooks), `provider` (an owner's OAuth apps),
-`connection` (a person's accounts), `deployment` or `token`, and, with `names`, only those IDs. A binding gives a
-role to subjects within one org:
+`connection` (a person's accounts), `deployment` or `token`, and, with `names`, only those: agents
+by name, the rest by ID. Making an agent is `create` on `agent`. A binding gives a role to subjects
+within one org:
 
 ```yaml
 roles:
@@ -321,14 +331,14 @@ roles:
   operator: {rules: [{verbs: ["*"], kinds: ["*"]}]}
 bindings:
   - {org: payments, role: operator, subjects: [user:ana, group:payments-eng]}
-  - {org: payments, role: reader, subjects: [agent:payments/triage]}
+  - {org: payments, role: reader, subjects: [agent:triage]}
 ```
 
-* Subjects are `user:ID`, `group:NAME` or `agent:ID`. A token names its user and groups, or its
-  agent.
+* Subjects are `user:ID`, `group:NAME` or `agent:NAME`, the agent of that name in the binding's
+  org. A token names its user and groups, or its agent by ID.
 * An agent acting through its tools gets its own bindings, never its owner's.
-* Everyone may do anything to what they own: `payments/@ana` to `payments/@ana/notes`, and to
-  their own secrets, servers, notify targets and OAuth apps.
+* Everyone may do anything to what they own: `payments/@ana` to the agents she owns, and to her
+  own secrets, servers, notify targets and OAuth apps.
 * Everyone manages their own connections, the accounts they sign in to, and no one else's.
 * A chat member acts as the user `channels.<name>.members` maps them to, so that user's bindings
   decide what they may ask, read and decide. They reach only the agents of the workspace's owner,
@@ -351,6 +361,8 @@ taking the same tokens, roles and bindings. `priv/openapi.json` describes its ow
 
 | Route | Serves |
 | --- | --- |
+| `POST /v1/owners/{owner}/agents` | makes an agent from its `name` and definition: mints its ID and defines it |
+| `GET /v1/owners/{owner}/agents?name=` | the agents of the owner's org the caller may read, by name |
 | `GET /v1/owners/{owner}/secrets` | the owner's secrets, by name and purpose, never a value |
 | `PUT /v1/owners/{owner}/secrets/{name}` | seals one, as `{"value": ..., "purpose": "api_key"}` |
 | `DELETE /v1/owners/{owner}/secrets/{name}` | removes one |
@@ -377,7 +389,7 @@ takes `--json`.
 | `status`, `reload`, `audit` | says where it runs, reads the agent files again, shows what people changed |
 | `agent ls` (`ls`), `agent show AGENT` | lists agents, shows one |
 | `agent ask AGENT MESSAGE` (`ask`), `agent follow AGENT` (`follow`) | asks and prints the answer as it comes, follows what an agent does |
-| `agent history`, `agent cancel`, `agent rm`, `agent calls`, `agent kill`, `agent move` | an agent's conversation, stopping its turn, removing it, its running tool calls, stopping one, moving it to another node |
+| `agent history`, `agent cancel`, `agent rm`, `agent calls`, `agent kill`, `agent move` | an agent's history, stopping its turn, removing it, its running tool calls, stopping one, moving it to another node |
 | `approval ls`, `approval approve AGENT CALL`, `approval deny AGENT CALL` | the calls agents wait on a person for |
 | `trigger ls`, `trigger set`, `trigger rm` | an agent's triggers |
 | `server ls`, `server add`, `server rm` | MCP servers an owner adds |
@@ -386,6 +398,9 @@ takes `--json`.
 | `connection ls`, `connection connect`, `connection disconnect` | your own accounts, as the token's user |
 | `vault put`, `vault ls`, `vault rm` | secrets: the deployment's, or an org's or a person's with `--org` or `--user`, each sealed `--for` one purpose |
 | `token create NAME --subject user:ana`, `token ls`, `token revoke ID` | tokens for everyone else, each acting as its subject and `--groups`, until it `--expires` |
+
+An `AGENT` is a name: `triage` in the deployment's org, or `growth/triage` in another. Commands on
+an agent take `--conversation ID` for one of its conversations, as a Slack thread's.
 
 The command acts as the deployment's admin, with a token the daemon writes to `cli_token` in the
 data home each time it starts. `WARDRIK_URL` and `WARDRIK_TOKEN` point it at another daemon. The

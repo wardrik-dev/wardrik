@@ -7,7 +7,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "description": "The daemon's own routes, beside Wardrik's operations (see Wardrik's openapi.json, at /v1/openapi.json). Each takes the same bearer tokens, and is decided by config.yaml's roles and bindings: x-wardrik-action is what a caller must be allowed to do, on the resource x-wardrik-resource names. Tokens are in no org, so only a binding in * reaches them. A caller always manages their own connections. An owner is one path segment: acme for an org, acme%2F%40jon for a person, or deployment. A resource the caller reaches none of is answered as one that doesn't exist."
+    "description": "The daemon's own routes, beside Wardrik's operations (see Wardrik's openapi.json, at /v1/openapi.json). Each takes the same bearer tokens, and is decided by config.yaml's roles and bindings: x-wardrik-action is what a caller must be allowed to do, on the resource x-wardrik-resource names. Agents are made here, so the daemon mints each one's ID; Wardrik's agent.define refuses an ID the daemon didn't mint. Tokens are in no org, so only a binding in * reaches them. A caller always manages their own connections. An owner is one path segment: acme for an org, acme%2F%40jon for a person, or deployment. A resource the caller reaches none of is answered as one that doesn't exist."
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "security": [
@@ -16,6 +16,10 @@
     }
   ],
   "tags": [
+    {
+      "name": "Agents",
+      "description": "The agents each org and person makes, and their names."
+    },
     {
       "name": "Secrets",
       "description": "What each owner holds sealed in the vault."
@@ -46,6 +50,99 @@
     }
   ],
   "paths": {
+    "/v1/owners/{owner}/agents": {
+      "get": {
+        "operationId": "agents.find",
+        "summary": "Find the agents of an owner's org, by name",
+        "description": "The agents in the owner's org that the caller may read, each with its ID, name, org and owner. A name is unique in its org, so name finds one at most. An agent the caller may not read, or one forgotten, isn't listed.",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-action": "agent.read",
+        "x-wardrik-resource": "agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/agent_name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The agents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agent_records"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "agents.create",
+        "summary": "Make an agent for an owner",
+        "description": "Mints the agent's ID, keeps its record, and defines it as Wardrik's agent.define does, as the caller. The body is the agent's name and its definition. Its workspace.shared names agents of its org by name. A name another agent of the org has is a conflict, unless that agent was forgotten. Making one is the verb create on the kind agent, in the owner's org; the owner may make its own.",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-action": "agent.create",
+        "x-wardrik-resource": "agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agent_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The agent's record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agent_record"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
     "/v1/owners/{owner}/secrets": {
       "get": {
         "operationId": "secrets.list",
@@ -927,6 +1024,15 @@
           "type": "string",
           "pattern": "^[a-z0-9]+$"
         }
+      },
+      "agent_name": {
+        "name": "name",
+        "in": "query",
+        "required": false,
+        "description": "The agent's name, as triage. Every agent of the org unless set.",
+        "schema": {
+          "type": "string"
+        }
       }
     },
     "responses": {
@@ -999,6 +1105,82 @@
       }
     },
     "schemas": {
+      "agent_input": {
+        "title": "An agent to make",
+        "description": "Its name, and its definition, as Wardrik's agent.define takes it.",
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+            "description": "Its name, unique in its org: letters, digits, _, . and -."
+          }
+        },
+        "examples": [
+          {
+            "name": "notes",
+            "model": "anthropic:claude-haiku-4-5",
+            "instructions": "You keep Jon's notes."
+          }
+        ]
+      },
+      "agent_record": {
+        "title": "An agent's record",
+        "description": "Who an agent is: its ID, which the daemon minted, and its name, org and owner.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "org",
+          "owner"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Its ID, as Wardrik's operations take it."
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+            "description": "Its name, unique in its org: letters, digits, _, . and -."
+          },
+          "org": {
+            "type": "string",
+            "description": "The org it's in."
+          },
+          "owner": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/owner"
+          }
+        },
+        "examples": [
+          {
+            "id": "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN",
+            "name": "notes",
+            "org": "acme",
+            "owner": "acme/@jon"
+          }
+        ]
+      },
+      "agent_records": {
+        "title": "Agents' records",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agents"
+        ],
+        "properties": {
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/agent_record"
+            }
+          }
+        }
+      },
       "secrets": {
         "title": "An owner's secrets",
         "description": "Each secret the owner holds, by name, and what it's for. Never a value.",

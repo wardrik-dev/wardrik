@@ -6,7 +6,8 @@ defmodule WardrikDaemon.Client do
       {:ok, answer} = WardrikDaemon.Client.run(client, "agents.list", %{})
 
   Each `WardrikProtocol` operation, and each of the daemon's own (see `WardrikDaemon.HTTP`), is sent
-  to its route, with `secret` as the bearer token.
+  to its route, with `secret` as the bearer token. An input with a `"conversation"` goes to the
+  operation's route for that conversation.
   """
 
   @enforce_keys [:url, :secret]
@@ -92,31 +93,25 @@ defmodule WardrikDaemon.Client do
     end)
   end
 
-  defp path(%{path: template, parameters: parameters}, input) do
-    in_path = for %{name: name, in: "path"} <- parameters, do: name
+  # An operation on a conversation goes to its conversation's route, where it has one.
+  defp path(operation, input) do
+    template = template(operation, input)
+    in_path = for [_whole, name] <- Regex.scan(~r/\{(\w+)\}/, template), do: name
 
     path =
       Enum.reduce(in_path, template, fn name, path ->
-        String.replace(path, "{#{name}}", segment(name, input[name]))
+        String.replace(path, "{#{name}}", segment(input[name]))
       end)
 
     {path, Map.drop(input, in_path)}
   end
 
-  defp segment("agent", id) do
-    case Wardrik.AgentID.parse(id) do
-      {:ok, %Wardrik.AgentID{conversation: nil}} ->
-        id
+  defp template(%{conversation: route}, %{"conversation" => _conversation}) when is_binary(route),
+    do: route
 
-      {:ok, agent} ->
-        Enum.join([agent.owner, agent.name, "conversations", agent.conversation], "/")
+  defp template(%{path: path}, _input), do: path
 
-      :error ->
-        id
-    end
-  end
-
-  defp segment(_name, value), do: URI.encode(to_string(value), &URI.char_unreserved?/1)
+  defp segment(value), do: URI.encode(to_string(value), &URI.char_unreserved?/1)
 
   defp answered({:ok, %Req.Response{status: status, body: body}}, _client)
        when status in 200..299,

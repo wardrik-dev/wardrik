@@ -90,7 +90,8 @@ defmodule WardrikDaemon.EgressTest do
     assert [] = Enum.filter(WardrikMCP.servers(Wardrik.mcp(context.wardrik)), &(&1 =~ "growth"))
 
     # config.yaml's own server is trusted where it is.
-    {:ok, resolved} = Wardrik.Resolver.resolve(context.running, %Request{agent: "payments/x"})
+    request = %Request{agent: recorded(context, "payments/x")}
+    {:ok, resolved} = Wardrik.Resolver.resolve(context.running, request)
     assert resolved.servers["local"] == "local"
   end
 
@@ -111,7 +112,13 @@ defmodule WardrikDaemon.EgressTest do
     assert {:ok, %{"name" => name}} = target(context, "https://localhost/hook")
 
     stub(Wardrik.Egress, :public, fn url -> call_original(Wardrik.Egress, :public, [url]) end)
-    notice = %Notice{agent: "growth/leads", kind: :failed, at: DateTime.utc_now(), reason: "x"}
+
+    notice = %Notice{
+      agent: recorded(context, "growth/leads"),
+      kind: :failed,
+      at: DateTime.utc_now(),
+      reason: "x"
+    }
 
     assert {:skip, "but it can't be reached: localhost is at " <> _address} =
              Wardrik.Notify.deliver(context.running, name, notice)

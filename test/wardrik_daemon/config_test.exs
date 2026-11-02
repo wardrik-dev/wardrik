@@ -209,10 +209,10 @@ defmodule WardrikDaemon.ConfigTest do
     orgs: {growth: {}}
     roles:
       reader: {rules: [{verbs: [read, events], kinds: [agent]}, {verbs: [read], kinds: [secret, ceiling]}]}
-      triager: {rules: [{verbs: [ask], kinds: [agent], names: [growth/triage]}]}
+      triager: {rules: [{verbs: [ask], kinds: [agent], names: [triage]}]}
     bindings:
       - {org: payments, role: operator, subjects: [user:ana, group:payments-eng]}
-      - {org: growth, role: triager, subjects: [agent:payments/triage]}
+      - {org: growth, role: triager, subjects: [agent:helper]}
     """
 
     assert {:ok, %Config{access: %{roles: roles, bindings: bindings}}} = read(context, yaml)
@@ -222,14 +222,14 @@ defmodule WardrikDaemon.ConfigTest do
              %{verbs: ["read"], kinds: ["secret", "ceiling"], names: nil}
            ]
 
-    assert roles["triager"] == [%{verbs: ["ask"], kinds: ["agent"], names: ["growth/triage"]}]
+    assert roles["triager"] == [%{verbs: ["ask"], kinds: ["agent"], names: ["triage"]}]
     assert roles["operator"] == [%{verbs: ["*"], kinds: ["*"], names: nil}]
     assert roles["admin"] == [%{verbs: ["*"], kinds: ["*"], names: nil}]
 
     assert bindings == [
              %{org: "*", role: "admin", subjects: ["user:admin"]},
              %{org: "payments", role: "operator", subjects: ["user:ana", "group:payments-eng"]},
-             %{org: "growth", role: "triager", subjects: ["agent:payments/triage"]}
+             %{org: "growth", role: "triager", subjects: ["agent:helper"]}
            ]
   end
 
@@ -327,7 +327,11 @@ defmodule WardrikDaemon.ConfigTest do
       {"bindings: [{org: growth, role: operator, subjects: [user:ana]}]",
        "bindings.0.org: names growth, which config.yaml doesn't declare"},
       {"bindings: [{org: default, role: operator, subjects: [team:ana]}]",
-       "bindings.0: invalid list in :subjects option: invalid value for list element at position 0: \"team:ana\" isn't user:ID, group:NAME or agent:ID"},
+       "bindings.0: invalid list in :subjects option: invalid value for list element at position 0: \"team:ana\" isn't user:ID, group:NAME or agent:NAME"},
+      {"bindings: [{org: default, role: operator, subjects: [agent:payments/triage]}]",
+       "\"agent:payments/triage\" isn't user:ID, group:NAME or agent:NAME"},
+      {~s(bindings: [{org: "*", role: operator, subjects: [agent:triage]}]),
+       "bindings.0.subjects: names an agent, which is an org's; bind it in its org"},
       {"bindings: [{org: default, role: operator, subjects: [ana]}]",
        "bindings.0: invalid list in :subjects option"},
       {"bindings: [{org: default, role: operator}]", "bindings.0: required :subjects option"},
@@ -362,31 +366,26 @@ defmodule WardrikDaemon.ConfigTest do
     assert {:error, _why} = Config.bootstrap(dirs, context.env)
   end
 
-  test "reads the agents' workspaces other agents may mount, by exact ID", context do
+  test "reads the agents' workspaces other agents may mount, by exact name", context do
     yaml = """
     workspace:
       shared:
-        acme/runbooks: {read: [acme/triage], write: [acme/@jon/ops]}
+        runbooks: {read: [triage], write: [ops]}
     """
 
     assert {:ok,
-            %Config{
-              workspace: [
-                shared: %{
-                  "acme/runbooks" => %{read: ["acme/triage"], write: ["acme/@jon/ops"]}
-                }
-              ]
-            }} = read(context, yaml)
+            %Config{workspace: [shared: %{"runbooks" => %{read: ["triage"], write: ["ops"]}}]}} =
+             read(context, yaml)
 
     for shared <- [
-          "{acme/runbooks: {read: acme}}",
-          "{acme/runbooks: {read: [\"acme/*\"]}}",
-          "{acme/runbooks: {write: [acme/triage/C1]}}",
-          "{\"acme/*\": {read: [acme/triage]}}",
-          "{acme: {read: [acme/triage]}}"
+          "{runbooks: {read: acme}}",
+          "{runbooks: {read: [\"*\"]}}",
+          "{runbooks: {write: [acme/triage]}}",
+          "{\"*\": {read: [triage]}}",
+          "{acme/runbooks: {read: [triage]}}"
         ] do
       assert {:error, why} = read(context, "workspace: {shared: #{shared}}")
-      assert why =~ "is an agent's ID, holding read and write", shared
+      assert why =~ "is an agent's name, holding read and write", shared
     end
 
     assert {:error, why} = read(context, "workspace: {trees: {}}")

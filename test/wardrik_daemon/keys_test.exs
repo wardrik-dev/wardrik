@@ -36,7 +36,7 @@ defmodule WardrikDaemon.KeysTest do
     {:ok, _vsn} = WardrikVault.put(vault, secret, kind: kind)
   end
 
-  defp key_used(context, agent) do
+  defp key_used(context, owner, name) do
     test = self()
 
     stub(ReqLLM, :stream_text, fn _model, _messages, opts ->
@@ -45,7 +45,7 @@ defmodule WardrikDaemon.KeysTest do
       {:ok, %ReqLLM.Response{id: "resp", model: "test", context: nil, message: message}}
     end)
 
-    {:ok, _defined} = Wardrik.Agent.define(context.admin, agent, model: model())
+    agent = agent(context, owner, name)
     {:ok, %Wardrik.Reply{}} = Wardrik.Agent.reply(context.admin, agent, "Go")
     assert_receive {:api_key, key}
     key
@@ -54,25 +54,25 @@ defmodule WardrikDaemon.KeysTest do
   test "a model call takes its owner's key, then its org's, and never the deployment's",
        context do
     seal(context, "deployment", "sk-deployment")
-    assert key_used(context, "acme/first") == nil
+    assert key_used(context, "acme", "first") == nil
 
     seal(context, "acme", "sk-acme")
     seal(context, "acme/@maria", "sk-header", :header)
-    assert key_used(context, "acme/second") == "sk-acme"
-    assert key_used(context, "acme/@maria/third") == "sk-acme"
+    assert key_used(context, "acme", "second") == "sk-acme"
+    assert key_used(context, "acme/@maria", "third") == "sk-acme"
 
     seal(context, "acme/@maria", "sk-maria")
-    assert key_used(context, "acme/@maria/fourth") == "sk-maria"
-    assert key_used(context, "globex/fifth") == nil
+    assert key_used(context, "acme/@maria", "fourth") == "sk-maria"
+    assert key_used(context, "globex", "fifth") == nil
   end
 
   @tag deployment_keys: true
   test "falls back to the deployment's keys with deployment_keys: true", context do
     seal(context, "deployment", "sk-deployment")
-    assert key_used(context, "globex/first") == "sk-deployment"
+    assert key_used(context, "globex", "first") == "sk-deployment"
 
     seal(context, "globex", "sk-globex")
-    assert key_used(context, "globex/second") == "sk-globex"
+    assert key_used(context, "globex", "second") == "sk-globex"
   end
 
   test "names the owners whose keys an agent uses, nearest first" do
