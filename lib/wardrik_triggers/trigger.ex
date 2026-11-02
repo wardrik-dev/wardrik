@@ -1,7 +1,6 @@
 defmodule WardrikTriggers.Trigger do
   @moduledoc """
-  A trigger: when to ask an agent, and what. Decoded from a map with string keys, as an agent file
-  writes it.
+  A trigger: when to ask an agent, and what. Decoded from a map with string keys.
 
       {:ok, trigger} =
         WardrikTriggers.Trigger.decode(%{
@@ -11,7 +10,23 @@ defmodule WardrikTriggers.Trigger do
           "prompt" => "Write today's update."
         })
 
-  See the README for every key.
+  A trigger has `every` or `webhook`, and `prompt` or `prompt_file`.
+
+  ## Keys
+
+    * `every` - a cron expression, as `"0 9 * * 1"` or `"@daily"`, or an interval of at least a
+      minute, as `"30m"`, `"2h"` or `"1d"`.
+    * `webhook` - `%{"secret" => "${NAME}", "verify" => "shared"}`. `verify` is `"shared"`
+      (default) or `"standard"`. See `WardrikTriggers.Webhook`.
+    * `prompt` - what the agent is asked.
+    * `prompt_file` - a file the agent is told to read and follow.
+    * `name` - no `/`, `:` or whitespace. Defaults to `trigger-1`, `trigger-2`, ... by position.
+    * `timezone` - the zone a cron expression is read in. Defaults to `"Etc/UTC"`.
+    * `overlap` - `"skip"` leaves a busy agent alone, `"queue"` asks anyway. Defaults to `"skip"`,
+      or `"queue"` for a webhook.
+    * `missed` - `"run_once"` (default) runs once after missed runs. `"skip"` drops them.
+    * `jitter` - up to this many seconds added to each run. Defaults to `0`.
+    * `feed` - an RSS or Atom feed URL, or a list of them. Asks only about new entries.
   """
 
   alias WardrikTriggers.Clock
@@ -54,10 +69,9 @@ defmodule WardrikTriggers.Trigger do
   @verifies %{"shared" => :shared, "standard" => :standard}
 
   @doc """
-  Decodes a trigger from `fields`.
+  Decodes a trigger. Without a `"name"`, it's named `trigger-<index>`.
 
-  Without a `"name"`, the name comes from `index`: `trigger-1`, `trigger-2` and so on. Returns
-  `{:error, message}` for an unknown key or invalid value.
+  Returns `{:error, message}` for an unknown key or invalid value.
   """
   @spec decode(map(), pos_integer()) :: {:ok, t()} | {:error, String.t()}
   def decode(fields, index \\ 1)
@@ -91,7 +105,7 @@ defmodule WardrikTriggers.Trigger do
 
   def decode(_fields, _index), do: {:error, "a trigger is a map of #{Enum.join(@keys, ", ")}"}
 
-  @doc "Encodes the trigger as a map with string keys. Leaves out unset keys and the default `timezone`."
+  @doc "Encodes the trigger as a map with string keys, leaving out unset keys."
   @spec encode(t()) :: map()
   def encode(%__MODULE__{} = trigger) do
     %{

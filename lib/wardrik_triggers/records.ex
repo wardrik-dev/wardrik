@@ -1,8 +1,5 @@
 defmodule WardrikTriggers.Records do
-  @moduledoc """
-  Stores triggers. Each record holds the trigger, its next and last run, and what its feeds and
-  webhook have seen.
-  """
+  @moduledoc false
 
   alias WardrikTriggers.Trigger
 

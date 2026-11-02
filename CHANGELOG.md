@@ -1,16 +1,15 @@
 # Changelog
 
-## 0.1.0-rc.2
+## 0.1.0-rc.2 (2026-11-02)
 
 ### Breaking
 
-- `WardrikTriggers.Target` callbacks take a request struct, then their options:
-  `ask/2` a `WardrikTriggers.Target.Ask`, `fired/2` a `WardrikTriggers.Target.Fired`, and
-  `resolve_secret/2` a `WardrikTriggers.Target.Secret`.
-- `deliver/2` and `remove/2` take the trigger's `:agent_id` and `:name`, with `deliver/2`'s
-  `:request`. So do `Records.lookup/2`, `Records.delete/2` and `Records.update/3`, and
-  `Run.webhook/2`. `Run.clock/2` takes `:agent_id`, `:trigger`, `:due` and `:now`, and
-  `Webhook.verify/2` the request, then `:verify`, `:secret` and `:now`.
+- `WardrikTriggers.Target` callbacks take a struct, then their options: `ask/2` a
+  `WardrikTriggers.Target.Ask`, `fired/2` a `WardrikTriggers.Target.Fired`, and `resolve_secret/2`
+  a `WardrikTriggers.Target.Secret`.
+- `deliver/2` and `remove/2` take one keyword list: `:agent_id`, `:name`, and `deliver/2`'s
+  `:request`.
+- `WardrikTriggers.Webhook.verify/2` takes the request, then `:verify`, `:secret` and `:now`.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

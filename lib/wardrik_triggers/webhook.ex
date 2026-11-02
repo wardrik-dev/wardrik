@@ -2,10 +2,16 @@ defmodule WardrikTriggers.Webhook do
   @moduledoc """
   Verifies webhook requests against a trigger's secret.
 
-    * `:shared` - the request presents the secret as `Authorization: Bearer SECRET`, or as
-      `:path_secret`.
+      :ok =
+        WardrikTriggers.Webhook.verify(request,
+          verify: :shared,
+          secret: "s3cret",
+          now: DateTime.utc_now()
+        )
+
+    * `:shared` - the request sends `Authorization: Bearer SECRET`, or `:path_secret`.
     * `:standard` - the request is signed as [Standard Webhooks](https://www.standardwebhooks.com/)
-      specifies. A signature more than five minutes old fails.
+      specifies. A signature over five minutes old fails.
   """
 
   @tolerance 300
@@ -18,12 +24,7 @@ defmodule WardrikTriggers.Webhook do
           optional(:path_secret) => String.t() | nil
         }
 
-  @doc """
-  Returns `:ok` if `request` verifies with the `:secret` the way `:verify` says, at `:now`, or
-  `{:error, reason}`.
-
-      Webhook.verify(request, verify: :standard, secret: secret, now: DateTime.utc_now())
-  """
+  @doc "Returns `:ok` if `request` verifies against `:secret`, or `{:error, reason}`."
   @spec verify(request(), verify: :shared | :standard, secret: String.t(), now: DateTime.t()) ::
           :ok | {:error, String.t()}
   def verify(request, args) do

@@ -1,8 +1,5 @@
 defmodule WardrikTriggers.Run do
-  @moduledoc """
-  Runs one due trigger or one webhook request. Reads feeds, asks the agent, and reports the status
-  to the target and to telemetry.
-  """
+  @moduledoc false
 
   require Logger
 

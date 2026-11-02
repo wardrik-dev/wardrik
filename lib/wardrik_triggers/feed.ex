@@ -1,10 +1,5 @@
 defmodule WardrikTriggers.Feed do
-  @moduledoc """
-  Parses RSS and Atom feeds and finds entries not seen before.
-
-      {:ok, entries} = WardrikTriggers.Feed.parse(xml)
-      {new, seen} = WardrikTriggers.Feed.unseen(entries, seen)
-  """
+  @moduledoc false
 
   @behaviour Saxy.Handler
 

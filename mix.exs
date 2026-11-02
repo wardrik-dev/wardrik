@@ -59,7 +59,7 @@ defmodule WardrikTriggers.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_store),
+      sibling(:wardrik_store, "~> 0.1.0-rc.1"),
       {:crontab, "~> 1.1"},
       {:tz, "~> 0.28"},
       {:req, "~> 0.5"},
@@ -78,9 +78,9 @@ defmodule WardrikTriggers.MixProject do
 
   # Wardrik's own packages come from Hex, or from their checkouts beside this one with
   # WARDRIK_LOCAL=1.
-  defp sibling(name, opts \\ []) do
+  defp sibling(name, requirement, opts \\ []) do
     if System.get_env("WARDRIK_LOCAL"),
       do: {name, Keyword.put(opts, :path, "../#{name}")},
-      else: {name, "~> 0.1.0-rc.1", opts}
+      else: {name, requirement, opts}
   end
 end

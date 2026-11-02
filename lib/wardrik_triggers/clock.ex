@@ -6,8 +6,8 @@ defmodule WardrikTriggers.Clock do
       WardrikTriggers.Clock.next(clock, "Europe/Berlin", ~U[2026-10-22 09:00:00Z])
       #=> ~U[2026-10-22 16:00:00Z]
 
-  A cron time skipped by a clock change runs at the first instant after the gap. A time repeated by
-  a clock change runs on its first pass only.
+    * A time skipped by a clock change runs just after the gap.
+    * A time repeated by a clock change runs once.
   """
 
   alias Crontab.CronExpression.Parser
@@ -19,10 +19,8 @@ defmodule WardrikTriggers.Clock do
   @shortest 60
 
   @doc """
-  Parses `every`: a cron expression, as `0 9 * * 1` or `@daily`, or an interval, as `30m`.
-
-  An interval is a count and a unit (`s`, `m`, `h` or `d`) of at least a minute. `@reboot` is
-  rejected.
+  Parses a cron expression, as `"0 9 * * 1"` or `"@daily"`, or an interval of at least a minute,
+  as `"30m"`. Units are `s`, `m`, `h` and `d`.
   """
   @spec parse(String.t()) :: {:ok, t()} | {:error, String.t()}
   def parse(every) when is_binary(every) do

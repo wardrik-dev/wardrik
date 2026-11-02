@@ -1,11 +1,5 @@
 defmodule WardrikTriggers.Scheduler do
-  @moduledoc """
-  Runs each trigger when it comes due. Every node runs one.
-
-  A node claims a run by moving the trigger's next run forward in the store, conditional on the
-  version it read. So each run happens once in the cluster. Each node rereads every trigger every
-  `:reconcile` milliseconds, to pick up those set on other nodes.
-  """
+  @moduledoc false
 
   use GenServer
 
