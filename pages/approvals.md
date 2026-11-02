@@ -59,7 +59,7 @@ end
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, _agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/books",
+  Wardrik.Agent.define(scope, "agt_books",
     model: "anthropic:claude-haiku-4-5",
     tools: ["books"],
     policy: [ask: %{"pay_bill(amount >= 1000)" => "A bill this size needs a person."}]
@@ -72,10 +72,10 @@ Ask for two large payments. The run stops and returns the calls it waits on:
 
 ```elixir
 {:waiting, [initech, globex]} =
-  Wardrik.Agent.reply(scope, "acme/@maria/books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
+  Wardrik.Agent.reply(scope, "agt_books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
 
 initech
-#=> %Wardrik.Interrupt{id: "toolu_01...", agent_id: "acme/@maria/books", reason: :tool_approval,
+#=> %Wardrik.Interrupt{id: "toolu_01...", agent_id: "agt_books", reason: :tool_approval,
 #=>   name: "pay_bill", message: "A bill this size needs a person.", ...}
 ```
 
@@ -85,14 +85,14 @@ Approve one, with a note, and deny the other, with a reason:
 
 ```elixir
 Wardrik.Agent.approve(scope,
-  agent: "acme/@maria/books",
+  agent: "agt_books",
   interrupt: initech.id,
   note: "Pay it from the ops account."
 )
 #=> {:ok, [%Wardrik.Decision{id: "toolu_01...", decision: :approved}]}
 
 Wardrik.Agent.deny(scope,
-  agent: "acme/@maria/books",
+  agent: "agt_books",
   interrupt: globex.id,
   reason: "Not before the 1st."
 )
@@ -111,9 +111,9 @@ Wardrik.Agent.deny(scope,
 
 ```elixir
 {:waiting, [initech, globex]} =
-  Wardrik.Agent.reply(scope, "acme/@maria/books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
+  Wardrik.Agent.reply(scope, "agt_books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
 
-Wardrik.Agent.decide(scope, "acme/@maria/books", %{
+Wardrik.Agent.decide(scope, "agt_books", %{
   initech.id => {:approve, "Pay it from the ops account."},
   globex.id => {:deny, "Not before the 1st."}
 })
@@ -129,7 +129,7 @@ Each value is `:approve`, `{:approve, note}` or `{:deny, reason}`.
 Deciding a call the agent doesn't wait on, or no longer waits on, returns a `conflict` error:
 
 ```elixir
-Wardrik.Agent.approve(scope, agent: "acme/@maria/books", interrupt: initech.id)
+Wardrik.Agent.approve(scope, agent: "agt_books", interrupt: initech.id)
 #=> {:error, %Wardrik.Error{type: :conflict, ...}}
 ```
 

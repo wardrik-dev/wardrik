@@ -57,7 +57,7 @@ end
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/assistant",
+  Wardrik.Agent.define(scope, "agt_assistant",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You keep Maria's notes. Be brief.",
     tools: ["notes"],
@@ -121,7 +121,7 @@ Kino.start_child(
   {Task,
    fn ->
      {:ok, events} =
-       Wardrik.Events.stream_list(scope, after: cursor, agents: ["acme/@maria/assistant"])
+       Wardrik.Events.stream_list(scope, after: cursor, agents: ["agt_assistant"])
 
      events
      |> Stream.reject(fn {event, _cursor} -> String.ends_with?(event.type, ".delta") end)
@@ -212,7 +212,7 @@ forgetting. Change Maria's agent, then read the audit. Reading it needs your aut
 
 ```elixir
 {:ok, _agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/assistant",
+  Wardrik.Agent.define(scope, "agt_assistant",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You keep Maria's notes. Answer in bullet points.",
     tools: ["notes"],

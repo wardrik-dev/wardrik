@@ -30,6 +30,8 @@ defmodule Wardrik.Authorizer.Request do
     * `:context` - what else the request carries: what the actor knows. A channel gives
       `:installation`, as `%{owner: owner, workspace: workspace}`, and when deciding,
       `:asked_by`, the principal ID that asked in the conversation, where known.
+      An operation on one of an agent's conversations gives `:conversation`, its ID. The
+      resource is the agent: who may act on an agent may act on its conversations.
 
   Your app knows which org or person each agent belongs to, so the resource names nothing else.
   """

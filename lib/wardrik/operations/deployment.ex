@@ -1,7 +1,6 @@
 defmodule Wardrik.Operations.Deployment do
   @moduledoc "Operations on the deployment: the audit, nodes, moving agents and reloading."
 
-  alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Running
@@ -30,13 +29,7 @@ defmodule Wardrik.Operations.Deployment do
     problems = Wardrik.Declarations.reload(wardrik)
     named = input["agents"]
 
-    for id <- Definitions.ids(wardrik),
-        named == nil or id in named,
-        Running.whereis(wardrik, id) != nil do
-      with {:ok, definition} <- Definitions.fetch(wardrik, id),
-           {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
-           do: Running.bring(wardrik, opts)
-    end
+    _failed = Wardrik.Resolution.refresh(wardrik, named || :all)
 
     :ok = WardrikMCP.reconcile(Wardrik.mcp(wardrik))
     :ok = WardrikTriggers.reconcile(Wardrik.triggers(wardrik))
@@ -68,11 +61,14 @@ defmodule Wardrik.Operations.Deployment do
 
   @doc "Moves an agent to another node."
   @spec move(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def move(%Wardrik.Scope{wardrik: wardrik} = scope, %{"agent" => id, "node" => node}) do
-    case WardrikCore.move(Wardrik.agents(wardrik), id, to: node) do
+  def move(%Wardrik.Scope{wardrik: wardrik} = scope, %{"node" => node} = input) do
+    key = Running.key(input)
+    id = Running.describe(key)
+
+    case WardrikCore.move(Wardrik.agents(wardrik), key, to: node) do
       {:ok, _pid} ->
-        Changes.record(scope, type: "agent.moved", agent: id, data: %{"node" => node})
-        {:ok, %{"agent" => Snapshot.summary(wardrik, id)}}
+        Changes.record(scope, type: "agent.moved", agent: key, data: %{"node" => node})
+        {:ok, %{"agent" => Snapshot.summary(wardrik, key)}}
 
       {:error, :not_found} ->
         {:error, Error.new(:not_found, "There's no agent #{id}.")}

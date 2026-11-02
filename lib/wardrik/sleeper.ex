@@ -19,14 +19,15 @@ defmodule Wardrik.Sleeper do
 
   @doc "Starts the idle timer for the newly defined agent `id`."
   @spec watch(Wardrik.t(), String.t()) :: :ok
-  def watch(wardrik, id), do: GenServer.cast(Module.concat(wardrik.name, Sleeper), {:watch, id})
+  def watch(wardrik, id),
+    do: GenServer.cast(Module.concat(wardrik.name, Sleeper), {:watch, {id, nil}})
 
   @impl GenServer
   def init(wardrik), do: {:ok, %{wardrik: wardrik, timers: %{}}, {:continue, :subscribe}}
 
   @impl GenServer
   def handle_continue(:subscribe, %{wardrik: wardrik} = state) do
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
     {:noreply, state}
   end
 
@@ -49,9 +50,9 @@ defmodule Wardrik.Sleeper do
     end
   end
 
-  defp arm(%{wardrik: wardrik} = state, id) do
-    with {:ok, definition} <- Running.definition(wardrik, id),
-         ms when is_integer(ms) <- Wardrik.Resolution.idle_timeout(wardrik, id, definition) do
+  defp arm(%{wardrik: wardrik} = state, {agent, _conversation} = id) do
+    with {:ok, definition} <- Running.definition(wardrik, agent),
+         ms when is_integer(ms) <- Wardrik.Resolution.idle_timeout(wardrik, agent, definition) do
       ref = make_ref()
       Process.send_after(self(), {:sleep, id, ref}, ms)
       %{state | timers: Map.put(state.timers, id, ref)}

@@ -55,9 +55,15 @@ defmodule Wardrik.Runner do
     end
   end
 
-  defp authorize(scope, %{subject: "agent", action: action}, %{"agent" => id}),
-    do:
-      refused(Authorizer.authorize(scope, action: action, resource: {:agent, id}), "agent #{id}")
+  # A conversation is its agent's: its operations are authorized on the agent.
+  defp authorize(scope, %{subject: "agent", action: action}, %{"agent" => id} = input) do
+    context = if input["conversation"], do: %{conversation: input["conversation"]}, else: %{}
+
+    refused(
+      Authorizer.authorize(scope, action: action, resource: {:agent, id}, context: context),
+      "agent #{id}"
+    )
+  end
 
   defp authorize(
          %Scope{wardrik: wardrik} = scope,

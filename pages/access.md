@@ -29,13 +29,13 @@ defmodule MyApp.Authorizer do
   }
 
   # Which org each agent is in.
-  @agents %{"acme/triage" => "acme", "acme/@maria/books" => "acme"}
+  @agents %{"agt_triage" => "acme", "agt_books" => "acme"}
 
   @operators ["acme/@maria"]
 
   @impl true
   def authorize(%Request{resource: {:agent, id}} = request, _opts) do
-    with :ok <- same_org(request.principal.id, Wardrik.AgentID.agent(id)), do: allowed(request)
+    with :ok <- same_org(request.principal.id, id), do: allowed(request)
   end
 
   def authorize(%Request{resource: {:deployment, _name}, principal: %{id: id}}, _opts)
@@ -82,7 +82,7 @@ end
   )
 maria = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
-{:ok, _} = Wardrik.Agent.define(maria, "acme/@maria/books", model: "anthropic:claude-haiku-4-5")
+{:ok, _} = Wardrik.Agent.define(maria, "agt_books", model: "anthropic:claude-haiku-4-5")
 ```
 
 `:authorizer` is required. Wardrik won't start without one.
@@ -95,7 +95,7 @@ your authorizer reads. In your app, `MyApp.AgentRuntime.as/2` fills in Wardrik:
 ```elixir
 jon = Wardrik.as(MyApp.AgentRuntime, "acme/@jon")
 
-{:ok, _agent} = Wardrik.Agent.read(jon, "acme/@maria/books")
+{:ok, _agent} = Wardrik.Agent.read(jon, "agt_books")
 ```
 
 It also takes:
@@ -119,10 +119,8 @@ Wardrik sets both for agents and channels. See [Agents](#agents) and [Channels](
 
 | Resource | Is | Actions |
 | --- | --- | --- |
-| `{:agent, id}` | an agent or one of its conversations, by ID | `agent.read`, `agent.events`, `agent.ask`, `agent.cancel`, `agent.clear`, `agent.decide`, `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `agent.serve` |
+| `{:agent, id}` | an agent, by ID, for itself and its conversations | `agent.read`, `agent.events`, `agent.ask`, `agent.cancel`, `agent.clear`, `agent.decide`, `agent.define`, `agent.spawn`, `agent.stop`, `agent.forget`, `agent.serve` |
 | `{:deployment, name}` | the deployment, by Wardrik's `:deployment` | `deployment.audit`, `deployment.nodes`, `deployment.move`, `deployment.reload` |
-
-A conversation's ID is its agent's plus one segment. `Wardrik.AgentID.agent/1` returns the agent's.
 
 It returns:
 
@@ -136,8 +134,8 @@ Return `not_found` for what a principal can't see, so it can't tell what exists:
 ```elixir
 sam = Wardrik.as(MyApp.AgentRuntime, "globex/@sam")
 
-Wardrik.Agent.read(sam, "acme/@maria/books")
-#=> {:error, %Wardrik.Error{type: :not_found, message: "There's no agent acme/@maria/books."}}
+Wardrik.Agent.read(sam, "agt_books")
+#=> {:error, %Wardrik.Error{type: :not_found, message: "There's no agent agt_books."}}
 ```
 
 ## Operations over many agents
@@ -148,16 +146,17 @@ to list, `agent.events` to read events. Agents it refuses are left out, as if th
 
 ```elixir
 Wardrik.Agents.list(jon)
-#=> {:ok, [%Wardrik.Agent{id: "acme/@maria/books", ...}]}
+#=> {:ok, [%Wardrik.Agent{id: "agt_books", ...}]}
 
 Wardrik.Agents.list(sam)
 #=> {:ok, []}
 ```
 
-`agents:` names exact agent IDs. Every agent the scope may see unless set:
+`agents:` names exact agent IDs, each with its conversations. Every agent the scope may see
+unless set:
 
 ```elixir
-Wardrik.Events.list(maria, agents: ["acme/@maria/books"])
+Wardrik.Events.list(maria, agents: ["agt_books"])
 ```
 
 `deployment.reload` asks once, on `{:deployment, name}`, and takes `agents:` the same way.
@@ -165,20 +164,19 @@ Wardrik.Events.list(maria, agents: ["acme/@maria/books"])
 ## Agents
 
 An agent's `agents/*` and `self/*` tools, from `Wardrik.AgentTools`, act for the principal its
-`Wardrik.Resolver` gives it, with the agent as actor. Without a resolver, that's its owner: `acme`
-for `acme/triage`, `acme/@jon` for `acme/@jon/notes`. An agent answering another, through
+`Wardrik.Resolver` gives it, with the agent as actor. An agent answering another, through
 `Wardrik.Delegation`, acts the same way. An agent that resolves to no principal can't use those
 tools.
 
-Here's the scope `acme/triage` acts in:
+Here's the scope `agt_triage` acts in, when its resolver gives it `acme`:
 
 ```elixir
-triage = Wardrik.as(MyApp.AgentRuntime, "acme", actor: {:agent, "acme/triage"})
+triage = Wardrik.as(MyApp.AgentRuntime, "acme", actor: {:agent, "agt_triage"})
 
-{:ok, _agent} = Wardrik.Agent.read(triage, "acme/@maria/books")
+{:ok, _agent} = Wardrik.Agent.read(triage, "agt_books")
 
-Wardrik.Agent.forget(triage, "acme/@maria/books")
-#=> {:error, %Wardrik.Error{type: :forbidden, message: "You may not do this to the agent acme/@maria/books."}}
+Wardrik.Agent.forget(triage, "agt_books")
+#=> {:error, %Wardrik.Error{type: :forbidden, message: "You may not do this to the agent agt_books."}}
 ```
 
 The actor lets your authorizer give an agent less than the principal it acts for.
@@ -199,8 +197,8 @@ member =
     context: %{installation: %{owner: "acme", workspace: "T0123"}, asked_by: "acme/@ana"}
   )
 
-Wardrik.Agent.approve(member, agent: "acme/@maria/books", interrupt: "toolu_01")
-#=> {:error, %Wardrik.Error{type: :forbidden, message: "You may not do this to the agent acme/@maria/books."}}
+Wardrik.Agent.approve(member, agent: "agt_books", interrupt: "toolu_01")
+#=> {:error, %Wardrik.Error{type: :forbidden, message: "You may not do this to the agent agt_books."}}
 ```
 
 Your authorizer decides as it does for Jon anywhere else. Above, only an operator or whoever asked

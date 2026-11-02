@@ -32,14 +32,14 @@ defmodule Wardrik.HTTP.WorkerTest do
       answer("It shipped.")
     ])
 
-    :ok = WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
 
-    request(context, "PUT", "/v1/agents/acme/triage", %{
+    request(context, "PUT", "/v1/agents/acme%2Ftriage", %{
       "model" => "anthropic:claude-haiku-4-5",
       "tools" => ["workers/*"]
     })
 
-    request(context, "POST", "/v1/agents/acme/triage/messages", %{"content" => "Where's A1?"})
+    request(context, "POST", "/v1/agents/acme%2Ftriage/messages", %{"content" => "Where's A1?"})
 
     assert_receive {:worker, %{"method" => "tools/call", "id" => id, "params" => params}}
     assert %{"name" => "lookup", "arguments" => %{"order" => "A1"}} = params
@@ -61,15 +61,15 @@ defmodule Wardrik.HTTP.WorkerTest do
     connect(context)
     answers([calling("call_1", "workers__lookup", %{"order" => "A1"}), answer("Stopped.")])
 
-    request(context, "PUT", "/v1/agents/acme/triage", %{
+    request(context, "PUT", "/v1/agents/acme%2Ftriage", %{
       "model" => "anthropic:claude-haiku-4-5",
       "tools" => ["workers/*"]
     })
 
-    request(context, "POST", "/v1/agents/acme/triage/messages", %{"content" => "Where's A1?"})
+    request(context, "POST", "/v1/agents/acme%2Ftriage/messages", %{"content" => "Where's A1?"})
     assert_receive {:worker, %{"method" => "tools/call", "id" => id}}
 
-    assert request(context, "DELETE", "/v1/agents/acme/triage/calls/call_1").status == 204
+    assert request(context, "DELETE", "/v1/agents/acme%2Ftriage/calls/call_1").status == 204
 
     assert_receive {:worker,
                     %{"method" => "notifications/cancelled", "params" => %{"requestId" => ^id}}}

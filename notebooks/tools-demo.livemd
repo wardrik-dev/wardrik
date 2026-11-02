@@ -136,7 +136,7 @@ end
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/support",
+  Wardrik.Agent.define(scope, "agt_support",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You answer questions about Acme's orders. Be brief.",
     tools: ["orders"],
@@ -256,7 +256,7 @@ with it as `deepwiki`, so a definition names its tools as `deepwiki/*`:
 
 ```elixir
 {:ok, wiki} =
-  Wardrik.Agent.define(scope, "acme/@maria/researcher",
+  Wardrik.Agent.define(scope, "agt_researcher",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You answer questions about open source projects. Be brief.",
     tools: ["deepwiki/*"],

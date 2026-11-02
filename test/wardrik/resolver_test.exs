@@ -54,7 +54,7 @@ defmodule Wardrik.ResolverTest do
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
     %{wardrik: wardrik, resolved: resolved, scope: owner(wardrik)}
   end
 

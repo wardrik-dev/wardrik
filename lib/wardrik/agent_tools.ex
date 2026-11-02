@@ -16,7 +16,7 @@ defmodule Wardrik.AgentTools do
   | `agent_define` | Defines or redefines a worker. |
   | `agent_trigger_set`, `agent_trigger_remove`, `self_trigger_set`, `self_trigger_remove` | Changes triggers. |
 
-  Agents are named by their exact IDs, as `acme/reconciler`.
+  Agents are named by their exact IDs, as `agents_list` gives them.
 
     * Reads always run.
     * Changes are `gated`: they wait on a person unless the agent's policy allows them by name,
@@ -27,7 +27,6 @@ defmodule Wardrik.AgentTools do
 
   @behaviour WardrikCore.Capability
 
-  alias Wardrik.AgentID
   alias Wardrik.Delegation
   alias WardrikCore.Context
   alias WardrikCore.Tool
@@ -40,12 +39,13 @@ defmodule Wardrik.AgentTools do
   @trigger [type: :string, required: true, doc: "The trigger's name"]
 
   @impl WardrikCore.Capability
-  def tools(%WardrikCore.Context{agent_id: id, principal: principal}, opts) do
+  def tools(%WardrikCore.Context{agent_id: id, principal: principal} = context, opts) do
     wardrik = Keyword.fetch!(opts, :wardrik)
 
     offered(Keyword.fetch!(opts, :reach), %{
       wardrik: wardrik,
       id: id,
+      conversation: context.conversation,
       principal: principal,
       policy: nil,
       labels: []
@@ -112,14 +112,14 @@ defmodule Wardrik.AgentTools do
   end
 
   defp offered(:self, me) do
-    self = AgentID.agent(me.id)
+    self = me.id
 
     [
       read(
         "self_read",
         "Read your own snapshot: your status, and what you wait on.",
         [],
-        fn _args -> run(me, "agent.read", %{"agent" => me.id}) end
+        fn _args -> run(me, "agent.read", own(me)) end
       ),
       read("self_definition_read", "Read your own definition.", [], fn _args ->
         run(me, "agent.definition", %{"agent" => self})
@@ -138,6 +138,11 @@ defmodule Wardrik.AgentTools do
       )
     ]
   end
+
+  defp own(%{id: id, conversation: nil}), do: %{"agent" => id}
+
+  defp own(%{id: id, conversation: conversation}),
+    do: %{"agent" => id, "conversation" => conversation}
 
   defp trigger_fields,
     do: [
@@ -173,7 +178,7 @@ defmodule Wardrik.AgentTools do
          "agents" =>
            for(
              agent <- agents,
-             not AgentID.conversation?(agent["id"]),
+             not Map.has_key?(agent, "conversation"),
              do: Map.take(agent, ["id", "status"])
            )
        }}
@@ -184,7 +189,9 @@ defmodule Wardrik.AgentTools do
     id = "msg_" <> Base.url_encode64(:crypto.strong_rand_bytes(12), padding: false)
     me = %{me | labels: Context.labels(context)}
 
-    with :ok <- Delegation.asked(me.wardrik, asker: me.id, agent: agent, message: id),
+    asker = {me.id, me.conversation}
+
+    with :ok <- Delegation.asked(me.wardrik, asker: asker, agent: agent, message: id),
          do: run(me, "agent.ask", %{"agent" => agent, "content" => message, "id" => id})
   end
 
@@ -202,7 +209,7 @@ defmodule Wardrik.AgentTools do
   end
 
   defp policy(wardrik, id) do
-    case Wardrik.Definitions.fetch(wardrik, AgentID.agent(id)) do
+    case Wardrik.Definitions.fetch(wardrik, id) do
       {:ok, %{"policy" => policy}} -> policy
       _unbounded -> nil
     end
@@ -219,7 +226,7 @@ defmodule Wardrik.AgentTools do
       )
 
   defp run(%{principal: nil, id: id}, _operation, _input),
-    do: {:error, "#{AgentID.agent(id)} acts for no one, so it can't reach other agents."}
+    do: {:error, "#{id} acts for no one, so it can't reach other agents."}
 
   defp run(me, operation, input) do
     case Wardrik.run(scope(me), operation, input) do
@@ -230,7 +237,7 @@ defmodule Wardrik.AgentTools do
   end
 
   defp scope(%{wardrik: wardrik, id: id, principal: principal, policy: policy, labels: labels}) do
-    scope = Wardrik.as(wardrik, principal, actor: {:agent, AgentID.agent(id)})
+    scope = Wardrik.as(wardrik, principal, actor: {:agent, id})
     %{scope | policy: policy, labels: labels}
   end
 end

@@ -56,10 +56,5 @@ defmodule Wardrik.Test.Deciders do
 
   defp member(request, opts), do: Allow.authorize(request, opts)
 
-  defp owner(id) do
-    case Wardrik.AgentID.parse(id) do
-      {:ok, %Wardrik.AgentID{owner: owner}} -> owner
-      :error -> nil
-    end
-  end
+  defp owner(id), do: Wardrik.Test.Directory.owner(id)
 end

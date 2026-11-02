@@ -84,11 +84,10 @@ definition =
     timeout: 600
   )
 
-Wardrik.Agent.define(scope, "acme/@maria/assistant", definition)
+Wardrik.Agent.define(scope, "agt_assistant", definition)
 #=> {:ok,
 #=>  %Wardrik.Agent{
-#=>    id: "acme/@maria/assistant",
-#=>    name: "assistant",
+#=>    id: "agt_assistant",
 #=>    status: :idle,
 #=>    node: "nonode@nohost",
 #=>    pending: 0,
@@ -97,21 +96,23 @@ Wardrik.Agent.define(scope, "acme/@maria/assistant", definition)
 #=>  }}
 ```
 
+Your app picks the agent's ID, as `agt_01JF8X5RQ2` or `agt_assistant`. Any text of 1 to 255
+characters works, without control characters. Wardrik never reads anything from it.
+
 `Wardrik.Agent.define/3` takes a keyword list too. A definition is stored as the protocol's JSON,
 so YAML frontmatter, JSON and `Wardrik.Definition.new!/1` all give the same one.
 
 Define it again to change it. A running agent takes the new definition from its next turn:
 
 ```elixir
-Wardrik.Agent.define(scope, "acme/@maria/assistant",
+Wardrik.Agent.define(scope, "agt_assistant",
   model: "anthropic:claude-haiku-4-5",
   tools: ["orders"],
   policy: "careful"
 )
 ```
 
-A user's agent, as `acme/@maria/assistant`, acts as `acme/@maria`, with her credentials. An org's
-agent, as `acme/digest`, acts as the org.
+The agent acts as whoever your resolver says, with their credentials.
 
 ### Keys
 
@@ -121,7 +122,7 @@ agent, as `acme/digest`, acts as the org.
 | `instructions` | The system prompt, sent with every model call. |
 | `tools` | What it may call. See below. |
 | `context` | Files read into every turn, as `[MEMORY.md]` or `{files: [...], max_bytes: 65536}`. See `Wardrik.Workspaces`. |
-| `workspace` | Other agents' workspaces it mounts, each under `shared/<name>/`, as `{shared: {runbooks: acme/runbooks}}`. Only those its resolver shares. |
+| `workspace` | Other agents' workspaces it mounts, each under `shared/<name>/`, as `{shared: {runbooks: agt_runbooks}}`. Only those its resolver shares. |
 | `policy` | A policy by name, or its rules in place, budget and judge included. See [Policies](policies.md). |
 | `timeout` | Seconds a turn may take. |
 | `max_iterations` | Rounds of tool calls a turn may make, or `infinity`. `25` unless set. |
@@ -152,7 +153,7 @@ it doesn't support yet returns `not_supported`, naming the key.
 ## Read it back
 
 ```elixir
-Wardrik.Agent.definition(scope, "acme/@maria/assistant")
+Wardrik.Agent.definition(scope, "agt_assistant")
 #=> {:ok,
 #=>  %Wardrik.Definition{
 #=>    model: "anthropic:claude-haiku-4-5",
@@ -171,9 +172,9 @@ when something asks it. Asking, deciding and signing in wake it. Reading it does
 `asleep`:
 
 ```elixir
-Wardrik.Agent.stop(scope, "acme/@maria/assistant")
-Wardrik.Agent.read(scope, "acme/@maria/assistant")
-#=> {:ok, %Wardrik.Agent{id: "acme/@maria/assistant", status: :asleep, ...}}
+Wardrik.Agent.stop(scope, "agt_assistant")
+Wardrik.Agent.read(scope, "agt_assistant")
+#=> {:ok, %Wardrik.Agent{id: "agt_assistant", status: :asleep, ...}}
 ```
 
 | Function | Does |
@@ -191,22 +192,23 @@ Each change is recorded in the audit, with who made it.
 
 ## Conversations
 
-One agent can hold many conversations at once, as a chat app holds one per thread. A
-conversation's ID is the agent's ID plus one segment. Asking one calls the model, so set
-`ANTHROPIC_API_KEY` first:
+One agent can hold many conversations at once, as a chat app holds one per thread. Name the
+conversation with `:conversation`. Asking one calls the model, so set `ANTHROPIC_API_KEY` first:
 
 ```elixir
-Wardrik.Agent.ask(scope, "acme/@maria/assistant/C1-1696.1234", "Where's order A-1?")
+Wardrik.Agent.ask(scope, "agt_assistant", content: "Where's order A-1?", conversation: "C1")
 #=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "..."}}
+
+Wardrik.Agent.reply(scope, "agt_assistant", "And order A-2?", conversation: "C1")
 ```
 
 A conversation:
 
   * runs on the agent's definition, with its own history, log and queue.
   * starts when something asks it, sleeps as the agent does, and goes when the agent is forgotten.
-  * has no definition or triggers of its own. Defining one returns `invalid_request`.
+  * has no definition or triggers of its own.
 
-Your authorizer sees it as `{:agent, "acme/@maria/assistant/C1-1696.1234"}`.
-`Wardrik.AgentID.agent/1` returns the agent it runs on, to decide it as you decide the agent.
+Your app picks the conversation's ID, as it picks the agent's. Your authorizer decides a
+conversation as its agent, `{:agent, "agt_assistant"}`.
 
-No HTTP route reaches a conversation. Read its events through the agent's org.
+Over HTTP, a conversation's routes sit under `/v1/agents/{agent}/conversations/{conversation}`.

@@ -19,8 +19,7 @@ defmodule Wardrik.Operations.Lifecycle do
   def define(%Scope{wardrik: wardrik} = scope, %{"agent" => id} = input) do
     definition = input |> Map.delete("agent") |> Definition.named()
 
-    with :ok <- Running.definable(id),
-         :ok <- bounded(wardrik, id, scope.policy),
+    with :ok <- bounded(wardrik, id, scope.policy),
          :ok <- written_after(wardrik, id, definition["policy"]),
          {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
          {:ok, _pid} <- Running.bring(wardrik, opts),
@@ -60,10 +59,10 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc "Stops the agent, and deletes its conversation and definition."
+  @doc "Stops the agent, and deletes its history, its conversations and its definition."
   @spec forget(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def forget(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
-    with :ok <- Snapshot.known(wardrik, id),
+    with :ok <- Snapshot.known(wardrik, {id, nil}),
          :ok <- undeclared(wardrik, id),
          :ok <- forgotten(wardrik, id) do
       Changes.record(scope, type: "agent.forgotten", agent: id)
@@ -74,49 +73,56 @@ defmodule Wardrik.Operations.Lifecycle do
   @doc "Starts the agent from its definition, unless it's running."
   @spec spawn(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def spawn(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
-    asleep? = Running.whereis(wardrik, id) == nil
+    asleep? = Running.whereis(wardrik, {id, nil}) == nil
 
-    with {:ok, _pid} <- Running.awake(wardrik, id) do
+    with {:ok, _pid} <- Running.awake(wardrik, {id, nil}) do
       if asleep?, do: Changes.record(scope, type: "agent.spawned", agent: id)
-      {:ok, %{"agent" => Snapshot.summary(wardrik, id)}}
+      {:ok, %{"agent" => Snapshot.summary(wardrik, {id, nil})}}
     end
   end
 
-  @doc "Stops the agent but keeps its conversation. It sleeps until something asks it."
+  @doc "Stops the agent but keeps its history. It sleeps until something asks it."
   @spec stop(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def stop(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
-    with :ok <- Snapshot.known(wardrik, id) do
-      stopped(scope, id, Running.whereis(wardrik, id))
-      {:ok, %{"agent" => %{Snapshot.summary(wardrik, id) | "status" => "asleep"}}}
+  def stop(%Scope{wardrik: wardrik} = scope, input) do
+    key = Running.key(input)
+
+    with :ok <- Snapshot.known(wardrik, key) do
+      stopped(scope, key, Running.whereis(wardrik, key))
+      {:ok, %{"agent" => %{Snapshot.summary(wardrik, key) | "status" => "asleep"}}}
     end
   end
 
-  @doc "Clears the agent's conversation, and restarts it from its definition."
+  @doc "Clears the agent's history, and restarts it from its definition."
   @spec clear(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def clear(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
-    with :ok <- Snapshot.known(wardrik, id),
-         :ok <- idle(wardrik, id),
-         {:ok, definition} <- Running.definition(wardrik, id),
-         {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
-         before = messages(wardrik, id),
-         :ok <- WardrikCore.delete(Wardrik.agents(wardrik), id),
-         {:ok, _pid} <- Running.bring(wardrik, opts) do
-      cleared = {"conversation.cleared", "agents/" <> id, %{"messages_before" => before}}
-      :ok = WardrikEvents.append(Wardrik.events(wardrik), id, cleared)
-      Changes.record(scope, type: "agent.cleared", agent: id)
-      Agent.read(scope, %{"agent" => id})
+  def clear(%Scope{wardrik: wardrik} = scope, input) do
+    {agent, conversation} = key = Running.key(input)
+
+    with :ok <- Snapshot.known(wardrik, key),
+         :ok <- idle(wardrik, key),
+         {:ok, definition} <- Running.definition(wardrik, agent),
+         {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, agent, definition),
+         before = messages(wardrik, key),
+         :ok <- WardrikCore.delete(Wardrik.agents(wardrik), key),
+         {:ok, _pid} <- Running.bring(wardrik, Running.held(opts, conversation)) do
+      subject = WardrikEvents.CloudEvent.subject(agent)
+      cleared = {"conversation.cleared", subject, %{"messages_before" => before}}
+      :ok = WardrikEvents.append(Wardrik.events(wardrik), key, cleared)
+      Changes.record(scope, type: "agent.cleared", agent: key)
+      Agent.read(scope, input)
     end
   end
 
   @doc "Lists the tool calls the agent is running, with how long each has run."
   @spec calls(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def calls(%Scope{wardrik: wardrik}, %{"agent" => id}) do
-    with {:ok, _pid} <- Snapshot.running(wardrik, id) do
+  def calls(%Scope{wardrik: wardrik}, input) do
+    key = Running.key(input)
+
+    with {:ok, _pid} <- Snapshot.running(wardrik, key) do
       now = DateTime.utc_now()
 
       calls =
         for %{"type" => "wardrik.tool_call.started", "tool" => tool, "since" => since} <-
-              WardrikEvents.activity(Wardrik.events(wardrik), id)["doing"],
+              WardrikEvents.activity(Wardrik.events(wardrik), key)["doing"],
             do: %{
               "id" => tool["call"]["id"],
               "name" => tool["name"],
@@ -129,20 +135,22 @@ defmodule Wardrik.Operations.Lifecycle do
 
   @doc "Kills one of the agent's running tool calls. The model gets an error as its result."
   @spec kill(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
-  def kill(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "call" => call}) do
-    with {:ok, pid} <- Snapshot.running(wardrik, id) do
+  def kill(%Scope{wardrik: wardrik} = scope, %{"call" => call} = input) do
+    key = Running.key(input)
+
+    with {:ok, pid} <- Snapshot.running(wardrik, key) do
       case WardrikCore.kill(pid, call) do
         :ok ->
           Changes.record(scope,
             type: "call.killed",
-            agent: id,
+            agent: key,
             data: %{"call" => %{"id" => call}}
           )
 
           {:ok, nil}
 
         {:error, :not_running} ->
-          {:error, Error.new(:not_found, "#{id} isn't running #{call}.")}
+          {:error, Error.new(:not_found, "#{Running.describe(key)} isn't running #{call}.")}
       end
     end
   end
@@ -150,8 +158,7 @@ defmodule Wardrik.Operations.Lifecycle do
   @doc "Stops the agent and deletes all its data, including its conversations."
   @spec forgotten(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
   def forgotten(wardrik, id) do
-    with :ok <- conversations_deleted(wardrik, id),
-         :ok <- WardrikCore.delete(Wardrik.agents(wardrik), id),
+    with :ok <- deleted(wardrik, id),
          :ok <- Definitions.delete(wardrik, id),
          :ok <- WardrikTriggers.put(Wardrik.triggers(wardrik), id, []) do
       :ok
@@ -161,13 +168,10 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  defp conversations_deleted(wardrik, id) do
-    agents = Wardrik.agents(wardrik)
-
+  defp deleted(wardrik, id) do
     deleted =
-      for conversation <- WardrikCore.list(agents),
-          String.starts_with?(conversation, id <> "/"),
-          do: WardrikCore.delete(agents, conversation)
+      for key <- Enum.uniq([{id, nil} | Running.saved(wardrik, id)]),
+          do: WardrikCore.delete(Wardrik.agents(wardrik), key)
 
     Enum.find(deleted, :ok, &(&1 != :ok))
   end
@@ -201,22 +205,26 @@ defmodule Wardrik.Operations.Lifecycle do
   defp bounded(_wardrik, _id, nil), do: :ok
   defp bounded(wardrik, id, name), do: Definitions.put_boundary(wardrik, id, name)
 
-  defp stopped(_scope, _id, nil), do: :ok
+  defp stopped(_scope, _key, nil), do: :ok
 
-  defp stopped(scope, id, pid) do
+  defp stopped(scope, key, pid) do
     :ok = WardrikCore.stop(pid)
-    Changes.record(scope, type: "agent.stopped", agent: id)
+    Changes.record(scope, type: "agent.stopped", agent: key)
   end
 
-  defp idle(wardrik, id) do
-    case Snapshot.status(WardrikEvents.activity(Wardrik.events(wardrik), id)) do
-      "idle" -> :ok
-      status -> {:error, Error.new(:conflict, "#{id} is #{status}; clear it once it's idle.")}
+  defp idle(wardrik, key) do
+    case Snapshot.status(WardrikEvents.activity(Wardrik.events(wardrik), key)) do
+      "idle" ->
+        :ok
+
+      status ->
+        {:error,
+         Error.new(:conflict, "#{Running.describe(key)} is #{status}; clear it once it's idle.")}
     end
   end
 
-  defp messages(wardrik, id) do
-    case Running.whereis(wardrik, id) do
+  defp messages(wardrik, key) do
+    case Running.whereis(wardrik, key) do
       nil -> 0
       pid -> length(WardrikCore.history(pid))
     end

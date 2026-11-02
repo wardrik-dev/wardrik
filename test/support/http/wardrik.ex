@@ -63,6 +63,9 @@ defmodule Wardrik.Test.HTTP do
 
   def body(conn), do: JSON.decode!(conn.resp_body)
 
+  @doc "Returns `id` as one path segment, with everything but unreserved characters encoded."
+  def segment(id), do: URI.encode(id, &URI.char_unreserved?/1)
+
   defp encoded(nil), do: ""
   defp encoded(body) when is_binary(body), do: body
   defp encoded(body), do: JSON.encode!(body)

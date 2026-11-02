@@ -35,14 +35,14 @@ defmodule MyApp.Authorizer do
   }
 
   # Who owns each agent.
-  @owners %{"acme/triage" => "acme", "acme/@maria/books" => "acme/@maria"}
+  @owners %{"agt_triage" => "acme", "agt_books" => "acme/@maria"}
 
   # What anyone in the agent's org may do. The rest is its owner's.
   @shared ["agent.read", "agent.events", "agent.ask", "agent.decide"]
 
   @impl true
   def authorize(%Request{resource: {:agent, id}, principal: principal} = request, _opts) do
-    owner = Map.get(@owners, Wardrik.AgentID.agent(id))
+    owner = Map.get(@owners, id)
 
     if owner && @orgs[owner] == @orgs[principal.id],
       do: allowed(request, owner),
@@ -97,7 +97,7 @@ Start Wardrik with the authorizer, act as Maria, and define her agent:
 maria = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, _agent} =
-  Wardrik.Agent.define(maria, "acme/@maria/books",
+  Wardrik.Agent.define(maria, "agt_books",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You keep Maria's books."
   )
@@ -118,10 +118,10 @@ Each tries the same four things on Maria's agent:
 
 ```elixir
 tries = [
-  read: &Wardrik.Agent.read(&1, "acme/@maria/books"),
-  events: &Wardrik.Agent.events(&1, "acme/@maria/books"),
-  stop: &Wardrik.Agent.stop(&1, "acme/@maria/books"),
-  define: &Wardrik.Agent.define(&1, "acme/@maria/books", model: "anthropic:claude-haiku-4-5")
+  read: &Wardrik.Agent.read(&1, "agt_books"),
+  events: &Wardrik.Agent.events(&1, "agt_books"),
+  stop: &Wardrik.Agent.stop(&1, "agt_books"),
+  define: &Wardrik.Agent.define(&1, "agt_books", model: "anthropic:claude-haiku-4-5")
 ]
 
 answer = fn
@@ -153,11 +153,10 @@ Lists ask the authorizer once per agent, and leave out those it refuses:
 ## An agent acting
 
 An agent's `agents/*` and `self/*` tools act for the principal it resolves to, with the agent as
-actor. That's its owner, unless your `Wardrik.Resolver` says otherwise. Here's the scope
-`acme/triage` acts in:
+actor. Here's the scope `agt_triage` acts in, when your `Wardrik.Resolver` gives it `acme`:
 
 ```elixir
-triage = Wardrik.as(MyApp.AgentRuntime, "acme", actor: {:agent, "acme/triage"})
+triage = Wardrik.as(MyApp.AgentRuntime, "acme", actor: {:agent, "agt_triage"})
 
 may.(triage: triage)
 ```
@@ -166,7 +165,7 @@ It may read Maria's agent, as anyone in acme may. Stopping it is Maria's. And it
 an agent, not even its own:
 
 ```elixir
-answer.(Wardrik.Agent.forget(triage, "acme/triage"))
+answer.(Wardrik.Agent.forget(triage, "agt_triage"))
 ```
 
 The actor lets the authorizer give an agent less than the principal it acts for.
@@ -194,7 +193,7 @@ for {name, scope} <- members do
   decides =
     Wardrik.Authorizer.authorize(scope,
       action: "agent.decide",
-      resource: {:agent, "acme/@maria/books"}
+      resource: {:agent, "agt_books"}
     )
 
   %{who: name, decides: inspect(decides)}

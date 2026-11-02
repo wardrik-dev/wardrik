@@ -9,8 +9,8 @@ defmodule Wardrik do
 
       children = [MyApp.AgentRuntime]
 
-      scope = MyApp.AgentRuntime.as("acme/@maria")
-      Wardrik.Agent.stream(scope, "acme/@maria/assistant", "What's on today?") |> Enum.each(&IO.write/1)
+      scope = MyApp.AgentRuntime.as("user_42")
+      Wardrik.Agent.stream(scope, "agt_01JF8X5RQ2", "What's on today?") |> Enum.each(&IO.write/1)
 
   ## Options
 
@@ -345,9 +345,9 @@ defmodule Wardrik do
   def schema, do: @schema
 
   @doc """
-  Returns the principal with `id`, such as `"acme/@maria"`, and optional `attributes`.
+  Returns the principal with `id`, such as `"user_42"`, and optional `attributes`.
 
-      Wardrik.principal("acme/@maria", %{name: "Maria"})
+      Wardrik.principal("user_42", %{name: "Maria"})
   """
   @spec principal(String.t(), map()) :: principal()
   def principal(id, attributes \\ %{}), do: %Principal{id: id, attributes: attributes}
@@ -365,15 +365,16 @@ defmodule Wardrik do
   @doc """
   Returns a cursor for `events.list` to read on from.
 
-  `positions` maps each agent or conversation ID to the last sequence read from its log.
+  `positions` maps each log, `{agent, conversation}`, to the last sequence read from it. The
+  conversation is `nil` for the agent's own log.
 
-      Wardrik.cursor(%{"acme/triage" => 41})
+      Wardrik.cursor(%{{"agt_01JF8X5RQ2", nil} => 41, {"agt_01JF8X5RQ2", "C1"} => 3})
   """
-  @spec cursor(%{String.t() => non_neg_integer()}) :: String.t()
+  @spec cursor(%{WardrikEvents.log() => non_neg_integer()}) :: String.t()
   def cursor(positions), do: WardrikEvents.Cursor.encode(positions)
 
   @doc "Returns the positions in `cursor`, or `:error` if it isn't one. The reverse of `cursor/1`."
-  @spec positions(String.t()) :: {:ok, %{String.t() => non_neg_integer()}} | :error
+  @spec positions(String.t()) :: {:ok, %{WardrikEvents.log() => non_neg_integer()}} | :error
   def positions(cursor) do
     case WardrikEvents.Cursor.decode(cursor) do
       {:ok, positions} -> {:ok, positions}
@@ -400,7 +401,7 @@ defmodule Wardrik do
   @doc """
   Returns the scope `principal` acts in on `instance`. The `:authorizer` decides what it may do.
 
-      scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
+      scope = Wardrik.as(MyApp.AgentRuntime, "user_42")
 
   ## Options
 
@@ -425,8 +426,8 @@ defmodule Wardrik do
 
   `input` follows the operation's input schema.
 
-      Wardrik.run(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "What's on fire?"})
-      #=> {:ok, %{"message" => %{"id" => "msg_Xq3f...", "cursor" => "eyJhY21lL3RyaWFnZSI6NDF9"}}}
+      Wardrik.run(scope, "agent.ask", %{"agent" => "agt_01JF8X5RQ2", "content" => "What's on fire?"})
+      #=> {:ok, %{"message" => %{"id" => "msg_Xq3f...", "cursor" => "W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ"}}}
   """
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
   def run(%Scope{} = scope, id, input), do: Runner.run(scope, id, input)
@@ -440,7 +441,7 @@ defmodule Wardrik do
 
   The stream yields `{event, cursor}`. It reads what's there, then follows new events.
 
-      {:ok, stream} = Wardrik.stream(scope, "events.list", %{"agents" => ["acme/triage"]})
+      {:ok, stream} = Wardrik.stream(scope, "events.list", %{"agents" => ["agt_01JF8X5RQ2"]})
   """
   @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
   def stream(%Scope{} = scope, id, input), do: Runner.stream(scope, id, input)
@@ -450,8 +451,14 @@ defmodule Wardrik do
     do: stream(scope, id, input)
 
   @impl Wardrik.Server
-  def follow(%Wardrik.Server.Follow{scope: scope, agent: agent, input: input}, opts),
-    do: Wardrik.Answers.follow(scope, agent, input, opts)
+  def follow(%Wardrik.Server.Follow{} = follow, opts) do
+    opts =
+      if follow.conversation,
+        do: Keyword.put(opts, :conversation, follow.conversation),
+        else: opts
+
+    Wardrik.Answers.follow(follow.scope, follow.agent, follow.input, opts)
+  end
 
   @impl Wardrik.Server
   def offer(scope, tools), do: Wardrik.Workers.offer(scope, tools)
@@ -467,7 +474,7 @@ defmodule Wardrik do
   it resolves to (see `Wardrik.Resolver`), and Wardrik's. The strictest decides.
 
       Wardrik.start_agent(MyApp.AgentRuntime,
-        agent_id: "acme/books",
+        agent_id: "agt_books",
         model: "anthropic:claude-haiku-4-5",
         policy: [ask: ["books/pay_bill"]]
       )
@@ -494,7 +501,7 @@ defmodule Wardrik do
       Wardrik.refresh(MyApp.AgentRuntime)
 
       # These
-      Wardrik.refresh(MyApp.AgentRuntime, agents: ["acme/scout"])
+      Wardrik.refresh(MyApp.AgentRuntime, agents: ["agt_scout"])
       #=> []
   """
   @spec refresh(atom() | t(), keyword()) :: [String.t()]
@@ -523,7 +530,7 @@ defmodule Wardrik do
   Finishes a browser sign-in from its callback `params`, for the principal `as` names.
 
       Wardrik.finish_sign_in(MyApp.AgentRuntime, params, as: current_principal)
-      #=> {:ok, %{provider: "github", principal: %WardrikCore.Principal{id: "acme/@jon"}}}
+      #=> {:ok, %{provider: "github", principal: %WardrikCore.Principal{id: "user_7"}}}
 
   Use it if your app serves the callback page itself. `params` holds `"state"`, and `"code"` or
   `"error"`. Only the principal who started the sign-in can finish it. See `WardrikOAuth.finish/3`.

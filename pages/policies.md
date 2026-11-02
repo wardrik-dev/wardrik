@@ -47,7 +47,7 @@ set the same options in config.
 ## An agent's policy
 
 ```elixir
-Wardrik.Agent.define(scope, "acme/@maria/books",
+Wardrik.Agent.define(scope, "agt_books",
   model: "anthropic:claude-haiku-4-5",
   tools: ["books/*"],
   policy: [
@@ -56,7 +56,7 @@ Wardrik.Agent.define(scope, "acme/@maria/books",
     budget: [usd: 5.00, per: :day]
   ]
 )
-#=> {:ok, %Wardrik.Agent{id: "acme/@maria/books", status: :idle, ...}}
+#=> {:ok, %Wardrik.Agent{id: "agt_books", status: :idle, ...}}
 ```
 
 The rules live outside the prompt. Nothing the model reads can widen them.
@@ -141,14 +141,14 @@ still wins over it. Only an agent declared in a file writes `allow_after` in pla
 a policy that has it, like `triage` from the setup:
 
 ```elixir
-Wardrik.Agent.define(scope, "acme/@maria/triage",
+Wardrik.Agent.define(scope, "agt_triage",
   model: "anthropic:claude-haiku-4-5",
   tools: ["linear/*", "github/*"],
   policy: "triage"
 )
-#=> {:ok, %Wardrik.Agent{id: "acme/@maria/triage", ...}}
+#=> {:ok, %Wardrik.Agent{id: "agt_triage", ...}}
 
-Wardrik.Agent.define(scope, "acme/@maria/triage",
+Wardrik.Agent.define(scope, "agt_triage",
   model: "anthropic:claude-haiku-4-5",
   policy: [allow_after: %{"outside" => ["github/add_labels"]}]
 )

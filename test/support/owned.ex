@@ -1,7 +1,7 @@
 defmodule Wardrik.Test.Owned do
   @moduledoc """
-  Resolves agents as a simple host might, for tests: each acts for the owner its ID starts with,
-  as `acme/@maria` for `acme/@maria/notes`, and reaches every server and notify target of the
+  Resolves agents as a simple app might, for tests: each acts for its owner in
+  `Wardrik.Test.Directory`, and reaches every server and notify target of the
   Wardrik named in `opts`. Give `opts` as `{name, more}` to add `:channels`, or `:shares`, the
   workspaces each agent may mount by its ID.
   """
@@ -12,7 +12,7 @@ defmodule Wardrik.Test.Owned do
   def resolve(%Wardrik.Resolver.Request{agent: id}, {name, more}) do
     {shares, more} = Keyword.pop(more, :shares, %{})
     {:ok, resolved} = resolve(%Wardrik.Resolver.Request{agent: id}, name)
-    workspaces = Map.get(shares, Wardrik.AgentID.agent(id), %{})
+    workspaces = Map.get(shares, id, %{})
     {:ok, struct!(resolved, [workspaces: workspaces] ++ more)}
   end
 
@@ -35,10 +35,5 @@ defmodule Wardrik.Test.Owned do
     ArgumentError -> {[], %{}}
   end
 
-  defp principal(id) do
-    case Wardrik.AgentID.parse(id) do
-      {:ok, %Wardrik.AgentID{owner: owner}} -> %WardrikCore.Principal{id: owner}
-      :error -> nil
-    end
-  end
+  defp principal(id), do: %WardrikCore.Principal{id: Wardrik.Test.Directory.owner(id)}
 end

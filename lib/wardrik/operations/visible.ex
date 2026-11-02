@@ -3,25 +3,32 @@ defmodule Wardrik.Operations.Visible do
   Limits operations over many agents to what the scope may see.
 
   Only the agents the input's `"agents"` names, or every agent without it, that the authorizer
-  lets the scope act on are shown. The same goes for their events and cursors.
+  lets the scope act on are shown, each with its conversations. The same goes for their events
+  and cursors.
   """
 
   alias Wardrik.Definitions
+  alias Wardrik.Operations.Running
   alias Wardrik.Scope
 
-  @doc "Returns the IDs of saved or defined agents that `input` names and `scope` may see."
-  @spec agents(Scope.t(), map()) :: [String.t()]
-  def agents(%Scope{wardrik: wardrik} = scope, input) do
-    (WardrikCore.list(Wardrik.agents(wardrik)) ++ Definitions.ids(wardrik))
+  @doc "Returns the keys of saved or defined agents, and their conversations, that `scope` may see."
+  @spec keys(Scope.t(), map()) :: [Running.key()]
+  def keys(%Scope{wardrik: wardrik} = scope, input) do
+    (WardrikCore.list(Wardrik.agents(wardrik)) ++ Enum.map(Definitions.ids(wardrik), &{&1, nil}))
     |> Enum.uniq()
-    |> Enum.filter(&visible?(scope, input, &1))
+    |> Enum.filter(fn {agent, _conversation} -> visible?(scope, input, agent) end)
     |> Enum.sort()
   end
 
-  @doc "Returns the log patterns that hold every agent `input` names."
-  @spec logs(map()) :: [String.t()]
+  @doc "Returns the IDs of saved or defined agents that `input` names and `scope` may see."
+  @spec agents(Scope.t(), map()) :: [String.t()]
+  def agents(scope, input),
+    do: scope |> keys(input) |> Enum.map(fn {agent, _conversation} -> agent end) |> Enum.uniq()
+
+  @doc "Returns the logs that hold every agent `input` names, with its conversations."
+  @spec logs(map()) :: WardrikEvents.resources()
   def logs(%{"agents" => ids}), do: Enum.uniq(ids)
-  def logs(_input), do: ["*"]
+  def logs(_input), do: :all
 
   @doc "Returns whether `input` names the agent `id`, and `scope` may see it."
   @spec visible?(Scope.t(), map(), String.t()) :: boolean()
@@ -30,10 +37,7 @@ defmodule Wardrik.Operations.Visible do
 
   @doc "Returns the ID of the agent whose log holds `event`."
   @spec agent_id(map()) :: String.t()
-  def agent_id(%{"source" => source}) do
-    [_deployment, id] = String.split(source, "/agents/", parts: 2)
-    id
-  end
+  def agent_id(%{"agent" => agent}), do: agent
 
   defp named?(%{"agents" => ids}, id), do: id in ids
   defp named?(_input, _id), do: true

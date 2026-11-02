@@ -56,7 +56,7 @@ defmodule Wardrik.Notify.Server do
   @impl DurableServer
   def init(state, %{wardrik: wardrik}) do
     Process.flag(:trap_exit, true)
-    cursor = state.cursor || WardrikEvents.head(Wardrik.events(wardrik), ["*"])
+    cursor = state.cursor || WardrikEvents.head(Wardrik.events(wardrik), :all)
     {:ok, tasks} = Task.Supervisor.start_link()
 
     {:ok, follower} =
@@ -128,7 +128,12 @@ defmodule Wardrik.Notify.Server do
   defp ended(state, agent), do: %{state | calls: Map.delete(state.calls, agent)}
 
   defp notice(event, kind, fields),
-    do: struct!(Notice, [agent: agent(event), kind: kind, at: event.time] ++ fields)
+    do:
+      struct!(
+        Notice,
+        [agent: event.agent, conversation: event.conversation, kind: kind, at: event.time] ++
+          fields
+      )
 
   defp waiting(state, agent, ids) do
     case Snapshot.known(state.wardrik, agent) do
@@ -153,7 +158,7 @@ defmodule Wardrik.Notify.Server do
     |> Enum.map(&Wardrik.Interrupt.from_json/1)
   end
 
-  defp told(state, agent, notice) do
+  defp told(state, {agent, _conversation}, notice) do
     with {:ok, definition} <- Wardrik.Definitions.fetch(state.wardrik, agent),
          {:ok, resolved} <-
            Wardrik.Resolver.resolve(state.wardrik, %Wardrik.Resolver.Request{
@@ -205,10 +210,7 @@ defmodule Wardrik.Notify.Server do
   defp couldnt(name, notice, reason),
     do: "Couldn't tell #{name} that #{notice.agent} #{notice.kind}: #{inspect(reason)}"
 
-  defp agent(%Wardrik.Event{source: source}) do
-    [_deployment, id] = String.split(source, "/agents/", parts: 2)
-    id
-  end
+  defp agent(%Wardrik.Event{agent: agent, conversation: conversation}), do: {agent, conversation}
 end
 
 defmodule Wardrik.Notify.Follower do

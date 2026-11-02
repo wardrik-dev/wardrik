@@ -14,7 +14,7 @@ defmodule Wardrik.Answers do
   @timeout :timer.minutes(10)
 
   @doc """
-  Sends `input` to `agent`, and returns a stream of its answer.
+  Sends `input` to `agent`, or to its `:conversation`, and returns a stream of its answer.
 
   The stream yields `{:text, chunk}` as text arrives, then one of:
 
@@ -24,34 +24,46 @@ defmodule Wardrik.Answers do
 
   ## Options
 
+    * `:conversation` - the conversation to send it to. The agent's own history unless set.
     * `:timeout` - milliseconds to wait for each event. 10 minutes unless set.
   """
   @spec follow(Scope.t(), String.t() | struct(), term(), keyword()) :: Enumerable.t()
   def follow(scope, agent, input, opts \\ []) do
-    id = Types.path(agent)
+    log = {Types.path(agent), opts[:conversation]}
     timeout = Keyword.get(opts, :timeout, @timeout)
 
     Stream.resource(
-      fn -> started(scope, id, agent, input) end,
+      fn -> started(scope, log, input) end,
       &next(&1, timeout),
       &stopped/1
     )
   end
 
-  defp started(%Scope{wardrik: instance} = scope, id, agent, input) do
+  defp started(%Scope{wardrik: instance} = scope, {agent, conversation} = log, input) do
     events = instance |> Instance.fetch!() |> Wardrik.events()
-    {:ok, _page} = allowed(Wardrik.Agent.events(scope, agent, limit: 1))
-    :ok = WardrikEvents.subscribe(events, [id])
+    {:ok, _page} = allowed(Wardrik.Agent.events(scope, agent, held([limit: 1], conversation)))
+    :ok = WardrikEvents.subscribe(events, [log])
 
-    case Wardrik.Agent.ask(scope, agent, input) do
+    case Wardrik.Agent.ask(scope, agent, asked(input, conversation)) do
       {:ok, message} ->
-        %{events: events, agent: id, message: message.id, run: nil, text: [], done: false}
+        %{events: events, agent: log, message: message.id, run: nil, text: [], done: false}
 
       {:error, error} ->
-        :ok = WardrikEvents.unsubscribe(events, [id])
+        :ok = WardrikEvents.unsubscribe(events, [log])
         raise error
     end
   end
+
+  defp held(input, nil), do: input
+  defp held(input, conversation), do: Keyword.put(input, :conversation, conversation)
+
+  defp asked(input, nil), do: input
+
+  defp asked(text, conversation) when is_binary(text),
+    do: [content: text, conversation: conversation]
+
+  defp asked(input, conversation) when is_list(input), do: held(input, conversation)
+  defp asked(%{} = input, conversation), do: Map.put(input, "conversation", conversation)
 
   defp allowed({:ok, page}), do: {:ok, page}
   defp allowed({:error, error}), do: raise(error)

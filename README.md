@@ -56,7 +56,7 @@ Act as someone, and talk to agents:
 scope = MyApp.AgentRuntime.as("acme/@maria")
 
 {:ok, notes_agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/assistant",
+  Wardrik.Agent.define(scope, "agt_assistant",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You keep Maria's notes.",
     policy: [budget: [usd: 1.00, per: :day]]

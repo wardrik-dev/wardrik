@@ -36,7 +36,7 @@ defmodule Wardrik.Spending do
   @doc """
   Returns what the agent `id` spent today.
 
-      Wardrik.Spending.today(wardrik, "acme/triage")
+      Wardrik.Spending.today(wardrik, "agt_triage")
       #=> %{"tokens" => 12_400, "usd" => 0.03}
   """
   @spec today(Wardrik.t(), String.t()) :: %{String.t() => number()}

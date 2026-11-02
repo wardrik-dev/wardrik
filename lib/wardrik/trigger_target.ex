@@ -14,7 +14,7 @@ defmodule Wardrik.TriggerTarget do
 
   @impl WardrikTriggers.Target
   def ask(%Ask{agent: agent_id} = ask, wardrik) do
-    case Running.awake(wardrik, agent_id) do
+    case Running.awake(wardrik, {agent_id, nil}) do
       {:ok, pid} -> asked(pid, ask)
       {:error, _error} -> :no_agent
     end
@@ -26,7 +26,7 @@ defmodule Wardrik.TriggerTarget do
 
     WardrikEvents.append(
       Wardrik.events(wardrik),
-      agent_id,
+      {agent_id, nil},
       {"trigger.fired", "triggers/" <> trigger, data}
     )
   end

@@ -25,6 +25,17 @@
 
 ### Breaking
 
+- Agent IDs are your app's opaque text, as `agt_01JF8X5RQ2`. Wardrik never parses or names
+  them: `Wardrik.AgentID` and the agent's `name` in snapshots and lists are gone.
+- A conversation is a field, not an ID suffix. Operations on an agent take an optional
+  `conversation`, as `Wardrik.Agent.ask(scope, "agt_1", content: "Hi", conversation: "C1")`, and
+  `Wardrik.Agent.stream/4` and `reply/4` take `conversation:`. The authorizer decides a
+  conversation as its agent, `{:agent, id}`.
+- Events carry `agent` and `conversation`. `Wardrik.cursor/1` takes
+  `%{{agent, conversation} => sequence}`. `agents:` filters cover each agent's conversations,
+  and listeners follow every agent unless given `:agents`.
+- Workers' calls, notices, interrupts and `Wardrik.Delegation.asked/2`'s `:asker` carry the
+  conversation too.
 - `:oauth` requires `:resolver`, the `WardrikOAuth.Resolver` that says which OAuth app each
   principal signs in with. `:oauth`'s `:providers` is gone.
 - OAuth apps and connected accounts are `wardrik_daemon`'s: `providers.*`, `connections.*`,
@@ -49,7 +60,8 @@
   `:actor` and `:context`, and the operations over many agents take `agents` for `resources`.
 - No tenancy: Wardrik reads no owner or org from an ID. `Wardrik.Owners.Resolver` and the
   `:workspace` option are gone; a definition's `workspace.shared` mounts other agents' workspaces
-  by `agent` ID, as the resolver shares them, and an agent's own tree is `agents/<id>`. Agent tools
+  by `agent` ID, as the resolver shares them, and an agent's own tree is
+  `agents/<URL-encoded id>`. Agent tools
   name agents by exact ID, and `agents_list` lists every agent the authorizer lets the agent read.
   `Wardrik.Listener` takes `:agents`, exact IDs, for `:resources`. A worker call's `meta.agent` is
   `%{"key" => id}`. A trigger's signing secret is the resolved principal's. `Wardrik.Notify.Room`

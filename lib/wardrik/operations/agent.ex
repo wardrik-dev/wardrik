@@ -1,5 +1,8 @@
 defmodule Wardrik.Operations.Agent do
-  @moduledoc "Operations on one agent: messaging it, deciding what it waits on, and reading it."
+  @moduledoc """
+  Operations on one agent, or one of its conversations: messaging it, deciding what it waits on,
+  and reading it.
+  """
 
   alias Wardrik.Error
   alias Wardrik.JSON
@@ -13,32 +16,39 @@ defmodule Wardrik.Operations.Agent do
 
   @doc "Returns what the agent is doing now."
   @spec read(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def read(scope, %{"agent" => id}) do
-    with :ok <- Snapshot.known(scope.wardrik, id) do
+  def read(scope, input) do
+    {agent, conversation} = key = Running.key(input)
+
+    with :ok <- Snapshot.known(scope.wardrik, key) do
       events = Wardrik.events(scope.wardrik)
-      activity = WardrikEvents.activity(events, id)
+      activity = WardrikEvents.activity(events, key)
 
       {:ok,
-       %{
-         "agent" => %{"id" => id, "name" => Snapshot.name(id)},
-         "status" => Snapshot.state(scope.wardrik, id, activity),
-         "node" => Snapshot.placed(scope.wardrik, id),
-         "pending" => activity["pending"],
-         "next_run" => Snapshot.next_run(scope.wardrik, id),
-         "spent_today" => Wardrik.Spending.today(scope.wardrik, id),
-         "activity" => activity,
-         "interrupts" => Snapshot.interrupts(activity),
-         "cursor" => WardrikEvents.head(events, [id])
-       }}
+       Snapshot.conversation(
+         %{
+           "agent" => %{"id" => agent},
+           "status" => Snapshot.state(scope.wardrik, key, activity),
+           "node" => Snapshot.placed(scope.wardrik, key),
+           "pending" => activity["pending"],
+           "next_run" => Snapshot.next_run(scope.wardrik, agent),
+           "spent_today" => Wardrik.Spending.today(scope.wardrik, agent),
+           "activity" => activity,
+           "interrupts" => Snapshot.interrupts(activity),
+           "cursor" => WardrikEvents.head(events, [key])
+         },
+         conversation
+       )}
     end
   end
 
   @doc "Sends the agent a message. Returns the message's ID, and the cursor its answer comes after."
   @spec ask(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def ask(scope, %{"agent" => id} = input) do
-    with {:ok, pid} <- Running.awake(scope.wardrik, id) do
+  def ask(scope, input) do
+    key = Running.key(input)
+
+    with {:ok, pid} <- Running.awake(scope.wardrik, key) do
       message_id = input["id"] || message_id()
-      cursor = WardrikEvents.head(Wardrik.events(scope.wardrik), [id])
+      cursor = WardrikEvents.head(Wardrik.events(scope.wardrik), [key])
       :ok = WardrikCore.ask(pid, text(input), metadata(scope, message_id))
       {:ok, %{"message" => %{"id" => message_id, "cursor" => cursor}}}
     end
@@ -46,10 +56,12 @@ defmodule Wardrik.Operations.Agent do
 
   @doc "Approves or rejects the calls the agent waits on, all at once."
   @spec decide(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def decide(scope, %{"agent" => id, "decisions" => decisions}) do
-    with :ok <- Snapshot.known(scope.wardrik, id),
-         {:ok, pid} <- Running.awake(scope.wardrik, id),
-         :ok <- waiting_on(pid, id, decisions),
+  def decide(scope, %{"decisions" => decisions} = input) do
+    key = Running.key(input)
+
+    with :ok <- Snapshot.known(scope.wardrik, key),
+         {:ok, pid} <- Running.awake(scope.wardrik, key),
+         :ok <- waiting_on(pid, key, decisions),
          :ok <- resume(pid, decisions, scope) do
       {:ok, %{"decisions" => Enum.map(decisions, &decided/1)}}
     end
@@ -57,46 +69,57 @@ defmodule Wardrik.Operations.Agent do
 
   @doc "Approves one call the agent waits on."
   @spec approve(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def approve(scope, %{"agent" => id, "interrupt" => interrupt} = input) do
+  def approve(scope, %{"interrupt" => interrupt} = input) do
     decision = %{"id" => interrupt, "decision" => "approve", "note" => input["note"]}
-    decide(scope, %{"agent" => id, "decisions" => [decision]})
+    decide(scope, decided_input(input, decision))
   end
 
   @doc "Rejects one call the agent waits on."
   @spec deny(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def deny(scope, %{"agent" => id, "interrupt" => interrupt} = input) do
+  def deny(scope, %{"interrupt" => interrupt} = input) do
     decision = %{"id" => interrupt, "decision" => "reject", "reason" => input["reason"]}
-    decide(scope, %{"agent" => id, "decisions" => [decision]})
+    decide(scope, decided_input(input, decision))
   end
+
+  defp decided_input(input, decision),
+    do: input |> Map.take(["agent", "conversation"]) |> Map.put("decisions", [decision])
 
   @doc "Returns the sign-in URL for a call that waits on a person signing in."
   @spec authorization(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def authorization(scope, %{"agent" => id, "interrupt" => interrupt}) do
-    with {:ok, pid} <- Running.awake(scope.wardrik, id) do
+  def authorization(scope, %{"interrupt" => interrupt} = input) do
+    key = Running.key(input)
+
+    with {:ok, pid} <- Running.awake(scope.wardrik, key) do
       case sign_in(WardrikCore.parked(pid), interrupt) do
-        %Authorization{url: url} -> {:ok, %{"url" => url}}
-        nil -> {:error, Error.new(:not_found, "#{id} waits on no sign-in for #{interrupt}.")}
+        %Authorization{url: url} ->
+          {:ok, %{"url" => url}}
+
+        nil ->
+          {:error,
+           Error.new(:not_found, "#{Running.describe(key)} waits on no sign-in for #{interrupt}.")}
       end
     end
   end
 
   @doc "Cancels what the agent is doing, and drops its queued messages."
   @spec cancel(Wardrik.Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
-  def cancel(scope, %{"agent" => id}) do
-    with :ok <- Snapshot.known(scope.wardrik, id) do
-      cancelled(scope, id, Running.whereis(scope.wardrik, id))
+  def cancel(scope, input) do
+    key = Running.key(input)
+
+    with :ok <- Snapshot.known(scope.wardrik, key) do
+      cancelled(scope, key, Running.whereis(scope.wardrik, key))
       {:ok, nil}
     end
   end
 
-  @doc "Cancels what the agent `id` is doing, and records it. Returns whether there was anything."
-  @spec cancelled(Wardrik.Scope.t(), String.t(), pid() | nil) :: boolean()
-  def cancelled(_scope, _id, nil), do: false
+  @doc "Cancels what the agent `key` is doing, and records it. Returns whether there was anything."
+  @spec cancelled(Wardrik.Scope.t(), Running.key(), pid() | nil) :: boolean()
+  def cancelled(_scope, _key, nil), do: false
 
-  def cancelled(scope, id, pid) do
+  def cancelled(scope, key, pid) do
     case WardrikCore.interrupt(pid) do
       :ok ->
-        Changes.record(scope, type: "agent.cancelled", agent: id)
+        Changes.record(scope, type: "agent.cancelled", agent: key)
         true
 
       {:error, :idle} ->
@@ -106,8 +129,10 @@ defmodule Wardrik.Operations.Agent do
 
   @doc "Returns a page of the agent's log."
   @spec events(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def events(scope, %{"agent" => id} = input) do
-    with {:ok, page} <- Snapshot.page(scope, [id], after: input["after"], limit: input["limit"]) do
+  def events(scope, input) do
+    opts = [after: input["after"], limit: input["limit"]]
+
+    with {:ok, page} <- Snapshot.page(scope, [Running.key(input)], opts) do
       events = Enum.filter(page.events, &Snapshot.typed?(&1, input["types"]))
       {:ok, %{"events" => events, "next" => page.next}}
     end
@@ -115,24 +140,25 @@ defmodule Wardrik.Operations.Agent do
 
   @doc "Streams the agent's log as `{event, cursor}`. Reads what's there, then follows new events."
   @spec stream(Wardrik.Scope.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
-  def stream(scope, %{"agent" => id} = input) do
+  def stream(scope, input) do
     opts = [after: input["after"], types: input["types"] || :all]
 
-    with {:ok, stream} <- Snapshot.stream(scope, [id], opts),
+    with {:ok, stream} <- Snapshot.stream(scope, [Running.key(input)], opts),
          do: {:ok, Stream.map(stream, fn {event, cursor} -> {event, Cursor.encode(cursor)} end)}
   end
 
   @doc "Returns the agent's conversation as a timeline for people to read."
   @spec timeline(Wardrik.Scope.t(), map()) :: {:ok, map()}
-  def timeline(scope, %{"agent" => id}) do
-    {timeline, cursor} = WardrikEvents.view(Wardrik.events(scope.wardrik), id, Timeline)
+  def timeline(scope, input) do
+    events = Wardrik.events(scope.wardrik)
+    {timeline, cursor} = WardrikEvents.view(events, Running.key(input), Timeline)
     {:ok, %{"items" => JSON.json(Timeline.items(timeline)), "cursor" => Cursor.encode(cursor)}}
   end
 
   @doc "Returns the agent's runs, with what each did and cost."
   @spec runs(Wardrik.Scope.t(), map()) :: {:ok, map()}
-  def runs(scope, %{"agent" => id}) do
-    {runs, cursor} = WardrikEvents.view(Wardrik.events(scope.wardrik), id, Runs)
+  def runs(scope, input) do
+    {runs, cursor} = WardrikEvents.view(Wardrik.events(scope.wardrik), Running.key(input), Runs)
     each = Enum.map(Runs.runs(runs), &Map.put(&1, :duration_ms, Runs.duration_ms(&1)))
 
     {:ok,
@@ -151,7 +177,7 @@ defmodule Wardrik.Operations.Agent do
   defp message_id,
     do: "msg_" <> (12 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
 
-  defp waiting_on(pid, id, decisions) do
+  defp waiting_on(pid, key, decisions) do
     waiting = pid |> WardrikCore.parked() |> waiting()
 
     case Enum.reject(decisions, &Map.has_key?(waiting, &1["id"])) do
@@ -159,7 +185,7 @@ defmodule Wardrik.Operations.Agent do
         :ok
 
       [%{"id" => call} | _rest] ->
-        {:error, Error.new(:conflict, "#{id} doesn't wait on #{call}.")}
+        {:error, Error.new(:conflict, "#{Running.describe(key)} doesn't wait on #{call}.")}
     end
   end
 

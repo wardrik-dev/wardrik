@@ -37,7 +37,7 @@ defmodule Wardrik.SignInsTest do
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 
@@ -101,7 +101,7 @@ defmodule Wardrik.SignInsTest do
     assert %{"data" => %{"status" => "asked"}} = until("wardrik.trigger.fired")
     until("wardrik.run.completed")
 
-    pid = Wardrik.Operations.Running.whereis(wardrik, "acme/hooks")
+    pid = Wardrik.Operations.Running.whereis(wardrik, {"acme/hooks", nil})
     assert [%{metadata: %{labels: ["outside"]}} | _rest] = WardrikCore.history(pid)
 
     assert {:error, %Wardrik.Error{type: :not_found}} =

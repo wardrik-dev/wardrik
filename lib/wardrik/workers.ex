@@ -21,7 +21,8 @@ defmodule Wardrik.Workers do
     3. Answers it with `answer/2`.
     4. Receives `{Wardrik.Workers, :cancel, call}` if Wardrik stops waiting.
 
-  A call's `meta` holds the `agent` it's for, as `%{"key" => id}`, the `run` it's part of, the
+  A call's `meta` holds the `agent` it's for, as `%{"key" => id}`, its `conversation` where it's
+  one, the `run` it's part of, the
   `principal` it acts for, and an `idempotencyKey` that stays the same if the call is retried.
 
   ## Failures
@@ -242,9 +243,13 @@ defmodule Wardrik.Workers do
 
   defp meta(%Context{agent_id: id, step: {:tool_call, call}} = context) do
     %{"agent" => agent(id), "idempotencyKey" => call.id}
+    |> Map.merge(conversation(context.conversation))
     |> Map.merge(run(context.span))
     |> Map.merge(principal(Context.acting_for(context)))
   end
+
+  defp conversation(nil), do: %{}
+  defp conversation(id), do: %{"conversation" => id}
 
   defp run(%WardrikCore.Span{trace: trace}), do: %{"run" => trace}
   defp run(nil), do: %{}

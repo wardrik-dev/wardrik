@@ -64,12 +64,12 @@ name its definition uses. A definition names a server's tools as `github/*`:
 
 ```elixir
 {:ok, _agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/assistant",
+  Wardrik.Agent.define(scope, "agt_assistant",
     model: "anthropic:claude-haiku-4-5",
     tools: ["github/*", "linear/*"]
   )
 
-Wardrik.Agent.definition(scope, "acme/@maria/assistant")
+Wardrik.Agent.definition(scope, "agt_assistant")
 #=> {:ok, %Wardrik.Definition{tools: ["github/*", "linear/*"], ...}, ["linear/*"]}
 ```
 

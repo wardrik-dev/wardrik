@@ -107,13 +107,13 @@ defmodule Wardrik.Channel.PackageTest do
     test "answers a mention in a thread of its own, and replies in it after", context do
       answers([answer("Hello."), answer("Again.")])
 
-      assert {:asked, "acme/triage/chat.T1.C1.1.1"} =
+      assert {:asked, {"acme/triage", "chat.T1.C1.1.1"}} =
                WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
 
       assert_receive {:delivered, %Outbound{thread: "1.1", body: {:reply, "Hello.", ["1.1"]}}},
                      1_000
 
-      assert {:asked, "acme/triage/chat.T1.C1.1.1"} =
+      assert {:asked, {"acme/triage", "chat.T1.C1.1.1"}} =
                WardrikChannel.received(context.workspace, reply("More", "1.1", "1.2"))
 
       assert_receive {:delivered, %Outbound{thread: "1.1", body: {:reply, "Again.", ["1.2"]}}},
@@ -130,9 +130,16 @@ defmodule Wardrik.Channel.PackageTest do
       assert DurableServer.Supervisor.lookup(replies, "T1/C1") == nil
 
       scope = Wardrik.as(context.wardrik, "acme/@maria")
-      {:ok, _message} = Wardrik.Agent.ask(scope, "acme/triage/chat.T1.C1.1.1", "More")
 
-      assert WardrikChannel.Replies.follow(context.workspace, "C1") == :ok
+      {:ok, _message} =
+        Wardrik.Agent.ask(scope, "acme/triage", content: "More", conversation: "chat.T1.C1.1.1")
+
+      assert WardrikChannel.Replies.follow(context.workspace,
+               room: "C1",
+               agent: "acme/triage",
+               conversation: "chat.T1.C1.1.1"
+             ) == :ok
+
       assert_receive {:delivered, %Outbound{body: {:reply, "Again.", _answering}}}, 1_000
       refute_received {:delivered, %Outbound{body: {:reply, "Hello.", _answering}}}
     end
@@ -159,7 +166,8 @@ defmodule Wardrik.Channel.PackageTest do
     test "reminds no room that isn't posting", context do
       assert WardrikChannel.Replies.remind(context.workspace,
                room: "C9",
-               conversation: "acme/triage/chat.T1.C9.1"
+               agent: "acme/triage",
+               conversation: "chat.T1.C9.1"
              ) ==
                :ok
     end
@@ -204,7 +212,8 @@ defmodule Wardrik.Channel.PackageTest do
 
     test "posts a waiting call with its arguments, and who asked", %{waiting: waiting} do
       assert %Waiting{
-               conversation: "acme/triage/chat.T1.C1.1.1",
+               agent: "acme/triage",
+               conversation: "chat.T1.C1.1.1",
                interrupt: %Wardrik.Interrupt{id: "call_1", name: "echo"},
                arguments: %{"text" => "hi"},
                asked_by: "acme/@ana"
@@ -214,6 +223,7 @@ defmodule Wardrik.Channel.PackageTest do
     test "lets a member whose own binding allows it decide, and says who did", context do
       answer = %Answer{
         member: @maria,
+        agent: context.waiting.agent,
         conversation: context.waiting.conversation,
         interrupt: "call_1",
         decision: {:approve, nil}
@@ -227,10 +237,11 @@ defmodule Wardrik.Channel.PackageTest do
     end
 
     test "lets whoever asked decide, and nobody else", context do
-      %Waiting{conversation: conversation, asked_by: asked_by} = context.waiting
+      %Waiting{agent: agent, conversation: conversation, asked_by: asked_by} = context.waiting
 
       answer = %Answer{
         member: @jon,
+        agent: agent,
         conversation: conversation,
         interrupt: "call_1",
         asked_by: asked_by,
@@ -251,7 +262,8 @@ defmodule Wardrik.Channel.PackageTest do
     end
 
     test "says a run stopped before it answered", context do
-      Wardrik.Agent.cancel(context.owner, context.waiting.conversation)
+      %Waiting{agent: agent, conversation: conversation} = context.waiting
+      Wardrik.Agent.cancel(context.owner, agent, conversation: conversation)
 
       assert_receive {:delivered, %Outbound{body: {:stopped, ["1.1"]}}}, 1_000
     end
@@ -276,7 +288,8 @@ defmodule Wardrik.Channel.PackageTest do
 
       answer = %Answer{
         member: stranger,
-        conversation: "acme/triage/chat.T1.C1.1.1",
+        agent: "acme/triage",
+        conversation: "chat.T1.C1.1.1",
         interrupt: "call_1",
         decision: {:approve, nil}
       }
@@ -366,7 +379,7 @@ defmodule Wardrik.Channel.PackageTest do
 
       assert Waiting.from_notice(notice) == [
                %Waiting{
-                 conversation: "acme/triage",
+                 agent: "acme/triage",
                  interrupt: interrupt,
                  arguments: %{"text" => "hi"}
                }

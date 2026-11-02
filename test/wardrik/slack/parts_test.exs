@@ -14,7 +14,8 @@ defmodule Wardrik.Slack.PartsTest do
 
   defp waiting(reason, name),
     do: %Waiting{
-      conversation: "acme/triage/slack.T1.C1.1.1",
+      agent: "acme/triage",
+      conversation: "slack.T1.C1.1.1",
       interrupt: %Wardrik.Interrupt{
         id: "call_1",
         reason: reason,

@@ -11,24 +11,25 @@ defmodule Wardrik.HTTP.EventStreamTest do
     server = start_supervised!({Wardrik.HTTP, http(context, port: 0, keepalive: 20)})
     {:ok, {_ip, port}} = ThousandIsland.listener_info(server)
 
-    request(context, "PUT", "/v1/agents/acme/triage", %{"model" => "anthropic:claude-haiku-4-5"})
+    request(context, "PUT", "/v1/agents/acme%2Ftriage", %{"model" => "anthropic:claude-haiku-4-5"})
+
     %{url: "http://localhost:#{port}"}
   end
 
   test "streams an agent's log, from what's written next", context do
     answers([answer("Hello.")])
-    stream = open(context, "/v1/agents/acme/triage/events?types=wardrik.run.completed")
+    stream = open(context, "/v1/agents/acme%2Ftriage/events?types=wardrik.run.completed")
 
-    request(context, "POST", "/v1/agents/acme/triage/messages", %{"content" => "Hi"})
+    request(context, "POST", "/v1/agents/acme%2Ftriage/messages", %{"content" => "Hi"})
 
     assert until(stream, "wardrik.run.completed") =~ ~r/^id: \S+\ndata: \{/m
   end
 
   test "resumes after the Last-Event-ID", context do
     answers([answer("Hello.")])
-    :ok = WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
 
-    conn = request(context, "POST", "/v1/agents/acme/triage/messages", %{"content" => "Hi"})
+    conn = request(context, "POST", "/v1/agents/acme%2Ftriage/messages", %{"content" => "Hi"})
     %{"message" => %{"cursor" => cursor}} = body(conn)
     assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.completed"}}
 
@@ -46,7 +47,7 @@ defmodule Wardrik.HTTP.EventStreamTest do
   end
 
   test "answers a page as JSON without Accept: text/event-stream", context do
-    conn = request(context, "GET", "/v1/agents/acme/triage/events")
+    conn = request(context, "GET", "/v1/agents/acme%2Ftriage/events")
     assert %{"events" => _events, "next" => _next} = body(conn)
   end
 

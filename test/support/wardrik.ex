@@ -88,20 +88,19 @@ defmodule Wardrik.Test.Wardrik do
   defp owned_by({:owner, owner}), do: owner
   defp owned_by({:deployment, _name}), do: "deployment"
 
-  defp owned_by({:agent, id}) do
-    case Wardrik.AgentID.parse(id) do
-      {:ok, %Wardrik.AgentID{owner: owner}} -> owner
-      :error -> nil
-    end
-  end
+  defp owned_by({:agent, id}), do: Wardrik.Test.Directory.owner(id)
 
-  def start_agent(wardrik, id) do
+  @doc "Starts the agent `id`, or with `:conversation`, one of its conversations."
+  def start_agent(wardrik, id, opts \\ []) do
     {:ok, agent} =
-      Wardrik.start_agent(wardrik,
-        agent_id: id,
-        model: "anthropic:claude-haiku-4-5",
-        capabilities: [Wardrik.Test.Tools],
-        middleware: [Wardrik.Test.Approval]
+      Wardrik.start_agent(
+        wardrik,
+        [
+          agent_id: id,
+          model: "anthropic:claude-haiku-4-5",
+          capabilities: [Wardrik.Test.Tools],
+          middleware: [Wardrik.Test.Approval]
+        ] ++ opts
       )
 
     agent
