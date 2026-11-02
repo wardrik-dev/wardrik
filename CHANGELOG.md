@@ -7,6 +7,8 @@
   its definition's names reach. A name it isn't resolved with reaches nothing, whatever is started
   by that name. Without `:resolver`, `Wardrik.Owners.Resolver` resolves along the owner chain.
 - `Wardrik.refresh/2` takes `agents:`, or nothing for every awake agent.
+- `:oauth` takes `:resolver`, the `WardrikOAuth.Resolver` that says which OAuth app each
+  principal signs in with.
 - Settings resolve along the owner chain, `Wardrik.Owners.chain/1`: a person's own, their org's,
   then the deployment's, the nearest of a name winning. Agents get MCP servers, OAuth apps and
   notify targets this way.

@@ -158,3 +158,36 @@ defmodule Wardrik.SignInsTest do
     refute inspect(wardrik) =~ "secret key"
   end
 end
+
+defmodule Wardrik.OAuthResolverTest do
+  use ExUnit.Case, async: false
+
+  test "signs people in with the apps its oauth resolver gives them", context do
+    wardrik =
+      Wardrik.new(
+        name: :"wardrik #{context.test}",
+        keys: [WardrikVault.generate_key()],
+        oauth: [page: "https://agents.test/oauth", resolver: {__MODULE__, "maria-mail"}]
+      )
+
+    start_supervised!({Wardrik, wardrik})
+
+    assert {:ok, url} =
+             WardrikOAuth.authorize(Wardrik.oauth(wardrik), "mail", %WardrikCore.Principal{
+               id: "acme/@maria"
+             })
+
+    assert URI.decode_query(URI.parse(url).query)["client_id"] == "maria-mail"
+  end
+
+  def provider(name, _principal, client_id) do
+    provider =
+      WardrikOAuth.Provider.new(name,
+        authorization_endpoint: "https://mail.test/authorize",
+        token_endpoint: "https://mail.test/token",
+        client_id: client_id
+      )
+
+    {:ok, %{provider | key: client_id}}
+  end
+end
