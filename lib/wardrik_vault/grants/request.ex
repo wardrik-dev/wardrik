@@ -1,7 +1,6 @@
 defmodule WardrikVault.Grants.Request do
   @moduledoc """
-  What a `WardrikVault.Grants` module is asked about: the grant `name`, for `principal`, in the
-  vault `vault`.
+  What a `WardrikVault.Grants` callback is asked about.
 
       %WardrikVault.Grants.Request{
         vault: MyApp.Vault,
@@ -10,8 +9,7 @@ defmodule WardrikVault.Grants.Request do
         grant: %{value: json, vsn: vsn}
       }
 
-  `grant` is the grant the principal holds, given to `c:WardrikVault.Grants.renew/2`, and `nil`
-  otherwise.
+  `grant` is what the principal holds, for `c:WardrikVault.Grants.renew/2`. `nil` otherwise.
   """
 
   alias WardrikCore.Principal

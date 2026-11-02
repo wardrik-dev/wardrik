@@ -1,7 +1,7 @@
 defmodule WardrikVault.Grants do
   @moduledoc """
-  The behaviour for grants: credentials a principal gives by authorizing an account, like OAuth
-  tokens.
+  Refreshes and asks for credentials a user gives by signing in, like OAuth tokens.
+  `WardrikOAuth` implements it.
 
       {WardrikVault, name: MyApp.Vault, store: store, keys: keys, grants: {MyApp.OAuth, opts}}
 
@@ -11,10 +11,8 @@ defmodule WardrikVault.Grants do
     * `c:ask/2` if nobody holds it, or the grant won't unseal.
     * `c:refused/2` when a service refuses the grant.
 
-  Each callback takes a `WardrikVault.Grants.Request`, then the module's `opts`.
-
-  Write what comes back from authorizing with `WardrikVault.put/3` and `kind: :grant`. Pass
-  `:if_vsn` so two renewals never write over each other.
+  Write new tokens with `WardrikVault.put/3`, `kind: :grant` and `:if_vsn`, so two renewals never
+  write over each other.
   """
 
   alias WardrikVault.Grants.Request
@@ -26,7 +24,7 @@ defmodule WardrikVault.Grants do
   @callback renew(Request.t(), opts :: term()) ::
               {:ok, term()} | {:authorize, String.t()} | {:error, term()}
 
-  @doc "Returns `{:authorize, url}` for the principal to authorize the grant at, or `{:error, :not_found}`."
+  @doc "Returns `{:authorize, url}` where the user signs in, or `{:error, :not_found}`."
   @callback ask(Request.t(), opts :: term()) :: {:authorize, String.t()} | {:error, term()}
 
   @doc "Called when a service refuses the grant the request names."

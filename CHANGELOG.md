@@ -1,22 +1,18 @@
 # Changelog
 
-## 0.1.0-rc.2 (2026-11-01)
+## 0.1.0-rc.2 (2026-11-02)
 
 - Kinds that say what a secret is for: `:api_key`, `:client_secret`, `:header`,
-  `:signing_secret` and `:token`, beside `:grant` and `:secret`. Each is sealed with its value, so
-  it can't be relabelled.
-- `fetch/4` takes `kind:`, and reads a value only of that kind, so a client secret is never read
-  as an API key.
+  `:signing_secret` and `:token`, beside `:grant` and `:secret`. Each is sealed with its value.
+- `fetch/4` takes `kind:`, and reads only a value of that kind.
 
 ### Breaking
 
-- `put/5` raises on a kind it doesn't know.
-- `put/3` takes the principal, name and value as a `WardrikVault.Secret`, so the name and value
-  can't swap. `read/4` takes the keys as `keys:`, after the principal and name, and
-  `WardrikVault.Sealed.seal/2` the value, then `:key`, `:path` and `:kind`.
-- `WardrikVault.Grants` callbacks take a `WardrikVault.Grants.Request`, then their options:
-  `renew/2`, `ask/2` and `refused/2`. The vault implements `WardrikCore.Credentials` rc.2's
-  `resolve/2` and `refused/2`.
+- `put/3` takes a `WardrikVault.Secret`, and raises on an unknown `kind:`.
+- `read/4` takes `keys:`. `WardrikVault.Sealed.seal/2` takes the value, then `:key`, `:path` and
+  `:kind`.
+- `WardrikVault.Grants` callbacks take a `WardrikVault.Grants.Request`, then their options.
+- Implements the rc.2 `WardrikCore.Credentials` callbacks.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

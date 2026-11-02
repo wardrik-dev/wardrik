@@ -3,7 +3,7 @@ defmodule WardrikVault.Secret do
   A value to seal, and who holds it under what name. See `WardrikVault.put/3`.
 
       WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
-        principal: %WardrikCore.Principal{id: "acme/@jon"},
+        principal: %WardrikCore.Principal{id: "user:jon"},
         name: "github",
         value: "ghp_..."
       })

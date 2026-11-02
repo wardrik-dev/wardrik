@@ -19,7 +19,7 @@ defmodule WardrikVault.Sealed do
   @doc """
   Seals `value` with `:key`. Binds it to `:path` and `:kind`, so it can't be moved or relabelled.
 
-      WardrikVault.Sealed.seal("ghp_...", key: key, path: "acme%2F%40jon/github", kind: :secret)
+      WardrikVault.Sealed.seal("ghp_...", key: key, path: "user%3Ajon/github", kind: :secret)
   """
   @spec seal(binary(), key: binary(), path: String.t(), kind: WardrikVault.kind()) :: t()
   def seal(value, args) do
