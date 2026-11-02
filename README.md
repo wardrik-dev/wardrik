@@ -98,7 +98,11 @@ A `client_secret` of `{:secret, name}` is read from the provider's owner's vault
 time it's needed. Providers in `:providers` are the deployment's. Changing it takes no restart:
 
 ```elixir
-WardrikVault.put(MyApp.Vault, WardrikVault.deployment(), "GITHUB_CLIENT_SECRET", secret)
+WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
+  principal: WardrikVault.deployment(),
+  name: "GITHUB_CLIENT_SECRET",
+  value: secret
+})
 ```
 
 ## Give it to agents
@@ -170,7 +174,9 @@ Providers added at runtime belong to an owner: `deployment`, an org like `acme`,
 
 ```elixir
 :ok =
-  WardrikOAuth.add_provider(MyApp.OAuth, "acme", "linear",
+  WardrikOAuth.add_provider(MyApp.OAuth,
+    owner: "acme",
+    name: "linear",
     resource: "https://mcp.linear.app/mcp",
     client_id: "acme-linear",
     client_secret: {:secret, "LINEAR_CLIENT_SECRET"}
@@ -182,7 +188,7 @@ WardrikOAuth.authorize(MyApp.OAuth, "linear", %WardrikCore.Principal{id: "acme/@
 WardrikOAuth.providers(MyApp.OAuth, "acme/@maria")
 #=> [%WardrikOAuth.Provider{name: "linear", owner: "acme", source: :runtime, ...}, ...]
 
-:ok = WardrikOAuth.remove_provider(MyApp.OAuth, "acme", "linear")
+:ok = WardrikOAuth.remove_provider(MyApp.OAuth, owner: "acme", name: "linear")
 ```
 
 A principal signs in with the nearest provider of a name along `Wardrik.Owners.chain/1`, so

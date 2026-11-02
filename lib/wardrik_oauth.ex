@@ -18,7 +18,7 @@ defmodule WardrikOAuth do
 
   With `:resolver`, your app says which provider each principal signs in with. See
   `WardrikOAuth.Resolver`. Without it, providers belong to owners: those in `:providers` are the
-  deployment's, and `add_provider/4` adds an org's or a person's. See `WardrikOAuth.Owners`.
+  deployment's, and `add_provider/2` adds an org's or a person's. See `WardrikOAuth.Owners`.
 
   Grants never fall back. Each belongs to the principal who signed in, and is refreshed only by
   the provider that issued it. If they now sign in with another, they sign in again.
@@ -36,6 +36,8 @@ defmodule WardrikOAuth do
   alias WardrikOAuth.Renewal
   alias WardrikOAuth.Resolver
   alias WardrikOAuth.Token
+  alias WardrikVault.Grants
+  alias WardrikVault.Secret
 
   @schema NimbleOptions.new!(
             name: [type: :atom, required: true, doc: "The name functions reach it by."],
@@ -116,18 +118,20 @@ defmodule WardrikOAuth do
   end
 
   @doc """
-  Adds `owner`'s provider `name` at runtime, on every node, without `:resolver`.
+  Adds the provider `:name` of `:owner` at runtime, on every node, without `:resolver`.
 
       :ok =
-        WardrikOAuth.add_provider(MyApp.OAuth, "acme", "linear",
+        WardrikOAuth.add_provider(MyApp.OAuth,
+          owner: "acme",
+          name: "linear",
           resource: "https://mcp.linear.app/mcp",
           client_id: "acme-linear",
           client_secret: {:secret, "LINEAR_CLIENT_SECRET"}
         )
 
-  `owner` is `deployment`, an org like `acme`, or a person like `acme/@jon`. Takes the same
-  options as a provider in `:providers`, but `client_secret` must be `{:secret, name}`, read from
-  `owner`'s vault secrets.
+  `:owner` is `deployment`, an org like `acme`, or a person like `acme/@jon`. The other options are
+  those of a provider in `:providers`, but `client_secret` must be `{:secret, name}`, read from the
+  owner's vault secrets.
 
   Without a `client_id`, Wardrik gets one the first time someone signs in:
 
@@ -138,9 +142,14 @@ defmodule WardrikOAuth do
   Returns `{:error, reason}` for invalid options, a `client_secret` given as is, the
   deployment's provider of a name in `:providers`, or with `:resolver`.
   """
-  @spec add_provider(atom(), Wardrik.Owners.t(), String.t(), keyword()) ::
-          :ok | {:error, String.t()}
-  def add_provider(oauth, owner, name, opts) when is_binary(owner) and is_binary(name) do
+  @spec add_provider(atom(), keyword()) :: :ok | {:error, String.t()}
+  def add_provider(oauth, opts) do
+    {owner, opts} = Keyword.pop!(opts, :owner)
+    {name, opts} = Keyword.pop!(opts, :name)
+    added(oauth, owner, name, opts)
+  end
+
+  defp added(oauth, owner, name, opts) when is_binary(owner) and is_binary(name) do
     settings = settings(oauth)
     Provider.new(name, opts)
 
@@ -154,7 +163,7 @@ defmodule WardrikOAuth do
       is_binary(opts[:client_secret]) ->
         {:error, "#{name}'s client_secret must be {:secret, name}"}
 
-      Owners.configured?(settings, owner, name) ->
+      Owners.configured?(settings, owner: owner, name: name) ->
         {:error, "#{name} is a provider the app starts with"}
 
       true ->
@@ -173,9 +182,16 @@ defmodule WardrikOAuth do
   @spec client_document(atom()) :: map()
   def client_document(oauth), do: oauth |> settings() |> Registration.document()
 
-  @doc "Removes `owner`'s provider `name`, added at runtime, and the client registered for it."
-  @spec remove_provider(atom(), Wardrik.Owners.t(), String.t()) :: :ok | {:error, term()}
-  def remove_provider(oauth, owner, name) do
+  @doc """
+  Removes the provider `:name` of `:owner`, added at runtime, and the client registered for it.
+
+      :ok = WardrikOAuth.remove_provider(MyApp.OAuth, owner: "acme", name: "linear")
+  """
+  @spec remove_provider(atom(), owner: Wardrik.Owners.t(), name: String.t()) ::
+          :ok | {:error, term()}
+  def remove_provider(oauth, args) do
+    owner = Keyword.fetch!(args, :owner)
+    name = Keyword.fetch!(args, :name)
     settings = settings(oauth)
 
     with :ok <- WardrikStore.delete(settings.store, Owners.store_key(owner, name)),
@@ -263,10 +279,11 @@ defmodule WardrikOAuth do
   end
 
   @impl WardrikVault.Grants
-  def ask(_vault, name, principal, oauth), do: begin(settings(oauth), name, principal)
+  def ask(%Grants.Request{name: name, principal: principal}, oauth),
+    do: begin(settings(oauth), name, principal)
 
   @impl WardrikVault.Grants
-  def renew(_vault, name, principal, %{value: value}, oauth) do
+  def renew(%Grants.Request{name: name, principal: principal, grant: %{value: value}}, oauth) do
     settings = settings(oauth)
 
     case renewed(settings, name, principal, value) do
@@ -276,20 +293,16 @@ defmodule WardrikOAuth do
   end
 
   @impl WardrikVault.Grants
-  def refused(_vault, name, principal, oauth),
+  def refused(%Grants.Request{name: name, principal: principal}, oauth),
     do: Renewal.expire(settings(oauth), name, principal)
 
   @doc false
   def keep(settings, provider, principal, %Token{} = token) do
     condition = over_current(settings.vault, principal, provider.name)
 
-    WardrikVault.put(
-      settings.vault,
-      principal,
-      provider.name,
-      Token.encode(%{token | provider: provider.key}),
-      [kind: :grant] ++ condition
-    )
+    value = Token.encode(%{token | provider: provider.key})
+    secret = %Secret{principal: principal, name: provider.name, value: value}
+    WardrikVault.put(settings.vault, secret, [kind: :grant] ++ condition)
   end
 
   @impl Supervisor
@@ -356,7 +369,7 @@ defmodule WardrikOAuth do
     case resolve(settings, name, principal) do
       {:ok, %Provider{key: key} = provider} ->
         if key == issuer(settings, name, token),
-          do: Renewal.renew(settings, provider, principal, token),
+          do: Renewal.renew(settings, provider: provider, principal: principal, token: token),
           else: :ask
 
       {:error, :not_found} ->
@@ -374,7 +387,8 @@ defmodule WardrikOAuth do
   defp issuer(_settings, _name, %Token{provider: key}), do: key
 
   defp resolve(settings, name, principal) do
-    with {:ok, provider} <- Resolver.resolve(settings, name, principal),
+    with {:ok, provider} <-
+           Resolver.resolve(settings, %Resolver.Request{name: name, principal: principal}),
          do: {:ok, Registration.registered(settings, provider)}
   end
 

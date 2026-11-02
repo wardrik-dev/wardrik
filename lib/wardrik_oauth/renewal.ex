@@ -9,15 +9,23 @@ defmodule WardrikOAuth.Renewal do
   alias WardrikOAuth.Provider
   alias WardrikOAuth.Request
   alias WardrikOAuth.Token
+  alias WardrikVault.Secret
 
   @doc """
-  Returns the grant's access token, refreshing it first with `provider` if it has expired.
+  Returns the access token of the `:principal`'s grant `:token`, refreshing it first with
+  `:provider` if it has expired.
+
+      Renewal.renew(settings, provider: provider, principal: principal, token: token)
 
   Returns `:ask` if the principal must sign in again.
   """
-  @spec renew(map(), Provider.t(), Principal.t(), Token.t()) ::
+  @spec renew(map(), provider: Provider.t(), principal: Principal.t(), token: Token.t()) ::
           {:ok, String.t()} | :ask | {:error, term()}
-  def renew(settings, provider, principal, %Token{} = token) do
+  def renew(settings, args) do
+    provider = Keyword.fetch!(args, :provider)
+    principal = Keyword.fetch!(args, :principal)
+    %Token{} = token = Keyword.fetch!(args, :token)
+
     if Token.fresh?(token),
       do: {:ok, token.access_token},
       else: refresh(settings, provider, principal)
@@ -28,14 +36,9 @@ defmodule WardrikOAuth.Renewal do
   def expire(settings, name, principal) do
     locked(name, principal, fn ->
       with {:ok, token, vsn} <- current(settings, name, principal) do
-        WardrikVault.put(
-          settings.vault,
-          principal,
-          name,
-          Token.encode(Token.expire(token)),
-          kind: :grant,
-          if_vsn: vsn
-        )
+        value = Token.encode(Token.expire(token))
+        expired = %Secret{principal: principal, name: name, value: value}
+        WardrikVault.put(settings.vault, expired, kind: :grant, if_vsn: vsn)
       end
     end)
 
@@ -64,10 +67,8 @@ defmodule WardrikOAuth.Renewal do
       {:ok, fresh} ->
         fresh = %{Token.carry_refresh(fresh, token) | provider: provider.key}
 
-        WardrikVault.put(settings.vault, principal, provider.name, Token.encode(fresh),
-          kind: :grant,
-          if_vsn: vsn
-        )
+        secret = %Secret{principal: principal, name: provider.name, value: Token.encode(fresh)}
+        WardrikVault.put(settings.vault, secret, kind: :grant, if_vsn: vsn)
 
         {:ok, fresh.access_token}
 
@@ -86,7 +87,7 @@ defmodule WardrikOAuth.Renewal do
       |> Request.present("resource", provider.resource)
 
     with {:ok, status, body} <-
-           Request.post_as(token.token_endpoint, provider, form, settings.req_options),
+           Request.post_as(token.token_endpoint, form, [as: provider] ++ settings.req_options),
          do: Token.from_response(status, body, token.token_endpoint)
   end
 
