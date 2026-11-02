@@ -1,21 +1,20 @@
 defmodule Wardrik.Server do
   @moduledoc """
-  A behaviour for what runs Wardrik's operations.
+  A behaviour for what runs Wardrik's operations. `Wardrik` implements it.
 
-  `Wardrik.Agent` and the other typed modules call the server their
-  `Wardrik.Scope` names. Packages built on the protocol call those modules without depending on
-  the server. The `wardrik` hub implements it.
+  `Wardrik.Agent` and the other operation modules call the server in their `Wardrik.Scope`. So
+  packages call them without depending on `wardrik`. `WardrikTesting.Server` implements it for tests.
   """
 
-  @doc "Runs the request's operation with its input, shaped as its input schema describes."
+  @doc "Runs the request's operation."
   @callback run(Wardrik.Server.Request.t()) :: {:ok, term()} | {:error, Wardrik.Error.t()}
 
-  @doc "Runs the request's streamed operation. Streams `{event, cursor}` pairs: stored events, then new ones as they arrive."
+  @doc "Runs the request's streamed operation. Streams `{event, cursor}`: kept events, then new ones."
   @callback stream(Wardrik.Server.Request.t()) ::
               {:ok, Enumerable.t()} | {:error, Wardrik.Error.t()}
 
   @doc """
-  Sends the input to the agent and streams its answer, in order:
+  Sends the input to the agent and streams its answer:
 
     1. `{:text, chunk}`, any number of times.
     2. One of `{:done, %Wardrik.Reply{}}`, `{:waiting, interrupts}` or `{:failed, why}`.
@@ -25,9 +24,7 @@ defmodule Wardrik.Server do
   @callback follow(Wardrik.Server.Follow.t(), opts :: keyword()) :: Enumerable.t()
 
   @doc """
-  Offers a worker's tools, as MCP's `tools/list` returns them, to the agents `scope` may serve.
-
-  The calling process then receives:
+  Offers a worker's tools, as MCP's `tools/list` returns them. The calling process then receives:
 
     * `{Wardrik.Workers, :call, call, name, arguments, meta}` for each call to a tool.
     * `{Wardrik.Workers, :cancel, call}` when a call is cancelled.

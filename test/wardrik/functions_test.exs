@@ -23,7 +23,7 @@ defmodule Wardrik.FunctionsTest do
     end
   end
 
-  test "takes a conversation in opts, whatever form the input takes" do
+  test "takes a conversation in opts, or in the input where it names its path parameters" do
     scope = %Wardrik.Scope{server: Wardrik.Test.Server, wardrik: self(), principal: nil}
 
     Wardrik.Agent.ask(scope, "agt_1", "Hi.", conversation: "C1")
@@ -40,13 +40,13 @@ defmodule Wardrik.FunctionsTest do
 
     assert_raise ArgumentError, fn -> Wardrik.Agent.ask(scope, "agt_1", "Hi.", to: "C1") end
 
-    Wardrik.Agent.deny(scope, [agent: "agt_1", interrupt: "call_1"], conversation: "C1")
+    Wardrik.Agent.deny(scope, agent: "agt_1", interrupt: "call_1", conversation: "C1")
 
     assert_received {:ran, "agent.deny",
                      %{"agent" => "agt_1", "interrupt" => "call_1", "conversation" => "C1"}}
   end
 
-  test "takes a conversation only in opts, and refuses input it doesn't know" do
+  test "refuses input it doesn't know" do
     scope = %Wardrik.Scope{server: Wardrik.Test.Server, wardrik: self(), principal: nil}
 
     for input <- [
@@ -58,7 +58,11 @@ defmodule Wardrik.FunctionsTest do
     end
 
     assert_raise ArgumentError, fn ->
-      Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", conversation: "C1")
+      Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", colour: "red")
+    end
+
+    assert_raise ArgumentError, fn ->
+      Wardrik.Agent.kill(scope, agent: "agt_1", call: "call_1", colour: "red")
     end
 
     assert_raise ArgumentError, fn -> Wardrik.Agents.list(scope, nope: true) end
@@ -70,10 +74,7 @@ defmodule Wardrik.FunctionsTest do
       module = Code.ensure_loaded!(Functions.module(Functions.prefix(operation)))
 
       assert function_exported?(module, Functions.name(operation), 2), operation.id
-
-      assert function_exported?(module, Functions.name(operation), 3) ==
-               (operation.conversation != nil),
-             operation.id
+      refute function_exported?(module, Functions.name(operation), 3), operation.id
     end
 
     assert Types.named("agent.deny", [agent: "acme/books", interrupt: "call_1", reason: "No."], [

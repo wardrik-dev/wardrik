@@ -2248,7 +2248,7 @@
         "required": false,
         "style": "form",
         "explode": true,
-        "description": "The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent the caller reaches where left out.",
+        "description": "The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set.",
         "schema": {
           "type": "array",
           "items": {

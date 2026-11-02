@@ -485,7 +485,7 @@
     },
     "owner": {
       "type": "string",
-      "description": "Who holds it: deployment, an org as acme, or a person as acme/@jon."
+      "description": "Who holds it, as your app names them, or deployment."
     },
     "source": {
       "enum": [

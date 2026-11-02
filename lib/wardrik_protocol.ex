@@ -24,13 +24,11 @@ defmodule WardrikProtocol do
     * `:id` - its `operationId`, as `"agent.ask"`.
     * `:summary` and `:description` - what it does.
     * `:method` and `:path` - its HTTP route.
-    * `:conversation` - its route for a conversation of the agent, or `nil` if it acts only on
-      agents. Its input then takes an optional `"conversation"`.
+    * `:conversation` - its route for one of the agent's conversations, or `nil`.
     * `:action` - what the caller must be allowed to do.
     * `:effect` - `"read"`, `"change"` or `"destructive"`.
-    * `:subject` - what it acts on: `"agent"`, `"agents"`, `"deployment"`, `"hook"` (a request
-      that proves itself with a secret, not a caller) or `"channel"` (a chat app's request, which
-      its channel verifies).
+    * `:subject` - what it acts on: `"agent"`, `"agents"`, `"deployment"`, `"hook"` or
+      `"channel"`.
     * `:parameters` - which input fields go in the HTTP path or query.
     * `:input` - one schema for its parameters and body together.
     * `:status` - the HTTP status it returns on success.
@@ -70,7 +68,7 @@ defmodule WardrikProtocol do
       WardrikProtocol.dataschema("wardrik.run.started")
       #=> "urn:wardrik:schema:v1:run.started"
 
-  Raises `FunctionClauseError` for an unknown type.
+  Raises for an unknown type.
   """
   @spec dataschema(String.t()) :: String.t()
   def dataschema("wardrik." <> name) when name in @events, do: "urn:wardrik:schema:v1:" <> name
@@ -81,16 +79,14 @@ defmodule WardrikProtocol do
     do: Map.get(schema(name), "x-wardrik-live", false)
 
   @doc """
-  Returns the schema `name` with every `$ref` inlined.
-
-  `name` is a file name in `dir/0` without `.json`, like `run.started`, `cloudevent` or `defs`.
+  Returns the schema `name`, like `"run.started"` or `"cloudevent"`, with every `$ref` inlined.
   """
   @spec schema(String.t()) :: map()
   for name <- @names do
     def schema(unquote(name)), do: unquote(Macro.escape(Inline.schema(@dir, name)))
   end
 
-  @doc "Returns the OpenAPI document, with every `$ref` to another schema file inlined."
+  @doc "Returns the OpenAPI document, with `$ref`s to other files inlined."
   @spec openapi() :: map()
   def openapi, do: @document
 

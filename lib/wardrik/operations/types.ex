@@ -1,9 +1,5 @@
 defmodule Wardrik.Operations.Types do
-  @moduledoc """
-  Converts each operation's input and output between Elixir and the protocol's JSON.
-
-  Input is keyword lists and structs. Output is structs, lists and `:ok`.
-  """
+  @moduledoc false
 
   alias Wardrik.Agent
   alias Wardrik.Authorization
@@ -66,7 +62,7 @@ defmodule Wardrik.Operations.Types do
   def encode(_id, input), do: Type.json(input)
 
   @doc """
-  Puts the `:conversation` in `opts` into the operation's JSON `input`. Leaves it out unless set.
+  Puts `opts`' `:conversation`, if set, into the JSON `input`.
   """
   @spec conversation(map(), keyword()) :: map()
   def conversation(input, opts) do
@@ -80,19 +76,30 @@ defmodule Wardrik.Operations.Types do
   end
 
   @doc """
-  Converts an Elixir caller's `input` to the operation's JSON input, taking the path parameters
-  `keys` from it. Raises `KeyError` if one is missing.
+  Converts a keyword `input` holding the path parameters `keys`, and any `:conversation`, to JSON.
+  Raises `KeyError` for a missing parameter and `ArgumentError` for an unknown key.
   """
   @spec named(String.t(), keyword(), [atom()]) :: map()
   def named(id, input, keys) do
     path = Map.new(keys, &{Atom.to_string(&1), path(Keyword.fetch!(input, &1))})
-    id |> encode(Keyword.drop(input, keys)) |> then(&checked(id, &1)) |> Map.merge(path)
+    {held, rest} = Keyword.split(Keyword.drop(input, keys), held(id))
+
+    id
+    |> encode(rest)
+    |> then(&checked(id, &1))
+    |> Map.merge(path)
+    |> conversation(held)
+  end
+
+  defp held(id) do
+    case WardrikProtocol.operation(id) do
+      %{conversation: nil} -> []
+      _operation -> [:conversation]
+    end
   end
 
   @doc """
-  Returns the caller's JSON `input` if it holds only the operation's own fields. Path parameters
-  are arguments, and a conversation is in `opts`, so neither is a field. Raises `ArgumentError`
-  for any other key, as `Keyword.validate!/2` does for options.
+  Returns the JSON `input` if it holds only the operation's own fields, or raises `ArgumentError`.
   """
   @spec checked(String.t(), map()) :: map()
   def checked(id, input) do
@@ -113,8 +120,7 @@ defmodule Wardrik.Operations.Types do
   end
 
   @doc """
-  Returns the input fields a caller gives `operation`, or `:any` where its input is open. Path
-  parameters and the conversation aren't fields.
+  Returns `operation`'s input fields, or `:any`. Path parameters and `conversation` aren't fields.
   """
   @spec fields(WardrikProtocol.operation()) :: [String.t()] | :any
   def fields(operation) do

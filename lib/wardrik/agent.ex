@@ -2,20 +2,21 @@ defmodule Wardrik.Agent do
   @moduledoc """
   An agent, and the operations on one.
 
-      Wardrik.Agent.ask(scope, "agt_01JF8X5RQ2", "What's on fire?")
-      #=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ"}}
+      Wardrik.Agent.ask(scope, "agt_1", "What's on fire?")
+      #=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "W1siYWd0XzEiLG51bGwsNDFdXQ"}}
 
-      Wardrik.Agent.read(scope, "agt_01JF8X5RQ2")
-      #=> {:ok, %Wardrik.Agent{id: "agt_01JF8X5RQ2", status: :running, node: "wardrik@box1", pending: 0, ...}}
+      Wardrik.Agent.read(scope, "agt_1")
+      #=> {:ok, %Wardrik.Agent{id: "agt_1", status: :running, node: "wardrik@box1", pending: 0, ...}}
 
-  A conversation runs on its agent's definition, with a history of its own. Name it in `opts`:
+  A conversation shares its agent's definition, with its own history:
 
-      Wardrik.Agent.ask(scope, "agt_01JF8X5RQ2", "What's on fire?", conversation: "C1-1696.1234")
+      Wardrik.Agent.ask(scope, "agt_1", "What's on fire?", conversation: "C1")
+      Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", conversation: "C1")
 
   ## Fields
 
     * `:id` - the agent's ID, as your app chose it.
-    * `:conversation` - the conversation's ID, or `nil` for the agent's own history.
+    * `:conversation` - the conversation's ID, or `nil` for the main one.
     * `:status` - `:idle`, `:running`, `:parked` or `:asleep`.
     * `:node` - the node it runs on.
     * `:pending` - how many messages wait behind the current one.
@@ -25,7 +26,7 @@ defmodule Wardrik.Agent do
     * `:interrupts` - the calls it waits on a person for. See `Wardrik.Interrupt`.
     * `:cursor` - where its event log stands.
 
-  Agents from `Wardrik.Agents.list/2` leave out `:activity`, `:interrupts` and `:cursor`.
+  `Wardrik.Agents.list/2` leaves out `:activity`, `:interrupts` and `:cursor`.
   """
 
   use Wardrik.Type,
@@ -48,19 +49,16 @@ defmodule Wardrik.Agent do
   @doc """
   Sends the agent a message and streams the text of its answer.
 
-      scope |> Wardrik.Agent.stream("agt_01JF8X5RQ2", "What's on fire?") |> Enum.each(&IO.write/1)
+      scope |> Wardrik.Agent.stream("agt_1", "What's on fire?") |> Enum.each(&IO.write/1)
 
-  The stream ends when the run ends, including when it fails. Use `reply/4` to see how it ended.
-  Raises `Wardrik.Error` if the agent can't be reached.
-
-  With `to: pid`, returns `{:ok, ref}` and sends `pid` each item as `{Wardrik, ref, item}`:
-
-    1. `{:text, chunk}`, any number of times.
-    2. One of `{:done, %Wardrik.Reply{}}`, `{:waiting, interrupts}` or `{:failed, why}`.
+    * The stream ends when the run ends or fails. `reply/4` says how it ended.
+    * Raises `Wardrik.Error` if the agent can't be reached.
+    * With `to: pid`, returns `{:ok, ref}`. `pid` receives `{Wardrik, ref, {:text, chunk}}`, then
+      `{:done, %Wardrik.Reply{}}`, `{:waiting, interrupts}` or `{:failed, why}`.
 
   ## Options
 
-    * `:conversation` - the conversation to send it to. The agent's own history unless set.
+    * `:conversation` - the conversation to send it to. The main one unless set.
     * `:to` - a pid to send the answer to, in place of returning a stream.
     * `:timeout` - milliseconds to wait for each part of the answer. Ten minutes unless set.
   """
@@ -76,12 +74,11 @@ defmodule Wardrik.Agent do
   @doc """
   Sends the agent a message and returns its answer once the run ends.
 
-      Wardrik.Agent.reply(scope, "agt_01JF8X5RQ2", "What's on fire?")
+      Wardrik.Agent.reply(scope, "agt_1", "What's on fire?")
       #=> {:ok, %Wardrik.Reply{message: "msg_Xq3f...", run: "0af76519...", text: "Nothing's on fire."}}
 
-  Returns `{:waiting, interrupts}` if the run waits on a person. Returns `{:error, %Wardrik.Error{}}`
-  if the agent can't be reached or the run fails. Takes the `:conversation` and `:timeout` options
-  of `stream/4`.
+  Returns `{:waiting, interrupts}` if the run waits on a person, or `{:error, %Wardrik.Error{}}`.
+  Takes `stream/4`'s `:conversation` and `:timeout`.
   """
   @spec reply(Wardrik.Scope.t(), String.t() | t(), term(), keyword()) ::
           {:ok, Wardrik.Reply.t()}
@@ -133,7 +130,7 @@ defmodule Wardrik.Agent do
   defp text({:text, chunk}), do: [chunk]
   defp text(_ended), do: []
 
-  @doc "Builds an agent from one item of the `agents.list` output."
+  @doc "Builds an agent from one item of `agents.list`'s output."
   @spec from_summary(map()) :: t()
   def from_summary(%{"id" => id} = summary),
     do:

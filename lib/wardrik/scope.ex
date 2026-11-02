@@ -1,31 +1,24 @@
 defmodule Wardrik.Scope do
   @moduledoc """
-  Who is acting through Wardrik, and on whose behalf.
+  Who an operation runs for. Every operation takes one.
 
+      # user_42
       scope = MyApp.AgentRuntime.as("user_42")
 
-  `Wardrik.as/3` makes a scope. The host's `Wardrik.Authorizer` decides what it may do.
+      # user_42's agent, through its own tools
+      scope = MyApp.AgentRuntime.as("user_42", actor: {:agent, "agt_1"})
 
-  As in RFC 8693, `:principal` is on whose behalf the scope acts, and `:actor` is who acts:
-
-      # Maria herself
-      MyApp.AgentRuntime.as("user_42")
-
-      # Maria's assistant, through its own tools
-      MyApp.AgentRuntime.as("user_42", actor: {:agent, "agt_01JF8X5RQ2"})
+  Your app's `Wardrik.Authorizer` decides what each scope may do.
 
   ## Fields
 
     * `:server` - the `Wardrik.Server` that runs its operations.
     * `:wardrik` - which Wardrik, by name.
-    * `:principal` - on whose behalf it acts.
-    * `:actor` - who acts, as `{:agent, id}` or `{:channel, name}`, or `nil` when the principal
-      acts directly.
-    * `:context` - what the actor knows that the authorizer may read, as a channel's
-      `:asked_by`. `%{}` unless set.
+    * `:principal` - the `WardrikCore.Principal` it runs for.
+    * `:actor` - `{:agent, id}` or `{:channel, name}` when one acts for the principal, or `nil`.
+    * `:context` - facts for the authorizer, like a channel's `:asked_by`. `%{}` unless set.
     * `:policy` - in an agent's scope, the policy every agent it defines is held to.
-    * `:labels` - in an agent's scope, the labels of what its run has read. Messages it sends
-      carry them too.
+    * `:labels` - in an agent's scope, the labels of what its run has read.
     * `:operation` - the operation running, while one runs.
   """
 
@@ -34,7 +27,7 @@ defmodule Wardrik.Scope do
   @enforce_keys [:server, :wardrik, :principal]
   defstruct [:server, :wardrik, :principal, :actor, :operation, :policy, context: %{}, labels: []]
 
-  @typedoc "Who acts for the principal, by kind and ID, or `nil` when the principal acts directly."
+  @typedoc "Who acts for the principal, as `{kind, id}`, or `nil`."
   @type actor() :: {atom(), String.t()} | nil
 
   @type t() :: %__MODULE__{
@@ -49,7 +42,7 @@ defmodule Wardrik.Scope do
         }
 
   @doc """
-  Returns a scope for `:principal` on `:wardrik`, run by `server`.
+  Returns a scope run by `server`.
 
       Wardrik.Scope.new(Wardrik,
         wardrik: MyApp.AgentRuntime,
@@ -58,8 +51,7 @@ defmodule Wardrik.Scope do
         context: %{asked_by: "user_7"}
       )
 
-  `:principal` is a `WardrikCore.Principal` or its ID. `:actor` is `nil` and `:context` `%{}`
-  unless set.
+  `:principal` is a `WardrikCore.Principal` or its ID.
   """
   @spec new(module(),
           wardrik: atom() | struct(),

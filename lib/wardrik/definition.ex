@@ -1,6 +1,6 @@
 defmodule Wardrik.Definition do
   @moduledoc """
-  What an agent is and what it may do: an agent file's frontmatter, as a struct.
+  What an agent is and what it may do.
 
       definition =
         Wardrik.Definition.new!(
@@ -10,14 +10,12 @@ defmodule Wardrik.Definition do
           policy: [ask: ["linear/*"]]
         )
 
-      Wardrik.Agent.define(scope, "agt_01JF8X5RQ2", definition)
-      #=> {:ok, %Wardrik.Agent{id: "agt_01JF8X5RQ2", status: :idle, ...}}
+      Wardrik.Agent.define(scope, "agt_1", definition)
+      #=> {:ok, %Wardrik.Agent{id: "agt_1", status: :idle, ...}}
 
-  Its fields follow the protocol's `agent_definition` schema. Tools and policies it names must be
-  ones Wardrik offers. See `Wardrik.start_link/1`.
-
-  `:policy`, `:workspace`, `:context`, `:retries`, `:compaction` and `:notify` stay as the
-  protocol's JSON. Each of `:triggers` is a `Wardrik.Trigger`.
+    * Its fields follow the protocol's `agent_definition` schema.
+    * `:policy`, `:workspace`, `:context`, `:retries`, `:compaction` and `:notify` stay as JSON.
+    * Each of `:triggers` is a `Wardrik.Trigger`.
   """
 
   use Wardrik.Type,
@@ -45,7 +43,7 @@ defmodule Wardrik.Definition do
 
   @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
 
-  @doc "Builds a definition from a keyword list or map. Raises `ArgumentError` if it doesn't match the schema."
+  @doc "Builds a definition from a keyword list or map. Raises `ArgumentError` if it's invalid."
   @spec new!(keyword() | map()) :: t()
   def new!(fields) do
     json = Type.json(fields)
@@ -57,9 +55,7 @@ defmodule Wardrik.Definition do
   end
 
   @doc """
-  Names each unnamed trigger by its position: `trigger-1`, `trigger-2`, and so on.
-
-  Takes and returns the definition as the protocol's JSON.
+  Names each unnamed trigger by position, `trigger-1` and so on, in a JSON definition.
   """
   @spec named(map()) :: map()
   def named(%{"triggers" => triggers} = definition) do

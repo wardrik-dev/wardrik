@@ -76,7 +76,7 @@ defmodule Wardrik.Operations.Functions do
     {arguments, types, input} = arguments(operation, parameters, given)
 
     quote do
-      @doc unquote(doc(operation, lead, parameters))
+      @doc unquote(doc(operation, name, lead, parameters))
       @spec unquote(name)(Wardrik.Scope.t(), unquote_splicing(types)) ::
               unquote(ok) | :ok | {:error, Wardrik.Error.t()}
       def unquote(name)(unquote(scope), unquote_splicing(arguments)) do
@@ -85,11 +85,12 @@ defmodule Wardrik.Operations.Functions do
     end
   end
 
-  # Two or more path parameters are named in the input, so their IDs can't be swapped.
-  defp arguments(%{id: id} = operation, [_first, _second | _more] = parameters, given) do
+  # Two or more path parameters are named in the input, so their IDs can't be swapped. The
+  # conversation, where there is one, is named there too.
+  defp arguments(%{id: id}, [_first, _second | _more] = parameters, given) do
     keys = Enum.map(parameters, &String.to_atom/1)
     input = quote(do: Types.named(unquote(id), unquote(given), unquote(keys)))
-    conversation({[given], [quote(do: keyword())], input}, operation)
+    {[given], [quote(do: keyword())], input}
   end
 
   defp arguments(%{id: id} = operation, parameters, given) do
@@ -128,23 +129,52 @@ defmodule Wardrik.Operations.Functions do
      quote(do: Types.conversation(unquote(input), unquote(opts)))}
   end
 
-  defp doc(operation, lead, parameters) do
+  defp doc(operation, name, lead, parameters) do
     route = "`#{String.upcase(operation.method)} #{operation.path}`"
 
-    [lead, operation.description, named(parameters), held(operation, parameters), route]
-    |> Enum.reject(&is_nil/1)
+    [
+      sentence(lead),
+      example(operation, name, parameters),
+      operation.description,
+      held(operation),
+      route
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join("\n\n")
   end
 
-  defp named([_first, _second | _more] = parameters) do
-    {last, keys} = parameters |> Enum.map(&"`:#{&1}`") |> List.pop_at(-1)
-    "Name #{Enum.join(keys, ", ")} and #{last} in `input`."
+  defp sentence(text), do: if(String.ends_with?(text, "."), do: text, else: text <> ".")
+
+  @samples %{
+    "agent" => ~s("agt_1"),
+    "interrupt" => ~s("call_1"),
+    "call" => ~s("call_1"),
+    "trigger" => ~s("daily"),
+    "secret" => ~s("s3cret"),
+    "channel" => ~s("slack"),
+    "path" => ~s("events")
+  }
+
+  # One call, as a caller writes it, from the operation's path parameters and fields.
+  defp example(operation, name, parameters) do
+    call = "#{inspect(module(prefix(operation)))}.#{name}"
+    "    #{call}(#{Enum.join(["scope" | example_arguments(operation, parameters)], ", ")})"
   end
 
-  defp named(_parameters), do: nil
+  defp example_arguments(operation, [_first, _second | _more] = parameters) do
+    required = Map.get(operation.input, "required", []) -- parameters
 
-  defp held(%{conversation: nil}, _parameters), do: nil
+    Enum.map(parameters, &"#{&1}: #{Map.get(@samples, &1, ~s("..."))}") ++
+      Enum.map(required, &"#{&1}: #{&1}")
+  end
 
-  defp held(_operation, _parameters),
-    do: "Give `conversation: id` in `opts` to act on one of the agent's conversations."
+  defp example_arguments(operation, parameters) do
+    path = Enum.map(parameters, &Map.get(@samples, &1, ~s("...")))
+    if Types.fields(operation) == [], do: path, else: path ++ ["input"]
+  end
+
+  defp held(%{conversation: nil}), do: nil
+
+  defp held(_operation),
+    do: ~s(Add `conversation: "C1"` to act on one of the agent's conversations.)
 end

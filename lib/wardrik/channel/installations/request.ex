@@ -1,7 +1,7 @@
 defmodule Wardrik.Channel.Installations.Request do
   @moduledoc """
-  Which of a channel's installations a `Wardrik.Channel.Installations` callback acts on: the one in
-  `workspace`, as the chat app names it, or those `owner` holds.
+  Which installations a `Wardrik.Channel.Installations` callback acts on: the one in `workspace`,
+  or those `owner` added.
 
       %Wardrik.Channel.Installations.Request{channel: "slack", workspace: "T0123"}
       %Wardrik.Channel.Installations.Request{channel: "slack", owner: "acme"}

@@ -61,7 +61,7 @@ defmodule WardrikProtocol.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      sibling(:wardrik_core),
+      sibling(:wardrik_core, "~> 0.1.0-rc.2"),
       {:jsv, "~> 0.26"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -75,9 +75,9 @@ defmodule WardrikProtocol.MixProject do
 
   # Wardrik's own packages come from Hex, or from their checkouts beside this one with
   # WARDRIK_LOCAL=1.
-  defp sibling(name, opts \\ []) do
+  defp sibling(name, requirement, opts \\ []) do
     if System.get_env("WARDRIK_LOCAL"),
       do: {name, Keyword.put(opts, :path, "../#{name}")},
-      else: {name, "~> 0.1.0-rc.1", opts}
+      else: {name, requirement, opts}
   end
 end

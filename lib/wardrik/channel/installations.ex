@@ -2,12 +2,9 @@ defmodule Wardrik.Channel.Installations do
   @moduledoc """
   A behaviour for storing the workspaces a channel is added to, each with its token.
 
-  Pass an implementation to a channel as `installations: {module, opts}`. Each callback takes a
-  `Wardrik.Channel.Installations.Request`, or the installation to keep, then `opts`. The host then keeps
-  workspaces with its own records. A channel given `token:` instead serves only the workspace that
-  token reaches.
-
-  Tokens are secrets. Store them as you store your others.
+    * A channel takes one as `installations: {module, opts}`.
+    * Without it, a channel given `token:` serves only that token's workspace.
+    * Tokens are secrets. Store them as you store your others.
   """
 
   alias Wardrik.Channel.Installation
@@ -16,12 +13,12 @@ defmodule Wardrik.Channel.Installations do
   @doc "Fetches the channel's installation in the request's `workspace`."
   @callback fetch(Request.t(), opts :: term()) :: {:ok, Installation.t()} | :error
 
-  @doc "Returns the channel's installations whose owner is the request's `owner`, exactly."
+  @doc "Returns the channel's installations whose `owner` is the request's."
   @callback owned(Request.t(), opts :: term()) :: [Installation.t()]
 
   @doc "Stores `installation`, replacing any with the same channel and workspace."
   @callback put(Installation.t(), opts :: term()) :: :ok | {:error, String.t()}
 
-  @doc "Deletes the channel's installation in the request's `workspace`. Returns `:ok` if there is none."
+  @doc "Deletes the channel's installation in the request's `workspace`, if there is one."
   @callback delete(Request.t(), opts :: term()) :: :ok
 end

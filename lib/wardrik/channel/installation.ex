@@ -14,7 +14,7 @@ defmodule Wardrik.Channel.Installation do
 
     * `:channel` - the channel's name, as `"slack"`.
     * `:workspace` - the workspace's ID in the chat app.
-    * `:owner` - who added it, as your app names them. Wardrik passes it to your authorizer.
+    * `:owner` - who added it, as your app names them.
     * `:token` - the chat app's token for the workspace. Hidden from `inspect/2`.
     * `:name` - the workspace's name in the chat app, if it gave one.
   """

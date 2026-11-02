@@ -2,11 +2,10 @@ defmodule Wardrik.Notice do
   @moduledoc """
   Tells someone what an agent did while nobody watched.
 
-  `agent` is the agent's ID, and `conversation` its conversation's, or `nil` for the agent's own
-  history. `at` is when it happened. `kind` is one of:
+  `conversation` is `nil` for the agent's main one. `kind` is one of:
 
-    * `:parked` - a turn waits on a person. `calls` lists each `Wardrik.Interrupt`, with the
-      `arguments` the model wrote, where known.
+    * `:parked` - a turn waits on a person. `calls` lists each `Wardrik.Interrupt` and its
+      `arguments`.
     * `:failed` - a turn failed. `reason` says why.
     * `:finished` - a turn answered. `text` is the answer.
   """
@@ -37,7 +36,7 @@ defmodule Wardrik.Notice do
   Returns the notice as the JSON a webhook receives.
 
       Wardrik.Notice.json(notice)
-      #=> %{"event" => "turn_failed", "agent" => "agt_01JF8X5RQ2", "reason" => "It timed out.", ...}
+      #=> %{"event" => "turn_failed", "agent" => "agt_1", "reason" => "It timed out.", ...}
   """
   @spec json(t()) :: map()
   def json(%__MODULE__{} = notice) do
