@@ -6,6 +6,7 @@ defmodule Wardrik.OwnersTest do
   alias Wardrik.MCPTools
   alias Wardrik.Statement
   alias WardrikCore.Principal
+  alias WardrikVault.Secret
 
   setup {Req.Test, :set_req_test_to_shared}
 
@@ -88,10 +89,10 @@ defmodule Wardrik.OwnersTest do
     Enum.map(providers, &{&1["owner"], &1["name"]})
   end
 
-  defp hold(wardrik, owner, name, value, kind \\ :grant),
-    do:
-      {:ok, _vsn} =
-        WardrikVault.put(Wardrik.vault(wardrik), %Principal{id: owner}, name, value, kind: kind)
+  defp hold(wardrik, owner, name, value, kind \\ :grant) do
+    secret = %Secret{principal: %Principal{id: owner}, name: name, value: value}
+    {:ok, _vsn} = WardrikVault.put(Wardrik.vault(wardrik), secret, kind: kind)
+  end
 
   defp types(scope) do
     %{"events" => changes} = run!(scope, "audit.list", %{})
@@ -150,10 +151,8 @@ defmodule Wardrik.OwnersTest do
       wardrik: wardrik,
       scope: scope
     } do
-      {:ok, _vsn} =
-        WardrikVault.put(Wardrik.vault(wardrik), %Principal{id: "acme"}, "mail", "t",
-          kind: :grant
-        )
+      secret = %Secret{principal: %Principal{id: "acme"}, name: "mail", value: "t"}
+      {:ok, _vsn} = WardrikVault.put(Wardrik.vault(wardrik), secret, kind: :grant)
 
       assert run!(scope, "secrets.put", %{
                "owner" => "acme",

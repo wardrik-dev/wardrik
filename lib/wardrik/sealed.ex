@@ -4,15 +4,16 @@ defmodule Wardrik.Sealed do
   require Logger
 
   alias WardrikCore.Principal
+  alias WardrikVault.Secret
 
   @spec put(atom() | Wardrik.t(), String.t(), String.t(), binary(), keyword()) ::
           :ok | {:error, term()}
   def put(instance, owner, name, value, opts) do
     {actor, opts} = Keyword.pop(opts, :actor)
+    secret = %Secret{principal: principal(owner), name: name, value: value}
 
     with {:ok, wardrik} <- sealing(instance),
-         {:ok, _vsn} <-
-           WardrikVault.put(Wardrik.vault(wardrik), principal(owner), name, value, opts) do
+         {:ok, _vsn} <- WardrikVault.put(Wardrik.vault(wardrik), secret, opts) do
       recorded(wardrik, "secret.stored", owner, name, actor)
     end
   end
@@ -105,8 +106,10 @@ defmodule Wardrik.Sealed do
   # here before answering, and on the cluster's other nodes as the message reaches them.
   defp recorded(wardrik, type, owner, name, actor) do
     mcp = Wardrik.mcp(wardrik)
-    :ok = WardrikMCP.reconnect(mcp, owner, name)
-    :ok = :erpc.multicast(Node.list(), WardrikMCP, :reconnect, [mcp, owner, name])
+    changed = [owner: owner, secret: name]
+    :ok = WardrikMCP.reconnect(mcp, changed)
+    :ok = :erpc.multicast(Node.list(), WardrikMCP, :reconnect, [mcp, changed])
+
     change = {type, "secrets/" <> name, %{"secret" => %{"name" => name}, "owner" => owner}}
     WardrikEvents.record(Wardrik.events(wardrik), change, actor: actor)
   end

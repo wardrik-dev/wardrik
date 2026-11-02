@@ -38,7 +38,7 @@ defmodule Wardrik.Statements do
 
   defp named(%Request{action: action, resource: {:owner, owner}, context: context}) do
     [kind, _verb] = String.split(action, ".", parts: 2)
-    {:ok, Resource.owned(owner, kind, context[:name])}
+    {:ok, Resource.owned(owner, kind: kind, name: context[:name])}
   end
 
   defp decide([], _action), do: {:error, :not_found}

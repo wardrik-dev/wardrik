@@ -23,7 +23,11 @@ defmodule Wardrik.SealedOptionsTest do
     start_supervised!({WardrikVault, name: :"sealing #{context.test}", store: store, keys: [key]})
 
     {:ok, _vsn} =
-      WardrikVault.put(:"sealing #{context.test}", WardrikVault.deployment(), "SIGNING", "first")
+      WardrikVault.put(:"sealing #{context.test}", %WardrikVault.Secret{
+        principal: WardrikVault.deployment(),
+        name: "SIGNING",
+        value: "first"
+      })
 
     name = :"sealed #{context.test}"
     channels = [slack: {Wardrik.Test.Sealed, test: self(), signing_secret: {:secret, "SIGNING"}}]

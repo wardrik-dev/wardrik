@@ -434,7 +434,12 @@ defmodule Wardrik do
   def as(instance, principal, grants \\ [])
 
   def as(instance, principal, grants),
-    do: Scope.new(__MODULE__, Instance.name(instance), principal, grants)
+    do:
+      Scope.new(__MODULE__,
+        wardrik: Instance.name(instance),
+        principal: principal,
+        grants: grants
+      )
 
   @doc """
   Returns the scope of the API token `secret` on `instance`.
