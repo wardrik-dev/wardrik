@@ -1,102 +1,124 @@
 ---
-title: Orgs
-description: "How an org keeps its agents, and each of its users' agents, apart from everyone else's."
+title: Orgs, roles and tokens
+description: "Declare orgs, say who may do what with roles and bindings, and give people and programs tokens."
 sidebar:
-  order: 6
+  order: 5
 ---
 
-Every agent belongs to an [org](/concepts/agents/#keys-and-orgs), and an org is the boundary between
-agents. Inside an org, an agent works for the org itself or for one of its users, and each is kept
-apart.
-
-## Declare an org
-
-The deployment's own org is `config.yaml`'s `org`, `default` unless set. Declare each other org
-under `orgs`, with the servers, channels and notify targets it uses:
+Everyone reaching the daemon presents a token. The token names a user. `config.yaml`'s roles and
+bindings say what that user may do, in which org.
 
 ```yaml title="~/.config/wardrik/config.yaml"
-org: platform
+org: acme
 
-mcp:
-  stripe: {url: https://mcp.stripe.com, credential: STRIPE_AGENT_KEY}
+orgs:
+  payments: {mcp: [stripe], policy: payments-limits}
 
+roles:
+  reader: {rules: [{verbs: [read, events], kinds: [agent]}]}
+  operator: {rules: [{verbs: ["*"], kinds: ["*"]}]}
+
+bindings:
+  - {org: payments, role: operator, subjects: [user:payments/@ana, group:payments-eng]}
+  - {org: acme, role: reader, subjects: [user:acme/@jon, agent:triage]}
+```
+
+```sh
+systemctl --user restart wardrik
+wardrik token create ana-laptop --subject user:payments/@ana --groups payments-eng --expires 30d
+```
+
+## Orgs
+
+- `org` is the deployment's own org, `default` unless set. `orgs` declares the others.
+- An agent, secret or server for an org `config.yaml` doesn't declare is refused.
+- A person is `ORG/@NAME`, as `acme/@jon`. Their agents, secrets and accounts are their own.
+- `orgs.<org>` lists the `mcp` servers, `channels` and `notify` targets its agents use. `"*"`
+  gives them to every org.
+- `orgs.<org>.policy` holds every agent of the org, its people's too. Its budget is shared by them
+  all. See [Budgets](/concepts/budgets/).
+
+## Roles and bindings
+
+A role is a list of rules. A rule allows `verbs` on `kinds` of resource, and only `names` if set:
+
+```yaml
+roles:
+  asker: {rules: [{verbs: [ask, read, events], kinds: [agent], names: [triage]}]}
+```
+
+- A verb is the action after the dot: `ask` for `agent.ask`. `"*"` is every verb.
+- Kinds are `agent`, `secret`, `ceiling`, `mcp_server`, `notify_target`, `provider`,
+  `connection`, `deployment` and `token`.
+- `names` lists agents by name, and anything else by ID.
+- Making an agent is `create` on `agent`. A rule with `names` doesn't allow it.
+
+A binding gives a role to subjects in one org:
+
+- `user:ID`: a person, as the token names them.
+- `group:NAME`: everyone whose token lists the group.
+- `agent:NAME`: the agent of that name in the binding's org, acting through its tools.
+
+## Rules that always hold
+
+- **Owners.** A person may do anything to what they own: their agents, secrets, MCP servers,
+  webhooks and OAuth apps. `user:acme/@jon` owns what `acme/@jon` owns.
+- **Agents.** An agent acting through its tools gets its own bindings, never its owner's.
+- **Connections.** Everyone manages their own connected accounts, and no one else's.
+- **Channels.** A chat member acts as the user `channels.<name>.members` maps them to. They may only
+  ask, read and decide, on the agents of whoever added the workspace. Whoever asked for a turn may
+  always decide its calls.
+- **Admin.** `admin` is every verb on every kind. `roles` can't declare it. `user:admin`, which
+  the `wardrik` command acts as, holds it in `"*"`.
+- **Outside your orgs**, you find nothing, not even that something's there: `404`. Inside, an action
+  no rule allows is `403`.
+
+## Tokens
+
+```sh
+wardrik token create ci --subject user:acme/@ci --expires 90d
+wardrik token create triage-bot --subject agent:triage     # acts as the agent, for its owner
+wardrik token ls
+wardrik token revoke mzxw6ytboi
+```
+
+- The secret is printed once, as `wdk_...`. Only its hash is kept.
+- `--groups` takes groups, with commas, that bindings may name.
+- `--expires` takes `s`, `m`, `h` or `d`. `30d` unless set, a year at most.
+- A revoked token is refused at once. Its event streams and worker connections close within 15
+  seconds.
+- Over HTTP, tokens are at `/v1/tokens`.
+
+Making a token needs a binding in `"*"` on the `token` kind. A token acts as its subject, so whoever
+makes tokens may act as anyone. Give it sparingly, with `names` listing the subjects:
+
+```yaml
+roles:
+  issuer: {rules: [{verbs: [create], kinds: [token], names: ["user:acme/@ci"]}]}
+bindings:
+  - {org: "*", role: issuer, subjects: [user:acme/@jon]}
+```
+
+- `names` lists the subjects it may make tokens for.
+- Listing tokens is `read`, and revoking one is `revoke` on its ID.
+- Only the admin makes a token for `user:admin`.
+
+## The `wardrik` command's token
+
+Each time the daemon starts, it writes a token for `user:admin` to
+`~/.local/share/wardrik/cli_token`, readable by its user alone. `WARDRIK_URL` and `WARDRIK_TOKEN`
+point the command at another daemon.
+
+## Channel members
+
+```yaml
 channels:
-  payments-slack: {type: slack, token: "${PAYMENTS_SLACK_BOT_TOKEN}", signing_secret: "${PAYMENTS_SLACK_SIGNING_SECRET}"}
-
-orgs:
-  payments:
-    mcp: [stripe]
-    channels: [payments-slack]
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}
+    app_token: ${SLACK_APP_TOKEN}
+    members: {U024BE7LH: user:acme/@ana, U0G9QF9C6: user:acme/@jon}
 ```
 
-Restart the daemon after a change. Anything for an org `config.yaml` doesn't declare is refused,
-with the orgs it does declare. That covers:
-
-- an agent file, or an agent defined over the HTTP API
-- `wardrik vault put --org`, and servers and connections for the org
-- `wardrik token create --resource`
-
-A typo is caught the same way. See [`orgs`](/reference/config/#orgs).
-
-A server, channel or target no org lists is the deployment's own org's. A channel serves one org,
-or every org when `"*"` lists it.
-
-## Hold an org to a policy
-
-An org's `policy` is one every agent of the org is held to, ahead of its own:
-
-```yaml title="~/.config/wardrik/config.yaml"
-orgs:
-  payments:
-    policy: payments-limits
-```
-
-```yaml title="~/.config/wardrik/policies/payments-limits.yaml"
-ask:
-  stripe/stripe_api_write: This changes money in Stripe.
-deny: [shell/*]
-budget:
-  usd: 20.00
-  per: day
-```
-
-- It holds every agent in the org, and each of its users' agents: those from files, from the HTTP
-  API, and from channels.
-- An agent's own policy can narrow it, never widen it.
-- Its budget is the org's. Every agent of the org, its users' included, spends from it together.
-- Once they've spent it, the next model call any of them makes waits for a person. Approving it
-  grants more to all of them, for the rest of the period.
-- Each agent's own budget still counts apart. So does a budget `per: turn`, since a turn is one
-  agent's.
-- `"*"`'s policy holds every org, beside each org's own. Each org spends `"*"`'s budget apart.
-- An org whose policy isn't in `policies/` runs none of its agents.
-- The daemon reads `policies/` as it starts, so restart it after changing one.
-
-A [token](/run/tokens/#what-agents-it-defines-may-do) can add a policy of its own over the agents it
-defines.
-
-## What stays inside an org
-
-What reaches the org's agents reaches none of its users'. What reaches one user's agents reaches
-neither the org's nor another user's. The exception is a resource pattern naming the whole org,
-`acme/*`.
-
-These belong to an org, or to one of its users, and reach only their agents:
-
-- **Tokens** whose resources name the org, one of its users, or `acme/*`.
-- **Shared trees** named for the org or a user, and those `workspace.shared` in `config.yaml`
-  shares with others.
-- **Connected accounts** of the org or a user. An agent uses only its own owner's. A user's agent
-  never uses its org's.
-- **Channel access:** people in a channel may read and message the agents of the org it serves,
-  and none of their users'.
-- **MCP servers, channels and notify targets**, which serve the orgs `orgs` lists them for, and the
-  deployment's own org where none does.
-
-## What the whole deployment shares
-
-- `policies/`, which any agent file can name.
-- API keys in the vault, such as a model provider's. An agent's calls use the nearest one: its
-  user's, then its org's, then the deployment's. The agent itself never reads them.
-- Credentials in an MCP server's `headers` or `env`, used for every org the server serves.
-- The `wardrik` command, whose token is an `owner` on every org.
+An unmapped member is refused, and told to ask an admin. `unmapped_members: allow` lets them act as
+`user:slack:<workspace>/<member>` instead, for a small deployment.

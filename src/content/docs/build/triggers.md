@@ -5,8 +5,7 @@ sidebar:
   order: 5
 ---
 
-A trigger asks an agent something without anyone typing: on a clock, when a feed it watches has new
-entries, or when a service sends it a webhook. Triggers live in the agent's file:
+A trigger asks an agent something without anyone typing. List triggers in the agent's file:
 
 ```yaml title="~/.config/wardrik/agents/triage.md"
 ---
@@ -17,14 +16,15 @@ triggers:
     prompt: Check the incident queue, and say what is new.
   - name: digest
     every: "0 17 * * 1-5"
+    timezone: Europe/Berlin
     prompt: Write up what happened today.
 ---
 You watch the incident queue.
 ```
 
 ```sh
-wardrik reload             # 1. read the agent files again
-wardrik trigger ls triage  # 2. list the agent's triggers
+wardrik reload
+wardrik trigger ls triage
 ```
 
 ```text
@@ -33,70 +33,38 @@ digest   every 0 17 * * 1-5    in 3h 12m  Write up what happened today.
 sweep    every 30m             in 29m     Check the incident queue, and say what is new.
 ```
 
-A triggered run is an ordinary message to the agent. It shows in its history, and
-`wardrik follow triage` follows it. Every key a trigger takes is in [Agent files](/reference/agent-files/#triggers).
+A triggered run is an ordinary message. It shows in the agent's history. Every key is in
+[Agent files](/reference/agent-files/#triggers).
 
 ## On a clock
 
-`every` is a cron expression or an interval.
-
 ```yaml
-every: "*/15 * * * *"    # every quarter of an hour
-every: "0 9 * * 1"       # nine on Monday mornings, in UTC
-every: "@daily"          # also @hourly, @weekly, @monthly and @yearly
+every: "*/15 * * * *"    # cron, quoted; UTC unless timezone names another
+every: "@daily"          # also @hourly, @weekly, @monthly, @yearly
 every: 2h                # an interval: s, m, h or d, at least a minute
 ```
 
-A cron expression is read in UTC unless `timezone` names another, by its IANA name. This one runs at
-six in the evening in Berlin, summer and winter:
+- A run skips a busy agent. `overlap: queue` asks once the agent is free.
+- Runs missed while the daemon was down run once. `missed: skip` drops them.
+- `jitter: 120` adds up to 120 seconds to each run.
 
-```yaml
-triggers:
-  - name: report
-    every: "0 18 * * *"
-    timezone: Europe/Berlin
-    prompt: Write up what happened today.
-```
-
-Quote a cron expression: YAML reads a leading `*` as something else. An interval counts from when
-the trigger was set or last ran, so `1d` set at 14:20 runs at 14:20. A new trigger first runs when
-it next comes round.
-
-By default a run skips an agent that is busy, and its log records the run as `busy`.
-`overlap: queue` asks it anyway, once the running turn ends or the waiting call is decided.
-
-## Watching a feed
-
-`feed` watches an RSS or Atom feed, or a list of them. The agent is asked only when a feed has
-entries it hasn't seen, with them under the prompt:
+## When a feed has something new
 
 ```yaml
 triggers:
   - name: rivals
     every: 6h
     feed:
-      - https://rivalco.example/changelog.rss
-      - https://hnrss.org/newest?q=rivalco
-    prompt: What changed at our competitors? Update shared/team/BATTLECARDS.md.
+      - https://github.com/elixir-lang/elixir/releases.atom
+      - https://hnrss.org/newest?q=elixir
+    prompt: What's new in Elixir? Keep a line on each in NOTES.md.
 ```
 
-A run with nothing new costs a request to each feed and no model call. The first run only notes
-what the feed already holds, so the agent starts with what comes next.
+- The agent is asked only when a feed has new entries, with them under the prompt.
+- A run with nothing new makes no model call.
+- The first run notes what the feed holds, and asks nothing.
 
-Many places a team watches have a feed:
-
-| What | Its feed |
-| --- | --- |
-| A Google Alert | in [Google Alerts](https://www.google.com/alerts), choose **Deliver to: RSS feed** |
-| Hacker News stories mentioning a word | `https://hnrss.org/newest?q=WORD` |
-| A subreddit, or a Reddit search | `https://www.reddit.com/r/NAME/.rss`, `https://www.reddit.com/search.rss?q=WORD` |
-| A GitHub repository's releases | `https://github.com/OWNER/REPO/releases.atom` |
-| A blog or changelog | the `rss` or `atom` link in its page's `<head>`, often `/feed` or `/rss.xml` |
-
-## Receiving a webhook
-
-`webhook` takes the requests a service sends when something happens, such as an issue opened, and
-asks the agent about each, with the request's body under the prompt. It has no `every`:
+## When a service sends a webhook
 
 ```yaml
 triggers:
@@ -106,166 +74,51 @@ triggers:
     prompt: An event is below. If it is a new issue, label it and say who should look.
 ```
 
-The service sends to the trigger's address under `config.yaml`'s `base_url`:
-`/v1/hooks/`, the agent's ID, then the trigger's name.
+```sh
+echo "$SECRET" | wardrik vault put ISSUES_HOOK_SECRET --org acme --for signing_secret
+```
+
+The service posts to `{base_url}/v1/hooks/{agent}/{trigger}`:
 
 ```text
-https://agents.acme.example/v1/hooks/acme/triage/issues
+https://agents.acme.example/v1/hooks/agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN/issues
 ```
 
-The request proves itself with the secret: as `Authorization: Bearer SECRET`, or at the end of the
-path, `.../issues/SECRET`, for a service that only takes a URL. A request that doesn't verify gets
-`404` and never reaches the agent. The daemon must be reachable at `base_url`; see
-[A public address](/run/public-address/).
+- The request proves itself with the secret: as `Authorization: Bearer SECRET`, or at the end of
+  the path, `.../issues/SECRET`.
+- `verify: standard` checks a [Standard Webhooks](https://www.standardwebhooks.com/) signature
+  instead.
+- The secret is the agent owner's, sealed `--for signing_secret`.
+- A request that doesn't verify gets `404`. The daemon must be reachable at `base_url`: see
+  [A public address](/run/public-address/).
+- Each request costs a model call. Subscribe to the events that matter.
 
-### Pointing a service at a trigger
-
-| Service | Where you set it up | The secret |
-| --- | --- | --- |
-| GitHub | the repository's **Settings → Webhooks**, content type `application/json` | end of the path |
-| Sentry | an internal integration's **Webhook URL**, with **Alert Rule Action** on, and an issue alert that sends through it | end of the path |
-| Linear | **Settings → API → New webhook** | end of the path |
-| Prometheus Alertmanager | a receiver's `webhook_configs`, with `http_config.authorization` | bearer |
-| Grafana | a webhook contact point's **Authorization header** | bearer |
-| PagerDuty | a webhook subscription, with a custom `Authorization` header | bearer |
-| A service following [Standard Webhooks](https://www.standardwebhooks.com/) | its webhook settings, with `verify: standard` | its signature |
-| An automation tool | its webhook or HTTP step | bearer |
-
-A secret at the end of the path is what proves the request, so keep that URL as private as a token.
-Each request costs a model call: subscribe to the events that matter, and let the prompt pass over
-the rest in a line.
-
-```yaml title="alertmanager.yml"
-receivers:
-  - name: wardrik
-    webhook_configs:
-      - url: https://agents.acme.example/v1/hooks/acme/oncall/alert
-        http_config:
-          authorization:
-            type: Bearer
-            credentials: SECRET
-```
-
-## A checklist the agent can edit
-
-`prompt_file` points a trigger at a file in the agent's workspace instead of a prompt. Each run, the
-agent reads the file and does what it says, and it can edit the file to change what it does next
-time. It needs `files`:
-
-```yaml
-tools: [files, linear/*]
-triggers:
-  - name: heartbeat
-    every: 30m
-    prompt_file: HEARTBEAT.md
-```
-
-See [Files and memory](/concepts/files-and-memory/).
-
-## An agent that changes its own triggers
-
-`self/*` lets an agent set and remove its own triggers: add a feed it found, check more often after
-a launch, drop a check that never finds anything. Each change waits on a person unless its policy
-allows it.
-
-```yaml
-tools: [web_search, files, self/*]
-```
-
-This suits agents defined over the HTTP API. An agent declared in a file gets the triggers its file
-lists back on the next `wardrik reload`.
-
-## Hearing what it did
-
-`notify` with `finished` sends each run's answer somewhere people read it:
-
-```yaml
-notify: {to: [ops], on: [parked, failed, finished]}
-```
-
-See [Send notices](/build/notices/).
-
-## Changing and removing triggers
-
-`wardrik reload` gives each agent the triggers its file lists now, and removes the rest. A changed
-`every` or `timezone` starts counting from the reload. Other changes keep the next run where it was.
-
-From the command line, set or remove one trigger at a time:
+## Change triggers
 
 ```sh
 wardrik trigger set triage digest --every "0 17 * * 1-5" --prompt "Write up what happened today."
 wardrik trigger rm triage digest
 ```
 
-`trigger set` takes `--every`, `--timezone`, `--prompt`, `--prompt-file`, `--feed` and `--overlap`.
-
-## Over HTTP
-
-A definition sent over the HTTP API lists its triggers as a file does. With a token that can
-`define`, set or remove one at a time:
+Over HTTP:
 
 ```sh
 curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/triage/triggers/digest \
+  http://127.0.0.1:4747/v1/agents/$AGENT/triggers/digest \
   -d '{"every": "0 17 * * 1-5", "prompt": "Write up what happened today."}'
-
-curl -X DELETE -H "authorization: Bearer $TOKEN" \
-  http://127.0.0.1:4747/v1/agents/acme/triage/triggers/digest
 ```
 
-See [HTTP API](/reference/http-api/#triggers) for the routes and their answers.
+- `wardrik reload` gives a file's agent the triggers its file lists, and removes the rest.
+- `self/*` in an agent's tools lets it set its own triggers. Each change waits on a person.
+- `prompt_file: HEARTBEAT.md` reads the prompt from the agent's [files](/concepts/files-and-memory/),
+  which it can edit.
+- `notify: {to: [ops], on: [finished]}` sends each run's answer somewhere. See
+  [Send notices](/build/notices/).
 
 ## Details
 
-**Clock.** Cron has five fields, read on `timezone`'s clock, UTC unless it names another: minute,
-hour, day of the month, month, day of the week (0 and 7 are Sunday). Fields take `*`, numbers,
-ranges like `1-5`, steps like `*/15`, and lists. `@reboot` isn't a time. `jitter: 120` adds up to
-that many seconds to each run, so triggers on the same minute don't all fire at once.
-
-**Clock changes.** Where a zone's clocks go forward, a time they skip, such as 02:30, runs once at
-the first instant after the gap. Where they go back, a time they repeat runs on its first pass only,
-so `*/15` makes no run in the repeated hour. An interval counts elapsed time and takes no
-`timezone`. A changed `timezone` starts counting from the reload, as a changed `every` does.
-
-**Busy agents.** With `overlap: queue`, the triggered message waits behind the running turn. A
-webhook trigger queues by default. With `overlap: skip` it answers `503` while the agent is busy.
-
-**Missed runs.** A run more than a minute late, because the daemon was down, runs once when the
-trigger next runs, however many were missed. `missed: skip` drops them.
-
-**Feeds.** A message carries up to 20 entries, each with its title, link, date and summary; more
-are counted at the end. A feed that hasn't changed answers with nothing. A feed that can't be read
-is tried again next run; the run fails only when none can be read.
-
-**Webhook secrets.** `secret` names a secret as `${NAME}`. It's read from the vault as the agent's
-owner holds it, as a tool's credential is; see [Whose credential](/build/accounts/#whose-credential). `wardrik vault put
-ISSUES_HOOK_SECRET --org acme` gives each org its own. The address names the agent by its ID, as
-`/v1/agents/` does, so it reaches only that agent's triggers. Services' own signatures, such as
-GitHub's or Sentry's, aren't checked; leave GitHub's secret field empty or set, as you like.
-
-**Webhook delivery.** `verify: standard` checks a Standard Webhooks signature, which covers the body
-and a time, so a copied request soon stops verifying. A host embedding Wardrik can register its own
-verifier. A request's ID is its `Idempotency-Key`, its `webhook-id` when signed, or else its body's
-hash; the trigger remembers the last 500 and answers a repeat `202` without asking again. A request
-it can't deliver now, such as to an agent that isn't running, gets `503`, so the service retries
-later. The agent sees the body's first 32,768 characters. A request that fails to verify is logged
-with why.
-
-**Content from outside.** Feed entries and webhook bodies are written by others, so once the agent
-reads them a gated tool's calls wait on a person. See
-[Content from outside](/concepts/outside-content/).
-
-**Self-set triggers.** The audit records the agent as who set a trigger, and `wardrik trigger ls`
-lists it like any other.
-
-**Restarts.** A trigger's next run is written to the store before the agent is asked, so triggers
-carry on after the daemon restarts.
-
-**Seeing triggers.** `wardrik ls` shows when each agent next runs. `wardrik trigger ls AGENT`
-lists its triggers.
-
-**Over HTTP.** Putting a whole definition again gives the agent the triggers it lists then. The body
-of a single-trigger `PUT` is the trigger without its `name`, which comes from the path.
-`GET .../definition` lists the triggers as they stand, with `next_runs`. An agent with no definition
-kept answers `404`. A file-declared agent's triggers can be changed over HTTP, but its file's come
-back on the next reload. Removing `triggers` from a file removes all of that agent's triggers.
+- Feed entries and webhook bodies are [content from outside](/concepts/outside-content/).
+- A webhook repeated with the same ID is answered `202` and asked once.
+- A webhook the agent can't take now gets `503`, so the service retries.
+- The agent sees a body's first 32,768 characters.
+- A trigger's next run is in the store, so triggers carry on after a restart.

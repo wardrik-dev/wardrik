@@ -1,95 +1,57 @@
 ---
 title: Delegate to other agents
-description: "Let an agent ask the other agents of its org for work, hear the answer back, and define workers of its own."
+description: "Let an agent ask other agents for work, hear the answer back, and make workers of its own."
 sidebar:
   order: 6.5
 ---
 
-An agent with `agents/*` in its tools works with the other agents of its org. It can see what each
-is doing, ask one for something and hear back, and define a worker.
-
 ```yaml title="~/.config/wardrik/agents/front.md"
 ---
-model: anthropic:claude-sonnet-5
-tools: [agents/*]
+tools: [agents/*, agent_create]
 ---
-You take requests, and hand each to the agent whose work it is. Define a worker when none does it.
+You take requests, and hand each to the agent whose work it is. Make a worker when none does it.
 ```
 
 | Tool | Does |
 | --- | --- |
-| `agents_list` | lists the agents of the org, and what each is doing |
-| `agent_read` | reads one's snapshot: its status, and what it waits on |
-| `agent_definition_read` | reads one's definition |
+| `agents_list` | lists the agents it may reach, with each one's ID and status |
+| `agent_read`, `agent_definition_read` | reads one's status or definition |
 | `agent_ask` | sends one a message; the answer comes back later |
-| `agent_define` | defines one, or defines it again |
+| `agent_create` | makes a worker by name |
+| `agent_define` | defines one again |
 | `agent_trigger_set`, `agent_trigger_remove` | changes one's triggers |
 
-Each tool takes the `agent` it acts on, by name within the org: `reconciler`, or `@jon/reconciler`
-for one that works for a user.
+- Each tool names an agent by the ID `agents_list` gives.
+- Reads run freely. Every change waits on a person unless the policy allows it:
+  `policy: {allow: [agent_ask]}`.
+- A worker is held to the policy of the agent that made it.
+- `self/*` does the same for the agent itself: `self_read`, `self_trigger_set`, and so on.
 
-## Ask another agent
+## What it may reach
 
-`agent_ask` answers at once, and the asking agent carries on. When the other agent's run ends, its
-answer arrives as a message, which starts a turn of its own:
+An agent acting through these tools is `agent:NAME`. It gets only its own bindings, never its
+owner's:
+
+```yaml title="~/.config/wardrik/config.yaml"
+roles:
+  delegate: {rules: [{verbs: [create, define, read, ask], kinds: [agent]}]}
+bindings:
+  - {org: acme, role: delegate, subjects: [agent:front]}
+```
+
+See [Orgs, roles and tokens](/run/orgs/).
+
+## Hearing back
+
+`agent_ask` answers at once. When the other agent's run ends, its answer arrives as a new message:
 
 ```text
-From agent acme/reconciler:
+From agent agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN:
 In answer to your message msg_x1…:
 Two deposits match no invoice: …
 ```
 
-| The other agent's run | The asking agent hears |
-| --- | --- |
-| completes | its answer |
-| fails | `It couldn't answer:` and the error |
-| is cancelled | `It stopped before it answered.` |
-| waits on a person | nothing yet; the answer comes once someone decides |
-
-## Define a worker
-
-`agent_define` takes a whole definition, as [`PUT /v1/agents/{agent}`](/build/http-api/) does:
-
-```json
-{
-  "agent": "reconciler",
-  "definition": {
-    "model": "anthropic:claude-haiku-4-5",
-    "description": "Reconciles deposits.",
-    "instructions": "Match each deposit to an invoice, and say which match none.",
-    "tools": ["files"]
-  }
-}
-```
-
-A worker is held to the policy of the agent that defined it, so it can never do more than its
-definer.
-
-## Approvals
-
-Asking, defining and changing triggers each wait on a person, unless the policy allows the tool by
-name. Reads run freely:
-
-```yaml
-policy:
-  allow: [agent_ask]
-```
-
-See [Approvals](/concepts/approvals/).
-
-## Details
-
-- `self/*` offers the same operations on the agent itself, with no `agent` to name: `self_read`,
-  `self_definition_read`, `self_trigger_set` and `self_trigger_remove`.
-- An agent reaches its own org only. To it, an agent in another org doesn't exist.
-- A run that ends while the daemon is down is answered once it's back. A repeated answer is dropped.
-- An answer carries what the other agent read. After it read content from outside, so has the agent
-  that hears it, and its gated calls wait on a person from then on. See
-  [Content from outside](/concepts/outside-content/).
-- A worker runs as an agent defined over the [HTTP API](/build/http-api/). `wardrik ls`
-  lists it.
-- An agent its file declares refuses to be defined this way.
-- A person approving sees what the agent would send or define. Decide with
-  `wardrik approval approve AGENT CALL`, or in the channel that asked.
-- After the agent reads content from outside, an `allow` rule stops counting, as for every gated
-  tool.
+- A failed run sends `It couldn't answer:` and the error.
+- A run waiting on a person sends nothing until someone decides.
+- An answer carries what the other agent read. After [content from outside](/concepts/outside-content/),
+  the asker's gated calls wait on a person.

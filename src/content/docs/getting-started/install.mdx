@@ -1,42 +1,37 @@
 ---
 title: Install
-description: "Install the daemon and the wardrik command on Linux, or run the Docker image anywhere Docker runs."
+description: "Install the wardrik daemon and command on Linux, or run the Docker image."
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Install Wardrik, write its first files with `wardrik init`, and start the daemon. It runs on Linux
-(x86_64 or arm64, Ubuntu 22.04+ or Debian 12+). On macOS, Alpine or elsewhere, use Docker.
+Wardrik runs on Linux (x86_64 or arm64, glibc 2.35+). Elsewhere, use Docker.
 
-## 1. Install it
+## 1. Install
 
 <Tabs>
 	<TabItem label="Install script">
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.1/install.sh | WARDRIK_VERSION=0.1.0-rc.1 sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.2/install.sh | sh
 ```
 
-This installs `wardrik` into `~/.local` (or `/opt/wardrik` as root) and puts it on your `PATH`.
+This installs `wardrik` into `~/.local`, or `/opt/wardrik` as root. It also installs `rik`, a
+short name for `wardrik`.
 
 	</TabItem>
 	<TabItem label="Docker">
 
 ```sh
 docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
-  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.1
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.2
 docker exec -it wardrik wardrik init
 ```
 
-`/config` holds your files; `/data` holds the store and keys. Both are volumes, so a new container
-on them carries on. See [Docker](#docker).
+`/config` holds your files. `/data` holds the store and keys. The image runs as uid 1000.
 
 	</TabItem>
 </Tabs>
-
-:::tip[rik is wardrik]
-`rik` is a short name for `wardrik`: `rik ls` is `wardrik ls`. The Docker image has it too.
-:::
 
 ## 2. Set it up
 
@@ -44,15 +39,9 @@ on them carries on. See [Docker](#docker).
 wardrik init
 ```
 
-It asks which model provider (those whose key is set here first), which model
-(`claude-haiku-4-5` for Anthropic unless you name another), and the provider's key, which it
-doesn't show as you type. Then it writes three files, starts the daemon, seals the key in the
-vault and asks the front door one question:
+It asks for a model provider, a model and the provider's key. Then:
 
 ```text
-Found no model provider's key here.
-Which model provider?
-...
 Wrote /home/me/.config/wardrik/config.yaml
 Wrote /home/me/.config/wardrik/agents/assistant.md
 Wrote /home/me/.config/wardrik/env
@@ -61,35 +50,20 @@ Sealed ANTHROPIC_API_KEY.
 Asking the front door: In two short sentences, and without calling a tool, say what you can do for me.
 ```
 
-It never overwrites a file, so it's safe to run again.
-
-| File | What it is |
+| File | Holds |
 | --- | --- |
-| `config.yaml` | The daemon's settings: the org, the default model and the HTTP port |
-| `agents/assistant.md` | The [front door](/build/front-door/), the agent you ask for outcomes |
-| `env` | Variables the daemon reads. Only you can read it. |
+| `config.yaml` | the org (`default`), the default model, the HTTP port, and `roles` and `bindings` that let the front door make agents |
+| `agents/assistant.md` | the [front door](/build/front-door/), the agent you ask for outcomes |
+| `env` | keys the daemon reads, readable only by you |
 
-The org is `default` unless you pass `--org`. The front door has `web_search` where
-`BRAVE_API_KEY` is set; elsewhere `config.yaml` says how to turn it on.
+- `init` never overwrites a file. Run it again safely.
+- The key is sealed in the vault, unless `env` already sets it.
+- The `wardrik` command acts as the admin. It needs no token.
 
-### Without a terminal
-
-Flags answer what it would ask, as in a script or `docker exec` without `-it`:
+Without a terminal, flags answer the questions:
 
 ```sh
-wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service --no-ask
-```
-
-`--yes` runs the daemon as a systemd user service, and `--no-service` starts it with
-`wardrik start`. See [`wardrik init`](/reference/cli/#wardrik-init).
-
-### Keep the key yourself
-
-Put the key in the env file before you run `init`, and `init` reads it from there rather than
-asking or sealing it:
-
-```sh title="~/.config/wardrik/env"
-ANTHROPIC_API_KEY=sk-ant-...
+wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service
 ```
 
 ## 3. Check it
@@ -98,97 +72,31 @@ ANTHROPIC_API_KEY=sk-ant-...
 wardrik doctor
 ```
 
-It checks the env file, `config.yaml`, the store, the vault, MCP servers, channels and agent
-files, a line each, whether the daemon runs or not. Next, try the
-[Quickstart](/getting-started/quickstart/).
+Next: the [Quickstart](/getting-started/quickstart/).
 
-## Keep secrets in the vault
-
-```sh
-echo "$LINEAR_TOKEN" | wardrik vault put LINEAR_TOKEN    # reads the value from stdin
-wardrik vault ls                                         # names only, never values
-```
-
-`config.yaml` reads `${LINEAR_TOKEN}` from your environment, the env file, or else the vault.
-`vault put` needs the daemon running. See [The vault's key](#the-vaults-key).
-
-## Upgrade
-
-Run the install script again, and restart the daemon. See
-[Upgrade and back up](/run/upgrade-and-back-up/), which also covers going back.
-
-## Remove it
-
-```sh
-wardrik service uninstall
-```
-
-Your data stays in `~/.local/share/wardrik` until you delete it.
-
-## Details
-
-### The install script
-
-It downloads `wardrik-VERSION-linux-ARCH.tar.gz` and `SHA256SUMS` from the
-[GitHub release](https://github.com/wardrik-dev/wardrik_daemon/releases), checks the one against
-the other, and runs the release once before it installs it. It keeps the version before, and
-installs `rik` beside `wardrik` unless another `rik` is on your `PATH`. It needs glibc 2.35+ and
-OpenSSL 3.
-
-| Variable | Does |
-| --- | --- |
-| `WARDRIK_VERSION` | the version to install, as `0.1.0-rc.1`. The newest release, pre-releases included, unless set. |
-| `WARDRIK_INSTALL_DIR` | where releases go: `~/.local/lib/wardrik`, or `/opt/wardrik` as root |
-| `WARDRIK_BIN_DIR` | where `wardrik` goes: `~/.local/bin`, or `/usr/local/bin` as root |
-| `WARDRIK_REPO` | the GitHub repository releases come from: `wardrik-dev/wardrik_daemon` |
-| `WARDRIK_DOWNLOAD_URL` | where the tarball and `SHA256SUMS` are in place of the release, `file://` too. Needs `WARDRIK_VERSION`. |
-
-`sh install.sh wardrik-0.1.0-rc.1-linux-x86_64.tar.gz` installs a tarball you have, checked
-against a `SHA256SUMS` beside it.
-
-### Docker
-
-The image runs `wardrik serve` as uid 1000. `/config` holds your files; `/data` holds the store,
-the cookie and `vault_key`. To edit `/config` on the host, mount a directory uid 1000 can write:
-`-v ~/.config/wardrik:/config`.
-
-The HTTP API (4747) listens on every interface of the container. The ports you publish decide who
-reaches it.
-
-### Where things live
-
-| Variable | Default | Holds |
-| --- | --- | --- |
-| `WARDRIK_CONFIG_DIR` | `~/.config/wardrik` | `config.yaml`, `agents/`, `policies/` and `env` |
-| `WARDRIK_DATA_DIR` | `~/.local/share/wardrik/store` | the store |
-| `WARDRIK_DATA_HOME` | `~/.local/share/wardrik` | `vault_key`, `cookie` and the CLI's token |
-| `WARDRIK_STATE_DIR` | `~/.local/state/wardrik` | logs |
-| `WARDRIK_ENV_FILE` | `env` in the config directory | the env file |
-
-The defaults follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` where they're set.
-
-### Running it by hand
+## Run the daemon
 
 | Command | Does |
 | --- | --- |
-| `wardrik serve` | runs the daemon here, logging to the terminal |
-| `wardrik start` | runs it in the background |
-| `wardrik stop` | stops it |
-| `wardrik logs` | follows what it logs |
-| `wardrik service install` | writes `~/.config/systemd/user/wardrik.service`, and starts it |
-| `wardrik service uninstall` | stops it, and removes the unit |
+| `wardrik start` / `stop` | runs it in the background, or stops it |
+| `wardrik serve` | runs it here, logging to the terminal |
+| `wardrik logs` | follows its log |
+| `wardrik service install` / `uninstall` | runs it as a systemd user service, or stops that |
 
-Restart the daemon after you change `config.yaml` or a file in `policies/`.
+Restart it after you change `config.yaml` or `policies/`.
 
-### The env file
+## Secrets
 
-`~/.config/wardrik/env` sets variables for every `wardrik` command and the daemon, one
-`NAME=value` a line. Your shell's own variables win. Keep it private: `wardrik` warns if others
-can read it.
+```sh
+echo "$LINEAR_TOKEN" | wardrik vault put LINEAR_TOKEN --for header
+wardrik vault ls
+```
 
-### The vault's key
+- `--for` is `api_key`, `client_secret`, `header` or `signing_secret`.
+- `${LINEAR_TOKEN}` in `config.yaml` reads your environment, `env`, then the vault.
+- The vault's key is `vault_key` beside the store. Set `WARDRIK_VAULT_KEY` before the first start to keep it elsewhere.
 
-The daemon makes `vault_key` beside the store when it first starts, so anyone who can read both
-can read the secrets. To keep them apart, set `WARDRIK_VAULT_KEY`, or `vault.keys` in
-`config.yaml`, before the first start. A node on another host needs a copy of the key, or the
-same `vault.keys`.
+## Upgrade
+
+Run the install script again, and restart. It takes `WARDRIK_VERSION` to pin a release. See
+[Upgrade and back up](/run/upgrade-and-back-up/).

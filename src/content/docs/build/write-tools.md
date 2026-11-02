@@ -5,105 +5,66 @@ sidebar:
   order: 3.2
 ---
 
-A tool is a name, a description, a schema for its arguments, and a function. The function is your
-own code: call your services, query your database, use your keys.
-
 ```ts
-import { orders } from "./orders.ts"; // your app's own code
-
 wardrik.tool({
   name: "find_order",
   description: "The order a Stripe payment intent paid for: items, address, dates.",
-  input: z.object({ payment_intent: z.string() }),
+  input: z.object({ payment_intent: z.string().describe("As pi_123") }),
   readOnly: true,
   run: ({ payment_intent }) => orders.byPaymentIntent(payment_intent),
 });
 ```
 
-`wardrik.tool` takes:
-
 | Key | |
 | --- | --- |
 | `name` | 1 to 55 letters, digits, `_` and `-` |
-| `description` | what the model is told the tool does; `title`, then `name`, unless set |
+| `description` | what the model is told the tool does |
 | `title` | a short name for people |
-| `input` | a schema for its arguments, such as a `zod` object |
-| `readOnly` | whether it changes nothing |
-| `idempotent` | whether running a call twice is safe |
+| `input` | a `zod` object schema for its arguments; `.describe()` tells the model what goes there |
+| `readOnly` | it changes nothing, so it never waits on a person |
+| `idempotent` | running a call twice is safe |
 | `run` | the function, given the arguments and `{ agent, run, idempotencyKey, signal, cost }` |
 
-## Give agents the tools
-
-An agent gets a worker's tools where its file lists `workers/*`, and the worker's token reaches
-it:
-
-```yaml
-tools: [workers/*, linear/*]
-```
-
-A policy names a tool as `workers/find_order`. A tool that isn't `readOnly` is
-[gated](/concepts/rules/#gated-tools): its calls wait on a person unless a policy allows them.
+- An agent gets the tools with `workers/*` in its `tools`. The model sees `workers__find_order`.
+- A policy names it as `workers/find_order`.
 
 ## Results and errors
 
-`run` returns an object, or a string, as the call's result. Return what the model needs, not the
-whole record. It reads every word.
+Return an object or a string. Return only what the model needs: it reads every word.
 
-A thrown error is a failed call. The model is told its message, and the turn carries on, so say
-what went wrong in words it can act on:
+Throw to fail the call. Say what went wrong in words the model can act on:
 
 ```ts
 run: async ({ order_id }) => {
   const order = await orders.find(order_id);
-  if (!order) throw new Error(`No order ${order_id}. Order ids look like ord_1234.`);
-  return { id: order.id, status: order.status, items: order.items.length };
+  if (!order) throw new Error(`No order ${order_id}. Order IDs look like ord_1234.`);
+  return { id: order.id, status: order.status };
 },
 ```
 
-`input` reaches the model as JSON Schema. A `.describe()` on a field tells it what goes there.
-
 ## Whose call it is
 
-`agent` names the agent the call is for, from its ID, never from what the model sent. So one
-worker can serve an agent per customer, each seeing only its own data:
+`agent.key` is the calling agent's ID, set by Wardrik, never by the model. Use it to scope data:
 
 ```ts
-wardrik.tool({
-  name: "list_orders",
-  description: "List the customer's orders.",
-  input: z.object({}),
-  readOnly: true,
-  run: (_args, { agent }) => db.orders.where({ customer: agent?.user }),
-});
+run: (_args, { agent }) => db.orders.where({ agent: agent?.key }),
 ```
-
-Here each customer's agent is `shop/@<customer id>/support`. `agent` holds its `key`, `org`,
-`name`, and `user` where it works for one.
 
 ## What a call cost
 
-A call to a paid API can report its cost in US dollars, and the agent's
-[budget](/concepts/budgets/) counts it:
+Report what a paid API cost, in US dollars. The agent's [budget](/concepts/budgets/) counts it:
 
 ```ts
-wardrik.tool({
-  name: "enrich_contact",
-  description: "Look a contact up by email.",
-  input: z.object({ email: z.string() }),
-  readOnly: true,
-  run: async ({ email }, { cost }) => {
-    const found = await enrich.lookup(email);
-    cost(0.01);
-    return found;
-  },
-});
+run: async ({ email }, { cost }) => {
+  const found = await enrich.lookup(email);
+  cost(0.01);
+  return found;
+},
 ```
 
 ## Running a call twice
 
-Each call carries an idempotency key, the same every time the daemon runs it. Pass it to anything
-with an effect, such as a payment provider's own idempotency key, so a call run twice acts once.
-Mark such a tool `idempotent`.
+`idempotencyKey` is the same each time a call runs. Pass it on, and mark the tool `idempotent`:
 
 ```ts
 wardrik.tool({
@@ -116,34 +77,14 @@ wardrik.tool({
 });
 ```
 
-An API that takes no key can be given one of your own. Keep what each key did, and answer with
-that when the key comes again:
-
-```ts
-run: async (incident, { idempotencyKey }) => {
-  const done = await db.posts.find(idempotencyKey);
-  if (done) return done;
-
-  const posted = await statuspage.open(incident);
-  await db.posts.insert(idempotencyKey, posted);
-  return posted;
-},
-```
-
-A crash between posting and saving still posts twice. Mark the tool `idempotent` only if that's
-acceptable. Left unmarked, a call the daemon can't account for waits for a person. See
-[Calls in doubt](/build/host-tools/#calls-in-doubt).
-
-## Stop when asked
-
-`signal` aborts when the agent stops the call: when it's killed, its turn times out, or the turn
-ends. Pass it to `fetch` and anything else that takes one.
+- A call cut off by a dropped connection runs again only if the tool is `idempotent` or
+  `readOnly`. Otherwise it waits for a person. See [Calls in doubt](/build/host-tools/#calls-in-doubt).
+- For an API with no key, keep what each key did, and answer with that when it comes again.
 
 ## Details
 
-- A tool with an invalid name, or an `input` that isn't an object schema, is left out.
-- The model sees each tool as `workers__find_order`.
-- A call may take 60 seconds. After that, `signal` aborts and the call is in doubt.
-- `run` in the call context is the run's id, the one its events carry.
-- `cost` said more than once adds up. A negative amount throws. A call that throws after saying it
-  is reported failed at that cost. On the wire it's `_meta.costUsd`.
+- `signal` aborts when the call is stopped or times out. Pass it to `fetch`.
+- A call may take 60 seconds.
+- `run` in the context is the run's ID, as its events carry it.
+- `cost` called twice adds up.
+- A tool with a bad name, or an `input` that isn't an object schema, is left out.

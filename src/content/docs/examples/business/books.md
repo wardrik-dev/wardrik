@@ -5,22 +5,14 @@ sidebar:
   order: 1
 ---
 
-This agent does the bookkeeping a small business falls behind on. Each weekday morning it
-reconciles yesterday's transactions, enters the bills that came in, and asks in Slack about anything
-it isn't sure of. Small bills post on their own. A bill with a line of $1,000 or more waits for an
-accountant. Payroll is never touched.
+Each weekday morning this agent enters the bills that came in and reconciles yesterday's
+transactions. A bill with every line under $1,000 posts on its own. A bigger one waits for an
+accountant in Slack. Payroll is never touched.
 
-## What it takes
-
-- the daemon, [installed](/getting-started/install/), with a model provider's key;
-- QuickBooks Online, and Intuit's official
-  [QuickBooks MCP server](https://github.com/intuit/quickbooks-online-mcp-server), built on the
-  daemon's machine;
-- a [Slack app](/channels/slack/#a-slack-app) and a channel for the accountants, here `#accounting`.
+Needs Intuit's [QuickBooks MCP server](https://github.com/intuit/quickbooks-online-mcp-server),
+built on the daemon's machine, and a [Slack app](/channels/slack/).
 
 ## The files
-
-### config.yaml
 
 ```yaml title="~/.config/wardrik/config.yaml"
 org: acme
@@ -42,60 +34,39 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
+    members: {U024BE7LH: user:maria, U0G9QF9C6: user:sam}
 
 notify:
-  accounting:
-    channel: slack
-    room: "#accounting"
-    approvers: ["@maria", "@sam"]
+  targets:
+    accounting: {channel: slack, room: "#accounting"}
+
+roles:
+  accountant:
+    rules: [{verbs: [ask, read, events, decide], kinds: [agent], names: [books]}]
+bindings:
+  - {org: acme, role: accountant, subjects: [user:maria, user:sam]}
 ```
 
-- The server runs on the daemon's machine and talks to QuickBooks with your app's keys. Its
-  `npm run auth` gets the refresh token once.
-- `trusted: true` says what the server answers is your own books, not
-  [content from outside](/concepts/outside-content/). Without it, the agent's first QuickBooks
-  search would make every bill wait for a person, however small.
-- `approvers` are the accountants, who may press Approve and Deny.
-
-Seal the keys while the daemon runs. `vault put` reads the value from stdin:
-
-```sh
-echo "$QUICKBOOKS_CLIENT_ID" | wardrik vault put QUICKBOOKS_CLIENT_ID
-# and the same for QUICKBOOKS_CLIENT_SECRET, QUICKBOOKS_REFRESH_TOKEN, QUICKBOOKS_REALM_ID,
-# SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET
-```
-
-### The policy
-
-QuickBooks' tools take their arguments inside `params`, so the rules name the real paths:
+- `trusted: true` says the server's answers are your own books, not
+  [content from outside](/concepts/outside-content/). Without it, every bill would wait.
+- Maria and Sam are the accountants: they ask the agent and decide its calls.
 
 ```yaml title="~/.config/wardrik/policies/books.yaml"
 allow:
   - quickbooks/search_*
   - quickbooks/get*
-  - quickbooks/read_*
   - quickbooks/create-bill(params.bill.Line.Amount < 1000)
 ask:
   quickbooks/create-bill(params.bill.Line.Amount >= 1000): A bill with a line of $1,000 or more.
   quickbooks/create_invoice: This creates a customer invoice.
-  quickbooks/create_payment: This records a customer's payment.
 deny:
   quickbooks/create-bill(params.bill.Line.AccountBasedExpenseLineDetail.AccountRef.value = 88): Payroll is off limits.
   quickbooks/create_bill_payment: Paying bills is for people.
-budget:
-  usd: 10.00
-  per: day
-  on_exhausted: ask
+budget: {usd: 10.00, per: day, on_exhausted: ask}
 ```
 
-- **Small bills post.** A bill posts on its own when every line is under $1,000. A rule on a list
-  holds for every item: see [Writing rules](/concepts/rules/#what-a-calls-arguments-are).
-- **Big ones wait.** Any line at $1,000 or more waits for an accountant.
-- **Payroll is refused.** `88` stands for your Payroll account's Id in QuickBooks. A deny holds if
-  any line names it, however the agent was asked.
-- **Money out is for people.** Paying a bill is refused outright.
-
-### The agent
+- An `allow` on a list holds only when every line matches. A `deny` holds when any line does.
+- `88` stands for your Payroll account's ID in QuickBooks.
 
 ```markdown title="~/.config/wardrik/agents/books.md"
 ---
@@ -107,69 +78,30 @@ policy: books
 notify: {to: [accounting], on: [parked, failed, finished]}
 triggers:
   - name: close
-    every: "0 7 * * 1-5"          # 07:00 UTC on weekdays
+    every: "0 7 * * 1-5"
     prompt: Reconcile yesterday's transactions, and enter the bills that came in.
 ---
-You keep Acme's books in QuickBooks. Enter each bill against the right vendor and expense account;
-VENDORS.md says which account each vendor's bills go to. When you aren't sure, ask in one line and
-wait for the answer.
-
-Each morning, post a short summary: what you entered, what's waiting for approval, and anything
-that doesn't reconcile.
+You keep Acme's books in QuickBooks. Enter each bill against the right vendor and expense account.
+VENDORS.md says which account each vendor's bills go to; keep it current as the accountants correct
+you. When you aren't sure, ask in one line. Each morning, post a short summary.
 ```
-
-- `context` reads `VENDORS.md` into every turn: the agent's own notes on where each vendor's bills
-  go, which it keeps as the accountants correct it.
-- `channels` lets the accountants answer its questions in a Slack thread.
 
 ## Try it
 
-Restart the daemon to read `config.yaml` and the policy, and check what it reads:
-
 ```sh
+echo "$QUICKBOOKS_CLIENT_ID" | wardrik vault put QUICKBOOKS_CLIENT_ID --for api_key
+# ...and the other QuickBooks keys, the Slack token and signing secret
 systemctl --user restart wardrik
-wardrik doctor
 wardrik ask books 'Enter the March invoice from Northwind Freight: $640 for deliveries.'
 ```
 
-It looks up the vendor, enters the bill, and posts it, since every line is under $1,000. Ask for a
-$2,400 bill and it waits in `#accounting` instead, with the bill's lines as its arguments.
+It finds the vendor and posts the bill. Ask for a $2,400 bill and it waits in `#accounting`, with
+the bill's lines as its arguments.
 
 ## What it shows
 
-- **Argument rules on real data.** Limits on amounts and accounts, read from the call itself.
-- **A deny that holds.** No message, however phrased, gets a payroll bill posted.
-- **Approvals where accountants work**, with every decision and who made it recorded.
-- **Memory that improves.** Corrections land in `VENDORS.md` for the next bill.
-
-## Details
-
-### What a line rule means
-
-The rule is on each line, not the bill's total: a bill of three $900 lines posts on its own. To cap
-totals too, ask for every bill and review what posted each week.
-
-### Xero
-
-Xero's [official server](https://github.com/XeroAPI/xero-mcp-server) runs with
-`npx -y @xeroapi/xero-mcp-server@latest`. A bill there is an invoice of type `ACCPAY`, so the rules
-read:
-
-```yaml
-allow:
-  - xero/list-*
-  - xero/create-invoice(type = ACCPAY, lineItems.unitAmount < 1000)
-ask:
-  xero/create-invoice: This enters an invoice or a bill.
-```
-
-### Intuit's hosted server
-
-Intuit also runs a hosted QuickBooks server, by invitation only. It has invoice and sales tools but
-no bill tools, so this example uses the local one.
-
-### Taking it further
-
-- Add Square to reconcile sales: allow
-  `square/make_api_request(service = payments, method = list)` and nothing that writes.
-- Give the agent `web_search` to look up a vendor it hasn't seen.
+- Argument rules on real data: amounts and accounts, read from the call. See
+  [Policy](/concepts/policy/).
+- A deny no message can get around.
+- Approvals where the accountants work, each recorded with who decided.
+- Corrections land in `VENDORS.md`, read into the next turn.

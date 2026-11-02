@@ -76,26 +76,11 @@ export default defineConfig({
 								{
 									label: 'Concepts',
 									items: [
-										{
-											label: 'Agents',
-											items: [
-												'concepts/agents',
-												'concepts/turns',
-												'concepts/agent-lifecycle',
-												'concepts/durable-runs',
-											],
-										},
-										{
-											label: 'Policy',
-											items: [
-												'concepts/policy',
-												'concepts/rules',
-												'concepts/approvals',
-												'concepts/outside-content',
-												'concepts/budgets',
-												'concepts/judges',
-											],
-										},
+										'concepts/agents',
+										'concepts/policy',
+										'concepts/approvals',
+										'concepts/outside-content',
+										'concepts/budgets',
 										'concepts/events',
 										'concepts/files-and-memory',
 									],
@@ -117,7 +102,6 @@ export default defineConfig({
 										'build/triggers',
 										'build/delegation',
 										'build/notices',
-										'build/tui',
 									],
 								},
 								{ label: 'Channels', items: [{ autogenerate: { directory: 'channels' } }] },
