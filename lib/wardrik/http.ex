@@ -1,16 +1,6 @@
 defmodule Wardrik.HTTP do
   @moduledoc """
-  Serves Wardrik over HTTP. See `WardrikHTTP` for the routes.
-
-  It serves:
-
-    * every operation at its route
-    * streaming operations as server-sent events
-    * the tool workers' WebSocket at `/v1/workers`
-    * chat apps' requests to channels
-    * sign-in callback pages
-
-  Run it as a child, with Bandit:
+  Serves every operation over HTTP, plus workers, channels and sign-in pages. See `WardrikHTTP`.
 
       children = [
         MyApp.AgentRuntime,
@@ -18,7 +8,7 @@ defmodule Wardrik.HTTP do
          wardrik: MyApp.AgentRuntime, authenticator: {MyAppWeb.WardrikSession, []}, port: 4000}
       ]
 
-  Or forward to it from your router, as a `Plug`:
+  Or from your router:
 
       forward "/agents", Wardrik.HTTP,
         wardrik: MyApp.AgentRuntime,
@@ -27,14 +17,12 @@ defmodule Wardrik.HTTP do
   ## Options
 
     * `:wardrik` - required. The module to serve, as `MyApp.AgentRuntime`.
-    * `:principal` - `{module, function, args}`, called with a sign-in callback's conn, returning
-      who is at the browser, or `nil`. A sign-in finishes only for the principal who started it,
-      so without this, callbacks never finish. See `WardrikOAuth.Plug`.
-    * `:authenticator` - required. The `WardrikHTTP.Authenticator` that says who each request
-      comes from, as `{module, config}`. See `WardrikHTTP`.
+    * `:authenticator` - required. The `WardrikHTTP.Authenticator` that turns requests into scopes.
+    * `:principal` - `{module, function, args}` that returns who is at the browser on sign-in
+      pages. Without it, no sign-in finishes.
     * `:keepalive` - see `WardrikHTTP`.
 
-  As a child it also takes Bandit's options, such as `:port`. That needs `:bandit` in your deps.
+  As a child it takes Bandit's options, such as `:port`, and needs `:bandit` in your deps.
   """
 
   @behaviour Plug
@@ -44,10 +32,7 @@ defmodule Wardrik.HTTP do
   def child_spec(opts), do: opts |> served() |> WardrikHTTP.child_spec()
 
   @doc """
-  Returns a `:body_reader` for `Plug.Parsers`.
-
-  Use it if your app parses bodies before Wardrik. It keeps the raw body so webhook signatures
-  can still be checked.
+  Returns a `:body_reader` for `Plug.Parsers` that keeps the raw body for webhook signatures.
 
       plug Plug.Parsers, parsers: [:json], json_decoder: JSON, body_reader: Wardrik.HTTP.body_reader()
   """

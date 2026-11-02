@@ -1,11 +1,10 @@
 defmodule Wardrik.Egress do
   @moduledoc """
-  Decides which URLs users may point Wardrik at, such as when an org adds an MCP server.
+  Decides which URLs Wardrik may reach, such as an MCP server's.
 
-      Wardrik.start_link(name: MyApp.AgentRuntime, egress: &Wardrik.Egress.public/1)
+      Wardrik.start_link(name: MyApp.AgentRuntime, egress: &Wardrik.Egress.any/1)
 
-  A URL is checked when it's given and when each connection to it starts, not on each request.
-  A host that resolves somewhere else between checks is reached where it resolves then.
+  A URL is checked when given and as each connection starts.
   """
 
   @not_public_v4 [
@@ -48,11 +47,11 @@ defmodule Wardrik.Egress do
     end
   end
 
-  @doc "Returns `:ok` for every URL. Use it when only the operator names URLs, as in a daemon."
+  @doc "Returns `:ok` for every URL. Use it when only you name URLs."
   @spec any(String.t()) :: :ok
   def any(_url), do: :ok
 
-  @doc "Returns whether `address` is public. Checks the IPv4 address inside IPv6 forms that wrap one."
+  @doc "Returns whether `address` is public, including IPv4 inside IPv6."
   @spec public?(:inet.ip_address()) :: boolean()
   def public?({_a, _b, _c, _d} = address),
     do: not Enum.any?(@not_public_v4, &within?(address, &1))

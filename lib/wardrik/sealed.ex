@@ -29,10 +29,7 @@ defmodule Wardrik.Sealed do
   end
 
   @doc """
-  Returns `opts` with each `{:secret, name}` replaced by the deployment's secret of that name.
-
-  `what` names the options in log messages, as `"the channel slack"`. A secret that isn't sealed
-  becomes `nil`, with a warning.
+  Returns `opts` with each `{:secret, name}` read from the deployment's secrets, or `nil`.
   """
   @spec resolved(Wardrik.t(), String.t(), keyword() | map()) :: keyword() | map()
   def resolved(wardrik, what, opts) when is_map(opts),

@@ -1,5 +1,5 @@
 defmodule Wardrik.Operations.Deployment do
-  @moduledoc "Operations on the deployment: the audit, nodes, moving agents and reloading."
+  @moduledoc false
 
   alias Wardrik.Error
   alias Wardrik.Operations.Changes
@@ -15,14 +15,8 @@ defmodule Wardrik.Operations.Deployment do
   end
 
   @doc """
-  Reloads the deployment:
-
-    1. Reloads the declarations. See `Wardrik.Declarations`.
-    2. Updates running agents to their current definitions. Only those `"agents"` names, if
-       given.
-    3. Reconciles MCP servers and triggers.
-
-  Returns the node reloaded, and a line for each declaration problem.
+  Reloads declarations, updates running agents to their definitions, and reconciles servers and
+  triggers. Returns the node, and a line for each problem.
   """
   @spec reload(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def reload(%Wardrik.Scope{wardrik: wardrik} = scope, input) do
@@ -45,7 +39,7 @@ defmodule Wardrik.Operations.Deployment do
     {:ok, %{"reloaded" => [here], "problems" => problems}}
   end
 
-  @doc "Lists the deployment's nodes with how many agents run on each, and how many are asleep."
+  @doc "Lists the nodes, with how many agents run on each and how many sleep."
   @spec nodes(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def nodes(%Wardrik.Scope{wardrik: wardrik}, _input) do
     agents = Wardrik.agents(wardrik)

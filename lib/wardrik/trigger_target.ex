@@ -1,9 +1,5 @@
 defmodule Wardrik.TriggerTarget do
-  @moduledoc """
-  Delivers trigger prompts to agents. Implements `WardrikTriggers.Target`.
-
-  Wakes sleeping agents to ask them. Records each firing in the agent's log as `trigger.fired`.
-  """
+  @moduledoc false
 
   @behaviour WardrikTriggers.Target
 

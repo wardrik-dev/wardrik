@@ -1,8 +1,6 @@
 defmodule Wardrik.Authorizer do
   @moduledoc """
-  Decides whether a principal may take an action on a resource, as Cedar's requests do.
-
-      Wardrik.start_link(name: MyApp.AgentRuntime, authorizer: {MyApp.Authorizer, []})
+  Says who may do what. Wardrik asks it before every operation.
 
       defmodule MyApp.Authorizer do
         @behaviour Wardrik.Authorizer
@@ -20,30 +18,27 @@ defmodule Wardrik.Authorizer do
         def authorize(_request, _opts), do: {:error, :forbidden}
       end
 
-  Wardrik requires one. It asks once per operation, and once per agent for operations over many
-  agents, with a `Wardrik.Authorizer.Request`.
-
-  `c:authorize/2` returns:
+  `c:authorize/2` gets a `Wardrik.Authorizer.Request`, and returns:
 
     * `:ok` - allowed.
-    * `{:error, :not_found}` - the principal can't reach the resource. Callers learn nothing
-      about what they can't see.
-    * `{:error, :forbidden}` - the principal reaches the resource but not the action.
+    * `{:error, :not_found}` - the principal can't see the resource.
+    * `{:error, :forbidden}` - they see it, but may not take the action.
+
+  Operations over many agents ask once per agent.
   """
 
   alias Wardrik.Authorizer.Request
   alias Wardrik.Scope
 
-  @doc "Decides whether the request's principal, through its actor, may take its action on its resource."
+  @doc "Decides the request."
   @callback authorize(Request.t(), opts :: term()) :: :ok | {:error, :forbidden | :not_found}
 
   @doc """
-  Returns whether `scope` may take an action on a resource.
+  Asks the authorizer whether `scope` may take `:action` on `:resource`.
 
       Wardrik.Authorizer.authorize(scope, action: "agent.ask", resource: {:agent, id})
 
-  Takes the `Wardrik.Authorizer.Request` fields but `:principal`, `:actor` and `:scope`, which
-  are the scope's. `:context` is merged over the scope's.
+  `:context` is merged over the scope's.
   """
   @spec authorize(Scope.t(), keyword()) :: :ok | {:error, :forbidden | :not_found}
   def authorize(%Scope{wardrik: %{authorizer: {module, opts}}} = scope, fields) do

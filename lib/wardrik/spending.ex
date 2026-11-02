@@ -1,10 +1,5 @@
 defmodule Wardrik.Spending do
-  @moduledoc """
-  Counts what each agent spends per UTC day, in tokens and, where priced, dollars.
-
-  Every agent Wardrik starts has it as middleware around model and tool calls. Agent lists show
-  it. Subagents' calls count as part of the tool call that ran them.
-  """
+  @moduledoc false
 
   @behaviour WardrikCore.Middleware
 

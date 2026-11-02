@@ -1,8 +1,5 @@
 defmodule Wardrik.Operations.Lifecycle do
-  @moduledoc """
-  Operations on an agent's lifecycle: defining, starting, stopping, clearing and forgetting it,
-  and killing its tool calls.
-  """
+  @moduledoc false
 
   alias Wardrik.Definition
   alias Wardrik.Definitions
@@ -44,8 +41,7 @@ defmodule Wardrik.Operations.Lifecycle do
   end
 
   @doc """
-  Returns the agent's definition, the tools it names that aren't available yet, and when each
-  trigger runs next.
+  Returns the agent's definition, tools it names that aren't there yet, and its next runs.
   """
   @spec definition(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def definition(%Scope{wardrik: wardrik}, %{"agent" => id}) do
@@ -133,7 +129,7 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  @doc "Kills one of the agent's running tool calls. The model gets an error as its result."
+  @doc "Kills one running tool call. The model gets an error."
   @spec kill(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def kill(%Scope{wardrik: wardrik} = scope, %{"call" => call} = input) do
     key = Running.key(input)
@@ -189,7 +185,7 @@ defmodule Wardrik.Operations.Lifecycle do
 
   defp written_after(_wardrik, _id, _policy), do: :ok
 
-  @doc "Returns `:ok`, or a `conflict` error if the agent `id` is declared outside the API."
+  @doc "Returns `:ok`, or `conflict` if the agent `id` is declared."
   @spec undeclared(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
   def undeclared(wardrik, id) do
     if Wardrik.Declarations.declared?(wardrik, id),

@@ -1,11 +1,5 @@
 defmodule Wardrik.Operations.Visible do
-  @moduledoc """
-  Limits operations over many agents to what the scope may see.
-
-  Only the agents the input's `"agents"` names, or every agent without it, that the authorizer
-  lets the scope act on are shown, each with its conversations. The same goes for their events
-  and cursors.
-  """
+  @moduledoc false
 
   alias Wardrik.Definitions
   alias Wardrik.Operations.Running

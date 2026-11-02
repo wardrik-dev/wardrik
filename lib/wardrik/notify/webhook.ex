@@ -3,10 +3,8 @@ defmodule Wardrik.Notify.Webhook do
     url: [type: :string, required: true, doc: "Where to post."],
     secret: [
       type: {:or, [:string, {:tuple, [{:in, [:secret]}, :string]}, nil]},
-      doc: """
-      Signs the body, as a string or `{:secret, name}`. The `x-wardrik-signature` header is then
-      `sha256=` followed by the hex HMAC-SHA256 of the body. See `sign/2`.
-      """
+      doc:
+        "Signs the body in `x-wardrik-signature`, as a string or `{:secret, name}`. See `sign/2`."
     ],
     req_options: [type: :keyword_list, default: [], doc: "Merged into the `Req` request."]
   ]
@@ -16,11 +14,9 @@ defmodule Wardrik.Notify.Webhook do
 
       audit: {Wardrik.Notify.Webhook, url: "https://hooks.example.com/wardrik", secret: {:secret, "HOOK_SECRET"}}
 
-  The body is `Wardrik.Notice.json/1`. The `x-wardrik-event` header names the event. Any status
-  other than 2xx is a failure.
-
-  A target an org or person adds with `notify_targets.add` is a webhook too, posting with the
-  `:notify` option's `:req_options` and following no redirect. See `Wardrik.Notify`.
+    * The body is `Wardrik.Notice.json/1`.
+    * `x-wardrik-event` names the event.
+    * Any status but 2xx is a failure, and retried.
 
   ## Options
 
@@ -61,7 +57,7 @@ defmodule Wardrik.Notify.Webhook do
   end
 
   @doc """
-  Returns the `x-wardrik-signature` value for `body` signed with `secret`.
+  Returns the `x-wardrik-signature` for `body`: `sha256=` and its hex HMAC-SHA256.
 
       Wardrik.Notify.Webhook.sign(secret, body)
       #=> "sha256=9f86d0..."

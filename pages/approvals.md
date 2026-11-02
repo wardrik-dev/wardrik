@@ -1,14 +1,12 @@
 # Approvals
 
-A call a policy asks about waits for a person to approve or deny it. The calls an agent waits on
-are its interrupts.
-
 > See it in action: [A person in the loop](../notebooks/approvals-demo.livemd)
+
+A call a policy asks about waits for a person. The calls an agent waits on are its interrupts.
 
 ## Setup
 
-In a fresh IEx session, define a tool, start Wardrik with it, and define an agent whose policy asks
-about large bills. The agent calls a model, so set your Anthropic key first:
+The agent calls a model, so set your Anthropic key.
 
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
@@ -16,21 +14,14 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do
   @behaviour Wardrik.Authorizer
-
-  @impl true
   def authorize(_request, _opts), do: :ok
 end
 
+# Every agent works for Maria.
 defmodule MyApp.Agents do
   @behaviour Wardrik.Resolver
-
-  # Every agent here works for Maria.
-  @impl true
-  def resolve(_request, _opts),
-    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+  def resolve(_request, _opts), do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("maria")}}
 end
-
-System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
 defmodule MyApp.Books do
   @behaviour WardrikCore.Capability
@@ -42,11 +33,13 @@ defmodule MyApp.Books do
         name: "pay_bill",
         description: "Pays a vendor's bill, in dollars.",
         schema: [vendor: [type: :string, required: true], amount: [type: :integer, required: true]],
-        run: fn %{vendor: vendor, amount: amount}, _context -> {:ok, "Paid #{vendor} $#{amount}."} end
+        run: fn %{vendor: vendor, amount: amount}, _ctx -> {:ok, "Paid #{vendor} $#{amount}."} end
       )
     ]
   end
 end
+
+System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
 {:ok, _} =
   Wardrik.start_link(
@@ -56,7 +49,7 @@ end
     capabilities: [books: MyApp.Books]
   )
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
+scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 
 {:ok, _agent} =
   Wardrik.Agent.define(scope, "agt_books",
@@ -66,72 +59,43 @@ scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
   )
 ```
 
-## Decide one call at a time
-
-Ask for two large payments. The run stops and returns the calls it waits on:
+## Approve or deny one call
 
 ```elixir
 {:waiting, [initech, globex]} =
   Wardrik.Agent.reply(scope, "agt_books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
 
 initech
-#=> %Wardrik.Interrupt{id: "toolu_01...", agent: "agt_books", reason: :tool_approval,
-#=>   name: "pay_bill", message: "A bill this size needs a person.", ...}
-```
+#=> %Wardrik.Interrupt{id: "toolu_01...", agent: "agt_books", name: "pay_bill",
+#=>   message: "A bill this size needs a person.", ...}
 
-`Wardrik.Interrupts.list/2` returns the calls waiting across every agent the scope can see.
-
-Approve one, with a note, and deny the other, with a reason:
-
-```elixir
-Wardrik.Agent.approve(scope,
-  agent: "agt_books",
-  interrupt: initech.id,
-  note: "Pay it from the ops account."
-)
+Wardrik.Agent.approve(scope, agent: "agt_books", interrupt: initech.id, note: "Use the ops account.")
 #=> {:ok, [%Wardrik.Decision{id: "toolu_01...", decision: :approved}]}
 
-Wardrik.Agent.deny(scope,
-  agent: "agt_books",
-  interrupt: globex.id,
-  reason: "Not before the 1st."
-)
+Wardrik.Agent.deny(scope, agent: "agt_books", interrupt: globex.id, reason: "Not before the 1st.")
 #=> {:ok, [%Wardrik.Decision{id: "toolu_02...", decision: :rejected}]}
 ```
 
-  * Each waiting call is decided on its own, in any order. An approved call runs straight away,
-    and the model reads the results once all are decided.
-  * An approval runs the call as the model wrote it. A `note` reaches the model beside the result.
-  * A denial reaches the model as an error, with your `reason`.
-  * Each decision is recorded as the scope's principal's.
+- Decide in any order. An approved call runs at once. The model carries on when all are decided.
+- The model reads a `note` beside the result, and a `reason` as the call's error.
+- Each decision is recorded as Maria's.
+- `Wardrik.Interrupts.list/2` lists waiting calls across every agent the scope can see.
+- Add `conversation: id` for a call in one of the agent's conversations.
 
 ## Decide several at once
-
-`Wardrik.Agent.decide/3` takes a map of call IDs to decisions:
 
 ```elixir
 {:waiting, [initech, globex]} =
   Wardrik.Agent.reply(scope, "agt_books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
 
 Wardrik.Agent.decide(scope, "agt_books", %{
-  initech.id => {:approve, "Pay it from the ops account."},
+  initech.id => {:approve, "Use the ops account."},
   globex.id => {:deny, "Not before the 1st."}
 })
-#=> {:ok,
-#=>  [
-#=>    %Wardrik.Decision{id: "toolu_03...", decision: :approved},
-#=>    %Wardrik.Decision{id: "toolu_04...", decision: :rejected}
-#=>  ]}
+#=> {:ok, [%Wardrik.Decision{decision: :approved, ...}, %Wardrik.Decision{decision: :rejected, ...}]}
 ```
 
-Each value is `:approve`, `{:approve, note}` or `{:deny, reason}`.
-
-Deciding a call the agent doesn't wait on, or no longer waits on, returns a `conflict` error:
-
-```elixir
-Wardrik.Agent.approve(scope, agent: "agt_books", interrupt: initech.id)
-#=> {:error, %Wardrik.Error{type: :conflict, ...}}
-```
-
-When an agent waits for someone to sign in, `Wardrik.Agent.authorization/2` returns the link; see
-[Credentials](credentials.md).
+- Each value is `:approve`, `{:approve, note}` or `{:deny, reason}`.
+- Deciding a call the agent no longer waits on returns `conflict`.
+- A call waiting on a sign-in has a link: see `Wardrik.Agent.authorization/2` and
+  [Credentials](credentials.md).

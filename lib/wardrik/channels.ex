@@ -1,6 +1,6 @@
 defmodule Wardrik.Channels do
   @moduledoc """
-  Installs Wardrik's chat apps into people's workspaces, from your app's own pages.
+  Installs chat apps into people's workspaces, from your app's pages.
 
       # 1. Send the person to the chat app
       {:ok, url} =
@@ -25,11 +25,11 @@ defmodule Wardrik.Channels do
           workspace: installation.workspace
         )
 
-      # The workspaces an owner added, as for your resolver's `:channels`
-      [installation | _rest] = Wardrik.Channels.owned(MyApp.AgentRuntime, channel: "slack", owner: "acme")
+      # The workspaces an owner added, for your resolver's `:channels`
+      Wardrik.Channels.owned(MyApp.AgentRuntime, channel: "slack", owner: "acme")
 
-  The channel's adapter, such as `WardrikSlack`, does the work. Returns an error if the adapter
-  doesn't support it.
+  `:owner` is whatever your app calls who installs it. The adapter, such as `WardrikSlack`, does
+  the work, and returns an error if it can't.
   """
 
   alias Wardrik.Channel.Installation
@@ -37,11 +37,11 @@ defmodule Wardrik.Channels do
   @arities %{install_url: 2, installed: 2, uninstall: 2}
 
   @doc """
-  Returns the URL where someone acting for `:owner` installs the `:channel`'s chat app.
+  Returns the URL that installs `:channel`'s chat app for `:owner`.
 
   ## Options
 
-    * `:return_to` - where they're sent once it's installed.
+    * `:return_to` - where to send them after.
   """
   @spec install_url(atom(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def install_url(instance, args) do
@@ -54,9 +54,7 @@ defmodule Wardrik.Channels do
   end
 
   @doc """
-  Completes an install of the `:channel`'s chat app for `:owner`, from its callback `:query`.
-
-  Returns the installation and where to send the person next.
+  Completes an install from its callback `:query`. Returns the installation and where to go next.
   """
   @spec installed(atom(), channel: String.t(), owner: String.t(), query: map()) ::
           {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}
@@ -69,7 +67,7 @@ defmodule Wardrik.Channels do
     adapted(instance, Keyword.fetch!(args, :channel), :installed, [install])
   end
 
-  @doc "Uninstalls the `:channel`'s chat app from `:workspace`, and forgets the workspace."
+  @doc "Uninstalls `:channel`'s chat app from `:workspace`."
   @spec uninstall(atom(), channel: String.t(), workspace: String.t()) ::
           :ok | {:error, String.t()}
   def uninstall(instance, args),
@@ -79,8 +77,7 @@ defmodule Wardrik.Channels do
       ])
 
   @doc """
-  Returns the `:channel`'s installations whose owner is `:owner`, exactly, as your app named them.
-  Returns `[]` if there's no such channel.
+  Returns `:channel`'s installations for `:owner`, or `[]`.
   """
   @spec owned(atom(), channel: String.t(), owner: String.t()) :: [Installation.t()]
   def owned(instance, args) do

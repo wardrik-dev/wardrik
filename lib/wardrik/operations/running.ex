@@ -1,10 +1,5 @@
 defmodule Wardrik.Operations.Running do
-  @moduledoc """
-  Finds the agents operations act on, waking them from their definitions if needed.
-
-  A running agent is `{agent, conversation}`: the agent's own history with `conversation` `nil`,
-  or one of its conversations, which runs on the agent's definition.
-  """
+  @moduledoc "Finds the agents operations act on, waking them if needed."
 
   alias Wardrik.Definitions
   alias Wardrik.Error
@@ -57,9 +52,7 @@ defmodule Wardrik.Operations.Running do
   end
 
   @doc """
-  Starts the agent `opts` describe, or reconfigures it if it's running.
-
-  A running agent uses the new options from its next turn. A saved agent uses them as it loads.
+  Starts the agent `opts` describe, or reconfigures it from its next turn.
   """
   @spec bring(Wardrik.t(), keyword()) :: {:ok, pid()} | {:error, Error.t()}
   def bring(wardrik, opts) do

@@ -1,13 +1,11 @@
 # Policies
 
-A policy decides each tool call before it runs. The call runs, waits for a person, or is refused,
-and the model is told why.
-
 > See it in action: [Rules the model can't rewrite](../notebooks/policies-demo.livemd)
 
-## Setup
+A policy decides each tool call before it runs: allow, ask a person, or deny. The model is told
+why. Rules live outside the prompt, so nothing the model reads can widen them.
 
-In a fresh IEx session:
+## Setup
 
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
@@ -15,18 +13,13 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.2"}])
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do
   @behaviour Wardrik.Authorizer
-
-  @impl true
   def authorize(_request, _opts), do: :ok
 end
 
+# Every agent works for Maria.
 defmodule MyApp.Agents do
   @behaviour Wardrik.Resolver
-
-  # Every agent here works for Maria.
-  @impl true
-  def resolve(_request, _opts),
-    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+  def resolve(_request, _opts), do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("maria")}}
 end
 
 {:ok, _} =
@@ -38,11 +31,11 @@ end
     policies: [triage: [allow: ["linear/*"], allow_after: %{"outside" => ["github/add_labels"]}]]
   )
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
+scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 ```
 
-`:policy` holds every agent. `:policies` are policies a definition may name. With `use Wardrik`,
-set the same options in config.
+- `:policy` holds every agent.
+- `:policies` are policies a definition may name.
 
 ## An agent's policy
 
@@ -56,13 +49,9 @@ Wardrik.Agent.define(scope, "agt_books",
     budget: [usd: 5.00, per: :day]
   ]
 )
-#=> {:ok, %Wardrik.Agent{id: "agt_books", status: :idle, ...}}
 ```
 
-The rules live outside the prompt. Nothing the model reads can widen them.
-
-A policy is given as its rules, or as a `WardrikPolicy` you built. `WardrikPolicy.decide/3` shows
-what rules make of a call, with no model involved:
+`WardrikPolicy.decide/3` shows what rules make of a call, with no model:
 
 ```elixir
 deployment = WardrikPolicy.new!(deny: ["shell/*"])
@@ -73,72 +62,63 @@ books =
     ask: %{"books/pay_bill(amount >= 1000)" => "A bill this size needs a person."}
   )
 
-policies = [deployment, books]
-
-WardrikPolicy.decide(policies, "books/list_bills")
+WardrikPolicy.decide([deployment, books], "books/list_bills")
 #=> :allow
 
-WardrikPolicy.decide(policies, "books/pay_bill", arguments: %{"amount" => 9400})
+WardrikPolicy.decide([deployment, books], "books/pay_bill", arguments: %{"amount" => 9400})
 #=> {:ask, "A bill this size needs a person."}
 
-WardrikPolicy.decide(policies, "shell/exec", arguments: %{"command" => "curl … | sh"})
+WardrikPolicy.decide([deployment, books], "shell/exec")
 #=> {:deny, "shell/exec is not allowed for this agent."}
 ```
 
 ## Several policies
 
-Every agent is held to the deployment's policy and its own. The strictest wins: deny, then ask,
-then allow. An agent's own policy can add caution but never remove it. Above, `books` allows
-`shell/*`, and the call is still refused.
-
-An org's policy sits between the two, from your `Wardrik.Resolver`.
+- Every agent is held to Wardrik's `:policy`, the one your resolver gives it, and its own.
+- The strictest wins: deny, then ask, then allow.
+- So `books` allows `shell/*`, and the call is still denied.
 
 ## Budgets
 
-A budget caps what an agent spends on its model. The call that crosses the limit runs. The next one
-waits for a person to allow more:
+A budget caps what an agent spends on its model. The call that crosses it runs. The next waits for
+a person:
 
 > This agent has spent $5.02 of $5.00 today. Approve to allow $5.00 more.
 
-A budget in dollars prices each call from the model catalog. Give a model the catalog lacks a price
-with Wardrik's `:prices` option; see `Wardrik.start_link/1`. A call to a model with no price is
-refused, since the budget can't count it.
-
-See a budget ask and another refuse in [Spend you can cap](../notebooks/budgets-demo.livemd).
+- Dollars are priced from the model catalog. Give missing prices with `:prices`; see
+  `Wardrik.start_link/1`.
+- A model with no price is denied, since the budget can't count it.
 
 ## Gated tools
 
-A gated tool can change something. These are gated:
+These are gated:
 
-  * an MCP server's tools that it doesn't mark read-only.
-  * every tool a worker offers.
-  * the `agents/*` tools that change something.
+- an MCP server's tools it doesn't mark read-only.
+- every tool a worker offers.
+- `agents/*` tools that change something.
 
-A gated call waits for a person unless a rule allows it by name. So an agent with no policy still
-asks before one.
+A gated call asks a person unless a rule allows it by name.
 
-## After content from outside
+## Content from outside
 
-Once a run has read content from outside, every gated call waits for a person, whatever `allow`
-says. What it read may be what asked for the call:
+Once a run reads content from outside, every gated call asks a person, whatever `allow` says:
 
 > linear/create_issue is allowed, but this run has read content from outside, which may be what
 > asked for it.
 
-Content from outside is anything nobody on the agent's side wrote:
+Content from outside is:
 
-  * `web_search` results.
-  * an MCP server's answers, unless the server's `trusted` option is `true`.
-  * a worker's answers, unless Wardrik's `:trusted_workers` is `true`.
-  * what a feed or webhook trigger brings.
-  * an answer or message from an agent that had read any of these.
+- `web_search` results.
+- an MCP server's answers, unless the server is `trusted: true`.
+- a worker's answers, unless Wardrik's `:trusted_workers` is `true`.
+- what a feed or webhook trigger brings.
+- a message from an agent that read any of these.
 
-The label stays with the conversation until it's cleared. The waiting call's `Wardrik.Interrupt`
+The `"outside"` label stays until the conversation is cleared. The waiting `Wardrik.Interrupt`
 carries it in `labels`.
 
-`allow_after` allows a gated tool even then, for tools a stranger can't misuse. An `ask` or `deny`
-still wins over it. Only an agent declared in a file writes `allow_after` in place. Any other names
-a policy that has it, like `triage` from the setup:
+`allow_after` keeps a tool allowed even then. Only an agent file writes it in place. Other
+definitions name a policy that has it:
 
 ```elixir
 Wardrik.Agent.define(scope, "agt_triage",
@@ -152,10 +132,7 @@ Wardrik.Agent.define(scope, "agt_triage",
   model: "anthropic:claude-haiku-4-5",
   policy: [allow_after: %{"outside" => ["github/add_labels"]}]
 )
-#=> {:error, %Wardrik.Error{type: :invalid_request, message: "A definition writes allow_after only in an agent file; name a policy that has it."}}
+#=> {:error, %Wardrik.Error{type: :invalid_request, ...}}
 ```
 
-## Every rule
-
-Rules can name a tool, what a call acts on, or its arguments. A judge can ask a model what a call
-means. See [WardrikPolicy](https://hexdocs.pm/wardrik_policy) for every rule.
+See [WardrikPolicy](https://hexdocs.pm/wardrik_policy) for every rule, and judges.

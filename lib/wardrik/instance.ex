@@ -1,7 +1,7 @@
 defmodule Wardrik.Instance do
   @moduledoc false
 
-  @doc "Returns the running `%Wardrik{}` for `instance`. Raises `ArgumentError` if it isn't started."
+  @doc "Returns the running `%Wardrik{}`. Raises `ArgumentError` if it isn't started."
   @spec fetch!(atom() | Wardrik.t()) :: Wardrik.t()
   def fetch!(%Wardrik{} = wardrik), do: wardrik
 
@@ -20,11 +20,11 @@ defmodule Wardrik.Instance do
   def name(%Wardrik{name: name}), do: name
   def name(instance) when is_atom(instance), do: instance
 
-  @doc "Returns the name of the registry that holds `instance` and its named processes."
+  @doc "Returns the name of the instance's registry."
   @spec registry(atom()) :: atom()
   def registry(instance), do: Module.concat(instance, Registry)
 
-  @doc "Returns the code `use Wardrik` injects. Config is read from `otp_app`."
+  @doc "Returns the code `use Wardrik` injects."
   @spec using(atom() | nil) :: Macro.t()
   def using(otp_app), do: {:__block__, [], [started(otp_app), scopes()]}
 

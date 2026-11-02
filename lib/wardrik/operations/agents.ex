@@ -1,5 +1,5 @@
 defmodule Wardrik.Operations.Agents do
-  @moduledoc "Operations over many agents: every one the scope may see, or those the input names."
+  @moduledoc false
 
   alias Wardrik.Operations.Agent
   alias Wardrik.Operations.Changes
@@ -18,8 +18,7 @@ defmodule Wardrik.Operations.Agents do
   end
 
   @doc """
-  Cancels what each agent, and each of its conversations, is doing. Returns the agents with
-  anything cancelled.
+  Cancels what each agent and conversation is doing. Returns those with anything cancelled.
   """
   @spec cancel(Scope.t(), map()) :: {:ok, map()}
   def cancel(scope, input) do
@@ -33,8 +32,7 @@ defmodule Wardrik.Operations.Agents do
   end
 
   @doc """
-  Forgets each agent. Returns those forgotten, those kept because they're declared, and those
-  that failed, with why.
+  Forgets each agent. Returns those forgotten, kept as declared, and failed.
   """
   @spec forget(Scope.t(), map()) :: {:ok, map()}
   def forget(scope, input) do
@@ -61,7 +59,7 @@ defmodule Wardrik.Operations.Agents do
      }}
   end
 
-  @doc "Lists the calls the agents, and their conversations, wait on a person for."
+  @doc "Lists the calls the agents wait on a person for."
   @spec interrupts(Scope.t(), map()) :: {:ok, map()}
   def interrupts(scope, input) do
     interrupts =
@@ -100,7 +98,7 @@ defmodule Wardrik.Operations.Agents do
     {:ok, %{"cursor" => visible_cursor(scope, input, cursor)}}
   end
 
-  @doc "Streams the agents' events as `{event, cursor}`. Reads what's there, then follows new events."
+  @doc "Streams the agents' events as `{event, cursor}`, following new events."
   @spec stream(Scope.t(), map()) :: {:ok, Enumerable.t()} | {:error, Wardrik.Error.t()}
   def stream(scope, input) do
     visible? = &Visible.visible?(scope, input, &1)

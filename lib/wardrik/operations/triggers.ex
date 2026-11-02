@@ -1,5 +1,5 @@
 defmodule Wardrik.Operations.Triggers do
-  @moduledoc "Operations on an agent's triggers: setting, removing, and delivering webhooks."
+  @moduledoc false
 
   alias Wardrik.Definitions
   alias Wardrik.Error

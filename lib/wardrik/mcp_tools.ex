@@ -1,13 +1,5 @@
 defmodule Wardrik.MCPTools do
-  @moduledoc """
-  Gives an agent the tools of the MCP servers it names. Implements `WardrikCore.Capability`.
-
-  A name reaches the server the agent is resolved with by that name, and nothing else. See
-  `Wardrik.Resolver`. With `all: true`, the agent gets every server it's resolved with.
-
-  Servers are resolved at the start of each turn, so added or removed servers apply from the
-  next turn.
-  """
+  @moduledoc false
 
   @behaviour WardrikCore.Capability
 
@@ -30,8 +22,7 @@ defmodule Wardrik.MCPTools do
   end
 
   @doc """
-  Returns the `WardrikMCP` names of the servers `opts` reach that are up, of `servers`, those the
-  agent is resolved with.
+  Returns the `WardrikMCP` names of the servers `opts` reach that are up.
   """
   @spec picked(atom(), %{String.t() => String.t()}, keyword()) :: [String.t()]
   def picked(mcp, servers, opts) do

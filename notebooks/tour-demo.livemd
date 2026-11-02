@@ -4,25 +4,17 @@
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}, {:kino, "~> 0.19"}])
 ```
 
-## Your first governed agent
+## Setup
 
-By the end, a support agent looks up orders and streams its answers as it writes them. It asks you
-before it refunds anyone, and you answer with a button. Every step is on the record, and it stops
-at the budget you set.
-
-Add your Anthropic key as a secret named `ANTHROPIC_API_KEY` in the Secrets panel. The whole
-notebook costs about a cent on Claude Haiku.
+A support agent looks up orders, asks before it refunds, and stops at its budget. Add
+`ANTHROPIC_API_KEY` in the Secrets panel. It costs about a cent.
 
 ```elixir
 System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
-
-# Wardrik logs each agent it starts. Keep the cells to what matters.
 Logger.configure(level: :warning)
 ```
 
-## Give it tools
-
-An agent can only do what its tools let it. These look up an order and refund one:
+## Tools
 
 ```elixir
 defmodule MyApp.Orders do
@@ -56,21 +48,18 @@ end
 
 ## Start Wardrik
 
+`MyApp.AllowAll` lets Maria do anything. See [Who may do what](access-demo.livemd) for a real
+authorizer.
+
 ```elixir
 defmodule MyApp.AllowAll do
   @behaviour Wardrik.Authorizer
-
-  @impl true
   def authorize(_request, _opts), do: :ok
 end
 
 defmodule MyApp.Agents do
   @behaviour Wardrik.Resolver
-
-  # Every agent here works for Maria.
-  @impl true
-  def resolve(_request, _opts),
-    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+  def resolve(_request, _opts), do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("maria")}}
 end
 
 {:ok, _} =
@@ -81,24 +70,15 @@ end
     capabilities: [orders: MyApp.Orders]
   )
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
+scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 ```
 
-Wardrik keeps its agents in memory here. `scope` is Maria: every call you make below acts as her.
-`MyApp.AllowAll` lets her do anything. In your app, an authorizer decides who may do what; see
-[Who may do what](access-demo.livemd).
+## The policy
 
-## Write the rules
-
-A policy decides each tool call before it runs. It is data, so you can check it before any model
-is involved:
+Policies are data. Check one before any model runs:
 
 ```elixir
-policy = [
-  ask: %{"refund_order" => "Refunds need a person."},
-  budget: [usd: 0.05, per: :day]
-]
-
+policy = [ask: %{"refund_order" => "Refunds need a person."}, budget: [usd: 0.05, per: :day]]
 rules = WardrikPolicy.new!(policy)
 
 %{
@@ -107,10 +87,7 @@ rules = WardrikPolicy.new!(policy)
 }
 ```
 
-Lookups run. Refunds wait for a person. The budget caps what the agent spends on its model each
-day.
-
-## Define the agent
+## The agent
 
 ```elixir
 {:ok, agent} =
@@ -122,12 +99,7 @@ day.
   )
 ```
 
-The policy lives outside the prompt. Nothing the model reads can widen it.
-
 ## Ask it
-
-`Wardrik.Agent.stream/4` returns the answer's text as it's written. Render each chunk into a
-frame:
 
 ```elixir
 frame = Kino.Frame.new() |> Kino.render()
@@ -143,11 +115,9 @@ end)
 Kino.nothing()
 ```
 
-The agent called `look_up_order` on its own, then answered.
-
 ## Approve a refund
 
-Ask for a refund. The run stops at the call the policy asks about, and returns it:
+The run stops at the refund and returns it:
 
 ```elixir
 {:waiting, [refund]} =
@@ -156,8 +126,7 @@ Ask for a refund. The run stops at the call the policy asks about, and returns i
 refund
 ```
 
-The agent waits, with its turn saved, until someone decides. This helper decides, then follows
-the agent's log until the run ends and shows what the agent said:
+This helper decides, then shows how the run ends:
 
 ```elixir
 decide = fn agent, interrupt, decision, frame ->
@@ -165,7 +134,9 @@ decide = fn agent, interrupt, decision, frame ->
 
   decided =
     case decision do
-      :approve -> Wardrik.Agent.approve(scope, agent: agent, interrupt: interrupt.id)
+      :approve ->
+        Wardrik.Agent.approve(scope, agent: agent, interrupt: interrupt.id)
+
       {:deny, reason} ->
         Wardrik.Agent.deny(scope, agent: agent, interrupt: interrupt.id, reason: reason)
     end
@@ -191,28 +162,18 @@ decide = fn agent, interrupt, decision, frame ->
 end
 ```
 
-Decide with a button:
-
 ```elixir
 outcome = Kino.Frame.new()
 approve = Kino.Control.button("Approve refund")
 deny = Kino.Control.button("Deny")
 
 Kino.listen(approve, fn _click -> decide.(agent, refund, :approve, outcome) end)
-
-Kino.listen(deny, fn _click ->
-  decide.(agent, refund, {:deny, "Send it to the carrier first."}, outcome)
-end)
+Kino.listen(deny, fn _click -> decide.(agent, refund, {:deny, "Send it to the carrier first."}, outcome) end)
 
 Kino.Layout.grid([Kino.Layout.grid([approve, deny], columns: 2), outcome], gap: 12)
 ```
 
-An approval runs the call as the model wrote it. A denial reaches the model as an error, with your
-reason. Either way, the decision is recorded as Maria's.
-
-## Read the record
-
-Every step the agent took is an event in its log:
+## The record
 
 ```elixir
 about = fn
@@ -230,40 +191,26 @@ page.events
 |> Kino.DataTable.new(name: "Events")
 ```
 
-Each event is a CloudEvent. Follow them into your app with `Wardrik.Listener`.
-
-## Watch what it spends
-
-Each run's tokens and cost, priced from the model catalog:
+## Spend
 
 ```elixir
 {:ok, %Wardrik.Runs{runs: runs}} = Wardrik.Agent.runs(scope, agent)
 
 runs
-|> Enum.map(fn run ->
-  %{
-    started: run.started_at,
-    status: run.status,
-    tool_calls: run.tool_calls,
-    tokens: run.input_tokens + run.output_tokens,
-    usd: run.cost_micro_usd / 1_000_000
-  }
-end)
+|> Enum.map(
+  &%{status: &1.status, tokens: &1.input_tokens + &1.output_tokens, usd: &1.cost_micro_usd / 1_000_000}
+)
 |> Kino.DataTable.new(name: "Runs")
 ```
 
-And what it spent today, against its $0.05 budget:
-
 ```elixir
 {:ok, %Wardrik.Agent{spent_today: spent}} = Wardrik.Agent.read(scope, agent)
-
 spent
 ```
 
 ## Hit the budget
 
-Give a second agent a budget of 200 tokens a day. Its first model call runs and crosses it. The
-next one waits:
+With 200 tokens a day, the second model call waits for a person:
 
 ```elixir
 {:ok, frugal} =
@@ -275,12 +222,8 @@ next one waits:
   )
 
 {:waiting, [over_budget]} = Wardrik.Agent.reply(scope, frugal, "Where's order 1043?")
-
 over_budget.message
 ```
-
-The model call waits for a person, like the refund did. No prompt gets it past the limit. Allow
-more:
 
 ```elixir
 budget_outcome = Kino.Frame.new()
@@ -293,9 +236,7 @@ Kino.Layout.grid([allow, budget_outcome], gap: 12)
 
 ## Where next
 
-* [Talk to agents](https://hexdocs.pm/wardrik/talking.html): streaming, replies, and answers sent
-  to a process.
-* [Policies](https://hexdocs.pm/wardrik/policies.html): every rule, several policies, and budgets.
-* [Approvals](https://hexdocs.pm/wardrik/approvals.html): deciding the calls agents wait on.
-* [Events and the audit](https://hexdocs.pm/wardrik/events.html): following events into your app.
-* [Agents that survive a crash](durability-demo.livemd): kill an agent mid-call and watch it come back.
+- [Talk to agents](https://hexdocs.pm/wardrik/talking.html)
+- [Policies](https://hexdocs.pm/wardrik/policies.html)
+- [Approvals](https://hexdocs.pm/wardrik/approvals.html)
+- [Agents that survive a crash](durability-demo.livemd)

@@ -1,5 +1,5 @@
 defmodule Wardrik.Definitions do
-  @moduledoc "Stores each agent's definition as it was given."
+  @moduledoc false
 
   @prefix "definitions/"
 
@@ -18,14 +18,14 @@ defmodule Wardrik.Definitions do
     end
   end
 
-  @doc "Removes the agent `id`'s definition, and its boundary. Removing none is `:ok`."
+  @doc "Removes the agent `id`'s definition and boundary."
   @spec delete(Wardrik.t(), String.t()) :: :ok | {:error, term()}
   def delete(wardrik, id) do
     with :ok <- WardrikStore.delete(store(wardrik), @prefix <> id),
          do: WardrikStore.delete(store(wardrik), "boundaries/" <> id)
   end
 
-  @doc "Stores the agent `id`'s boundary: the policy of the scope that defined it."
+  @doc "Stores the policy of the scope that defined the agent `id`."
   @spec put_boundary(Wardrik.t(), String.t(), String.t() | map()) :: :ok | {:error, term()}
   def put_boundary(wardrik, id, name) do
     with {:ok, _vsn} <- WardrikStore.put(store(wardrik), "boundaries/" <> id, name), do: :ok

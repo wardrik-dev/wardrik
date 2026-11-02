@@ -1,21 +1,5 @@
 defmodule Wardrik.Children do
-  @moduledoc """
-  The processes Wardrik supervises, in start order:
-
-    1. The store, unless it's already running.
-    2. The vault, with `:keys`.
-    3. Sign-ins, with `:oauth`.
-    4. MCP servers.
-    5. Events.
-    6. Tool workers.
-    7. Agents.
-    8. Triggers.
-    9. The sleeper. See `Wardrik.Sleeper`.
-    10. Channels.
-    11. Listeners.
-    12. Notices. See `Wardrik.Notify`.
-    13. Delegation. See `Wardrik.Delegation`. It's last, so restarting it restarts nothing else.
-  """
+  @moduledoc false
 
   @doc "Returns Wardrik's children, in start order."
   @spec children(Wardrik.t()) :: [Supervisor.child_spec() | {module(), term()}]

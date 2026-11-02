@@ -1,31 +1,26 @@
 defmodule Wardrik.Resolver do
   @moduledoc """
-  Says what each agent gets: who it acts for, the policies and middleware it's held to, its
-  defaults, the servers, notify targets and channels its definition's names reach, and the other
-  agents' workspaces it may mount. See `Wardrik.Resolved`. Every Wardrik needs one.
-
-      Wardrik.start_link(name: MyApp.AgentRuntime, resolver: {MyApp.Agents, []})
+  Says what each agent gets: who it works for, its policy, servers and more. See `Wardrik.Resolved`.
 
       defmodule MyApp.Agents do
         @behaviour Wardrik.Resolver
 
         @impl true
         def resolve(%Wardrik.Resolver.Request{agent: id}, _opts) do
-          agent = MyApp.Agents.get!(id)
+          agent = MyApp.Repo.get!(MyApp.Agent, id)
 
           {:ok,
            %Wardrik.Resolved{
-             principal: %WardrikCore.Principal{id: agent.owner_id},
-             policy: MyApp.Billing.policy(agent.org),
-             servers: Map.new(agent.org.servers, &{&1.name, &1.key})
+             principal: Wardrik.principal(agent.user_id),
+             policy: MyApp.Billing.policy(agent.team),
+             servers: Map.new(agent.team.servers, &{&1.name, &1.key})
            }}
         end
       end
 
-  Wardrik resolves an agent each time it's defined, starts or wakes, at the start of each turn
-  for its servers, and as each of its notices is sent. To apply new policies or defaults to
-  awake agents, call `Wardrik.refresh/2`. An error keeps the agent from starting or being
-  defined, with the reason:
+  Wardrik resolves an agent as it's defined, starts or wakes, each turn, and for each notice.
+  Call `Wardrik.refresh/2` to apply changes to awake agents. An error keeps the agent from
+  starting:
 
       {:error, Wardrik.Error.new(:not_found, "There's no agent agt_scout here.")}
   """
@@ -39,14 +34,13 @@ defmodule Wardrik.Resolver do
   @callback resolve(Request.t(), opts :: term()) :: {:ok, Resolved.t()} | {:error, term()}
 
   @doc """
-  Returns what the request's agent gets, with each policy built, or an error if it doesn't
-  resolve.
+  Returns what the request's agent gets, with each policy built, or an error.
   """
   @spec resolve(Wardrik.t(), Request.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
   def resolve(%Wardrik{resolver: {module, opts}} = wardrik, %Request{agent: id} = request),
     do: request |> module.resolve(opts) |> read(wardrik, id)
 
-  @doc "Returns what the agent `id` gets, as it's defined now, or as defined by nothing."
+  @doc "Returns what the agent `id` gets, as defined now."
   @spec defined(Wardrik.t(), String.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
   def defined(wardrik, id) do
     case Wardrik.Operations.Running.definition(wardrik, id) do

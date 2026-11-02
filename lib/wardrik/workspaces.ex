@@ -1,10 +1,6 @@
 defmodule Wardrik.Workspaces do
   @moduledoc """
-  Gives agents files: a workspace of their own, other agents' workspaces, and files read into
-  every turn.
-
-  In a definition, `files` in `tools` adds the file tools, `context` lists files to read into
-  every turn, and `workspace.shared` mounts other agents' workspaces, each by its agent's ID:
+  Gives agents files: their own workspace, other agents', and files read into every turn.
 
       tools: [files]
       context: [MEMORY.md, shared/runbooks/deploy.md]
@@ -13,18 +9,14 @@ defmodule Wardrik.Workspaces do
           runbooks: agt_runbooks
           notes: {agent: agt_notes, mode: read}
 
-  An agent mounts only the workspaces its resolver shares, in `Wardrik.Resolved`'s
-  `:workspaces`, each `:read` or `:write`:
+  Your resolver shares workspaces:
 
       %Wardrik.Resolved{workspaces: %{"agt_runbooks" => :write, "agt_notes" => :read}}
 
-  A mount gets the access shared, or `mode: read` to mount a write share read only. Asking to
-  write a read share is refused. An agent's conversations share its workspace.
-
-  ## Context
-
-  `context` lists at most 20 files. As a map, it takes `files` and `max_bytes`, from 1024 to
-  262144. `max_bytes` is `16384` unless set.
+    * `files` in `tools` adds the file tools.
+    * `context` lists up to 20 files, or `{files: [...], max_bytes: 16384}`.
+    * `mode: read` mounts a write share read only.
+    * An agent's conversations share its workspace.
   """
 
   alias Wardrik.Error
@@ -34,11 +26,7 @@ defmodule Wardrik.Workspaces do
   @bytes 1_024..262_144
 
   @doc """
-  Returns the capabilities and middleware for the workspace of the `:agent` by its ID, from its
-  `:definition` and the `:workspaces` its resolver shares.
-
-  Capabilities hold the file tools if `:files` is `true`. Middleware reads `context` into every
-  turn. Returns an `invalid_request` error if the workspace or `context` is invalid.
+  Returns the capabilities and middleware for `:agent`'s workspace, or `invalid_request`.
 
       Wardrik.Workspaces.resolve(wardrik,
         agent: "agt_triage",
@@ -72,8 +60,7 @@ defmodule Wardrik.Workspaces do
   end
 
   @doc """
-  Returns the agent `id`'s own tree. Its conversations share it. The ID is URL-encoded, so it's
-  one segment of the path, whatever it holds.
+  Returns the agent `id`'s own tree, `agents/<URL-encoded id>`.
   """
   @spec tree(String.t()) :: String.t()
   def tree(id), do: "agents/" <> URI.encode_www_form(id)

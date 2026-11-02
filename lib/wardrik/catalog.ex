@@ -1,9 +1,5 @@
 defmodule Wardrik.Catalog do
-  @moduledoc """
-  Maps each `WardrikProtocol` operation to its handler and its compiled input schema.
-
-  Every surface runs operations through it, with `Wardrik.run/3`.
-  """
+  @moduledoc false
 
   alias Wardrik.Operations.Agent
   alias Wardrik.Operations.Agents

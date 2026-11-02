@@ -1,5 +1,5 @@
 defmodule Wardrik.SignIns do
-  @moduledoc "Resumes calls that wait on a sign-in, once the person signs in."
+  @moduledoc false
 
   alias WardrikCore.Authorization
   alias WardrikCore.Principal
