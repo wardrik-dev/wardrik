@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.2
+
+### Breaking
+
+- `c:WardrikHTTP.Authenticator.authenticate/2` takes a `WardrikHTTP.Authenticator.Request`, with
+  the conn, the server and the instance, then its options.
+
 ## 0.1.0-rc.1 (2026-10-30)
 
 - Every operation of `WardrikProtocol` at its route, built from the OpenAPI document, each run with

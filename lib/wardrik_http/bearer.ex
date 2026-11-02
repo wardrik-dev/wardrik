@@ -11,7 +11,7 @@ defmodule WardrikHTTP.Bearer do
   alias Wardrik.Error
 
   @impl WardrikHTTP.Authenticator
-  def authenticate(conn, {server, wardrik}, _config) do
+  def authenticate(%{conn: conn, server: server, wardrik: wardrik}, _opts) do
     case Plug.Conn.get_req_header(conn, "authorization") do
       ["Bearer " <> secret] -> server.authenticate(wardrik, secret)
       _none -> {:error, Error.new(:unauthorized, "Send an API token as Authorization: Bearer.")}

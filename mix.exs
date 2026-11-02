@@ -4,7 +4,7 @@ defmodule WardrikHTTP.MixProject do
   def project do
     [
       app: :wardrik_http,
-      version: "0.1.0-rc.1",
+      version: "0.1.0-rc.2",
       elixir: "~> 1.20",
       description:
         "Wardrik over HTTP: every operation as a JSON route, and agents' events as server-sent events.",
@@ -59,11 +59,11 @@ defmodule WardrikHTTP.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_protocol),
+      sibling(:wardrik_protocol, "~> 0.1.0-rc.2"),
       {:plug, "~> 1.16"},
       {:bandit, "~> 1.14 and >= 1.14.1"},
       {:websock_adapter, "~> 0.5"},
-      sibling(:wardrik_testing, only: :test),
+      sibling(:wardrik_testing, "~> 0.1.0-rc.2", only: :test),
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
@@ -76,9 +76,9 @@ defmodule WardrikHTTP.MixProject do
 
   # Wardrik's own packages come from Hex, or from their checkouts beside this one with
   # WARDRIK_LOCAL=1.
-  defp sibling(name, opts \\ []) do
+  defp sibling(name, requirement, opts \\ []) do
     if System.get_env("WARDRIK_LOCAL"),
       do: {name, Keyword.put(opts, :path, "../#{name}")},
-      else: {name, "~> 0.1.0-rc.1", opts}
+      else: {name, requirement, opts}
   end
 end
