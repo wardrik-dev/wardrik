@@ -4,23 +4,18 @@ defmodule WardrikDaemon.Server do
 
       WardrikDaemon.Server.start_link(env: System.get_env())
 
-  It loads the env file into the environment, then starts in two stages:
-
-    1. The store: in Postgres if `config.yaml`'s `storage` says so, or under the data directory.
-    2. `WardrikDaemon.Running`, which reads the config, with secrets from the vault, and runs
-       the rest.
-
-  The store starts first so the vault can be read. The vault's keys are `vault.keys` in
-  `config.yaml`, or `WARDRIK_VAULT_KEY`, or `vault_key` in the data home, made the first time.
-
-  It emits `[:wardrik_daemon, :started]` once the agents in `agents/` are defined.
+    * It loads the env file, starts the store, then `WardrikDaemon.Running`.
+    * The store is Postgres if `config.yaml` has `storage`, else the data directory.
+    * The vault's keys are `vault.keys`, `WARDRIK_VAULT_KEY`, or `vault_key` in the data home,
+      made on first start.
+    * It emits `[:wardrik_daemon, :started]` once the agents are defined.
 
   ## Options
 
-    * `:env` - required. The environment, which names the directories and fills in `${NAME}`s.
-    * `:name` - what Wardrik is reached by. `WardrikDaemon.Wardrik` unless set.
+    * `:env` - required. The environment.
+    * `:name` - the Wardrik's name. `WardrikDaemon.Wardrik` unless set.
     * `:capabilities` - the tools agents may name. `WardrikDaemon.Capabilities.all/2` unless set.
-    * `:store` - a store to use in place of the one on disk, for tests.
+    * `:store` - a store to use instead of the one on disk, for tests.
   """
 
   use Supervisor

@@ -1,14 +1,14 @@
 defmodule WardrikDaemon.CreateAgent do
   @moduledoc """
-  Makes an agent by name: mints its ID, keeps its record (see `WardrikDaemon.AgentRecords`), and
-  defines it. `POST /v1/owners/{owner}/agents` makes one, and so does the tool `agent_create`.
+  Makes an agent by name: mints its ID, records it, and defines it.
 
-  `agent_create` is how an agent makes a worker, such as the front door does. The worker's owner
-  is the agent's own, so it's in the agent's org, and it's held to the agent's policy. Making one
-  waits on a person, as `agent_define` does, unless the agent's policy allows it by name. It's
-  decided as `agent.create` on `{:agents, owner}`, for the agent as `agent:NAME`.
+  `POST /v1/owners/{owner}/agents` uses it, and so does the `agent_create` tool:
 
       tools: [self/*, agents/*, agent_create]
+
+    * The worker gets the calling agent's owner, org and policy.
+    * It waits on a person, as `agent_define` does, unless the policy allows it.
+    * It's checked as `create` on `agent` for `agent:NAME`.
   """
 
   @behaviour WardrikCore.Capability
@@ -29,10 +29,7 @@ defmodule WardrikDaemon.CreateAgent do
   @type daemon() :: %{required(:wardrik) => atom(), required(:store) => WardrikStore.t()}
 
   @doc """
-  Makes the agent `input` names and defines, for `owner`, in `scope`. `input` is the route's body:
-  `name`, and the definition as `agent.define` takes it.
-
-  The caller has decided that `scope` may make agents for `owner`.
+  Makes the agent `input` describes (`name` plus its definition) for `owner`. The caller checks access.
   """
   @spec create(daemon(), Wardrik.Scope.t(), {String.t(), map()}) ::
           {:ok, AgentRecords.t()} | {:error, Error.t()}

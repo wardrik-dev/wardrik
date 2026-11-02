@@ -15,7 +15,7 @@ defmodule WardrikDaemon.Tokens do
           )
 
   @moduledoc """
-  Keeps the secrets the HTTP API is reached with. `WardrikDaemon.Authenticator` checks them.
+  The tokens the HTTP API takes. `WardrikDaemon.Authenticator` checks them.
 
       {:ok, %{token: token, secret: secret}} =
         WardrikDaemon.Tokens.create(store,
@@ -25,12 +25,8 @@ defmodule WardrikDaemon.Tokens do
           expires: DateTime.add(DateTime.utc_now(), 30, :day)
         )
 
-  A secret looks like `wdk_<id>_<random>`. It's shown once, as `create/2` returns it: only its
-  SHA-256 hash is kept, so neither the store nor `list/1` holds it. `verify/2` compares hashes in
-  constant time.
-
-  The admin issues the rest at `/v1/tokens`, as `wardrik token create` does. See
-  `WardrikDaemon.HTTP`.
+    * A secret looks like `wdk_<id>_<random>` and is shown once. Only its SHA-256 hash is kept.
+    * The admin issues tokens with `wardrik token create`, or at `/v1/tokens`.
 
   ## Options
 
@@ -41,10 +37,7 @@ defmodule WardrikDaemon.Tokens do
 
   @prefix "tokens/"
 
-  @doc """
-  Makes a token in `store`. Returns it, with its secret, which isn't kept, or why the options
-  don't read.
-  """
+  @doc "Makes a token. Returns it with its secret, which isn't kept."
   @spec create(WardrikStore.t(), keyword()) ::
           {:ok, %{token: Token.t(), secret: String.t()}}
           | {:error, NimbleOptions.ValidationError.t()}

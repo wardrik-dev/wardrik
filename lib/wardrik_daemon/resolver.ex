@@ -2,21 +2,13 @@ defmodule WardrikDaemon.Resolver do
   @moduledoc """
   Says what each agent gets. It's the daemon's `Wardrik.Resolver`.
 
-    * It acts for its owner, from its record (see `WardrikDaemon.AgentRecords`): a person, or
-      its org. An agent the daemon made no record of resolves to nothing.
-    * It's held to `"*"`'s policy, then its org's, and to the budgets they pool, as
-      `WardrikDaemon.Ceiling`s. See `WardrikDaemon.Orgs`.
-    * Its tools reach the servers its owner, its org and the deployment added, then those
-      `config.yaml` gives its org. The nearest of a name wins. See `WardrikDaemon.Servers`.
-    * Its notices reach targets the same way. See `WardrikDaemon.NotifyTargets`.
-    * Each channel posts its notices in the workspace its owner added the channel to, else its
-      org's, else one `config.yaml` gives every org. Never another org's.
-    * It mounts the workspaces `config.yaml`'s `workspace.shared` shares with it by its name,
-      each of an agent of that name in its own org, with the access given there. See
-      `WardrikDaemon.Config`.
-
-  An agent of an org `config.yaml` doesn't declare, or whose policy `policies/` doesn't hold,
-  resolves to nothing: it isn't defined or started.
+    * The agent acts for its owner, from its record. An agent with no record gets nothing.
+    * It's held to `"*"`'s policy and its org's, and their shared budgets. See `WardrikDaemon.Orgs`.
+    * It reaches the nearest MCP server and notify target of each name. See
+      `WardrikDaemon.Servers` and `WardrikDaemon.NotifyTargets`.
+    * A channel posts its notices in the workspace its owner added it to, else its org's.
+    * It mounts the workspaces `workspace.shared` gives it.
+    * An agent of an undeclared org, or whose policy is missing, isn't started.
   """
 
   @behaviour Wardrik.Resolver

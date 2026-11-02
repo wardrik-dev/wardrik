@@ -1,22 +1,22 @@
 defmodule WardrikDaemon.Secrets do
   @moduledoc """
-  Keeps each owner's secrets, sealed in Wardrik's vault. `WardrikDaemon.HTTP` serves them at
-  `/v1/owners/{owner}/secrets`, and `wardrik vault` reaches them there.
+  Each owner's secrets, sealed in the vault and served at `/v1/owners/{owner}/secrets`.
 
-  Each secret is sealed for one purpose, and read only for that:
+      echo "$KEY" | wardrik vault put ANTHROPIC_API_KEY --for api_key
+      echo "$KEY" | wardrik vault put CRM_KEY --org acme --for header
 
-    * `api_key` - a key code calls a service with, such as a model provider's. See
-      `WardrikDaemon.Keys`.
+  Each is sealed for one purpose, and read only for it:
+
+    * `api_key` - a service's API key, such as a model provider's. See `WardrikDaemon.Keys`.
     * `client_secret` - an OAuth app's client secret.
     * `header` - a value an MCP server's header sends.
-    * `signing_secret` - a secret that signs or checks a webhook.
+    * `signing_secret` - signs or checks a webhook.
 
-  The owner `deployment` holds the deployment's own, which `${NAME}` in `config.yaml` reads. No
-  agent reaches them, but API keys with `deployment_keys: true`.
+  The owner `deployment` holds the deployment's secrets, which `${NAME}` in `config.yaml` reads.
+  Agents never reach them, except API keys with `deployment_keys: true`.
 
-  Sealing or removing a secret records `secret.stored` or `secret.removed` in the audit, and
-  reconnects the owner's MCP servers whose headers read it, on every node, so they send it as it
-  is now.
+  Sealing or removing one records `secret.stored` or `secret.removed` in the audit, and
+  reconnects the MCP servers whose headers read it.
   """
 
   alias WardrikCore.Principal
@@ -34,9 +34,8 @@ defmodule WardrikDaemon.Secrets do
   def purposes, do: Map.keys(@purposes)
 
   @doc """
-  Lists `owner`'s secrets by name, with what each is for. Never a value.
-
-  Accounts the owner connected are listed as `grant`, and chat apps' installs as `token`.
+  Lists `owner`'s secrets by name and purpose, never values. Connected accounts show as `grant`,
+  chat app installs as `token`.
   """
   @spec list(atom(), String.t()) :: [%{String.t() => String.t()}]
   def list(wardrik, owner) do
@@ -48,9 +47,7 @@ defmodule WardrikDaemon.Secrets do
   end
 
   @doc """
-  Seals `secret`'s value as its owner's secret of its name, for `purpose`, in place of any.
-
-  `actor` is who the audit records sealing it.
+  Seals `secret` for `purpose`, replacing any of that name. `actor` is recorded in the audit.
   """
   @spec put(atom(), Secret.t(), keyword()) :: :ok | {:error, term()}
   def put(wardrik, %Secret{principal: %Principal{id: owner}, name: name} = secret, opts) do

@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.CLI.Admin do
-  @moduledoc "The commands that set Wardrik up and run the daemon: `init`, `doctor`, `status`, `reload`, `audit` and the rest."
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
@@ -53,8 +53,7 @@ defmodule WardrikDaemon.CLI.Admin do
         count: {0, :any},
         summary: "read the agent files again, on every node",
         details: [
-          "AGENTs narrow the agents brought to their definitions to those. The doctor says which",
-          "files don't read."
+          "AGENTs reload only those. wardrik doctor says which files don't read."
         ],
         run: &reload/3
       },

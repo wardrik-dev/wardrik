@@ -6,12 +6,11 @@ defmodule WardrikDaemon.Webhook do
   ]
 
   @moduledoc """
-  Posts notices to a webhook an org or person added. `WardrikDaemon.Resolver` gives it to their
-  agents. See `WardrikDaemon.NotifyTargets`.
+  Posts notices to a webhook an org or person added. See `WardrikDaemon.NotifyTargets`.
 
-  As each notice is sent, the URL is checked against Wardrik's `:egress`, since where it resolves
-  can change, and the secret is read from the owner's vault, so a new one signs at once. It posts
-  as `Wardrik.Notify.Webhook` does, and never follows a redirect.
+    * The URL is checked on every send, since its address can change.
+    * The secret is read from the owner's vault on every send.
+    * It posts as `Wardrik.Notify.Webhook` does, and never follows redirects.
 
   ## Options
 

@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.CLI.Tokens do
-  @moduledoc "The commands on the tokens the HTTP API is reached with. See `WardrikDaemon.Tokens`."
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context

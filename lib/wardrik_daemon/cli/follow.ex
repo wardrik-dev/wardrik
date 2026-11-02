@@ -1,14 +1,5 @@
 defmodule WardrikDaemon.CLI.Follow do
-  @moduledoc """
-  Prints an agent's events as they happen.
-
-  Each event is printed as lines, by `WardrikDaemon.Console.Printer`, or with `--json` as the
-  CloudEvent the HTTP API streams.
-
-    * `turn/2` asks an agent something, then follows the run that answers it until it ends or
-      waits on a person.
-    * `events/2` follows everything the agent does until Ctrl-C.
-  """
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.Client
@@ -19,12 +10,14 @@ defmodule WardrikDaemon.CLI.Follow do
             wardrik.run.deadline_exceeded)
 
   @doc """
-  Asks `:agent` `:text`, then follows the run that answers it until it ends or waits on a person.
-  Gives up after ten minutes with nothing new.
+  Asks `:agent` `:text`, then follows until the turn ends or waits on a person.
 
       Follow.turn(cx, agent: "agt_01JF8X5RQ2", name: "triage", text: "What's on fire?")
 
-  `:agent` is its ID and `:name` how it's shown. `:conversation` asks one of its conversations.
+    * `:agent` - the agent's ID. `:name` - how it's shown.
+    * `:conversation` - one of its conversations.
+
+  Gives up after ten minutes with nothing new.
   """
   @spec turn(Context.t(),
           agent: String.t(),
@@ -52,9 +45,7 @@ defmodule WardrikDaemon.CLI.Follow do
     end
   end
 
-  @doc """
-  Follows what `:agent`, or its `:conversation`, does until Ctrl-C. `:name` is how it's shown.
-  """
+  @doc "Follows `:agent`, or its `:conversation`, until Ctrl-C. `:name` is how it's shown."
   @spec events(Context.t(), agent: String.t(), name: String.t(), conversation: String.t() | nil) ::
           :ok | {:error, String.t()}
   def events(cx, args) do

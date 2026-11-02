@@ -73,9 +73,9 @@ defmodule WardrikDaemon.MixProject do
     [
       sibling(:wardrik, "~> 0.1.0-rc.2"),
       sibling(:wardrik_slack, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_lua, "~> 0.1.0-rc.1"),
-      sibling(:wardrik_brave, "~> 0.1.0-rc.1"),
-      sibling(:wardrik_research, "~> 0.1.0-rc.1"),
+      sibling(:wardrik_lua, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_brave, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_research, "~> 0.1.0-rc.2"),
       {:ecto_sql, "~> 3.13"},
       {:postgrex, "~> 0.22"},
       {:yaml_elixir, "~> 2.12"},

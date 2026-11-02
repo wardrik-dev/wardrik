@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.CLI.Help do
-  @moduledoc "Writes `wardrik help`: every command by group, the commands in a namespace, or one command."
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context

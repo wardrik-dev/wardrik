@@ -1,7 +1,6 @@
 defmodule WardrikDaemon.ChannelMembers do
   @moduledoc """
-  Says who each chat member is: the daemon user `config.yaml` maps them to. It's the daemon's
-  `WardrikChannel.Identities`.
+  Maps chat members to daemon users. It's the daemon's `WardrikChannel.Identities`.
 
       channels:
         slack:
@@ -9,12 +8,10 @@ defmodule WardrikDaemon.ChannelMembers do
           token: ${SLACK_BOT_TOKEN}
           members: {U024BE7LH: user:ana, U0G9QF9C6: user:jon}
 
-  A mapped member acts as their user, so that user's bindings decide what they may ask, read and
-  decide. See `WardrikDaemon.Authorizer`.
-
-  An unmapped member is refused, and told to ask an admin to map them. With
-  `unmapped_members: allow`, for a small deployment, they act instead as the user
-  `<channel>:<workspace>/<member>`, as `user:slack:T0123/U024BE7LH` in bindings.
+    * A mapped member acts as their user, with that user's bindings.
+    * An unmapped member is refused and told to ask an admin.
+    * With `unmapped_members: allow`, they act as `user:<channel>:<workspace>/<member>`, as
+      `user:slack:T0123/U024BE7LH`.
   """
 
   @behaviour WardrikChannel.Identities

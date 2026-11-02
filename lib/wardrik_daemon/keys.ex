@@ -1,25 +1,20 @@
 defmodule WardrikDaemon.Keys do
   @moduledoc """
-  Finds the API keys an agent's model and tools call services with. It's the daemon's
-  `WardrikCore.Keys`.
-
-  Keys are secrets sealed as `api_key`, looked for in this order:
-
-    1. The agent's owner: a person, or its org.
-    2. The person's org.
-    3. The deployment, only with `config.yaml`'s `deployment_keys: true`. Code working for the
-       deployment itself always uses them.
-
-  An org or person brings its own key by sealing it under the key's name:
+  Finds the API keys agents call models and tools with. It's the daemon's `WardrikCore.Keys`.
 
       echo "$KEY" | wardrik vault put ZAI_API_KEY --org acme --for api_key
 
-  A secret sealed for any other purpose is never read as a key, nor is a connected account.
-  Where no one holds it, the code finds its own, as ReqLLM reads the environment.
+  It looks for a secret sealed for `api_key`, in this order:
+
+    1. The agent's owner.
+    2. The owner's org, for an agent a person owns.
+    3. The deployment, with `config.yaml`'s `deployment_keys: true` (the default).
+
+  Where none holds it, the library reads the environment, as ReqLLM does.
 
   ## Options
 
-    * `:wardrik` - required. The Wardrik whose vault the keys are sealed in.
+    * `:wardrik` - required. The Wardrik whose vault holds the keys.
     * `:deployment` - `true` to fall back to the deployment's keys. `false` unless set.
   """
 
@@ -36,7 +31,7 @@ defmodule WardrikDaemon.Keys do
   end
 
   @doc """
-  Returns the owners whose keys an agent working for `principal` uses, nearest first.
+  Returns the owners whose keys `principal`'s agents use, nearest first.
 
       WardrikDaemon.Keys.owners(%WardrikCore.Principal{id: "acme/@jon"}, false)
       #=> ["acme/@jon", "acme"]

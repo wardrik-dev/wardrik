@@ -1,9 +1,5 @@
 defmodule WardrikDaemon.CLI.Completion do
-  @moduledoc """
-  Writes `wardrik completion SHELL`: completion for bash, zsh or fish.
-
-  It completes every command, namespace and option, for `wardrik` and `rik` alike.
-  """
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Command
 

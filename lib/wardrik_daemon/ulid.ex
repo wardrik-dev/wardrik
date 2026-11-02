@@ -1,13 +1,11 @@
 defmodule WardrikDaemon.ULID do
   @moduledoc """
-  Makes ULIDs: 26 characters of Crockford's base32, a 48-bit millisecond time, then 80 random
-  bits. Within one millisecond each is the last one plus one, so they sort in the order they
-  were made. See https://github.com/ulid/spec.
+  Makes ULIDs, which sort in the order they were made. See https://github.com/ulid/spec.
 
       WardrikDaemon.ULID.generate()
       #=> "01JF8X5RQ2M3V9ZK0B7Y4T6WHN"
 
-  It runs as a process, started with the daemon's application, so they're in order across callers.
+  It runs as one process, so IDs stay in order across callers.
   """
 
   use Agent
@@ -29,9 +27,7 @@ defmodule WardrikDaemon.ULID do
   end
 
   @doc """
-  Returns the ULID after `last`, as `{time, random}`, made at `time` with `random`.
-
-  A later time takes `random`. The same time, or an earlier one, takes `last` plus one.
+  Returns the ULID after `last`, as `{time, random}`. A later `time` takes `random`; otherwise `last` plus one.
   """
   @spec next({non_neg_integer(), non_neg_integer()}, non_neg_integer(), non_neg_integer()) ::
           {non_neg_integer(), non_neg_integer()}

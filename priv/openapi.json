@@ -317,7 +317,7 @@
       "get": {
         "operationId": "servers.list",
         "summary": "List the MCP servers an owner's agents reach",
-        "description": "The owner's own, then those it gets from further out: a person's org's, then the deployment's, including those config.yaml gives the owner's org. Each says which owner holds it. The nearest of a name wins, as the agents see it.",
+        "description": "The owner's own, then a person's org's, then the deployment's, including those config.yaml gives the owner's org. Each says which owner holds it. The nearest of a name wins, as the agents see it.",
         "tags": [
           "Servers"
         ],
@@ -454,7 +454,7 @@
       "get": {
         "operationId": "notify_targets.list",
         "summary": "List the notify targets an owner's agents route to",
-        "description": "The owner's own, then those it gets from further out: a person's org's, then the deployment's, including those config.yaml gives the owner's org. The nearest of a name wins. Each says which owner holds it.",
+        "description": "The owner's own, then a person's org's, then the deployment's, including those config.yaml gives the owner's org. The nearest of a name wins. Each says which owner holds it.",
         "tags": [
           "Notify targets"
         ],
@@ -493,7 +493,7 @@
       "post": {
         "operationId": "notify_targets.add",
         "summary": "Add a webhook for an owner's agents' notices",
-        "description": "An org's target serves its own agents and every agent of its people; a person's serves their agents alone. One of the owner's own by the same name is a conflict; one held further out is overridden. The URL must pass the deployment's egress check.",
+        "description": "An org's target serves its own agents and every agent of its people; a person's serves their agents alone. One of the owner's own by the same name is a conflict; one an org or the deployment holds is overridden. The URL must pass the deployment's egress check.",
         "tags": [
           "Notify targets"
         ],
@@ -591,7 +591,7 @@
       "get": {
         "operationId": "providers.list",
         "summary": "List the OAuth apps an owner's people sign in with",
-        "description": "The owner's own, then those it gets from further out: a person's org's, then the deployment's, including config.yaml's. The nearest of a name wins. Each says which owner holds it. Never a client secret.",
+        "description": "The owner's own, then a person's org's, then the deployment's, including config.yaml's. The nearest of a name wins. Each says which owner holds it. Never a client secret.",
         "tags": [
           "OAuth apps"
         ],
@@ -630,7 +630,7 @@
       "post": {
         "operationId": "providers.add",
         "summary": "Add an OAuth app for an owner's people",
-        "description": "An org's app serves its own people; a person's serves them alone. One of the owner's own by the same name is a conflict; one held further out is overridden. Its client secret is named, and read from the owner's vault, sealed for client_secret, each time it's needed. Each URL must pass the deployment's egress check.",
+        "description": "An org's app serves its own people; a person's serves them alone. One of the owner's own by the same name is a conflict; one an org or the deployment holds is overridden. Its client secret is named, and read from the owner's vault, sealed for client_secret, each time it's needed. Each URL must pass the deployment's egress check.",
         "tags": [
           "OAuth apps"
         ],
@@ -728,7 +728,7 @@
       "get": {
         "operationId": "connections.list",
         "summary": "List the caller's accounts",
-        "description": "Each OAuth app the caller signs in with, and each MCP server's own sign-in, by the server's name, and whether the caller holds each. Only the caller's own.",
+        "description": "Each OAuth app the caller signs in with, and each MCP server's own sign-in, by the server's name. Says whether the caller holds each, and whether a sign-in to it is under way. Only the caller's own.",
         "tags": [
           "Connections"
         ],
@@ -1780,7 +1780,7 @@
       },
       "servers": {
         "title": "MCP servers",
-        "description": "What servers.list answers: the MCP servers an owner's agents reach, their own and those they get from further out.",
+        "description": "What servers.list answers: the MCP servers an owner's agents reach, their own, their org's and the deployment's.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -1925,7 +1925,7 @@
       },
       "notify_targets": {
         "title": "Notify targets",
-        "description": "The targets an owner's agents' notices go to: their own, and those they get from further out, the nearest of a name winning.",
+        "description": "The targets an owner's agents' notices go to: their own, their org's and the deployment's. The nearest of a name wins.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -2243,7 +2243,7 @@
       },
       "providers": {
         "title": "OAuth apps",
-        "description": "What providers.list answers: the OAuth apps an owner's people sign in with, their own and those from further out.",
+        "description": "What providers.list answers: the OAuth apps an owner's people sign in with, their own, their org's and the deployment's.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -2285,7 +2285,7 @@
       },
       "connection": {
         "title": "A connection",
-        "description": "An account the caller can connect, by its provider's name, and whether they hold it. A value is never answered.",
+        "description": "An account the caller can connect, by its provider's name, whether they hold it, and whether a sign-in to it is under way. A value is never answered.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -2300,12 +2300,17 @@
           "connected": {
             "type": "boolean",
             "description": "Whether the caller holds it, which is what a call of an agent acting for them would use."
+          },
+          "signing_in": {
+            "type": "boolean",
+            "description": "In connections.list: whether a sign-in the caller started is under way. It turns false once the sign-in is granted, declined or expires."
           }
         },
         "examples": [
           {
             "provider": "github",
-            "connected": true
+            "connected": true,
+            "signing_in": false
           }
         ]
       },
@@ -2330,11 +2335,13 @@
             "connections": [
               {
                 "provider": "github",
-                "connected": true
+                "connected": true,
+                "signing_in": false
               },
               {
                 "provider": "linear",
-                "connected": false
+                "connected": false,
+                "signing_in": true
               }
             ]
           }
@@ -2434,7 +2441,7 @@
               "type": "string",
               "pattern": "^[^\\s]+$"
             },
-            "description": "The groups a user: token's principal is in, which bindings may name."
+            "description": "The groups a user: token's user is in, which bindings may name."
           },
           "expires_in": {
             "type": "integer",

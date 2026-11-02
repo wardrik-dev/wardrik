@@ -1,28 +1,12 @@
 defmodule WardrikDaemon.Config.Options do
-  @moduledoc """
-  Turns a section of `config.yaml` into options, checked against their `NimbleOptions` schema.
-
-  Each key becomes the option of the same name. A value takes the option's type where YAML can't
-  say it:
-
-    * a string names one of an `{:in, [...]}` option's atoms, as `flow: device`.
-    * a map is a keyword list where the option takes one, as `req_options: {retry: false}`.
-
-  Errors name the key's place in `config.yaml`, as `oauth.providers.google: unknown options ...`.
-
-  A key becomes an atom only if one of that name exists, so load the modules that name a
-  section's options first, with `loaded/1`.
-  """
+  @moduledoc false
 
   @doc "Loads `modules`, so the options they name exist as atoms. `Req.Steps` names `Req`'s."
   @spec loaded([module()]) :: :ok
   def loaded(modules), do: Enum.each(modules, &Code.ensure_loaded!/1)
 
   @doc """
-  Returns `yaml`'s keys as `schema`'s options, with their values converted.
-
-  `path` names the section, or is `nil` for the file's own keys. A key no option is named after is
-  an error.
+  Returns `yaml` as `schema`'s options. `path` names the section, or is `nil` for the top level.
   """
   @spec convert(term(), keyword(), String.t() | nil) :: {:ok, keyword()} | {:error, String.t()}
   def convert(yaml, schema, path) when is_map(yaml) do

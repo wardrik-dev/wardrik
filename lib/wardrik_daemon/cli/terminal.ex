@@ -1,11 +1,10 @@
 defmodule WardrikDaemon.CLI.Terminal do
   @moduledoc """
-  The terminal a command writes to: how wide it is, whether it takes colour, and whether someone
-  types at it.
+  The terminal a command writes to: its width, colour, and whether someone types at it.
 
-  It takes colour if standard output is a terminal, `NO_COLOR` isn't set and `TERM` isn't `dumb`.
-  Otherwise, as through a pipe, it writes plain text 80 columns wide. Someone types at it where
-  `WARDRIK_INPUT` is `1`, as `bin/wardrik` sets it where standard input is a terminal.
+    * Colour if stdout is a terminal, `NO_COLOR` is unset and `TERM` isn't `dumb`.
+    * Otherwise plain text, 80 columns wide.
+    * Input if `WARDRIK_INPUT` is `1`, which `bin/wardrik` sets for a terminal.
   """
 
   alias WardrikDaemon.Console.Ansi

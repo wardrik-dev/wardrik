@@ -1,8 +1,6 @@
 defmodule WardrikDaemon.CLI.Context do
   @moduledoc """
-  What every command runs with: the directories, the environment, the deployment's org and the
-  others `config.yaml` declares, the terminal it writes to, the name it was typed as, and whether
-  it prints JSON.
+  What every command runs with: directories, environment, orgs, terminal, and `--json`.
   """
 
   alias WardrikDaemon.CLI.Terminal
@@ -23,10 +21,7 @@ defmodule WardrikDaemon.CLI.Context do
           json?: boolean()
         }
 
-  @doc """
-  Returns the context for `env`, the environment. The org is `config.yaml`'s `org`, or `default`,
-  and the others are its `orgs`.
-  """
+  @doc "Returns the context for the environment `env`."
   @spec new(%{String.t() => String.t()}) :: t()
   def new(env) do
     dirs = Dirs.new(env)
@@ -87,10 +82,7 @@ defmodule WardrikDaemon.CLI.Context do
     end
   end
 
-  @doc """
-  Returns the ID of the agent `name` names, as the daemon finds it: `triage` in the deployment's
-  org, or `growth/triage` in another.
-  """
+  @doc "Returns the ID of agent `name`: `triage` in the deployment's org, or `growth/triage`."
   @spec agent(t(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def agent(cx, name) do
     {org, name} =
@@ -117,10 +109,7 @@ defmodule WardrikDaemon.CLI.Context do
     end
   end
 
-  @doc """
-  Returns each agent's name by its ID, in the deployment's org and each org `config.yaml`
-  declares: its name in the deployment's org, and `org/name` in another.
-  """
+  @doc "Returns each agent's name by ID: `name` in the deployment's org, `org/name` in another."
   @spec names(t()) :: %{String.t() => map()}
   def names(cx) do
     for org <- [cx.org | cx.orgs],

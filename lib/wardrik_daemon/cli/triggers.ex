@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.CLI.Triggers do
-  @moduledoc "The commands on an agent's triggers: listing, setting and removing them."
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Clock
   alias WardrikDaemon.CLI.Command

@@ -1,23 +1,5 @@
 defmodule WardrikDaemon.Console.Printer do
-  @moduledoc """
-  Turns an agent's events into the lines a terminal shows. Each line is written once and never
-  redrawn.
-
-      printer = WardrikDaemon.Console.Printer.new(width: 100)
-      {lines, printer} = WardrikDaemon.Console.Printer.event(printer, event)
-
-  Events are the protocol's CloudEvents.
-
-    * The answer and the reasoning arrive as markdown. A line of either comes back once its
-      newline arrives. Reasoning is faint, behind a bar.
-    * A tool call is one line when it starts, and another when it ends or is refused.
-    * A retried model call and compacted history are a line each.
-    * One-line events are cut to the width.
-    * Before any other event's line, the unfinished answer or reasoning comes first, so lines stay
-      in the order things happened.
-    * A turn that ends, fails, is stopped or waits on a person returns what's left of its text,
-      then a line saying so.
-  """
+  @moduledoc false
 
   alias WardrikDaemon.Console.Markdown
   alias WardrikDaemon.Console.Table

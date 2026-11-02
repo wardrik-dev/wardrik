@@ -1,16 +1,15 @@
 defmodule WardrikDaemon.Connections do
   @moduledoc """
-  The accounts a principal connects for their agents. `WardrikDaemon.HTTP` serves the caller's
-  own at `/v1/connections`, and `wardrik connection` reaches them there.
+  The accounts a person connects for their agents, served at `/v1/connections`.
 
-  A principal is offered each OAuth app they sign in with (see `WardrikDaemon.OAuthApps`), and
-  each MCP server's own sign-in, by the server's name. A server's sign-in comes ahead of an app
-  of the same name. Each account is the principal's own: listing, connecting and forgetting one
-  reaches only their grants. Forgetting one records `secret.removed` in the audit.
+      wardrik connection ls
+      wardrik connection connect linear
 
-  A device sign-in finishes at the provider. A browser sign-in finishes once its principal sends
-  the code the callback page shows, as `WardrikDaemon.Pairings` pairs them. The callback alone
-  connects nothing.
+    * Each OAuth app and each MCP server's own sign-in is offered, by name.
+    * Each person sees and changes only their own accounts.
+    * A device sign-in finishes at the provider. A browser sign-in finishes when the person
+      sends the code the callback page shows. See `WardrikDaemon.Pairings`.
+    * Forgetting one records `secret.removed` in the audit.
   """
 
   alias Wardrik.Error
@@ -20,18 +19,30 @@ defmodule WardrikDaemon.Connections do
   alias WardrikDaemon.Secrets
   alias WardrikDaemon.Servers
 
-  @doc "Lists the accounts `principal` can connect, and whether each is connected."
-  @spec list(Servers.daemon(), Principal.t()) :: [map()]
-  def list(daemon, %Principal{} = principal) do
-    held = held(daemon, principal)
+  @doc """
+  Lists the accounts `principal` can connect.
 
-    for {provider, credential} <- offered(daemon, principal),
-        do: %{"provider" => provider, "connected" => credential in held}
+  Each entry has `"provider"`, `"connected"` and `"signing_in"`, which is `true` while a
+  sign-in is under way.
+  """
+  @spec list(Servers.daemon(), Principal.t()) :: [map()]
+  def list(%{wardrik: wardrik} = daemon, %Principal{} = principal) do
+    held = held(daemon, principal)
+    oauth = oauth(wardrik)
+
+    for {provider, credential} <- offered(daemon, principal) do
+      %{
+        "provider" => provider,
+        "connected" => credential in held,
+        "signing_in" => WardrikOAuth.signing_in?(oauth, credential, principal)
+      }
+    end
   end
 
   @doc """
-  Starts `principal`'s sign-in to `provider`. Returns that it's connected already, or where they
-  sign in: the URL, and for a device sign-in the code to enter there.
+  Starts `principal`'s sign-in to `provider`.
+
+  Returns that it's connected already, or the URL to sign in at, with a code for a device sign-in.
   """
   @spec connect(Servers.daemon(), Principal.t(), String.t()) :: {:ok, map()} | {:error, Error.t()}
   def connect(daemon, %Principal{} = principal, provider) do
@@ -54,10 +65,9 @@ defmodule WardrikDaemon.Connections do
   end
 
   @doc """
-  Finishes `principal`'s browser sign-in to `provider` with the `code` its callback page showed.
+  Finishes `principal`'s browser sign-in to `provider` with the `code` its page showed.
 
-  A code that isn't that sign-in's own, used, expired or wrong, fails the same way, so it says
-  nothing of whose it was. After 5 wrong codes the sign-in is abandoned.
+  Every wrong code fails the same way. After 5, the sign-in ends.
   """
   @spec pair(Servers.daemon(), Principal.t(), {String.t(), String.t()}) ::
           {:ok, map()} | {:error, Error.t()}
@@ -72,8 +82,7 @@ defmodule WardrikDaemon.Connections do
   end
 
   @doc """
-  Takes a browser sign-in's callback `params`. Returns the code its principal sends to finish it,
-  or `{:error, reason}` where it ends here.
+  Takes a browser sign-in's callback `params`. Returns the code to show, or `{:error, reason}`.
   """
   @spec called_back(Servers.daemon(), map()) ::
           {:ok, %{provider: String.t(), code: String.t()}} | {:error, :declined | :unknown}

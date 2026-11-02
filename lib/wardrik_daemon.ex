@@ -1,13 +1,11 @@
 defmodule WardrikDaemon do
   @moduledoc """
-  Runs Wardrik as a daemon, on a machine of yours, with no app around it.
+  Runs Wardrik as a daemon, with no app around it.
 
     * Agents are Markdown files in `agents/`. See `WardrikDaemon.AgentFile`.
-    * The deployment is set up in `config.yaml`. See `WardrikDaemon.Config`.
-    * People and programs reach it over its HTTP API, or with the `wardrik` command.
-      See `WardrikDaemon.CLI`.
-
-  `WardrikDaemon.Server` is what runs.
+    * Settings are in `config.yaml`. See `WardrikDaemon.Config`.
+    * People use the HTTP API (`WardrikDaemon.HTTP`) or the `wardrik` command (`WardrikDaemon.CLI`).
+    * `WardrikDaemon.Server` is what runs.
   """
 
   @doc "Returns `value` from `{:ok, value}`. Raises `ArgumentError` with the reason for `{:error, reason}`."

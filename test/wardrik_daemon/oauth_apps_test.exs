@@ -278,8 +278,8 @@ defmodule WardrikDaemon.OAuthAppsTest do
     assert {:ok, %{"connections" => connections}} = Client.run(ana, "connections.list", %{})
 
     assert Enum.sort_by(connections, & &1["provider"]) == [
-             %{"provider" => "crm", "connected" => true},
-             %{"provider" => "docs", "connected" => false}
+             %{"provider" => "crm", "connected" => true, "signing_in" => false},
+             %{"provider" => "docs", "connected" => false, "signing_in" => false}
            ]
 
     assert {:ok, %{"provider" => "crm", "connected" => true}} =

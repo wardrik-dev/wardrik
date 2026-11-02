@@ -1,21 +1,17 @@
 defmodule WardrikDaemon.OAuthApps do
   @moduledoc """
-  Keeps the OAuth apps people sign in with, and says which one each principal uses. It's the
-  daemon's `WardrikOAuth.Resolver`. `WardrikDaemon.HTTP` serves them at
-  `/v1/owners/{owner}/providers`, and `wardrik provider` reaches them there.
+  The OAuth apps people sign in with. It's the daemon's `WardrikOAuth.Resolver`, served at
+  `/v1/owners/{owner}/providers`.
 
-    * `config.yaml`'s `oauth.providers` are the deployment's apps.
-    * Orgs and people add their own while the daemon runs. The daemon keeps them in its store.
-    * A principal signs in with the nearest app of a name along `WardrikDaemon.Owners.chain/1`:
-      their own, their org's, then the deployment's. Another org's app is never used.
-    * Each app has a `key` of its own, so a grant is refreshed only by the app that issued it.
-      An app added again after it's removed is another app, and its people sign in again.
-    * An added app's client secret is named, never kept: it's read from its owner's vault,
-      sealed for `client_secret`, each time it's needed.
+      wardrik provider add linear --issuer https://linear.app --client-id ID --secret LINEAR_SECRET
 
-  An MCP server's own sign-in is an app named by the server's `WardrikMCP` name, as `acme:crm`.
-  See `WardrikDaemon.Servers`. Adding or removing an app records `provider.added` or
-  `provider.removed` in the audit.
+    * `config.yaml`'s `oauth.providers` are the deployment's apps. Orgs and people add their own.
+    * A person signs in with the nearest app of a name: their own, their org's, then the
+      deployment's. Another org's app is never used.
+    * An added app's client secret is read from its owner's vault, sealed for `client_secret`.
+    * Each app refreshes only the grants it issued. An app removed and added again is a new app.
+    * An MCP server's own sign-in is an app named as the server, as `acme:crm`.
+    * Adding or removing one records `provider.added` or `provider.removed` in the audit.
   """
 
   @behaviour WardrikOAuth.Resolver
@@ -51,18 +47,12 @@ defmodule WardrikDaemon.OAuthApps do
     end
   end
 
-  @doc """
-  Returns the app `owner`'s people sign in with as `name`, or `nil`: their own, their org's, or
-  the deployment's.
-  """
+  @doc "Returns the app `owner`'s people sign in to `name` with, or `nil`."
   @spec nearest(Servers.daemon(), String.t(), String.t()) :: map() | nil
   def nearest(daemon, owner, name),
     do: Enum.find_value(Owners.chain(owner), &app(daemon, &1, name))
 
-  @doc """
-  Returns the apps `owner`'s people sign in with, nearest first, the nearest of each name alone.
-  An MCP server's own sign-in is among them.
-  """
+  @doc "Returns every app `owner`'s people sign in with, nearest first, one per name."
   @spec reached(Servers.daemon(), String.t()) :: [map()]
   def reached(daemon, owner) do
     owner
@@ -72,8 +62,8 @@ defmodule WardrikDaemon.OAuthApps do
   end
 
   @doc """
-  Lists the apps `owner`'s people sign in with, nearest first: their own, their org's for a
-  person, then the deployment's. Never a client secret, nor an MCP server's own sign-in.
+  Lists the apps `owner`'s people sign in with, nearest first. Leaves out client secrets and
+  servers' own sign-ins.
   """
   @spec list(Servers.daemon(), String.t()) :: [map()]
   def list(daemon, owner) do
@@ -81,9 +71,7 @@ defmodule WardrikDaemon.OAuthApps do
   end
 
   @doc """
-  Adds the app `input` describes for `owner`'s people, as `actor`. Returns it as it's kept.
-
-  `input` is the JSON the route takes, already checked against its schema.
+  Adds the app `input` describes for `owner`, as `actor`. `input` is the route's checked JSON.
   """
   @spec add(Servers.daemon(), {String.t(), map()}, Principal.t() | nil) ::
           {:ok, map()} | {:error, Error.t()}
@@ -96,8 +84,7 @@ defmodule WardrikDaemon.OAuthApps do
   end
 
   @doc """
-  Keeps the app `input` describes for `owner`, as `add/3` does, with no record in the audit.
-  `WardrikDaemon.Servers` keeps a server's own sign-in this way.
+  Keeps an app for `owner` as `add/3` does, without an audit record. Used for servers' sign-ins.
   """
   @spec keep(Servers.daemon(), {String.t(), map()}) :: {:ok, map()} | {:error, Error.t()}
   def keep(%{store: store} = daemon, {owner, %{"name" => name} = input}) do
@@ -125,8 +112,7 @@ defmodule WardrikDaemon.OAuthApps do
   end
 
   @doc """
-  Forgets `owner`'s own app `name`, and the client Wardrik registered for it. Returns it as it
-  was, or `:error` if `owner` added none of that name.
+  Forgets `owner`'s own app `name` and its registered client. Returns `:error` if there's none.
   """
   @spec forget(Servers.daemon(), {String.t(), String.t()}) :: {:ok, map()} | :error
   def forget(%{wardrik: wardrik, store: store}, {owner, name}) do

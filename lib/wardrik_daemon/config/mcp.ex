@@ -1,6 +1,6 @@
 defmodule WardrikDaemon.Config.MCP do
   @moduledoc """
-  Reads `config.yaml`'s `mcp`: the MCP servers agents may call, each by a name of your own.
+  Reads `config.yaml`'s `mcp`: the MCP servers agents may call.
 
       mcp:
         github:
@@ -12,19 +12,11 @@ defmodule WardrikDaemon.Config.MCP do
           args: [-y, notes-mcp]
           timeout: 30
 
-  A server has a `command` or a `url`, not both:
-
-    * `command`, `args`, `env` - the program to run, over stdio.
-    * `url`, `headers` - its full endpoint, as `https://mcp.linear.app/mcp`, reached over
-      streamable HTTP as given.
-
-  It takes `WardrikMCP.Server`'s options too, but `transport` and `owner`, with two written
-  differently:
-
-    * `credential` - `credential_name`, the credential each principal reaches it with.
-    * `timeout` - seconds a call may take, not milliseconds.
-
-  These are the deployment's servers. Orgs and people add their own. See `WardrikDaemon.Servers`.
+    * A server has `command` (with `args`, `env`) or `url` (with `headers`), not both.
+    * `url` is the full endpoint, used as given.
+    * It takes `WardrikMCP.Server`'s options too, except `transport` and `owner`.
+    * `credential` is `credential_name`. `timeout` is in seconds.
+    * Orgs and people add their own servers. See `WardrikDaemon.Servers`.
   """
 
   alias WardrikDaemon.Config.Options

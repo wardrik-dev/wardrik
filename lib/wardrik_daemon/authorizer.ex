@@ -1,47 +1,28 @@
 defmodule WardrikDaemon.Authorizer do
   @moduledoc """
-  Decides what each scope may do. It's the daemon's `Wardrik.Authorizer`, deciding as Kubernetes
-  RBAC and Cedar do, with the roles and bindings `config.yaml` declares. See
-  `WardrikDaemon.Config.Access`.
+  The daemon's `Wardrik.Authorizer`. It decides with `config.yaml`'s `roles` and `bindings`, as
+  Kubernetes RBAC does. See `WardrikDaemon.Config.Access`.
 
-    * An agent acting through its tools is `agent:NAME`, by its name in its org, and nothing
-      else. It gets its own bindings, never its owner's, as a Kubernetes ServiceAccount does.
-    * Anyone else is `user:ID`, and `group:NAME` for each of the principal's `:groups`
-      attributes.
-    * An agent is reached through its record, `WardrikDaemon.AgentRecords`: its org and owner
-      decide. An agent the daemon made no record of is `{:error, :not_found}` to everyone, so the
-      API can't define an agent by an ID the daemon didn't mint.
-    * A principal acting itself may do anything to the agents it owns, and to its secrets, MCP
-      servers, notify targets and OAuth apps: `resource.owner == principal`, in Cedar's words.
-      See `WardrikDaemon.Owners`.
-    * Making an agent is the verb `create` on the kind `agent`, in the owner's org, as
-      `{:agents, owner}`. As in Kubernetes, a rule with `names` doesn't allow it.
-    * A principal acting itself always manages its own connections, the accounts it signs in to.
-    * Through a channel, a chat member acts as the user `WardrikDaemon.ChannelMembers` maps
-      them to. They reach only the agents within the installation's owner (`"*"` holds every
-      agent), and only to `ask`, `read`, `events` and `decide`. Within that, the user decides as
-      themselves: the owner rule, then their own bindings. Whoever asked for a turn may always
-      decide its calls. The channel acting for itself is the installation's owner, so the owner
-      rule reaches its agents.
-    * Otherwise, a binding in the resource's org, or in `"*"`, gives one of them a role with a
-      rule that matches the action's verb and the resource. A binding names an agent by its name
-      in the binding's org, as `agent:triage`, and a rule names agents by their names.
-
-  Tokens are in no org, so only a binding in `"*"` with a rule on the `token` kind reaches them.
-  The owner rule never does. A token for `user:admin` is the admin's alone to make, whatever
-  bindings say, as Kubernetes' TokenRequest needs rights on the very account it's for.
-
-  Returns `{:error, :not_found}` where none of their bindings reaches the resource's org, so they
-  learn nothing about it, and `{:error, :forbidden}` where one does but no rule allows the verb.
-
-      {:ok, config} = WardrikDaemon.Config.read(dirs, env)
       Wardrik.start_link(
         name: MyAgents,
         authorizer: {WardrikDaemon.Authorizer, %{access: config.access, store: store}}
       )
 
-  `store` is the daemon's own scope of the store, where `WardrikDaemon.AgentRecords` keeps
-  agents' records.
+    * A token's user is `user:ID`, plus `group:NAME` for each of its groups.
+    * An agent calling tools is `agent:NAME`. It gets its own bindings, never its owner's.
+    * Everyone may do anything to what they own: their agents, secrets, servers, webhooks and
+      OAuth apps. See `WardrikDaemon.Owners`.
+    * Everyone manages their own connections.
+    * Making an agent is `create` on `agent`. A rule with `names` doesn't allow it.
+    * A chat member acts as the user `WardrikDaemon.ChannelMembers` maps them to. They may only
+      `ask`, `read`, `events` and decide, on the agents of the workspace's owner. Whoever asked
+      for a turn may always decide its calls.
+    * Tokens are in no org: only a binding in `"*"` on `token` reaches them. Only the admin makes
+      a token for `user:admin`.
+    * An agent the daemon has no record of is not found. See `WardrikDaemon.AgentRecords`.
+
+  Returns `{:error, :not_found}` where no binding reaches the resource's org, and
+  `{:error, :forbidden}` where one does but no rule allows the verb.
   """
 
   @behaviour Wardrik.Authorizer

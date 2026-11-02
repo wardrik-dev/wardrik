@@ -8,24 +8,16 @@ defmodule WardrikDaemon.Config.Channels do
           token: ${SLACK_BOT_TOKEN}
           app_token: ${SLACK_APP_TOKEN}
           members: {U024BE7LH: user:ana}
-          offering: Ask for @triage here.
+          unmapped_members: refuse
 
-  Each channel has a name of your own: lower-case letters, digits and `-`, starting with a letter.
-  `shell`, `ssh`, `terminal` and `oauth` are taken.
-
-  `type` is required: `slack` is the only type so far. A channel takes `WardrikChannel`'s options
-  and its type's, as `WardrikSlack` documents them, but `owner`, `installations` and
-  `identities`:
-
-    * `members` - the daemon user each chat member acts as, by their member ID, as `user:ana`.
-      See `WardrikDaemon.ChannelMembers`.
-    * `unmapped_members` - `refuse`, unless set, or `allow` to let a member `members` doesn't
-      map act as `user:<channel>:<workspace>/<member>`. For small deployments.
-    * `token` - without one, the channel keeps a token in the vault for each workspace it's added
-      to.
-
-  A channel serves the deployment's own org's agents. `orgs` may give it to another org, or to
-  every org. See `WardrikDaemon.Config.Orgs`.
+    * The name is lower-case letters, digits and `-`. `shell`, `ssh`, `terminal` and `oauth` are taken.
+    * `type` is required. `slack` is the only type.
+    * It takes `WardrikChannel`'s and `WardrikSlack`'s options, except `owner`, `installations`
+      and `identities`.
+    * `members` maps member IDs to users. See `WardrikDaemon.ChannelMembers`.
+    * `unmapped_members` is `refuse` (the default) or `allow`.
+    * Without `token`, a token per workspace is kept in the vault.
+    * A channel serves the deployment's org unless `orgs` says otherwise.
   """
 
   alias WardrikDaemon.Config.Options

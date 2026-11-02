@@ -8,17 +8,12 @@ defmodule WardrikDaemon.Config.Notify do
           ops: {channel: slack, room: "#ops"}
           audit: {webhook: {url: https://hooks.example.com/wardrik, secret: "${WEBHOOK_SECRET}"}}
 
-  `notify` takes `Wardrik.Notify`'s options. `targets` holds the deployment's targets, each by a
-  name of your own, and each one of:
-
-    * a room - `Wardrik.Notify.Room`'s options, with `channel` one of `channels`.
-    * a webhook - `webhook`, holding `Wardrik.Notify.Webhook`'s options.
-
-  A target's name can't hold `:`, which names a channel's room. A target tells the deployment's own
-  org's agents unless `orgs` says otherwise.
-
-  These are the deployment's targets. Orgs and people add webhooks of their own. See
-  `WardrikDaemon.NotifyTargets`.
+    * `notify` takes `Wardrik.Notify`'s options.
+    * A target is a room (`Wardrik.Notify.Room`'s options, `channel` from `channels`) or a
+      `webhook` (`Wardrik.Notify.Webhook`'s options).
+    * A target's name can't hold `:`.
+    * Targets serve the deployment's org unless `orgs` says otherwise.
+    * Orgs and people add their own webhooks. See `WardrikDaemon.NotifyTargets`.
   """
 
   alias Wardrik.Notify.Room

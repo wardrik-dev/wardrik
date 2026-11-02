@@ -1,19 +1,16 @@
 defmodule WardrikDaemon.Pairings do
   @moduledoc """
-  Pairs a browser sign-in with the `wardrik` command that started it, as RFC 8628 §6.1 advises
-  for user codes.
+  Pairs a browser sign-in with the `wardrik` command that started it (RFC 8628 §6.1).
 
-  The daemon has no login of its own, so its callback page can't tell who is at the browser.
-  The page doesn't finish the sign-in. It shows a one-time code, which the person types where
-  they ran `wardrik connection connect`. The command sends it with its token, and the sign-in
-  finishes for that token's principal, only if it's the sign-in they started.
+  The callback page can't tell who is at the browser, so it connects nothing. It shows a code.
+  The person types it where they ran `wardrik connection connect`, or runs:
 
-    * A code is 8 letters from `BCDFGHJKLMNPQRSTVWXZ`, shown as `XXXX-XXXX`. It's read
-      ignoring case and the dash.
-    * It works once, for 10 minutes.
-    * A sign-in takes at most 5 wrong codes, then it's abandoned.
+      wardrik connection pair linear BCDF-GHJK
 
-  Codes and the callbacks they wait with live in this process alone, never in a URL or a log.
+    * A code is 8 letters, shown as `BCDF-GHJK`. Case and the dash are ignored.
+    * It works once, for 10 minutes, and only for the person who started the sign-in.
+    * After 5 wrong codes, the sign-in ends.
+    * Codes live in this process only, never in a URL or a log.
   """
 
   use GenServer
@@ -40,28 +37,24 @@ defmodule WardrikDaemon.Pairings do
   def name(wardrik), do: Module.concat(wardrik, Pairings)
 
   @doc """
-  Notes the browser sign-in whose `state` the provider will send back. It replaces the
-  principal's earlier sign-in to the same credential.
+  Notes a browser sign-in by its `state`. Replaces the person's earlier sign-in to the same credential.
   """
   @spec started(GenServer.server(), String.t(), sign_in()) :: :ok
   def started(pairings, state, %{principal: %Principal{}} = sign_in),
     do: GenServer.call(pairings, {:started, state, sign_in})
 
   @doc """
-  Takes a callback's params. Returns the code to show and the sign-in it pairs, `{:declined,
-  sign_in}` where the person declined at the provider, or `:error` where it's no sign-in started
-  here.
+  Takes a callback's params. Returns the code to show and its sign-in, `{:declined, sign_in}`, or `:error`.
   """
   @spec called_back(GenServer.server(), map()) ::
           {:ok, String.t(), sign_in()} | {:declined, sign_in()} | :error
   def called_back(pairings, params), do: GenServer.call(pairings, {:called_back, params})
 
   @doc """
-  Pairs `code` with the sign-in `principal` started to `credential`. Returns the callback's params
-  to finish it with, once.
+  Pairs `code` with `principal`'s sign-in to `credential`. Returns the callback's params, once.
 
-  Returns `{:error, :mismatch}` for any code that isn't that sign-in's own, and
-  `{:error, {:ended, sign_in, state}}` where it's abandoned or expired, so the caller ends it.
+  Returns `{:error, :mismatch}` for a wrong code, and `{:error, {:ended, sign_in, state}}` once
+  it's ended or expired.
   """
   @spec pair(GenServer.server(), {Principal.t(), String.t()}, String.t()) ::
           {:ok, map()} | {:error, :mismatch | {:ended, sign_in(), String.t()}}

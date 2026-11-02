@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.CLI.Access do
-  @moduledoc "The commands on the vault: the secrets agents hold. See `WardrikDaemon.Secrets`."
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
@@ -20,9 +20,8 @@ defmodule WardrikDaemon.CLI.Access do
         summary: "seal a secret, read from stdin, for the deployment, an --org or a --user",
         details: [
           "echo \"$VALUE\" | wardrik vault put NAME --for api_key",
-          "--for says what it's for: api_key, client_secret, header or signing_secret. It's read",
-          "only for that, so a client secret is never read as an API key. ${NAME} in config.yaml",
-          "reads any of the deployment's."
+          "--for is api_key, client_secret, header or signing_secret. It's read only for that.",
+          "${NAME} in config.yaml reads the deployment's secrets."
         ],
         run: &put/3
       },
@@ -69,7 +68,7 @@ defmodule WardrikDaemon.CLI.Access do
        "Say what #{name} is for: #{cx.program} vault put #{name} --for api_key, client_secret, header or signing_secret."}
 
   @doc """
-  Seals `:value` in the vault as `:owner`'s secret `:name`, for `:purpose`, and says so.
+  Seals `:value` as `:owner`'s secret `:name`, for `:purpose`, and says so.
 
       Access.seal(cx, owner: "deployment", name: "ZAI_API_KEY", value: key, purpose: "api_key")
   """

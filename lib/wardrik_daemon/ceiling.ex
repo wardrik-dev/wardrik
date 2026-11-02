@@ -1,25 +1,15 @@
 defmodule WardrikDaemon.Ceiling do
   @moduledoc """
-  A budget all of an org's agents share: a budget its policies pool. See `WardrikDaemon.Orgs`.
+  A budget all of an org's agents share, from the org's policy. See `WardrikDaemon.Orgs`.
 
-      # policies/plan.yaml, the policy config.yaml's orgs.acme.policy names
+      # policies/plan.yaml, named by config.yaml's orgs.acme.policy
       budget: {usd: 20.00, per: month}
 
-  `WardrikDaemon.Resolver` gives each of the org's agents this middleware, which counts what their
-  model and tool calls spend in each period, in the daemon's store.
-
-  Once the limit is reached, the next model call by any of the org's agents does what
-  `:on_exhausted` says:
-
-    * `:ask` - the default. The call waits on a `ceiling_approval` interrupt. Whoever may decide
-      on the agent may approve it. Approving adds the budget's `grant` for every agent in the org,
-      for that period.
-    * `:deny` - the call is refused.
-
-  Every ceiling emits `[:wardrik, :ceiling, :reached]` when its limit is reached.
-
-  A ceiling in dollars refuses models with no price. Subagents' model calls count too, as part of
-  the tool call that ran them.
+    * It counts what every agent of the org spends on models and tools, subagents included.
+    * At the limit, the next model call does what `:on_exhausted` says. `:ask` (the default)
+      waits for approval, which adds the budget's `grant` for the whole org. `:deny` refuses it.
+    * A ceiling in dollars refuses models with no price.
+    * Emits `[:wardrik, :ceiling, :reached]` when the limit is reached.
   """
 
   @behaviour WardrikCore.Middleware
@@ -50,8 +40,7 @@ defmodule WardrikDaemon.Ceiling do
   defp limited(_budget), do: :ok
 
   @doc """
-  Returns what `org`'s agents have spent against `ceiling` in the current period, as kept in
-  `store`.
+  Returns what `org`'s agents have spent against `ceiling` this period.
 
       %{
         limit: %{usd: 20.0, tokens: nil},
@@ -62,7 +51,7 @@ defmodule WardrikDaemon.Ceiling do
         starts_over: ~D[2026-10-31]
       }
 
-  `:starts_over` is `nil` for a `per: :total` ceiling.
+  `:starts_over` is `nil` for `per: :total`.
   """
   @spec spent(WardrikStore.t(), String.t(), t()) :: map()
   def spent(store, org, %__MODULE__{budget: budget} = ceiling) do
@@ -79,10 +68,7 @@ defmodule WardrikDaemon.Ceiling do
     }
   end
 
-  @doc """
-  Returns what `org`'s agents have spent against `ceiling`, as JSON: what
-  `GET /v1/owners/{org}/ceilings` answers for it.
-  """
+  @doc "Returns `spent/3` as JSON, as `GET /v1/owners/{org}/ceilings` answers it."
   @spec json(WardrikStore.t(), String.t(), t()) :: map()
   def json(store, org, ceiling) do
     spend = spent(store, org, ceiling)

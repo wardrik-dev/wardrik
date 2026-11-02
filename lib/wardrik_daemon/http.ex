@@ -1,43 +1,6 @@
 defmodule WardrikDaemon.HTTP do
   @moduledoc """
-  The daemon's HTTP API: its own routes, with every other request served by `Wardrik.HTTP`.
-
-  | Route | Serves |
-  | --- | --- |
-  | `GET /v1/owners/{owner}/agents?name=` | the agents of the owner's org the caller may read, by name. See `WardrikDaemon.AgentRecords`. |
-  | `POST /v1/owners/{owner}/agents` | makes an agent: mints its ID, keeps its record, and defines it |
-  | `GET /v1/owners/{owner}/secrets` | the owner's secrets, by name and purpose, never a value |
-  | `PUT /v1/owners/{owner}/secrets/{name}` | seals a secret. See `WardrikDaemon.Secrets`. |
-  | `DELETE /v1/owners/{owner}/secrets/{name}` | removes one |
-  | `GET /v1/owners/{owner}/ceilings` | what an org has spent against each ceiling |
-  | `GET /v1/owners/{owner}/servers` | the MCP servers the owner's agents reach. See `WardrikDaemon.Servers`. |
-  | `POST /v1/owners/{owner}/servers` | adds one, started on every node |
-  | `DELETE /v1/owners/{owner}/servers/{name}` | removes one of the owner's own |
-  | `GET /v1/owners/{owner}/notify_targets` | the webhooks the owner's agents' notices reach. See `WardrikDaemon.NotifyTargets`. |
-  | `POST /v1/owners/{owner}/notify_targets` | adds one |
-  | `DELETE /v1/owners/{owner}/notify_targets/{name}` | removes one of the owner's own |
-  | `GET /v1/owners/{owner}/providers` | the OAuth apps the owner's people sign in with. See `WardrikDaemon.OAuthApps`. |
-  | `POST /v1/owners/{owner}/providers` | adds one |
-  | `DELETE /v1/owners/{owner}/providers/{name}` | removes one of the owner's own |
-  | `GET /v1/connections` | the caller's accounts, and whether each is connected. See `WardrikDaemon.Connections`. |
-  | `POST /v1/connections/{provider}` | starts the caller's sign-in to one |
-  | `POST /v1/connections/{provider}/pair` | finishes a browser sign-in with the code its page showed |
-  | `DELETE /v1/connections/{provider}` | forgets the caller's account |
-  | `GET /v1/tokens` | every token, never a secret. See `WardrikDaemon.Tokens`. |
-  | `POST /v1/tokens` | creates one, answering its secret once |
-  | `DELETE /v1/tokens/{id}` | revokes one |
-  | `GET /oauth/callback` | where a browser sign-in comes back: shows the code that finishes it |
-
-  `priv/openapi.json` describes them, as `openapi/0` returns it.
-
-  An owner is one path segment, encoded: `acme`, `acme%2F%40jon` or `deployment`.
-
-  Its routes take the same tokens (`WardrikDaemon.Authenticator`), and are decided by the same
-  roles and bindings (`WardrikDaemon.Authorizer`), on `{:agents, owner}` to make an agent, each
-  agent found, `{:secret, owner}`, `{:ceiling, org}`,
-  `{:mcp_server, owner}`, `{:notify_target, owner}`, `{:provider, owner}`, `{:connection, id}`
-  for the caller's own, and `{:token, id}`. A body is checked against
-  its schema in `priv/openapi.json`. They answer errors as `Wardrik.HTTP` does.
+  The daemon's HTTP API. It serves its own routes, and passes every other request to `Wardrik.HTTP`.
 
       {WardrikDaemon.HTTP,
        wardrik: name,
@@ -47,17 +10,35 @@ defmodule WardrikDaemon.HTTP do
        config: config,
        port: 4747}
 
+  | Route | Does |
+  | --- | --- |
+  | `GET`, `POST /v1/owners/{owner}/agents` | finds agents by `?name=`; makes one |
+  | `GET /v1/owners/{owner}/secrets` | lists secrets, never values |
+  | `PUT`, `DELETE /v1/owners/{owner}/secrets/{name}` | seals or removes a secret |
+  | `GET /v1/owners/{owner}/ceilings` | an org's spend against each ceiling |
+  | `GET`, `POST /v1/owners/{owner}/servers`, `DELETE .../{name}` | MCP servers |
+  | `GET`, `POST /v1/owners/{owner}/notify_targets`, `DELETE .../{name}` | webhooks |
+  | `GET`, `POST /v1/owners/{owner}/providers`, `DELETE .../{name}` | OAuth apps |
+  | `GET /v1/connections` | your accounts |
+  | `POST`, `DELETE /v1/connections/{provider}` | starts a sign-in; forgets an account |
+  | `POST /v1/connections/{provider}/pair` | finishes a browser sign-in with its code |
+  | `GET`, `POST /v1/tokens`, `DELETE /v1/tokens/{id}` | tokens |
+  | `GET /oauth/callback` | shows the code that finishes a browser sign-in |
+
+    * `priv/openapi.json` describes them. Bodies are checked against it.
+    * `{owner}` is `acme`, `acme%2F%40jon` (a person) or `deployment`.
+    * Tokens and permissions work as for Wardrik's routes. See `WardrikDaemon.Authenticator` and
+      `WardrikDaemon.Authorizer`.
+
   ## Options
 
     * `:wardrik` - required. The Wardrik it serves.
     * `:authenticator` - required. As `Wardrik.HTTP` takes it.
-    * `:store` - required. The daemon's scope of the store, where it keeps tokens, servers,
-      notify targets, OAuth apps and ceilings' spend.
-    * `:orgs` - required. What `WardrikDaemon.Orgs` reads orgs from. An owner in an org it doesn't
-      run is answered as one that isn't there.
-    * `:config` - required. `config.yaml`, as `WardrikDaemon.Config.read/3` returns it.
+    * `:store` - required. The daemon's scope of the store.
+    * `:orgs` - required. Where `WardrikDaemon.Orgs` reads orgs from.
+    * `:config` - required. The `WardrikDaemon.Config`.
 
-  As a child, it also takes Bandit's options, such as `:port` and `:ip`.
+  Other options go to Bandit, such as `:port` and `:ip`.
   """
 
   use Plug.Router, copy_opts_to_assign: :daemon
@@ -117,8 +98,7 @@ defmodule WardrikDaemon.HTTP do
                end)
 
   @doc """
-  Returns the daemon's own operation `id`, as `WardrikProtocol.operation/1` returns Wardrik's, with
-  its `:method`, `:path` and `:parameters`. Returns `nil` if the daemon has none of that ID.
+  Returns the daemon's operation `id`, with its `:method`, `:path` and `:parameters`, or `nil`.
 
       %{method: "put", path: "/v1/owners/{owner}/secrets/{name}"} =
         WardrikDaemon.HTTP.operation("secrets.put")

@@ -1,11 +1,5 @@
 defmodule WardrikDaemon.Doctor.Agents do
-  @moduledoc """
-  Checks every agent file and policy as the daemon reads them.
-
-  Each file's definition is checked against the protocol's schema, then as Wardrik would start
-  it, with the tools, servers, channels and policies the daemon offers. Nothing is started but a
-  store in memory, which holds a record of each file's agent.
-  """
+  @moduledoc false
 
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.AgentRecords

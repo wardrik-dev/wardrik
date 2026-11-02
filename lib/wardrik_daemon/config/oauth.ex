@@ -1,6 +1,6 @@
 defmodule WardrikDaemon.Config.OAuth do
   @moduledoc """
-  Reads `config.yaml`'s `oauth`: the services people sign in to, and the deployment's providers.
+  Reads `config.yaml`'s `oauth`: the services people sign in to.
 
       oauth:
         client_name: Acme agents
@@ -11,20 +11,11 @@ defmodule WardrikDaemon.Config.OAuth do
             client_secret: ${GITHUB_CLIENT_SECRET}
             scopes: [repo]
             flow: device
-          google:
-            issuer: https://accounts.google.com
-            client_id: ${GOOGLE_CLIENT_ID}
-            client_secret: ${GOOGLE_CLIENT_SECRET}
-            authorization_params: {access_type: offline, prompt: consent}
 
-  `oauth` takes Wardrik's `:oauth` options, as `Wardrik.start_link/1` documents them, but `page`,
-  which is `base_url` with `/oauth`, and `resolver`, which is `WardrikDaemon.OAuthApps`. Each
-  provider is the deployment's OAuth app, named like the credential it grants, and takes
-  `WardrikOAuth.Provider`'s options, with `flow` and `client_auth` written as `device`, `basic` and
-  so on.
-
-  With `oauth` set, people connect accounts, and orgs and people add OAuth apps of their own, even
-  with no `providers` here.
+    * It takes `Wardrik.start_link/1`'s `:oauth` options, except `page` and `resolver`, which the
+      daemon sets.
+    * Each provider takes `WardrikOAuth.Provider`'s options, and is named after its credential.
+    * With `oauth` set, orgs and people can add OAuth apps, even with no `providers`.
   """
 
   alias WardrikDaemon.Config.Options
@@ -32,10 +23,7 @@ defmodule WardrikDaemon.Config.OAuth do
   @managed [:page, :providers, :resolver]
   @atoms [:flow, :client_auth]
 
-  @doc """
-  Returns `section` as Wardrik's `:oauth` options, coming back to `page`, with the deployment's
-  `:providers`. `nil` without `oauth`.
-  """
+  @doc "Returns `section` as Wardrik's `:oauth` options, or `nil` without `oauth`."
   @spec read(map() | nil, String.t()) :: {:ok, keyword() | nil} | {:error, String.t()}
   def read(nil, _page), do: {:ok, nil}
 

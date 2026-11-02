@@ -145,7 +145,7 @@ defmodule WardrikDaemon.Config do
           ] ++ Keyword.take(Wardrik.schema().schema, @wardrik)
 
   @moduledoc """
-  Reads `config.yaml` as the daemon starts.
+  Reads `config.yaml`.
 
       org: acme
       base_url: https://agents.acme.example
@@ -160,23 +160,11 @@ defmodule WardrikDaemon.Config do
 
   #{Enum.map_join(@wardrik, ", ", &"`#{&1}`")} are `Wardrik.start_link/1`'s options.
 
-  `tools`, `tokens`, `cluster` and `ssh` aren't supported yet, and are skipped with a warning. Any
-  other key is an error.
-
-  A section that holds a library's options takes them by name, with each value written as YAML
-  writes it: `flow: device` for `flow: :device`, a map for a keyword list. A key no option is named
-  after, or a value an option doesn't take, is an error naming where it is, as
-  `oauth.providers.google: unknown options [:colour], valid options are: ...`.
-
-  ## Secrets
-
-  `${NAME}` in any string is replaced with:
-
-    1. the environment variable `NAME`, or one the env file sets, or else
-    2. the deployment's secret `NAME` in the vault, which `wardrik vault put NAME --for PURPOSE` seals.
-
-  `vault`, `http` and `storage` are read before the vault opens, so they take the environment
-  alone. A `${NAME}` nothing sets is an error.
+    * `tools`, `tokens`, `cluster` and `ssh` are skipped with a warning. Any other unknown key is
+      an error that names its path.
+    * YAML writes atoms as strings (`flow: device`) and keyword lists as maps.
+    * `${NAME}` reads the environment, the env file, then the deployment's vault secret `NAME`.
+      `vault`, `http` and `storage` read the environment only.
   """
 
   @bootstrap ~w(vault http storage)
@@ -232,10 +220,9 @@ defmodule WardrikDaemon.Config do
   @type vault() :: (String.t() -> {:ok, String.t()} | :error)
 
   @doc """
-  Reads `config.yaml` in the config directory.
+  Reads `config.yaml` from the config directory, filling `${NAME}` from `env`, then `vault`.
 
-  Fills in `${NAME}` from `env`, then from `vault`. A missing file reads as the defaults. Returns
-  `{:error, reason}`, naming the file and key, if it doesn't read.
+  A missing file reads as the defaults.
   """
   @spec read(Dirs.t(), %{String.t() => String.t()}, vault() | nil) ::
           {:ok, t()} | {:error, String.t()}

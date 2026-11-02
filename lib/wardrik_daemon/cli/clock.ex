@@ -1,9 +1,8 @@
 defmodule WardrikDaemon.CLI.Clock do
-  @moduledoc "Formats times and counts for the CLI, in few characters."
+  @moduledoc false
 
   @doc """
-  Returns how long from `now` until `at`, an ISO 8601 time, as `in 45m` or `in 3h 10m`. Returns
-  `nil` for `nil`.
+  Returns how long from `now` until `at`, an ISO 8601 time, or `nil` for `nil`.
 
       WardrikDaemon.CLI.Clock.from_now("2026-10-27T16:00:00Z", ~U[2026-10-27 12:50:00Z])
       #=> "in 3h 10m"

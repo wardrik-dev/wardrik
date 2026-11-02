@@ -6,19 +6,12 @@ defmodule WardrikDaemon.CLI do
       wardrik ask triage "What's new?"
       wardrik approval approve triage CALL --json
 
-  Each command runs an operation on the daemon over its HTTP API. It acts with the token the daemon
-  writes to `cli_token` as it starts. `WARDRIK_URL` and `WARDRIK_TOKEN` point it at another daemon.
-
-  Commands are grouped in namespaces, as `agent ls` and `vault put`. `ask`, `follow` and `ls`
-  are shortcuts. Each is a `WardrikDaemon.CLI.Command`, defined once for its help, its options and
-  running it.
-
-  Every command takes `--json`, and then prints the operation's JSON. An agent is named by its name:
-  `triage` in the deployment's org, or `growth/triage` in another. The daemon finds its ID. A
-  command on an agent takes `--conversation ID` for one of its conversations.
-
-  `serve`, `start`, `stop`, `pid`, `logs` and `service` run the daemon itself, so the `bin/wardrik`
-  script handles them.
+    * Each command calls the daemon's HTTP API with the token in `cli_token`.
+      `WARDRIK_URL` and `WARDRIK_TOKEN` point it at another daemon.
+    * Every command takes `--json`.
+    * An agent is a name: `triage` in the deployment's org, or `growth/triage` in another.
+    * Commands on an agent take `--conversation ID`.
+    * `serve`, `start`, `stop`, `pid`, `logs` and `service` are run by the `bin/wardrik` script.
   """
 
   alias WardrikDaemon.CLI.Access

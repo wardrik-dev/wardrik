@@ -1,6 +1,6 @@
 defmodule WardrikDaemon.CLI.Command do
   @moduledoc """
-  One command `wardrik` takes, defined once for its help, its options and running it.
+  One `wardrik` command: its help, its options and what it runs.
 
       %WardrikDaemon.CLI.Command{
         name: "agent ls",
@@ -15,15 +15,15 @@ defmodule WardrikDaemon.CLI.Command do
 
   ## Fields
 
-    * `:name` - required. The words that name it, as `agent ls`.
-    * `:group` - required. The group help lists it under.
+    * `:name` - required. The words that name it.
+    * `:group` - required. Its heading in help.
     * `:summary` - required. One line on what it does.
-    * `:arguments` - how its arguments are typed in help, as `AGENT MESSAGE`.
+    * `:arguments` - its arguments in help, as `AGENT MESSAGE`.
     * `:details` - more lines for its own help.
-    * `:switches` - the options it takes, as `OptionParser` takes them.
-    * `:count` - how many arguments it takes: a number, or `{least, :any}`. `0` unless set.
-    * `:shortcut` - a shorter name it also takes, as `ls`.
-    * `:run` - takes the arguments, the switches and the `WardrikDaemon.CLI.Context`. `nil` for a
+    * `:switches` - its options, as `OptionParser` takes them.
+    * `:count` - how many arguments: a number, or `{least, :any}`. `0` unless set.
+    * `:shortcut` - a shorter name, as `ls`.
+    * `:run` - takes the arguments, switches and `WardrikDaemon.CLI.Context`. `nil` for a
       command `bin/wardrik` runs itself.
   """
 

@@ -1,9 +1,9 @@
 defmodule WardrikDaemon.Owners do
   @moduledoc """
-  Reads who owns each agent, and what owners are.
+  Who owns each agent, and what an owner is.
 
-  An owner is the deployment, an org such as `acme`, or a person in one, as `acme/@jon`. An agent's
-  owner and org are in its record, never in its ID. See `WardrikDaemon.AgentRecords`.
+  An owner is `deployment`, an org such as `acme`, or a person in one, as `acme/@jon`.
+  An agent's owner is in its record, never its ID. See `WardrikDaemon.AgentRecords`.
   """
 
   alias WardrikDaemon.AgentRecords
@@ -12,8 +12,7 @@ defmodule WardrikDaemon.Owners do
   @held [:secret, :ceiling, :mcp_server, :notify_target, :provider, :connection, :agents]
 
   @doc """
-  Returns the owner of the agent `id`, from its record in `store`, or `:error` if the daemon made
-  no such agent.
+  Returns the owner of agent `id`, or `:error` if the daemon didn't make it.
 
       WardrikDaemon.Owners.owner(store, "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN")
       #=> {:ok, "acme/@jon"}
@@ -24,13 +23,10 @@ defmodule WardrikDaemon.Owners do
   end
 
   @doc """
-  Returns whether `owner` is one the daemon names: the deployment, an org, or a person in one.
+  Returns whether `owner` is the deployment, an org, or a person in one.
 
       WardrikDaemon.Owners.valid?("acme/@jon")
       #=> true
-
-      WardrikDaemon.Owners.valid?("acme/triage")
-      #=> false
   """
   @spec valid?(String.t()) :: boolean()
   def valid?(@deployment), do: true
@@ -76,9 +72,7 @@ defmodule WardrikDaemon.Owners do
   end
 
   @doc """
-  Returns the org a resource is in, or `nil` if it's in none: the deployment, what the deployment
-  owns, tokens, and an agent the daemon made no record of. What an owner holds is in its org: its
-  agents, secrets, servers, notify targets, OAuth apps and connections, as are an org's ceilings.
+  Returns the org a resource is in, or `nil` for the deployment's things, tokens and unknown agents.
 
       WardrikDaemon.Owners.org_of(store, {:agent, "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN"})
       #=> "acme"
@@ -97,20 +91,16 @@ defmodule WardrikDaemon.Owners do
   def org_of(_store, {:token, _id}), do: nil
 
   @doc """
-  Returns whether `owner` is `within` itself, or a person in the org `within`.
+  Returns whether `owner` is `within`, or a person in the org `within`.
 
       WardrikDaemon.Owners.within?("acme/@jon", "acme")
       #=> true
-
-      WardrikDaemon.Owners.within?("acme", "acme/@jon")
-      #=> false
   """
   @spec within?(String.t(), String.t()) :: boolean()
   def within?(owner, within), do: owner == within or org(owner) == within
 
   @doc """
-  Returns the owners whose settings `owner`'s agents use, nearest first: its own, its org's for a
-  person, then the deployment's.
+  Returns the owners whose settings `owner`'s agents use, nearest first.
 
       WardrikDaemon.Owners.chain("acme/@jon")
       #=> ["acme/@jon", "acme", "deployment"]

@@ -1,15 +1,14 @@
 defmodule WardrikDaemon.NotifyTargets do
   @moduledoc """
-  Keeps the webhooks each org or person adds for their agents' notices. `WardrikDaemon.HTTP` serves
-  them at `/v1/owners/{owner}/notify_targets`, and `wardrik notify` reaches them there.
+  The webhooks orgs and people add for their agents' notices, served at
+  `/v1/owners/{owner}/notify_targets`.
 
-  `WardrikDaemon.Resolver` gives each to its owner's agents as a `WardrikDaemon.Webhook`: an org's
-  to the org's agents and its people's, a person's to theirs alone. `notify: "ops"` reaches the
-  nearest `ops`: the agent owner's, their org's, the deployment's, then `config.yaml`'s.
+      wardrik notify add audit --url https://hooks.example.com/wardrik --secret HOOK_SECRET --org acme
 
-  A webhook's secret is named, never held: it's read from its owner's vault, sealed for
-  `signing_secret`, as each notice is sent. Adding or removing one records `notify_target.added`
-  or `notify_target.removed` in the audit.
+    * `notify: "audit"` reaches the nearest `audit`: the owner's, their org's, the deployment's,
+      then `config.yaml`'s.
+    * The secret is read from the owner's vault, sealed for `signing_secret`, for each notice.
+    * Adding or removing one records `notify_target.added` or `notify_target.removed` in the audit.
   """
 
   alias Wardrik.Error
@@ -21,11 +20,7 @@ defmodule WardrikDaemon.NotifyTargets do
 
   @kind "notify_targets"
 
-  @doc """
-  Lists the targets `owner`'s agents route to, nearest first: their own, their org's for a person,
-  the deployment's, then those `config.yaml` gives their org. Never a secret, nor a `config.yaml`
-  target's options.
-  """
+  @doc "Lists the targets `owner`'s agents route to, nearest first. Never a secret."
   @spec list(Servers.daemon(), String.t()) :: [map()]
   def list(%{store: store, config: config}, owner) do
     added = for target <- Owned.along(store, @kind, owner), do: listed(target)
@@ -33,8 +28,7 @@ defmodule WardrikDaemon.NotifyTargets do
   end
 
   @doc """
-  Returns the targets `owner`'s agents route to by name, as `Wardrik.Resolved`'s `:notify` takes
-  them: a webhook added here as a `WardrikDaemon.Webhook`, or the name of one in `config.yaml`.
+  Returns the targets `owner`'s agents route to by name, as `Wardrik.Resolved`'s `:notify` takes them.
   """
   @spec reached(Servers.daemon(), String.t()) :: [{String.t(), Wardrik.Resolved.notify_target()}]
   def reached(%{store: store, config: config}, owner) do
@@ -66,10 +60,7 @@ defmodule WardrikDaemon.NotifyTargets do
   defp kind(module), do: module |> Module.split() |> List.last() |> Macro.underscore()
 
   @doc """
-  Adds the webhook `input` describes for `owner`'s agents' notices, as `actor`. Returns it as it's
-  kept.
-
-  `input` is the JSON the route takes, already checked against its schema.
+  Adds the webhook `input` describes for `owner`, as `actor`. `input` is the route's checked JSON.
   """
   @spec add(Servers.daemon(), {String.t(), map()}, Principal.t() | nil) ::
           {:ok, map()} | {:error, Error.t()}

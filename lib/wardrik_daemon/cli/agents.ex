@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.CLI.Agents do
-  @moduledoc "The commands on agents: listing, showing, asking, following and stopping them."
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Clock
   alias WardrikDaemon.CLI.Command
@@ -50,10 +50,8 @@ defmodule WardrikDaemon.CLI.Agents do
         count: {2, :any},
         summary: "send an agent a message, and follow its answer",
         details: [
-          "Its reasoning shows faint as it comes, then its answer, with each tool call it makes.",
-          "It follows the turn until it ends or waits on a person; Ctrl-C stops following, and the",
-          "agent carries on. --no-wait only sends it. --conversation sends it to one of the",
-          "agent's conversations, by its ID, as a Slack thread's."
+          "Prints the answer as it comes, with each tool call. Ctrl-C stops following; the agent",
+          "carries on. --no-wait only sends it. --conversation ID sends it to one conversation."
         ],
         run: &asked/3
       },
@@ -98,8 +96,7 @@ defmodule WardrikDaemon.CLI.Agents do
         count: {0, :any},
         summary: "stop the turn an agent runs or waits in",
         details: [
-          "Several AGENTs stop each one's turn, and --all those of every agent there is. The",
-          "messages waiting behind a turn go too."
+          "--all stops every agent's turn. Messages queued behind a turn are dropped too."
         ],
         run: &cancelled/3
       },

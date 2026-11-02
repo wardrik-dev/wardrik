@@ -1,13 +1,11 @@
 defmodule WardrikDaemon.Client do
   @moduledoc """
-  Reaches a daemon over its HTTP API. The `wardrik` command uses it.
+  Calls a daemon's HTTP API. The `wardrik` command uses it.
 
       client = %WardrikDaemon.Client{url: "http://127.0.0.1:4747", secret: secret}
       {:ok, answer} = WardrikDaemon.Client.run(client, "agents.list", %{})
 
-  Each `WardrikProtocol` operation, and each of the daemon's own (see `WardrikDaemon.HTTP`), is sent
-  to its route, with `secret` as the bearer token. An input with a `"conversation"` goes to the
-  operation's route for that conversation.
+  It takes every `WardrikProtocol` operation and the daemon's own. See `WardrikDaemon.HTTP`.
   """
 
   @enforce_keys [:url, :secret]
@@ -31,9 +29,7 @@ defmodule WardrikDaemon.Client do
   end
 
   @doc """
-  Opens the operation `id`'s events as server-sent events. Read them with `next/2`.
-
-  It returns once the daemon is following them, so nothing written after it returns is missed.
+  Opens operation `id`'s events as a stream. Read them with `next/2`. Nothing after it returns is missed.
   """
   @spec open(t(), String.t(), map()) :: {:ok, Req.Response.t()} | error()
   def open(client, id, input) do

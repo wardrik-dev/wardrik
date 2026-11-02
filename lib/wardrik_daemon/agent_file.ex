@@ -1,9 +1,6 @@
 defmodule WardrikDaemon.AgentFile do
   @moduledoc """
-  Reads an agent file: a Markdown file in `agents/`.
-
-  The frontmatter is the agent's definition, and the body is its instructions. This is
-  `agents/triage.md`:
+  Reads an agent file from `agents/`. The frontmatter is the definition; the body is the instructions.
 
       ---
       description: Watches the incident queue and says what needs an engineer.
@@ -11,21 +8,12 @@ defmodule WardrikDaemon.AgentFile do
       tools: [linear/*]
       policy: careful
       ---
-      You watch the incident queue. Summarise anything new, and say which issues need an engineer.
+      You watch the incident queue. Summarise anything new.
 
-  The file's name is the agent's name, `triage` above. A name is unique in its org. Two keys say
-  whose it is:
-
-    * `org` - the org it's in: the deployment's `org`, or one `config.yaml`'s `orgs` declares.
-      Its owner's org, or else the deployment's `org`, unless set.
-    * `owner` - who it works for: its org, or a person in it, as `acme/@jon` or `"@jon"`. Its
-      org unless set.
-
-  The daemon gives each agent an ID of its own, and keeps it as long as the file keeps its name.
-  See `WardrikDaemon.Agents`.
-
-  Every other key is part of the definition. See `Wardrik.Definition`. Keys the file leaves out
-  come from `config.yaml`'s `defaults`. A file with no frontmatter is all instructions.
+    * The file name is the agent's name: `agents/triage.md` is `triage`. A name is unique in its org.
+    * `org` - the deployment's `org`, or one in `config.yaml`'s `orgs`. The owner's org unless set.
+    * `owner` - its org, or a person in it, as `"@jon"` or `acme/@jon`. Its org unless set.
+    * Every other key is part of the `Wardrik.Definition`. Missing keys come from `defaults`.
   """
 
   alias WardrikDaemon.AgentRecords
@@ -36,8 +24,7 @@ defmodule WardrikDaemon.AgentFile do
   @type agent() :: %{org: String.t(), owner: String.t(), name: String.t()}
 
   @doc """
-  Reads the file at `path`. Returns whose agent it is, with its name, and its definition, with
-  `defaults` filled in.
+  Reads the file at `path`. Returns its owner, name and definition, with `defaults` filled in.
   """
   @spec read(Path.t(), Config.t()) :: {:ok, agent(), map()} | {:error, String.t()}
   def read(path, %Config{} = config) do

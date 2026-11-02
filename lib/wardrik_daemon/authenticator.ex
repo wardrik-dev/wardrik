@@ -1,17 +1,15 @@
 defmodule WardrikDaemon.Authenticator do
   @moduledoc """
-  Says who each HTTP request comes from, by the token it's sent with as `Authorization: Bearer`.
-  It's the daemon's `WardrikHTTP.Authenticator`. See `WardrikDaemon.Tokens`.
-
-    * A `user:ID` token acts as the principal `ID`, with its groups as the principal's `:groups`
-      attribute.
-    * An `agent:ID` token acts as the agent, by its ID, for its owner, as its own tools do.
-
-  A missing, unknown, revoked or expired token is `:unauthorized`.
+  Says who sent each HTTP request, from its `Authorization: Bearer` token. It's the daemon's
+  `WardrikHTTP.Authenticator`.
 
       {Wardrik.HTTP, wardrik: name, authenticator: {WardrikDaemon.Authenticator, store}}
 
-  `store` is the daemon's own scope of the store, where `WardrikDaemon.Tokens` keeps them.
+    * A `user:ID` token acts as that user, with its groups.
+    * An `agent:` token acts as that agent, as its own tools do.
+    * A missing, unknown, revoked or expired token is `:unauthorized`.
+
+  See `WardrikDaemon.Tokens`.
   """
 
   @behaviour WardrikHTTP.Authenticator

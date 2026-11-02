@@ -1,15 +1,11 @@
 defmodule WardrikDaemon.Egress do
   @moduledoc """
-  Decides which URLs orgs and people may point the daemon at: an MCP server's, a webhook's, and an
-  OAuth app's. It's the daemon's Wardrik `:egress`, and `WardrikOAuth`'s `:check`.
+  Checks the URLs orgs and people add: MCP servers, webhooks and OAuth apps.
 
-    * A URL must be `https`, at a public address, as `Wardrik.Egress.public/1` says. Loopback,
-      private, link-local and cloud metadata addresses are refused, as each is added and as each
-      connection or notice is sent.
-    * A host an OAuth provider in `config.yaml` names is trusted, so an IdP on your network still
-      signs people in. Servers and targets in `config.yaml` aren't checked at all.
-    * `allow_private_urls: true` in `config.yaml` lets any URL through. It's for local use only,
-      as when every server runs on your own machine.
+    * A URL must be `https` at a public address, checked when added and on each request.
+    * Hosts `config.yaml`'s OAuth providers name are trusted. `config.yaml`'s own servers and
+      targets aren't checked.
+    * `allow_private_urls: true` lets any URL through. For local use only.
   """
 
   alias WardrikDaemon.Config

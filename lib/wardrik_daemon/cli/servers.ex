@@ -1,11 +1,5 @@
 defmodule WardrikDaemon.CLI.Servers do
-  @moduledoc """
-  The commands on the MCP servers, notify targets and OAuth apps an owner adds, and the accounts
-  the caller connects. See `WardrikDaemon.Servers`, `WardrikDaemon.NotifyTargets`,
-  `WardrikDaemon.OAuthApps` and `WardrikDaemon.Connections`.
-
-  Each but `connection` acts for the deployment's org, unless given `--org` or `--user`.
-  """
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
@@ -13,7 +7,6 @@ defmodule WardrikDaemon.CLI.Servers do
   alias WardrikDaemon.CLI.Terminal
 
   @owner [org: :string, user: :string]
-  @waits :timer.minutes(15)
   @poll :timer.seconds(1)
 
   @doc "Returns the commands on MCP servers, notify targets, OAuth apps and connections."
@@ -133,8 +126,8 @@ defmodule WardrikDaemon.CLI.Servers do
         count: 1,
         summary: "sign in to an account, for your agents to use",
         details: [
-          "With a code from the provider, it waits until you enter it there. Otherwise it asks for",
-          "the code the page shows once you've signed in."
+          "A device sign-in shows a code to enter at the provider. It waits until the sign-in is",
+          "granted, declined or expired. A browser sign-in asks for the code its page shows."
         ],
         run: &connected/3
       },
@@ -303,7 +296,7 @@ defmodule WardrikDaemon.CLI.Servers do
       Owl.Data.tag(code, :cyan)
     ])
 
-    granted(cx, provider, System.monotonic_time(:millisecond) + @waits)
+    granted(cx, provider)
   end
 
   defp signing_in(cx, provider, %{"authorization" => %{"url" => url}}) do
@@ -318,23 +311,20 @@ defmodule WardrikDaemon.CLI.Servers do
         )
   end
 
-  defp granted(cx, provider, until) do
-    case Context.call(cx, "connections.list", %{}) do
-      {:ok, %{"connections" => connections}} ->
-        cond do
-          %{"provider" => provider, "connected" => true} in connections ->
-            Context.puts(cx, "Connected #{provider}.")
+  # Waits while the sign-in is under way. It ends once granted, refused or expired.
+  defp granted(cx, provider) do
+    with {:ok, %{"connections" => connections}} <- Context.call(cx, "connections.list", %{}) do
+      case Enum.find(connections, &(&1["provider"] == provider)) do
+        %{"connected" => true} ->
+          Context.puts(cx, "Connected #{provider}.")
 
-          System.monotonic_time(:millisecond) >= until ->
-            {:error, "The sign-in to #{provider} wasn't finished in time. Connect again."}
+        %{"signing_in" => true} ->
+          Process.sleep(@poll)
+          granted(cx, provider)
 
-          true ->
-            Process.sleep(@poll)
-            granted(cx, provider, until)
-        end
-
-      {:error, why} ->
-        {:error, why}
+        _ended ->
+          {:error, "The sign-in to #{provider} ended without connecting it. Connect again."}
+      end
     end
   end
 

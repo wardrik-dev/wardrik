@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.Console.Ansi do
-  @moduledoc "Turns `Owl.Data` into chardata, with or without colour."
+  @moduledoc false
 
   @doc "Returns `data` as chardata: with its styles as escape sequences if `colour?`, or plain if not."
   @spec chardata(Owl.Data.t(), boolean()) :: IO.chardata()

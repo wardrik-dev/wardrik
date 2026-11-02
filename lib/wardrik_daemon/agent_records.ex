@@ -1,14 +1,12 @@
 defmodule WardrikDaemon.AgentRecords do
   @moduledoc """
-  Keeps a record of each agent the daemon made: its ID, org, owner and name.
+  Keeps a record of each agent the daemon made.
 
       %{id: "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", org: "acme", owner: "acme/@jon", name: "notes"}
 
-  The daemon mints each ID, as `agt_` and a `WardrikDaemon.ULID`, and never reads anything from
-  it. A name is unique in its org. `WardrikDaemon.Owners` reads who owns an agent from here.
-
-  A record outlives an agent forgotten through the API. Its name is free again once the agent
-  is gone, and the next agent of that name gets a new ID.
+    * IDs are `agt_` and a `WardrikDaemon.ULID`. Nothing is read from them.
+    * A name is unique in its org. Once an agent is gone, its name is free and a new agent of
+      that name gets a new ID.
   """
 
   alias WardrikDaemon.Owners
@@ -48,10 +46,10 @@ defmodule WardrikDaemon.AgentRecords do
   end
 
   @doc """
-  Mints an ID for the agent `:name`, owned by `:owner`, and records it.
+  Mints an ID for agent `:name`, owned by `:owner`, and records it.
 
-  Returns `{:error, {:taken, record}}` if another agent has the name in the owner's org. Unless
-  `:replaces` returns `true` for that record: then it's dropped, and the name taken.
+  Returns `{:error, {:taken, record}}` if the name is taken in the org, unless `:replaces`
+  returns `true` for that record.
   """
   @spec create(WardrikStore.t(),
           owner: String.t(),
@@ -110,8 +108,7 @@ defmodule WardrikDaemon.AgentRecords do
     do: WardrikStore.delete(store, "agents/" <> URI.encode_www_form(record.id))
 
   @doc """
-  Returns `definition` with the agents it names by name, in `org`, named by their IDs. Those are
-  the agents whose workspaces its `workspace.shared` mounts.
+  Returns `definition` with the agents its `workspace.shared` names, in `org`, replaced by their IDs.
 
       AgentRecords.identified(store, "acme", %{"workspace" => %{"shared" => %{"books" => "runbooks"}}})
       #=> {:ok, %{"workspace" => %{"shared" => %{"books" => "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN"}}}}

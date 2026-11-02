@@ -1,19 +1,16 @@
 defmodule WardrikDaemon.Dirs do
   @moduledoc """
-  The directories the daemon keeps things in.
-
-  They follow the XDG base directories, so what you write stays apart from what the daemon writes.
-  Each one's environment variable moves it.
+  The directories the daemon uses. Each environment variable moves one.
 
   | Variable | Default | Holds |
   | --- | --- | --- |
-  | `WARDRIK_CONFIG_DIR` | `~/.config/wardrik` | `config.yaml`, `agents/` and `policies/` |
+  | `WARDRIK_CONFIG_DIR` | `~/.config/wardrik` | `config.yaml`, `agents/`, `policies/` |
   | `WARDRIK_DATA_DIR` | `~/.local/share/wardrik/store` | the store |
-  | `WARDRIK_DATA_HOME` | `~/.local/share/wardrik` | `vault_key` and `cli_token` |
+  | `WARDRIK_DATA_HOME` | `~/.local/share/wardrik` | `vault_key`, `cli_token` |
   | `WARDRIK_STATE_DIR` | `~/.local/state/wardrik` | logs |
-  | `WARDRIK_ENV_FILE` | `env` in the config directory | variables the daemon sets where its environment doesn't |
+  | `WARDRIK_ENV_FILE` | `env` in the config directory | extra environment variables |
 
-  The defaults follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` where they're set.
+  The defaults follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME`.
   """
 
   @enforce_keys [:config, :data, :data_home, :state, :env_file]

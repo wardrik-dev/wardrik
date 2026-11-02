@@ -1,13 +1,5 @@
 defmodule WardrikDaemon.CLIToken do
-  @moduledoc """
-  Issues the token the `wardrik` command acts with.
-
-  Each time the daemon starts, it revokes the last token and makes a new one, good for a year:
-  a `WardrikDaemon.Tokens` token for the deployment's admin, `user:admin`, whom
-  `WardrikDaemon.Config.Access` binds to `operator` in every org. It's written to `cli_token` in
-  the data home, readable only by you, as JSON with the token's `id`, its `secret`, and the `url`
-  the HTTP API listens at.
-  """
+  @moduledoc false
 
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Tokens

@@ -41,34 +41,33 @@ defmodule WardrikDaemon.Config.Access do
   ]
 
   @moduledoc """
-  Reads `config.yaml`'s `roles` and `bindings`: who may do what, as Kubernetes RBAC says it.
+  Reads `config.yaml`'s `roles` and `bindings`: who may do what, as in Kubernetes RBAC.
 
       roles:
         reader: {rules: [{verbs: [read, events], kinds: [agent]}]}
-        operator: {rules: [{verbs: ["*"], kinds: ["*"]}]}
       bindings:
         - {org: payments, role: operator, subjects: [user:ana, group:payments-eng]}
         - {org: payments, role: reader, subjects: [agent:triage]}
 
-  A role is a list of `rules`. A rule allows an action when its verb, its resource's kind and,
-  if `names` is set, its resource's name all match: an agent's name, or any other resource's ID.
-  Making an agent is the verb `create` on `agent`, which a rule with `names` doesn't allow:
+  ## Rules
 
   #{NimbleOptions.docs(NimbleOptions.new!(@rule))}
 
-  A binding gives one role to its subjects within one org:
+  ## Bindings
 
   #{NimbleOptions.docs(NimbleOptions.new!(@binding))}
 
-  `admin` is every verb on every kind, `token` too, and `roles` can't declare it. The
-  deployment's admin, `user:admin`, which the `wardrik` command acts as, is always bound to it in
-  `"*"`, so no config.yaml narrows it. `operator` is the same, unless `roles` declares it. Only the
-  admin's binding should need `"*"`: the deployment itself is in no org, nor are its secrets or
-  tokens. A token acts as its subject, so whoever may create tokens may act as the people they name;
-  give `token` sparingly, with `names` to say which subjects. Only the admin makes one for
-  `user:admin`.
+  ## Notes
 
-  See `WardrikDaemon.Authorizer` for how they decide.
+    * A verb is the part of an operation after the dot: `ask` for `agent.ask`.
+    * Making an agent is `create` on `agent`. A rule with `names` doesn't allow it.
+    * `admin` is every verb on every kind. `user:admin`, the `wardrik` command, holds it in `"*"`.
+      `roles` can't declare it.
+    * `operator` is every verb on every kind, unless `roles` declares it.
+    * Tokens are in no org. A token acts as its subject, so give `token` sparingly, with `names`.
+      Only the admin makes a token for `user:admin`.
+
+  See `WardrikDaemon.Authorizer`.
   """
 
   alias WardrikDaemon.Config.Options
@@ -84,11 +83,7 @@ defmodule WardrikDaemon.Config.Access do
   @spec admin() :: String.t()
   def admin, do: @admin
 
-  @doc """
-  Returns the roles and bindings `roles` and `bindings` declare, with the admin's.
-
-  `orgs` are the orgs `config.yaml` declares, which bindings may name.
-  """
+  @doc "Returns the roles and bindings, with the admin's. Bindings may name only `orgs`."
   @spec read(term(), term(), [String.t()]) :: {:ok, t()} | {:error, String.t()}
   def read(roles, bindings, orgs) do
     with {:ok, roles} <- roles(roles),

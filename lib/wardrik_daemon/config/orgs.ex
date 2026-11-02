@@ -21,14 +21,11 @@ defmodule WardrikDaemon.Config.Orgs do
 
   ## Keys
 
-  `mcp`, `channels` and `notify` name what their sections define.
-
   #{NimbleOptions.docs(NimbleOptions.new!(@schema))}
 
-  `"*"` is every org: what it lists, every org uses, and its policy holds every org.
-
-  A server, channel or target no entry lists is the deployment's own org's. A channel serves one
-  org, or every org if `"*"` lists it.
+    * `"*"` is every org: every org uses what it lists, and is held to its policy.
+    * A server, channel or target no entry lists is the deployment's org's.
+    * A channel serves one org, or every org if `"*"` lists it.
   """
 
   alias WardrikDaemon.Config.Options
@@ -43,9 +40,7 @@ defmodule WardrikDaemon.Config.Orgs do
         }
 
   @doc """
-  Returns each org's entry, `"*"`'s too.
-
-  `defined` holds the names `mcp`, `channels` and `notify` define, which entries may list.
+  Returns each org's entry. `defined` holds the names `mcp`, `channels` and `notify` define.
   """
   @spec read(map(), %{String.t() => [String.t()]}) ::
           {:ok, %{String.t() => entry()}} | {:error, String.t()}
@@ -55,9 +50,7 @@ defmodule WardrikDaemon.Config.Orgs do
   end
 
   @doc """
-  Returns the orgs whose agents use the `:kind` of thing called `:name`.
-
-  Returns `:all` if `"*"` lists it, the orgs whose entries list it, or just `:org` if none does.
+  Returns the orgs using `:kind` `:name`: `:all` if `"*"` lists it, else those listing it, else `[org]`.
 
       Orgs.using(orgs, kind: :mcp, name: "github", org: "acme")
   """
@@ -77,8 +70,7 @@ defmodule WardrikDaemon.Config.Orgs do
   end
 
   @doc """
-  Returns whether `config.yaml` gives the `:kind` of thing called `:name` to `:org`'s agents. The
-  deployment has every one.
+  Returns whether `config.yaml` gives `:kind` `:name` to `:org`. The deployment has every one.
 
       Orgs.serves?(config, kind: :mcp, name: "github", org: "acme")
   """

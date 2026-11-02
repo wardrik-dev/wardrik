@@ -1,11 +1,5 @@
 defmodule WardrikDaemon.Console.Table do
-  @moduledoc """
-  A markdown table: its header, its body rows, and each column's alignment.
-
-  `WardrikDaemon.Console.Markdown` builds one from the rows it held back, and returns it in place
-  of a line. Whoever draws it lays it out at the width it has then. `lines/2` does that for a
-  terminal written a line at a time.
-  """
+  @moduledoc false
 
   @typedoc "How a column's cells are aligned, from the rule row's colons."
   @type alignment() :: :left | :right | :center
@@ -20,11 +14,7 @@ defmodule WardrikDaemon.Console.Table do
 
   defstruct header: [], rows: [], alignments: [], indent: 0
 
-  @doc """
-  Returns a table from its header, body rows and alignments.
-
-  Short rows are padded with empty cells. Missing alignments are `:left`.
-  """
+  @doc "Returns a table. Short rows are padded with empty cells. Missing alignments are `:left`."
   @spec new([Owl.Data.t()], [[Owl.Data.t()]], [alignment()]) :: t()
   def new(header, rows, alignments \\ []) when is_list(header) and is_list(rows) do
     columns = [header | rows] |> Enum.map(&length/1) |> Enum.max()
@@ -50,12 +40,7 @@ defmodule WardrikDaemon.Console.Table do
     end
   end
 
-  @doc """
-  Returns the table as lines no wider than `width`, for a terminal that's never redrawn.
-
-  The table is boxed, with a bright header. Columns take their natural width if they fit. If not,
-  each cell wraps inside its column, at the left. A table with no body rows is its header alone.
-  """
+  @doc "Returns the table as boxed lines no wider than `width`. Cells wrap inside their column."
   @spec lines(t(), pos_integer()) :: [Owl.Data.t()]
   def lines(%__MODULE__{rows: []} = table, _width) do
     [[indent(table), Owl.Data.tag(Enum.intersperse(table.header, " │ "), :bright)]]

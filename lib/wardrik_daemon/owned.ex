@@ -1,9 +1,5 @@
 defmodule WardrikDaemon.Owned do
-  @moduledoc """
-  Keeps what owners add, each under its own path in the daemon's store, as
-  `servers/acme%2F%40jon/crm`. `WardrikDaemon.Servers`, `WardrikDaemon.NotifyTargets` and
-  `WardrikDaemon.OAuthApps` keep theirs here.
-  """
+  @moduledoc false
 
   alias WardrikDaemon.Owners
 
@@ -17,7 +13,7 @@ defmodule WardrikDaemon.Owned do
     do: for({_path, item, _vsn} <- WardrikStore.entries(store, prefix(kind, owner)), do: item)
 
   @doc """
-  Returns what `owner`'s agents reach of `kind`, nearest first along `WardrikDaemon.Owners.chain/1`.
+  Returns what `owner`'s agents reach of `kind`, nearest first. See `WardrikDaemon.Owners.chain/1`.
   """
   @spec along(WardrikStore.t(), String.t(), String.t()) :: [term()]
   def along(store, kind, owner), do: Enum.flat_map(Owners.chain(owner), &own(store, kind, &1))

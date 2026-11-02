@@ -1,26 +1,5 @@
 defmodule WardrikDaemon.Console.Markdown do
-  @moduledoc """
-  Renders streamed markdown a line at a time.
-
-  Text arrives a token at a time and must reach the screen before the document is finished, so
-  this renders lines, not documents. `push/2` takes what arrived and returns the lines now
-  complete. It keeps the rest:
-
-      {lines, buffer} = WardrikDaemon.Console.Markdown.push(WardrikDaemon.Console.Markdown.new(), "# Title\\nsome ")
-      {lines, buffer} = WardrikDaemon.Console.Markdown.push(buffer, "prose\\n")
-      {lines, _buffer} = WardrikDaemon.Console.Markdown.flush(buffer)
-
-  A line is `Owl.Data`. Two constructs span lines:
-
-    * a fenced code block - the buffer tracks whether it's inside one.
-    * a table - its rows are held back until the line after it arrives. They come back together
-      as one `WardrikDaemon.Console.Table`, which whoever draws it lays out at its own width.
-
-  `tail/1` returns the unfinished line, for a screen that shows text before its line is complete.
-
-  Nothing here wraps. Whoever draws a line wraps it at its own width, so a resized screen can wrap
-  it again.
-  """
+  @moduledoc false
 
   alias WardrikDaemon.Console.Table
 
@@ -116,11 +95,7 @@ defmodule WardrikDaemon.Console.Markdown do
     |> Enum.map(fn [_fence, body] -> body end)
   end
 
-  @doc """
-  Returns the unfinished line, rendered as if the stream ended here, or `nil` if nothing is pending.
-
-  It's provisional: the same text is rendered again, as a line, once its newline arrives.
-  """
+  @doc "Returns the unfinished line, rendered as if the stream ended here, or `nil`."
   @spec tail(t()) :: Owl.Data.t() | nil
   def tail(%__MODULE__{pending: ""}), do: nil
 

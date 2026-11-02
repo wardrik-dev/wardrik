@@ -1,6 +1,6 @@
 defmodule WardrikDaemon.Tokens.Token do
   @moduledoc """
-  A token the HTTP API is reached with, without its secret. See `WardrikDaemon.Tokens`.
+  A token, without its secret. See `WardrikDaemon.Tokens`.
 
       %WardrikDaemon.Tokens.Token{
         id: "mzxw6ytboi",

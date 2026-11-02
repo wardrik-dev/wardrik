@@ -1,17 +1,11 @@
 defmodule WardrikDaemon.Orgs do
   @moduledoc """
-  Says which orgs the daemon runs agents for, and the policies and ceilings each is held to.
-  `WardrikDaemon.Resolver` holds each agent to its org's.
+  The orgs the daemon runs agents for, and the policies and ceilings each is held to.
 
-  Those orgs are the deployment's own `org` and each one `config.yaml`'s `orgs` names. Any other
-  org is refused: nothing is defined, started or kept for it.
-
-  Each org is held to `"*"`'s policy, then its own, both from `policies/`. An org whose policy
-  isn't in `policies/` runs none of its agents.
-
-  A policy's budget is shared by all of an org's agents, as a `WardrikDaemon.Ceiling` named after
-  the policy. Each org spends `"*"`'s budget apart from the others. A budget `per: turn` stays each
-  agent's own, since a turn is one agent's.
+    * The orgs are `config.yaml`'s `org` and each in `orgs`. Any other is refused.
+    * Each is held to `"*"`'s policy, then its own. An org whose policy is missing runs no agents.
+    * A policy's budget is shared by the org's agents, as a `WardrikDaemon.Ceiling`. Each org
+      spends `"*"`'s budget separately. A `per: turn` budget stays each agent's own.
   """
 
   alias Wardrik.Error
@@ -30,8 +24,6 @@ defmodule WardrikDaemon.Orgs do
 
   @doc """
   Returns `org`'s settings, or an error if the daemon doesn't run it or its policy is missing.
-
-  `opts` holds `config.yaml`'s `:org` and `:orgs`, and the `:policies` in `policies/`.
   """
   @spec settings(String.t(), map()) :: {:ok, settings()} | {:error, Error.t()}
   def settings(org, %{orgs: orgs, policies: policies} = opts) do

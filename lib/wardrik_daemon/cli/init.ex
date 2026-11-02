@@ -1,32 +1,5 @@
 defmodule WardrikDaemon.CLI.Init do
-  @moduledoc """
-  `wardrik init`: from a fresh install to a front door that has answered once. It says what it does
-  as it goes:
-
-    1. the model providers whose key this environment sets.
-    2. the provider, those with a key here first, and the model: `claude-haiku-4-5` for Anthropic,
-       or else the provider's newest.
-    3. the provider's key, read without showing it, unless the env file or the environment sets
-       it.
-    4. the files, keeping any already there:
-       * `config.yaml` - with the org and the default model.
-       * `agents/assistant.md` - the front door.
-       * `env` - for the keys `config.yaml` names. Only you can read it.
-    5. the daemon: run as a systemd user service where there's one, as `wardrik service install`
-       does, or else started with `wardrik start`. One already running reads a new agent file.
-    6. the key, sealed in the vault as the deployment's secret, unless the env file sets it.
-    7. the front door, asked one short question.
-
-  Without a terminal, flags answer: `--provider`, `--model` and `--key-from-env VAR`, and `--yes`
-  runs the daemon as a service. `--no-service` starts it without systemd, and `--no-ask` asks the
-  front door nothing.
-
-  The front door is the agent you tell an outcome, as "tell me when this feed has a new post". It
-  proposes the work as the calls that do it, and defines the workers once you approve them. It
-  keeps what it set up in its `MEMORY.md`. Its body is its instructions, then a playbook to edit as
-  you like. It searches the web with `web_search` where `BRAVE_API_KEY` is set. Elsewhere
-  `config.yaml` says how to turn it on.
-  """
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Access
   alias WardrikDaemon.CLI.Command
@@ -56,10 +29,9 @@ defmodule WardrikDaemon.CLI.Init do
       ],
       summary: "set up the front door, its model and key, and the daemon to run it",
       details: [
-        "It asks what it needs, says what it does, and writes no file that's already there.",
-        "Without a terminal, --provider, --model and --key-from-env VAR answer, and --yes runs",
-        "the daemon as a systemd service. --no-service starts it without systemd, and --no-ask",
-        "asks the front door nothing. --org names the org, default unless set."
+        "It asks what it needs and never overwrites a file. Without a terminal, use --provider,",
+        "--model and --key-from-env VAR. --yes installs the systemd service, --no-service skips",
+        "it, and --no-ask skips the first question. --org names the org (default: default)."
       ],
       run: &run/3
     }

@@ -1,15 +1,5 @@
 defmodule WardrikDaemon.EnvFile do
-  @moduledoc """
-  Reads the env file: variables the daemon sets where its environment doesn't.
-
-      # Keys config.yaml names
-      ANTHROPIC_API_KEY=sk-ant-...
-      export SLACK_BOT_TOKEN="xoxb-..."
-
-  One `NAME=value` a line, with an optional `export` and optional quotes. Blank lines and `#`
-  comments are skipped. Keep the keys and tokens `config.yaml` names here, so `config.yaml` holds
-  no secret.
-  """
+  @moduledoc false
 
   @doc "Returns `env` with each variable the file at `path` sets that `env` doesn't. A missing file sets none."
   @spec load(Path.t(), %{String.t() => String.t()}) :: %{String.t() => String.t()}

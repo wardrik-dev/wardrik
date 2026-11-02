@@ -2,29 +2,23 @@ defmodule WardrikDaemon.Agents do
   @moduledoc """
   Defines the agents in `agents/`. It's the daemon's `Wardrik.Declarations`.
 
-  On each reload, if `config.yaml` or `policies/` changed since the daemon started, the daemon
-  restarts to read them, and defines the agents as it starts. Otherwise:
+  On reload:
 
-    * an agent whose file reads is defined from it.
-    * an agent whose file is gone is forgotten, and its name is free.
-    * an agent whose file doesn't read keeps its last definition, and the log says why.
-
-  A new file's agent gets a new ID, minted by `WardrikDaemon.AgentRecords`. It keeps that ID as
-  long as the file keeps its name, org and owner. A file can't take a name another agent has in
-  its org, unless a file declared that agent; nor can it give its agent another owner.
-
-  Agents named in a file's `workspace.shared` are agents of its own org, by name.
+    * if `config.yaml` or `policies/` changed, the daemon restarts.
+    * a changed file's agent gets its new definition and keeps its ID.
+    * a removed file's agent is forgotten.
+    * a file that doesn't read keeps its last definition, and the log says why.
+    * a file can't take a name another agent of its org has, nor change its agent's owner.
 
   The API can't forget an agent a file declares.
 
   ## Options
 
-    * `:wardrik` - what Wardrik is reached by.
+    * `:wardrik` - the Wardrik.
     * `:dir` - the `agents/` directory.
-    * `:config` - the `WardrikDaemon.Config` read as the daemon started.
-    * `:restart` - restarts the daemon if `config.yaml` or `policies/` changed since it started.
-      Returns whether it does.
-    * `:store` - where it keeps which agents the files declare, and their records.
+    * `:config` - the `WardrikDaemon.Config`.
+    * `:restart` - restarts the daemon if `config.yaml` or `policies/` changed. Returns whether it did.
+    * `:store` - where it keeps agents' records.
   """
 
   @behaviour Wardrik.Declarations

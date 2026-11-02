@@ -2,21 +2,17 @@ defmodule WardrikDaemon.Running do
   @moduledoc """
   Runs the daemon once its store is up. `WardrikDaemon.Server` starts it.
 
-  It reads `config.yaml` and `policies/`, filling in each `${NAME}` the environment doesn't set from
-  the vault. Then it starts, in order:
+  It reads `config.yaml` and `policies/`, then starts:
 
     1. `WardrikBrave`, for `web_search`.
-    2. Wardrik, deciding what each scope may do with `WardrikDaemon.Authorizer`, and which OAuth
-       app each person signs in with with `WardrikDaemon.OAuthApps`.
-    3. `WardrikDaemon.Pairings`, which holds the codes that finish browser sign-ins.
-    4. The HTTP API, as `WardrikDaemon.HTTP`, reached with `WardrikDaemon.Tokens`.
-    5. A task that starts the MCP servers orgs and people added (see `WardrikDaemon.Servers`),
-       defines the agents in `agents/`, writes the `wardrik` command's token, and emits
+    2. Wardrik, with `WardrikDaemon.Authorizer` and `WardrikDaemon.OAuthApps`.
+    3. `WardrikDaemon.Pairings`.
+    4. `WardrikDaemon.HTTP`.
+    5. A task that starts added MCP servers, defines the agents, writes `cli_token`, and emits
        `[:wardrik_daemon, :started]`.
 
-  A reload that finds `config.yaml` or `policies/` changed restarts it, to read them again. The
-  HTTP API stops first, answering the requests it has, then the rest. If they don't read, it keeps
-  running as it is, and the log says why.
+  A reload that finds `config.yaml` or `policies/` changed restarts it. If they don't read, it
+  keeps running and logs why.
   """
 
   use Supervisor

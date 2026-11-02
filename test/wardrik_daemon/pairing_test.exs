@@ -180,7 +180,7 @@ defmodule WardrikDaemon.PairingTest do
     refute connected?(context, "payments/@ana", "crm")
 
     assert {:ok, %{"connections" => connections}} = Client.run(ana, "connections.list", %{})
-    assert %{"provider" => "crm", "connected" => false} in connections
+    assert %{"provider" => "crm", "connected" => false, "signing_in" => true} in connections
 
     # A callback no sign-in here started, or one declined, shows no code.
     assert callback(context, %{"state" => "made-up", "code" => "x"}).status == 404
@@ -190,6 +190,34 @@ defmodule WardrikDaemon.PairingTest do
     assert declined.status == 400
     assert code(declined) == nil
     refute connected?(context, "payments/@ana", "crm")
+
+    assert {:ok, %{"connections" => connections}} = Client.run(ana, "connections.list", %{})
+    assert %{"provider" => "crm", "connected" => false, "signing_in" => false} in connections
+  end
+
+  test "the wardrik command stops waiting once a device sign-in is declined", context do
+    stub(Device, :request, fn _metadata, _provider, _req ->
+      {:ok,
+       %Device{
+         device_code: "dc",
+         user_code: "WDJB-MJHT",
+         verification_uri: "https://notes.test/device",
+         expires_in: 900,
+         interval: 0
+       }}
+    end)
+
+    stub(Device, :poll, fn _metadata, _provider, _args -> {:error, :access_denied} end)
+
+    error =
+      capture_io(:stderr, fn ->
+        {status, output} = cli(context, ["connection", "connect", "notes"])
+        assert status != 0
+        assert output =~ "with the code WDJB-MJHT"
+      end)
+
+    assert error =~ "The sign-in to notes ended without connecting it."
+    refute connected?(context, "admin", "notes")
   end
 
   test "a device sign-in shows the provider's code, never a pairing code", context do

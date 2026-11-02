@@ -1,23 +1,15 @@
 defmodule WardrikDaemon.Servers do
   @moduledoc """
-  Keeps the MCP servers each org or person adds for their agents. `WardrikDaemon.HTTP` serves them
-  at `/v1/owners/{owner}/servers`, and `wardrik server` reaches them there.
+  The MCP servers orgs and people add for their agents, served at `/v1/owners/{owner}/servers`.
 
-  Each is started in Wardrik's `WardrikMCP` as `owner:name`, on every node, as it's added and as
-  the daemon starts, and stopped on every node as it's removed. `WardrikDaemon.Resolver` gives it
-  to its owner's agents: an org's to the org's agents and its people's, a person's to theirs alone.
-  The nearest of a name wins.
+      wardrik server add crm --url https://crm.example.com/mcp --secret CRM_KEY --org acme
 
-  An agent signs in to a server with:
-
-    * nothing, as `%{"none" => %{}}`.
-    * a secret its owner sealed for `header`, read as each connection starts, as
-      `%{"secret" => %{"name" => "CRM_KEY"}}`. See `WardrikDaemon.Secrets`.
-    * its owner's account, signed in to in a browser, as `%{"oauth" => ...}`: through an OAuth app
-      the owner can use, named as `provider`, or the server's own sign-in, an app made for it in
-      `WardrikDaemon.OAuthApps`.
-
-  Adding or removing one records `server.added` or `server.removed` in the audit.
+    * Each runs in `WardrikMCP` as `owner:name`, on every node.
+    * An org's server reaches its agents and its people's. A person's reaches theirs alone.
+      The nearest of a name wins. See `WardrikDaemon.Resolver`.
+    * Agents sign in with nothing (`%{"none" => %{}}`), a secret sealed for `header`
+      (`%{"secret" => %{"name" => "CRM_KEY"}}`), or their owner's account (`%{"oauth" => ...}`).
+    * Adding or removing one records `server.added` or `server.removed` in the audit.
   """
 
   alias Wardrik.Error
@@ -29,10 +21,7 @@ defmodule WardrikDaemon.Servers do
 
   @kind "servers"
 
-  @typedoc """
-  What the daemon needs: the Wardrik's `:wardrik` name, its own `:store`, and `config.yaml` as
-  `:config`.
-  """
+  @typedoc "The Wardrik's `:wardrik` name, the daemon's `:store`, and `:config`."
   @type daemon() :: %{
           required(:wardrik) => atom(),
           required(:store) => WardrikStore.t(),
@@ -41,7 +30,7 @@ defmodule WardrikDaemon.Servers do
         }
 
   @doc """
-  Returns the `WardrikMCP` name of the server `name` that `owner` added.
+  Returns the `WardrikMCP` name of `owner`'s server `name`.
 
       WardrikDaemon.Servers.key("acme", "github")
       #=> "acme:github"
@@ -49,10 +38,7 @@ defmodule WardrikDaemon.Servers do
   @spec key(String.t(), String.t()) :: String.t()
   def key(owner, name), do: owner <> ":" <> name
 
-  @doc """
-  Lists the servers `owner`'s agents reach, nearest first: their own, their org's for a person,
-  the deployment's, then those `config.yaml` gives their org. Never their headers.
-  """
+  @doc "Lists the servers `owner`'s agents reach, nearest first. Never their headers."
   @spec list(daemon(), String.t()) :: [map()]
   def list(%{store: store, config: config}, owner) do
     store
@@ -101,10 +87,9 @@ defmodule WardrikDaemon.Servers do
   defp headers?(_stdio), do: false
 
   @doc """
-  Adds the server `input` describes for `owner`'s agents, as `actor`, and starts it on every node.
-  Returns whether they can call it now, or where `owner` signs in to it first.
+  Adds the server `input` describes for `owner`, as `actor`, and starts it on every node.
 
-  `input` is the JSON the route takes, already checked against its schema.
+  Returns whether agents can call it now, or where `owner` signs in first.
   """
   @spec add(daemon(), {String.t(), map()}, Principal.t() | nil) ::
           {:ok, map()} | {:error, Error.t()}
@@ -129,10 +114,7 @@ defmodule WardrikDaemon.Servers do
     end
   end
 
-  @doc """
-  Removes `owner`'s own server `name`, as `actor`, and its sign-ins, and stops it on every node.
-  Returns the server as it was.
-  """
+  @doc "Removes `owner`'s server `name` and its sign-ins, as `actor`, and stops it on every node."
   @spec remove(daemon(), {String.t(), String.t()}, Principal.t() | nil) ::
           {:ok, map()} | {:error, Error.t()}
   def remove(%{wardrik: wardrik, store: store} = daemon, {owner, name}, actor) do
@@ -154,8 +136,7 @@ defmodule WardrikDaemon.Servers do
   end
 
   @doc """
-  Starts in `wardrik`'s `WardrikMCP` each server `store` keeps that it isn't running, and stops
-  each one it runs that `store` no longer keeps. The daemon does this on each node as it starts.
+  Starts each stored server that isn't running, and stops each running one no longer stored.
   """
   @spec start(atom(), WardrikStore.t()) :: :ok
   def start(wardrik, store) do

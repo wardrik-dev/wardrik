@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.CLI.Table do
-  @moduledoc "Prints rows as columns, each as wide as its widest cell, under a faint header."
+  @moduledoc false
 
   alias WardrikDaemon.CLI.Context
 
@@ -11,7 +11,7 @@ defmodule WardrikDaemon.CLI.Table do
   @type table() :: [header: [String.t()], rows: [[term()]], empty: String.t()]
 
   @doc """
-  Prints the `:rows` under the `:header`, or `:empty` if there are none. A `nil` cell is empty.
+  Prints `:rows` under `:header`, or `:empty` if there are none.
 
       Table.print(cx, header: ["NODE", "AGENTS"], rows: [["box1", 3]], empty: "No nodes answer.")
   """

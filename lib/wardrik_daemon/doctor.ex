@@ -1,20 +1,17 @@
 defmodule WardrikDaemon.Doctor do
   @moduledoc """
-  Checks what the daemon reads, running or not. Prints a line for each check:
+  Checks what the daemon reads, running or not.
 
       $ wardrik doctor
       ok    env            /home/me/.config/wardrik/env sets 3 variables
       ok    config         /home/me/.config/wardrik/config.yaml reads
-      ok    storage        keeps everything in Postgres at db.internal:5432/wardrik
       ok    vault          1 key from /home/me/.local/share/wardrik/vault_key, which seals
       ok    mcp github     answers at api.githubcopilot.com:443
       FAIL  mcp notes      runs npx, which isn't on this machine's PATH
-      ok    channel slack  takes Slack's events over Socket Mode; posts as @wardrik in Acme; @maria decides
       ok    agents         2 agent files and 1 policy read
 
-  It runs in its own VM, so it can't open the store a running daemon holds. A `${NAME}` only the
-  vault holds is left unchecked; the daemon checks it as it starts. If `config.yaml` doesn't read,
-  no later check runs.
+    * It can't open a running daemon's store, so a `${NAME}` only the vault holds goes unchecked.
+    * If `config.yaml` doesn't read, nothing after it is checked.
   """
 
   alias WardrikDaemon.Config
@@ -27,7 +24,7 @@ defmodule WardrikDaemon.Doctor do
   @connect_timeout 5_000
 
   @doc """
-  Runs every check on the files `env`, the environment, points at.
+  Runs every check on the files the environment `env` points at.
 
   ## Options
 
