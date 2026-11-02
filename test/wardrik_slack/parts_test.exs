@@ -12,7 +12,8 @@ defmodule WardrikSlack.PartsTest do
 
   defp waiting(reason, name),
     do: %Waiting{
-      conversation: "acme/triage/slack.T1.C1.1.1",
+      agent: "agt_triage",
+      conversation: "slack.T1.C1.1.1",
       interrupt: %Wardrik.Interrupt{
         id: "call_1",
         reason: reason,
@@ -43,7 +44,7 @@ defmodule WardrikSlack.PartsTest do
 
   describe "rooms" do
     test "offer a menu where there are many agents to pick from", context do
-      for n <- 1..6, do: define(context.owner, "acme/agent-#{n}", channels: ["slack"])
+      for n <- 1..6, do: define(context.owner, "agt_#{n}", channels: ["slack"])
       {:ok, workspace} = WardrikChannel.workspace(context.channel, "T1")
 
       assert %{blocks: [_question, %{elements: [%{type: "static_select", options: options}]}]} =
@@ -53,7 +54,7 @@ defmodule WardrikSlack.PartsTest do
     end
 
     test "say how the agent answers", context do
-      define(context.owner, "acme/triage", channels: ["slack"])
+      define(context.owner, "agt_triage", channels: ["slack"])
       {:ok, workspace} = WardrikChannel.workspace(context.channel, "T1")
       {:bound, binding, offer} = WardrikChannel.Rooms.joined(workspace, "C1")
 
@@ -65,13 +66,13 @@ defmodule WardrikSlack.PartsTest do
     end
 
     test "show an agent by its display name, or else its ID" do
-      assert Rooms.shown(%Offer{agent: "acme/triage", name: "Triage"}) == "Triage"
-      assert Rooms.shown(%Offer{agent: "acme/triage", name: ""}) == "acme/triage"
-      assert Rooms.shown(%Offer{agent: "acme/triage"}) == "acme/triage"
+      assert Rooms.shown(%Offer{agent: "agt_triage", name: "Triage"}) == "Triage"
+      assert Rooms.shown(%Offer{agent: "agt_triage", name: ""}) == "agt_triage"
+      assert Rooms.shown(%Offer{agent: "agt_triage"}) == "agt_triage"
     end
 
     test "offer nothing to a member your app doesn't know", context do
-      define(context.owner, "acme/triage", channels: ["slack"])
+      define(context.owner, "agt_triage", channels: ["slack"])
 
       event(context, %{type: "member_joined_channel", user: "UBOT", channel: "C1", inviter: "U9"})
 
@@ -94,7 +95,7 @@ defmodule WardrikSlack.PartsTest do
         user: %{id: "U1"},
         channel: %{id: "C1"},
         response_url: "https://hooks.slack.com/actions/1",
-        actions: [%{action_id: "wardrik_room_agent", value: "acme/nobody"}]
+        actions: [%{action_id: "wardrik_room_agent", value: "agt_nobody"}]
       })
 
       assert_receive {:slack, {:respond, _path},

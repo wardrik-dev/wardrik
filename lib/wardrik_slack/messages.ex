@@ -19,10 +19,11 @@ defmodule WardrikSlack.Messages do
   @doc """
   Passes a `message` event to the room's agent. `bot` is the app's own member ID.
 
-  Returns `{:asked, conversation}`, `:ignored`, or `{:error, message}` after replying with it.
+  Returns `{:asked, {agent, conversation}}`, `:ignored`, or `{:error, message}` after replying
+  with it.
   """
   @spec event(Workspace.t(), map(), String.t()) ::
-          {:asked, String.t()} | :ignored | {:error, String.t()}
+          {:asked, {String.t(), String.t()}} | :ignored | {:error, String.t()}
   def event(workspace, %{"type" => "message", "user" => user} = event, bot)
       when is_binary(user) do
     if posted?(workspace, event, bot), do: ask(workspace, event, bot), else: :ignored

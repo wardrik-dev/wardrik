@@ -22,7 +22,7 @@ defmodule WardrikSlack.Answers do
         %{"actions" => [%{"action_id" => action, "value" => value} | _rest]} = payload
       ) do
     case JSON.decode(value) do
-      {:ok, %{"c" => _conversation, "i" => _interrupt} = button} ->
+      {:ok, %{"g" => _agent, "i" => _interrupt} = button} ->
         respond(workspace, payload, action, button)
 
       _unreadable ->
@@ -46,7 +46,7 @@ defmodule WardrikSlack.Answers do
   defp pressed("wardrik_link", workspace, member, button, _note) do
     with {:ok, scope} <- Workspace.member_scope(workspace, member),
          {:ok, %Wardrik.Authorization{url: url}} <-
-           Wardrik.Agent.authorization(scope, agent: button["c"], interrupt: button["i"]) do
+           Wardrik.Agent.authorization(scope, call(button)) do
       {:said, "Sign in at #{url}"}
     else
       {:error, %Error{message: message}} -> {:said, message}
@@ -57,6 +57,7 @@ defmodule WardrikSlack.Answers do
   defp pressed(action, workspace, member, button, note) do
     answer = %Answer{
       member: member,
+      agent: button["g"],
       conversation: button["c"],
       interrupt: button["i"],
       asked_by: button["a"],
@@ -68,6 +69,14 @@ defmodule WardrikSlack.Answers do
       {:error, message} -> {:said, message}
     end
   end
+
+  # A notice's call is in the agent's own conversation, which is named by none.
+  defp call(button),
+    do:
+      Enum.reject(
+        [agent: button["g"], conversation: button["c"], interrupt: button["i"]],
+        &match?({_key, nil}, &1)
+      )
 
   defp decision("wardrik_approve", note), do: {:approve, note}
   defp decision("wardrik_deny", note), do: {:deny, note}

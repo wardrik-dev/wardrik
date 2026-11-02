@@ -107,7 +107,7 @@ SLACK_BOT_TOKEN=xoxb-... SLACK_APP_TOKEN=xapp-... ANTHROPIC_API_KEY=sk-ant-... \
   mix run --no-halt examples/socket_mode.exs
 ```
 
-This starts Wardrik in memory with the agent `acme/assistant`. The agent may read a clock once
+This starts Wardrik in memory with the agent `agt_assistant`. The agent may read a clock once
 someone approves it.
 
 1. In Slack, `/invite @Wardrik` into a channel.
@@ -160,7 +160,7 @@ forward "/", Wardrik.HTTP,
 List the channel in an agent's definition:
 
 ```elixir
-Wardrik.Agent.define(scope, "acme/triage",
+Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
   model: "anthropic:claude-haiku-4-5",
   description: "Triages incidents.",
   channels: ["slack"]
@@ -168,8 +168,8 @@ Wardrik.Agent.define(scope, "acme/triage",
 ```
 
 Invite the app into a Slack channel. If one agent is offered, it answers there from then on:
-mention the app, and it replies in a thread under your message. If several are offered, pick
-one. See [WardrikChannel](https://hexdocs.pm/wardrik_channel) for rooms, threads and approvals.
+mention the app, and it replies in a thread under your message. Each thread is its own
+conversation with the agent. If several are offered, pick one. See [WardrikChannel](https://hexdocs.pm/wardrik_channel) for rooms, threads and approvals.
 
 ## Approvals
 
@@ -186,7 +186,7 @@ finishes, fails or waits on someone. Route it to `slack:#room`. It posts in the 
 resolver gives the agent, as `channels: %{"slack" => "T0123"}`:
 
 ```elixir
-Wardrik.Agent.define(scope, "acme/digest",
+Wardrik.Agent.define(scope, "agt_01JF8Y2DGS",
   model: "anthropic:claude-haiku-4-5",
   notify: %{to: ["slack:#updates"], on: ["finished", "failed"]}
 )

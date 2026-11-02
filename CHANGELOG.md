@@ -7,6 +7,10 @@
 
 ### Breaking
 
+- A thread is a conversation of the room's agent, passed to Wardrik as `conversation`.
+  `WardrikSlack.Messages.event/3` returns `{:asked, {agent, conversation}}`.
+- A waiting call's buttons hold the agent (`g`) and the conversation (`c`) apart. Buttons posted
+  by rc.1 are ignored.
 - People in Slack act as the users the channel's `identities:` gives, with the channel as their
   actor, and Wardrik's authorizer decides what they may do, deciding calls included, in place of
   the grants the channel gave them.

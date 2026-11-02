@@ -69,12 +69,12 @@ defmodule WardrikSlackTest do
 
   describe "rooms" do
     test "says which agent answers once the bot is invited", context do
-      define(context.owner, "acme/triage", channels: ["slack"], description: "Triages.")
+      define(context.owner, "agt_triage", channels: ["slack"], description: "Triages.")
 
       event(context, %{type: "member_joined_channel", user: "UBOT", channel: "C1", inviter: "U1"})
 
       assert_receive {:slack, "chat.postMessage",
-                      %{"channel" => "C1", "text" => ":wave: *acme/triage* answers here now."} =
+                      %{"channel" => "C1", "text" => ":wave: *agt_triage* answers here now."} =
                         posted},
                      1_000
 
@@ -88,23 +88,23 @@ defmodule WardrikSlackTest do
       assert_receive {:slack, "chat.postMessage", %{"text" => "No agent answers here yet." <> _}},
                      1_000
 
-      define(context.owner, "acme/one", channels: ["slack"])
-      define(context.owner, "acme/two", channels: ["slack"])
+      define(context.owner, "agt_one", channels: ["slack"])
+      define(context.owner, "agt_two", channels: ["slack"])
       event(context, joined_none)
       assert_receive {:slack, "chat.postMessage", %{"text" => "Which agent" <> _}}, 1_000
 
-      press(context, pressed("wardrik_room_agent", %{value: "acme/two"}, "U1", name: "maria"))
+      press(context, pressed("wardrik_room_agent", %{value: "agt_two"}, "U1", name: "maria"))
 
       assert_receive {:slack, {:respond, _path},
                       %{
                         "replace_original" => true,
-                        "text" => ":wave: *acme/two* answers here now."
+                        "text" => ":wave: *agt_two* answers here now."
                       }},
                      1_000
     end
 
     test "has the agent answer every message, and stops it answering", context do
-      define(context.owner, "acme/triage", channels: ["slack"])
+      define(context.owner, "agt_triage", channels: ["slack"])
       joined(context)
 
       press(context, pressed("wardrik_room_answers", %{value: "everything"}, "U1"))
@@ -119,7 +119,7 @@ defmodule WardrikSlackTest do
     end
 
     test "unbinds a Slack channel the bot leaves", context do
-      define(context.owner, "acme/triage", channels: ["slack"])
+      define(context.owner, "agt_triage", channels: ["slack"])
       joined(context)
 
       event(context, %{type: "channel_left", channel: "C1", actor_id: "U1"})
@@ -131,7 +131,7 @@ defmodule WardrikSlackTest do
 
   describe "threads" do
     setup context do
-      define(context.owner, "acme/triage",
+      define(context.owner, "agt_triage",
         channels: ["slack"],
         tools: ["tools"],
         policy: "careful"
@@ -183,6 +183,9 @@ defmodule WardrikSlackTest do
         for %{"type" => "actions"} = block <- blocks, do: block
 
       assert JSON.encode!(blocks) =~ ~s({\\"text\\":\\"hi\\"})
+
+      assert %{"g" => "agt_triage", "c" => "slack.T1.C1.1.1", "i" => "call_1"} =
+               JSON.decode!(approve["value"])
 
       state = %{values: %{"wardrik-note:call_1" => %{note: %{value: " Go ahead. "}}}}
 
@@ -263,7 +266,7 @@ defmodule WardrikSlackTest do
       event(context, message("<@UBOT> echo hi", "1.1"))
       assert_receive {:slack, "chat.postMessage", %{"text" => "Waiting" <> _}}, 1_000
 
-      :ok = Wardrik.Agent.cancel(context.owner, "acme/triage/slack.T1.C1.1.1")
+      :ok = Wardrik.Agent.cancel(context.owner, "agt_triage", conversation: "slack.T1.C1.1.1")
 
       assert_receive {:slack, "reactions.remove", %{"name" => "eyes", "timestamp" => "1.1"}},
                      1_000
@@ -278,7 +281,7 @@ defmodule WardrikSlackTest do
     end
 
     test "tells whoever presses Show link where to sign in, or why not", context do
-      value = JSON.encode!(%{c: "acme/triage/slack.T1.C1.1.1", i: "call_1", n: "inbox"})
+      value = JSON.encode!(%{g: "agt_triage", c: "slack.T1.C1.1.1", i: "call_1", n: "inbox"})
       press(context, pressed("wardrik_link", %{value: value}, "U3"))
 
       assert_receive {:slack, {:respond, _path}, %{"response_type" => "ephemeral"}}, 1_000
@@ -291,7 +294,7 @@ defmodule WardrikSlackTest do
   describe "notices" do
     test "posts what a turn answered in the room the route names", context do
       notice = %Wardrik.Notice{
-        agent: "acme/digest",
+        agent: "agt_digest",
         kind: :finished,
         at: DateTime.utc_now(),
         text: "Three things happened."
@@ -301,7 +304,7 @@ defmodule WardrikSlackTest do
       assert WardrikSlack.notify(notification, context.options) == :ok
 
       assert_receive {:slack, "chat.postMessage",
-                      %{"channel" => "#news", "text" => "acme/digest: Three things happened."} =
+                      %{"channel" => "#news", "text" => "agt_digest: Three things happened."} =
                         posted},
                      1_000
 
@@ -318,7 +321,7 @@ defmodule WardrikSlackTest do
       }
 
       notice = %Wardrik.Notice{
-        agent: "acme/triage",
+        agent: "agt_triage",
         kind: :parked,
         at: DateTime.utc_now(),
         calls: [%{interrupt: interrupt, arguments: %{"text" => "hi"}}]
@@ -331,7 +334,7 @@ defmodule WardrikSlackTest do
       assert_receive {:slack, "chat.postMessage",
                       %{
                         "channel" => "#ops",
-                        "text" => "`acme/triage` waits for someone to approve `echo`.",
+                        "text" => "`agt_triage` waits for someone to approve `echo`.",
                         "blocks" => blocks
                       }},
                      1_000

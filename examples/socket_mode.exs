@@ -79,7 +79,7 @@ Process.unlink(wardrik)
 me = Local.Wardrik.as(org)
 
 {:ok, agent} =
-  Wardrik.Agent.define(me, org <> "/assistant",
+  Wardrik.Agent.define(me, "agt_assistant",
     model: System.get_env("WARDRIK_MODEL", "anthropic:claude-haiku-4-5"),
     instructions: "You help people in Slack. Keep answers short. Use the clock to tell the time.",
     description: "Answers questions, and asks before it reads the clock.",

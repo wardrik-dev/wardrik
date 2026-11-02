@@ -89,7 +89,7 @@ defmodule WardrikSlack.SocketTest do
 
     @tag slack: [app_token: "xapp-test", signing_secret: nil]
     test "hands what an envelope carries on in a task", context do
-      define(context.owner, "acme/triage", channels: ["slack"])
+      define(context.owner, "agt_triage", channels: ["slack"])
       socket = start_supervised!({Socket, context.channel})
 
       callback = %{

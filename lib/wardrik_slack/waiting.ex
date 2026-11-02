@@ -7,7 +7,8 @@ defmodule WardrikSlack.Waiting do
     * A call waiting on a sign-in has Show link instead. It shows only the person who pressed it
       where to sign in.
 
-  Each button's value holds the conversation, the call and who asked, for `WardrikSlack.Answers`.
+  Each button's value holds the agent, the conversation, the call and who asked, for
+  `WardrikSlack.Answers`.
   This is safe because only the bot can change its own messages.
   """
 
@@ -53,6 +54,7 @@ defmodule WardrikSlack.Waiting do
   defp blocks(%Waiting{interrupt: interrupt} = waiting) do
     value =
       JSON.encode!(%{
+        g: waiting.agent,
         c: waiting.conversation,
         i: interrupt.id,
         a: waiting.asked_by,
