@@ -61,7 +61,7 @@ defmodule MyApp.AgentRuntime do
   use Wardrik, otp_app: :my_app
 
   @impl Wardrik
-  def init(config), do: {:ok, Keyword.put(config, :keys, [System.fetch_env!("WARDRIK_KEY")])}
+  def init(config), do: {:ok, Keyword.put(config, :vault_keys, [System.fetch_env!("WARDRIK_KEY")])}
 end
 ```
 

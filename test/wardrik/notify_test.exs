@@ -76,7 +76,7 @@ defmodule Wardrik.NotifyTest do
            {:"wardrik #{context.test}", channels: Map.get(context, :channels, %{"board" => "W1"})}},
         name: :"wardrik #{context.test}",
         store: store,
-        keys: [WardrikVault.generate_key()],
+        vault_keys: [WardrikVault.generate_key()],
         capabilities: [tools: Wardrik.Test.Tools],
         channels: [board: {Wardrik.Test.Board, test: self()}],
         notify: [targets: targets, retries: [attempts: 2, max_wait: 0]],

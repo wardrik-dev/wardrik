@@ -218,10 +218,10 @@ defmodule Wardrik.DefinitionsTest do
 
       assert {:ok,
               [%Wardrik.Decision{decision: :approved}, %Wardrik.Decision{decision: :rejected}]} =
-               Wardrik.Agent.decide(scope, "acme/triage", %{
-                 "call_1" => {:approve, "Go."},
-                 "call_2" => {:deny, "No."}
-               })
+               Wardrik.Agent.decide(scope,
+                 agent: "acme/triage",
+                 decisions: %{"call_1" => {:approve, "Go."}, "call_2" => {:deny, "No."}}
+               )
 
       assert %{"data" => %{"resolved_by" => %{"id" => "acme/@maria"}}} =
                until("wardrik.interrupt.resolved")
@@ -235,6 +235,30 @@ defmodule Wardrik.DefinitionsTest do
 
       assert {:ok, %Wardrik.Forgotten{forgotten: ["acme/triage"], kept: [], failed: []}} =
                Wardrik.Agents.forget(scope, agents: ["acme/triage"])
+    end
+
+    test "replies with interrupts to approve as they are, in any conversation", %{scope: scope} do
+      calling = calling([call("call_1", "echo", %{})])
+      answers([calling, answer("Echoed."), calling, answer("Echoed.")])
+
+      {:ok, _agent} =
+        Wardrik.Agent.define(scope, "acme/triage",
+          model: @model,
+          tools: ["tools"],
+          policy: "careful"
+        )
+
+      for conversation <- [nil, "C1"] do
+        assert {:waiting, [interrupt]} =
+                 Wardrik.Agent.reply(scope, "acme/triage", "Echo", conversation: conversation)
+
+        assert %Wardrik.Interrupt{agent: "acme/triage", conversation: ^conversation} = interrupt
+
+        assert {:ok, [%Wardrik.Decision{id: "call_1", decision: :approved}]} =
+                 Wardrik.Agent.approve(scope, interrupt: interrupt)
+
+        assert until("wardrik.run.completed")["conversation"] == conversation
+      end
     end
 
     test "defines from a keyword list", %{scope: scope} do

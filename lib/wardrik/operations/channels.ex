@@ -48,7 +48,7 @@ defmodule Wardrik.Operations.Channels do
           store: wardrik.store
         ]
 
-  defp vault(%Wardrik{keys: []}), do: nil
+  defp vault(%Wardrik{vault_keys: []}), do: nil
   defp vault(wardrik), do: Wardrik.vault(wardrik)
 
   defp headers(headers),

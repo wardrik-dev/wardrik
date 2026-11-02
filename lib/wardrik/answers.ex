@@ -83,11 +83,18 @@ defmodule Wardrik.Answers do
 
   defp ours(
          %{"type" => "wardrik.run.interrupted", "data" => %{"interrupts" => interrupts}},
-         state
-       ),
-       do:
-         {[{:waiting, Enum.map(interrupts, &Wardrik.Interrupt.from_json/1)}],
-          %{state | done: true}}
+         %{agent: {agent, conversation}} = state
+       ) do
+    waiting =
+      for interrupt <- interrupts,
+          do: %{
+            Wardrik.Interrupt.from_json(interrupt)
+            | agent: agent,
+              conversation: conversation
+          }
+
+    {[{:waiting, waiting}], %{state | done: true}}
+  end
 
   defp ours(%{"type" => type, "data" => data}, state) when type in @ended,
     do: {[{:failed, why(type, data)}], %{state | done: true}}

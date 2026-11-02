@@ -54,7 +54,7 @@ defmodule Wardrik.Test.Slack do
          resolver: {Wardrik.Test.Owned, {name, channels: %{"slack" => "T1"}}},
          name: name,
          store: store,
-         keys: [WardrikVault.generate_key()],
+         vault_keys: [WardrikVault.generate_key()],
          channels: [slack: {WardrikSlack, slack}],
          capabilities: [tools: Wardrik.Test.Slack.Tools],
          policies: [careful: [ask: ["echo"]]],

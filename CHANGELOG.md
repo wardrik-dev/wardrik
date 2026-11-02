@@ -16,9 +16,17 @@
 - `Wardrik.mcp/1` takes the instance's name or struct.
 - MCP servers' header secrets are `{:secret, name}`, read as each connection starts.
 - A vault secret is read only for its kind, as `:header` or `:signing_secret`.
+- `sign_in/3`, `signing_in?/3` and `forget_client/2` start and follow sign-ins from your app.
+- A reply's interrupts name their `agent` and `conversation`. Pass one to `approve/2` or `deny/2`
+  as `interrupt:`.
 
 ### Breaking
 
+- `:keys` is `:vault_keys`, so it isn't mistaken for `:key_source`.
+- A `:key_source` returns `{:error, :not_found}` for no key, not `:error`.
+- A `WardrikOAuth.Resolver` builds each provider with its `:key`:
+  `WardrikOAuth.Provider.new("github", key: "github", ...)`.
+- `Wardrik.Agent.decide/2` takes one keyword list: `agent:`, `decisions:` and `conversation:`.
 - `:authorizer` and `:resolver` are required.
 - `c:Wardrik.Authorizer.authorize/2` takes a `Wardrik.Authorizer.Request`. Resources are
   `{:agent, id}` and `{:deployment, name}`. The request names the `actor` beside the principal.
@@ -43,6 +51,7 @@
 - `finish_sign_in/3` takes `as:`. `sign_in_pages/2` and `Wardrik.HTTP`'s `:principal` say who is
   at the browser. Without them, no sign-in finishes.
 - `Wardrik.start_link/1` raises `NimbleOptions.ValidationError` on a bad option.
+- A worker's call `meta` gives `"agent"` as the agent's ID, not `%{"key" => id}`.
 - `Wardrik.Channels` functions take keyword lists: `:channel`, then `:owner` and `:query`, or
   `:workspace`.
 - `Wardrik.Delegation.asked/2` takes `:asker`, `:agent` and `:message`.
@@ -68,7 +77,7 @@ Optional:
 | Option | Behaviour | Default | In `wardrik_daemon` |
 | --- | --- | --- | --- |
 | `key_source:` | `WardrikCore.Keys` | none; ReqLLM reads its config and env | `WardrikDaemon.Keys` |
-| `credentials:` | `WardrikCore.Credentials` | Wardrik's vault, with `:keys` | the default |
+| `credentials:` | `WardrikCore.Credentials` | Wardrik's vault, with `:vault_keys` | the default |
 
 Moved to your app (the daemon's versions in brackets):
 
@@ -91,8 +100,14 @@ Call sites:
   `Wardrik.Agent.ask(scope, "agt_1", "Hi", conversation: "C1")`.
 - Two IDs go in one keyword list:
   `Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", conversation: "C1")`.
+  So does `decide/2`: `Wardrik.Agent.decide(scope, agent: "agt_1", decisions: decisions)`.
+- `keys:` is `vault_keys:`.
+- `WardrikCore.Keys` returns `{:error, :not_found}` where it returned `:error`.
+- Pass `key:` to `WardrikOAuth.Provider.new/2`, not `%{provider | key: key}`.
+- Start a sign-in with `Wardrik.sign_in/3`, not `WardrikOAuth.authorize/3`.
 - `Wardrik.as(instance, principal, actor: ..., context: ...)` replaces statements.
 - Behaviour callbacks take one request struct, then options.
+- A tool worker reads the calling agent's ID as `_meta.agent`, a string.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

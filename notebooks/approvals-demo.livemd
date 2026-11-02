@@ -79,12 +79,10 @@ defmodule MyApp.Inbox do
   end
 
   def decide(scope, interrupt, %{decision: :approve, text: note}),
-    do: Wardrik.Agent.approve(scope, named(interrupt) ++ said(:note, note))
+    do: Wardrik.Agent.approve(scope, [interrupt: interrupt] ++ said(:note, note))
 
   def decide(scope, interrupt, %{decision: :deny, text: reason}),
-    do: Wardrik.Agent.deny(scope, named(interrupt) ++ said(:reason, reason))
-
-  defp named(interrupt), do: [agent: interrupt.agent, interrupt: interrupt.id]
+    do: Wardrik.Agent.deny(scope, [interrupt: interrupt] ++ said(:reason, reason))
 
   defp card(scope, interrupt, arguments) do
     form =
@@ -176,15 +174,18 @@ Wardrik.Agent.reply(scope, "agt_books", "Pay Initech's $9400 bill and Globex's $
 
 ## In code
 
-`Wardrik.Agent.decide/3` decides several at once:
+`Wardrik.Agent.decide/2` decides several at once:
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-Wardrik.Agent.decide(scope, "agt_books", %{
-  initech.id => {:approve, "Pay it from the ops account."},
-  globex.id => {:deny, "Not before the 1st."}
-})
+Wardrik.Agent.decide(scope,
+  agent: "agt_books",
+  decisions: %{
+    initech.id => {:approve, "Pay it from the ops account."},
+    globex.id => {:deny, "Not before the 1st."}
+  }
+)
 ```
 
 ## Where next

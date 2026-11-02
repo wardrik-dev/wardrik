@@ -9,7 +9,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.2"}, {:kino, "~> 0.19"}])
 An agent wakes every minute, and when a signed webhook arrives. Add `ANTHROPIC_API_KEY` in the
 Secrets panel. Ten minutes of it costs about a cent.
 
-`:keys` seals the webhook's secret. Keep yours in config, not code.
+`:vault_keys` seals the webhook's secret. Keep yours in config, not code.
 
 ```elixir
 System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
@@ -29,7 +29,7 @@ end
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
     resolver: {MyApp.Agents, []},
-    keys: [WardrikVault.generate_key()]
+    vault_keys: [WardrikVault.generate_key()]
   )
 
 scope = Wardrik.as(MyApp.AgentRuntime, "maria")

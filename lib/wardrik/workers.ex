@@ -20,7 +20,8 @@ defmodule Wardrik.Workers do
     3. Answers with `answer/2`.
     4. Gets `{Wardrik.Workers, :cancel, call}` if Wardrik stops waiting.
 
-  `meta` holds `agent`, `conversation`, `run`, `principal` and `idempotencyKey`.
+  `meta` holds `agent`, the agent's ID, and `conversation`, `run`, `principal` and
+  `idempotencyKey`.
   """
 
   @behaviour WardrikCore.Capability
@@ -222,7 +223,7 @@ defmodule Wardrik.Workers do
   end
 
   defp meta(%Context{agent_id: id, step: {:tool_call, call}} = context) do
-    %{"agent" => agent(id), "idempotencyKey" => call.id}
+    %{"agent" => id, "idempotencyKey" => call.id}
     |> Map.merge(conversation(context.conversation))
     |> Map.merge(run(context.span))
     |> Map.merge(principal(Context.acting_for(context)))
@@ -233,9 +234,6 @@ defmodule Wardrik.Workers do
 
   defp run(%WardrikCore.Span{trace: trace}), do: %{"run" => trace}
   defp run(nil), do: %{}
-
-  # The agent by its exact ID, as your app named it. Wardrik reads nothing out of it.
-  defp agent(id), do: %{"key" => id}
 
   defp principal(nil), do: %{}
   defp principal(%{id: id}), do: %{"principal" => id}

@@ -43,7 +43,7 @@ defmodule Wardrik.HTTP.WorkerTest do
 
     assert_receive {:worker, %{"method" => "tools/call", "id" => id, "params" => params}}
     assert %{"name" => "lookup", "arguments" => %{"order" => "A1"}} = params
-    assert %{"agent" => %{"key" => "acme/triage"}, "idempotencyKey" => "call_1"} = params["_meta"]
+    assert %{"agent" => "acme/triage", "idempotencyKey" => "call_1"} = params["_meta"]
 
     Worker.send_message(worker, %{
       "jsonrpc" => "2.0",

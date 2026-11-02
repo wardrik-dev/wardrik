@@ -28,15 +28,15 @@ defmodule MyApp.OAuthApps do
 
   @impl true
   def provider(%{name: "github"}, _opts) do
-    github =
-      WardrikOAuth.Provider.new("github",
-        authorization_endpoint: "https://github.com/login/oauth/authorize",
-        token_endpoint: "https://github.com/login/oauth/access_token",
-        client_id: "Iv1.your-client-id",
-        scopes: ~w(repo)
-      )
-
-    {:ok, %{github | key: "github", client_secret: System.get_env("GITHUB_CLIENT_SECRET")}}
+    {:ok,
+     WardrikOAuth.Provider.new("github",
+       key: "github",
+       authorization_endpoint: "https://github.com/login/oauth/authorize",
+       token_endpoint: "https://github.com/login/oauth/access_token",
+       client_id: "Iv1.your-client-id",
+       client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
+       scopes: ~w(repo)
+     )}
   end
 
   def provider(_request, _opts), do: {:error, :not_found}
@@ -47,18 +47,18 @@ end
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
     resolver: {MyApp.Agents, []},
-    keys: [WardrikVault.generate_key()],
+    vault_keys: [WardrikVault.generate_key()],
     oauth: [page: "https://agents.example.com/oauth", resolver: {MyApp.OAuthApps, []}]
   )
 ```
 
-## Keys
+## Vault keys
 
-`:keys` seals every secret. Make one with `WardrikVault.generate_key/0`, and keep it out of your
+`:vault_keys` seals every secret. Make one with `WardrikVault.generate_key/0`, and keep it out of your
 code:
 
 ```elixir
-config :my_app, MyApp.AgentRuntime, keys: [System.fetch_env!("WARDRIK_KEY")]
+config :my_app, MyApp.AgentRuntime, vault_keys: [System.fetch_env!("WARDRIK_KEY")]
 ```
 
 - The first key seals. Any key unseals.
@@ -131,13 +131,18 @@ it carries on.
 
 ```elixir
 # Connect an account before any agent asks
-WardrikOAuth.authorize(MyApp.AgentRuntime.OAuth, "github", Wardrik.principal("maria"))
-#=> {:ok, "https://github.com/login/oauth/authorize?..."}
+Wardrik.sign_in(MyApp.AgentRuntime, "github", Wardrik.principal("maria"))
+#=> {:ok, %{url: "https://github.com/login/oauth/authorize?..."}}
+
+Wardrik.signing_in?(MyApp.AgentRuntime, "github", Wardrik.principal("maria"))
+#=> true
 ```
 
+- A device sign-in also gives the `code` to enter at `url`.
 - Each provider your resolver gives is named after the credential it grants, here `"github"`.
 - The resolver runs at each sign-in and refresh, so a new client secret needs no restart.
 - An account is the person's who signed in. Only the OAuth app that issued it renews it.
+- When you delete an OAuth app, call `Wardrik.forget_client/2` with its key.
 
 ## Sign-in pages
 

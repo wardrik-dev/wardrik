@@ -21,14 +21,14 @@ defmodule Wardrik.Children do
         Wardrik.Notify.Server.children(wardrik) ++
         [{Wardrik.Delegation, wardrik}]
 
-  defp vault(%Wardrik{keys: []}), do: []
+  defp vault(%Wardrik{vault_keys: []}), do: []
 
   defp vault(wardrik) do
     [
       {WardrikVault,
        name: Wardrik.vault(wardrik),
        store: wardrik.store,
-       keys: wardrik.keys,
+       keys: wardrik.vault_keys,
        grants: wardrik.grants}
     ]
   end

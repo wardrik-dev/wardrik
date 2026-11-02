@@ -41,7 +41,7 @@ defmodule Wardrik.SealedOptionsTest do
          resolver: {Wardrik.Test.Owned, name},
          name: name,
          store: store,
-         keys: [key],
+         vault_keys: [key],
          channels: channels
        )}
     )

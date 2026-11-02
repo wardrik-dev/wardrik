@@ -20,7 +20,7 @@ defmodule Wardrik.Test.HTTP do
            resolver: {Wardrik.Test.Owned, name},
            store: store,
            deployment: "test",
-           keys: [WardrikVault.generate_key()],
+           vault_keys: [WardrikVault.generate_key()],
            channels: Map.get(context, :channels, [])
          ] ++ Keyword.take(Map.to_list(context), [:oauth])
        )}
