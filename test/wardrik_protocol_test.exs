@@ -28,7 +28,7 @@ defmodule WardrikProtocolTest do
     do: match?({:ok, _value}, JSV.validate(value, JSV.build!(WardrikProtocol.schema(name))))
 
   test "lists every event's type" do
-    assert Enum.count(WardrikProtocol.types()) == 53
+    assert Enum.count(WardrikProtocol.types()) == 52
     assert "wardrik.run.started" in WardrikProtocol.types()
 
     assert WardrikProtocol.dataschema("wardrik.run.started") ==
@@ -152,6 +152,33 @@ defmodule WardrikProtocolTest do
         assert Map.has_key?(operation.input["properties"], "conversation")
       end
     end
+
+    test "takes a hook's or channel's request as it came over HTTP" do
+      paths = WardrikProtocol.openapi()["paths"]
+
+      for {path, id} <- [
+            {"/v1/hooks/{agent}/{trigger}", "hook.deliver"},
+            {"/v1/hooks/{agent}/{trigger}/{secret}", "hook.deliver_with_secret"},
+            {"/v1/channels/{channel}/{path}", "channel.deliver"}
+          ] do
+        assert %{"content" => %{"*/*" => %{}}} = paths[path]["post"]["requestBody"]
+        input = JSV.build!(WardrikProtocol.operation(id).input)
+        request = %{"body" => "{}", "headers" => %{"content-type" => "application/json"}}
+        assert {:ok, _input} = JSV.validate(Map.merge(request, path_input(id)), input)
+      end
+
+      assert %{"content" => %{"*/*" => %{}}} =
+               paths["/v1/channels/{channel}/{path}"]["post"]["responses"]["200"]
+
+      assert %{output: %{"required" => ["status", "headers", "body"]}} =
+               WardrikProtocol.operation("channel.deliver")
+    end
+
+    defp path_input("channel.deliver"), do: %{"channel" => "slack", "path" => "events"}
+    defp path_input("hook.deliver"), do: %{"agent" => "agt_1", "trigger" => "gh"}
+
+    defp path_input("hook.deliver_with_secret"),
+      do: %{"agent" => "agt_1", "trigger" => "gh", "secret" => "s3cret"}
 
     test "takes its parameters and body as one input" do
       input = JSV.build!(WardrikProtocol.operation("agent.ask").input)

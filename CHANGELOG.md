@@ -5,6 +5,12 @@
 - The events `wardrik.provider.added`, `wardrik.provider.removed`,
   `wardrik.notify_target.added` and `wardrik.notify_target.removed`.
 - Each generated operation function's doc shows a call.
+- An interrupt given as `interrupt:` names its own `agent` and `conversation`:
+  `Wardrik.Agent.approve(scope, interrupt: interrupt)`.
+- `openapi.json` describes what `hook.deliver`, `hook.deliver_with_secret` and
+  `channel.deliver` take over HTTP: the request as the service sent it, in any content type.
+  `x-wardrik-input` and `x-wardrik-output` give what the operation itself takes and answers.
+- `agent.clear` is summarized as clearing a history. The agent and its other conversations stay.
 
 ### Breaking
 
@@ -15,6 +21,10 @@
 - Secrets, ceilings, MCP servers and connections are no longer protocol operations.
   `Wardrik.Secrets`, `Wardrik.Ceilings`, `Wardrik.MCPServers`, `Wardrik.Connections` and their
   types and schemas are gone.
+- The `wardrik.ceiling.reached` event and its schema are gone. Ceilings belong to the app that
+  sets them.
+- `agent_definition` no longer speaks of orgs, owners or `config.yaml`. Its example shares
+  `agt_runbooks`.
 - Statements and tokens are gone: `Wardrik.Statement`, `Wardrik.Tokens`, `Wardrik.Token`, the
   `tokens.*` operations and the `authenticate/2` callback.
 - `Wardrik.Resource`, `Definition.principal/1` and the channel installation's
@@ -36,6 +46,8 @@
   conversation: "C1")`. That's `Wardrik.Agent`'s `approve/2`, `deny/2`, `kill/2`,
   `authorization/2`, `trigger_set/2` and `trigger_remove/2`, `Wardrik.Hook.deliver/2`,
   `deliver_with_secret/2` and `Wardrik.Channel.deliver/2`.
+- `Wardrik.Agent.decide/2` takes one keyword list too, as `approve/2` and `deny/2` do:
+  `decide(scope, agent: "agt_1", decisions: %{"call_1" => :approve}, conversation: "C1")`.
 - An operation with one path parameter takes `conversation:` in its options:
   `Wardrik.Agent.ask(scope, "agt_1", "Hi", conversation: "C1")`.
 - An operation's input takes only its own fields. Any other key raises `ArgumentError`.

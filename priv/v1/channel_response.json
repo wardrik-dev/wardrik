@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:channel_response",
   "title": "A channel's answer",
-  "description": "What channel.deliver answers: the response the chat app expects, which a surface sends as it is, in place of JSON of its own.",
+  "description": "What channel.deliver answers: the response the chat app expects. Over HTTP, it is sent as the response itself.",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -40,7 +40,9 @@ defmodule Wardrik.Test.Server do
   def follow(%{agent: "acme/broken"}, _opts), do: [{:text, "Half"}, {:failed, "It broke."}]
 
   def follow(%{agent: "acme/waiting"}, _opts),
-    do: [{:waiting, [%Wardrik.Interrupt{id: "c1", reason: :tool_approval}]}]
+    do: [
+      {:waiting, [%Wardrik.Interrupt{id: "c1", reason: :tool_approval, agent: "acme/waiting"}]}
+    ]
 
   def follow(%{conversation: "C1", input: input}, _opts),
     do: [{:done, %Wardrik.Reply{message: "m1", run: "r1", text: "In C1: " <> input}}]

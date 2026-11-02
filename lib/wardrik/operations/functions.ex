@@ -32,6 +32,17 @@ defmodule Wardrik.Operations.Functions do
     |> List.flatten()
   end
 
+  # `agent.decide` names its agent beside its decisions, as `agent.approve` and `agent.deny` do.
+  @named ~w(agent.decide)
+
+  @doc """
+  Returns whether `operation`'s function takes one keyword list naming its path parameters: one
+  with two or more, so their IDs can't be swapped, and `agent.decide`.
+  """
+  @spec named?(WardrikProtocol.operation()) :: boolean()
+  def named?(%{id: id} = operation),
+    do: id in @named or match?([_first, _second | _more], path(operation))
+
   defp parts(id), do: String.split(id, ".", parts: 2)
 
   defp functions(%{stream: true} = operation),
@@ -73,7 +84,11 @@ defmodule Wardrik.Operations.Functions do
     parameters = path(operation)
     scope = Macro.var(:scope, __MODULE__)
     given = Macro.var(:input, __MODULE__)
-    {arguments, types, input} = arguments(operation, parameters, given)
+
+    {arguments, types, input} =
+      if named?(operation),
+        do: named(operation, parameters, given),
+        else: arguments(operation, parameters, given)
 
     quote do
       @doc unquote(doc(operation, name, lead, parameters))
@@ -85,9 +100,8 @@ defmodule Wardrik.Operations.Functions do
     end
   end
 
-  # Two or more path parameters are named in the input, so their IDs can't be swapped. The
-  # conversation, where there is one, is named there too.
-  defp arguments(%{id: id}, [_first, _second | _more] = parameters, given) do
+  # Named path parameters are in the input, beside the conversation where there is one.
+  defp named(%{id: id}, parameters, given) do
     keys = Enum.map(parameters, &String.to_atom/1)
     input = quote(do: Types.named(unquote(id), unquote(given), unquote(keys)))
     {[given], [quote(do: keyword())], input}
@@ -161,14 +175,20 @@ defmodule Wardrik.Operations.Functions do
     "    #{call}(#{Enum.join(["scope" | example_arguments(operation, parameters)], ", ")})"
   end
 
-  defp example_arguments(operation, [_first, _second | _more] = parameters) do
+  defp example_arguments(operation, parameters) do
+    if named?(operation),
+      do: named_example(operation, parameters),
+      else: positional_example(operation, parameters)
+  end
+
+  defp named_example(operation, parameters) do
     required = Map.get(operation.input, "required", []) -- parameters
 
     Enum.map(parameters, &"#{&1}: #{Map.get(@samples, &1, ~s("..."))}") ++
       Enum.map(required, &"#{&1}: #{&1}")
   end
 
-  defp example_arguments(operation, parameters) do
+  defp positional_example(operation, parameters) do
     path = Enum.map(parameters, &Map.get(@samples, &1, ~s("...")))
     if Types.fields(operation) == [], do: path, else: path ++ ["input"]
   end

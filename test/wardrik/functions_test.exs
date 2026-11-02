@@ -31,7 +31,12 @@ defmodule Wardrik.FunctionsTest do
     assert_received {:ran, "agent.ask",
                      %{"agent" => "agt_1", "content" => "Hi.", "conversation" => "C1"}}
 
-    Wardrik.Agent.decide(scope, "agt_1", %{"call_1" => :approve}, conversation: "C1")
+    Wardrik.Agent.decide(scope,
+      agent: "agt_1",
+      decisions: %{"call_1" => :approve},
+      conversation: "C1"
+    )
+
     assert_received {:ran, "agent.decide", %{"conversation" => "C1", "decisions" => [_decision]}}
 
     Wardrik.Agent.ask(scope, "agt_1", "Hi.")
@@ -85,9 +90,13 @@ defmodule Wardrik.FunctionsTest do
     assert_raise KeyError, fn ->
       Types.named("agent.kill", [agent: "acme/books"], [:agent, :call])
     end
+
+    assert_raise ArgumentError, fn ->
+      Types.named("agent.decide", [agent: "acme/books", decisions: %{}, colour: "red"], [:agent])
+    end
   end
 
-  defp named?(operation), do: match?([_first, _second | _more], Functions.path(operation))
+  defp named?(operation), do: Functions.named?(operation)
 
   test "streams every operation that can be streamed, and nothing else" do
     for operation <- WardrikProtocol.operations() do

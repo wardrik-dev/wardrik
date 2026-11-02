@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:agent_definition",
   "title": "An agent's definition",
-  "description": "What agent.define takes, and agent.definition answers: what an agent is, and what it may do. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.",
+  "description": "What agent.define takes, and agent.definition answers: what an agent is, and what it may do.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -27,7 +27,7 @@
       "items": {
         "type": "string"
       },
-      "description": "What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; self/* for its operations on itself; agents/* for its operations on the agents of its org; or * for all of them."
+      "description": "What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; self/* for its operations on itself; agents/* for its operations on other agents; or * for all of them."
     },
     "workspace": {
       "type": "object",
@@ -305,7 +305,7 @@
                   }
                 }
               ],
-              "description": "The targets, as config.yaml's notify names them, and rooms in channels, as slack:#updates."
+              "description": "The targets, as its resolver names them, and rooms in channels, as slack:#updates."
             },
             "on": {
               "type": "array",
@@ -322,14 +322,14 @@
           }
         }
       ],
-      "description": "Who hears when the agent parks, fails or answers: a target config.yaml's notify names or a room in a channel, as slack:#updates; a list of them; or to and on. A target tells only the agents of the orgs it serves, and a room is posted in a workspace of the agent's own owner."
+      "description": "Who hears when the agent parks, fails or answers: a target its resolver names or a room in a channel, as slack:#updates; a list of them; or to and on. A room is posted in the workspace its resolver gives the channel."
     },
     "channels": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "The chat channels, as config.yaml names them, it may be chosen to answer in."
+      "description": "The chat channels, by name, it may be chosen to answer in."
     }
   },
   "examples": [
@@ -345,7 +345,7 @@
       ],
       "workspace": {
         "shared": {
-          "team": "acme/runbooks"
+          "team": "agt_runbooks"
         }
       },
       "context": [

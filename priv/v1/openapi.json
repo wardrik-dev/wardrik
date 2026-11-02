@@ -7,7 +7,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "description": "Wardrik's operations. Each is named by its operationId, everywhere it's offered: over HTTP, in the CLI, as an agent's tool. x-wardrik-action is what a caller must be allowed to do, x-wardrik-effect whether it reads, changes or destroys, and x-wardrik-subject what it acts on: one agent, many agents, or the deployment. An agent the caller reaches none of is answered as one that doesn't exist."
+    "description": "Wardrik's operations. Each is named by its operationId, everywhere it's offered: over HTTP, in the CLI, as an agent's tool. x-wardrik-action is what a caller must be allowed to do, x-wardrik-effect whether it reads, changes or destroys, and x-wardrik-subject what it acts on: one agent, many agents, or the deployment. An agent the caller reaches none of is answered as one that doesn't exist. A route on one of an agent's conversations names its operation in x-wardrik-operation, and has no operationId of its own. A hook or a channel takes a request as a service sent it, over HTTP; x-wardrik-input is what the operation takes from it, and x-wardrik-output what it answers."
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "security": [
@@ -986,8 +986,8 @@
     "/v1/agents/{agent}/conversation": {
       "delete": {
         "operationId": "agent.clear",
-        "summary": "Empty an agent's conversation",
-        "description": "Answers conflict while it runs a turn or waits on a person.",
+        "summary": "Clear an agent's history",
+        "description": "Empties its history. The agent, its definition and its other conversations stay. Answers conflict while it runs a turn or waits on a person.",
         "tags": [
           "Agents"
         ],
@@ -1218,6 +1218,9 @@
         "x-wardrik-action": "hook.deliver",
         "x-wardrik-effect": "change",
         "x-wardrik-subject": "hook",
+        "x-wardrik-input": {
+          "$ref": "urn:wardrik:schema:v1:hook_request"
+        },
         "parameters": [
           {
             "$ref": "#/components/parameters/agent"
@@ -1228,12 +1231,9 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "The request a service sent, as it came, in any content type. Its headers go along too, since a signature covers the exact body.",
           "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "urn:wardrik:schema:v1:hook_request"
-              }
-            }
+            "*/*": {}
           }
         },
         "responses": {
@@ -1263,6 +1263,9 @@
         "x-wardrik-action": "hook.deliver",
         "x-wardrik-effect": "change",
         "x-wardrik-subject": "hook",
+        "x-wardrik-input": {
+          "$ref": "urn:wardrik:schema:v1:hook_request"
+        },
         "parameters": [
           {
             "$ref": "#/components/parameters/agent"
@@ -1276,12 +1279,9 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "The request a service sent, as it came, in any content type. Its headers go along too, since a signature covers the exact body.",
           "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "urn:wardrik:schema:v1:hook_request"
-              }
-            }
+            "*/*": {}
           }
         },
         "responses": {
@@ -1442,6 +1442,12 @@
         "x-wardrik-action": "channel.deliver",
         "x-wardrik-effect": "change",
         "x-wardrik-subject": "channel",
+        "x-wardrik-input": {
+          "$ref": "urn:wardrik:schema:v1:channel_request"
+        },
+        "x-wardrik-output": {
+          "$ref": "urn:wardrik:schema:v1:channel_response"
+        },
         "parameters": [
           {
             "$ref": "#/components/parameters/channel"
@@ -1452,23 +1458,16 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "The request a chat app sent, as it came, in any content type. Its headers go along too, since a signature covers the exact body.",
           "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "urn:wardrik:schema:v1:channel_request"
-              }
-            }
+            "*/*": {}
           }
         },
         "responses": {
           "200": {
-            "description": "The channel's answer, as the chat app expects it.",
+            "description": "The channel's answer, as the chat app expects it: the channel's status, headers and body.",
             "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "urn:wardrik:schema:v1:channel_response"
-                }
-              }
+              "*/*": {}
             }
           },
           "400": {
@@ -1527,8 +1526,8 @@
         "x-wardrik-operation": "agent.read"
       },
       "delete": {
-        "summary": "Empty an agent's conversation, in a conversation",
-        "description": "Answers conflict while it runs a turn or waits on a person.",
+        "summary": "Clear a conversation's history",
+        "description": "Empties its history. The agent, its definition and its other conversations stay. Answers conflict while it runs a turn or waits on a person.",
         "tags": [
           "Agents"
         ],

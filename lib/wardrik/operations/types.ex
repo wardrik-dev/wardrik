@@ -55,8 +55,12 @@ defmodule Wardrik.Operations.Types do
   def encode("agent.define", fields), do: fields |> Definition.new!() |> Definition.to_json()
   def encode("agent.ask", text) when is_binary(text), do: %{"content" => text}
 
-  def encode("agent.decide", decisions) when is_map(decisions),
-    do: %{"decisions" => Enum.map(decisions, &decision/1)}
+  def encode("agent.decide", input) when is_list(input) do
+    Map.new(input, fn
+      {:decisions, decisions} -> {"decisions", Enum.map(decisions, &decision/1)}
+      {key, value} -> {to_string(key), value}
+    end)
+  end
 
   def encode(_id, []), do: %{}
   def encode(_id, input), do: Type.json(input)
@@ -77,10 +81,12 @@ defmodule Wardrik.Operations.Types do
 
   @doc """
   Converts a keyword `input` holding the path parameters `keys`, and any `:conversation`, to JSON.
+  An `:interrupt` struct gives its `:agent` and `:conversation` where they're missing.
   Raises `KeyError` for a missing parameter and `ArgumentError` for an unknown key.
   """
   @spec named(String.t(), keyword(), [atom()]) :: map()
   def named(id, input, keys) do
+    input = interrupted(input)
     path = Map.new(keys, &{Atom.to_string(&1), path(Keyword.fetch!(input, &1))})
     {held, rest} = Keyword.split(Keyword.drop(input, keys), held(id))
 
@@ -89,6 +95,19 @@ defmodule Wardrik.Operations.Types do
     |> then(&checked(id, &1))
     |> Map.merge(path)
     |> conversation(held)
+  end
+
+  # An interrupt from `reply/4` or `interrupts.list` names its agent and conversation.
+  defp interrupted(input) do
+    case Keyword.get(input, :interrupt) do
+      %Interrupt{agent: agent, conversation: conversation} when is_binary(agent) ->
+        input
+        |> Keyword.put_new(:agent, agent)
+        |> then(&if(conversation, do: Keyword.put_new(&1, :conversation, conversation), else: &1))
+
+      _other ->
+        input
+    end
   end
 
   defp held(id) do

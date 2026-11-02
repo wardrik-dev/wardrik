@@ -58,5 +58,8 @@ Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", conversation: 
 ```
 
 * An operation with one path parameter takes it as an argument, and `conversation:` in `opts`.
-* An operation with two or more takes one keyword list, `conversation:` included.
+* An operation with two or more takes one keyword list, `conversation:` included. So does
+  `Wardrik.Agent.decide/2`.
+* An interrupt from `Wardrik.Agent.reply/4` or `Wardrik.Interrupts.list/2` names its agent and
+  conversation: `Wardrik.Agent.approve(scope, interrupt: interrupt)`.
 * An unknown key raises `ArgumentError`.

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:channel_request",
   "title": "A chat app's request",
-  "description": "What channel.deliver takes: the request a chat app sent, its raw body and its headers, with lowercase names. The surface that receives it passes them on as they came, since a signature covers the exact body.",
+  "description": "What channel.deliver takes: the request a chat app sent, as its raw body and its headers by lowercase name. Over HTTP, a chat app sends the request itself, and Wardrik reads this from it.",
   "type": "object",
   "additionalProperties": false,
   "required": [

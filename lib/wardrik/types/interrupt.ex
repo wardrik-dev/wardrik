@@ -2,8 +2,12 @@ defmodule Wardrik.Interrupt do
   @moduledoc """
   A call an agent waits on a person for.
 
+      {:waiting, [interrupt]} = Wardrik.Agent.reply(scope, "agt_1", "Refund order 1001.")
+      Wardrik.Agent.approve(scope, interrupt: interrupt)
+
   `reason` is `:tool_approval`, `:model_approval`, `:ceiling_approval`, `:authorization` or
-  `:in_doubt`. `agent` and `conversation` are set only by `Wardrik.Interrupts.list/2`.
+  `:in_doubt`. `agent` and `conversation` say where it waits. Given as `interrupt:`, it names
+  them for you.
   """
 
   use Wardrik.Type,

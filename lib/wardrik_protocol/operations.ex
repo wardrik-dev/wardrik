@@ -65,7 +65,7 @@ defmodule WardrikProtocol.Operations do
       parameters: Enum.map(parameters, &%{name: &1["name"], in: &1["in"]}),
       input: input(parameters, request(operation)),
       status: status,
-      output: get_in(response, ["content", "application/json", "schema"]),
+      output: output(operation, response),
       stream: Map.has_key?(response["content"] || %{}, "text/event-stream")
     }
   end
@@ -75,12 +75,20 @@ defmodule WardrikProtocol.Operations do
     {String.to_integer(status), local(document, response)}
   end
 
+  # A hook or a channel takes a request as it came over HTTP, and its input from that.
+  defp request(%{"x-wardrik-input" => schema}), do: schema
+
   defp request(%{
          "requestBody" => %{"content" => %{"application/json" => %{"schema" => schema}}}
        }),
        do: schema
 
   defp request(_operation), do: %{"type" => "object", "additionalProperties" => false}
+
+  defp output(%{"x-wardrik-output" => schema}, _response), do: schema
+
+  defp output(_operation, response),
+    do: get_in(response, ["content", "application/json", "schema"])
 
   defp input(parameters, body) do
     Enum.reduce(parameters, body, fn parameter, input ->

@@ -30,9 +30,10 @@ defmodule WardrikProtocol do
     * `:subject` - what it acts on: `"agent"`, `"agents"`, `"deployment"`, `"hook"` or
       `"channel"`.
     * `:parameters` - which input fields go in the HTTP path or query.
-    * `:input` - one schema for its parameters and body together.
+    * `:input` - one schema for its parameters and body together. A hook's or channel's body is
+      the request as it came, so its input is its `x-wardrik-input`.
     * `:status` - the HTTP status it returns on success.
-    * `:output` - its output schema, or `nil`.
+    * `:output` - its output schema, or `nil`. A channel's is its `x-wardrik-output`.
     * `:stream` - `true` if it can stream events.
   """
   @type operation() :: %{

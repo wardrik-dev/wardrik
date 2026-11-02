@@ -8,7 +8,9 @@ defmodule Wardrik.ServerTest do
   @inputs %{
     "agent.define" => [model: "anthropic:claude-haiku-4-5"],
     "agent.ask" => "What's on fire?",
-    "agent.decide" => %{"c1" => :approve, "c2" => {:deny, "No."}, "c3" => {:approve, "Once."}}
+    "agent.decide" => [
+      decisions: %{"c1" => :approve, "c2" => {:deny, "No."}, "c3" => {:approve, "Once."}}
+    ]
   }
 
   setup do
@@ -30,10 +32,10 @@ defmodule Wardrik.ServerTest do
   end
 
   defp arguments(operation, input) do
-    case {Functions.path(operation), Types.fields(operation)} do
-      {[_first, _second | _more] = path, _fields} -> [Enum.map(path, &{String.to_atom(&1), "x"})]
-      {path, []} -> Enum.map(path, fn _parameter -> "x" end)
-      {path, _fields} -> Enum.map(path, fn _parameter -> "x" end) ++ [input]
+    case {Functions.named?(operation), Functions.path(operation), Types.fields(operation)} do
+      {true, path, _fields} -> [Enum.map(path, &{String.to_atom(&1), "x"}) ++ input]
+      {false, path, []} -> Enum.map(path, fn _parameter -> "x" end)
+      {false, path, _fields} -> Enum.map(path, fn _parameter -> "x" end) ++ [input]
     end
   end
 
@@ -49,8 +51,16 @@ defmodule Wardrik.ServerTest do
   test "replies with what the server follows, and says how the run ended", %{scope: scope} do
     assert {:ok, %Wardrik.Reply{text: "Re: hi"}} = Wardrik.Agent.reply(scope, "acme/triage", "hi")
 
-    assert {:waiting, [%Wardrik.Interrupt{id: "c1"}]} =
+    assert {:waiting, [%Wardrik.Interrupt{id: "c1"} = interrupt]} =
              Wardrik.Agent.reply(scope, "acme/waiting", "hi")
+
+    Wardrik.Agent.approve(scope, interrupt: interrupt)
+    assert_received {:ran, "agent.approve", %{"agent" => "acme/waiting", "interrupt" => "c1"}}
+
+    Wardrik.Agent.deny(scope, interrupt: %{interrupt | conversation: "C1"}, reason: "No.")
+
+    assert_received {:ran, "agent.deny",
+                     %{"agent" => "acme/waiting", "conversation" => "C1", "reason" => "No."}}
 
     assert {:error, %Wardrik.Error{type: :unavailable, message: "The run failed: It broke."}} =
              Wardrik.Agent.reply(scope, "acme/broken", "hi")
