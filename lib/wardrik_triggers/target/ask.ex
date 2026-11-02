@@ -3,7 +3,7 @@ defmodule WardrikTriggers.Target.Ask do
   What `c:WardrikTriggers.Target.ask/2` asks: that `agent` be asked `prompt`, by `trigger`.
 
       %WardrikTriggers.Target.Ask{
-        agent: "acme/triage",
+        agent: "agt_triage",
         prompt: "Write the digest.",
         trigger: "daily",
         overlap: :skip,

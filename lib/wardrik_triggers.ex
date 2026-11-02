@@ -8,7 +8,7 @@ defmodule WardrikTriggers do
       ]
 
       :ok =
-        WardrikTriggers.put(MyApp.Triggers, "acme/digest", [
+        WardrikTriggers.put(MyApp.Triggers, "agt_digest", [
           %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Write today's update."}
         ])
 
@@ -60,7 +60,7 @@ defmodule WardrikTriggers do
   for the keys.
 
       :ok =
-        WardrikTriggers.put(MyApp.Triggers, "acme/digest", [
+        WardrikTriggers.put(MyApp.Triggers, "agt_digest", [
           %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Write today's update."}
         ])
 
@@ -90,7 +90,7 @@ defmodule WardrikTriggers do
   Removes the trigger `:name` of `:agent_id`. Returns `{:error, :not_found}` if it has none, or
   `{:error, reason}` if the store fails.
 
-      :ok = WardrikTriggers.remove(MyApp.Triggers, agent_id: "acme/digest", name: "daily")
+      :ok = WardrikTriggers.remove(MyApp.Triggers, agent_id: "agt_digest", name: "daily")
   """
   @spec remove(atom(), agent_id: String.t(), name: String.t()) ::
           :ok | {:error, :not_found | term()}
@@ -114,7 +114,7 @@ defmodule WardrikTriggers do
   Asks `:agent_id` about the `:request` sent to its webhook trigger `:name`.
 
       WardrikTriggers.deliver(MyApp.Triggers,
-        agent_id: "acme/digest",
+        agent_id: "agt_digest",
         name: "issues",
         request: %{body: body, headers: headers}
       )

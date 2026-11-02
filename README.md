@@ -3,7 +3,7 @@
 Asks agents something on a clock, when a feed has new entries, or when a service sends a webhook.
 
 ```elixir
-WardrikTriggers.put(MyApp.Triggers, "acme/digest", [
+WardrikTriggers.put(MyApp.Triggers, "agt_digest", [
   %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Write today's update."},
   %{"name" => "rivals", "every" => "6h", "feed" => "https://rivalco.example/changelog.rss", "prompt" => "What changed?"},
   %{"name" => "issues", "webhook" => %{"secret" => "${ISSUES_HOOK_SECRET}"}, "prompt" => "Triage it."}
@@ -104,7 +104,7 @@ Every run also emits `[:wardrik_triggers, :fired]` telemetry, with `agent_id`, `
 writes it.
 
 ```elixir
-{:ok, _agent} = WardrikCore.start_agent(agent_id: "acme/digest", model: "anthropic:claude-haiku-4-5")
+{:ok, _agent} = WardrikCore.start_agent(agent_id: "agt_digest", model: "anthropic:claude-haiku-4-5")
 {:ok, _vsn} =
   WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
     principal: %WardrikCore.Principal{id: "acme"},
@@ -113,7 +113,7 @@ writes it.
   })
 
 :ok =
-  WardrikTriggers.put(MyApp.Triggers, "acme/digest", [
+  WardrikTriggers.put(MyApp.Triggers, "agt_digest", [
     %{"name" => "daily", "every" => "0 9 * * *", "timezone" => "America/Los_Angeles", "prompt" => "Write today's update."},
     %{"name" => "rivals", "every" => "6h", "feed" => "https://rivalco.example/changelog.rss", "prompt" => "What changed?"},
     %{"name" => "issues", "webhook" => %{"secret" => "${ISSUES_HOOK_SECRET}"}, "prompt" => "Triage it."}
@@ -124,7 +124,7 @@ writes it.
 for a webhook:
 
 ```elixir
-WardrikTriggers.list(MyApp.Triggers, "acme/digest")
+WardrikTriggers.list(MyApp.Triggers, "agt_digest")
 #=> [
 #=>   {%WardrikTriggers.Trigger{name: "daily", every: "0 9 * * *", timezone: "America/Los_Angeles", ...},
 #=>    ~U[2026-10-24 16:00:00Z]},

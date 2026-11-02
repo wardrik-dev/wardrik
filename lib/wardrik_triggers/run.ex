@@ -19,7 +19,7 @@ defmodule WardrikTriggers.Run do
   @doc """
   Runs `:agent_id`'s `:trigger`, which was due at `:due`, at `:now`.
 
-      Run.clock(settings, agent_id: "acme/digest", trigger: trigger, due: due, now: now)
+      Run.clock(settings, agent_id: "agt_digest", trigger: trigger, due: due, now: now)
 
   A run more than a minute late with `missed: :skip` returns `:missed` and asks nothing.
   """

@@ -11,7 +11,7 @@ defmodule WardrikTriggers.Records do
   @doc """
   Returns the record for trigger `:name` of `:agent_id` and its version, or `nil`.
 
-      Records.lookup(store, agent_id: "acme/digest", name: "daily")
+      Records.lookup(store, agent_id: "agt_digest", name: "daily")
   """
   @spec lookup(WardrikStore.t(), agent_id: String.t(), name: String.t()) ::
           {map(), WardrikStore.vsn()} | nil
@@ -62,7 +62,7 @@ defmodule WardrikTriggers.Records do
   Updates the record for trigger `:name` of `:agent_id` with `fun`. Retries on a conflicting
   write.
 
-      Records.update(store, [agent_id: "acme/digest", name: "daily"], &Map.put(&1, "feeds", %{}))
+      Records.update(store, [agent_id: "agt_digest", name: "daily"], &Map.put(&1, "feeds", %{}))
 
   Returns `{:error, :not_found}` if there's no record.
   """
