@@ -1,14 +1,13 @@
 ---
 title: A support agent per customer
-description: "One agent for every customer, with your app's tools: it sees only that customer's orders, and big refunds wait."
+description: "One agent per customer, with tools from your app. Each agent can access only its customer's orders, and large refunds need approval."
 sidebar:
   order: 2
 ---
 
-Every customer gets an agent of their own. It answers in your app and looks up their orders with
-tools in your code. Refunds up to $50 run; bigger ones wait for your team in Slack. No customer's
-agent can reach another customer's orders. An agent nobody is talking to sleeps, so thousands cost
-almost nothing.
+Your app creates one agent per customer. It replies in your app and looks up orders with tools in
+your code. Refunds up to $50 run. Larger ones need approval in Slack. No agent can access another
+customer's orders. Idle agents stop, so thousands of them cost almost nothing.
 
 ## The files
 
@@ -42,9 +41,9 @@ bindings:
   - {org: shop, role: support, subjects: [user:shop/@maria, user:shop/@sam]}
 ```
 
-- `trusted_workers: true` treats your app's answers as your own, so a lookup doesn't make every
-  refund wait.
-- The `support` policy holds every agent in the org, whatever your app defines.
+- `trusted_workers: true` marks your app's results as trusted, so a lookup doesn't make every
+  refund need approval.
+- The `support` policy applies to every agent in the org, regardless of its definition.
 
 ```yaml title="~/.config/wardrik/policies/support.yaml"
 allow:
@@ -61,7 +60,7 @@ import { db, payments } from "./app.ts"; // your app's own
 
 export const wardrik = new Wardrik({ name: "support" });
 
-// Wardrik says which agent is calling. Your app knows whose agent that is.
+// Wardrik passes the calling agent's ID. Your app maps it to a customer.
 const customerOf = (agent?: string) => db.customers.findBy({ agentId: agent });
 
 wardrik.tool({
@@ -90,7 +89,7 @@ void wardrik.work();
 import { wardrik } from "./support.ts";
 import { db } from "./app.ts";
 
-// The daemon makes an agent and gives it an ID. Keep the ID with the customer.
+// The daemon creates the agent and returns its ID. Store the ID on the customer.
 async function agentFor(customer: { id: string; agentId?: string }): Promise<string> {
   if (customer.agentId) return customer.agentId;
 
@@ -125,13 +124,13 @@ wardrik token create shop-app --subject user:shop/@app     # your app's WARDRIK_
 npm install @wardrik/sdk@0.1.0-rc.2 zod
 ```
 
-Run your app and ask a customer's agent for a $20 refund: it's done. Ask for $200 and it says a
-person will look. The call waits in `#support` with **Approve** and **Deny**.
+Run your app and ask a customer's agent for a $20 refund. It runs. Ask for $200, and the call is
+posted to `#support` with **Approve** and **Deny**.
 
 ## What it shows
 
-- One agent per customer, each with its own history. Idle agents sleep until the next message.
-- A tool learns which agent called from Wardrik, never from what the model wrote. A customer can't
-  talk their agent into another customer's orders.
-- Refund limits are policy. Your app can't define an agent that gets around them.
+- One agent per customer, each with its own history. Idle agents stop until the next message.
+- Tools receive the calling agent's ID from Wardrik, not from the model's arguments. A prompt
+  can't make an agent read another customer's orders.
+- Refund limits are in the org policy. No agent definition can bypass them.
 - See [Tools in your app](/build/tool-workers/).

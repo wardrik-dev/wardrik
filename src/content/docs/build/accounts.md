@@ -1,11 +1,11 @@
 ---
 title: Connect accounts
-description: "Let each person connect their own accounts with OAuth, so their agents call MCP servers as them."
+description: "Each user connects their own accounts with OAuth, so their agents call MCP servers with their credentials."
 sidebar:
   order: 2
 ---
 
-Name an OAuth provider, and give an MCP server a `credential` of the same name:
+Define an OAuth provider, and set an MCP server's `credential` to its name:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 base_url: https://agents.example.com
@@ -37,35 +37,35 @@ Sign in to github at https://github.com/login/device with the code BCDF-GHJK
 Connected github.
 ```
 
-- An agent calls the server with its owner's account. Jon's agents use Jon's.
-- `flow: device` shows a code to enter at the provider. The command stops as soon as the sign-in
-  is granted, declined or expires.
-- Without `flow: device`, it prints a link. Sign in, then type the code the page shows, or run
+- An agent calls the server with its owner's account.
+- `flow: device` prints a code to enter at the provider. The command exits when the sign-in is
+  granted, declined or expired.
+- Without `flow: device`, it prints a link. Sign in, then enter the code the page shows, or run
   `wardrik connection pair github CODE`.
-- A code works once, for 10 minutes, for the person who started the sign-in.
+- A code is single-use, valid for 10 minutes, and only for the user who started the sign-in.
 
 ## Your accounts
 
 ```sh
-wardrik connection ls                    # what you can connect, and what you hold
-wardrik connection disconnect github     # forget it; the next call asks again
+wardrik connection ls                    # available providers, and your connections
+wardrik connection disconnect github     # delete it; the next call prompts again
 ```
 
-Each command acts as the person the token names. Every person manages only their own accounts.
+Each command runs as the token's user. Users manage only their own accounts.
 
-## When an agent asks first
+## Calls before connecting
 
-If an agent calls the server before its owner connects, the call waits. The link is never put in
-the conversation or a notice. Find it:
+If an agent calls the server before its owner connects, the call pauses. The sign-in link is never
+added to the conversation or a notice. Get it from:
 
-- in Slack, with the notice's **Show link** button, shown only to whoever pressed it;
-- at `GET /v1/agents/{agent}/interrupts/{interrupt}/authorization`, as `{"url": ..., "code": ...}`.
+- the notice's **Show link** button in Slack, visible only to the user who clicks it;
+- `GET /v1/agents/{agent}/interrupts/{interrupt}/authorization`, as `{"url": ..., "code": ...}`.
 
-Once the account is connected, the call carries on.
+Once the account is connected, the call resumes.
 
-## OAuth apps people add
+## OAuth apps added at runtime
 
-An org or a person can add their own OAuth app while the daemon runs:
+An org or user can add their own OAuth app while the daemon runs:
 
 ```sh
 echo "$LINEAR_SECRET" | wardrik vault put LINEAR_SECRET --org acme --for client_secret
@@ -74,7 +74,7 @@ wardrik provider add linear --org acme \
 wardrik provider ls --org acme
 ```
 
-A person signs in with the nearest app of a name: their own, their org's, then `config.yaml`'s.
+For a provider name, the first match is used: the user's app, the org's, then `config.yaml`'s.
 
 ## Over HTTP
 
@@ -86,21 +86,20 @@ curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/conne
 # {"provider": "github", "connected": false, "authorization": {"url": "https://…", "code": "BCDF-GHJK"}}
 ```
 
-- `signing_in` says a sign-in you started is still under way.
-- `POST /v1/connections/{provider}/pair` finishes a browser sign-in with its code.
-- `DELETE /v1/connections/{provider}` forgets the account.
-- Apps people add are at `/v1/owners/{owner}/providers`. See the
+- `signing_in` is `true` while a sign-in you started is in progress.
+- `POST /v1/connections/{provider}/pair` completes a browser sign-in with its code.
+- `DELETE /v1/connections/{provider}` deletes the connection.
+- Apps added at runtime are at `/v1/owners/{owner}/providers`. See the
   [HTTP API reference](/reference/http-api/).
 
 ## Details
 
-- Browser sign-ins come back to `{base_url}/oauth/callback`. Register that with the provider. See
-  [A public address](/run/public-address/).
+- Browser sign-ins redirect to `{base_url}/oauth/callback`. Register that URL with the provider.
+  See [A public address](/run/public-address/).
 - A provider needs an `issuer`, a `resource`, or both `authorization_endpoint` and
   `token_endpoint`. Every key is in [`config.yaml` › oauth](/reference/config/#oauth).
-- Without a `client_id`, the daemon registers itself with the provider the first time someone signs
-  in.
-- A server over HTTP gets the account as `authorization: Bearer <token>`. A server run as a command
-  gets it in the variable `credential_env` names.
-- A token is refreshed when it expires. A refused refresh asks the person to connect again.
-- Accounts are sealed in the [vault](/build/vault/).
+- Without a `client_id`, the daemon registers a client with the provider on the first sign-in.
+- An HTTP server receives the token as `authorization: Bearer <token>`. A command server receives
+  it in the environment variable named by `credential_env`.
+- Tokens are refreshed on expiry. If a refresh fails, the user is prompted to connect again.
+- Connections are stored in the [vault](/build/vault/).

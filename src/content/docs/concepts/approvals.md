@@ -1,12 +1,12 @@
 ---
 title: Approvals
-description: "A call that waits parks its turn until a person approves or denies it, from the terminal, Slack, HTTP or Elixir."
+description: "A tool call that needs approval pauses its turn until a person approves or denies it, from the terminal, Slack or HTTP."
 sidebar:
   order: 3
 ---
 
-A call that waits parks the turn. Nothing more runs until a person decides it. A parked turn is
-stored, so it survives a restart. It never times out.
+A tool call that needs approval pauses the turn until a person approves or denies it. The paused
+turn is stored, so it survives a restart. It never times out.
 
 ```sh
 wardrik approval ls
@@ -14,20 +14,10 @@ wardrik approval approve triage call_1 --note "Label it for the next sprint."
 wardrik approval deny triage call_1 --reason "Not on a Friday."
 ```
 
-- An approval runs the call exactly as the model wrote it. A note reaches the model beside the
-  result.
-- A denial reaches the model as an error with your reason. The turn goes on.
+- Approving runs the call with the model's arguments. The model receives the `--note` with the result.
+- Denying returns an error with your `--reason` to the model. The turn continues.
 - To change a call, deny it and say what to do instead.
-- A call in a conversation needs `--conversation`, as `approval ls` shows it.
-
-## From Elixir
-
-```elixir
-Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", note: "Only staging.")
-Wardrik.Agent.deny(scope, agent: "agt_1", interrupt: "call_1", conversation: "C1", reason: "Not now.")
-```
-
-All arguments are one keyword list. An unknown key raises `ArgumentError`.
+- For a call in a conversation, pass `--conversation ID`. `approval ls` shows the ID.
 
 ## Over HTTP
 
@@ -37,26 +27,27 @@ curl -X POST -H "authorization: Bearer $TOKEN" \
   http://127.0.0.1:4747/v1/agents/agt_1/interrupts/call_1/approve
 ```
 
-| Route | Decides |
+| Route | Does |
 | --- | --- |
-| `POST /v1/agents/{agent}/interrupts/{interrupt}/approve` | one call |
-| `POST /v1/agents/{agent}/interrupts/{interrupt}/deny` | one call, with an optional `reason` |
-| `POST /v1/agents/{agent}/decisions` | several calls at once |
-| `GET /v1/interrupts` | lists every waiting call |
+| `POST /v1/agents/{agent}/interrupts/{interrupt}/approve` | approves one call |
+| `POST /v1/agents/{agent}/interrupts/{interrupt}/deny` | denies one call, with an optional `reason` |
+| `POST /v1/agents/{agent}/decisions` | approves or denies several calls |
+| `GET /v1/interrupts` | lists every pending call |
 
 A conversation's calls are under `/v1/agents/{agent}/conversations/{conversation}/...`.
 
-## Who may decide
+## Who can approve
 
-- In the daemon, a binding whose role allows `approve`, `deny` or `decide` on the agent.
-- In a chat channel, whoever asked for the turn, always.
-- The `wardrik` command, which acts as the admin.
+- In the daemon: a subject bound to a role that allows `approve`, `deny` or `decide` on the agent.
+- In a chat channel: the person who sent the message that started the turn.
+- The `wardrik` command, which runs as the admin.
 
-## While a call waits
+## While a call is pending
 
 - Allowed calls in the same round have already run.
-- Each waiting call is decided on its own. The model gets the round's results once all are decided.
-- New messages wait behind the parked turn.
-- `wardrik agent cancel` abandons the turn and the messages behind it.
-- A call that needs a connected account waits the same way, with a sign-in link. See
+- Each pending call is approved or denied separately. The model receives the round's results
+  once all are resolved.
+- New messages are queued until the turn resumes.
+- `wardrik agent cancel` ends the turn and drops the queued messages.
+- A call that needs a connected account is pending the same way, with a sign-in link. See
   [Connect accounts](/build/accounts/).

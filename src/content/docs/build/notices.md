@@ -1,11 +1,11 @@
 ---
 title: Send notices
-description: "Have agents tell people when they wait on a person, fail or answer, in a Slack room or at a signed webhook."
+description: "Send a notice to a Slack room or a signed webhook when a turn pauses for approval, fails or finishes."
 sidebar:
   order: 7
 ---
 
-Name targets in `config.yaml`, then route an agent's notices to them:
+Define targets in `config.yaml`, then set an agent's `notify`:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 notify:
@@ -18,33 +18,33 @@ notify:
 # in an agent file
 notify: ops                                         # parked and failed turns
 notify: {to: [ops, audit], on: [parked, failed, finished]}
-notify: {to: ["slack:#updates"], on: [finished]}    # a room, with no target
+notify: {to: ["slack:#updates"], on: [finished]}    # a room, without a target
 ```
 
 | `on` | Sent when |
 | --- | --- |
-| `parked` | a turn waits on a person; in Slack each call has **Approve** and **Deny** |
-| `failed` | a turn fails, with why |
-| `finished` | a turn answers, with its answer |
+| `parked` | a turn pauses for approval; in Slack each call has **Approve** and **Deny** |
+| `failed` | a turn fails, with the error |
+| `finished` | a turn completes, with the reply |
 
-`on` is `[parked, failed]` unless set.
+`on` defaults to `[parked, failed]`.
 
-- A room posts in the workspace the channel is added to for the agent's owner, or its org.
-- A target serves the deployment's org. List it under `orgs.<org>.notify` for another.
-- One org's calls never reach another org's room.
+- A room is in the workspace where the channel was added for the agent's owner or org.
+- A target is available to the deployment's org. List it under `orgs.<org>.notify` for others.
+- Notices are never sent to another org's room.
 
-## Webhooks people add
+## Webhooks added at runtime
 
-An org or person adds a webhook for their own agents:
+An org or user can add a webhook for their own agents:
 
 ```sh
 echo "$SECRET" | wardrik vault put HOOK_SECRET --org acme --for signing_secret
 wardrik notify add alerts --org acme --url https://hooks.acme.example/wardrik --secret HOOK_SECRET
 ```
 
-Agents route to it as `notify: alerts`.
+Agents use it as `notify: alerts`.
 
-## What a webhook gets
+## Webhook payload
 
 ```json
 {
@@ -80,8 +80,9 @@ const ok =
 
 ## Details
 
-- `event` is `turn_parked`, `turn_failed` or `turn_finished`, also in the `x-wardrik-event` header.
-- A notice is sent at least once. Tell a repeat by its `agent`, `event` and `at`.
-- The signature covers the body only. Use `at` to refuse old ones.
-- A failure that may pass is retried. `notify.retries` sets how.
-- A people-added webhook must be `https` at a public address.
+- `event` is `turn_parked`, `turn_failed` or `turn_finished`, also sent as the `x-wardrik-event`
+  header.
+- Delivery is at least once. Deduplicate by `agent`, `event` and `at`.
+- The signature covers the body only. Use `at` to reject replays.
+- Transient failures are retried. `notify.retries` configures it.
+- A webhook added at runtime must be `https` at a public address.

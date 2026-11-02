@@ -1,15 +1,15 @@
 ---
 title: Agents for every team
-description: "One deployment serves every team: each its own org, credentials, Slack, roles and limits, with one audit trail."
+description: "One deployment for every team. Each team is an org with its own credentials, Slack, roles and limits, and one audit log covers all."
 sidebar:
   order: 3
 ---
 
-The platform team runs one daemon. Payments and Growth each get an org: their own agents,
-credentials, Slack app, people and spend limit. Each team makes its own agents, inside a policy the
-platform team sets.
+The platform team runs one daemon. Payments and Growth are separate orgs, each with its own agents,
+credentials, Slack app, users and spend limit. Each team creates its own agents, under a policy the
+platform team defines.
 
-This example is the setup, not one agent.
+This example shows the configuration, not a single agent.
 
 ## The files
 
@@ -47,10 +47,10 @@ bindings:
   - {org: "*", role: auditor, subjects: [user:platform/@security]}
 ```
 
-- `orgs` says what each team's agents use, and the policy that holds all of them.
-- Each Slack app offers only its own org's agents. `members` maps chat members to users.
-- `builder` lets a team make and run agents in its own org. Another team's are answered as missing.
-- `auditor` reads every org's agents and events.
+- `orgs` defines each team's servers, channels and the policy for all its agents.
+- Each Slack app lists only its own org's agents. `members` maps chat members to users.
+- `builder` allows a team to create and run agents in its own org. Other orgs' agents return `404`.
+- `auditor` can read every org's agents and events.
 
 ```yaml title="~/.config/wardrik/policies/payments-limits.yaml"
 ask:
@@ -58,12 +58,12 @@ ask:
 budget: {usd: 20.00, per: day, on_exhausted: ask}
 ```
 
-Stripe writes always wait, and the whole team is capped at $20 a day. `growth-limits.yaml` is
-written the same way.
+Stripe writes always need approval, and the org is capped at $20 a day. `growth-limits.yaml`
+follows the same pattern.
 
 ## Try it
 
-Seal each team's credentials for its org, then restart:
+Store each team's credentials under its org, then restart:
 
 ```sh
 echo "$PAYMENTS_STRIPE_KEY" | wardrik vault put stripe --org payments --for header
@@ -73,13 +73,13 @@ systemctl --user restart wardrik
 wardrik doctor
 ```
 
-Give each engineer a token:
+Create a token per engineer:
 
 ```sh
 wardrik token create ana-laptop --subject user:payments/@ana --groups payments-eng
 ```
 
-Ana makes an agent in her team's org:
+Create an agent in the `payments` org with that token:
 
 ```sh
 curl -X POST -H "authorization: Bearer $ANA_TOKEN" -H "content-type: application/json" \
@@ -93,12 +93,13 @@ curl -X POST -H "authorization: Bearer $ANA_TOKEN" -H "content-type: application
   }'
 ```
 
-The answer holds the agent's ID. It reads Stripe with Payments' key. A refund it proposes waits,
-because the org's policy asks about every Stripe write. Ana's token can't reach Growth's agents.
+The response contains the agent ID. The agent calls Stripe with the `payments` org's key. Its
+refunds need approval, because the org policy has `ask` on every Stripe write. The token can't
+access `growth` agents.
 
 ## What it shows
 
-- Agents, credentials and channels stay inside their org. See [Orgs](/run/orgs/).
-- Who may do what is roles and bindings, as in Kubernetes. See [Orgs, roles and tokens](/run/orgs/).
-- Teams build their own agents. The org's policy and budget hold every one.
-- `wardrik audit` lists what people changed, for every team.
+- Agents, credentials and channels are scoped to their org. See [Orgs](/run/orgs/).
+- Access is roles and bindings, as in Kubernetes RBAC. See [Orgs, roles and tokens](/run/orgs/).
+- Teams create their own agents. The org's policy and budget apply to all of them.
+- `wardrik audit` lists every change, across all orgs.

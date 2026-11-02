@@ -5,7 +5,7 @@ description: "Install the wardrik daemon and command on Linux, or run the Docker
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Wardrik runs on Linux (x86_64 or arm64, glibc 2.35+). Elsewhere, use Docker.
+Wardrik runs on Linux (x86_64 or arm64, glibc 2.35+). On macOS or Windows, use Docker.
 
 ## 1. Install
 
@@ -16,8 +16,7 @@ Wardrik runs on Linux (x86_64 or arm64, glibc 2.35+). Elsewhere, use Docker.
 curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.2/install.sh | sh
 ```
 
-This installs `wardrik` into `~/.local`, or `/opt/wardrik` as root. It also installs `rik`, a
-short name for `wardrik`.
+Installs `wardrik` to `~/.local`, or `/opt/wardrik` as root, and `rik` as an alias.
 
 	</TabItem>
 	<TabItem label="Docker">
@@ -28,7 +27,7 @@ docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
 docker exec -it wardrik wardrik init
 ```
 
-`/config` holds your files. `/data` holds the store and keys. The image runs as uid 1000.
+`/config` is for your files. `/data` is for the store and keys. The image runs as uid 1000.
 
 	</TabItem>
 </Tabs>
@@ -39,28 +38,26 @@ docker exec -it wardrik wardrik init
 wardrik init
 ```
 
-It asks for a model provider, a model and the provider's key. Then:
-
 ```text
 Wrote /home/me/.config/wardrik/config.yaml
 Wrote /home/me/.config/wardrik/agents/assistant.md
 Wrote /home/me/.config/wardrik/env
 Run the daemon as a systemd user service? [Yn]:
 Sealed ANTHROPIC_API_KEY.
-Asking the front door: In two short sentences, and without calling a tool, say what you can do for me.
+Asking the assistant: In two short sentences, and without calling a tool, say what you can do for me.
 ```
 
-| File | Holds |
+| File | Contents |
 | --- | --- |
-| `config.yaml` | the org (`default`), the default model, the HTTP port, and `roles` and `bindings` that let the front door make agents |
-| `agents/assistant.md` | the [front door](/build/front-door/), the agent you ask for outcomes |
-| `env` | keys the daemon reads, readable only by you |
+| `config.yaml` | the org (`default`), default model, HTTP port, and the `roles` and `bindings` that allow the assistant to create agents |
+| `agents/assistant.md` | the [assistant](/build/assistant/) agent |
+| `env` | environment variables for the daemon, mode `600` |
 
-- `init` never overwrites a file. Run it again safely.
-- The key is sealed in the vault, unless `env` already sets it.
-- The `wardrik` command acts as the admin. It needs no token.
+- `init` never overwrites a file, so it's safe to rerun.
+- The key is stored in the vault, unless `env` already sets it.
+- The `wardrik` command runs as the admin. It needs no token.
 
-Without a terminal, flags answer the questions:
+Without a terminal, pass flags instead:
 
 ```sh
 wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service
@@ -72,31 +69,5 @@ wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY 
 wardrik doctor
 ```
 
-Next: the [Quickstart](/getting-started/quickstart/).
-
-## Run the daemon
-
-| Command | Does |
-| --- | --- |
-| `wardrik start` / `stop` | runs it in the background, or stops it |
-| `wardrik serve` | runs it here, logging to the terminal |
-| `wardrik logs` | follows its log |
-| `wardrik service install` / `uninstall` | runs it as a systemd user service, or stops that |
-
-Restart it after you change `config.yaml` or `policies/`.
-
-## Secrets
-
-```sh
-echo "$LINEAR_TOKEN" | wardrik vault put LINEAR_TOKEN --for header
-wardrik vault ls
-```
-
-- `--for` is `api_key`, `client_secret`, `header` or `signing_secret`.
-- `${LINEAR_TOKEN}` in `config.yaml` reads your environment, `env`, then the vault.
-- The vault's key is `vault_key` beside the store. Set `WARDRIK_VAULT_KEY` before the first start to keep it elsewhere.
-
-## Upgrade
-
-Run the install script again, and restart. It takes `WARDRIK_VERSION` to pin a release. See
-[Upgrade and back up](/run/upgrade-and-back-up/).
+Next: the [Quickstart](/getting-started/quickstart/). Daemon commands are in the
+[CLI reference](/reference/cli/#daemon). Secrets are in [the vault](/build/vault/).

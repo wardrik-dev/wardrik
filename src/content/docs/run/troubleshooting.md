@@ -1,14 +1,14 @@
 ---
 title: Troubleshooting
-description: "Three commands answer most questions: status, doctor and logs. Then the common problems and their fixes."
+description: "Diagnose with status, doctor and logs, then fix common problems."
 sidebar:
   order: 8
 ---
 
 ```sh
-wardrik status    # does it run?
-wardrik doctor    # will its config work?
-wardrik logs      # what did it say?
+wardrik status    # is it running?
+wardrik doctor    # is the config valid?
+wardrik logs      # tail the log
 ```
 
 ```text
@@ -21,28 +21,28 @@ FAIL  mcp notes      runs npx, which isn't on this machine's PATH
 ok    agents         2 agent files and 1 policy read
 ```
 
-- `wardrik doctor` reads what the daemon reads, so it works on a daemon that won't start.
+- `wardrik doctor` reads the same files as the daemon, so it works when the daemon won't start.
 - Under systemd, the log is `journalctl --user -u wardrik -f`. Under `wardrik serve`, it's the
   terminal.
 
 ## Common problems
 
-- **It doesn't start.** Run `wardrik doctor`. Usually `config.yaml` doesn't read, and the line says
-  where.
-- **A `${NAME}` nothing sets.** Set it in `~/.config/wardrik/env` and start again. `vault put`
-  needs a running daemon.
-- **An agent file isn't running as written.** `wardrik doctor` says why. Fix it and `wardrik reload`.
-- **An agent lacks a server's tools.** A new server in `config.yaml` needs a restart. A server
-  that's down offers none.
-- **A policy change didn't take.** The daemon reads `policies/` as it starts. Restart it.
-- **The HTTP API doesn't answer.** Another process may hold 4747. Set `http.port`.
-- **An agent stopped answering.** `wardrik approval ls` shows what it waits on.
+- **It doesn't start.** Run `wardrik doctor`. Usually `config.yaml` has a parse error, with the
+  line number.
+- **A `${NAME}` is unset.** Set it in `~/.config/wardrik/env` and restart. `vault put` needs a
+  running daemon.
+- **An agent file has an error.** `wardrik doctor` shows it. Fix it and `wardrik reload`.
+- **An agent is missing a server's tools.** A new server in `config.yaml` needs a restart. A server
+  that's down has no tools.
+- **A policy change has no effect.** The daemon reads `policies/` at startup. Restart it.
+- **The HTTP API doesn't respond.** Another process may be using port 4747. Set `http.port`.
+- **An agent stopped replying.** `wardrik approval ls` lists its pending calls.
   `wardrik agent history AGENT` shows how its turns ended.
-- **A trigger didn't run.** `wardrik trigger ls AGENT` shows when it runs next.
-- **`404` for something that's there.** The token's user has no binding in its org. See
+- **A trigger didn't run.** `wardrik trigger ls AGENT` shows its next run.
+- **`404` for a resource that exists.** The token's user has no binding in its org. See
   [Orgs, roles and tokens](/run/orgs/).
 - **A chat member is refused.** Map them under `channels.<name>.members`.
-- **`wardrik` says the daemon hasn't started.** It reads its token from
-  `~/.local/share/wardrik/cli_token`, written as the daemon starts.
-- **A program `doctor` finds isn't found by the service.** systemd's `PATH` isn't your shell's.
-  Name it by its full path.
+- **`wardrik` reports the daemon isn't started.** The command reads its token from
+  `~/.local/share/wardrik/cli_token`, which the daemon writes on startup.
+- **The service can't find a program `doctor` found.** systemd's `PATH` differs from your shell's.
+  Use the full path.

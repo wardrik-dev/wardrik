@@ -1,11 +1,11 @@
 ---
 title: Connect MCP servers
-description: "Give agents the tools of an MCP server, from config.yaml or added while the daemon runs, and decide which calls need a person."
+description: "Add MCP servers in config.yaml or at runtime, list their tools in an agent, and set which calls need approval."
 sidebar:
   order: 1
 ---
 
-Name MCP servers in `config.yaml`. A server runs as a command, or is reached over HTTP:
+Define MCP servers in `config.yaml`, as a `command` or a `url`:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 mcp:
@@ -20,26 +20,26 @@ mcp:
 ```
 
 ```sh
-echo "$LINEAR_TOKEN" | wardrik vault put LINEAR_TOKEN --for header   # so the file holds no secret
+echo "$LINEAR_TOKEN" | wardrik vault put LINEAR_TOKEN --for header   # keeps the secret out of the file
 systemctl --user restart wardrik
 wardrik doctor                                                       # checks each server
 ```
 
-Give an agent the tools in its file:
+List the tools in an agent file:
 
 ```yaml
 tools: [linear/*, notes/*]
 ```
 
-- A policy names one tool as `linear/search_issues`.
-- `only` and `except` narrow what a server offers.
-- `headers` and `env` are the deployment's credentials, shared by every org the server serves. To
-  call a server as each person, give it a `credential`. See [Connect accounts](/build/accounts/).
+- In a policy, one tool is `linear/search_issues`.
+- `only` and `except` filter a server's tools.
+- `headers` and `env` are deployment credentials, shared by every org that uses the server. To
+  call a server as each user, set `credential`. See [Connect accounts](/build/accounts/).
 - Every key is in [`config.yaml` › mcp](/reference/config/#mcp).
 
-## Which calls need a person
+## Which calls need approval
 
-A tool the server doesn't mark read-only waits on a person, unless a policy allows it:
+A tool the server doesn't mark read-only needs approval, unless a policy allows it:
 
 ```yaml
 mcp:
@@ -53,25 +53,25 @@ mcp:
 ```
 
 - `gated` lists the gated tools, `true` for all, or `false` for none.
-- Without `trusted: true`, a server's answers are [content from outside](/concepts/outside-content/).
+- Without `trusted: true`, a server's results are [content from outside](/concepts/outside-content/).
 
 See [Gated tools](/concepts/policy/#gated-tools).
 
-## Which orgs a server serves
+## Which orgs can use a server
 
-A server serves the deployment's org. List it under `orgs` for others:
+A server is available to the deployment's org. List it under `orgs` for other orgs:
 
 ```yaml
 orgs:
   "*":
     mcp: [docs]          # every org
   globex:
-    mcp: [globex-crm]    # globex alone
+    mcp: [globex-crm]    # globex only
 ```
 
-## Servers people add
+## Servers added at runtime
 
-An org or a person adds a server for their own agents, with no change to `config.yaml`:
+An org or user can add a server for their own agents without editing `config.yaml`:
 
 ```sh
 wardrik server add linear --url https://mcp.linear.app/mcp --oauth --user maria
@@ -79,12 +79,12 @@ wardrik server ls --user maria
 wardrik server rm linear --user maria
 ```
 
-Its agents sign in with one of:
+Authentication:
 
-- `--oauth`, with a `--scope` for each scope: the owner signs in in a browser. `server add` prints
-  where.
-- `--secret NAME`: a secret the owner sealed `--for header`.
-- neither: nothing.
+- `--oauth`, with one `--scope` per scope: the owner signs in in a browser at the URL `server add`
+  prints.
+- `--secret NAME`: a vault secret the owner stored `--for header`.
+- neither: no authentication.
 
 Over HTTP:
 
@@ -95,24 +95,22 @@ curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/
 # {"server": "linear", "connected": false, "authorization": {"url": "https://…"}}
 ```
 
-For each `server/*` an agent names, the nearest wins:
+For each `server/*` in an agent's tools, the first match is used:
 
-1. The server its owner added.
-2. The server its org added.
-3. The server `config.yaml` names for its org.
+1. A server the agent's owner added.
+2. A server the agent's org added.
+3. A server in `config.yaml` for the agent's org.
 
-`servers/*` gives an agent every server its owners add. `wardrik agent show` lists a named server
-that offers nothing yet as `missing`.
+`servers/*` includes every server the agent's owners add. `wardrik agent show` lists a server with
+no tools yet as `missing`.
 
 ## Details
 
-- The model sees each tool as `server__tool`, as `linear__search_issues`.
-- `prefix` renames a server's tools for the model and policies.
-- A command inherits the daemon's environment, plus its `env`. The service runs with systemd's
-  `PATH`: name a program by its full path.
-- In Docker, the program must be in the image: build `FROM ghcr.io/wardrik-dev/wardrik:0.1.0-rc.2`.
-- `timeout` is seconds a call may take, 60 unless set. `max_result_bytes` caps what the model gets,
-  128 KB unless set.
-- A server that's down offers no tools. The daemon reconnects, waiting up to a minute between tries.
-- A server people add must be `https` at a public address, unless `allow_private_urls: true`.
-- `wardrik reload` reads agent files again, never `config.yaml`.
+- The model sees each tool as `server__tool`, such as `linear__search_issues`.
+- A command inherits the daemon's environment, plus its `env`. The systemd service has a minimal
+  `PATH`, so use the program's full path.
+- In Docker, the program must be in the image. Build `FROM ghcr.io/wardrik-dev/wardrik:0.1.0-rc.2`.
+- `prefix`, `timeout`, `max_result_bytes` and `cost` are in [`config.yaml` › mcp](/reference/config/#mcp).
+- A server that's down has no tools. The daemon reconnects with backoff up to a minute.
+- A server added at runtime must be `https` at a public address, unless `allow_private_urls: true`.
+- `wardrik reload` rereads agent files, not `config.yaml`.

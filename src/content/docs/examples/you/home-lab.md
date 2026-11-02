@@ -1,15 +1,15 @@
 ---
 title: Home lab
-description: "Watches your self-hosted services, reads the logs when one breaks, and restarts it once you approve."
+description: "Checks your self-hosted containers, reads the logs when one fails, and restarts it after you approve."
 sidebar:
   order: 4
 ---
 
-This agent checks the containers on your home server every fifteen minutes. When one is down, it
-reads the logs, says what went wrong, and proposes a fix you approve from your phone.
+This agent checks the containers on your home server every 15 minutes. When one is down, it reads
+the logs and posts the cause. It proposes a fix as a tool call, which you approve in Slack.
 
-Needs [uv](https://docs.astral.sh/uv/), a daemon user that can reach Docker's socket, and a
-[Slack app](/channels/slack/).
+Requires [uv](https://docs.astral.sh/uv/), a daemon user with access to the Docker socket, and a
+[Slack app](/build/slack/).
 
 ## The files
 
@@ -70,13 +70,14 @@ docker stop jellyfin
 wardrik ask homelab "Check every container."
 ```
 
-`#homelab` gets what it found, and a call to start `jellyfin` again with **Approve** and **Deny**.
-After editing only an agent file, `wardrik reload` is enough.
+`#homelab` shows the findings and a `start_container` call for `jellyfin`, with **Approve** and
+**Deny**. After editing only an agent file, `wardrik reload` is enough.
 
 ## What it shows
 
-- `notify` sends only waiting calls and failures, so a healthy check stays quiet.
-- Docker access is root on the machine, so every change waits and anything destructive is refused.
-- Logs are outside content: nothing in one gets the agent to act alone.
-- A turn cut off by a power cut carries on when the daemon starts. See
+- `notify` sends only pending calls and failures, so healthy checks post nothing.
+- Docker access is root on the machine, so every change needs approval and destructive calls are
+  denied.
+- Logs are content from outside, so no log line can make a call run without approval.
+- A turn interrupted by a power loss resumes when the daemon starts. See
   [Durable runs](/concepts/agents/#durable-runs).

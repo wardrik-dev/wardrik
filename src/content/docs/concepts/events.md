@@ -1,12 +1,11 @@
 ---
 title: The event stream
-description: "Everything an agent does is an event, which the terminal, the HTTP API, the SDK or Elixir can follow and resume."
+description: "Every action of an agent is an event. Stream them from the terminal, the HTTP API or the SDK, and resume from any point."
 sidebar:
   order: 6
 ---
 
-Everything an agent does is an event: each message, model reply, tool call, decision and
-subagent.
+An agent emits an event for each message, model reply, tool call, approval and subagent.
 
 ```sh
 wardrik follow triage          # readable, until Ctrl-C
@@ -31,24 +30,12 @@ Each event is a [CloudEvent](https://cloudevents.io):
 }
 ```
 
-| Events | Mean |
-| --- | --- |
-| `message.created` | a message was sent to the agent |
-| `run.started`, `run.completed`, `run.failed` | a turn began, answered, or failed |
-| `run.interrupted`, `interrupt.resolved`, `run.resumed` | a turn waited on a person, who decided, and it went on |
-| `run.cancelled`, `run.deadline_exceeded` | a turn was stopped, or ran past its `timeout` |
-| `message.delta`, `message.completed` | the model's reply, streaming and whole |
-| `tool_call.started`, `tool_call.completed`, `tool_call.denied` | a tool call, its result, or its refusal |
-| `subagent.started`, `subagent.completed`, `subagent.failed` | a subagent's work |
-| `agent.started`, `agent.stopped` | the agent started on a node, or stopped |
-| `activity.changed` | what the agent is doing now |
-
 [Events](/reference/events/) lists every type and its fields.
 
 - Events are kept for 30 days. `sequence` counts up from 1 for each agent, with no gaps.
-- Deltas, progress and `activity.changed` are live only. A reader that wasn't connected misses them.
-- A turn is a trace. Its events carry a W3C `traceparent`. Each tool call is a span.
-- What people change, such as defining an agent, is in the audit: `wardrik audit`.
+- Deltas, progress and `activity.changed` aren't stored. Only connected subscribers receive them.
+- A turn is a trace. Its events have a W3C `traceparent`. Each tool call is a span.
+- Changes people make, such as defining an agent, are in the audit log: `wardrik audit`.
 
 ## Following over HTTP
 
@@ -57,17 +44,5 @@ curl -N -H "authorization: Bearer $TOKEN" -H "accept: text/event-stream" \
   http://127.0.0.1:4747/v1/agents/agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN/events
 ```
 
-- To resume, send the last `id:` you saw as `Last-Event-ID`, or as `?after=`.
-- `?types=wardrik.run.completed` reads only those types.
-- Without `text/event-stream`, the route answers a page of JSON, with `next`.
-- `GET /v1/events?agents=agt_1&agents=agt_2` follows several agents at once.
-- A conversation's events are at `/v1/agents/{agent}/conversations/{conversation}/events`.
-
-## In Elixir
-
-```elixir
-WardrikEvents.activity(MyApp.Events, "agt_1")            # the agent's main conversation
-WardrikEvents.activity(MyApp.Events, {"agt_1", "C1"})    # one conversation
-```
-
-See `WardrikEvents` for `page/3`, `stream/3` and `subscribe/2`.
+To resume, pass the last `id:` you received as `Last-Event-ID` or `?after=`. Filters, paging and
+multi-agent streams are in [Read events](/reference/http-api/#read-events).

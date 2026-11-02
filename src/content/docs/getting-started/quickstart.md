@@ -1,9 +1,9 @@
 ---
 title: Quickstart
-description: "Install Wardrik, ask the front door for an outcome, write an agent, and approve a call its policy holds."
+description: "Install Wardrik, send the assistant a request, write an agent, and approve a tool call."
 ---
 
-Install Wardrik, hand the front door some work, then write an agent of your own.
+Install Wardrik, send the assistant a request, then write your own agent.
 
 ## 1. Install
 
@@ -12,16 +12,16 @@ curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.
 wardrik init
 ```
 
-`init` asks for your model provider and key, writes `~/.config/wardrik/`, and starts the daemon.
+`init` prompts for a model provider and key, writes `~/.config/wardrik/`, and starts the daemon.
 See [Install](/getting-started/install/) for Docker and flags.
 
-## 2. Ask the front door
+## 2. Ask the assistant
 
 ```sh
-wardrik ask assistant "Tell me when https://elixir-lang.org/atom.xml has a new post"
+wardrik ask assistant "Tell me when https://github.blog/changelog/feed/ has a new post"
 ```
 
-It explains its plan, then waits for you before it makes an agent:
+It replies with a plan and an `agent_create` call that needs approval:
 
 ```text
 Waiting on a person for 1 call:
@@ -34,11 +34,11 @@ wardrik approval approve assistant call_8d2e
 wardrik ls
 ```
 
-`wardrik ls` shows the new agent. See [The front door](/build/front-door/).
+`wardrik ls` lists the new agent. See [The assistant](/build/assistant/).
 
 ## 3. Write an agent
 
-An agent is a Markdown file. The frontmatter is its definition. The body is its instructions.
+An agent is a Markdown file. The frontmatter is its definition, and the body is its instructions.
 
 ```markdown title="~/.config/wardrik/agents/notes.md"
 ---
@@ -61,7 +61,7 @@ wardrik ask notes "Start a MEMORY.md with today's date and what you are for."
 
 ## 4. Approve a call
 
-The model calls `write_file`, and the policy holds it:
+The model calls `write_file`, which the policy requires approval for:
 
 ```sh
 wardrik approval ls
@@ -78,13 +78,12 @@ wardrik approval approve notes call_5b1f
 wardrik approval deny notes call_5b1f --reason "Keep it to one line."
 ```
 
-- An approval runs the call as the model wrote it.
-- A denial tells the model your reason, and the turn goes on.
+On a denial, the model receives your reason and the turn continues. See [Approvals](/concepts/approvals/).
 
 ## Next
 
-- [Tools in your app](/build/tool-workers/): offer agents tools from your own code.
-- [Slack](/channels/slack/): answer in a channel, with Approve and Deny in the thread.
-- [Policy](/concepts/policy/): what else a policy can say.
+- [Tools in your app](/build/tool-workers/): serve tools to agents from your own code.
+- [Slack](/build/slack/): use agents in Slack, with Approve and Deny buttons in the thread.
+- [Policy](/concepts/policy/): every policy rule.
 - [Agent files](/reference/agent-files/): every key an agent file takes.
 - [Examples](/examples/): agents to copy and run.
