@@ -82,7 +82,6 @@ sidebar:
 | `wardrik.subagent.progress` | `agent`, `tool`, `tool_calls` | a subagent began a tool call. **Live** |
 | `wardrik.subagent.completed` | `agent?`, `message`, `duration_ms`, `tool_calls?`, `usage?`, `cost?` | a subagent answered |
 | `wardrik.subagent.failed` | `agent?`, `error`, `duration_ms`, `tool_calls?`, `usage?`, `cost?` | a subagent failed |
-| `wardrik.ceiling.reached` | `org`, `ceiling`, `on_exhausted`, `message` | the org's agents hit a ceiling's limit |
 
 ## Agents and conversations
 

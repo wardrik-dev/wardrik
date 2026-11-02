@@ -42,7 +42,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:maria, U0G9QF9C6: user:devon, U07QJ2N4K: user:sam}
+    members: {U024BE7LH: user:acme/@maria, U0G9QF9C6: user:acme/@devon, U07QJ2N4K: user:acme/@sam}
 
 notify:
   targets:
@@ -54,8 +54,8 @@ roles:
   worker:
     rules: [{verbs: [serve], kinds: [agent], names: [oncall]}]
 bindings:
-  - {org: acme, role: on-call, subjects: [user:maria, user:devon, user:sam]}
-  - {org: acme, role: worker, subjects: [user:statuspage]}
+  - {org: acme, role: on-call, subjects: [user:acme/@maria, user:acme/@devon, user:acme/@sam]}
+  - {org: acme, role: worker, subjects: [user:acme/@statuspage]}
 ```
 
 - `members` maps each engineer's Slack ID to a user. The `on-call` binding lets them approve.
@@ -157,7 +157,7 @@ wardrik agent show oncall           # note its ID, agt_...
 Run the status page app with a token of its own:
 
 ```sh
-wardrik token create statuspage --subject user:statuspage
+wardrik token create statuspage --subject user:acme/@statuspage
 npm install @wardrik/sdk@0.1.0-rc.2 zod
 WARDRIK_URL=https://agents.acme.example WARDRIK_TOKEN=... node statuspage.ts
 ```

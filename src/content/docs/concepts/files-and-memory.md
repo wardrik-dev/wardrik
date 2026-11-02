@@ -48,16 +48,16 @@ An agent mounts another agent's workspace under `shared/<mount>/`:
 tools: [files]
 workspace:
   shared:
-    runbooks: runbooks                         # read and write, if allowed
-    notes: {agent: notes, mode: read}
+    runbooks: agent:runbooks                   # read and write, if allowed
+    notes: {agent: agent:notes, mode: read}
 ```
 
-`config.yaml` says who may mount each workspace, by agent name in the same org:
+`config.yaml` says who may mount each workspace, as `agent:NAME` in the same org:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 workspace:
   shared:
-    runbooks: {read: [oncall, triage], write: [ops]}
+    agent:runbooks: {read: [agent:oncall, agent:triage], write: [agent:ops]}
 ```
 
 A mount `config.yaml` doesn't allow is refused. In Elixir, your resolver returns the allowed
