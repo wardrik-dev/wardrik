@@ -2,7 +2,8 @@ defmodule WardrikHTTP.Authenticator do
   @moduledoc """
   A behaviour for deciding who a request comes from, as the `Wardrik.Scope` it acts in.
 
-  Pass one as `authenticator: {module, opts}`. `WardrikHTTP.Bearer` is used unless set.
+  `WardrikHTTP` requires one, as `authenticator: {module, opts}`. The scope it returns names the
+  principal. Wardrik's `Wardrik.Authorizer` decides what that principal may do.
 
       defmodule MyAppWeb.WardrikSession do
         @behaviour WardrikHTTP.Authenticator
@@ -11,8 +12,7 @@ defmodule WardrikHTTP.Authenticator do
         def authenticate(%{conn: conn, server: server, wardrik: wardrik}, _opts) do
           with ["Bearer " <> token] <- Plug.Conn.get_req_header(conn, "authorization"),
                {:ok, id} <- Phoenix.Token.verify(MyAppWeb.Endpoint, "wardrik", token, max_age: 86_400) do
-            grants = [roles: [:owner], resources: [id <> "/*"]]
-            {:ok, Wardrik.Scope.new(server, wardrik: wardrik, principal: id, grants: grants)}
+            {:ok, Wardrik.Scope.new(server, wardrik: wardrik, principal: id)}
           else
             _not_signed_in -> {:error, Wardrik.Error.new(:unauthorized, "Sign in first.")}
           end

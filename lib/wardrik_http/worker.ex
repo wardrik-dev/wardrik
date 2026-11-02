@@ -2,8 +2,8 @@ defmodule WardrikHTTP.Worker do
   @moduledoc """
   The tool workers' WebSocket at `GET /v1/workers`. Wardrik is the MCP client over it.
 
-  A worker is an MCP server that connects in. Its token's scope needs `agent.serve` on the agents
-  it serves.
+  A worker is an MCP server that connects in, as the principal the authenticator says. It serves
+  the agents the authorizer allows it `agent.serve` on.
 
   Messages are JSON-RPC 2.0, one per text frame, as MCP `2025-06-18` specifies:
 
@@ -17,7 +17,7 @@ defmodule WardrikHTTP.Worker do
        stopped.
 
   It answers the worker's `ping`. It also pings the worker every `:keepalive` milliseconds and
-  checks that the token still works. It closes with `1008` once the token stops working.
+  authenticates the request again. It closes with `1008` once that fails.
   """
 
   @behaviour WebSock
@@ -68,7 +68,7 @@ defmodule WardrikHTTP.Worker do
   def handle_info(:keepalive, state) do
     case state.alive?.() do
       true -> pinged(state)
-      false -> {:stop, :normal, {1008, "The token no longer works."}, state}
+      false -> {:stop, :normal, {1008, "The request no longer authenticates."}, state}
     end
   end
 

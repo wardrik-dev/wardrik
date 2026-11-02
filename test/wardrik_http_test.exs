@@ -24,7 +24,7 @@ defmodule WardrikHTTPTest do
 
   setup context do
     name = :"server #{context.test}"
-    :ok = WardrikTesting.Server.start(name, secrets: ["wrk_good"])
+    :ok = start(name, ["wrk_good"])
     %{name: name, secret: "wrk_good"}
   end
 
@@ -39,8 +39,8 @@ defmodule WardrikHTTPTest do
       assert_received {:ran, "agent.define",
                        %{"agent" => "acme/@maria/notes", "model" => "anthropic:claude-haiku-4-5"}}
 
-      request(context, "GET", "/v1/agents?resources=acme/@maria/*&resources=acme/agent/*")
-      assert_received {:ran, "agents.list", %{"resources" => ["acme/@maria/*", "acme/agent/*"]}}
+      request(context, "GET", "/v1/agents?agents=acme/@maria/notes&agents=acme/triage")
+      assert_received {:ran, "agents.list", %{"agents" => ["acme/@maria/notes", "acme/triage"]}}
     end
 
     test "answers nothing where the operation answers nothing", context do
@@ -59,14 +59,14 @@ defmodule WardrikHTTPTest do
 
     test "keeps the caller's own request id", context do
       conn =
-        request(context, "GET", "/v1/tokens", nil, [{"request-id", "req_0123456789abcdefghij"}])
+        request(context, "GET", "/v1/agents", nil, [{"request-id", "req_0123456789abcdefghij"}])
 
       assert get_resp_header(conn, "request-id") == ["req_0123456789abcdefghij"]
     end
   end
 
   describe "refusals" do
-    test "asks for a token where none is sent, or one isn't known", context do
+    test "asks for credentials where none are sent, or the authenticator refuses them", context do
       conn = WardrikHTTP.call(conn("GET", "/v1/agents"), settings(context))
 
       assert conn.status == 401
@@ -95,10 +95,20 @@ defmodule WardrikHTTPTest do
       assert request(context, "GET", "/v1/agents/acme%2Fnotes/x").status == 400
     end
 
-    test "needs a server to run its operations" do
-      assert_raise ArgumentError, ~r/server: \{Wardrik, MyApp.AgentRuntime\}/, fn ->
-        WardrikHTTP.init([])
+    test "won't start without a server, or without an authenticator" do
+      assert_raise NimbleOptions.ValidationError, ~r/required :server option not found/, fn ->
+        WardrikHTTP.init(authenticator: {WardrikHTTP.Test.Authenticator, []})
       end
+
+      assert_raise NimbleOptions.ValidationError,
+                   ~r/required :authenticator option not found/,
+                   fn -> WardrikHTTP.init(server: {WardrikTesting.Server, :anything}) end
+
+      assert_raise NimbleOptions.ValidationError,
+                   ~r/required :authenticator option not found/,
+                   fn ->
+                     WardrikHTTP.child_spec(server: {WardrikTesting.Server, :anything}, port: 0)
+                   end
     end
   end
 

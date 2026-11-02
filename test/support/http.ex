@@ -5,7 +5,18 @@ defmodule WardrikHTTP.Test do
   import Plug.Test
 
   def settings(context, opts \\ []),
-    do: WardrikHTTP.init([server: {WardrikTesting.Server, context.name}] ++ opts)
+    do:
+      WardrikHTTP.init(
+        [
+          server: {WardrikTesting.Server, context.name},
+          authenticator: {WardrikHTTP.Test.Authenticator, []}
+        ] ++ opts
+      )
+
+  def start(name, secrets) do
+    :ok = WardrikTesting.Server.start(name)
+    WardrikHTTP.Test.Authenticator.start(name, secrets)
+  end
 
   def request(context, method, path, body \\ nil, headers \\ []) do
     method

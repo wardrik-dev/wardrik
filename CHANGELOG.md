@@ -4,6 +4,8 @@
 
 ### Breaking
 
+- `:authenticator` is required, and `WardrikHTTP.Bearer` and API tokens are gone. Options are
+  checked with `NimbleOptions`.
 - `c:WardrikHTTP.Authenticator.authenticate/2` takes a `WardrikHTTP.Authenticator.Request`, with
   the conn, the server and the instance, then its options.
 

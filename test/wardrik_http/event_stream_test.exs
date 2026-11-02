@@ -7,11 +7,15 @@ defmodule WardrikHTTP.EventStreamTest do
 
   setup context do
     name = :"server #{context.test}"
-    :ok = Server.start(name, secrets: ["wrk_good"])
+    :ok = start(name, ["wrk_good"])
 
     http =
       start_supervised!(
-        {WardrikHTTP, server: {Server, name}, port: 0, keepalive: 20},
+        {WardrikHTTP,
+         server: {Server, name},
+         authenticator: {WardrikHTTP.Test.Authenticator, []},
+         port: 0,
+         keepalive: 20},
         id: :http
       )
 
@@ -34,11 +38,11 @@ defmodule WardrikHTTP.EventStreamTest do
     assert until(stream, "wardrik.run.completed")
   end
 
-  test "keeps a quiet stream open, and ends it once its token stops working", context do
+  test "keeps a quiet stream open, and ends it once it no longer authenticates", context do
     stream = open(context, "/v1/events")
     assert until(stream, ": keepalive")
 
-    Server.revoke(context.name, context.secret)
+    WardrikHTTP.Test.Authenticator.revoke(context.name, context.secret)
     assert ended(stream)
   end
 

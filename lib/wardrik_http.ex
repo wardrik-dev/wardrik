@@ -1,26 +1,58 @@
 defmodule WardrikHTTP do
+  @schema NimbleOptions.new!(
+            server: [
+              type: {:tuple, [:atom, :atom]},
+              required: true,
+              doc:
+                "The `Wardrik.Server` module, and the instance name it runs, as " <>
+                  "`{Wardrik, MyApp.AgentRuntime}`."
+            ],
+            authenticator: [
+              type: :mod_arg,
+              required: true,
+              doc:
+                "The `WardrikHTTP.Authenticator` that says who each request comes from, as " <>
+                  "`{module, config}`."
+            ],
+            sign_in: [
+              type: {:or, [:mfa, nil]},
+              default: nil,
+              doc:
+                "`{module, function, args}` returning the `{plug, opts}` that serves sign-in " <>
+                  "pages, or `nil`."
+            ],
+            keepalive: [
+              type: :pos_integer,
+              default: 15_000,
+              doc: "Milliseconds an idle event stream waits before sending a comment."
+            ]
+          )
+
   @moduledoc """
   Serves Wardrik's operations over HTTP.
 
   Most apps use `Wardrik.HTTP`, which sets `:server` and `:sign_in` for you:
 
-      children = [MyApp.AgentRuntime, {Wardrik.HTTP, wardrik: MyApp.AgentRuntime, port: 4000}]
+      children = [
+        MyApp.AgentRuntime,
+        {Wardrik.HTTP,
+         wardrik: MyApp.AgentRuntime, authenticator: {MyAppWeb.WardrikSession, []}, port: 4000}
+      ]
 
   Use `WardrikHTTP` directly to serve any `Wardrik.Server`:
 
-      children = [{WardrikHTTP, server: {Wardrik, MyApp.AgentRuntime}, port: 4000}]
+      children = [
+        {WardrikHTTP,
+         server: {Wardrik, MyApp.AgentRuntime},
+         authenticator: {MyAppWeb.WardrikSession, []},
+         port: 4000}
+      ]
 
   It's also a `Plug`, so your router can forward a path to it.
 
   ## Options
 
-    * `:server` - required. `{module, name}`: the `Wardrik.Server` module, and the instance name
-      it runs. Raises `ArgumentError` without it.
-    * `:authenticator` - a `WardrikHTTP.Authenticator`, as `{module, config}`.
-      `{WardrikHTTP.Bearer, []}` unless set.
-    * `:sign_in` - `{module, function, args}` returning the `{plug, opts}` that serves sign-in
-      pages, or `nil`. `nil` unless set.
-    * `:keepalive` - milliseconds an idle event stream waits before sending a comment. `15_000`.
+  #{NimbleOptions.docs(@schema)}
 
   As a child, it also takes Bandit's options, like `:port` and `:ip`.
 
@@ -35,8 +67,8 @@ defmodule WardrikHTTP do
   | `POST /v1/channels/{channel}/{path}` | a chat app's request, relayed to the channel and back |
   | `/oauth/*` | sign-in pages, from `:sign_in` |
 
-  `GET /v1/workers` returns `426` to a request with a valid token that isn't a WebSocket upgrade,
-  so a worker can check its token first.
+  `GET /v1/workers` returns `426` to an authenticated request that isn't a WebSocket upgrade,
+  so a worker can check its credentials first.
 
   Every response has a `request-id` header. It's the caller's own if the request sent one.
   """
@@ -59,31 +91,12 @@ defmodule WardrikHTTP do
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
     {own, bandit} = Keyword.split(opts, @own)
-    Bandit.child_spec([plug: {__MODULE__, own}] ++ bandit)
+    Bandit.child_spec([plug: {__MODULE__, NimbleOptions.validate!(own, @schema)}] ++ bandit)
   end
 
+  @doc "Validates `opts`. Raises `NimbleOptions.ValidationError` without `:server` or `:authenticator`."
   @impl Plug
-  def init(opts) do
-    opts
-    |> Keyword.validate!([
-      :server,
-      authenticator: {WardrikHTTP.Bearer, []},
-      sign_in: nil,
-      keepalive: 15_000
-    ])
-    |> Map.new()
-    |> server!()
-  end
-
-  defp server!(%{server: {module, name}} = settings) when is_atom(module) and is_atom(name),
-    do: settings
-
-  defp server!(_settings),
-    do:
-      raise(
-        ArgumentError,
-        "WardrikHTTP serves a Wardrik. Give it server: {Wardrik, MyApp.AgentRuntime}, or use Wardrik.HTTP."
-      )
+  def init(opts), do: opts |> NimbleOptions.validate!(@schema) |> Map.new()
 
   @impl Plug
   def call(conn, settings), do: conn |> Plug.RequestId.call(@request_id) |> serve(settings)

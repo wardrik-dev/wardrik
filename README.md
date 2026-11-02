@@ -31,7 +31,8 @@ config :my_app, MyApp.AgentRuntime,
 # application.ex
 children = [
   MyApp.AgentRuntime,
-  {Wardrik.HTTP, wardrik: MyApp.AgentRuntime, port: 4000}
+  {Wardrik.HTTP,
+   wardrik: MyApp.AgentRuntime, authenticator: {MyAppWeb.WardrikSession, []}, port: 4000}
 ]
 ```
 
@@ -41,27 +42,34 @@ in front of it on a network.
 `Wardrik.HTTP` passes `MyApp.AgentRuntime` to `WardrikHTTP` as its server. Use `WardrikHTTP` directly
 only for a `Wardrik.Server` of your own.
 
-## Make a token
+## Authenticate requests
 
-Every request sends an API token as `Authorization: Bearer`. Make one in IEx:
+`:authenticator` is required: a `WardrikHTTP.Authenticator` that says who each request comes from,
+by your app's own sessions or tokens. Wardrik's `:authorizer` then decides what they may do. See
+[Who may do what](https://hexdocs.pm/wardrik/access.html).
 
 ```elixir
-scope = MyApp.AgentRuntime.as("acme/@maria", roles: [:owner], resources: ["*"])
-{:ok, issued} = Wardrik.Tokens.create(scope, name: "laptop", roles: ["owner"], resources: ["acme/*"])
+defmodule MyAppWeb.WardrikSession do
+  @behaviour WardrikHTTP.Authenticator
 
-issued.secret
-#=> "wrk_3f9a61c0d4e2_Vb7..."
+  @impl true
+  def authenticate(%{conn: conn, wardrik: wardrik}, _opts) do
+    with ["Bearer " <> token] <- Plug.Conn.get_req_header(conn, "authorization"),
+         {:ok, id} <- Phoenix.Token.verify(MyAppWeb.Endpoint, "wardrik", token, max_age: 86_400) do
+      {:ok, Wardrik.as(wardrik, id)}
+    else
+      _not_signed_in -> {:error, Wardrik.Error.new(:unauthorized, "Sign in first.")}
+    end
+  end
+end
 ```
-
-The token acts for Maria, with the roles and resources it's given. See
-[Who may do what](https://hexdocs.pm/wardrik/access.html).
 
 ## Talk to agents
 
 Define an agent, send it a message, and follow its log:
 
 ```sh
-export TOKEN=wrk_3f9a61c0d4e2_Vb7...
+export TOKEN=...  # what your authenticator takes
 
 curl -X PUT localhost:4000/v1/agents/acme/triage \
   -H "Authorization: Bearer $TOKEN" \
@@ -88,15 +96,15 @@ Event streams:
 * A stream starts after `Last-Event-ID` or `?after=`. With neither, it starts at the next event.
 * Without `Accept: text/event-stream`, the same route returns a page of events as JSON.
 * An idle stream sends a comment every 15 seconds.
-* A stream ends when its token is revoked.
+* A stream ends once the request no longer authenticates.
 
 `GET /v1/openapi.json` lists every route, for client generators. Errors are the protocol's
 `{"error": {"type": ..., "message": ...}}`. Every response has a `request-id` header.
 
 ## Receive webhooks
 
-A trigger with a `webhook` receives requests at `POST /v1/hooks/{agent}/{trigger}`. These need no
-token. The request proves itself with the trigger's secret:
+A trigger with a `webhook` receives requests at `POST /v1/hooks/{agent}/{trigger}`. These skip the
+authenticator. The request proves itself with the trigger's secret:
 
 ```elixir
 :ok =
@@ -120,14 +128,10 @@ Point the service at `https://agents.example.com/v1/hooks/acme/triage/issues`. S
 A tool worker is your own program offering agents tools. The tools run in its process, with its
 code, data and keys. The worker connects to Wardrik, so Wardrik never needs to reach it.
 
-1. Make it a token with the `worker` role over the agents it serves:
+1. Give it credentials your authenticator takes, for a principal your authorizer allows
+   `agent.serve` on the agents it serves.
 
-   ```elixir
-   {:ok, issued} =
-     Wardrik.Tokens.create(scope, name: "shop", roles: ["worker"], resources: ["acme/agent/*"])
-   ```
-
-2. The worker opens a WebSocket to `/v1/workers` with that token and acts as an MCP server.
+2. The worker opens a WebSocket to `/v1/workers` with them and acts as an MCP server.
    Wardrik sends `initialize` and `tools/list`, then a `tools/call` for each call an agent makes:
 
    ```json
@@ -191,7 +195,9 @@ See [Credentials and sign-ins](https://hexdocs.pm/wardrik/credentials.html).
 Forward a path to it from your router, in place of the child above:
 
 ```elixir
-forward "/agents", Wardrik.HTTP, wardrik: MyApp.AgentRuntime
+forward "/agents", Wardrik.HTTP,
+  wardrik: MyApp.AgentRuntime,
+  authenticator: {MyAppWeb.WardrikSession, []}
 ```
 
 Routes are then under `/agents`, as `/agents/v1/agents/acme/triage`. Sign-in pages are at
@@ -205,31 +211,6 @@ plug Plug.Parsers,
   parsers: [:urlencoded, :multipart, :json],
   json_decoder: Phoenix.json_library(),
   body_reader: Wardrik.HTTP.body_reader()
-```
-
-## Your own sign-in
-
-To authenticate requests by your app's own sessions in place of API tokens, give an
-authenticator. See `WardrikHTTP.Authenticator`.
-
-```elixir
-defmodule MyAppWeb.WardrikSession do
-  @behaviour WardrikHTTP.Authenticator
-
-  @impl true
-  def authenticate(%{conn: conn, wardrik: wardrik}, _opts) do
-    with ["Bearer " <> token] <- Plug.Conn.get_req_header(conn, "authorization"),
-         {:ok, id} <- Phoenix.Token.verify(MyAppWeb.Endpoint, "wardrik", token, max_age: 86_400) do
-      {:ok, Wardrik.as(wardrik, id, roles: [:owner], resources: [id <> "/*"])}
-    else
-      _not_signed_in -> {:error, Wardrik.Error.new(:unauthorized, "Sign in first.")}
-    end
-  end
-end
-
-forward "/agents", Wardrik.HTTP,
-  wardrik: MyApp.AgentRuntime,
-  authenticator: {MyAppWeb.WardrikSession, []}
 ```
 
 ## License
