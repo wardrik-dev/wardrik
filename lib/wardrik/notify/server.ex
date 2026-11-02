@@ -162,11 +162,9 @@ defmodule Wardrik.Notify.Server do
   end
 
   defp tell(state, name, notice) do
-    case Retry.run(
-           state.wardrik.notify.retries,
-           fn -> attempt(state, name, notice) end,
-           &failed/1,
-           &again(name, notice, &1)
+    case Retry.run(state.wardrik.notify.retries, fn -> attempt(state, name, notice) end,
+           transient: &failed/1,
+           announce: &again(name, notice, &1)
          ) do
       {:ok, :ok} ->
         :ok

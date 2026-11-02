@@ -72,7 +72,7 @@ defmodule Wardrik.Operations.Deployment do
   @doc "Moves an agent to another node."
   @spec move(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def move(%Wardrik.Scope{wardrik: wardrik} = scope, %{"agent" => id, "node" => node}) do
-    case WardrikCore.move(Wardrik.agents(wardrik), id, node) do
+    case WardrikCore.move(Wardrik.agents(wardrik), id, to: node) do
       {:ok, _pid} ->
         Changes.record(scope, "agent.moved", id, %{"node" => node})
         {:ok, %{"agent" => Snapshot.summary(wardrik, id)}}
