@@ -71,7 +71,7 @@ defmodule Wardrik.FunctionsTest do
   test "reads every property of the schema each type is of" do
     {:ok, modules} = :application.get_key(:wardrik_protocol, :modules)
     types = Enum.filter(modules, &function_exported?(Code.ensure_loaded!(&1), :__schema__, 0))
-    assert Wardrik.Provider in types
+    assert Wardrik.Authorization in types
 
     for type <- types do
       [name | path] = type.__schema__()

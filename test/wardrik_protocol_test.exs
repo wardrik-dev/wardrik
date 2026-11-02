@@ -49,23 +49,6 @@ defmodule WardrikProtocolTest do
     end
   end
 
-  test "takes an OAuth app it can find, signing in only with parameters of its own" do
-    google = %{"name" => "google", "issuer" => "https://accounts.google.com"}
-
-    for name <- ["provider_input", "provider", "providers"],
-        example <- WardrikProtocol.schema(name)["examples"],
-        do: assert(valid?(name, example), name)
-
-    assert valid?("provider_input", Map.put(google, "authorization_params", %{"prompt" => "x"}))
-    refute valid?("provider_input", Map.put(google, "authorization_params", %{"scope" => "x"}))
-    refute valid?("provider_input", %{"name" => "google", "client_id" => "app"})
-
-    refute valid?(
-             "provider_input",
-             Map.put(google, "authorization_endpoint", "https://accounts.google.com/auth")
-           )
-  end
-
   test "checks an event and its data" do
     assert valid?("cloudevent", @event)
     assert valid?("tool_call.started", @event["data"])
@@ -114,10 +97,9 @@ defmodule WardrikProtocolTest do
                agent.decide agent.define agent.definition agent.deny agent.events agent.forget
                agent.kill agent.move agent.read agent.runs agent.spawn agent.stop agent.timeline
                agent.trigger_remove agent.trigger_set agents.cancel agents.forget agents.list
-               audit.list channel.deliver connections.connect connections.disconnect connections.list
+               audit.list channel.deliver
                deployment.nodes deployment.reload events.head events.list hook.deliver
                hook.deliver_with_secret interrupts.list
-               providers.add providers.list providers.remove
              )
 
       assert WardrikProtocol.operation("agent.unknown") == nil
@@ -142,7 +124,7 @@ defmodule WardrikProtocolTest do
 
       for operation <- WardrikProtocol.operations() do
         assert operation.effect in ~w(read change destructive)
-        assert operation.subject in ~w(agent agents channel deployment hook owner)
+        assert operation.subject in ~w(agent agents channel deployment hook)
         assert is_binary(operation.action)
 
         for %{name: name, in: "path"} <- operation.parameters,

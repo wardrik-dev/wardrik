@@ -26,9 +26,9 @@ defmodule WardrikProtocol do
     * `:method` and `:path` - its HTTP route.
     * `:action` - what the caller must be allowed to do.
     * `:effect` - `"read"`, `"change"` or `"destructive"`.
-    * `:subject` - what it acts on: `"agent"`, `"agents"`, `"deployment"`, `"owner"` (an org's or
-      person's accounts and OAuth apps), `"hook"` (a request that proves itself with a secret, not a
-      caller) or `"channel"` (a chat app's request, which its channel verifies).
+    * `:subject` - what it acts on: `"agent"`, `"agents"`, `"deployment"`, `"hook"` (a request
+      that proves itself with a secret, not a caller) or `"channel"` (a chat app's request, which
+      its channel verifies).
     * `:parameters` - which input fields go in the HTTP path or query.
     * `:input` - one schema for its parameters and body together.
     * `:status` - the HTTP status it returns on success.

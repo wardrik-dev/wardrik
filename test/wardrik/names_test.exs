@@ -120,9 +120,7 @@ defmodule Wardrik.NamesTest do
           {%Wardrik.Agent{id: "acme/triage"}, "acme/triage"},
           {%Wardrik.Interrupt{id: "c1"}, "c1"},
           {%Wardrik.Call{id: "call_1"}, "call_1"},
-          {%Wardrik.Trigger{name: "weekly"}, "weekly"},
-          {%Wardrik.Provider{name: "google"}, "google"},
-          {%Wardrik.Connection{provider: "github"}, "github"}
+          {%Wardrik.Trigger{name: "weekly"}, "weekly"}
         ] do
       assert types.path(struct) == name
     end

@@ -4,14 +4,9 @@
 
 - `Wardrik.Owners`: parses an owner, reads an agent's or owner's org, and gives the chain its
   settings resolve along, nearest first, for every package that keeps settings by owner.
-- OAuth apps people sign in with: `providers.list`, `providers.add` and `providers.remove`,
-  `Wardrik.Providers` and `Wardrik.Provider`, the schemas `provider_input`, `provider` and
-  `providers`, and the events `wardrik.provider.added` and `wardrik.provider.removed`.
-- The events `wardrik.notify_target.added` and `wardrik.notify_target.removed`, which
-  `wardrik_daemon` records as an org or person adds or removes a webhook.
-- `providers.list` answers an owner's own OAuth apps and those it gets from further out. Each
-  says its `owner` and `source`, in `defs`.
-- Secrets are only ever named: an app's client secret is read each time it's needed.
+- The events `wardrik.provider.added`, `wardrik.provider.removed`,
+  `wardrik.notify_target.added` and `wardrik.notify_target.removed`, which `wardrik_daemon`
+  records as an org or person adds or removes an OAuth app or a webhook.
 
 ### Breaking
 
@@ -29,6 +24,11 @@
   `Wardrik.MCPServer`, `Wardrik.MCPServerAdded`, `Wardrik.NotifyTarget`, and the schemas
   `server_input`, `server_added`, `server`, `servers`, `notify_target_input`, `notify_target` and
   `notify_targets` are gone.
+- OAuth apps and connections are `wardrik_daemon`'s own routes: `providers.*` and
+  `connections.*`, `Wardrik.Providers`, `Wardrik.Connections`, `Wardrik.Provider`,
+  `Wardrik.Connection`, `Wardrik.Connecting`, the schemas `provider_input`, `provider`,
+  `providers`, `connection`, `connections` and `connecting` are gone. No operation's `subject`
+  is `"owner"`.
 - `Wardrik.AgentID.parse/1` reads the owner with `Wardrik.Owners.parse/1`, so an ID like
   `ac@me/triage` or `acme/@jon` is `:error`.
 - No grants or tokens: `Wardrik.Statement`, `Wardrik.Tokens`, `Wardrik.Token`, the `tokens.*`

@@ -9,8 +9,6 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Authorization
   alias Wardrik.Call
   alias Wardrik.ChannelResponse
-  alias Wardrik.Connecting
-  alias Wardrik.Connection
   alias Wardrik.Decision
   alias Wardrik.Definition
   alias Wardrik.Event
@@ -19,7 +17,6 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Message
   alias Wardrik.Nodes
   alias Wardrik.Page
-  alias Wardrik.Provider
   alias Wardrik.Runs
   alias Wardrik.Timeline
   alias Wardrik.Trigger
@@ -37,19 +34,13 @@ defmodule Wardrik.Operations.Types do
     "agent.timeline" => Timeline,
     "agent.runs" => Runs,
     "agents.forget" => Forgotten,
-    "deployment.nodes" => Nodes,
-    "connections.connect" => Connecting,
-    "connections.disconnect" => Connection,
-    "providers.add" => Provider,
-    "providers.remove" => Provider
+    "deployment.nodes" => Nodes
   }
 
   @lists %{
     "agent.calls" => {"calls", Call, :from_json},
     "agents.list" => {"agents", Agent, :from_summary},
-    "interrupts.list" => {"interrupts", Interrupt, :from_listed},
-    "connections.list" => {"connections", Connection, :from_json},
-    "providers.list" => {"providers", Provider, :from_json}
+    "interrupts.list" => {"interrupts", Interrupt, :from_listed}
   }
 
   @listed Map.keys(@lists)
@@ -61,8 +52,6 @@ defmodule Wardrik.Operations.Types do
   def path(%Interrupt{id: id}), do: id
   def path(%Call{id: id}), do: id
   def path(%Trigger{name: name}), do: name
-  def path(%Provider{name: name}), do: name
-  def path(%Connection{provider: provider}), do: provider
 
   @doc "Converts an Elixir caller's `input` to the operation's JSON input."
   @spec encode(String.t(), term()) :: map()
