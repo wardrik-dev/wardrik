@@ -32,8 +32,8 @@
   issues everyone else's at `GET`, `POST /v1/tokens` and `DELETE /v1/tokens/{id}`, as `wardrik
   token create`, `token ls` and `token revoke` do. Roles' `kinds` take `token`, which only a
   binding in `"*"` reaches. Only the admin makes a token for `user:admin`.
-- `allow_private_urls`, `false` unless set: what orgs and people add (MCP servers, webhooks and an
-  inline OAuth app's URLs) must be `https` at a public address, checked as it's added and as each
+- `allow_private_urls`, `false` unless set: what orgs and people add (MCP servers, webhooks and
+  OAuth apps' URLs) must be `https` at a public address, checked as it's added and as each
   connection or notice is sent. Hosts `config.yaml`'s OAuth providers name are trusted. Set it to
   `true` for local use only. See `WardrikDaemon.Egress`.
 - The daemon keeps the MCP servers and notify webhooks orgs and people add, on its own routes:
@@ -43,6 +43,17 @@
   removed. A webhook's secret is read from its owner's vault as each notice is sent. See
   `WardrikDaemon.Servers`, `WardrikDaemon.NotifyTargets` and `WardrikDaemon.Webhook`. Roles'
   `kinds` take `mcp_server` and `notify_target`, and the owner rule covers them.
+- The daemon keeps the OAuth apps orgs and people add, on its own routes: `GET`, `POST
+  /v1/owners/{owner}/providers` and `DELETE /v1/owners/{owner}/providers/{name}`, as `wardrik
+  provider` reaches them. `oauth.providers` are the deployment's apps. A person signs in with the
+  nearest of a name: their own, their org's, then the deployment's. Each app's grants are
+  refreshed only by it. An app's client secret is read from its owner's vault as it's needed. An
+  MCP server's own sign-in is one of these apps. See `WardrikDaemon.OAuthApps`. Roles' `kinds`
+  take `provider`, and the owner rule covers it.
+- The caller's own connections: `GET /v1/connections`, and `POST` and `DELETE
+  /v1/connections/{provider}`, which start a sign-in, answering its URL or device code, and forget
+  an account. Everyone manages their own. See `WardrikDaemon.Connections`. Roles' `kinds` take
+  `connection`.
 - A reload that finds `config.yaml` or `policies/` changed restarts the daemon to read them, so
   `wardrik init` against a running daemon, or in its container, takes effect without a restart.
 
@@ -58,6 +69,8 @@
 - Approving past a ceiling needs only what deciding on the agent needs.
 - Browser sign-ins don't finish until the daemon pairs them with the `wardrik` command.
 - `notify`'s targets go in `notify.targets`.
+- `connection ls`, `connection connect` and `connection disconnect` act on the caller's own
+  accounts, and take no `--org` or `--user`. Roles' `kinds` no longer take `owner`.
 - `config.yaml` and `wardrik doctor` refuse what Wardrik refused only as it started, as
   `flow: carrier_pigeon` or an MCP `url` with no scheme, and an `org` or `base_url` that isn't a
   string, or `vault.keys` that aren't strings.

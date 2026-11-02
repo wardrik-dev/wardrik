@@ -7,6 +7,7 @@ defmodule WardrikDaemon.ServersTest do
   alias Wardrik.Resolver.Request
   alias WardrikCore.Principal
   alias WardrikDaemon.Client
+  alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Servers
   alias WardrikDaemon.Tokens
   alias WardrikVault.Secret
@@ -194,16 +195,19 @@ defmodule WardrikDaemon.ServersTest do
     assert "https://crm-auth.test/authorize?" <> query = url
     assert %{"client_id" => "growth-app", "scope" => "read"} = URI.decode_query(query)
 
-    oauth_name = Wardrik.oauth(context.running)
-    assert "growth:crm" in Enum.map(WardrikOAuth.providers(oauth_name, "growth"), & &1.name)
+    assert %{owner: "growth"} = OAuthApps.nearest(context.daemon, "growth/@cy", "growth:crm")
 
-    assert {:ok, %{"connections" => connections}} =
-             Client.run(admin, "connections.list", %{"owner" => "growth"})
+    assert {:ok, %{"providers" => []}} =
+             Client.run(admin, "providers.list", %{"owner" => "growth"})
 
-    assert %{"provider" => "crm", "connected" => false} in connections
+    cy = client(context, "user:growth/@cy")
+
+    assert {:ok, %{"connections" => [%{"provider" => "crm", "connected" => false}]}} =
+             Client.run(cy, "connections.list", %{})
 
     assert {:ok, %{"auth" => "oauth"}} = remove(admin, "growth", "crm")
-    refute "growth:crm" in Enum.map(WardrikOAuth.providers(oauth_name, "growth"), & &1.name)
+    assert OAuthApps.nearest(context.daemon, "growth/@cy", "growth:crm") == nil
+    assert {:ok, %{"connections" => []}} = Client.run(cy, "connections.list", %{})
   end
 
   test "signs in with an OAuth app the owner can use, leaving it as the server is removed",

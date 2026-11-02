@@ -14,15 +14,16 @@ defmodule WardrikDaemon.Servers do
     * a secret its owner sealed for `header`, read as each connection starts, as
       `%{"secret" => %{"name" => "CRM_KEY"}}`. See `WardrikDaemon.Secrets`.
     * its owner's account, signed in to in a browser, as `%{"oauth" => ...}`: through an OAuth app
-      the owner can use, named as `provider`, or the server's own sign-in, made for it.
+      the owner can use, named as `provider`, or the server's own sign-in, an app made for it in
+      `WardrikDaemon.OAuthApps`.
 
   Adding or removing one records `server.added` or `server.removed` in the audit.
   """
 
   alias Wardrik.Error
-  alias Wardrik.Operations.Providers
   alias WardrikCore.Principal
   alias WardrikDaemon.Config.Orgs
+  alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Owned
   alias WardrikDaemon.Owners
 
@@ -107,13 +108,13 @@ defmodule WardrikDaemon.Servers do
   """
   @spec add(daemon(), {String.t(), map()}, Principal.t() | nil) ::
           {:ok, map()} | {:error, Error.t()}
-  def add(%{wardrik: wardrik, store: store}, {owner, %{"name" => name} = input}, actor) do
+  def add(%{wardrik: wardrik, store: store} = daemon, {owner, %{"name" => name} = input}, actor) do
     running = Wardrik.Instance.fetch!(wardrik)
     key = key(owner, name)
 
     with :ok <- unused(store, owner, name),
          :ok <- reachable(running, input["url"]),
-         {:ok, reached, auth} <- signs_in(running, {owner, key}, input),
+         {:ok, reached, auth} <- signs_in({daemon, running}, {owner, key}, input),
          opts = options(owner, input, reached),
          :ok <- started(running, key, opts),
          {:ok, _vsn} <-
@@ -145,7 +146,7 @@ defmodule WardrikDaemon.Servers do
       record ->
         _stopped = WardrikMCP.remove(Wardrik.mcp(running), key)
         :ok = :erpc.multicast(Node.list(), WardrikMCP, :remove, [Wardrik.mcp(running), key])
-        forget_sign_ins(running, {owner, key}, record)
+        forget_sign_ins({daemon, running}, {owner, key}, record)
         :ok = WardrikStore.delete(store, Owned.path(@kind, owner, name))
         changed(running, "server.removed", {owner, name, %{}}, actor)
         {:ok, listed(record)}
@@ -197,7 +198,11 @@ defmodule WardrikDaemon.Servers do
   defp signs_in(_running, _owned, %{"auth" => %{"none" => _none}}), do: {:ok, [], "none"}
 
   # The header names the secret, read as each connection starts, so a new value takes effect.
-  defp signs_in(running, {owner, _key}, %{"auth" => %{"secret" => %{"name" => name} = secret}}) do
+  defp signs_in(
+         {_daemon, running},
+         {owner, _key},
+         %{"auth" => %{"secret" => %{"name" => name} = secret}}
+       ) do
     if holds?(running, owner, name, :header) do
       sent = sent(Map.get(secret, "scheme", "Bearer"), name)
       {:ok, [headers: %{Map.get(secret, "header", "authorization") => sent}], "secret"}
@@ -207,35 +212,28 @@ defmodule WardrikDaemon.Servers do
     end
   end
 
-  defp signs_in(%Wardrik{oauth: nil}, _owned, %{"auth" => %{"oauth" => _oauth}}),
+  defp signs_in({_daemon, %Wardrik{oauth: nil}}, _owned, %{"auth" => %{"oauth" => _oauth}}),
     do: {:error, Error.new(:not_supported, "Signing in to a server needs config.yaml's oauth.")}
 
   # A server naming an OAuth app signs in with it, so connecting the app once covers the server.
-  defp signs_in(running, {owner, _key}, %{"auth" => %{"oauth" => %{"provider" => provider}}}) do
-    if Enum.any?(Providers.offered(running, owner), &(&1.name == provider)),
+  defp signs_in({daemon, _running}, {owner, _key}, %{
+         "auth" => %{"oauth" => %{"provider" => provider}}
+       }) do
+    if OAuthApps.nearest(daemon, owner, provider) != nil and not String.contains?(provider, ":"),
       do: {:ok, [credential_name: provider], "oauth"},
       else: {:error, Error.new(:invalid_request, "#{owner} has no OAuth app #{provider}.")}
   end
 
   # Its own sign-in is an OAuth app named by its key, which only it uses.
-  defp signs_in(running, {owner, key}, %{"auth" => %{"oauth" => oauth}} = input) do
-    urls =
-      for field <- ~w(issuer authorization_endpoint token_endpoint),
-          url = oauth[field],
-          url,
-          do: url
+  defp signs_in({daemon, _running}, {owner, key}, %{"auth" => %{"oauth" => oauth}} = input) do
+    app = Map.merge(oauth, %{"name" => key, "resource" => input["url"]})
 
-    with :ok <- Enum.find_value(urls, :ok, &refused(running, &1)),
-         {:ok, opts} <-
-           Providers.options(running, owner, Map.put(oauth, "resource", input["url"])),
-         :ok <- Providers.added(running, [owner: owner, name: key, called: input["name"]] ++ opts),
-         do: {:ok, [credential_name: key], "oauth"}
-  end
+    case OAuthApps.keep(daemon, {owner, app}) do
+      {:ok, _app} ->
+        {:ok, [credential_name: key], "oauth"}
 
-  defp refused(running, url) do
-    case reachable(running, url) do
-      :ok -> nil
-      {:error, _error} = refused -> refused
+      {:error, %Error{message: why}} ->
+        {:error, Error.new(:invalid_request, "#{input["name"]} can't be signed in with: #{why}")}
     end
   end
 
@@ -309,13 +307,14 @@ defmodule WardrikDaemon.Servers do
   end
 
   # A server that names an OAuth app leaves the app, and the accounts connected with it, alone.
-  defp forget_sign_ins(running, {owner, key}, %{auth: "oauth", provider: nil}) do
+  defp forget_sign_ins({daemon, running}, {owner, key}, %{auth: "oauth", provider: nil}) do
     vault = Wardrik.vault(running)
 
     for {id, ^key, _kind} <- WardrikVault.list(vault),
         do: WardrikVault.delete(vault, %Principal{id: id}, key)
 
-    WardrikOAuth.remove_provider(Wardrik.oauth(running), owner: owner, name: key)
+    _forgotten = OAuthApps.forget(daemon, {owner, key})
+    :ok
   end
 
   defp forget_sign_ins(_running, _owned, _record), do: :ok

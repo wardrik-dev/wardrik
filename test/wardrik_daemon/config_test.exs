@@ -458,7 +458,12 @@ defmodule WardrikDaemon.ConfigTest do
                  channels: config.channels,
                  authorizer: {WardrikDaemon.Authorizer, config.access}
                ] ++
-                 config.wardrik ++ [oauth: config.oauth],
+                 config.wardrik ++
+                 [
+                   oauth:
+                     Keyword.delete(config.oauth, :providers) ++
+                       [resolver: {WardrikDaemon.OAuthApps, %{}}]
+                 ],
                Wardrik.schema()
              )
   end

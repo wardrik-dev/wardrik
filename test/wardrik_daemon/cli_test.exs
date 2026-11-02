@@ -156,6 +156,10 @@ defmodule WardrikDaemon.CLITest do
     assert help =~ ~r/Agents\n  agent ls \[QUERY\]\s+list the agents/
     assert help =~ "Shortcuts: ls for agent ls"
 
+    for command <- WardrikDaemon.CLI.commands(),
+        command.group,
+        do: assert(help =~ command.name, "wardrik help leaves out #{command.name}")
+
     assert {0, agents} = wardrik(context, ["agent"])
     assert agents =~ "Usage: wardrik agent COMMAND"
     refute agents =~ "token create"
@@ -418,7 +422,53 @@ defmodule WardrikDaemon.CLITest do
 
       assert {0, "No accounts are offered.\n"} = wardrik(context, ["connection", "ls"])
       assert failing(context, ["connection", "connect", "github"]) =~ "no account github"
-      assert failing(context, ["connection", "disconnect", "github", "--user", "jon"]) =~ "github"
+      assert failing(context, ["connection", "disconnect", "github"]) =~ "github"
+      assert failing(context, ["connection", "ls", "--user", "jon"]) =~ "isn't an option"
+    end
+
+    test "adds, lists and removes an owner's OAuth apps", context do
+      assert {0, "No OAuth apps.\n"} = wardrik(context, ["provider", "ls"])
+
+      assert {0, "Added linear. People sign in to linear with it.\n"} =
+               wardrik(context, [
+                 "provider",
+                 "add",
+                 "linear",
+                 "--authorization-endpoint",
+                 "https://linear.test/authorize",
+                 "--token-endpoint",
+                 "https://linear.test/token",
+                 "--client-id",
+                 "acme-linear",
+                 "--scope",
+                 "read",
+                 "--org",
+                 "acme"
+               ])
+
+      assert {0, listed} = wardrik(context, ["provider", "ls", "--org", "acme"])
+      assert listed =~ ~r/linear\s+acme\s+https:\/\/linear.test\/authorize/
+
+      assert {0, connections} = wardrik(context, ["connection", "ls"])
+      refute connections =~ "linear"
+
+      assert failing(context, [
+               "provider",
+               "add",
+               "crm",
+               "--issuer",
+               "https://crm.test",
+               "--client-id",
+               "c",
+               "--secret",
+               "CRM"
+             ]) =~
+               "holds no secret CRM"
+
+      assert {0, "Removed linear.\n"} =
+               wardrik(context, ["provider", "rm", "linear", "--org", "acme"])
+
+      assert {0, "No OAuth apps.\n"} = wardrik(context, ["provider", "ls", "--org", "acme"])
     end
 
     test "adds, lists and removes an owner's notify targets", context do

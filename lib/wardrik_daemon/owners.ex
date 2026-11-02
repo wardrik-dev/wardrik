@@ -12,7 +12,7 @@ defmodule WardrikDaemon.Owners do
   """
 
   @deployment "deployment"
-  @held [:owner, :secret, :ceiling, :mcp_server, :notify_target]
+  @held [:secret, :ceiling, :mcp_server, :notify_target, :provider, :connection]
 
   @doc """
   Returns the owner of the agent or conversation `id`, or `:error` if the daemon doesn't name it.
@@ -72,8 +72,8 @@ defmodule WardrikDaemon.Owners do
 
   @doc """
   Returns the org a resource is in, or `nil` if it's in none: the deployment, what the deployment
-  owns, and tokens. What an owner holds is in its org: its secrets, servers and notify targets, as
-  are an org's ceilings.
+  owns, and tokens. What an owner holds is in its org: its secrets, servers, notify targets, OAuth
+  apps and connections, as are an org's ceilings.
 
       WardrikDaemon.Owners.org_of({:agent, "acme/@jon/notes"})
       #=> "acme"

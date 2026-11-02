@@ -29,13 +29,16 @@ defmodule WardrikDaemon.HTTPTest do
     assert Enum.sort(WardrikDaemon.HTTP.routes()) == Enum.sort(spec_routes())
 
     for {_method, path} <- spec_routes() do
-      assert String.starts_with?(path, ["/v1/owners/{owner}/", "/v1/tokens"])
+      assert String.starts_with?(path, ["/v1/owners/{owner}/", "/v1/tokens", "/v1/connections"])
     end
   end
 
   test "answers 401 on every route without a token that works", context do
     for {method, path} <- spec_routes(), secret <- [nil, "wdk_nope_nope"] do
-      url = context.url <> String.replace(path, ["{owner}", "{name}", "{id}"], "payments")
+      url =
+        context.url <>
+          String.replace(path, ["{owner}", "{name}", "{id}", "{provider}"], "payments")
+
       auth = if secret, do: [auth: {:bearer, secret}], else: []
 
       response =

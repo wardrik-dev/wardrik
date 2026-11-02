@@ -10,8 +10,11 @@ defmodule WardrikDaemon.CLI.Help do
     "Approvals",
     "Triggers",
     "MCP servers",
+    "Notify targets",
+    "OAuth apps",
     "Connections",
     "Vault",
+    "Tokens",
     "Daemon"
   ]
   @column 32

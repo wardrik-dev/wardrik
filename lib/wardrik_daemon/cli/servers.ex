@@ -1,9 +1,10 @@
 defmodule WardrikDaemon.CLI.Servers do
   @moduledoc """
-  The commands on the MCP servers and notify targets an owner adds, and the accounts an owner
-  connects. See `WardrikDaemon.Servers` and `WardrikDaemon.NotifyTargets`.
+  The commands on the MCP servers, notify targets and OAuth apps an owner adds, and the accounts
+  the caller connects. See `WardrikDaemon.Servers`, `WardrikDaemon.NotifyTargets`,
+  `WardrikDaemon.OAuthApps` and `WardrikDaemon.Connections`.
 
-  Each acts for the deployment's org, unless given `--org` or `--user`.
+  Each but `connection` acts for the deployment's org, unless given `--org` or `--user`.
   """
 
   alias WardrikDaemon.CLI.Command
@@ -12,7 +13,7 @@ defmodule WardrikDaemon.CLI.Servers do
 
   @owner [org: :string, user: :string]
 
-  @doc "Returns the commands on MCP servers, notify targets and connections."
+  @doc "Returns the commands on MCP servers, notify targets, OAuth apps and connections."
   @spec commands() :: [Command.t()]
   def commands do
     [
@@ -77,28 +78,65 @@ defmodule WardrikDaemon.CLI.Servers do
         run: &target_removed/3
       },
       %Command{
+        name: "provider ls",
+        group: "OAuth apps",
+        switches: @owner,
+        summary: "the OAuth apps an owner's people sign in with",
+        run: &providers/3
+      },
+      %Command{
+        name: "provider add",
+        group: "OAuth apps",
+        arguments: "NAME",
+        switches:
+          [
+            issuer: :string,
+            resource: :string,
+            authorization_endpoint: :string,
+            token_endpoint: :string,
+            client_id: :string,
+            secret: :string,
+            scope: :keep,
+            flow: :string
+          ] ++ @owner,
+        count: 1,
+        summary: "add an OAuth app an owner's people sign in to NAME with",
+        details: [
+          "Give its --issuer, its --resource, or both --authorization-endpoint and",
+          "--token-endpoint, and its --client-id. --secret names the owner's secret in the vault,",
+          "sealed for client_secret. --flow device signs people in with a code."
+        ],
+        run: &provider_added/3
+      },
+      %Command{
+        name: "provider rm",
+        group: "OAuth apps",
+        arguments: "NAME",
+        switches: @owner,
+        count: 1,
+        summary: "remove an OAuth app an owner added",
+        run: &provider_removed/3
+      },
+      %Command{
         name: "connection ls",
         group: "Connections",
-        switches: @owner,
-        summary: "the accounts an owner is offered, and which they hold",
+        summary: "the accounts you can connect, and which you hold",
         run: &connections/3
       },
       %Command{
         name: "connection connect",
         group: "Connections",
         arguments: "PROVIDER",
-        switches: @owner,
         count: 1,
-        summary: "sign an owner in to an account, for their agents to use",
+        summary: "sign in to an account, for your agents to use",
         run: &connected/3
       },
       %Command{
         name: "connection disconnect",
         group: "Connections",
         arguments: "PROVIDER",
-        switches: @owner,
         count: 1,
-        summary: "forget an owner's account",
+        summary: "forget your account",
         run: &disconnected/3
       }
     ]
@@ -171,9 +209,52 @@ defmodule WardrikDaemon.CLI.Servers do
          do: Context.done(cx, answer, "Removed #{name}.")
   end
 
-  defp connections([], flags, cx) do
+  defp providers([], flags, cx) do
+    with {:ok, %{"providers" => providers} = answer} <-
+           Context.call(cx, "providers.list", %{"owner" => owner(cx, flags)}) do
+      Table.show(cx, answer,
+        header: ["PROVIDER", "OWNER", "SIGNS IN AT"],
+        rows:
+          for(
+            provider <- providers,
+            do: [provider["name"], provider["owner"], signs_in_at(provider)]
+          ),
+        empty: "No OAuth apps."
+      )
+    end
+  end
+
+  defp signs_in_at(provider),
+    do: provider["issuer"] || provider["resource"] || provider["authorization_endpoint"]
+
+  defp provider_added([name], flags, cx) do
+    fields =
+      for key <- [:issuer, :resource, :authorization_endpoint, :token_endpoint, :client_id, :flow],
+          value = flags[key],
+          value != nil,
+          into: %{},
+          do: {Atom.to_string(key), value}
+
+    input =
+      %{"owner" => owner(cx, flags), "name" => name}
+      |> Map.merge(fields)
+      |> Context.put("scopes", flags[:scope] && List.wrap(flags[:scope]))
+      |> Context.put("client_secret", flags[:secret] && %{"name" => flags[:secret]})
+
+    with {:ok, answer} <- Context.call(cx, "providers.add", input),
+         do: Context.done(cx, answer, "Added #{name}. People sign in to #{name} with it.")
+  end
+
+  defp provider_removed([name], flags, cx) do
+    input = %{"owner" => owner(cx, flags), "name" => name}
+
+    with {:ok, answer} <- Context.call(cx, "providers.remove", input),
+         do: Context.done(cx, answer, "Removed #{name}.")
+  end
+
+  defp connections([], _flags, cx) do
     with {:ok, %{"connections" => connections} = answer} <-
-           Context.call(cx, "connections.list", %{"owner" => owner(cx, flags)}) do
+           Context.call(cx, "connections.list", %{}) do
       Table.show(cx, answer,
         header: ["ACCOUNT", "CONNECTED"],
         rows:
@@ -189,10 +270,8 @@ defmodule WardrikDaemon.CLI.Servers do
   defp held(true), do: "yes"
   defp held(_connected), do: "no"
 
-  defp connected([provider], flags, cx) do
-    input = %{"owner" => owner(cx, flags), "provider" => provider}
-
-    with {:ok, answer} <- Context.call(cx, "connections.connect", input) do
+  defp connected([provider], _flags, cx) do
+    with {:ok, answer} <- Context.call(cx, "connections.connect", %{"provider" => provider}) do
       Context.show(cx, answer, fn answer -> signing_in(cx, provider, answer) end)
     end
   end
@@ -200,13 +279,20 @@ defmodule WardrikDaemon.CLI.Servers do
   defp signing_in(cx, provider, %{"connected" => true}),
     do: Context.puts(cx, "#{provider} is connected already.")
 
+  defp signing_in(cx, provider, %{"authorization" => %{"url" => url, "code" => code}}),
+    do:
+      Context.puts(cx, [
+        "Sign in to #{provider} at ",
+        Owl.Data.tag(url, :cyan),
+        " with the code ",
+        Owl.Data.tag(code, :cyan)
+      ])
+
   defp signing_in(cx, provider, %{"authorization" => %{"url" => url}}),
     do: Context.puts(cx, ["Sign in to #{provider} at ", Owl.Data.tag(url, :cyan)])
 
-  defp disconnected([provider], flags, cx) do
-    input = %{"owner" => owner(cx, flags), "provider" => provider}
-
-    with {:ok, answer} <- Context.call(cx, "connections.disconnect", input),
+  defp disconnected([provider], _flags, cx) do
+    with {:ok, answer} <- Context.call(cx, "connections.disconnect", %{"provider" => provider}),
          do: Context.done(cx, answer, "Disconnected #{provider}.")
   end
 end

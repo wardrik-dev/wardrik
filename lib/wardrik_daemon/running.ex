@@ -6,7 +6,8 @@ defmodule WardrikDaemon.Running do
   the vault. Then it starts, in order:
 
     1. `WardrikBrave`, for `web_search`.
-    2. Wardrik, deciding what each scope may do with `WardrikDaemon.Authorizer`.
+    2. Wardrik, deciding what each scope may do with `WardrikDaemon.Authorizer`, and which OAuth
+       app each person signs in with with `WardrikDaemon.OAuthApps`.
     3. The HTTP API, as `WardrikDaemon.HTTP`, reached with `WardrikDaemon.Tokens`.
     4. A task that starts the MCP servers orgs and people added (see `WardrikDaemon.Servers`),
        defines the agents in `agents/`, writes the `wardrik` command's token, and emits
@@ -72,7 +73,7 @@ defmodule WardrikDaemon.Running do
           trusted_workers: config.trusted_workers,
           egress: WardrikDaemon.Egress.check(config),
           declarations: {Agents, agents}
-        ] ++ config.wardrik ++ oauth(config)
+        ] ++ config.wardrik ++ oauth(config, %{wardrik: name, config: config, store: daemon})
       )
 
     children = [
@@ -126,8 +127,13 @@ defmodule WardrikDaemon.Running do
     false
   end
 
-  defp oauth(%Config{oauth: nil}), do: []
-  defp oauth(%Config{oauth: oauth}), do: [oauth: oauth]
+  defp oauth(%Config{oauth: nil}, _daemon), do: []
+
+  # config.yaml's providers are the deployment's apps, which WardrikDaemon.OAuthApps gives.
+  defp oauth(%Config{oauth: oauth}, daemon),
+    do: [
+      oauth: Keyword.delete(oauth, :providers) ++ [resolver: {WardrikDaemon.OAuthApps, daemon}]
+    ]
 
   defp started(agents, dirs, config) do
     Enum.each(config.warnings, &Logger.warning("config.yaml: #{&1}"))

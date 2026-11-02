@@ -195,7 +195,7 @@ YAML writes an atom as a string, `flow: device`, and a keyword list as a map,
 | `deployment_keys` | Whether agents fall back to the deployment's API keys | `WardrikDaemon.Keys` |
 | `deployment`, `idle_timeout`, `retention`, `triggers` | Wardrik itself | `Wardrik.start_link/1` |
 | `mcp` | MCP servers agents may call | `WardrikMCP.Server`, see `WardrikDaemon.Config.MCP` |
-| `oauth` | Services people sign in to, and its `providers` | `Wardrik.start_link/1`'s `:oauth`, `WardrikOAuth.Provider` |
+| `oauth` | Services people sign in to, and the deployment's `providers` | `Wardrik.start_link/1`'s `:oauth`, `WardrikOAuth.Provider`, `WardrikDaemon.OAuthApps` |
 | `channels` | Chat apps agents are reached through | `WardrikChannel`, `WardrikSlack` |
 | `notify` | Where agents' notices go | `Wardrik.Notify`, `Wardrik.Notify.Room`, `Wardrik.Notify.Webhook` |
 | `orgs` | The orgs beside the deployment's own | `WardrikDaemon.Config.Orgs` |
@@ -210,9 +210,15 @@ An agent's model and tools use the API keys its owner sealed, then its org's. `d
 `true` unless set, so they then use the deployment's. Set it to `false` to have every org bring
 its own.
 
-Servers, OAuth providers and notify targets that orgs and people add as the daemon runs are kept
-apart from `config.yaml`. They're added over the HTTP API, as `wardrik server add` and `wardrik
-notify add` do. See `WardrikDaemon.Servers` and `WardrikDaemon.NotifyTargets`.
+Servers, OAuth apps and notify targets that orgs and people add as the daemon runs are kept apart
+from `config.yaml`. They're added over the HTTP API, as `wardrik server add`, `wardrik provider
+add` and `wardrik notify add` do. See `WardrikDaemon.Servers`, `WardrikDaemon.OAuthApps` and
+`WardrikDaemon.NotifyTargets`.
+
+A person signs in with the nearest OAuth app of a name: their own, their org's, then the
+deployment's, from `oauth.providers`. Another org's app is never used. An added app's client
+secret is named, as `wardrik provider add linear --secret LINEAR_SECRET`, and read from its
+owner's vault, sealed `--for client_secret`, each time it's needed.
 
 Their URLs must be `https` at a public address: loopback, private, link-local and cloud metadata
 addresses are refused, as each is added and as each connection or notice is sent. Hosts
@@ -303,8 +309,8 @@ wardrik vault put github --org payments --for header
 `roles` and `bindings` say who may do what, as Kubernetes RBAC does. A role's rules each allow
 `verbs`, the part of an action after the dot, as `ask` for `agent.ask`, on `kinds` of resource:
 `agent`, `secret` (an owner's secrets), `ceiling` (an org's ceilings), `mcp_server` and
-`notify_target` (an owner's MCP servers and webhooks), `owner` (what else an owner holds: OAuth
-apps, connections), `deployment` or `token`, and, with `names`, only those IDs. A binding gives a
+`notify_target` (an owner's MCP servers and webhooks), `provider` (an owner's OAuth apps),
+`connection` (a person's accounts), `deployment` or `token`, and, with `names`, only those IDs. A binding gives a
 role to subjects within one org:
 
 ```yaml
@@ -320,7 +326,8 @@ bindings:
   agent.
 * An agent acting through its tools gets its own bindings, never its owner's.
 * Everyone may do anything to what they own: `payments/@ana` to `payments/@ana/notes`, and to
-  their own secrets, servers and notify targets.
+  their own secrets, servers, notify targets and OAuth apps.
+* Everyone manages their own connections, the accounts they sign in to, and no one else's.
 * A chat member asks and reads the agents of the workspace's owner, and decides only the calls
   they asked for, or any as one of its approvers.
 * Outside the orgs their bindings name, people find nothing, not even that something's there. The
@@ -345,6 +352,8 @@ taking the same tokens, roles and bindings. `priv/openapi.json` describes its ow
 | `GET /v1/owners/{owner}/ceilings` | what an org's agents have spent against each ceiling |
 | `GET`, `POST /v1/owners/{owner}/servers`, `DELETE .../servers/{name}` | the MCP servers the owner's agents reach; adds or removes one of their own |
 | `GET`, `POST /v1/owners/{owner}/notify_targets`, `DELETE .../notify_targets/{name}` | the webhooks the owner's agents' notices reach; adds or removes one of their own |
+| `GET`, `POST /v1/owners/{owner}/providers`, `DELETE .../providers/{name}` | the OAuth apps the owner's people sign in with; adds or removes one of their own |
+| `GET /v1/connections`, `POST`, `DELETE /v1/connections/{provider}` | the caller's own accounts; starts a sign-in to one, answering its URL or device code; forgets one |
 | `GET`, `POST /v1/tokens`, `DELETE /v1/tokens/{id}` | tokens: lists them, never a secret; makes one, showing its secret once; revokes one |
 
 An owner is one path segment: `payments`, `payments%2F%40ana` or `deployment`. See
@@ -368,7 +377,8 @@ takes `--json`.
 | `trigger ls`, `trigger set`, `trigger rm` | an agent's triggers |
 | `server ls`, `server add`, `server rm` | MCP servers an owner adds |
 | `notify ls`, `notify add`, `notify rm` | webhooks an owner adds for their agents' notices |
-| `connection ls`, `connection connect`, `connection disconnect` | accounts an owner connects |
+| `provider ls`, `provider add`, `provider rm` | OAuth apps an owner adds for their people |
+| `connection ls`, `connection connect`, `connection disconnect` | your own accounts, as the token's user |
 | `vault put`, `vault ls`, `vault rm` | secrets: the deployment's, or an org's or a person's with `--org` or `--user`, each sealed `--for` one purpose |
 | `token create NAME --subject user:ana`, `token ls`, `token revoke ID` | tokens for everyone else, each acting as its subject and `--groups`, until it `--expires` |
 

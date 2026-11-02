@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.Config.Access do
-  @kinds ~w(agent ceiling deployment mcp_server notify_target owner secret token)
+  @kinds ~w(agent ceiling connection deployment mcp_server notify_target provider secret token)
 
   @rule [
     verbs: [

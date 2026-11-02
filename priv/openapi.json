@@ -7,7 +7,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "description": "The daemon's own routes, beside Wardrik's operations (see Wardrik's openapi.json, at /v1/openapi.json). Each takes the same bearer tokens, and is decided by config.yaml's roles and bindings: x-wardrik-action is what a caller must be allowed to do, on the resource x-wardrik-resource names. Tokens are in no org, so only a binding in * reaches them. An owner is one path segment: acme for an org, acme%2F%40jon for a person, or deployment. A resource the caller reaches none of is answered as one that doesn't exist."
+    "description": "The daemon's own routes, beside Wardrik's operations (see Wardrik's openapi.json, at /v1/openapi.json). Each takes the same bearer tokens, and is decided by config.yaml's roles and bindings: x-wardrik-action is what a caller must be allowed to do, on the resource x-wardrik-resource names. Tokens are in no org, so only a binding in * reaches them. A caller always manages their own connections. An owner is one path segment: acme for an org, acme%2F%40jon for a person, or deployment. A resource the caller reaches none of is answered as one that doesn't exist."
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "security": [
@@ -31,6 +31,14 @@
     {
       "name": "Notify targets",
       "description": "The webhooks orgs and people add for their agents' notices."
+    },
+    {
+      "name": "OAuth apps",
+      "description": "The OAuth apps orgs and people add for their people to sign in with."
+    },
+    {
+      "name": "Connections",
+      "description": "The accounts each caller connects for their agents."
     },
     {
       "name": "Tokens",
@@ -482,6 +490,259 @@
         }
       }
     },
+    "/v1/owners/{owner}/providers": {
+      "get": {
+        "operationId": "providers.list",
+        "summary": "List the OAuth apps an owner's people sign in with",
+        "description": "The owner's own, then those it gets from further out: a person's org's, then the deployment's, including config.yaml's. The nearest of a name wins. Each says which owner holds it. Never a client secret.",
+        "tags": [
+          "OAuth apps"
+        ],
+        "x-wardrik-action": "provider.read",
+        "x-wardrik-resource": "provider",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The OAuth apps.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/providers"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "providers.add",
+        "summary": "Add an OAuth app for an owner's people",
+        "description": "An org's app serves its own people; a person's serves them alone. One of the owner's own by the same name is a conflict; one held further out is overridden. Its client secret is named, and read from the owner's vault, sealed for client_secret, each time it's needed. Each URL must pass the deployment's egress check.",
+        "tags": [
+          "OAuth apps"
+        ],
+        "x-wardrik-action": "provider.add",
+        "x-wardrik-resource": "provider",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/provider_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The OAuth app, as it's kept.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/provider"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/v1/owners/{owner}/providers/{name}": {
+      "delete": {
+        "operationId": "providers.remove",
+        "summary": "Remove an OAuth app",
+        "description": "Only the owner's own. Its people sign in again, with the next one out by the same name, if there's one.",
+        "tags": [
+          "OAuth apps"
+        ],
+        "x-wardrik-action": "provider.add",
+        "x-wardrik-resource": "provider",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/provider_name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The OAuth app, as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/provider"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/connections": {
+      "get": {
+        "operationId": "connections.list",
+        "summary": "List the caller's accounts",
+        "description": "Each OAuth app the caller signs in with, and each MCP server's own sign-in, by the server's name, and whether the caller holds each. Only the caller's own.",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-action": "connection.read",
+        "x-wardrik-resource": "connection",
+        "responses": {
+          "200": {
+            "description": "The caller's accounts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connections"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/connections/{provider}": {
+      "post": {
+        "operationId": "connections.connect",
+        "summary": "Sign the caller in to an account",
+        "description": "Answers that the caller holds it already, or where they sign in: the page, and for a device sign-in the code to enter there.",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-action": "connection.connect",
+        "x-wardrik-resource": "connection",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/connection_provider"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account, or where to sign in to it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connecting"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "connections.disconnect",
+        "summary": "Forget the caller's account",
+        "description": "The next call that needs it asks the caller to sign in again. Answers connected: true where there was one to forget. Recorded in the audit.",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-action": "connection.connect",
+        "x-wardrik-resource": "connection",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/connection_provider"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account, as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connection"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/tokens": {
       "get": {
         "operationId": "tokens.list",
@@ -635,6 +896,26 @@
         "schema": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"
+        }
+      },
+      "provider_name": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "description": "The OAuth app's name.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"
+        }
+      },
+      "connection_provider": {
+        "name": "provider",
+        "in": "path",
+        "required": true,
+        "description": "The account's name, as connections.list answers it.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[^/\\s]+$"
         }
       },
       "token_id": {
@@ -1439,6 +1720,435 @@
                 }
               }
             ]
+          }
+        ]
+      },
+      "provider_input": {
+        "title": "An OAuth app to keep",
+        "description": "What providers.add takes: its name, the account its tokens are kept as, and the service's app it signs people in with. It needs an issuer, a resource, or both endpoints. Each URL must pass the deployment's egress check.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+            "description": "The account it grants, as the credential tools fetch. Letters, digits, - and _, up to 32."
+          },
+          "issuer": {
+            "type": "string",
+            "description": "The authorization server's issuer URL, whose metadata names its endpoints."
+          },
+          "resource": {
+            "type": "string",
+            "description": "The API or MCP server its tokens are for. Finds the issuer where none is given."
+          },
+          "authorization_endpoint": {
+            "type": "string",
+            "description": "Where a person signs in, for a service without metadata. Given with token_endpoint."
+          },
+          "token_endpoint": {
+            "type": "string",
+            "description": "Where a code is exchanged for a token. Given with authorization_endpoint."
+          },
+          "client_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The OAuth app's client ID. Without one, Wardrik becomes the client where the service allows."
+          },
+          "client_secret": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "description": "The app's client secret, as a secret the owner keeps in the vault. It's read each time it's needed, so a new value takes effect at once, and never sent anywhere but the token endpoint.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The secret's name in the owner's vault."
+              }
+            }
+          },
+          "client_auth": {
+            "type": "string",
+            "enum": [
+              "post",
+              "basic"
+            ],
+            "description": "How the client secret is sent: in the form, or as HTTP Basic. post unless it says."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes to ask for. None unless it says."
+          },
+          "flow": {
+            "type": "string",
+            "enum": [
+              "browser",
+              "device"
+            ],
+            "description": "How a person signs in: in a browser, or with a code on another device. browser unless it says."
+          },
+          "authorization_params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "not": {
+                "enum": [
+                  "response_type",
+                  "client_id",
+                  "redirect_uri",
+                  "scope",
+                  "state",
+                  "code_challenge",
+                  "code_challenge_method",
+                  "resource"
+                ]
+              }
+            },
+            "description": "Extra parameters for a browser sign-in, as access_type: offline. Can't set the ones Wardrik sends itself."
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "issuer"
+            ]
+          },
+          {
+            "required": [
+              "resource"
+            ]
+          },
+          {
+            "required": [
+              "authorization_endpoint",
+              "token_endpoint"
+            ]
+          }
+        ],
+        "dependentRequired": {
+          "client_secret": [
+            "client_id"
+          ],
+          "client_auth": [
+            "client_secret"
+          ],
+          "authorization_endpoint": [
+            "token_endpoint"
+          ],
+          "token_endpoint": [
+            "authorization_endpoint"
+          ]
+        },
+        "examples": [
+          {
+            "name": "google",
+            "issuer": "https://accounts.google.com",
+            "client_id": "868288504182-example.apps.googleusercontent.com",
+            "client_secret": {
+              "name": "GOOGLE_CLIENT_SECRET"
+            },
+            "scopes": [
+              "https://www.googleapis.com/auth/adwords"
+            ],
+            "authorization_params": {
+              "access_type": "offline",
+              "prompt": "consent"
+            }
+          },
+          {
+            "name": "x",
+            "authorization_endpoint": "https://x.com/i/oauth2/authorize",
+            "token_endpoint": "https://api.x.com/2/oauth2/token",
+            "client_id": "cnh3-example",
+            "client_secret": {
+              "name": "X_CLIENT_SECRET"
+            },
+            "client_auth": "basic",
+            "scopes": [
+              "tweet.read",
+              "tweet.write",
+              "offline.access"
+            ]
+          }
+        ]
+      },
+      "provider": {
+        "title": "An OAuth app",
+        "description": "An OAuth app people sign in with: who holds it, where it came from, and the service's app. Never its client secret.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "owner",
+          "name",
+          "source",
+          "scopes",
+          "flow",
+          "client_auth"
+        ],
+        "properties": {
+          "owner": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/owner"
+          },
+          "name": {
+            "type": "string",
+            "description": "The account it grants."
+          },
+          "source": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/source"
+          },
+          "issuer": {
+            "type": "string",
+            "description": "The authorization server's issuer URL, whose metadata names its endpoints."
+          },
+          "resource": {
+            "type": "string",
+            "description": "The API or MCP server its tokens are for. Finds the issuer where none is given."
+          },
+          "authorization_endpoint": {
+            "type": "string",
+            "description": "Where a person signs in, for a service without metadata. Given with token_endpoint."
+          },
+          "token_endpoint": {
+            "type": "string",
+            "description": "Where a code is exchanged for a token. Given with authorization_endpoint."
+          },
+          "client_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The OAuth app's client ID. Without one, Wardrik becomes the client where the service allows."
+          },
+          "client_secret": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "description": "The vault secret holding the app's client secret. Omitted for an app without one, and for one in config.yaml.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The secret's name in the owner's vault."
+              }
+            }
+          },
+          "client_auth": {
+            "type": "string",
+            "enum": [
+              "post",
+              "basic"
+            ],
+            "description": "How the client secret is sent: in the form, or as HTTP Basic."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes to ask for."
+          },
+          "flow": {
+            "type": "string",
+            "enum": [
+              "browser",
+              "device"
+            ],
+            "description": "How a person signs in: in a browser, or with a code on another device."
+          },
+          "authorization_params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "not": {
+                "enum": [
+                  "response_type",
+                  "client_id",
+                  "redirect_uri",
+                  "scope",
+                  "state",
+                  "code_challenge",
+                  "code_challenge_method",
+                  "resource"
+                ]
+              }
+            },
+            "description": "Extra parameters for a browser sign-in, as access_type: offline. Can't set the ones Wardrik sends itself."
+          }
+        },
+        "examples": [
+          {
+            "owner": "deployment",
+            "name": "google",
+            "source": "runtime",
+            "issuer": "https://accounts.google.com",
+            "client_id": "868288504182-example.apps.googleusercontent.com",
+            "client_secret": {
+              "name": "GOOGLE_CLIENT_SECRET"
+            },
+            "scopes": [
+              "https://www.googleapis.com/auth/adwords"
+            ],
+            "authorization_params": {
+              "access_type": "offline",
+              "prompt": "consent"
+            },
+            "client_auth": "post",
+            "flow": "browser"
+          }
+        ]
+      },
+      "providers": {
+        "title": "OAuth apps",
+        "description": "What providers.list answers: the OAuth apps an owner's people sign in with, their own and those from further out.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "providers"
+        ],
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/provider"
+            }
+          }
+        },
+        "examples": [
+          {
+            "providers": [
+              {
+                "owner": "deployment",
+                "name": "google",
+                "source": "runtime",
+                "issuer": "https://accounts.google.com",
+                "client_id": "868288504182-example.apps.googleusercontent.com",
+                "client_secret": {
+                  "name": "GOOGLE_CLIENT_SECRET"
+                },
+                "scopes": [
+                  "https://www.googleapis.com/auth/adwords"
+                ],
+                "authorization_params": {
+                  "access_type": "offline",
+                  "prompt": "consent"
+                },
+                "client_auth": "post",
+                "flow": "browser"
+              }
+            ]
+          }
+        ]
+      },
+      "connection": {
+        "title": "A connection",
+        "description": "An account the caller can connect, by its provider's name, and whether they hold it. A value is never answered.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider",
+          "connected"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "The account's name: an OAuth app's, or an MCP server's that makes its own sign-in."
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "Whether the caller holds it, which is what a call of an agent acting for them would use."
+          }
+        },
+        "examples": [
+          {
+            "provider": "github",
+            "connected": true
+          }
+        ]
+      },
+      "connections": {
+        "title": "Connections",
+        "description": "What connections.list answers: the accounts the caller can connect, and whether they hold each. A value is never answered.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "connections"
+        ],
+        "properties": {
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/connection"
+            }
+          }
+        },
+        "examples": [
+          {
+            "connections": [
+              {
+                "provider": "github",
+                "connected": true
+              },
+              {
+                "provider": "linear",
+                "connected": false
+              }
+            ]
+          }
+        ]
+      },
+      "connecting": {
+        "title": "A connection asked for",
+        "description": "What connections.connect answers: that the caller holds the account already, or where they sign in to it.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider",
+          "connected"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "The account's name: an OAuth app's, or an MCP server's that makes its own sign-in."
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "Whether the caller holds it already."
+          },
+          "authorization": {
+            "$ref": "urn:wardrik:schema:v1:authorization",
+            "description": "Where to sign in, where it is not held yet: the page, and for a device sign-in the code to enter there."
+          }
+        },
+        "examples": [
+          {
+            "provider": "github",
+            "connected": true
+          },
+          {
+            "provider": "linear",
+            "connected": false,
+            "authorization": {
+              "url": "https://auth.example.com/authorize?client_id=…&state=…"
+            }
+          },
+          {
+            "provider": "github",
+            "connected": false,
+            "authorization": {
+              "url": "https://github.com/login/device",
+              "code": "WDJB-MJHT"
+            }
           }
         ]
       },

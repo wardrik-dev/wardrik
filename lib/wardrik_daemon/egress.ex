@@ -1,7 +1,7 @@
 defmodule WardrikDaemon.Egress do
   @moduledoc """
   Decides which URLs orgs and people may point the daemon at: an MCP server's, a webhook's, and an
-  OAuth app's. It's the daemon's Wardrik `:egress`.
+  OAuth app's. It's the daemon's Wardrik `:egress`, and `WardrikOAuth`'s `:check`.
 
     * A URL must be `https`, at a public address, as `Wardrik.Egress.public/1` says. Loopback,
       private, link-local and cloud metadata addresses are refused, as each is added and as each

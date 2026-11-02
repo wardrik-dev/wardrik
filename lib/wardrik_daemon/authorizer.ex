@@ -8,9 +8,10 @@ defmodule WardrikDaemon.Authorizer do
       bindings, never its owner's, as a Kubernetes ServiceAccount does.
     * Anyone else is `user:ID`, and `group:NAME` for each of the principal's `:groups`
       attributes.
-    * A principal acting itself may do anything to the agents it owns, to what it holds as
-      their owner, and to its secrets, MCP servers and notify targets: `resource.owner ==
-      principal`, in Cedar's words. See `WardrikDaemon.Owners`.
+    * A principal acting itself may do anything to the agents it owns, and to its secrets, MCP
+      servers, notify targets and OAuth apps: `resource.owner == principal`, in Cedar's words.
+      See `WardrikDaemon.Owners`.
+    * A principal acting itself always manages its own connections, the accounts it signs in to.
     * A chat member, through a channel, may `ask`, `read` and `events` the agents within the
       installation's owner, and `decide` only the calls they asked for or, as an approver, any.
       Nothing else.
@@ -61,9 +62,11 @@ defmodule WardrikDaemon.Authorizer do
   defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {:agent, agent}}),
     do: Owners.owner(agent) == {:ok, id}
 
+  defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {:connection, id}}), do: true
+
   # The deployment's own is in no org, so no one owns it.
   defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {kind, id} = resource})
-       when kind in [:owner, :secret, :mcp_server, :notify_target],
+       when kind in [:secret, :mcp_server, :notify_target, :provider],
        do: Owners.org_of(resource) != nil
 
   defp owns?(_request), do: false

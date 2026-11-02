@@ -1,8 +1,8 @@
 defmodule WardrikDaemon.Owned do
   @moduledoc """
   Keeps what owners add, each under its own path in the daemon's store, as
-  `servers/acme%2F%40jon/crm`. `WardrikDaemon.Servers` and `WardrikDaemon.NotifyTargets` keep
-  theirs here.
+  `servers/acme%2F%40jon/crm`. `WardrikDaemon.Servers`, `WardrikDaemon.NotifyTargets` and
+  `WardrikDaemon.OAuthApps` keep theirs here.
   """
 
   alias WardrikDaemon.Owners

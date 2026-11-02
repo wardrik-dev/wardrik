@@ -14,6 +14,12 @@ defmodule WardrikDaemon.HTTP do
   | `GET /v1/owners/{owner}/notify_targets` | the webhooks the owner's agents' notices reach. See `WardrikDaemon.NotifyTargets`. |
   | `POST /v1/owners/{owner}/notify_targets` | adds one |
   | `DELETE /v1/owners/{owner}/notify_targets/{name}` | removes one of the owner's own |
+  | `GET /v1/owners/{owner}/providers` | the OAuth apps the owner's people sign in with. See `WardrikDaemon.OAuthApps`. |
+  | `POST /v1/owners/{owner}/providers` | adds one |
+  | `DELETE /v1/owners/{owner}/providers/{name}` | removes one of the owner's own |
+  | `GET /v1/connections` | the caller's accounts, and whether each is connected. See `WardrikDaemon.Connections`. |
+  | `POST /v1/connections/{provider}` | starts the caller's sign-in to one |
+  | `DELETE /v1/connections/{provider}` | forgets the caller's account |
   | `GET /v1/tokens` | every token, never a secret. See `WardrikDaemon.Tokens`. |
   | `POST /v1/tokens` | creates one, answering its secret once |
   | `DELETE /v1/tokens/{id}` | revokes one |
@@ -24,7 +30,8 @@ defmodule WardrikDaemon.HTTP do
 
   Its routes take the same tokens (`WardrikDaemon.Authenticator`), and are decided by the same
   roles and bindings (`WardrikDaemon.Authorizer`), on `{:secret, owner}`, `{:ceiling, org}`,
-  `{:mcp_server, owner}`, `{:notify_target, owner}` and `{:token, id}`. A body is checked against
+  `{:mcp_server, owner}`, `{:notify_target, owner}`, `{:provider, owner}`, `{:connection, id}`
+  for the caller's own, and `{:token, id}`. A body is checked against
   its schema in `priv/openapi.json`. They answer errors as `Wardrik.HTTP` does.
 
       {WardrikDaemon.HTTP,
@@ -40,7 +47,7 @@ defmodule WardrikDaemon.HTTP do
     * `:wardrik` - required. The Wardrik it serves.
     * `:authenticator` - required. As `Wardrik.HTTP` takes it.
     * `:store` - required. The daemon's scope of the store, where it keeps tokens, servers,
-      notify targets and ceilings' spend.
+      notify targets, OAuth apps and ceilings' spend.
     * `:orgs` - required. What `WardrikDaemon.Orgs` reads orgs from. An owner in an org it doesn't
       run is answered as one that isn't there.
     * `:config` - required. `config.yaml`, as `WardrikDaemon.Config.read/3` returns it.
@@ -53,7 +60,9 @@ defmodule WardrikDaemon.HTTP do
   alias Wardrik.Error
   alias WardrikCore.Principal
   alias WardrikDaemon.Ceiling
+  alias WardrikDaemon.Connections
   alias WardrikDaemon.NotifyTargets
+  alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Owners
   alias WardrikDaemon.Secrets
   alias WardrikDaemon.Servers
@@ -67,7 +76,7 @@ defmodule WardrikDaemon.HTTP do
   @external_resource @openapi_path
   @openapi @openapi_path |> File.read!() |> JSON.decode!()
   @inputs Map.new(
-            ~w(server_input notify_target_input token_input),
+            ~w(server_input notify_target_input provider_input token_input),
             &{&1, JSV.build!(@openapi["components"]["schemas"][&1])}
           )
 
@@ -86,7 +95,8 @@ defmodule WardrikDaemon.HTTP do
                    {method, operation} <- methods,
                    into: %{} do
                  parameters =
-                   for %{"$ref" => "#/components/parameters/" <> name} <- operation["parameters"],
+                   for %{"$ref" => "#/components/parameters/" <> name} <-
+                         Map.get(operation, "parameters", []),
                        parameter = @openapi["components"]["parameters"][name],
                        do: %{name: parameter["name"], in: parameter["in"]}
 
@@ -201,6 +211,49 @@ defmodule WardrikDaemon.HTTP do
     end)
   end
 
+  get "/v1/owners/:owner/providers" do
+    served(conn, owner, {"provider.read", :provider}, fn _scope ->
+      {:ok, 200, %{"providers" => OAuthApps.list(conn.assigns.daemon, owner)}}
+    end)
+  end
+
+  post "/v1/owners/:owner/providers" do
+    served(conn, owner, {"provider.add", :provider}, fn scope ->
+      with {:ok, input} <- input(conn, "provider_input"),
+           {:ok, added} <- OAuthApps.add(conn.assigns.daemon, {owner, input}, scope.principal),
+           do: {:ok, 201, added}
+    end)
+  end
+
+  delete "/v1/owners/:owner/providers/:name" do
+    served(conn, owner, {"provider.add", :provider}, fn scope ->
+      with {:ok, removed} <- OAuthApps.remove(conn.assigns.daemon, {owner, name}, scope.principal),
+           do: {:ok, 200, removed}
+    end)
+  end
+
+  get "/v1/connections" do
+    served(conn, {"connection.read", &own_connections/1}, fn scope ->
+      {:ok, 200, %{"connections" => Connections.list(conn.assigns.daemon, scope.principal)}}
+    end)
+  end
+
+  post "/v1/connections/:provider" do
+    served(conn, {"connection.connect", &own_connections/1}, fn scope ->
+      with {:ok, connecting} <-
+             Connections.connect(conn.assigns.daemon, scope.principal, provider),
+           do: {:ok, 200, connecting}
+    end)
+  end
+
+  delete "/v1/connections/:provider" do
+    served(conn, {"connection.connect", &own_connections/1}, fn scope ->
+      with {:ok, connection} <-
+             Connections.disconnect(conn.assigns.daemon, scope.principal, provider),
+           do: {:ok, 200, connection}
+    end)
+  end
+
   get "/v1/tokens" do
     served(conn, {"token.read", {:token, "*"}}, fn _scope ->
       {:ok, 200, %{"tokens" => Enum.map(Tokens.list(conn.assigns.daemon.store), &token/1)}}
@@ -238,13 +291,19 @@ defmodule WardrikDaemon.HTTP do
     conn = Plug.RequestId.call(conn, @request_id)
 
     with {:ok, scope} <- authenticated(conn, conn.assigns.daemon),
-         :ok <- authorized(scope, action, resource),
+         :ok <- authorized(scope, action, resource(resource, scope)),
          {:ok, status, body} <- run.(scope) do
       answer(conn, status, body)
     else
       {:error, %Error{} = error} -> Response.error(conn, error)
     end
   end
+
+  # A caller's connections are their own, as the principal their token acts as.
+  defp own_connections(scope), do: {:connection, scope.principal.id}
+
+  defp resource(resource, scope) when is_function(resource, 1), do: resource.(scope)
+  defp resource(resource, _scope), do: resource
 
   defp served(conn, owner, {action, kind}, run) do
     conn = Plug.RequestId.call(conn, @request_id)
@@ -297,6 +356,8 @@ defmodule WardrikDaemon.HTTP do
   defp described({:ceiling, owner}), do: "ceilings of #{owner}"
   defp described({:mcp_server, owner}), do: "MCP servers of #{owner}"
   defp described({:notify_target, owner}), do: "notify targets of #{owner}"
+  defp described({:provider, owner}), do: "OAuth apps of #{owner}"
+  defp described({:connection, id}), do: "connections of #{id}"
   defp described({:token, _id}), do: "token"
 
   defp input(conn, schema) do

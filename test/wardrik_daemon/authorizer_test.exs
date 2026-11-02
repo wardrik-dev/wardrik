@@ -128,10 +128,14 @@ defmodule WardrikDaemon.AuthorizerTest do
                {:error, :not_found}
     end
 
-    assert decide(access, principal: "ana", action: "secret.put", resource: {:owner, "growth"}) ==
+    assert decide(access, principal: "ana", action: "secret.put", resource: {:provider, "growth"}) ==
              {:error, :not_found}
 
-    assert decide(access, principal: "ana", action: "secret.put", resource: {:owner, "payments"}) ==
+    assert decide(access,
+             principal: "ana",
+             action: "secret.put",
+             resource: {:provider, "payments"}
+           ) ==
              :ok
   end
 
@@ -168,7 +172,7 @@ defmodule WardrikDaemon.AuthorizerTest do
     for {action, resource} <- [
           {"agent.define", {:agent, "growth/@jon/notes"}},
           {"agent.forget", {:agent, "growth/@jon/notes/C1"}},
-          {"secret.put", {:owner, "growth/@jon"}}
+          {"provider.add", {:provider, "growth/@jon"}}
         ],
         do: assert(decide(access, jon ++ [action: action, resource: resource]) == :ok)
 
@@ -178,7 +182,7 @@ defmodule WardrikDaemon.AuthorizerTest do
     assert decide(access,
              principal: "deployment",
              action: "secret.put",
-             resource: {:owner, "deployment"}
+             resource: {:provider, "deployment"}
            ) ==
              {:error, :not_found}
   end
@@ -301,7 +305,7 @@ defmodule WardrikDaemon.AuthorizerTest do
 
       assert decide(
                access,
-               member("U1", %{}) ++ [action: "secret.put", resource: {:owner, "payments"}]
+               member("U1", %{}) ++ [action: "secret.put", resource: {:provider, "payments"}]
              ) ==
                {:error, :not_found}
 
