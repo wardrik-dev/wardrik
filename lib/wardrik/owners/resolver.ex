@@ -1,53 +1,24 @@
 defmodule Wardrik.Owners.Resolver do
   @moduledoc """
-  Resolves agents along the owner chain, as Wardrik does without `:resolver`. See
-  `Wardrik.Resolver`.
+  Resolves agents as Wardrik does without `:resolver`. See `Wardrik.Resolver`.
 
   An agent acts for its owner, the part of its ID before its name: `acme/@maria` for
-  `acme/@maria/notes`. It gets no policy, defaults or middleware here; a host's own resolver gives
-  those.
-
-  A name its definition uses reaches the nearest server or notify target of that name along
-  `Wardrik.Owners.chain/1`: the person's own, their org's, the deployment's, then the one Wardrik
-  started with, if that serves the org.
+  `acme/@maria/notes`. It reaches every server in Wardrik's `:mcp` and every target in its
+  `:notify`, by their names. It gets no policy, defaults or middleware here; your app's own
+  resolver gives those.
   """
 
-  alias Wardrik.AgentID
   alias Wardrik.Definition
-  alias Wardrik.MCPTools
-  alias Wardrik.Notify
-  alias Wardrik.Owners
   alias Wardrik.Resolved
 
-  @doc "Returns what the request's agent gets along its owner's chain."
-  @spec resolve(Wardrik.t(), Wardrik.Resolver.Request.t()) ::
-          {:ok, Resolved.t()} | {:error, Wardrik.Error.t()}
+  @doc "Returns what the request's agent gets."
+  @spec resolve(Wardrik.t(), Wardrik.Resolver.Request.t()) :: {:ok, Resolved.t()}
   def resolve(wardrik, %Wardrik.Resolver.Request{agent: id}) do
     {:ok,
      %Resolved{
        principal: Definition.principal(id),
-       servers: servers(wardrik, id, Owners.org(id)),
-       notify: notify(wardrik, id)
+       servers: Map.new(wardrik.mcp, fn {name, _opts} -> {to_string(name), to_string(name)} end),
+       notify: Map.new(wardrik.notify.targets, fn {name, _target} -> {name, name} end)
      }}
   end
-
-  defp servers(wardrik, id, org) do
-    added =
-      for owner <- Owners.chain(Definition.principal(id).id),
-          name <- Wardrik.Operations.Owners.added(wardrik, owner),
-          do: {name, MCPTools.key(owner, name)}
-
-    started =
-      for {name, _opts} <- MCPTools.serving(wardrik, org), do: {to_string(name), to_string(name)}
-
-    nearest(added ++ started)
-  end
-
-  defp notify(wardrik, id) do
-    {:ok, %AgentID{owner: owner}} = AgentID.parse(id)
-    nearest(for target <- Notify.targets(wardrik, owner), do: {target.name, Notify.key(target)})
-  end
-
-  # Nearest first: the first of each name wins.
-  defp nearest(named), do: named |> Enum.reverse() |> Map.new()
 end

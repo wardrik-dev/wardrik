@@ -91,7 +91,6 @@ their shape depends on their type.
 | `Wardrik.Events` | Agents' events. |
 | `Wardrik.Audit` | What people did. |
 | `Wardrik.Connections` | Accounts people and orgs connect. |
-| `Wardrik.MCPServers` | MCP servers orgs and people add. |
 | `Wardrik.Deployment` | Nodes and reloading. |
 | `Wardrik.Hook` | Webhook requests to triggers. |
 

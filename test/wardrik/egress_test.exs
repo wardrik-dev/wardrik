@@ -1,8 +1,6 @@
 defmodule Wardrik.EgressTest do
   use ExUnit.Case, async: false
 
-  import Wardrik.Test.Wardrik
-
   alias Wardrik.Egress
 
   test "reaches https at public addresses alone" do
@@ -29,22 +27,5 @@ defmodule Wardrik.EgressTest do
   test "refuses a host that resolves to a private address, or nowhere" do
     assert {:error, "localhost is at " <> _address} = Egress.public("https://localhost/mcp")
     assert {:error, "nowhere.invalid doesn't resolve"} = Egress.public("https://nowhere.invalid/")
-  end
-
-  test "an owner can't add a server at a private address", context do
-    wardrik = Wardrik.new(authorizer: {Wardrik.Test.Allow, []}, name: :"wardrik #{context.test}")
-    start_supervised!({Wardrik, wardrik})
-
-    server = %{
-      "owner" => "acme",
-      "name" => "internal",
-      "url" => "https://169.254.169.254/mcp",
-      "auth" => %{"none" => %{}}
-    }
-
-    assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
-             Wardrik.run(owner(wardrik), "mcp_servers.add", server)
-
-    assert message == "The server can't be reached: 169.254.169.254 is a private address."
   end
 end

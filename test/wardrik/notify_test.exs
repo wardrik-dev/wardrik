@@ -29,6 +29,14 @@ defmodule Wardrik.Test.Board do
   end
 end
 
+defmodule Wardrik.Test.Gives do
+  @moduledoc "A resolver that gives every agent the notify targets it was given."
+  @behaviour Wardrik.Resolver
+
+  @impl Wardrik.Resolver
+  def resolve(_request, notify), do: {:ok, %Wardrik.Resolved{notify: notify}}
+end
+
 defmodule Wardrik.NotifyTest do
   use ExUnit.Case, async: false
   use Mimic
@@ -49,7 +57,6 @@ defmodule Wardrik.NotifyTest do
 
     targets = [
       audit: {Wardrik.Test.Told, test: self(), answers: context[:answers] && answers},
-      globex: {Wardrik.Test.Told, test: self(), orgs: ["globex"]},
       hook:
         {Wardrik.Notify.Webhook,
          url: "https://hooks.example.com/wardrik",
@@ -66,12 +73,7 @@ defmodule Wardrik.NotifyTest do
         keys: [WardrikVault.generate_key()],
         capabilities: [tools: Wardrik.Test.Tools],
         channels: [board: {Wardrik.Test.Board, test: self()}],
-        egress: Map.get(context, :egress, &Wardrik.Egress.any/1),
-        notify: [
-          targets: targets,
-          retries: [attempts: 2, max_wait: 0],
-          req_options: [plug: {Req.Test, __MODULE__}]
-        ],
+        notify: [targets: targets, retries: [attempts: 2, max_wait: 0]],
         defaults: Map.get(context, :defaults, %{})
       )
 
@@ -101,10 +103,6 @@ defmodule Wardrik.NotifyTest do
     Wardrik.run(scope, "agent.define", Map.put(definition, "agent", agent))
   end
 
-  @doc "Refuses 10.0.0.5 alone, so the test needs no DNS."
-  def public("https://10.0.0.5" <> _rest = url), do: {:error, "#{url} is a private address"}
-  def public(_url), do: :ok
-
   defp model(answer), do: stub(ReqLLM, :stream_text, fn _model, _messages, _opts -> answer end)
 
   defp ask(scope, agent \\ "acme/triage"),
@@ -120,13 +118,10 @@ defmodule Wardrik.NotifyTest do
     end)
   end
 
-  defp target(owner, name, host, fields \\ %{}),
-    do: Map.merge(%{"owner" => owner, "name" => name, "url" => "https://#{host}/wardrik"}, fields)
+  defp giving(wardrik, notify), do: %{wardrik | resolver: {Wardrik.Test.Gives, notify}}
 
-  defp listed(scope, owner) do
-    %{"targets" => targets} = run!(scope, "notify_targets.list", %{"owner" => owner})
-    Enum.map(targets, &{&1["owner"], &1["name"], &1["source"]})
-  end
+  defp failed(agent \\ "acme/triage"),
+    do: %Notice{agent: agent, kind: :failed, at: DateTime.utc_now(), reason: "x"}
 
   describe "routes" do
     test "reads a name, a list, and to and on" do
@@ -139,7 +134,7 @@ defmodule Wardrik.NotifyTest do
       assert Wardrik.Notify.route(%{}) == nil
     end
 
-    test "refuses a definition that routes nowhere here, or to another org's target", %{
+    test "refuses a definition that routes nowhere here", %{
       scope: scope
     } do
       assert {:error, %Wardrik.Error{type: :invalid_request, message: nowhere}} =
@@ -149,9 +144,6 @@ defmodule Wardrik.NotifyTest do
 
       assert {:error, %Wardrik.Error{message: teams}} = define(scope, "teams:#ops")
       assert teams =~ "teams:#ops"
-
-      assert {:error, %Wardrik.Error{message: other}} = define(scope, "globex")
-      assert other == "There's no notify target globex here, nor a channel that posts in it."
 
       assert {:ok, _agent} = define(scope, ["audit", "board:#updates"])
     end
@@ -310,7 +302,7 @@ defmodule Wardrik.NotifyTest do
                  targets: [
                    hook:
                      {Wardrik.Notify.Webhook,
-                      url: "https://x.test", secret: {:secret, "HOOK_SECRET"}, orgs: ["acme"]},
+                      url: "https://x.test", secret: {:secret, "HOOK_SECRET"}},
                    ops: {Wardrik.Notify.Room, channel: "board", room: "#ops"}
                  ]
                )
@@ -320,225 +312,56 @@ defmodule Wardrik.NotifyTest do
     end
   end
 
-  describe "targets by owner" do
-    test "adds, lists and removes an owner's webhooks, never answering a secret", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      :ok =
-        seal(wardrik, {"acme", "OPS_SECRET"}, "acme-shh", :signing_secret)
-
-      assert run!(
-               scope,
-               "notify_targets.add",
-               target("acme", "audit", "hooks.acme.test", %{"secret" => %{"name" => "OPS_SECRET"}})
-             ) == %{
-               "owner" => "acme",
-               "name" => "audit",
-               "source" => "runtime",
-               "kind" => "webhook",
-               "url" => "https://hooks.acme.test/wardrik",
-               "secret" => %{"name" => "OPS_SECRET"}
-             }
-
-      run!(scope, "notify_targets.add", target("acme/@jon", "mine", "hooks.jon.test"))
-
-      assert listed(scope, "acme/@jon") == [
-               {"acme/@jon", "mine", "runtime"},
-               {"acme", "audit", "runtime"},
-               {"deployment", "hook", "config"},
-               {"deployment", "ops", "config"}
-             ]
-
-      assert listed(scope, "globex") == [
-               {"deployment", "audit", "config"},
-               {"deployment", "globex", "config"},
-               {"deployment", "hook", "config"},
-               {"deployment", "ops", "config"}
-             ]
-
-      %{"targets" => targets} = run!(scope, "notify_targets.list", %{"owner" => "globex"})
-      by_name = Map.new(targets, &{&1["name"], &1})
-
-      assert by_name["hook"] == %{
-               "owner" => "deployment",
-               "name" => "hook",
-               "source" => "config",
-               "kind" => "webhook",
-               "url" => "https://hooks.example.com/wardrik"
-             }
-
-      assert by_name["ops"] == %{
-               "owner" => "deployment",
-               "name" => "ops",
-               "source" => "config",
-               "kind" => "room"
-             }
-
-      assert by_name["audit"]["kind"] == "told"
-      refute inspect(targets) =~ ~r/HOOK_SECRET|shh|maria|#ops/
-
-      assert refused(scope, "notify_targets.add", target("acme", "audit", "x.test")) == :conflict
-
-      assert refused(scope, "notify_targets.add", target("deployment", "ops", "x.test")) ==
-               :conflict
-
-      assert {:error,
-              %Wardrik.Error{message: "acme holds no secret NOPE sealed as a signing_secret."}} =
-               Wardrik.run(
-                 scope,
-                 "notify_targets.add",
-                 target("acme", "other", "x.test", %{"secret" => %{"name" => "NOPE"}})
-               )
-
-      assert refused(scope, "notify_targets.add", target("acme", "x:y", "x.test")) ==
-               :invalid_request
-
-      assert refused(scope, "notify_targets.remove", %{"owner" => "globex", "target" => "audit"}) ==
-               :not_found
-
-      assert refused(scope, "notify_targets.remove", %{"owner" => "deployment", "target" => "ops"}) ==
-               :invalid_request
-
-      assert %{"owner" => "acme", "name" => "audit", "secret" => %{"name" => "OPS_SECRET"}} =
-               run!(scope, "notify_targets.remove", %{"owner" => "acme", "target" => "audit"})
-
-      assert {"deployment", "audit", "config"} in listed(scope, "acme")
-
-      %{"events" => changes} = run!(scope, "audit.list", %{})
-
-      assert for(%{"type" => "wardrik.notify_target." <> _ = type} <- changes, do: type) ==
-               ~w(wardrik.notify_target.added wardrik.notify_target.added wardrik.notify_target.removed)
-
-      assert {:ok, %Wardrik.NotifyTarget{owner: "acme/@jon", name: "mine", source: :runtime}} =
-               Wardrik.NotifyTargets.remove(scope, "mine", owner: "acme/@jon")
-    end
-
-    test "routes an agent to its owner's target first, then its org's, then the deployment's", %{
-      wardrik: wardrik,
-      scope: scope
+  describe "targets your app gives" do
+    test "sends to the target the agent is resolved with, by its own options", %{
+      wardrik: wardrik
     } do
       hooked()
-      model({:error, :boom})
 
-      :ok =
-        seal(wardrik, {"acme", "OPS_SECRET"}, "acme-shh", :signing_secret)
+      wardrik =
+        giving(wardrik, %{
+          "mine" => {Wardrik.Test.Told, test: self()},
+          "hook" =>
+            {Wardrik.Notify.Webhook,
+             url: "https://hooks.acme.test/wardrik",
+             secret: "acme-shh",
+             req_options: [plug: {Req.Test, __MODULE__}]},
+          "ops" => "ops"
+        })
 
-      run!(
-        scope,
-        "notify_targets.add",
-        target("acme", "audit", "hooks.acme.test", %{"secret" => %{"name" => "OPS_SECRET"}})
-      )
+      assert :ok = Wardrik.Notify.deliver(wardrik, "mine", failed())
+      assert_received {:told, "mine", %Notice{agent: "acme/triage"}}
 
-      {:ok, _agent} = define(scope, "audit", %{}, "acme/@jon/triage")
-      ask(scope, "acme/@jon/triage")
-
-      assert_receive {:hooked, "hooks.acme.test", headers, body}
+      assert :ok = Wardrik.Notify.deliver(wardrik, "hook", failed())
+      assert_received {:hooked, "hooks.acme.test", headers, body}
       assert headers["x-wardrik-signature"] == Wardrik.Notify.Webhook.sign("acme-shh", body)
-      assert %{"agent" => "acme/@jon/triage", "event" => "turn_failed"} = JSON.decode!(body)
+
+      assert {:skip, _why} = Wardrik.Notify.deliver(wardrik, "audit", failed())
       refute_received {:told, "audit", _notice}
 
-      run!(scope, "notify_targets.add", target("acme/@jon", "audit", "hooks.jon.test"))
-      ask(scope, "acme/@jon/triage")
+      route = %{"notify" => ["mine", "ops"]}
+      {:ok, resolved} = Wardrik.Resolver.defined(wardrik, "acme/triage")
+      assert Wardrik.Notify.check(wardrik, resolved.notify, route) == :ok
 
-      assert_receive {:hooked, "hooks.jon.test", headers, _body}
-      refute Map.has_key?(headers, "x-wardrik-signature")
-
-      {:ok, _agent} = define(scope, "audit", %{}, "globex/triage")
-      ask(scope, "globex/triage")
-      assert_receive {:told, "audit", %Notice{agent: "globex/triage"}}
+      assert {:error, %Wardrik.Error{}} =
+               Wardrik.Notify.check(wardrik, resolved.notify, %{"notify" => "audit"})
     end
 
-    test "refuses a route to another owner's target", %{scope: scope} do
-      run!(scope, "notify_targets.add", target("globex", "pager", "hooks.globex.test"))
-      run!(scope, "notify_targets.add", target("acme/@maria", "mine", "hooks.maria.test"))
-
-      assert {:error, %Wardrik.Error{message: "There's no notify target pager" <> _}} =
-               define(scope, "pager")
-
-      assert {:error, %Wardrik.Error{}} = define(scope, "mine", %{}, "acme/@jon/triage")
-      assert {:ok, _agent} = define(scope, "mine", %{}, "acme/@maria/triage")
-      assert {:ok, _agent} = define(scope, "pager", %{}, "globex/triage")
-    end
-
-    @tag egress: &Wardrik.NotifyTest.public/1
-    test "checks a webhook's URL as it's added and as each notice is sent, following no redirect",
-         %{wardrik: wardrik, scope: scope} do
-      refusing = %{wardrik | egress: fn url -> {:error, "#{url} is a private address"} end}
-
-      assert {:error,
-              %Wardrik.Error{
-                type: :invalid_request,
-                message:
-                  "The target can't be reached: https://10.0.0.5/wardrik is a private address."
-              }} =
-               Wardrik.run(
-                 scope,
-                 "notify_targets.add",
-                 target("acme", "inside", "10.0.0.5")
-               )
-
-      run!(scope, "notify_targets.add", target("acme", "moved", "hooks.acme.test"))
-      notice = %Notice{agent: "acme/triage", kind: :failed, at: DateTime.utc_now(), reason: "x"}
-
-      assert {:skip, "but it can't be reached: https://hooks.acme.test/wardrik is a private" <> _} =
-               Wardrik.Notify.deliver(refusing, "moved", notice)
-
-      Req.Test.stub(__MODULE__, fn conn ->
-        conn
-        |> Plug.Conn.put_resp_header("location", "http://169.254.169.254/latest")
-        |> Plug.Conn.send_resp(302, "")
-      end)
-
-      assert Wardrik.Notify.deliver(wardrik, "moved", notice) == {:error, {:status, 302}}
-    end
-
-    test "skips a webhook whose owner no longer holds its secret", %{
-      wardrik: wardrik,
-      scope: scope
+    test "refuses a target that doesn't fit its schema, or names a secret it would read", %{
+      wardrik: wardrik
     } do
-      :ok =
-        seal(wardrik, {"acme", "OPS_SECRET"}, "acme-shh", :signing_secret)
+      for {target, why} <- [
+            {{Wardrik.Notify.Webhook, uri: "https://x.test"}, ~r/unknown options \[:uri\]/},
+            {{Wardrik.Notify.Webhook, url: "https://x.test", secret: {:secret, "HOOK_SECRET"}},
+             ~r/its secret names a secret, which isn't read/},
+            {{String, []}, ~r/String isn't a notify target/},
+            {:hook, ~r/isn't a target's name or \{module, opts\}/}
+          ] do
+        assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
+                 Wardrik.Resolver.defined(giving(wardrik, %{"hook" => target}), "acme/triage")
 
-      run!(
-        scope,
-        "notify_targets.add",
-        target("acme", "signed", "hooks.acme.test", %{"secret" => %{"name" => "OPS_SECRET"}})
-      )
-
-      :ok = unseal(wardrik, {"acme", "OPS_SECRET"})
-      notice = %Notice{agent: "acme/triage", kind: :failed, at: DateTime.utc_now(), reason: "x"}
-
-      assert Wardrik.Notify.deliver(wardrik, "signed", notice) ==
-               {:skip, "but acme holds no secret OPS_SECRET to sign it with"}
-    end
-
-    test "lets a reader list, and a definer add and remove their own", %{wardrik: wardrik} do
-      grant = &limited(wardrik, "acme/@maria", roles: &1, owners: ["acme/@maria"])
-
-      reader = grant.([:reader])
-      definer = grant.([:reader, :definer])
-      mine = target("acme/@maria", "mine", "hooks.maria.test")
-
-      assert [{"deployment", "audit", "config"} | _rest] = listed(reader, "acme/@maria")
-      assert refused(reader, "notify_targets.add", mine) == :forbidden
-      assert refused(reader, "notify_targets.list", %{"owner" => "acme"}) == :not_found
-
-      assert %{"name" => "mine"} = run!(definer, "notify_targets.add", mine)
-
-      assert refused(reader, "notify_targets.remove", %{
-               "owner" => "acme/@maria",
-               "target" => "mine"
-             }) ==
-               :forbidden
-
-      assert %{"name" => "mine"} =
-               run!(definer, "notify_targets.remove", %{
-                 "owner" => "acme/@maria",
-                 "target" => "mine"
-               })
-
-      assert refused(definer, "notify_targets.add", target("acme", "ops", "x.test")) == :not_found
+        assert message =~ why
+      end
     end
   end
 end
