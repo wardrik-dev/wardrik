@@ -95,17 +95,17 @@ defmodule WardrikDaemon.Doctor.Agents do
   end
 
   defp wardrik(config, policies, store) do
+    daemon = WardrikStore.scope(store, "wardrik_daemon")
+
     Wardrik.new(
       name: WardrikDaemon.Doctor,
       store: store,
-      capabilities: WardrikDaemon.Capabilities.all(WardrikDaemon.Doctor),
+      capabilities: WardrikDaemon.Capabilities.all(WardrikDaemon.Doctor, daemon),
       mcp: config.mcp,
       channels: config.channels,
       defaults: config.defaults,
       policies: Map.to_list(policies),
-      authorizer:
-        {WardrikDaemon.Authorizer,
-         %{access: config.access, store: WardrikStore.scope(store, "wardrik_daemon")}},
+      authorizer: {WardrikDaemon.Authorizer, %{access: config.access, store: daemon}},
       resolver: {WardrikDaemon.Resolver, resolving(config, policies, store)}
     )
   end

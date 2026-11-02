@@ -840,6 +840,57 @@
         }
       }
     },
+    "/v1/connections/{provider}/pair": {
+      "post": {
+        "operationId": "connections.pair",
+        "summary": "Finish the caller's browser sign-in",
+        "description": "Sends the code the sign-in's page showed. It finishes only the sign-in the caller started. A code that's used, expired, wrong or someone else's fails the same way, and 5 wrong codes end the sign-in.",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-action": "connection.connect",
+        "x-wardrik-resource": "connection",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/connection_provider"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pairing_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The account, connected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connection"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/tokens": {
       "get": {
         "operationId": "tokens.list",
@@ -2331,6 +2382,28 @@
               "url": "https://github.com/login/device",
               "code": "WDJB-MJHT"
             }
+          }
+        ]
+      },
+      "pairing_input": {
+        "title": "A pairing code",
+        "description": "The code a browser sign-in's page showed, as XXXX-XXXX. Case and the dash don't matter.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "The code, as BCDF-GHJK."
+          }
+        },
+        "examples": [
+          {
+            "code": "BCDF-GHJK"
           }
         ]
       },

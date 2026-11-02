@@ -106,7 +106,8 @@ defmodule WardrikDaemon.Test do
              name: name,
              store: store,
              capabilities:
-               [echo: WardrikDaemon.Test.Tools] ++ WardrikDaemon.Capabilities.all(name)}
+               [echo: WardrikDaemon.Test.Tools] ++
+                 WardrikDaemon.Capabilities.all(name, WardrikStore.scope(store, "wardrik_daemon"))}
           )
 
         assert_receive({[:wardrik_daemon, :started], ^ref, _measurements, _meta}, 5_000)

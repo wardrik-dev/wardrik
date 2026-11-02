@@ -50,7 +50,7 @@ echo "$KEY" | wardrik vault put ANTHROPIC_API_KEY --for api_key
 ```
 
 Tell the front door an outcome, as "tell me when https://elixir-lang.org/atom.xml has a new post".
-It proposes the work as the calls that do it: a worker it defines, and the triggers that start it.
+It proposes the work as the calls that do it: a worker it makes, and the triggers that start it.
 Approve them with `wardrik approval approve`, and the work runs on its own. The front door's body
 is its instructions, then a playbook to edit as you like.
 
@@ -229,6 +229,16 @@ deployment's, from `oauth.providers`. Another org's app is never used. An added 
 secret is named, as `wardrik provider add linear --secret LINEAR_SECRET`, and read from its
 owner's vault, sealed `--for client_secret`, each time it's needed.
 
+```sh
+wardrik connection connect linear
+```
+
+- A provider with `flow: device` shows its own code and URL. The command waits until you enter it.
+- Otherwise it shows a URL. Once you sign in there, the page shows a code, as `BCDF-GHJK`. Type it
+  where the command asks, or run `wardrik connection pair linear BCDF-GHJK`.
+- A code works once, for 10 minutes, and only for the person who started the sign-in. After 5
+  wrong codes, connect again. See `WardrikDaemon.Pairings`.
+
 Their URLs must be `https` at a public address: loopback, private, link-local and cloud metadata
 addresses are refused, as each is added and as each connection or notice is sent. Hosts
 `config.yaml`'s OAuth providers name are trusted. For local development, with servers on your own
@@ -371,6 +381,7 @@ taking the same tokens, roles and bindings. `priv/openapi.json` describes its ow
 | `GET`, `POST /v1/owners/{owner}/notify_targets`, `DELETE .../notify_targets/{name}` | the webhooks the owner's agents' notices reach; adds or removes one of their own |
 | `GET`, `POST /v1/owners/{owner}/providers`, `DELETE .../providers/{name}` | the OAuth apps the owner's people sign in with; adds or removes one of their own |
 | `GET /v1/connections`, `POST`, `DELETE /v1/connections/{provider}` | the caller's own accounts; starts a sign-in to one, answering its URL or device code; forgets one |
+| `POST /v1/connections/{provider}/pair` | finishes the caller's browser sign-in with the code its page showed |
 | `GET`, `POST /v1/tokens`, `DELETE /v1/tokens/{id}` | tokens: lists them, never a secret; makes one, showing its secret once; revokes one |
 
 An owner is one path segment: `payments`, `payments%2F%40ana` or `deployment`. See
@@ -395,9 +406,9 @@ takes `--json`.
 | `server ls`, `server add`, `server rm` | MCP servers an owner adds |
 | `notify ls`, `notify add`, `notify rm` | webhooks an owner adds for their agents' notices |
 | `provider ls`, `provider add`, `provider rm` | OAuth apps an owner adds for their people |
-| `connection ls`, `connection connect`, `connection disconnect` | your own accounts, as the token's user |
+| `connection ls`, `connection connect`, `connection pair`, `connection disconnect` | your own accounts, as the token's user |
 | `vault put`, `vault ls`, `vault rm` | secrets: the deployment's, or an org's or a person's with `--org` or `--user`, each sealed `--for` one purpose |
-| `token create NAME --subject user:ana`, `token ls`, `token revoke ID` | tokens for everyone else, each acting as its subject and `--groups`, until it `--expires` |
+| `token create NAME --subject user:ana`, `token ls`, `token revoke ID` | tokens for everyone else, each acting as its subject and `--groups`, until it `--expires`. An agent's is `--subject agent:triage`. |
 
 An `AGENT` is a name: `triage` in the deployment's org, or `growth/triage` in another. Commands on
 an agent take `--conversation ID` for one of its conversations, as a Slack thread's.

@@ -19,7 +19,7 @@ defmodule WardrikDaemon.Server do
 
     * `:env` - required. The environment, which names the directories and fills in `${NAME}`s.
     * `:name` - what Wardrik is reached by. `WardrikDaemon.Wardrik` unless set.
-    * `:capabilities` - the tools agents may name. `WardrikDaemon.Capabilities.all/1` unless set.
+    * `:capabilities` - the tools agents may name. `WardrikDaemon.Capabilities.all/2` unless set.
     * `:store` - a store to use in place of the one on disk, for tests.
   """
 

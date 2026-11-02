@@ -10,8 +10,11 @@ defmodule WardrikDaemon.CLI.Servers do
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.CLI.Table
+  alias WardrikDaemon.CLI.Terminal
 
   @owner [org: :string, user: :string]
+  @waits :timer.minutes(15)
+  @poll :timer.seconds(1)
 
   @doc "Returns the commands on MCP servers, notify targets, OAuth apps and connections."
   @spec commands() :: [Command.t()]
@@ -129,7 +132,19 @@ defmodule WardrikDaemon.CLI.Servers do
         arguments: "PROVIDER",
         count: 1,
         summary: "sign in to an account, for your agents to use",
+        details: [
+          "With a code from the provider, it waits until you enter it there. Otherwise it asks for",
+          "the code the page shows once you've signed in."
+        ],
         run: &connected/3
+      },
+      %Command{
+        name: "connection pair",
+        group: "Connections",
+        arguments: "PROVIDER CODE",
+        count: 2,
+        summary: "finish signing in with the code the sign-in page showed",
+        run: &paired/3
       },
       %Command{
         name: "connection disconnect",
@@ -272,24 +287,87 @@ defmodule WardrikDaemon.CLI.Servers do
 
   defp connected([provider], _flags, cx) do
     with {:ok, answer} <- Context.call(cx, "connections.connect", %{"provider" => provider}) do
-      Context.show(cx, answer, fn answer -> signing_in(cx, provider, answer) end)
+      if cx.json?, do: Context.show(cx, answer, & &1), else: signing_in(cx, provider, answer)
     end
   end
 
   defp signing_in(cx, provider, %{"connected" => true}),
     do: Context.puts(cx, "#{provider} is connected already.")
 
-  defp signing_in(cx, provider, %{"authorization" => %{"url" => url, "code" => code}}),
-    do:
-      Context.puts(cx, [
-        "Sign in to #{provider} at ",
-        Owl.Data.tag(url, :cyan),
-        " with the code ",
-        Owl.Data.tag(code, :cyan)
-      ])
+  # The provider's own code: it's entered there, and the grant comes to the daemon.
+  defp signing_in(cx, provider, %{"authorization" => %{"url" => url, "code" => code}}) do
+    Context.puts(cx, [
+      "Sign in to #{provider} at ",
+      Owl.Data.tag(url, :cyan),
+      " with the code ",
+      Owl.Data.tag(code, :cyan)
+    ])
 
-  defp signing_in(cx, provider, %{"authorization" => %{"url" => url}}),
-    do: Context.puts(cx, ["Sign in to #{provider} at ", Owl.Data.tag(url, :cyan)])
+    granted(cx, provider, System.monotonic_time(:millisecond) + @waits)
+  end
+
+  defp signing_in(cx, provider, %{"authorization" => %{"url" => url}}) do
+    Context.puts(cx, ["Sign in to #{provider} at ", Owl.Data.tag(url, :cyan)])
+
+    if cx.terminal.input?,
+      do: pairing(cx, provider),
+      else:
+        Context.puts(
+          cx,
+          "Then finish with the code the page shows: #{cx.program} connection pair #{provider} CODE"
+        )
+  end
+
+  defp granted(cx, provider, until) do
+    case Context.call(cx, "connections.list", %{}) do
+      {:ok, %{"connections" => connections}} ->
+        cond do
+          %{"provider" => provider, "connected" => true} in connections ->
+            Context.puts(cx, "Connected #{provider}.")
+
+          System.monotonic_time(:millisecond) >= until ->
+            {:error, "The sign-in to #{provider} wasn't finished in time. Connect again."}
+
+          true ->
+            Process.sleep(@poll)
+            granted(cx, provider, until)
+        end
+
+      {:error, why} ->
+        {:error, why}
+    end
+  end
+
+  # The daemon counts wrong codes, and ends the sign-in after its last.
+  defp pairing(cx, provider) do
+    case Terminal.ask(cx.terminal, "Code from the page: ") do
+      nil ->
+        {:error, "No code given. Finish with: #{cx.program} connection pair #{provider} CODE"}
+
+      code ->
+        cx |> paired_with(provider, code) |> retried(cx, provider)
+    end
+  end
+
+  defp paired_with(cx, provider, code), do: paired([provider, code], %{}, cx)
+
+  defp retried({:error, why}, cx, provider) do
+    if why =~ "has ended" do
+      {:error, why}
+    else
+      Context.puts(cx, why)
+      pairing(cx, provider)
+    end
+  end
+
+  defp retried(done, _cx, _provider), do: done
+
+  defp paired([provider, code], _flags, cx) do
+    input = %{"provider" => provider, "code" => code}
+
+    with {:ok, answer} <- Context.call(cx, "connections.pair", input),
+         do: Context.done(cx, answer, "Connected #{provider}.")
+  end
 
   defp disconnected([provider], _flags, cx) do
     with {:ok, answer} <- Context.call(cx, "connections.disconnect", %{"provider" => provider}),

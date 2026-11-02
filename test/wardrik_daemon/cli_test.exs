@@ -120,7 +120,7 @@ defmodule WardrikDaemon.CLITest do
 
     assert {0, _wrote} = wardrik(context, @init)
     assert File.read!(config) =~ "# brave:\n#   api_key: ${BRAVE_API_KEY}"
-    assert File.read!(assistant) =~ "tools: [self/*, agents/*, files, run_lua]"
+    assert File.read!(assistant) =~ "tools: [self/*, agents/*, agent_create, files, run_lua]"
 
     File.rm!(config)
     File.rm!(assistant)
@@ -128,24 +128,58 @@ defmodule WardrikDaemon.CLITest do
 
     assert {0, _wrote} = wardrik(context, @init)
     assert File.read!(config) =~ ~r/^brave:\n  api_key: \$\{BRAVE_API_KEY\}/m
-    assert File.read!(assistant) =~ "tools: [self/*, agents/*, files, web_search, run_lua]"
+
+    assert File.read!(assistant) =~
+             "tools: [self/*, agents/*, agent_create, files, web_search, run_lua]"
   end
 
-  test "writes a front door that the daemon defines", context do
+  test "writes a front door that the daemon defines, and that makes workers", context do
     {context, _log} = script(context)
+    config = Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
+    File.rm!(config)
     write(context, "env", "ANTHROPIC_API_KEY=sk\n")
-    assert {0, _wrote} = wardrik(context, @init)
+    assert {0, _wrote} = wardrik(context, @init ++ ~w(--org acme))
+    File.write!(config, String.replace(File.read!(config), "4747", "#{free_port()}"))
     context = start_daemon(context)
 
     assert {:ok, %Wardrik.Definition{} = front, []} =
              Wardrik.Agent.definition(context.admin, id(context, "acme", "assistant"))
 
-    assert front.tools == ["self/*", "agents/*", "files", "run_lua"]
+    assert front.tools == ["self/*", "agents/*", "agent_create", "files", "run_lua"]
     assert front.context == ["MEMORY.md"]
     assert front.idle_timeout == :infinity
     assert front.policy == %{"budget" => %{"tokens" => 2_000_000, "per" => "day"}}
     assert front.instructions =~ "You are Wardrik, the one place the people of this org come"
     assert front.instructions =~ "# Playbook"
+
+    # It makes a worker in its org, once a person approves.
+    door = id(context, "acme", "assistant")
+    worker = %{"description" => "rivals-watch: watches rivals.", "instructions" => "Watch."}
+    answers([calling("call_1", "agent_create", %{name: "rivals-watch", definition: worker})])
+
+    assert {:waiting, [%{name: "agent_create"}]} =
+             Wardrik.Agent.reply(context.admin, door, "Watch our rivals.")
+
+    # A message after the approval is answered once the approved run is done.
+    answers([answer("Made it."), answer("You're welcome.")])
+    approve = %{"agent" => door, "interrupt" => "call_1"}
+    assert {:ok, _approved} = Wardrik.run(context.admin, "agent.approve", approve)
+    assert {:ok, _reply} = Wardrik.Agent.reply(context.admin, door, "Thanks.")
+
+    assert {:ok, %Wardrik.Definition{instructions: "Watch."}, _problems} =
+             Wardrik.Agent.definition(context.admin, id(context, "acme", "rivals-watch"))
+
+    # It reads and asks another member's agent, but can't forget, clear, stop or cancel it.
+    notes = agent(context, "acme/@jon", "notes")
+    acting = Wardrik.as(context.wardrik, "acme", actor: {:agent, door})
+    assert {:ok, _snapshot} = Wardrik.run(acting, "agent.read", %{"agent" => notes})
+
+    for action <- ~w(agent.forget agent.clear agent.stop agent.cancel) do
+      assert {:error, %Wardrik.Error{type: :forbidden}} =
+               Wardrik.run(acting, action, %{"agent" => notes})
+    end
+
+    assert {:ok, _definition, _problems} = Wardrik.Agent.definition(context.admin, notes)
   end
 
   test "says how to start the daemon where it hasn't", context do
@@ -539,6 +573,12 @@ defmodule WardrikDaemon.CLITest do
                "--expires takes a time"
 
       assert failing(context, ["token", "create", "x", "--subject", "group:eng"]) =~ "subject"
+
+      # An agent is named as other commands name it, and its token acts as its ID.
+      triage = id(context, "acme", "triage")
+      assert {0, made} = wardrik(context, ~w(token create bot --subject agent:triage))
+      assert made =~ "for agent:#{triage}."
+      assert failing(context, ~w(token create bot --subject agent:nope)) =~ "no agent nope"
     end
 
     test "sends without following, and stops, clears and removes agents", context do

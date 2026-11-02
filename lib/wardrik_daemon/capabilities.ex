@@ -12,15 +12,20 @@ defmodule WardrikDaemon.Capabilities do
       See `WardrikBrave`.
     * `deep_research` - splits a topic into angles, and has a subagent with the agent's own tools
       research each at once. See `WardrikResearch`.
+    * `agent_create` - makes a worker in the agent's org, by name. See `WardrikDaemon.CreateAgent`.
   """
 
-  @doc "Returns the tools by name, as Wardrik's `:capabilities` option takes them. `wardrik` is what Wardrik is reached by."
-  @spec all(atom()) :: keyword()
-  def all(wardrik),
+  @doc """
+  Returns the tools by name, as Wardrik's `:capabilities` option takes them. `wardrik` is what
+  Wardrik is reached by, and `store` the daemon's own scope of the store.
+  """
+  @spec all(atom(), WardrikStore.t()) :: keyword()
+  def all(wardrik, store),
     do: [
       run_lua: WardrikLua,
       web_search: {WardrikBrave, brave: brave(wardrik)},
-      deep_research: WardrikResearch
+      deep_research: WardrikResearch,
+      agent_create: {WardrikDaemon.CreateAgent, wardrik: wardrik, store: store}
     ]
 
   @doc "Returns the name `WardrikBrave` runs under for `wardrik`, as `MyWardrik.Brave`."

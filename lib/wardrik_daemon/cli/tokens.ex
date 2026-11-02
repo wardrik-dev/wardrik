@@ -20,8 +20,9 @@ defmodule WardrikDaemon.CLI.Tokens do
         summary: "make a token that acts as --subject, shown once",
         details: [
           "wardrik token create ana-laptop --subject user:ana --groups payments-eng --expires 30d",
-          "--subject is user:ID, or agent:ID for an agent's own. --groups names the groups, with",
-          "commas, that bindings may give roles to. --expires takes s, m, h or d; 30d unless set.",
+          "--subject is user:ID, or agent:NAME for an agent's own, as agent:growth/triage.",
+          "--groups names the groups, with commas, that bindings may give roles to. --expires",
+          "takes s, m, h or d; 30d unless set.",
           "Making one needs the token kind in \"*\". Only the admin makes one for user:admin."
         ],
         run: &created/3
@@ -45,6 +46,7 @@ defmodule WardrikDaemon.CLI.Tokens do
 
   defp created([name], %{subject: subject} = flags, cx) do
     with {:ok, expires_in} <- seconds(Map.get(flags, :expires, "30d")),
+         {:ok, subject} <- subject(cx, subject),
          input = %{"name" => name, "subject" => subject, "expires_in" => expires_in},
          {:ok, answer} <-
            Context.call(cx, "tokens.create", Context.put(input, "groups", groups(flags[:groups]))),
@@ -52,6 +54,13 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp created([_name], _flags, _cx), do: {:error, "Give the token's --subject, as user:ana."}
+
+  # An agent is named as the other commands name it, and the token acts as its ID.
+  defp subject(cx, "agent:" <> name) do
+    with {:ok, id} <- Context.agent(cx, name), do: {:ok, "agent:" <> id}
+  end
+
+  defp subject(_cx, subject), do: {:ok, subject}
 
   defp shown(cx, token) do
     Context.puts(cx, "Made #{token["id"]} for #{token["subject"]}. It's shown once:")

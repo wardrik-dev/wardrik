@@ -70,6 +70,13 @@
   /v1/connections/{provider}`, which start a sign-in, answering its URL or device code, and forget
   an account. Everyone manages their own. See `WardrikDaemon.Connections`. Roles' `kinds` take
   `connection`.
+- `wardrik connection connect` waits for a device sign-in's grant. For a browser sign-in it asks
+  for the code the callback page shows, and sends it to `POST /v1/connections/{provider}/pair`,
+  as `wardrik connection pair` does. A code is 8 letters, works once for 10 minutes, and only for
+  the person who started the sign-in. 5 wrong codes end it. See `WardrikDaemon.Pairings`.
+- The tool `agent_create` makes a worker by name in the agent's own org, as `POST
+  /v1/owners/{owner}/agents` does. `wardrik init` gives it to the front door, and binds the front
+  door to a `workers` role that may `create`, `define`, `read` and `ask` its org's agents. See `WardrikDaemon.CreateAgent`.
 - A reload that finds `config.yaml` or `policies/` changed restarts the daemon to read them, so
   `wardrik init` against a running daemon, or in its container, takes effect without a restart.
 
@@ -85,7 +92,8 @@
   rules' `names` for `agent`. A binding in `"*"` can't name an agent.
 - The `wardrik` command takes agents' names, as `triage` or `growth/triage`, and shows names. A
   conversation is `--conversation ID`, not part of the agent.
-- `token create --subject agent:ID` takes the agent's ID.
+- `token create --subject agent:NAME` takes the agent's name, as `agent:triage` or
+  `agent:growth/triage`.
 - `token create` takes `--subject`, `--groups` and `--expires`, and acts on the daemon's own
   tokens.
 - `notify.req_options` is gone: a webhook takes its own `req_options`.
@@ -94,7 +102,9 @@
 - `vault put` takes `--for`: `api_key`, `client_secret`, `header` or `signing_secret`. `vault ls`
   says each secret's `PURPOSE`.
 - Approving past a ceiling needs only what deciding on the agent needs.
-- Browser sign-ins don't finish until the daemon pairs them with the `wardrik` command.
+- A browser sign-in's callback page connects nothing. It shows the code that finishes the
+  sign-in from the `wardrik` command.
+- `WardrikDaemon.Capabilities.all/1` is `all/2`, taking the daemon's store.
 - `notify`'s targets go in `notify.targets`.
 - `connection ls`, `connection connect` and `connection disconnect` act on the caller's own
   accounts, and take no `--org` or `--user`. Roles' `kinds` no longer take `owner`.

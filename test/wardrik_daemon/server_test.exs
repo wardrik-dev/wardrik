@@ -79,9 +79,10 @@ defmodule WardrikDaemon.ServerTest do
     assert [
              run_lua: WardrikLua,
              web_search: {WardrikBrave, brave: _name},
-             deep_research: WardrikResearch
+             deep_research: WardrikResearch,
+             agent_create: {WardrikDaemon.CreateAgent, wardrik: :w, store: :store}
            ] =
-             WardrikDaemon.Capabilities.all(:w)
+             WardrikDaemon.Capabilities.all(:w, :store)
   end
 
   test "gives an agent its files, and context read into every turn", context do

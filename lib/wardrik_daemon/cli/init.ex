@@ -355,6 +355,13 @@ defmodule WardrikDaemon.CLI.Init do
     http:
       port: 4747
 
+    # The front door makes, changes, reads and asks the org's agents, its workers. It can't
+    # forget, clear, stop or cancel one.
+    roles:
+      workers: {rules: [{verbs: [create, define, read, ask], kinds: [agent]}]}
+    bindings:
+      - {org: #{org}, role: workers, subjects: [agent:assistant]}
+
     # Orgs and people may add MCP servers and webhooks at public https URLs alone. For local
     # development, with servers on this machine or network, uncomment this. Never in production.
     # allow_private_urls: true
@@ -383,8 +390,8 @@ defmodule WardrikDaemon.CLI.Init do
   defp assistant(search?) do
     tools =
       if search?,
-        do: "self/*, agents/*, files, web_search, run_lua",
-        else: "self/*, agents/*, files, run_lua"
+        do: "self/*, agents/*, agent_create, files, web_search, run_lua",
+        else: "self/*, agents/*, agent_create, files, run_lua"
 
     """
     ---

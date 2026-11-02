@@ -21,10 +21,12 @@ defmodule WardrikDaemon.HTTP do
   | `DELETE /v1/owners/{owner}/providers/{name}` | removes one of the owner's own |
   | `GET /v1/connections` | the caller's accounts, and whether each is connected. See `WardrikDaemon.Connections`. |
   | `POST /v1/connections/{provider}` | starts the caller's sign-in to one |
+  | `POST /v1/connections/{provider}/pair` | finishes a browser sign-in with the code its page showed |
   | `DELETE /v1/connections/{provider}` | forgets the caller's account |
   | `GET /v1/tokens` | every token, never a secret. See `WardrikDaemon.Tokens`. |
   | `POST /v1/tokens` | creates one, answering its secret once |
   | `DELETE /v1/tokens/{id}` | revokes one |
+  | `GET /oauth/callback` | where a browser sign-in comes back: shows the code that finishes it |
 
   `priv/openapi.json` describes them, as `openapi/0` returns it.
 
@@ -63,9 +65,9 @@ defmodule WardrikDaemon.HTTP do
   alias Wardrik.Error
   alias WardrikCore.Principal
   alias WardrikDaemon.AgentRecords
-  alias WardrikDaemon.Agents
   alias WardrikDaemon.Ceiling
   alias WardrikDaemon.Connections
+  alias WardrikDaemon.CreateAgent
   alias WardrikDaemon.NotifyTargets
   alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Owners
@@ -81,7 +83,7 @@ defmodule WardrikDaemon.HTTP do
   @external_resource @openapi_path
   @openapi @openapi_path |> File.read!() |> JSON.decode!()
   @inputs Map.new(
-            ~w(agent_input server_input notify_target_input provider_input token_input),
+            ~w(server_input notify_target_input provider_input token_input pairing_input),
             &{&1, JSV.build!(@openapi["components"]["schemas"][&1])}
           )
 
@@ -169,13 +171,9 @@ defmodule WardrikDaemon.HTTP do
 
   post "/v1/owners/:owner/agents" do
     served(conn, owner, {"agent.create", :agents}, fn scope ->
-      with :ok <- an_owner_of_agents(owner),
-           {:ok, %{"name" => name} = input} <- input(conn, "agent_input"),
-           {:ok, record} <- create(conn.assigns.daemon, owner, name),
-           {:ok, _snapshot} <-
-             defined(conn.assigns.daemon, scope, record, Map.delete(input, "name")) do
-        {:ok, 201, record(record)}
-      end
+      with {:ok, input} <- json(conn),
+           {:ok, record} <- CreateAgent.create(conn.assigns.daemon, scope, {owner, input}),
+           do: {:ok, 201, record(record)}
     end)
   end
 
@@ -283,6 +281,15 @@ defmodule WardrikDaemon.HTTP do
     end)
   end
 
+  post "/v1/connections/:provider/pair" do
+    served(conn, {"connection.connect", &own_connections/1}, fn scope ->
+      with {:ok, %{"code" => code}} <- input(conn, "pairing_input"),
+           {:ok, connection} <-
+             Connections.pair(conn.assigns.daemon, scope.principal, {provider, code}),
+           do: {:ok, 200, connection}
+    end)
+  end
+
   delete "/v1/connections/:provider" do
     served(conn, {"connection.connect", &own_connections/1}, fn scope ->
       with {:ok, connection} <-
@@ -318,9 +325,49 @@ defmodule WardrikDaemon.HTTP do
     end)
   end
 
+  # The page can't tell who is at the browser, so it finishes nothing. See WardrikDaemon.Pairings.
+  get "/oauth/callback" do
+    conn = Plug.Conn.fetch_query_params(conn)
+
+    case Connections.called_back(conn.assigns.daemon, conn.query_params) do
+      {:ok, %{provider: provider, code: code}} ->
+        page(conn, 200, "Enter this code", """
+        <p>To finish signing in to #{escape(provider)}, enter this code where you ran
+        <code>wardrik connection connect</code>:</p>
+        <p class="code">#{code}</p>
+        <p>It works once, for 10 minutes. If you didn't start this sign-in, close this page.</p>
+        """)
+
+      {:error, :declined} ->
+        page(conn, 400, "Sign-in didn't finish", "<p>The sign-in was declined.</p>")
+
+      {:error, :unknown} ->
+        page(conn, 404, "Sign-in not found", """
+        <p>This sign-in has ended, or wasn't started here. Run
+        <code>wardrik connection connect</code> again.</p>
+        """)
+    end
+  end
+
   match _ do
     Wardrik.HTTP.call(conn, conn.assigns.daemon.http)
   end
+
+  defp page(conn, status, title, body) do
+    conn
+    |> Plug.Conn.put_resp_content_type("text/html")
+    |> Plug.Conn.put_resp_header("cache-control", "no-store")
+    |> Plug.Conn.put_resp_header("referrer-policy", "no-referrer")
+    |> Plug.Conn.send_resp(status, """
+    <!doctype html>
+    <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+    <title>#{title}</title>
+    <style>body{font:16px system-ui;max-width:32rem;margin:4rem auto;padding:0 1rem}.code{font:2rem monospace;letter-spacing:.2rem}</style>
+    </head><body><h1>#{title}</h1>#{body}</body></html>
+    """)
+  end
+
+  defp escape(text), do: text |> Plug.HTML.html_escape() |> IO.iodata_to_binary()
 
   # Who asks is checked first, so a route answers 401 to anyone without a token, whatever they
   # ask for.
@@ -399,16 +446,24 @@ defmodule WardrikDaemon.HTTP do
   defp described({:token, _id}), do: "token"
 
   defp input(conn, schema) do
-    with {:ok, body, _conn} <- Plug.Conn.read_body(conn),
-         {:ok, input} <- JSON.decode(body),
+    with {:ok, input} <- json(conn),
          {:ok, input} <- JSV.validate(input, Map.fetch!(@inputs, schema)) do
       {:ok, input}
     else
       {:error, %JSV.ValidationError{} = error} ->
         {:error, Error.new(:invalid_request, Exception.message(error))}
 
-      _unread ->
-        {:error, Error.new(:invalid_request, "Send the body as JSON.")}
+      {:error, %Error{} = error} ->
+        {:error, error}
+    end
+  end
+
+  defp json(conn) do
+    with {:ok, body, _conn} <- Plug.Conn.read_body(conn),
+         {:ok, input} <- JSON.decode(body) do
+      {:ok, input}
+    else
+      _unread -> {:error, Error.new(:invalid_request, "Send the body as JSON.")}
     end
   end
 
@@ -487,43 +542,6 @@ defmodule WardrikDaemon.HTTP do
 
   defp an_org(_owner, org),
     do: {:error, Error.new(:invalid_request, "Ceilings are an org's: ask for #{org}'s.")}
-
-  defp an_owner_of_agents("deployment"),
-    do: {:error, Error.new(:invalid_request, "An agent is an org's or a person's: give one.")}
-
-  defp an_owner_of_agents(_owner), do: :ok
-
-  defp create(%{wardrik: wardrik, store: store}, owner, name) do
-    gone? = &Agents.gone?([wardrik: wardrik], &1)
-
-    case AgentRecords.create(store, owner: owner, name: name, replaces: gone?) do
-      {:ok, record} ->
-        {:ok, record}
-
-      {:error, {:taken, record}} ->
-        {:error, Error.new(:conflict, "#{record.org} has an agent called #{name} already.")}
-    end
-  end
-
-  # An agent that isn't defined has no record, so its name is free.
-  defp defined(%{store: store}, scope, record, definition) do
-    with {:ok, definition} <- identified(store, record, definition),
-         {:ok, snapshot} <-
-           Wardrik.run(scope, "agent.define", Map.put(definition, "agent", record.id)) do
-      {:ok, snapshot}
-    else
-      {:error, error} ->
-        :ok = AgentRecords.delete(store, record)
-        {:error, error}
-    end
-  end
-
-  defp identified(store, record, definition) do
-    case AgentRecords.identified(store, record.org, definition) do
-      {:ok, definition} -> {:ok, definition}
-      {:error, why} -> {:error, Error.new(:invalid_request, why <> ".")}
-    end
-  end
 
   defp record(record),
     do: %{"id" => record.id, "name" => record.name, "org" => record.org, "owner" => record.owner}

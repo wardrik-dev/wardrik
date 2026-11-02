@@ -8,8 +8,9 @@ defmodule WardrikDaemon.Running do
     1. `WardrikBrave`, for `web_search`.
     2. Wardrik, deciding what each scope may do with `WardrikDaemon.Authorizer`, and which OAuth
        app each person signs in with with `WardrikDaemon.OAuthApps`.
-    3. The HTTP API, as `WardrikDaemon.HTTP`, reached with `WardrikDaemon.Tokens`.
-    4. A task that starts the MCP servers orgs and people added (see `WardrikDaemon.Servers`),
+    3. `WardrikDaemon.Pairings`, which holds the codes that finish browser sign-ins.
+    4. The HTTP API, as `WardrikDaemon.HTTP`, reached with `WardrikDaemon.Tokens`.
+    5. A task that starts the MCP servers orgs and people added (see `WardrikDaemon.Servers`),
        defines the agents in `agents/`, writes the `wardrik` command's token, and emits
        `[:wardrik_daemon, :started]`.
 
@@ -55,7 +56,7 @@ defmodule WardrikDaemon.Running do
       Wardrik.new(
         [
           name: name,
-          capabilities: opts[:capabilities] || WardrikDaemon.Capabilities.all(name),
+          capabilities: opts[:capabilities] || WardrikDaemon.Capabilities.all(name, daemon),
           store: store,
           keys: keys,
           mcp: config.mcp,
@@ -78,6 +79,7 @@ defmodule WardrikDaemon.Running do
     children = [
       {WardrikBrave, name: WardrikDaemon.Capabilities.brave(name), api_key: config.brave},
       {Wardrik, wardrik},
+      {WardrikDaemon.Pairings, name: WardrikDaemon.Pairings.name(name)},
       {WardrikDaemon.HTTP,
        wardrik: name,
        authenticator: {WardrikDaemon.Authenticator, daemon},

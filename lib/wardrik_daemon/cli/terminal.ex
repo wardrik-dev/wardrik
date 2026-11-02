@@ -25,6 +25,13 @@ defmodule WardrikDaemon.CLI.Terminal do
     end
   end
 
+  @doc "Asks for a line with `prompt`. Returns `nil` for none."
+  @spec ask(t(), String.t()) :: String.t() | nil
+  def ask(terminal, prompt) do
+    IO.write(Ansi.chardata(prompt, terminal.colour?))
+    typed(IO.gets(""))
+  end
+
   @doc "Asks for a line with `prompt`, not showing what's typed where it can. Returns `nil` for none."
   @spec secret(t(), String.t()) :: String.t() | nil
   def secret(terminal, prompt) do
