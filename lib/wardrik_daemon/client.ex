@@ -5,7 +5,8 @@ defmodule WardrikDaemon.Client do
       client = %WardrikDaemon.Client{url: "http://127.0.0.1:4747", secret: secret}
       {:ok, answer} = WardrikDaemon.Client.run(client, "agents.list", %{})
 
-  Each `WardrikProtocol` operation is sent to its route, with `secret` as the bearer token.
+  Each `WardrikProtocol` operation, and each of the daemon's own (see `WardrikDaemon.HTTP`), is sent
+  to its route, with `secret` as the bearer token.
   """
 
   @enforce_keys [:url, :secret]
@@ -19,7 +20,7 @@ defmodule WardrikDaemon.Client do
   @doc "Runs the operation `id` with `input`. Returns its answer, or `nil` if it answers nothing."
   @spec run(t(), String.t(), map()) :: {:ok, map() | nil} | error()
   def run(client, id, input) do
-    operation = WardrikProtocol.operation(id)
+    operation = operation(id)
     {path, rest} = path(operation, input)
 
     client
@@ -35,7 +36,7 @@ defmodule WardrikDaemon.Client do
   """
   @spec open(t(), String.t(), map()) :: {:ok, Req.Response.t()} | error()
   def open(client, id, input) do
-    operation = WardrikProtocol.operation(id)
+    operation = operation(id)
     {path, rest} = path(operation, input)
 
     client
@@ -65,6 +66,8 @@ defmodule WardrikDaemon.Client do
     _cancelled = Req.cancel_async_response(response)
     :ok
   end
+
+  defp operation(id), do: WardrikDaemon.HTTP.operation(id) || WardrikProtocol.operation(id)
 
   defp request(client, method, path, input) do
     [

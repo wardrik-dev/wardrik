@@ -90,7 +90,7 @@ defmodule WardrikDaemon.ConfigTest do
            }
 
     assert config.warnings == ["cluster isn't supported here yet, so it's passed over"]
-    assert config.wardrik[:deployment_keys]
+    assert config.deployment_keys
     assert config.oauth[:page] == "https://agents.acme.test/oauth"
   end
 
@@ -212,7 +212,7 @@ defmodule WardrikDaemon.ConfigTest do
     org: payments
     orgs: {growth: {}}
     roles:
-      reader: {rules: [{verbs: [read, events], kinds: [agent]}]}
+      reader: {rules: [{verbs: [read, events], kinds: [agent]}, {verbs: [read], kinds: [secret, ceiling]}]}
       triager: {rules: [{verbs: [ask], kinds: [agent], names: [growth/triage]}]}
     bindings:
       - {org: payments, role: operator, subjects: [user:ana, group:payments-eng]}
@@ -221,7 +221,11 @@ defmodule WardrikDaemon.ConfigTest do
 
     assert {:ok, %Config{access: %{roles: roles, bindings: bindings}}} = read(context, yaml)
 
-    assert roles["reader"] == [%{verbs: ["read", "events"], kinds: ["agent"], names: nil}]
+    assert roles["reader"] == [
+             %{verbs: ["read", "events"], kinds: ["agent"], names: nil},
+             %{verbs: ["read"], kinds: ["secret", "ceiling"], names: nil}
+           ]
+
     assert roles["triager"] == [%{verbs: ["ask"], kinds: ["agent"], names: ["growth/triage"]}]
     assert roles["operator"] == [%{verbs: ["*"], kinds: ["*"], names: nil}]
     assert roles["admin"] == [%{verbs: ["*"], kinds: ["*"], names: nil}]
@@ -449,7 +453,7 @@ defmodule WardrikDaemon.ConfigTest do
     assert providers["github"][:flow] == :device
     assert config.oauth[:page] == "http://127.0.0.1:4747/oauth"
     assert config.brave == "fake-brave_api_key"
-    assert config.wardrik[:deployment_keys] == true
+    assert config.deployment_keys == true
 
     assert {:ok, _opts} =
              NimbleOptions.validate(
@@ -492,9 +496,10 @@ defmodule WardrikDaemon.ConfigTest do
 
     assert {:ok, config} = read(context, yaml)
 
+    refute config.deployment_keys
+
     assert config.wardrik == [
              deployment: "acme-prod",
-             deployment_keys: false,
              idle_timeout: :infinity,
              retention: 90,
              triggers: [reconcile: 60_000, req_options: [receive_timeout: 5000]]

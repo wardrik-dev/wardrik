@@ -1,0 +1,472 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Wardrik daemon",
+    "version": "1",
+    "license": {
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
+    },
+    "description": "The daemon's own routes, beside Wardrik's operations (see Wardrik's openapi.json, at /v1/openapi.json). Each takes the same bearer tokens, and is decided by config.yaml's roles and bindings: x-wardrik-action is what a caller must be allowed to do, on the resource x-wardrik-resource names. An owner is one path segment: acme for an org, acme%2F%40jon for a person, or deployment. A resource the caller reaches none of is answered as one that doesn't exist."
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Secrets",
+      "description": "What each owner holds sealed in the vault."
+    },
+    {
+      "name": "Ceilings",
+      "description": "The budgets an org's agents share."
+    }
+  ],
+  "paths": {
+    "/v1/owners/{owner}/secrets": {
+      "get": {
+        "operationId": "secrets.list",
+        "summary": "List an owner's secrets",
+        "description": "The names of the secrets the owner holds, and what each is for, including the accounts they connected. Never a value.",
+        "tags": [
+          "Secrets"
+        ],
+        "x-wardrik-action": "secret.read",
+        "x-wardrik-resource": "secret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The owner's secrets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/secrets"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/owners/{owner}/secrets/{name}": {
+      "put": {
+        "operationId": "secrets.put",
+        "summary": "Seal a secret",
+        "description": "Seals the value as the owner's secret of that name, in place of any it held, and reconnects the owner's MCP servers whose headers read it. The deployment's are what ${NAME} in config.yaml reads.",
+        "tags": [
+          "Secrets"
+        ],
+        "x-wardrik-action": "secret.put",
+        "x-wardrik-resource": "secret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/secret_name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/secret_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Sealed."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "secrets.delete",
+        "summary": "Remove a secret",
+        "description": "Removes the owner's secret of that name. Removing none answers as removing one does.",
+        "tags": [
+          "Secrets"
+        ],
+        "x-wardrik-action": "secret.put",
+        "x-wardrik-resource": "secret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/secret_name"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/v1/owners/{owner}/ceilings": {
+      "get": {
+        "operationId": "ceilings.list",
+        "summary": "List an org's ceilings",
+        "description": "Each budget the org's policies pool, with what its agents have spent against it in its period now.",
+        "tags": [
+          "Ceilings"
+        ],
+        "x-wardrik-action": "ceiling.read",
+        "x-wardrik-resource": "ceiling",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The org's ceilings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ceilings"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "owner": {
+        "name": "owner",
+        "in": "path",
+        "required": true,
+        "description": "The owner, as acme for an org, acme%2F%40jon for a person, or deployment.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "secret_name": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "description": "The secret's name, as GITHUB_TOKEN.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[^/\\s]+$"
+        }
+      }
+    },
+    "responses": {
+      "Invalid": {
+        "description": "The request doesn't read: invalid_request.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "urn:wardrik:schema:v1:error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "No token, or one that isn't known or has expired: unauthorized.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "urn:wardrik:schema:v1:error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The caller reaches the resource, but may not do this to it: forbidden.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "urn:wardrik:schema:v1:error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "There's no such resource, or the caller reaches none of it: not_found.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "urn:wardrik:schema:v1:error"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "The vault didn't answer: unavailable.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "urn:wardrik:schema:v1:error"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A token from WardrikDaemon.Tokens."
+      }
+    },
+    "schemas": {
+      "secrets": {
+        "title": "An owner's secrets",
+        "description": "Each secret the owner holds, by name, and what it's for. Never a value.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "secrets"
+        ],
+        "properties": {
+          "secrets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "purpose"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "api_key",
+                    "client_secret",
+                    "header",
+                    "signing_secret",
+                    "grant",
+                    "token",
+                    "secret"
+                  ],
+                  "description": "What it's for: api_key, client_secret, header or signing_secret for one the owner sealed, grant for an account they connected, token for a chat app's install, secret for one sealed with no purpose."
+                }
+              }
+            }
+          }
+        },
+        "examples": [
+          {
+            "secrets": [
+              {
+                "name": "ANTHROPIC_API_KEY",
+                "purpose": "api_key"
+              },
+              {
+                "name": "linear",
+                "purpose": "grant"
+              }
+            ]
+          }
+        ]
+      },
+      "secret_input": {
+        "title": "A secret to seal",
+        "description": "The value to seal, and what it's for. A secret is read only for its purpose, so a client secret is never read as an API key.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value",
+          "purpose"
+        ],
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "client_secret",
+              "header",
+              "signing_secret"
+            ],
+            "description": "api_key for a key code calls a service with, client_secret for an OAuth app's, header for an MCP server's header, signing_secret for a webhook's."
+          }
+        },
+        "examples": [
+          {
+            "value": "sk-ant-0123456789abcdef",
+            "purpose": "api_key"
+          }
+        ]
+      },
+      "ceilings": {
+        "title": "Ceilings",
+        "description": "Each of an org's ceilings, with what its agents have spent against it in its period now.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ceilings"
+        ],
+        "properties": {
+          "ceilings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ceiling",
+                "per",
+                "on_exhausted",
+                "limit",
+                "spent",
+                "granted"
+              ],
+              "properties": {
+                "ceiling": {
+                  "type": "string",
+                  "description": "The ceiling's name."
+                },
+                "per": {
+                  "type": "string",
+                  "enum": [
+                    "day",
+                    "week",
+                    "month",
+                    "total"
+                  ],
+                  "description": "How long its limit lasts before it starts over."
+                },
+                "on_exhausted": {
+                  "type": "string",
+                  "enum": [
+                    "ask",
+                    "deny",
+                    "continue"
+                  ],
+                  "description": "What the org's next model call does once they've spent it: waits on a ceiling_approval, is refused, or runs."
+                },
+                "limit": {
+                  "$ref": "#/components/schemas/amount"
+                },
+                "spent": {
+                  "$ref": "#/components/schemas/amount"
+                },
+                "granted": {
+                  "$ref": "#/components/schemas/amount"
+                },
+                "starts_over": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "The day it starts over, in its timezone. Absent for a ceiling in total."
+                }
+              }
+            }
+          }
+        },
+        "examples": [
+          {
+            "ceilings": [
+              {
+                "ceiling": "plan",
+                "per": "month",
+                "on_exhausted": "ask",
+                "limit": {
+                  "usd": 20.0
+                },
+                "spent": {
+                  "usd": 12.4,
+                  "tokens": 81200
+                },
+                "granted": {},
+                "starts_over": "2026-11-01"
+              }
+            ]
+          }
+        ]
+      },
+      "amount": {
+        "type": "object",
+        "properties": {
+          "usd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "US dollars."
+          },
+          "tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tokens, input and output together."
+          }
+        },
+        "additionalProperties": false,
+        "description": "An amount in dollars, tokens or both. A limit leaves out what it doesn't limit."
+      }
+    }
+  }
+}

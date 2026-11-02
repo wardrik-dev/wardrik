@@ -192,7 +192,8 @@ YAML writes an atom as a string, `flow: device`, and a keyword list as a map,
 | Key | What it is | Its options |
 | --- | --- | --- |
 | `org`, `base_url`, `defaults`, `vault`, `http`, `brave` | The deployment, its HTTP API and `web_search` | `WardrikDaemon.Config` |
-| `deployment`, `deployment_keys`, `idle_timeout`, `retention`, `triggers` | Wardrik itself | `Wardrik.start_link/1` |
+| `deployment_keys` | Whether agents fall back to the deployment's API keys | `WardrikDaemon.Keys` |
+| `deployment`, `idle_timeout`, `retention`, `triggers` | Wardrik itself | `Wardrik.start_link/1` |
 | `mcp` | MCP servers agents may call | `WardrikMCP.Server`, see `WardrikDaemon.Config.MCP` |
 | `oauth` | Services people sign in to, and its `providers` | `Wardrik.start_link/1`'s `:oauth`, `WardrikOAuth.Provider` |
 | `channels` | Chat apps agents are reached through | `WardrikChannel`, `WardrikSlack` |
@@ -205,8 +206,9 @@ The daemon sets what it knows itself: a server's `transport` from its `command` 
 channel's `owner` from `orgs`, and `oauth`'s `page` from `base_url`. An MCP server takes
 `credential` for `credential_name`, and its `timeout` in seconds.
 
-`deployment_keys` is `true` unless set, so agents use the API keys sealed in the deployment's vault
-where their owners hold none. Set it to `false` to have every owner bring their own.
+An agent's model and tools use the API keys its owner sealed, then its org's. `deployment_keys` is
+`true` unless set, so they then use the deployment's. Set it to `false` to have every org bring
+its own.
 
 Servers, OAuth providers and notify targets that orgs and people add as the daemon runs are kept
 apart from `config.yaml`. They're added over the HTTP API.
@@ -276,12 +278,12 @@ orgs:
 
 * Every agent of an org is held to `"*"`'s policy, its org's policy, and its own definition's. The
   strictest decides. A definition can narrow them, never widen them.
-* A policy's budget is the org's: its agents spend from it together. Each org spends `"*"`'s
+* A policy's budget is the org's, a ceiling its agents spend from together. Each org spends `"*"`'s
   budget apart from the others. A budget per turn stays each agent's own.
 * An org whose policy isn't in `policies/` runs none of its agents.
 * A server, channel or target no entry lists is the deployment's own org's.
 * A channel serves one org, or every org if `"*"` lists it.
-* Any other org is refused: no agent, secret or server is kept for it.
+* Any other org is refused: no agent or secret is kept for it.
 
 Each org's agents reach a server with their own credential. Here, payments and growth each seal
 their own `github`:
@@ -294,8 +296,9 @@ wardrik vault put github --org payments --for header
 
 `roles` and `bindings` say who may do what, as Kubernetes RBAC does. A role's rules each allow
 `verbs`, the part of an action after the dot, as `ask` for `agent.ask`, on `kinds` of resource:
-`agent`, `owner` (what an owner holds: secrets, servers, connections) or `deployment`, and,
-with `names`, only those IDs. A binding gives a role to subjects within one org:
+`agent`, `secret` (an owner's secrets), `ceiling` (an org's ceilings), `owner` (what else an owner
+holds: servers, connections) or `deployment`, and, with `names`, only those IDs. A binding gives a
+role to subjects within one org:
 
 ```yaml
 roles:
@@ -309,13 +312,29 @@ bindings:
 * Subjects are `user:ID`, `group:NAME` or `agent:ID`. A token names its user and groups, or its
   agent.
 * An agent acting through its tools gets its own bindings, never its owner's.
-* Everyone may do anything to what they own: `payments/@ana` to `payments/@ana/notes`.
+* Everyone may do anything to what they own: `payments/@ana` to `payments/@ana/notes`, and to
+  their own secrets.
 * A chat member asks and reads the agents of the workspace's owner, and decides only the calls
   they asked for, or any as one of its approvers.
 * Outside the orgs their bindings name, people find nothing, not even that something's there. The
-  deployment itself is in no org: only a binding in `"*"` reaches it.
+  deployment itself is in no org, nor are its secrets: only a binding in `"*"` reaches them.
 * `operator` is every verb on every kind unless `roles` says otherwise. The deployment's admin,
   `user:admin`, which the `wardrik` command and the agent files act as, holds it in `"*"`.
+
+### The HTTP API
+
+The daemon serves Wardrik's operations (see `Wardrik.HTTP`), and its own routes beside them, each
+taking the same tokens, roles and bindings. `priv/openapi.json` describes its own:
+
+| Route | Serves |
+| --- | --- |
+| `GET /v1/owners/{owner}/secrets` | the owner's secrets, by name and purpose, never a value |
+| `PUT /v1/owners/{owner}/secrets/{name}` | seals one, as `{"value": ..., "purpose": "api_key"}` |
+| `DELETE /v1/owners/{owner}/secrets/{name}` | removes one |
+| `GET /v1/owners/{owner}/ceilings` | what an org's agents have spent against each ceiling |
+
+An owner is one path segment: `payments`, `payments%2F%40ana` or `deployment`. See
+`WardrikDaemon.HTTP`.
 
 ## The wardrik command
 

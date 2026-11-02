@@ -41,6 +41,26 @@ defmodule WardrikDaemon.Owners do
     do: if(Enum.all?(segments, &segment?/1), do: {:ok, owner}, else: :error)
 
   @doc """
+  Returns whether `owner` is one the daemon names: the deployment, an org, or a person in one.
+
+      WardrikDaemon.Owners.valid?("acme/@jon")
+      #=> true
+
+      WardrikDaemon.Owners.valid?("acme/triage")
+      #=> false
+  """
+  @spec valid?(String.t()) :: boolean()
+  def valid?(@deployment), do: true
+
+  def valid?(owner) do
+    case String.split(owner, "/") do
+      [org] -> segment?(org)
+      [org, "@" <> person] -> segment?(org) and segment?(person)
+      _other -> false
+    end
+  end
+
+  @doc """
   Returns `owner`'s org.
 
       WardrikDaemon.Owners.org("acme/@jon")
@@ -51,7 +71,7 @@ defmodule WardrikDaemon.Owners do
 
   @doc """
   Returns the org a resource is in, or `nil` if it's in none: the deployment, and what the
-  deployment owns.
+  deployment owns. An owner's secrets are in its org, as are an org's ceilings.
 
       WardrikDaemon.Owners.org_of({:agent, "acme/@jon/notes"})
       #=> "acme"
@@ -64,8 +84,8 @@ defmodule WardrikDaemon.Owners do
     end
   end
 
-  def org_of({:owner, @deployment}), do: nil
-  def org_of({:owner, owner}), do: org(owner)
+  def org_of({kind, @deployment}) when kind in [:owner, :secret, :ceiling], do: nil
+  def org_of({kind, owner}) when kind in [:owner, :secret, :ceiling], do: org(owner)
   def org_of({:deployment, _name}), do: nil
 
   @doc """

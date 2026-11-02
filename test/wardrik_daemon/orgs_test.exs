@@ -3,7 +3,7 @@ defmodule WardrikDaemon.OrgsTest do
 
   import WardrikDaemon.Test
 
-  alias Wardrik.OrgSettings
+  alias WardrikDaemon.Ceiling
   alias WardrikDaemon.Config
   alias WardrikDaemon.Dirs
 
@@ -94,26 +94,28 @@ defmodule WardrikDaemon.OrgsTest do
       orgs = %{
         "*" => %{mcp: [], channels: [], notify: [], policy: "base"},
         "payments" => %{mcp: [], channels: [], notify: [], policy: "strict"},
-        "growth" => %{mcp: [], channels: [], notify: [], policy: "missing"}
+        "growth" => %{mcp: [], channels: [], notify: [], policy: "missing"},
+        "ops" => %{mcp: [], channels: [], notify: [], policy: "unlimited"}
       }
 
-      %{config: %{org: "platform", orgs: orgs, policies: %{"base" => base, "strict" => strict}}}
+      {:ok, unlimited} = WardrikPolicy.decode(%{"budget" => %{"per" => "day"}})
+      policies = %{"base" => base, "strict" => strict, "unlimited" => unlimited}
+      %{config: %{org: "platform", orgs: orgs, policies: policies}}
     end
 
     test "hold an org to every org's policy, then its own, pooling each budget but a turn's", %{
       config: config
     } do
-      assert {:ok, %OrgSettings{policy: [base, strict], ceilings: ceilings}} =
+      assert {:ok, %{policy: [base, strict], ceilings: [pooled]}} =
                WardrikDaemon.Orgs.settings("payments", config)
 
       assert base.budget == nil
       assert %WardrikPolicy.Budget{usd: 1.0, per: :turn} = strict.budget
-      assert %{"base" => pooled} = ceilings
-      assert map_size(ceilings) == 1
-      assert pooled[:usd] == 50.0 and pooled[:per] == :month
 
-      assert {:ok, %OrgSettings{policy: [_base]}} =
-               WardrikDaemon.Orgs.settings("platform", config)
+      assert %Ceiling{name: "base", budget: %{usd: 50.0, per: :month}, on_exhausted: :ask} =
+               pooled
+
+      assert {:ok, %{policy: [_base]}} = WardrikDaemon.Orgs.settings("platform", config)
     end
 
     test "refuse an org config.yaml doesn't declare, and run none of one whose policy is missing",
@@ -124,12 +126,18 @@ defmodule WardrikDaemon.OrgsTest do
                WardrikDaemon.Orgs.settings("globex", config)
 
       assert message ==
-               "There's no org globex here: config.yaml declares growth, payments, platform."
+               "There's no org globex here: config.yaml declares growth, ops, payments, platform."
 
       assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
                WardrikDaemon.Orgs.settings("growth", config)
 
       assert message =~ "growth is held to the policy missing, which policies/ doesn't hold"
+
+      assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
+               WardrikDaemon.Orgs.settings("ops", config)
+
+      assert message == "ops's ceiling unlimited: a ceiling sets usd, tokens or both."
+      assert WardrikDaemon.Orgs.known("platform", config) == :ok
     end
   end
 end

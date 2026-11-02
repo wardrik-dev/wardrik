@@ -7,7 +7,7 @@ defmodule WardrikDaemon.Running do
 
     1. `WardrikBrave`, for `web_search`.
     2. Wardrik, deciding what each scope may do with `WardrikDaemon.Authorizer`.
-    3. The HTTP API, as `Wardrik.HTTP`, reached with `WardrikDaemon.Tokens`.
+    3. The HTTP API, as `WardrikDaemon.HTTP`, reached with `WardrikDaemon.Tokens`.
     4. A task that defines the agents in `agents/`, writes the `wardrik` command's token, and
        emits `[:wardrik_daemon, :started]`.
 
@@ -39,7 +39,6 @@ defmodule WardrikDaemon.Running do
     {config, policies} = started = WardrikDaemon.ok!(read.())
     running = self()
     orgs = %{org: config.org, orgs: config.orgs, policies: policies}
-
     daemon = WardrikStore.scope(store, "wardrik_daemon")
 
     agents = [
@@ -64,8 +63,10 @@ defmodule WardrikDaemon.Running do
           defaults: config.defaults,
           prices: config.prices,
           policies: Map.to_list(policies),
-          resolver: {WardrikDaemon.Resolver, Map.merge(orgs, %{wardrik: name, config: config})},
-          orgs: {WardrikDaemon.Orgs, orgs},
+          resolver:
+            {WardrikDaemon.Resolver,
+             Map.merge(orgs, %{wardrik: name, config: config, store: daemon})},
+          key_source: {WardrikDaemon.Keys, wardrik: name, deployment: config.deployment_keys},
           authorizer: {WardrikDaemon.Authorizer, config.access},
           trusted_workers: config.trusted_workers,
           egress: &Wardrik.Egress.any/1,
@@ -76,9 +77,11 @@ defmodule WardrikDaemon.Running do
     children = [
       {WardrikBrave, name: WardrikDaemon.Capabilities.brave(name), api_key: config.brave},
       {Wardrik, wardrik},
-      {Wardrik.HTTP,
+      {WardrikDaemon.HTTP,
        wardrik: name,
        authenticator: {WardrikDaemon.Authenticator, daemon},
+       store: daemon,
+       orgs: orgs,
        port: config.port,
        ip: config.ip},
       %{

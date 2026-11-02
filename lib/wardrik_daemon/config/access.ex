@@ -6,9 +6,11 @@ defmodule WardrikDaemon.Config.Access do
       doc: "The actions' verbs, after the dot: `ask` for `agent.ask`, or `\"*\"` for every verb."
     ],
     kinds: [
-      type: {:list, {:in, ["agent", "deployment", "owner", "*"]}},
+      type: {:list, {:in, ["agent", "ceiling", "deployment", "owner", "secret", "*"]}},
       required: true,
-      doc: "The resources' kinds: `agent`, `deployment` or `owner`, or `\"*\"` for every kind."
+      doc:
+        "The resources' kinds: `agent`, `ceiling`, `deployment`, `owner` or `secret`, or " <>
+          "`\"*\"` for every kind."
     ],
     names: [
       type: {:list, :string},
@@ -54,7 +56,7 @@ defmodule WardrikDaemon.Config.Access do
   `admin` is every verb on every kind, and `roles` can't declare it. The deployment's admin,
   `user:admin`, which the `wardrik` command acts as, is always bound to it in `"*"`, so no
   config.yaml narrows it. `operator` is the same, unless `roles` declares it. Only the admin's
-  binding should need `"*"`: the deployment itself is in no org.
+  binding should need `"*"`: the deployment itself is in no org, nor are its secrets.
 
   See `WardrikDaemon.Authorizer` for how they decide.
   """

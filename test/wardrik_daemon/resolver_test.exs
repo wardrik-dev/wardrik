@@ -81,13 +81,13 @@ defmodule WardrikDaemon.ResolverTest do
 
   test "holds an agent to every org's policy, then its org's, and to the budget they pool",
        context do
-    assert {:ok, %Resolved{policy: [base, strict], middleware: [{Wardrik.Ceiling, held}]}} =
+    assert {:ok, %Resolved{policy: [base, strict], middleware: [{WardrikDaemon.Ceiling, held}]}} =
              resolve(context, "payments/refunds")
 
     assert base.budget == nil
     assert strict.name == "strict"
     assert held.org == "payments"
-    assert [%Wardrik.Ceiling{name: "base"}] = held.ceilings
+    assert [%WardrikDaemon.Ceiling{name: "base"}] = held.ceilings
   end
 
   test "resolves nothing for an org config.yaml doesn't declare, or an ID the daemon doesn't name",

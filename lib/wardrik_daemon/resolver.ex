@@ -3,8 +3,8 @@ defmodule WardrikDaemon.Resolver do
   Says what each agent gets. It's the daemon's `Wardrik.Resolver`.
 
     * It acts for its owner (see `WardrikDaemon.Owners`): a person, or its org.
-    * It's held to `"*"`'s policy, then its org's, and to the budgets they pool. See
-      `WardrikDaemon.Orgs`.
+    * It's held to `"*"`'s policy, then its org's, and to the budgets they pool, as
+      `WardrikDaemon.Ceiling`s. See `WardrikDaemon.Orgs`.
     * Its tools reach the servers `config.yaml` gives its org, and those added at runtime by its
       owner, its org and the deployment. The nearest of a name wins.
     * Its notices reach targets the same way.
@@ -25,8 +25,7 @@ defmodule WardrikDaemon.Resolver do
   def resolve(%Request{agent: id}, %{wardrik: wardrik, config: config} = opts) do
     with {:ok, owner} <- owner(id),
          org = Owners.org(owner),
-         {:ok, settings} <- WardrikDaemon.Orgs.settings(org, opts),
-         {:ok, ceilings} <- ceilings(org, settings.ceilings) do
+         {:ok, settings} <- WardrikDaemon.Orgs.settings(org, opts) do
       chain = Owners.chain(owner)
       running = Wardrik.Instance.fetch!(wardrik)
 
@@ -34,7 +33,7 @@ defmodule WardrikDaemon.Resolver do
        %Resolved{
          principal: %Principal{id: owner},
          policy: settings.policy,
-         middleware: middleware(wardrik, org, ceilings),
+         middleware: middleware(opts.store, org, settings.ceilings),
          servers: nearest(added_servers(running, chain) ++ configured_servers(config, org)),
          notify: nearest(added_targets(running, chain) ++ configured_targets(config, org))
        }}
@@ -48,22 +47,10 @@ defmodule WardrikDaemon.Resolver do
     end
   end
 
-  defp ceilings(org, ceilings) do
-    Enum.reduce_while(ceilings, {:ok, []}, fn {name, budget}, {:ok, built} ->
-      case Wardrik.Ceiling.new(name, budget) do
-        {:ok, ceiling} ->
-          {:cont, {:ok, [ceiling | built]}}
+  defp middleware(_store, _org, []), do: []
 
-        {:error, why} ->
-          {:halt, {:error, Error.new(:invalid_request, "#{org}'s ceiling #{name}: #{why}.")}}
-      end
-    end)
-  end
-
-  defp middleware(_wardrik, _org, []), do: []
-
-  defp middleware(wardrik, org, ceilings),
-    do: [{Wardrik.Ceiling, %{wardrik: wardrik, org: org, ceilings: Enum.reverse(ceilings)}}]
+  defp middleware(store, org, ceilings),
+    do: [{WardrikDaemon.Ceiling, %{store: store, org: org, ceilings: ceilings}}]
 
   defp added_servers(running, chain) do
     for owner <- chain,

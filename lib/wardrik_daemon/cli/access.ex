@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.CLI.Access do
-  @moduledoc "The commands on the vault: the secrets agents hold."
+  @moduledoc "The commands on the vault: the secrets agents hold. See `WardrikDaemon.Secrets`."
 
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
@@ -97,8 +97,8 @@ defmodule WardrikDaemon.CLI.Access do
     with {:ok, %{"secrets" => secrets} = answer} <-
            Context.call(cx, "secrets.list", %{"owner" => Context.owner(cx, flags)}) do
       Table.show(cx, answer,
-        header: ["SECRET", "KIND"],
-        rows: for(secret <- secrets, do: [secret["name"], secret["kind"]]),
+        header: ["SECRET", "PURPOSE"],
+        rows: for(secret <- secrets, do: [secret["name"], secret["purpose"]]),
         empty: "No secrets."
       )
     end

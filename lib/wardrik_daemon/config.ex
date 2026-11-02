@@ -8,7 +8,7 @@ defmodule WardrikDaemon.Config do
   alias WardrikDaemon.Config.Orgs
   alias WardrikDaemon.Dirs
 
-  @wardrik [:deployment, :deployment_keys, :idle_timeout, :retention, :triggers]
+  @wardrik [:deployment, :idle_timeout, :retention, :triggers]
 
   @schema [
             org: [type: :string, default: "default", doc: "The deployment's org."],
@@ -26,6 +26,13 @@ defmodule WardrikDaemon.Config do
               type: {:list, :any},
               default: [],
               doc: "Who holds each role, in which org. See `WardrikDaemon.Config.Access`."
+            ],
+            deployment_keys: [
+              type: :boolean,
+              default: true,
+              doc:
+                "`true` to let agents use the API keys sealed as the deployment's where their " <>
+                  "owners hold none. See `WardrikDaemon.Keys`."
             ],
             base_url: [
               type: :string,
@@ -125,10 +132,7 @@ defmodule WardrikDaemon.Config do
                 ]
               ]
             ]
-          ] ++
-            (Wardrik.schema().schema
-             |> Keyword.take(@wardrik)
-             |> Keyword.update!(:deployment_keys, &Keyword.put(&1, :default, true)))
+          ] ++ Keyword.take(Wardrik.schema().schema, @wardrik)
 
   @moduledoc """
   Reads `config.yaml` as the daemon starts.
@@ -144,9 +148,7 @@ defmodule WardrikDaemon.Config do
 
   #{NimbleOptions.docs(@schema)}
 
-  #{Enum.map_join(@wardrik, ", ", &"`#{&1}`")} are `Wardrik.start_link/1`'s options, with
-  `deployment_keys` `true` unless set, so agents use the API keys the deployment's vault holds
-  where their owners hold none.
+  #{Enum.map_join(@wardrik, ", ", &"`#{&1}`")} are `Wardrik.start_link/1`'s options.
 
   `tools`, `tokens`, `cluster` and `ssh` aren't supported yet, and are skipped with a warning. Any
   other key is an error.
@@ -174,6 +176,7 @@ defmodule WardrikDaemon.Config do
             orgs: %{},
             access: nil,
             base_url: nil,
+            deployment_keys: true,
             defaults: %{},
             prices: %{},
             mcp: [],
@@ -195,6 +198,7 @@ defmodule WardrikDaemon.Config do
           orgs: %{String.t() => Orgs.entry()},
           access: Access.t(),
           base_url: String.t() | nil,
+          deployment_keys: boolean(),
           defaults: map(),
           prices: %{String.t() => keyword()},
           mcp: keyword(),
@@ -347,6 +351,7 @@ defmodule WardrikDaemon.Config do
         orgs: orgs,
         access: access,
         base_url: opts[:base_url],
+        deployment_keys: opts[:deployment_keys],
         defaults: opts[:defaults],
         prices: prices,
         mcp: served(mcp, orgs, org),

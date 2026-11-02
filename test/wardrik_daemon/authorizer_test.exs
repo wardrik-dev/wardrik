@@ -127,6 +127,34 @@ defmodule WardrikDaemon.AuthorizerTest do
              {:error, :not_found}
   end
 
+  test "an owner's secrets are its own, and in its org; the deployment's need every org",
+       %{access: access} do
+    secret = fn principal, owner ->
+      decide(access, principal: principal, action: "secret.put", resource: {:secret, owner})
+    end
+
+    assert secret.("growth/@jon", "growth/@jon") == :ok
+    assert secret.("growth/@jon", "growth/@ana") == {:error, :not_found}
+    assert secret.("growth/@jon", "growth") == {:error, :not_found}
+    assert secret.("ana", "payments") == :ok
+    assert secret.("ana", "payments/@bo") == :ok
+    assert secret.("ana", "growth") == {:error, :not_found}
+    assert secret.("deployment", "deployment") == {:error, :not_found}
+    assert secret.("ana", "deployment") == {:error, :not_found}
+    assert secret.("admin", "deployment") == :ok
+
+    ceiling = [action: "ceiling.read", resource: {:ceiling, "payments"}]
+    assert decide(access, [principal: "ana"] ++ ceiling) == :ok
+    assert decide(access, [principal: "payments"] ++ ceiling) == {:error, :not_found}
+
+    assert decide(access,
+             principal: "ana",
+             action: "ceiling.read",
+             resource: {:ceiling, "growth"}
+           ) ==
+             {:error, :not_found}
+  end
+
   test "the deployment needs a binding in every org", %{access: access} do
     for principal <- ["ana", "payments"] do
       assert decide(access,

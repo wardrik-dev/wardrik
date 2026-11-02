@@ -8,8 +8,9 @@ defmodule WardrikDaemon.Authorizer do
       bindings, never its owner's, as a Kubernetes ServiceAccount does.
     * Anyone else is `user:ID`, and `group:NAME` for each of the principal's `:groups`
       attributes.
-    * A principal acting itself may do anything to the agents it owns, and to what it holds as
-      their owner: `resource.owner == principal`, in Cedar's words. See `WardrikDaemon.Owners`.
+    * A principal acting itself may do anything to the agents it owns, to what it holds as
+      their owner, and to its secrets: `resource.owner == principal`, in Cedar's words. See
+      `WardrikDaemon.Owners`.
     * A chat member, through a channel, may `ask`, `read` and `events` the agents within the
       installation's owner, and `decide` only the calls they asked for or, as an approver, any.
       Nothing else.
@@ -43,8 +44,9 @@ defmodule WardrikDaemon.Authorizer do
     do: Owners.owner(agent) == {:ok, id}
 
   # The deployment's own is in no org, so no one owns it.
-  defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {:owner, id} = resource}),
-    do: Owners.org_of(resource) != nil
+  defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {kind, id} = resource})
+       when kind in [:owner, :secret],
+       do: Owners.org_of(resource) != nil
 
   defp owns?(_request), do: false
 

@@ -11,8 +11,8 @@
 
 - New keys:
   - `deployment_keys`, `true` unless set, so agents use the API keys sealed in the deployment's
-    vault where their owners hold none. Also `deployment`, `idle_timeout`, `retention` and
-    `triggers`.
+    vault where their owners and orgs hold none. See `WardrikDaemon.Keys`. Also `deployment`,
+    `idle_timeout`, `retention` and `triggers`.
   - `oauth`: `client_name` and `req_options`, and a provider's `authorization_params`.
   - `channels`: `offering`, `deciding` and `req_options`.
   - `notify`: `retries` and `req_options`, and a webhook's `req_options`.
@@ -22,6 +22,11 @@
 - `roles` and `bindings` say who may do what, in which org, as Kubernetes RBAC does. An agent gets
   its own bindings, never its owner's; everyone may do anything to what they own; a chat member
   decides only what they asked, or as an approver. See `WardrikDaemon.Authorizer`.
+- The daemon keeps secrets, API keys and ceilings itself, on its own routes in front of
+  `Wardrik.HTTP`, described by `priv/openapi.json`: `GET`, `PUT` and `DELETE
+  /v1/owners/{owner}/secrets/{name}`, and `GET /v1/owners/{owner}/ceilings`. See
+  `WardrikDaemon.HTTP`, `WardrikDaemon.Secrets`, `WardrikDaemon.Keys` and `WardrikDaemon.Ceiling`.
+  Roles' `kinds` take `secret` and `ceiling`.
 - Tokens are the daemon's own, `WardrikDaemon.Tokens`: each a user with groups, or an agent, kept
   as a SHA-256 hash. The `wardrik` command's acts as the deployment's admin, `user:admin`.
 - A reload that finds `config.yaml` or `policies/` changed restarts the daemon to read them, so
@@ -32,7 +37,9 @@
 - `token create`, `token ls` and `token revoke` are gone, with the HTTP API's tokens.
 - `reload` and `agent cancel` take agents' IDs, not patterns.
 - Agent files are defined by the deployment's admin.
-- `vault put` takes `--for`: `api_key`, `client_secret`, `header` or `signing_secret`.
+- `vault put` takes `--for`: `api_key`, `client_secret`, `header` or `signing_secret`. `vault ls`
+  says each secret's `PURPOSE`.
+- Approving past a ceiling needs only what deciding on the agent needs.
 - Browser sign-ins don't finish until the daemon pairs them with the `wardrik` command.
 - `notify`'s targets go in `notify.targets`.
 - `config.yaml` and `wardrik doctor` refuse what Wardrik refused only as it started, as
