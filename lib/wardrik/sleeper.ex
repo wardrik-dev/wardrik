@@ -1,7 +1,5 @@
 defmodule Wardrik.Sleeper do
-  @moduledoc """
-  Puts defined agents to sleep after their idle timeout. An agent wakes when something asks it.
-  """
+  @moduledoc false
 
   use GenServer
 

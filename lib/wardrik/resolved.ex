@@ -15,31 +15,19 @@ defmodule Wardrik.Resolved do
         workspaces: %{"agt_runbooks" => :read}
       }
 
-  An agent gets nothing it isn't given here: a name its definition uses that isn't in `:servers`,
-  `:notify` or `:channels` reaches nothing, whatever else is started under that name, and it
-  mounts no workspace that isn't in `:workspaces`.
+  An agent reaches nothing that isn't named here.
 
   ## Fields
 
-    * `:principal` - who the agent acts for. Its credentials and keys are this principal's.
-      `nil` gives it none.
-    * `:policy` - the `WardrikPolicy` the agent is held to, or its rules, or a list of them.
-      Checked after the deployment's policy and before the agent's own.
-    * `:policies` - named policies its definition may use, alongside the deployment's. A name the
-      deployment already uses is refused.
-    * `:defaults` - what its definition gets where it says nothing. Overrides the deployment's
-      `:defaults`.
-    * `:middleware` - middleware it runs after the deployment's, as `{module, opts}`.
-    * `:servers` - the MCP servers its `tools` reach, by the name they use, as the server's
-      `WardrikMCP` name. `servers/*` and `*` reach every one.
-    * `:notify` - the notify targets its `notify` reaches, by the name it uses, as the name of a
-      target in `:notify`, or a target of your app's own as `{module, opts}`. See
-      `Wardrik.Notify`.
-    * `:channels` - the workspace each channel posts its notices in, by the channel's name, as
-      the chat app names the workspace. A definition's `notify: "slack:#ops"` posts in `#ops` of
-      that workspace. A channel not named here posts nothing for the agent.
-    * `:workspaces` - other agents' workspaces it may mount, by their IDs, each `:read` or
-      `:write`. See `Wardrik.Workspaces`.
+    * `:principal` - who it works for. Its credentials are theirs. `nil` gives it none.
+    * `:policy` - a policy, its rules, or a list. Checked between Wardrik's and the agent's own.
+    * `:policies` - named policies its definition may use, beside Wardrik's.
+    * `:defaults` - what its definition gets where it says nothing.
+    * `:middleware` - run after Wardrik's, as `{module, opts}`.
+    * `:servers` - MCP servers by the name its `tools` use, to the `WardrikMCP` name.
+    * `:notify` - targets by the name its `notify` uses, to a `:notify` target or `{module, opts}`.
+    * `:channels` - the workspace each channel posts its notices in, by channel name.
+    * `:workspaces` - other agents' workspaces it may mount, `:read` or `:write`.
   """
 
   defstruct principal: nil,

@@ -1,11 +1,8 @@
 defmodule Wardrik.AgentTools do
   @moduledoc """
-  Tools that let an agent work with agents: `agents/*` for the other agents it may reach, and
-  `self/*` for itself.
+  Tools for working with agents: `agents/*` for other agents, `self/*` for itself.
 
-  Each tool runs a catalog operation through `Wardrik.run/3` for the principal the agent resolves
-  to, with the agent as its actor, `{:agent, id}`. The authorizer decides what it may reach, as
-  for any surface. An agent that resolves to no principal can use none of them.
+      tools: ["agents/*", "self/*"]
 
   | Tool | What it does |
   | --- | --- |
@@ -16,12 +13,10 @@ defmodule Wardrik.AgentTools do
   | `agent_define` | Defines or redefines a worker. |
   | `agent_trigger_set`, `agent_trigger_remove`, `self_trigger_set`, `self_trigger_remove` | Changes triggers. |
 
-  Agents are named by their exact IDs, as `agents_list` gives them.
-
-    * Reads always run.
-    * Changes are `gated`: they wait on a person unless the agent's policy allows them by name,
-      as `allow: [agent_ask]`.
-    * `agent_ask` messages carry the labels of what the asking run has read.
+    * Each acts for the agent's resolved principal, with actor `{:agent, id}`. Your authorizer decides.
+    * An agent with no principal can use none of them.
+    * Changes are gated: they ask a person unless the policy allows them by name.
+    * `agent_ask` carries the asking run's labels.
     * A worker an agent defines is held to its definer's policy.
   """
 

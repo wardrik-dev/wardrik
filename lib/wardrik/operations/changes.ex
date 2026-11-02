@@ -1,16 +1,10 @@
 defmodule Wardrik.Operations.Changes do
-  @moduledoc """
-  Records changes made through Wardrik in the audit, with who made them.
-
-      Changes.record(scope, type: "agent.defined", agent: "agt_1")
-      Changes.record(scope, type: "agent.cleared", agent: {"agt_1", "C1"})
-  """
+  @moduledoc false
 
   alias Wardrik.Scope
 
   @doc """
-  Records a change of `:type`, such as `\"agent.defined\"`, to the `:agent`, or to one of its
-  conversations as `{agent, conversation}`, with any `:data`.
+  Records a change of `:type` to the `:agent`, or `{agent, conversation}`, with any `:data`.
   """
   @spec record(Scope.t(), keyword()) :: :ok
   def record(%Scope{} = scope, args) do
@@ -28,7 +22,7 @@ defmodule Wardrik.Operations.Changes do
   defp about({_agent, _conversation} = key), do: key
   defp about(agent), do: {agent, nil}
 
-  @doc "Records a change of `:type`, such as `\"agents.reloaded\"`, to the deployment's `:subject`."
+  @doc "Records a change of `:type` to the deployment's `:subject`."
   @spec record_deployment(Scope.t(), type: String.t(), subject: String.t(), data: map()) :: :ok
   def record_deployment(%Scope{} = scope, args),
     do:

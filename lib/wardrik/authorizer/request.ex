@@ -1,7 +1,6 @@
 defmodule Wardrik.Authorizer.Request do
   @moduledoc """
-  What `c:Wardrik.Authorizer.authorize/2` decides: whether `actor`, for `principal`, may take
-  `action` on `resource`.
+  What `c:Wardrik.Authorizer.authorize/2` decides.
 
       %Wardrik.Authorizer.Request{
         principal: %WardrikCore.Principal{id: "user_42"},
@@ -13,27 +12,17 @@ defmodule Wardrik.Authorizer.Request do
 
   ## Fields
 
-    * `:principal` - on whose behalf it acts, as RFC 8693's `sub`.
-    * `:actor` - who acts, as RFC 8693's `act`, or `nil` when the principal acts directly:
-      * `{:agent, id}` - an agent, through its own tools or answering another agent. The
-        principal is the one its `Wardrik.Resolver` gives it.
-      * `{:channel, name}` - a chat app's channel, for a member of a workspace it's added to.
-        The principal is the one the channel's `WardrikChannel.Identities` gives the member, or
-        the installation's owner for what the channel does itself, such as posting replies.
-    * `:action` - what they do, as `"agent.ask"`.
-    * `:resource` - what it acts on, as `{kind, id}`:
-      * `{:agent, id}` - the agent `id`, as your app named it. Wardrik never reads it.
-      * `{:deployment, name}` - the deployment, by `Wardrik`'s `:deployment`.
-      * `{kind, id}` - anything else your app authorizes through its authorizer, as
-        `WardrikDaemon` does its own routes'.
-    * `:scope` - the `Wardrik.Scope` acting.
-    * `:context` - what else the request carries: what the actor knows. A channel gives
-      `:installation`, as `%{owner: owner, workspace: workspace}`, and when deciding,
-      `:asked_by`, the principal ID that asked in the conversation, where known.
-      An operation on one of an agent's conversations gives `:conversation`, its ID. The
-      resource is the agent: who may act on an agent may act on its conversations.
-
-  Your app knows which org or person each agent belongs to, so the resource names nothing else.
+    * `:principal` - who it's for, as RFC 8693's `sub`.
+    * `:actor` - who acts for them, as RFC 8693's `act`, or `nil` for the principal itself:
+      * `{:agent, id}` - an agent's tools, or its answer to another agent. The principal is its
+        resolved one.
+      * `{:channel, name}` - a chat member, as `WardrikChannel.Identities` names them, or the
+        installation's owner for what the channel does itself.
+    * `:action` - as `"agent.ask"`.
+    * `:resource` - `{:agent, id}`, `{:deployment, name}`, or another `{kind, id}` your app checks.
+    * `:scope` - the `Wardrik.Scope`.
+    * `:context` - the scope's context. A channel gives `:installation`, and `:asked_by` when
+      deciding. An operation on a conversation gives `:conversation`; its resource is the agent.
   """
 
   alias Wardrik.Scope

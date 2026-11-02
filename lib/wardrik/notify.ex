@@ -4,74 +4,41 @@ defmodule Wardrik.Notify do
               type:
                 {:list, {:tuple, [{:or, [:atom, :string]}, {:tuple, [:atom, :keyword_list]}]}},
               default: [],
-              doc: """
-              The deployment's targets by name, as `{module, opts}`, each checked against its
-              module's `c:schema/0` as Wardrik starts.
-              """
+              doc: "Targets by name, as `{module, opts}`."
             ],
             retries: [
               type: :keyword_list,
               default: [attempts: 3, max_wait: 10_000],
-              doc: """
-              How failed deliveries are retried. See `WardrikCore.Retry`. After that, the notice
-              is logged and dropped.
-              """
+              doc: "How failed deliveries retry. See `WardrikCore.Retry`."
             ]
           )
 
   @moduledoc """
-  Tells people when an agent parks, fails or finishes while nobody is watching.
+  Tells people when an agent parks, fails or finishes while nobody watches.
 
-  Name your targets in Wardrik's `:notify` option:
-
+      # Wardrik's options
       notify: [
         targets: [
-          audit:
-            {Wardrik.Notify.Webhook,
-             url: "https://hooks.example.com/wardrik", secret: {:secret, "HOOK_SECRET"}},
+          audit: {Wardrik.Notify.Webhook, url: "https://hooks.example.com/wardrik", secret: {:secret, "HOOK_SECRET"}},
           ops: {Wardrik.Notify.Room, channel: "slack", room: "#ops"}
         ]
       ]
 
-  An agent's definition routes its notices with `notify`:
+  A definition routes its notices with `notify`:
 
-      # A target
       notify: "ops"
-
-      # A room in one of Wardrik's channels, in the workspace the agent's resolver gives
       notify: "slack:#updates"
-
-      # Several
       notify: ["ops", "slack:#updates"]
-
-      # Which kinds of `Wardrik.Notice` to send. `["parked", "failed"]` unless set.
       notify: %{to: ["ops"], on: ["finished"]}
 
-  Conversations aren't routed anywhere.
-
-  ## Targets your app gives
-
-  A target in `:notify` reaches every agent its resolver gives it to. Your app can also give an
-  agent a target of its own, as `{module, opts}`, such as a webhook one of your customers added:
-
-      %Wardrik.Resolved{
-        notify: %{
-          "ops" => "ops",
-          "alerts" => {Wardrik.Notify.Webhook, url: customer.webhook_url, secret: customer.secret}
-        }
-      }
-
-  Its options are checked against its module's `c:schema/0` as the agent is resolved. A
-  `{:secret, name}` in them isn't read: give the secret itself. See `Wardrik.Resolver`.
+    * `on` defaults to `["parked", "failed"]`.
+    * An agent reaches only the targets `Wardrik.Resolved`'s `:notify` gives it.
+    * Your resolver can also give a target of its own, as `{module, opts}`, with secrets as values.
+    * Each notice is sent at least once. Tell repeats apart by agent, kind and `at`.
 
   ## Options
 
   #{NimbleOptions.docs(@schema)}
-
-  ## Delivery
-
-  One process in the cluster follows every agent's log. Each notice is sent at least once: after
-  a restart it picks up where it left off. Tell repeats apart by agent, kind and `at`.
   """
 
   alias Wardrik.Error
@@ -84,27 +51,23 @@ defmodule Wardrik.Notify do
   @type route() :: %{to: [String.t()], on: [Notice.kind()]}
 
   @doc """
-  Sends `notice`. Returns `{:skip, why}` if it shouldn't be sent, or `{:error, reason}` to retry.
+  Sends `notice`. Returns `{:skip, why}` not to send it, or `{:error, reason}` to retry.
 
-  `opts` are the target's own, plus `:wardrik`, the instance, and `:target`, the target's name.
+  `opts` are the target's own, plus `:wardrik` and `:target`.
   """
   @callback deliver(Notice.t(), opts :: keyword()) :: :ok | {:skip, String.t()} | {:error, term()}
 
   @doc """
-  Returns the options a target takes, as a `NimbleOptions` schema.
+  Returns the target's options as a `NimbleOptions` schema. Wardrik checks them as it starts.
 
-  Wardrik checks each target's options against it as it starts, so `deliver/2` gets them checked,
-  with their defaults. It needn't name `:wardrik` or `:target`. Where an option takes a secret,
-  allow `{:secret, name}`: a target in `:notify` gets the deployment's secret of that name.
+  Allow `{:secret, name}` where an option takes a secret.
   """
   @callback schema() :: keyword()
 
   @optional_callbacks schema: 0
 
   @doc """
-  Returns the `:notify` option's targets by name, each with its options checked, and its retries.
-
-  Raises `ArgumentError`, naming the target, if a target's options don't fit its `c:schema/0`.
+  Returns the `:notify` option's checked targets and retries. Raises `ArgumentError` on a bad target.
   """
   @spec settings(keyword() | nil) :: %{
           targets: %{String.t() => {module(), keyword()}},
@@ -135,8 +98,7 @@ defmodule Wardrik.Notify do
   end
 
   @doc """
-  Checks a target your app gives as `{module, opts}` against its module's `c:schema/0`. Returns
-  it with its options' defaults, or why it doesn't fit.
+  Checks a `{module, opts}` target against its `c:schema/0`. Returns it with defaults, or why not.
   """
   @spec given(term()) :: {:ok, {module(), keyword()}} | {:error, String.t()}
   def given({module, opts}) when is_atom(module) and is_list(opts) do
@@ -186,8 +148,7 @@ defmodule Wardrik.Notify do
   defp kind("finished"), do: :finished
 
   @doc """
-  Returns `:ok` if every place `definition` routes to is in `notify`, the targets the agent was
-  resolved with, or is a channel's room.
+  Returns `:ok` if every place `definition` routes to is in `notify` or is a channel's room.
   """
   @spec check(Wardrik.t(), Wardrik.Resolved.notify(), map()) :: :ok | {:error, Error.t()}
   def check(wardrik, notify, definition) do
@@ -212,10 +173,7 @@ defmodule Wardrik.Notify do
   end
 
   @doc """
-  Sends `notice` to `name`: the target the agent was resolved with by that name, or a channel's
-  room. See `Wardrik.Resolver`.
-
-  Returns `{:skip, why}` if there's nowhere to send it. Skips aren't retried.
+  Sends `notice` to the resolved target or channel room `name`. `{:skip, why}` if there's none.
   """
   @spec deliver(Wardrik.t(), String.t(), Notice.t()) ::
           :ok | {:skip, String.t()} | {:error, term()}

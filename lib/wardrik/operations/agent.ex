@@ -1,8 +1,5 @@
 defmodule Wardrik.Operations.Agent do
-  @moduledoc """
-  Operations on one agent, or one of its conversations: messaging it, deciding what it waits on,
-  and reading it.
-  """
+  @moduledoc false
 
   alias Wardrik.Error
   alias Wardrik.JSON
@@ -41,7 +38,7 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
-  @doc "Sends the agent a message. Returns the message's ID, and the cursor its answer comes after."
+  @doc "Sends the agent a message. Returns its ID and the cursor its answer follows."
   @spec ask(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def ask(scope, input) do
     key = Running.key(input)
@@ -112,7 +109,7 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
-  @doc "Cancels what the agent `key` is doing, and records it. Returns whether there was anything."
+  @doc "Cancels what the agent `key` is doing. Returns whether there was anything."
   @spec cancelled(Wardrik.Scope.t(), Running.key(), pid() | nil) :: boolean()
   def cancelled(_scope, _key, nil), do: false
 
@@ -138,7 +135,7 @@ defmodule Wardrik.Operations.Agent do
     end
   end
 
-  @doc "Streams the agent's log as `{event, cursor}`. Reads what's there, then follows new events."
+  @doc "Streams the agent's log as `{event, cursor}`, following new events."
   @spec stream(Wardrik.Scope.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
   def stream(scope, input) do
     opts = [after: input["after"], types: input["types"] || :all]

@@ -5,21 +5,16 @@ defmodule Wardrik.Notify.Room do
   ]
 
   @moduledoc """
-  Posts notices to a room in one of Wardrik's channels, with `c:Wardrik.Channel.notify/2`.
+  Posts notices to a room in one of Wardrik's channels.
 
       ops: {Wardrik.Notify.Room, channel: "slack", room: "#ops"}
 
-  A route to `slack:#updates` posts the same way.
-
-  It posts in the workspace the agent's resolver gives for the channel, in `Wardrik.Resolved`'s
-  `:channels`. So each agent's notices reach only a workspace your app gave it.
+    * A route to `slack:#updates` posts the same way.
+    * It posts in the workspace `Wardrik.Resolved`'s `:channels` gives the agent, or skips.
 
   ## Options
 
   #{NimbleOptions.docs(@options)}
-
-  Skips the notice if the resolver gives the agent no workspace in the channel, or if the channel
-  doesn't exist or doesn't implement `notify/2`.
   """
 
   @behaviour Wardrik.Notify

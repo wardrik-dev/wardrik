@@ -1,8 +1,8 @@
 defmodule Wardrik.JSON do
-  @moduledoc "Turns view results into JSON-ready operation results."
+  @moduledoc false
 
   @doc """
-  Returns `value` with every key and atom as a string. Leaves `true`, `false` and `nil` alone.
+  Returns `value` with keys and atoms as strings, except `true`, `false` and `nil`.
 
       Wardrik.JSON.json(%{status: :idle})
       #=> %{"status" => "idle"}

@@ -1,27 +1,15 @@
 defmodule Wardrik.Delegation do
   @moduledoc """
-  Sends an agent's answer back to the agent that asked with `agent_ask`.
-
-  The answer arrives as a new message, which starts a turn:
+  Sends an agent's answer back to the agent that asked it with `agent_ask`.
 
       From agent agt_reconciler:
       In answer to your message msg_x1:
       Two deposits match no invoice: …
 
-  How it works:
-
-    1. Each question is saved in the store.
-    2. It follows the run that takes the question up.
-    3. When that run completes, fails or is cancelled, it sends the result to the asker. A run
-       waiting on a person sends nothing yet.
-
-  On start it catches up on the logs it waits on, so runs that ended while it was down are still
-  answered. Each answer has its own message ID, so a repeat is dropped. The answer carries the
-  labels of the answering agent's conversation, or `"outside"` if that agent isn't running.
-
-  The answer is sent for the principal the answering agent resolves to, with that agent as its
-  actor, `{:agent, id}`, so the authorizer decides whether it may reach the asker. An agent that
-  resolves to no principal sends nothing.
+    * The answer arrives as a new message once the run completes, fails or is cancelled.
+    * It's sent for the answering agent's principal, with actor `{:agent, id}`.
+    * It carries the answering conversation's labels.
+    * Questions are kept in the store, so answers survive a restart.
   """
 
   use GenServer
@@ -38,8 +26,7 @@ defmodule Wardrik.Delegation do
     do: GenServer.start_link(__MODULE__, wardrik, name: Module.concat(wardrik.name, Delegation))
 
   @doc """
-  Records that `:asker`, as `{agent, conversation}`, sent `:agent` the `:message`, by its ID, so
-  the answer goes back to `:asker`.
+  Records that `:asker`, as `{agent, conversation}`, sent `:agent` the `:message`.
 
       :ok =
         Wardrik.Delegation.asked(MyApp.AgentRuntime,

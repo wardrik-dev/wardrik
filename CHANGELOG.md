@@ -1,92 +1,98 @@
 # Changelog
 
-## 0.1.0-rc.2 (2026-10-31)
+## 0.1.0-rc.2 (2026-11-02)
 
-- `:resolver`, `Wardrik.Resolver`, required: the host says what each agent gets, as
-  `Wardrik.Resolved`: who it acts for, its policies, defaults and middleware, the MCP servers and
-  notify targets its definition's names reach, the workspace each channel posts its notices in
-  (`:channels`), and the other agents' workspaces it may mount, `:read` or `:write`
-  (`:workspaces`). A name it isn't resolved with reaches nothing, whatever is started by that
-  name.
-- `Wardrik.Channels.owned/2`: a channel's installations an owner holds, for a resolver's
-  `:channels`.
-- `Wardrik.refresh/2` takes `agents:`, or nothing for every awake agent.
-- `agents_list` gives each agent's definition `description`, so a model can tell agents apart.
-- `Wardrik.Resolved`'s `:notify` takes a target of your app's own as `{module, opts}`, checked
-  against its module's `c:Wardrik.Notify.schema/0` by `Wardrik.Notify.given/1`.
-- Secrets by reference: an MCP server's header secrets are named, read from the owner's vault as
-  each is used, and never answered.
-- `Wardrik.schema/0`: `Wardrik.start_link/1`'s options as a NimbleOptions schema, for a host that
-  reads them from a file. Each notify target's options are checked as Wardrik starts, by
-  `c:Wardrik.Notify.schema/0`.
-- `:credentials`, `:key_source` and `:grants`: where every agent's credentials, API keys and OAuth
-  grants come from, in place of the vault and `WardrikOAuth`.
-- `Wardrik.mcp/1` takes the instance's name or struct, and returns its `WardrikMCP`, for
-  `WardrikMCP.add/3`.
+- `Wardrik.Resolver` says what each agent gets, as a `Wardrik.Resolved`: who it works for, its
+  policy, defaults, middleware, MCP servers, notify targets, channel workspaces and shared
+  workspaces. An agent reaches only what it's given.
+- `Wardrik.refresh/2` applies what awake agents now resolve to, for every agent or `agents:`.
+- `Wardrik.schema/0` returns `Wardrik.start_link/1`'s options as a NimbleOptions schema.
+- `:credentials`, `:key_source` and `:grants` options say where credentials, API keys and OAuth
+  grants come from.
+- A resolver can give an agent a notify target of its own, as `{module, opts}`. Each target's
+  options are checked against `c:Wardrik.Notify.schema/0`.
+- `Wardrik.Channels.owned/2` lists a channel's installations for an owner your app names.
+- `agents_list` gives each agent's `description`.
+- `Wardrik.mcp/1` takes the instance's name or struct.
+- MCP servers' header secrets are `{:secret, name}`, read as each connection starts.
+- A vault secret is read only for its kind, as `:header` or `:signing_secret`.
 
 ### Breaking
 
-- Agent IDs are your app's opaque text, as `agt_01JF8X5RQ2`. Wardrik never parses or names
-  them: `Wardrik.AgentID` and the agent's `name` in snapshots and lists are gone.
-- A conversation is a field, not an ID suffix. Operations on an agent take an optional
-  `conversation:` in their options, as `Wardrik.Agent.ask(scope, "agt_1", "Hi", conversation: "C1")`,
-  like `Wardrik.Agent.stream/4` and `reply/4`. The authorizer decides a
-  conversation as its agent, `{:agent, id}`.
-- Events carry `agent` and `conversation`. `Wardrik.cursor/1` takes
-  `%{{agent, conversation} => sequence}`. `agents:` filters cover each agent's conversations,
-  and listeners follow every agent unless given `:agents`.
-- Workers' calls, notices, interrupts and `Wardrik.Delegation.asked/2`'s `:asker` carry the
-  conversation too.
-- `:oauth` requires `:resolver`, the `WardrikOAuth.Resolver` that says which OAuth app each
-  principal signs in with. `:oauth`'s `:providers` is gone.
-- OAuth apps and connected accounts are `wardrik_daemon`'s: `providers.*`, `connections.*`,
-  `Wardrik.Operations.Providers`, `Wardrik.Operations.Owners` and the `{:owner, owner}` resource
-  are gone.
-- MCP servers and notify targets that orgs and people add are `wardrik_daemon`'s:
-  `mcp_servers.*`, `notify_targets.*`, `Wardrik.Operations.NotifyTargets`, `Wardrik.Notify`'s
-  `owned/2`, `targets/2`, `key/1`, `key/2` and `:req_options`, `Wardrik.MCPTools.key/2` and
-  `serving/2`, and `:orgs` on `:mcp` servers and `:notify` targets are gone.
-- Each seam's callback takes one request struct, then its options: `authorize/2` a
-  `Wardrik.Authorizer.Request`, and `resolve/2` a `Wardrik.Resolver.Request`.
-- Implements rc.2 of the packages' seams, each taking a request struct:
-  `Wardrik.TriggerTarget` (`WardrikTriggers.Target`), and `Wardrik` as
-  `Wardrik.Server`. A channel's `request/2` and `notify/2` take the request first.
-- A `Wardrik.Authorizer.Request` names the principal, the action and the resource as `{kind, id}`,
-  as Cedar's requests do. An agent is `{:agent, id}`, its ID as given, and the deployment
-  `{:deployment, name}`.
-- No grants or tokens: `:authorizer` is required, and the request names the `actor` as well as
-  the principal, as RFC 8693 does. An agent's tools and its answers to other agents act for its
-  resolved principal with `actor: {:agent, id}`. `Wardrik.Statements`, `Wardrik.grant/2`,
-  `Wardrik.authenticate/2` and the `tokens.*` operations are gone, `Wardrik.as/3` takes
-  `:actor` and `:context`, and the operations over many agents take `agents` for `resources`.
-- No tenancy: Wardrik reads no owner or org from an ID. `Wardrik.Owners.Resolver` and the
-  `:workspace` option are gone; a definition's `workspace.shared` mounts other agents' workspaces
-  by `agent` ID, as the resolver shares them, and an agent's own tree is
-  `agents/<URL-encoded id>`. Agent tools
-  name agents by exact ID, and `agents_list` lists every agent the authorizer lets the agent read.
-  `Wardrik.Listener` takes `:agents`, exact IDs, for `:resources`. A worker call's `meta.agent` is
-  `%{"key" => id}`. A trigger's signing secret is the resolved principal's. `Wardrik.Notify.Room`
-  takes no `:approvers`, and posts in the workspace the agent's resolver gives for the channel,
-  or skips the notice.
-- A notify target another org's agents use reads as one that isn't there, and `*` and
-  `servers/*` reach the servers an agent is resolved with: Wardrik's own that serve its org, and
-  those its owners added.
-- `finish_sign_in/3` takes `as:`, the principal finishing the sign-in, and `sign_in_pages/2` and
-  `Wardrik.HTTP`'s `:principal` say who is at the browser. Without them, no callback finishes.
-- `Wardrik.start_link/1` raises `NimbleOptions.ValidationError` on a bad option, not
-  `ArgumentError`, and `nil` no longer stands for an unset option.
-- Secrets, API keys, ceilings and org settings move to `wardrik_daemon`: the `secrets.*` and
-  `ceilings.list` operations, `put_secret/2`, `fetch_secret/2`, `lookup_secret/2`,
-  `delete_secret/2` and `list_secrets/1,2`, `Wardrik.Keys` and `:deployment_keys`,
-  `Wardrik.Ceiling`, `Wardrik.Orgs`, `Wardrik.OrgSettings`, `:orgs` and `refresh/2`'s `org:` are
-  gone. Without `:key_source`, agents get no key source, and approving past a budget needs no
-  `ceiling.approve`.
-- `Wardrik.Channels.install_url/2`, `installed/2` and `uninstall/2` take the `:channel`, then
-  `:owner` and `:query`, or `:workspace`, by name. `Wardrik.Delegation.asked/2` takes `:asker`,
-  `:agent` and `:message`, `Wardrik.Workspaces.resolve/2` `:agent`, `:definition` and `:files`,
-  and `Wardrik.Operations.Changes`' functions the change's `:type`, `:agent`, `:subject` and
-  `:data`. `Wardrik.Runner.run/3` and `stream/3` run and stream an operation, and
-  `Wardrik.Answers.follow/4` takes its options last, as `[]` unless given.
+- `:authorizer` and `:resolver` are required.
+- `c:Wardrik.Authorizer.authorize/2` takes a `Wardrik.Authorizer.Request`. Resources are
+  `{:agent, id}` and `{:deployment, name}`. The request names the `actor` beside the principal.
+- `c:Wardrik.Resolver.resolve/2` takes a `Wardrik.Resolver.Request`.
+- `Wardrik.as/3` takes `:actor` and `:context`. Agent tools and agents' answers act for the
+  agent's resolved principal, with `actor: {:agent, id}`.
+- Wardrik keeps no permissions, pooled budgets, API keys or secrets of its own. Your authorizer,
+  resolver, `:credentials` and `:key_source` provide them.
+- Agent IDs are your app's opaque text. Wardrik never parses them, and agents have no `name`.
+- Conversations are a field, not part of the ID. Events carry `agent` and `conversation`, and
+  `Wardrik.cursor/1` takes `%{{agent, conversation} => sequence}`.
+- Operations on one agent take `conversation:` in their options:
+  `Wardrik.Agent.ask(scope, "agt_1", "Hi", conversation: "C1")`. Operations with two or more path
+  parameters take one keyword list:
+  `Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", conversation: "C1")`.
+- `agents:` filters and a listener's `:agents` take exact agent IDs, each with its conversations.
+- A definition's `workspace.shared` mounts other agents' workspaces by agent ID, as the resolver
+  shares them. An agent's own tree is `agents/<URL-encoded id>`.
+- `Wardrik.Notify.Room` posts in the workspace the resolver gives for its channel, or skips.
+- A trigger's `${NAME}` secret is the agent's resolved principal's.
+- `:oauth` requires `:resolver`, a `WardrikOAuth.Resolver`.
+- `finish_sign_in/3` takes `as:`. `sign_in_pages/2` and `Wardrik.HTTP`'s `:principal` say who is
+  at the browser. Without them, no sign-in finishes.
+- `Wardrik.start_link/1` raises `NimbleOptions.ValidationError` on a bad option.
+- `Wardrik.Channels` functions take keyword lists: `:channel`, then `:owner` and `:query`, or
+  `:workspace`.
+- `Wardrik.Delegation.asked/2` takes `:asker`, `:agent` and `:message`.
+- A channel's `request/2` and `notify/2` take the request first.
+
+### Upgrading from rc.1
+
+Wardrik no longer knows about users, orgs, owners, tokens or secrets. Your app does, and Wardrik
+asks it through modules you pass in.
+
+Required now:
+
+| Option | Behaviour | What it answers | In `wardrik_daemon` |
+| --- | --- | --- | --- |
+| `authorizer:` | `Wardrik.Authorizer` | May this request run? | `WardrikDaemon.Authorizer` |
+| `resolver:` | `Wardrik.Resolver` | What does this agent get? | `WardrikDaemon.Resolver` |
+| `oauth: [resolver: ...]` | `WardrikOAuth.Resolver` | Which OAuth app does this user sign in with? | `WardrikDaemon.OAuthApps` |
+| `identities:` (each channel) | `WardrikChannel.Identities` | Who is this chat member? | `WardrikDaemon.ChannelMembers` |
+| `Wardrik.HTTP`'s `authenticator:` | `WardrikHTTP.Authenticator` | Who sent this request? | `WardrikDaemon.Authenticator` |
+
+Optional:
+
+| Option | Behaviour | Default | In `wardrik_daemon` |
+| --- | --- | --- | --- |
+| `key_source:` | `WardrikCore.Keys` | none; ReqLLM reads its config and env | `WardrikDaemon.Keys` |
+| `credentials:` | `WardrikCore.Credentials` | Wardrik's vault, with `:keys` | the default |
+
+Moved to your app (the daemon's versions in brackets):
+
+- Tokens and grants: `Wardrik.Statement`, `grant/2`, `tokens.*` (`WardrikDaemon.Tokens`,
+  `/v1/tokens`).
+- Orgs, settings and ceilings: `Wardrik.Orgs`, `Wardrik.OrgSettings`, `Wardrik.Ceiling`
+  (`WardrikDaemon.Orgs`, `WardrikDaemon.Ceiling`).
+- Secrets and API keys: `put_secret/2` and friends, `secrets.*`, `Wardrik.Keys`
+  (`WardrikDaemon.Secrets`, `WardrikDaemon.Keys`, `/v1/owners/{owner}/secrets`).
+- OAuth apps and connected accounts: `providers.*`, `connections.*`
+  (`WardrikDaemon.OAuthApps`, `WardrikDaemon.Connections`, `/v1/connections`).
+- MCP servers and notify targets people add: `mcp_servers.*`, `notify_targets.*`
+  (`WardrikDaemon.Servers`, `WardrikDaemon.NotifyTargets`).
+- Agent names and owners: `Wardrik.AgentID`. Agent IDs are opaque. The daemon mints `agt_` IDs
+  and keeps names in `WardrikDaemon.AgentRecords`.
+
+Call sites:
+
+- Conversations are an option, not an ID suffix:
+  `Wardrik.Agent.ask(scope, "agt_1", "Hi", conversation: "C1")`.
+- Two IDs go in one keyword list:
+  `Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", conversation: "C1")`.
+- `Wardrik.as(instance, principal, actor: ..., context: ...)` replaces statements.
+- Behaviour callbacks take one request struct, then options.
 
 ## 0.1.0-rc.1 (2026-10-30)
 

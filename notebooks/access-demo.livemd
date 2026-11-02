@@ -4,20 +4,13 @@
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}, {:kino, "~> 0.19"}])
 ```
 
-## What you'll build
+## An authorizer
 
-By the end, your authorizer lets Maria do anything with her agent, lets Jon read it but not stop
-it, and keeps Sam from seeing it at all. An agent acting through its tools can't forget agents,
-and in a chat only the owner or whoever asked decides a call. Nothing here calls a model, so you
-need no key.
+Wardrik asks your authorizer before every operation. This one lets Maria do anything with her
+agent, Jon read it, and Sam not see it. Agents can't forget agents. In a chat, only the owner or
+whoever asked decides. Nothing here calls a model.
 
-## Write an authorizer
-
-Wardrik keeps no grants or roles. Every operation asks your authorizer, with a
-`Wardrik.Authorizer.Request`: on whose behalf it acts (`principal`), who acts (`actor`), the
-`action`, the `resource` as `{kind, id}`, and what the actor knows (`context`).
-
-Your app knows who belongs to which org and who owns each agent. Maps stand in for your tables:
+Maps stand in for your tables:
 
 ```elixir
 defmodule MyApp.Authorizer do
@@ -25,38 +18,27 @@ defmodule MyApp.Authorizer do
 
   alias Wardrik.Authorizer.Request
 
-  # Who belongs to which org: people, and the org itself, for its own agents.
-  @orgs %{
-    "acme" => "acme",
-    "acme/@maria" => "acme",
-    "acme/@jon" => "acme",
-    "acme/@ana" => "acme",
-    "globex/@sam" => "globex"
-  }
+  @teams %{"maria" => "acme", "jon" => "acme", "ana" => "acme", "sam" => "globex"}
+  @owners %{"agt_books" => "maria", "agt_triage" => "maria"}
 
-  # Who owns each agent.
-  @owners %{"agt_triage" => "acme", "agt_books" => "acme/@maria"}
-
-  # What anyone in the agent's org may do. The rest is its owner's.
+  # What anyone on the owner's team may do. The rest is the owner's.
   @shared ["agent.read", "agent.events", "agent.ask", "agent.decide"]
 
   @impl true
-  def authorize(%Request{resource: {:agent, id}, principal: principal} = request, _opts) do
-    owner = Map.get(@owners, id)
+  def authorize(%Request{resource: {:agent, id}, principal: %{id: who}} = request, _opts) do
+    owner = @owners[id]
 
-    if owner && @orgs[owner] == @orgs[principal.id],
+    if owner && @teams[owner] == @teams[who],
       do: allowed(request, owner),
       else: {:error, :not_found}
   end
 
   def authorize(_request, _opts), do: {:error, :forbidden}
 
-  # Agents never forget agents, whoever they act for.
-  defp allowed(%Request{actor: {:agent, _id}, action: "agent.forget"}, _owner),
+  defp allowed(%Request{actor: {:agent, _}, action: "agent.forget"}, _owner),
     do: {:error, :forbidden}
 
-  # In a chat, only the agent's owner or whoever asked decides.
-  defp allowed(%Request{actor: {:channel, _name}, action: "agent.decide"} = request, owner) do
+  defp allowed(%Request{actor: {:channel, _}, action: "agent.decide"} = request, owner) do
     if request.principal.id in [owner, request.context[:asked_by]],
       do: :ok,
       else: {:error, :forbidden}
@@ -69,54 +51,30 @@ end
 
 defmodule MyApp.Agents do
   @behaviour Wardrik.Resolver
-
-  # Every agent here works for Maria.
-  @impl true
-  def resolve(_request, _opts),
-    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+  def resolve(_request, _opts), do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("maria")}}
 end
-```
 
-It answers:
-
-* `:ok` - allowed.
-* `{:error, :not_found}` - the principal can't see the agent. They learn nothing about it.
-* `{:error, :forbidden}` - they can see it, but may not take the action.
-
-## Setup
-
-Start Wardrik with the authorizer, act as Maria, and define her agent:
-
-```elixir
-{:ok, _} = Wardrik.start_link(
+{:ok, _} =
+  Wardrik.start_link(
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.Authorizer, []},
     resolver: {MyApp.Agents, []}
   )
 
-maria = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
-
-{:ok, _agent} =
-  Wardrik.Agent.define(maria, "agt_books",
-    model: "anthropic:claude-haiku-4-5",
-    instructions: "You keep Maria's books."
-  )
+maria = Wardrik.as(MyApp.AgentRuntime, "maria")
+{:ok, _} = Wardrik.Agent.define(maria, "agt_books", model: "anthropic:claude-haiku-4-5")
 ```
 
-`:authorizer` is required. Wardrik won't start without one.
+- `:ok` - allowed.
+- `{:error, :not_found}` - they can't see it, and learn nothing about it.
+- `{:error, :forbidden}` - they see it, but may not do this.
 
 ## People
 
-A scope names who acts. Jon is in acme, and Sam is in globex:
-
 ```elixir
-jon = Wardrik.as(MyApp.AgentRuntime, "acme/@jon")
-sam = Wardrik.as(MyApp.AgentRuntime, "globex/@sam")
-```
+jon = Wardrik.as(MyApp.AgentRuntime, "jon")
+sam = Wardrik.as(MyApp.AgentRuntime, "sam")
 
-Each tries the same four things on Maria's agent:
-
-```elixir
 tries = [
   read: &Wardrik.Agent.read(&1, "agt_books"),
   events: &Wardrik.Agent.events(&1, "agt_books"),
@@ -139,80 +97,47 @@ end
 may.(maria: maria, jon: jon, sam: sam)
 ```
 
-* Maria owns the agent, so she may do all of it.
-* Jon may read it and its events. `stop` and `define` are `forbidden`: he sees the agent, but
-  they're Maria's.
-* Sam gets `not_found` for everything. The agent isn't in his org, so for him it isn't there.
-
-Lists ask the authorizer once per agent, and leave out those it refuses:
+Lists leave out what's refused:
 
 ```elixir
 {Wardrik.Agents.list(jon), Wardrik.Agents.list(sam)}
 ```
 
-## An agent acting
+## An agent
 
-An agent's `agents/*` and `self/*` tools act for the principal it resolves to, with the agent as
-actor. Here's the scope `agt_triage` acts in, when your `Wardrik.Resolver` gives it `acme`:
-
-```elixir
-triage = Wardrik.as(MyApp.AgentRuntime, "acme", actor: {:agent, "agt_triage"})
-
-may.(triage: triage)
-```
-
-It may read Maria's agent, as anyone in acme may. Stopping it is Maria's. And it may never forget
-an agent, not even its own:
+An agent's tools act for the person it works for, with `actor: {:agent, id}`:
 
 ```elixir
-answer.(Wardrik.Agent.forget(triage, "agt_triage"))
+triage = Wardrik.as(MyApp.AgentRuntime, "maria", actor: {:agent, "agt_triage"})
+
+answer.(Wardrik.Agent.forget(triage, "agt_books"))
 ```
 
-The actor lets the authorizer give an agent less than the principal it acts for.
+## A chat member
 
-## A chat member deciding
-
-In a chat, a member acts as whoever your app says they are, with the channel as actor. When they
-decide a call, the channel adds who asked. The channel builds this scope; here it's built by hand:
+The channel adds who asked. Here the scope is built by hand:
 
 ```elixir
 deciding = fn member ->
   Wardrik.as(MyApp.AgentRuntime, member,
     actor: {:channel, "slack"},
-    context: %{installation: %{owner: "acme", workspace: "T0123"}, asked_by: "acme/@jon"}
+    context: %{installation: %{owner: "acme", workspace: "T0123"}, asked_by: "jon"}
   )
 end
 
-members = [
-  asker: deciding.("acme/@jon"),
-  owner: deciding.("acme/@maria"),
-  bystander: deciding.("acme/@ana")
-]
-
-for {name, scope} <- members do
+for member <- ["jon", "maria", "ana"] do
   decides =
-    Wardrik.Authorizer.authorize(scope,
+    Wardrik.Authorizer.authorize(deciding.(member),
       action: "agent.decide",
       resource: {:agent, "agt_books"}
     )
 
-  %{who: name, decides: inspect(decides)}
+  %{who: member, decides: inspect(decides)}
 end
 |> Kino.DataTable.new(keys: [:who, :decides], name: "Who decides in Slack")
 ```
 
-`Wardrik.Authorizer.authorize/2` asks the authorizer as an operation would. The asker and the
-owner may decide; the bystander may not.
-
-## Over HTTP
-
-Wardrik issues no tokens. Your app's sessions or tokens are the credential: give `Wardrik.HTTP`
-an `authenticator:`, a `WardrikHTTP.Authenticator` that turns each request into a scope with
-`Wardrik.as/3`. The authorizer decides the rest.
-
 ## Where next
 
-* [Who may do what](https://hexdocs.pm/wardrik/access.html): every resource and action, operations
-  over many agents, and authenticating over HTTP.
-* [Events notebook](events-demo.livemd): the audit records what each person did.
-* [Tools notebook](tools-demo.livemd): give agents tools, and decide which calls wait for a person.
+- [Who may do what](https://hexdocs.pm/wardrik/access.html): every action, and HTTP.
+- [See everything an agent did](events-demo.livemd)

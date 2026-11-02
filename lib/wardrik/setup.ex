@@ -1,7 +1,7 @@
 defmodule Wardrik.Setup do
-  @moduledoc "Builds `%Wardrik{}` from `Wardrik.start_link/1`'s options, and each agent's options."
+  @moduledoc "Builds Wardrik's and each agent's options."
 
-  @doc "Builds a `%Wardrik{}` from `Wardrik.start_link/1`'s options, once they're validated."
+  @doc "Builds a `%Wardrik{}` from validated `Wardrik.start_link/1` options."
   @spec wardrik(keyword()) :: Wardrik.t()
   def wardrik(opts) do
     name = Keyword.fetch!(opts, :name)
@@ -43,24 +43,24 @@ defmodule Wardrik.Setup do
   end
 
   @doc """
-  Returns the price of the model `spec`, in US dollars per million tokens.
+  Returns the price of the model `spec`, in dollars per million tokens. Wardrik's `:prices` uses it.
 
       # Its own rates
       Wardrik.Setup.price("acme:model-1", input: 0.5, output: 1.5)
 
-      # Another model's catalog price, 10% more
+      # Another model's catalog price, plus 10%
       Wardrik.Setup.price("zai_coding_plan:glm-5.1", priced_as: "zai:glm-5.1", markup: 0.1)
 
   ## Options
 
-    * `:input` and `:output` - rates. Both required unless `:priced_as` is set.
-    * `:cache_read` and `:cache_write` - optional rates.
-    * `:priced_as` - a model whose catalog price to use. Can't be combined with rates.
-    * `:markup` - added on top, as `0.1` for 10%. `0` unless set.
+    * `:input`, `:output` - rates. Required without `:priced_as`.
+    * `:cache_read`, `:cache_write` - optional rates.
+    * `:priced_as` - a model whose catalog price to use, instead of rates.
+    * `:markup` - added on top, as `0.1`. `0` unless set.
 
-  Raises `ArgumentError` if the price is invalid.
+  Raises `ArgumentError` on an invalid price.
   """
-  @spec price(String.t(), keyword()) :: WardrikCore.Usage.price()
+  @spec price(String.t(), keyword()) :: WardrikCore.price()
   def price(spec, price) do
     {markup, price} = Keyword.pop(price, :markup, 0)
     for {kind, rate} <- priced(spec, price), do: {kind, rate * (1 + marked_up(spec, markup))}
@@ -103,10 +103,7 @@ defmodule Wardrik.Setup do
   end
 
   @doc """
-  Returns the options `WardrikCore.start_agent/2` takes for the agent `opts` describe.
-
-  Adds Wardrik's events, prices, credentials and key source, spending, middleware and policies. The
-  agent's own `:policy` is held alongside Wardrik's.
+  Returns `WardrikCore.start_agent/2`'s options for the agent `opts` describe, with Wardrik's added.
   """
   @spec agent(Wardrik.t(), keyword()) :: keyword()
   def agent(%Wardrik{} = wardrik, opts) do
@@ -131,7 +128,7 @@ defmodule Wardrik.Setup do
   def policies([%WardrikPolicy{} | _rest] = policies), do: policies
   def policies(rules), do: [policy(rules)]
 
-  @doc "Builds a policy from its rules. Returns a `WardrikPolicy` or `nil` as given."
+  @doc "Builds a policy from its rules."
   @spec policy(WardrikPolicy.t() | keyword() | map() | nil) :: WardrikPolicy.t() | nil
   def policy(nil), do: nil
   def policy(%WardrikPolicy{} = policy), do: policy

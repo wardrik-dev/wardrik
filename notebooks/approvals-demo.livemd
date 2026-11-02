@@ -4,16 +4,14 @@
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}, {:kino, "~> 0.19"}])
 ```
 
-## What you'll build
-
-An agent asks to pay two large bills and waits. You approve one with a note and deny the other with
-a reason, in two forms. The agent carries on with what you decided.
-
 ## Setup
 
-A `books` capability gives agents a `pay_bill` tool. It only pretends to pay:
+An agent asks to pay two large bills. You approve one and deny the other. Add
+`ANTHROPIC_API_KEY` in the Secrets panel. A run costs about a cent.
 
 ```elixir
+System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
+
 defmodule MyApp.Books do
   @behaviour WardrikCore.Capability
 
@@ -23,13 +21,8 @@ defmodule MyApp.Books do
       WardrikCore.Tool.new!(
         name: "pay_bill",
         description: "Pays a vendor's bill, in dollars.",
-        schema: [
-          vendor: [type: :string, required: true],
-          amount: [type: :integer, required: true]
-        ],
-        run: fn %{vendor: vendor, amount: amount}, _context ->
-          {:ok, "Paid #{vendor} $#{amount}."}
-        end
+        schema: [vendor: [type: :string, required: true], amount: [type: :integer, required: true]],
+        run: fn %{vendor: vendor, amount: amount}, _ctx -> {:ok, "Paid #{vendor} $#{amount}."} end
       )
     ]
   end
@@ -37,18 +30,12 @@ end
 
 defmodule MyApp.AllowAll do
   @behaviour Wardrik.Authorizer
-
-  @impl true
   def authorize(_request, _opts), do: :ok
 end
 
 defmodule MyApp.Agents do
   @behaviour Wardrik.Resolver
-
-  # Every agent here works for Maria.
-  @impl true
-  def resolve(_request, _opts),
-    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+  def resolve(_request, _opts), do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("maria")}}
 end
 
 {:ok, _} =
@@ -59,23 +46,12 @@ end
     capabilities: [books: MyApp.Books]
   )
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
-```
-
-`MyApp.AllowAll` lets every scope do anything. In your app, an authorizer decides who may do
-what; see [Who may do what](access-demo.livemd).
-
-The agent calls a model. Add `ANTHROPIC_API_KEY` in the Secrets panel first. A run costs about a
-cent.
-
-```elixir
-System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
+scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 
 {:ok, _agent} =
   Wardrik.Agent.define(scope, "agt_books",
     model: "anthropic:claude-haiku-4-5",
-    instructions:
-      "You pay Maria's bills. Pay every bill she names, each with its own pay_bill call.",
+    instructions: "You pay Maria's bills. Pay every bill she names, each with its own pay_bill call.",
     tools: ["books"],
     policy: [
       ask: %{"pay_bill(amount >= 1000)" => "A bill this size needs a person."},
@@ -84,11 +60,9 @@ System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
   )
 ```
 
-## An inbox for waiting calls
+## An inbox
 
-`Wardrik.Interrupts.list/2` returns the calls waiting on a person, across every agent the scope can
-see. The inbox shows a form for each. A form approves its call, with a note, or denies it, with a
-reason:
+`Wardrik.Interrupts.list/2` returns the waiting calls. Each gets a form:
 
 ```elixir
 defmodule MyApp.Inbox do
@@ -129,11 +103,7 @@ defmodule MyApp.Inbox do
     end)
 
     Kino.Layout.grid([
-      Kino.Markdown.new("""
-      **#{interrupt.name}** `#{JSON.encode!(arguments)}` on `#{interrupt.agent}`
-
-      #{interrupt.message}
-      """),
+      Kino.Markdown.new("**#{interrupt.name}** `#{JSON.encode!(arguments)}`\n\n#{interrupt.message}"),
       form,
       outcome
     ])
@@ -146,8 +116,7 @@ end
 
 ## Follow the agent
 
-`Wardrik.Events.stream_list/2` follows the agent's events. Each time the agent stops to wait, the
-inbox is drawn again. The log shows what the agent does:
+The inbox redraws each time the agent stops to wait:
 
 ```elixir
 inbox = Kino.Frame.new()
@@ -170,10 +139,7 @@ Kino.listen(events, %{}, fn {event, _cursor}, arguments ->
         "You #{data["decision"]} `#{data["interrupt"]["id"]}`. #{data["note"] || data["reason"]}"
 
       "wardrik.tool_call.completed" ->
-        "`#{data["tool"]["name"]}` #{data["status"]}: #{inspect(call["result"] || data["error"]["message"])}"
-
-      "wardrik.message.completed" ->
-        for %{"type" => "text", "content" => text} <- data["message"]["parts"], into: "", do: text
+        "`#{data["tool"]["name"]}` #{data["status"]}"
 
       "wardrik.run.completed" ->
         MyApp.Inbox.render(inbox, scope, arguments)
@@ -196,37 +162,21 @@ end)
 
 ## Ask for two payments
 
+Approve Initech with a note. Deny Globex with a reason.
+
 ```elixir
 Kino.Layout.grid([inbox, log], columns: 2) |> Kino.render()
 
-Wardrik.Agent.reply(
-  scope,
-  "agt_books",
-  "Pay Initech's $9400 bill and Globex's $2100 bill."
-)
+Wardrik.Agent.reply(scope, "agt_books", "Pay Initech's $9400 bill and Globex's $2100 bill.")
 ```
 
-The run stops and returns `{:waiting, interrupts}`. The inbox above now holds a form for each call.
-
-1. Approve Initech with the note "Pay it from the ops account."
-2. Deny Globex with the reason "Not before the 1st."
-
-Watch the log:
-
-* An approval runs the call as the model wrote it. The note reaches the model beside the result.
-* A denial reaches the model as the call's error, with your reason.
-* Each call is decided on its own, in any order. An approved call runs straight away. The model
-  carries on once no call waits.
-* Each decision is recorded as the scope's principal's, here `acme/@maria`.
-
-A model sometimes asks for one bill at a time. Then the second form appears once you've decided
-the first.
+- An approval runs the call. The note reaches the model beside the result.
+- A denial reaches the model as the call's error.
+- The model carries on once no call waits.
 
 ## In code
 
-The forms call `Wardrik.Agent.approve/2` and `Wardrik.Agent.deny/2`. To decide several calls in
-one go, `Wardrik.Agent.decide/3` takes a map of call IDs to `:approve`, `{:approve, note}` or
-`{:deny, reason}`:
+`Wardrik.Agent.decide/3` decides several at once:
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -237,11 +187,7 @@ Wardrik.Agent.decide(scope, "agt_books", %{
 })
 ```
 
-Deciding a call the agent no longer waits on returns a `conflict` error.
-
 ## Where next
 
-* [Approvals guide](https://hexdocs.pm/wardrik/approvals.html) - every way to decide a call.
-* [Events guide](https://hexdocs.pm/wardrik/events.html) - following agents into your app.
-* [Rules the model can't rewrite](policies-demo.livemd) - the policies that make an agent ask.
-* [Spend you can cap](budgets-demo.livemd) - budgets that ask before spending more.
+- [Approvals guide](https://hexdocs.pm/wardrik/approvals.html)
+- [Rules the model can't rewrite](policies-demo.livemd)

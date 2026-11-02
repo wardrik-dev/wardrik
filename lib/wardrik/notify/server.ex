@@ -1,11 +1,5 @@
 defmodule Wardrik.Notify.Server do
-  @moduledoc """
-  Sends notices. One runs per cluster.
-
-  It follows every agent's log and sends what each agent's route asks for. It saves its cursor
-  after each event, so it picks up there after a restart. The first time it starts, it begins
-  with new events.
-  """
+  @moduledoc false
 
   use DurableServer, vsn: 1
 
@@ -20,7 +14,7 @@ defmodule Wardrik.Notify.Server do
   @types ~w(wardrik.tool_call.started wardrik.run.interrupted wardrik.run.failed
             wardrik.run.completed wardrik.run.cancelled)
 
-  @doc "Returns the notifier's children: its supervisor, and a child that starts it there."
+  @doc "Returns the notifier's children."
   @spec children(Wardrik.t()) :: [Supervisor.child_spec()]
   def children(wardrik) do
     supervisor = Module.concat(wardrik.name, Notify)
@@ -38,7 +32,7 @@ defmodule Wardrik.Notify.Server do
     [durable, %{id: __MODULE__, start: {__MODULE__, :start, [supervisor]}, restart: :transient}]
   end
 
-  @doc "Starts the notifier under `supervisor`, unless it's already running in the cluster."
+  @doc "Starts the notifier, unless it runs elsewhere in the cluster."
   @spec start(atom()) :: :ignore | {:error, term()}
   def start(supervisor) do
     child = {__MODULE__, key: @key, initial_state: %{cursor: nil, calls: %{}}}
@@ -214,11 +208,7 @@ defmodule Wardrik.Notify.Server do
 end
 
 defmodule Wardrik.Notify.Follower do
-  @moduledoc """
-  Follows every agent's log for `Wardrik.Notify.Server`.
-
-  It passes each event to the server and waits for a reply, so only one is in flight at a time.
-  """
+  @moduledoc false
 
   use Wardrik.Listener
 

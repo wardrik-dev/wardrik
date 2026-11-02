@@ -1,12 +1,5 @@
 defmodule Wardrik.Runner do
-  @moduledoc """
-  Runs operations the same way for every surface:
-
-    1. Finds the operation in the catalog.
-    2. Validates the input against its schema.
-    3. Asks the authorizer.
-    4. Calls the handler.
-  """
+  @moduledoc false
 
   alias Wardrik.Authorizer
   alias Wardrik.Catalog
@@ -18,7 +11,7 @@ defmodule Wardrik.Runner do
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
   def run(scope, id, input), do: ran(scope, id, input, :handlers)
 
-  @doc "Streams the operation `id` in `scope`. Returns a `not_supported` error if it can't be."
+  @doc "Streams the operation `id` in `scope`, or returns `not_supported`."
   @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
   def stream(scope, id, input), do: ran(scope, id, input, :streams)
 

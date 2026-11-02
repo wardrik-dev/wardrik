@@ -10,7 +10,7 @@ defmodule Wardrik.Resolution do
 
   @rounds 25
 
-  @doc "Returns the agent `id`'s start options, from its JSON `definition` and what it resolves to."
+  @doc "Returns the agent `id`'s start options, from its definition and what it resolves to."
   @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
     with {:ok, resolved} <- Resolver.resolve(wardrik, %Request{agent: id, definition: definition}),
@@ -72,8 +72,7 @@ defmodule Wardrik.Resolution do
   end
 
   @doc """
-  Refreshes each awake agent of `ids`, or every awake one, with its conversations. Returns a line
-  for each failure.
+  Refreshes the awake agents `ids`, or all of them. Returns a line for each failure.
   """
   @spec refresh(Wardrik.t(), [String.t()] | :all) :: [String.t()]
   def refresh(wardrik, ids) do
@@ -107,7 +106,7 @@ defmodule Wardrik.Resolution do
     end
   end
 
-  @doc "Returns the servers the definition names that aren't available: not resolved, or down."
+  @doc "Returns the servers the definition names that aren't resolved or are down."
   @spec missing(Wardrik.t(), String.t(), map()) :: [String.t()]
   def missing(wardrik, id, definition) do
     servers =

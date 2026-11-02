@@ -4,14 +4,10 @@
 Mix.install([{:wardrik, "~> 0.1.0-rc.2"}, {:kino, "~> 0.19"}])
 ```
 
-## What you'll build
-
-By the end, you watch an agent's events arrive as it works, read its run back step by step, see
-who changed what, and have your own module react when a run ends.
-
 ## Setup
 
-Give the agent one tool, so its run has a step to show:
+Watch an agent's events arrive, read its run back, see who changed what, and react when a run
+ends.
 
 ```elixir
 defmodule MyApp.Notes do
@@ -32,18 +28,12 @@ end
 
 defmodule MyApp.AllowAll do
   @behaviour Wardrik.Authorizer
-
-  @impl true
   def authorize(_request, _opts), do: :ok
 end
 
 defmodule MyApp.Agents do
   @behaviour Wardrik.Resolver
-
-  # Every agent here works for Maria.
-  @impl true
-  def resolve(_request, _opts),
-    do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("acme/@maria")}}
+  def resolve(_request, _opts), do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("maria")}}
 end
 
 {:ok, _} =
@@ -54,7 +44,7 @@ end
     capabilities: [notes: MyApp.Notes]
   )
 
-scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
+scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 
 {:ok, agent} =
   Wardrik.Agent.define(scope, "agt_assistant",
@@ -65,13 +55,9 @@ scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
   )
 ```
 
-`MyApp.AllowAll` lets every scope do anything. In your app, an authorizer decides who may do
-what; see [Who may do what](access-demo.livemd).
+## A listener
 
-## React to events in your own module
-
-A listener hands your module each event it follows, with the cursor past it. This one posts a line
-to a frame each time a run ends:
+It posts a line each time a run ends. Options you start it with arrive in `listener.options`:
 
 ```elixir
 defmodule MyApp.RunAlerts do
@@ -81,53 +67,32 @@ defmodule MyApp.RunAlerts do
 
   @impl true
   def handle(%Wardrik.Event{} = event, listener) do
-    line = "**#{event.type}** for `#{event.subject}` at #{Calendar.strftime(event.time, "%H:%M:%S")}"
-    Kino.Frame.append(listener.options[:frame], Kino.Markdown.new(line))
+    Kino.Frame.append(listener.options[:frame], Kino.Markdown.new("**#{event.type}** for `#{event.agent}`"))
     :ok
   end
 end
 
 alerts = Kino.Frame.new() |> Kino.render()
 {:ok, _} = Kino.start_child({MyApp.RunAlerts, frame: alerts})
-
 Kino.nothing()
 ```
 
-The frame stays empty until a run ends. Options you start it with, such as `frame:`, reach
-`handle/2` in `listener.options`.
-
-In your app, save `listener.cursor` with your work and return it from `cursor/1`. The listener
-then carries on from it after a restart. See
-[Events and the audit](https://hexdocs.pm/wardrik/events.html).
-
-## Watch events as they're written
-
-Take the cursor where the log stands. Then follow every event after it into a table:
+## Follow events
 
 ```elixir
 {:ok, cursor} = Wardrik.Events.head(scope)
-
 live = Kino.Frame.new() |> Kino.render()
-
-row = fn event ->
-  %{
-    time: Calendar.strftime(event.time, "%H:%M:%S.%f"),
-    type: event.type,
-    subject: event.subject
-  }
-end
 
 Kino.start_child(
   {Task,
    fn ->
-     {:ok, events} =
-       Wardrik.Events.stream_list(scope, after: cursor, agents: ["agt_assistant"])
+     {:ok, events} = Wardrik.Events.stream_list(scope, after: cursor, agents: ["agt_assistant"])
 
      events
      |> Stream.reject(fn {event, _cursor} -> String.ends_with?(event.type, ".delta") end)
      |> Enum.reduce([], fn {event, _cursor}, rows ->
-       rows = rows ++ [row.(event)]
-       Kino.Frame.render(live, Kino.DataTable.new(rows, keys: [:time, :type, :subject]))
+       rows = rows ++ [%{time: event.time, type: event.type}]
+       Kino.Frame.render(live, Kino.DataTable.new(rows, keys: [:time, :type]))
        rows
      end)
    end}
@@ -136,47 +101,25 @@ Kino.start_child(
 Kino.nothing()
 ```
 
-The stream never ends. It leaves out `message.delta` events, one per chunk of text, to keep the
-table short.
-
-Now ask the agent something. This calls a model, so add your Anthropic key as `ANTHROPIC_API_KEY`
-in the Secrets panel (the key icon on the left). It's two small calls, under a cent.
+Now ask the agent. Add `ANTHROPIC_API_KEY` in the Secrets panel. It costs under a cent.
 
 ```elixir
 System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
-```
 
-Watch the table above fill:
-
-```elixir
 {:ok, reply} = Wardrik.Agent.reply(scope, agent, "What's on my notes?")
 reply.text
 ```
 
-The run starts, calls the model, calls `list_notes`, calls the model again, and completes. The
-listener's frame shows `wardrik.run.completed`.
-
 ## Read a run back
-
-The timeline is the conversation as a person reads it. Each run lists its steps:
 
 ```elixir
 {:ok, timeline} = Wardrik.Agent.timeline(scope, agent)
 
-steps =
-  for %{"kind" => "run"} = run <- timeline.items, step <- run["steps"] do
-    %{
-      run: String.slice(run["id"], 0, 12),
-      step: step["type"],
-      detail: step["name"] || step["text"],
-      status: step["status"]
-    }
-  end
-
-Kino.DataTable.new(steps, keys: [:run, :step, :detail, :status], name: "Steps")
+for %{"kind" => "run"} = run <- timeline.items, step <- run["steps"] do
+  %{step: step["type"], detail: step["name"] || step["text"], status: step["status"]}
+end
+|> Kino.DataTable.new(keys: [:step, :detail, :status], name: "Steps")
 ```
-
-`Wardrik.Agent.runs/3` sums each run up:
 
 ```elixir
 {:ok, runs} = Wardrik.Agent.runs(scope, agent)
@@ -188,9 +131,7 @@ Kino.DataTable.new(
 )
 ```
 
-## Read the log back
-
-Every event is kept. Read them back a page at a time, after a cursor or from the start:
+## Read the log
 
 ```elixir
 {:ok, page} = Wardrik.Agent.events(scope, agent, limit: 100)
@@ -201,43 +142,26 @@ page.events
 |> Kino.DataTable.new(keys: [:type, :count], name: "Events by type")
 ```
 
-Each event is a [CloudEvent](https://cloudevents.io). Its `data` has the shape the protocol gives
-its type. Pass `page.next` as `after:` to read the next page.
-
 ## Who changed what
 
-Agents' events say what agents did. The audit says what people did: defining, deciding,
-forgetting. Change Maria's agent, then read the audit. Reading it needs your authorizer to allow
-`deployment.audit` on `{:deployment, name}`, as `MyApp.AllowAll` does:
+The audit records what people did. It needs `deployment.audit`:
 
 ```elixir
 {:ok, _agent} =
   Wardrik.Agent.define(scope, "agt_assistant",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You keep Maria's notes. Answer in bullet points.",
-    tools: ["notes"],
-    policy: [budget: [usd: 0.25, per: :day]]
+    tools: ["notes"]
   )
 
 {:ok, audit} = Wardrik.Audit.list(scope, limit: 50)
 
 audit.events
-|> Enum.map(fn event ->
-  %{
-    time: Calendar.strftime(event.time, "%H:%M:%S"),
-    type: event.type,
-    actor: event.data["actor"]["id"],
-    subject: event.subject
-  }
-end)
-|> Kino.DataTable.new(keys: [:time, :type, :actor, :subject], name: "Audit")
+|> Enum.map(&%{time: &1.time, type: &1.type, by: &1.data["actor"]["id"], subject: &1.subject})
+|> Kino.DataTable.new(keys: [:time, :type, :by, :subject], name: "Audit")
 ```
 
 ## Where next
 
-* [Events and the audit](https://hexdocs.pm/wardrik/events.html): cursors, listeners in your
-  supervision tree, and trimmed logs.
-* [Who may do what](https://hexdocs.pm/wardrik/access.html): the authorizer that decides which
-  events a scope sees.
-* [Tools notebook](tools-demo.livemd): tools that report their own cost.
-* [Triggers notebook](triggers-demo.livemd): agents that wake on a clock or a webhook.
+- [Events and the audit](https://hexdocs.pm/wardrik/events.html)
+- [Agents that wake themselves](triggers-demo.livemd)

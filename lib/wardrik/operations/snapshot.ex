@@ -1,5 +1,5 @@
 defmodule Wardrik.Operations.Snapshot do
-  @moduledoc "Reads agents' status and logs for operations."
+  @moduledoc false
 
   alias Wardrik.Error
   alias Wardrik.Operations.Running
@@ -24,7 +24,7 @@ defmodule Wardrik.Operations.Snapshot do
     end)
   end
 
-  @doc "Returns `\"asleep\"` if the agent `key` isn't running, or else its `status/1`."
+  @doc "Returns the agent `key`'s status, or `\"asleep\"`."
   @spec state(Wardrik.t(), Running.key(), map()) :: String.t()
   def state(wardrik, key, activity) do
     case Running.whereis(wardrik, key) do
@@ -56,7 +56,7 @@ defmodule Wardrik.Operations.Snapshot do
   def conversation(output, nil), do: output
   def conversation(output, conversation), do: Map.put(output, "conversation", conversation)
 
-  @doc "Returns when each of the agent `id`'s triggers runs next, by name. Webhooks are `nil`."
+  @doc "Returns each trigger's next run by name. Webhooks are `nil`."
   @spec next_runs(Wardrik.t(), String.t()) :: %{String.t() => String.t() | nil}
   def next_runs(wardrik, id) do
     for {trigger, next_at} <- WardrikTriggers.list(Wardrik.triggers(wardrik), id),
@@ -110,7 +110,7 @@ defmodule Wardrik.Operations.Snapshot do
   def typed?(%{"type" => "wardrik.events.dropped"}, _types), do: true
   def typed?(%{"type" => type}, types), do: type in types
 
-  @doc "Returns a page of the logs `resources` cover."
+  @doc "Returns a page of the given logs."
   @spec page(Scope.t(), WardrikEvents.resources(), keyword()) ::
           {:ok, map()} | {:error, Error.t()}
   def page(%Scope{wardrik: wardrik}, resources, opts) do
@@ -120,7 +120,7 @@ defmodule Wardrik.Operations.Snapshot do
     |> cursor_read()
   end
 
-  @doc "Streams the logs `resources` cover."
+  @doc "Streams the given logs."
   @spec stream(Scope.t(), WardrikEvents.resources(), keyword()) ::
           {:ok, Enumerable.t()} | {:error, Error.t()}
   def stream(%Scope{wardrik: wardrik}, resources, opts) do
