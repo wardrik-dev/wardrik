@@ -1,7 +1,7 @@
 if Code.ensure_loaded?(Ecto.Migration) do
   defmodule WardrikStore.Ecto.Migration do
     @moduledoc """
-    Creates the table `WardrikStore.Ecto` keeps keys in. Call it from a migration of your own:
+    Creates the table `WardrikStore.Ecto` keeps keys in.
 
         defmodule MyApp.Repo.Migrations.AddWardrikStore do
           use Ecto.Migration
@@ -10,8 +10,7 @@ if Code.ensure_loaded?(Ecto.Migration) do
           def down, do: WardrikStore.Ecto.Migration.down(version: 1)
         end
 
-    Each version is one change to the table. When a release adds a version, add a migration that
-    runs it.
+    When a release adds a version, add a migration that runs it.
     """
 
     use Ecto.Migration

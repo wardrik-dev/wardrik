@@ -11,20 +11,10 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
         store = WardrikStore.Ecto.new(url: "postgres://user:pass@db.example.com/wardrik?ssl=true")
         children = [{WardrikStore, store}]
 
-    ## Your repo
-
-    Create the table from a migration of your own. See `WardrikStore.Ecto.Migration`.
-
-    If the table is missing, the store logs an error as it starts. Your app still boots, so a
-    release can run its migrations.
-
-    ## A repo of its own
-
-    The store starts `WardrikStore.Ecto.Repo` over the URL. It creates the table before it keeps
-    anything, one node at a time.
-
-    `?ssl=true` connects over TLS, verified against the system's certificates. It needs
-    `:postgrex` in your deps.
+      * With `:repo`, create the table with `WardrikStore.Ecto.Migration`. A missing table logs an
+        error, but your app still boots.
+      * With `:url`, it starts `WardrikStore.Ecto.Repo` and creates the table itself.
+      * `?ssl=true` connects over TLS, verified against the system's certificates.
     """
 
     @behaviour WardrikStore.Adapter

@@ -5,10 +5,10 @@ defmodule WardrikStore do
       store = WardrikStore.ETS.new(name: MyApp.Store)
       children = [{WardrikStore, store}]
 
-      vault = WardrikStore.scope(store, "wardrik_vault")
-      {:ok, vsn} = WardrikStore.put(vault, "github/jon", grant, if_vsn: nil)
+      mine = WardrikStore.scope(store, "my_app")
+      {:ok, vsn} = WardrikStore.put(mine, "settings/theme", "dark", if_vsn: nil)
 
-  An adapter decides where the keys are kept. See `WardrikStore.ETS`, `WardrikStore.EKV` and
+  The adapter decides where keys are kept. See `WardrikStore.ETS`, `WardrikStore.EKV` and
   `WardrikStore.Ecto`.
   """
 
@@ -34,12 +34,9 @@ defmodule WardrikStore do
     do: %__MODULE__{adapter: adapter, config: config}
 
   @doc """
-  Returns the child spec that runs the store.
+  Returns the child spec that runs the store. Starts nothing if it's already running.
 
-  Starts nothing if the store is already running. So each thing that uses the store can list it
-  among its own children.
-
-      children = [{WardrikStore, store}, {MyApp.Uses, store: store}]
+      children = [{WardrikStore, store}]
   """
   @spec child_spec(t()) :: Supervisor.child_spec()
   def child_spec(%__MODULE__{adapter: adapter, config: config}) do
@@ -57,14 +54,12 @@ defmodule WardrikStore do
   end
 
   @doc """
-  Returns the store nested under the scope `name`.
-
-  Keys in one scope never match keys in another.
+  Returns the store nested under the scope `name`. Keys in one scope never match another's.
 
       mine = WardrikStore.scope(store, "my_app")
 
-  `name` starts with a lowercase letter, followed by lowercase letters, digits and underscores.
-  Raises `ArgumentError` otherwise.
+  `name` is lowercase letters, digits and underscores, starting with a letter. Raises
+  `ArgumentError` otherwise.
   """
   @spec scope(t(), String.t()) :: t()
   def scope(%__MODULE__{} = store, name) when is_binary(name) do
@@ -83,8 +78,7 @@ defmodule WardrikStore do
   ## Options
 
     * `:if_vsn` - writes only over this version, or only where `key` is empty when `nil`.
-      Returns `{:error, :conflict}` otherwise. Without it, the write always lands, and some
-      adapters return `{:ok, nil}`.
+      Returns `{:error, :conflict}` otherwise. Without it, some adapters return `{:ok, nil}`.
   """
   @spec put(t(), key(), term(), if_vsn: vsn() | nil) ::
           {:ok, vsn() | nil} | {:error, :conflict | term()}

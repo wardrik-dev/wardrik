@@ -1,9 +1,6 @@
 defmodule WardrikStore.Adapter do
   @moduledoc """
-  Decides where a store keeps its keys: in memory, on disk or in Postgres. Callers use
-  `WardrikStore`, not the adapter.
-
-  An adapter also has a `new/1` that builds the store:
+  Decides where a store keeps its keys. Callers use `WardrikStore`, not the adapter.
 
       defmodule MyApp.Store do
         @behaviour WardrikStore.Adapter
@@ -13,11 +10,8 @@ defmodule WardrikStore.Adapter do
         # child_spec/1, put/4, lookup/2, delete/3 and keys/2 follow
       end
 
-  Each callback gets that config, and a full path that already holds the store's scopes.
-
-  `c:lookup_many/2` and `c:entries/2` are optional. Implement them when reading many keys at once
-  is cheaper than one at a time, as in a database. Otherwise `WardrikStore` reads keys one at a
-  time.
+    * Each callback gets the config from `new/1`, and a full path with the store's scopes.
+    * `c:lookup_many/2` and `c:entries/2` are optional. Implement them when batch reads are cheaper.
   """
 
   @typedoc "The config the adapter's `new/1` built. Each callback gets it."
