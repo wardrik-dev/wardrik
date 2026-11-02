@@ -31,9 +31,10 @@ setup context do
     )
 
   scope =
-    Wardrik.Scope.new(WardrikTesting.Server, name, "acme/@maria",
-      roles: [:owner],
-      resources: ["*"]
+    Wardrik.Scope.new(WardrikTesting.Server,
+      wardrik: name,
+      principal: "acme/@maria",
+      grants: [roles: [:owner], resources: ["*"]]
     )
 
   %{scope: scope}

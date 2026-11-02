@@ -19,7 +19,12 @@ defmodule WardrikTesting.ServerTest do
 
     %{
       name: name,
-      scope: Scope.new(Server, name, "acme/@ana", roles: [:messenger, :reader], resources: ["*"])
+      scope:
+        Scope.new(Server,
+          wardrik: name,
+          principal: "acme/@ana",
+          grants: [roles: [:messenger, :reader], resources: ["*"]]
+        )
     }
   end
 
@@ -55,7 +60,13 @@ defmodule WardrikTesting.ServerTest do
     assert {:error, %Wardrik.Error{type: :not_found}} =
              Wardrik.Agent.definition(scope, "acme/other")
 
-    :ok = Server.add_agent(name, "acme/books", ["chat"], "Keeps the books.")
+    :ok =
+      Server.add_agent(name,
+        id: "acme/books",
+        channels: ["chat"],
+        description: "Keeps the books."
+      )
+
     assert {:ok, [_triage, %Wardrik.Agent{id: "acme/books"}]} = Wardrik.Agents.list(scope)
 
     assert {:ok, %Wardrik.Definition{description: "Keeps the books."}, []} =
@@ -88,12 +99,16 @@ defmodule WardrikTesting.ServerTest do
              Wardrik.Agent.read(scope, "acme/triage/t1")
 
     assert {:error, %Wardrik.Error{type: :forbidden}} =
-             Wardrik.Agent.approve(scope, "acme/triage/t1", "call_1")
+             Wardrik.Agent.approve(scope, agent: "acme/triage/t1", interrupt: "call_1")
 
     decider = Wardrik.Scope.grant(scope, roles: [:approver], resources: ["acme/agent/*"])
 
     assert {:ok, [%Wardrik.Decision{decision: :rejected}]} =
-             Wardrik.Agent.deny(decider, "acme/triage/t1", "call_1", reason: "No.")
+             Wardrik.Agent.deny(decider,
+               agent: "acme/triage/t1",
+               interrupt: "call_1",
+               reason: "No."
+             )
 
     assert_receive {WardrikEvents, _log,
                     %{"type" => "wardrik.interrupt.resolved", "data" => %{"reason" => "No."}}}
@@ -101,7 +116,7 @@ defmodule WardrikTesting.ServerTest do
     assert {:ok, %Wardrik.Agent{status: :idle}} = Wardrik.Agent.read(scope, "acme/triage/t1")
 
     Wardrik.Agent.ask(scope, "acme/triage/t3", "echo")
-    Wardrik.Agent.deny(decider, "acme/triage/t3", "call_1")
+    Wardrik.Agent.deny(decider, agent: "acme/triage/t3", interrupt: "call_1")
 
     assert_receive {WardrikEvents, "acme/triage/t3",
                     %{
@@ -152,7 +167,13 @@ defmodule WardrikTesting.ServerTest do
     name = :"quiet #{context.test}"
     Process.unregister(context.name)
     :ok = Server.start(name)
-    scope = Scope.new(Server, name, "acme/@ana", roles: [:messenger], resources: ["*"])
+
+    scope =
+      Scope.new(Server,
+        wardrik: name,
+        principal: "acme/@ana",
+        grants: [roles: [:messenger], resources: ["*"]]
+      )
 
     assert {:ok, %Wardrik.Message{}} = Wardrik.Agent.ask(scope, "acme/triage/t1", "Hi")
   end

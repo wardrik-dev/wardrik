@@ -4,7 +4,8 @@ defmodule WardrikTesting.Server do
 
       setup do
         :ok = WardrikTesting.Server.start(:my_test, secrets: ["wrk_good"])
-        %{scope: Wardrik.Scope.new(WardrikTesting.Server, :my_test, "acme/@maria")}
+        scope = Wardrik.Scope.new(WardrikTesting.Server, wardrik: :my_test, principal: "acme/@maria")
+        %{scope: scope}
       end
 
   ## Messages
@@ -33,6 +34,7 @@ defmodule WardrikTesting.Server do
 
   alias Wardrik.Error
   alias Wardrik.Scope
+  alias Wardrik.Server.Request
   alias WardrikTesting.Script
 
   @event %{
@@ -78,10 +80,16 @@ defmodule WardrikTesting.Server do
   @spec revoke(atom(), String.t()) :: :ok
   def revoke(name, secret), do: update(name, &%{&1 | secrets: MapSet.delete(&1.secrets, secret)})
 
-  @doc "Adds the agent `id` to those offered, answering in `channels`."
-  @spec add_agent(atom(), String.t(), [String.t()], String.t() | nil) :: :ok
-  def add_agent(name, id, channels, description \\ nil),
-    do: update(name, &%{&1 | offered: &1.offered ++ [{id, channels, description}]})
+  @doc """
+  Adds the agent `:id` to those offered, answering in `:channels`, with any `:description`.
+
+      :ok = WardrikTesting.Server.add_agent(:my_test, id: "acme/books", channels: ["chat"])
+  """
+  @spec add_agent(atom(), keyword()) :: :ok
+  def add_agent(name, agent) do
+    offered = {Keyword.fetch!(agent, :id), Keyword.fetch!(agent, :channels), agent[:description]}
+    update(name, &%{&1 | offered: &1.offered ++ [offered]})
+  end
 
   @doc "Replaces the agents offered with `offered`, each as `{id, channels}`."
   @spec offer_agents(atom(), [{String.t(), [String.t()]}]) :: :ok
@@ -102,35 +110,43 @@ defmodule WardrikTesting.Server do
   @impl Wardrik.Server
   def authenticate(name, secret) do
     case MapSet.member?(state(name).secrets, secret) do
-      true -> {:ok, Scope.new(__MODULE__, name, "acme/@maria", roles: [:owner], resources: ["*"])}
-      false -> {:error, Error.new(:unauthorized, "That isn't a token here.")}
+      true ->
+        grants = [roles: [:owner], resources: ["*"]]
+        {:ok, Scope.new(__MODULE__, wardrik: name, principal: "acme/@maria", grants: grants)}
+
+      false ->
+        {:error, Error.new(:unauthorized, "That isn't a token here.")}
     end
   end
 
   @impl Wardrik.Server
-  def run(%Scope{wardrik: name} = scope, id, input) do
+  def run(%Request{scope: %Scope{wardrik: name} = scope, operation: id, input: input}) do
     tell(name, {:ran, id, input})
     answer(scope, id, input)
   end
 
   @impl Wardrik.Server
-  def stream(%Scope{wardrik: name}, id, %{"after" => "nope"} = input) do
+  def stream(%Request{
+        scope: %Scope{wardrik: name},
+        operation: id,
+        input: %{"after" => "nope"} = input
+      }) do
     tell(name, {:streamed, id, input})
     {:error, Error.new(:invalid_request, "That cursor doesn't read.")}
   end
 
-  def stream(%Scope{wardrik: name}, id, input) do
+  def stream(%Request{scope: %Scope{wardrik: name}, operation: id, input: input}) do
     tell(name, {:streamed, id, input})
     {:ok, Stream.concat([{@event, "cursor-1"}], Stream.repeatedly(&quiet/0))}
   end
 
   @impl Wardrik.Server
-  def follow(_scope, "acme/broken", _input, _opts), do: [{:text, "Half"}, {:failed, :boom}]
+  def follow(%{agent: "acme/broken"}, _opts), do: [{:text, "Half"}, {:failed, :boom}]
 
-  def follow(_scope, "acme/waiting", _input, _opts),
+  def follow(%{agent: "acme/waiting"}, _opts),
     do: [{:waiting, [%Wardrik.Interrupt{id: "call_1", reason: :tool_approval}]}]
 
-  def follow(_scope, _agent, input, _opts),
+  def follow(%{input: input}, _opts),
     do: [
       {:text, "Re: "},
       {:text, input},
