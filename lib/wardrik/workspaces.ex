@@ -10,13 +10,13 @@ defmodule Wardrik.Workspaces do
       context: [MEMORY.md, shared/runbooks/deploy.md]
       workspace:
         shared:
-          runbooks: acme/runbooks
-          notes: {agent: acme/@jon/notes, mode: read}
+          runbooks: agt_runbooks
+          notes: {agent: agt_notes, mode: read}
 
   An agent mounts only the workspaces its resolver shares, in `Wardrik.Resolved`'s
   `:workspaces`, each `:read` or `:write`:
 
-      %Wardrik.Resolved{workspaces: %{"acme/runbooks" => :write, "acme/@jon/notes" => :read}}
+      %Wardrik.Resolved{workspaces: %{"agt_runbooks" => :write, "agt_notes" => :read}}
 
   A mount gets the access shared, or `mode: read` to mount a write share read only. Asking to
   write a read share is refused. An agent's conversations share its workspace.
@@ -27,7 +27,6 @@ defmodule Wardrik.Workspaces do
   262144. `max_bytes` is `16384` unless set.
   """
 
-  alias Wardrik.AgentID
   alias Wardrik.Error
   alias WardrikWorkspace.Mount
 
@@ -42,9 +41,9 @@ defmodule Wardrik.Workspaces do
   turn. Returns an `invalid_request` error if the workspace or `context` is invalid.
 
       Wardrik.Workspaces.resolve(wardrik,
-        agent: "acme/triage",
+        agent: "agt_triage",
         definition: definition,
-        workspaces: %{"acme/runbooks" => :read},
+        workspaces: %{"agt_runbooks" => :read},
         files: true
       )
   """
@@ -72,9 +71,12 @@ defmodule Wardrik.Workspaces do
     end
   end
 
-  @doc "Returns the agent `id`'s own tree. A conversation uses its agent's."
+  @doc """
+  Returns the agent `id`'s own tree. Its conversations share it. The ID is URL-encoded, so it's
+  one segment of the path, whatever it holds.
+  """
   @spec tree(String.t()) :: String.t()
-  def tree(id), do: "agents/" <> AgentID.agent(id)
+  def tree(id), do: "agents/" <> URI.encode_www_form(id)
 
   defp shared(id, shares, shared) do
     mounts = Enum.map(shared, fn {name, mount} -> mount(id, shares, name, mount) end)

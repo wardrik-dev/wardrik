@@ -132,7 +132,7 @@ list the nodes:
 
 ```elixir
 {:ok, _} =
-  Wardrik.Agent.define(scope, "acme/@maria/assistant", model: "anthropic:claude-haiku-4-5")
+  Wardrik.Agent.define(scope, "agt_assistant", model: "anthropic:claude-haiku-4-5")
 
 Wardrik.Deployment.nodes(scope)
 #=> {:ok,
@@ -146,8 +146,8 @@ In a cluster, the list has every node, as `"wardrik@box1"` and `"wardrik@box2"`.
 to another node by its name:
 
 ```elixir
-Wardrik.Agent.move(scope, "acme/@maria/assistant", node: "wardrik@box2")
-#=> {:ok, %Wardrik.Agent{id: "acme/@maria/assistant", status: :idle, node: "wardrik@box2", ...}}
+Wardrik.Agent.move(scope, "agt_assistant", node: "wardrik@box2")
+#=> {:ok, %Wardrik.Agent{id: "agt_assistant", status: :idle, node: "wardrik@box2", ...}}
 ```
 
 In a single IEx session, that returns `invalid_request`: there's no `wardrik@box2`. Moving an
@@ -184,7 +184,7 @@ defmodule MyApp.Books do
 end
 
 Wardrik.start_agent(MyApp.AgentRuntime,
-  agent_id: "acme/@maria/books",
+  agent_id: "agt_books",
   model: "anthropic:claude-haiku-4-5",
   capabilities: [MyApp.Books],
   policy: [ask: ["pay_bill"]]

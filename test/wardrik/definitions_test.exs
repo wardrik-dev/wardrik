@@ -31,7 +31,7 @@ defmodule Wardrik.DefinitionsTest do
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 
@@ -309,7 +309,9 @@ defmodule Wardrik.DefinitionsTest do
     @tag idle_timeout: 0.05
     test "puts an agent to sleep once it has had nothing to do", %{scope: scope} = context do
       define(scope, "acme/triage", %{"model" => @model})
-      ref = Process.monitor(Wardrik.Operations.Running.whereis(context.wardrik, "acme/triage"))
+
+      ref =
+        Process.monitor(Wardrik.Operations.Running.whereis(context.wardrik, {"acme/triage", nil}))
 
       until("wardrik.agent.stopped")
       assert_receive {:DOWN, ^ref, :process, _pid, _reason}
@@ -350,83 +352,136 @@ defmodule Wardrik.DefinitionsTest do
     } do
       answers([answer("Hello.")])
       define(scope, "acme/triage", %{"model" => @model, "instructions" => "Be brief."})
+      input = %{"agent" => "acme/triage", "conversation" => "C1-1696.1234"}
 
-      run!(scope, "agent.ask", %{"agent" => "acme/triage/C1-1696.1234", "content" => "Hi"})
+      run!(scope, "agent.ask", Map.put(input, "content", "Hi"))
       assert_receive {:prompted, messages}
       assert system(messages) == "Be brief."
       until("wardrik.run.completed")
 
-      conversation = WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage/C1-1696.1234")
+      conversation = WardrikCore.whereis(Wardrik.agents(wardrik), {"acme/triage", "C1-1696.1234"})
       assert [_asked, _answered] = WardrikCore.history(conversation)
 
-      assert WardrikCore.history(WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage")) ==
-               []
+      own = WardrikCore.whereis(Wardrik.agents(wardrik), {"acme/triage", nil})
+      assert WardrikCore.history(own) == []
+      assert run!(scope, "agent.timeline", %{"agent" => "acme/triage"})["items"] == []
 
-      assert %{"agent" => %{"id" => "acme/triage/C1-1696.1234", "name" => "triage"}} =
-               run!(scope, "agent.read", %{"agent" => "acme/triage/C1-1696.1234"})
+      assert %{"agent" => agent, "conversation" => "C1-1696.1234"} =
+               run!(scope, "agent.read", input)
+
+      assert agent == %{"id" => "acme/triage"}
+      refute Map.has_key?(run!(scope, "agent.read", %{"agent" => "acme/triage"}), "conversation")
     end
 
     test "has no definition or triggers of its own", %{scope: scope} do
       define(scope, "acme/triage", %{"model" => @model})
-      conversation = "acme/triage/C1-1696.1234"
+      conversation = %{"agent" => "acme/triage", "conversation" => "C1-1696.1234"}
 
-      assert refused(scope, "agent.define", %{"agent" => conversation, "model" => @model}) ==
+      assert refused(scope, "agent.define", Map.put(conversation, "model", @model)) ==
                :invalid_request
 
-      assert refused(scope, "agent.trigger_set", %{
-               "agent" => conversation,
-               "trigger" => "daily",
-               "every" => "1d",
-               "prompt" => "Go."
-             }) == :invalid_request
+      assert refused(
+               scope,
+               "agent.trigger_set",
+               Map.merge(conversation, %{"trigger" => "daily", "every" => "1d", "prompt" => "Go."})
+             ) == :invalid_request
 
-      assert refused(scope, "agent.ask", %{"agent" => "acme/other/C1", "content" => "Hi"}) ==
-               :not_found
+      assert refused(scope, "agent.ask", %{
+               "agent" => "acme/other",
+               "conversation" => "C1",
+               "content" => "Hi"
+             }) == :not_found
     end
 
-    test "is reached only where the authorizer allows the conversation itself", %{
+    test "is reached through its agent's authorization, which is told the conversation", %{
       wardrik: wardrik,
       scope: scope
     } do
       answers([answer("Hello.")])
       define(scope, "acme/triage", %{"model" => @model})
-      input = %{"agent" => "acme/triage/C1", "content" => "Hi"}
+      define(scope, "acme/other", %{"model" => @model})
+      input = %{"agent" => "acme/triage", "conversation" => "C1", "content" => "Hi"}
+      test = self()
 
       only = fn id ->
-        decide = fn %{resource: resource} ->
+        decide = fn %{resource: resource} = request ->
+          send(test, {:authorize, request})
           if resource == {:agent, id}, do: :ok, else: {:error, :not_found}
         end
 
         Wardrik.as(wardrik, "acme/@jon", context: %{decide: decide})
       end
 
-      assert refused(only.("acme/triage"), "agent.ask", input) == :not_found
+      assert refused(only.("acme/other"), "agent.ask", input) == :not_found
 
-      conversations = only.("acme/triage/C1")
+      run!(only.("acme/triage"), "agent.ask", input)
 
-      run!(conversations, "agent.ask", input)
+      assert_received {:authorize,
+                       %{
+                         action: "agent.ask",
+                         resource: {:agent, "acme/triage"},
+                         context: %{conversation: "C1"}
+                       }}
+
       until("wardrik.run.completed")
     end
 
     test "forgets an agent's conversations with it", %{wardrik: wardrik, scope: scope} do
       answers([answer("Hello.")])
       define(scope, "acme/triage", %{"model" => @model})
-      run!(scope, "agent.ask", %{"agent" => "acme/triage/C1", "content" => "Hi"})
+      conversation = %{"agent" => "acme/triage", "conversation" => "C1"}
+      run!(scope, "agent.ask", Map.put(conversation, "content", "Hi"))
       until("wardrik.run.completed")
+
+      assert {"acme/triage", "C1"} in WardrikCore.list(Wardrik.agents(wardrik))
 
       run!(scope, "agent.forget", %{"agent" => "acme/triage"})
 
       assert WardrikCore.list(Wardrik.agents(wardrik)) == []
-      assert refused(scope, "agent.read", %{"agent" => "acme/triage/C1"}) == :not_found
+      assert refused(scope, "agent.read", conversation) == :not_found
+      assert run!(scope, "agents.list", %{})["agents"] == []
+    end
+
+    test "clears a conversation, and leaves the agent's own history", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      answers([answer("Hello."), answer("Hey.")])
+      define(scope, "acme/triage", %{"model" => @model})
+      conversation = %{"agent" => "acme/triage", "conversation" => "C1"}
+
+      run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Hi"})
+      until("wardrik.run.completed")
+      run!(scope, "agent.ask", Map.put(conversation, "content", "Hey"))
+      until("wardrik.run.completed")
+
+      assert %{"status" => "idle", "conversation" => "C1"} =
+               run!(scope, "agent.clear", conversation)
+
+      agents = Wardrik.agents(wardrik)
+      assert WardrikCore.history(WardrikCore.whereis(agents, {"acme/triage", "C1"})) == []
+
+      assert [_asked, _answered] =
+               WardrikCore.history(WardrikCore.whereis(agents, {"acme/triage", nil}))
+
+      assert %{"items" => []} = run!(scope, "agent.timeline", conversation)
+
+      assert %{"items" => [%{"kind" => "user", "text" => "Hi"}, _run]} =
+               run!(scope, "agent.timeline", %{"agent" => "acme/triage"})
     end
 
     @tag idle_timeout: 0.05
     test "sleeps once it has had nothing to do", %{scope: scope} do
       answers([answer("Hello.")])
       define(scope, "acme/triage", %{"model" => @model})
-      run!(scope, "agent.ask", %{"agent" => "acme/triage/C1", "content" => "Hi"})
 
-      assert_receive {WardrikEvents, "acme/triage/C1", %{"type" => "wardrik.agent.stopped"}}
+      run!(scope, "agent.ask", %{
+        "agent" => "acme/triage",
+        "conversation" => "C1",
+        "content" => "Hi"
+      })
+
+      assert_receive {WardrikEvents, {"acme/triage", "C1"}, %{"type" => "wardrik.agent.stopped"}}
     end
   end
 
@@ -464,7 +519,7 @@ defmodule Wardrik.DefinitionsTest do
 
       assert %{"status" => "idle"} = run!(scope, "agent.clear", %{"agent" => "acme/triage"})
 
-      pid = WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage")
+      pid = WardrikCore.whereis(Wardrik.agents(wardrik), {"acme/triage", nil})
       assert WardrikCore.history(pid) == []
 
       assert %{"items" => []} = run!(scope, "agent.timeline", %{"agent" => "acme/triage"})

@@ -13,8 +13,7 @@ defmodule Wardrik.Operations.Triggers do
   def set(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "trigger" => name} = input) do
     fields = input |> Map.drop(["agent", "trigger"]) |> Map.put("name", name)
 
-    with :ok <- Running.definable(id),
-         {:ok, definition} <- Running.definition(wardrik, id),
+    with {:ok, definition} <- Running.definition(wardrik, id),
          :ok <- Wardrik.Resolution.trigger(wardrik, definition, fields, 1),
          {:ok, trigger} <- set_trigger(wardrik, id, fields),
          :ok <- saved(wardrik, id, Map.put(definition, "triggers", replaced(definition, fields))) do
@@ -31,8 +30,7 @@ defmodule Wardrik.Operations.Triggers do
   @doc "Removes one of the agent's triggers. Returns the removed trigger."
   @spec remove(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def remove(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "trigger" => name}) do
-    with :ok <- Running.definable(id),
-         {:ok, definition} <- Running.definition(wardrik, id),
+    with {:ok, definition} <- Running.definition(wardrik, id),
          {:ok, trigger} <- kept(wardrik, id, name),
          :ok <- removed(wardrik, id, name),
          :ok <- saved(wardrik, id, Map.put(definition, "triggers", without(definition, name))) do

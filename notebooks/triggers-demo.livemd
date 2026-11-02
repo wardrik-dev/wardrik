@@ -80,7 +80,7 @@ The sender keeps the same secret. Wardrik never returns it.
 
 ```elixir
 {:ok, agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/watcher",
+  Wardrik.Agent.define(scope, "agt_watcher",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You watch Acme's orders. Answer in one short line.",
     policy: [budget: [usd: 0.25, per: :day]],
@@ -147,7 +147,7 @@ agent. A clock that comes due while the agent is still busy is `busy`, and skipp
 
 ## Send it a webhook
 
-A service sends its request to `POST /v1/hooks/acme/@maria/watcher/orders`. Here the notebook
+A service sends its request to `POST /v1/hooks/agt_watcher/orders`. Here the notebook
 plays the service. It signs the raw body with the secret and delivers it, as the HTTP route would:
 
 ```elixir

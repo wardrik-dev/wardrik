@@ -10,7 +10,7 @@ defmodule Wardrik.HTTPTest do
   setup :set_mimic_global
   setup :start_wardrik
 
-  @notes "/v1/agents/acme/@maria/notes"
+  @notes "/v1/agents/acme%2F%40maria%2Fnotes"
 
   describe "operations" do
     test "runs an operation at its route, as whoever the authenticator says", context do
@@ -23,7 +23,7 @@ defmodule Wardrik.HTTPTest do
       conn = request(context, "GET", "/v1/agents?agents=acme/@maria/notes&agents=acme/triage")
       assert %{"agents" => [%{"id" => "acme/@maria/notes"}]} = body(conn)
 
-      conn = request(context, "GET", "/v1/agents/acme/%40maria/notes/definition")
+      conn = request(context, "GET", "/v1/agents/acme%2F%40maria%2Fnotes/definition")
       assert %{"definition" => %{"model" => "anthropic:claude-haiku-4-5"}} = body(conn)
     end
 
@@ -36,7 +36,9 @@ defmodule Wardrik.HTTPTest do
 
     test "reads integers from the query", context do
       for id <- ["acme/one", "acme/two"] do
-        request(context, "PUT", "/v1/agents/" <> id, %{"model" => "anthropic:claude-haiku-4-5"})
+        request(context, "PUT", "/v1/agents/" <> segment(id), %{
+          "model" => "anthropic:claude-haiku-4-5"
+        })
       end
 
       conn = request(context, "GET", "/v1/deployment/audit?limit=1")
@@ -44,6 +46,42 @@ defmodule Wardrik.HTTPTest do
 
       conn = request(context, "GET", "/v1/deployment/audit?limit=many")
       assert {conn.status, body(conn)["error"]["type"]} == {400, "invalid_request"}
+    end
+
+    test "takes an agent's ID as one segment, whatever it holds, and its conversation's",
+         context do
+      id = "acme/@maria/50% off notes"
+      agent = "/v1/agents/" <> segment(id)
+      conversation = agent <> "/conversations/" <> segment("C1/ 2%")
+      answers([answer("Hello.")])
+
+      :ok =
+        WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
+
+      conn = request(context, "PUT", agent, %{"model" => "anthropic:claude-haiku-4-5"})
+      assert %{"agent" => %{"id" => ^id}} = body(conn)
+
+      conn = request(context, "POST", conversation <> "/messages", %{"content" => "Hi"})
+      assert %{"message" => %{"id" => _message}} = body(conn)
+      assert_receive {WardrikEvents, {^id, "C1/ 2%"}, %{"type" => "wardrik.run.completed"}}
+
+      conn = request(context, "GET", conversation)
+      assert %{"agent" => %{"id" => ^id}, "conversation" => "C1/ 2%"} = body(conn)
+
+      conn = request(context, "GET", conversation <> "/events?types=wardrik.run.completed")
+      assert [%{"agent" => ^id, "conversation" => "C1/ 2%"}] = body(conn)["events"]
+
+      conn = request(context, "GET", agent <> "/events?types=wardrik.run.completed")
+      assert body(conn)["events"] == []
+
+      conn = request(context, "GET", "/v1/agents?" <> URI.encode_query(%{"agents" => id}))
+
+      assert [%{"id" => ^id} = own, %{"id" => ^id, "conversation" => "C1/ 2%"}] =
+               body(conn)["agents"]
+
+      refute Map.has_key?(own, "conversation")
+      assert request(context, "GET", agent <> "/definition").status == 200
+      assert request(context, "GET", "/v1/agents/acme/%40maria/50%25%20off%20notes").status == 404
     end
 
     test "keeps the caller's own request id", context do
@@ -66,7 +104,7 @@ defmodule Wardrik.HTTPTest do
     end
 
     test "answers the protocol's error where an operation fails", context do
-      conn = request(context, "GET", "/v1/agents/acme/missing")
+      conn = request(context, "GET", "/v1/agents/acme%2Fmissing")
       assert {conn.status, body(conn)["error"]["type"]} == {404, "not_found"}
     end
 
@@ -78,10 +116,6 @@ defmodule Wardrik.HTTPTest do
     test "refuses a body that isn't a JSON object", context do
       assert request(context, "PUT", @notes, "[1]").status == 400
       assert request(context, "PUT", @notes, "{").status == 400
-    end
-
-    test "refuses a path segment that holds a slash", context do
-      assert request(context, "GET", "/v1/agents/acme%2Fnotes/x").status == 400
     end
 
     test "needs a Wardrik to serve, and an authenticator" do
@@ -106,7 +140,7 @@ defmodule Wardrik.HTTPTest do
       :ok =
         seal(context.wardrik, {"acme", "HOOK"}, "s3cret", :signing_secret)
 
-      request(context, "PUT", "/v1/agents/acme/hooks", %{
+      request(context, "PUT", "/v1/agents/acme%2Fhooks", %{
         "model" => "anthropic:claude-haiku-4-5",
         "triggers" => [
           %{"name" => "issues", "webhook" => %{"secret" => "${HOOK}"}, "prompt" => "Triage it."}
@@ -121,14 +155,14 @@ defmodule Wardrik.HTTPTest do
       answers([answer("Triaged.")])
 
       :ok =
-        WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), ["*"])
+        WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
 
-      conn = hook(context, "/v1/hooks/acme/hooks/issues", [{"authorization", "Bearer s3cret"}])
+      conn = hook(context, "/v1/hooks/acme%2Fhooks/issues", [{"authorization", "Bearer s3cret"}])
       assert {conn.status, conn.resp_body} == {202, ""}
       assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.completed"}}
 
-      assert hook(context, "/v1/hooks/acme/hooks/issues/s3cret", []).status == 202
-      assert hook(context, "/v1/hooks/acme/hooks/issues/nope", []).status == 404
+      assert hook(context, "/v1/hooks/acme%2Fhooks/issues/s3cret", []).status == 202
+      assert hook(context, "/v1/hooks/acme%2Fhooks/issues/nope", []).status == 404
     end
 
     test "checks the body as it came where the app parsed it first", context do
@@ -141,7 +175,7 @@ defmodule Wardrik.HTTPTest do
 
       conn =
         "POST"
-        |> conn("/v1/hooks/acme/hooks/issues/nope", ~s({"action":"opened"}))
+        |> conn("/v1/hooks/acme%2Fhooks/issues/nope", ~s({"action":"opened"}))
         |> put_req_header("content-type", "application/json")
         |> Plug.Parsers.call(parsers)
         |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
@@ -154,7 +188,7 @@ defmodule Wardrik.HTTPTest do
 
       conn =
         "POST"
-        |> conn("/v1/hooks/acme/hooks/issues", ~s({"action":"opened"}))
+        |> conn("/v1/hooks/acme%2Fhooks/issues", ~s({"action":"opened"}))
         |> put_req_header("content-type", "application/json")
         |> Plug.Parsers.call(parsers)
         |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))

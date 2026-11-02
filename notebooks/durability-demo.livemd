@@ -115,7 +115,7 @@ opts = [
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/shop",
+  Wardrik.Agent.define(scope, "agt_shop",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You run Maria's shop. Use your tools. Be brief.",
     tools: ["shop"]
@@ -156,7 +156,7 @@ running.(agent)
 ```
 
 ```elixir
-pid = WardrikCore.whereis(MyApp.AgentRuntime.Agents, "acme/@maria/shop")
+pid = WardrikCore.whereis(MyApp.AgentRuntime.Agents, {"agt_shop", nil})
 Process.exit(pid, :kill)
 ```
 

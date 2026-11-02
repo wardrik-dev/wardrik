@@ -10,20 +10,24 @@ defmodule Wardrik.Operations.Agents do
   alias Wardrik.Scope
   alias WardrikEvents.Cursor
 
-  @doc "Lists the agents."
+  @doc "Lists the agents, and their conversations."
   @spec list(Scope.t(), map()) :: {:ok, map()}
   def list(scope, input) do
-    agents = Enum.map(Visible.agents(scope, input), &Snapshot.summary(scope.wardrik, &1))
+    agents = Enum.map(Visible.keys(scope, input), &Snapshot.summary(scope.wardrik, &1))
     {:ok, %{"agents" => agents}}
   end
 
-  @doc "Cancels what each agent is doing. Returns those that were cancelled."
+  @doc """
+  Cancels what each agent, and each of its conversations, is doing. Returns the agents with
+  anything cancelled.
+  """
   @spec cancel(Scope.t(), map()) :: {:ok, map()}
   def cancel(scope, input) do
     cancelled =
-      Enum.filter(Visible.agents(scope, input), fn id ->
-        Agent.cancelled(scope, id, Running.whereis(scope.wardrik, id))
-      end)
+      for {agent, _conversation} = key <- Visible.keys(scope, input),
+          Agent.cancelled(scope, key, Running.whereis(scope.wardrik, key)),
+          uniq: true,
+          do: agent
 
     {:ok, %{"cancelled" => cancelled}}
   end
@@ -57,14 +61,18 @@ defmodule Wardrik.Operations.Agents do
      }}
   end
 
-  @doc "Lists the calls the agents wait on a person for."
+  @doc "Lists the calls the agents, and their conversations, wait on a person for."
   @spec interrupts(Scope.t(), map()) :: {:ok, map()}
   def interrupts(scope, input) do
     interrupts =
-      for id <- Visible.agents(scope, input),
+      for {agent, conversation} = key <- Visible.keys(scope, input),
           interrupt <-
-            Snapshot.interrupts(WardrikEvents.activity(Wardrik.events(scope.wardrik), id)),
-          do: %{"agent" => %{"id" => id}, "interrupt" => interrupt}
+            Snapshot.interrupts(WardrikEvents.activity(Wardrik.events(scope.wardrik), key)),
+          do:
+            Snapshot.conversation(
+              %{"agent" => %{"id" => agent}, "interrupt" => interrupt},
+              conversation
+            )
 
     {:ok, %{"interrupts" => interrupts}}
   end
@@ -112,5 +120,8 @@ defmodule Wardrik.Operations.Agents do
   end
 
   defp encoded(cursor, visible?),
-    do: cursor |> Map.filter(fn {log, _sequence} -> visible?.(log) end) |> Cursor.encode()
+    do:
+      cursor
+      |> Map.filter(fn {{agent, _conversation}, _sequence} -> visible?.(agent) end)
+      |> Cursor.encode()
 end

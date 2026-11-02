@@ -245,7 +245,7 @@ defmodule Wardrik.Slack.PackageTest do
       event(context, message("<@UBOT> echo hi", "1.1"))
       assert_receive {:slack, "chat.postMessage", %{"text" => "Waiting" <> _}}, 1_000
 
-      Wardrik.Agent.cancel(context.owner, "acme/triage/slack.T1.C1.1.1")
+      Wardrik.Agent.cancel(context.owner, "acme/triage", conversation: "slack.T1.C1.1.1")
 
       assert_receive {:slack, "reactions.remove", %{"name" => "eyes", "timestamp" => "1.1"}},
                      1_000
@@ -273,7 +273,7 @@ defmodule Wardrik.Slack.PackageTest do
     end
 
     test "tells whoever presses Show link where to sign in, or why not", context do
-      value = JSON.encode!(%{c: "acme/triage/slack.T1.C1.1.1", i: "call_1", n: "inbox"})
+      value = JSON.encode!(%{g: "acme/triage", c: "slack.T1.C1.1.1", i: "call_1", n: "inbox"})
       press(context, pressed("wardrik_link", %{value: value}, "U3"))
 
       assert_receive {:slack, {:respond, _path}, %{"response_type" => "ephemeral"}}, 1_000

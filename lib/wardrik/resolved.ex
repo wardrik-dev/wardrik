@@ -12,7 +12,7 @@ defmodule Wardrik.Resolved do
           "alerts" => {Wardrik.Notify.Webhook, url: "https://hooks.acme.test", secret: secret}
         },
         channels: %{"slack" => "T0123"},
-        workspaces: %{"acme/runbooks" => :read}
+        workspaces: %{"agt_runbooks" => :read}
       }
 
   An agent gets nothing it isn't given here: a name its definition uses that isn't in `:servers`,

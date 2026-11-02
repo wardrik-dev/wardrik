@@ -27,7 +27,7 @@ defmodule Wardrik.Resolver do
   awake agents, call `Wardrik.refresh/2`. An error keeps the agent from starting or being
   defined, with the reason:
 
-      {:error, Wardrik.Error.new(:not_found, "There's no agent acme/scout here.")}
+      {:error, Wardrik.Error.new(:not_found, "There's no agent agt_scout here.")}
   """
 
   alias Wardrik.Error

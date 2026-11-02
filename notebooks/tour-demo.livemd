@@ -114,7 +114,7 @@ day.
 
 ```elixir
 {:ok, agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/support",
+  Wardrik.Agent.define(scope, "agt_support",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You answer questions about Acme orders. Be brief.",
     tools: ["orders"],
@@ -267,7 +267,7 @@ next one waits:
 
 ```elixir
 {:ok, frugal} =
-  Wardrik.Agent.define(scope, "acme/@maria/frugal",
+  Wardrik.Agent.define(scope, "agt_frugal",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You answer questions about Acme orders. Be brief.",
     tools: ["orders"],

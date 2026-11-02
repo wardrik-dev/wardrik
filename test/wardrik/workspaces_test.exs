@@ -27,7 +27,7 @@ defmodule Wardrik.WorkspacesTest do
     start_supervised!({WardrikStore, store})
     start_supervised!({Wardrik, wardrik})
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
     %{scope: owner(wardrik)}
   end
 
@@ -72,7 +72,12 @@ defmodule Wardrik.WorkspacesTest do
     assert system(first) =~ "Not written yet: MEMORY.md."
     until("wardrik.run.completed")
 
-    run!(scope, "agent.ask", %{"agent" => "acme/triage/C1", "content" => "What do I like?"})
+    run!(scope, "agent.ask", %{
+      "agent" => "acme/triage",
+      "conversation" => "C1",
+      "content" => "What do I like?"
+    })
+
     assert_receive {:prompted, _second}
     assert_receive {:prompted, third}
     assert system(third) =~ ~r/<file path="MEMORY.md" version="[^"]+">\nLikes tea.\n<\/file>/
@@ -128,16 +133,34 @@ defmodule Wardrik.WorkspacesTest do
     assert {:ok, [capabilities: [{WardrikWorkspace, read}], middleware: []]} =
              resolve.("acme/@jon/notes", %{"acme/runbooks" => :read})
 
-    assert [%WardrikWorkspace.Mount{name: "runbooks", tree: "agents/acme/runbooks", mode: :read}] =
+    assert [
+             %WardrikWorkspace.Mount{
+               name: "runbooks",
+               tree: "agents/acme%2Frunbooks",
+               mode: :read
+             }
+           ] =
              read[:shared]
 
     assert {:ok, [capabilities: [{WardrikWorkspace, written}], middleware: []]} =
-             resolve.("acme/ops/C1", %{"acme/runbooks" => :write})
+             resolve.("acme/ops", %{"acme/runbooks" => :write})
 
     assert [%WardrikWorkspace.Mount{mode: :write}] = written[:shared]
-    assert written[:tree] == "agents/acme/ops"
+    assert written[:tree] == "agents/acme%2Fops"
 
     assert {:error, _error} = resolve.("acme/triage", %{"acme/other" => :write})
+  end
+
+  test "keeps each agent's tree in one segment, whatever its ID holds" do
+    ids = ["..", "../acme/ops", "acme/ops", "acme//ops", "acme%2Fops", "acme ops/.."]
+    trees = Enum.map(ids, &Wardrik.Workspaces.tree/1)
+
+    for {id, tree} <- Enum.zip(ids, trees) do
+      assert ["agents", segment] = String.split(tree, "/")
+      assert URI.decode_www_form(segment) == id
+    end
+
+    assert trees == Enum.uniq(trees)
   end
 
   test "reads a budget of context, and refuses one out of range", %{scope: scope} do

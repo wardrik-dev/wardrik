@@ -41,7 +41,7 @@ Each operation is a function named by its ID. `agent.define` is `Wardrik.Agent.d
 
 ```elixir
 {:ok, books} =
-  Wardrik.Agent.define(scope, "acme/@maria/books",
+  Wardrik.Agent.define(scope, "agt_books",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You keep Maria's books."
   )
@@ -49,24 +49,23 @@ Each operation is a function named by its ID. `agent.define` is `Wardrik.Agent.d
 Wardrik.Agent.read(scope, books)
 #=> {:ok,
 #=>  %Wardrik.Agent{
-#=>    id: "acme/@maria/books",
-#=>    name: "books",
+#=>    id: "agt_books",
 #=>    status: :idle,
 #=>    node: "nonode@nohost",
 #=>    pending: 0,
 #=>    activity: %Wardrik.Activity{doing: [], ...},
 #=>    interrupts: [],
-#=>    cursor: "eyJhY21lL0BtYXJpYS9ib29rcyI6MX0"
+#=>    cursor: "W1siYWd0X2Jvb2tzIixudWxsLDFdXQ"
 #=>  }}
 
 Wardrik.Agents.list(scope)
-#=> {:ok, [%Wardrik.Agent{id: "acme/@maria/books", status: :idle, ...}]}
+#=> {:ok, [%Wardrik.Agent{id: "agt_books", status: :idle, ...}]}
 
 Wardrik.Agent.cancel(scope, books)
 #=> :ok
 
-Wardrik.Agent.read(scope, "acme/@maria/ledger")
-#=> {:error, %Wardrik.Error{type: :not_found, message: "There's no agent acme/@maria/ledger."}}
+Wardrik.Agent.read(scope, "agt_ledger")
+#=> {:error, %Wardrik.Error{type: :not_found, message: "There's no agent agt_ledger."}}
 ```
 
 `agent.ask` is `Wardrik.Agent.ask/3`, and needs the model's API key; see [Talk to agents](talking.md).
@@ -112,12 +111,12 @@ their shape depends on their type.
 a surface you build reaches operations:
 
 ```elixir
-Wardrik.run(scope, "agent.read", %{"agent" => "acme/@maria/books"})
+Wardrik.run(scope, "agent.read", %{"agent" => "agt_books"})
 #=> {:ok,
 #=>  %{
-#=>    "agent" => %{"id" => "acme/@maria/books", "name" => "books"},
+#=>    "agent" => %{"id" => "agt_books"},
 #=>    "status" => "idle",
-#=>    "cursor" => "eyJhY21lL0BtYXJpYS9ib29rcyI6MX0",
+#=>    "cursor" => "W1siYWd0X2Jvb2tzIixudWxsLDFdXQ",
 #=>    ...
 #=>  }}
 ```

@@ -1,7 +1,6 @@
 defmodule Wardrik.Resolution do
   @moduledoc false
 
-  alias Wardrik.AgentID
   alias Wardrik.Error
   alias Wardrik.Operations.Running
   alias Wardrik.Resolved
@@ -55,7 +54,7 @@ defmodule Wardrik.Resolution do
          {:ok, policy} <- policy(wardrik, definition["policy"]),
          policy = gating(policy),
          {:ok, boundary} <-
-           policy(wardrik, Wardrik.Definitions.boundary(wardrik, AgentID.agent(id))) do
+           policy(wardrik, Wardrik.Definitions.boundary(wardrik, id)) do
       {:ok,
        [
          agent_id: id,
@@ -72,22 +71,26 @@ defmodule Wardrik.Resolution do
     end
   end
 
-  @doc "Refreshes each awake agent of `ids`, or every awake one. Returns a line for each failure."
+  @doc """
+  Refreshes each awake agent of `ids`, or every awake one, with its conversations. Returns a line
+  for each failure.
+  """
   @spec refresh(Wardrik.t(), [String.t()] | :all) :: [String.t()]
   def refresh(wardrik, ids) do
-    for id <- refreshing(wardrik, ids),
-        Running.whereis(wardrik, id) != nil,
-        {:error, error} <- [refreshed(wardrik, id)],
-        do: "#{id}: #{error.message}"
+    for {agent, _conversation} = key <- WardrikCore.list(Wardrik.agents(wardrik)),
+        refreshing?(ids, agent),
+        Running.whereis(wardrik, key) != nil,
+        {:error, error} <- [refreshed(wardrik, key)],
+        do: "#{Running.describe(key)}: #{error.message}"
   end
 
-  defp refreshing(wardrik, :all), do: Wardrik.Definitions.ids(wardrik)
-  defp refreshing(_wardrik, ids), do: ids
+  defp refreshing?(:all, _agent), do: true
+  defp refreshing?(ids, agent), do: agent in ids
 
-  defp refreshed(wardrik, id) do
-    with {:ok, definition} <- Running.definition(wardrik, id),
-         {:ok, opts} <- resolve(wardrik, id, definition),
-         do: Running.bring(wardrik, opts)
+  defp refreshed(wardrik, {agent, conversation}) do
+    with {:ok, definition} <- Running.definition(wardrik, agent),
+         {:ok, opts} <- resolve(wardrik, agent, definition),
+         do: Running.bring(wardrik, Running.held(opts, conversation))
   end
 
   @doc "Returns `:ok` if the trigger in `fields` is valid for the agent `definition`."

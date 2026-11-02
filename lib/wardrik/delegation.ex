@@ -4,7 +4,7 @@ defmodule Wardrik.Delegation do
 
   The answer arrives as a new message, which starts a turn:
 
-      From agent acme/reconciler:
+      From agent agt_reconciler:
       In answer to your message msg_x1:
       Two deposits match no invoice: …
 
@@ -28,7 +28,6 @@ defmodule Wardrik.Delegation do
 
   require Logger
 
-  alias Wardrik.AgentID
   alias Wardrik.Operations.Running
   alias WardrikCore.Context
   alias WardrikCore.Principal
@@ -39,24 +38,28 @@ defmodule Wardrik.Delegation do
     do: GenServer.start_link(__MODULE__, wardrik, name: Module.concat(wardrik.name, Delegation))
 
   @doc """
-  Records that `:asker` sent `:agent` the `:message`, by its ID, so the answer goes back to
-  `:asker`.
+  Records that `:asker`, as `{agent, conversation}`, sent `:agent` the `:message`, by its ID, so
+  the answer goes back to `:asker`.
 
       :ok =
         Wardrik.Delegation.asked(MyApp.AgentRuntime,
-          asker: "acme/ops",
-          agent: "acme/reconciler",
+          asker: {"agt_ops", nil},
+          agent: "agt_reconciler",
           message: "msg_x1"
         )
   """
-  @spec asked(atom() | Wardrik.t(), asker: String.t(), agent: String.t(), message: String.t()) ::
-          :ok
+  @spec asked(atom() | Wardrik.t(),
+          asker: Running.key(),
+          agent: String.t(),
+          message: String.t()
+        ) :: :ok
   def asked(instance, args) do
-    asker = Keyword.fetch!(args, :asker)
-    agent = Keyword.fetch!(args, :agent)
-    id = Keyword.fetch!(args, :message)
+    {agent, conversation} = Keyword.fetch!(args, :asker)
+    log = {Keyword.fetch!(args, :agent), nil}
+    asker = %{"agent" => agent, "conversation" => conversation}
     wardrik = Wardrik.Instance.fetch!(instance)
-    {:ok, _vsn} = WardrikStore.put(store(wardrik), "delegation/asked/#{agent}/#{id}", asker)
+    key = key("asked", log, Keyword.fetch!(args, :message))
+    {:ok, _vsn} = WardrikStore.put(store(wardrik), key, asker)
     :ok
   end
 
@@ -65,7 +68,7 @@ defmodule Wardrik.Delegation do
 
   @impl GenServer
   def handle_continue(:subscribe, wardrik) do
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
     Enum.each(pending(wardrik), &caught_up(wardrik, &1))
     {:noreply, wardrik}
   end
@@ -100,9 +103,19 @@ defmodule Wardrik.Delegation do
         do: key |> String.replace_prefix(prefix, "") |> logged()
   end
 
+  # Each key holds the log's agent and conversation, and the ID, each URL-encoded on its own.
+  defp key(kind, {agent, conversation}, id) do
+    [agent, conversation, id]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map_join("/", &URI.encode_www_form/1)
+    |> then(&"delegation/#{kind}/#{&1}")
+  end
+
   defp logged(key) do
-    [_last | log] = key |> String.split("/") |> Enum.reverse()
-    log |> Enum.reverse() |> Enum.join("/")
+    case key |> String.split("/") |> Enum.map(&URI.decode_www_form/1) do
+      [agent, _id] -> {agent, nil}
+      [agent, conversation, _id] -> {agent, conversation}
+    end
   end
 
   defp caught_up(wardrik, log, cursor \\ nil) do
@@ -116,31 +129,30 @@ defmodule Wardrik.Delegation do
   defp taken(wardrik, log, run, id) do
     store = store(wardrik)
 
-    with asker when is_binary(asker) <- WardrikStore.get(store, "delegation/asked/#{log}/#{id}") do
+    with %{} = asker <- WardrikStore.get(store, key("asked", log, id)) do
       {:ok, _vsn} =
-        WardrikStore.put(store, "delegation/runs/#{log}/#{run}", %{
-          "asker" => asker,
-          "message" => id
-        })
+        WardrikStore.put(store, key("runs", log, run), %{"asker" => asker, "message" => id})
 
-      :ok = WardrikStore.delete(store, "delegation/asked/#{log}/#{id}")
+      :ok = WardrikStore.delete(store, key("asked", log, id))
     end
   end
 
   defp answered(wardrik, log, run, said) do
     store = store(wardrik)
-    key = "delegation/runs/#{log}/#{run}"
+    key = key("runs", log, run)
 
     with %{"asker" => asker, "message" => id} <- WardrikStore.get(store, key) do
-      from = AgentID.agent(log)
+      {from, _conversation} = log
       text = "From agent #{from}:\nIn answer to your message #{id}:\n#{said}"
 
       with {:ok, scope} <- scope(wardrik, log, from) do
-        Wardrik.run(scope, "agent.ask", %{
-          "agent" => asker,
-          "content" => text,
-          "id" => "answer_" <> id
-        })
+        input = %{"content" => text, "id" => "answer_" <> id}
+
+        Wardrik.run(
+          scope,
+          "agent.ask",
+          Map.merge(input, Map.reject(asker, &(elem(&1, 1) == nil)))
+        )
       end
 
       :ok = WardrikStore.delete(store, key)

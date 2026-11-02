@@ -9,8 +9,8 @@ defmodule WardrikTest do
     {:ok, agent} =
       Wardrik.start_agent(wardrik, agent_id: "acme/triage", model: "anthropic:claude-haiku-4-5")
 
-    assert WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage") == agent
-    assert WardrikCore.list(Wardrik.agents(wardrik)) == ["acme/triage"]
+    assert WardrikCore.whereis(Wardrik.agents(wardrik), {"acme/triage", nil}) == agent
+    assert WardrikCore.list(Wardrik.agents(wardrik)) == [{"acme/triage", nil}]
 
     assert {:ok, %{events: [%{"type" => "wardrik.agent.started"}]}} =
              WardrikEvents.page(Wardrik.events(wardrik), ["acme/triage"])

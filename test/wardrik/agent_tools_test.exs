@@ -26,7 +26,7 @@ defmodule Wardrik.AgentToolsTest do
     start_supervised!({WardrikStore, store})
     start_supervised!({Wardrik, wardrik})
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
     %{scope: owner(wardrik)}
   end
 
@@ -184,7 +184,10 @@ defmodule Wardrik.AgentToolsTest do
 
     :ok = Supervisor.terminate_child(scope.wardrik, Wardrik.Delegation)
     run!(scope, "agent.ask", %{"agent" => "acme/front", "content" => "Ask the worker"})
-    assert_receive {WardrikEvents, "acme/worker", %{"type" => "wardrik.run.completed"}}, 5_000
+
+    assert_receive {WardrikEvents, {"acme/worker", nil}, %{"type" => "wardrik.run.completed"}},
+                   5_000
+
     refute_received {:prompted, "From agent" <> _rest}
 
     {:ok, _pid} = Supervisor.restart_child(scope.wardrik, Wardrik.Delegation)
@@ -218,7 +221,10 @@ defmodule Wardrik.AgentToolsTest do
     assert_receive {:prompted, "From agent acme/worker" <> _rest}, 5_000
 
     for _turn <- 1..2,
-        do: assert_receive({WardrikEvents, "acme/front", %{"type" => "wardrik.run.completed"}})
+        do:
+          assert_receive(
+            {WardrikEvents, {"acme/front", nil}, %{"type" => "wardrik.run.completed"}}
+          )
 
     assert [%{metadata: %{labels: ["outside"]}} | _rest] = history(scope, "acme/worker")
 
@@ -232,7 +238,7 @@ defmodule Wardrik.AgentToolsTest do
 
   defp history(scope, id) do
     wardrik = Wardrik.Instance.fetch!(scope.wardrik)
-    wardrik |> Wardrik.Operations.Running.whereis(id) |> WardrikCore.history()
+    wardrik |> Wardrik.Operations.Running.whereis({id, nil}) |> WardrikCore.history()
   end
 
   test "names agents by their exact IDs, and lists those it may read without conversations", %{
@@ -241,11 +247,14 @@ defmodule Wardrik.AgentToolsTest do
     define(scope, "acme/worker", %{"model" => @model})
     define(scope, "acme/@jon/notes", %{"model" => @model})
     define(scope, "globex/other", %{"model" => @model})
+    wardrik = Wardrik.Instance.fetch!(scope.wardrik)
+    {:ok, _pid} = Wardrik.Operations.Running.awake(wardrik, {"acme/worker", "C1"})
 
     tools =
       Wardrik.AgentTools.tools(
         WardrikCore.Context.new(
-          agent_id: "acme/front/C1",
+          agent_id: "acme/front",
+          conversation: "C1",
           principal: %WardrikCore.Principal{id: "acme/@ops"}
         ),
         wardrik: scope.wardrik,
@@ -256,8 +265,11 @@ defmodule Wardrik.AgentToolsTest do
 
     assert {:ok, %{"agents" => listed}} = tool.("agents_list").run.(%{}, nil)
 
-    assert Enum.map(listed, & &1["id"]) |> Enum.sort() ==
-             ["acme/@jon/notes", "acme/worker", "globex/other"]
+    assert Enum.sort(listed) == [
+             %{"id" => "acme/@jon/notes", "status" => "idle"},
+             %{"id" => "acme/worker", "status" => "idle"},
+             %{"id" => "globex/other", "status" => "idle"}
+           ]
 
     assert_received {:authorize,
                      %{

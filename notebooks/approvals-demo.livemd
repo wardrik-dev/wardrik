@@ -72,7 +72,7 @@ cent.
 System.put_env("ANTHROPIC_API_KEY", System.fetch_env!("LB_ANTHROPIC_API_KEY"))
 
 {:ok, _agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/books",
+  Wardrik.Agent.define(scope, "agt_books",
     model: "anthropic:claude-haiku-4-5",
     instructions:
       "You pay Maria's bills. Pay every bill she names, each with its own pay_bill call.",
@@ -154,7 +154,7 @@ inbox = Kino.Frame.new()
 log = Kino.Frame.new()
 
 {:ok, cursor} = Wardrik.Events.head(scope)
-{:ok, events} = Wardrik.Events.stream_list(scope, after: cursor, agents: ["acme/@maria/books"])
+{:ok, events} = Wardrik.Events.stream_list(scope, after: cursor, agents: ["agt_books"])
 
 Kino.listen(events, %{}, fn {event, _cursor}, arguments ->
   data = event.data
@@ -201,7 +201,7 @@ Kino.Layout.grid([inbox, log], columns: 2) |> Kino.render()
 
 Wardrik.Agent.reply(
   scope,
-  "acme/@maria/books",
+  "agt_books",
   "Pay Initech's $9400 bill and Globex's $2100 bill."
 )
 ```
@@ -231,7 +231,7 @@ one go, `Wardrik.Agent.decide/3` takes a map of call IDs to `:approve`, `{:appro
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-Wardrik.Agent.decide(scope, "acme/@maria/books", %{
+Wardrik.Agent.decide(scope, "agt_books", %{
   initech.id => {:approve, "Pay it from the ops account."},
   globex.id => {:deny, "Not before the 1st."}
 })

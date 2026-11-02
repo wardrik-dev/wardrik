@@ -13,7 +13,7 @@ defmodule Wardrik.OperationsTest do
 
   setup %{wardrik: wardrik} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), ["*"])
+    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
     %{scope: owner(wardrik)}
   end
 
@@ -226,8 +226,11 @@ defmodule Wardrik.OperationsTest do
     end
 
     test "lists only those", %{scope: scope, reader: reader} do
-      assert %{"agents" => [%{"id" => "acme/triage", "status" => "idle", "name" => "triage"}]} =
+      assert %{"agents" => [%{"id" => "acme/triage", "status" => "idle"} = triage]} =
                run!(reader, "agents.list", %{})
+
+      refute Map.has_key?(triage, "name")
+      refute Map.has_key?(triage, "conversation")
 
       ids = for %{"id" => id} <- run!(scope, "agents.list", %{})["agents"], do: id
       assert ids == ["acme/@jon/books", "acme/triage", "globex/triage"]
@@ -241,7 +244,7 @@ defmodule Wardrik.OperationsTest do
       assert ids == ["acme/triage"]
 
       assert refused(scope, "agents.list", %{"resources" => ["acme/*"]}) == :invalid_request
-      assert refused(scope, "agents.list", %{"agents" => ["acme/*"]}) == :invalid_request
+      assert run!(scope, "agents.list", %{"agents" => ["acme/*"]}) == %{"agents" => []}
     end
 
     test "reads only their events, and only their place in the cursor", %{
@@ -254,7 +257,7 @@ defmodule Wardrik.OperationsTest do
                "acme/triage"
              ]
 
-      assert {:ok, %{"acme/triage" => _sequence} = cursor} = Cursor.decode(next)
+      assert {:ok, %{{"acme/triage", nil} => _sequence} = cursor} = Cursor.decode(next)
       assert map_size(cursor) == 1
 
       %{"cursor" => head} = run!(reader, "events.head", %{})
@@ -286,7 +289,7 @@ defmodule Wardrik.OperationsTest do
       assert [{event, cursor}] = Enum.take(stream, 1)
       assert Visible.agent_id(event) == "acme/triage"
       assert {:ok, cursor} = Cursor.decode(cursor)
-      assert Map.keys(cursor) == ["acme/triage"]
+      assert Map.keys(cursor) == [{"acme/triage", nil}]
     end
 
     test "hides the others, and refuses what it may not do", %{reader: reader} do
@@ -300,10 +303,132 @@ defmodule Wardrik.OperationsTest do
     end
   end
 
+  describe "a conversation" do
+    setup %{wardrik: wardrik, scope: scope} do
+      echo = calling([call("call_1", "echo", %{"text" => "hi"})])
+      answers([echo, echo, answer("Done.")])
+
+      for id <- ["acme/triage", "globex/triage"] do
+        start_agent(wardrik, id, conversation: "C1")
+        run!(scope, "agent.ask", %{"agent" => id, "conversation" => "C1", "content" => "Echo"})
+        until("wardrik.run.interrupted")
+      end
+
+      roles = [:reader, :messenger, :approver]
+      %{reader: limited(wardrik, maria(), roles: roles, agents_of: ["acme"])}
+    end
+
+    test "is reached only through its agent's authorization", %{reader: reader} do
+      sample = %{
+        "content" => "Hi",
+        "interrupt" => "call_1",
+        "decisions" => [%{"id" => "call_1", "decision" => "approve"}],
+        "call" => "call_1",
+        "node" => "nonode@nohost"
+      }
+
+      routed =
+        for %{conversation: route} = operation <- WardrikProtocol.operations(),
+            route,
+            do: operation
+
+      assert routed |> Enum.map(& &1.id) |> Enum.sort() ==
+               ~w(agent.approve agent.ask agent.authorization agent.calls agent.cancel agent.clear
+                  agent.decide agent.deny agent.events agent.kill agent.move agent.read agent.runs
+                  agent.stop agent.timeline)
+
+      for operation <- routed do
+        input = Map.take(sample, Map.keys(operation.input["properties"]))
+        hidden = Map.merge(input, %{"agent" => "globex/triage", "conversation" => "C1"})
+        assert refused(reader, operation.id, hidden) == :not_found, operation.id
+      end
+
+      seen = %{"agent" => "acme/triage", "conversation" => "C1"}
+
+      assert %{"conversation" => "C1", "interrupts" => [%{"id" => "call_1"}], "cursor" => cursor} =
+               run!(reader, "agent.read", seen)
+
+      assert {:ok, %{{"acme/triage", "C1"} => _sequence} = positions} = Cursor.decode(cursor)
+      assert map_size(positions) == 1
+      assert %{"events" => [_event | _events]} = run!(reader, "agent.events", seen)
+
+      assert %{"decisions" => [%{"decision" => "approved"}]} =
+               run!(reader, "agent.approve", Map.put(seen, "interrupt", "call_1"))
+    end
+
+    test "is listed, and its events and interrupts read, only through its agent's", %{
+      scope: scope,
+      reader: reader
+    } do
+      assert [%{"id" => "acme/triage", "conversation" => "C1"}] =
+               run!(reader, "agents.list", %{})["agents"]
+
+      assert run!(reader, "agents.list", %{"agents" => ["globex/triage"]})["agents"] == []
+
+      assert [%{"agent" => %{"id" => "acme/triage"}, "conversation" => "C1"}] =
+               run!(reader, "interrupts.list", %{})["interrupts"]
+
+      %{"events" => events, "next" => next} = run!(reader, "events.list", %{})
+      assert events != []
+
+      assert Enum.uniq(for event <- events, do: {event["agent"], event["conversation"]}) == [
+               {"acme/triage", "C1"}
+             ]
+
+      assert run!(reader, "events.list", %{"agents" => ["globex/triage"]})["events"] == []
+
+      %{"cursor" => everything} = run!(scope, "events.head", %{})
+      {:ok, all} = Cursor.decode(everything)
+      assert Map.has_key?(all, {"globex/triage", "C1"})
+
+      %{"cursor" => head} = run!(reader, "events.head", %{})
+      %{"next" => after_all} = run!(reader, "events.list", %{"after" => everything})
+
+      for cursor <- [next, head, after_all] do
+        assert {:ok, positions} = Cursor.decode(cursor)
+        assert Map.keys(positions) == [{"acme/triage", "C1"}]
+      end
+    end
+
+    test "asks the authorizer about its agent, and tells it the conversation", %{
+      wardrik: wardrik
+    } do
+      test = self()
+
+      decide = fn request ->
+        send(test, {:authorize, request})
+        :ok
+      end
+
+      scope = Wardrik.as(wardrik, maria(), context: %{decide: decide})
+      seen = %{"agent" => "acme/triage", "conversation" => "C1"}
+
+      for {operation, input} <- [
+            {"agent.read", seen},
+            {"agent.events", seen},
+            {"agent.ask", Map.put(seen, "content", "Hi")},
+            {"agent.approve", Map.put(seen, "interrupt", "call_1")}
+          ] do
+        run!(scope, operation, input)
+
+        assert_received {:authorize,
+                         %{resource: {:agent, "acme/triage"}, context: %{conversation: "C1"}}},
+                        operation
+      end
+    end
+  end
+
   describe "what the runner refuses" do
     test "input its schema doesn't take", %{scope: scope} do
       assert refused(scope, "agent.ask", %{"agent" => "acme/triage"}) == :invalid_request
-      assert refused(scope, "agent.read", %{"agent" => "acme"}) == :invalid_request
+
+      for id <- ["", "acme\ntriage", String.duplicate("a", 256)] do
+        assert refused(scope, "agent.read", %{"agent" => id}) == :invalid_request
+
+        assert refused(scope, "agent.read", %{"agent" => "acme/triage", "conversation" => id}) ==
+                 :invalid_request
+      end
+
       assert refused(scope, "events.list", %{"after" => "not a cursor"}) == :invalid_request
 
       assert refused(scope, "agent.events", %{"agent" => "acme/triage", "after" => "nope"}) ==
@@ -330,7 +455,7 @@ defmodule Wardrik.OperationsTest do
   end
 
   test "reads the audit", %{wardrik: wardrik, scope: scope} do
-    change = {"agent.forgotten", "agents/acme/triage", %{"agent" => %{"id" => "acme/triage"}}}
+    change = {"agent.forgotten", "agents/acme%2Ftriage", %{"agent" => %{"id" => "acme/triage"}}}
     :ok = WardrikEvents.record(Wardrik.events(wardrik), change, actor: maria())
 
     assert %{"events" => [%{"type" => "wardrik.agent.forgotten"}], "next" => next} =

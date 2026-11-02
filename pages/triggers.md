@@ -60,7 +60,7 @@ scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 Triggers are part of a definition. Replace the feed's URL with one you follow:
 
 ```elixir
-Wardrik.Agent.define(scope, "acme/@maria/digest",
+Wardrik.Agent.define(scope, "agt_digest",
   model: "anthropic:claude-haiku-4-5",
   triggers: [
     %{
@@ -73,7 +73,7 @@ Wardrik.Agent.define(scope, "acme/@maria/digest",
     %{name: "issues", webhook: %{secret: "${ISSUES_HOOK_SECRET}"}, prompt: "Triage it."}
   ]
 )
-#=> {:ok, %Wardrik.Agent{id: "acme/@maria/digest", next_run: ~U[...], ...}}
+#=> {:ok, %Wardrik.Agent{id: "agt_digest", next_run: ~U[...], ...}}
 ```
 
 A triggered run is an ordinary message to the agent, and wakes an agent that sleeps. Each run
@@ -115,8 +115,9 @@ To change how feeds are read, set `triggers: [req_options: ...]` in Wardrik's co
 
 A service sends requests to `POST /v1/hooks/{agent}/{trigger}`, with the secret as a bearer token.
 A service that only takes a URL sends them to `POST /v1/hooks/{agent}/{trigger}/{secret}` instead;
-keep that URL as private as a token. With `verify: standard`, requests are signed as
-[Standard Webhooks](https://www.standardwebhooks.com/) describes.
+keep that URL as private as a token. `{agent}` is the agent's ID, URL-encoded. With
+`verify: standard`, requests are signed as [Standard Webhooks](https://www.standardwebhooks.com/)
+describes.
 
 `${NAME}` names a credential of the agent's, kept in Wardrik's vault; see
 [Credentials](credentials.md). A request that doesn't prove itself returns `not_found`. Each
@@ -126,7 +127,7 @@ From Elixir, deliver the request as it came, with its raw body and headers:
 
 ```elixir
 Wardrik.Hook.deliver(scope,
-  agent: "acme/@maria/digest",
+  agent: "agt_digest",
   trigger: "issues",
   body: ~s({"action":"opened"}),
   headers: %{"authorization" => "Bearer hook-s3cret"}
@@ -142,7 +143,7 @@ Define the agent again to replace its triggers. To change one at a time:
 
 ```elixir
 Wardrik.Agent.trigger_set(scope,
-  agent: "acme/@maria/digest",
+  agent: "agt_digest",
   trigger: "daily",
   every: "0 8 * * *",
   prompt: "Write it."
@@ -157,7 +158,7 @@ Wardrik.Agent.trigger_set(scope,
 #=>    ...
 #=>  }}
 
-Wardrik.Agent.trigger_remove(scope, agent: "acme/@maria/digest", trigger: "daily")
+Wardrik.Agent.trigger_remove(scope, agent: "agt_digest", trigger: "daily")
 #=> {:ok, %Wardrik.Trigger{name: "daily", ...}}
 ```
 

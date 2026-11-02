@@ -33,8 +33,9 @@ defmodule Wardrik.HostTest do
   end
 
   test "writes positions as a cursor, and reads them back" do
-    cursor = Wardrik.cursor(%{"acme/triage" => 41})
-    assert Wardrik.positions(cursor) == {:ok, %{"acme/triage" => 41}}
+    positions = %{{"acme/triage", nil} => 41, {"acme/triage", "C1/2"} => 3}
+    cursor = Wardrik.cursor(positions)
+    assert Wardrik.positions(cursor) == {:ok, positions}
     assert Wardrik.positions("not a cursor") == :error
   end
 

@@ -40,7 +40,7 @@ System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 scope = Wardrik.as(MyApp.AgentRuntime, "acme/@maria")
 
 {:ok, agent} =
-  Wardrik.Agent.define(scope, "acme/@maria/assistant",
+  Wardrik.Agent.define(scope, "agt_assistant",
     model: "anthropic:claude-haiku-4-5",
     instructions: "You keep Maria's notes."
   )
@@ -64,7 +64,7 @@ between chunks, in milliseconds. Ten minutes unless set.
 `Wardrik.Agent.reply/4` returns the answer once the run ends:
 
 ```elixir
-Wardrik.Agent.reply(scope, "acme/@maria/assistant", "What's on today?")
+Wardrik.Agent.reply(scope, "agt_assistant", "What's on today?")
 #=> {:ok, %Wardrik.Reply{message: "msg_Xq3f...", run: "0af76519...", text: "Nothing yet."}}
 ```
 
@@ -96,7 +96,7 @@ after. Use it to follow the answer yourself:
 
 ```elixir
 Wardrik.Agent.ask(scope, agent, "Hi")
-#=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "eyJhY21lL0BtYXJpYS9hc3Npc3RhbnQiOjE2fQ"}}
+#=> {:ok, %Wardrik.Message{id: "msg_Xq3f...", cursor: "W1siYWd0X2Fzc2lzdGFudCIsbnVsbCwxNl1d"}}
 ```
 
 It takes text, or `content:`, `parts:` and an `id:` of your own:
