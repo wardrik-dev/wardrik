@@ -4,7 +4,9 @@ defmodule WardrikDaemon.Tokens do
             subject: [
               type: {:custom, __MODULE__, :subject, []},
               required: true,
-              doc: "Who it authenticates as: `user:ID`, or `agent:ID` for an agent's own."
+              doc:
+                "Who it authenticates as: a user, as `user:acme/@ana`, or `agent:ID` for an " <>
+                  "agent's own."
             ],
             groups: [
               type: {:list, :string},
@@ -20,7 +22,7 @@ defmodule WardrikDaemon.Tokens do
       {:ok, %{token: token, secret: secret}} =
         WardrikDaemon.Tokens.create(store,
           name: "ana's laptop",
-          subject: "user:ana",
+          subject: "user:payments/@ana",
           groups: ["payments-eng"],
           expires: DateTime.add(DateTime.utc_now(), 30, :day)
         )
@@ -33,6 +35,8 @@ defmodule WardrikDaemon.Tokens do
   #{NimbleOptions.docs(@schema)}
   """
 
+  alias WardrikDaemon.Config.Access
+  alias WardrikDaemon.Owners
   alias WardrikDaemon.Tokens.Token
 
   @prefix "tokens/"
@@ -74,10 +78,17 @@ defmodule WardrikDaemon.Tokens do
     end
   end
 
+  # A user is a person in an org, or the admin. Never an org itself, which would own its agents.
   @doc false
-  def subject("user:" <> id = subject) when id not in ["", "deployment"], do: {:ok, subject}
+  def subject("user:" <> id = subject) do
+    if id == Access.admin() or Owners.user?(id), do: {:ok, subject}, else: refused(subject)
+  end
+
   def subject("agent:" <> id = subject) when id != "", do: {:ok, subject}
-  def subject(other), do: {:error, "expected user:ID or agent:ID, got: #{inspect(other)}"}
+  def subject(other), do: refused(other)
+
+  defp refused(subject),
+    do: {:error, "expected a user, as user:acme/@ana, or agent:ID, got: #{inspect(subject)}"}
 
   defp hash(secret), do: :crypto.hash(:sha256, secret)
 end

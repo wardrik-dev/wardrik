@@ -88,10 +88,12 @@ defmodule WardrikDaemon.OAuthApps do
   """
   @spec keep(Servers.daemon(), {String.t(), map()}) :: {:ok, map()} | {:error, Error.t()}
   def keep(%{store: store} = daemon, {owner, %{"name" => name} = input}) do
+    app = %{owner: owner, name: name, id: id()}
+
     with :ok <- reachable(daemon, input),
          {:ok, secret} <- client_secret(daemon, owner, input["client_secret"]),
-         {:ok, opts} <- options(name, input) do
-      app = %{owner: owner, name: name, id: id(), opts: opts, secret: secret}
+         {:ok, opts} <- options(app, input) do
+      app = Map.merge(app, %{opts: opts, secret: secret})
       {:ok, _vsn} = WardrikStore.put(store, Owned.path(@kind, owner, name), app)
       {:ok, app}
     end
@@ -131,7 +133,7 @@ defmodule WardrikDaemon.OAuthApps do
   defp forget_client(%Wardrik{oauth: nil}, _app), do: :ok
 
   defp forget_client(running, app),
-    do: WardrikOAuth.forget_client(Wardrik.oauth(running), key(app))
+    do: Wardrik.forget_client(running, key(app))
 
   @doc "Returns the key that names `app`, unique to it."
   @spec key(map()) :: String.t()
@@ -165,10 +167,8 @@ defmodule WardrikDaemon.OAuthApps do
   defp all_configured(_daemon), do: []
 
   defp resolved(daemon, app) do
-    with {:ok, secret} <- read_secret(daemon, app) do
-      provider = Provider.new(app.name, app.opts)
-      {:ok, %{provider | key: key(app), client_secret: secret}}
-    end
+    with {:ok, secret} <- read_secret(daemon, app),
+         do: {:ok, Provider.new(app.name, [key: key(app), client_secret: secret] ++ app.opts)}
   end
 
   defp read_secret(_daemon, %{client_secret: secret}), do: {:ok, secret}
@@ -223,9 +223,9 @@ defmodule WardrikDaemon.OAuthApps do
          )}
   end
 
-  defp options(name, input) do
+  defp options(app, input) do
     opts = Enum.flat_map(input, &option/1)
-    _provider = Provider.new(name, opts)
+    _provider = Provider.new(app.name, [key: key(app)] ++ opts)
     {:ok, opts}
   rescue
     error in [ArgumentError, NimbleOptions.ValidationError] ->

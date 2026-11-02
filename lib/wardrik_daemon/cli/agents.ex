@@ -7,7 +7,6 @@ defmodule WardrikDaemon.CLI.Agents do
   alias WardrikDaemon.CLI.Follow
   alias WardrikDaemon.CLI.Table
   alias WardrikDaemon.Console.Markdown
-  alias WardrikDaemon.Owners
 
   @group "Agents"
   @conversation [conversation: :string]
@@ -26,9 +25,9 @@ defmodule WardrikDaemon.CLI.Agents do
         summary: "list the agents, and what each is doing",
         details: [
           "Each agent's conversations, as a Slack thread's, are counted; --all lists them too.",
-          "A QUERY is words that must all match: text in the name or ID, name:, org:, user:, node:,",
-          "status:idle, status:running, status:parked or status:asleep, and attention, an agent",
-          "waiting on a person."
+          "A QUERY is words that must all match: text in the name or ID, name:, org:, node:,",
+          "user:, as user:acme/@jon, status:idle, status:running, status:parked or status:asleep,",
+          "and attention, an agent waiting on a person."
         ],
         run: &listed/3
       },
@@ -255,19 +254,10 @@ defmodule WardrikDaemon.CLI.Agents do
   defp matches_word?(agent, _named, "node:" <> node), do: agent["node"] == node
   defp matches_word?(_agent, named, "name:" <> name), do: named["name"] == name
   defp matches_word?(_agent, named, "org:" <> org), do: named["org"] == org
-  defp matches_word?(_agent, named, "user:" <> user), do: user(named) in [user, "@" <> user]
+  defp matches_word?(_agent, named, "user:" <> user), do: named["owner"] == user
 
   defp matches_word?(agent, named, text),
     do: String.contains?(agent["id"], text) or String.contains?(named["name"] || "", text)
-
-  defp user(%{"owner" => owner}) do
-    case Owners.person(owner) do
-      nil -> nil
-      person -> "@" <> person
-    end
-  end
-
-  defp user(_unnamed), do: nil
 
   defp queued(pending) when pending in [nil, 0], do: nil
   defp queued(pending), do: pending

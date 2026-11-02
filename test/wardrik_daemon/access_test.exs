@@ -21,10 +21,10 @@ defmodule WardrikDaemon.AccessTest do
     roles:
       reader: {rules: [{verbs: [read, events], kinds: [agent]}]}
     bindings:
-      - {org: payments, role: operator, subjects: [user:ana, user:payments/@ana]}
+      - {org: payments, role: operator, subjects: [user:payments/@ana]}
       - {org: payments, role: reader, subjects: [agent:helper]}
-      - {org: growth, role: operator, subjects: [user:gus]}
-    workspace: {shared: {notes: {read: [reader]}}}
+      - {org: growth, role: operator, subjects: [user:growth/@gus]}
+    workspace: {shared: {"agent:notes": {read: ["agent:reader"]}}}
     """)
 
     write(context, "agents/triage.md", "---\ndescription: Triages.\n---\nYou triage.\n")
@@ -52,7 +52,7 @@ defmodule WardrikDaemon.AccessTest do
     do: Client.run(client, "agents.find", %{"owner" => owner, "name" => name})
 
   test "a user bound in one org reaches nothing in another, nor the deployment", context do
-    ana = client(context, "user:ana")
+    ana = client(context, "user:payments/@ana")
 
     assert {:ok, _agent} = Client.run(ana, "agent.read", %{"agent" => context.triage})
 
@@ -71,8 +71,8 @@ defmodule WardrikDaemon.AccessTest do
   end
 
   test "two orgs may use one name, and each finds its own alone", context do
-    ana = client(context, "user:ana")
-    gus = client(context, "user:gus")
+    ana = client(context, "user:payments/@ana")
+    gus = client(context, "user:growth/@gus")
     admin = client(context, "user:admin")
 
     assert context.triage != context.growth
@@ -139,7 +139,7 @@ defmodule WardrikDaemon.AccessTest do
 
     assert find(admin, "payments", "odd") == {:ok, %{"agents" => []}}
 
-    shares = %{"name" => "reader", "workspace" => %{"shared" => %{"team" => "notes"}}}
+    shares = %{"name" => "reader", "workspace" => %{"shared" => %{"team" => "agent:notes"}}}
 
     assert {:ok, %{"id" => reader}} =
              Client.run(admin, "agents.create", Map.merge(made, shares))
@@ -199,8 +199,8 @@ defmodule WardrikDaemon.AccessTest do
     {:ok, %Wardrik.Reply{}} =
       Wardrik.Agent.reply(context.admin, context.growth, "Hi", conversation: "C1")
 
-    ana = client(context, "user:ana")
-    gus = client(context, "user:gus")
+    ana = client(context, "user:payments/@ana")
+    gus = client(context, "user:growth/@gus")
     conversation = %{"agent" => context.growth, "conversation" => "C1"}
 
     assert {:ok, %{"events" => [_ | _]}} = Client.run(gus, "agent.events", conversation)

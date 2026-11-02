@@ -51,8 +51,13 @@ defmodule WardrikDaemon.NotifyTargetsTest do
     notify:
       targets:
         audit: {webhook: {url: "http://127.0.0.1:#{hooks}/audit"}}
+    roles:
+      adder: {rules: [{verbs: [add, read], kinds: [notify_target]}]}
+      remover: {rules: [{verbs: [delete, read], kinds: [notify_target]}]}
     bindings:
-      - {org: payments, role: operator, subjects: [user:ana]}
+      - {org: payments, role: operator, subjects: [user:payments/@ana]}
+      - {org: payments, role: adder, subjects: [user:payments/@bo]}
+      - {org: payments, role: remover, subjects: [user:payments/@dee]}
     """)
 
     context = start_daemon(context)
@@ -141,7 +146,7 @@ defmodule WardrikDaemon.NotifyTargetsTest do
 
   test "a token bound in one org can't add, list or remove another org's targets", context do
     admin = client(context, "user:admin")
-    ana = client(context, "user:ana")
+    ana = client(context, "user:payments/@ana")
     {:ok, _added} = add(admin, "growth", target(context, "ops"))
 
     assert {:ok, %{"name" => "mine"}} = add(ana, "payments", target(context, "mine"))
@@ -234,5 +239,18 @@ defmodule WardrikDaemon.NotifyTargetsTest do
 
     assert {:ok, %{"events" => events}} = Wardrik.run(context.admin, "audit.list", %{})
     assert "wardrik.notify_target.added" in Enum.map(events, & &1["type"])
+  end
+
+  # Removing is its own verb, as Kubernetes' delete: adding doesn't allow it.
+  test "removing a target needs delete, not add", context do
+    adder = client(context, "user:payments/@bo")
+    remover = client(context, "user:payments/@dee")
+
+    assert {:ok, _added} = add(adder, "payments", target(context, "ops"))
+    assert {:error, "forbidden", _message} = remove(adder, "payments", "ops")
+    assert {:error, "forbidden", _message} = add(remover, "payments", target(context, "docs"))
+    assert {:ok, _removed} = remove(remover, "payments", "ops")
+    assert {:ok, %{"targets" => targets}} = list(adder, "payments")
+    refute "ops" in Enum.map(targets, & &1["name"])
   end
 end

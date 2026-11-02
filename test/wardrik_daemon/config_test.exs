@@ -38,7 +38,7 @@ defmodule WardrikDaemon.ConfigTest do
       providers:
         github: {issuer: https://github.com/login/oauth, client_id: "${GITHUB_CLIENT_ID}", scopes: [repo], flow: device}
     channels:
-      slack: {type: slack, token: xoxb-1, app_token: xapp-1, members: {U1: user:maria}}
+      slack: {type: slack, token: xoxb-1, app_token: xapp-1, members: {U1: user:acme/@maria}}
       ops: {type: slack, signing_secret: s, client_id: "1.2", client_secret: c, unmapped_members: allow}
     brave: {api_key: "${KEY}"}
     models:
@@ -75,7 +75,8 @@ defmodule WardrikDaemon.ConfigTest do
     assert slack == [
              owner: "acme",
              identities:
-               {WardrikDaemon.ChannelMembers, members: %{"U1" => "maria"}, unmapped: :refuse},
+               {WardrikDaemon.ChannelMembers,
+                members: %{"U1" => "acme/@maria"}, unmapped: :refuse},
              req_options: [],
              app_token: "xapp-1",
              token: "xoxb-1"
@@ -211,7 +212,7 @@ defmodule WardrikDaemon.ConfigTest do
       reader: {rules: [{verbs: [read, events], kinds: [agent]}, {verbs: [read], kinds: [secret, ceiling]}]}
       triager: {rules: [{verbs: [ask], kinds: [agent], names: [triage]}]}
     bindings:
-      - {org: payments, role: operator, subjects: [user:ana, group:payments-eng]}
+      - {org: payments, role: operator, subjects: [user:payments/@ana, group:payments-eng]}
       - {org: growth, role: triager, subjects: [agent:helper]}
     """
 
@@ -228,7 +229,11 @@ defmodule WardrikDaemon.ConfigTest do
 
     assert bindings == [
              %{org: "*", role: "admin", subjects: ["user:admin"]},
-             %{org: "payments", role: "operator", subjects: ["user:ana", "group:payments-eng"]},
+             %{
+               org: "payments",
+               role: "operator",
+               subjects: ["user:payments/@ana", "group:payments-eng"]
+             },
              %{org: "growth", role: "triager", subjects: ["agent:helper"]}
            ]
   end
@@ -271,7 +276,9 @@ defmodule WardrikDaemon.ConfigTest do
       {"mcp: {a: 1}", "mcp.a: is a server's keys"},
       {"mcp: [a]", "invalid value for :mcp option: expected map"},
       {"oauth: {providers: {g: {zzz_colour: red}}}",
-       "oauth.providers.g.zzz_colour: isn't an option"},
+       "oauth.providers.g: unknown options [:zzz_colour]"},
+      {"oauth: {providers: {g: {issuer: x, key: mine}}}",
+       "oauth.providers.g: unknown options [:key]"},
       {"oauth: {providers: {g: {issuer: x, name: red}}}",
        "oauth.providers.g: unknown options [:name], valid options are: [:issuer,"},
       {"oauth: {providers: {g: {issuer: x, flow: carrier_pigeon}}}",
@@ -297,6 +304,10 @@ defmodule WardrikDaemon.ConfigTest do
        "channels.slack: unknown options [:approvers]"},
       {"channels: {slack: {type: slack, members: {U1: ana}}}",
        "channels.slack: invalid map in :members option"},
+      {"channels: {slack: {type: slack, members: {U1: user:ana}}}",
+       "is a person in an org, as user:acme/@ana, or user:admin, not \"user:ana\""},
+      {"channels: {slack: {type: slack, members: {U1: user:acme}}}",
+       "is a person in an org, as user:acme/@ana, or user:admin, not \"user:acme\""},
       {"channels: {slack: {type: slack, unmapped_members: yes}}",
        "channels.slack: invalid value for :unmapped_members option"},
       {"channels: {slack: {type: slack, req_options: {zzz_frob: 1}}}",
@@ -322,14 +333,18 @@ defmodule WardrikDaemon.ConfigTest do
        "roles.r.rules.0: unknown options [:colour]"},
       {"roles: {r: {}}", "roles.r: required :rules option not found"},
       {"roles: [r]", "invalid value for :roles option: expected map"},
-      {"bindings: [{org: default, role: auditor, subjects: [user:ana]}]",
+      {"bindings: [{org: default, role: auditor, subjects: [user:default/@ana]}]",
        "bindings.0.role: names auditor, which roles doesn't declare"},
-      {"bindings: [{org: growth, role: operator, subjects: [user:ana]}]",
+      {"bindings: [{org: growth, role: operator, subjects: [user:default/@ana]}]",
        "bindings.0.org: names growth, which config.yaml doesn't declare"},
       {"bindings: [{org: default, role: operator, subjects: [team:ana]}]",
-       "bindings.0: invalid list in :subjects option: invalid value for list element at position 0: \"team:ana\" isn't user:ID, group:NAME or agent:NAME"},
+       "bindings.0: invalid list in :subjects option: invalid value for list element at position 0: \"team:ana\" isn't user:ORG/@PERSON, group:NAME or agent:NAME"},
       {"bindings: [{org: default, role: operator, subjects: [agent:payments/triage]}]",
-       "\"agent:payments/triage\" isn't user:ID, group:NAME or agent:NAME"},
+       "\"agent:payments/triage\" isn't user:ORG/@PERSON, group:NAME or agent:NAME"},
+      {"bindings: [{org: default, role: operator, subjects: [user:ana]}]",
+       "\"user:ana\" isn't user:ORG/@PERSON, group:NAME or agent:NAME"},
+      {"bindings: [{org: default, role: operator, subjects: [user:default]}]",
+       "\"user:default\" isn't user:ORG/@PERSON, group:NAME or agent:NAME"},
       {~s(bindings: [{org: "*", role: operator, subjects: [agent:triage]}]),
        "bindings.0.subjects: names an agent, which is an org's; bind it in its org"},
       {"bindings: [{org: default, role: operator, subjects: [ana]}]",
@@ -370,7 +385,7 @@ defmodule WardrikDaemon.ConfigTest do
     yaml = """
     workspace:
       shared:
-        runbooks: {read: [triage], write: [ops]}
+        agent:runbooks: {read: [agent:triage], write: [agent:ops]}
     """
 
     assert {:ok,
@@ -378,14 +393,16 @@ defmodule WardrikDaemon.ConfigTest do
              read(context, yaml)
 
     for shared <- [
-          "{runbooks: {read: acme}}",
-          "{runbooks: {read: [\"*\"]}}",
-          "{runbooks: {write: [acme/triage]}}",
-          "{\"*\": {read: [triage]}}",
+          "{\"agent:runbooks\": {read: \"agent:acme\"}}",
+          "{\"agent:runbooks\": {read: [\"agent:*\"]}}",
+          "{\"agent:runbooks\": {write: [\"agent:acme/triage\"]}}",
+          "{\"agent:runbooks\": {write: [triage]}}",
+          "{runbooks: {read: [\"agent:triage\"]}}",
+          "{\"agent:*\": {read: [\"agent:triage\"]}}",
           "{acme/runbooks: {read: [triage]}}"
         ] do
       assert {:error, why} = read(context, "workspace: {shared: #{shared}}")
-      assert why =~ "is an agent's name, holding read and write", shared
+      assert why =~ "is an agent, as agent:NAME, holding read and write", shared
     end
 
     assert {:error, why} = read(context, "workspace: {trees: {}}")
@@ -430,7 +447,7 @@ defmodule WardrikDaemon.ConfigTest do
         type: slack
         token: ${SLACK_BOT_TOKEN}
         app_token: ${SLACK_APP_TOKEN}
-        members: {U1: user:jon}
+        members: {U1: user:acme/@jon}
     vault:
       keys: ["${WARDRIK_VAULT_KEY}"]
     brave:

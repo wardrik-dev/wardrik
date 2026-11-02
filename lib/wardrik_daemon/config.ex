@@ -84,9 +84,9 @@ defmodule WardrikDaemon.Config do
             workspace: [
               type: {:map, :string, :any},
               doc: """
-              `shared`: agents' workspaces other agents may mount, by the sharing agent's name,
-              each with `read` and `write` lists of the names of the agents that mount it. Each
-              name is an agent's in the mounting agent's own org.
+              `shared`: agents' workspaces other agents may mount, by the sharing agent, as
+              `agent:NAME`. Each has `read` and `write` lists of the agents that mount it, as
+              `agent:NAME`. Each name is an agent's in the mounting agent's own org.
               """
             ],
             brave: [
@@ -434,13 +434,13 @@ defmodule WardrikDaemon.Config do
          [
            shared:
              Map.new(shared, fn {agent, rule} ->
-               {agent, %{read: Map.get(rule, "read", []), write: Map.get(rule, "write", [])}}
+               {name(agent), %{read: mounting(rule, "read"), write: mounting(rule, "write")}}
              end)
          ]}
 
       {agent, _rule} ->
         {:error,
-         "workspace.shared.#{agent}: is an agent's name, holding read and write, each a list of agents' names"}
+         "workspace.shared.#{agent}: is an agent, as agent:NAME, holding read and write, each a list of agents, as agent:NAME"}
     end
   end
 
@@ -455,8 +455,15 @@ defmodule WardrikDaemon.Config do
 
   defp rule?(_rule), do: false
 
-  # An agent's name exactly: no patterns.
-  defp agent?(name), do: AgentRecords.name?(name)
+  # An agent as agent:NAME exactly: no patterns.
+  defp agent?(agent), do: match?({:ok, _name}, AgentRecords.subject(agent))
+
+  defp name(agent) do
+    {:ok, name} = AgentRecords.subject(agent)
+    name
+  end
+
+  defp mounting(rule, mode), do: rule |> Map.get(mode, []) |> Enum.map(&name/1)
 
   defp interpolated(term, env, vault) do
     values = term |> names() |> Enum.uniq() |> Map.new(&{&1, value(&1, env, vault)})

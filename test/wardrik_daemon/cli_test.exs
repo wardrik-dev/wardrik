@@ -255,7 +255,8 @@ defmodule WardrikDaemon.CLITest do
       end
 
       assert Enum.sort(ids.(["org:acme"])) == Enum.sort([mine, triage])
-      assert ids.(["user:jon"]) == [mine]
+      assert ids.(["user:acme/@jon"]) == [mine]
+      assert ids.(["user:jon"]) == []
       assert ids.(["name:triage", "status:idle"]) == [triage]
       assert ids.(["tri"]) == [triage]
       assert ids.(["org:globex"]) == []
@@ -548,7 +549,7 @@ defmodule WardrikDaemon.CLITest do
                  "create",
                  "laptop",
                  "--subject",
-                 "user:ana",
+                 "user:acme/@ana",
                  "--groups",
                  "eng,ops",
                  "--expires",
@@ -556,11 +557,14 @@ defmodule WardrikDaemon.CLITest do
                ])
 
       assert [said, secret] = String.split(made, "\n", trim: true)
-      assert [_whole, id] = Regex.run(~r/^Made (\w+) for user:ana\. It's shown once:$/, said)
+
+      assert [_whole, id] =
+               Regex.run(~r{^Made (\w+) for user:acme/@ana\. It's shown once:$}, said)
+
       assert "wdk_" <> _rest = secret
 
       assert {0, listed} = wardrik(context, ["token", "ls"])
-      assert listed =~ ~r/#{id}\s+laptop\s+user:ana\s+eng,ops/
+      assert listed =~ ~r{#{id}\s+laptop\s+user:acme/@ana\s+eng,ops}
       refute listed =~ secret
 
       assert wardrik(context, ["token", "revoke", id]) == {0, "Revoked #{id}.\n"}
@@ -569,15 +573,36 @@ defmodule WardrikDaemon.CLITest do
 
       assert failing(context, ["token", "create", "x"]) =~ "Give the token's --subject"
 
-      assert failing(context, ["token", "create", "x", "--subject", "user:a", "--expires", "1y"]) =~
+      assert failing(context, [
+               "token",
+               "create",
+               "x",
+               "--subject",
+               "user:acme/@a",
+               "--expires",
+               "1y"
+             ]) =~
                "--expires takes a time"
 
       assert failing(context, ["token", "create", "x", "--subject", "group:eng"]) =~ "subject"
 
+      assert failing(context, ~w(token create x --subject user:ana)) =~
+               "expected a user, as user:acme/@ana"
+
       # An agent is named as other commands name it, and its token acts as its ID.
       triage = id(context, "acme", "triage")
       assert {0, made} = wardrik(context, ~w(token create bot --subject agent:triage))
-      assert made =~ "for agent:#{triage}."
+      assert made =~ "for agent:triage."
+
+      assert [%{subject: subject}] =
+               for(
+                 %{name: "bot"} = token <- WardrikDaemon.Tokens.list(context.daemon_store),
+                 do: token
+               )
+
+      assert subject == "agent:" <> triage
+      assert {0, listed} = wardrik(context, ["token", "ls"])
+      assert listed =~ ~r/bot\s+agent:triage\s/
       assert failing(context, ~w(token create bot --subject agent:nope)) =~ "no agent nope"
     end
 

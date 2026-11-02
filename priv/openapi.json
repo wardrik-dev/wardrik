@@ -93,7 +93,7 @@
       "post": {
         "operationId": "agents.create",
         "summary": "Make an agent for an owner",
-        "description": "Mints the agent's ID, keeps its record, and defines it as Wardrik's agent.define does, as the caller. The body is the agent's name and its definition. Its workspace.shared names agents of its org by name. A name another agent of the org has is a conflict, unless that agent was forgotten. Making one is the verb create on the kind agent, in the owner's org; the owner may make its own.",
+        "description": "Mints the agent's ID, keeps its record, and defines it as Wardrik's agent.define does, as the caller. The body is the agent's name and its definition. Its workspace.shared names agents of its org as agent:NAME. A name another agent of the org has is a conflict, unless that agent was forgotten. Making one is the verb create on the kind agent, in the owner's org; the owner may make its own.",
         "tags": [
           "Agents"
         ],
@@ -240,7 +240,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-wardrik-action": "secret.put",
+        "x-wardrik-action": "secret.delete",
         "x-wardrik-resource": "secret",
         "parameters": [
           {
@@ -414,7 +414,7 @@
         "tags": [
           "Servers"
         ],
-        "x-wardrik-action": "mcp_server.add",
+        "x-wardrik-action": "mcp_server.delete",
         "x-wardrik-resource": "mcp_server",
         "parameters": [
           {
@@ -551,7 +551,7 @@
         "tags": [
           "Notify targets"
         ],
-        "x-wardrik-action": "notify_target.add",
+        "x-wardrik-action": "notify_target.delete",
         "x-wardrik-resource": "notify_target",
         "parameters": [
           {
@@ -688,7 +688,7 @@
         "tags": [
           "OAuth apps"
         ],
-        "x-wardrik-action": "provider.add",
+        "x-wardrik-action": "provider.delete",
         "x-wardrik-resource": "provider",
         "parameters": [
           {
@@ -803,11 +803,11 @@
       "delete": {
         "operationId": "connections.disconnect",
         "summary": "Forget the caller's account",
-        "description": "The next call that needs it asks the caller to sign in again. Answers connected: true where there was one to forget. Recorded in the audit.",
+        "description": "The next call that needs it asks the caller to sign in again. not_found where the caller holds no such account. Recorded in the audit.",
         "tags": [
           "Connections"
         ],
-        "x-wardrik-action": "connection.connect",
+        "x-wardrik-action": "connection.delete",
         "x-wardrik-resource": "connection",
         "parameters": [
           {
@@ -815,15 +815,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "The account, as it was.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/connection"
-                }
-              }
-            }
+          "204": {
+            "description": "Removed."
           },
           "400": {
             "$ref": "#/components/responses/Invalid"
@@ -978,7 +971,7 @@
         "tags": [
           "Tokens"
         ],
-        "x-wardrik-action": "token.revoke",
+        "x-wardrik-action": "token.delete",
         "x-wardrik-resource": "token",
         "parameters": [
           {
@@ -2433,7 +2426,7 @@
           "subject": {
             "type": "string",
             "pattern": "^(user|agent):[^\\s]+$",
-            "description": "Who it acts as: user:ID, or agent:ID for an agent's own."
+            "description": "Who it acts as: a person in an org, as user:acme/@ana, or agent:ID for an agent's own."
           },
           "groups": {
             "type": "array",
@@ -2453,7 +2446,7 @@
         "examples": [
           {
             "name": "ana's laptop",
-            "subject": "user:ana",
+            "subject": "user:payments/@ana",
             "groups": [
               "payments-eng"
             ],
@@ -2501,7 +2494,7 @@
           {
             "id": "mzxw6ytboi",
             "name": "ana's laptop",
-            "subject": "user:ana",
+            "subject": "user:payments/@ana",
             "groups": [
               "payments-eng"
             ],
@@ -2554,7 +2547,7 @@
           {
             "id": "mzxw6ytboi",
             "name": "ana's laptop",
-            "subject": "user:ana",
+            "subject": "user:payments/@ana",
             "groups": [
               "payments-eng"
             ],
@@ -2585,7 +2578,7 @@
               {
                 "id": "mzxw6ytboi",
                 "name": "ana's laptop",
-                "subject": "user:ana",
+                "subject": "user:payments/@ana",
                 "groups": [
                   "payments-eng"
                 ],

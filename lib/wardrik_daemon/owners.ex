@@ -3,6 +3,7 @@ defmodule WardrikDaemon.Owners do
   Who owns each agent, and what an owner is.
 
   An owner is `deployment`, an org such as `acme`, or a person in one, as `acme/@jon`.
+  A user's ID is the person's owner, so `acme/@jon` is the user `user:acme/@jon`.
   An agent's owner is in its record, never its ID. See `WardrikDaemon.AgentRecords`.
   """
 
@@ -38,6 +39,15 @@ defmodule WardrikDaemon.Owners do
       _other -> false
     end
   end
+
+  @doc """
+  Returns whether `id` is a user's: a person in an org. A user's ID is its owner.
+
+      WardrikDaemon.Owners.user?("acme/@ana")
+      #=> true
+  """
+  @spec user?(String.t()) :: boolean()
+  def user?(id), do: valid?(id) and person(id) != nil
 
   @doc """
   Returns `owner`'s org.

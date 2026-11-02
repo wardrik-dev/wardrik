@@ -143,9 +143,8 @@ defmodule WardrikDaemon.PairingTest do
     assert {:error, "invalid_request", _message} = pair(bo, "crm", code)
     assert code(callback(context, params)) == nil
 
-    oauth = Wardrik.oauth(context.running)
     as = [as: %Principal{id: "payments/@bo"}]
-    assert {:error, :no_such_flow} = WardrikOAuth.finish(oauth, params, as)
+    assert {:error, :no_such_flow} = Wardrik.finish_sign_in(context.running, params, as)
     refute connected?(context, "payments/@bo", "crm")
   end
 

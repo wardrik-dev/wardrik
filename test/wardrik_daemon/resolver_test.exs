@@ -28,7 +28,7 @@ defmodule WardrikDaemon.ResolverTest do
       team: {type: slack, token: xoxb-team, signing_secret: s}
     workspace:
       shared:
-        ledger: {read: [refunds], write: [ana-refunds]}
+        agent:ledger: {read: [agent:refunds], write: [agent:ana-refunds]}
     orgs:
       "*": {mcp: [search], channels: [team], policy: base}
       payments: {mcp: [stripe], notify: [audit], policy: strict}

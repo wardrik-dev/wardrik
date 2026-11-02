@@ -91,13 +91,13 @@ defmodule WardrikDaemon.ServerTest do
     write(
       context,
       "config.yaml",
-      config <> "workspace: {shared: {triage: {read: [notes]}}}\n"
+      config <> "workspace: {shared: {\"agent:triage\": {read: [\"agent:notes\"]}}}\n"
     )
 
     write(
       context,
       "agents/notes.md",
-      "---\ntools: [files]\ncontext: [MEMORY.md]\nworkspace: {shared: {team: triage}}\n---\nKeep notes.\n"
+      "---\ntools: [files]\ncontext: [MEMORY.md]\nworkspace: {shared: {team: \"agent:triage\"}}\n---\nKeep notes.\n"
     )
 
     context = start_daemon(context)

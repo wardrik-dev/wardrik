@@ -23,7 +23,7 @@ defmodule WardrikDaemon.CeilingTest do
     roles:
       reader: {rules: [{verbs: [read], kinds: [ceiling]}]}
     bindings:
-      - {org: payments, role: reader, subjects: [user:ana]}
+      - {org: payments, role: reader, subjects: [user:payments/@ana]}
     """)
 
     write(
@@ -74,7 +74,7 @@ defmodule WardrikDaemon.CeilingTest do
 
   test "an org's agents stop at the ceiling they share, and another org's spend counts apart",
        context do
-    ref = :telemetry_test.attach_event_handlers(self(), [[:wardrik, :ceiling, :reached]])
+    ref = :telemetry_test.attach_event_handlers(self(), [[:wardrik_daemon, :ceiling, :reached]])
     answers([120, 30])
 
     assert {:ok, %Wardrik.Reply{}} = reply(context, "payments", "first")
@@ -83,12 +83,12 @@ defmodule WardrikDaemon.CeilingTest do
     assert {:error, %Wardrik.Error{message: message}} = reply(context, "payments/@ana", "second")
     assert message =~ "payments's agents have used 120 of 100 tokens this month"
 
-    assert_received {[:wardrik, :ceiling, :reached], ^ref, _measurements,
+    assert_received {[:wardrik_daemon, :ceiling, :reached], ^ref, _measurements,
                      %{org: "payments", ceiling: "cap", on_exhausted: :deny}}
 
-    refute_received {[:wardrik, :ceiling, :reached], ^ref, _measurements, _metadata}
+    refute_received {[:wardrik_daemon, :ceiling, :reached], ^ref, _measurements, _metadata}
 
-    ana = client(context, "user:ana")
+    ana = client(context, "user:payments/@ana")
 
     assert {:ok, %{"ceilings" => [cap]}} = ceilings(ana, "payments")
 

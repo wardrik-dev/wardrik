@@ -59,7 +59,8 @@ defmodule WardrikDaemon.CreateAgent do
           definition: [
             type: :map,
             required: true,
-            doc: "The definition, as model, instructions, tools, triggers and the rest"
+            doc:
+              "The definition, as model, instructions, tools, triggers and the rest. Its workspace.shared names agents of your org as agent:NAME"
           ]
         ],
         run: fn args, _context -> made(daemon, {id, principal}, args) end,

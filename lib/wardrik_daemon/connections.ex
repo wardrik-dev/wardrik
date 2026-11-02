@@ -28,13 +28,12 @@ defmodule WardrikDaemon.Connections do
   @spec list(Servers.daemon(), Principal.t()) :: [map()]
   def list(%{wardrik: wardrik} = daemon, %Principal{} = principal) do
     held = held(daemon, principal)
-    oauth = oauth(wardrik)
 
     for {provider, credential} <- offered(daemon, principal) do
       %{
         "provider" => provider,
         "connected" => credential in held,
-        "signing_in" => WardrikOAuth.signing_in?(oauth, credential, principal)
+        "signing_in" => Wardrik.signing_in?(wardrik, credential, principal)
       }
     end
   end
@@ -53,14 +52,17 @@ defmodule WardrikDaemon.Connections do
     end
   end
 
-  @doc "Forgets `principal`'s account `provider`, as `actor`. The next call that needs it asks them to sign in again."
-  @spec disconnect(Servers.daemon(), Principal.t(), String.t()) ::
-          {:ok, map()} | {:error, Error.t()}
+  @doc """
+  Forgets `principal`'s account `provider`. The next call that needs it asks them to sign in again.
+
+  Returns `:not_found` where they hold no such account.
+  """
+  @spec disconnect(Servers.daemon(), Principal.t(), String.t()) :: :ok | {:error, Error.t()}
   def disconnect(%{wardrik: wardrik} = daemon, %Principal{id: id} = principal, provider) do
     with {:ok, credential} <- credential(daemon, principal, provider) do
-      connected = credential in held(daemon, principal)
-      if connected, do: :ok = Secrets.delete(wardrik, {id, credential}, principal)
-      {:ok, %{"provider" => provider, "connected" => connected}}
+      if credential in held(daemon, principal),
+        do: Secrets.delete(wardrik, {id, credential}, principal),
+        else: {:error, Error.new(:not_found, "You have no #{provider} account connected.")}
     end
   end
 
@@ -101,7 +103,7 @@ defmodule WardrikDaemon.Connections do
   end
 
   defp finished(wardrik, params, principal, provider) do
-    case WardrikOAuth.finish(oauth(wardrik), params, as: principal) do
+    case Wardrik.finish_sign_in(wardrik, params, as: principal) do
       {:ok, _granted} ->
         {:ok, %{"provider" => provider, "connected" => true}}
 
@@ -122,7 +124,7 @@ defmodule WardrikDaemon.Connections do
 
   defp end_flow(wardrik, principal, %{"state" => state}),
     do:
-      WardrikOAuth.finish(oauth(wardrik), %{"state" => state, "error" => "access_denied"},
+      Wardrik.finish_sign_in(wardrik, %{"state" => state, "error" => "access_denied"},
         as: principal
       )
 
@@ -132,8 +134,6 @@ defmodule WardrikDaemon.Connections do
         :invalid_request,
         "That code doesn't match a #{provider} sign-in you started. Check it, or connect again."
       )
-
-  defp oauth(wardrik), do: wardrik |> Wardrik.Instance.fetch!() |> Wardrik.oauth()
 
   # A server's own sign-in is an app named by its key, `owner:name`.
   defp offered(daemon, %Principal{id: id}) do
@@ -167,11 +167,9 @@ defmodule WardrikDaemon.Connections do
   end
 
   defp authorizing(%{wardrik: wardrik}, {principal, credential}, provider) do
-    oauth = oauth(wardrik)
-
-    case WardrikOAuth.authorize(oauth, credential, principal) do
-      {:ok, url} ->
-        authorization = authorization(oauth, url)
+    case Wardrik.sign_in(wardrik, credential, principal) do
+      {:ok, started} ->
+        authorization = Map.new(started, fn {key, value} -> {Atom.to_string(key), value} end)
         sign_in = %{principal: principal, provider: provider, credential: credential}
         :ok = paired_later(wardrik, authorization, sign_in)
         {:ok, %{"provider" => provider, "connected" => false, "authorization" => authorization}}
@@ -189,16 +187,6 @@ defmodule WardrikDaemon.Connections do
     case URI.decode_query(URI.parse(url).query || "") do
       %{"state" => state} -> Pairings.started(Pairings.name(wardrik), state, sign_in)
       _stateless -> :ok
-    end
-  end
-
-  # A device sign-in's URL is its page on the daemon, which names the flow.
-  defp authorization(oauth, url) do
-    with [_page, id] <- String.split(url, "/device/", parts: 2),
-         {:ok, %{user_code: code, verification_uri: uri}} <- WardrikOAuth.flow(oauth, id) do
-      %{"url" => uri, "code" => code}
-    else
-      _browser -> %{"url" => url}
     end
   end
 end

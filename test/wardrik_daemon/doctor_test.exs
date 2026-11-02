@@ -52,7 +52,7 @@ defmodule WardrikDaemon.DoctorTest do
       providers:
         github: {issuer: https://github.com/login/oauth, client_id: "${GITHUB_CLIENT_ID}", client_secret: "${GITHUB_CLIENT_SECRET}", flow: device}
     channels:
-      slack: {type: slack, token: "${SLACK_BOT_TOKEN}", app_token: xapp, members: {U1: user:maria}}
+      slack: {type: slack, token: "${SLACK_BOT_TOKEN}", app_token: xapp, members: {U1: user:acme/@maria}}
     brave: {api_key: x}
     cluster: {}
     """)
@@ -139,7 +139,7 @@ defmodule WardrikDaemon.DoctorTest do
     write(context, "agents/broken.md", "---\ntools: [nope]\n---\n")
     write(context, "agents/odd.md", "---\ncolour: red\n---\n")
     write(context, "agents/far.md", "---\norg: globex\n---\n")
-    write(context, "agents/lost.md", "---\nworkspace: {shared: {team: ghost}}\n---\n")
+    write(context, "agents/lost.md", "---\nworkspace: {shared: {team: \"agent:ghost\"}}\n---\n")
 
     checks = run(context.env)
 
@@ -161,7 +161,8 @@ defmodule WardrikDaemon.DoctorTest do
     assert {:fail, "broken.md: There's no tool nope here."} in agents
     assert Enum.any?(agents, fn {:fail, why} -> why =~ "odd.md" end)
     assert Enum.any?(agents, fn {:fail, why} -> why =~ ~s(far.md: is in the org "globex") end)
-    assert {:fail, "lost.md: workspace.shared.team: names no agent of acme"} in agents
+
+    assert {:fail, "lost.md: workspace.shared.team: names no agent of acme, as agent:NAME"} in agents
 
     capture_io(fn -> assert Doctor.print(checks) > 0 end)
 

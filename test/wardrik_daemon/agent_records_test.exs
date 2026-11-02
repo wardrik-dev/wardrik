@@ -62,7 +62,7 @@ defmodule WardrikDaemon.AgentRecordsTest do
 
   test "names a definition's shared workspaces by the IDs of its org's agents", %{store: store} do
     {:ok, runbooks} = AgentRecords.create(store, owner: "acme", name: "runbooks")
-    shared = %{"a" => "runbooks", "b" => %{"agent" => "runbooks", "mode" => "read"}}
+    shared = %{"a" => "agent:runbooks", "b" => %{"agent" => "agent:runbooks", "mode" => "read"}}
     definition = %{"model" => "m", "workspace" => %{"shared" => shared}}
 
     assert {:ok, %{"workspace" => %{"shared" => mounts}, "model" => "m"}} =
@@ -70,7 +70,12 @@ defmodule WardrikDaemon.AgentRecordsTest do
 
     assert mounts == %{"a" => runbooks.id, "b" => %{"agent" => runbooks.id, "mode" => "read"}}
 
-    for {org, shared} <- [{"globex", shared}, {"acme", %{"c" => 42}}, {"acme", %{"d" => "x"}}] do
+    for {org, shared} <- [
+          {"globex", shared},
+          {"acme", %{"c" => 42}},
+          {"acme", %{"d" => "x"}},
+          {"acme", %{"e" => "runbooks"}}
+        ] do
       assert {:error, "workspace.shared." <> _why} =
                AgentRecords.identified(store, org, %{"workspace" => %{"shared" => shared}})
     end

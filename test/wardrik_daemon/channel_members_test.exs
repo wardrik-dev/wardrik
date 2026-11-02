@@ -22,9 +22,9 @@ defmodule WardrikDaemon.ChannelMembersTest do
     roles:
       reader: {rules: [{verbs: [read, events], kinds: [agent]}]}
     bindings:
-      - {org: acme, role: reader, subjects: [user:ana, "user:open:T1/U9"]}
+      - {org: acme, role: reader, subjects: [user:acme/@ana, "user:open:T1/U9"]}
     channels:
-      slack: {type: slack, token: xoxb-1, signing_secret: s, members: {U1: user:ana}}
+      slack: {type: slack, token: xoxb-1, signing_secret: s, members: {U1: user:acme/@ana}}
       open: {type: slack, token: xoxb-2, signing_secret: s, unmapped_members: allow}
     """)
 
@@ -47,14 +47,14 @@ defmodule WardrikDaemon.ChannelMembersTest do
     assert {:ok, %Principal{id: "slack:T1/U9"}} =
              ChannelMembers.identify(request, members: %{}, unmapped: :allow)
 
-    assert {:ok, %Principal{id: "ana", attributes: %{name: "Stranger"}}} =
-             ChannelMembers.identify(request, members: %{"U9" => "ana"}, unmapped: :refuse)
+    assert {:ok, %Principal{id: "acme/@ana", attributes: %{name: "Stranger"}}} =
+             ChannelMembers.identify(request, members: %{"U9" => "acme/@ana"}, unmapped: :refuse)
   end
 
   test "a mapped member acts as their user, so that user's bindings decide", context do
     slack = workspace(context, "slack")
 
-    assert {:ok, %Wardrik.Scope{principal: %Principal{id: "ana"}} = scope} =
+    assert {:ok, %Wardrik.Scope{principal: %Principal{id: "acme/@ana"}} = scope} =
              Workspace.member_scope(slack, @ana)
 
     assert {:ok, %Wardrik.Agent{}} = Wardrik.Agent.read(scope, id(context, "acme", "triage"))

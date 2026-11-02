@@ -27,8 +27,13 @@ defmodule WardrikDaemon.ServersTest do
     oauth: {client_name: Agents}
     mcp:
       search: {url: "http://127.0.0.1:1/search"}
+    roles:
+      adder: {rules: [{verbs: [add, read], kinds: [mcp_server]}]}
+      remover: {rules: [{verbs: [delete, read], kinds: [mcp_server]}]}
     bindings:
-      - {org: payments, role: operator, subjects: [user:ana]}
+      - {org: payments, role: operator, subjects: [user:payments/@ana]}
+      - {org: payments, role: adder, subjects: [user:payments/@bo]}
+      - {org: payments, role: remover, subjects: [user:payments/@dee]}
     """)
 
     context = start_daemon(context)
@@ -103,7 +108,7 @@ defmodule WardrikDaemon.ServersTest do
 
   test "a token bound in one org can't add, list or remove another org's servers", context do
     admin = client(context, "user:admin")
-    ana = client(context, "user:ana")
+    ana = client(context, "user:payments/@ana")
     {:ok, _added} = add(admin, "growth", server("crm"))
 
     assert {:ok, %{"connected" => true}} = add(ana, "payments", server("docs"))
@@ -299,5 +304,18 @@ defmodule WardrikDaemon.ServersTest do
     assert :ok = Servers.start(context.wardrik, context.daemon_store)
     assert "growth:crm" in WardrikMCP.servers(mcp(context))
     assert "search" in WardrikMCP.servers(mcp(context))
+  end
+
+  # Removing is its own verb, as Kubernetes' delete: adding doesn't allow it.
+  test "removing a server needs delete, not add", context do
+    adder = client(context, "user:payments/@bo")
+    remover = client(context, "user:payments/@dee")
+
+    assert {:ok, _added} = add(adder, "payments", server("crm"))
+    assert {:error, "forbidden", _message} = remove(adder, "payments", "crm")
+    assert {:error, "forbidden", _message} = add(remover, "payments", server("docs"))
+    assert {:ok, _removed} = remove(remover, "payments", "crm")
+    assert {:ok, %{"servers" => servers}} = list(adder, "payments")
+    refute "crm" in Enum.map(servers, & &1["name"])
   end
 end

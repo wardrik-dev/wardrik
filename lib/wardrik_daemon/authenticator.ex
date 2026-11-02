@@ -5,7 +5,7 @@ defmodule WardrikDaemon.Authenticator do
 
       {Wardrik.HTTP, wardrik: name, authenticator: {WardrikDaemon.Authenticator, store}}
 
-    * A `user:ID` token acts as that user, with its groups.
+    * A `user:` token acts as that user, as `user:acme/@ana`, with its groups.
     * An `agent:` token acts as that agent, as its own tools do.
     * A missing, unknown, revoked or expired token is `:unauthorized`.
 

@@ -21,9 +21,13 @@ defmodule WardrikDaemon.SecretsTest do
     defaults: {model: #{model()}}
     deployment_keys: false
     roles:
+      adder: {rules: [{verbs: [put, read], kinds: [secret]}]}
+      remover: {rules: [{verbs: [delete, read], kinds: [secret]}]}
       reader: {rules: [{verbs: [read], kinds: [secret]}]}
     bindings:
-      - {org: payments, role: operator, subjects: [user:ana]}
+      - {org: payments, role: operator, subjects: [user:payments/@ana]}
+      - {org: payments, role: adder, subjects: [user:payments/@bo]}
+      - {org: payments, role: remover, subjects: [user:payments/@dee]}
       - {org: growth, role: reader, subjects: [agent:helper]}
     """)
 
@@ -57,7 +61,7 @@ defmodule WardrikDaemon.SecretsTest do
 
   test "a token bound in one org reaches no other org's secrets, nor the deployment's", context do
     admin = client(context, "user:admin")
-    ana = client(context, "user:ana")
+    ana = client(context, "user:payments/@ana")
 
     for owner <- ["growth", "deployment"], do: {:ok, nil} = put(admin, owner, "THEIRS")
 
@@ -120,7 +124,7 @@ defmodule WardrikDaemon.SecretsTest do
     end
 
     assert key.("ANTHROPIC_API_KEY") == {:ok, "sk-ANTHROPIC_API_KEY"}
-    assert key.("MCP_TOKEN") == :error
+    assert key.("MCP_TOKEN") == {:error, :not_found}
 
     assert {:ok, "sk-MCP_TOKEN"} =
              WardrikVault.fetch(vault(context), %Principal{id: "growth"}, "MCP_TOKEN",
@@ -177,5 +181,18 @@ defmodule WardrikDaemon.SecretsTest do
 
     assert {:error, "invalid_request", _message} =
              Client.run(admin, "secrets.put", %{"owner" => "growth", "name" => "X"})
+  end
+
+  # Removing is its own verb, as Kubernetes' delete: putting doesn't allow it.
+  test "removing a secret needs delete, not put", context do
+    putter = client(context, "user:payments/@bo")
+    remover = client(context, "user:payments/@dee")
+    removal = %{"owner" => "payments", "name" => "KEY"}
+
+    assert {:ok, nil} = put(putter, "payments", "KEY")
+    assert {:error, "forbidden", _message} = Client.run(putter, "secrets.delete", removal)
+    assert {:error, "forbidden", _message} = put(remover, "payments", "OTHER")
+    assert {:ok, nil} = Client.run(remover, "secrets.delete", removal)
+    assert {:ok, %{"secrets" => []}} = list(putter, "payments")
   end
 end

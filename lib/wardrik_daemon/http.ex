@@ -174,7 +174,7 @@ defmodule WardrikDaemon.HTTP do
   end
 
   delete "/v1/owners/:owner/secrets/:name" do
-    served(conn, owner, {"secret.put", :secret}, fn scope ->
+    served(conn, owner, {"secret.delete", :secret}, fn scope ->
       stored(Secrets.delete(conn.assigns.daemon.wardrik, {owner, name}, scope.principal))
     end)
   end
@@ -198,7 +198,7 @@ defmodule WardrikDaemon.HTTP do
   end
 
   delete "/v1/owners/:owner/servers/:name" do
-    served(conn, owner, {"mcp_server.add", :mcp_server}, fn scope ->
+    served(conn, owner, {"mcp_server.delete", :mcp_server}, fn scope ->
       with {:ok, removed} <- Servers.remove(conn.assigns.daemon, {owner, name}, scope.principal),
            do: {:ok, 200, removed}
     end)
@@ -219,7 +219,7 @@ defmodule WardrikDaemon.HTTP do
   end
 
   delete "/v1/owners/:owner/notify_targets/:name" do
-    served(conn, owner, {"notify_target.add", :notify_target}, fn scope ->
+    served(conn, owner, {"notify_target.delete", :notify_target}, fn scope ->
       with {:ok, removed} <-
              NotifyTargets.remove(conn.assigns.daemon, {owner, name}, scope.principal),
            do: {:ok, 200, removed}
@@ -241,7 +241,7 @@ defmodule WardrikDaemon.HTTP do
   end
 
   delete "/v1/owners/:owner/providers/:name" do
-    served(conn, owner, {"provider.add", :provider}, fn scope ->
+    served(conn, owner, {"provider.delete", :provider}, fn scope ->
       with {:ok, removed} <- OAuthApps.remove(conn.assigns.daemon, {owner, name}, scope.principal),
            do: {:ok, 200, removed}
     end)
@@ -271,10 +271,9 @@ defmodule WardrikDaemon.HTTP do
   end
 
   delete "/v1/connections/:provider" do
-    served(conn, {"connection.connect", &own_connections/1}, fn scope ->
-      with {:ok, connection} <-
-             Connections.disconnect(conn.assigns.daemon, scope.principal, provider),
-           do: {:ok, 200, connection}
+    served(conn, {"connection.delete", &own_connections/1}, fn scope ->
+      with :ok <- Connections.disconnect(conn.assigns.daemon, scope.principal, provider),
+           do: {:ok, 204, nil}
     end)
   end
 
@@ -299,7 +298,7 @@ defmodule WardrikDaemon.HTTP do
   end
 
   delete "/v1/tokens/:id" do
-    served(conn, {"token.revoke", {:token, id}}, fn _scope ->
+    served(conn, {"token.delete", {:token, id}}, fn _scope ->
       :ok = Tokens.revoke(conn.assigns.daemon.store, id)
       {:ok, 204, nil}
     end)

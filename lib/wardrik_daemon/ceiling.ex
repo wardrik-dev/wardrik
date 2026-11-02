@@ -9,7 +9,7 @@ defmodule WardrikDaemon.Ceiling do
     * At the limit, the next model call does what `:on_exhausted` says. `:ask` (the default)
       waits for approval, which adds the budget's `grant` for the whole org. `:deny` refuses it.
     * A ceiling in dollars refuses models with no price.
-    * Emits `[:wardrik, :ceiling, :reached]` when the limit is reached.
+    * Emits the telemetry event `[:wardrik_daemon, :ceiling, :reached]` when the limit is reached.
   """
 
   @behaviour WardrikCore.Middleware
@@ -207,9 +207,11 @@ defmodule WardrikDaemon.Ceiling do
 
   defp reached(_context, _org, _ceiling, _before, _now), do: :ok
 
+  # Telemetry only: Wardrik's event log holds Wardrik's events, and ceilings are the daemon's.
   defp emit_reached(context, org, ceiling, message) do
-    WardrikCore.Event.emit(context, [:wardrik, :ceiling, :reached], %{}, %{
+    :telemetry.execute([:wardrik_daemon, :ceiling, :reached], %{}, %{
       agent_id: context.agent_id,
+      conversation: context.conversation,
       span: context.span,
       org: org,
       ceiling: ceiling.name,

@@ -7,7 +7,7 @@ defmodule WardrikDaemon.Config.Channels do
           type: slack
           token: ${SLACK_BOT_TOKEN}
           app_token: ${SLACK_APP_TOKEN}
-          members: {U024BE7LH: user:ana}
+          members: {U024BE7LH: user:acme/@ana}
           unmapped_members: refuse
 
     * The name is lower-case letters, digits and `-`. `shell`, `ssh`, `terminal` and `oauth` are taken.

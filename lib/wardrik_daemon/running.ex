@@ -54,7 +54,7 @@ defmodule WardrikDaemon.Running do
           name: name,
           capabilities: opts[:capabilities] || WardrikDaemon.Capabilities.all(name, daemon),
           store: store,
-          keys: keys,
+          vault_keys: keys,
           mcp: config.mcp,
           channels: config.channels,
           notify: config.notify,

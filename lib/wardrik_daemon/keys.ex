@@ -27,7 +27,7 @@ defmodule WardrikDaemon.Keys do
   def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, opts) do
     vault = opts |> Keyword.fetch!(:wardrik) |> Wardrik.Instance.fetch!() |> Wardrik.vault()
     owners = owners(principal, Keyword.get(opts, :deployment, false))
-    Enum.find_value(owners, :error, &held(vault, &1, name))
+    Enum.find_value(owners, {:error, :not_found}, &held(vault, &1, name))
   end
 
   @doc """

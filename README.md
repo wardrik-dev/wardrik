@@ -104,7 +104,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     app_token: ${SLACK_APP_TOKEN}        # Socket Mode; or signing_secret over HTTP
-    members: {U024BE7LH: user:ana}       # Slack member -> daemon user
+    members: {U024BE7LH: user:acme/@ana} # Slack member -> daemon user
     unmapped_members: refuse             # or allow
 
 notify:
@@ -121,7 +121,7 @@ roles:
   reader: {rules: [{verbs: [read, events], kinds: [agent]}]}
 
 bindings:
-  - {org: acme, role: operator, subjects: [user:ana]}
+  - {org: acme, role: operator, subjects: [user:acme/@ana]}
   - {org: payments, role: reader, subjects: [group:payments-eng, agent:triage]}
 
 brave:
@@ -167,7 +167,10 @@ storage:
 
 - A rule allows `verbs` (`ask` for `agent.ask`) on `kinds`: `agent`, `secret`, `ceiling`,
   `mcp_server`, `notify_target`, `provider`, `connection`, `deployment`, `token`.
-- A binding gives a role to `user:ID`, `group:NAME` or `agent:NAME` in one org, or in `"*"`.
+- A binding gives a role to a person (`user:acme/@ana`), `group:NAME` or `agent:NAME` in one
+  org, or in `"*"`.
+- Removing a secret, server, webhook, OAuth app, connection or token is `delete`, not the verb
+  that adds it.
 - `operator` (every verb, every kind) exists unless you declare it. `user:admin`, the `wardrik`
   command, can do everything.
 - Everyone may do anything to what they own, and manage their own connections.
@@ -221,7 +224,7 @@ wardrik ls
 wardrik ask triage "What's new?"
 wardrik approval ls
 wardrik approval approve triage CALL
-wardrik token create ana-laptop --subject user:ana --groups payments-eng --expires 30d
+wardrik token create ana-laptop --subject user:acme/@ana --groups payments-eng --expires 30d
 ```
 
 - An agent is `triage` in the deployment's org, or `payments/triage` in another.

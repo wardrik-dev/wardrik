@@ -20,6 +20,16 @@ defmodule WardrikDaemon.AgentRecords do
   @spec name?(term()) :: boolean()
   def name?(name), do: is_binary(name) and Regex.match?(@name, name)
 
+  @doc """
+  Returns the name `agent:NAME` names, as people write an agent.
+
+      WardrikDaemon.AgentRecords.subject("agent:triage")
+      #=> {:ok, "triage"}
+  """
+  @spec subject(term()) :: {:ok, String.t()} | :error
+  def subject("agent:" <> name), do: if(name?(name), do: {:ok, name}, else: :error)
+  def subject(_other), do: :error
+
   @doc "Returns the record of the agent `id`, or `:error` if the daemon made none."
   @spec fetch(WardrikStore.t(), String.t()) :: {:ok, t()} | :error
   def fetch(store, id) do
@@ -108,9 +118,10 @@ defmodule WardrikDaemon.AgentRecords do
     do: WardrikStore.delete(store, "agents/" <> URI.encode_www_form(record.id))
 
   @doc """
-  Returns `definition` with the agents its `workspace.shared` names, in `org`, replaced by their IDs.
+  Returns `definition` with the agents its `workspace.shared` names, as `agent:NAME` in `org`,
+  replaced by their IDs.
 
-      AgentRecords.identified(store, "acme", %{"workspace" => %{"shared" => %{"books" => "runbooks"}}})
+      AgentRecords.identified(store, "acme", %{"workspace" => %{"shared" => %{"books" => "agent:runbooks"}}})
       #=> {:ok, %{"workspace" => %{"shared" => %{"books" => "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN"}}}}
   """
   @spec identified(WardrikStore.t(), String.t(), map()) :: {:ok, map()} | {:error, String.t()}
@@ -123,7 +134,7 @@ defmodule WardrikDaemon.AgentRecords do
         {:ok, put_in(definition, ["workspace", "shared"], mounted)}
 
       {mount, :error} ->
-        {:error, "workspace.shared.#{mount}: names no agent of #{org}"}
+        {:error, "workspace.shared.#{mount}: names no agent of #{org}, as agent:NAME"}
     end
   end
 
@@ -133,8 +144,10 @@ defmodule WardrikDaemon.AgentRecords do
     with {:ok, id} <- mounted(store, org, name), do: {:ok, %{mount | "agent" => id}}
   end
 
-  defp mounted(store, org, name) when is_binary(name) do
-    with {:ok, record} <- named(store, org, name), do: {:ok, record.id}
+  defp mounted(store, org, written) when is_binary(written) do
+    with {:ok, name} <- subject(written),
+         {:ok, record} <- named(store, org, name),
+         do: {:ok, record.id}
   end
 
   defp mounted(_store, _org, _other), do: :error

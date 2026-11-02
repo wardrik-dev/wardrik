@@ -51,11 +51,19 @@ defmodule WardrikDaemon.Config.OAuth do
   defp provider(name, provider) do
     path = "oauth.providers.#{name}"
 
-    with {:ok, opts} <- Options.convert(provider, [], path),
+    schema = Options.public(WardrikOAuth.Provider.schema(), [:key])
+
+    with {:ok, opts} <- Options.convert(provider, schema, path),
          opts = Enum.map(opts, &value/1),
-         {:ok, _provider} <- Options.built(fn -> WardrikOAuth.Provider.new(name, opts) end, path) do
+         {:ok, _provider} <- Options.built(fn -> built(name, opts) end, path) do
       {:ok, opts}
     end
+  end
+
+  # The daemon names each app; see `WardrikDaemon.OAuthApps.key/1`.
+  defp built(name, opts) do
+    key = WardrikDaemon.OAuthApps.key(%{owner: "deployment", name: to_string(name)})
+    WardrikOAuth.Provider.new(name, [key: key] ++ opts)
   end
 
   defp value({key, text}) when key in @atoms, do: {key, Options.atom(text)}

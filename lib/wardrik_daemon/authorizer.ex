@@ -8,12 +8,14 @@ defmodule WardrikDaemon.Authorizer do
         authorizer: {WardrikDaemon.Authorizer, %{access: config.access, store: store}}
       )
 
-    * A token's user is `user:ID`, plus `group:NAME` for each of its groups.
+    * A token's user is `user:` and their owner, as `user:acme/@ana`, plus `group:NAME` for each
+      of its groups.
     * An agent calling tools is `agent:NAME`. It gets its own bindings, never its owner's.
     * Everyone may do anything to what they own: their agents, secrets, servers, webhooks and
       OAuth apps. See `WardrikDaemon.Owners`.
     * Everyone manages their own connections.
     * Making an agent is `create` on `agent`. A rule with `names` doesn't allow it.
+    * Removing a secret, MCP server, webhook, OAuth app, connection or token is `delete`.
     * A chat member acts as the user `WardrikDaemon.ChannelMembers` maps them to. They may only
       `ask`, `read`, `events` and decide, on the agents of the workspace's owner. Whoever asked
       for a turn may always decide its calls.

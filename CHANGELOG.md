@@ -20,13 +20,15 @@
   `/v1/tokens`. See `WardrikDaemon.Tokens`.
 - Secrets and ceilings have their own routes: `/v1/owners/{owner}/secrets` and
   `/v1/owners/{owner}/ceilings`. An org's policy budget is shared by its agents. See
-  `WardrikDaemon.Keys` and `WardrikDaemon.Ceiling`.
+  `WardrikDaemon.Keys` and `WardrikDaemon.Ceiling`. Reaching a ceiling emits the telemetry event
+  `[:wardrik_daemon, :ceiling, :reached]`, not a `wardrik.ceiling.reached` event in the log.
 - Orgs and people add MCP servers, webhooks and OAuth apps while the daemon runs:
   `wardrik server`, `wardrik notify` and `wardrik provider`, and their routes. The nearest of a
   name wins. Their URLs must be `https` at a public address unless `allow_private_urls: true`.
 - Your own accounts: `wardrik connection ls`, `connect`, `pair` and `disconnect`, and
   `/v1/connections`. A browser sign-in finishes with the code its page shows. See
-  `WardrikDaemon.Pairings`.
+  `WardrikDaemon.Pairings`. `DELETE /v1/connections/{provider}` answers `204`, or `404` where
+  you hold no such account.
 - `connections.list` entries carry `signing_in`. `wardrik connection connect` stops waiting as soon
   as a device sign-in is granted, declined or expired.
 - Commands on an agent take `--conversation ID`. `approval ls` shows each call's conversation.
@@ -44,7 +46,12 @@
 - `reload` and `agent cancel` take names, not patterns.
 - `connection` commands act on your own accounts and take no `--org` or `--user`.
 - A browser sign-in's callback page connects nothing. It shows a code to finish the sign-in.
-- `workspace.shared` takes exact agent names, no patterns.
+- `workspace.shared`, in `config.yaml` and in agent definitions, names agents as `agent:NAME`,
+  exactly, no patterns.
+- A user's ID is their owner, as `user:acme/@ana`. Bindings, tokens and a channel's `members`
+  refuse other users, `user:admin` aside. `wardrik ls user:` takes the same.
+- Removing a secret, MCP server, webhook, OAuth app, connection or token needs the `delete` verb.
+  Revoking a token was `revoke`.
 - `notify`'s targets go in `notify.targets`. `notify.req_options` is gone; a webhook takes its own.
 - `channels.*.approvers`, `channels.*.admins` and `create`, `mcp.*.cwd`, and `oauth.client` and
   `redirect` are gone.

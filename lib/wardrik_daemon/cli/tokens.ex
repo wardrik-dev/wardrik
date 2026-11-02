@@ -19,8 +19,9 @@ defmodule WardrikDaemon.CLI.Tokens do
         count: 1,
         summary: "make a token that acts as --subject, shown once",
         details: [
-          "wardrik token create ana-laptop --subject user:ana --groups payments-eng --expires 30d",
-          "--subject is user:ID, or agent:NAME for an agent's own, as agent:growth/triage.",
+          "wardrik token create ana-laptop --subject user:acme/@ana --groups eng --expires 30d",
+          "--subject is a person in an org, as user:acme/@ana, or agent:NAME for an agent's own,",
+          "as agent:triage or agent:growth/triage.",
           "--groups names the groups, with commas, that bindings may give roles to. --expires",
           "takes s, m, h or d; 30d unless set.",
           "Making one needs the token kind in \"*\". Only the admin makes one for user:admin."
@@ -44,16 +45,17 @@ defmodule WardrikDaemon.CLI.Tokens do
     ]
   end
 
-  defp created([name], %{subject: subject} = flags, cx) do
+  defp created([name], %{subject: written} = flags, cx) do
     with {:ok, expires_in} <- seconds(Map.get(flags, :expires, "30d")),
-         {:ok, subject} <- subject(cx, subject),
+         {:ok, subject} <- subject(cx, written),
          input = %{"name" => name, "subject" => subject, "expires_in" => expires_in},
          {:ok, answer} <-
            Context.call(cx, "tokens.create", Context.put(input, "groups", groups(flags[:groups]))),
-         do: Context.show(cx, answer, &shown(cx, &1))
+         do: Context.show(cx, answer, &shown(cx, &1, written))
   end
 
-  defp created([_name], _flags, _cx), do: {:error, "Give the token's --subject, as user:ana."}
+  defp created([_name], _flags, _cx),
+    do: {:error, "Give the token's --subject, as user:acme/@ana."}
 
   # An agent is named as the other commands name it, and the token acts as its ID.
   defp subject(cx, "agent:" <> name) do
@@ -62,8 +64,8 @@ defmodule WardrikDaemon.CLI.Tokens do
 
   defp subject(_cx, subject), do: {:ok, subject}
 
-  defp shown(cx, token) do
-    Context.puts(cx, "Made #{token["id"]} for #{token["subject"]}. It's shown once:")
+  defp shown(cx, token, written) do
+    Context.puts(cx, "Made #{token["id"]} for #{written}. It's shown once:")
     Context.puts(cx, token["secret"])
   end
 
@@ -81,6 +83,8 @@ defmodule WardrikDaemon.CLI.Tokens do
 
   defp tokens([], _flags, cx) do
     with {:ok, %{"tokens" => tokens} = answer} <- Context.call(cx, "tokens.list", %{}) do
+      names = if Enum.any?(tokens, &agent?/1), do: Context.names(cx), else: %{}
+
       Table.show(cx, answer,
         header: ["ID", "NAME", "SUBJECT", "GROUPS", "EXPIRES"],
         rows:
@@ -89,7 +93,7 @@ defmodule WardrikDaemon.CLI.Tokens do
             do: [
               token["id"],
               token["name"],
-              token["subject"],
+              named(names, token["subject"]),
               Enum.join(token["groups"], ","),
               token["expires"]
             ]
@@ -98,6 +102,18 @@ defmodule WardrikDaemon.CLI.Tokens do
       )
     end
   end
+
+  defp agent?(token), do: String.starts_with?(token["subject"], "agent:")
+
+  # An agent's token shows the agent as people name it, as agent:triage.
+  defp named(names, "agent:" <> id = subject) do
+    case names do
+      %{^id => %{"shown" => shown}} -> "agent:" <> shown
+      _gone -> subject
+    end
+  end
+
+  defp named(_names, subject), do: subject
 
   defp revoked([id], _flags, cx) do
     with {:ok, answer} <- Context.call(cx, "tokens.revoke", %{"id" => id}),

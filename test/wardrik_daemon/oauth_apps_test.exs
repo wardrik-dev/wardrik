@@ -32,8 +32,13 @@ defmodule WardrikDaemon.OAuthAppsTest do
           token_endpoint: https://crm.test/token
           client_id: deployment-crm
           client_secret: deployment-secret
+    roles:
+      adder: {rules: [{verbs: [add, read], kinds: [provider]}]}
+      remover: {rules: [{verbs: [delete, read], kinds: [provider]}]}
     bindings:
-      - {org: payments, role: operator, subjects: [user:ana]}
+      - {org: payments, role: operator, subjects: [user:payments/@ana]}
+      - {org: payments, role: adder, subjects: [user:payments/@bo]}
+      - {org: payments, role: remover, subjects: [user:payments/@dee]}
     """)
 
     context = start_daemon(context)
@@ -178,7 +183,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
 
   test "a token bound in one org can't add, list or remove another org's apps", context do
     admin = client(context, "user:admin")
-    ana = client(context, "user:ana")
+    ana = client(context, "user:payments/@ana")
     assert {:ok, _app} = add(admin, "growth", app("crm", "growth-crm"))
 
     assert {:ok, %{"name" => "docs"}} = add(ana, "payments", app("docs", "payments-docs"))
@@ -285,10 +290,12 @@ defmodule WardrikDaemon.OAuthAppsTest do
     assert {:ok, %{"provider" => "crm", "connected" => true}} =
              Client.run(ana, "connections.connect", %{"provider" => "crm"})
 
-    assert {:ok, %{"provider" => "crm", "connected" => false}} =
+    assert {:error, "not_found", _message} =
              Client.run(bo, "connections.disconnect", %{"provider" => "crm"})
 
-    assert {:ok, %{"provider" => "docs", "connected" => true}} =
+    assert {:ok, nil} = Client.run(bo, "connections.disconnect", %{"provider" => "docs"})
+
+    assert {:error, "not_found", _message} =
              Client.run(bo, "connections.disconnect", %{"provider" => "docs"})
 
     vault = Wardrik.vault(context.running)
@@ -311,5 +318,17 @@ defmodule WardrikDaemon.OAuthAppsTest do
 
     assert {:ok, "ana's grant"} =
              WardrikVault.fetch(vault, %Principal{id: "payments/@ana"}, "crm")
+  end
+
+  # Removing is its own verb, as Kubernetes' delete: adding doesn't allow it.
+  test "removing an app needs delete, not add", context do
+    adder = client(context, "user:payments/@bo")
+    remover = client(context, "user:payments/@dee")
+
+    assert {:ok, _added} = add(adder, "payments", app("docs", "payments-docs"))
+    assert {:error, "forbidden", _message} = remove(adder, "payments", "docs")
+    assert {:error, "forbidden", _message} = add(remover, "payments", app("wiki", "wiki"))
+    assert {:ok, _removed} = remove(remover, "payments", "docs")
+    assert OAuthApps.nearest(context.daemon, "payments", "docs") == nil
   end
 end

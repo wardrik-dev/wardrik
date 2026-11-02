@@ -5,7 +5,7 @@ defmodule WardrikDaemon.Tokens.Token do
       %WardrikDaemon.Tokens.Token{
         id: "mzxw6ytboi",
         name: "ana's laptop",
-        subject: "user:ana",
+        subject: "user:payments/@ana",
         groups: ["payments-eng"],
         expires: ~U[2027-01-01 00:00:00Z]
       }

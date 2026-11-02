@@ -278,9 +278,10 @@ defmodule WardrikDaemon.Servers do
     do: WardrikVault.names(Wardrik.vault(running), %Principal{id: owner})
 
   defp authorizing(running, {owner, credential}, name) do
-    case WardrikOAuth.authorize(Wardrik.oauth(running), credential, %Principal{id: owner}) do
-      {:ok, url} ->
-        {:ok, %{"server" => name, "connected" => false, "authorization" => %{"url" => url}}}
+    case Wardrik.sign_in(running, credential, %Principal{id: owner}) do
+      {:ok, started} ->
+        authorization = Map.new(started, fn {key, value} -> {Atom.to_string(key), value} end)
+        {:ok, %{"server" => name, "connected" => false, "authorization" => authorization}}
 
       {:error, reason} ->
         {:error, Error.new(:unavailable, "#{name} can't be signed in to now: #{inspect(reason)}")}

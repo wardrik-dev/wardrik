@@ -35,8 +35,8 @@ defmodule WardrikDaemon.Config.Access do
       type: {:list, {:custom, __MODULE__, :subject, []}},
       required: true,
       doc:
-        "Who it gives the role to: `user:ID`, `group:NAME`, or `agent:NAME` for the agent of " <>
-          "that name in the binding's org."
+        "Who it gives the role to: a user, as `user:acme/@ana`, `group:NAME`, or `agent:NAME` " <>
+          "for the agent of that name in the binding's org."
     ]
   ]
 
@@ -46,7 +46,7 @@ defmodule WardrikDaemon.Config.Access do
       roles:
         reader: {rules: [{verbs: [read, events], kinds: [agent]}]}
       bindings:
-        - {org: payments, role: operator, subjects: [user:ana, group:payments-eng]}
+        - {org: payments, role: operator, subjects: [user:payments/@ana, group:payments-eng]}
         - {org: payments, role: reader, subjects: [agent:triage]}
 
   ## Rules
@@ -61,6 +61,8 @@ defmodule WardrikDaemon.Config.Access do
 
     * A verb is the part of an operation after the dot: `ask` for `agent.ask`.
     * Making an agent is `create` on `agent`. A rule with `names` doesn't allow it.
+    * Removing a secret, MCP server, webhook, OAuth app, connection or token is `delete`, as
+      `secret.delete`. Adding one doesn't allow it.
     * `admin` is every verb on every kind. `user:admin`, the `wardrik` command, holds it in `"*"`.
       `roles` can't declare it.
     * `operator` is every verb on every kind, unless `roles` declares it.
@@ -70,7 +72,10 @@ defmodule WardrikDaemon.Config.Access do
   See `WardrikDaemon.Authorizer`.
   """
 
+  alias WardrikDaemon.AgentRecords
+  alias WardrikDaemon.ChannelMembers
   alias WardrikDaemon.Config.Options
+  alias WardrikDaemon.Owners
 
   @admin "admin"
   @everything %{verbs: ["*"], kinds: ["*"], names: nil}
@@ -96,17 +101,25 @@ defmodule WardrikDaemon.Config.Access do
   end
 
   @doc false
-  def subject("user:" <> id = subject) when id != "", do: {:ok, subject}
+  def subject("user:" <> id = subject) do
+    if id == @admin or Owners.user?(id) or ChannelMembers.unmapped?(id),
+      do: {:ok, subject},
+      else: unknown(subject)
+  end
+
   def subject("group:" <> name = subject) when name != "", do: {:ok, subject}
 
-  def subject("agent:" <> name = subject) do
-    if WardrikDaemon.AgentRecords.name?(name), do: {:ok, subject}, else: unknown(subject)
+  def subject("agent:" <> _name = subject) do
+    case AgentRecords.subject(subject) do
+      {:ok, _name} -> {:ok, subject}
+      :error -> unknown(subject)
+    end
   end
 
   def subject(other), do: unknown(other)
 
   defp unknown(subject),
-    do: {:error, "#{inspect(subject)} isn't user:ID, group:NAME or agent:NAME"}
+    do: {:error, "#{inspect(subject)} isn't user:ORG/@PERSON, group:NAME or agent:NAME"}
 
   defp reserved(roles) do
     if Map.has_key?(roles, @admin),

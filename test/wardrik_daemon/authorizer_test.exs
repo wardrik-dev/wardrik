@@ -30,7 +30,7 @@ defmodule WardrikDaemon.AuthorizerTest do
           %{
             "org" => "payments",
             "role" => "operator",
-            "subjects" => ["user:ana", "user:payments/@ana"]
+            "subjects" => ["user:payments/@ana"]
           },
           %{
             "org" => "payments",
@@ -38,10 +38,10 @@ defmodule WardrikDaemon.AuthorizerTest do
             "subjects" => ["agent:helper"]
           },
           %{"org" => "growth", "role" => "reader", "subjects" => ["group:growth-eng"]},
-          %{"org" => "payments", "role" => "reader", "subjects" => ["user:dee"]},
-          %{"org" => "growth", "role" => "triager", "subjects" => ["user:bo"]},
-          %{"org" => "growth", "role" => "maker", "subjects" => ["user:lee"]},
-          %{"org" => "growth", "role" => "named_maker", "subjects" => ["user:mo"]}
+          %{"org" => "payments", "role" => "reader", "subjects" => ["user:payments/@dee"]},
+          %{"org" => "growth", "role" => "triager", "subjects" => ["user:growth/@bo"]},
+          %{"org" => "growth", "role" => "maker", "subjects" => ["user:growth/@lee"]},
+          %{"org" => "growth", "role" => "named_maker", "subjects" => ["user:growth/@mo"]}
         ],
         ["payments", "growth"]
       )
@@ -115,10 +115,18 @@ defmodule WardrikDaemon.AuthorizerTest do
                  {:error, :not_found}
       end
 
-      assert decide(access, principal: "ana", action: action, resource: {kind, "payments/@bo"}) ==
+      assert decide(access,
+               principal: "payments/@ana",
+               action: action,
+               resource: {kind, "payments/@bo"}
+             ) ==
                :ok
 
-      assert decide(access, principal: "ana", action: action, resource: {kind, "growth"}) ==
+      assert decide(access,
+               principal: "payments/@ana",
+               action: action,
+               resource: {kind, "growth"}
+             ) ==
                {:error, :not_found}
     end
   end
@@ -127,8 +135,8 @@ defmodule WardrikDaemon.AuthorizerTest do
     access: access
   } do
     for {principal, resource} <- [
-          {"ana", {:token, "user:ana"}},
-          {"user:ana", {:token, "user:ana"}}
+          {"payments/@ana", {:token, "user:payments/@ana"}},
+          {"user:payments/@ana", {:token, "user:payments/@ana"}}
         ] do
       assert decide(access, principal: principal, action: "token.create", resource: resource) ==
                {:error, :not_found}
@@ -137,11 +145,14 @@ defmodule WardrikDaemon.AuthorizerTest do
     assert decide(access,
              principal: "admin",
              action: "token.create",
-             resource: {:token, "user:x"}
+             resource: {:token, "user:payments/@x"}
            ) ==
              :ok
 
-    for {principal, actor} <- [{"ana", nil}, {"admin", {:agent, "payments/@ana/helper"}}] do
+    for {principal, actor} <- [
+          {"payments/@ana", nil},
+          {"admin", {:agent, "payments/@ana/helper"}}
+        ] do
       assert decide(access,
                principal: principal,
                actor: actor,
@@ -159,15 +170,23 @@ defmodule WardrikDaemon.AuthorizerTest do
 
   test "a binding in one org reaches nothing in another", %{access: access} do
     for action <- ["agent.read", "agent.define"] do
-      assert decide(access, principal: "ana", action: action, resource: {:agent, "growth/triage"}) ==
+      assert decide(access,
+               principal: "payments/@ana",
+               action: action,
+               resource: {:agent, "growth/triage"}
+             ) ==
                {:error, :not_found}
     end
 
-    assert decide(access, principal: "ana", action: "secret.put", resource: {:provider, "growth"}) ==
+    assert decide(access,
+             principal: "payments/@ana",
+             action: "secret.put",
+             resource: {:provider, "growth"}
+           ) ==
              {:error, :not_found}
 
     assert decide(access,
-             principal: "ana",
+             principal: "payments/@ana",
              action: "secret.put",
              resource: {:provider, "payments"}
            ) ==
@@ -175,7 +194,7 @@ defmodule WardrikDaemon.AuthorizerTest do
   end
 
   test "groups, names and verbs narrow a binding", %{access: access} do
-    grouped = [principal: "cy", attributes: %{groups: ["growth-eng"]}]
+    grouped = [principal: "growth/@cy", attributes: %{groups: ["growth-eng"]}]
 
     assert decide(access, grouped ++ [action: "agent.events", resource: {:agent, "growth/a"}]) ==
              :ok
@@ -183,18 +202,22 @@ defmodule WardrikDaemon.AuthorizerTest do
     assert decide(access, grouped ++ [action: "agent.ask", resource: {:agent, "growth/a"}]) ==
              {:error, :forbidden}
 
-    assert decide(access, principal: "cy", action: "agent.read", resource: {:agent, "growth/a"}) ==
+    assert decide(access,
+             principal: "growth/@cy",
+             action: "agent.read",
+             resource: {:agent, "growth/a"}
+           ) ==
              {:error, :not_found}
 
     assert decide(access,
-             principal: "bo",
+             principal: "growth/@bo",
              action: "agent.ask",
              resource: {:agent, "growth/triage"}
            ) ==
              :ok
 
     assert decide(access,
-             principal: "bo",
+             principal: "growth/@bo",
              action: "agent.ask",
              resource: {:agent, "growth/other"}
            ) ==
@@ -232,19 +255,19 @@ defmodule WardrikDaemon.AuthorizerTest do
     assert secret.("growth/@jon", "growth/@jon") == :ok
     assert secret.("growth/@jon", "growth/@ana") == {:error, :not_found}
     assert secret.("growth/@jon", "growth") == {:error, :not_found}
-    assert secret.("ana", "payments") == :ok
-    assert secret.("ana", "payments/@bo") == :ok
-    assert secret.("ana", "growth") == {:error, :not_found}
+    assert secret.("payments/@ana", "payments") == :ok
+    assert secret.("payments/@ana", "payments/@bo") == :ok
+    assert secret.("payments/@ana", "growth") == {:error, :not_found}
     assert secret.("deployment", "deployment") == {:error, :not_found}
-    assert secret.("ana", "deployment") == {:error, :not_found}
+    assert secret.("payments/@ana", "deployment") == {:error, :not_found}
     assert secret.("admin", "deployment") == :ok
 
     ceiling = [action: "ceiling.read", resource: {:ceiling, "payments"}]
-    assert decide(access, [principal: "ana"] ++ ceiling) == :ok
+    assert decide(access, [principal: "payments/@ana"] ++ ceiling) == :ok
     assert decide(access, [principal: "payments"] ++ ceiling) == {:error, :not_found}
 
     assert decide(access,
-             principal: "ana",
+             principal: "payments/@ana",
              action: "ceiling.read",
              resource: {:ceiling, "growth"}
            ) ==
@@ -252,7 +275,7 @@ defmodule WardrikDaemon.AuthorizerTest do
   end
 
   test "the deployment needs a binding in every org", %{access: access} do
-    for principal <- ["ana", "payments"] do
+    for principal <- ["payments/@ana", "payments"] do
       assert decide(access,
                principal: principal,
                action: "deployment.reload",
@@ -278,13 +301,17 @@ defmodule WardrikDaemon.AuthorizerTest do
 
   test "an actor it doesn't know, or an ID it can't read, reaches nothing", %{access: access} do
     assert decide(access,
-             principal: "ana",
+             principal: "payments/@ana",
              actor: {:worker, "w1"},
              action: "agent.read",
              resource: {:agent, "payments/triage"}
            ) == {:error, :not_found}
 
-    assert decide(access, principal: "ana", action: "agent.read", resource: {:agent, "nope"}) ==
+    assert decide(access,
+             principal: "payments/@ana",
+             action: "agent.read",
+             resource: {:agent, "nope"}
+           ) ==
              {:error, :not_found}
 
     channel = [principal: "U1", actor: {:channel, "slack"}, action: "agent.ask"]
@@ -303,7 +330,8 @@ defmodule WardrikDaemon.AuthorizerTest do
   end
 
   test "an agent the daemon didn't mint reaches no one, the admin included", %{access: access} do
-    for principal <- ["admin", "ana", "payments"], action <- ["agent.define", "agent.read"] do
+    for principal <- ["admin", "payments/@ana", "payments"],
+        action <- ["agent.define", "agent.read"] do
       assert decide(access,
                principal: principal,
                action: action,
@@ -319,12 +347,12 @@ defmodule WardrikDaemon.AuthorizerTest do
 
     assert create.("growth/@jon", "growth/@jon") == :ok
     assert create.("growth/@jon", "growth") == {:error, :not_found}
-    assert create.("lee", "growth") == :ok
-    assert create.("lee", "growth/@jon") == :ok
-    assert create.("lee", "payments") == {:error, :not_found}
-    assert create.("mo", "growth") == {:error, :forbidden}
-    assert create.("bo", "growth") == {:error, :forbidden}
-    assert create.("ana", "deployment") == {:error, :not_found}
+    assert create.("growth/@lee", "growth") == :ok
+    assert create.("growth/@lee", "growth/@jon") == :ok
+    assert create.("growth/@lee", "payments") == {:error, :not_found}
+    assert create.("growth/@mo", "growth") == {:error, :forbidden}
+    assert create.("growth/@bo", "growth") == {:error, :forbidden}
+    assert create.("payments/@ana", "deployment") == {:error, :not_found}
   end
 
   test "a binding names an agent in its own org alone", %{access: access} do
@@ -349,22 +377,29 @@ defmodule WardrikDaemon.AuthorizerTest do
          %{access: access} do
       decision = [action: "agent.decide", resource: {:agent, "payments/triage"}]
 
-      assert decide(access, member("dee", %{}) ++ decision) == {:error, :forbidden}
-      assert decide(access, member("dee", %{asked_by: "ana"}) ++ decision) == {:error, :forbidden}
-      assert decide(access, member("dee", %{asked_by: "dee"}) ++ decision) == :ok
-      assert decide(access, member("ana", %{}) ++ decision) == :ok
-      assert decide(access, member("cy", %{}) ++ decision) == {:error, :not_found}
-      assert decide(access, member("cy", %{approver: true}) ++ decision) == {:error, :not_found}
+      assert decide(access, member("payments/@dee", %{}) ++ decision) == {:error, :forbidden}
+
+      assert decide(access, member("payments/@dee", %{asked_by: "payments/@ana"}) ++ decision) ==
+               {:error, :forbidden}
+
+      assert decide(access, member("payments/@dee", %{asked_by: "payments/@dee"}) ++ decision) ==
+               :ok
+
+      assert decide(access, member("payments/@ana", %{}) ++ decision) == :ok
+      assert decide(access, member("growth/@cy", %{}) ++ decision) == {:error, :not_found}
+
+      assert decide(access, member("growth/@cy", %{approver: true}) ++ decision) ==
+               {:error, :not_found}
     end
 
     test "a member asks and reads as their user's bindings allow", %{access: access} do
       read = [action: "agent.read", resource: {:agent, "payments/triage"}]
       ask = [action: "agent.ask", resource: {:agent, "payments/triage"}]
 
-      assert decide(access, member("dee", %{}) ++ read) == :ok
-      assert decide(access, member("dee", %{}) ++ ask) == {:error, :forbidden}
-      assert decide(access, member("ana", %{}) ++ ask) == :ok
-      assert decide(access, member("cy", %{}) ++ read) == {:error, :not_found}
+      assert decide(access, member("payments/@dee", %{}) ++ read) == :ok
+      assert decide(access, member("payments/@dee", %{}) ++ ask) == {:error, :forbidden}
+      assert decide(access, member("payments/@ana", %{}) ++ ask) == :ok
+      assert decide(access, member("growth/@cy", %{}) ++ read) == {:error, :not_found}
 
       assert decide(
                access,
@@ -377,23 +412,24 @@ defmodule WardrikDaemon.AuthorizerTest do
          %{access: access} do
       assert decide(
                access,
-               member("ana", %{}) ++
+               member("payments/@ana", %{}) ++
                  [action: "agent.define", resource: {:agent, "payments/triage"}]
              ) == {:error, :forbidden}
 
       growth = [action: "agent.ask", resource: {:agent, "growth/triage"}]
-      assert decide(access, member("bo", %{}) ++ growth) == {:error, :not_found}
-      assert decide(access, member("bo", %{}, "growth") ++ growth) == :ok
-      assert decide(access, member("bo", %{}, "*") ++ growth) == :ok
+      assert decide(access, member("growth/@bo", %{}) ++ growth) == {:error, :not_found}
+      assert decide(access, member("growth/@bo", %{}, "growth") ++ growth) == :ok
+      assert decide(access, member("growth/@bo", %{}, "*") ++ growth) == :ok
 
       assert decide(
                access,
-               member("ana", %{}) ++ [action: "secret.put", resource: {:provider, "payments"}]
+               member("payments/@ana", %{}) ++
+                 [action: "secret.put", resource: {:provider, "payments"}]
              ) == {:error, :not_found}
 
       assert decide(
                access,
-               member("ana", %{}, "payments/@ana") ++
+               member("payments/@ana", %{}, "payments/@ana") ++
                  [action: "agent.ask", resource: {:agent, "payments/triage"}]
              ) == {:error, :not_found}
     end
