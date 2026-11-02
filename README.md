@@ -39,14 +39,14 @@ can hold the key.
 
 Each search looks for `BRAVE_API_KEY` in this order:
 
-1. The agent's `WardrikCore.Keys`. In Wardrik, that's the vault: the owner's, the org's, then the
-   deployment's.
+1. The agent's `WardrikCore.Keys`, Wardrik's `:key_source`. In `wardrik_daemon`, that's the
+   vault: the owner's, the org's, then the deployment's.
 2. The `:api_key` it was started with.
 
 So an org can bring its own key, and changing the deployment's needs no restart:
 
-```elixir
-:ok = MyApp.AgentRuntime.put_secret(owner: "deployment", name: "BRAVE_API_KEY", value: key)
+```sh
+echo "$KEY" | wardrik vault put BRAVE_API_KEY --for api_key
 ```
 
 If every agent's keys hold one, nothing needs starting. Give the capability its settings inline:
