@@ -23,6 +23,7 @@ defmodule Wardrik.Setup do
       channels: Map.new(opts[:channels], fn {name, entry} -> {to_string(name), entry} end),
       notify: Wardrik.Notify.settings(opts[:notify]),
       declarations: opts[:declarations],
+      resolver: opts[:resolver],
       orgs: opts[:orgs],
       workspace: Wardrik.Workspaces.settings(opts[:workspace]),
       defaults: Wardrik.Type.json(opts[:defaults]),

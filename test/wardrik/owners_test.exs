@@ -583,19 +583,27 @@ defmodule Wardrik.OwnersTest do
                Wardrik.Operations.Providers.added(wardrik, "acme", "acme:crm", params, "crm")
     end
 
-    test "reaches a server Wardrik started with from the orgs it serves alone" do
-      wardrik = %{Wardrik.new(name: :served) | mcp: [docs: [orgs: ["acme"]], wiki: []]}
+    test "reaches a server Wardrik started with from the orgs it serves alone", %{
+      wardrik: wardrik
+    } do
+      wardrik = %{wardrik | mcp: [docs: [orgs: ["acme"]], wiki: []]}
 
-      assert Wardrik.MCPTools.served(wardrik, "acme/@maria/notes") == ["docs", "wiki"]
-      assert Wardrik.MCPTools.served(wardrik, "globex/triage") == ["wiki"]
+      assert servers(wardrik, "acme/@maria/notes") == %{"docs" => "docs", "wiki" => "wiki"}
+      assert servers(wardrik, "globex/triage") == %{"wiki" => "wiki"}
     end
+
+    defp servers(wardrik, id) do
+      {:ok, resolved} = Wardrik.Owners.Resolver.resolve(wardrik, id, %{})
+      resolved.servers
+    end
+
+    defp picked(wardrik, id, opts),
+      do: MCPTools.picked(Wardrik.mcp(wardrik), servers(wardrik, id), opts)
 
     test "gives a person's agents their own servers first, then their org's", %{
       wardrik: wardrik,
       scope: scope
     } do
-      mcp = Wardrik.mcp(wardrik)
-
       for owner <- ["acme", "acme/@maria"], name <- ["docs"] do
         run!(scope, "mcp_servers.add", %{
           "owner" => owner,
@@ -612,16 +620,16 @@ defmodule Wardrik.OwnersTest do
         "auth" => %{"none" => %{}}
       })
 
-      assert MCPTools.picked(mcp, "acme/@maria/notes", names: ["docs"]) == ["acme/@maria:docs"]
-      assert MCPTools.picked(mcp, "acme/triage", names: ["docs"]) == ["acme:docs"]
-      assert MCPTools.picked(mcp, "acme/@maria/notes", names: ["nope"]) == []
+      assert picked(wardrik, "acme/@maria/notes", names: ["docs"]) == ["acme/@maria:docs"]
+      assert picked(wardrik, "acme/triage", names: ["docs"]) == ["acme:docs"]
+      assert picked(wardrik, "acme/@maria/notes", names: ["nope"]) == []
 
-      assert Enum.sort(MCPTools.picked(mcp, "acme/@maria/notes", all: true)) == [
+      assert Enum.sort(picked(wardrik, "acme/@maria/notes", all: true)) == [
                "acme/@maria:docs",
                "acme:wiki"
              ]
 
-      assert MCPTools.picked(mcp, "acme/triage", all: true) |> Enum.sort() == [
+      assert picked(wardrik, "acme/triage", all: true) |> Enum.sort() == [
                "acme:docs",
                "acme:wiki"
              ]
@@ -631,8 +639,6 @@ defmodule Wardrik.OwnersTest do
       wardrik: wardrik,
       scope: scope
     } do
-      mcp = Wardrik.mcp(wardrik)
-
       for owner <- ["deployment", "acme"], name <- ["docs"] do
         run!(scope, "mcp_servers.add", %{
           "owner" => owner,
@@ -642,9 +648,9 @@ defmodule Wardrik.OwnersTest do
         })
       end
 
-      assert MCPTools.picked(mcp, "acme/@maria/notes", names: ["docs"]) == ["acme:docs"]
-      assert MCPTools.picked(mcp, "globex/triage", names: ["docs"]) == ["deployment:docs"]
-      assert MCPTools.picked(mcp, "globex/triage", all: true) == ["deployment:docs"]
+      assert picked(wardrik, "acme/@maria/notes", names: ["docs"]) == ["acme:docs"]
+      assert picked(wardrik, "globex/triage", names: ["docs"]) == ["deployment:docs"]
+      assert picked(wardrik, "globex/triage", all: true) == ["deployment:docs"]
     end
 
     test "offers a person the servers that serve them, each signed in to as themselves", %{

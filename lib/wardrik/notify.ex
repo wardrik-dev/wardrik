@@ -61,8 +61,9 @@ defmodule Wardrik.Notify do
   ## Targets by owner
 
   An org or person adds webhooks with `notify_targets.add`, and their agents route to them by
-  name. A name resolves along `Wardrik.Owners.chain/1`, nearest first: a person's own, their
-  org's, the deployment's, then the targets in `:notify`.
+  name. A name reaches the target the agent is resolved with (see `Wardrik.Resolver`): without
+  `:resolver`, the nearest along `Wardrik.Owners.chain/1`, a person's own, their org's, the
+  deployment's, then the targets in `:notify`.
 
       Wardrik.run(scope, "notify_targets.add", %{
         "owner" => "acme",
@@ -85,12 +86,10 @@ defmodule Wardrik.Notify do
   a restart it picks up where it left off. Tell repeats apart by agent, kind and `at`.
   """
 
-  alias Wardrik.AgentID
   alias Wardrik.Error
   alias Wardrik.Notice
   alias Wardrik.Notify.Room
   alias Wardrik.Notify.Webhook
-  alias Wardrik.Orgs
   alias Wardrik.Owners
 
   @passed [wardrik: [type: :atom], target: [type: :string], orgs: [type: {:list, :string}]]
@@ -177,7 +176,7 @@ defmodule Wardrik.Notify do
 
     owner
     |> Owners.chain()
-    |> Enum.flat_map(&added(wardrik, &1))
+    |> Enum.flat_map(&owned(wardrik, &1))
     |> Kernel.++(for target <- configured(wardrik), tells?(target.opts, org), do: target)
     |> Enum.uniq_by(& &1.name)
   end
@@ -186,22 +185,29 @@ defmodule Wardrik.Notify do
   @spec key(Owners.t(), String.t()) :: String.t()
   def key(owner, name), do: prefix(owner) <> name
 
-  defp added(wardrik, owner) do
+  @doc "Returns the key agents are resolved with to reach `target`. See `Wardrik.Resolved`."
+  @spec key(target()) :: String.t()
+  def key(%{source: :config, name: name}), do: name
+  def key(%{source: :runtime, owner: owner, name: name}), do: key(owner, name)
+
+  defp owned(wardrik, owner) do
     store = store(wardrik)
     prefix = prefix(owner)
 
     for key <- WardrikStore.keys(store, prefix),
         opts when is_list(opts) <- [WardrikStore.get(store, key)] do
-      name = String.replace_prefix(key, prefix, "")
-      %{owner: owner, name: name, source: :runtime, module: Webhook, opts: opts}
+      runtime(owner, String.replace_prefix(key, prefix, ""), opts)
     end
   end
 
-  defp configured(wardrik) do
-    for {name, {module, opts}} <- wardrik.notify.targets do
-      %{owner: "deployment", name: name, source: :config, module: module, opts: opts}
-    end
-  end
+  defp configured(wardrik),
+    do: for({name, entry} <- wardrik.notify.targets, do: configured(name, entry))
+
+  defp configured(name, {module, opts}),
+    do: %{owner: "deployment", name: name, source: :config, module: module, opts: opts}
+
+  defp runtime(owner, name, opts),
+    do: %{owner: owner, name: name, source: :runtime, module: Webhook, opts: opts}
 
   defp prefix(owner), do: "notify_targets/" <> URI.encode_www_form(owner) <> "/"
 
@@ -226,60 +232,62 @@ defmodule Wardrik.Notify do
   defp kind("failed"), do: :failed
   defp kind("finished"), do: :finished
 
-  @doc "Returns `:ok` if every place `definition` routes to exists and accepts the agent `id`."
-  @spec check(Wardrik.t(), String.t(), map()) :: :ok | {:error, Error.t()}
-  def check(wardrik, id, definition) do
+  @doc """
+  Returns `:ok` if every place `definition` routes to is in `notify`, the targets the agent was
+  resolved with, or is a channel's room.
+  """
+  @spec check(Wardrik.t(), %{String.t() => String.t()}, map()) :: :ok | {:error, Error.t()}
+  def check(wardrik, notify, definition) do
     case route(definition) do
       nil -> :ok
-      %{to: to} -> Enum.find_value(to, :ok, &refused(wardrik, id, &1))
+      %{to: to} -> Enum.find_value(to, :ok, &refused(wardrik, notify, &1))
     end
   end
 
-  defp refused(wardrik, id, name) do
-    case place(wardrik, id, name) do
-      :untold ->
-        invalid("The notify target #{name} doesn't tell #{Orgs.org(id)}'s agents.")
-
+  defp refused(wardrik, notify, name) do
+    case place(wardrik, notify, name) do
       :error ->
-        invalid("There's no notify target #{name} here, nor a channel that posts in it.")
+        {:error,
+         Error.new(
+           :invalid_request,
+           "There's no notify target #{name} here, nor a channel that posts in it."
+         )}
 
       _place ->
         nil
     end
   end
 
-  defp invalid(message), do: {:error, Error.new(:invalid_request, message)}
-
   @doc """
-  Sends `notice` to `name`: the nearest target of that name along the agent's owner's chain, or a
-  channel's room.
+  Sends `notice` to `name`: the target the agent was resolved with by that name, or a channel's
+  room. See `Wardrik.Resolver`.
 
   Returns `{:skip, why}` if there's nowhere to send it. Skips aren't retried.
   """
   @spec deliver(Wardrik.t(), String.t(), Notice.t()) ::
           :ok | {:skip, String.t()} | {:error, term()}
   def deliver(wardrik, name, notice) do
-    case place(wardrik, notice.agent, name) do
-      {:room, channel, room} ->
-        Room.deliver(notice, wardrik: wardrik.name, channel: channel, room: room, approvers: [])
-
-      {:target, %{source: :config, module: module, opts: opts}} ->
-        module.deliver(
-          notice,
-          [wardrik: wardrik.name, target: name] ++
-            Wardrik.Sealed.resolved(wardrik, "the target #{name}", opts)
-        )
-
-      {:target, %{source: :runtime} = target} ->
-        posted(wardrik, target, notice)
-
-      :untold ->
-        {:skip, "which doesn't tell #{Orgs.org(notice.agent)}'s agents"}
-
-      :error ->
-        {:skip, "which isn't a target or a channel's room here"}
+    with {:ok, resolved} <- Wardrik.Resolver.defined(wardrik, notice.agent) do
+      sent(wardrik, place(wardrik, resolved.notify, name), notice)
     end
   end
+
+  defp sent(wardrik, {:room, channel, room}, notice),
+    do: Room.deliver(notice, wardrik: wardrik.name, channel: channel, room: room, approvers: [])
+
+  defp sent(wardrik, {:target, %{source: :config, name: name} = target}, notice),
+    do:
+      target.module.deliver(
+        notice,
+        [wardrik: wardrik.name, target: name] ++
+          Wardrik.Sealed.resolved(wardrik, "the target #{name}", target.opts)
+      )
+
+  defp sent(wardrik, {:target, %{source: :runtime} = target}, notice),
+    do: posted(wardrik, target, notice)
+
+  defp sent(_wardrik, :error, _notice),
+    do: {:skip, "which isn't a target or a channel's room here"}
 
   # A webhook an org or person added: its URL is checked again, since where it resolves can
   # change, and its secret is read from its owner's vault.
@@ -312,23 +320,38 @@ defmodule Wardrik.Notify do
     end
   end
 
-  defp place(wardrik, id, name) do
-    {:ok, %AgentID{owner: owner}} = AgentID.parse(id)
-
-    case Enum.find(targets(wardrik, owner), &(&1.name == name)) do
-      nil -> elsewhere(wardrik, name)
-      target -> {:target, target}
+  defp place(wardrik, notify, name) do
+    with {:ok, key} <- Map.fetch(notify, name),
+         {:ok, target} <- target(wardrik, key) do
+      {:target, target}
+    else
+      :error -> room(wardrik, name)
     end
   end
 
-  # A target in `:notify` that isn't among the agent's targets tells other orgs alone.
-  defp elsewhere(wardrik, name) do
-    with :error <- Map.fetch(wardrik.notify.targets, name),
-         [channel, room] <- String.split(name, ":", parts: 2),
+  defp target(wardrik, key) do
+    case Map.fetch(wardrik.notify.targets, key) do
+      {:ok, entry} -> {:ok, configured(key, entry)}
+      :error -> added(wardrik, key)
+    end
+  end
+
+  defp added(wardrik, "notify_targets/" <> held = key) do
+    with [owner, name] <- String.split(held, "/", parts: 2),
+         opts when is_list(opts) <- WardrikStore.get(store(wardrik), key) do
+      {:ok, runtime(URI.decode_www_form(owner), name, opts)}
+    else
+      _gone -> :error
+    end
+  end
+
+  defp added(_wardrik, _key), do: :error
+
+  defp room(wardrik, name) do
+    with [channel, room] <- String.split(name, ":", parts: 2),
          true <- Map.has_key?(wardrik.channels, channel) and room != "" do
       {:room, channel, room}
     else
-      {:ok, _target} -> :untold
       _neither -> :error
     end
   end

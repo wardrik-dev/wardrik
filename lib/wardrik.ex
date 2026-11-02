@@ -126,8 +126,8 @@ defmodule Wardrik do
               type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
               default: [],
               doc:
-                "MCP servers agents may call, as `[github: [transport: ..., orgs: [\"acme\"]]]`. " <>
-                  "See `WardrikMCP`."
+                "MCP servers agents may call, as `[github: [transport: ...]]`, reached by the " <>
+                  "agents resolved with them (see `Wardrik.Resolver`). See `WardrikMCP`."
             ],
             capabilities: [
               type: @named,
@@ -166,7 +166,14 @@ defmodule Wardrik do
               type: :mod_arg,
               doc: "Agents defined outside the API. See `Wardrik.Declarations`."
             ],
-            orgs: [type: :mod_arg, doc: "Per-org settings. See `Wardrik.Orgs`."],
+            resolver: [
+              type: :mod_arg,
+              doc: "Says what each agent gets. See `Wardrik.Resolver`."
+            ],
+            orgs: [
+              type: :mod_arg,
+              doc: "Per-org settings, without `:resolver`. See `Wardrik.Orgs`."
+            ],
             workspace: [
               type: :keyword_list,
               doc: "File trees shared beyond their owners. See `Wardrik.Workspaces`."
@@ -234,6 +241,7 @@ defmodule Wardrik do
     :channels,
     :notify,
     :declarations,
+    :resolver,
     :orgs,
     :workspace,
     :defaults,
@@ -270,6 +278,7 @@ defmodule Wardrik do
             req_options: keyword()
           },
           declarations: {module(), term()} | nil,
+          resolver: {module(), term()} | nil,
           orgs: {module(), term()} | nil,
           workspace: %{String.t() => %{read: [String.t()], write: [String.t()]}},
           defaults: map(),
@@ -525,8 +534,8 @@ defmodule Wardrik do
   Starts an agent on `instance`.
 
   `opts` are as `WardrikCore.start_agent/2` takes them. `:policy` is the agent's own
-  `WardrikPolicy`, or its rules. The agent is held to its own policy, its org's and Wardrik's.
-  The strictest decides.
+  `WardrikPolicy`, or its rules. The agent is held to its own policy, the policy and middleware
+  it resolves to (see `Wardrik.Resolver`), and Wardrik's. The strictest decides.
 
       Wardrik.start_agent(MyApp.AgentRuntime,
         agent_id: "acme/books",
@@ -537,27 +546,41 @@ defmodule Wardrik do
   @spec start_agent(atom() | t(), keyword()) :: {:ok, pid()} | {:error, term()}
   def start_agent(instance, opts) do
     wardrik = Instance.fetch!(instance)
-    org = Wardrik.Orgs.org(Keyword.fetch!(opts, :agent_id))
 
-    with {:ok, settings} <- Wardrik.Orgs.settings(wardrik, org) do
-      held = Wardrik.Orgs.hold(opts, wardrik, org, settings)
+    with {:ok, resolved} <-
+           Wardrik.Resolver.resolve(wardrik, Keyword.fetch!(opts, :agent_id), %{}) do
+      held = Wardrik.Resolution.hold(opts, resolved)
       WardrikCore.start_agent(agents(wardrik), Setup.agent(wardrik, held))
     end
   end
 
   @doc """
-  Applies the org's current settings to its awake agents.
+  Resolves awake agents again, applying what they now resolve to. See `Wardrik.Resolver`.
 
-  Sleeping agents pick them up when they wake. Returns a line for each agent it couldn't update.
+  Sleeping agents pick it up when they wake. Returns a line for each agent it couldn't update.
 
+      # Every awake agent
+      Wardrik.refresh(MyApp.AgentRuntime)
+
+      # These
+      Wardrik.refresh(MyApp.AgentRuntime, agents: ["acme/scout"])
+
+      # An org's, without `:resolver`
       Wardrik.refresh(MyApp.AgentRuntime, org: "acme")
       #=> []
   """
   @spec refresh(atom() | t(), keyword()) :: [String.t()]
-  def refresh(instance, opts) do
-    opts = Keyword.validate!(opts, [:org])
-    Wardrik.Orgs.refresh(Instance.fetch!(instance), Keyword.fetch!(opts, :org))
+  def refresh(instance, opts \\ []) do
+    opts = Keyword.validate!(opts, [:org, :agents])
+    wardrik = Instance.fetch!(instance)
+    Wardrik.Resolution.refresh(wardrik, refreshing(wardrik, opts))
   end
+
+  defp refreshing(wardrik, org: org),
+    do: for(id <- Wardrik.Definitions.ids(wardrik), Wardrik.Orgs.org(id) == org, do: id)
+
+  defp refreshing(_wardrik, agents: ids), do: ids
+  defp refreshing(_wardrik, []), do: :all
 
   @doc """
   Returns the plug for sign-in callback pages, as `{plug, opts}`, or `nil` without `:oauth`.

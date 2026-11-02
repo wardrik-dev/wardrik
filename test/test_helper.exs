@@ -3,6 +3,7 @@ Logger.configure(level: :warning)
 
 Mimic.copy(ReqLLM)
 Mimic.copy(ReqLLM.StreamResponse)
+Mimic.copy(WardrikMCP)
 
 Wardrik.Test.Store.start()
 ExUnit.start()

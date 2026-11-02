@@ -162,6 +162,10 @@ defmodule Wardrik.Operations.Owners do
     {:ok, %{"servers" => Enum.map(servers, &MCPServer.to_json/1)}}
   end
 
+  @doc "Returns the names of the servers `owner` added."
+  @spec added(Wardrik.t(), String.t()) :: [String.t()]
+  def added(wardrik, owner), do: for(server <- runtime_servers(wardrik, owner), do: server.name)
+
   defp runtime_servers(wardrik, owner) do
     store = store(wardrik)
 

@@ -149,7 +149,7 @@ defmodule Wardrik.NotifyTest do
       assert teams =~ "teams:#ops"
 
       assert {:error, %Wardrik.Error{message: other}} = define(scope, "globex")
-      assert other =~ "doesn't tell acme's agents"
+      assert other == "There's no notify target globex here, nor a channel that posts in it."
 
       assert {:ok, _agent} = define(scope, ["audit", "board:#updates"])
     end

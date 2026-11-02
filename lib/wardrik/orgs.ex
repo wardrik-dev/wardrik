@@ -16,9 +16,9 @@ defmodule Wardrik.Orgs do
 
   An agent's org is the first part of its ID: `acme` for `acme/@maria/assistant`.
 
-  Wardrik reads an org's settings each time one of its agents starts, wakes or is defined. To
-  apply new settings to awake agents, call `Wardrik.refresh/2`. Invalid settings stop the agent
-  from starting, with the reason.
+  Wardrik reads an org's settings each time one of its agents is resolved (see
+  `Wardrik.Resolver`). To apply new settings to awake agents, call `Wardrik.refresh/2`. Invalid
+  settings stop the agent from starting, with the reason.
 
   For an org that doesn't exist, return an error:
 
@@ -29,13 +29,11 @@ defmodule Wardrik.Orgs do
 
   alias Wardrik.AgentID
   alias Wardrik.Ceiling
-  alias Wardrik.Definitions
   alias Wardrik.Error
-  alias Wardrik.Operations.Running
   alias Wardrik.OrgSettings
   alias Wardrik.Owners
+  alias Wardrik.Resolver
   alias Wardrik.Resource
-  alias Wardrik.Setup
 
   @doc "Returns `org`'s settings, or an error if it doesn't exist."
   @callback settings(org :: String.t(), config :: term()) ::
@@ -98,56 +96,12 @@ defmodule Wardrik.Orgs do
     with {:ok, _settings} <- settings(wardrik, org), do: :ok
   end
 
-  @doc "Returns `wardrik` with the org's policies and defaults merged in."
-  @spec within(Wardrik.t(), OrgSettings.t()) :: Wardrik.t()
-  def within(wardrik, %OrgSettings{policies: policies, defaults: defaults}),
-    do: %{
-      wardrik
-      | policies: Map.merge(wardrik.policies, policies),
-        defaults: Map.merge(wardrik.defaults, defaults)
-    }
+  @doc "Returns the middleware that holds the org's agents to its ceilings."
+  @spec middleware(Wardrik.t(), String.t(), OrgSettings.t()) :: [WardrikCore.Context.entry()]
+  def middleware(_wardrik, _org, %OrgSettings{ceilings: ceilings}) when ceilings == %{}, do: []
 
-  @doc "Returns the agent `id`'s defaults: the deployment's, overridden by its org's."
-  @spec defaults(Wardrik.t(), String.t()) :: map()
-  def defaults(wardrik, id) do
-    case settings(wardrik, org(id)) do
-      {:ok, settings} -> Map.merge(wardrik.defaults, settings.defaults)
-      {:error, _error} -> wardrik.defaults
-    end
-  end
-
-  @doc "Returns `opts` with the org's policy and ceilings added."
-  @spec hold(keyword(), Wardrik.t(), String.t(), OrgSettings.t()) :: keyword()
-  def hold(opts, wardrik, org, %OrgSettings{policy: policy, ceilings: ceilings}) do
-    held = List.wrap(policy)
-
-    opts
-    |> Keyword.update(:policy, held, &(held ++ Setup.policies(&1)))
-    |> ceilinged(wardrik, org, Map.values(ceilings))
-  end
-
-  defp ceilinged(opts, _wardrik, _org, []), do: opts
-
-  defp ceilinged(opts, wardrik, org, ceilings) do
-    ceiling = {Ceiling, %{wardrik: wardrik.name, org: org, ceilings: ceilings}}
-    Keyword.update(opts, :middleware, [ceiling], &(&1 ++ [ceiling]))
-  end
-
-  @doc "Applies the org's current settings to its awake agents. Returns a line for each failure."
-  @spec refresh(Wardrik.t(), String.t()) :: [String.t()]
-  def refresh(wardrik, org) do
-    for id <- Definitions.ids(wardrik),
-        org(id) == org,
-        Running.whereis(wardrik, id) != nil,
-        {:error, error} <- [refreshed(wardrik, id)],
-        do: "#{id}: #{error.message}"
-  end
-
-  defp refreshed(wardrik, id) do
-    with {:ok, definition} <- Running.definition(wardrik, id),
-         {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
-         do: Running.bring(wardrik, opts)
-  end
+  def middleware(wardrik, org, %OrgSettings{ceilings: ceilings}),
+    do: [{Ceiling, %{wardrik: wardrik.name, org: org, ceilings: Map.values(ceilings)}}]
 
   @doc """
   Returns what the org's agents have spent against each ceiling, by name. See
@@ -170,9 +124,11 @@ defmodule Wardrik.Orgs do
   end
 
   defp read(wardrik, org, settings) do
-    with {:ok, policy} <- policy(org, "policy", settings.policy),
-         {:ok, policies} <- policies(wardrik, org, settings.policies),
-         {:ok, ceilings} <- ceilings(org, settings.ceilings) do
+    unread = &unread(org, &1)
+
+    with {:ok, policy} <- Resolver.policy("policy", settings.policy, unread),
+         {:ok, policies} <- Resolver.policies(wardrik, settings.policies, unread),
+         {:ok, ceilings} <- ceilings(settings.ceilings, unread) do
       {:ok,
        %OrgSettings{
          policy: policy,
@@ -183,65 +139,15 @@ defmodule Wardrik.Orgs do
     end
   end
 
-  defp policies(wardrik, org, policies) do
-    named = Map.new(policies, fn {name, rules} -> {to_string(name), rules} end)
-
-    case Enum.find(Map.keys(named), &Map.has_key?(wardrik.policies, &1)) do
-      nil ->
-        each(named, &policy(org, "policy #{&1}", &2))
-
-      name ->
-        {:error, unread(org, "its policy #{name} has the name of one of the deployment's")}
-    end
-  end
-
-  defp ceilings(org, ceilings) do
+  defp ceilings(ceilings, unread) do
     ceilings
     |> Map.new(fn {name, settings} -> {to_string(name), settings} end)
-    |> each(fn name, settings ->
+    |> Resolver.each(fn name, settings ->
       case Ceiling.new(name, settings) do
         {:ok, ceiling} -> {:ok, ceiling}
-        {:error, why} -> {:error, unread(org, "its ceiling #{name}: #{why}")}
+        {:error, why} -> {:error, unread.("its ceiling #{name}: #{why}")}
       end
     end)
-  end
-
-  defp each(named, read) do
-    read = Map.new(named, fn {name, value} -> {name, read.(name, value)} end)
-
-    case Enum.find(read, &match?({_name, {:error, _error}}, &1)) do
-      nil -> {:ok, Map.new(read, fn {name, {:ok, value}} -> {name, value} end)}
-      {_name, error} -> error
-    end
-  end
-
-  defp policy(_org, _what, nil), do: {:ok, nil}
-
-  defp policy(org, what, [first | _rest] = policies) when not is_tuple(first) do
-    read =
-      policies
-      |> Enum.with_index(1)
-      |> Enum.map(fn {policy, n} -> policy(org, "#{what} #{n}", policy) end)
-
-    case Enum.find(read, &match?({:error, _error}, &1)) do
-      nil -> {:ok, Enum.map(read, fn {:ok, policy} -> policy end)}
-      error -> error
-    end
-  end
-
-  defp policy(_org, _what, %WardrikPolicy{} = policy), do: {:ok, policy}
-
-  defp policy(org, what, rules) when is_map(rules) do
-    case WardrikPolicy.decode(rules) do
-      {:ok, policy} -> {:ok, policy}
-      {:error, why} -> {:error, unread(org, "its #{what}: #{why}")}
-    end
-  end
-
-  defp policy(org, what, rules) do
-    {:ok, WardrikPolicy.new!(rules)}
-  rescue
-    error in ArgumentError -> {:error, unread(org, "its #{what}: #{Exception.message(error)}")}
   end
 
   defp unread(org, why), do: Error.new(:invalid_request, "#{org}'s settings don't read: #{why}.")
