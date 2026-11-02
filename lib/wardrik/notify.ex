@@ -190,7 +190,12 @@ defmodule Wardrik.Notify do
   def key(%{source: :config, name: name}), do: name
   def key(%{source: :runtime, owner: owner, name: name}), do: key(owner, name)
 
-  defp owned(wardrik, owner) do
+  @doc """
+  Returns the targets `owner` added at runtime, by name. A host with its own `:resolver` walks
+  its owners with it. See `Wardrik.Resolved`.
+  """
+  @spec owned(Wardrik.t(), Owners.t()) :: [target()]
+  def owned(wardrik, owner) do
     store = store(wardrik)
     prefix = prefix(owner)
 
