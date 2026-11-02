@@ -17,35 +17,62 @@ defmodule WardrikWorkspace.Files do
   @typedoc "A file's version, as the model is shown it."
   @type version() :: String.t()
 
-  @doc "Returns the file at `path` in `tree`, with its version, or `:none`."
-  @spec read(WardrikStore.t(), String.t(), String.t()) :: {:ok, File.t(), version()} | :none
-  def read(store, tree, path) do
-    case WardrikStore.lookup(scoped(store), key(tree, path)) do
+  @doc """
+  Returns the file at `:path` in `:tree`, with its version, or `:none`.
+
+      WardrikWorkspace.Files.read(store, tree: "shared/acme/runbooks", path: "deploy.md")
+  """
+  @spec read(WardrikStore.t(), tree: String.t(), path: String.t()) ::
+          {:ok, File.t(), version()} | :none
+  def read(store, args) do
+    case WardrikStore.lookup(scoped(store), key(args)) do
       {%File{} = file, vsn} -> {:ok, file, version(vsn)}
       nil -> :none
     end
   end
 
   @doc """
-  Writes `file` at `path` in `tree`.
+  Writes `:file` at `:path` in `:tree`.
 
-  With a `nil` version, writes only where no file is. Otherwise writes only over `version`.
+      WardrikWorkspace.Files.write(store,
+        tree: "shared/acme/runbooks",
+        path: "deploy.md",
+        file: %WardrikWorkspace.File{content: "Roll forward."},
+        version: nil
+      )
+
+  With a `nil` `:version`, writes only where no file is. Otherwise writes only over `:version`.
   Returns `{:error, :conflict}` if that doesn't hold.
   """
-  @spec write(WardrikStore.t(), String.t(), String.t(), File.t(), version() | nil) ::
-          {:ok, version()} | {:error, :conflict | term()}
-  def write(store, tree, path, %File{} = file, version) do
-    with {:ok, vsn} <- vsn(version),
-         {:ok, written} <- WardrikStore.put(scoped(store), key(tree, path), file, if_vsn: vsn),
+  @spec write(WardrikStore.t(),
+          tree: String.t(),
+          path: String.t(),
+          file: File.t(),
+          version: version() | nil
+        ) :: {:ok, version()} | {:error, :conflict | term()}
+  def write(store, args) do
+    %File{} = file = Keyword.fetch!(args, :file)
+
+    with {:ok, vsn} <- vsn(Keyword.fetch!(args, :version)),
+         {:ok, written} <- WardrikStore.put(scoped(store), key(args), file, if_vsn: vsn),
          do: {:ok, version(written)}
   end
 
-  @doc "Deletes the file at `path` in `tree`. Returns `{:error, :conflict}` unless it's still at `version`."
-  @spec delete(WardrikStore.t(), String.t(), String.t(), version()) ::
+  @doc """
+  Deletes the file at `:path` in `:tree`. Returns `{:error, :conflict}` unless it's still at
+  `:version`.
+
+      WardrikWorkspace.Files.delete(store,
+        tree: "shared/acme/runbooks",
+        path: "deploy.md",
+        version: version
+      )
+  """
+  @spec delete(WardrikStore.t(), tree: String.t(), path: String.t(), version: version()) ::
           :ok | {:error, :conflict | term()}
-  def delete(store, tree, path, version) do
-    with {:ok, vsn} <- vsn(version),
-         do: WardrikStore.delete(scoped(store), key(tree, path), if_vsn: vsn)
+  def delete(store, args) do
+    with {:ok, vsn} <- vsn(Keyword.fetch!(args, :version)),
+         do: WardrikStore.delete(scoped(store), key(args), if_vsn: vsn)
   end
 
   @doc "Returns every path in `tree`."
@@ -61,12 +88,12 @@ defmodule WardrikWorkspace.Files do
   @spec list(WardrikStore.t(), String.t()) :: [{String.t(), File.t(), version()}]
   def list(store, tree) do
     for path <- paths(store, tree),
-        {:ok, file, version} <- [read(store, tree, path)],
+        {:ok, file, version} <- [read(store, tree: tree, path: path)],
         do: {path, file, version}
   end
 
   defp scoped(store), do: WardrikStore.scope(store, "wardrik_workspace")
-  defp key(tree, path), do: tree <> "//" <> path
+  defp key(args), do: Keyword.fetch!(args, :tree) <> "//" <> Keyword.fetch!(args, :path)
 
   defp version(vsn), do: vsn |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
 

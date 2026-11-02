@@ -142,7 +142,7 @@ defmodule WardrikWorkspace.Reads do
   end
 
   defp found(spec, mount, path) do
-    case Files.read(spec.store, mount.tree, path) do
+    case Files.read(spec.store, tree: mount.tree, path: path) do
       {:ok, file, version} ->
         {:ok, file, version}
 

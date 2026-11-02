@@ -34,7 +34,12 @@ defmodule WardrikWorkspace.ContextTest do
     file = %WardrikWorkspace.File{content: "z"}
 
     {:ok, _version} =
-      WardrikWorkspace.Files.write(opts[:store], "shared/acme/runbooks", "deploy.md", file, nil)
+      WardrikWorkspace.Files.write(opts[:store],
+        tree: "shared/acme/runbooks",
+        path: "deploy.md",
+        file: file,
+        version: nil
+      )
 
     text =
       Context.text(

@@ -94,7 +94,7 @@ defmodule WardrikWorkspace.Context do
 
   defp found(spec, path) do
     with {:ok, mount, rest} <- Spec.resolve(spec, path),
-         {:ok, file, version} <- Files.read(spec.store, mount.tree, rest) do
+         {:ok, file, version} <- Files.read(spec.store, tree: mount.tree, path: rest) do
       %{
         path: path,
         state: :found,

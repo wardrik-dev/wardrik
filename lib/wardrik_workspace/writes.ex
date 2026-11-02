@@ -70,7 +70,7 @@ defmodule WardrikWorkspace.Writes do
   end
 
   defp appended(spec, mount, path, content, context) do
-    case Files.read(spec.store, mount.tree, path) do
+    case Files.read(spec.store, tree: mount.tree, path: path) do
       {:ok, file, version} ->
         kept(spec, mount, path, file, file.content <> content, version, context)
 
@@ -80,7 +80,7 @@ defmodule WardrikWorkspace.Writes do
   end
 
   defp edited(spec, mount, path, args, context) do
-    case Files.read(spec.store, mount.tree, path) do
+    case Files.read(spec.store, tree: mount.tree, path: path) do
       {:ok, file, version} -> replacing(spec, mount, path, file, version, args, context)
       :none -> Tools.failed(:not_found, "#{Spec.shown(mount, path)} isn't there")
     end
@@ -109,9 +109,9 @@ defmodule WardrikWorkspace.Writes do
   end
 
   defp deleted(spec, mount, path) do
-    case Files.read(spec.store, mount.tree, path) do
+    case Files.read(spec.store, tree: mount.tree, path: path) do
       {:ok, _file, version} ->
-        with :ok <- Files.delete(spec.store, mount.tree, path, version),
+        with :ok <- Files.delete(spec.store, tree: mount.tree, path: path, version: version),
              do: {:ok, %{ok: true, deleted: true}}
 
       :none ->
@@ -136,7 +136,8 @@ defmodule WardrikWorkspace.Writes do
       labels: Enum.sort(Enum.uniq(kept ++ Context.labels(context)))
     }
 
-    with {:ok, version} <- Files.write(spec.store, mount.tree, path, file, version),
+    with {:ok, version} <-
+           Files.write(spec.store, tree: mount.tree, path: path, file: file, version: version),
          do: {:ok, %{ok: true, path: Spec.shown(mount, path), version: version}}
   end
 
