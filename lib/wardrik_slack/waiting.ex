@@ -17,10 +17,10 @@ defmodule WardrikSlack.Waiting do
   @note "wardrik-note:"
   @max_arguments 1_500
 
-  @doc "Returns the message that asks `approvers` about `calls`."
-  @spec message([Waiting.t()], [String.t()] | :anyone) :: %{text: String.t(), blocks: [map()]}
-  def message(calls, approvers) do
-    text = "#{who(approvers)} #{asked(calls)}."
+  @doc "Returns the message that asks about `calls`."
+  @spec message([Waiting.t()]) :: %{text: String.t(), blocks: [map()]}
+  def message(calls) do
+    text = "Waiting for someone to #{asked(calls)}."
     %{text: text, blocks: [Blocks.section(text) | calls_blocks(calls)]}
   end
 
@@ -44,27 +44,6 @@ defmodule WardrikSlack.Waiting do
   @doc "Returns the block ID of the buttons for the call `id`."
   @spec buttons_block(String.t()) :: String.t()
   def buttons_block(id), do: "wardrik:" <> id
-
-  defp who(:anyone), do: "Anyone here may"
-  defp who([]), do: "Waiting on whoever asked to"
-  defp who(approvers), do: "Waiting on #{named(approvers)} to"
-
-  @doc """
-  Returns `approvers` joined for a sentence. Member IDs become mentions.
-
-      WardrikSlack.Waiting.named(["@maria", "@jon", "U024BE7LH"])
-      #=> "@maria, @jon or <@U024BE7LH>"
-  """
-  @spec named([String.t()]) :: String.t()
-  def named([only]), do: mention(only)
-
-  def named(approvers) do
-    {most, [last]} = Enum.split(approvers, -1)
-    Enum.map_join(most, ", ", &mention/1) <> " or " <> mention(last)
-  end
-
-  defp mention(approver),
-    do: if(WardrikSlack.Approvers.id?(approver), do: "<@#{approver}>", else: approver)
 
   defp ask(%Waiting{interrupt: %{reason: :authorization, name: name}}),
     do: "sign in for `#{name}`"

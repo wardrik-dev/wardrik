@@ -9,7 +9,7 @@ defmodule WardrikSlack.Install do
          redirect_uri: "https://app.example.com/slack/installed",
          signing_secret: "...",
          installations: :stored,
-         approvers: ["@maria"]}
+         identities: {MyApp.ChatMembers, []}}
 
   `:client_id` and `:client_secret` are under **Basic Information**. Set the app's **Redirect URL**,
   under **OAuth & Permissions**, to a route in your app, and pass the same URL as `:redirect_uri`.
@@ -39,8 +39,7 @@ defmodule WardrikSlack.Install do
       end
 
   The URL lasts ten minutes. It carries the owner it was made for, signed with the client secret,
-  so nobody else's URL can add a workspace for that owner. A new workspace gets the channel's
-  `:approvers`.
+  so nobody else's URL can add a workspace for that owner.
   """
 
   alias Wardrik.Channel.Installation
@@ -49,7 +48,7 @@ defmodule WardrikSlack.Install do
 
   @authorize "https://slack.com/oauth/v2/authorize"
   @scopes ~w(channels:history channels:read chat:write chat:write.public groups:history
-             groups:read reactions:write users:read users:read.email)
+             groups:read reactions:write users:read)
   @expires 600
 
   @doc "Returns the bot scopes the app asks for."
@@ -144,8 +143,7 @@ defmodule WardrikSlack.Install do
            workspace: team,
            name: workspace["name"],
            owner: owner,
-           token: token,
-           approvers: channel.approvers
+           token: token
          }}
 
       {:error, reason} ->

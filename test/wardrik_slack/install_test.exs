@@ -31,8 +31,7 @@ defmodule WardrikSlack.InstallTest do
               workspace: "T7",
               name: "Globex",
               owner: "globex",
-              token: "xoxb-globex",
-              approvers: ["@maria"]
+              token: "xoxb-globex"
             }, "/settings"} =
              Install.installed(channel, "globex", %{"code" => "good", "state" => state(url)})
 
@@ -103,6 +102,7 @@ defmodule WardrikSlack.InstallTest do
   test "is refused for a channel added with its token alone", context do
     channel = context.channel
     assert {:error, "slack is added with its token alone" <> _} = Install.url(channel, "acme")
-    assert "users:read.email" in Install.scopes()
+    assert "users:read" in Install.scopes()
+    refute "users:read.email" in Install.scopes()
   end
 end

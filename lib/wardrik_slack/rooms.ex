@@ -2,7 +2,8 @@ defmodule WardrikSlack.Rooms do
   @moduledoc """
   Binds agents to Slack channels, as `WardrikChannel.Rooms` sets out, and shows the binding there.
 
-  When the bot is invited into a Slack channel, it posts where things stand:
+  When the bot is invited into a Slack channel, it posts where things stand, offering the agents
+  the person who invited it may read:
 
     * One agent offered - the agent answers there from now on. A button switches between every
       message and mentions only. A menu switches agents or stops it.
@@ -20,6 +21,7 @@ defmodule WardrikSlack.Rooms do
   alias WardrikSlack.Messages
 
   @max_buttons 5
+  @approving "A call that needs approval waits in its thread for someone who may decide it."
 
   @doc "Handles `bot`, the app's member ID, joining or leaving a Slack channel."
   @spec event(Workspace.t(), map(), String.t()) :: :ok | :ignored | {:error, term()}
@@ -75,8 +77,8 @@ defmodule WardrikSlack.Rooms do
 
   defp act("answers", answers, workspace, room, by) do
     case WardrikChannel.Rooms.answers(workspace, room, answers(answers), by) do
-      {:ok, binding} -> {:bound, binding, offer(workspace, binding.agent)}
-      {:error, :not_bound} -> WardrikChannel.Rooms.choices(workspace)
+      {:ok, binding} -> {:bound, binding, offer(workspace, binding.agent, by)}
+      {:error, :not_bound} -> WardrikChannel.Rooms.choices(workspace, by)
     end
   end
 
@@ -85,13 +87,13 @@ defmodule WardrikSlack.Rooms do
     :stopped
   end
 
-  defp act("more", _choose, workspace, _room, _by), do: WardrikChannel.Rooms.choices(workspace)
+  defp act("more", _choose, workspace, _room, by), do: WardrikChannel.Rooms.choices(workspace, by)
 
   defp answers("everything"), do: :everything
   defp answers(_mentions), do: :mentions
 
-  defp offer(workspace, agent),
-    do: Enum.find(Workspace.offered(workspace), %Offer{agent: agent}, &(&1.agent == agent))
+  defp offer(workspace, agent, by),
+    do: Enum.find(Workspace.offered(workspace, by), %Offer{agent: agent}, &(&1.agent == agent))
 
   defp value(%{"value" => value}), do: value
   defp value(%{"selected_option" => %{"value" => value}}), do: value
@@ -100,8 +102,8 @@ defmodule WardrikSlack.Rooms do
   @doc "Returns the message that shows a room's binding."
   @spec message(WardrikChannel.Rooms.shown() | :stopped, Workspace.t(), String.t() | nil) ::
           %{text: String.t(), blocks: [map()]}
-  def message({:bound, %Binding{agent: agent, answers: answers}, offer}, workspace, bot) do
-    text = ":wave: *#{shown(workspace, agent)}* answers here now."
+  def message({:bound, %Binding{answers: answers}, offer}, _workspace, bot) do
+    text = ":wave: *#{shown(offer)}* answers here now."
 
     %{
       text: text,
@@ -109,17 +111,17 @@ defmodule WardrikSlack.Rooms do
         [Blocks.section(text)] ++
           described(offer) ++
           [
-            Blocks.section(how(answers, bot) <> " " <> approving(workspace)),
+            Blocks.section(how(answers, bot) <> " " <> @approving),
             Blocks.actions("wardrik_room", [toggle(answers), more()])
           ]
     }
   end
 
-  def message({:choose, offers}, workspace, _bot) do
+  def message({:choose, offers}, _workspace, _bot) do
     text =
       "Which agent should answer here? It answers when mentioned, and you can change that after."
 
-    %{text: text, blocks: [Blocks.section(text) | choose(offers, workspace)]}
+    %{text: text, blocks: [Blocks.section(text) | choose(offers)]}
   end
 
   def message(:none, %Workspace{channel: channel}, _bot) do
@@ -154,28 +156,17 @@ defmodule WardrikSlack.Rooms do
         value: "everything"
       )
 
-  defp approving(%Workspace{installation: %{approvers: :anyone}}),
-    do: "Anyone here may approve a call that needs it."
-
-  defp approving(%Workspace{installation: %{approvers: []}}),
-    do: "A call that needs approval waits in its thread for whoever asked."
-
-  defp approving(%Workspace{installation: %{approvers: approvers}}),
-    do:
-      "A call that needs approval is sent to #{WardrikSlack.Waiting.named(approvers)} to approve, " <>
-        "and the thread says so."
-
   defp described(%Offer{description: description}) when is_binary(description),
     do: [Blocks.context("_#{description}_")]
 
   defp described(_offer), do: []
 
-  defp choose(offers, workspace) when length(offers) <= @max_buttons do
-    for %Offer{agent: agent, description: description} <- offers do
+  defp choose(offers) when length(offers) <= @max_buttons do
+    for %Offer{agent: agent, description: description} = offer <- offers do
       line =
         if description,
-          do: "*#{shown(workspace, agent)}*\n#{description}",
-          else: "*#{shown(workspace, agent)}*"
+          do: "*#{shown(offer)}*\n#{description}",
+          else: "*#{shown(offer)}*"
 
       Map.put(
         Blocks.section(line),
@@ -185,10 +176,10 @@ defmodule WardrikSlack.Rooms do
     end
   end
 
-  defp choose(offers, workspace) do
+  defp choose(offers) do
     options =
-      for %Offer{agent: agent} <- offers,
-          do: %{text: Blocks.plain(shown(workspace, agent)), value: agent}
+      for %Offer{agent: agent} = offer <- offers,
+          do: %{text: Blocks.plain(shown(offer)), value: agent}
 
     select = %{
       type: "static_select",
@@ -211,10 +202,10 @@ defmodule WardrikSlack.Rooms do
     }
   end
 
-  @doc "Returns `agent` without the workspace owner's prefix, as `triage` for `acme/triage`."
-  @spec shown(Workspace.t(), String.t()) :: String.t()
-  def shown(%Workspace{installation: installation}, agent),
-    do: String.replace_prefix(agent, installation.owner <> "/", "")
+  @doc "Returns the name an offer shows: its agent's display name, or else its ID."
+  @spec shown(Offer.t()) :: String.t()
+  def shown(%Offer{name: name}) when is_binary(name) and name != "", do: name
+  def shown(%Offer{agent: agent}), do: agent
 
   defp person(_workspace, nil), do: nil
   defp person(workspace, id), do: Messages.sender(workspace, id)

@@ -3,8 +3,7 @@
 Slack for Wardrik. Agents answer in threads, and ask there before a call they can't make alone.
 
 > **maria:** @Wardrik what time is it on the server? :eyes:
-> ↳ **Wardrik:** Waiting on @maria to approve `clock`.
-> **Wardrik**, to maria: `clock`, from a thread in #ops. `[Approve]` `[Deny]`
+> ↳ **Wardrik:** Waiting for someone to approve `clock`. `[Approve]` `[Deny]`
 > ↳ **Wardrik:** Approved by maria.
 > ↳ **Wardrik:** It's 14:02 UTC.
 
@@ -41,7 +40,6 @@ oauth_config:
       - groups:read
       - reactions:write
       - users:read
-      - users:read.email
 settings:
   event_subscriptions:
     bot_events:
@@ -115,7 +113,7 @@ someone approves it.
 1. In Slack, `/invite @Wardrik` into a channel.
 2. Mention it: `@Wardrik what time is it?`
 
-Set `SLACK_APPROVERS=@you` to name the approvers. Without it, whoever asked approves.
+Whoever asked approves.
 
 ## Wire it up
 
@@ -137,13 +135,13 @@ config :my_app, MyApp.AgentRuntime,
        token: System.fetch_env!("SLACK_BOT_TOKEN"),
        signing_secret: System.fetch_env!("SLACK_SIGNING_SECRET"),
        owner: "acme",
-       approvers: ["@maria", "jon@example.com"]}
+       identities: {MyApp.ChatMembers, []}}
   ]
 ```
 
-See `WardrikSlack` for every option. People in Slack act with the channel as their actor,
-`{:channel, "slack"}`, and Wardrik's `:authorizer` decides what they may do. See
-`WardrikChannel.Workspace`.
+`identities` says who each Slack member is in your app. A member it doesn't know can't ask or
+decide, and is told why. Your `:authorizer` decides what everyone else may do. See
+[WardrikChannel](https://hexdocs.pm/wardrik_channel) and `WardrikSlack` for every option.
 
 Over HTTP, serve it with `Wardrik.HTTP`. Slack signs the exact bytes it sends, so if your app
 parses bodies first, keep the raw body:
@@ -173,26 +171,19 @@ Invite the app into a Slack channel. If one agent is offered, it answers there f
 mention the app, and it replies in a thread under your message. If several are offered, pick
 one. See [WardrikChannel](https://hexdocs.pm/wardrik_channel) for rooms, threads and approvals.
 
-## Approvers
+## Approvals
 
-Name `approvers` by `@handle`, email address or Slack member ID, or use `:anyone`. Email
-addresses need the `users:read.email` scope. Whoever asked for a turn may always decide it.
+When an agent waits on a call, the thread shows it with Approve and Deny:
 
-When an agent waits on a call:
+> ↳ **Wardrik:** Waiting for someone to approve `create_bill`. `[Approve]` `[Deny]`
 
-1. Each approver gets the call in the app's **Messages** tab, with a link to its thread.
-2. The thread says who it waits on:
-
-   > ↳ **Wardrik:** Waiting on @maria or @jon to approve `create_bill`.
-
-3. The first to answer decides.
-
-If Slack can reach none of the approvers, the call is asked in the thread, with the same buttons.
+Your authorizer decides who may press them. Anyone refused is told so, only them.
 
 ## Notices
 
 An agent nobody watches, such as one a trigger runs every morning, can post to a room when it
-finishes, fails or waits on someone. Route it to `slack:#room`:
+finishes, fails or waits on someone. Route it to `slack:#room`. It posts in the workspace your
+resolver gives the agent, as `channels: %{"slack" => "T0123"}`:
 
 ```elixir
 Wardrik.Agent.define(scope, "acme/digest",
@@ -201,17 +192,8 @@ Wardrik.Agent.define(scope, "acme/digest",
 )
 ```
 
-To ask approvers about a parked turn, add a target to your Wardrik's `notify`, and route to it:
-
-```elixir
-config :my_app, MyApp.AgentRuntime,
-  notify: [targets: [ops: {Wardrik.Notify.Room, channel: "slack", room: "#ops", approvers: ["@maria"]}]]
-
-Wardrik.Agent.define(scope, "acme/triage", model: "anthropic:claude-haiku-4-5", notify: "ops")
-```
-
-The notice is posted in the room with Approve and Deny. Each approver also gets it in the
-**Messages** tab, with a link. Only the channel's own approvers may decide.
+A parked turn's notice is posted in the room with Approve and Deny. Your authorizer decides who
+may press them.
 
 * The app posts in any public channel, since the manifest asks for `chat:write.public`. Invite
   it into private ones.

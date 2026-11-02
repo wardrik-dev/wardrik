@@ -26,7 +26,7 @@ defmodule WardrikSlack.Test do
         token: "xoxb-test",
         signing_secret: "s3cret",
         owner: "acme",
-        approvers: ["@maria"],
+        identities: {WardrikSlack.Test.Members, members: @people},
         req_options: [plug: {Req.Test, WardrikSlack.Test.Slack}, retry_delay: 0]
       ]
       |> Keyword.merge(Map.get(context, :slack, []))
@@ -63,10 +63,13 @@ defmodule WardrikSlack.Test do
     %{wardrik: name, owner: owner, channel: channel, options: options, events: events}
   end
 
-  @doc "Allows everything but deciding, which only approvers and whoever asked may do."
+  @doc """
+  Allows everything but deciding, which only maria, whose binding allows it, or whoever asked may
+  do, as your app's authorizer might.
+  """
   def deciders(%{operation: "agent." <> verb, scope: %{context: context} = scope})
       when verb in ["approve", "deny"] do
-    if context[:approver] || context[:asked_by] == scope.principal.id,
+    if scope.principal.id == "maria" or context[:asked_by] == scope.principal.id,
       do: :ok,
       else: {:error, :forbidden}
   end
@@ -152,35 +155,11 @@ defmodule WardrikSlack.Test do
 
     %{
       ok: true,
-      user: %{id: id, name: name, profile: %{display_name: name, email: "#{name}@example.com"}}
+      user: %{id: id, name: name, profile: %{display_name: name}}
     }
   end
 
-  defp reply("chat.postMessage", %{"channel" => "U4"}), do: %{ok: false, error: "cannot_dm_bot"}
   defp reply("chat.postMessage", _params), do: %{ok: true, ts: "9.9"}
-
-  defp reply("users.list", %{"cursor" => "page-2"}),
-    do: %{ok: true, members: [%{id: "U4", name: "bot"}], response_metadata: %{next_cursor: ""}}
-
-  defp reply("users.list", _params) do
-    members = Enum.map(@people, fn {id, name} -> %{id: id, name: name} end)
-
-    %{
-      ok: true,
-      members: [%{id: "U0", name: "gone", deleted: true} | members],
-      response_metadata: %{next_cursor: "page-2"}
-    }
-  end
-
-  defp reply("users.lookupByEmail", %{"email" => email}) do
-    case Enum.find(@people, fn {_id, name} -> "#{name}@example.com" == email end) do
-      {id, _name} -> %{ok: true, user: %{id: id}}
-      nil -> %{ok: false, error: "users_not_found"}
-    end
-  end
-
-  defp reply("chat.getPermalink", %{"message_ts" => ts}),
-    do: %{ok: true, permalink: "https://acme.slack.com/archives/C1/p#{ts}"}
 
   defp reply("apps.connections.open", _params), do: %{ok: false, error: "invalid_auth"}
   defp reply("auth.test", _params), do: %{ok: true, user: "wardrik", team: "Acme"}
@@ -195,4 +174,18 @@ defmodule WardrikSlack.Test do
 
   defp reply("oauth.v2.access", _params), do: %{ok: false, error: "invalid_code"}
   defp reply(_method, _params), do: %{ok: true}
+end
+
+defmodule WardrikSlack.Test.Members do
+  @moduledoc "Knows the Slack members of `:members` as their users, as your app's identities would."
+
+  @behaviour WardrikChannel.Identities
+
+  @impl WardrikChannel.Identities
+  def identify(%WardrikChannel.Identities.Request{member: member}, opts) do
+    case Map.fetch(Keyword.fetch!(opts, :members), member) do
+      {:ok, user} -> {:ok, %WardrikCore.Principal{id: user}}
+      :error -> {:error, "Nobody here knows you yet."}
+    end
+  end
 end

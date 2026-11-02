@@ -7,8 +7,15 @@
 
 ### Breaking
 
-- People in Slack act with the channel as their actor, and Wardrik's authorizer decides what
-  they may do, in place of the grants the channel gave them.
+- People in Slack act as the users the channel's `identities:` gives, with the channel as their
+  actor, and Wardrik's authorizer decides what they may do, deciding calls included, in place of
+  the grants the channel gave them.
+- It speaks only Slack's protocol. No approvers: `WardrikSlack.Approvers`, `include?/2`, direct
+  messages to approvers and their `users.info`, `users.list` and `users.lookupByEmail` lookups,
+  and the `users:read.email` scope are gone. A waiting call is asked in its thread for whoever
+  may decide it. `WardrikSlack.Waiting.message/1` and `WardrikSlack.Notices.message/1` take no
+  approvers. `WardrikSlack.Rooms.shown/1` shows an offer's display name, or else its agent's ID.
+- A notice posts in the workspace its notification names.
 - Implements `WardrikChannel` and `Wardrik.Channel` rc.2's callbacks, each taking what it acts on,
   then the channel or its options.
 - `WardrikSlack.API.post/2` and `read/2` take the method, then `:token`, `:body` or `:params`, and

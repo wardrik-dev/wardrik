@@ -1,12 +1,9 @@
 defmodule WardrikSlack.PartsTest do
   use ExUnit.Case, async: false
 
-  defp membership(installation, names, member),
-    do: %WardrikChannel.Membership{installation: installation, names: names, member: member}
-
   import WardrikSlack.Test
 
-  alias WardrikChannel.Member
+  alias WardrikChannel.Offer
   alias WardrikChannel.Waiting
   alias WardrikSlack.Dispatch
   alias WardrikSlack.Rooms
@@ -27,45 +24,20 @@ defmodule WardrikSlack.PartsTest do
     }
 
   describe "waiting calls" do
-    test "say who may decide, and what" do
-      assert %{text: "Anyone here may approve `echo`."} =
-               WardrikSlack.Waiting.message([waiting(:tool_approval, "echo")], :anyone)
+    test "say what they wait on" do
+      assert %{text: "Waiting for someone to approve `echo`."} =
+               WardrikSlack.Waiting.message([waiting(:tool_approval, "echo")])
 
-      assert %{text: "Waiting on whoever asked to approve `the model`."} =
-               WardrikSlack.Waiting.message([waiting(:model_approval, nil)], [])
+      assert %{text: "Waiting for someone to approve `the model`."} =
+               WardrikSlack.Waiting.message([waiting(:model_approval, nil)])
 
-      assert %{
-               text: "Waiting on @maria, ana@example.com or <@U9> to sign in for `inbox`.",
-               blocks: blocks
-             } =
-               WardrikSlack.Waiting.message([waiting(:authorization, "inbox")], [
-                 "@maria",
-                 "ana@example.com",
-                 "U9"
-               ])
+      assert %{text: "Waiting for someone to sign in for `inbox`.", blocks: blocks} =
+               WardrikSlack.Waiting.message([waiting(:authorization, "inbox")])
 
       encoded = JSON.encode!(blocks)
       assert encoded =~ "Show link"
       assert encoded =~ "content from outside"
       refute encoded =~ "wardrik-note:"
-    end
-  end
-
-  describe "approvers" do
-    test "are found by member ID, handle or email address", %{channel: channel} do
-      {:ok, workspace} = WardrikChannel.workspace(channel, "T1")
-      installation = workspace.installation
-      maria = %Member{id: "U1"}
-
-      assert WardrikSlack.include?(membership(installation, ["U1"], maria), channel)
-      assert WardrikSlack.include?(membership(installation, ["@maria"], maria), channel)
-
-      assert WardrikSlack.include?(
-               membership(installation, ["maria@example.com"], maria),
-               channel
-             )
-
-      refute WardrikSlack.include?(membership(installation, ["@jon"], maria), channel)
     end
   end
 
@@ -88,15 +60,23 @@ defmodule WardrikSlack.PartsTest do
       assert JSON.encode!(Rooms.message({:bound, binding, offer}, workspace, nil)) =~
                "Mention the app"
 
-      anyone = put_in(workspace.installation.approvers, :anyone)
+      assert JSON.encode!(Rooms.message({:bound, binding, offer}, workspace, "UBOT")) =~
+               "someone who may decide it"
+    end
 
-      assert JSON.encode!(Rooms.message({:bound, binding, offer}, anyone, "UBOT")) =~
-               "Anyone here"
+    test "show an agent by its display name, or else its ID" do
+      assert Rooms.shown(%Offer{agent: "acme/triage", name: "Triage"}) == "Triage"
+      assert Rooms.shown(%Offer{agent: "acme/triage", name: ""}) == "acme/triage"
+      assert Rooms.shown(%Offer{agent: "acme/triage"}) == "acme/triage"
+    end
 
-      nobody = put_in(workspace.installation.approvers, [])
+    test "offer nothing to a member your app doesn't know", context do
+      define(context.owner, "acme/triage", channels: ["slack"])
 
-      assert JSON.encode!(Rooms.message({:bound, binding, offer}, nobody, "UBOT")) =~
-               "whoever asked"
+      event(context, %{type: "member_joined_channel", user: "UBOT", channel: "C1", inviter: "U9"})
+
+      assert_receive {:slack, "chat.postMessage", %{"text" => "No agent answers here yet." <> _}},
+                     1_000
     end
 
     test "answer a press in a room no agent answers in", context do

@@ -3,7 +3,7 @@
 #   SLACK_BOT_TOKEN=xoxb-... SLACK_APP_TOKEN=xapp-... ANTHROPIC_API_KEY=sk-ant-... \
 #     mix run --no-halt examples/socket_mode.exs
 #
-# Optional: WARDRIK_ORG (acme), SLACK_APPROVERS (@you,@them), WARDRIK_MODEL.
+# Optional: WARDRIK_ORG (acme), WARDRIK_MODEL.
 
 defmodule Local.Clock do
   @behaviour WardrikCore.Capability
@@ -24,15 +24,30 @@ end
 defmodule Local.Authorizer do
   @behaviour Wardrik.Authorizer
 
-  # Everyone here may do anything, but in Slack only approvers and the asker decide.
+  # Everyone here may do anything, but in Slack only whoever asked decides.
   @impl true
   def authorize(%{actor: {:channel, _name}, action: "agent.decide"} = request, _opts) do
-    if request.context[:approver] || request.context[:asked_by] == request.principal.id,
-      do: :ok,
-      else: {:error, :forbidden}
+    if request.context[:asked_by] == request.principal.id, do: :ok, else: {:error, :forbidden}
   end
 
   def authorize(_request, _opts), do: :ok
+end
+
+defmodule Local.Agents do
+  @behaviour Wardrik.Resolver
+
+  # Every agent acts for the org.
+  @impl true
+  def resolve(_request, org), do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal(org)}}
+end
+
+defmodule Local.Members do
+  @behaviour WardrikChannel.Identities
+
+  # Each Slack member is a user of their own. Your app maps them to its users.
+  @impl true
+  def identify(%WardrikChannel.Identities.Request{workspace: workspace, member: member}, _opts),
+    do: {:ok, Wardrik.principal("slack:#{workspace}/#{member}")}
 end
 
 defmodule Local.Wardrik do
@@ -42,11 +57,11 @@ end
 Logger.configure(level: :warning)
 
 org = System.get_env("WARDRIK_ORG", "acme")
-approvers = "SLACK_APPROVERS" |> System.get_env("") |> String.split(",", trim: true)
 
 {:ok, wardrik} =
   Local.Wardrik.start_link(
     authorizer: {Local.Authorizer, []},
+    resolver: {Local.Agents, org},
     capabilities: [clock: Local.Clock],
     policies: [careful: [ask: ["clock"]]],
     channels: [
@@ -55,7 +70,7 @@ approvers = "SLACK_APPROVERS" |> System.get_env("") |> String.split(",", trim: t
          token: System.fetch_env!("SLACK_BOT_TOKEN"),
          app_token: System.fetch_env!("SLACK_APP_TOKEN"),
          owner: org,
-         approvers: approvers}
+         identities: {Local.Members, []}}
     ]
   )
 
