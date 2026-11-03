@@ -174,8 +174,8 @@ defmodule WardrikCore do
   def list(instance \\ __MODULE__) do
     instance
     |> agents()
-    |> DurableServer.Supervisor.stream_all_server_info()
-    |> Enum.flat_map(fn info -> key(info.key) end)
+    |> saved_keys()
+    |> Enum.flat_map(&key/1)
   end
 
   @doc """
@@ -412,6 +412,19 @@ defmodule WardrikCore do
     {agent_id, conversation} = keyed(agent)
     ids = Enum.reject([agent_id, conversation], &is_nil/1)
     Enum.map_join(["agents" | Enum.map(ids, &URI.encode_www_form/1)], "/", & &1)
+  end
+
+  # DurableServer's public listing reads every server's state, one read per key. Its backend
+  # lists keys alone, so read that listing until DurableServer offers one.
+  defp saved_keys(supervisor) do
+    %{storage_backend: backend, prefix: prefix} =
+      DurableServer.Supervisor.__get_config__(supervisor)
+
+    backend
+    |> DurableServer.StorageBackend.list_all_objects_stream(prefix,
+      error_handler: fn _reason -> :halt end
+    )
+    |> Stream.map(fn %{key: key} -> String.replace_prefix(key, prefix, "") end)
   end
 
   defp key("agents/" <> encoded) do

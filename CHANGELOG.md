@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `list/1` reads only keys from the backend, not every agent's state.
+
 ## 0.1.0-rc.2 (2026-11-02)
 
 ### Breaking
