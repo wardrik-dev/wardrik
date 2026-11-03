@@ -41,7 +41,8 @@ curl $WARDRIK_URL/v1/agents -H "Authorization: Bearer $WARDRIK_TOKEN"
 
 - `{agent}` is a daemon-generated agent ID: `agt_01JF8X5RQ2`. URL-encode it as one segment.
 - `{owner}` is one URL-encoded segment: `acme` (an org), `acme%2F%40jon` (a user), or `deployment`.
-- `?agents=` takes agent IDs, one per `agents=`. If omitted, it means every agent the token can access.
+- `?agents=` takes agent IDs, one per `agents=`. If omitted, it means every agent the token can access,
+  except on `/v1/events` and `/v1/events/head`, which need it.
 
 ### Conversations
 
@@ -431,7 +432,7 @@ Returns agents' [events](/reference/events/), as a JSON page or a server-sent ev
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `agents` | string, repeated | agent IDs to read |
+| `agents` | string, repeated | required: the agent IDs to read |
 | `types` | string, repeated | event types, like `wardrik.run.completed`; all unless set |
 | `after` | string | the cursor to read after: a page's `next`, a streamed event's `id`, or a snapshot's `cursor` |
 | `limit` | integer | events per page; 100 unless set |
@@ -448,7 +449,8 @@ curl "$WARDRIK_URL/v1/events?agents=agt_01JF8X5RQ2&types=wardrik.run.completed" 
 Stream with `Accept: text/event-stream`:
 
 ```sh
-curl -N "$WARDRIK_URL/v1/events" -H "Accept: text/event-stream" -H "Authorization: Bearer $WARDRIK_TOKEN"
+curl -N "$WARDRIK_URL/v1/events?agents=agt_01JF8X5RQ2" -H "Accept: text/event-stream" \
+  -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
 ```text
@@ -468,10 +470,10 @@ data: {"specversion":"1.0","type":"wardrik.run.completed","agent":"agt_01JF8X5RQ
 
 `GET /v1/events/head`
 
-Returns the current end-of-log cursor, to read only new events.
+Returns the current end-of-log cursor of each agent in `?agents=`, to read only new events.
 
 ```sh
-curl $WARDRIK_URL/v1/events/head -H "Authorization: Bearer $WARDRIK_TOKEN"
+curl "$WARDRIK_URL/v1/events/head?agents=agt_01JF8X5RQ2" -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
 ```json
