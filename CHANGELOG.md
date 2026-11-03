@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.3 (2026-11-03)
+
+### Changed
+
+- A model call waits up to five minutes for an answer, and as long on a stream gone quiet. Set
+  `:model_timeouts` on `start_agent/2` to change them.
+- `durable_server` is pinned to 0.1.7: `list/1` reads its backend's listing.
 
 ### Fixed
 

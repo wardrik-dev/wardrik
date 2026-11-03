@@ -4,7 +4,7 @@ defmodule WardrikCore.MixProject do
   def project do
     [
       app: :wardrik_core,
-      version: "0.1.0-rc.2",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description:
         "A durable agent runtime for Elixir. Agents survive a crash, wait for a person, and run " <>
@@ -81,7 +81,7 @@ defmodule WardrikCore.MixProject do
   defp deps do
     [
       {:req_llm, "~> 1.28"},
-      {:durable_server, "~> 0.1.6"},
+      {:durable_server, "0.1.7"},
       {:telemetry, "~> 1.0"},
       {:ekv, "~> 0.4.8", optional: true},
       {:mimic, "~> 2.4", only: :test},

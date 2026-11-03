@@ -264,7 +264,7 @@ defmodule WardrikCore.Turn do
   defp called(context, on_chunk) do
     tools = Enum.map(context.tools, fn tool -> tool.req_llm end)
 
-    opts = [tools: tools] ++ Keys.model_options(context, context.model)
+    opts = [tools: tools] ++ context.model_timeouts ++ Keys.model_options(context, context.model)
 
     with {:ok, streamed} <- ReqLLM.stream_text(context.model, prompt(context), opts),
          {:ok, response} <- ReqLLM.StreamResponse.process_stream(streamed, on_chunk: on_chunk) do

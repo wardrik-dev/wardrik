@@ -37,7 +37,7 @@ defmodule WardrikCoreTest do
 
       expect(ReqLLM, :stream_text, fn "anthropic:claude-haiku-4-5",
                                       [system, _user],
-                                      [tools: []] ->
+                                      [tools: [], receive_timeout: _, stream_idle_timeout: _] ->
         assert %{role: :system} = system
         {:ok, response}
       end)
@@ -88,7 +88,7 @@ defmodule WardrikCoreTest do
       expect(ReqLLM, :evaluate, fn "anthropic:claude-haiku-4-5",
                                    "The site is down.",
                                    ^questions,
-                                   [] ->
+                                   [receive_timeout: _, stream_idle_timeout: _] ->
         {:ok,
          %ReqLLM.Response{
            id: "eval",

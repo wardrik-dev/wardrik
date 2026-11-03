@@ -91,6 +91,7 @@ defmodule WardrikCore do
     :timeout,
     :max_rounds,
     :retries,
+    :model_timeouts,
     :principal,
     :credentials,
     :keys,
@@ -127,6 +128,11 @@ defmodule WardrikCore do
     * `:timeout` - how long a turn may take, in milliseconds. `:infinity` by default.
     * `:max_rounds` - model calls per turn, or `:infinity`. `25` by default.
     * `:retries` - see `WardrikCore.Retry`.
+    * `:model_timeouts` - how long a model call waits, as `ReqLLM` takes them. Agents run
+      unattended and a model may think for minutes, so a call waits up to five minutes for an
+      answer, and as long on a stream gone quiet:
+      `[receive_timeout: 300_000, stream_idle_timeout: 300_000]` by default. A turn's `:timeout`
+      bounds the whole.
     * `:prices` - US dollars per million tokens, by model spec, over the model catalog's.
       `%{}` by default.
 
@@ -329,7 +335,7 @@ defmodule WardrikCore do
              model,
              Keyword.fetch!(args, :state),
              Keyword.fetch!(args, :questions),
-             WardrikCore.Keys.model_options(context, model)
+             context.model_timeouts ++ WardrikCore.Keys.model_options(context, model)
            ) do
       {:ok, response.object, WardrikCore.Usage.measurements(response, model, context.prices)}
     end

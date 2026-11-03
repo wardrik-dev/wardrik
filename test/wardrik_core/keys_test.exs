@@ -56,16 +56,31 @@ defmodule WardrikCore.KeysTest do
              WardrikCore.generate(context(%{{"acme", "ANTHROPIC_API_KEY"} => "sk-acme"}))
 
     expect(ReqLLM, :stream_text, fn _model, _messages, opts ->
-      assert opts == [tools: []]
+      refute Keyword.has_key?(opts, :api_key)
+      assert opts[:receive_timeout] == 300_000
+      assert opts[:stream_idle_timeout] == 300_000
       {:ok, answer("Hi.")}
     end)
 
     assert {:ok, _called} = WardrikCore.generate(context(%{}))
   end
 
+  test "waits on a model call as long as the agent's model_timeouts say" do
+    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
+
+    expect(ReqLLM, :stream_text, fn _model, _messages, opts ->
+      assert opts[:receive_timeout] == 1_000
+      refute Keyword.has_key?(opts, :stream_idle_timeout)
+      {:ok, answer("Hi.")}
+    end)
+
+    context = %{context(%{}) | model_timeouts: [receive_timeout: 1_000]}
+    assert {:ok, _called} = WardrikCore.generate(context)
+  end
+
   test "gives an evaluation its model's key" do
     expect(ReqLLM, :evaluate, fn "anthropic:claude-haiku-4-5", "state", %{}, opts ->
-      assert opts == [api_key: "sk-acme"]
+      assert opts[:api_key] == "sk-acme"
       {:ok, %ReqLLM.Response{id: "e", model: "m", context: nil, object: %{}}}
     end)
 
