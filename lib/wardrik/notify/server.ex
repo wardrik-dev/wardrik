@@ -29,16 +29,14 @@ defmodule Wardrik.Notify.Server do
       |> DurableServer.Supervisor.child_spec()
       |> Map.put(:id, Notify)
 
-    [durable, %{id: __MODULE__, start: {__MODULE__, :start, [supervisor]}, restart: :transient}]
+    [durable, {Wardrik.Notify.Standby, supervisor}]
   end
 
-  @doc "Starts the notifier, unless it runs elsewhere in the cluster."
-  @spec start(atom()) :: :ignore | {:error, term()}
-  def start(supervisor) do
+  @doc "Starts the notifier under `supervisor`, or finds where it already runs."
+  @spec claim(atom(), timeout()) :: {:ok, {pid(), map()}} | {:error, term()}
+  def claim(supervisor, timeout) do
     child = {__MODULE__, key: @key, initial_state: %{cursor: nil, calls: %{}}}
-
-    with {:ok, _started} <- DurableServer.Supervisor.ensure_started_child(supervisor, child),
-         do: :ignore
+    DurableServer.Supervisor.ensure_started_child(supervisor, child, timeout: timeout)
   end
 
   @impl DurableServer
@@ -50,6 +48,7 @@ defmodule Wardrik.Notify.Server do
   @impl DurableServer
   def init(state, %{wardrik: wardrik}) do
     Process.flag(:trap_exit, true)
+    :telemetry.execute([:wardrik, :notify, :started], %{}, %{wardrik: wardrik.name})
     cursor = state.cursor || WardrikEvents.head(Wardrik.events(wardrik), :all)
     {:ok, tasks} = Task.Supervisor.start_link()
 

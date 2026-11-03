@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Nodes that share a store without being clustered, as the old and new releases of a blue-green
+  deploy do, start beside each other. One runs the notifier; the other stands by and takes it
+  over within seconds of the first stopping. Before, the new node failed to start.
+- `[:wardrik, :notify, :started]` telemetry fires each time the notifier starts on a node, with
+  the instance's `wardrik` name.
+
 ## 0.1.0-rc.2 (2026-11-02)
 
 - `Wardrik.Resolver` says what each agent gets, as a `Wardrik.Resolved`: who it works for, its
