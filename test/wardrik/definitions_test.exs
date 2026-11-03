@@ -301,6 +301,21 @@ defmodule Wardrik.DefinitionsTest do
     end
   end
 
+  describe "listing" do
+    test "pages the agents in order, after a cursor", %{scope: scope} do
+      for name <- ~w(c a b), do: define(scope, "acme/" <> name, %{"model" => @model})
+
+      assert %{"agents" => [%{"id" => "acme/a"}, %{"id" => "acme/b"}], "next" => next} =
+               run!(scope, "agents.list", %{"limit" => 2})
+
+      assert %{"agents" => [%{"id" => "acme/c"}], "next" => nil} =
+               run!(scope, "agents.list", %{"limit" => 2, "after" => next})
+
+      assert %{"agents" => [_a, _b, _c], "next" => nil} = run!(scope, "agents.list", %{})
+      assert refused(scope, "agents.list", %{"after" => "nope"}) == :invalid_request
+    end
+  end
+
   describe "sleeping" do
     test "stops an agent, and wakes it when it's asked", %{scope: scope} do
       answers([answer("Awake.")])

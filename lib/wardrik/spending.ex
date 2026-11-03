@@ -35,13 +35,20 @@ defmodule Wardrik.Spending do
       #=> %{"tokens" => 12_400, "usd" => 0.03}
   """
   @spec today(Wardrik.t(), String.t()) :: %{String.t() => number()}
-  def today(wardrik, id) do
-    today = today()
+  def today(wardrik, id), do: wardrik |> by_agent([id]) |> Map.fetch!(id)
 
-    case WardrikStore.get(store(wardrik), key(id)) do
-      %{"day" => ^today} = spent -> Map.take(spent, ["tokens", "usd"])
-      _none -> %{"tokens" => 0, "usd" => 0}
-    end
+  @doc "Returns what each of `ids` spent today, by ID, in one read."
+  @spec by_agent(Wardrik.t(), [String.t()]) :: %{String.t() => %{String.t() => number()}}
+  def by_agent(wardrik, ids) do
+    today = today()
+    found = WardrikStore.lookup_many(store(wardrik), Enum.map(ids, &key/1))
+
+    Map.new(ids, fn id ->
+      case found[key(id)] do
+        {%{"day" => ^today} = spent, _vsn} -> {id, Map.take(spent, ["tokens", "usd"])}
+        _none -> {id, %{"tokens" => 0, "usd" => 0}}
+      end
+    end)
   end
 
   defp gained(before, measured) do
