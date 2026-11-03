@@ -8,7 +8,7 @@ sidebar:
 ## Upgrade
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.2/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.3/install.sh | sh
 systemctl --user restart wardrik
 wardrik version
 ```
@@ -20,10 +20,10 @@ wardrik version
 In Docker, start a new container with the same volumes:
 
 ```sh
-docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.2
+docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.3
 docker rm -f wardrik
 docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
-  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.2
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.3
 ```
 
 ## Back up
