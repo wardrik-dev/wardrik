@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.3 (2026-11-03)
 
 - A timeline's run has `subagent` steps: a task handed to a delegate, with what it answered.
 

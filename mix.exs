@@ -4,7 +4,7 @@ defmodule WardrikProtocol.MixProject do
   def project do
     [
       app: :wardrik_protocol,
-      version: "0.1.0-rc.2",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description:
         "What Wardrik sends and takes: its events, as CloudEvents, and its operations, as OpenAPI.",
@@ -61,7 +61,7 @@ defmodule WardrikProtocol.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      sibling(:wardrik_core, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_core, "~> 0.1.0-rc.3"),
       {:jsv, "~> 0.26"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
