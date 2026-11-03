@@ -37,7 +37,6 @@ children = [
 ```
 
 * `"agt_1"` reads the agent and all its conversations. `{"agt_1", "C1"}` reads one conversation.
-  `:all` reads every agent.
 * Events come oldest first. `next` is a cursor to read on from.
 * Events older than the retention are dropped. A `wardrik.events.dropped` says how many you missed.
 
@@ -89,11 +88,30 @@ defmodule MyApp.Runs do
   def cursor(_listener), do: MyApp.Cursors.get("runs")
 end
 
-children = [{MyApp.Runs, events: MyApp.Events, types: ["wardrik.run.completed"]}]
+children = [{MyApp.Runs, events: MyApp.Events, resources: ["agt_1"], types: ["wardrik.run.completed"]}]
 ```
 
 * Save `listener.cursor` with your work. After a restart, the listener reads on from `cursor/1`.
 * Each event arrives at least once. Drop repeats by the event's `id`.
+
+## Send every event on
+
+```elixir
+defmodule MyApp.Shipper do
+  @behaviour WardrikEvents.Sink
+
+  @impl true
+  def handle_event(event, opts), do: MyApp.Queue.push(opts[:queue], event)
+end
+
+{WardrikEvents, name: MyApp.Events, store: store, sinks: [{MyApp.Shipper, queue: :events}]}
+```
+
+* A sink gets each event once it's kept, agents' and the audit's, in the process that wrote it.
+  Return quickly.
+* An event whose node stops first isn't sent. Read on from each agent's log with `page/3`.
+* `WardrikEvents.subscribe(MyApp.Events, :all)` sends every agent's events, live ones too, to the
+  calling process as they happen.
 
 ## What an agent is doing
 

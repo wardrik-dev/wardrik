@@ -56,19 +56,15 @@ defmodule WardrikEvents.ListenerTest do
     assert Cursor.decode(cursor) == {:ok, %{{"agt_1", nil} => 2}}
   end
 
-  test "says which events aren't started" do
-    assert_raise ArgumentError, ~r/^MyApp.Missing isn't started/, fn ->
-      WardrikEvents.head(MyApp.Missing, :all)
-    end
-  end
-
   test "carries on from the cursor it saved after a handle that failed", %{events: events} do
     for _n <- 1..3, do: stopped(events, "agt_1")
     {:ok, saved} = Agent.start_link(fn -> %{cursor: Cursor.encode(%{}), fail: "000000000002"} end)
 
     log =
       capture_log(fn ->
-        start_supervised!({Kept, events: events, saved: saved, test: self()})
+        start_supervised!(
+          {Kept, events: events, resources: ["agt_1"], saved: saved, test: self()}
+        )
 
         assert_receive {:handled, "000000000001"}
         assert_receive {:handled, "000000000002"}

@@ -19,12 +19,12 @@ defmodule WardrikEvents.Listener do
         def cursor(_listener), do: MyApp.Cursors.get("runs")
       end
 
-      children = [{MyApp.Runs, events: MyApp.Events, types: ["wardrik.run.completed"]}]
+      children = [{MyApp.Runs, events: MyApp.Events, resources: ["agt_1"], types: ["wardrik.run.completed"]}]
 
   ## Options
 
     * `:events` - required. The name of your `WardrikEvents`.
-    * `:resources` - the logs to follow, as `WardrikEvents.stream/3` takes them. `:all` unless set.
+    * `:resources` - required. The logs to follow, as `WardrikEvents.stream/3` takes them.
     * `:types` - the event types to take. Every type unless set.
     * `:after` - the cursor to start after, if you don't define `c:cursor/1`.
 
@@ -82,7 +82,7 @@ defmodule WardrikEvents.Listener do
     listener = %__MODULE__{events: Keyword.fetch!(opts, :events), cursor: nil, options: opts}
 
     {:ok, stream} =
-      WardrikEvents.stream(listener.events, Keyword.get(opts, :resources, :all),
+      WardrikEvents.stream(listener.events, Keyword.fetch!(opts, :resources),
         after: module.cursor(listener),
         types: Keyword.get(opts, :types, :all)
       )
