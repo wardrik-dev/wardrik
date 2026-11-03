@@ -220,9 +220,10 @@ defmodule WardrikDaemon.AccessTest do
     assert {:ok, %{"agents" => listed}} = Client.run(ana, "agents.list", %{})
     refute Enum.any?(listed, &(&1["id"] == context.growth))
     assert {:ok, %{"interrupts" => []}} = Client.run(ana, "interrupts.list", %{})
-    assert {:ok, %{"events" => events}} = Client.run(ana, "events.list", %{})
+    named = %{"agents" => [context.growth]}
+    assert {:ok, %{"events" => events}} = Client.run(ana, "events.list", named)
     refute Enum.any?(events, &(&1["agent"] == context.growth))
-    assert {:ok, %{"events" => events}} = Client.run(gus, "events.list", %{})
+    assert {:ok, %{"events" => events}} = Client.run(gus, "events.list", named)
     assert Enum.any?(events, &(&1["conversation"] == "C1"))
   end
 end

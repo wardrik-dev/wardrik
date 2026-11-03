@@ -1,9 +1,11 @@
 # Changelog
 
-## 0.1.0-rc.3 (unreleased)
+## 0.1.0-rc.3 (2026-11-03)
 
-- Runs on Wardrik 0.1.0-rc.3: a daemon started beside another on the same store, as in a
-  blue-green deploy, stands by for the notifier instead of failing to start.
+- Runs on Wardrik 0.1.0-rc.3. A daemon starts beside another on the same store, as in a blue-green
+  deploy; each tells of the agents it runs.
+- Model calls wait up to five minutes, as Wardrik sets them; the daemon no longer sets req_llm's
+  timeouts.
 
 ## 0.1.0-rc.2 (2026-11-02)
 
