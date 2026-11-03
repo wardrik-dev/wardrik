@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.3 (unreleased)
+
+- Runs on Wardrik 0.1.0-rc.3: a daemon started beside another on the same store, as in a
+  blue-green deploy, stands by for the notifier instead of failing to start.
+
 ## 0.1.0-rc.2 (2026-11-02)
 
 - `config.yaml` is checked against each library's own options. Errors name the YAML path:
