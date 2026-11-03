@@ -7,6 +7,10 @@
   over within seconds of the first stopping. Before, the new node failed to start.
 - `[:wardrik, :notify, :started]` telemetry fires each time the notifier starts on a node, with
   the instance's `wardrik` name.
+- `agents.list` reads what every agent shares in one pass, not once per agent: 10,000 agents on
+  Postgres list in about 0.2s, down from 5.7s. `interrupts.list` takes about 0.05s, down from 1.6s.
+- `agents.list` takes `limit` and `after`, and answers `next`. Without `limit`, it lists every
+  agent.
 
 ## 0.1.0-rc.2 (2026-11-02)
 

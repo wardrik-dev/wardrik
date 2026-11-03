@@ -244,7 +244,11 @@ defmodule Wardrik.OperationsTest do
       assert ids == ["acme/triage"]
 
       assert refused(scope, "agents.list", %{"resources" => ["acme/*"]}) == :invalid_request
-      assert run!(scope, "agents.list", %{"agents" => ["acme/*"]}) == %{"agents" => []}
+
+      assert run!(scope, "agents.list", %{"agents" => ["acme/*"]}) == %{
+               "agents" => [],
+               "next" => nil
+             }
     end
 
     test "reads only their events, and only their place in the cursor", %{

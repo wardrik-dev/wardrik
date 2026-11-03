@@ -11,10 +11,10 @@ defmodule Wardrik.Operations.Agents do
   alias WardrikEvents.Cursor
 
   @doc "Lists the agents, and their conversations."
-  @spec list(Scope.t(), map()) :: {:ok, map()}
+  @spec list(Scope.t(), map()) :: {:ok, map()} | {:error, Wardrik.Error.t()}
   def list(scope, input) do
-    agents = Enum.map(Visible.keys(scope, input), &Snapshot.summary(scope.wardrik, &1))
-    {:ok, %{"agents" => agents}}
+    with {:ok, keys, next} <- Visible.page(scope, input),
+         do: {:ok, %{"agents" => Snapshot.summaries(scope.wardrik, keys), "next" => next}}
   end
 
   @doc """

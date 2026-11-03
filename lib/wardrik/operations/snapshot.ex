@@ -35,7 +35,21 @@ defmodule Wardrik.Operations.Snapshot do
 
   @doc "Returns the agent `key`'s summary, as lists show it."
   @spec summary(Wardrik.t(), Running.key()) :: map()
-  def summary(wardrik, {agent, conversation} = key) do
+  def summary(wardrik, {agent, _conversation} = key),
+    do: summarized(wardrik, key, next_run(wardrik, agent), Wardrik.Spending.today(wardrik, agent))
+
+  @doc "Returns the summaries of `keys`, reading their triggers and spending once for all."
+  @spec summaries(Wardrik.t(), [Running.key()]) :: [map()]
+  def summaries(wardrik, keys) do
+    agents = keys |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+    next_runs = WardrikTriggers.next_runs(Wardrik.triggers(wardrik), agents)
+    spent = Wardrik.Spending.by_agent(wardrik, agents)
+
+    for {agent, _conversation} = key <- keys,
+        do: summarized(wardrik, key, iso8601(next_runs[agent]), Map.fetch!(spent, agent))
+  end
+
+  defp summarized(wardrik, {agent, conversation} = key, next_run, spent) do
     activity = WardrikEvents.activity(Wardrik.events(wardrik), key)
 
     conversation(
@@ -44,8 +58,8 @@ defmodule Wardrik.Operations.Snapshot do
         "status" => state(wardrik, key, activity),
         "node" => placed(wardrik, key),
         "pending" => activity["pending"],
-        "next_run" => next_run(wardrik, agent),
-        "spent_today" => Wardrik.Spending.today(wardrik, agent)
+        "next_run" => next_run,
+        "spent_today" => spent
       },
       conversation
     )
@@ -73,8 +87,11 @@ defmodule Wardrik.Operations.Snapshot do
     |> Enum.map(fn {_trigger, next_at} -> next_at end)
     |> Enum.reject(&is_nil/1)
     |> Enum.min(DateTime, fn -> nil end)
-    |> then(&(&1 && DateTime.to_iso8601(&1)))
+    |> iso8601()
   end
+
+  defp iso8601(nil), do: nil
+  defp iso8601(at), do: DateTime.to_iso8601(at)
 
   @doc "Returns the node the agent `key` runs on, or `nil` if it's asleep."
   @spec placed(Wardrik.t(), Running.key()) :: String.t() | nil
