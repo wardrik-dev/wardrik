@@ -53,7 +53,7 @@ defmodule Wardrik.CompactionTest do
     test = self()
     summary = %{answer("They talked.") | usage: %{input_tokens: 100, output_tokens: 3}}
 
-    expect(ReqLLM, :stream_text, fn _model, [system | older], [tools: []] ->
+    expect(ReqLLM, :stream_text, fn _model, [system | older], [{:tools, []} | _timeouts] ->
       send(test, {:summarising, system, older})
       {:ok, summary}
     end)
