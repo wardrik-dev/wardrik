@@ -12,6 +12,8 @@
   Postgres list in about 0.2s, down from 5.7s. `interrupts.list` takes about 0.05s, down from 1.6s.
 - `agents.list` takes `limit` and `after`, and answers `next`. Without `limit`, it lists every
   agent.
+- `agent.timeline` gives each task handed to a delegate a `subagent` step, with what it
+  answered; what the delegate says and does no longer reads as the agent's answer.
 
 ### Breaking
 
