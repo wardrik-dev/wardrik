@@ -142,6 +142,62 @@
                           ]
                         }
                       }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "type",
+                        "status",
+                        "tools"
+                      ],
+                      "description": "A task handed to a delegate. What it says and does is here, not in the run's answer.",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "subagent"
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "prompt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "running",
+                            "ok",
+                            "error"
+                          ]
+                        },
+                        "tools": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "How many tool calls it made."
+                        },
+                        "answer": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
                     }
                   ]
                 }

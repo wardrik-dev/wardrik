@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A timeline's run has `subagent` steps: a task handed to a delegate, with what it answered.
+
 - `events.list` and `events.head` read only the agents named: `agents` is required.
 
 - `agents.list` takes `limit` and `after`, and answers `next`, the cursor after the page. Without
