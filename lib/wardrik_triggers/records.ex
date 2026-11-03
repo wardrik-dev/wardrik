@@ -36,8 +36,20 @@ defmodule WardrikTriggers.Records do
   @doc "Returns the trigger names of `agent_id`."
   @spec of(WardrikStore.t(), String.t()) :: [String.t()]
   def of(store, agent_id) do
-    for {^agent_id, name} <- all(store), do: name
+    for key <- WardrikStore.keys(store, prefix(agent_id)),
+        {^agent_id, name} <- [parsed(key)],
+        do: name
   end
+
+  @doc "Returns the records of `agent_id`'s triggers, by name."
+  @spec records(WardrikStore.t(), String.t()) :: [map()]
+  def records(store, agent_id),
+    do: for({_key, record, _vsn} <- WardrikStore.entries(store, prefix(agent_id)), do: record)
+
+  @doc "Returns every stored record."
+  @spec records(WardrikStore.t()) :: [map()]
+  def records(store),
+    do: for({_key, record, _vsn} <- WardrikStore.entries(store, @prefix), do: record)
 
   @doc "Returns the record's trigger."
   @spec trigger(map()) :: Trigger.t()
@@ -79,7 +91,8 @@ defmodule WardrikTriggers.Records do
   end
 
   defp key(args), do: key(Keyword.fetch!(args, :agent_id), Keyword.fetch!(args, :name))
-  defp key(agent_id, name), do: @prefix <> URI.encode_www_form(agent_id) <> "/" <> name
+  defp key(agent_id, name), do: prefix(agent_id) <> name
+  defp prefix(agent_id), do: @prefix <> URI.encode_www_form(agent_id) <> "/"
 
   defp parsed(@prefix <> rest) do
     [agent_id, name] = String.split(rest, "/", parts: 2)

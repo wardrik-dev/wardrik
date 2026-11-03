@@ -101,11 +101,28 @@ defmodule WardrikTriggers do
   @doc "Returns the triggers of `agent_id`, each with its next run. A webhook's next run is `nil`."
   @spec list(atom(), String.t()) :: [{Trigger.t(), DateTime.t() | nil}]
   def list(triggers, agent_id) do
-    store = settings(triggers).store
-
-    for name <- Records.of(store, agent_id),
-        {record, _vsn} <- [Records.lookup(store, agent_id: agent_id, name: name)],
+    for record <- Records.records(settings(triggers).store, agent_id),
         do: {Records.trigger(record), Records.next_at(record)}
+  end
+
+  @doc """
+  Returns when each of `agent_ids` next runs on a schedule, in one read. Agents with no
+  scheduled trigger are left out.
+
+      WardrikTriggers.next_runs(MyApp.Triggers, ["agt_digest", "agt_triage"])
+      #=> %{"agt_digest" => ~U[2026-11-04 09:00:00Z]}
+  """
+  @spec next_runs(atom(), [String.t()]) :: %{String.t() => DateTime.t()}
+  def next_runs(triggers, agent_ids) do
+    wanted = MapSet.new(agent_ids)
+
+    for %{"agent_id" => agent_id} = record <- Records.records(settings(triggers).store),
+        agent_id in wanted,
+        next_at <- [Records.next_at(record)],
+        next_at != nil,
+        reduce: %{} do
+      runs -> Map.update(runs, agent_id, next_at, &Enum.min([&1, next_at], DateTime))
+    end
   end
 
   @doc """

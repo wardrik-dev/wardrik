@@ -67,6 +67,24 @@ defmodule WardrikTriggersTest do
       assert DateTime.after?(next_at, DateTime.utc_now())
     end
 
+    test "gives each agent's earliest scheduled run, in one read", %{triggers: triggers} do
+      :ok =
+        WardrikTriggers.put(triggers, @agent, [
+          %{"name" => "daily", "every" => "1d", "prompt" => "Go."},
+          %{"name" => "hourly", "every" => "1h", "prompt" => "Go."}
+        ])
+
+      :ok =
+        WardrikTriggers.put(triggers, "acme/other", [
+          %{"name" => "hook", "webhook" => %{"secret" => "${HOOK_SECRET}"}, "prompt" => "Go."}
+        ])
+
+      [_daily, {_hourly, hourly}] = WardrikTriggers.list(triggers, @agent)
+
+      assert WardrikTriggers.next_runs(triggers, [@agent, "acme/other", "acme/none"]) ==
+               %{@agent => hourly}
+    end
+
     test "keeps a trigger's next run while its clock stays, and replaces the rest", %{
       triggers: triggers
     } do
