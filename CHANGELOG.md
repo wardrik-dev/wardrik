@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.3 (2026-11-02)
 
 - Nodes that share a store without being clustered, as the old and new releases of a blue-green
   deploy do, start beside each other. One runs the notifier; the other stands by and takes it
