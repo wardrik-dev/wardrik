@@ -18,7 +18,7 @@ defmodule Wardrik.FunctionsTest do
     end
 
     test "runs the operation, and answers in structs", %{scope: scope} do
-      assert {:ok, cursor} = Wardrik.Events.head(scope)
+      assert {:ok, cursor} = Wardrik.Events.head(scope, agents: ["acme/triage"])
 
       assert {:ok, %Wardrik.Message{id: "msg_1", cursor: _cursor}} =
                Wardrik.Agent.ask(scope, "acme/triage", content: "Hi", id: "msg_1")
@@ -42,7 +42,11 @@ defmodule Wardrik.FunctionsTest do
                Wardrik.Agent.runs(scope, "acme/triage")
 
       assert {:ok, stream} =
-               Wardrik.Events.stream_list(scope, after: cursor, types: ["wardrik.run.completed"])
+               Wardrik.Events.stream_list(scope,
+                 agents: ["acme/triage"],
+                 after: cursor,
+                 types: ["wardrik.run.completed"]
+               )
 
       assert [{%Wardrik.Event{type: "wardrik.run.completed", time: %DateTime{}}, _cursor}] =
                Enum.take(stream, 1)

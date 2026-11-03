@@ -22,3 +22,11 @@ defmodule Wardrik.Test.Runs do
     :ok
   end
 end
+
+defmodule Wardrik.Test.Sunk do
+  @moduledoc "A sink that sends the test each kept event."
+  @behaviour Wardrik.Sink
+
+  @impl Wardrik.Sink
+  def handle_event(event, opts), do: send(opts[:test], {:sunk, event})
+end

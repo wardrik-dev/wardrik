@@ -120,7 +120,7 @@ The inbox redraws each time the agent stops to wait:
 inbox = Kino.Frame.new()
 log = Kino.Frame.new()
 
-{:ok, cursor} = Wardrik.Events.head(scope)
+{:ok, cursor} = Wardrik.Events.head(scope, agents: ["agt_books"])
 {:ok, events} = Wardrik.Events.stream_list(scope, after: cursor, agents: ["agt_books"])
 
 Kino.listen(events, %{}, fn {event, _cursor}, arguments ->

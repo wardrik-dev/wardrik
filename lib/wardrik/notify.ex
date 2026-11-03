@@ -34,7 +34,9 @@ defmodule Wardrik.Notify do
     * `on` defaults to `["parked", "failed"]`.
     * An agent reaches only the targets `Wardrik.Resolved`'s `:notify` gives it.
     * Your resolver can also give a target of its own, as `{module, opts}`, with secrets as values.
-    * Each notice is sent at least once. Tell repeats apart by agent, kind and `at`.
+    * The node an agent runs on tells of it, retrying as `:retries` says. A notice whose node stops
+      first is lost; `interrupts.list` still shows what waits. Tell repeats apart by agent, kind
+      and `at`.
 
   ## Options
 

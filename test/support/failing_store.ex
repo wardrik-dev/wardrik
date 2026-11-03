@@ -10,13 +10,6 @@ defmodule Wardrik.Test.FailingStore do
   def fail(%WardrikStore{config: %{failing: failing}}, scope),
     do: true = :ets.insert(failing, {:scope, scope <> ":"})
 
-  @doc "Fails every write to a path that starts with `prefix` from now."
-  def fail_path(%WardrikStore{config: %{failing: failing}}, prefix),
-    do: true = :ets.insert(failing, {:scope, prefix})
-
-  @doc "Lets writes through again."
-  def recover(%WardrikStore{config: %{failing: failing}}), do: true = :ets.delete(failing, :scope)
-
   @impl true
   def child_spec(%{name: name}), do: WardrikStore.ETS.child_spec(name)
 

@@ -63,7 +63,6 @@ defmodule Wardrik.Operations.Visible do
   @doc "Returns the logs that hold every agent `input` names, with its conversations."
   @spec logs(map()) :: WardrikEvents.resources()
   def logs(%{"agents" => ids}), do: Enum.uniq(ids)
-  def logs(_input), do: :all
 
   @doc "Returns whether `input` names the agent `id`, and `scope` may see it."
   @spec visible?(Scope.t(), map(), String.t()) :: boolean()

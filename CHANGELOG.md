@@ -2,15 +2,22 @@
 
 ## 0.1.0-rc.3 (2026-11-02)
 
-- Nodes that share a store without being clustered, as the old and new releases of a blue-green
-  deploy do, start beside each other. One runs the notifier; the other stands by and takes it
-  over within seconds of the first stopping. Before, the new node failed to start.
-- `[:wardrik, :notify, :started]` telemetry fires each time the notifier starts on a node, with
-  the instance's `wardrik` name.
+- `sinks:` sends every kept event, agents' and the audit's, to each `Wardrik.Sink`: to ship events
+  to a warehouse, a queue or tracing.
+- Each node tells of the agents it runs, from a sink. Nodes that share a store without being
+  clustered, as the old and new releases of a blue-green deploy do, start beside each other. A
+  notice is sent at most once: one whose node stops first is lost, though the agent's interrupts
+  still list what waits.
 - `agents.list` reads what every agent shares in one pass, not once per agent: 10,000 agents on
   Postgres list in about 0.2s, down from 5.7s. `interrupts.list` takes about 0.05s, down from 1.6s.
 - `agents.list` takes `limit` and `after`, and answers `next`. Without `limit`, it lists every
   agent.
+
+### Breaking
+
+- `events.list` and `events.head` read only the agents named: `agents` is required. Reading every
+  agent's log from a cursor is gone; use a sink.
+- `Wardrik.Listener` takes `:agents`, required. To take every agent's events, use a sink.
 
 ## 0.1.0-rc.2 (2026-11-02)
 

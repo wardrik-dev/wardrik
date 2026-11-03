@@ -1,9 +1,12 @@
 defmodule Wardrik.Listener do
   @moduledoc """
-  Follows agents' events into your app.
+  Follows the events of the agents you name into your app.
 
       defmodule MyApp.Runs do
-        use Wardrik.Listener, wardrik: MyApp.AgentRuntime, types: ["wardrik.run.completed"]
+        use Wardrik.Listener,
+          wardrik: MyApp.AgentRuntime,
+          agents: ["agt_support"],
+          types: ["wardrik.run.completed"]
 
         @impl true
         def handle(%Wardrik.Event{} = event, listener) do
@@ -31,7 +34,8 @@ defmodule Wardrik.Listener do
   Give them to `use`, or as it starts. Others are kept in `listener.options`.
 
     * `:wardrik` - required. The module to follow, as `MyApp.AgentRuntime`.
-    * `:agents` - agent IDs to follow, with their conversations. Every agent unless set.
+    * `:agents` - required. Agent IDs to follow, with their conversations. To take every agent's
+      events, give Wardrik a `Wardrik.Sink`.
     * `:types` - event types to follow. Every type unless set.
     * `:after` - the cursor to start after, without `c:cursor/1`.
   """
@@ -76,7 +80,7 @@ defmodule Wardrik.Listener do
   def start_link(module, opts) do
     instance = Keyword.fetch!(opts, :wardrik)
     events = instance |> Instance.fetch!() |> Wardrik.events()
-    resources = Keyword.get(opts, :agents, :all)
+    resources = Keyword.fetch!(opts, :agents)
     started = WardrikEvents.head(events, resources)
 
     options = [events: events, listener: module, started: started, resources: resources] ++ opts

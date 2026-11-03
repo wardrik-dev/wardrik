@@ -36,12 +36,27 @@ defmodule MyApp.Agents do
   def resolve(_request, _opts), do: {:ok, %Wardrik.Resolved{principal: Wardrik.principal("maria")}}
 end
 
+defmodule MyApp.RunAlerts do
+  @behaviour Wardrik.Sink
+
+  @ends ["wardrik.run.completed", "wardrik.run.failed"]
+
+  @impl true
+  def handle_event(%Wardrik.Event{type: type} = event, opts) when type in @ends,
+    do: Kino.Frame.append(opts[:frame], Kino.Markdown.new("**#{type}** for `#{event.agent}`"))
+
+  def handle_event(_event, _opts), do: :ok
+end
+
+alerts = Kino.Frame.new()
+
 {:ok, _} =
   Wardrik.start_link(
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
     resolver: {MyApp.Agents, []},
-    capabilities: [notes: MyApp.Notes]
+    capabilities: [notes: MyApp.Notes],
+    sinks: [{MyApp.RunAlerts, frame: alerts}]
   )
 
 scope = Wardrik.as(MyApp.AgentRuntime, "maria")
@@ -55,32 +70,19 @@ scope = Wardrik.as(MyApp.AgentRuntime, "maria")
   )
 ```
 
-## A listener
+## A sink
 
-It posts a line each time a run ends. Options you start it with arrive in `listener.options`:
+`MyApp.RunAlerts`, given to Wardrik as `sinks:` above, posts a line here each time a run ends. A
+sink gets every kept event in the process that wrote it, so it returns quickly:
 
 ```elixir
-defmodule MyApp.RunAlerts do
-  use Wardrik.Listener,
-    wardrik: MyApp.AgentRuntime,
-    types: ["wardrik.run.completed", "wardrik.run.failed"]
-
-  @impl true
-  def handle(%Wardrik.Event{} = event, listener) do
-    Kino.Frame.append(listener.options[:frame], Kino.Markdown.new("**#{event.type}** for `#{event.agent}`"))
-    :ok
-  end
-end
-
-alerts = Kino.Frame.new() |> Kino.render()
-{:ok, _} = Kino.start_child({MyApp.RunAlerts, frame: alerts})
-Kino.nothing()
+alerts
 ```
 
 ## Follow events
 
 ```elixir
-{:ok, cursor} = Wardrik.Events.head(scope)
+{:ok, cursor} = Wardrik.Events.head(scope, agents: ["agt_assistant"])
 live = Kino.Frame.new() |> Kino.render()
 
 Kino.start_child(

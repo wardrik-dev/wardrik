@@ -18,6 +18,7 @@ defmodule Wardrik.Setup do
       oauth: oauth(opts[:oauth], opts[:vault_keys]),
       mcp: opts[:mcp],
       listeners: opts[:listeners],
+      sinks: opts[:sinks],
       channels: Map.new(opts[:channels], fn {name, entry} -> {to_string(name), entry} end),
       notify: Wardrik.Notify.settings(opts[:notify]),
       declarations: opts[:declarations],

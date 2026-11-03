@@ -130,7 +130,7 @@ This helper decides, then shows how the run ends:
 
 ```elixir
 decide = fn agent, interrupt, decision, frame ->
-  {:ok, cursor} = Wardrik.Events.head(scope)
+  {:ok, cursor} = Wardrik.Events.head(scope, agents: [agent.id])
 
   decided =
     case decision do

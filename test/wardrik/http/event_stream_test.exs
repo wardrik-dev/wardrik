@@ -38,7 +38,7 @@ defmodule Wardrik.HTTP.EventStreamTest do
   end
 
   test "keeps a quiet stream open, and ends it once it no longer authenticates", context do
-    stream = open(context, "/v1/events")
+    stream = open(context, "/v1/events?agents=acme/triage")
     assert until(stream, ": keepalive")
 
     Wardrik.Test.HTTP.Authenticator.revoke(context.wardrik, context.secret)

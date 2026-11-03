@@ -11,6 +11,7 @@ defmodule Wardrik.Children do
         mcp(wardrik) ++
         [
           events(wardrik),
+          {Wardrik.Notify.Server, wardrik},
           workers(wardrik),
           agents(wardrik),
           triggers(wardrik),
@@ -18,7 +19,6 @@ defmodule Wardrik.Children do
         ] ++
         channels(wardrik) ++
         listeners(wardrik) ++
-        Wardrik.Notify.Server.children(wardrik) ++
         [{Wardrik.Delegation, wardrik}]
 
   defp vault(%Wardrik{vault_keys: []}), do: []
@@ -78,7 +78,11 @@ defmodule Wardrik.Children do
      name: Wardrik.events(wardrik),
      store: wardrik.store,
      deployment: wardrik.deployment,
-     retention: wardrik.retention}
+     retention: wardrik.retention,
+     sinks: [
+       {Wardrik.Notify.Sink, Wardrik.Notify.Server.name(wardrik.name)}
+       | Enum.map(wardrik.sinks, &{Wardrik.Sink.Events, Wardrik.Sink.entry(&1)})
+     ]}
   end
 
   defp triggers(wardrik) do

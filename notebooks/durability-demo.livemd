@@ -126,7 +126,7 @@ Process.exit(pid, :kill)
 Within a second it's back, and finishes on its own:
 
 ```elixir
-{:ok, cursor} = Wardrik.Events.head(scope)
+{:ok, cursor} = Wardrik.Events.head(scope, agents: [agent.id])
 run_end.(agent, cursor).type
 ```
 
@@ -147,7 +147,7 @@ running.(agent)
 :ok = Supervisor.stop(wardrik)
 {:ok, wardrik} = Wardrik.start_link(opts)
 
-{:ok, cursor} = Wardrik.Events.head(scope)
+{:ok, cursor} = Wardrik.Events.head(scope, agents: [agent.id])
 run_end.(agent, cursor).type
 ```
 
