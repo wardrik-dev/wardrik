@@ -161,6 +161,20 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       for [key, value, vsn] <- rows, do: {key, :erlang.binary_to_term(value, [:safe]), vsn}
     end
 
+    @impl WardrikStore.Adapter
+    def versions(%Own{}, prefix), do: versions(WardrikStore.Ecto.Repo, prefix)
+
+    def versions(repo, prefix) do
+      %{rows: rows} =
+        SQL.query!(
+          repo,
+          "SELECT key, vsn FROM #{@table} WHERE key LIKE $1 ESCAPE '\\' ORDER BY key",
+          [like(prefix) <> "%"]
+        )
+
+      for [key, vsn] <- rows, do: {key, vsn}
+    end
+
     defp written(repo, :error, args) do
       SQL.query(
         repo,

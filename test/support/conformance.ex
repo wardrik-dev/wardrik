@@ -190,6 +190,20 @@ defmodule WardrikStore.Conformance do
           assert [{_percent, 0, _vsn}, {_, 1, ^a}, {_, 2, ^b}] =
                    WardrikStore.entries(store, prefix)
         end
+
+        test "lists the versions under a prefix, in order, without values",
+             %{scoped: store} = context do
+          prefix = unique_key(context) <> "/"
+          {:ok, _vsn} = WardrikStore.put(store, prefix <> "b", 2)
+          {:ok, _vsn} = WardrikStore.put(store, prefix <> "a_", 1)
+          {:ok, _vsn} = WardrikStore.put(store, prefix <> "a%", 0)
+
+          assert WardrikStore.versions(store, prefix) ==
+                   for({key, _value, vsn} <- WardrikStore.entries(store, prefix), do: {key, vsn})
+
+          assert [{key, _vsn}] = WardrikStore.versions(store, prefix <> "a_")
+          assert key == prefix <> "a_"
+        end
       end
     end
   end

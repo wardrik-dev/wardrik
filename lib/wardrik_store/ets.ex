@@ -56,6 +56,13 @@ defmodule WardrikStore.ETS do
     |> Enum.take_while(&String.starts_with?(&1, prefix))
   end
 
+  @impl WardrikStore.Adapter
+  def versions(name, prefix) do
+    for path <- keys(name, prefix),
+        [{^path, vsn}] <- [:ets.select(name, [{{path, :_, :"$1"}, [], [{{path, :"$1"}}]}])],
+        do: {path, vsn}
+  end
+
   defp first_at_or_after(name, prefix) do
     if :ets.member(name, prefix), do: prefix, else: :ets.next(name, prefix)
   end

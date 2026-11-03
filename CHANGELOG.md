@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `WardrikStore.versions/2` lists keys with their versions, reading no values. Adapters can
+  implement `c:WardrikStore.Adapter.versions/2` to do it in one cheap read; the three built in do.
+- `WardrikStore.Durable` lists agents without reading their state.
+
 ## 0.1.0-rc.1 (2026-10-30)
 
 - `WardrikStore`, a durable key-value store that Wardrik packages keep their data in.

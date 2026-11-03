@@ -64,6 +64,12 @@ if Code.ensure_loaded?(EKV) do
       |> Enum.map(fn {key, _vsn} -> String.replace_prefix(key, @root, "") end)
     end
 
+    @impl WardrikStore.Adapter
+    def versions(%{name: name}, prefix) do
+      for {key, vsn} <- EKV.keys(name, @root <> prefix),
+          do: {String.replace_prefix(key, @root, ""), vsn}
+    end
+
     defp conditional(opts) do
       case Keyword.fetch(opts, :if_vsn) do
         {:ok, vsn} -> [if_vsn: vsn, resolve_unconfirmed: true]

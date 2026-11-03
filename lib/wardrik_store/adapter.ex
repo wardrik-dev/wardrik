@@ -41,5 +41,8 @@ defmodule WardrikStore.Adapter do
   @doc "Returns `{path, value, vsn}` for every path that starts with `prefix`."
   @callback entries(config(), prefix :: String.t()) :: [{String.t(), term(), WardrikStore.vsn()}]
 
-  @optional_callbacks lookup_many: 2, entries: 2
+  @doc "Returns `{path, vsn}` for every path that starts with `prefix`, without reading values."
+  @callback versions(config(), prefix :: String.t()) :: [{String.t(), WardrikStore.vsn()}]
+
+  @optional_callbacks lookup_many: 2, entries: 2, versions: 2
 end

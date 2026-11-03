@@ -142,6 +142,26 @@ defmodule WardrikStore do
     |> Enum.sort_by(&elem(&1, 0))
   end
 
+  @doc """
+  Returns `{key, vsn}` for each of the scope's keys that starts with `prefix`, sorted by key.
+  Reads no values, so it costs what `keys/2` does where the adapter implements
+  `c:WardrikStore.Adapter.versions/2`.
+  """
+  @spec versions(t(), String.t()) :: [{key(), vsn()}]
+  def versions(%__MODULE__{adapter: adapter, config: config} = store, prefix \\ "")
+      when is_binary(prefix) do
+    root = path(store, "")
+
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :versions, 2) do
+      config
+      |> adapter.versions(root <> prefix)
+      |> Enum.map(fn {path, vsn} -> {String.replace_prefix(path, root, ""), vsn} end)
+      |> Enum.sort_by(&elem(&1, 0))
+    else
+      for {key, _value, vsn} <- entries(store, prefix), do: {key, vsn}
+    end
+  end
+
   defp many(%__MODULE__{adapter: adapter, config: config}, paths) do
     if Code.ensure_loaded?(adapter) and function_exported?(adapter, :lookup_many, 2),
       do: adapter.lookup_many(config, paths),

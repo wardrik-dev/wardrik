@@ -59,11 +59,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
       with_body? = Keyword.get(opts, :include_objects, false)
       error_handler = Keyword.get(opts, :error_handler, fn _reason -> :continue end)
 
-      store
-      |> WardrikStore.entries(prefix)
-      |> Stream.flat_map(fn {key, value, vsn} ->
-        listed(key, value, vsn, with_body?, error_handler)
-      end)
+      listed(store, prefix, with_body?, error_handler)
     end
 
     @impl DurableServer.StorageBackend
@@ -107,10 +103,15 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     @impl DurableServer.StorageBackend
     def decode(_store, data), do: body(data)
 
-    defp listed(key, value, vsn, true, error_handler),
-      do: listed_with_body(key, value, vsn, error_handler)
+    defp listed(store, prefix, true, error_handler) do
+      for {key, value, vsn} <- WardrikStore.entries(store, prefix),
+          listed <- listed_with_body(key, value, vsn, error_handler),
+          do: listed
+    end
 
-    defp listed(key, _value, vsn, false, _error_handler), do: [%{key: key, etag: etag(vsn)}]
+    defp listed(store, prefix, false, _error_handler),
+      do:
+        for({key, vsn} <- WardrikStore.versions(store, prefix), do: %{key: key, etag: etag(vsn)})
 
     defp listed_with_body(key, value, vsn, error_handler) do
       case body(value) do
