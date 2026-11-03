@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.3 (2026-11-03)
 
 - `next_runs/2` gives each agent's earliest scheduled run, in one read.
 - `list/2` reads one agent's triggers, not every trigger in the deployment.

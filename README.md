@@ -18,7 +18,7 @@ up for you. See [Trigger agents](https://hexdocs.pm/wardrik/triggers.html).
 ```elixir
 def deps do
   [
-    {:wardrik_triggers, "~> 0.1.0-rc.2"}
+    {:wardrik_triggers, "~> 0.1.0-rc.3"}
   ]
 end
 ```
