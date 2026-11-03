@@ -163,7 +163,7 @@
         "x-wardrik-subject": "agents",
         "parameters": [
           {
-            "$ref": "#/components/parameters/agents"
+            "$ref": "#/components/parameters/named_agents"
           },
           {
             "$ref": "#/components/parameters/types"
@@ -212,12 +212,12 @@
         "x-wardrik-subject": "agents",
         "parameters": [
           {
-            "$ref": "#/components/parameters/agents"
+            "$ref": "#/components/parameters/named_agents"
           }
         ],
         "responses": {
           "200": {
-            "description": "The cursor at the end of every log.",
+            "description": "The cursor at the end of each log the agents cover.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2270,6 +2270,21 @@
         "description": "The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set.",
         "schema": {
           "type": "array",
+          "items": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
+          }
+        }
+      },
+      "named_agents": {
+        "name": "agents",
+        "in": "query",
+        "required": true,
+        "style": "form",
+        "explode": true,
+        "description": "The agents to read, by ID, given once for each. Each covers its conversations too.",
+        "schema": {
+          "type": "array",
+          "minItems": 1,
           "items": {
             "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
           }

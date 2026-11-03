@@ -1,9 +1,9 @@
 defmodule Wardrik.Events do
   @moduledoc """
-  Operations on the events of every agent the scope can see.
+  Operations on the events of the agents named.
 
-      {:ok, cursor} = Wardrik.Events.head(scope)
-      {:ok, stream} = Wardrik.Events.stream_list(scope, after: cursor)
+      {:ok, cursor} = Wardrik.Events.head(scope, agents: ["agt_1"])
+      {:ok, stream} = Wardrik.Events.stream_list(scope, agents: ["agt_1"], after: cursor)
   """
 
   use Wardrik.Operations.Functions, prefix: "events"

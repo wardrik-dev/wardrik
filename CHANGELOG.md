@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `events.list` and `events.head` read only the agents named: `agents` is required.
+
 - `agents.list` takes `limit` and `after`, and answers `next`, the cursor after the page. Without
   `limit`, it lists every agent, as before.
 
