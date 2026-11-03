@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Releases Wardrik: tags every repo, publishes the Elixir packages to Hex in dependency order,
-# then the TypeScript SDK to npm.
+# and, with --npm, the TypeScript SDK to npm.
 #
-#   scripts/release.sh 0.1.0-rc.3         # dry run: checks everything, changes nothing
-#   scripts/release.sh 0.1.0-rc.3 --go    # tags, pushes the tags, publishes
+#   scripts/release.sh 0.1.0-rc.3              # dry run: checks everything, changes nothing
+#   scripts/release.sh 0.1.0-rc.3 --go         # tags, pushes the tags, publishes to Hex
+#   scripts/release.sh 0.1.0-rc.3 --npm --go   # and the SDK to npm
+#
+# The SDK is versioned on its own: it follows the protocol it's generated from, not the server.
+# Pass --npm when it changed, after bumping its package.json to VERSION.
 #
 # The repos are checked out side by side, as for WARDRIK_LOCAL=1: ../wardrik_core and so on.
 # Bump the versions in mix.exs, package.json and the sibling requirements first, by PR. A package
@@ -14,11 +18,21 @@
 set -euo pipefail
 
 WORK=${WORK:-$(cd "$(dirname "$0")/../.." && pwd)}
-VERSION=${1:?usage: $0 VERSION [--go]}
-GO=${2:-}
+VERSION=${1:?usage: $0 VERSION [--npm] [--go]}
+shift
+GO=
+NPM=
+for flag in "$@"; do
+  case $flag in
+    --go) GO=1 ;;
+    --npm) NPM=1 ;;
+    *) echo "unknown flag: $flag" >&2; exit 2 ;;
+  esac
+done
 TAG="v$VERSION"
 NPM_PACKAGE=@wardrik/sdk
-STEPS=(tag_repos publish_hex publish_npm)
+STEPS=(tag_repos publish_hex)
+[[ -n $NPM ]] && STEPS+=(publish_npm)
 
 # Every package on Hex. The publish order comes from their sibling deps, not from this list.
 HEX=(wardrik wardrik_brave wardrik_channel wardrik_core wardrik_daemon wardrik_events
@@ -26,11 +40,11 @@ HEX=(wardrik wardrik_brave wardrik_channel wardrik_core wardrik_daemon wardrik_e
   wardrik_research wardrik_slack wardrik_store wardrik_testing wardrik_triggers wardrik_vault
   wardrik_workspace)
 # Built from their checkouts, so those must be clean on main.
-BUILT=("${HEX[@]}" wardrik_typescript)
+BUILT=("${HEX[@]}")
+[[ -n $NPM ]] && BUILT+=(wardrik_typescript)
 # Only tagged. Their checkouts may be on any branch.
 TAGGED=(wardrik_docs)
 
-[[ -z $GO || $GO == --go ]] || { echo "unknown flag: $GO" >&2; exit 2; }
 problems=0
 say() { printf '%s\n' "$*"; }
 problem() { say "  !! $*"; problems=$((problems + 1)); }
@@ -60,8 +74,10 @@ check() {
   local user
   user=$(cd "$WORK/wardrik_core" && mix hex.user whoami 2>/dev/null | tail -1) || true
   [[ -n $user ]] && say "  hex: $user" || problem "not signed in to Hex: mix hex.user auth"
-  user=$(npm whoami 2>/dev/null) || true
-  [[ -n $user ]] && say "  npm: $user" || problem "not signed in to npm: npm login"
+  if [[ -n $NPM ]]; then
+    user=$(npm whoami 2>/dev/null) || true
+    [[ -n $user ]] && say "  npm: $user" || problem "not signed in to npm: npm login"
+  fi
 
   say "-- repos"
   local repo dir main tagged
@@ -92,7 +108,8 @@ check() {
   done
 
   say "-- npm"
-  if ! released wardrik_typescript; then problem "package.json isn't $VERSION"
+  if [[ -z $NPM ]]; then say "  $NPM_PACKAGE: skipped; --npm publishes it"
+  elif ! released wardrik_typescript; then problem "package.json isn't $VERSION"
   elif on_npm; then say "  $NPM_PACKAGE@$VERSION: already on npm"
   else say "  $NPM_PACKAGE@$VERSION: publish, as next and latest"
   fi
@@ -132,6 +149,6 @@ publish_npm() {
 say "== $TAG from $WORK"
 check
 if ((problems > 0)); then say "== $problems problem(s). Nothing changed."; exit 1; fi
-if [[ $GO != --go ]]; then say "== Dry run clean. Rerun with --go to release."; exit 0; fi
+if [[ -z $GO ]]; then say "== Dry run clean. Rerun with --go to release."; exit 0; fi
 for step in "${STEPS[@]}"; do say "-- $step"; "$step"; done
 say "== Released $TAG."
