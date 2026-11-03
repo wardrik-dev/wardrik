@@ -255,7 +255,8 @@ defmodule Wardrik.OperationsTest do
       scope: scope,
       reader: reader
     } do
-      %{"events" => events, "next" => next} = run!(reader, "events.list", %{})
+      both = %{"agents" => ["acme/triage", "globex/triage"]}
+      %{"events" => events, "next" => next} = run!(reader, "events.list", both)
 
       assert events |> Enum.map(&Visible.agent_id/1) |> Enum.uniq() == [
                "acme/triage"
@@ -264,7 +265,7 @@ defmodule Wardrik.OperationsTest do
       assert {:ok, %{{"acme/triage", nil} => _sequence} = cursor} = Cursor.decode(next)
       assert map_size(cursor) == 1
 
-      %{"cursor" => head} = run!(reader, "events.head", %{})
+      %{"cursor" => head} = run!(reader, "events.head", both)
       assert {:ok, ^cursor} = Cursor.decode(head)
 
       %{"events" => completed} =
@@ -278,10 +279,12 @@ defmodule Wardrik.OperationsTest do
     end
 
     test "follows only their events", %{scope: scope, reader: reader} do
-      %{"cursor" => head} = run!(scope, "events.head", %{})
+      both = ["acme/triage", "globex/triage"]
+      %{"cursor" => head} = run!(scope, "events.head", %{"agents" => both})
 
       {:ok, stream} =
         Wardrik.stream(reader, "events.list", %{
+          "agents" => both,
           "after" => head,
           "types" => ["wardrik.message.created"]
         })
@@ -372,7 +375,8 @@ defmodule Wardrik.OperationsTest do
       assert [%{"agent" => %{"id" => "acme/triage"}, "conversation" => "C1"}] =
                run!(reader, "interrupts.list", %{})["interrupts"]
 
-      %{"events" => events, "next" => next} = run!(reader, "events.list", %{})
+      both = %{"agents" => ["acme/triage", "globex/triage"]}
+      %{"events" => events, "next" => next} = run!(reader, "events.list", both)
       assert events != []
 
       assert Enum.uniq(for event <- events, do: {event["agent"], event["conversation"]}) == [
@@ -381,12 +385,12 @@ defmodule Wardrik.OperationsTest do
 
       assert run!(reader, "events.list", %{"agents" => ["globex/triage"]})["events"] == []
 
-      %{"cursor" => everything} = run!(scope, "events.head", %{})
+      %{"cursor" => everything} = run!(scope, "events.head", both)
       {:ok, all} = Cursor.decode(everything)
       assert Map.has_key?(all, {"globex/triage", "C1"})
 
-      %{"cursor" => head} = run!(reader, "events.head", %{})
-      %{"next" => after_all} = run!(reader, "events.list", %{"after" => everything})
+      %{"cursor" => head} = run!(reader, "events.head", both)
+      %{"next" => after_all} = run!(reader, "events.list", Map.put(both, "after", everything))
 
       for cursor <- [next, head, after_all] do
         assert {:ok, positions} = Cursor.decode(cursor)

@@ -1,7 +1,10 @@
 defmodule Wardrik.Notify.Server do
   @moduledoc false
 
-  use DurableServer, vsn: 1
+  # Each node tells of the agents it runs. Their events reach it through `Wardrik.Notify.Sink`,
+  # in the order each agent wrote them.
+
+  use GenServer
 
   require Logger
 
@@ -10,79 +13,25 @@ defmodule Wardrik.Notify.Server do
   alias Wardrik.Operations.Snapshot
   alias WardrikCore.Retry
 
-  @key "notifier"
-  @types ~w(wardrik.tool_call.started wardrik.run.interrupted wardrik.run.failed
-            wardrik.run.completed wardrik.run.cancelled)
+  @doc "Starts the node's notifier."
+  @spec start_link(Wardrik.t()) :: GenServer.on_start()
+  def start_link(wardrik), do: GenServer.start_link(__MODULE__, wardrik, name: name(wardrik.name))
 
-  @doc "Returns the notifier's children."
-  @spec children(Wardrik.t()) :: [Supervisor.child_spec()]
-  def children(wardrik) do
-    supervisor = Module.concat(wardrik.name, Notify)
+  @doc "Returns the name of the notifier for the Wardrik named `name`."
+  @spec name(atom()) :: atom()
+  def name(name), do: Module.concat(name, Notify)
 
-    durable =
-      [
-        name: supervisor,
-        prefix: "notify/",
-        backend: {WardrikStore.Durable, store: WardrikStore.scope(wardrik.store, "wardrik")},
-        init_info: %{wardrik: wardrik}
-      ]
-      |> DurableServer.Supervisor.child_spec()
-      |> Map.put(:id, Notify)
-
-    [durable, {Wardrik.Notify.Standby, supervisor}]
-  end
-
-  @doc "Starts the notifier under `supervisor`, or finds where it already runs."
-  @spec claim(atom(), timeout()) :: {:ok, {pid(), map()}} | {:error, term()}
-  def claim(supervisor, timeout) do
-    child = {__MODULE__, key: @key, initial_state: %{cursor: nil, calls: %{}}}
-    DurableServer.Supervisor.ensure_started_child(supervisor, child, timeout: timeout)
-  end
-
-  @impl DurableServer
-  def dump_state(state), do: Map.take(state, [:cursor, :calls])
-
-  @impl DurableServer
-  def load_state(_vsn, dumped), do: dumped
-
-  @impl DurableServer
-  def init(state, %{wardrik: wardrik}) do
-    Process.flag(:trap_exit, true)
-    :telemetry.execute([:wardrik, :notify, :started], %{}, %{wardrik: wardrik.name})
-    cursor = state.cursor || WardrikEvents.head(Wardrik.events(wardrik), :all)
+  @impl GenServer
+  def init(wardrik) do
     {:ok, tasks} = Task.Supervisor.start_link()
-
-    {:ok, follower} =
-      Wardrik.Listener.start_link(Wardrik.Notify.Follower,
-        wardrik: wardrik.name,
-        types: @types,
-        server: self()
-      )
-
-    {:ok,
-     %{state | cursor: cursor}
-     |> Map.merge(%{wardrik: wardrik, tasks: tasks, follower: follower}), permanent: true}
+    {:ok, %{wardrik: wardrik, tasks: tasks, calls: %{}}}
   end
 
-  @impl DurableServer
-  def handle_call(:cursor, _from, state), do: {:reply, state.cursor, state}
-
-  def handle_call({:event, event, cursor}, _from, state) do
-    state = taken(state, agent(event), event)
-    {:reply, :ok, %{state | cursor: cursor}, sync: true}
+  @impl GenServer
+  def handle_cast({:event, json}, state) do
+    event = Wardrik.Event.from_json(json)
+    {:noreply, taken(state, agent(event), event)}
   end
-
-  @impl DurableServer
-  def handle_info({:EXIT, _pid, reason}, state), do: {:stop, reason, state}
-  def handle_info(_message, state), do: {:noreply, state}
-
-  @impl DurableServer
-  def terminate(_reason, %{follower: follower}) do
-    Process.unlink(follower)
-    Process.exit(follower, :kill)
-  end
-
-  def terminate(_reason, _state), do: :ok
 
   defp taken(state, agent, %{type: "wardrik.tool_call.started", data: %{"tool" => tool}}) do
     %{"id" => id} = call = tool["call"]
@@ -204,17 +153,4 @@ defmodule Wardrik.Notify.Server do
     do: "Couldn't tell #{name} that #{notice.agent} #{notice.kind}: #{inspect(reason)}"
 
   defp agent(%Wardrik.Event{agent: agent, conversation: conversation}), do: {agent, conversation}
-end
-
-defmodule Wardrik.Notify.Follower do
-  @moduledoc false
-
-  use Wardrik.Listener
-
-  @impl Wardrik.Listener
-  def handle(event, listener),
-    do: GenServer.call(listener.options[:server], {:event, event, listener.cursor}, :infinity)
-
-  @impl Wardrik.Listener
-  def cursor(listener), do: GenServer.call(listener.options[:server], :cursor)
 end

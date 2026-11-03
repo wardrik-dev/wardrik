@@ -12,13 +12,10 @@ defmodule Wardrik.Test.Instance do
        |> Keyword.put_new(:resolver, {Wardrik.Test.Owned, __MODULE__})}
 end
 
-defmodule Wardrik.Test.Runs do
-  @moduledoc "A listener that tells the test each run that completes."
-  use Wardrik.Listener, types: ["wardrik.run.completed"]
+defmodule Wardrik.Test.Sunk do
+  @moduledoc "A sink that sends the test each kept event."
+  @behaviour WardrikEvents.Sink
 
-  @impl Wardrik.Listener
-  def handle(event, listener) do
-    send(listener.options[:test], {:handled, event, listener})
-    :ok
-  end
+  @impl WardrikEvents.Sink
+  def handle_event(event, test), do: send(test, {:sunk, event})
 end

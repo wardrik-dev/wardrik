@@ -167,10 +167,10 @@ defmodule Wardrik do
                 ]
               ]
             ],
-            listeners: [
+            sinks: [
               type: {:list, @entry},
               default: [],
-              doc: "Listeners to start. See `Wardrik.Listener`."
+              doc: "Where to send every kept event, as `WardrikEvents.Sink`s."
             ],
             authorizer: [
               type: :mod_arg,
@@ -213,7 +213,7 @@ defmodule Wardrik do
     :grants,
     :oauth,
     :mcp,
-    :listeners,
+    :sinks,
     :channels,
     :notify,
     :declarations,
@@ -244,7 +244,7 @@ defmodule Wardrik do
           grants: {module(), term()} | nil,
           oauth: keyword() | nil,
           mcp: [{atom() | String.t(), keyword()}],
-          listeners: [module() | {module(), keyword()}],
+          sinks: [module() | {module(), term()}],
           channels: %{String.t() => {module(), keyword()}},
           notify: %{targets: %{String.t() => {module(), keyword()}}, retries: keyword()},
           declarations: {module(), term()} | nil,

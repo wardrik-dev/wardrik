@@ -36,11 +36,11 @@ scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 ## Read and follow
 
 ```elixir
-{:ok, cursor} = Wardrik.Events.head(scope)
+{:ok, cursor} = Wardrik.Events.head(scope, agents: ["agt_assistant"])
 
 {:ok, _} = Wardrik.Agent.define(scope, "agt_assistant", model: "anthropic:claude-haiku-4-5")
 
-Wardrik.Events.list(scope, after: cursor, limit: 2)
+Wardrik.Events.list(scope, agents: ["agt_assistant"], after: cursor, limit: 2)
 #=> {:ok,
 #=>  %Wardrik.Page{
 #=>    events: [%Wardrik.Event{type: "wardrik.agent.started", agent: "agt_assistant", ...}],
@@ -55,41 +55,40 @@ Enum.take(stream, 1)
 
 - Pass `next` as `after:` to read on. Without `after:`, `list/2` starts at the beginning.
 - `stream_list/2` never ends. It yields `{event, cursor}`. Without `after:`, it starts with new events.
-- `agents:` names agents by ID, with their conversations. Every agent the scope may see unless set.
+- `agents:` names the agents to read by ID, with their conversations.
 - Each event is a CloudEvent. `agent` and `conversation` say which log it's in.
 - A scope sees only agents your authorizer allows `agent.events` on.
 - Where a log was trimmed past the cursor, a `wardrik.events.dropped` event says so.
 
-## Listeners
+## Sinks
 
-A listener hands each event to your module, with the cursor past it:
+To send every agent's events on, to a warehouse, a queue or tracing, give Wardrik a sink:
 
 ```elixir
-defmodule MyApp.Started do
-  use Wardrik.Listener, wardrik: MyApp.AgentRuntime, types: ["wardrik.agent.started"]
+defmodule MyApp.Shipper do
+  @behaviour WardrikEvents.Sink
 
   @impl true
-  def handle(%Wardrik.Event{} = event, listener) do
-    IO.puts("Started #{event.agent}")
-    :persistent_term.put(__MODULE__, listener.cursor)
-    :ok
-  end
-
-  @impl true
-  def cursor(_listener), do: :persistent_term.get(__MODULE__, nil)
+  def handle_event(event, _opts), do: IO.puts("#{event["agent"]}: #{event["type"]}")
 end
 
-{:ok, _} = Supervisor.start_link([MyApp.Started], strategy: :one_for_one)
+{:ok, _} =
+  Wardrik.start_link(
+    name: MyApp.Shipped,
+    authorizer: {MyApp.AllowAll, []},
+    resolver: {MyApp.Agents, []},
+    sinks: [MyApp.Shipper]
+  )
 
-Wardrik.Agent.define(scope, "agt_digest", model: "anthropic:claude-haiku-4-5")
-# Started agt_digest
+Wardrik.Agent.define(Wardrik.as(MyApp.Shipped, "maria"), "agt_digest", model: "anthropic:claude-haiku-4-5")
+# agt_digest: wardrik.agent.started
 ```
 
-- Save the cursor in the same transaction as your work. `cursor/1` returns it after a restart.
-- Each event comes at least once. Drop repeats by `id`.
-- If `handle/2` raises or doesn't return `:ok`, the listener restarts from `cursor/1`.
-- Start it from Wardrik's `listeners: [MyApp.Started]`, or after Wardrik in your tree.
-- See `Wardrik.Listener` for its options.
+- A sink gets each event once it's kept, and the audit's changes, with its `sequence` in its log.
+- It runs in the process that wrote the event, often the agent's. Return quickly.
+- An event whose node stops before the sink takes it isn't sent. Read on from that agent's
+  `sequence` with `list/2`.
+- `:telemetry` gets every agent event too. See `WardrikCore.Telemetry`.
 
 ## The audit
 

@@ -14,10 +14,8 @@ defmodule Wardrik.InstanceTest do
     :ok
   end
 
-  test "starts as a module, and is reached by its name" do
-    start_supervised!(
-      {Instance, listeners: [{Wardrik.Test.Runs, test: self(), agents: ["me/assistant"]}]}
-    )
+  test "starts as a module, is reached by its name, and sends kept events to its sinks" do
+    start_supervised!({Instance, sinks: [{Wardrik.Test.Sunk, self()}]})
 
     assert %Wardrik{deployment: "from-init"} = Wardrik.Instance.fetch!(Instance)
 
@@ -27,35 +25,12 @@ defmodule Wardrik.InstanceTest do
     {:ok, agent} = Wardrik.Agent.define(me, "me/assistant", model: "anthropic:claude-haiku-4-5")
     assert {:ok, %Wardrik.Reply{text: _text}} = Wardrik.Agent.reply(me, agent, "Hi")
 
-    assert_receive {:handled, %Wardrik.Event{type: "wardrik.run.completed"},
-                    %Wardrik.Listener{cursor: cursor}},
-                   1000
-
-    assert is_binary(cursor)
-    refute_received {WardrikEvents, _log, _event}
-  end
-
-  test "follows only the agents a listener names, by their exact IDs" do
-    start_supervised!(
-      {Instance, listeners: [{Wardrik.Test.Runs, test: self(), agents: ["me/elsewhere"]}]}
-    )
-
-    me = Instance.as("me")
-    {:ok, agent} = Wardrik.Agent.define(me, "me/assistant", model: "anthropic:claude-haiku-4-5")
-    assert {:ok, %Wardrik.Reply{}} = Wardrik.Agent.reply(me, agent, "Hi")
-
-    refute_receive {:handled, _event, _listener}, 200
+    assert_receive {:sunk, %{"type" => "wardrik.run.completed", "agent" => "me/assistant"}}, 1000
+    refute_received {:sunk, %{"type" => "wardrik.message.delta"}}
   end
 
   test "takes its options as it starts, over its config" do
     start_supervised!({Instance, deployment: "given"})
     assert %Wardrik{deployment: "given"} = Wardrik.Instance.fetch!(Instance)
-  end
-
-  test "says which Wardrik a listener follows isn't started" do
-    assert {:error, {{:EXIT, {%ArgumentError{message: message}, _stack}}, _child}} =
-             start_supervised({Wardrik.Test.Runs, wardrik: Nowhere.Wardrik, test: self()})
-
-    assert message =~ "Nowhere.Wardrik isn't started"
   end
 end
