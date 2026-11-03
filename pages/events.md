@@ -60,6 +60,26 @@ Enum.take(stream, 1)
 - A scope sees only agents your authorizer allows `agent.events` on.
 - Where a log was trimmed past the cursor, a `wardrik.events.dropped` event says so.
 
+## Views
+
+A view folds an agent's events into what a screen shows, and keeps it current as more arrive:
+
+```elixir
+{:ok, %Wardrik.Page{events: events}} = Wardrik.Agent.events(scope, "agt_assistant")
+
+timeline = Wardrik.Views.Timeline.fold(events)
+Wardrik.Views.Timeline.items(timeline)
+#=> [%{kind: :user, text: "Hi", ...}, %{kind: :run, status: :completed, steps: [...], ...}]
+
+runs = Wardrik.Views.Runs.fold(events)
+Wardrik.Views.Runs.totals(runs)
+#=> %{runs: 1, failed: 0, tool_calls: 0, cost_micro_usd: 0, ...}
+```
+
+- Fold each streamed event in with `apply/2`. `Wardrik.Views.Timeline.touched/1` names the items
+  it changed, or `:reset` where the conversation was cleared.
+- A delegate's work is a `:subagent` step of its own, never the agent's answer.
+
 ## Listeners
 
 A listener hands the events of the agents it names to your module, with the cursor past each:

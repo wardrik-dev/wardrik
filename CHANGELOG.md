@@ -12,6 +12,8 @@
   Postgres list in about 0.2s, down from 5.7s. `interrupts.list` takes about 0.05s, down from 1.6s.
 - `agents.list` takes `limit` and `after`, and answers `next`. Without `limit`, it lists every
   agent.
+- `Wardrik.Views.Timeline` and `Wardrik.Views.Runs` fold an agent's events, as `Wardrik.Event`s or
+  JSON, into its conversation and its runs, and keep them current as events arrive.
 - `agent.timeline` gives each task handed to a delegate a `subagent` step, with what it
   answered; what the delegate says and does no longer reads as the agent's answer.
 
