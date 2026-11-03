@@ -4,7 +4,7 @@ defmodule WardrikStore.MixProject do
   def project do
     [
       app: :wardrik_store,
-      version: "0.1.0-rc.1",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description: "A durable key-value store that Wardrik packages keep their data in.",
       package: package(),

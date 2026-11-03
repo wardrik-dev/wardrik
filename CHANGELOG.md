@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.3 (2026-11-03)
 
 - `WardrikStore.versions/2` lists keys with their versions, reading no values. Adapters can
   implement `c:WardrikStore.Adapter.versions/2` to do it in one cheap read; the three built in do.
