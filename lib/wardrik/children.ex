@@ -18,6 +18,7 @@ defmodule Wardrik.Children do
           {Wardrik.Sleeper, wardrik}
         ] ++
         channels(wardrik) ++
+        listeners(wardrik) ++
         [{Wardrik.Delegation, wardrik}]
 
   defp vault(%Wardrik{vault_keys: []}), do: []
@@ -78,7 +79,10 @@ defmodule Wardrik.Children do
      store: wardrik.store,
      deployment: wardrik.deployment,
      retention: wardrik.retention,
-     sinks: [{Wardrik.Notify.Sink, Wardrik.Notify.Server.name(wardrik.name)} | wardrik.sinks]}
+     sinks: [
+       {Wardrik.Notify.Sink, Wardrik.Notify.Server.name(wardrik.name)}
+       | Enum.map(wardrik.sinks, &{Wardrik.Sink.Events, Wardrik.Sink.entry(&1)})
+     ]}
   end
 
   defp triggers(wardrik) do
@@ -111,6 +115,11 @@ defmodule Wardrik.Children do
   @doc false
   def channel_spec(wardrik, name, module, opts),
     do: module.child_spec(Wardrik.Operations.Channels.options(wardrik, name, opts))
+
+  defp listeners(wardrik), do: Enum.map(wardrik.listeners, &listener(&1, wardrik.name))
+
+  defp listener({module, opts}, name), do: {module, Keyword.put(opts, :wardrik, name)}
+  defp listener(module, name), do: {module, wardrik: name}
 
   defp agents(wardrik), do: {WardrikCore, name: Wardrik.agents(wardrik), backend: wardrik.backend}
 end

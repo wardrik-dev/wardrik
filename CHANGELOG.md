@@ -2,8 +2,8 @@
 
 ## 0.1.0-rc.3 (2026-11-02)
 
-- `sinks:` sends every kept event, agents' and the audit's, to each `WardrikEvents.Sink`: to ship
-  events to a warehouse, a queue or tracing.
+- `sinks:` sends every kept event, agents' and the audit's, to each `Wardrik.Sink`: to ship events
+  to a warehouse, a queue or tracing.
 - Each node tells of the agents it runs, from a sink. Nodes that share a store without being
   clustered, as the old and new releases of a blue-green deploy do, start beside each other. A
   notice is sent at most once: one whose node stops first is lost, though the agent's interrupts
@@ -17,8 +17,7 @@
 
 - `events.list` and `events.head` read only the agents named: `agents` is required. Reading every
   agent's log from a cursor is gone; use a sink.
-- `Wardrik.Listener` and `listeners:` are gone. Use a sink, or `Wardrik.Events.stream_list/2` for
-  named agents.
+- `Wardrik.Listener` takes `:agents`, required. To take every agent's events, use a sink.
 
 ## 0.1.0-rc.2 (2026-11-02)
 

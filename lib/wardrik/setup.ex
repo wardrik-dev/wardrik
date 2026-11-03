@@ -17,6 +17,7 @@ defmodule Wardrik.Setup do
       grants: opts[:grants] || grants(opts[:oauth], Module.concat(name, OAuth)),
       oauth: oauth(opts[:oauth], opts[:vault_keys]),
       mcp: opts[:mcp],
+      listeners: opts[:listeners],
       sinks: opts[:sinks],
       channels: Map.new(opts[:channels], fn {name, entry} -> {to_string(name), entry} end),
       notify: Wardrik.Notify.settings(opts[:notify]),

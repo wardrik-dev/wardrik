@@ -37,15 +37,15 @@ defmodule MyApp.Agents do
 end
 
 defmodule MyApp.RunAlerts do
-  @behaviour WardrikEvents.Sink
+  @behaviour Wardrik.Sink
 
   @ends ["wardrik.run.completed", "wardrik.run.failed"]
 
   @impl true
-  def handle_event(%{"type" => type} = event, frame) when type in @ends,
-    do: Kino.Frame.append(frame, Kino.Markdown.new("**#{type}** for `#{event["agent"]}`"))
+  def handle_event(%Wardrik.Event{type: type} = event, opts) when type in @ends,
+    do: Kino.Frame.append(opts[:frame], Kino.Markdown.new("**#{type}** for `#{event.agent}`"))
 
-  def handle_event(_event, _frame), do: :ok
+  def handle_event(_event, _opts), do: :ok
 end
 
 alerts = Kino.Frame.new()
@@ -56,7 +56,7 @@ alerts = Kino.Frame.new()
     authorizer: {MyApp.AllowAll, []},
     resolver: {MyApp.Agents, []},
     capabilities: [notes: MyApp.Notes],
-    sinks: [{MyApp.RunAlerts, alerts}]
+    sinks: [{MyApp.RunAlerts, frame: alerts}]
   )
 
 scope = Wardrik.as(MyApp.AgentRuntime, "maria")

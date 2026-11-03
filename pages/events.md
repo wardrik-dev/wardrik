@@ -60,16 +60,50 @@ Enum.take(stream, 1)
 - A scope sees only agents your authorizer allows `agent.events` on.
 - Where a log was trimmed past the cursor, a `wardrik.events.dropped` event says so.
 
+## Listeners
+
+A listener hands the events of the agents it names to your module, with the cursor past each:
+
+```elixir
+defmodule MyApp.Started do
+  use Wardrik.Listener,
+    wardrik: MyApp.AgentRuntime,
+    agents: ["agt_digest"],
+    types: ["wardrik.agent.started"]
+
+  @impl true
+  def handle(%Wardrik.Event{} = event, listener) do
+    IO.puts("Started #{event.agent}")
+    :persistent_term.put(__MODULE__, listener.cursor)
+    :ok
+  end
+
+  @impl true
+  def cursor(_listener), do: :persistent_term.get(__MODULE__, nil)
+end
+
+{:ok, _} = Supervisor.start_link([MyApp.Started], strategy: :one_for_one)
+
+Wardrik.Agent.define(scope, "agt_digest", model: "anthropic:claude-haiku-4-5")
+# Started agt_digest
+```
+
+- Save the cursor in the same transaction as your work. `cursor/1` returns it after a restart.
+- Each event comes at least once. Drop repeats by `id`.
+- If `handle/2` raises or doesn't return `:ok`, the listener restarts from `cursor/1`.
+- Start it from Wardrik's `listeners: [MyApp.Started]`, or after Wardrik in your tree.
+- See `Wardrik.Listener` for its options.
+
 ## Sinks
 
 To send every agent's events on, to a warehouse, a queue or tracing, give Wardrik a sink:
 
 ```elixir
 defmodule MyApp.Shipper do
-  @behaviour WardrikEvents.Sink
+  @behaviour Wardrik.Sink
 
   @impl true
-  def handle_event(event, _opts), do: IO.puts("#{event["agent"]}: #{event["type"]}")
+  def handle_event(%Wardrik.Event{} = event, _opts), do: IO.puts("#{event.agent}: #{event.type}")
 end
 
 {:ok, _} =
@@ -80,15 +114,14 @@ end
     sinks: [MyApp.Shipper]
   )
 
-Wardrik.Agent.define(Wardrik.as(MyApp.Shipped, "maria"), "agt_digest", model: "anthropic:claude-haiku-4-5")
-# agt_digest: wardrik.agent.started
+Wardrik.Agent.define(Wardrik.as(MyApp.Shipped, "maria"), "agt_notes", model: "anthropic:claude-haiku-4-5")
+# agt_notes: wardrik.agent.started
 ```
 
 - A sink gets each event once it's kept, and the audit's changes, with its `sequence` in its log.
 - It runs in the process that wrote the event, often the agent's. Return quickly.
 - An event whose node stops before the sink takes it isn't sent. Read on from that agent's
-  `sequence` with `list/2`.
-- `:telemetry` gets every agent event too. See `WardrikCore.Telemetry`.
+  `sequence` with `list/2`, or follow the agents you can't miss with a listener.
 
 ## The audit
 
