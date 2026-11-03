@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `agents.list` takes `limit` and `after`, and answers `next`, the cursor after the page. Without
+  `limit`, it lists every agent, as before.
+
 ## 0.1.0-rc.2 (2026-11-02)
 
 - The events `wardrik.provider.added`, `wardrik.provider.removed`,

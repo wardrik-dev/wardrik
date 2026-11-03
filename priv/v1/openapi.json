@@ -39,6 +39,26 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/agents"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "The cursor to read after: a page's next.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "How many to read. Every agent unless set.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
           }
         ],
         "responses": {
