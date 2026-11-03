@@ -1,7 +1,9 @@
 # Changelog
 
-## 0.1.0-rc.3 (2026-11-02)
+## 0.1.0-rc.3 (2026-11-03)
 
+- A model call waits up to five minutes for an answer, and as long on a stream gone quiet, so a
+  model that thinks for minutes isn't cut off; your app no longer sets req_llm's timeouts.
 - `sinks:` sends every kept event, agents' and the audit's, to each `Wardrik.Sink`: to ship events
   to a warehouse, a queue or tracing.
 - Each node tells of the agents it runs, from a sink. Nodes that share a store without being
