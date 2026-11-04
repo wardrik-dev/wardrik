@@ -11,8 +11,8 @@ defmodule WardrikCore.Retry do
   ## Options
 
     * `:attempts` - retries after the first try. `6` by default.
-    * `:max_wait` - the longest wait between tries, in milliseconds. Waits double from 1 second.
-      `60_000` by default.
+    * `:max_wait` - the longest wait between tries, in milliseconds. Waits double from 1 second,
+      or last as long as a provider's `Retry-After` says. `60_000` by default.
     * `:on_exhausted` - when a model call runs out of retries, `:ask` a person
       (see `WardrikCore.Retry.Exhausted`) or `:fail` the turn. `:ask` by default.
 
@@ -97,10 +97,28 @@ defmodule WardrikCore.Retry do
   end
 
   defp again(settings, fun, transient, announce, attempt, reason) do
-    wait = wait(attempt, settings.max_wait)
+    wait = min(retry_after(reason) || wait(attempt, settings.max_wait), settings.max_wait)
     announce.(%{attempt: attempt, attempts: settings.attempts, wait_ms: wait, reason: reason})
     Process.sleep(wait)
     tried(settings, fun, transient, announce, attempt + 1)
+  end
+
+  # Mint gives headers as a list of pairs, Req as a map of lists.
+  defp retry_after(%{headers: headers}) when is_list(headers) or is_map(headers) do
+    Enum.find_value(headers, fn
+      {"retry-after", [value | _rest]} -> seconds(value)
+      {"retry-after", value} when is_binary(value) -> seconds(value)
+      _header -> nil
+    end)
+  end
+
+  defp retry_after(_reason), do: nil
+
+  defp seconds(value) do
+    case Integer.parse(value) do
+      {seconds, ""} when seconds >= 0 -> :timer.seconds(seconds)
+      _date -> nil
+    end
   end
 
   defp wait(_attempt, 0), do: 0

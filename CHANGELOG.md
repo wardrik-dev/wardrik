@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A model call a provider answers with `Retry-After` in seconds is tried again after that
+  long, up to `max_wait`, in place of the doubling wait.
+
 ### Breaking
 
 - `:model_options` replaces `:model_timeouts`: any option `ReqLLM` takes, for every model call,
