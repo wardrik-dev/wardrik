@@ -120,7 +120,8 @@ defmodule WardrikGatewayTest do
     assert {:ok, %Context{model: @haiku}} = generate(gateway, [:bare])
   end
 
-  test "takes new settings while it runs", %{gateway: gateway} do
+  test "takes new settings while it runs, as its schema says", %{gateway: gateway} do
+    assert Keyword.has_key?(WardrikGateway.schema().schema, :fallbacks)
     :ok = WardrikGateway.configure(gateway, fallbacks: %{@haiku => [@glm]})
     assert {:ok, %Context{model: @glm}} = generate(gateway, [503, :ok])
   end

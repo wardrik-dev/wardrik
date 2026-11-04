@@ -52,6 +52,10 @@ defmodule WardrikGateway do
     GenServer.start_link(__MODULE__, Settings.new!(opts), name: name)
   end
 
+  @doc "Returns the schema of the settings `start_link/1` and `configure/2` take, but `:name`."
+  @spec schema() :: NimbleOptions.t()
+  def schema, do: Settings.schema()
+
   @doc """
   Replaces the gateway's settings while it runs. Breakers and limits already counted carry on.
 
