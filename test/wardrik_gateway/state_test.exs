@@ -85,9 +85,11 @@ defmodule WardrikGateway.StateTest do
   end
 
   test "refuses a model the catalog doesn't know, and a bad limit" do
-    assert_raise ArgumentError, ~r/nope:nope/, fn ->
-      Settings.new!(fallbacks: %{"nope:nope" => []})
+    for fallbacks <- [%{"nope:nope" => []}, %{@haiku => ["nope:nope"]}, %{@haiku => "x"}, []] do
+      assert_raise NimbleOptions.ValidationError, fn -> Settings.new!(fallbacks: fallbacks) end
     end
+
+    assert_raise NimbleOptions.ValidationError, fn -> Settings.new!(limits: []) end
 
     assert_raise NimbleOptions.ValidationError, fn ->
       Settings.new!(limits: %{"anthropic" => [requests_per_minute: 0]})
