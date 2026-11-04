@@ -1,7 +1,7 @@
 # Spend you can cap
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.3"}, {:kino, "~> 0.19"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.4"}, {:kino, "~> 0.19"}])
 ```
 
 ## What a call costs

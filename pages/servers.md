@@ -9,7 +9,7 @@ Agents call MCP servers' tools. Your resolver says which servers each agent reac
 Nothing here calls a model. Adding a server reaches it over the network.
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.3"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.4"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do

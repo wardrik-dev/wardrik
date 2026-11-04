@@ -8,7 +8,7 @@ why. Rules live outside the prompt, so nothing the model reads can widen them.
 ## Setup
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.3"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.4"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do

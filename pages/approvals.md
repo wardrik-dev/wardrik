@@ -9,7 +9,7 @@ A call a policy asks about waits for a person. The calls an agent waits on are i
 The agent calls a model, so set your Anthropic key.
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.3"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.4"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do

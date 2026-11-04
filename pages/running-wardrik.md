@@ -15,7 +15,7 @@ children = [MyApp.AgentRuntime]
 ## Try it in IEx
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.3"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.4"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do
