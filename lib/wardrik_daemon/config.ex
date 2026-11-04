@@ -54,13 +54,37 @@ defmodule WardrikDaemon.Config do
               doc: "What every agent's file gets where it says nothing."
             ],
             models: [
-              type: {:map, :string, :any},
-              default: %{},
-              doc: """
-              Prices for models the catalog lacks, by model spec, in dollars per million tokens:
-              `input`, `output`, `cache_read` and `cache_write`, or `priced_as` another model, each
-              with an optional `markup`. See `Wardrik.Setup.price/2`.
-              """
+              type: :keyword_list,
+              default: [],
+              doc: "How agents call models.",
+              keys: [
+                prices: [
+                  type: {:map, :string, :any},
+                  default: %{},
+                  doc: """
+                  Prices for models the catalog lacks, by model spec, in dollars per million
+                  tokens: `input`, `output`, `cache_read` and `cache_write`, or `priced_as` another
+                  model, each with an optional `markup`. See `Wardrik.Setup.price/2`.
+                  """
+                ],
+                options: [
+                  type: {:map, :string, :any},
+                  default: %{},
+                  doc: """
+                  Options for every model call, as `ReqLLM` takes them, such as `temperature` or
+                  `base_url`. An agent's `model_options` merge over them. See `Wardrik`'s
+                  `:model_options`.
+                  """
+                ],
+                pool: [
+                  type: {:map, :string, :any},
+                  default: %{},
+                  doc: """
+                  The connections model calls share, per provider host: `size` (64), `count` (1)
+                  and `protocols` (`[http1]`). See `Wardrik`'s `:pool`.
+                  """
+                ]
+              ]
             ],
             mcp: [
               type: {:map, :string, :any},
@@ -178,6 +202,8 @@ defmodule WardrikDaemon.Config do
             allow_private_urls: false,
             defaults: %{},
             prices: %{},
+            model_options: [],
+            pool: [],
             mcp: [],
             oauth: nil,
             channels: [],
@@ -201,6 +227,8 @@ defmodule WardrikDaemon.Config do
           allow_private_urls: boolean(),
           defaults: map(),
           prices: %{String.t() => keyword()},
+          model_options: keyword(),
+          pool: keyword(),
           mcp: keyword(),
           oauth: keyword() | nil,
           channels: keyword(),
@@ -344,7 +372,9 @@ defmodule WardrikDaemon.Config do
          {:ok, access} <- Access.read(opts[:roles], opts[:bindings], declared(orgs, org)),
          {:ok, channels} <- owned(channels, orgs, org),
          {:ok, workspace} <- workspace(opts[:workspace]),
-         {:ok, prices} <- prices(opts[:models]) do
+         {:ok, prices} <- prices(opts[:models][:prices]),
+         {:ok, model_options} <- model_options(opts[:models][:options]),
+         {:ok, pool} <- pool(opts[:models][:pool]) do
       config = %__MODULE__{
         org: org,
         orgs: orgs,
@@ -354,6 +384,8 @@ defmodule WardrikDaemon.Config do
         allow_private_urls: opts[:allow_private_urls],
         defaults: opts[:defaults],
         prices: prices,
+        model_options: model_options,
+        pool: pool,
         mcp: mcp,
         channels: channels,
         notify: notify,
@@ -412,7 +444,7 @@ defmodule WardrikDaemon.Config do
   end
 
   defp price(spec, price) when is_map(price) do
-    path = "models.#{spec}"
+    path = "models.prices.#{spec}"
 
     with {:ok, price} <- Options.convert(price, [], path),
          {:ok, _priced} <- Options.built(fn -> Wardrik.Setup.price(spec, price) end, path),
@@ -422,7 +454,19 @@ defmodule WardrikDaemon.Config do
   defp price(spec, _price),
     do:
       {:error,
-       "models.#{spec}: holds input and output, dollars per million tokens, or priced_as, and markup"}
+       "models.prices.#{spec}: holds input and output, dollars per million tokens, or priced_as, and markup"}
+
+  # Checked against ReqLLM's own options, without their defaults: each call fills those in.
+  defp model_options(yaml) do
+    schema = ReqLLM.Provider.Options.generation_schema().schema
+
+    with {:ok, options} <- Options.convert(yaml, schema, "models.options"),
+         {:ok, _checked} <- Options.checked(options, schema, "models.options"),
+         do: {:ok, options}
+  end
+
+  defp pool(yaml),
+    do: Options.validate(yaml, Wardrik.schema().schema[:pool][:keys], "models.pool")
 
   defp workspace(nil), do: {:ok, []}
 

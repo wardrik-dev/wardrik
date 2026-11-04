@@ -42,8 +42,11 @@ defmodule WardrikDaemon.ConfigTest do
       ops: {type: slack, signing_secret: s, client_id: "1.2", client_secret: c, unmapped_members: allow}
     brave: {api_key: "${KEY}"}
     models:
-      zai_coding_plan:glm-5.1: {priced_as: zai:glm-5.1, markup: 0.1}
-      openrouter:x: {input: 0.6, output: 2.2}
+      prices:
+        zai_coding_plan:glm-5.1: {priced_as: zai:glm-5.1, markup: 0.1}
+        openrouter:x: {input: 0.6, output: 2.2}
+      options: {temperature: 0.2, reasoning_effort: low, base_url: "https://llm.acme.test"}
+      pool: {size: 128, protocols: [http2]}
     cluster: {}
     """
 
@@ -91,6 +94,13 @@ defmodule WardrikDaemon.ConfigTest do
              "openrouter:x" => [input: 0.6, output: 2.2]
            }
 
+    assert Enum.sort(config.model_options) == [
+             base_url: "https://llm.acme.test",
+             reasoning_effort: :low,
+             temperature: 0.2
+           ]
+
+    assert Enum.sort(config.pool) == [count: 1, protocols: [:http2], size: 128]
     assert config.warnings == ["cluster isn't supported here yet, so it's passed over"]
     assert config.deployment_keys
     assert config.oauth[:page] == "https://agents.acme.test/oauth"
@@ -319,13 +329,19 @@ defmodule WardrikDaemon.ConfigTest do
       {"http: 1", "invalid value for :http option: expected keyword list"},
       {"defaults: 1", "invalid value for :defaults option: expected map"},
       {"brave: {key: x}", "brave: unknown options [:key], valid options are: [:api_key]"},
-      {"models: 1", "invalid value for :models option: expected map"},
-      {"models: {a:b: 1}", "models.a:b: holds input and output"},
-      {"models: {a:b: {zzz_per: day}}", "models.a:b.zzz_per: isn't an option"},
-      {"models: {a:b: {input: 1}}", "models.a:b: a:b's price gives its input and output."},
-      {"models: {a:b: {priced_as: nope:nope}}", "models.a:b: nope:nope has no price"},
-      {"models: {a:b: {input: 1, output: 1, markup: lots}}",
-       "models.a:b: a:b's markup is a number."},
+      {"models: {a:b: 1}",
+       "models: unknown options [:a:b], valid options are: [:prices, :options, :pool]"},
+      {"models: {prices: {a:b: 1}}", "models.prices.a:b: holds input and output"},
+      {"models: {prices: {a:b: {zzz_per: day}}}", "models.prices.a:b.zzz_per: isn't an option"},
+      {"models: {prices: {a:b: {input: 1}}}",
+       "models.prices.a:b: a:b's price gives its input and output."},
+      {"models: {prices: {a:b: {priced_as: nope:nope}}}",
+       "models.prices.a:b: nope:nope has no price"},
+      {"models: {prices: {a:b: {input: 1, output: 1, markup: lots}}}",
+       "models.prices.a:b: a:b's markup is a number."},
+      {"models: {options: {temprature: 1}}", "models.options: unknown options [:temprature]"},
+      {"models: {options: {temperature: hot}}", "models.options: invalid value for :temperature"},
+      {"models: {pool: {size: 0}}", "models.pool: invalid value for :size"},
       {"roles: {r: {rules: [{verbs: [read], kinds: [agnt]}]}}",
        "roles.r.rules.0: invalid list in :kinds option"},
       {"roles: {r: {rules: [{verbs: [read]}]}}", "roles.r.rules.0: required :kinds option"},

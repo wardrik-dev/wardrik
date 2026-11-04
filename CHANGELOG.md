@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Breaking
+
+- `config.yaml`'s `models` holds `prices`, which is what `models` held before, `options` for every
+  model call, as ReqLLM takes them, and `pool`, the connections per provider host: 64 HTTP/1
+  unless set.
+
+## Unreleased
+
 - `wardrik trigger set --overlap` takes `settle`.
 
 ## 0.1.0-rc.3 (2026-11-03)

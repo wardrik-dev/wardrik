@@ -123,11 +123,17 @@ defmodule WardrikDaemon.Config.Options do
   end
 
   defp value(spec, text, _path) when is_binary(text), do: {:ok, chosen(spec[:type], text)}
+  defp value(spec, list, _path) when is_list(list), do: {:ok, listed(spec[:type], list)}
   defp value(_spec, value, _path), do: {:ok, value}
 
   defp keyword?(type) when type in [:keyword_list, :non_empty_keyword_list], do: true
   defp keyword?({:or, types}), do: Enum.any?(types, &keyword?/1)
   defp keyword?(_type), do: false
+
+  defp listed({:list, type}, list),
+    do: Enum.map(list, fn item -> if is_binary(item), do: chosen(type, item), else: item end)
+
+  defp listed(_type, list), do: list
 
   defp chosen({:in, choices}, text),
     do: Enum.find(choices, text, &(is_atom(&1) and Atom.to_string(&1) == text))

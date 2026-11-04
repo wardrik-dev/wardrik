@@ -60,6 +60,8 @@ defmodule WardrikDaemon.Running do
           notify: config.notify,
           defaults: config.defaults,
           prices: config.prices,
+          model_options: config.model_options,
+          pool: config.pool,
           policies: Map.to_list(policies),
           resolver:
             {WardrikDaemon.Resolver,
