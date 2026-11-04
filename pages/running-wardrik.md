@@ -103,8 +103,8 @@ config :my_app, MyApp.AgentRuntime,
 
 - `:model_options` takes any `ReqLLM` option. An agent's own `model_options` merge over it.
 - A definition's `model_options` take only `temperature`, `top_p`, `max_tokens`,
-  `reasoning_effort` and the call's timeouts. Wardrik adds the provider's API key to each call, so
-  options that change where a call goes, such as `base_url`, are the host's alone.
+  `reasoning_effort` and the call's timeouts. Each call carries the provider's API key, so options
+  that change where a call goes, such as `base_url`, are set only in Wardrik's options.
 - `:pool` is one `Finch` pool per provider host: 64 HTTP/1 connections by default. Raise it when
   many agents call one provider at once.
 - The pool is sized at start. Option changes apply from each agent's next turn.
