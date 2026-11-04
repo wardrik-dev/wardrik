@@ -1,16 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.4 (2026-11-04)
 
-- `:model_options` gives every agent's model calls any `ReqLLM` option. A definition's
-  `model_options` merge over them, and may only set `temperature`, `top_p`, `max_tokens`,
+- Triggers with `overlap: settle`, the default except for webhooks, cancel a turn waiting on an
+  unanswered interrupt, then send their prompt. The cancel is recorded as `agent.cancelled` with
+  the trigger's name.
+- `:model_options` sets `ReqLLM` options for every agent's model calls. A definition's
+  `model_options` are merged over them and take only `temperature`, `top_p`, `max_tokens`,
   `reasoning_effort` and the call's timeouts.
-- Each Wardrik starts its own `Finch` pool for model calls, sized by `:pool`: 64 HTTP/1
-  connections per provider host unless set, up from `ReqLLM`'s 8.
-
-## Unreleased
-
-- A trigger with `overlap: settle`, the default but for webhooks, cancels a turn waiting on an answer nobody gave, then asks, and records `agent.cancelled` with the trigger's name. A scheduled agent no longer stops at its first unanswered approval.
+- Each Wardrik starts its own `Finch` pool for model calls, set by `:pool`: 64 HTTP/1 connections
+  per provider host by default, up from `ReqLLM`'s 8.
+- Requires `wardrik_core`, `wardrik_protocol` and `wardrik_triggers` 0.1.0-rc.4.
 
 ## 0.1.0-rc.3 (2026-11-03)
 
