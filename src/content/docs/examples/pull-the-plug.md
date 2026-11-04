@@ -120,7 +120,7 @@ wardrik agent show onboarding --json | jq -r .agent.agent  # the agent's ID
 In another terminal, in a new directory:
 
 ```sh
-npm install @wardrik/sdk@0.1.0-rc.3 zod
+npm install @wardrik/sdk@0.1.0-rc.4 zod
 WARDRIK_URL=http://127.0.0.1:4848 WARDRIK_TOKEN=... AGENT=agt_... node onboarding.ts
 ```
 

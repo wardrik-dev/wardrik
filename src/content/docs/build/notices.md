@@ -29,6 +29,8 @@ notify: {to: ["slack:#updates"], on: [finished]}    # a room, without a target
 
 `on` defaults to `[parked, failed]`.
 
+- In Slack, a notice for a turn in a thread isn't posted. The thread shows the turn's answer,
+  approvals and failure.
 - A room is in the workspace where the channel was added for the agent's owner or org.
 - A target is available to the deployment's org. List it under `orgs.<org>.notify` for others.
 - Notices are never sent to another org's room.

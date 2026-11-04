@@ -35,7 +35,7 @@ READMEs, never on the site.
 ## Elixir packages (hexdocs and READMEs only)
 
 - The demo module is `MyApp.AgentRuntime`.
-- Install lines name the release: `{:wardrik, "~> 0.1.0-rc.2"}`.
+- Install lines name the release: `{:wardrik, "~> 0.1.0-rc.4"}`.
 - Options come from the NimbleOptions schema, as a `## Options` list. Don't retype them.
 - A moduledoc is a summary sentence, an example, then what a caller must know.
 - Guides run as written in a fresh IEx session.
