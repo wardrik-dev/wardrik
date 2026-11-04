@@ -7,6 +7,11 @@ defmodule WardrikChannel.Test.Chat do
   def request(%{body: body}, _opts), do: %{status: 200, headers: %{}, body: body}
 
   @impl WardrikChannel
+  def deliver(%{body: {:reply, "Answered: skip" <> _rest, _answering}} = outbound, channel) do
+    send(channel.options[:test], {:skipped, outbound})
+    {:skip, "it was asked to"}
+  end
+
   def deliver(%{body: {:reply, _text, _answering}} = outbound, channel) do
     refusals = channel.options[:refusals]
 

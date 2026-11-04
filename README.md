@@ -8,10 +8,10 @@ holds what every chat adapter shares: rooms, threads, replies and approvals.
 Add an adapter, such as [WardrikSlack](https://hexdocs.pm/wardrik_slack). It brings this package in.
 
 ```elixir
-{:wardrik_slack, "~> 0.1.0-rc.2"}
+{:wardrik_slack, "~> 0.1.0-rc.3"}
 ```
 
-To write your own adapter, depend on `{:wardrik_channel, "~> 0.1.0-rc.2"}`. See `WardrikChannel`.
+To write your own adapter, depend on `{:wardrik_channel, "~> 0.1.0-rc.3"}`. See `WardrikChannel`.
 
 ## Set up
 

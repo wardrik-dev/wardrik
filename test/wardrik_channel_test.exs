@@ -194,6 +194,15 @@ defmodule WardrikChannelTest do
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", ["1.1"]}}}, 3_000
     end
 
+    test "moves on from a post the adapter declines", context do
+      WardrikChannel.received(context.workspace, mention("skip", "1.1"))
+      assert_receive {:skipped, %Outbound{}}
+
+      WardrikChannel.received(context.workspace, reply("Hi", "1.1", "1.2"))
+      assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
+      refute_received {:skipped, _outbound}
+    end
+
     test "says why a run failed", context do
       WardrikChannel.received(context.workspace, mention("fail now", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:failed, "It broke."}}}
@@ -438,6 +447,16 @@ defmodule WardrikChannelTest do
   end
 
   describe "notices" do
+    test "knows a conversation in one of the workspace's threads", context do
+      {:ok, workspace} =
+        WardrikChannel.workspace(WardrikChannel.channel(Chat, channel_options(context)), "T1")
+
+      thread = WardrikChannel.Workspace.conversation(workspace, room: "C1", thread: "1696.1234")
+      assert WardrikChannel.Workspace.thread?(workspace, thread)
+      refute WardrikChannel.Workspace.thread?(workspace, "api-1")
+      refute WardrikChannel.Workspace.thread?(workspace, nil)
+    end
+
     test "posts a notice in the room itself, in the workspace it names", context do
       notice = %Wardrik.Notice{
         agent: "agt_digest",

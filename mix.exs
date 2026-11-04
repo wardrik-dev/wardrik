@@ -4,7 +4,7 @@ defmodule WardrikChannel.MixProject do
   def project do
     [
       app: :wardrik_channel,
-      version: "0.1.0-rc.2",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description:
         "Chat apps people reach Wardrik's agents through, such as Slack: rooms, threads, replies and approvals.",

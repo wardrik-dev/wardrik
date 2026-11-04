@@ -124,6 +124,9 @@ defmodule WardrikChannel.Replies.Server do
       :ok ->
         posted(shown(next, conversation, post), cursor, from)
 
+      {:skip, _why} ->
+        posted(next, cursor, from)
+
       {:error, reason} when attempt >= @attempts ->
         Logger.warning(
           "#{state.channel.name} gave up posting in #{state.room}: #{inspect(reason)}"

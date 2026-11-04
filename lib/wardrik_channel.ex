@@ -70,8 +70,11 @@ defmodule WardrikChannel do
   alias WardrikChannel.Rooms
   alias WardrikChannel.Workspace
 
-  @doc "Posts `outbound` in its thread. Returning an error has it tried again later."
-  @callback deliver(Outbound.t(), Channel.t()) :: :ok | {:error, term()}
+  @doc """
+  Posts `outbound` in its thread. `{:skip, why}` declines it, as for a notice its thread already
+  shows. An error has it tried again later.
+  """
+  @callback deliver(Outbound.t(), Channel.t()) :: :ok | {:skip, String.t()} | {:error, term()}
 
   @doc "Returns extra children to run, such as a connection to the chat app. `[]` by default."
   @callback children(Channel.t()) :: [Supervisor.child_spec() | {module(), term()}]

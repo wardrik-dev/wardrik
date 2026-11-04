@@ -137,6 +137,22 @@ defmodule WardrikChannel.Workspace do
     String.replace_prefix(held, prefix(workspace, Keyword.fetch!(opts, :room)), "")
   end
 
+  @doc """
+  Returns whether `conversation` is a thread in one of the workspace's rooms.
+
+      WardrikChannel.Workspace.thread?(workspace, "slack.T0123.C024BE91L.1696.1234")
+      #=> true
+  """
+  @spec thread?(t(), String.t() | nil) :: boolean()
+  def thread?(_workspace, nil), do: false
+
+  def thread?(%__MODULE__{channel: channel, installation: installation}, conversation),
+    do:
+      String.starts_with?(
+        conversation,
+        Enum.join([channel.name, installation.workspace, ""], ".")
+      )
+
   defp prefix(%__MODULE__{channel: channel, installation: installation}, room),
     do: Enum.join([channel.name, installation.workspace, room, ""], ".")
 end

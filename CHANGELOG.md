@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.3 (2026-11-04)
+
+- An adapter's `deliver/2` may return `{:skip, why}` to decline a post, such as a notice for a
+  turn its thread already shows. A thread reply it declines isn't tried again.
+- `WardrikChannel.Workspace.thread?/2` returns whether a conversation is a thread in one of the
+  workspace's rooms.
+
 ## 0.1.0-rc.2 (2026-11-02)
 
 - `identities:`, required: a `WardrikChannel.Identities` that says who each chat member is in your
