@@ -26,7 +26,7 @@ defmodule WardrikCore.Context do
           middleware: [entry()],
           max_rounds: pos_integer() | :infinity,
           retries: WardrikCore.Retry.t(),
-          model_timeouts: keyword(),
+          model_options: keyword(),
           principal: WardrikCore.Principal.t() | nil,
           timeout: timeout(),
           resume: WardrikCore.Resume.t() | nil,
@@ -63,7 +63,7 @@ defmodule WardrikCore.Context do
     middleware: [],
     max_rounds: 25,
     retries: [],
-    model_timeouts: [receive_timeout: 300_000, stream_idle_timeout: 300_000],
+    model_options: [],
     timeout: :infinity,
     on_chunk: [],
     private: %{},
@@ -77,6 +77,21 @@ defmodule WardrikCore.Context do
   def new(opts) do
     struct!(__MODULE__, opts)
   end
+
+  @model_defaults [receive_timeout: 300_000, stream_idle_timeout: 300_000]
+
+  @doc """
+  Returns what a call to `model` takes: the agent's `model_options` over the defaults, and the
+  model's API key.
+
+      WardrikCore.Context.model_options(context, "anthropic:claude-haiku-4-5")
+      #=> [receive_timeout: 300_000, stream_idle_timeout: 300_000, api_key: "sk-..."]
+  """
+  @spec model_options(t(), LLMDB.Model.t() | String.t()) :: keyword()
+  def model_options(%__MODULE__{} = context, model),
+    do:
+      Keyword.merge(@model_defaults, context.model_options) ++
+        WardrikCore.Keys.model_options(context, model)
 
   @doc "Runs `fun` through the context's middleware. The first in the list runs outermost."
   @spec run(t(), WardrikCore.Middleware.next()) :: WardrikCore.Middleware.result()

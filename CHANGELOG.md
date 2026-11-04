@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- `:model_options` replaces `:model_timeouts`: any option `ReqLLM` takes, for every model call,
+  merged over the five-minute timeouts. `WardrikCore.Context.model_options/2` gives a call's
+  options with its key.
+
 ## 0.1.0-rc.3 (2026-11-03)
 
 ### Changed

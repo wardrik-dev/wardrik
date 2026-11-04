@@ -65,16 +65,17 @@ defmodule WardrikCore.KeysTest do
     assert {:ok, _called} = WardrikCore.generate(context(%{}))
   end
 
-  test "waits on a model call as long as the agent's model_timeouts say" do
+  test "gives a model call the agent's model_options over the defaults" do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
 
     expect(ReqLLM, :stream_text, fn _model, _messages, opts ->
       assert opts[:receive_timeout] == 1_000
-      refute Keyword.has_key?(opts, :stream_idle_timeout)
+      assert opts[:stream_idle_timeout] == 300_000
+      assert opts[:temperature] == 0.2
       {:ok, answer("Hi.")}
     end)
 
-    context = %{context(%{}) | model_timeouts: [receive_timeout: 1_000]}
+    context = %{context(%{}) | model_options: [receive_timeout: 1_000, temperature: 0.2]}
     assert {:ok, _called} = WardrikCore.generate(context)
   end
 
