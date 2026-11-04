@@ -68,12 +68,14 @@ Wardrik.Agent.define(scope, "agt_digest",
 | `prompt` | What the agent is asked. |
 | `prompt_file` | A file in its workspace to read each run, instead of `prompt`. Needs `files`. |
 | `name` | `trigger-1`, `trigger-2` and so on unless set. |
-| `overlap` | `skip` or `queue` when the agent is busy. `skip` unless set, `queue` for webhooks. |
+| `overlap` | When the agent is busy: `skip`, `queue`, or `settle`. `settle` unless set, `queue` for webhooks. |
 | `missed` | `run_once` or `skip` what was missed while nothing ran. |
 | `jitter` | Up to this many seconds added to each run. |
 | `feed` | RSS or Atom URLs. Asks only for new entries, up to 20. The first run only reads. |
 | `webhook` | `secret`, as `${NAME}`, and `verify`, `shared` or `standard`. |
 
+- `settle` cancels a turn waiting on an answer nobody gave, then asks. It skips a turn still working.
+  The audit gets `wardrik.agent.cancelled` with the trigger's name.
 - A late run, more than a minute, runs once however many were missed.
 - Set `triggers: [req_options: ...]` in Wardrik's options to change how feeds are read.
 
