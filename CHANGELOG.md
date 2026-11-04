@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `retries` says a provider's `Retry-After` sets the wait, up to `max_wait`.
 - An agent definition takes `model_options`: `temperature`, `top_p`, `max_tokens`,
   `reasoning_effort`, and the model call's timeouts in seconds. No other key: the host sets the
   rest.
