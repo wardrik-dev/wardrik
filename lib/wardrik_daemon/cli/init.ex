@@ -46,8 +46,9 @@ defmodule WardrikDaemon.CLI.Init do
       wrote = write(cx, flags, "#{provider}:#{model}")
       cx = %{Context.new(cx.env) | terminal: cx.terminal}
 
-      with :ok <- daemon(flags, cx, wrote, key != nil or flags[:no_ask] != true),
-           :ok <- sealed(cx, variable, key),
+      seal = fn -> sealed(cx, variable, key) end
+
+      with :ok <- daemon(flags, cx, wrote, seal, key != nil or flags[:no_ask] != true),
            :ok <- ask(flags, cx, variable) do
         next(cx)
       end
@@ -216,10 +217,12 @@ defmodule WardrikDaemon.CLI.Init do
     end
   end
 
-  defp daemon(flags, cx, wrote, needed?) do
+  # A reload that finds config.yaml changed restarts the daemon after it answers, so a running
+  # daemon is given the key first.
+  defp daemon(flags, cx, wrote, seal, needed?) do
     case Context.call(cx, "deployment.nodes", %{}) do
-      {:ok, _nodes} -> running(cx, wrote)
-      {:error, _down} -> started(flags, cx, needed?)
+      {:ok, _nodes} -> with :ok <- seal.(), do: running(cx, wrote)
+      {:error, _down} -> with :ok <- started(flags, cx, needed?), do: seal.()
     end
   end
 
