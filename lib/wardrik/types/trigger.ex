@@ -15,7 +15,7 @@ defmodule Wardrik.Trigger do
       timezone: "timezone",
       prompt: "prompt",
       prompt_file: "prompt_file",
-      overlap: {"overlap", [:skip, :queue]},
+      overlap: {"overlap", [:skip, :queue, :settle]},
       missed: {"missed", [:run_once, :skip]},
       jitter: "jitter",
       feed: "feed",

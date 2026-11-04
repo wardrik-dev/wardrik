@@ -218,9 +218,10 @@
             "type": "string",
             "enum": [
               "skip",
-              "queue"
+              "queue",
+              "settle"
             ],
-            "description": "What a firing does while a run is still going: skip it, or queue its prompt."
+            "description": "What a firing does while the agent is busy: skip it, queue its prompt, or settle: where the agent waits on an answer nobody gave, cancel that turn and ask, and otherwise skip."
           },
           "missed": {
             "type": "string",

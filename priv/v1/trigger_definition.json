@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:trigger_definition",
   "title": "A trigger's definition",
-  "description": "What agent.trigger_set takes, with a prompt or a prompt_file, and what it and agent.trigger_remove answer, with its name. A trigger on a clock has every, and a cron expression a timezone where it is not UTC; overlap is skip, missed is run_once and jitter is 0 where they are left out. feed watches an RSS or Atom feed, or a list of them. A webhook has webhook in place of every, holding its secret, as ${NAME}, and verify, shared or standard; it is sent requests at POST /v1/hooks/{agent}/{trigger}, and its overlap is queue where it says none.",
+  "description": "What agent.trigger_set takes, with a prompt or a prompt_file, and what it and agent.trigger_remove answer, with its name. A trigger on a clock has every, and a cron expression a timezone where it is not UTC; overlap is settle, missed is run_once and jitter is 0 where they are left out. feed watches an RSS or Atom feed, or a list of them. A webhook has webhook in place of every, holding its secret, as ${NAME}, and verify, shared or standard; it is sent requests at POST /v1/hooks/{agent}/{trigger}, and its overlap is queue where it says none.",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -30,9 +30,10 @@
       "type": "string",
       "enum": [
         "skip",
-        "queue"
+        "queue",
+        "settle"
       ],
-      "description": "What a firing does while a run is still going: skip it, or queue its prompt."
+      "description": "What a firing does while the agent is busy: skip it, queue its prompt, or settle: where the agent waits on an answer nobody gave, cancel that turn and ask, and otherwise skip."
     },
     "missed": {
       "type": "string",
