@@ -93,7 +93,7 @@ children = [{MyApp.AgentRuntime, store: store}, {WardrikStore, store}]
 
 ## Model calls
 
-Let's give every agent's model calls the same options, and size the pool they share:
+`:model_options` applies to every agent's model calls. `:pool` sizes the connections they share.
 
 ```elixir
 config :my_app, MyApp.AgentRuntime,
@@ -101,13 +101,13 @@ config :my_app, MyApp.AgentRuntime,
   pool: [size: 128, protocols: [:http2]]
 ```
 
-Notice `:model_options` takes anything `ReqLLM` does. An agent's own `model_options` merge over
-it, but a definition may only set the safe few: Wardrik adds each provider's API key to the call,
-so options like `base_url` stay yours.
-
-- `:pool` is a `Finch` pool per provider host: 64 HTTP/1 connections unless set. Reach for more
-  when many agents call one provider at once.
-- The pool is sized when Wardrik starts. Options apply from each agent's next turn.
+- `:model_options` takes any `ReqLLM` option. An agent's own `model_options` merge over it.
+- A definition's `model_options` take only `temperature`, `top_p`, `max_tokens`,
+  `reasoning_effort` and the call's timeouts. Wardrik adds the provider's API key to each call, so
+  options that change where a call goes, such as `base_url`, are the host's alone.
+- `:pool` is one `Finch` pool per provider host: 64 HTTP/1 connections by default. Raise it when
+  many agents call one provider at once.
+- The pool is sized at start. Option changes apply from each agent's next turn.
 
 ## Nodes
 
