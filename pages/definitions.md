@@ -99,6 +99,7 @@ Wardrik.Agent.definition(scope, "agt_assistant")
 | `max_iterations` | Rounds of tool calls per turn, or `infinity`. `25` unless set. |
 | `idle_timeout` | Seconds before it sleeps, or `infinity`. |
 | `retries` | How failed model calls retry. See `WardrikCore.Retry`. |
+| `model_options` | `temperature`, `top_p`, `max_tokens`, `reasoning_effort`, and the call's `receive_timeout`, `stream_idle_timeout` and `total_timeout` in seconds. Nothing else. |
 | `compaction` | When old history is summarised. See `Wardrik.Compaction`. |
 | `triggers` | See [Trigger agents](triggers.md). |
 | `channels` | Chat apps it answers in, by name in Wardrik's `:channels`. |

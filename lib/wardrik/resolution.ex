@@ -63,6 +63,7 @@ defmodule Wardrik.Resolution do
          capabilities: capabilities ++ workspace[:capabilities],
          middleware: workspace[:middleware] ++ compaction(definition["compaction"]),
          retries: retries(definition["retries"]),
+         model_options: model_options(definition["model_options"]),
          principal: resolved.principal,
          policy: Enum.reject([boundary, policy], &is_nil/1),
          timeout: seconds(definition["timeout"]),
@@ -249,6 +250,24 @@ defmodule Wardrik.Resolution do
   defp retry_setting("max_wait", seconds), do: {:max_wait, :timer.seconds(seconds)}
   defp retry_setting("on_exhausted", "ask"), do: {:on_exhausted, :ask}
   defp retry_setting("on_exhausted", "fail"), do: {:on_exhausted, :fail}
+
+  # Only these keys: other options, such as base_url, would send the deployment's keys elsewhere.
+  defp model_options(nil), do: []
+  defp model_options(options), do: for({key, value} <- options, do: model_option(key, value))
+
+  defp model_option("temperature", value), do: {:temperature, value}
+  defp model_option("top_p", value), do: {:top_p, value}
+  defp model_option("max_tokens", value), do: {:max_tokens, value}
+  defp model_option("reasoning_effort", value), do: {:reasoning_effort, effort(value)}
+  defp model_option("receive_timeout", value), do: {:receive_timeout, :timer.seconds(value)}
+
+  defp model_option("stream_idle_timeout", value),
+    do: {:stream_idle_timeout, :timer.seconds(value)}
+
+  defp model_option("total_timeout", value), do: {:total_timeout, :timer.seconds(value)}
+
+  @efforts ~w(none minimal low medium high xhigh max default)
+  defp effort(value) when value in @efforts, do: String.to_existing_atom(value)
 
   defp compaction(false), do: []
   defp compaction(nil), do: [{Wardrik.Compaction, []}]
