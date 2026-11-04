@@ -10,8 +10,6 @@
   `reasoning_effort` and the call's timeouts.
 - Each Wardrik starts its own `Finch` pool for model calls, set by `:pool`: 64 HTTP/1 connections
   per provider host by default, up from `ReqLLM`'s 8.
-- Notices are sent only for the agent's own conversation. A named conversation, such as a Slack
-  thread, is answered where it was opened.
 - Requires `wardrik_core`, `wardrik_protocol` and `wardrik_triggers` 0.1.0-rc.4.
 
 ## 0.1.0-rc.3 (2026-11-03)
