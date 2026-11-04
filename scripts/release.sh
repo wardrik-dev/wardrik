@@ -3,14 +3,15 @@
 # own version. Packages are versioned independently: bump one by PR when it changes.
 #
 #   scripts/release.sh          # dry run: checks everything, changes nothing
-#   scripts/release.sh --go     # tags, pushes the tags, publishes to Hex and npm
+#   scripts/release.sh --go     # publishes to Hex and npm, then tags and pushes the tags
 #
 # The repos are checked out side by side, as for WARDRIK_LOCAL=1: ../wardrik_core and so on.
 # Every wardrik or wardrik_* checkout whose mix.exs has a package() is a Hex package; the
 # TypeScript SDK goes to npm. Hex packages publish in the order of their sibling deps.
 #
-# Each repo is tagged v<its version> on origin/main. Safe to rerun after a failure: tags already
-# there, and versions already published, are skipped. To add a step, write a function and name it
+# Each repo is tagged v<its version> on origin/main, after every package is published: a tag starts
+# that repo's release build, which fetches its deps from Hex. Safe to rerun after a failure: tags
+# already there, and versions already published, are skipped. To add a step, write a function and name it
 # in STEPS.
 set -euo pipefail
 
@@ -24,7 +25,7 @@ for flag in "$@"; do
 done
 NPM_PACKAGE=@wardrik/sdk
 SDK=wardrik_typescript
-STEPS=(tag_repos publish_hex publish_npm)
+STEPS=(publish_hex publish_npm tag_repos)
 
 hex_packages() {
   local dir
@@ -50,13 +51,21 @@ version_of() {
 on_hex() { curl -fsS "https://hex.pm/api/packages/$1/releases/$(version_of "$1")" >/dev/null 2>&1; }
 on_npm() { [[ $(npm view "$NPM_PACKAGE@$(version_of $SDK)" version 2>/dev/null) == "$(version_of $SDK)" ]]; }
 
-# What this run releases: the packages whose version isn't published yet.
-releasing() {
+unpublished() {
   case $1 in
     "$SDK") ! on_npm ;;
     *) ! on_hex "$1" ;;
   esac
 }
+
+untagged() { ! git -C "$WORK/$1" ls-remote --exit-code -q --tags origin "v$(version_of "$1")" >/dev/null; }
+
+# What this run releases: each package whose version isn't published or tagged yet, as it starts.
+RELEASING=()
+for repo in "${HEX[@]}" "$SDK"; do
+  if unpublished "$repo" || untagged "$repo"; then RELEASING+=("$repo"); fi
+done
+releasing() { [[ " ${RELEASING[*]} " == *" $1 "* ]]; }
 
 hex_order() {
   for pkg in "${HEX[@]}"; do
@@ -71,7 +80,7 @@ check() {
   local user
   user=$(cd "$WORK/wardrik_core" && mix hex.user whoami 2>/dev/null | tail -1) || true
   [[ -n $user ]] && say "  hex: $user" || problem "not signed in to Hex: mix hex.user auth"
-  if releasing "$SDK"; then
+  if releasing "$SDK" && unpublished "$SDK"; then
     user=$(npm whoami 2>/dev/null) || true
     [[ -n $user ]] && say "  npm: $user" || problem "not signed in to npm: npm login"
   fi
@@ -95,14 +104,16 @@ check() {
   say "-- hex, in order"
   local pkg
   for pkg in $(hex_order); do
-    if releasing "$pkg"; then say "  $pkg $(version_of "$pkg"): publish"
-    else say "  $pkg $(version_of "$pkg"): on Hex"
+    if ! releasing "$pkg"; then say "  $pkg $(version_of "$pkg"): released"
+    elif unpublished "$pkg"; then say "  $pkg $(version_of "$pkg"): publish, then tag"
+    else say "  $pkg $(version_of "$pkg"): on Hex, tag"
     fi
   done
 
   say "-- npm"
-  if releasing "$SDK"; then say "  $NPM_PACKAGE $(version_of $SDK): publish, as next and latest"
-  else say "  $NPM_PACKAGE $(version_of $SDK): on npm"
+  if ! releasing "$SDK"; then say "  $NPM_PACKAGE $(version_of $SDK): released"
+  elif unpublished "$SDK"; then say "  $NPM_PACKAGE $(version_of $SDK): publish as next and latest, then tag"
+  else say "  $NPM_PACKAGE $(version_of $SDK): on npm, tag"
   fi
 }
 
@@ -122,7 +133,7 @@ tag_repos() {
 publish_hex() {
   local pkg
   for pkg in $(hex_order); do
-    releasing "$pkg" || continue
+    releasing "$pkg" && unpublished "$pkg" || continue
     say "  $pkg $(version_of "$pkg")"
     # Lockfiles pin siblings at the last release. Resolve against Hex, then restore the lock.
     (cd "$WORK/$pkg" && env -u WARDRIK_LOCAL mix deps.get >/dev/null &&
@@ -132,7 +143,7 @@ publish_hex() {
 }
 
 publish_npm() {
-  releasing "$SDK" || return 0
+  releasing "$SDK" && unpublished "$SDK" || return 0
   local version
   version=$(version_of $SDK)
   (cd "$WORK/$SDK" && npm ci && npm run check &&
