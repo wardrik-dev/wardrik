@@ -205,6 +205,28 @@ defmodule Wardrik do
               type: {:map, {:or, [:atom, :string]}, :keyword_list},
               default: %{},
               doc: "Model prices the catalog lacks. See `Wardrik.Setup.price/2`."
+            ],
+            model_options: [
+              type: :keyword_list,
+              default: [],
+              doc: """
+              Options for every agent's model calls, as `ReqLLM` takes them, such as
+              `[temperature: 0.2]`. An agent's own `model_options` merge over them.
+              """
+            ],
+            pool: [
+              type: :keyword_list,
+              default: [],
+              doc: "The connection pool model calls share, as `Finch` takes a pool's options.",
+              keys: [
+                size: [type: :pos_integer, default: 64, doc: "Connections per provider host."],
+                count: [type: :pos_integer, default: 1, doc: "Pools per provider host."],
+                protocols: [
+                  type: {:list, {:in, [:http1, :http2]}},
+                  default: [:http1],
+                  doc: "`[:http1]`, `[:http2]`, or both."
+                ]
+              ]
             ]
           )
 
@@ -237,7 +259,9 @@ defmodule Wardrik do
     :idle_timeout,
     :trusted_workers,
     :egress,
-    :prices
+    :prices,
+    :model_options,
+    :pool
   ]
   defstruct @enforce_keys
 
@@ -269,7 +293,9 @@ defmodule Wardrik do
           idle_timeout: number() | :infinity,
           trusted_workers: boolean(),
           egress: (String.t() -> :ok | {:error, String.t()}),
-          prices: %{String.t() => WardrikCore.price()}
+          prices: %{String.t() => WardrikCore.price()},
+          model_options: keyword(),
+          pool: keyword()
         }
 
   @doc """
@@ -563,6 +589,10 @@ defmodule Wardrik do
   @spec mcp(atom() | t()) :: atom()
   def mcp(%__MODULE__{name: name}), do: mcp(name)
   def mcp(name) when is_atom(name), do: Module.concat(name, MCP)
+
+  @doc false
+  @spec finch(t()) :: atom()
+  def finch(%__MODULE__{name: name}), do: Module.concat(name, Finch)
 
   @doc false
   @spec triggers(t()) :: atom()

@@ -91,6 +91,24 @@ store = WardrikStore.EKV.new(name: MyApp.Store, data_dir: "/var/lib/my_app")
 children = [{MyApp.AgentRuntime, store: store}, {WardrikStore, store}]
 ```
 
+## Model calls
+
+Let's give every agent's model calls the same options, and size the pool they share:
+
+```elixir
+config :my_app, MyApp.AgentRuntime,
+  model_options: [temperature: 0.2, receive_timeout: :timer.minutes(10)],
+  pool: [size: 128, protocols: [:http2]]
+```
+
+Notice `:model_options` takes anything `ReqLLM` does. An agent's own `model_options` merge over
+it, but a definition may only set the safe few: Wardrik adds each provider's API key to the call,
+so options like `base_url` stay yours.
+
+- `:pool` is a `Finch` pool per provider host: 64 HTTP/1 connections unless set. Reach for more
+  when many agents call one provider at once.
+- The pool is sized when Wardrik starts. Options apply from each agent's next turn.
+
 ## Nodes
 
 Each agent runs on one node at a time. Any node reaches it.
