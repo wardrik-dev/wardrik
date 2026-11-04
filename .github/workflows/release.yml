@@ -103,7 +103,7 @@ jobs:
           CI_KEY=sk-ant-ci "$wardrik" init --org ci --provider anthropic --key-from-env CI_KEY \
             --no-service --no-ask
           "$wardrik" status
-          "$wardrik" ls | grep -q ci/assistant
+          "$wardrik" ls | grep -q "^assistant "
           "$wardrik" vault ls | grep -q ANTHROPIC_API_KEY
 
           if ss -Hltnp | awk '/beam|epmd/ && $4 !~ /^(127\.0\.0\.1|\[::1\]):/ { print; found = 1 } END { exit !found }'; then
@@ -130,7 +130,7 @@ jobs:
           docker exec -e CI_KEY=sk-ant-ci wardrik wardrik init --provider anthropic \
             --key-from-env CI_KEY --no-service --no-ask
           answering
-          defined() { docker exec wardrik wardrik ls | grep -q default/assistant; }
+          defined() { docker exec wardrik wardrik ls | grep -q "^assistant "; }
           for _ in $(seq 60); do defined && break; sleep 1; done
           defined
           docker exec wardrik wardrik vault ls | grep -q ANTHROPIC_API_KEY
