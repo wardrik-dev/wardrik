@@ -1,22 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.4 (2026-11-04)
 
-- Every model call goes through a `WardrikGateway`: a breaker per model and, where
-  `config.yaml`'s `models.gateway` sets them, fallbacks by model and limits per provider. A call
-  waits up to ten minutes for a model to come back, then the agent's retries take over.
-
-## Unreleased
+- Every model call goes through a `WardrikGateway`: a circuit breaker per model, and the fallbacks
+  and limits set in `config.yaml`'s `models.gateway`.
+- `wardrik trigger set --overlap` takes `settle`.
+- A Slack notice for a turn in a thread isn't posted; the thread shows it.
+- Requires `wardrik` 0.1.0-rc.4, `wardrik_gateway` 0.1.0-rc.1 and `wardrik_slack` 0.1.0-rc.3.
 
 ### Breaking
 
-- `config.yaml`'s `models` holds `prices`, which is what `models` held before, `options` for every
-  model call, as ReqLLM takes them, and `pool`, the connections per provider host: 64 HTTP/1
-  unless set.
-
-## Unreleased
-
-- `wardrik trigger set --overlap` takes `settle`.
+- `config.yaml`'s `models` holds `prices` (the former `models`), `options` for every model call
+  as `ReqLLM` takes them, `pool` for connections per provider host, and `gateway`.
 
 ## 0.1.0-rc.3 (2026-11-03)
 
