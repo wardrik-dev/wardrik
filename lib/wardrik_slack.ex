@@ -165,8 +165,16 @@ defmodule WardrikSlack do
   def deliver(%Outbound{installation: installation} = outbound, channel) do
     workspace = %Workspace{channel: channel, installation: installation}
 
-    with {:ok, _posted} <- posted(workspace, outbound), do: :ok
+    if shown?(workspace, outbound),
+      do: {:skip, "but its turn was in a Slack thread, which shows it"},
+      else: with({:ok, _posted} <- posted(workspace, outbound), do: :ok)
   end
+
+  # A turn in one of the workspace's threads is answered there; its notice would repeat it.
+  defp shown?(workspace, %Outbound{body: {:notice, notice}}),
+    do: Workspace.thread?(workspace, notice.conversation)
+
+  defp shown?(_workspace, _outbound), do: false
 
   defp posted(workspace, %Outbound{room: room, thread: thread, body: {:status, label}}),
     do:

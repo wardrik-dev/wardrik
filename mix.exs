@@ -4,7 +4,7 @@ defmodule WardrikSlack.MixProject do
   def project do
     [
       app: :wardrik_slack,
-      version: "0.1.0-rc.2",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description:
         "Wardrik in Slack: agents answer in threads, and ask there, with Approve and Deny, before a call they can't make alone.",
@@ -59,7 +59,7 @@ defmodule WardrikSlack.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_channel, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_channel, "~> 0.1.0-rc.3"),
       {:nimble_options, "~> 1.1"},
       {:req, "~> 0.7"},
       {:websockex, "~> 0.5.1"},

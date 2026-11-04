@@ -311,6 +311,26 @@ defmodule WardrikSlackTest do
       refute Map.has_key?(posted, "thread_ts")
     end
 
+    test "posts no notice of a turn in one of its threads, which shows it", context do
+      {:ok, workspace} =
+        WardrikChannel.workspace(WardrikChannel.channel(WardrikSlack, context.options), "T1")
+
+      notice = %Wardrik.Notice{
+        agent: "agt_digest",
+        conversation: WardrikChannel.Workspace.conversation(workspace, room: "C1", thread: "1.1"),
+        kind: :finished,
+        at: DateTime.utc_now(),
+        text: "Three things happened."
+      }
+
+      notification = %Wardrik.Channel.Notification{workspace: "T1", room: "#news", notice: notice}
+
+      assert {:skip, "but its turn was in a Slack thread" <> _rest} =
+               WardrikSlack.notify(notification, context.options)
+
+      refute_receive {:slack, "chat.postMessage", _posted}, 200
+    end
+
     test "asks about a parked turn in the room", context do
       interrupt = %Wardrik.Interrupt{
         id: "call_1",

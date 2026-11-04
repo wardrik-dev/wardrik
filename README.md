@@ -102,7 +102,7 @@ Then `/invite @Wardrik` into a channel and ask `@Wardrik what time is it?`. Appr
 ## Set up
 
 ```elixir
-{:wardrik_slack, "~> 0.1.0-rc.2"}
+{:wardrik_slack, "~> 0.1.0-rc.3"}
 ```
 
 ```elixir

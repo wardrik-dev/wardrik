@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.3 (2026-11-04)
+
+- A notice for a turn in one of the workspace's threads isn't posted: the thread already shows
+  the turn's answer, approvals and failure. The skip is logged with its reason.
+- Requires `wardrik_channel` 0.1.0-rc.3.
+
 ## 0.1.0-rc.2 (2026-11-02)
 
 - `WardrikSlack.schema/0`: the options it takes beyond `WardrikChannel`'s, checked as the channel
