@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-rc.4 (unreleased)
+## 0.1.0-rc.1 (unreleased)
 
 - `WardrikGateway`: middleware for agents' model calls, with limits per provider, a breaker per
   model, and fallbacks by model.

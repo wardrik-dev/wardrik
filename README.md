@@ -7,7 +7,7 @@ until a model comes back.
 ```elixir
 def deps do
   [
-    {:wardrik_gateway, "~> 0.1.0-rc.4"}
+    {:wardrik_gateway, "~> 0.1.0-rc.1"}
   ]
 end
 ```
@@ -42,6 +42,21 @@ Change it while it runs:
 ```elixir
 WardrikGateway.configure(MyApp.Gateway, limits: %{"anthropic" => [requests_per_minute: 2000]})
 ```
+
+## Scale
+
+One gateway takes about half a million model-call tries a second, with thousands of agents
+calling at once:
+
+| Callers at once | Tries a second | Per try |
+| --- | --- | --- |
+| 100 | 520,000–590,000 | 1.7–1.9 µs |
+| 1,000 | 420,000–560,000 | 1.8–2.4 µs |
+| 5,000 | 380,000–425,000 | 2.4–2.6 µs |
+
+Notice a try is a few microseconds next to a model call's seconds, so a provider's limits run out
+long before the gateway does. Measured with `mix run bench/gateway.exs` on an AMD Ryzen AI Max+
+395 (32 threads), Elixir 1.20 and OTP 28; the range of five runs.
 
 ## Limits
 

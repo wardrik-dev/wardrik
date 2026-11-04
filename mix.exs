@@ -4,7 +4,7 @@ defmodule WardrikGateway.MixProject do
   def project do
     [
       app: :wardrik_gateway,
-      version: "0.1.0-rc.4",
+      version: "0.1.0-rc.1",
       elixir: "~> 1.20",
       description:
         "Rate limits, circuit breakers and model failover for agents' model calls, as Wardrik middleware.",
