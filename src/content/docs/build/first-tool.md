@@ -14,7 +14,7 @@ Build `post_status`, a tool that opens an incident on a status page. Requires th
 ```sh
 mkdir statuspage && cd statuspage
 npm init -y && npm pkg set type=module
-npm install @wardrik/sdk@0.1.0-rc.3 zod
+npm install @wardrik/sdk@0.1.0-rc.4 zod
 ```
 
 ## 2. Write the tool

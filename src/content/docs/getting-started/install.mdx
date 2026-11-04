@@ -13,7 +13,7 @@ Wardrik runs on Linux (x86_64 or arm64, glibc 2.35+). On macOS or Windows, use D
 	<TabItem label="Install script">
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.3/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.4/install.sh | sh
 ```
 
 Installs `wardrik` to `~/.local`, or `/opt/wardrik` as root, and `rik` as an alias.
@@ -23,7 +23,7 @@ Installs `wardrik` to `~/.local`, or `/opt/wardrik` as root, and `rik` as an ali
 
 ```sh
 docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
-  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.3
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.4
 docker exec -it wardrik wardrik init
 ```
 

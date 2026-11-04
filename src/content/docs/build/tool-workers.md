@@ -30,7 +30,7 @@ await wardrik.work();
 - An agent with `workers/*` in its tools can call `refund_order`, if the worker's token has the
   `serve` verb.
 - The agent's policy checks each call first. A refund needs approval unless the policy allows it.
-- Requires Node 22.18+, Bun or Deno: `npm install @wardrik/sdk@0.1.0-rc.3 zod`.
+- Requires Node 22.18+, Bun or Deno: `npm install @wardrik/sdk@0.1.0-rc.4 zod`.
 
 ## In this section
 
