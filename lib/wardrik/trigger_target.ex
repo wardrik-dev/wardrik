@@ -11,7 +11,7 @@ defmodule Wardrik.TriggerTarget do
   @impl WardrikTriggers.Target
   def ask(%Ask{agent: agent_id} = ask, wardrik) do
     case Running.awake(wardrik, agent_id) do
-      {:ok, pid} -> asked(pid, ask)
+      {:ok, pid} -> overlapped(pid, ask, wardrik)
       {:error, _error} -> :no_agent
     end
   end
@@ -42,13 +42,38 @@ defmodule Wardrik.TriggerTarget do
     end
   end
 
-  defp asked(pid, %Ask{prompt: prompt, overlap: overlap} = ask) do
-    if overlap == :skip and WardrikCore.status(pid) != :idle do
-      :busy
-    else
-      :ok = WardrikCore.ask(pid, prompt, metadata(ask))
-      :asked
+  defp overlapped(pid, %Ask{overlap: overlap} = ask, wardrik) do
+    case {overlap, WardrikCore.status(pid)} do
+      {:queue, _status} -> asked(pid, ask)
+      {_overlap, :idle} -> asked(pid, ask)
+      {:settle, :waiting} -> settled(pid, ask, wardrik)
+      {_overlap, _busy} -> :busy
     end
+  end
+
+  # An answer that lands between the status read and the interrupt is cancelled too. The run that
+  # waited on it is a whole period old by then.
+  defp settled(pid, %Ask{} = ask, wardrik) do
+    case WardrikCore.interrupt(pid) do
+      :ok -> cancelled(ask, wardrik)
+      {:error, :idle} -> :ok
+    end
+
+    asked(pid, ask)
+  end
+
+  defp cancelled(%Ask{agent: agent_id, trigger: trigger}, wardrik) do
+    :ok =
+      WardrikEvents.record(
+        Wardrik.events(wardrik),
+        {"agent.cancelled", WardrikEvents.CloudEvent.subject(agent_id),
+         %{"agent" => %{"id" => agent_id}, "trigger" => trigger}}
+      )
+  end
+
+  defp asked(pid, %Ask{prompt: prompt} = ask) do
+    :ok = WardrikCore.ask(pid, prompt, metadata(ask))
+    :asked
   end
 
   defp metadata(%Ask{trigger: trigger, labels: []}), do: %{trigger: trigger}

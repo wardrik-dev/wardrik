@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A trigger with `overlap: settle`, the default but for webhooks, cancels a turn waiting on an answer nobody gave, then asks, and records `agent.cancelled` with the trigger's name. A scheduled agent no longer stops at its first unanswered approval.
+
 ## 0.1.0-rc.3 (2026-11-03)
 
 - A model call waits up to five minutes for an answer, and as long on a stream gone quiet, so a

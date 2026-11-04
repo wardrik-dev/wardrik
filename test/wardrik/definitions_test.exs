@@ -680,6 +680,71 @@ defmodule Wardrik.DefinitionsTest do
       until("wardrik.run.completed")
     end
 
+    test "cancels a turn nobody answered when the next run comes due", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+      stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
+        case Agent.get_and_update(calls, &{&1, &1 + 1}) do
+          0 -> {:error, %ReqLLM.Error.API.Stream{reason: "Stream failed: :timeout"}}
+          _later -> {:ok, answer("Today's update.")}
+        end
+      end)
+
+      define(scope, "acme/digest", %{
+        "model" => @model,
+        "retries" => %{"attempts" => 0},
+        "triggers" => [%{"name" => "weekly", "every" => "0 9 * * 1", "prompt" => "Write it."}]
+      })
+
+      trigger_due(wardrik, "acme/digest", "weekly")
+      fired("asked")
+      assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.interrupted"}}
+
+      trigger_due(wardrik, "acme/digest", "weekly")
+      fired("asked")
+      until("wardrik.run.completed")
+
+      assert %{"interrupts" => []} = run!(scope, "agent.read", %{"agent" => "acme/digest"})
+      assert %{"events" => changes} = run!(scope, "audit.list", %{})
+
+      assert %{"data" => %{"agent" => %{"id" => "acme/digest"}, "trigger" => "weekly"}} =
+               Enum.find(changes, &(&1["type"] == "wardrik.agent.cancelled"))
+    end
+
+    test "skips a run while the agent works, with overlap skip", %{wardrik: wardrik, scope: scope} do
+      stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
+        {:error, %ReqLLM.Error.API.Stream{reason: "Stream failed: :timeout"}}
+      end)
+
+      define(scope, "acme/digest", %{
+        "model" => @model,
+        "retries" => %{"attempts" => 0},
+        "triggers" => [
+          %{
+            "name" => "weekly",
+            "every" => "0 9 * * 1",
+            "prompt" => "Write it.",
+            "overlap" => "skip"
+          }
+        ]
+      })
+
+      trigger_due(wardrik, "acme/digest", "weekly")
+      fired("asked")
+      assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.interrupted"}}
+
+      trigger_due(wardrik, "acme/digest", "weekly")
+      fired("busy")
+    end
+
+    defp fired(status) do
+      assert_receive {WardrikEvents, _log,
+                      %{"type" => "wardrik.trigger.fired", "data" => %{"status" => ^status}}}
+    end
+
     test "asks an agent with files to follow its prompt_file", %{wardrik: wardrik, scope: scope} do
       answers([answer("Done.")])
 
