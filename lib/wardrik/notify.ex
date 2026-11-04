@@ -32,6 +32,8 @@ defmodule Wardrik.Notify do
       notify: %{to: ["ops"], on: ["finished"]}
 
     * `on` defaults to `["parked", "failed"]`.
+    * Only the agent's own conversation is told of. A named conversation, such as a chat thread,
+      is answered where it was opened.
     * An agent reaches only the targets `Wardrik.Resolved`'s `:notify` gives it.
     * Your resolver can also give a target of its own, as `{module, opts}`, with secrets as values.
     * The node an agent runs on tells of it, retrying as `:retries` says. A notice whose node stops

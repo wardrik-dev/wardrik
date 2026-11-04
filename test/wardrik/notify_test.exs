@@ -192,6 +192,23 @@ defmodule Wardrik.NotifyTest do
       assert_receive {:told, "audit", %Notice{kind: :finished, text: "All quiet."}}
     end
 
+    test "tells nothing of a named conversation's turns", %{scope: scope} do
+      model({:error, :boom})
+      {:ok, _agent} = define(scope, %{"to" => "audit", "on" => ["failed", "finished"]})
+
+      run!(scope, "agent.ask", %{
+        "agent" => "acme/triage",
+        "conversation" => "slack.T1.C1.1696.1234",
+        "content" => "Hi"
+      })
+
+      until("wardrik.run.failed")
+      refute_received {:told, _target, _notice}
+
+      ask(scope)
+      assert_receive {:told, "audit", %Notice{kind: :failed, conversation: nil}}
+    end
+
     @tag defaults: %{"notify" => "audit"}
     test "routes as the defaults say, where a definition says nothing", %{scope: scope} do
       model({:error, :boom})
