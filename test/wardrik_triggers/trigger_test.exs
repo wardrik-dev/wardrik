@@ -10,7 +10,7 @@ defmodule WardrikTriggers.TriggerTest do
               every: "0 9 * * *",
               clock: {:cron, _expression},
               timezone: "Etc/UTC",
-              overlap: :skip,
+              overlap: :settle,
               missed: :run_once,
               jitter: 0,
               feeds: []
@@ -20,7 +20,7 @@ defmodule WardrikTriggers.TriggerTest do
              "name" => "trigger-2",
              "every" => "0 9 * * *",
              "prompt" => "Go.",
-             "overlap" => "skip",
+             "overlap" => "settle",
              "missed" => "run_once"
            }
   end
@@ -81,7 +81,7 @@ defmodule WardrikTriggers.TriggerTest do
     assert {:error, "a trigger's name holds" <> _} = Trigger.decode(Map.put(base, "name", "a/b"))
     assert {:error, "a trigger's name is text"} = Trigger.decode(Map.put(base, "name", 7))
 
-    assert {:error, "overlap is one of queue, skip"} =
+    assert {:error, "overlap is one of queue, settle, skip"} =
              Trigger.decode(Map.put(base, "overlap", "maybe"))
 
     assert {:error, "a feed is a URL" <> _} = Trigger.decode(Map.put(base, "feed", [1]))

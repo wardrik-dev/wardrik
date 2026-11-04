@@ -184,7 +184,9 @@ defmodule WardrikTriggersTest do
     } do
       due(store, triggers, "daily", 5)
 
-      assert_receive {:asked, @agent, "Write it.", [trigger: "daily", overlap: :skip, labels: []]}
+      assert_receive {:asked, @agent, "Write it.",
+                      [trigger: "daily", overlap: :settle, labels: []]}
+
       assert_receive {:fired, @agent, "daily", :asked}
 
       assert [{_daily, next_at}] = WardrikTriggers.list(triggers, @agent)

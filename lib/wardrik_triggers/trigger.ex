@@ -22,8 +22,9 @@ defmodule WardrikTriggers.Trigger do
     * `prompt_file` - a file the agent is told to read and follow.
     * `name` - no `/`, `:` or whitespace. Defaults to `trigger-1`, `trigger-2`, ... by position.
     * `timezone` - the zone a cron expression is read in. Defaults to `"Etc/UTC"`.
-    * `overlap` - `"skip"` leaves a busy agent alone, `"queue"` asks anyway. Defaults to `"skip"`,
-      or `"queue"` for a webhook.
+    * `overlap` - what a run does while the agent is busy. `"skip"` leaves it alone, `"queue"` asks
+      anyway, and `"settle"` cancels a turn waiting on an answer nobody gave, then asks, and skips
+      otherwise. Defaults to `"settle"`, or `"queue"` for a webhook.
     * `missed` - `"run_once"` (default) runs once after missed runs. `"skip"` drops them.
     * `jitter` - up to this many seconds added to each run. Defaults to `0`.
     * `feed` - an RSS or Atom feed URL, or a list of them. Asks only about new entries.
@@ -40,7 +41,7 @@ defmodule WardrikTriggers.Trigger do
     :prompt_file,
     :webhook,
     timezone: "Etc/UTC",
-    overlap: :skip,
+    overlap: :settle,
     missed: :run_once,
     jitter: 0,
     feeds: []
@@ -54,7 +55,7 @@ defmodule WardrikTriggers.Trigger do
           prompt_file: String.t() | nil,
           webhook: %{secret: String.t(), verify: :shared | :standard} | nil,
           timezone: String.t(),
-          overlap: :skip | :queue,
+          overlap: :skip | :queue | :settle,
           missed: :run_once | :skip,
           jitter: non_neg_integer(),
           feeds: [String.t()]
@@ -64,7 +65,7 @@ defmodule WardrikTriggers.Trigger do
   @type status() :: :asked | :nothing_new | :busy | :no_agent | :missed | :failed
 
   @keys ~w(name every timezone prompt prompt_file overlap missed jitter feed webhook)
-  @overlaps %{"skip" => :skip, "queue" => :queue}
+  @overlaps %{"skip" => :skip, "queue" => :queue, "settle" => :settle}
   @missed %{"run_once" => :run_once, "skip" => :skip}
   @verifies %{"shared" => :shared, "standard" => :standard}
 
@@ -165,7 +166,7 @@ defmodule WardrikTriggers.Trigger do
   defp prompt(%{"prompt_file" => file}) when is_binary(file), do: :ok
   defp prompt(_fields), do: {:error, "a trigger has a prompt or a prompt_file"}
 
-  defp default_overlap(nil), do: :skip
+  defp default_overlap(nil), do: :settle
   defp default_overlap(_webhook), do: :queue
 
   defp choice(fields, key, choices, default) do

@@ -51,13 +51,23 @@ defmodule MyApp.Triggered do
         :no_agent
 
       agent ->
-        if overlap == :skip and WardrikCore.status(agent) != :idle do
-          :busy
-        else
-          :ok = WardrikCore.ask(agent, prompt, %{trigger: trigger})
-          :asked
+        case {overlap, WardrikCore.status(agent)} do
+          {:queue, _status} -> asked(agent, prompt, trigger)
+          {_overlap, :idle} -> asked(agent, prompt, trigger)
+          {:settle, :waiting} -> settled(agent, prompt, trigger)
+          {_overlap, _busy} -> :busy
         end
     end
+  end
+
+  defp settled(agent, prompt, trigger) do
+    :ok = WardrikCore.interrupt(agent)
+    asked(agent, prompt, trigger)
+  end
+
+  defp asked(agent, prompt, trigger) do
+    :ok = WardrikCore.ask(agent, prompt, %{trigger: trigger})
+    :asked
   end
 
   @impl true
