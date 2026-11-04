@@ -80,7 +80,7 @@ wardrik approval deny triage toolu_01 --reason "Not this quarter." --conversatio
 | Command | Does |
 | --- | --- |
 | `trigger ls AGENT` | lists triggers and their next run |
-| `trigger set AGENT NAME [--every E] [--timezone TZ] [--prompt P \| --prompt-file F] [--feed URL] [--overlap skip\|queue]` | sets a trigger |
+| `trigger set AGENT NAME [--every E] [--timezone TZ] [--prompt P \| --prompt-file F] [--feed URL] [--overlap skip\|queue\|settle]` | sets a trigger |
 | `trigger rm AGENT NAME` | removes a trigger |
 
 ```sh
