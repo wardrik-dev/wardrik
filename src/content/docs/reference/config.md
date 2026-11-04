@@ -64,7 +64,7 @@ notify:
 | `deployment_keys` | `true` | agents fall back to deployment API keys when their owner has none |
 | `allow_private_urls` | `false` | allow MCP servers, webhooks and OAuth apps at private addresses; local use only |
 | [`defaults`](#defaults) | `{}` | default values for keys a definition omits |
-| [`models`](#models) | `{}` | prices for models not in the catalog |
+| [`models`](#models) | `{}` | prices, call options and the connection pool for models |
 | [`mcp`](#mcp) | `{}` | MCP servers |
 | [`oauth`](#oauth) | none | OAuth providers |
 | [`channels`](#channels) | `{}` | chat apps |
@@ -149,15 +149,28 @@ key, such as `model`, `tools`, `policy` or `retries`.
 
 ## models
 
-Prices for models not in the catalog, in dollars per million tokens.
-
 ```yaml
 models:
-  zai:glm-5.1: {input: 0.60, output: 2.20}
-  zai_coding_plan:glm-5.1: {priced_as: zai:glm-5.1, markup: 0.1}
+  prices:
+    zai:glm-5.1: {input: 0.60, output: 2.20}
+    zai_coding_plan:glm-5.1: {priced_as: zai:glm-5.1, markup: 0.1}
+  options: {temperature: 0.2, receive_timeout: 600000}
+  pool: {size: 128, protocols: [http2]}
 ```
 
-Keys: `input`, `output`, `cache_read`, `cache_write`, or `priced_as` another model; each with an optional `markup`.
+| Key | Default | Description |
+| --- | --- | --- |
+| `prices` | `{}` | prices for models not in the catalog, in dollars per million tokens |
+| `options` | `{}` | options for every model call, as [ReqLLM](https://hexdocs.pm/req_llm) takes them |
+| `pool` | `{size: 64, count: 1, protocols: [http1]}` | connections per provider host |
+
+- A price takes `input`, `output`, `cache_read`, `cache_write`, or `priced_as` another model; each
+  with an optional `markup`.
+- `options` takes any ReqLLM option, such as `base_url`, checked against ReqLLM's own. Its
+  timeouts are in milliseconds. An agent's [`model_options`](/reference/agent-files/#model_options)
+  merge over it.
+- Reach for a bigger `pool` when many agents call one provider at once.
+- `wardrik reload` applies changes to both.
 
 ## mcp
 
