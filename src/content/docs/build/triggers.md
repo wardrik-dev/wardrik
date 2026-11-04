@@ -47,6 +47,8 @@ every: 2h                # an interval: s, m, h or d, at least a minute
 
 - A run is skipped if the agent is busy, and missed runs run once on startup. `overlap`, `missed`
   and `jitter` change that. See [triggers](/reference/agent-files/#triggers).
+- If the agent still waits on an answer nobody gave, the next run cancels that turn and asks
+  again. Set `overlap: skip` to keep it waiting instead.
 
 ## When a feed has new entries
 

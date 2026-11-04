@@ -168,7 +168,7 @@ triggers:
 | `timezone` | `Etc/UTC` | the IANA time zone for the cron expression |
 | `prompt` | | the message sent to the agent |
 | `prompt_file` | | instead of `prompt`, a workspace file to read the message from |
-| `overlap` | `skip` | `skip` or `queue` a run while the agent is busy |
+| `overlap` | `settle` | `skip`, `queue`, or `settle` a run while the agent is busy; webhooks default to `queue` |
 | `missed` | `run_once` | `run_once` or `skip` runs missed while the daemon was down |
 | `jitter` | `0` | maximum random delay in seconds |
 | `feed` | | RSS or Atom URLs; sends only when a feed has new entries |
