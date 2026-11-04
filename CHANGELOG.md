@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.4 (2026-11-04)
 
-- `overlap: "settle"`, the default but for webhooks: a run that finds the agent waiting on an answer nobody gave cancels that turn, then asks. `WardrikTriggers.Target.Ask` carries `:settle`; the target does the cancelling.
+- `overlap: "settle"`, the default except for webhooks. A run that finds the agent waiting on an
+  unanswered interrupt has the target cancel that turn, then sends its prompt.
 
 ## 0.1.0-rc.3 (2026-11-03)
 
