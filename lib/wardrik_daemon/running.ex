@@ -4,7 +4,8 @@ defmodule WardrikDaemon.Running do
 
   It reads `config.yaml` and `policies/`, then starts:
 
-    1. `WardrikBrave`, for `web_search`.
+    1. `WardrikBrave`, for `web_search`, and `WardrikGateway`, which every model call goes
+       through.
     2. Wardrik, with `WardrikDaemon.Authorizer` and `WardrikDaemon.OAuthApps`.
     3. `WardrikDaemon.Pairings`.
     4. `WardrikDaemon.HTTP`.
@@ -39,6 +40,7 @@ defmodule WardrikDaemon.Running do
     running = self()
     orgs = %{org: config.org, orgs: config.orgs, policies: policies}
     daemon = WardrikStore.scope(store, "wardrik_daemon")
+    gateway = gateway(name)
 
     agents = [
       wardrik: name,
@@ -62,6 +64,7 @@ defmodule WardrikDaemon.Running do
           prices: config.prices,
           model_options: config.model_options,
           pool: config.pool,
+          middleware: [{WardrikGateway, gateway}],
           policies: Map.to_list(policies),
           resolver:
             {WardrikDaemon.Resolver,
@@ -76,6 +79,7 @@ defmodule WardrikDaemon.Running do
 
     children = [
       {WardrikBrave, name: WardrikDaemon.Capabilities.brave(name), api_key: config.brave},
+      {WardrikGateway, [name: gateway] ++ config.gateway},
       {Wardrik, wardrik},
       {WardrikDaemon.Pairings, name: WardrikDaemon.Pairings.name(name)},
       {WardrikDaemon.HTTP,
@@ -95,6 +99,8 @@ defmodule WardrikDaemon.Running do
 
     Supervisor.init(children, strategy: :rest_for_one)
   end
+
+  defp gateway(name), do: Module.concat(name, Gateway)
 
   @doc "Returns a `t:WardrikDaemon.Config.vault/0` that reads the deployment's secrets from `store` with `keys`."
   @spec sealed(WardrikStore.t(), [String.t()]) :: Config.vault()

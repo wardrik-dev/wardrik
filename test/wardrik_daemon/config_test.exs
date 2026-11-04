@@ -47,6 +47,11 @@ defmodule WardrikDaemon.ConfigTest do
         openrouter:x: {input: 0.6, output: 2.2}
       options: {temperature: 0.2, reasoning_effort: low, base_url: "https://llm.acme.test"}
       pool: {size: 128, protocols: [http2]}
+      gateway:
+        fallbacks: {anthropic:claude-haiku-4-5: [zai:glm-5.1]}
+        limits: {anthropic: {requests_per_minute: 4000}}
+        breaker: {failures: 3, open_for: 60}
+        wait: 900
     cluster: {}
     """
 
@@ -101,6 +106,14 @@ defmodule WardrikDaemon.ConfigTest do
            ]
 
     assert Enum.sort(config.pool) == [count: 1, protocols: [:http2], size: 128]
+
+    assert Enum.sort(config.gateway) == [
+             breaker: [failures: 3, open_for: 60_000],
+             fallbacks: %{"anthropic:claude-haiku-4-5" => ["zai:glm-5.1"]},
+             limits: %{"anthropic" => [requests_per_minute: 4000]},
+             wait: 900_000
+           ]
+
     assert config.warnings == ["cluster isn't supported here yet, so it's passed over"]
     assert config.deployment_keys
     assert config.oauth[:page] == "https://agents.acme.test/oauth"
@@ -330,7 +343,7 @@ defmodule WardrikDaemon.ConfigTest do
       {"defaults: 1", "invalid value for :defaults option: expected map"},
       {"brave: {key: x}", "brave: unknown options [:key], valid options are: [:api_key]"},
       {"models: {a:b: 1}",
-       "models: unknown options [:a:b], valid options are: [:prices, :options, :pool]"},
+       "models: unknown options [:a:b], valid options are: [:prices, :options, :pool, :gateway]"},
       {"models: {prices: {a:b: 1}}", "models.prices.a:b: holds input and output"},
       {"models: {prices: {a:b: {zzz_per: day}}}", "models.prices.a:b.zzz_per: isn't an option"},
       {"models: {prices: {a:b: {input: 1}}}",
@@ -342,6 +355,13 @@ defmodule WardrikDaemon.ConfigTest do
       {"models: {options: {temprature: 1}}", "models.options: unknown options [:temprature]"},
       {"models: {options: {temperature: hot}}", "models.options: invalid value for :temperature"},
       {"models: {pool: {size: 0}}", "models.pool: invalid value for :size"},
+      {"models: {gateway: {fallbacks: {nope:nope: []}}}",
+       "models.gateway: invalid value for :fallbacks"},
+      {"models: {gateway: {limits: {anthropic: {rpm: 1}}}}",
+       "models.gateway.limits.anthropic: unknown options [:rpm]"},
+      {"models: {gateway: {breaker: {failures: 0}}}",
+       "models.gateway.breaker: invalid value for :failures"},
+      {"models: {gateway: {colour: red}}", "models.gateway: unknown options [:colour]"},
       {"roles: {r: {rules: [{verbs: [read], kinds: [agnt]}]}}",
        "roles.r.rules.0: invalid list in :kinds option"},
       {"roles: {r: {rules: [{verbs: [read]}]}}", "roles.r.rules.0: required :kinds option"},

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Every model call goes through a `WardrikGateway`: a breaker per model and, where
+  `config.yaml`'s `models.gateway` sets them, fallbacks by model and limits per provider. A call
+  waits up to ten minutes for a model to come back, then the agent's retries take over.
+
+## Unreleased
+
 ### Breaking
 
 - `config.yaml`'s `models` holds `prices`, which is what `models` held before, `options` for every

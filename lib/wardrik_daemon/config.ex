@@ -83,6 +83,16 @@ defmodule WardrikDaemon.Config do
                   The connections model calls share, per provider host: `size` (64), `count` (1)
                   and `protocols` (`[http1]`). See `Wardrik`'s `:pool`.
                   """
+                ],
+                gateway: [
+                  type: {:map, :string, :any},
+                  default: %{},
+                  doc: """
+                  What every model call goes through: `fallbacks` by model, `limits` by provider
+                  (`requests_per_minute`, `tokens_per_minute`), `breaker` (`failures`, and
+                  `within` and `open_for` in seconds), and `wait`, the longest a call waits, in
+                  seconds. See `WardrikGateway`.
+                  """
                 ]
               ]
             ],
@@ -204,6 +214,7 @@ defmodule WardrikDaemon.Config do
             prices: %{},
             model_options: [],
             pool: [],
+            gateway: [],
             mcp: [],
             oauth: nil,
             channels: [],
@@ -229,6 +240,7 @@ defmodule WardrikDaemon.Config do
           prices: %{String.t() => keyword()},
           model_options: keyword(),
           pool: keyword(),
+          gateway: keyword(),
           mcp: keyword(),
           oauth: keyword() | nil,
           channels: keyword(),
@@ -374,7 +386,8 @@ defmodule WardrikDaemon.Config do
          {:ok, workspace} <- workspace(opts[:workspace]),
          {:ok, prices} <- prices(opts[:models][:prices]),
          {:ok, model_options} <- model_options(opts[:models][:options]),
-         {:ok, pool} <- pool(opts[:models][:pool]) do
+         {:ok, pool} <- pool(opts[:models][:pool]),
+         {:ok, gateway} <- gateway(opts[:models][:gateway]) do
       config = %__MODULE__{
         org: org,
         orgs: orgs,
@@ -386,6 +399,7 @@ defmodule WardrikDaemon.Config do
         prices: prices,
         model_options: model_options,
         pool: pool,
+        gateway: gateway,
         mcp: mcp,
         channels: channels,
         notify: notify,
@@ -467,6 +481,38 @@ defmodule WardrikDaemon.Config do
 
   defp pool(yaml),
     do: Options.validate(yaml, Wardrik.schema().schema[:pool][:keys], "models.pool")
+
+  @gateway "models.gateway"
+  @breaker [failures: [], within: [], open_for: []]
+  @limit [requests_per_minute: [], tokens_per_minute: []]
+
+  # YAML gives seconds and maps; the gateway takes milliseconds and keyword lists.
+  defp gateway(yaml) do
+    schema = WardrikGateway.schema().schema
+
+    with {:ok, opts} <- Options.convert(Map.drop(yaml, ["limits", "breaker"]), schema, @gateway),
+         {:ok, limits} <- Options.each(Map.get(yaml, "limits", %{}), &limit/2),
+         {:ok, breaker} <-
+           Options.convert(Map.get(yaml, "breaker", %{}), @breaker, "#{@gateway}.breaker") do
+      opts =
+        opts
+        |> Keyword.update(:wait, nil, &milliseconds/1)
+        |> Keyword.put(:limits, Map.new(limits))
+        |> Keyword.put(:breaker, Enum.map(breaker, &breaker_setting/1))
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+
+      with {:ok, _checked} <- Options.checked(opts, schema, @gateway), do: {:ok, opts}
+    end
+  end
+
+  defp limit(provider, limit),
+    do: Options.convert(limit, @limit, "#{@gateway}.limits.#{provider}")
+
+  defp breaker_setting({:failures, failures}), do: {:failures, failures}
+  defp breaker_setting({key, seconds}), do: {key, milliseconds(seconds)}
+
+  defp milliseconds(seconds) when is_number(seconds), do: round(seconds * 1000)
+  defp milliseconds(other), do: other
 
   defp workspace(nil), do: {:ok, []}
 

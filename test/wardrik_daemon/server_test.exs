@@ -85,6 +85,15 @@ defmodule WardrikDaemon.ServerTest do
              WardrikDaemon.Capabilities.all(:w, :store)
   end
 
+  test "sends every model call through its gateway", context do
+    context = start_daemon(context)
+    gateway = Module.concat(context.wardrik, Gateway)
+    assert is_pid(Process.whereis(gateway))
+
+    wardrik = Wardrik.Instance.fetch!(context.wardrik)
+    assert {WardrikGateway, gateway} in wardrik.middleware
+  end
+
   test "gives an agent its files, and context read into every turn", context do
     config = File.read!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml"))
 
