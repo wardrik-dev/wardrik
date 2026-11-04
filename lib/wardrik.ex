@@ -213,22 +213,6 @@ defmodule Wardrik do
               Options for every agent's model calls, as `ReqLLM` takes them, such as
               `[temperature: 0.2]`. An agent's own `model_options` merge over them.
               """
-            ],
-            pool: [
-              type: :keyword_list,
-              default: [],
-              doc:
-                "The connection pool for model calls that don't stream, as `Finch` takes a " <>
-                  "pool's options. Turns stream through `ReqLLM`'s own pool.",
-              keys: [
-                size: [type: :pos_integer, default: 64, doc: "Connections per provider host."],
-                count: [type: :pos_integer, default: 1, doc: "Pools per provider host."],
-                protocols: [
-                  type: {:list, {:in, [:http1, :http2]}},
-                  default: [:http1],
-                  doc: "`[:http1]`, `[:http2]`, or both."
-                ]
-              ]
             ]
           )
 
@@ -262,8 +246,7 @@ defmodule Wardrik do
     :trusted_workers,
     :egress,
     :prices,
-    :model_options,
-    :pool
+    :model_options
   ]
   defstruct @enforce_keys
 
@@ -296,8 +279,7 @@ defmodule Wardrik do
           trusted_workers: boolean(),
           egress: (String.t() -> :ok | {:error, String.t()}),
           prices: %{String.t() => WardrikCore.price()},
-          model_options: keyword(),
-          pool: keyword()
+          model_options: keyword()
         }
 
   @doc """
@@ -591,10 +573,6 @@ defmodule Wardrik do
   @spec mcp(atom() | t()) :: atom()
   def mcp(%__MODULE__{name: name}), do: mcp(name)
   def mcp(name) when is_atom(name), do: Module.concat(name, MCP)
-
-  @doc false
-  @spec finch(t()) :: atom()
-  def finch(%__MODULE__{name: name}), do: Module.concat(name, Finch)
 
   @doc false
   @spec triggers(t()) :: atom()

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- `:pool` is gone. Model calls use `ReqLLM`'s own connection pool, sized by
+  `config :req_llm, stream_pool_size:`.
+
 ## 0.1.0-rc.5 (2026-11-04)
 
 - Fixes every streamed turn failing with `unknown options [:finch_name]`. Wardrik no longer passes

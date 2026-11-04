@@ -110,7 +110,6 @@ defmodule Wardrik.MixProject do
       sibling(:wardrik_slack, "~> 0.1.0-rc.2", only: :test),
       {:durable_server, "~> 0.1.6"},
       {:req, "~> 0.7"},
-      {:finch, "~> 0.22"},
       {:ekv, "~> 0.4.8"},
       {:jsv, "~> 0.26"},
       {:nimble_options, "~> 1.1"},

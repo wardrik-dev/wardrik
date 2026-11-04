@@ -109,7 +109,6 @@ config :req_llm, stream_pool_size: 64
   that change where a call goes, such as `base_url`, are set only in Wardrik's options.
 - Turns stream through `ReqLLM`'s own connection pool. Raise `:stream_pool_size` when many agents
   call one provider at once.
-- `:pool` sizes Wardrik's pool for calls that don't stream, such as evaluations.
 - Option changes apply from each agent's next turn.
 
 ## Nodes

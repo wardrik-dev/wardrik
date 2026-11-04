@@ -573,20 +573,13 @@ defmodule Wardrik.DefinitionsTest do
 
   describe "model options" do
     @tag model_options: [temperature: 0.9, max_tokens: 100, receive_timeout: 1_000]
-    test "gives a model call the definition's options over the host's, through Wardrik's pool", %{
-      wardrik: wardrik,
-      scope: scope
-    } do
-      finch = Wardrik.finch(Wardrik.Instance.fetch!(wardrik))
-
+    test "gives a model call the definition's options over the host's", %{scope: scope} do
       expect(ReqLLM, :stream_text, fn _model, _messages, opts ->
         assert opts[:temperature] == 0.2
         assert opts[:max_tokens] == 100
         assert opts[:receive_timeout] == 1_000
         assert opts[:stream_idle_timeout] == 30_000
         assert opts[:reasoning_effort] == :low
-        refute Keyword.has_key?(opts, :finch_name)
-        assert opts[:req_http_options][:finch] == finch
         {:ok, answer("Hi.")}
       end)
 
@@ -601,7 +594,6 @@ defmodule Wardrik.DefinitionsTest do
 
       run!(scope, "agent.ask", %{"agent" => "acme/tuned", "content" => "Hi"})
       until("wardrik.run.completed")
-      assert is_pid(Process.whereis(finch))
     end
 
     @tag model_options: [api_key: "sk-test", base_url: "http://127.0.0.1:9", max_retries: 0]
