@@ -1,15 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.4 (2026-11-04)
 
-- `retries` says a provider's `Retry-After` sets the wait, up to `max_wait`.
-- An agent definition takes `model_options`: `temperature`, `top_p`, `max_tokens`,
-  `reasoning_effort`, and the model call's timeouts in seconds. No other key: the host sets the
-  rest.
-
-## Unreleased
-
-- A trigger's `overlap` can be `settle`, and is where left out on a clock or a feed: a firing that finds the agent waiting on an answer nobody gave cancels that turn and asks. `agent.cancelled` names the `trigger` that did.
+- `trigger_definition.overlap` takes `settle`, the default for clock and feed triggers. A trigger
+  that fires while the agent waits on an unanswered interrupt cancels that turn, then sends its
+  prompt.
+- `agent.cancelled` has `trigger`, set when a trigger cancelled the turn.
+- `agent_definition.model_options`: `temperature`, `top_p`, `max_tokens`, `reasoning_effort`, and
+  the model call's timeouts in seconds. No other keys.
+- `agent_definition.retries` documents `Retry-After`.
 
 ## 0.1.0-rc.3 (2026-11-03)
 
