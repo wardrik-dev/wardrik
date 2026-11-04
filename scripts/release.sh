@@ -36,9 +36,9 @@ STEPS=(tag_repos publish_hex)
 
 # Every package on Hex. The publish order comes from their sibling deps, not from this list.
 HEX=(wardrik wardrik_brave wardrik_channel wardrik_core wardrik_daemon wardrik_events
-  wardrik_http wardrik_lua wardrik_mcp wardrik_oauth wardrik_policy wardrik_protocol
-  wardrik_research wardrik_slack wardrik_store wardrik_testing wardrik_triggers wardrik_vault
-  wardrik_workspace)
+  wardrik_gateway wardrik_http wardrik_lua wardrik_mcp wardrik_oauth wardrik_policy
+  wardrik_protocol wardrik_research wardrik_slack wardrik_store wardrik_testing wardrik_triggers
+  wardrik_vault wardrik_workspace)
 # Built from their checkouts, so those must be clean on main.
 BUILT=("${HEX[@]}")
 [[ -n $NPM ]] && BUILT+=(wardrik_typescript)
