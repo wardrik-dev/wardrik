@@ -217,7 +217,9 @@ defmodule Wardrik do
             pool: [
               type: :keyword_list,
               default: [],
-              doc: "The connection pool model calls share, as `Finch` takes a pool's options.",
+              doc:
+                "The connection pool for model calls that don't stream, as `Finch` takes a " <>
+                  "pool's options. Turns stream through `ReqLLM`'s own pool.",
               keys: [
                 size: [type: :pos_integer, default: 64, doc: "Connections per provider host."],
                 count: [type: :pos_integer, default: 1, doc: "Pools per provider host."],
