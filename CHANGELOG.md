@@ -1,15 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.4 (2026-11-04)
 
-- A model call a provider answers with `Retry-After` in seconds is tried again after that
-  long, up to `max_wait`, in place of the doubling wait.
+- A failed model call with `Retry-After` in seconds is retried after that delay, up to
+  `max_wait`.
 
 ### Breaking
 
-- `:model_options` replaces `:model_timeouts`: any option `ReqLLM` takes, for every model call,
-  merged over the five-minute timeouts. `WardrikCore.Context.model_options/2` gives a call's
-  options with its key.
+- `:model_options` replaces `:model_timeouts`. It takes any `ReqLLM` option and is merged over the
+  five-minute timeouts. `WardrikCore.Context.model_options/2` returns a call's options and key.
 
 ## 0.1.0-rc.3 (2026-11-03)
 

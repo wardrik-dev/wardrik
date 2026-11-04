@@ -10,7 +10,7 @@ should, and run every call through your code.
 ```elixir
 def deps do
   [
-    {:wardrik_core, "~> 0.1.0-rc.3"}
+    {:wardrik_core, "~> 0.1.0-rc.4"}
   ]
 end
 ```
