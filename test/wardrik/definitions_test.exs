@@ -585,7 +585,7 @@ defmodule Wardrik.DefinitionsTest do
         assert opts[:receive_timeout] == 1_000
         assert opts[:stream_idle_timeout] == 30_000
         assert opts[:reasoning_effort] == :low
-        assert opts[:finch_name] == finch
+        refute Keyword.has_key?(opts, :finch_name)
         assert opts[:req_http_options][:finch] == finch
         {:ok, answer("Hi.")}
       end)
@@ -602,6 +602,24 @@ defmodule Wardrik.DefinitionsTest do
       run!(scope, "agent.ask", %{"agent" => "acme/tuned", "content" => "Hi"})
       until("wardrik.run.completed")
       assert is_pid(Process.whereis(finch))
+    end
+
+    @tag model_options: [api_key: "sk-test", base_url: "http://127.0.0.1:9", max_retries: 0]
+    test "streams through ReqLLM itself, which takes every option Wardrik adds", %{scope: scope} do
+      stub(ReqLLM.StreamResponse, :process_stream, fn response, opts ->
+        call_original(ReqLLM.StreamResponse, :process_stream, [response, opts])
+      end)
+
+      define(scope, "acme/real", %{
+        "model" => @model,
+        "retries" => %{"attempts" => 0, "on_exhausted" => "fail"}
+      })
+
+      run!(scope, "agent.ask", %{"agent" => "acme/real", "content" => "Hi"})
+
+      assert %{"data" => %{"error" => %{"message" => message}}} = until("wardrik.run.failed")
+      refute message =~ "unknown options"
+      assert message =~ "econnrefused"
     end
 
     test "refuses a definition's option that isn't a safe one", %{scope: scope} do

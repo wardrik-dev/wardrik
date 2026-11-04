@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.5 (2026-11-04)
+
+- Fixes every streamed turn failing with `unknown options [:finch_name]`. Wardrik no longer passes
+  `finch_name`, which `ReqLLM` refuses when it builds a stream.
+- `:pool` serves model calls that don't stream. Turns stream through `ReqLLM`'s own pool, sized by
+  `config :req_llm, stream_pool_size:`.
+
 ## 0.1.0-rc.4 (2026-11-04)
 
 - Triggers with `overlap: settle`, the default except for webhooks, cancel a turn waiting on an

@@ -128,7 +128,6 @@ defmodule Wardrik.Setup do
     options =
       wardrik.model_options
       |> Keyword.merge(Keyword.get(opts, :model_options, []))
-      |> Keyword.put_new(:finch_name, finch)
       |> Keyword.update(:req_http_options, [finch: finch], &Keyword.put_new(&1, :finch, finch))
 
     Keyword.put(opts, :model_options, options)

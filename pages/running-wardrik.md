@@ -15,7 +15,7 @@ children = [MyApp.AgentRuntime]
 ## Try it in IEx
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.4"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.5"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do
@@ -93,21 +93,24 @@ children = [{MyApp.AgentRuntime, store: store}, {WardrikStore, store}]
 
 ## Model calls
 
-`:model_options` applies to every agent's model calls. `:pool` sizes the connections they share.
+`:model_options` applies to every agent's model calls.
 
 ```elixir
 config :my_app, MyApp.AgentRuntime,
-  model_options: [temperature: 0.2, receive_timeout: :timer.minutes(10)],
-  pool: [size: 128, protocols: [:http2]]
+  model_options: [temperature: 0.2, receive_timeout: :timer.minutes(10)]
+
+# Connections for streamed turns, per provider host: 8 by default.
+config :req_llm, stream_pool_size: 64
 ```
 
 - `:model_options` takes any `ReqLLM` option. An agent's own `model_options` merge over it.
 - A definition's `model_options` take only `temperature`, `top_p`, `max_tokens`,
   `reasoning_effort` and the call's timeouts. Each call carries the provider's API key, so options
   that change where a call goes, such as `base_url`, are set only in Wardrik's options.
-- `:pool` is one `Finch` pool per provider host: 64 HTTP/1 connections by default. Raise it when
-  many agents call one provider at once.
-- The pool is sized at start. Option changes apply from each agent's next turn.
+- Turns stream through `ReqLLM`'s own connection pool. Raise `:stream_pool_size` when many agents
+  call one provider at once.
+- `:pool` sizes Wardrik's pool for calls that don't stream, such as evaluations.
+- Option changes apply from each agent's next turn.
 
 ## Nodes
 
