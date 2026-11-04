@@ -41,6 +41,7 @@ issues need an engineer.
 | `idle_timeout` | idle seconds before the process stops, or `infinity`; default `900` |
 | `max_iterations` | rounds of tool calls per turn, or `infinity`, then the turn fails; default `25` |
 | [`retries`](#retries) | retry settings for failed model calls |
+| [`model_options`](#model_options) | sampling and timeouts for its model calls |
 | [`compaction`](#compaction) | when older history is summarised, or `false` |
 | [`triggers`](#triggers) | scheduled, feed and webhook messages |
 | [`notify`](#notify) | notice targets for paused, failed or finished turns |
@@ -132,6 +133,26 @@ retries: {attempts: 6, max_wait: 60, on_exhausted: ask}
 
 - Backoff is exponential with jitter, starting under one second.
 - A 4xx response other than 408, 425 and 429 isn't retried.
+
+## model_options
+
+```yaml
+model_options: {temperature: 0.2, max_tokens: 4000, receive_timeout: 600}
+```
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `temperature` | the model's | how random answers are |
+| `top_p` | the model's | the share of likely tokens sampled from |
+| `max_tokens` | the model's | the most tokens one answer may hold |
+| `reasoning_effort` | the model's | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` or `default` |
+| `receive_timeout` | `300` | seconds a model call waits for an answer |
+| `stream_idle_timeout` | `300` | seconds a stream may go quiet |
+| `total_timeout` | none | seconds one model call may take in all |
+
+- These merge over [`models.options`](/reference/config/#models) in `config.yaml`.
+- No other key is accepted. Options such as `base_url` belong to the operator, since each call
+  carries the deployment's API key.
 
 ## compaction
 
