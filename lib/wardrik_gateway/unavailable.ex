@@ -1,7 +1,7 @@
 defmodule WardrikGateway.Unavailable do
   @moduledoc """
-  A model call no model could take within the gateway's `:wait`: each breaker stayed open, or each
-  provider stayed at its limit. The agent's retries take it from here.
+  Returned when no model could take a call within the gateway's `:wait`: every breaker was open,
+  or every provider was at its limit. `WardrikCore.Retry` then applies.
   """
 
   defexception [:models]

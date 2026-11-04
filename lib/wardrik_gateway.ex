@@ -10,19 +10,15 @@ defmodule WardrikGateway do
         {MyApp.AgentRuntime, middleware: [{WardrikGateway, MyApp.Gateway}]}
       ]
 
-  Notice the gateway is a process of its own, and each agent's middleware names it. Every model
-  call then goes through it:
+  With `WardrikCore` alone, pass the same entry in an agent's `:middleware`.
 
-    * A model whose breaker is open is skipped for the next in its `fallbacks`.
-    * A provider at its limit holds the call until there's room.
-    * A 5xx, a 529 or a timeout counts towards the model's breaker, and the call moves on to the
-      next model. A 429 holds the provider for as long as its `Retry-After` says.
-    * A turn that moved to a fallback stays on it until the turn ends.
-    * A call waits up to `:wait` in all: for room, or for a model to come back. Then the agent's
-      own retries take over. See `WardrikCore.Retry`.
-
-  Reach for it when many agents share a provider, or when they should keep working through an
-  outage.
+    * A model with an open breaker is skipped. The call goes to the next model in `fallbacks`.
+    * A call to a provider at its limit is delayed until the provider has capacity.
+    * A 429 delays calls to that provider for its `Retry-After`, or one second.
+    * A 5xx, a 529 or a timeout counts towards the model's breaker. The call goes to the next
+      model.
+    * After a fallback, the rest of the turn uses the fallback.
+    * A call is delayed at most `:wait`. Then `WardrikCore.Retry` applies.
 
   ## Options
 
@@ -45,7 +41,7 @@ defmodule WardrikGateway do
   alias WardrikGateway.Settings
   alias WardrikGateway.State
 
-  @doc "Starts a gateway under `:name`."
+  @doc "Starts a gateway registered as `:name`."
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     {name, opts} = Keyword.pop!(opts, :name)
@@ -57,7 +53,7 @@ defmodule WardrikGateway do
   def schema, do: Settings.schema()
 
   @doc """
-  Replaces the gateway's settings while it runs. Breakers and limits already counted carry on.
+  Replaces the settings at runtime. Breaker and limit counts are kept.
 
       WardrikGateway.configure(MyApp.Gateway, limits: %{"anthropic" => [requests_per_minute: 2000]})
   """

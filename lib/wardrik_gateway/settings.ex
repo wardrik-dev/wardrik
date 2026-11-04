@@ -10,14 +10,14 @@ defmodule WardrikGateway.Settings do
             fallbacks: [
               type: {:custom, __MODULE__, :fallbacks, []},
               default: %{},
-              doc: "Models to try, in order, when a call to the one it's keyed by fails."
+              doc: "Models to call, in order, when a call to the key's model fails."
             ],
             limits: [
               type: {:custom, __MODULE__, :limits, []},
               default: %{},
               doc: """
-              Per provider, as `"anthropic"`: `requests_per_minute` and `tokens_per_minute`.
-              A provider with none isn't limited.
+              `requests_per_minute` and `tokens_per_minute`, by provider, as `"anthropic"`.
+              Providers not listed are unlimited.
               """
             ],
             breaker: [
@@ -34,7 +34,7 @@ defmodule WardrikGateway.Settings do
                 open_for: [
                   type: :non_neg_integer,
                   default: 30_000,
-                  doc: "Milliseconds it stays open before one call tries the model again."
+                  doc: "Milliseconds before one call is let through to test the model."
                 ]
               ]
             ],
