@@ -131,7 +131,8 @@ retries: {attempts: 6, max_wait: 60, on_exhausted: ask}
 | `max_wait` | `60` | maximum backoff between retries, in seconds |
 | `on_exhausted` | `ask` | `ask` for approval to retry, or `fail` the turn |
 
-- Backoff is exponential with jitter, starting under one second.
+- Backoff is exponential with jitter, starting under one second. A provider's `Retry-After`, in
+  seconds, sets the wait instead, up to `max_wait`.
 - A 4xx response other than 408, 425 and 429 isn't retried.
 
 ## model_options
