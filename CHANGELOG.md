@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `wardrik trigger set --overlap` takes `settle`.
+
 ## 0.1.0-rc.3 (2026-11-03)
 
 - Runs on Wardrik 0.1.0-rc.3. A daemon starts beside another on the same store, as in a blue-green

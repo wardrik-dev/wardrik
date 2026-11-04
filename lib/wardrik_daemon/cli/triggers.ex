@@ -31,7 +31,7 @@ defmodule WardrikDaemon.CLI.Triggers do
         details: [
           "--every takes a cron expression, as \"0 9 * * 1-5\", or an interval, as 30m, read in",
           "--timezone. --prompt is what it asks, or --prompt-file a file of the agent's to follow.",
-          "--feed watches an RSS or Atom feed. --overlap is skip or queue.",
+          "--feed watches an RSS or Atom feed. --overlap is skip, queue or settle.",
           "An agent a file declares keeps its file's triggers on the next reload."
         ],
         run: &set/3
