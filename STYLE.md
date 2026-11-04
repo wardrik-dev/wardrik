@@ -29,6 +29,8 @@ READMEs, never on the site.
 - Link to the reference instead of repeating it. A fact lives in one place.
 - Guides run as written in a fresh shell.
 - No history, no rationale essays, no marketing adjectives.
+- No conversational voice: no "let's", "we", "notice", "reach for", "to recap". State facts.
+- Use the fewest words that stay clear. Prefer a list or table to a paragraph.
 
 ## Elixir packages (hexdocs and READMEs only)
 

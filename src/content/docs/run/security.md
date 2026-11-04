@@ -2,7 +2,7 @@
 title: Security
 description: "The daemon's ports and access, where secrets are stored, and what agents are allowed to do."
 sidebar:
-  order: 4
+  order: 5
 ---
 
 The daemon runs as one OS user. Any process running as that user can read the store and use its

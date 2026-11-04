@@ -2,7 +2,7 @@
 title: A public address
 description: "Put the daemon behind Caddy at an HTTPS address, for OAuth callbacks, Slack and webhooks."
 sidebar:
-  order: 3
+  order: 4
 ---
 
 OAuth providers, Slack and webhook senders need an HTTPS URL for the daemon. The daemon serves

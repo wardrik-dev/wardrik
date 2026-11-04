@@ -2,7 +2,7 @@
 title: Upgrade and back up
 description: "Install a new release next to the old one, roll back, and back up the files and store."
 sidebar:
-  order: 7
+  order: 8
 ---
 
 ## Upgrade

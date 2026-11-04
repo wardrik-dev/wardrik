@@ -2,7 +2,7 @@
 title: Orgs, roles and tokens
 description: "Declare orgs, grant access with roles and bindings, and create tokens for users and programs."
 sidebar:
-  order: 5
+  order: 6
 ---
 
 Every request to the daemon has a token. The token identifies a user. The roles and bindings in
