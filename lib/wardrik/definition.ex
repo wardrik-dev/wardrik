@@ -14,7 +14,8 @@ defmodule Wardrik.Definition do
       #=> {:ok, %Wardrik.Agent{id: "agt_1", status: :idle, ...}}
 
     * Its fields follow the protocol's `agent_definition` schema.
-    * `:policy`, `:workspace`, `:context`, `:retries`, `:compaction` and `:notify` stay as JSON.
+    * `:policy`, `:workspace`, `:context`, `:retries`, `:model_options`, `:compaction` and
+      `:notify` stay as JSON.
     * Each of `:triggers` is a `Wardrik.Trigger`.
   """
 
@@ -33,6 +34,7 @@ defmodule Wardrik.Definition do
       idle_timeout: {"idle_timeout", :infinity},
       max_iterations: {"max_iterations", :infinity},
       retries: "retries",
+      model_options: "model_options",
       compaction: "compaction",
       triggers: {"triggers", [Wardrik.Trigger]},
       notify: "notify",

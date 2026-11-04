@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- An agent definition takes `model_options`: `temperature`, `top_p`, `max_tokens`,
+  `reasoning_effort`, and the model call's timeouts in seconds. No other key: the host sets the
+  rest.
+
+## Unreleased
+
 - A trigger's `overlap` can be `settle`, and is where left out on a clock or a feed: a firing that finds the agent waiting on an answer nobody gave cancels that turn and asks. `agent.cancelled` names the `trigger` that did.
 
 ## 0.1.0-rc.3 (2026-11-03)
