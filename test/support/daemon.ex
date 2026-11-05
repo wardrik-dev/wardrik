@@ -17,7 +17,9 @@ defmodule WardrikDaemon.Test do
       "HOME" => root,
       "WARDRIK_CONFIG_DIR" => Path.join(root, "config"),
       "WARDRIK_DATA_HOME" => Path.join(root, "data"),
-      "WARDRIK_STATE_DIR" => Path.join(root, "state")
+      "WARDRIK_STATE_DIR" => Path.join(root, "state"),
+      # Not the name of a daemon running on this machine.
+      "RELEASE_NODE" => "wardrik-test-#{System.unique_integer([:positive])}@localhost"
     }
 
     Map.merge(context, %{root: root, env: env})

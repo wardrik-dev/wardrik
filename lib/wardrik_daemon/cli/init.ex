@@ -5,6 +5,7 @@ defmodule WardrikDaemon.CLI.Init do
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.CLI.Follow
+  alias WardrikDaemon.CLI.Occupant
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.EnvFile
@@ -221,8 +222,34 @@ defmodule WardrikDaemon.CLI.Init do
   # daemon is given the key first.
   defp daemon(flags, cx, wrote, seal, needed?) do
     case Context.call(cx, "deployment.nodes", %{}) do
-      {:ok, _nodes} -> with :ok <- seal.(), do: running(cx, wrote)
-      {:error, _down} -> with :ok <- started(flags, cx, needed?), do: seal.()
+      {:ok, _nodes} -> with :ok <- elsewhere(cx), :ok <- seal.(), do: running(cx, wrote)
+      {:error, _down} -> with :ok <- vacant(cx), :ok <- started(flags, cx, needed?), do: seal.()
+    end
+  end
+
+  # The daemon this CLI reaches runs from another release, as a checkout's or an older install's.
+  defp elsewhere(%{env: %{"WARDRIK_SCRIPT" => script}} = cx) do
+    ours = script |> Path.dirname() |> Path.dirname()
+
+    case Occupant.find(cx.env) do
+      %Occupant{root: root} = occupant when root != ours ->
+        Context.puts(cx, [
+          Owl.Data.tag("! ", :yellow),
+          Occupant.told(occupant, cx.env, cx.program, true)
+        ])
+
+      _ours ->
+        :ok
+    end
+  end
+
+  defp elsewhere(_cx), do: :ok
+
+  # A node this CLI can't reach holds the name a new daemon would take, so it couldn't start.
+  defp vacant(cx) do
+    case Occupant.find(cx.env) do
+      nil -> :ok
+      occupant -> {:error, Occupant.told(occupant, cx.env, cx.program, false)}
     end
   end
 
@@ -272,7 +299,7 @@ defmodule WardrikDaemon.CLI.Init do
   end
 
   defp answering(cx, 0),
-    do: {:error, "The daemon didn't answer. See what it logs: #{cx.program} logs"}
+    do: {:error, "The daemon didn't answer in a minute. #{logged(cx)}"}
 
   defp answering(cx, tries) do
     case Context.call(cx, "deployment.nodes", %{}) do
@@ -282,6 +309,18 @@ defmodule WardrikDaemon.CLI.Init do
       {:error, _starting} ->
         Process.sleep(1_000)
         answering(cx, tries - 1)
+    end
+  end
+
+  defp logged(cx) do
+    case Path.wildcard(Path.join([cx.dirs.state, "log", "erlang.log.*"])) do
+      [] ->
+        "It logged nothing to #{Path.join(cx.dirs.state, "log")}."
+
+      logs ->
+        log = Enum.max_by(logs, &File.stat!(&1, time: :posix).mtime)
+        last = log |> File.read!() |> String.split("\n", trim: true) |> Enum.take(-10)
+        "The end of its log, #{log}:\n\n  #{Enum.join(last, "\n  ")}\n\nMore: #{cx.program} logs"
     end
   end
 

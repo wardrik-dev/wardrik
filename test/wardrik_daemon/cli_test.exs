@@ -90,6 +90,54 @@ defmodule WardrikDaemon.CLITest do
     assert File.read!(log) == "start\nstart\nstart\n"
   end
 
+  test "won't start a daemon where another holds its name, and says how to use or replace it",
+       context do
+    {context, log} = script(context)
+    write(context, "env", "ANTHROPIC_API_KEY=sk\n")
+
+    pid =
+      occupant(context, "/opt/wardrik/0.1.0-rc.5", [
+        {~c"HOME", ~c"/home/ops"},
+        {~c"XDG_CONFIG_HOME", false},
+        {~c"XDG_DATA_HOME", false},
+        {~c"WARDRIK_CONFIG_DIR", false},
+        {~c"WARDRIK_DATA_HOME", false},
+        {~c"WARDRIK_DATA_DIR", false},
+        {~c"WARDRIK_ENV_FILE", false}
+      ])
+
+    stderr = failing(context, @init)
+
+    assert stderr =~
+             "Another Wardrik service is running here, from /opt/wardrik/0.1.0-rc.5 (pid #{pid})."
+
+    assert stderr =~ "Use it:      HOME=/home/ops wardrik status"
+    assert stderr =~ "Replace it:  kill #{pid}, then wardrik init again"
+    refute File.exists?(log)
+  end
+
+  # A process that looks to ps like a Wardrik node named as the context's daemon would be.
+  defp occupant(context, root, env) do
+    beam = Path.join(context.root, "beam.smp")
+    File.write!(beam, "#!/bin/sh\nsleep 60\n")
+    File.chmod!(beam, 0o755)
+
+    port =
+      Port.open({:spawn_executable, beam},
+        args: ["--", "-root", root, "-sname", context.env["RELEASE_NODE"]],
+        env: env
+      )
+
+    {:os_pid, pid} = Port.info(port, :os_pid)
+
+    on_exit(fn ->
+      System.cmd("pkill", ["-P", "#{pid}"], stderr_to_stdout: true)
+      System.cmd("kill", ["#{pid}"], stderr_to_stdout: true)
+    end)
+
+    Integer.to_string(pid)
+  end
+
   test "names the flag a question needs where no one can answer it", context do
     {context, _log} = script(context)
 

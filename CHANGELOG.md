@@ -4,6 +4,8 @@
 
 - `wardrik uninstall` removes what install.sh installed. `--purge` also deletes the config, keys
   and store.
+- `wardrik init` says when another Wardrik is running here, and how to use it or replace it.
+- When the daemon doesn't answer, `init` shows the end of its log.
 
 ## 0.1.0-rc.5 (2026-11-04)
 
