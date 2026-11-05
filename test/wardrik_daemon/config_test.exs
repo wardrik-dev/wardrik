@@ -3,6 +3,7 @@ defmodule WardrikDaemon.ConfigTest do
 
   import WardrikDaemon.Test
 
+  alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
   alias WardrikDaemon.Dirs
 
@@ -51,7 +52,7 @@ defmodule WardrikDaemon.ConfigTest do
         limits: {anthropic: {requests_per_minute: 4000}}
         breaker: {failures: 3, open_for: 60}
         wait: 900
-    cluster: {}
+    ssh: {}
     """
 
     assert {:ok, config} = read(context, yaml, %{"KEY" => "k3y", "GITHUB_CLIENT_ID" => "Iv1"})
@@ -111,7 +112,7 @@ defmodule WardrikDaemon.ConfigTest do
              wait: 900_000
            ]
 
-    assert config.warnings == ["cluster isn't supported here yet, so it's passed over"]
+    assert config.warnings == ["ssh isn't supported here yet, so it's passed over"]
     assert config.deployment_keys
     assert config.oauth[:page] == "https://agents.acme.test/oauth"
   end
@@ -131,6 +132,35 @@ defmodule WardrikDaemon.ConfigTest do
     assert why =~ "storage: unknown options [:s3], valid options are: [:postgres]"
     assert {:error, why} = read(context, "storage: {postgres: {url: mysql://x}}\n")
     assert why =~ "storage.postgres: invalid value for :url option: is a postgres:// URL"
+  end
+
+  test "reads the cluster, from the environment alone", context do
+    write(context, "config.yaml", "cluster: {nodes: [a, \"${OTHER}\", wardrik@box1.lan]}\n")
+    env = Map.put(context.env, "OTHER", "b")
+
+    assert {:ok, %{cluster: cluster}} = Config.bootstrap(Dirs.new(env), env)
+
+    assert %Cluster{nodes: [:wardrik_a@localhost, :wardrik_b@localhost, :"wardrik@box1.lan"]} =
+             cluster
+
+    assert cluster.size == 3
+
+    assert {:ok, %Config{cluster: %Cluster{dns: "wardrik.internal", size: 3, nodes: []}}} =
+             read(context, "cluster: {dns: wardrik.internal, size: 3}\n")
+
+    assert {:ok, %Config{cluster: nil}} = read(context, "org: acme\n")
+
+    for {yaml, why} <- [
+          {"cluster: {}", "cluster: holds nodes, or dns and size"},
+          {"cluster: {nodes: [a, b], dns: x}", "cluster: holds nodes, or dns and size"},
+          {"cluster: {dns: x}", "cluster.size: is required with dns"},
+          {"cluster: {nodes: [a, b], size: 3}", "cluster.size: is the number of nodes, 2"},
+          {"cluster: {nodes: [a.b]}", "cluster.nodes: a.b isn't a node"},
+          {"cluster: {size: 0, dns: x}", "cluster: invalid value for :size option"}
+        ] do
+      assert {:error, error} = read(context, yaml <> "\n")
+      assert error =~ why
+    end
   end
 
   test "listens where WARDRIK_HTTP_IP says, unless config.yaml says", context do

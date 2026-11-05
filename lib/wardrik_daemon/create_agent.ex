@@ -117,9 +117,10 @@ defmodule WardrikDaemon.CreateAgent do
   defp an_owner_of_agents(_owner), do: :ok
 
   defp recorded(%{wardrik: wardrik, store: store}, owner, name) do
-    gone? = &Agents.gone?([wardrik: wardrik], &1)
+    # A file's agent keeps its name, defined or not yet; a reload forgets it with its file.
+    replaces = &(not AgentRecords.file?(&1) and Agents.gone?([wardrik: wardrik], &1))
 
-    case AgentRecords.create(store, owner: owner, name: name, replaces: gone?) do
+    case AgentRecords.create(store, owner: owner, name: name, source: :api, replaces: replaces) do
       {:ok, record} ->
         {:ok, record}
 

@@ -57,7 +57,7 @@ defmodule WardrikDaemon.AuthorizerTest do
             [org, name] -> {org, name}
           end
 
-        {:ok, record} = AgentRecords.create(store, owner: owner, name: name)
+        {:ok, record} = AgentRecords.create(store, owner: owner, name: name, source: :api)
         {agent, record.id}
       end)
 

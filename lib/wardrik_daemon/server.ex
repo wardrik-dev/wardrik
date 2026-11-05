@@ -4,8 +4,10 @@ defmodule WardrikDaemon.Server do
 
       WardrikDaemon.Server.start_link(env: System.get_env())
 
-    * It loads the env file, starts the store, then `WardrikDaemon.Running`.
-    * The store is Postgres if `config.yaml` has `storage`, else the data directory.
+    * It loads the env file, connects to the cluster's other nodes, starts the store, then
+      `WardrikDaemon.Running`.
+    * The store is Postgres if `config.yaml` has `storage`, else the data directory, copied to
+      each node of the cluster. See `WardrikDaemon.Cluster`.
     * The vault's keys are `vault.keys`, `WARDRIK_VAULT_KEY`, or `vault_key` in the data home,
       made on first start.
     * It emits `[:wardrik_daemon, :started]` once the agents are defined.
@@ -20,6 +22,7 @@ defmodule WardrikDaemon.Server do
 
   use Supervisor
 
+  alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.EnvFile
@@ -37,8 +40,10 @@ defmodule WardrikDaemon.Server do
     System.put_env(env)
 
     boot = WardrikDaemon.ok!(Config.bootstrap(dirs, env))
+    if why = Cluster.refusal(boot.cluster, node()), do: raise(ArgumentError, why)
 
-    store = Keyword.get_lazy(opts, :store, fn -> store(boot.storage, name, dirs) end)
+    store =
+      Keyword.get_lazy(opts, :store, fn -> store(boot.storage, boot.cluster, name, dirs) end)
 
     running = [
       name: name,
@@ -49,15 +54,20 @@ defmodule WardrikDaemon.Server do
       capabilities: opts[:capabilities]
     ]
 
-    Supervisor.init([{WardrikStore, store}, {WardrikDaemon.Running, running}],
+    Supervisor.init(
+      Cluster.children(boot.cluster, node()) ++
+        [{WardrikStore, store}, {WardrikDaemon.Running, running}],
       strategy: :rest_for_one
     )
   end
 
-  defp store(nil, name, dirs),
-    do: WardrikStore.EKV.new(name: Module.concat(name, Store), data_dir: dirs.data)
+  defp store(nil, cluster, name, dirs),
+    do:
+      WardrikStore.EKV.new(
+        [name: Module.concat(name, Store), data_dir: dirs.data] ++ Cluster.store_options(cluster)
+      )
 
-  defp store({:postgres, url}, _name, _dirs), do: WardrikStore.Ecto.new(url: url)
+  defp store({:postgres, url}, _cluster, _name, _dirs), do: WardrikStore.Ecto.new(url: url)
 
   defp keys([_ | _] = keys, _dirs, _env), do: keys
   defp keys([], _dirs, %{"WARDRIK_VAULT_KEY" => key}), do: [key]

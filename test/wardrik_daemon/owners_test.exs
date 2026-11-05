@@ -26,7 +26,7 @@ defmodule WardrikDaemon.OwnersTest do
   test "reads an agent's owner from its record, never its ID" do
     store = WardrikStore.ETS.new(name: :"owners #{System.unique_integer()}")
     start_supervised!({WardrikStore, store})
-    {:ok, record} = AgentRecords.create(store, owner: "acme/@jon", name: "notes")
+    {:ok, record} = AgentRecords.create(store, owner: "acme/@jon", name: "notes", source: :api)
 
     assert "agt_" <> _ulid = record.id
     assert Owners.owner(store, record.id) == {:ok, "acme/@jon"}

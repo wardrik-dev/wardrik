@@ -16,7 +16,7 @@ defmodule WardrikDaemon.ServerTest do
     org: acme
     http: {port: #{free_port()}}
     defaults: {model: #{model()}}
-    cluster: {}
+    ssh: {}
     """)
 
     write(context, "policies/careful.yaml", "ask: [echo]\n")
@@ -38,7 +38,7 @@ defmodule WardrikDaemon.ServerTest do
     log = context.log
 
     assert log =~ "Wardrik didn't define broken"
-    assert log =~ "cluster isn't supported here yet"
+    assert log =~ "ssh isn't supported here yet"
 
     assert {:ok, %Wardrik.Definition{instructions: "You watch the queue.", policy: "careful"}, []} =
              Wardrik.Agent.definition(context.admin, id(context, "acme", "triage"))
@@ -130,6 +130,20 @@ defmodule WardrikDaemon.ServerTest do
 
     assert {:ok, _definition, []} =
              Wardrik.Agent.definition(context.admin, id(context, "acme", "notes"))
+  end
+
+  test "gives a new file one agent when reloads run at once, as on several nodes", context do
+    context = start_daemon(context)
+    for n <- 1..5, do: write(context, "agents/new#{n}.md", "Agent #{n}.")
+
+    capture_log(fn ->
+      1..3
+      |> Enum.map(fn _n -> Task.async(fn -> Wardrik.Deployment.reload(context.admin) end) end)
+      |> Task.await_many()
+    end)
+
+    assert {:ok, %{"agents" => [_, _, _, _, _, _]}} =
+             Wardrik.run(context.admin, "agents.list", %{})
   end
 
   test "an agent file keeps its ID across reloads, and a rename takes no other agent's",
@@ -260,5 +274,29 @@ defmodule WardrikDaemon.ServerTest do
     assert_raise ArgumentError, ~r/unknown options \[:nope\]/, fn ->
       WardrikDaemon.Server.init(env: context.env, name: :never)
     end
+  end
+
+  test "refuses to start as a node its cluster doesn't name", context do
+    write(context, "config.yaml", "cluster: {nodes: [a, b]}\n")
+
+    assert_raise ArgumentError, ~r/isn't one of cluster.nodes: wardrik_a@localhost/, fn ->
+      WardrikDaemon.Server.init(env: context.env, name: :never)
+    end
+  end
+
+  test "shares its HTTP API's port with the cluster's other nodes on this machine", context do
+    port = free_port()
+    {:ok, held} = :gen_tcp.listen(port, ip: {127, 0, 0, 1}, reuseaddr: true)
+
+    write(context, "config.yaml", """
+    org: acme
+    http: {port: #{port}}
+    defaults: {model: #{model()}}
+    cluster: {dns: localhost, size: 1}
+    """)
+
+    context = start_daemon(context)
+    assert context.log =~ "Another node holds port #{port}"
+    :ok = :gen_tcp.close(held)
   end
 end

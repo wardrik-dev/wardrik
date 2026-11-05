@@ -51,7 +51,9 @@ defmodule WardrikDaemon.ResolverTest do
         record.id
 
       :error ->
-        {:ok, record} = AgentRecords.create(context.daemon_store, owner: owner, name: name)
+        {:ok, record} =
+          AgentRecords.create(context.daemon_store, owner: owner, name: name, source: :api)
+
         record.id
     end
   end

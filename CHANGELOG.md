@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- `cluster` in `config.yaml` runs several daemons as one: `nodes: [a, b, c]` on one machine, full
+  names on several, or `dns` and `size`. `libcluster` connects them. The store on the nodes'
+  disks counts its quorum over the cluster, and a node waits for one as it starts. See
+  `WardrikDaemon.Cluster`.
+- `serve`, `start`, `stop`, `pid`, `logs` and `service` take `--node`. `WARDRIK_NODE` names the
+  node, `WARDRIK_DIST_INTERFACE` and `WARDRIK_DIST_EXPOSED` where distribution listens.
+- Nodes on one machine share the HTTP API's port: the first to start listens, and another takes it
+  over when that one stops.
+- Nodes reload agent files one at a time, so nodes starting together don't give a file two agents.
+- Depends on `libcluster` 3.6. `mimic` 2.5 for tests.
+
 ## 0.1.0-rc.6 (2026-11-04)
 
 - Fixes `trigger rm`, event log trimming and removing OAuth grants failing with

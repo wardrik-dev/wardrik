@@ -28,11 +28,15 @@ defmodule WardrikDaemon.AgentRecordsTest do
   end
 
   test "keeps a name unique in its org, and reads owners from the record", %{store: store} do
-    assert {:ok, notes} = AgentRecords.create(store, owner: "acme/@jon", name: "notes")
+    assert {:ok, notes} =
+             AgentRecords.create(store, owner: "acme/@jon", name: "notes", source: :api)
+
     assert %{org: "acme", owner: "acme/@jon", name: "notes", id: "agt_" <> _ulid} = notes
 
-    assert {:error, {:taken, ^notes}} = AgentRecords.create(store, owner: "acme", name: "notes")
-    assert {:ok, other} = AgentRecords.create(store, owner: "globex", name: "notes")
+    assert {:error, {:taken, ^notes}} =
+             AgentRecords.create(store, owner: "acme", name: "notes", source: :api)
+
+    assert {:ok, other} = AgentRecords.create(store, owner: "globex", name: "notes", source: :api)
     assert other.id != notes.id
 
     assert AgentRecords.fetch(store, notes.id) == {:ok, notes}
@@ -42,7 +46,12 @@ defmodule WardrikDaemon.AgentRecordsTest do
     assert AgentRecords.in_org(store, "acme") == [notes]
 
     assert {:ok, again} =
-             AgentRecords.create(store, owner: "acme", name: "notes", replaces: &(&1 == notes))
+             AgentRecords.create(store,
+               owner: "acme",
+               name: "notes",
+               source: :api,
+               replaces: &(&1 == notes)
+             )
 
     assert again.id != notes.id
     assert AgentRecords.fetch(store, notes.id) == :error
@@ -54,14 +63,24 @@ defmodule WardrikDaemon.AgentRecordsTest do
     assert AgentRecords.named(store, "acme", "notes") == :error
   end
 
+  test "keeps no record for a name it couldn't claim", %{store: store} do
+    {:ok, notes} = AgentRecords.create(store, owner: "acme", name: "notes", source: :file)
+
+    assert {:error, {:taken, ^notes}} =
+             AgentRecords.create(store, owner: "acme", name: "notes", source: :file)
+
+    assert AgentRecords.file?(notes)
+    assert WardrikStore.keys(store, "agents/") == ["agents/" <> URI.encode_www_form(notes.id)]
+  end
+
   test "takes a name whose record is gone", %{store: store} do
     {:ok, _vsn} = WardrikStore.put(store, "agent_names/acme/notes", "agt_gone")
-    assert {:ok, record} = AgentRecords.create(store, owner: "acme", name: "notes")
+    assert {:ok, record} = AgentRecords.create(store, owner: "acme", name: "notes", source: :api)
     assert AgentRecords.named(store, "acme", "notes") == {:ok, record}
   end
 
   test "names a definition's shared workspaces by the IDs of its org's agents", %{store: store} do
-    {:ok, runbooks} = AgentRecords.create(store, owner: "acme", name: "runbooks")
+    {:ok, runbooks} = AgentRecords.create(store, owner: "acme", name: "runbooks", source: :api)
     shared = %{"a" => "agent:runbooks", "b" => %{"agent" => "agent:runbooks", "mode" => "read"}}
     definition = %{"model" => "m", "workspace" => %{"shared" => shared}}
 

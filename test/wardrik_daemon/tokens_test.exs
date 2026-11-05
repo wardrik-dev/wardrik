@@ -43,7 +43,9 @@ defmodule WardrikDaemon.TokensTest do
              actor: nil
            } = scope
 
-    {:ok, helper} = AgentRecords.create(store, owner: "payments/@ana", name: "helper")
+    {:ok, helper} =
+      AgentRecords.create(store, owner: "payments/@ana", name: "helper", source: :api)
+
     {:ok, %{secret: secret}} = create(store, "agent:" <> helper.id)
     assert {:ok, scope} = authenticate(store, bearer(secret))
     assert %{principal: %{id: "payments/@ana"}, actor: {:agent, id}} = scope

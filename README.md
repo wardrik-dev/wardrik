@@ -138,7 +138,7 @@ storage:
 ```
 
 - `${NAME}` reads the environment, the `env` file, then the deployment's secret `NAME`.
-  `vault`, `http` and `storage` read the environment only.
+  `vault`, `http`, `storage` and `cluster` read the environment only.
 - An unknown key is an error that names its path:
   `config.yaml: oauth.providers.google: unknown options [:colour], valid options are: [...]`.
 - Without `storage`, everything is kept on the node's disk.
@@ -147,6 +147,7 @@ storage:
 | Key | Reference |
 | --- | --- |
 | `org`, `base_url`, `defaults`, `models`, `workspace`, `vault`, `http`, `storage`, `brave` | `WardrikDaemon.Config` |
+| `cluster` | `WardrikDaemon.Cluster` |
 | `deployment_keys` | `WardrikDaemon.Keys` |
 | `allow_private_urls` | `WardrikDaemon.Egress` |
 | `deployment`, `idle_timeout`, `retention`, `triggers` | `Wardrik.start_link/1` |
@@ -216,6 +217,60 @@ wardrik provider add linear --issuer https://linear.app --client-id ID --secret 
 - The nearest of a name wins: a person's own, their org's, then the deployment's.
 - Their URLs must be `https` at a public address. Set `allow_private_urls: true` for local use only.
 
+## Clusters
+
+Several daemons run as one cluster. Any node answers for all of them. When a node is lost, its
+agents carry on on another, still waiting on the calls they waited on.
+
+```yaml
+cluster:
+  nodes: [a, b, c]
+```
+
+Short names are nodes on one machine. They share the config, the cookie, the vault's key and the
+HTTP API's port. Each keeps its own store and logs under `nodes/<name>/`.
+
+```sh
+wardrik start --node a
+wardrik start --node b
+wardrik start --node c
+wardrik status            # the nodes, and how many agents run on each
+wardrik logs --node b
+wardrik service install --node a   # each node is an instance of wardrik@.service
+```
+
+With the store on the nodes' disks, a write needs more than half the nodes. Three nodes carry on
+with one lost; two stop when either is. A node starting waits for enough others, up to an hour.
+With `storage` in Postgres, nodes don't wait for each other.
+
+On several machines, name one node per machine in full, or find them by DNS:
+
+```yaml
+cluster:
+  nodes: [wardrik@box1, wardrik@box2, wardrik@box3]
+# or
+cluster:
+  dns: wardrik.internal   # a node named wardrik@ADDRESS at each A and AAAA record
+  size: 3
+```
+
+Each machine's `env` file names its node and where distribution listens:
+
+```sh
+WARDRIK_NODE=wardrik@box1
+WARDRIK_DIST_INTERFACE={100,64,0,1}   # this machine's address on the private network
+WARDRIK_DIST_EXPOSED=1
+RELEASE_COOKIE=...                    # the same on every node
+```
+
+- Erlang distribution isn't encrypted, and anyone who reaches a node with its cookie can run code
+  on it. Run nodes on a private network that encrypts, such as Tailscale or WireGuard.
+- Give every node the same vault key, and the same agent and policy files.
+- Open epmd's port, 4369, and each node's distribution port between the machines.
+- A node `cluster.nodes` doesn't name refuses to start.
+
+See `WardrikDaemon.Cluster`.
+
 ## The wardrik command
 
 `wardrik help` lists every command. `wardrik help COMMAND` explains one. Every command takes
@@ -252,3 +307,4 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections
 | `WARDRIK_DATA_HOME` | `~/.local/share/wardrik` | `vault_key`, `cli_token`, `cookie` |
 | `WARDRIK_STATE_DIR` | `~/.local/state/wardrik` | logs |
 | `WARDRIK_ENV_FILE` | `env` in the config directory | extra environment variables |
+| `WARDRIK_NODE` | none | which node of a cluster this is |

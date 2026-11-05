@@ -8,7 +8,7 @@ defmodule WardrikDaemon.Running do
        through.
     2. Wardrik, with `WardrikDaemon.Authorizer` and `WardrikDaemon.OAuthApps`.
     3. `WardrikDaemon.Pairings`.
-    4. `WardrikDaemon.HTTP`.
+    4. `WardrikDaemon.HTTP`. Nodes of a cluster share its port; see `WardrikDaemon.Cluster`.
     5. A task that starts added MCP servers, defines the agents, writes `cli_token`, and emits
        `[:wardrik_daemon, :started]`.
 
@@ -82,13 +82,15 @@ defmodule WardrikDaemon.Running do
       {Wardrik, wardrik},
       {WardrikDaemon.Pairings, name: WardrikDaemon.Pairings.name(name)},
       {WardrikDaemon.HTTP,
-       wardrik: name,
-       authenticator: {WardrikDaemon.Authenticator, daemon},
-       store: daemon,
-       orgs: orgs,
-       config: config,
-       port: config.port,
-       ip: config.ip},
+       [
+         wardrik: name,
+         authenticator: {WardrikDaemon.Authenticator, daemon},
+         store: daemon,
+         orgs: orgs,
+         config: config,
+         port: config.port,
+         ip: config.ip
+       ] ++ shared(config.cluster)},
       %{
         id: :started,
         start: {Task, :start_link, [fn -> started(agents, dirs, config) end]},
@@ -100,6 +102,10 @@ defmodule WardrikDaemon.Running do
   end
 
   defp gateway(name), do: Module.concat(name, Gateway)
+
+  # Nodes on one machine share the HTTP API's port.
+  defp shared(nil), do: []
+  defp shared(_cluster), do: [retry: :timer.seconds(5)]
 
   @doc "Returns a `t:WardrikDaemon.Config.vault/0` that reads the deployment's secrets from `store` with `keys`."
   @spec sealed(WardrikStore.t(), [String.t()]) :: Config.vault()

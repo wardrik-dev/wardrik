@@ -60,7 +60,11 @@ defmodule WardrikDaemon.Test do
   @doc "Makes the agent `name` for `owner`, as the daemon's route does, and returns its ID."
   def agent(context, owner, name, definition \\ [model: @model]) do
     {:ok, record} =
-      WardrikDaemon.AgentRecords.create(context.daemon_store, owner: owner, name: name)
+      WardrikDaemon.AgentRecords.create(context.daemon_store,
+        owner: owner,
+        name: name,
+        source: :api
+      )
 
     {:ok, _agent} = Wardrik.Agent.define(context.admin, record.id, definition)
     record.id
@@ -82,7 +86,11 @@ defmodule WardrikDaemon.Test do
 
       :error ->
         {:ok, record} =
-          WardrikDaemon.AgentRecords.create(context.daemon_store, owner: owner, name: name)
+          WardrikDaemon.AgentRecords.create(context.daemon_store,
+            owner: owner,
+            name: name,
+            source: :api
+          )
 
         record.id
     end

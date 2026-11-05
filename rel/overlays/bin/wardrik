@@ -1,6 +1,8 @@
 #!/bin/sh
 # The command you run, also as rik. serve, start, stop, pid, logs, service and uninstall run
-# here; every other command is the CLI, which reaches the daemon over its HTTP API.
+# here; every other command is the CLI, which reaches the daemon over its HTTP API. serve, start,
+# stop, pid, logs and service take --node NAME, the node of a cluster they act on, as WARDRIK_NODE
+# sets it.
 set -e
 
 readlink_f () {
@@ -39,7 +41,47 @@ if [ -r "$env_file" ]; then
   done < "$env_file"
 fi
 
-unit="${XDG_CONFIG_HOME:-"$HOME/.config"}/systemd/user/wardrik.service"
+case "${1:-}" in
+  serve | start | stop | pid | logs | service)
+    command="$1"
+    shift
+    args=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --node)
+          WARDRIK_NODE="${2:?"--node takes a node's name, as cluster.nodes names it"}"
+          shift 2
+          ;;
+        --node=*)
+          WARDRIK_NODE="${1#--node=}"
+          shift
+          ;;
+        *)
+          args="$args $1"
+          shift
+          ;;
+      esac
+    done
+    # shellcheck disable=SC2086
+    set -- "$command" $args
+    ;;
+esac
+
+# A node named without @ is one of several on this machine, with logs of its own. Under systemd,
+# each is an instance of wardrik@.service.
+service="wardrik"
+unit_file="wardrik.service"
+case "${WARDRIK_NODE:-}" in
+  "" | *@*) ;;
+  *)
+    state_dir="$state_dir/nodes/$WARDRIK_NODE"
+    service="wardrik@$WARDRIK_NODE"
+    unit_file="wardrik@.service"
+    ;;
+esac
+[ -z "${WARDRIK_NODE:-}" ] || export WARDRIK_NODE
+
+unit="${XDG_CONFIG_HOME:-"$HOME/.config"}/systemd/user/$unit_file"
 export WARDRIK_PROGRAM="${WARDRIK_PROGRAM:-$(basename "$0")}"
 # What the CLI starts the daemon with, and whether someone types at it.
 export WARDRIK_SCRIPT="$root/bin/wardrik"
@@ -74,17 +116,19 @@ After=network-online.target
 [Service]
 ExecStart=$root/bin/wardrik serve
 Restart=on-failure
+$( [ "$unit_file" = "wardrik.service" ] || echo "Environment=WARDRIK_NODE=%i")
 
 [Install]
 WantedBy=default.target
 UNIT
         systemctl --user daemon-reload
-        systemctl --user enable --now wardrik
-        echo "Wardrik runs as the service wardrik. See it with: systemctl --user status wardrik"
+        systemctl --user enable --now "$service"
+        echo "Wardrik runs as the service $service. See it with: systemctl --user status $service"
         ;;
       uninstall)
-        systemctl --user disable --now wardrik || true
-        rm -f "$unit"
+        systemctl --user disable --now "$service" || true
+        # The template stays while other nodes' instances use it.
+        [ "$unit_file" != "wardrik.service" ] || rm -f "$unit"
         systemctl --user daemon-reload
         ;;
       *)

@@ -9,6 +9,7 @@ defmodule WardrikDaemon.Agents do
     * a removed file's agent is forgotten.
     * a file that doesn't read keeps its last definition, and the log says why.
     * a file can't take a name another agent of its org has, nor change its agent's owner.
+    * nodes reloading at once give a new file one agent: the first to claim its name.
 
   The API can't forget an agent a file declares.
 
@@ -92,21 +93,26 @@ defmodule WardrikDaemon.Agents do
 
   defp kept(opts, declared, _record, false), do: created(opts, declared)
 
-  # A name an agent made through the API has stays its own while the agent is defined.
+  # A name an agent made through the API has stays its own while the agent is defined. A name
+  # another node's reload claimed for this file is this file's agent, defined or not yet.
   defp created(opts, {agent, definition}) do
     case AgentRecords.create(opts[:store],
            owner: agent.owner,
            name: agent.name,
-           replaces: &gone?(opts, &1)
+           source: :file,
+           replaces: &(not same_file?(&1, agent) and gone?(opts, &1))
          ) do
       {:ok, record} ->
         {:ok, record, definition}
 
-      {:error, {:taken, _record}} ->
-        {:error,
-         "#{agent.name} is the name of another agent in #{agent.org}, made through the API."}
+      {:error, {:taken, record}} ->
+        if same_file?(record, agent),
+          do: {:ok, record, definition},
+          else: {:error, "#{agent.name} is the name of another agent in #{agent.org}."}
     end
   end
+
+  defp same_file?(record, agent), do: AgentRecords.file?(record) and record.owner == agent.owner
 
   @doc "Returns whether the agent of `record` is gone: forgotten, or never defined."
   @spec gone?(keyword(), AgentRecords.t()) :: boolean()

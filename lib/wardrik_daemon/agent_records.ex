@@ -2,9 +2,10 @@ defmodule WardrikDaemon.AgentRecords do
   @moduledoc """
   Keeps a record of each agent the daemon made.
 
-      %{id: "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", org: "acme", owner: "acme/@jon", name: "notes"}
+      %{id: "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", org: "acme", owner: "acme/@jon", name: "notes", source: :file}
 
     * IDs are `agt_` and a `WardrikDaemon.ULID`. Nothing is read from them.
+    * `source` is `:file` for an agent an agent file declares, `:api` for one made through the API.
     * A name is unique in its org. Once an agent is gone, its name is free and a new agent of
       that name gets a new ID.
   """
@@ -14,7 +15,13 @@ defmodule WardrikDaemon.AgentRecords do
 
   @name ~r/\A[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\z/
 
-  @type t() :: %{id: String.t(), org: String.t(), owner: String.t(), name: String.t()}
+  @type t() :: %{
+          id: String.t(),
+          org: String.t(),
+          owner: String.t(),
+          name: String.t(),
+          source: :file | :api
+        }
 
   @doc "Returns whether `name` is an agent's name: letters, digits, `_`, `.` and `-`, at most 64."
   @spec name?(term()) :: boolean()
@@ -30,10 +37,15 @@ defmodule WardrikDaemon.AgentRecords do
   def subject("agent:" <> name), do: if(name?(name), do: {:ok, name}, else: :error)
   def subject(_other), do: :error
 
+  @doc "Returns whether `record` is of an agent an agent file declares."
+  @spec file?(t()) :: boolean()
+  def file?(%{source: :file}), do: true
+  def file?(_record), do: false
+
   @doc "Returns the record of the agent `id`, or `:error` if the daemon made none."
   @spec fetch(WardrikStore.t(), String.t()) :: {:ok, t()} | :error
   def fetch(store, id) do
-    case WardrikStore.get(store, "agents/" <> URI.encode_www_form(id)) do
+    case WardrikStore.get(store, record_key(id)) do
       %{id: ^id} = record -> {:ok, record}
       nil -> :error
     end
@@ -56,7 +68,7 @@ defmodule WardrikDaemon.AgentRecords do
   end
 
   @doc """
-  Mints an ID for agent `:name`, owned by `:owner`, and records it.
+  Mints an ID for agent `:name`, owned by `:owner`, from `:source`, and records it.
 
   Returns `{:error, {:taken, record}}` if the name is taken in the org, unless `:replaces`
   returns `true` for that record.
@@ -64,18 +76,32 @@ defmodule WardrikDaemon.AgentRecords do
   @spec create(WardrikStore.t(),
           owner: String.t(),
           name: String.t(),
+          source: :file | :api,
           replaces: (t() -> boolean())
         ) :: {:ok, t()} | {:error, {:taken, t()}}
   def create(store, args) do
     owner = Keyword.fetch!(args, :owner)
     name = Keyword.fetch!(args, :name)
     replaces = Keyword.get(args, :replaces, fn _record -> false end)
-    record = %{id: "agt_" <> ULID.generate(), org: Owners.org(owner), owner: owner, name: name}
-    key = name_key(record.org, name)
 
-    with :ok <- claimed(store, key, record.id, replaces) do
-      {:ok, _vsn} = WardrikStore.put(store, "agents/" <> URI.encode_www_form(record.id), record)
-      {:ok, record}
+    record = %{
+      id: "agt_" <> ULID.generate(),
+      org: Owners.org(owner),
+      owner: owner,
+      name: name,
+      source: Keyword.fetch!(args, :source)
+    }
+
+    # The record is written before its name is claimed, so a claimed name always has one.
+    {:ok, _vsn} = WardrikStore.put(store, record_key(record.id), record)
+
+    case claimed(store, name_key(record.org, name), record.id, replaces) do
+      :ok ->
+        {:ok, record}
+
+      {:error, {:taken, _held}} = taken ->
+        :ok = WardrikStore.delete(store, record_key(record.id))
+        taken
     end
   end
 
@@ -114,8 +140,7 @@ defmodule WardrikDaemon.AgentRecords do
 
   defp dropped(_store, nil), do: :ok
 
-  defp dropped(store, record),
-    do: WardrikStore.delete(store, "agents/" <> URI.encode_www_form(record.id))
+  defp dropped(store, record), do: WardrikStore.delete(store, record_key(record.id))
 
   @doc """
   Returns `definition` with the agents its `workspace.shared` names, as `agent:NAME` in `org`,
@@ -162,8 +187,10 @@ defmodule WardrikDaemon.AgentRecords do
       _other -> :ok
     end
 
-    WardrikStore.delete(store, "agents/" <> URI.encode_www_form(id))
+    WardrikStore.delete(store, record_key(id))
   end
+
+  defp record_key(id), do: "agents/" <> URI.encode_www_form(id)
 
   defp name_key(org, name),
     do: "agent_names/" <> URI.encode_www_form(org) <> "/" <> URI.encode_www_form(name)

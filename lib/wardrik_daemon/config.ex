@@ -1,5 +1,6 @@
 defmodule WardrikDaemon.Config do
   alias WardrikDaemon.AgentRecords
+  alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Config.Channels
   alias WardrikDaemon.Config.MCP
@@ -150,6 +151,21 @@ defmodule WardrikDaemon.Config do
                 ]
               ]
             ],
+            cluster: [
+              type: :keyword_list,
+              doc: "Other daemons this one runs as one with. See `WardrikDaemon.Cluster`.",
+              keys: [
+                nodes: [
+                  type: {:list, :string},
+                  doc: "Every node, this one among them: `a` on this machine, or `wardrik@HOST`."
+                ],
+                dns: [
+                  type: :string,
+                  doc: "A name that resolves to an address for each node, in place of `nodes`."
+                ],
+                size: [type: :pos_integer, doc: "How many nodes there are, with `dns`."]
+              ]
+            ],
             storage: [
               type: :keyword_list,
               doc: "Where everything is kept. The node's disk unless set.",
@@ -186,15 +202,15 @@ defmodule WardrikDaemon.Config do
 
   #{Enum.map_join(@wardrik, ", ", &"`#{&1}`")} are `Wardrik.start_link/1`'s options.
 
-    * `tools`, `tokens`, `cluster` and `ssh` are skipped with a warning. Any other unknown key is
+    * `tools`, `tokens` and `ssh` are skipped with a warning. Any other unknown key is
       an error that names its path.
     * YAML writes atoms as strings (`flow: device`) and keyword lists as maps.
     * `${NAME}` reads the environment, the env file, then the deployment's vault secret `NAME`.
-      `vault`, `http` and `storage` read the environment only.
+      `vault`, `http`, `storage` and `cluster` read the environment only.
   """
 
-  @bootstrap ~w(vault http storage)
-  @later ~w(tools tokens cluster ssh)
+  @bootstrap ~w(vault http storage cluster)
+  @later ~w(tools tokens ssh)
 
   defstruct org: "default",
             orgs: %{},
@@ -217,6 +233,7 @@ defmodule WardrikDaemon.Config do
             ip: {127, 0, 0, 1},
             trusted_workers: false,
             storage: nil,
+            cluster: nil,
             wardrik: [],
             warnings: []
 
@@ -242,6 +259,7 @@ defmodule WardrikDaemon.Config do
           ip: :inet.ip_address(),
           trusted_workers: boolean(),
           storage: {:postgres, String.t()} | nil,
+          cluster: Cluster.t() | nil,
           wardrik: keyword(),
           warnings: [String.t()]
         }
@@ -270,14 +288,15 @@ defmodule WardrikDaemon.Config do
     end
   end
 
-  @doc "Reads what's needed before the vault opens: the vault's keys, where HTTP listens, and `storage`. Fills in `${NAME}` from `env` alone."
+  @doc "Reads what's needed before the vault opens: the vault's keys, where HTTP listens, `storage` and `cluster`. Fills in `${NAME}` from `env` alone."
   @spec bootstrap(Dirs.t(), %{String.t() => String.t()}) ::
           {:ok,
            %{
              keys: [String.t()],
              port: :inet.port_number(),
              ip: :inet.ip_address(),
-             storage: {:postgres, String.t()} | nil
+             storage: {:postgres, String.t()} | nil,
+             cluster: Cluster.t() | nil
            }}
           | {:error, String.t()}
   def bootstrap(dirs, env) do
@@ -285,20 +304,22 @@ defmodule WardrikDaemon.Config do
 
     with {:ok, yaml} <- yaml(path, env),
          {:ok, early} <- interpolated(Map.take(yaml, @bootstrap), env, nil),
-         {:ok, opts} <- Options.validate(Map.merge(Map.drop(yaml, @later), early), @schema, nil) do
+         {:ok, opts} <- Options.validate(Map.merge(Map.drop(yaml, @later), early), @schema, nil),
+         {:ok, cluster} <- Cluster.new(opts[:cluster]) do
       {:ok,
        %{
          keys: opts[:vault][:keys],
          port: opts[:http][:port],
          ip: opts[:http][:ip],
-         storage: storage(opts[:storage])
+         storage: storage(opts[:storage]),
+         cluster: cluster
        }}
     else
       {:error, why} -> {:error, "#{path}: #{why}"}
     end
   end
 
-  @doc "Returns the `${NAME}`s `config.yaml` names outside `vault`, `http` and `storage`. The vault may hold these."
+  @doc "Returns the `${NAME}`s `config.yaml` names outside `vault`, `http`, `storage` and `cluster`. The vault may hold these."
   @spec sealable(Dirs.t()) :: [String.t()]
   def sealable(dirs) do
     case yaml(Dirs.config(dirs, "config.yaml")) do
@@ -376,7 +397,8 @@ defmodule WardrikDaemon.Config do
          {:ok, workspace} <- workspace(opts[:workspace]),
          {:ok, prices} <- prices(opts[:models][:prices]),
          {:ok, model_options} <- model_options(opts[:models][:options]),
-         {:ok, gateway} <- gateway(opts[:models][:gateway]) do
+         {:ok, gateway} <- gateway(opts[:models][:gateway]),
+         {:ok, cluster} <- Cluster.new(opts[:cluster]) do
       config = %__MODULE__{
         org: org,
         orgs: orgs,
@@ -398,6 +420,7 @@ defmodule WardrikDaemon.Config do
         ip: opts[:http][:ip],
         trusted_workers: opts[:http][:trusted_workers],
         storage: storage(opts[:storage]),
+        cluster: cluster,
         wardrik: Keyword.take(opts, @wardrik)
       }
 

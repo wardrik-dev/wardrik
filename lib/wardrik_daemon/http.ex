@@ -37,6 +37,8 @@ defmodule WardrikDaemon.HTTP do
     * `:store` - required. The daemon's scope of the store.
     * `:orgs` - required. Where `WardrikDaemon.Orgs` reads orgs from.
     * `:config` - required. The `WardrikDaemon.Config`.
+    * `:retry` - milliseconds between tries for a port another node on this machine holds, as
+      `WardrikDaemon.Listener` takes it. Without it, a port that's taken fails the start.
 
   Other options go to Bandit, such as `:port` and `:ip`.
   """
@@ -71,8 +73,13 @@ defmodule WardrikDaemon.HTTP do
   @doc "Returns a child spec that serves with Bandit. Options not listed above go to Bandit."
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
+    {retry, opts} = Keyword.pop(opts, :retry)
     {own, bandit} = Keyword.split(opts, @own)
-    Bandit.child_spec([plug: {__MODULE__, own}] ++ bandit)
+    bandit = [plug: {__MODULE__, own}] ++ bandit
+
+    if retry,
+      do: WardrikDaemon.Listener.child_spec(bandit: bandit, retry: retry),
+      else: Bandit.child_spec(bandit)
   end
 
   @doc "Returns the daemon's own routes, as OpenAPI."

@@ -45,7 +45,9 @@ defmodule WardrikDaemon.Doctor.Agents do
 
   # Each file has a name of its own, so none is taken.
   defp recorded(records, {:ok, agent, definition}) do
-    {:ok, record} = AgentRecords.create(records, owner: agent.owner, name: agent.name)
+    {:ok, record} =
+      AgentRecords.create(records, owner: agent.owner, name: agent.name, source: :file)
+
     {:ok, record, definition}
   end
 
