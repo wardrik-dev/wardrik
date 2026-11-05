@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `wardrik uninstall` removes what install.sh installed. `--purge` also deletes the config, keys
+  and store.
+
 ## 0.1.0-rc.5 (2026-11-04)
 
 - Fixes every turn failing with `unknown options [:finch_name]`.

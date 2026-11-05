@@ -1,6 +1,6 @@
 #!/bin/sh
-# The command you run, also as rik. serve, start, stop, pid, logs and service run the daemon;
-# every other command is the CLI, which reaches the daemon over its HTTP API.
+# The command you run, also as rik. serve, start, stop, pid, logs, service and uninstall run
+# here; every other command is the CLI, which reaches the daemon over its HTTP API.
 set -e
 
 readlink_f () {
@@ -92,6 +92,87 @@ UNIT
         exit 1
         ;;
     esac
+    ;;
+  uninstall)
+    shift
+    purge=""
+    yes=""
+    for arg in "$@"; do
+      case "$arg" in
+        --purge) purge=1 ;;
+        --yes) yes=1 ;;
+        # Help, and anything else, the CLI answers.
+        *) exec "$node" eval "WardrikDaemon.CLI.halt(System.argv())" uninstall "$@" ;;
+      esac
+    done
+
+    # install.sh puts each release in a directory of its own, beside a current link.
+    install_dir="$(dirname "$root")"
+    if [ ! -L "$install_dir/current" ]; then
+      echo "$WARDRIK_PROGRAM: uninstall removes what install.sh installed, and $root wasn't installed by it" >&2
+      exit 1
+    fi
+
+    data_home="${WARDRIK_DATA_HOME:-"${XDG_DATA_HOME:-"$HOME/.local/share"}/wardrik"}"
+    kept=""
+    for path in "$config_dir" "$data_home" "${WARDRIK_DATA_DIR:-}" "$state_dir" "$env_file"; do
+      case "$path" in
+        "" | "$config_dir"/* | "$data_home"/*) continue ;;
+      esac
+      [ -e "$path" ] && kept="$kept $path"
+    done
+
+    if [ -n "$purge" ] && [ -n "$kept" ] && [ -z "$yes" ]; then
+      if [ ! -t 0 ]; then
+        echo "$WARDRIK_PROGRAM: --purge deletes the config, keys and store, so it asks first; without a terminal, add --yes" >&2
+        exit 1
+      fi
+      echo "This deletes the config, keys and store:"
+      # shellcheck disable=SC2086
+      du -sh $kept
+      printf 'Delete them? [y/N] '
+      read -r answer
+      case "$answer" in
+        y | Y | yes) ;;
+        *) echo "Nothing was removed."; exit 1 ;;
+      esac
+    fi
+
+    if [ -f "$unit" ] && grep -q "$install_dir/" "$unit"; then
+      systemctl --user disable --now wardrik || true
+      rm -f "$unit"
+      systemctl --user daemon-reload || true
+    fi
+    if "$node" pid > /dev/null 2>&1; then
+      "$node" stop
+    fi
+
+    ours="$install_dir/current/bin/wardrik"
+    bin_dir="${WARDRIK_BIN_DIR:-"$HOME/.local/bin"}"
+    for link in "$0" "$(command -v wardrik || true)" "$(command -v rik || true)" \
+      "$bin_dir/wardrik" "$bin_dir/rik" /usr/local/bin/wardrik /usr/local/bin/rik; do
+      if [ -L "$link" ] && [ "$(readlink "$link")" = "$ours" ]; then
+        rm -f "$link"
+      fi
+    done
+
+    for dir in "$install_dir"/*/; do
+      if [ -x "$dir/bin/wardrik" ]; then rm -rf "${dir%/}"; fi
+    done
+    rm -f "$install_dir/current"
+    rmdir "$install_dir" 2> /dev/null || true
+
+    if [ -n "$purge" ]; then
+      # shellcheck disable=SC2086
+      [ -z "$kept" ] || rm -rf $kept
+      echo "Wardrik is uninstalled, with its config, keys and store."
+    elif [ -n "$kept" ]; then
+      echo "Wardrik is uninstalled. Its config, keys and store are kept, for a later install:"
+      for path in $kept; do echo "  $path"; done
+      echo "To delete them too: rm -rf$kept"
+    else
+      echo "Wardrik is uninstalled."
+    fi
     ;;
   *)
     exec "$node" eval "WardrikDaemon.CLI.halt(System.argv())" "$@"

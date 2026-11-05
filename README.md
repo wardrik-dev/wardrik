@@ -28,6 +28,8 @@ Tell the assistant what you want, as "tell me when https://github.blog/changelog
 post". It proposes a worker and its triggers. Approve them with `wardrik approval approve`.
 
 - The release runs on Linux (x86_64 or aarch64, glibc 2.35+). It installs to `~/.local/lib/wardrik`.
+- `wardrik uninstall` stops the daemon and removes the release and its links. It keeps the config, keys
+  and store; `--purge` deletes them too.
 - Elsewhere, use the image:
 
   ```sh

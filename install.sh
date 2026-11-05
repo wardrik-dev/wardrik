@@ -249,6 +249,7 @@ main() {
     wardrik init                       a first agent, its model and key, and the daemon to run it
 
     It asks what it needs, and says what it does. wardrik help lists every command.
+    wardrik uninstall removes it again, and keeps the config, keys and store.
 EOF
 }
 

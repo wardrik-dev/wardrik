@@ -41,6 +41,16 @@ defmodule WardrikDaemon.CLI.Admin do
       script("service install", "run the daemon as a systemd user service"),
       script("service uninstall", "stop running it as a service"),
       %Command{
+        name: "uninstall",
+        group: "Daemon",
+        switches: [purge: :boolean, yes: :boolean],
+        summary: "stop the daemon and remove what install.sh installed",
+        details: [
+          "The config, keys and store are kept, for a later install.",
+          "--purge deletes them too, after asking; --yes doesn't ask."
+        ]
+      },
+      %Command{
         name: "status",
         group: "Daemon",
         summary: "where the daemon runs, and how many agents each node holds",
