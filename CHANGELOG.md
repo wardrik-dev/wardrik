@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.7 (2026-11-05)
 
 - `storage: {s3: ...}` keeps everything in an S3 bucket: AWS, R2, Tigris or MinIO. Nodes don't wait
   for a quorum. `wardrik doctor` checks the endpoint answers.
@@ -12,11 +12,12 @@
   node, `WARDRIK_DIST_INTERFACE` and `WARDRIK_DIST_EXPOSED` where distribution listens.
 - Nodes on one machine share the HTTP API's port: the first to start listens, and another takes it
   over when that one stops.
-- Nodes reload agent files one at a time, so nodes starting together don't give a file two agents.
+- Nodes starting together give each agent file one agent, and share one cookie on a fresh install.
 - `agents` in `config.yaml` spreads agents across nodes: each new agent, and each a lost node ran,
   starts on the node with the most room under `max_per_node`, `max_memory` and `max_cpu`. Idle
   agents compact their memory after `hibernate_after` seconds. Requires `wardrik` 0.1.0-rc.7.
-- Depends on `libcluster` 3.6. `mimic` 2.5 for tests.
+- Builds on `wardrik_store` 0.1.0-rc.5 and `wardrik_events` 0.1.0-rc.5. Depends on `libcluster` 3.6.
+  `mimic` 2.5 for tests.
 
 ## 0.1.0-rc.6 (2026-11-04)
 
