@@ -8,7 +8,7 @@ get only the tokens of the person it works for. When there's none, that person i
 Nothing here calls a model. `"Iv1.your-client-id"` stands for your GitHub OAuth app.
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.6"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.7"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do

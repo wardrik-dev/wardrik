@@ -2,6 +2,11 @@
 
 ## 0.1.0-rc.7 (2026-11-05)
 
+- `:agents` spreads agents across nodes: each new agent, and each agent a lost node ran, starts on
+  the node with the most room under `max_per_node`, `max_memory` and `max_cpu`. Idle agents
+  compact their memory after `hibernate_after` seconds.
+- Locks wardrik_core, wardrik_protocol, wardrik_store, wardrik_events, wardrik_triggers and
+  wardrik_channel at their latest, and ecto 3.14.3 for EEF-CVE-2026-118391.
 - Defining an agent another node is starting at the same moment takes the one that node started.
   It failed with `didn't start: {:already_started, pid}`.
 

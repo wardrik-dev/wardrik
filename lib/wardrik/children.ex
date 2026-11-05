@@ -121,5 +121,16 @@ defmodule Wardrik.Children do
   defp listener({module, opts}, name), do: {module, Keyword.put(opts, :wardrik, name)}
   defp listener(module, name), do: {module, wardrik: name}
 
-  defp agents(wardrik), do: {WardrikCore, name: Wardrik.agents(wardrik), backend: wardrik.backend}
+  defp agents(wardrik) do
+    {WardrikCore,
+     [name: Wardrik.agents(wardrik), backend: wardrik.backend] ++ placement(wardrik.agents)}
+  end
+
+  defp placement(agents) do
+    Enum.map(agents, fn
+      {:max_per_node, limit} -> {:max_children, limit}
+      {:hibernate_after, seconds} -> {:hibernate_after, :timer.seconds(seconds)}
+      limit -> limit
+    end)
+  end
 end

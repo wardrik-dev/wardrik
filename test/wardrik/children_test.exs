@@ -80,6 +80,31 @@ defmodule Wardrik.ChildrenTest do
     assert {:ok, _vsn} = WardrikStore.put(store, "here", true)
   end
 
+  test "hands its agents' limits and idle hibernation to the supervisor that runs them", %{
+    test: test
+  } do
+    wardrik =
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, :"placed #{test}"},
+        name: :"placed #{test}",
+        agents: [max_per_node: 2, max_memory: 95, max_cpu: 400, hibernate_after: 1]
+      )
+
+    start_supervised!({Wardrik, wardrik}, id: :placed)
+    agents = Module.concat(Wardrik.agents(wardrik), Agents)
+
+    assert %{total: %{limit: 2}} = DurableServer.Supervisor.current_capacity(agents)
+    assert %{hibernate_after: 1_000} = DurableServer.Supervisor.__get_config__(agents)
+
+    for name <- ["acme/one", "acme/two"] do
+      assert {:ok, _agent} =
+               Wardrik.start_agent(wardrik, agent_id: name, model: "anthropic:claude-haiku-4-5")
+    end
+
+    assert %{total: %{current: 2, limit: 2}} = DurableServer.Supervisor.current_capacity(agents)
+  end
+
   test "connects to the MCP servers it's given", %{test: test} do
     wardrik =
       Wardrik.new(

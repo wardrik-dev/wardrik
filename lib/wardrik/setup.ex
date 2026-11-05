@@ -29,6 +29,7 @@ defmodule Wardrik.Setup do
       authorizer: opts[:authorizer],
       retention: opts[:retention],
       backend: opts[:backend] || backend(store, opts[:discovery_interval_ms]),
+      agents: opts[:agents],
       policy: policy(opts[:policy]),
       capabilities:
         Map.new(opts[:capabilities], fn {name, entry} -> {to_string(name), entry} end),

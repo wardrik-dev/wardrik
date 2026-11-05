@@ -187,6 +187,39 @@ defmodule Wardrik do
               type: {:tuple, [:atom, :keyword_list]},
               doc: "Where agents are kept. The store unless set."
             ],
+            agents: [
+              type: :keyword_list,
+              default: [],
+              doc: """
+              Where agents run in a cluster, and how idle ones keep memory. Each new agent, and
+              each one a lost node ran, starts on the node with the most room under these limits.
+              With none set, it starts on the node that asked.
+              """,
+              keys: [
+                max_per_node: [
+                  type: :pos_integer,
+                  doc: """
+                  Most agents and conversations a node runs. A node at it takes no more, so leave
+                  room for a lost node's agents on the rest.
+                  """
+                ],
+                max_memory: [
+                  type: {:in, 1..100},
+                  doc: "Percent of the machine's memory above which a node takes no new agents."
+                ],
+                max_cpu: [
+                  type: :pos_integer,
+                  doc: """
+                  CPU percent above which a node takes no new agents. Above 100 counts a run queue
+                  longer than the cores.
+                  """
+                ],
+                hibernate_after: [
+                  type: :pos_integer,
+                  doc: "Seconds idle before an agent's process compacts its memory."
+                ]
+              ]
+            ],
             discovery_interval_ms: [
               type: :pos_integer,
               doc: "Milliseconds between looks for agents no node runs. `30_000` unless set."
@@ -238,6 +271,7 @@ defmodule Wardrik do
     :authorizer,
     :retention,
     :backend,
+    :agents,
     :policy,
     :capabilities,
     :policies,
@@ -279,7 +313,8 @@ defmodule Wardrik do
           trusted_workers: boolean(),
           egress: (String.t() -> :ok | {:error, String.t()}),
           prices: %{String.t() => WardrikCore.price()},
-          model_options: keyword()
+          model_options: keyword(),
+          agents: keyword()
         }
 
   @doc """

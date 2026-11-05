@@ -10,7 +10,7 @@ cap what they spend, and a record of everything they did.
 ```elixir
 def deps do
   [
-    {:wardrik, "~> 0.1.0-rc.6"}
+    {:wardrik, "~> 0.1.0-rc.7"}
   ]
 end
 ```
@@ -69,6 +69,22 @@ scope
 |> Wardrik.Agent.stream(agent, "Summarize yesterday's notes.")
 |> Enum.each(&IO.write/1)
 ```
+
+## Spread agents across nodes
+
+Run Wardrik on several connected nodes and each agent runs on one of them. Any node reaches it.
+
+```elixir
+config :my_app, MyApp.AgentRuntime,
+  agents: [max_per_node: 5_000, max_memory: 80, hibernate_after: 60]
+```
+
+- Each new agent starts on the node with the most room, and a lost node's agents restart on the
+  others.
+- A node at `max_per_node`, or above `max_memory` or `max_cpu` percent, takes no new agents.
+- Idle agents compact their memory after `hibernate_after` seconds.
+
+See [Nodes](pages/running-wardrik.md#nodes).
 
 ## See it in action
 
