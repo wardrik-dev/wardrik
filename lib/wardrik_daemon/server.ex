@@ -68,6 +68,7 @@ defmodule WardrikDaemon.Server do
       )
 
   defp store({:postgres, url}, _cluster, _name, _dirs), do: WardrikStore.Ecto.new(url: url)
+  defp store({:s3, opts}, _cluster, _name, _dirs), do: WardrikStore.S3.new(opts)
 
   defp keys([_ | _] = keys, _dirs, _env), do: keys
   defp keys([], _dirs, %{"WARDRIK_VAULT_KEY" => key}), do: [key]

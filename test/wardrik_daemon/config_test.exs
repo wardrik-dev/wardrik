@@ -129,9 +129,37 @@ defmodule WardrikDaemon.ConfigTest do
 
     assert {:ok, %Config{storage: nil}} = read(context, "org: acme\n")
     assert {:error, why} = read(context, "storage: {s3: {bucket: b}}\n")
-    assert why =~ "storage: unknown options [:s3], valid options are: [:postgres]"
+    assert why =~ "storage.s3: required :endpoint option not found"
+    assert {:error, why} = read(context, "storage: {}\n")
+    assert why =~ "storage: give one of postgres and s3"
     assert {:error, why} = read(context, "storage: {postgres: {url: mysql://x}}\n")
     assert why =~ "storage.postgres: invalid value for :url option: is a postgres:// URL"
+  end
+
+  test "reads an S3 bucket to keep everything in, with its keys from the environment", context do
+    write(context, "config.yaml", """
+    storage:
+      s3:
+        bucket: wardrik
+        endpoint: https://fly.storage.tigris.dev
+        region: auto
+        access_key_id: ${S3_KEY}
+        secret_access_key: ${S3_SECRET}
+        headers: {x-tigris-consistent: "true"}
+    """)
+
+    env = Map.merge(context.env, %{"S3_KEY" => "id", "S3_SECRET" => "secret"})
+
+    assert {:ok, %{storage: {:s3, s3}}} = Config.bootstrap(Dirs.new(env), env)
+
+    assert Enum.sort(s3) == [
+             access_key_id: "id",
+             bucket: "wardrik",
+             endpoint: "https://fly.storage.tigris.dev",
+             headers: [{"x-tigris-consistent", "true"}],
+             region: "auto",
+             secret_access_key: "secret"
+           ]
   end
 
   test "reads the cluster, from the environment alone", context do

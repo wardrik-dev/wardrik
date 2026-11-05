@@ -141,7 +141,18 @@ storage:
   `vault`, `http`, `storage` and `cluster` read the environment only.
 - An unknown key is an error that names its path:
   `config.yaml: oauth.providers.google: unknown options [:colour], valid options are: [...]`.
-- Without `storage`, everything is kept on the node's disk.
+- Without `storage`, everything is kept on the node's disk. `storage` takes `postgres` or an S3
+  bucket:
+
+```yaml
+storage:
+  s3:
+    bucket: wardrik
+    endpoint: https://s3.us-east-1.amazonaws.com   # AWS, R2, Tigris or MinIO
+    access_key_id: ${S3_ACCESS_KEY_ID}
+    secret_access_key: ${S3_SECRET_ACCESS_KEY}
+```
+
 - `wardrik doctor` checks the file, running or not.
 
 | Key | Reference |
@@ -261,7 +272,7 @@ agents:
 
 With the store on the nodes' disks, a write needs more than half the nodes. Three nodes carry on
 with one lost; two stop when either is. A node starting waits for enough others, up to an hour.
-With `storage` in Postgres, nodes don't wait for each other.
+With `storage` in Postgres or S3, nodes don't wait for each other.
 
 On several machines, name one node per machine in full, or find them by DNS:
 

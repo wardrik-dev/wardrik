@@ -168,17 +168,43 @@ defmodule WardrikDaemon.Config do
             ],
             storage: [
               type: :keyword_list,
-              doc: "Where everything is kept. The node's disk unless set.",
+              doc: "Where everything is kept: `postgres` or `s3`. The node's disk unless set.",
               keys: [
                 postgres: [
                   type: :keyword_list,
-                  required: true,
                   doc: "Keeps everything in Postgres.",
                   keys: [
                     url: [
                       type: {:custom, __MODULE__, :postgres, []},
                       required: true,
                       doc: "A `postgres://` URL."
+                    ]
+                  ]
+                ],
+                s3: [
+                  type: :keyword_list,
+                  doc: "Keeps everything in an S3 bucket: AWS, R2, Tigris or MinIO.",
+                  keys: [
+                    bucket: [type: :string, required: true, doc: "The bucket."],
+                    endpoint: [
+                      type: :string,
+                      required: true,
+                      doc: "The service's URL, as `https://s3.us-east-1.amazonaws.com`."
+                    ],
+                    region: [
+                      type: :string,
+                      doc: "As the service names it. `us-east-1` unless set; R2 takes `auto`."
+                    ],
+                    access_key_id: [type: :string, required: true, doc: "The key's ID."],
+                    secret_access_key: [type: :string, required: true, doc: "The key's secret."],
+                    session_token: [type: :string, doc: "For temporary credentials."],
+                    prefix: [
+                      type: :string,
+                      doc: "Where in the bucket keys go. `wardrik` unless set."
+                    ],
+                    headers: [
+                      type: {:map, :string, :string},
+                      doc: "Sent with every request, as `x-tigris-consistent: \"true\"`."
                     ]
                   ]
                 ]
@@ -237,6 +263,9 @@ defmodule WardrikDaemon.Config do
             wardrik: [],
             warnings: []
 
+  @typedoc "Where everything is kept: Postgres's URL, an S3 bucket's `WardrikStore.S3` options, or `nil` for the node's disk."
+  @type storage() :: {:postgres, String.t()} | {:s3, keyword()} | nil
+
   @type t() :: %__MODULE__{
           org: String.t(),
           orgs: %{String.t() => Orgs.entry()},
@@ -258,7 +287,7 @@ defmodule WardrikDaemon.Config do
           port: :inet.port_number(),
           ip: :inet.ip_address(),
           trusted_workers: boolean(),
-          storage: {:postgres, String.t()} | nil,
+          storage: storage(),
           cluster: Cluster.t() | nil,
           wardrik: keyword(),
           warnings: [String.t()]
@@ -295,7 +324,7 @@ defmodule WardrikDaemon.Config do
              keys: [String.t()],
              port: :inet.port_number(),
              ip: :inet.ip_address(),
-             storage: {:postgres, String.t()} | nil,
+             storage: storage(),
              cluster: Cluster.t() | nil
            }}
           | {:error, String.t()}
@@ -305,13 +334,14 @@ defmodule WardrikDaemon.Config do
     with {:ok, yaml} <- yaml(path, env),
          {:ok, early} <- interpolated(Map.take(yaml, @bootstrap), env, nil),
          {:ok, opts} <- Options.validate(Map.merge(Map.drop(yaml, @later), early), @schema, nil),
-         {:ok, cluster} <- Cluster.new(opts[:cluster]) do
+         {:ok, cluster} <- Cluster.new(opts[:cluster]),
+         {:ok, storage} <- storage(opts[:storage]) do
       {:ok,
        %{
          keys: opts[:vault][:keys],
          port: opts[:http][:port],
          ip: opts[:http][:ip],
-         storage: storage(opts[:storage]),
+         storage: storage,
          cluster: cluster
        }}
     else
@@ -398,7 +428,8 @@ defmodule WardrikDaemon.Config do
          {:ok, prices} <- prices(opts[:models][:prices]),
          {:ok, model_options} <- model_options(opts[:models][:options]),
          {:ok, gateway} <- gateway(opts[:models][:gateway]),
-         {:ok, cluster} <- Cluster.new(opts[:cluster]) do
+         {:ok, cluster} <- Cluster.new(opts[:cluster]),
+         {:ok, storage} <- storage(opts[:storage]) do
       config = %__MODULE__{
         org: org,
         orgs: orgs,
@@ -419,7 +450,7 @@ defmodule WardrikDaemon.Config do
         port: opts[:http][:port],
         ip: opts[:http][:ip],
         trusted_workers: opts[:http][:trusted_workers],
-        storage: storage(opts[:storage]),
+        storage: storage,
         cluster: cluster,
         wardrik: Keyword.take(opts, @wardrik)
       }
@@ -431,8 +462,15 @@ defmodule WardrikDaemon.Config do
 
   defp declared(orgs, org), do: [org | Map.keys(orgs) -- ["*"]]
 
-  defp storage(nil), do: nil
-  defp storage(postgres: [url: url]), do: {:postgres, url}
+  defp storage(nil), do: {:ok, nil}
+  defp storage(postgres: [url: url]), do: {:ok, {:postgres, url}}
+
+  defp storage(s3: s3) do
+    {headers, s3} = Keyword.pop(s3, :headers, %{})
+    {:ok, {:s3, s3 ++ [headers: Map.to_list(headers)]}}
+  end
+
+  defp storage(_both_or_neither), do: {:error, "storage: give one of postgres and s3"}
 
   defp defined(mcp, channels, notify) do
     %{

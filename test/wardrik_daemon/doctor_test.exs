@@ -114,7 +114,21 @@ defmodule WardrikDaemon.DoctorTest do
 
     assert [{:fail, "Postgres at 127.0.0.1:1/w doesn't answer: " <> _}] =
              found(run(context.env), "storage")
+
+    write(context, "config.yaml", s3("http://127.0.0.1:#{listening()}"))
+
+    assert [{:ok, "keeps everything in the bucket wardrik at http://127.0.0.1:" <> _}] =
+             found(run(context.env), "storage")
+
+    write(context, "config.yaml", s3("http://127.0.0.1:1"))
+
+    assert [{:fail, "the bucket wardrik at http://127.0.0.1:1 doesn't answer: " <> _}] =
+             found(run(context.env), "storage")
   end
+
+  defp s3(endpoint),
+    do:
+      "storage: {s3: {bucket: wardrik, endpoint: \"#{endpoint}\", access_key_id: k, secret_access_key: s}}\n"
 
   test "says what doesn't read, and why", context do
     env_file = write(context, "env", "A=1\nnot a variable\n")

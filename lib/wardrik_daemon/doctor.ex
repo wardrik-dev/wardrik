@@ -157,6 +157,16 @@ defmodule WardrikDaemon.Doctor do
     end
   end
 
+  defp storage(%Config{storage: {:s3, opts}}, _dirs) do
+    where = "the bucket #{opts[:bucket]} at #{opts[:endpoint]}"
+    %URI{host: host, port: port} = URI.parse(opts[:endpoint])
+
+    case reachable(host, port) do
+      :ok -> {:ok, "storage", "keeps everything in #{where}"}
+      {:error, why} -> {:fail, "storage", "#{where} doesn't answer: #{why}"}
+    end
+  end
+
   defp brave(%Config{brave: nil}),
     do: {:warn, "brave", "web_search has no key; give it brave.api_key"}
 

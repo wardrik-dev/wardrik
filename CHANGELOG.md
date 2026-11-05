@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `storage: {s3: ...}` keeps everything in an S3 bucket: AWS, R2, Tigris or MinIO. Nodes don't wait
+  for a quorum. `wardrik doctor` checks the endpoint answers.
 - `cluster` in `config.yaml` runs several daemons as one: `nodes: [a, b, c]` on one machine, full
   names on several, or `dns` and `size`. `libcluster` connects them. The store on the nodes'
   disks counts its quorum over the cluster, and a node waits for one as it starts. See
