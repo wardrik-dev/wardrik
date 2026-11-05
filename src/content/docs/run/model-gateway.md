@@ -39,6 +39,10 @@ Gateway overhead per model call on a 32-thread AMD Ryzen AI Max+ 395.
 
 - Limits are counted per node. In a [cluster](/run/cluster/), divide each provider's quota between
   the nodes.
+- A node only uses its own share. If most busy agents run on one node, that node waits at its
+  limit while the others have room. [Spread agents](/run/cluster/#spread-agents) to even it out.
+- When a node is lost, the cluster runs on the remaining nodes' shares until you raise them.
+- Each node has its own breakers. Each one sees a model fail before it stops calling it.
 - The daemon opens up to 64 connections per provider host.
 
 ## Settings
