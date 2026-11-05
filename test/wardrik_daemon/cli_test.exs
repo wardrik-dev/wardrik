@@ -362,7 +362,8 @@ defmodule WardrikDaemon.CLITest do
       assert waiting =~ ~s(→ echo {"text":"hi"})
       assert waiting =~ "Waiting on a person for 1 call:"
       assert waiting =~ "? echo  call_1"
-      assert waiting =~ "wardrik approval approve triage ID"
+      assert waiting =~ "Decide with:\n  wardrik approval approve triage call_1\n"
+      assert waiting =~ "  wardrik approval deny triage call_1"
 
       assert {0, parked} = wardrik(context, ["approval", "ls"])
       assert parked =~ ~r/^triage\s+call_1\s+echo/m
@@ -372,6 +373,33 @@ defmodule WardrikDaemon.CLITest do
 
       assert failing(context, ["approval", "deny", "triage", "call_1"]) =~
                "doesn't wait on call_1"
+    end
+
+    test "asks about a call where the turn stops, and goes on once it's decided", context do
+      context = put_in(context.env["WARDRIK_INPUT"], "1")
+
+      answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Echoed.")])
+      assert {0, approved} = wardrik(context, ["ask", "triage", "Echo hi"], "maybe\ny\n")
+      assert approved =~ "╭─ echo ─"
+      refute approved =~ "needs your approval"
+      assert approved =~ ~s("text": "hi")
+      assert approved =~ "Approve echo? [y/n, Enter leaves it]"
+      assert approved =~ "y approves it, n denies it, and Enter leaves it waiting"
+      assert approved =~ "✓ echo"
+      assert approved =~ "Echoed."
+      refute approved =~ "Decide with:"
+
+      answers([calling("call_2", "echo", %{"text" => "no"}), answer("Fine, I won't.")])
+      assert {0, denied} = wardrik(context, ["ask", "triage", "Echo no"], "n\nNot now.\n")
+      assert denied =~ "Why? The model reads it."
+      assert denied =~ "echo was refused: Not now."
+      assert denied =~ "Fine, I won't."
+
+      answers([calling("call_3", "echo", %{"text" => "later"})])
+      assert {0, left} = wardrik(context, ["ask", "triage", "Echo later"], "\n")
+      assert left =~ "  wardrik approval approve triage call_3"
+      assert {0, parked} = wardrik(context, ["approval", "ls"])
+      assert parked =~ ~r/^triage\s+call_3\s+echo/m
     end
 
     test "seals the key it's given, reads the assistant's file, and asks it", context do
