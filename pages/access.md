@@ -10,7 +10,7 @@ no. Wardrik keeps no roles of its own.
 Maps stand in for your tables:
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.6"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.7"}])
 
 defmodule MyApp.Authorizer do
   @behaviour Wardrik.Authorizer

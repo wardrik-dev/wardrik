@@ -15,7 +15,7 @@ children = [MyApp.AgentRuntime]
 ## Try it in IEx
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.6"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.7"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do
@@ -80,9 +80,20 @@ store: {WardrikStore.Ecto, repo: MyApp.Repo}
 
 # In a Postgres of its own, which migrates itself
 store: {WardrikStore.Ecto, url: "postgres://user:pass@db.example.com/my_app"}
+
+# In an S3 bucket: AWS, R2, Tigris or MinIO
+store:
+  {WardrikStore.S3,
+   bucket: "my-app",
+   endpoint: "https://s3.us-east-1.amazonaws.com",
+   access_key_id: System.fetch_env!("S3_ACCESS_KEY_ID"),
+   secret_access_key: System.fetch_env!("S3_SECRET_ACCESS_KEY")}
 ```
 
-- `WardrikStore.Ecto` needs `:ecto_sql` and `:postgrex` in your deps.
+- `WardrikStore.Ecto` needs `:ecto_sql` and `:postgrex` in your deps, and `WardrikStore.S3` needs
+  `:req`.
+- In a cluster, EKV needs more than half the nodes up to write. Postgres and S3 need none, and the
+  data outlives every node.
 - To share a store with your app, build it and give it to both. The second to start it leaves it be:
 
 ```elixir
@@ -130,6 +141,27 @@ Wardrik.Deployment.reload(scope)
 ```
 
 In IEx, `move` returns `invalid_request`: there's no `wardrik@box2`.
+
+### Spread agents
+
+`:agents` says where agents start:
+
+```elixir
+config :my_app, MyApp.AgentRuntime,
+  agents: [max_per_node: 5_000, max_memory: 80, max_cpu: 90, hibernate_after: 60]
+```
+
+- Each new agent, and each agent a lost node ran, starts on the node with the most room under
+  these limits. With none set, it starts on the node that asked.
+- `max_per_node` counts agents and their conversations. A node at it takes no more, so leave room
+  for a lost node's agents on the rest. A start that finds every node full fails with
+  `{:capacity_limit, reason}`.
+- `max_memory` and `max_cpu` are percents of the machine. Nodes on one machine read the same
+  numbers, so only `max_per_node` spreads agents between them.
+- Running agents stay where they are. Move one with `Wardrik.Agent.move/3`.
+- `hibernate_after` is seconds idle before an agent's process compacts its memory. It wakes on the
+  next message.
+- Wardrik reads `:agents` as it starts. Restart it to change them.
 
 ## Agents started in code
 

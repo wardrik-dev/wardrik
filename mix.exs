@@ -115,7 +115,7 @@ defmodule Wardrik.MixProject do
       {:nimble_options, "~> 1.1"},
       {:ecto_sql, "~> 3.13", optional: true},
       {:postgrex, "~> 0.22", only: :test},
-      {:mimic, "~> 2.4", only: :test},
+      {:mimic, "~> 2.5", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
