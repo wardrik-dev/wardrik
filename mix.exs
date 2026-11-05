@@ -4,7 +4,7 @@ defmodule WardrikStore.MixProject do
   def project do
     [
       app: :wardrik_store,
-      version: "0.1.0-rc.4",
+      version: "0.1.0-rc.5",
       elixir: "~> 1.20",
       description: "A durable key-value store that Wardrik packages keep their data in.",
       package: package(),
@@ -22,7 +22,9 @@ defmodule WardrikStore.MixProject do
           :ecto_sql,
           :postgrex,
           :db_connection,
-          :durable_server
+          :durable_server,
+          :req,
+          :xmerl
         ],
         plt_core_path: "priv/plts",
         plt_local_path: "priv/plts"
@@ -36,7 +38,7 @@ defmodule WardrikStore.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :xmerl]
     ]
   end
 
@@ -50,6 +52,7 @@ defmodule WardrikStore.MixProject do
       WardrikStore.Counter,
       WardrikStore.TestRepo,
       WardrikStore.TestMigration,
+      WardrikStore.Test.S3Bucket,
       WardrikStore.Ecto.Repo.V1
     ]
 
@@ -95,7 +98,9 @@ defmodule WardrikStore.MixProject do
       {:ekv, "~> 0.4.8", optional: true},
       {:ecto_sql, "~> 3.13", optional: true},
       {:postgrex, "~> 0.22", optional: true},
-      {:durable_server, "~> 0.1.6", optional: true},
+      {:durable_server, "~> 0.1.7", optional: true},
+      {:req, "~> 0.5", optional: true},
+      {:plug, "~> 1.16", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},

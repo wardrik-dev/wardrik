@@ -8,7 +8,7 @@ A durable key-value store. Wardrik packages keep their data in it, and
 ```elixir
 def deps do
   [
-    {:wardrik_store, "~> 0.1.0-rc.4"}
+    {:wardrik_store, "~> 0.1.0-rc.5"}
   ]
 end
 ```
@@ -27,12 +27,24 @@ A store that's already running starts nothing, so each package that uses it can 
 | `WardrikStore.ETS` | In memory. For tests and data you can rebuild | Nothing |
 | `WardrikStore.EKV` | On disk, on each connected node | `{:ekv, "~> 0.4"}` |
 | `WardrikStore.Ecto` | In Postgres | `{:ecto_sql, "~> 3.13"}`, and `:postgrex` for `:url` |
+| `WardrikStore.S3` | In an S3 bucket: AWS, R2, Tigris or MinIO | `{:req, "~> 0.5"}` |
 
 ```elixir
 store = WardrikStore.EKV.new(name: MyApp.Store, data_dir: "/var/lib/my_app")
 store = WardrikStore.Ecto.new(repo: MyApp.Repo)
 store = WardrikStore.Ecto.new(url: "postgres://user:pass@db.example.com/wardrik?ssl=true")
+
+store =
+  WardrikStore.S3.new(
+    bucket: "wardrik",
+    endpoint: "https://s3.us-east-1.amazonaws.com",
+    access_key_id: System.fetch_env!("S3_ACCESS_KEY_ID"),
+    secret_access_key: System.fetch_env!("S3_SECRET_ACCESS_KEY")
+  )
 ```
+
+EKV keeps a copy on each node and needs a quorum of them to write. Postgres and S3 keep data
+off the nodes, so each node starts on its own and the data outlives all of them.
 
 With your own repo, create the table in a migration:
 

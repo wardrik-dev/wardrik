@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.5 (2026-11-05)
+
+- `WardrikStore.S3` keeps keys in an S3 bucket: AWS, R2, Tigris or MinIO. It checks the bucket
+  refuses failed conditional writes before it starts, and reads back a write whose answer was
+  lost.
+- ecto 3.14.3, for EEF-CVE-2026-118391. durable_server `~> 0.1.7`.
+
 ## 0.1.0-rc.4 (2026-11-04)
 
 - `WardrikStore.EKV` takes a plain write or delete over a key written with `:if_vsn`, as the other
