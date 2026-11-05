@@ -89,6 +89,18 @@ defmodule WardrikStore.Conformance do
           assert {:second, ^second} = WardrikStore.lookup(store, key)
         end
 
+        test "takes a plain write and delete over a key written conditionally",
+             %{scoped: store} = context do
+          key = unique_key(context)
+
+          {:ok, _vsn} = WardrikStore.put(store, key, :first, if_vsn: nil)
+          assert {:ok, _vsn} = WardrikStore.put(store, key, :second)
+          assert WardrikStore.get(store, key) == :second
+          assert :ok = WardrikStore.delete(store, key)
+          assert WardrikStore.get(store, key) == nil
+          assert {:ok, _vsn} = WardrikStore.put(store, key, :again, if_vsn: nil)
+        end
+
         test "never takes a version again once it's written over", %{scoped: store} = context do
           key = unique_key(context)
 

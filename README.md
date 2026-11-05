@@ -8,7 +8,7 @@ A durable key-value store. Wardrik packages keep their data in it, and
 ```elixir
 def deps do
   [
-    {:wardrik_store, "~> 0.1.0-rc.3"}
+    {:wardrik_store, "~> 0.1.0-rc.4"}
   ]
 end
 ```

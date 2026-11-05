@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.4 (2026-11-04)
+
+- `WardrikStore.EKV` takes a plain write or delete over a key written with `:if_vsn`, as the other
+  adapters do. EKV refused them with `:cas_managed_key`, so removing a trigger, trimming an event
+  log, and deleting an OAuth grant or registration failed on it.
+
 ## 0.1.0-rc.3 (2026-11-03)
 
 - `WardrikStore.versions/2` lists keys with their versions, reading no values. Adapters can

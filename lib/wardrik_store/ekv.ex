@@ -8,8 +8,9 @@ if Code.ensure_loaded?(EKV) do
 
     Keys sit under `wardrik_store/`, so the store can share an EKV instance with other data.
 
-    Once a key is written with `:if_vsn`, keep writing it that way. EKV refuses an
-    unconditional write over it.
+    EKV refuses an unconditional write or delete over a key once it's written with `:if_vsn`.
+    This adapter then reads the key's version and writes over that, so a key takes both kinds
+    of writes, as with every other adapter.
     """
 
     @behaviour WardrikStore.Adapter
@@ -36,10 +37,11 @@ if Code.ensure_loaded?(EKV) do
     def child_spec(%{options: options}), do: EKV.child_spec(options)
 
     @impl WardrikStore.Adapter
-    def put(%{name: name}, path, value, opts) do
+    def put(%{name: name} = config, path, value, opts) do
       case EKV.put(name, @root <> path, value, conditional(opts)) do
         :ok -> {:ok, nil}
         {:ok, vsn} -> {:ok, vsn}
+        {:error, :cas_managed_key} -> over(config, path, &put(config, path, value, if_vsn: &1))
         {:error, reason} -> {:error, reason}
       end
     end
@@ -48,12 +50,28 @@ if Code.ensure_loaded?(EKV) do
     def lookup(%{name: name}, path), do: EKV.lookup(name, @root <> path)
 
     @impl WardrikStore.Adapter
-    def delete(%{name: name}, path, opts) do
+    def delete(%{name: name} = config, path, opts) do
       case EKV.delete(name, @root <> path, conditional(opts)) do
         :ok -> :ok
         {:ok, _vsn} -> :ok
         {:error, :not_found} -> :ok
+        {:error, :cas_managed_key} -> over(config, path, &delete(config, path, if_vsn: &1))
         {:error, reason} -> {:error, reason}
+      end
+    end
+
+    # An unconditional write over a key EKV manages by version: over the version read, again
+    # if another write lands between the read and this one.
+    defp over(config, path, write) do
+      vsn =
+        case lookup(config, path) do
+          {_value, vsn} -> vsn
+          nil -> nil
+        end
+
+      case write.(vsn) do
+        {:error, :conflict} -> over(config, path, write)
+        written -> written
       end
     end
 
