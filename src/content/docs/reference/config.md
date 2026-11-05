@@ -64,7 +64,7 @@ notify:
 | `deployment_keys` | `true` | agents fall back to deployment API keys when their owner has none |
 | `allow_private_urls` | `false` | allow MCP servers, webhooks and OAuth apps at private addresses; local use only |
 | [`defaults`](#defaults) | `{}` | default values for keys a definition omits |
-| [`models`](#models) | `{}` | prices, call options, the connection pool and the gateway for models |
+| [`models`](#models) | `{}` | prices, call options and the gateway for models |
 | [`mcp`](#mcp) | `{}` | MCP servers |
 | [`oauth`](#oauth) | none | OAuth providers |
 | [`channels`](#channels) | `{}` | chat apps |
@@ -155,7 +155,6 @@ models:
     zai:glm-5.1: {input: 0.60, output: 2.20}
     zai_coding_plan:glm-5.1: {priced_as: zai:glm-5.1, markup: 0.1}
   options: {temperature: 0.2, receive_timeout: 600000}
-  pool: {size: 128, protocols: [http2]}
   gateway:
     fallbacks: {anthropic:claude-sonnet-4-5: [openai:gpt-5]}
     limits: {anthropic: {requests_per_minute: 4000, tokens_per_minute: 400000}}
@@ -165,7 +164,6 @@ models:
 | --- | --- | --- |
 | `prices` | `{}` | prices for models not in the catalog, in dollars per million tokens |
 | `options` | `{}` | options for every model call, as [ReqLLM](https://hexdocs.pm/req_llm) takes them |
-| `pool` | `{size: 64, count: 1, protocols: [http1]}` | connections per provider host |
 | `gateway` | breakers only | fallbacks, limits and breakers every model call goes through; see [Model gateway](/run/model-gateway/) |
 
 - A price takes `input`, `output`, `cache_read`, `cache_write`, or `priced_as` another model; each
@@ -173,7 +171,6 @@ models:
 - `options` takes any ReqLLM option, such as `base_url`, checked against ReqLLM's own. Its
   timeouts are in milliseconds. An agent's [`model_options`](/reference/agent-files/#model_options)
   merge over it.
-- Raise `pool` when many agents call one provider at once.
 - `wardrik reload` applies changes to all of them.
 
 ## mcp

@@ -39,7 +39,7 @@ Gateway overhead per model call on a 32-thread AMD Ryzen AI Max+ 395.
 
 - Limits are counted per node. In a [cluster](/run/cluster/), divide each provider's quota between
   the nodes.
-- Connections per provider are set by [`models.pool`](/reference/config/#models).
+- The daemon opens up to 64 connections per provider host.
 
 ## Settings
 
