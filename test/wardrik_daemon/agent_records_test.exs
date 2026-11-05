@@ -73,10 +73,17 @@ defmodule WardrikDaemon.AgentRecordsTest do
     assert WardrikStore.keys(store, "agents/") == ["agents/" <> URI.encode_www_form(notes.id)]
   end
 
-  test "takes a name whose record is gone", %{store: store} do
-    {:ok, _vsn} = WardrikStore.put(store, "agent_names/acme/notes", "agt_gone")
-    assert {:ok, record} = AgentRecords.create(store, owner: "acme", name: "notes", source: :api)
-    assert AgentRecords.named(store, "acme", "notes") == {:ok, record}
+  test "reads who holds a name from its claim, before that record reaches this node", %{
+    store: store
+  } do
+    holder = %{id: "agt_elsewhere", org: "acme", owner: "acme", name: "notes", source: :file}
+    {:ok, _vsn} = WardrikStore.put(store, "agent_names/acme/notes", holder, if_vsn: nil)
+
+    assert {:error, {:taken, ^holder}} =
+             AgentRecords.create(store, owner: "acme", name: "notes", source: :file)
+
+    assert AgentRecords.named(store, "acme", "notes") == {:ok, holder}
+    assert WardrikStore.keys(store, "agents/") == []
   end
 
   test "names a definition's shared workspaces by the IDs of its org's agents", %{store: store} do

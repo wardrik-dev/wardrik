@@ -55,17 +55,15 @@ defmodule WardrikDaemon.AgentRecords do
   @spec named(WardrikStore.t(), String.t(), String.t()) :: {:ok, t()} | :error
   def named(store, org, name) do
     case WardrikStore.get(store, name_key(org, name)) do
+      %{} = record -> {:ok, record}
       nil -> :error
-      id -> fetch(store, id)
     end
   end
 
   @doc "Returns the records of `org`'s agents, by name."
   @spec in_org(WardrikStore.t(), String.t()) :: [t()]
-  def in_org(store, org) do
-    ids = for {_key, id, _vsn} <- WardrikStore.entries(store, name_key(org, "")), do: id
-    for id <- ids, {:ok, record} <- [fetch(store, id)], do: record
-  end
+  def in_org(store, org),
+    do: for({_key, record, _vsn} <- WardrikStore.entries(store, name_key(org, "")), do: record)
 
   @doc """
   Mints an ID for agent `:name`, owned by `:owner`, from `:source`, and records it.
@@ -92,53 +90,39 @@ defmodule WardrikDaemon.AgentRecords do
       source: Keyword.fetch!(args, :source)
     }
 
-    # The record is written before its name is claimed, so a claimed name always has one.
-    {:ok, _vsn} = WardrikStore.put(store, record_key(record.id), record)
-
-    case claimed(store, name_key(record.org, name), record.id, replaces) do
-      :ok ->
-        {:ok, record}
-
-      {:error, {:taken, _held}} = taken ->
-        :ok = WardrikStore.delete(store, record_key(record.id))
-        taken
+    with :ok <- claimed(store, name_key(record.org, name), record, replaces) do
+      {:ok, _vsn} = WardrikStore.put(store, record_key(record.id), record)
+      {:ok, record}
     end
   end
 
-  # Taking a name over writes only over the version read, so two can't both take it.
-  defp claimed(store, key, id, replaces) do
-    case WardrikStore.put(store, key, id, if_vsn: nil) do
+  # A name's claim holds its whole record, so whoever finds the name taken reads who holds it from
+  # the claim itself, even where the record by ID hasn't reached this node yet. Taking a name over
+  # writes only over the version read, so two can't both take it.
+  defp claimed(store, key, record, replaces) do
+    case WardrikStore.put(store, key, record, if_vsn: nil) do
       {:ok, _vsn} -> :ok
-      {:error, :conflict} -> held(store, key, id, replaces)
+      {:error, :conflict} -> held(store, key, record, replaces)
     end
   end
 
-  defp held(store, key, id, replaces) do
+  defp held(store, key, record, replaces) do
     case WardrikStore.lookup(store, key) do
-      nil -> claimed(store, key, id, replaces)
-      {held, vsn} -> held(store, {key, vsn}, id, replaces, record(store, held))
+      nil -> claimed(store, key, record, replaces)
+      {holder, vsn} -> held(store, {key, vsn}, record, replaces, holder)
     end
   end
 
-  defp held(store, {key, vsn}, id, replaces, record) do
-    if record == nil or replaces.(record) do
-      case WardrikStore.put(store, key, id, if_vsn: vsn) do
-        {:ok, _vsn} -> dropped(store, record)
-        {:error, :conflict} -> claimed(store, key, id, replaces)
+  defp held(store, {key, vsn}, record, replaces, holder) do
+    if replaces.(holder) do
+      case WardrikStore.put(store, key, record, if_vsn: vsn) do
+        {:ok, _vsn} -> dropped(store, holder)
+        {:error, :conflict} -> claimed(store, key, record, replaces)
       end
     else
-      {:error, {:taken, record}}
+      {:error, {:taken, holder}}
     end
   end
-
-  defp record(store, id) do
-    case fetch(store, id) do
-      {:ok, record} -> record
-      :error -> nil
-    end
-  end
-
-  defp dropped(_store, nil), do: :ok
 
   defp dropped(store, record), do: WardrikStore.delete(store, record_key(record.id))
 
@@ -183,7 +167,7 @@ defmodule WardrikDaemon.AgentRecords do
     key = name_key(record.org, record.name)
 
     case WardrikStore.lookup(store, key) do
-      {^id, vsn} -> _deleted = WardrikStore.delete(store, key, if_vsn: vsn)
+      {%{id: ^id}, vsn} -> _deleted = WardrikStore.delete(store, key, if_vsn: vsn)
       _other -> :ok
     end
 
