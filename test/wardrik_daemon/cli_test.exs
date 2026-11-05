@@ -6,6 +6,8 @@ defmodule WardrikDaemon.CLITest do
   import WardrikDaemon.Test
 
   alias WardrikDaemon.CLI
+  alias WardrikDaemon.CLI.Terminal
+  alias WardrikDaemon.Test.Screen
 
   setup :set_mimic_global
 
@@ -368,11 +370,64 @@ defmodule WardrikDaemon.CLITest do
       assert {0, parked} = wardrik(context, ["approval", "ls"])
       assert parked =~ ~r/^triage\s+call_1\s+echo/m
 
+      # At a terminal, other commands end by saying what waits.
+      tty = %Terminal{tty?: true}
+
+      footed = fn argv ->
+        capture_io(fn -> CLI.main(argv, env: context.env, terminal: tty) end)
+      end
+
+      assert footed.(["ls"]) =~ "1 call waits on you: wardrik approval approve triage call_1"
+      refute footed.(["approval", "ls"]) =~ "waits on you:"
+      refute footed.(["ls", "--json"]) =~ "waits on you:"
+
       assert {0, "Approved call_1.\n"} =
                wardrik(context, ["approval", "approve", "triage", "call_1", "--note", "Go."])
 
       assert failing(context, ["approval", "deny", "triage", "call_1"]) =~
                "doesn't wait on call_1"
+
+      refute footed.(["ls"]) =~ "waits on you"
+    end
+
+    test "follows an agent, showing first what it waits on you for", context do
+      answers([calling("call_1", "echo", %{"text" => "hi"})])
+      assert {0, _waiting} = wardrik(context, ["ask", "triage", "Echo hi"])
+
+      {:ok, device, _written} = Screen.start_link(notify: self())
+      env = context.env
+      test = self()
+
+      follower =
+        spawn(fn ->
+          Process.group_leader(self(), device)
+          send(test, {:followed, CLI.main(["follow", "triage"], env: env)})
+        end)
+
+      on_exit(fn -> Process.exit(follower, :kill) end)
+      screen("triage waits on you:")
+      screen("wardrik approval approve triage call_1")
+
+      answers([answer("Echoed.")])
+      approve = %{"agent" => id(context, "acme", "triage"), "interrupt" => "call_1"}
+      assert {:ok, _approved} = Wardrik.run(context.admin, "agent.approve", approve)
+      screen("✓\e[0m echo")
+    end
+
+    test "goes through what waits on a person, deciding each", context do
+      typing = put_in(context.env["WARDRIK_INPUT"], "1")
+      assert {0, "Nothing waits on a person.\n"} = wardrik(typing, ["approval"])
+
+      answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Echoed.")])
+      assert {0, _waiting} = wardrik(context, ["ask", "triage", "Echo hi"])
+
+      assert {0, listed} = wardrik(context, ["approval"])
+      assert listed =~ ~r/^triage\s+call_1\s+echo/m
+
+      assert {0, reviewed} = wardrik(typing, ["approval"], "y\n")
+      assert reviewed =~ "1 of 1 · triage"
+      assert reviewed =~ "Approve echo? [y/n, Enter leaves it]"
+      assert reviewed =~ "Decided 1 of 1."
     end
 
     test "asks about a call where the turn stops, and goes on once it's decided", context do
@@ -418,10 +473,10 @@ defmodule WardrikDaemon.CLITest do
     end
 
     test "shows what a turn does on a live line, and sums it up where it stops", context do
-      {:ok, device, written} = WardrikDaemon.Test.Screen.start_link([])
+      {:ok, device, written} = Screen.start_link([])
       screen = :"screen #{context.test}"
       start_supervised!({Owl.LiveScreen, name: screen, device: device})
-      terminal = %WardrikDaemon.CLI.Terminal{width: 80, input?: true, live: screen}
+      terminal = %Terminal{width: 80, input?: true, live: screen}
 
       answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Two cases.")])
       context = put_in(context.env["WARDRIK_INPUT"], "1")
@@ -436,7 +491,7 @@ defmodule WardrikDaemon.CLITest do
       direct = capture_io("y\n", run)
       assert_received {:status, 0}
 
-      live = WardrikDaemon.Test.Screen.written(written)
+      live = Screen.written(written)
       assert direct <> live =~ "→ echo"
       assert live =~ "? waits on you after 0s"
       assert live =~ ~r/✔ \d+s · 1 tool call/
@@ -784,6 +839,16 @@ defmodule WardrikDaemon.CLITest do
 
       assert {0, listed} = wardrik(%{context | env: remote}, ["ls"])
       assert listed =~ ~r/^triage\s+idle/m
+    end
+  end
+
+  # Waits for the test screen to show `text`.
+  defp screen(text, shown \\ "") do
+    receive do
+      {:screen, written} -> if written =~ text, do: written, else: screen(text, written)
+      {:followed, status} -> flunk("It stopped following, with #{status}.")
+    after
+      5_000 -> flunk("The screen never showed #{inspect(text)}, only #{inspect(shown)}.")
     end
   end
 

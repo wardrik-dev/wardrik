@@ -119,7 +119,7 @@ defmodule WardrikDaemon.CLI do
 
   defp run(command, args, flags, [], cx) do
     if Command.takes?(command, length(args)),
-      do: command.run.(args, flags, cx),
+      do: with(:ok <- command.run.(args, flags, cx), do: Approvals.footer(cx, command)),
       else: {:error, "Usage: #{cx.program} #{Command.usage(command)}"}
   end
 

@@ -3,6 +3,7 @@ defmodule WardrikDaemon.CLI.Approvals do
 
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
+  alias WardrikDaemon.CLI.Decide
   alias WardrikDaemon.CLI.Table
 
   @group "Approvals"
@@ -11,6 +12,16 @@ defmodule WardrikDaemon.CLI.Approvals do
   @spec commands() :: [Command.t()]
   def commands do
     [
+      %Command{
+        name: "approval",
+        group: @group,
+        summary: "go through the calls agents wait on a person for, deciding each",
+        details: [
+          "At a terminal it shows each call and asks whether to approve it; Enter skips it.",
+          "Elsewhere, or with --json, it lists them, as approval ls does."
+        ],
+        run: &reviewed/3
+      },
       %Command{
         name: "approval ls",
         group: @group,
@@ -40,6 +51,72 @@ defmodule WardrikDaemon.CLI.Approvals do
         run: &decided(&1, &2, &3, "agent.deny", :reason, "Denied")
       }
     ]
+  end
+
+  @doc """
+  After `command` at a terminal, says what waits on a person, if anything does: the command for
+  one call, or `approval ls` for more. Approvals, `ask`, `follow` and set-up say it themselves.
+  """
+  @spec footer(Context.t(), Command.t()) :: :ok
+  def footer(%{json?: false, terminal: %{tty?: true}} = cx, %Command{} = command) do
+    with false <- quiet?(command),
+         {:ok, %{"interrupts" => [_one | _more] = waiting}} <-
+           Context.call(cx, "interrupts.list", %{}) do
+      Context.puts(cx, ["\n", Owl.Data.tag(waits(cx, waiting), :light_black)])
+    end
+
+    :ok
+  end
+
+  def footer(_cx, _command), do: :ok
+
+  defp quiet?(%Command{group: group, name: name}),
+    do: group in [@group, "Set up"] or name in ["agent ask", "agent follow"]
+
+  defp waits(cx, [%{"agent" => %{"id" => agent}, "interrupt" => interrupt} = waiting]) do
+    name = typed(Context.names(cx), agent, waiting["conversation"])
+    "1 call waits on you: #{cx.program} approval approve #{Decide.decision(name, interrupt)}"
+  end
+
+  defp waits(cx, waiting), do: "#{length(waiting)} calls wait on you: #{cx.program} approval"
+
+  defp reviewed([], _flags, %{json?: false, terminal: %{input?: true}} = cx) do
+    with {:ok, %{"interrupts" => waiting}} <- Context.call(cx, "interrupts.list", %{}) do
+      review(cx, waiting)
+    end
+  end
+
+  defp reviewed([], flags, cx), do: listed([], flags, cx)
+
+  defp review(cx, []), do: Context.puts(cx, "Nothing waits on a person.")
+
+  defp review(cx, waiting) do
+    names = Context.names(cx)
+    count = length(waiting)
+
+    decided =
+      waiting
+      |> Enum.with_index(1)
+      |> Enum.count(fn {waiting, at} -> reviewed?(cx, names, waiting, "#{at} of #{count}") end)
+
+    Context.puts(cx, "Decided #{decided} of #{count}.")
+  end
+
+  defp reviewed?(cx, names, %{"agent" => %{"id" => agent}} = waiting, place) do
+    conversation = waiting["conversation"]
+    name = typed(names, agent, conversation)
+    Context.puts(cx, ["\n", Owl.Data.tag("#{place} · #{name}", :light_black)])
+
+    Decide.asked?(cx, waiting["interrupt"],
+      log: Context.conversation(%{"agent" => agent}, %{conversation: conversation}),
+      name: name
+    )
+  end
+
+  # How an agent, and its conversation, is typed in a command.
+  defp typed(names, agent, conversation) do
+    name = get_in(names, [agent, "shown"]) || agent
+    if conversation, do: "#{name} --conversation #{conversation}", else: name
   end
 
   defp listed([], _flags, cx) do

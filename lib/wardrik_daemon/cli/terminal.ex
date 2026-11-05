@@ -5,17 +5,19 @@ defmodule WardrikDaemon.CLI.Terminal do
     * Colour if stdout is a terminal, `NO_COLOR` is unset and `TERM` isn't `dumb`.
     * Otherwise plain text, 80 columns wide.
     * Input if `WARDRIK_INPUT` is `1`, which `bin/wardrik` sets for a terminal.
+    * `:tty?` - whether stdout is a terminal.
     * `:live` - the `Owl.LiveScreen` that redraws lines in place, where stdout is a terminal.
   """
 
   alias WardrikDaemon.Console.Ansi
 
-  defstruct width: 80, colour?: false, input?: false, live: nil
+  defstruct width: 80, colour?: false, input?: false, tty?: false, live: nil
 
   @type t() :: %__MODULE__{
           width: pos_integer(),
           colour?: boolean(),
           input?: boolean(),
+          tty?: boolean(),
           live: GenServer.server() | nil
         }
 
@@ -30,6 +32,7 @@ defmodule WardrikDaemon.CLI.Terminal do
           width: width,
           colour?: colour?(env),
           input?: input?,
+          tty?: true,
           live: Process.whereis(Owl.LiveScreen)
         }
 

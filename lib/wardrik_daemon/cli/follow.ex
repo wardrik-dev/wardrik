@@ -2,6 +2,7 @@ defmodule WardrikDaemon.CLI.Follow do
   @moduledoc false
 
   alias WardrikDaemon.CLI.Context
+  alias WardrikDaemon.CLI.Decide
   alias WardrikDaemon.CLI.Status
   alias WardrikDaemon.Client
   alias WardrikDaemon.Console.Printer
@@ -102,15 +103,52 @@ defmodule WardrikDaemon.CLI.Follow do
     hint(interrupts, state)
   end
 
-  @doc "Follows `:agent`, or its `:conversation`, until Ctrl-C. `:name` is how it's shown."
+  @doc """
+  Follows `:agent`, or its `:conversation`, until Ctrl-C. `:name` is how it's shown.
+
+  It shows first what the agent already waits on a person for, and at a terminal asks about
+  each call, then and as the agent stops for one.
+  """
   @spec events(Context.t(), agent: String.t(), name: String.t(), conversation: String.t() | nil) ::
           :ok | {:error, String.t()}
   def events(cx, args) do
+    state = %{
+      cx: cx,
+      name: named(args),
+      log: log(args),
+      run: :all,
+      calls: %{},
+      waited: 0,
+      status: watching(cx, args),
+      printer: printer(cx)
+    }
+
     with {:ok, client} <- Context.client(cx),
-         {:ok, stream} <- open(client, log(args)) do
-      state = %{cx: cx, name: named(args), run: :all, waited: 0, status: watching(cx, args)}
-      follow(stream, Map.put(state, :printer, printer(cx)), :infinity)
+         {:ok, stream} <- open(client, state.log),
+         {:ok, waiting} <- waiting(state) do
+      follow(stream, pending(state, waiting), :infinity)
     end
+  end
+
+  defp pending(state, []), do: state
+  defp pending(%{cx: %{json?: true}} = state, _waiting), do: state
+
+  defp pending(%{cx: cx} = state, waiting) do
+    Context.puts(cx, Owl.Data.tag("#{state.name} waits on you:", :yellow))
+    asked(state, waiting)
+    state
+  end
+
+  # At a terminal each call is asked about, and the rest are hinted at. Returns those left.
+  defp asked(%{cx: %{terminal: %{input?: true}}} = state, interrupts) do
+    left = Enum.reject(interrupts, &decided?(&1, state))
+    if left != [], do: hint(left, state)
+    left
+  end
+
+  defp asked(state, interrupts) do
+    hint(interrupts, state)
+    interrupts
   end
 
   # The live line says what's followed, or a line does where there's none.
@@ -224,6 +262,19 @@ defmodule WardrikDaemon.CLI.Follow do
     end
   end
 
+  # Following, a call the agent stops for is asked about at a terminal, as a turn's is.
+  defp step(
+         %{"type" => "wardrik.run.interrupted", "data" => %{"interrupts" => interrupts}} = event,
+         %{run: :all, cx: %{json?: false, terminal: %{input?: true}}} = state
+       ) do
+    state = finished(state, :waiting)
+    _left = asked(state, interrupts)
+    noted(state, event)
+  end
+
+  defp step(%{"type" => "wardrik.tool_call.started"} = event, %{run: :all} = state),
+    do: called(event, state)
+
   defp step(event, %{run: :all} = state), do: shown(event, state)
 
   defp step(
@@ -262,10 +313,7 @@ defmodule WardrikDaemon.CLI.Follow do
     end
   end
 
-  defp ours(%{"type" => "wardrik.tool_call.started", "data" => %{"tool" => tool}} = event, state) do
-    state = shown(event, state)
-    put_in(state.calls[get_in(tool, ["call", "id"])], get_in(tool, ["call", "arguments"]))
-  end
+  defp ours(%{"type" => "wardrik.tool_call.started"} = event, state), do: called(event, state)
 
   # The end of the turn is shown, but the status line sums the turn up rather than taking it.
   defp ours(%{"type" => type} = event, state) when type in @ended do
@@ -280,11 +328,17 @@ defmodule WardrikDaemon.CLI.Follow do
 
   defp ours(event, state), do: shown(event, state)
 
-  defp shown(nil, state), do: state
-  defp shown(event, %{status: nil} = state), do: printed(event, state)
+  # A call's arguments are kept for the card, should it wait on a person.
+  defp called(%{"data" => %{"tool" => tool}} = event, state) do
+    state = shown(event, state)
+    put_in(state.calls[get_in(tool, ["call", "id"])], get_in(tool, ["call", "arguments"]))
+  end
 
-  defp shown(event, state),
-    do: printed(event, %{state | status: Status.seen(state.status, event, now())})
+  defp shown(nil, state), do: state
+  defp shown(event, state), do: printed(event, noted(state, event))
+
+  defp noted(%{status: nil} = state, _event), do: state
+  defp noted(state, event), do: %{state | status: Status.seen(state.status, event, now())}
 
   defp printed(event, %{cx: %{json?: true}} = state) do
     IO.puts(JSON.encode!(event))
@@ -322,102 +376,15 @@ defmodule WardrikDaemon.CLI.Follow do
 
   defp hinted(_event, _state), do: :ok
 
-  defp hint(interrupts, %{cx: cx} = state) do
-    commands =
-      for interrupt <- interrupts,
-          verb <- ~w(approve deny),
-          do: "  #{cx.program} approval #{verb} #{decision(state, interrupt)}"
+  defp hint(interrupts, state), do: Decide.hint(state.cx, interrupts, state.name)
 
-    Context.puts(cx, Owl.Data.tag(Enum.join(["Decide with:" | commands], "\n"), :light_black))
-  end
-
-  # The arguments of `approval approve` and `approval deny` that name `interrupt`.
-  defp decision(%{name: name}, interrupt) do
-    case String.split(name, " ", parts: 2) do
-      [agent, conversation] -> "#{agent} #{interrupt["id"]} #{conversation}"
-      [agent] -> "#{agent} #{interrupt["id"]}"
-    end
-  end
-
-  defp decided?(interrupt, %{cx: cx} = state) do
-    Context.puts(cx, ["\n", card(interrupt, state)])
-
-    case Owl.IO.input(
-           label: "Approve #{called(interrupt)}? [y/n, Enter leaves it]",
-           optional: true,
-           cast: &answered/1
-         ) do
-      :leave -> false
-      :approve -> decide(state, interrupt, "agent.approve", %{})
-      :deny -> decide(state, interrupt, "agent.deny", reason())
-    end
-  end
-
-  defp answered(nil), do: {:ok, :leave}
-
-  defp answered(answer) do
-    case String.downcase(answer) do
-      yes when yes in ~w(y yes) -> {:ok, :approve}
-      no when no in ~w(n no) -> {:ok, :deny}
-      _other -> {:error, "y approves it, n denies it, and Enter leaves it waiting"}
-    end
-  end
-
-  defp reason do
-    case Owl.IO.input(label: "Why? The model reads it. Enter gives no reason.", optional: true) do
-      nil -> %{}
-      reason -> %{"reason" => reason}
-    end
-  end
-
-  defp decide(%{cx: cx} = state, interrupt, operation, given) do
-    input = state.log |> Map.put("interrupt", interrupt["id"]) |> Map.merge(given)
-
-    case Context.call(cx, operation, input) do
-      {:ok, _decided} ->
-        true
-
-      {:error, why} ->
-        Context.puts(cx, Owl.Data.tag(why, :red))
-        false
-    end
-  end
-
-  defp called(%{"name" => name}), do: name
-  defp called(_interrupt), do: "the model call"
-
-  defp card(interrupt, state) do
-    arguments =
-      case state.calls[interrupt["tool_call_id"]] do
-        empty when empty in [nil, %{}] -> []
-        arguments -> [Owl.Data.tag(pretty(arguments), :light_black)]
-      end
-
-    [why(interrupt, arguments), held(interrupt), arguments]
-    |> Enum.reject(&(&1 == []))
-    |> Enum.intersperse("\n\n")
-    |> Owl.Box.new(
-      title: [" ", called(interrupt), " "],
-      border_style: :solid_rounded,
-      border_tag: :yellow,
-      padding_x: 1,
-      max_width: min(state.cx.terminal.width, 100),
-      word_wrap: :normal
-    )
-  end
-
-  # The prompt asks for a tool's approval, so the card says why only for another reason, or
-  # where it has nothing else to show.
-  defp why(%{"reason" => "tool_approval"}, [_shown | _arguments]), do: []
-  defp why(interrupt, _arguments), do: interrupt["message"]
-
-  defp held(%{"labels" => [_label | _labels]}),
-    do: Owl.Data.tag("It follows content from outside.", :yellow)
-
-  defp held(_interrupt), do: []
-
-  defp pretty(arguments),
-    do: arguments |> :json.format() |> IO.iodata_to_binary() |> String.trim_trailing()
+  defp decided?(interrupt, state),
+    do:
+      Decide.asked?(state.cx, interrupt,
+        log: state.log,
+        name: state.name,
+        arguments: state.calls[interrupt["tool_call_id"]]
+      )
 
   defp unsaid(%{"type" => "wardrik.run.completed", "data" => data}, %{said?: false}),
     do: %{"type" => "wardrik.message.delta", "data" => %{"delta" => last_said(data["messages"])}}

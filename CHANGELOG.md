@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `wardrik approval` goes through what waits on a person, asking about each call; Enter skips one.
+- `wardrik agent follow` shows what the agent already waits on you for, and at a terminal asks
+  about each call, then and as the agent stops for one.
+- At a terminal, a command that reaches the daemon ends by saying what waits on you:
+  `1 call waits on you: wardrik approval approve triage call_1`.
 - At a terminal, `wardrik ask` and `wardrik agent follow` show what the turn does on a line that
   redraws in place: `⠋ web_search · 12s`. It ends as a summary: `✔ 14s · 3 tool calls`, or
   `? waits on you after 6s`. Until the run starts it says it hasn't.
