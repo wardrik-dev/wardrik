@@ -296,7 +296,10 @@ defmodule WardrikDaemon.CLI.Servers do
       Owl.Data.tag(code, :cyan)
     ])
 
-    granted(cx, provider)
+    signed_in =
+      Terminal.spinning(cx.terminal, "Waiting for you to sign in", fn -> granted(cx, provider) end)
+
+    with :ok <- signed_in, do: Context.puts(cx, "Connected #{provider}.")
   end
 
   defp signing_in(cx, provider, %{"authorization" => %{"url" => url}}) do
@@ -316,7 +319,7 @@ defmodule WardrikDaemon.CLI.Servers do
     with {:ok, %{"connections" => connections}} <- Context.call(cx, "connections.list", %{}) do
       case Enum.find(connections, &(&1["provider"] == provider)) do
         %{"connected" => true} ->
-          Context.puts(cx, "Connected #{provider}.")
+          :ok
 
         %{"signing_in" => true} ->
           Process.sleep(@poll)

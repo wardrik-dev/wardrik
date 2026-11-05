@@ -7,7 +7,10 @@ defmodule WardrikDaemon.CLI.Table do
   @spec show(Context.t(), term(), table()) :: :ok
   def show(cx, answer, table), do: Context.show(cx, answer, fn _answer -> print(cx, table) end)
 
-  @typedoc "A table's `:header`, its `:rows`, and what to say if there are none, `:empty`."
+  @typedoc """
+  A table's `:header`, its `:rows`, and what to say if there are none, `:empty`. A cell is a
+  value, or `{value, style}` to show it in a colour, as `{"parked", :yellow}`.
+  """
   @type table() :: [header: [String.t()], rows: [[term()]], empty: String.t()]
 
   @doc """
@@ -24,11 +27,19 @@ defmodule WardrikDaemon.CLI.Table do
   end
 
   defp printed(cx, header, rows) do
-    rows = Enum.map(rows, fn row -> Enum.map(row, &to_string(&1 || "")) end)
-    widths = Enum.zip_with([header | rows], &widest/1)
-    Context.puts(cx, Owl.Data.tag(line(header, widths), [:faint, :light_black]))
+    rows = Enum.map(rows, fn row -> Enum.map(row, &cell/1) end)
+    widths = Enum.zip_with([Enum.map(header, &{&1, nil}) | rows], &widest/1)
+
+    Context.puts(
+      cx,
+      Owl.Data.tag(line(Enum.map(header, &{&1, nil}), widths), [:faint, :light_black])
+    )
+
     Enum.each(rows, &Context.puts(cx, line(&1, widths)))
   end
+
+  defp cell({value, style}), do: {to_string(value || ""), style}
+  defp cell(value), do: {to_string(value || ""), nil}
 
   @doc "Prints `pairs` of a label and a value, one a line. Leaves out those with no value."
   @spec pairs(Context.t(), [{String.t(), term()}]) :: :ok
@@ -47,12 +58,21 @@ defmodule WardrikDaemon.CLI.Table do
     end)
   end
 
-  defp widest(column), do: column |> Enum.map(&String.length/1) |> Enum.max(fn -> 0 end)
+  defp widest(column),
+    do: column |> Enum.map(fn {text, _style} -> String.length(text) end) |> Enum.max(fn -> 0 end)
 
+  # Padded as text, so a colour never shifts the columns. The last cell isn't padded.
   defp line(row, widths) do
-    row
-    |> Enum.zip(widths)
-    |> Enum.map_join("  ", fn {cell, width} -> String.pad_trailing(cell, width) end)
-    |> String.trim_trailing()
+    {last, cells} = row |> Enum.zip(widths) |> List.pop_at(-1)
+
+    padded =
+      for {{text, style}, width} <- cells,
+          do: [styled(String.pad_trailing(text, width), style), "  "]
+
+    {{text, style}, _width} = last
+    [padded, styled(text, style)]
   end
+
+  defp styled(text, nil), do: text
+  defp styled(text, style), do: Owl.Data.tag(text, style)
 end

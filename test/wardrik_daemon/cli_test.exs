@@ -250,7 +250,7 @@ defmodule WardrikDaemon.CLITest do
     refute agents =~ "token create"
 
     assert {0, asking} = wardrik(context, ["agent", "ask", "--help"])
-    assert asking =~ "Usage: wardrik agent ask AGENT MESSAGE [--no-wait]"
+    assert asking =~ "Usage: wardrik agent ask AGENT [MESSAGE] [--no-wait]"
     assert asking =~ "Also: wardrik ask"
     assert {0, ^asking} = wardrik(context, ["help", "agent", "ask"])
 
@@ -538,6 +538,43 @@ defmodule WardrikDaemon.CLITest do
       end)
 
       assert failing(context, ["ask", "triage", "Hi"]) =~ "The turn failed."
+    end
+
+    test "takes a message written in the editor, or a secret typed unseen", context do
+      # $VISUAL goes to the shell as it's set, so its path has no space, as the test's root does.
+      editor =
+        Path.join(System.tmp_dir!(), "wardrik-editor-#{System.unique_integer([:positive])}")
+
+      on_exit(fn -> File.rm(editor) end)
+      File.write!(editor, "#!/bin/sh\nprintf 'How many?\\n%s' \"$(cat \"$1\")\" > \"$1\"\n")
+      File.chmod!(editor, 0o755)
+      typing = put_in(context.env["WARDRIK_INPUT"], "1")
+
+      answers([answer("Two cases.")])
+
+      assert {0, "Two cases.\n"} =
+               wardrik(put_in(typing.env["VISUAL"], editor), ["ask", "triage"])
+
+      assert {0, history} = wardrik(context, ["agent", "history", "triage"])
+      assert history =~ "› How many?"
+      refute history =~ "<!--"
+
+      File.write!(editor, "#!/bin/sh\n: > \"$1\"\n")
+
+      assert failing(put_in(typing.env["VISUAL"], editor), ["ask", "triage"]) =~
+               "The message was empty, so nothing was sent."
+
+      assert failing(put_in(typing.env["VISUAL"], "no-such-editor"), ["ask", "triage"]) =~
+               "There's no no-such-editor here to write the message in. Set $VISUAL or $EDITOR"
+
+      assert failing(put_in(typing.env["VISUAL"], "no-such-editor"), ["ask", "triage"]) =~
+               "There's no no-such-editor here to write the message in. Set $VISUAL or $EDITOR"
+
+      assert failing(context, ["ask", "triage"]) =~ "Give the message: wardrik ask AGENT MESSAGE"
+
+      assert {0, typed} = wardrik(typing, ~w(vault put TYPED --for api_key), "sk-typed\n")
+      assert typed =~ "TYPED, not shown as you type:"
+      refute typed =~ "sk-typed"
     end
 
     test "seals, lists and removes secrets", context do

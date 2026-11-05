@@ -5,7 +5,9 @@ defmodule WardrikDaemon.CLI.Admin do
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.CLI.Init
   alias WardrikDaemon.CLI.Table
+  alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Client
+  alias WardrikDaemon.Doctor
 
   @doc "Returns the commands that set Wardrik up and run the daemon."
   @spec commands() :: [Command.t()]
@@ -79,7 +81,12 @@ defmodule WardrikDaemon.CLI.Admin do
   defp script(name, summary), do: %Command{name: name, group: "Daemon", summary: summary}
 
   defp doctor([], _flags, cx) do
-    case cx.env |> WardrikDaemon.Doctor.run() |> WardrikDaemon.Doctor.print() do
+    {:ok, checks} =
+      Terminal.spinning(cx.terminal, "Checking", fn -> {:ok, Doctor.run(cx.env)} end)
+
+    Enum.each(Doctor.lines(checks), &Context.puts(cx, &1))
+
+    case Doctor.failed(checks) do
       0 -> :ok
       failed -> {:error, "#{failed} of the checks failed."}
     end
@@ -111,7 +118,10 @@ defmodule WardrikDaemon.CLI.Admin do
 
   defp reload(agents, _flags, cx) do
     with {:ok, input} <- covering(cx, agents),
-         {:ok, answer} <- Context.call(cx, "deployment.reload", input),
+         {:ok, answer} <-
+           Terminal.spinning(cx.terminal, "Reading the agent files", fn ->
+             Context.call(cx, "deployment.reload", input)
+           end),
          do: Context.show(cx, answer, &reloaded(cx, &1))
   end
 

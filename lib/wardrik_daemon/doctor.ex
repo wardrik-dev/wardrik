@@ -47,19 +47,27 @@ defmodule WardrikDaemon.Doctor do
   @doc "Prints `checks`, a line each. Returns how many failed."
   @spec print([check()]) :: non_neg_integer()
   def print(checks) do
+    Enum.each(lines(checks), &IO.puts(Owl.Data.untag(&1)))
+    failed(checks)
+  end
+
+  @doc "Returns `checks` as lines, each labelled in colour by how it went."
+  @spec lines([check()]) :: [Owl.Data.t()]
+  def lines(checks) do
     width =
       checks |> Enum.map(fn {_status, name, _found} -> String.length(name) end) |> Enum.max()
 
-    Enum.each(checks, fn {status, name, found} ->
-      IO.puts("#{label(status)}  #{String.pad_trailing(name, width)}  #{found}")
-    end)
-
-    Enum.count(checks, &match?({:fail, _name, _found}, &1))
+    for {status, name, found} <- checks,
+        do: [label(status), "  ", String.pad_trailing(name, width), "  ", found]
   end
 
-  defp label(:ok), do: "ok  "
-  defp label(:warn), do: "warn"
-  defp label(:fail), do: "FAIL"
+  @doc "Returns how many of `checks` failed."
+  @spec failed([check()]) :: non_neg_integer()
+  def failed(checks), do: Enum.count(checks, &match?({:fail, _name, _found}, &1))
+
+  defp label(:ok), do: Owl.Data.tag("ok  ", :green)
+  defp label(:warn), do: Owl.Data.tag("warn", :yellow)
+  defp label(:fail), do: Owl.Data.tag("FAIL", :red)
 
   defp unchecked(name), do: {:ok, "${#{name}}"}
 

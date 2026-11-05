@@ -4,6 +4,7 @@ defmodule WardrikDaemon.CLI.Access do
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.CLI.Table
+  alias WardrikDaemon.CLI.Terminal
 
   @owner [org: :string, user: :string]
 
@@ -17,8 +18,9 @@ defmodule WardrikDaemon.CLI.Access do
         arguments: "NAME",
         switches: [for: :string] ++ @owner,
         count: 1,
-        summary: "seal a secret, read from stdin, for the deployment, an --org or a --user",
+        summary: "seal a secret for the deployment, an --org or a --user",
         details: [
+          "At a terminal it asks for the value, not shown as it's typed. Or give it on stdin:",
           "echo \"$VALUE\" | wardrik vault put NAME --for api_key",
           "--for is api_key, client_secret, header or signing_secret. It's read only for that.",
           "${NAME} in config.yaml reads the deployment's secrets."
@@ -47,7 +49,7 @@ defmodule WardrikDaemon.CLI.Access do
   @purposes ~w(api_key client_secret header signing_secret)
 
   defp put([name], %{for: purpose} = flags, cx) when purpose in @purposes do
-    case IO.gets("") do
+    case value(cx, name) do
       value when is_binary(value) and value != "\n" ->
         seal(cx,
           owner: Context.owner(cx, flags),
@@ -66,6 +68,16 @@ defmodule WardrikDaemon.CLI.Access do
     do:
       {:error,
        "Say what #{name} is for: #{cx.program} vault put #{name} --for api_key, client_secret, header or signing_secret."}
+
+  # Typed at a terminal, unseen, or read from stdin.
+  defp value(%{terminal: %{input?: true} = terminal}, name) do
+    case Terminal.secret(terminal, "#{name}, not shown as you type: ") do
+      nil -> nil
+      value -> value <> "\n"
+    end
+  end
+
+  defp value(_cx, _name), do: IO.gets("")
 
   @doc """
   Seals `:value` as `:owner`'s secret `:name`, for `:purpose`, and says so.

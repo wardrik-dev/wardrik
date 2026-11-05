@@ -44,13 +44,14 @@ defmodule WardrikDaemon.CLI.Agents do
         name: "agent ask",
         shortcut: "ask",
         group: @group,
-        arguments: "AGENT MESSAGE",
+        arguments: "AGENT [MESSAGE]",
         switches: [no_wait: :boolean] ++ @conversation,
-        count: {2, :any},
+        count: {1, :any},
         summary: "send an agent a message, and follow its answer",
         details: [
           "Prints the answer as it comes, with each tool call. Ctrl-C stops following; the agent",
-          "carries on. --no-wait only sends it. --conversation ID sends it to one conversation."
+          "carries on. --no-wait only sends it. --conversation ID sends it to one conversation.",
+          "With no MESSAGE at a terminal, it's written in $VISUAL or $EDITOR."
         ],
         run: &asked/3
       },
@@ -225,12 +226,17 @@ defmodule WardrikDaemon.CLI.Agents do
   defp row(name, agent, spent, conversations),
     do: [
       name,
-      agent["status"],
+      status(agent["status"]),
       queued(agent["pending"]),
       Clock.from_now(agent["next_run"]),
       spent(spent),
       conversations
     ]
+
+  defp status("running"), do: {"running", :cyan}
+  defp status("parked"), do: {"parked", :yellow}
+  defp status("asleep"), do: {"asleep", :light_black}
+  defp status(status), do: status
 
   defp added(%{"tokens" => tokens, "usd" => usd}, %{"tokens" => more, "usd" => more_usd}),
     do: %{"tokens" => tokens + more, "usd" => usd + more_usd}
@@ -310,6 +316,18 @@ defmodule WardrikDaemon.CLI.Agents do
   defp policy(name) when is_binary(name), do: name
   defp policy(_rules), do: "its own rules"
 
+  defp asked([agent], flags, %{terminal: %{input?: true}} = cx) do
+    with {:ok, editor} <- editor(cx) do
+      case written(cx, editor, agent) do
+        "" -> {:error, "The message was empty, so nothing was sent."}
+        message -> asked([agent, message], flags, cx)
+      end
+    end
+  end
+
+  defp asked([_agent], _flags, cx),
+    do: {:error, "Give the message: #{cx.program} ask AGENT MESSAGE"}
+
   defp asked([agent | words], %{no_wait: true} = flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          input = %{"agent" => id, "content" => Enum.join(words, " ")},
@@ -326,6 +344,32 @@ defmodule WardrikDaemon.CLI.Agents do
              conversation: flags[:conversation],
              text: Enum.join(words, " ")
            )
+  end
+
+  # The message, written in the person's editor. What the VM runs has no terminal of its own, so
+  # an editor that draws in one, as vi does, is given the VM's: on Linux, the device its stdin is.
+  # Elsewhere, an editor that opens a window of its own, as `code --wait`, still works.
+  defp editor(cx) do
+    editor = cx.env["VISUAL"] || cx.env["EDITOR"] || "vi"
+
+    if System.find_executable(editor |> String.split(" ", parts: 2) |> hd()),
+      do: {:ok, editor},
+      else:
+        {:error,
+         "There's no #{editor} here to write the message in. Set $VISUAL or $EDITOR, or give the message: #{cx.program} ask AGENT MESSAGE"}
+  end
+
+  defp written(cx, editor, agent) do
+    editor =
+      case cx.terminal.tty? and File.read_link("/proc/self/fd/0") do
+        {:ok, "/dev/" <> _tty = tty} -> "#{editor} __FILE__ < #{tty} > #{tty}"
+        _none -> editor
+      end
+
+    "\n<!-- Write the message to #{agent} above. An empty message isn't sent. -->\n"
+    |> Owl.IO.open_in_editor(editor: editor, format: "md")
+    |> String.replace(~r/<!--.*?-->/s, "")
+    |> String.trim()
   end
 
   defp history([agent], flags, cx) do

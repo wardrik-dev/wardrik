@@ -271,7 +271,7 @@ defmodule WardrikDaemon.CLI.Init do
     args = if service?(flags, cx), do: ["service", "install"], else: ["start"]
 
     case System.cmd(script, args, into: IO.stream(), stderr_to_stdout: true) do
-      {_output, 0} -> if needed?, do: answering(cx, 60), else: :ok
+      {_output, 0} -> if needed?, do: answered(cx), else: :ok
       {_output, _failed} -> {:error, "#{cx.program} #{Enum.join(args, " ")} failed."}
     end
   end
@@ -297,6 +297,12 @@ defmodule WardrikDaemon.CLI.Init do
         System.cmd("systemctl", ["--user", "show-environment"], stderr_to_stdout: true)
       )
   end
+
+  defp answered(cx),
+    do:
+      Terminal.spinning(cx.terminal, "Waiting for the daemon to answer", fn ->
+        answering(cx, 60)
+      end)
 
   defp answering(cx, 0),
     do: {:error, "The daemon didn't answer in a minute. #{logged(cx)}"}
@@ -350,12 +356,25 @@ defmodule WardrikDaemon.CLI.Init do
   end
 
   defp next(cx) do
-    Context.puts(cx, """
-
-    Next, tell it what you want done:
-      #{cx.program} ask assistant "Tell me when https://github.blog/changelog/feed/ has a new post"
-    It proposes the work, and waits for you: #{cx.program} approval ls, then #{cx.program} approval approve.\
-    """)
+    Context.puts(cx, [
+      "\n",
+      Owl.Box.new(
+        [
+          "Tell it what you want done:\n",
+          Owl.Data.tag(
+            ~s(#{cx.program} ask assistant "Tell me when https://github.blog/changelog/feed/ has a new post"),
+            :cyan
+          ),
+          "\n\nIt proposes the work, and waits for you: ",
+          Owl.Data.tag("#{cx.program} approval", :cyan)
+        ],
+        title: " Next ",
+        border_style: :solid_rounded,
+        padding_x: 1,
+        max_width: min(cx.terminal.width, 100),
+        word_wrap: :normal
+      )
+    ])
   end
 
   defp config(org, model, search?) do

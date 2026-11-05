@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `wardrik ask AGENT` with no message, at a terminal, opens `$VISUAL` or `$EDITOR` to write it.
+- `wardrik vault put` asks for the value at a terminal, not shown as it's typed.
+- `init`, `doctor`, `reload` and `connection connect` show a spinner while they wait.
+- `doctor` labels each check in colour, `agent ls` colours what each agent is doing, and `init`
+  ends with its next steps in a box.
+- `wardrik ask AGENT` with no message, at a terminal, opens `$VISUAL` or `$EDITOR` to write it.
+- `wardrik vault put` asks for the value at a terminal, not shown as it's typed.
+- `init`, `doctor`, `reload` and `connection connect` show a spinner while they wait.
+- `doctor` labels each check in colour, `agent ls` colours what each agent is doing, and `init`
+  ends with its next steps in a box.
 - `wardrik approval` goes through what waits on a person, asking about each call; Enter skips one.
 - `wardrik agent follow` shows what the agent already waits on you for, and at a terminal asks
   about each call, then and as the agent stops for one.

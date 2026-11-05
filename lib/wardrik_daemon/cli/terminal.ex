@@ -73,6 +73,26 @@ defmodule WardrikDaemon.CLI.Terminal do
 
   defp typed(_eof), do: nil
 
+  @doc """
+  Runs `fun` under a spinner labelled `label`, where there's a live screen, and returns what it
+  returns: `:ok`, `{:ok, value}`, `:error` or `{:error, reason}`. The spinner is left as a line
+  saying how it went, as `Owl.Spinner.run/2` leaves it.
+  """
+  @spec spinning(t(), Owl.Data.t(), (-> result)) :: result when result: term()
+  def spinning(%__MODULE__{live: nil}, _label, fun), do: fun.()
+
+  def spinning(%__MODULE__{live: screen}, label, fun) do
+    result =
+      Owl.Spinner.run(fun,
+        labels: [processing: label, ok: label, error: label],
+        live_screen_server: screen
+      )
+
+    # What's written next goes straight to the terminal, below the spinner.
+    :ok = Owl.LiveScreen.flush(screen)
+    result
+  end
+
   @doc "Writes `data` and a newline, styled if the terminal takes colour."
   @spec puts(t(), Owl.Data.t()) :: :ok
   def puts(%__MODULE__{colour?: colour?}, data), do: IO.puts(Ansi.chardata(data, colour?))
