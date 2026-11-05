@@ -4,9 +4,14 @@ defmodule WardrikDaemon.Console.Printer do
   alias WardrikDaemon.Console.Markdown
   alias WardrikDaemon.Console.Table
 
-  defstruct width: 80, answer: %Markdown{}, reasoning: %Markdown{}
+  defstruct width: 80, answer: %Markdown{}, reasoning: %Markdown{}, thinking?: false
 
-  @type t() :: %__MODULE__{width: pos_integer(), answer: Markdown.t(), reasoning: Markdown.t()}
+  @type t() :: %__MODULE__{
+          width: pos_integer(),
+          answer: Markdown.t(),
+          reasoning: Markdown.t(),
+          thinking?: boolean()
+        }
 
   @faint [:faint, :light_black]
 
@@ -25,7 +30,8 @@ defmodule WardrikDaemon.Console.Printer do
   def event(printer, %{"type" => "wardrik.reasoning.delta", "data" => %{"delta" => text}}) do
     {settled, printer} = settle(printer, :answer)
     {lines, reasoning} = Markdown.push(printer.reasoning, text)
-    {settled ++ reasoning(lines, printer), %{printer | reasoning: reasoning}}
+    {thought, printer} = thought(lines, %{printer | reasoning: reasoning})
+    {settled ++ thought, printer}
   end
 
   def event(printer, %{"type" => "wardrik." <> type, "data" => data}) do
@@ -132,7 +138,20 @@ defmodule WardrikDaemon.Console.Printer do
 
   defp settle(printer, :reasoning) do
     {lines, _reasoning} = Markdown.flush(printer.reasoning)
-    {reasoning(lines, printer), %{printer | reasoning: Markdown.new()}}
+    {thought, printer} = thought(lines, %{printer | reasoning: Markdown.new()})
+    closed = if printer.thinking?, do: [""], else: []
+    {thought ++ closed, %{printer | thinking?: false}}
+  end
+
+  # A line of space sets a run of reasoning off from what's around it.
+  defp thought(lines, printer) do
+    case reasoning(lines, printer) do
+      [_line | _lines] = thought when not printer.thinking? ->
+        {["" | thought], %{printer | thinking?: true}}
+
+      thought ->
+        {thought, printer}
+    end
   end
 
   defp answer(lines, printer), do: Enum.flat_map(lines, &laid_out(&1, printer.width))

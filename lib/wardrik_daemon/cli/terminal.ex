@@ -5,13 +5,19 @@ defmodule WardrikDaemon.CLI.Terminal do
     * Colour if stdout is a terminal, `NO_COLOR` is unset and `TERM` isn't `dumb`.
     * Otherwise plain text, 80 columns wide.
     * Input if `WARDRIK_INPUT` is `1`, which `bin/wardrik` sets for a terminal.
+    * `:live` - the `Owl.LiveScreen` that redraws lines in place, where stdout is a terminal.
   """
 
   alias WardrikDaemon.Console.Ansi
 
-  defstruct width: 80, colour?: false, input?: false
+  defstruct width: 80, colour?: false, input?: false, live: nil
 
-  @type t() :: %__MODULE__{width: pos_integer(), colour?: boolean(), input?: boolean()}
+  @type t() :: %__MODULE__{
+          width: pos_integer(),
+          colour?: boolean(),
+          input?: boolean(),
+          live: GenServer.server() | nil
+        }
 
   @doc "Returns the terminal standard output is, with `env`, the environment, saying whether it takes colour and input."
   @spec new(%{String.t() => String.t()}) :: t()
@@ -19,8 +25,16 @@ defmodule WardrikDaemon.CLI.Terminal do
     input? = env["WARDRIK_INPUT"] == "1"
 
     case :io.columns() do
-      {:ok, width} -> %__MODULE__{width: width, colour?: colour?(env), input?: input?}
-      {:error, _not_a_terminal} -> %__MODULE__{input?: input?}
+      {:ok, width} ->
+        %__MODULE__{
+          width: width,
+          colour?: colour?(env),
+          input?: input?,
+          live: Process.whereis(Owl.LiveScreen)
+        }
+
+      {:error, _not_a_terminal} ->
+        %__MODULE__{input?: input?}
     end
   end
 

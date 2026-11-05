@@ -16,12 +16,13 @@ defmodule WardrikDaemon.Console.PrinterTest do
   defp event(type, data), do: %{"type" => "wardrik." <> type, "data" => data}
   defp delta(type, text), do: event(type, %{"delta" => text})
 
-  test "shows reasoning faint behind a bar, then the answer, a line once it's whole" do
+  test "shows reasoning faint behind a bar, set off by a line each side, a line once it's whole" do
     assert printed([
              delta("reasoning.delta", "Look at "),
-             delta("reasoning.delta", "the queue.\n")
+             delta("reasoning.delta", "the queue.\n"),
+             delta("reasoning.delta", "Then count.\n")
            ]) ==
-             ["┊ Look at the queue."]
+             ["", "┊ Look at the queue.", "┊ Then count."]
 
     assert printed([delta("message.delta", "**Two** cases")]) == []
 
@@ -29,9 +30,16 @@ defmodule WardrikDaemon.Console.PrinterTest do
              delta("reasoning.delta", "Count them"),
              delta("message.delta", "Two cases.\n- one\n"),
              event("run.completed", %{})
-           ]) == ["┊ Count them", "Two cases.", "• one"]
+           ]) == ["", "┊ Count them", "", "Two cases.", "• one"]
 
-    [faint] =
+    tool = %{"name" => "echo", "call" => %{"id" => "c1", "arguments" => %{}}}
+
+    assert printed([
+             delta("reasoning.delta", "Echo it.\n"),
+             event("tool_call.started", %{"tool" => tool})
+           ]) == ["", "┊ Echo it.", "", "  → echo"]
+
+    ["", faint] =
       [delta("reasoning.delta", "Hm.\n")]
       |> Enum.flat_map_reduce(Printer.new(), &Printer.event(&2, &1))
       |> elem(0)

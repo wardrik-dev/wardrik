@@ -400,6 +400,48 @@ defmodule WardrikDaemon.CLITest do
       assert left =~ "  wardrik approval approve triage call_3"
       assert {0, parked} = wardrik(context, ["approval", "ls"])
       assert parked =~ ~r/^triage\s+call_3\s+echo/m
+
+      # A message isn't sent behind a call left waiting; it's asked about first.
+      run = fn -> send(self(), {:status, CLI.main(~w(ask triage Hi), env: context.env)}) end
+
+      stderr =
+        capture_io(:stderr, fn -> assert capture_io("\n", run) =~ "triage waits on you first:" end)
+
+      assert_received {:status, 1}
+      assert stderr =~ "triage answers nothing until those are decided, so it wasn't asked."
+
+      # The message goes into the turn the approval resumes, or into one after it.
+      answers([answer("Echoed it."), answer("Echoed later.")])
+      assert {0, later} = wardrik(context, ["ask", "triage", "Hi"], "y\n")
+      assert later =~ "triage waits on you first:"
+      assert later =~ ~r/Echoed (it|later)\./
+    end
+
+    test "shows what a turn does on a live line, and sums it up where it stops", context do
+      {:ok, device, written} = WardrikDaemon.Test.Screen.start_link([])
+      screen = :"screen #{context.test}"
+      start_supervised!({Owl.LiveScreen, name: screen, device: device})
+      terminal = %WardrikDaemon.CLI.Terminal{width: 80, input?: true, live: screen}
+
+      answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Two cases.")])
+      context = put_in(context.env["WARDRIK_INPUT"], "1")
+
+      run = fn ->
+        send(
+          self(),
+          {:status, CLI.main(~w(ask triage Echo), env: context.env, terminal: terminal)}
+        )
+      end
+
+      direct = capture_io("y\n", run)
+      assert_received {:status, 0}
+
+      live = WardrikDaemon.Test.Screen.written(written)
+      assert direct <> live =~ "→ echo"
+      assert live =~ "? waits on you after 0s"
+      assert live =~ ~r/✔ \d+s · 1 tool call/
+      assert direct =~ "Approve echo?"
+      assert direct <> live =~ "Two cases."
     end
 
     test "seals the key it's given, reads the assistant's file, and asks it", context do

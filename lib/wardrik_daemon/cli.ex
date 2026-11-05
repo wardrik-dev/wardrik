@@ -49,10 +49,12 @@ defmodule WardrikDaemon.CLI do
   ## Options
 
     * `:env` - the environment. `System.get_env/0` unless set.
+    * `:terminal` - the terminal. `WardrikDaemon.CLI.Terminal.new/1` of the environment unless set.
   """
   @spec main([String.t()], keyword()) :: 0 | 1
   def main(argv, opts \\ []) do
     cx = opts |> Keyword.get_lazy(:env, &System.get_env/0) |> Context.new()
+    cx = %{cx | terminal: Keyword.get(opts, :terminal, cx.terminal)}
 
     case cx |> routed(argv) |> ran(cx) do
       :ok -> 0
