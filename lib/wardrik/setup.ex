@@ -40,8 +40,7 @@ defmodule Wardrik.Setup do
       egress: opts[:egress],
       prices:
         Map.new(opts[:prices], fn {spec, price} -> {to_string(spec), price(spec, price)} end),
-      model_options: opts[:model_options],
-      pool: opts[:pool]
+      model_options: opts[:model_options]
     }
   end
 
@@ -122,16 +121,13 @@ defmodule Wardrik.Setup do
     |> governed(policies)
   end
 
-  defp model_options(opts, wardrik) do
-    finch = Wardrik.finch(wardrik)
-
-    options =
-      wardrik.model_options
-      |> Keyword.merge(Keyword.get(opts, :model_options, []))
-      |> Keyword.update(:req_http_options, [finch: finch], &Keyword.put_new(&1, :finch, finch))
-
-    Keyword.put(opts, :model_options, options)
-  end
+  defp model_options(opts, wardrik),
+    do:
+      Keyword.put(
+        opts,
+        :model_options,
+        Keyword.merge(wardrik.model_options, Keyword.get(opts, :model_options, []))
+      )
 
   @doc "Returns an agent's `:policy` as a list of policies. `nil` is `[]`."
   @spec policies(WardrikPolicy.t() | [WardrikPolicy.t()] | keyword() | map() | nil) ::

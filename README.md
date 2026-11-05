@@ -10,7 +10,7 @@ cap what they spend, and a record of everything they did.
 ```elixir
 def deps do
   [
-    {:wardrik, "~> 0.1.0-rc.5"}
+    {:wardrik, "~> 0.1.0-rc.6"}
   ]
 end
 ```

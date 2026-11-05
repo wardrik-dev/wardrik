@@ -10,7 +10,6 @@ defmodule Wardrik.Children do
         oauth(wardrik) ++
         mcp(wardrik) ++
         [
-          {Finch, name: Wardrik.finch(wardrik), pools: %{default: wardrik.pool}},
           events(wardrik),
           {Wardrik.Notify.Server, wardrik},
           workers(wardrik),
