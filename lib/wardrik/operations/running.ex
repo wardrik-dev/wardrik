@@ -86,6 +86,10 @@ defmodule Wardrik.Operations.Running do
       {:error, {:already_started, {pid, _meta}}} ->
         configured(pid, opts)
 
+      # Another node started it first, and answered from there.
+      {:error, {:already_started, pid}} when is_pid(pid) ->
+        configured(pid, opts)
+
       {:error, reason} ->
         {:error, Error.new(:unavailable, "#{describe(key)} didn't start: #{inspect(reason)}")}
     end
