@@ -80,9 +80,20 @@ store: {WardrikStore.Ecto, repo: MyApp.Repo}
 
 # In a Postgres of its own, which migrates itself
 store: {WardrikStore.Ecto, url: "postgres://user:pass@db.example.com/my_app"}
+
+# In an S3 bucket: AWS, R2, Tigris or MinIO
+store:
+  {WardrikStore.S3,
+   bucket: "my-app",
+   endpoint: "https://s3.us-east-1.amazonaws.com",
+   access_key_id: System.fetch_env!("S3_ACCESS_KEY_ID"),
+   secret_access_key: System.fetch_env!("S3_SECRET_ACCESS_KEY")}
 ```
 
-- `WardrikStore.Ecto` needs `:ecto_sql` and `:postgrex` in your deps.
+- `WardrikStore.Ecto` needs `:ecto_sql` and `:postgrex` in your deps, and `WardrikStore.S3` needs
+  `:req`.
+- In a cluster, EKV needs more than half the nodes up to write. Postgres and S3 need none, and the
+  data outlives every node.
 - To share a store with your app, build it and give it to both. The second to start it leaves it be:
 
 ```elixir
