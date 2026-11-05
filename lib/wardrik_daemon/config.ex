@@ -76,14 +76,6 @@ defmodule WardrikDaemon.Config do
                   `:model_options`.
                   """
                 ],
-                pool: [
-                  type: {:map, :string, :any},
-                  default: %{},
-                  doc: """
-                  The connections model calls share, per provider host: `size` (64), `count` (1)
-                  and `protocols` (`[http1]`). See `Wardrik`'s `:pool`.
-                  """
-                ],
                 gateway: [
                   type: {:map, :string, :any},
                   default: %{},
@@ -213,7 +205,6 @@ defmodule WardrikDaemon.Config do
             defaults: %{},
             prices: %{},
             model_options: [],
-            pool: [],
             gateway: [],
             mcp: [],
             oauth: nil,
@@ -239,7 +230,6 @@ defmodule WardrikDaemon.Config do
           defaults: map(),
           prices: %{String.t() => keyword()},
           model_options: keyword(),
-          pool: keyword(),
           gateway: keyword(),
           mcp: keyword(),
           oauth: keyword() | nil,
@@ -386,7 +376,6 @@ defmodule WardrikDaemon.Config do
          {:ok, workspace} <- workspace(opts[:workspace]),
          {:ok, prices} <- prices(opts[:models][:prices]),
          {:ok, model_options} <- model_options(opts[:models][:options]),
-         {:ok, pool} <- pool(opts[:models][:pool]),
          {:ok, gateway} <- gateway(opts[:models][:gateway]) do
       config = %__MODULE__{
         org: org,
@@ -398,7 +387,6 @@ defmodule WardrikDaemon.Config do
         defaults: opts[:defaults],
         prices: prices,
         model_options: model_options,
-        pool: pool,
         gateway: gateway,
         mcp: mcp,
         channels: channels,
@@ -478,9 +466,6 @@ defmodule WardrikDaemon.Config do
          {:ok, _checked} <- Options.checked(options, schema, "models.options"),
          do: {:ok, options}
   end
-
-  defp pool(yaml),
-    do: Options.validate(yaml, Wardrik.schema().schema[:pool][:keys], "models.pool")
 
   @gateway "models.gateway"
   @breaker [failures: [], within: [], open_for: []]

@@ -46,7 +46,6 @@ defmodule WardrikDaemon.ConfigTest do
         zai_coding_plan:glm-5.1: {priced_as: zai:glm-5.1, markup: 0.1}
         openrouter:x: {input: 0.6, output: 2.2}
       options: {temperature: 0.2, reasoning_effort: low, base_url: "https://llm.acme.test"}
-      pool: {size: 128, protocols: [http2]}
       gateway:
         fallbacks: {anthropic:claude-haiku-4-5: [zai:glm-5.1]}
         limits: {anthropic: {requests_per_minute: 4000}}
@@ -104,8 +103,6 @@ defmodule WardrikDaemon.ConfigTest do
              reasoning_effort: :low,
              temperature: 0.2
            ]
-
-    assert Enum.sort(config.pool) == [count: 1, protocols: [:http2], size: 128]
 
     assert Enum.sort(config.gateway) == [
              breaker: [failures: 3, open_for: 60_000],
@@ -343,7 +340,7 @@ defmodule WardrikDaemon.ConfigTest do
       {"defaults: 1", "invalid value for :defaults option: expected map"},
       {"brave: {key: x}", "brave: unknown options [:key], valid options are: [:api_key]"},
       {"models: {a:b: 1}",
-       "models: unknown options [:a:b], valid options are: [:prices, :options, :pool, :gateway]"},
+       "models: unknown options [:a:b], valid options are: [:prices, :options, :gateway]"},
       {"models: {prices: {a:b: 1}}", "models.prices.a:b: holds input and output"},
       {"models: {prices: {a:b: {zzz_per: day}}}", "models.prices.a:b.zzz_per: isn't an option"},
       {"models: {prices: {a:b: {input: 1}}}",
@@ -354,7 +351,6 @@ defmodule WardrikDaemon.ConfigTest do
        "models.prices.a:b: a:b's markup is a number."},
       {"models: {options: {temprature: 1}}", "models.options: unknown options [:temprature]"},
       {"models: {options: {temperature: hot}}", "models.options: invalid value for :temperature"},
-      {"models: {pool: {size: 0}}", "models.pool: invalid value for :size"},
       {"models: {gateway: {fallbacks: {nope:nope: []}}}",
        "models.gateway: invalid value for :fallbacks"},
       {"models: {gateway: {limits: {anthropic: {rpm: 1}}}}",

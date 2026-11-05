@@ -2,7 +2,7 @@
 #
 # Installs wardrik, the daemon and the command that runs it, from a release.
 #
-#   curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.4/install.sh | sh
+#   curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.5/install.sh | sh
 #   sh install.sh wardrik-0.1.0-linux-x86_64.tar.gz     a tarball you already have
 #
 # As a user it installs under ~/.local: the release in ~/.local/lib/wardrik,
@@ -11,7 +11,7 @@
 # wardrik at the new one, and keeps the one before it. It writes nothing else:
 # the daemon makes its own directories the first time it starts.
 #
-#   WARDRIK_VERSION        the release to install, such as 0.1.0-rc.4; by default the newest,
+#   WARDRIK_VERSION        the release to install, such as 0.1.0-rc.5; by default the newest,
 #                          pre-releases included
 #   WARDRIK_INSTALL_DIR    where the releases go
 #   WARDRIK_BIN_DIR        where wardrik goes

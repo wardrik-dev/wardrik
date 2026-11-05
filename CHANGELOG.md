@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0-rc.5 (2026-11-04)
+
+- Fixes every turn failing with `unknown options [:finch_name]`.
+- Streamed turns use up to 64 connections per provider host, up from 8.
+- Requires `wardrik` 0.1.0-rc.5.
+
+### Breaking
+
+- `config.yaml`'s `models.pool` is gone. Model calls use `ReqLLM`'s own connection pool.
+
 ## 0.1.0-rc.4 (2026-11-04)
 
 - Every model call goes through a `WardrikGateway`: a circuit breaker per model, and the fallbacks
