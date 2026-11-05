@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.7 (2026-11-05)
+
+- Defining an agent another node is starting at the same moment takes the one that node started.
+  It failed with `didn't start: {:already_started, pid}`.
+
 ## 0.1.0-rc.6 (2026-11-04)
 
 ### Breaking
