@@ -5,7 +5,7 @@ Wardrik as a daemon: agents from files, `config.yaml`, an HTTP API, and the `war
 ## Install
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.5/install.sh | WARDRIK_VERSION=0.1.0-rc.5 sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.6/install.sh | WARDRIK_VERSION=0.1.0-rc.6 sh
 
 wardrik init --org acme
 ```
@@ -34,7 +34,7 @@ post". It proposes a worker and its triggers. Approve them with `wardrik approva
 
   ```sh
   docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
-    -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.5
+    -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.6
   docker exec -it wardrik wardrik init
   ```
 

@@ -1,34 +1,30 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.6 (2026-11-04)
 
-- `wardrik ask AGENT` with no message, at a terminal, opens `$VISUAL` or `$EDITOR` to write it.
-- `wardrik vault put` asks for the value at a terminal, not shown as it's typed.
-- `init`, `doctor`, `reload` and `connection connect` show a spinner while they wait.
-- `doctor` labels each check in colour, `agent ls` colours what each agent is doing, and `init`
-  ends with its next steps in a box.
-- `wardrik ask AGENT` with no message, at a terminal, opens `$VISUAL` or `$EDITOR` to write it.
-- `wardrik vault put` asks for the value at a terminal, not shown as it's typed.
-- `init`, `doctor`, `reload` and `connection connect` show a spinner while they wait.
-- `doctor` labels each check in colour, `agent ls` colours what each agent is doing, and `init`
-  ends with its next steps in a box.
-- `wardrik approval` goes through what waits on a person, asking about each call; Enter skips one.
-- `wardrik agent follow` shows what the agent already waits on you for, and at a terminal asks
-  about each call, then and as the agent stops for one.
-- At a terminal, a command that reaches the daemon ends by saying what waits on you:
-  `1 call waits on you: wardrik approval approve triage call_1`.
-- At a terminal, `wardrik ask` and `wardrik agent follow` show what the turn does on a line that
-  redraws in place: `⠋ web_search · 12s`. It ends as a summary: `✔ 14s · 3 tool calls`, or
-  `? waits on you after 6s`. Until the run starts it says it hasn't.
-- Reasoning is set off by a blank line before and after it.
-- `wardrik ask` says what the agent already waits on you for, and at a terminal asks about it
-  before sending the message.
-- At a terminal, `wardrik ask` asks about each call the turn waits on, and goes on once it's decided.
-- The hint after a turn that waits names each call: `wardrik approval approve triage call_1`.
+- Fixes `trigger rm`, event log trimming and removing OAuth grants failing with
+  `:cas_managed_key`. Builds on `wardrik_store` 0.1.0-rc.4.
+- Requires `wardrik` 0.1.0-rc.6.
 - `wardrik uninstall` removes what install.sh installed. `--purge` also deletes the config, keys
   and store.
-- `wardrik init` says when another Wardrik is running here, and how to use it or replace it.
-- When the daemon doesn't answer, `init` shows the end of its log.
+- `wardrik init` says when another Wardrik is running here, and how to use it or replace it. When
+  the daemon doesn't answer, it shows the end of its log, and it ends with its next steps in a box.
+
+### At a terminal
+
+- `wardrik ask` asks about each call the turn waits on, and goes on once it's decided. Before
+  sending, it asks about calls the agent already waits on, since the message waits behind them.
+- `wardrik ask` and `wardrik agent follow` show what the turn does on a line that redraws in
+  place, `⠋ web_search · 12s`, ending as `✔ 14s · 3 tool calls` or `? waits on you after 6s`.
+- `wardrik agent follow` shows what the agent already waits on, and asks about each call.
+- `wardrik approval` goes through every call waiting on a person; Enter skips one.
+- A command that reaches the daemon ends by saying what waits on you:
+  `1 call waits on you: wardrik approval approve triage call_1`.
+- `wardrik ask AGENT` with no message opens `$VISUAL` or `$EDITOR` to write it.
+- `wardrik vault put` asks for the value, not shown as it's typed.
+- `init`, `doctor`, `reload` and `connection connect` show a spinner while they wait. `doctor`
+  and `agent ls` use colour, and reasoning is set off by a blank line before and after it.
+- Hints name each call: `wardrik approval approve triage call_1`.
 
 ## 0.1.0-rc.5 (2026-11-04)
 
