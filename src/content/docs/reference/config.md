@@ -73,13 +73,15 @@ notify:
 | `brave.api_key` | none | the API key for `web_search` |
 | `vault.keys` | `[]` | vault keys; default: `WARDRIK_VAULT_KEY` or a generated `vault_key` file |
 | [`http`](#http) | | the HTTP API's listen address |
-| [`storage`](#storage) | the node's disk | the store backend |
+| [`storage`](#storage) | the node's disk | the store: Postgres or S3 |
 | `deployment` | `local` | the deployment name in each event's `source` |
 | `idle_timeout` | `900` | idle seconds before an agent's process stops, or `infinity` |
 | `retention` | `30` | days to keep events, or `infinity` |
 | `triggers` | `{}` | trigger options, such as `req_options` for fetching feeds |
+| [`cluster`](#cluster) | one node | the nodes that run as one |
+| [`agents`](#agents) | `{}` | where agents start, and how idle ones keep memory |
 
-`tools`, `tokens`, `cluster` and `ssh` are ignored with a warning.
+`tools`, `tokens` and `ssh` are ignored with a warning.
 
 ## orgs
 
@@ -296,9 +298,63 @@ and `write` it. Each is `agent:NAME`, in the mounting agent's org.
 storage:
   postgres:
     url: postgres://wardrik:${PGPASSWORD}@db.internal:5432/wardrik
+# or
+storage:
+  s3:
+    bucket: wardrik
+    endpoint: https://<account>.r2.cloudflarestorage.com
+    region: auto
+    access_key_id: ${S3_ACCESS_KEY_ID}
+    secret_access_key: ${S3_SECRET_ACCESS_KEY}
 ```
 
-Without `storage`, the store is on disk in `WARDRIK_DATA_DIR`. See [Storage](/run/storage/).
+| `s3` key | Default | Meaning |
+| --- | --- | --- |
+| `bucket` | required | the bucket, which must exist |
+| `endpoint` | required | the service's URL; requests are path-style |
+| `access_key_id`, `secret_access_key` | required | the key |
+| `region` | `us-east-1` | as the service names it |
+| `session_token` | none | for temporary credentials |
+| `prefix` | `wardrik` | where in the bucket keys go |
+| `headers` | `{}` | sent with every request |
+
+Give `postgres` or `s3`, not both. Without `storage`, the store is on disk in `WARDRIK_DATA_DIR`.
+See [Storage](/run/storage/).
+
+## cluster
+
+```yaml
+cluster:
+  nodes: [a, b, c]
+```
+
+| Key | Description |
+| --- | --- |
+| `nodes` | short names for nodes on one machine, or full names, one per machine |
+| `dns` | a name whose A and AAAA records are the nodes, as `wardrik@ADDRESS` |
+| `size` | the number of nodes, with `dns` |
+
+`cluster` is read as the daemon starts. See [Run a cluster](/run/cluster/).
+
+## agents
+
+```yaml
+agents:
+  max_per_node: 5000
+  max_memory: 80
+  max_cpu: 90
+  hibernate_after: 60
+```
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `max_per_node` | none | agents and conversations a node runs |
+| `max_memory` | none | percent of the machine's memory above which a node takes no new agents |
+| `max_cpu` | none | percent of its CPU above which a node takes no new agents |
+| `hibernate_after` | none | seconds idle before an agent compacts its memory |
+
+Each new agent starts on the node with the most room. See
+[Spread agents](/run/cluster/#spread-agents).
 
 ## Directories
 
@@ -309,6 +365,7 @@ Without `storage`, the store is on disk in `WARDRIK_DATA_DIR`. See [Storage](/ru
 | `WARDRIK_DATA_HOME` | `~/.local/share/wardrik` | `vault_key`, `cli_token` |
 | `WARDRIK_STATE_DIR` | `~/.local/state/wardrik` | logs |
 | `WARDRIK_ENV_FILE` | `env` in the config directory | extra environment variables |
+| `WARDRIK_NODE` | none | which node of a [cluster](/run/cluster/) this is |
 
 The defaults follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME`.
 

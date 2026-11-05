@@ -8,7 +8,7 @@ Install Wardrik, send the assistant a request, then write your own agent.
 ## 1. Install
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.6/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.7/install.sh | sh
 wardrik init
 ```
 

@@ -8,7 +8,7 @@ sidebar:
 ## Upgrade
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.6/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.7/install.sh | sh
 systemctl --user restart wardrik
 wardrik version
 ```
@@ -20,10 +20,10 @@ wardrik version
 In Docker, start a new container with the same volumes:
 
 ```sh
-docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.6
+docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.7
 docker rm -f wardrik
 docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
-  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.6
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.7
 ```
 
 ## Back up
@@ -32,7 +32,7 @@ docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
 | --- | --- |
 | Your files | `~/.config/wardrik`: `config.yaml`, `agents/`, `policies/`, `env` |
 | The vault key | `~/.local/share/wardrik/vault_key`, or wherever `WARDRIK_VAULT_KEY` is stored |
-| The store | `~/.local/share/wardrik/store`, or the Postgres database |
+| The store | `~/.local/share/wardrik/store`, the Postgres database, or the S3 bucket |
 
 Back up the vault key separately from the store. Together they decrypt every secret.
 
@@ -44,7 +44,7 @@ tar -czf wardrik-store-$(date +%F).tar.gz -C ~/.local/share/wardrik store
 wardrik start
 ```
 
-To restore, stop the daemon, extract the archive, and start it. Back up Postgres with `pg_dump`.
+To restore, stop the daemon, extract the archive, and start it. Back up Postgres with `pg_dump`, and a bucket with your provider's versioning or replication.
 
 ## Details
 

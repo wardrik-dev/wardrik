@@ -43,7 +43,7 @@ import RikMark from '../../components/RikMark.astro';
 <span class="node"><span></span>box1</span>
 </div>
 <h3>Keeps working</h3>
-<p>A turn resumes after a crash. A call that may have run needs approval before it runs again.</p>
+<p>A turn resumes after a crash. A lost node’s agents restart on the others. A call that may have run needs approval before it runs again.</p>
 <p class="pillar-links"><a href="/examples/pull-the-plug/">Pull the plug yourself</a></p>
 </div>
 <div class="pillar">
@@ -161,7 +161,7 @@ await wardrik.work();
 <li><a href="/concepts/policy/#judges">Judges</a><p>A model classifies each call, such as whether an email promises a refund.</p></li>
 <li><a href="/build/assistant/">The assistant</a><p>Send a request. It proposes tool calls, and runs each one you approve.</p></li>
 <li><a href="/concepts/agents/#sleeping">Idle agents</a><p>Run one per customer. Idle agents stop, and restart with their state on the next message.</p></li>
-<li><a href="/run/cluster/">Recovery</a><p>Keep the store in Postgres, and a new machine resumes every agent.</p></li>
+<li><a href="/run/cluster/">Clusters</a><p>Agents spread across nodes, and a lost node’s agents restart on the rest.</p></li>
 <li><a href="/reference/cli/"><RikMark /> CLI</a><p>List agents, approve pending calls, and check spend from a terminal.</p></li>
 </ul>
 
@@ -185,7 +185,7 @@ await wardrik.work();
 <div class="install-command">
 
 ```sh wrap
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.6/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.7/install.sh | sh
 wardrik init
 ```
 
