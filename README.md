@@ -239,6 +239,26 @@ wardrik logs --node b
 wardrik service install --node a   # each node is an instance of wardrik@.service
 ```
 
+### Spread agents
+
+```yaml
+agents:
+  max_per_node: 5000   # agents and conversations a node runs
+  max_memory: 80       # percent of the machine's memory
+  max_cpu: 90          # percent of its CPU
+  hibernate_after: 60  # seconds idle before an agent compacts its memory
+```
+
+- Each new agent, and each agent a lost node ran, starts on the node with the most room. With
+  none of these set, it starts on the node that defined it.
+- A node at `max_per_node` takes no more. Leave room on the rest for a lost node's agents.
+- Nodes on one machine share its memory and CPU, so there only `max_per_node` spreads agents.
+- Running agents stay where they are. `wardrik agent move AGENT NODE` moves one.
+- Measured on one machine, three nodes, `max_per_node: 15`: 30 agent files started as 1, 14 and
+  15 per node. Placement reads each node's load from heartbeats every 10s, so a burst fills a node
+  to its limit before the next. After `kill -9` of the node with 15, all 30 ran on the other two
+  within 47s.
+
 With the store on the nodes' disks, a write needs more than half the nodes. Three nodes carry on
 with one lost; two stop when either is. A node starting waits for enough others, up to an hour.
 With `storage` in Postgres, nodes don't wait for each other.

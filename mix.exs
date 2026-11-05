@@ -71,7 +71,7 @@ defmodule WardrikDaemon.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik, "~> 0.1.0-rc.6"),
+      sibling(:wardrik, "~> 0.1.0-rc.7"),
       sibling(:wardrik_slack, "~> 0.1.0-rc.3"),
       sibling(:wardrik_lua, "~> 0.1.0-rc.2"),
       sibling(:wardrik_brave, "~> 0.1.0-rc.2"),

@@ -11,6 +11,9 @@
 - Nodes on one machine share the HTTP API's port: the first to start listens, and another takes it
   over when that one stops.
 - Nodes reload agent files one at a time, so nodes starting together don't give a file two agents.
+- `agents` in `config.yaml` spreads agents across nodes: each new agent, and each a lost node ran,
+  starts on the node with the most room under `max_per_node`, `max_memory` and `max_cpu`. Idle
+  agents compact their memory after `hibernate_after` seconds. Requires `wardrik` 0.1.0-rc.7.
 - Depends on `libcluster` 3.6. `mimic` 2.5 for tests.
 
 ## 0.1.0-rc.6 (2026-11-04)

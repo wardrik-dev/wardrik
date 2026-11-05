@@ -569,6 +569,7 @@ defmodule WardrikDaemon.ConfigTest do
     idle_timeout: infinity
     retention: 90
     triggers: {reconcile: 60000, req_options: {receive_timeout: 5000}}
+    agents: {max_per_node: 500, max_memory: 80, max_cpu: 90, hibernate_after: 60}
     mcp:
       docs: {url: https://docs.test/mcp, cost: {usd: 0.01}, max_result_bytes: 4096}
     oauth:
@@ -593,6 +594,7 @@ defmodule WardrikDaemon.ConfigTest do
     refute config.deployment_keys
 
     assert config.wardrik == [
+             agents: [hibernate_after: 60, max_cpu: 90, max_memory: 80, max_per_node: 500],
              deployment: "acme-prod",
              idle_timeout: :infinity,
              retention: 90,
