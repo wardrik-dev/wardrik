@@ -19,6 +19,8 @@ wardrik approval approve triage toolu_01 --note "Only this once."
 - `AGENT` is a name: `triage` in the deployment's org, or `growth/triage` in another org.
 - Commands on an agent take `--conversation ID` to select a conversation.
 - Shortcuts: `ls`, `ask` and `follow` for `agent ls`, `agent ask` and `agent follow`.
+- At a terminal, a command ends by naming what waits on you, as
+  `1 call waits on you: wardrik approval approve triage call_1`.
 
 ## Set up
 
@@ -40,8 +42,11 @@ wardrik completion fish > ~/.config/fish/completions/wardrik.fish
 | --- | --- |
 | `agent ls [QUERY] [--all]` | lists agents and their status; `--all` includes conversations |
 | `agent show AGENT` | shows an agent's definition and current activity |
-| `agent ask AGENT MESSAGE [--no-wait]` | sends a message and streams the reply; `--no-wait` only sends |
+| `agent ask AGENT [MESSAGE] [--no-wait]` | sends a message and streams the reply; `--no-wait` only sends; with no `MESSAGE`, opens `$VISUAL` or `$EDITOR` |
 | `agent follow AGENT` | streams an agent's events until Ctrl-C; `--json` prints each event |
+
+At a terminal, `ask` and `follow` stop at each call the agent waits on, show it, and ask
+`[y/n, Enter leaves it]`. A line at the bottom says what the turn is doing.
 | `agent history AGENT` | prints the conversation |
 | `agent clear AGENT` | clears the conversation |
 | `agent start AGENT` | starts a stopped agent's process |
@@ -67,6 +72,7 @@ wardrik agent kill triage toolu_01
 
 | Command | Does |
 | --- | --- |
+| `approval` | goes through each pending call, asking whether to approve it; off a terminal, lists them |
 | `approval ls` | lists calls pending approval, with their conversation |
 | `approval approve AGENT CALL [--note NOTE]` | runs the call; the model receives the note |
 | `approval deny AGENT CALL [--reason REASON]` | denies the call; the model receives the reason |
@@ -133,7 +139,7 @@ wardrik connection pair linear BCDF-GHJK
 
 | Command | Does |
 | --- | --- |
-| `vault put NAME [--for PURPOSE]` | stores a secret read from stdin |
+| `vault put NAME [--for PURPOSE]` | stores a secret, typed unseen at a terminal, or read from stdin |
 | `vault ls` | lists secret names, never values |
 | `vault rm NAME` | removes a secret |
 
@@ -178,6 +184,7 @@ wardrik token revoke mzxw6ytboi
 | `status` | prints the URL, and the agent count per node |
 | `reload [AGENT...]` | rereads agent files on every node |
 | `audit` | prints the audit log, oldest first |
+| `uninstall [--purge] [--yes]` | stops the daemon and removes what install.sh installed; keeps the config, keys and store unless `--purge` |
 
 ```sh
 wardrik service install

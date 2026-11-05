@@ -8,7 +8,7 @@ Install Wardrik, send the assistant a request, then write your own agent.
 ## 1. Install
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.5/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.6/install.sh | sh
 wardrik init
 ```
 
@@ -24,10 +24,15 @@ wardrik ask assistant "Tell me when https://github.blog/changelog/feed/ has a ne
 It replies with a plan and an `agent_create` call that needs approval:
 
 ```text
-Waiting on a person for 1 call:
-  ? agent_create  call_8d2e  agent_create needs your approval.
-Decide with: wardrik approval approve assistant ID, or wardrik approval deny assistant ID
+? waits on you after 6s
+
+╭─ agent_create ─────────────────────────╮
+│ { "name": "changelog-watch", … }       │
+╰────────────────────────────────────────╯
+Approve agent_create? [y/n, Enter leaves it]
 ```
+
+Type `y`. Off a terminal, or after Enter, approve it later:
 
 ```sh
 wardrik approval approve assistant call_8d2e

@@ -9,10 +9,14 @@ A tool call that needs approval pauses the turn until a person approves or denie
 turn is stored, so it survives a restart. It never times out.
 
 ```sh
+wardrik approval
 wardrik approval ls
 wardrik approval approve triage call_1 --note "Label it for the next sprint."
 wardrik approval deny triage call_1 --reason "Not on a Friday."
 ```
+
+- `wardrik approval` goes through each pending call and asks `[y/n, Enter leaves it]`.
+- `wardrik ask` and `wardrik follow` ask the same, at the call, when run at a terminal.
 
 - Approving runs the call with the model's arguments. The model receives the `--note` with the result.
 - Denying returns an error with your `--reason` to the model. The turn continues.
