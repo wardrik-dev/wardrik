@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.8 (2026-11-06)
 
 - `domains` on a channel maps an email domain to an org: a Slack member whose address is
   `ana@acme.com` acts as `user:acme/@ana`. `members` still maps one member, and wins.
