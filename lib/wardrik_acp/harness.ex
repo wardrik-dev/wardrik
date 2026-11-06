@@ -7,7 +7,11 @@ defmodule WardrikACP.Harness do
                default: %{},
                doc: "Environment variables for the command."
              ],
-             meta: [type: :map, default: %{}, doc: "Sent as `_meta` when a session starts."],
+             meta: [
+               type: {:map, :string, :any},
+               default: %{},
+               doc: "Sent as `_meta` when a session starts."
+             ],
              options: [
                type: {:map, :string, {:or, [:string, :boolean]}},
                default: %{},

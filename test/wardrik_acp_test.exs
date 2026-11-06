@@ -187,6 +187,14 @@ defmodule WardrikACPTest do
                      }}
   end
 
+  @tag harness: [meta: %{"claudeCode" => %{"options" => %{"settingSources" => []}}}]
+  test "sends meta when a session starts", %{acp: acp, log: log} do
+    {:ok, _output, _context} = call(acp, [])
+
+    assert [%{"_meta" => %{"claudeCode" => %{"options" => %{"settingSources" => []}}}}] =
+             sent(log, "session/new")
+  end
+
   @tag harness: [options: %{"mode" => "ask"}]
   test "sets config options by category", %{acp: acp, log: log} do
     {:ok, _output, _context} = call(acp, [])
