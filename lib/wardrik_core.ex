@@ -3,6 +3,9 @@ defmodule WardrikCore do
   A durable agent runtime. Agents survive a crash, wait for a person, and run every call through
   your code.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_core#readme) for complete setup.
+
       children = [
         {WardrikCore.Backends.MemoryStore, name: :agents},
         {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}

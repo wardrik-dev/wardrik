@@ -18,7 +18,7 @@ defmodule MyApp.NoShell do
 end
 ```
 
-- `context.step` says which step runs.
+- `context.step` identifies the current step.
 - Call `next` to carry on, or answer the step yourself.
 - The model sees the refusal as the call's error, and carries on.
 

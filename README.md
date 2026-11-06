@@ -1,9 +1,6 @@
 # WardrikCore
 
-**Agents, governed.**
-
-A durable agent runtime for Elixir. Agents pick up after a crash, wait for a person when they
-should, and run every call through your code.
+Runs agents with persistent state, tool call approvals, and middleware for model and tool calls.
 
 ## Install
 
@@ -17,7 +14,11 @@ end
 
 ## Start an agent
 
+Set `ANTHROPIC_API_KEY` before starting `iex`.
+
 ```elixir
+Mix.install([{:wardrik_core, "~> 0.1.0-rc.4"}])
+
 children = [
   {WardrikCore.Backends.MemoryStore, name: :agents},
   {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
@@ -30,7 +31,7 @@ Supervisor.start_link(children, strategy: :rest_for_one)
 ```
 
 `MemoryStore` loses agents when the node stops. To keep them, see
-[Where agents are kept](pages/running-agents.md#where-agents-are-kept).
+[Agent storage](pages/running-agents.md#agent-storage).
 
 ## Guides
 

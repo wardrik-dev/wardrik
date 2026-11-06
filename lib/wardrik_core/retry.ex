@@ -2,6 +2,9 @@ defmodule WardrikCore.Retry do
   @moduledoc """
   Retries model calls and tool calls that a retry may fix.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_core#readme) for complete setup.
+
       WardrikCore.start_agent(
         agent_id: "triage",
         model: "anthropic:claude-haiku-4-5",

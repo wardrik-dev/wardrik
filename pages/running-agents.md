@@ -49,7 +49,7 @@ WardrikCore.whereis({"support", "C1"})
 
 `"support"` alone means the agent's main history, `{"support", nil}`.
 
-## Where agents are kept
+## Agent storage
 
 | Backend | Keeps agents | Needs |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ WardrikCore.whereis({"support", "C1"})
 
 The last three are under `DurableServer.Backends`.
 
-On disk:
+Alternative supervision-tree fragment for disk storage; add `{:ekv, "~> 0.4"}` to your dependencies:
 
 ```elixir
 children = [
@@ -69,7 +69,7 @@ children = [
 ]
 ```
 
-In S3:
+Alternative supervision-tree fragment for S3 storage; set the AWS credential environment variables before startup:
 
 ```elixir
 children = [
@@ -87,7 +87,7 @@ children = [
 To keep agents in Postgres, use `WardrikStore.Durable` from
 [wardrik_store](https://hexdocs.pm/wardrik_store).
 
-## After a crash
+## Crash recovery
 
 - An agent that crashes restarts and picks its message back up.
 - With a backend that keeps agents, so does one whose node died. A sweep finds it every
@@ -108,9 +108,7 @@ WardrikCore.resume(agent, %{call.id => {:deny, "It may have run already."}})
 
 ## Options
 
-`start_agent/2` takes `:instructions`, `:capabilities`, `:middleware`, `:principal`,
-`:credentials`, `:keys`, `:events`, `:metadata`, `:timeout`, `:max_rounds`, `:retries` and
-`:prices`. See `WardrikCore.start_agent/2`.
+See `WardrikCore.start_agent/2` for agent options and defaults.
 
 `configure/2` changes them from the next turn:
 

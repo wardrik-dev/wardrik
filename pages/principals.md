@@ -1,6 +1,6 @@
 # Who sent a message
 
-Tell the agent who sent each message. Your tools and middleware can then act for that person.
+Pass the sender with each message. Tools and middleware can use that sender's credentials and permissions.
 
 Run the [setup](running-agents.md#setup) in IEx first.
 
