@@ -2,6 +2,9 @@ defmodule WardrikBrave do
   @moduledoc """
   Web search for agents, through Brave's LLM Context API.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_brave#readme) for complete setup.
+
       children = [{WardrikBrave, name: MyApp.Brave, api_key: System.fetch_env!("BRAVE_API_KEY")}]
 
       WardrikCore.start_agent(
