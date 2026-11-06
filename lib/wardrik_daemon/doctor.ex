@@ -80,6 +80,8 @@ defmodule WardrikDaemon.Doctor do
   defp checks(config, dirs, env, opts) do
     [storage(config, dirs), vault(config, dirs, env), brave(config)] ++
       Enum.map(config.mcp, &mcp/1) ++
+      Enum.map(config.harnesses, &harness/1) ++
+      Enum.map(config.checkouts, &checkout/1) ++
       Enum.map(config.channels, &channel(&1, Keyword.get(opts, :req_options, []))) ++
       oauth(config) ++
       Enum.map(config.warnings, &{:warn, "config", &1}) ++
@@ -171,6 +173,27 @@ defmodule WardrikDaemon.Doctor do
     do: {:warn, "brave", "web_search has no key; give it brave.api_key"}
 
   defp brave(_config), do: {:ok, "brave", "web_search has a key"}
+
+  defp harness({name, opts}) do
+    command = Keyword.fetch!(opts, :command)
+
+    if System.find_executable(command),
+      do: {:ok, "harness #{name}", "runs #{command}"},
+      else: {:fail, "harness #{name}", "runs #{command}, which isn't on this machine's PATH"}
+  end
+
+  defp checkout({name, opts}) do
+    path = Keyword.fetch!(opts, :path)
+    base = Keyword.fetch!(opts, :base)
+
+    case System.cmd("git", ["-C", path, "rev-parse", "--verify", base], stderr_to_stdout: true) do
+      {_head, 0} ->
+        {:ok, "checkout #{name}", "#{path} is a git repository; new work starts from #{base}"}
+
+      {_output, _status} ->
+        {:fail, "checkout #{name}", "#{path} isn't a git repository with #{base}"}
+    end
+  end
 
   defp mcp({name, opts}), do: mcp(name, Keyword.fetch!(opts, :transport))
 

@@ -337,6 +337,41 @@ defmodule WardrikDaemon.ConfigTest do
     assert message =~ "roles.admin: is the deployment admin's own role"
   end
 
+  test "reads coding agents and the checkouts they work in", context do
+    assert {:ok, config} =
+             read(
+               context,
+               """
+               harnesses:
+                 claude:
+                   command: claude-agent-acp
+                   env: {ANTHROPIC_API_KEY: "${KEY}"}
+                   meta: {claudeCode: {options: {settingSources: []}}}
+                   options: {mode: default}
+                   context: [CLAUDE.md]
+                   timeout: 1800
+                   idle: 60
+               checkouts:
+                 core: ~/src/core
+                 billing: {path: ~/src/billing, base: origin/main, fetch: true}
+               """,
+               %{"KEY" => "sk-1"}
+             )
+
+    assert [{"claude", claude}] = config.harnesses
+    assert claude[:command] == "claude-agent-acp"
+    assert claude[:env] == %{"ANTHROPIC_API_KEY" => "sk-1"}
+    assert claude[:meta] == %{"claudeCode" => %{"options" => %{"settingSources" => []}}}
+    assert claude[:options] == %{"mode" => "default"}
+    assert claude[:timeout] == 1_800_000
+    assert claude[:idle] == 60_000
+
+    assert Map.new(config.checkouts) == %{
+             "core" => [path: Path.expand("~/src/core"), base: "HEAD", fetch: false],
+             "billing" => [path: Path.expand("~/src/billing"), base: "origin/main", fetch: true]
+           }
+  end
+
   test "says where a key doesn't read", context do
     refused = [
       {"nope: 1", "unknown options [:nope], valid options are: [:org,"},
@@ -355,6 +390,13 @@ defmodule WardrikDaemon.ConfigTest do
       {"mcp: {a: {args: []}}", "mcp.a: has a command"},
       {"mcp: {a: 1}", "mcp.a: is a server's keys"},
       {"mcp: [a]", "invalid value for :mcp option: expected map"},
+      {"harnesses: {c: {args: []}}", "harnesses.c: required :command option not found"},
+      {"harnesses: {c: {command: x, timeout: soon}}", "harnesses.c: invalid value for :timeout"},
+      {"harnesses: {c: {command: x, zzz_colour: red}}",
+       "harnesses.c.zzz_colour: isn't an option"},
+      {"harnesses: {c: 1}", "harnesses.c: is a harness's keys, with a command"},
+      {"checkouts: {c: 1}", "checkouts.c: is a repository's path"},
+      {"checkouts: {c: {base: main}}", "checkouts.c: required :path option not found"},
       {"oauth: {providers: {g: {zzz_colour: red}}}",
        "oauth.providers.g: unknown options [:zzz_colour]"},
       {"oauth: {providers: {g: {issuer: x, key: mine}}}",

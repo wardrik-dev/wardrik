@@ -8,6 +8,8 @@ defmodule WardrikDaemon.Capabilities do
     * `web_search` - Brave search. Needs `brave.api_key`. See `WardrikBrave`.
     * `deep_research` - researches a topic with subagents. See `WardrikResearch`.
     * `agent_create` - makes a worker in the agent's org. See `WardrikDaemon.CreateAgent`.
+
+  `config.yaml`'s `harnesses` add a tool each, by name. See `WardrikDaemon.Harnesses`.
   """
 
   @doc "Returns the tools by name, as Wardrik's `:capabilities` option takes them."

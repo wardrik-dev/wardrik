@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- `harnesses` in `config.yaml` names coding agents that speak ACP, such as Claude Code. Each is a
+  tool of the same name, so an agent file lists `tools: [claude]`. See `WardrikACP`.
+- `checkouts` names the git repositories they work in, as a path or `{path, base, fetch}`. New
+  work starts from `base` in a worktree in the data directory's `worktrees`. A daily sweep removes
+  each worktree whose work is in `base`.
+- `orgs.<org>.harnesses` gives a harness to an org. A harness no org lists is the deployment's
+  org's.
+- `wardrik doctor` checks each harness's command is on `PATH`, and each checkout has its `base`.
+
 ## 0.1.0-rc.8 (2026-11-06)
 
 - `domains` on a channel maps an email domain to an org: a Slack member whose address is

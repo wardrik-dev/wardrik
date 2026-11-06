@@ -77,6 +77,7 @@ defmodule WardrikDaemon.MixProject do
       sibling(:wardrik_brave, "~> 0.1.0-rc.2"),
       sibling(:wardrik_gateway, "~> 0.1.0-rc.1"),
       sibling(:wardrik_research, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_acp, "~> 0.1.0-rc.1"),
       sibling(:wardrik_store, "~> 0.1.0-rc.5"),
       {:req, "~> 0.5"},
       {:ecto_sql, "~> 3.13"},

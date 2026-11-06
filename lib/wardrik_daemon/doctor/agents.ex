@@ -96,7 +96,9 @@ defmodule WardrikDaemon.Doctor.Agents do
     Wardrik.new(
       name: WardrikDaemon.Doctor,
       store: store,
-      capabilities: WardrikDaemon.Capabilities.all(WardrikDaemon.Doctor, daemon),
+      capabilities:
+        WardrikDaemon.Capabilities.all(WardrikDaemon.Doctor, daemon) ++
+          WardrikDaemon.Harnesses.capabilities(WardrikDaemon.Doctor, daemon, config),
       mcp: config.mcp,
       channels: config.channels,
       defaults: config.defaults,

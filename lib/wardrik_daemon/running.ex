@@ -54,7 +54,10 @@ defmodule WardrikDaemon.Running do
       Wardrik.new(
         [
           name: name,
-          capabilities: opts[:capabilities] || WardrikDaemon.Capabilities.all(name, daemon),
+          capabilities:
+            opts[:capabilities] ||
+              WardrikDaemon.Capabilities.all(name, daemon) ++
+                WardrikDaemon.Harnesses.capabilities(name, daemon, config),
           store: store,
           vault_keys: keys,
           mcp: config.mcp,
@@ -79,6 +82,11 @@ defmodule WardrikDaemon.Running do
     children = [
       {WardrikBrave, name: WardrikDaemon.Capabilities.brave(name), api_key: config.brave},
       {WardrikGateway, [name: gateway] ++ config.gateway},
+      {WardrikACP,
+       name: WardrikDaemon.Harnesses.acp(name),
+       worktrees: Dirs.data_home(dirs, "worktrees"),
+       checkouts: config.checkouts,
+       harnesses: config.harnesses},
       {Wardrik, wardrik},
       {WardrikDaemon.Pairings, name: WardrikDaemon.Pairings.name(name)},
       {WardrikDaemon.HTTP,

@@ -3,6 +3,7 @@ defmodule WardrikDaemon.Config do
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Config.Channels
+  alias WardrikDaemon.Config.Harnesses
   alias WardrikDaemon.Config.MCP
   alias WardrikDaemon.Config.Notify
   alias WardrikDaemon.Config.OAuth
@@ -93,6 +94,17 @@ defmodule WardrikDaemon.Config do
               type: {:map, :string, :any},
               default: %{},
               doc: "MCP servers agents may call. See `WardrikDaemon.Config.MCP`."
+            ],
+            harnesses: [
+              type: {:map, :string, :any},
+              default: %{},
+              doc: "Coding agents agents may call. See `WardrikDaemon.Config.Harnesses`."
+            ],
+            checkouts: [
+              type: {:map, :string, :any},
+              default: %{},
+              doc:
+                "Git repositories coding agents work in, by name. See `WardrikDaemon.Config.Harnesses`."
             ],
             oauth: [
               type: {:map, :string, :any},
@@ -249,6 +261,8 @@ defmodule WardrikDaemon.Config do
             model_options: [],
             gateway: [],
             mcp: [],
+            harnesses: [],
+            checkouts: [],
             oauth: nil,
             channels: [],
             notify: [],
@@ -278,6 +292,8 @@ defmodule WardrikDaemon.Config do
           model_options: keyword(),
           gateway: keyword(),
           mcp: keyword(),
+          harnesses: [{String.t(), keyword()}],
+          checkouts: [{String.t(), keyword()}],
           oauth: keyword() | nil,
           channels: keyword(),
           notify: keyword(),
@@ -419,9 +435,11 @@ defmodule WardrikDaemon.Config do
     org = opts[:org]
 
     with {:ok, mcp} <- MCP.read(opts[:mcp]),
+         {:ok, harnesses} <- Harnesses.read(opts[:harnesses]),
+         {:ok, checkouts} <- Harnesses.checkouts(opts[:checkouts]),
          {:ok, channels} <- Channels.read(opts[:channels], org),
          {:ok, notify} <- Notify.read(opts[:notify], Enum.map(channels, &elem(&1, 0))),
-         {:ok, orgs} <- Orgs.read(opts[:orgs], defined(mcp, channels, notify)),
+         {:ok, orgs} <- Orgs.read(opts[:orgs], defined(mcp, harnesses, channels, notify)),
          {:ok, access} <- Access.read(opts[:roles], opts[:bindings], declared(orgs, org)),
          {:ok, channels} <- owned(channels, orgs, org),
          {:ok, workspace} <- workspace(opts[:workspace]),
@@ -442,6 +460,8 @@ defmodule WardrikDaemon.Config do
         model_options: model_options,
         gateway: gateway,
         mcp: mcp,
+        harnesses: harnesses,
+        checkouts: checkouts,
         channels: channels,
         notify: notify,
         workspace: workspace,
@@ -472,9 +492,10 @@ defmodule WardrikDaemon.Config do
 
   defp storage(_both_or_neither), do: {:error, "storage: give one of postgres and s3"}
 
-  defp defined(mcp, channels, notify) do
+  defp defined(mcp, harnesses, channels, notify) do
     %{
       "mcp" => Enum.map(mcp, &to_string(elem(&1, 0))),
+      "harnesses" => Enum.map(harnesses, &elem(&1, 0)),
       "channels" => Enum.map(channels, &to_string(elem(&1, 0))),
       "notify" => Enum.map(notify[:targets], &to_string(elem(&1, 0)))
     }

@@ -91,6 +91,50 @@ defmodule WardrikDaemon.DoctorTest do
              ~r/ok    channel slack  takes/
   end
 
+  test "says whether each harness runs and each checkout is a repository", context do
+    repo =
+      Path.join(
+        context.env["HOME"] || System.tmp_dir!(),
+        "repo-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(repo)
+    on_exit(fn -> File.rm_rf!(repo) end)
+    gitconfig = Path.join(repo, ".gitconfig-test")
+    File.write!(gitconfig, "[user]\n\tname = Test\n\temail = test@example.com\n")
+    git = [{"GIT_CONFIG_GLOBAL", gitconfig}, {"GIT_CONFIG_NOSYSTEM", "1"}]
+
+    for args <- [["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "First"]],
+        do:
+          {_output, 0} = System.cmd("git", ["-C", repo | args], env: git, stderr_to_stdout: true)
+
+    write(context, "config.yaml", """
+    harnesses:
+      claude: {command: sh}
+      codex: {command: no-such-acp-agent}
+    checkouts:
+      core: #{repo}
+      gone: #{repo}-gone
+      based: {path: #{repo}, base: release}
+    """)
+
+    checks = run(context.env)
+
+    assert [{:ok, "runs sh"}] = found(checks, "harness claude")
+
+    assert [{:fail, "runs no-such-acp-agent, which isn't on this machine's PATH"}] =
+             found(checks, "harness codex")
+
+    assert [{:ok, "#{repo} is a git repository; new work starts from HEAD"}] ==
+             found(checks, "checkout core")
+
+    assert [{:fail, "#{repo}-gone isn't a git repository with HEAD"}] ==
+             found(checks, "checkout gone")
+
+    assert [{:fail, "#{repo} isn't a git repository with release"}] ==
+             found(checks, "checkout based")
+  end
+
   test "says where everything is kept, and whether Postgres answers", context do
     write(context, "config.yaml", "org: acme\n")
 

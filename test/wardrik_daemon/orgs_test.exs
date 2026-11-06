@@ -66,6 +66,28 @@ defmodule WardrikDaemon.OrgsTest do
     assert serves.(:notify, "audit") == ["payments", "deployment"]
   end
 
+  test "gives each harness to the orgs that list it, and the rest to the deployment's org",
+       context do
+    assert {:ok, config} =
+             read(context, """
+             org: platform
+             harnesses: {claude: {command: claude-agent-acp}, codex: {command: codex-acp}}
+             orgs: {payments: {harnesses: [claude]}}
+             """)
+
+    serves = fn name ->
+      for org <- ["platform", "payments", "deployment"],
+          Orgs.serves?(config, kind: :harnesses, name: name, org: org),
+          do: org
+    end
+
+    assert serves.("claude") == ["payments", "deployment"]
+    assert serves.("codex") == ["platform", "deployment"]
+
+    assert {:error, message} = read(context, "orgs: {payments: {harnesses: [nope]}}")
+    assert message =~ "orgs.payments.harnesses: names nope, which harnesses doesn't define"
+  end
+
   test "refuses an org that names what isn't defined, a channel two orgs list, or a key it doesn't take",
        context do
     assert {:error, message} = read(context, "orgs: {payments: {mcp: [nope]}}")

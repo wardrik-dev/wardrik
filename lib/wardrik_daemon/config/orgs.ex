@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.Config.Orgs do
   @schema [
     mcp: [type: {:list, :string}, default: [], doc: "The servers its agents use."],
+    harnesses: [type: {:list, :string}, default: [], doc: "The coding agents its agents use."],
     channels: [type: {:list, :string}, default: [], doc: "The channels its agents use."],
     notify: [type: {:list, :string}, default: [], doc: "The targets its agents use."],
     policy: [type: :string, doc: "The policy in `policies/` its agents are held to."]
@@ -15,6 +16,7 @@ defmodule WardrikDaemon.Config.Orgs do
           policy: base
         payments:
           mcp: [stripe, github]
+          harnesses: [claude]
           channels: [payments-slack]
           notify: [audit]
           policy: payments-strict
@@ -24,7 +26,7 @@ defmodule WardrikDaemon.Config.Orgs do
   #{NimbleOptions.docs(NimbleOptions.new!(@schema))}
 
     * `"*"` is every org: every org uses what it lists, and is held to its policy.
-    * A server, channel or target no entry lists is the deployment's org's.
+    * A server, harness, channel or target no entry lists is the deployment's org's.
     * A channel serves one org, or every org if `"*"` lists it.
   """
 
@@ -34,13 +36,15 @@ defmodule WardrikDaemon.Config.Orgs do
 
   @type entry() :: %{
           mcp: [String.t()],
+          harnesses: [String.t()],
           channels: [String.t()],
           notify: [String.t()],
           policy: String.t() | nil
         }
 
   @doc """
-  Returns each org's entry. `defined` holds the names `mcp`, `channels` and `notify` define.
+  Returns each org's entry. `defined` holds the names `mcp`, `harnesses`, `channels` and `notify`
+  define.
   """
   @spec read(map(), %{String.t() => [String.t()]}) ::
           {:ok, %{String.t() => entry()}} | {:error, String.t()}
@@ -100,10 +104,17 @@ defmodule WardrikDaemon.Config.Orgs do
     with :ok <- named(org, path),
          {:ok, opts} <- Options.validate(entry, @schema, path),
          :ok <- listed(opts, :mcp, defined, path),
+         :ok <- listed(opts, :harnesses, defined, path),
          :ok <- listed(opts, :channels, defined, path),
          :ok <- listed(opts, :notify, defined, path) do
       {:ok,
-       %{mcp: opts[:mcp], channels: opts[:channels], notify: opts[:notify], policy: opts[:policy]}}
+       %{
+         mcp: opts[:mcp],
+         harnesses: opts[:harnesses],
+         channels: opts[:channels],
+         notify: opts[:notify],
+         policy: opts[:policy]
+       }}
     end
   end
 
