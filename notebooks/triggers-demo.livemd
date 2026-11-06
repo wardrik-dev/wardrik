@@ -1,4 +1,4 @@
-# Agents that wake themselves
+# Scheduled runs and webhooks
 
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.7"}, {:kino, "~> 0.19"}])
@@ -6,7 +6,7 @@ Mix.install([{:wardrik, "~> 0.1.0-rc.7"}, {:kino, "~> 0.19"}])
 
 ## Setup
 
-An agent wakes every minute, and when a signed webhook arrives. Add `ANTHROPIC_API_KEY` in the
+A trigger sends a message every minute and when a signed webhook arrives. Add `ANTHROPIC_API_KEY` in the
 Secrets panel. Ten minutes of it costs about a cent.
 
 `:vault_keys` seals the webhook's secret. Keep yours in config, not code.
@@ -66,7 +66,7 @@ hook_secret = "whsec_" <> Base.encode64(:crypto.strong_rand_bytes(24))
 agent.next_run
 ```
 
-## Watch it wake
+## Observe scheduled runs
 
 ```elixir
 woke = fn ->

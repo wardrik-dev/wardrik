@@ -2,6 +2,9 @@ defmodule Wardrik.HTTP do
   @moduledoc """
   Serves every operation over HTTP, plus workers, channels and sign-in pages. See `WardrikHTTP`.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik#readme) for complete setup.
+
       children = [
         MyApp.AgentRuntime,
         {Wardrik.HTTP,

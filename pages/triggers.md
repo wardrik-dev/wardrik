@@ -1,6 +1,6 @@
 # Trigger agents
 
-> See it in action: [Agents that wake themselves](../notebooks/triggers-demo.livemd)
+> See it in action: [Scheduled runs and webhooks](../notebooks/triggers-demo.livemd)
 
 A trigger asks an agent something on a clock, when a feed has new entries, or when a webhook
 arrives.
@@ -61,18 +61,7 @@ Wardrik.Agent.define(scope, "agt_digest",
 - A triggered run is an ordinary message. It wakes a sleeping agent.
 - Each run writes `wardrik.trigger.fired` to the agent's log.
 
-| Key | Means |
-| --- | --- |
-| `every` | Cron, as `0 9 * * 1` or `@daily`, or an interval of a minute or more, as `30m`. |
-| `timezone` | For cron. `Etc/UTC` unless set. |
-| `prompt` | What the agent is asked. |
-| `prompt_file` | A file in its workspace to read each run, instead of `prompt`. Needs `files`. |
-| `name` | `trigger-1`, `trigger-2` and so on unless set. |
-| `overlap` | When the agent is busy: `skip`, `queue`, or `settle`. `settle` unless set, `queue` for webhooks. |
-| `missed` | `run_once` or `skip` what was missed while nothing ran. |
-| `jitter` | Up to this many seconds added to each run. |
-| `feed` | RSS or Atom URLs. Asks only for new entries, up to 20. The first run only reads. |
-| `webhook` | `secret`, as `${NAME}`, and `verify`, `shared` or `standard`. |
+See `WardrikTriggers.Trigger` for trigger fields, defaults, and accepted values.
 
 - `settle` cancels a turn waiting on an answer nobody gave, then asks. It skips a turn still working.
   The audit gets `wardrik.agent.cancelled` with the trigger's name.

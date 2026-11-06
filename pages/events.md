@@ -1,6 +1,6 @@
 # Events and the audit
 
-> See it in action: [See everything an agent did](../notebooks/events-demo.livemd)
+> See it in action: [Event logs](../notebooks/events-demo.livemd)
 
 Every agent's events are kept, to read back or follow. What people did is in the audit.
 
@@ -82,7 +82,7 @@ Wardrik.Views.Runs.totals(runs)
 
 ## Listeners
 
-A listener hands the events of the agents it names to your module, with the cursor past each:
+A listener calls your module for each selected agent event. It includes the cursor after that event:
 
 ```elixir
 defmodule MyApp.Started do

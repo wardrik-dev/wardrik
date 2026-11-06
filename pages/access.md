@@ -1,6 +1,6 @@
 # Who may do what
 
-> See it in action: [Who may do what](../notebooks/access-demo.livemd)
+> See it in action: [Operation authorization](../notebooks/access-demo.livemd)
 
 Wardrik asks your app before every operation. You write an authorizer module that answers yes or
 no. Wardrik keeps no roles of its own.

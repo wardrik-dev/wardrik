@@ -2,6 +2,9 @@ defmodule Wardrik do
   @moduledoc """
   Runs your app's agents, holds them to policies, and records what they do.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik#readme) for complete setup.
+
       defmodule MyApp.AgentRuntime do
         use Wardrik, otp_app: :my_app
       end

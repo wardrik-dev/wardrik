@@ -1,6 +1,6 @@
 # Run Wardrik
 
-> See it in action: [Agents that survive a crash](../notebooks/durability-demo.livemd)
+> See it in action: [Crash recovery](../notebooks/durability-demo.livemd)
 
 Make Wardrik a module of your app, and add it to your supervision tree:
 
@@ -40,9 +40,11 @@ scope = MyApp.AgentRuntime.as("maria")
 ```
 
 - Every operation takes a scope. `MyApp.AgentRuntime.as/2` is `Wardrik.as/3`.
-- See [Who may do what](access.md) for a real authorizer.
+- See [Operation authorization](access.md) for a real authorizer.
 
-## Configure it
+## Configure the runtime
+
+Application integration fragments: place configuration in `config/runtime.exs` and children in your application supervisor.
 
 Each place overrides the one before it:
 
@@ -69,7 +71,8 @@ See `Wardrik.start_link/1` for every option.
 
 ## Stores
 
-In memory unless `:store` is set, and gone when Wardrik stops.
+Without `:store`, state is stored in memory and deleted when Wardrik stops.
+The following alternatives are fragments for the runtime's `:store` option.
 
 ```elixir
 # On disk
