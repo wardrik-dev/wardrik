@@ -2,6 +2,9 @@ defmodule WardrikWorkspace do
   @moduledoc """
   File tools for agents, kept in a `WardrikStore`.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_workspace#readme) for complete setup.
+
       WardrikCore.start_agent(
         agent_id: "agt_triage",
         model: "anthropic:claude-haiku-4-5",

@@ -3,7 +3,7 @@
 File tools for agents. Each agent's files are kept in a [WardrikStore](https://hexdocs.pm/wardrik_store),
 so they outlive the node.
 
-With [Wardrik](https://hexdocs.pm/wardrik), it's set up from the agent's definition:
+With [Wardrik](https://hexdocs.pm/wardrik), configure these fields in an agent file:
 
 ```yaml
 tools: [files]
@@ -26,8 +26,20 @@ end
 
 ## With WardrikCore
 
+Run the example in a fresh IEx session. Set `ANTHROPIC_API_KEY` before starting IEx.
+
 ```elixir
+Mix.install([{:wardrik_workspace, "~> 0.1.0-rc.2"}])
+
 store = WardrikStore.ETS.new(name: MyApp.Store)
+{:ok, _store} = Supervisor.start_link([{WardrikStore, store}], strategy: :one_for_one)
+
+children = [
+  {WardrikCore.Backends.MemoryStore, name: :agents},
+  {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
+]
+
+{:ok, _supervisor} = Supervisor.start_link(children, strategy: :rest_for_one)
 tree = "agents/agt_triage"
 
 WardrikCore.start_agent(
