@@ -15,9 +15,13 @@ end
 
 ## Start a store
 
+Run in a fresh IEx session:
+
 ```elixir
+Mix.install([{:wardrik_store, "~> 0.1.0-rc.5"}])
+
 store = WardrikStore.ETS.new(name: MyApp.Store)
-children = [{WardrikStore, store}]
+{:ok, _supervisor} = Supervisor.start_link([{WardrikStore, store}], strategy: :one_for_one)
 ```
 
 A store that's already running starts nothing, so each package that uses it can list it too.
@@ -29,36 +33,7 @@ A store that's already running starts nothing, so each package that uses it can 
 | `WardrikStore.Ecto` | In Postgres | `{:ecto_sql, "~> 3.13"}`, and `:postgrex` for `:url` |
 | `WardrikStore.S3` | In an S3 bucket: AWS, R2, Tigris or MinIO | `{:req, "~> 0.5"}` |
 
-```elixir
-store = WardrikStore.EKV.new(name: MyApp.Store, data_dir: "/var/lib/my_app")
-store = WardrikStore.Ecto.new(repo: MyApp.Repo)
-store = WardrikStore.Ecto.new(url: "postgres://user:pass@db.example.com/wardrik?ssl=true")
-
-store =
-  WardrikStore.S3.new(
-    bucket: "wardrik",
-    endpoint: "https://s3.us-east-1.amazonaws.com",
-    access_key_id: System.fetch_env!("S3_ACCESS_KEY_ID"),
-    secret_access_key: System.fetch_env!("S3_SECRET_ACCESS_KEY")
-  )
-```
-
-EKV keeps a copy on each node and needs a quorum of them to write. Postgres and S3 keep data
-off the nodes, so each node starts on its own and the data outlives all of them.
-
-With your own repo, create the table in a migration:
-
-```elixir
-defmodule MyApp.Repo.Migrations.AddWardrikStore do
-  use Ecto.Migration
-
-  def up, do: WardrikStore.Ecto.Migration.up(version: 1)
-  def down, do: WardrikStore.Ecto.Migration.down(version: 1)
-end
-```
-
-- Point the repo at the primary, not a replica.
-- With `:url`, the store starts its own repo and creates the table itself.
+Adapter configuration and migrations are documented in `WardrikStore.EKV`, `WardrikStore.Ecto`, and `WardrikStore.S3`.
 
 ## Read and write
 
@@ -68,15 +43,15 @@ mine = WardrikStore.scope(store, "my_app")
 {:ok, vsn} = WardrikStore.put(mine, "settings/theme", "dark", if_vsn: nil)
 
 WardrikStore.get(mine, "settings/theme")
-#=> "dark"
+# => "dark"
 
 WardrikStore.keys(mine, "settings/")
-#=> ["settings/theme"]
+# => ["settings/theme"]
 
 {:ok, _vsn} = WardrikStore.put(mine, "settings/theme", "light", if_vsn: vsn)
 
 WardrikStore.put(mine, "settings/theme", "blue", if_vsn: vsn)
-#=> {:error, :conflict}
+# => {:error, :conflict}
 ```
 
 - Each package scopes the store by its app name. Scope it yourself to keep your data apart.
@@ -84,6 +59,8 @@ WardrikStore.put(mine, "settings/theme", "blue", if_vsn: vsn)
 - With EKV, once you write a key with `:if_vsn`, always write it that way.
 
 ## Keep agents in it
+
+Application supervision fragment: configure `MyApp.Repo` as an Ecto repo before starting this alternative tree.
 
 ```elixir
 store = WardrikStore.Ecto.new(repo: MyApp.Repo)
@@ -99,12 +76,4 @@ Use it with Ecto or ETS. With EKV, use DurableServer's own `EKVStore` instead. I
 
 ## Write an adapter
 
-Implement `WardrikStore.Adapter`, plus a `new/1`:
-
-```elixir
-defmodule MyApp.Store do
-  @behaviour WardrikStore.Adapter
-
-  def new(opts), do: WardrikStore.new(__MODULE__, Keyword.fetch!(opts, :name))
-end
-```
+Implement the callbacks in `WardrikStore.Adapter` and a `new/1` constructor returning a `WardrikStore` struct.

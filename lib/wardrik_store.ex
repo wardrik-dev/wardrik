@@ -2,6 +2,9 @@ defmodule WardrikStore do
   @moduledoc """
   A durable key-value store. Wardrik packages keep their data in it, each under its own scope.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_store#readme) for complete setup.
+
       store = WardrikStore.ETS.new(name: MyApp.Store)
       children = [{WardrikStore, store}]
 
