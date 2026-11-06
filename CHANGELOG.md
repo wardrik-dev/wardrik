@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The scripted `echo` interrupt carries its `arguments`.
+
 ## 0.1.0-rc.2 (2026-11-02)
 
 ### Breaking

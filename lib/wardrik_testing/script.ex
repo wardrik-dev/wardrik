@@ -80,6 +80,7 @@ defmodule WardrikTesting.Script do
       "tool_call_id" => "call_1",
       "reason" => "tool_approval",
       "name" => "echo",
+      "arguments" => %{"text" => "hi"},
       "message" => "Run echo?"
     }
 
