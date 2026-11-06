@@ -2,6 +2,9 @@ defmodule WardrikVault do
   @moduledoc """
   Keeps credentials sealed in a `WardrikStore`, and gives them to WardrikCore agents' tools.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_vault#readme) for complete setup.
+
       children = [
         {WardrikStore, store},
         {WardrikVault, name: MyApp.Vault, store: store, keys: [System.fetch_env!("VAULT_KEY")]}
@@ -56,6 +59,26 @@ defmodule WardrikVault do
 
   @deployment %Principal{id: "deployment"}
 
+  @start_options NimbleOptions.new!(
+                   name: [type: :atom, required: true, doc: "The registered vault name."],
+                   store: [
+                     type: :any,
+                     required: true,
+                     doc: "The WardrikStore used for encrypted credentials."
+                   ],
+                   keys: [
+                     type: {:list, :string},
+                     default: [],
+                     doc:
+                       "Base64 keys from generate_key/0. The first encrypts; all can decrypt. No encryption or decryption occurs without keys."
+                   ],
+                   grants: [
+                     type: {:or, [:mod_arg, nil]},
+                     default: nil,
+                     doc: "A WardrikVault.Grants callback module and options."
+                   ]
+                 )
+
   @doc """
   Starts the vault.
 
@@ -67,16 +90,19 @@ defmodule WardrikVault do
 
   ## Options
 
-    * `:name` - required. What the vault is reached by.
-    * `:store` - required. The `WardrikStore` to keep credentials in.
-    * `:keys` - base64 keys from `generate_key/0`. The first seals; any unseals. Without keys,
-      nothing is sealed or unsealed. `[]` unless set.
-    * `:grants` - `{module, opts}`, where `module` implements `WardrikVault.Grants`. `nil` unless
-      set.
+  #{NimbleOptions.docs(@start_options)}
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
-    opts = Keyword.validate!(opts, [:name, :store, keys: [], grants: nil])
+    allowed =
+      Enum.map(@start_options.schema, fn {key, settings} ->
+        case Keyword.fetch(settings, :default) do
+          {:ok, default} -> {key, default}
+          :error -> key
+        end
+      end)
+
+    opts = Keyword.validate!(opts, allowed)
     GenServer.start_link(__MODULE__, opts, name: Keyword.fetch!(opts, :name))
   end
 

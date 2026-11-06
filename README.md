@@ -1,6 +1,6 @@
 # WardrikVault
 
-Keeps credentials sealed at rest, for [WardrikCore](https://hexdocs.pm/wardrik_core) agents' tools.
+Encrypts credentials at rest, for [WardrikCore](https://hexdocs.pm/wardrik_core) agents' tools.
 
 ## Install
 
@@ -8,19 +8,27 @@ Keeps credentials sealed at rest, for [WardrikCore](https://hexdocs.pm/wardrik_c
 {:wardrik_vault, "~> 0.1.0-rc.2"}
 ```
 
-## Start it
+## Start the vault
+
+Run in a fresh IEx session:
 
 ```elixir
+Mix.install([{:wardrik_vault, "~> 0.1.0-rc.2"}])
+
+keys = [WardrikVault.generate_key()]
 store = WardrikStore.ETS.new(name: MyApp.Store)
 
 children = [
   {WardrikStore, store},
-  {WardrikVault, name: MyApp.Vault, store: store, keys: [System.fetch_env!("VAULT_KEY")]}
+  {WardrikVault, name: MyApp.Vault, store: store, keys: keys}
 ]
+
+{:ok, _supervisor} = Supervisor.start_link(children, strategy: :rest_for_one)
 ```
 
+- Persist the key outside your code to decrypt stored values after a restart.
 - Make a key with `WardrikVault.generate_key/0`. Values are sealed with AES-256-GCM.
-- The first key seals. Any key unseals. To rotate, put a new key first.
+- The first key encrypts new values. Any configured key can decrypt values. To rotate, put a new key first.
 
 ## Use it
 
@@ -28,20 +36,33 @@ children = [
 jon = %WardrikCore.Principal{id: "user:jon"}
 
 {:ok, vsn} =
-  WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{principal: jon, name: "github", value: "ghp_..."})
+  WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
+    principal: jon,
+    name: "github",
+    value: "ghp_..."
+  })
 
 WardrikVault.fetch(MyApp.Vault, jon, "github")
-#=> {:ok, "ghp_..."}
+# => {:ok, "ghp_..."}
 
 WardrikVault.list(MyApp.Vault)
-#=> [{"user:jon", "github", :secret}]
+# => [{"user:jon", "github", :secret}]
 ```
 
-Names aren't sealed. Anyone who can read the store sees who holds which name.
+Names are not encrypted. Anyone with store access can read secret names and their associated user IDs.
 
-## Give it to agents
+## Configure agent credentials
+
+Set `ANTHROPIC_API_KEY` before starting IEx. Continue in the same session:
 
 ```elixir
+children = [
+  {WardrikCore.Backends.MemoryStore, name: :agents},
+  {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
+]
+
+{:ok, _supervisor} = Supervisor.start_link(children, strategy: :rest_for_one)
+
 WardrikCore.start_agent(
   agent_id: "digest",
   model: "anthropic:claude-haiku-4-5",
@@ -50,7 +71,7 @@ WardrikCore.start_agent(
 )
 ```
 
-A tool reads only what the agent's user holds.
+A tool reads only credentials associated with the agent's user.
 
 ## Your app's own secrets
 
@@ -61,11 +82,11 @@ Keep them under `WardrikVault.deployment/0`, and name them in options as `{:secr
   WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
     principal: WardrikVault.deployment(),
     name: "SLACK_SIGNING_SECRET",
-    value: secret
+    value: "example-signing-secret"
   })
 
 WardrikVault.value(MyApp.Vault, {:secret, "SLACK_SIGNING_SECRET"})
-#=> {:ok, "8f14..."}
+# => {:ok, "example-signing-secret"}
 ```
 
 No agent's tools can read them.
@@ -75,6 +96,4 @@ No agent's tools can read them.
 Give the vault a `WardrikVault.Grants` module, such as [WardrikOAuth](https://hexdocs.pm/wardrik_oauth),
 to refresh tokens and start sign-ins:
 
-```elixir
-{WardrikVault, name: MyApp.Vault, store: store, keys: keys, grants: {WardrikOAuth, MyApp.OAuth}}
-```
+See [WardrikOAuth setup](https://hexdocs.pm/wardrik_oauth) for a complete supervision tree and resolver example.
