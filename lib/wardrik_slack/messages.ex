@@ -85,14 +85,27 @@ defmodule WardrikSlack.Messages do
     :ok
   end
 
-  @doc "Returns the member `user`, with the name Slack shows for them."
+  @doc """
+  Returns the member `user`, with the name Slack shows for them, and their email address if
+  they're in the workspace.
+  """
   @spec sender(Workspace.t(), String.t()) :: Member.t()
-  def sender(workspace, user) do
+  def sender(%Workspace{installation: installation} = workspace, user) do
     case API.read_in(workspace, "users.info", %{user: user}) do
-      {:ok, %{"user" => found}} -> %Member{id: user, name: name(found)}
-      _unknown -> %Member{id: user}
+      {:ok, %{"user" => found}} ->
+        %Member{id: user, name: name(found), email: email(found, installation.workspace)}
+
+      _unknown ->
+        %Member{id: user}
     end
   end
+
+  # Someone from another workspace, over Slack Connect, has an address that workspace vouches for.
+  defp email(%{"team_id" => workspace, "profile" => %{"email" => email}}, workspace)
+       when is_binary(email),
+       do: email
+
+  defp email(_user, _workspace), do: nil
 
   defp name(user) do
     profile = Map.get(user, "profile", %{})

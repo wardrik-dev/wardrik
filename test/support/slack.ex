@@ -155,7 +155,12 @@ defmodule WardrikSlack.Test do
 
     %{
       ok: true,
-      user: %{id: id, name: name, profile: %{display_name: name}}
+      user: %{
+        id: id,
+        team_id: if(id == "U8", do: "T8", else: "T1"),
+        name: name,
+        profile: %{display_name: name, email: name <> "@acme.com"}
+      }
     }
   end
 

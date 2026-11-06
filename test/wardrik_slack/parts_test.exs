@@ -42,6 +42,18 @@ defmodule WardrikSlack.PartsTest do
     end
   end
 
+  describe "members" do
+    test "carry the email address Slack holds, unless they're from another workspace", context do
+      {:ok, workspace} = WardrikChannel.workspace(context.channel, "T1")
+
+      assert %WardrikChannel.Member{id: "U1", name: "maria", email: "maria@acme.com"} =
+               WardrikSlack.Messages.sender(workspace, "U1")
+
+      assert %WardrikChannel.Member{id: "U8", email: nil} =
+               WardrikSlack.Messages.sender(workspace, "U8")
+    end
+  end
+
   describe "rooms" do
     test "offer a menu where there are many agents to pick from", context do
       for n <- 1..6, do: define(context.owner, "agt_#{n}", channels: ["slack"])

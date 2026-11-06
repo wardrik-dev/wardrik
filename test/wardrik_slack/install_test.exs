@@ -103,6 +103,6 @@ defmodule WardrikSlack.InstallTest do
     channel = context.channel
     assert {:error, "slack is added with its token alone" <> _} = Install.url(channel, "acme")
     assert "users:read" in Install.scopes()
-    refute "users:read.email" in Install.scopes()
+    assert "users:read.email" in Install.scopes()
   end
 end

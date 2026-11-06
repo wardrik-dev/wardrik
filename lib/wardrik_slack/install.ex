@@ -44,7 +44,7 @@ defmodule WardrikSlack.Install do
 
   @authorize "https://slack.com/oauth/v2/authorize"
   @scopes ~w(channels:history channels:read chat:write chat:write.public groups:history
-             groups:read reactions:write users:read)
+             groups:read reactions:write users:read users:read.email)
   @expires 600
 
   @doc "Returns the bot scopes the app asks for."

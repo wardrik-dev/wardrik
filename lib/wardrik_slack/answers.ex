@@ -8,10 +8,10 @@ defmodule WardrikSlack.Answers do
 
   alias Wardrik.Error
   alias WardrikChannel.Answer
-  alias WardrikChannel.Member
   alias WardrikChannel.Workspace
   alias WardrikSlack.API
   alias WardrikSlack.Blocks
+  alias WardrikSlack.Messages
   alias WardrikSlack.Waiting
 
   @doc "Handles a `block_actions` payload from a waiting call's buttons. Returns `:ignored` for any other."
@@ -32,7 +32,7 @@ defmodule WardrikSlack.Answers do
   def answer(_workspace, _payload), do: :ignored
 
   defp respond(workspace, payload, action, %{"i" => interrupt} = button) do
-    member = member(payload)
+    member = Messages.sender(workspace, get_in(payload, ["user", "id"]))
     reply = pressed(action, workspace, member, button, note(payload, interrupt))
 
     API.respond(
@@ -117,9 +117,6 @@ defmodule WardrikSlack.Answers do
 
   defp present(""), do: nil
   defp present(text), do: text
-
-  defp member(%{"user" => user}),
-    do: %Member{id: user["id"], name: user["username"] || user["name"]}
 
   defp req_options(%Workspace{channel: channel}), do: API.req_options(channel)
 end

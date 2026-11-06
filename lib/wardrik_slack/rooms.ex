@@ -51,10 +51,7 @@ defmodule WardrikSlack.Rooms do
       ) do
     room = get_in(payload, ["channel", "id"])
 
-    by = %WardrikChannel.Member{
-      id: get_in(payload, ["user", "id"]),
-      name: get_in(payload, ["user", "username"])
-    }
+    by = person(workspace, get_in(payload, ["user", "id"]))
 
     reply =
       case act(action, value(pressed), workspace, room, by) do
