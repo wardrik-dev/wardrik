@@ -1,12 +1,6 @@
 # WardrikSlack
 
-Slack for [Wardrik](https://hexdocs.pm/wardrik). Agents answer in threads, and ask there before a
-call they can't make alone.
-
-> **maria:** @Wardrik what time is it on the server? :eyes:
-> ↳ **Wardrik:** Waiting for someone to approve `clock`. `[Approve]` `[Deny]`
-> ↳ **Wardrik:** Approved by maria.
-> ↳ **Wardrik:** It's 14:02 UTC.
+Connect Wardrik agents to Slack threads and display approval buttons for tool calls.
 
 ## Make the Slack app
 
@@ -93,7 +87,11 @@ settings:
 
 ## Try it locally
 
+From a checkout of this repository, install dependencies and run the Socket Mode example:
+
 ```sh
+mix deps.get
+
 SLACK_BOT_TOKEN=xoxb-... SLACK_APP_TOKEN=xapp-... ANTHROPIC_API_KEY=sk-ant-... \
   mix run --no-halt examples/socket_mode.exs
 ```
@@ -102,9 +100,13 @@ Then `/invite @Wardrik` into a channel and ask `@Wardrik what time is it?`. Appr
 
 ## Set up
 
+Application integration fragments: first configure a [Wardrik runtime](https://hexdocs.pm/wardrik/running-wardrik.html) named `MyApp.AgentRuntime`.
+
 ```elixir
-{:wardrik_slack, "~> 0.1.0-rc.3"}
+{:wardrik_slack, "~> 0.1.0-rc.4"}
 ```
+
+In `config/runtime.exs`:
 
 ```elixir
 config :my_app, MyApp.AgentRuntime,
@@ -121,22 +123,27 @@ config :my_app, MyApp.AgentRuntime,
 See [WardrikChannel](https://hexdocs.pm/wardrik_channel) for `identities`, rooms, threads and
 approvals, and `WardrikSlack` for every option.
 
-Serve it with `Wardrik.HTTP`. Slack signs the raw body, so keep it if you parse bodies first:
+Phoenix endpoint and router fragments: implement `MyAppWeb.WardrikSession` as a `WardrikHTTP.Authenticator`.
+Slack verifies the raw request body. Configure the endpoint parser before mounting the router:
 
 ```elixir
-plug Plug.Parsers,
+plug(Plug.Parsers,
   parsers: [:json, :urlencoded],
   json_decoder: JSON,
   body_reader: Wardrik.HTTP.body_reader()
+)
 
-forward "/", Wardrik.HTTP,
+forward("/", Wardrik.HTTP,
   wardrik: MyApp.AgentRuntime,
   authenticator: {MyAppWeb.WardrikSession, []}
+)
 ```
 
 List the channel in an agent's definition, then invite the app into a Slack channel:
 
 ```elixir
+scope = MyApp.AgentRuntime.as("maria")
+
 Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
   model: "anthropic:claude-haiku-4-5",
   channels: ["slack"]
@@ -148,6 +155,8 @@ Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
 Post to a room when an agent finishes, fails or waits on someone:
 
 ```elixir
+scope = MyApp.AgentRuntime.as("maria")
+
 Wardrik.Agent.define(scope, "agt_01JF8Y2DGS",
   model: "anthropic:claude-haiku-4-5",
   notify: %{to: ["slack:#updates"], on: ["finished", "failed"]}
@@ -160,15 +169,19 @@ Wardrik.Agent.define(scope, "agt_01JF8Y2DGS",
 
 ## Many workspaces
 
+Replace the `slack` entry in the runtime configuration with this fragment:
+
 ```elixir
-slack:
-  {WardrikSlack,
-   client_id: System.fetch_env!("SLACK_CLIENT_ID"),
-   client_secret: System.fetch_env!("SLACK_CLIENT_SECRET"),
-   redirect_uri: "https://agents.example.com/slack/installed",
-   signing_secret: System.fetch_env!("SLACK_SIGNING_SECRET"),
-   installations: :stored,
-   identities: {MyApp.ChatMembers, []}}
+[
+  slack:
+    {WardrikSlack,
+     client_id: System.fetch_env!("SLACK_CLIENT_ID"),
+     client_secret: System.fetch_env!("SLACK_CLIENT_SECRET"),
+     redirect_uri: "https://agents.example.com/slack/installed",
+     signing_secret: System.fetch_env!("SLACK_SIGNING_SECRET"),
+     installations: :stored,
+     identities: {MyApp.ChatMembers, []}}
+]
 ```
 
 Tokens are sealed in Wardrik's vault, so Wardrik needs `:vault_keys`. See `WardrikSlack.Install`.
