@@ -1,6 +1,6 @@
 ---
-title: Agents for every team
-description: "One deployment for every team. Each team is an org with its own credentials, Slack, roles and limits, and one audit log covers all."
+title: Share Wardrik across teams
+description: "Give each team its own agents, credentials, permissions, and spending thresholds in a shared deployment."
 sidebar:
   order: 3
 ---
@@ -9,7 +9,7 @@ The platform team runs one daemon. Payments and Growth are separate orgs, each w
 credentials, Slack app, users and spend limit. Each team creates its own agents, under a policy the
 platform team defines.
 
-This example shows the configuration, not a single agent.
+Configure organization access controls first, then create a team agent through the API.
 
 ## The files
 
@@ -58,8 +58,9 @@ ask:
 budget: {usd: 20.00, per: day, on_exhausted: ask}
 ```
 
-Stripe writes always need approval, and the org is capped at $20 a day. `growth-limits.yaml`
-follows the same pattern.
+Stripe writes require approval. After spending reaches $20 in a day, further model calls need
+approval too. The call crossing the threshold still completes. Create `growth-limits.yaml`
+with the same structure and your Growth team’s rules.
 
 ## Try it
 
@@ -97,9 +98,9 @@ The response contains the agent ID. The agent calls Stripe with the `payments` o
 refunds need approval, because the org policy has `ask` on every Stripe write. The token can't
 access `growth` agents.
 
-## What it shows
+## How it works
 
 - Agents, credentials and channels are scoped to their org. See [Orgs](/run/orgs/).
-- Access is roles and bindings, as in Kubernetes RBAC. See [Orgs, roles and tokens](/run/orgs/).
+- Roles and bindings control access, following the Kubernetes RBAC model. See [Organizations, roles, and tokens](/run/orgs/).
 - Teams create their own agents. The org's policy and budget apply to all of them.
 - `wardrik audit` lists every change, across all orgs.

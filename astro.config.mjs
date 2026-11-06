@@ -18,7 +18,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'Wardrik',
-			description: 'An agent runtime built on OTP.',
+			description: 'A self-hosted runtime for persistent AI agents, with tool permissions, approvals, and crash recovery.',
 			components: {
 				SiteTitle: './src/components/SiteTitle.astro',
 				Hero: './src/components/HomeHero.astro',
@@ -113,11 +113,11 @@ export default defineConfig({
 							items: [
 								{ label: 'Overview', slug: 'examples' },
 								// Each group fills itself from its folder, so adding an example is adding a file.
-								{ label: 'For a team', items: [{ autogenerate: { directory: 'examples/team' } }] },
-								{ label: 'For an enterprise', items: [{ autogenerate: { directory: 'examples/enterprise' } }] },
-								{ label: 'For a business', items: [{ autogenerate: { directory: 'examples/business' } }] },
-								{ label: 'For you', items: [{ autogenerate: { directory: 'examples/you' } }] },
-								{ label: 'Try to break it', items: ['examples/pull-the-plug', 'examples/hijack-me'] },
+								{ label: 'Incident response', items: [{ autogenerate: { directory: 'examples/team' } }] },
+								{ label: 'Team administration', items: [{ autogenerate: { directory: 'examples/enterprise' } }] },
+								{ label: 'Support and bookkeeping', items: [{ autogenerate: { directory: 'examples/business' } }] },
+								{ label: 'Personal automation', items: [{ autogenerate: { directory: 'examples/you' } }] },
+								{ label: 'Test the guarantees', items: ['examples/pull-the-plug', 'examples/hijack-me'] },
 							],
 						},
 						{

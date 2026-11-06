@@ -1,18 +1,18 @@
 ---
 title: The event stream
-description: "Every action of an agent is an event. Stream them from the terminal, the HTTP API or the SDK, and resume from any point."
+description: "Stream agent activity from the CLI, HTTP API, or SDK. Resume stored events from a cursor."
 sidebar:
   order: 6
 ---
 
-An agent emits an event for each message, model reply, tool call, approval and subagent.
+Track messages, model replies, tool calls, approvals, and subagent activity through events.
 
 ```sh
 wardrik follow triage          # readable, until Ctrl-C
 wardrik follow triage --json   # one CloudEvent a line
 ```
 
-## An event
+## Event format
 
 Each event is a [CloudEvent](https://cloudevents.io):
 
@@ -34,7 +34,7 @@ Each event is a [CloudEvent](https://cloudevents.io):
 
 - Events are kept for 30 days. `sequence` counts up from 1 for each agent, with no gaps.
 - Deltas, progress and `activity.changed` aren't stored. Only connected subscribers receive them.
-- A turn is a trace. Its events have a W3C `traceparent`. Each tool call is a span.
+- Each turn has a trace ID, and each tool call is a span. Events include W3C `traceparent` metadata.
 - Changes people make, such as defining an agent, are in the audit log: `wardrik audit`.
 
 ## Following over HTTP

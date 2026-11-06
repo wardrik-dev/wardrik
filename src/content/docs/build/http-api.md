@@ -8,16 +8,16 @@ sidebar:
 The daemon serves a JSON API on `127.0.0.1:4747`. The [HTTP API reference](/reference/http-api/)
 lists every route.
 
-## A token
+## Create an API token
 
 ```sh
 wardrik token create jon-laptop --subject user:acme/@jon
 export TOKEN=wdk_...
 ```
 
-- The secret is printed once. Send it as `authorization: Bearer`.
+- The token is printed once. Include it in the `Authorization: Bearer TOKEN` header.
 - `acme/@jon` is the user `@jon` in the org `acme`. A user has full access to agents they own.
-- Other access needs a binding in `config.yaml`. See [Orgs, roles and tokens](/run/orgs/).
+- Other access needs a binding in `config.yaml`. See [Organizations, roles, and tokens](/run/orgs/).
 
 ## Create an agent
 
@@ -47,16 +47,18 @@ export AGENT=agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN
 ```sh
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
   http://127.0.0.1:4747/v1/agents/$AGENT/messages \
-  -d '{"content": "What is on fire?"}'
+  -d '{"content": "Which incidents need attention?"}'
 # {"message": {"id": "msg_01…", "cursor": "W1siYWd0XzAxSkY4…"}}
 ```
 
-It returns `202` immediately. To use a separate conversation, post to
+The request returns `202` with a message ID and event cursor. Save the returned cursor
+as `CURSOR` for the next step. To use a separate conversation, post to
 `/v1/agents/$AGENT/conversations/C1/messages`.
 
 ## Stream the reply
 
 ```sh
+export CURSOR=... # copy message.cursor from the response above
 curl -N -H "authorization: Bearer $TOKEN" -H "accept: text/event-stream" \
   "http://127.0.0.1:4747/v1/agents/$AGENT/events?after=$CURSOR"
 ```
@@ -92,15 +94,19 @@ import { Wardrik } from "@wardrik/sdk";
 const wardrik = new Wardrik(); // WARDRIK_URL, else http://127.0.0.1:4747; WARDRIK_TOKEN
 const agent = wardrik.agent(process.env.AGENT!);
 
-for await (const event of agent.stream("What is on fire?")) {
+for await (const event of agent.stream("Which incidents need attention?")) {
   if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
 
   if (event.type === "wardrik.run.interrupted") {
-    for (const interrupt of event.data.interrupts) await agent.approve(interrupt.id);
+    for (const interrupt of event.data.interrupts) {
+      console.log("Approval required:", interrupt);
+    }
   }
 }
 ```
 
+- The SDK example displays pending approvals. Review them with `wardrik approval`, or use the
+  [approval endpoints](#approve-tool-calls) to add approval controls to your app.
 - `agent.reply("...")` resolves when the turn ends or pauses for approval.
 - The SDK covers Wardrik's routes. For the daemon-only routes (`/v1/owners`, `/v1/connections`,
   `/v1/tokens`), use `fetch`.

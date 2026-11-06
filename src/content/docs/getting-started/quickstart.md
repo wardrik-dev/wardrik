@@ -1,94 +1,75 @@
 ---
 title: Quickstart
-description: "Install Wardrik, send the assistant a request, write an agent, and approve a tool call."
+description: "Run an agent, review its proposed file write, and approve the call."
 ---
 
-Install Wardrik, send the assistant a request, then write your own agent.
+Create an agent that saves a note. Review the proposed file write before allowing it to run.
 
-## 1. Install
+## 1. Install and configure Wardrik
 
 ```sh
 curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.8/install.sh | sh
 wardrik init
 ```
 
-`init` prompts for a model provider and key, writes `~/.config/wardrik/`, and starts the daemon.
-See [Install](/getting-started/install/) for Docker and flags.
+Choose a model provider and enter your API key. `init` creates the configuration and starts the daemon.
+For Docker or non-interactive setup, see [Install](/getting-started/install/).
 
-## 2. Ask the assistant
+## 2. Create an agent
 
-```sh
-wardrik ask assistant "Tell me when https://github.blog/changelog/feed/ has a new post"
-```
-
-It replies with a plan and an `agent_create` call that needs approval:
-
-```text
-? waits on you after 6s
-
-╭─ agent_create ─────────────────────────╮
-│ { "name": "changelog-watch", … }       │
-╰────────────────────────────────────────╯
-Approve agent_create? [y/n, Enter leaves it]
-```
-
-Type `y`. Off a terminal, or after Enter, approve it later:
-
-```sh
-wardrik approval approve assistant call_8d2e
-wardrik ls
-```
-
-`wardrik ls` lists the new agent. See [The assistant](/build/assistant/).
-
-## 3. Write an agent
-
-An agent is a Markdown file. The frontmatter is its definition, and the body is its instructions.
+Save this file as `~/.config/wardrik/agents/notes.md`:
 
 ```markdown title="~/.config/wardrik/agents/notes.md"
 ---
-description: Keeps the team's notes.
+description: Saves notes for the team.
 tools: [files]
 policy:
   ask:
-    write_file: This writes a note.
+    write_file: Review the note before saving it.
 ---
-You keep the team's notes in files. Say what you would write before you write it.
+Save notes when asked. Use the requested filename and text.
 ```
+
+The filename sets the agent’s name: `notes`. The YAML configures its tools and permissions;
+the Markdown body provides its instructions. It uses the model selected during setup.
+
+## 3. Request a note
 
 ```sh
 wardrik reload
-wardrik ask notes "Start a MEMORY.md with today's date and what you are for."
+wardrik ask notes "Write HELLO.md with the text: Hello from Wardrik."
 ```
 
-- The file name, `notes`, is the agent's name.
-- It has no `model`, so it uses `defaults.model` from `config.yaml`.
+Wardrik shows the proposed `write_file` call and prompts for approval. Review the filename and
+text, then type `y` to save the note. Press Enter to leave the call pending.
 
-## 4. Approve a call
-
-The model calls `write_file`, which the policy requires approval for:
+To approve later, list pending calls and copy the call ID:
 
 ```sh
 wardrik approval ls
+wardrik approval approve notes CALL_ID
 ```
 
-```text
-AGENT  CONVERSATION  CALL       TOOL        WHY
-notes                call_5b1f  write_file  This writes a note.
-```
+To reject a pending call instead:
 
 ```sh
-wardrik approval approve notes call_5b1f
-# or
-wardrik approval deny notes call_5b1f --reason "Keep it to one line."
+wardrik approval deny notes CALL_ID --reason "Use a different filename."
 ```
 
-On a denial, the model receives your reason and the turn continues. See [Approvals](/concepts/approvals/).
+The agent receives the reason and can propose a revised call.
 
-## Next
+## 4. Read the saved note
 
-- [Tools in your app](/build/tool-workers/): serve tools to agents from your own code.
-- [Slack](/build/slack/): use agents in Slack, with Approve and Deny buttons in the thread.
-- [Policy](/concepts/policy/): every policy rule.
-- [Agent files](/reference/agent-files/): every key an agent file takes.
-- [Examples](/examples/): agents to copy and run.
+```sh
+wardrik ask notes "Read HELLO.md and show its contents."
+```
+
+The reply includes `Hello from Wardrik.` The file is saved in the agent’s persistent workspace,
+which is separate from your local filesystem.
+
+## Next steps
+
+- [Add a TypeScript tool](/build/first-tool/) to call your application code.
+- [Connect MCP servers](/build/mcp/) to use existing integrations.
+- [Use the assistant](/build/assistant/) to create agents through requests and approvals.
+- [Browse examples](/examples/) for support, incident response, and personal automation.

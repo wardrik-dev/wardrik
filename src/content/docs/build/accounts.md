@@ -5,7 +5,8 @@ sidebar:
   order: 2
 ---
 
-Define an OAuth provider, and set an MCP server's `credential` to its name:
+Connect each user’s account so agents can call MCP tools with that user’s credentials.
+Define an OAuth provider, then reference it in the MCP server’s `credential` setting:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 base_url: https://agents.example.com
@@ -42,7 +43,7 @@ Connected github.
   granted, declined or expired.
 - Without `flow: device`, it prints a link. Sign in, then enter the code the page shows, or run
   `wardrik connection pair github CODE`.
-- A code is single-use, valid for 10 minutes, and only for the user who started the sign-in.
+- Pairing codes are single-use, expire after 10 minutes, and belong to the user who started the sign-in.
 
 ## Your accounts
 
@@ -51,7 +52,7 @@ wardrik connection ls                    # available providers, and your connect
 wardrik connection disconnect github     # delete it; the next call prompts again
 ```
 
-Each command runs as the token's user. Users manage only their own accounts.
+Commands use the identity associated with your token. Users can manage only their own account connections.
 
 ## Calls before connecting
 
@@ -74,7 +75,8 @@ wardrik provider add linear --org acme \
 wardrik provider ls --org acme
 ```
 
-For a provider name, the first match is used: the user's app, the org's, then `config.yaml`'s.
+When multiple OAuth apps have the same provider name, Wardrik uses the user’s app first, then
+the organization’s, then the app in `config.yaml`.
 
 ## Over HTTP
 
@@ -95,9 +97,9 @@ curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/conne
 ## Details
 
 - Browser sign-ins redirect to `{base_url}/oauth/callback`. Register that URL with the provider.
-  See [A public address](/run/public-address/).
+  See [Public HTTPS access](/run/public-address/).
 - A provider needs an `issuer`, a `resource`, or both `authorization_endpoint` and
-  `token_endpoint`. Every key is in [`config.yaml` › oauth](/reference/config/#oauth).
+  `token_endpoint`. See all settings in [`config.yaml` › oauth](/reference/config/#oauth).
 - Without a `client_id`, the daemon registers a client with the provider on the first sign-in.
 - An HTTP server receives the token as `authorization: Bearer <token>`. A command server receives
   it in the environment variable named by `credential_env`.

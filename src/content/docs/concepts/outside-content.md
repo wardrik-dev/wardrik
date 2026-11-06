@@ -1,28 +1,30 @@
 ---
-title: Content from outside
-description: "After an agent reads untrusted content, every call that changes something needs approval."
+title: Untrusted content
+description: "Require approval for gated tool calls after an agent reads untrusted content."
 sidebar:
   order: 4
 ---
 
-After a turn reads content from outside, every [gated](/concepts/policy/#gated-tools) call needs
-approval, even if `allow` matches it. The content may have prompted the call.
+After an agent reads untrusted content, Wardrik labels the conversation `outside`. Every
+[gated tool call](/concepts/policy/#gated-tools) then requires approval, even if an `allow` rule
+matches. This prevents instructions in tool results from authorizing changes.
 
-> github/create_issue is allowed, but this run has read content from outside, which may be what
-> asked for it.
+For example, an agent may be allowed to create GitHub issues. After it reads untrusted content,
+creating an issue requires approval.
 
-Content from outside comes from:
+Wardrik treats these sources as untrusted:
 
 - `web_search`, and `deep_research` when its researchers read it;
 - MCP servers not marked `trusted: true`;
 - tool workers, unless `http.trusted_workers: true`;
-- a file written by a turn that had read outside content.
+- files written during turns that read untrusted content.
 
 The conversation keeps the `outside` label until `wardrik agent clear AGENT`.
 
-## Allowing after content from outside
+## Allow selected tools after reading untrusted content
 
-`allow_after` keeps a gated tool allowed after the label. Use it for tools that do no harm if misused:
+Use `allow_after` to let selected tools run without approval after the agent reads untrusted
+content. Limit exceptions to actions whose effects you are willing to accept:
 
 ```yaml
 allow: [linear/*]

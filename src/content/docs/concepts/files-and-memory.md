@@ -1,12 +1,12 @@
 ---
 title: Files and memory
-description: "The files tools manage a per-agent workspace in the store, mount other agents' workspaces, and load chosen files into every turn."
+description: "Store agent files, load persistent context into each turn, and share files between agents."
 sidebar:
   order: 7
 ---
 
-An agent configured with the `files` tools is assigned a workspace in the store. Files listed in
-`context` are loaded into every turn, which makes them its memory.
+Add `files` to give an agent a persistent workspace. List files under `context` to load them at
+the start of every turn, so the agent can use saved notes across conversations.
 
 ```yaml
 tools: [files]
@@ -23,7 +23,7 @@ context: [MEMORY.md]
 | `delete_file` | deletes a file |
 
 - Paths are relative, such as `notes/2026-10-01.md`. Directories are created as needed.
-- Overwriting a file requires the version from `read_file`. A stale version is refused.
+- Overwriting a file requires the version from `read_file`. A stale version is rejected.
 - Files are text, up to 4 MiB.
 - An agent's conversations share its workspace.
 
@@ -60,9 +60,9 @@ workspace:
     agent:runbooks: {read: [agent:oncall, agent:triage], write: [agent:ops]}
 ```
 
-A mount that `config.yaml` doesn't allow is refused.
+Wardrik rejects mounts that are not allowed by `config.yaml`.
 
 ## Content from outside
 
-A file written by a turn that read [content from outside](/concepts/outside-content/) gets the
-`outside` label. A turn that reads the file gets the label too.
+A file written by a turn that read [untrusted content](/concepts/outside-content/) is labeled
+`outside`. Reading that file applies the same label to the turn.

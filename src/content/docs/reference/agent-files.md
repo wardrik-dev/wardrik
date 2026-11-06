@@ -1,9 +1,12 @@
 ---
 title: "Agent files"
-description: "The keys of an agent file in agents/, and of a definition sent over the HTTP API."
+description: "Configuration fields for Markdown agent files and JSON agent definitions."
 sidebar:
   order: 3
 ---
+
+Define an agent with YAML configuration and Markdown instructions. The same settings are
+available as JSON through the HTTP API.
 
 ```markdown
 ---
@@ -17,7 +20,7 @@ issues need an engineer.
 ```
 
 - An agent file is `agents/NAME.md` in the [config directory](/reference/config/#directories). The file name is the agent's name.
-- The frontmatter is the definition. The body is the `instructions`, the system prompt.
+- The YAML frontmatter configures the agent. The Markdown body becomes its `instructions` (system prompt).
 - `wardrik reload` rereads `agents/`. A new definition applies from the agent's next turn.
 - If a file fails to parse, the agent keeps its last definition and the error is logged. `wardrik doctor` checks every file.
 - Deleting a file removes its agent on the next reload.
@@ -31,7 +34,7 @@ issues need an engineer.
 | `owner` | the org, or a user in it, as `"@jon"` or `acme/@jon`; default: the org (files only) |
 | `display_name` | display name; default: the name |
 | `description` | a short description |
-| `instructions` | the system prompt; the file's body |
+| `instructions` | the system prompt; the Markdown body |
 | `model` | the model, as `provider:model` |
 | [`tools`](#tools) | the tools it can call |
 | [`workspace`](#workspace) | other agents' workspaces to mount |
@@ -61,7 +64,7 @@ tools: [web_search, files, github/*, agents/*]
 | `web_search` | web search through Brave; requires [`brave.api_key`](/reference/config/#keys) |
 | `deep_research` | researches a topic with subagents |
 | `run_lua` | runs Lua in a sandbox |
-| `agent_create` | creates a worker agent in its org |
+| `agent_create` | creates another agent in the same organization |
 | `files` | `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `delete_file` on its workspace and mounts |
 | `NAME/*` | every tool of the MCP server `NAME` |
 | `servers/*` | every tool of every MCP server its owner added |
@@ -71,8 +74,9 @@ tools: [web_search, files, github/*, agents/*]
 | `*` | all of the above |
 
 - A server that isn't added yet has no tools. [`GET .../definition`](/reference/http-api/#read-a-definition) lists it as `missing`.
-- In `self/*` and `agents/*`, reads always run. Changes need approval unless the policy allows them by name.
-- A worker inherits the policy of the agent that defined it.
+- In `self/*` and `agents/*`, reads have no default approval requirement. Changes need approval
+  unless explicitly allowed. Policy rules still apply to both.
+- A created agent inherits the policy of the agent that created it.
 
 ## workspace
 
@@ -143,13 +147,13 @@ model_options: {temperature: 0.2, max_tokens: 4000, receive_timeout: 600}
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `temperature` | the model's | how random answers are |
-| `top_p` | the model's | the share of likely tokens sampled from |
-| `max_tokens` | the model's | the most tokens one answer may hold |
+| `temperature` | the model's | sampling temperature |
+| `top_p` | the model's | nucleus sampling probability |
+| `max_tokens` | the model's | maximum output tokens per response |
 | `reasoning_effort` | the model's | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` or `default` |
 | `receive_timeout` | `300` | seconds a model call waits for an answer |
-| `stream_idle_timeout` | `300` | seconds a stream may go quiet |
-| `total_timeout` | none | seconds one model call may take in all |
+| `stream_idle_timeout` | `300` | maximum seconds between streamed responses |
+| `total_timeout` | none | maximum total duration of a model call, in seconds |
 
 - These merge over [`models.options`](/reference/config/#models) in `config.yaml`.
 - No other key is accepted. Options such as `base_url` belong to the operator, since each call

@@ -5,24 +5,27 @@ sidebar:
   order: 3.2
 ---
 
+Register a function with `wardrik.tool()`. Define its arguments with Zod and return the data the
+model needs. These examples assume an initialized SDK client and your application’s data helpers.
+
 ```ts
 wardrik.tool({
   name: "find_order",
-  description: "The order a Stripe payment intent paid for: items, address, dates.",
-  input: z.object({ payment_intent: z.string().describe("As pi_123") }),
+  description: "Find the order associated with a Stripe payment intent, including items, address, and dates.",
+  input: z.object({ payment_intent: z.string().describe("Stripe payment intent ID, such as pi_123") }),
   readOnly: true,
   run: ({ payment_intent }) => orders.byPaymentIntent(payment_intent),
 });
 ```
 
-| Key | |
+| Key | Description |
 | --- | --- |
 | `name` | 1 to 55 letters, digits, `_` and `-` |
 | `description` | the description sent to the model |
 | `title` | a display name |
 | `input` | a `zod` object schema for the arguments; `.describe()` documents a field for the model |
-| `readOnly` | the tool changes nothing, so it never needs approval |
-| `idempotent` | the tool is safe to call twice with the same arguments |
+| `readOnly` | marks the tool as read-only, removing the default approval requirement; explicit policy rules still apply |
+| `idempotent` | safe to retry with the same idempotency key without repeating its effects |
 | `run` | the function; receives the arguments and `{ agent, run, idempotencyKey, signal, cost }` |
 
 - Add `workers/*` to an agent's `tools`. The model sees `workers__find_order`.
@@ -32,7 +35,7 @@ wardrik.tool({
 
 Return an object or a string. Return only what the model needs, since every token counts.
 
-Throw to fail the call. Write an error message the model can act on:
+Throw an error to fail the call. Include enough context for the model to correct its request:
 
 ```ts
 run: async ({ order_id }) => {

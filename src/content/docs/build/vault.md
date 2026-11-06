@@ -5,7 +5,8 @@ sidebar:
   order: 2.5
 ---
 
-The vault stores secrets encrypted in the store, instead of in files:
+Store API keys, tokens, and other credentials in Wardrik’s encrypted vault. Pass secret values
+through stdin so you can reference them by name in configuration:
 
 ```sh
 echo "$KEY" | wardrik vault put ANTHROPIC_API_KEY --for api_key           # the deployment's
@@ -21,11 +22,11 @@ wardrik vault rm CRM_KEY --user jon
 
 ## Purposes
 
-Each secret is stored `--for` one purpose, and only used for that:
+The `--for` flag restricts how a secret can be used:
 
 | `--for` | Used as |
 | --- | --- |
-| `api_key` | a key a model or tool calls a service with |
+| `api_key` | an API key for model providers or tool services |
 | `client_secret` | an OAuth app's client secret, for `wardrik provider add --secret` |
 | `header` | an MCP server's header, for `wardrik server add --secret` |
 | `signing_secret` | a webhook's signing secret, for `wardrik notify add --secret` and triggers |
@@ -39,8 +40,8 @@ An agent's model and tools look up a key by name, such as `ANTHROPIC_API_KEY`, i
 3. The deployment's, if `deployment_keys` is `true` (the default).
 4. The daemon's environment.
 
-To use its own key, an org stores a secret with the key's name. Set `deployment_keys: false` in
-`config.yaml` to require it of every org.
+To use an organization’s own API key, store it under the expected name, such as `ANTHROPIC_API_KEY`.
+Set `deployment_keys: false` to prevent fallback to deployment vault keys.
 
 ## The deployment's secrets
 
@@ -55,7 +56,7 @@ The daemon reads its key from, in order:
 2. `WARDRIK_VAULT_KEY` in the environment, or in `~/.config/wardrik/env`.
 3. `~/.local/share/wardrik/vault_key`, generated on first start.
 
-To rotate it, list the new key first. The first key encrypts, and any key decrypts:
+To rotate it, list the new key first. Wardrik encrypts new values with the first key and can decrypt existing values with any listed key:
 
 ```yaml
 vault:
@@ -67,7 +68,7 @@ vault:
 - Restart the daemon after changing a key.
 - A key is 32 random bytes, base64-encoded: `openssl rand -base64 32`.
 - Back up the key separately from the store. Together they decrypt every secret.
-- Without a key, nothing is stored, and calls that need a connected account fail.
+- If no vault key is available, Wardrik cannot store secrets, and calls requiring a connected account fail.
 - Names aren't encrypted. Anyone who can read the store sees which owner has which secret names.
 - Over HTTP, secrets are at `/v1/owners/{owner}/secrets`. `{owner}` is one URL-encoded segment,
   such as `acme%2F%40jon`.

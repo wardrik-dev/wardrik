@@ -5,9 +5,10 @@ sidebar:
   order: 2
 ---
 
-Your app creates one agent per customer. It replies in your app and looks up orders with tools in
-your code. Refunds up to $50 run. Larger ones need approval in Slack. No agent can access another
-customer's orders. Idle agents stop, so thousands of them cost almost nothing.
+Create an agent per customer and connect it to your app’s order and refund functions. Refunds
+up to $50 run automatically; larger refunds require approval in Slack. Your tools use the calling
+agent’s ID to restrict access to that customer’s orders. Idle agent processes stop and restart
+when a message arrives.
 
 ## The files
 
@@ -127,10 +128,10 @@ npm install @wardrik/sdk@0.1.0-rc.4 zod
 Run your app and ask a customer's agent for a $20 refund. It runs. Ask for $200, and the call is
 posted to `#support` with **Approve** and **Deny**.
 
-## What it shows
+## How it works
 
 - One agent per customer, each with its own history. Idle agents stop until the next message.
-- Tools receive the calling agent's ID from Wardrik, not from the model's arguments. A prompt
-  can't make an agent read another customer's orders.
+- Tools receive the calling agent's ID from Wardrik, not from the model's arguments. Your application must
+  enforce the customer mapping on every order lookup and refund.
 - Refund limits are in the org policy. No agent definition can bypass them.
 - See [Tools in your app](/build/tool-workers/).

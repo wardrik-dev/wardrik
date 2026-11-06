@@ -1,11 +1,12 @@
 ---
-title: Send notices
-description: "Send a notice to a Slack room or a signed webhook when a turn pauses for approval, fails or finishes."
+title: Send notifications
+description: "Send Slack notifications or signed webhooks for pending approvals, failures, and completed turns."
 sidebar:
   order: 7
 ---
 
-Define targets in `config.yaml`, then set an agent's `notify`:
+Send notifications when an agent needs approval, fails, or completes a turn. Define destinations
+in `config.yaml`, then select them in the agent’s `notify` setting:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 notify:
@@ -29,9 +30,9 @@ notify: {to: ["slack:#updates"], on: [finished]}    # a room, without a target
 
 `on` defaults to `[parked, failed]`.
 
-- In Slack, a notice for a turn in a thread isn't posted. The thread shows the turn's answer,
-  approvals and failure.
-- A room is in the workspace where the channel was added for the agent's owner or org.
+- Turns started in Slack threads show replies, approvals, and failures in that thread, without
+  a separate notification.
+- Slack destinations use the workspace connected to the agent’s owner or organization.
 - A target is available to the deployment's org. List it under `orgs.<org>.notify` for others.
 - Notices are never sent to another org's room.
 
@@ -44,7 +45,7 @@ echo "$SECRET" | wardrik vault put HOOK_SECRET --org acme --for signing_secret
 wardrik notify add alerts --org acme --url https://hooks.acme.example/wardrik --secret HOOK_SECRET
 ```
 
-Agents use it as `notify: alerts`.
+Reference the webhook in an agent file with `notify: alerts`.
 
 ## Webhook payload
 

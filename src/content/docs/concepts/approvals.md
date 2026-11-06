@@ -5,8 +5,8 @@ sidebar:
   order: 3
 ---
 
-A tool call that needs approval pauses the turn until a person approves or denies it. The paused
-turn is stored, so it survives a restart. It never times out.
+When a policy requires approval, Wardrik pauses the turn and saves its state. Approve or deny the
+call to resume. Pending approvals survive restarts and have no expiry.
 
 ```sh
 wardrik approval
@@ -15,8 +15,8 @@ wardrik approval approve triage call_1 --note "Label it for the next sprint."
 wardrik approval deny triage call_1 --reason "Not on a Friday."
 ```
 
-- `wardrik approval` goes through each pending call and asks `[y/n, Enter leaves it]`.
-- `wardrik ask` and `wardrik follow` ask the same, at the call, when run at a terminal.
+- `wardrik approval` prompts you to approve or deny each pending call. Press Enter to leave it pending.
+- In an interactive terminal, `wardrik ask` and `wardrik follow` also prompt for approval.
 
 - Approving runs the call with the model's arguments. The model receives the `--note` with the result.
 - Denying returns an error with your `--reason` to the model. The turn continues.
@@ -42,7 +42,7 @@ A conversation's calls are under `/v1/agents/{agent}/conversations/{conversation
 
 ## Who can approve
 
-- In the daemon: a subject bound to a role that allows `approve`, `deny` or `decide` on the agent.
+- Over HTTP: a user or agent with a role permitting `approve`, `deny`, or `decide` on the target agent.
 - In a chat channel: the person who sent the message that started the turn.
 - The `wardrik` command, which runs as the admin.
 
@@ -53,5 +53,5 @@ A conversation's calls are under `/v1/agents/{agent}/conversations/{conversation
   once all are resolved.
 - New messages are queued until the turn resumes.
 - `wardrik agent cancel` ends the turn and drops the queued messages.
-- A call that needs a connected account is pending the same way, with a sign-in link. See
+- Calls that require an account connection also pause the turn until the user signs in. See
   [Connect accounts](/build/accounts/).

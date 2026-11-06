@@ -1,12 +1,15 @@
 ---
-title: Pull the plug, then press stop
-description: Kill -9 Wardrik mid-turn and the agent resumes without repeating a tool call. Cancel it, and it stays cancelled.
+title: Test crash recovery and cancellation
+description: Restart Wardrik during a task to test saved results, idempotent retries, and persistent cancellation.
 sidebar:
   order: 8
 ---
 
-An agent onboards two new hires, one tool call at a time. Kill Wardrik midway and restart it. The
-agent resumes without repeating a call. Cancel the turn and kill Wardrik again. It stays cancelled.
+Simulate onboarding two new hires, then kill and restart Wardrik during a tool call. Completed
+calls replay from the log; interrupted calls retry with the same idempotency key. Cancel a turn
+and restart again to verify that cancellation is saved.
+
+The demo tools simulate account creation, laptop orders, and email. They do not call external services.
 
 Requires Node 22.18+ and `jq`.
 
@@ -140,7 +143,10 @@ wardrik start
 [agent] wardrik.run.completed
 ```
 
-One laptop each. Now clear the agent, run the script again, and cancel the turn midway:
+The tool worker uses idempotency keys to avoid duplicate effects. Its deduplication map is kept
+in memory for this demo; a production tool needs durable storage or an API with idempotency support.
+
+Clear the agent’s history, run the script again, and cancel the turn midway:
 
 ```sh
 wardrik agent clear onboarding
@@ -152,11 +158,11 @@ wardrik ls onboarding                # idle
 
 No calls run. The cancellation was persisted, so the agent restarts idle.
 
-## What it shows
+## How it works
 
 - Each round is persisted before it runs, so a restarted Wardrik resumes from it. See
   [Durable runs](/concepts/agents/#durable-runs).
-- A completed call returns its result from the log (`"replayed": true`) and never runs twice.
+- Calls with saved results replay from the log (`"replayed": true`) instead of executing again.
 - A retried call has the same idempotency key.
 - Remove `idempotent: true` and kill the daemon. The interrupted call needs approval instead.
 - A cancelled turn stays cancelled across a crash.

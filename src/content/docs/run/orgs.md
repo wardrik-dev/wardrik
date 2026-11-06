@@ -1,12 +1,12 @@
 ---
-title: Orgs, roles and tokens
+title: Organizations, roles, and tokens
 description: "Declare orgs, grant access with roles and bindings, and create tokens for users and programs."
 sidebar:
   order: 6
 ---
 
-Every request to the daemon has a token. The token identifies a user. The roles and bindings in
-`config.yaml` define what that user can do, in which org.
+API tokens identify users or agents. Roles define allowed operations, and bindings grant those
+roles within an organization (org). Configure both in `config.yaml`.
 
 ```yaml title="~/.config/wardrik/config.yaml"
 org: acme
@@ -31,7 +31,7 @@ wardrik token create ana-laptop --subject user:payments/@ana --groups payments-e
 ## Orgs
 
 - `org` is the deployment's org, `default` unless set. `orgs` declares the others.
-- An agent, secret or server for an undeclared org is refused.
+- Agents, secrets, and servers must belong to a declared organization.
 - A user is `ORG/@NAME`, such as `acme/@jon`. A user owns their agents, secrets and accounts.
 - `orgs.<org>` lists the `mcp` servers, `channels` and `notify` targets its agents can use. `"*"`
   applies to every org.
@@ -40,7 +40,8 @@ wardrik token create ana-laptop --subject user:payments/@ana --groups payments-e
 
 ## Roles and bindings
 
-A role is a list of rules. A rule allows `verbs` on `kinds` of resource, limited to `names` if set:
+A role contains permission rules. Each rule specifies operations (`verbs`), resource types
+(`kinds`), and optionally specific resources (`names`):
 
 ```yaml
 roles:
@@ -55,7 +56,7 @@ roles:
 - Removing a secret, server, webhook, OAuth app, connection or token is `delete`. `create`
   doesn't include it.
 
-A binding grants a role to subjects in one org:
+A binding grants a role to users, groups, or agents in one organization. The `subjects` field accepts:
 
 - `user:ORG/@NAME`: a user, such as `user:acme/@jon`.
 - `group:NAME`: every token that lists the group.
@@ -63,17 +64,17 @@ A binding grants a role to subjects in one org:
 
 ## Built-in rules
 
-- **Owners.** A user has every verb on what they own: agents, secrets, MCP servers, webhooks and
+- **Owners.** A user has full access to resources they own: agents, secrets, MCP servers, webhooks and
   OAuth apps.
 - **Agents.** An agent calling its tools has only its own bindings, not its owner's.
 - **Connections.** Each user manages only their own connected accounts.
 - **Channels.** A chat member acts as the user `channels.<name>.domains` or `members` maps them
   to. They can only send messages, read, and approve or deny, on the agents of the owner who
   added the workspace. The member who started a turn can always approve its calls.
-- **Admin.** `admin` is every verb on every kind. `roles` can't declare it. `user:admin`, which
-  the `wardrik` command runs as, has it in `"*"`.
-- **Outside your orgs**, every resource returns `404`, so its existence isn't revealed. Inside, an
-  action no rule allows returns `403`.
+- **Admin.** The built-in `admin` role permits all operations on all resources. It cannot be
+  redefined. The CLI uses `user:admin`, which has this role across all organizations.
+- **Access errors.** Resources outside your authorized organizations return `404`. Within an
+  authorized organization, an operation without permission returns `403`.
 
 ## Tokens
 
@@ -87,13 +88,13 @@ wardrik token revoke mzxw6ytboi
 - The secret is printed once, as `wdk_...`. Only its hash is stored.
 - `--groups` takes a comma-separated list of groups for bindings to match.
 - `--expires` takes `s`, `m`, `h` or `d`. Default `30d`, maximum one year.
-- A revoked token is refused immediately. Its event streams and worker connections close within
+- Revoked tokens are rejected immediately. Its event streams and worker connections close within
   15 seconds.
 - Over HTTP, tokens are at `/v1/tokens`.
 
-Creating a token needs a binding in `"*"` on the `token` kind. A token authenticates as its
-subject, so this permission can impersonate anyone. Grant it sparingly, with `names` listing the
-subjects:
+Token creation requires a binding in `"*"` for the `token` resource type. This permission allows
+the caller to act as the token’s subject. Restrict it with `names` to specify which identities
+the caller can create tokens for:
 
 ```yaml
 roles:

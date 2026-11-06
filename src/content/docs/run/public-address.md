@@ -1,12 +1,14 @@
 ---
-title: A public address
+title: Set up public HTTPS access
 description: "Put the daemon behind Caddy at an HTTPS address, for OAuth callbacks, Slack and webhooks."
 sidebar:
   order: 4
 ---
 
-OAuth providers, Slack and webhook senders need an HTTPS URL for the daemon. The daemon serves
-plain HTTP, so put Caddy in front.
+Expose selected routes over HTTPS for OAuth callbacks, Slack events, and incoming webhooks.
+The daemon serves HTTP; this example uses Caddy to terminate TLS.
+
+You need a domain pointing to the server and ports 80 and 443 available to Caddy.
 
 ```text title="/etc/caddy/Caddyfile"
 agents.example.com {
@@ -30,8 +32,6 @@ wardrik doctor
 # ok    oauth          https://agents.example.com/oauth reaches the daemon
 ```
 
-Requires a domain pointing at the server, with ports 80 and 443 open for Caddy's certificate.
-
 ## Exposed paths
 
 | Path | Access |
@@ -43,7 +43,7 @@ Requires a domain pointing at the server, with ports 80 and 443 open for Caddy's
 | `/v1/channels/CHANNEL/...` | requests signed by Slack |
 | `/v1/openapi.json` | anyone; `wardrik doctor` fetches it |
 
-No other path is exposed. Add `/v1/workers` for [tool workers](/build/host-tools/) on other
+This proxy configuration exposes only the listed paths. Add `/v1/workers` for [tool workers](/build/host-tools/) on other
 machines.
 
 ## Details
@@ -52,7 +52,7 @@ machines.
 - Without `base_url`, it's `http://127.0.0.1:4747`, reachable only from the same machine.
 - Don't rewrite the path. A proxy that strips it breaks every route.
 - For a proxy on another machine, listen on a private address, such as `http: {ip: 10.0.0.12}`.
-  Never a public one.
+  Keep the daemon’s HTTP port off the public network.
 - In a container, listen on `0.0.0.0`, and publish `-p 127.0.0.1:4747:4747`.
 - Any proxy that terminates TLS and preserves the path works, such as a load balancer or a tunnel.
 - Providers with `flow: device` need no callback.

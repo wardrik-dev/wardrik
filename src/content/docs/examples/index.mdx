@@ -1,6 +1,6 @@
 ---
 title: Examples
-description: Agents to copy and run, each a few files.
+description: Agent configurations for customer support, incident response, bookkeeping, and personal automation.
 tableOfContents: false
 sidebar:
   order: 0
@@ -10,28 +10,28 @@ sidebar:
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 import ExampleGroup from '../../../components/ExampleGroup.astro';
 
-Each example is a few files to copy and run. Requires the daemon
-[installed](/getting-started/install/), with a model provider key.
+Start from a task, copy the agent and policy files, and configure the listed integrations.
+All examples require a [running daemon](/getting-started/install/) and a model provider key.
 
-<ExampleGroup folder="team" title="For a team" />
+<ExampleGroup folder="team" title="Incident response" />
 
-<ExampleGroup folder="enterprise" title="For an enterprise" />
+<ExampleGroup folder="enterprise" title="Team administration" />
 
-<ExampleGroup folder="business" title="For a business" />
+<ExampleGroup folder="business" title="Support and bookkeeping" />
 
-<ExampleGroup folder="you" title="For you" />
+<ExampleGroup folder="you" title="Personal automation" />
 
-## Try to break it
+## Test the guarantees
 
 <CardGrid>
 	<LinkCard
-		title="Pull the plug, then press stop"
+		title="Crash recovery and cancellation"
 		href="/examples/pull-the-plug/"
-		description="Kill Wardrik mid-turn. The agent resumes without repeating a tool call."
+		description="Restart during a task. Replay saved results, retry interrupted calls safely, and verify cancellation."
 	/>
 	<LinkCard
-		title="Let anyone try to hijack it"
+		title="Prompt injection defenses"
 		href="/examples/hijack-me/"
-		description="Triages public issues with write access. Prompt injection can't bypass its policy."
+		description="Embed instructions in public issues and verify that proposed GitHub writes still need approval."
 	/>
 </CardGrid>

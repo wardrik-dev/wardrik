@@ -5,8 +5,11 @@ sidebar:
   order: 4.6
 ---
 
-`wardrik.listen` calls your handler with each event and the cursor after it. Save the cursor in
-the same transaction, and a restart resumes from it.
+Use `wardrik.listen` to process events and save your position. Each handler receives an event
+and its cursor. Save the event and cursor in one database transaction, then pass the saved cursor
+as `after` when your app restarts.
+
+This example assumes a configured SDK client, database helpers, and an abort signal:
 
 ```ts
 await wardrik.listen(
@@ -26,9 +29,9 @@ await wardrik.listen(
   aborts.
 - Delivery is at least once. Key rows by `event.id` to skip duplicates.
 
-## Show what an agent is doing
+## Display live activity
 
-Some events are live only. They're streamed, but not stored.
+Reply deltas, progress, and activity updates are streamed live and are not stored for replay.
 
 | Shows | Event | Stored |
 | --- | --- | --- |
@@ -43,7 +46,7 @@ for await (const event of agent.streamEvents({ types: ["wardrik.activity.changed
 }
 ```
 
-Activity changes many times a second, so render it at most every two seconds.
+Activity can change many times per second. Throttle UI updates to keep them readable.
 
 ## Details
 

@@ -1,12 +1,13 @@
 ---
-title: Your first tool, end to end
+title: Add a TypeScript tool
 description: "Build a tool that posts to Statuspage, let an agent propose a post, approve it, then run the tool as a service."
 sidebar:
   order: 3.1
 ---
 
-Build `post_status`, a tool that opens an incident on a status page. Requires the daemon
-[installed](/getting-started/install/), Node 22.18+, and a
+Let an agent propose a Statuspage incident, then approve it before your app posts it.
+
+You need a [running Wardrik daemon](/getting-started/install/), Node 22.18+, and a
 [Statuspage](https://developer.statuspage.io/) page ID and API key.
 
 ## 1. Start an app
@@ -43,7 +44,7 @@ wardrik.tool({
       body: JSON.stringify({ incident }),
       signal,
     });
-    if (!response.ok) throw new Error(`Statuspage answered ${response.status}`);
+    if (!response.ok) throw new Error(`Statuspage returned HTTP ${response.status}`);
 
     const { id, shortlink } = await response.json();
     return { id, shortlink };
@@ -60,7 +61,7 @@ await wardrik.work({ signal: stop.signal });
 - It isn't `readOnly`, so every call needs approval unless a policy allows it.
 - A thrown error fails the call. The model receives the error message.
 
-## 3. Connect it
+## 3. Connect the tool worker
 
 Allow the user `default/@statuspage` to serve tools to the org's agents:
 
@@ -81,10 +82,10 @@ export STATUSPAGE_PAGE_ID=... STATUSPAGE_API_KEY=...
 WARDRIK_TOKEN=wdk_... node statuspage.ts
 ```
 
-`default` is the `org` in `config.yaml`. The app opens no port, and the Statuspage key stays in
-the app.
+This example uses the default organization, `default`. The app needs no inbound port, and
+the Statuspage key stays in the app.
 
-## 4. Give an agent the tool
+## 4. Enable the tool for an agent
 
 ```markdown title="~/.config/wardrik/agents/status.md"
 ---
@@ -97,7 +98,7 @@ policy:
 You post incidents on the public status page. Write for customers, in plain words.
 ```
 
-## 5. Try it
+## 5. Request and approve a post
 
 ```sh
 wardrik reload
@@ -115,9 +116,10 @@ wardrik approval approve status call_7c2e…
 wardrik approval deny status call_7c2e… --reason "We don't post until it's confirmed."
 ```
 
-On approval, your app posts the incident and the agent receives the link.
+After approval, your app posts the incident and the agent returns its link. The call ID above
+is illustrative; use the ID from your pending call.
 
-## 6. Run it as a service
+## 6. Run the tool worker as a service
 
 ```ini title="~/.config/systemd/user/statuspage.service"
 [Unit]

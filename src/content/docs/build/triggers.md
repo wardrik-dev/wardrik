@@ -5,8 +5,8 @@ sidebar:
   order: 5
 ---
 
-A trigger sends an agent a message on a schedule, a feed update or a webhook. Define triggers in the
-agent file:
+Start agent tasks on a schedule, when an RSS or Atom feed changes, or when a webhook arrives.
+Define triggers in the agent file:
 
 ```yaml title="~/.config/wardrik/agents/triage.md"
 ---
@@ -34,7 +34,7 @@ digest   every 0 17 * * 1-5    in 3h 12m  Write up what happened today.
 sweep    every 30m             in 29m     Check the incident queue, and say what is new.
 ```
 
-A trigger's message is an ordinary message in the agent's history. Every key is in
+Trigger messages are added to the agent’s conversation history. See all settings in
 [Agent files](/reference/agent-files/#triggers).
 
 ## On a schedule
@@ -47,8 +47,8 @@ every: 2h                # an interval: s, m, h or d, at least a minute
 
 - A run is skipped if the agent is busy, and missed runs run once on startup. `overlap`, `missed`
   and `jitter` change that. See [triggers](/reference/agent-files/#triggers).
-- If the agent still waits on an answer nobody gave, the next run cancels that turn and asks
-  again. Set `overlap: skip` to keep it waiting instead.
+- By default, if the previous turn is still waiting for approval, the next scheduled run
+  cancels it and starts a new turn. Set `overlap: skip` to preserve the pending turn.
 
 ## When a feed has new entries
 
@@ -62,7 +62,7 @@ triggers:
     prompt: Summarise each new entry in one line in NOTES.md.
 ```
 
-- The agent receives a message only when a feed has new entries, appended to the prompt.
+- When a feed has new entries, Wardrik appends them to the prompt and sends a message to the agent.
 - A run with no new entries makes no model call.
 - The first run records the current entries and sends nothing.
 
@@ -92,7 +92,7 @@ https://agents.acme.example/v1/hooks/agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN/issues
   instead.
 - The secret belongs to the agent's owner, stored `--for signing_secret`.
 - A request that fails verification returns `404`. The daemon must be reachable at `base_url`. See
-  [A public address](/run/public-address/).
+  [Public HTTPS access](/run/public-address/).
 - Each request costs a model call. Subscribe only to the events you need.
 
 ## Change triggers
@@ -115,11 +115,11 @@ curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json
 - `prompt_file: HEARTBEAT.md` reads the prompt from the agent's [files](/concepts/files-and-memory/),
   so the agent can edit it.
 - `notify: {to: [ops], on: [finished]}` sends each run's reply to a target. See
-  [Send notices](/build/notices/).
+  [Send notifications](/build/notices/).
 
 ## Details
 
-- Feed entries and webhook bodies are [content from outside](/concepts/outside-content/).
+- Feed entries and webhook bodies are [untrusted content](/concepts/outside-content/).
 - A webhook with a repeated ID returns `202` and sends one message.
 - If the agent can't accept the webhook, it returns `503`, so the service retries.
 - The agent receives the first 32,768 characters of a body.

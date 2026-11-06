@@ -5,7 +5,8 @@ sidebar:
   order: 1
 ---
 
-Define MCP servers in `config.yaml`, as a `command` or a `url`:
+Connect a Model Context Protocol (MCP) server to make its tools available to agents. Configure
+a remote server with `url`, or a local process with `command`:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 mcp:
@@ -35,7 +36,7 @@ tools: [linear/*, notes/*]
 - `only` and `except` filter a server's tools.
 - `headers` and `env` are deployment credentials, shared by every org that uses the server. To
   call a server as each user, set `credential`. See [Connect accounts](/build/accounts/).
-- Every key is in [`config.yaml` › mcp](/reference/config/#mcp).
+- See all settings in [`config.yaml` › mcp](/reference/config/#mcp).
 
 ## Which calls need approval
 
@@ -53,7 +54,7 @@ mcp:
 ```
 
 - `gated` lists the gated tools, `true` for all, or `false` for none.
-- Without `trusted: true`, a server's results are [content from outside](/concepts/outside-content/).
+- Without `trusted: true`, a server's results are [untrusted content](/concepts/outside-content/).
 
 See [Gated tools](/concepts/policy/#gated-tools).
 
@@ -101,7 +102,7 @@ For each `server/*` in an agent's tools, the first match is used:
 2. A server the agent's org added.
 3. A server in `config.yaml` for the agent's org.
 
-`servers/*` includes every server the agent's owners add. `wardrik agent show` lists a server with
+`servers/*` includes every server added by the agent’s owner. `wardrik agent show` lists a server with
 no tools yet as `missing`.
 
 ## Details
@@ -111,6 +112,6 @@ no tools yet as `missing`.
   `PATH`, so use the program's full path.
 - In Docker, the program must be in the image. Build `FROM ghcr.io/wardrik-dev/wardrik:0.1.0-rc.8`.
 - `prefix`, `timeout`, `max_result_bytes` and `cost` are in [`config.yaml` › mcp](/reference/config/#mcp).
-- A server that's down has no tools. The daemon reconnects with backoff up to a minute.
+- Tools from an unavailable server cannot be called. The daemon reconnects with backoff up to a minute.
 - A server added at runtime must be `https` at a public address, unless `allow_private_urls: true`.
 - `wardrik reload` rereads agent files, not `config.yaml`.

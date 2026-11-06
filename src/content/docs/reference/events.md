@@ -1,9 +1,12 @@
 ---
 title: "Events"
-description: "The CloudEvents an agent writes to its log, and each event's data fields."
+description: "Agent event types, CloudEvent metadata, and payload fields."
 sidebar:
   order: 6
 ---
+
+Wardrik emits CloudEvents for agent activity. Stored events can be replayed; live events are
+available only while connected.
 
 ```json
 {
@@ -23,7 +26,7 @@ sidebar:
 }
 ```
 
-- Read them with [`GET /v1/events`](/reference/http-api/#read-events) or `wardrik agent follow AGENT --json`.
+- Read events with [`GET /v1/events`](/reference/http-api/#read-events) or `wardrik agent follow AGENT --json`.
 - Every event is a CloudEvent. Event-specific fields are under `data`.
 - **Live** events are streamed but never stored.
 - Each `data` schema is in `wardrik_protocol`'s `priv/v1/`, named by `dataschema`.
@@ -85,7 +88,8 @@ sidebar:
 
 ## Agents and conversations
 
-Events caused by a request also have `actor?` and `assumed_by?`: the caller, and the chain it acted through.
+Request-triggered events may include `actor` (the caller) and `assumed_by` (the identity chain
+used for the request).
 
 | Type | `data` | When |
 | --- | --- | --- |
@@ -109,7 +113,8 @@ Events caused by a request also have `actor?` and `assumed_by?`: the caller, and
 
 ## Daemon changes
 
-Written to the audit log. Each also has `actor?` and `assumed_by?`. `owner` is `acme`, `acme/@jon` or `deployment`.
+These events are written to the audit log and may include `actor` and `assumed_by`.
+The `owner` field identifies an organization (`acme`), user (`acme/@jon`), or `deployment`.
 
 | Type | `data` |
 | --- | --- |
