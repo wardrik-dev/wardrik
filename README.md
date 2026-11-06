@@ -13,12 +13,24 @@ end
 
 ## Usage
 
+Run the example in a fresh IEx session. Set `ANTHROPIC_API_KEY` before starting IEx.
+
 ```elixir
-WardrikCore.start_agent(
-  agent_id: "agt_triage",
-  model: "anthropic:claude-haiku-4-5",
-  capabilities: [{WardrikLua, limits: [timeout_ms: :timer.seconds(5)]}]
-)
+Mix.install([{:wardrik_lua, "~> 0.1.0-rc.2"}])
+
+children = [
+  {WardrikCore.Backends.MemoryStore, name: :agents},
+  {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
+]
+
+{:ok, _supervisor} = Supervisor.start_link(children, strategy: :rest_for_one)
+
+{:ok, agent} =
+  WardrikCore.start_agent(
+    agent_id: "agt_triage",
+    model: "anthropic:claude-haiku-4-5",
+    capabilities: [{WardrikLua, limits: [timeout_ms: :timer.seconds(5)]}]
+  )
 ```
 
 With [Wardrik](https://hexdocs.pm/wardrik), offer it by name, then list `run_lua` in a definition's
@@ -27,6 +39,19 @@ With [Wardrik](https://hexdocs.pm/wardrik), offer it by name, then list `run_lua
 ```elixir
 config :my_app, MyApp.AgentRuntime, capabilities: [run_lua: WardrikLua]
 ```
+
+Enable `run_lua` in the agent's definition. Use the scope returned by your runtime's `as/2`:
+
+```elixir
+scope = MyApp.AgentRuntime.as("maria")
+
+Wardrik.Agent.define(scope, "agt_triage",
+  model: "anthropic:claude-haiku-4-5",
+  tools: ["run_lua"]
+)
+```
+
+See [Run Wardrik](https://hexdocs.pm/wardrik/running-wardrik.html) for runtime setup.
 
 ## The sandbox
 

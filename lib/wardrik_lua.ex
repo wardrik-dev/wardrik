@@ -2,6 +2,9 @@ defmodule WardrikLua do
   @moduledoc """
   Lua 5.3 for agents, as the `run_lua` tool.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_lua#readme) for complete setup.
+
       WardrikCore.start_agent(
         agent_id: "agt_triage",
         model: "anthropic:claude-haiku-4-5",
