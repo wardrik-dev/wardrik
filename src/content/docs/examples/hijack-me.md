@@ -28,7 +28,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:default/@maria}
+    domains: {acme.com: default}
 
 notify:
   targets:
@@ -42,8 +42,8 @@ bindings:
 ```
 
 - Both write tools are gated. After the agent reads an issue, gated calls need approval.
-- `members` maps a Slack ID to `user:default/@maria`. The binding allows that user to approve the
-  agent's calls.
+- `domains` makes `maria@acme.com` in Slack the user `user:default/@maria`. The binding allows
+  that user to approve the agent's calls.
 
 ```markdown title="~/.config/wardrik/agents/issues.md"
 ---

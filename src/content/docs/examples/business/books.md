@@ -34,7 +34,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:acme/@maria, U0G9QF9C6: user:acme/@sam}
+    domains: {acme.com: acme}
 
 notify:
   targets:

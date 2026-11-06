@@ -41,7 +41,8 @@ ok    agents         2 agent files and 1 policy read
 - **A trigger didn't run.** `wardrik trigger ls AGENT` shows its next run.
 - **`404` for a resource that exists.** The token's user has no binding in its org. See
   [Orgs, roles and tokens](/run/orgs/).
-- **A chat member is refused.** Map them under `channels.<name>.members`.
+- **A chat member is refused.** Map their email domain under `channels.<name>.domains`, or
+  their member ID under `members`.
 - **`wardrik` reports the daemon isn't started.** The command reads its token from
   `~/.local/share/wardrik/cli_token`, which the daemon writes on startup.
 - **The service can't find a program `doctor` found.** systemd's `PATH` differs from your shell's.

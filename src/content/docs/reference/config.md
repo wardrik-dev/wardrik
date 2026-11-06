@@ -40,7 +40,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     app_token: ${SLACK_APP_TOKEN}
-    members: {U024BE7LH: user:acme/@ana}
+    domains: {acme.com: acme}
 
 notify:
   targets:
@@ -236,8 +236,8 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     app_token: ${SLACK_APP_TOKEN}
-    members: {U024BE7LH: user:acme/@ana, U0G9QF9C6: user:acme/@jon}
-    unmapped_members: refuse
+    domains: {acme.com: acme}
+    members: {U0G9QF9C6: user:acme/@jon}
 ```
 
 | Key | Description |
@@ -247,11 +247,12 @@ channels:
 | `signing_secret` | verifies Slack's requests at `/v1/channels/NAME/` |
 | `app_token` | receives events over Socket Mode instead |
 | `client_id`, `client_secret`, `redirect_uri` | for a Slack app installed in many workspaces |
-| `members` | member ID to user |
-| `unmapped_members` | `refuse` (default) replies with a message to ask an admin; `allow` maps them to `user:slack:T0123/U024BE7LH` |
+| `domains` | email domain to org; `ana@acme.com` acts as `user:acme/@ana` |
+| `members` | member ID to user; wins over `domains` |
 | `offering`, `deciding` | messages for a room with no agent, and for a member who can't approve |
 
 - The name is lower-case letters, digits and `-`. `shell`, `ssh`, `terminal` and `oauth` are reserved.
+- A member neither key maps is refused, and told to ask an admin.
 - An agent is available in a channel if its definition's [`channels`](/reference/agent-files/#keys) lists it.
 
 See [Slack](/build/slack/).

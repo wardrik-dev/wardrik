@@ -67,9 +67,9 @@ A binding grants a role to subjects in one org:
   OAuth apps.
 - **Agents.** An agent calling its tools has only its own bindings, not its owner's.
 - **Connections.** Each user manages only their own connected accounts.
-- **Channels.** A chat member acts as the user `channels.<name>.members` maps them to. They can
-  only send messages, read, and approve or deny, on the agents of the owner who added the
-  workspace. The member who started a turn can always approve its calls.
+- **Channels.** A chat member acts as the user `channels.<name>.domains` or `members` maps them
+  to. They can only send messages, read, and approve or deny, on the agents of the owner who
+  added the workspace. The member who started a turn can always approve its calls.
 - **Admin.** `admin` is every verb on every kind. `roles` can't declare it. `user:admin`, which
   the `wardrik` command runs as, has it in `"*"`.
 - **Outside your orgs**, every resource returns `404`, so its existence isn't revealed. Inside, an
