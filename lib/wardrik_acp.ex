@@ -11,9 +11,17 @@ defmodule WardrikACP do
                doc: "Coding agents, as a list of name and options. See `WardrikACP.Harness`."
              ],
              checkouts: [
-               type: {:list, {:tuple, [{:or, [:atom, :string]}, :string]}},
+               type:
+                 {:list, {:tuple, [{:or, [:atom, :string]}, {:or, [:string, :keyword_list]}]}},
                default: [],
-               doc: "Git repositories coding agents work in, as a list of name and path."
+               doc:
+                 "Git repositories coding agents work in, as a list of name and path or options. See `WardrikACP.Checkout`."
+             ],
+             sweep: [
+               type: {:or, [:pos_integer, {:in, [:infinity]}]},
+               default: :timer.hours(24),
+               doc:
+                 "Milliseconds between sweeps, or `:infinity`. The first runs at start. See `sweep/1`."
              ],
              worktrees: [
                type: :string,
@@ -52,14 +60,19 @@ defmodule WardrikACP do
 
   ## Telemetry
 
+    * `[:wardrik_acp, :sweep]` after each sweep. Measurements: `:removed`. Metadata: `:acp`,
+      `:removed` (the paths).
+
     * `[:wardrik_acp, :update]` for each session update. Metadata: `:agent_id`, `:span`,
       `:harness`, `:update` (the ACP `SessionUpdate` map).
   """
   @behaviour WardrikCore.Capability
   use Supervisor
 
+  alias WardrikACP.Checkout
   alias WardrikACP.Connection
   alias WardrikACP.Harness
+  alias WardrikACP.Sweep
 
   @doc """
   Starts `WardrikACP`. Coding agents start when a call first needs them.
@@ -83,8 +96,11 @@ defmodule WardrikACP do
           {to_string(name), Harness.new!(name, harness)}
         end),
       checkouts:
-        Map.new(opts[:checkouts], fn {name, path} -> {to_string(name), Path.expand(path)} end),
-      worktrees: Path.expand(opts[:worktrees])
+        Map.new(opts[:checkouts], fn {name, checkout} ->
+          {to_string(name), Checkout.new!(name, checkout)}
+        end),
+      worktrees: Path.expand(opts[:worktrees]),
+      sweep: opts[:sweep]
     }
 
     children = [
@@ -93,7 +109,28 @@ defmodule WardrikACP do
       {DynamicSupervisor, name: Connection.supervisor(opts[:name])}
     ]
 
+    children = if settings.sweep == :infinity, do: children, else: children ++ [{Sweep, settings}]
+
     Supervisor.init(children, strategy: :rest_for_one)
+  end
+
+  @doc """
+  Removes each worktree whose work is in its checkout's `base`, with its branch. Returns the paths
+  removed.
+
+      WardrikACP.sweep(MyApp.ACP)
+      #=> ["/var/lib/my_app/worktrees/claude/billing/builder/_/fix-login"]
+
+    * Work is in the base when merging the branch would change nothing: merged, squashed or
+      cherry-picked.
+    * A worktree stays while its coding agent runs, while a request waits, and while it has
+      changes or untracked files.
+    * With `fetch: true`, the checkout runs `git fetch` first.
+  """
+  @spec sweep(atom()) :: [Path.t()]
+  def sweep(acp) do
+    {:ok, settings} = Registry.meta(Connection.registry(acp), :settings)
+    Sweep.run(settings)
   end
 
   @doc """

@@ -21,7 +21,7 @@ children = [
   {WardrikACP,
    name: MyApp.ACP,
    worktrees: "/var/lib/my_app/worktrees",
-   checkouts: [billing: "/srv/billing"],
+   checkouts: [billing: [path: "/srv/billing", base: "origin/main", fetch: true]],
    harnesses: [
      claude: [
        command: "claude-agent-acp",
@@ -35,7 +35,8 @@ children = [
 
 - Each harness is a coding agent that speaks ACP over stdio. Every option is in
   `WardrikACP.Harness`.
-- A checkout is a git repository with at least one commit.
+- A checkout is a git repository with at least one commit. Its options are in
+  `WardrikACP.Checkout`.
 - A coding agent starts when a call first needs it. It stops after `idle` milliseconds with no
   call attached.
 - `settingSources: []` stops Claude Code from loading `~/.claude` and the repository's
@@ -65,7 +66,7 @@ The model calls `claude` with these arguments:
 
 - Each `work` name has its own worktree, branch and session. A later call with the same name
   continues them.
-- The branch is `wardrik/<agent>/<conversation>/<work>`, cut from the checkout's `HEAD`.
+- The branch is `wardrik/<agent>/<conversation>/<work>`, cut from the checkout's `base`.
 - Pass `checkouts: [:billing]` to limit the checkouts an agent may use.
 
 The call returns a map:
@@ -100,7 +101,8 @@ Each permission request from the coding agent runs through the agent's middlewar
 - An approval answers `allow_once`. A refusal answers `reject_once`. `allow_always` is never
   chosen.
 - After a `fetch`, the call's later requests and its answer carry the `"outside"` label.
-- A request has the call's ID. Answer a parked request as the call:
+- Each request's ID is `<call ID>:<ACP toolCallId>`, so events show it as a call of its own.
+- A parked request parks the call. Answer the call, and the answer goes to the request:
 
 ```elixir
 WardrikCore.resume(agent, %{"call_123" => :approve}, %{by: "user:maria"})
@@ -115,6 +117,20 @@ WardrikCore.resume(agent, %{"call_123" => :approve}, %{by: "user:maria"})
 | Wardrik restarted while the call ran. | The call parks as `:in_doubt`. On approval, the coding agent is told to check the worktree and finish. |
 | The call was stopped or timed out. | The prompt was cancelled. The next call sends a new prompt. |
 
+## Clean up worktrees
+
+```elixir
+WardrikACP.sweep(MyApp.ACP)
+#=> ["/var/lib/my_app/worktrees/claude/billing/builder/_/fix-login"]
+```
+
+- A sweep removes each worktree whose work is in its checkout's `base`, with its branch. Merged,
+  squashed and cherry-picked work all count.
+- A worktree stays while its coding agent runs, while a request waits, and while it has changes or
+  untracked files.
+- A sweep runs at start, then every `sweep` milliseconds: a day unless set. `sweep: :infinity`
+  turns it off.
+
 ## Costs
 
 A `usage_update` with a cost in `USD` adds what each call spent to the call's `usd` measurement.
@@ -122,8 +138,10 @@ Budgets count it.
 
 ## Telemetry
 
-`[:wardrik_acp, :update]` for each ACP session update. Metadata: `:agent_id`, `:span`,
-`:harness`, `:update`.
+- `[:wardrik_acp, :update]` for each ACP session update. Metadata: `:agent_id`, `:span`,
+  `:harness`, `:update`.
+- `[:wardrik_acp, :sweep]` after each sweep. Measurements: `:removed`. Metadata: `:acp`,
+  `:removed`.
 
 ## With Wardrik
 

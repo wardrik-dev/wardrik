@@ -8,7 +8,8 @@
 #   {"ask": {"kind": k, "title": t, "rawInput": map, "locations": [...]}}
 #                                          a permission request; says "allowed T" or "refused T".
 #                                          "$CWD" in a location's path is the session's directory.
-#   {"commit": message}                    an empty commit in the session's directory
+#   {"write": {"path": p, "text": t}}      writes a file in the session's directory
+#   {"commit": message}                    commits everything in the session's directory
 #   {"exit": status}                       exits at once
 #   {"hang": true}                         waits for session/cancel
 #   {"stop": reason}                       ends the prompt with that stop reason
@@ -222,7 +223,14 @@ defmodule Peer do
     end
   end
 
+  defp run([%{"write" => %{"path" => path, "text" => text}} | steps], state) do
+    File.write!(Path.join(state.cwd, path), text)
+    run(steps, state)
+  end
+
   defp run([%{"commit" => message} | steps], state) do
+    {_output, 0} = System.cmd("git", ["-C", state.cwd, "add", "-A"])
+
     {_output, 0} =
       System.cmd("git", ["-C", state.cwd, "commit", "--allow-empty", "-q", "-m", message])
 

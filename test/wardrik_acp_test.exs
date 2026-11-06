@@ -38,17 +38,8 @@ defmodule WardrikACPTest do
         tags[:harness] || []
       )
 
-    acp = Module.concat(__MODULE__, "ACP#{System.unique_integer([:positive])}")
-
-    start_supervised!(
-      {WardrikACP,
-       name: acp,
-       worktrees: Path.join(dir, "worktrees"),
-       checkouts: [repo: repo],
-       harnesses: [peer: harness]}
-    )
-
-    %{acp: acp, log: log, repo: repo}
+    context = %{log: log, repo: repo, dir: dir, git: git, harness: harness}
+    Map.put(context, :acp, start_acp(context, repo: repo))
   end
 
   test "runs a task in a worktree of its own, and reports its commits", %{acp: acp} do
@@ -96,7 +87,7 @@ defmodule WardrikACPTest do
   test "sends each permission request through the middleware as a tool call", %{acp: acp} do
     {:ok, output, _context} = call(acp, [ask("execute", %{"command" => "mix test"})])
 
-    assert_received {:decided, %ToolCall{id: "call-1", name: "peer__execute", arguments: args},
+    assert_received {:decided, %ToolCall{id: "call-1:p0", name: "peer__execute", arguments: args},
                      [], annotations}
 
     assert args == %{"command" => "mix test"}
@@ -386,8 +377,105 @@ defmodule WardrikACPTest do
     assert message == "#{acp_dir} isn't a git repository with a commit."
   end
 
+  test "starts new work from the checkout's base", %{repo: repo} = context do
+    git(context, repo, ["branch", "release"])
+    git(context, repo, ["commit", "-q", "--allow-empty", "-m", "Second"])
+    acp = start_acp(context, repo: [path: repo, base: "release"])
+
+    {:ok, output, _context} = call(acp, [%{"commit" => "One"}])
+
+    assert [%{"subject" => "One"}] = output["commits"]
+
+    assert git(context, repo, ["rev-parse", output["head"] <> "^"]) ==
+             git(context, repo, ["rev-parse", "release"])
+  end
+
+  test "fetches the base before new work starts", %{repo: repo, dir: dir} = context do
+    origin = Path.join(dir, "origin.git")
+    clone = Path.join(dir, "clone")
+    git(context, dir, ["clone", "-q", "--bare", repo, origin])
+    git(context, dir, ["clone", "-q", origin, clone])
+    git(context, repo, ["commit", "-q", "--allow-empty", "-m", "Upstream"])
+    git(context, repo, ["push", "-q", origin, "main"])
+    acp = start_acp(context, clone: [path: clone, base: "origin/main", fetch: true])
+
+    {:ok, output, _context} = call(acp, [%{"commit" => "One"}], %{checkout: "clone"})
+
+    assert [%{"subject" => "One"}] = output["commits"]
+    assert git(context, clone, ["log", "-1", "--format=%s", output["head"] <> "^"]) == "Upstream"
+  end
+
+  @tag gate: [ask: ["peer__edit"]]
+  test "sweeps the worktrees whose work is in the base, and keeps the rest", context do
+    %{acp: acp, repo: repo} = context
+    worked = fn work, steps -> call(acp, steps, Map.put(context, :work, work)) end
+
+    {:ok, merged, _context} = worked.("merged", [write("a.txt"), %{"commit" => "A"}])
+    {:ok, open, _context} = worked.("open", [write("b.txt"), %{"commit" => "B"}])
+    {:ok, dirty, _context} = worked.("dirty", [write("c.txt")])
+    assert {:park, :ask} = worked.("waiting", [ask("edit", %{"path" => "d"})])
+    stop_connections(acp)
+    {:ok, running, _context} = worked.("running", [])
+
+    git(context, repo, ["merge", "--squash", "-q", merged["branch"]])
+    git(context, repo, ["commit", "-q", "-m", "Squashed A"])
+
+    assert WardrikACP.sweep(acp) == [merged["worktree"]]
+
+    refute File.exists?(merged["worktree"])
+    refute File.exists?(merged["worktree"] <> ".json")
+    assert git(context, repo, ["branch", "--list", merged["branch"]]) == ""
+
+    for kept <- [open, dirty, running], do: assert(File.dir?(kept["worktree"]))
+    assert File.dir?(Path.join(Path.dirname(merged["worktree"]), "waiting"))
+  end
+
+  test "sweeps when it starts", context do
+    test = self()
+    handler = fn _name, measured, _metadata, _config -> send(test, {:swept, measured}) end
+    :telemetry.attach("sweep-#{context.test}", [:wardrik_acp, :sweep], handler, nil)
+
+    start_acp(context, [repo: context.repo], sweep: :timer.hours(1))
+
+    assert_receive {:swept, %{removed: 0}}, 5_000
+    :telemetry.detach("sweep-#{context.test}")
+  end
+
+  defp write(path), do: %{"write" => %{"path" => path, "text" => "Some work."}}
+
+  defp start_acp(context, checkouts, opts \\ []) do
+    acp = Module.concat(__MODULE__, "ACP#{System.unique_integer([:positive])}")
+
+    start_supervised!(
+      {WardrikACP,
+       Keyword.merge(
+         [
+           name: acp,
+           worktrees: Path.join(context.dir, "worktrees"),
+           checkouts: checkouts,
+           harnesses: [peer: context.harness],
+           sweep: :infinity
+         ],
+         opts
+       )},
+      id: acp
+    )
+
+    acp
+  end
+
+  defp git(context, dir, args) do
+    {output, 0} = System.cmd("git", ["-C", dir | args], env: context.git, stderr_to_stdout: true)
+    String.trim(output)
+  end
+
   defp call(acp, steps, tags \\ %{}) do
-    args = %{"task" => JSON.encode!(steps), "checkout" => "repo", "work" => tags[:work] || "fix"}
+    args = %{
+      "task" => JSON.encode!(steps),
+      "checkout" => tags[:checkout] || "repo",
+      "work" => tags[:work] || "fix"
+    }
+
     context = context(acp, tags)
     [tool] = WardrikACP.tools(context, name: acp, harnesses: :peer)
     tool.run.(args, context)
@@ -436,10 +524,17 @@ defmodule WardrikACPTest do
   defp approve, do: %Resume{reason: :ask, input: %{"call-1" => :approve}}
 
   defp stop_connection(acp) do
-    [{_id, pid, _type, _modules}] = DynamicSupervisor.which_children(Connection.supervisor(acp))
-    ref = Process.monitor(pid)
-    :ok = DynamicSupervisor.terminate_child(Connection.supervisor(acp), pid)
-    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+    [_one] = DynamicSupervisor.which_children(Connection.supervisor(acp))
+    stop_connections(acp)
+  end
+
+  defp stop_connections(acp) do
+    for {_id, pid, _type, _modules} <-
+          DynamicSupervisor.which_children(Connection.supervisor(acp)) do
+      ref = Process.monitor(pid)
+      :ok = DynamicSupervisor.terminate_child(Connection.supervisor(acp), pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+    end
   end
 
   defp sent(log, method) do

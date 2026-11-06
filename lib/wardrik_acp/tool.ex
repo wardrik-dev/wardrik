@@ -257,11 +257,12 @@ defmodule WardrikACP.Tool do
     tool_call = request["toolCall"] || %{}
     kind = tool_call["kind"] || "other"
     name = "#{reader.harness.name}__#{kind}"
-    call = %ToolCall{id: reader.call.id, name: name, arguments: arguments(tool_call["rawInput"])}
+    id = "#{reader.call.id}:#{tool_call["toolCallId"]}"
+    call = %ToolCall{id: id, name: name, arguments: arguments(tool_call["rawInput"])}
 
     context = %{
       reader.context
-      | resume: reader.resume,
+      | resume: answering(reader.resume, reader.call.id, id),
         tools: [step_tool(name, kind, tool_call, reader.worktree) | reader.context.tools],
         messages: reader.context.messages ++ labelled(reader.labels)
     }
@@ -275,6 +276,12 @@ defmodule WardrikACP.Tool do
       {:error, reason} -> {:reject, reason(reason), reader}
     end
   end
+
+  # A person answers the call that parked. The answer is passed on to the request it parked on.
+  defp answering(%Resume{input: %{} = input} = resume, call, request),
+    do: %{resume | input: %{request => Map.get(input, call)}}
+
+  defp answering(resume, _call, _request), do: resume
 
   # Paths are relative to the worktree, so a policy matches them as they are in the repository.
   defp step_tool(name, kind, tool_call, worktree) do

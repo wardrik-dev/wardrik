@@ -11,3 +11,7 @@
   kind. It can be allowed, refused or parked.
 - A parked request is answered when the call resumes, after the coding agent stopped too.
 - Session cost in USD, measured per call.
+- Each request has an ID of its own, `<call ID>:<toolCallId>`. The answer to the call goes to it.
+- `WardrikACP.Checkout`: a checkout's `base`, where new branches start, and `fetch`.
+- `WardrikACP.sweep/1` removes worktrees whose work is in the base. It runs at start and every
+  `sweep` milliseconds.
