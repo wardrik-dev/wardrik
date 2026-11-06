@@ -42,7 +42,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:acme/@maria, U0G9QF9C6: user:acme/@devon, U07QJ2N4K: user:acme/@sam}
+    domains: {acme.com: acme}
 
 notify:
   targets:
@@ -58,7 +58,8 @@ bindings:
   - {org: acme, role: worker, subjects: [user:acme/@statuspage]}
 ```
 
-- `members` maps each Slack ID to a user. The `on-call` binding allows those users to approve.
+- `domains` makes `maria@acme.com` the user `user:acme/@maria`. The `on-call` binding allows its
+  users to approve.
 - `worker` allows the status page app below to serve tools to `oncall` only.
 - `only` excludes tools the agent doesn't need, such as merging or deleting a deployment.
 

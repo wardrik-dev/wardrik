@@ -3,29 +3,50 @@ title: Slack
 description: "Add an agent to a Slack channel. It replies in threads, and posts Approve and Deny buttons for calls that need approval."
 ---
 
-Create a Slack app, map members to users, and invite the app to a channel. Slack is the only
-channel type.
+Slack sends events over HTTPS, so the daemon needs a [public address](/run/public-address/). To
+test without one, use [Socket Mode](#testing-with-socket-mode).
 
-```yaml title="~/.config/wardrik/config.yaml"
-channels:
-  slack:
-    type: slack
-    token: ${SLACK_BOT_TOKEN}
-    signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:default/@maria, U0G9QF9C6: user:default/@jon}
-```
+## Set up
 
-- `slack` is the channel's name: lower-case letters, digits and `-`. Every key is in
-  [config.yaml › channels](/reference/config/#channels).
-- Slack sends events over HTTPS to `/v1/channels/slack/`, so the daemon needs a
-  [public address](/run/public-address/). To test without one, use [Socket Mode](#testing-with-socket-mode).
+1. At [api.slack.com/apps](https://api.slack.com/apps), choose **Create New App › From a
+   manifest**. Paste the manifest below, with `agents.example.com` changed to the daemon's
+   address. Slack can't verify the URL yet; that's fixed in step 6.
+2. Choose **Install to Workspace**, then copy the **Bot User OAuth Token** (`xoxb-...`). Under
+   **Basic Information › App Credentials**, copy the **Signing Secret**.
+3. Store both:
 
-## A Slack app
+   ```sh
+   echo "xoxb-..." | wardrik vault put SLACK_BOT_TOKEN --for api_key
+   echo "..." | wardrik vault put SLACK_SIGNING_SECRET --for signing_secret
+   ```
 
-1. At [api.slack.com/apps](https://api.slack.com/apps), choose **Create New App › From a manifest**.
-   Paste the manifest below. Change `agents.example.com` to the daemon's address.
-2. Choose **Install to Workspace**. Copy the **Bot User OAuth Token** (`xoxb-...`).
-3. Under **Basic Information › App Credentials**, copy the **Signing Secret**.
+4. Add the channel to `config.yaml`. Change `acme.com` to your email domain, and `acme` to your
+   org:
+
+   ```yaml title="~/.config/wardrik/config.yaml"
+   channels:
+     slack:
+       type: slack
+       token: ${SLACK_BOT_TOKEN}
+       signing_secret: ${SLACK_SIGNING_SECRET}
+       domains: {acme.com: acme}
+   ```
+
+5. Restart the daemon, and check the channel:
+
+   ```sh
+   wardrik stop && wardrik start
+   wardrik doctor
+   ```
+
+6. In the app's **Event Subscriptions**, choose **Retry** next to the request URL.
+7. List the channel in the agent's file:
+
+   ```yaml
+   channels: [slack]
+   ```
+
+8. In a Slack channel, run `/invite @Wardrik`.
 
 ```yaml title="Slack app manifest"
 display_information:
@@ -50,6 +71,7 @@ oauth_config:
       - groups:read
       - reactions:write
       - users:read
+      - users:read.email
 settings:
   event_subscriptions:
     request_url: https://agents.example.com/v1/channels/slack/events
@@ -69,52 +91,46 @@ settings:
   token_rotation_enabled: false
 ```
 
-- `slack` in each URL is the channel's name in `config.yaml`.
-- Slack verifies the events URL on save, so the daemon must be reachable first.
+- `slack` in each URL is the channel's name in `config.yaml`: lower-case letters, digits and `-`.
+- Every key is in [config.yaml › channels](/reference/config/#channels).
 
-Store both secrets, then restart the daemon:
+## Members
 
-```sh
-echo "xoxb-..." | wardrik vault put SLACK_BOT_TOKEN --for api_key
-echo "..." | wardrik vault put SLACK_SIGNING_SECRET --for signing_secret
-wardrik stop && wardrik start
-```
+A Slack member acts as a daemon user, with that user's bindings. What they can do is in
+[built-in rules](/run/orgs/#built-in-rules).
 
-Copy each member ID from the Slack profile (**Copy member ID**) into `members`.
+- `domains` maps an email domain to an org. `maria@acme.com` acts as `user:acme/@maria`.
+- `members` maps one member ID to a user, and wins over `domains`. Copy the ID from the member's
+  Slack profile (**Copy member ID**):
 
-### Testing with Socket Mode
+  ```yaml
+  members: {U024BE7LH: user:admin}
+  ```
+
+- Anyone else is refused, and told to ask an admin.
+- Members of other workspaces, over Slack Connect, are matched by `members` only.
+
+## Testing with Socket Mode
 
 Socket Mode needs no public address. It's for testing.
 
 1. In the manifest, set `socket_mode_enabled: true` and remove both `request_url` lines.
-2. Under **Basic Information › App-Level Tokens**, create a token with `connections:write` (`xapp-...`).
-3. Set `app_token` instead of `signing_secret`:
+2. Under **Basic Information › App-Level Tokens**, create a token with `connections:write`
+   (`xapp-...`). Store it as `SLACK_APP_TOKEN`.
+3. In `config.yaml`, set `app_token` in place of `signing_secret`:
 
-```yaml
-channels:
-  slack:
-    type: slack
-    token: ${SLACK_BOT_TOKEN}
-    app_token: ${SLACK_APP_TOKEN}
-```
+   ```yaml
+   channels:
+     slack:
+       type: slack
+       token: ${SLACK_BOT_TOKEN}
+       app_token: ${SLACK_APP_TOKEN}
+       domains: {acme.com: acme}
+   ```
 
-Use a separate app per daemon. Slack distributes events across all of an app's connections.
+Use a separate app per daemon. Slack spreads events across all of an app's connections.
 
-## Members
-
-`members` maps each Slack member ID to a daemon user. A member acts as that user, with that user's
-bindings. What members can do is in [built-in rules](/run/orgs/#built-in-rules).
-
-- An unmapped member is refused, with a message to ask an admin.
-- `unmapped_members: allow` maps them to `user:slack:T0123/U024BE7LH`. For small deployments.
-
-## Add an agent to a channel
-
-List the channel in the agent's file, then `/invite @Wardrik` in Slack:
-
-```yaml
-channels: [slack]
-```
+## In a channel
 
 > :wave: **books** answers here now.
 > `[Answer every message]` `[⋯]`
@@ -139,7 +155,7 @@ channels: [slack]
 - The thread's status shows the agent's current activity.
 - To post notices in a channel, set `notify: "slack:#updates"`. See [Send notices](/build/notices/).
 
-## Approval messages
+## Approvals
 
 A pending call shows its tool, the policy message and its arguments, with **Approve**, **Deny**
 and a note field. Once resolved, the buttons are replaced with the result:
@@ -155,7 +171,7 @@ The member who started the turn can always approve its calls. Anyone else needs 
 roles:
   approver: {rules: [{verbs: [approve, deny, decide], kinds: [agent], names: [books]}]}
 bindings:
-  - {org: default, role: approver, subjects: [user:default/@maria]}
+  - {org: acme, role: approver, subjects: [user:acme/@maria]}
 ```
 
 A triggered turn has no member who started it. Use `wardrik approval approve`.
@@ -168,3 +184,5 @@ check:
 - **Event Subscriptions** shows the request URL as verified;
 - `wardrik doctor` verifies the tokens with Slack;
 - `wardrik logs`.
+
+A member who is refused isn't mapped: check their Slack email address, or add them to `members`.

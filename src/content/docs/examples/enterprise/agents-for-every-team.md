@@ -25,12 +25,12 @@ channels:
     type: slack
     token: ${PAYMENTS_SLACK_BOT_TOKEN}
     signing_secret: ${PAYMENTS_SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:payments/@ana}
+    domains: {acme.com: payments}
   growth-slack:
     type: slack
     token: ${GROWTH_SLACK_BOT_TOKEN}
     signing_secret: ${GROWTH_SLACK_SIGNING_SECRET}
-    members: {U0G9QF9C6: user:growth/@li}
+    domains: {acme.com: growth}
 
 orgs:
   payments: {mcp: [stripe, github], channels: [payments-slack], policy: payments-limits}
@@ -48,7 +48,7 @@ bindings:
 ```
 
 - `orgs` defines each team's servers, channels and the policy for all its agents.
-- Each Slack app lists only its own org's agents. `members` maps chat members to users.
+- Each Slack app lists only its own org's agents. `domains` makes each member a user in that org.
 - `builder` allows a team to create and run agents in its own org. Other orgs' agents return `404`.
 - `auditor` can read every org's agents and events.
 

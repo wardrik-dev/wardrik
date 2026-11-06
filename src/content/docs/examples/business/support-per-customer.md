@@ -25,7 +25,7 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     signing_secret: ${SLACK_SIGNING_SECRET}
-    members: {U024BE7LH: user:shop/@maria, U0G9QF9C6: user:shop/@sam}
+    domains: {shop.com: shop}
 
 notify:
   targets:
