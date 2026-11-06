@@ -29,6 +29,21 @@ defmodule Wardrik.TypesTest do
            )
   end
 
+  test "reads an interrupt with the arguments of the call a person decides on" do
+    interrupt =
+      Wardrik.Interrupt.from_json(%{
+        "id" => "call_1",
+        "reason" => "tool_approval",
+        "message" => "claude/execute needs your approval.",
+        "tool_call_id" => "call_1",
+        "name" => "claude__execute",
+        "arguments" => %{"command" => "mix test"}
+      })
+
+    assert %Wardrik.Interrupt{name: "claude__execute", arguments: %{"command" => "mix test"}} =
+             interrupt
+  end
+
   test "reads a notice as the JSON a webhook receives" do
     interrupt = %Wardrik.Interrupt{
       id: "int_1",

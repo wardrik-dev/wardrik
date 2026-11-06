@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `interrupt.arguments` holds the arguments of the call a person decides on. `name` names that call's tool, which for a coding agent's request differs from the call that parked.
+
 ## 0.1.0-rc.4 (2026-11-04)
 
 - `trigger_definition.overlap` takes `settle`, the default for clock and feed triggers. A trigger
