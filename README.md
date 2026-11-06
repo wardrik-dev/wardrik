@@ -2,14 +2,6 @@
 
 Asks agents something on a clock, when a feed has new entries, or when a service sends a webhook.
 
-```elixir
-WardrikTriggers.put(MyApp.Triggers, "agt_digest", [
-  %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Write today's update."},
-  %{"name" => "rivals", "every" => "6h", "feed" => "https://rivalco.example/changelog.rss", "prompt" => "What changed?"},
-  %{"name" => "issues", "webhook" => %{"secret" => "${ISSUES_HOOK_SECRET}"}, "prompt" => "Triage it."}
-])
-```
-
 With [Wardrik](https://hexdocs.pm/wardrik), triggers live in an agent's definition and this is set
 up for you. See [Trigger agents](https://hexdocs.pm/wardrik/triggers.html).
 
@@ -23,22 +15,17 @@ def deps do
 end
 ```
 
-## Start it
+## Start triggers
+
+Set `ANTHROPIC_API_KEY` before starting IEx. In a fresh session:
 
 ```elixir
-store = WardrikStore.ETS.new(name: MyApp.Store)
+Mix.install([
+  {:wardrik_triggers, "~> 0.1.0-rc.4"},
+  {:wardrik_core, "~> 0.1.0-rc.4"},
+  {:wardrik_vault, "~> 0.1.0-rc.2"}
+])
 
-children = [
-  {WardrikStore, store},
-  {WardrikVault, name: MyApp.Vault, store: store, keys: [System.fetch_env!("VAULT_KEY")]},
-  {WardrikCore, backend: {WardrikStore.Durable, store: store}},
-  {WardrikTriggers, name: MyApp.Triggers, store: store, target: {MyApp.Triggered, []}}
-]
-```
-
-The target asks your agents and looks up webhook secrets:
-
-```elixir
 defmodule MyApp.Triggered do
   @behaviour WardrikTriggers.Target
 
@@ -75,23 +62,55 @@ defmodule MyApp.Triggered do
 
   @impl true
   def resolve_secret(%Secret{name: name}, _opts) do
-    case WardrikVault.fetch(MyApp.Vault, %WardrikCore.Principal{id: "acme"}, name) do
+    case WardrikVault.fetch(MyApp.Vault, %WardrikCore.Principal{id: "acme"}, name,
+           kind: :signing_secret
+         ) do
       {:ok, secret} -> {:ok, secret}
       {:error, _reason} -> :error
     end
   end
 end
+
+store = WardrikStore.ETS.new(name: MyApp.Store)
+
+children = [
+  {WardrikStore, store},
+  {WardrikVault, name: MyApp.Vault, store: store, keys: [WardrikVault.generate_key()]},
+  {WardrikCore, backend: {WardrikStore.Durable, store: store}},
+  {WardrikTriggers, name: MyApp.Triggers, store: store, target: {MyApp.Triggered, []}}
+]
+
+{:ok, _supervisor} = Supervisor.start_link(children, strategy: :rest_for_one)
+
+{:ok, _agent} =
+  WardrikCore.start_agent(agent_id: "agt_digest", model: "anthropic:claude-haiku-4-5")
+
+:ok =
+  WardrikTriggers.put(MyApp.Triggers, "agt_digest", [
+    %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Write today's update."}
+  ])
 ```
+
+The target implements message delivery, overlap handling, and webhook-secret lookup. See `WardrikTriggers.Target`.
 
 ## Change triggers
 
 ```elixir
-:ok = WardrikTriggers.put(MyApp.Triggers, "agt_digest", [%{"every" => "@daily", "prompt" => "Hi"}])
-{:ok, _trigger} = WardrikTriggers.set(MyApp.Triggers, "agt_digest", %{"name" => "weekly", "every" => "@weekly", "prompt" => "Recap"})
+:ok =
+  WardrikTriggers.put(MyApp.Triggers, "agt_digest", [%{"every" => "@daily", "prompt" => "Hi"}])
+
+{:ok, _trigger} =
+  WardrikTriggers.set(MyApp.Triggers, "agt_digest", %{
+    "name" => "weekly",
+    "every" => "@weekly",
+    "prompt" => "Recap"
+  })
+
 :ok = WardrikTriggers.remove(MyApp.Triggers, agent_id: "agt_digest", name: "weekly")
 
 WardrikTriggers.list(MyApp.Triggers, "agt_digest")
-#=> [{%WardrikTriggers.Trigger{name: "trigger-1", every: "@daily", ...}, ~U[2026-11-03 00:00:00Z]}]
+
+# => [{%WardrikTriggers.Trigger{name: "trigger-1", every: "@daily", ...}, ~U[2026-11-03 00:00:00Z]}]
 ```
 
 Every key a trigger takes is in `WardrikTriggers.Trigger`.
@@ -103,6 +122,29 @@ Every key a trigger takes is in `WardrikTriggers.Trigger`.
 
 ## Webhooks
 
+Continue in the same session to seal a signing secret and configure a webhook trigger:
+
+```elixir
+{:ok, _version} =
+  WardrikVault.put(
+    MyApp.Vault,
+    %WardrikVault.Secret{
+      principal: %WardrikCore.Principal{id: "acme"},
+      name: "ISSUES_HOOK_SECRET",
+      value: "example-hook-secret"
+    }, kind: :signing_secret)
+
+{:ok, _trigger} =
+  WardrikTriggers.set(MyApp.Triggers, "agt_digest", %{
+    "name" => "issues",
+    "webhook" => %{"secret" => "${ISSUES_HOOK_SECRET}"},
+    "prompt" => "Summarize the issue in this webhook."
+  })
+```
+
+Use a secret generated for your service in production.
+
+Plug router fragment: add `:plug` to your application dependencies.
 Pass each request's raw body and headers to `deliver/2`. In a `Plug.Router`:
 
 ```elixir

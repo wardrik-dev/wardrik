@@ -3,6 +3,9 @@ defmodule WardrikTriggers do
   Asks agents something on a clock, when a feed has new entries, or when a service sends a
   webhook.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_triggers#readme) for complete setup.
+
       children = [
         {WardrikTriggers, name: MyApp.Triggers, store: store, target: {MyApp.Triggered, []}}
       ]
@@ -24,28 +27,52 @@ defmodule WardrikTriggers do
   alias WardrikTriggers.Scheduler
   alias WardrikTriggers.Trigger
 
+  @start_options NimbleOptions.new!(
+                   name: [
+                     type: :atom,
+                     required: true,
+                     doc: "The registered trigger supervisor name."
+                   ],
+                   store: [
+                     type: :any,
+                     required: true,
+                     doc: "The WardrikStore used for trigger records."
+                   ],
+                   target: [
+                     type: :mod_arg,
+                     required: true,
+                     doc: "The WardrikTriggers.Target callback module and options."
+                   ],
+                   req_options: [
+                     type: :keyword_list,
+                     default: [],
+                     doc: "Req options for feed requests."
+                   ],
+                   reconcile: [
+                     type: {:or, [:pos_integer, {:in, [:infinity]}]},
+                     default: 60_000,
+                     doc: "Milliseconds between trigger reconciliation runs."
+                   ]
+                 )
+
   @doc """
   Starts the triggers.
 
   ## Options
 
-    * `:name` - required. What you pass to every other function.
-    * `:store` - required. The `WardrikStore` triggers are kept in.
-    * `:target` - required. A `WardrikTriggers.Target`, as `{module, opts}`.
-    * `:req_options` - `Req` options for reading feeds. `[]` unless set.
-    * `:reconcile` - milliseconds between re-reads of every trigger, or `:infinity`. `60_000`
-      unless set.
+  #{NimbleOptions.docs(@start_options)}
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) do
-    opts =
-      Keyword.validate!(opts, [
-        :name,
-        :store,
-        :target,
-        req_options: [],
-        reconcile: :timer.minutes(1)
-      ])
+    allowed =
+      Enum.map(@start_options.schema, fn {key, settings} ->
+        case Keyword.fetch(settings, :default) do
+          {:ok, default} -> {key, default}
+          :error -> key
+        end
+      end)
+
+    opts = Keyword.validate!(opts, allowed)
 
     name = Keyword.fetch!(opts, :name)
     Supervisor.start_link(__MODULE__, Map.new(opts), name: name)

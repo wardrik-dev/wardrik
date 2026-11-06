@@ -59,6 +59,7 @@ defmodule WardrikTriggers.MixProject do
 
   defp deps do
     [
+      {:nimble_options, "~> 1.1"},
       sibling(:wardrik_store, "~> 0.1.0-rc.3"),
       {:crontab, "~> 1.1"},
       {:tz, "~> 0.28"},
