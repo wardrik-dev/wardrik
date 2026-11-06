@@ -73,7 +73,6 @@ defmodule WardrikDaemon.Config.Access do
   """
 
   alias WardrikDaemon.AgentRecords
-  alias WardrikDaemon.ChannelMembers
   alias WardrikDaemon.Config.Options
   alias WardrikDaemon.Owners
 
@@ -102,7 +101,7 @@ defmodule WardrikDaemon.Config.Access do
 
   @doc false
   def subject("user:" <> id = subject) do
-    if id == @admin or Owners.user?(id) or ChannelMembers.unmapped?(id),
+    if id == @admin or Owners.user?(id),
       do: {:ok, subject},
       else: unknown(subject)
   end

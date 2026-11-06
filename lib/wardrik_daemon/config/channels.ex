@@ -7,15 +7,14 @@ defmodule WardrikDaemon.Config.Channels do
           type: slack
           token: ${SLACK_BOT_TOKEN}
           app_token: ${SLACK_APP_TOKEN}
-          members: {U024BE7LH: user:acme/@ana}
-          unmapped_members: refuse
+          domains: {acme.com: acme}
 
     * The name is lower-case letters, digits and `-`. `shell`, `ssh`, `terminal` and `oauth` are taken.
     * `type` is required. `slack` is the only type.
     * It takes `WardrikChannel`'s and `WardrikSlack`'s options, except `owner`, `installations`
       and `identities`.
-    * `members` maps member IDs to users. See `WardrikDaemon.ChannelMembers`.
-    * `unmapped_members` is `refuse` (the default) or `allow`.
+    * `domains` maps email domains to orgs, and `members` member IDs to users. See
+      `WardrikDaemon.ChannelMembers`.
     * Without `token`, a token per workspace is kept in the vault.
     * A channel serves the deployment's org unless `orgs` says otherwise.
   """
@@ -31,10 +30,12 @@ defmodule WardrikDaemon.Config.Channels do
       default: %{},
       doc: "The daemon user each chat member acts as, by member ID."
     ],
-    unmapped_members: [
-      type: {:in, [:refuse, :allow]},
-      default: :refuse,
-      doc: "`allow` to let unmapped members act as users of their own."
+    domains: [
+      type:
+        {:map, {:custom, WardrikDaemon.ChannelMembers, :domain, []},
+         {:custom, WardrikDaemon.ChannelMembers, :org, []}},
+      default: %{},
+      doc: "The org each email domain's members are users in, as `ana@acme.com` is `acme/@ana`."
     ]
   ]
 
@@ -54,8 +55,7 @@ defmodule WardrikDaemon.Config.Channels do
       {members, opts} = Keyword.split(opts, Keyword.keys(@members))
 
       identities =
-        {WardrikDaemon.ChannelMembers,
-         members: members[:members], unmapped: members[:unmapped_members]}
+        {WardrikDaemon.ChannelMembers, members: members[:members], domains: members[:domains]}
 
       {:ok, {adapter, added(opts) ++ [owner: org, identities: identities] ++ opts}}
     end

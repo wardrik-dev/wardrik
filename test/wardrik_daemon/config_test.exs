@@ -40,7 +40,7 @@ defmodule WardrikDaemon.ConfigTest do
         github: {issuer: https://github.com/login/oauth, client_id: "${GITHUB_CLIENT_ID}", scopes: [repo], flow: device}
     channels:
       slack: {type: slack, token: xoxb-1, app_token: xapp-1, members: {U1: user:acme/@maria}}
-      ops: {type: slack, signing_secret: s, client_id: "1.2", client_secret: c, unmapped_members: allow}
+      ops: {type: slack, signing_secret: s, client_id: "1.2", client_secret: c, domains: {Acme.com: acme}}
     brave: {api_key: "${KEY}"}
     models:
       prices:
@@ -83,15 +83,17 @@ defmodule WardrikDaemon.ConfigTest do
     assert slack == [
              owner: "acme",
              identities:
-               {WardrikDaemon.ChannelMembers,
-                members: %{"U1" => "acme/@maria"}, unmapped: :refuse},
+               {WardrikDaemon.ChannelMembers, members: %{"U1" => "acme/@maria"}, domains: %{}},
              req_options: [],
              app_token: "xapp-1",
              token: "xoxb-1"
            ]
 
     assert ops[:installations] == :stored
-    assert {WardrikDaemon.ChannelMembers, members: %{}, unmapped: :allow} = ops[:identities]
+
+    assert {WardrikDaemon.ChannelMembers, members: %{}, domains: %{"acme.com" => "acme"}} =
+             ops[:identities]
+
     assert config.brave == "k3y"
 
     assert config.prices == %{
@@ -386,8 +388,12 @@ defmodule WardrikDaemon.ConfigTest do
        "is a person in an org, as user:acme/@ana, or user:admin, not \"user:ana\""},
       {"channels: {slack: {type: slack, members: {U1: user:acme}}}",
        "is a person in an org, as user:acme/@ana, or user:admin, not \"user:acme\""},
-      {"channels: {slack: {type: slack, unmapped_members: yes}}",
-       "channels.slack: invalid value for :unmapped_members option"},
+      {"channels: {slack: {type: slack, domains: {acme: acme}}}",
+       "is an email domain, as acme.com, not \"acme\""},
+      {"channels: {slack: {type: slack, domains: {acme.com: acme/@ana}}}",
+       "is an org, as acme, not \"acme/@ana\""},
+      {"channels: {slack: {type: slack, unmapped_members: allow}}",
+       "channels.slack: unknown options [:unmapped_members]"},
       {"channels: {slack: {type: slack, req_options: {zzz_frob: 1}}}",
        "channels.slack.req_options.zzz_frob: isn't an option"},
       {"channels: [a]", "invalid value for :channels option: expected map"},

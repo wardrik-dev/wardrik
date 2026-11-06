@@ -106,8 +106,8 @@ channels:
     type: slack
     token: ${SLACK_BOT_TOKEN}
     app_token: ${SLACK_APP_TOKEN}        # Socket Mode; or signing_secret over HTTP
-    members: {U024BE7LH: user:acme/@ana} # Slack member -> daemon user
-    unmapped_members: refuse             # or allow
+    domains: {acme.com: acme}            # ana@acme.com -> user:acme/@ana
+    members: {U024BE7LH: user:acme/@jon} # one Slack member -> daemon user
 
 notify:
   targets:
@@ -189,8 +189,8 @@ storage:
   command, can do everything.
 - Everyone may do anything to what they own, and manage their own connections.
 - An agent calling tools gets its own bindings, never its owner's.
-- A chat member acts as the user `members` maps them to. With `unmapped_members: allow`,
-  others act as `user:<channel>:<workspace>/<member>`.
+- A chat member acts as the user `members` maps them to, or as the user their email address
+  names in an org `domains` maps its domain to. Others are refused.
 - Outside their orgs, people find nothing.
 
 ### API keys

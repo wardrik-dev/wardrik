@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- `domains` on a channel maps an email domain to an org: a Slack member whose address is
+  `ana@acme.com` acts as `user:acme/@ana`. `members` still maps one member, and wins.
+
+### Breaking
+
+- `unmapped_members` is gone, and with it the `user:slack:T0123/U024BE7LH` users. Map the
+  domain instead.
+- The Slack app needs the `users:read.email` scope. Add it to the manifest and reinstall.
+
 ## 0.1.0-rc.7 (2026-11-05)
 
 - `storage: {s3: ...}` keeps everything in an S3 bucket: AWS, R2, Tigris or MinIO. Nodes don't wait

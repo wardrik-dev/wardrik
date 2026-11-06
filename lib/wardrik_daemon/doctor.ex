@@ -235,12 +235,11 @@ defmodule WardrikDaemon.Doctor do
     end
   end
 
-  defp members({_module, opts}),
-    do:
-      "#{counted(map_size(opts[:members]), "member")} mapped to users, #{unmapped(opts[:unmapped])}"
-
-  defp unmapped(:allow), do: "others act as users of their own"
-  defp unmapped(:refuse), do: "others refused"
+  defp members({_module, opts}) do
+    mapped = "#{counted(map_size(opts[:members]), "member")} mapped to users"
+    domains = for {domain, org} <- opts[:domains], do: "#{domain} members to #{org}"
+    Enum.join([mapped | domains] ++ ["others refused"], ", ")
+  end
 
   defp oauth(%Config{oauth: nil}), do: []
 

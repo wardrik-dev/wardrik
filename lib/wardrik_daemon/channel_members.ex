@@ -6,13 +6,15 @@ defmodule WardrikDaemon.ChannelMembers do
         slack:
           type: slack
           token: ${SLACK_BOT_TOKEN}
-          members: {U024BE7LH: user:acme/@ana, U0G9QF9C6: user:acme/@jon}
+          domains: {acme.com: acme}
+          members: {U0G9QF9C6: user:acme/@jon}
 
-    * A mapped member acts as their user, with that user's bindings. A user is a person in an
-      org, as `user:acme/@ana`, or `user:admin`.
-    * An unmapped member is refused and told to ask an admin.
-    * With `unmapped_members: allow`, they act as `user:<channel>:<workspace>/<member>`, as
-      `user:slack:T0123/U024BE7LH`.
+    * `domains` maps an email domain to an org. A member whose email address is `ana@acme.com`
+      acts as `user:acme/@ana`.
+    * `members` maps a member ID to a user, and wins over `domains`. A user is a person in an org,
+      as `user:acme/@ana`, or `user:admin`.
+    * A member acts as their user, with that user's bindings.
+    * Anyone else is refused and told to ask an admin.
   """
 
   @behaviour WardrikChannel.Identities
@@ -23,29 +25,36 @@ defmodule WardrikDaemon.ChannelMembers do
   alias WardrikDaemon.Owners
 
   @impl WardrikChannel.Identities
-  def identify(%Request{member: member} = request, opts) do
-    case {Map.fetch(Keyword.fetch!(opts, :members), member), Keyword.fetch!(opts, :unmapped)} do
-      {{:ok, user}, _unmapped} ->
+  def identify(%Request{} = request, opts) do
+    case mapped(request, Keyword.fetch!(opts, :members), Keyword.fetch!(opts, :domains)) do
+      {:ok, user} ->
         {:ok, %Principal{id: user, attributes: named(request)}}
 
-      {:error, :allow} ->
-        id = "#{request.channel}:#{request.workspace}/#{member}"
-        {:ok, %Principal{id: id, attributes: named(request)}}
-
-      {:error, :refuse} ->
+      :error ->
         {:error,
          "You aren't mapped to a user here. Ask an admin to add you to channels.#{request.channel}.members."}
     end
   end
 
+  defp mapped(%Request{member: member, email: email}, members, domains) do
+    with :error <- Map.fetch(members, member), do: by_email(email, domains)
+  end
+
+  defp by_email(nil, _domains), do: :error
+
+  defp by_email(email, domains) do
+    with [name, domain] <- email |> String.downcase() |> String.split("@"),
+         {:ok, org} <- Map.fetch(domains, domain),
+         user = Owners.person(org, name),
+         true <- Owners.user?(user) do
+      {:ok, user}
+    else
+      _unmapped -> :error
+    end
+  end
+
   defp named(%Request{name: nil}), do: %{}
   defp named(%Request{name: name}), do: %{name: name}
-
-  @doc """
-  Returns whether `id` is the user of a member no one mapped, as `slack:T0123/U024BE7LH`.
-  """
-  @spec unmapped?(String.t()) :: boolean()
-  def unmapped?(id), do: Regex.match?(~r{\A[a-z][a-z0-9-]*:[^/]+/.+\z}, id)
 
   @doc false
   def user("user:" <> id = user) do
@@ -56,4 +65,18 @@ defmodule WardrikDaemon.ChannelMembers do
 
   defp not_user(other),
     do: {:error, "is a person in an org, as user:acme/@ana, or user:admin, not #{inspect(other)}"}
+
+  @doc false
+  def domain(domain) do
+    if Regex.match?(~r/\A[^@\s]+\.[^@\s]+\z/, domain),
+      do: {:ok, String.downcase(domain)},
+      else: {:error, "is an email domain, as acme.com, not #{inspect(domain)}"}
+  end
+
+  @doc false
+  def org(org) do
+    if org != "deployment" and Owners.valid?(org) and Owners.person(org) == nil,
+      do: {:ok, org},
+      else: {:error, "is an org, as acme, not #{inspect(org)}"}
+  end
 end
