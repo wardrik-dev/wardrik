@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.4 (2026-11-06)
 
 - `WardrikChannel.Member` and `WardrikChannel.Identities.Request` carry the member's `email`, if
   the chat app gave one.
