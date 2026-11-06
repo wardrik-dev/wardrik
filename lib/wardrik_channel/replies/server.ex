@@ -171,7 +171,7 @@ defmodule WardrikChannel.Replies.Server do
 
   defp post(state, conversation, body), do: deliver(state, conversation, body)
 
-  defp waiting(state, {agent, id} = conversation, ids, asked_by) do
+  defp waiting(state, {agent, id}, ids, asked_by) do
     with {:ok, workspace} <- workspace(state),
          {:ok, read} <- Wardrik.Agent.read(Workspace.scope(workspace), agent, conversation: id) do
       for interrupt <- read.interrupts,
@@ -180,8 +180,7 @@ defmodule WardrikChannel.Replies.Server do
             agent: agent,
             conversation: id,
             interrupt: interrupt,
-            arguments:
-              State.arguments(state, conversation: conversation, call: interrupt.tool_call_id),
+            arguments: interrupt.arguments,
             asked_by: asked_by
           }
     else

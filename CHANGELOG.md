@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A waiting call's arguments come from its interrupt. Replies no longer keep each call's arguments.
+
 ## 0.1.0-rc.4 (2026-11-06)
 
 - `WardrikChannel.Member` and `WardrikChannel.Identities.Request` carry the member's `email`, if

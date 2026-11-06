@@ -1,7 +1,7 @@
 defmodule WardrikChannel.Replies.State do
   @moduledoc false
 
-  @kept [:workspace, :room, :conversations, :cursor, :senders, :runs, :calls]
+  @kept [:workspace, :room, :conversations, :cursor, :senders, :runs]
 
   @enforce_keys [:workspace, :room]
   defstruct [
@@ -13,7 +13,6 @@ defmodule WardrikChannel.Replies.State do
     conversations: [],
     senders: %{},
     runs: %{},
-    calls: %{},
     shown: %{}
   ]
 
@@ -31,7 +30,6 @@ defmodule WardrikChannel.Replies.State do
           conversations: [conversation()],
           senders: %{String.t() => String.t()},
           runs: %{conversation() => run()},
-          calls: %{conversation() => %{String.t() => term()}},
           shown: %{conversation() => integer()}
         }
 
@@ -65,15 +63,6 @@ defmodule WardrikChannel.Replies.State do
   def take(state, conversation, %Wardrik.Event{type: "wardrik." <> type, data: data}),
     do: taken(state, conversation, type, data)
 
-  @doc """
-  Returns the arguments of `:call` in `:conversation`, or `nil` if unknown.
-
-      State.arguments(state, conversation: conversation, call: "call_1")
-  """
-  @spec arguments(t(), conversation: conversation(), call: String.t() | nil) :: term()
-  def arguments(state, opts),
-    do: get_in(state.calls, [Keyword.fetch!(opts, :conversation), Keyword.fetch!(opts, :call)])
-
   @doc "Returns who asked for the run under way in `conversation`, or `nil` if unknown."
   @spec asked_by(t(), conversation()) :: String.t() | nil
   def asked_by(state, conversation), do: get_in(state.runs, [conversation, :asked_by])
@@ -92,10 +81,8 @@ defmodule WardrikChannel.Replies.State do
     {{:status, "is thinking…"}, state}
   end
 
-  defp taken(state, conversation, "tool_call.started", %{
-         "tool" => %{"name" => name, "call" => call}
-       }),
-       do: {{:status, "is running #{name}…"}, remembered(state, conversation, call)}
+  defp taken(state, _conversation, "tool_call.started", %{"tool" => %{"name" => name}}),
+    do: {{:status, "is running #{name}…"}, state}
 
   defp taken(state, conversation, "run.completed", %{"messages" => messages}),
     do:
@@ -118,22 +105,12 @@ defmodule WardrikChannel.Replies.State do
 
   defp taken(state, _conversation, _type, _data), do: {:none, state}
 
-  defp remembered(state, conversation, %{"id" => id} = call) do
-    calls = state.calls |> Map.get(conversation, %{}) |> Map.put(id, call["arguments"])
-    %{state | calls: Map.put(state.calls, conversation, calls)}
-  end
-
   defp first_sender(asked, [first | _rest]), do: Map.get(asked, first)
   defp first_sender(_asked, []), do: nil
 
   defp answering(state, conversation), do: get_in(state.runs, [conversation, :answering]) || []
 
-  defp ended(state, conversation),
-    do: %{
-      state
-      | runs: Map.delete(state.runs, conversation),
-        calls: Map.delete(state.calls, conversation)
-    }
+  defp ended(state, conversation), do: %{state | runs: Map.delete(state.runs, conversation)}
 
   defp decider(%{"name" => name}) when is_binary(name), do: name
   defp decider(%{"id" => id}), do: id
