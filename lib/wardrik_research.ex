@@ -2,6 +2,9 @@ defmodule WardrikResearch do
   @moduledoc """
   Deep research for agents, as the `deep_research` tool.
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_research#readme) for complete setup.
+
       WardrikCore.start_agent(
         agent_id: "agt_analyst",
         model: "anthropic:claude-haiku-4-5",
@@ -12,7 +15,7 @@ defmodule WardrikResearch do
       )
 
     * Each angle gets a subagent on the agent's model, middleware and tools.
-    * Give the agent a search tool, or research only knows what the model knows.
+    * Configure a search tool to retrieve external sources during research.
     * A failed angle is reported as a gap. The call fails only when every angle does.
 
   ## Options

@@ -13,23 +13,52 @@ end
 
 ## Usage
 
+Set `BRAVE_API_KEY` and `ANTHROPIC_API_KEY` before starting a fresh IEx session.
+
 Give an agent `WardrikResearch` next to a search tool:
 
 ```elixir
-WardrikCore.start_agent(
-  agent_id: "agt_analyst",
-  model: "anthropic:claude-haiku-4-5",
-  capabilities: [{WardrikBrave, brave: MyApp.Brave}, {WardrikResearch, max_concurrency: 3}]
-)
+Mix.install([{:wardrik_research, "~> 0.1.0-rc.2"}, {:wardrik_brave, "~> 0.1.0-rc.2"}])
+
+children = [
+  {WardrikCore.Backends.MemoryStore, name: :agents},
+  {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
+]
+
+{:ok, _supervisor} = Supervisor.start_link(children, strategy: :rest_for_one)
+
+{:ok, _brave} =
+  WardrikBrave.start_link(name: MyApp.Brave, api_key: System.fetch_env!("BRAVE_API_KEY"))
+
+{:ok, agent} =
+  WardrikCore.start_agent(
+    agent_id: "agt_analyst",
+    model: "anthropic:claude-haiku-4-5",
+    capabilities: [{WardrikBrave, brave: MyApp.Brave}, {WardrikResearch, max_concurrency: 3}]
+  )
 ```
 
-With [Wardrik](https://hexdocs.pm/wardrik), offer it by name, then list `deep_research` in a
-definition's `tools`:
+## With Wardrik
+
+In an existing app, register the capability in `config/runtime.exs`:
 
 ```elixir
 config :my_app, MyApp.AgentRuntime,
   capabilities: [web_search: {WardrikBrave, brave: MyApp.Brave}, deep_research: WardrikResearch]
 ```
+
+Enable `deep_research` in the agent's definition. Use the scope returned by your runtime's `as/2`:
+
+```elixir
+scope = MyApp.AgentRuntime.as("maria")
+
+Wardrik.Agent.define(scope, "agt_triage",
+  model: "anthropic:claude-haiku-4-5",
+  tools: ["deep_research"]
+)
+```
+
+See [Run Wardrik](https://hexdocs.pm/wardrik/running-wardrik.html) for runtime setup.
 
 Options are in `WardrikResearch`.
 
