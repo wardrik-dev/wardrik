@@ -8,12 +8,17 @@ holds what every chat adapter shares: rooms, threads, replies and approvals.
 Add an adapter, such as [WardrikSlack](https://hexdocs.pm/wardrik_slack). It brings this package in.
 
 ```elixir
-{:wardrik_slack, "~> 0.1.0-rc.3"}
+{:wardrik_slack, "~> 0.1.0-rc.4"}
 ```
 
-To write your own adapter, depend on `{:wardrik_channel, "~> 0.1.0-rc.3"}`. See `WardrikChannel`.
+To write your own adapter, depend on `{:wardrik_channel, "~> 0.1.0-rc.4"}`. See `WardrikChannel`.
 
 ## Set up
+
+Start with a [Wardrik runtime](https://hexdocs.pm/wardrik/running-wardrik.html) named `MyApp.AgentRuntime`.
+The following fragments belong in an existing app.
+
+In `config/runtime.exs`, after implementing `MyApp.ChatMembers` below:
 
 ```elixir
 config :my_app, MyApp.AgentRuntime,
@@ -27,7 +32,7 @@ config :my_app, MyApp.AgentRuntime,
   ]
 ```
 
-Say who each chat member is in your app. A member you return an error for is told the error.
+Implement `identify/2` to map chat members to your app's users. Return an error to reject a member.
 
 ```elixir
 defmodule MyApp.ChatMembers do
@@ -47,6 +52,8 @@ Serve the chat app's requests with `Wardrik.HTTP`. It answers `POST /v1/channels
 Then list the channel in an agent's definition:
 
 ```elixir
+scope = MyApp.AgentRuntime.as("maria")
+
 Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
   model: "anthropic:claude-haiku-4-5",
   channels: ["slack"]
@@ -75,11 +82,14 @@ end
 
 ## Many workspaces
 
-Give `installations:` instead of `token:` and `owner:`:
+Alternative channel option fragments: replace `token:` and `owner:` with one of these options:
 
 ```elixir
-installations: :stored                        # kept in Wardrik; needs Wardrik's :vault_keys
-installations: {MyApp.ChatInstallations, []}  # your Wardrik.Channel.Installations
+# requires Wardrik's :vault_keys
+[installations: :stored]
+
+# implements Wardrik.Channel.Installations
+[installations: {MyApp.ChatInstallations, []}]
 ```
 
 ## Notices
