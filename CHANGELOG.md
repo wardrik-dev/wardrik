@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A notice's calls take their arguments from the interrupt. `Wardrik.Notify` no longer follows `tool_call.started`.
+
 ## 0.1.0-rc.7 (2026-11-05)
 
 - `:agents` spreads agents across nodes: each new agent, and each agent a lost node ran, starts on
