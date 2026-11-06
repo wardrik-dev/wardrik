@@ -3,8 +3,7 @@ defmodule Wardrik.Notify.Sink do
 
   @behaviour WardrikEvents.Sink
 
-  @types ~w(wardrik.tool_call.started wardrik.run.interrupted wardrik.run.failed
-            wardrik.run.completed wardrik.run.cancelled)
+  @types ~w(wardrik.run.interrupted wardrik.run.failed wardrik.run.completed)
 
   @impl WardrikEvents.Sink
   def handle_event(%{"type" => type} = event, notifier) when type in @types,

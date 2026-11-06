@@ -24,24 +24,13 @@ defmodule Wardrik.Notify.Server do
   @impl GenServer
   def init(wardrik) do
     {:ok, tasks} = Task.Supervisor.start_link()
-    {:ok, %{wardrik: wardrik, tasks: tasks, calls: %{}}}
+    {:ok, %{wardrik: wardrik, tasks: tasks}}
   end
 
   @impl GenServer
   def handle_cast({:event, json}, state) do
     event = Wardrik.Event.from_json(json)
     {:noreply, taken(state, agent(event), event)}
-  end
-
-  defp taken(state, agent, %{type: "wardrik.tool_call.started", data: %{"tool" => tool}}) do
-    %{"id" => id} = call = tool["call"]
-
-    update_in(
-      state.calls,
-      &Map.update(&1, agent, %{id => call["arguments"]}, fn calls ->
-        Map.put(calls, id, call["arguments"])
-      end)
-    )
   end
 
   defp taken(state, agent, %{type: "wardrik.run.interrupted", data: data} = event) do
@@ -54,20 +43,10 @@ defmodule Wardrik.Notify.Server do
   end
 
   defp taken(state, agent, %{type: "wardrik.run.failed", data: data} = event),
-    do:
-      state
-      |> told(agent, notice(event, :failed, reason: data["error"]["message"]))
-      |> ended(agent)
+    do: told(state, agent, notice(event, :failed, reason: data["error"]["message"]))
 
   defp taken(state, agent, %{type: "wardrik.run.completed", data: data} = event),
-    do:
-      state
-      |> told(agent, notice(event, :finished, text: Wardrik.Reply.text(data["messages"])))
-      |> ended(agent)
-
-  defp taken(state, agent, _cancelled), do: ended(state, agent)
-
-  defp ended(state, agent), do: %{state | calls: Map.delete(state.calls, agent)}
+    do: told(state, agent, notice(event, :finished, text: Wardrik.Reply.text(data["messages"])))
 
   defp notice(event, kind, fields),
     do:
@@ -82,10 +61,7 @@ defmodule Wardrik.Notify.Server do
       :ok ->
         for interrupt <- interrupts(state.wardrik, agent),
             interrupt.id in ids,
-            do: %{
-              interrupt: interrupt,
-              arguments: get_in(state.calls, [agent, interrupt.tool_call_id])
-            }
+            do: %{interrupt: interrupt, arguments: interrupt.arguments}
 
       {:error, _gone} ->
         []
