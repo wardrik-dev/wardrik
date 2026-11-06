@@ -8,13 +8,16 @@ agents' events stream as server-sent events.
 ```elixir
 def deps do
   [
-    {:wardrik, "~> 0.1.0-rc.2"},
+    {:wardrik, "~> 0.1.0-rc.7"},
     {:wardrik_http, "~> 0.1.0-rc.2"}
   ]
 end
 ```
 
-## Serve it
+## Serve HTTP requests
+
+Application supervision fragment: configure [MyApp.AgentRuntime](https://hexdocs.pm/wardrik/running-wardrik.html) first.
+Define the authenticator below before starting this tree.
 
 ```elixir
 children = [
@@ -30,6 +33,8 @@ children = [
   `forward "/agents", Wardrik.HTTP, wardrik: MyApp.AgentRuntime, authenticator: {MyAppWeb.WardrikSession, []}`.
 
 ## Authenticate requests
+
+This Phoenix example requires your app's running `MyAppWeb.Endpoint` and a token signed with the `"wardrik"` salt.
 
 An authenticator turns each request into a scope. Wardrik's authorizer then decides what it may
 do. See [Who may do what](https://hexdocs.pm/wardrik/access.html).
@@ -52,21 +57,24 @@ end
 
 ## Talk to agents
 
+Set `TOKEN` to a token signed by the Phoenix app above. Install `jq` to extract the response cursor.
+
 ```sh
-curl -X PUT localhost:4000/v1/agents/agt_1 \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"model": "anthropic:claude-haiku-4-5", "instructions": "You watch the incident queue."}'
+export WARDRIK_URL=http://127.0.0.1:4000
+: "${TOKEN:?Set TOKEN to your application token}"
 
-curl -X POST localhost:4000/v1/agents/agt_1/messages \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"content": "What is on fire?"}'
-#=> {"message": {"id": "msg_Xq3f...", "cursor": "W1siYWd0XzEiLG51bGwsNDFdXQ"}}
+curl --fail-with-body -X PUT "$WARDRIK_URL/v1/agents/agt_1" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"model":"anthropic:claude-haiku-4-5","instructions":"Summarize incident reports."}'
 
-curl -N localhost:4000/v1/agents/agt_1/events?after=W1siYWd0XzEiLG51bGwsNDFdXQ \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Accept: text/event-stream"
-#=> id: W1siYWd0XzEiLG51bGwsNDNdXQ
-#=> data: {"specversion":"1.0","type":"wardrik.run.completed",...}
+response=$(curl --fail-with-body -X POST "$WARDRIK_URL/v1/agents/agt_1/messages" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"content":"Summarize this incident: The API returned errors for five minutes."}')
+cursor=$(printf '%s' "$response" | jq -er '.message.cursor')
+
+curl --fail-with-body -N -G "$WARDRIK_URL/v1/agents/agt_1/events" \
+  --data-urlencode "after=$cursor" \
+  -H "Authorization: Bearer $TOKEN" -H 'Accept: text/event-stream'
 ```
 
 * An agent ID is one percent-encoded path segment.
@@ -86,10 +94,11 @@ The request proves itself with the trigger's secret. See
 If Phoenix parses bodies first, keep the raw bytes for the signature check:
 
 ```elixir
-plug Plug.Parsers,
+plug(Plug.Parsers,
   parsers: [:urlencoded, :multipart, :json],
   json_decoder: Phoenix.json_library(),
   body_reader: Wardrik.HTTP.body_reader()
+)
 ```
 
 ## Run tools in your own process
@@ -98,6 +107,8 @@ A tool worker is your program, offering agents tools over a WebSocket to `/v1/wo
 is the MCP client. The tools run in your process, with your code and keys.
 
 ```elixir
+scope = MyApp.AgentRuntime.as("maria")
+
 Wardrik.Agent.define(scope, "agt_1",
   model: "anthropic:claude-haiku-4-5",
   tools: ["workers/*"],

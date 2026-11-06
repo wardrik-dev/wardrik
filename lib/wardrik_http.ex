@@ -32,6 +32,9 @@ defmodule WardrikHTTP do
   Serves Wardrik's operations over HTTP. Most apps use `Wardrik.HTTP`, which sets `:server` and
   `:sign_in`:
 
+  Application integration fragment. Start the required processes before calling these functions.
+  See the [package README](https://github.com/wardrik-dev/wardrik_http#readme) for complete setup.
+
       children = [
         MyApp.AgentRuntime,
         {Wardrik.HTTP,
