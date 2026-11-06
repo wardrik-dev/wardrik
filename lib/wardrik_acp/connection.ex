@@ -62,6 +62,10 @@ defmodule WardrikACP.Connection do
   @spec prompt(pid(), String.t()) :: :ok
   def prompt(pid, text), do: GenServer.cast(pid, {:prompt, text})
 
+  @doc "Stops the connection if no call is attached, no prompt runs and no request waits."
+  @spec stop_idle(pid()) :: :ok | :busy
+  def stop_idle(pid), do: GenServer.call(pid, :stop_idle)
+
   @doc "Answers the permission request `id`."
   @spec answer(pid(), term(), :allow | :reject) :: :ok
   def answer(pid, id, outcome), do: GenServer.cast(pid, {:answer, id, outcome})
@@ -147,6 +151,12 @@ defmodule WardrikACP.Connection do
 
   def handle_call(:attach, from, state),
     do: {:noreply, %{state | waiting: [from | state.waiting]}}
+
+  def handle_call(:stop_idle, _from, %{reader: nil, prompt: nil, pending: pending} = state)
+      when pending == %{},
+      do: {:stop, :normal, :ok, state}
+
+  def handle_call(:stop_idle, _from, state), do: {:reply, :busy, state}
 
   @impl GenServer
   def handle_cast({:detach, pid}, %{reader: pid} = state),

@@ -14,6 +14,8 @@ def deps do
 end
 ```
 
+Follow [Get started](guides/getting-started.md) to run Claude Code end to end in IEx.
+
 ## Start it
 
 ```elixir
@@ -126,8 +128,8 @@ WardrikACP.sweep(MyApp.ACP)
 
 - A sweep removes each worktree whose work is in its checkout's `base`, with its branch. Merged,
   squashed and cherry-picked work all count.
-- A worktree stays while its coding agent runs, while a request waits, and while it has changes or
-  untracked files.
+- A worktree stays while a call uses its coding agent, while a request waits, and while it has
+  changes or untracked files. An idle coding agent is stopped first.
 - A sweep runs at start, then every `sweep` milliseconds: a day unless set. `sweep: :infinity`
   turns it off.
 

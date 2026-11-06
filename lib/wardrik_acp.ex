@@ -123,8 +123,8 @@ defmodule WardrikACP do
 
     * Work is in the base when merging the branch would change nothing: merged, squashed or
       cherry-picked.
-    * A worktree stays while its coding agent runs, while a request waits, and while it has
-      changes or untracked files.
+    * A worktree stays while a call uses its coding agent, while a request waits, and while it
+      has changes or untracked files. An idle coding agent is stopped first.
     * With `fetch: true`, the checkout runs `git fetch` first.
   """
   @spec sweep(atom()) :: [Path.t()]

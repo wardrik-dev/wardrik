@@ -414,20 +414,24 @@ defmodule WardrikACPTest do
     {:ok, open, _context} = worked.("open", [write("b.txt"), %{"commit" => "B"}])
     {:ok, dirty, _context} = worked.("dirty", [write("c.txt")])
     assert {:park, :ask} = worked.("waiting", [ask("edit", %{"path" => "d"})])
-    stop_connections(acp)
-    {:ok, running, _context} = worked.("running", [])
+    {:ok, idle, _context} = worked.("idle", [])
+    running = hang(acp, %{work: "running"})
 
     git(context, repo, ["merge", "--squash", "-q", merged["branch"]])
     git(context, repo, ["commit", "-q", "-m", "Squashed A"])
 
-    assert WardrikACP.sweep(acp) == [merged["worktree"]]
+    assert Enum.sort(WardrikACP.sweep(acp)) == Enum.sort([merged["worktree"], idle["worktree"]])
 
     refute File.exists?(merged["worktree"])
     refute File.exists?(merged["worktree"] <> ".json")
     assert git(context, repo, ["branch", "--list", merged["branch"]]) == ""
 
-    for kept <- [open, dirty, running], do: assert(File.dir?(kept["worktree"]))
-    assert File.dir?(Path.join(Path.dirname(merged["worktree"]), "waiting"))
+    for kept <- [open, dirty], do: assert(File.dir?(kept["worktree"]))
+
+    for work <- ["waiting", "running"],
+        do: assert(File.dir?(Path.join(Path.dirname(merged["worktree"]), work)))
+
+    Task.shutdown(running, :brutal_kill)
   end
 
   test "sweeps when it starts", context do
@@ -500,13 +504,13 @@ defmodule WardrikACPTest do
       }
     }
 
-  defp hang(acp) do
+  defp hang(acp, tags \\ %{}) do
     test = self()
     handler = "hang-#{inspect(make_ref())}"
     working = fn _name, _measured, _metadata, _config -> send(test, :working) end
     :telemetry.attach(handler, [:wardrik_acp, :update], working, nil)
 
-    task = Task.async(fn -> call(acp, [%{"say" => "Working."}, %{"hang" => true}]) end)
+    task = Task.async(fn -> call(acp, [%{"say" => "Working."}, %{"hang" => true}], tags) end)
     assert_receive :working, 5_000
     :telemetry.detach(handler)
     task

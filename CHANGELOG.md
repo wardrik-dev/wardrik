@@ -13,5 +13,6 @@
 - Session cost in USD, measured per call.
 - Each request has an ID of its own, `<call ID>:<toolCallId>`. The answer to the call goes to it.
 - `WardrikACP.Checkout`: a checkout's `base`, where new branches start, and `fetch`.
-- `WardrikACP.sweep/1` removes worktrees whose work is in the base. It runs at start and every
-  `sweep` milliseconds.
+- `WardrikACP.sweep/1` removes worktrees whose work is in the base, stopping their idle coding
+  agents. It runs at start and every `sweep` milliseconds.
+- Guide: Get started, Claude Code end to end in IEx.

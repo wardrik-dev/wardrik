@@ -9,7 +9,7 @@ defmodule WardrikACP.MixProject do
       description:
         "Coding agents such as Claude Code, as tools WardrikCore agents call, over ACP.",
       package: package(),
-      docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
+      docs: [main: "readme", extras: ["README.md", "guides/getting-started.md", "CHANGELOG.md"]],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),

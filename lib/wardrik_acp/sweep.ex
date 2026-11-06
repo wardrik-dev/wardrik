@@ -14,8 +14,8 @@ defmodule WardrikACP.Sweep do
 
   @doc """
   Removes each worktree whose work is in its checkout's base, and its branch. A worktree stays
-  while a coding agent runs in it, while a request waits, or while it has changes or untracked
-  files. Returns the paths removed.
+  while a call uses its coding agent, while a request waits, or while it has changes or untracked
+  files. An idle coding agent is stopped first. Returns the paths removed.
   """
   @spec run(map()) :: [Path.t()]
   def run(settings) do
@@ -40,8 +40,15 @@ defmodule WardrikACP.Sweep do
     removed
   end
 
+  # A coding agent with nothing to do is stopped, so its worktree can go.
   defp idle?(acp, path) do
-    Registry.lookup(Connection.registry(acp), path) == [] and not waiting?(path)
+    stopped =
+      case Registry.lookup(Connection.registry(acp), path) do
+        [] -> :ok
+        [{pid, _value}] -> Connection.stop_idle(pid)
+      end
+
+    stopped == :ok and not waiting?(path)
   end
 
   defp waiting?(path) do

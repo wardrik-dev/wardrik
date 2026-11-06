@@ -296,7 +296,12 @@ defmodule Peer do
 
   defp reply(id, result), do: send_line(%{"jsonrpc" => "2.0", "id" => id, "result" => result})
 
-  defp send_line(message), do: IO.write([JSON.encode!(message), ?\n])
+  # WardrikACP may close stdout first, when it stops the peer.
+  defp send_line(message) do
+    IO.write([JSON.encode!(message), ?\n])
+  rescue
+    ErlangError -> System.halt(0)
+  end
 end
 
 Peer.main()
