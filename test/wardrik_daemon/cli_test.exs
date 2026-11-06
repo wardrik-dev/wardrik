@@ -426,6 +426,7 @@ defmodule WardrikDaemon.CLITest do
 
       assert {0, reviewed} = wardrik(typing, ["approval"], "y\n")
       assert reviewed =~ "1 of 1 · triage"
+      assert reviewed =~ ~s("text": "hi")
       assert reviewed =~ "Approve echo? [y/n, Enter leaves it]"
       assert reviewed =~ "Decided 1 of 1."
     end

@@ -10,6 +10,9 @@
 - `orgs.<org>.harnesses` gives a harness to an org. A harness no org lists is the deployment's
   org's.
 - `wardrik doctor` checks each harness's command is on `PATH`, and each checkout has its `base`.
+- The approval card shows the arguments of the call a person decides on, from the interrupt. For
+  a coding agent's request, that is the request's, not the task's. `wardrik approval` shows them
+  too.
 
 ## 0.1.0-rc.8 (2026-11-06)
 

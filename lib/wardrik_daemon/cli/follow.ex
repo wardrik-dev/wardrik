@@ -38,7 +38,6 @@ defmodule WardrikDaemon.CLI.Follow do
       message: nil,
       run: nil,
       said?: false,
-      calls: %{},
       waited: 0,
       status: starting(cx, args),
       printer: printer(cx)
@@ -117,7 +116,6 @@ defmodule WardrikDaemon.CLI.Follow do
       name: named(args),
       log: log(args),
       run: :all,
-      calls: %{},
       waited: 0,
       status: watching(cx, args),
       printer: printer(cx)
@@ -272,9 +270,6 @@ defmodule WardrikDaemon.CLI.Follow do
     noted(state, event)
   end
 
-  defp step(%{"type" => "wardrik.tool_call.started"} = event, %{run: :all} = state),
-    do: called(event, state)
-
   defp step(event, %{run: :all} = state), do: shown(event, state)
 
   defp step(
@@ -313,8 +308,6 @@ defmodule WardrikDaemon.CLI.Follow do
     end
   end
 
-  defp ours(%{"type" => "wardrik.tool_call.started"} = event, state), do: called(event, state)
-
   # The end of the turn is shown, but the status line sums the turn up rather than taking it.
   defp ours(%{"type" => type} = event, state) when type in @ended do
     state = shown(unsaid(event, state), state)
@@ -327,12 +320,6 @@ defmodule WardrikDaemon.CLI.Follow do
     do: shown(event, %{state | said?: true})
 
   defp ours(event, state), do: shown(event, state)
-
-  # A call's arguments are kept for the card, should it wait on a person.
-  defp called(%{"data" => %{"tool" => tool}} = event, state) do
-    state = shown(event, state)
-    put_in(state.calls[get_in(tool, ["call", "id"])], get_in(tool, ["call", "arguments"]))
-  end
 
   defp shown(nil, state), do: state
   defp shown(event, state), do: printed(event, noted(state, event))
@@ -383,7 +370,7 @@ defmodule WardrikDaemon.CLI.Follow do
       Decide.asked?(state.cx, interrupt,
         log: state.log,
         name: state.name,
-        arguments: state.calls[interrupt["tool_call_id"]]
+        arguments: interrupt["arguments"]
       )
 
   defp unsaid(%{"type" => "wardrik.run.completed", "data" => data}, %{said?: false}),

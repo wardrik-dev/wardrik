@@ -109,7 +109,8 @@ defmodule WardrikDaemon.CLI.Approvals do
 
     Decide.asked?(cx, waiting["interrupt"],
       log: Context.conversation(%{"agent" => agent}, %{conversation: conversation}),
-      name: name
+      name: name,
+      arguments: waiting["interrupt"]["arguments"]
     )
   end
 
