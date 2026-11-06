@@ -68,6 +68,8 @@ notify:
 | [`defaults`](#defaults) | `{}` | default values for keys a definition omits |
 | [`models`](#models) | `{}` | prices, call options and the gateway for models |
 | [`mcp`](#mcp) | `{}` | MCP servers |
+| [`harnesses`](#harnesses) | `{}` | coding agents over ACP |
+| [`checkouts`](#checkouts) | `{}` | git repositories coding agents work in |
 | [`oauth`](#oauth) | none | OAuth providers |
 | [`channels`](#channels) | `{}` | chat apps |
 | [`notify`](#notify) | `{}` | notice targets |
@@ -102,12 +104,13 @@ orgs:
 | Key | Description |
 | --- | --- |
 | `mcp` | servers from [`mcp`](#mcp) available to its agents |
+| `harnesses` | coding agents from [`harnesses`](#harnesses) available to its agents |
 | `channels` | channels from [`channels`](#channels) available to its agents |
 | `notify` | targets from [`notify`](#notify) available to its agents |
 | `policy` | a policy in `policies/` applied to all its agents |
 
 - `"*"` matches every org. Its servers, channels, targets and policy apply to all orgs.
-- A server, channel or target no org lists belongs to the deployment's org.
+- A server, harness, channel or target no org lists belongs to the deployment's org.
 - A channel belongs to one org, or to every org if `"*"` lists it.
 
 ## roles and bindings
@@ -210,6 +213,51 @@ mcp:
 
 Agents reference a server's tools as `github/*`. Orgs and users add their own with
 [`wardrik server add`](/reference/cli/#mcp-servers-notify-targets-and-oauth-apps).
+
+## harnesses
+
+```yaml
+harnesses:
+  claude:
+    command: claude-agent-acp
+    env: {ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"}
+    meta: {claudeCode: {options: {settingSources: []}}}
+    options: {mode: default}
+    context: [CLAUDE.md, AGENTS.md]
+    timeout: 1800
+```
+
+| Key | Description |
+| --- | --- |
+| `command`, `args` | the coding agent, run over stdio in each worktree |
+| `env` | environment variables; it also gets `HOME`, `PATH` and a few basics |
+| `meta` | sent as `_meta` when a session starts |
+| `options` | session config options by category or ID, such as `{mode: default, model: opus}` |
+| `instructions` | text added to every session's instructions |
+| `context` | files in the repository added to the instructions, when present |
+| `description` | what the calling model reads about the tool |
+| `timeout` | a call's limit in seconds; default `1800` |
+| `idle` | seconds the coding agent runs with no call; default `900` |
+
+Each harness is a tool of the same name. Its requests are calls named by ACP kind, as
+`claude/execute`. See [Connect coding agents](/build/harnesses/).
+
+## checkouts
+
+```yaml
+checkouts:
+  demo: ~/acp-demo
+  core: {path: ~/src/core, base: origin/main, fetch: true}
+```
+
+| Key | Description |
+| --- | --- |
+| `path` | the repository; a path alone is `{path: ...}` |
+| `base` | the ref new branches start from, and sweeps compare with; default `HEAD` |
+| `fetch` | `true` runs `git fetch` before each new branch and each sweep; default `false` |
+
+Worktrees go in `worktrees/` in `WARDRIK_DATA_HOME`. A daily sweep removes each one whose work is
+in `base`.
 
 ## oauth
 
@@ -367,7 +415,7 @@ New agents start on the node with the most available capacity. See
 | --- | --- | --- |
 | `WARDRIK_CONFIG_DIR` | `~/.config/wardrik` | `config.yaml`, `agents/`, `policies/` |
 | `WARDRIK_DATA_DIR` | `~/.local/share/wardrik/store` | the store |
-| `WARDRIK_DATA_HOME` | `~/.local/share/wardrik` | `vault_key`, `cli_token` |
+| `WARDRIK_DATA_HOME` | `~/.local/share/wardrik` | `vault_key`, `cli_token`, `worktrees/` |
 | `WARDRIK_STATE_DIR` | `~/.local/state/wardrik` | logs |
 | `WARDRIK_ENV_FILE` | `env` in the config directory | extra environment variables |
 | `WARDRIK_NODE` | none | which node of a [cluster](/run/cluster/) this is |
