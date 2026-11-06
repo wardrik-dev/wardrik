@@ -5,8 +5,8 @@ sidebar:
   order: 5
 ---
 
-The daemon runs as one OS user. Any process running as that user can read the store and use its
-credentials. Don't share the host with untrusted accounts.
+Wardrik runs under one operating-system user. Processes running as that user can read its state
+and use its credentials. Use a trusted host and a dedicated service account.
 
 ## Ports
 
@@ -39,11 +39,11 @@ the file path.
 
 ## Agent permissions
 
-A policy checks each call. After a turn reads content from outside, its gated tools need approval.
-See [Policy](/concepts/policy/) and [Content from outside](/concepts/outside-content/).
+A policy checks each call. After a turn reads untrusted content, its gated tools need approval.
+See [Policy](/concepts/policy/) and [Untrusted content](/concepts/outside-content/).
 
-URLs added at runtime, for MCP servers, webhooks and OAuth apps, must be `https` at a public
-address. `allow_private_urls: true` removes that check. For local development only.
+MCP servers, webhooks, and OAuth apps added at runtime must use public HTTPS URLs. For local
+development, `allow_private_urls: true` permits private addresses.
 
 ## Files
 
@@ -57,4 +57,4 @@ address. `allow_private_urls: true` removes that check. For local development on
 
 ## Report a vulnerability
 
-Report it privately, from the repository's Security tab under **Report a vulnerability**.
+Open the repository’s **Security** tab and choose **Report a vulnerability** to submit a private report.

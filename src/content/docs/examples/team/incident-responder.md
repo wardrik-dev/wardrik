@@ -80,10 +80,10 @@ ask:
   pagerduty/manage_incidents: This changes the incident in PagerDuty.
   k8s/pods_delete: This restarts the pod.
   k8s/resources_scale(scale <= 20): This scales a deployment.
-  "github/actions_run_trigger(method = run_workflow, workflow_id = rollback.yml)": This rolls back.
+  "github/actions_run_trigger(method = run_workflow, workflow_id = rollback.yml)": This runs the rollback workflow.
   workers/post_status: This posts publicly on the status page.
 deny:
-  k8s/resources_scale(scale > 20): More than 20 replicas goes through capacity planning.
+  k8s/resources_scale(scale > 20): Scaling above 20 replicas requires capacity planning.
 allow_after:
   outside: [linear/save_issue]
 budget: {usd: 3.00, per: turn, on_exhausted: ask}
@@ -147,12 +147,13 @@ curl -X POST "https://agents.acme.example/v1/hooks/agt_.../pagerduty/$(cat hook.
 
 `#incidents` shows the findings, then the proposed fix with **Approve** and **Deny**.
 
-## What it shows
+## How it works
 
 - A webhook trigger starts a turn when PagerDuty sends the event. See [Trigger an agent](/build/triggers/).
 - Read-only calls run without approval. Every change needs on-call's approval, with its arguments
   shown.
 - Argument rules set exact limits: replica count, and which workflow.
-- Logs are content from outside, so a crafted error message can't trigger a rollback.
+- Logs are untrusted content, so rollback calls still require approval after the agent reads them.
   `allow_after` allows only the postmortem.
-- `per: turn` caps each incident at $3. See [Budgets](/concepts/budgets/).
+- `per: turn` requires approval for further model calls after spending reaches $3 per incident.
+  The call crossing the threshold still completes. See [Budgets](/concepts/budgets/).

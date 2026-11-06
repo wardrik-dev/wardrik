@@ -1,16 +1,19 @@
 ---
 title: "Policies"
-description: "The keys of a policy file, which define whether each tool call runs, needs approval, or is denied."
+description: "Policy settings for tool permissions, approval requirements, spending thresholds, and model-based checks."
 sidebar:
   order: 4
 ---
+
+Use policies to allow, require approval for, or deny tool calls. Reference a policy file from an
+agent definition, or write the rules inline.
 
 ```yaml
 # ~/.config/wardrik/policies/careful.yaml
 allow: [web_search, linear/*, write_file(notes/*)]
 ask:
   github/create_*: This opens an issue on GitHub.
-  books/create_bill(amount >= 1000): A bill this size needs a person.
+  books/create_bill(amount >= 1000): Bills of $1,000 or more require approval.
 deny: [shell/*]
 default: allow
 budget: {usd: 5.00, per: day}
@@ -23,13 +26,13 @@ budget: {usd: 5.00, per: day}
 
 ## Keys
 
-| Key | Takes | Description |
+| Key | Value | Description |
 | --- | --- | --- |
 | `allow` | patterns | calls that run |
 | `ask` | patterns, or pattern to message | calls that need approval; the message is shown to the approver |
 | `deny` | patterns, or pattern to message | calls that are denied; the message is returned to the model |
-| `default` | `allow`, `ask`, `deny`, or annotation to one | calls no rule matches; default `allow` |
-| `allow_after` | label to patterns | calls still allowed after the turn reads content with that label |
+| `default` | `allow`, `ask`, `deny`, or a map from annotations to decisions | calls no rule matches; default `allow` |
+| `allow_after` | a map from labels to tool patterns | calls still allowed after the turn reads content with that label |
 | [`budget`](#budgets) | | the agent's spend limit |
 | [`judge`](#judges) | | yes-or-no questions a model answers about each call |
 
@@ -63,11 +66,12 @@ default:
 
 `else` applies to tools with none of the annotations. If a tool has several, the strictest wins.
 
-## Gated tools and content from outside
+## Gated tools and untrusted content
 
-A gated tool needs approval unless a rule allows it by name. After content from outside, it needs
-approval even then, unless `allow_after` lists it. See [Gated tools](/concepts/policy/#gated-tools)
-and [Content from outside](/concepts/outside-content/).
+Gated tools require explicit permission or approval. After the agent reads untrusted content,
+`allow` is insufficient: the tool must also be listed under `allow_after` to run without approval.
+An explicit `ask` or `deny` rule still takes precedence. See [Gated tools](/concepts/policy/#gated-tools)
+and [Untrusted content](/concepts/outside-content/).
 
 ## Budgets
 
@@ -91,9 +95,9 @@ budget:
 | `on_exhausted` | `ask` | `ask` for approval, or `deny` |
 
 - Checked before each model call. The call that crosses the limit still runs.
-- Tool call costs are counted, but tool calls are never refused.
+- Reported tool costs count toward spending, but budgets do not block tool calls.
 - A dollar budget refuses a model with no price unless `price` is set. `config.yaml`'s [`models`](/reference/config/#models) sets prices.
-- An org's policy, set in [`orgs`](/reference/config/#orgs), has one budget shared by all its agents.
+- An organization’s policy, set in [`orgs`](/reference/config/#orgs), has one budget shared by all its agents.
   [`GET /v1/owners/{owner}/ceilings`](/reference/http-api/#list-ceilings) returns the spend.
 
 ## Judges
@@ -120,6 +124,6 @@ judge:
 
 - A question needs at least one of `deny`, `ask` and `allow`.
 - The judge runs after the rules, and never overrides a rule's `ask` or `deny`.
-- A judge's `allow` applies only to calls no rule matches, and never after content from outside.
+- A judge's `allow` applies only to calls no rule matches, and never after reading untrusted content.
 - If the judge model fails, the call needs approval when the question has `ask` or `deny`.
 - Arguments can be crafted to fool a judge. Keep exact checks in rules.

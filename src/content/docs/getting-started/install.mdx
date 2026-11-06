@@ -1,6 +1,6 @@
 ---
 title: Install
-description: "Install the wardrik daemon and command on Linux, or run the Docker image."
+description: "Install the Wardrik daemon and CLI on Linux, or run Wardrik in Docker."
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -32,7 +32,7 @@ docker exec -it wardrik wardrik init
 	</TabItem>
 </Tabs>
 
-## 2. Set it up
+## 2. Configure Wardrik
 
 ```sh
 wardrik init
@@ -55,15 +55,15 @@ Asking the assistant: In two short sentences, and without calling a tool, say wh
 
 - `init` never overwrites a file, so it's safe to rerun.
 - The key is stored in the vault, unless `env` already sets it.
-- The `wardrik` command runs as the admin. It needs no token.
+- The CLI authenticates automatically with a local admin token.
 
-Without a terminal, pass flags instead:
+For non-interactive setup, pass flags instead:
 
 ```sh
 wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service
 ```
 
-## 3. Check it
+## 3. Verify the installation
 
 ```sh
 wardrik doctor

@@ -1,9 +1,12 @@
 ---
 title: "HTTP API"
-description: "Every route of the wardrik daemon, with its fields, an example request and a response."
+description: "HTTP routes, authentication, request fields, responses, and event streaming."
 sidebar:
   order: 5
 ---
+
+The daemon exposes a JSON API for agents, messages, approvals, and configuration.
+Create an API token with `wardrik token create`, then set `WARDRIK_TOKEN` to the returned value.
 
 ```sh
 export WARDRIK_URL=http://127.0.0.1:4747
@@ -11,14 +14,14 @@ curl $WARDRIK_URL/v1/agents -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
 - The daemon listens on `127.0.0.1:4747`. Set [`http`](/reference/config/#http) in `config.yaml` to change it.
-- Every request needs `Authorization: Bearer <token>`. Create one with [`wardrik token create`](/reference/cli/#tokens).
-  Webhooks and chat apps send none.
+- Authenticated API routes require `Authorization: Bearer <token>`. Webhooks and chat apps
+  authenticate with their integration secrets or signatures instead. See [`wardrik token create`](/reference/cli/#tokens).
 - Bodies are JSON, up to 8 MB. Webhook and chat app routes accept bodies in any format.
-- Every response has a `request-id` header, echoing yours if you sent one.
+- Responses include a `request-id` header. If the request includes one, the server returns the same value.
 - `GET /v1/openapi.json` returns the OpenAPI 3.1 document for the library's routes.
   The daemon's own routes (`/v1/owners/...`, `/v1/connections`, `/v1/tokens`) are in `wardrik_daemon`'s
   `priv/openapi.json`.
-- See [Use the HTTP API](/build/http-api/) for a walk-through.
+- See [Use the HTTP API](/build/http-api/) for a step-by-step guide.
 
 ## Errors
 
@@ -117,7 +120,7 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $WARDRIK_TO
 | `pending` | integer | messages queued behind the current one |
 | `activity` | object | what it's doing, as [`activity`](/reference/events/#shared-types) |
 | `interrupts` | array | calls pending approval |
-| `cursor` | string | where its event log stands; pass it as `after` |
+| `cursor` | string | current event-log cursor; pass as `after` to read subsequent events |
 | `next_run` | string or null | when its next clock trigger runs |
 | `spent_today` | object | what it spent today |
 
@@ -155,7 +158,7 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/definition -H "Authorization: Bearer 
 | Field | Type | Description |
 | --- | --- | --- |
 | `definition` | object | the definition, as sent |
-| `missing` | array | tools named that aren't there yet, like an MCP server not added |
+| `missing` | array | configured tools that are unavailable, such as tools from a disconnected MCP server |
 | `next_runs` | object | when each trigger runs next, by name; `null` for a webhook |
 
 ### Start an agent
@@ -227,7 +230,8 @@ curl -X DELETE "$WARDRIK_URL/v1/agents?agents=agt_01JF8X5RQ2" -H "Authorization:
 {"forgotten": ["agt_01JF8X5RQ2"], "kept": [], "failed": []}
 ```
 
-`kept` and `failed` entries are `{"id": ..., "why": ...}`. An agent an agent file declares is kept.
+Entries in `kept` and `failed` contain `{"id": ..., "why": ...}`. Agents defined by files
+are kept; remove their files to delete them.
 
 ### Move an agent
 
@@ -260,7 +264,7 @@ Queues a message for the agent. Returns `202`.
 | --- | --- | --- |
 | `content` | string | the text |
 | `parts` | array | the text as parts, in place of `content` |
-| `id` | string | your ID for it; a message sent again with the same `id` is taken once |
+| `id` | string | client-supplied message ID; repeated requests with the same ID are deduplicated |
 
 ```sh
 curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/messages -H "Authorization: Bearer $WARDRIK_TOKEN" \
@@ -420,7 +424,7 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/interrupts/toolu_01/authorization \
 {"url": "https://github.com/login/device", "code": "WDJB-MJHT"}
 ```
 
-`code` is there only for a device sign-in.
+`code` is included only for a device sign-in.
 
 ## Events
 
@@ -458,7 +462,8 @@ id: W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDJdXQ
 data: {"specversion":"1.0","type":"wardrik.run.completed","agent":"agt_01JF8X5RQ2",...}
 ```
 
-- Each event's `id` is a cursor. To resume, reconnect with `Last-Event-ID` or `?after=`.
+- The SSE `id:` line contains a cursor, distinct from the CloudEvent’s ID inside the JSON payload.
+  To resume, pass the cursor as `Last-Event-ID` or `?after=`.
 - Without a cursor, a page starts at the oldest event, and a stream starts at the next new event.
 - Deltas have no `id`.
 - An idle stream sends a comment every 15 seconds.
@@ -751,7 +756,8 @@ curl -X DELETE $WARDRIK_URL/v1/owners/acme/secrets/ANTHROPIC_API_KEY -H "Authori
 
 `GET /v1/owners/{owner}/ceilings`
 
-Lists the org's spending ceilings, with its agents' spend this period.
+Lists organization spending thresholds (called `ceilings` in the API), including spending
+and approved extensions for the current period.
 
 ```sh
 curl $WARDRIK_URL/v1/owners/acme/ceilings -H "Authorization: Bearer $WARDRIK_TOKEN"
@@ -790,8 +796,8 @@ Adds an MCP server for the owner's agents. Its tools are available from their ne
 | `name` | string, required | letters, digits, `-`, `_`, up to 32, never `__`; agents name its tools `name/*` |
 | `url` | string, required | an `https` Streamable HTTP URL |
 | `auth` | object, required | `{"none": {}}`, `{"secret": {"name": ..., "header": ..., "scheme": ...}}`, or `{"oauth": {...}}` |
-| `only` | array | the server's tool names to take |
-| `except` | array | the server's tool names to leave |
+| `only` | array | tool names to include |
+| `except` | array | tool names to exclude |
 
 `oauth` takes `scopes`, and `provider` (an OAuth app's name) or `issuer`, `client_id` and `client_secret`.
 If empty, the daemon discovers the server's OAuth metadata.
@@ -844,7 +850,7 @@ Adds a notice webhook. Returns `201`.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `name` | string, required | what definitions name in `notify`; letters, digits, `-`, `_`, up to 32 |
+| `name` | string, required | destination name used in `notify`; up to 32 letters, digits, `-`, or `_` |
 | `url` | string, required | an `https` URL; redirects aren't followed |
 | `secret.name` | string | a vault secret that signs each notice |
 
@@ -929,7 +935,8 @@ curl -X DELETE $WARDRIK_URL/v1/owners/acme/providers/x -H "Authorization: Bearer
 
 ## Daemon: connections
 
-The token user's connected accounts. Any token can manage its own.
+These routes manage the connected accounts of the authenticated user. Users can manage only
+their own connections.
 
 ### List connections
 
@@ -1052,7 +1059,7 @@ curl -X DELETE $WARDRIK_URL/v1/tokens/mzxw6ytboi -H "Authorization: Bearer $WARD
 
 ## Tool workers
 
-`GET /v1/workers` is a WebSocket for an MCP server that dials in. See [Tools in your app](/build/tool-workers/).
+`GET /v1/workers` accepts outbound WebSocket connections from tool workers. See [Tools in your app](/build/tool-workers/).
 
 - Messages are JSON-RPC 2.0, one per text frame, as MCP `2025-06-18`.
 - Wardrik is the client. It sends `initialize`, `tools/list`, `tools/call` and `notifications/cancelled`.

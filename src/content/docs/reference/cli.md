@@ -1,9 +1,11 @@
 ---
 title: "CLI"
-description: "Every command wardrik takes, with an example each."
+description: "Wardrik CLI commands, flags, and examples."
 sidebar:
   order: 1
 ---
+
+Use `wardrik` to manage agents, approve calls, and operate the daemon.
 
 ```sh
 wardrik agent ls
@@ -15,11 +17,11 @@ wardrik approval approve triage toolu_01 --note "Only this once."
 - `wardrik help COMMAND`, or `COMMAND --help`, prints a command's usage.
 - Each command calls the daemon's [HTTP API](/reference/http-api/) with the admin token in `cli_token`.
   Set `WARDRIK_URL` and `WARDRIK_TOKEN` to use another daemon.
-- Every command takes `--json` and prints the API's JSON.
+- Use `--json` to request JSON output from commands.
 - `AGENT` is a name: `triage` in the deployment's org, or `growth/triage` in another org.
 - Commands on an agent take `--conversation ID` to select a conversation.
 - Shortcuts: `ls`, `ask` and `follow` for `agent ls`, `agent ask` and `agent follow`.
-- At a terminal, a command ends by naming what waits on you, as
+- In an interactive terminal, commands identify pending approvals and show the approval command:
   `1 call waits on you: wardrik approval approve triage call_1`.
 
 ## Set up
@@ -44,9 +46,6 @@ wardrik completion fish > ~/.config/fish/completions/wardrik.fish
 | `agent show AGENT` | shows an agent's definition and current activity |
 | `agent ask AGENT [MESSAGE] [--no-wait]` | sends a message and streams the reply; `--no-wait` only sends; with no `MESSAGE`, opens `$VISUAL` or `$EDITOR` |
 | `agent follow AGENT` | streams an agent's events until Ctrl-C; `--json` prints each event |
-
-At a terminal, `ask` and `follow` stop at each call the agent waits on, show it, and ask
-`[y/n, Enter leaves it]`. A line at the bottom says what the turn is doing.
 | `agent history AGENT` | prints the conversation |
 | `agent clear AGENT` | clears the conversation |
 | `agent start AGENT` | starts a stopped agent's process |
@@ -56,6 +55,9 @@ At a terminal, `ask` and `follow` stop at each call the agent waits on, show it,
 | `agent calls AGENT` | lists running tool calls |
 | `agent kill AGENT CALL` | stops one tool call |
 | `agent move AGENT NODE` | restarts it on another node |
+
+In an interactive terminal, `ask` and `follow` display pending calls and prompt for approval.
+Press Enter to leave a call pending. The status line shows the agent’s current activity.
 
 A `QUERY` is space-separated terms, all of which must match: text in the name or ID, `name:`,
 `org:`, `user:` (as `user:acme/@jon`), `node:`, `status:idle|running|parked|asleep`, or
@@ -72,7 +74,7 @@ wardrik agent kill triage toolu_01
 
 | Command | Does |
 | --- | --- |
-| `approval` | goes through each pending call, asking whether to approve it; off a terminal, lists them |
+| `approval` | prompts for each pending call in an interactive terminal; otherwise lists pending calls |
 | `approval ls` | lists calls pending approval, with their conversation |
 | `approval approve AGENT CALL [--note NOTE]` | runs the call; the model receives the note |
 | `approval deny AGENT CALL [--reason REASON]` | denies the call; the model receives the reason |
@@ -139,7 +141,7 @@ wardrik connection pair linear BCDF-GHJK
 
 | Command | Does |
 | --- | --- |
-| `vault put NAME [--for PURPOSE]` | stores a secret, typed unseen at a terminal, or read from stdin |
+| `vault put NAME [--for PURPOSE]` | stores a secret from a hidden terminal prompt or stdin |
 | `vault ls` | lists secret names, never values |
 | `vault rm NAME` | removes a secret |
 

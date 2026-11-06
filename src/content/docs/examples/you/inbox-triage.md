@@ -5,9 +5,9 @@ sidebar:
   order: 1
 ---
 
-Every morning this agent reads your new mail. It archives noise, labels the rest, and drafts
-replies for you to send. It adds school dates to the family calendar without approval. The policy
-denies or requires approval for everything else.
+Sort new mail each morning, draft replies, and add dates to a family calendar. The policy
+allows labeling, archiving, drafts, and events on one calendar after reading email. Other gated
+calls require approval unless denied.
 
 Requires a Google Cloud project with the Gmail and Calendar MCP servers enabled, and a
 [Slack app](/build/slack/).
@@ -73,7 +73,7 @@ triggers:
     timezone: Europe/London
     prompt: Triage what came in since yesterday.
 ---
-You keep my inbox. ME.md says who I am and the family calendar's id.
+You keep my inbox. ME.md contains my profile and the family calendar ID.
 
 Each morning: archive newsletters and notifications I never open. Label the rest Reply, Read or
 Waiting. Draft a short reply for each Reply thread. When an email from school, clubs or family gives
@@ -91,10 +91,10 @@ wardrik ask inbox "Triage my inbox now."
 The first Google call pauses with a sign-in link. Sign in once. The summary is posted to `#inbox`,
 and the drafts are saved in Gmail.
 
-## What it shows
+## How it works
 
 - Reads run without approval. After a turn reads an email, only tools in `allow_after` run without
-  approval. See [Content from outside](/concepts/outside-content/).
+  approval. See [Untrusted content](/concepts/outside-content/).
 - An argument rule limits `create_event` to one calendar. Events on other calendars need approval.
 - The Gmail server has no send tool, only drafts.
 - `ME.md` is in the agent's workspace and loaded into every turn.

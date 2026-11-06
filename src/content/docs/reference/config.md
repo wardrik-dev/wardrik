@@ -1,9 +1,11 @@
 ---
 title: "config.yaml"
-description: "Every key the wardrik daemon reads from config.yaml."
+description: "Daemon settings for models, integrations, access control, networking, and storage."
 sidebar:
   order: 2
 ---
+
+Configure the daemon in `config.yaml`. Agent-specific settings belong in [agent files](/reference/agent-files/).
 
 ```yaml
 # ~/.config/wardrik/config.yaml
@@ -49,7 +51,7 @@ notify:
 
 - The file is `config.yaml` in the [config directory](#directories). If it's missing, every key uses its default.
 - Restart the daemon after a change. `wardrik doctor` validates the file without starting the daemon.
-- An unknown key or invalid value stops the daemon, with the key's path in the error.
+- An unknown key or invalid value prevents startup. The error identifies the setting.
 - `${NAME}` resolves from the environment, then the [env file](#directories), then the deployment's vault
   secret `NAME` (`wardrik vault put NAME`). `vault`, `http` and `storage` resolve from the environment only.
 
@@ -79,7 +81,7 @@ notify:
 | `retention` | `30` | days to keep events, or `infinity` |
 | `triggers` | `{}` | trigger options, such as `req_options` for fetching feeds |
 | [`cluster`](#cluster) | one node | the nodes that run as one |
-| [`agents`](#agents) | `{}` | where agents start, and how idle ones keep memory |
+| [`agents`](#agents) | `{}` | agent placement and idle memory settings |
 
 `tools`, `tokens` and `ssh` are ignored with a warning.
 
@@ -110,7 +112,8 @@ orgs:
 
 ## roles and bindings
 
-Access control, as in Kubernetes RBAC. A role is a list of rules. A binding grants a role to subjects in an org.
+Access control follows the Kubernetes RBAC model. Roles define permitted operations; bindings
+grant roles to users, groups, or agents in an organization.
 
 ```yaml
 roles:
@@ -138,16 +141,18 @@ bindings:
 | `role` | a role from `roles`, or `operator` |
 | `subjects` | `user:ORG/@NAME`, `group:NAME`, or `agent:NAME` for that agent in the binding's org |
 
-- `admin` is every verb on every kind. `user:admin` (the `wardrik` command) has it in `"*"`. It can't be declared.
-- `operator` is every verb on every kind, unless `roles` declares it.
+- The built-in `admin` role permits all operations on all resources. The CLI’s `user:admin` has
+  this role across all organizations. It cannot be redefined.
+- The built-in `operator` role permits all operations on all resource types within its binding’s
+  scope, unless overridden in `roles`.
 - Tokens aren't in an org, so only a binding in `"*"` applies to `token`.
 
 Owners, agents, chat members and errors follow [built-in rules](/run/orgs/#built-in-rules).
 
 ## defaults
 
-Default values for keys an agent definition omits. Takes any [agent file](/reference/agent-files/#keys)
-key, such as `model`, `tools`, `policy` or `retries`.
+Set defaults for omitted agent settings. Accepts any [agent configuration field](/reference/agent-files/#keys),
+such as `model`, `tools`, `policy`, or `retries`.
 
 ## models
 
@@ -165,14 +170,13 @@ models:
 | Key | Default | Description |
 | --- | --- | --- |
 | `prices` | `{}` | prices for models not in the catalog, in dollars per million tokens |
-| `options` | `{}` | options for every model call, as [ReqLLM](https://hexdocs.pm/req_llm) takes them |
+| `options` | `{}` | options passed to [ReqLLM](https://hexdocs.pm/req_llm) for every model call |
 | `gateway` | breakers only | fallbacks, limits and breakers every model call goes through; see [Model gateway](/run/model-gateway/) |
 
 - A price takes `input`, `output`, `cache_read`, `cache_write`, or `priced_as` another model; each
   with an optional `markup`.
-- `options` takes any ReqLLM option, such as `base_url`, checked against ReqLLM's own. Its
-  timeouts are in milliseconds. An agent's [`model_options`](/reference/agent-files/#model_options)
-  merge over it.
+- `options` accepts settings supported by ReqLLM, such as `base_url`. Timeouts are in
+  milliseconds. Agent-level [`model_options`](/reference/agent-files/#model_options) override these defaults.
 - `wardrik reload` applies changes to all of them.
 
 ## mcp
@@ -252,7 +256,7 @@ channels:
 | `offering`, `deciding` | messages for a room with no agent, and for a member who can't approve |
 
 - The name is lower-case letters, digits and `-`. `shell`, `ssh`, `terminal` and `oauth` are reserved.
-- A member neither key maps is refused, and told to ask an admin.
+- Members without a `domains` or `members` mapping receive an access-denied message.
 - An agent is available in a channel if its definition's [`channels`](/reference/agent-files/#keys) lists it.
 
 See [Slack](/build/slack/).
@@ -316,10 +320,10 @@ storage:
 | `access_key_id`, `secret_access_key` | required | the key |
 | `region` | `us-east-1` | as the service names it |
 | `session_token` | none | for temporary credentials |
-| `prefix` | `wardrik` | where in the bucket keys go |
+| `prefix` | `wardrik` | object key prefix within the bucket |
 | `headers` | `{}` | sent with every request |
 
-Give `postgres` or `s3`, not both. Without `storage`, the store is on disk in `WARDRIK_DATA_DIR`.
+Configure either `postgres` or `s3`. Without `storage`, the store is on disk in `WARDRIK_DATA_DIR`.
 See [Storage](/run/storage/).
 
 ## cluster
@@ -354,7 +358,7 @@ agents:
 | `max_cpu` | none | percent of its CPU above which a node takes no new agents |
 | `hibernate_after` | none | seconds idle before an agent compacts its memory |
 
-Each new agent starts on the node with the most room. See
+New agents start on the node with the most available capacity. See
 [Spread agents](/run/cluster/#spread-agents).
 
 ## Directories

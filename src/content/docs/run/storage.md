@@ -1,18 +1,18 @@
 ---
 title: Storage
-description: "Store agents, events, files and secrets on the daemon's local disk, in Postgres, or in an S3 bucket."
+description: "Persist agent state on local disk, in Postgres, or in S3."
 sidebar:
   order: 1
 ---
 
-The daemon persists all state in one store: agents, conversations, triggers, events, files, tokens
-and encrypted secrets.
+Wardrik saves agents, conversations, triggers, events, files, tokens, and encrypted secrets in
+one configured storage backend.
 
 | Store | Location | Use for |
 | --- | --- | --- |
 | On disk, the default | `~/.local/share/wardrik/store` | one machine, or a cluster with a quorum |
-| Postgres | one table, `wardrik_store` | state that survives the machines |
-| S3 | one object per key, in a bucket | state that survives the machines, with no database |
+| Postgres | one table, `wardrik_store` | persistent state independent of agent machines |
+| S3 | one object per key, in a bucket | persistent state independent of agent machines; no database required |
 
 ## In Postgres
 
@@ -39,18 +39,18 @@ storage:
 ```
 
 - Works with AWS S3, Cloudflare R2, Tigris and MinIO. R2 takes `region: auto`.
-- The bucket must exist. On startup the daemon checks it refuses a conditional write that fails,
-  and won't start on one that doesn't.
-- Where a bucket ignores the version on a delete, as MinIO does, a delete writes an empty object
-  that reads as nothing.
+- Create the bucket first. At startup, Wardrik checks that it rejects writes with a failed
+  condition. It will not start if the bucket fails this check.
+- For backends that ignore version conditions on deletes, such as MinIO, Wardrik writes an empty
+  object and treats it as deleted.
 - Every read is a request, so it's slower than disk or Postgres.
 - On Tigris, add `headers: {x-tigris-consistent: "true"}`.
 - `${NAME}` here resolves from the environment or the env file, not the vault.
 
 ## Move to a new machine
 
-On Postgres or S3, configure the new machine with the same database URL or bucket. It also needs the same vault
-key to decrypt existing secrets:
+With Postgres or S3, point the new machine at the existing database or bucket. To decrypt
+existing secrets, configure the same vault key:
 
 - copy `~/.local/share/wardrik/vault_key`, or
 - set the same `WARDRIK_VAULT_KEY`, or

@@ -5,8 +5,8 @@ sidebar:
   order: 4
 ---
 
-This agent checks the containers on your home server every 15 minutes. When one is down, it reads
-the logs and posts the cause. It proposes a fix as a tool call, which you approve in Slack.
+Check your home server’s containers every 15 minutes. If one fails, the agent reads its logs,
+reports a likely cause, and proposes a restart or recreation for you to approve in Slack.
 
 Requires [uv](https://docs.astral.sh/uv/), a daemon user with access to the Docker socket, and a
 [Slack app](/build/slack/).
@@ -73,11 +73,11 @@ wardrik ask homelab "Check every container."
 `#homelab` shows the findings and a `start_container` call for `jellyfin`, with **Approve** and
 **Deny**. After editing only an agent file, `wardrik reload` is enough.
 
-## What it shows
+## How it works
 
 - `notify` sends only pending calls and failures, so healthy checks post nothing.
-- Docker access is root on the machine, so every change needs approval and destructive calls are
-  denied.
-- Logs are content from outside, so no log line can make a call run without approval.
+- Docker socket access grants extensive control over the host. The policy requires approval
+  for changes and denies destructive operations.
+- Logs are untrusted content, so gated calls require approval after the agent reads them.
 - A turn interrupted by a power loss resumes when the daemon starts. See
   [Durable runs](/concepts/agents/#durable-runs).

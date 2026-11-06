@@ -1,13 +1,14 @@
 ---
 title: Tools in your app
-description: "Serve tools to agents from your own process with the TypeScript SDK, over an outbound connection to the daemon."
+description: "Register application tools with the TypeScript SDK. Execute approved calls in your own process."
 sidebar:
   order: 3
   label: Overview
 ---
 
-A tool worker is a process in your app that serves tools to agents. The tools run in your process,
-with your code, data and keys. Your app opens the connection, so the daemon needs no access to it.
+Register functions as agent tools with the TypeScript SDK. Your app executes the calls using
+its own code, database, and API keys. This process is called a **tool worker**. It connects to
+Wardrik over an outbound connection, so your app needs no inbound port.
 
 ```ts
 import { Wardrik } from "@wardrik/sdk";
@@ -27,8 +28,7 @@ wardrik.tool({
 await wardrik.work();
 ```
 
-- An agent with `workers/*` in its tools can call `refund_order`, if the worker's token has the
-  `serve` verb.
+- Add `workers/*` to the agent’s tools and grant the tool worker’s token permission to `serve` tools.
 - The agent's policy checks each call first. A refund needs approval unless the policy allows it.
 - Requires Node 22.18+, Bun or Deno: `npm install @wardrik/sdk@0.1.0-rc.4 zod`.
 
@@ -38,4 +38,4 @@ await wardrik.work();
 - [Write tools](/build/write-tools/): arguments, results, errors, cost, and retries.
 - [Host your tools](/build/host-tools/): in your app or standalone, and across deploys.
 
-Every method is in the [TypeScript SDK reference](/sdk/typescript/readme/).
+See all methods in the [TypeScript SDK reference](/sdk/typescript/readme/).

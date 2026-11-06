@@ -1,13 +1,13 @@
 ---
-title: Let anyone try to hijack it
+title: Test prompt injection defenses
 description: An agent with write access to a public repository's issues. No issue can trigger a write you haven't approved.
 sidebar:
   order: 9
 ---
 
-This agent labels and comments on a public repository's issues, with a token that has write access.
-Anyone can try prompt injection. Every write it attempts is posted to Slack for approval. The
-prompt has no warnings, because the policy is enforced outside the model.
+Test an issue-triage agent against instructions embedded in public issues. The GitHub token has
+write access, but proposed GitHub writes require approval in Slack after the agent reads an issue.
+Wardrik enforces these permissions outside the model.
 
 Requires a fine-grained GitHub token with write access to that repository's issues only, and a
 [Slack app](/build/slack/).
@@ -69,7 +69,8 @@ last issue you triaged in TRIAGE.md.
 ```
 
 - `default: deny` denies every tool not matched by `allow`.
-- The budget caps the spend an attacker can cause.
+- The budget stops further model calls after the spending threshold is reached. The call that
+  crosses the threshold still completes.
 
 ## Try it
 
@@ -91,11 +92,11 @@ Open an issue with a prompt injection, then watch `#triage`:
 
 If an injection makes the model try to close every issue, each close is a pending call.
 
-## What it shows
+## How it works
 
-- After content from outside, every gated call needs approval until `wardrik agent clear issues`.
-  See [Content from outside](/concepts/outside-content/).
-- Files written in the turn get the `outside` label, so notes can't pass an injection to a later
-  turn.
+- After reading untrusted content, every gated call needs approval until `wardrik agent clear issues`.
+  See [Untrusted content](/concepts/outside-content/).
+- Files written after reading untrusted content inherit the `outside` label. Reading those
+  notes applies the same approval requirements to later turns.
 - The policy is defined outside the prompt, so no issue can change it. See [Policy](/concepts/policy/).
 - Don't add `allow_after: {outside: [github/issue_write]}`. The same tool both labels and closes.

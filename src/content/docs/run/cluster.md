@@ -1,13 +1,12 @@
 ---
 title: Run a cluster
-description: "Run several daemons as one, spread agents across them, and carry on when a node is lost."
+description: "Distribute agents across multiple nodes and recover work when a node fails."
 sidebar:
   order: 2
 ---
 
-Several daemons run as one cluster. Each agent runs on one node, and any node answers for all of
-them. When a node is lost, its agents restart on the others, still waiting on the calls they
-waited on.
+Run multiple Wardrik daemons as a cluster. Each agent runs on one node, but any node can handle
+API requests for it. If a node fails, surviving nodes restart its agents. Pending approvals remain pending.
 
 ```yaml title="~/.config/wardrik/config.yaml"
 cluster:
@@ -18,7 +17,7 @@ agents:
 
 ## Spread agents
 
-Each new agent, and each agent a lost node ran, starts on the node with the most room.
+New agents and agents recovering from a failed node start on the node with the most available capacity.
 
 ```yaml title="~/.config/wardrik/config.yaml"
 agents:
@@ -28,10 +27,10 @@ agents:
   hibernate_after: 60  # seconds idle before an agent compacts its memory
 ```
 
-- A node at `max_per_node`, or above `max_memory` or `max_cpu`, takes no new agents.
-- With none set, an agent starts on the node that defined it.
-- Leave room for a lost node's agents. Three nodes of 5,000 each carry 10,000 agents through the
-  loss of one.
+- A node at `max_per_node`, or above `max_memory` or `max_cpu`, accepts no new agents.
+- Without placement limits, an agent starts on the node that defined it.
+- Reserve capacity for failover. Three nodes with a 5,000-agent limit each can support 10,000
+  agents after one node fails.
 - Running agents stay where they are. `wardrik agent move AGENT NODE` moves one.
 - Nodes on one machine share its memory and CPU, so only `max_per_node` spreads agents between
   them.
@@ -42,12 +41,12 @@ agents:
 | 30 agent files, as defined | 1 | 14 | 15 |
 | 47 s after `kill -9` of c | 15 | 15 | 0 |
 
-Placement reads each node's load from heartbeats every 10 seconds, so a burst of new agents fills
-one node to its limit before the next.
+Placement uses load updates received every 10 seconds. A burst of new agents can fill one node
+before agents are assigned to the next.
 
 ## On one machine
 
-Short names are nodes on one machine. They share the config, the cookie, the vault key and the
+Use short node names for a cluster on one machine. They share the config, the cookie, the vault key and the
 HTTP API's port. Each keeps its own store and logs under `nodes/<name>/`.
 
 ```sh
@@ -83,7 +82,7 @@ cluster:
   size: 3
 ```
 
-Each machine's `env` file names its node and where distribution listens:
+Set the node name and Erlang distribution address in each machine’s `env` file:
 
 ```sh title="~/.config/wardrik/env"
 WARDRIK_NODE=wardrik@box1
@@ -97,18 +96,18 @@ RELEASE_COOKIE=...                    # the same on every node
 - Erlang distribution isn't encrypted, and the cookie lets anyone who reaches a node run code on
   it. Run nodes on a private network that encrypts, such as Tailscale or WireGuard. See
   [Security](/run/security/#distribution).
-- A node `cluster.nodes` doesn't name refuses to start.
+- Nodes not listed in `cluster.nodes` cannot start.
 
 ## Storage and quorum
 
-| Store | Nodes wait for | Data outlives |
+| Store | Startup requirement | State survives |
 | --- | --- | --- |
-| The nodes' disks, the default | more than half the nodes | any node but not all |
-| [Postgres](/run/storage/#in-postgres) | nothing | every node |
-| [S3](/run/storage/#in-s3) | nothing | every node |
+| Local disk (default) | a majority of nodes | loss of individual nodes; requires surviving disks |
+| [Postgres](/run/storage/#in-postgres) | database available | replacement of all agent nodes |
+| [S3](/run/storage/#in-s3) | bucket available | replacement of all agent nodes |
 
-- On the nodes' disks, a write needs more than half the nodes. Three nodes carry on with one lost;
-  two stop when either is. A starting node waits for enough others, up to an hour.
+- With local storage, writes require a majority of nodes. A three-node cluster tolerates one
+  failure; a two-node cluster cannot. Startup waits up to an hour for a majority.
 - In Postgres or S3, each node starts on its own and carries on while any node is up.
 
 | Three nodes on one machine, 6 agents | On disk | S3 (MinIO, two nodes) |
@@ -117,7 +116,7 @@ RELEASE_COOKIE=...                    # the same on every node
 | HTTP after `kill -9` of the node holding the port | 0.9 s | — |
 | Agents running again after `kill -9` | 51 s | 51 s |
 
-A lost node's agents restart once the others' next sweep finds them, every 30 seconds.
+Surviving nodes check for agents to recover every 30 seconds.
 
 ## Model limits
 

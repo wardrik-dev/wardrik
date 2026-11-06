@@ -23,7 +23,7 @@ policy:
   ask:
     quickbooks/create-bill(params.bill.Line.Amount >= 1000): A line of $1,000 or more.
   deny:
-    quickbooks/create_bill_payment: Paying bills is for people.
+    quickbooks/create_bill_payment: Bill payments must be handled manually.
   budget:
     usd: 10.00
     tokens: 2000000
@@ -49,11 +49,11 @@ const server = `mcp:
 // Line numbers count from the file's first line, 1.
 const parts = [
 	{ id: 'policy', label: 'Policy', lines: [14, 15, 16, 17, 18, 19, 20, 21], title: 'Allow, ask, or deny', body: 'A bill posts without approval when every line is under $1,000. Any line of $1,000 or more needs approval. Bill payments are always denied.', href: '/concepts/policy/#writing-rules', link: 'Writing rules' },
-	{ id: 'tools', label: 'Tools', lines: [3], title: 'Tools from MCP servers', body: '`quickbooks/*` matches every tool of the `quickbooks` MCP server in config.yaml, run on the daemon’s machine. `trusted: true` marks its results as trusted, not content from outside. `files` is built in.', snippet: server, snippetTitle: 'config.yaml', href: '/examples/business/books/', link: 'The whole books example' },
-	{ id: 'triggers', label: 'Triggers', lines: [5, 6, 7, 8, 9, 10, 11, 12, 13], title: 'Scheduled and webhook runs', body: 'Runs weekdays at 7:00 Los Angeles time. A webhook with an invoice also starts a run. The body is content from outside, so any bill from it needs approval, however small.', kinds: [['every', 'on a schedule: cron or an interval'], ['feed', 'when an RSS or Atom feed has new entries'], ['webhook', 'when a service sends a request']], href: '/build/triggers/', link: 'Triggers' },
+	{ id: 'tools', label: 'Tools', lines: [3], title: 'Tools from MCP servers', body: '`quickbooks/*` matches every tool of the `quickbooks` MCP server in config.yaml, run on the daemon’s machine. `trusted: true` marks its results as trusted. `files` is built in.', snippet: server, snippetTitle: 'config.yaml', href: '/examples/business/books/', link: 'Bookkeeping example' },
+	{ id: 'triggers', label: 'Triggers', lines: [5, 6, 7, 8, 9, 10, 11, 12, 13], title: 'Scheduled and webhook runs', body: 'Runs weekdays at 7:00 Los Angeles time. A webhook with an invoice also starts a run. Webhook bodies are untrusted content, so creating a bill requires approval regardless of its amount.', kinds: [['every', 'on a schedule: cron or an interval'], ['feed', 'when an RSS or Atom feed has new entries'], ['webhook', 'when a service sends a request']], href: '/build/triggers/', link: 'Triggers' },
 	{ id: 'approvals', label: 'Approvals', lines: [18, 19, 28], title: 'Approvals in Slack', body: 'A pending bill is posted to accounting’s Slack room with its arguments. An approver clicks Approve or Deny.', href: '/build/slack/#who-approves', link: 'Who approves' },
-	{ id: 'budget', label: 'Budget', lines: [22, 23, 24, 25, 26, 27], title: 'A daily cap', body: '$10 or 2M tokens a day. At the limit, the next call needs approval, which adds $5.', href: '/concepts/budgets/', link: 'Budgets' },
-	{ id: 'notify', label: 'Notify', lines: [28], title: 'Notices', body: 'Pending calls and failures are posted to accounting.', href: '/build/notices/', link: 'Notices' },
+	{ id: 'budget', label: 'Budget', lines: [22, 23, 24, 25, 26, 27], title: 'Spending thresholds', body: 'After spending reaches $10 or 2M tokens in a day, further model calls need approval. The call crossing the threshold still completes. Approval adds $5.', href: '/concepts/budgets/', link: 'Budgets' },
+	{ id: 'notify', label: 'Notify', lines: [28], title: 'Notifications', body: 'Pending approvals and failures are posted to #accounting.', href: '/build/notices/', link: 'Notifications' },
 ];
 
 // `code` in a part's body, as code.

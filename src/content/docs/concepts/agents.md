@@ -1,13 +1,12 @@
 ---
 title: Agents
-description: "An agent is a process composed of a model, tools, a policy and conversations. It processes turns, stops when idle, and restarts on another node."
+description: "Define agents, manage conversations, and recover work after a restart."
 sidebar:
   order: 1
 ---
 
-An agent is a process composed of a model, tools and a policy. It manages many conversations and
-processes one turn at a time. Its state is persisted in the store, so it resumes after a restart
-or on another node.
+Define an agent’s instructions, model, tools, and permissions in a Markdown file. Wardrik saves
+its conversations and execution state so it can resume after a restart or recover on another cluster node.
 
 ```markdown title="~/.config/wardrik/agents/triage.md"
 ---
@@ -26,20 +25,22 @@ wardrik ask triage "What changed today?"
 ## IDs and names
 
 - The daemon generates each agent's ID, such as `agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN`.
-- Each agent also has a name, unique in its org. The file name, `triage`, is the name.
+- Agent names are unique within an organization (org). The file `triage.md` defines the agent `triage`.
 - The `wardrik` command takes names. Pass `org/name` for an agent in another org.
 - The HTTP API takes IDs: `GET /v1/agents/agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN`.
 
 ## Conversations
 
-An agent manages many conversations, such as one per Slack thread. Each has its own history. All
-share the agent's definition and files. Pass a conversation ID to select one:
+An agent can have multiple conversations, each with its own message history. For example, each Slack
+thread is a conversation. Conversations share the agent’s configuration and files. Select one with `--conversation`:
 
 ```sh
 wardrik ask triage "And now?" --conversation C1-1696.1234
 ```
 
 ## Turns
+
+A turn processes queued messages, runs tool calls, and produces a reply:
 
 1. The agent receives the queued messages and calls the model.
 2. It runs the model's tool calls, up to 8 in parallel.
@@ -63,8 +64,8 @@ wardrik agent clear triage         # empty the history
 
 ## Sleeping
 
-After 15 idle minutes, an agent's process stops. A message, an approval or a subscriber starts it
-again, on any node. Set `idle_timeout` in seconds, or `infinity` to keep it running.
+After 15 idle minutes, Wardrik stops the agent’s process and keeps its saved state. A message,
+approval, or event subscriber restarts it on an available node. Set `idle_timeout` in seconds, or `infinity` to keep it running.
 
 ## Changing and removing
 
@@ -75,8 +76,8 @@ again, on any node. Set `idle_timeout` in seconds, or `infinity` to keep it runn
 
 ## Durable runs
 
-The agent writes each round of tool calls to the store before running it. If the node goes down,
-another node resumes from that round.
+Wardrik saves each round of tool calls before executing it. After a restart, or a node failure in
+a cluster, the agent resumes from the saved round. Completed calls replay their saved results.
 
 - Calls that are safe to repeat run again: file reads, read-only MCP tools, and `readOnly` or
   `idempotent` worker tools.

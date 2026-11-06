@@ -5,8 +5,8 @@ sidebar:
   order: 2
 ---
 
-A policy defines whether each tool call runs, needs approval, or is denied. It's checked before
-the call runs.
+Policies control which tool calls can run, which require approval, and which are denied.
+Wardrik checks the policy before executing each call.
 
 ```yaml title="~/.config/wardrik/policies/careful.yaml"
 allow: [web_search, linear/*]
@@ -15,7 +15,7 @@ ask:
 deny: [shell/*]
 ```
 
-Set an agent's `policy` to a file name, or write the rules inline:
+Reference a policy by filename without `.yaml`, or define rules directly in the agent file:
 
 ```yaml
 policy: careful
@@ -51,17 +51,17 @@ allow:
   - books/create_bill(amount < 100)
 ask: [books/create_bill(amount >= 100)]
 deny:
-  email/send(to != *@example.com): Mail leaves the company only with a person's say-so.
+  email/send(to != *@example.com): Recipients must use the company domain.
 ```
 
 - In YAML, put a rule with commas on its own line, not inside `[ ]`.
 
-Every operator and pattern form is in [Policies › Patterns](/reference/policies/#patterns).
+See all operators and patterns in [Policies › Patterns](/reference/policies/#patterns).
 
 ## Gated tools
 
-A gated tool can change something. Its calls need approval unless an `allow` rule matches them.
-`default: allow` doesn't apply to them.
+Gated tools require explicit permission because they may change external state. Their calls need
+approval unless an `allow` rule matches; `default: allow` does not authorize them.
 
 - An MCP server's tools are gated unless the server marks them read-only. Set `gated:` on the
   server in `config.yaml` to override.
@@ -75,7 +75,8 @@ default: {read_only: allow, else: ask}   # by the tool's own read-only flag
 
 ## Judges
 
-A judge asks a model yes-or-no questions about each call. The probability of yes sets the result.
+A judge uses a model to assess a tool call. Its estimated probability of a “yes” answer determines
+whether the call is allowed, requires approval, or is denied.
 
 ```yaml title="~/.config/wardrik/policies/books.yaml"
 judge:
@@ -88,7 +89,7 @@ judge:
 ```
 
 - `deny` and `ask` apply at or above their probability. `allow` applies below it.
-- Start with `ask` and `deny`. Review real calls before you add a low `allow`.
+- Start with approval and denial thresholds. Review real calls before adding an `allow` threshold.
 - Set `TYPESAFE_API_KEY` for the default model.
 
-Every judge key is in [Policies › Judges](/reference/policies/#judges).
+See all judge settings in [Policies › Judges](/reference/policies/#judges).

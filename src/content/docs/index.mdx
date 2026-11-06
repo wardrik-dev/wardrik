@@ -1,13 +1,13 @@
 ---
 title: Wardrik
-description: Wardrik is a self-hosted agent runtime. Run persistent agents with enforced policies, human approvals, durable recovery, and a record of what happened.
+description: Run persistent AI agents on your own servers. Connect tools, enforce permissions, approve sensitive calls, and recover interrupted work.
 template: splash
 editUrl: false
 hero:
-  title: Agents,<br />governed.
-  tagline: Rules the model can’t rewrite. Approvals where your team works. Work that survives a crash. All on your own servers.
+  title: Run AI agents.<br />Set the rules.
+  tagline: Wardrik is a self-hosted runtime for persistent AI agents. Connect your tools, approve sensitive calls, and recover interrupted work after a crash.
   actions:
-    - text: Start building
+    - text: Run your first agent
       link: /getting-started/quickstart/
       icon: right-arrow
     - text: Explore examples
@@ -22,7 +22,7 @@ import RikMark from '../../components/RikMark.astro';
 
 <section class="home-section home-tint" aria-labelledby="what-a-prompt-cannot">
 
-<h2 id="what-a-prompt-cannot">Three things Wardrik does that a prompt can’t.</h2>
+<h2 id="what-a-prompt-cannot">Control tool calls. Approve changes. Recover work.</h2>
 
 <div class="pillars not-content">
 <div class="pillar">
@@ -31,9 +31,9 @@ import RikMark from '../../components/RikMark.astro';
 <p class="pillar-call"><code>create_bill $9,400</code><span class="outcome outcome-waits">Approval</span></p>
 <p class="pillar-call"><code>shell/exec</code><span class="outcome outcome-refused">Denied</span></p>
 </div>
-<h3>Checks every call</h3>
-<p>Policy is defined outside the prompt. Content the agent reads can’t change it.</p>
-<p class="pillar-links"><a href="/concepts/policy/">How calls are decided</a></p>
+<h3>Enforces your rules</h3>
+<p>Wardrik checks tool calls against rules defined outside the prompt.</p>
+<p class="pillar-links"><a href="/concepts/policy/">How policies work</a></p>
 </div>
 <div class="pillar">
 <div class="pillar-art failover" aria-hidden="true">
@@ -42,8 +42,8 @@ import RikMark from '../../components/RikMark.astro';
 <span class="node node-live"><span></span>box2</span>
 <span class="node"><span></span>box1</span>
 </div>
-<h3>Keeps working</h3>
-<p>A turn resumes after a crash. A lost node’s agents restart on the others. A call that may have run needs approval before it runs again.</p>
+<h3>Recovers interrupted work</h3>
+<p>Agents resume after a crash. In a cluster, they restart on surviving nodes. Calls with uncertain results require approval unless they are safe to retry.</p>
 <p class="pillar-links"><a href="/examples/pull-the-plug/">Pull the plug yourself</a></p>
 </div>
 <div class="pillar">
@@ -53,8 +53,8 @@ import RikMark from '../../components/RikMark.astro';
 <p class="pillar-event"><span>07:05</span>approved by maria</p>
 <p class="pillar-event"><span>07:06</span>bill payment denied</p>
 </div>
-<h3>Shows its work</h3>
-<p>Budgets cap agent spend. Every call and approval is an event you can stream or export.</p>
+<h3>Records calls and costs</h3>
+<p>Set spending thresholds for model calls. Stream or export tool calls and approval events.</p>
 <p class="pillar-links"><a href="/concepts/budgets/">Budgets</a> · <a href="/concepts/events/">The event stream</a></p>
 </div>
 </div>
@@ -65,7 +65,7 @@ import RikMark from '../../components/RikMark.astro';
 
 <h2 id="every-call">Every call is checked before it runs.</h2>
 
-<p class="home-lead">Rules are in files the model can’t change. A rule matches a call by its tool, its target, or its arguments.</p>
+<p class="home-lead">Define rules in configuration files. Match calls by tool name, file path, or argument values.</p>
 
 <div class="decisions" role="table" aria-label="Five tool calls and what a policy decides for each">
 <div class="decisions-row decisions-head" role="row"><span role="columnheader">The model calls</span><span role="columnheader">The matching rule</span><span role="columnheader">Result</span></div>
@@ -73,7 +73,7 @@ import RikMark from '../../components/RikMark.astro';
 <div class="decisions-row" role="row"><code role="cell">write_file {'{"path": "notes/today.md"}'}</code><span role="cell"><code>allow: [write_file(notes/&#42;)]</code><span class="rule-by">by target</span></span><span role="cell" class="outcome outcome-runs">Runs</span></div>
 <div class="decisions-row" role="row"><code role="cell">books/create_bill {'{"amount": 9400}'}</code><span role="cell"><code>ask: [books/create_bill(amount &gt;= 1000)]</code><span class="rule-by">by an argument</span></span><span role="cell" class="outcome outcome-waits">Needs approval</span></div>
 <div class="decisions-row" role="row"><code role="cell">email/send {'{"to": "x@evil.example"}'}</code><span role="cell"><code>deny: [email/send(to != &#42;@acme.com)]</code><span class="rule-by">by an argument</span></span><span role="cell" class="outcome outcome-refused">Denied</span></div>
-<div class="decisions-row" role="row"><code role="cell">shell/exec {'{"command": "curl … | sh"}'}</code><span role="cell"><code>deny: [shell/&#42;]</code><span class="rule-by">every tool of an MCP server</span></span><span role="cell" class="outcome outcome-refused">Denied</span></div>
+<div class="decisions-row" role="row"><code role="cell">shell/exec {'{"command": "curl … | sh"}'}</code><span role="cell"><code>deny: [shell/&#42;]</code><span class="rule-by">all tools on an MCP server</span></span><span role="cell" class="outcome outcome-refused">Denied</span></div>
 </div>
 
 <p>The strictest rule wins: deny, then ask, then allow. <a href="/concepts/policy/#writing-rules">Writing rules</a> · <a href="/examples/hijack-me/">Try to hijack it</a></p>
@@ -87,7 +87,7 @@ import RikMark from '../../components/RikMark.astro';
 
 <h2 id="approvals">Approvals where your team works.</h2>
 
-<p class="home-lead">A pending call is posted with its arguments. Approve or deny it in Slack, the terminal, or over HTTP.</p>
+<p class="home-lead">Review the tool name and arguments, then approve or deny the call in Slack, the CLI, or your app.</p>
 
 <p><a href="/build/slack/#who-approves">Who approves</a> · <a href="/concepts/approvals/">Approvals</a></p>
 
@@ -103,7 +103,7 @@ import RikMark from '../../components/RikMark.astro';
 
 <h2 id="your-tools">Your tools run in your app, with your keys.</h2>
 
-<p class="home-lead">Wardrik checks each call. Your app runs it, so service keys stay in your process.</p>
+<p class="home-lead">Register tools with the TypeScript SDK. Wardrik checks each call before your app executes it. Service keys stay in your app.</p>
 
 <div class="tools-layout">
 <div>
@@ -129,24 +129,24 @@ await wardrik.work();
 <li class="flow-step"><p class="flow-label"><span>The agent calls</span><code>support</code></p><p><code>workers/refund_order {'{"orderId": "pi_3Qx…"}'}</code></p></li>
 <li class="flow-link" aria-hidden="true"></li>
 <li class="flow-step flow-decide"><p class="flow-label"><span>Wardrik checks and records it</span></p><p class="flow-outcome"><span class="outcome outcome-waits">Needs approval</span><span>approved by @maria</span></p></li>
-<li class="flow-link" aria-hidden="true"><span>Your app opens the connection. Nothing connects in.</span></li>
+<li class="flow-link" aria-hidden="true"><span>Your app connects to Wardrik. No inbound port required.</span></li>
 <li class="flow-step flow-run"><p class="flow-label"><span>Your app runs it</span><code>shop</code></p><p><code>stripe.refunds.create(…)</code></p><p class="flow-key"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg><code>STRIPE_SECRET_KEY</code> stays in your app</p></li>
 </ol>
 </div>
 
-<p>Or connect MCP servers, with per-user OAuth accounts. <a href="/build/tool-workers/">Tools in your app</a> · <a href="/build/mcp/">MCP servers</a> · <a href="/build/accounts/">Connect accounts</a></p>
+<p>You can also connect MCP servers and authenticate with each user’s OAuth account. <a href="/build/tool-workers/">Tools in your app</a> · <a href="/build/mcp/">MCP servers</a> · <a href="/build/accounts/">Connect accounts</a></p>
 
 </section>
 
 <section class="home-section home-tint" aria-labelledby="agent-file">
 
-<h2 id="agent-file">An agent is one file you can review.</h2>
+<h2 id="agent-file">Define an agent in a Markdown file.</h2>
 
 <p class="home-lead">Select a tab to highlight the lines that do each job.</p>
 
 <AgentFileTour />
 
-<p><a href="/reference/agent-files/">Every key an agent file takes</a></p>
+<p><a href="/reference/agent-files/">Agent configuration reference</a></p>
 
 </section>
 
@@ -155,13 +155,13 @@ await wardrik.work();
 <h2 id="built-in">Also built in</h2>
 
 <ul class="also-list not-content">
-<li><a href="/run/orgs/">Separate orgs</a><p>Each team’s agents, tools and keys are isolated from other orgs.</p></li>
+<li><a href="/run/orgs/">Organization access controls</a><p>Scope access to agents, tools, and credentials by organization.</p></li>
 <li><a href="/build/accounts/">Per-user accounts</a><p>Users sign in with OAuth, and their agents call tools with their credentials.</p></li>
 <li><a href="/build/delegation/">Delegation</a><p>An agent sends another agent a message and receives the reply.</p></li>
-<li><a href="/concepts/policy/#judges">Judges</a><p>A model classifies each call, such as whether an email promises a refund.</p></li>
-<li><a href="/build/assistant/">The assistant</a><p>Send a request. It proposes tool calls, and runs each one you approve.</p></li>
-<li><a href="/concepts/agents/#sleeping">Idle agents</a><p>Run one per customer. Idle agents stop, and restart with their state on the next message.</p></li>
-<li><a href="/run/cluster/">Clusters</a><p>Agents spread across nodes, and a lost node’s agents restart on the rest.</p></li>
+<li><a href="/concepts/policy/#judges">Judges</a><p>Add model-based checks, such as whether an email promises a refund.</p></li>
+<li><a href="/build/assistant/">The assistant</a><p>Use the built-in assistant to create and manage agents, with approval for changes.</p></li>
+<li><a href="/concepts/agents/#sleeping">Idle agents</a><p>Create an agent per customer. Idle processes stop and reload their saved state on the next message.</p></li>
+<li><a href="/run/cluster/">Clusters</a><p>Distribute agents across nodes and recover them when a node fails.</p></li>
 <li><a href="/reference/cli/"><RikMark /> CLI</a><p>List agents, approve pending calls, and check spend from a terminal.</p></li>
 </ul>
 

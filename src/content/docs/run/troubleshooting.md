@@ -1,9 +1,11 @@
 ---
 title: Troubleshooting
-description: "Diagnose with status, doctor and logs, then fix common problems."
+description: "Check daemon status, validate configuration, and resolve common setup and runtime errors."
 sidebar:
   order: 9
 ---
+
+Start with the daemon’s status, configuration checks, and logs:
 
 ```sh
 wardrik status    # is it running?
@@ -27,11 +29,11 @@ ok    agents         2 agent files and 1 policy read
 
 ## Common problems
 
-- **It doesn't start.** Run `wardrik doctor`. Usually `config.yaml` has a parse error, with the
-  line number.
+- **The daemon does not start.** Run `wardrik doctor`. For configuration parse errors, it reports
+  the file and line number.
 - **A `${NAME}` is unset.** Set it in `~/.config/wardrik/env` and restart. `vault put` needs a
   running daemon.
-- **An agent file has an error.** `wardrik doctor` shows it. Fix it and `wardrik reload`.
+- **An agent file has an error.** Run `wardrik doctor`, fix the reported error, then run `wardrik reload`.
 - **An agent is missing a server's tools.** A new server in `config.yaml` needs a restart. A server
   that's down has no tools.
 - **A policy change has no effect.** The daemon reads `policies/` at startup. Restart it.
@@ -40,8 +42,8 @@ ok    agents         2 agent files and 1 policy read
   `wardrik agent history AGENT` shows how its turns ended.
 - **A trigger didn't run.** `wardrik trigger ls AGENT` shows its next run.
 - **`404` for a resource that exists.** The token's user has no binding in its org. See
-  [Orgs, roles and tokens](/run/orgs/).
-- **A chat member is refused.** Map their email domain under `channels.<name>.domains`, or
+  [Organizations, roles, and tokens](/run/orgs/).
+- **A chat member cannot access an agent.** Map their email domain under `channels.<name>.domains`, or
   their member ID under `members`.
 - **`wardrik` reports the daemon isn't started.** The command reads its token from
   `~/.local/share/wardrik/cli_token`, which the daemon writes on startup.

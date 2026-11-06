@@ -3,14 +3,15 @@ title: Slack
 description: "Add an agent to a Slack channel. It replies in threads, and posts Approve and Deny buttons for calls that need approval."
 ---
 
-Slack sends events over HTTPS, so the daemon needs a [public address](/run/public-address/). To
-test without one, use [Socket Mode](#testing-with-socket-mode).
+Use agents in Slack threads and review tool calls with **Approve** and **Deny** buttons.
+For HTTP delivery, the daemon needs a [public HTTPS address](/run/public-address/).
+For local testing, use [Socket Mode](#testing-with-socket-mode).
 
 ## Set up
 
 1. At [api.slack.com/apps](https://api.slack.com/apps), choose **Create New App › From a
    manifest**. Paste the manifest below, with `agents.example.com` changed to the daemon's
-   address. Slack can't verify the URL yet; that's fixed in step 6.
+   address. Slack will verify the URL after you start the configured daemon in step 6.
 2. Choose **Install to Workspace**, then copy the **Bot User OAuth Token** (`xoxb-...`). Under
    **Basic Information › App Credentials**, copy the **Signing Secret**.
 3. Store both:
@@ -92,12 +93,12 @@ settings:
 ```
 
 - `slack` in each URL is the channel's name in `config.yaml`: lower-case letters, digits and `-`.
-- Every key is in [config.yaml › channels](/reference/config/#channels).
+- See all settings in [config.yaml › channels](/reference/config/#channels).
 
 ## Members
 
-A Slack member acts as a daemon user, with that user's bindings. What they can do is in
-[built-in rules](/run/orgs/#built-in-rules).
+Map Slack members to Wardrik users to control access. Each member uses the mapped user’s
+permissions. See [built-in rules](/run/orgs/#built-in-rules).
 
 - `domains` maps an email domain to an org. `maria@acme.com` acts as `user:acme/@maria`.
 - `members` maps one member ID to a user, and wins over `domains`. Copy the ID from the member's
@@ -107,7 +108,7 @@ A Slack member acts as a daemon user, with that user's bindings. What they can d
   members: {U024BE7LH: user:admin}
   ```
 
-- Anyone else is refused, and told to ask an admin.
+- Unmapped members receive an access-denied message directing them to an admin.
 - Members of other workspaces, over Slack Connect, are matched by `members` only.
 
 ## Testing with Socket Mode
@@ -153,7 +154,7 @@ Use a separate app per daemon. Slack spreads events across all of an app's conne
   share the agent's definition and [files](/concepts/files-and-memory/).
 - :eyes: means the agent received the message. :white_check_mark: means it replied.
 - The thread's status shows the agent's current activity.
-- To post notices in a channel, set `notify: "slack:#updates"`. See [Send notices](/build/notices/).
+- To post notices in a channel, set `notify: "slack:#updates"`. See [Send notifications](/build/notices/).
 
 ## Approvals
 
@@ -174,7 +175,8 @@ bindings:
   - {org: acme, role: approver, subjects: [user:acme/@maria]}
 ```
 
-A triggered turn has no member who started it. Use `wardrik approval approve`.
+Scheduled and webhook-triggered turns have no initiating Slack member. Use a CLI admin approval
+or grant an approver role to the Slack users who should review them.
 
 ## The app doesn't reply
 
@@ -185,4 +187,4 @@ check:
 - `wardrik doctor` verifies the tokens with Slack;
 - `wardrik logs`.
 
-A member who is refused isn't mapped: check their Slack email address, or add them to `members`.
+If a member is denied access, check their Slack email domain or add their member ID to `members`.

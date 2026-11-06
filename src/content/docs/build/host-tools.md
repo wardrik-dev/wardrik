@@ -1,12 +1,12 @@
 ---
 title: Host your tools
-description: "Run a tool worker inside your app or on its own, on another machine or in a container, and keep its tools up through deploys."
+description: "Run tool workers in your app or in containers, connect to a remote daemon, and keep tools available during deployments."
 sidebar:
   order: 3.3
 ---
 
-A worker is any process that calls `wardrik.work()`. It opens no port. It needs only an outbound
-connection to the daemon.
+A tool worker registers tools and calls `wardrik.work()` to receive requests. It needs only an
+outbound connection to Wardrik; no inbound port is required.
 
 ## Inside your app
 
@@ -29,7 +29,7 @@ await wardrik.work({ signal: stop.signal });
 
 Every instance of your app connects with the same token. Each call is routed to one instance.
 
-## On its own
+## In a container
 
 ```dockerfile title="Dockerfile"
 FROM node:24-slim
@@ -49,7 +49,7 @@ docker run -d --restart unless-stopped --env-file statuspage.env statuspage
 - On the daemon's machine, add `--network host` so `127.0.0.1:4747` resolves to the daemon.
 - In Kubernetes, use a Deployment with no Service. Nothing connects to it.
 
-## A daemon on another machine
+## Connect to a remote daemon
 
 Add `/v1/workers` to the `@daemon` paths in the daemon's [Caddyfile](/run/public-address/), then
 set `WARDRIK_URL=https://agents.acme.example` for the worker.
@@ -61,10 +61,10 @@ set `WARDRIK_URL=https://agents.acme.example` for the worker.
 - A rejected token makes `work` throw, so the process exits and its supervisor reports it.
 - Revoke the token to disconnect a worker. Its connection closes within 15 seconds.
 
-### Calls in doubt
+### Calls with uncertain results
 
-A call is in doubt when the worker disconnected during it, or returned too late. It's retried or
-held for approval as described in [Durable runs](/concepts/agents/#durable-runs).
+If a tool worker disconnects during a call or returns after the timeout, Wardrik may not know
+whether the call completed. It retries calls marked safe to repeat and requires approval for others. See [Durable runs](/concepts/agents/#durable-runs).
 
 ## Details
 
@@ -72,5 +72,5 @@ held for approval as described in [Durable runs](/concepts/agents/#durable-runs)
 - If two users' workers serve tools with the same name, the agent uses the one that connected
   first.
 - `work` pings every 15 seconds. Set `keepalive` in milliseconds to change it.
-- A worker's results are [content from outside](/concepts/outside-content/), unless `config.yaml`
+- A worker's results are [untrusted content](/concepts/outside-content/), unless `config.yaml`
   sets `http: {trusted_workers: true}`.

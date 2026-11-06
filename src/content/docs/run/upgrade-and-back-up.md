@@ -1,11 +1,13 @@
 ---
 title: Upgrade and back up
-description: "Install a new release next to the old one, roll back, and back up the files and store."
+description: "Upgrade Wardrik, roll back a release, and back up configuration, state, and encryption keys."
 sidebar:
   order: 8
 ---
 
 ## Upgrade
+
+Install the release, restart the daemon, and check the running version:
 
 ```sh
 curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.8/install.sh | sh
@@ -14,7 +16,7 @@ wardrik version
 ```
 
 - Without `WARDRIK_VERSION`, it installs the latest release, including pre-releases.
-- The new release installs next to the old one. A running daemon uses its release until restarted.
+- The new release installs next to the old one. The running daemon continues using the previous release until restarted.
 - To roll back, run the script with `WARDRIK_VERSION` set to the previous release, and restart.
 
 In Docker, start a new container with the same volumes:

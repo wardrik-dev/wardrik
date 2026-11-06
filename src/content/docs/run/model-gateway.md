@@ -5,8 +5,9 @@ sidebar:
   order: 3
 ---
 
-Every model call goes through the daemon's gateway. By default it has one circuit breaker per
-model and no limits or fallbacks.
+The model gateway routes requests, enforces provider rate limits, and switches models after
+failures. By default, each model has a circuit breaker that temporarily skips it after repeated
+failures. Rate limits and fallback models are opt-in.
 
 ```yaml title="~/.config/wardrik/config.yaml"
 models:
@@ -18,16 +19,16 @@ models:
 ```
 
 - `fallbacks` is keyed by the model an agent is configured with. `limits` is keyed by provider.
-- A model with an open breaker is skipped. The call goes to the next model in `fallbacks`.
+- When a model’s circuit breaker is open, Wardrik skips it and tries the next configured fallback.
 - A call to a provider at its limit is delayed until the provider has capacity.
-- A 429 delays calls to that provider for its `Retry-After`, or one second.
-- A 5xx, a 529 or a timeout counts towards the model's breaker. The call goes to the next model.
+- An HTTP 429 response pauses provider requests for `Retry-After`, or one second if the header is absent.
+- Server errors (HTTP 5xx) and timeouts count toward the circuit breaker and trigger a fallback attempt.
 - After a fallback, the rest of the turn uses the fallback.
 - A call is delayed at most `wait`. Then the agent's [`retries`](/reference/agent-files/#retries)
   apply.
 - Fallbacks use the deployment's API key for their provider.
 
-## Scale
+## Gateway overhead
 
 | Concurrent callers | Calls per second | Time per call |
 | --- | --- | --- |
@@ -39,10 +40,10 @@ Gateway overhead per model call on a 32-thread AMD Ryzen AI Max+ 395.
 
 - Limits are counted per node. In a [cluster](/run/cluster/), divide each provider's quota between
   the nodes.
-- A node only uses its own share. If most busy agents run on one node, that node waits at its
-  limit while the others have room. [Spread agents](/run/cluster/#spread-agents) to even it out.
+- Each node uses only its allocated quota. If most busy agents run on one node, that node waits at its
+  limit even when other nodes have unused quota. [Spread agents](/run/cluster/#spread-agents) to even it out.
 - When a node is lost, the cluster runs on the remaining nodes' shares until you raise them.
-- Each node has its own breakers. Each one sees a model fail before it stops calling it.
+- Circuit breakers are local to each node, so failures on one node do not open another node’s breaker.
 - The daemon opens up to 64 connections per provider host.
 
 ## Settings
