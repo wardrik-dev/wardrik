@@ -90,6 +90,7 @@ export default defineConfig({
 									items: [
 										'build/assistant',
 										'build/mcp',
+										'build/harnesses',
 										'build/accounts',
 										'build/vault',
 										'build/slack',
