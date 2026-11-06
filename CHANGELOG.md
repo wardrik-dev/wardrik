@@ -1,11 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.4 (2026-11-06)
 
 - A member carries the email address Slack holds for them, unless they're from another
   workspace. The app asks for the `users:read.email` scope again; reinstall it to grant it.
 - A button press looks up who pressed it with `users.info`, as a message does.
-- Requires the unreleased `wardrik_channel`.
+- Requires `wardrik_channel` 0.1.0-rc.4.
 
 ## 0.1.0-rc.3 (2026-11-04)
 
