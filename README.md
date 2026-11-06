@@ -1,118 +1,81 @@
 # Wardrik
 
-**Agents, governed.**
+Runs agents with tool policies, approval checks, spending limits, and event logs.
 
-Run agents with rules the model can't rewrite, approvals from the people you choose, budgets that
-cap what they spend, and a record of everything they did.
+## Start in IEx
 
-## Install
+Set `ANTHROPIC_API_KEY` before starting `iex`.
 
 ```elixir
-def deps do
-  [
-    {:wardrik, "~> 0.1.0-rc.7"}
-  ]
+Mix.install([{:wardrik, "~> 0.1.0-rc.7"}])
+
+defmodule MyApp.AllowAll do
+  @behaviour Wardrik.Authorizer
+  @impl true
+  def authorize(_request, _opts), do: :ok
 end
-```
 
-## Start it
+defmodule MyApp.Agents do
+  @behaviour Wardrik.Resolver
+  @impl true
+  def resolve(_request, _opts) do
+    {:ok, %Wardrik.Resolved{principal: Wardrik.principal("maria")}}
+  end
+end
 
-```elixir
 defmodule MyApp.AgentRuntime do
   use Wardrik, otp_app: :my_app
 end
 
-# config/runtime.exs
-config :my_app, MyApp.AgentRuntime,
-  authorizer: {MyApp.Authorizer, []},
-  resolver: {MyApp.Agents, []},
-  store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
-  policy: [deny: ["shell/*"]]
+{:ok, _runtime} =
+  MyApp.AgentRuntime.start_link(
+    authorizer: {MyApp.AllowAll, []},
+    resolver: {MyApp.Agents, []}
+  )
 
-# application.ex
-children = [MyApp.AgentRuntime]
-```
-
-Two modules of your app are required:
-
-- `:authorizer`, a `Wardrik.Authorizer`, says who may do what. See [Who may do what](pages/access.md).
-- `:resolver`, a `Wardrik.Resolver`, says who each agent works for and what it reaches.
-
-```elixir
-defmodule MyApp.Agents do
-  @behaviour Wardrik.Resolver
-
-  @impl true
-  def resolve(%Wardrik.Resolver.Request{agent: id}, _opts) do
-    agent = MyApp.Repo.get!(MyApp.Agent, id)
-    {:ok, %Wardrik.Resolved{principal: Wardrik.principal(agent.user_id)}}
-  end
-end
-```
-
-## Talk to agents
-
-```elixir
 scope = MyApp.AgentRuntime.as("maria")
 
 {:ok, agent} =
   Wardrik.Agent.define(scope, "agt_assistant",
     model: "anthropic:claude-haiku-4-5",
-    instructions: "You keep Maria's notes.",
+    instructions: "Summarize the user's notes.",
     policy: [budget: [usd: 1.00, per: :day]]
   )
 
-Wardrik.Agent.reply(scope, agent, "What did I note yesterday?")
-#=> {:ok, %Wardrik.Reply{text: "You noted the Q3 numbers...", ...}}
-
-scope
-|> Wardrik.Agent.stream(agent, "Summarize yesterday's notes.")
-|> Enum.each(&IO.write/1)
+Wardrik.Agent.reply(scope, agent, "Summarize this note: The release is scheduled for Friday.")
 ```
 
-## Spread agents across nodes
-
-Run Wardrik on several connected nodes and each agent runs on one of them. Any node reaches it.
-
-```elixir
-config :my_app, MyApp.AgentRuntime,
-  agents: [max_per_node: 5_000, max_memory: 80, hibernate_after: 60]
-```
-
-- Each new agent starts on the node with the most room, and a lost node's agents restart on the
-  others.
-- A node at `max_per_node`, or above `max_memory` or `max_cpu` percent, takes no new agents.
-- Idle agents compact their memory after `hibernate_after` seconds.
-
-See [Nodes](pages/running-wardrik.md#nodes).
-
-## See it in action
-
-Each notebook runs in Livebook. Start with [Wardrik in ten minutes](notebooks/tour-demo.livemd).
-
-- [Rules the model can't rewrite](notebooks/policies-demo.livemd)
-- [A person in the loop](notebooks/approvals-demo.livemd)
-- [Give agents tools](notebooks/tools-demo.livemd)
-- [Spend you can cap](notebooks/budgets-demo.livemd)
-- [Agents that survive a crash](notebooks/durability-demo.livemd)
-- [Agents that wake themselves](notebooks/triggers-demo.livemd)
-- [See everything an agent did](notebooks/events-demo.livemd)
-- [Who may do what](notebooks/access-demo.livemd)
+- The example authorizer permits every operation. Implement access checks for your app.
+- The example stores data in memory. See [Run Wardrik](pages/running-wardrik.md) for persistent storage and application configuration.
+- See `Wardrik.start_link/1` for runtime options.
 
 ## Guides
 
-- [Run Wardrik](pages/running-wardrik.md): options, stores and nodes.
-- [Talk to agents](pages/talking.md): ask, stream and reply.
-- [Define agents](pages/definitions.md): definitions, sleep and conversations.
-- [Trigger agents](pages/triggers.md): clocks, feeds and webhooks.
-- [Policies](pages/policies.md): rules and budgets.
-- [Who may do what](pages/access.md): your authorizer.
-- [Operations](pages/operations.md): every operation as a function.
-- [Approvals](pages/approvals.md): decide the calls agents wait on.
-- [MCP servers](pages/servers.md): servers agents call.
-- [Credentials and sign-ins](pages/credentials.md): sealed secrets and OAuth.
-- [Events and the audit](pages/events.md): follow what agents and people did.
-- [Over HTTP](https://hexdocs.pm/wardrik_http): every operation as a route.
+- [Run Wardrik](pages/running-wardrik.md)
+- [Send messages](pages/talking.md)
+- [Define agents](pages/definitions.md)
+- [Configure triggers](pages/triggers.md)
+- [Apply policies](pages/policies.md)
+- [Authorize operations](pages/access.md)
+- [Call operations](pages/operations.md)
+- [Approve tool calls](pages/approvals.md)
+- [Connect MCP servers](pages/servers.md)
+- [Store credentials and connect accounts](pages/credentials.md)
+- [Read events and audit records](pages/events.md)
+- [Serve HTTP requests](https://hexdocs.pm/wardrik_http)
+
+## Livebook examples
+
+Start with [Wardrik in ten minutes](notebooks/tour-demo.livemd).
+
+- [Tool policies](notebooks/policies-demo.livemd)
+- [Tool call approvals](notebooks/approvals-demo.livemd)
+- [Agent tools](notebooks/tools-demo.livemd)
+- [Spending limits](notebooks/budgets-demo.livemd)
+- [Crash recovery](notebooks/durability-demo.livemd)
+- [Scheduled runs and webhooks](notebooks/triggers-demo.livemd)
+- [Event logs](notebooks/events-demo.livemd)
+- [Operation authorization](notebooks/access-demo.livemd)
 
 ## License
 

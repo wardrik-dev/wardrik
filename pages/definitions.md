@@ -1,6 +1,6 @@
 # Define agents
 
-> See it in action: [Give agents tools](../notebooks/tools-demo.livemd)
+> See it in action: [Configure agent tools](../notebooks/tools-demo.livemd)
 
 A definition says what an agent is: model, instructions, tools and policy. Wardrik keeps it, and
 starts the agent from it each time it wakes.
@@ -85,26 +85,10 @@ Wardrik.Agent.definition(scope, "agt_assistant")
 - `definition/2`'s last element lists tools it names that offer nothing yet.
 - A name Wardrik doesn't offer returns `invalid_request`. An unsupported key returns `not_supported`.
 
-## Keys
+## Definition fields
 
-| Key | Means |
-| --- | --- |
-| `model` | Required, as `provider:model`. |
-| `instructions` | The system prompt. |
-| `tools` | What it may call. See below. |
-| `policy` | A policy by name, or its rules. See [Policies](policies.md). |
-| `context` | Files read into every turn. See `Wardrik.Workspaces`. |
-| `workspace` | Other agents' workspaces it mounts. See `Wardrik.Workspaces`. |
-| `timeout` | Seconds a turn may take. |
-| `max_iterations` | Rounds of tool calls per turn, or `infinity`. `25` unless set. |
-| `idle_timeout` | Seconds before it sleeps, or `infinity`. |
-| `retries` | How failed model calls retry. See `WardrikCore.Retry`. |
-| `model_options` | `temperature`, `top_p`, `max_tokens`, `reasoning_effort`, and the call's `receive_timeout`, `stream_idle_timeout` and `total_timeout` in seconds. Nothing else. |
-| `compaction` | When old history is summarised. See `Wardrik.Compaction`. |
-| `triggers` | See [Trigger agents](triggers.md). |
-| `channels` | Chat apps it answers in, by name in Wardrik's `:channels`. |
-| `notify` | Where its notices go. See `Wardrik.Notify`. |
-| `display_name`, `description` | For people, and for `agents_list`. |
+See `Wardrik.Definition` and the protocol's `agent_definition` schema for all fields and defaults.
+Configure tools by name:
 
 `tools` takes:
 
@@ -139,7 +123,7 @@ Each change goes in the [audit](events.md#the-audit).
 
 ## Conversations
 
-One agent can hold many conversations, as a chat app has threads:
+An agent can have multiple conversations. Each conversation has its own history:
 
 ```elixir
 Wardrik.Agent.ask(scope, "agt_assistant", "Where's order A-1?", conversation: "C1")

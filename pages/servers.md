@@ -1,8 +1,8 @@
 # MCP servers
 
-> See it in action: [Give agents tools](../notebooks/tools-demo.livemd)
+> See it in action: [Configure agent tools](../notebooks/tools-demo.livemd)
 
-Agents call MCP servers' tools. Your resolver says which servers each agent reaches.
+Agents call MCP servers' tools. Your resolver selects the servers available to each agent.
 
 ## Setup
 
@@ -57,7 +57,7 @@ Wardrik.Agent.definition(scope, "agt_assistant")
 ```
 
 - The last element lists servers it names that aren't there yet.
-- An agent reaches only the servers its resolver gives in `servers`, by the name it uses.
+- An agent can call only the servers configured by its resolver's `servers` map.
 - `servers/*` gives every server it's resolved with.
 - With `credential_name: "github"`, a server is reached with each person's own account. See
   [Credentials](credentials.md).
@@ -65,7 +65,7 @@ Wardrik.Agent.definition(scope, "agt_assistant")
 
 ## Servers your app adds
 
-Add a server while Wardrik runs, then give it to agents through your resolver:
+Add a server while Wardrik runs, then configure access through your resolver:
 
 ```elixir
 :ok =

@@ -1,6 +1,6 @@
 # Approvals
 
-> See it in action: [A person in the loop](../notebooks/approvals-demo.livemd)
+> See it in action: [Tool call approvals](../notebooks/approvals-demo.livemd)
 
 A call a policy asks about waits for a person. The calls an agent waits on are its interrupts.
 

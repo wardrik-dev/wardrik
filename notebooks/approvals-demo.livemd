@@ -1,4 +1,4 @@
-# A person in the loop
+# Tool call approvals
 
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.7"}, {:kino, "~> 0.19"}])

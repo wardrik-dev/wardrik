@@ -1,4 +1,4 @@
-# Give agents tools
+# Configure agent tools
 
 ```elixir
 Mix.install([{:wardrik, "~> 0.1.0-rc.7"}, {:kino, "~> 0.19"}])

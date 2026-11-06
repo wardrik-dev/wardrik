@@ -1,9 +1,9 @@
 # Policies
 
-> See it in action: [Rules the model can't rewrite](../notebooks/policies-demo.livemd)
+> See it in action: [Tool policies](../notebooks/policies-demo.livemd)
 
 A policy decides each tool call before it runs: allow, ask a person, or deny. The model is told
-why. Rules live outside the prompt, so nothing the model reads can widen them.
+why. Rules are configured outside the prompt. Model input cannot change them.
 
 ## Setup
 
@@ -34,7 +34,7 @@ end
 scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 ```
 
-- `:policy` holds every agent.
+- `:policy` applies to every agent.
 - `:policies` are policies a definition may name.
 
 ## An agent's policy
