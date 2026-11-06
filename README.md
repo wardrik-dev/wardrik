@@ -17,9 +17,24 @@ end
 ## Check an event
 
 `WardrikProtocol.schema/1` inlines every `$ref`, so any JSON Schema validator can use it. With
-[JSV](https://hexdocs.pm/jsv):
+[JSV](https://hexdocs.pm/jsv), in a fresh IEx session:
 
 ```elixir
+Mix.install([{:wardrik_protocol, "~> 0.1.0-rc.4"}, {:jsv, "~> 0.26"}])
+
+event = %{
+  "specversion" => "1.0",
+  "id" => "019a3c40-0000-7000-8000-000000000001",
+  "source" => "wardrik://local/agents/agt_1",
+  "type" => "wardrik.run.started",
+  "subject" => "runs/run_1",
+  "time" => "2026-11-06T12:00:00Z",
+  "datacontenttype" => "application/json",
+  "dataschema" => "urn:wardrik:schema:v1:run.started",
+  "traceparent" => "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+  "data" => %{"run" => %{"id" => "0af7651916cd43dd8448eb211c80319c", "message_ids" => ["msg_1"]}}
+}
+
 envelope = JSV.build!(WardrikProtocol.schema("cloudevent"))
 data = JSV.build!(WardrikProtocol.schema("run.started"))
 
@@ -36,8 +51,11 @@ data = JSV.build!(WardrikProtocol.schema("run.started"))
 
 ```elixir
 %{path: path, conversation: route, input: input} = WardrikProtocol.operation("agent.ask")
-path  #=> "/v1/agents/{agent}/messages"
-route #=> "/v1/agents/{agent}/conversations/{conversation}/messages"
+path
+# => "/v1/agents/{agent}/messages"
+
+route
+# => "/v1/agents/{agent}/conversations/{conversation}/messages"
 
 {:ok, _input} = JSV.validate(%{"agent" => "agt_1", "content" => "Hi"}, JSV.build!(input))
 ```
@@ -52,14 +70,13 @@ route #=> "/v1/agents/{agent}/conversations/{conversation}/messages"
 
 ## Call an operation
 
+Create a scope with your running Wardrik runtime:
+
 ```elixir
+scope = MyApp.AgentRuntime.as("maria")
 Wardrik.Agent.ask(scope, "agt_1", "Hi", conversation: "C1")
 Wardrik.Agent.approve(scope, agent: "agt_1", interrupt: "call_1", conversation: "C1")
 ```
 
-* An operation with one path parameter takes it as an argument, and `conversation:` in `opts`.
-* An operation with two or more takes one keyword list, `conversation:` included. So does
-  `Wardrik.Agent.decide/2`.
-* An interrupt from `Wardrik.Agent.reply/4` or `Wardrik.Interrupts.list/2` names its agent and
-  conversation: `Wardrik.Agent.approve(scope, interrupt: interrupt)`.
-* An unknown key raises `ArgumentError`.
+- See [Run Wardrik](https://hexdocs.pm/wardrik/running-wardrik.html) for runtime setup.
+- See `Wardrik.Agent` for parameter conventions and operation reference.
