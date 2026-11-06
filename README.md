@@ -6,7 +6,7 @@ The source of [docs.wardrik.dev](https://docs.wardrik.dev), built with Astro and
 git clone https://github.com/wardrik-dev/wardrik_docs.git
 git clone https://github.com/wardrik-dev/wardrik_typescript.git   # read by the build
 cd wardrik_docs
-npm install
+npm ci
 npm run dev      # http://localhost:4321
 npm run build    # writes dist/
 ```
