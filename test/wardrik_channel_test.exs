@@ -353,6 +353,21 @@ defmodule WardrikChannelTest do
     end
   end
 
+  defmodule ByEmail do
+    @behaviour WardrikChannel.Identities
+
+    @impl WardrikChannel.Identities
+    def identify(request, _opts), do: {:ok, %WardrikCore.Principal{id: request.email}}
+  end
+
+  test "your app's identities see the member's email address", context do
+    channel = %{context.workspace.channel | identities: {ByEmail, []}}
+    member = %Member{id: "U9", name: "maria", email: "maria@acme.com"}
+
+    assert {:ok, %WardrikCore.Principal{id: "maria@acme.com"}} =
+             WardrikChannel.Channel.identify(channel, "T1", member)
+  end
+
   describe "members your app doesn't know" do
     setup context do
       Rooms.joined(context.workspace, "C1")

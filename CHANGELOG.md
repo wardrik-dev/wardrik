@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `WardrikChannel.Member` and `WardrikChannel.Identities.Request` carry the member's `email`, if
+  the chat app gave one.
+
 ## 0.1.0-rc.3 (2026-11-04)
 
 - An adapter's `deliver/2` may return `{:skip, why}` to decline a post, such as a notice for a

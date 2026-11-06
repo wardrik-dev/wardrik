@@ -138,7 +138,8 @@ defmodule WardrikChannel.Channel do
       channel: name,
       workspace: workspace,
       member: member.id,
-      name: member.name
+      name: member.name,
+      email: member.email
     }
 
     case module.identify(request, config) do
