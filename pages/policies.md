@@ -8,7 +8,7 @@ why. Rules are configured outside the prompt. Model input cannot change them.
 ## Setup
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.7"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.8"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do
