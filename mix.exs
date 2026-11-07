@@ -4,7 +4,7 @@ defmodule WardrikChannel.MixProject do
   def project do
     [
       app: :wardrik_channel,
-      version: "0.1.0-rc.4",
+      version: "0.1.0-rc.5",
       elixir: "~> 1.20",
       description:
         "Chat apps people reach Wardrik's agents through, such as Slack: rooms, threads, replies and approvals.",
@@ -59,13 +59,13 @@ defmodule WardrikChannel.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_protocol, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_events, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_protocol, "~> 0.1.0-rc.5"),
+      sibling(:wardrik_events, "~> 0.1.0-rc.6"),
       sibling(:wardrik_vault, "~> 0.1.0-rc.2"),
       sibling(:wardrik_store, "~> 0.1.0-rc.1"),
       {:durable_server, "~> 0.1.6"},
       {:nimble_options, "~> 1.1"},
-      sibling(:wardrik_testing, "~> 0.1.0-rc.2", only: :test),
+      sibling(:wardrik_testing, "~> 0.1.0-rc.3", only: :test),
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},

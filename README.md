@@ -11,7 +11,7 @@ Add an adapter, such as [WardrikSlack](https://hexdocs.pm/wardrik_slack). It bri
 {:wardrik_slack, "~> 0.1.0-rc.4"}
 ```
 
-To write your own adapter, depend on `{:wardrik_channel, "~> 0.1.0-rc.4"}`. See `WardrikChannel`.
+To write your own adapter, depend on `{:wardrik_channel, "~> 0.1.0-rc.5"}`. See `WardrikChannel`.
 
 ## Set up
 

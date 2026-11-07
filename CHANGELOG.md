@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.5 (2026-11-06)
 
+- Requires `wardrik_protocol` 0.1.0-rc.5 and `wardrik_events` 0.1.0-rc.6.
 - A waiting call's arguments come from its interrupt. Replies no longer keep each call's arguments.
 
 ## 0.1.0-rc.4 (2026-11-06)
