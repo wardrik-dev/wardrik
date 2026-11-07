@@ -122,7 +122,7 @@ export async function answer(customer: { id: string; agentId?: string }, text: s
 ```sh
 systemctl --user restart wardrik
 wardrik token create shop-app --subject user:shop/@app     # your app's WARDRIK_TOKEN
-npm install @wardrik/sdk@0.1.0-rc.4 zod
+npm install @wardrik/sdk@0.1.0-rc.5 zod
 ```
 
 Run your app and ask a customer's agent for a $20 refund. It runs. Ask for $200, and the call is
