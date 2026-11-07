@@ -110,6 +110,39 @@ Each permission request from the coding agent runs through the agent's middlewar
 WardrikCore.resume(agent, %{"call_123" => :approve}, %{by: "user:maria"})
 ```
 
+## Run without asking
+
+A coding agent can work with no person in the loop, in one of two ways.
+
+**The policy decides each request.** Claude Code still asks, and no request parks:
+
+```elixir
+WardrikPolicy.new!(
+  allow: ["claude/*"],
+  deny: ["claude/delete", "claude/execute(command = git push*)"]
+)
+```
+
+- Deny rules still refuse, and each decision is a `[:wardrik_policy, :decision]` event.
+- After a `fetch`, gated requests ask again. List in `allow_after: %{"outside" => [...]}` the ones
+  that may still run.
+- The work stays on its branch until you merge it.
+
+**The coding agent decides each request.** Set its own mode:
+
+```elixir
+claude_open: [
+  command: "claude-agent-acp",
+  meta: %{"claudeCode" => %{"options" => %{"settingSources" => []}}},
+  options: %{"mode" => "bypassPermissions"}
+]
+```
+
+- Claude Code sends no requests, so no middleware sees its commands. The worktree, the branch,
+  `timeout` and cost are its only limits.
+- `"acceptEdits"` allows edits and still asks before commands.
+- Claude Code refuses `bypassPermissions` as root outside a sandbox.
+
 ## Parked, stopped and restarted
 
 | Event | What the next call does |

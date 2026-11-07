@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- README: run a coding agent without asking, by policy or by its own mode.
+
 ## 0.1.0-rc.1 (2026-11-06)
 
 - `WardrikACP`, which runs coding agents over ACP, and gives an agent each one as a WardrikCore
