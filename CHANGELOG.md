@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.5 (2026-11-06)
 
 - `interrupt.arguments` holds the arguments of the call a person decides on. `name` names that call's tool, which for a coding agent's request differs from the call that parked.
 
