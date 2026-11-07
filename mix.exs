@@ -4,7 +4,7 @@ defmodule Wardrik.MixProject do
   def project do
     [
       app: :wardrik,
-      version: "0.1.0-rc.7",
+      version: "0.1.0-rc.8",
       elixir: "~> 1.20",
       description:
         "Agents, governed: rules the model can't rewrite, approvals, budgets, and a record of what they did.",
@@ -97,16 +97,16 @@ defmodule Wardrik.MixProject do
     [
       sibling(:wardrik_core, "~> 0.1.0-rc.4"),
       sibling(:wardrik_store, "~> 0.1.0-rc.3"),
-      sibling(:wardrik_protocol, "~> 0.1.0-rc.4"),
-      sibling(:wardrik_events, "~> 0.1.0-rc.3"),
-      sibling(:wardrik_policy, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_protocol, "~> 0.1.0-rc.5"),
+      sibling(:wardrik_events, "~> 0.1.0-rc.6"),
+      sibling(:wardrik_policy, "~> 0.1.0-rc.3"),
       sibling(:wardrik_vault, "~> 0.1.0-rc.2"),
       sibling(:wardrik_oauth, "~> 0.1.0-rc.2"),
       sibling(:wardrik_mcp, "~> 0.1.0-rc.2"),
       sibling(:wardrik_triggers, "~> 0.1.0-rc.4"),
       sibling(:wardrik_workspace, "~> 0.1.0-rc.2"),
       sibling(:wardrik_http, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_channel, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_channel, "~> 0.1.0-rc.5"),
       sibling(:wardrik_slack, "~> 0.1.0-rc.2", only: :test),
       {:durable_server, "~> 0.1.6"},
       {:req, "~> 0.7"},
