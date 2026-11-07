@@ -8,7 +8,7 @@ A `Wardrik.Server` for testing packages built on
 ```elixir
 def deps do
   [
-    {:wardrik_testing, "~> 0.1.0-rc.2", only: :test}
+    {:wardrik_testing, "~> 0.1.0-rc.3", only: :test}
   ]
 end
 ```

@@ -4,7 +4,7 @@ defmodule WardrikTesting.MixProject do
   def project do
     [
       app: :wardrik_testing,
-      version: "0.1.0-rc.2",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description:
         "What a package built on Wardrik's protocol tests with: a server that runs Wardrik's operations as a script.",
@@ -58,8 +58,8 @@ defmodule WardrikTesting.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_protocol, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_events, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_protocol, "~> 0.1.0-rc.5"),
+      sibling(:wardrik_events, "~> 0.1.0-rc.6"),
       sibling(:wardrik_store, "~> 0.1.0-rc.1"),
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

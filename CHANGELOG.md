@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.3 (2026-11-06)
 
+- Requires `wardrik_protocol` 0.1.0-rc.5 and `wardrik_events` 0.1.0-rc.6.
 - The scripted `echo` interrupt carries its `arguments`.
 
 ## 0.1.0-rc.2 (2026-11-02)
