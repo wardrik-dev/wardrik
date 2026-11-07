@@ -124,6 +124,44 @@ A sweep runs each day. It removes each worktree whose work is in its checkout's 
 branch with it. Merged, squashed and cherry-picked work all count. Work with changes or untracked
 files stays.
 
+## Run without asking
+
+A coding agent can work with no person in the loop, in one of two ways.
+
+**Wardrik decides each request.** Claude Code still asks, and the policy answers:
+
+```yaml title="~/.config/wardrik/policies/autonomous.yaml"
+allow: [claude/*]
+deny: [claude/delete, "claude/execute(command = git push*)"]
+```
+
+```markdown title="~/.config/wardrik/agents/builder.md"
+---
+tools: [claude]
+policy: autonomous
+---
+```
+
+- No request asks a person. Deny rules still refuse, and every decision is in the agent's events.
+- After Claude Code fetches a web page, gated requests ask again. List under `allow_after.outside`
+  the ones that may still run. See [Outside content](/concepts/outside-content/).
+- The work stays on its branch until you merge it.
+
+**The coding agent decides each request.** Set its own mode:
+
+```yaml title="~/.config/wardrik/config.yaml"
+harnesses:
+  claude-open:
+    command: claude-agent-acp
+    meta: {claudeCode: {options: {settingSources: []}}}
+    options: {mode: bypassPermissions}
+```
+
+- Claude Code sends no requests, so no policy sees its commands. The worktree, the branch, the
+  timeout and the cost are its only limits.
+- `acceptEdits` allows edits and still asks before commands.
+- Claude Code refuses `bypassPermissions` as root outside a sandbox.
+
 ## Start work from a remote branch
 
 ```yaml
