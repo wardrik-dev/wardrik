@@ -30,7 +30,7 @@ await wardrik.work();
 
 - Add `workers/*` to the agent’s tools and grant the tool worker’s token permission to `serve` tools.
 - The agent's policy checks each call first. A refund needs approval unless the policy allows it.
-- Requires Node 22.18+, Bun or Deno: `npm install @wardrik/sdk@0.1.0-rc.4 zod`.
+- Requires Node 22.18+, Bun or Deno: `npm install @wardrik/sdk@0.1.0-rc.5 zod`.
 
 ## In this section
 

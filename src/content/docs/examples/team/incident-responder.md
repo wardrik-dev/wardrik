@@ -127,7 +127,7 @@ Run the status page app with its own token:
 
 ```sh
 wardrik token create statuspage --subject user:acme/@statuspage
-npm install @wardrik/sdk@0.1.0-rc.4 zod
+npm install @wardrik/sdk@0.1.0-rc.5 zod
 WARDRIK_URL=https://agents.acme.example WARDRIK_TOKEN=... node statuspage.ts
 ```
 

@@ -110,7 +110,7 @@ no tools yet as `missing`.
 - The model sees each tool as `server__tool`, such as `linear__search_issues`.
 - A command inherits the daemon's environment, plus its `env`. The systemd service has a minimal
   `PATH`, so use the program's full path.
-- In Docker, the program must be in the image. Build `FROM ghcr.io/wardrik-dev/wardrik:0.1.0-rc.8`.
+- In Docker, the program must be in the image. Build `FROM ghcr.io/wardrik-dev/wardrik:0.1.0-rc.9`.
 - `prefix`, `timeout`, `max_result_bytes` and `cost` are in [`config.yaml` › mcp](/reference/config/#mcp).
 - Tools from an unavailable server cannot be called. The daemon reconnects with backoff up to a minute.
 - A server added at runtime must be `https` at a public address, unless `allow_private_urls: true`.
