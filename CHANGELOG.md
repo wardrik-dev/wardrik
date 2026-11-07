@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.9 (2026-11-06)
 
+- Requires `wardrik` 0.1.0-rc.8 and `wardrik_acp` 0.1.0-rc.1.
 - `harnesses` in `config.yaml` names coding agents that speak ACP, such as Claude Code. Each is a
   tool of the same name, so an agent file lists `tools: [claude]`. See `WardrikACP`.
 - `checkouts` names the git repositories they work in, as a path or `{path, base, fetch}`. New
