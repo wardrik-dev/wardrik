@@ -43,6 +43,11 @@ defmodule WardrikWeb.Form do
       when map_size(properties) > 0,
       do: :object
 
+  # An object that may hold nothing, as {"none": {}} says "no credential": there's nothing to fill in.
+  def kind(%{"type" => "object", "additionalProperties" => false} = schema, _name)
+      when not is_map_key(schema, "properties"),
+      do: :empty
+
   def kind(%{"oneOf" => [_ | _]}, _name), do: :union
   def kind(%{"anyOf" => [_ | _]}, _name), do: :union
   def kind(%{"const" => _const}, _name), do: :const
@@ -129,9 +134,11 @@ defmodule WardrikWeb.Form do
   @spec read(map(), term()) :: {:ok, term()} | :none | {:error, String.t()}
   def read(schema, params), do: read(kind(schema), schema, params, [])
 
-  defp read(:object, %{"properties" => properties}, params, path) when is_map(params) do
+  defp read(:object, %{"properties" => properties} = object, params, path) when is_map(params) do
+    required = Map.get(object, "required", [])
+
     Enum.reduce_while(properties, {:ok, %{}}, fn {name, schema}, {:ok, map} ->
-      case read(kind(schema, name), schema, params[name], path ++ [name]) do
+      case read(kind(schema, name), schema, params[name], path ++ [name], name in required) do
         {:ok, value} -> {:cont, {:ok, Map.put(map, name, value)}}
         :none -> {:cont, {:ok, map}}
         {:error, _why} = error -> {:halt, error}
@@ -139,6 +146,9 @@ defmodule WardrikWeb.Form do
     end)
     |> none_if_empty()
   end
+
+  defp read(:empty, _schema, _params, _path, true), do: {:ok, %{}}
+  defp read(kind, schema, params, path, _required), do: read(kind, schema, params, path)
 
   defp read(:list, %{"items" => item}, params, path) when is_map(params) do
     params
@@ -172,6 +182,9 @@ defmodule WardrikWeb.Form do
       :error -> {:error, "#{Enum.join(path, ".")} doesn't read as #{describe(kind)}."}
     end
   end
+
+  defp read(:object, %{"properties" => _properties} = object, nil, path),
+    do: if(object["required"], do: read(:object, object, %{}, path), else: :none)
 
   defp read(_kind, _schema, _params, _path), do: :none
 
@@ -414,6 +427,8 @@ defmodule WardrikWeb.Form do
     """
   end
 
+  defp render_field(%{kind: :empty} = assigns), do: ~H""
+
   defp render_field(assigns) do
     ~H"""
     <div class="field">
@@ -502,6 +517,7 @@ defmodule WardrikWeb.Form do
   defp name(path), do: "input" <> Enum.map_join(path, &("[" <> &1 <> "]"))
 
   defp shape(%{"title" => title}), do: title
+  defp shape(%{"type" => "object", "required" => [only]}), do: only
   defp shape(%{"const" => const}), do: inspect(const)
 
   defp shape(schema) do
