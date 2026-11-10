@@ -127,14 +127,14 @@ code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
 .crumb a:hover { color: var(--accent); }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .stat { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; background: var(--bg-raised); }
 .stat b { display: block; font-size: 22px; color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
 .stat b { line-height: 1.25; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stat span { color: var(--muted); font-size: 12px; }
 .bad { color: var(--bad); }
 
-.card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-raised); margin-bottom: 16px; }
+.card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-raised); margin-bottom: 16px; overflow-x: auto; }
 .card > h2, .card > header { font-size: 13px; font-weight: 600; margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--ink); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .card > .body { padding: 14px; }
 .empty { color: var(--muted); padding: 28px 14px; text-align: center; }
@@ -142,7 +142,9 @@ code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
 table.list { width: 100%; border-collapse: collapse; }
 table.list th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted); padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--bg-sunk); white-space: nowrap; }
 table.list td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; font-variant-numeric: tabular-nums; }
-table.list td code { font-size: 12px; color: var(--muted); }
+table.list td code { font-size: 12px; color: var(--muted); white-space: nowrap; }
+table.list td .sub { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub.bad, .bad { color: var(--bad); }
 table.list td.when { white-space: nowrap; }
 table.list tr:last-child td { border-bottom: 0; }
 table.list tbody tr:hover td { background: var(--bg-sunk); }
@@ -212,12 +214,22 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .tabs a { padding: 8px 12px 9px; text-decoration: none; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .tabs a:hover { color: var(--ink); }
 .tabs a.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 500; }
+.tabs a:focus-visible { outline: none; color: var(--ink); background: var(--bg-sunk); border-radius: 6px 6px 0 0; }
 .tabs a { margin-bottom: 0; }
 
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
+@media (max-width: 1280px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .layout > aside { order: -1; }
+  .layout > aside .facts { grid-template-columns: repeat(3, max-content minmax(0, 1fr)); column-gap: 16px; }
+}
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; margin: 0; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; word-break: break-word; }
+.layout > aside > .card:last-child { margin-bottom: 0; }
+.doing { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.doing .label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.doing ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 
 pre.json { background: var(--code-bg); color: var(--code-text); padding: 12px 14px; border-radius: 6px; overflow: auto; max-height: 480px; margin: 0; white-space: pre-wrap; word-break: break-word; }
 details > summary { cursor: pointer; color: var(--muted); font-size: 12px; }
@@ -275,5 +287,6 @@ details[open] > summary { margin-bottom: 6px; }
   .wordmark { padding: 4px 10px 4px 0; width: 100%; }
   .main { padding: 20px 16px 48px; }
   .layout { grid-template-columns: minmax(0, 1fr); }
+  .layout > aside .facts { grid-template-columns: max-content minmax(0, 1fr); }
   table.list .wide { display: none; }
 }

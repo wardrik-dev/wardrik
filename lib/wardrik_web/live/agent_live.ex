@@ -217,10 +217,7 @@ defmodule WardrikWeb.AgentLive do
               <dt>Spent today</dt><dd>{usd(get_in(@read, ["spent_today", "usd"]))}</dd>
               <dt>Tokens today</dt><dd>{number(get_in(@read, ["spent_today", "tokens"]) || 0)}</dd>
             </dl>
-            <details :if={@read["activity"]} style="margin-top: 12px">
-              <summary>Activity</summary>
-              <.json value={@read["activity"]} />
-            </details>
+            <.doing :if={@read["activity"]} activity={@read["activity"]} />
           </div>
         </div>
         <.panels
@@ -233,6 +230,60 @@ defmodule WardrikWeb.AgentLive do
     </div>
     """
   end
+
+  attr :activity, :map, required: true
+
+  defp doing(assigns) do
+    ~H"""
+    <div class="doing">
+      <div class="label">Doing</div>
+      <ul>
+        <li :if={(@activity["doing"] || []) == []} class="sub">
+          Nothing since {ago(@activity["since"])}
+        </li>
+        <li :for={item <- @activity["doing"] || []} title={item["type"]}>
+          {doing_text(item)}
+          <span :if={item["since"] || @activity["since"]} class="sub">
+            · {ago(item["since"] || @activity["since"])}
+          </span>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  defp doing_text(%{"type" => "wardrik.run.interrupted"} = item) do
+    case length(item["interrupts"] || []) do
+      1 -> "Waiting on a person for one call"
+      n -> "Waiting on a person for #{n} calls"
+    end
+  end
+
+  defp doing_text(%{"type" => "wardrik.message.retrying"} = item),
+    do: "Retrying the model#{attempt(item)}"
+
+  defp doing_text(%{"type" => "wardrik.tool_call.retrying", "tool" => %{"name" => name}} = item),
+    do: "Retrying #{name}#{attempt(item)}"
+
+  defp doing_text(%{"type" => "wardrik.tool_call.started", "tool" => %{"name" => name}}),
+    do: "Calling #{name}"
+
+  defp doing_text(%{"type" => "wardrik.tool_call.completed", "tool" => %{"name" => name}}),
+    do: "Finished #{name}"
+
+  defp doing_text(%{"type" => "wardrik.tool_call.denied", "tool" => %{"name" => name}}),
+    do: "Denied #{name}"
+
+  defp doing_text(%{"type" => "wardrik.step.started", "step" => %{"name" => name}}),
+    do: "Running step #{name}"
+
+  defp doing_text(%{"type" => "wardrik.message.started"}), do: "Writing a reply"
+  defp doing_text(%{"type" => "wardrik.run.resumed"}), do: "Resuming its run"
+  defp doing_text(%{"type" => "wardrik.run.started"}), do: "Starting a run"
+  defp doing_text(%{"type" => type}), do: String.replace_prefix(type, "wardrik.", "")
+
+  defp attempt(%{"attempt" => attempt, "attempts" => attempts}), do: ", try #{attempt} of #{attempts}"
+  defp attempt(_item), do: ""
 
   attr :items, :list, required: true
   attr :drafts, :map, required: true
