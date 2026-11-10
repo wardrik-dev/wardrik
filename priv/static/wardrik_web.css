@@ -372,3 +372,9 @@ textarea.prose { font-family: var(--font); font-size: 14px; min-height: 96px; }
 .facts.definition dd.prose { white-space: pre-wrap; }
 .move { display: flex; gap: 8px; margin-top: 14px; }
 .move select { flex: 1; }
+
+details.inbound { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 16px; }
+details.inbound > summary { display: flex; flex-direction: column; gap: 2px; list-style: none; cursor: pointer; }
+details.inbound > summary b { color: var(--ink); }
+details.inbound > summary b::before { content: "▸ "; color: var(--faint); }
+details.inbound[open] > summary b::before { content: "▾ "; }

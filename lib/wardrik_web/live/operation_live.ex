@@ -94,6 +94,11 @@ defmodule WardrikWeb.OperationLive do
       </:actions>
     </.head>
 
+    <div :if={WardrikWeb.Operations.inbound?(@operation)} class="flash info" role="note">
+      Other systems call this one: webhooks and chat apps deliver their requests through it. Running it
+      by hand sends a request as if one had arrived.
+    </div>
+
     <div class="layout">
       <div>
         <div class="card">

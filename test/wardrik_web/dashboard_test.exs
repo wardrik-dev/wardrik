@@ -96,6 +96,19 @@ defmodule WardrikWeb.DashboardTest do
             }} in Server.asked()
   end
 
+  test "keeps operations other systems call apart, and finds operations", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/ops/operations")
+    assert html =~ "Called by other systems"
+    assert html =~ "hook.deliver"
+
+    html = view |> form("#operations-filter", %{"query" => "trigger"}) |> render_change()
+    assert html =~ "agent.trigger_set"
+    refute html =~ "agents.list"
+
+    {:ok, _view, html} = live(conn, "/ops/operations/hook.deliver")
+    assert html =~ "Other systems call this one"
+  end
+
   test "serves its assets", %{conn: conn} do
     {js, css} = WardrikWeb.Assets.names()
     assert conn |> get("/ops/assets/" <> js) |> response(200) =~ "LiveSocket"
