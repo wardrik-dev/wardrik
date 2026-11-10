@@ -494,7 +494,7 @@ defmodule WardrikWeb.Form do
   defp input(%{kind: kind} = assigns) when kind in [:long, :lines, :json] do
     assigns =
       assign(assigns,
-        placeholder: %{lines: "One a line", json: "JSON", long: nil}[kind],
+        placeholder: %{lines: "One per line", json: "JSON", long: nil}[kind],
         class: if(kind == :long, do: "prose")
       )
 
