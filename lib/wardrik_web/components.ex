@@ -84,6 +84,7 @@ defmodule WardrikWeb.Components do
   @doc "A cost in dollars."
   @spec usd(number() | nil) :: String.t()
   def usd(nil), do: "—"
+  def usd(dollars) when dollars == 0, do: "$0"
 
   def usd(dollars) when dollars < 0.01,
     do: "$" <> :erlang.float_to_binary(dollars / 1, decimals: 4)

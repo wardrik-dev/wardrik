@@ -95,7 +95,7 @@ defmodule WardrikWeb.AgentsLive do
     </form>
 
     <div class="card">
-      <table class="list">
+      <table class="list stack">
         <thead>
           <tr>
             <th>Agent</th>
@@ -108,15 +108,15 @@ defmodule WardrikWeb.AgentsLive do
         </thead>
         <tbody>
           <tr :for={agent <- @shown}>
-            <td>
+            <td class="lead">
               <.link navigate={link_to(@dashboard, agent)}>{agent["id"]}</.link>
               <div :if={agent["conversation"]} class="sub">{agent["conversation"]}</div>
             </td>
-            <td><.status value={agent["status"]} /></td>
-            <td class="num">{agent["pending"]}</td>
-            <td class="num">{usd(agent["spent_today"]["usd"])}</td>
-            <td class="wide sub">{ago(agent["next_run"])}</td>
-            <td class="wide sub mono">{agent["node"] || "—"}</td>
+            <td data-label="Status"><.status value={agent["status"]} /></td>
+            <td class="num" data-label="Waiting">{agent["pending"]}</td>
+            <td class="num" data-label="Spent today">{usd(agent["spent_today"]["usd"])}</td>
+            <td class="wide sub" data-label="Next run">{ago(agent["next_run"])}</td>
+            <td class="wide sub mono" data-label="Node">{agent["node"] || "—"}</td>
           </tr>
         </tbody>
       </table>

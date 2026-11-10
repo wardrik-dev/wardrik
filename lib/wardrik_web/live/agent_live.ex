@@ -282,7 +282,9 @@ defmodule WardrikWeb.AgentLive do
   defp doing_text(%{"type" => "wardrik.run.started"}), do: "Starting a run"
   defp doing_text(%{"type" => type}), do: String.replace_prefix(type, "wardrik.", "")
 
-  defp attempt(%{"attempt" => attempt, "attempts" => attempts}), do: ", try #{attempt} of #{attempts}"
+  defp attempt(%{"attempt" => attempt, "attempts" => attempts}),
+    do: ", try #{attempt} of #{attempts}"
+
   defp attempt(_item), do: ""
 
   attr :items, :list, required: true
@@ -417,38 +419,50 @@ defmodule WardrikWeb.AgentLive do
       </div>
     </div>
     <div class="card">
-      <table class="list">
+      <table class="list stack">
         <thead>
           <tr>
             <th>Started</th>
             <th>Status</th>
-            <th class="wide">Model</th>
             <th class="num">Tool calls</th>
-            <th class="num">Tokens in</th>
-            <th class="num">Tokens out</th>
+            <th class="num">Tokens</th>
             <th class="num">Cost</th>
             <th class="num">Took</th>
           </tr>
         </thead>
         <tbody>
           <tr :for={run <- @runs}>
-            <td class="when" title={run["started_at"]}>
-              {ago(run["started_at"])}
-              <div :if={run["source"]} class="sub">from {run["source"]}</div>
+            <td class="lead" title={run["started_at"]}>
+              <span class="when">{ago(run["started_at"])}</span>
+              <div class="sub">
+                <code :if={run["model"]}>{run["model"]}</code>
+                <span :if={run["source"]}> · from {run["source"]}</span>
+              </div>
             </td>
-            <td>
+            <td data-label="Status">
               <.status value={run["status"]} />
               <div :if={run["error"]} class="sub bad">{run["error"]}</div>
             </td>
-            <td class="wide"><code>{run["model"] || "—"}</code></td>
-            <td class="num">
+            <td class="num" data-label="Tool calls">
               {number(run["tool_calls"])}
               <div :if={run["tool_errors"] > 0} class="sub bad">{run["tool_errors"]} failed</div>
             </td>
-            <td class="num">{number(run["input_tokens"])}</td>
-            <td class="num">{number(run["output_tokens"])}</td>
-            <td class="num">{micro_usd(run["cost_micro_usd"])}</td>
-            <td class="num" title={run["duration_ms"] && "#{number(run["duration_ms"])} ms"}>
+            <td
+              class="num"
+              data-label="Tokens"
+              title={"#{number(run["input_tokens"])} in, #{number(run["output_tokens"])} out"}
+            >
+              {tokens(run["input_tokens"] + run["output_tokens"])}
+              <div class="sub">
+                {tokens(run["input_tokens"])} in · {tokens(run["output_tokens"])} out
+              </div>
+            </td>
+            <td class="num" data-label="Cost">{micro_usd(run["cost_micro_usd"])}</td>
+            <td
+              class="num"
+              data-label="Took"
+              title={run["duration_ms"] && "#{number(run["duration_ms"])} ms"}
+            >
               {took(run["duration_ms"])}
             </td>
           </tr>
