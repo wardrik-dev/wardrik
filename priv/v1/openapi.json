@@ -1090,6 +1090,48 @@
         }
       }
     },
+    "/v1/agents/{agent}/runtime": {
+      "get": {
+        "operationId": "agent.runtime",
+        "summary": "Read an agent's resource use",
+        "description": "Returns the memory, mailbox size and work of a running agent's processes. Returns not_found while the agent is asleep.",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-action": "agent.read",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/agent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The agent's resource use.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:agent_runtime"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent}/calls/{call}": {
       "delete": {
         "operationId": "agent.kill",
@@ -1380,6 +1422,56 @@
               "application/json": {
                 "schema": {
                   "$ref": "urn:wardrik:schema:v1:nodes"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/deployment/runtime": {
+      "get": {
+        "operationId": "deployment.runtime",
+        "summary": "Read resource use",
+        "description": "Returns memory, CPU and process figures for each node, and the running agents that use the most memory. Measuring scheduler use takes 250 ms.",
+        "tags": [
+          "Deployment"
+        ],
+        "x-wardrik-action": "deployment.runtime",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "deployment",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The number of agents to return. Defaults to 20.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 500
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resource use for each node, and the agents that use the most memory.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:runtime"
                 }
               }
             }

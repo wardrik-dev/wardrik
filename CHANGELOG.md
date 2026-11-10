@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `deployment.runtime` returns resource use for each node: memory by type, processes, ports,
+  atoms and ETS tables against their limits, scheduler use, run queue, reductions, garbage
+  collection, I/O, versions and, with os_mon, CPU load, memory and disks. It also returns the
+  running agents that use the most memory.
+- `agent.runtime` returns a running agent's memory, mailbox size, process count and reductions.
+
 ## 0.1.0-rc.5 (2026-11-06)
 
 - `interrupt.arguments` holds the arguments of the call a person decides on. `name` names that call's tool, which for a coding agent's request differs from the call that parked.

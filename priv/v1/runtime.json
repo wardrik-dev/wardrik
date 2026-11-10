@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:runtime",
+  "title": "Runtime",
+  "description": "What deployment.runtime returns: resource use for each node, and the running agents that use the most memory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "nodes",
+    "agents"
+  ],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "description": "Each node in the cluster.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "agents",
+          "uptime_ms",
+          "otp_release",
+          "erts_version",
+          "elixir_version",
+          "schedulers",
+          "schedulers_online",
+          "scheduler_utilization",
+          "run_queue",
+          "memory",
+          "processes",
+          "ports",
+          "atoms",
+          "ets_tables",
+          "reductions",
+          "garbage_collections",
+          "io"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The node's name."
+          },
+          "agents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of agents running on the node."
+          },
+          "uptime_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How long the node has been running, in milliseconds."
+          },
+          "otp_release": {
+            "type": "string",
+            "description": "The Erlang/OTP release, for example 28."
+          },
+          "erts_version": {
+            "type": "string",
+            "description": "The version of the Erlang runtime system."
+          },
+          "elixir_version": {
+            "type": "string",
+            "description": "The Elixir version."
+          },
+          "architecture": {
+            "type": "string",
+            "description": "The CPU architecture and operating system the runtime was built for."
+          },
+          "logical_processors": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The number of CPU cores the operating system reports."
+          },
+          "schedulers": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The number of scheduler threads. Each one runs BEAM processes on one core."
+          },
+          "schedulers_online": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The number of scheduler threads in use."
+          },
+          "dirty_cpu_schedulers": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of scheduler threads for long-running native code."
+          },
+          "dirty_io_schedulers": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of scheduler threads for blocking I/O in native code."
+          },
+          "scheduler_utilization": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "How busy the schedulers were, from 0 to 1, measured over 250 ms. A value near 1 means the node is short of CPU."
+          },
+          "run_queue": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of processes waiting for a scheduler. A number that stays high means the node is short of CPU."
+          },
+          "memory": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The node's memory use in bytes, by type.",
+            "required": [
+              "total",
+              "processes",
+              "system",
+              "atom",
+              "binary",
+              "code",
+              "ets"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "All memory the BEAM has allocated."
+              },
+              "processes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Memory allocated for processes, including agents."
+              },
+              "processes_used": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The part of processes that is in use."
+              },
+              "system": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Memory not allocated for processes: binaries, code, ETS and the runtime itself."
+              },
+              "atom": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Memory allocated for atoms."
+              },
+              "atom_used": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The part of atom that is in use."
+              },
+              "binary": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Memory used by shared binaries."
+              },
+              "code": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Memory used by loaded code."
+              },
+              "ets": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Memory used by ETS tables."
+              }
+            }
+          },
+          "processes": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "count",
+              "limit"
+            ],
+            "description": "The number of processes and the most the node allows.",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The number of processes."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The most processes the node allows."
+              }
+            }
+          },
+          "ports": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "count",
+              "limit"
+            ],
+            "description": "The number of ports, such as open files and sockets and the most the node allows.",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The number of ports, such as open files and sockets."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The most ports, such as open files and sockets the node allows."
+              }
+            }
+          },
+          "atoms": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "count",
+              "limit"
+            ],
+            "description": "The number of atoms and the most the node allows.",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The number of atoms."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The most atoms the node allows."
+              }
+            }
+          },
+          "ets_tables": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "count",
+              "limit"
+            ],
+            "description": "The number of ETS tables and the most the node allows.",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The number of ETS tables."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The most ETS tables the node allows."
+              }
+            }
+          },
+          "reductions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The work the node has done since it started, in BEAM reductions."
+          },
+          "garbage_collections": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "count",
+              "words_reclaimed"
+            ],
+            "description": "Garbage collection since the node started.",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The number of garbage collections."
+              },
+              "words_reclaimed": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The memory reclaimed, in machine words."
+              }
+            }
+          },
+          "io": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "input_bytes",
+              "output_bytes"
+            ],
+            "description": "Bytes read and written through ports, such as sockets and files, since the node started.",
+            "properties": {
+              "input_bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Bytes read."
+              },
+              "output_bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Bytes written."
+              }
+            }
+          },
+          "context_switches": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of times schedulers switched between processes since the node started."
+          },
+          "connected_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The other nodes this node is connected to."
+          },
+          "os": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Operating system figures. Present only when the os_mon application runs on the node.",
+            "properties": {
+              "load_1": {
+                "type": "number",
+                "minimum": 0,
+                "description": "The average number of processes waiting to run over the last minute, as the uptime command shows it."
+              },
+              "load_5": {
+                "type": "number",
+                "minimum": 0,
+                "description": "The same average over the last 5 minutes."
+              },
+              "load_15": {
+                "type": "number",
+                "minimum": 0,
+                "description": "The same average over the last 15 minutes."
+              },
+              "memory_total_bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The machine's total memory."
+              },
+              "memory_available_bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The memory available to start new programs."
+              },
+              "disks": {
+                "type": "array",
+                "description": "Each mounted disk.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "path",
+                    "total_bytes",
+                    "used_percent"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Where the disk is mounted."
+                    },
+                    "total_bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "The disk's size."
+                    },
+                    "used_percent": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100,
+                      "description": "How full the disk is, in percent."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "description": "The running agents, sorted by memory use, largest first.",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:agent_runtime"
+      }
+    }
+  },
+  "examples": [
+    {
+      "nodes": [
+        {
+          "name": "wardrik@box1",
+          "agents": 12,
+          "uptime_ms": 86400000,
+          "otp_release": "28",
+          "erts_version": "16.1.2",
+          "elixir_version": "1.20.2",
+          "architecture": "x86_64-pc-linux-gnu",
+          "logical_processors": 8,
+          "schedulers": 8,
+          "schedulers_online": 8,
+          "dirty_cpu_schedulers": 8,
+          "dirty_io_schedulers": 10,
+          "scheduler_utilization": 0.12,
+          "run_queue": 0,
+          "memory": {
+            "total": 98566144,
+            "processes": 31457280,
+            "processes_used": 31195136,
+            "system": 67108864,
+            "atom": 1056768,
+            "atom_used": 1040384,
+            "binary": 4194304,
+            "code": 25165824,
+            "ets": 5242880
+          },
+          "processes": {
+            "count": 1203,
+            "limit": 1048576
+          },
+          "ports": {
+            "count": 42,
+            "limit": 65536
+          },
+          "atoms": {
+            "count": 61000,
+            "limit": 1048576
+          },
+          "ets_tables": {
+            "count": 180,
+            "limit": 8192
+          },
+          "reductions": 912000000,
+          "garbage_collections": {
+            "count": 420000,
+            "words_reclaimed": 2100000000
+          },
+          "io": {
+            "input_bytes": 52428800,
+            "output_bytes": 31457280
+          },
+          "context_switches": 31000000,
+          "connected_nodes": [
+            "wardrik@box2"
+          ],
+          "os": {
+            "load_1": 0.42,
+            "load_5": 0.38,
+            "load_15": 0.3,
+            "memory_total_bytes": 16777216000,
+            "memory_available_bytes": 9663676416,
+            "disks": [
+              {
+                "path": "/",
+                "total_bytes": 256000000000,
+                "used_percent": 41
+              }
+            ]
+          }
+        }
+      ],
+      "agents": [
+        {
+          "agent": "triage",
+          "node": "wardrik@box1",
+          "memory_bytes": 1843200,
+          "binary_bytes": 524288,
+          "processes": 3,
+          "message_queue": 0,
+          "reductions": 4810233
+        }
+      ]
+    }
+  ]
+}

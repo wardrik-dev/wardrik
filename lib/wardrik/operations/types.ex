@@ -2,6 +2,7 @@ defmodule Wardrik.Operations.Types do
   @moduledoc false
 
   alias Wardrik.Agent
+  alias Wardrik.AgentRuntime
   alias Wardrik.Authorization
   alias Wardrik.Call
   alias Wardrik.ChannelResponse
@@ -14,6 +15,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Nodes
   alias Wardrik.Page
   alias Wardrik.Runs
+  alias Wardrik.Runtime
   alias Wardrik.Timeline
   alias Wardrik.Trigger
   alias Wardrik.Type
@@ -30,7 +32,9 @@ defmodule Wardrik.Operations.Types do
     "agent.timeline" => Timeline,
     "agent.runs" => Runs,
     "agents.forget" => Forgotten,
-    "deployment.nodes" => Nodes
+    "deployment.nodes" => Nodes,
+    "deployment.runtime" => Runtime,
+    "agent.runtime" => AgentRuntime
   }
 
   @lists %{
