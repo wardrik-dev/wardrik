@@ -251,6 +251,21 @@ defmodule WardrikCore do
   end
 
   @doc """
+  Returns the process of each running agent, by key. It covers every node in the cluster.
+
+      WardrikCore.running()
+      #=> %{{"support", nil} => #PID<0.312.0>, {"support", "C1"} => #PID<12345.401.0>}
+  """
+  @spec running(atom()) :: %{key() => pid()}
+  def running(instance \\ __MODULE__) do
+    instance
+    |> agents()
+    |> DurableServer.Supervisor.global_members()
+    |> Enum.flat_map(fn {durable, {pid, _meta}} -> Enum.map(key(durable), &{&1, pid}) end)
+    |> Map.new()
+  end
+
+  @doc """
   Restarts the agent on the node `:to`, ending its turn.
 
       WardrikCore.move("triage", to: "wardrik@10.0.0.2")

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `WardrikCore.running/1` returns the process of each running agent, by key, across the cluster.
+
 ## 0.1.0-rc.4 (2026-11-04)
 
 - A failed model call with `Retry-After` in seconds is retried after that delay, up to

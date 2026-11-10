@@ -269,13 +269,14 @@ defmodule WardrikCore.AgentTest do
     end
   end
 
-  describe "nodes/1, placements/1 and move/3" do
+  describe "nodes/1, placements/1, running/1 and move/3" do
     test "say where each agent runs, and start one again where it's told" do
       here = to_string(node())
       {id, agent} = start_agent()
 
       assert here in WardrikCore.nodes()
       assert %{{^id, nil} => ^here} = WardrikCore.placements()
+      assert %{{^id, nil} => ^agent} = WardrikCore.running()
 
       assert {:ok, moved} = WardrikCore.move(id, to: here)
       refute moved == agent
@@ -286,6 +287,7 @@ defmodule WardrikCore.AgentTest do
 
       :ok = WardrikCore.stop(moved)
       assert %{{^id, nil} => nil} = WardrikCore.placements()
+      refute Map.has_key?(WardrikCore.running(), {id, nil})
     end
   end
 
