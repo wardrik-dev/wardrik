@@ -16,7 +16,7 @@ defmodule WardrikWeb.Form do
 
   use Phoenix.Component
 
-  @long ~w(instructions prompt content description message note reason)
+  @long ~w(instructions prompt content description)
   @variant "__variant"
 
   @typedoc "A field's kind, from its schema."
@@ -38,6 +38,11 @@ defmodule WardrikWeb.Form do
   @doc "Returns the kind of field `schema` makes, given the field's `name`."
   @spec kind(map(), String.t() | nil) :: kind()
   def kind(schema, name \\ nil)
+  # An object's oneOf, like "content or parts", constrains its fields; the server checks it.
+  def kind(%{"type" => "object", "properties" => properties}, _name)
+      when map_size(properties) > 0,
+      do: :object
+
   def kind(%{"oneOf" => [_ | _]}, _name), do: :union
   def kind(%{"anyOf" => [_ | _]}, _name), do: :union
   def kind(%{"const" => _const}, _name), do: :const
@@ -54,10 +59,6 @@ defmodule WardrikWeb.Form do
   def kind(%{"type" => "array", "items" => %{"enum" => [_ | _]}}, _name), do: :checks
   def kind(%{"type" => "array", "items" => %{"type" => "string"}}, _name), do: :lines
   def kind(%{"type" => "array", "items" => %{"properties" => %{}}}, _name), do: :list
-
-  def kind(%{"type" => "object", "properties" => properties}, _name)
-      when map_size(properties) > 0,
-      do: :object
 
   def kind(_schema, _name), do: :json
 

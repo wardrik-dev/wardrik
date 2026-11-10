@@ -5,7 +5,7 @@ defmodule WardrikWeb.OperationLive do
   import WardrikWeb.Components
 
   alias WardrikWeb.Follow
-  alias WardrikWeb.Input
+  alias WardrikWeb.Form
 
   @kept 100
 
@@ -23,7 +23,6 @@ defmodule WardrikWeb.OperationLive do
          assign(socket,
            page_title: id,
            operation: operation,
-           fields: Input.fields(operation),
            params: %{},
            result: nil,
            error: nil,
@@ -35,10 +34,13 @@ defmodule WardrikWeb.OperationLive do
   end
 
   @impl true
-  def handle_event("run", params, socket) do
-    socket = assign(socket, params: params, error: nil)
+  def handle_event("change", params, socket),
+    do: {:noreply, assign(socket, :params, params["input"] || %{})}
 
-    with {:ok, input} <- Input.read(socket.assigns.fields, params),
+  def handle_event("run", params, socket) do
+    socket = assign(socket, params: params["input"] || %{}, error: nil)
+
+    with {:ok, input} <- input(socket),
          {:ok, result} <-
            Wardrik.Scope.run(socket.assigns.scope, socket.assigns.operation.id, input) do
       {:noreply, assign(socket, result: result)}
@@ -49,15 +51,27 @@ defmodule WardrikWeb.OperationLive do
   end
 
   def handle_event("follow", params, socket) do
-    case Input.read(socket.assigns.fields, params) do
+    socket = assign(socket, params: params["input"] || %{})
+
+    case input(socket) do
       {:ok, input} ->
         {:noreply,
          socket
-         |> assign(params: params, events: [], error: nil)
+         |> assign(events: [], error: nil)
          |> Follow.start(socket.assigns.operation.id, input)}
 
       {:error, message} ->
         {:noreply, assign(socket, error: message)}
+    end
+  end
+
+  def handle_event(event, value, socket),
+    do: {:noreply, assign(socket, :params, Form.handle(event, value, socket.assigns.params))}
+
+  defp input(socket) do
+    case Form.read(socket.assigns.operation.input, socket.assigns.params) do
+      :none -> {:ok, %{}}
+      read -> read
     end
   end
 
@@ -84,9 +98,20 @@ defmodule WardrikWeb.OperationLive do
       <div>
         <div class="card">
           <header>Input</header>
-          <form class="body" phx-submit={if @operation.stream, do: "follow", else: "run"}>
-            <div :if={@fields == []} class="sub" style="margin-bottom: 12px">It takes no input.</div>
-            <.field :for={field <- @fields} field={field} value={@params[field.name]} />
+          <form
+            id="operation-form"
+            class="body"
+            phx-change="change"
+            phx-submit={if @operation.stream, do: "follow", else: "run"}
+          >
+            <div
+              :if={(@operation.input["properties"] || %{}) == %{}}
+              class="sub"
+              style="margin-bottom: 12px"
+            >
+              It takes no input.
+            </div>
+            <Form.fields schema={@operation.input} params={@params} />
             <button
               class={["btn", if(@operation.effect == "destructive", do: "danger", else: "primary")]}
               data-confirm={
@@ -127,47 +152,6 @@ defmodule WardrikWeb.OperationLive do
           </div>
         </div>
       </aside>
-    </div>
-    """
-  end
-
-  attr :field, Input.Field, required: true
-  attr :value, :string, default: nil
-
-  defp field(assigns) do
-    ~H"""
-    <div class="field">
-      <label for={"f-#{@field.name}"}>
-        <code>{@field.name}</code><span :if={@field.required} class="req">required</span>
-      </label>
-      <%= case @field.kind do %>
-        <% :choice -> %>
-          <select id={"f-#{@field.name}"} name={@field.name}>
-            <option value=""></option>
-            <option :for={choice <- @field.choices} value={choice} selected={choice == @value}>
-              {choice}
-            </option>
-          </select>
-        <% :switch -> %>
-          <select id={"f-#{@field.name}"} name={@field.name}>
-            <option value=""></option>
-            <option value="true" selected={@value == "true"}>true</option>
-            <option value="false" selected={@value == "false"}>false</option>
-          </select>
-        <% :lines -> %>
-          <textarea id={"f-#{@field.name}"} name={@field.name} placeholder="One a line">{@value}</textarea>
-        <% :json -> %>
-          <textarea id={"f-#{@field.name}"} name={@field.name} placeholder="JSON">{@value}</textarea>
-        <% kind -> %>
-          <input
-            id={"f-#{@field.name}"}
-            type={if kind == :number, do: "number", else: "text"}
-            name={@field.name}
-            value={@value}
-            step="any"
-          />
-      <% end %>
-      <div :if={@field.description} class="hint">{@field.description}</div>
     </div>
     """
   end

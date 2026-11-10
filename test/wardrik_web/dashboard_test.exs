@@ -55,12 +55,45 @@ defmodule WardrikWeb.DashboardTest do
 
   test "runs any operation from its form", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/operations/deployment.nodes")
-    assert view |> element("form") |> render_submit() =~ "a@host"
+    assert view |> form("#operation-form") |> render_submit() =~ "a@host"
 
     {:ok, view, _html} = live(conn, "/ops/operations/agent.ask")
-    html = view |> element("form") |> render_submit(%{"agent" => "triage", "content" => "Hi"})
+
+    html =
+      view
+      |> form("#operation-form")
+      |> render_submit(%{"input" => %{"agent" => "triage", "content" => "Hi"}})
+
     assert html =~ "m2"
     assert {"agent.ask", %{"agent" => "triage", "content" => "Hi"}} in Server.asked()
+  end
+
+  test "decides several calls with groups added to the form", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/ops/operations/agent.decide")
+
+    view |> element("button", "Add decisions") |> render_click()
+    view |> element("button", "Add decisions") |> render_click()
+
+    view
+    |> form("#operation-form", %{
+      "input" => %{
+        "agent" => "triage",
+        "decisions" => %{
+          "0" => %{"id" => "toolu_1", "decision" => "approve"},
+          "1" => %{"id" => "toolu_2", "decision" => "reject", "reason" => "No."}
+        }
+      }
+    })
+    |> render_submit()
+
+    assert {"agent.decide",
+            %{
+              "agent" => "triage",
+              "decisions" => [
+                %{"id" => "toolu_1", "decision" => "approve"},
+                %{"id" => "toolu_2", "decision" => "reject", "reason" => "No."}
+              ]
+            }} in Server.asked()
   end
 
   test "serves its assets", %{conn: conn} do
