@@ -2,6 +2,7 @@ defmodule WardrikWeb.Layouts do
   @moduledoc false
   use Phoenix.Component
 
+  alias Phoenix.LiveView.JS
   alias WardrikWeb.Dashboard
 
   @doc "The page around the dashboard: its assets, CSRF token and socket path."
@@ -34,8 +35,31 @@ defmodule WardrikWeb.Layouts do
     assigns = assign(assigns, :pages, Dashboard.pages(assigns.dashboard))
 
     ~H"""
-    <div class="shell">
-      <nav class="side" aria-label="Dashboard">
+    <div class="shell" id="wardrik-shell" phx-window-keydown={close_menu()} phx-key="Escape">
+      <header class="topbar">
+        <button
+          class="menu"
+          type="button"
+          aria-label="Menu"
+          aria-controls="wardrik-nav"
+          aria-expanded="false"
+          phx-click={open_menu()}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path
+              d="M4 7h16M4 12h16M4 17h16"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+        <.link class="wordmark" navigate={WardrikWeb.path(@dashboard, [])}>
+          <span>Wardrik<span class="dot">.</span></span><small>operators</small>
+        </.link>
+      </header>
+      <div class="scrim" phx-click={close_menu()} aria-hidden="true"></div>
+      <nav class="side" id="wardrik-nav" aria-label="Dashboard" phx-click={close_menu()}>
         <.link class="wordmark" navigate={WardrikWeb.path(@dashboard, [])}>
           <span>Wardrik<span class="dot">.</span></span><small>operators</small>
         </.link>
@@ -79,6 +103,18 @@ defmodule WardrikWeb.Layouts do
     </div>
     """
   end
+
+  # The menu only slides in on narrow screens; on wide ones the attribute changes nothing.
+  defp open_menu,
+    do:
+      JS.set_attribute({"data-menu", "open"}, to: "#wardrik-shell")
+      |> JS.set_attribute({"aria-expanded", "true"}, to: "#wardrik-shell .menu")
+      |> JS.focus_first(to: "#wardrik-nav")
+
+  defp close_menu,
+    do:
+      JS.remove_attribute("data-menu", to: "#wardrik-shell")
+      |> JS.set_attribute({"aria-expanded", "false"}, to: "#wardrik-shell .menu")
 
   attr :dashboard, Dashboard, required: true
   attr :here, :string, required: true
