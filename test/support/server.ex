@@ -79,7 +79,30 @@ defmodule WardrikWeb.Test.Server do
   defp reply("agent.ask", _input), do: {:ok, %{"message" => %{"id" => "m2", "cursor" => "c2"}}}
 
   defp reply("deployment.nodes", _input),
-    do: {:ok, %{"nodes" => [%{"name" => "a@host", "agents" => 2}], "asleep" => 3}}
+    do:
+      {:ok,
+       %{
+         "nodes" => [%{"name" => "a@host", "agents" => 2}, %{"name" => "b@host", "agents" => 0}],
+         "asleep" => 3
+       }}
+
+  defp reply("agent.definition", _input),
+    do:
+      {:ok,
+       %{
+         "definition" => %{
+           "model" => "zai:glm",
+           "instructions" => "Triage issues.",
+           "tools" => ["github/*"],
+           "triggers" => [%{"name" => "sweep", "every" => "*/30 * * * *", "prompt" => "Sweep."}]
+         },
+         "missing" => [],
+         "next_runs" => %{"sweep" => "2026-11-10T19:00:00Z"}
+       }}
+
+  defp reply(id, input)
+       when id in ~w(agent.define agent.trigger_set agent.trigger_remove agent.forget agent.move),
+       do: {:ok, input}
 
   defp reply("audit.list", _input), do: {:ok, %{"events" => [], "next" => 0}}
   defp reply(_id, _input), do: {:error, Wardrik.Error.new(:forbidden, "Not in this test.")}

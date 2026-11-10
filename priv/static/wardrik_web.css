@@ -355,3 +355,20 @@ details[open] > summary { margin-bottom: 6px; }
   table.list:not(.stack) .wide { display: none; }
   table.list th, table.list td { padding: 8px 10px; }
 }
+
+/* Forms built from schemas */
+details.group { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px; background: var(--bg); }
+details.group > summary { list-style: none; display: flex; align-items: center; gap: 8px; }
+details.group > summary::before { content: "▸"; color: var(--faint); font-size: 11px; transition: transform 120ms; }
+details.group[open] > summary::before { transform: rotate(90deg); }
+details.group > summary label { margin: 0; cursor: pointer; }
+details.group[open] > summary { margin-bottom: 12px; }
+details.group > .hint { margin: -6px 0 12px; }
+fieldset.item { border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 8px 12px 0; margin: 8px 0 10px; }
+fieldset.item > legend { display: flex; gap: 8px; align-items: center; padding: 0 6px; font-size: 12px; color: var(--muted); }
+.variant { border-left: 2px solid var(--line-strong); padding-left: 12px; margin-top: 10px; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+textarea.prose { font-family: var(--font); font-size: 14px; min-height: 96px; }
+.facts.definition dd.prose { white-space: pre-wrap; }
+.move { display: flex; gap: 8px; margin-top: 14px; }
+.move select { flex: 1; }

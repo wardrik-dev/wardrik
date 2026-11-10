@@ -10,6 +10,7 @@ defmodule WardrikWeb.AgentLive do
     {"timeline", "Timeline"},
     {"runs", "Runs"},
     {"calls", "Running calls"},
+    {"triggers", "Triggers"},
     {"definition", "Definition"},
     {"events", "Events"}
   ]
@@ -31,6 +32,7 @@ defmodule WardrikWeb.AgentLive do
         input: input
       )
       |> assign(tab: "timeline", read: nil, data: nil, drafts: %{}, error: nil)
+      |> assign(:nodes, nodes(socket.assigns.scope))
 
     {:ok, socket}
   end
@@ -63,6 +65,26 @@ defmodule WardrikWeb.AgentLive do
   def handle_event("deny", %{"interrupt" => id} = params, socket) do
     input = put_present(%{"interrupt" => id}, "reason", params["reason"])
     {:noreply, act(socket, "agent.deny", input, "Rejected.")}
+  end
+
+  def handle_event("move", %{"node" => node}, socket) when node != "",
+    do: {:noreply, act(socket, "agent.move", %{"node" => node}, "Moving to #{node}.")}
+
+  def handle_event("move", _params, socket), do: {:noreply, socket}
+
+  def handle_event("forget", _params, socket) do
+    case Wardrik.Scope.run(socket.assigns.scope, "agent.forget", %{
+           "agent" => socket.assigns.agent
+         }) do
+      {:ok, _answer} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Forgot #{socket.assigns.agent}.")
+         |> push_navigate(to: WardrikWeb.path(socket.assigns.dashboard, []))}
+
+      {:error, error} ->
+        {:noreply, put_flash(socket, :error, error.message)}
+    end
   end
 
   def handle_event("kill", %{"call" => call}, socket),
@@ -131,8 +153,8 @@ defmodule WardrikWeb.AgentLive do
   defp tab(scope, "runs", input), do: Wardrik.Scope.run(scope, "agent.runs", input)
   defp tab(scope, "calls", input), do: Wardrik.Scope.run(scope, "agent.calls", input)
 
-  defp tab(scope, "definition", input),
-    do: Wardrik.Scope.run(scope, "agent.definition", Map.take(input, ["agent"]))
+  # Their components read the definition themselves.
+  defp tab(_scope, tab, _input) when tab in ["definition", "triggers"], do: {:ok, nil}
 
   defp tab(scope, "events", input), do: newest(scope, input)
 
@@ -141,6 +163,14 @@ defmodule WardrikWeb.AgentLive do
     with {:ok, %{"events" => events}} <-
            Wardrik.Scope.run(scope, "agent.events", Map.put(input, "limit", 500)),
          do: {:ok, %{"events" => events |> Enum.take(-100) |> Enum.reverse()}}
+  end
+
+  # Moving needs somewhere to go; a scope that may not list nodes gets no Move.
+  defp nodes(scope) do
+    case Wardrik.Scope.run(scope, "deployment.nodes", %{}) do
+      {:ok, %{"nodes" => nodes}} -> Enum.map(nodes, & &1["name"])
+      {:error, _error} -> []
+    end
   end
 
   defp tab_path(assigns, tab),
@@ -168,6 +198,12 @@ defmodule WardrikWeb.AgentLive do
           phx-click="clear"
           data-confirm="Clear this agent's history? It can't be undone."
         >Clear history</button>
+        <button
+          :if={!@conversation}
+          class="btn danger"
+          phx-click="forget"
+          data-confirm={"Forget #{@agent}? Its definition, history and triggers go. It can't be undone."}
+        >Forget</button>
       </:actions>
     </.head>
 
@@ -192,16 +228,20 @@ defmodule WardrikWeb.AgentLive do
         </form>
         <.runs :if={@tab == "runs" && @data} runs={@data["runs"]} totals={@data["totals"]} />
         <.calls :if={@tab == "calls" && @data} calls={@data["calls"]} />
-        <div :if={@tab == "definition" && @data} class="card">
-          <header>
-            Definition
-            <span :if={@data["missing"] != []} class="sub">missing: {Enum.join(
-              @data["missing"] || [],
-              ", "
-            )}</span>
-          </header>
-          <div class="body"><.json value={@data["definition"]} /></div>
-        </div>
+        <.live_component
+          :if={@tab == "definition"}
+          module={WardrikWeb.DefinitionComponent}
+          id="definition"
+          scope={@scope}
+          agent={@agent}
+        />
+        <.live_component
+          :if={@tab == "triggers"}
+          module={WardrikWeb.TriggersComponent}
+          id="triggers"
+          scope={@scope}
+          agent={@agent}
+        />
         <.events :if={@tab == "events" && @data} events={@data["events"]} />
       </div>
 
@@ -218,6 +258,18 @@ defmodule WardrikWeb.AgentLive do
               <dt>Tokens today</dt><dd>{number(get_in(@read, ["spent_today", "tokens"]) || 0)}</dd>
             </dl>
             <.doing :if={@read["activity"]} activity={@read["activity"]} />
+            <form
+              :if={length(@nodes) > 1 and !@conversation}
+              id="move-form"
+              class="move"
+              phx-submit="move"
+            >
+              <select name="node" aria-label="Move to node">
+                <option value="">Move to…</option>
+                <option :for={node <- @nodes} :if={node != @read["node"]} value={node}>{node}</option>
+              </select>
+              <button class="btn small">Move</button>
+            </form>
           </div>
         </div>
         <.panels

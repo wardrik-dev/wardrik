@@ -65,7 +65,10 @@ defmodule WardrikWeb.AgentsLive do
 
     ~H"""
     <.head title="Agents" lead="Every agent and conversation you may see.">
-      <:actions><.live live={@live} stopped={@stopped} /></:actions>
+      <:actions>
+        <.live live={@live} stopped={@stopped} />
+        <.link class="btn primary" navigate={WardrikWeb.path(@dashboard, ["new"])}>New agent</.link>
+      </:actions>
     </.head>
 
     <div :if={@error} class="flash error">{@error}</div>

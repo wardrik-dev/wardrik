@@ -69,6 +69,7 @@ defmodule WardrikWeb.Router do
           root_layout: {WardrikWeb.Layouts, :root},
           layout: {WardrikWeb.Layouts, :app} do
           live "/", WardrikWeb.AgentsLive
+          live "/new", WardrikWeb.NewAgentLive
           live "/agents/:agent", WardrikWeb.AgentLive
           live "/approvals", WardrikWeb.ApprovalsLive
           live "/audit", WardrikWeb.AuditLive
