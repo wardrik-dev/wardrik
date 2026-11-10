@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:node",
   "title": "A node",
-  "description": "What agent.move takes: the node to start the agent again on, by its name.",
+  "description": "The node to restart the agent on.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,7 +11,7 @@
   "properties": {
     "node": {
       "type": "string",
-      "description": "A node's name, as wardrik@box1."
+      "description": "The node's name, such as wardrik@box1."
     }
   },
   "examples": [

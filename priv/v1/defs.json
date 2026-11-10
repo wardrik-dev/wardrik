@@ -47,7 +47,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "description": "text, reasoning, tool_call, tool_call_response, uri, file or blob."
+          "description": "One of text, reasoning, tool_call, tool_call_response, uri, file or blob."
         },
         "content": {
           "type": "string"
@@ -59,10 +59,10 @@
           "type": "string"
         },
         "arguments": {
-          "description": "Any JSON value. Stored as a flattened field."
+          "description": "Any JSON value. It is stored as a flattened field."
         },
         "response": {
-          "description": "Any JSON value. Stored as a flattened field."
+          "description": "Any JSON value. It is stored as a flattened field."
         },
         "modality": {
           "type": "string",
@@ -90,7 +90,7 @@
       "required": [
         "type"
       ],
-      "description": "One part of a message, tagged by type, as OpenTelemetry's GenAI conventions define them."
+      "description": "One part of a message, with a type as defined by the OpenTelemetry GenAI conventions."
     },
     "error": {
       "type": "object",
@@ -273,10 +273,10 @@
               "type": "string"
             },
             "arguments": {
-              "description": "Any JSON value. Stored as a flattened field."
+              "description": "Any JSON value. It is stored as a flattened field."
             },
             "result": {
-              "description": "Any JSON value. Stored as a flattened field."
+              "description": "Any JSON value. It is stored as a flattened field."
             },
             "idempotency_key": {
               "type": "string"
@@ -504,7 +504,7 @@
       "minLength": 1,
       "maxLength": 255,
       "pattern": "^\\P{Cc}+$",
-      "description": "An agent's ID, as your app chose it. Wardrik never reads it."
+      "description": "An agent ID. Wardrik treats it as an opaque string."
     },
     "conversation_id": {
       "type": "string",

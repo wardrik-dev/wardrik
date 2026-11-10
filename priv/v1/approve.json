@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:approve",
   "title": "An approval",
-  "description": "What agent.approve takes: a note the agent reads beside the call's answer, if any. The call runs as the model wrote it.",
+  "description": "Approves the call as the model requested it, with an optional note sent to the agent alongside the result.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

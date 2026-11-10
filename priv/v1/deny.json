@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:deny",
   "title": "A rejection",
-  "description": "What agent.deny takes: why, which the agent is told in place of the call's answer.",
+  "description": "Rejects the call, with an optional reason sent to the agent instead of the tool's result.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

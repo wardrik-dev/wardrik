@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:decisions",
   "title": "Decisions",
-  "description": "What agent.decide takes: what a person decides of the calls an agent waits on, taken together.",
+  "description": "Decisions for an agent's pending tool calls, applied together.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "The id of a call the agent waits on, an interrupt's."
+            "description": "The ID of a pending tool call, from its interrupt."
           },
           "decision": {
             "type": "string",
@@ -33,11 +33,11 @@
           },
           "note": {
             "type": "string",
-            "description": "For an approval, what the agent is told with it."
+            "description": "For an approval, a note sent to the agent."
           },
           "reason": {
             "type": "string",
-            "description": "For a rejection, why, which the agent is told."
+            "description": "For a rejection, the reason sent to the agent."
           }
         }
       }

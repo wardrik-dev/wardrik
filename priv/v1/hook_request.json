@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:hook_request",
   "title": "A webhook request",
-  "description": "What hook.deliver takes: the request a service sent, as its raw body and its headers by lowercase name. Over HTTP, a service sends the request itself, and Wardrik reads this from it.",
+  "description": "A webhook request. It holds the raw body and the headers, with lowercase header names. Over HTTP, the service sends its request directly. Wardrik builds this input from it.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,14 +12,14 @@
   "properties": {
     "body": {
       "type": "string",
-      "description": "The request's body, as it was sent."
+      "description": "The raw request body."
     },
     "headers": {
       "type": "object",
       "additionalProperties": {
         "type": "string"
       },
-      "description": "The request's headers, by lowercase name."
+      "description": "The request headers, with lowercase names."
     }
   },
   "examples": [
