@@ -7,7 +7,7 @@ defmodule WardrikWeb.Mount do
   alias WardrikWeb.Dashboard
   alias WardrikWeb.Resolver.Request
 
-  @doc "Resolves the person's scope, or sends them to the dashboard's sign-in."
+  @doc "Assigns the scope the resolver returns, or redirects to the sign-in page."
   def on_mount(%Dashboard{resolver: {resolver, opts}} = dashboard, _params, session, socket) do
     request = %Request{session: session, endpoint: socket.endpoint, assigns: socket.assigns}
 

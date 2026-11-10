@@ -1,6 +1,6 @@
 defmodule WardrikWeb.Router do
   @moduledoc """
-  Mounts the dashboard in a Phoenix router.
+  Adds the dashboard to a Phoenix router.
 
       import WardrikWeb.Router
 
@@ -9,9 +9,9 @@ defmodule WardrikWeb.Router do
         wardrik_dashboard "/wardrik", resolver: {MyAppWeb.WardrikResolver, []}
       end
 
-    * The pipeline must fetch the session and protect from forgery, as Phoenix's `:browser`
-      pipeline does.
-    * The endpoint must serve LiveView's socket, with the session:
+    * The pipeline must fetch the session and check CSRF tokens. Phoenix's `:browser` pipeline
+      does both.
+    * The endpoint must serve the LiveView socket with the session:
       `socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]`.
   """
 
@@ -19,18 +19,18 @@ defmodule WardrikWeb.Router do
             resolver: [
               type: {:tuple, [:atom, :any]},
               required: true,
-              doc: "`{module, opts}`, the `WardrikWeb.Resolver` that gives each person's scope."
+              doc: "The `WardrikWeb.Resolver` to use, as `{module, opts}`."
             ],
             on_mount: [
               type: {:list, :any},
               default: [],
               doc:
-                "Your own `on_mount` hooks, run before the resolver, such as the one that signs people in."
+                "Your `on_mount` hooks, for example the one that loads the signed-in user. They run before the resolver."
             ],
             extensions: [
               type: {:list, :atom},
               default: [],
-              doc: "The `WardrikWeb.Extension` modules to show."
+              doc: "The `WardrikWeb.Extension` modules to add."
             ],
             socket_path: [
               type: :string,
@@ -40,12 +40,13 @@ defmodule WardrikWeb.Router do
             sign_in: [
               type: :string,
               default: "/",
-              doc: "Where a person the resolver refuses is sent."
+              doc: "The path to redirect to when the resolver refuses access."
             ],
             live_session: [
               type: :atom,
               default: :wardrik_web,
-              doc: "The live session's name. Set it to mount two dashboards in one router."
+              doc:
+                "The name of the live session. Set a different name for each dashboard if you mount more than one."
             ]
           )
 

@@ -1,11 +1,13 @@
 defmodule WardrikWeb.Page do
   @moduledoc """
-  A page an extension adds to the dashboard: a LiveView at `<prefix>/x/<path>`, listed in the
-  navigation as `label`.
+  A page that an extension adds to the dashboard.
+
+  The dashboard serves the LiveView `live` at `<prefix>/x/<path>`. The navigation links to it
+  with the text `label`.
 
       %WardrikWeb.Page{path: "fleet", label: "Fleet", live: MyApp.FleetLive}
 
-  The page mounts like the dashboard's own, with `@scope` and `@dashboard` assigned.
+  The page gets `@scope` and `@dashboard`, like the dashboard's own pages.
   """
 
   @enforce_keys [:path, :label, :live]

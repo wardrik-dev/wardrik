@@ -1,7 +1,8 @@
 defmodule WardrikWeb.Follow do
   @moduledoc """
-  Follows a streamed operation for a LiveView, and reloads the view at most every 250 ms while
-  events arrive.
+  Keeps a LiveView up to date with a streamed operation.
+
+  When events arrive, it reloads the view. It reloads at most once every 250 ms.
 
       def mount(_params, _session, socket),
         do: {:ok, socket |> load() |> WardrikWeb.Follow.start("events.list", %{})}
@@ -9,21 +10,22 @@ defmodule WardrikWeb.Follow do
       def handle_info({WardrikWeb.Follow, _message} = message, socket),
         do: {:noreply, WardrikWeb.Follow.handle(message, socket, &load/1)}
 
-    * It follows only once the LiveView is connected.
-    * The stream runs in a task linked to the LiveView, so each ends with the other.
-    * `@live` is `true` while it follows. Once the stream fails or ends, it's `false` and
-      `@stopped` says why.
+    * The stream starts only once the LiveView is connected.
+    * The stream runs in a task linked to the LiveView. When one exits, the other exits too.
+    * `@live` is `true` while the stream is open. When the stream fails or ends, `@live` is
+      `false` and `@stopped` gives the reason.
   """
 
   import Phoenix.Component, only: [assign: 3]
 
   @wait 250
-  # Streamed text and progress change nothing a reload reads.
+  # Text deltas and progress updates don't change what a reload shows.
   @quiet ~w(wardrik.message.delta wardrik.reasoning.delta wardrik.tool_call.progress wardrik.subagent.progress)
 
   @doc """
-  Starts following every agent the socket's scope may see, with `events.list`. Agents defined
-  later are followed once the view mounts again.
+  Streams events for every agent the scope can see, using `events.list`.
+
+  Agents created later are included the next time the view mounts.
   """
   @spec agents(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def agents(socket) do
@@ -39,7 +41,7 @@ defmodule WardrikWeb.Follow do
     end
   end
 
-  @doc "Starts following operation `id` with `input`, in the socket's scope."
+  @doc "Starts streaming operation `id` with `input`, in the socket's scope."
   @spec start(Phoenix.LiveView.Socket.t(), String.t(), map()) :: Phoenix.LiveView.Socket.t()
   def start(socket, id, input) do
     if Phoenix.LiveView.connected?(socket) do
@@ -52,8 +54,10 @@ defmodule WardrikWeb.Follow do
   end
 
   @doc """
-  Handles a message `start/3` sent. Calls `reload` with the socket when events have arrived, and
-  `on_event` with each event, if given.
+  Handles a message sent by the stream.
+
+  It calls `reload` with the socket after events arrive. If you pass `:on_event`, it calls it
+  with each event.
   """
   @spec handle({module(), term()}, Phoenix.LiveView.Socket.t(), (term() -> term()), keyword()) ::
           Phoenix.LiveView.Socket.t()

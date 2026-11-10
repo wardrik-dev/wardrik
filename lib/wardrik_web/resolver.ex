@@ -1,9 +1,12 @@
 defmodule WardrikWeb.Resolver do
   @moduledoc """
-  Gives the scope a person's dashboard runs in, from their session or what the dashboard's
-  `:on_mount` hooks assigned. Every LiveView of the
-  dashboard asks it when it mounts, so a session that stops resolving stops working on the next
-  reconnect.
+  A resolver decides who can use the dashboard.
+
+  It returns the `Wardrik.Scope` that a signed-in person acts in. It can read the session and the
+  assigns set by your `:on_mount` hooks. Return an error to refuse access.
+
+  The dashboard calls the resolver each time a page loads. When you remove someone's access, they
+  lose the dashboard the next time their browser reconnects.
 
       defmodule MyAppWeb.WardrikResolver do
         @behaviour WardrikWeb.Resolver
@@ -16,17 +19,17 @@ defmodule WardrikWeb.Resolver do
           do: {:error, Wardrik.Error.new(:unauthorized, "Sign in first.")}
       end
 
-  Wardrik's authorizer then decides what the scope may do. See `Wardrik.Authorizer`.
+  Wardrik's authorizer checks each action the person takes. See `Wardrik.Authorizer`.
   """
 
   defmodule Request do
     @moduledoc """
-    What a resolver reads.
+    The request a resolver receives.
 
       * `:session` - the Plug session, with string keys.
       * `:endpoint` - the Phoenix endpoint serving the dashboard.
-      * `:assigns` - the LiveView's assigns, as the dashboard's `:on_mount` hooks left them,
-        such as `:current_user`.
+      * `:assigns` - the LiveView's assigns after your `:on_mount` hooks ran. For example,
+        `:current_user`.
     """
 
     @enforce_keys [:session, :endpoint, :assigns]
@@ -35,7 +38,7 @@ defmodule WardrikWeb.Resolver do
     @type t() :: %__MODULE__{session: map(), endpoint: module(), assigns: map()}
   end
 
-  @doc "Returns the scope the session's person acts in, or why there's none."
+  @doc "Returns the scope for the signed-in person, or an error that refuses access."
   @callback scope(Request.t(), opts :: term()) ::
               {:ok, Wardrik.Scope.t()} | {:error, Wardrik.Error.t()}
 end

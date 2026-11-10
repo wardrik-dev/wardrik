@@ -7,7 +7,7 @@ defmodule WardrikWeb.TriggersComponent do
   alias WardrikWeb.Form
 
   @schema WardrikProtocol.operation("agent.trigger_set").input
-  # The path names the agent and the trigger; name repeats the trigger.
+  # The page sets the agent. The `trigger` field holds the name.
   @elsewhere ~w(agent name)
 
   @impl true
@@ -31,7 +31,7 @@ defmodule WardrikWeb.TriggersComponent do
         )
 
       {:error, error} ->
-        socket |> assign(triggers: []) |> put_flash(:error, error.message)
+        socket |> assign(triggers: []) |> flash(:error, error.message)
     end
   end
 
@@ -59,7 +59,7 @@ defmodule WardrikWeb.TriggersComponent do
              "agent.trigger_set",
              Map.put(trigger, "agent", socket.assigns.agent)
            ) do
-      # A renamed trigger is a new one; the old name goes.
+      # A rename saves the trigger under its new name. Remove the old one.
       if is_binary(socket.assigns.editing) and socket.assigns.editing != trigger["trigger"],
         do: remove(socket, socket.assigns.editing)
 
@@ -67,21 +67,20 @@ defmodule WardrikWeb.TriggersComponent do
        socket
        |> assign(editing: nil, triggers: nil)
        |> load()
-       |> put_flash(:info, "Saved #{trigger["trigger"]}.")}
+       |> flash(:info, "Saved #{trigger["trigger"]}.")}
     else
-      {:error, %{message: message}} -> {:noreply, put_flash(socket, :error, message)}
-      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+      {:error, %{message: message}} -> {:noreply, flash(socket, :error, message)}
+      {:error, message} -> {:noreply, flash(socket, :error, message)}
     end
   end
 
   def handle_event("remove", %{"name" => name}, socket) do
     case remove(socket, name) do
       {:ok, _answer} ->
-        {:noreply,
-         socket |> assign(triggers: nil) |> load() |> put_flash(:info, "Removed #{name}.")}
+        {:noreply, socket |> assign(triggers: nil) |> load() |> flash(:info, "Removed #{name}.")}
 
       {:error, error} ->
-        {:noreply, put_flash(socket, :error, error.message)}
+        {:noreply, flash(socket, :error, error.message)}
     end
   end
 
@@ -113,8 +112,13 @@ defmodule WardrikWeb.TriggersComponent do
 
   defp when_text(%{"feed" => feed} = trigger, _agent),
     do:
-      Enum.join(List.wrap(feed), ", ") <>
-        if(trigger["every"], do: " · every #{trigger["every"]}", else: "")
+      Enum.join(
+        [
+          Enum.join(List.wrap(feed), ", ")
+          | List.wrap(trigger["every"] && "every #{trigger["every"]}")
+        ],
+        " · "
+      )
 
   defp when_text(trigger, _agent),
     do: Enum.join(Enum.reject([trigger["every"], trigger["timezone"]], &is_nil/1), " · ")

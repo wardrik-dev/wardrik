@@ -5,7 +5,7 @@ defmodule WardrikWeb.Layouts do
   alias Phoenix.LiveView.JS
   alias WardrikWeb.Dashboard
 
-  @doc "The page around the dashboard: its assets, CSRF token and socket path."
+  @doc "The HTML document: assets, CSRF token and socket path."
   def root(assigns) do
     {js, css} = WardrikWeb.Assets.names()
     assigns = assign(assigns, js: js, css: css)
@@ -30,7 +30,7 @@ defmodule WardrikWeb.Layouts do
     """
   end
 
-  @doc "The frame around each page: navigation and flash."
+  @doc "The layout of each page: navigation and flash messages."
   def app(assigns) do
     assigns = assign(assigns, :pages, Dashboard.pages(assigns.dashboard))
 
@@ -104,7 +104,7 @@ defmodule WardrikWeb.Layouts do
     """
   end
 
-  # The menu only slides in on narrow screens; on wide ones the attribute changes nothing.
+  # The menu slides in only on narrow screens. On wide screens the attribute has no effect.
   defp open_menu,
     do:
       JS.set_attribute({"data-menu", "open"}, to: "#wardrik-shell")

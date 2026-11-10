@@ -1,14 +1,16 @@
 defmodule WardrikWeb.Dashboard do
   @moduledoc """
-  One mounted dashboard, as `WardrikWeb.Router.wardrik_dashboard/2` builds it.
+  The settings of one mounted dashboard.
+
+  `WardrikWeb.Router.wardrik_dashboard/2` creates it. Every page gets it as `@dashboard`.
 
   ## Fields
 
-    * `:prefix` - the path it's mounted at.
-    * `:resolver` - `{module, opts}`, the `WardrikWeb.Resolver` that gives each person's scope.
-    * `:extensions` - the `WardrikWeb.Extension` modules it shows.
+    * `:prefix` - the path the dashboard is mounted at.
+    * `:resolver` - `{module, opts}`, the `WardrikWeb.Resolver` that returns each person's scope.
+    * `:extensions` - the `WardrikWeb.Extension` modules that add pages and panels.
     * `:socket_path` - the path of the endpoint's LiveView socket.
-    * `:sign_in` - where a person the resolver refuses is sent.
+    * `:sign_in` - where to redirect people the resolver refuses.
   """
 
   @enforce_keys [:prefix, :resolver]
@@ -22,11 +24,11 @@ defmodule WardrikWeb.Dashboard do
           sign_in: String.t()
         }
 
-  @doc "Returns every extension's pages, in the order the extensions are given."
+  @doc "Returns the pages that the extensions add."
   @spec pages(t()) :: [WardrikWeb.Page.t()]
   def pages(%__MODULE__{extensions: extensions}), do: Enum.flat_map(extensions, & &1.pages())
 
-  @doc "Returns the LiveComponents the extensions show in `slot`."
+  @doc "Returns the panels (LiveComponents) that the extensions add to `slot`."
   @spec panels(t(), WardrikWeb.Extension.slot()) :: [module()]
   def panels(%__MODULE__{extensions: extensions}, slot),
     do: Enum.flat_map(extensions, & &1.panels(slot))

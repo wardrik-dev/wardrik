@@ -8,7 +8,7 @@ defmodule WardrikWeb.DefinitionComponent do
 
   @schema WardrikProtocol.operation("agent.define").input
   @common ~w(model instructions tools display_name description)
-  # Triggers have their own tab; the agent is the page's.
+  # Triggers have their own tab. The page sets the agent.
   @elsewhere ~w(agent triggers)
 
   def common, do: @common
@@ -37,7 +37,7 @@ defmodule WardrikWeb.DefinitionComponent do
         )
 
       {:error, error} ->
-        assign(socket, current: %{}, params: %{}, error: error.message)
+        socket |> assign(current: %{}, params: %{}) |> flash(:error, error.message)
     end
   end
 
@@ -66,10 +66,10 @@ defmodule WardrikWeb.DefinitionComponent do
        socket
        |> assign(current: nil, editing: false)
        |> load()
-       |> put_flash(:info, "Saved the definition.")}
+       |> flash(:info, "Saved the definition.")}
     else
-      {:error, %{message: message}} -> {:noreply, put_flash(socket, :error, message)}
-      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+      {:error, %{message: message}} -> {:noreply, flash(socket, :error, message)}
+      {:error, message} -> {:noreply, flash(socket, :error, message)}
     end
   end
 

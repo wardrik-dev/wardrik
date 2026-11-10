@@ -1,14 +1,17 @@
 defmodule WardrikWeb do
   @moduledoc """
-  A dashboard for Wardrik's operators: agents, their timelines, approvals, audit, nodes, and every
-  operation of `WardrikProtocol`.
+  A web dashboard for Wardrik agents.
 
-  Mount it in a Phoenix router with `WardrikWeb.Router.wardrik_dashboard/2`. It runs each
-  operation in the `Wardrik.Scope` a `WardrikWeb.Resolver` gives, so Wardrik's authorizer
-  decides what each person sees and does.
+  It shows agents and their timelines, approvals, the audit log and cluster nodes. It has a form
+  for every `WardrikProtocol` operation.
+
+  To add it to your app, see `WardrikWeb.Router.wardrik_dashboard/2`.
+
+  The dashboard runs every action in the `Wardrik.Scope` that your `WardrikWeb.Resolver` returns.
+  Wardrik's authorizer checks each action.
   """
 
-  @doc "Returns the dashboard path for `segments` under the dashboard's prefix, each segment encoded."
+  @doc "Returns the path to a dashboard page, with each of `segments` URL-encoded."
   @spec path(WardrikWeb.Dashboard.t(), [String.t()], map()) :: String.t()
   def path(%WardrikWeb.Dashboard{prefix: prefix}, segments, query \\ %{}) do
     path =

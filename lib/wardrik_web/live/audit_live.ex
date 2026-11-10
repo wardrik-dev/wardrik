@@ -39,7 +39,7 @@ defmodule WardrikWeb.AuditLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <.head title="Audit" lead="Changes made across the deployment, oldest first." />
+    <.head title="Audit" lead="The audit log. The oldest entries are at the top." />
     <div :if={@error} class="flash error">{@error}</div>
     <.events
       events={@events}

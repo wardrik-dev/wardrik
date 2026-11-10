@@ -44,6 +44,7 @@ defmodule WardrikWeb.Test.Router do
 
   pipeline :browser do
     plug :fetch_session
+    plug :fetch_live_flash
     plug :protect_from_forgery
   end
 

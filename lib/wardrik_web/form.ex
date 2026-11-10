@@ -1,17 +1,23 @@
 defmodule WardrikWeb.Form do
   @moduledoc """
-  A form built from a JSON Schema: fields for strings, numbers, switches and choices, fieldsets for
-  objects, repeatable groups for arrays of objects, and a choice of shape for `oneOf`.
+  Builds a form from a JSON Schema, and reads the submitted form back into a value.
+
+  | Schema | Form |
+  | --- | --- |
+  | string, number, boolean, enum | a field |
+  | object | a fieldset |
+  | array of objects | a group you can repeat |
+  | `oneOf` | a choice between the alternatives |
 
       <WardrikWeb.Form.fields schema={schema} params={@params} />
 
       {:ok, input} = WardrikWeb.Form.read(schema, params["input"])
 
-    * Fields are named `input[...]`, so a form's params hold them under `"input"`.
-    * `params/2` turns a value, such as a stored definition, into the params that show it.
-    * A form that adds or removes groups handles `"form-add"` and `"form-remove"` with `add/2` and
-      `remove/2`, and keeps `@params` from `phx-change`.
-    * Empty fields are left out of what `read/2` gives.
+    * Fields are named `input[...]`. The submitted params hold them under `"input"`.
+    * `params/2` fills the form with an existing value, for example a saved definition.
+    * If the form has repeatable groups, handle the `"form-add"` and `"form-remove"` events with
+      `handle/3`. Update `@params` on `phx-change`.
+    * `read/2` leaves out empty fields.
   """
 
   use Phoenix.Component
@@ -19,7 +25,7 @@ defmodule WardrikWeb.Form do
   @long ~w(instructions prompt content description)
   @variant "__variant"
 
-  @typedoc "A field's kind, from its schema."
+  @typedoc "The kind of form field a schema produces."
   @type kind() ::
           :text
           | :long
@@ -34,16 +40,17 @@ defmodule WardrikWeb.Form do
           | :object
           | :union
           | :json
+          | :empty
 
-  @doc "Returns the kind of field `schema` makes, given the field's `name`."
+  @doc "Returns the kind of field for `schema`. Long text fields, like `instructions`, get a text area."
   @spec kind(map(), String.t() | nil) :: kind()
   def kind(schema, name \\ nil)
-  # An object's oneOf, like "content or parts", constrains its fields; the server checks it.
+  # The server checks a oneOf on an object with properties, like "content or parts".
   def kind(%{"type" => "object", "properties" => properties}, _name)
       when map_size(properties) > 0,
       do: :object
 
-  # An object that may hold nothing, as {"none": {}} says "no credential": there's nothing to fill in.
+  # An object with no properties, like {"none": {}}, has no fields.
   def kind(%{"type" => "object", "additionalProperties" => false} = schema, _name)
       when not is_map_key(schema, "properties"),
       do: :empty
@@ -71,7 +78,7 @@ defmodule WardrikWeb.Form do
 
   ## Values to params
 
-  @doc "Returns the params that show `value` in a form for `schema`."
+  @doc "Returns the params that fill a form for `schema` with `value`."
   @spec params(map(), term()) :: term()
   def params(_schema, nil), do: nil
   def params(schema, value), do: params(kind(schema), schema, value)
@@ -130,7 +137,7 @@ defmodule WardrikWeb.Form do
 
   ## Params to values
 
-  @doc "Reads `params` as a value of `schema`. Empty fields are left out; `:none` when all are."
+  @doc "Reads submitted `params` as a value of `schema`. Empty fields are left out. Returns `:none` if every field is empty."
   @spec read(map(), term()) :: {:ok, term()} | :none | {:error, String.t()}
   def read(schema, params), do: read(kind(schema), schema, params, [])
 
@@ -138,7 +145,7 @@ defmodule WardrikWeb.Form do
     required = Map.get(object, "required", [])
 
     Enum.reduce_while(properties, {:ok, %{}}, fn {name, schema}, {:ok, map} ->
-      case read(kind(schema, name), schema, params[name], path ++ [name], name in required) do
+      case read(kind(schema, name), schema, params[name], [name | path], name in required) do
         {:ok, value} -> {:cont, {:ok, Map.put(map, name, value)}}
         :none -> {:cont, {:ok, map}}
         {:error, _why} = error -> {:halt, error}
@@ -151,19 +158,20 @@ defmodule WardrikWeb.Form do
     params
     |> Enum.sort_by(fn {index, _item} -> String.to_integer(index) end)
     |> Enum.reduce_while({:ok, []}, fn {index, each}, {:ok, list} ->
-      case read(kind(item), item, each, path ++ [index]) do
-        {:ok, value} -> {:cont, {:ok, list ++ [value]}}
+      case read(kind(item), item, each, [index | path]) do
+        {:ok, value} -> {:cont, {:ok, [value | list]}}
         :none -> {:cont, {:ok, list}}
         {:error, _why} = error -> {:halt, error}
       end
     end)
-    |> none_if_empty()
+    |> then(fn
+      {:ok, list} -> none_if_empty({:ok, Enum.reverse(list)})
+      error -> error
+    end)
   end
 
   defp read(:union, schema, %{@variant => variant} = params, path) when variant != "" do
-    alternative = Enum.at(alternatives(schema), String.to_integer(variant))
-
-    case alternative do
+    case Enum.fetch!(alternatives(schema), String.to_integer(variant)) do
       %{"const" => const} -> {:ok, const}
       alternative -> read(kind(alternative), alternative, params["value"], path)
     end
@@ -174,9 +182,14 @@ defmodule WardrikWeb.Form do
 
   defp read(kind, _schema, text, path) when is_binary(text) do
     case value(kind, String.trim(text)) do
-      :none -> :none
-      {:ok, value} -> {:ok, value}
-      :error -> {:error, "#{Enum.join(path, ".")} doesn't read as #{describe(kind)}."}
+      :none ->
+        :none
+
+      {:ok, value} ->
+        {:ok, value}
+
+      :error ->
+        {:error, "#{path |> Enum.reverse() |> Enum.join(".")} doesn't read as #{describe(kind)}."}
     end
   end
 
@@ -185,7 +198,7 @@ defmodule WardrikWeb.Form do
 
   defp read(_kind, _schema, _params, _path), do: :none
 
-  # A required empty object, as {"none": {}}, is sent though nothing was filled in.
+  # Send a required object with no properties, like {"none": {}}, as {}.
   defp read(:empty, _schema, _params, _path, true), do: {:ok, %{}}
   defp read(kind, schema, params, path, _required), do: read(kind, schema, params, path)
 
@@ -237,8 +250,9 @@ defmodule WardrikWeb.Form do
   ## Groups
 
   @doc """
-  Handles the form's own events, `"form-add"` and `"form-remove"`, on `params`. Returns `nil` for
-  any other event.
+  Handles the `"form-add"` and `"form-remove"` events. Returns the updated `params`.
+
+  Returns `nil` for any other event.
   """
   @spec handle(String.t(), map(), map() | nil) :: map() | nil
   def handle("form-add", %{"path" => path}, params), do: add(params, Jason.decode!(path))
@@ -268,8 +282,10 @@ defmodule WardrikWeb.Form do
   ## Rendering
 
   @doc """
-  The fields of an object `schema`, showing `params`. `:only` and `:except` pick its top-level
-  properties; required ones come first.
+  Renders the fields for an object `schema`, filled with `params`.
+
+  Use `:only` or `:except` to choose which top-level properties to show. Required fields come
+  first.
   """
   attr :schema, :map, required: true
   attr :params, :any, default: %{}
@@ -317,7 +333,7 @@ defmodule WardrikWeb.Form do
       assign(assigns,
         kind: kind(assigns.schema, List.last(assigns.path)),
         name: name(assigns.path),
-        id: "f-" <> Enum.join(assigns.path, "-")
+        id: Enum.join(["f" | assigns.path], "-")
       )
 
     render_field(assigns)

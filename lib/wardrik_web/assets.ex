@@ -19,7 +19,7 @@ defmodule WardrikWeb.Assets do
     "app-#{Base.encode16(:crypto.hash(:md5, @css), case: :lower)}.css" => {"text/css", @css}
   }
 
-  @doc "Returns the asset names, `{js, css}`, the layout links to."
+  @doc "Returns the names of the JavaScript and CSS files, as `{js, css}`."
   @spec names() :: {String.t(), String.t()}
   def names do
     {Enum.find(Map.keys(@assets), &String.ends_with?(&1, ".js")),
@@ -32,8 +32,8 @@ defmodule WardrikWeb.Assets do
   @impl Plug
   def call(%Plug.Conn{path_params: %{"asset" => asset}} = conn, :show) do
     case Map.fetch(@assets, asset) do
-      # The dashboard is mounted in a :browser pipeline, whose forgery protection refuses
-      # JavaScript; this is a static asset, not a response to a forged request.
+      # Plug.CSRFProtection rejects JavaScript responses in a :browser pipeline.
+      # This is a static file. Skip the check.
       {:ok, {type, body}} ->
         conn
         |> put_private(:plug_skip_csrf_protection, true)

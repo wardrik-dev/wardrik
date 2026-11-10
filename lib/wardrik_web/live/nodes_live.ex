@@ -37,7 +37,10 @@ defmodule WardrikWeb.NodesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <.head title="Nodes" lead="Nodes and the agents running on each. Updates every 5 seconds.">
+    <.head
+      title="Nodes"
+      lead="The nodes in the cluster and the agents on each node. This page refreshes every 5 seconds."
+    >
       <:actions>
         <button class="btn" phx-click="reload" data-confirm="Reload all agent definitions?">Reload definitions</button>
       </:actions>

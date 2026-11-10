@@ -1,9 +1,19 @@
 defmodule WardrikWeb.Extension do
   @moduledoc """
-  Adds pages and panels to the dashboard. Pass extensions to
-  `WardrikWeb.Router.wardrik_dashboard/2` as `extensions: [MyExtension]`.
+  An extension adds pages and panels to the dashboard.
 
-      defmodule MyApp.DashboardExtension do
+  A page is a LiveView with its own link in the navigation. A panel is a LiveComponent shown on
+  an existing page.
+
+  List your extensions in `WardrikWeb.Router.wardrik_dashboard/2`:
+
+      wardrik_dashboard "/wardrik",
+        resolver: {MyAppWeb.WardrikResolver, []},
+        extensions: [MyAppWeb.DashboardExtension]
+
+  An extension looks like this:
+
+      defmodule MyAppWeb.DashboardExtension do
         use WardrikWeb.Extension
 
         @impl WardrikWeb.Extension
@@ -14,22 +24,21 @@ defmodule WardrikWeb.Extension do
         def panels(_slot), do: []
       end
 
-  A panel is a `Phoenix.LiveComponent`. Each slot gives it these assigns, with `@scope` and
-  `@dashboard`:
+  Every panel gets `@scope` and `@dashboard`. Each slot also passes these assigns:
 
-  | Slot | Where | Assigns |
+  | Slot | Where the panel is shown | Assigns |
   | --- | --- | --- |
-  | `:agents` | above the agents list | `@agents`, as `agents.list` answers them |
-  | `:agent` | beside an agent's timeline | `@agent` and `@conversation`, its IDs, and `@read`, as `agent.read` answers |
+  | `:agents` | Above the agents list | `@agents`: the result of `agents.list` |
+  | `:agent` | Next to an agent's timeline | `@agent`: the agent ID. `@conversation`: the conversation ID. `@read`: the result of `agent.read` |
   """
 
-  @typedoc "Where a panel shows."
+  @typedoc "Where a panel is shown."
   @type slot() :: :agents | :agent
 
-  @doc "Returns the pages it adds. `[]` unless defined."
+  @doc "Returns the pages the extension adds. Defaults to `[]`."
   @callback pages() :: [WardrikWeb.Page.t()]
 
-  @doc "Returns the LiveComponents it shows in `slot`. `[]` unless defined."
+  @doc "Returns the panels the extension adds to `slot`. Defaults to `[]`."
   @callback panels(slot()) :: [module()]
 
   defmacro __using__(_opts) do

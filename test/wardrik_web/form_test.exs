@@ -52,4 +52,64 @@ defmodule WardrikWeb.FormTest do
     assert {:error, "policy doesn't read as JSON."} =
              Form.read(@define, %{"policy" => %{"__variant" => "1", "value" => "{"}})
   end
+
+  test "picks the union alternative a value fits" do
+    schema = %{
+      "oneOf" => [
+        %{"const" => "all"},
+        %{"enum" => ["a", "b"]},
+        %{"type" => ["integer", "null"]},
+        %{"type" => "number"},
+        %{"type" => "boolean"},
+        %{"type" => "array"},
+        %{"type" => "object"},
+        %{"type" => "string"},
+        %{"title" => "anything"}
+      ]
+    }
+
+    for {value, index} <- [
+          {"all", 0},
+          {"b", 1},
+          {3, 2},
+          {1.5, 3},
+          {true, 4},
+          {[1], 5},
+          {%{}, 6},
+          {"text", 7}
+        ],
+        do: assert(WardrikWeb.Form.params(schema, value)["__variant"] == Integer.to_string(index))
+  end
+
+  test "reads switches, checks and numbers, and says when a number doesn't read" do
+    schema = %{
+      "type" => "object",
+      "properties" => %{
+        "on" => %{"type" => "boolean"},
+        "picks" => %{"type" => "array", "items" => %{"enum" => ["a", "b"]}},
+        "ratio" => %{"type" => "number"},
+        "any" => %{"anyOf" => [%{"type" => "string"}, %{"type" => "integer"}]}
+      }
+    }
+
+    assert {:ok, %{"on" => true, "picks" => ["a"], "ratio" => 2}} =
+             WardrikWeb.Form.read(schema, %{"on" => "true", "picks" => ["", "a"], "ratio" => "2"})
+
+    assert {:ok, %{"ratio" => 0.5}} = WardrikWeb.Form.read(schema, %{"ratio" => "0.5"})
+
+    assert {:error, "ratio doesn't read as a number."} =
+             WardrikWeb.Form.read(schema, %{"ratio" => "x"})
+
+    assert WardrikWeb.Form.kind(schema["properties"]["any"]) == :union
+    assert WardrikWeb.Form.handle("other", %{}, %{}) == nil
+
+    html =
+      Phoenix.LiveViewTest.render_component(&WardrikWeb.Form.fields/1,
+        schema: schema,
+        params: %{"picks" => ["a"], "any" => %{"__variant" => "0", "value" => "x"}}
+      )
+
+    assert html =~ ~s(name="input[picks][]")
+    assert html =~ ~s(name="input[any][value]")
+  end
 end

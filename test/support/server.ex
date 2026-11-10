@@ -44,7 +44,80 @@ defmodule WardrikWeb.Test.Server do
     do: {:ok, %{"interrupts" => [%{"agent" => %{"id" => "triage"}, "interrupt" => @interrupt}]}}
 
   defp reply("agent.read", %{"agent" => "triage"}),
-    do: {:ok, Map.merge(hd(@agents), %{"cursor" => "c1", "interrupts" => [@interrupt]})}
+    do:
+      {:ok,
+       Map.merge(hd(@agents), %{
+         "cursor" => "c1",
+         "interrupts" => [@interrupt],
+         "activity" => %{
+           "since" => "2026-11-10T18:00:00Z",
+           "doing" => [
+             %{"type" => "wardrik.tool_call.started", "tool" => %{"name" => "github__search"}}
+           ]
+         }
+       })}
+
+  defp reply("agent.runs", _input),
+    do:
+      {:ok,
+       %{
+         "runs" => [
+           %{
+             "id" => "r1",
+             "status" => "completed",
+             "model" => "zai:glm",
+             "source" => "message",
+             "started_at" => "2026-11-10T18:00:00Z",
+             "duration_ms" => 4200,
+             "input_tokens" => 8400,
+             "output_tokens" => 1200,
+             "cost_micro_usd" => 1200,
+             "tool_calls" => 2,
+             "tool_errors" => 1
+           },
+           %{
+             "id" => "r2",
+             "status" => "failed",
+             "started_at" => "2026-11-10T17:00:00Z",
+             "error" => "The model timed out.",
+             "input_tokens" => 0,
+             "output_tokens" => 0,
+             "cost_micro_usd" => 0,
+             "tool_calls" => 0,
+             "tool_errors" => 0
+           }
+         ],
+         "totals" => %{
+           "runs" => 2,
+           "failed" => 1,
+           "input_tokens" => 8400,
+           "output_tokens" => 1_200_000,
+           "cost_micro_usd" => 1200,
+           "tool_calls" => 2,
+           "last_at" => "2026-11-10T18:00:00Z"
+         }
+       }}
+
+  defp reply("agent.calls", _input),
+    do:
+      {:ok, %{"calls" => [%{"id" => "toolu_2", "name" => "github__search", "elapsed_ms" => 900}]}}
+
+  defp reply("agent.events", _input),
+    do:
+      {:ok,
+       %{
+         "events" => [
+           %{
+             "id" => "e1",
+             "type" => "wardrik.run.started",
+             "time" => "2026-11-10T18:00:00Z",
+             "agent" => "triage",
+             "data" => %{"model" => "zai:glm"}
+           }
+         ]
+       }}
+
+  defp reply("deployment.reload", _input), do: {:ok, %{"reloaded" => 2}}
 
   defp reply("agent.read", _input),
     do: {:error, Wardrik.Error.new(:not_found, "There's no such agent.")}
@@ -63,7 +136,24 @@ defmodule WardrikWeb.Test.Server do
              "model" => "zai:glm",
              "cost_micro_usd" => 1200,
              "steps" => [
-               %{"id" => "s1", "type" => "text", "text" => "Opening an issue.", "live" => false}
+               %{"id" => "s1", "type" => "text", "text" => "Opening an issue.", "live" => false},
+               %{
+                 "id" => "s2",
+                 "type" => "tool",
+                 "name" => "github__search",
+                 "status" => "failed",
+                 "error" => "Rate limited.",
+                 "arguments" => %{"q" => "flaky"},
+                 "result" => nil
+               },
+               %{
+                 "id" => "s3",
+                 "type" => "delegate",
+                 "name" => "research",
+                 "status" => "completed",
+                 "tools" => 3,
+                 "answer" => "Found two reports."
+               }
              ],
              "interrupts" => [@interrupt]
            }
@@ -101,14 +191,40 @@ defmodule WardrikWeb.Test.Server do
        }}
 
   defp reply(id, input)
-       when id in ~w(agent.define agent.trigger_set agent.trigger_remove agent.forget agent.move),
+       when id in ~w(agent.define agent.trigger_set agent.trigger_remove agent.forget agent.move
+                     agent.cancel agent.stop agent.clear agent.spawn agent.kill),
        do: {:ok, input}
 
-  defp reply("audit.list", _input), do: {:ok, %{"events" => [], "next" => 0}}
+  defp reply("audit.list", %{"starting_after" => _next}),
+    do: {:ok, %{"events" => [], "next" => 0}}
+
+  defp reply("audit.list", _input),
+    do:
+      {:ok,
+       %{
+         "events" => [
+           %{
+             "id" => "a1",
+             "type" => "wardrik.agent.defined",
+             "time" => "2026-11-10T18:00:00Z",
+             "agent" => "triage",
+             "data" => %{"actor" => "ana"}
+           }
+         ],
+         "next" => 1
+       }}
+
   defp reply(_id, _input), do: {:error, Wardrik.Error.new(:forbidden, "Not in this test.")}
 
   @impl true
-  def stream(%Request{}), do: {:ok, []}
+  def stream(%Request{}),
+    do:
+      {:ok,
+       [
+         {%{"id" => "e1", "type" => "wardrik.message.delta", "data" => %{"text" => "Hi"}}, "c1"},
+         {%{"id" => "e2", "type" => "wardrik.run.started"}, "c2"},
+         {%{"id" => "e3", "type" => "wardrik.run.completed"}, "c3"}
+       ]}
 
   @impl true
   def follow(_follow, _opts), do: []

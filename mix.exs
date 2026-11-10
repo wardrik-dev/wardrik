@@ -11,6 +11,10 @@ defmodule WardrikWeb.MixProject do
       docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      # The router macro and the extension's __using__ run at compile time. Test support isn't shipped.
+      test_coverage: [
+        ignore_modules: [WardrikWeb.Router, WardrikWeb.Extension, ~r/^WardrikWeb\.Test\./]
+      ],
       aliases: aliases(),
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],

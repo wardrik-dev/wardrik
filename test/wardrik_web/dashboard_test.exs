@@ -115,4 +115,82 @@ defmodule WardrikWeb.DashboardTest do
     assert conn |> get("/ops/assets/" <> css) |> response(200) =~ ":root"
     assert conn |> get("/ops/assets/nope.js") |> response(404)
   end
+
+  test "follows a stream and shows a run's error", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/ops/operations/events.list")
+    render_click(view, "follow", %{"input" => %{"agents" => "triage"}})
+    render_change(view, "change", %{"input" => %{"agents" => "triage"}})
+    assert render_click(view, "run", %{"input" => %{"agents" => "triage"}}) =~ "Not in this test."
+  end
+
+  test "shows the audit log and loads more", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/ops/audit")
+    assert html =~ "agent.defined"
+    render_click(view, "more", %{})
+    assert {"audit.list", %{"limit" => 100, "starting_after" => 1}} in Server.asked()
+  end
+
+  test "lists nodes and reloads definitions", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/ops/nodes")
+    assert html =~ "b@host"
+    assert render_click(view, "reload", %{}) =~ "Reloaded agent definitions."
+    send(view.pid, :tick)
+    assert render(view) =~ "a@host"
+  end
+
+  test "shows an agent's runs, running calls and events", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/ops/agents/triage?tab=runs")
+    assert html =~ "The model timed out."
+    assert html =~ "1.2M"
+
+    {:ok, _view, html} = live(conn, "/ops/agents/triage?tab=calls")
+    assert html =~ "github__search"
+
+    {:ok, view, html} = live(conn, "/ops/agents/triage?tab=events")
+    assert html =~ "run.started"
+    assert html =~ "Calling github__search"
+    assert render(view) =~ "triage"
+  end
+
+  test "approves from the approvals page", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/ops/approvals")
+    render_submit(view, "approve", %{"agent" => "triage", "interrupt" => "toolu_1", "note" => ""})
+    assert {"agent.approve", %{"agent" => "triage", "interrupt" => "toolu_1"}} in Server.asked()
+  end
+
+  test "shows tool and delegate steps, and drafts while a reply streams", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/ops/agents/triage")
+    assert html =~ "Rate limited."
+    assert html =~ "Found two reports."
+
+    delta = %{
+      "id" => "d1",
+      "type" => "wardrik.message.delta",
+      "data" => %{"message" => %{"id" => "m9"}, "delta" => "Draft"}
+    }
+
+    send(view.pid, {WardrikWeb.Follow, {:event, delta}})
+
+    send(
+      view.pid,
+      {WardrikWeb.Follow, {:event, %{delta | "data" => %{delta["data"] | "delta" => "ing"}}}}
+    )
+
+    assert render(view) =~ "Drafting"
+
+    done = %{
+      "id" => "d2",
+      "type" => "wardrik.message.completed",
+      "data" => %{"message" => %{"id" => "m9"}}
+    }
+
+    send(view.pid, {WardrikWeb.Follow, {:event, done}})
+    send(view.pid, {WardrikWeb.Follow, :reload})
+    refute render(view) =~ "Drafting"
+  end
+
+  test "sends an unknown operation back to the list", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/ops/operations"}}} =
+             live(conn, "/ops/operations/nope")
+  end
 end

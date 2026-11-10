@@ -102,6 +102,9 @@ defmodule WardrikWeb.AgentLive do
   end
 
   @impl true
+  def handle_info({WardrikWeb.Components, :flash, kind, message}, socket),
+    do: {:noreply, put_flash(socket, kind, message)}
+
   def handle_info({Follow, _message} = message, socket),
     do: {:noreply, Follow.handle(message, socket, &load/1, on_event: &drafted/2)}
 
@@ -153,19 +156,19 @@ defmodule WardrikWeb.AgentLive do
   defp tab(scope, "runs", input), do: Wardrik.Scope.run(scope, "agent.runs", input)
   defp tab(scope, "calls", input), do: Wardrik.Scope.run(scope, "agent.calls", input)
 
-  # Their components read the definition themselves.
+  # These tabs' components load the definition themselves.
   defp tab(_scope, tab, _input) when tab in ["definition", "triggers"], do: {:ok, nil}
 
   defp tab(scope, "events", input), do: newest(scope, input)
 
-  # agent.events pages oldest first; the newest page is the one events.head points past.
+  # agent.events returns the oldest events first. Start from the cursor that events.head returns.
   defp newest(scope, input) do
     with {:ok, %{"events" => events}} <-
            Wardrik.Scope.run(scope, "agent.events", Map.put(input, "limit", 500)),
          do: {:ok, %{"events" => events |> Enum.take(-100) |> Enum.reverse()}}
   end
 
-  # Moving needs somewhere to go; a scope that may not list nodes gets no Move.
+  # Show Move only when there's another node and the scope can list nodes.
   defp nodes(scope) do
     case Wardrik.Scope.run(scope, "deployment.nodes", %{}) do
       {:ok, %{"nodes" => nodes}} -> Enum.map(nodes, & &1["name"])
@@ -303,41 +306,6 @@ defmodule WardrikWeb.AgentLive do
     </div>
     """
   end
-
-  defp doing_text(%{"type" => "wardrik.run.interrupted"} = item) do
-    case length(item["interrupts"] || []) do
-      1 -> "Waiting for approval of 1 tool call"
-      n -> "Waiting for approval of #{n} tool calls"
-    end
-  end
-
-  defp doing_text(%{"type" => "wardrik.message.retrying"} = item),
-    do: "Retrying the model call#{attempt(item)}"
-
-  defp doing_text(%{"type" => "wardrik.tool_call.retrying", "tool" => %{"name" => name}} = item),
-    do: "Retrying #{name}#{attempt(item)}"
-
-  defp doing_text(%{"type" => "wardrik.tool_call.started", "tool" => %{"name" => name}}),
-    do: "Calling #{name}"
-
-  defp doing_text(%{"type" => "wardrik.tool_call.completed", "tool" => %{"name" => name}}),
-    do: "Finished #{name}"
-
-  defp doing_text(%{"type" => "wardrik.tool_call.denied", "tool" => %{"name" => name}}),
-    do: "#{name} was denied"
-
-  defp doing_text(%{"type" => "wardrik.step.started", "step" => %{"name" => name}}),
-    do: "Running step #{name}"
-
-  defp doing_text(%{"type" => "wardrik.message.started"}), do: "Generating a response"
-  defp doing_text(%{"type" => "wardrik.run.resumed"}), do: "Resuming a run"
-  defp doing_text(%{"type" => "wardrik.run.started"}), do: "Starting a run"
-  defp doing_text(%{"type" => type}), do: String.replace_prefix(type, "wardrik.", "")
-
-  defp attempt(%{"attempt" => attempt, "attempts" => attempts}),
-    do: " (attempt #{attempt} of #{attempts})"
-
-  defp attempt(_item), do: ""
 
   attr :items, :list, required: true
   attr :drafts, :map, required: true

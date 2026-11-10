@@ -1,18 +1,31 @@
 # WardrikWeb
 
-A dashboard for [Wardrik](https://hexdocs.pm/wardrik)'s operators, mounted in your Phoenix router.
+WardrikWeb is a web dashboard for [Wardrik](https://hexdocs.pm/wardrik) agents. You add it to
+your Phoenix app.
 
-* **Agents**: every agent and conversation, live.
-* **Agent**: its timeline as it runs, with approvals inline, plus runs, running calls,
-  definition and events.
-* **Approvals**: every call waiting on a person.
-* **Audit**, **Nodes**, and **Operations**: a form for every operation of
-  [WardrikProtocol](https://hexdocs.pm/wardrik_protocol).
+With the dashboard you can:
 
-Each page runs operations in the scope your resolver gives, so Wardrik's authorizer decides what
-each person sees and does.
+* See all your agents and what they are doing.
+* Approve or reject tool calls.
+* Edit an agent's definition and triggers.
+* Run any [WardrikProtocol](https://hexdocs.pm/wardrik_protocol) operation from a form.
+
+## Pages
+
+| Page | What it shows |
+| --- | --- |
+| Agents | All agents and conversations you can access. |
+| Agent | One agent's timeline, runs, running tool calls, triggers, definition and events. |
+| Approvals | Tool calls that are waiting for approval. |
+| Audit | The audit log. |
+| Nodes | The nodes in the cluster. |
+| Operations | A form for each operation. |
+
+The pages update while agents run.
 
 ## Install
+
+Add `wardrik_web` to your dependencies in `mix.exs`:
 
 ```elixir
 def deps do
@@ -22,7 +35,14 @@ def deps do
 end
 ```
 
-## Mount it
+## Add the dashboard to your router
+
+You need:
+
+* A Phoenix app with LiveView. An app created with `mix phx.new` works.
+* A running Wardrik instance, for example `MyApp.AgentRuntime`.
+
+Add the dashboard to your router:
 
 ```elixir
 import WardrikWeb.Router
@@ -36,12 +56,19 @@ scope "/admin" do
 end
 ```
 
-* The pipeline must fetch the session and protect from forgery, as Phoenix's `:browser` does.
-* The endpoint must serve LiveView's socket with the session, as `mix phx.new` sets it up.
-* `on_mount` runs your hooks first, so the resolver can read what they assign.
-* Assets are built in. There's nothing to add to `app.js` or `app.css`.
+Open `/admin/wardrik` in your browser to see the dashboard.
 
-## Resolve who's signed in
+Notes:
+
+* Use a pipeline that fetches the session and checks CSRF tokens. Phoenix's `:browser` pipeline
+  does both.
+* Your `:on_mount` hooks run before the resolver. The resolver can read the assigns they set.
+* The dashboard serves its own JavaScript and CSS. You don't need to change `app.js` or
+  `app.css`.
+
+## Write a resolver
+
+The resolver decides who can use the dashboard. It returns the scope each person acts in.
 
 ```elixir
 defmodule MyAppWeb.WardrikResolver do
@@ -55,18 +82,25 @@ defmodule MyAppWeb.WardrikResolver do
 end
 ```
 
-It runs on every mount, so a person who loses access loses the dashboard on their next reconnect.
+The dashboard runs every action in this scope. Wardrik's authorizer checks each action.
 
-## Extend it
+The dashboard calls the resolver each time a page loads. When you remove someone's access, they
+lose the dashboard the next time their browser reconnects.
 
-An extension adds pages and panels. See `WardrikWeb.Extension`.
+## Add pages and panels
+
+Extensions add pages and panels to the dashboard. See `WardrikWeb.Extension`.
 
 ```elixir
-wardrik_dashboard "/wardrik", resolver: {MyAppWeb.WardrikResolver, []}, extensions: [MyExtension]
+wardrik_dashboard "/wardrik",
+  resolver: {MyAppWeb.WardrikResolver, []},
+  extensions: [MyAppWeb.DashboardExtension]
 ```
 
 ## Related
 
 * [Wardrik](https://hexdocs.pm/wardrik)
 * [WardrikProtocol](https://hexdocs.pm/wardrik_protocol)
-* [WardrikHTTP](https://hexdocs.pm/wardrik_http)
+* [WardrikWebPro](https://github.com/wardrik-dev/wardrik_web_pro) adds fleet pages and bulk
+  actions.
+* The [Wardrik daemon](https://wardrik.dev) serves this dashboard at `/web`.
