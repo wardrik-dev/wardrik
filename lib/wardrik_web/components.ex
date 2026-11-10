@@ -48,7 +48,7 @@ defmodule WardrikWeb.Components do
   def live(assigns) do
     ~H"""
     <span class={["live", !@live && "off"]} title={@stopped}>
-      {if @live, do: "Live", else: "Not following"}
+      {if @live, do: "Live", else: "Not live"}
     </span>
     """
   end
@@ -61,6 +61,60 @@ defmodule WardrikWeb.Components do
     <pre class="json">{Jason.encode!(@value, pretty: true)}</pre>
     """
   end
+
+  @doc """
+  Events as rows: time, type and a short preview on one line, with the full event below it when
+  opened. `:agent` links each row's agent through `:dashboard`.
+  """
+  attr :events, :list, required: true
+  attr :empty, :string, default: "No events."
+  attr :dashboard, :any, default: nil
+  attr :agent, :boolean, default: false
+
+  def events(assigns) do
+    ~H"""
+    <div class="rows">
+      <div :if={@events == []} class="card empty">{@empty}</div>
+      <details :for={event <- @events} class="row" id={"event-" <> (event["id"] || "")}>
+        <summary>
+          <span class="when" title={event["time"]}>{ago(event["time"])}</span>
+          <code class="type">{String.replace_prefix(event["type"] || "", "wardrik.", "")}</code>
+          <.link
+            :if={@agent && @dashboard && event["agent"]}
+            class="agent"
+            navigate={WardrikWeb.path(@dashboard, ["agents", event["agent"]])}
+          >
+            {event["agent"]}
+          </.link>
+          <span class="preview">{preview(event["data"], event["agent"])}</span>
+        </summary>
+        <div class="row-body"><.json value={event} /></div>
+      </details>
+    </div>
+    """
+  end
+
+  @doc "A one-line preview of an event's data: its first few plain values, other than `except`."
+  @spec preview(term(), String.t() | nil) :: String.t()
+  def preview(data, except \\ nil) do
+    data
+    |> leaves([])
+    |> Enum.reject(&(&1 == except))
+    |> Enum.take(3)
+    |> Enum.join(" · ")
+    |> String.slice(0, 140)
+  end
+
+  defp leaves(%{} = map, path),
+    do:
+      map
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.flat_map(fn {key, value} -> leaves(value, [key | path]) end)
+
+  defp leaves(list, path) when is_list(list), do: Enum.flat_map(list, &leaves(&1, path))
+  defp leaves(value, _path) when is_binary(value) and value != "", do: [value]
+  defp leaves(value, _path) when is_number(value) or is_boolean(value), do: [to_string(value)]
+  defp leaves(_value, _path), do: []
 
   @doc "The LiveComponents the dashboard's extensions show in `slot`, given `assigns`."
   attr :dashboard, Dashboard, required: true

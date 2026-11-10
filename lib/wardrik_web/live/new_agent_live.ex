@@ -42,7 +42,7 @@ defmodule WardrikWeb.NewAgentLive do
   def handle_event(event, value, socket),
     do: {:noreply, assign(socket, :params, Form.handle(event, value, socket.assigns.params))}
 
-  defp named(""), do: {:error, "Give the agent an ID."}
+  defp named(""), do: {:error, "Enter an agent ID."}
   defp named(_id), do: :ok
 
   defp definition({:ok, definition}), do: {:ok, definition}
@@ -55,7 +55,7 @@ defmodule WardrikWeb.NewAgentLive do
       assign(assigns, schema: DefinitionComponent.schema(), common: DefinitionComponent.common())
 
     ~H"""
-    <.head title="New agent" lead="Define an agent. Your access decides which IDs you may use.">
+    <.head title="New agent" lead="Create an agent from a definition.">
       <:crumb><.link navigate={WardrikWeb.path(@dashboard, [])}>Agents</.link> /</:crumb>
     </.head>
     <div :if={@error} class="flash error" role="alert">{@error}</div>
@@ -64,14 +64,14 @@ defmodule WardrikWeb.NewAgentLive do
         <div class="field">
           <label for="f-id"><code>id</code><span class="req">required</span></label>
           <input id="f-id" type="text" name="agent_id" value={@id} autocomplete="off" />
-          <div class="hint">The agent's ID, as your app names agents.</div>
+          <div class="hint">The new agent's ID.</div>
         </div>
         <Form.fields schema={@schema} params={@params} only={@common} />
         <details class="group">
           <summary><b>More settings</b></summary>
           <Form.fields schema={@schema} params={@params} except={@common ++ ["agent"]} />
         </details>
-        <button class="btn primary">Define agent</button>
+        <button class="btn primary">Create agent</button>
       </div>
     </form>
     """

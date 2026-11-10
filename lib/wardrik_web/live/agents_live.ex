@@ -64,7 +64,7 @@ defmodule WardrikWeb.AgentsLive do
       )
 
     ~H"""
-    <.head title="Agents" lead="Every agent and conversation you may see.">
+    <.head title="Agents" lead="All agents and conversations you can access.">
       <:actions>
         <.live live={@live} stopped={@stopped} />
         <.link class="btn primary" navigate={WardrikWeb.path(@dashboard, ["new"])}>New agent</.link>
@@ -103,7 +103,7 @@ defmodule WardrikWeb.AgentsLive do
           <tr>
             <th>Agent</th>
             <th>Status</th>
-            <th class="num">Waiting</th>
+            <th class="num">Queued</th>
             <th class="num">Spent today</th>
             <th class="wide">Next run</th>
             <th class="wide">Node</th>
@@ -116,7 +116,7 @@ defmodule WardrikWeb.AgentsLive do
               <div :if={agent["conversation"]} class="sub">{agent["conversation"]}</div>
             </td>
             <td data-label="Status"><.status value={agent["status"]} /></td>
-            <td class="num" data-label="Waiting">{agent["pending"]}</td>
+            <td class="num" data-label="Queued">{agent["pending"]}</td>
             <td class="num" data-label="Spent today">{usd(agent["spent_today"]["usd"])}</td>
             <td class="wide sub" data-label="Next run">{ago(agent["next_run"])}</td>
             <td class="wide sub mono" data-label="Node">{agent["node"] || "—"}</td>

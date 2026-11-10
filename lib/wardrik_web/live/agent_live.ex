@@ -79,7 +79,7 @@ defmodule WardrikWeb.AgentLive do
       {:ok, _answer} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Forgot #{socket.assigns.agent}.")
+         |> put_flash(:info, "Deleted #{socket.assigns.agent}.")
          |> push_navigate(to: WardrikWeb.path(socket.assigns.dashboard, []))}
 
       {:error, error} ->
@@ -88,7 +88,7 @@ defmodule WardrikWeb.AgentLive do
   end
 
   def handle_event("kill", %{"call" => call}, socket),
-    do: {:noreply, act(socket, "agent.kill", %{"call" => call}, "Stopped the call.")}
+    do: {:noreply, act(socket, "agent.kill", %{"call" => call}, "Stopped the tool call.")}
 
   def handle_event(action, _params, socket) when action in ~w(cancel stop clear spawn) do
     done = %{
@@ -196,14 +196,14 @@ defmodule WardrikWeb.AgentLive do
         <button
           class="btn danger"
           phx-click="clear"
-          data-confirm="Clear this agent's history? It can't be undone."
+          data-confirm="Clear this agent's history? This can't be undone."
         >Clear history</button>
         <button
           :if={!@conversation}
           class="btn danger"
           phx-click="forget"
-          data-confirm={"Forget #{@agent}? Its definition, history and triggers go. It can't be undone."}
-        >Forget</button>
+          data-confirm={"Delete #{@agent}? Its definition, history and triggers are deleted. This can't be undone."}
+        >Delete</button>
       </:actions>
     </.head>
 
@@ -251,7 +251,7 @@ defmodule WardrikWeb.AgentLive do
           <div class="body">
             <dl class="facts">
               <dt>Status</dt><dd><.status value={@read["status"]} /></dd>
-              <dt>Waiting</dt><dd>{@read["pending"]}</dd>
+              <dt>Queued</dt><dd>{@read["pending"]}</dd>
               <dt>Node</dt><dd class="mono">{@read["node"] || "—"}</dd>
               <dt>Next run</dt><dd>{ago(@read["next_run"])}</dd>
               <dt>Spent today</dt><dd>{usd(get_in(@read, ["spent_today", "usd"]))}</dd>
@@ -291,7 +291,7 @@ defmodule WardrikWeb.AgentLive do
       <div class="label">Doing</div>
       <ul>
         <li :if={(@activity["doing"] || []) == []} class="sub">
-          Nothing since {ago(@activity["since"])}
+          Idle since {ago(@activity["since"])}
         </li>
         <li :for={item <- @activity["doing"] || []} title={item["type"]}>
           {doing_text(item)}
@@ -306,13 +306,13 @@ defmodule WardrikWeb.AgentLive do
 
   defp doing_text(%{"type" => "wardrik.run.interrupted"} = item) do
     case length(item["interrupts"] || []) do
-      1 -> "Waiting on a person for one call"
-      n -> "Waiting on a person for #{n} calls"
+      1 -> "Waiting for approval of 1 tool call"
+      n -> "Waiting for approval of #{n} tool calls"
     end
   end
 
   defp doing_text(%{"type" => "wardrik.message.retrying"} = item),
-    do: "Retrying the model#{attempt(item)}"
+    do: "Retrying the model call#{attempt(item)}"
 
   defp doing_text(%{"type" => "wardrik.tool_call.retrying", "tool" => %{"name" => name}} = item),
     do: "Retrying #{name}#{attempt(item)}"
@@ -324,18 +324,18 @@ defmodule WardrikWeb.AgentLive do
     do: "Finished #{name}"
 
   defp doing_text(%{"type" => "wardrik.tool_call.denied", "tool" => %{"name" => name}}),
-    do: "Denied #{name}"
+    do: "#{name} was denied"
 
   defp doing_text(%{"type" => "wardrik.step.started", "step" => %{"name" => name}}),
     do: "Running step #{name}"
 
-  defp doing_text(%{"type" => "wardrik.message.started"}), do: "Writing a reply"
-  defp doing_text(%{"type" => "wardrik.run.resumed"}), do: "Resuming its run"
+  defp doing_text(%{"type" => "wardrik.message.started"}), do: "Generating a response"
+  defp doing_text(%{"type" => "wardrik.run.resumed"}), do: "Resuming a run"
   defp doing_text(%{"type" => "wardrik.run.started"}), do: "Starting a run"
   defp doing_text(%{"type" => type}), do: String.replace_prefix(type, "wardrik.", "")
 
   defp attempt(%{"attempt" => attempt, "attempts" => attempts}),
-    do: ", try #{attempt} of #{attempts}"
+    do: " (attempt #{attempt} of #{attempts})"
 
   defp attempt(_item), do: ""
 
@@ -372,7 +372,7 @@ defmodule WardrikWeb.AgentLive do
         </article>
       <% end %>
       <article :for={{id, text} <- @drafts} class="msg" id={"draft-#{id}"}>
-        <header><b>Writing…</b><span class="pill running">running</span></header>
+        <header><b>Generating…</b><span class="pill running">running</span></header>
         <div class="text">{text}</div>
       </article>
     </div>
@@ -548,34 +548,6 @@ defmodule WardrikWeb.AgentLive do
         </tbody>
       </table>
       <div :if={@calls == []} class="empty">No tool call is running.</div>
-    </div>
-    """
-  end
-
-  attr :events, :list, required: true
-
-  defp events(assigns) do
-    ~H"""
-    <div class="card">
-      <table class="list">
-        <thead>
-          <tr>
-            <th>Time</th><th>Type</th><th>Data</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={event <- @events}>
-            <td class="sub" title={event["time"]}>{ago(event["time"])}</td>
-            <td class="mono">{String.replace_prefix(event["type"], "wardrik.", "")}</td>
-            <td>
-              <details>
-                <summary>data</summary><.json value={event["data"]} />
-              </details>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div :if={@events == []} class="empty">No events.</div>
     </div>
     """
   end

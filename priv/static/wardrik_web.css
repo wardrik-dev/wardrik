@@ -378,3 +378,22 @@ details.inbound > summary { display: flex; flex-direction: column; gap: 2px; lis
 details.inbound > summary b { color: var(--ink); }
 details.inbound > summary b::before { content: "▸ "; color: var(--faint); }
 details.inbound[open] > summary b::before { content: "▾ "; }
+
+/* Rows that open to show their detail at full width */
+.rows { display: flex; flex-direction: column; gap: 6px; }
+details.row { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-raised); }
+details.row > summary { display: flex; align-items: baseline; gap: 14px; min-width: 0; padding: 9px 14px; cursor: pointer; list-style: none; }
+details.row > summary::-webkit-details-marker { display: none; }
+details.row > summary:hover { background: var(--bg-sunk); }
+details.row > summary .when { flex: none; width: 72px; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+details.row > summary .type { flex: none; color: var(--ink); }
+details.row > summary .agent { flex: none; font-size: 12.5px; color: var(--muted); text-decoration: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details.row > summary .agent:hover { color: var(--accent); }
+details.row > summary .preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--faint); font-family: var(--mono); font-size: 12px; }
+details.row[open] > summary { border-bottom: 1px solid var(--line); }
+details.row .row-body { padding: 12px 14px; }
+@media (max-width: 700px) {
+  details.row > summary { flex-wrap: wrap; gap: 4px 10px; }
+  details.row > summary .preview { flex-basis: 100%; }
+  details.row > summary .agent { max-width: 100%; }
+}

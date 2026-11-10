@@ -98,7 +98,7 @@ defmodule WardrikWeb.DashboardTest do
 
   test "keeps operations other systems call apart, and finds operations", %{conn: conn} do
     {:ok, view, html} = live(conn, "/ops/operations")
-    assert html =~ "Called by other systems"
+    assert html =~ "Called by webhooks and chat apps"
     assert html =~ "hook.deliver"
 
     html = view |> form("#operations-filter", %{"query" => "trigger"}) |> render_change()
@@ -106,7 +106,7 @@ defmodule WardrikWeb.DashboardTest do
     refute html =~ "agents.list"
 
     {:ok, _view, html} = live(conn, "/ops/operations/hook.deliver")
-    assert html =~ "Other systems call this one"
+    assert html =~ "Webhooks and chat apps call this operation"
   end
 
   test "serves its assets", %{conn: conn} do

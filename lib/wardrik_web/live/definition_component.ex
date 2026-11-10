@@ -91,7 +91,7 @@ defmodule WardrikWeb.DefinitionComponent do
     ~H"""
     <div>
       <div :if={@missing != []} class="flash info">
-        Named but not offered yet: {Enum.join(@missing, ", ")}. They start working once they're added.
+        Tools not available yet: {Enum.join(@missing, ", ")}. They become available when their MCP server or tool worker connects.
       </div>
       <form
         :if={@editing}
@@ -133,7 +133,7 @@ defmodule WardrikWeb.DefinitionComponent do
             <% end %>
           </dl>
           <details style="margin-top: 14px">
-            <summary>Everything, as JSON</summary>
+            <summary>Full definition (JSON)</summary>
             <.json value={Map.drop(@current, ["triggers"])} />
           </details>
         </div>

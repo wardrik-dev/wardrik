@@ -39,36 +39,14 @@ defmodule WardrikWeb.AuditLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <.head title="Audit" lead="What people changed across the deployment, oldest first." />
+    <.head title="Audit" lead="Changes made across the deployment, oldest first." />
     <div :if={@error} class="flash error">{@error}</div>
-    <div class="card">
-      <table class="list">
-        <thead>
-          <tr>
-            <th>Time</th><th>Change</th><th>Agent</th><th class="wide">Source</th><th>Data</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={event <- @events}>
-            <td class="sub" title={event["time"]}>{ago(event["time"])}</td>
-            <td class="mono">{String.replace_prefix(event["type"], "wardrik.", "")}</td>
-            <td>
-              <.link
-                :if={event["agent"]}
-                navigate={WardrikWeb.path(@dashboard, ["agents", event["agent"]])}
-              >{event["agent"]}</.link>
-            </td>
-            <td class="wide sub mono">{event["source"]}</td>
-            <td>
-              <details>
-                <summary>data</summary><.json value={event["data"]} />
-              </details>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div :if={@events == []} class="empty">Nothing changed yet.</div>
-    </div>
+    <.events
+      events={@events}
+      empty="No audit events yet."
+      dashboard={@dashboard}
+      agent
+    />
     <button :if={!@done} class="btn" phx-click="more">Show more</button>
     """
   end

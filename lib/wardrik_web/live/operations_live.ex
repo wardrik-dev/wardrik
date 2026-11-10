@@ -38,7 +38,7 @@ defmodule WardrikWeb.OperationsLive do
     ~H"""
     <.head
       title="Operations"
-      lead="Everything Wardrik can do, each with a form. Your access decides what runs."
+      lead="Run any operation from a form. Operations you can't access return an error."
     />
 
     <form id="operations-filter" class="filters" phx-change="filter" phx-submit="filter">
@@ -62,8 +62,8 @@ defmodule WardrikWeb.OperationsLive do
 
     <details :if={@inbound != []} class="inbound" open={@query != ""}>
       <summary>
-        <b>Called by other systems</b>
-        <span class="sub">Webhooks and chat apps deliver requests through these. You rarely run them by hand.</span>
+        <b>Called by webhooks and chat apps</b>
+        <span class="sub">Running one here sends a request as if it came from that service.</span>
       </summary>
       <.group
         :for={{subject, operations} <- @inbound}

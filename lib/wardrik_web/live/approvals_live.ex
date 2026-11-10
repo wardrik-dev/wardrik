@@ -58,11 +58,11 @@ defmodule WardrikWeb.ApprovalsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <.head title="Approvals" lead="Calls agents wait on a person for.">
+    <.head title="Approvals" lead="Tool calls waiting for approval.">
       <:actions><.live live={@live} stopped={@stopped} /></:actions>
     </.head>
     <div :if={@error} class="flash error">{@error}</div>
-    <div :if={@interrupts == []} class="card empty">Nothing waits on you.</div>
+    <div :if={@interrupts == []} class="card empty">No pending approvals.</div>
     <div :for={%{"agent" => agent, "interrupt" => interrupt} = waiting <- @interrupts} class="card">
       <header>
         <span>

@@ -95,8 +95,8 @@ defmodule WardrikWeb.OperationLive do
     </.head>
 
     <div :if={WardrikWeb.Operations.inbound?(@operation)} class="flash info" role="note">
-      Other systems call this one: webhooks and chat apps deliver their requests through it. Running it
-      by hand sends a request as if one had arrived.
+      Webhooks and chat apps call this operation. Running it here sends a request as if it came from
+      that service.
     </div>
 
     <div class="layout">
@@ -134,14 +134,8 @@ defmodule WardrikWeb.OperationLive do
         </div>
         <div :if={@live != nil} class="card">
           <header>Events <.live live={@live} stopped={@stopped} /></header>
-          <div :if={@events == []} class="empty">Waiting for events.</div>
-          <div :for={event <- @events} class="step">
-            <div class="tool">
-              <code>{event["type"]}</code><span class="sub">{event["agent"]}</span>
-            </div>
-            <details>
-              <summary>data</summary><.json value={event["data"]} />
-            </details>
+          <div class="body">
+            <.events events={@events} empty="Waiting for events." dashboard={@dashboard} agent />
           </div>
         </div>
       </div>

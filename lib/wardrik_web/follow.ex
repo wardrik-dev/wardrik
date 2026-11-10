@@ -35,7 +35,7 @@ defmodule WardrikWeb.Follow do
         socket
         |> assign(:live, false)
         |> assign(:due, false)
-        |> assign(:stopped, "No agent to follow.")
+        |> assign(:stopped, "No agents to watch.")
     end
   end
 
@@ -81,7 +81,7 @@ defmodule WardrikWeb.Follow do
       case Wardrik.Scope.stream(scope, id, input) do
         {:ok, stream} ->
           Enum.each(stream, fn {event, _cursor} -> send(lv, {__MODULE__, {:event, event}}) end)
-          "The stream ended."
+          "The event stream closed."
 
         {:error, error} ->
           error.message

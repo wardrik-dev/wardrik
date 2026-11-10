@@ -14,7 +14,7 @@ defmodule WardrikWeb.NodesLive do
   def handle_event("reload", _params, socket) do
     case Wardrik.Scope.run(socket.assigns.scope, "deployment.reload", %{}) do
       {:ok, _answer} ->
-        {:noreply, socket |> put_flash(:info, "Read every agent's definition again.") |> load()}
+        {:noreply, socket |> put_flash(:info, "Reloaded agent definitions.") |> load()}
 
       {:error, error} ->
         {:noreply, put_flash(socket, :error, error.message)}
@@ -37,9 +37,9 @@ defmodule WardrikWeb.NodesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <.head title="Nodes" lead="Where agents run. Refreshes every 5 seconds.">
+    <.head title="Nodes" lead="Nodes and the agents running on each. Updates every 5 seconds.">
       <:actions>
-        <button class="btn" phx-click="reload" data-confirm="Read every agent's definition again?">Reload definitions</button>
+        <button class="btn" phx-click="reload" data-confirm="Reload all agent definitions?">Reload definitions</button>
       </:actions>
     </.head>
     <div :if={@error} class="flash error">{@error}</div>

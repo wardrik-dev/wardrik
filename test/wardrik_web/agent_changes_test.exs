@@ -52,7 +52,7 @@ defmodule WardrikWeb.AgentChangesTest do
     assert %{"agent" => "triage", "node" => "b@host"} = List.last(asked("agent.move"))
 
     assert {:error, {:live_redirect, %{to: "/ops"}}} =
-             view |> element("button", "Forget") |> render_click()
+             view |> element("button", "Delete") |> render_click()
 
     assert %{"agent" => "triage"} = List.last(asked("agent.forget"))
   end
@@ -61,7 +61,7 @@ defmodule WardrikWeb.AgentChangesTest do
     {:ok, view, _html} = live(conn, "/ops/new")
 
     assert view |> form("#new-agent", %{"agent_id" => ""}) |> render_submit() =~
-             "Give the agent an ID."
+             "Enter an agent ID."
 
     assert {:error, {:live_redirect, %{to: "/ops/agents/scout?tab=definition"}}} =
              view

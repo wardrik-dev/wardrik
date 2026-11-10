@@ -98,8 +98,8 @@ defmodule WardrikWeb.TriggersComponent do
   defp read(params) do
     case Form.read(@schema, params) do
       {:ok, %{"trigger" => _name} = trigger} -> {:ok, trigger}
-      {:ok, _trigger} -> {:error, "Give the trigger a name."}
-      :none -> {:error, "Give the trigger a name."}
+      {:ok, _trigger} -> {:error, "Enter a trigger name."}
+      :none -> {:error, "Enter a trigger name."}
       {:error, _why} = error -> error
     end
   end
@@ -170,7 +170,7 @@ defmodule WardrikWeb.TriggersComponent do
           </tbody>
         </table>
         <div :if={@triggers == [] and !@editing} class="empty">
-          No triggers. An agent with none runs only when asked.
+          No triggers. The agent runs only when it receives a message.
         </div>
       </div>
 
@@ -191,10 +191,10 @@ defmodule WardrikWeb.TriggersComponent do
         </header>
         <div class="body">
           <p class="sub" style="margin-top: 0">
-            Give it <code>every</code>
-            for a clock, <code>feed</code>
-            to watch RSS or Atom, or <code>webhook</code>
-            to be called.
+            Set <code>every</code>
+            for a schedule, <code>feed</code>
+            for RSS or Atom feeds, or <code>webhook</code>
+            for incoming requests.
           </p>
           <Form.fields
             schema={@schema}

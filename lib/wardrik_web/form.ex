@@ -147,9 +147,6 @@ defmodule WardrikWeb.Form do
     |> none_if_empty()
   end
 
-  defp read(:empty, _schema, _params, _path, true), do: {:ok, %{}}
-  defp read(kind, schema, params, path, _required), do: read(kind, schema, params, path)
-
   defp read(:list, %{"items" => item}, params, path) when is_map(params) do
     params
     |> Enum.sort_by(fn {index, _item} -> String.to_integer(index) end)
@@ -187,6 +184,10 @@ defmodule WardrikWeb.Form do
     do: if(object["required"], do: read(:object, object, %{}, path), else: :none)
 
   defp read(_kind, _schema, _params, _path), do: :none
+
+  # A required empty object, as {"none": {}}, is sent though nothing was filled in.
+  defp read(:empty, _schema, _params, _path, true), do: {:ok, %{}}
+  defp read(kind, schema, params, path, _required), do: read(kind, schema, params, path)
 
   defp none_if_empty({:ok, empty}) when empty in [%{}, []], do: :none
   defp none_if_empty(other), do: other
