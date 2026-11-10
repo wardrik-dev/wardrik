@@ -16,14 +16,15 @@ defmodule WardrikWeb.Components do
   attr :title, :string, required: true
   attr :lead, :string, default: nil
   slot :crumb
+  slot :badge
   slot :actions
 
   def head(assigns) do
     ~H"""
     <header class="head">
-      <div>
+      <div class="title">
         <div :if={@crumb != []} class="crumb">{render_slot(@crumb)}</div>
-        <h1>{@title}</h1>
+        <h1>{@title} <span :if={@badge != []} class="badge">{render_slot(@badge)}</span></h1>
         <p :if={@lead}>{@lead}</p>
       </div>
       <div :if={@actions != []} class="actions">{render_slot(@actions)}</div>
@@ -93,6 +94,42 @@ defmodule WardrikWeb.Components do
   @spec micro_usd(non_neg_integer() | nil) :: String.t()
   def micro_usd(nil), do: "—"
   def micro_usd(micro), do: usd(micro / 1.0e6)
+
+  @doc "A count, with thousands separated."
+  @spec number(integer() | nil) :: String.t()
+  def number(nil), do: "—"
+
+  def number(n) when is_integer(n) do
+    n
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
+  end
+
+  @doc "A token count, shortened past a thousand: `8.4k`, `1.2M`."
+  @spec tokens(integer() | nil) :: String.t()
+  def tokens(nil), do: "—"
+  def tokens(n) when n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
+  def tokens(n) when n >= 1000, do: "#{Float.round(n / 1000, 1)}k"
+  def tokens(n), do: number(n)
+
+  @doc "A duration in milliseconds, in its largest two units: `850 ms`, `4.2s`, `3m 10s`, `6d 20h`."
+  @spec took(non_neg_integer() | nil) :: String.t()
+  def took(nil), do: "—"
+  def took(ms) when ms < 1000, do: "#{ms} ms"
+  def took(ms) when ms < 60_000, do: "#{Float.round(ms / 1000, 1)}s"
+  def took(ms), do: two(div(ms, 1000), [{86_400, "d"}, {3600, "h"}, {60, "m"}, {1, "s"}])
+
+  defp two(s, [{size, _unit}, {next, next_unit} | rest]) when s < size,
+    do: two(s, [{next, next_unit} | rest])
+
+  defp two(s, [{size, unit}, {next, next_unit} | _rest]) do
+    case div(rem(s, size), next) do
+      0 -> "#{div(s, size)}#{unit}"
+      more -> "#{div(s, size)}#{unit} #{more}#{next_unit}"
+    end
+  end
 
   @doc "An ISO 8601 time, as how long ago it was."
   @spec ago(String.t() | nil, DateTime.t()) :: String.t()

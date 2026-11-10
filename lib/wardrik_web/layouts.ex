@@ -54,9 +54,25 @@ defmodule WardrikWeb.Layouts do
         />
       </nav>
       <main class="main">
-        <div :if={msg = Phoenix.Flash.get(@flash, :info)} class="flash info" role="status">{msg}</div>
-        <div :if={msg = Phoenix.Flash.get(@flash, :error)} class="flash error" role="alert">
-          {msg}
+        <div
+          :if={msg = Phoenix.Flash.get(@flash, :info)}
+          class="flash info"
+          role="status"
+          phx-click="lv:clear-flash"
+          phx-value-key="info"
+          title="Dismiss"
+        >
+          {msg}<span class="close" aria-hidden="true">×</span>
+        </div>
+        <div
+          :if={msg = Phoenix.Flash.get(@flash, :error)}
+          class="flash error"
+          role="alert"
+          phx-click="lv:clear-flash"
+          phx-value-key="error"
+          title="Dismiss"
+        >
+          {msg}<span class="close" aria-hidden="true">×</span>
         </div>
         {@inner_content}
       </main>

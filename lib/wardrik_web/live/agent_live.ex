@@ -156,10 +156,10 @@ defmodule WardrikWeb.AgentLive do
 
     ~H"""
     <.head title={@agent} lead={@conversation && "Conversation #{@conversation}"}>
+      <:badge :if={@read}><.status value={@read["status"]} /></:badge>
       <:crumb><.link navigate={WardrikWeb.path(@dashboard, [])}>Agents</.link> /</:crumb>
       <:actions>
         <.live live={@live} stopped={@stopped} />
-        <.status :if={@read} value={@read["status"]} />
         <button :if={@read && @read["status"] == "running"} class="btn" phx-click="cancel">Cancel run</button>
         <button :if={@read && @read["status"] == "asleep"} class="btn" phx-click="spawn">Start</button>
         <button :if={@read && @read["status"] != "asleep"} class="btn" phx-click="stop">Stop</button>
@@ -215,7 +215,7 @@ defmodule WardrikWeb.AgentLive do
               <dt>Node</dt><dd class="mono">{@read["node"] || "—"}</dd>
               <dt>Next run</dt><dd>{ago(@read["next_run"])}</dd>
               <dt>Spent today</dt><dd>{usd(get_in(@read, ["spent_today", "usd"]))}</dd>
-              <dt>Tokens today</dt><dd>{get_in(@read, ["spent_today", "tokens"]) || 0}</dd>
+              <dt>Tokens today</dt><dd>{number(get_in(@read, ["spent_today", "tokens"]) || 0)}</dd>
             </dl>
             <details :if={@read["activity"]} style="margin-top: 12px">
               <summary>Activity</summary>
@@ -347,42 +347,58 @@ defmodule WardrikWeb.AgentLive do
   defp runs(assigns) do
     ~H"""
     <div class="stats">
-      <div :for={{key, value} <- @totals || %{}} class="stat">
-        <b>{if key == "cost_micro_usd", do: micro_usd(value), else: value}</b><span>{String.replace(
-          key,
-          "_",
-          " "
-        )}</span>
+      <div class="stat">
+        <b>{micro_usd(@totals["cost_micro_usd"])}</b><span>spent</span>
+      </div>
+      <div class="stat">
+        <b>{number(@totals["runs"])}</b>
+        <span>runs<span :if={@totals["failed"] > 0} class="bad"> · {@totals["failed"]} failed</span></span>
+      </div>
+      <div class="stat"><b>{number(@totals["tool_calls"])}</b><span>tool calls</span></div>
+      <div class="stat">
+        <b title={"#{number(@totals["input_tokens"])} in, #{number(@totals["output_tokens"])} out"}>
+          {tokens(@totals["input_tokens"] + @totals["output_tokens"])}
+        </b>
+        <span>tokens</span>
+      </div>
+      <div class="stat">
+        <b title={@totals["last_at"]}>{ago(@totals["last_at"])}</b><span>last run</span>
       </div>
     </div>
     <div class="card">
       <table class="list">
         <thead>
           <tr>
-            <th>Started</th><th>Status</th><th class="wide">Model</th><th class="num">Tools</th><th class="num">
-              Tokens in / out
-            </th><th class="num">Cost</th><th class="num">Took</th>
+            <th>Started</th>
+            <th>Status</th>
+            <th class="wide">Model</th>
+            <th class="num">Tool calls</th>
+            <th class="num">Tokens in</th>
+            <th class="num">Tokens out</th>
+            <th class="num">Cost</th>
+            <th class="num">Took</th>
           </tr>
         </thead>
         <tbody>
           <tr :for={run <- @runs}>
-            <td>
+            <td class="when" title={run["started_at"]}>
               {ago(run["started_at"])}
-              <div :if={run["source"]} class="sub">{run["source"]}</div>
+              <div :if={run["source"]} class="sub">from {run["source"]}</div>
             </td>
             <td>
-              <.status value={run["status"]} /><div :if={run["error"]} class="sub">
-                {run["error"]}
-              </div>
+              <.status value={run["status"]} />
+              <div :if={run["error"]} class="sub bad">{run["error"]}</div>
             </td>
-            <td class="wide mono">{run["model"] || "—"}</td>
+            <td class="wide"><code>{run["model"] || "—"}</code></td>
             <td class="num">
-              {run["tool_calls"]}<span :if={run["tool_errors"] > 0} class="sub"> ({run["tool_errors"]} failed)</span>
+              {number(run["tool_calls"])}
+              <div :if={run["tool_errors"] > 0} class="sub bad">{run["tool_errors"]} failed</div>
             </td>
-            <td class="num">{run["input_tokens"]} / {run["output_tokens"]}</td>
+            <td class="num">{number(run["input_tokens"])}</td>
+            <td class="num">{number(run["output_tokens"])}</td>
             <td class="num">{micro_usd(run["cost_micro_usd"])}</td>
-            <td class="num">
-              {if run["duration_ms"], do: "#{Float.round(run["duration_ms"] / 1000, 1)}s", else: "—"}
+            <td class="num" title={run["duration_ms"] && "#{number(run["duration_ms"])} ms"}>
+              {took(run["duration_ms"])}
             </td>
           </tr>
         </tbody>
