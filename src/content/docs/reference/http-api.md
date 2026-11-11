@@ -233,6 +233,40 @@ curl -X DELETE "$WARDRIK_URL/v1/agents?agents=agt_01JF8X5RQ2" -H "Authorization:
 Entries in `kept` and `failed` contain `{"id": ..., "why": ...}`. Agents defined by files
 are kept; remove their files to delete them.
 
+### Read an agent's resource use
+
+`GET /v1/agents/{agent}/runtime`
+
+Returns a running agent's memory, mailbox size, process count and reductions. The figures include
+its current turn and running tool calls. Returns `404` while the agent sleeps.
+
+```sh
+curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/runtime -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"agent": "agt_01JF8X5RQ2", "node": "wardrik@box1", "memory_bytes": 1843200, "binary_bytes": 524288,
+ "processes": 3, "message_queue": 0, "reductions": 4810233}
+```
+
+### Read what an agent gets
+
+`GET /v1/agents/{agent}/resolved`
+
+Returns what the agent gets from its owner and config: the user it works for, its policies, MCP
+servers and the tools each offers now, notify targets, channels and workspaces.
+
+```sh
+curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/resolved -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"agent": "agt_01JF8X5RQ2", "principal": {"id": "user_42"},
+ "servers": [{"name": "github", "server": "acme:github", "tools": ["github__search_issues", "github__create_issue"]}],
+ "policy": [{"deny": ["shell/*"]}], "policies": {}, "defaults": {"model": "anthropic:claude-haiku-4-5"},
+ "notify": [{"name": "ops", "target": "ops"}], "channels": {"slack": "T0123"}, "workspaces": {"agt_runbooks": "read"}}
+```
+
 ### Move an agent
 
 `POST /v1/agents/{agent}/move`
@@ -616,15 +650,43 @@ See [Slack](/build/slack/).
 
 `GET /v1/deployment/nodes`
 
-Lists the nodes, with the running and stopped agent counts on each.
+Lists the nodes and how many agents run on each. `running`, `idle` and `parked` count those
+agents by status. `asleep` counts the agents on no node.
 
 ```sh
 curl $WARDRIK_URL/v1/deployment/nodes -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
 ```json
-{"nodes": [{"name": "wardrik@box1", "agents": 12}, {"name": "wardrik@box2", "agents": 9}], "asleep": 40}
+{"nodes": [{"name": "wardrik@box1", "agents": 12}, {"name": "wardrik@box2", "agents": 9}],
+ "running": 5, "idle": 14, "parked": 2, "asleep": 40}
 ```
+
+### Read resource use
+
+`GET /v1/deployment/runtime`
+
+Returns each node's resource use, and the running agents that use the most memory.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `limit` | integer | how many agents to return; 20 unless set |
+
+```sh
+curl $WARDRIK_URL/v1/deployment/runtime -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"nodes": [{"name": "wardrik@box1", "agents": 12, "scheduler_utilization": 0.12, "run_queue": 0,
+            "memory": {"total": 98566144, "processes": 31457280, "code": 25165824, "resident": 163577856, "...": "..."},
+            "process_groups": [{"module": "WardrikCore.Agent", "application": "wardrik_core", "processes": 12, "memory_bytes": 1572864}],
+            "processes": {"count": 1203, "limit": 1048576}, "...": "..."}],
+ "agents": [{"agent": "triage", "node": "wardrik@box1", "memory_bytes": 1843200, "processes": 3, "...": "..."}]}
+```
+
+- `memory` is in bytes. `resident` is what the operating system reports, on Linux only.
+- `process_groups` counts processes by the module that runs them, most first.
+- With `os_mon` running, `os` adds the machine's load, memory and disks.
 
 ### Reload definitions
 
@@ -1046,6 +1108,22 @@ curl $WARDRIK_URL/v1/tokens -H "Authorization: Bearer $WARDRIK_TOKEN" \
 ```
 
 Only the `admin` user can create a `user:admin` token.
+
+### Create a sign-in link
+
+`POST /v1/tokens/web`
+
+Returns a link that signs the caller in to the [dashboard](/run/dashboard/). The link works for
+two minutes. Signing in creates a token for the caller that lasts 12 hours. Only user tokens can
+sign in. Returns `404` while `web.enabled` is `false`.
+
+```sh
+curl -X POST $WARDRIK_URL/v1/tokens/web -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"url": "http://127.0.0.1:4747/web/sign-in?code=..."}
+```
 
 ### Revoke a token
 

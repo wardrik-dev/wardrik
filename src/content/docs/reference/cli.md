@@ -184,6 +184,7 @@ wardrik token revoke mzxw6ytboi
 | `service install` | installs the systemd user service |
 | `service uninstall` | removes the systemd user service |
 | `status` | prints the URL, and the agent count per node |
+| `web` | prints a link that signs you in to the [dashboard](/run/dashboard/); it works for two minutes |
 | `reload [AGENT...]` | rereads agent files on every node |
 | `audit` | prints the audit log, oldest first |
 | `uninstall [--purge] [--yes]` | stops the daemon and removes what install.sh installed; keeps the config, keys and store unless `--purge` |
