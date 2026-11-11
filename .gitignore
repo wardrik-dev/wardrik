@@ -24,3 +24,6 @@ wardrik_web-*.tar
 
 
 /priv/plts/
+
+# Dialyzer PLTs.
+/priv/plts/

@@ -36,7 +36,7 @@ defmodule WardrikWeb.MixProject do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/wardrik-dev/wardrik_web"},
-      files: ~w(lib priv mix.exs README.md CHANGELOG.md LICENSE)
+      files: ~w(lib priv/static mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end
 
