@@ -48,8 +48,14 @@ defmodule Wardrik.DeploymentTest do
       here = to_string(node())
       {:ok, _agent} = Wardrik.Agent.define(scope, "acme/bot", model: @model)
 
-      assert {:ok, %Wardrik.Nodes{nodes: [%Wardrik.Node{name: ^here, agents: 1}], asleep: 0}} =
-               Wardrik.Deployment.nodes(scope)
+      assert {:ok,
+              %Wardrik.Nodes{
+                nodes: [%Wardrik.Node{name: ^here, agents: 1}],
+                running: 0,
+                idle: 1,
+                parked: 0,
+                asleep: 0
+              }} = Wardrik.Deployment.nodes(scope)
 
       assert {:ok, %Wardrik.Agent{id: "acme/bot", node: ^here}} =
                Wardrik.Agent.move(scope, "acme/bot", node: here)

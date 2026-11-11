@@ -151,6 +151,8 @@ defmodule Wardrik.OperationsTest do
       assert %{"agents" => [%{"id" => "acme/triage", "status" => "parked"}]} =
                run!(scope, "agents.list", %{"agents" => ["acme/triage"]})
 
+      assert %{"parked" => 1, "running" => 0} = run!(scope, "deployment.nodes", %{})
+
       assert %{"decisions" => [%{"id" => "call_1", "decision" => "approved"}]} =
                run!(scope, "agent.approve", %{
                  "agent" => "acme/triage",

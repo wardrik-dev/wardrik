@@ -39,7 +39,10 @@ defmodule Wardrik.Operations.Deployment do
     {:ok, %{"reloaded" => [here], "problems" => problems}}
   end
 
-  @doc "Lists the nodes, with how many agents run on each and how many sleep."
+  @doc """
+  Lists the nodes, with how many agents run on each, how many of those are running, idle or
+  parked, and how many sleep.
+  """
   @spec nodes(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def nodes(%Wardrik.Scope{wardrik: wardrik}, _input) do
     agents = Wardrik.agents(wardrik)
@@ -50,7 +53,22 @@ defmodule Wardrik.Operations.Deployment do
       for name <- WardrikCore.nodes(agents),
           do: %{"name" => name, "agents" => Map.get(counts, name, 0)}
 
-    {:ok, %{"nodes" => nodes, "asleep" => Map.get(counts, nil, 0)}}
+    events = Wardrik.events(wardrik)
+
+    states =
+      agents
+      |> WardrikCore.running()
+      |> Enum.map(fn {key, _pid} -> Snapshot.status(WardrikEvents.activity(events, key)) end)
+      |> Enum.frequencies()
+
+    {:ok,
+     %{
+       "nodes" => nodes,
+       "running" => Map.get(states, "running", 0),
+       "idle" => Map.get(states, "idle", 0),
+       "parked" => Map.get(states, "parked", 0),
+       "asleep" => Map.get(counts, nil, 0)
+     }}
   end
 
   @doc "Moves an agent to another node."
