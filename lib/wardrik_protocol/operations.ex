@@ -34,8 +34,9 @@ defmodule WardrikProtocol.Operations do
     case Map.fetch(routes, operation.id) do
       {:ok, path} ->
         parameter = document["components"]["parameters"]["conversation"]
-        schema = Map.put(parameter["schema"], "description", parameter["description"])
-        properties = Map.put(operation.input["properties"] || %{}, "conversation", schema)
+
+        properties =
+          Map.put(operation.input["properties"] || %{}, "conversation", property(parameter))
 
         %{
           operation
@@ -92,7 +93,7 @@ defmodule WardrikProtocol.Operations do
 
   defp input(parameters, body) do
     Enum.reduce(parameters, body, fn parameter, input ->
-      schema = Map.put(parameter["schema"], "description", parameter["description"])
+      schema = property(parameter)
 
       input
       |> Map.update(
@@ -103,6 +104,11 @@ defmodule WardrikProtocol.Operations do
       |> required(parameter)
     end)
   end
+
+  # A schema's own description says what the value is. A path parameter's says how it goes in
+  # a URL, which callers of an operation don't need.
+  defp property(parameter),
+    do: Map.put_new(parameter["schema"], "description", parameter["description"])
 
   defp required(input, %{"required" => true, "name" => name}),
     do: Map.update(input, "required", [name], &[name | &1])

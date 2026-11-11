@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- An operation's input describes an agent or conversation ID by what it is. The note on URL
+  encoding stays with the HTTP parameter.
+
 ## 0.1.0-rc.6 (2026-11-11)
 
 - `deployment.runtime` returns resource use for each node: memory by type, memory the OS

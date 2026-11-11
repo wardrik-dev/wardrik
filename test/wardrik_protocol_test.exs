@@ -182,6 +182,18 @@ defmodule WardrikProtocolTest do
     defp path_input("hook.deliver_with_secret"),
       do: %{"agent" => "agt_1", "trigger" => "gh", "secret" => "s3cret"}
 
+    test "describes an input by what it is, not how it goes in a URL" do
+      %{"properties" => properties} = WardrikProtocol.operation("agent.ask").input
+
+      assert properties["agent"]["description"] =~ "An agent ID"
+      assert properties["conversation"]["description"] =~ "A conversation's ID"
+      refute properties["agent"]["description"] =~ "URL"
+
+      assert WardrikProtocol.operation("agent.approve").input["properties"]["interrupt"][
+               "description"
+             ] == "The ID of the pending tool call."
+    end
+
     test "takes its parameters and body as one input" do
       input = JSV.build!(WardrikProtocol.operation("agent.ask").input)
 
