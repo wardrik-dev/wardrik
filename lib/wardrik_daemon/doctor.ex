@@ -85,7 +85,26 @@ defmodule WardrikDaemon.Doctor do
       Enum.map(config.channels, &channel(&1, Keyword.get(opts, :req_options, []))) ++
       oauth(config) ++
       Enum.map(config.warnings, &{:warn, "config", &1}) ++
-      WardrikDaemon.Doctor.Agents.check(config, dirs)
+      WardrikDaemon.Doctor.Agents.check(config, dirs) ++
+      assistant(config, dirs)
+  end
+
+  # An assistant.md from an older init lacks tools init gives now. A file that doesn't read is
+  # the agents check's to report.
+  defp assistant(config, dirs) do
+    path = Dirs.config(dirs, "agents/assistant.md")
+
+    with {:ok, _agent, definition} <- WardrikDaemon.AgentFile.read(path, config),
+         missing when missing != [] <-
+           WardrikDaemon.CLI.Init.assistant_tools() -- List.wrap(definition["tools"]) do
+      [
+        {:warn, "assistant",
+         "#{path} doesn't give #{Enum.join(missing, ", ")}, which wardrik init gives now. Add them to its tools to let it answer questions, set things up and check how things run."}
+      ]
+    else
+      [] -> [{:ok, "assistant", "#{path} has every tool wardrik init gives"}]
+      {:error, _why} -> []
+    end
   end
 
   defp env(%Dirs{env_file: path}) do

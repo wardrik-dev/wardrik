@@ -12,7 +12,7 @@ defmodule WardrikDaemon.Web.SecretSettings do
   alias WardrikVault.Secret
 
   @impl true
-  def owners(scope, _opts), do: Settings.choices(Settings.daemon(), scope)
+  def owners(scope, _opts), do: WardrikDaemon.Settings.owners(Settings.daemon(), scope)
 
   @impl true
   def list(scope, owner, _opts) do

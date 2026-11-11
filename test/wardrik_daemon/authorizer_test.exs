@@ -441,4 +441,38 @@ defmodule WardrikDaemon.AuthorizerTest do
       assert decide(access, member("growth", %{}, "growth") ++ read) == {:error, :not_found}
     end
   end
+
+  test "a binding in deployment reaches the deployment, and names agents of its own org", %{
+    access: access
+  } do
+    {:ok, deployment} =
+      Access.read(
+        %{"observer" => %{"rules" => [%{"verbs" => ["*"], "kinds" => ["deployment", "token"]}]}},
+        [%{"org" => "deployment", "role" => "observer", "subjects" => ["agent:triage"]}],
+        ["payments", "growth"],
+        "payments"
+      )
+
+    opts = %{access | access: deployment}
+    home = [principal: "payments", actor: {:agent, "payments/triage"}]
+    elsewhere = [principal: "growth", actor: {:agent, "growth/triage"}]
+
+    for action <- ["deployment.nodes", "deployment.runtime", "deployment.audit"] do
+      assert decide(opts, home ++ [action: action, resource: {:deployment, "nodes"}]) == :ok
+
+      assert decide(opts, elsewhere ++ [action: action, resource: {:deployment, "nodes"}]) ==
+               {:error, :not_found}
+    end
+
+    # Tokens stay out of reach of every binding but one in "*".
+    assert decide(
+             opts,
+             home ++ [action: "token.create", resource: {:token, "user:payments/@ana"}]
+           ) ==
+             {:error, :not_found}
+
+    # And it reaches nothing of an org's.
+    assert decide(opts, home ++ [action: "agent.read", resource: {:agent, "payments/other"}]) ==
+             {:error, :not_found}
+  end
 end

@@ -24,27 +24,18 @@ defmodule WardrikDaemon.Web.Router do
       settings: [
         servers:
           {WardrikDaemon.Web.Settings,
-           store: WardrikDaemon.Servers,
-           kind: :mcp_server,
-           actions: {"mcp_server.read", "mcp_server.add", "mcp_server.delete"},
-           schema: "server_input",
+           kind: "servers",
            columns: [{"URL", "url"}, {"Authentication", "auth"}],
            common: ~w(name url auth tools)},
         secrets: {WardrikDaemon.Web.SecretSettings, []},
         notify_targets:
           {WardrikDaemon.Web.Settings,
-           store: WardrikDaemon.NotifyTargets,
-           kind: :notify_target,
-           actions: {"notify_target.read", "notify_target.add", "notify_target.delete"},
-           schema: "notify_target_input",
+           kind: "notify_targets",
            columns: [{"URL", "url"}, {"Signing secret", "secret"}],
            common: ~w(name url secret)},
         oauth_apps:
           {WardrikDaemon.Web.Settings,
-           store: WardrikDaemon.OAuthApps,
-           kind: :provider,
-           actions: {"provider.read", "provider.add", "provider.delete"},
-           schema: "provider_input",
+           kind: "oauth_apps",
            columns: [
              {"Issuer", "issuer"},
              {"Client ID", "client_id"},

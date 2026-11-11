@@ -260,4 +260,24 @@ defmodule WardrikDaemon.DoctorTest do
            ) ==
              [{:ok, "1 key from WARDRIK_VAULT_KEY, which seals"}]
   end
+
+  test "names the tools an older assistant.md leaves out", context do
+    write(context, "config.yaml", "org: acme\ndefaults: {model: #{model()}}\n")
+
+    write(
+      context,
+      "agents/assistant.md",
+      "---\ntools: [self/*, agents/*, agent_create, files]\n---\nHi.\n"
+    )
+
+    assert [{:warn, found}] = context.env |> run() |> found("assistant")
+    assert found =~ "doesn't give ops/read, settings, help, web_search, run_lua"
+
+    tools = Enum.join(WardrikDaemon.CLI.Init.assistant_tools(), ", ")
+    write(context, "agents/assistant.md", "---\ntools: [#{tools}]\n---\nHi.\n")
+    assert [{:ok, _found}] = context.env |> run() |> found("assistant")
+
+    File.rm!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/assistant.md"))
+    assert [] = context.env |> run() |> found("assistant")
+  end
 end

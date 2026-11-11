@@ -28,7 +28,9 @@ defmodule WardrikDaemon.Config.Access do
     org: [
       type: :string,
       required: true,
-      doc: "The org it holds in, or `\"*\"` for every org and the deployment."
+      doc:
+        "The org it holds in, `deployment` for the deployment's own resources, or `\"*\"` for " <>
+          "every org and the deployment."
     ],
     role: [type: :string, required: true, doc: "One of `roles`."],
     subjects: [
@@ -36,7 +38,8 @@ defmodule WardrikDaemon.Config.Access do
       required: true,
       doc:
         "Who it gives the role to: a user, as `user:acme/@ana`, `group:NAME`, or `agent:NAME` " <>
-          "for the agent of that name in the binding's org."
+          "for the agent of that name in the binding's org. In `deployment`, an agent is the " <>
+          "deployment's own org's."
     ]
   ]
 
@@ -68,6 +71,9 @@ defmodule WardrikDaemon.Config.Access do
     * `operator` is every verb on every kind, unless `roles` declares it.
     * Tokens are in no org. A token acts as its subject, so give `token` sparingly, with `names`.
       Only the admin makes a token for `user:admin`.
+    * A binding in `deployment` reaches what's in no org but tokens: the deployment's nodes,
+      runtime and audit, and its own servers, secrets, notify targets and OAuth apps. It may name
+      an agent of the deployment's own org, which a binding in `"*"` can't.
 
   See `WardrikDaemon.Authorizer`.
   """
@@ -81,21 +87,28 @@ defmodule WardrikDaemon.Config.Access do
 
   @type rule() :: %{verbs: [String.t()], kinds: [String.t()], names: [String.t()] | nil}
   @type binding() :: %{org: String.t(), role: String.t(), subjects: [String.t()]}
-  @type t() :: %{roles: %{String.t() => [rule()]}, bindings: [binding()]}
+  @type t() :: %{
+          roles: %{String.t() => [rule()]},
+          bindings: [binding()],
+          home: String.t() | nil
+        }
 
   @doc "Returns the deployment's admin, as a principal ID."
   @spec admin() :: String.t()
   def admin, do: @admin
 
-  @doc "Returns the roles and bindings, with the admin's. Bindings may name only `orgs`."
-  @spec read(term(), term(), [String.t()]) :: {:ok, t()} | {:error, String.t()}
-  def read(roles, bindings, orgs) do
+  @doc """
+  Returns the roles and bindings, with the admin's. Bindings may name only `orgs`, `deployment`
+  and `"*"`. `home` is the deployment's own org, whose agents a binding in `deployment` names.
+  """
+  @spec read(term(), term(), [String.t()], String.t() | nil) :: {:ok, t()} | {:error, String.t()}
+  def read(roles, bindings, orgs, home \\ nil) do
     with {:ok, roles} <- roles(roles),
          :ok <- reserved(roles),
          roles = roles |> Map.put_new("operator", [@everything]) |> Map.put(@admin, [@everything]),
          {:ok, bindings} <- bindings(bindings, roles, orgs) do
       admin = %{org: "*", role: @admin, subjects: ["user:" <> @admin]}
-      {:ok, %{roles: roles, bindings: [admin | bindings]}}
+      {:ok, %{roles: roles, bindings: [admin | bindings], home: home}}
     end
   end
 
@@ -152,7 +165,7 @@ defmodule WardrikDaemon.Config.Access do
         not Map.has_key?(roles, opts[:role]) ->
           {:error, "#{path}.role: names #{opts[:role]}, which roles doesn't declare"}
 
-        opts[:org] != "*" and opts[:org] not in orgs ->
+        opts[:org] not in ["*", "deployment" | orgs] ->
           {:error, "#{path}.org: names #{opts[:org]}, which config.yaml doesn't declare"}
 
         opts[:org] == "*" and Enum.any?(opts[:subjects], &String.starts_with?(&1, "agent:")) ->

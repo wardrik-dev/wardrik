@@ -181,7 +181,7 @@ defmodule WardrikDaemon.CLI.Init do
     wrote =
       for {name, text, mode} <- [
             {"config.yaml", config(Map.get(flags, :org, "default"), model, search?), 0o644},
-            {"agents/assistant.md", assistant(search?), 0o644},
+            {"agents/assistant.md", assistant(), 0o644},
             {"env", env(), 0o600}
           ],
           written?(cx, Dirs.config(cx.dirs, name), text, mode),
@@ -388,12 +388,21 @@ defmodule WardrikDaemon.CLI.Init do
     http:
       port: 4747
 
-    # The assistant makes, changes, reads and asks the org's agents, its workers. It can't
-    # forget, clear, stop or cancel one.
+    # The assistant makes, changes, reads and asks the org's agents, its workers, and reads their
+    # runs. It can't forget, clear, stop or cancel one. It reads and adds the org's MCP servers,
+    # notify targets and OAuth apps, each change once a person approves it, and lists its
+    # secrets by name.
     roles:
-      workers: {rules: [{verbs: [create, define, read, ask], kinds: [agent]}]}
+      workers:
+        rules:
+          - {verbs: [create, define, read, ask, events], kinds: [agent]}
+          - {verbs: [read, add], kinds: [mcp_server, notify_target, provider]}
+          - {verbs: [read], kinds: [secret]}
+      # It reads the deployment's nodes, resource use and audit, to say how things run.
+      observer: {rules: [{verbs: [nodes, runtime, audit], kinds: [deployment]}]}
     bindings:
       - {org: #{org}, role: workers, subjects: [agent:assistant]}
+      - {org: deployment, role: observer, subjects: [agent:assistant]}
 
     # Orgs and people may add MCP servers and webhooks at public https URLs alone. For local
     # development, with servers on this machine or network, uncomment this. Never in production.
@@ -412,27 +421,38 @@ defmodule WardrikDaemon.CLI.Init do
 
   defp brave(false) do
     """
-    # web_search searches the web through Brave. To turn it on, set BRAVE_API_KEY in env or seal it
-    # with `wardrik vault put BRAVE_API_KEY --for api_key`, uncomment these lines, and add web_search to the tools
-    # in agents/assistant.md.
+    # web_search searches the web through Brave. To turn it on, seal a key with
+    # `wardrik vault put BRAVE_API_KEY --for api_key`, or set BRAVE_API_KEY in env. Until then, the
+    # assistant says how.
     # brave:
     #   api_key: ${BRAVE_API_KEY}
     """
   end
 
-  defp assistant(search?) do
-    tools =
-      if search?,
-        do: "self/*, agents/*, agent_create, files, web_search, run_lua",
-        else: "self/*, agents/*, agent_create, files, run_lua"
+  @tools ~w(self/* agents/* agent_create ops/read settings help files web_search run_lua)
+  @listed Enum.join(@tools, ", ")
 
+  @doc "Returns the tools the assistant `init` writes has. The doctor names any a file leaves out."
+  @spec assistant_tools() :: [String.t()]
+  def assistant_tools, do: @tools
+
+  # Each hour it checks how things run, and proposes what needs a person as the call that does it,
+  # so it shows in approvals.
+  defp assistant do
     """
     ---
     description: "Turns what people ask for into work that runs."
-    tools: [#{tools}]
+    tools: [#{@listed}]
     context: [MEMORY.md]
     policy: {budget: {tokens: 2000000, per: day}}
     idle_timeout: infinity
+    triggers:
+      - name: check
+        every: 1h
+        prompt: >-
+          Check how things run: the runs of the workers you set up, calls that wait on a person,
+          the doctor's checks, and each node's memory. For each problem a call of yours can fix,
+          propose that call. Answer "All well." in one line when nothing needs a person.
     ---
     """ <> File.read!(Application.app_dir(:wardrik_daemon, "priv/front_door.md"))
   end

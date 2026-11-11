@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- The `help` tools answer how Wardrik works and where this deployment keeps things:
+  `wardrik_about` for the version, URLs and files, `docs_search` and `docs_read` for the
+  documentation, and `wardrik_doctor` for the doctor's checks. See `WardrikDaemon.HelpTools`.
+- The `settings` tools list an owner's MCP servers, notify targets, OAuth apps and secret names,
+  and add servers, notify targets and OAuth apps once a person approves. `secret_request` hands
+  a person the page and command that seal a secret. See `WardrikDaemon.SettingsTools`.
+- `wardrik init`'s assistant gets `ops/read`, `settings`, `help` and `web_search`, with a role to
+  read its org's runs and settings and add settings, and an `observer` role over the deployment's
+  nodes, resource use and audit. Its instructions cover finding out what went wrong, setting
+  things up, and questions about Wardrik. Each hour its `check` trigger looks at its workers'
+  runs, waiting calls, the doctor's checks and node memory, and proposes what needs a person as a
+  call that waits for approval.
+- `wardrik doctor` names the tools an older `assistant.md` leaves out.
+- A binding in `org: deployment` reaches the deployment's own resources, tokens aside, and may
+  name an agent of the deployment's own org.
+- `web_search` says how to give it a Brave key while it has none.
+- Server's `:capabilities` adds tools to the daemon's own, where it replaced them.
+
 ## 0.1.0-rc.10 (2026-11-11)
 
 - Requires `wardrik` 0.1.0-rc.9 and `wardrik_web` 0.1.0-rc.1.

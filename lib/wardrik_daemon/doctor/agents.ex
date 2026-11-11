@@ -97,7 +97,15 @@ defmodule WardrikDaemon.Doctor.Agents do
       name: WardrikDaemon.Doctor,
       store: store,
       capabilities:
-        WardrikDaemon.Capabilities.all(WardrikDaemon.Doctor, daemon) ++
+        WardrikDaemon.Capabilities.all(%{
+          wardrik: WardrikDaemon.Doctor,
+          store: daemon,
+          orgs: %{org: config.org, orgs: config.orgs, policies: policies},
+          config: config,
+          dirs: nil,
+          env: %{},
+          web: nil
+        }) ++
           WardrikDaemon.Harnesses.capabilities(WardrikDaemon.Doctor, daemon, config),
       mcp: config.mcp,
       channels: config.channels,

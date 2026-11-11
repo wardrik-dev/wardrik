@@ -88,8 +88,8 @@ defmodule WardrikDaemon.Authorizer do
 
     reaching =
       for binding <- bindings,
-          binding.org == "*" or binding.org == org,
-          subjects = subjects(request, binding.org, opts),
+          reaches?(binding.org, org, request.resource),
+          subjects = subjects(request, bound_in(binding.org, opts), opts),
           Enum.any?(binding.subjects, &(&1 in subjects)),
           do: Map.fetch!(roles, binding.role)
 
@@ -99,6 +99,16 @@ defmodule WardrikDaemon.Authorizer do
       true -> {:error, :forbidden}
     end
   end
+
+  # A binding in deployment reaches what's in no org, but tokens, which only "*" reaches.
+  defp reaches?("*", _org, _resource), do: true
+  defp reaches?("deployment", nil, {:token, _id}), do: false
+  defp reaches?("deployment", nil, _resource), do: true
+  defp reaches?(bound, org, _resource), do: bound == org
+
+  # A binding in deployment names agents of the deployment's own org.
+  defp bound_in("deployment", opts), do: opts.access.home
+  defp bound_in(org, _opts), do: org
 
   # An agent is bound by its name in the binding's org.
   defp subjects(%Request{actor: {:agent, id}}, org, opts) do

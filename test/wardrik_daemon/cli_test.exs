@@ -161,7 +161,8 @@ defmodule WardrikDaemon.CLITest do
     refute File.exists?(Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/assistant.md"))
   end
 
-  test "gives the assistant web_search where a Brave key is set", context do
+  test "always gives the assistant web_search, and keys Brave in config.yaml where a key is set",
+       context do
     {context, _log} = script(context)
     write(context, "env", "ANTHROPIC_API_KEY=sk\n")
     config = Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
@@ -170,7 +171,9 @@ defmodule WardrikDaemon.CLITest do
 
     assert {0, _wrote} = wardrik(context, @init)
     assert File.read!(config) =~ "# brave:\n#   api_key: ${BRAVE_API_KEY}"
-    assert File.read!(assistant) =~ "tools: [self/*, agents/*, agent_create, files, run_lua]"
+
+    assert File.read!(assistant) =~
+             "tools: [self/*, agents/*, agent_create, ops/read, settings, help, files, web_search, run_lua]"
 
     File.rm!(config)
     File.rm!(assistant)
@@ -180,7 +183,7 @@ defmodule WardrikDaemon.CLITest do
     assert File.read!(config) =~ ~r/^brave:\n  api_key: \$\{BRAVE_API_KEY\}/m
 
     assert File.read!(assistant) =~
-             "tools: [self/*, agents/*, agent_create, files, web_search, run_lua]"
+             "tools: [self/*, agents/*, agent_create, ops/read, settings, help, files, web_search, run_lua]"
   end
 
   test "writes an assistant that the daemon defines, and that makes workers", context do
@@ -195,7 +198,9 @@ defmodule WardrikDaemon.CLITest do
     assert {:ok, %Wardrik.Definition{} = front, []} =
              Wardrik.Agent.definition(context.admin, id(context, "acme", "assistant"))
 
-    assert front.tools == ["self/*", "agents/*", "agent_create", "files", "run_lua"]
+    assert front.tools ==
+             ~w(self/* agents/* agent_create ops/read settings help files web_search run_lua)
+
     assert front.context == ["MEMORY.md"]
     assert front.idle_timeout == :infinity
     assert front.policy == %{"budget" => %{"tokens" => 2_000_000, "per" => "day"}}

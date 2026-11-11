@@ -44,6 +44,16 @@ defmodule WardrikDaemon.Running do
     gateway = gateway(name)
     web = if config.web, do: WardrikDaemon.Web.key(keys)
 
+    own = %{
+      wardrik: name,
+      store: daemon,
+      orgs: orgs,
+      config: config,
+      dirs: dirs,
+      env: env,
+      web: web
+    }
+
     agents = [
       wardrik: name,
       dir: Dirs.config(dirs, "agents"),
@@ -57,9 +67,9 @@ defmodule WardrikDaemon.Running do
         [
           name: name,
           capabilities:
-            opts[:capabilities] ||
-              WardrikDaemon.Capabilities.all(name, daemon) ++
-                WardrikDaemon.Harnesses.capabilities(name, daemon, config),
+            WardrikDaemon.Capabilities.all(own) ++
+              WardrikDaemon.Harnesses.capabilities(name, daemon, config) ++
+              (opts[:capabilities] || []),
           store: store,
           vault_keys: keys,
           mcp: config.mcp,
@@ -83,7 +93,10 @@ defmodule WardrikDaemon.Running do
 
     children =
       [
-        {WardrikBrave, name: WardrikDaemon.Capabilities.brave(name), api_key: config.brave},
+        {WardrikBrave,
+         name: WardrikDaemon.Capabilities.brave(name),
+         api_key: config.brave,
+         key_help: WardrikDaemon.Capabilities.brave_help()},
         {WardrikGateway, [name: gateway] ++ config.gateway},
         {WardrikACP,
          name: WardrikDaemon.Harnesses.acp(name),
@@ -93,14 +106,7 @@ defmodule WardrikDaemon.Running do
         {Wardrik, wardrik},
         {WardrikDaemon.Pairings, name: WardrikDaemon.Pairings.name(name)}
       ] ++
-        dashboard(web, %{
-          wardrik: name,
-          store: daemon,
-          orgs: orgs,
-          config: config,
-          dirs: dirs,
-          web: web
-        }) ++
+        dashboard(web, own) ++
         [
           {WardrikDaemon.HTTP,
            [

@@ -16,7 +16,8 @@ defmodule WardrikDaemon.Server do
 
     * `:env` - required. The environment.
     * `:name` - the Wardrik's name. `WardrikDaemon.Wardrik` unless set.
-    * `:capabilities` - the tools agents may name. `WardrikDaemon.Capabilities.all/2` unless set.
+    * `:capabilities` - more tools agents may name, as Wardrik's option takes them, beside
+      `WardrikDaemon.Capabilities.all/1`'s.
     * `:store` - a store to use instead of the one on disk, for tests.
   """
 

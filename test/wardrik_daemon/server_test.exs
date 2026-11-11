@@ -76,13 +76,16 @@ defmodule WardrikDaemon.ServerTest do
     assert {:ok, %Wardrik.Definition{tools: ["run_lua"]}, []} =
              Wardrik.Agent.definition(context.admin, id(context, "acme", "clock"))
 
+    daemon = %{wardrik: :w, store: :store}
+
     assert [
              run_lua: WardrikLua,
              web_search: {WardrikBrave, brave: _name},
              deep_research: WardrikResearch,
-             agent_create: {WardrikDaemon.CreateAgent, wardrik: :w, store: :store}
-           ] =
-             WardrikDaemon.Capabilities.all(:w, :store)
+             agent_create: {WardrikDaemon.CreateAgent, wardrik: :w, store: :store},
+             settings: {WardrikDaemon.SettingsTools, daemon: ^daemon},
+             help: {WardrikDaemon.HelpTools, daemon: ^daemon}
+           ] = WardrikDaemon.Capabilities.all(daemon)
   end
 
   test "sends every model call through its gateway", context do

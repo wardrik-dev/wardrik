@@ -454,7 +454,7 @@ defmodule WardrikDaemon.Config do
          {:ok, channels} <- Channels.read(opts[:channels], org),
          {:ok, notify} <- Notify.read(opts[:notify], Enum.map(channels, &elem(&1, 0))),
          {:ok, orgs} <- Orgs.read(opts[:orgs], defined(mcp, harnesses, channels, notify)),
-         {:ok, access} <- Access.read(opts[:roles], opts[:bindings], declared(orgs, org)),
+         {:ok, access} <- Access.read(opts[:roles], opts[:bindings], declared(orgs, org), org),
          {:ok, channels} <- owned(channels, orgs, org),
          {:ok, workspace} <- workspace(opts[:workspace]),
          {:ok, prices} <- prices(opts[:models][:prices]),

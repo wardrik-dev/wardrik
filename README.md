@@ -17,6 +17,8 @@ wardrik ask assistant "Summarize this note: The release is scheduled for Friday.
 - It creates configuration files under `~/.config/wardrik` and starts the daemon.
 - Existing files are preserved. On systemd, the daemon runs as a user service.
 - Provider calls may incur charges. The assistant can propose worker agents and triggers; these changes require approval.
+- Ask the assistant how Wardrik works, where a file is, or why an agent failed. It answers from
+  the documentation, this deployment's files and the doctor's checks.
 
 For noninteractive setup, set `MY_KEY` to your provider's API key:
 
