@@ -145,8 +145,8 @@ defmodule Wardrik.Operations.Runtime do
       "dirty_io_schedulers" => :erlang.system_info(:dirty_io_schedulers),
       "scheduler_utilization" => Float.round(utilization, 4),
       "run_queue" => :erlang.statistics(:total_run_queue_lengths),
-      "memory" =>
-        Map.new(:erlang.memory(), fn {type, bytes} -> {Atom.to_string(type), bytes} end),
+      "memory" => memory(),
+      "process_groups" => groups(),
       "processes" => used(:process_count, :process_limit),
       "ports" => used(:port_count, :port_limit),
       "atoms" => used(:atom_count, :atom_limit),
@@ -179,6 +179,60 @@ defmodule Wardrik.Operations.Runtime do
 
     if total > 0, do: active / total, else: 0.0
   end
+
+  defp memory do
+    :erlang.memory()
+    |> Map.new(fn {type, bytes} -> {Atom.to_string(type), bytes} end)
+    |> Map.put("persistent_term", :persistent_term.info().memory)
+    |> put_present("resident", resident())
+  end
+
+  # Linux reports the resident set size in /proc. Elsewhere it stays absent.
+  defp resident do
+    with {:ok, status} <- File.read("/proc/self/status"),
+         [_line, kilobytes] <- Regex.run(~r/^VmRSS:\s+(\d+) kB/m, status) do
+      String.to_integer(kilobytes) * 1024
+    else
+      _none -> nil
+    end
+  end
+
+  # Processes counted by the module that runs them, and the application that module belongs to.
+  defp groups do
+    owners =
+      for {app, _description, _version} <- :application.loaded_applications(),
+          {:ok, modules} = :application.get_key(app, :modules),
+          module <- modules,
+          into: %{},
+          do: {module, app}
+
+    Process.list()
+    |> Enum.flat_map(fn pid ->
+      case Process.info(pid, [{:dictionary, :"$initial_call"}, :initial_call, :memory]) do
+        [{_key, started}, {:initial_call, initial}, {:memory, memory}] ->
+          [{runs(started, initial), memory}]
+
+        nil ->
+          []
+      end
+    end)
+    |> Enum.group_by(fn {module, _memory} -> module end, fn {_module, memory} -> memory end)
+    |> Enum.map(fn {module, memories} ->
+      %{
+        "module" => inspect(module),
+        "processes" => length(memories),
+        "memory_bytes" => Enum.sum(memories)
+      }
+      |> put_present("application", owners[module] && Atom.to_string(owners[module]))
+    end)
+    |> Enum.sort_by(&{-&1["processes"], &1["module"]})
+  end
+
+  # proc_lib keeps the callback module: {supervisor, Module, 1} for a supervisor, and
+  # {Module, init, 1} for other behaviours.
+  defp runs({:supervisor, module, _arity}, _initial), do: module
+  defp runs({module, _function, _arity}, _initial), do: module
+  defp runs(:undefined, {module, _function, _arity}), do: module
 
   defp used(count, limit),
     do: %{"count" => :erlang.system_info(count), "limit" => :erlang.system_info(limit)}

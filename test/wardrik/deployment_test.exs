@@ -105,6 +105,17 @@ defmodule Wardrik.DeploymentTest do
       assert total > 0
       assert node["scheduler_utilization"] >= 0 and node["scheduler_utilization"] <= 1
       assert node["processes"]["count"] < node["processes"]["limit"]
+      assert node["memory"]["persistent_term"] > 0
+
+      if File.exists?("/proc/self/status"), do: assert(node["memory"]["resident"] > total)
+
+      groups = node["process_groups"]
+      assert Enum.sum_by(groups, & &1["processes"]) > 0
+
+      assert %{"application" => "wardrik_core", "processes" => 1} =
+               Enum.find(groups, &(&1["module"] == "WardrikCore.Agent"))
+
+      assert Enum.find(groups, &(&1["module"] == ":application_controller"))
 
       assert %{"agent" => "acme/bot", "node" => ^here, "processes" => 1} = agent
       assert agent["memory_bytes"] > 0
