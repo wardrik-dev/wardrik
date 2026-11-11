@@ -996,6 +996,50 @@
           }
         }
       }
+    },
+    "/v1/tokens/web": {
+      "post": {
+        "operationId": "tokens.web",
+        "summary": "Create a dashboard sign-in link",
+        "description": "Returns a link that signs the caller in to the web dashboard. The link expires after two minutes. Signing in creates a token for the caller. The token expires after 12 hours. Only user tokens can sign in. Returns not_found while web.enabled is false.",
+        "tags": [
+          "Tokens"
+        ],
+        "x-wardrik-action": "token.create",
+        "x-wardrik-resource": "token",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "The sign-in link.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "url"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "Open it in a browser to sign in."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1398,7 +1442,7 @@
       },
       "server_input": {
         "title": "A server to add",
-        "description": "What servers.add takes: the server's name, its URL, how the owner's agents sign in to it, and which of its tools they take.",
+        "description": "The name, URL and authentication of an MCP server, and which of its tools agents can use.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -1410,14 +1454,14 @@
           "name": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
-            "description": "What the owner's agents call it: their definitions name its tools as name/*, and each tool arrives as name__tool. Letters, digits, - and _, up to 32, never __."
+            "description": "The server's name. To give an agent this server's tools, add name/* to the agent's tools. Each tool is named name__tool. Use up to 32 letters, digits, - and _. Don't use __."
           },
           "url": {
             "type": "string",
-            "description": "The server's whole URL, over https, reached as Streamable HTTP."
+            "description": "The server's full HTTPS URL. The server must support Streamable HTTP."
           },
           "auth": {
-            "description": "How the owner's agents sign in to it.",
+            "description": "How agents authenticate to the server.",
             "oneOf": [
               {
                 "type": "object",
@@ -1429,7 +1473,7 @@
                   "none": {
                     "type": "object",
                     "additionalProperties": false,
-                    "description": "It takes no credential."
+                    "description": "No authentication."
                   }
                 }
               },
@@ -1443,31 +1487,31 @@
                   "oauth": {
                     "type": "object",
                     "additionalProperties": false,
-                    "description": "The owner signs in in a browser, and the token is kept for them. Left bare, the server's own authorization server is found from its URL, and the daemon becomes its client itself. Where it can't be, as with a service that publishes no metadata or registers no clients, name an OAuth app the owner can use as provider, or give the app they registered there: its issuer or its endpoints, its client_id, and the name of the secret they keep its client secret under.",
+                    "description": "The owner signs in with OAuth in a browser and the daemon stores the token. With no fields set, the daemon discovers the server's authorization server from its URL and registers itself as a client. If the service publishes no metadata or doesn't allow client registration, set provider to an existing OAuth app, or give the app's issuer or endpoints, client_id and client_secret.",
                     "properties": {
                       "scopes": {
                         "type": "array",
                         "items": {
                           "type": "string"
                         },
-                        "description": "The scopes to ask for, the server's own unless it says."
+                        "description": "The scopes to request. Defaults to the server's scopes."
                       },
                       "issuer": {
                         "type": "string",
-                        "description": "The authorization server's issuer URL, whose metadata names its endpoints."
+                        "description": "The authorization server's issuer URL. Its metadata provides the endpoints."
                       },
                       "authorization_endpoint": {
                         "type": "string",
-                        "description": "Where a person signs in, where the issuer publishes no metadata. Given with token_endpoint."
+                        "description": "The authorization endpoint, for issuers that publish no metadata. Set together with token_endpoint."
                       },
                       "token_endpoint": {
                         "type": "string",
-                        "description": "Where a code is exchanged for a token. Given with authorization_endpoint."
+                        "description": "The token endpoint. Set together with authorization_endpoint."
                       },
                       "client_id": {
                         "type": "string",
                         "minLength": 1,
-                        "description": "The owner's OAuth app's client ID."
+                        "description": "The OAuth app's client ID."
                       },
                       "client_secret": {
                         "type": "object",
@@ -1475,11 +1519,11 @@
                         "required": [
                           "name"
                         ],
-                        "description": "The app's client secret, as a secret the owner keeps in the vault. It's read each time it's needed, so a new value takes effect at once, and never sent anywhere but the token endpoint.",
+                        "description": "The OAuth app's client secret, stored in the owner's vault. The daemon reads it each time it is used, so a new value applies immediately. It is only sent to the token endpoint.",
                         "properties": {
                           "name": {
                             "type": "string",
-                            "description": "The secret's name in the owner's vault."
+                            "description": "The name of the secret in the owner's vault."
                           }
                         }
                       },
@@ -1489,7 +1533,7 @@
                           "post",
                           "basic"
                         ],
-                        "description": "How the client secret is sent: in the form, or as HTTP Basic. post unless it says."
+                        "description": "How the client secret is sent: post (in the request body) or basic (HTTP Basic auth). Defaults to post."
                       },
                       "authorization_params": {
                         "type": "object",
@@ -1510,12 +1554,12 @@
                             ]
                           }
                         },
-                        "description": "Extra parameters for a browser sign-in, as access_type: offline. Can't set the ones the daemon sends itself."
+                        "description": "Extra parameters for the browser sign-in, such as access_type: offline. Parameters the daemon sets can't be overridden."
                       },
                       "provider": {
                         "type": "string",
                         "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
-                        "description": "An OAuth app to sign in with, by name: the owner's, their org's or the deployment's. Takes the place of an app given here."
+                        "description": "The name of an existing OAuth app. The app can belong to the owner, the owner's org or the deployment. If you set this, leave the other app fields empty."
                       }
                     },
                     "dependentRequired": {
@@ -1596,19 +1640,19 @@
                     "required": [
                       "name"
                     ],
-                    "description": "A key the owner keeps in the vault, sent with every call.",
+                    "description": "A secret from the owner's vault, sent in a header with every request.",
                     "properties": {
                       "name": {
                         "type": "string",
-                        "description": "The secret's name in the owner's vault."
+                        "description": "The name of the secret in the owner's vault."
                       },
                       "header": {
                         "type": "string",
-                        "description": "The header it is sent in; authorization unless it says."
+                        "description": "The header name. Defaults to authorization."
                       },
                       "scheme": {
                         "type": "string",
-                        "description": "What comes before it in the header; Bearer unless it says, and nothing where it is empty."
+                        "description": "The prefix before the secret in the header. Defaults to Bearer. Set it to an empty string to send only the secret."
                       }
                     }
                   }
@@ -1621,14 +1665,14 @@
             "items": {
               "type": "string"
             },
-            "description": "The server's own names of the tools to take, every one unless it says."
+            "description": "The tools to include, by the names the server uses. Defaults to all tools."
           },
           "except": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "The server's own names of the tools to leave."
+            "description": "The tools to exclude, by the names the server uses."
           }
         },
         "examples": [
@@ -1810,7 +1854,7 @@
       },
       "notify_target_input": {
         "title": "A notify target to add",
-        "description": "What notify_targets.add takes: a webhook the owner's agents' notices are posted to, and the secret that signs them.",
+        "description": "A webhook that receives notifications from the owner's agents, and the secret that signs them.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -1821,11 +1865,11 @@
           "name": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
-            "description": "What agents' definitions route to, as notify: ops. Letters, digits, - and _, up to 32."
+            "description": "The target's name. An agent sends to this target when its definition sets notify to this name, for example notify: ops. Use up to 32 letters, digits, - and _."
           },
           "url": {
             "type": "string",
-            "description": "Where notices are posted, over https. Checked as it's added and as each notice is sent, and never followed through a redirect."
+            "description": "The HTTPS URL that notifications are posted to. The daemon checks the URL when you add the target and before each notification. It doesn't follow redirects."
           },
           "secret": {
             "type": "object",
@@ -1833,11 +1877,11 @@
             "required": [
               "name"
             ],
-            "description": "Signs each notice's body, as a secret the owner keeps in the vault. It's read as each notice is sent, so a new value takes effect at once.",
+            "description": "A secret in the owner's vault. The daemon uses it to sign the body of each notification. The daemon reads it each time, so a new value applies immediately.",
             "properties": {
               "name": {
                 "type": "string",
-                "description": "The secret's name in the owner's vault."
+                "description": "The name of the secret in the owner's vault."
               }
             }
           }
@@ -1892,7 +1936,7 @@
             "properties": {
               "name": {
                 "type": "string",
-                "description": "The secret's name in the owner's vault."
+                "description": "The name of the secret in the owner's vault."
               }
             }
           }
@@ -1951,7 +1995,7 @@
       },
       "provider_input": {
         "title": "An OAuth app to keep",
-        "description": "What providers.add takes: its name, the account its tokens are kept as, and the service's app it signs people in with. It needs an issuer, a resource, or both endpoints. Each URL must pass the deployment's egress check.",
+        "description": "An OAuth app that people use to connect an account. Set issuer, resource, or both authorization_endpoint and token_endpoint. Each URL must be allowed by the deployment's egress rules.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -1961,28 +2005,28 @@
           "name": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
-            "description": "The account it grants, as the credential tools fetch. Letters, digits, - and _, up to 32."
+            "description": "The app's name. Tools use this name to get the person's token. Use up to 32 letters, digits, - and _."
           },
           "issuer": {
             "type": "string",
-            "description": "The authorization server's issuer URL, whose metadata names its endpoints."
+            "description": "The authorization server's issuer URL. Its metadata provides the endpoints."
           },
           "resource": {
             "type": "string",
-            "description": "The API or MCP server its tokens are for. Finds the issuer where none is given."
+            "description": "The API or MCP server that the tokens are for. If you don't set issuer, the daemon finds it from this URL."
           },
           "authorization_endpoint": {
             "type": "string",
-            "description": "Where a person signs in, for a service without metadata. Given with token_endpoint."
+            "description": "The URL where people sign in, for a service that doesn't publish metadata. Set together with token_endpoint."
           },
           "token_endpoint": {
             "type": "string",
-            "description": "Where a code is exchanged for a token. Given with authorization_endpoint."
+            "description": "The token endpoint. Set together with authorization_endpoint."
           },
           "client_id": {
             "type": "string",
             "minLength": 1,
-            "description": "The OAuth app's client ID. Without one, Wardrik becomes the client where the service allows."
+            "description": "The OAuth app's client ID. If you leave it empty, the daemon registers itself as a client, if the service allows it."
           },
           "client_secret": {
             "type": "object",
@@ -1990,11 +2034,11 @@
             "required": [
               "name"
             ],
-            "description": "The app's client secret, as a secret the owner keeps in the vault. It's read each time it's needed, so a new value takes effect at once, and never sent anywhere but the token endpoint.",
+            "description": "The OAuth app's client secret, stored in the owner's vault. The daemon reads it each time it is used, so a new value applies immediately. It is only sent to the token endpoint.",
             "properties": {
               "name": {
                 "type": "string",
-                "description": "The secret's name in the owner's vault."
+                "description": "The name of the secret in the owner's vault."
               }
             }
           },
@@ -2004,14 +2048,14 @@
               "post",
               "basic"
             ],
-            "description": "How the client secret is sent: in the form, or as HTTP Basic. post unless it says."
+            "description": "How the client secret is sent: post (in the request body) or basic (HTTP Basic auth). Defaults to post."
           },
           "scopes": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "The scopes to ask for. None unless it says."
+            "description": "The scopes to request. Defaults to none."
           },
           "flow": {
             "type": "string",
@@ -2019,7 +2063,7 @@
               "browser",
               "device"
             ],
-            "description": "How a person signs in: in a browser, or with a code on another device. browser unless it says."
+            "description": "How people sign in. With browser, they sign in in a browser. With device, they enter a code on another device. Defaults to browser."
           },
           "authorization_params": {
             "type": "object",
@@ -2040,7 +2084,7 @@
                 ]
               }
             },
-            "description": "Extra parameters for a browser sign-in, as access_type: offline. Can't set the ones Wardrik sends itself."
+            "description": "Extra parameters for the browser sign-in, for example access_type: offline. You can't override the parameters the daemon sets."
           }
         },
         "anyOf": [
@@ -2134,24 +2178,24 @@
           },
           "issuer": {
             "type": "string",
-            "description": "The authorization server's issuer URL, whose metadata names its endpoints."
+            "description": "The authorization server's issuer URL. Its metadata provides the endpoints."
           },
           "resource": {
             "type": "string",
-            "description": "The API or MCP server its tokens are for. Finds the issuer where none is given."
+            "description": "The API or MCP server that the tokens are for. If you don't set issuer, the daemon finds it from this URL."
           },
           "authorization_endpoint": {
             "type": "string",
-            "description": "Where a person signs in, for a service without metadata. Given with token_endpoint."
+            "description": "The URL where people sign in, for a service that doesn't publish metadata. Set together with token_endpoint."
           },
           "token_endpoint": {
             "type": "string",
-            "description": "Where a code is exchanged for a token. Given with authorization_endpoint."
+            "description": "The token endpoint. Set together with authorization_endpoint."
           },
           "client_id": {
             "type": "string",
             "minLength": 1,
-            "description": "The OAuth app's client ID. Without one, Wardrik becomes the client where the service allows."
+            "description": "The OAuth app's client ID. If you leave it empty, the daemon registers itself as a client, if the service allows it."
           },
           "client_secret": {
             "type": "object",
@@ -2163,7 +2207,7 @@
             "properties": {
               "name": {
                 "type": "string",
-                "description": "The secret's name in the owner's vault."
+                "description": "The name of the secret in the owner's vault."
               }
             }
           },
@@ -2209,7 +2253,7 @@
                 ]
               }
             },
-            "description": "Extra parameters for a browser sign-in, as access_type: offline. Can't set the ones Wardrik sends itself."
+            "description": "Extra parameters for the browser sign-in, for example access_type: offline. You can't override the parameters the daemon sets."
           }
         },
         "examples": [
@@ -2387,7 +2431,7 @@
       },
       "pairing_input": {
         "title": "A pairing code",
-        "description": "The code a browser sign-in's page showed, as XXXX-XXXX. Case and the dash don't matter.",
+        "description": "The code that the sign-in page showed, in the form XXXX-XXXX. Case and the dash are ignored.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -2398,7 +2442,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 32,
-            "description": "The code, as BCDF-GHJK."
+            "description": "The code, for example BCDF-GHJK."
           }
         },
         "examples": [
@@ -2409,7 +2453,7 @@
       },
       "token_input": {
         "title": "A token to create",
-        "description": "Who the token acts as, and for how long. The caller needs a binding on the token kind.",
+        "description": "The user or agent the token acts as, and when it expires. You need access to tokens to create one.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -2421,12 +2465,12 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 100,
-            "description": "What it's for, to tell tokens apart."
+            "description": "A label to tell tokens apart."
           },
           "subject": {
             "type": "string",
             "pattern": "^(user|agent):[^\\s]+$",
-            "description": "Who it acts as: a person in an org, as user:acme/@ana, or agent:ID for an agent's own."
+            "description": "The user or agent the token acts as. For a user, use user:ORG/@NAME, for example user:acme/@ana. For an agent, use agent:ID."
           },
           "groups": {
             "type": "array",
@@ -2434,13 +2478,13 @@
               "type": "string",
               "pattern": "^[^\\s]+$"
             },
-            "description": "The groups a user: token's user is in, which bindings may name."
+            "description": "Groups for a user token. Access bindings can refer to these groups."
           },
           "expires_in": {
             "type": "integer",
             "minimum": 60,
             "maximum": 31536000,
-            "description": "Seconds until it stops working: at least a minute, at most a year. 30 days unless set."
+            "description": "The number of seconds until the token expires, from 60 to 31536000 (one year). Defaults to 30 days."
           }
         },
         "examples": [

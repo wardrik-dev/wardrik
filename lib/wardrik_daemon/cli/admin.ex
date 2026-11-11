@@ -53,6 +53,16 @@ defmodule WardrikDaemon.CLI.Admin do
         ]
       },
       %Command{
+        name: "web",
+        group: "Daemon",
+        summary: "print a link that signs you in to the web dashboard",
+        details: [
+          "The link works for two minutes; the session it starts lasts 12 hours.",
+          "The dashboard is at /web on the daemon's port. web.enabled: false turns it off."
+        ],
+        run: &web/3
+      },
+      %Command{
         name: "status",
         group: "Daemon",
         summary: "where the daemon runs, and how many agents each node holds",
@@ -94,6 +104,16 @@ defmodule WardrikDaemon.CLI.Admin do
 
   defp version([], _flags, cx),
     do: Context.puts(cx, "wardrik #{Application.spec(:wardrik_daemon, :vsn)}")
+
+  defp web([], _flags, cx) do
+    with {:ok, client} <- Context.client(cx),
+         {:ok, %{"url" => url} = answer} <- Context.called(Client.run(client, "tokens.web", %{})),
+         do:
+           Context.show(cx, answer, fn _answer ->
+             Context.puts(cx, "Open this link within two minutes to sign in:")
+             Context.puts(cx, Owl.Data.tag(url, :cyan))
+           end)
+  end
 
   defp status([], _flags, cx) do
     with {:ok, client} <- Context.client(cx),

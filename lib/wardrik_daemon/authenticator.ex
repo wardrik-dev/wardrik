@@ -26,12 +26,22 @@ defmodule WardrikDaemon.Authenticator do
           {:ok, Wardrik.Scope.t()} | {:error, Error.t()}
   def authenticate(%Request{conn: conn, wardrik: wardrik}, store) do
     with ["Bearer " <> secret] <- Plug.Conn.get_req_header(conn, "authorization"),
-         {:ok, token} <- Tokens.verify(store, secret),
-         {:ok, scope} <- scope(store, wardrik, token) do
+         {:ok, scope} <- for_secret(store, wardrik, secret) do
       {:ok, scope}
     else
       _refused ->
         {:error, Error.new(:unauthorized, "Send a token that works, as Authorization: Bearer.")}
+    end
+  end
+
+  @doc "Returns the scope for a token `secret`. The dashboard stores this secret in its session."
+  @spec for_secret(WardrikStore.t(), atom(), String.t()) :: {:ok, Wardrik.Scope.t()} | :error
+  def for_secret(store, wardrik, secret) do
+    with {:ok, token} <- Tokens.verify(store, secret),
+         {:ok, scope} <- scope(store, wardrik, token) do
+      {:ok, scope}
+    else
+      _refused -> :error
     end
   end
 

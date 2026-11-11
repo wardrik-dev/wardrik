@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0-rc.10 (2026-11-11)
+
+- Requires `wardrik` 0.1.0-rc.9 and `wardrik_web` 0.1.0-rc.1.
+- The daemon serves the web dashboard at `/web`, on the HTTP API's port. `wardrik web` prints a
+  sign-in link that works for two minutes. The session lasts 12 hours. `web.enabled: false` turns
+  the dashboard off.
+- The dashboard shows agents, approvals, the audit, nodes and their resource use, and runs any
+  operation. Its settings pages add and remove MCP servers, secrets, notify targets and OAuth
+  apps, and connect your accounts. It also shows ceilings, tokens and the configuration.
+- `POST /v1/tokens/web` returns a sign-in link for the user the token acts as.
+
 ## 0.1.0-rc.9 (2026-11-06)
 
 - Requires `wardrik` 0.1.0-rc.8 and `wardrik_acp` 0.1.0-rc.1.

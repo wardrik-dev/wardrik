@@ -23,6 +23,8 @@ defmodule WardrikDaemon.HTTP do
   | `POST`, `DELETE /v1/connections/{provider}` | starts a sign-in; forgets an account |
   | `POST /v1/connections/{provider}/pair` | finishes a browser sign-in with its code |
   | `GET`, `POST /v1/tokens`, `DELETE /v1/tokens/{id}` | tokens |
+  | `POST /v1/tokens/web` | a sign-in link for the dashboard |
+  | `/web` | the dashboard; see `WardrikDaemon.Web` |
   | `GET /oauth/callback` | shows the code that finishes a browser sign-in |
 
     * `priv/openapi.json` describes them. Bodies are checked against it.
@@ -37,6 +39,7 @@ defmodule WardrikDaemon.HTTP do
     * `:store` - required. The daemon's scope of the store.
     * `:orgs` - required. Where `WardrikDaemon.Orgs` reads orgs from.
     * `:config` - required. The `WardrikDaemon.Config`.
+    * `:web` - the dashboard's secret key base, or `nil` while it's off. See `WardrikDaemon.Web`.
     * `:retry` - milliseconds between tries for a port another node on this machine holds, as
       `WardrikDaemon.Listener` takes it. Without it, a port that's taken fails the start.
 
@@ -48,6 +51,7 @@ defmodule WardrikDaemon.HTTP do
   alias Wardrik.Error
   alias WardrikCore.Principal
   alias WardrikDaemon.AgentRecords
+  alias WardrikDaemon.Allowed
   alias WardrikDaemon.Ceiling
   alias WardrikDaemon.Connections
   alias WardrikDaemon.CreateAgent
@@ -60,7 +64,7 @@ defmodule WardrikDaemon.HTTP do
   alias WardrikHTTP.Response
   alias WardrikVault.Secret
 
-  @own [:wardrik, :authenticator, :store, :orgs, :config]
+  @own [:wardrik, :authenticator, :store, :orgs, :config, :web]
   @request_id Plug.RequestId.init(http_header: "request-id")
   @openapi_path Application.app_dir(:wardrik_daemon, "priv/openapi.json")
   @external_resource @openapi_path
@@ -129,6 +133,7 @@ defmodule WardrikDaemon.HTTP do
       store: Keyword.fetch!(opts, :store),
       orgs: Keyword.fetch!(opts, :orgs),
       config: Keyword.fetch!(opts, :config),
+      web: Keyword.get(opts, :web),
       http: Wardrik.HTTP.init(wardrik: wardrik, authenticator: authenticator)
     }
   end
@@ -142,8 +147,8 @@ defmodule WardrikDaemon.HTTP do
     daemon = conn.assigns.daemon
 
     with {:ok, scope} <- authenticated(conn, daemon),
-         :ok <- named(owner),
-         :ok <- kept(owner, daemon.orgs) do
+         :ok <- Allowed.named(owner),
+         :ok <- Allowed.kept(owner, daemon.orgs) do
       agents =
         for record <- AgentRecords.in_org(daemon.store, Owners.org(owner)),
             conn.query_params["name"] in [nil, record.name],
@@ -187,7 +192,10 @@ defmodule WardrikDaemon.HTTP do
   end
 
   get "/v1/owners/:owner/ceilings" do
-    served(conn, owner, {"ceiling.read", :ceiling}, fn _scope -> ceilings(conn, owner) end)
+    served(conn, owner, {"ceiling.read", :ceiling}, fn _scope ->
+      with {:ok, ceilings} <- Ceiling.list(conn.assigns.daemon, owner),
+           do: {:ok, 200, %{"ceilings" => ceilings}}
+    end)
   end
 
   get "/v1/owners/:owner/servers" do
@@ -286,7 +294,7 @@ defmodule WardrikDaemon.HTTP do
 
   get "/v1/tokens" do
     served(conn, {"token.read", {:token, "*"}}, fn _scope ->
-      {:ok, 200, %{"tokens" => Enum.map(Tokens.list(conn.assigns.daemon.store), &token/1)}}
+      {:ok, 200, %{"tokens" => Enum.map(Tokens.list(conn.assigns.daemon.store), &Tokens.json/1)}}
     end)
   end
 
@@ -296,9 +304,21 @@ defmodule WardrikDaemon.HTTP do
 
     with {:ok, scope} <- authenticated(conn, conn.assigns.daemon),
          {:ok, input} <- input(conn, "token_input"),
-         :ok <- authorized(scope, "token.create", {:token, input["subject"]}),
-         {:ok, created} <- created(conn.assigns.daemon.store, input) do
+         :ok <- Allowed.authorized(scope, "token.create", {:token, input["subject"]}),
+         {:ok, created} <- Tokens.issue(conn.assigns.daemon.store, input) do
       answer(conn, 201, created)
+    else
+      {:error, %Error{} = error} -> Response.error(conn, error)
+    end
+  end
+
+  post "/v1/tokens/web" do
+    conn = Plug.RequestId.call(conn, @request_id)
+    daemon = conn.assigns.daemon
+
+    with {:ok, scope} <- authenticated(conn, daemon),
+         {:ok, url} <- WardrikDaemon.Web.sign_in(daemon, scope) do
+      answer(conn, 201, %{"url" => url})
     else
       {:error, %Error{} = error} -> Response.error(conn, error)
     end
@@ -318,8 +338,8 @@ defmodule WardrikDaemon.HTTP do
     case Connections.called_back(conn.assigns.daemon, conn.query_params) do
       {:ok, %{provider: provider, code: code}} ->
         page(conn, 200, "Enter this code", """
-        <p>To finish signing in to #{escape(provider)}, enter this code where you ran
-        <code>wardrik connection connect</code>:</p>
+        <p>To finish signing in to #{escape(provider)}, enter this code on the Connections page of
+        the dashboard, or where you ran <code>wardrik connection connect</code>:</p>
         <p class="code">#{code}</p>
         <p>It works once, for 10 minutes. If you didn't start this sign-in, close this page.</p>
         """)
@@ -332,6 +352,14 @@ defmodule WardrikDaemon.HTTP do
         <p>This sign-in has ended, or wasn't started here. Run
         <code>wardrik connection connect</code> again.</p>
         """)
+    end
+  end
+
+  # The dashboard's pages, assets and socket. When the dashboard is off, /web returns not_found.
+  match "/web/*_rest" do
+    case conn.assigns.daemon.web do
+      nil -> Wardrik.HTTP.call(conn, conn.assigns.daemon.http)
+      _key -> WardrikDaemon.Web.Endpoint.call(conn, WardrikDaemon.Web.Endpoint.init([]))
     end
   end
 
@@ -361,7 +389,7 @@ defmodule WardrikDaemon.HTTP do
     conn = Plug.RequestId.call(conn, @request_id)
 
     with {:ok, scope} <- authenticated(conn, conn.assigns.daemon),
-         :ok <- authorized(scope, action, resource(resource, scope)),
+         :ok <- Allowed.authorized(scope, action, resource(resource, scope)),
          {:ok, status, body} <- run.(scope) do
       answer(conn, status, body)
     else
@@ -380,9 +408,7 @@ defmodule WardrikDaemon.HTTP do
     daemon = conn.assigns.daemon
 
     with {:ok, scope} <- authenticated(conn, daemon),
-         :ok <- named(owner),
-         :ok <- authorized(scope, action, {kind, owner}),
-         :ok <- kept(owner, daemon.orgs),
+         :ok <- Allowed.owned(daemon, scope, owner, {action, kind}),
          {:ok, status, body} <- run.(scope) do
       answer(conn, status, body)
     else
@@ -395,54 +421,22 @@ defmodule WardrikDaemon.HTTP do
     module.authenticate(request, opts)
   end
 
-  defp named(owner) do
-    if Owners.valid?(owner),
-      do: :ok,
-      else:
-        {:error,
-         Error.new(
-           :invalid_request,
-           "#{owner} isn't an owner: give an org, an org/@person or deployment."
-         )}
-  end
-
-  defp kept("deployment", _orgs), do: :ok
-  defp kept(owner, orgs), do: WardrikDaemon.Orgs.known(Owners.org(owner), orgs)
-
-  defp authorized(scope, action, resource) do
-    case Wardrik.Authorizer.authorize(scope, action: action, resource: resource) do
-      :ok ->
-        :ok
-
-      {:error, :not_found} ->
-        {:error, Error.new(:not_found, "There's no #{described(resource)}.")}
-
-      {:error, :forbidden} ->
-        {:error, Error.new(:forbidden, "You may not do this to the #{described(resource)}.")}
-    end
-  end
-
-  defp described({:agents, owner}), do: "agents of #{owner}"
-  defp described({:secret, owner}), do: "secrets of #{owner}"
-  defp described({:ceiling, owner}), do: "ceilings of #{owner}"
-  defp described({:mcp_server, owner}), do: "MCP servers of #{owner}"
-  defp described({:notify_target, owner}), do: "notify targets of #{owner}"
-  defp described({:provider, owner}), do: "OAuth apps of #{owner}"
-  defp described({:connection, id}), do: "connections of #{id}"
-  defp described({:token, _id}), do: "token"
-
   defp input(conn, schema) do
-    with {:ok, input} <- json(conn),
-         {:ok, input} <- JSV.validate(input, Map.fetch!(@inputs, schema)) do
-      {:ok, input}
-    else
-      {:error, %JSV.ValidationError{} = error} ->
-        {:error, Error.new(:invalid_request, Exception.message(error))}
+    with {:ok, input} <- json(conn), do: checked(schema, input)
+  end
 
-      {:error, %Error{} = error} ->
-        {:error, error}
+  @doc "Validates `input` against one of the daemon's input schemas, for example `server_input`."
+  @spec checked(String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
+  def checked(schema, input) do
+    case JSV.validate(input, Map.fetch!(@inputs, schema)) do
+      {:ok, input} -> {:ok, input}
+      {:error, error} -> {:error, Error.new(:invalid_request, Exception.message(error))}
     end
   end
+
+  @doc "Returns one of the daemon's input schemas as JSON Schema, for example `server_input`."
+  @spec schema(String.t()) :: map()
+  def schema(name), do: Map.fetch!(@openapi["components"]["schemas"], name)
 
   defp json(conn) do
     with {:ok, body, _conn} <- Plug.Conn.read_body(conn),
@@ -451,34 +445,6 @@ defmodule WardrikDaemon.HTTP do
     else
       _unread -> {:error, Error.new(:invalid_request, "Send the body as JSON.")}
     end
-  end
-
-  @expires_in 30 * 24 * 3600
-
-  defp created(store, input) do
-    expires = DateTime.add(DateTime.utc_now(), Map.get(input, "expires_in", @expires_in), :second)
-
-    opts = [
-      name: input["name"],
-      subject: input["subject"],
-      groups: Map.get(input, "groups", []),
-      expires: expires
-    ]
-
-    case Tokens.create(store, opts) do
-      {:ok, %{token: created, secret: secret}} -> {:ok, Map.put(token(created), "secret", secret)}
-      {:error, error} -> {:error, Error.new(:invalid_request, Exception.message(error))}
-    end
-  end
-
-  defp token(token) do
-    %{
-      "id" => token.id,
-      "name" => token.name,
-      "subject" => token.subject,
-      "groups" => token.groups,
-      "expires" => DateTime.to_iso8601(token.expires)
-    }
   end
 
   defp sealing(conn) do
@@ -512,22 +478,6 @@ defmodule WardrikDaemon.HTTP do
 
   defp stored({:error, reason}),
     do: {:error, Error.new(:unavailable, "The vault didn't keep it: #{inspect(reason)}.")}
-
-  defp ceilings(conn, owner) do
-    %{store: store, orgs: orgs} = conn.assigns.daemon
-    org = Owners.org(owner)
-
-    with :ok <- an_org(owner, org),
-         {:ok, settings} <- WardrikDaemon.Orgs.settings(org, orgs) do
-      spent = for ceiling <- settings.ceilings, do: Ceiling.json(store, org, ceiling)
-      {:ok, 200, %{"ceilings" => Enum.sort_by(spent, & &1["ceiling"])}}
-    end
-  end
-
-  defp an_org(org, org), do: :ok
-
-  defp an_org(_owner, org),
-    do: {:error, Error.new(:invalid_request, "Ceilings are an org's: ask for #{org}'s.")}
 
   defp record(record),
     do: %{"id" => record.id, "name" => record.name, "org" => record.org, "owner" => record.owner}

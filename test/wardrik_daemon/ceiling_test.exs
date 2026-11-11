@@ -107,7 +107,7 @@ defmodule WardrikDaemon.CeilingTest do
 
     assert {:error, "not_found", _message} = ceilings(ana, "growth")
     assert {:error, "invalid_request", message} = ceilings(admin, "payments/@ana")
-    assert message == "Ceilings are an org's: ask for payments's."
+    assert message == "Ceilings belong to orgs. Ask for payments's ceilings."
     assert {:error, "not_found", _message} = ceilings(admin, "globex")
     assert {:error, "not_found", _message} = ceilings(admin, "deployment")
   end

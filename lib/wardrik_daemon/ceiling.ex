@@ -85,6 +85,29 @@ defmodule WardrikDaemon.Ceiling do
     |> Map.reject(fn {_key, value} -> value == nil end)
   end
 
+  @doc """
+  Returns each of `org`'s ceilings as `json/3` does, sorted by name.
+
+  Returns `invalid_request` if `owner` is a user rather than an org.
+  """
+  @spec list(%{store: WardrikStore.t(), orgs: map()}, String.t()) ::
+          {:ok, [map()]} | {:error, Wardrik.Error.t()}
+  def list(%{store: store, orgs: orgs}, owner) do
+    org = WardrikDaemon.Owners.org(owner)
+
+    with :ok <- an_org(owner, org),
+         {:ok, settings} <- WardrikDaemon.Orgs.settings(org, orgs) do
+      {:ok, settings.ceilings |> Enum.map(&json(store, org, &1)) |> Enum.sort_by(& &1["ceiling"])}
+    end
+  end
+
+  defp an_org(org, org), do: :ok
+
+  defp an_org(_owner, org),
+    do:
+      {:error,
+       Wardrik.Error.new(:invalid_request, "Ceilings belong to orgs. Ask for #{org}'s ceilings.")}
+
   defp amount(amount),
     do: for({kind, value} <- amount, value != nil, into: %{}, do: {Atom.to_string(kind), value})
 

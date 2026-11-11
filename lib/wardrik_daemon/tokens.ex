@@ -56,6 +56,43 @@ defmodule WardrikDaemon.Tokens do
     end
   end
 
+  @expires_in 30 * 24 * 3600
+
+  @doc """
+  Creates a token from `input`, in the format `POST /v1/tokens` accepts. Returns the token as
+  JSON, including its secret.
+
+  The token expires after 30 days. Set `"expires_in"` to change this.
+  """
+  @spec issue(WardrikStore.t(), map()) :: {:ok, map()} | {:error, Wardrik.Error.t()}
+  def issue(store, input) do
+    expires = DateTime.add(DateTime.utc_now(), Map.get(input, "expires_in", @expires_in), :second)
+
+    opts = [
+      name: input["name"],
+      subject: input["subject"],
+      groups: Map.get(input, "groups", []),
+      expires: expires
+    ]
+
+    case create(store, opts) do
+      {:ok, %{token: created, secret: secret}} -> {:ok, Map.put(json(created), "secret", secret)}
+      {:error, error} -> {:error, Wardrik.Error.new(:invalid_request, Exception.message(error))}
+    end
+  end
+
+  @doc "Returns `token` as JSON, in the format the HTTP API uses. The secret is not included."
+  @spec json(Token.t()) :: map()
+  def json(token) do
+    %{
+      "id" => token.id,
+      "name" => token.name,
+      "subject" => token.subject,
+      "groups" => token.groups,
+      "expires" => DateTime.to_iso8601(token.expires)
+    }
+  end
+
   @doc "Returns the tokens in `store`, by ID, without their secrets."
   @spec list(WardrikStore.t()) :: [Token.t()]
   def list(store),

@@ -8,8 +8,9 @@ defmodule WardrikDaemon.Running do
        through.
     2. Wardrik, with `WardrikDaemon.Authorizer` and `WardrikDaemon.OAuthApps`.
     3. `WardrikDaemon.Pairings`.
-    4. `WardrikDaemon.HTTP`. Nodes of a cluster share its port; see `WardrikDaemon.Cluster`.
-    5. A task that starts added MCP servers, defines the agents, writes `cli_token`, and emits
+    4. `WardrikDaemon.Web.Endpoint`, the dashboard, unless `web.enabled` is `false`.
+    5. `WardrikDaemon.HTTP`. Nodes of a cluster share its port; see `WardrikDaemon.Cluster`.
+    6. A task that starts added MCP servers, defines the agents, writes `cli_token`, and emits
        `[:wardrik_daemon, :started]`.
 
   A reload that finds `config.yaml` or `policies/` changed restarts it. If they don't read, it
@@ -41,6 +42,7 @@ defmodule WardrikDaemon.Running do
     orgs = %{org: config.org, orgs: config.orgs, policies: policies}
     daemon = WardrikStore.scope(store, "wardrik_daemon")
     gateway = gateway(name)
+    web = if config.web, do: WardrikDaemon.Web.key(keys)
 
     agents = [
       wardrik: name,
@@ -79,37 +81,63 @@ defmodule WardrikDaemon.Running do
         ] ++ config.wardrik ++ oauth(config, %{wardrik: name, config: config, store: daemon})
       )
 
-    children = [
-      {WardrikBrave, name: WardrikDaemon.Capabilities.brave(name), api_key: config.brave},
-      {WardrikGateway, [name: gateway] ++ config.gateway},
-      {WardrikACP,
-       name: WardrikDaemon.Harnesses.acp(name),
-       worktrees: Dirs.data_home(dirs, "worktrees"),
-       checkouts: config.checkouts,
-       harnesses: config.harnesses},
-      {Wardrik, wardrik},
-      {WardrikDaemon.Pairings, name: WardrikDaemon.Pairings.name(name)},
-      {WardrikDaemon.HTTP,
-       [
-         wardrik: name,
-         authenticator: {WardrikDaemon.Authenticator, daemon},
-         store: daemon,
-         orgs: orgs,
-         config: config,
-         port: config.port,
-         ip: config.ip
-       ] ++ shared(config.cluster)},
-      %{
-        id: :started,
-        start: {Task, :start_link, [fn -> started(agents, dirs, config) end]},
-        restart: :transient
-      }
-    ]
+    children =
+      [
+        {WardrikBrave, name: WardrikDaemon.Capabilities.brave(name), api_key: config.brave},
+        {WardrikGateway, [name: gateway] ++ config.gateway},
+        {WardrikACP,
+         name: WardrikDaemon.Harnesses.acp(name),
+         worktrees: Dirs.data_home(dirs, "worktrees"),
+         checkouts: config.checkouts,
+         harnesses: config.harnesses},
+        {Wardrik, wardrik},
+        {WardrikDaemon.Pairings, name: WardrikDaemon.Pairings.name(name)}
+      ] ++
+        dashboard(web, %{
+          wardrik: name,
+          store: daemon,
+          orgs: orgs,
+          config: config,
+          dirs: dirs,
+          web: web
+        }) ++
+        [
+          {WardrikDaemon.HTTP,
+           [
+             wardrik: name,
+             authenticator: {WardrikDaemon.Authenticator, daemon},
+             store: daemon,
+             orgs: orgs,
+             config: config,
+             web: web,
+             port: config.port,
+             ip: config.ip
+           ] ++ shared(config.cluster)},
+          %{
+            id: :started,
+            start: {Task, :start_link, [fn -> started(agents, dirs, config) end]},
+            restart: :transient
+          }
+        ]
 
     Supervisor.init(children, strategy: :rest_for_one)
   end
 
   defp gateway(name), do: Module.concat(name, Gateway)
+
+  defp dashboard(nil, _daemon), do: []
+
+  defp dashboard(key, daemon),
+    do: [
+      {
+        WardrikDaemon.Web.Endpoint,
+        # WardrikDaemon.HTTP forwards requests to it. It doesn't open its own port.
+        secret_key_base: key,
+        daemon: daemon,
+        server: false,
+        live_view: [signing_salt: "wardrik web live"]
+      }
+    ]
 
   # Nodes on one machine share the HTTP API's port.
   defp shared(nil), do: []

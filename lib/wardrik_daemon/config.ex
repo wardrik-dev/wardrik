@@ -163,6 +163,18 @@ defmodule WardrikDaemon.Config do
                 ]
               ]
             ],
+            web: [
+              type: :keyword_list,
+              default: [],
+              doc: "The web dashboard, at `/web` on the HTTP API's port.",
+              keys: [
+                enabled: [
+                  type: :boolean,
+                  default: true,
+                  doc: "`false` to turn the dashboard off. Sign in with `wardrik web`."
+                ]
+              ]
+            ],
             cluster: [
               type: :keyword_list,
               doc: "Other daemons this one runs as one with. See `WardrikDaemon.Cluster`.",
@@ -272,6 +284,7 @@ defmodule WardrikDaemon.Config do
             port: 4747,
             ip: {127, 0, 0, 1},
             trusted_workers: false,
+            web: true,
             storage: nil,
             cluster: nil,
             wardrik: [],
@@ -303,6 +316,7 @@ defmodule WardrikDaemon.Config do
           port: :inet.port_number(),
           ip: :inet.ip_address(),
           trusted_workers: boolean(),
+          web: boolean(),
           storage: storage(),
           cluster: Cluster.t() | nil,
           wardrik: keyword(),
@@ -470,6 +484,7 @@ defmodule WardrikDaemon.Config do
         port: opts[:http][:port],
         ip: opts[:http][:ip],
         trusted_workers: opts[:http][:trusted_workers],
+        web: opts[:web][:enabled],
         storage: storage,
         cluster: cluster,
         wardrik: Keyword.take(opts, @wardrik)
