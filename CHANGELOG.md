@@ -7,6 +7,13 @@
 * An agent's Now card shows its memory, mailbox, processes and work per second. It needs
   `agent.runtime`.
 * A link to the documentation at the bottom of the navigation.
+* Settings pages for MCP servers, secrets, notify targets, OAuth apps and connections. Turn each
+  on with the router's `:settings` option and a `WardrikWeb.Settings` or
+  `WardrikWeb.Connections` module. A page that's off says how to turn it on.
+* An agent's Access tab shows what your app gives it: who it works for, its policies, MCP
+  servers and their tools, notify targets, channels and workspaces. It needs `agent.resolved`.
+* `use WardrikWeb.Page` for extension pages, and `owner_picker/1` in `WardrikWeb.Components`.
+* Form fields marked `"writeOnly": true` are password fields.
 
 ## 0.1.0-rc.1
 

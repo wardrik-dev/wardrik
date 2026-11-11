@@ -8,6 +8,7 @@ defmodule WardrikWeb.Form do
   | object | a fieldset |
   | array of objects | a group you can repeat |
   | `oneOf` | a choice between the alternatives |
+  | string with `"writeOnly": true` | a password field |
 
       <WardrikWeb.Form.fields schema={schema} params={@params} />
 
@@ -522,14 +523,25 @@ defmodule WardrikWeb.Form do
   defp input(assigns) do
     assigns =
       assign(assigns,
-        type: if(assigns.kind in [:integer, :number], do: "number", else: "text"),
+        type: type(assigns.kind, assigns.schema),
         step: if(assigns.kind == :number, do: "any")
       )
 
     ~H"""
-    <input id={@id} type={@type} step={@step} name={@name} value={@value} />
+    <input
+      id={@id}
+      type={@type}
+      step={@step}
+      name={@name}
+      value={if @type != "password", do: @value}
+      autocomplete={if @type == "password", do: "new-password"}
+    />
     """
   end
+
+  defp type(kind, _schema) when kind in [:integer, :number], do: "number"
+  defp type(_kind, %{"writeOnly" => true}), do: "password"
+  defp type(_kind, _schema), do: "text"
 
   defp name(path), do: "input" <> Enum.map_join(path, &("[" <> &1 <> "]"))
 

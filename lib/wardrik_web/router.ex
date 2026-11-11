@@ -32,6 +32,16 @@ defmodule WardrikWeb.Router do
               default: [],
               doc: "The `WardrikWeb.Extension` modules to add."
             ],
+            settings: [
+              type: :keyword_list,
+              keys: Enum.map(WardrikWeb.SettingPage.keys(), &{&1, [type: :mod_arg]}),
+              default: [],
+              doc: """
+              The settings pages to turn on, as `{module, opts}` for each page. `:servers`,
+              `:secrets`, `:notify_targets` and `:oauth_apps` take a `WardrikWeb.Settings`.
+              `:connections` takes a `WardrikWeb.Connections`.
+              """
+            ],
             socket_path: [
               type: :string,
               default: "/live",
@@ -78,6 +88,15 @@ defmodule WardrikWeb.Router do
           live "/operations", WardrikWeb.OperationsLive
           live "/operations/:operation", WardrikWeb.OperationLive
 
+          for page <- WardrikWeb.SettingPage.all() do
+            live "/#{page.path}",
+                 if(page.key == :connections,
+                   do: WardrikWeb.ConnectionsLive,
+                   else: WardrikWeb.SettingsLive
+                 ),
+                 page.key
+          end
+
           for page <- WardrikWeb.Dashboard.pages(dashboard),
               do: live("/x/#{page.path}", page.live)
         end
@@ -90,6 +109,7 @@ defmodule WardrikWeb.Router do
     opts = NimbleOptions.validate!(opts, @schema)
     {name, opts} = Keyword.pop!(opts, :live_session)
     {hooks, opts} = Keyword.pop!(opts, :on_mount)
+    opts = Keyword.update!(opts, :settings, &Map.new/1)
     {name, hooks, struct!(WardrikWeb.Dashboard, [prefix: prefix] ++ opts)}
   end
 end

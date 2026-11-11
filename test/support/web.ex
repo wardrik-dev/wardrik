@@ -54,6 +54,11 @@ defmodule WardrikWeb.Test.Router do
     wardrik_dashboard("/ops",
       resolver: {WardrikWeb.Test.Resolver, WardrikWeb.Test.Server},
       extensions: [WardrikWeb.Test.Extension],
+      settings: [
+        servers: {WardrikWeb.Test.Servers, []},
+        secrets: {WardrikWeb.Test.Secrets, []},
+        connections: {WardrikWeb.Test.Connections, []}
+      ],
       sign_in: "/sign-in"
     )
   end

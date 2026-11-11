@@ -55,6 +55,56 @@ defmodule WardrikWeb.Components do
     """
   end
 
+  @doc """
+  A menu for choosing an owner, such as an org or a person. Choosing one sends the `"owner"`
+  event with `%{"owner" => owner}`.
+  """
+  attr :owners, :list, required: true
+  attr :owner, :string, required: true
+
+  def owner_picker(assigns) do
+    ~H"""
+    <form :if={length(@owners) > 1} id="owner-picker" class="filters" phx-change="owner">
+      <label class="check" for="owner-select">Owner</label>
+      <select id="owner-select" name="owner">
+        <option :for={owner <- @owners} value={owner} selected={owner == @owner}>{owner}</option>
+      </select>
+    </form>
+    """
+  end
+
+  @doc "Says a settings page is off, and how to turn it on."
+  attr :key, :atom, required: true
+  attr :behaviour, :atom, required: true
+
+  def off(assigns) do
+    ~H"""
+    <div class="card">
+      <header>This page is off</header>
+      <div class="body">
+        <p>
+          To turn it on, implement <code>{inspect(@behaviour)}</code>
+          in your app. Then add it to the dashboard in your router:
+        </p>
+        <pre class="json">{snippet(@key)}</pre>
+      </div>
+    </div>
+    """
+  end
+
+  defp snippet(key) do
+    """
+    wardrik_dashboard "/wardrik",
+      resolver: {MyAppWeb.WardrikResolver, []},
+      settings: [#{key}: {MyApp.Wardrik#{Macro.camelize(to_string(key))}, []}]\
+    """
+  end
+
+  @doc "Returns an error's message."
+  @spec message(Wardrik.Error.t() | String.t()) :: String.t()
+  def message(%{message: message}), do: message
+  def message(message) when is_binary(message), do: message
+
   @doc "A JSON value, pretty-printed."
   attr :value, :any, required: true
 

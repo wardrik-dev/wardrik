@@ -12,6 +12,7 @@ defmodule WardrikWeb.AgentLive do
     {"calls", "Running calls"},
     {"triggers", "Triggers"},
     {"definition", "Definition"},
+    {"access", "Access"},
     {"events", "Events"}
   ]
 
@@ -41,7 +42,7 @@ defmodule WardrikWeb.AgentLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    tab = if params["tab"] in Enum.map(@tabs, &elem(&1, 0)), do: params["tab"], else: "timeline"
+    tab = if params["tab"] in Enum.map(tabs(), &elem(&1, 0)), do: params["tab"], else: "timeline"
     socket = socket |> assign(:tab, tab) |> load()
     {:noreply, if(socket.assigns[:live] == nil, do: follow(socket), else: socket)}
   end
@@ -172,9 +173,8 @@ defmodule WardrikWeb.AgentLive do
          %{runtime: %{"reductions" => before}, runtime_at: at},
          %{"reductions" => now_count},
          now
-       )
-       when now > at,
-       do: max(now_count - before, 0) * 1000 / (now - at)
+       ),
+       do: max(now_count - before, 0) * 1000 / max(now - at, 1)
 
   defp work(_assigns, _runtime, _now), do: nil
 
@@ -186,6 +186,9 @@ defmodule WardrikWeb.AgentLive do
   defp tab(_scope, tab, _input) when tab in ["definition", "triggers"], do: {:ok, nil}
 
   defp tab(scope, "events", input), do: newest(scope, input)
+
+  defp tab(scope, "access", input),
+    do: Wardrik.Scope.run(scope, "agent.resolved", Map.take(input, ["agent"]))
 
   # agent.events returns the oldest events first. Start from the cursor that events.head returns.
   defp newest(scope, input) do
@@ -202,6 +205,13 @@ defmodule WardrikWeb.AgentLive do
     end
   end
 
+  # Older servers don't have agent.resolved.
+  defp tabs do
+    if WardrikProtocol.operation("agent.resolved"),
+      do: @tabs,
+      else: List.keydelete(@tabs, "access", 0)
+  end
+
   defp tab_path(assigns, tab),
     do:
       WardrikWeb.path(assigns.dashboard, ["agents", assigns.agent], %{
@@ -211,7 +221,7 @@ defmodule WardrikWeb.AgentLive do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :tabs, @tabs)
+    assigns = assign(assigns, :tabs, tabs())
 
     ~H"""
     <.head title={@agent} lead={@conversation && "Conversation #{@conversation}"}>
@@ -272,6 +282,7 @@ defmodule WardrikWeb.AgentLive do
           agent={@agent}
         />
         <.events :if={@tab == "events" && @data} events={@data["events"]} />
+        <.access :if={@tab == "access" && @data} access={@data} dashboard={@dashboard} />
       </div>
 
       <aside>
@@ -532,6 +543,111 @@ defmodule WardrikWeb.AgentLive do
     </div>
     """
   end
+
+  attr :access, :map, required: true
+  attr :dashboard, :any, required: true
+
+  defp access(assigns) do
+    ~H"""
+    <p class="note">
+      What your app gives this agent. Your app decides this each time the agent runs.
+    </p>
+
+    <div class="card">
+      <header>Works for</header>
+      <div class="body">
+        <code :if={@access["principal"]}>{@access["principal"]["id"]}</code>
+        <span :if={!@access["principal"]}>No one. The agent has no credentials.</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <header>MCP servers</header>
+      <table :if={@access["servers"] != []} class="list stack">
+        <thead>
+          <tr>
+            <th>Name</th><th>Server</th><th>Tools</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={server <- @access["servers"]}>
+            <td class="lead"><code>{server["name"]}</code></td>
+            <td data-label="Server" class="mono">{server["server"]}</td>
+            <td data-label="Tools">
+              <span
+                :if={server["tools"] == []}
+                class="pill failed"
+                title="The server is down or hasn't listed its tools yet."
+              >
+                no tools now
+              </span>
+              <details :if={server["tools"] != []}>
+                <summary>{length(server["tools"])} tools</summary>
+                <ul class="plain">
+                  <li :for={tool <- server["tools"]} class="mono">{tool}</li>
+                </ul>
+              </details>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div :if={@access["servers"] == []} class="empty">No MCP servers.</div>
+    </div>
+
+    <div class="card">
+      <header>Policies</header>
+      <div class="body">
+        <p :if={rules(@access["policy"]) == []} class="sub">
+          Your app sets no policy for this agent.
+        </p>
+        <.json :for={policy <- rules(@access["policy"])} value={policy} />
+        <details :for={{name, policy} <- Enum.sort(@access["policies"])} class="group">
+          <summary>Named policy <code>{name}</code></summary>
+          <.json value={policy} />
+        </details>
+      </div>
+    </div>
+
+    <div class="card">
+      <header>Notify targets</header>
+      <table :if={@access["notify"] != []} class="list">
+        <tbody>
+          <tr :for={target <- @access["notify"]}>
+            <td class="lead"><code>{target["name"]}</code></td>
+            <td>{target["target"] || "Sent by your app"}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div :if={@access["notify"] == []} class="empty">No notify targets.</div>
+    </div>
+
+    <div :if={@access["channels"] != %{} or @access["workspaces"] != %{}} class="card">
+      <header>Channels and workspaces</header>
+      <div class="body">
+        <dl class="facts">
+          <%= for {channel, workspace} <- Enum.sort(@access["channels"]) do %>
+            <dt>Channel {channel}</dt><dd class="mono">{workspace}</dd>
+          <% end %>
+          <%= for {agent, mode} <- Enum.sort(@access["workspaces"]) do %>
+            <dt>Workspace</dt>
+            <dd>
+              <.link navigate={WardrikWeb.path(@dashboard, ["agents", agent])}>{agent}</.link>
+              <span class="sub">{if mode == "write", do: "read and write", else: "read only"}</span>
+            </dd>
+          <% end %>
+        </dl>
+      </div>
+    </div>
+
+    <div :if={@access["defaults"] != %{}} class="card">
+      <header>Defaults</header>
+      <div class="body"><.json value={@access["defaults"]} /></div>
+    </div>
+    """
+  end
+
+  # A policy with no rules encodes as %{}.
+  defp rules(policies), do: Enum.reject(policies, &(&1 == %{}))
 
   attr :calls, :list, required: true
 

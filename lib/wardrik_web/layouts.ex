@@ -68,6 +68,15 @@ defmodule WardrikWeb.Layouts do
         <.nav dashboard={@dashboard} here={@here} to={["audit"]} label="Audit" />
         <.nav dashboard={@dashboard} here={@here} to={["nodes"]} label="Nodes" />
         <.nav dashboard={@dashboard} here={@here} to={["operations"]} label="Operations" />
+        <div class="group">Settings</div>
+        <.nav
+          :for={page <- WardrikWeb.SettingPage.all()}
+          dashboard={@dashboard}
+          here={@here}
+          to={[page.path]}
+          label={page.label}
+          off={!Map.has_key?(@dashboard.settings, page.key)}
+        />
         <div :if={@pages != []} class="group">More</div>
         <.nav
           :for={page <- @pages}
@@ -124,6 +133,7 @@ defmodule WardrikWeb.Layouts do
   attr :to, :list, required: true
   attr :label, :string, required: true
   attr :also, :list, default: []
+  attr :off, :boolean, default: false
 
   defp nav(assigns) do
     path = WardrikWeb.path(assigns.dashboard, assigns.to)
@@ -137,8 +147,8 @@ defmodule WardrikWeb.Layouts do
     assigns = assign(assigns, path: path, on: on)
 
     ~H"""
-    <.link class={["nav", @on && "on"]} navigate={@path} aria-current={@on && "page"}>
-      {@label}
+    <.link class={["nav", @on && "on", @off && "off"]} navigate={@path} aria-current={@on && "page"}>
+      {@label}<span :if={@off} class="tag">off</span>
     </.link>
     """
   end

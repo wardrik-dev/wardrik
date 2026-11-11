@@ -2,6 +2,8 @@
 Logger.configure(level: :warning)
 
 {:ok, _server} = WardrikWeb.Test.Server.start()
+{:ok, _servers} = WardrikWeb.Test.Servers.start()
+{:ok, _connections} = WardrikWeb.Test.Connections.start()
 
 {:ok, _endpoint} =
   WardrikWeb.Test.Endpoint.start_link(

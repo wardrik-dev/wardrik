@@ -181,6 +181,24 @@ defmodule WardrikWeb.Test.Server do
 
   defp reply("deployment.runtime", _input), do: {:ok, @runtime}
 
+  defp reply("agent.resolved", %{"agent" => "triage"}),
+    do:
+      {:ok,
+       %{
+         "agent" => "triage",
+         "principal" => %{"id" => "user_42"},
+         "servers" => [
+           %{"name" => "github", "server" => "acme:github", "tools" => ["github__search"]},
+           %{"name" => "linear", "server" => "acme:linear", "tools" => []}
+         ],
+         "policy" => [%{"deny" => ["shell/*"]}, %{}],
+         "policies" => %{"careful" => %{"ask" => ["echo"]}},
+         "defaults" => %{"model" => "zai:glm"},
+         "notify" => [%{"name" => "ops", "target" => "ops"}, %{"name" => "pager"}],
+         "channels" => %{"slack" => "T0123"},
+         "workspaces" => %{"runbooks" => "read"}
+       }}
+
   defp reply("agent.runtime", %{"agent" => "triage"}),
     do: {:ok, hd(@runtime["agents"])}
 

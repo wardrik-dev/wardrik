@@ -9,17 +9,26 @@ defmodule WardrikWeb.Dashboard do
     * `:prefix` - the path the dashboard is mounted at.
     * `:resolver` - `{module, opts}`, the `WardrikWeb.Resolver` that returns each person's scope.
     * `:extensions` - the `WardrikWeb.Extension` modules that add pages and panels.
+    * `:settings` - the settings pages that are on, as `{module, opts}` by page.
     * `:socket_path` - the path of the endpoint's LiveView socket.
     * `:sign_in` - where to redirect people the resolver refuses.
   """
 
   @enforce_keys [:prefix, :resolver]
-  defstruct [:prefix, :resolver, extensions: [], socket_path: "/live", sign_in: "/"]
+  defstruct [
+    :prefix,
+    :resolver,
+    extensions: [],
+    settings: %{},
+    socket_path: "/live",
+    sign_in: "/"
+  ]
 
   @type t() :: %__MODULE__{
           prefix: String.t(),
           resolver: {module(), term()},
           extensions: [module()],
+          settings: %{optional(atom()) => {module(), term()}},
           socket_path: String.t(),
           sign_in: String.t()
         }
