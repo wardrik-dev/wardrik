@@ -345,6 +345,7 @@ details[open] > summary { margin-bottom: 6px; }
 @media (max-width: 700px) {
   .main { padding: 20px 16px 48px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tip::after { max-width: 200px; }
   .stats > .stat:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
   .layout > aside .facts { grid-template-columns: max-content minmax(0, 1fr); }
 
@@ -420,7 +421,21 @@ details.row .row-body { padding: 12px 14px; }
 .meter-fill { height: 100%; border-radius: 3px; background: var(--run); }
 .meter.high .meter-fill { background: var(--bad); }
 .meter.high .meter-text .num { color: var(--bad); }
+.tile .tile-sub { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 6px; }
+.tip { position: relative; display: inline-grid; place-items: center; width: 14px; height: 14px; margin-left: 6px; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--faint); font: italic 600 10px/1 Georgia, serif; cursor: help; vertical-align: 1px; }
+.tip:hover, .tip:focus { color: var(--ink); border-color: var(--muted); outline: none; }
+.tip::after { content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: max-content; max-width: 260px; padding: 8px 10px; border-radius: 6px; background: var(--code-bg); border: 1px solid var(--line-strong); color: var(--code-text); font: 400 12px/1.45 var(--font); text-transform: none; letter-spacing: 0; white-space: normal; text-align: left; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); opacity: 0; visibility: hidden; transition: opacity 0.12s; z-index: 20; pointer-events: none; }
+.tip:hover::after, .tip:focus::after { opacity: 1; visibility: visible; }
+.groups { display: grid; gap: 2px; }
+.groups > details.group { margin-top: 8px; }
+.groups .app > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; list-style: none; }
+.groups .app > summary::-webkit-details-marker { display: none; }
+.groups .app > summary:hover { background: var(--bg-sunk); }
+.groups .app > summary .num, .groups .mods .num { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; min-width: 72px; }
+.groups .mods { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 16px; padding: 4px 8px 10px 24px; font-size: 12px; }
+.groups .mods code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.card.node { overflow: visible; }
 .node-meta { color: var(--muted); font-size: 12px; font-weight: 400; }
 h3.section { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 10px; }
 .side .foot { margin-top: auto; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); }

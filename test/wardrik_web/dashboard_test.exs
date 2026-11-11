@@ -133,6 +133,9 @@ defmodule WardrikWeb.DashboardTest do
   test "lists nodes and reloads definitions", %{conn: conn} do
     {:ok, view, html} = live(conn, "/ops/nodes")
     assert html =~ "wardrik@box1"
+    assert html =~ "working"
+    assert html =~ "wait on a person"
+    refute html =~ "agents running"
     assert render_click(view, "reload", %{}) =~ "Reloaded agent definitions."
     send(view.pid, :tick)
     assert render(view) =~ "wardrik@box1"
@@ -201,6 +204,15 @@ defmodule WardrikWeb.DashboardTest do
     assert html =~ "94 MB"
     assert html =~ "Agents by memory"
     assert html =~ "Disk /"
+    assert html =~ "BEAM memory"
+    assert html =~ "156 MB in the OS"
+    assert html =~ "Persistent terms"
+    assert html =~ "Other"
+    assert html =~ "What runs on this node"
+    assert html =~ "thousand_island"
+    assert html =~ "WardrikCore.Agent"
+    assert html =~ "No application"
+    assert html =~ "data-tip="
 
     send(view.pid, :tick)
     html = render(view)

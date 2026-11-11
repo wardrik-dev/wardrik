@@ -14,7 +14,7 @@ defmodule WardrikWeb.NodesLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Nodes", nodes: [], asleep: 0, runtime: nil, history: %{})
+     |> assign(page_title: "Nodes", nodes: [], asleep: 0, states: nil, runtime: nil, history: %{})
      |> assign(agents: [], last: %{}, rates: %{}, error: nil, runtime_error: nil)
      |> load()}
   end
@@ -37,8 +37,8 @@ defmodule WardrikWeb.NodesLive do
 
   defp nodes(socket) do
     case Wardrik.Scope.run(socket.assigns.scope, "deployment.nodes", %{}) do
-      {:ok, %{"nodes" => nodes, "asleep" => asleep}} ->
-        assign(socket, nodes: nodes, asleep: asleep, error: nil)
+      {:ok, %{"nodes" => nodes, "asleep" => asleep} = answer} ->
+        assign(socket, nodes: nodes, asleep: asleep, states: states(answer), error: nil)
 
       {:error, error} ->
         assign(socket, error: error.message)
@@ -58,6 +58,12 @@ defmodule WardrikWeb.NodesLive do
       {:error, error} -> assign(socket, runtime_error: error.message)
     end
   end
+
+  # Older servers count only the agents on each node.
+  defp states(%{"running" => running, "idle" => idle, "parked" => parked}),
+    do: %{running: running, idle: idle, parked: parked}
+
+  defp states(_answer), do: nil
 
   defp record(history, nodes) do
     Map.new(nodes, fn node ->
@@ -107,16 +113,78 @@ defmodule WardrikWeb.NodesLive do
   defp rate(per_second), do: number(round(per_second))
 
   @memory [
-    {"processes", "Processes"},
-    {"binary", "Binaries"},
-    {"ets", "ETS tables"},
-    {"code", "Code"},
-    {"atom", "Atoms"}
+    {"processes", "Processes", "Memory of every process on the node, agents included."},
+    {"code", "Code", "Loaded modules. A release loads all of its code when it starts."},
+    {"binary", "Binaries",
+     "Large binaries that processes share, such as HTTP bodies and model replies."},
+    {"persistent_term", "Persistent terms",
+     "Data that libraries load once and read often, such as the catalog of LLM models."},
+    {"ets", "ETS tables", "In-memory tables that Wardrik and libraries keep."},
+    {"atom", "Atoms", "The names that code uses. They stay for the life of the node."}
   ]
+
+  # Applications listed before "more applications".
+  @shown 8
+
+  # The memory the listed types don't cover: the runtime's own allocators, ports and the rest.
+  defp other(memory) do
+    listed = Enum.sum_by(@memory, fn {type, _label, _tip} -> memory[type] || 0 end)
+    max(memory["total"] - listed, 0)
+  end
+
+  # Process groups by application, the busiest first.
+  defp applications(node) do
+    (node["process_groups"] || [])
+    |> Enum.group_by(& &1["application"])
+    |> Enum.map(fn {application, modules} ->
+      %{
+        name: application || "No application",
+        processes: Enum.sum_by(modules, & &1["processes"]),
+        memory: Enum.sum_by(modules, & &1["memory_bytes"]),
+        modules: modules
+      }
+    end)
+    |> Enum.sort_by(&{-&1.processes, &1.name})
+  end
+
+  defp memory_tip(memory) do
+    beam =
+      "Memory the BEAM has allocated for its own data. On an idle node, most of it is loaded code and data that libraries keep."
+
+    if memory["resident"],
+      do:
+        beam <>
+          " The OS counts #{bytes(memory["resident"])}, because the BEAM keeps freed memory for reuse.",
+      else: beam
+  end
+
+  attr :app, :map, required: true
+
+  defp application(assigns) do
+    ~H"""
+    <details class="app">
+      <summary>
+        <span>{@app.name}</span>
+        <span class="num">{number(@app.processes)} {plural(@app.processes, "process", "processes")}</span>
+        <span class="num">{bytes(@app.memory)}</span>
+      </summary>
+      <div class="mods">
+        <%= for module <- @app.modules do %>
+          <code>{module["module"]}</code>
+          <span class="num">{number(module["processes"])}</span>
+          <span class="num">{bytes(module["memory_bytes"])}</span>
+        <% end %>
+      </div>
+    </details>
+    """
+  end
+
+  defp plural(1, one, _many), do: one
+  defp plural(_count, _one, many), do: many
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :memory_types, @memory)
+    assigns = assign(assigns, memory_types: @memory, shown: @shown)
 
     ~H"""
     <.head
@@ -130,8 +198,21 @@ defmodule WardrikWeb.NodesLive do
     <div :if={@error} class="flash error">{@error}</div>
     <div class="stats">
       <div class="stat"><b>{length(@nodes)}</b><span>nodes</span></div>
-      <div class="stat"><b>{Enum.sum_by(@nodes, & &1["agents"])}</b><span>agents running</span></div>
-      <div class="stat"><b>{@asleep}</b><span>agents asleep</span></div>
+      <div :if={!@states} class="stat">
+        <b>{Enum.sum_by(@nodes, & &1["agents"])}</b><span>agents running</span>
+      </div>
+      <div :if={@states} class="stat">
+        <b>{@states.running}</b><span>working<.tip text="Agents answering a message or running a tool now." /></span>
+      </div>
+      <div :if={@states} class="stat">
+        <b>{@states.idle}</b><span>idle<.tip text="Agents in memory that wait for a message. An idle agent uses a few hundred KB and no CPU." /></span>
+      </div>
+      <div :if={@states} class="stat">
+        <b>{@states.parked}</b><span>wait on a person<.tip text="Agents that wait for someone to approve or deny a call. Approvals lists them." /></span>
+      </div>
+      <div class="stat">
+        <b>{@asleep}</b><span>asleep<.tip text="Agents saved to the store, not in memory. A sleeping agent uses no memory or CPU, and wakes when something asks it." /></span>
+      </div>
     </div>
 
     <div :if={@runtime_error} class="flash info">
@@ -167,7 +248,9 @@ defmodule WardrikWeb.NodesLive do
       <div class="body">
         <div class="tiles">
           <div class="tile">
-            <span class="tile-label">Scheduler use</span>
+            <span class="tile-label">
+              Scheduler use<.tip text="How busy the BEAM's schedulers were over the last 250 ms. An idle node stays near 0%." />
+            </span>
             <span class="tile-value">{cpu(node["scheduler_utilization"])}</span>
             <.spark
               values={series(@history, node["name"], :cpu)}
@@ -177,8 +260,15 @@ defmodule WardrikWeb.NodesLive do
             />
           </div>
           <div class="tile">
-            <span class="tile-label">Memory</span>
-            <span class="tile-value">{bytes(node["memory"]["total"])}</span>
+            <span class="tile-label">
+              BEAM memory<.tip text={memory_tip(node["memory"])} />
+            </span>
+            <span class="tile-value">
+              {bytes(node["memory"]["total"])}<span
+                :if={node["memory"]["resident"]}
+                class="tile-sub"
+              >{bytes(node["memory"]["resident"])} in the OS</span>
+            </span>
             <.spark
               values={series(@history, node["name"], :memory)}
               format={&bytes/1}
@@ -186,7 +276,9 @@ defmodule WardrikWeb.NodesLive do
             />
           </div>
           <div class="tile">
-            <span class="tile-label">Run queue</span>
+            <span class="tile-label">
+              Run queue<.tip text="Processes ready to run that wait for a scheduler. 0 means the node keeps up with its work." />
+            </span>
             <span class="tile-value">{number(node["run_queue"])}</span>
             <.spark
               values={series(@history, node["name"], :run_queue)}
@@ -194,7 +286,9 @@ defmodule WardrikWeb.NodesLive do
             />
           </div>
           <div class="tile">
-            <span class="tile-label">Processes</span>
+            <span class="tile-label">
+              Processes<.tip text="BEAM processes are light, a few KB each. Most belong to the web server and libraries. What runs on this node lists them." />
+            </span>
             <span class="tile-value">{number(node["processes"]["count"])}</span>
             <.spark
               values={series(@history, node["name"], :processes)}
@@ -208,9 +302,19 @@ defmodule WardrikWeb.NodesLive do
             <h3 class="section">Memory by type</h3>
             <div class="meters">
               <.meter
-                :for={{type, label} <- @memory_types}
+                :for={{type, label, tip} <- @memory_types}
+                :if={node["memory"][type]}
                 label={label}
+                tip={tip}
                 count={node["memory"][type]}
+                limit={node["memory"]["total"]}
+                format={&bytes/1}
+                warn={false}
+              />
+              <.meter
+                label="Other"
+                tip="The runtime's own memory: allocators, ports, schedulers and the rest."
+                count={other(node["memory"])}
                 limit={node["memory"]["total"]}
                 format={&bytes/1}
                 warn={false}
@@ -218,7 +322,9 @@ defmodule WardrikWeb.NodesLive do
             </div>
           </div>
           <div>
-            <h3 class="section">Limits</h3>
+            <h3 class="section">
+              Limits<.tip text="How close the node is to the BEAM's fixed limits. A bar turns red at 80%." />
+            </h3>
             <div class="meters">
               <.meter
                 label="Processes"
@@ -254,6 +360,7 @@ defmodule WardrikWeb.NodesLive do
               <.meter
                 :if={node["os"]["memory_total_bytes"] && node["os"]["memory_available_bytes"]}
                 label="Machine memory"
+                tip="Memory in use by everything on the machine, not only this node."
                 count={node["os"]["memory_total_bytes"] - node["os"]["memory_available_bytes"]}
                 limit={node["os"]["memory_total_bytes"]}
                 format={&bytes/1}
@@ -279,6 +386,17 @@ defmodule WardrikWeb.NodesLive do
               </div>
             </details>
           </div>
+        </div>
+
+        <h3 class="section" style="margin-top: 20px">
+          What runs on this node<.tip text="Processes grouped by the application whose code they run. Each running agent adds one process, and one more for each turn or tool call in progress. Sleeping agents add none." />
+        </h3>
+        <div class="groups">
+          <.application :for={app <- Enum.take(applications(node), @shown)} app={app} />
+          <details :if={length(applications(node)) > @shown} class="group">
+            <summary>{length(applications(node)) - @shown} more applications</summary>
+            <.application :for={app <- Enum.drop(applications(node), @shown)} app={app} />
+          </details>
         </div>
       </div>
     </section>

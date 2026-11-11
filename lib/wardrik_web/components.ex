@@ -379,6 +379,7 @@ defmodule WardrikWeb.Components do
   attr :limit, :integer, required: true
   attr :format, :any, default: &WardrikWeb.Components.number/1
   attr :warn, :boolean, default: true
+  attr :tip, :string, default: nil, doc: "explains the bar, shown on hover or focus"
 
   def meter(assigns) do
     percent = if assigns.limit > 0, do: assigns.count * 100 / assigns.limit, else: 0
@@ -387,7 +388,7 @@ defmodule WardrikWeb.Components do
     ~H"""
     <div class={["meter", @high && "high"]}>
       <div class="meter-text">
-        <span>{@label}</span>
+        <span>{@label}<.tip :if={@tip} text={@tip} /></span>
         <span class="num">
           {@format.(@count)} of {@format.(@limit)} · {percent_text(@percent)}<span :if={@high}> · near the limit</span>
         </span>
@@ -396,6 +397,15 @@ defmodule WardrikWeb.Components do
         <div class="meter-fill" style={"width: #{min(@percent, 100)}%"}></div>
       </div>
     </div>
+    """
+  end
+
+  @doc "A small ⓘ mark that shows `text` on hover or keyboard focus."
+  attr :text, :string, required: true
+
+  def tip(assigns) do
+    ~H"""
+    <span class="tip" tabindex="0" role="note" aria-label={@text} data-tip={@text}>i</span>
     """
   end
 

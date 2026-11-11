@@ -55,8 +55,25 @@ defmodule WardrikWeb.Test.Server do
           "atom_used" => 1_040_384,
           "binary" => 4_194_304,
           "code" => 25_165_824,
-          "ets" => 5_242_880
+          "ets" => 5_242_880,
+          "persistent_term" => 1_048_576,
+          "resident" => 163_577_856
         },
+        "process_groups" => [
+          %{
+            "module" => "ThousandIsland.Acceptor",
+            "application" => "thousand_island",
+            "processes" => 100,
+            "memory_bytes" => 2_867_200
+          },
+          %{
+            "module" => "WardrikCore.Agent",
+            "application" => "wardrik_core",
+            "processes" => 12,
+            "memory_bytes" => 1_572_864
+          },
+          %{"module" => ":erlang", "processes" => 3, "memory_bytes" => 30_000}
+        ],
         "processes" => %{"count" => 1203, "limit" => 1_048_576},
         "ports" => %{"count" => 42, "limit" => 65_536},
         "atoms" => %{"count" => 61_000, "limit" => 1_048_576},
@@ -255,7 +272,10 @@ defmodule WardrikWeb.Test.Server do
     do:
       {:ok,
        %{
-         "nodes" => [%{"name" => "a@host", "agents" => 2}, %{"name" => "b@host", "agents" => 0}],
+         "nodes" => [%{"name" => "a@host", "agents" => 6}, %{"name" => "b@host", "agents" => 0}],
+         "running" => 1,
+         "idle" => 4,
+         "parked" => 1,
          "asleep" => 3
        }}
 

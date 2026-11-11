@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* The Nodes page explains each figure in a tooltip, shows the memory the OS reports next to the
+  BEAM's, adds Persistent terms and Other to memory by type, and lists what runs on each node:
+  processes grouped by application and module.
+* The Nodes page counts working, idle, waiting and sleeping agents. It needs a server whose
+  `deployment.nodes` returns those counts.
+* A section you open or close stays that way when the page refreshes.
 * The Nodes page shows each node's resource use, with trends over the last 5 minutes, and the
   agents that use the most memory. It needs `deployment.runtime`.
 * An agent's Now card shows its memory, mailbox, processes and work per second. It needs

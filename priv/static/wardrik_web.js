@@ -18,7 +18,21 @@
   }
   const liveSocket = new LiveView.LiveSocket(meta("wardrik-socket"), Phoenix.Socket, {
     params: { _csrf_token: meta("csrf-token") },
-    hooks
+    hooks,
+    // A <details> the reader opened or closed stays that way when the page updates. Until then,
+    // the page decides.
+    dom: {
+      onBeforeElUpdated(from, to) {
+        if (from.tagName === "DETAILS" && from.dataset.toggled) {
+          to.open = from.open
+          to.dataset.toggled = "1"
+        }
+      }
+    }
+  })
+  document.addEventListener("click", (e) => {
+    const summary = e.target.closest("summary")
+    if (summary && summary.parentElement.tagName === "DETAILS") summary.parentElement.dataset.toggled = "1"
   })
   liveSocket.connect()
   window.liveSocket = liveSocket
