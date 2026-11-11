@@ -1,3 +1,14 @@
+defmodule Wardrik.Test.WorkerFile do
+  @moduledoc "Declarations that declare `acme/worker`, as an agent file would."
+  @behaviour Wardrik.Declarations
+
+  @impl Wardrik.Declarations
+  def declared?(_config, id), do: id == "acme/worker"
+
+  @impl Wardrik.Declarations
+  def reload(_config), do: []
+end
+
 defmodule Wardrik.OperationToolsTest do
   use ExUnit.Case, async: false
   use Mimic
@@ -18,7 +29,8 @@ defmodule Wardrik.OperationToolsTest do
         authorizer:
           {Wardrik.Test.Authorizer, test: self(), decide: &Wardrik.Test.Allow.authorize(&1, [])},
         resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
-        store: store
+        store: store,
+        declarations: {Wardrik.Test.WorkerFile, nil}
       )
 
     start_supervised!({WardrikStore, store})
@@ -35,6 +47,7 @@ defmodule Wardrik.OperationToolsTest do
     stub(ReqLLM, :stream_text, fn _model, messages, opts ->
       said = messages |> List.last() |> text()
       send(test, {:prompted, said, Enum.map(opts[:tools] || [], & &1.name)})
+      send(test, {:sent, Enum.map_join(messages, "\n", &text/1)})
       {:ok, Agent.get_and_update(steps, &step(&1, said))}
     end)
   end
@@ -59,6 +72,7 @@ defmodule Wardrik.OperationToolsTest do
     model([
       {"How are things",
        calling([
+         call("r0", "agents_list", %{}),
          call("r1", "agent_runs", %{"agent" => "acme/worker"}),
          call("r2", "agent_resolved", %{"agent" => "acme/worker"}),
          call("r3", "deployment_nodes", %{}),
@@ -81,6 +95,21 @@ defmodule Wardrik.OperationToolsTest do
 
     assert %{"runs" => [%{"status" => "completed"}]} =
              run!(scope, "agent.runs", %{"agent" => "acme/ops"})
+
+    # An agent a file declares is marked, since only a person changes it.
+    assert_received {:sent, _first}
+    assert_received {:sent, after_calls}
+    assert after_calls =~ ~s("file":true)
+  end
+
+  test "gives a read by name, without the rest", %{scope: scope} do
+    model([{"Runs?", answer("None.")}])
+    define(scope, "acme/ops", %{"model" => @model, "tools" => ["ops/agent.runs"]})
+
+    run!(scope, "agent.ask", %{"agent" => "acme/ops", "content" => "Runs?"})
+    until("wardrik.run.completed")
+
+    assert_received {:prompted, "Runs?", ["agent_runs"]}
   end
 
   test "asks a person before a change it was given by name", %{scope: scope} do
@@ -111,8 +140,14 @@ defmodule Wardrik.OperationToolsTest do
     assert %{"status" => "asleep"} = run!(scope, "agent.read", %{"agent" => "acme/worker"})
   end
 
-  test "never gives deciding calls, or an operation that doesn't change anything", %{scope: scope} do
-    for tool <- ["ops/agent.approve", "ops/agent.runs", "ops/hook.deliver", "ops/nope"] do
+  test "never gives deciding calls, streams, or what agents/* gives", %{scope: scope} do
+    for tool <- [
+          "ops/agent.approve",
+          "ops/hook.deliver",
+          "ops/events.list",
+          "ops/agent.define",
+          "ops/nope"
+        ] do
       assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
                Wardrik.run(scope, "agent.define", %{
                  "agent" => "acme/ops",

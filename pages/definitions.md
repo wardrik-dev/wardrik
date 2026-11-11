@@ -96,8 +96,8 @@ Configure tools by name:
 - `"github/*"` for every tool of an MCP server.
 - `"workers/*"` for tools workers offer. See `Wardrik.Workers`.
 - `"agents/*"` and `"self/*"` to work with agents. See `Wardrik.AgentTools`.
-- `"ops/read"` to read runs, events, the audit, approvals, nodes and resource use, and
-  `"ops/agent.stop"` and the like for one operation that changes something. See
+- `"ops/read"` to read runs, events, the audit, approvals, nodes and resource use, or
+  `"ops/agent.runs"`, `"ops/agent.stop"` and the like for one operation. See
   `Wardrik.OperationTools`.
 - `"*"` for everything but `agents/*`, `self/*` and `ops/`.
 
