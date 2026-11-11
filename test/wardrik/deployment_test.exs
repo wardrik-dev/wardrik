@@ -48,8 +48,14 @@ defmodule Wardrik.DeploymentTest do
       here = to_string(node())
       {:ok, _agent} = Wardrik.Agent.define(scope, "acme/bot", model: @model)
 
-      assert {:ok, %Wardrik.Nodes{nodes: [%Wardrik.Node{name: ^here, agents: 1}], asleep: 0}} =
-               Wardrik.Deployment.nodes(scope)
+      assert {:ok,
+              %Wardrik.Nodes{
+                nodes: [%Wardrik.Node{name: ^here, agents: 1}],
+                running: 0,
+                idle: 1,
+                parked: 0,
+                asleep: 0
+              }} = Wardrik.Deployment.nodes(scope)
 
       assert {:ok, %Wardrik.Agent{id: "acme/bot", node: ^here}} =
                Wardrik.Agent.move(scope, "acme/bot", node: here)
@@ -105,6 +111,20 @@ defmodule Wardrik.DeploymentTest do
       assert total > 0
       assert node["scheduler_utilization"] >= 0 and node["scheduler_utilization"] <= 1
       assert node["processes"]["count"] < node["processes"]["limit"]
+      assert node["memory"]["persistent_term"] > 0
+
+      if File.exists?("/proc/self/status"), do: assert(node["memory"]["resident"] > total)
+
+      groups = node["process_groups"]
+      assert Enum.sum_by(groups, & &1["processes"]) > 0
+
+      assert %{"application" => "wardrik_core", "processes" => 1} =
+               Enum.find(groups, &(&1["module"] == "WardrikCore.Agent"))
+
+      assert Enum.find(groups, &(&1["module"] == ":application_controller"))
+
+      assert %{"application" => "kernel"} =
+               Enum.find(groups, &(&1["module"] == ":code_server"))
 
       assert %{"agent" => "acme/bot", "node" => ^here, "processes" => 1} = agent
       assert agent["memory_bytes"] > 0
