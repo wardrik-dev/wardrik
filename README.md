@@ -7,7 +7,7 @@ Runs agents with tool policies, approval checks, spending limits, and event logs
 Set `ANTHROPIC_API_KEY` before starting `iex`.
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.8"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.9"}])
 
 defmodule MyApp.AllowAll do
   @behaviour Wardrik.Authorizer

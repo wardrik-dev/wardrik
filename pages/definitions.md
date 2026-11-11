@@ -10,7 +10,7 @@ starts the agent from it each time it wakes.
 Wardrik's options say what the names in a definition mean.
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.8"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.9"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do
