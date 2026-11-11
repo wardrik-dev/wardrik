@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.5 (2026-11-11)
 
 - `WardrikCore.running/1` returns the process of each running agent, by key, across the cluster.
 

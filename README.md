@@ -7,7 +7,7 @@ Runs agents with persistent state, tool call approvals, and middleware for model
 ```elixir
 def deps do
   [
-    {:wardrik_core, "~> 0.1.0-rc.4"}
+    {:wardrik_core, "~> 0.1.0-rc.5"}
   ]
 end
 ```
@@ -17,7 +17,7 @@ end
 Set `ANTHROPIC_API_KEY` before starting `iex`.
 
 ```elixir
-Mix.install([{:wardrik_core, "~> 0.1.0-rc.4"}])
+Mix.install([{:wardrik_core, "~> 0.1.0-rc.5"}])
 
 children = [
   {WardrikCore.Backends.MemoryStore, name: :agents},
