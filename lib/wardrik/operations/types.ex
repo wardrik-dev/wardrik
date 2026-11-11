@@ -2,6 +2,7 @@ defmodule Wardrik.Operations.Types do
   @moduledoc false
 
   alias Wardrik.Agent
+  alias Wardrik.AgentResolved
   alias Wardrik.AgentRuntime
   alias Wardrik.Authorization
   alias Wardrik.Call
@@ -34,7 +35,8 @@ defmodule Wardrik.Operations.Types do
     "agents.forget" => Forgotten,
     "deployment.nodes" => Nodes,
     "deployment.runtime" => Runtime,
-    "agent.runtime" => AgentRuntime
+    "agent.runtime" => AgentRuntime,
+    "agent.resolved" => AgentResolved
   }
 
   @lists %{

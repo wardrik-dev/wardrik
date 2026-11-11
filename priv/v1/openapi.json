@@ -1132,6 +1132,48 @@
         }
       }
     },
+    "/v1/agents/{agent}/resolved": {
+      "get": {
+        "operationId": "agent.resolved",
+        "summary": "Read what an agent gets",
+        "description": "Returns what the app gives the agent: who it works for, its policies, MCP servers and their tools, notify targets, channels and workspaces.",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-action": "agent.read",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/agent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the agent gets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:agent_resolved"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent}/calls/{call}": {
       "delete": {
         "operationId": "agent.kill",
