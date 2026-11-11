@@ -93,5 +93,33 @@ defmodule Wardrik.DeploymentTest do
       {:ok, _reply} = Wardrik.Agent.reply(scope, "acme/b", "Go")
       assert_receive {:instructions, "Old."}
     end
+
+    test "reads resource use for each node and each running agent", %{scope: scope} do
+      here = to_string(node())
+      {:ok, _agent} = Wardrik.Agent.define(scope, "acme/bot", model: @model)
+
+      assert %{"nodes" => [node], "agents" => [agent]} =
+               run!(scope, "deployment.runtime", %{})
+
+      assert %{"name" => ^here, "agents" => 1, "memory" => %{"total" => total}} = node
+      assert total > 0
+      assert node["scheduler_utilization"] >= 0 and node["scheduler_utilization"] <= 1
+      assert node["processes"]["count"] < node["processes"]["limit"]
+
+      assert %{"agent" => "acme/bot", "node" => ^here, "processes" => 1} = agent
+      assert agent["memory_bytes"] > 0
+
+      assert %{"agents" => []} = run!(scope, "deployment.runtime", %{"limit" => 0})
+
+      assert {:ok, %Wardrik.AgentRuntime{agent: "acme/bot", node: ^here, message_queue: 0}} =
+               Wardrik.Agent.runtime(scope, "acme/bot")
+
+      {:ok, _agent} = Wardrik.Agent.stop(scope, "acme/bot")
+
+      assert %{"nodes" => [%{"agents" => 0}], "agents" => []} =
+               run!(scope, "deployment.runtime", %{})
+
+      assert {:error, %Wardrik.Error{type: :not_found}} = Wardrik.Agent.runtime(scope, "acme/bot")
+    end
   end
 end

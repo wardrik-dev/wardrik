@@ -6,6 +6,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Channels
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Lifecycle
+  alias Wardrik.Operations.Runtime
   alias Wardrik.Operations.Triggers
 
   @enforce_keys [:operations, :handlers, :streams]
@@ -55,6 +56,8 @@ defmodule Wardrik.Catalog do
         "hook.deliver" => &Triggers.deliver/2,
         "deployment.reload" => &Deployment.reload/2,
         "deployment.nodes" => &Deployment.nodes/2,
+        "deployment.runtime" => &Runtime.deployment/2,
+        "agent.runtime" => &Runtime.agent/2,
         "agent.move" => &Deployment.move/2,
         "hook.deliver_with_secret" => &Triggers.deliver/2,
         "channel.deliver" => &Channels.deliver/2,
