@@ -44,7 +44,7 @@ wardrik doctor
 | `/v1/openapi.json` | anyone; `wardrik doctor` fetches it |
 
 This proxy configuration exposes only the listed paths. Add `/v1/workers` for [tool workers](/build/host-tools/) on other
-machines.
+machines, and `/web/*` for the [dashboard](/run/dashboard/#from-another-machine).
 
 ## Details
 

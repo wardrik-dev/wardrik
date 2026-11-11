@@ -12,7 +12,7 @@ and use its credentials. Use a trusted host and a dedicated service account.
 
 | | Port | Interface | Access |
 | --- | --- | --- | --- |
-| The HTTP API | 4747 | loopback, or `http.ip` | requests with a [token](/run/orgs/#tokens), and the [public paths](/run/public-address/#exposed-paths) |
+| The HTTP API | 4747 | loopback, or `http.ip` | requests with a [token](/run/orgs/#tokens), [dashboard](/run/dashboard/) sessions, and the [public paths](/run/public-address/#exposed-paths) |
 | Erlang distribution | random | all | anyone with the cookie |
 | epmd | 4369 | all | anyone; returns the node name and port |
 

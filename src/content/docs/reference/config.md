@@ -345,6 +345,12 @@ and `write` it. Each is `agent:NAME`, in the mounting agent's org.
 | `ip` | `127.0.0.1` | the listen address; default: `WARDRIK_HTTP_IP` |
 | `trusted_workers` | `false` | `true` disables the `outside` label on tool worker results |
 
+## web
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `enabled` | `true` | `false` turns off the [dashboard](/run/dashboard/) at `/web` |
+
 ## storage
 
 ```yaml
