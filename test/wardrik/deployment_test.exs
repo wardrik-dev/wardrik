@@ -117,6 +117,9 @@ defmodule Wardrik.DeploymentTest do
 
       assert Enum.find(groups, &(&1["module"] == ":application_controller"))
 
+      assert %{"application" => "kernel"} =
+               Enum.find(groups, &(&1["module"] == ":code_server"))
+
       assert %{"agent" => "acme/bot", "node" => ^here, "processes" => 1} = agent
       assert agent["memory_bytes"] > 0
 

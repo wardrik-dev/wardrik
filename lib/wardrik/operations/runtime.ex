@@ -208,9 +208,14 @@ defmodule Wardrik.Operations.Runtime do
 
     Process.list()
     |> Enum.flat_map(fn pid ->
-      case Process.info(pid, [{:dictionary, :"$initial_call"}, :initial_call, :memory]) do
-        [{_key, started}, {:initial_call, initial}, {:memory, memory}] ->
-          [{runs(started, initial), memory}]
+      case Process.info(pid, [
+             {:dictionary, :"$initial_call"},
+             :initial_call,
+             :registered_name,
+             :memory
+           ]) do
+        [{_key, started}, {:initial_call, initial}, {:registered_name, name}, {:memory, memory}] ->
+          [{runs(started, initial, name), memory}]
 
         nil ->
           []
@@ -229,10 +234,12 @@ defmodule Wardrik.Operations.Runtime do
   end
 
   # proc_lib keeps the callback module: {supervisor, Module, 1} for a supervisor, and
-  # {Module, init, 1} for other behaviours.
-  defp runs({:supervisor, module, _arity}, _initial), do: module
-  defp runs({module, _function, _arity}, _initial), do: module
-  defp runs(:undefined, {module, _function, _arity}), do: module
+  # {Module, init, 1} for other behaviours. A process spawned from a fun starts in :erlang, so a
+  # registered one goes by its name, such as :code_server.
+  defp runs({:supervisor, module, _arity}, _initial, _name), do: module
+  defp runs({module, _function, _arity}, _initial, _name), do: module
+  defp runs(:undefined, {:erlang, :apply, 2}, name) when name != [], do: name
+  defp runs(:undefined, {module, _function, _arity}, _name), do: module
 
   defp used(count, limit),
     do: %{"count" => :erlang.system_info(count), "limit" => :erlang.system_info(limit)}
