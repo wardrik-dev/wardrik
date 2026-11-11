@@ -2,10 +2,12 @@
 
 ## Unreleased
 
-- `deployment.runtime` returns resource use for each node: memory by type, processes, ports,
-  atoms and ETS tables against their limits, scheduler use, run queue, reductions, garbage
-  collection, I/O, versions and, with os_mon, CPU load, memory and disks. It also returns the
-  running agents that use the most memory.
+- `deployment.runtime` returns resource use for each node: memory by type, memory the OS
+  reports, processes grouped by the module that runs them, processes, ports, atoms and ETS
+  tables against their limits, scheduler use, run queue, reductions, garbage collection, I/O,
+  versions and, with os_mon, CPU load, memory and disks. It also returns the running agents that
+  use the most memory.
+- `deployment.nodes` counts the agents on the nodes that are `running`, `idle` and `parked`.
 - `agent.runtime` returns a running agent's memory, mailbox size, process count and reductions.
 - `agent.resolved` returns what the app gives an agent: who it works for, its policies, MCP
   servers and their tools, notify targets, channels and workspaces.

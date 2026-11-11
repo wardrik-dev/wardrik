@@ -14,7 +14,8 @@ defmodule Wardrik.NodeRuntime do
   Resource use of one node.
 
   `memory`, `processes`, `ports`, `atoms`, `ets_tables`, `garbage_collections`, `io` and `os`
-  are maps with string keys, as the protocol's JSON has them. `os` is `nil` unless the os_mon
+  are maps with string keys, as the protocol's JSON has them. `process_groups` is a list of such
+  maps. `os` is `nil` unless the os_mon
   application runs on the node.
   """
 
@@ -36,6 +37,7 @@ defmodule Wardrik.NodeRuntime do
       scheduler_utilization: "scheduler_utilization",
       run_queue: "run_queue",
       memory: "memory",
+      process_groups: "process_groups",
       processes: "processes",
       ports: "ports",
       atoms: "atoms",

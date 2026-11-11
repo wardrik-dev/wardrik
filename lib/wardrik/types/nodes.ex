@@ -1,9 +1,18 @@
 defmodule Wardrik.Nodes do
-  @moduledoc "The deployment's `nodes`, and how many agents are `asleep`."
+  @moduledoc """
+  The deployment's `nodes`, how many of the agents on them are `running`, `idle` or `parked`, and
+  how many are `asleep`.
+  """
 
   use Wardrik.Type,
     schema: ["nodes"],
-    fields: [nodes: {"nodes", [Wardrik.Node]}, asleep: "asleep"]
+    fields: [
+      nodes: {"nodes", [Wardrik.Node]},
+      running: "running",
+      idle: "idle",
+      parked: "parked",
+      asleep: "asleep"
+    ]
 end
 
 defmodule Wardrik.Node do

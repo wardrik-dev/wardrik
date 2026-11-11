@@ -28,6 +28,7 @@
           "scheduler_utilization",
           "run_queue",
           "memory",
+          "process_groups",
           "processes",
           "ports",
           "atoms",
@@ -106,7 +107,7 @@
           "memory": {
             "type": "object",
             "additionalProperties": false,
-            "description": "The node's memory use in bytes, by type.",
+            "description": "The node's memory use in bytes. All but resident come from the BEAM's own allocators.",
             "required": [
               "total",
               "processes",
@@ -135,7 +136,7 @@
               "system": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "Memory not allocated for processes: binaries, code, ETS and the runtime itself."
+                "description": "Memory not allocated for processes: binaries, code, ETS, persistent terms and the runtime itself."
               },
               "atom": {
                 "type": "integer",
@@ -161,6 +162,49 @@
                 "type": "integer",
                 "minimum": 0,
                 "description": "Memory used by ETS tables."
+              },
+              "persistent_term": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Memory used by persistent terms. Part of system."
+              },
+              "resident": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Memory the operating system has given the node, as top shows it. It's more than total, because the allocators keep memory free for reuse. Absent where the node can't read it."
+              }
+            }
+          },
+          "process_groups": {
+            "type": "array",
+            "description": "The node's processes, counted by the module that runs them. A supervisor counts under its callback module. Sorted by process count, most first.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "module",
+                "processes",
+                "memory_bytes"
+              ],
+              "properties": {
+                "module": {
+                  "type": "string",
+                  "description": "The module, as Elixir writes it, such as Phoenix.PubSub or :supervisor."
+                },
+                "application": {
+                  "type": "string",
+                  "description": "The application the module belongs to. Absent when the module belongs to none."
+                },
+                "processes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "How many processes run the module."
+                },
+                "memory_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Memory those processes use, in bytes."
+                }
               }
             }
           },
@@ -407,8 +451,24 @@
             "atom_used": 1040384,
             "binary": 4194304,
             "code": 25165824,
-            "ets": 5242880
+            "ets": 5242880,
+            "persistent_term": 1048576,
+            "resident": 163577856
           },
+          "process_groups": [
+            {
+              "module": "ThousandIsland.Acceptor",
+              "application": "thousand_island",
+              "processes": 100,
+              "memory_bytes": 2867200
+            },
+            {
+              "module": "WardrikCore.Agent",
+              "application": "wardrik_core",
+              "processes": 12,
+              "memory_bytes": 1572864
+            }
+          ],
           "processes": {
             "count": 1203,
             "limit": 1048576
