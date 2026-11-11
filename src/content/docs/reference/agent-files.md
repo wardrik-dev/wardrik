@@ -61,7 +61,7 @@ tools: [web_search, files, github/*, agents/*]
 
 | Entry | Tools |
 | --- | --- |
-| `web_search` | web search through Brave; requires [`brave.api_key`](/reference/config/#keys) |
+| `web_search` | web search through Brave; needs a key, sealed with `wardrik vault put BRAVE_API_KEY --for api_key` or set as [`brave.api_key`](/reference/config/#keys). Until then it says how to add one |
 | `deep_research` | researches a topic with subagents |
 | `run_lua` | runs Lua in a sandbox |
 | `agent_create` | creates another agent in the same organization |
@@ -71,11 +71,18 @@ tools: [web_search, files, github/*, agents/*]
 | `workers/*` | every tool that connected [tool workers](/build/tool-workers/) serve to it |
 | `self/*` | `self_read`, `self_definition_read`, `self_trigger_set`, `self_trigger_remove` |
 | `agents/*` | `agents_list`, `agent_read`, `agent_definition_read`, `agent_ask`, `agent_define`, `agent_trigger_set`, `agent_trigger_remove` |
-| `*` | all of the above |
+| `ops/read` | every operation that only reads, as a tool named after it: `agent_runs`, `agent_timeline`, `agent_calls`, `agent_resolved`, `agent_runtime`, `interrupts_list`, `audit_list`, `deployment_nodes`, `deployment_runtime` and the rest |
+| `ops/ID` | one operation that changes something, such as `ops/agent.stop` or `ops/deployment.reload`. Approving and denying calls are never tools |
+| `settings` | `settings_list`, `server_add`, `notify_target_add`, `oauth_app_add`, `secret_request` |
+| `help` | `wardrik_about`, `wardrik_doctor`, `docs_search`, `docs_read` |
+| `*` | all of the above but `ops/` |
 
 - A server that isn't added yet has no tools. [`GET .../definition`](/reference/http-api/#read-a-definition) lists it as `missing`.
-- In `self/*` and `agents/*`, reads have no default approval requirement. Changes need approval
-  unless explicitly allowed. Policy rules still apply to both.
+- In `self/*`, `agents/*`, `ops/` and `settings`, reads have no default approval requirement.
+  Changes need approval unless explicitly allowed. Policy rules still apply to both.
+- Each acts with the agent's own [bindings](/run/orgs/#roles-and-bindings).
+- `secret_request` never sees a value. It answers the dashboard page and the command where a
+  person seals one.
 - A created agent inherits the policy of the agent that created it.
 
 ## workspace
