@@ -58,7 +58,7 @@ defmodule WardrikWeb.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_protocol, "~> 0.1.0-rc.4"),
+      sibling(:wardrik_protocol, "~> 0.1.0-rc.6"),
       {:phoenix, "~> 1.8"},
       {:phoenix_live_view, "~> 1.2"},
       {:phoenix_html, "~> 4.2"},

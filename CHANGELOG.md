@@ -1,32 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.1 (2026-11-11)
 
-* The Nodes page explains each figure in a tooltip, shows the memory the OS reports next to the
-  BEAM's, adds Persistent terms and Other to memory by type, and lists what runs on each node:
-  processes grouped by application and module.
-* The Nodes page counts working, idle, waiting and sleeping agents. It needs a server whose
-  `deployment.nodes` returns those counts.
-* A section you open or close stays that way when the page refreshes.
-* The Nodes page shows each node's resource use, with trends over the last 5 minutes, and the
-  agents that use the most memory. It needs `deployment.runtime`.
+The first release: a LiveView dashboard for Wardrik that you mount in your Phoenix router.
+
+* Pages for agents, agent timelines with approvals, approvals, the audit, nodes, and a form for
+  every operation. The pages update while agents run.
+* Forms built from each operation's schema, with groups, choices and lists in place of raw JSON.
+  Fields marked `"writeOnly": true` are password fields.
+* New agents, an editable definition, a Triggers tab, an Access tab, and Move and Delete. The
+  Access tab shows what your app gives the agent. It needs `agent.resolved`.
+* The Nodes page shows each node's resource use, with trends over the last 5 minutes and a
+  tooltip on each figure, what runs on each node, the agents that use the most memory, and how
+  many agents are working, idle, waiting on a person and asleep. It needs `deployment.runtime`.
 * An agent's Now card shows its memory, mailbox, processes and work per second. It needs
   `agent.runtime`.
-* A link to the documentation at the bottom of the navigation.
 * Settings pages for MCP servers, secrets, notify targets, OAuth apps and connections. Turn each
   on with the router's `:settings` option and a `WardrikWeb.Settings` or
   `WardrikWeb.Connections` module. A page that's off says how to turn it on.
-* An agent's Access tab shows what your app gives it: who it works for, its policies, MCP
-  servers and their tools, notify targets, channels and workspaces. It needs `agent.resolved`.
-* `use WardrikWeb.Page` for extension pages, and `owner_picker/1` in `WardrikWeb.Components`.
-* Form fields marked `"writeOnly": true` are password fields.
-
-## 0.1.0-rc.1
-
-* The dashboard: agents, agent timelines with approvals, approvals, audit, nodes, and a form for
-  every operation.
-* Forms built from each operation's schema, with groups, choices and lists in place of raw JSON.
-* New agents, an editable definition, a Triggers tab, and Move and Delete.
+* `WardrikWeb.Resolver`, `WardrikWeb.Extension`, `use WardrikWeb.Page` for extension pages, and
+  `owner_picker/1` in `WardrikWeb.Components`.
 * Operations that webhooks and chat apps call are set apart.
-* A menu that slides in on narrow screens, and tables that stack on phones.
-* `WardrikWeb.Resolver`, `WardrikWeb.Extension` and `WardrikWeb.Page`.
+* A menu that slides in on narrow screens, tables that stack on phones, and sections that stay
+  open or closed when the page refreshes.
