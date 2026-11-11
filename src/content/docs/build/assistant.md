@@ -1,6 +1,6 @@
 ---
 title: The assistant
-description: "Use the built-in assistant to create and manage agents, with approval for changes."
+description: "Use the built-in assistant to create and manage agents, answer questions about Wardrik, and check how things run, with approval for changes."
 sidebar:
   order: 0.5
 ---
@@ -42,33 +42,89 @@ wardrik agent history changelog-watch # what it found
 
 Ask the assistant to list, change, or stop its tasks. Changes require approval.
 
+## Ask it questions
+
+Ask how Wardrik works or where something is. It answers from this documentation and from the
+deployment itself, and links the page it used:
+
+```sh
+wardrik ask assistant "Where is the config file?"
+wardrik ask assistant "What are triggers?"
+wardrik ask assistant "Why did changelog-watch stop?"
+```
+
+- `wardrik_about` gives this deployment's version, URLs, and where its config, agent files, env
+  file, keys, store and logs are.
+- `docs_search` and `docs_read` read these pages.
+- `wardrik_doctor` runs the checks `wardrik doctor` runs.
+- To find out why an agent failed, it reads the agent's runs, its timeline, what it gets from its
+  owner, and the calls waiting on a person.
+
+## Set things up
+
+Ask it to add an MCP server, a notify target or an OAuth app. Each addition requires your approval.
+It never sees or sets a secret's value: it answers the dashboard page and the command where you
+seal one:
+
+```text
+Seal GITHUB_TOKEN at http://127.0.0.1:4747/web/secrets?owner=acme, or run:
+wardrik vault put GITHUB_TOKEN --for api_key --org acme
+```
+
+Removing a server, target or app is yours to do, in the [dashboard](/run/dashboard/) or with the
+CLI.
+
+## The hourly check
+
+Each hour, its `check` trigger looks at its workers' runs, the calls waiting on a person, the
+doctor's checks and each node's memory. It answers "All well." when nothing needs you. When
+something does, it proposes the fix as a call that waits for your approval, so it shows in
+`wardrik approval ls`, the dashboard's Approvals page and any [notify target](/build/notices/).
+Each check is a model call. Remove the trigger to stop it.
+
 ## Assistant configuration
 
 ```markdown title="~/.config/wardrik/agents/assistant.md"
 ---
-description: "Creates and manages agents for requested tasks."
-tools: [self/*, agents/*, agent_create, files, web_search, run_lua]
+description: "Turns what people ask for into work that runs."
+tools: [self/*, agents/*, agent_create, ops/read, settings, help, files, web_search, run_lua]
 context: [MEMORY.md]
 policy: {budget: {tokens: 2000000, per: day}}
 idle_timeout: infinity
+triggers:
+  - name: check
+    every: 1h
+    prompt: >-
+      Check how things run: ...
 ---
 You are Wardrik, the one place the people of this org come to get things done. …
 ```
 
 - `agents/*` reads, messages and redefines the org's agents. `agent_create` creates another agent.
+- `ops/read` reads runs, timelines, waiting calls, the audit, nodes and resource use.
+- `settings` lists and adds MCP servers, notify targets and OAuth apps, and asks you to seal
+  secrets. `help` answers from these docs and the deployment's own files.
 - Reads run without approval. Every change needs approval.
 - `files` gives it a workspace. `MEMORY.md` is loaded into every turn.
 - No `model`: it uses `defaults` from `config.yaml`.
 - Agents it creates inherit its policy and budget.
-- `web_search` works once `config.yaml` sets `brave.api_key`.
+- `web_search` works once it has a Brave key: `wardrik vault put BRAVE_API_KEY --for api_key`.
+  Until then, it says how to add one.
 
-`init` also writes the role and binding that allow it to act on the org's agents:
+`init` also writes the roles and bindings that let it act on the org's agents and settings, and
+read the deployment:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 roles:
-  workers: {rules: [{verbs: [create, define, read, ask], kinds: [agent]}]}
+  workers:
+    rules:
+      - {verbs: [create, define, read, ask, events], kinds: [agent]}
+      - {verbs: [read, add], kinds: [mcp_server, notify_target, provider]}
+      - {verbs: [read], kinds: [secret]}
+  observer: {rules: [{verbs: [nodes, runtime, audit], kinds: [deployment]}]}
 bindings:
   - {org: acme, role: workers, subjects: [agent:assistant]}
+  - {org: deployment, role: observer, subjects: [agent:assistant]}
 ```
 
 See [Organizations, roles, and tokens](/run/orgs/).
@@ -76,7 +132,8 @@ See [Organizations, roles, and tokens](/run/orgs/).
 ## Customize the assistant
 
 - The body is its instructions, followed by a playbook of patterns that work. Edit it, then
-  `wardrik reload`. `init` never overwrites the file.
+  `wardrik reload`. `init` never overwrites the file. `wardrik doctor` names the tools an older
+  file leaves out.
 - To message other agents without approval, allow the tool: `policy: {allow: [agent_ask], ...}`.
 - Add `channels: [slack]` to use it from [Slack](/build/slack/).
 - After it reads [untrusted content](/concepts/outside-content/), every change needs approval,

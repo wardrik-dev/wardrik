@@ -56,11 +56,24 @@ roles:
 - Removing a secret, server, webhook, OAuth app, connection or token is `delete`. `create`
   doesn't include it.
 
-A binding grants a role to users, groups, or agents in one organization. The `subjects` field accepts:
+A binding grants a role to users, groups, or agents in one organization, in `deployment`, or in
+`"*"` for every org and the deployment. The `subjects` field accepts:
 
 - `user:ORG/@NAME`: a user, such as `user:acme/@jon`.
 - `group:NAME`: every token that lists the group.
-- `agent:NAME`: the agent with that name in the binding's org, when calling its tools.
+- `agent:NAME`: the agent with that name in the binding's org, when calling its tools. In
+  `deployment`, the agent of that name in the deployment's own org. `"*"` can't name an agent.
+
+A binding in `deployment` reaches the deployment's own resources: its nodes, runtime and audit,
+and the servers, secrets, notify targets and OAuth apps it owns. Tokens stay reachable only from
+`"*"`. `wardrik init` binds the assistant there to read the deployment:
+
+```yaml
+roles:
+  observer: {rules: [{verbs: [nodes, runtime, audit], kinds: [deployment]}]}
+bindings:
+  - {org: deployment, role: observer, subjects: [agent:assistant]}
+```
 
 ## Built-in rules
 

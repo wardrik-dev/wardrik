@@ -140,9 +140,9 @@ bindings:
 
 | Binding key | Description |
 | --- | --- |
-| `org` | the org it applies in, or `"*"` for every org and the deployment |
+| `org` | the org it applies in, `deployment` for the deployment's own resources, or `"*"` for every org and the deployment |
 | `role` | a role from `roles`, or `operator` |
-| `subjects` | `user:ORG/@NAME`, `group:NAME`, or `agent:NAME` for that agent in the binding's org |
+| `subjects` | `user:ORG/@NAME`, `group:NAME`, or `agent:NAME` for that agent in the binding's org (in `deployment`, the deployment's own org) |
 
 - The built-in `admin` role permits all operations on all resources. The CLI’s `user:admin` has
   this role across all organizations. It cannot be redefined.
