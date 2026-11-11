@@ -132,10 +132,10 @@ defmodule WardrikWeb.DashboardTest do
 
   test "lists nodes and reloads definitions", %{conn: conn} do
     {:ok, view, html} = live(conn, "/ops/nodes")
-    assert html =~ "b@host"
+    assert html =~ "wardrik@box1"
     assert render_click(view, "reload", %{}) =~ "Reloaded agent definitions."
     send(view.pid, :tick)
-    assert render(view) =~ "a@host"
+    assert render(view) =~ "wardrik@box1"
   end
 
   test "shows an agent's runs, running calls and events", %{conn: conn} do
@@ -192,5 +192,31 @@ defmodule WardrikWeb.DashboardTest do
   test "sends an unknown operation back to the list", %{conn: conn} do
     assert {:error, {:live_redirect, %{to: "/ops/operations"}}} =
              live(conn, "/ops/operations/nope")
+  end
+
+  test "shows each node's resource use and the agents that use the most memory", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/ops/nodes")
+    assert html =~ "Scheduler use"
+    assert html =~ "12%"
+    assert html =~ "94 MB"
+    assert html =~ "Agents by memory"
+    assert html =~ "Disk /"
+
+    send(view.pid, :tick)
+    html = render(view)
+    assert html =~ "<polyline"
+    assert html =~ "/s" or html =~ "Work per second"
+  end
+
+  test "shows a running agent's memory and mailbox", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/ops/agents/triage")
+    assert html =~ "1.8 MB"
+    send(view.pid, :runtime)
+    assert render(view) =~ "0/s"
+  end
+
+  test "links to the documentation", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/ops")
+    assert html =~ ~s(href="https://wardrik.dev")
   end
 end

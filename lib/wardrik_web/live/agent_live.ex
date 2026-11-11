@@ -32,9 +32,11 @@ defmodule WardrikWeb.AgentLive do
         input: input
       )
       |> assign(tab: "timeline", read: nil, data: nil, drafts: %{}, error: nil)
+      |> assign(runtime: nil, runtime_at: nil, work: nil)
       |> assign(:nodes, nodes(socket.assigns.scope))
 
-    {:ok, socket}
+    if connected?(socket), do: :timer.send_interval(5_000, :runtime)
+    {:ok, runtime(socket)}
   end
 
   @impl true
@@ -102,6 +104,8 @@ defmodule WardrikWeb.AgentLive do
   end
 
   @impl true
+  def handle_info(:runtime, socket), do: {:noreply, runtime(socket)}
+
   def handle_info({WardrikWeb.Components, :flash, kind, message}, socket),
     do: {:noreply, put_flash(socket, kind, message)}
 
@@ -151,6 +155,28 @@ defmodule WardrikWeb.AgentLive do
       {:error, error} -> assign(socket, error: error.message)
     end
   end
+
+  # Older servers don't have agent.runtime. A sleeping agent has no runtime.
+  defp runtime(socket) do
+    with %{} <- WardrikProtocol.operation("agent.runtime"),
+         {:ok, runtime} <-
+           Wardrik.Scope.run(socket.assigns.scope, "agent.runtime", socket.assigns.input) do
+      now = System.monotonic_time(:millisecond)
+      assign(socket, runtime: runtime, runtime_at: now, work: work(socket.assigns, runtime, now))
+    else
+      _none -> assign(socket, runtime: nil, work: nil)
+    end
+  end
+
+  defp work(
+         %{runtime: %{"reductions" => before}, runtime_at: at},
+         %{"reductions" => now_count},
+         now
+       )
+       when now > at,
+       do: max(now_count - before, 0) * 1000 / (now - at)
+
+  defp work(_assigns, _runtime, _now), do: nil
 
   defp tab(scope, "timeline", input), do: Wardrik.Scope.run(scope, "agent.timeline", input)
   defp tab(scope, "runs", input), do: Wardrik.Scope.run(scope, "agent.runs", input)
@@ -259,6 +285,20 @@ defmodule WardrikWeb.AgentLive do
               <dt>Next run</dt><dd>{ago(@read["next_run"])}</dd>
               <dt>Spent today</dt><dd>{usd(get_in(@read, ["spent_today", "usd"]))}</dd>
               <dt>Tokens today</dt><dd>{number(get_in(@read, ["spent_today", "tokens"]) || 0)}</dd>
+              <%= if @runtime do %>
+                <dt>Memory</dt><dd title="Memory of the agent's processes">
+                  {bytes(@runtime["memory_bytes"])}
+                </dd>
+                <dt>Mailbox</dt><dd title="Messages waiting in the agent's mailbox">
+                  {number(@runtime["message_queue"])}
+                </dd>
+                <dt>Processes</dt><dd title="The agent, its turn and its running tool calls">
+                  {@runtime["processes"]}
+                </dd>
+                <dt>Work</dt><dd title="BEAM reductions per second">
+                  {if @work, do: "#{number(round(@work))}/s", else: "—"}
+                </dd>
+              <% end %>
             </dl>
             <.doing :if={@read["activity"]} activity={@read["activity"]} />
             <form

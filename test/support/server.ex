@@ -29,6 +29,66 @@ defmodule WardrikWeb.Test.Server do
     "arguments" => %{"title" => "Flaky"}
   }
 
+  @runtime %{
+    "nodes" => [
+      %{
+        "name" => "wardrik@box1",
+        "agents" => 12,
+        "uptime_ms" => 86_400_000,
+        "otp_release" => "28",
+        "erts_version" => "16.1.2",
+        "elixir_version" => "1.20.2",
+        "architecture" => "x86_64-pc-linux-gnu",
+        "logical_processors" => 8,
+        "schedulers" => 8,
+        "schedulers_online" => 8,
+        "dirty_cpu_schedulers" => 8,
+        "dirty_io_schedulers" => 10,
+        "scheduler_utilization" => 0.12,
+        "run_queue" => 0,
+        "memory" => %{
+          "total" => 98_566_144,
+          "processes" => 31_457_280,
+          "processes_used" => 31_195_136,
+          "system" => 67_108_864,
+          "atom" => 1_056_768,
+          "atom_used" => 1_040_384,
+          "binary" => 4_194_304,
+          "code" => 25_165_824,
+          "ets" => 5_242_880
+        },
+        "processes" => %{"count" => 1203, "limit" => 1_048_576},
+        "ports" => %{"count" => 42, "limit" => 65_536},
+        "atoms" => %{"count" => 61_000, "limit" => 1_048_576},
+        "ets_tables" => %{"count" => 180, "limit" => 8192},
+        "reductions" => 912_000_000,
+        "garbage_collections" => %{"count" => 420_000, "words_reclaimed" => 2_100_000_000},
+        "io" => %{"input_bytes" => 52_428_800, "output_bytes" => 31_457_280},
+        "context_switches" => 31_000_000,
+        "connected_nodes" => ["wardrik@box2"],
+        "os" => %{
+          "load_1" => 0.42,
+          "load_5" => 0.38,
+          "load_15" => 0.3,
+          "memory_total_bytes" => 16_777_216_000,
+          "memory_available_bytes" => 9_663_676_416,
+          "disks" => [%{"path" => "/", "total_bytes" => 256_000_000_000, "used_percent" => 41}]
+        }
+      }
+    ],
+    "agents" => [
+      %{
+        "agent" => "triage",
+        "node" => "wardrik@box1",
+        "memory_bytes" => 1_843_200,
+        "binary_bytes" => 524_288,
+        "processes" => 3,
+        "message_queue" => 0,
+        "reductions" => 4_810_233
+      }
+    ]
+  }
+
   def asked, do: Agent.get(__MODULE__, &Enum.reverse/1)
   def start, do: Agent.start_link(fn -> [] end, name: __MODULE__)
 
@@ -118,6 +178,11 @@ defmodule WardrikWeb.Test.Server do
        }}
 
   defp reply("deployment.reload", _input), do: {:ok, %{"reloaded" => 2}}
+
+  defp reply("deployment.runtime", _input), do: {:ok, @runtime}
+
+  defp reply("agent.runtime", %{"agent" => "triage"}),
+    do: {:ok, hd(@runtime["agents"])}
 
   defp reply("agent.read", _input),
     do: {:error, Wardrik.Error.new(:not_found, "There's no such agent.")}

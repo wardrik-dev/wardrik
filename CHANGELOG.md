@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+* The Nodes page shows each node's resource use, with trends over the last 5 minutes, and the
+  agents that use the most memory. It needs `deployment.runtime`.
+* An agent's Now card shows its memory, mailbox, processes and work per second. It needs
+  `agent.runtime`.
+* A link to the documentation at the bottom of the navigation.
+
 ## 0.1.0-rc.1
 
 * The dashboard: agents, agent timelines with approvals, approvals, audit, nodes, and a form for

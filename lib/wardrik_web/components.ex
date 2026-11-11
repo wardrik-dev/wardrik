@@ -238,6 +238,120 @@ defmodule WardrikWeb.Components do
     end
   end
 
+  @doc "A size in bytes, in the largest unit that keeps it at 1 or more: `512 B`, `1.8 MB`."
+  @spec bytes(integer() | nil) :: String.t()
+  def bytes(nil), do: "—"
+  def bytes(count) when count < 1024, do: "#{count} B"
+
+  def bytes(count), do: scaled(count / 1024, ~w(KB MB GB TB))
+
+  defp scaled(value, [_unit | rest]) when value >= 1024 and rest != [],
+    do: scaled(value / 1024, rest)
+
+  defp scaled(value, [unit | _rest]),
+    do: "#{:erlang.float_to_binary(value, decimals: if(value < 10, do: 1, else: 0))} #{unit}"
+
+  @doc """
+  A small line chart of `values`, oldest first. Hover a point to see its value.
+
+  `:format` turns a value into the text the tooltip shows. Set `:max` for a fixed scale from 0
+  to `:max`. Without it, the scale fits the values, so small changes are visible.
+  """
+  attr :values, :list, required: true
+  attr :label, :string, required: true
+  attr :format, :any, default: nil
+  attr :max, :any, default: nil
+
+  def spark(assigns) do
+    values = assigns.values
+    assigns = assign(assigns, :format, assigns.format || (&number/1))
+    count = max(length(values), 2)
+    {low, high} = scale(values, assigns.max)
+    step = 100 / (count - 1)
+
+    points =
+      values
+      |> Enum.with_index()
+      |> Enum.map(fn {value, index} ->
+        {Float.round(index * step, 2), Float.round(30 - (value - low) / (high - low) * 28, 2),
+         value}
+      end)
+
+    line = Enum.map_join(points, " ", fn {x, y, _value} -> "#{x},#{y}" end)
+
+    area =
+      case points do
+        [{first, _y, _value} | _rest] ->
+          {last, _y, _value} = List.last(points)
+          "#{first},31 #{line} #{last},31"
+
+        [] ->
+          ""
+      end
+
+    assigns = assign(assigns, points: points, line: line, area: area, step: step)
+
+    ~H"""
+    <svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none" role="img" aria-label={@label}>
+      <polygon :if={@area != ""} class="area" points={@area} />
+      <polyline :if={length(@points) > 1} class="line" points={@line} />
+      <rect
+        :for={{x, _y, value} <- @points}
+        class="hit"
+        x={x - @step / 2}
+        y="0"
+        width={@step}
+        height="32"
+      >
+        <title>{@format.(value)}</title>
+      </rect>
+    </svg>
+    """
+  end
+
+  defp scale(_values, max) when is_number(max), do: {0, max}
+  defp scale([], _max), do: {0, 1}
+
+  defp scale(values, nil) do
+    {low, high} = Enum.min_max(values)
+    pad = if high == low, do: max(abs(high) * 0.1, 1), else: (high - low) * 0.15
+    {low - pad, high + pad}
+  end
+
+  @doc """
+  A bar that shows `count` as a share of `limit`, with both numbers and the percentage.
+
+  At 80% or more the bar turns red and says it's near the limit. Set `:warn` to `false` for a
+  share that isn't a limit.
+  """
+  attr :label, :string, required: true
+  attr :count, :integer, required: true
+  attr :limit, :integer, required: true
+  attr :format, :any, default: &WardrikWeb.Components.number/1
+  attr :warn, :boolean, default: true
+
+  def meter(assigns) do
+    percent = if assigns.limit > 0, do: assigns.count * 100 / assigns.limit, else: 0
+    assigns = assign(assigns, percent: percent, high: assigns.warn and percent >= 80)
+
+    ~H"""
+    <div class={["meter", @high && "high"]}>
+      <div class="meter-text">
+        <span>{@label}</span>
+        <span class="num">
+          {@format.(@count)} of {@format.(@limit)} · {percent_text(@percent)}<span :if={@high}> · near the limit</span>
+        </span>
+      </div>
+      <div class="meter-track">
+        <div class="meter-fill" style={"width: #{min(@percent, 100)}%"}></div>
+      </div>
+    </div>
+    """
+  end
+
+  defp percent_text(percent) when percent > 0 and percent < 1, do: "<1%"
+  defp percent_text(percent), do: "#{round(percent)}%"
+
   @doc "An ISO 8601 time, shown as time ago, for example `5m ago`."
   @spec ago(String.t() | nil, DateTime.t()) :: String.t()
   def ago(time, now \\ DateTime.utc_now())

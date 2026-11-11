@@ -76,6 +76,9 @@ defmodule WardrikWeb.Layouts do
           to={["x", page.path]}
           label={page.label}
         />
+        <div class="foot">
+          <a href="https://wardrik.dev" target="_blank" rel="noopener">Documentation ↗</a>
+        </div>
       </nav>
       <main class="main">
         <div
