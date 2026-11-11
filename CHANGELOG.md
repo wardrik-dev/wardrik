@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `ops/read` in an agent's `tools` gives it every operation that only reads: runs, the timeline,
+  running calls, what it gets from its owner, approvals waiting, the audit, nodes and resource
+  use. `ops/ID`, such as `ops/agent.stop`, gives one operation that changes something; it asks
+  a person unless the policy allows it. Approving and denying calls are never tools. See
+  `Wardrik.OperationTools`.
+
 ## 0.1.0-rc.9 (2026-11-11)
 
 - Requires `wardrik_core` 0.1.0-rc.5 and `wardrik_protocol` 0.1.0-rc.6.

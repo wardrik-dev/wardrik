@@ -211,6 +211,16 @@ defmodule Wardrik.Resolution do
 
   defp named(wardrik, "workers/*"), do: {:capability, {Wardrik.Workers, wardrik: wardrik.name}}
 
+  defp named(wardrik, "ops/read"),
+    do: {:capability, {Wardrik.OperationTools, wardrik: wardrik.name, operations: :read}}
+
+  defp named(wardrik, "ops/" <> id) do
+    if Wardrik.OperationTools.change?(id),
+      do: {:capability, {Wardrik.OperationTools, wardrik: wardrik.name, operations: id}},
+      else:
+        {:error, Error.new(:invalid_request, "There's no operation #{id} an agent can be given.")}
+  end
+
   defp named(wardrik, tool) do
     case {Map.fetch(wardrik.capabilities, tool), String.split(tool, "/")} do
       {{:ok, entry}, _parts} -> {:capability, entry}

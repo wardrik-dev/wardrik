@@ -114,7 +114,7 @@ Wardrik.Events.list(maria, agents: ["agt_books"])
 
 ## Agents
 
-An agent's `agents/*` and `self/*` tools act for the person your resolver gives it, with
+An agent's `agents/*`, `self/*` and `ops/` tools act for the person your resolver gives it, with
 `actor: {:agent, id}`. This is the scope `agt_triage` acts in:
 
 ```elixir
