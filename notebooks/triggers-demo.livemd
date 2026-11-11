@@ -1,7 +1,7 @@
 # Scheduled runs and webhooks
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.8"}, {:kino, "~> 0.19"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.9"}, {:kino, "~> 0.19"}])
 ```
 
 ## Setup

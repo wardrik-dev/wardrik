@@ -6,7 +6,7 @@ code, HTTP, Slack or a terminal.
 ## Setup
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.8"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.9"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do
