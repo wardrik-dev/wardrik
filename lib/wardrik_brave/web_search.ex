@@ -18,12 +18,15 @@ defmodule WardrikBrave.WebSearch do
   Answers each source's URL, title, passages, and the page's date where it's known. No results means nothing relevant was found, not that the search failed.
   """
 
-  @doc "Returns the tool. `brave` is a started name or inline settings. See `WardrikBrave.settings/1`."
-  @spec tool(atom() | map()) :: WardrikCore.Tool.t()
-  def tool(brave) do
+  @doc """
+  Returns the tool. `brave` is a started name or inline settings. See `WardrikBrave.settings/1`.
+  While neither `context`'s keys nor the settings hold a key, its description says so.
+  """
+  @spec tool(atom() | map(), WardrikCore.Context.t() | nil) :: WardrikCore.Tool.t()
+  def tool(brave, context \\ nil) do
     WardrikCore.Tool.new!(
       name: "web_search",
-      description: @description,
+      description: described(settings(brave, context)),
       schema: [
         query: [type: :string, required: true, doc: "What you want to know, as a search query"],
         count: [
@@ -62,6 +65,13 @@ defmodule WardrikBrave.WebSearch do
     with {:ok, window} <- window(args),
          do: Client.search(settings(brave, context), body(args, window))
   end
+
+  defp described(%{api_key: key} = settings) when key in [nil, ""],
+    do: @description <> "\n" <> Client.no_key(settings)
+
+  defp described(_settings), do: @description
+
+  defp settings(brave, nil), do: WardrikBrave.settings(brave)
 
   defp settings(brave, context) do
     case WardrikCore.Keys.fetch(context, "BRAVE_API_KEY") do

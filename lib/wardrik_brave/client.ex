@@ -16,8 +16,8 @@ defmodule WardrikBrave.Client do
   `:api_key`, or if Brave answers with a 4xx other than 429.
   """
   @spec search(map(), map()) :: {:ok, map()} | {:error, String.t()} | no_return()
-  def search(%{api_key: key}, _params) when key in [nil, ""],
-    do: {:error, "Web search has no key. Whoever runs Wardrik gives it one, as brave.api_key."}
+  def search(%{api_key: key} = settings, _params) when key in [nil, ""],
+    do: {:error, no_key(settings)}
 
   def search(settings, params) do
     options =
@@ -80,6 +80,13 @@ defmodule WardrikBrave.Client do
       _unknown -> nil
     end
   end
+
+  @doc "Says there's no key, and how to give one: the settings' `:key_help`, or a general line."
+  @spec no_key(map()) :: String.t()
+  def no_key(%{key_help: help}) when is_binary(help), do: "Web search has no key yet. " <> help
+
+  def no_key(_settings),
+    do: "Web search has no key yet. Whoever runs Wardrik gives it one, as brave.api_key."
 end
 
 defmodule WardrikBrave.Unavailable do

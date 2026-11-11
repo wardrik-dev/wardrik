@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `:key_help` says how to give web search a key, in your app's words. While there's no key, the
+  tool's description and its error say it.
+
 ## 0.1.0-rc.2 (2026-11-02)
 
 - Requires `wardrik_core` 0.1.0-rc.2.

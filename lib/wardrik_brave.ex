@@ -24,13 +24,20 @@ defmodule WardrikBrave do
     * `:api_key` - the key to use when the agent's keys hold none.
     * `:req_options` - merged into every request. `[]` unless set.
     * `:base_url` - `"https://api.search.brave.com"` unless set.
+    * `:key_help` - how to give it a key, in your app's words, as `"Set BRAVE_API_KEY."`. While
+      there's no key, the tool's description and its error say it.
   """
 
   use GenServer
 
   @behaviour WardrikCore.Capability
 
-  @settings [api_key: nil, req_options: [], base_url: "https://api.search.brave.com"]
+  @settings [
+    api_key: nil,
+    req_options: [],
+    base_url: "https://api.search.brave.com",
+    key_help: nil
+  ]
 
   @doc "Starts a process holding the search options under `:name`."
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -41,7 +48,7 @@ defmodule WardrikBrave do
   end
 
   @impl WardrikCore.Capability
-  def tools(_context, opts), do: [WardrikBrave.WebSearch.tool(source(opts))]
+  def tools(context, opts), do: [WardrikBrave.WebSearch.tool(source(opts), context)]
 
   defp source(opts) do
     case Keyword.fetch(opts, :brave) do

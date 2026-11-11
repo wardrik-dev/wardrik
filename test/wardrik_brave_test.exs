@@ -151,12 +151,24 @@ defmodule WardrikBraveTest do
     assert {:ok, _found} = tool.run.(%{query: "q"}, context)
     assert_receive {:token, ["acme-key"]}
 
-    assert {:error, "Web search has no key." <> _} = search(tool, %{query: "q"})
+    assert {:error, "Web search has no key yet." <> _} = search(tool, %{query: "q"})
   end
 
   @tag key: nil
   test "says the key is missing", %{tool: tool} do
-    assert {:error, "Web search has no key." <> _} = search(tool, %{query: "q"})
+    assert {:error, "Web search has no key yet." <> _} = search(tool, %{query: "q"})
+    assert tool.description =~ "Web search has no key yet."
+  end
+
+  test "says how to give it a key, in the host's words, until it has one" do
+    help = "Seal one with wardrik vault put BRAVE_API_KEY --for api_key."
+    [tool] = WardrikBrave.tools(nil, key_help: help)
+
+    assert tool.description =~ help
+    assert {:error, "Web search has no key yet. " <> ^help} = search(tool, %{query: "q"})
+
+    [keyed] = WardrikBrave.tools(nil, api_key: "k", key_help: help)
+    refute keyed.description =~ help
   end
 
   test "marks the tool as reaching the open world", %{tool: tool} do
