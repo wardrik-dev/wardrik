@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.6 (2026-11-11)
 
 - `deployment.runtime` returns resource use for each node: memory by type, memory the OS
   reports, processes grouped by the module that runs them, processes, ports, atoms and ETS

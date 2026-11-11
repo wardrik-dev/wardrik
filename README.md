@@ -9,7 +9,7 @@ Wardrik's wire format: events as [CloudEvents](https://cloudevents.io), operatio
 ```elixir
 def deps do
   [
-    {:wardrik_protocol, "~> 0.1.0-rc.5"}
+    {:wardrik_protocol, "~> 0.1.0-rc.6"}
   ]
 end
 ```
@@ -20,7 +20,7 @@ end
 [JSV](https://hexdocs.pm/jsv), in a fresh IEx session:
 
 ```elixir
-Mix.install([{:wardrik_protocol, "~> 0.1.0-rc.5"}, {:jsv, "~> 0.26"}])
+Mix.install([{:wardrik_protocol, "~> 0.1.0-rc.6"}, {:jsv, "~> 0.26"}])
 
 event = %{
   "specversion" => "1.0",

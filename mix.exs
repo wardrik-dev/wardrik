@@ -4,7 +4,7 @@ defmodule WardrikProtocol.MixProject do
   def project do
     [
       app: :wardrik_protocol,
-      version: "0.1.0-rc.5",
+      version: "0.1.0-rc.6",
       elixir: "~> 1.20",
       description:
         "What Wardrik sends and takes: its events, as CloudEvents, and its operations, as OpenAPI.",
