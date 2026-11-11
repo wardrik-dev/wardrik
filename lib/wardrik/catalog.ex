@@ -6,6 +6,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Channels
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Lifecycle
+  alias Wardrik.Operations.Resolved
   alias Wardrik.Operations.Runtime
   alias Wardrik.Operations.Triggers
 
@@ -58,6 +59,7 @@ defmodule Wardrik.Catalog do
         "deployment.nodes" => &Deployment.nodes/2,
         "deployment.runtime" => &Runtime.deployment/2,
         "agent.runtime" => &Runtime.agent/2,
+        "agent.resolved" => &Resolved.agent/2,
         "agent.move" => &Deployment.move/2,
         "hook.deliver_with_secret" => &Triggers.deliver/2,
         "channel.deliver" => &Channels.deliver/2,

@@ -5,6 +5,9 @@
 - `deployment.runtime` returns resource use for each node and the running agents that use the
   most memory. `agent.runtime` returns one running agent's memory, mailbox size, process count and
   reductions. An agent's figures include its current turn and its running tool calls.
+- `agent.resolved` returns what the resolver gives an agent: who it works for, its policies, MCP
+  servers and the tools each offers now, notify targets, channels and workspaces. Notify targets
+  your app delivers itself are listed by name only.
 
 ## 0.1.0-rc.8 (2026-11-06)
 
