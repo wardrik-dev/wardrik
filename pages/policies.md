@@ -95,7 +95,7 @@ These are gated:
 
 - an MCP server's tools it doesn't mark read-only.
 - every tool a worker offers.
-- `agents/*` tools that change something.
+- `agents/*` and `ops/` tools that change something.
 
 A gated call asks a person unless a rule allows it by name.
 
