@@ -72,11 +72,11 @@ defmodule WardrikBrave.MixProject do
     ]
   end
 
-  # Wardrik's own packages come from Hex, or from their checkouts beside this one with
-  # WARDRIK_LOCAL=1.
+  # Wardrik's own packages come from this repository, or from Hex with WARDRIK_HEX=1, as when
+  # publishing.
   defp sibling(name, requirement, opts \\ []) do
-    if System.get_env("WARDRIK_LOCAL"),
-      do: {name, Keyword.put(opts, :path, "../#{name}")},
-      else: {name, requirement, opts}
+    if System.get_env("WARDRIK_HEX"),
+      do: {name, requirement, opts},
+      else: {name, Keyword.put(opts, :path, __DIR__ |> Path.join("../../*/#{name}") |> Path.wildcard() |> hd())}
   end
 end
