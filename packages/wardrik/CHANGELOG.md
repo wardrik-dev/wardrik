@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- A saved state this release can't read is never replaced quietly. The agent's status is
+  `unreadable` with the reason, such as the modules it names that the release doesn't have, and
+  messages to it return a `conflict` error. `agent.define` starts it over and answers `reset`.
+  `Wardrik.Store.Durable` warns once for each such state, not each discovery round.
+- In development, a module a saved state names is loaded before the state is called unreadable.
+
 ## 0.1.0-rc.11 (2026-11-12)
 
 - Requires `wardrik_core` 0.1.0-rc.6 and `wardrik_protocol` 0.1.0-rc.7.

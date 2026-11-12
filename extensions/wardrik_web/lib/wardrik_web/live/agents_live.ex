@@ -6,7 +6,7 @@ defmodule WardrikWeb.AgentsLive do
 
   alias WardrikWeb.Follow
 
-  @statuses ~w(running parked idle asleep)
+  @statuses ~w(running parked idle asleep unreadable)
 
   @impl true
   def mount(_params, _session, socket) do

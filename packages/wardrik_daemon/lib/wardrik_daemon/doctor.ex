@@ -14,6 +14,8 @@ defmodule WardrikDaemon.Doctor do
     * If `config.yaml` doesn't read, nothing after it is checked.
   """
 
+  alias WardrikDaemon.Client
+  alias WardrikDaemon.CLIToken
   alias WardrikDaemon.Config
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.EnvFile
@@ -86,8 +88,42 @@ defmodule WardrikDaemon.Doctor do
       oauth(config) ++
       Enum.map(config.warnings, &{:warn, "config", &1}) ++
       WardrikDaemon.Doctor.Agents.check(config, dirs) ++
+      saved(dirs, Keyword.get(opts, :req_options, [])) ++
       assistant(config, dirs)
   end
+
+  # Saved states are the running daemon's to read; with none running, the other checks say so.
+  defp saved(dirs, req_options) do
+    with {:ok, %{url: url, secret: secret}} <-
+           CLIToken.read(Dirs.data_home(dirs, "cli_token")),
+         {:ok, agents} <- listed(%Client{url: url, secret: secret, req_options: req_options}, %{}) do
+      agents |> Enum.filter(&(&1["status"] == "unreadable")) |> unreadable_checks()
+    else
+      _unreached -> []
+    end
+  end
+
+  defp unreadable_checks([]), do: [{:ok, "saved", "every agent's saved state reads"}]
+  defp unreadable_checks(agents), do: Enum.map(agents, &unreadable/1)
+
+  defp listed(client, input) do
+    with {:ok, %{"agents" => agents} = page} <- Client.run(client, "agents.list", input),
+         do: more(client, agents, page["next"])
+  end
+
+  defp more(_client, agents, nil), do: {:ok, agents}
+
+  defp more(client, agents, next) do
+    with {:ok, rest} <- listed(client, %{"after" => next}), do: {:ok, agents ++ rest}
+  end
+
+  defp unreadable(%{"id" => id, "problem" => problem} = agent) do
+    {:fail, "saved",
+     "#{named(id, agent["conversation"])} can't start, as its saved state can't be read: #{problem}. Define it again to start it over: `wardrik reload` does for agents in agents/."}
+  end
+
+  defp named(id, nil), do: id
+  defp named(id, conversation), do: "#{id}'s conversation #{conversation}"
 
   # An assistant.md from an older init lacks tools init gives now. A file that doesn't read is
   # the agents check's to report.

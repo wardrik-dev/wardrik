@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `WardrikCore.saved_key/2` returns the key an agent's state is saved under in the backend.
+
 ## 0.1.0-rc.6 (2026-11-11)
 
 - `WardrikCore.context/1` returns the context the agent's next turn starts from, to run steps

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Agents whose saved state can't be read show as `unreadable`, with the reason on the agent's
+  page.
+
 ## 0.1.0-rc.1 (2026-11-11)
 
 The first release: a LiveView dashboard for Wardrik that you mount in your Phoenix router.

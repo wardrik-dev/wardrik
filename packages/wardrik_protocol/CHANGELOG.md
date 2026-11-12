@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- An agent's `status` can be `unreadable`, with `problem` saying why its saved state can't be
+  read. `agent.define` answers `reset` when it started such a state over.
+
 ## 0.1.0-rc.7 (2026-11-11)
 
 - `digest` in an agent's definition turns off or on the digest it writes of each conversation

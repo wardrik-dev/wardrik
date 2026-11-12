@@ -17,7 +17,9 @@ defmodule Wardrik.Agent do
 
     * `:id` - the agent's ID, as your app chose it.
     * `:conversation` - the conversation's ID, or `nil` for the main one.
-    * `:status` - `:idle`, `:running`, `:parked` or `:asleep`.
+    * `:status` - `:idle`, `:running`, `:parked`, `:asleep` or `:unreadable`.
+    * `:problem` - why its saved state can't be read, while it's `:unreadable`. Defining it again
+      starts it over.
     * `:node` - the node it runs on.
     * `:pending` - how many messages wait behind the current one.
     * `:next_run` - when it next runs.
@@ -25,6 +27,7 @@ defmodule Wardrik.Agent do
     * `:activity` - what it's doing now. See `Wardrik.Activity`.
     * `:interrupts` - the calls it waits on a person for. See `Wardrik.Interrupt`.
     * `:cursor` - where its event log stands.
+    * `:reset` - what defining it started over because its saved state couldn't be read, and why.
 
   `Wardrik.Agents.list/2` leaves out `:activity`, `:interrupts` and `:cursor`.
   """
@@ -34,14 +37,16 @@ defmodule Wardrik.Agent do
     fields: [
       id: "agent.id",
       conversation: "conversation",
-      status: {"status", [:idle, :running, :parked, :asleep]},
+      status: {"status", [:idle, :running, :parked, :asleep, :unreadable]},
+      problem: "problem",
       node: "node",
       pending: "pending",
       next_run: {"next_run", :datetime},
       spent_today: "spent_today",
       activity: {"activity", Wardrik.Activity},
       interrupts: {"interrupts", [Wardrik.Interrupt]},
-      cursor: "cursor"
+      cursor: "cursor",
+      reset: "reset"
     ]
 
   use Wardrik.Operations.Functions, prefix: "agent"

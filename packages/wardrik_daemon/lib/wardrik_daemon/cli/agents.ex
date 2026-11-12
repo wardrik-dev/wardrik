@@ -236,6 +236,7 @@ defmodule WardrikDaemon.CLI.Agents do
   defp status("running"), do: {"running", :cyan}
   defp status("parked"), do: {"parked", :yellow}
   defp status("asleep"), do: {"asleep", :light_black}
+  defp status("unreadable"), do: {"unreadable", :red}
   defp status(status), do: status
 
   defp added(%{"tokens" => tokens, "usd" => usd}, %{"tokens" => more, "usd" => more_usd}),
@@ -255,7 +256,7 @@ defmodule WardrikDaemon.CLI.Agents do
   defp matches?(agent, named, query),
     do: Enum.all?(query, &matches_word?(agent, named || %{}, &1))
 
-  defp matches_word?(agent, _named, "attention"), do: agent["status"] == "parked"
+  defp matches_word?(agent, _named, "attention"), do: agent["status"] in ["parked", "unreadable"]
   defp matches_word?(agent, _named, "status:" <> status), do: agent["status"] == status
   defp matches_word?(agent, _named, "node:" <> node), do: agent["node"] == node
   defp matches_word?(_agent, named, "name:" <> name), do: named["name"] == name
@@ -280,6 +281,7 @@ defmodule WardrikDaemon.CLI.Agents do
           {"id", id},
           {"conversation", flags[:conversation]},
           {"status", read["status"]},
+          {"problem", read["problem"]},
           {"description", definition["description"]},
           {"model", definition["model"]},
           {"tools", Enum.join(Map.get(definition, "tools", []), ", ")},
