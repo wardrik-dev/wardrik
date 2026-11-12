@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.7 (2026-11-11)
 
 - `digest` in an agent's definition turns off or on the digest it writes of each conversation
   before it sleeps. On by default.
