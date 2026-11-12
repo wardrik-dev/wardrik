@@ -1,0 +1,80 @@
+---
+title: Install
+description: "Install the Wardrik daemon and CLI on Linux, or run Wardrik in Docker."
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Wardrik runs on Linux (x86_64 or arm64, glibc 2.35+). On macOS or Windows, use Docker.
+
+## 1. Install
+
+<Tabs>
+	<TabItem label="Install script">
+
+```sh
+curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.10/install.sh | sh
+```
+
+Installs `wardrik` to `~/.local`, or `/opt/wardrik` as root, and `rik` as an alias.
+
+	</TabItem>
+	<TabItem label="Docker">
+
+```sh
+docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.10
+docker exec -it wardrik wardrik init
+```
+
+`/config` is for your files. `/data` is for the store and keys. The image runs as uid 1000.
+
+	</TabItem>
+</Tabs>
+
+## 2. Configure Wardrik
+
+```sh
+wardrik init
+```
+
+```text
+Wrote /home/me/.config/wardrik/config.yaml
+Wrote /home/me/.config/wardrik/agents/assistant.md
+Wrote /home/me/.config/wardrik/env
+Run the daemon as a systemd user service? [Yn]:
+Sealed ANTHROPIC_API_KEY.
+Asking the assistant: In two short sentences, and without calling a tool, say what you can do for me.
+```
+
+| File | Contents |
+| --- | --- |
+| `config.yaml` | the org (`default`), default model, HTTP port, and the `roles` and `bindings` that allow the assistant to create agents |
+| `agents/assistant.md` | the [assistant](/build/assistant/) agent |
+| `env` | environment variables for the daemon, mode `600` |
+
+- `init` never overwrites a file, so it's safe to rerun.
+- The key is stored in the vault, unless `env` already sets it.
+- The CLI authenticates automatically with a local admin token.
+
+For non-interactive setup, pass flags instead:
+
+```sh
+wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service
+```
+
+## 3. Verify the installation
+
+```sh
+wardrik doctor
+```
+
+## Uninstall
+
+```sh
+wardrik uninstall           # keeps the config, keys and store
+wardrik uninstall --purge   # deletes them too
+```
+
+Next: the [Quickstart](/getting-started/quickstart/). Daemon commands are in the
+[CLI reference](/reference/cli/#daemon). Secrets are in [the vault](/build/vault/).
