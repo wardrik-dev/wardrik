@@ -653,6 +653,58 @@ defmodule WardrikDaemon.CLITest do
       assert {0, "No servers added.\n"} = wardrik(context, ["server", "ls"])
     end
 
+    test "syncs a directory into an agent's files, and reads, writes and deletes one", context do
+      skills = Path.join(context.root, "skills")
+      File.mkdir_p!(Path.join(skills, "triage"))
+      File.mkdir_p!(Path.join(skills, ".git"))
+      File.write!(Path.join(skills, "triage/SKILL.md"), "---\nname: triage\n---\nLook first.\n")
+      File.write!(Path.join(skills, "logo.png"), <<0xFF, 0xD8, 0xFF>>)
+      File.write!(Path.join(skills, ".git/HEAD"), "ref: main\n")
+      sync = ["agent", "files", "sync", "triage", skills, "--to", "skills"]
+
+      assert {0, "Wrote 1, kept 0.\nLeft out logo.png: it isn't text.\n"} =
+               wardrik(context, sync)
+
+      assert {0, "Wrote 0, kept 1.\nLeft out logo.png: it isn't text.\n"} =
+               wardrik(context, sync)
+
+      assert {0, "---\nname: triage\n---\nLook first.\n"} =
+               wardrik(context, ["agent", "files", "cat", "triage", "skills/triage/SKILL.md"])
+
+      assert {0, "Wrote MEMORY.md.\n"} =
+               wardrik(context, ["agent", "files", "put", "triage", "MEMORY.md"], "Likes tea.")
+
+      assert {0, listed} = wardrik(context, ["agent", "files", "ls", "triage"])
+      assert listed =~ ~r/^MEMORY.md\s+10\s/m
+      assert listed =~ ~r/^skills\/triage\/SKILL.md\s+/m
+
+      assert {0, only} = wardrik(context, ["agent", "files", "ls", "triage", "skills/**"])
+      refute only =~ "MEMORY.md"
+
+      File.write!(Path.join(skills, "triage/SKILL.md"), "---\nname: triage\n---\nLook twice.\n")
+      File.write!(Path.join(skills, "deploy.md"), "Ship it.\n")
+      put = ["agent", "files", "put", "triage", "skills/old.md", "-"]
+      assert {0, "Wrote skills/old.md.\n"} = wardrik(context, put, "Old.")
+
+      assert {0, json} = wardrik(context, sync ++ ["--delete", "--json"])
+
+      assert JSON.decode!(json) == %{
+               "written" => ["skills/deploy.md", "skills/triage/SKILL.md"],
+               "kept" => [],
+               "deleted" => ["skills/old.md"],
+               "skipped" => ["logo.png"]
+             }
+
+      assert {0, "Deleted MEMORY.md.\n"} =
+               wardrik(context, ["agent", "files", "rm", "triage", "MEMORY.md"])
+
+      assert failing(context, ["agent", "files", "cat", "triage", "MEMORY.md"]) =~
+               "has no file MEMORY.md"
+
+      assert failing(context, ["agent", "files", "sync", "triage", "/no/such/dir"]) =~
+               "isn't a directory"
+    end
+
     test "adds and removes an MCP server, and says which accounts are offered", context do
       assert {0, "Added docs. Agents reach it as docs/*.\n"} =
                wardrik(context, ["server", "add", "docs", "--url", "http://127.0.0.1:1/mcp"])

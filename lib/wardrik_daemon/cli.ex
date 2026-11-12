@@ -20,6 +20,7 @@ defmodule WardrikDaemon.CLI do
   alias WardrikDaemon.CLI.Approvals
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
+  alias WardrikDaemon.CLI.Files
   alias WardrikDaemon.CLI.Help
   alias WardrikDaemon.CLI.Servers
   alias WardrikDaemon.CLI.Tokens
@@ -34,6 +35,7 @@ defmodule WardrikDaemon.CLI do
       Admin.commands() ++
         Agents.commands() ++
         Approvals.commands() ++
+        Files.commands() ++
         Triggers.commands() ++ Servers.commands() ++ Access.commands() ++ Tokens.commands()
 
   @doc "Runs the command `argv` names, as `bin/wardrik` does, then halts the VM with its exit status."

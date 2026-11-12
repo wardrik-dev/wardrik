@@ -9,6 +9,7 @@ defmodule WardrikDaemon.CLI.Help do
     "Agents",
     "Approvals",
     "Triggers",
+    "Files",
     "MCP servers",
     "Notify targets",
     "OAuth apps",

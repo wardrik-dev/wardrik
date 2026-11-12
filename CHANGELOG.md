@@ -12,9 +12,9 @@
 - The assistant says how to change an agent a file declares, and names `wardrik approval approve`.
 - The assistant's `observer` role lists the deployment's secrets by name, so it sees a key
   sealed for the deployment before saying one is missing.
-
-## Unreleased
-
+- `wardrik agent files ls`, `cat`, `put`, `rm` and `sync` manage an agent's files from the
+  command line. `sync AGENT DIR --to skills` writes the files of a directory that differ, and
+  with `--delete` deletes those under the prefix that the directory doesn't have.
 - The `help` tools answer how Wardrik works and where this deployment keeps things:
   `wardrik_about` for the version, URLs and files, `docs_search` and `docs_read` for the
   documentation, and `wardrik_doctor` for the doctor's checks. See `WardrikDaemon.HelpTools`.
