@@ -30,7 +30,14 @@ defmodule WardrikSlack.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  # The Wardrik tests share Wardrik's own helpers for agents, owners and deciders.
+  defp elixirc_paths(:test),
+    do:
+      ["lib", "test/support"] ++
+        Enum.map(
+          ~w(authorizers.ex directory.ex owned.ex channel/chat.ex),
+          &Path.join("../../packages/wardrik/test/support", &1)
+        )
   defp elixirc_paths(_env), do: ["lib"]
 
   defp package do
@@ -61,12 +68,12 @@ defmodule WardrikSlack.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_channel, "~> 0.1.0-rc.4"),
+      sibling(:wardrik, "~> 0.1.0-rc.10"),
       {:nimble_options, "~> 1.1"},
       {:req, "~> 0.7"},
       {:websockex, "~> 0.5.1"},
-      sibling(:wardrik_testing, "~> 0.1.0-rc.2", only: :test),
       {:plug, "~> 1.16", only: :test},
+      {:mimic, "~> 2.5", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},

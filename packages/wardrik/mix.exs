@@ -12,9 +12,10 @@ defmodule Wardrik.MixProject do
       docs: docs(),
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      test_coverage: [ignore_modules: ignored_by_coverage()],
       aliases: aliases(),
       dialyzer: [
-        plt_add_apps: [:mix, :ex_unit],
+        plt_add_apps: [:mix, :ex_unit, :ecto, :ecto_sql, :postgrex, :db_connection, :xmerl],
         plt_core_path: "priv/plts",
         plt_local_path: "priv/plts"
       ],
@@ -33,6 +34,31 @@ defmodule Wardrik.MixProject do
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
+
+  defp ignored_by_coverage do
+    support = [
+      Wardrik.Store.Conformance,
+      Wardrik.Store.DurableConformance,
+      Wardrik.Store.Counter,
+      Wardrik.Store.TestRepo,
+      Wardrik.Store.TestMigration,
+      Wardrik.Store.Test.S3Bucket,
+      Wardrik.Store.Ecto.Repo.V1,
+      Wardrik.OAuth.GitHub,
+      Wardrik.OAuth.TestHook
+    ]
+
+    if System.get_env("DATABASE_URL"),
+      do: support,
+      else:
+        support ++
+          [
+            Wardrik.Store.Ecto,
+            Wardrik.Store.Ecto.Migration,
+            Wardrik.Store.Ecto.Repo,
+            Wardrik.Store.Ecto.Repo.V1
+          ]
+  end
 
   defp docs do
     [
@@ -59,10 +85,22 @@ defmodule Wardrik.MixProject do
         "pages/servers.md",
         "pages/credentials.md",
         "pages/events.md",
+        "pages/subsystems/store.md",
+        "pages/subsystems/event_log.md",
+        "pages/subsystems/policy.md",
+        "pages/subsystems/vault.md",
+        "pages/subsystems/oauth.md",
+        "pages/subsystems/mcp.md",
+        "pages/subsystems/triggers.md",
+        "pages/subsystems/workspace.md",
+        "pages/subsystems/http.md",
+        "pages/subsystems/chat.md",
+        "pages/subsystems/testing.md",
         "CHANGELOG.md"
       ],
       groups_for_extras: [
         "See it in action": ~r"notebooks/",
+        Subsystems: ~r"pages/subsystems/",
         Guides: ~r"pages/"
       ]
     ]
@@ -96,25 +134,24 @@ defmodule Wardrik.MixProject do
   defp deps do
     [
       sibling(:wardrik_core, "~> 0.1.0-rc.6"),
-      sibling(:wardrik_store, "~> 0.1.0-rc.3"),
       sibling(:wardrik_protocol, "~> 0.1.0-rc.7"),
-      sibling(:wardrik_events, "~> 0.1.0-rc.6"),
-      sibling(:wardrik_policy, "~> 0.1.0-rc.3"),
-      sibling(:wardrik_vault, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_oauth, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_mcp, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_triggers, "~> 0.1.0-rc.4"),
-      sibling(:wardrik_workspace, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_http, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_channel, "~> 0.1.0-rc.5"),
-      sibling(:wardrik_slack, "~> 0.1.0-rc.2", only: :test),
-      {:durable_server, "~> 0.1.6"},
+      {:durable_server, "~> 0.1.7"},
       {:req, "~> 0.7"},
       {:ekv, "~> 0.4.8"},
       {:jsv, "~> 0.26"},
       {:nimble_options, "~> 1.1"},
+      {:group, "~> 0.2"},
+      {:telemetry, "~> 1.0"},
+      {:tz, "~> 0.28"},
+      {:crontab, "~> 1.1"},
+      {:saxy, "~> 1.6"},
+      # 2.2 speaks MCP 2026-07-28 without sending Mcp-Param-* headers (anubis-mcp#332).
+      {:anubis_mcp, "~> 2.1.0"},
+      {:plug, "~> 1.16"},
+      {:bandit, "~> 1.14 and >= 1.14.1"},
+      {:websock_adapter, "~> 0.5"},
       {:ecto_sql, "~> 3.13", optional: true},
-      {:postgrex, "~> 0.22", only: :test},
+      {:postgrex, "~> 0.22", optional: true},
       {:mimic, "~> 2.5", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
