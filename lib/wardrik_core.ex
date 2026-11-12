@@ -220,6 +220,18 @@ defmodule WardrikCore do
   def history(agent), do: GenServer.call(agent, :history)
 
   @doc """
+  Returns the context the agent's next turn starts from, with its conversation as `messages`.
+
+      context = WardrikCore.context(agent)
+      summarizing = %{context | instructions: "Summarise this conversation.", tools: []}
+      {:ok, summarized} = WardrikCore.Context.run(summarizing, {:step, "summary"}, &WardrikCore.generate/1)
+
+  Steps run through it pass the agent's middleware, and leave its conversation as it was.
+  """
+  @spec context(GenServer.server()) :: Context.t()
+  def context(agent), do: GenServer.call(agent, :context)
+
+  @doc """
   Returns what the agent is doing: `:idle`, `:running`, `:waiting` on `resume/3`, or `:due` to
   run a turn.
   """

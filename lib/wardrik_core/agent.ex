@@ -46,6 +46,10 @@ defmodule WardrikCore.Agent do
     do: {:reply, :ok, State.configure(state, opts), sync: true}
 
   def handle_call(:history, _from, state), do: {:reply, state.messages, state}
+
+  def handle_call(:context, _from, state),
+    do: {:reply, %{state.context | model: state.model, messages: state.messages}, state}
+
   def handle_call(:status, _from, state), do: {:reply, state.state, state}
   def handle_call(:stop, _from, state), do: {:stop, :permanent, :ok, state}
 

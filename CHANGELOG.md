@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `WardrikCore.context/1` returns the context the agent's next turn starts from, to run steps
+  of your own through its middleware, outside its conversation.
+
 ## 0.1.0-rc.5 (2026-11-11)
 
 - `WardrikCore.running/1` returns the process of each running agent, by key, across the cluster.

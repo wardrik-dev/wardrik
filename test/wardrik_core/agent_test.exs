@@ -595,6 +595,30 @@ defmodule WardrikCore.AgentTest do
     assert_receive {:turns, 3}
   end
 
+  test "context/1 gives the next turn's context, and a step run through it leaves history alone" do
+    ReqLLM
+    |> expect(:stream_text, fn _, _, _ -> {:ok, answer("hello")} end)
+    |> expect(:stream_text, fn _, [_system, _user, _assistant], _ ->
+      {:ok, answer("A summary.")}
+    end)
+
+    {id, agent} = start_agent()
+    WardrikCore.ask(agent, "hi")
+    assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :ok}}
+
+    context = WardrikCore.context(agent)
+    assert %{agent_id: ^id, capabilities: [Echo]} = context
+    assert [:user, :assistant] = Enum.map(context.messages, & &1.role)
+
+    summarizing = %{context | instructions: "Summarise.", tools: []}
+
+    assert {:ok, summarized} =
+             WardrikCore.Context.run(summarizing, {:step, "summary"}, &WardrikCore.generate/1)
+
+    assert ReqLLM.Response.text(summarized.response) == "A summary."
+    assert [:user, :assistant] = Enum.map(WardrikCore.history(agent), & &1.role)
+  end
+
   test "an unknown cast is ignored" do
     {_id, agent} = start_agent()
 
