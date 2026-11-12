@@ -115,9 +115,11 @@ defmodule Wardrik.MCP.Connection do
     :ok
   end
 
-  @spec handle_event([atom()], map(), map(), pid()) :: :ok
-  def handle_event(_event, _measurements, %{method: "tools/list_changed"}, connection) do
-    send(connection, :list_changed)
+  # Each client tells every handler, so a connection heeds its own client's notices alone: it
+  # runs in the client that told.
+  @spec handle_event([atom()], map(), map(), {pid(), GenServer.name()}) :: :ok
+  def handle_event(_event, _measurements, %{method: "tools/list_changed"}, {connection, client}) do
+    if GenServer.whereis(client) == self(), do: send(connection, :list_changed)
     :ok
   end
 
@@ -331,7 +333,7 @@ defmodule Wardrik.MCP.Connection do
       handler(state),
       [:anubis_mcp, :client, :notification],
       &__MODULE__.handle_event/4,
-      self()
+      {self(), client(state.server, state.who)}
     )
   end
 
