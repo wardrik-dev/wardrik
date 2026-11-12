@@ -15,7 +15,7 @@ You need a [running Wardrik daemon](/getting-started/install/), Node 22.18+, and
 ```sh
 mkdir statuspage && cd statuspage
 npm init -y && npm pkg set type=module
-npm install @wardrik/sdk@0.1.0-rc.5 zod
+npm install @wardrik/sdk@0.1.0-rc.6 zod
 ```
 
 ## 2. Write the tool
