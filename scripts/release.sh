@@ -139,8 +139,11 @@ publish_hex() {
   for pkg in $(hex_order); do
     releasing "$pkg" && unpublished "$pkg" || continue
     say "  $pkg $(version_of "$pkg")"
-    # Lockfiles pin siblings at the last release. Resolve against Hex, then restore the lock.
-    (cd "$(dir_of "$pkg")" && WARDRIK_HEX=1 mix deps.get >/dev/null &&
+    # In this repo siblings come by path, so a lockfile's Hex pins for them go stale. Unlock them,
+    # resolve against Hex, publish, then restore the lock.
+    (cd "$(dir_of "$pkg")" &&
+      WARDRIK_HEX=1 mix deps.unlock $(grep -oE '^  "wardrik[a-z_]*"' mix.lock | tr -d ' "') &&
+      WARDRIK_HEX=1 mix deps.get >/dev/null &&
       WARDRIK_HEX=1 mix hex.publish --yes)
     git -C "$ROOT" checkout -q -- "$(dir_of "$pkg")/mix.lock"
   done
