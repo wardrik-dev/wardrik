@@ -17,6 +17,7 @@ defmodule Wardrik.OperationTools do
       decides, as for `Wardrik.run/3`. An agent with no principal can use none of them.
     * Changes are gated: they ask a person unless the policy allows them by name.
     * Approving, denying and deciding calls are never tools. A person decides them.
+    * Nor are the `agent.file*` operations. Agents reach files through workspace mounts.
     * Defining agents, their triggers and messages to them are `agents/*` tools. See
       `Wardrik.AgentTools`.
   """
@@ -29,9 +30,10 @@ defmodule Wardrik.OperationTools do
   @agent_tools ~w(agents.list agent.read agent.definition agent.define agent.trigger_set
                   agent.trigger_remove agent.ask)
 
-  # A person decides calls, and outside callers deliver hooks and chat messages.
+  # A person decides calls, and outside callers deliver hooks and chat messages. Agents reach
+  # files through workspace mounts, which keep the labels these operations leave behind.
   @never ~w(agent.decide agent.approve agent.deny hook.deliver hook.deliver_with_secret
-            channel.deliver)
+            channel.deliver agent.files agent.file agent.file_put agent.file_delete)
 
   @doc "Returns whether `id` names an operation an agent may be given as `ops/ID`."
   @spec offered?(String.t()) :: boolean()
