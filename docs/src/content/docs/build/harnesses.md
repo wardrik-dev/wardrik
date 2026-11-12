@@ -12,6 +12,10 @@ asks before each change, and commits on a branch of its own.
 This page runs Claude Code end to end. Requires Node.js, git, and Claude Code signed in or an
 Anthropic API key.
 
+`wardrik init` offers steps 1 and 3 when it finds Claude Code: it shows the install command, and
+writes the harness and a `coding` policy. Answer it without a terminal with
+`--set coding.claude=true`.
+
 ## 1. Install the ACP adapter
 
 ```sh

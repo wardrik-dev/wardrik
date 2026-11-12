@@ -106,9 +106,16 @@ defmodule WardrikDaemon.CLI do
   end
 
   defp ran({:command, command, rest}, cx) do
-    {flags, args, invalid} = OptionParser.parse(rest, strict: command.switches ++ @always)
-    flags = Map.new(flags)
+    switches = command.switches ++ @always
+    {flags, args, invalid} = OptionParser.parse(rest, strict: switches)
+    flags = flagged(flags, switches)
     run(command, args, flags, invalid, %{cx | json?: Map.get(flags, :json, false)})
+  end
+
+  # A :keep switch gives each of its values, in order.
+  defp flagged(flags, switches) do
+    {kept, single} = Enum.split_with(flags, fn {name, _value} -> switches[name] == :keep end)
+    kept |> Enum.group_by(&elem(&1, 0), &elem(&1, 1)) |> Map.merge(Map.new(single))
   end
 
   defp run(command, _args, %{help: true}, _invalid, cx), do: Help.command(cx, command)

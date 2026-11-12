@@ -28,7 +28,7 @@ wardrik approval approve triage toolu_01 --note "Only this once."
 
 | Command | Does |
 | --- | --- |
-| `init [--org ORG] [--provider P] [--model M] [--key-from-env VAR] [--yes] [--no-service] [--no-ask]` | sets up the config, model, key and service; never overwrites a file |
+| `init [--org ORG] [--provider P] [--model M] [--key-from-env VAR] [--yes] [--no-service] [--no-ask] [--set KEY=VALUE] [--answers FILE]` | sets up the config, model, key and service, then offers what it finds, such as Claude Code; never overwrites a file |
 | `doctor` | validates the daemon's config and connections, whether or not it's running |
 | `version` | prints the version |
 | `completion SHELL` | prints completion for `bash`, `zsh` or `fish` |

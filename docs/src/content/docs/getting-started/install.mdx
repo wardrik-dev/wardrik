@@ -54,14 +54,21 @@ Asking the assistant: In two short sentences, and without calling a tool, say wh
 | `env` | environment variables for the daemon, mode `600` |
 
 - `init` never overwrites a file, so it's safe to rerun.
+- It offers what it finds on the machine, such as [Claude Code](/build/harnesses/) for coding. It
+  never installs anything: it shows the commands to run.
 - The key is stored in the vault, unless `env` already sets it.
 - The CLI authenticates automatically with a local admin token.
 
 For non-interactive setup, pass flags instead:
 
 ```sh
-wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service
+wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service \
+  --set coding.claude=true
 ```
+
+- `--set KEY=VALUE` answers an offer. `--answers FILE` reads the answers from YAML, or stdin with
+  `-`.
+- An offer with no answer takes `--yes`.
 
 ## 3. Verify the installation
 
