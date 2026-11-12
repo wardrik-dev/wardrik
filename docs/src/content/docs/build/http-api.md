@@ -85,7 +85,7 @@ curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/
 ## With the TypeScript SDK
 
 ```sh
-npm install @wardrik/sdk@0.1.0-rc.5 zod
+npm install @wardrik/sdk@0.1.0-rc.6 zod
 ```
 
 ```ts
