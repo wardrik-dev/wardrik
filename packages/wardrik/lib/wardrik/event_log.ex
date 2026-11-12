@@ -26,7 +26,7 @@ defmodule Wardrik.EventLog do
     * `{"agt_1", "C1"}` - one conversation.
 
   `subscribe/2` also takes `:all`, for every agent's events as they happen. To ship every event
-  out, to your warehouse or tracing, give the events a `Wardrik.EventLog.Sink`.
+  out, to your warehouse or tracing, give the events a `Wardrik.Sink`.
 
   Every function raises `ArgumentError` if `name` isn't started.
   """
@@ -46,7 +46,6 @@ defmodule Wardrik.EventLog do
   alias Wardrik.EventLog.Log
   alias Wardrik.EventLog.Reader
   alias Wardrik.EventLog.Retention
-  alias Wardrik.EventLog.Sink
   alias Wardrik.EventLog.Subscribers
   alias Wardrik.EventLog.Tail
 
@@ -82,8 +81,7 @@ defmodule Wardrik.EventLog do
                    sinks: [
                      type: {:list, :any},
                      default: [],
-                     doc:
-                       "Wardrik.EventLog.Sink modules or {module, opts} entries called after storage."
+                     doc: "Wardrik.Sink modules or {module, opts} entries called after storage."
                    ]
                  )
 
@@ -290,7 +288,7 @@ defmodule Wardrik.EventLog do
     settings = settings(events)
 
     with {:ok, recorded} <- Audit.record(settings, change, opts),
-         do: Sink.deliver(settings.sinks, recorded)
+         do: Wardrik.Sink.deliver(settings.sinks, recorded)
   end
 
   @doc """
@@ -353,7 +351,7 @@ defmodule Wardrik.EventLog do
   end
 
   # Sinks come last, once what the event changed is in place for whoever they tell.
-  defp sunk(settings, {:kept, event}), do: Sink.deliver(settings.sinks, event)
+  defp sunk(settings, {:kept, event}), do: Wardrik.Sink.deliver(settings.sinks, event)
   defp sunk(_settings, _not_kept), do: :ok
 
   defp folded(view, {_log, _sequence, event} = entry, {state, cursor}),

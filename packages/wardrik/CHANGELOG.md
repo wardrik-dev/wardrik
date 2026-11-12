@@ -10,6 +10,8 @@
   `Wardrik.HTTP.Endpoint`, and `WardrikTesting` is `Wardrik.Testing`. Telemetry events and
   stored data are unchanged.
 - `Wardrik.Workspaces` is `Wardrik.Workspace.Agents`.
+- One `Wardrik.Sink` and one `Wardrik.Listener`, both given `%Wardrik.Event{}`. The event log's
+  own `Sink` and `Listener` are gone.
 - Exceptions end in `Error`: `Wardrik.MCP.UnavailableError`, `Wardrik.Workers.UnavailableError`
   and `Wardrik.Workers.LostError`.
 

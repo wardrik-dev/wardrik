@@ -1,33 +1,34 @@
-defmodule Wardrik.EventLog.ListenerTest do
+defmodule Wardrik.ListenerTest do
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
-  import Wardrik.EventLog.Test.Events
+  import Wardrik.EventLog.Test.Events, only: [stopped: 2]
 
   alias Wardrik.EventLog.Cursor
+  alias Wardrik.Test.Instance
 
   defmodule Told do
-    use Wardrik.EventLog.Listener
+    use Wardrik.Listener
 
     @impl true
-    def handle(event, listener) do
-      send(listener.options[:test], {:handled, event["sequence"], listener.cursor})
+    def handle(%Wardrik.Event{} = event, listener) do
+      send(listener.options[:test], {:handled, event.sequence, listener.cursor})
       :ok
     end
   end
 
   defmodule Kept do
-    use Wardrik.EventLog.Listener
+    use Wardrik.Listener
 
     @impl true
     def handle(event, listener) do
       saved = listener.options[:saved]
 
-      if Agent.get_and_update(saved, &failing(&1, event["sequence"])) do
+      if Agent.get_and_update(saved, &failing(&1, event.sequence)) do
         :error
       else
         Agent.update(saved, &%{&1 | cursor: listener.cursor})
-        send(listener.options[:test], {:handled, event["sequence"]})
+        send(listener.options[:test], {:handled, event.sequence})
         :ok
       end
     end
@@ -39,13 +40,16 @@ defmodule Wardrik.EventLog.ListenerTest do
     defp failing(saved, _sequence), do: {false, saved}
   end
 
-  setup :start_events
+  setup do
+    start_supervised!(Instance)
+    %{events: Wardrik.events(Wardrik.Instance.fetch!(Instance))}
+  end
 
   test "hands each event over with the cursor past it, then follows", %{events: events} do
     stopped(events, "agt_1")
 
     start_supervised!(
-      {Told, events: events, resources: ["agt_1"], after: Cursor.encode(%{}), test: self()}
+      {Told, wardrik: Instance, agents: ["agt_1"], after: Cursor.encode(%{}), test: self()}
     )
 
     assert_receive {:handled, "000000000001", cursor}
@@ -63,7 +67,7 @@ defmodule Wardrik.EventLog.ListenerTest do
     log =
       capture_log(fn ->
         start_supervised!(
-          {Kept, events: events, resources: ["agt_1"], saved: saved, test: self()}
+          {Kept, wardrik: Instance, agents: ["agt_1"], saved: saved, test: self()}
         )
 
         assert_receive {:handled, "000000000001"}

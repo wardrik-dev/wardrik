@@ -40,6 +40,7 @@ defmodule Wardrik.Listener do
     * `:after` - the cursor to start after, without `c:cursor/1`.
   """
 
+  alias Wardrik.EventLog.Cursor
   alias Wardrik.Instance
 
   @enforce_keys [:wardrik, :cursor, :options]
@@ -78,37 +79,34 @@ defmodule Wardrik.Listener do
   @doc "Starts `module` as a listener."
   @spec start_link(module(), keyword()) :: {:ok, pid()}
   def start_link(module, opts) do
-    instance = Keyword.fetch!(opts, :wardrik)
-    events = instance |> Instance.fetch!() |> Wardrik.events()
-    resources = Keyword.fetch!(opts, :agents)
-    started = Wardrik.EventLog.head(events, resources)
+    # Wardrik's own chat apps give the event log, and follow it without a running Wardrik.
+    events =
+      Keyword.get_lazy(opts, :events, fn ->
+        opts[:wardrik] |> Instance.fetch!() |> Wardrik.events()
+      end)
 
-    options = [events: events, listener: module, started: started, resources: resources] ++ opts
-    Wardrik.EventLog.Listener.start_link(Wardrik.Listener.Events, options)
+    agents = Keyword.fetch!(opts, :agents)
+    # Taken before the task starts, so "new events" means from now.
+    started = Wardrik.EventLog.head(events, agents)
+    Task.start_link(fn -> listen(module, events, started, opts) end)
   end
-end
 
-defmodule Wardrik.Listener.Events do
-  @moduledoc false
-
-  use Wardrik.EventLog.Listener
-
-  @impl Wardrik.EventLog.Listener
-  def handle(event, listener),
-    do: module(listener).handle(Wardrik.Event.from_json(event), ours(listener))
-
-  @impl Wardrik.EventLog.Listener
-  def cursor(listener), do: module(listener).cursor(ours(listener)) || listener.options[:started]
-
-  defp module(listener), do: Keyword.fetch!(listener.options, :listener)
-
-  defp ours(listener) do
-    options = Keyword.drop(listener.options, [:events, :listener, :wardrik, :started, :resources])
-
-    %Wardrik.Listener{
-      wardrik: listener.options[:wardrik],
-      cursor: listener.cursor,
-      options: options
+  defp listen(module, events, started, opts) do
+    listener = %__MODULE__{
+      wardrik: Keyword.fetch!(opts, :wardrik),
+      cursor: nil,
+      options: Keyword.drop(opts, [:wardrik, :events])
     }
+
+    {:ok, stream} =
+      Wardrik.EventLog.stream(events, Keyword.fetch!(opts, :agents),
+        after: module.cursor(listener) || started,
+        types: Keyword.get(opts, :types, :all)
+      )
+
+    Enum.each(stream, fn {event, cursor} ->
+      :ok =
+        module.handle(Wardrik.Event.from_json(event), %{listener | cursor: Cursor.encode(cursor)})
+    end)
   end
 end

@@ -80,8 +80,7 @@ defmodule Wardrik.Children do
      deployment: wardrik.deployment,
      retention: wardrik.retention,
      sinks: [
-       {Wardrik.Notify.Sink, Wardrik.Notify.Server.name(wardrik.name)}
-       | Enum.map(wardrik.sinks, &{Wardrik.Sink.Events, Wardrik.Sink.entry(&1)})
+       {Wardrik.Notify.Sink, server: Wardrik.Notify.Server.name(wardrik.name)} | wardrik.sinks
      ]}
   end
 

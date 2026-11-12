@@ -1,13 +1,13 @@
 defmodule Wardrik.Notify.Sink do
   @moduledoc false
 
-  @behaviour Wardrik.EventLog.Sink
+  @behaviour Wardrik.Sink
 
   @types ~w(wardrik.run.interrupted wardrik.run.failed wardrik.run.completed)
 
-  @impl Wardrik.EventLog.Sink
-  def handle_event(%{"type" => type} = event, notifier) when type in @types,
-    do: GenServer.cast(notifier, {:event, event})
+  @impl Wardrik.Sink
+  def handle_event(%Wardrik.Event{type: type} = event, opts) when type in @types,
+    do: GenServer.cast(Keyword.fetch!(opts, :server), {:event, event})
 
-  def handle_event(_event, _notifier), do: :ok
+  def handle_event(_event, _opts), do: :ok
 end
