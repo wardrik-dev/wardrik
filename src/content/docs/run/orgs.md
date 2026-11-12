@@ -66,11 +66,15 @@ A binding grants a role to users, groups, or agents in one organization, in `dep
 
 A binding in `deployment` reaches the deployment's own resources: its nodes, runtime and audit,
 and the servers, secrets, notify targets and OAuth apps it owns. Tokens stay reachable only from
-`"*"`. `wardrik init` binds the assistant there to read the deployment:
+`"*"`. `wardrik init` binds the assistant there to read the deployment and
+list its secrets by name:
 
 ```yaml
 roles:
-  observer: {rules: [{verbs: [nodes, runtime, audit], kinds: [deployment]}]}
+  observer:
+    rules:
+      - {verbs: [nodes, runtime, audit], kinds: [deployment]}
+      - {verbs: [read], kinds: [secret]}
 bindings:
   - {org: deployment, role: observer, subjects: [agent:assistant]}
 ```
