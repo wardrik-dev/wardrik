@@ -1,6 +1,6 @@
 ---
 title: Files and memory
-description: "Store agent files, load persistent context into each turn, and share files between agents."
+description: "Store agent files, load persistent context into each turn, keep digests of conversations, and share files between agents."
 sidebar:
   order: 7
 ---
@@ -38,6 +38,38 @@ context:
 - Files are loaded at the start of each turn. Limits are in [`context`](/reference/agent-files/#context).
 - A file over the limit is truncated, and the agent is asked to shorten it.
 - The agent also receives the names of the other top-level files in its workspace.
+
+## Digests
+
+Before an agent sleeps, it writes a digest of each conversation to its workspace. A later
+conversation finds it with `search_files`.
+
+```md title="digests/C0123ABC.md"
+---
+conversation: C0123ABC
+updated: 2026-11-11T16:04:12Z
+through: msg_Xq3fA81kP2
+---
+
+Maria asked for the open incidents. Two were open; INC-41 was closed after the deploy...
+```
+
+To use them, say so in the agent's instructions:
+
+```md
+Before you answer someone new to this conversation, run search_files in digests/ for their name.
+```
+
+- The file is `digests/<conversation>.md`, or `digests/agent.md` for the agent's own
+  conversation. Each digest replaces the last.
+- The digest covers the messages up to `through`. The next one reads the digest so far and the
+  messages since. Without a new message, none is written.
+- The agent's model writes it. Each digest is a model call, and counts towards the agent's
+  budget.
+- A digest of a conversation that read [untrusted content](/concepts/outside-content/) is labeled
+  `outside`.
+- It needs the `files` tool. Set [`digest: false`](/reference/agent-files/#digest) to turn it off.
+  With `idle_timeout: infinity`, the agent never sleeps, so it writes none.
 
 ## Sharing workspaces
 
