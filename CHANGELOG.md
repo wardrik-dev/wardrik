@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.10 (2026-11-11)
 
+- Requires `wardrik_core` 0.1.0-rc.6 and `wardrik_protocol` 0.1.0-rc.7.
 - An agent with the `files` tool writes a digest of each conversation to
   `digests/<conversation>.md` before it sleeps, with its own model. `digest: false` turns it off.
   It counts towards the agent's budget, and keeps the labels of what it read. See
