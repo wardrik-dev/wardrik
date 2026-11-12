@@ -1,14 +1,16 @@
-# Builds the site and deploys it to Cloudflare Pages on every push to main.
-# Needs the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets.
-name: Deploy
+# Builds the site and deploys it to Cloudflare Pages on every push to main that
+# changes docs/ or the SDK it documents. Needs the CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID secrets.
+name: Docs
 
 on:
   push:
     branches: [main]
+    paths: ["docs/**", "sdk/typescript/**"]
   workflow_dispatch:
 
 concurrency:
-  group: deploy
+  group: docs
   cancel-in-progress: true
 
 jobs:
@@ -19,31 +21,24 @@ jobs:
       deployments: write
     steps:
       - uses: actions/checkout@v5
-        with:
-          path: wardrik_docs
-
-      # The build writes the SDK reference from ../wardrik_typescript.
-      - uses: actions/checkout@v5
-        with:
-          repository: wardrik-dev/wardrik_typescript
-          path: wardrik_typescript
 
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: wardrik_docs/package-lock.json
+          cache-dependency-path: docs/package-lock.json
 
       - run: npm ci
-        working-directory: wardrik_docs
+        working-directory: docs
 
+      # The build writes the SDK reference from ../sdk/typescript.
       - run: npm run build
-        working-directory: wardrik_docs
+        working-directory: docs
 
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: wardrik_docs
+          workingDirectory: docs
           command: pages deploy dist --project-name=wardrik-docs --branch=main
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}

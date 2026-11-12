@@ -1,18 +1,19 @@
-name: Release
+name: Daemon
 
-# A v* tag builds the daemon's release tarball and image on Linux, x86_64 and
+# A wardrik_daemon-v* tag builds the daemon's release tarball and image on Linux, x86_64 and
 # aarch64, each on a runner of its own, boots both, and publishes them: the
 # tarballs, their SHA256SUMS and install.sh as a GitHub release, a pre-release
 # for a version such as 0.1.0-rc.1, and the image as
 # ghcr.io/wardrik-dev/wardrik:<version>, with :latest unless it's a
 # pre-release.
 #
-# The build resolves every dependency mix.exs names from Hex, so the wardrik_*
-# packages it depends on must be published to Hex at the versions it names.
+# The build resolves every dependency mix.exs names from Hex, with WARDRIK_HEX=1,
+# so the wardrik_* packages it depends on must be published to Hex at the
+# versions it names.
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["wardrik_daemon-v*"]
 
 permissions:
   contents: read
@@ -46,7 +47,7 @@ jobs:
       - name: Build the image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: packages/wardrik_daemon
           target: image
           load: true
           tags: wardrik:ci
@@ -59,7 +60,7 @@ jobs:
       - name: Build the tarball
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: packages/wardrik_daemon
           target: tarball
           outputs: type=local,dest=dist
           cache-from: type=gha,scope=release-${{ matrix.arch }}
@@ -67,8 +68,8 @@ jobs:
       - name: Name the tarball
         id: tarball
         run: |
-          version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+          version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' packages/wardrik_daemon/mix.exs)
+          if [ "$GITHUB_REF_NAME" != "wardrik_daemon-v$version" ]; then
             echo "tag $GITHUB_REF_NAME does not match mix.exs's version $version" >&2
             exit 1
           fi
@@ -96,7 +97,7 @@ jobs:
           export HOME
           # The runner's image points these at its own home.
           unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME
-          WARDRIK_VERSION="$VERSION" WARDRIK_DOWNLOAD_URL="file://$downloads" sh install.sh
+          WARDRIK_VERSION="$VERSION" WARDRIK_DOWNLOAD_URL="file://$downloads" sh packages/wardrik_daemon/install.sh
           wardrik="$HOME/.local/bin/wardrik"
 
           trap '"$wardrik" stop || true' EXIT
@@ -195,7 +196,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          sparse-checkout: install.sh
+          sparse-checkout: packages/wardrik_daemon/install.sh
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@v5
@@ -209,5 +210,5 @@ jobs:
         run: |
           case "$VERSION" in *-*) prerelease=--prerelease ;; *) prerelease= ;; esac
           sha256sum wardrik-*.tar.gz > SHA256SUMS
-          gh release create "$GITHUB_REF_NAME" wardrik-*.tar.gz SHA256SUMS install.sh \
+          gh release create "$GITHUB_REF_NAME" wardrik-*.tar.gz SHA256SUMS packages/wardrik_daemon/install.sh \
             --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes $prerelease

@@ -3,7 +3,7 @@ defmodule WardrikCore.Backends.MemoryStore do
   Keeps agents in memory, until the node stops. For tests and trying things out.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik_core#readme) for complete setup.
+  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_core#readme) for complete setup.
 
       children = [
         {WardrikCore.Backends.MemoryStore, name: :agents},

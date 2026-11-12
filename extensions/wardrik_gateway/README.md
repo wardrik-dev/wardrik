@@ -55,7 +55,7 @@ See [Run Wardrik](https://hexdocs.pm/wardrik/running-wardrik.html) for runtime s
 WardrikGateway.configure(MyApp.Gateway, limits: %{"anthropic" => [requests_per_minute: 2000]})
 ```
 
-See [benchmark results](https://github.com/wardrik-dev/wardrik_gateway/blob/main/bench/README.md) for gateway overhead measurements.
+See [benchmark results](https://github.com/wardrik-dev/wardrik/blob/main/extensions/wardrik_gateway/bench/README.md) for gateway overhead measurements.
 
 ## Limits
 

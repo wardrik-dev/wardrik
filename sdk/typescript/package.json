@@ -5,7 +5,8 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wardrik-dev/wardrik_typescript.git"
+    "url": "git+https://github.com/wardrik-dev/wardrik.git",
+    "directory": "sdk/typescript"
   },
   "type": "module",
   "engines": {

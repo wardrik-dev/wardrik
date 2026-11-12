@@ -3,7 +3,7 @@ defmodule WardrikEvents do
   Keeps each agent's events as CloudEvents, in logs you can read back and follow.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik_events#readme) for complete setup.
+  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_events#readme) for complete setup.
 
       children = [
         {WardrikStore, store},
