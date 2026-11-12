@@ -9,7 +9,7 @@ tools. Each coding agent runs over the [Agent Client Protocol](https://agentclie
 ```elixir
 def deps do
   [
-    {:wardrik_acp, "~> 0.1.0-rc.1"}
+    {:wardrik_acp, "~> 0.1.0-rc.2"}
   ]
 end
 ```

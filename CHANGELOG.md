@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.2 (2026-11-11)
 
 - README: run a coding agent without asking, by policy or by its own mode.
 
