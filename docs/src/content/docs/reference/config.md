@@ -283,6 +283,7 @@ rest:
 | `read_only` | operations that change nothing, beyond `GET`s |
 | `idempotent` | operations safe to repeat, beyond `GET`, `PUT` and `DELETE` |
 | `timeout` | a call's limit in seconds; default `30` |
+| `max_result_bytes` | maximum answer size sent to the model, as JSON; default `131072` |
 | `trusted` | `true` disables the `outside` label on its results |
 
 Each API is a tool group of the same name: an agent file lists `tools: [ga4]` and gets one tool

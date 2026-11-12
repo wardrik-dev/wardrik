@@ -387,6 +387,7 @@ defmodule WardrikDaemon.ConfigTest do
                    read_only: [properties_runReport]
                    trusted: true
                    timeout: 10
+                   max_result_bytes: 65536
                orgs:
                  growth: {rest: [ga4]}
                """
@@ -404,6 +405,7 @@ defmodule WardrikDaemon.ConfigTest do
     assert opts[:only] == ["properties_runReport"]
     assert opts[:trusted]
     assert opts[:timeout] == 10_000
+    assert opts[:max_result_bytes] == 65_536
     assert config.orgs["growth"].rest == ["ga4"]
   end
 
