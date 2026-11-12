@@ -161,6 +161,14 @@ defmodule Wardrik.MCPTest do
     assert tool(:growing, "grown")
   end
 
+  test "a server that says its tools changed leaves the others be" do
+    listen()
+    assert {:ok, "grown", _context} = call(:growing, "grow")
+
+    assert_receive {:tools, @mcp, "growing", _measured}, 5_000
+    refute_receive {:tools, @mcp, "stub", _measured}, 200
+  end
+
   test "a connection that dies offers nothing, then connects again" do
     listen()
     {:ok, client} = flaky_client()
