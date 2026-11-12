@@ -207,7 +207,11 @@ defmodule Wardrik.OAuth.Flow do
   defp tell({module, function, args}, name, principal),
     do: apply(module, function, [name, principal | args])
 
+  # Its names go before it answers, so no caller finds the flow under way once it's ended.
   defp ended(flow, outcome) do
+    registry = flow.settings.registry
+    for key <- Registry.keys(registry, self()), do: Registry.unregister(registry, key)
+
     if outcome != :granted,
       do:
         Logger.info(

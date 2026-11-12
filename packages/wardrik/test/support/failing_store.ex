@@ -1,19 +1,26 @@
 defmodule Wardrik.Test.FailingStore do
-  @moduledoc "An ETS store that fails each write under a scope once `fail/2` names it."
+  @moduledoc """
+  An ETS store that fails each write under a scope once `fail/2` names it. The scope is kept in
+  a store of its own beside it, so it lasts as long as the store, past the test that set it.
+  """
   @behaviour Wardrik.Store.Adapter
 
   alias Wardrik.Store.ETS
 
   @doc "Builds a store over `Wardrik.Store.ETS` named `name`."
   def new(name),
-    do: Wardrik.Store.new(__MODULE__, %{name: name, failing: :ets.new(__MODULE__, [:public])})
+    do: Wardrik.Store.new(__MODULE__, %{name: name, failing: :"#{name} failing"})
 
   @doc "Fails every write under the scope `scope` from now with `{:error, :unavailable}`."
   def fail(%Wardrik.Store{config: %{failing: failing}}, scope),
-    do: true = :ets.insert(failing, {:scope, scope <> ":"})
+    do: {:ok, _vsn} = ETS.put(failing, "scope", scope <> ":", [])
 
   @impl true
-  def child_spec(%{name: name}), do: ETS.child_spec(name)
+  def child_spec(%{name: name, failing: failing}) do
+    stores = [ETS.child_spec(name), ETS.child_spec(failing)]
+    opts = [strategy: :one_for_all, name: :"#{name} stores"]
+    %{id: name, type: :supervisor, start: {Supervisor, :start_link, [stores, opts]}}
+  end
 
   @impl true
   def put(config, path, value, opts),
@@ -30,11 +37,11 @@ defmodule Wardrik.Test.FailingStore do
   def keys(config, prefix), do: ETS.keys(config.name, prefix)
 
   defp written(%{failing: failing}, path, write) do
-    case :ets.lookup(failing, :scope) do
-      [{:scope, scope}] ->
+    case ETS.lookup(failing, "scope") do
+      {scope, _vsn} ->
         if String.starts_with?(path, scope), do: {:error, :unavailable}, else: write.()
 
-      [] ->
+      nil ->
         write.()
     end
   end

@@ -159,6 +159,7 @@ defmodule Wardrik.MCPTest do
 
     assert_receive {:tools, @mcp, "growing", %{count: 10}}, 5_000
     assert tool(:growing, "grown")
+    refute_receive {:tools, @mcp, "stub", _measured}, 200
   end
 
   test "a connection that dies offers nothing, then connects again" do
