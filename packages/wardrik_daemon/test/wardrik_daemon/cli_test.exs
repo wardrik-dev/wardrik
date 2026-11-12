@@ -93,6 +93,31 @@ defmodule WardrikDaemon.CLITest do
     assert File.read!(log) == "start\nstart\nstart\n"
   end
 
+  test "offers Claude Code where it finds it, and takes the answer without a terminal", context do
+    {context, _log} = script(context)
+    write(context, "env", "ANTHROPIC_API_KEY=sk\n")
+    bin = Path.join(context.root, "bin")
+    File.mkdir_p!(bin)
+    File.write!(Path.join(bin, "claude"), "#!/bin/sh\n")
+    File.chmod!(Path.join(bin, "claude"), 0o755)
+    context = put_in(context.env["PATH"], bin)
+    config = Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
+
+    assert {0, output} = wardrik(context, @init ++ ~w(--no-service --set codng.claude=yes))
+    assert output =~ "Nothing asked codng.claude"
+    refute File.read!(config) =~ "harnesses"
+
+    assert {0, output} = wardrik(context, @init ++ ~w(--no-service --set coding.claude=yes))
+    assert output =~ "Wrote " <> config
+    assert output =~ "policies/coding.yaml"
+    assert output =~ "npm install -g @agentclientprotocol/claude-agent-acp"
+
+    assert {:ok, %{"harnesses" => %{"claude" => %{"command" => "claude-agent-acp"}}}} =
+             YamlElixir.read_from_file(config)
+
+    assert failing(context, @init ++ ~w(--set coding)) =~ "--set coding: is KEY=VALUE"
+  end
+
   test "won't start a daemon where another holds its name, and says how to use or replace it",
        context do
     {context, log} = script(context)

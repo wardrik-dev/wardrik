@@ -2,6 +2,7 @@ defmodule WardrikDaemon.CLI.Init do
   @moduledoc false
 
   alias WardrikDaemon.CLI.Access
+  alias WardrikDaemon.CLI.Answers
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.CLI.Follow
@@ -9,6 +10,7 @@ defmodule WardrikDaemon.CLI.Init do
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.EnvFile
+  alias WardrikDaemon.Setup
 
   @question "In two short sentences, and without calling a tool, say what you can do for me."
   @models %{anthropic: "claude-haiku-4-5"}
@@ -26,13 +28,20 @@ defmodule WardrikDaemon.CLI.Init do
         key_from_env: :string,
         yes: :boolean,
         no_service: :boolean,
-        no_ask: :boolean
+        no_ask: :boolean,
+        set: :keep,
+        answers: :string
       ],
       summary: "set up the assistant, its model and key, and the daemon to run it",
       details: [
         "It asks what it needs and never overwrites a file. Without a terminal, use --provider,",
         "--model and --key-from-env VAR. --yes installs the systemd service, --no-service skips",
-        "it, and --no-ask skips the first question. --org names the org (default: default)."
+        "it, and --no-ask skips the first question. --org names the org (default: default).",
+        "",
+        "Then it offers what it finds here, such as Claude Code for coding. --set KEY=VALUE and",
+        "--answers FILE, YAML or - for stdin, answer the offers, as --set coding.claude=true.",
+        "Without a terminal, an offer no one answers takes --yes. It never installs anything: it",
+        "shows the commands to run."
       ],
       run: &run/3
     }
@@ -41,20 +50,40 @@ defmodule WardrikDaemon.CLI.Init do
   defp run([], flags, cx) do
     found(cx)
 
-    with {:ok, provider, variable} <- provider(flags, cx),
+    with {:ok, given} <- Answers.given(flags),
+         {:ok, provider, variable} <- provider(flags, cx),
          {:ok, model} <- model(flags, cx, provider),
-         {:ok, key} <- key(flags, cx, variable) do
-      wrote = write(cx, flags, "#{provider}:#{model}")
-      cx = %{Context.new(cx.env) | terminal: cx.terminal}
-
-      seal = fn -> sealed(cx, variable, key) end
-
-      with :ok <- daemon(flags, cx, wrote, seal, key != nil or flags[:no_ask] != true),
-           :ok <- ask(flags, cx, variable) do
-        next(cx)
-      end
+         {:ok, key} <- key(flags, cx, variable),
+         wrote = write(cx, flags, "#{provider}:#{model}"),
+         {:ok, set_up, commands} <- set_up(cx, given, flags),
+         cx = %{Context.new(cx.env) | terminal: cx.terminal},
+         seal = fn -> sealed(cx, variable, key) end,
+         :ok <- daemon(flags, cx, wrote ++ set_up, seal, key != nil or flags[:no_ask] != true),
+         :ok <- ask(flags, cx, variable) do
+      next(cx, commands)
     end
   end
+
+  defp set_up(cx, given, flags) do
+    machine = Setup.Machine.new(cx.env, cx.dirs)
+
+    with {:ok, changes, asked} <-
+           Setup.plan(Setup.steps(), machine, Answers.answer(cx, given, flags)),
+         :ok <- unasked(cx, Answers.unasked(given, asked)),
+         {:ok, done} <- Setup.apply(changes, cx.dirs) do
+      for {said, path} when said in [:wrote, :kept] <- done,
+          do: Context.puts(cx, said(said, path))
+
+      {:ok, for({:wrote, path} <- done, do: path),
+       for({:command, command, why} <- done, do: {command, why})}
+    end
+  end
+
+  defp unasked(cx, lines),
+    do: Enum.each(lines, &Context.puts(cx, [Owl.Data.tag("! ", :yellow), &1]))
+
+  defp said(:wrote, path), do: [Owl.Data.tag("Wrote", :green), " ", path]
+  defp said(:kept, path), do: [Owl.Data.tag("Kept ", :light_black), " ", path]
 
   defp found(cx) do
     case for({_provider, variable} <- providers(), cx.env[variable], uniq: true, do: variable) do
@@ -207,13 +236,13 @@ defmodule WardrikDaemon.CLI.Init do
 
   defp written?(cx, path, text, mode) do
     if File.exists?(path) do
-      Context.puts(cx, [Owl.Data.tag("Kept ", :light_black), " ", path])
+      Context.puts(cx, said(:kept, path))
       false
     else
       File.mkdir_p!(Path.dirname(path))
       File.write!(path, text)
       File.chmod!(path, mode)
-      Context.puts(cx, [Owl.Data.tag("Wrote", :green), " ", path])
+      Context.puts(cx, said(:wrote, path))
       true
     end
   end
@@ -355,19 +384,20 @@ defmodule WardrikDaemon.CLI.Init do
     end
   end
 
-  defp next(cx) do
+  defp next(cx, commands) do
     Context.puts(cx, [
       "\n",
       Owl.Box.new(
-        [
-          "Tell it what you want done:\n",
-          Owl.Data.tag(
-            ~s(#{cx.program} ask assistant "Tell me when https://github.blog/changelog/feed/ has a new post"),
-            :cyan
-          ),
-          "\n\nIt proposes the work, and waits for you: ",
-          Owl.Data.tag("#{cx.program} approval", :cyan)
-        ],
+        to_run(commands) ++
+          [
+            "Tell it what you want done:\n",
+            Owl.Data.tag(
+              ~s(#{cx.program} ask assistant "Tell me when https://github.blog/changelog/feed/ has a new post"),
+              :cyan
+            ),
+            "\n\nIt proposes the work, and waits for you: ",
+            Owl.Data.tag("#{cx.program} approval", :cyan)
+          ],
         title: " Next ",
         border_style: :solid_rounded,
         padding_x: 1,
@@ -375,6 +405,15 @@ defmodule WardrikDaemon.CLI.Init do
         word_wrap: :normal
       )
     ])
+  end
+
+  defp to_run([]), do: []
+
+  defp to_run(commands) do
+    ["Run these yourself:\n"] ++
+      Enum.flat_map(commands, fn {command, why} ->
+        [Owl.Data.tag(command, :cyan), "\n", Owl.Data.tag(why, :light_black), "\n"]
+      end) ++ ["\n"]
   end
 
   defp config(org, model, search?) do

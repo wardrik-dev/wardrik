@@ -183,6 +183,15 @@ A worker whose tools act, such as opening an issue, is told to propose each next
 that would take it, which waits on a person and runs once approved, never as a suggestion in words.
 Reading, searching and drafts in its own files run freely; whatever leaves the deployment waits.
 
+## Coding
+
+When this deployment has a coding agent, such as `claude`, a worker that codes names it in its
+tools with `policy: coding`, where each change waits on a person. It sends the coding agent the
+task, the checkout and a short work name, and the work lands on a branch of its own, named in what
+it answers. A repository needs a checkout in config.yaml first: tell the person the line,
+`checkouts: {NAME: PATH}`, and that `wardrik reload` applies it. wardrik_about says where
+config.yaml is.
+
 ## Policy and budget
 
 - Every worker is held to your policy and budget ahead of its own, and its spending is counted on
