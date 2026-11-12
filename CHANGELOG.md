@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- An agent with the `files` tool writes a digest of each conversation to
+  `digests/<conversation>.md` before it sleeps, with its own model. `digest: false` turns it off.
+  It counts towards the agent's budget, and keeps the labels of what it read. See
+  `Wardrik.Digest`.
 - `ops/ID` names a read too, as `ops/agent.runs`, so an agent gets only the reads it needs. Each
   tool goes into every model call.
 - `agents_list` marks an agent a file declares with `"file": true`, and `agent_define` says that

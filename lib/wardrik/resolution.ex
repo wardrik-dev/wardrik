@@ -129,16 +129,24 @@ defmodule Wardrik.Resolution do
 
   @doc "Returns how long the agent `id` idles before it sleeps, in milliseconds, or `:infinity`."
   @spec idle_timeout(Wardrik.t(), String.t(), map()) :: pos_integer() | :infinity
-  def idle_timeout(wardrik, id, definition) do
-    defaults =
-      case Resolver.resolve(wardrik, %Request{agent: id, definition: definition}) do
-        {:ok, resolved} -> Map.merge(wardrik.defaults, resolved.defaults)
-        {:error, _error} -> wardrik.defaults
-      end
+  def idle_timeout(wardrik, id, definition),
+    do: seconds(setting(wardrik, id, definition, "idle_timeout", wardrik.idle_timeout))
 
-    seconds(
-      Map.get(definition, "idle_timeout", Map.get(defaults, "idle_timeout", wardrik.idle_timeout))
-    )
+  @doc "Returns whether the agent `id` writes a digest of each conversation before it sleeps."
+  @spec digest?(Wardrik.t(), String.t(), map()) :: boolean()
+  def digest?(wardrik, id, definition) do
+    definition = Map.merge(defaults(wardrik, id, definition), definition)
+    files?(definition) and Map.get(definition, "digest", true)
+  end
+
+  defp setting(wardrik, id, definition, key, default),
+    do: Map.get(definition, key, Map.get(defaults(wardrik, id, definition), key, default))
+
+  defp defaults(wardrik, id, definition) do
+    case Resolver.resolve(wardrik, %Request{agent: id, definition: definition}) do
+      {:ok, resolved} -> Map.merge(wardrik.defaults, resolved.defaults)
+      {:error, _error} -> wardrik.defaults
+    end
   end
 
   defp triggers(definition) do
