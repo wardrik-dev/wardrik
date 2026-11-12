@@ -64,6 +64,10 @@ defmodule WardrikLua.Sandbox.RunnerTest do
 
     assert_receive {:evaluating, evaluation}
     reaped = Process.monitor(evaluation)
+    # The shutdown comes from the runner's supervisor, so it can overtake the monitor. Asking the
+    # evaluation is ordered after the monitor, and confirms it holds before the caller dies.
+    assert {:monitored_by, watchers} = Process.info(evaluation, :monitored_by)
+    assert test in watchers
     Process.exit(caller, :kill)
 
     assert_receive {:DOWN, ^reaped, :process, ^evaluation, :shutdown}
