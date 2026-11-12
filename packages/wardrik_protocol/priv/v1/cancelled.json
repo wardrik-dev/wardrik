@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:cancelled",
+  "title": "Agents cancelled",
+  "description": "What agents.cancel answers: the IDs of the agents whose turn it ended.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cancelled"
+  ],
+  "properties": {
+    "cancelled": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "examples": [
+    {
+      "cancelled": [
+        "agt_01JF8X5RQ2"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent.started",
+  "title": "wardrik.agent.started",
+  "description": "The agent was loaded: started, restarted, or moved to another node.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "conversation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "description": "The conversation it holds; left out for the agent's own history."
+    },
+    "node": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "running",
+        "parked"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "agent",
+    "node",
+    "status"
+  ]
+}

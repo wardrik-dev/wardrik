@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent.forgotten",
+  "title": "wardrik.agent.forgotten",
+  "description": "Someone removed an agent, with everything it had.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The agent's ID."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "resource": {
+      "type": "string",
+      "description": "The pattern someone removed every agent it covers by at once, where it was one of them; every agent's entry from that one change shares its trace."
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    },
+    "assumed_by": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/assumed_by"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "agent"
+  ]
+}

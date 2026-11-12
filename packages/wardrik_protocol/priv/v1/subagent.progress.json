@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:subagent.progress",
+  "title": "wardrik.subagent.progress",
+  "description": "A subagent began a tool call, and how many it has begun. It carries the span subagent.started did. Live: never stored.",
+  "x-wardrik-live": true,
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/tool"
+    },
+    "tool_calls": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "How many tool calls it has begun, this one too."
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "agent",
+    "tool",
+    "tool_calls"
+  ]
+}

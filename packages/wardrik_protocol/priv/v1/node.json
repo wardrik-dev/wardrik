@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:node",
+  "title": "A node",
+  "description": "The node to restart the agent on.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "node"
+  ],
+  "properties": {
+    "node": {
+      "type": "string",
+      "description": "The node's name, such as wardrik@box1."
+    }
+  },
+  "examples": [
+    {
+      "node": "wardrik@box2"
+    }
+  ]
+}

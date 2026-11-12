@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:step.completed",
+  "title": "wardrik.step.completed",
+  "description": "A named step ended.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "error",
+        "cancelled"
+      ],
+      "description": "How the step ended: cancelled where a stopped turn cut it short."
+    },
+    "duration_ms": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
+    },
+    "error": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/error"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "duration_ms"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:tool_call.started",
+  "title": "wardrik.tool_call.started",
+  "description": "A tool call began.",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/tool"
+    },
+    "decided": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/decided"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "tool",
+    "decided"
+  ]
+}

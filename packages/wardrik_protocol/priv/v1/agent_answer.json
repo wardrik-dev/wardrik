@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent_answer",
+  "title": "An agent",
+  "description": "What agent.spawn and agent.stop answer: the agent, as agents.list lists it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agent"
+  ],
+  "properties": {
+    "agent": {
+      "$ref": "urn:wardrik:schema:v1:agent"
+    }
+  },
+  "examples": [
+    {
+      "agent": {
+        "id": "agt_01JF8X5RQ2",
+        "status": "asleep",
+        "pending": 0
+      }
+    }
+  ]
+}

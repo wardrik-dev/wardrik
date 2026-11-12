@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:deny",
+  "title": "A rejection",
+  "description": "Rejects the call, with an optional reason sent to the agent instead of the tool's result.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "reason": {
+      "type": "string"
+    }
+  },
+  "examples": [
+    {},
+    {
+      "reason": "Not this quarter."
+    }
+  ]
+}

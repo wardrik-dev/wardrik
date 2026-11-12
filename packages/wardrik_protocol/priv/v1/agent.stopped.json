@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent.stopped",
+  "title": "wardrik.agent.stopped",
+  "description": "An agent stopped, keeping its conversation: someone stopped it, or it went to sleep for having had nothing to do, until something wakes it.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The agent's ID."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "conversation": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
+    },
+    "node": {
+      "type": "string",
+      "description": "The node it stopped on, where it stopped itself."
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "idle"
+      ],
+      "description": "Why it stopped itself: idle, having had nothing to do for its idle timeout. Absent where someone stopped it."
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    },
+    "assumed_by": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/assumed_by"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "agent"
+  ]
+}

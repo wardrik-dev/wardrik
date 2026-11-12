@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent_runtime",
+  "title": "Agent runtime",
+  "description": "Resource use of a running agent. The numbers cover the agent's process, its current turn and its running tool calls.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agent",
+    "node",
+    "memory_bytes",
+    "processes",
+    "message_queue",
+    "reductions"
+  ],
+  "properties": {
+    "agent": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
+    },
+    "conversation": {
+      "type": "string",
+      "description": "The conversation ID, for an agent that runs one process per conversation."
+    },
+    "node": {
+      "type": "string",
+      "description": "The node the agent runs on."
+    },
+    "memory_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The memory used by the agent's processes, in bytes."
+    },
+    "binary_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The size of the shared binaries the agent's processes reference, in bytes. Large message and tool results are usually stored this way."
+    },
+    "processes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The number of processes: the agent, plus one for a running turn and one for each running tool call."
+    },
+    "message_queue": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The number of messages waiting in the agent process's mailbox. A number that keeps growing means the agent can't keep up."
+    },
+    "reductions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The work the agent's processes have done, in BEAM reductions. Compare it between agents, or between two reads, to see which agents use the most CPU."
+    }
+  },
+  "examples": [
+    {
+      "agent": "triage",
+      "node": "wardrik@box1",
+      "memory_bytes": 1843200,
+      "binary_bytes": 524288,
+      "processes": 3,
+      "message_queue": 0,
+      "reductions": 4810233
+    }
+  ]
+}

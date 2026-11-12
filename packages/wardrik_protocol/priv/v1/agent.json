@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent",
+  "title": "An agent, listed",
+  "description": "One agent or conversation of agents.list.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "status",
+    "pending"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
+    },
+    "conversation": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "running",
+        "parked",
+        "asleep"
+      ],
+      "description": "Whether it waits for a message, answers one, waits on a person, or sleeps until something asks it."
+    },
+    "pending": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many messages wait behind what it's doing."
+    },
+    "node": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The node it runs on, by its name; null while it sleeps."
+    },
+    "next_run": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "When the next of its triggers on a clock runs; null where none does."
+    },
+    "spent_today": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/spent"
+    }
+  },
+  "examples": [
+    {
+      "id": "agt_01JF8X5RQ2",
+      "status": "parked",
+      "pending": 0
+    }
+  ]
+}

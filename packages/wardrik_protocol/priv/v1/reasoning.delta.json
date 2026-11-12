@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:reasoning.delta",
+  "title": "wardrik.reasoning.delta",
+  "description": "Reasoning of an assistant message as it streams. Live: never stored.",
+  "x-wardrik-live": true,
+  "type": "object",
+  "properties": {
+    "message": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/message_ref"
+    },
+    "delta": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "message",
+    "delta"
+  ]
+}

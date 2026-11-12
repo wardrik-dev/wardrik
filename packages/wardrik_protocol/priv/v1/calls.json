@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:calls",
+  "title": "Running calls",
+  "description": "What agent.calls answers: the tool calls an agent is running now, each with how long it has run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "calls"
+  ],
+  "properties": {
+    "calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "elapsed_ms"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The call's id."
+          },
+          "name": {
+            "type": "string",
+            "description": "The tool it calls."
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How long it has run, in milliseconds."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "calls": [
+        {
+          "id": "toolu_01",
+          "name": "github__search_issues",
+          "elapsed_ms": 1250
+        }
+      ]
+    }
+  ]
+}

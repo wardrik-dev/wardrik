@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:audit",
+  "title": "A page of the audit",
+  "description": "What audit.list answers: what people changed across the deployment, oldest first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "events",
+    "next"
+  ],
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:cloudevent"
+      }
+    },
+    "next": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The sequence after these changes, to read on from."
+    }
+  },
+  "examples": [
+    {
+      "events": [],
+      "next": 12
+    }
+  ]
+}

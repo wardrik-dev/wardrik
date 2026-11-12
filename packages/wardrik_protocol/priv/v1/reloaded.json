@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:reloaded",
+  "title": "Reloaded",
+  "description": "What deployment.reload answers: the nodes that read every agent's definition again, and what the declarations couldn't read or define.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reloaded"
+  ],
+  "properties": {
+    "reloaded": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "problems": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What the deployment's declarations, as agent files, couldn't read or define, a line each. None unless set."
+    }
+  },
+  "examples": [
+    {
+      "reloaded": [
+        "wardrik@box1"
+      ],
+      "problems": [
+        "agents/broken.md: There's no tool nope here."
+      ]
+    }
+  ]
+}

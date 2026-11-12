@@ -1,0 +1,517 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:defs",
+  "title": "Shared definitions",
+  "$defs": {
+    "message": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "description": "system, user, assistant or tool."
+        },
+        "name": {
+          "type": "string"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/part"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "parts"
+      ],
+      "description": "A message in OpenTelemetry's GenAI shape. On message.started and message.delta only its id is given."
+    },
+    "message_ref": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "description": "A message, by its id."
+    },
+    "part": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "One of text, reasoning, tool_call, tool_call_response, uri, file or blob."
+        },
+        "content": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "description": "Any JSON value. It is stored as a flattened field."
+        },
+        "response": {
+          "description": "Any JSON value. It is stored as a flattened field."
+        },
+        "modality": {
+          "type": "string",
+          "enum": [
+            "image",
+            "video",
+            "audio",
+            "document"
+          ]
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string"
+        },
+        "file_id": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "description": "One part of a message, with a type as defined by the OpenTelemetry GenAI conventions."
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "A low-cardinality code, as OpenTelemetry's error.type."
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "message"
+      ]
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_read": {
+          "type": "object",
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "output_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "description": "Token usage, as gen_ai.usage.* without the prefix."
+    },
+    "cost": {
+      "type": "object",
+      "properties": {
+        "micro_usd": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Whole micro-dollars: 1000000 is one US dollar."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "provider",
+            "catalog",
+            "tool"
+          ],
+          "description": "provider where the provider reported the figure, catalog where Wardrik priced the tokens at the model catalog's prices, tool where the tool reported it."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "micro_usd",
+        "source"
+      ],
+      "description": "What a call cost, the same figure a budget counts."
+    },
+    "principal": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Who they are, by the ID your app gave them, as user_42, or provider:subject for someone known by where they reached Wardrik, as slack:T0123/U024BE7LH."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name they go by, where one is known."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "description": "Who did something, by the name they are known by."
+    },
+    "assumed_by": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+      },
+      "description": "Who acted for the actor, first to last, as an agent acting for the person who asked it something. Absent where the actor acted themselves."
+    },
+    "decided": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string",
+          "enum": [
+            "hook",
+            "person",
+            "default",
+            "ledger"
+          ],
+          "description": "hook where hooks allowed the call by name or one refused it, person where a person answered it, default where no hook named it and nothing asked, ledger where the ledger could not record it."
+        },
+        "hooks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The hooks that allowed the call, refused it, or asked a person about it."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "by"
+      ],
+      "description": "Who decided a call."
+    },
+    "served_by": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "description": "What answered a tool call, as its tool names it: a tool worker's principal, for one."
+    },
+    "run": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "message_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "description": "A run, by the W3C trace id it runs under."
+    },
+    "tool": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "call": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "arguments": {
+              "description": "Any JSON value. It is stored as a flattened field."
+            },
+            "result": {
+              "description": "Any JSON value. It is stored as a flattened field."
+            },
+            "idempotency_key": {
+              "type": "string"
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "call"
+      ]
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "interrupt": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "tool_approval",
+            "model_approval",
+            "ceiling_approval",
+            "authorization",
+            "in_doubt"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "tool_call_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "The tool the person decides on, as the agent names it; none for a model's approval. A call made inside a tool call, such as a coding agent's request, names its own tool."
+        },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "The arguments of the call the person decides on; none for a model's approval."
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The labels of what the run had read, which may be what asked for the call: outside for content nobody on the agent's side wrote."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "reason",
+        "message"
+      ],
+      "description": "A call a run waits on a person for."
+    },
+    "doing": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "wardrik.run.started",
+            "wardrik.run.resumed",
+            "wardrik.run.interrupted",
+            "wardrik.message.started",
+            "wardrik.message.retrying",
+            "wardrik.step.started",
+            "wardrik.tool_call.started",
+            "wardrik.tool_call.retrying",
+            "wardrik.tool_call.completed",
+            "wardrik.tool_call.denied"
+          ],
+          "description": "The type of the event that set it."
+        },
+        "message": {
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/message_ref"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Which try after the first comes next."
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many tries after the first there may be."
+        },
+        "wait_ms": {
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
+        },
+        "step": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name"
+          ]
+        },
+        "tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "call": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "id"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "call"
+          ]
+        },
+        "since": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the tool call began."
+        },
+        "interrupts": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/interrupt"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "description": "One thing an agent is doing, as the type of the event that set it, with what that event names of it."
+    },
+    "activity": {
+      "type": "object",
+      "properties": {
+        "doing": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/doing"
+          },
+          "description": "Every tool call running, oldest first, or the one thing it is doing otherwise; none when it is idle."
+        },
+        "since": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When it began what it is doing."
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many messages wait behind it."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "doing",
+        "since",
+        "pending"
+      ],
+      "description": "What an agent is doing now."
+    },
+    "spent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tokens",
+        "usd"
+      ],
+      "properties": {
+        "tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The tokens its model calls took."
+        },
+        "usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The dollars its model calls and tools cost, where they had a price."
+        }
+      },
+      "description": "What an agent's model calls and tools spent today, by the UTC day."
+    },
+    "owner": {
+      "type": "string",
+      "description": "Who holds it, as your app names them, or deployment."
+    },
+    "source": {
+      "enum": [
+        "config",
+        "runtime"
+      ],
+      "description": "config for one the deployment started with, which can't be changed at runtime; runtime for one added since."
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^\\P{Cc}+$",
+      "description": "An agent ID. Wardrik treats it as an opaque string."
+    },
+    "conversation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^\\P{Cc}+$",
+      "description": "A conversation's ID, as your app chose it. A conversation runs on its agent's definition, with a history of its own. Left out for the agent's own history."
+    }
+  }
+}
