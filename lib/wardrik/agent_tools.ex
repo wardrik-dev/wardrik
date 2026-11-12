@@ -6,7 +6,7 @@ defmodule Wardrik.AgentTools do
 
   | Tool | What it does |
   | --- | --- |
-  | `agents_list` | Lists the agents it may read, with each one's description and status. |
+  | `agents_list` | Lists the agents it may read, with each one's description and status, and `"file": true` for one a file declares. |
   | `agent_read`, `self_read` | Reads an agent's status and what it waits on. |
   | `agent_definition_read`, `self_definition_read` | Reads a definition. |
   | `agent_ask` | Sends an agent a message. The answer comes back later as a message. |
@@ -51,7 +51,7 @@ defmodule Wardrik.AgentTools do
     [
       read(
         "agents_list",
-        "List the agents you may reach: each one's ID, description and status.",
+        "List the agents you may reach: each one's ID, description and status. \"file\": true marks one an agent file declares, which only a person changes, by editing its file.",
         [],
         fn _args ->
           listed(me)
@@ -77,7 +77,7 @@ defmodule Wardrik.AgentTools do
       ),
       change(
         "agent_define",
-        "Define an agent as a worker, or define it again: its description, instructions, tools and triggers, as a definition takes them. It's held to your policy.",
+        "Define an agent as a worker, or define it again: its description, instructions, tools and triggers, as a definition takes them. It's held to your policy. An agent a file declares is refused: tell a person what to change in its file.",
         [
           agent: @agent,
           definition: [
@@ -184,6 +184,11 @@ defmodule Wardrik.AgentTools do
   end
 
   defp described(wardrik, %{"id" => id} = agent) do
+    agent =
+      if Wardrik.Declarations.declared?(wardrik, id),
+        do: Map.put(agent, "file", true),
+        else: agent
+
     case Wardrik.Definitions.fetch(wardrik, id) do
       {:ok, %{"description" => description}} -> Map.put(agent, "description", description)
       _undescribed -> agent

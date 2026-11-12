@@ -7,8 +7,8 @@ defmodule Wardrik.OperationTools do
     * `ops/read` gives every operation that only reads, such as `agent_runs`, `agent_resolved`,
       `audit_list`, `interrupts_list` and `deployment_runtime`. It leaves out the reads
       `agents/*` gives (`agents_list`, `agent_read` and the definition), and streams.
-    * `ops/ID` gives one operation that changes something, such as `ops/agent.stop` or
-      `ops/deployment.reload`. Name each one the agent may use.
+    * `ops/ID` gives one operation, such as `ops/agent.runs` or `ops/agent.stop`. Name only the
+      ones an agent needs: each tool's description and schema go into every model call.
 
   Each tool is named after its operation, with `_` for `.`: `agent.runs` is `agent_runs`. Its
   arguments are the operation's input.
@@ -33,14 +33,11 @@ defmodule Wardrik.OperationTools do
   @never ~w(agent.decide agent.approve agent.deny hook.deliver hook.deliver_with_secret
             channel.deliver)
 
-  @doc """
-  Returns whether `id` names an operation an agent may be given as `ops/ID`: one that changes
-  something, and isn't left out.
-  """
-  @spec change?(String.t()) :: boolean()
-  def change?(id) do
+  @doc "Returns whether `id` names an operation an agent may be given as `ops/ID`."
+  @spec offered?(String.t()) :: boolean()
+  def offered?(id) do
     case WardrikProtocol.operation(id) do
-      %{effect: effect, stream: false} -> effect != "read" and offered?(id)
+      %{stream: false} -> id not in @agent_tools and id not in @never
       _none -> false
     end
   end
@@ -55,14 +52,12 @@ defmodule Wardrik.OperationTools do
   defp operations(:read),
     do:
       for(
-        %{effect: "read", stream: false, id: id} = operation <- WardrikProtocol.operations(),
+        %{effect: "read", id: id} = operation <- WardrikProtocol.operations(),
         offered?(id),
         do: operation
       )
 
   defp operations(id), do: [WardrikProtocol.operation(id)]
-
-  defp offered?(id), do: id not in @agent_tools and id not in @never
 
   defp tool(me, operation) do
     Tool.new!(

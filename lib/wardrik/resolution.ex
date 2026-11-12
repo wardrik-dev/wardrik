@@ -215,7 +215,7 @@ defmodule Wardrik.Resolution do
     do: {:capability, {Wardrik.OperationTools, wardrik: wardrik.name, operations: :read}}
 
   defp named(wardrik, "ops/" <> id) do
-    if Wardrik.OperationTools.change?(id),
+    if Wardrik.OperationTools.offered?(id),
       do: {:capability, {Wardrik.OperationTools, wardrik: wardrik.name, operations: id}},
       else:
         {:error, Error.new(:invalid_request, "There's no operation #{id} an agent can be given.")}

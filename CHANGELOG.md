@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `ops/ID` names a read too, as `ops/agent.runs`, so an agent gets only the reads it needs. Each
+  tool goes into every model call.
+- `agents_list` marks an agent a file declares with `"file": true`, and `agent_define` says that
+  a person changes it by editing its file.
+
+## Unreleased
+
 - `ops/read` in an agent's `tools` gives it every operation that only reads: runs, the timeline,
   running calls, what it gets from its owner, approvals waiting, the audit, nodes and resource
   use. `ops/ID`, such as `ops/agent.stop`, gives one operation that changes something; it asks
