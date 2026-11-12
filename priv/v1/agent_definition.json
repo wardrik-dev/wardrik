@@ -123,6 +123,10 @@
       ],
       "description": "Seconds without work before the agent sleeps. It wakes on the next message or trigger. Defaults to the server's setting."
     },
+    "digest": {
+      "type": "boolean",
+      "description": "Whether the agent writes a digest of each conversation to digests/ in its workspace before it sleeps. A later conversation finds it with search_files. It needs the files tool, and counts towards the agent's budget. Defaults to true."
+    },
     "max_iterations": {
       "oneOf": [
         {
@@ -412,6 +416,7 @@
       },
       "timeout": 600,
       "idle_timeout": 900,
+      "digest": true,
       "max_iterations": 12,
       "retries": {
         "attempts": 4,

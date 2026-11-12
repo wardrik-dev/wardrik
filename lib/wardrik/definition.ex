@@ -32,6 +32,7 @@ defmodule Wardrik.Definition do
       policy: "policy",
       timeout: "timeout",
       idle_timeout: {"idle_timeout", :infinity},
+      digest: "digest",
       max_iterations: {"max_iterations", :infinity},
       retries: "retries",
       model_options: "model_options",

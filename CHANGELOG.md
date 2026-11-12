@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `digest` in an agent's definition turns off or on the digest it writes of each conversation
+  before it sleeps. On by default.
 - `agent.files`, `agent.file`, `agent.file_put` and `agent.file_delete` list, read, write and
   delete the files in an agent's workspace. Writes and deletes are recorded as
   `wardrik.file.written` and `wardrik.file.removed`. See `Wardrik.AgentFile`.
