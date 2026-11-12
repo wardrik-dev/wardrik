@@ -97,6 +97,25 @@ wardrik trigger set triage standup --every "0 9 * * 1-5" --timezone Europe/Berli
 
 For a file-defined agent, the next reload resets triggers to those in the file.
 
+## Files
+
+| Command | Does |
+| --- | --- |
+| `agent files ls AGENT [GLOB]` | lists the agent's files, newest first |
+| `agent files cat AGENT PATH` | prints a file |
+| `agent files put AGENT PATH [FILE]` | writes a file from `FILE`, or from stdin without one or with `-` |
+| `agent files rm AGENT PATH` | deletes a file |
+| `agent files sync AGENT DIR [--to PREFIX] [--delete]` | writes each file in `DIR` whose content differs |
+
+```sh
+wardrik agent files sync triage ./skills --to skills --delete
+```
+
+- `sync` leaves out files and directories whose names start with `.`, and files that aren't text.
+- `--delete` deletes the agent's files under `PREFIX` that `DIR` doesn't have. Without it, `sync`
+  only writes.
+- Files written this way have no labels. See [Files and memory](/concepts/files-and-memory/).
+
 ## MCP servers, notify targets and OAuth apps
 
 These apply to the deployment's org, or to `--org ORG` or `--user USER`.

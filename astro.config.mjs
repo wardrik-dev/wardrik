@@ -101,6 +101,7 @@ export default defineConfig({
 										'build/http-api',
 										'build/listen',
 										'build/triggers',
+										'build/skills',
 										'build/delegation',
 										'build/notices',
 									],

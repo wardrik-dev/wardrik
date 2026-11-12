@@ -619,6 +619,70 @@ curl $WARDRIK_URL/v1/hooks/agt_01JF8X5RQ2/issues \
 `POST /v1/hooks/{agent}/{trigger}/{secret}` takes the secret as the last path segment, for services
 that only accept a URL. Treat that URL as a secret.
 
+## Files
+
+Files in an agent's workspace. Roles grant reading them as the verb `files`, and writing and
+deleting as `file_put` and `file_delete`.
+
+### List files
+
+`GET /v1/agents/{agent}/files`
+
+Returns up to 500 files, newest first, without their content. `glob`, such as `skills/**`, limits
+the paths.
+
+```sh
+curl "$WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/files?glob=skills/**" -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"files": [{"path": "skills/triage/SKILL.md", "version": "3", "bytes": 812, "by": "user_42",
+ "at": "2026-11-11T12:00:00Z", "labels": []}]}
+```
+
+### Read a file
+
+`GET /v1/agents/{agent}/file?path=PATH`
+
+Returns the file and its content. Returns `404` if there's no file at the path.
+
+```sh
+curl "$WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/file?path=MEMORY.md" -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"file": {"path": "MEMORY.md", "version": "7", "bytes": 10, "by": "agt_01JF8X5RQ2",
+ "at": "2026-11-11T12:00:00Z", "labels": []}, "content": "Likes tea."}
+```
+
+### Write a file
+
+`PUT /v1/agents/{agent}/file`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `path` | string, required | the path in the workspace |
+| `content` | string, required | the text, up to 4 MiB |
+| `version` | string | write only over this version; `409` if the file changed |
+
+Without `version`, the write replaces any file at the path. The file has no labels. Returns the
+file without its content.
+
+```sh
+curl -X PUT $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/file -H "Authorization: Bearer $WARDRIK_TOKEN" \
+  --json '{"path": "MEMORY.md", "content": "Likes tea."}'
+```
+
+### Delete a file
+
+`DELETE /v1/agents/{agent}/file?path=PATH`
+
+Returns `204`, or `404` if there's no file at the path.
+
+```sh
+curl -X DELETE "$WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/file?path=MEMORY.md" -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
 ## Channels
 
 ### Deliver a chat app's request

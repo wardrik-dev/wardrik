@@ -62,6 +62,22 @@ workspace:
 
 Wardrik rejects mounts that are not allowed by `config.yaml`.
 
+## Writing files from outside
+
+People and apps write an agent's files with the CLI or the [HTTP API](/reference/http-api/#files):
+
+```sh
+wardrik agent files put triage MEMORY.md ./memory.md
+wardrik agent files sync runbooks ./runbooks --delete
+```
+
+- `sync` writes the files of a directory whose content differs, so a directory kept in git can be
+  the source of an agent's files.
+- Files written this way have no labels. The agent treats them as it treats its definition.
+- Agents can't use these operations. They reach other agents' files through mounts.
+
+See [`agent files`](/reference/cli/#files) and [Skills](/build/skills/).
+
 ## Content from outside
 
 A file written by a turn that read [untrusted content](/concepts/outside-content/) is labeled
