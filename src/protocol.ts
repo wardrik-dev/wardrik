@@ -496,6 +496,68 @@ export interface AgentDefinition {
   channels?: string[];
 }
 /**
+ * A file in an agent's workspace, without its content.
+ */
+export interface AgentFile {
+  /**
+   * Its path in the workspace.
+   */
+  path: string;
+  /**
+   * Its version. agent.file_put takes it to write over this version only.
+   */
+  version: string;
+  /**
+   * Its size in bytes.
+   */
+  bytes: number;
+  /**
+   * Who wrote it last: the agent's ID, or the ID of the person who wrote it with agent.file_put.
+   */
+  by: string;
+  /**
+   * When it was last written.
+   */
+  at: string;
+  /**
+   * Labels of what the writer had read, such as outside.
+   */
+  labels: string[];
+}
+/**
+ * What agent.file answers: a file in an agent's workspace, and its content.
+ */
+export interface AgentFileContent {
+  file: AgentFile;
+  /**
+   * The file's text.
+   */
+  content: string;
+}
+/**
+ * What agent.file_put takes: a file to write in an agent's workspace.
+ */
+export interface AgentFilePut {
+  /**
+   * The file's path in the workspace, such as skills/triage/SKILL.md.
+   */
+  path: string;
+  /**
+   * The file's text, at most 4 MiB.
+   */
+  content: string;
+  /**
+   * The version to write over, from agent.file or agent.files.
+   */
+  version?: string;
+}
+/**
+ * What agent.files answers: the files in an agent's workspace, newest first.
+ */
+export interface AgentFiles {
+  files: AgentFile[];
+}
+/**
  * What an agent gets from the app that runs it: who it works for, its policies, MCP servers, notify targets, channels and workspaces. The app decides this each time the agent runs.
  */
 export interface AgentResolved {
@@ -1572,6 +1634,48 @@ export interface EventsDroppedData {
   oldest: number;
 }
 /**
+ * Someone deleted a file in an agent's workspace.
+ */
+export interface FileRemovedData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  file: {
+    /**
+     * Its path in the workspace.
+     */
+    path: string;
+  };
+  actor?: Principal;
+  assumed_by?: AssumedBy;
+}
+/**
+ * Someone wrote a file in an agent's workspace.
+ */
+export interface FileWrittenData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  file: {
+    /**
+     * Its path in the workspace.
+     */
+    path: string;
+    /**
+     * The version written.
+     */
+    version: string;
+  };
+  actor?: Principal;
+  assumed_by?: AssumedBy;
+}
+/**
  * A person answered an interrupt.
  */
 export interface InterruptResolvedData {
@@ -2047,6 +2151,8 @@ export interface EventData {
   "wardrik.conversation.cleared": ConversationClearedData;
   "wardrik.conversation.compacted": ConversationCompactedData;
   "wardrik.events.dropped": EventsDroppedData;
+  "wardrik.file.removed": FileRemovedData;
+  "wardrik.file.written": FileWrittenData;
   "wardrik.interrupt.resolved": InterruptResolvedData;
   "wardrik.message.completed": MessageCompletedData;
   "wardrik.message.created": MessageCreatedData;

@@ -6,6 +6,10 @@ import type { CallOptions, Runner, StreamOptions } from "./runner.ts";
 import type {
   AgentAnswer,
   AgentDefinition,
+  AgentFile,
+  AgentFileContent,
+  AgentFilePut,
+  AgentFiles,
   AgentResolved,
   AgentRuntime,
   AgentSnapshot,
@@ -244,6 +248,35 @@ export const operations = {
     query: [],
     body: false,
   },
+  "agent.files": {
+    method: "GET",
+    path: "/v1/agents/{agent}/files",
+    path_params: ["agent"],
+    query: ["glob"],
+    body: false,
+    unwrap: "files",
+  },
+  "agent.file": {
+    method: "GET",
+    path: "/v1/agents/{agent}/file",
+    path_params: ["agent"],
+    query: ["path"],
+    body: false,
+  },
+  "agent.file_put": {
+    method: "PUT",
+    path: "/v1/agents/{agent}/file",
+    path_params: ["agent"],
+    query: [],
+    body: true,
+  },
+  "agent.file_delete": {
+    method: "DELETE",
+    path: "/v1/agents/{agent}/file",
+    path_params: ["agent"],
+    query: ["path"],
+    body: false,
+  },
   "agent.kill": {
     method: "DELETE",
     path: "/v1/agents/{agent}/calls/{call}",
@@ -457,6 +490,28 @@ export interface Inputs {
     /** The agent ID, URL-encoded as one path segment. */
     agent: string;
   };
+  "agent.files": {
+    /** The agent ID, URL-encoded as one path segment. */
+    agent: string;
+    /** Return only the paths this glob matches: * within a folder, ? one character, ** across folders. Defaults to **. */
+    glob?: string | undefined;
+  };
+  "agent.file": {
+    /** The agent ID, URL-encoded as one path segment. */
+    agent: string;
+    /** The file's path in the workspace, such as notes/today.md. */
+    path: string;
+  };
+  "agent.file_put": {
+    /** The agent ID, URL-encoded as one path segment. */
+    agent: string;
+  } & AgentFilePut;
+  "agent.file_delete": {
+    /** The agent ID, URL-encoded as one path segment. */
+    agent: string;
+    /** The file's path in the workspace, such as notes/today.md. */
+    path: string;
+  };
   "agent.kill": {
     /** The agent ID, URL-encoded as one path segment. */
     agent: string;
@@ -522,6 +577,10 @@ export interface Outputs {
   "agent.calls": Calls["calls"];
   "agent.runtime": AgentRuntime;
   "agent.resolved": AgentResolved;
+  "agent.files": AgentFiles["files"];
+  "agent.file": AgentFileContent;
+  "agent.file_put": AgentFile;
+  "agent.file_delete": void;
   "agent.kill": void;
   "agent.trigger_set": TriggerDefinition;
   "agent.trigger_remove": TriggerDefinition;
@@ -798,6 +857,68 @@ export class AgentOperations {
    */
   resolved(options: CallOptions = {}): Promise<Outputs["agent.resolved"]> {
     return this.#runner.call("agent.resolved", { agent: this.agent }, options);
+  }
+
+  /**
+   * List an agent's files.
+   *
+   * Returns the files in the agent's workspace, newest first, at most 500. Files shared with it from other workspaces aren't listed.
+   *
+   * Acts on the agent, never a conversation.
+   */
+  files(
+    input: {
+      /** Return only the paths this glob matches: * within a folder, ? one character, ** across folders. Defaults to **. */
+      glob?: string | undefined;
+    } = {},
+    options: CallOptions = {},
+  ): Promise<Outputs["agent.files"]> {
+    return this.#runner.call("agent.files", { ...input, agent: this.agent }, options);
+  }
+
+  /**
+   * Read an agent's file.
+   *
+   * Returns a file in the agent's workspace, with its content and version. Returns not_found if there's no file at the path.
+   *
+   * Acts on the agent, never a conversation.
+   */
+  file(
+    input: {
+      /** The file's path in the workspace, such as notes/today.md. */
+      path: string;
+    },
+    options: CallOptions = {},
+  ): Promise<Outputs["agent.file"]> {
+    return this.#runner.call("agent.file", { ...input, agent: this.agent }, options);
+  }
+
+  /**
+   * Write an agent's file.
+   *
+   * Writes a file in the agent's workspace. With version, writes only over that version and returns conflict if the file has changed. Without version, replaces any file at the path. The file carries no labels.
+   *
+   * Acts on the agent, never a conversation.
+   */
+  filePut(input: AgentFilePut, options: CallOptions = {}): Promise<Outputs["agent.file_put"]> {
+    return this.#runner.call("agent.file_put", { ...input, agent: this.agent }, options);
+  }
+
+  /**
+   * Delete an agent's file.
+   *
+   * Deletes a file in the agent's workspace. Returns not_found if there's no file at the path.
+   *
+   * Acts on the agent, never a conversation.
+   */
+  fileDelete(
+    input: {
+      /** The file's path in the workspace, such as notes/today.md. */
+      path: string;
+    },
+    options: CallOptions = {},
+  ): Promise<Outputs["agent.file_delete"]> {
+    return this.#runner.call("agent.file_delete", { ...input, agent: this.agent }, options);
   }
 
   /**
