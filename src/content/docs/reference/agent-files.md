@@ -46,6 +46,7 @@ issues need an engineer.
 | [`retries`](#retries) | retry settings for failed model calls |
 | [`model_options`](#model_options) | sampling and timeouts for its model calls |
 | [`compaction`](#compaction) | when older history is summarised, or `false` |
+| [`digest`](#digest) | whether it writes a digest of each conversation before it sleeps; default `true` |
 | [`triggers`](#triggers) | scheduled, feed and webhook messages |
 | [`notify`](#notify) | notice targets for paused, failed or finished turns |
 | `channels` | the [`channels`](/reference/config/#channels) it's available in, as `[slack]` |
@@ -177,6 +178,17 @@ compaction: {at: 0.6, keep: 0.25}
 | `at` | `0.6` | fraction of the context window that triggers a summary |
 | `keep` | `0.25` | fraction of the window kept verbatim |
 | `window` | the catalog's, or `128000` | the context window in tokens |
+
+## digest
+
+```yaml
+digest: false
+```
+
+- On by default. The agent writes a digest of each conversation before it sleeps, after
+  `idle_timeout`. See [Digests](/concepts/files-and-memory/#digests).
+- It needs the `files` tool. Without it, no digest is written.
+- Each digest is a model call, and counts towards the agent's budget.
 
 ## triggers
 
