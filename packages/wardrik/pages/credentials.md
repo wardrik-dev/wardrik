@@ -161,3 +161,47 @@ forward "/oauth", Wardrik.OAuth.Plug,
 
 A sign-in finishes only for the person who started it. See
 `Wardrik.OAuth` for device sign-ins and renewal.
+
+- `/callback` finishes a browser sign-in. Register it as each OAuth app's redirect URI.
+- `/device/:id` shows a device sign-in's code.
+- `/client` serves Wardrik's own client ID document.
+
+## The vault and OAuth on their own
+
+`Wardrik.Vault` and `Wardrik.OAuth` run without Wardrik, for `WardrikCore` agents:
+
+```elixir
+children = [
+  {Wardrik.Store, store},
+  {Wardrik.Vault, name: MyApp.Vault, store: store, keys: keys, grants: {Wardrik.OAuth, MyApp.OAuth}},
+  {Wardrik.OAuth,
+   name: MyApp.OAuth,
+   vault: MyApp.Vault,
+   store: store,
+   page: "https://agents.example.com/oauth",
+   resolver: {MyApp.OAuthApps, []}}
+]
+
+{:ok, _vsn} =
+  Wardrik.Vault.put(MyApp.Vault, %Wardrik.Vault.Secret{principal: jon, name: "github", value: "ghp_..."})
+
+Wardrik.Vault.fetch(MyApp.Vault, jon, "github")
+#=> {:ok, "ghp_..."}
+
+WardrikCore.start_agent(
+  agent_id: "digest",
+  model: "anthropic:claude-haiku-4-5",
+  principal: jon,
+  credentials: {Wardrik.Vault, MyApp.Vault}
+)
+```
+
+- Values are sealed with AES-256-GCM. Names aren't: anyone with the store can read names and
+  whose they are.
+- Without `:grants`, the vault holds secrets only. With `Wardrik.OAuth`, it refreshes tokens and
+  starts sign-ins.
+- A missing credential parks the tool call with a `WardrikCore.Authorization` that holds the
+  sign-in link. Set `:on_granted` to carry on the calls waiting once someone signs in. Wardrik
+  sets it for you.
+- A sign-in expires after 15 minutes. Asking again while one is open returns the same link.
+- See `Wardrik.OAuth.Provider` and `Wardrik.OAuth.start_link/1` for every option.

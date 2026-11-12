@@ -106,3 +106,55 @@ Wardrik.Agent.trigger_remove(scope, agent: "agt_digest", trigger: "daily")
 - Defining the agent again replaces all its triggers.
 - A trigger whose `every` and `timezone` stay keeps its next run.
 - In a cluster, each run is claimed in the store, so it runs once.
+
+## Feeds
+
+- A trigger with `feed` asks only when the feed has entries it hasn't seen. The prompt lists up
+  to 20.
+- The first run only records what the feed holds.
+
+## Telemetry
+
+`[:wardrik_triggers, :fired]` after every run. Metadata: `:agent_id`, `:trigger`, `:status`.
+
+## Triggers on their own
+
+`Wardrik.Triggers` runs without Wardrik, for `WardrikCore` agents. Your app gives it a
+`Wardrik.Triggers.Target`, which asks the agent, decides what to do when it's busy, and finds
+webhook secrets. Wardrik's own is `Wardrik.Triggers.Agents`.
+
+```elixir
+children = [
+  {Wardrik.Store, store},
+  {WardrikCore, backend: {Wardrik.Store.Durable, store: store}},
+  {Wardrik.Triggers, name: MyApp.Triggers, store: store, target: {MyApp.Triggered, []}}
+]
+
+:ok =
+  Wardrik.Triggers.put(MyApp.Triggers, "agt_digest", [
+    %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Write today's update."}
+  ])
+
+{:ok, _trigger} =
+  Wardrik.Triggers.set(MyApp.Triggers, "agt_digest", %{"name" => "weekly", "every" => "@weekly", "prompt" => "Recap"})
+
+:ok = Wardrik.Triggers.remove(MyApp.Triggers, agent_id: "agt_digest", name: "weekly")
+```
+
+Pass each webhook's raw body and headers to `Wardrik.Triggers.deliver/2`. In a `Plug.Router`:
+
+```elixir
+post "/hooks/:agent/:trigger" do
+  {:ok, body, conn} = Plug.Conn.read_body(conn)
+  request = %{body: body, headers: Map.new(conn.req_headers)}
+
+  case Wardrik.Triggers.deliver(MyApp.Triggers, agent_id: agent, name: trigger, request: request) do
+    :ok -> send_resp(conn, 202, "")
+    {:error, :not_found} -> send_resp(conn, 404, "")
+    {:error, _busy} -> send_resp(conn, 503, "")
+  end
+end
+```
+
+- Read the body before `Plug.Parsers` does. A signature covers the exact bytes.
+- Each request is asked once, keyed by `Idempotency-Key`, `webhook-id`, or its body.

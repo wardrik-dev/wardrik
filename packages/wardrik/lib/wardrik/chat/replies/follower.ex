@@ -1,7 +1,7 @@
 defmodule Wardrik.Chat.Replies.Follower do
   @moduledoc false
 
-  use Wardrik.Listener
+  @behaviour Wardrik.Listener
 
   @impl Wardrik.Listener
   def handle(event, listener),

@@ -1,11 +1,11 @@
-# Wardrik.Chat
+# Chat apps
 
-Talk to [Wardrik](https://hexdocs.pm/wardrik) agents from chat apps, such as Slack. This package
-holds what every chat adapter shares: rooms, threads, replies and approvals.
+Talk to agents from chat apps, such as Slack. `Wardrik.Chat` holds what every chat adapter
+shares: rooms, threads, replies and approvals.
 
 ## Set up
 
-Start with a [Wardrik runtime](https://hexdocs.pm/wardrik/running-wardrik.html) named `MyApp.AgentRuntime`.
+Start with a [Wardrik runtime](running-wardrik.md) named `MyApp.AgentRuntime`.
 The following fragments belong in an existing app.
 
 In `config/runtime.exs`, after implementing `MyApp.ChatMembers` below:

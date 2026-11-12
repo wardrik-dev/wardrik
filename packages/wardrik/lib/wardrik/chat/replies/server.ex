@@ -87,12 +87,10 @@ defmodule Wardrik.Chat.Replies.Server do
     :ok = stop(state.follower)
 
     {:ok, follower} =
-      Wardrik.Listener.start_link(Follower,
-        wardrik: state.channel.wardrik,
+      Wardrik.EventLog.Follower.start_link(Follower, %{cursor: nil, options: [server: self()]},
         events: state.channel.events,
-        agents: state.conversations,
-        types: @types,
-        server: self()
+        logs: state.conversations,
+        types: @types
       )
 
     %{state | follower: follower}

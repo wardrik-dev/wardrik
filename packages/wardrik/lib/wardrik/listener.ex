@@ -40,7 +40,7 @@ defmodule Wardrik.Listener do
     * `:after` - the cursor to start after, without `c:cursor/1`.
   """
 
-  alias Wardrik.EventLog.Cursor
+  alias Wardrik.EventLog.Follower
   alias Wardrik.Instance
 
   @enforce_keys [:wardrik, :cursor, :options]
@@ -79,34 +79,13 @@ defmodule Wardrik.Listener do
   @doc "Starts `module` as a listener."
   @spec start_link(module(), keyword()) :: {:ok, pid()}
   def start_link(module, opts) do
-    # Wardrik's own chat apps give the event log, and follow it without a running Wardrik.
-    events =
-      Keyword.get_lazy(opts, :events, fn ->
-        opts[:wardrik] |> Instance.fetch!() |> Wardrik.events()
-      end)
+    wardrik = Keyword.fetch!(opts, :wardrik)
+    listener = %__MODULE__{wardrik: wardrik, cursor: nil, options: Keyword.delete(opts, :wardrik)}
 
-    agents = Keyword.fetch!(opts, :agents)
-    # Taken before the task starts, so "new events" means from now.
-    started = Wardrik.EventLog.head(events, agents)
-    Task.start_link(fn -> listen(module, events, started, opts) end)
-  end
-
-  defp listen(module, events, started, opts) do
-    listener = %__MODULE__{
-      wardrik: Keyword.fetch!(opts, :wardrik),
-      cursor: nil,
-      options: Keyword.drop(opts, [:wardrik, :events])
-    }
-
-    {:ok, stream} =
-      Wardrik.EventLog.stream(events, Keyword.fetch!(opts, :agents),
-        after: module.cursor(listener) || started,
-        types: Keyword.get(opts, :types, :all)
-      )
-
-    Enum.each(stream, fn {event, cursor} ->
-      :ok =
-        module.handle(Wardrik.Event.from_json(event), %{listener | cursor: Cursor.encode(cursor)})
-    end)
+    Follower.start_link(module, listener,
+      events: wardrik |> Instance.fetch!() |> Wardrik.events(),
+      logs: Keyword.fetch!(opts, :agents),
+      types: Keyword.get(opts, :types, :all)
+    )
   end
 end

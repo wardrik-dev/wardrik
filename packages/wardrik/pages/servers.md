@@ -79,3 +79,57 @@ Add a server while Wardrik runs, then configure access through your resolver:
 - Agents see it from their next turn.
 - The URL must be `https` at a public address. Wardrik's `:egress` option changes that.
 - A server's answers come from outside. Hold its tools to a [policy](policies.md).
+
+## Server options
+
+```elixir
+mcp: [
+  github: [
+    transport:
+      {:stdio,
+       command: "github-mcp-server",
+       args: ["stdio"],
+       env: %{"GITHUB_PERSONAL_ACCESS_TOKEN" => System.fetch_env!("GITHUB_TOKEN")}},
+    only: ["search_issues", "create_issue"]
+  ],
+  crm: [
+    transport:
+      {:streamable_http,
+       url: "https://mcp.crm.example/mcp",
+       headers: %{"authorization" => ["Bearer ", {:secret, "CRM_KEY"}]}},
+    owner: "acme"
+  ],
+  search: [
+    transport: {:streamable_http, url: "https://search.example.com/mcp"},
+    cost: fn result -> %{usd: result["_meta"]["usd"]} end
+  ]
+]
+```
+
+- A command gets its `env` plus `HOME`, `PATH` and a few other basics, not your app's environment.
+- `{:secret, name}` is read from the `owner`'s secrets each time the server connects.
+  `Wardrik.MCP.reconnect/2` connects again once a secret changes.
+- `cost` is counted against budgets.
+- A server that's down offers no tools. It's tried again, up to a minute apart.
+- The model sees `github__search_issues`, with the server's description and JSON Schema. A
+  result over `max_result_bytes` is cut, and the model is told.
+- Tools carry the server's hints as annotations: `read_only`, `destructive`, `idempotent`,
+  `open_world`. A tool is gated unless it's read-only. Set `gated:` to change that.
+- With `credential_name:`, a server offers only `<prefix>__connect` until someone connects.
+
+## MCP on its own
+
+`Wardrik.MCP` gives a `WardrikCore` agent a server's tools without Wardrik:
+
+```elixir
+children = [{Wardrik.MCP, name: MyApp.MCP, servers: [linear: [transport: {:streamable_http, url: "https://mcp.linear.app/mcp"}]]}]
+
+WardrikCore.start_agent(
+  agent_id: "triage",
+  model: "anthropic:claude-haiku-4-5",
+  capabilities: [{Wardrik.MCP, name: MyApp.MCP, servers: [:linear]}]
+)
+```
+
+- Give it a `:store` so every node sees servers you `add/3` later. Their options must be data.
+- Give it a `:check` to vet each URL when users supply them. Commands are then refused.

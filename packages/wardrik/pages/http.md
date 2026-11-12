@@ -1,11 +1,11 @@
-# Wardrik.HTTP.Endpoint
+# HTTP
 
-Serves [Wardrik](https://hexdocs.pm/wardrik) over HTTP. Every operation is a JSON route, and
-agents' events stream as server-sent events.
+`Wardrik.HTTP` serves Wardrik over HTTP. Every operation is a JSON route, and agents' events
+stream as server-sent events. `Wardrik.HTTP.Endpoint` serves any `Wardrik.Server` the same way.
 
 ## Serve HTTP requests
 
-Application supervision fragment: configure [MyApp.AgentRuntime](https://hexdocs.pm/wardrik/running-wardrik.html) first.
+Application supervision fragment: configure [MyApp.AgentRuntime](running-wardrik.md) first.
 Define the authenticator below before starting this tree.
 
 ```elixir
@@ -26,7 +26,7 @@ children = [
 This Phoenix example requires your app's running `MyAppWeb.Endpoint` and a token signed with the `"wardrik"` salt.
 
 An authenticator turns each request into a scope. Wardrik's authorizer then decides what it may
-do. See [Who may do what](https://hexdocs.pm/wardrik/access.html).
+do. See [Who may do what](access.md).
 
 ```elixir
 defmodule MyAppWeb.WardrikSession do
@@ -78,7 +78,7 @@ curl --fail-with-body -N -G "$WARDRIK_URL/v1/agents/agt_1/events" \
 
 A trigger's webhook takes requests at `POST /v1/hooks/{agent}/{trigger}`, with no authenticator.
 The request proves itself with the trigger's secret. See
-[Trigger agents](https://hexdocs.pm/wardrik/triggers.html).
+[Trigger agents](triggers.md).
 
 If Phoenix parses bodies first, keep the raw bytes for the signature check:
 
@@ -114,8 +114,4 @@ Wardrik.Agent.define(scope, "agt_1",
 
 With Wardrik's `:oauth` set, `/oauth/` serves the pages a sign-in returns to. Set its `page` to
 that URL. See
-[Credentials and sign-ins](https://hexdocs.pm/wardrik/credentials.html).
-
-## License
-
-Apache-2.0
+[Credentials and sign-ins](credentials.md).

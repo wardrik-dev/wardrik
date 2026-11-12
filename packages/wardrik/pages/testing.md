@@ -1,7 +1,7 @@
-# Wardrik.Testing
+# Testing
 
-A `Wardrik.Server` for testing packages built on
-[WardrikProtocol](https://hexdocs.pm/wardrik_protocol), without Wardrik itself.
+`Wardrik.Testing.Server` is a `Wardrik.Server` that answers from a script. Use it to test a
+package built on `WardrikProtocol`, such as a chat adapter, without running agents.
 
 ## Usage
 

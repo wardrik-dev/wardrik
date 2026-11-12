@@ -1,7 +1,7 @@
-# Wardrik.Store
+# Storage
 
-A durable key-value store. Wardrik packages keep their data in it, and
-[WardrikCore](https://hexdocs.pm/wardrik_core) can keep its agents in it too.
+Wardrik keeps its agents, events, triggers, files and secrets in a `Wardrik.Store`, a durable
+key-value store. Give Wardrik one with `:store`. `WardrikCore` can keep its agents in it too.
 
 ## Start a store
 
@@ -14,7 +14,7 @@ store = Wardrik.Store.ETS.new(name: MyApp.Store)
 {:ok, _supervisor} = Supervisor.start_link([{Wardrik.Store, store}], strategy: :one_for_one)
 ```
 
-A store that's already running starts nothing, so each package that uses it can list it too.
+A store that's already running starts nothing, so each part that uses it can list it too.
 
 | Adapter | Keeps data | Needs |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ Wardrik.Store.put(mine, "settings/theme", "blue", if_vsn: vsn)
 # => {:error, :conflict}
 ```
 
-- Each package scopes the store by its app name. Scope it yourself to keep your data apart.
+- Each part of Wardrik scopes the store by its own name. Scope it yourself to keep your data apart.
 - `:if_vsn` writes only over the version you read. `nil` writes only where nothing is.
 - With EKV, once you write a key with `:if_vsn`, always write it that way.
 
