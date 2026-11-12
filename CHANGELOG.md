@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.3 (2026-11-11)
 
 - `:key_help` says how to give web search a key, in your app's words. While there's no key, the
   tool's description and its error say it.

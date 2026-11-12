@@ -4,7 +4,7 @@ defmodule WardrikBrave.MixProject do
   def project do
     [
       app: :wardrik_brave,
-      version: "0.1.0-rc.2",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description:
         "Web search for agents, through Brave: the passages of each page that bear on the query, not a list of links.",
