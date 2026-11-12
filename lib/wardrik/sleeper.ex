@@ -3,6 +3,8 @@ defmodule Wardrik.Sleeper do
 
   use GenServer
 
+  require Logger
+
   alias Wardrik.Operations.Running
 
   @idle ~w(wardrik.agent.started wardrik.run.completed wardrik.run.failed wardrik.run.cancelled
@@ -21,7 +23,10 @@ defmodule Wardrik.Sleeper do
     do: GenServer.cast(Module.concat(wardrik.name, Sleeper), {:watch, {id, nil}})
 
   @impl GenServer
-  def init(wardrik), do: {:ok, %{wardrik: wardrik, timers: %{}}, {:continue, :subscribe}}
+  def init(wardrik) do
+    {:ok, tasks} = Task.Supervisor.start_link()
+    {:ok, %{wardrik: wardrik, tasks: tasks, timers: %{}, digests: %{}}, {:continue, :subscribe}}
+  end
 
   @impl GenServer
   def handle_continue(:subscribe, %{wardrik: wardrik} = state) do
@@ -43,9 +48,23 @@ defmodule Wardrik.Sleeper do
 
   def handle_info({:sleep, id, ref}, %{timers: timers} = state) do
     case Map.fetch(timers, id) do
-      {:ok, ^ref} -> {:noreply, sleep(%{state | timers: Map.delete(timers, id)}, id)}
+      {:ok, ^ref} -> {:noreply, digest(%{state | timers: Map.delete(timers, id)}, id)}
       _stale -> {:noreply, state}
     end
+  end
+
+  def handle_info({ref, result}, %{digests: digests} = state) when is_map_key(digests, ref) do
+    Process.demonitor(ref, [:flush])
+    {id, digests} = Map.pop!(digests, ref)
+    if match?({:error, _reason}, result), do: failed(id, result)
+    {:noreply, sleep(%{state | digests: digests}, id)}
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{digests: digests} = state)
+      when is_map_key(digests, ref) do
+    {id, digests} = Map.pop!(digests, ref)
+    failed(id, reason)
+    {:noreply, sleep(%{state | digests: digests}, id)}
   end
 
   defp arm(%{wardrik: wardrik} = state, {agent, _conversation} = id) do
@@ -60,6 +79,22 @@ defmodule Wardrik.Sleeper do
   end
 
   defp disarm(state, id), do: %{state | timers: Map.delete(state.timers, id)}
+
+  # The digest runs in a task. The agent sleeps when it's done, written or not.
+  defp digest(%{wardrik: wardrik} = state, {agent, _conversation} = id) do
+    with pid when is_pid(pid) <- Running.whereis(wardrik, id),
+         :idle <- WardrikCore.status(pid),
+         {:ok, definition} <- Running.definition(wardrik, agent),
+         true <- Wardrik.Resolution.digest?(wardrik, agent, definition) do
+      task = Task.Supervisor.async_nolink(state.tasks, Wardrik.Digest, :write, [wardrik, id, pid])
+      %{state | digests: Map.put(state.digests, task.ref, id)}
+    else
+      _no_digest -> sleep(state, id)
+    end
+  end
+
+  defp failed(id, reason),
+    do: Logger.warning("#{Running.describe(id)} didn't write its digest: #{inspect(reason)}")
 
   defp sleep(%{wardrik: wardrik} = state, id) do
     with pid when is_pid(pid) <- Running.whereis(wardrik, id),
