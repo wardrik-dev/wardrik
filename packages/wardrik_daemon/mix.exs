@@ -38,7 +38,9 @@ defmodule WardrikDaemon.MixProject do
   defp package do
     [
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => "https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_daemon"},
+      links: %{
+        "GitHub" => "https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_daemon"
+      },
       files:
         ~w(lib priv/front_door.md priv/openapi.json rel mix.exs README.md CHANGELOG.md LICENSE)
     ]
@@ -106,6 +108,8 @@ defmodule WardrikDaemon.MixProject do
   defp sibling(name, requirement, opts \\ []) do
     if System.get_env("WARDRIK_HEX"),
       do: {name, requirement, opts},
-      else: {name, Keyword.put(opts, :path, __DIR__ |> Path.join("../../*/#{name}") |> Path.wildcard() |> hd())}
+      else: {name, Keyword.put(opts, :path, sibling_path(name))}
   end
+
+  defp sibling_path(name), do: __DIR__ |> Path.join("../../*/#{name}") |> Path.wildcard() |> hd()
 end

@@ -131,6 +131,8 @@ defmodule Wardrik.MixProject do
   defp sibling(name, requirement, opts \\ []) do
     if System.get_env("WARDRIK_HEX"),
       do: {name, requirement, opts},
-      else: {name, Keyword.put(opts, :path, __DIR__ |> Path.join("../../*/#{name}") |> Path.wildcard() |> hd())}
+      else: {name, Keyword.put(opts, :path, sibling_path(name))}
   end
+
+  defp sibling_path(name), do: __DIR__ |> Path.join("../../*/#{name}") |> Path.wildcard() |> hd()
 end
