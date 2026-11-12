@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.11 (2026-11-12)
 
+- Requires `wardrik_core` 0.1.0-rc.6 and `wardrik_protocol` 0.1.0-rc.7.
 - Takes in `wardrik_store`, `wardrik_events`, `wardrik_policy`, `wardrik_vault`, `wardrik_oauth`,
   `wardrik_mcp`, `wardrik_triggers`, `wardrik_workspace`, `wardrik_http`, `wardrik_channel` and
   `wardrik_testing`. Their modules are renamed: `WardrikStore` is `Wardrik.Store`, and the same
