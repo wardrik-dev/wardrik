@@ -152,6 +152,8 @@ Use a separate app per daemon. Slack spreads events across all of an app's conne
 - Mention the bot to start a thread. Replies in the thread need no mention.
 - Each thread is a conversation, such as `conversation: "slack.T0123.C024BE91L.1696.1234"`. Threads
   share the agent's definition and [files](/concepts/files-and-memory/).
+- Every channel an agent answers in shares its files and digests. To keep a private channel's
+  work out of a public one, give each its own agent.
 - :eyes: means the agent received the message. :white_check_mark: means it replied.
 - The thread's status shows the agent's current activity.
 - To post notices in a channel, set `notify: "slack:#updates"`. See [Send notifications](/build/notices/).
