@@ -108,7 +108,8 @@ defmodule WardrikDaemon.Doctor.Agents do
           env: %{},
           web: nil
         }) ++
-          WardrikDaemon.Harnesses.capabilities(WardrikDaemon.Doctor, daemon, config),
+          WardrikDaemon.Harnesses.capabilities(WardrikDaemon.Doctor, daemon, config) ++
+          WardrikDaemon.Rest.capabilities(WardrikDaemon.Doctor, daemon, config),
       mcp: config.mcp,
       channels: config.channels,
       defaults: config.defaults,

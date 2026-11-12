@@ -372,6 +372,43 @@ defmodule WardrikDaemon.ConfigTest do
            }
   end
 
+  test "reads HTTP APIs, with where each secret comes from", context do
+    assert {:ok, config} =
+             read(
+               context,
+               """
+               rest:
+                 ga4:
+                   discovery: https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta
+                   base_url: https://analyticsdata.googleapis.com/
+                   auth: {oauth2: {credential: google}}
+                   headers: {x-goog-user-project: {key: PROJECT}, x-client: wardrik}
+                   only: [properties_runReport]
+                   read_only: [properties_runReport]
+                   trusted: true
+                   timeout: 10
+                   max_result_bytes: 65536
+               orgs:
+                 growth: {rest: [ga4]}
+               """
+             )
+
+    assert [{"ga4", %Config.Rest{discovery: discovery, options: opts}}] = config.rest
+    assert discovery == "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta"
+    assert opts[:auth] == %{"oauth2" => {:credential, "google"}}
+
+    assert opts[:headers] == %{
+             "x-goog-user-project" => {:key, "PROJECT"},
+             "x-client" => "wardrik"
+           }
+
+    assert opts[:only] == ["properties_runReport"]
+    assert opts[:trusted]
+    assert opts[:timeout] == 10_000
+    assert opts[:max_result_bytes] == 65_536
+    assert config.orgs["growth"].rest == ["ga4"]
+  end
+
   test "says where a key doesn't read", context do
     refused = [
       {"nope: 1", "unknown options [:nope], valid options are: [:org,"},
@@ -396,6 +433,17 @@ defmodule WardrikDaemon.ConfigTest do
        "harnesses.c.zzz_colour: isn't an option"},
       {"harnesses: {c: 1}", "harnesses.c: is a harness's keys, with a command"},
       {"checkouts: {c: 1}", "checkouts.c: is a repository's path"},
+      {"rest: {a: {base_url: https://a.test}}", "rest.a: is an API's keys, with the discovery"},
+      {"rest: {a: {discovery: d.json}}", "rest.a: required :base_url option not found"},
+      {"rest: {a: {discovery: d.json, base_url: x, auth: {oauth2: google}}}",
+       "rest.a.auth.oauth2: is {credential: NAME} or {key: NAME}"},
+      {"rest: {a: {discovery: d.json, base_url: x, headers: {h: 1}}}",
+       "rest.a.headers.h: is {credential: NAME} or {key: NAME}"},
+      {"rest: {a: {discovery: d.json, base_url: x, auth: [k]}}",
+       "rest.a.auth: is a source for each name"},
+      {"rest: {a: {discovery: d.json, base_url: x, egress: any}}",
+       "rest.a: unknown options [:egress]"},
+      {"orgs: {growth: {rest: [ga4]}}", "orgs.growth.rest: names ga4, which rest doesn't define"},
       {"checkouts: {c: {base: main}}", "checkouts.c: required :path option not found"},
       {"oauth: {providers: {g: {zzz_colour: red}}}",
        "oauth.providers.g: unknown options [:zzz_colour]"},

@@ -4,8 +4,8 @@ defmodule WardrikDaemon.Running do
 
   It reads `config.yaml` and `policies/`, then starts:
 
-    1. `WardrikBrave`, for `web_search`, and `WardrikGateway`, which every model call goes
-       through.
+    1. `WardrikBrave`, for `web_search`, `WardrikGateway`, which every model call goes
+       through, `WardrikACP`, and `WardrikDaemon.Rest`, which reads `rest`'s APIs.
     2. Wardrik, with `WardrikDaemon.Authorizer` and `WardrikDaemon.OAuthApps`.
     3. `WardrikDaemon.Pairings`.
     4. `WardrikDaemon.Web.Endpoint`, the dashboard, unless `web.enabled` is `false`.
@@ -69,6 +69,7 @@ defmodule WardrikDaemon.Running do
           capabilities:
             WardrikDaemon.Capabilities.all(own) ++
               WardrikDaemon.Harnesses.capabilities(name, daemon, config) ++
+              WardrikDaemon.Rest.capabilities(name, daemon, config) ++
               (opts[:capabilities] || []),
           store: store,
           vault_keys: keys,
@@ -103,6 +104,11 @@ defmodule WardrikDaemon.Running do
          worktrees: Dirs.data_home(dirs, "worktrees"),
          checkouts: config.checkouts,
          harnesses: config.harnesses},
+        {WardrikDaemon.Rest,
+         name: WardrikDaemon.Rest.name(name),
+         apis: config.rest,
+         dir: dirs.config,
+         egress: WardrikDaemon.Egress.check(config)},
         {Wardrik, wardrik},
         {WardrikDaemon.Pairings, name: WardrikDaemon.Pairings.name(name)}
       ] ++

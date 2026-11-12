@@ -8,3 +8,4 @@
   to the configured base URL. A refused token is refreshed once; a missing sign-in waits for it.
 - `only`, `read_only` and `idempotent` by name or glob.
 - Answers over `max_result_bytes` (128 KB unless set) are cut, with a note to ask for less.
+- `WardrikRest.API.schema/0`, to check options before loading.
