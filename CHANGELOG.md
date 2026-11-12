@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.11 (2026-11-11)
 
+- Requires `wardrik` 0.1.0-rc.10 and `wardrik_brave` 0.1.0-rc.3.
 - The assistant `init` writes checks how things run every 6 hours, not each hour, and names the
   five reads it uses in place of `ops/read`. Each check is a model call with its tools.
 - `secret_request` says what each purpose is for: `header` for an MCP server's token. The
