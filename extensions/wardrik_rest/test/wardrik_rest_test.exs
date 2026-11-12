@@ -1,0 +1,362 @@
+defmodule WardrikRestTest do
+  use ExUnit.Case, async: true
+
+  alias WardrikCore.Authorization
+  alias WardrikCore.Context
+  alias WardrikRest.API
+  alias WardrikRest.Discovery
+
+  @analytics %Discovery{
+    document: "test/fixtures/analyticsdata-v1beta.json" |> File.read!() |> JSON.decode!()
+  }
+
+  defp load(opts) do
+    defaults = [name: "ga4", base_url: "https://analyticsdata.googleapis.com"]
+    API.load(@analytics, Keyword.merge(defaults, opts))
+  end
+
+  defp tools(opts) do
+    {:ok, api} = load(opts)
+    Map.new(WardrikRest.tools(nil, apis: [api]), &{&1.name, &1})
+  end
+
+  defp context(opts \\ []) do
+    tokens =
+      start_supervised!({Agent, fn -> Keyword.get(opts, :tokens, ["t0k3n"]) end}, id: make_ref())
+
+    Context.new(
+      agent_id: "acme/marketing",
+      principal: %WardrikCore.Principal{id: "org:acme"},
+      credentials: {WardrikRest.Test.Credentials, tokens},
+      keys: {WardrikRest.Test.Keys, Keyword.get(opts, :keys, %{})}
+    )
+  end
+
+  defp stubbed(test), do: [req_options: [plug: {Req.Test, test}]]
+
+  describe "load/2" do
+    test "offers the operations named, with what they need" do
+      tools =
+        tools(
+          auth: %{"oauth2" => {:credential, "google"}},
+          only: ["properties_runReport", "properties_get*"],
+          read_only: ["properties_runReport"]
+        )
+
+      assert tools |> Map.keys() |> Enum.sort() ==
+               ["ga4__properties_getMetadata", "ga4__properties_runReport"]
+
+      report = tools["ga4__properties_runReport"]
+      assert report.annotations[:read_only] and report.annotations[:idempotent]
+      assert report.annotations[:gated] == false
+      assert report.annotations[:labels] == ["outside"]
+      assert report.annotations[:open_world]
+      assert report.schema["required"] == ["property"]
+      assert report.description =~ "customized report"
+
+      assert {:ok, _args} =
+               ReqLLM.Schema.validate(
+                 %{"property" => "properties/1", "metrics" => [%{"name" => "conversions"}]},
+                 report.schema
+               )
+    end
+
+    test "gates operations that may change something, unless trusted stops the label" do
+      tools =
+        tools(
+          auth: %{"oauth2" => {:credential, "google"}},
+          only: ["properties_audienceExports_create"],
+          trusted: true
+        )
+
+      create = tools["ga4__properties_audienceExports_create"]
+
+      assert create.annotations[:gated]
+      refute create.annotations[:read_only] or create.annotations[:idempotent]
+      assert create.annotations[:labels] == []
+    end
+
+    test "offers only what it can sign in to" do
+      assert tools(only: ["*"]) == %{}
+      assert map_size(tools(auth: %{"key" => {:key, "GOOGLE_KEY"}})) == 11
+    end
+
+    test "says what's wrong with the options" do
+      oauth = %{"oauth2" => {:credential, "google"}}
+
+      assert load(auth: %{"basic" => {:key, "K"}}) ==
+               {:error, "auth names basic, which the description doesn't. It has key, oauth2."}
+
+      assert load(auth: oauth, only: ["properties_nothing"]) ==
+               {:error, "The description has no operation properties_nothing."}
+
+      assert load(only: ["properties_runReport"]) ==
+               {:error,
+                "auth gives no way to sign in to properties_runReport. Each needs oauth2 or key."}
+
+      assert {:error, "These tool names would be over 64 characters" <> _rest} =
+               API.load(@analytics,
+                 name: String.duplicate("a", 40),
+                 base_url: "https://a.test",
+                 auth: oauth
+               )
+
+      assert load(auth: oauth, base_url: "http://analyticsdata.googleapis.com") ==
+               {:error, "http://analyticsdata.googleapis.com isn't an https URL."}
+
+      assert load(egress: fn _url -> {:error, "not here"} end) == {:error, "not here"}
+
+      assert {:error, "It isn't a Discovery document."} =
+               API.load(%Discovery{document: %{}}, name: "x", base_url: "https://x.test")
+    end
+
+    test "names no scheme when the description has none" do
+      notes = %Discovery{document: %{"kind" => "discovery#restDescription", "name" => "notes"}}
+
+      assert API.load(notes,
+               name: "notes",
+               base_url: "https://notes.test",
+               auth: %{"oauth2" => {:key, "K"}}
+             ) ==
+               {:error, "auth names oauth2, which the description doesn't. It has none."}
+    end
+  end
+
+  describe "a call" do
+    setup %{test: test} do
+      tools =
+        tools(
+          [
+            auth: %{"oauth2" => {:credential, "google"}},
+            headers: %{"x-goog-user-project" => {:key, "PROJECT"}, "x-client" => "wardrik"},
+            only: [
+              "properties_runReport",
+              "properties_getMetadata",
+              "properties_audienceExports_list"
+            ]
+          ] ++ stubbed(test)
+        )
+
+      %{tools: tools, test_pid: self()}
+    end
+
+    test "sends the token, headers, path, query and body", %{
+      tools: tools,
+      test: test,
+      test_pid: pid
+    } do
+      Req.Test.stub(test, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        send(
+          pid,
+          {:called, conn.method, conn.request_path, conn.query_string, conn.req_headers, body}
+        )
+
+        Req.Test.json(conn, %{"rows" => [%{"metricValues" => [%{"value" => "12"}]}]})
+      end)
+
+      args = %{
+        "property" => "properties/123",
+        "metrics" => [%{"name" => "conversions"}],
+        "dateRanges" => [%{"startDate" => "28daysAgo", "endDate" => "today"}]
+      }
+
+      context = context(keys: %{"PROJECT" => "mode-prod"})
+
+      assert tools["ga4__properties_runReport"].run.(args, context) ==
+               {:ok, %{"rows" => [%{"metricValues" => [%{"value" => "12"}]}]}}
+
+      assert_received {:called, "POST", "/v1beta/properties/123:runReport", "", headers, body}
+      assert {"authorization", "Bearer t0k3n"} in headers
+      assert {"x-goog-user-project", "mode-prod"} in headers
+      assert {"x-client", "wardrik"} in headers
+
+      assert JSON.decode!(body) == %{
+               "metrics" => [%{"name" => "conversions"}],
+               "dateRanges" => [%{"startDate" => "28daysAgo", "endDate" => "today"}]
+             }
+    end
+
+    test "sends a GET's query without a body, and an empty answer as an empty map", %{
+      tools: tools,
+      test: test,
+      test_pid: pid
+    } do
+      Req.Test.stub(test, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(pid, {:called, conn.method, conn.request_path, conn.query_string, body})
+        Plug.Conn.send_resp(conn, 200, "")
+      end)
+
+      args = %{parent: "properties/1", pageSize: 5, pageToken: "next page"}
+      context = context(keys: %{"PROJECT" => "p"})
+
+      assert tools["ga4__properties_audienceExports_list"].run.(args, context) == {:ok, %{}}
+      assert_received {:called, "GET", "/v1beta/properties/1/audienceExports", query, ""}
+      assert URI.decode_query(query) == %{"pageSize" => "5", "pageToken" => "next page"}
+    end
+
+    test "encodes a plain path parameter whole", %{test: test, test_pid: pid} do
+      notes = %Discovery{
+        document: %{
+          "kind" => "discovery#restDescription",
+          "name" => "notes",
+          "parameters" => %{"key" => %{"type" => "string", "location" => "query"}},
+          "auth" => %{"oauth2" => %{}},
+          "resources" => %{
+            "notes" => %{
+              "methods" => %{
+                "get" => %{
+                  "id" => "notes.notes.get",
+                  "httpMethod" => "GET",
+                  "path" => "notes/{id}",
+                  "scopes" => ["notes"],
+                  "parameters" => %{
+                    "id" => %{"type" => "string", "location" => "path", "required" => true}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      {:ok, api} =
+        API.load(
+          notes,
+          [name: "notes", base_url: "https://notes.test/", auth: %{"key" => {:key, "NOTES_KEY"}}] ++
+            stubbed(test)
+        )
+
+      Req.Test.stub(test, fn conn ->
+        send(pid, {:called, conn.request_path, conn.query_string, conn.req_headers})
+        Req.Test.json(conn, %{"id" => "a/b"})
+      end)
+
+      [tool] = WardrikRest.tools(nil, apis: [api])
+
+      assert tool.run.(%{"id" => "a/b"}, context(keys: %{"NOTES_KEY" => "s3cret"})) ==
+               {:ok, %{"id" => "a/b"}}
+
+      assert_received {:called, "/notes/a%2Fb", "key=s3cret", headers}
+      refute List.keymember?(headers, "authorization", 0)
+
+      assert tool.run.(%{"id" => "x"}, context()) == {:error, "notes has no NOTES_KEY key yet."}
+    end
+
+    test "tells credentials a refused token, then calls once more", %{tools: tools, test: test} do
+      Req.Test.stub(test, fn conn ->
+        case Plug.Conn.get_req_header(conn, "authorization") do
+          ["Bearer fresh"] -> Req.Test.json(conn, %{"dimensions" => []})
+          _stale -> Plug.Conn.send_resp(conn, 401, "{}")
+        end
+      end)
+
+      metadata = tools["ga4__properties_getMetadata"]
+      context = context(tokens: ["stale", "fresh"], keys: %{"PROJECT" => "p"})
+
+      assert metadata.run.(%{"name" => "properties/1/metadata"}, context) ==
+               {:ok, %{"dimensions" => []}}
+
+      assert_received {:refused, "google"}
+    end
+
+    test "waits for a sign-in when the token is refused again, or there's none", %{
+      tools: tools,
+      test: test
+    } do
+      Req.Test.stub(test, &Plug.Conn.send_resp(&1, 401, "{}"))
+      metadata = tools["ga4__properties_getMetadata"]
+
+      assert {:park, %Authorization{credential: "google", url: "https://accounts.test/sign-in"}} =
+               metadata.run.(
+                 %{"name" => "properties/1/metadata"},
+                 context(tokens: ["stale"], keys: %{"PROJECT" => "p"})
+               )
+
+      assert {:park, %Authorization{}} =
+               metadata.run.(%{}, context(tokens: [], keys: %{"PROJECT" => "p"}))
+    end
+
+    test "answers a refusal the second time with its status", %{tools: tools, test: test} do
+      Req.Test.stub(
+        test,
+        &Req.Test.json(Plug.Conn.put_status(&1, 401), %{"message" => "Bad token"})
+      )
+
+      metadata = tools["ga4__properties_getMetadata"]
+      context = context(tokens: ["one", "two"], keys: %{"PROJECT" => "p"})
+
+      assert metadata.run.(%{"name" => "n"}, context) == {:error, "ga4 answered 401: Bad token"}
+    end
+
+    test "answers the API's message for other refusals", %{tools: tools, test: test} do
+      context = context(keys: %{"PROJECT" => "p"})
+      metadata = tools["ga4__properties_getMetadata"]
+
+      Req.Test.stub(test, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(
+          403,
+          ~s({"error": {"code": 403, "message": "No access to property 1."}})
+        )
+      end)
+
+      assert metadata.run.(%{"name" => "n"}, context) ==
+               {:error, "ga4 answered 403: No access to property 1."}
+
+      Req.Test.stub(test, &Plug.Conn.send_resp(&1, 400, "bad request"))
+      assert metadata.run.(%{"name" => "n"}, context) == {:error, "ga4 answered 400: bad request"}
+
+      Req.Test.stub(test, &Req.Test.json(Plug.Conn.put_status(&1, 404), ["nothing"]))
+
+      assert metadata.run.(%{"name" => "n"}, context) ==
+               {:error, ~s(ga4 answered 404: ["nothing"])}
+    end
+
+    test "raises so the runner retries a limit, a server error or no answer", %{
+      tools: tools,
+      test: test
+    } do
+      context = context(keys: %{"PROJECT" => "p"})
+      metadata = tools["ga4__properties_getMetadata"]
+
+      Req.Test.stub(test, &Plug.Conn.send_resp(&1, 429, ""))
+
+      assert_raise WardrikRest.Unavailable, "ga4 answered 429.", fn ->
+        metadata.run.(%{}, context)
+      end
+
+      Req.Test.stub(test, &Plug.Conn.send_resp(&1, 503, ""))
+
+      assert_raise WardrikRest.Unavailable, "ga4 answered 503.", fn ->
+        metadata.run.(%{}, context)
+      end
+
+      Req.Test.stub(test, &Req.Test.transport_error(&1, :timeout))
+
+      assert_raise WardrikRest.Unavailable, ~r/ga4 didn't answer/, fn ->
+        metadata.run.(%{}, context)
+      end
+    end
+
+    test "says why it can't sign in or read a key", %{tools: tools} do
+      metadata = tools["ga4__properties_getMetadata"]
+      broken = %{context() | keys: {__MODULE__.BrokenKeys, []}, credentials: nil}
+
+      assert metadata.run.(%{}, broken) ==
+               {:error, "ga4 can't sign in with google: No credentials to give google."}
+
+      no_key = %{context() | keys: {__MODULE__.BrokenKeys, []}}
+      assert metadata.run.(%{}, no_key) == {:error, "ga4 can't read its PROJECT key: :locked"}
+    end
+  end
+
+  defmodule BrokenKeys do
+    @behaviour WardrikCore.Keys
+    @impl true
+    def fetch(_request, _opts), do: {:error, :locked}
+  end
+end
