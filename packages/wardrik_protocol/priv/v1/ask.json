@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:ask",
+  "title": "A message to ask",
+  "description": "The message, as content or as parts, with an optional ID. If you send a message again with the same ID, it is ignored. This makes retries safe.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:defs#/$defs/part"
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "content"
+      ]
+    },
+    {
+      "required": [
+        "parts"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "content": "What's on fire?"
+    },
+    {
+      "id": "msg_01",
+      "parts": [
+        {
+          "type": "text",
+          "content": "What's on fire?"
+        }
+      ]
+    }
+  ]
+}

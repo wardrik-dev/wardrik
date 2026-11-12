@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:events.dropped",
+  "title": "wardrik.events.dropped",
+  "description": "Events a reader asked for were dropped from the agent's log before it read them; it reads on from the oldest the log still holds. Sent to that reader alone, and never written.",
+  "type": "object",
+  "properties": {
+    "after": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The sequence the reader had read through."
+    },
+    "oldest": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The oldest sequence the log still held."
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "after",
+    "oldest"
+  ]
+}

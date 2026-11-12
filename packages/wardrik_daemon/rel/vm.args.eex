@@ -1,0 +1,2 @@
+## Flags for the VM: https://www.erlang.org/doc/apps/erts/erl_cmd.html
+## The node's name, distribution, cookie and the address distribution listens on are set in env.sh.

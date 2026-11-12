@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:channel_request",
+  "title": "A chat app's request",
+  "description": "A request from a chat app. It holds the raw body and the headers, with lowercase header names. Over HTTP, the chat app sends its request directly. Wardrik builds this input from it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "headers"
+  ],
+  "properties": {
+    "body": {
+      "type": "string",
+      "description": "The raw request body."
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "The request headers, with lowercase names."
+    }
+  },
+  "examples": [
+    {
+      "body": "{\"type\":\"url_verification\",\"challenge\":\"3eZbrw1aBm2rZgRNFdxV2595E9CY3gmdALWMmHkvFXO7tYXAYM8P\"}",
+      "headers": {
+        "content-type": "application/json",
+        "x-slack-request-timestamp": "1531420618",
+        "x-slack-signature": "v0=a2114d57b48eac39b9ad189dd8316235a7b4a8d21a10bd27519666489c69b503"
+      }
+    }
+  ]
+}

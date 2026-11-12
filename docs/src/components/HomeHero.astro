@@ -1,0 +1,53 @@
+---
+import Hero from '@astrojs/starlight/components/Hero.astro';
+import { LinkButton } from '@astrojs/starlight/components';
+import TurnReplay from './TurnReplay.astro';
+import Wordmark from './Wordmark.astro';
+
+const isHome = Astro.url.pathname === '/';
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero || {};
+---
+
+{isHome ? (
+	<section class="home-hero" aria-labelledby="_top">
+		<div class="hero">
+			<div class="stack">
+				<div class="copy">
+					<p class="home-brand"><Wordmark /></p>
+					<h1 id="_top" data-page-title>{title.split(/<br\s*\/?>/i).map((line) => <span class="hero-headline-line" set:html={line} />)}</h1>
+					{tagline && <div class="tagline" set:html={tagline} />}
+				</div>
+				<div class="actions">
+					{actions.map(({ attrs: { class: className, ...attrs } = {}, icon, link: href, text, variant }) => (
+						<LinkButton {href} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+							{text}
+							{icon?.html && <Fragment set:html={icon.html} />}
+						</LinkButton>
+					))}
+				</div>
+			</div>
+			<div class="hero-html"><TurnReplay /></div>
+		</div>
+		<nav class="audience-grid home-audiences" aria-label="Explore Wardrik for your work">
+		<a href="/examples/enterprise/agents-for-every-team/"><span class="audience-label">Platform teams <span aria-hidden="true">↗</span></span><p>Let teams build agents within organization policies.</p></a>
+		<a href="/build/tool-workers/"><span class="audience-label">Developers <span aria-hidden="true">↗</span></span><p>Register your app’s functions as agent tools.</p></a>
+		<a href="/examples/enterprise/agents-for-every-team/"><span class="audience-label">Enterprise teams <span aria-hidden="true">↗</span></span><p>Control access, require approvals, and audit changes.</p></a>
+		<a href="/examples/you/home-lab/"><span class="audience-label">Individuals <span aria-hidden="true">↗</span></span><p>Watch your inbox, feeds, and home lab.</p></a>
+		</nav>
+	</section>
+) : <Hero />}
+
+<style>
+	.hero { display: grid; align-items: center; }
+	.stack, .copy { display: flex; flex-direction: column; }
+	.stack { gap: 1.75rem; min-width: 0; }
+	.copy { gap: 1.25rem; container-type: inline-size; }
+	.hero-html { min-width: 0; margin-inline: auto; }
+	h1 { margin: 0; color: var(--sl-color-white); }
+	.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem 2rem; }
+	@media (max-width: 52rem) {
+		.stack { text-align: center; }
+		.actions { justify-content: center; }
+	}
+</style>

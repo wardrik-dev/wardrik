@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:provider.added",
+  "title": "wardrik.provider.added",
+  "description": "Someone added an OAuth app for an owner's people to sign in with.",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "owner": {
+      "type": "string",
+      "description": "Whose people sign in with it, as your app names them."
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    },
+    "assumed_by": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/assumed_by"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "provider",
+    "owner"
+  ]
+}

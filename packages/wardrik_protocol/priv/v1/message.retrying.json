@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:message.retrying",
+  "title": "wardrik.message.retrying",
+  "description": "The model failed to answer, and is asked again after a wait.",
+  "type": "object",
+  "properties": {
+    "message": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/message_ref"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Which try after the first comes next."
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many tries after the first there may be."
+    },
+    "wait_ms": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
+    },
+    "error": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/error"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "message",
+    "attempt",
+    "attempts",
+    "wait_ms",
+    "error"
+  ]
+}

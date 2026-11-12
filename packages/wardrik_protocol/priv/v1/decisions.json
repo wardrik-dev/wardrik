@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:decisions",
+  "title": "Decisions",
+  "description": "Decisions for an agent's pending tool calls, applied together.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decisions"
+  ],
+  "properties": {
+    "decisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "decision"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ID of a pending tool call, from its interrupt."
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "description": "For an approval, a note sent to the agent."
+          },
+          "reason": {
+            "type": "string",
+            "description": "For a rejection, the reason sent to the agent."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "decisions": [
+        {
+          "id": "toolu_01",
+          "decision": "approve",
+          "note": "Only staging."
+        }
+      ]
+    },
+    {
+      "decisions": [
+        {
+          "id": "toolu_01",
+          "decision": "reject",
+          "reason": "Not this quarter."
+        },
+        {
+          "id": "toolu_02",
+          "decision": "approve"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:timeline",
+  "title": "A timeline",
+  "description": "What agent.timeline answers: the agent's conversation as a person reads it, oldest first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "items",
+    "cursor"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "text"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "user"
+              },
+              "text": {
+                "type": "string"
+              },
+              "sender": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "status",
+              "steps"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "run"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "completed",
+                  "failed",
+                  "cancelled",
+                  "waiting"
+                ]
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "type",
+                        "text",
+                        "live"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "thinking",
+                            "text"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean",
+                          "description": "Whether it's still streaming."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "type",
+                        "name",
+                        "status"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "tool"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "arguments": {},
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "running",
+                            "ok",
+                            "error",
+                            "denied"
+                          ]
+                        },
+                        "result": {},
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "type",
+                        "status",
+                        "tools"
+                      ],
+                      "description": "A task handed to a delegate. What it says and does is here, not in the run's answer.",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "subagent"
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "prompt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "running",
+                            "ok",
+                            "error"
+                          ]
+                        },
+                        "tools": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "How many tool calls it made."
+                        },
+                        "answer": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cost_micro_usd": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "started_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "finished_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "interrupts": {
+                "type": "array",
+                "items": {
+                  "$ref": "urn:wardrik:schema:v1:defs#/$defs/interrupt"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "cursor": {
+      "type": "string",
+      "description": "Where the log stood, to follow it from."
+    }
+  }
+}

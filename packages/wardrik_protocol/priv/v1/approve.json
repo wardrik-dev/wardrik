@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:approve",
+  "title": "An approval",
+  "description": "Approves the call as the model requested it, with an optional note sent to the agent alongside the result.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "note": {
+      "type": "string"
+    }
+  },
+  "examples": [
+    {},
+    {
+      "note": "Only staging."
+    }
+  ]
+}

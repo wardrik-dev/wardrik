@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent_resolved",
+  "title": "Agent resolved",
+  "description": "What an agent gets from the app that runs it: who it works for, its policies, MCP servers, notify targets, channels and workspaces. The app decides this each time the agent runs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agent",
+    "servers",
+    "policy",
+    "policies",
+    "defaults",
+    "notify",
+    "channels",
+    "workspaces"
+  ],
+  "properties": {
+    "agent": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
+    },
+    "principal": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal",
+      "description": "Who the agent works for. Its credentials are theirs. Missing when it works for no one."
+    },
+    "servers": {
+      "type": "array",
+      "description": "The MCP servers the agent can use.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "server",
+          "tools"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name the agent's tools use for the server."
+          },
+          "server": {
+            "type": "string",
+            "description": "The server's name in the app."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The names of the tools the server offers now. Empty when the server is down or hasn't listed its tools yet."
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "The app's policies for the agent, in the same format as a policy file. Each tool call is checked against all of them."
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      },
+      "description": "Named policies the agent's definition can use, by name."
+    },
+    "defaults": {
+      "type": "object",
+      "description": "Settings the agent gets where its definition doesn't set them, such as model."
+    },
+    "notify": {
+      "type": "array",
+      "description": "The notify targets the agent can send to.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name the agent's definition uses for the target."
+          },
+          "target": {
+            "type": "string",
+            "description": "The target's name in the app. Missing when the app sends the notices itself."
+          }
+        }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "The workspace each channel posts the agent's notices in, by channel name."
+    },
+    "workspaces": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": [
+          "read",
+          "write"
+        ]
+      },
+      "description": "Other agents' workspaces the agent can mount, by agent ID."
+    }
+  },
+  "examples": [
+    {
+      "agent": "triage",
+      "principal": {
+        "id": "user_42"
+      },
+      "servers": [
+        {
+          "name": "github",
+          "server": "acme:github",
+          "tools": [
+            "github__search_issues",
+            "github__create_issue"
+          ]
+        }
+      ],
+      "policy": [
+        {
+          "deny": [
+            "shell/*"
+          ]
+        }
+      ],
+      "policies": {},
+      "defaults": {
+        "model": "anthropic:claude-haiku-4-5"
+      },
+      "notify": [
+        {
+          "name": "ops",
+          "target": "ops"
+        }
+      ],
+      "channels": {
+        "slack": "T0123"
+      },
+      "workspaces": {
+        "agt_runbooks": "read"
+      }
+    }
+  ]
+}

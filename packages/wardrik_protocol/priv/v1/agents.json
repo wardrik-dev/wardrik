@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agents",
+  "title": "Agents",
+  "description": "What agents.list answers: the agents the patterns cover, sorted by ID, and where to read on from.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agents"
+  ],
+  "properties": {
+    "agents": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:agent"
+      }
+    },
+    "next": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The cursor after these agents, to pass as after. null when none follow, or no limit was set."
+    }
+  }
+}

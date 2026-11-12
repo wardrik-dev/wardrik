@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:trigger_definition",
+  "title": "A trigger's definition",
+  "description": "A trigger, with a prompt or a prompt_file. agent.trigger_set and agent.trigger_remove return it with its name. A scheduled trigger has every. Add timezone for cron expressions outside UTC. A feed trigger has feed, with one or more RSS or Atom feeds. A webhook trigger has webhook instead of every. Set its secret as ${NAME} and verify to shared or standard. It receives requests at POST /v1/hooks/{agent}/{trigger}. The defaults are overlap settle (queue for webhooks), missed run_once and jitter 0.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The trigger name, taken from the path."
+    },
+    "every": {
+      "type": "string",
+      "description": "A cron expression, or an interval such as 30m."
+    },
+    "timezone": {
+      "type": "string",
+      "description": "The IANA time zone for a cron expression in every, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval."
+    },
+    "prompt": {
+      "type": "string",
+      "description": "The prompt sent to the agent on each run."
+    },
+    "prompt_file": {
+      "type": "string",
+      "description": "Use instead of prompt. A file in the agent's workspace. Each run asks the agent to read the file and follow its instructions. The agent's tools must include files."
+    },
+    "overlap": {
+      "type": "string",
+      "enum": [
+        "skip",
+        "queue",
+        "settle"
+      ],
+      "description": "What happens if the agent is busy when the trigger fires. skip skips the run. queue runs it after the current turn. settle cancels a turn that is waiting for an approval and runs. If the turn isn't waiting for an approval, settle skips the run."
+    },
+    "missed": {
+      "type": "string",
+      "enum": [
+        "run_once",
+        "skip"
+      ],
+      "description": "What to do about runs missed while the server was down."
+    },
+    "jitter": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "A random delay of up to this many seconds before each run."
+    },
+    "feed": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "An RSS or Atom feed URL, or a list of them. The agent runs only when a feed has new entries, which are added below the prompt. The first check records the current entries without running the agent."
+    },
+    "webhook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ],
+      "properties": {
+        "secret": {
+          "type": "string",
+          "description": "The shared secret, as a reference, for example ${NAME}."
+        },
+        "verify": {
+          "type": "string",
+          "enum": [
+            "shared",
+            "standard"
+          ],
+          "description": "How requests are verified. With shared, the request sends the secret as a bearer token or as the last path segment of the URL. With standard, the request is signed as the Standard Webhooks spec describes. Defaults to shared."
+        }
+      },
+      "description": "Use instead of every. An external service sends requests to the trigger. Each request runs the agent once."
+    }
+  },
+  "examples": [
+    {
+      "every": "*/30 * * * *",
+      "prompt": "Check the queue.",
+      "overlap": "skip"
+    },
+    {
+      "every": "0 18 * * 1-5",
+      "timezone": "Europe/Berlin",
+      "prompt": "Write up what happened today."
+    },
+    {
+      "webhook": {
+        "secret": "${ISSUES_HOOK_SECRET}"
+      },
+      "prompt": "An event is below."
+    }
+  ]
+}

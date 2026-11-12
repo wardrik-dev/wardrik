@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent_snapshot",
+  "title": "An agent's snapshot",
+  "description": "What agent.read answers: what the agent or conversation is doing now, and where its log stands. Read and follow the log after cursor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agent",
+    "status",
+    "pending",
+    "activity",
+    "interrupts",
+    "cursor"
+  ],
+  "properties": {
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/agent_id"
+        }
+      }
+    },
+    "conversation": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "running",
+        "parked",
+        "asleep"
+      ],
+      "description": "Whether it waits for a message, answers one, waits on a person, or sleeps until something asks it."
+    },
+    "node": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The node it runs on, by its name; null while it sleeps."
+    },
+    "pending": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "activity": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/activity"
+    },
+    "interrupts": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:defs#/$defs/interrupt"
+      },
+      "description": "The calls it waits on a person for."
+    },
+    "cursor": {
+      "type": "string",
+      "description": "Where its log stands, as events.list and agent.events take it."
+    },
+    "next_run": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "When the next of its triggers on a clock runs; null where none does."
+    },
+    "spent_today": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/spent"
+    }
+  },
+  "examples": [
+    {
+      "agent": {
+        "id": "agt_01JF8X5RQ2"
+      },
+      "status": "parked",
+      "pending": 0,
+      "activity": {
+        "doing": [
+          {
+            "type": "wardrik.run.interrupted",
+            "interrupts": [
+              {
+                "id": "toolu_01",
+                "reason": "tool_approval",
+                "message": "Open an issue?",
+                "tool_call_id": "toolu_01"
+              }
+            ]
+          }
+        ],
+        "since": "2026-10-22T09:00:00.000000Z",
+        "pending": 0
+      },
+      "interrupts": [
+        {
+          "id": "toolu_01",
+          "reason": "tool_approval",
+          "message": "Open an issue?",
+          "tool_call_id": "toolu_01"
+        }
+      ],
+      "cursor": "W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ"
+    }
+  ]
+}

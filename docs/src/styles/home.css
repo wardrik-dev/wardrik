@@ -1,0 +1,224 @@
+/* Homepage composition: a quiet grid, clear hierarchy, and colour for state. */
+:root { --home-link-color: color-mix(in srgb, var(--sl-color-text-accent) 80%, var(--sl-color-gray-2)); }
+
+.content-panel:has(.home-hero) { overflow-x: clip; }
+
+.home-hero {
+	position: relative;
+	isolation: isolate;
+	display: flex;
+	flex-direction: column;
+	padding-block-start: clamp(3rem, 6vw, 5.5rem);
+}
+
+/* On a wide screen the hero fills the first screen, the content panel's top padding aside: the
+ * headline and the replay centred, the audience links at its foot, and the next section below.
+ * On a taller screen than a 1080p one it stops at 64rem, and the next section shows beneath it. */
+@media (min-width: 52rem) {
+	.home-hero { min-height: min(calc(100svh - var(--sl-nav-height) - 1.5rem), 64rem); box-sizing: border-box; }
+	.home-hero .hero { flex: 1; align-content: center; }
+}
+
+.home-hero::before,
+.home-hero::after {
+	content: '';
+	position: absolute;
+	z-index: -1;
+	pointer-events: none;
+}
+
+.home-hero::before {
+	top: -2rem;
+	bottom: 0;
+	left: 50%;
+	width: 100vw;
+	transform: translateX(-50%);
+	background: radial-gradient(ellipse at 75% 35%, rgb(251 138 75 / 0.09), transparent 58%);
+}
+
+.home-hero::after {
+	inset: 0 0 10% 36%;
+	background-image: linear-gradient(var(--sl-color-gray-5) 1px, transparent 1px), linear-gradient(90deg, var(--sl-color-gray-5) 1px, transparent 1px);
+	background-size: 64px 64px;
+	mask-image: radial-gradient(ellipse, #0006, transparent 72%);
+}
+
+.home-hero .hero {
+	grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+	gap: clamp(2.5rem, 5vw, 5rem);
+	padding: 0;
+}
+
+.home-hero .hero h1 {
+	font-size: clamp(2rem, 4.7vw, 4.625rem);
+	font-size: clamp(2rem, 12.5cqi, 4.625rem);
+	font-weight: 500;
+	line-height: 1.06;
+	letter-spacing: -0.055em;
+	text-wrap: wrap;
+}
+
+.hero-headline-line { display: block; white-space: nowrap; }
+
+.home-hero .tagline {
+	max-width: 43ch;
+	color: var(--sl-color-gray-2);
+	font-size: 1.0625rem;
+	line-height: 1.75;
+	text-wrap: pretty;
+}
+
+/* The wordmark, as the hero's eyebrow. */
+.home-brand { margin: 0; color: var(--sl-color-white); font-size: 1.75rem; font-weight: 600; letter-spacing: -0.035em; line-height: 1; }
+
+.home-hero .hero > .hero-html { width: 100%; max-width: 30rem; }
+
+.home-hero .sl-link-button,
+.home-section .sl-link-button { border-radius: 7px; padding: 0.7rem 1.125rem; font-size: 0.875rem; }
+.home-hero .sl-link-button.minimal { padding-inline: 0; color: var(--sl-color-gray-2); }
+.home-hero .sl-link-button:hover,
+.home-section .sl-link-button:hover { color: var(--sl-color-text-accent); }
+.home-hero .sl-link-button.primary:hover,
+.home-section .sl-link-button.primary:hover { color: var(--sl-color-black); }
+
+/* Audience links form one navigation row at the hero's foot, rather than four separate cards. */
+.home-audiences {
+	margin: 1.5rem 0 0;
+	padding-block: 1.75rem 2.5rem;
+	border-top: 1px solid var(--sl-color-gray-5);
+}
+.audience-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2rem; }
+.audience-grid > a { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; margin: 0; color: var(--sl-color-text); text-decoration: none; }
+.audience-label { display: flex; justify-content: space-between; gap: 0.5rem; color: var(--sl-color-white); font-size: 0.8125rem; font-weight: 500; }
+.audience-label > span { color: var(--sl-color-gray-4); font-weight: 400; transition: color 150ms; }
+.audience-grid p { margin: 0; color: var(--sl-color-gray-3); font-size: 0.8125rem; text-wrap: pretty; }
+.audience-grid > a:hover .audience-label,
+.audience-grid > a:hover .audience-label > span { color: var(--sl-color-text-accent); }
+
+/* Alternating surfaces retain the page's natural reading order. */
+.sl-markdown-content .home-section { margin-top: 0; }
+.sl-markdown-content .home-section .sl-heading-wrapper { display: contents; }
+.sl-markdown-content .home-section .sl-anchor-link { display: none; }
+.home-section { padding-block: clamp(4rem, 7vw, 6.5rem); }
+.home-tint { background: var(--sl-color-gray-6); box-shadow: 0 0 0 100vmax var(--sl-color-gray-6); clip-path: inset(0 -100vmax); }
+.sl-markdown-content .home-section h2 { display: block; max-width: 26ch; margin: 0 0 1.25rem; font-size: clamp(1.875rem, 2.8vw, 2.625rem); font-weight: 500; letter-spacing: -0.04em; line-height: 1.15; text-wrap: balance; }
+.sl-markdown-content .home-feature h2 { font-size: clamp(2rem, 3.4vw, 3rem); }
+.sl-markdown-content .home-lead { max-width: 42rem; margin: 0 0 2.5rem; color: var(--sl-color-gray-2); font-size: 1.0625rem; line-height: 1.7; text-wrap: pretty; }
+.home-section > p { text-wrap: pretty; }
+.sl-markdown-content .home-section a:not(.sl-link-button, [role='tab'], .sl-anchor-link, .also-list a) { color: var(--home-link-color); text-underline-offset: 4px; text-decoration-color: color-mix(in srgb, var(--home-link-color) 40%, transparent); }
+.sl-markdown-content .home-section a:not(.sl-link-button, [role='tab'], .sl-anchor-link, .also-list a):hover { color: var(--sl-color-text-accent); text-decoration-color: currentColor; }
+.home-section > p:last-child { color: var(--sl-color-gray-3); font-size: 0.875rem; }
+.sl-markdown-content .home-section > :last-child { margin-bottom: 0; }
+
+/* Three pillars: a small picture of each claim, then the claim. */
+.pillars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; margin-top: 3rem; }
+.pillar { display: flex; flex-direction: column; min-width: 0; padding: 1.75rem; border: 1px solid var(--sl-color-gray-5); border-radius: 14px; background: var(--sl-color-black); }
+.pillar p { margin: 0; }
+.pillar h3 { margin: 1.75rem 0 0.5rem; color: var(--sl-color-white); font-size: 1.25rem; font-weight: 500; letter-spacing: -0.02em; line-height: 1.4; }
+.pillar > p { color: var(--sl-color-gray-2); font-size: 0.9375rem; line-height: 1.7; text-wrap: pretty; }
+.pillar > .pillar-links { margin-top: auto; padding-top: 1.25rem; font-size: 0.875rem; }
+.pillar-art { display: flex; flex-direction: column; justify-content: center; gap: 0.5rem; height: 8.25rem; color: var(--sl-color-gray-2); font-size: 0.75rem; }
+.pillar-art code { font-family: var(--sl-font-mono); font-size: 0.75rem; }
+.pillar-call { display: flex; align-items: center; gap: 0.625rem; }
+.pillar-call code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pillar-meter { display: flex; justify-content: space-between; color: var(--sl-color-white); }
+.pillar-meter > span > span,
+.pillar-event > span { color: var(--sl-color-gray-3); }
+.pillar-art .meter { height: 6px; margin-bottom: 0.5rem; border-radius: 3px; background: var(--sl-color-gray-5); }
+.meter > span { display: block; width: 12%; height: 100%; border-radius: inherit; background: var(--sl-color-gray-2); }
+.pillar-event { display: flex; gap: 0.625rem; font-family: var(--sl-font-mono); }
+/* A turn moving off a lost node: box3 is gone, box2 carries on. */
+.pillar-art.failover { flex-direction: row; align-items: flex-start; justify-content: center; gap: 0.875rem; padding-top: 1.25rem; box-sizing: border-box; color: var(--sl-color-gray-3); }
+.failover svg { flex-shrink: 0; }
+.node { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; font-family: var(--sl-font-mono); font-size: 0.6875rem; }
+.node > span { display: grid; place-items: center; width: 4rem; height: 4rem; box-sizing: border-box; border: 1px solid var(--sl-color-gray-5); border-radius: 12px; }
+.node > span::after { content: ''; width: 0.625rem; height: 0.625rem; border-radius: 50%; }
+.node-lost { color: var(--sl-color-red); }
+.node-lost > span { border: 1px dashed color-mix(in srgb, var(--sl-color-red) 45%, transparent); }
+.node-lost > span::after { background: var(--sl-color-red); opacity: 0.5; }
+.node-live { color: var(--sl-color-green); }
+.node-live > span { border-color: color-mix(in srgb, var(--sl-color-green) 35%, transparent); background: var(--sl-color-green-low); }
+.node-live > span::after { background: var(--sl-color-green); }
+
+/* Each rule names the call one way; the table says which. */
+.decisions { margin-block: 2.5rem 1.5rem; overflow: hidden; border: 1px solid var(--sl-color-gray-5); border-radius: 10px; background: var(--sl-color-gray-6); }
+.decisions-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 8.5rem; gap: 1.5rem; align-items: center; margin: 0; padding: 1.125rem 1.5rem; border-top: 1px solid var(--sl-color-gray-5); }
+.decisions-head { border-top: 0; color: var(--sl-color-gray-3); font-size: 0.6875rem; font-weight: 400; }
+.sl-markdown-content .decisions code { justify-self: start; padding: 0; border: 0; background: none; font-size: 0.75rem; overflow-wrap: anywhere; }
+.rule-by { display: block; margin-top: 0.25rem; color: var(--sl-color-gray-3); font-size: 0.6875rem; }
+.outcome { justify-self: start; display: inline-flex; align-items: center; gap: 0.4375rem; padding: 0.25rem 0.625rem; border-radius: 5px; font-size: 0.75rem; font-weight: 500; white-space: nowrap; }
+.outcome::before { content: ''; width: 0.3125rem; height: 0.3125rem; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+.outcome-runs { background: var(--sl-color-green-low); color: var(--sl-color-green); }
+.outcome-waits { background: var(--sl-color-accent-low); color: var(--sl-color-text-accent); }
+.outcome-refused { background: var(--sl-color-red-low); color: var(--sl-color-red); }
+
+/* Words beside a picture: approvals, then the tools in your app. */
+.approval-layout,
+.tools-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3rem 4.5rem; align-items: center; }
+.sl-markdown-content :is(.approval-layout, .tools-layout) > * { min-width: 0; margin: 0; }
+.sl-markdown-content .approval-layout > div > p:last-child { margin: 0; font-size: 0.875rem; }
+.sl-markdown-content .tools-layout { margin-block: 0 2rem; }
+.tool-flow { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.flow-step { padding: 1.125rem 1.25rem; border: 1px solid var(--sl-color-gray-5); border-radius: 12px; background: var(--sl-color-gray-6); }
+.flow-step p { margin: 0; }
+.flow-step code { font-family: var(--sl-font-mono); font-size: 0.8125rem; color: var(--sl-color-white); overflow-wrap: anywhere; }
+.flow-step .flow-label { display: flex; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem; color: var(--sl-color-gray-3); font-size: 0.75rem; }
+.flow-label code { color: var(--sl-color-gray-3); font-size: 0.75rem; }
+.flow-decide { border-color: color-mix(in srgb, var(--sl-color-accent) 35%, var(--sl-color-gray-5)); }
+.flow-outcome { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; color: var(--sl-color-green); font-size: 0.8125rem; }
+.flow-run { border-color: color-mix(in srgb, var(--sl-color-green) 35%, var(--sl-color-gray-5)); }
+.flow-step .flow-key { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding: 0.5rem 0.625rem; border-radius: 6px; background: var(--sl-color-green-low); color: var(--sl-color-gray-2); font-size: 0.75rem; }
+.flow-key svg { color: var(--sl-color-green); }
+.flow-key code { color: var(--sl-color-green); font-size: 0.75rem; }
+.flow-link { display: flex; align-items: center; justify-content: center; gap: 0.75rem; min-height: 1.75rem; color: var(--sl-color-gray-3); font-size: 0.75rem; }
+.flow-link::before { content: ''; align-self: stretch; width: 1px; background: var(--sl-color-gray-4); }
+.flow-link:has(span) { min-height: 2.75rem; }
+
+/* Everything else, one line each. */
+.also-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 2rem; margin: 2rem 0 0; padding: 0; list-style: none; }
+.also-list li { min-width: 0; padding-block: 1rem; border-top: 1px solid var(--sl-color-gray-5); }
+.also-list a { color: var(--sl-color-white); font-size: 0.9375rem; font-weight: 500; text-decoration: none; }
+.also-list a:hover { color: var(--sl-color-text-accent); }
+.also-list p { margin: 0.25rem 0 0; color: var(--sl-color-gray-3); font-size: 0.875rem; line-height: 1.6; text-wrap: pretty; }
+
+/* The final invitation is a composed section, followed by a quiet dark footer. */
+.install-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2.5rem 4rem; align-items: center; }
+.install-layout > * { min-width: 0; margin: 0; }
+.sl-markdown-content .home-install h2 { max-width: 17ch; }
+.home-install .home-lead { margin-bottom: 1.75rem; }
+.home-actions { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; margin-top: 2rem; }
+.install-command > p { color: var(--sl-color-gray-3); font-size: 0.75rem; }
+.home-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem 1.5rem; padding-block: 2.25rem; color: var(--sl-color-gray-3); font-size: 0.75rem; }
+.home-footer-brand { color: var(--sl-color-white); font-size: 1rem; font-weight: 600; letter-spacing: -0.03em; }
+.home-footer-rik { margin-inline-start: 0.5rem; padding-inline-start: 0.75rem; border-inline-start: 1px solid var(--sl-color-gray-5); font-size: 1rem; }
+.home-footer nav { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; margin-inline-start: auto; }
+.sl-markdown-content .home-footer a { color: var(--sl-color-gray-3); text-decoration: none; }
+.sl-markdown-content .home-footer a:hover { color: var(--sl-color-white); }
+
+@media (max-width: 65rem) {
+	.audience-grid,
+	.also-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.pillars { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 52rem) {
+	.home-hero::after { inset-inline: 0; }
+	.home-hero .hero { grid-template-columns: minmax(0, 1fr); gap: 3rem; }
+	.home-hero .hero > .hero-html { order: 2; }
+	.home-hero .hero h1 { font-size: clamp(2rem, 12.5cqi, 4rem); }
+	.home-hero .tagline { margin-inline: auto; }
+	.approval-layout, .tools-layout, .install-layout { grid-template-columns: minmax(0, 1fr); }
+	.decisions-head { display: none; }
+	.decisions-row { grid-template-columns: minmax(0, 1fr); gap: 0.625rem; padding: 1.25rem; }
+	.decisions-row:nth-child(2) { border-top: 0; }
+	.home-hero .hero { padding-bottom: 0.5rem; }
+}
+
+@media (max-width: 30rem) {
+	.home-hero { padding-top: 2.5rem; }
+	.audience-grid { gap: 1.5rem 1.25rem; }
+	.also-list { grid-template-columns: minmax(0, 1fr); }
+	.home-section { padding-block: 3.5rem; }
+	.home-footer { align-items: start; flex-direction: column; }
+	.home-footer nav { margin-inline-start: 0; }
+}

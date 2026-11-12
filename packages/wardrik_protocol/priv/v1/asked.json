@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:asked",
+  "title": "A message asked",
+  "description": "What agent.ask answers: the message by its id, with the cursor where the agent's log stood. The turn that answers it is written after it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "message"
+  ],
+  "properties": {
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "cursor"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "message": {
+        "id": "msg_01",
+        "cursor": "W1siYWd0XzAxSkY4WDVSUTIiLG51bGwsNDFdXQ"
+      }
+    }
+  ]
+}

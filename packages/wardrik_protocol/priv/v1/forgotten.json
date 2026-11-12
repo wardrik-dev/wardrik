@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:forgotten",
+  "title": "Agents forgotten",
+  "description": "What agents.forget answers: the IDs it forgot, those kept with why, and those it couldn't forget with why.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "forgotten",
+    "kept",
+    "failed"
+  ],
+  "properties": {
+    "forgotten": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "kept": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "why"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "failed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "why"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "forgotten": [
+        "agt_01JF8X5RQ2"
+      ],
+      "kept": [],
+      "failed": []
+    }
+  ]
+}

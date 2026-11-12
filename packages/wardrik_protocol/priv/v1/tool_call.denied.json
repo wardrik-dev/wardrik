@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:tool_call.denied",
+  "title": "wardrik.tool_call.denied",
+  "description": "A tool call was refused without running.",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/tool"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "decided": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/decided"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "tool",
+    "reason",
+    "decided"
+  ]
+}

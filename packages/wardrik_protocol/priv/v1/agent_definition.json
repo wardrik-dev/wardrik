@@ -1,0 +1,452 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent_definition",
+  "title": "An agent's definition",
+  "description": "An agent's definition. It holds the agent's model, instructions, tools and other settings. agent.definition returns a definition in the same format.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "display_name": {
+      "type": "string",
+      "description": "The name shown to people. Defaults to the agent's name."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the agent is for, in words a person reads."
+    },
+    "instructions": {
+      "type": "string",
+      "description": "The system prompt."
+    },
+    "model": {
+      "type": "string",
+      "description": "The model, as provider:model."
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The tools the agent can call. Each entry is one of these: the name of a built-in tool. files, for the file tools. server/*, for all tools of the MCP server named server. workers/*, for all tools from connected tool workers. self/*, for operations on the agent itself. agents/*, for operations on other agents. *, for all tools."
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shared": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "The ID of the agent whose workspace is mounted."
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "agent"
+                ],
+                "properties": {
+                  "agent": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "read",
+                      "write"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "description": "Other agents' workspaces to mount. Each key is the name of the mount, at shared/<name>/. Each value is an agent ID, or an agent ID and a mode. The resolver decides whether the agent can read or write. Set mode to read to mount a writable workspace as read-only."
+        }
+      },
+      "description": "Other agents' workspaces to mount. Only workspaces the resolver shares are mounted, and the agent's tools must include files."
+    },
+    "context": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 262144
+            }
+          }
+        }
+      ],
+      "description": "Files to add to each turn. The files can come from the agent's workspace or a shared workspace. You can list up to 20 files. Their total size is limited to 16 KB. Set max_bytes to change the limit. The agent's tools must include files."
+    },
+    "policy": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "The name of a policy the server has."
+        },
+        {
+          "type": "object",
+          "description": "Policy rules, in the same format as a policy file."
+        }
+      ]
+    },
+    "timeout": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The maximum length of a turn, in seconds."
+    },
+    "idle_timeout": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "const": "infinity"
+        }
+      ],
+      "description": "Seconds without work before the agent sleeps. It wakes on the next message or trigger. Defaults to the server's setting."
+    },
+    "digest": {
+      "type": "boolean",
+      "description": "Whether the agent writes a digest of each conversation to digests/ in its workspace before it sleeps. A later conversation finds it with search_files. It needs the files tool, and counts towards the agent's budget. Defaults to true."
+    },
+    "max_iterations": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "const": "infinity"
+        }
+      ],
+      "description": "The maximum number of tool-call rounds in one turn."
+    },
+    "retries": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Retries for a failed model call. Defaults to 6. 0 disables retries."
+        },
+        "max_wait": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The maximum wait between retries, in seconds. Defaults to 60."
+        },
+        "on_exhausted": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "fail"
+          ],
+          "description": "What happens when all retries fail. ask asks a person whether to retry. fail fails the turn. Defaults to ask."
+        }
+      },
+      "description": "How a turn retries a failed model call. Each retry waits a random delay of up to one second, doubling each time, or the provider's Retry-After, capped at max_wait. 4xx responses other than 408, 425 and 429 are not retried. The server's defaults apply if this is not set."
+    },
+    "model_options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The sampling temperature."
+        },
+        "top_p": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Top-p sampling. The model samples from the most likely tokens whose probabilities add up to this value."
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The maximum number of tokens in one model response."
+        },
+        "reasoning_effort": {
+          "type": "string",
+          "enum": [
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "default"
+          ],
+          "description": "The reasoning effort for models that support it."
+        },
+        "receive_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Seconds a model call waits for a response. Defaults to 300."
+        },
+        "stream_idle_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Seconds a model's stream may be idle. Defaults to 300."
+        },
+        "total_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The maximum length of one model call, in seconds. Defaults to the turn's timeout."
+        }
+      },
+      "description": "Options for the agent's model calls. Only these keys are accepted. The server sets all other model options."
+    },
+    "compaction": {
+      "oneOf": [
+        {
+          "const": false
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "at": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "keep": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "window": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ],
+      "description": "When the agent summarizes older history. The values are fractions of the model's context window. Set to false to turn off summarizing."
+    },
+    "triggers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The trigger name. Defaults to trigger-1, trigger-2 and so on, by position in the list."
+          },
+          "every": {
+            "type": "string",
+            "description": "A cron expression, or an interval such as 30m."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The IANA time zone for a cron expression in every, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "The prompt sent to the agent on each run."
+          },
+          "prompt_file": {
+            "type": "string",
+            "description": "Use instead of prompt. A file in the agent's workspace. Each run asks the agent to read the file and follow its instructions. The agent's tools must include files."
+          },
+          "overlap": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "queue",
+              "settle"
+            ],
+            "description": "What happens if the agent is busy when the trigger fires. skip skips the run. queue runs it after the current turn. settle cancels a turn that is waiting for an approval and runs. If the turn isn't waiting for an approval, settle skips the run."
+          },
+          "missed": {
+            "type": "string",
+            "enum": [
+              "run_once",
+              "skip"
+            ],
+            "description": "What to do about runs missed while the server was down."
+          },
+          "jitter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "A random delay of up to this many seconds before each run."
+          },
+          "feed": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "description": "An RSS or Atom feed URL, or a list of them. The agent runs only when a feed has new entries, which are added below the prompt. The first check records the current entries without running the agent."
+          },
+          "webhook": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "secret"
+            ],
+            "properties": {
+              "secret": {
+                "type": "string",
+                "description": "The shared secret, as a reference, for example ${NAME}."
+              },
+              "verify": {
+                "type": "string",
+                "enum": [
+                  "shared",
+                  "standard"
+                ],
+                "description": "How requests are verified. With shared, the request sends the secret as a bearer token or as the last path segment of the URL. With standard, the request is signed as the Standard Webhooks spec describes. Defaults to shared."
+              }
+            },
+            "description": "Use instead of every. An external service sends requests to the trigger. Each request runs the agent once."
+          }
+        }
+      },
+      "description": "Triggers that run the agent. Each trigger has a prompt or a prompt_file. Defining the agent again replaces all its triggers. To change one trigger, use PUT or DELETE /v1/agents/{key}/triggers/{trigger}. A scheduled trigger has every and an optional timezone. A feed trigger has feed. A webhook trigger has webhook, with its secret and verification method. It receives requests at POST /v1/hooks/{key}/{trigger}."
+    },
+    "notify": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "to"
+          ],
+          "properties": {
+            "to": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "description": "Notification targets defined by the resolver, or chat rooms such as slack:#updates."
+            },
+            "on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "parked",
+                  "failed",
+                  "finished"
+                ]
+              },
+              "description": "The events that send a notification. The options are parked, failed and finished. Defaults to parked and failed."
+            }
+          }
+        }
+      ],
+      "description": "Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, or an object with to and on. Chat rooms are in the workspace that the resolver sets for the channel."
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Names of the chat channels the agent can reply in."
+    }
+  },
+  "examples": [
+    {
+      "display_name": "Triage",
+      "description": "Watches the incident queue.",
+      "instructions": "You watch the incident queue.",
+      "model": "anthropic:claude-sonnet-5",
+      "tools": [
+        "web_search",
+        "linear/*",
+        "files"
+      ],
+      "workspace": {
+        "shared": {
+          "team": "agt_runbooks"
+        }
+      },
+      "context": [
+        "MEMORY.md",
+        "shared/team/CONVENTIONS.md"
+      ],
+      "policy": {
+        "ask": [
+          "linear/*"
+        ]
+      },
+      "timeout": 600,
+      "idle_timeout": 900,
+      "digest": true,
+      "max_iterations": 12,
+      "retries": {
+        "attempts": 4,
+        "max_wait": 30,
+        "on_exhausted": "fail"
+      },
+      "compaction": {
+        "at": 0.6,
+        "keep": 0.25
+      },
+      "triggers": [
+        {
+          "name": "sweep",
+          "every": "*/30 * * * *",
+          "prompt": "Check the incident queue."
+        }
+      ],
+      "notify": {
+        "to": [
+          "ops"
+        ],
+        "on": [
+          "parked",
+          "failed",
+          "finished"
+        ]
+      },
+      "channels": [
+        "slack"
+      ]
+    }
+  ]
+}

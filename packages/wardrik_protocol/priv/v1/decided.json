@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:decided",
+  "title": "Calls decided",
+  "description": "What agent.decide answers: each call by its id, approved or rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decisions"
+  ],
+  "properties": {
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "decision"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "decisions": [
+        {
+          "id": "toolu_01",
+          "decision": "approved"
+        }
+      ]
+    }
+  ]
+}

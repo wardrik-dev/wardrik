@@ -2,81 +2,37 @@
 
 Runs agents with tool policies, approval checks, spending limits, and event logs.
 
-## Start in IEx
+- [Docs](https://docs.wardrik.dev)
+- [Install the daemon](packages/wardrik_daemon#readme)
 
-Set `ANTHROPIC_API_KEY` before starting `iex`.
+## Layout
 
-```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.10"}])
+| Directory | What it holds |
+| --- | --- |
+| `packages/` | Wardrik itself: `wardrik`, `wardrik_core`, `wardrik_protocol`, `wardrik_daemon`, `wardrik_testing`, and the packages `wardrik` builds on. |
+| `extensions/` | Packages that add to Wardrik: channels, tools, harnesses, the gateway, the web dashboard. |
+| `sdk/typescript` | The TypeScript SDK, `@wardrik/sdk` on npm. |
+| `docs/` | The source of [docs.wardrik.dev](https://docs.wardrik.dev). |
 
-defmodule MyApp.AllowAll do
-  @behaviour Wardrik.Authorizer
-  @impl true
-  def authorize(_request, _opts), do: :ok
-end
+Each Elixir package is its own Hex package, with its own version and CHANGELOG.
 
-defmodule MyApp.Agents do
-  @behaviour Wardrik.Resolver
-  @impl true
-  def resolve(_request, _opts) do
-    {:ok, %Wardrik.Resolved{principal: Wardrik.principal("maria")}}
-  end
-end
+## Develop
 
-defmodule MyApp.AgentRuntime do
-  use Wardrik, otp_app: :my_app
-end
+Each package takes the others from this repository. Run the gate in the package you change:
 
-{:ok, _runtime} =
-  MyApp.AgentRuntime.start_link(
-    authorizer: {MyApp.AllowAll, []},
-    resolver: {MyApp.Agents, []}
-  )
-
-scope = MyApp.AgentRuntime.as("maria")
-
-{:ok, agent} =
-  Wardrik.Agent.define(scope, "agt_assistant",
-    model: "anthropic:claude-haiku-4-5",
-    instructions: "Summarize the user's notes.",
-    policy: [budget: [usd: 1.00, per: :day]]
-  )
-
-Wardrik.Agent.reply(scope, agent, "Summarize this note: The release is scheduled for Friday.")
+```sh
+cd packages/wardrik
+mix deps.get
+mix precommit
 ```
 
-- The example authorizer permits every operation. Implement access checks for your app.
-- The example stores data in memory. See [Run Wardrik](pages/running-wardrik.md) for persistent storage and application configuration.
-- See `Wardrik.start_link/1` for runtime options.
+`WARDRIK_HEX=1` takes them from Hex instead, as publishing does.
 
-## Guides
+## Release
 
-- [Run Wardrik](pages/running-wardrik.md)
-- [Send messages](pages/talking.md)
-- [Define agents](pages/definitions.md)
-- [Configure triggers](pages/triggers.md)
-- [Apply policies](pages/policies.md)
-- [Authorize operations](pages/access.md)
-- [Call operations](pages/operations.md)
-- [Approve tool calls](pages/approvals.md)
-- [Connect MCP servers](pages/servers.md)
-- [Store credentials and connect accounts](pages/credentials.md)
-- [Read events and audit records](pages/events.md)
-- [Serve HTTP requests](https://hexdocs.pm/wardrik_http)
-
-## Livebook examples
-
-Start with [Wardrik in ten minutes](notebooks/tour-demo.livemd).
-
-- [Tool policies](notebooks/policies-demo.livemd)
-- [Tool call approvals](notebooks/approvals-demo.livemd)
-- [Agent tools](notebooks/tools-demo.livemd)
-- [Spending limits](notebooks/budgets-demo.livemd)
-- [Crash recovery](notebooks/durability-demo.livemd)
-- [Scheduled runs and webhooks](notebooks/triggers-demo.livemd)
-- [Event logs](notebooks/events-demo.livemd)
-- [Operation authorization](notebooks/access-demo.livemd)
+`scripts/release.sh` publishes each package whose version isn't on Hex or npm yet, then tags it
+`<name>-v<version>`. A `wardrik_daemon-v*` tag builds the daemon's release.
 
 ## License
 
-Apache-2.0
+Apache 2.0.

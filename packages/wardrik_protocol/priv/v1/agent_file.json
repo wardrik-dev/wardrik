@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent_file",
+  "title": "Agent file",
+  "description": "A file in an agent's workspace, without its content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "path",
+    "version",
+    "bytes",
+    "by",
+    "at",
+    "labels"
+  ],
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Its path in the workspace."
+    },
+    "version": {
+      "type": "string",
+      "description": "Its version. agent.file_put takes it to write over this version only."
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Its size in bytes."
+    },
+    "by": {
+      "type": "string",
+      "description": "Who wrote it last: the agent's ID, or the ID of the person who wrote it with agent.file_put."
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When it was last written."
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Labels of what the writer had read, such as outside."
+    }
+  },
+  "examples": [
+    {
+      "path": "skills/triage/SKILL.md",
+      "version": "3",
+      "bytes": 812,
+      "by": "user_42",
+      "at": "2026-11-11T12:00:00Z",
+      "labels": []
+    }
+  ]
+}

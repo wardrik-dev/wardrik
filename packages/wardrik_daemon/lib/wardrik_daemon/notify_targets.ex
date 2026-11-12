@@ -1,0 +1,162 @@
+defmodule WardrikDaemon.NotifyTargets do
+  @moduledoc """
+  The webhooks orgs and people add for their agents' notices, served at
+  `/v1/owners/{owner}/notify_targets`.
+
+      wardrik notify add audit --url https://hooks.example.com/wardrik --secret HOOK_SECRET --org acme
+
+    * `notify: "audit"` reaches the nearest `audit`: the owner's, their org's, the deployment's,
+      then `config.yaml`'s.
+    * The secret is read from the owner's vault, sealed for `signing_secret`, for each notice.
+    * Adding or removing one records `notify_target.added` or `notify_target.removed` in the audit.
+  """
+
+  alias Wardrik.Error
+  alias WardrikCore.Principal
+  alias WardrikDaemon.Config.Orgs
+  alias WardrikDaemon.Owned
+  alias WardrikDaemon.Owners
+  alias WardrikDaemon.Servers
+
+  @kind "notify_targets"
+
+  @doc "Lists the targets `owner`'s agents route to, nearest first. Never a secret."
+  @spec list(Servers.daemon(), String.t()) :: [map()]
+  def list(%{store: store, config: config}, owner) do
+    added = for target <- Owned.along(store, @kind, owner), do: listed(target)
+    Owned.nearest(added ++ configured(config, Owners.org(owner)))
+  end
+
+  @doc """
+  Returns the targets `owner`'s agents route to by name, as `Wardrik.Resolved`'s `:notify` takes them.
+  """
+  @spec reached(Servers.daemon(), String.t()) :: [{String.t(), Wardrik.Resolved.notify_target()}]
+  def reached(%{store: store, config: config}, owner) do
+    added =
+      for target <- Owned.along(store, @kind, owner),
+          do: {target.name, {WardrikDaemon.Webhook, webhook(target)}}
+
+    added ++ for(%{"name" => name} <- configured(config, Owners.org(owner)), do: {name, name})
+  end
+
+  defp webhook(%{owner: owner, url: url, secret: nil}), do: [url: url, owner: owner]
+  defp webhook(target), do: [url: target.url, owner: target.owner, secret: target.secret]
+
+  defp configured(config, org) do
+    for {name, {module, opts}} <- Keyword.get(config.notify, :targets, []),
+        name = to_string(name),
+        Orgs.serves?(config, kind: :notify, name: name, org: org) do
+      target = %{
+        "owner" => "deployment",
+        "name" => name,
+        "source" => "config",
+        "kind" => kind(module)
+      }
+
+      if module == Wardrik.Notify.Webhook, do: Map.put(target, "url", opts[:url]), else: target
+    end
+  end
+
+  defp kind(module), do: module |> Module.split() |> List.last() |> Macro.underscore()
+
+  @doc """
+  Adds the webhook `input` describes for `owner`, as `actor`. `input` is the route's checked JSON.
+  """
+  @spec add(Servers.daemon(), {String.t(), map()}, Principal.t() | nil) ::
+          {:ok, map()} | {:error, Error.t()}
+  def add(%{wardrik: wardrik, store: store} = daemon, {owner, %{"name" => name} = input}, actor) do
+    running = Wardrik.Instance.fetch!(wardrik)
+
+    with :ok <- unused(daemon, owner, name),
+         :ok <- reachable(running, input["url"]),
+         {:ok, secret} <- secret(running, owner, input["secret"]),
+         target = %{owner: owner, name: name, url: input["url"], secret: secret},
+         {:ok, _vsn} <- WardrikStore.put(store, Owned.path(@kind, owner, name), target) do
+      changed(running, "notify_target.added", {owner, name, %{"url" => input["url"]}}, actor)
+      {:ok, listed(target)}
+    end
+  end
+
+  @doc "Removes `owner`'s own target `name`, as `actor`. Returns it as it was."
+  @spec remove(Servers.daemon(), {String.t(), String.t()}, Principal.t() | nil) ::
+          {:ok, map()} | {:error, Error.t()}
+  def remove(%{wardrik: wardrik, store: store} = daemon, {owner, name}, actor) do
+    case WardrikStore.get(store, Owned.path(@kind, owner, name)) do
+      nil ->
+        not_removed(daemon, owner, name)
+
+      target ->
+        :ok = WardrikStore.delete(store, Owned.path(@kind, owner, name))
+
+        changed(
+          Wardrik.Instance.fetch!(wardrik),
+          "notify_target.removed",
+          {owner, name, %{}},
+          actor
+        )
+
+        {:ok, listed(target)}
+    end
+  end
+
+  defp unused(%{store: store} = daemon, owner, name) do
+    if WardrikStore.get(store, Owned.path(@kind, owner, name)) == nil and
+         not configured?(daemon, owner, name),
+       do: :ok,
+       else: {:error, Error.new(:conflict, "#{owner} has a notify target #{name} already.")}
+  end
+
+  defp not_removed(daemon, owner, name) do
+    if configured?(daemon, owner, name),
+      do: {:error, Error.new(:invalid_request, "#{name} is a notify target config.yaml starts.")},
+      else: {:error, Error.new(:not_found, "#{owner} has no notify target #{name}.")}
+  end
+
+  defp configured?(%{config: config}, "deployment", name),
+    do: Enum.any?(Keyword.get(config.notify, :targets, []), &(to_string(elem(&1, 0)) == name))
+
+  defp configured?(_daemon, _owner, _name), do: false
+
+  defp reachable(running, url) do
+    case running.egress.(url) do
+      :ok ->
+        :ok
+
+      {:error, why} ->
+        {:error, Error.new(:invalid_request, "The target can't be reached: #{why}.")}
+    end
+  end
+
+  defp secret(_running, _owner, nil), do: {:ok, nil}
+
+  defp secret(running, owner, %{"name" => name}) do
+    if {owner, name, :signing_secret} in WardrikVault.list(Wardrik.vault(running)),
+      do: {:ok, name},
+      else:
+        {:error,
+         Error.new(
+           :invalid_request,
+           "#{owner} holds no secret #{name} sealed as a signing_secret."
+         )}
+  end
+
+  defp listed(target) do
+    listed = %{
+      "owner" => target.owner,
+      "name" => target.name,
+      "source" => "runtime",
+      "kind" => "webhook",
+      "url" => target.url
+    }
+
+    if target.secret, do: Map.put(listed, "secret", %{"name" => target.secret}), else: listed
+  end
+
+  defp changed(running, type, {owner, name, data}, actor) do
+    change =
+      {type, "notify_targets/" <> name,
+       %{"notify_target" => Map.put(data, "name", name), "owner" => owner}}
+
+    :ok = WardrikEvents.record(Wardrik.events(running), change, actor: actor)
+  end
+end

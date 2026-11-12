@@ -1,0 +1,50 @@
+{
+  "name": "@wardrik/sdk",
+  "version": "0.1.0-rc.6",
+  "description": "Drive Wardrik agents over HTTP, and offer them tools from your own process.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wardrik-dev/wardrik.git",
+    "directory": "sdk/typescript"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "check": "node scripts/generate.ts --check && tsc --noEmit && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1"
+  },
+  "peerDependencies": {
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "@types/ws": "^8.18.1",
+    "json-schema-to-typescript": "^16.0.0",
+    "prettier": "^3.9.9",
+    "typescript": "^7.0.2",
+    "ws": "^8.21.3",
+    "zod": "^4.6.6"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

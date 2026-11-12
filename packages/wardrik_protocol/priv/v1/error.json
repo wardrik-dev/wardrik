@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:error",
+  "title": "An error",
+  "description": "What an operation answers when it fails, and what every HTTP answer of 400 and above holds.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "message"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "invalid_request",
+            "unauthorized",
+            "forbidden",
+            "not_found",
+            "conflict",
+            "not_supported",
+            "unavailable",
+            "internal"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "error": {
+        "type": "not_found",
+        "message": "No agent runs under agt_01JF8X5RQ2."
+      }
+    }
+  ]
+}

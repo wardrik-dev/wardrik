@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Releases Wardrik: each package whose version isn't published yet is tagged and published, at its
+# Releases Wardrik: each package whose version isn't published yet is published and tagged, at its
 # own version. Packages are versioned independently: bump one by PR when it changes.
 #
 #   scripts/release.sh          # dry run: checks everything, changes nothing
 #   scripts/release.sh --go     # publishes to Hex and npm, then tags and pushes the tags
 #
-# The repos are checked out side by side, as for WARDRIK_LOCAL=1: ../wardrik_core and so on.
-# Every wardrik or wardrik_* checkout whose mix.exs has a package() is a Hex package; the
-# TypeScript SDK goes to npm. Hex packages publish in the order of their sibling deps.
+# Every packages/* and extensions/* directory whose mix.exs has a package() is a Hex package; the
+# TypeScript SDK in sdk/typescript goes to npm. Hex packages publish in the order of their sibling
+# deps, resolved from Hex with WARDRIK_HEX=1.
 #
-# Each repo is tagged v<its version> on origin/main, after every package is published: a tag starts
-# that repo's release build, which fetches its deps from Hex. Safe to rerun after a failure: tags
-# already there, and versions already published, are skipped. To add a step, write a function and name it
-# in STEPS.
+# Each package is tagged <name>-v<its version> on origin/main, after every package is published:
+# wardrik_daemon-v* starts the daemon's release build, which fetches its deps from Hex. Safe to rerun
+# after a failure: tags already there, and versions already published, are skipped. To add a step,
+# write a function and name it in STEPS.
 set -euo pipefail
 
-WORK=${WORK:-$(cd "$(dirname "$0")/../.." && pwd)}
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
 GO=
 for flag in "$@"; do
   case $flag in
@@ -24,15 +24,21 @@ for flag in "$@"; do
   esac
 done
 NPM_PACKAGE=@wardrik/sdk
-SDK=wardrik_typescript
-STEPS=(publish_hex publish_npm tag_repos)
+SDK=typescript
+STEPS=(publish_hex publish_npm tag_packages)
 
 hex_packages() {
   local dir
-  for dir in "$WORK"/wardrik "$WORK"/wardrik_*; do
-    [[ $(basename "$dir") == *-* ]] && continue
+  for dir in "$ROOT"/packages/* "$ROOT"/extensions/*; do
     grep -q 'package: package()' "$dir/mix.exs" 2>/dev/null && basename "$dir"
   done
+}
+
+dir_of() {
+  case $1 in
+    "$SDK") echo "$ROOT/sdk/$SDK" ;;
+    *) for dir in "$ROOT"/packages/"$1" "$ROOT"/extensions/"$1"; do [[ -d $dir ]] && echo "$dir"; done ;;
+  esac
 }
 
 mapfile -t HEX < <(hex_packages)
@@ -43,8 +49,8 @@ problem() { say "  !! $*"; problems=$((problems + 1)); }
 
 version_of() {
   case $1 in
-    "$SDK") node -p "require('$WORK/$1/package.json').version" ;;
-    *) grep -m1 -oE '(@version |version: )"[^"]+"' "$WORK/$1/mix.exs" | cut -d'"' -f2 ;;
+    "$SDK") node -p "require('$(dir_of "$1")/package.json').version" ;;
+    *) grep -m1 -oE '(@version |version: )"[^"]+"' "$(dir_of "$1")/mix.exs" | cut -d'"' -f2 ;;
   esac
 }
 
@@ -58,7 +64,8 @@ unpublished() {
   esac
 }
 
-untagged() { ! git -C "$WORK/$1" ls-remote --exit-code -q --tags origin "v$(version_of "$1")" >/dev/null; }
+tag_of() { echo "$1-v$(version_of "$1")"; }
+untagged() { ! git -C "$ROOT" ls-remote --exit-code -q --tags origin "$(tag_of "$1")" >/dev/null; }
 
 # What this run releases: each package whose version isn't published or tagged yet, as it starts.
 RELEASING=()
@@ -70,7 +77,7 @@ releasing() { [[ " ${RELEASING[*]} " == *" $1 "* ]]; }
 hex_order() {
   for pkg in "${HEX[@]}"; do
     say "$pkg $pkg"
-    grep -oE 'sibling\(:wardrik[a-z_]*' "$WORK/$pkg/mix.exs" | sed 's/sibling(://' |
+    grep -oE 'sibling\(:wardrik[a-z_]*' "$(dir_of "$pkg")/mix.exs" | sed 's/sibling(://' |
       sort -u | while read -r dep; do say "$dep $pkg"; done
   done | tsort
 }
@@ -78,26 +85,24 @@ hex_order() {
 check() {
   say "-- accounts"
   local user
-  user=$(cd "$WORK/wardrik_core" && mix hex.user whoami 2>/dev/null | tail -1) || true
+  user=$(cd "$(dir_of wardrik_core)" && mix hex.user whoami 2>/dev/null | tail -1) || true
   [[ -n $user ]] && say "  hex: $user" || problem "not signed in to Hex: mix hex.user auth"
   if releasing "$SDK" && unpublished "$SDK"; then
     user=$(npm whoami 2>/dev/null) || true
     [[ -n $user ]] && say "  npm: $user" || problem "not signed in to npm: npm login"
   fi
 
-  say "-- repos"
-  local repo dir main tag tagged
+  say "-- repo"
+  local repo main tag tagged
+  git -C "$ROOT" fetch -q --tags origin main || problem "fetch failed"
+  main=$(git -C "$ROOT" rev-parse origin/main)
+  [[ $(git -C "$ROOT" branch --show-current) == main ]] || problem "not on main"
+  [[ -z $(git -C "$ROOT" status --porcelain) ]] || problem "uncommitted changes"
+  [[ $(git -C "$ROOT" rev-parse HEAD) == "$main" ]] || problem "main isn't origin/main"
   for repo in "${HEX[@]}" "$SDK"; do
-    dir="$WORK/$repo"
-    [[ -d $dir/.git ]] || { problem "$repo isn't checked out at $dir"; continue; }
-    git -C "$dir" fetch -q origin main || problem "$repo: fetch failed"
-    main=$(git -C "$dir" rev-parse origin/main)
-    [[ $(git -C "$dir" branch --show-current) == main ]] || problem "$repo isn't on main"
-    [[ -z $(git -C "$dir" status --porcelain) ]] || problem "$repo has uncommitted changes"
-    [[ $(git -C "$dir" rev-parse HEAD) == "$main" ]] || problem "$repo main isn't origin/main"
-    tag="v$(version_of "$repo")"
-    if tagged=$(git -C "$dir" rev-parse -q --verify "refs/tags/$tag^{commit}"); then
-      releasing "$repo" && [[ $tagged != "$main" ]] && problem "$repo has $tag on another commit"
+    tag=$(tag_of "$repo")
+    if tagged=$(git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag^{commit}"); then
+      releasing "$repo" && [[ $tagged != "$main" ]] && problem "$tag is on another commit"
     fi
   done
 
@@ -117,16 +122,15 @@ check() {
   fi
 }
 
-tag_repos() {
-  local repo dir tag
+tag_packages() {
+  local repo tag
   for repo in "${HEX[@]}" "$SDK"; do
     releasing "$repo" || continue
-    dir="$WORK/$repo"
-    tag="v$(version_of "$repo")"
-    git -C "$dir" rev-parse -q --verify "refs/tags/$tag" >/dev/null ||
-      git -C "$dir" tag -s "$tag" -m "$tag" origin/main
-    git -C "$dir" push -q origin "$tag"
-    say "  $repo $tag"
+    tag=$(tag_of "$repo")
+    git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null ||
+      git -C "$ROOT" tag -s "$tag" -m "$tag" origin/main
+    git -C "$ROOT" push -q origin "$tag"
+    say "  $tag"
   done
 }
 
@@ -136,9 +140,9 @@ publish_hex() {
     releasing "$pkg" && unpublished "$pkg" || continue
     say "  $pkg $(version_of "$pkg")"
     # Lockfiles pin siblings at the last release. Resolve against Hex, then restore the lock.
-    (cd "$WORK/$pkg" && env -u WARDRIK_LOCAL mix deps.get >/dev/null &&
-      env -u WARDRIK_LOCAL mix hex.publish --yes)
-    git -C "$WORK/$pkg" checkout -q -- mix.lock
+    (cd "$(dir_of "$pkg")" && WARDRIK_HEX=1 mix deps.get >/dev/null &&
+      WARDRIK_HEX=1 mix hex.publish --yes)
+    git -C "$ROOT" checkout -q -- "$(dir_of "$pkg")/mix.lock"
   done
 }
 
@@ -146,12 +150,12 @@ publish_npm() {
   releasing "$SDK" && unpublished "$SDK" || return 0
   local version
   version=$(version_of $SDK)
-  (cd "$WORK/$SDK" && npm ci && npm run check &&
+  (cd "$(dir_of $SDK)" && npm ci && npm run check &&
     npm run build && npm publish --tag next &&
     npm dist-tag add "$NPM_PACKAGE@$version" latest)
 }
 
-say "== Release from $WORK"
+say "== Release from $ROOT"
 check
 if ((problems > 0)); then say "== $problems problem(s). Nothing changed."; exit 1; fi
 if [[ -z $GO ]]; then say "== Dry run clean. Rerun with --go to release."; exit 0; fi

@@ -1,0 +1,37 @@
+---
+title: Examples
+description: Agent configurations for customer support, incident response, bookkeeping, and personal automation.
+tableOfContents: false
+sidebar:
+  order: 0
+  label: Overview
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import ExampleGroup from '../../../components/ExampleGroup.astro';
+
+Start from a task, copy the agent and policy files, and configure the listed integrations.
+All examples require a [running daemon](/getting-started/install/) and a model provider key.
+
+<ExampleGroup folder="team" title="Incident response" />
+
+<ExampleGroup folder="enterprise" title="Team administration" />
+
+<ExampleGroup folder="business" title="Support and bookkeeping" />
+
+<ExampleGroup folder="you" title="Personal automation" />
+
+## Test the guarantees
+
+<CardGrid>
+	<LinkCard
+		title="Crash recovery and cancellation"
+		href="/examples/pull-the-plug/"
+		description="Restart during a task. Replay saved results, retry interrupted calls safely, and verify cancellation."
+	/>
+	<LinkCard
+		title="Prompt injection defenses"
+		href="/examples/hijack-me/"
+		description="Embed instructions in public issues and verify that proposed GitHub writes still need approval."
+	/>
+</CardGrid>

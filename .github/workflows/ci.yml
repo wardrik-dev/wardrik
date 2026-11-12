@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: list
+        run: echo "list=$(ls -d packages/*/mix.exs extensions/*/mix.exs | xargs -n1 dirname | jq -Rnc '[inputs]')" >> "$GITHUB_OUTPUT"
+
+  # mix precommit in each Elixir package, against the others in this repository.
+  precommit:
+    name: ${{ matrix.package }}
+    needs: packages
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.packages.outputs.list) }}
+    env:
+      MIX_ENV: test
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28.2"
+          elixir-version: "1.20.2"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ matrix.package }}/deps
+            ${{ matrix.package }}/_build
+            ${{ matrix.package }}/priv/plts
+          key: ${{ runner.os }}-${{ matrix.package }}-${{ hashFiles(format('{0}/mix.lock', matrix.package)) }}
+
+      - run: mix deps.get
+      - run: mix precommit
+
+  sdk:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+      - run: npm ci
+      - run: npm run check

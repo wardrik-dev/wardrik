@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent_files",
+  "title": "Agent files",
+  "description": "What agent.files answers: the files in an agent's workspace, newest first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "files"
+  ],
+  "properties": {
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:agent_file"
+      }
+    }
+  },
+  "examples": [
+    {
+      "files": [
+        {
+          "path": "skills/triage/SKILL.md",
+          "version": "3",
+          "bytes": 812,
+          "by": "user_42",
+          "at": "2026-11-11T12:00:00Z",
+          "labels": []
+        }
+      ]
+    }
+  ]
+}

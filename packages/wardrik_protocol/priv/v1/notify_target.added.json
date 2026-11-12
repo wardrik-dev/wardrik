@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:notify_target.added",
+  "title": "wardrik.notify_target.added",
+  "description": "Someone added a notify target for an owner's agents.",
+  "type": "object",
+  "properties": {
+    "notify_target": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "url"
+      ]
+    },
+    "owner": {
+      "type": "string",
+      "description": "Whose agents' notices it takes, as your app names them."
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    },
+    "assumed_by": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/assumed_by"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "notify_target",
+    "owner"
+  ]
+}

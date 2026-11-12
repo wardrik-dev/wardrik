@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:conversation.cleared",
+  "title": "wardrik.conversation.cleared",
+  "description": "The conversation was emptied, and with it the mark of content from outside it held.",
+  "type": "object",
+  "properties": {
+    "messages_before": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many messages it held."
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "messages_before"
+  ]
+}

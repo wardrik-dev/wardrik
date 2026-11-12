@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:subagent.completed",
+  "title": "wardrik.subagent.completed",
+  "description": "A subagent answered, with what it did and cost along the way: its events stay out of the log, so these are the whole of it.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "message": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/message"
+    },
+    "duration_ms": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
+    },
+    "tool_calls": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many tool calls it made."
+    },
+    "usage": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/usage",
+      "description": "The tokens its model calls read and wrote, together."
+    },
+    "cost": {
+      "oneOf": [
+        {
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/cost"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What its model calls and tools cost, together, which counts as the calling tool's; null where nothing priced them."
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "message",
+    "duration_ms"
+  ]
+}

@@ -1,0 +1,231 @@
+defmodule WardrikOAuth.Flow do
+  @moduledoc """
+  A process for one sign-in under way. It ends when the principal finishes, or after 15 minutes.
+  """
+
+  use GenServer, restart: :temporary
+
+  require Logger
+
+  alias WardrikCore.Principal
+  alias WardrikOAuth.Browser
+  alias WardrikOAuth.Device
+  alias WardrikOAuth.Metadata
+  alias WardrikOAuth.Provider
+  alias WardrikOAuth.Registration
+  alias WardrikOAuth.Token
+
+  @lifetime :timer.minutes(15)
+
+  @doc "Returns the sign-in URL for `provider` and `principal`, starting a flow if none is running."
+  @spec begin(map(), Provider.t(), Principal.t()) :: {:authorize, String.t()} | {:error, term()}
+  def begin(settings, %Provider{} = provider, %Principal{} = principal) do
+    with {:ok, pid} <- open(settings, provider, principal),
+         do: {:authorize, GenServer.call(pid, :url)}
+  end
+
+  @doc """
+  Returns where `principal` signs in to `provider`, starting a flow if none is running:
+  `%{url: url}`, or `%{url: url, code: code}` for a device sign-in.
+  """
+  @spec sign_in(map(), Provider.t(), Principal.t()) ::
+          {:ok, %{required(:url) => String.t(), optional(:code) => String.t()}} | {:error, term()}
+  def sign_in(settings, %Provider{} = provider, %Principal{} = principal) do
+    with {:ok, pid} <- open(settings, provider, principal),
+         do: {:ok, GenServer.call(pid, :sign_in)}
+  end
+
+  defp open(settings, provider, principal) do
+    case DynamicSupervisor.start_child(
+           settings.flows,
+           {__MODULE__, {settings, provider, principal}}
+         ) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Describes the flow, for a page or CLI to show."
+  @spec describe(pid()) :: map()
+  def describe(pid), do: GenServer.call(pid, :describe)
+
+  @doc "Finishes a browser flow with its callback's params, for `principal`."
+  @spec finish(pid(), map(), Principal.t()) ::
+          {:ok, %{provider: String.t(), principal: Principal.t()}} | {:error, term()}
+  def finish(pid, params, principal),
+    do: GenServer.call(pid, {:finish, params, principal}, :timer.seconds(30))
+
+  @doc false
+  def start_link({settings, provider, principal}) do
+    name = {:via, Registry, {settings.registry, {:flow, provider.name, principal.id}}}
+    GenServer.start_link(__MODULE__, {settings, provider, principal}, name: name)
+  end
+
+  @impl GenServer
+  def init({settings, provider, principal}) do
+    with {:ok, metadata} <- Metadata.discover(provider, settings.req_options),
+         {:ok, provider} <- Registration.client(settings, provider, metadata),
+         flow = %{
+           settings: settings,
+           provider: provider,
+           principal: principal,
+           metadata: metadata
+         },
+         {:ok, flow} <- start(provider.flow, flow) do
+      Process.send_after(self(), :expire, @lifetime)
+      {:ok, flow}
+    else
+      {:error, reason} -> {:stop, reason}
+    end
+  end
+
+  @impl GenServer
+  def handle_call(:url, _from, flow), do: {:reply, flow.url, flow}
+
+  def handle_call(:sign_in, _from, %{kind: :device} = flow),
+    do: {:reply, %{url: flow.device.verification_uri, code: flow.device.user_code}, flow}
+
+  def handle_call(:sign_in, _from, flow), do: {:reply, %{url: flow.url}, flow}
+
+  def handle_call(:describe, _from, flow), do: {:reply, described(flow), flow}
+
+  # Someone other than the principal who started it can't finish or end it.
+  def handle_call(
+        {:finish, _params, %Principal{id: id}},
+        _from,
+        %{principal: %{id: started}} = flow
+      )
+      when id != started,
+      do: {:reply, {:error, :wrong_principal}, flow}
+
+  def handle_call({:finish, %{"error" => error}, _principal}, _from, flow) do
+    outcome = {:error, {:refused, error}}
+    {:stop, :normal, outcome, ended(flow, outcome)}
+  end
+
+  def handle_call(
+        {:finish, %{"code" => code} = params, _principal},
+        _from,
+        %{kind: :browser} = flow
+      ) do
+    outcome = exchanged(flow, code, params["iss"])
+    {:stop, :normal, finished(outcome, flow), ended(flow, outcome)}
+  end
+
+  def handle_call({:finish, _params, _principal}, _from, flow),
+    do: {:reply, {:error, :no_code}, flow}
+
+  @impl GenServer
+  def handle_info(:poll, flow) do
+    flow.metadata
+    |> Device.poll(flow.provider, device: flow.device, req_options: flow.settings.req_options)
+    |> polled(flow)
+  end
+
+  def handle_info(:expire, flow), do: {:stop, :normal, ended(flow, {:error, :expired})}
+
+  defp start(:device, flow) do
+    with {:ok, device} <- Device.request(flow.metadata, flow.provider, flow.settings.req_options) do
+      id = random()
+      {:ok, _owner} = Registry.register(flow.settings.registry, {:id, id}, nil)
+      schedule(:timer.seconds(device.interval))
+
+      {:ok,
+       Map.merge(flow, %{
+         kind: :device,
+         device: device,
+         interval: :timer.seconds(device.interval),
+         url: flow.settings.page <> "/device/" <> id
+       })}
+    end
+  end
+
+  defp start(:browser, flow) do
+    with {:ok, started} <- Browser.start(flow.metadata, flow.provider, redirect_uri(flow)) do
+      {:ok, _owner} = Registry.register(flow.settings.registry, {:state, started.state}, nil)
+      {:ok, Map.merge(flow, %{kind: :browser, url: started.url, verifier: started.verifier})}
+    end
+  end
+
+  defp described(%{kind: :device} = flow) do
+    %{
+      provider: flow.provider.name,
+      principal: flow.principal,
+      user_code: flow.device.user_code,
+      verification_uri: flow.device.verification_uri
+    }
+  end
+
+  defp described(flow),
+    do: %{provider: flow.provider.name, principal: flow.principal, url: flow.url}
+
+  defp exchanged(flow, code, iss) do
+    exchange = [
+      code: code,
+      verifier: flow.verifier,
+      redirect_uri: redirect_uri(flow),
+      req_options: flow.settings.req_options
+    ]
+
+    with :ok <- issuer(flow.metadata, iss),
+         {:ok, token} <- Browser.exchange(flow.metadata, flow.provider, exchange) do
+      granted(flow, token)
+    end
+  end
+
+  defp issuer(metadata, iss),
+    do: if(Browser.issued_by?(metadata, iss), do: :ok, else: {:error, :wrong_issuer})
+
+  defp finished(:granted, flow),
+    do: {:ok, %{provider: flow.provider.name, principal: flow.principal}}
+
+  defp finished(outcome, _flow), do: outcome
+
+  defp polled({:ok, %Token{} = token}, flow),
+    do: {:stop, :normal, ended(flow, granted(flow, token))}
+
+  defp polled({:error, reason}, flow), do: {:stop, :normal, ended(flow, {:error, reason})}
+
+  defp polled(waiting, flow) do
+    interval = Device.next_interval(waiting, flow.interval)
+    schedule(interval)
+    {:noreply, %{flow | interval: interval}}
+  end
+
+  defp granted(flow, token) do
+    %{settings: settings, provider: provider, principal: principal} = flow
+
+    with {:ok, _vsn} <- WardrikOAuth.keep(settings, provider, principal, token) do
+      tell(settings.on_granted, provider.name, principal)
+      :granted
+    end
+  end
+
+  defp tell(nil, _name, _principal), do: :ok
+
+  defp tell({module, function, args}, name, principal),
+    do: apply(module, function, [name, principal | args])
+
+  defp ended(flow, outcome) do
+    if outcome != :granted,
+      do:
+        Logger.info(
+          "#{flow.provider.name} sign-in for #{flow.principal.id} ended: #{inspect(outcome)}"
+        )
+
+    :telemetry.execute([:wardrik_oauth, :flow, :done], %{}, %{
+      provider: flow.provider.name,
+      principal: flow.principal,
+      outcome: outcome
+    })
+
+    flow
+  end
+
+  defp redirect_uri(flow), do: flow.settings.page <> "/callback"
+
+  defp random, do: 18 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+  defp schedule(interval), do: Process.send_after(self(), :poll, interval)
+end

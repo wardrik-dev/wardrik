@@ -1,0 +1,3 @@
+#!/bin/sh
+# rik is wardrik, shorter.
+WARDRIK_PROGRAM=rik exec "$(dirname "$(readlink -f "$0")")/wardrik" "$@"
