@@ -10,7 +10,7 @@ sidebar:
 Install the release, restart the daemon, and check the running version:
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik_daemon/releases/download/v0.1.0-rc.11/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-v0.1.0-rc.12/install.sh | sh
 systemctl --user restart wardrik
 wardrik version
 ```
@@ -22,10 +22,10 @@ wardrik version
 In Docker, start a new container with the same volumes:
 
 ```sh
-docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.11
+docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.12
 docker rm -f wardrik
 docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
-  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.11
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.12
 ```
 
 ## Back up
