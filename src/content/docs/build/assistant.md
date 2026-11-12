@@ -68,32 +68,38 @@ seal one:
 
 ```text
 Seal GITHUB_TOKEN at http://127.0.0.1:4747/web/secrets?owner=acme, or run:
-wardrik vault put GITHUB_TOKEN --for api_key --org acme
+wardrik vault put GITHUB_TOKEN --for header --org acme
 ```
+
+A secret is read only for its purpose: `header` for an MCP server's token, `api_key` for a model's
+or tool's key, `client_secret` for an OAuth app, `signing_secret` for signing notices. It asks
+for a secret before it adds what uses it.
 
 Removing a server, target or app is yours to do, in the [dashboard](/run/dashboard/) or with the
 CLI.
 
-## The hourly check
+## The check
 
-Each hour, its `check` trigger looks at its workers' runs, the calls waiting on a person, the
+Every 6 hours, its `check` trigger looks at its workers' runs, the calls waiting on a person, the
 doctor's checks and each node's memory. It answers "All well." when nothing needs you. When
 something does, it proposes the fix as a call that waits for your approval, so it shows in
 `wardrik approval ls`, the dashboard's Approvals page and any [notify target](/build/notices/).
-Each check is a model call. Remove the trigger to stop it.
+Each check is a model call with the assistant's tools, often tens of thousands of tokens. Remove
+the trigger to stop it, or change `every`.
 
 ## Assistant configuration
 
 ```markdown title="~/.config/wardrik/agents/assistant.md"
 ---
 description: "Turns what people ask for into work that runs."
-tools: [self/*, agents/*, agent_create, ops/read, settings, help, files, web_search, run_lua]
+tools: [self/*, agents/*, agent_create, ops/agent.runs, ops/agent.timeline, ops/agent.resolved,
+  ops/interrupts.list, ops/deployment.runtime, settings, help, files, web_search, run_lua]
 context: [MEMORY.md]
 policy: {budget: {tokens: 2000000, per: day}}
 idle_timeout: infinity
 triggers:
   - name: check
-    every: 1h
+    every: 6h
     prompt: >-
       Check how things run: ...
 ---
@@ -101,7 +107,9 @@ You are Wardrik, the one place the people of this org come to get things done. â
 ```
 
 - `agents/*` reads, messages and redefines the org's agents. `agent_create` creates another agent.
-- `ops/read` reads runs, timelines, waiting calls, the audit, nodes and resource use.
+- `ops/agent.runs` and the other `ops/` entries read runs, timelines, what an agent gets, waiting
+  calls and each node's resource use. Each tool goes into every model call, so it names only these
+  reads, not all of `ops/read`.
 - `settings` lists and adds MCP servers, notify targets and OAuth apps, and asks you to seal
   secrets. `help` answers from these docs and the deployment's own files.
 - Reads run without approval. Every change needs approval.
@@ -111,8 +119,8 @@ You are Wardrik, the one place the people of this org come to get things done. â
 - `web_search` works once it has a Brave key: `wardrik vault put BRAVE_API_KEY --for api_key`.
   Until then, it says how to add one.
 
-`init` also writes the roles and bindings that let it act on the org's agents and settings, and
-read the deployment:
+`init` also writes the roles and bindings that let it act on the org's agents and settings,
+read the deployment, and list the deployment's secrets by name:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 roles:
@@ -121,7 +129,10 @@ roles:
       - {verbs: [create, define, read, ask, events], kinds: [agent]}
       - {verbs: [read, add], kinds: [mcp_server, notify_target, provider]}
       - {verbs: [read], kinds: [secret]}
-  observer: {rules: [{verbs: [nodes, runtime, audit], kinds: [deployment]}]}
+  observer:
+    rules:
+      - {verbs: [nodes, runtime, audit], kinds: [deployment]}
+      - {verbs: [read], kinds: [secret]}
 bindings:
   - {org: acme, role: workers, subjects: [agent:assistant]}
   - {org: deployment, role: observer, subjects: [agent:assistant]}

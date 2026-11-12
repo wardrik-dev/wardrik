@@ -61,7 +61,7 @@ tools: [web_search, files, github/*, agents/*]
 
 | Entry | Tools |
 | --- | --- |
-| `web_search` | web search through Brave; needs a key, sealed with `wardrik vault put BRAVE_API_KEY --for api_key` or set as [`brave.api_key`](/reference/config/#keys). Until then it says how to add one |
+| `web_search` | web search through Brave; needs a key, sealed with `wardrik vault put BRAVE_API_KEY --for api_key` or set as [`brave.api_key`](/reference/config/#keys). A key in the environment counts only through `brave.api_key`. Until it has one, it says how to add one |
 | `deep_research` | researches a topic with subagents |
 | `run_lua` | runs Lua in a sandbox |
 | `agent_create` | creates another agent in the same organization |
@@ -72,7 +72,7 @@ tools: [web_search, files, github/*, agents/*]
 | `self/*` | `self_read`, `self_definition_read`, `self_trigger_set`, `self_trigger_remove` |
 | `agents/*` | `agents_list`, `agent_read`, `agent_definition_read`, `agent_ask`, `agent_define`, `agent_trigger_set`, `agent_trigger_remove` |
 | `ops/read` | every operation that only reads, as a tool named after it: `agent_runs`, `agent_timeline`, `agent_calls`, `agent_resolved`, `agent_runtime`, `interrupts_list`, `audit_list`, `deployment_nodes`, `deployment_runtime` and the rest |
-| `ops/ID` | one operation that changes something, such as `ops/agent.stop` or `ops/deployment.reload`. Approving and denying calls are never tools |
+| `ops/ID` | one operation, such as `ops/agent.runs` or `ops/agent.stop`. Approving and denying calls are never tools |
 | `settings` | `settings_list`, `server_add`, `notify_target_add`, `oauth_app_add`, `secret_request` |
 | `help` | `wardrik_about`, `wardrik_doctor`, `docs_search`, `docs_read` |
 | `*` | all of the above but `ops/` |
