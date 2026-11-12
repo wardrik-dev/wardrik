@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.6 (2026-11-11)
 
 - `WardrikCore.context/1` returns the context the agent's next turn starts from, to run steps
   of your own through its middleware, outside its conversation.
