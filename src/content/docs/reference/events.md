@@ -106,6 +106,8 @@ used for the request).
 | `wardrik.conversation.compacted` | `messages_before`, `messages_after`, `tokens_before`, `tokens_after` | older history was summarised |
 | `wardrik.trigger.set` | `agent`, `trigger` | a trigger was set |
 | `wardrik.trigger.removed` | `agent`, `trigger` | a trigger was removed |
+| `wardrik.file.written` | `agent`, `file` | a person or app wrote one of the agent's files |
+| `wardrik.file.removed` | `agent`, `file` | a person or app deleted one of the agent's files |
 | `wardrik.trigger.fired` | `trigger`, `status` | a trigger ran; `status` is `asked`, `nothing_new`, `busy`, `no_agent`, `missed` or `failed` |
 | `wardrik.room.bound` | `channel`, `room`, `agent`, `answers` | a chat room was bound to an agent, replying on `mentions` or `everything` |
 | `wardrik.room.unbound` | `channel`, `room` | a chat room was unbound |
