@@ -25,7 +25,7 @@ defmodule Wardrik.MCP do
     * A server that's down offers no tools and is retried, up to a minute between tries.
     * Tools carry the server's hints as `WardrikCore.Tool` annotations. A tool is `gated` unless
       it's read-only.
-    * A transient failure raises `Wardrik.MCP.Unavailable`, so the tool runner can retry.
+    * A transient failure raises `Wardrik.MCP.UnavailableError`, so the tool runner can retry.
     * An error the tool returns reaches the model as the call's error.
 
   ## Telemetry
@@ -172,7 +172,7 @@ defmodule Wardrik.MCP do
   end
 end
 
-defmodule Wardrik.MCP.Unavailable do
+defmodule Wardrik.MCP.UnavailableError do
   @moduledoc "Raised when an MCP server fails transiently. A retry may succeed."
   defexception [:message]
 end

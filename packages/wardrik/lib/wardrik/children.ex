@@ -61,7 +61,7 @@ defmodule Wardrik.Children do
       servers: servers,
       store: wardrik.store,
       check: wardrik.egress,
-      secret: &Wardrik.Sealed.fetch(wardrik, owner: &1, name: &2, kind: :header)
+      secret: &Wardrik.Vault.Lookup.fetch(wardrik, owner: &1, name: &2, kind: :header)
     )
   end
 
@@ -90,7 +90,7 @@ defmodule Wardrik.Children do
      [
        name: Wardrik.triggers(wardrik),
        store: wardrik.store,
-       target: {Wardrik.TriggerTarget, wardrik}
+       target: {Wardrik.Triggers.Agents, wardrik}
      ] ++
        wardrik.triggers}
   end

@@ -9,6 +9,9 @@
   `Wardrik.EventLog`, `WardrikChannel` is `Wardrik.Chat`, `WardrikHTTP` is
   `Wardrik.HTTP.Endpoint`, and `WardrikTesting` is `Wardrik.Testing`. Telemetry events and
   stored data are unchanged.
+- `Wardrik.Workspaces` is `Wardrik.Workspace.Agents`.
+- Exceptions end in `Error`: `Wardrik.MCP.UnavailableError`, `Wardrik.Workers.UnavailableError`
+  and `Wardrik.Workers.LostError`.
 
 ## 0.1.0-rc.10 (2026-11-11)
 

@@ -54,9 +54,7 @@
             #
             ## Consistency Checks
             #
-            # Each exception is named for what went wrong: Wardrik.MCP.Unavailable,
-            # Wardrik.Workers.Lost, Wardrik.Store.S3.Error.
-            {Credo.Check.Consistency.ExceptionNames, false},
+            {Credo.Check.Consistency.ExceptionNames, []},
             {Credo.Check.Consistency.LineEndings, []},
             {Credo.Check.Consistency.ParameterPatternMatching, []},
             {Credo.Check.Consistency.SpaceAroundOperators, []},

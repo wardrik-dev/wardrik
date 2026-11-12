@@ -1,4 +1,4 @@
-defmodule Wardrik.MCPTools do
+defmodule Wardrik.MCP.Capability do
   @moduledoc false
 
   @behaviour WardrikCore.Capability

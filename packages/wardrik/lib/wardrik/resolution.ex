@@ -43,7 +43,7 @@ defmodule Wardrik.Resolution do
          {:ok, model} <- model(definition),
          {:ok, capabilities} <- capabilities(wardrik, servers, definition),
          {:ok, workspace} <-
-           Wardrik.Workspaces.resolve(wardrik,
+           Wardrik.Workspace.Agents.resolve(wardrik,
              agent: id,
              definition: definition,
              workspaces: resolved.workspaces,
@@ -122,7 +122,7 @@ defmodule Wardrik.Resolution do
         {:server, name} <- [named(wardrik, tool)],
         Wardrik.MCP.tools(nil,
           name: mcp,
-          servers: Wardrik.MCPTools.picked(mcp, servers, names: [name])
+          servers: Wardrik.MCP.Capability.picked(mcp, servers, names: [name])
         ) == [],
         do: tool
   end
@@ -247,7 +247,7 @@ defmodule Wardrik.Resolution do
       else:
         capabilities ++
           [
-            {Wardrik.MCPTools,
+            {Wardrik.MCP.Capability,
              mcp: Wardrik.mcp(wardrik),
              wardrik: wardrik.name,
              definition: definition,

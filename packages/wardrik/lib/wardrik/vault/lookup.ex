@@ -1,4 +1,4 @@
-defmodule Wardrik.Sealed do
+defmodule Wardrik.Vault.Lookup do
   @moduledoc false
 
   require Logger

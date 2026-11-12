@@ -29,8 +29,8 @@ defmodule Wardrik.Workers do
   alias Wardrik.Authorizer
   alias Wardrik.Instance
   alias Wardrik.Scope
-  alias Wardrik.Workers.Lost
-  alias Wardrik.Workers.Unavailable
+  alias Wardrik.Workers.LostError
+  alias Wardrik.Workers.UnavailableError
   alias WardrikCore.Context
 
   @group "workers"
@@ -185,7 +185,7 @@ defmodule Wardrik.Workers do
 
     case offers do
       [] ->
-        raise Unavailable, "No worker offers #{name} now, so it didn't run."
+        raise UnavailableError, "No worker offers #{name} now, so it didn't run."
 
       offers ->
         offers
@@ -196,7 +196,7 @@ defmodule Wardrik.Workers do
     end
   end
 
-  defp lost({:lost, message}, true), do: raise(Lost, message)
+  defp lost({:lost, message}, true), do: raise(LostError, message)
   defp lost({:lost, _message}, false), do: {:park, :in_doubt}
   defp lost(answer, _repeatable), do: answer
 
@@ -210,7 +210,7 @@ defmodule Wardrik.Workers do
         answered(response, context)
 
       {:DOWN, ^ref, :process, _worker, :noproc} ->
-        raise Unavailable, "No worker offers #{name} now, so it didn't run."
+        raise UnavailableError, "No worker offers #{name} now, so it didn't run."
 
       {:DOWN, ^ref, :process, _worker, _reason} ->
         {:lost, "The worker running #{name} went away before it answered. It may have run."}
@@ -275,12 +275,12 @@ defmodule Wardrik.Workers do
   defp part(_part), do: "[A part that doesn't read isn't shown here.]"
 end
 
-defmodule Wardrik.Workers.Unavailable do
+defmodule Wardrik.Workers.UnavailableError do
   @moduledoc "Raised when no worker offers the tool. The call didn't run."
   defexception [:message]
 end
 
-defmodule Wardrik.Workers.Lost do
+defmodule Wardrik.Workers.LostError do
   @moduledoc "Raised when a worker goes away mid-call. The call may have run."
   defexception [:message]
 end

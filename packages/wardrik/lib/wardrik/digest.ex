@@ -58,7 +58,7 @@ defmodule Wardrik.Digest do
          file = file(context, key, newer, messages, summarized),
          {:ok, version} <-
            Files.write(wardrik.store,
-             tree: Wardrik.Workspaces.tree(context.agent_id),
+             tree: Wardrik.Workspace.Agents.tree(context.agent_id),
              path: path,
              file: file,
              version: version
@@ -98,7 +98,7 @@ defmodule Wardrik.Digest do
   end
 
   defp prior(wardrik, agent, path) do
-    case Files.read(wardrik.store, tree: Wardrik.Workspaces.tree(agent), path: path) do
+    case Files.read(wardrik.store, tree: Wardrik.Workspace.Agents.tree(agent), path: path) do
       {:ok, file, version} -> {parsed(file), version}
       :none -> {%{}, nil}
     end

@@ -3,6 +3,8 @@ defmodule Wardrik.ChildrenTest do
 
   import Wardrik.Test.Wardrik, only: [seal: 4]
 
+  alias Wardrik.Vault.Lookup
+
   test "keeps agents in memory unless told where", %{test: test} do
     wardrik =
       Wardrik.new(
@@ -131,10 +133,15 @@ defmodule Wardrik.ChildrenTest do
     )
 
     assert {:error, :no_keys} =
-             Wardrik.Sealed.fetch(:"keyless #{test}", owner: "acme", name: "HOOK")
+             Lookup.fetch(:"keyless #{test}", owner: "acme", name: "HOOK")
 
-    assert Wardrik.Sealed.list(:"keyless #{test}") == []
-    refute Wardrik.Sealed.holds?(:"keyless #{test}", owner: "acme", name: "HOOK", kind: :secret)
+    assert Lookup.list(:"keyless #{test}") == []
+
+    refute Lookup.holds?(:"keyless #{test}",
+             owner: "acme",
+             name: "HOOK",
+             kind: :secret
+           )
   end
 
   defp linear(url),

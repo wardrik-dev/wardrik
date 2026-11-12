@@ -196,7 +196,7 @@ defmodule Wardrik.WorkersTest do
     Process.unlink(refusing)
     Process.exit(refusing, :kill)
 
-    assert_raise Wardrik.Workers.Unavailable,
+    assert_raise Wardrik.Workers.UnavailableError,
                  "No worker offers lookup now, so it didn't run.",
                  fn ->
                    tool.run.(%{}, context)

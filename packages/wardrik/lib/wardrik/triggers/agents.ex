@@ -1,4 +1,4 @@
-defmodule Wardrik.TriggerTarget do
+defmodule Wardrik.Triggers.Agents do
   @moduledoc false
 
   @behaviour Wardrik.Triggers.Target

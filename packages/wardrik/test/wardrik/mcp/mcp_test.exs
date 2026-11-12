@@ -133,7 +133,7 @@ defmodule Wardrik.MCPTest do
   end
 
   test "a call that fails in passing raises, for the tool runner to try again" do
-    assert_raise Wardrik.MCP.Unavailable, ~r/hasty failed/, fn -> call(:hasty, "slow") end
+    assert_raise Wardrik.MCP.UnavailableError, ~r/hasty failed/, fn -> call(:hasty, "slow") end
   end
 
   test "a server's cost is measured on the call's step" do

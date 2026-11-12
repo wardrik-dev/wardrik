@@ -35,7 +35,7 @@ defmodule Wardrik.Operations.Resolved do
 
   defp servers(mcp, servers) do
     for {name, server} <- Enum.sort(servers) do
-      picked = Wardrik.MCPTools.picked(mcp, servers, names: [name])
+      picked = Wardrik.MCP.Capability.picked(mcp, servers, names: [name])
       tools = Wardrik.MCP.tools(nil, name: mcp, servers: picked)
       %{"name" => name, "server" => server, "tools" => Enum.map(tools, & &1.name)}
     end

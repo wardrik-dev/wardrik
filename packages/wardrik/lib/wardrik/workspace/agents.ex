@@ -1,4 +1,4 @@
-defmodule Wardrik.Workspaces do
+defmodule Wardrik.Workspace.Agents do
   @moduledoc """
   Gives agents files: their own workspace, other agents', and files read into every turn.
 
@@ -28,7 +28,7 @@ defmodule Wardrik.Workspaces do
   @doc """
   Returns the capabilities and middleware for `:agent`'s workspace, or `invalid_request`.
 
-      Wardrik.Workspaces.resolve(wardrik,
+      Wardrik.Workspace.Agents.resolve(wardrik,
         agent: "agt_triage",
         definition: definition,
         workspaces: %{"agt_runbooks" => :read},

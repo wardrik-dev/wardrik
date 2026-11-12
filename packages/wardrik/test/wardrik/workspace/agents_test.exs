@@ -1,4 +1,4 @@
-defmodule Wardrik.WorkspacesTest do
+defmodule Wardrik.Workspace.AgentsTest do
   use ExUnit.Case, async: false
   use Mimic
 
@@ -123,7 +123,7 @@ defmodule Wardrik.WorkspacesTest do
     definition = %{"workspace" => %{"shared" => %{"runbooks" => "acme/runbooks"}}}
 
     resolve =
-      &Wardrik.Workspaces.resolve(wardrik,
+      &Wardrik.Workspace.Agents.resolve(wardrik,
         agent: &1,
         definition: definition,
         workspaces: &2,
@@ -153,7 +153,7 @@ defmodule Wardrik.WorkspacesTest do
 
   test "keeps each agent's tree in one segment, whatever its ID holds" do
     ids = ["..", "../acme/ops", "acme/ops", "acme//ops", "acme%2Fops", "acme ops/.."]
-    trees = Enum.map(ids, &Wardrik.Workspaces.tree/1)
+    trees = Enum.map(ids, &Wardrik.Workspace.Agents.tree/1)
 
     for {id, tree} <- Enum.zip(ids, trees) do
       assert ["agents", segment] = String.split(tree, "/")
