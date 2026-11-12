@@ -2,6 +2,7 @@ defmodule Wardrik.Operations.Types do
   @moduledoc false
 
   alias Wardrik.Agent
+  alias Wardrik.AgentFile
   alias Wardrik.AgentResolved
   alias Wardrik.AgentRuntime
   alias Wardrik.Authorization
@@ -23,7 +24,8 @@ defmodule Wardrik.Operations.Types do
 
   @snapshots ~w(agent.read agent.define agent.clear)
   @decided ~w(agent.decide agent.approve agent.deny)
-  @answered_nothing ~w(agent.cancel agent.forget agent.kill hook.deliver hook.deliver_with_secret)
+  @answered_nothing ~w(agent.cancel agent.forget agent.kill agent.file_delete hook.deliver
+                       hook.deliver_with_secret)
   @triggers ~w(agent.trigger_set agent.trigger_remove)
   @pages ~w(agent.events events.list audit.list)
 
@@ -36,11 +38,13 @@ defmodule Wardrik.Operations.Types do
     "deployment.nodes" => Nodes,
     "deployment.runtime" => Runtime,
     "agent.runtime" => AgentRuntime,
-    "agent.resolved" => AgentResolved
+    "agent.resolved" => AgentResolved,
+    "agent.file_put" => AgentFile
   }
 
   @lists %{
     "agent.calls" => {"calls", Call, :from_json},
+    "agent.files" => {"files", AgentFile, :from_json},
     "agents.list" => {"agents", Agent, :from_summary},
     "interrupts.list" => {"interrupts", Interrupt, :from_listed}
   }
@@ -185,6 +189,9 @@ defmodule Wardrik.Operations.Types do
 
   def decode("agent.definition", %{"definition" => definition, "missing" => missing}),
     do: {:ok, Definition.from_json(definition), missing}
+
+  def decode("agent.file", %{"file" => file, "content" => content}),
+    do: {:ok, AgentFile.from_json(file), content}
 
   def decode("agents.cancel", %{"cancelled" => cancelled}), do: {:ok, cancelled}
   def decode("events.head", %{"cursor" => cursor}), do: {:ok, cursor}

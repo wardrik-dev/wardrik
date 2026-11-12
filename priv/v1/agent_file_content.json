@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent_file_content",
+  "title": "Agent file content",
+  "description": "What agent.file answers: a file in an agent's workspace, and its content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "file",
+    "content"
+  ],
+  "properties": {
+    "file": {
+      "$ref": "urn:wardrik:schema:v1:agent_file"
+    },
+    "content": {
+      "type": "string",
+      "description": "The file's text."
+    }
+  },
+  "examples": [
+    {
+      "file": {
+        "path": "skills/triage/SKILL.md",
+        "version": "3",
+        "bytes": 812,
+        "by": "user_42",
+        "at": "2026-11-11T12:00:00Z",
+        "labels": []
+      },
+      "content": "---\nname: triage\ndescription: How to triage a new incident.\n---\n"
+    }
+  ]
+}

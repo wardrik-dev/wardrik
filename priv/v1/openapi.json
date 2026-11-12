@@ -1174,6 +1174,185 @@
         }
       }
     },
+    "/v1/agents/{agent}/files": {
+      "get": {
+        "operationId": "agent.files",
+        "summary": "List an agent's files",
+        "description": "Returns the files in the agent's workspace, newest first, at most 500. Files shared with it from other workspaces aren't listed.",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-action": "agent.files",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/agent"
+          },
+          {
+            "$ref": "#/components/parameters/glob"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The files, without their content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:agent_files"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent}/file": {
+      "get": {
+        "operationId": "agent.file",
+        "summary": "Read an agent's file",
+        "description": "Returns a file in the agent's workspace, with its content and version. Returns not_found if there's no file at the path.",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-action": "agent.files",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/agent"
+          },
+          {
+            "$ref": "#/components/parameters/file_path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file and its content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:agent_file_content"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "agent.file_put",
+        "summary": "Write an agent's file",
+        "description": "Writes a file in the agent's workspace. With version, writes only over that version and returns conflict if the file has changed. Without version, replaces any file at the path. The file carries no labels.",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-action": "agent.file_put",
+        "x-wardrik-effect": "change",
+        "x-wardrik-subject": "agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/agent"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "urn:wardrik:schema:v1:agent_file_put"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file as written, without its content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:agent_file"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "agent.file_delete",
+        "summary": "Delete an agent's file",
+        "description": "Deletes a file in the agent's workspace. Returns not_found if there's no file at the path.",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-action": "agent.file_delete",
+        "x-wardrik-effect": "destructive",
+        "x-wardrik-subject": "agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/agent"
+          },
+          {
+            "$ref": "#/components/parameters/file_path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent}/calls/{call}": {
       "delete": {
         "operationId": "agent.kill",
@@ -2523,6 +2702,26 @@
         "description": "The conversation ID, URL-encoded as one path segment. A conversation uses the agent's definition and has its own history.",
         "schema": {
           "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
+        }
+      },
+      "glob": {
+        "name": "glob",
+        "in": "query",
+        "required": false,
+        "description": "Return only the paths this glob matches: * within a folder, ? one character, ** across folders. Defaults to **.",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "file_path": {
+        "name": "path",
+        "in": "query",
+        "required": true,
+        "description": "The file's path in the workspace, such as notes/today.md.",
+        "schema": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

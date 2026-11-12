@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `agent.files`, `agent.file`, `agent.file_put` and `agent.file_delete` list, read, write and
+  delete the files in an agent's workspace. Writes and deletes are recorded as
+  `wardrik.file.written` and `wardrik.file.removed`. See `Wardrik.AgentFile`.
 - An operation's input describes an agent or conversation ID by what it is. The note on URL
   encoding stays with the HTTP parameter.
 
